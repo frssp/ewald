@@ -95,3 +95,40 @@ example figures.
 `CoordinationAnalysis` (+ total/partial RDF), `CalculateDisplacements` (+ MSD),
 `Replicate`, `WrapAtoms`, `AffineTransformation`, and any Python function
 `f(frame, data)`.
+
+### Structure analysis (ported from OVITO)
+
+`CommonNeighborAnalysis` (adaptive, interval and fixed-cutoff modes),
+`PolyhedralTemplateMatching` (FCC/HCP/BCC/ICO/SC/diamond/graphene, RMSD,
+orientation, elastic deformation gradient, chemical ordering),
+`VoronoiAnalysis` (atomic volume, coordination, Voronoi indices, radical
+tessellation, face list) and `WignerSeitzAnalysis` (vacancies/interstitials,
+per-type occupancies), `IdentifyDiamond` (cubic/hexagonal diamond and their
+first/second neighbors), `ChillPlus` (hexagonal/cubic/interfacial ice, hydrate),
+`CentroSymmetry` (conventional and minimum-weight
+matching), `AcklandJones` and `AtomicStrain` (von Mises/volumetric strain,
+F, Green-Lagrange tensor, D2min, rotation, stretch). Property names, structure type ids, colors and
+attribute names follow OVITO, and the test suite checks the results against
+OVITO 3.16 on eleven test structures plus ice/hydrate, defect and strain cases (`tests/data/make_ovito_reference.py`).
+
+```python
+from ewald.modifiers import PolyhedralTemplateMatching, VoronoiAnalysis
+
+pipe.modifiers.append(PolyhedralTemplateMatching(output_orientation=True))
+pipe.modifiers.append(VoronoiAnalysis(compute_indices=True))
+data = pipe.compute(0)
+print(data.attributes["PolyhedralTemplateMatching.counts.FCC"])
+ico = (data["Voronoi Index"][:, 4] == 12) & (data["Coordination"] == 12)   # <0,0,0,0,12> cells
+```
+
+With the optional `ovito` package (`pip install ovito` or `pip install -e ".[ovito]"`),
+`DislocationAnalysis` runs OVITO's DXA (Burgers vectors, line lengths, segment
+polylines in `tables["dislocations"]`), and `OvitoModifier(any_ovito_modifier)`
+runs any other OVITO modifier inside an ewald pipeline.
+
+CNA, PTM, Voronoi and matching-mode CSP use a C++ extension (`ewald._native`,
+compiled by `pip install -e .` with pybind11; sources and licenses in
+`src/ewald/_csrc/`). Installing needs a C++17 compiler (gcc/clang, Xcode command
+line tools on macOS, MSVC Build Tools on Windows). For 108k atoms on 4 cores:
+CNA ~1 s, PTM ~1.6 s, Voronoi ~1.7 s. With `device="cuda"` the CNA signatures
+run as CuPy kernels.
