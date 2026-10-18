@@ -47,6 +47,9 @@ data = pipe.compute(4, device=device)
 print(f"frame 4 pipeline on {device}: {time.perf_counter() - t:.2f} s")
 pipe.render(out / "cu_void_coordination.png", frame=4, direction=(0.4, 1, 0.3), size=(1600, 1200),
             text="Cu void, frame 4: coordination (cut at y = L/2)")
+# same figure with the built-in ray tracer (ambient occlusion + shadows)
+pipe.render(out / "cu_void_coordination_raytraced.png", frame=4, direction=(0.4, 1, 0.3), size=(1600, 1200),
+            renderer="raytrace", samples=8, ao_samples=32)
 
 # RDF table -> matplotlib figure (publication style)
 import matplotlib

@@ -1,6 +1,7 @@
 """Data pipeline: source -> modifiers -> DataCollection."""
 from __future__ import annotations
 
+import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Callable
@@ -31,6 +32,8 @@ class Modifier:
     """Base class. Subclasses implement ``modify(data, ctx)`` and return new data or None."""
 
     enabled: bool = True
+    status: str | None = None  # last error message, None when the last evaluation succeeded
+    last_time: float | None = None  # seconds spent in the last evaluation
 
     def modify(self, data: DataCollection, ctx: ComputeContext):
         raise NotImplementedError
@@ -39,8 +42,17 @@ class Modifier:
     def name(self) -> str:
         return type(self).__name__
 
+    def parameters(self) -> dict:
+        """Constructor arguments and their current values (used by the GUI and sessions)."""
+        import inspect
+
+        sig = inspect.signature(type(self).__init__)
+        return {k: getattr(self, k) for k in list(sig.parameters)[1:]
+                if hasattr(self, k) and sig.parameters[k].kind not in (inspect.Parameter.VAR_KEYWORD,
+                                                                       inspect.Parameter.VAR_POSITIONAL)}
+
     def __repr__(self):
-        params = ", ".join(f"{k}={v!r}" for k, v in vars(self).items() if not k.startswith("_"))
+        params = ", ".join(f"{k}={v!r}" for k, v in self.parameters().items())
         return f"{self.name}({params})"
 
 
@@ -127,14 +139,29 @@ class Pipeline:
                 self._cache.popitem(last=False)
         return self._cache[frame].copy()
 
-    def compute(self, frame: int = 0, device: str | None = None) -> DataCollection:
+    def compute(self, frame: int = 0, device: str | None = None, errors: str = "raise") -> DataCollection:
+        """Evaluate the pipeline at ``frame``.
+
+        ``errors="skip"`` keeps going past a failing modifier (its message is stored
+        in ``modifier.status``); the GUI uses this so one bad modifier never blanks the view.
+        """
         frame %= self.num_frames
         ctx = ComputeContext(frame, self, get_backend(device or self.device))
         data = self.source_frame(frame)
         for mod in self.modifiers:
             if not mod.enabled:
                 continue
-            result = mod.modify(data, ctx)
+            t0 = time.perf_counter()
+            try:
+                result = mod.modify(data, ctx)
+            except Exception as exc:
+                mod.last_time = time.perf_counter() - t0
+                mod.status = f"{type(exc).__name__}: {exc}"
+                if errors == "raise":
+                    raise
+                continue
+            mod.status = None
+            mod.last_time = time.perf_counter() - t0
             if result is not None:
                 data = result
         return data

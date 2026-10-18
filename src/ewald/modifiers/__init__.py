@@ -9,11 +9,12 @@ from .local_order import AcklandJones, AtomicStrain, CentroSymmetry, ChillPlus
 from .ovito_bridge import DislocationAnalysis, OvitoModifier
 from .selection import (ClearSelection, DeleteSelected, ExpressionSelection, InvertSelection,
                         SelectType, Slice)
+from .script import PythonScript
 from .transform import AffineTransformation, ComputeProperty, Replicate, WrapAtoms
 
 __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "CoordinationAnalysis",
            "AssignColor", "ColorCoding", "ClearSelection", "DeleteSelected", "ExpressionSelection",
            "InvertSelection", "SelectType", "Slice", "AffineTransformation", "ComputeProperty",
-           "Replicate", "WrapAtoms", "CommonNeighborAnalysis", "PolyhedralTemplateMatching",
+           "Replicate", "WrapAtoms", "PythonScript", "CommonNeighborAnalysis", "PolyhedralTemplateMatching",
            "VoronoiAnalysis", "WignerSeitzAnalysis", "DislocationAnalysis", "OvitoModifier",
            "AcklandJones", "AtomicStrain", "CentroSymmetry", "ChillPlus", "IdentifyDiamond"]

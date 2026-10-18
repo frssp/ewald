@@ -6,15 +6,15 @@ Atomistic structure and trajectory visualization and analysis with an OVITO-styl
 pipeline API in Python. Goal: an open alternative to OVITO Pro (GUI + Python
 scripting + GPU), built on open libraries (ASE, VTK/PyVista, NumPy/CuPy).
 
-Status: **step 1 of 4** (core data model, readers, pipeline, first modifiers,
-offscreen rendering). The desktop GUI, the full analysis set and the
-publication renderer follow.
+Status: core, readers, pipeline, first modifiers, offscreen rendering and a first
+desktop GUI are in. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Install
 
 ```bash
 pip install -e .            # CPU
 pip install -e ".[gpu]"     # + CuPy for device="cuda" (NVIDIA)
+pip install -e ".[gui]"     # + desktop viewer (PySide6, pyvistaqt, qtconsole)
 ```
 
 Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
@@ -36,7 +36,26 @@ pipe.modifiers.append(my_modifier)
 
 data = pipe.compute(10, device="cuda")   # analysis on the GPU (falls back with a clear error if no CuPy)
 pipe.render("frame10.png", frame=10, size=(2000, 1500), direction="iso", bonds=None)
+pipe.render("frame10_rt.png", frame=10, renderer="raytrace", ao_samples=32)   # ray traced, AO + shadows
 ```
+
+Desktop viewer:
+
+```bash
+ewald gui dump.lammpstrj --type-map 1=Cu      # or: ewald-gui XDATCAR
+```
+
+```python
+from ewald.gui import show
+show(pipe)        # open the viewer on a pipeline built in a script (in Jupyter: %gui qt first)
+```
+
+The window has a 3D viewport with a timeline underneath, a pipeline panel
+(add/reorder/enable modifiers, edit parameters, edit Python script modifiers
+in place), render settings with "Render active viewport" to PNG at any size,
+a data inspector (particle table with expression filter, attributes, tables)
+and an IPython console where `pipeline`, `data` and `viewer` are live; changes
+made in the console redraw the view.
 
 Command line:
 
