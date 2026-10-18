@@ -29,6 +29,16 @@ def _ipython_console(namespace, on_execute, parent):
     kc = km.client()
     kc.start_channels()
     w = RichJupyterWidget(parent)
+    from .theme import TOKENS
+    w.syntax_style = "monokai"
+    w.style_sheet = f"""
+        QPlainTextEdit, QTextEdit {{ background-color: {TOKENS['bg']}; color: {TOKENS['text']};
+                                     selection-background-color: {TOKENS['raised']}; border: none; }}
+        .error {{ color: {TOKENS['error']}; }}
+        .in-prompt, .in-prompt-number {{ color: {TOKENS['accent']}; }}
+        .out-prompt, .out-prompt-number {{ color: {TOKENS['selection']}; }}
+        .in-prompt-number, .out-prompt-number {{ font-weight: bold; }}
+    """
     w.kernel_manager = km
     w.kernel_client = kc
     w.banner = ("ewald console. Objects: pipeline, data (current frame), viewer, np, mods.\n"
