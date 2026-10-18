@@ -222,3 +222,14 @@ def test_main_window_applies_settings(app, pipe):
     assert w.style.bond_pairs[0][3] == round(1.0 * 2 * 1.32, 2)
     w.close()
     assert (s.path.parent / "layout.json").exists()
+
+
+def test_preferences_layout_covers_every_option_once():
+    from ewald.gui.preferences import LAYOUT
+    from ewald.settings import OPTIONS, PAGES
+
+    keys = [k for name in PAGES for _title, ks in LAYOUT[name][1] for k in ks]
+    assert sorted(keys) == sorted(o.key for o in OPTIONS)
+    for name in PAGES:
+        for _title, ks in LAYOUT[name][1]:
+            assert all(__import__("ewald.settings").settings.OPTION[k].page == name for k in ks)

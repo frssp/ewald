@@ -73,7 +73,7 @@ OPTIONS = (
            kind="table"),
     Option("bonds.length_factor", 1.15, "Bond length factor", "Max bond = factor × (r_A + r_B), like VESTA.",
            minimum=0.5, maximum=2),
-    Option("bonds.radius", 0.15, "Bond radius", "Å", minimum=0.01, maximum=1),
+    Option("bonds.radius", 0.15, "Bond radius", "Stick radius in ball-and-stick views.", minimum=0.01, maximum=1),
 
     Option("render.renderer", "raytrace", "Default renderer", choices=("raytrace", "opengl")),
     Option("render.samples", 8, "Anti-aliasing rays/pixel", minimum=1, maximum=256),
@@ -81,7 +81,7 @@ OPTIONS = (
     Option("render.shadows", True, "Shadows"),
     Option("render.size_preset", "1-column (3.5 in, 4:3)", "Size preset",
            choices=("1-column (3.5 in, 4:3)", "2-column (7.2 in, 16:9)", "Square (3.5 in)", "Slide 16:9 (1920×1080)")),
-    Option("render.dpi", 600, "Resolution", "dpi", minimum=72, maximum=2400),
+    Option("render.dpi", 600, "Resolution", "Print resolution used by the size presets.", minimum=72, maximum=2400),
     Option("render.background", "white", "Background", choices=("white", "transparent", "black", "viewport")),
     Option("render.output_dir", "", "Output folder", "Empty = current folder.", kind="dir"),
 

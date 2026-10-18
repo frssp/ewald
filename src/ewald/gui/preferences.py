@@ -1,7 +1,8 @@
 """Preferences dialog (Edit › Preferences, Ctrl+,): OVITO-style page list + VESTA element table.
 
-Design: /design/settings-menu.md. The form is generated from ``ewald.settings.OPTIONS``;
-``apply_settings`` pushes a Settings object into a running MainWindow.
+Design: /design/settings-menu.md. Rows are generated from ``ewald.settings.OPTIONS`` and
+grouped into sections by ``LAYOUT``; ``apply_settings`` pushes a Settings object into a
+running MainWindow.
 """
 from __future__ import annotations
 
@@ -17,8 +18,136 @@ from ..settings import DEVICES, OPTION, OPTIONS, PAGES, Settings
 from .theme import TOKENS
 
 _CHOICE_LABELS = {"ortho": "Orthographic", "persp": "Perspective", "raytrace": "Ray tracing (AO + shadows)",
-                  "opengl": "OpenGL (fast preview)", "iso": "Isometric", "x": "+x", "y": "+y", "z": "+z (top)",
-                  "front": "Front (-y)", "ask": "Ask when opening", "never": "Never ask"}
+                  "opengl": "OpenGL (fast preview)", "iso": "Isometric", "x": "Along +x", "y": "Along +y",
+                  "z": "Along +z (top)", "front": "Front (−y)", "ask": "Ask when opening", "never": "Use default map",
+                  "covalent": "Covalent", "vdW": "van der Waals", "white": "White", "black": "Black",
+                  "transparent": "Transparent", "viewport": "Same as viewport"}
+
+# page -> (subtitle, [(section, [option keys])])
+LAYOUT = {
+    "General": ("Startup behaviour and file handling.", [
+        ("Startup", ["general.startup_workspace", "general.restore_layout"]),
+        ("Appearance", ["general.font_size"]),
+        ("LAMMPS files", ["general.lammps_type_prompt", "general.lammps_type_map"])]),
+    "Viewports": ("Defaults for the interactive 3D view.", [
+        ("View", ["viewport.background", "viewport.projection", "viewport.initial_view", "viewport.style_preset"]),
+        ("Navigation", ["viewport.rotation_step"]),
+        ("Overlays", ["viewport.show_axes", "viewport.show_overlay"]),
+        ("Performance", ["viewport.sphere_resolution", "viewport.mesh_limit"])]),
+    "Elements": ("Default atom colors, radii and bond search, like VESTA's elements.ini.", [
+        ("Atoms", ["elements.color_scheme", "elements.radius_source", "elements.radius_scale"]),
+        ("Bonds", ["bonds.length_factor", "bonds.radius"]),
+        ("Element table", ["elements.overrides"])]),
+    "Rendering": ("Starting values for the Render workspace.", [
+        ("Renderer", ["render.renderer", "render.samples", "render.ao_samples", "render.shadows"]),
+        ("Output", ["render.size_preset", "render.dpi", "render.background", "render.output_dir"])]),
+    "Compute": ("Where pipelines run, and which optional packages are available.", [
+        ("Device", ["compute.device", "compute.threads"])]),
+    "Python": ("Console and module search path.", [
+        ("Console", ["python.startup_script"]),
+        ("Modules", ["python.extra_paths"])]),
+}
+
+# 24x24 line icons (stroke = currentColor), drawn in the Lucide style
+_ICONS = {
+    "General": '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/>'
+               '<circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+    "Viewports": '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/>'
+                 '<path d="M12 7l4 2.3v4.4L12 16l-4-2.3V9.3z"/>',
+    "Elements": '<circle cx="12" cy="12" r="1.5"/><ellipse cx="12" cy="12" rx="9" ry="3.6" transform="rotate(30 12 12)"/>'
+                '<ellipse cx="12" cy="12" rx="9" ry="3.6" transform="rotate(-30 12 12)"/>'
+                '<ellipse cx="12" cy="12" rx="9" ry="3.6" transform="rotate(90 12 12)"/>',
+    "Rendering": '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+    "Compute": '<rect x="6" y="6" width="12" height="12" rx="1.5"/><rect x="9.5" y="9.5" width="5" height="5"/>'
+               '<path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+    "Python": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/>',
+}
+
+
+def _icon(name, color, size=18) -> QtGui.QPixmap:
+    from PySide6 import QtSvg
+
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{color}" '
+           f'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">{_ICONS[name]}</svg>')
+    ratio = 2
+    pix = QtGui.QPixmap(size * ratio, size * ratio)
+    pix.fill(QtCore.Qt.transparent)
+    painter = QtGui.QPainter(pix)
+    QtSvg.QSvgRenderer(QtCore.QByteArray(svg.encode())).render(painter)
+    painter.end()
+    pix.setDevicePixelRatio(ratio)
+    return pix
+
+
+QSS = """
+QDialog#prefs {{ background: {bg}; }}
+QFrame#sidebar {{ background: {panel}; border: none; border-right: 1px solid {border}; }}
+QLineEdit#search {{ background: {bg}; border: 1px solid {border}; border-radius: 6px; padding: 6px 8px; }}
+QLineEdit#search:focus {{ border-color: {accent}; }}
+QListWidget#nav {{ background: transparent; border: none; outline: none; }}
+QListWidget#nav::item {{ color: {secondary}; padding: 7px 8px; margin: 1px 0; border-radius: 6px; border: none; }}
+QListWidget#nav::item:hover {{ background: {raised}; color: {text}; }}
+QListWidget#nav::item:selected {{ background: {raised}; color: {text}; border-left: 2px solid {accent}; }}
+QScrollArea#content, QWidget#contentInner {{ background: {bg}; border: none; }}
+QWidget#contentInner QLabel, QWidget#contentInner QWidget#noteHolder {{ background: transparent; }}
+QFrame#card QAbstractSpinBox::up-button, QFrame#card QAbstractSpinBox::down-button {{ width: 0px; border: none; }}
+QFrame#card QComboBox::drop-down {{ border: none; width: 22px; }}
+QFrame#card QComboBox::down-arrow {{ image: url("{chevron}"); width: 10px; height: 10px; margin-right: 8px; }}
+QLabel#pageTitle {{ font-size: 20px; font-weight: 600; color: {text}; }}
+QLabel#pageSubtitle {{ font-size: 12px; color: {muted}; }}
+QLabel#sectionTitle {{ font-size: 11px; font-weight: 600; color: {muted}; letter-spacing: 0.6px; }}
+QFrame#card {{ background: {panel}; border: 1px solid {border}; border-radius: 8px; }}
+QFrame#row {{ background: transparent; border: none; border-top: 1px solid {border}; }}
+QFrame#rowFirst {{ background: transparent; border: none; }}
+QLabel#rowLabel {{ font-size: 13px; color: {text}; background: transparent; }}
+QLabel#rowLabelChanged {{ font-size: 13px; color: {text}; font-weight: 600; background: transparent; }}
+QLabel#rowHelp {{ font-size: 11px; color: {muted}; background: transparent; }}
+QLabel#dot {{ color: {accent}; font-size: 10px; background: transparent; }}
+QToolButton#rowReset {{ color: {muted}; border: none; background: transparent; padding: 0 4px; font-size: 13px; }}
+QToolButton#rowReset:hover {{ color: {accent}; }}
+QFrame#card QComboBox, QFrame#card QSpinBox, QFrame#card QDoubleSpinBox, QFrame#card QLineEdit#field {{
+    background: {bg}; border: 1px solid {border}; border-radius: 6px; padding: 4px 8px; min-height: 18px; }}
+QFrame#card QComboBox:hover, QFrame#card QSpinBox:hover, QFrame#card QDoubleSpinBox:hover,
+QFrame#card QLineEdit#field:hover {{ border-color: {muted}; }}
+QFrame#card QComboBox:focus, QFrame#card QSpinBox:focus, QFrame#card QDoubleSpinBox:focus,
+QFrame#card QLineEdit#field:focus {{ border-color: {accent}; }}
+QPushButton#swatch {{ background: {bg}; border: 1px solid {border}; border-radius: 6px; padding: 4px 8px;
+    text-align: left; font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace; }}
+QPushButton#swatch:hover {{ border-color: {muted}; }}
+QPushButton#secondary {{ background: {raised}; border: 1px solid {border}; border-radius: 6px; padding: 5px 12px; }}
+QPushButton#secondary:hover {{ border-color: {muted}; }}
+QFrame#footer {{ background: {panel}; border: none; border-top: 1px solid {border}; }}
+QPushButton#footerButton {{ background: {raised}; border: 1px solid {border}; border-radius: 6px; padding: 6px 16px;
+    min-width: 64px; }}
+QPushButton#footerButton:hover {{ border-color: {muted}; }}
+QPushButton#footerPrimary {{ background: {accent}; color: #0B1220; border: none; border-radius: 6px; padding: 6px 18px;
+    min-width: 64px; font-weight: 600; }}
+QPushButton#footerPrimary:hover {{ background: #78B9FF; }}
+QPushButton#link {{ background: transparent; border: none; color: {secondary}; padding: 4px 6px; }}
+QPushButton#link:hover {{ color: {accent}; }}
+QLabel#path {{ color: {muted}; font-size: 11px; font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace; }}
+QLabel#badgeOk {{ color: {ok}; background: rgba(91, 208, 138, 0.12); border-radius: 9px; padding: 2px 9px;
+    font-size: 11px; font-weight: 600; }}
+QLabel#badgeOff {{ color: {muted}; background: {raised}; border-radius: 9px; padding: 2px 9px; font-size: 11px; }}
+QLabel#mono {{ color: {secondary}; font-size: 11px; background: transparent;
+    font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace; }}
+QTableWidget#elements {{ background: {bg}; border: 1px solid {border}; border-radius: 6px; gridline-color: transparent; }}
+QWidget#cell {{ background: transparent; }}
+QTableWidget#elements::item {{ border-bottom: 1px solid {panel}; padding: 0 6px; }}
+"""
+
+
+def _chevron() -> str:
+    """Down-arrow image for combo boxes (QSS needs a file)."""
+    import tempfile
+
+    path = os.path.join(tempfile.gettempdir(), "ewald-chevron.svg")
+    if not os.path.exists(path):
+        with open(path, "w") as fh:
+            fh.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+                     f'stroke="{TOKENS["secondary"]}" stroke-width="2.5" stroke-linecap="round" '
+                     'stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>')
+    return path.replace("\\", "/")
 
 
 def _hex(c) -> str:
@@ -27,21 +156,62 @@ def _hex(c) -> str:
     return QtGui.QColor.fromRgbF(*[float(x) for x in c[:3]]).name()
 
 
+def _restyle(w, name):
+    w.setObjectName(name)
+    w.style().unpolish(w)
+    w.style().polish(w)
+
+
+class Toggle(QtWidgets.QCheckBox):
+    """iOS/macOS-style switch; still a QCheckBox for signals and isChecked()."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.setFixedSize(36, 20)
+
+    def sizeHint(self):
+        return QtCore.QSize(36, 20)
+
+    def hitButton(self, pos):
+        return self.rect().contains(pos)
+
+    def paintEvent(self, _event):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        on = self.isChecked()
+        p.setPen(QtCore.Qt.NoPen)
+        p.setBrush(QtGui.QColor(TOKENS["accent"] if on else TOKENS["border"]))
+        p.drawRoundedRect(QtCore.QRectF(0, 0, 36, 20), 10, 10)
+        p.setBrush(QtGui.QColor("#0B1220" if on else TOKENS["secondary"]))
+        p.drawEllipse(QtCore.QRectF(19 if on else 3, 3, 14, 14))
+
+
 class _ColorButton(QtWidgets.QPushButton):
     changed = QtCore.Signal()
 
     def __init__(self, color="#ffffff", parent=None):
         super().__init__(parent)
-        self.setFixedWidth(84)
+        self.setObjectName("swatch")
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.setFixedWidth(112)
         self.clicked.connect(self._pick)
         self.set(color)
 
     def set(self, color):
         self.color = _hex(color)
-        self.setText(self.color)
-        light = QtGui.QColor(self.color).lightnessF() > 0.55
-        self.setStyleSheet(f"background: {self.color}; color: {'#0B1220' if light else '#E7E9EC'}; "
-                           f"border: 1px solid {TOKENS['border']};")
+        self.setText(" " + self.color.upper())
+        pix = QtGui.QPixmap(28, 28)
+        pix.fill(QtCore.Qt.transparent)
+        p = QtGui.QPainter(pix)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        p.setPen(QtGui.QPen(QtGui.QColor(TOKENS["muted"]), 1.5))
+        p.setBrush(QtGui.QColor(self.color))
+        p.drawRoundedRect(QtCore.QRectF(1, 1, 26, 26), 6, 6)
+        p.end()
+        pix.setDevicePixelRatio(2)
+        self.setIcon(QtGui.QIcon(pix))
+        self.setIconSize(QtCore.QSize(14, 14))
 
     def _pick(self):
         c = QtWidgets.QColorDialog.getColor(QtGui.QColor(self.color), self)
@@ -56,9 +226,9 @@ class _PathEdit(QtWidgets.QWidget):
         self.kind = kind
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        self.edit = QtWidgets.QLineEdit()
-        browse = QtWidgets.QPushButton("…")
-        browse.setFixedWidth(30)
+        lay.setSpacing(6)
+        self.edit = QtWidgets.QLineEdit(placeholderText="Not set", objectName="field")
+        browse = QtWidgets.QPushButton("Browse…", objectName="secondary")
         browse.clicked.connect(self._browse)
         lay.addWidget(self.edit, 1)
         lay.addWidget(browse)
@@ -83,26 +253,34 @@ class ElementTable(QtWidgets.QWidget):
         self.base = Settings()
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        self.filter = QtWidgets.QLineEdit(placeholderText="Filter elements (e.g. Cu, O)")
+        lay.setSpacing(8)
+        bar = QtWidgets.QHBoxLayout()
+        self.filter = QtWidgets.QLineEdit(placeholderText="Filter elements, e.g. Cu O", objectName="field")
+        self.filter.setClearButtonEnabled(True)
         self.filter.textChanged.connect(self._filter)
-        lay.addWidget(self.filter)
-        self.table = QtWidgets.QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["Element", "Color", "Radius (Å)", ""])
-        self.table.verticalHeader().hide()
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.setColumnWidth(0, 70)
-        self.table.setColumnWidth(1, 96)
-        self.table.setMinimumHeight(300)
-        lay.addWidget(self.table)
-        row = QtWidgets.QHBoxLayout()
-        imp = QtWidgets.QPushButton("Import VESTA elements.ini…")
+        imp = QtWidgets.QPushButton("Import elements.ini…", objectName="secondary")
+        imp.setToolTip("Read colors and radii from a VESTA elements.ini file")
         imp.clicked.connect(self._import)
-        reset = QtWidgets.QPushButton("Reset all elements")
+        reset = QtWidgets.QPushButton("Reset all", objectName="secondary")
         reset.clicked.connect(lambda: self.set_overrides({}, self.base) or self.changed.emit())
-        row.addWidget(imp)
-        row.addWidget(reset)
-        row.addStretch()
-        lay.addLayout(row)
+        bar.addWidget(self.filter, 1)
+        bar.addWidget(imp)
+        bar.addWidget(reset)
+        lay.addLayout(bar)
+        self.table = QtWidgets.QTableWidget(0, 5, objectName="elements")
+        self.table.setHorizontalHeaderLabels(["Z", "Element", "Color", "Radius (Å)", ""])
+        self.table.verticalHeader().hide()
+        self.table.verticalHeader().setDefaultSectionSize(34)
+        self.table.setShowGrid(False)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        self.table.setFocusPolicy(QtCore.Qt.NoFocus)
+        hdr = self.table.horizontalHeader()
+        hdr.setDefaultAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        hdr.setStretchLastSection(True)
+        for col, width in enumerate((44, 80, 128, 120)):
+            self.table.setColumnWidth(col, width)
+        self.table.setMinimumHeight(320)
+        lay.addWidget(self.table)
 
     def set_overrides(self, overrides: dict, base: Settings):
         from ase.data import chemical_symbols
@@ -113,18 +291,31 @@ class ElementTable(QtWidgets.QWidget):
         self.table.setRowCount(len(symbols))
         for r, sym in enumerate(symbols):
             o = self.overrides.get(sym, {})
-            item = QtWidgets.QTableWidgetItem(sym)
-            item.setFlags(QtCore.Qt.ItemIsEnabled)
-            self.table.setItem(r, 0, item)
+            for col, text in ((0, str(r + 1)), (1, sym)):
+                item = QtWidgets.QTableWidgetItem(text)
+                item.setFlags(QtCore.Qt.ItemIsEnabled)
+                if col == 0:
+                    item.setForeground(QtGui.QColor(TOKENS["muted"]))
+                self.table.setItem(r, col, item)
             btn = _ColorButton(o.get("color") or self._scheme(sym, "color"))
             btn.changed.connect(lambda s=sym, b=btn: self._edit(s, "color", b.color))
-            self.table.setCellWidget(r, 1, btn)
+            self.table.setCellWidget(r, 2, self._cell(btn))
             spin = QtWidgets.QDoubleSpinBox(minimum=0.05, maximum=5, singleStep=0.05, decimals=3)
+            spin.setFixedWidth(100)
             spin.setValue(o.get("radius") or self._scheme(sym, "radius"))
             spin.valueChanged.connect(lambda v, s=sym: self._edit(s, "radius", round(v, 3)))
-            self.table.setCellWidget(r, 2, spin)
+            self.table.setCellWidget(r, 3, self._cell(spin))
             self._mark(r, sym)
         self._filter(self.filter.text())
+
+    @staticmethod
+    def _cell(w):
+        holder = QtWidgets.QWidget(objectName="cell")
+        lay = QtWidgets.QHBoxLayout(holder)
+        lay.setContentsMargins(0, 2, 6, 2)
+        lay.addWidget(w)
+        lay.addStretch()
+        return holder
 
     def _scheme(self, sym, what):
         probe = self.base.copy()
@@ -134,11 +325,10 @@ class ElementTable(QtWidgets.QWidget):
         return probe.element_color(sym) if what == "color" else probe.element_radius(sym)
 
     def _mark(self, r, sym):
-        edited = sym in self.overrides
-        item = QtWidgets.QTableWidgetItem("● edited" if edited else "")
+        item = QtWidgets.QTableWidgetItem("● Edited" if sym in self.overrides else "")
         item.setForeground(QtGui.QColor(TOKENS["accent"]))
         item.setFlags(QtCore.Qt.ItemIsEnabled)
-        self.table.setItem(r, 3, item)
+        self.table.setItem(r, 4, item)
 
     def _edit(self, sym, field, value):
         self.overrides.setdefault(sym, {})[field] = value
@@ -150,7 +340,7 @@ class ElementTable(QtWidgets.QWidget):
     def _filter(self, text):
         wanted = {t.strip().lower() for t in text.replace(",", " ").split() if t.strip()}
         for r in range(self.table.rowCount()):
-            sym = self.table.item(r, 0).text().lower()
+            sym = self.table.item(r, 1).text().lower()
             self.table.setRowHidden(r, bool(wanted) and not any(sym.startswith(w) for w in wanted))
 
     def _import(self):
@@ -176,93 +366,175 @@ class PreferencesDialog(QtWidgets.QDialog):
     """Edits a copy of ``settings``; Apply/OK copy it back and emit ``applied``."""
 
     applied = QtCore.Signal(object)
+    EDITOR_WIDTH = 240
 
     def __init__(self, settings: Settings, parent=None):
         super().__init__(parent)
+        self.setObjectName("prefs")
         self.setWindowTitle("Preferences")
-        self.resize(820, 600)
+        self.setStyleSheet(QSS.format(chevron=_chevron(), **TOKENS))
+        self.resize(940, 680)
+        self.setMinimumSize(760, 520)
         self.settings = settings
         self.work = settings.copy()
-        self.editors: dict[str, tuple] = {}   # key -> (widget, row label, row widget)
+        self.editors: dict[str, tuple] = {}   # key -> (editor, label, row)
+        self.row_parts: dict[str, tuple] = {}  # key -> (dot, reset button)
+        self.cards: list[tuple] = []           # (section title, card, [keys])
         self._loading = False
+        self._pending_note = None
 
         outer = QtWidgets.QVBoxLayout(self)
-        self.search = QtWidgets.QLineEdit(placeholderText="Search settings (e.g. background, cuda, radius)")
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        body = QtWidgets.QHBoxLayout()
+        body.setSpacing(0)
+        outer.addLayout(body, 1)
+
+        sidebar = QtWidgets.QFrame(objectName="sidebar")
+        sidebar.setFixedWidth(220)
+        side = QtWidgets.QVBoxLayout(sidebar)
+        side.setContentsMargins(12, 14, 12, 12)
+        side.setSpacing(10)
+        self.search = QtWidgets.QLineEdit(placeholderText="Search settings", objectName="search")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._search)
-        outer.addWidget(self.search)
-        body = QtWidgets.QHBoxLayout()
-        self.pages = QtWidgets.QListWidget()
-        self.pages.setFixedWidth(160)
+        side.addWidget(self.search)
+        self.pages = QtWidgets.QListWidget(objectName="nav")
+        self.pages.setIconSize(QtCore.QSize(18, 18))
+        self.pages.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        side.addWidget(self.pages, 1)
+        body.addWidget(sidebar)
+
         self.stack = QtWidgets.QStackedWidget()
-        body.addWidget(self.pages)
         body.addWidget(self.stack, 1)
-        outer.addLayout(body, 1)
-        self.page_forms: dict[str, QtWidgets.QFormLayout] = {}
         for name in PAGES:
             self._build_page(name)
         self.pages.currentRowChanged.connect(self.stack.setCurrentIndex)
         self.pages.setCurrentRow(0)
-
-        buttons = QtWidgets.QHBoxLayout()
-        for text, fn in (("Restore page defaults", self.restore_page), ("Import…", self._import),
-                         ("Export…", self._export)):
-            b = QtWidgets.QPushButton(text)
-            b.clicked.connect(fn)
-            buttons.addWidget(b)
-        buttons.addStretch()
-        self.path_label = QtWidgets.QLabel(str(settings.path), objectName="muted")
-        self.path_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-        buttons.addWidget(self.path_label)
-        box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Apply
-                                         | QtWidgets.QDialogButtonBox.Cancel)
-        box.button(QtWidgets.QDialogButtonBox.Ok).setObjectName("primary")
-        box.accepted.connect(self.accept)
-        box.rejected.connect(self.reject)
-        box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(self.apply)
-        buttons.addWidget(box)
-        outer.addLayout(buttons)
+        outer.addWidget(self._footer())
         self._load()
 
     # ---------------------------------------------------------------- building
+    def _footer(self):
+        bar = QtWidgets.QFrame(objectName="footer")
+        lay = QtWidgets.QHBoxLayout(bar)
+        lay.setContentsMargins(16, 10, 16, 10)
+        lay.setSpacing(8)
+        for text, tip, fn in (("Import…", "Load settings from a JSON file", self._import),
+                              ("Export…", "Save these settings to a JSON file", self._export),
+                              ("Reset page", "Restore this page to its defaults", self.restore_page)):
+            b = QtWidgets.QPushButton(text, objectName="link", toolTip=tip)
+            b.setCursor(QtCore.Qt.PointingHandCursor)
+            b.clicked.connect(fn)
+            lay.addWidget(b)
+        self.path_label = QtWidgets.QLabel(objectName="path")
+        self.path_label.setText(str(self.settings.path))
+        self.path_label.setToolTip("Settings file")
+        self.path_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.path_label.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
+        lay.addSpacing(8)
+        lay.addWidget(self.path_label, 1)
+        for text, name, fn in (("Cancel", "footerButton", self.reject), ("Apply", "footerButton", self.apply),
+                               ("OK", "footerPrimary", self.accept)):
+            b = QtWidgets.QPushButton(text, objectName=name)
+            b.clicked.connect(fn)
+            b.setAutoDefault(name == "footerPrimary")
+            b.setDefault(name == "footerPrimary")
+            lay.addWidget(b)
+        return bar
+
     def _build_page(self, name):
-        inner = QtWidgets.QWidget()
-        form = QtWidgets.QFormLayout(inner)
-        form.setContentsMargins(12, 8, 12, 12)
-        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
-        title = QtWidgets.QLabel(name)
-        title.setStyleSheet("font-size: 16px; font-weight: 600;")
-        form.addRow(title)
+        subtitle, sections = LAYOUT[name]
+        inner = QtWidgets.QWidget(objectName="contentInner")
+        col = QtWidgets.QVBoxLayout(inner)
+        col.setContentsMargins(32, 24, 32, 32)
+        col.setSpacing(6)
+        col.addWidget(QtWidgets.QLabel(name, objectName="pageTitle"))
+        col.addWidget(QtWidgets.QLabel(subtitle, objectName="pageSubtitle"))
+        for title, keys in sections:
+            col.addSpacing(16)
+            heading = QtWidgets.QLabel(title.upper(), objectName="sectionTitle")
+            col.addWidget(heading)
+            card, rows = self._card()
+            for key in keys:
+                editor = self._device_combo() if key == "compute.device" else self._editor(OPTION[key])
+                self._add_row(rows, OPTION[key], editor)
+            col.addWidget(card)
+            self.cards.append((heading, card, keys))
         if name == "Compute":
-            self._device_rows(form)
-        for opt in OPTIONS:
-            if opt.page != name or opt.key == "compute.device":
-                continue
-            self._add_row(form, opt, self._editor(opt))
-        if name == "Compute":
-            form.addRow(QtWidgets.QLabel("Optional components", objectName="section"))
-            form.addRow(self._components_table())
-        scroll = QtWidgets.QScrollArea()
+            col.addSpacing(16)
+            heading = QtWidgets.QLabel("OPTIONAL COMPONENTS", objectName="sectionTitle")
+            col.addWidget(heading)
+            card, rows = self._card()
+            self._components(rows)
+            col.addWidget(card)
+            self.components_card = (heading, card)
+        col.addStretch()
+        scroll = QtWidgets.QScrollArea(objectName="content")
         scroll.setWidget(inner)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.stack.addWidget(scroll)
-        self.pages.addItem(name)
-        self.page_forms[name] = form
+        item = QtWidgets.QListWidgetItem(name)
+        icon = QtGui.QIcon()
+        icon.addPixmap(_icon(name, TOKENS["secondary"]), QtGui.QIcon.Normal)
+        icon.addPixmap(_icon(name, TOKENS["accent"]), QtGui.QIcon.Selected)
+        item.setIcon(icon)
+        self.pages.addItem(item)
 
-    def _add_row(self, form, opt, editor):
-        holder = QtWidgets.QWidget()
-        v = QtWidgets.QVBoxLayout(holder)
-        v.setContentsMargins(0, 0, 0, 4)
-        v.setSpacing(1)
-        v.addWidget(editor)
-        if opt.help:
-            h = QtWidgets.QLabel(opt.help, objectName="muted", wordWrap=True)
-            v.addWidget(h)
-        label = QtWidgets.QLabel(opt.label)
+    @staticmethod
+    def _card():
+        card = QtWidgets.QFrame(objectName="card")
+        rows = QtWidgets.QVBoxLayout(card)
+        rows.setContentsMargins(0, 0, 0, 0)
+        rows.setSpacing(0)
+        return card, rows
+
+    def _row_frame(self, rows):
+        row = QtWidgets.QFrame(objectName="rowFirst" if rows.count() == 0 else "row")
+        rows.addWidget(row)
+        return row
+
+    def _add_row(self, rows, opt, editor):
+        row = self._row_frame(rows)
+        wide = opt.kind == "table"
+        grid = QtWidgets.QGridLayout(row)
+        grid.setContentsMargins(16, 12, 16, 12)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(10)
+        text = QtWidgets.QVBoxLayout()
+        text.setSpacing(2)
+        head = QtWidgets.QHBoxLayout()
+        head.setSpacing(6)
+        dot = QtWidgets.QLabel("●", objectName="dot", toolTip="Changed from the default")
+        label = QtWidgets.QLabel(opt.label, objectName="rowLabel")
         label.setToolTip(opt.key)
-        form.addRow(label, holder)
-        self.editors[opt.key] = (editor, label, holder)
+        reset = QtWidgets.QToolButton(text="↺", objectName="rowReset", toolTip="Reset to default")
+        reset.setCursor(QtCore.Qt.PointingHandCursor)
+        reset.clicked.connect(lambda _=False, k=opt.key: self.reset_key(k))
+        head.addWidget(dot)
+        head.addWidget(label)
+        head.addWidget(reset)
+        head.addStretch()
+        text.addLayout(head)
+        if opt.help:
+            h = QtWidgets.QLabel(opt.help, objectName="rowHelp", wordWrap=True)
+            text.addWidget(h)
+        if key_note := getattr(self, "_pending_note", None):
+            text.addWidget(key_note)
+            self._pending_note = None
+        grid.addLayout(text, 0, 0)
+        if wide:
+            grid.addWidget(editor, 1, 0, 1, 2)
+        else:
+            if isinstance(editor, (QtWidgets.QSpinBox, QtWidgets.QDoubleSpinBox)):
+                editor.setFixedWidth(140)
+            elif not isinstance(editor, (Toggle, _ColorButton)):
+                editor.setFixedWidth(self.EDITOR_WIDTH if not isinstance(editor, _PathEdit) else 320)
+            grid.addWidget(editor, 0, 1, QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        grid.setColumnStretch(0, 1)
+        self.editors[opt.key] = (editor, label, row)
+        self.row_parts[opt.key] = (dot, reset)
 
     def _editor(self, opt):
         d = opt.default
@@ -281,24 +553,31 @@ class PreferencesDialog(QtWidgets.QDialog):
                 w.addItem(_CHOICE_LABELS.get(c, c), c)
             w.currentIndexChanged.connect(lambda _, k=opt.key: self._changed(k))
         elif isinstance(d, bool):
-            w = QtWidgets.QCheckBox()
+            w = Toggle()
             w.toggled.connect(lambda _, k=opt.key: self._changed(k))
         elif isinstance(d, int):
             w = QtWidgets.QSpinBox(minimum=int(opt.minimum or 0), maximum=int(opt.maximum or 10**9))
+            w.setGroupSeparatorShown(d >= 1000)
             if opt.key == "compute.threads":
-                w.setSpecialValueText(f"all ({os.cpu_count()})")
+                w.setSpecialValueText(f"All cores ({os.cpu_count()})")
             w.valueChanged.connect(lambda _, k=opt.key: self._changed(k))
         elif isinstance(d, float):
-            w = QtWidgets.QDoubleSpinBox(minimum=opt.minimum or 0, maximum=opt.maximum or 1e9, decimals=3,
+            w = QtWidgets.QDoubleSpinBox(minimum=opt.minimum or 0, maximum=opt.maximum or 1e9,
+                                         decimals=1 if opt.key == "viewport.rotation_step" else 2,
                                          singleStep=0.05 if (opt.maximum or 10) <= 5 else 1)
             w.valueChanged.connect(lambda _, k=opt.key: self._changed(k))
         else:
-            w = QtWidgets.QLineEdit()
+            w = QtWidgets.QLineEdit(placeholderText="Not set", objectName="field")
             w.textChanged.connect(lambda _, k=opt.key: self._changed(k))
+        if isinstance(w, (QtWidgets.QSpinBox, QtWidgets.QDoubleSpinBox)):
+            w.setAlignment(QtCore.Qt.AlignRight)
+            suffix = {"general.font_size": " px", "viewport.rotation_step": "°", "bonds.radius": " Å",
+                      "render.dpi": " dpi", "viewport.mesh_limit": " atoms"}.get(opt.key)
+            if suffix:
+                w.setSuffix(suffix)
         return w
 
-    def _device_rows(self, form):
-        opt = OPTION["compute.device"]
+    def _device_combo(self):
         combo = QtWidgets.QComboBox()
         self.device_detail = {}
         for key, label, probe in DEVICES:
@@ -309,38 +588,50 @@ class PreferencesDialog(QtWidgets.QDialog):
             if not ok:
                 combo.model().item(idx).setEnabled(False)
             self.device_detail[key] = (ok, detail)
-        combo.currentIndexChanged.connect(lambda _: (self._changed(opt.key), self._device_note()))
-        self._add_row(form, opt, combo)
-        self.device_note = QtWidgets.QLabel(objectName="muted", wordWrap=True)
-        self.editors[opt.key][2].layout().addWidget(self.device_note)
+        combo.currentIndexChanged.connect(lambda _: (self._changed("compute.device"), self._device_note()))
+        note = QtWidgets.QHBoxLayout()
+        self.device_badge = QtWidgets.QLabel()
+        self.device_note_label = QtWidgets.QLabel(objectName="rowHelp")
+        holder = QtWidgets.QWidget(objectName="noteHolder")
+        note.setContentsMargins(0, 4, 0, 0)
+        note.addWidget(self.device_badge)
+        note.addWidget(self.device_note_label, 1)
+        holder.setLayout(note)
+        self._pending_note = holder
+        return combo
 
     def _device_note(self):
         combo = self.editors["compute.device"][0]
         ok, detail = self.device_detail.get(combo.currentData(), (True, ""))
-        self.device_note.setText(("● " if ok else "✕ unavailable: ") + detail)
+        self.device_badge.setText("Available" if ok else "Unavailable")
+        _restyle(self.device_badge, "badgeOk" if ok else "badgeOff")
+        self.device_note_label.setText(detail)
 
-    def _components_table(self):
-        rows = settings_mod.component_status()
-        t = QtWidgets.QTableWidget(len(rows), 3)
-        t.setHorizontalHeaderLabels(["Component", "Status", "Install"])
-        t.verticalHeader().hide()
-        t.horizontalHeader().setStretchLastSection(True)
-        t.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        for r, (mod, purpose, found, version, cmd) in enumerate(rows):
-            t.setItem(r, 0, QtWidgets.QTableWidgetItem(f"{purpose}  ({mod})"))
-            st = QtWidgets.QTableWidgetItem(f"✓ {version}" if found else "not installed")
-            st.setForeground(QtGui.QColor(TOKENS["ok"] if found else TOKENS["muted"]))
-            t.setItem(r, 1, st)
-            t.setItem(r, 2, QtWidgets.QTableWidgetItem("" if found else cmd))
-        t.resizeColumnsToContents()
-        t.setMinimumHeight(34 * (len(rows) + 1))
-        self.components = t
-        return t
+    def _components(self, rows):
+        self.component_rows = {}
+        for mod, purpose, found, version, cmd in settings_mod.component_status():
+            row = self._row_frame(rows)
+            lay = QtWidgets.QHBoxLayout(row)
+            lay.setContentsMargins(16, 10, 16, 10)
+            text = QtWidgets.QVBoxLayout()
+            text.setSpacing(2)
+            text.addWidget(QtWidgets.QLabel(purpose, objectName="rowLabel"))
+            text.addWidget(QtWidgets.QLabel(mod, objectName="mono"))
+            lay.addLayout(text, 1)
+            if found:
+                lay.addWidget(QtWidgets.QLabel(f"Installed {version}".strip(), objectName="badgeOk"))
+            else:
+                lay.addWidget(QtWidgets.QLabel(cmd, objectName="mono"))
+                copy = QtWidgets.QPushButton("Copy", objectName="secondary", toolTip="Copy the install command")
+                copy.clicked.connect(lambda _=False, c=cmd: QtWidgets.QApplication.clipboard().setText(c))
+                lay.addWidget(copy)
+                lay.addWidget(QtWidgets.QLabel("Not installed", objectName="badgeOff"))
+            self.component_rows[mod] = row
 
     # ---------------------------------------------------------------- values
     def _load(self):
         self._loading = True
-        for key, (w, _l, _h) in self.editors.items():
+        for key, (w, _l, _r) in self.editors.items():
             self._set_editor(w, OPTION[key], self.work[key])
         self._loading = False
         self._device_note()
@@ -387,16 +678,23 @@ class PreferencesDialog(QtWidgets.QDialog):
         except ValueError:
             return
         if key.startswith("elements.") and key != "elements.overrides":
-            table = self.editors["elements.overrides"][0]
-            self._loading = True
-            table.set_overrides(table.overrides, self.work)
-            self._loading = False
+            self._refresh_table()
         self._mark(key)
 
+    def _refresh_table(self):
+        table = self.editors["elements.overrides"][0]
+        self._loading = True
+        table.set_overrides(table.overrides, self.work)
+        self._loading = False
+
     def _mark(self, key):
-        opt, label = OPTION[key], self.editors[key][1]
-        label.setText(opt.label if self.work.is_default(key) else f"{opt.label}  ●")
-        label.setStyleSheet("" if self.work.is_default(key) else f"color: {TOKENS['accent']};")
+        changed = not self.work.is_default(key)
+        dot, reset = self.row_parts[key]
+        label = self.editors[key][1]
+        dot.setVisible(changed)
+        reset.setVisible(changed)
+        if label.objectName() != ("rowLabelChanged" if changed else "rowLabel"):
+            _restyle(label, "rowLabelChanged" if changed else "rowLabel")
 
     def _mark_all(self):
         for key in self.editors:
@@ -408,6 +706,17 @@ class PreferencesDialog(QtWidgets.QDialog):
         self.work[key] = value
         self._mark(key)
 
+    def reset_key(self, key):
+        self.work.reset([key])
+        self._loading = True
+        self._set_editor(self.editors[key][0], OPTION[key], self.work[key])
+        self._loading = False
+        if key.startswith("elements."):
+            self._refresh_table()
+        if key == "compute.device":
+            self._device_note()
+        self._mark(key)
+
     def restore_page(self):
         page = PAGES[self.stack.currentIndex()]
         self.work.reset([o.key for o in OPTIONS if o.page == page])
@@ -416,23 +725,34 @@ class PreferencesDialog(QtWidgets.QDialog):
     def _search(self, text):
         text = text.strip().lower()
         matched_pages = set()
-        for key, (_w, label, holder) in self.editors.items():
-            opt = OPTION[key]
-            hit = not text or any(text in s.lower() for s in (opt.label, opt.key, opt.help, opt.page))
-            label.setVisible(hit)
-            holder.setVisible(hit)
-            if hit:
-                matched_pages.add(opt.page)
-        if text == "" or "component" in text:
+        for heading, card, keys in self.cards:
+            first = True
+            for key in keys:
+                opt = OPTION[key]
+                hit = not text or any(text in s.lower() for s in (opt.label, opt.key, opt.help, opt.page))
+                row = self.editors[key][2]
+                row.setVisible(hit)
+                if hit:
+                    matched_pages.add(opt.page)
+                    want = "rowFirst" if first else "row"
+                    if row.objectName() != want:
+                        _restyle(row, want)
+                    first = False
+            heading.setVisible(not first)
+            card.setVisible(not first)
+        comp = not text or any(text in s for s in ("component", "install", "package", "ovito", "dxa", "cupy"))
+        self.components_card[0].setVisible(comp)
+        self.components_card[1].setVisible(comp)
+        if comp:
             matched_pages.add("Compute")
-        first = None
+        first_page = None
         for i, name in enumerate(PAGES):
             hidden = name not in matched_pages
             self.pages.item(i).setHidden(hidden)
-            if not hidden and first is None:
-                first = i
-        if first is not None and self.pages.item(self.pages.currentRow()).isHidden():
-            self.pages.setCurrentRow(first)
+            if not hidden and first_page is None:
+                first_page = i
+        if first_page is not None and self.pages.item(self.pages.currentRow()).isHidden():
+            self.pages.setCurrentRow(first_page)
 
     def _import(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Import settings", "", "JSON (*.json)")
