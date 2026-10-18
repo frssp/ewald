@@ -47,7 +47,8 @@ class Viewport(QtWidgets.QWidget):
         grid.setSpacing(0)
         grid.addWidget(self._build_viewbar(), 0, 0, 1, 2)
         grid.addWidget(self._build_rail(), 1, 0)
-        self.plotter = QtInteractor(self)
+        # always interactive, even when PYVISTA_OFF_SCREEN is set for headless rendering
+        self.plotter = QtInteractor(self, off_screen=False)
         grid.addWidget(self.plotter.interactor, 1, 1)
         grid.setColumnStretch(1, 1)
         grid.setRowStretch(1, 1)
