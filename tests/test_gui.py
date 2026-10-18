@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 pytest.importorskip("PySide6")
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# the main-window test needs a real X server (OpenGL widgets); everything else runs offscreen
+os.environ.setdefault("QT_QPA_PLATFORM", "xcb" if os.environ.get("DISPLAY") else "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
 
 from ewald import Pipeline, StaticSource  # noqa: E402
