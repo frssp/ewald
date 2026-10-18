@@ -76,3 +76,29 @@ example figures.
 `CoordinationAnalysis` (+ total/partial RDF), `CalculateDisplacements` (+ MSD),
 `Replicate`, `WrapAtoms`, `AffineTransformation`, and any Python function
 `f(frame, data)`.
+
+### Structure analysis (ported from OVITO)
+
+`CommonNeighborAnalysis` (adaptive, interval and fixed-cutoff modes),
+`PolyhedralTemplateMatching` (FCC/HCP/BCC/ICO/SC/diamond/graphene, RMSD,
+orientation, elastic deformation gradient, chemical ordering),
+`VoronoiAnalysis` (atomic volume, coordination, Voronoi indices, radical
+tessellation, face list) and `WignerSeitzAnalysis` (vacancies/interstitials,
+per-type occupancies). Property names, structure type ids, colors and
+attribute names follow OVITO, and the test suite checks the results against
+OVITO 3.16 on nine test structures (`tests/data/make_ovito_reference.py`).
+
+```python
+from ewald.modifiers import PolyhedralTemplateMatching, VoronoiAnalysis
+
+pipe.modifiers.append(PolyhedralTemplateMatching(output_orientation=True))
+pipe.modifiers.append(VoronoiAnalysis(compute_indices=True))
+data = pipe.compute(0)
+print(data.attributes["PolyhedralTemplateMatching.counts.FCC"])
+ico = (data["Voronoi Index"][:, 4] == 12) & (data["Coordination"] == 12)   # <0,0,0,0,12> cells
+```
+
+CNA, PTM and Voronoi use a small C++ extension (`ewald._native`, built
+automatically by `pip install -e .` with pybind11; sources and licenses in
+`src/ewald/_csrc/`). For 108k atoms on 4 cores: CNA ~1 s, PTM ~1.6 s,
+Voronoi ~1.7 s. With `device="cuda"` the CNA signatures run as CuPy kernels.

@@ -2,6 +2,9 @@
 from ..pipeline import Modifier, PythonModifier
 from .analysis import CalculateDisplacements, CoordinationAnalysis
 from .coloring import AssignColor, ColorCoding
+from .structure import CommonNeighborAnalysis, PolyhedralTemplateMatching
+from .voronoi import VoronoiAnalysis
+from .wigner_seitz import WignerSeitzAnalysis
 from .selection import (ClearSelection, DeleteSelected, ExpressionSelection, InvertSelection,
                         SelectType, Slice)
 from .transform import AffineTransformation, ComputeProperty, Replicate, WrapAtoms
@@ -9,4 +12,5 @@ from .transform import AffineTransformation, ComputeProperty, Replicate, WrapAto
 __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "CoordinationAnalysis",
            "AssignColor", "ColorCoding", "ClearSelection", "DeleteSelected", "ExpressionSelection",
            "InvertSelection", "SelectType", "Slice", "AffineTransformation", "ComputeProperty",
-           "Replicate", "WrapAtoms"]
+           "Replicate", "WrapAtoms", "CommonNeighborAnalysis", "PolyhedralTemplateMatching",
+           "VoronoiAnalysis", "WignerSeitzAnalysis"]
