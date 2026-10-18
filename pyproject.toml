@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Atomistic structure and trajectory visualization and analysis with a Python pipeline API"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.24", "scipy", "ase>=3.23", "matplotlib", "pyvista>=0.44", "vtk>=9.3"]
+dependencies = ["numpy>=1.24", "scipy", "ase>=3.23", "matplotlib", "pyvista>=0.44", "vtk>=9.3", "numba>=0.59"]
 
 [project.optional-dependencies]
 gpu = ["cupy-cuda12x"]

@@ -57,7 +57,11 @@ example figures.
   scaled/unwrapped coordinates, wildcards) and VASP XDATCAR (fixed and
   variable cell); everything else through ASE.
 * Compute backends: kernels are written against an array module, so the same
-  code runs on NumPy (CPU) and CuPy (CUDA).
+  code runs on NumPy (CPU) and CuPy (CUDA). The neighbor list has a compiled,
+  multithreaded numba kernel on CPU (256k-atom fcc, 3 Å cutoff: ~0.6 s vs ~5 s
+  pure NumPy) and a vectorized cell list on GPU; `ewald.kernels` adds total and
+  partial RDF, trajectory unwrapping and FFT time-averaged MSD
+  (`trajectory_msd(pipe, device="cuda")`).
 * Rendering: VTK via PyVista, offscreen; sphere meshes for figures and GPU
   impostors above 150k atoms.
 

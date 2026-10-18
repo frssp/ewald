@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..kernels import rdf_from_pairs
 from ..neighbors import find_pairs
 from ..pipeline import Modifier
 
@@ -23,30 +24,14 @@ class CoordinationAnalysis(Modifier):
     def modify(self, data, ctx):
         be, xp = ctx.backend, ctx.xp
         n = data.count
-        i, j, _, dist = find_pairs(data.positions, data.cell, self.cutoff, be)
-        data.particles["Coordination"] = be.to_numpy(xp.bincount(i, minlength=n)).astype(np.int64)
-
-        edges = np.linspace(0, self.cutoff, self.number_of_bins + 1)
-        r = 0.5 * (edges[1:] + edges[:-1])
-        shell = 4.0 / 3.0 * np.pi * (edges[1:] ** 3 - edges[:-1] ** 3)
+        # Half list (i < j): half the pairs to find, histogram and transfer.
+        i, j, _, dist = find_pairs(data.positions, data.cell, self.cutoff, be, half=True)
+        coord = xp.bincount(i, minlength=n) + xp.bincount(j, minlength=n)
+        data.particles["Coordination"] = be.to_numpy(coord).astype(np.int64)
         volume = data.cell.volume if data.cell.is_valid else np.prod(np.ptp(data.positions, 0) + 1e-9)
-        table = {"r": r}
-        hist = be.to_numpy(xp.histogram(dist, bins=xp.asarray(edges))[0])
-        table["g(r)"] = hist * volume / (max(n, 1) * max(n - 1, 1) * shell) if n > 1 else hist * 0.0
-        if self.partial:
-            types = data.types
-            uniq = list(dict.fromkeys(types))
-            codes = xp.asarray(np.searchsorted(np.array(sorted(uniq)), types))
-            order = sorted(uniq)
-            ti, tj = codes[i], codes[j]
-            for a in range(len(order)):
-                for b in range(a, len(order)):
-                    na = int((types == order[a]).sum()); nb = int((types == order[b]).sum())
-                    m = (ti == a) & (tj == b)
-                    h = be.to_numpy(xp.histogram(dist[m], bins=xp.asarray(edges))[0])
-                    pairs = na * (nb - 1 if a == b else nb)
-                    table[f"g(r) {order[a]}-{order[b]}"] = h * volume / (max(pairs, 1) * shell)
-        data.tables["coordination-rdf"] = table
+        data.tables["coordination-rdf"] = rdf_from_pairs(
+            dist, n, volume, self.cutoff, self.number_of_bins, be, half=True,
+            i=i, j=j, types=data.types if self.partial else None)
 
 
 class CalculateDisplacements(Modifier):
