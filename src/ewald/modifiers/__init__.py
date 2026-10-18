@@ -1,6 +1,7 @@
 """Built-in modifiers."""
 from ..pipeline import Modifier, PythonModifier
 from .analysis import CalculateDisplacements, CoordinationAnalysis
+from .cluster import ClusterAnalysis
 from .coloring import AssignColor, ColorCoding
 from .structure import CommonNeighborAnalysis, IdentifyDiamond, PolyhedralTemplateMatching
 from .voronoi import VoronoiAnalysis
@@ -12,7 +13,7 @@ from .selection import (ClearSelection, DeleteSelected, ExpressionSelection, Inv
 from .script import PythonScript
 from .transform import AffineTransformation, ComputeProperty, Replicate, WrapAtoms
 
-__all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "CoordinationAnalysis",
+__all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "CoordinationAnalysis", "ClusterAnalysis",
            "AssignColor", "ColorCoding", "ClearSelection", "DeleteSelected", "ExpressionSelection",
            "InvertSelection", "SelectType", "Slice", "AffineTransformation", "ComputeProperty",
            "Replicate", "WrapAtoms", "PythonScript", "CommonNeighborAnalysis", "PolyhedralTemplateMatching",

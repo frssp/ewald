@@ -168,3 +168,170 @@ def trajectory_msd(pipeline, start: int = 0, stop: int | None = None, step: int 
                 sel = xp.asarray(np.nonzero(types == name)[0])
                 table[f"MSD {name}"] = msd_fft(xp.asarray(x)[:, sel], be)
     return table
+
+
+# --------------------------------------------------------------------------- clusters
+
+def _scatter_min(xp, out, idx, vals):
+    """``out[idx] = min(out[idx], vals)`` with repeated indices, using only
+    sort/gather/scatter so it runs on any array module."""
+    if idx.size == 0:
+        return out
+    order = xp.lexsort(xp.stack([vals, idx]))
+    idx, vals = idx[order], vals[order]
+    first = xp.ones(idx.shape, dtype=bool)
+    first[1:] = idx[1:] != idx[:-1]
+    idx, vals = idx[first], vals[first]
+    out[idx] = xp.minimum(out[idx], vals)
+    return out
+
+
+def connected_components(n: int, i, j, backend=None, method: str = "auto"):
+    """Label the connected components of the graph with ``n`` nodes and edges (i, j).
+
+    Returns ``(labels, count)``: labels are 0..count-1, numbered in order of
+    each component's lowest node index, as a backend array. ``method="xp"``
+    (GPU default) uses min-label hooking with pointer jumping on the array
+    module; on CPU ``"auto"`` uses scipy's union-find.
+    """
+    be = get_backend(backend)
+    xp = be.xp
+    if method == "auto":
+        method = "scipy" if xp is np else "xp"
+    if method == "scipy":
+        from scipy.sparse import coo_matrix
+        from scipy.sparse.csgraph import connected_components as cc
+
+        ii, jj = be.to_numpy(i), be.to_numpy(j)
+        g = coo_matrix((np.ones(len(ii), dtype=np.int8), (ii, jj)), shape=(n, n))
+        count, labels = cc(g, directed=False)
+        # renumber by lowest member, like the xp path
+        first = np.full(count, n, dtype=np.int64)
+        np.minimum.at(first, labels, np.arange(n))
+        rank = np.empty(count, dtype=np.int64)
+        rank[np.argsort(first)] = np.arange(count)
+        return xp.asarray(rank[labels]), int(count)
+    if method != "xp":
+        raise ValueError(f"unknown method {method!r}; use 'auto', 'scipy' or 'xp'")
+    i = xp.asarray(i, dtype=xp.int64)
+    j = xp.asarray(j, dtype=xp.int64)
+    parent = xp.arange(n, dtype=xp.int64)
+    while True:
+        pi, pj = parent[i], parent[j]
+        lo, hi = xp.minimum(pi, pj), xp.maximum(pi, pj)
+        new = _scatter_min(xp, parent.copy(), hi, lo)    # hook larger root onto smaller
+        while True:                                       # pointer jumping to roots
+            nxt = new[new]
+            if bool((nxt == new).all()):
+                break
+            new = nxt
+        if bool((new == parent).all()):
+            break
+        parent = new
+    roots = parent == xp.arange(n, dtype=xp.int64)
+    rank = xp.cumsum(roots.astype(xp.int64)) - 1          # roots are their component's min index
+    return rank[parent], int(roots.sum())
+
+
+def unwrap_clusters(positions, i, j, delta, labels, count: int, backend=None, method: str = "auto"):
+    """Make each cluster contiguous across periodic boundaries.
+
+    Walks the bonds (i, j) with vectors ``delta = r_j - r_i`` (a half or full
+    pair list) outward from each cluster's lowest-index particle, as OVITO
+    does. ``"scipy"`` (CPU default) is a breadth-first search; ``"xp"`` (GPU
+    default) expands all clusters one bond layer per step and takes the
+    lowest-index parent, which gives the same coordinates unless a cluster
+    percolates through the cell. Returns a backend array.
+    """
+    be = get_backend(backend)
+    xp = be.xp
+    if method == "auto":
+        method = "scipy" if xp is np else "xp"
+    labels = be.to_numpy(labels) if method == "scipy" else xp.asarray(labels)
+    pos = np.asarray(positions, dtype=float)
+    n = len(pos)
+    if method == "scipy":
+        from scipy.sparse import csr_matrix
+        from scipy.sparse.csgraph import breadth_first_order
+
+        ii, jj, dd = be.to_numpy(i), be.to_numpy(j), be.to_numpy(delta)
+        src, dst = np.concatenate([ii, jj]), np.concatenate([jj, ii])
+        step = np.concatenate([dd, -dd])
+        seeds = np.full(count, n, dtype=np.int64)
+        np.minimum.at(seeds, labels, np.arange(n))
+        # a virtual root linked to every seed turns the forest into one BFS tree
+        rows = np.concatenate([src, np.full(count, n)])
+        cols = np.concatenate([dst, seeds])
+        g = csr_matrix((np.ones(len(rows), np.int8), (rows, cols)), shape=(n + 1, n + 1))
+        order, pred = breadth_first_order(g, n, directed=True, return_predecessors=True)
+        nodes = order[1:]
+        parent = pred[nodes]
+        tree = parent != n
+        nodes, parent = nodes[tree], parent[tree]
+        key = src * n + dst
+        srt = np.argsort(key)
+        stp = step[srt[np.searchsorted(key[srt], parent * n + nodes)]]
+        out = pos.copy()
+        done = np.zeros(n, bool)
+        done[seeds] = True
+        while len(nodes):                    # resolve parents before children
+            ready = done[parent]
+            out[nodes[ready]] = out[parent[ready]] + stp[ready]
+            done[nodes[ready]] = True
+            nodes, parent, stp = nodes[~ready], parent[~ready], stp[~ready]
+        return xp.asarray(out)
+    if method != "xp":
+        raise ValueError(f"unknown method {method!r}; use 'auto', 'scipy' or 'xp'")
+    i = xp.asarray(i, dtype=xp.int64)
+    j = xp.asarray(j, dtype=xp.int64)
+    d = xp.asarray(delta)
+    src, dst = xp.concatenate([i, j]), xp.concatenate([j, i])
+    step = xp.concatenate([d, -d])
+    out = xp.asarray(pos).copy()
+    known = xp.zeros(n, dtype=bool)
+    seeds = _scatter_min(xp, xp.full(count, n, dtype=xp.int64), labels,
+                         xp.arange(n, dtype=xp.int64))
+    known[seeds] = True
+    while True:
+        alive = ~known[dst]
+        src, dst, step = src[alive], dst[alive], step[alive]
+        front = known[src]
+        if not bool(front.any()):
+            break
+        s, t, dd = src[front], dst[front], step[front]
+        order = xp.argsort(t * n + s)
+        s, t, dd = s[order], t[order], dd[order]
+        first = xp.ones(t.shape, dtype=bool)
+        first[1:] = t[1:] != t[:-1]
+        s, t, dd = s[first], t[first], dd[first]
+        out[t] = out[s] + dd
+        known[t] = True
+    return out
+
+
+def cluster_properties(unwrapped, labels, count: int, masses=None, backend=None):
+    """Per-cluster size, center of mass, gyration tensor and radius of gyration
+    from contiguous (unwrapped) coordinates, mass-weighted if ``masses`` given.
+
+    Returns numpy arrays ``(size, com, gyration_tensor, rg)``; the tensor
+    columns are XX, YY, ZZ, XY, XZ, YZ. Clusters with zero total mass get 0.
+    """
+    be = get_backend(backend)
+    xp = be.xp
+    lab = xp.asarray(labels, dtype=xp.int64)
+    x = xp.asarray(unwrapped, dtype=xp.float64)
+    n = len(x)
+    w = xp.ones(n) if masses is None else xp.asarray(np.asarray(masses, dtype=float))
+    size = xp.bincount(lab, minlength=count)
+    msum = xp.bincount(lab, weights=w, minlength=count)
+    msafe = xp.where(msum > 0, msum, 1.0)
+    com = xp.stack([xp.bincount(lab, weights=w * x[:, k], minlength=count) for k in range(3)], 1)
+    com = com / msafe[:, None]
+    com[msum <= 0] = 0.0
+    d = x - com[lab]
+    comps = (d[:, 0] * d[:, 0], d[:, 1] * d[:, 1], d[:, 2] * d[:, 2],
+             d[:, 0] * d[:, 1], d[:, 0] * d[:, 2], d[:, 1] * d[:, 2])
+    gyr = xp.stack([xp.bincount(lab, weights=w * c, minlength=count) for c in comps], 1)
+    gyr = gyr / msafe[:, None]
+    rg = xp.sqrt(gyr[:, :3].sum(1))
+    return be.to_numpy(size), be.to_numpy(com), be.to_numpy(gyr), be.to_numpy(rg)
