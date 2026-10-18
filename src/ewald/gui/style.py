@@ -24,6 +24,7 @@ class ViewStyle:
     show_cell: bool = True
     cell_width: float = 2.0
     background: str = "#14161A"
+    bond_factor: float = 1.15                         # VESTA: max bond = factor * (r_A + r_B)
 
     def apply_preset(self, name: str):
         self.preset = name
@@ -44,7 +45,7 @@ class ViewStyle:
         return asdict(self)
 
     def ensure_bond_pairs(self, types):
-        """Seed the bond table like VESTA: one row per type pair, max = 1.15 * sum of covalent radii."""
+        """Seed the bond table like VESTA: one row per type pair, max = bond_factor * sum of covalent radii."""
         if self.bond_pairs:
             return
         from ase.data import atomic_numbers, covalent_radii
@@ -54,4 +55,4 @@ class ViewStyle:
             for b in uniq[a_i:]:
                 ra = covalent_radii[atomic_numbers[a]] if a in atomic_numbers else 0.8
                 rb = covalent_radii[atomic_numbers[b]] if b in atomic_numbers else 0.8
-                self.bond_pairs.append([a, b, 0.0, round(1.15 * (ra + rb), 2)])
+                self.bond_pairs.append([a, b, 0.0, round(self.bond_factor * (ra + rb), 2)])

@@ -18,6 +18,7 @@ from .inspector import DataInspector
 from .palette import CommandPalette, menu_entries
 from .pipeline_panel import MODIFIER_MENU, PipelinePanel
 from .plots import PlotsPanel
+from . import preferences as prefs
 from .render_page import RenderPage
 from .style import ViewStyle
 from .theme import TOKENS
@@ -29,8 +30,11 @@ FILE_FILTER = ("Simulation files (*.lammpstrj *.dump *.data XDATCAR* POSCAR* CON
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, pipeline=None, device=None):
+    def __init__(self, pipeline=None, device=None, settings=None):
         super().__init__()
+        from .. import settings as settings_mod
+
+        self.settings = settings if settings is not None else settings_mod.load()
         self.setWindowTitle("ewald")
         self.resize(1600, 1000)
         self.pipeline = None
@@ -88,6 +92,11 @@ class MainWindow(QtWidgets.QMainWindow):
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+K"), self, activated=self.command_palette)
         QtGui.QShortcut(QtGui.QKeySequence("Alt+Right"), self, activated=self.timeline.next.click)
         QtGui.QShortcut(QtGui.QKeySequence("Alt+Left"), self, activated=self.timeline.prev.click)
+        prefs.apply_settings(self, self.settings, startup=True)
+        prefs.restore_layout(self, self.settings)
+        if self.settings["general.startup_workspace"] == "Render":
+            self.set_workspace(1)
+        prefs.run_startup_script(self, self.settings)
         if pipeline is not None:
             self.set_pipeline(pipeline)
 
@@ -143,6 +152,11 @@ class MainWindow(QtWidgets.QMainWindow):
         f.addAction("Export &movie…", self.export_movie)
         f.addSeparator()
         f.addAction("&Quit", self.close, QtGui.QKeySequence.Quit)
+        e = mb.addMenu("&Edit")
+        act = e.addAction("&Preferences…", self.preferences, QtGui.QKeySequence.Preferences)
+        act.setMenuRole(QtGui.QAction.PreferencesRole)  # app menu on macOS, like OVITO/VESTA
+        if act.shortcut().isEmpty():
+            act.setShortcut("Ctrl+,")
         v = mb.addMenu("&View")
         for ax in ("a", "b", "c", "a*", "b*", "c*"):
             v.addAction(f"View along {ax}", lambda ax=ax: self.viewport.view_along(ax))
@@ -175,6 +189,12 @@ class MainWindow(QtWidgets.QMainWindow):
             b.setChecked(i == index)
         if index == 1:
             self.render_page.update_code()
+
+    def preferences(self):
+        dlg = prefs.PreferencesDialog(self.settings, self)
+        dlg.applied.connect(lambda s: prefs.apply_settings(self, s))
+        dlg.exec()
+        return dlg
 
     def command_palette(self):
         entries = [(label, f"Add modification › {group}", lambda f=factory: self.panel.add_modifier(f()))
@@ -231,8 +251,12 @@ class MainWindow(QtWidgets.QMainWindow):
         from ..io.lammps_dump import is_lammps_dump
 
         if is_lammps_dump(path):
-            text, ok = QtWidgets.QInputDialog.getText(
-                self, "LAMMPS types", "Optional type → element map (e.g. 1=Cu,2=Zr):")
+            default_map = self.settings["general.lammps_type_map"]
+            if self.settings["general.lammps_type_prompt"] == "ask":
+                text, ok = QtWidgets.QInputDialog.getText(
+                    self, "LAMMPS types", "Optional type → element map (e.g. 1=Cu,2=Zr):", text=default_map)
+            else:
+                text, ok = default_map, True
             if ok and text.strip():
                 kwargs["type_map"] = dict(p.split("=") for p in text.replace(" ", "").split(","))
         self.open_file(path, **kwargs)
@@ -267,6 +291,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.message(f"{m.name}: {m.status}", error=True)
         if self.style.bonds_enabled:
             self.style.ensure_bond_pairs(self.data.types)
+        prefs.apply_element_defaults(self.style, self.data.types, self.settings)
         self.panel.set_data(self.data)
         ts = self.data.attributes.get("Timestep", self.frame)
         self.viewport.overlay_text = f"Frame {self.frame}   timestep {ts}"
@@ -356,6 +381,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.message(f"Wrote {path}")
 
     def closeEvent(self, event):
+        prefs.save_layout(self, self.settings)
         self.timeline.timer.stop()
         self.viewport.plotter.close()  # release the VTK/OpenGL context before Qt tears down
         km = getattr(self.console, "kernel_manager", None)

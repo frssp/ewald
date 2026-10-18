@@ -6,7 +6,7 @@ import pytest
 pytest.importorskip("PySide6")
 # the main-window test needs a real X server (OpenGL widgets); everything else runs offscreen
 os.environ.setdefault("QT_QPA_PLATFORM", "xcb" if os.environ.get("DISPLAY") else "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 from ewald import Pipeline, StaticSource  # noqa: E402
 from ewald import modifiers as mods  # noqa: E402
@@ -14,7 +14,18 @@ from ewald import modifiers as mods  # noqa: E402
 
 @pytest.fixture(scope="module")
 def app():
-    return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    yield app
+    # Destroy every window (VTK render windows, in-process kernels) while Qt is still alive;
+    # leaving them to interpreter shutdown can segfault after all tests have passed.
+    import gc
+
+    for w in app.topLevelWidgets():
+        w.close()
+        w.deleteLater()
+    app.processEvents()
+    app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+    gc.collect()
 
 
 @pytest.fixture
@@ -145,3 +156,92 @@ def test_main_window_smoke(app, pipe, tmp_path):
     code = w.render_page.code.toPlainText()
     assert "CoordinationAnalysis(cutoff=3.0" in code and "camera=" in code
     w.close()
+
+
+def test_preferences_dialog_edit_search_restore(app, tmp_path):
+    from ewald import settings
+    from ewald.gui.preferences import ElementTable, PreferencesDialog
+
+    s = settings.load()
+    dlg = PreferencesDialog(s)
+    assert [dlg.pages.item(i).text() for i in range(dlg.pages.count())] == list(settings.PAGES)
+    dlg.set_value("viewport.rotation_step", 45.0)
+    dlg.set_value("compute.device", "auto")
+    assert s.is_default("viewport.rotation_step")           # untouched until Apply
+    applied = []
+    dlg.applied.connect(applied.append)
+    dlg.apply()
+    assert applied and s["viewport.rotation_step"] == 45.0
+    assert settings.load()["compute.device"] == "auto"       # saved to disk
+    dlg._search("radius")
+    visible = {dlg.pages.item(i).text() for i in range(dlg.pages.count()) if not dlg.pages.item(i).isHidden()}
+    assert visible == {"Elements"}
+    dlg._search("")
+    dlg.pages.setCurrentRow(1)                                # Viewports
+    dlg.restore_page()
+    assert dlg.work.is_default("viewport.rotation_step") and not dlg.work.is_default("compute.device")
+
+    ini = tmp_path / "elements.ini"
+    ini.write_text("  29  Cu  1.28  1.40  0.73  0.13333  0.38039  0.66667\n")
+    table = dlg.editors["elements.overrides"][0]
+    assert isinstance(table, ElementTable)
+    table.import_vesta(str(ini))
+    assert dlg.work["elements.overrides"]["Cu"] == {"color": "#2261aa", "radius": 1.28}
+
+
+def test_element_defaults_fill_only_unset_types(app, cu_fcc):
+    from ewald import settings
+    from ewald.gui.preferences import apply_element_defaults
+    from ewald.gui.style import ViewStyle
+
+    style = ViewStyle()
+    s = settings.Settings()
+    apply_element_defaults(style, cu_fcc.types, s)
+    assert style.type_colors == {}                            # defaults: nothing redundant
+    s["elements.overrides"] = {"Cu": {"color": "#c8794a"}}
+    apply_element_defaults(style, cu_fcc.types, s)
+    assert style.type_colors["Cu"] == "#c8794a"
+    s["elements.overrides"] = {}
+    s["elements.color_scheme"] = "CPK"
+    apply_element_defaults(style, cu_fcc.types, s)            # previous fill replaced
+    assert style.type_colors["Cu"] != "#c8794a"
+    style.type_colors["Cu"] = "#000000"                       # session edit wins
+    apply_element_defaults(style, cu_fcc.types, s)
+    assert style.type_colors["Cu"] == "#000000"
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_main_window_applies_settings(app, pipe):
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.gui.preferences import apply_settings
+
+    s = settings.Settings()
+    s["viewport.background"] = "#ffffff"
+    s["viewport.style_preset"] = "Ball & stick"
+    s["viewport.rotation_step"] = 30.0
+    s["render.renderer"] = "opengl"
+    s["elements.overrides"] = {"Cu": {"color": "#c8794a"}}
+    w = MainWindow(pipe, settings=s)
+    assert w.device == "cpu" and w.style.background == "#ffffff" and w.style.bonds_enabled
+    assert w.viewport.rotation_step == 30.0 and not w.render_page.raytrace
+    assert w.style.type_colors["Cu"] == "#c8794a"
+    assert any(a.text() == "&Preferences…" for a in w.menuBar().actions()[1].menu().actions())
+    s["bonds.length_factor"] = 1.0
+    s["viewport.show_axes"] = False
+    apply_settings(w, s)
+    assert w.style.bond_pairs[0][3] == round(1.0 * 2 * 1.32, 2)
+    w.close()
+    w.deleteLater()
+    assert (s.path.parent / "layout.json").exists()
+
+
+def test_preferences_layout_covers_every_option_once():
+    from ewald.gui.preferences import LAYOUT
+    from ewald.settings import OPTIONS, PAGES
+
+    keys = [k for name in PAGES for _title, ks in LAYOUT[name][1] for k in ks]
+    assert sorted(keys) == sorted(o.key for o in OPTIONS)
+    for name in PAGES:
+        for _title, ks in LAYOUT[name][1]:
+            assert all(__import__("ewald.settings").settings.OPTION[k].page == name for k in ks)
