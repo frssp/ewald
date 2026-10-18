@@ -1,7 +1,7 @@
-"""Centrosymmetry, Ackland-Jones bond-angle analysis and atomic strain.
+"""Centrosymmetry, Ackland-Jones bond-angle analysis, Chill+ and atomic strain.
 
 Ported from OVITO 3.16 (CentroSymmetryModifier.cpp, AcklandJonesModifier.cpp,
-AtomicStrainModifier.cpp; Copyright 2026 OVITO GmbH, used under the MIT option
+ChillPlusModifier.cpp, AtomicStrainModifier.cpp; Copyright 2026 OVITO GmbH, used under the MIT option
 of its GPLv3-or-MIT license).  The array code runs on the pipeline device.
 """
 from __future__ import annotations
@@ -133,6 +133,88 @@ class AcklandJones(StructureIdentificationModifier):
             out = xp.where(fcc, FCC, out)
         if HCP in en:
             out = xp.where(~decided & ~fcc, HCP, out)
+        return out
+
+
+CHILL_NAMES = ["OTHER", "HEXAGONAL_ICE", "CUBIC_ICE", "INTERFACIAL_ICE", "HYDRATE", "INTERFACIAL_HYDRATE"]
+CHILL_COLORS = np.array([(0.95, 0.95, 0.95), (0.0, 0.9, 0.9), (1.0, 0.756863, 0.019608), (0.5, 0.12, 0.4),
+                         (1.0, 0.3, 0.1), (0.1, 1.0, 0.1)])
+
+
+def _q3m(xp, delta):
+    """Unnormalized spherical harmonics Y_3^m (m = 0..3) of bond directions, shape (P, 4).
+
+    Only |Y_3^m| per m matters for the Chill+ correlation, so m < 0 is folded
+    into m > 0 (|Y_3^-m| = |Y_3^m|) by the caller.
+    """
+    r = xp.sqrt((delta * delta).sum(-1))
+    x, y, z = (delta / r[:, None]).T
+    w = x + 1j * y
+    return xp.stack([0.25 * np.sqrt(7 / np.pi) * (5 * z * z - 3) * z + 0j,
+                     -0.125 * np.sqrt(21 / np.pi) * w * (5 * z * z - 1),
+                     0.25 * np.sqrt(105 / (2 * np.pi)) * w * w * z,
+                     -0.125 * np.sqrt(35 / np.pi) * w * w * w], 1)
+
+
+class ChillPlus(StructureIdentificationModifier):
+    """Chill+ identification of water structures (Nguyen and Molinero 2015).
+
+    Apply it to the oxygen atoms only (e.g. after ``SelectType`` with
+    ``only_selected=True``, or on an oxygen-only frame).  Bond correlations
+    c_ij of the l=3 bond-orientational order parameters of neighbors within
+    ``cutoff`` (default 3.5 Å) classify each molecule with four neighbors as
+    hexagonal ice, cubic ice, interfacial ice, hydrate or interfacial hydrate.
+    Writes 'Structure Type', 'Color' and ``ChillPlus.counts.<TYPE>``.
+    """
+
+    _prefix = "ChillPlus"
+    _num_types = 6
+    _default_types = tuple(range(1, 6))
+    _names = CHILL_NAMES
+    _colors = CHILL_COLORS
+
+    def __init__(self, cutoff: float = 3.5, color_by_type: bool = True, only_selected: bool = False):
+        super().__init__(None, color_by_type, only_selected)
+        self.cutoff = cutoff
+
+    def modify(self, data, ctx):
+        be, xp = ctx.backend, ctx.xp
+        subset = self._subset(data)
+        pos = data.positions if subset is None else data.positions[subset]
+        result = np.zeros(len(pos), dtype=np.int32)
+        if len(pos):
+            i, j, delta, _ = find_pairs(pos, data.cell, self.cutoff, be)
+            result = be.to_numpy(self._classify(xp, len(pos), i, j, delta))
+        structure = result if subset is None else np.zeros(data.count, np.int32)
+        if subset is not None:
+            structure[subset] = result
+        self._finish(data, structure)
+
+    @staticmethod
+    def _classify(xp, n, i, j, delta):
+        ylm = _q3m(xp, delta)
+        qr, qi = xp.zeros((n, 4)), xp.zeros((n, 4))
+        _scatter_add(xp, qr, i, ylm.real)
+        _scatter_add(xp, qi, i, ylm.imag)
+        q = qr + 1j * qi
+        # sum over m = -3..3 of q_i(m) conj(q_j(m)); m and -m give conjugate products with equal real part
+        weight = xp.asarray([1.0, 2.0, 2.0, 2.0])
+        dot = ((q[i] * q[j].conj()).real * weight).sum(1)
+        norm = ((q * q.conj()).real * weight).sum(1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            c = dot / (xp.sqrt(norm[i]) * xp.sqrt(norm[j]))
+        ecl = xp.bincount(i, weights=((c > -0.35) & (c < 0.25)).astype(float), minlength=n)
+        stg = xp.bincount(i, weights=(c < -0.8).astype(float), minlength=n)
+        coord = xp.bincount(i, minlength=n)
+        four = coord == 4
+        out = xp.zeros(n, dtype=xp.int32)
+        # Reverse priority order of OVITO's if/else chain.
+        out = xp.where(four & (stg == 2), 3, out)
+        out = xp.where(four & (stg == 3) & (ecl == 0), 3, out)
+        out = xp.where(four & (stg == 3) & (ecl == 1), 1, out)
+        out = xp.where(four & (stg == 4), 2, out)
+        out = xp.where(four & (ecl == 3), 5, out)
+        out = xp.where(four & (ecl == 4), 4, out)
         return out
 
 

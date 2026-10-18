@@ -16,6 +16,7 @@ from ovito.modifiers import AcklandJonesModifier as AJ
 from ovito.modifiers import AtomicStrainModifier as STRAIN
 from ovito.modifiers import CentroSymmetryModifier as CSP
 from ovito.modifiers import ClusterAnalysisModifier as CLU
+from ovito.modifiers import ChillPlusModifier as CHILL
 from ovito.modifiers import CommonNeighborAnalysisModifier as CNA
 from ovito.modifiers import IdentifyDiamondModifier as IDD
 from ovito.modifiers import PolyhedralTemplateMatchingModifier as PTM
@@ -131,6 +132,29 @@ for tag, kw in [("plain", {}), ("sorted", dict(sort_by_size=True, compute_com=Tr
     for key in t.keys():
         out[f"cluster/{tag}/table/{key}"] = np.array(t[key])
     out[f"cluster/{tag}/count"] = np.array(d.attributes["ClusterAnalysis.cluster_count"])
+
+# Chill+: oxygen sublattices of ice Ih, ice Ic and sI hydrate; noisy copies and an ice/disordered slab.
+from ase.spacegroup import crystal  # noqa: E402
+
+doo = 2.76
+ice_h = bulk("OO", "wurtzite", a=doo * np.sqrt(8 / 3), c=doo * 8 / 3, u=0.375).repeat((4, 4, 3))
+ice_c = bulk("O", "diamond", a=doo * 4 / np.sqrt(3), cubic=True).repeat((3, 3, 3))
+hyd = crystal(["O", "O", "O"], [(0.25, 0, 0.5), (0.1837, 0.1837, 0.1837), (0, 0.3077, 0.1172)],
+              spacegroup=223, cellpar=[11.88, 11.88, 11.88, 90, 90, 90]).repeat((2, 2, 2))
+slab = ice_c.copy()
+f = slab.get_scaled_positions()
+melt = f[:, 2] > 0.5
+p_ = slab.get_positions()
+p_[melt] += rng.normal(0, 0.45, (melt.sum(), 3))
+slab.set_positions(p_)
+chill = {"iceh": (ice_h, 0.0), "iceh_hot": (ice_h, 0.15), "icec": (ice_c, 0.1), "hydrate": (hyd, 0.05),
+         "slab": (slab, 0.0)}
+for tag, (at, noise) in chill.items():
+    cpos_ = at.get_positions() + rng.normal(0, noise, (len(at), 3))
+    out[f"chill/{tag}/pos"] = cpos_
+    out[f"chill/{tag}/cell"] = np.array(at.cell)
+    d = run(make(cpos_, np.array(at.cell), [True] * 3, np.ones(len(at), np.int32)), CHILL())
+    out[f"chill/{tag}/Structure Type"] = np.array(d.particles["Structure Type"])
 
 # Atomic strain: noisy fcc reference, current = homogeneous deformation of cell and atoms + local noise.
 sref = systems["fcc_hot"]

@@ -5,7 +5,7 @@ from .coloring import AssignColor, ColorCoding
 from .structure import CommonNeighborAnalysis, IdentifyDiamond, PolyhedralTemplateMatching
 from .voronoi import VoronoiAnalysis
 from .wigner_seitz import WignerSeitzAnalysis
-from .local_order import AcklandJones, AtomicStrain, CentroSymmetry
+from .local_order import AcklandJones, AtomicStrain, CentroSymmetry, ChillPlus
 from .ovito_bridge import DislocationAnalysis, OvitoModifier
 from .selection import (ClearSelection, DeleteSelected, ExpressionSelection, InvertSelection,
                         SelectType, Slice)
@@ -16,4 +16,4 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "InvertSelection", "SelectType", "Slice", "AffineTransformation", "ComputeProperty",
            "Replicate", "WrapAtoms", "CommonNeighborAnalysis", "PolyhedralTemplateMatching",
            "VoronoiAnalysis", "WignerSeitzAnalysis", "DislocationAnalysis", "OvitoModifier",
-           "AcklandJones", "AtomicStrain", "CentroSymmetry", "IdentifyDiamond"]
+           "AcklandJones", "AtomicStrain", "CentroSymmetry", "ChillPlus", "IdentifyDiamond"]

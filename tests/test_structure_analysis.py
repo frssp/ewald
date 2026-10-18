@@ -11,14 +11,15 @@ from ase.build import bulk
 from ewald import DataCollection, Pipeline, StaticSource
 from ewald.backend import CPU, Backend
 from ewald.data import Cell
-from ewald.modifiers import (AcklandJones, AtomicStrain, CentroSymmetry, CommonNeighborAnalysis, IdentifyDiamond,
+from ewald.modifiers import (AcklandJones, AtomicStrain, CentroSymmetry, ChillPlus, CommonNeighborAnalysis,
+                             IdentifyDiamond,
                              PolyhedralTemplateMatching, VoronoiAnalysis,
                              WignerSeitzAnalysis)
 from ewald.modifiers._knn import nearest_neighbors
 from ewald.pipeline import ComputeContext
 
 REF = np.load(os.path.join(os.path.dirname(__file__), "data", "ovito_reference.npz"))
-SYSTEMS = sorted({k.split("/")[0] for k in REF if k.split("/")[0] not in ("ws", "cluster", "strain")})
+SYSTEMS = sorted({k.split("/")[0] for k in REF if k.split("/")[0] not in ("ws", "cluster", "strain", "chill")})
 CTX = ComputeContext(0, None, CPU)
 
 try:
@@ -218,3 +219,24 @@ def test_identify_diamond_matches_ovito(name):
     d = run(IdentifyDiamond(), system(name))
     np.testing.assert_array_equal(d["Structure Type"], REF[f"{name}/diamondid/Structure Type"])
     assert d.attributes["IdentifyDiamond.counts.CUBIC_DIAMOND"] == np.count_nonzero(d["Structure Type"] == 1)
+
+
+CHILL = sorted({k.split("/")[1] for k in REF if k.startswith("chill/")})
+
+
+@pytest.mark.parametrize("tag", CHILL)
+def test_chill_plus_matches_ovito(tag):
+    pos, cell = REF[f"chill/{tag}/pos"], REF[f"chill/{tag}/cell"]
+    d = run(ChillPlus(), DataCollection(pos, ["O"] * len(pos), Cell(cell)))
+    np.testing.assert_array_equal(d["Structure Type"], REF[f"chill/{tag}/Structure Type"])
+    assert d.attributes["ChillPlus.counts.HEXAGONAL_ICE"] == np.count_nonzero(d["Structure Type"] == 1)
+
+
+def test_chill_plus_only_selected_ignores_hydrogens():
+    pos, cell = REF["chill/iceh_hot/pos"], REF["chill/iceh_hot/cell"]
+    h = pos[:100] + np.random.default_rng(0).normal(0, 0.6, (100, 3))
+    d = DataCollection(np.concatenate([pos, h]), ["O"] * len(pos) + ["H"] * 100, Cell(cell))
+    d.particles["Selection"] = (d.types == "O").astype(np.int32)
+    d = run(ChillPlus(only_selected=True), d)
+    np.testing.assert_array_equal(d["Structure Type"][: len(pos)], REF["chill/iceh_hot/Structure Type"])
+    assert not d["Structure Type"][len(pos):].any()
