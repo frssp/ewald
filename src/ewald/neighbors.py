@@ -3,7 +3,8 @@
 Three implementations share the same binning and return the same pairs:
 
 ``"numba"``  compiled, multithreaded two-pass kernel (CPU default when numba is installed)
-``"xp"``     vectorized array code that runs unchanged on numpy or CuPy (GPU default)
+``"cuda"``   the same two-pass kernel in CUDA C via CuPy ``RawKernel`` (GPU default)
+``"xp"``     vectorized array code that runs unchanged on numpy or CuPy (GPU fallback)
 ``"brute"``  all-pairs in chunks (small systems, or fewer than 3 bins along a periodic axis)
 """
 from __future__ import annotations
@@ -23,7 +24,7 @@ except ImportError:  # pragma: no cover - exercised only without numba
     numba = None
     HAVE_NUMBA = False
 
-METHODS = ("auto", "numba", "xp", "brute")
+METHODS = ("auto", "numba", "cuda", "xp", "brute")
 
 
 def _minimum_image(xp, d_frac, pbc):
@@ -90,6 +91,8 @@ def find_pairs(positions, cell: Cell, cutoff: float, backend: Backend | str | No
             method = "brute"
         elif xp is np and HAVE_NUMBA:
             method = "numba"
+        elif be.raw_kernels:
+            method = "cuda"
         else:
             method = "xp"
     if method != "brute" and np.any(pbc & (nbins < 3)):
@@ -103,6 +106,10 @@ def find_pairs(positions, cell: Cell, cutoff: float, backend: Backend | str | No
         if xp is not np:
             raise ValueError("method='numba' runs on the CPU backend only")
         out = _cell_list_numba(frac, matrix, pbc, cutoff, lo, span, nbins, half)
+    elif method == "cuda":
+        if not be.raw_kernels:
+            raise ValueError(f"method='cuda' needs a CUDA backend, not {be.name!r}")
+        out = _cell_list_cuda(be, frac, matrix, pbc, cutoff, lo, span, nbins, half)
     else:
         out = _cell_list_xp(be, frac, matrix, pbc, cutoff, lo, span, nbins, half)
     return out
@@ -193,15 +200,29 @@ if HAVE_NUMBA:
                 offsets[k] = pos
 
 
-def _cell_list_numba(frac, matrix, pbc, cutoff, lo, span, nbins, half):
-    n = len(frac)
+def _sorted_bins(frac, lo, span, nbins):
+    """Cell-sorted copies for the per-atom kernels: positions, bin coords,
+    cell start offsets and the sorted -> original index map."""
     b = _bin_index(frac, lo, span, nbins)
     cell_id = (b[:, 0] * nbins[1] + b[:, 1]) * nbins[2] + b[:, 2]
     order = np.argsort(cell_id, kind="stable").astype(np.int64)
     starts = np.zeros(int(np.prod(nbins)) + 1, dtype=np.int64)
     np.cumsum(np.bincount(cell_id, minlength=len(starts) - 1), out=starts[1:])
-    fs = np.ascontiguousarray(frac[order])
-    bs = np.ascontiguousarray(b[order])
+    return np.ascontiguousarray(frac[order]), np.ascontiguousarray(b[order]), starts, order
+
+
+def _cell_list_cuda(be: Backend, frac, matrix, pbc, cutoff, lo, span, nbins, half):
+    from .cuda_kernels import cell_list_pairs
+
+    xp = be.xp
+    fs, bs, starts, order = _sorted_bins(frac, lo, span, nbins)
+    i, j, d = cell_list_pairs(xp, fs, bs, starts, order, matrix, pbc, nbins, cutoff, half)
+    return i, j, d, xp.sqrt((d * d).sum(1))
+
+
+def _cell_list_numba(frac, matrix, pbc, cutoff, lo, span, nbins, half):
+    n = len(frac)
+    fs, bs, starts, order = _sorted_bins(frac, lo, span, nbins)
     mat = np.ascontiguousarray(matrix, dtype=np.float64)
     pbc = np.asarray(pbc, dtype=np.bool_)
     counts = np.zeros(n, dtype=np.int64)

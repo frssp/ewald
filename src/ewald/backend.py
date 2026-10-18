@@ -9,9 +9,11 @@ import numpy as np
 
 
 class Backend:
-    def __init__(self, name: str, xp):
+    def __init__(self, name: str, xp, raw_kernels: bool = False):
         self.name = name
         self.xp = xp
+        # True when ``xp`` can compile CUDA C (CuPy RawKernel), see cuda_kernels.py
+        self.raw_kernels = raw_kernels
 
     def asarray(self, a, dtype=None):
         return self.xp.asarray(a, dtype=dtype)
@@ -20,6 +22,11 @@ class Backend:
         if self.xp is np:
             return np.asarray(a)
         return self.xp.asnumpy(a)
+
+    def synchronize(self):
+        """Wait for queued device work (for timing); no-op on CPU."""
+        if self.raw_kernels:
+            self.xp.cuda.Device().synchronize()
 
     def __repr__(self):
         return f"<Backend {self.name}>"
@@ -54,5 +61,5 @@ def get_backend(device: str | Backend | None = None) -> Backend:
                                "(or cupy-cuda12x matching your CUDA)") from exc
         if not gpu_available():
             raise RuntimeError("CuPy is installed but no CUDA device was found")
-        return Backend("cuda", cupy)
+        return Backend("cuda", cupy, raw_kernels=True)
     raise ValueError(f"unknown device {device!r}; use 'cpu', 'cuda' or 'auto'")
