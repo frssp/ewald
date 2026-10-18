@@ -6,7 +6,7 @@ import pytest
 pytest.importorskip("PySide6")
 # the main-window test needs a real X server (OpenGL widgets); everything else runs offscreen
 os.environ.setdefault("QT_QPA_PLATFORM", "xcb" if os.environ.get("DISPLAY") else "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 from ewald import Pipeline, StaticSource  # noqa: E402
 from ewald import modifiers as mods  # noqa: E402
@@ -14,7 +14,18 @@ from ewald import modifiers as mods  # noqa: E402
 
 @pytest.fixture(scope="module")
 def app():
-    return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    yield app
+    # Destroy every window (VTK render windows, in-process kernels) while Qt is still alive;
+    # leaving them to interpreter shutdown can segfault after all tests have passed.
+    import gc
+
+    for w in app.topLevelWidgets():
+        w.close()
+        w.deleteLater()
+    app.processEvents()
+    app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+    gc.collect()
 
 
 @pytest.fixture
@@ -221,6 +232,7 @@ def test_main_window_applies_settings(app, pipe):
     apply_settings(w, s)
     assert w.style.bond_pairs[0][3] == round(1.0 * 2 * 1.32, 2)
     w.close()
+    w.deleteLater()
     assert (s.path.parent / "layout.json").exists()
 
 
