@@ -19,6 +19,9 @@ class FileSource:
         if not paths:
             raise FileNotFoundError(path)
         self.paths = paths
+        self.path = str(path)
+        self.format = format
+        self.kwargs = kwargs
         self.readers: list[FrameReader] = [open_reader(p, format, **kwargs) for p in paths]
         self._index = [(r, i) for r in self.readers for i in range(len(r))]
 

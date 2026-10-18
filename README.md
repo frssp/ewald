@@ -6,15 +6,15 @@ Atomistic structure and trajectory visualization and analysis with an OVITO-styl
 pipeline API in Python. Goal: an open alternative to OVITO Pro (GUI + Python
 scripting + GPU), built on open libraries (ASE, VTK/PyVista, NumPy/CuPy).
 
-Status: **step 1 of 4** (core data model, readers, pipeline, first modifiers,
-offscreen rendering). The desktop GUI, the full analysis set and the
-publication renderer follow.
+Status: core, readers, pipeline, first modifiers, offscreen rendering and a first
+desktop GUI are in. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Install
 
 ```bash
 pip install -e .            # CPU
 pip install -e ".[gpu]"     # + CuPy for device="cuda" (NVIDIA)
+pip install -e ".[gui]"     # + desktop viewer (PySide6, pyvistaqt, qtconsole)
 ```
 
 Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
@@ -36,7 +36,26 @@ pipe.modifiers.append(my_modifier)
 
 data = pipe.compute(10, device="cuda")   # analysis on the GPU (falls back with a clear error if no CuPy)
 pipe.render("frame10.png", frame=10, size=(2000, 1500), direction="iso", bonds=None)
+pipe.render("frame10_rt.png", frame=10, renderer="raytrace", ao_samples=32)   # ray traced, AO + shadows
 ```
+
+Desktop viewer:
+
+```bash
+ewald gui dump.lammpstrj --type-map 1=Cu      # or: ewald-gui XDATCAR
+```
+
+```python
+from ewald.gui import show
+show(pipe)        # open the viewer on a pipeline built in a script (in Jupyter: %gui qt first)
+```
+
+The window has a 3D viewport with a timeline underneath, a pipeline panel
+(add/reorder/enable modifiers, edit parameters, edit Python script modifiers
+in place), render settings with "Render active viewport" to PNG at any size,
+a data inspector (particle table with expression filter, attributes, tables)
+and an IPython console where `pipeline`, `data` and `viewer` are live; changes
+made in the console redraw the view.
 
 Command line:
 
@@ -106,3 +125,40 @@ claude mcp add ewald -- ewald mcp                             # use them from Cl
 `CoordinationAnalysis` (+ total/partial RDF), `CalculateDisplacements` (+ MSD),
 `Replicate`, `WrapAtoms`, `AffineTransformation`, and any Python function
 `f(frame, data)`.
+
+### Structure analysis (ported from OVITO)
+
+`CommonNeighborAnalysis` (adaptive, interval and fixed-cutoff modes),
+`PolyhedralTemplateMatching` (FCC/HCP/BCC/ICO/SC/diamond/graphene, RMSD,
+orientation, elastic deformation gradient, chemical ordering),
+`VoronoiAnalysis` (atomic volume, coordination, Voronoi indices, radical
+tessellation, face list) and `WignerSeitzAnalysis` (vacancies/interstitials,
+per-type occupancies), `IdentifyDiamond` (cubic/hexagonal diamond and their
+first/second neighbors), `ChillPlus` (hexagonal/cubic/interfacial ice, hydrate),
+`CentroSymmetry` (conventional and minimum-weight
+matching), `AcklandJones` and `AtomicStrain` (von Mises/volumetric strain,
+F, Green-Lagrange tensor, D2min, rotation, stretch). Property names, structure type ids, colors and
+attribute names follow OVITO, and the test suite checks the results against
+OVITO 3.16 on eleven test structures plus ice/hydrate, defect and strain cases (`tests/data/make_ovito_reference.py`).
+
+```python
+from ewald.modifiers import PolyhedralTemplateMatching, VoronoiAnalysis
+
+pipe.modifiers.append(PolyhedralTemplateMatching(output_orientation=True))
+pipe.modifiers.append(VoronoiAnalysis(compute_indices=True))
+data = pipe.compute(0)
+print(data.attributes["PolyhedralTemplateMatching.counts.FCC"])
+ico = (data["Voronoi Index"][:, 4] == 12) & (data["Coordination"] == 12)   # <0,0,0,0,12> cells
+```
+
+With the optional `ovito` package (`pip install ovito` or `pip install -e ".[ovito]"`),
+`DislocationAnalysis` runs OVITO's DXA (Burgers vectors, line lengths, segment
+polylines in `tables["dislocations"]`), and `OvitoModifier(any_ovito_modifier)`
+runs any other OVITO modifier inside an ewald pipeline.
+
+CNA, PTM, Voronoi and matching-mode CSP use a C++ extension (`ewald._native`,
+compiled by `pip install -e .` with pybind11; sources and licenses in
+`src/ewald/_csrc/`). Installing needs a C++17 compiler (gcc/clang, Xcode command
+line tools on macOS, MSVC Build Tools on Windows). For 108k atoms on 4 cores:
+CNA ~1 s, PTM ~1.6 s, Voronoi ~1.7 s. With `device="cuda"` the CNA signatures
+run as CuPy kernels.

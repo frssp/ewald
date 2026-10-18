@@ -20,6 +20,10 @@ def main(argv=None):
     r.add_argument("--cmap", default="viridis")
     r.add_argument("--type-map", default=None, help="LAMMPS types, e.g. 1=Cu,2=Zr")
     r.add_argument("--ao", action="store_true", help="screen-space ambient occlusion")
+    g = sub.add_parser("gui", help="open the desktop viewer")
+    g.add_argument("input", nargs="?")
+    g.add_argument("--type-map", default=None)
+    g.add_argument("--device", default=None)
     i = sub.add_parser("info", help="print frames and properties")
     i.add_argument("input")
     i.add_argument("--type-map", default=None)
@@ -41,11 +45,22 @@ def main(argv=None):
     n.add_argument("--no-llm", action="store_true", help="rule-based titles only")
     n.add_argument("--render", action="store_true", help="show Claude renders of the frames around events")
     n.add_argument("--json", action="store_true", help="print JSON instead of Markdown")
+    sub.add_parser("api", help="print the Python API reference for LLMs (llms.txt)")
     m = sub.add_parser("mcp", help="serve the analysis tools over MCP (stdio)")
     m.add_argument("input", nargs="?")
     m.add_argument("--allow-code", action="store_true")
     args = ap.parse_args(argv)
 
+    if args.cmd == "gui":
+        from .gui import main as gui_main
+
+        extra = ([args.input] if args.input else []) + (["--type-map", args.type_map] if args.type_map else [])
+        return gui_main(extra + (["--device", args.device] if args.device else []))
+    if args.cmd == "api":
+        from .llm.reference import api_reference
+
+        print(api_reference(), end="")
+        return
     if args.cmd == "mcp":
         from .llm.mcp_server import serve
 
