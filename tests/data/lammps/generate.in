@@ -1,0 +1,51 @@
+# Regenerates the LAMMPS fixtures in this directory (LAMMPS >= 2024, run from here):
+#   lmp -in generate.in      (or: python -c "import lammps; lammps.lammps().file('generate.in')")
+# Afterwards: gzip -kn9 dump.atom
+units           metal
+atom_style      full
+boundary        p p p
+
+# ---- 1) orthogonal two-type fcc crystal with velocities, custom dump --------------------
+lattice         fcc 3.615
+region          box block 0 2 0 2 0 2
+create_box      2 box
+create_atoms    1 box
+labelmap        atom 1 Cu 2 Zr
+set             type 1 type/ratio 2 0.25 4321
+set             type Cu charge 0.1
+set             type Zr charge -0.3
+mass            Cu 63.546
+mass            Zr 91.224
+pair_style      lj/cut 5.0
+pair_coeff      * * 0.4 2.3
+velocity        all create 600 87287 loop geom
+compute         pe all pe/atom
+compute         st all stress/atom NULL
+timestep        0.002
+dump            d1 all custom 10 dump.custom.lammpstrj id type element x y z vx vy vz fx fy fz c_pe c_st[1] c_st[2] c_st[3] q mol
+dump_modify     d1 element Cu Zr units yes time yes format float %.8g
+dump            d2 all atom 10 dump.atom
+dump_modify     d2 image yes
+run             20
+undump          d1
+undump          d2
+write_data      data.full.lmp
+write_data      data.nolabel.lmp nolabelmap
+
+# ---- 2) tilted (restricted triclinic) box, scaled + unwrapped coordinates ---------------
+change_box      all triclinic
+change_box      all xy final 1.5 xz final -0.8 yz final 0.6 remap
+dump            d3 all custom 10 dump.triclinic.lammpstrj id type xs ys zs xu yu zu ix iy iz
+run             20
+write_data      data.triclinic.lmp
+
+# ---- 3) general triclinic cell (rotated, arbitrary a/b/c) -------------------------------
+clear
+units           metal
+atom_style      atomic
+read_data       data.general.lmp
+pair_style      zero 3.0
+pair_coeff      * *
+dump            d4 all custom 1 dump.general.lammpstrj id type x y z
+dump_modify     d4 triclinic/general yes
+run             0

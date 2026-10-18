@@ -1,0 +1,2 @@
+# Keep reader fixtures byte-exact on every OS (no CRLF conversion on Windows checkouts)
+tests/data/** -text

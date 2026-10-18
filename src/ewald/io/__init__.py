@@ -7,6 +7,7 @@ import os
 from ..data import DataCollection
 from .ase_reader import AseReader
 from .base import FrameReader
+from .lammps_data import LammpsDataReader, is_lammps_data
 from .lammps_dump import LammpsDumpReader, is_lammps_dump, write_lammps_dump
 from .xdatcar import XdatcarReader, is_xdatcar
 
@@ -62,6 +63,13 @@ def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
         return LammpsDumpReader(path, **kwargs)
     if fmt in ("vasp-xdatcar", "xdatcar") or (not fmt and is_xdatcar(path)):
         return XdatcarReader(path, **kwargs)
+    if fmt in ("lammps/data", "lammps-data", "lammps-data-native") or (not fmt and is_lammps_data(path)):
+        if "style" in kwargs:  # ASE's keyword name
+            kwargs["atom_style"] = kwargs.pop("style")
+        kwargs.pop("units", None)
+        return LammpsDataReader(path, **kwargs)
+    if fmt == "lammps-data-ase":
+        return AseReader(path, format="lammps-data", **kwargs)
     return AseReader(path, format=format, **kwargs)
 
 
@@ -69,8 +77,8 @@ def import_file(path, format: str | None = None, **kwargs):
     """Create a Pipeline reading ``path`` (wildcards allowed: ``dump.*.lammpstrj``).
 
     Keyword arguments go to the reader, e.g. ``type_map={1: "Cu", 2: "Zr"}`` for
-    LAMMPS dumps that only contain numeric types, or ``style="atomic"`` for
-    LAMMPS data files read through ASE.
+    LAMMPS dumps/data files that only contain numeric types, or
+    ``atom_style="atomic"`` for LAMMPS data files without an ``Atoms # style`` hint.
     """
     from ..pipeline import Pipeline
 
@@ -102,4 +110,4 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
 
 
 __all__ = ["FileSource", "StaticSource", "import_file", "export_file", "open_reader",
-           "LammpsDumpReader", "XdatcarReader", "AseReader"]
+           "LammpsDumpReader", "LammpsDataReader", "XdatcarReader", "AseReader"]

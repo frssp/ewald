@@ -74,9 +74,8 @@ example figures.
   plus `cell`, `attributes`, `tables`.
 * `Pipeline`: source + modifier list, evaluated lazily per frame; source frames are
   cached and never mutated by modifiers.
-* Readers: native lazy readers for LAMMPS text dumps (orthogonal/triclinic,
-  scaled/unwrapped coordinates, wildcards) and VASP XDATCAR (fixed and
-  variable cell); everything else through ASE.
+* Readers: native readers for LAMMPS dumps, LAMMPS data files and VASP
+  XDATCAR; everything else through ASE (see [File formats](#file-formats)).
 * Compute backends: kernels are written against an array module, so the same
   code runs on NumPy (CPU) and CuPy (CUDA). The neighbor list has a compiled,
   multithreaded numba kernel on CPU (256k-atom fcc, 3 Å cutoff: ~0.3–0.6 s vs ~5 s
@@ -87,6 +86,24 @@ example figures.
   (`trajectory_msd(pipe, device="cuda")`).
 * Rendering: VTK via PyVista, offscreen; sphere meshes for figures and GPU
   impostors above 150k atoms.
+
+## File formats
+
+The format is detected from the file name and content; pass `format=` to force one.
+Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
+
+| Format | Reader | Notes |
+|---|---|---|
+| LAMMPS text dump (`dump atom/custom`) | native, lazy | orthogonal, `xy xz yz` and general (`abc origin`) triclinic boxes; `x`/`xu`/`xs`/`xsu`; `c_x[1] c_x[2]` become one vector property; `dump_modify units/time yes`; partial last frame skipped with a warning; `type_map={1: "Cu"}` |
+| LAMMPS data file | native | styles atomic, charge, bond/angle/molecular, full, sphere, dipole (from `Atoms # style`, inferred, or `atom_style=`); type names from `Atom Type Labels` or `Masses` comments; Velocities, image flags, Bonds (`data.tables["Bonds"]`); general triclinic `avec bvec cvec` |
+| VASP XDATCAR | native, lazy | fixed and variable cell (NpT), VASP 6.4 `Si/hash` species labels, partial last frame skipped |
+| VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics (`Selective Dynamics`, True = free), CONTCAR velocities (`Velocity` in Å/fs) |
+| VASP OUTCAR, vasprun.xml | ASE | all ionic steps with `Energy`, `Force`, `Stress` |
+| extxyz, CIF, ... | ASE | anything `ase.io.read` understands |
+
+LAMMPS values stay in the file's own unit style (`Units` attribute when the dump has it).
+The test fixtures in `tests/data/` come from real LAMMPS runs (`tests/data/lammps/generate.in`)
+and VASP-format files written to match VASP 6 output.
 
 ## Claude integration (`ewald.llm`)
 

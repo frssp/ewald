@@ -1,0 +1,18 @@
+LAMMPS data file, general triclinic cell (hand-written; LAMMPS >= 2024 syntax)
+
+2 atoms
+1 atom types
+
+4.0 0.0 0.0 avec
+1.0 4.0 0.0 bvec
+0.0 1.0 4.0 cvec
+-1.0 -1.0 -1.0 abc origin
+
+Masses
+
+1 28.0855 # Si
+
+Atoms # atomic
+
+1 1 0.0 0.0 0.0
+2 1 1.25 1.25 1.0

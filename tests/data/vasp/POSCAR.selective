@@ -1,0 +1,12 @@
+Cu slab, selective dynamics, cartesian, scaled
+  1.10
+  3.0 0.0 0.0
+  0.0 3.0 0.0
+  0.0 0.0 10.0
+  Cu O
+  2 1
+Selective dynamics
+Cartesian
+  0.0 0.0 0.0   F F F
+  1.5 1.5 2.0   T T T
+  0.0 0.0 4.0   F F T

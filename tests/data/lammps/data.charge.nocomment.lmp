@@ -1,0 +1,26 @@
+Hand-written charge-style data file: no style comment, Masses with element comments
+
+3 atoms
+2 atom types
+2 bonds
+1 bond types
+
+-5.0 5.0 xlo xhi
+-5.0 5.0 ylo yhi
+-5.0 5.0 zlo zhi
+
+Masses
+
+1 15.9994  # O
+2 1.008    # H
+
+Atoms
+
+1 1 -0.8476  0.000  0.000 0.0
+2 2  0.4238  0.957  0.000 0.0  0 0 0
+3 2  0.4238 -0.240  0.927 0.0  0 0 0
+
+Bonds
+
+1 1 1 2
+2 1 1 3

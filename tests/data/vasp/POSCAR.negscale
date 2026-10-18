@@ -1,0 +1,9 @@
+negative scale = target volume 64 A^3
+  -64.0
+  2.0 0.0 0.0
+  0.0 2.0 0.0
+  0.0 0.0 2.0
+  Al
+  1
+Direct
+  0.0 0.0 0.0

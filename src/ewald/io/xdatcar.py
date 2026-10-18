@@ -1,23 +1,41 @@
-"""Native lazy reader for VASP XDATCAR (fixed- and variable-cell)."""
+"""Native lazy reader for VASP XDATCAR (fixed- and variable-cell).
+
+Handles VASP 5/6 headers (including VASP 6.4 ``Si_GW/7a4c...`` species labels),
+negative scale factors (target volume), Direct and Cartesian configurations,
+compressed files and a truncated last configuration from a running/killed job.
+"""
 from __future__ import annotations
+
+import os
+import warnings
 
 import numpy as np
 
 from ..data import Cell, DataCollection
-from .base import FrameReader
+from .base import FrameReader, head_lines, open_binary, strip_compression
 
 
 def is_xdatcar(path) -> bool:
-    import os
+    if "XDATCAR" in os.path.basename(strip_compression(path)).upper():
+        return True
+    head = head_lines(path, 8)
+    return len(head) == 8 and b"configuration" in head[7].lower() and \
+        head[7].strip().lower().startswith((b"direct", b"cartesian"))
 
-    return "XDATCAR" in os.path.basename(str(path)).upper()
+
+def species_name(label: str) -> str:
+    """'Fe_pv/2c5c46b5' -> 'Fe', 'Si_GW' -> 'Si', 'H.75' -> 'H'."""
+    base = label.split("/")[0].split("_")[0]
+    letters = "".join(c for c in base if c.isalpha())
+    return letters[:1].upper() + letters[1:2].lower() if letters else label
 
 
 class XdatcarReader(FrameReader):
     def __init__(self, path):
         self.path = str(path)
         self._frames: list[tuple[int, int]] = []  # (header offset, configuration-line offset)
-        with open(self.path, "rb") as fh:
+        truncated = False
+        with open_binary(self.path) as fh:
             header, natoms = 0, None
             while True:
                 offset = fh.tell()
@@ -29,45 +47,59 @@ class XdatcarReader(FrameReader):
                 if line.strip().lower().startswith((b"direct", b"cartesian")):
                     if natoms is None:
                         raise ValueError(f"{path}: configuration before header")
+                    complete = all(len(fh.readline().split()) >= 3 for _ in range(natoms))
+                    if not complete:
+                        truncated = True
+                        break
                     self._frames.append((header, offset))
-                    for _ in range(natoms):
-                        fh.readline()
                 else:  # a (possibly repeated, variable-cell) 7-line header starts here
                     header = offset
                     for _ in range(6):
                         last = fh.readline()
-                    natoms = sum(int(c) for c in last.split())
+                    try:
+                        natoms = sum(int(c) for c in last.split())
+                    except ValueError:
+                        raise ValueError(f"{path}: cannot read atom counts from header line "
+                                         f"{last.decode(errors='replace').strip()!r}") from None
+        if truncated:
+            warnings.warn(f"{path}: last configuration is incomplete and was skipped", stacklevel=2)
         if not self._frames:
             raise ValueError(f"{path}: no configurations found")
+        self._header_cache: dict[int, tuple] = {}
 
     def _read_header(self, offset):
-        with open(self.path, "rb") as fh:
+        if offset in self._header_cache:
+            return self._header_cache[offset]
+        with open_binary(self.path) as fh:
             fh.seek(offset)
             lines = [fh.readline().decode() for _ in range(7)]
         scale = float(lines[1].split()[0])
         lattice = np.array([l.split()[:3] for l in lines[2:5]], dtype=float)
         if scale < 0:  # negative scale = target volume
-            lattice *= (-scale / abs(np.linalg.det(lattice))) ** (1 / 3)
-        else:
-            lattice *= scale
-        species = lines[5].split()
+            scale = (-scale / abs(np.linalg.det(lattice))) ** (1 / 3)
+        lattice *= scale
+        species = [species_name(s) for s in lines[5].split()]
         counts = [int(c) for c in lines[6].split()]
-        return lattice, species, counts
+        if len(species) != len(counts):
+            raise ValueError(f"{self.path}: species line {lines[5].strip()!r} does not match counts "
+                             f"{lines[6].strip()!r} (VASP 4 XDATCAR without species is not supported)")
+        self._header_cache[offset] = result = (lattice, scale, species, counts)
+        return result
 
     def __len__(self):
         return len(self._frames)
 
     def read(self, index: int) -> DataCollection:
         header, cfg = self._frames[index]
-        lattice, species, counts = self._read_header(header)
+        lattice, scale, species, counts = self._read_header(header)
         n = sum(counts)
-        with open(self.path, "rb") as fh:
+        with open_binary(self.path) as fh:
             fh.seek(cfg)
             kind = fh.readline().strip().lower()
-            coords = np.array(b" ".join(fh.readline() for _ in range(n)).split()[: 3 * n], dtype=float)
+            coords = np.array([fh.readline().split()[:3] for _ in range(n)], dtype=float)
         coords = coords.reshape(n, 3)
         cell = Cell(lattice, np.zeros(3), np.ones(3, bool))
-        pos = cell.to_cartesian(coords) if kind.startswith(b"direct") else coords
+        pos = cell.to_cartesian(coords) if kind.startswith(b"direct") else coords * scale
         types = np.repeat(species, counts)
         data = DataCollection(pos, types, cell)
         data.particles["Particle Identifier"] = np.arange(1, n + 1)
