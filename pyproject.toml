@@ -16,6 +16,7 @@ gpu = ["cupy-cuda12x"]
 analysis = ["freud-analysis"]
 movie = ["imageio[ffmpeg]"]
 ovito = ["ovito"]   # DislocationAnalysis (DXA) and OvitoModifier bridge
+llm = ["anthropic>=1.0", "mcp"]
 dev = ["pytest"]
 
 [project.scripts]

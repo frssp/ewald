@@ -1,0 +1,100 @@
+# ewald Python API (for LLMs and people writing ewald code)
+
+ewald is an OVITO-style atomistic pipeline: `import_file` -> modifiers -> `compute(frame)` -> render.
+The API mirrors OVITO's, so OVITO knowledge transfers; the differences below are where it doesn't.
+
+```python
+from ewald import import_file
+from ewald.modifiers import CoordinationAnalysis, ExpressionSelection, DeleteSelected, ColorCoding
+
+pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, cif, ...
+# pipe = import_file("dump.*.lammpstrj", type_map={1: "Cu", 2: "Zr"})   # LAMMPS numeric types -> elements
+pipe.modifiers.append(CoordinationAnalysis(cutoff=3.0))
+pipe.modifiers.append(ExpressionSelection("Coordination < 12"))
+
+def mark(frame, data):                               # any f(frame, data) is a modifier (OVITO signature)
+    data["Undercoordinated"] = data["Coordination"] < 12
+
+pipe.modifiers.append(mark)
+data = pipe.compute(10)                              # device="cuda" runs supported kernels on the GPU
+print(data.summary())                                # look before you code: properties, ranges, attributes
+pipe.render("frame10.png", frame=10, direction="iso", bonds=2.8)
+```
+
+## Data model
+
+- `pipe.num_frames`, `pipe.compute(i)`, `pipe.frames(start, stop, step)`, `pipe.source_frame(i)` (unmodified input).
+- `data = pipe.compute(i)` is a `DataCollection`: `data.count`, `data.positions` (N x 3, Angstrom),
+  `data.types` (element strings), `data["Name"]` for any per-particle property, `"Name" in data`,
+  `data.particles` (dict name -> array), `data.attributes` (dict of globals), `data.tables` (dict of column dicts),
+  `data.cell.matrix` (3 x 3, ROWS are the cell vectors a, b, c), `data.cell.origin`, `data.cell.pbc`,
+  `data.cell.volume`, `data.cell.wrap(pos)`, `data.cell.to_fractional(pos)`.
+- Property names are OVITO's: "Position", "Particle Type", "Particle Identifier", "Color", "Radius",
+  "Selection", "Coordination", "Structure Type", "Displacement", "Force", "Velocity".
+- `data.take(mask_or_index)`, `data.delete(mask)` return new collections; `data.to_ase()`, `DataCollection.from_ase(atoms)`.
+- **Never write into an array in place** (`data.positions[0] = ...`, `data["Color"][sel] = ...`): arrays are shared
+  with cached frames. Build a new array and assign it: `pos = data.positions.copy(); pos[0] += 1; data.positions = pos`.
+- A modifier function may take a third argument `ctx`: `ctx.source_frame(k)` (reference frame), `ctx.frame`,
+  `ctx.xp` (numpy or cupy). Return nothing to keep `data`, or return a new DataCollection (e.g. `data.delete(mask)`).
+
+## Expressions (ExpressionSelection, ComputeProperty, ColorCoding)
+
+OVITO syntax evaluated with numpy: `Position.Z`, `ParticleType`, `ParticleIdentifier`, `Coordination`, `Velocity.X`,
+globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, not `and`/`or`/`not`:
+`(Position.Z > 10) & (ParticleType == "Cu")`. Functions: `abs sqrt exp log sin cos min max`, `np.*`.
+
+## Differences from OVITO
+
+| OVITO | ewald |
+| --- | --- |
+| `from ovito.io import import_file` | `from ewald import import_file` |
+| `from ovito.modifiers import CommonNeighborAnalysisModifier` | `from ewald.modifiers import CommonNeighborAnalysis` (the OVITO name also works) |
+| `pipeline.source.num_frames` | `pipe.num_frames` |
+| `data.particles.count` | `data.count` |
+| `data.particles.positions`, `data.particles['Position']` | `data.positions`, `data['Position']` |
+| `data.particles_['Position_'][...] = v` (in place) | `data.positions = v` (assign a new array) |
+| `data.particles_.create_property('X', data=v)` | `data['X'] = v` |
+| `data.particles.particle_types` (type objects, ids) | `data.types` (element strings) |
+| `data.cell[:, :3]`: COLUMNS are the cell vectors, `data.cell[:, 3]` origin | `data.cell.matrix`: ROWS are the cell vectors, `data.cell.origin` |
+| `ColorCodingModifier(property=..., gradient=...)` | `ColorCoding(property, cmap="viridis")` (matplotlib colormap name) |
+| `WrapPeriodicImagesModifier()` | `WrapAtoms()` |
+| `PythonScriptModifier(function=f)` | `pipe.modifiers.append(f)` |
+| `Viewport(...).render_image(filename=...)`, `pipeline.add_to_scene()` | `pipe.render(filename, frame=, size=, direction=)`; GUI: `ewald gui FILE` |
+| `export_file(pipeline, file, format, columns=[...])` | `export_file(pipe, file, format=...)` (`"lammps/dump"` native, else ASE) |
+
+## Other entry points
+
+- `ewald.kernels.rdf(positions, cell, cutoff, nbins=200, types=None)` -> table with `r`, `g(r)`, partial `g(r) A-B`.
+- `ewald.kernels.trajectory_msd(pipe, start=0, stop=None, step=1)` -> `lag`, `MSD`, `MSD <type>` (unwrapped, by id).
+- `ewald.llm.describe_frame(data)` / `describe_trajectory(pipe)`: compact JSON summaries and detected events.
+- `ewald.llm.narrate(pipe)`: event timeline; `ewald.llm.Agent.from_file(path).ask("...")`: Claude over these tools.
+
+## Modifiers
+
+- `CalculateDisplacements(reference_frame: int = 0, minimum_image: bool = True)`: Displacement from a reference frame (minimum-image convention).
+- `CoordinationAnalysis(cutoff: float = 3.2, number_of_bins: int = 200, partial: bool = False)`: Coordination numbers within ``cutoff`` and the radial distribution function.
+- `ClusterAnalysis(cutoff: float = 3.2, sort_by_size: bool = False, compute_com: bool = False, compute_gyration: bool = False, unwrap_particles: bool = False, only_selected: bool = False, cluster_coloring: bool = False)`: Group particles into clusters connected by distances below ``cutoff``.
+- `AssignColor(color=(0.3, 0.3, 1.0), keep_selection: bool = False)`: Give the selected particles (all, if nothing selected) one color.
+- `ColorCoding(property: str, cmap: str = 'viridis', start=None, end=None, only_selected: bool = False)`: Map a scalar property or expression to colors through a matplotlib colormap.
+- `ClearSelection()`
+- `DeleteSelected()`
+- `ExpressionSelection(expression: str)`: Select particles where ``expression`` is true (sets 'Selection').
+- `InvertSelection()`
+- `SelectType(types, property: str = 'Particle Type')`: Select particles whose 'Particle Type' (or another property) is in ``types``.
+- `Slice(normal=(0, 0, 1), distance: float = 0.0, width: float = 0.0, inverse: bool = False, select: bool = False, miller: bool = False)`: Keep (or select) particles in a slab ``|n.r - distance| <= width/2``.
+- `AffineTransformation(matrix, transform_cell: bool = True)`: Apply a 3x3 (or 3x4 with translation) matrix to particles and, optionally, the cell.
+- `ComputeProperty(output: str, expressions, only_selected: bool = False)`: Set ``output`` to an expression, e.g. ``ComputeProperty("Height", "Position.Z - 5")``.
+- `Replicate(n=(2, 2, 2), adjust_box: bool = True, unique_ids: bool = True)`: Tile the periodic cell ``n = (na, nb, nc)`` times.
+- `WrapAtoms()`: Map particles back into the periodic cell.
+- `PythonScript(source: str = ..., title: str = 'Python script', **params)`: Run ``modify(frame, data)`` defined in ``source``.
+- `CommonNeighborAnalysis(mode: str = 'adaptive', cutoff: float = 3.2, types=None, color_by_type: bool = True, only_selected: bool = False, chunk_size: int = 32768)`: Common neighbor analysis (Honeycutt-Andersen; adaptive a-CNA of Stukowski 2012).
+- `PolyhedralTemplateMatching(types=None, rmsd_cutoff: float = 0.1, output_rmsd: bool = True, output_interatomic_distance: bool = False, output_orientation: bool = False, output_deformation_gradient: bool = False, output_ordering: bool = False, color_by_type: bool = True, only_selected: bool = False, num_threads: int = 0)`: Polyhedral template matching (Larsen, Schmidt, Schiotz 2016), using the PTM library.
+- `VoronoiAnalysis(compute_indices: bool = False, use_radii: bool = False, edge_threshold: float = 0.0, face_threshold: float = 0.0, relative_face_threshold: float = 0.0, compute_bonds: bool = False, only_selected: bool = False, num_threads: int = 0)`: Per-particle Voronoi cells: volume, coordination, Voronoi indices.
+- `WignerSeitzAnalysis(reference_frame: int = 0, output_current_config: bool = False, per_type_occupancies: bool = False, affine_mapping: str | None = None, frame_offset: int | None = None)`: Count atoms in the Wigner-Seitz cell of every site of a reference frame.
+- `DislocationAnalysis(input_crystal_structure: str = 'FCC', only_perfect_dislocations: bool = False, circuit_stretchability: int = 9, trial_circuit_length: int = 14, line_smoothing_level: int = 1, line_point_separation: float = 2.5, **kwargs)`: Dislocation extraction algorithm (DXA) via the `ovito` package.
+- `OvitoModifier(modifier, reference_frame: int | None = None)`: Run an OVITO modifier (``ovito.modifiers.*``) on the current frame.
+- `AcklandJones(types=None, color_by_type: bool = True, only_selected: bool = False)`: Bond-angle structure identification of Ackland and Jones (2006).
+- `AtomicStrain(cutoff: float = 3.0, reference_frame: int = 0, frame_offset: int | None = None, output_deformation_gradients: bool = False, output_strain_tensors: bool = False, output_nonaffine_squared_displacements: bool = False, output_rotations: bool = False, output_stretch_tensors: bool = False, select_invalid_particles: bool = True, affine_mapping: str | None = None, minimum_image_convention: bool = True)`: Atomic-level strain from a reference frame (Shimizu, Ogata, Li 2007; Falk-Langer D2min).
+- `CentroSymmetry(num_neighbors: int = 12, mode: str = 'conventional', only_selected: bool = False)`: Centrosymmetry parameter (Kelchner et al. 1998) from ``num_neighbors`` neighbors.
+- `ChillPlus(cutoff: float = 3.5, color_by_type: bool = True, only_selected: bool = False)`: Chill+ identification of water structures (Nguyen and Molinero 2015).
+- `IdentifyDiamond(types=None, color_by_type: bool = True, only_selected: bool = False)`: Cubic and hexagonal diamond lattice identification (Maras et al. 2016).

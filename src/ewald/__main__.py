@@ -27,6 +27,28 @@ def main(argv=None):
     i = sub.add_parser("info", help="print frames and properties")
     i.add_argument("input")
     i.add_argument("--type-map", default=None)
+    d = sub.add_parser("describe", help="JSON summary of a frame or, with --trajectory, of the run")
+    d.add_argument("input")
+    d.add_argument("--frame", type=int, default=0)
+    d.add_argument("--trajectory", action="store_true", help="scan frames and report events")
+    d.add_argument("--type-map", default=None)
+    q = sub.add_parser("ask", help="ask Claude about a structure (needs anthropic + credentials)")
+    q.add_argument("input")
+    q.add_argument("question", nargs="+")
+    q.add_argument("--type-map", default=None)
+    q.add_argument("--model", default=None)
+    q.add_argument("--allow-code", action="store_true", help="let Claude run Python in this process")
+    q.add_argument("--script", default=None, help="write the resulting pipeline as a Python script")
+    n = sub.add_parser("narrate", help="timeline of events in a trajectory (Claude writes it if available)")
+    n.add_argument("input")
+    n.add_argument("--type-map", default=None)
+    n.add_argument("--no-llm", action="store_true", help="rule-based titles only")
+    n.add_argument("--render", action="store_true", help="show Claude renders of the frames around events")
+    n.add_argument("--json", action="store_true", help="print JSON instead of Markdown")
+    sub.add_parser("api", help="print the Python API reference for LLMs (llms.txt)")
+    m = sub.add_parser("mcp", help="serve the analysis tools over MCP (stdio)")
+    m.add_argument("input", nargs="?")
+    m.add_argument("--allow-code", action="store_true")
     args = ap.parse_args(argv)
 
     if args.cmd == "gui":
@@ -34,10 +56,58 @@ def main(argv=None):
 
         extra = ([args.input] if args.input else []) + (["--type-map", args.type_map] if args.type_map else [])
         return gui_main(extra + (["--device", args.device] if args.device else []))
+    if args.cmd == "api":
+        from .llm.reference import api_reference
+
+        print(api_reference(), end="")
+        return
+    if args.cmd == "mcp":
+        from .llm.mcp_server import serve
+
+        return serve(args.allow_code, args.input)
+
     kw = {}
     if args.type_map:
         kw["type_map"] = dict(item.split("=") for item in args.type_map.split(","))
     pipe = import_file(args.input, **kw)
+    if args.cmd == "describe":
+        import json
+
+        from .llm.describe import describe_frame, describe_trajectory
+
+        out = describe_trajectory(pipe) if args.trajectory else describe_frame(pipe.compute(args.frame), frame=args.frame)
+        print(json.dumps(out, indent=1, default=float))
+        return
+    if args.cmd == "narrate":
+        import json
+
+        from .llm.narrate import narrate
+
+        client = None
+        if not args.no_llm:
+            try:
+                import anthropic
+
+                client = anthropic.Anthropic()
+            except Exception as exc:  # no SDK or no credentials: fall back to rule-based titles
+                print(f"(no Claude client: {exc}; using rule-based titles)")
+        tl = narrate(pipe, client, render=args.render)
+        print(json.dumps(tl.to_dict(), indent=1, default=float) if args.json else tl.to_markdown())
+        return
+    if args.cmd == "ask":
+        from .llm import Agent, Toolset
+
+        ts = Toolset(pipe, allow_code=args.allow_code)
+        ts._source_call = {"path": args.input, "kwargs": kw}
+        agent = Agent(ts, **({"model": args.model} if args.model else {}),
+                      on_event=lambda kind, p: print(f"  -> {p['name']}({p['input']})")
+                      if kind == "tool_call" else None)
+        print(agent.ask(" ".join(args.question)))
+        if args.script:
+            with open(args.script, "w") as fh:
+                fh.write(ts.to_script())
+            print("wrote", args.script)
+        return
     if args.cmd == "info":
         d = pipe.compute(0)
         print(f"{args.input}: {pipe.num_frames} frames, {d.count} particles")

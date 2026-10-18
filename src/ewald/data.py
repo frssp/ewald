@@ -172,6 +172,40 @@ class DataCollection:
         data.attributes.update({k: v for k, v in atoms.info.items() if np.isscalar(v)})
         return data
 
+    def summary(self, max_values: int = 6) -> str:
+        """Human- (and LLM-) readable overview: cell, every property with dtype, shape and
+        range (or most common values), attributes and tables. Cheap; print it before
+        writing code against an unfamiliar frame."""
+        from collections import Counter
+
+        lines = [f"DataCollection: {self.count} particles"]
+        if self.cell.is_valid:
+            lengths = np.linalg.norm(self.cell.matrix, axis=1)
+            lines.append(f"cell: a,b,c = {', '.join(f'{x:.4g}' for x in lengths)} A, volume {self.cell.volume:.6g} A^3, "
+                         f"pbc {self.cell.pbc.tolist()} (rows of cell.matrix are the cell vectors)")
+        else:
+            lines.append("cell: none (non-periodic)")
+        lines.append("particles:")
+        for name, arr in self.particles.items():
+            a = np.asarray(arr)
+            shape = "x".join(map(str, a.shape))
+            if a.dtype.kind in "biuf" and a.size:
+                rng = f"min {np.nanmin(a):.4g}, max {np.nanmax(a):.4g}"
+                if a.ndim == 1:
+                    rng += f", mean {np.nanmean(a):.4g}"
+                    if a.dtype.kind in "biu" and len(np.unique(a)) <= max_values:
+                        rng += f", values {sorted(Counter(a.tolist()).items())}"
+                lines.append(f"  {name!r}: {a.dtype} [{shape}] {rng}")
+            else:
+                common = Counter(str(x) for x in a.ravel()).most_common(max_values)
+                lines.append(f"  {name!r}: {a.dtype} [{shape}] {common}")
+        scalars = {k: v for k, v in self.attributes.items() if np.isscalar(v)}
+        if scalars:
+            lines.append("attributes: " + ", ".join(f"{k}={v!r}" for k, v in scalars.items()))
+        for name, table in self.tables.items():
+            lines.append(f"table {name!r}: columns {list(table)}")
+        return "\n".join(lines)
+
     def __repr__(self) -> str:
         props = ", ".join(self.particles)
         return f"<DataCollection N={self.count} props=[{props}]>"

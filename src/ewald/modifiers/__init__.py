@@ -19,3 +19,14 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "Replicate", "WrapAtoms", "PythonScript", "CommonNeighborAnalysis", "PolyhedralTemplateMatching",
            "VoronoiAnalysis", "WignerSeitzAnalysis", "DislocationAnalysis", "OvitoModifier",
            "AcklandJones", "AtomicStrain", "CentroSymmetry", "ChillPlus", "IdentifyDiamond"]
+
+# OVITO spellings (``CommonNeighborAnalysisModifier``, ``WrapPeriodicImagesModifier``, ...) resolve to the
+# ewald class, so OVITO scripts - and code written by LLMs that learned OVITO - run unchanged.
+_OVITO_NAMES = {"WrapPeriodicImagesModifier": "WrapAtoms", "PythonScriptModifier": "PythonScript"}
+
+
+def __getattr__(name):
+    target = _OVITO_NAMES.get(name) or (name[:-len("Modifier")] if name.endswith("Modifier") else None)
+    if target and target in __all__:
+        return globals()[target]
+    raise AttributeError(f"module 'ewald.modifiers' has no attribute {name!r}")
