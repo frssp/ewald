@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ewald"
+version = "0.1.0"
+description = "Atomistic structure and trajectory visualization and analysis with a Python pipeline API"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "scipy", "ase>=3.23", "matplotlib", "pyvista>=0.44", "vtk>=9.3"]
+
+[project.optional-dependencies]
+gpu = ["cupy-cuda12x"]
+analysis = ["freud-analysis"]
+movie = ["imageio[ffmpeg]"]
+dev = ["pytest"]
+
+[project.scripts]
+ewald = "ewald.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
