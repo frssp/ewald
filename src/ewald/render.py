@@ -226,14 +226,26 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
            transparent_background: bool = False, ambient_occlusion: bool = False,
            legend: bool = True, show_cell: bool = True, bonds: float | None = None,
            radius_scale: float = 1.0, antialiasing: bool = True, text: str | None = None,
-           camera: dict | None = None, **scene_kwargs):
+           camera: dict | None = None, renderer: str = "opengl", samples: int = 8, ao_samples: int = 16,
+           shadows: bool = True, **scene_kwargs):
     """Render one DataCollection to ``filename`` (PNG/JPG/TIFF) or return an RGB array.
 
     ``direction`` is a view vector *from* the scene to the camera, or one of
     'x', 'y', 'z', '-x', ..., 'iso'. ``bonds=2.8`` draws bonds shorter than 2.8 A.
     ``camera`` (see :func:`camera_state`) reproduces an interactive view exactly.
+    ``renderer="raytrace"`` uses the built-in ray tracer (ambient occlusion with
+    ``ao_samples`` rays, ``shadows``, ``samples`` rays per pixel) instead of OpenGL.
     """
     import pyvista as pv
+
+    if renderer == "raytrace":
+        return _render_raytraced(data, filename, size=size, direction=direction, orthographic=orthographic,
+                                 zoom=zoom, background=background, transparent_background=transparent_background,
+                                 legend=legend, show_cell=show_cell, bonds=bonds, radius_scale=radius_scale,
+                                 text=text, camera=camera, samples=samples, ao_samples=ao_samples,
+                                 shadows=shadows, **scene_kwargs)
+    if renderer != "opengl":
+        raise ValueError(f"unknown renderer {renderer!r}; use 'opengl' or 'raytrace'")
 
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     p.set_background(background)
@@ -260,6 +272,78 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     img = p.screenshot(filename, transparent_background=transparent_background, return_img=True)
     p.close()
     return img
+
+
+def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, background, transparent_background,
+                      legend, show_cell, bonds, radius_scale, text, camera, samples, ao_samples, shadows,
+                      **scene_kwargs):
+    import pyvista as pv
+
+    from .raytrace import raytrace, scene_from_data
+
+    scene_kwargs.pop("atom_style", None); scene_kwargs.pop("sphere_resolution", None)
+    scene_kwargs.pop("mesh_limit", None); scene_kwargs.pop("antialiasing", None)
+    scene_kwargs.pop("ambient_occlusion", None); scene_kwargs.pop("cell_width", None)
+    if camera is None:  # same framing as the OpenGL path
+        p = pv.Plotter(off_screen=True, window_size=tuple(size))
+        build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, sphere_resolution=6,
+                    **{k: v for k, v in scene_kwargs.items() if k in ("type_colors", "type_radii")})
+        _setup_camera(p, data, direction, orthographic, zoom)
+        camera = camera_state(p)
+        p.close()
+    cell_color = "#AEB4BE" if sum(_rgb(background)) < 1.5 and not transparent_background else "black"
+    scene = scene_from_data(data, radius_scale=radius_scale, bonds=bonds, show_cell=show_cell,
+                            cell_color=scene_kwargs.pop("cell_color", cell_color), **scene_kwargs)
+    img = raytrace(scene, camera, size, samples=samples, ao_samples=ao_samples, shadows=shadows,
+                   background=background, transparent_background=transparent_background)
+    rgba = (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)
+    rgba = _draw_overlays(rgba, data, text if text else None, legend, background, transparent_background)
+    if filename:
+        from PIL import Image
+
+        im = Image.fromarray(rgba, "RGBA")
+        if not transparent_background and not str(filename).lower().endswith(".png"):
+            im = im.convert("RGB")
+        im.save(filename)
+    return rgba[..., :3] if not transparent_background else rgba
+
+
+def _draw_overlays(rgba, data, text, legend, background, transparent):
+    """Text label and color legend for ray-traced images (PIL, sized relative to the image)."""
+    if not text and not (legend and "ColorCoding.range" in data.attributes):
+        return rgba
+    import matplotlib
+    from PIL import Image, ImageDraw, ImageFont
+
+    h, w = rgba.shape[:2]
+    im = Image.fromarray(rgba, "RGBA")
+    draw = ImageDraw.Draw(im)
+    dark = not transparent and sum(_rgb(background)) < 1.5
+    ink = (235, 235, 238, 255) if dark else (20, 20, 20, 255)
+    fs = max(10, int(h * 0.03))
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", fs)
+        small = ImageFont.truetype("DejaVuSans.ttf", int(fs * 0.8))
+    except OSError:
+        font = small = ImageFont.load_default()
+    if text:
+        draw.text((int(0.02 * w), int(0.02 * h)), text, fill=ink, font=font)
+    if legend and "ColorCoding.range" in data.attributes:
+        lo, hi = data.attributes["ColorCoding.range"]
+        cmap = matplotlib.colormaps[data.attributes.get("ColorCoding.cmap", "viridis")]
+        x0, x1 = int(0.88 * w), int(0.91 * w)
+        y0, y1 = int(0.15 * h), int(0.85 * h)
+        for y in range(y0, y1):
+            c = cmap(1 - (y - y0) / max(1, y1 - y0 - 1))
+            draw.line([(x0, y), (x1, y)], fill=tuple(int(255 * v) for v in c[:3]) + (255,))
+        draw.rectangle([x0, y0, x1, y1 - 1], outline=ink)
+        title = str(data.attributes.get("ColorCoding.property", ""))
+        draw.text((x0, y0 - int(1.4 * fs)), title, fill=ink, font=small)
+        for frac in (0, 0.25, 0.5, 0.75, 1):
+            y = int(y1 - 1 - frac * (y1 - y0 - 1))
+            draw.line([(x1, y), (x1 + int(0.006 * w), y)], fill=ink)
+            draw.text((x1 + int(0.01 * w), y - fs // 2), f"{lo + frac * (hi - lo):.3g}", fill=ink, font=small)
+    return np.asarray(im)
 
 
 def _add_colorbar(plotter, data, font_size=None):

@@ -35,14 +35,22 @@ class RenderPage(QtWidgets.QWidget):
         form = QtWidgets.QFormLayout(side)
         form.setContentsMargins(12, 12, 12, 12)
         self.renderer = QtWidgets.QComboBox()
-        self.renderer.addItem("OpenGL (VTK)")
+        self.renderer.addItem("Ray tracing (AO + shadows)")
+        self.renderer.addItem("OpenGL (fast preview)")
         self.renderer.addItem("OSPRay path tracing (needs a VTK build with OSPRay)")
-        self.renderer.model().item(1).setEnabled(_has_ospray())
+        self.renderer.model().item(2).setEnabled(False)
         form.addRow("Renderer", self.renderer)
-        self.ao = QtWidgets.QCheckBox("Ambient occlusion")
-        self.aa = QtWidgets.QCheckBox("Supersampling anti-aliasing", checked=True)
+        self.samples = QtWidgets.QSpinBox(minimum=1, maximum=256, value=8, suffix=" rays/pixel")
+        self.ao_samples = QtWidgets.QSpinBox(minimum=0, maximum=512, value=16, suffix=" AO rays")
+        self.shadows = QtWidgets.QCheckBox("Shadows", checked=True)
+        form.addRow("Anti-aliasing", self.samples)
+        form.addRow("Ambient occl.", self.ao_samples)
+        form.addRow(self.shadows)
+        self.ao = QtWidgets.QCheckBox("Ambient occlusion (OpenGL SSAO)")
+        self.aa = QtWidgets.QCheckBox("Supersampling (OpenGL)", checked=True)
         form.addRow(self.ao)
         form.addRow(self.aa)
+        self.renderer.currentIndexChanged.connect(self._renderer_changed)
         form.addRow(QtWidgets.QLabel("Output size", objectName="section"))
         self.preset = QtWidgets.QComboBox()
         self.preset.addItems(list(SIZE_PRESETS))
@@ -94,14 +102,26 @@ class RenderPage(QtWidgets.QWidget):
 
         self.preset.currentTextChanged.connect(self._apply_preset)
         self.dpi.valueChanged.connect(lambda _: self._apply_preset(self.preset.currentText()))
-        for w in (self.ao, self.aa, self.legend, self.animation):
+        for w in (self.ao, self.aa, self.legend, self.animation, self.shadows):
             w.toggled.connect(self.update_code)
-        for w in (self.width, self.height, self.dpi, self.time_per_frame):
+        self.renderer.currentIndexChanged.connect(self.update_code)
+        for w in (self.width, self.height, self.dpi, self.time_per_frame, self.samples, self.ao_samples):
             w.valueChanged.connect(self.update_code)
         for w in (self.text, self.output):
             w.textChanged.connect(self.update_code)
         self.background.currentTextChanged.connect(self.update_code)
         self._apply_preset(self.preset.currentText())
+        self._renderer_changed()
+
+    @property
+    def raytrace(self) -> bool:
+        return self.renderer.currentIndex() == 0
+
+    def _renderer_changed(self, *_):
+        for w in (self.samples, self.ao_samples, self.shadows):
+            w.setEnabled(self.raytrace)
+        for w in (self.ao, self.aa):
+            w.setEnabled(not self.raytrace)
 
     def _apply_preset(self, name):
         spec = SIZE_PRESETS.get(name)
@@ -129,8 +149,12 @@ class RenderPage(QtWidgets.QWidget):
 
     def render_kwargs(self) -> dict:
         bg = self.background.currentText()
-        kw = {"size": (self.width.value(), self.height.value()), "ambient_occlusion": self.ao.isChecked(),
-              "antialiasing": self.aa.isChecked(), "legend": self.legend.isChecked()}
+        kw = {"size": (self.width.value(), self.height.value()), "legend": self.legend.isChecked()}
+        if self.raytrace:
+            kw.update(renderer="raytrace", samples=self.samples.value(), ao_samples=self.ao_samples.value(),
+                      shadows=self.shadows.isChecked())
+        else:
+            kw.update(ambient_occlusion=self.ao.isChecked(), antialiasing=self.aa.isChecked())
         if bg == "transparent":
             kw.update(background="white", transparent_background=True)
         elif bg == "viewport":
@@ -141,15 +165,6 @@ class RenderPage(QtWidgets.QWidget):
 
     def update_code(self, *_):
         self.code.setPlainText(figure_code(self.window, self))
-
-
-def _has_ospray() -> bool:
-    try:
-        import vtk
-
-        return hasattr(vtk, "vtkOSPRayPass")
-    except ImportError:
-        return False
 
 
 def figure_code(window, page) -> str:

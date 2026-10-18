@@ -7,9 +7,9 @@ scripting (headless and inside the GUI) and NVIDIA GPU acceleration.
 | Step | Scope | State |
 |---|---|---|
 | 1. Core | DataCollection, Pipeline (source → modifiers), lazy LAMMPS dump / XDATCAR readers, ASE fallback, first modifiers, offscreen PNG rendering, CLI | done |
-| 2. GUI | PySide6 + VTK viewport, timeline, pipeline panel with parameter forms and Python script editor, render settings, data inspector, IPython console | first version done; UX redesign (OVITO/VESTA reference) in progress |
+| 2. GUI | OVITO-style layout with VESTA crystal controls: view along a/b/c, pick/measure, per-type styles, bond table, command palette, console, inspector, plots, Render workspace with code generator | done (PR #5); next: quad views, undo/redo, background compute thread |
 | 3. Analysis | CNA, PTM, Voronoi, cluster, Wigner–Seitz (ported from OVITO's MIT-licensed source), RDF/MSD kernels, numba CPU and CuPy GPU neighbor lists, optional DXA via the `ovito` pip package | in progress |
-| 4. Figures | Ray-traced rendering (OSPRay / OptiX), ambient occlusion, legends, animation export, session save/load | open |
+| 4. Figures | Built-in numba ray tracer (AO, shadows, anti-aliasing) and Render workspace with journal presets done; next: GPU (CUDA) tracer, session save/load, PDF/vector overlays | in progress |
 
 Decisions
 
