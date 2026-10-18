@@ -12,6 +12,7 @@ import numpy as np
 from ase.build import bulk
 from ase.cluster import Icosahedron
 from ovito.data import DataCollection, Particles, SimulationCell
+from ovito.modifiers import ClusterAnalysisModifier as CLU
 from ovito.modifiers import CommonNeighborAnalysisModifier as CNA
 from ovito.modifiers import PolyhedralTemplateMatchingModifier as PTM
 from ovito.modifiers import VoronoiAnalysisModifier as VOR
@@ -101,6 +102,26 @@ for tag, kw in [("site", {}), ("cur", dict(output_displaced=True)), ("pertype", 
                                         d.attributes["WignerSeitz.interstitial_count"]])
     if tag == "cur":
         out["ws/cur/Site Index"] = np.array(d.particles["Site Index"])
+
+# Cluster analysis: compact random blobs in a periodic box, several crossing the boundary.
+L = 40.0
+centers = rng.uniform(0, L, (60, 3))
+blobs = [c + rng.normal(0, 1.2, (rng.integers(1, 30), 3)) for c in centers]
+cpos = np.concatenate(blobs) % L
+cmass = rng.uniform(1, 3, len(cpos))
+ccell = np.diag([L, L, L])
+out.update({"cluster/pos": cpos, "cluster/cell": ccell, "cluster/mass": cmass})
+for tag, kw in [("plain", {}), ("sorted", dict(sort_by_size=True, compute_com=True, compute_gyration=True,
+                                                 unwrap_particles=True))]:
+    dc = make(cpos, ccell, [True] * 3, np.ones(len(cpos), np.int32))
+    dc.particles_.create_property("Mass", data=cmass)
+    d = run(dc, CLU(cutoff=2.0, **kw))
+    out[f"cluster/{tag}/Cluster"] = np.array(d.particles["Cluster"])
+    out[f"cluster/{tag}/Position"] = np.array(d.particles["Position"])
+    t = d.tables["clusters"]
+    for key in t.keys():
+        out[f"cluster/{tag}/table/{key}"] = np.array(t[key])
+    out[f"cluster/{tag}/count"] = np.array(d.attributes["ClusterAnalysis.cluster_count"])
 
 np.savez_compressed(os.path.join(os.path.dirname(__file__), "ovito_reference.npz"), **out)
 print(f"wrote {len(out)} arrays")

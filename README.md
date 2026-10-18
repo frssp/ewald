@@ -84,7 +84,8 @@ example figures.
 orientation, elastic deformation gradient, chemical ordering),
 `VoronoiAnalysis` (atomic volume, coordination, Voronoi indices, radical
 tessellation, face list) and `WignerSeitzAnalysis` (vacancies/interstitials,
-per-type occupancies). Property names, structure type ids, colors and
+per-type occupancies), `ClusterAnalysis` (cutoff clusters, sorting, center of
+mass, radius of gyration and gyration tensor with periodic unwrapping). Property names, structure type ids, colors and
 attribute names follow OVITO, and the test suite checks the results against
 OVITO 3.16 on nine test structures (`tests/data/make_ovito_reference.py`).
 

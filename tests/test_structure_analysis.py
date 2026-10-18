@@ -11,13 +11,13 @@ from ase.build import bulk
 from ewald import DataCollection, Pipeline, StaticSource
 from ewald.backend import CPU, Backend
 from ewald.data import Cell
-from ewald.modifiers import (CommonNeighborAnalysis, PolyhedralTemplateMatching, VoronoiAnalysis,
+from ewald.modifiers import (ClusterAnalysis, CommonNeighborAnalysis, PolyhedralTemplateMatching, VoronoiAnalysis,
                              WignerSeitzAnalysis)
 from ewald.modifiers._knn import nearest_neighbors
 from ewald.pipeline import ComputeContext
 
 REF = np.load(os.path.join(os.path.dirname(__file__), "data", "ovito_reference.npz"))
-SYSTEMS = sorted({k.split("/")[0] for k in REF if k.split("/")[0] != "ws"})
+SYSTEMS = sorted({k.split("/")[0] for k in REF if k.split("/")[0] not in ("ws", "cluster")})
 CTX = ComputeContext(0, None, CPU)
 
 try:
@@ -167,3 +167,35 @@ def test_cna_gpu_path_uses_backend_arrays():
     rc = dist.mean(-1) * (1 + np.sqrt(2)) / 2
     ncommon, nbonds, chain = _cna_signatures(np, _bond_matrix(np, delta, rc * rc))
     assert np.all(ncommon == 4) and np.all(nbonds == 2) and np.all(chain == 1)
+
+
+def _cluster_system():
+    d = DataCollection(REF["cluster/pos"], None, Cell(REF["cluster/cell"]))
+    d.particles["Mass"] = REF["cluster/mass"]
+    return d
+
+
+def test_cluster_ids_match_ovito():
+    d = run(ClusterAnalysis(cutoff=2.0), _cluster_system())
+    np.testing.assert_array_equal(d["Cluster"], REF["cluster/plain/Cluster"])
+    np.testing.assert_array_equal(d.tables["clusters"]["Cluster Size"], REF["cluster/plain/table/Cluster Size"])
+    assert d.attributes["ClusterAnalysis.cluster_count"] == int(REF["cluster/plain/count"])
+
+
+def test_cluster_sorted_com_gyration_match_ovito():
+    d = run(ClusterAnalysis(cutoff=2.0, sort_by_size=True, compute_com=True, compute_gyration=True,
+                            unwrap_particles=True), _cluster_system())
+    ours, theirs = d["Cluster"], REF["cluster/sorted/Cluster"]
+    # Equal-size clusters may be ordered differently (OVITO uses an unstable sort): match ids via members.
+    mapping = {}
+    for a, b in zip(ours, theirs):
+        assert mapping.setdefault(a, b) == b
+    assert len(set(mapping.values())) == len(mapping)
+    rows_ours = np.array(sorted(mapping)) - 1
+    rows_theirs = np.array([mapping[k] for k in sorted(mapping)]) - 1
+    t = d.tables["clusters"]
+    for key in ("Cluster Size", "Center of Mass", "Radius of Gyration", "Gyration Tensor"):
+        np.testing.assert_allclose(t[key][rows_ours], REF[f"cluster/sorted/table/{key}"][rows_theirs],
+                                   atol=1e-9, err_msg=key)
+    np.testing.assert_allclose(d.positions, REF["cluster/sorted/Position"], atol=1e-9)
+    assert d.attributes["ClusterAnalysis.largest_size"] == t["Cluster Size"][0]
