@@ -92,7 +92,8 @@ example figures.
 
 `ExpressionSelection`, `SelectType`, `InvertSelection`, `ClearSelection`,
 `DeleteSelected`, `Slice`, `AssignColor`, `ColorCoding`, `ComputeProperty`,
-`CoordinationAnalysis` (+ total/partial RDF), `CalculateDisplacements` (+ MSD),
+`CoordinationAnalysis` (+ total/partial RDF), `ClusterAnalysis` (OVITO-compatible: size, COM, gyration tensor, unwrap),
+`CalculateDisplacements` (+ MSD),
 `Replicate`, `WrapAtoms`, `AffineTransformation`, and any Python function
 `f(frame, data)`.
 
