@@ -98,6 +98,11 @@ print(data.attributes["PolyhedralTemplateMatching.counts.FCC"])
 ico = (data["Voronoi Index"][:, 4] == 12) & (data["Coordination"] == 12)   # <0,0,0,0,12> cells
 ```
 
+With the optional `ovito` package (`pip install ovito` or `pip install -e ".[ovito]"`),
+`DislocationAnalysis` runs OVITO's DXA (Burgers vectors, line lengths, segment
+polylines in `tables["dislocations"]`), and `OvitoModifier(any_ovito_modifier)`
+runs any other OVITO modifier inside an ewald pipeline.
+
 CNA, PTM and Voronoi use a small C++ extension (`ewald._native`, built
 automatically by `pip install -e .` with pybind11; sources and licenses in
 `src/ewald/_csrc/`). For 108k atoms on 4 cores: CNA ~1 s, PTM ~1.6 s,

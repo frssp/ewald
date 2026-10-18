@@ -157,10 +157,6 @@ class DislocationAnalysis(OvitoModifier):
                    trial_circuit_length=self.trial_circuit_length, line_smoothing_level=self.line_smoothing_level,
                    line_point_separation=self.line_point_separation, **self.extra)
 
-    @modifier.setter
-    def modifier(self, value):  # set by OvitoModifier.__init__ only
-        pass
-
     @property
     def name(self) -> str:
         return "DislocationAnalysis"
