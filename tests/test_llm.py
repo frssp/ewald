@@ -301,3 +301,41 @@ def test_event_details_tool(cu_fcc):
     pipe, hopper_id = _vacancy_hop(cu_fcc)
     r = Toolset(pipe).call("event_details", {"frame": 24})
     assert not r.is_error and r.content["top_movers"][0]["id"] == hopper_id
+
+
+# ------------------------------------------------------------------ code-writing agents
+
+def test_llms_txt_lists_every_modifier():
+    from pathlib import Path
+
+    import ewald.modifiers as mods
+
+    text = (Path(__file__).parents[1] / "llms.txt").read_text()
+    missing = [n for n in mods.__all__ if n not in ("Modifier", "PythonModifier") and f"`{n}(" not in text]
+    assert not missing, f"llms.txt is stale (missing {missing}); regenerate with: ewald api > llms.txt"
+
+
+def test_ovito_modifier_names_resolve():
+    from ewald.modifiers import CommonNeighborAnalysis, CommonNeighborAnalysisModifier, WrapAtoms, WrapPeriodicImagesModifier
+
+    assert CommonNeighborAnalysisModifier is CommonNeighborAnalysis and WrapPeriodicImagesModifier is WrapAtoms
+    with pytest.raises(ImportError):
+        from ewald.modifiers import NoSuchThingModifier  # noqa: F401
+
+
+def test_data_summary(cu_fcc):
+    s = cu_fcc.summary()
+    assert "256 particles" in s and "'Position': float64 [256x3]" in s and "('Cu', 256)" in s
+    assert "rows of cell.matrix are the cell vectors" in s
+
+
+def test_code_modifiers_need_allow_code(cu_fcc):
+    pipe = Pipeline(StaticSource(cu_fcc))
+    closed = Toolset(pipe)
+    assert "PythonScript" not in closed.call("list_modifiers").content
+    assert closed.call("add_modifier", {"name": "PythonScript", "params": {"source": "x"}}).is_error
+    assert "OvitoModifier" not in closed.call("list_modifiers").content and "python_api" not in closed.tools
+    opened = Toolset(pipe, allow_code=True)
+    assert "PythonScript" in opened.call("list_modifiers").content
+    ref = opened.call("python_api").content
+    assert "Differences from OVITO" in ref and "`CommonNeighborAnalysis(" in ref

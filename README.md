@@ -115,6 +115,11 @@ ewald mcp                                                     # same tools over 
 claude mcp add ewald -- ewald mcp                             # use them from Claude Code
 ```
 
+For agents that write ewald code instead (Claude Code, Cursor, ...), `llms.txt` in the repository
+root is a compact API reference with the differences from OVITO's API (`ewald api` prints the
+current version), `data.summary()` shows a frame's properties and ranges, and OVITO modifier
+names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
+
 `run_python` (model-written code executed in your process) is off unless you pass
 `allow_code=True` / `--allow-code`.
 

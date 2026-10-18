@@ -79,11 +79,18 @@ def _downsample(table: dict, max_rows: int = 60) -> dict:
     return {k: [float(f"{v:.4g}") for v in np.asarray(col)[idx]] for k, col in table.items()}
 
 
-def _modifier_classes() -> dict[str, type]:
+#: Modifiers that run code or take Python objects: only PythonScript, and only with allow_code.
+_CODE_MODIFIERS = {"PythonScript"}
+_OBJECT_MODIFIERS = {"OvitoModifier"}
+
+
+def _modifier_classes(allow_code: bool = False) -> dict[str, type]:
     """Every Modifier subclass exported by ``ewald.modifiers`` (new ones appear automatically)."""
     out = {}
     for name in getattr(_modifiers, "__all__", dir(_modifiers)):
         obj = getattr(_modifiers, name, None)
+        if name in _OBJECT_MODIFIERS or (name in _CODE_MODIFIERS and not allow_code):
+            continue
         if isinstance(obj, type) and issubclass(obj, Modifier) and obj not in (Modifier, PythonModifier):
             out[name] = obj
     return out
@@ -241,7 +248,7 @@ class Toolset:
         @T("list_modifiers", "Available modifiers with their parameters and defaults.", _obj({}))
         def list_modifiers():
             return {name: {"params": _signature(cls), "doc": _first_paragraph(cls.__doc__)}
-                    for name, cls in _modifier_classes().items()}
+                    for name, cls in _modifier_classes(self.allow_code).items()}
 
         @T("add_modifier",
            "Append (or insert at 'index') a modifier to the pipeline. Property expressions use OVITO syntax, "
@@ -250,7 +257,7 @@ class Toolset:
            _obj({"name": {"type": "string"}, "params": {"type": "object"}, "index": {"type": "integer"}}, ["name"]))
         def add_modifier(name, params=None, index=None):
             pipe = self._need_pipeline()
-            classes = _modifier_classes()
+            classes = _modifier_classes(self.allow_code)
             if name not in classes:
                 raise ValueError(f"unknown modifier {name!r}; available: {', '.join(classes)}")
             mod = classes[name](**(params or {}))
@@ -375,6 +382,14 @@ class Toolset:
             return {"script": self.to_script()}
 
         if self.allow_code:
+            @T("python_api",
+               "Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every "
+               "modifier signature). Read it before writing code for run_python.", _obj({}))
+            def python_api():
+                from .reference import api_reference
+
+                return api_reference()
+
             @T("run_python",
                "Execute Python in the session (variables persist). In scope: pipe (Pipeline), np, ewald, "
                "data (current frame). Define f(frame, data) and set add_as_modifier to append it as a modifier. "
