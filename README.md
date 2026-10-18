@@ -84,9 +84,11 @@ example figures.
 orientation, elastic deformation gradient, chemical ordering),
 `VoronoiAnalysis` (atomic volume, coordination, Voronoi indices, radical
 tessellation, face list) and `WignerSeitzAnalysis` (vacancies/interstitials,
-per-type occupancies). Property names, structure type ids, colors and
+per-type occupancies), `CentroSymmetry` (conventional and minimum-weight
+matching), `AcklandJones` and `AtomicStrain` (von Mises/volumetric strain,
+F, Green-Lagrange tensor, D2min, rotation, stretch). Property names, structure type ids, colors and
 attribute names follow OVITO, and the test suite checks the results against
-OVITO 3.16 on nine test structures (`tests/data/make_ovito_reference.py`).
+OVITO 3.16 on nine test structures plus defect and strain cases (`tests/data/make_ovito_reference.py`).
 
 ```python
 from ewald.modifiers import PolyhedralTemplateMatching, VoronoiAnalysis

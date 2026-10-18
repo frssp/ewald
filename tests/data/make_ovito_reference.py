@@ -12,6 +12,9 @@ import numpy as np
 from ase.build import bulk
 from ase.cluster import Icosahedron
 from ovito.data import DataCollection, Particles, SimulationCell
+from ovito.modifiers import AcklandJonesModifier as AJ
+from ovito.modifiers import AtomicStrainModifier as STRAIN
+from ovito.modifiers import CentroSymmetryModifier as CSP
 from ovito.modifiers import ClusterAnalysisModifier as CLU
 from ovito.modifiers import CommonNeighborAnalysisModifier as CNA
 from ovito.modifiers import PolyhedralTemplateMatchingModifier as PTM
@@ -78,7 +81,8 @@ for name, s in systems.items():
     for st in ptm.structures:
         st.enabled = True
     for tag, mod in [("cna", CNA()), ("cnafix", CNA(mode=CNA.Mode.FixedCutoff, cutoff=3.05)),
-                     ("cnaint", CNA(mode=CNA.Mode.IntervalCutoff)), ("ptm", ptm),
+                     ("cnaint", CNA(mode=CNA.Mode.IntervalCutoff)), ("ptm", ptm), ("aj", AJ()),
+                     ("csp", CSP()), ("cspmwm", CSP(mode=CSP.Mode.Matching, num_neighbors=8)),
                      ("vor", VOR(compute_indices=True))]:
         d = run(dc, mod)
         for prop in d.particles.keys():
@@ -122,6 +126,24 @@ for tag, kw in [("plain", {}), ("sorted", dict(sort_by_size=True, compute_com=Tr
     for key in t.keys():
         out[f"cluster/{tag}/table/{key}"] = np.array(t[key])
     out[f"cluster/{tag}/count"] = np.array(d.attributes["ClusterAnalysis.cluster_count"])
+
+# Atomic strain: noisy fcc reference, current = homogeneous deformation of cell and atoms + local noise.
+sref = systems["fcc_hot"]
+Fh = np.array([[1.03, 0.02, 0.0], [0.0, 0.98, 0.01], [0.01, 0.0, 1.01]])
+scur_cell = sref["cell"] @ Fh.T
+scur = sref["pos"] @ Fh.T + rng.normal(0, 0.05, sref["pos"].shape)
+out.update({"strain/cur": scur, "strain/cell": scur_cell})
+for tag, kw in [("plain", {}), ("toref", dict(affine_mapping=STRAIN.AffineMapping.ToReference)),
+                ("small", dict(cutoff=2.2))]:
+    mod = STRAIN(cutoff=kw.pop("cutoff", 3.0), output_deformation_gradients=True, output_strain_tensors=True,
+                 output_nonaffine_squared_displacements=True, output_rotations=True,
+                 output_stretch_tensors=True, **kw)
+    mod.reference = StaticSource(data=make(sref["pos"], sref["cell"], [True] * 3, sref["types"]))
+    d = run(make(scur, scur_cell, [True] * 3, sref["types"]), mod)
+    for prop in d.particles.keys():
+        if prop not in ("Position", "Particle Type", "Color"):
+            out[f"strain/{tag}/{prop}"] = np.array(d.particles[prop])
+    out[f"strain/{tag}/invalid"] = np.array(d.attributes["AtomicStrain.invalid_particle_count"])
 
 np.savez_compressed(os.path.join(os.path.dirname(__file__), "ovito_reference.npz"), **out)
 print(f"wrote {len(out)} arrays")

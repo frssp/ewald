@@ -11,13 +11,13 @@ from ase.build import bulk
 from ewald import DataCollection, Pipeline, StaticSource
 from ewald.backend import CPU, Backend
 from ewald.data import Cell
-from ewald.modifiers import (CommonNeighborAnalysis, PolyhedralTemplateMatching, VoronoiAnalysis,
+from ewald.modifiers import (AcklandJones, AtomicStrain, CentroSymmetry, CommonNeighborAnalysis, PolyhedralTemplateMatching, VoronoiAnalysis,
                              WignerSeitzAnalysis)
 from ewald.modifiers._knn import nearest_neighbors
 from ewald.pipeline import ComputeContext
 
 REF = np.load(os.path.join(os.path.dirname(__file__), "data", "ovito_reference.npz"))
-SYSTEMS = sorted({k.split("/")[0] for k in REF if k.split("/")[0] not in ("ws", "cluster")})
+SYSTEMS = sorted({k.split("/")[0] for k in REF if k.split("/")[0] not in ("ws", "cluster", "strain")})
 CTX = ComputeContext(0, None, CPU)
 
 try:
@@ -168,3 +168,45 @@ def test_cna_gpu_path_uses_backend_arrays():
     ncommon, nbonds, chain = _cna_signatures(np, _bond_matrix(np, delta, rc * rc))
     assert np.all(ncommon == 4) and np.all(nbonds == 2) and np.all(chain == 1)
 
+
+
+@pytest.mark.parametrize("name", SYSTEMS)
+def test_ackland_jones_matches_ovito(name):
+    d = run(AcklandJones(), system(name))
+    np.testing.assert_array_equal(d["Structure Type"], REF[f"{name}/aj/Structure Type"])
+
+
+@pytest.mark.parametrize("name", SYSTEMS)
+def test_centrosymmetry_matches_ovito(name):
+    d = run(CentroSymmetry(), system(name))
+    np.testing.assert_allclose(d["Centrosymmetry"], REF[f"{name}/csp/Centrosymmetry"], rtol=1e-9, atol=1e-9)
+
+
+@needs_native
+@pytest.mark.parametrize("name", SYSTEMS)
+def test_centrosymmetry_matching_matches_ovito(name):
+    d = run(CentroSymmetry(num_neighbors=8, mode="matching"), system(name))
+    np.testing.assert_allclose(d["Centrosymmetry"], REF[f"{name}/cspmwm/Centrosymmetry"], rtol=1e-9, atol=1e-9)
+
+
+@pytest.mark.parametrize("tag,kw", [("plain", {}), ("toref", {"affine_mapping": "to_reference"}),
+                                    ("small", {"cutoff": 2.2})])
+def test_atomic_strain_matches_ovito(tag, kw):
+    ref = system("fcc_hot")
+    cur = DataCollection(REF["strain/cur"], ref.types, Cell(REF["strain/cell"]))
+    mod = AtomicStrain(cutoff=kw.pop("cutoff", 3.0), output_deformation_gradients=True, output_strain_tensors=True,
+                       output_nonaffine_squared_displacements=True, output_rotations=True,
+                       output_stretch_tensors=True, **kw)
+    d = Pipeline(StaticSource([ref, cur]), [mod]).compute(1)
+    r = lambda p: REF[f"strain/{tag}/{p}"]  # noqa: E731
+    for p in ("Shear Strain", "Volumetric Strain", "Strain Tensor", "Nonaffine Squared Displacement",
+              "Stretch Tensor"):
+        np.testing.assert_allclose(d[p], r(p), atol=1e-9, err_msg=p)
+    # OVITO stores 3x3 matrices column by column.
+    np.testing.assert_allclose(d["Deformation Gradient"].transpose(0, 2, 1).reshape(-1, 9),
+                               r("Deformation Gradient"), atol=1e-9)
+    q, qr = d["Rotation"], r("Rotation")
+    sign = np.where((q * qr).sum(1) < 0, -1.0, 1.0)[:, None]
+    np.testing.assert_allclose(q * sign, qr, atol=1e-7)
+    np.testing.assert_array_equal(d["Selection"], r("Selection").astype(bool))
+    assert d.attributes["AtomicStrain.invalid_particle_count"] == int(r("invalid"))

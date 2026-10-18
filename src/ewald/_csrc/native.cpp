@@ -32,6 +32,7 @@
 #include "ptm/ptm_constants.h"
 #include "ptm/ptm_functions.h"
 #include "ptm/ptm_initialize_data.h"
+#include "mwm_csp/mwm_csp.h"
 #include "voro++/cell.hh"
 
 namespace py = pybind11;
@@ -376,6 +377,34 @@ static py::dict voronoi_analysis(DoubleArray positions, DoubleArray cell_matrix,
 
 void register_cna(py::module_& m);
 
+// ---------------------------------------------------------------------------
+// Centrosymmetry parameter, minimum-weight matching mode (mwm_csp, MIT, PM Larsen)
+// ---------------------------------------------------------------------------
+
+static DoubleArray csp_matching(DoubleArray nbr_delta, Int32Array nbr_count, int num_threads)
+{
+    if(nbr_delta.ndim() != 3 || nbr_delta.shape(2) != 3) throw std::invalid_argument("nbr_delta must be (N, K, 3)");
+    const size_t N = nbr_delta.shape(0), K = nbr_delta.shape(1);
+    if(K > MWM_CSP_MAX_POINTS) throw std::invalid_argument("at most 32 neighbors are supported");
+    DoubleArray out(N);
+    double* csp = out.mutable_data();
+    const double* delta = nbr_delta.data();
+    const int32_t* count = nbr_count.data();
+    {
+        py::gil_scoped_release release;
+        parallel_for(N, num_threads, [&](size_t start, size_t end, int) {
+            double P[MWM_CSP_MAX_POINTS][3];
+            for(size_t i = start; i < end; i++) {
+                int n = std::min<int>(count[i], (int)K);
+                for(int k = 0; k < n; k++)
+                    for(int d = 0; d < 3; d++) P[k][d] = delta[(i * K + k) * 3 + d];
+                csp[i] = calculate_mwm_csp(n, P);
+            }
+        });
+    }
+    return out;
+}
+
 PYBIND11_MODULE(_native, m)
 {
     register_cna(m);
@@ -387,5 +416,6 @@ PYBIND11_MODULE(_native, m)
           py::arg("pbc"), py::arg("center_index"), py::arg("nbr_index"), py::arg("nbr_delta"), py::arg("nbr_count"),
           py::arg("radii") = py::none(), py::arg("edge_threshold") = 0.0, py::arg("face_threshold") = 0.0,
           py::arg("relative_face_threshold") = 0.0, py::arg("compute_bonds") = false, py::arg("num_threads") = 0);
+    m.def("csp_matching", &csp_matching, py::arg("nbr_delta"), py::arg("nbr_count"), py::arg("num_threads") = 0);
     m.attr("FACE_ORDER_STORAGE_LIMIT") = FaceOrderStorageLimit;
 }
