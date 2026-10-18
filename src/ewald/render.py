@@ -66,7 +66,7 @@ def _cell_lines(cell):
 def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, show_cell: bool = True,
                 cell_color="black", cell_width: float = 2.0, bonds: float | None = None,
                 bond_radius: float = 0.15, only_visible=None, atom_style: str = "auto",
-                mesh_limit: int = 150_000):
+                mesh_limit: int = 150_000, sphere_resolution: int | None = None):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter.
 
     ``atom_style``: 'mesh' (sphere meshes, publication shading), 'impostor' (GPU
@@ -90,22 +90,22 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
             atom_style = "mesh" if cloud.n_points <= mesh_limit else "impostor"
         if atom_style == "mesh":
             # Real sphere meshes: best shading for figures, fine up to ~1e5 atoms.
-            res = 20 if cloud.n_points < 20_000 else 12
+            res = sphere_resolution or (20 if cloud.n_points < 20_000 else 12)
             sphere = pv.Sphere(radius=1.0, theta_resolution=res, phi_resolution=res)
             atoms = cloud.glyph(geom=sphere, scale="radius", orient=False)
             plotter.add_mesh(atoms, scalars="rgb", rgb=True, smooth_shading=True, ambient=0.25,
-                             diffuse=0.8, specular=0.3, specular_power=40, name="atoms")
+                             diffuse=0.8, specular=0.3, specular_power=40, name="atoms", render=False)
         else:
             # GPU sphere impostors: one vertex per atom, scales to millions of atoms.
             actor = plotter.add_mesh(cloud, style="points_gaussian", scalars="rgb", rgb=True,
-                                     emissive=False, render_points_as_spheres=True, name="atoms")
+                                     emissive=False, render_points_as_spheres=True, name="atoms", render=False)
             mapper = actor.GetMapper()
             mapper.SetScaleArray("radius")
             mapper.SetScaleFactor(1.0)
         if bonds:
             _add_bonds(plotter, data, colors, bonds, bond_radius)
     if show_cell and data.cell.is_valid:
-        plotter.add_mesh(_cell_lines(data.cell), color=cell_color, line_width=cell_width, name="cell")
+        plotter.add_mesh(_cell_lines(data.cell), color=cell_color, line_width=cell_width, name="cell", render=False)
 
 
 def _add_bonds(plotter, data, colors, cutoff, bond_radius):
@@ -127,7 +127,7 @@ def _add_bonds(plotter, data, colors, cutoff, bond_radius):
     poly = pv.PolyData(pts, lines=lines)
     poly.cell_data["rgb"] = (colors[i] * 255).astype(np.uint8)
     tubes = poly.tube(radius=bond_radius, n_sides=12, capping=False)
-    plotter.add_mesh(tubes, scalars="rgb", rgb=True, name="bonds", smooth_shading=True,
+    plotter.add_mesh(tubes, scalars="rgb", rgb=True, name="bonds", smooth_shading=True, render=False,
                      ambient=0.25, diffuse=0.8, specular=0.2, specular_power=30)
 
 
@@ -151,16 +151,43 @@ def _setup_camera(plotter, data, direction, orthographic, zoom):
     plotter.camera.zoom(zoom)
 
 
+def camera_state(plotter) -> dict:
+    """Serializable camera of a plotter (for GUI -> offscreen render and sessions)."""
+    cam = plotter.camera
+    return {"position": tuple(cam.position), "focal_point": tuple(cam.focal_point),
+            "up": tuple(cam.up), "parallel_projection": bool(cam.parallel_projection),
+            "parallel_scale": float(cam.parallel_scale), "view_angle": float(cam.view_angle)}
+
+
+def apply_camera_state(plotter, state: dict):
+    cam = plotter.camera
+    cam.position = state["position"]
+    cam.focal_point = state["focal_point"]
+    cam.up = state["up"]
+    if state.get("parallel_projection"):
+        plotter.enable_parallel_projection()
+    else:
+        plotter.disable_parallel_projection()
+    cam.parallel_scale = state.get("parallel_scale", cam.parallel_scale)
+    cam.view_angle = state.get("view_angle", cam.view_angle)
+    plotter.reset_camera_clipping_range()
+
+
+def setup_camera(plotter, data, direction="iso", orthographic=True, zoom=1.0):
+    _setup_camera(plotter, data, direction, orthographic, zoom)
+
+
 def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction="iso",
            orthographic: bool = True, zoom: float = 1.0, background="white",
            transparent_background: bool = False, ambient_occlusion: bool = False,
            legend: bool = True, show_cell: bool = True, bonds: float | None = None,
            radius_scale: float = 1.0, antialiasing: bool = True, text: str | None = None,
-           **scene_kwargs):
+           camera: dict | None = None, **scene_kwargs):
     """Render one DataCollection to ``filename`` (PNG/JPG/TIFF) or return an RGB array.
 
     ``direction`` is a view vector *from* the scene to the camera, or one of
     'x', 'y', 'z', '-x', ..., 'iso'. ``bonds=2.8`` draws bonds shorter than 2.8 A.
+    ``camera`` (see :func:`camera_state`) reproduces an interactive view exactly.
     """
     import pyvista as pv
 
@@ -171,7 +198,10 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
         _add_colorbar(p, data)
     if text:
         p.add_text(text, font_size=12, color="black" if background == "white" else "white")
-    _setup_camera(p, data, direction, orthographic, zoom)
+    if camera is not None:
+        apply_camera_state(p, camera)
+    else:
+        _setup_camera(p, data, direction, orthographic, zoom)
     if antialiasing:
         try:
             p.enable_anti_aliasing("ssaa")

@@ -20,11 +20,20 @@ def main(argv=None):
     r.add_argument("--cmap", default="viridis")
     r.add_argument("--type-map", default=None, help="LAMMPS types, e.g. 1=Cu,2=Zr")
     r.add_argument("--ao", action="store_true", help="screen-space ambient occlusion")
+    g = sub.add_parser("gui", help="open the desktop viewer")
+    g.add_argument("input", nargs="?")
+    g.add_argument("--type-map", default=None)
+    g.add_argument("--device", default=None)
     i = sub.add_parser("info", help="print frames and properties")
     i.add_argument("input")
     i.add_argument("--type-map", default=None)
     args = ap.parse_args(argv)
 
+    if args.cmd == "gui":
+        from .gui import main as gui_main
+
+        extra = ([args.input] if args.input else []) + (["--type-map", args.type_map] if args.type_map else [])
+        return gui_main(extra + (["--device", args.device] if args.device else []))
     kw = {}
     if args.type_map:
         kw["type_map"] = dict(item.split("=") for item in args.type_map.split(","))
