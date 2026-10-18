@@ -69,6 +69,35 @@ example figures.
 * Rendering: VTK via PyVista, offscreen; sphere meshes for figures and GPU
   impostors above 150k atoms.
 
+## Claude integration (`ewald.llm`)
+
+`ewald.llm` exposes the pipeline as tools for Claude, so an analysis can be asked for in
+words and still ends up as an ordinary, reproducible pipeline. Install with
+`pip install -e ".[llm]"` and set `ANTHROPIC_API_KEY` (or `ant auth login`).
+
+```python
+from ewald.llm import Agent
+
+agent = Agent.from_file("XDATCAR")            # default model: claude-opus-5-5
+print(agent.ask("What happens in this run? Render the frame where it changes."))
+print(agent.toolset.to_script())             # the analysis as a standalone script
+```
+
+The model never reads raw coordinates. Tools return compact descriptors instead
+(composition, cell, density, minimum distance, coordination histograms, g(r) peaks,
+sanity warnings) and `describe_trajectory` flags the frames where a descriptor jumps.
+Renders come back as images the model can look at. These parts need no LLM:
+
+```bash
+ewald describe dump.lammpstrj --trajectory --type-map 1=Cu   # JSON summary + events
+ewald ask XDATCAR "Is this cell reasonable? What is the Si coordination?"
+ewald mcp                                                     # same tools over MCP (stdio)
+claude mcp add ewald -- ewald mcp                             # use them from Claude Code
+```
+
+`run_python` (model-written code executed in your process) is off unless you pass
+`allow_code=True` / `--allow-code`.
+
 ## Modifiers available now
 
 `ExpressionSelection`, `SelectType`, `InvertSelection`, `ClearSelection`,
