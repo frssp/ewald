@@ -121,15 +121,34 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                              diffuse=0.8, specular=0.3, specular_power=40, name="atoms", render=False)
         else:
             # GPU sphere impostors: one vertex per atom, scales to millions of atoms.
+            # VTK's built-in lit sprites have no ambient term (black rims), so shade them ourselves;
+            # with custom splat code VTK skips its own sprite lighting.
             actor = plotter.add_mesh(cloud, style="points_gaussian", scalars="rgb", rgb=True,
-                                     emissive=False, render_points_as_spheres=True, name="atoms", render=False)
+                                     emissive=False, render_points_as_spheres=True, name="atoms",
+                                     render=False)
             mapper = actor.GetMapper()
             mapper.SetScaleArray("radius")
             mapper.SetScaleFactor(1.0)
+            mapper.SetSplatShaderCode(_IMPOSTOR_SHADER)
         if bonds or bond_pairs:
             _add_bonds(plotter, data, colors, bonds, bond_radius, bond_pairs)
     if show_cell and data.cell.is_valid:
         plotter.add_mesh(_cell_lines(data.cell), color=cell_color, line_width=cell_width, name="cell", render=False)
+
+
+# Fragment code for sphere impostors: discard outside the disc, then Blinn-Phong with a
+# fixed head light plus ambient, matching the mesh material (ambient 0.25, diffuse 0.8).
+_IMPOSTOR_SHADER = """
+//VTK::Color::Impl
+float r2 = dot(offsetVCVSOutput.xy, offsetVCVSOutput.xy);
+if (r2 > 1.0) { discard; }
+vec3 n = vec3(offsetVCVSOutput.xy, sqrt(1.0 - r2));
+vec3 l = normalize(vec3(-0.25, 0.35, 1.0));
+float diff = max(dot(n, l), 0.0);
+float spec = pow(max(dot(n, normalize(l + vec3(0.0, 0.0, 1.0))), 0.0), 40.0);
+diffuseColor = diffuseColor * (0.3 + 0.75 * diff) + vec3(0.3 * spec);
+ambientColor = vec3(0.0);
+"""
 
 
 def bond_list(data, cutoff=None, pairs=None):

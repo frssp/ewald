@@ -13,6 +13,16 @@ def test_render_png(tmp_path, cu_fcc):
     assert img.std() > 5  # not a blank image
 
 
+def test_impostor_shading_has_no_black_rims(tmp_path, cu_fcc):
+    from ewald.render import render
+
+    img = render(cu_fcc, tmp_path / "imp.png", size=(320, 240), atom_style="impostor", background="white",
+                 show_cell=False, ambient_occlusion=False)
+    atoms = img[..., :3].astype(int).sum(-1) < 740
+    assert atoms.sum() > 1000  # sprites are drawn (not blended away)
+    assert np.percentile(img[..., :3].astype(int).sum(-1)[atoms], 1) > 60  # rims stay lit
+
+
 def test_raytrace_png(tmp_path, cu_fcc):
     from ewald.render import render
 
