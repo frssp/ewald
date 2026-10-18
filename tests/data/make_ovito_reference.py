@@ -17,6 +17,7 @@ from ovito.modifiers import AtomicStrainModifier as STRAIN
 from ovito.modifiers import CentroSymmetryModifier as CSP
 from ovito.modifiers import ClusterAnalysisModifier as CLU
 from ovito.modifiers import CommonNeighborAnalysisModifier as CNA
+from ovito.modifiers import IdentifyDiamondModifier as IDD
 from ovito.modifiers import PolyhedralTemplateMatchingModifier as PTM
 from ovito.modifiers import VoronoiAnalysisModifier as VOR
 from ovito.modifiers import WignerSeitzAnalysisModifier as WS
@@ -48,6 +49,10 @@ ico = Icosahedron("Cu", 4)
 ico.center(vacuum=2.0)
 add("ico_cluster", ico, 0.02, pbc=False)
 add("disordered", bulk("Cu", "fcc", a=3.615, cubic=True).repeat((4, 4, 4)), 0.5)
+add("hexdiamond", bulk("SiSi", "wurtzite", a=3.84, c=6.27, u=0.375).repeat((4, 4, 3)), 0.04)
+vac = bulk("Si", "diamond", a=5.43, cubic=True).repeat((3, 3, 3))
+del vac[[0, 50, 101]]
+add("diamond_vac", vac, 0.03)
 
 
 def make(pos, cell, pbc, types):
@@ -83,7 +88,7 @@ for name, s in systems.items():
     for tag, mod in [("cna", CNA()), ("cnafix", CNA(mode=CNA.Mode.FixedCutoff, cutoff=3.05)),
                      ("cnaint", CNA(mode=CNA.Mode.IntervalCutoff)), ("ptm", ptm), ("aj", AJ()),
                      ("csp", CSP()), ("cspmwm", CSP(mode=CSP.Mode.Matching, num_neighbors=8)),
-                     ("vor", VOR(compute_indices=True))]:
+                     ("vor", VOR(compute_indices=True)), ("diamondid", IDD())]:
         d = run(dc, mod)
         for prop in d.particles.keys():
             if prop not in ("Position", "Particle Type", "Color"):

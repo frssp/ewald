@@ -2,7 +2,7 @@
 from ..pipeline import Modifier, PythonModifier
 from .analysis import CalculateDisplacements, CoordinationAnalysis
 from .coloring import AssignColor, ColorCoding
-from .structure import CommonNeighborAnalysis, PolyhedralTemplateMatching
+from .structure import CommonNeighborAnalysis, IdentifyDiamond, PolyhedralTemplateMatching
 from .voronoi import VoronoiAnalysis
 from .wigner_seitz import WignerSeitzAnalysis
 from .local_order import AcklandJones, AtomicStrain, CentroSymmetry
@@ -16,4 +16,4 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "InvertSelection", "SelectType", "Slice", "AffineTransformation", "ComputeProperty",
            "Replicate", "WrapAtoms", "CommonNeighborAnalysis", "PolyhedralTemplateMatching",
            "VoronoiAnalysis", "WignerSeitzAnalysis", "DislocationAnalysis", "OvitoModifier",
-           "AcklandJones", "AtomicStrain", "CentroSymmetry"]
+           "AcklandJones", "AtomicStrain", "CentroSymmetry", "IdentifyDiamond"]

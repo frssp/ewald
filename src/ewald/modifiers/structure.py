@@ -22,13 +22,13 @@ STRUCTURE_COLORS = np.array([
 ORDERING_NAMES = ["NONE", "PURE", "L10", "L12_A", "L12_B", "B2", "ZINCBLENDE_WURTZITE", "BORON_NITRIDE"]
 
 
-def _type_ids(names) -> set[int]:
+def _type_ids(names, table=STRUCTURE_NAMES) -> set[int]:
     ids = set()
     for n in names:
         if isinstance(n, (int, np.integer)):
             ids.add(int(n))
         else:
-            ids.add(STRUCTURE_NAMES.index(str(n).upper().replace(" ", "_")))
+            ids.add(list(table).index(str(n).upper().replace(" ", "_")))
     return ids
 
 
@@ -42,9 +42,11 @@ class StructureIdentificationModifier(Modifier):
     _prefix = "StructureIdentification"
     _num_types = 5
     _default_types = (FCC, HCP, BCC, ICO)
+    _names = STRUCTURE_NAMES
+    _colors = STRUCTURE_COLORS
 
     def __init__(self, types=None, color_by_type: bool = True, only_selected: bool = False):
-        self.types = tuple(self._default_types if types is None else sorted(_type_ids(types)))
+        self.types = tuple(self._default_types if types is None else sorted(_type_ids(types, self._names)))
         self.color_by_type = color_by_type
         self.only_selected = only_selected
 
@@ -57,11 +59,11 @@ class StructureIdentificationModifier(Modifier):
         data.particles["Structure Type"] = structure.astype(np.int32)
         counts = np.bincount(structure, minlength=self._num_types)
         for t in range(self._num_types):
-            data.attributes[f"{self._prefix}.counts.{STRUCTURE_NAMES[t]}"] = int(counts[t])
+            data.attributes[f"{self._prefix}.counts.{self._names[t]}"] = int(counts[t])
         data.tables["structures"] = {"Structure Type": np.arange(self._num_types),
                                      "Count": counts[: self._num_types]}
         if self.color_by_type:
-            data.particles["Color"] = STRUCTURE_COLORS[structure]
+            data.particles["Color"] = self._colors[structure]
 
 
 # ---------------------------------------------------------------------------
@@ -327,3 +329,81 @@ class PolyhedralTemplateMatching(StructureIdentificationModifier):
             oc = np.bincount(ordering, minlength=len(ORDERING_NAMES))
             for i, name in enumerate(ORDERING_NAMES):
                 data.attributes[f"PolyhedralTemplateMatching.ordering_counts.{name}"] = int(oc[i])
+
+
+# ---------------------------------------------------------------------------
+# Diamond structure identification
+# ---------------------------------------------------------------------------
+
+DIAMOND_NAMES = ["OTHER", "CUBIC_DIAMOND", "CUBIC_DIAMOND_FIRST_NEIGHBOR", "CUBIC_DIAMOND_SECOND_NEIGHBOR",
+                 "HEX_DIAMOND", "HEX_DIAMOND_FIRST_NEIGHBOR", "HEX_DIAMOND_SECOND_NEIGHBOR"]
+DIAMOND_COLORS = np.array([(0.95, 0.95, 0.95), (0.074510, 0.627451, 0.996078), (0.0, 0.996078, 0.960784),
+                           (0.494118, 0.996078, 0.709804), (0.996078, 0.537255, 0.0),
+                           (0.996078, 0.862745, 0.0), (0.8, 0.898039, 0.317647)])
+
+
+class IdentifyDiamond(StructureIdentificationModifier):
+    """Cubic and hexagonal diamond lattice identification (Maras et al. 2016).
+
+    A CNA on the 12 second-nearest neighbors (reached through the 4 nearest
+    neighbors).  Also labels the first and second neighbors of diamond atoms,
+    which mark surfaces and defects.  Structure type ids follow OVITO: 0 OTHER,
+    1-3 cubic diamond (atom, 1st neighbor, 2nd neighbor), 4-6 hexagonal diamond.
+    """
+
+    _prefix = "IdentifyDiamond"
+    _num_types = 7
+    _default_types = tuple(range(1, 7))
+    _names = DIAMOND_NAMES
+    _colors = DIAMOND_COLORS
+
+    def modify(self, data, ctx):
+        be, xp = ctx.backend, ctx.xp
+        subset = self._subset(data)
+        pos = data.positions if subset is None else data.positions[subset]
+        n = len(pos)
+        result = np.zeros(n, dtype=np.int32)
+        if n:
+            index, delta, _ = nearest_neighbors(pos, data.cell, 4)
+            result = self._identify(be, xp, index, delta)
+        structure = result if subset is None else np.zeros(data.count, np.int32)
+        if subset is not None:
+            structure[subset] = result
+        self._finish(data, structure)
+
+    def _identify(self, be, xp, index, delta):
+        n = len(index)
+        ok = (index >= 0).all(1)
+        safe = np.where(index >= 0, index, 0)
+        second = delta[:, :, None, :] + delta[safe]                      # (n, 4, 4, 3)
+        nonzero = ~np.all(np.abs(second) <= 1e-2, axis=-1)                # OVITO's isZero(1e-2)
+        ok &= (nonzero.sum(2) == 3).all(1)
+        cand = np.nonzero(ok)[0]
+        out = np.zeros(n, dtype=np.int32)
+        if len(cand):
+            sec = second[cand][nonzero[cand]].reshape(len(cand), 12, 3)
+            v = xp.asarray(sec)
+            rc = xp.sqrt((v * v).sum(-1)).mean(-1) * 1.2071068
+            ncommon, nbonds, chain = _cna_signatures(xp, _bond_matrix(xp, v, rc * rc))
+            sig_ok = ((ncommon == 4) & (nbonds == 2) & ((chain == 1) | (chain == 2))).all(1)
+            n421 = (chain == 1).sum(1)
+            t = xp.where(sig_ok & (n421 == 12), 1, xp.where(sig_ok & (n421 == 6), 4, 0))
+            out[cand] = be.to_numpy(t).astype(np.int32)
+        enabled = set(self.types)
+        out[(out == 1) & (1 not in enabled)] = 0
+        out[(out == 4) & (4 not in enabled)] = 0
+        # Mark neighbors in particle order, as OVITO's sequential loops do.
+        for src_types, offset in (((1, 4), 1), ((2, 5), 1)):
+            src = np.nonzero(np.isin(out, src_types))[0]
+            if not len(src):
+                continue
+            nb = index[src]
+            label = np.repeat(out[src] + offset, 4)
+            nb = nb.ravel()
+            keep = nb >= 0
+            nb, label = nb[keep], label[keep]
+            first = np.unique(nb, return_index=True)
+            targets, pos = first
+            assign = out[targets] == 0
+            out[targets[assign]] = label[pos[assign]]
+        return out
