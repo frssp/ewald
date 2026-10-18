@@ -38,6 +38,13 @@ class Viewport(QtWidgets.QWidget):
         self.ortho = True
         self.tool = "orbit"
         self.overlay_text = ""
+        # set from Preferences (ewald.settings)
+        self.rotation_step = 15.0
+        self.sphere_resolution = 10
+        self.mesh_limit = 150_000
+        self.show_overlay = True
+        self.show_axes = True
+        self.initial_view = "iso"
         self._picks: list[int] = []
         self._press = None
         self._first = True
@@ -71,11 +78,11 @@ class Viewport(QtWidgets.QWidget):
             b.clicked.connect(lambda _=False, ax=axis: self.view_along(ax))
             lay.addWidget(b)
         lay.addSpacing(8)
-        for text, tip, fn in (("←", "Rotate -15° about the screen vertical", lambda: self.rotate("azimuth", -15)),
-                              ("→", "Rotate +15° about the screen vertical", lambda: self.rotate("azimuth", 15)),
-                              ("↑", "Tilt +15°", lambda: self.rotate("elevation", 15)),
-                              ("↓", "Tilt -15°", lambda: self.rotate("elevation", -15)),
-                              ("↻", "Roll +15° in the screen plane", lambda: self.rotate("roll", 15))):
+        for text, tip, fn in (("←", "Rotate one step (Preferences › Viewports) left", lambda: self.rotate("azimuth", -self.rotation_step)),
+                              ("→", "Rotate one step right about the screen vertical", lambda: self.rotate("azimuth", self.rotation_step)),
+                              ("↑", "Tilt up one step", lambda: self.rotate("elevation", self.rotation_step)),
+                              ("↓", "Tilt down one step", lambda: self.rotate("elevation", -self.rotation_step)),
+                              ("↻", "Roll one step in the screen plane", lambda: self.rotate("roll", self.rotation_step))):
             b = _button(text, tip)
             b.clicked.connect(fn)
             lay.addWidget(b)
@@ -138,20 +145,20 @@ class Viewport(QtWidgets.QWidget):
         p.set_background(self.style.background)
         kw = self.style.scene_kwargs()
         kw["cell_color"] = "#AEB4BE" if dark else "black"
-        kw["sphere_resolution"] = 10  # interactive; image export uses full quality
-        build_scene(p, self.data, **kw)
+        kw["sphere_resolution"] = self.sphere_resolution  # interactive; image export uses full quality
+        build_scene(p, self.data, mesh_limit=self.mesh_limit, **kw)
         if "ColorCoding.range" in self.data.attributes:
             _add_colorbar(p, self.data, font_size=12)
             sb = p.scalar_bar
             if sb is not None and dark:
                 for prop in (sb.GetTitleTextProperty(), sb.GetLabelTextProperty()):
                     prop.SetColor(0.9, 0.91, 0.93)
-        if self.overlay_text:
+        if self.overlay_text and self.show_overlay:
             p.add_text(self.overlay_text, position="upper_left", font_size=7, name="_overlay",
                        color="#E7E9EC" if dark else "black")
         if self._first:
-            setup_camera(p, self.data, "iso", self.ortho)
-            if not getattr(self, "_axes", False):
+            setup_camera(p, self.data, self.initial_view, self.ortho)
+            if self.show_axes and not getattr(self, "_axes", False):
                 p.add_axes(color="#E7E9EC" if dark else "black", line_width=2)
                 self._axes = True
             self._first = False
@@ -199,6 +206,12 @@ class Viewport(QtWidgets.QWidget):
         self.ortho_button.setText("Ortho" if on else "Persp")
         (self.plotter.enable_parallel_projection if on else self.plotter.disable_parallel_projection)()
         self.plotter.render()
+
+    def set_axes_visible(self, on):
+        self.show_axes = on
+        if getattr(self, "_axes", False):
+            (self.plotter.show_axes if on else self.plotter.hide_axes)()
+            self.plotter.render()
 
     def zoom_fit(self):
         self.plotter.reset_camera()

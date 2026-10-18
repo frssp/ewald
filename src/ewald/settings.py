@@ -1,0 +1,292 @@
+"""User preferences shared by the GUI and scripts (design: /design/settings-menu.md).
+
+Stored as one JSON file holding only the values that differ from the defaults::
+
+    from ewald import settings
+    s = settings.load()
+    s["viewport.background"] = "white"
+    s.save()
+
+Headless ``render()`` / ``Pipeline.compute()`` never read these implicitly; the
+GUI applies them, scripts read them explicitly.
+"""
+from __future__ import annotations
+
+import importlib
+import importlib.util
+import json
+import logging
+import os
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Option:
+    key: str
+    default: object
+    label: str
+    help: str = ""
+    choices: tuple = ()          # allowed values (combo box)
+    minimum: float | None = None
+    maximum: float | None = None
+    kind: str = ""               # editor hint: color, file, dir, table
+
+    @property
+    def page(self) -> str:
+        return PAGE_OF_PREFIX[self.key.split(".")[0]]
+
+
+PAGES = ("General", "Viewports", "Elements", "Rendering", "Compute", "Python")
+PAGE_OF_PREFIX = {"general": "General", "viewport": "Viewports", "elements": "Elements", "bonds": "Elements",
+                  "render": "Rendering", "compute": "Compute", "python": "Python"}
+
+OPTIONS = (
+    Option("general.startup_workspace", "Analyze", "Startup workspace", choices=("Analyze", "Render")),
+    Option("general.font_size", 12, "UI font size", "Pixels; applies to every panel.", minimum=9, maximum=20),
+    Option("general.restore_layout", True, "Restore window layout", "Reopen docks and window size as you left them."),
+    Option("general.lammps_type_prompt", "ask", "LAMMPS type names",
+           "Ask for a type → element map when opening a LAMMPS dump.", choices=("ask", "never")),
+    Option("general.lammps_type_map", "", "Default LAMMPS type map", "e.g. 1=Cu,2=Zr; pre-fills the prompt."),
+
+    Option("viewport.background", "#14161A", "Background", kind="color"),
+    Option("viewport.projection", "ortho", "Projection", choices=("ortho", "persp")),
+    Option("viewport.initial_view", "iso", "Initial view direction", choices=("iso", "x", "y", "z", "front")),
+    Option("viewport.style_preset", "Space-filling", "Default style",
+           choices=("Space-filling", "Ball & stick", "Points")),
+    Option("viewport.rotation_step", 15.0, "Step rotation", "Degrees per click of the rotate buttons (VESTA).",
+           minimum=0.5, maximum=90),
+    Option("viewport.show_axes", True, "Show axes tripod"),
+    Option("viewport.show_overlay", True, "Show frame / timestep text"),
+    Option("viewport.sphere_resolution", 10, "Sphere resolution", "Interactive mesh detail; exports use full quality.",
+           minimum=4, maximum=40),
+    Option("viewport.mesh_limit", 150_000, "Impostor threshold",
+           "Above this many atoms spheres are drawn as GPU impostors.", minimum=1000, maximum=100_000_000),
+
+    Option("elements.color_scheme", "Jmol", "Color scheme", choices=("Jmol", "CPK")),
+    Option("elements.radius_source", "covalent", "Radius source", choices=("covalent", "vdW")),
+    Option("elements.radius_scale", 0.8, "Radius scale", "Multiplies the tabulated radius.", minimum=0.05, maximum=3),
+    Option("elements.overrides", {}, "Per-element overrides", "Color and radius per element; wins over the scheme.",
+           kind="table"),
+    Option("bonds.length_factor", 1.15, "Bond length factor", "Max bond = factor × (r_A + r_B), like VESTA.",
+           minimum=0.5, maximum=2),
+    Option("bonds.radius", 0.15, "Bond radius", "Å", minimum=0.01, maximum=1),
+
+    Option("render.renderer", "raytrace", "Default renderer", choices=("raytrace", "opengl")),
+    Option("render.samples", 8, "Anti-aliasing rays/pixel", minimum=1, maximum=256),
+    Option("render.ao_samples", 16, "Ambient occlusion rays", minimum=0, maximum=512),
+    Option("render.shadows", True, "Shadows"),
+    Option("render.size_preset", "1-column (3.5 in, 4:3)", "Size preset",
+           choices=("1-column (3.5 in, 4:3)", "2-column (7.2 in, 16:9)", "Square (3.5 in)", "Slide 16:9 (1920×1080)")),
+    Option("render.dpi", 600, "Resolution", "dpi", minimum=72, maximum=2400),
+    Option("render.background", "white", "Background", choices=("white", "transparent", "black", "viewport")),
+    Option("render.output_dir", "", "Output folder", "Empty = current folder.", kind="dir"),
+
+    Option("compute.device", "cpu", "Default device", "Toolbar Compute switch changes only the current session.",
+           choices=("cpu", "cuda", "auto")),
+    Option("compute.threads", 0, "CPU threads", "Numba threads for CPU kernels; 0 = all cores.",
+           minimum=0, maximum=1024),
+
+    Option("python.startup_script", "", "Console startup script", "Run in the Python console when the GUI starts.",
+           kind="file"),
+    Option("python.extra_paths", "", "Extra module paths", "Folders added to sys.path, separated by ';'.", kind="dir"),
+)
+OPTION = {o.key: o for o in OPTIONS}
+
+
+# ---------------------------------------------------------------- devices / optional components
+def _probe_cuda():
+    if importlib.util.find_spec("cupy") is None:
+        return False, "CuPy not installed: pip install 'ewald[gpu]'"
+    from .backend import gpu_available
+
+    if not gpu_available():
+        return False, "CuPy installed but no CUDA device found"
+    try:
+        import cupy
+
+        name = cupy.cuda.runtime.getDeviceProperties(0)["name"]
+        return True, name.decode() if isinstance(name, bytes) else str(name)
+    except Exception:
+        return True, "CUDA device"
+
+
+# key, label, probe() -> (available, detail). New backends (e.g. Apple Metal) add one row here.
+DEVICES = (
+    ("cpu", "CPU (NumPy / Numba)", lambda: (True, f"{os.cpu_count()} cores")),
+    ("cuda", "NVIDIA CUDA (CuPy)", _probe_cuda),
+    ("auto", "Auto (GPU if available)", lambda: (True, "falls back to CPU")),
+)
+
+# module, purpose, install command
+COMPONENTS = (
+    ("cupy", "GPU compute (CUDA)", "pip install 'ewald[gpu]'"),
+    ("ovito", "Dislocation analysis (DXA)", "pip install ovito"),
+    ("freud", "Extra analysis (freud)", "pip install 'ewald[analysis]'"),
+    ("imageio_ffmpeg", "Movie export (.mp4)", "pip install 'ewald[movie]'"),
+    ("qtconsole", "IPython console in the GUI", "pip install 'ewald[gui]'"),
+)
+
+
+def component_status():
+    """[(module, purpose, installed, version, install command)] without importing heavy packages."""
+    from importlib import metadata
+
+    dist = {"cupy": None, "freud": "freud-analysis", "imageio_ffmpeg": "imageio-ffmpeg"}
+    out = []
+    for mod, purpose, cmd in COMPONENTS:
+        found = importlib.util.find_spec(mod) is not None
+        version = ""
+        if found:
+            names = [dist.get(mod) or mod] if mod != "cupy" else ["cupy-cuda12x", "cupy-cuda11x", "cupy"]
+            for n in names:
+                try:
+                    version = metadata.version(n)
+                    break
+                except metadata.PackageNotFoundError:
+                    pass
+        out.append((mod, purpose, found, version, cmd))
+    return out
+
+
+# ---------------------------------------------------------------- storage
+def config_dir() -> Path:
+    if os.environ.get("EWALD_CONFIG_DIR"):
+        return Path(os.environ["EWALD_CONFIG_DIR"])
+    if sys.platform == "win32":
+        return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "ewald"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "ewald"
+    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "ewald"
+
+
+def default_path() -> Path:
+    return config_dir() / "settings.json"
+
+
+def _valid(opt: Option, value):
+    """Return the value coerced to the option's type, or raise ValueError."""
+    d = opt.default
+    if isinstance(d, bool):
+        if not isinstance(value, bool):
+            raise ValueError("expected true/false")
+    elif isinstance(d, (int, float)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("expected a number")
+        value = type(d)(value)
+        if (opt.minimum is not None and value < opt.minimum) or (opt.maximum is not None and value > opt.maximum):
+            raise ValueError(f"out of range [{opt.minimum}, {opt.maximum}]")
+    elif isinstance(d, dict):
+        if not isinstance(value, dict):
+            raise ValueError("expected a mapping")
+        value = {str(k): dict(v) for k, v in value.items()}
+    else:
+        value = str(value)
+    if opt.choices and value not in opt.choices:
+        raise ValueError(f"expected one of {opt.choices}")
+    return value
+
+
+class Settings:
+    """Mapping of option key -> value with defaults; ``save()`` writes only changed keys."""
+
+    def __init__(self, values: dict | None = None, path: str | os.PathLike | None = None):
+        self.path = Path(path) if path else default_path()
+        self._values: dict = {}
+        for k, v in (values or {}).items():
+            try:
+                self[k] = v
+            except (KeyError, ValueError) as exc:
+                log.warning("ignoring setting %s=%r: %s", k, v, exc)
+
+    def __getitem__(self, key):
+        if key not in OPTION:
+            raise KeyError(key)
+        v = self._values.get(key, OPTION[key].default)
+        return dict(v) if isinstance(v, dict) else v
+
+    def __setitem__(self, key, value):
+        if key not in OPTION:
+            raise KeyError(f"unknown setting {key!r}")
+        value = _valid(OPTION[key], value)
+        if value == OPTION[key].default:
+            self._values.pop(key, None)
+        else:
+            self._values[key] = value
+
+    def get(self, key, default=None):
+        return self[key] if key in OPTION else default
+
+    def is_default(self, key) -> bool:
+        return key not in self._values
+
+    def reset(self, keys=None):
+        for k in list(self._values) if keys is None else keys:
+            self._values.pop(k, None)
+
+    def changed(self) -> dict:
+        return {k: self[k] for k in self._values}
+
+    def copy(self) -> "Settings":
+        return Settings(self.changed(), self.path)
+
+    def update(self, other: "Settings | dict"):
+        values = other.changed() if isinstance(other, Settings) else other
+        self._values.clear()
+        for k, v in values.items():
+            self[k] = v
+
+    def save(self, path=None):
+        p = Path(path) if path else self.path
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(self.changed(), indent=2, sort_keys=True, ensure_ascii=False) + "\n")
+        return p
+
+    def __repr__(self):
+        return f"<Settings {self.path} changed={sorted(self._values)}>"
+
+    # ---------------------------------------------------------- derived values
+    def element_color(self, symbol: str):
+        """RGB (0..1) for an element under the color scheme and overrides, or None for non-elements."""
+        o = self["elements.overrides"].get(symbol, {})
+        if "color" in o:
+            return o["color"]
+        from ase.data import atomic_numbers
+
+        z = atomic_numbers.get(symbol)
+        if not z:
+            return None
+        if self["elements.color_scheme"] == "CPK":
+            from ase.data.colors import cpk_colors as table
+        else:
+            from ase.data.colors import jmol_colors as table
+        return tuple(float(c) for c in table[z])
+
+    def element_radius(self, symbol: str):
+        o = self["elements.overrides"].get(symbol, {})
+        if "radius" in o:
+            return float(o["radius"])
+        import numpy as np
+        from ase.data import atomic_numbers, covalent_radii, vdw_radii
+
+        z = atomic_numbers.get(symbol)
+        if not z:
+            return None
+        r = vdw_radii[z] if self["elements.radius_source"] == "vdW" else np.nan
+        if np.isnan(r):  # vdW is missing for many elements: fall back to covalent
+            r = covalent_radii[z]
+        return float(r * self["elements.radius_scale"])
+
+
+def load(path=None) -> Settings:
+    p = Path(path) if path else default_path()
+    values = {}
+    if p.exists():
+        try:
+            values = json.loads(p.read_text())
+        except (OSError, ValueError) as exc:
+            log.warning("could not read %s: %s; using defaults", p, exc)
+    return Settings(values if isinstance(values, dict) else {}, p)
