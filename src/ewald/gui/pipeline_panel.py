@@ -16,6 +16,13 @@ MODIFIER_MENU = {
         "Coordination analysis / RDF": lambda: mods.CoordinationAnalysis(cutoff=3.2),
         "Displacement vectors": lambda: mods.CalculateDisplacements(0),
     },
+    "Trajectory": {
+        "Mean squared displacement / diffusion": mods.MeanSquaredDisplacement,
+        "Velocity autocorrelation": mods.VelocityAutocorrelation,
+        "Time averaging (g(r), attributes)": mods.TimeAveraging,
+        "Time series of attributes": mods.TimeSeries,
+        "Trajectory lines / paths": mods.GenerateTrajectoryLines,
+    },
     "Coloring": {
         "Color coding": lambda: mods.ColorCoding("Position.Z"),
         "Assign color": lambda: mods.AssignColor((1.0, 0.2, 0.2)),
@@ -62,7 +69,9 @@ def _discover():
 BADGES = {"CoordinationAnalysis": "CN", "CalculateDisplacements": "DV", "ColorCoding": "CC", "AssignColor": "AC",
           "Slice": "SL", "Replicate": "RP", "WrapAtoms": "WR", "AffineTransformation": "AT", "ComputeProperty": "CP",
           "DeleteSelected": "DS", "ExpressionSelection": "ES", "SelectType": "ST", "InvertSelection": "IS",
-          "ClearSelection": "CS", "PythonScript": "Py", "PythonModifier": "Py"}
+          "ClearSelection": "CS", "PythonScript": "Py", "PythonModifier": "Py",
+          "MeanSquaredDisplacement": "MS", "VelocityAutocorrelation": "VA", "TimeAveraging": "TA",
+          "TimeSeries": "TS", "GenerateTrajectoryLines": "TL"}
 
 KIND = QtCore.Qt.UserRole + 1
 

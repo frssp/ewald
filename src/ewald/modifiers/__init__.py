@@ -11,6 +11,8 @@ from .ovito_bridge import DislocationAnalysis, OvitoModifier
 from .selection import (ClearSelection, DeleteSelected, ExpressionSelection, InvertSelection,
                         SelectType, Slice)
 from .script import PythonScript
+from .trajectory import (GenerateTrajectoryLines, MeanSquaredDisplacement, TimeAveraging, TimeSeries,
+                         VelocityAutocorrelation)
 from .transform import AffineTransformation, ComputeProperty, Replicate, WrapAtoms
 
 __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "CoordinationAnalysis", "ClusterAnalysis",
@@ -18,7 +20,9 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "InvertSelection", "SelectType", "Slice", "AffineTransformation", "ComputeProperty",
            "Replicate", "WrapAtoms", "PythonScript", "CommonNeighborAnalysis", "PolyhedralTemplateMatching",
            "VoronoiAnalysis", "WignerSeitzAnalysis", "DislocationAnalysis", "OvitoModifier",
-           "AcklandJones", "AtomicStrain", "CentroSymmetry", "ChillPlus", "IdentifyDiamond"]
+           "AcklandJones", "AtomicStrain", "CentroSymmetry", "ChillPlus", "IdentifyDiamond",
+           "MeanSquaredDisplacement", "VelocityAutocorrelation", "TimeAveraging", "TimeSeries",
+           "GenerateTrajectoryLines"]
 
 # OVITO spellings (``CommonNeighborAnalysisModifier``, ``WrapPeriodicImagesModifier``, ...) resolve to the
 # ewald class, so OVITO scripts - and code written by LLMs that learned OVITO - run unchanged.

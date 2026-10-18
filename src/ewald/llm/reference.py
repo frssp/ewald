@@ -78,6 +78,12 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 
 - `ewald.kernels.rdf(positions, cell, cutoff, nbins=200, types=None)` -> table with `r`, `g(r)`, partial `g(r) A-B`.
 - `ewald.kernels.trajectory_msd(pipe, start=0, stop=None, step=1)` -> `lag`, `MSD`, `MSD <type>` (unwrapped, by id).
+- `ewald.kernels.trajectory_vacf(pipe, time_per_frame=1.0, velocities="auto")`, `trajectory_rdf(pipe, cutoff, nbins)`
+  (time-averaged g(r)), `diffusion_fit(time, msd)` -> `(D, intercept, fit window)`, `green_kubo(time, vacf)`.
+- Trajectory modifiers (`MeanSquaredDisplacement`, `VelocityAutocorrelation`, `TimeAveraging`, `TimeSeries`,
+  `GenerateTrajectoryLines`) read every frame of `start:stop:step` through the modifiers above them and cache the
+  result, so e.g. `CoordinationAnalysis(3.0)` then `TimeAveraging("table:coordination-rdf")` gives the
+  time-averaged g(r) in `tables["coordination-rdf[average]"]`.
 - `ewald.llm.describe_frame(data)` / `describe_trajectory(pipe)`: compact JSON summaries and detected events.
 - `ewald.llm.narrate(pipe)`: event timeline; `ewald.llm.Agent.from_file(path).ask("...")`: Claude over these tools.
 '''

@@ -88,13 +88,14 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 bond_radius: float = 0.15, only_visible=None, atom_style: str = "auto",
                 mesh_limit: int = 150_000, sphere_resolution: int | None = None,
                 type_colors: dict | None = None, type_radii: dict | None = None,
-                bond_pairs: list | None = None):
+                bond_pairs: list | None = None, trajectory_width: float = 2.0):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter.
 
     ``atom_style``: 'mesh' (sphere meshes, publication shading), 'impostor' (GPU
     point sprites for very large systems) or 'auto' (mesh up to ``mesh_limit`` atoms).
     ``type_colors``/``type_radii`` override per-type defaults, e.g. ``{"Cu": "#c8794a"}``.
     ``bond_pairs``: VESTA-style list of ``(A, B, dmin, dmax)``; '*' matches any type.
+    ``trajectory_width``: line width of ``tables['trajectory-lines']`` (GenerateTrajectoryLines); 0 hides them.
     """
     import pyvista as pv
 
@@ -132,6 +133,8 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
             mapper.SetSplatShaderCode(_IMPOSTOR_SHADER)
         if bonds or bond_pairs:
             _add_bonds(plotter, data, colors, bonds, bond_radius, bond_pairs)
+    if trajectory_width > 0 and "trajectory-lines" in data.tables:
+        _add_trajectory_lines(plotter, data, trajectory_width)
     if show_cell and data.cell.is_valid:
         plotter.add_mesh(_cell_lines(data.cell), color=cell_color, line_width=cell_width, name="cell", render=False)
 
@@ -192,6 +195,30 @@ def _add_bonds(plotter, data, colors, cutoff, bond_radius, pairs=None):
     tubes = poly.tube(radius=bond_radius, n_sides=12, capping=False)
     plotter.add_mesh(tubes, scalars="rgb", rgb=True, name="bonds", smooth_shading=True, render=False,
                      ambient=0.25, diffuse=0.8, specular=0.2, specular_power=30)
+
+
+def _add_trajectory_lines(plotter, data, width):
+    """Polylines through ``tables['trajectory-lines']``, one per particle, in its atom color."""
+    import pyvista as pv
+
+    table = data.tables["trajectory-lines"]
+    pts = np.asarray(table["Position"], dtype=float)
+    ids = np.asarray(table["Particle Identifier"])
+    if len(pts) < 2:
+        return
+    starts = np.flatnonzero(np.r_[True, ids[1:] != ids[:-1]])
+    sizes = np.diff(np.r_[starts, len(ids)])
+    lines = np.concatenate([np.r_[m, np.arange(s, s + m)] for s, m in zip(starts, sizes)])
+    poly = pv.PolyData(pts, lines=lines)
+    colors = np.tile([0.3, 0.3, 0.3], (len(starts), 1))
+    if data.count:
+        here = np.asarray(data["Particle Identifier"]) if "Particle Identifier" in data else np.arange(data.count)
+        order = np.argsort(here)
+        pos = np.clip(np.searchsorted(here[order], ids[starts]), 0, data.count - 1)
+        hit = here[order][pos] == ids[starts]
+        colors[hit] = np.clip(default_colors(data), 0, 1)[order][pos[hit]]
+    poly.cell_data["rgb"] = (colors * 255).astype(np.uint8)
+    plotter.add_mesh(poly, scalars="rgb", rgb=True, line_width=width, name="trajectories", render=False)
 
 
 def _setup_camera(plotter, data, direction, orthographic, zoom):

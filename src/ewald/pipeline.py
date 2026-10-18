@@ -18,6 +18,7 @@ class ComputeContext:
     pipeline: "Pipeline"
     backend: Backend
     cache: dict = field(default_factory=dict)
+    modifier_index: int | None = None  # position of the running modifier in pipeline.modifiers
 
     @property
     def xp(self):
@@ -26,6 +27,19 @@ class ComputeContext:
     def source_frame(self, frame: int) -> DataCollection:
         """Unmodified input data of another frame (e.g. a reference configuration)."""
         return self.pipeline.source_frame(frame)
+
+    def input_frame(self, frame: int) -> DataCollection:
+        """Data at ``frame`` as it enters the running modifier: the source plus every
+        modifier above it. Trajectory modifiers use this to see upstream selections,
+        transformations and tables at other frames."""
+        return self.pipeline.compute(frame, device=self.backend, upto=self.modifier_index)
+
+    def upstream_key(self) -> tuple:
+        """Hashable fingerprint of the input (source, frame count, upstream modifiers and
+        their parameters); trajectory modifiers cache their result under it."""
+        mods = self.pipeline.modifiers[:self.modifier_index]
+        return (id(self.pipeline.source), self.pipeline.num_frames, self.backend.name,
+                tuple((type(m).__name__, repr(m)) for m in mods if m.enabled))
 
 
 class Modifier:
@@ -139,18 +153,21 @@ class Pipeline:
                 self._cache.popitem(last=False)
         return self._cache[frame].copy()
 
-    def compute(self, frame: int = 0, device: str | None = None, errors: str = "raise") -> DataCollection:
+    def compute(self, frame: int = 0, device: str | None = None, errors: str = "raise",
+                upto: int | None = None) -> DataCollection:
         """Evaluate the pipeline at ``frame``.
 
         ``errors="skip"`` keeps going past a failing modifier (its message is stored
         in ``modifier.status``); the GUI uses this so one bad modifier never blanks the view.
+        ``upto`` stops before the modifier at that index.
         """
         frame %= self.num_frames
-        ctx = ComputeContext(frame, self, get_backend(device or self.device))
+        backend = get_backend(device or self.device)
         data = self.source_frame(frame)
-        for mod in self.modifiers:
+        for index, mod in enumerate(self.modifiers[:upto]):
             if not mod.enabled:
                 continue
+            ctx = ComputeContext(frame, self, backend, modifier_index=index)
             t0 = time.perf_counter()
             try:
                 result = mod.modify(data, ctx)

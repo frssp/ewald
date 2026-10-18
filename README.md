@@ -149,6 +149,30 @@ names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
 `Replicate`, `WrapAtoms`, `AffineTransformation`, and any Python function
 `f(frame, data)`.
 
+### Trajectory analysis
+
+These modifiers read every frame of `start:stop:step` through the modifiers above
+them (one frame at a time, so lazy LAMMPS dumps and XDATCARs stay lazy), cache the
+result and show it at every frame:
+`MeanSquaredDisplacement` (FFT time-origin-averaged MSD, per type, unwrapped and
+matched by id, Einstein diffusion coefficient), `VelocityAutocorrelation` (VACF from
+`vx vy vz` or differentiated positions, Green-Kubo D), `TimeAveraging` (OVITO's
+time averaging of a table, attribute or property, e.g. the time-averaged g(r)),
+`TimeSeries` (attributes vs. time) and `GenerateTrajectoryLines` (particle paths
+drawn as lines, plus 'Path Length', 'Net Displacement', 'Max Displacement').
+
+```python
+from ewald.modifiers import CoordinationAnalysis, MeanSquaredDisplacement, TimeAveraging
+
+pipe = import_file("XDATCAR")
+pipe.modifiers.append(MeanSquaredDisplacement(time_per_frame=0.002))   # ps between frames
+pipe.modifiers.append(CoordinationAnalysis(cutoff=3.0))
+pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
+data = pipe.compute(0, device="cuda")
+data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # A^2/ps
+data.tables["coordination-rdf[average]"]                               # time-averaged g(r)
+```
+
 ### Structure analysis (ported from OVITO)
 
 `CommonNeighborAnalysis` (adaptive, interval and fixed-cutoff modes),
