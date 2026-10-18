@@ -1,8 +1,7 @@
 # Native kernels (`ewald._native`)
 
-Built by `setup.py` with pybind11 when a C++17 compiler is available
-(`pip install -e .`). Without it the package still installs; CNA then uses the
-array kernel and PTM/Voronoi raise an ImportError.
+Built by `setup.py` with pybind11 (`pip install -e .`); a C++17 compiler is
+required, and installation fails without one.
 
 | Path | Origin | License |
 | --- | --- | --- |

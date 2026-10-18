@@ -22,12 +22,6 @@ REF = np.load(os.path.join(os.path.dirname(__file__), "data", "ovito_reference.n
 SYSTEMS = sorted({k.split("/")[0] for k in REF if k.split("/")[0] not in ("ws", "cluster", "strain", "chill")})
 CTX = ComputeContext(0, None, CPU)
 
-try:
-    import ewald._native  # noqa: F401
-    HAVE_NATIVE = True
-except ImportError:
-    HAVE_NATIVE = False
-needs_native = pytest.mark.skipif(not HAVE_NATIVE, reason="ewald._native extension not built")
 
 
 def system(name):
@@ -54,7 +48,6 @@ def test_cna_fixed_matches_ovito(name):
     np.testing.assert_array_equal(d["Structure Type"], REF[f"{name}/cnafix/Structure Type"])
 
 
-@needs_native
 @pytest.mark.parametrize("name", SYSTEMS)
 def test_cna_interval_matches_ovito(name):
     d = run(CommonNeighborAnalysis(mode="interval"), system(name))
@@ -71,7 +64,6 @@ def test_cna_array_kernel_matches_ovito(name, mode, tag, kw):
     np.testing.assert_array_equal(data["Structure Type"], REF[f"{name}/{tag}/Structure Type"])
 
 
-@needs_native
 @pytest.mark.parametrize("name", SYSTEMS)
 def test_ptm_matches_ovito(name):
     mod = PolyhedralTemplateMatching(types=range(1, 9), output_orientation=True,
@@ -88,7 +80,6 @@ def test_ptm_matches_ovito(name):
                                r("Elastic Deformation Gradient").reshape(-1, 9), atol=1e-9)
 
 
-@needs_native
 @pytest.mark.parametrize("name", SYSTEMS)
 def test_voronoi_matches_ovito(name):
     d = run(VoronoiAnalysis(compute_indices=True), system(name))
@@ -137,7 +128,6 @@ def test_cna_small_cell_and_selection():
     assert np.all(out["Structure Type"][10:] == 0)
 
 
-@needs_native
 def test_ptm_and_voronoi_small_cell():
     d = DataCollection.from_ase(bulk("Cu", "fcc", a=3.6, cubic=True))
     out = run(PolyhedralTemplateMatching(), d)
@@ -147,7 +137,6 @@ def test_ptm_and_voronoi_small_cell():
     assert np.all(out["Voronoi Index"][:, 3] == 12)    # rhombic dodecahedron: 12 four-edged faces
 
 
-@needs_native
 def test_voronoi_radical_and_faces():
     d = DataCollection.from_ase(bulk("CsCl", "cesiumchloride", a=4.1).repeat((3, 3, 3)))
     d.particles["Radius"] = np.where(d.types == "Cs", 1.8, 1.0)
@@ -184,7 +173,6 @@ def test_centrosymmetry_matches_ovito(name):
     np.testing.assert_allclose(d["Centrosymmetry"], REF[f"{name}/csp/Centrosymmetry"], rtol=1e-9, atol=1e-9)
 
 
-@needs_native
 @pytest.mark.parametrize("name", SYSTEMS)
 def test_centrosymmetry_matching_matches_ovito(name):
     d = run(CentroSymmetry(num_neighbors=8, mode="matching"), system(name))

@@ -107,7 +107,9 @@ With the optional `ovito` package (`pip install ovito` or `pip install -e ".[ovi
 polylines in `tables["dislocations"]`), and `OvitoModifier(any_ovito_modifier)`
 runs any other OVITO modifier inside an ewald pipeline.
 
-CNA, PTM and Voronoi use a small C++ extension (`ewald._native`, built
-automatically by `pip install -e .` with pybind11; sources and licenses in
-`src/ewald/_csrc/`). For 108k atoms on 4 cores: CNA ~1 s, PTM ~1.6 s,
-Voronoi ~1.7 s. With `device="cuda"` the CNA signatures run as CuPy kernels.
+CNA, PTM, Voronoi and matching-mode CSP use a C++ extension (`ewald._native`,
+compiled by `pip install -e .` with pybind11; sources and licenses in
+`src/ewald/_csrc/`). Installing needs a C++17 compiler (gcc/clang, Xcode command
+line tools on macOS, MSVC Build Tools on Windows). For 108k atoms on 4 cores:
+CNA ~1 s, PTM ~1.6 s, Voronoi ~1.7 s. With `device="cuda"` the CNA signatures
+run as CuPy kernels.
