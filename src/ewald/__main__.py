@@ -35,6 +35,12 @@ def main(argv=None):
     q.add_argument("--model", default=None)
     q.add_argument("--allow-code", action="store_true", help="let Claude run Python in this process")
     q.add_argument("--script", default=None, help="write the resulting pipeline as a Python script")
+    n = sub.add_parser("narrate", help="timeline of events in a trajectory (Claude writes it if available)")
+    n.add_argument("input")
+    n.add_argument("--type-map", default=None)
+    n.add_argument("--no-llm", action="store_true", help="rule-based titles only")
+    n.add_argument("--render", action="store_true", help="show Claude renders of the frames around events")
+    n.add_argument("--json", action="store_true", help="print JSON instead of Markdown")
     m = sub.add_parser("mcp", help="serve the analysis tools over MCP (stdio)")
     m.add_argument("input", nargs="?")
     m.add_argument("--allow-code", action="store_true")
@@ -56,6 +62,22 @@ def main(argv=None):
 
         out = describe_trajectory(pipe) if args.trajectory else describe_frame(pipe.compute(args.frame), frame=args.frame)
         print(json.dumps(out, indent=1, default=float))
+        return
+    if args.cmd == "narrate":
+        import json
+
+        from .llm.narrate import narrate
+
+        client = None
+        if not args.no_llm:
+            try:
+                import anthropic
+
+                client = anthropic.Anthropic()
+            except Exception as exc:  # no SDK or no credentials: fall back to rule-based titles
+                print(f"(no Claude client: {exc}; using rule-based titles)")
+        tl = narrate(pipe, client, render=args.render)
+        print(json.dumps(tl.to_dict(), indent=1, default=float) if args.json else tl.to_markdown())
         return
     if args.cmd == "ask":
         from .llm import Agent, Toolset

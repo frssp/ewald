@@ -90,6 +90,7 @@ Renders come back as images the model can look at. These parts need no LLM:
 
 ```bash
 ewald describe dump.lammpstrj --trajectory --type-map 1=Cu   # JSON summary + events
+ewald narrate dump.lammpstrj --type-map 1=Cu                 # event timeline (Claude-written if available)
 ewald ask XDATCAR "Is this cell reasonable? What is the Si coordination?"
 ewald mcp                                                     # same tools over MCP (stdio)
 claude mcp add ewald -- ewald mcp                             # use them from Claude Code

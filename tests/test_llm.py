@@ -234,3 +234,70 @@ def test_mcp_adapter(cu_fcc, fake_render):
     assert out[0].type == "text" and out[1].type == "image" and (getattr(out[1], "mime_type", None) or getattr(out[1], "mimeType")) == "image/png"
     assert mcp_server.call_tool(ts, "nope", {})[0].text.startswith("ERROR")
     assert mcp_server.build_server(ts).name == "ewald"
+
+
+# ------------------------------------------------------------------ narrator
+
+def _vacancy_hop(cu_fcc, n=40, hop_at=24):
+    """fcc Cu with one vacancy; at ``hop_at`` a nearest neighbor jumps into it."""
+    base = cu_fcc.delete(np.arange(cu_fcc.count) == 0)
+    base.particles["Particle Identifier"] = np.arange(1, base.count + 1)
+    vac = cu_fcc.positions[0]
+    d = np.linalg.norm(base.cell.wrap(base.positions - vac + 7) - 7, axis=1)
+    hopper = int(np.argmin(d))
+    rng = np.random.default_rng(5)
+    frames = []
+    for k in range(n):
+        f = base.copy()
+        pos = base.positions.copy()
+        if k >= hop_at:
+            pos[hopper] = vac
+        f.positions = pos + rng.normal(0, 0.04, pos.shape)
+        frames.append(f)
+    return Pipeline(StaticSource(frames)), hopper + 1
+
+
+def test_no_events_for_noise_or_ramp():
+    rng = np.random.default_rng(2)
+    assert detect_change_points(rng.normal(0, 0.5, 100)) == []
+    assert detect_change_points(0.05 * np.arange(100) + rng.normal(0, 0.01, 100)) == []
+
+
+def test_narrate_vacancy_hop_rule_based(cu_fcc):
+    from ewald.llm import narrate
+
+    pipe, hopper_id = _vacancy_hop(cu_fcc)
+    tl = narrate(pipe)
+    assert [e.frame for e in tl.events] == [24] and tl.narrated_by == "rules"
+    ev = tl.events[0].evidence
+    assert ev["moved"]["count"] == 1 and ev["extent"] == "local"
+    assert ev["top_movers"][0]["id"] == hopper_id
+    assert ev["top_movers"][0]["displacement"] == pytest.approx(3.615 / np.sqrt(2), abs=0.2)
+    assert tl.bookmarks()[0][0] == 24 and "Frame 24" in tl.to_markdown()
+    json.dumps(tl.to_dict())
+
+
+def test_narrate_with_llm(cu_fcc, fake_render):
+    from ewald.llm import narrate
+
+    pipe, _ = _vacancy_hop(cu_fcc)
+    answer = {"summary": "One vacancy hop.", "events": [
+        {"frame": 24, "title": "Vacancy hop", "description": "A Cu atom jumps 2.5 A into the vacancy.",
+         "confidence": "high"},
+        {"frame": 3, "title": "Invented", "description": "x", "confidence": "low"}]}
+    client = FakeClient([NS(stop_reason="end_turn", content=[_text(json.dumps(answer))])])
+    tl = narrate(pipe, client, render=True)
+    req = client.requests[0]
+    assert req["output_config"]["format"]["type"] == "json_schema"
+    images = [b for b in req["messages"][0]["content"] if b["type"] == "image"]
+    assert len(images) == 2  # before and after the one event
+    payload = json.loads(req["messages"][0]["content"][-1]["text"])
+    assert payload["events"][0]["evidence"]["moved"]["count"] == 1
+    assert tl.summary == "One vacancy hop." and tl.narrated_by == "claude-opus-5-5"
+    assert [(e.frame, e.title, e.confidence) for e in tl.events] == [(24, "Vacancy hop", "high")]
+
+
+def test_event_details_tool(cu_fcc):
+    pipe, hopper_id = _vacancy_hop(cu_fcc)
+    r = Toolset(pipe).call("event_details", {"frame": 24})
+    assert not r.is_error and r.content["top_movers"][0]["id"] == hopper_id

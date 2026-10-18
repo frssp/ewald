@@ -199,12 +199,15 @@ def describe_frame(data: DataCollection, cutoff: float | str | None = "auto", rd
 
 # ------------------------------------------------------------------ trajectories
 
-def detect_change_points(series, window: int = 5, threshold: float = 4.0) -> list[int]:
+def detect_change_points(series, window: int = 5, threshold: float = 6.0) -> list[int]:
     """Indices where the mean of ``series`` shifts abruptly.
 
     Sliding two-window test: at each index the means of the ``window`` samples
-    before and after are compared against a robust noise scale (MAD of first
-    differences). Peaks above ``threshold`` survive non-maximum suppression.
+    before and after are compared, Welch-style, against the spread inside the
+    two windows (floored by the series' global noise from the MAD of first
+    differences, so flat stretches don't divide by zero). Using the local
+    spread keeps noisy regimes (a liquid) and steady ramps (diffusive MSD) from
+    firing; peaks above ``threshold`` survive non-maximum suppression.
     """
     x = np.asarray(series, float)
     n = len(x)
@@ -212,13 +215,12 @@ def detect_change_points(series, window: int = 5, threshold: float = 4.0) -> lis
         return []
     dx = np.diff(x)
     noise = 1.4826 * np.median(np.abs(dx - np.median(dx))) / np.sqrt(2)
-    scale = max(noise, 1e-3 * (np.max(np.abs(x)) + 1e-12), 1e-12)
-    c = np.concatenate([[0.0], np.cumsum(x)])
+    floor = max(noise, 1e-3 * (np.max(np.abs(x)) + 1e-12), 1e-12)
     score = np.zeros(n)
     for t in range(window, n - window + 1):
-        before = (c[t] - c[t - window]) / window
-        after = (c[t + window] - c[t]) / window
-        score[t] = abs(after - before) / (scale * np.sqrt(2.0 / window))
+        b, a = x[t - window:t], x[t:t + window]
+        spread = np.sqrt((b.var(ddof=1) + a.var(ddof=1)) / window) if window > 1 else 0.0
+        score[t] = abs(a.mean() - b.mean()) / max(spread, floor * np.sqrt(2.0 / window))
     out = []
     for t in np.argsort(-score):
         if score[t] < threshold:
@@ -284,7 +286,7 @@ def trajectory_series(pipeline, start: int = 0, stop: int | None = None, step: i
 
 def describe_trajectory(pipeline, start: int = 0, stop: int | None = None, step: int | None = None,
                         max_frames: int = 200, cutoff: float | str | None = "auto",
-                        window: int = 5, threshold: float = 4.0) -> dict:
+                        window: int = 5, threshold: float = 6.0) -> dict:
     """Summarize a trajectory and flag frames where something abrupt happens.
 
     Returns per-series statistics (start/end/min/max), the sampled frame

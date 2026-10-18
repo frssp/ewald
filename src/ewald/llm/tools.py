@@ -221,10 +221,22 @@ class Toolset:
            _obj({"start": {"type": "integer"}, "stop": {"type": "integer"}, "step": {"type": "integer"},
                  "max_frames": {"type": "integer", "description": "default 200"},
                  "cutoff": {"type": ["number", "string", "null"], "description": "coordination cutoff, 'auto' or null"},
-                 "threshold": {"type": "number", "description": "change-point sensitivity in noise units (default 4)"}}))
-        def describe_trajectory(start=0, stop=None, step=None, max_frames=200, cutoff="auto", threshold=4.0):
+                 "threshold": {"type": "number", "description": "change-point threshold in noise units (default 6; lower finds more)"}}))
+        def describe_trajectory(start=0, stop=None, step=None, max_frames=200, cutoff="auto", threshold=6.0):
             return _describe.describe_trajectory(self._need_pipeline(), start, stop, step, max_frames,
                                                  cutoff, threshold=threshold)
+
+        @T("event_details",
+           "Measure what changes around a frame (e.g. an event from describe_trajectory): which atoms moved "
+           "and how far (minimum image, by identifier), by type, local vs system-wide, coordination "
+           "transitions, and the top movers with positions before/after.",
+           _obj({"frame": {"type": "integer"}, "window": {"type": "integer", "description": "frames each side (default 5)"},
+                 "cutoff": {"type": "number"}, "threshold": {"type": "number", "description": "moved-atom threshold in A"}},
+                ["frame"]))
+        def event_details(frame, window=5, cutoff=None, threshold=None):
+            from .narrate import event_details as details
+
+            return details(self._need_pipeline(), int(frame), window, cutoff, threshold)
 
         @T("list_modifiers", "Available modifiers with their parameters and defaults.", _obj({}))
         def list_modifiers():
