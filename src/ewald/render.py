@@ -26,31 +26,51 @@ def _element(t: str):
     return atomic_numbers.get(str(t))
 
 
-def default_colors(data: DataCollection) -> np.ndarray:
+def type_color(t: str, index: int = 0) -> np.ndarray:
+    """Default color of a particle type: Jmol for elements, a palette otherwise."""
     from ase.data.colors import jmol_colors
 
+    z = _element(t)
+    return np.array(jmol_colors[z] if z else _FALLBACK_PALETTE[index % len(_FALLBACK_PALETTE)], float)
+
+
+def type_radius(t: str, scale: float = 0.8) -> float:
+    from ase.data import covalent_radii
+
+    z = _element(t)
+    return float(covalent_radii[z] * scale) if z else 0.5
+
+
+def default_colors(data: DataCollection, type_colors: dict | None = None) -> np.ndarray:
+    """Per-particle RGB: the 'Color' property, else per-type colors (overrides first)."""
     if "Color" in data:
         return np.asarray(data["Color"], float)
     types = data.types
     out = np.zeros((data.count, 3))
     for k, t in enumerate(dict.fromkeys(types)):
-        z = _element(t)
-        out[types == t] = jmol_colors[z] if z else _FALLBACK_PALETTE[k % len(_FALLBACK_PALETTE)]
+        c = (type_colors or {}).get(t)
+        out[types == t] = _rgb(c) if c is not None else type_color(t, k)
     return out
 
 
-def default_radii(data: DataCollection, scale: float = 0.8) -> np.ndarray:
-    from ase.data import covalent_radii
-
+def default_radii(data: DataCollection, scale: float = 0.8, type_radii: dict | None = None) -> np.ndarray:
     if "Radius" in data:
         return np.asarray(data["Radius"], float)
     types = data.types
     out = np.full(data.count, 0.5)
     for t in dict.fromkeys(types):
-        z = _element(t)
-        if z:
-            out[types == t] = covalent_radii[z] * scale
+        r = (type_radii or {}).get(t)
+        out[types == t] = r if r is not None else type_radius(t, scale)
     return out
+
+
+def _rgb(c) -> np.ndarray:
+    if isinstance(c, str):
+        from matplotlib.colors import to_rgb
+
+        return np.array(to_rgb(c))
+    c = np.asarray(c, float)[:3]
+    return c / 255.0 if c.max() > 1 else c
 
 
 def _cell_lines(cell):
@@ -66,17 +86,21 @@ def _cell_lines(cell):
 def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, show_cell: bool = True,
                 cell_color="black", cell_width: float = 2.0, bonds: float | None = None,
                 bond_radius: float = 0.15, only_visible=None, atom_style: str = "auto",
-                mesh_limit: int = 150_000, sphere_resolution: int | None = None):
+                mesh_limit: int = 150_000, sphere_resolution: int | None = None,
+                type_colors: dict | None = None, type_radii: dict | None = None,
+                bond_pairs: list | None = None):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter.
 
     ``atom_style``: 'mesh' (sphere meshes, publication shading), 'impostor' (GPU
     point sprites for very large systems) or 'auto' (mesh up to ``mesh_limit`` atoms).
+    ``type_colors``/``type_radii`` override per-type defaults, e.g. ``{"Cu": "#c8794a"}``.
+    ``bond_pairs``: VESTA-style list of ``(A, B, dmin, dmax)``; '*' matches any type.
     """
     import pyvista as pv
 
     if data.count:
-        colors = np.clip(default_colors(data), 0, 1)
-        radii = default_radii(data) * radius_scale
+        colors = np.clip(default_colors(data, type_colors), 0, 1)
+        radii = default_radii(data, type_radii=type_radii) * radius_scale
         if only_visible is not None:
             keep = np.asarray(only_visible, bool)
         elif "Transparency" in data:
@@ -102,20 +126,40 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
             mapper = actor.GetMapper()
             mapper.SetScaleArray("radius")
             mapper.SetScaleFactor(1.0)
-        if bonds:
-            _add_bonds(plotter, data, colors, bonds, bond_radius)
+        if bonds or bond_pairs:
+            _add_bonds(plotter, data, colors, bonds, bond_radius, bond_pairs)
     if show_cell and data.cell.is_valid:
         plotter.add_mesh(_cell_lines(data.cell), color=cell_color, line_width=cell_width, name="cell", render=False)
 
 
-def _add_bonds(plotter, data, colors, cutoff, bond_radius):
+def bond_list(data, cutoff=None, pairs=None):
+    """Bonds as (i, j, delta); both directions (i, j) and (j, i) are listed (half-bond drawing).
+
+    With ``pairs`` [(A, B, dmin, dmax), ...] only pairs whose types and length
+    match a row are kept (VESTA's bond search table); otherwise ``cutoff``.
+    """
+    from .neighbors import find_pairs
+
+    rmax = max(p[3] for p in pairs) if pairs else cutoff
+    i, j, d, dist = find_pairs(data.positions, data.cell, rmax)
+    i, j, d, dist = (np.asarray(x) for x in (i, j, d, dist))
+    if pairs:
+        types = data.types
+        ti, tj = types[i], types[j]
+        keep = np.zeros(len(i), bool)
+        for a, b, lo, hi in pairs:
+            ok_t = (((ti == a) | (a == "*")) & ((tj == b) | (b == "*"))) | \
+                   (((ti == b) | (b == "*")) & ((tj == a) | (a == "*")))
+            keep |= ok_t & (dist >= lo) & (dist <= hi)
+        i, j, d = i[keep], j[keep], d[keep]
+    return i, j, d
+
+
+def _add_bonds(plotter, data, colors, cutoff, bond_radius, pairs=None):
     """Half-bonds from each atom along the minimum-image vector (correct across PBC)."""
     import pyvista as pv
 
-    from .neighbors import find_pairs
-
-    i, j, d, _ = find_pairs(data.positions, data.cell, cutoff)
-    i, d = np.asarray(i), np.asarray(d)
+    i, j, d = bond_list(data, cutoff, pairs)
     if not len(i):
         return
     start = data.positions[i]
@@ -209,7 +253,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
             pass
     if ambient_occlusion:
         try:
-            radius = float(np.median(default_radii(data))) if data.count else 1.0
+            radius = float(np.median(default_radii(data))) if data.count else 1.0  # AO kernel ~ atom size
             p.enable_ssao(radius=radius, kernel_size=128)
         except Exception:
             pass
@@ -218,7 +262,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     return img
 
 
-def _add_colorbar(plotter, data):
+def _add_colorbar(plotter, data, font_size=None):
     import pyvista as pv
 
     lo, hi = data.attributes["ColorCoding.range"]
@@ -229,7 +273,8 @@ def _add_colorbar(plotter, data):
     actor.VisibilityOff()
     plotter.add_scalar_bar(title=str(data.attributes.get("ColorCoding.property", "")), mapper=actor.mapper,
                            vertical=True, position_x=0.86, position_y=0.1, height=0.8, width=0.06,
-                           color="black", fmt="%.3g")
+                           color="black", fmt="%.3g",
+                           **({"title_font_size": font_size + 2, "label_font_size": font_size} if font_size else {}))
 
 
 def render_animation(pipeline, filename, *, frames=None, fps: int = 10, device=None, **kwargs):

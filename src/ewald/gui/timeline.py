@@ -11,17 +11,23 @@ class Timeline(QtWidgets.QWidget):
         super().__init__(parent)
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(6, 2, 6, 2)
-        self.first = QtWidgets.QToolButton(text="⏮", toolTip="First frame")
+        self.first = QtWidgets.QToolButton(text="⏮", toolTip="First frame (Home)")
+        self.prev = QtWidgets.QToolButton(text="◀", toolTip="Previous frame (Alt+←)")
         self.play = QtWidgets.QToolButton(text="▶", toolTip="Play / pause (Space)", checkable=True)
-        self.last = QtWidgets.QToolButton(text="⏭", toolTip="Last frame")
+        self.next = QtWidgets.QToolButton(text="▶|", toolTip="Next frame (Alt+→)")
+        self.last = QtWidgets.QToolButton(text="⏭", toolTip="Last frame (End)")
         self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.spin = QtWidgets.QSpinBox()
         self.count = QtWidgets.QLabel("/ 0")
         self.fps = QtWidgets.QSpinBox(suffix=" fps", minimum=1, maximum=120, value=10)
-        self.loop = QtWidgets.QCheckBox("loop", checked=True)
-        for w in (self.first, self.play, self.last, self.slider, self.spin, self.count, self.fps, self.loop):
+        self.stride = QtWidgets.QSpinBox(prefix="every ", minimum=1, maximum=10000, value=1)
+        self.loop = QtWidgets.QCheckBox("Loop", checked=True)
+        for w in (self.first, self.prev, self.play, self.next, self.last, self.slider, self.spin, self.count,
+                  self.fps, self.stride, self.loop):
             lay.addWidget(w)
-        lay.setStretch(3, 1)
+        lay.setStretch(5, 1)
+        self.prev.clicked.connect(lambda: self._set(max(0, self.frame - self.stride.value())))
+        self.next.clicked.connect(lambda: self._set(min(self.slider.maximum(), self.frame + self.stride.value())))
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._advance)
         self.slider.valueChanged.connect(self._set)
@@ -60,7 +66,7 @@ class Timeline(QtWidgets.QWidget):
             self.timer.stop()
 
     def _advance(self):
-        nxt = self.frame + 1
+        nxt = self.frame + self.stride.value()
         if nxt > self.slider.maximum():
             if not self.loop.isChecked():
                 self.play.setChecked(False)

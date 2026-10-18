@@ -1,6 +1,7 @@
-"""ewald main window."""
+"""ewald main window: Analyze and Render workspaces (layout per docs/design)."""
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import time
@@ -11,153 +12,215 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import modifiers as mods
 from ..io import import_file
-from ..render import build_scene, camera_state, render, setup_camera, _add_colorbar
+from ..render import camera_state, render
 from .console import make_console
 from .inspector import DataInspector
-from .pipeline_panel import PipelinePanel
+from .palette import CommandPalette, menu_entries
+from .pipeline_panel import MODIFIER_MENU, PipelinePanel
+from .plots import PlotsPanel
+from .render_page import RenderPage
+from .style import ViewStyle
+from .theme import TOKENS
 from .timeline import Timeline
+from .viewport import Viewport
 
 FILE_FILTER = ("Simulation files (*.lammpstrj *.dump *.data XDATCAR* POSCAR* CONTCAR* OUTCAR* "
                "vasprun*.xml *.xyz *.extxyz *.cif *.vasp);;All files (*)")
 
 
-class RenderSettings(QtWidgets.QWidget):
-    """Viewport + image render settings (OVITO's 'Render' tab, simplified)."""
-
-    changed = QtCore.Signal()
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        f = QtWidgets.QFormLayout(self)
-        self.radius_scale = QtWidgets.QDoubleSpinBox(value=1.0, minimum=0.05, maximum=5, singleStep=0.1)
-        self.bonds = QtWidgets.QCheckBox("draw bonds")
-        self.bond_cutoff = QtWidgets.QDoubleSpinBox(value=2.8, minimum=0.1, maximum=20, singleStep=0.1, suffix=" Å")
-        self.bond_radius = QtWidgets.QDoubleSpinBox(value=0.15, minimum=0.01, maximum=2, singleStep=0.05, suffix=" Å")
-        self.show_cell = QtWidgets.QCheckBox("show cell", checked=True)
-        self.atom_style = QtWidgets.QComboBox()
-        self.atom_style.addItems(["auto", "mesh", "impostor"])
-        self.background = QtWidgets.QComboBox()
-        self.background.addItems(["white", "black", "#2b2b2b"])
-        for label, w in (("Atom radius ×", self.radius_scale), ("", self.bonds), ("Bond cutoff", self.bond_cutoff),
-                         ("Bond radius", self.bond_radius), ("", self.show_cell), ("Atom style", self.atom_style),
-                         ("Background", self.background)):
-            f.addRow(label, w)
-            sig = getattr(w, "valueChanged", None) or getattr(w, "toggled", None) or w.currentTextChanged
-            sig.connect(self.changed)
-        f.addRow(QtWidgets.QLabel("<b>Image output</b>"))
-        self.width = QtWidgets.QSpinBox(minimum=64, maximum=16384, value=2000)
-        self.height = QtWidgets.QSpinBox(minimum=64, maximum=16384, value=1500)
-        size = QtWidgets.QHBoxLayout(); size.addWidget(self.width); size.addWidget(QtWidgets.QLabel("×")); size.addWidget(self.height)
-        f.addRow("Size (px)", size)
-        self.ao = QtWidgets.QCheckBox("ambient occlusion")
-        self.transparent = QtWidgets.QCheckBox("transparent background")
-        f.addRow("", self.ao)
-        f.addRow("", self.transparent)
-        self.render_button = QtWidgets.QPushButton("Render active viewport…")
-        f.addRow(self.render_button)
-
-    def scene_kwargs(self):
-        return {"radius_scale": self.radius_scale.value(), "show_cell": self.show_cell.isChecked(),
-                "bonds": self.bond_cutoff.value() if self.bonds.isChecked() else None,
-                "bond_radius": self.bond_radius.value(), "atom_style": self.atom_style.currentText()}
-
-
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, pipeline=None, device=None):
         super().__init__()
-        from pyvistaqt import QtInteractor
-
         self.setWindowTitle("ewald")
-        self.resize(1500, 950)
+        self.resize(1600, 1000)
         self.pipeline = None
         self.data = None
         self.device = device
         self.frame = 0
-        self._first_view = True
+        self.style = ViewStyle()
 
-        central = QtWidgets.QWidget()
-        cl = QtWidgets.QVBoxLayout(central)
-        cl.setContentsMargins(0, 0, 0, 0)
-        cl.setSpacing(0)
-        self.viewport = QtInteractor(central)
-        cl.addWidget(self.viewport.interactor, 1)
-        self.setCentralWidget(central)
-        self.viewport.set_background("white")
-        self.viewport.enable_parallel_projection()
-
-        self.panel = PipelinePanel()
-        self.panel.changed.connect(self.recompute)
-        self.render_settings = RenderSettings()
-        self.render_settings.changed.connect(self.redraw)
-        self.render_settings.render_button.clicked.connect(self.render_image)
-        right = QtWidgets.QTabWidget()
-        right.addTab(self.panel, "Pipeline")
-        right.addTab(self.render_settings, "Render")
-        self._dock(right, "Pipeline", QtCore.Qt.RightDockWidgetArea, 380)
-
+        # --- central: workspaces (Analyze = viewport + timeline, Render = render page)
+        self.viewport = Viewport(self.style)
+        self.viewport.picked.connect(self._on_pick)
+        self.viewport.styleChanged.connect(self._style_changed)
         self.timeline = Timeline()
         self.timeline.frameChanged.connect(self.set_frame)
-        cl.addWidget(self.timeline)  # directly under the viewport, as in OVITO
+        analyze = QtWidgets.QWidget()
+        al = QtWidgets.QVBoxLayout(analyze)
+        al.setContentsMargins(0, 0, 0, 0)
+        al.setSpacing(0)
+        al.addWidget(self.viewport, 1)
+        al.addWidget(self.timeline)
+        self.render_page = RenderPage(self)
+        self.render_page.renderRequested.connect(self.render_from_page)
+        self.workspaces = QtWidgets.QStackedWidget()
+        self.workspaces.addWidget(analyze)
+        self.workspaces.addWidget(self.render_page)
+        self.setCentralWidget(self.workspaces)
 
+        # --- right: command panel
+        self.panel = PipelinePanel(self.style)
+        self.panel.changed.connect(self.recompute)
+        self.panel.styleChanged.connect(self._style_changed)
+        self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
+
+        # --- bottom: console / inspector / plots / log
         self.inspector = DataInspector()
         self.console = make_console(self._console_namespace(), self._after_console, self)
-        bottom = QtWidgets.QTabWidget()
-        bottom.addTab(self.inspector, "Data inspector")
-        bottom.addTab(self.console, "Python console")
-        self.bottom_dock = self._dock(bottom, "Data", QtCore.Qt.BottomDockWidgetArea, None)
+        self.plots = PlotsPanel()
+        self.log = QtWidgets.QPlainTextEdit(readOnly=True)
+        self.bottom = QtWidgets.QTabWidget()
+        self.bottom.addTab(self.console, "Python console")
+        self.bottom.addTab(self.inspector, "Data inspector")
+        self.bottom.addTab(self.plots, "Plots")
+        self.bottom.addTab(self.log, "Log")
+        self.bottom_dock = self._dock(self.bottom, "Data", QtCore.Qt.BottomDockWidgetArea, None)
+        self.resizeDocks([self.bottom_dock], [280], QtCore.Qt.Vertical)
 
         self._build_menus()
+        self._build_toolbar()
         self.status = QtWidgets.QLabel()
+        self.pick_label = QtWidgets.QLabel()
+        self.pick_label.setStyleSheet(f"color: {TOKENS['pick']};")
+        self.statusBar().addWidget(self.pick_label, 1)
         self.statusBar().addPermanentWidget(self.status)
-        QtGui.QShortcut(QtGui.QKeySequence("Space"), self, activated=self.timeline.play.toggle)
+        QtGui.QShortcut(QtGui.QKeySequence("Space"), self.viewport, activated=self.timeline.play.toggle)
+        QtGui.QShortcut(QtGui.QKeySequence("Ctrl+K"), self, activated=self.command_palette)
+        QtGui.QShortcut(QtGui.QKeySequence("Alt+Right"), self, activated=self.timeline.next.click)
+        QtGui.QShortcut(QtGui.QKeySequence("Alt+Left"), self, activated=self.timeline.prev.click)
         if pipeline is not None:
             self.set_pipeline(pipeline)
 
-    # ---------------------------------------------------------------- layout helpers
+    # ---------------------------------------------------------------- chrome
     def _dock(self, widget, title, area, width):
         d = QtWidgets.QDockWidget(title, self)
         d.setObjectName(title)
         d.setWidget(widget)
+        d.setFeatures(QtWidgets.QDockWidget.DockWidgetMovable | QtWidgets.QDockWidget.DockWidgetFloatable)
         self.addDockWidget(area, d)
         if width:
             self.resizeDocks([d], [width], QtCore.Qt.Horizontal)
         return d
 
+    def _build_toolbar(self):
+        tb = self.addToolBar("Main")
+        tb.setObjectName("main-toolbar")
+        tb.setMovable(False)
+        tb.addAction("Open", self.open_dialog)
+        tb.addSeparator()
+        self.ws_buttons = []
+        for i, name in enumerate(("Analyze", "Render")):
+            b = QtWidgets.QToolButton(text=name, checkable=True)
+            b.clicked.connect(lambda _=False, i=i: self.set_workspace(i))
+            tb.addWidget(b)
+            self.ws_buttons.append(b)
+        self.ws_buttons[0].setChecked(True)
+        tb.addSeparator()
+        search = QtWidgets.QPushButton("  Search commands, modifiers…      Ctrl K")
+        search.setStyleSheet(f"text-align: left; color: {TOKENS['muted']}; background: {TOKENS['panel']}; min-width: 320px;")
+        search.clicked.connect(self.command_palette)
+        tb.addWidget(search)
+        spacer = QtWidgets.QWidget()
+        spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        tb.addWidget(spacer)
+        tb.addWidget(QtWidgets.QLabel("Compute ", objectName="muted"))
+        self.device_combo = QtWidgets.QComboBox()
+        self.device_combo.addItems(["CPU", "CUDA", "auto"])
+        self.device_combo.setCurrentText({"cuda": "CUDA", "auto": "auto"}.get((self.device or "cpu").lower(), "CPU"))
+        self.device_combo.currentTextChanged.connect(self._set_device)
+        tb.addWidget(self.device_combo)
+        render_btn = QtWidgets.QPushButton("Render")
+        render_btn.setObjectName("primary")
+        render_btn.clicked.connect(lambda: self.set_workspace(1))
+        tb.addWidget(render_btn)
+
     def _build_menus(self):
         mb = self.menuBar()
         f = mb.addMenu("&File")
         f.addAction("&Load file…", self.open_dialog, QtGui.QKeySequence.Open)
-        f.addAction("Export &image…", self.render_image, "Ctrl+Shift+R")
+        f.addAction("Render &image…", self.render_image, "Ctrl+Shift+R")
         f.addAction("E&xport data…", self.export_dialog, "Ctrl+E")
         f.addAction("Export &movie…", self.export_movie)
         f.addSeparator()
         f.addAction("&Quit", self.close, QtGui.QKeySequence.Quit)
         v = mb.addMenu("&View")
-        for label, d in (("Top (+z)", "z"), ("Bottom (-z)", "-z"), ("Front (-y)", "front"), ("Back (+y)", "y"),
-                         ("Left (-x)", "-x"), ("Right (+x)", "x"), ("Perspective (iso)", "iso")):
-            v.addAction(label, lambda d=d: self.view(d))
+        for ax in ("a", "b", "c", "a*", "b*", "c*"):
+            v.addAction(f"View along {ax}", lambda ax=ax: self.viewport.view_along(ax))
         v.addSeparator()
-        self.ortho_action = v.addAction("Orthographic", self._toggle_ortho)
-        self.ortho_action.setCheckable(True)
-        self.ortho_action.setChecked(True)
-        v.addAction("Zoom all", lambda: (self.viewport.reset_camera(), self.viewport.render()), "Ctrl+0")
-        m = mb.addMenu("&Modifiers")
-        from .pipeline_panel import MODIFIER_MENU
-
+        for label, d in (("Top (+z)", "z"), ("Front (-y)", "front"), ("Right (+x)", "x"), ("Isometric", "iso")):
+            v.addAction(label, lambda d=d: self.viewport.view_direction(d))
+        v.addAction("Zoom to fit", self.viewport.zoom_fit, "Ctrl+0")
+        v.addSeparator()
+        for bg in ("Dark background", "White background"):
+            v.addAction(bg, lambda bg=bg: self._set_background(TOKENS["bg"] if bg.startswith("Dark") else "white"))
+        m = mb.addMenu("&Pipeline")
         for group, items in MODIFIER_MENU.items():
             sub = m.addMenu(group)
             for label, factory in items.items():
                 sub.addAction(label, lambda fct=factory: self.panel.add_modifier(fct()))
+        t = mb.addMenu("&Tools")
+        for key, _icon, tip in Viewport.TOOLS:
+            t.addAction(tip.split(":")[0], lambda k=key: self.viewport.set_tool(k))
+        w = mb.addMenu("&Window")
+        w.addAction("Analyze workspace", lambda: self.set_workspace(0), "Ctrl+1")
+        w.addAction("Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
+        w.addAction("Python console", lambda: self.bottom.setCurrentWidget(self.console))
+        w.addAction("Data inspector", lambda: self.bottom.setCurrentWidget(self.inspector))
+        w.addAction("Plots", lambda: self.bottom.setCurrentWidget(self.plots))
+        w.addAction("Command palette", self.command_palette)
+
+    def set_workspace(self, index):
+        self.workspaces.setCurrentIndex(index)
+        for i, b in enumerate(self.ws_buttons):
+            b.setChecked(i == index)
+        if index == 1:
+            self.render_page.update_code()
+
+    def command_palette(self):
+        entries = [(label, f"Add modification › {group}", lambda f=factory: self.panel.add_modifier(f()))
+                   for group, items in MODIFIER_MENU.items() for label, factory in items.items()]
+        entries += menu_entries(self.menuBar())
+        pal = CommandPalette(entries, self)
+        geo = self.geometry()
+        pal.move(geo.x() + (geo.width() - 560) // 2, geo.y() + 90)
+        pal.edit.setFocus()
+        pal.exec()
+
+    def _set_device(self, text):
+        dev = {"CPU": "cpu", "CUDA": "cuda", "auto": "auto"}[text]
+        if dev == "cuda":
+            from ..backend import get_backend
+
+            try:
+                get_backend("cuda")
+            except RuntimeError as exc:
+                self.message(str(exc), error=True)
+                self.device_combo.blockSignals(True)
+                self.device_combo.setCurrentText("CPU")
+                self.device_combo.blockSignals(False)
+                return
+        self.device = dev
+        self.recompute()
+
+    def _set_background(self, color):
+        self.style.background = color
+        self._style_changed()
+
+    def message(self, text, error=False):
+        self.statusBar().showMessage(text, 10000)
+        self.log.appendPlainText(time.strftime("%H:%M:%S ") + ("ERROR " if error else "") + text)
 
     # ---------------------------------------------------------------- pipeline / data
     def open_file(self, path, **kwargs):
         try:
             pipe = import_file(path, **kwargs)
         except Exception as exc:
+            self.message(f"Load failed: {path}: {exc}", error=True)
             QtWidgets.QMessageBox.critical(self, "Load failed", f"{path}\n\n{exc}")
             return None
         self.set_pipeline(pipe)
         self.setWindowTitle(f"ewald — {os.path.basename(str(path))}")
+        self.message(f"Loaded {path}: {pipe.num_frames} frame(s)")
         return pipe
 
     def open_dialog(self):
@@ -176,11 +239,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def set_pipeline(self, pipeline):
         self.pipeline = pipeline
-        self._first_view = True
+        self.viewport.reset_view()
+        self.viewport.clear_picks()
         self.panel.set_pipeline(pipeline)
         self.timeline.set_num_frames(pipeline.num_frames)
         self._push_console()
-        self.set_frame(0)
+        self.frame = 0
+        self.timeline._set(0) if self.timeline.frame != 0 else self.recompute()
 
     def set_frame(self, frame):
         self.frame = frame
@@ -193,55 +258,45 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             self.data = self.pipeline.compute(self.frame, device=self.device, errors="skip")
         except Exception as exc:  # source failed (bad file/frame)
-            self.statusBar().showMessage(f"Error: {exc}", 10000)
+            self.message(f"Error: {exc}", error=True)
             traceback.print_exc()
             return
         dt = time.perf_counter() - t
-        self.panel.update_status()
-        errors = [m for m in self.pipeline.modifiers if m.enabled and m.status]
-        if errors:
-            self.statusBar().showMessage(f"{errors[0].name}: {errors[0].status}", 10000)
-        self.redraw()
-        self.inspector.set_data(self.data)
-        self._push_console()
+        for m in self.pipeline.modifiers:
+            if m.enabled and m.status:
+                self.message(f"{m.name}: {m.status}", error=True)
+        if self.style.bonds_enabled:
+            self.style.ensure_bond_pairs(self.data.types)
+        self.panel.set_data(self.data)
         ts = self.data.attributes.get("Timestep", self.frame)
-        self.status.setText(f"frame {self.frame}  timestep {ts}  N={self.data.count}  pipeline {dt * 1000:.0f} ms")
+        self.viewport.overlay_text = f"Frame {self.frame}   timestep {ts}"
+        self.viewport.set_data(self.data)
+        self.inspector.set_data(self.data)
+        self.plots.set_data(self.data)
+        self._push_console()
+        dev = (self.device or "cpu").upper()
+        self.status.setText(f"N = {self.data.count}   frame {self.frame}/{self.pipeline.num_frames - 1}   "
+                            f"pipeline {dt * 1000:.0f} ms   {dev}")
+        if self.workspaces.currentIndex() == 1:
+            self.render_page.update_code()
 
-    def redraw(self):
-        if self.data is None:
-            return
-        p = self.viewport
-        for name in ("atoms", "bonds", "cell", "_legend"):
-            p.remove_actor(name, render=False)
-        p.remove_scalar_bar() if p.scalar_bars else None
-        bg = self.render_settings.background.currentText()
-        p.set_background(bg)
-        kw = self.render_settings.scene_kwargs()
-        kw["cell_color"] = "black" if bg == "white" else "white"
-        kw["sphere_resolution"] = 10  # interactive; image export uses full quality
-        build_scene(p, self.data, **kw)
-        if "ColorCoding.range" in self.data.attributes:
-            _add_colorbar(p, self.data)
-        if self._first_view:
-            setup_camera(p, self.data, "iso", self.ortho_action.isChecked())
-            self._first_view = False
-        p.render()
-
-    # ---------------------------------------------------------------- view
-    def view(self, direction):
-        if self.data is not None:
-            setup_camera(self.viewport, self.data, direction, self.ortho_action.isChecked())
-            self.viewport.render()
-
-    def _toggle_ortho(self):
-        if self.ortho_action.isChecked():
-            self.viewport.enable_parallel_projection()
+    def _style_changed(self):
+        self.viewport.style_combo.blockSignals(True)
+        self.viewport.style_combo.setCurrentText(self.style.preset)
+        self.viewport.style_combo.blockSignals(False)
+        self.viewport.redraw()
+        if self.panel._current() and self.panel._current()[0] == "visual":
+            pass  # editor already reflects the change
         else:
-            self.viewport.disable_parallel_projection()
-        self.viewport.render()
+            self.panel.refresh()
+
+    def _on_pick(self, text):
+        self.pick_label.setText(text)
+        if text:
+            self.log.appendPlainText(time.strftime("%H:%M:%S ") + text)
 
     # ---------------------------------------------------------------- output
-    def render_image(self, filename=None):
+    def render_image(self, filename=None, **overrides):
         if self.data is None:
             return None
         if not filename:
@@ -249,12 +304,26 @@ class MainWindow(QtWidgets.QMainWindow):
                                                                 "Images (*.png *.jpg *.tif)")
             if not filename:
                 return None
-        rs = self.render_settings
-        render(self.data, filename, size=(rs.width.value(), rs.height.value()), camera=camera_state(self.viewport),
-               background=rs.background.currentText(), transparent_background=rs.transparent.isChecked(),
-               ambient_occlusion=rs.ao.isChecked(), **rs.scene_kwargs())
-        self.statusBar().showMessage(f"Rendered {filename}", 5000)
+        kw = dict(self.style.scene_kwargs())
+        kw.update(self.render_page.render_kwargs())
+        kw.update(overrides)
+        text = self.render_page.label_text(self.frame, self.data)
+        render(self.data, filename, camera=camera_state(self.viewport.plotter), text=text or None, **kw)
+        self.message(f"Rendered {filename}")
         return filename
+
+    def render_from_page(self):
+        page = self.render_page
+        out = page.output.text() or "render.png"
+        if page.animation.isChecked() or out.endswith((".mp4", ".gif")):
+            self.export_movie(out)
+            return
+        self.render_image(out)
+        pix = QtGui.QPixmap(out)
+        if not pix.isNull():
+            page.preview.setPixmap(pix.scaled(page.preview.size(), QtCore.Qt.KeepAspectRatio,
+                                              QtCore.Qt.SmoothTransformation))
+        page.update_code()
 
     def export_dialog(self):
         if self.pipeline is None:
@@ -267,25 +336,28 @@ class MainWindow(QtWidgets.QMainWindow):
         if path:
             fmt = "vasp" if os.path.basename(path).startswith("POSCAR") else None
             export_file(self.data, path, format=fmt)
+            self.message(f"Exported {path}")
 
-    def export_movie(self):
+    def export_movie(self, path=None):
         if self.pipeline is None:
             return
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export movie", "movie.mp4", "Movies (*.mp4 *.gif)")
         if not path:
-            return
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export movie", "movie.mp4", "Movies (*.mp4 *.gif)")
+            if not path:
+                return
         from ..render import render_animation
 
-        rs = self.render_settings
-        render_animation(self.pipeline, path, fps=self.timeline.fps.value(), device=self.device,
-                         size=(rs.width.value() // 2 * 2, rs.height.value() // 2 * 2),
-                         camera=camera_state(self.viewport), background=rs.background.currentText(),
-                         **rs.scene_kwargs())
-        self.statusBar().showMessage(f"Wrote {path}", 5000)
+        kw = dict(self.style.scene_kwargs())
+        kw.update(self.render_page.render_kwargs())
+        w, h = kw.pop("size")
+        frames = range(0, self.pipeline.num_frames, self.timeline.stride.value())
+        render_animation(self.pipeline, path, frames=frames, fps=self.timeline.fps.value(), device=self.device,
+                         size=(w // 2 * 2, h // 2 * 2), camera=camera_state(self.viewport.plotter), **kw)
+        self.message(f"Wrote {path}")
 
     def closeEvent(self, event):
         self.timeline.timer.stop()
-        self.viewport.close()  # release the VTK/OpenGL context before Qt tears down
+        self.viewport.plotter.close()  # release the VTK/OpenGL context before Qt tears down
         km = getattr(self.console, "kernel_manager", None)
         if km is not None:
             self.console.kernel_client.stop_channels()
@@ -294,12 +366,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- console
     def _console_namespace(self):
-        return {"np": np, "mods": mods, "viewer": self, "pipeline": self.pipeline, "data": self.data,
-                "import_file": import_file}
+        return {"np": np, "mods": mods, "viewer": self, "vp": self.viewport, "pipeline": self.pipeline,
+                "pipe": self.pipeline, "data": self.data, "import_file": import_file, "style": self.style}
 
     def _push_console(self):
         shell = getattr(self.console, "shell", None)
-        ns = {"pipeline": self.pipeline, "data": self.data}
+        ns = {"pipeline": self.pipeline, "pipe": self.pipeline, "data": self.data}
         if hasattr(shell, "push") and hasattr(shell, "user_ns"):
             shell.push(ns)
         elif shell is not None and hasattr(shell, "locals"):
@@ -308,18 +380,31 @@ class MainWindow(QtWidgets.QMainWindow):
     def _after_console(self, *args):
         shell = getattr(self.console, "shell", None)
         ns = getattr(shell, "user_ns", None) or getattr(shell, "locals", {})
-        pipe = ns.get("pipeline")
-        if pipe is not None and pipe is not self.pipeline:
-            self.set_pipeline(pipe)  # user did pipeline = import_file(...)
-        elif self.pipeline is not None:
+        for key in ("pipe", "pipeline"):
+            pipe = ns.get(key)
+            if pipe is not None and pipe is not self.pipeline:
+                self.set_pipeline(pipe)  # user did pipe = import_file(...)
+                return
+        if self.pipeline is not None:
             self.panel.refresh()
             self.timeline.set_num_frames(self.pipeline.num_frames)
             self.recompute()
 
 
+def _app():
+    from . import theme
+
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        app = QtWidgets.QApplication(sys.argv)
+        app.setApplicationName("ewald")
+        theme.apply(app)
+    return app
+
+
 def show(pipeline=None, device=None, block: bool = True):
     """Open the viewer on an existing Pipeline (from a script or Jupyter with %gui qt)."""
-    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
+    app = _app()
     win = MainWindow(pipeline, device=device)
     win.show()
     if block and not _in_ipython_qt_loop():
@@ -343,8 +428,7 @@ def main(argv=None):
     ap.add_argument("--type-map", default=None, help="LAMMPS types, e.g. 1=Cu,2=Zr")
     ap.add_argument("--device", default=None, help="cpu, cuda or auto")
     args = ap.parse_args(argv)
-    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
-    app.setApplicationName("ewald")
+    app = _app()
     win = MainWindow(device=args.device)
     if args.file:
         kw = {"type_map": dict(p.split("=") for p in args.type_map.split(","))} if args.type_map else {}

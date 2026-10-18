@@ -1,6 +1,7 @@
 """Data pipeline: source -> modifiers -> DataCollection."""
 from __future__ import annotations
 
+import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Callable
@@ -32,6 +33,7 @@ class Modifier:
 
     enabled: bool = True
     status: str | None = None  # last error message, None when the last evaluation succeeded
+    last_time: float | None = None  # seconds spent in the last evaluation
 
     def modify(self, data: DataCollection, ctx: ComputeContext):
         raise NotImplementedError
@@ -149,14 +151,17 @@ class Pipeline:
         for mod in self.modifiers:
             if not mod.enabled:
                 continue
+            t0 = time.perf_counter()
             try:
                 result = mod.modify(data, ctx)
             except Exception as exc:
+                mod.last_time = time.perf_counter() - t0
                 mod.status = f"{type(exc).__name__}: {exc}"
                 if errors == "raise":
                     raise
                 continue
             mod.status = None
+            mod.last_time = time.perf_counter() - t0
             if result is not None:
                 data = result
         return data

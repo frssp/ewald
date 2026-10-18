@@ -73,6 +73,8 @@ class DataInspector(QtWidgets.QTabWidget):
         self.addTab(self.attributes, "Attributes")
         self.tables = QtWidgets.QPlainTextEdit(readOnly=True)
         self.addTab(self.tables, "Tables")
+        self.cell = QtWidgets.QPlainTextEdit(readOnly=True)
+        self.addTab(self.cell, "Cell")
 
     def set_data(self, data):
         self._data = data
@@ -89,6 +91,15 @@ class DataInspector(QtWidgets.QTabWidget):
             for row in zip(*(table[k] for k in keys)):
                 lines.append("\t".join(f"{x:.5g}" for x in row))
         self.tables.setPlainText("\n".join(lines))
+        if data is not None and data.cell.is_valid:
+            from .pipeline_panel import cell_summary
+
+            m, o = data.cell.matrix, data.cell.origin
+            self.cell.setPlainText("cell vectors (rows, Å)\n" + "\n".join(f"{n}  {v[0]:12.6f} {v[1]:12.6f} {v[2]:12.6f}"
+                                   for n, v in zip("abc", m)) + f"\norigin {o[0]:.4f} {o[1]:.4f} {o[2]:.4f}\n\n"
+                                   + cell_summary(data.cell))
+        else:
+            self.cell.setPlainText("no cell")
 
     def _apply_filter(self):
         from ..modifiers.expression import evaluate
