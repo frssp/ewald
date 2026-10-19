@@ -111,7 +111,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if event.oldSize().width() != event.size().width():
-            QtCore.QTimer.singleShot(0, self._fit)  # rewrapped after the layout
+            QtCore.QTimer.singleShot(0, self, self._fit)  # rewrapped after the layout; dropped if deleted
 
     def keyPressEvent(self, event):
         key, mods = event.key(), event.modifiers()
@@ -150,6 +150,7 @@ class OutputArea(QtWidgets.QWidget):
         self.lay.setSpacing(4)
 
     def set_outputs(self, outputs):
+        self.outputs = list(outputs)
         while self.lay.count():
             w = self.lay.takeAt(0).widget()
             if w is not None:
@@ -559,8 +560,8 @@ class CellWidget(QtWidgets.QFrame):
         self.setProperty("state", c.state)
         if c.kind == "markdown":
             return
-        if c.is_view:
-            self.outputs.set_outputs([o for o in c.outputs if o.kind == "error"])
+        if c.is_view:  # the plot replaces show()'s image, except for results saved in the file
+            self.outputs.set_outputs(c.outputs if c.state == "new" else [o for o in c.outputs if o.kind == "error"])
             self._repolish()
             return
         if not c.is_step:
@@ -761,7 +762,7 @@ class NotebookView(QtWidgets.QWidget):
         self.run(cell)  # rebuilds: the new cell gets its plot
         w = self.widget_for(cell)
         if w is not None:
-            QtCore.QTimer.singleShot(0, lambda: self.scroll.ensureWidgetVisible(w))
+            QtCore.QTimer.singleShot(0, w, lambda: self.scroll.ensureWidgetVisible(w))
         return cell
 
     def _fill_plugin_menu(self):
@@ -867,7 +868,7 @@ class NotebookView(QtWidgets.QWidget):
         w = self.widget_for(cell)
         if w is not None and w.editor is not None:
             w.editor.setFocus()
-            QtCore.QTimer.singleShot(0, lambda: self.scroll.ensureWidgetVisible(w))
+            QtCore.QTimer.singleShot(0, w, lambda: self.scroll.ensureWidgetVisible(w))
         self.history.commit("Insert cell")
         self.titleChanged.emit()
         return cell
@@ -887,7 +888,7 @@ class NotebookView(QtWidgets.QWidget):
         w = self.widget_for(cell)
         if w is not None:
             w.form_button.setChecked(True)
-            QtCore.QTimer.singleShot(0, lambda: self.scroll.ensureWidgetVisible(w))
+            QtCore.QTimer.singleShot(0, w, lambda: self.scroll.ensureWidgetVisible(w))
         self.history.commit(f"Add {modifier.name}")
         self.changed.emit()
         self.titleChanged.emit()
@@ -984,9 +985,25 @@ class NotebookView(QtWidgets.QWidget):
                 self.add_cell("code")
 
     def run_all(self):
+        if not self._trusted():
+            return
         before = self.notebook.pipeline
         self._busy(self.notebook.run_all)
         self._after_run(before)
+
+    def _trusted(self) -> bool:
+        """A restricted notebook (an .ewd someone sent) runs only after you agree."""
+        nb = self.notebook
+        if not nb.restricted:
+            return True
+        plugins = [p.get("name") or p.get("id") for p in nb.manifest.get("plugins", []) if p.get("file")]
+        text = (f"{nb.name} came from an .ewd file. Its cells are Python code" +
+                (f" and it carries plugins ({', '.join(plugins)})" if plugins else "") +
+                ". Trust it and run?")
+        if QtWidgets.QMessageBox.question(self, "Trust notebook", text) != QtWidgets.QMessageBox.Yes:
+            return False
+        nb.trust()
+        return True
 
     def restart(self):
         self.notebook.reset()
@@ -1136,16 +1153,17 @@ class NotebookPanel(QtWidgets.QWidget):
             self.tabs.removeTab(self.tabs.indexOf(blank))
             blank.deleteLater()
         if run:
+            nb.trust()
             view.run_all()
         else:
             view.update_results()
         return view
 
-    def save(self, path=None) -> str | None:
+    def save(self, path=None, **options) -> str | None:
         nb = self.notebook
         if nb is None:
             return None
-        nb.save(path)
+        nb.save(path, **options)
         nb.name = os.path.splitext(os.path.basename(nb.path))[0]
         self._retitle(self.view)
         self.view.update_results()
@@ -1200,7 +1218,7 @@ class NotebookPanel(QtWidgets.QWidget):
             if cell is not None:
                 view.select(cell)
                 w = view.widget_for(cell)
-                QtCore.QTimer.singleShot(0, lambda: view.scroll.ensureWidgetVisible(w))
+                QtCore.QTimer.singleShot(0, w, lambda: view.scroll.ensureWidgetVisible(w))
         view.update_results()
 
     def update_status(self):

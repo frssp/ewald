@@ -17,11 +17,14 @@ def file_filter() -> str:
 
     return (f"Simulation files ({' '.join(plugins.file_patterns('structure'))});;"
             f"Volumetric data ({' '.join(plugins.file_patterns('volumetric'))});;"
-            "Notebooks (*.py);;Sessions (*.ewald);;All files (*)")
+            "Notebooks (*.ewd *.ipynb *.py);;Sessions (*.ewald);;All files (*)")
 
 
 SESSION_FILTER = "ewald session (*.ewald)"
-NOTEBOOK_FILTER = "Notebook (*.py)"
+NOTEBOOK_FILTERS = {".ewd": "EWALD notebook with results and data (*.ewd)",
+                    ".ipynb": "Jupyter notebook (*.ipynb)", ".py": "Python script, code only (*.py)"}
+NOTEBOOK_FILTER = ";;".join(NOTEBOOK_FILTERS.values())
+NOTEBOOK_EXTENSIONS = tuple(NOTEBOOK_FILTERS)
 
 
 def save_filters() -> list[tuple[str, str | None]]:
@@ -77,7 +80,7 @@ class FilesMixin:
 
         if is_session_file(path):
             self.load_session(path)
-        elif self.layout_mode == "notebook" and str(path).endswith(".py") and os.path.isfile(path):
+        elif self.layout_mode == "notebook" and str(path).lower().endswith(NOTEBOOK_EXTENSIONS) and os.path.isfile(path):
             self.open_notebook(path)
         elif kwargs or not ask_types:
             self.open_file(path, **kwargs)
@@ -86,14 +89,15 @@ class FilesMixin:
 
     # ---------------------------------------------------------------- notebooks
     def open_notebook(self, path, run: bool | None = None):
-        """Open a ``.py`` notebook in a new tab. Its cells run when ``python.run_notebooks``
-        says so ("ask" asks: a notebook is code)."""
+        """Open a notebook (``.ewd``, ``.ipynb`` or ``.py``) in a new tab. Its cells run when
+        ``python.run_notebooks`` says so ("ask" asks: a notebook is code). An ``.ewd`` always
+        asks unless the policy is "never": it may carry plugins, which load only if you trust it.
+        Until then it shows the results saved in it."""
+        ewd = str(path).lower().endswith(".ewd")
         if run is None:
             policy = self.settings["python.run_notebooks"]
-            if policy == "ask":
-                run = QtWidgets.QMessageBox.question(
-                    self, "Run notebook", f"Run the cells of {os.path.basename(path)} now?\n\n"
-                    "A notebook is Python code: run it only if you trust it.") == QtWidgets.QMessageBox.Yes
+            if policy == "ask" or (ewd and policy == "always"):
+                run = self._ask_trust(path)
             else:
                 run = policy == "always"
         try:
@@ -102,27 +106,81 @@ class FilesMixin:
             self.message(f"Open failed: {path}: {exc}", error=True)
             QtWidgets.QMessageBox.critical(self, "Open failed", f"{path}\n\n{exc}")
             return None
+        nb = view.notebook
+        for w in nb.warnings:
+            self.message(w, error=True)
+        self._apply_notebook_state(nb.state)
         self.notebook_dock.show()
         self.setWindowTitle(f"EWALD — {os.path.basename(str(path))}")
-        self.message(f"Opened notebook {path}" + ("" if run else " (not run: Notebook › Run all)"))
+        note = "" if run else (" (restricted: shows saved results; Run all asks to trust it)" if nb.restricted
+                               else " (not run: Notebook › Run all)")
+        self.message(f"Opened notebook {path}{note}")
         return view
 
+    def _ask_trust(self, path) -> bool:
+        """Ask before running a notebook; for an ``.ewd`` also name the plugins it carries."""
+        extra = ""
+        if str(path).lower().endswith(".ewd"):
+            from ..notebook_io import read_manifest
+
+            try:
+                carried = [p.get("name") or p.get("id") for p in read_manifest(path).get("plugins", []) if p.get("file")]
+            except Exception:  # noqa: BLE001 - the open itself reports a broken file
+                carried = []
+            if carried:
+                extra = "\n\nIt carries plugins, which load when you agree: " + ", ".join(carried)
+        return QtWidgets.QMessageBox.question(
+            self, "Run notebook", f"Run the cells of {os.path.basename(str(path))} now?\n\n"
+            "A notebook is Python code: run it only if you trust it." + extra) == QtWidgets.QMessageBox.Yes
+
+    def _apply_notebook_state(self, state: dict):
+        """The viewer state an ``.ewd`` or ``.ipynb`` saved: style, frame and camera."""
+        if not state:
+            return
+        for k, v in (state.get("style") or {}).items():
+            if k in self.style.__dataclass_fields__:
+                setattr(self.style, k, list(map(list, v)) if k == "bond_pairs" else v)
+        if self.pipeline is not None and state.get("frame"):
+            self.timeline._set(min(int(state["frame"]), self.pipeline.num_frames - 1))
+        if state.get("camera") and self.pipeline is not None:
+            from ..render import apply_camera_state
+
+            apply_camera_state(self.viewport.plotter, state["camera"])
+            self.viewport.render()
+        self._style_changed()
+
+    def notebook_state(self) -> dict:
+        """What an ``.ewd``/``.ipynb`` keeps of the viewer: style, frame and camera."""
+        state = {"style": self.style.to_dict(), "frame": int(self.frame)}
+        if self.pipeline is not None:
+            state["camera"] = camera_state(self.viewport.plotter)
+        return state
+
     def save_notebook(self, ask: bool = False):
-        """Save the current notebook as a ``.py`` file (asks for a name the first time)."""
+        """Save the current notebook (asks for a name the first time). The extension picks the
+        format: ``.ewd`` (default: code, results, figures, small data files and plugins), ``.ipynb``
+        (code and results) or ``.py`` (code)."""
         nb = self.panel.notebook
         if nb is None:
             return None
         path = nb.path
         if ask or not path:
-            start = path or os.path.join(os.path.dirname(self.session_path or "") or os.getcwd(),
-                                         nb.name.replace(" ", "_") + ".py")
-            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save notebook", start, NOTEBOOK_FILTER)
+            ext = os.path.splitext(path or "")[1].lower() if path else ".ewd"
+            stem = os.path.splitext(path)[0] if path else os.path.join(
+                os.path.dirname(self.session_path or "") or os.getcwd(), nb.name.replace(" ", "_"))
+            path, chosen = QtWidgets.QFileDialog.getSaveFileName(
+                self, "Save notebook", stem + ext, NOTEBOOK_FILTER, NOTEBOOK_FILTERS.get(ext, ""))
             if not path:
                 return None
-            if not path.endswith(".py"):
-                path += ".py"
+            if not path.lower().endswith(NOTEBOOK_EXTENSIONS):
+                path += next((e for e, f in NOTEBOOK_FILTERS.items() if f == chosen), ".ewd")
+        nb.state = self.notebook_state()
+        options = {}
+        if path.lower().endswith(".ewd"):
+            options = {"figures": bool(self.settings["python.save_figures"]),
+                       "data_limit_mb": float(self.settings["python.bundle_data_mb"])}
         try:
-            self.panel.save(path)
+            self.panel.save(path, **options)
         except OSError as exc:
             QtWidgets.QMessageBox.critical(self, "Save failed", f"{path}\n\n{exc}")
             return None

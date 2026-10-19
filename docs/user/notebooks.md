@@ -1,9 +1,10 @@
 # Notebooks
 
 In the desktop GUI, your analysis is a notebook: Python cells that build the pipeline, plots of
-its results, and notes, saved as one `.py` file. It works like Jupyter, and the file stays a
-plain script, so `python analysis.py` runs it without the GUI. VS Code, JupyterLab with
-jupytext and Spyder open it as a notebook too.
+its results, and notes. It works like Jupyter. It is saved as an `.ewd` file (code, results,
+figures and data in one file, see [Notebook files](#notebook-files)), as a Jupyter `.ipynb`, or
+as a plain `.py` script that `python analysis.py` runs without the GUI and VS Code, JupyterLab
+with jupytext and Spyder open as a notebook.
 
 ```python
 # %% [markdown]
@@ -104,12 +105,45 @@ a notebook that has a pipeline shows it in the viewport.
 
 Opening a data file (File › Open, or `ewald gui file`) makes a notebook for it: the imports, a
 `load` cell and one step per modifier the file needs. It replaces the empty notebook you
-start with. File › Open on a `.py` file opens it as a notebook. The cells only run after you
-choose to (Notebook › Run all), because a notebook is code. Preferences › Python ›
-*Run notebooks when opened* can change that to always run them or never run them.
+start with. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. The cells
+only run after you choose to (Notebook › Run all), because a notebook is code. Preferences ›
+Python › *Run notebooks when opened* can change that to always run them or never run them.
 
-File › Save notebook (Ctrl+S) writes the `.py` file. Sessions (`.ewald`) still load and save
-from the File menu.
+File › Save notebook (Ctrl+S) writes the notebook file; the first time it asks for a name and a
+format, `.ewd` unless you pick another. Sessions (`.ewald`) still load and save from the File
+menu.
+
+## Notebook files
+
+| Format | Keeps | Opens in |
+|---|---|---|
+| `.ewd` | code, outputs, figures, small data files, plugins, view state | ewald (unzipped: Jupyter, any CSV/SVG tool) |
+| `.ipynb` | code, outputs, view state | ewald, Jupyter, VS Code, GitHub |
+| `.py` | code | ewald, `python`, VS Code, jupytext; the one to keep in git |
+
+An `.ewd` file is a zip archive:
+
+```
+analysis.ewd
+├── notebook.ipynb   code and outputs (a standard Jupyter notebook)
+├── manifest.json    ewald version, data files, plugins, style, camera and frame
+├── figures/         each view cell as SVG and PNG, and the plotted data as CSV
+├── data/            data files up to 50 MB
+└── plugins/         plugin files from your plugin folder that the steps use
+```
+
+Larger trajectories stay links: the manifest keeps their path (relative to the `.ewd` file),
+size and a fingerprint of their first and last MiB. When you open the notebook, ewald finds
+each file next to the notebook or in the copy the `.ewd` carries, and says when a file moved,
+changed or is missing. `load("traj.dump")` in a cell looks in the same places, so a notebook
+you send with its data, or one that carries it, runs on another computer. Preferences › Python
+sets the size limit (*Copy data files up to*, 0 for links only) and whether figures are saved.
+
+An `.ewd` from someone else opens **restricted**. You see its code, outputs and figures, but no
+cell runs and its plugins are not imported until you agree: opening asks (unless *Run notebooks
+when opened* is *never*), and so does Run all. A plugin you already have installed under the
+same id is used instead of the copy in the file. A `.ipynb` written by Jupyter opens the same
+way as a `.py`; `pipe.add(...)` cells become steps and its outputs are kept.
 
 ## Undo and redo
 
@@ -129,11 +163,13 @@ history, which starts empty when the notebook is opened.
 The puzzle icon on the far left opens the **Plugins** side bar, next to the notebook (Window ›
 Plugins, Ctrl+Shift+X). It lists the installed plugins, with where each comes from (plugin
 folder, pip package or this session) and any error it raised, and the plugins you can install:
-ewald's example plugins and every catalog in Preferences › Python › *Plugin catalogs* (see
+ewald's example plugins, the default plugin index and every catalog in Preferences › Python ›
+*Plugin catalogs* (see
 [Packaging and sharing](../plugins/packaging.md#plugin-catalogs)). Type to search, or filter with
 `@installed`, `@available` or a kind such as `@modifier`. *Install* copies a plugin file into the
 plugin folder and loads it at once; a `pip:` entry runs pip in the Python ewald runs in, after
-you confirm the command. *Disable* switches a plugin off without removing it
+you confirm the command. *Update to …* appears on an installed plugin when a catalog has a
+newer version, and entries that need a newer ewald are greyed out. *Disable* switches a plugin off without removing it
 ([Switching a plugin off](../plugins/packaging.md#switching-a-plugin-off)); disabled,
 incompatible and failed plugins say so in their row. *Remove* moves a file to the plugin
 folder's `.removed` folder (its steps stay available until ewald restarts). Selecting a modifier plugin shows its documentation
@@ -164,6 +200,12 @@ nb.run_all()                      # False if a cell failed; errors are in cell.o
 data = nb.pipeline.compute(0)
 nb.add_view(histogram="Coordination")
 nb.save()
+nb.save("analysis.ewd")           # or .ipynb; save_ewd options: figures=, data_limit_mb=, plugins=
+
+sent = Notebook.load("from_a_colleague.ewd")
+print(sent.warnings)              # data files that moved or changed
+sent.trust()                      # load its plugins and allow it to run
+sent.run_all()
 ```
 
 `Notebook.from_pipeline(pipe)` makes a notebook from a pipeline built in a script.

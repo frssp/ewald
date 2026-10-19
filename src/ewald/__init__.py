@@ -16,7 +16,16 @@ from .data import Cell, DataCollection
 from .io import StaticSource, export_file, import_file
 from .pipeline import ComputeCancelled, ComputeContext, Modifier, Pipeline, PythonModifier
 
-load = import_file  # the short name notebooks use: pipe = load("XDATCAR")
+
+
+def load(path, *args, **kwargs) -> Pipeline:
+    """:func:`import_file` under the short name notebooks use (``pipe = load("XDATCAR")``).
+    In a notebook a relative path is also looked up next to the notebook file and in the data
+    an ``.ewd`` notebook carries, so a shared notebook finds its files."""
+    from .notebook import resolve_data_path
+
+    return import_file(resolve_data_path(path), *args, **kwargs)
+
 
 __version__ = "0.1.0"
 __title__ = "EWALD: Extensible Workbench for Atomic Lattices & Dynamics"
