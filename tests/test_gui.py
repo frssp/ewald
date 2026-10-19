@@ -245,3 +245,34 @@ def test_preferences_layout_covers_every_option_once():
     for name in PAGES:
         for _title, ks in LAYOUT[name][1]:
             assert all(__import__("ewald.settings").settings.OPTION[k].page == name for k in ks)
+
+
+def test_bond_tool_and_menu(app, srtio3_pipe):
+    from ewald.gui.app import MainWindow
+    from ewald.gui.pipeline_panel import MODIFIER_MENU
+
+    assert "Coordination polyhedra" in MODIFIER_MENU["Bonds & polyhedra"]
+    w = MainWindow(srtio3_pipe)
+    w.recompute()
+    n = w.data.bonds.count
+    w.toggle_bond(1, 2)                                  # Ti-O bond exists: delete it
+    assert isinstance(srtio3_pipe.modifiers[-1], mods.EditBonds) and w.data.bonds.count == n - 1
+    w.toggle_bond(1, 2)                                  # and add it back
+    assert w.data.bonds.count == n and len(srtio3_pipe.modifiers) == 3
+    assert "coordination-polyhedra" not in w.data.surfaces
+    srtio3_pipe.modifiers.append(mods.CoordinationPolyhedra(["Ti"]))
+    w.recompute()
+    assert any(name.startswith("surface:") for name in w.viewport.plotter.actors)
+    w.close()
+
+
+@pytest.fixture
+def srtio3_pipe():
+    from ase.spacegroup import crystal
+
+    from ewald import DataCollection
+
+    atoms = crystal(["Sr", "Ti", "O"], basis=[(0, 0, 0), (0.5, 0.5, 0.5), (0.5, 0.5, 0)], spacegroup=221,
+                    cellpar=[3.905] * 3 + [90] * 3)
+    return Pipeline(StaticSource(DataCollection.from_ase(atoms)),
+                    [mods.CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.2)]), mods.Replicate((2, 2, 2))])

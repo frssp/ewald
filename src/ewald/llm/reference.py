@@ -46,6 +46,11 @@ pipe.render("frame10.png", frame=10, direction="iso", bonds=2.8)
 - `data.take(mask_or_index)`, `data.delete(mask)` return new collections; `data.to_ase()`, `DataCollection.from_ase(atoms)`.
 - **Never write into an array in place** (`data.positions[0] = ...`, `data["Color"][sel] = ...`): arrays are shared
   with cached frames. Build a new array and assign it: `pos = data.positions.copy(); pos[0] += 1; data.positions = pos`.
+- `data.bonds` (None until `CreateBonds`, `EditBonds` or a LAMMPS data file adds them) stores each bond once:
+  `data.bonds["Topology"]` (M x 2 particle indices), `data.bonds["Periodic Image"]` (M x 3), optional "Bond Type",
+  "Color"; `data.bonds.vectors(data)`, `.lengths(data)`, `.neighbor_counts(N)`. `take`/`delete`/`Replicate`/`WrapAtoms`
+  keep bonds consistent. `data.surfaces` maps names to `SurfaceMesh` (`vertices`, `faces`, `face_properties`,
+  `edges`), e.g. `data.surfaces["coordination-polyhedra"]` from `CoordinationPolyhedra`; renderers draw both.
 - A modifier function may take a third argument `ctx`: `ctx.source_frame(k)` (reference frame), `ctx.frame`,
   `ctx.xp` (numpy or cupy). Return nothing to keep `data`, or return a new DataCollection (e.g. `data.delete(mask)`).
 
@@ -70,6 +75,8 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 | `data.cell[:, :3]`: COLUMNS are the cell vectors, `data.cell[:, 3]` origin | `data.cell.matrix`: ROWS are the cell vectors, `data.cell.origin` |
 | `ColorCodingModifier(property=..., gradient=...)` | `ColorCoding(property, cmap="viridis")` (matplotlib colormap name) |
 | `WrapPeriodicImagesModifier()` | `WrapAtoms()` |
+| `data.particles.bonds.topology`, `bonds.pbc_vectors` | `data.bonds["Topology"]`, `data.bonds["Periodic Image"]` |
+| `CreateBondsModifier(mode=CreateBondsModifier.Mode.Pairwise)` | `CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)])` (`set_pairwise_cutoff` also works) |
 | `PythonScriptModifier(function=f)` | `pipe.modifiers.append(f)` |
 | `Viewport(...).render_image(filename=...)`, `pipeline.add_to_scene()` | `pipe.render(filename, frame=, size=, direction=)`; GUI: `ewald gui FILE` |
 | `export_file(pipeline, file, format, columns=[...])` | `export_file(pipe, file, format=...)` (`"lammps/dump"` native, else ASE) |
