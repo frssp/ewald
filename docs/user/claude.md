@@ -21,11 +21,37 @@ density, minimum distance, coordination histograms, g(r) peaks, sanity warnings)
 `describe_trajectory` flags the frames where a descriptor jumps. Renders come back as images
 the model can look at. The tools are: `load_structure`, `describe_frame`,
 `describe_trajectory`, `event_details`, `list_modifiers`, `add_modifier`, `remove_modifier`,
-`show_pipeline`, `set_frame`, `evaluate_expression`, `compute_rdf`, `compute_msd`,
+`show_pipeline`, `set_frame`, `evaluate_expression`, `compute_rdf`, `compute_msd`, `describe_selection`,
 `render_image` and `get_script`.
 
 `run_python`, which executes model-written code in your Python process, is off unless you pass
 `allow_code=True` (or `--allow-code` on the command line).
+
+## Asking about a selection
+
+A question can be about a few atoms rather than the whole structure: atoms picked in the GUI
+(see [GUI](gui.md)), a selection expression, or Particle Identifiers.
+
+```bash
+ewald ask dump.lammpstrj "What are these atoms?" --select "StructureType == 0" --frame 40
+ewald ask POSCAR "Why is this Li under-coordinated?" --ids 17
+```
+
+```python
+agent = Agent.from_pipeline(pipe)
+agent.ask_about_selection("What are these atoms?", indices=[17, 18, 25], frame=40)
+```
+
+ewald sends the question together with a description of the selection and of the atoms within
+6 Å of it (`ewald.llm.selection.describe_selection`, which needs no LLM). The description holds
+each selected atom's neighbors with distances, its coordination number, structure type and
+property values. It also gives the same averages over the surroundings and over the whole
+frame, the distances and angle between up to six selected atoms, and the nearest atom whose
+structure type differs from the bulk. Structure types are included only when a CNA or PTM
+modifier ran upstream; otherwise the description suggests one. A close-up render
+(`selection_scene`) shows the region unwrapped across periodic boundaries, with the selected
+atoms in yellow. Claude can call `describe_selection` again with another radius or cutoff,
+or add a modifier that tests its reading.
 
 ## Without an LLM
 

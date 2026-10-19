@@ -15,6 +15,8 @@ from __future__ import annotations
 import base64
 from typing import Callable
 
+import numpy as np
+
 from .tools import Toolset, ToolResult
 
 DEFAULT_MODEL = "claude-opus-5-5"
@@ -132,6 +134,22 @@ class Agent:
                 results.append(_tool_result_block(block.id, result))
             self.messages.append({"role": "user", "content": results})
         return f"[stopped after {self.max_turns} tool rounds]"
+
+    def ask_about_selection(self, question: str, indices, frame: int | None = None, radius: float = 6.0,
+                            image: bool = True) -> str:
+        """Ask about particles the user picked: sends the question with ewald's description of the
+        selection and its surroundings (:mod:`ewald.llm.selection`) and a close-up render."""
+        from .selection import describe_selection, selection_prompt
+
+        ts = self.toolset
+        pipe = ts._need_pipeline()
+        if frame is not None:
+            ts.frame = int(frame) % pipe.num_frames
+        ts.selection = [int(i) for i in np.unique(np.asarray(indices, int))]
+        data = pipe.compute(ts.frame)
+        description = describe_selection(data, ts.selection, radius=radius, frame=ts.frame)
+        png = ts.selection_image(data, ts.selection, radius) if image else None
+        return self.ask(selection_prompt(question, description), images=[png] if png else None)
 
     def reset(self):
         self.messages.clear()

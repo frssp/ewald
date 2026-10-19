@@ -409,3 +409,93 @@ def test_viewport_draws_and_clears_surfaces(app):
     v.set_data(data)
     assert not any(str(k).startswith("surface:") for k in v.plotter.actors)
     v.close()
+
+
+class _FakeAgent:
+    def __init__(self, pipeline, on_event):
+        self.toolset = type("TS", (), {"pipeline": pipeline, "frame": 0, "selection": None})()
+        self.on_event = on_event
+        self.calls = []
+
+    def ask_about_selection(self, question, indices, frame=None):
+        self.calls.append(("selection", question, list(indices), frame))
+        self.on_event("tool_call", {"name": "describe_selection", "input": {}})
+        self.toolset.pipeline.modifiers.append(mods.CommonNeighborAnalysis())
+        return f"{len(indices)} atoms: **fcc** neighbors"
+
+    def ask(self, question):
+        self.calls.append(("frame", question))
+        return "the whole frame"
+
+
+def _wait(app, panel):
+    import time
+
+    t = time.time()
+    while panel.busy() and time.time() - t < 10:
+        app.processEvents()
+    app.processEvents()
+
+
+def test_ask_panel_selection_and_frame(app, pipe):
+    from ewald.gui.ask_panel import AskPanel
+
+    ctx = {"indices": [3, 1]}
+    agents = []
+    panel = AskPanel(lambda: (pipe, 1, ctx["indices"]),
+                     agent_factory=lambda p, ev: agents.append(_FakeAgent(p, ev)) or agents[-1])
+    panel.update_selection()
+    assert panel.selection_label.text() == "2 atoms selected"
+    changed = []
+    panel.pipelineChanged.connect(lambda: changed.append(1))
+    panel.input.setPlainText("What are these?")
+    panel.ask()
+    _wait(app, panel)
+    assert agents[0].calls == [("selection", "What are these?", [3, 1], 1)]
+    text = panel.transcript.toPlainText()
+    assert "What are these?" in text and "2 atoms: fcc neighbors" in text
+    assert changed == [1] and panel.ask_button.isEnabled() and panel.input.toPlainText() == ""
+
+    ctx["indices"] = []
+    panel.ask("And the frame?")
+    _wait(app, panel)
+    assert agents[0].calls[-1] == ("frame", "And the frame?") and len(agents) == 1   # same conversation
+    panel.reset()
+    assert panel.transcript.toPlainText() == ""
+
+
+def test_ask_panel_without_claude(app, pipe):
+    from ewald.gui.ask_panel import AskPanel
+
+    def missing(p, ev):
+        raise ModuleNotFoundError("No module named 'anthropic'")
+
+    panel = AskPanel(lambda: (pipe, 0, []), agent_factory=missing)
+    panel.ask("hello")
+    assert "not available" in panel.transcript.toPlainText() and "pip install ewald[llm]" in panel.transcript.toPlainText()
+    assert not panel.busy()
+
+
+def test_main_window_ask_uses_picks_and_selection(app, pipe):
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(pipe)
+    w.viewport.set_tool("pick")
+    w.viewport.add_pick(5)
+    w.viewport.add_pick(7, extend=True)
+    w.viewport.add_pick(9, extend=True)
+    w.viewport.add_pick(7, extend=True)           # Shift+click again removes it
+    assert w._ask_context() == (pipe, 0, [5, 9])
+    assert "2 atoms picked" in w.pick_label.text() and w.ask_panel.selection_label.text() == "2 atoms selected"
+    w.viewport.clear_picks()
+    pipe.modifiers.append(mods.ExpressionSelection("Position.Z < 1"))
+    w.recompute()
+    assert len(w._ask_context()[2]) == int((w.data.positions[:, 2] < 1).sum()) > 0
+    w.show()
+    app.processEvents()
+    shown = lambda wid: not wid.visibleRegion().isEmpty()  # noqa: E731
+    assert shown(w.panel) and not shown(w.ask_dock)      # tabbed with the pipeline, which is in front
+    w.ask_claude()
+    app.processEvents()
+    assert shown(w.ask_dock) and not shown(w.panel)
+    w.close()

@@ -10,7 +10,7 @@ LAMMPS numeric types wherever a file is read.
 | `ewald gui [FILE] [--device cuda]` | open the desktop viewer (also `ewald-gui`) |
 | `ewald describe FILE [--frame N] [--trajectory]` | JSON summary of a frame, or of the run with detected events |
 | `ewald narrate FILE [--no-llm] [--render] [--json]` | event timeline of a trajectory |
-| `ewald ask FILE "question" [--allow-code] [--script out.py] [--model ID]` | ask Claude about a structure; `--script` saves the resulting pipeline |
+| `ewald ask FILE "question" [--select EXPR \| --ids 1,2] [--frame N] [--allow-code] [--script out.py] [--model ID]` | ask Claude about a structure, or about the selected particles; `--script` saves the resulting pipeline |
 | `ewald mcp [FILE] [--allow-code]` | serve the analysis tools over MCP (stdio) |
 | `ewald api` | print the LLM API reference (`llms.txt`) |
 

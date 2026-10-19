@@ -26,7 +26,7 @@ class Viewport(QtWidgets.QWidget):
     styleChanged = QtCore.Signal()
 
     TOOLS = (("orbit", "⟲", "Orbit / pan / zoom (mouse)"),
-             ("pick", "⌖", "Pick atom: shows id, type, position and properties"),
+             ("pick", "⌖", "Pick atom: shows id, type, position and properties; Shift+click picks several"),
              ("distance", "↔", "Measure distance: click two atoms"),
              ("angle", "∠", "Measure angle: click three atoms (vertex in the middle)"),
              ("bond", "⌇", "Edit bonds: click two atoms to add or delete the bond between them"))
@@ -237,6 +237,11 @@ class Viewport(QtWidgets.QWidget):
         self._draw_picks()
         self.plotter.render()
 
+    @property
+    def picks(self) -> list[int]:
+        """Indices of the picked particles in the current frame."""
+        return list(self._picks)
+
     def clear_picks(self):
         self._picks = []
         self._draw_picks()
@@ -254,6 +259,17 @@ class Viewport(QtWidgets.QWidget):
             return  # it was a drag (rotation), not a click
         idx = self.pick_at(x, y)
         if idx is None:
+            return
+        self.add_pick(idx, extend=self.tool == "pick" and bool(obj.GetShiftKey()))
+
+    def add_pick(self, idx, extend=False):
+        """Pick particle ``idx``; ``extend`` (Shift+click with the pick tool) adds it to the picks,
+        or removes it when already picked, for Ask Claude about selection."""
+        if extend:
+            self._picks = [p for p in self._picks if p != idx] if idx in self._picks else self._picks + [idx]
+            self._draw_picks()
+            self.plotter.render()
+            self.picked.emit(self.describe_picks())
             return
         need = {"pick": 1, "distance": 2, "angle": 3, "bond": 2}[self.tool]
         self._picks = (self._picks + [idx])[-need:] if len(self._picks) < need else [idx]
@@ -299,6 +315,9 @@ class Viewport(QtWidgets.QWidget):
         def label(i):
             pid = d.particles.get("Particle Identifier")
             return f"{d.types[i]}#{int(pid[i]) if pid is not None else i}"
+        if self.tool == "pick" and len(P) > 1:
+            shown = ", ".join(label(i) for i in P[:6]) + (" …" if len(P) > 6 else "")
+            return f"{len(P)} atoms picked: {shown}"
         if self.tool == "pick" or len(P) == 1:
             i = P[0]
             extra = [f"{k}={d[k][i]:.4g}" for k in d.particles

@@ -14,6 +14,7 @@ from .. import manual
 from .. import modifiers as mods
 from ..io import import_file
 from ..render import camera_state, render
+from .ask_panel import AskPanel
 from .console import make_console
 from .inspector import DataInspector
 from .palette import CommandPalette, menu_entries
@@ -77,7 +78,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.panel = PipelinePanel(self.style)
         self.panel.changed.connect(self.recompute)
         self.panel.styleChanged.connect(self._style_changed)
-        self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
+        pipeline_dock = self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
+        self.ask_panel = AskPanel(self._ask_context)
+        self.ask_panel.pipelineChanged.connect(self._after_claude)
+        self.ask_dock = self._dock(self.ask_panel, "Ask Claude", QtCore.Qt.RightDockWidgetArea, None)
+        self.tabifyDockWidget(pipeline_dock, self.ask_dock)
+        pipeline_dock.raise_()
 
         # --- bottom: console / inspector / plots / log
         self.inspector = DataInspector()
@@ -193,12 +199,15 @@ class MainWindow(QtWidgets.QMainWindow):
         t = mb.addMenu("&Tools")
         for key, _icon, tip in Viewport.TOOLS:
             t.addAction(tip.split(":")[0], lambda k=key: self.viewport.set_tool(k))
+        t.addSeparator()
+        t.addAction("Ask Claude about selection…", self.ask_claude, "Ctrl+J")
         w = mb.addMenu("&Window")
         w.addAction("Analyze workspace", lambda: self.set_workspace(0), "Ctrl+1")
         w.addAction("Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
         w.addAction("Python console", lambda: self.bottom.setCurrentWidget(self.console))
         w.addAction("Data inspector", lambda: self.bottom.setCurrentWidget(self.inspector))
         w.addAction("Plots", lambda: self.bottom.setCurrentWidget(self.plots))
+        w.addAction("Ask Claude", self.ask_claude)
         w.addAction("Command palette", self.command_palette)
         h = mb.addMenu("&Help")
         for label, page in manual.PAGES.items():
@@ -400,8 +409,28 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _on_pick(self, text):
         self.pick_label.setText(text)
+        self.ask_panel.update_selection()
         if text:
             self.log.appendPlainText(time.strftime("%H:%M:%S ") + text)
+
+    # ---------------------------------------------------------------- Claude
+    def _ask_context(self):
+        """(pipeline, frame, indices) for the Ask Claude panel: the viewport picks, else the
+        'Selection' property of the current frame."""
+        indices = self.viewport.picks
+        if not indices and self.data is not None and "Selection" in self.data:
+            indices = np.nonzero(self.data.selection)[0].tolist()
+        return self.pipeline, self.frame, indices
+
+    def ask_claude(self):
+        self.ask_dock.show()
+        self.ask_dock.raise_()
+        self.ask_panel.update_selection()
+        self.ask_panel.input.setFocus()
+
+    def _after_claude(self):
+        self.panel.refresh()
+        self.recompute()
 
     # ---------------------------------------------------------------- output
     def render_image(self, filename=None, return_image=False, **overrides):

@@ -128,6 +128,8 @@ class Toolset:
         self.workdir = workdir or tempfile.mkdtemp(prefix="ewald-llm-")
         self.render_size = tuple(render_size)
         self.frame = 0
+        #: Particle indices the user picked (set by the GUI); describe_selection's default.
+        self.selection: list[int] | None = None
         self.figures: list[str] = []
         self._source_call: dict | None = None
         self._code_blocks: list[str] = []
@@ -181,6 +183,42 @@ class Toolset:
             return fn
         return deco
 
+    def _selection_indices(self, data, indices=None, ids=None, expression=None) -> np.ndarray:
+        """Particle indices from explicit indices, Particle Identifiers, an expression, else the user's picks."""
+        if indices is not None:
+            return np.asarray(indices, int)
+        if ids is not None:
+            pid = np.asarray(data["Particle Identifier"]) if "Particle Identifier" in data else np.arange(data.count)
+            idx = np.nonzero(np.isin(pid, np.asarray(ids, int)))[0]
+            if len(idx) < len(set(ids)):
+                raise ValueError(f"unknown Particle Identifier(s): {sorted(set(ids) - set(pid[idx].tolist()))}")
+            return idx
+        if expression:
+            from ..modifiers.expression import evaluate
+
+            mask = np.broadcast_to(np.asarray(evaluate(expression, data), bool), (data.count,))
+            return np.nonzero(mask)[0]
+        if self.selection is not None and len(self.selection):
+            return np.asarray(self.selection, int)
+        if "Selection" in data and data.selection.any():
+            return np.nonzero(data.selection)[0]
+        raise ValueError("nothing is selected; pass indices, ids or expression")
+
+    def selection_image(self, data, indices, radius=6.0) -> bytes | None:
+        """PNG close-up of ``indices`` and their surroundings (None when rendering fails)."""
+        from .selection import selection_scene
+
+        path = os.path.join(self.workdir, f"selection_{len(self.figures):03d}.png")
+        try:
+            render_png(selection_scene(data, indices, radius), path, size=(900, 700), direction="iso",
+                       show_cell=False, quality="standard")
+        except Exception:  # an answer without the picture is still useful
+            traceback.print_exc()
+            return None
+        self.figures.append(path)
+        with open(path, "rb") as fh:
+            return fh.read()
+
     def _need_pipeline(self) -> Pipeline:
         if self.pipeline is None:
             raise RuntimeError("no structure loaded; call load_structure first")
@@ -229,6 +267,32 @@ class Toolset:
             pipe = self._need_pipeline()
             f = self._frame(frame)
             return _describe.describe_frame(pipe.compute(f), cutoff=cutoff, frame=f)
+
+        @T("describe_selection",
+           "Describe particles and their surroundings: per-atom neighbor lists, coordination numbers, structure "
+           "types (if CNA/PTM ran), property values against the environment and frame averages, the nearest "
+           "defect, and a close-up render with the particles highlighted. Without arguments it describes the "
+           "particles the user picked in the viewport.",
+           _obj({"frame": frame_p,
+                 "indices": {"type": "array", "items": {"type": "integer"}, "description": "0-based particle indices"},
+                 "ids": {"type": "array", "items": {"type": "integer"}, "description": "Particle Identifiers"},
+                 "expression": {"type": "string", "description": "selection expression, e.g. 'StructureType == 0'"},
+                 "radius": {"type": "number", "description": "environment shell in Angstrom (default 6)"},
+                 "cutoff": {"type": ["number", "string"], "description": "neighbor cutoff in Angstrom or 'auto'"},
+                 "image": {"type": "boolean", "description": "include the close-up render (default true)"}}))
+        def describe_selection(frame=None, indices=None, ids=None, expression=None, radius=6.0, cutoff="auto",
+                               image=True):
+            from . import selection as _selection
+
+            pipe = self._need_pipeline()
+            f = self._frame(frame)
+            data = pipe.compute(f)
+            idx = self._selection_indices(data, indices, ids, expression)
+            out = _selection.describe_selection(data, idx, radius=radius, cutoff=cutoff, frame=f)
+            if not image:
+                return out
+            png = self.selection_image(data, idx, radius)
+            return ToolResult(_jsonable(out), images=[png] if png else [])
 
         @T("describe_trajectory",
            "Scan the trajectory (source frames, subsampled to max_frames) and return per-frame descriptor "
