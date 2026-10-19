@@ -882,9 +882,10 @@ def _app():
 
     app = QtWidgets.QApplication.instance()
     if app is None:
-        from . import check_qt_platform
+        from . import check_qt_platform, check_remote_display
 
         check_qt_platform()
+        check_remote_display()
         app = QtWidgets.QApplication(sys.argv)
         app.setApplicationName("ewald")
         theme.apply(app)

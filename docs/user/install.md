@@ -83,6 +83,27 @@ listed under [Linux: GUI system libraries](#linux-gui-system-libraries).
 
 **`libEGL.so.1: cannot open shared object file`.** `sudo apt install libegl1 libgl1`.
 
+**Crash over `ssh -X` (`The X11 connection broke`, `XIO: fatal IO error`, `malloc_consolidate()`,
+core dump).** With `DISPLAY=localhost:10.0` and up the window goes through SSH X11 forwarding, whose
+OpenGL (indirect GLX) is version 1.x; VTK needs 3.2 and takes the X connection down with it. When
+`ewald gui` sees a forwarded display, it first opens a small test window in a child process; if
+that fails it retries with Mesa's software OpenGL (`LIBGL_ALWAYS_SOFTWARE=1`, then also
+`QT_XCB_GL_INTEGRATION=none`), keeps the first setting that draws and says so, and otherwise
+stops with a message instead of crashing. Software rendering over the network is slow for large
+systems. Better options, in order:
+
+1. Run ewald on your own computer and open the cluster's files over SSH:
+   `ewald gui user@cluster:/scratch/run/XDATCAR`, or File › Load remote file (SSH). Only the
+   frames you look at are transferred.
+2. A remote desktop that renders with the cluster's GPU: TurboVNC + VirtualGL (`vglrun ewald gui`),
+   X2Go, NoMachine, or an Open OnDemand desktop.
+3. Mesa software OpenGL on the cluster, if the automatic fallback finds none
+   (RHEL/Rocky 9: `sudo dnf install mesa-dri-drivers mesa-libGL`; Debian/Ubuntu: `libgl1-mesa-dri`),
+   then `LIBGL_ALWAYS_SOFTWARE=1 ewald gui`.
+4. No window at all: `ewald render FILE out.png` or the Python API (headless rendering below).
+
+`EWALD_SKIP_GL_PROBE=1` skips the test window (for example when it misjudges a working setup).
+
 **No window on a server.** Without `DISPLAY` there is nothing to open a window on: use
 `ssh -X`, a remote desktop, or `xvfb-run -a ewald gui` for screenshots and tests.
 

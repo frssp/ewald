@@ -33,6 +33,8 @@ On Linux the GUI also needs a few X11 libraries that minimal installs lack
 libxcb-render-util0 libxcb-image0 libxcb-randr0`). If importing PySide6 fails with
 `undefined symbol ... Qt_6_PRIVATE_API`, remove system directories (`/lib`, `/usr/lib`,
 `/lib/x86_64-linux-gnu`, ...) from `LD_LIBRARY_PATH`; they make a system Qt shadow the wheel's.
+Over `ssh -X` the GUI checks that OpenGL works and falls back to Mesa software rendering; running
+ewald locally and opening `user@cluster:/path` files over SSH is faster.
 Details: [docs/user/install.md](docs/user/install.md#troubleshooting-the-gui).
 
 ## Quick start
