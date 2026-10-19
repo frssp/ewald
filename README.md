@@ -305,7 +305,8 @@ names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
 `DeleteSelected`, `Slice`, `AssignColor`, `ColorCoding`, `ComputeProperty`,
 `CoordinationAnalysis` (+ total/partial RDF), `ClusterAnalysis` (OVITO-compatible: size, COM, gyration tensor, unwrap),
 `CalculateDisplacements` (+ MSD),
-`Replicate`, `WrapAtoms`, `AffineTransformation`, `VectorVis` (arrows), and any Python function
+`Replicate`, `WrapAtoms`, `AffineTransformation`, `VectorVis` (arrows), `PhononMode` (phonon mode
+animation from phonopy `band.yaml` or a VASP IBRION=5-8 OUTCAR), and any Python function
 `f(frame, data)`.
 
 OVITO Pro-style statistics, checked against OVITO 3.16 bin for bin: `Histogram`,
@@ -331,6 +332,21 @@ from ewald.modifiers import VectorVis
 pipe = import_file("OUTCAR")
 pipe.modifiers.append(VectorVis("Force", scaling=2.0, color_mapping_property="Magnitude"))
 pipe.render("forces.png", renderer="raytrace", radius_scale=0.5)
+```
+
+### Phonon modes
+
+phonopy `band.yaml`/`mesh.yaml`/`qpoints.yaml` (with eigenvectors) and OUTCARs of VASP
+IBRION=5-8 runs open as a looping trajectory; `PhononMode` displaces the atoms along one mode
+in a commensurate supercell, as `phonopy --modulation` does, and draws the pattern as arrows.
+In the GUI the Plots tab shows the band structure and clicking a band plays that mode.
+
+```python
+from ewald.modifiers import PhononMode
+
+pipe = import_file("band.yaml", frames=24)
+pipe.modifiers.append(PhononMode(qpoint=50, band=3, amplitude=0.3))
+render_animation(pipe, "mode.gif")
 ```
 
 ### Bonds and coordination polyhedra
