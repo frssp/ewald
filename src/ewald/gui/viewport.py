@@ -1,10 +1,20 @@
 """3D viewport: VESTA-style view toolbar, tool rail (orbit/pick/measure), overlays."""
 from __future__ import annotations
 
+import time
+
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ..render import _add_colorbar, build_scene, default_radii, setup_camera
+from ..render import (
+    _RADIUS_KEYS,
+    _add_colorbar,
+    add_atoms,
+    atom_cloud,
+    build_scene,
+    default_radii,
+    setup_camera,
+)
 from .style import STYLE_PRESETS, ViewStyle
 from .theme import TOKENS
 
@@ -48,6 +58,18 @@ class Viewport(QtWidgets.QWidget):
         self.show_overlay = True
         self.show_axes = True
         self.initial_view = "iso"
+        # interactive level of detail (Preferences › Viewports › Performance)
+        self.detail_mode = "auto"         # 'auto': coarse while moving if a full frame misses target_fps
+        self.target_fps = 30.0
+        self.interactive_atoms = 1_000_000  # coarse scenes draw at most this many atoms
+        self.refine_delay = 0.3           # seconds of idle before the full-detail scene returns
+        self._render_time = 0.0           # last full-detail render, seconds
+        self._build_time = 0.0            # last full-detail scene build + render, seconds
+        self.coarse = False               # the scene on screen is the coarse one
+        self._dragging = False
+        self._lod_cloud = None            # subsampled impostor cloud of the current scene, built on first drag
+        self._refine_timer = QtCore.QTimer(self, singleShot=True)
+        self._refine_timer.timeout.connect(self.refine)
         self._picks: list[int] = []
         self._press = None
         self._first = True
@@ -67,6 +89,12 @@ class Viewport(QtWidgets.QWidget):
         iren = self.plotter.iren
         iren.add_observer("LeftButtonPressEvent", self._on_press)
         iren.add_observer("LeftButtonReleaseEvent", self._on_release)
+        for button in ("Middle", "Right"):
+            iren.add_observer(f"{button}ButtonPressEvent", self._on_drag_start)
+            iren.add_observer(f"{button}ButtonReleaseEvent", self._on_drag_end)
+        iren.add_observer("MouseMoveEvent", self._on_move)
+        for wheel in ("MouseWheelForwardEvent", "MouseWheelBackwardEvent"):
+            iren.add_observer(wheel, self._on_wheel)
 
     # ------------------------------------------------------------------ chrome
     def _build_viewbar(self):
@@ -131,27 +159,60 @@ class Viewport(QtWidgets.QWidget):
         return rail
 
     # ------------------------------------------------------------------ scene
-    def set_data(self, data):
+    def set_data(self, data, interactive: bool = False):
+        """Show ``data``; ``interactive`` (scrubbing, playback) allows a coarse scene that
+        is refined once frames stop arriving."""
         self.data = data
-        self.redraw()
+        self.redraw(coarse=interactive and self.needs_coarse(scrub=True))
 
-    def redraw(self):
+    def needs_coarse(self, scrub: bool = False) -> bool:
+        """Whether moving the view (or changing frames when ``scrub``) should use the coarse scene."""
+        if self.data is None or self.detail_mode == "full":
+            return False
+        if self.detail_mode == "coarse":
+            return True
+        budget = 1.0 / max(self.target_fps, 1e-3)
+        return (self._build_time if scrub else self._render_time) > budget
+
+    def _coarse_mask(self):
+        """Every k-th atom, so a coarse scene holds at most ``interactive_atoms``."""
+        n = self.data.count
+        visible = None
+        if "Transparency" in self.data:
+            visible = np.asarray(self.data["Transparency"]) < 1
+        step = -(-n // max(int(self.interactive_atoms), 1))
+        if step <= 1:
+            return visible
+        mask = np.zeros(n, bool)
+        mask[::step] = True
+        return mask if visible is None else mask & visible
+
+    def redraw(self, coarse: bool = False):
         p = self.plotter
+        self._refine_timer.stop()
+        self._lod_cloud = None
         stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:"))]
-        for name in ("atoms", "bonds", "cell", "trajectories", "_legend", "_overlay", *stale):
+        for name in ("atoms", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay", *stale):
             p.remove_actor(name, render=False)
         if p.scalar_bars:
             p.remove_scalar_bar()
         if self.data is None:
             p.render()
             return
+        t0 = time.perf_counter()
         dark = _is_dark(self.style.background)
         p.set_background(self.style.background)
         kw = self.style.scene_kwargs()
         kw["cell_color"] = "#AEB4BE" if dark else "black"
         kw["sphere_resolution"] = self.sphere_resolution  # interactive; image export uses full quality
         kw["arrow_resolution"] = self.arrow_resolution
-        build_scene(p, self.data, mesh_limit=self.mesh_limit, **kw)
+        scene = self.data
+        if coarse:  # impostors only, no bonds: cheap to build and to draw
+            kw.update(atom_style="impostor", only_visible=self._coarse_mask(), bond_pairs=None)
+            if scene.bonds is not None or scene.vectors:
+                scene = scene.copy()
+                scene.bonds, scene.vectors = None, {}
+        build_scene(p, scene, mesh_limit=self.mesh_limit, **kw)
         if any(s.transparency > 0 for s in self.data.surfaces.values()) and not getattr(self, "_peeling", False):
             p.enable_depth_peeling()
             self._peeling = True
@@ -163,7 +224,7 @@ class Viewport(QtWidgets.QWidget):
                     prop.SetColor(0.9, 0.91, 0.93)
         if self.overlay_text and self.show_overlay:
             p.add_text(self.overlay_text, position="upper_left", font_size=7, name="_overlay",
-                       color="#E7E9EC" if dark else "black")
+                       color="#E7E9EC" if dark else "black", render=False)
         if self._first:
             setup_camera(p, self.data, self.initial_view, self.ortho)
             if self.show_axes and not getattr(self, "_axes", False):
@@ -171,7 +232,64 @@ class Viewport(QtWidgets.QWidget):
                 self._axes = True
             self._first = False
         self._draw_picks()
+        t1 = time.perf_counter()
         p.render()
+        self.coarse = coarse
+        if coarse:
+            self._refine_timer.start(int(self.refine_delay * 1000))
+        else:
+            t2 = time.perf_counter()
+            self._render_time, self._build_time = t2 - t1, t2 - t0
+
+    def refine(self):
+        """Replace a coarse scene with full detail (called after ``refine_delay`` of idle)."""
+        if not self.coarse or self.data is None:
+            return
+        p = self.plotter
+        lod = p.actors.get("atoms_lod")
+        if lod is None:  # the whole scene was built coarse (scrubbing): rebuild it
+            self.redraw()
+            return
+        p.remove_actor("atoms_lod", render=False)  # rotation only swapped the atoms
+        for name in ("atoms", "bonds"):
+            if name in p.actors:
+                p.actors[name].SetVisibility(True)
+        self.coarse = False
+        p.render()
+
+    def _go_coarse_for_motion(self):
+        """Swap the full atoms (and bonds) for subsampled impostors while the camera moves."""
+        p = self.plotter
+        if self.coarse or self.data is None or not self.data.count or not self.needs_coarse():
+            return
+        if self._lod_cloud is None:
+            kw = self.style.scene_kwargs()
+            extra = {k: kw[k] for k in (*_RADIUS_KEYS, "type_colors") if k in kw}
+            self._lod_cloud, _ = atom_cloud(self.data, radius_scale=kw["radius_scale"],
+                                            only_visible=self._coarse_mask(), **extra)
+        add_atoms(p, self._lod_cloud, atom_style="impostor", name="atoms_lod")
+        for name in ("atoms", "bonds"):
+            if name in p.actors:
+                p.actors[name].SetVisibility(False)
+        self.coarse = True
+
+    def _on_drag_start(self, obj, event):
+        self._dragging = True
+        self._refine_timer.stop()
+
+    def _on_drag_end(self, obj, event):
+        self._dragging = False
+        if self.coarse:
+            self._refine_timer.start(int(self.refine_delay * 1000))
+
+    def _on_move(self, obj, event):
+        if self._dragging and not self.coarse:
+            self._go_coarse_for_motion()
+
+    def _on_wheel(self, obj, event):
+        self._go_coarse_for_motion()
+        if self.coarse:
+            self._refine_timer.start(int(self.refine_delay * 1000))
 
     def reset_view(self):
         self._first = True
@@ -247,8 +365,10 @@ class Viewport(QtWidgets.QWidget):
 
     def _on_press(self, obj, event):
         self._press = obj.GetEventPosition()
+        self._on_drag_start(obj, event)
 
     def _on_release(self, obj, event):
+        self._on_drag_end(obj, event)
         if self.tool == "orbit" or self._press is None or self.data is None:
             return
         x, y = obj.GetEventPosition()

@@ -136,3 +136,16 @@ def test_render_vector_arrows(tmp_path):
     assert 0 < blue(lines) < blue(arrows)
     rt = render(out, renderer="raytrace", samples=1, ao_samples=0, **kw)
     assert blue(rt) > 100
+
+
+def test_type_groups_first_appearance_order():
+    from ewald.render import type_groups
+
+    types = np.array(["Zr", "Cu", "Zr", "O", "Cu"])
+    names, inverse = type_groups(types)
+    assert names == ["Zr", "Cu", "O"] and list(inverse) == [0, 1, 0, 2, 1]
+    many = np.array([f"T{k % 50}" for k in range(500)][::-1])  # more types than the scan handles
+    names, inverse = type_groups(many, max_scan=8)
+    assert names == list(dict.fromkeys(many)) and all(np.array(names)[inverse] == many)
+    names, inverse = type_groups(np.array([], dtype=str))
+    assert names == [] and len(inverse) == 0

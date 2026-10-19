@@ -42,7 +42,7 @@ class Option:
 
 PAGES = ("General", "Viewports", "Elements", "Rendering", "Compute", "Python")
 PAGE_OF_PREFIX = {"general": "General", "viewport": "Viewports", "elements": "Elements", "bonds": "Elements",
-                  "render": "Rendering", "compute": "Compute", "python": "Python"}
+                  "render": "Rendering", "compute": "Compute", "performance": "Compute", "python": "Python"}
 
 OPTIONS = (
     Option("general.startup_workspace", "Analyze", "Startup workspace", choices=("Analyze", "Render")),
@@ -70,6 +70,18 @@ OPTIONS = (
            minimum=1000, maximum=100_000_000),
     Option("viewport.arrow_resolution", 6, "Arrow resolution",
            "Sides per vector arrow while interacting; exports use full quality.", minimum=3, maximum=32),
+    Option("viewport.interactive_detail", "auto", "Detail while moving",
+           "While rotating, zooming, scrubbing or playing, draw a coarse scene (impostors, no bonds, "
+           "at most 'Atoms while moving') and refine when idle. Auto does this only when a full "
+           "frame misses the target frame rate. Exports always use full quality.",
+           choices=("auto", "coarse", "full")),
+    Option("viewport.target_fps", 30, "Target frame rate", "Auto detail switches to the coarse scene "
+           "when a full-detail frame takes longer than 1/fps.", minimum=1, maximum=240),
+    Option("viewport.interactive_atoms", 1_000_000, "Atoms while moving",
+           "The coarse scene draws every k-th atom so at most this many remain.",
+           minimum=1000, maximum=100_000_000),
+    Option("viewport.refine_delay", 0.3, "Refine after", "Idle seconds before full detail returns.",
+           minimum=0.0, maximum=10.0),
 
     Option("elements.color_scheme", "Jmol", "Color scheme", choices=("Jmol", "CPK")),
     Option("elements.radius_source", "covalent", "Radius preset",
@@ -105,6 +117,9 @@ OPTIONS = (
 
     Option("compute.device", "cpu", "Default device", "Toolbar Compute switch changes only the current session.",
            choices=("cpu", "cuda", "auto")),
+    Option("performance.cache_memory", 2048, "Frame cache memory",
+           "Upper bound for cached trajectory frames (MB); the current frame is always kept.",
+           minimum=64, maximum=1_048_576),
     Option("compute.threads", 0, "CPU threads", "Numba threads for CPU kernels; 0 = all cores.",
            minimum=0, maximum=1024),
 
