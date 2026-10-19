@@ -41,7 +41,7 @@ LAYOUT = {
         ("Navigation", ["viewport.rotation_step"]),
         ("Overlays", ["viewport.show_axes", "viewport.show_overlay"]),
         ("Hover", ["viewport.hover_info", "viewport.hover_delay"]),
-        ("Performance", ["viewport.interactive_detail", "viewport.target_fps", "viewport.interactive_atoms",
+        ("Performance", ["viewport.backend", "viewport.interactive_detail", "viewport.target_fps", "viewport.interactive_atoms",
                          "viewport.refine_delay", "viewport.sphere_drawing", "viewport.anti_aliasing",
                          "viewport.sphere_resolution", "viewport.arrow_resolution",
                          "viewport.mesh_limit"])]),

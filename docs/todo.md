@@ -22,8 +22,6 @@ GUI
 - Picking without a render: click picks still use a `vtkPropPicker` selection render; the hover
   readout already does a CPU ray-sphere test (`camera_ray`, `ray_spheres` in `gui/viewport.py`)
   that `pick_at` could reuse.
-- Hover readout in the legacy OpenGL 1.x viewport (PR #49): forward its button-less mouse moves
-  to `Viewport.hover_move`; the ray cast itself is renderer-neutral.
 - Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
   categories; the view-bar rotation arrows are still text glyphs.
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
@@ -167,7 +165,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › Claude › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
   KWallet); the container has none, so only the 0600 file fallback runs for real.
-- The Windows release workflow (wheels, PyInstaller app, installer) on a real `v*` tag.
+- The Windows release workflow (wheels, PyInstaller app, installer) on a real `v*` tag; no
+  release exists yet, so Windows users without Build Tools get ewald without `ewald._native`
+  until the first one (blocked on GitHub Actions minutes).
+- Installing without a compiler on real Windows (MSVC missing raises in `build_ext.run`; tested
+  here with `CXX=/bin/false` on Linux). pip shows the "not built" warning only with `-v`.
 - `DislocationAnalysis` and `OvitoModifier` with the `ovito` package installed.
 - The native OUTCAR and vasprun.xml readers on real VASP 5/6 output (relaxations with ISIF=3,
   non-collinear and MD runs, multi-GB files); the test fixtures are hand-written in VASP 6.4
@@ -181,9 +183,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   non-collinear, `LCHARGH5`); the fixtures follow py4vasp's schema and are checked against
   py4vasp, and the charge density is assumed to be stored as rho * V like a CHGCAR. The H5MD
   reader on GROMACS 2026 `mdrun` output.
-- The SSH X11 forwarding probe and Mesa fallback on a real `ssh -X` session (RHEL 9 crashed with
-  `XIO: fatal IO error`); the cloud container's Xvfb renders even without GLX, so only the
-  detection and fallback order are tested.
+- The Legacy GL viewport on a real `ssh -X` session (RHEL 9 crashed with `XIO: fatal IO error`
+  under VTK): whether Qt's GLX integration gets an indirect context there, and how fast display
+  lists are over the network. The container's X servers crash on indirect GLX, so it is tested on
+  direct Mesa only. If Qt's context fails where plain GLX works, draw into a raw GLX child window
+  instead of `QOpenGLWindow`. Same for the VTK probe and Mesa fallback.
 - GUI startup checks on a Wayland desktop and on Fedora (the xcb library check is skipped when
   `WAYLAND_DISPLAY` is set; the Fedora package names in its message are untested).
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
