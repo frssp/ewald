@@ -79,6 +79,7 @@ nav:
       - Data model and pipeline: developer/data-model.md
       - Compute backends: developer/backends.md
       - Native code: developer/native.md
+      - File readers: developer/readers.md
       - Testing and CI: developer/testing.md
       - Writing docs: developer/docs.md
       - Windows release: developer/windows-release.md

@@ -19,6 +19,7 @@ python -m ewald api > llms.txt   # regenerate the LLM API reference (see below)
 xvfb-run -a python -m ewald inventory -o docs/features.md --gui   # regenerate the feature inventory
 python benchmarks/neighbors.py   # neighbor-list timings
 python benchmarks/large_files.py # open/frame-switch/memory on generated multi-million-atom files
+python benchmarks/readers.py     # native readers vs ASE/OVITO/MDAnalysis/chemfiles (docs/developer/readers.md)
 python examples/demo.py          # sample trajectories + figures into demo_out/
 mkdocs build --strict            # the manual (pip install -r docs/requirements.txt); CI runs it
 ```
@@ -47,6 +48,9 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   `remote.py` opens `host:/path` / `ssh://` paths (paramiko): `base.open_binary` streams them to the
   native readers, `FileSource` downloads them to a local cache for every other reader. Tests use the
   in-process server in `tests/sftp_server.py` (fixtures `server`, `ssh_env` in conftest), no sshd.
+  `_textparse.py` is the numba atom-table parser shared by the dump and extxyz readers. Write a native
+  reader only where an index plus that parser beats ASE by a wide margin (big text trajectories);
+  delegate everything else (docs/developer/readers.md has the measurements and the rule).
 - `bonds.py` (`Bonds`: Topology + Periodic Image, bond search), `mesh.py` (`SurfaceMesh` for
   `data.surfaces`: polyhedra now, surface meshes later); both drawn by `render.py` and `raytrace.py`.
 - `backend.py` (numpy/CuPy `xp` backends), `neighbors.py` (numba CPU cell list, `find_pairs`),

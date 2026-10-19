@@ -101,6 +101,9 @@ Formats
   fine for small sets, slow for thousands.
 - GROMACS `.gro` with velocities.
 - LAMMPS binary dump.
+- Large-frame reading against OVITO (docs/developer/readers.md): a 1M-atom dump frame takes
+  0.45 s and 367 MB in ewald vs 0.23 s and 188 MB in OVITO (per-column copies, id sort); a
+  1M-atom extxyz frame 0.85 s vs 0.33 s (ASE `Atoms` assembly).
 - LAMMPS logs written with `thermo_style multi` or `thermo_modify line yaml` (only one-line
   thermo output is read now).
 
