@@ -1153,7 +1153,7 @@ def _in_ipython_qt_loop():
 def main(argv=None):
     import argparse
 
-    ap = argparse.ArgumentParser(prog="ewald-gui", description="EWALD desktop GUI (Extensible Window for Atomic Lattices & Dynamics)")
+    ap = argparse.ArgumentParser(prog="ewald-gui", description="EWALD desktop GUI (Extensible Workbench for Atomic Lattices & Dynamics)")
     ap.add_argument("file", nargs="?")
     ap.add_argument("--type-map", default=None, help="LAMMPS types, e.g. 1=Cu,2=Zr")
     ap.add_argument("--device", default=None, help="cpu, cuda or auto")

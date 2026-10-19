@@ -12,7 +12,8 @@ from pybind11.setup_helpers import Pybind11Extension, build_ext
 from setuptools import setup
 
 NEEDS_NATIVE = ("PolyhedralTemplateMatching", "VoronoiAnalysis", "CentroSymmetry(mode='matching')",
-                "CommonNeighborAnalysis(mode='interval')")
+                "CommonNeighborAnalysis(mode='interval')", "ElasticStrain", "GrainSegmentation",
+                "IdentifyFCCPlanarFaults")
 HELP = {
     "win32": "install 'Microsoft C++ Build Tools' (https://visualstudio.microsoft.com/visual-cpp-build-tools/, "
              "workload 'Desktop development with C++'), open a new terminal",
@@ -47,7 +48,7 @@ class optional_build_ext(build_ext):
 
 
 native = os.path.join("src", "ewald", "_csrc")
-sources = [os.path.join(native, "native.cpp"), os.path.join(native, "cna.cpp"),
+sources = [os.path.join(native, "native.cpp"), os.path.join(native, "cna.cpp"), os.path.join(native, "crystal.cpp"),
            os.path.join(native, "voro++", "cell.cc"),
            os.path.join(native, "voro++", "common.cc"),
            os.path.join(native, "mwm_csp", "mwm_csp.cpp"),

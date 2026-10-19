@@ -1,4 +1,4 @@
-# EWALD (Extensible Window for Atomic Lattices & Dynamics): `ewald` Python API (for LLMs and people writing ewald code)
+# EWALD (Extensible Workbench for Atomic Lattices & Dynamics): `ewald` Python API (for LLMs and people writing ewald code)
 
 ewald is an OVITO-style atomistic pipeline: `import_file` -> modifiers -> `compute(frame)` -> render.
 The API mirrors OVITO's, so OVITO knowledge transfers; the differences below are where it doesn't.
@@ -170,6 +170,9 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 - `SymmetryAnalysis(symprec: float = 0.01, angle_tolerance: float = -1.0, select_unique: bool = False)`: Space group, Wyckoff positions and symmetry-equivalent atoms (spglib).
 - `PowderDiffraction(radiation: str = 'xray', wavelength: str = 'CuKa', two_theta_min: float = 5.0, two_theta_max: float = 90.0, step: float = 0.02, fwhm: float = 0.1, eta: float = 0.5, debye_waller: dict | None = None, elements: dict | None = None, experimental: str = '')`: Powder X-ray or neutron diffraction pattern of the (periodic) cell.
 - `StructureFactor(method: str = 'auto', q_max: float = 10.0, q_min: float = 0.0, number_of_bins: int = 200, weighting: str = 'none', cutoff: float = 0.0, lorch: bool = True, elements: dict | None = None, experimental: str = '')`: Static structure factor S(q) (q = 4 pi sin(theta) / lambda in 1/Angstrom), for liquids, glasses and MD.
+- `ElasticStrain(input_crystal_structure: str = 'FCC', lattice_constant: float = 1.0, axial_ratio: float = 1.632993161855452, calculate_strain_tensors: bool = True, calculate_deformation_gradients: bool = False, push_strain_tensors_forward: bool = True, color_by_type: bool = True, only_selected: bool = False, num_threads: int = 0)`: Atomic-level elastic strain in a crystal (OVITO's Elastic strain calculation).
+- `GrainSegmentation(algorithm: str = 'auto', merging_threshold: float = 0.0, min_grain_size: int = 100, handle_stacking_faults: bool = True, orphan_adoption: bool = True, color_particles: bool = True, output_bonds: bool = False)`: Decompose a polycrystal into grains from PTM orientations (OVITO's Grain segmentation).
+- `IdentifyFCCPlanarFaults(color_other=(1.0, 0.4, 0.4), color_isf=(0.9, 0.7, 0.2), color_twin=(0.4, 0.4, 1.0), color_multi=(0.0, 1.0, 0.9))`: Classify hcp-like atoms in fcc crystals by planar fault (OVITO's Identify fcc planar faults).
 - `FreezeProperty(source_property: str = 'Selection', destination_property: str | None = None, freeze_at: int = 0)`: Copy a particle property as it was at frame ``freeze_at`` to every frame (OVITO's FreezePropertyModifier).
 - `UnwrapTrajectories()`: Undo the wrapping of particles at periodic boundaries, so trajectories are continuous (OVITO's UnwrapTrajectoriesModifier).
 - `ExpandSelection(mode: str = 'cutoff', cutoff: float = 3.2, num_neighbors: int = 1, iterations: int = 1)`: Grow the selection to the neighbors of selected particles (OVITO's ExpandSelectionModifier).

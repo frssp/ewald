@@ -5,6 +5,7 @@ from .bonds import CoordinationPolyhedra, CreateBonds, EditBonds
 from .cluster import ClusterAnalysis
 from .datasets import CombineDatasets, LoadTrajectory
 from .coloring import AssignColor, ColorCoding
+from .crystal import ElasticStrain, GrainSegmentation, IdentifyFCCPlanarFaults
 from .diffraction import PowderDiffraction, StructureFactor
 from .structure import CommonNeighborAnalysis, IdentifyDiamond, PolyhedralTemplateMatching
 from .voronoi import VoronoiAnalysis
@@ -38,8 +39,9 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "CreateIsosurface", "GridSlice", "GridDifference", "Histogram", "SpatialBinning", "ReduceProperty",
            "SteinhardtOrderParameters", "BondAngleDistribution", "BondLengthDistribution", "FindRings", "VectorVis",
            "Plumed", "LoadColvar", "FreeEnergySurface", "NebEnergyProfile", "OverlayFrames", "PhononMode",
-           "SymmetryAnalysis", "PowderDiffraction", "StructureFactor", "FreezeProperty", "UnwrapTrajectories",
-           "ExpandSelection", "LoadTrajectory", "CombineDatasets"]
+           "SymmetryAnalysis", "PowderDiffraction", "StructureFactor", "ElasticStrain", "GrainSegmentation",
+           "IdentifyFCCPlanarFaults", "FreezeProperty", "UnwrapTrajectories", "ExpandSelection", "LoadTrajectory",
+           "CombineDatasets"]
 
 # OVITO spellings (``CommonNeighborAnalysisModifier``, ``WrapPeriodicImagesModifier``, ...) resolve to the
 # ewald class, so OVITO scripts - and code written by LLMs that learned OVITO - run unchanged.

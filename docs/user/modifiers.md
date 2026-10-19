@@ -264,6 +264,35 @@ These run in the C++ extension and are tested against OVITO 3.16 results.
   occupancies.
 - `AtomicStrain(cutoff, reference_frame)`: von Mises and volumetric strain, deformation
   gradient, Green-Lagrange tensor, D²min, rotation and stretch.
+- `ElasticStrain(input_crystal_structure, lattice_constant, axial_ratio)`: atomic elastic
+  strain relative to the ideal FCC, HCP, BCC, cubic or hexagonal diamond lattice. An extended
+  CNA groups atoms into crystal clusters; each atom's neighbor vectors give the elastic
+  deformation gradient ('Elastic Deformation Gradient' with
+  `calculate_deformation_gradients=True`), the strain tensor 'Elastic Strain' (Euler-Almansi,
+  or Green-Lagrange with `push_strain_tensors_forward=False`) and 'Volumetric Strain'. Stacking
+  faults are mapped back to the parent crystal.
+- `GrainSegmentation(algorithm, merging_threshold, min_grain_size)`: grains of a
+  polycrystal from the lattice orientations of `PolyhedralTemplateMatching(output_orientation=True)`,
+  which must come first. `algorithm="auto"` picks the merge threshold itself (reported in the
+  attribute `GrainSegmentation.auto_merge_threshold`), `"manual"` uses `merging_threshold` on the
+  log merge distance and `"mst"` a minimum spanning tree with a threshold in degrees. Writes
+  'Grain' and per-grain colors, and the table 'grains' (size, structure, orientation, center of
+  mass, radius); 'grains-merge' and 'grains-log' hold the merge sequence for choosing a
+  threshold. `handle_stacking_faults` keeps stacking faults and twins in their parent fcc
+  grain; `output_bonds=True` adds the neighbor graph as bonds with 'Disorientation'.
+- `IdentifyFCCPlanarFaults()`: after PTM with orientations, classifies hcp atoms in fcc as
+  intrinsic stacking fault, coherent twin boundary, multilayer stacking fault or
+  indeterminate ('Planar Fault Type', colored like OVITO), with atom counts and estimated
+  fault areas in the table 'planar_faults'.
+
+```python
+pipe.modifiers.append(PolyhedralTemplateMatching(output_orientation=True,
+                                                 output_interatomic_distance=True))
+pipe.modifiers.append(GrainSegmentation())
+pipe.modifiers.append(IdentifyFCCPlanarFaults())
+data = pipe.compute()
+print(data.attributes["GrainSegmentation.grain_count"], data.tables["grains"]["Grain Size"])
+```
 
 With the optional `ovito` package, `DislocationAnalysis(...)` runs OVITO's dislocation
 extraction algorithm (Burgers vectors, line lengths, polylines in `tables["dislocations"]`)
