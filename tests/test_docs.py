@@ -50,6 +50,24 @@ def test_relative_links_resolve():
     assert not broken, broken
 
 
+def test_feature_inventory_is_current():
+    from ewald import inventory
+
+    text = (DOCS / "features.md").read_text()
+    gui = inventory.saved_gui_lines(text)
+    assert gui is not None, "docs/features.md lost its GUI section"
+    assert inventory.inventory(gui) == text, (
+        "docs/features.md is stale; regenerate with: xvfb-run -a python -m ewald inventory -o docs/features.md --gui")
+
+
+def test_inventory_first_sentence():
+    from ewald.inventory import first_sentence
+
+    assert first_sentence("Centrosymmetry (Kelchner et al. 1998). More.") == "Centrosymmetry (Kelchner et al. 1998)."
+    assert first_sentence("Set x, e.g. ``a|b``.\n\nDetails.") == "Set x, e.g. ``a\\|b``."
+    assert first_sentence(None) == ""
+
+
 def test_help_urls():
     assert manual.url("user/gui.md") == manual.DEFAULT_BASE + "user/gui.md"
     assert manual.url("reference/api.md").endswith("/blob/main/llms.txt")

@@ -109,10 +109,10 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 - `ClusterAnalysis(cutoff: float = 3.2, sort_by_size: bool = False, compute_com: bool = False, compute_gyration: bool = False, unwrap_particles: bool = False, only_selected: bool = False, cluster_coloring: bool = False)`: Group particles into clusters connected by distances below ``cutoff``.
 - `AssignColor(color=(0.3, 0.3, 1.0), keep_selection: bool = False)`: Give the selected particles (all, if nothing selected) one color.
 - `ColorCoding(property: str, cmap: str = 'viridis', start=None, end=None, only_selected: bool = False)`: Map a scalar property or expression to colors through a matplotlib colormap.
-- `ClearSelection()`
-- `DeleteSelected()`
+- `ClearSelection()`: Remove the 'Selection' property.
+- `DeleteSelected()`: Delete the selected particles.
 - `ExpressionSelection(expression: str)`: Select particles where ``expression`` is true (sets 'Selection').
-- `InvertSelection()`
+- `InvertSelection()`: Select the unselected particles and unselect the selected ones.
 - `SelectType(types, property: str = 'Particle Type')`: Select particles whose 'Particle Type' (or another property) is in ``types``.
 - `Slice(normal=(0, 0, 1), distance: float = 0.0, width: float = 0.0, inverse: bool = False, select: bool = False, miller: bool = False)`: Keep (or select) particles in a slab ``|n.r - distance| <= width/2``.
 - `AffineTransformation(matrix, transform_cell: bool = True)`: Apply a 3x3 (or 3x4 with translation) matrix to particles and, optionally, the cell.

@@ -65,6 +65,11 @@ class CommandPalette(QtWidgets.QDialog):
         self.entries[it.data(QtCore.Qt.UserRole)][2]()
 
 
+def _label(text: str) -> str:
+    """Menu text without mnemonics; a literal "&&" stays "&"."""
+    return text.replace("&&", "\0").replace("&", "").replace("\0", "&")
+
+
 def menu_entries(menubar: QtWidgets.QMenuBar):
     """All triggerable actions under a menu bar as (label, 'File › ...', callable)."""
     out = []
@@ -72,11 +77,11 @@ def menu_entries(menubar: QtWidgets.QMenuBar):
     def walk(menu, path):
         for act in menu.actions():
             if act.menu():
-                walk(act.menu(), path + [act.text().replace("&", "")])
+                walk(act.menu(), path + [_label(act.text())])
             elif act.text() and not act.isSeparator():
-                out.append((act.text().replace("&", ""), " › ".join(path), act.trigger))
+                out.append((_label(act.text()), " › ".join(path), act.trigger))
 
     for act in menubar.actions():
         if act.menu():
-            walk(act.menu(), [act.text().replace("&", "")])
+            walk(act.menu(), [_label(act.text())])
     return out
