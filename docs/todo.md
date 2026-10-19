@@ -163,7 +163,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   in-process SFTP server.
 - Claude features with a real API key: `ewald ask` (also `--select`), the GUI Ask Claude tab,
   `ewald narrate`, `ewald forge`, `ewald mcp`.
-- The Windows release workflow (wheels, PyInstaller app, installer) on a real `v*` tag.
+- The Windows release workflow (wheels, PyInstaller app, installer) on a real `v*` tag; no
+  release exists yet, so Windows users without Build Tools get ewald without `ewald._native`
+  until the first one (blocked on GitHub Actions minutes).
+- Installing without a compiler on real Windows (MSVC missing raises in `build_ext.run`; tested
+  here with `CXX=/bin/false` on Linux). pip shows the "not built" warning only with `-v`.
 - `DislocationAnalysis` and `OvitoModifier` with the `ovito` package installed.
 - The native OUTCAR and vasprun.xml readers on real VASP 5/6 output (relaxations with ISIF=3,
   non-collinear and MD runs, multi-GB files); the test fixtures are hand-written in VASP 6.4

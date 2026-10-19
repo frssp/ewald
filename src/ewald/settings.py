@@ -179,6 +179,8 @@ DEVICES = (
 
 # module, purpose, install command
 COMPONENTS = (
+    ("ewald._native", "PTM, Voronoi, CSP matching, interval CNA (C++ extension)",
+     "install a C++ compiler, then reinstall ewald (docs/user/install.md)"),
     ("cupy", "GPU compute (CUDA)", "pip install 'ewald[gpu]'"),
     ("ovito", "Dislocation analysis (DXA)", "pip install 'ewald[gui,ovito]'"),
     ("imageio_ffmpeg", "Movie export (.mp4)", "pip install 'ewald[movie]'"),
@@ -195,7 +197,7 @@ def component_status():
     for mod, purpose, cmd in COMPONENTS:
         found = importlib.util.find_spec(mod) is not None
         version = ""
-        if found:
+        if found and not mod.startswith("ewald."):
             names = [dist.get(mod) or mod] if mod != "cupy" else ["cupy-cuda12x", "cupy-cuda11x", "cupy"]
             for n in names:
                 try:

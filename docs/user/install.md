@@ -1,19 +1,40 @@
 # Install
 
-ewald needs Python 3.10 or newer and a C++17 compiler, because `pip` builds the native
-extension `ewald._native` (CNA, PTM, Voronoi and centrosymmetry kernels ported from OVITO)
+ewald needs Python 3.10 or newer. A C++17 compiler is recommended: `pip` uses it to build the
+native extension `ewald._native` (CNA, PTM, Voronoi and centrosymmetry kernels ported from OVITO)
 during installation. On Linux that is gcc or clang, on macOS the Xcode command line tools
-(`xcode-select --install`), on Windows the MSVC Build Tools.
-
-On Windows you can skip the compiler: each release on GitHub carries prebuilt wheels
-(`pip install ewald-X.Y.Z-cp312-cp312-win_amd64.whl[gui]`) and a standalone installer that needs no
-Python at all, in a CPU and a CUDA build ([Windows release](../developer/windows-release.md)).
+(`xcode-select --install`), on Windows the Microsoft C++ Build Tools.
 
 ```bash
 git clone https://github.com/frssp/ewald
 cd ewald
 pip install -e .              # core: readers, modifiers, offscreen rendering, CLI
 ```
+
+## Without a C++ compiler
+
+When no compiler is found (on Windows: `error: Microsoft Visual C++ 14.0 or greater is required`),
+the install still finishes, without `ewald._native`, and pip prints a warning box when run with
+`-v`. Everything works except these modifiers, which stop with an error that says how to fix it:
+
+- `PolyhedralTemplateMatching`
+- `VoronoiAnalysis`
+- `CentroSymmetry(mode="matching")` (the default `conventional` mode works)
+- `CommonNeighborAnalysis(mode="interval")` (adaptive and fixed-cutoff CNA fall back to Python)
+
+Edit › Preferences › Compute lists `ewald._native` as missing, and the GUI's Log tab says so at
+startup. To add it later, install a compiler and run `pip install -e .` again. On Windows: install
+[Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/), tick the
+workload *Desktop development with C++* (MSVC and the Windows SDK), then open a new terminal so
+pip finds it. `EWALD_REQUIRE_NATIVE=1 pip install -e .` makes a failed C++ build an error instead
+of a warning; CI and the release wheels use it.
+
+Windows releases on GitHub will carry prebuilt wheels
+(`pip install ewald-X.Y.Z-cp312-cp312-win_amd64.whl[gui]`) and a standalone installer that needs no
+Python at all, in a CPU and a CUDA build ([Windows release](../developer/windows-release.md)).
+None has been published yet.
+
+## Extras
 
 Optional parts are extras, installed only when you need them:
 

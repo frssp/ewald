@@ -1,6 +1,7 @@
 """ewald main window: Analyze and Render workspaces (layout per docs/design)."""
 from __future__ import annotations
 
+import importlib.util
 import logging
 import os
 import sys
@@ -122,6 +123,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.bottom.addTab(self.inspector, "Data inspector")
         self.bottom.addTab(self.plots, "Plots")
         self.bottom.addTab(self.log, "Log")
+        if importlib.util.find_spec("ewald._native") is None:
+            self.log.appendPlainText("ewald._native (C++ extension) is not installed: PTM, Voronoi, CSP matching "
+                                     "and interval CNA are unavailable. See Preferences › Compute.")
         self.bottom.currentChanged.connect(self._update_bottom_tab)
         self._stale_tabs = set()  # bottom tabs not yet showing the current frame
         self.bottom_dock = self._dock(self.bottom, "Data", QtCore.Qt.BottomDockWidgetArea, None)
