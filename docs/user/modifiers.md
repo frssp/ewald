@@ -79,6 +79,23 @@ pipe.modifiers.append(CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)]))
 pipe.modifiers.append(CoordinationPolyhedra(center_types=["Ti"]))
 ```
 
+## Volumetric data
+
+Charge densities and potentials (VASP CHGCAR/CHG/PARCHG/AECCAR, LOCPOT, ELFCAR, Gaussian cube)
+load into `data.grids`. `CreateIsosurface(isolevel, property)` draws a surface at `isolevel`
+(the mean of |values| when None); `signed=True` adds the negative surface in `negative_color`,
+the usual view of spin densities and density differences. `GridSlice(miller, distance)` cuts
+an (hkl) plane at a fractional `distance` and maps the values through `cmap`
+(`scale="log"` for valence densities), with its own color legend. `GridDifference(["A/CHGCAR",
+"B/CHGCAR"])` subtracts other files' grids, e.g. rho(AB) − rho(A) − rho(B). Surfaces go into
+`data.surfaces` and are drawn by every renderer, including vector output.
+
+```python
+pipe = import_file("CHGCAR")
+pipe.modifiers.append(CreateIsosurface(0.05, transparency=0.3))
+pipe.modifiers.append(GridSlice((0, 0, 1), 0.5, scale="log"))
+```
+
 ## Structure identification (ported from OVITO)
 
 These run in the C++ extension and are tested against OVITO 3.16 results.
@@ -124,6 +141,24 @@ pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
 data = pipe.compute(0)
 data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # Å²/ps
 data.tables["coordination-rdf[average]"]
+```
+
+## Volumetric data
+
+These work on the `VoxelGrid`s in `data.grids` that the CHGCAR, LOCPOT, ELFCAR and cube
+readers produce (see the README's volumetric section).
+
+- `CreateIsosurface(isolevel, property="Charge Density", signed=False, ...)`: VESTA-style
+  isosurface, with a second surface at `-isolevel` when `signed=True`.
+- `GridSlice(miller=(0, 0, 1), distance=0.5, ...)`: colour-mapped cross-section on a lattice
+  plane, linear or log scale.
+- `GridDifference(subtract=[...])`: subtract the grids of other files, for example the
+  charge-density difference rho_AB - rho_A - rho_B.
+
+```python
+pipe = import_file("AB/CHGCAR")
+pipe.modifiers.append(GridDifference(["A/CHGCAR", "B/CHGCAR"]))
+pipe.modifiers.append(CreateIsosurface(0.002, signed=True))
 ```
 
 ## Python

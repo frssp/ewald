@@ -17,7 +17,8 @@ analysis = ["freud-analysis"]
 movie = ["imageio[ffmpeg]"]
 ovito = ["ovito"]   # DislocationAnalysis (DXA) and OvitoModifier bridge
 llm = ["anthropic>=1.0", "mcp"]
-dev = ["pytest"]
+remote = ["paramiko>=3.2"]  # import_file("host:/path") over SSH/SFTP
+dev = ["pytest", "paramiko>=3.2"]
 
 [project.scripts]
 ewald = "ewald.__main__:main"

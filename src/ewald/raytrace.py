@@ -98,6 +98,7 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
             if b.count:
                 start, end, rgb, _ = bond_segments(data, b, colors)
                 sc.add_cylinders(start, end, bond_radius, rgb)
+                sc.add_spheres(end, bond_radius, rgb)  # close the open tube end
     for mesh in getattr(data, "surfaces", {}).values():
         if mesh.face_count:
             v, f = mesh.vertices, mesh.faces

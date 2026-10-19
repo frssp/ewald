@@ -12,6 +12,7 @@ import warnings
 import numpy as np
 
 from ..data import Cell, DataCollection
+from . import remote
 from .base import FrameReader, head_lines, open_binary
 
 # LAMMPS column name -> (OVITO-style property, component)
@@ -177,20 +178,31 @@ def _read_table(block: bytes, n: int, cols) -> list[np.ndarray]:
 
 def _scan_frames(path) -> list[int]:
     """Byte offset of the first ITEM line of every frame (UNITS/TIME may precede TIMESTEP)."""
-    offsets, pos, in_header = [], 0, False
+    offsets, in_header = [], False
+    for pos, line in _item_lines(path):
+        if line.startswith(_FRAME_START):
+            if not in_header:
+                offsets.append(pos)
+                in_header = True
+        elif line.startswith(b"ITEM: ATOMS"):
+            in_header = False
+    return offsets
+
+
+def _item_lines(path):
+    """(offset, line) of every line; for a remote dump only the ITEM lines, found by grep on the host."""
+    hits = remote.line_offsets(path, "^ITEM: (TIME|UNITS|ATOMS)") if remote.is_remote(path) else None
+    if hits is not None:
+        yield from hits
+        return
+    pos = 0
     with open_binary(path) as fh:
         try:
             for line in fh:
-                if line.startswith(_FRAME_START):
-                    if not in_header:
-                        offsets.append(pos)
-                        in_header = True
-                elif line.startswith(b"ITEM: ATOMS"):
-                    in_header = False
+                yield pos, line
                 pos += len(line)
         except EOFError:  # truncated compressed stream; the partial frame is dropped later
             pass
-    return offsets
 
 
 def _column_property(col: str):

@@ -103,7 +103,7 @@ def clean_config(tmp_path, monkeypatch):
     monkeypatch.setenv("EWALD_CONFIG_DIR", str(tmp_path))
 ```
 
-With the reader registry (PR #14), a test can copy the plugin file into
+A reader-plugin test can copy the plugin file into
 `tmp_path / "plugins"` and call `ewald.plugins.load_plugins(force=True)`, then check that
 `import_file` picks the plugin without `format=` and that `ewald.plugins.status()["errors"]`
 is empty. ewald's `tests/test_plugins.py` does this.
