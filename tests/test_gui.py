@@ -1130,3 +1130,22 @@ def test_toolbar_button_styles(app):
     assert analyze.toolButtonStyle() == QtCore.Qt.ToolButtonIconOnly
     assert not app.testAttribute(QtCore.Qt.AA_DontShowIconsInMenus)
     w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_viewport_renders_on_paint_and_falls_back(app, cu_fcc):
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(Pipeline(StaticSource([cu_fcc])))
+    w.show()
+    app.processEvents()
+    vp = w.viewport
+    assert vp._paint_driven and not vp.plotter.render_timer.isActive()  # no idle re-rendering
+    renders = []
+    tag = vp.plotter.render_window.AddObserver("StartEvent", lambda *_: renders.append(1))
+    vp._paint_driven = False  # a pyvistaqt without the paint flag: render directly
+    vp.render()
+    vp.zoom_fit()
+    assert len(renders) >= 2
+    vp.plotter.render_window.RemoveObserver(tag)
+    w.close()

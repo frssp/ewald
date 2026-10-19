@@ -397,7 +397,7 @@ class Viewport(QtWidgets.QWidget):
         if self._paint_driven:
             self.plotter.interactor.update()
         else:
-            self.render()
+            self.plotter.render()
 
     # ------------------------------------------------------------------ camera
     def view_along(self, axis: str):
