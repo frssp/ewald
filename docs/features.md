@@ -471,6 +471,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | Key | Label | Default |
 |---|---|---|
 | `python.run_notebooks` | Run notebooks when opened | `'ask'` |
+| `python.save_figures` | Save figures with notebooks | `True` |
+| `python.bundle_data_mb` | Copy data files up to (MB) | `50.0` |
 | `python.plugin_catalogs` | Plugin catalogs | `''` |
 | `python.startup_script` | Console startup script | `''` |
 | `python.extra_paths` | Extra module paths | `''` |

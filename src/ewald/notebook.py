@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import contextvars
 import io
 import linecache
 import os
@@ -41,6 +42,7 @@ from dataclasses import dataclass, field
 from .pipeline import Modifier, Pipeline, PythonModifier
 
 PIPELINE_NAME = "pipe"
+_DATA_DIRS: contextvars.ContextVar = contextvars.ContextVar("ewald_notebook_data_dirs", default=())
 _MARK = re.compile(r"^# %%(.*)$")
 
 
@@ -62,6 +64,7 @@ class Cell:
     added: list = field(default_factory=list)   # modifiers this cell's last run put into the pipeline
     count: int | None = None           # execution counter, like Jupyter's In [n]
     state: str = "new"                 # 'new', 'ok', 'error' or 'stale'
+    id: str = field(default_factory=lambda: os.urandom(4).hex())   # nbformat cell id, kept in .ipynb
 
     @property
     def is_step(self) -> bool:
@@ -84,6 +87,22 @@ class Cell:
     def modifier(self) -> Modifier | None:
         """The modifier of a step cell (after it ran or was added by the GUI)."""
         return self.added[0] if self.is_step and len(self.added) == 1 else None
+
+
+def resolve_data_path(path):
+    """``path`` itself when it exists (or is not a plain local path); else the same relative
+    path, or file name, in the folders of the notebook that is running (its own folder and the
+    data an ``.ewd`` carries)."""
+    if not isinstance(path, (str, os.PathLike)):
+        return path
+    text = os.fspath(path)
+    if os.path.exists(text) or "://" in text or re.match(r"^[^/\\]+:/", text) or any(c in text for c in "*?["):
+        return path
+    for folder in _DATA_DIRS.get():
+        for candidate in (os.path.join(folder, text), os.path.join(folder, os.path.basename(text))):
+            if os.path.exists(candidate):
+                return candidate
+    return path
 
 
 def step_call(source: str, name: str = PIPELINE_NAME) -> ast.expr | None:
@@ -163,6 +182,13 @@ class Notebook:
         self.namespace: dict = {}
         self.counter = 0
         self.dirty = False
+        self.metadata: dict = {}      # .ipynb notebook metadata, kept on a round trip
+        self.state: dict = {}         # viewer state saved in .ewd files: style, camera, frame
+        self.data_dirs: list = []     # more folders where load() looks (an .ewd's bundled data)
+        self.bundle_dir: str | None = None   # where an .ewd file was unpacked
+        self.restricted = False       # an .ewd that was not trusted yet: cells do not run
+        self.manifest: dict = {}      # an .ewd file's manifest
+        self.warnings: list = []      # data files that moved or changed (from the manifest)
         self.reset()
 
     # ------------------------------------------------------------ namespace
@@ -243,7 +269,30 @@ class Notebook:
         positions = [i for i, m in enumerate(pipe.modifiers) if any(m is a for a in above)]
         return max(positions) + 1 if positions else 0 if any(c.added for c in self.cells[index + 1:]) else len(pipe.modifiers)
 
+    def trust(self):
+        """Allow a restricted notebook (an ``.ewd`` someone sent) to run: its bundled plugins
+        are loaded and its cells may run."""
+        if self.restricted and self.bundle_dir:
+            from .notebook_io import load_bundled_plugins
+
+            load_bundled_plugins(self)
+        self.restricted = False
+
     def _exec(self, cell: Cell, filename: str) -> bool:
+        if self.restricted:
+            raise PermissionError(f"{self.name} came from an .ewd file and is not trusted yet: "
+                                  "call notebook.trust() (Run all in the GUI asks first)")
+        token = _DATA_DIRS.set(tuple(self._data_dirs()))
+        try:
+            return self._exec_cell(cell, filename)
+        finally:
+            _DATA_DIRS.reset(token)
+
+    def _data_dirs(self) -> list:
+        dirs = [os.path.dirname(self.path)] if self.path else []
+        return dirs + [d for d in self.data_dirs if d not in dirs]
+
+    def _exec_cell(self, cell: Cell, filename: str) -> bool:
         cell.outputs = []
         lines = cell.source.splitlines(True)
         linecache.cache[filename] = (len(cell.source), None, lines, filename)
@@ -434,17 +483,38 @@ class Notebook:
 
     @classmethod
     def load(cls, path, **kwargs) -> "Notebook":
+        """Read a ``.py`` (percent format), ``.ipynb`` or ``.ewd`` notebook. An ``.ewd`` opens
+        restricted (see :func:`ewald.notebook_io.load_ewd`); call :meth:`trust` to run it."""
+        from . import notebook_io
+
+        kwargs.setdefault("name", os.path.splitext(os.path.basename(path))[0])
+        ext = os.path.splitext(str(path))[1].lower()
+        if ext == ".ewd":
+            return notebook_io.load_ewd(path, cls=cls, **kwargs)
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
-        kwargs.setdefault("name", os.path.splitext(os.path.basename(path))[0])
+        if ext == ".ipynb":
+            return notebook_io.from_ipynb(text, cls=cls, path=os.path.abspath(path), **kwargs)
         return cls.from_py(text, path=os.path.abspath(path), **kwargs)
 
-    def save(self, path=None):
+    def save(self, path=None, **options):
+        """Write the notebook; the extension picks the format: ``.ewd`` (code, outputs, figures,
+        small data files and plugins in one file; ``options`` go to
+        :func:`ewald.notebook_io.save_ewd`), ``.ipynb`` (code and outputs) or ``.py`` (code)."""
+        from . import notebook_io
+
         path = path or self.path
         if path is None:
             raise ValueError("no file name for this notebook")
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(self.to_py())
+        ext = os.path.splitext(str(path))[1].lower()
+        if ext == ".ewd":
+            notebook_io.save_ewd(self, path, **options)
+        else:
+            text = notebook_io.to_ipynb_text(self) if ext == ".ipynb" else self.to_py()
+            tmp = str(path) + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.write(text)
+            os.replace(tmp, path)
         self.path = os.path.abspath(path)
         self.namespace["__file__"] = self.path
         self.dirty = False
