@@ -89,3 +89,43 @@ def test_frames_round_trip_through_npz(tmp_path, cu_fcc):
     assert list(back.particles["Particle Type"]) == list(d.particles["Particle Type"])
     assert np.allclose(back.cell.matrix, d.cell.matrix) and back.tables["t"]["y"].tolist() == [1, 1, 1]
     assert back.bonds.topology.tolist() == [[0, 1]] and back.attributes["Timestep"] == 7 and "skip" not in back.attributes
+
+
+def test_frames_carry_surfaces_grids_and_vectors(tmp_path, cu_fcc):
+    from ewald.arrows import VectorStyle
+    from ewald.data import VoxelGrid
+    from ewald.mesh import SurfaceMesh
+
+    d = cu_fcc.copy()
+    d.surfaces["poly"] = SurfaceMesh([[0, 0, 0], [1, 0, 0], [0, 1, 0]], [[0, 1, 2]], {"Color": [[1, 0, 0]]},
+                                     edges=[[0, 1]], transparency=0.3)
+    d.grids["rho"] = VoxelGrid(d.cell, {"Charge Density": np.arange(8.0).reshape(2, 2, 2)})
+    d.particles["Force"] = np.zeros((d.count, 3))
+    d.vectors["Force"] = VectorStyle(scaling=2.0)
+    kernel_bridge.save_frame(d, tmp_path / "f.npz")
+    back = kernel_bridge.load_frame(tmp_path / "f.npz")
+    m = back.surfaces["poly"]
+    assert m.faces.tolist() == [[0, 1, 2]] and m.edges.tolist() == [[0, 1]] and m.transparency == 0.3
+    assert m.face_properties["Color"].tolist() == [[1, 0, 0]]
+    assert back.grids["rho"]["Charge Density"].sum() == 28 and back.grids["rho"].shape == (2, 2, 2)
+    assert back.vectors["Force"].scaling == 2.0
+
+
+def test_kernel_steps_get_a_local_copy_with_their_results(kernel, lammps_dir):
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\nfrom ewald.modifiers import *\n"
+                          f"pipe = load({str(lammps_dir / 'dump.custom.lammpstrj')!r})\n\n"
+                          "# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n\n"
+                          "# %%\npipe.add(ExpressionSelection(expression='Coordination < 99'))\n")
+    nb.set_kernel(kernel)
+    assert nb.run_all()
+    step = nb.cells[1].modifier
+    assert type(step).__name__ == "CoordinationAnalysis" and step.cutoff == 3.0 and nb.cells[1].added == []
+    nb.pipeline.compute(0)
+    nb.refresh_kernel_steps()
+    assert "Coordination" in step.last_output["properties"] and nb.cells[2].modifier.last_output["selected"] == 32
+    step.enabled = False                                           # the GUI's checkbox, then the cell runs again
+    nb.update_step(nb.cells[1])
+    assert nb.cells[1].is_step and nb.run_cell(1)
+    nb.pipeline.compute(0)
+    nb.refresh_kernel_steps()
+    assert not nb.cells[1].modifier.enabled and "Coordination" in nb.cells[2].modifier.status   # skipped, reported

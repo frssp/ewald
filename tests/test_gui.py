@@ -1395,6 +1395,9 @@ def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, m
     try:
         assert k is not None and view.kernel_button.text() == "⚙ This Python"
         view.run_all()
+        assert view.running and not view.interrupt_button.isHidden()  # on a thread: the window keeps responding
+        assert view.wait()
+        assert view.interrupt_button.isHidden() and view.run_all_button.isEnabled()
         assert k.alive and [c.state for c in view.notebook.cells] == ["ok", "ok"]
         assert w.pipeline is view.notebook.pipeline and "Coordination" in w.pipeline.compute(0).particles
         assert "1 steps" in view.status.text()
@@ -1403,6 +1406,17 @@ def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, m
         reopened = w.open_notebook(str(tmp_path / "k3.ipynb"))      # the kernel choice is kept
         assert reopened.notebook.kernel is not None and not reopened.notebook.kernel.alive
         assert reopened.kernel_button.text() == "⚙ This Python"
+        w.panel.tabs.setCurrentWidget(view)
+        view.add_cell("code")
+        sleeper = view.notebook.cells[-1]
+        sleeper.source = "import time\ntime.sleep(60)"
+        view.run(sleeper)
+        import time
+
+        time.sleep(1.0)
+        view.interrupt()                                           # ■ Interrupt
+        assert view.wait(30)
+        assert sleeper.state == "error" and "KeyboardInterrupt" in sleeper.outputs[-1].data
     finally:
         import ewald.gui.notebook_panel as npn
 
