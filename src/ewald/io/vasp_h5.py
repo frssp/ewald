@@ -132,6 +132,14 @@ class VaspoutReader(FrameReader):
                 self._energies = {t: values[:, i].astype(float) for i, t in enumerate(tags) if t}
             self._stress = np.asarray(f[_DYN + "/stress"][()], float) if self._history and \
                 _DYN + "/stress" in f else None
+            self.electronic = None
+            if "results/electron_dos" in f or "results/electron_eigenvalues" in f:
+                try:
+                    self.electronic = self._read_electronic(f)
+                except (KeyError, ValueError, IndexError) as exc:
+                    import warnings
+
+                    warnings.warn(f"{path}: DOS / eigenvalues could not be read ({exc})", stacklevel=2)
         rows = []
         for i in range(self._n):
             row = {"Step": i + 1, **{k: v[i] for k, v in self._energies.items() if i < len(v)}}
@@ -143,6 +151,64 @@ class VaspoutReader(FrameReader):
 
     def __len__(self):
         return self._n
+
+    def _read_electronic(self, f):
+        """DOS from ``results/electron_dos``, bands from ``results/electron_eigenvalues_kpoints_opt``
+        (KPOINTS_OPT, the band path of a self-consistent run) or else ``results/electron_eigenvalues``."""
+        from ..electronic import ElectronicStructure, line_ticks, path_distances, pretty_label
+
+        es = ElectronicStructure(types=self.types.copy(), source=os.path.basename(self.path))
+        if "results/electron_dos/dos" in f:
+            g = f["results/electron_dos"]
+            es.efermi = float(g["efermi"][()])
+            dos = np.atleast_2d(np.asarray(g["dos"][()], float))
+            es.dos_energies, es.dos = np.asarray(g["energies"][()], float), dos[:1] if len(dos) == 4 else dos
+            if "dospar" in g and g["dospar"].ndim == 4:
+                par = np.asarray(g["dospar"][()], float)            # (spin, atom, orbital, E)
+                es.pdos = np.ascontiguousarray(np.transpose(par[:1] if len(par) == 4 else par, (1, 0, 2, 3)))
+        if "results/projectors/lchar" in f:
+            es.orbitals = [_text(o) for o in f["results/projectors/lchar"][()]]
+        suffix = "_kpoints_opt" if "results/electron_eigenvalues_kpoints_opt/eigenvalues" in f else ""
+        eig = f.get(f"results/electron_eigenvalues{suffix}")
+        if eig is None or "eigenvalues" not in eig:
+            return es
+        if suffix and "results/electron_dos_kpoints_opt/efermi" in f and not es.has_dos:
+            es.efermi = float(f["results/electron_dos_kpoints_opt/efermi"][()])
+        es.eigenvalues = np.asarray(eig["eigenvalues"][()], float)
+        es.occupations = np.asarray(eig["fermiweights"][()], float) if "fermiweights" in eig else None
+        k = np.asarray(eig["kpoint_coords"][()], float)
+        es.kpoints = k
+        es.weights = np.asarray(eig["kpoints_symmetry_weight"][()], float) \
+            if "kpoints_symmetry_weight" in eig else None
+        inp = f.get(f"input/kpoints{suffix}")
+        mode = _text(inp["mode"][()]).lower()[:1] if inp is not None and "mode" in inp else ""
+        segment = int(inp["number_kpoints"][()]) if mode == "l" and "number_kpoints" in inp else None
+        lattice = self._cell(f, _FINAL, 0).matrix
+        es.distances, es.breaks = path_distances(k, lattice, segment)
+        labels = [_text(x) for x in inp["labels_kpoints"][()]] if inp is not None and "labels_kpoints" in inp else []
+        where = np.asarray(inp["positions_labels_kpoints"][()], int) if labels and \
+            "positions_labels_kpoints" in inp else None
+        if segment:
+            ends = [""] * (2 * (len(k) // segment))
+            for lab, pos in zip(labels, where if where is not None else []):
+                if 0 < pos <= len(ends):
+                    ends[pos - 1] = lab
+            es.ticks = line_ticks(es.distances, segment, ends, k)
+        elif where is not None:
+            es.ticks = [(float(es.distances[p - 1]), pretty_label(lab)) for lab, p in zip(labels, where)
+                        if 0 < p <= len(k)]
+        par = f"results/projectors{suffix}/par"
+        if par in f:
+            path = self.path
+
+            def load():
+                with _h5py().File(path, "r") as h:
+                    p = np.asarray(h[par][()], float)                # (spin, atom, orbital, k, band)
+                p = p[:1] if len(p) == 4 else p
+                return np.ascontiguousarray(np.transpose(p, (0, 3, 4, 1, 2)))
+
+            es.projections_loader = load
+        return es
 
     def _pressure(self, i):
         if self._stress is None or i >= len(self._stress) or self._stress.ndim != 3:
@@ -198,6 +264,8 @@ class VaspoutReader(FrameReader):
                 if grid.properties:
                     data.grids["potential"] = grid
         data.attributes["Timestep"] = index + 1
+        if self.electronic is not None:
+            self.electronic.attach(data)
         for k, v in self._energies.items():
             if index < len(v):
                 data.attributes[k] = float(v[index])
