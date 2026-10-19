@@ -58,7 +58,11 @@ class StaticSource:
 
 
 def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
+    from .. import plugins
+
     fmt = (format or "").lower()
+    if fmt and (plugin := plugins.find_reader(path, fmt)) is not None:
+        return plugin.open(path, **kwargs)
     if fmt in ("lammps/dump", "lammps-dump", "lammps-dump-text") or (not fmt and is_lammps_dump(path)):
         return LammpsDumpReader(path, **kwargs)
     if fmt in ("vasp-xdatcar", "xdatcar") or (not fmt and is_xdatcar(path)):
@@ -70,12 +74,16 @@ def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
         return LammpsDataReader(path, **kwargs)
     if fmt == "lammps-data-ase":
         return AseReader(path, format="lammps-data", **kwargs)
+    if not fmt and (plugin := plugins.find_reader(path)) is not None:
+        return plugin.open(path, **kwargs)
     return AseReader(path, format=format, **kwargs)
 
 
 def import_file(path, format: str | None = None, **kwargs):
     """Create a Pipeline reading ``path`` (wildcards allowed: ``dump.*.lammpstrj``).
 
+    ``format`` names a built-in format, an ASE format, or a reader plugin (see
+    :mod:`ewald.plugins`); without it the format is detected from the file.
     Keyword arguments go to the reader, e.g. ``type_map={1: "Cu", 2: "Zr"}`` for
     LAMMPS dumps/data files that only contain numeric types, or
     ``atom_style="atomic"`` for LAMMPS data files without an ``Atoms # style`` hint.

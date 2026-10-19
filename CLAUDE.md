@@ -35,6 +35,8 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
   licenses in `_csrc/README.md`. Built by `setup.py` (pybind11).
 - `render.py` (VTK/PyVista offscreen; impostors above 150k atoms), `raytrace.py` (numba ray tracer,
   the publication renderer; pip VTK has no OSPRay).
+- `plugins.py`: reader plugins from `ewald.readers` entry points and `<config dir>/plugins/*.py`;
+  `io.open_reader` consults it after the native readers and before ASE. Example in `examples/plugins/`.
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
 - `gui/`: `app.py` main window, `viewport.py`, `pipeline_panel.py`, `params.py`, `render_page.py`,

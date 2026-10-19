@@ -185,13 +185,19 @@ class Toolset:
     def _register(self):
         T = self.tool
         frame_p = {"type": "integer", "description": "frame index (default: current frame; negative counts from the end)"}
+        from .. import plugins
+
+        plugin_formats = ", ".join(f"'{p.name}'" + (f" ({p.description})" if p.description else "")
+                                   for p in plugins.readers().values())
+        format_help = "optional reader format, e.g. 'lammps-data'" + (
+            f"; reader plugins installed: {plugin_formats}" if plugin_formats else "")
 
         @T("load_structure",
            "Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, "
            "extxyz, cif, ... ; wildcards allowed) as the session pipeline, replacing any previous one. "
            "Returns frame count and a description of the first frame.",
            _obj({"path": {"type": "string"},
-                 "format": {"type": "string", "description": "optional reader format, e.g. 'lammps-data'"},
+                 "format": {"type": "string", "description": format_help},
                  "type_map": {"type": "object", "description": "LAMMPS numeric type -> element, e.g. {\"1\": \"Cu\"}",
                               "additionalProperties": {"type": "string"}}}, ["path"]))
         def load_structure(path, format=None, type_map=None):

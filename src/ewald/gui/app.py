@@ -25,8 +25,16 @@ from .theme import TOKENS
 from .timeline import Timeline
 from .viewport import Viewport
 
-FILE_FILTER = ("Simulation files (*.lammpstrj *.dump *.data XDATCAR* POSCAR* CONTCAR* OUTCAR* "
-               "vasprun*.xml *.xyz *.extxyz *.cif *.vasp);;All files (*)")
+FILE_PATTERNS = ("*.lammpstrj", "*.dump", "*.data", "XDATCAR*", "POSCAR*", "CONTCAR*", "OUTCAR*",
+                 "vasprun*.xml", "*.xyz", "*.extxyz", "*.cif", "*.vasp")
+
+
+def file_filter() -> str:
+    """Open-dialog filter: built-in formats plus the patterns of installed reader plugins."""
+    from .. import plugins
+
+    patterns = list(FILE_PATTERNS) + [p for p in plugins.file_patterns() if p not in FILE_PATTERNS]
+    return f"Simulation files ({' '.join(patterns)});;All files (*)"
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -244,7 +252,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return pipe
 
     def open_dialog(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load file", "", FILE_FILTER)
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load file", "", file_filter())
         if not path:
             return
         kwargs = {}
