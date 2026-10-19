@@ -173,3 +173,13 @@ def test_remote_file_block_cache(server, lammps_dir):
         assert len(f._cache) <= max(2, 1000 // 97 + 4)
     finally:
         f.close()
+
+
+def test_volumetric_chgcar_via_cache(server, tmp_path):
+    from test_volumetric import gaussians, write_vasp
+
+    write_vasp(server.local("/data/CHGCAR"), [gaussians()])
+    remote_grid = import_file("hpc:/data/CHGCAR").compute().grids["charge-density"]
+    local_grid = import_file(server.local("/data/CHGCAR")).compute().grids["charge-density"]
+    np.testing.assert_allclose(remote_grid["Charge Density"], local_grid["Charge Density"])
+    assert list((tmp_path / "cache" / "remote").rglob("CHGCAR"))

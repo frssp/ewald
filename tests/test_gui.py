@@ -300,3 +300,21 @@ def srtio3_pipe():
                     cellpar=[3.905] * 3 + [90] * 3)
     return Pipeline(StaticSource(DataCollection.from_ase(atoms)),
                     [mods.CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.2)]), mods.Replicate((2, 2, 2))])
+
+
+def test_viewport_draws_and_clears_surfaces(app):
+    from ewald.data import Cell, DataCollection, VoxelGrid
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    cell = Cell(np.diag([5.0, 5.0, 5.0]))
+    f = np.stack(np.meshgrid(*[np.arange(12) / 12] * 3, indexing="ij"), -1)
+    data = DataCollection([[2.5, 2.5, 2.5]], ["Si"], cell)
+    data.grids["g"] = VoxelGrid(cell.copy(), {"Charge Density": np.exp(-(((f - 0.5) * 5) ** 2).sum(-1))})
+    pipe = Pipeline(StaticSource(data), [mods.CreateIsosurface(0.3, transparency=0.5), mods.GridSlice()])
+    v = Viewport(ViewStyle())
+    v.set_data(pipe.compute())
+    assert {"surface:isosurface", "surface:slice"} <= set(v.plotter.actors)
+    v.set_data(data)
+    assert not any(str(k).startswith("surface:") for k in v.plotter.actors)
+    v.close()

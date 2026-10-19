@@ -72,7 +72,8 @@ example figures.
 
 * `DataCollection`: per-particle arrays with OVITO property names
   (`Position`, `Particle Type`, `Particle Identifier`, `Color`, `Radius`, ...),
-  plus `cell`, `attributes`, `tables`.
+  plus `cell`, `attributes`, `tables`, `grids` (volumetric `VoxelGrid`s) and
+  `surfaces` (display meshes such as isosurfaces).
 * `Pipeline`: source + modifier list, evaluated lazily per frame; source frames are
   cached and never mutated by modifiers.
 * Readers: native readers for LAMMPS dumps, LAMMPS data files and VASP
@@ -220,6 +221,29 @@ pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
 data = pipe.compute(0, device="cuda")
 data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # A^2/ps
 data.tables["coordination-rdf[average]"]                               # time-averaged g(r)
+```
+
+### Volumetric data (CHGCAR, LOCPOT, ELFCAR, cube)
+
+`import_file("CHGCAR")` gives the atoms plus a `VoxelGrid` in `data.grids`
+(VASP CHGCAR/CHG/PARCHG/AECCAR as "Charge Density" in e/A^3 with "Magnetization",
+"Spin Up", "Spin Down" for spin-polarised runs; LOCPOT "Potential"; ELFCAR "ELF";
+Gaussian cube "Value", `pbc=True` for plane-wave output). `CreateIsosurface`
+draws VESTA-style isosurfaces (`signed=True` adds the negative level in a second
+colour, for density differences and spin densities), `GridSlice` a colour-mapped
+(hkl) plane, `GridDifference` subtracts other files' grids, and `export_file`
+writes `.cube` or CHGCAR. Both the OpenGL renderer and the ray tracer draw the
+surfaces, translucent ones included.
+
+```python
+from ewald.modifiers import CreateIsosurface, GridDifference, GridSlice
+
+pipe = import_file("AB/CHGCAR")
+pipe.modifiers.append(GridDifference(["A/CHGCAR", "B/CHGCAR"]))       # rho_AB - rho_A - rho_B
+pipe.modifiers.append(CreateIsosurface(0.002, signed=True, transparency=0.3))
+pipe.modifiers.append(GridSlice(miller=(0, 0, 1), distance=0.5, cmap="RdBu_r", range=(-0.01, 0.01)))
+pipe.render("ccd.png", renderer="raytrace")
+spin = import_file("CHGCAR").compute().grids["charge-density"]["Spin Up"]  # numpy array
 ```
 
 ### Structure analysis (ported from OVITO)

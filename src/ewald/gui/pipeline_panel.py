@@ -28,6 +28,12 @@ MODIFIER_MENU = {
         "Edit bonds (add / delete)": mods.EditBonds,
         "Coordination polyhedra": mods.CoordinationPolyhedra,
     },
+    "Volume (CHGCAR, LOCPOT, cube)": {
+        "Isosurface": mods.CreateIsosurface,
+        "Isosurface, signed (density difference / spin)": lambda: mods.CreateIsosurface(signed=True),
+        "Slice plane (2D map)": mods.GridSlice,
+        "Charge density difference": lambda: mods.GridDifference(["CHGCAR_A", "CHGCAR_B"]),
+    },
     "Coloring": {
         "Color coding": lambda: mods.ColorCoding("Position.Z"),
         "Assign color": lambda: mods.AssignColor((1.0, 0.2, 0.2)),
@@ -77,7 +83,8 @@ BADGES = {"CoordinationAnalysis": "CN", "CalculateDisplacements": "DV", "ColorCo
           "ClearSelection": "CS", "PythonScript": "Py", "PythonModifier": "Py",
           "MeanSquaredDisplacement": "MS", "VelocityAutocorrelation": "VA", "TimeAveraging": "TA",
           "TimeSeries": "TS", "GenerateTrajectoryLines": "TL", "CreateBonds": "CB", "EditBonds": "EB",
-          "CoordinationPolyhedra": "PH"}
+          "CoordinationPolyhedra": "PH",
+          "CreateIsosurface": "SF", "GridSlice": "GS", "GridDifference": "GD"}
 
 KIND = QtCore.Qt.UserRole + 1
 
