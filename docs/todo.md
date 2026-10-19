@@ -29,6 +29,9 @@ GUI
 - Plugins side bar: an "updates available" badge on the activity bar, disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
+- UI themes (`@ui_theme`): switch fully without a restart (now the style sheet changes at once,
+  but notebook syntax colors and open plots keep the old tokens), let a theme's `viewport` token
+  drive the 3D view background.
 - Remotes side bar: list folders and connect in a background thread (now the GUI waits, with
   a busy cursor), drag a remote file onto the notebook, mirror a run folder to a local folder
   (rsync-like, for offline analysis), remote data links in the `.ewd` manifest (remote paths are

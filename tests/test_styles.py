@@ -280,3 +280,47 @@ def test_llm_tools(extras, monkeypatch):
     script = ts.to_script()
     assert "theme = 'VESTA'" in script and "overlays = [{'name': 'Coordinate tripod'" in script
     assert not ts.call("remove_overlay", {"index": 0}).is_error and ts.overlays == []
+
+
+UI_THEMES = Path(__file__).parents[1] / "examples" / "plugins" / "ui_themes.py"
+
+
+def test_ui_theme_plugins(tmp_path):
+    from ewald import settings
+    from ewald.gui import theme as ui
+
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(UI_THEMES, folder)
+    plugins.load_plugins(force=True)
+    assert not plugins.status()["errors"], plugins.status()["errors"]
+    names = list(plugins.ui_themes())
+    assert names[:2] == ["paper", "graphite"] and {"Midnight", "High contrast"} <= set(names)
+    assert any(t["name"] == "Midnight" and t["base"] == "graphite" for t in plugins.status()["ui_themes"])
+
+    # overrides on top of the base palette; every token present
+    p = ui.palette("Midnight")
+    assert set(p) == set(ui.PALETTES["paper"]) and p["accent"] == "#7AA2F7"
+    assert p["error"] == ui.PALETTES["graphite"]["error"]
+    assert ui.use("High contrast")["text"] == "#000000" and ui.TOKENS["text"] == "#000000"
+    ui.use("paper")
+
+    # a dict may name its base; bad themes fall back to the default instead of failing
+    plugins.register_ui_theme("Dict", {"base": "graphite", "accent": "#123456"})
+    assert ui.palette("Dict")["bg"] == ui.PALETTES["graphite"]["bg"]
+    plugins.register_ui_theme("Typo", {"acent": "#123456"})
+    plugins.register_ui_theme("Not hex", {"accent": "teal"})
+    plugins.register_ui_theme("Bad base", {"accent": "#123456"}, base="solarized")
+    for name in ("Typo", "Not hex", "Bad base"):
+        with pytest.raises(ValueError):
+            plugins.ui_themes()[name].palette()
+        assert ui.palette(name) == ui.PALETTES["paper"]
+    assert ui.palette("no such theme") == ui.PALETTES["paper"]
+    with pytest.raises(ValueError, match="built in"):
+        plugins.register_ui_theme("graphite", {})
+    with pytest.raises(TypeError):
+        plugins.register_ui_theme("bad", 42)
+
+    s = settings.Settings(path=tmp_path / "settings.json")
+    s["general.ui_theme"] = "Midnight"
+    assert s["general.ui_theme"] == "Midnight"

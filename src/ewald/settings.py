@@ -33,7 +33,7 @@ class Option:
     choices: tuple = ()          # allowed values (combo box)
     minimum: float | None = None
     maximum: float | None = None
-    kind: str = ""               # editor hint: color, file, dir, table
+    kind: str = ""               # editor hint: color, file, dir, table, ui_theme (installed UI themes)
 
     @property
     def page(self) -> str:
@@ -50,8 +50,8 @@ OPTIONS = (
            "Notebook: Python cells build the pipeline (like Jupyter). Classic: pipeline list and "
            "properties panel. Takes effect after a restart.", choices=("notebook", "classic")),
     Option("general.ui_theme", "paper", "UI theme",
-           "Paper: light, teal accents. Graphite: dark. Takes full effect after a restart.",
-           choices=("paper", "graphite")),
+           "Paper: light, teal accents. Graphite: dark. UI theme plugins (@ui_theme) add more. "
+           "Takes full effect after a restart.", kind="ui_theme"),
     Option("general.startup_workspace", "Analyze", "Startup workspace", choices=("Analyze", "Render")),
     Option("general.toolbar_style", "Icons and text", "Toolbar buttons",
            "Icons and text: text on mode switches and rarely used buttons, icons alone on the tool rail.",

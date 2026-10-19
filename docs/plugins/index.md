@@ -17,6 +17,7 @@ against the same API the built-in readers and modifiers use, so everything in th
 | [Color map](styles.md#color-maps) | a function returning colors or a matplotlib `Colormap` | `@colormap` in the plugin folder, or an `ewald.colormaps` entry point | available |
 | [Theme](styles.md#themes) | a function returning a `Theme` (element colors, background, cell color, radius preset) | `@theme` in the plugin folder, or an `ewald.themes` entry point | available |
 | [Claude tool](tools.md) | a function `f(toolset, **arguments)` returning JSON-ready data | `@claude_tool` in the plugin folder, or an `ewald.tools` entry point | available |
+| [UI theme](styles.md#ui-themes) | a function returning design tokens (`{"accent": "#7aa2f7", ...}`) on top of Paper or Graphite | `@ui_theme` in the plugin folder, or an `ewald.ui_themes` entry point | available |
 
 [Modifier Forge](forge.md) writes a modifier plugin from a description: Claude writes the
 module and its tests, and ewald saves it to the plugin folder once its checks pass.

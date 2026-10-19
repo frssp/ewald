@@ -276,6 +276,6 @@ tab to unfold. ⧉ floats a panel in its own window. View › *Minimal mode* (Ct
 hides the menu bar, toolbars and status bar, leaving the notebook and the viewport. Every
 command stays one search away in the command palette (Ctrl+K), menu shortcuts keep working,
 and Ctrl+Shift+M brings the menus back. *UI theme* picks Paper (light, the
-default) or Graphite (dark).
+default), Graphite (dark) or a theme from a plugin ([UI themes](../plugins/styles.md#ui-themes)).
 
 ![Minimal mode: only the notebook, the viewport and the Display panel](../images/minimal-mode.png)

@@ -1,10 +1,14 @@
 """UI themes from the design tokens (project design files, redesign canvas).
 
-Paper (light, the default) and Graphite (dark). ``accent`` (teal) marks what you can act on,
+Paper (light, the default) and Graphite (dark); ``@ui_theme`` plugins add more (:func:`palette`). ``accent`` (teal) marks what you can act on,
 ``data`` (orange) marks results computed from the data. ``TOKENS`` is the active palette; it is
 updated in place by :func:`use`, so ``from .theme import TOKENS`` sees the change.
 """
 from __future__ import annotations
+
+import logging
+
+log = logging.getLogger(__name__)
 
 PALETTES = {
     "paper": {
@@ -26,6 +30,26 @@ PALETTES = {
 }
 DEFAULT = "paper"
 TOKENS = dict(PALETTES[DEFAULT])
+
+
+# Interaction shades: (token, from, toward, amount). Built-in palettes pick them by hand;
+# ``@ui_theme`` plugins that leave them out get them mixed from their own colors (:func:`derive`).
+DERIVED = (("hover", "raised", "text", 0.07), ("pressed", "raised", "text", 0.12),
+           ("accent_hover", "accent", "text", 0.15), ("accent_pressed", "accent", "text", 0.28))
+
+
+def _mix(a: str, b: str, t: float) -> str:
+    ca, cb = (tuple(int(c[i:i + 2], 16) for i in (1, 3, 5)) for c in (a, b))
+    return "#" + "".join(f"{round(x + (y - x) * t):02X}" for x, y in zip(ca, cb))
+
+
+def derive(tokens: dict, own=()) -> dict:
+    """``tokens`` with the interaction shades not in ``own`` mixed from its base colors."""
+    out = dict(tokens)
+    for key, a, b, t in DERIVED:
+        if key not in own:
+            out[key] = _mix(out[a], out[b], t)
+    return out
 
 
 # Small line images the style sheet needs as files (QSS has no inline images), in palette colors.
@@ -54,10 +78,28 @@ def image(name: str, tokens: dict | None = None) -> str:
     return path.replace("\\", "/")
 
 
+def palette(name: str) -> dict:
+    """The design tokens of UI theme ``name``: a built-in palette or a ``@ui_theme`` plugin
+    (:func:`ewald.plugins.ui_theme`); unknown or broken themes fall back to the default."""
+    if name in PALETTES:
+        return dict(PALETTES[name])
+    from .. import plugins
+
+    found = plugins.ui_themes().get(name)
+    if found is not None:
+        try:
+            return found.palette()
+        except Exception as exc:  # a broken theme must not keep the window from opening
+            log.warning("UI theme %r: %s; using %s", name, exc, DEFAULT)
+    elif name:
+        log.warning("unknown UI theme %r; using %s", name, DEFAULT)
+    return dict(PALETTES[DEFAULT])
+
+
 def use(name: str) -> dict:
     """Make ``name`` the active palette (unknown names fall back to the default)."""
     TOKENS.clear()
-    TOKENS.update(PALETTES.get(name, PALETTES[DEFAULT]))
+    TOKENS.update(palette(name))
     return TOKENS
 
 QSS = """
