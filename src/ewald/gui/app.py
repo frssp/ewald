@@ -102,6 +102,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.console = make_console(self._console_namespace(), self._after_console, self)
         self.plots = PlotsPanel()
         self.plots.phononModePicked.connect(self.play_phonon_mode)
+        self.plots.atomsSelected.connect(self._plot_selected_atoms)
+        self.plots.framesSelected.connect(self._plot_selected_frames)
+        self.plots.frameRequested.connect(self.timeline._set)
+        self.plots.expressionRequested.connect(self._keep_plot_selection)
+        self.timeline.selectionChanged.connect(self.plots.set_frame_selection)
+        self._plot_picking = False
         self.log = QtWidgets.QPlainTextEdit(readOnly=True)
         self.bottom = QtWidgets.QTabWidget()
         self.bottom.addTab(self.console, "Python console")
@@ -356,6 +362,8 @@ class MainWindow(QtWidgets.QMainWindow):
         pipeline.cache_memory = self.settings["performance.cache_memory"] * 2**20
         self.viewport.reset_view()
         self.viewport.clear_picks()
+        self.plots.pipeline = pipeline
+        self.plots.forget_selection()
         self.panel.set_pipeline(pipeline)
         self.timeline.set_num_frames(pipeline.num_frames)
         self._push_console()
@@ -401,6 +409,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.viewport.set_data(self.data, interactive=interactive)
         self.inspector.set_data(self.data)
         self.plots.set_data(self.data)
+        self.plots.set_highlight(self._selected_indices())
         self._push_console()
         dev = (self.device or "cpu").upper()
         self.status.setText(f"N = {self.data.count}   frame {self.frame}/{self.pipeline.num_frames - 1}   "
@@ -468,18 +477,51 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _on_pick(self, text):
         self.pick_label.setText(text)
+        if not self._plot_picking:
+            self.plots.forget_selection(frames=False)  # a click in the view replaces a plot range
+        self.plots.set_highlight(self._selected_indices())
         self.ask_panel.update_selection()
         if text:
             self.log.appendPlainText(time.strftime("%H:%M:%S ") + text)
+
+    # ---------------------------------------------------------------- linked plots
+    def _selected_indices(self):
+        """The viewport picks, else the 'Selection' property of the current frame."""
+        indices = self.viewport.picks
+        if not indices and self.data is not None and "Selection" in self.data:
+            indices = np.nonzero(self.data.selection)[0].tolist()
+        return indices
+
+    def _plot_selected_atoms(self, indices):
+        self._plot_picking = True
+        try:
+            self.viewport.set_picks(indices)
+        finally:
+            self._plot_picking = False
+
+    def _plot_selected_frames(self, frames):
+        self.timeline.set_selection(frames)
+        if frames and self.frame not in frames:
+            self.timeline._set(frames[0])
+
+    def _keep_plot_selection(self, expression):
+        from ..modifiers import ExpressionSelection
+
+        if self.pipeline is None:
+            return
+        m = ExpressionSelection(expression)
+        self.pipeline.modifiers.append(m)
+        self.plots.forget_selection(frames=False)
+        self.viewport.clear_picks()
+        self.panel.refresh(select=("mod", m))
+        self.recompute()
+        self.message(f"Added Expression selection: {expression}")
 
     # ---------------------------------------------------------------- Claude
     def _ask_context(self):
         """(pipeline, frame, indices) for the Ask Claude panel: the viewport picks, else the
         'Selection' property of the current frame."""
-        indices = self.viewport.picks
-        if not indices and self.data is not None and "Selection" in self.data:
-            indices = np.nonzero(self.data.selection)[0].tolist()
-        return self.pipeline, self.frame, indices
+        return self.pipeline, self.frame, self._selected_indices()
 
     def ask_claude(self):
         self.ask_dock.show()
