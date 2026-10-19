@@ -20,6 +20,15 @@ MODIFIER_MENU = {
         "Reduce property (mean, sum, ...)": lambda: mods.ReduceProperty("Position.Z"),
         "Steinhardt order parameters (q4, q6)": mods.SteinhardtOrderParameters,
     },
+    "Structure identification": {
+        "Common neighbor analysis": mods.CommonNeighborAnalysis,
+        "Polyhedral template matching": mods.PolyhedralTemplateMatching,
+        "Ackland-Jones bond angles": mods.AcklandJones,
+        "Identify diamond structure": mods.IdentifyDiamond,
+        "Chill+ (ice, hydrate)": mods.ChillPlus,
+        "Centrosymmetry": mods.CentroSymmetry,
+        "Atomic strain": mods.AtomicStrain,
+    },
     "Trajectory": {
         "Mean squared displacement / diffusion": mods.MeanSquaredDisplacement,
         "Velocity autocorrelation": mods.VelocityAutocorrelation,
@@ -76,7 +85,7 @@ def fill_modifier_menu(menu, add):
     for sub in menu.findChildren(QtWidgets.QMenu, options=QtCore.Qt.FindDirectChildrenOnly):
         sub.deleteLater()
     for group, items in MODIFIER_MENU.items():
-        sub = menu.addMenu(group)
+        sub = menu.addMenu(group.replace("&", "&&"))  # a single "&" would be a mnemonic
         for label, factory in items.items():
             sub.addAction(label, lambda f=factory: add(f()))
 
