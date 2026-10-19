@@ -169,7 +169,8 @@ OPTIONS = (
            "An .ewd notebook carries data files up to this size; larger ones stay links (path, size, "
            "fingerprint). 0 keeps links only.", minimum=0.0, maximum=100000.0),
     Option("python.plugin_catalogs", "", "Plugin catalogs",
-           "URLs or paths of plugin index files (JSON) listed in the Plugins panel, separated by ';'."),
+           "URLs or paths of plugin index files (JSON) listed in the Plugins panel, separated by ';', "
+           "after the default index (EWALD_PLUGIN_INDEX overrides it; empty turns it off)."),
     Option("python.startup_script", "", "Console startup script", "Run in the Python console when the GUI starts.",
            kind="file"),
     Option("python.extra_paths", "", "Extra module paths", "Folders added to sys.path, separated by ';'.", kind="dir"),

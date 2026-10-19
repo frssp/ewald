@@ -44,6 +44,7 @@ def lammps_dir():
 def _isolated_settings(tmp_path, monkeypatch):
     """Never read or write the developer's real ~/.config/ewald during tests."""
     monkeypatch.setenv("EWALD_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.setenv("EWALD_PLUGIN_INDEX", "")    # no network: tests name their own indexes
 
 
 # --- SSH/SFTP: an in-process server (tests/helpers/sftp_server.py) and an isolated ~/.ssh/config
