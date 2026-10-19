@@ -293,7 +293,7 @@ names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
 `DeleteSelected`, `Slice`, `AssignColor`, `ColorCoding`, `ComputeProperty`,
 `CoordinationAnalysis` (+ total/partial RDF), `ClusterAnalysis` (OVITO-compatible: size, COM, gyration tensor, unwrap),
 `CalculateDisplacements` (+ MSD),
-`Replicate`, `WrapAtoms`, `AffineTransformation`, and any Python function
+`Replicate`, `WrapAtoms`, `AffineTransformation`, `VectorVis` (arrows), and any Python function
 `f(frame, data)`.
 
 OVITO Pro-style statistics, checked against OVITO 3.16 bin for bin: `Histogram`,
@@ -302,6 +302,24 @@ OVITO Pro-style statistics, checked against OVITO 3.16 bin for bin: `Histogram`,
 selection). `FindRings` gives shortest-path ring statistics of the bond network and
 `SteinhardtOrderParameters` the q_l/w_l bond-orientational order (plain or Lechner-Dellago
 averaged, checked against freud).
+
+### Vector arrows
+
+`VectorVis` draws a per-particle vector property as arrows, like OVITO's vector visual
+element: forces, displacements, velocities, magnetic moments (a collinear, scalar moment
+points along z) or any N x 3 property. It has OVITO's options (scaling, width, alignment
+base/center/head, reverse, offset, flat or lit shading, transparency) and colors arrows
+uniformly or by a property such as their own length, with a color legend. Every renderer
+draws them: the viewport, the ray tracer and SVG/PDF output. Without a modifier,
+`render(data, vectors="Force")` does the same.
+
+```python
+from ewald.modifiers import VectorVis
+
+pipe = import_file("OUTCAR")
+pipe.modifiers.append(VectorVis("Force", scaling=2.0, color_mapping_property="Magnitude"))
+pipe.render("forces.png", renderer="raytrace", radius_scale=0.5)
+```
 
 ### Bonds and coordination polyhedra
 

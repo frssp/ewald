@@ -47,6 +47,36 @@ ColorCoding("Position.Z - CellOrigin.Z", cmap="viridis")
 colormap and stores the range, so the renderer can draw a legend. `AssignColor(color)` colors
 the selected particles.
 
+## Vector arrows
+
+`VectorVis(property, scaling, width, alignment, ...)` draws a per-particle vector property as
+arrows: "Force", "Displacement", "Velocity", "Magnetic Moment" or any N x 3 property (an empty
+`property` takes the first of these that exists). A scalar property, such as a collinear
+magnetic moment, points along z, so spin up and down read as up and down arrows. The options
+follow OVITO's vector visual element:
+
+| Option | Meaning |
+|---|---|
+| `scaling` | Å per unit of the property |
+| `width` | shaft diameter in Å; the head is 2.5× as wide and 4.5× the shaft radius long, shrunk for short arrows |
+| `alignment` | `"base"` (arrow starts at the atom), `"center"` or `"head"` (arrow ends at the atom) |
+| `reverse`, `offset` | flip the arrows; shift them by a vector in Å |
+| `color` | one color for every arrow |
+| `color_mapping_property`, `cmap`, `color_mapping_interval` | color by `"Magnitude"` (the arrow's length), another property or an expression; the range is shown as the color legend unless a `ColorCoding` already owns it |
+| `shading`, `transparency` | `"normal"` (lit 3D) or `"flat"` (solid color); 0 to 1 |
+| `only_selected`, `min_length` | arrows of selected particles only; skip arrows shorter than this (Å) |
+
+The modifier stores a style in `data.vectors[property]`; arrows are built from the final
+particles when the frame is drawn, so `Slice`, `DeleteSelected` or `Replicate` after it keep
+every arrow on its atom. Use one `VectorVis` per property. All three renderers draw them, and
+the vector renderer splits each arrow where it passes its atom, so arrows run through atoms in
+SVG/PDF output too.
+
+```python
+pipe.modifiers.append(VectorVis("Force", scaling=2.0, color_mapping_property="Magnitude"))
+pipe.modifiers.append(VectorVis("Magnetic Moment", scaling=0.5, alignment="center", color="crimson"))
+```
+
 ## Transformations
 
 `AffineTransformation(matrix)` applies a 3×3 or 3×4 matrix to particles and optionally the

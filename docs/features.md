@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-45 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+46 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -127,6 +127,12 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | `BondAngleDistribution` | Histogram of the angles between pairs of bonds at each particle. |
 | `BondLengthDistribution` | Histogram of bond lengths from 0 to ``length_cutoff`` in ``bins`` bins (longer bonds are skipped). |
 | `FindRings` | Rings of ``minimum_ring_size``..``maximum_ring_size`` bonds in the bond network. |
+
+### vectors
+
+| Modifier | What it does |
+|---|---|
+| `VectorVis` | Draw an N x 3 particle property as arrows: 'Force', 'Displacement', 'Velocity', 'Magnetic Moment' (a scalar moment points along z), or any other vector property. |
 
 ## File formats
 
@@ -284,6 +290,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `viewport.show_overlay` | Show frame / timestep text | `True` |
 | `viewport.sphere_resolution` | Sphere resolution | `10` |
 | `viewport.mesh_limit` | Impostor threshold | `150000` |
+| `viewport.arrow_resolution` | Arrow resolution | `6` |
 | `viewport.interactive_detail` | Detail while moving | `'auto'` |
 | `viewport.target_fps` | Target frame rate | `30` |
 | `viewport.interactive_atoms` | Atoms while moving | `1000000` |
@@ -411,6 +418,10 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Isosurface, signed (density difference / spin)
   - Slice plane (2D map)
   - Charge density difference
+- Vectors (arrows)
+  - Force / displacement / velocity arrows
+  - Magnetic moment arrows
+  - Arrows colored by length
 - Coloring
   - Color coding
   - Assign color

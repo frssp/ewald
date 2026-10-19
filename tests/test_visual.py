@@ -19,7 +19,8 @@ import pytest
 
 from ewald import DataCollection, Pipeline, StaticSource
 from ewald.data import Cell, VoxelGrid
-from ewald.modifiers import (ColorCoding, CoordinationPolyhedra, CreateBonds, CreateIsosurface, GridSlice)
+from ewald.modifiers import (ColorCoding, CoordinationPolyhedra, CreateBonds, CreateIsosurface, GridSlice,
+                             VectorVis)
 from visual import EXACT, check_image, check_json
 
 pytestmark = pytest.mark.visual
@@ -71,6 +72,17 @@ def density():
     return data
 
 
+def iron_forces():
+    """bcc Fe with smooth fixed 'forces' and alternating collinear moments."""
+    from ase.build import bulk
+
+    data = DataCollection.from_ase(bulk("Fe", "bcc", a=2.87, cubic=True).repeat((2, 2, 2)))
+    p = data.positions
+    data.particles["Force"] = np.column_stack([np.sin(p[:, 1]), np.cos(p[:, 0]), 0.6 * np.sin(p[:, 0] + p[:, 2])])
+    data.particles["Magnetic Moment"] = np.where(np.arange(data.count) % 2 == 0, 2.2, -2.2)
+    return data
+
+
 def pipelines():
     return {
         "copper": Pipeline(StaticSource(copper()), [ColorCoding("Position.Z")]),
@@ -79,6 +91,9 @@ def pipelines():
         "isosurface": Pipeline(StaticSource(density()), [CreateIsosurface(0.3, transparency=0.4),
                                                          GridSlice((0, 0, 1), 0.25)]),
         "rocksalt": Pipeline(StaticSource(rocksalt()), []),
+        "arrows": Pipeline(StaticSource(iron_forces()), [
+            VectorVis("Force", scaling=1.2, width=0.25, color_mapping_property="Magnitude", cmap="plasma"),
+            VectorVis("Magnetic Moment", scaling=0.7, width=0.3, alignment="center", color=(0.85, 0.1, 0.1))]),
     }
 
 
@@ -90,6 +105,10 @@ SCENES = {
     "overlays": ("rocksalt", dict(text="NaCl", legend=False, type_legend=True, scale_bar=True, direction="z")),
     "radius_ionic": ("rocksalt", dict(radius_preset="ionic", show_cell=False)),
     "radius_vdw": ("rocksalt", dict(radius_preset="vdW", radius_scale=0.5, show_cell=False)),
+    "arrows": ("arrows", dict(radius_scale=0.35, show_cell=False, direction=(3, 2, 1))),
+    "arrows_flat": ("arrows", dict(radius_scale=0.35, direction="z", legend=False,
+                                   vectors={"Force": {"shading": "flat", "scaling": 1.2, "color": (0.1, 0.4, 1.0),
+                                                      "alignment": "center"}})),
 }
 OPENGL_ONLY = {"impostor": ("copper", dict(atom_style="impostor", show_cell=False))}
 
