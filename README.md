@@ -212,6 +212,18 @@ broken plugin never stops ewald from starting); `EWALD_NO_PLUGINS=1` skips loadi
 [`examples/plugins/npz_trajectory.py`](examples/plugins/npz_trajectory.py) is a complete
 example for NumPy `.npz` trajectories (positions, types, cell, forces, energies).
 
+Modifiers plug in the same way: `@modifier(category="Analysis")` on a `Modifier` subclass in
+the plugin folder, or an `ewald.modifiers` entry point. A registered modifier imports as
+`from ewald.modifiers import Name`, appears in the GUI's Add modification menu and is offered
+by the Claude `add_modifier` tool ([`examples/plugins/local_composition.py`](examples/plugins/local_composition.py)).
+`llms.txt` stays core-only; `ewald api --with-plugins` appends the plugins installed here.
+
+`ewald forge "what to compute"` has Claude write such a modifier together with tests that
+have a known answer. ewald runs them in a subprocess, along with checks for the plugin
+contract (no in-place writes, the GPU code path), returns any failure to Claude to fix, and
+saves the modifier to the plugin folder only once everything passes
+([Modifier Forge](docs/plugins/forge.md)). It asks before running the generated code.
+
 LAMMPS values stay in the file's own unit style (`Units` attribute when the dump has it).
 The test fixtures in `tests/data/` come from real LAMMPS runs (`tests/data/lammps/generate.in`)
 and VASP-format files written to match VASP 6 output.

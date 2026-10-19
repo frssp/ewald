@@ -86,6 +86,16 @@ def _discover():
             except Exception:
                 continue  # needs arguments we cannot guess
             register_modifier("Analysis" if "Analysis" in name or "Structure" in name else "Other", name, cls)
+    from .. import plugins
+
+    for name, plugin in plugins.modifiers().items():
+        if name in known:
+            continue
+        try:
+            plugin.cls()
+        except Exception:
+            continue  # needs arguments we cannot guess
+        register_modifier(plugin.category, name, plugin.cls)
 
 
 BADGES = {"CoordinationAnalysis": "CN", "CalculateDisplacements": "DV", "ColorCoding": "CC", "AssignColor": "AC",

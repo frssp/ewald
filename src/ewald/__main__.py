@@ -69,9 +69,17 @@ def main(argv=None):
     n.add_argument("--no-llm", action="store_true", help="rule-based titles only")
     n.add_argument("--render", action="store_true", help="show Claude renders of the frames around events")
     n.add_argument("--json", action="store_true", help="print JSON instead of Markdown")
-    sub.add_parser("api", help="print the Python API reference for LLMs (llms.txt)")
+    a = sub.add_parser("api", help="print the Python API reference for LLMs (llms.txt)")
+    a.add_argument("--with-plugins", action="store_true", help="append the modifier plugins installed here")
     pl = sub.add_parser("plugins", help="list installed plugins and any that failed to load")
     pl.add_argument("--json", action="store_true")
+    f = sub.add_parser("forge", help="have Claude write a modifier plugin, test it and save it")
+    f.add_argument("request", nargs="+", help="the analysis, in words")
+    f.add_argument("--yes", action="store_true", help="run the generated code without asking")
+    f.add_argument("--draft", action="store_true", help="print Claude's first draft; run and save nothing")
+    f.add_argument("--overwrite", action="store_true", help="replace a plugin file of the same name")
+    f.add_argument("--rounds", type=int, default=4, help="attempts to fix failing checks (default 4)")
+    f.add_argument("--model", default=None)
     m = sub.add_parser("mcp", help="serve the analysis tools over MCP (stdio)")
     m.add_argument("input", nargs="?")
     m.add_argument("--allow-code", action="store_true")
@@ -85,10 +93,12 @@ def main(argv=None):
     if args.cmd == "api":
         from .llm.reference import api_reference
 
-        print(api_reference(), end="")
+        print(api_reference(with_plugins=args.with_plugins), end="")
         return
     if args.cmd == "plugins":
         return _print_plugins(args.json)
+    if args.cmd == "forge":
+        return _forge(args)
     if args.cmd == "mcp":
         from .llm.mcp_server import serve
 
@@ -210,9 +220,43 @@ def _print_plugins(as_json=False):
     for r in st["readers"]:
         pats = " ".join(r["patterns"]) or "(format= only)"
         print(f"reader {r['name']:<16} {pats:<24} {r['description']}  [{r['origin']}]")
+    for m in st["modifiers"]:
+        print(f"modifier {m['name']:<24} {m['category']:<14} {m['description'][:60]}  [{m['origin']}]")
     for origin, err in st["errors"].items():
         print(f"FAILED {origin}: {err}")
     return 1 if st["errors"] else None
+
+
+def _forge(args):
+    from .llm.forge import DEFAULT_MODEL, forge
+
+    request = " ".join(args.request)
+    if not (args.draft or args.yes):
+        answer = input("Claude's code will run on this machine (a subprocess with a time limit, "
+                       "not a sandbox) to test it. Continue? [y/N] ")
+        if answer.strip().lower() not in ("y", "yes"):
+            print("cancelled; use --draft to only see the code")
+            return 1
+
+    def show(kind, result):
+        if kind == "draft":
+            print(f"round {result.rounds}: {result.class_name} ({result.module_name}.py)", flush=True)
+        elif not result.ok:
+            failed = [i["name"] for i in result.report.get("checks", []) + result.report.get("tests", [])
+                      if not i["ok"]]
+            print("  failed: " + ", ".join(failed), flush=True)
+
+    result = forge(request, model=args.model or DEFAULT_MODEL, run_code=not args.draft, max_rounds=args.rounds,
+                   overwrite=args.overwrite, on_event=show)
+    if args.draft:
+        print(result.module_source)
+        print("# ---- tests ----")
+        print(result.test_source)
+        return
+    print(result.summary())
+    if result.ok:
+        print(f"use it: from ewald.modifiers import {result.class_name}  (also in the GUI and Claude's tools)")
+    return None if result.ok else 1
 
 
 if __name__ == "__main__":

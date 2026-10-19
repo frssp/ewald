@@ -36,4 +36,10 @@ def __getattr__(name):
     target = _OVITO_NAMES.get(name) or (name[:-len("Modifier")] if name.endswith("Modifier") else None)
     if target and target in __all__:
         return globals()[target]
+    if not name.startswith("_"):  # modifier plugins (ewald.plugins) import like built-ins
+        from .. import plugins
+
+        found = plugins.modifiers().get(name) or (plugins.modifiers().get(target) if target else None)
+        if found is not None:
+            return found.cls
     raise AttributeError(f"module 'ewald.modifiers' has no attribute {name!r}")
