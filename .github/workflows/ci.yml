@@ -1,9 +1,7 @@
 name: CI
 
+# Manual only (Actions minutes on a private repo); see docs/developer/testing.md to re-enable.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 concurrency:

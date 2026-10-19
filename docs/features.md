@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-55 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+58 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -106,6 +106,14 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | Modifier | What it does |
 |---|---|
 | `PythonScript` | Run ``modify(frame, data)`` defined in ``source``. |
+
+### crystal
+
+| Modifier | What it does |
+|---|---|
+| `ElasticStrain` | Atomic-level elastic strain in a crystal (OVITO's Elastic strain calculation). |
+| `GrainSegmentation` | Decompose a polycrystal into grains from PTM orientations (OVITO's Grain segmentation). |
+| `IdentifyFCCPlanarFaults` | Classify hcp-like atoms in fcc crystals by planar fault (OVITO's Identify fcc planar faults). |
 
 ### diffraction
 
@@ -526,6 +534,9 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Chill+ (ice, hydrate)
   - Centrosymmetry
   - Atomic strain
+  - Elastic strain (crystal)
+  - Grain segmentation (after PTM)
+  - fcc planar faults (after PTM)
 - Symmetry & diffraction
   - Space group / Wyckoff positions (spglib)
   - Powder XRD pattern

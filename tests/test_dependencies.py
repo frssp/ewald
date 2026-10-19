@@ -30,8 +30,8 @@ def test_every_third_party_import_is_declared():
     stdlib = set(sys.stdlib_module_names)
     missing = {}
     for path in (ROOT / "src" / "ewald").rglob("*.py"):
-        if path.parent.name == "tables" and path.name.startswith("make_"):
-            continue  # table generators run by developers (pymatgen, PyYAML), not at runtime
+        if path.parent.name in ("tables", "icon") and path.name.startswith("make_"):
+            continue  # table and icon generators run by developers (pymatgen, PyYAML, cairosvg), not at runtime
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Import):
                 names = [a.name for a in node.names]
@@ -150,9 +150,12 @@ def test_missing_native_extension_explains_itself(monkeypatch, cu_fcc):
     from ewald import modifiers as mods
 
     assert "ewald._native" in {row[0] for row in settings.component_status()}
+    import ewald
+
     monkeypatch.setitem(sys.modules, "ewald._native", None)  # import now raises ImportError
+    monkeypatch.delattr(ewald, "_native", raising=False)  # set once another test imported it
     for mod in (mods.PolyhedralTemplateMatching(), mods.VoronoiAnalysis(),
-                mods.CommonNeighborAnalysis(mode="interval")):
+                mods.CommonNeighborAnalysis(mode="interval"), mods.ElasticStrain()):
         with pytest.raises(ImportError, match="Build Tools"):
             Pipeline(StaticSource([cu_fcc]), [mod]).compute(0)
     out = Pipeline(StaticSource([cu_fcc]), [mods.CommonNeighborAnalysis()]).compute(0)

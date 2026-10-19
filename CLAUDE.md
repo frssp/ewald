@@ -76,6 +76,9 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   `<config dir>/plugins/*.py`; `io.open_reader`, the GUI open filter and menu, the Claude tools and
   `ewald.modifiers.__getattr__` read it. Plugin modifiers stay out of `__all__` and `llms.txt`.
   Examples in `examples/plugins/`.
+- `assets/icon/`: app icon. `ewald.svg` (and `ewald-small.svg` for 16-32 px) are the sources; the PNG
+  sizes, `ewald.ico` and `ewald.icns` are rendered by `make_icons.py` (cairosvg), never by hand.
+  `gui.icons.app_icon()` loads them.
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
 - `inventory.py`: `ewald inventory`, docs/features.md from the registries, CLI parser and GUI menus.
