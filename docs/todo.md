@@ -138,6 +138,10 @@ Electronic structure
 - DOSCAR, EIGENVAL and PROCAR readers (VASP 5 runs without vasprun.xml), and Quantum ESPRESSO /
   other codes' DOS and bands.
 - vasprun.xml: the KPOINTS_OPT sections (`<eigenvalues_kpoints_opt>`); vaspout.h5 reads them.
+- Plot style (`ewald/plotstyle.py`): per-plot overrides in view cells (`show(..., size=, xlim=,
+  ylim=, labels=)`), time units on MSD/VACF axes when `time_per_frame` is set (the unit is not
+  stored now, so the axis says "Time"), multi-panel figures (DOS beside bands sharing the energy
+  axis), and a journal preset list (ACS, APS, Nature widths and fonts).
 - Plots tab: adjustable energy window (fixed at ±6 eV now), Gaussian smearing of the DOS,
   orbital choice for fat bands independent of the DOS column, spin texture of non-collinear runs.
 - Drag an energy window on the DOS to select the atoms with the largest PDOS there, and the

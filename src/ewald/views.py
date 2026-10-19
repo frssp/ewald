@@ -42,48 +42,75 @@ def view_data(source, table: str | None = None, y: str | None = None, histogram:
     return table, {n: np.asarray(columns[n]) for n in keep}
 
 
-def _draw(ax, title: str, columns: dict, histogram: str | None):
+def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool = True):
+    """Draw a view onto ``ax`` in the active :mod:`ewald.plotstyle` (labels with units)."""
+    from .plotstyle import axis_label, legend_labels, start_at_zero
+
+    import matplotlib as mpl
+
+    first = mpl.rcParams["axes.prop_cycle"].by_key()["color"][0]
     names = list(columns)
-    x = columns[names[0]]
+    x = np.asarray(columns[names[0]], float)
     if histogram is not None:
         width = x[1] - x[0] if len(x) > 1 else 1.0
-        ax.bar(x, columns["count"], width=width, color="#0B7A6F")
-        ax.set_xlabel(histogram)
-        ax.set_ylabel("count")
+        ax.bar(x, columns["count"], width=width, color=first, lw=0)
+        ax.set_xlabel(axis_label(histogram))
+        ax.set_ylabel("Count")
+        ax.set_ylim(bottom=0)
         return
     ys = names[1:]
-    for name in ys:
-        if title.endswith("-peaks"):
-            ax.vlines(x, 0, columns[name], label=name)
+    sticks = title.endswith("-peaks")
+    if sticks and "Intensity" in columns:
+        ys = ["Intensity"]
+    for name, label in zip(ys, legend_labels(ys)):
+        y = np.asarray(columns[name], float)
+        ok = np.isfinite(y)
+        if sticks:
+            ax.vlines(x[ok], 0, y[ok], label=label, lw=1.0, color=first)
+        elif name == "Experimental":   # measured pattern: points under the calculated curve
+            ax.plot(x[ok], y[ok], ls="none", marker="o", ms=2.0, mew=0, color="0.45", label=label, zorder=1)
+        elif name.endswith(" fit"):
+            ax.plot(x[ok], y[ok], ls="--", lw=0.9, label=label, zorder=3)
         else:
-            ax.plot(x, columns[name], label=name)
-    ax.set_xlabel(names[0])
+            ax.plot(x[ok], y[ok], label=label, zorder=2)
+    ax.set_xlabel(axis_label(names[0]))
+    start_at_zero(ax, x)
+    if sticks or title in ("diffraction", "structure-factor") or all(n.startswith("Count") for n in ys):
+        ax.set_ylim(bottom=0)
+    units = {axis_label(n) for n in ys}
+    if len(ys) == 1 or len(units) == 1:
+        ax.set_ylabel(units.pop() if units else "")
     if len(ys) > 1:
-        ax.legend(frameon=False, fontsize="small")
-    else:
-        ax.set_ylabel(ys[0] if ys else "")
-    ax.set_title(title, fontsize="medium")
+        ax.legend(loc="best")
+    if show_title:
+        ax.set_title(title)
 
 
 def figure(source, table: str | None = None, y: str | None = None, histogram: str | None = None,
-           frame: int = 0, bins: int = 50):
-    """The matplotlib Figure of a view (what :func:`show` draws), without pyplot."""
-    from matplotlib.figure import Figure
+           frame: int = 0, bins: int = 50, size: str | tuple | None = None, title: bool = False):
+    """The matplotlib Figure of a view (what :func:`show` draws), without pyplot, in the
+    publication style of :mod:`ewald.plotstyle` (``size``: a column width name or inches).
+    Save it with :func:`ewald.plotstyle.save` to keep the text editable in PDF/SVG."""
+    from . import plotstyle
 
-    fig = Figure(figsize=(5.2, 3.0), layout="constrained")
-    _draw(fig.add_subplot(), *view_data(source, table, y, histogram, frame, bins), histogram)
+    fig = plotstyle.figure(size)
+    with plotstyle.context(*fig._ewald_style):
+        _draw(fig.add_subplot(), *view_data(source, table, y, histogram, frame, bins), histogram, show_title=title)
     return fig
 
 
 def show(source, table: str | None = None, y: str | None = None, histogram: str | None = None,
          frame: int = 0, bins: int = 50):
     """Plot a data table or a particle-property histogram of ``source`` (a Pipeline or a
-    DataCollection) at ``frame`` with matplotlib (``plt.show()``)."""
+    DataCollection) at ``frame`` with matplotlib (``plt.show()``), in the publication style."""
     import matplotlib.pyplot as plt
 
+    from . import plotstyle
+
     title, columns = view_data(source, table, y, histogram, frame, bins)
-    _fig, ax = plt.subplots(figsize=(5.2, 3.0), layout="constrained")
-    _draw(ax, title, columns, histogram)
+    with plotstyle.context():
+        _fig, ax = plt.subplots(figsize=plotstyle.figsize(), layout="constrained")
+        _draw(ax, title, columns, histogram)
     plt.show()
 
 

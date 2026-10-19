@@ -1209,7 +1209,7 @@ def test_dos_and_band_plots_show_selected_atoms(app):
     from pathlib import Path
 
     from ewald import import_file
-    from ewald.gui.plots import PlotsPanel
+    from ewald.gui.plots import E_FERMI, PlotsPanel
 
     data = import_file(Path(__file__).parent / "data" / "vasp" / "electronic" / "vasprun.xml").compute(0)
     es = data.attributes["Electronic Structure"]
@@ -1218,7 +1218,7 @@ def test_dos_and_band_plots_show_selected_atoms(app):
     panel.set_data(data)
     assert panel.table.currentText() == "DOS" and panel.link is None
     ax = panel.figure.axes[0]
-    assert ax.get_xlabel() == "E − E_F (eV)" and [t.get_text() for t in ax.get_legend().get_texts()] == \
+    assert ax.get_xlabel() == E_FERMI and [t.get_text() for t in ax.get_legend().get_texts()] == \
         ["Total", "Ga", "As"]
     assert "Select atoms" in panel.link_label.text() and not panel._overlays
     panel.set_highlight([1])                                    # As selected in the viewport
@@ -1846,3 +1846,31 @@ def test_panels_and_cells_fold(app, cu_path, tmp_path):
     cw.set_collapsed(False)
     assert not cw.content.isHidden()
     w.close()
+
+
+def test_plot_export_is_a_print_figure_in_any_theme(app, vasp_dir, tmp_path):
+    from PIL import Image
+
+    from ewald import import_file, plotstyle
+    from ewald.gui import theme
+    from ewald.gui.plots import PlotsPanel
+
+    pipe = import_file(vasp_dir / "neb")
+    theme.use("graphite")
+    try:
+        panel = PlotsPanel()
+        panel.resize(600, 400)
+        panel.pipeline = pipe
+        panel.set_data(pipe.compute(1))
+        screen = panel.figure
+        panel.export(tmp_path / "neb.png", "2-column", quality="Draft")
+        panel.export(tmp_path / "neb.svg")
+        assert panel.figure is screen and theme.TOKENS["bg"] == theme.PALETTES["graphite"]["bg"]
+        assert panel.figure.axes[0].get_facecolor()[:3] != (1.0, 1.0, 1.0)   # the canvas keeps the theme
+    finally:
+        theme.use(theme.DEFAULT)
+    img = Image.open(tmp_path / "neb.png").convert("RGB")
+    assert img.getpixel((2, 2)) == (255, 255, 255)
+    assert abs(img.width / plotstyle.DPI["draft"] - 7.2) < 0.5     # 2-column wide (tight box)
+    svg = (tmp_path / "neb.svg").read_text()
+    assert "Reaction coordinate" in svg and "#ffffff" in svg.lower()

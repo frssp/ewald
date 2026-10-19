@@ -30,12 +30,22 @@ from __future__ import annotations
 import numpy as np
 from PySide6 import QtCore, QtWidgets
 
-from .. import linking
+from .. import linking, plotstyle
 from ..linking import grid_map
 from .theme import TOKENS
 
 
 ENERGY_WINDOW = (-6.0, 6.0)  # eV around the Fermi energy shown for DOS and bands
+SCREEN_FONT = 9.0            # pt on the canvas (12 px at 100 dpi, the UI font)
+
+
+def _styled(method):
+    """Run a drawing method in the plot style, in the colors of the active UI theme."""
+    def wrapper(self, *args, **kwargs):
+        with plotstyle.context(TOKENS, self._font_size):
+            return method(self, *args, **kwargs)
+    wrapper.__name__, wrapper.__doc__ = method.__name__, method.__doc__
+    return wrapper
 
 
 class PlotsPanel(QtWidgets.QWidget):
@@ -106,6 +116,9 @@ class PlotsPanel(QtWidgets.QWidget):
         self._press = None
         self._rubber = None
         self._overlays = []
+        self._font_size = SCREEN_FONT
+        self._exporting = False      # drawing a file: no UI hints, no current-frame marker
+        self._xname = ""             # x column of the plot, for the selection text
         self._update_controls()
 
     def compact(self):
@@ -157,6 +170,7 @@ class PlotsPanel(QtWidgets.QWidget):
         self.column.setEnabled(len(items) > 1)
         self.column.blockSignals(False)
 
+    @_styled
     def redraw(self, *_):
         self._fill_columns()
         table = self._table()
@@ -176,22 +190,24 @@ class PlotsPanel(QtWidgets.QWidget):
         ax = self._ax = fig.add_subplot(111, facecolor=TOKENS["bg"])
         self._ax2, self._edges, self._overlays, self._rubber = None, None, [], None
         self._bars = False  # integer histogram drawn as bars
-        for spine in ax.spines.values():
-            spine.set_color(TOKENS["border"])
-        ax.tick_params(colors=TOKENS["secondary"])
-        ax.xaxis.label.set_color(TOKENS["secondary"]); ax.yaxis.label.set_color(TOKENS["secondary"])
+        self._xname = ""
         d = self.data
         if d is not None and self.hist.currentText():
             name = self.hist.currentText()
             v = np.asarray(d[name])
             if v.dtype.kind in "iu" and np.ptp(v) < 60:
                 vals, counts = np.unique(v, return_counts=True)
-                ax.bar(vals, counts, color=TOKENS["accent"])
+                ax.bar(vals, counts, color=TOKENS["accent"], lw=0)
                 self._edges = np.arange(v.min(), v.max() + 2) - 0.5
                 self._bars = True
+                ax.xaxis.set_major_locator(_integer_locator())
+                ax.set_xlim(vals.min() - 1, vals.max() + 1)
+                plotstyle.no_minor_x(ax)
             else:
-                _, self._edges, _ = ax.hist(v, bins=50, color=TOKENS["accent"])
-            ax.set_xlabel(name); ax.set_ylabel("count")
+                _, self._edges, _ = ax.hist(v, bins=50, color=TOKENS["accent"], lw=0)
+            ax.set_ylim(bottom=0)
+            self._xname = name
+            ax.set_xlabel(plotstyle.axis_label(name)); ax.set_ylabel("Count")
         elif d is not None and self._phonon_modes() is not None:
             self._draw_phonon(ax, self._phonon_modes())
         elif d is not None and self._electronic() is not None:
@@ -199,8 +215,8 @@ class PlotsPanel(QtWidgets.QWidget):
         elif d is not None and self.table.currentText() in d.tables and grid_map(d.tables[self.table.currentText()]):
             keys, (x, y, z) = grid_map(d.tables[self.table.currentText()])
             cs = ax.contourf(x, y, z, levels=20, cmap="viridis")
-            fig.colorbar(cs, ax=ax, label=keys[2])
-            ax.set_xlabel(keys[0]); ax.set_ylabel(keys[1])
+            fig.colorbar(cs, ax=ax, label=plotstyle.axis_label(keys[2]))
+            ax.set_xlabel(plotstyle.axis_label(keys[0])); ax.set_ylabel(plotstyle.axis_label(keys[1]))
         elif d is not None and _is_neb(d.tables.get(self.table.currentText())):
             self._draw_neb(ax, d.tables[self.table.currentText()], d.tables.get("NEB spline"))
         elif d is not None and self.table.currentText() in d.tables:
@@ -213,29 +229,38 @@ class PlotsPanel(QtWidgets.QWidget):
             sticks = self.table.currentText().endswith("-peaks") and "Intensity" in table
             if sticks:   # reflections (PowderDiffraction)
                 keys = [keys[0], "Intensity"]
-                ax.vlines(x, 0, np.asarray(table["Intensity"], float), color=TOKENS["accent"], lw=1.2)
+                ax.vlines(x, 0, np.asarray(table["Intensity"], float), color=TOKENS["accent"], lw=1.0)
                 ax.set_ylim(bottom=0)
-            for k in [] if sticks else keys[1:]:
+            for k, label in [] if sticks else zip(keys[1:], plotstyle.legend_labels(keys[1:])):
                 y = np.asarray(table[k], dtype=float)
                 ok = ~np.isnan(y)  # thermo columns a run did not print
                 if k == "Experimental":   # measured pattern under the calculated one
-                    ax.plot(x[ok], y[ok], lw=0, marker=".", ms=2.5, color=TOKENS["secondary"], label=k, zorder=1)
+                    ax.plot(x[ok], y[ok], lw=0, marker=".", ms=2.5, color=TOKENS["muted"], label=label, zorder=1)
+                elif k.endswith(" fit"):
+                    ax.plot(x[ok], y[ok], ls="--", lw=0.9, label=label, zorder=3)
                 else:
-                    ax.plot(x[ok], y[ok], lw=1.4, label=k, zorder=2)
-            ax.set_xlabel(keys[0])
+                    ax.plot(x[ok], y[ok], label=label, zorder=2)
+            self._xname = keys[0]
+            ax.set_xlabel(plotstyle.axis_label(keys[0]))
+            if not _is_series(table):
+                plotstyle.start_at_zero(ax, x)
+            if sticks or all(k.startswith("Count") for k in keys[1:]) or \
+                    self.table.currentText() in ("diffraction", "structure-factor"):
+                ax.set_ylim(bottom=0)
             if _is_series(table):
-                self._marker = ax.axvline(x[0], color=TOKENS["secondary"], lw=1, ls="--")
+                self._marker = ax.axvline(x[0], color=TOKENS["secondary"], lw=0.8, ls="--")
                 self._place_marker()
+            units = {plotstyle.axis_label(k) for k in keys[1:]}
             if len(keys) > 2:
-                leg = ax.legend(frameon=False)
-                for t in leg.get_texts():
-                    t.set_color(TOKENS["secondary"])
-            elif len(keys) == 2:
-                ax.set_ylabel(keys[1])
+                ax.legend()
+            if len(units) == 1:
+                ax.set_ylabel(units.pop())
             if len(x) > 1:
                 mid = 0.5 * (x[1:] + x[:-1])
                 self._edges = np.concatenate([[x[0] - (mid[0] - x[0])], mid, [x[-1] + (x[-1] - mid[-1])]])
-        fig.tight_layout()
+        if self._exporting and self._marker is not None:   # current frame / image / mode: UI state
+            self._marker.set_visible(False)
+        fig.tight_layout(pad=0.4)
         self._draw_overlays()
         self._update_controls()
 
@@ -376,13 +401,14 @@ class PlotsPanel(QtWidgets.QWidget):
         return bool(cols) and all(c.startswith("Count") for c in cols)
 
     def _xlabel(self):
-        return self._ax.get_xlabel() if self._ax is not None else ""
+        return self._xname
 
     def _keep(self):
         expr = linking.selection_expression(self.link, *self._range) if self._range else None
         if expr:
             self.expressionRequested.emit(expr)
 
+    @_styled
     def _draw_overlays(self):
         for a in self._overlays:
             try:
@@ -416,12 +442,11 @@ class PlotsPanel(QtWidgets.QWidget):
             elif len(vals) and self._edges is not None:
                 # g(r), frequencies, densities: the selection's counts on their own axis
                 if self._ax2 is None:
+                    ax.tick_params(which="both", right=False)
                     self._ax2 = ax.twinx()
-                    self._ax2.tick_params(colors=pick)
-                    for spine in self._ax2.spines.values():
-                        spine.set_color(TOKENS["border"])
-                    self._ax2.set_ylabel("selected", color=pick)
-                    self.figure.tight_layout()
+                    self._ax2.tick_params(which="both", colors=pick, labelcolor=pick)
+                    self._ax2.set_ylabel("Selected", color=pick)
+                    self.figure.tight_layout(pad=0.4)
                 self._ax2.set_visible(True)
                 _, _, patches = self._ax2.hist(vals, bins=self._edges, histtype="step", color=pick, lw=1.4)
                 self._overlays.extend(patches)
@@ -457,16 +482,17 @@ class PlotsPanel(QtWidgets.QWidget):
     def _draw_neb(self, ax, table, spline):
         s, e = np.asarray(table["Reaction Coordinate"], float), np.asarray(table["Energy"], float)
         if spline is not None:
-            ax.plot(spline["Reaction Coordinate"], spline["Energy"], lw=1.4, color=TOKENS["accent"])
+            ax.plot(spline["Reaction Coordinate"], spline["Energy"], color=TOKENS["accent"])
         ok = ~np.isnan(e)
-        ax.plot(s[ok], e[ok], "o", ms=6, color=TOKENS["accent"], mfc=TOKENS["bg"])
+        ax.plot(s[ok], e[ok], "o", ms=5, mew=1.0, color=TOKENS["accent"], mfc=TOKENS["bg"], zorder=3)
+        ax.margins(x=0.04, y=0.08)
         ax.set_xlabel("Reaction coordinate (Å)")
         ax.set_ylabel("Energy (eV)")
         a = self.data.attributes
         lines = [f"{label} {a[k]:.3f} eV" for label, k in (("Ea →", "NEB.Barrier"), ("Ea ←", "NEB.Reverse Barrier"),
                                                          ("ΔE", "NEB.Reaction Energy")) if k in a]
         if lines:
-            ax.text(0.02, 0.96, "\n".join(lines), transform=ax.transAxes, va="top", fontsize=8,
+            ax.text(0.03, 0.95, "\n".join(lines), transform=ax.transAxes, va="top", fontsize="small",
                     color=TOKENS["secondary"])
         self._marker = ax.plot([], [], "o", ms=9, color=TOKENS["accent"])[0]
         self._place_marker()
@@ -538,23 +564,28 @@ class PlotsPanel(QtWidgets.QWidget):
         f = modes.frequencies
         if modes.num_qpoints == 1:  # Gamma only (VASP): one tick per mode
             x = np.arange(1, modes.num_bands + 1, dtype=float)
-            ax.scatter(x, f[0], marker="_", s=160, color=TOKENS["accent"], linewidths=2)
+            ax.scatter(x, f[0], marker="_", s=120, color=TOKENS["accent"], linewidths=1.5)
             ax.set_xlabel("Mode")
+            ax.margins(x=0.03)
+            ax.xaxis.set_major_locator(_integer_locator())
+            plotstyle.no_minor_x(ax)
         else:
             x = modes.distances if modes.is_path else np.arange(modes.num_qpoints, dtype=float)
             for b in range(modes.num_bands):
-                ax.plot(x, f[:, b], lw=1.2, color=TOKENS["accent"])
+                ax.plot(x, f[:, b], lw=1.0, color=TOKENS["accent"])
             ax.set_xlim(x[0], x[-1])
             if modes.ticks:
                 for d, _ in modes.ticks:
-                    ax.axvline(d, color=TOKENS["border"], lw=0.8)
+                    ax.axvline(d, color=TOKENS["border"], lw=0.6)
                 ax.set_xticks([d for d, _ in modes.ticks])
-                ax.set_xticklabels([lab for _, lab in modes.ticks])
+                ax.set_xticklabels([_kpoint_label(lab) for _, lab in modes.ticks])
+                plotstyle.no_minor_x(ax)
             else:
                 ax.set_xlabel("Q-point" if not modes.is_path else "Distance")
-        ax.axhline(0, color=TOKENS["border"], lw=0.8)
+        ax.axhline(0, color=TOKENS["border"], lw=0.6)
         ax.set_ylabel("Frequency (THz)")
-        ax.set_title("Click a band to play the mode", color=TOKENS["secondary"], fontsize=9)
+        if not self._exporting:
+            ax.set_title("Click a band to play the mode", color=TOKENS["muted"], fontsize="small")
         self._phonon = (modes, x)
         self._marker, = ax.plot([], [], "o", ms=8, mfc="none", mew=2, color=TOKENS["pick"])
         self._place_marker()
@@ -594,7 +625,7 @@ class PlotsPanel(QtWidgets.QWidget):
             e = np.asarray(table["Energy"], float)
             totals = [k for k in table if k.startswith("Total")]
             for k in totals:
-                ax.fill_between(e, np.asarray(table[k], float), color=TOKENS["secondary"], alpha=0.25, lw=0,
+                ax.fill_between(e, np.asarray(table[k], float), color=TOKENS["secondary"], alpha=0.18, lw=0,
                                 label="Total" if k == totals[0] else None)
             if col == "(all)":
                 shown = [k for k in table if k not in totals and k != "Energy" and " " not in _spinless(k)]
@@ -603,14 +634,15 @@ class PlotsPanel(QtWidgets.QWidget):
             colors = {}
             for k in shown:
                 base = _spinless(k)
-                c = colors.setdefault(base, f"C{len(colors)}")
-                ax.plot(e, np.asarray(table[k], float), lw=1.3, color=c, label=base if base not in
+                cycle = plotstyle.colors(TOKENS)   # hex now: "C0" would resolve outside the style
+                c = colors.setdefault(base, cycle[len(colors) % len(cycle)])
+                ax.plot(e, np.asarray(table[k], float), lw=1.1, color=c, label=base if base not in
                         [t.get_label() for t in ax.lines] else None)
-            ax.axvline(0, color=TOKENS["secondary"], lw=0.8, ls="--")
+            ax.axvline(0, color=TOKENS["secondary"], lw=0.6, ls="--")
             if es.num_spins == 2:
-                ax.axhline(0, color=TOKENS["border"], lw=0.8)
+                ax.axhline(0, color=TOKENS["border"], lw=0.6)
             ax.set_xlim(max(lo, e.min()), min(hi, e.max()))
-            ax.set_xlabel("E − E_F (eV)")
+            ax.set_xlabel(E_FERMI)
             ax.set_ylabel("DOS (states/eV)")
             inside = (e >= lo) & (e <= hi)
             vals = np.concatenate([np.abs(np.asarray(table[k], float)[inside]) for k in totals + shown] or [[1.0]])
@@ -623,28 +655,27 @@ class PlotsPanel(QtWidgets.QWidget):
                 y = np.insert(np.asarray(table[k], float), cut, np.nan)
                 xs = np.insert(x, cut, np.nan)
                 pick = col not in ("(all)", k)
-                ax.plot(xs, y, lw=0.8 if pick else 1.3, ls="--" if k.endswith("(down)") else "-",
+                ax.plot(xs, y, lw=0.7 if pick else 1.0, ls="--" if k.endswith("(down)") else "-",
                         color=TOKENS["border"] if pick else TOKENS["accent"], zorder=2 if pick else 3)
             ax.set_xlim(x[0], x[-1])
             for d, _ in es.ticks:
-                ax.axvline(d, color=TOKENS["border"], lw=0.8)
+                ax.axvline(d, color=TOKENS["border"], lw=0.6)
             if es.ticks:
                 ax.set_xticks([d for d, _ in es.ticks])
-                ax.set_xticklabels([lab for _, lab in es.ticks])
+                ax.set_xticklabels([_kpoint_label(lab) for _, lab in es.ticks])
+                plotstyle.no_minor_x(ax)
             else:
                 ax.set_xlabel(next(iter(table)))
-            ax.axhline(0, color=TOKENS["secondary"], lw=0.8, ls="--")
+            ax.axhline(0, color=TOKENS["secondary"], lw=0.6, ls="--")
             e = es.eigenvalues - es.efermi
             ax.set_ylim(max(lo, e.min() - 0.2), min(hi, e.max() + 0.2))
-            ax.set_ylabel("E − E_F (eV)")
+            ax.set_ylabel(E_FERMI)
         gap = self.data.attributes.get("Band Gap")
         if gap is not None:
-            ax.text(0.98, 0.97, f"gap {gap:.3f} eV", transform=ax.transAxes, ha="right", va="top", fontsize=8,
-                    color=TOKENS["secondary"])
+            ax.text(0.97, 0.95, f"$E_\\mathrm{{g}}$ = {gap:.3f} eV", transform=ax.transAxes, ha="right", va="top",
+                    fontsize="small", color=TOKENS["secondary"])
         if name == "DOS":
-            leg = ax.legend(frameon=False, fontsize=8, loc="upper left")
-            for t in leg.get_texts():
-                t.set_color(TOKENS["secondary"])
+            ax.legend(loc="upper left")
         self._elec = (es, name, col)
 
     def _selected_atoms(self):
@@ -670,7 +701,7 @@ class PlotsPanel(QtWidgets.QWidget):
                 for s in range(es.num_spins):
                     y = -p[s] if s == 1 else p[s]
                     self._overlays.append(ax.fill_between(e, y, color=pick, alpha=0.35, lw=0))
-                    self._overlays.extend(ax.plot(e, y, color=pick, lw=1.4))
+                    self._overlays.extend(ax.plot(e, y, color=pick, lw=1.1))
             elif name == "Bands" and es.has_projections:
                 w = es.band_weights(atoms, orb)
                 x = es.distances if es.distances is not None else np.arange(w.shape[1], dtype=float)
@@ -727,7 +758,51 @@ class PlotsPanel(QtWidgets.QWidget):
     def _save(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save plot", "plot.pdf", "PDF (*.pdf);;PNG (*.png);;SVG (*.svg)")
         if path:
-            self.figure.savefig(path, dpi=300)
+            from .. import settings as settings_mod
+
+            s = settings_mod.load()
+            self.export(path, s["plots.size"], s["plots.font_size"], s["render.quality"])
+
+    def export(self, path, size: str | tuple | None = None, font_size: float | None = None,
+               quality: str = "Publication"):
+        """Write the plot on the canvas to ``path`` (PDF/SVG/EPS/PNG) as a publication figure:
+        redrawn at a journal column width (:data:`ewald.plotstyle.SIZES`) in print colors
+        (white background, whatever the UI theme), without the UI hints, with editable text in
+        vector files and the DPI of ``quality`` ('Draft', 'Standard', 'Publication') for PNG."""
+        from matplotlib.figure import Figure
+
+        w, h = plotstyle.figsize(size)
+        fs = font_size or plotstyle.FONT_SIZE * max(1.0, (w / 3.5) ** 0.5)
+        screen, theme = self.figure, dict(TOKENS)
+        TOKENS.update(plotstyle.PRINT)
+        self.figure, self._font_size, self._exporting = Figure(figsize=(w, h)), fs, True
+        self._drawn = None
+        try:
+            self.redraw()
+            fig = self.figure
+            fig._ewald_style = (plotstyle.PRINT, fs)
+            q = quality.lower() if quality.lower() in plotstyle.DPI else "publication"
+            plotstyle.save(fig, path, quality=q)
+        finally:
+            TOKENS.clear()
+            TOKENS.update(theme)
+            self.figure, self._font_size, self._exporting = screen, SCREEN_FONT, False
+            self._drawn = self._ax2 = None
+            self.redraw()
+
+
+E_FERMI = "$E - E_\\mathrm{F}$ (eV)"
+
+
+def _kpoint_label(label: str) -> str:
+    """High-symmetry point names for tick labels: G/Gamma/\\Gamma as Γ."""
+    return "Γ" if label.strip().lstrip("\\").upper() in ("G", "GAMMA", "Γ") else label
+
+
+def _integer_locator():
+    from matplotlib.ticker import MaxNLocator
+
+    return MaxNLocator(integer=True)
 
 
 def _spinless(column: str) -> str:
