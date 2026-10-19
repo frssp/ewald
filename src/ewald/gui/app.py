@@ -513,6 +513,9 @@ class MainWindow(QtWidgets.QMainWindow):
             traceback.print_exc()
             return
         dt = time.perf_counter() - t
+        n = self.pipeline.num_frames  # LoadTrajectory changes the frame count
+        if self.timeline.slider.maximum() != max(0, n - 1):
+            self.timeline.set_num_frames(n)
         for m in self.pipeline.modifiers:
             if m.enabled and m.status:
                 self.message(f"{m.name}: {m.status}", error=True)
