@@ -204,10 +204,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 ## Code health
 
 Left from the 2026-10-19 review (minimum image, element masses, color parsing and the
-dark-background test are shared now):
+dark-background test are shared now; `gui/app.py` and `gui/preferences.py` are split into
+mixins and helper modules):
 
-- Split `gui/app.py` (files, menus, selection/console mixins) and `gui/preferences.py`
-  (widgets, element table, applying settings), after the viewport/menu work in PR #45.
 - One camera basis (right/up/forward) for `vector.py`, `overlays.camera_axes` and `raytrace.py`;
   only the overlays one handles `up` parallel to the view direction.
 - One element color lookup: `themes.element_colors`, `Settings.element_color` (Preferences
