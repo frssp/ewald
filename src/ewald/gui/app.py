@@ -76,6 +76,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.viewport.picked.connect(self._on_pick)
         self.viewport.bondEdit.connect(self.toggle_bond)
         self.viewport.styleChanged.connect(self._style_changed)
+        self.viewport.contextMenuRequested.connect(lambda: self.viewport_menu().exec(QtGui.QCursor.pos()))
         self.timeline = Timeline()
         self.timeline.frameChanged.connect(self.set_frame)
         analyze = QtWidgets.QWidget()
@@ -106,6 +107,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.inspector = DataInspector()
         self.console = make_console(self._console_namespace(), self._after_console, self)
         self.plots = PlotsPanel()
+        self.plots.phononModePicked.connect(self.play_phonon_mode)
         self.plots.atomsSelected.connect(self._plot_selected_atoms)
         self.plots.framesSelected.connect(self._plot_selected_frames)
         self.plots.frameRequested.connect(self.timeline._set)
@@ -192,6 +194,7 @@ class MainWindow(QtWidgets.QMainWindow):
         f = mb.addMenu("&File")
         f.addAction("&Load file…", self.open_dialog, QtGui.QKeySequence.Open)
         f.addAction("Load &remote file (SSH)…", self.open_remote_dialog, "Ctrl+Alt+O")
+        f.addAction("Load &NEB folder…", self.open_neb_dialog)
         f.addAction("Load &session…", self.load_session_dialog, "Ctrl+Shift+O")
         f.addAction("&Save session", self.save_session, QtGui.QKeySequence.Save)
         f.addAction("Save session &as…", lambda: self.save_session(ask=True), QtGui.QKeySequence.SaveAs)
@@ -216,6 +219,9 @@ class MainWindow(QtWidgets.QMainWindow):
         v.addSeparator()
         for bg in ("Dark background", "White background"):
             v.addAction(bg, lambda bg=bg: self._set_background(TOKENS["bg"] if bg.startswith("Dark") else "white"))
+        self.theme_menu = v.addMenu("Theme")
+        self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
+        self._fill_theme_menu()
         m = mb.addMenu("&Pipeline")
         m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier))
         fill_modifier_menu(m, self.panel.add_modifier)
@@ -303,6 +309,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _set_background(self, color):
         self.style.background = color
+        self.style.cell_color = None
+        self._style_changed()
+
+    def _fill_theme_menu(self):
+        from .. import plugins
+
+        self.theme_menu.clear()
+        group = QtGui.QActionGroup(self.theme_menu)
+        for name, p in plugins.themes().items():
+            act = self.theme_menu.addAction(name, lambda n=name: self.apply_theme(n))
+            act.setCheckable(True)
+            act.setChecked(name == self.style.theme)
+            act.setToolTip(p.description)
+            group.addAction(act)
+
+    def apply_theme(self, name: str):
+        """Apply a theme (element colors, background, cell color, radius preset) to the view."""
+        self.style.apply_theme(name, self.data.types if self.data is not None else ())
+        self.message(f"Theme: {name}")
         self._style_changed()
 
     def message(self, text, error=False):
@@ -320,6 +345,8 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.critical(self, "Load failed", f"{path}\n\n{exc}")
             return None
         QtWidgets.QApplication.restoreOverrideCursor()
+        if _has_phonon_modes(pipe) and not any(isinstance(m, mods.PhononMode) for m in pipe.modifiers):
+            pipe.modifiers.append(mods.PhononMode())  # a phonon file opens playing a mode
         self.set_pipeline(pipe)
         self.setWindowTitle(f"ewald — {os.path.basename(str(path))}")
         self.message(f"Loaded {path}: {pipe.num_frames} frame(s)")
@@ -335,6 +362,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.load_session(path)
             return
         self._open_asking_types(path)
+
+    def open_neb_dialog(self):
+        """A VASP NEB folder (00 .. NN) or a LAMMPS NEB run folder, one frame per image."""
+        path = QtWidgets.QFileDialog.getExistingDirectory(self, "Load NEB folder")
+        if path:
+            self.open_file(path)
+            self.bottom.setCurrentWidget(self.plots)
 
     def open_remote_dialog(self):
         from .remote_dialog import RemoteFileDialog
@@ -419,6 +453,29 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.workspaces.currentIndex() == 1:
             self.render_page.update_code()
 
+    def play_phonon_mode(self, qpoint: int, band: int):
+        """Show phonon mode (qpoint, band), e.g. clicked in the band plot, and start playback."""
+        if self.pipeline is None:
+            return
+        mod = next((m for m in self.pipeline.modifiers if isinstance(m, mods.PhononMode)), None)
+        if mod is None:
+            mod = mods.PhononMode()
+            self.pipeline.modifiers.append(mod)
+        mod.enabled = True
+        mod.qpoint, mod.band = int(qpoint), int(band)
+        before = self.data.attributes.get("Phonon.Supercell") if self.data is not None else None
+        self.panel.refresh(select=("mod", mod))
+        if self.pipeline.compute(self.frame, errors="skip").attributes.get("Phonon.Supercell") != before:
+            self.viewport.reset_view()  # a new q-point may need a bigger supercell: refit the camera
+        self.recompute()
+        if not self.timeline.play.isChecked() and self.pipeline.num_frames > 1:
+            self.timeline.play.setChecked(True)
+        a = self.data.attributes if self.data is not None else {}
+        if "Phonon.Frequency" in a:
+            q = ", ".join(f"{x:g}" for x in a["Phonon.q"])
+            self.message(f"Phonon mode q = ({q}), band {a['Phonon.Band']}: {a['Phonon.Frequency']:.4g} THz "
+                         f"({a['Phonon.Wavenumber']:.4g} cm-1)")
+
     def _apply_element_defaults(self):
         table = prefs.apply_element_defaults(self.style, self.data, self.settings)
         if table is not None and table.fallback and table.summary() != getattr(self, "_radius_note", None):
@@ -501,6 +558,63 @@ class MainWindow(QtWidgets.QMainWindow):
         """(pipeline, frame, indices) for the Ask Claude panel: the viewport picks, else the
         'Selection' property of the current frame."""
         return self.pipeline, self.frame, self._selected_indices()
+
+    # ---------------------------------------------------------------- viewport context menu
+    def _overlay(self):
+        from ..modifiers import OverlayFrames
+
+        mods = self.pipeline.modifiers if self.pipeline is not None else []
+        return next((m for m in mods if isinstance(m, OverlayFrames)), None)
+
+    def set_overlay(self, on: bool = True, **params):
+        """Show the other frames as see-through copies (``OverlayFrames``, added last when
+        missing); ``params`` set its fields, e.g. ``transparency=0.5``."""
+        if self.pipeline is None:
+            return
+        from ..modifiers import OverlayFrames
+
+        mod = self._overlay()
+        if mod is None:
+            if not on:
+                return
+            mod = OverlayFrames()
+            self.pipeline.modifiers.append(mod)
+        mod.enabled = on
+        for k, v in params.items():
+            setattr(mod, k, v)
+        self.panel.refresh(select=("mod", mod))
+        self.recompute()
+
+    def viewport_menu(self) -> QtWidgets.QMenu:
+        """Right click in the viewport: frame overlay, views, Ask Claude."""
+        menu = QtWidgets.QMenu(self)
+        mod = self._overlay()
+        on = mod is not None and mod.enabled
+        act = menu.addAction("Overlay other frames (see-through)")
+        act.setCheckable(True)
+        act.setChecked(on)
+        act.setEnabled(self.pipeline is not None and self.pipeline.num_frames > 1)
+        act.toggled.connect(lambda checked: self.set_overlay(checked))
+        sub = menu.addMenu("Overlay transparency")
+        sub.setEnabled(on)
+        for pct in (50, 70, 85, 95):
+            a = sub.addAction(f"{pct} %")
+            a.setCheckable(True)
+            a.setChecked(on and abs(mod.transparency - pct / 100) < 1e-6)
+            a.triggered.connect(lambda _=False, t=pct / 100: self.set_overlay(True, transparency=t))
+        moving = menu.addAction("Overlay only atoms that move")
+        moving.setCheckable(True)
+        moving.setEnabled(on)
+        moving.setChecked(on and mod.min_displacement > 0)
+        moving.toggled.connect(lambda checked: self.set_overlay(True, min_displacement=0.1 if checked else 0.0))
+        menu.addSeparator()
+        views = menu.addMenu("View along")
+        for ax in ("a", "b", "c", "a*", "b*", "c*"):
+            views.addAction(ax, lambda ax=ax: self.viewport.view_along(ax))
+        menu.addAction("Zoom to fit", self.viewport.zoom_fit)
+        menu.addSeparator()
+        menu.addAction("Ask Claude about selection…", self.ask_claude)
+        return menu
 
     def ask_claude(self):
         self.ask_dock.show()
@@ -744,6 +858,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.panel.refresh()
             self.timeline.set_num_frames(self.pipeline.num_frames)
             self.recompute()
+
+
+def _has_phonon_modes(pipe) -> bool:
+    try:
+        return "Phonon Modes" in pipe.source_frame(0).attributes
+    except Exception:
+        return False
 
 
 def _app():

@@ -89,6 +89,18 @@ def fake_render(monkeypatch):
     return calls
 
 
+def test_symmetry_and_diffraction_tools(cu_file):
+    pytest.importorskip("spglib")
+    ts = Toolset()
+    ts.call("load_structure", {"path": str(cu_file)})
+    r = ts.call("analyze_symmetry", {})
+    assert r.content["space_group"] == "Fm-3m" and r.content["sites"][0]["wyckoff"] == "4a"
+    r = ts.call("compute_diffraction", {"frame": 0})
+    top = r.content["peaks"][0]
+    assert top["intensity"] == 100 and top["d"] == pytest.approx(3.615 / 3 ** 0.5, abs=1e-3)   # (111)
+    assert ts.call("compute_diffraction", {"kind": "sq", "q_max": 6}).content["table"]["q"]
+
+
 def test_toolset_end_to_end(cu_file, fake_render):
     ts = Toolset()
     r = ts.call("load_structure", {"path": str(cu_file)})

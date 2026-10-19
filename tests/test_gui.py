@@ -159,6 +159,39 @@ def test_timeline(app):
     assert seen == [3, 4, 0]
 
 
+def test_diffraction_form_and_plots(app, tmp_path):
+    from ase.build import bulk
+
+    from ewald import DataCollection
+    from ewald.backend import CPU
+    from ewald.gui.params import ParameterForm
+    from ewald.gui.plots import PlotsPanel
+    from ewald.pipeline import ComputeContext
+
+    mod = mods.PowderDiffraction()
+    form = ParameterForm(mod)
+    radiation = form.editors["radiation"][0]
+    assert isinstance(radiation, QtWidgets.QComboBox) and radiation.count() == 2
+    radiation.setCurrentText("neutron")
+    exp = tmp_path / "measured.xy"
+    exp.write_text("20 1\n40 5\n60 2\n")
+    form.editors["experimental"][0].setText(str(exp))   # line edit next to a "..." file button
+    form.apply()
+    assert mod.radiation == "neutron" and mod.experimental == str(exp)
+    d = DataCollection.from_ase(bulk("Cu", "fcc", a=3.615))
+    out = d.copy()
+    mod.modify(out, ComputeContext(0, None, CPU))
+    panel = PlotsPanel()
+    panel.set_data(out)
+    panel.table.setCurrentText("diffraction")
+    ax = panel.figure.axes[0]
+    assert [l.get_label() for l in ax.lines] == ["Intensity", "Experimental"]
+    assert ax.lines[1].get_marker() == "."    # the measured pattern as points
+    panel.table.setCurrentText("diffraction-peaks")
+    ax = panel.figure.axes[0]
+    assert len(ax.collections) == 1 and not ax.lines   # reflections as sticks
+
+
 def test_plots_thermo_series_marker_follows_frame(app, lammps_dir):
     from ewald import import_file
     from ewald.gui.plots import PlotsPanel
@@ -300,6 +333,64 @@ def test_main_window_links_plots_and_viewport(app, cu_fcc, lammps_dir):
     assert w.frame == 4
     w.timeline.sel.click()
     assert w.plots.frame_selection == []
+    w.close()
+
+
+def test_plots_neb_profile_marks_image_and_jumps(app, vasp_dir):
+    from matplotlib.backend_bases import MouseEvent
+
+    from ewald import import_file
+    from ewald.gui.plots import PlotsPanel
+
+    pipe = import_file(vasp_dir / "neb")
+    panel = PlotsPanel()
+    panel.resize(600, 400)
+    panel.pipeline = pipe
+    panel.set_data(pipe.compute(1))
+    assert panel.table.currentText() == "NEB" and panel.column.currentText() == "Energy"
+    ax = panel.figure.axes[0]
+    assert ax.get_xlabel().startswith("Reaction coordinate") and "Ea →" in ax.texts[0].get_text()
+    spline, points = ax.lines[:2]
+    assert len(spline.get_xdata()) == 200 and len(points.get_xdata()) == 4  # image 04 has no energy
+    d = pipe.compute(2)
+    panel.set_data(d)
+    assert panel.figure.axes[0] is ax  # frame change moves the marker only
+    assert list(panel._marker.get_xdata()) == [d.attributes["NEB.Reaction Coordinate"]]
+    assert panel.link.kind == "frames"  # linked by the table's Frame column
+    jumps = []
+    panel.frameRequested.connect(jumps.append)
+    panel.canvas.draw()
+    ax = panel._ax
+    x3 = d.tables["NEB"]["Reaction Coordinate"][3]
+    px, py = ax.transData.transform((x3, 0.4))
+    for kind in ("button_press_event", "button_release_event"):
+        panel.canvas.callbacks.process(kind, MouseEvent(kind, panel.canvas, px, py, button=1))
+    assert jumps == [3]
+    panel.set_data(pipe.compute(4))
+    assert not panel._marker.get_visible()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_viewport_context_menu_toggles_frame_overlay(app, vasp_dir):
+    from ewald import import_file
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(import_file(vasp_dir / "neb"))  # NEB sources start with OverlayFrames on
+    w.timeline._set(2)
+    n_real = w.pipeline.source.compute(2).count
+    assert w.data.count > n_real
+    menu = w.viewport_menu()
+    overlay, transparency, moving = menu.actions()[:3]
+    assert overlay.isChecked() and transparency.menu().isEnabled() and moving.isChecked()
+    overlay.setChecked(False)  # toggled -> off
+    assert w.data.count == n_real and not w._overlay().enabled
+    w.set_overlay(True, transparency=0.5)
+    ghosts = w.data["Overlay Frame"] >= 0
+    assert np.allclose(w.data["Transparency"][ghosts], 0.5)
+    menu = w.viewport_menu()
+    assert [a.text() for a in menu.actions()[1].menu().actions() if a.isChecked()] == ["50 %"]
+    menu.actions()[2].setChecked(False)  # every atom, moving or not
+    assert w.data.count == 5 * n_real
     w.close()
 
 
@@ -828,3 +919,109 @@ def test_plugin_visual_element_in_panel_and_viewport(app, monkeypatch):
     panel._remove()
     assert style.visuals == []
     v.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_theme_menu_and_render_page_overlays(app, pipe, tmp_path):
+    from ewald.gui.app import MainWindow
+    from ewald.gui.params import ParameterForm
+
+    w = MainWindow(pipe)
+    w._fill_theme_menu()
+    names = [a.text() for a in w.theme_menu.actions()]
+    assert names[:2] == ["Default", "VESTA"] and "Dark slide" in names
+    [a for a in w.theme_menu.actions() if a.text() == "Dark slide"][0].trigger()
+    assert w.style.theme == "Dark slide" and w.style.background == "black" and "Cu" in w.style.type_colors
+    w._fill_theme_menu()
+    assert [a.text() for a in w.theme_menu.actions() if a.isChecked()] == ["Dark slide"]
+
+    page = w.render_page
+    page._fill_overlay_menu()
+    assert [a.text() for a in page.overlay_menu.actions()][:2] == ["Coordinate tripod", "Attributes"]
+    page.add_overlay("Coordinate tripod")
+    form = page._overlay_form
+    assert isinstance(form, ParameterForm) and isinstance(form.editors["axes"][0], QtWidgets.QComboBox)
+    form.editors["axes"][0].setCurrentText("abc")
+    page.overlay_form_holder.itemAt(1).widget().click()          # Apply overlay
+    assert page.overlays == [{"name": "Coordinate tripod",
+                              "params": {"axes": "abc", "corner": "bottom-right", "size": 0.09}, "enabled": True}]
+    assert page.render_kwargs()["overlays"] == page.overlays and "Coordinate tripod" in page.code.toPlainText()
+    page.overlay_list.item(0).setCheckState(QtCore.Qt.Unchecked)
+    assert page.overlays[0]["enabled"] is False
+    page.overlay_list.item(0).setCheckState(QtCore.Qt.Checked)
+    page.set_renderer("vector")
+    page.preset.setCurrentText("Custom (px)")
+    page.width.setValue(200)
+    page.height.setValue(150)
+    page.output.setText(str(tmp_path / "fig.svg"))
+    w.render_from_page()
+    svg = (tmp_path / "fig.svg").read_text()
+    assert all(f"<!-- {c} -->" in svg for c in "abc")             # tripod labels drawn as text
+    path = w.save_session(str(tmp_path / "s.ewald"))
+    w2 = MainWindow()
+    w2.load_session(path)
+    assert w2.render_page.overlays == page.overlays and w2.render_page.overlay_list.count() == 1
+    assert w2.style.theme == "Dark slide" and w2.style.cell_color == "#AEB4BE"
+    page.remove_overlay(0)
+    assert page.overlays == [] and page.overlay_list.count() == 0
+    w.close()
+    w2.close()
+
+
+def test_colormap_combo_lists_plugins(app, monkeypatch):
+    from ewald import plugins
+    from ewald.gui.params import ParameterForm
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    plugins.register_colormap("two", ["navy", "gold"])
+    form = ParameterForm(mods.ColorCoding("Position.Z", cmap="two"))
+    combo = form.editors["cmap"][0]
+    items = [combo.itemText(k) for k in range(combo.count())]
+    assert items[0] == "viridis" and items[-1] == "two" and combo.currentText() == "two"
+    assert not combo.itemIcon(0).isNull()
+    assert "grayscale" in combo.itemData(0, QtCore.Qt.ToolTipRole)
+
+
+def test_phonon_band_plot_click_picks_mode(app):
+    from pathlib import Path
+
+    from matplotlib.backend_bases import MouseEvent
+
+    from ewald import import_file
+    from ewald.gui.plots import PlotsPanel
+
+    pipe = import_file(Path(__file__).parent / "data" / "phonon" / "band.yaml", frames=4)
+    pipe.modifiers.append(mods.PhononMode(qpoint=4, band=5))
+    panel = PlotsPanel()
+    panel.resize(600, 400)
+    panel.set_data(pipe.compute(0))
+    ax = panel.figure.axes[0]
+    assert panel.table.currentText() == "Phonon Bands" and ax.get_ylabel() == "Frequency (THz)"
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["$\\Gamma$", "X", "M", "$\\Gamma$", "R"]
+    modes = pipe.source_frame(0).attributes["Phonon Modes"]
+    assert list(panel._marker.get_ydata()) == [modes.frequencies[4, 5]]
+    panel.set_data(pipe.compute(1))
+    assert panel.figure.axes[0] is ax  # next frame of the animation: no redraw
+    picked = []
+    panel.phononModePicked.connect(lambda q, b: picked.append((q, b)))
+    panel.canvas.draw()
+    x, y = ax.transData.transform((modes.distances[12], modes.frequencies[12, 9]))
+    panel._clicked(MouseEvent("button_press_event", panel.canvas, x, y, button=1))
+    assert picked == [(12, 9)]
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_main_window_plays_phonon_mode(app):
+    from pathlib import Path
+
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    pipe = w.open_file(Path(__file__).parent / "data" / "phonon" / "OUTCAR.phonon")
+    assert [type(m).__name__ for m in pipe.modifiers] == ["PhononMode"]  # added on open
+    assert w.data.attributes["Phonon.Band"] == 3 and "Phonon Mode" in w.data.vectors
+    w.play_phonon_mode(0, 9)
+    assert pipe.modifiers[0].band == 9 and w.data.attributes["Phonon.Band"] == 9
+    assert w.timeline.play.isChecked()
+    w.timeline.play.setChecked(False)
+    w.close()

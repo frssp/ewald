@@ -40,6 +40,7 @@ class Viewport(QtWidgets.QWidget):
     picked = QtCore.Signal(str)          # status text for the picked atom / measurement
     bondEdit = QtCore.Signal(int, int)   # bond tool: add or delete the bond between two atoms
     styleChanged = QtCore.Signal()
+    contextMenuRequested = QtCore.Signal()  # right click without dragging
 
     TOOLS = (("orbit", "⟲", "Orbit / pan / zoom (mouse)"),
              ("pick", "⌖", "Pick atom: shows id, type, position and properties; Shift+click picks several"),
@@ -198,7 +199,7 @@ class Viewport(QtWidgets.QWidget):
         self._refine_timer.stop()
         self._lod_cloud = None
         stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:", "visual:"))]
-        for name in ("atoms", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay", *stale):
+        for name in ("atoms", "atoms:glass", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay", *stale):
             p.remove_actor(name, render=False)
         if p.scalar_bars:
             p.remove_scalar_bar()
@@ -209,7 +210,7 @@ class Viewport(QtWidgets.QWidget):
         dark = _is_dark(self.style.background)
         p.set_background(self.style.background)
         kw = self.style.scene_kwargs()
-        kw["cell_color"] = "#AEB4BE" if dark else "black"
+        kw["cell_color"] = self.style.cell_color or ("#AEB4BE" if dark else "black")
         kw["sphere_resolution"] = self.sphere_resolution  # interactive; image export uses full quality
         kw["arrow_resolution"] = self.arrow_resolution
         scene = self.data
@@ -275,7 +276,7 @@ class Viewport(QtWidgets.QWidget):
             self._lod_cloud, _ = atom_cloud(self.data, radius_scale=kw["radius_scale"],
                                             only_visible=self._coarse_mask(), **extra)
         add_atoms(p, self._lod_cloud, atom_style="impostor", name="atoms_lod")
-        for name in ("atoms", "bonds"):
+        for name in ("atoms", "atoms:glass", "bonds"):
             if name in p.actors:
                 p.actors[name].SetVisibility(False)
         self.coarse = True
@@ -283,9 +284,14 @@ class Viewport(QtWidgets.QWidget):
     def _on_drag_start(self, obj, event):
         self._dragging = True
         self._refine_timer.stop()
+        self._right_press = QtGui.QCursor.pos() if event == "RightButtonPressEvent" else None
 
     def _on_drag_end(self, obj, event):
         self._dragging = False
+        start = getattr(self, "_right_press", None)
+        if event == "RightButtonReleaseEvent" and start is not None \
+                and (QtGui.QCursor.pos() - start).manhattanLength() < 5:
+            self.contextMenuRequested.emit()  # a click, not a zoom drag
         if self.coarse:
             self._refine_timer.start(int(self.refine_delay * 1000))
 

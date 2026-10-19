@@ -22,12 +22,13 @@ Optional parts are extras, installed only when you need them:
 | `gui` | desktop viewer (PySide6, pyvistaqt, qtconsole) | `pip install -e ".[gui]"` |
 | `gpu` | `device="cuda"` through CuPy (NVIDIA, CUDA 12) | `pip install -e ".[gpu]"` |
 | `movie` | MP4/AVI/MOV export with the ffmpeg binary from imageio-ffmpeg (GIF and PNG need no extra) | `pip install -e ".[movie]"` |
-| `formats` | H5MD (h5py) and GROMACS XTC/TRR, DCD, NetCDF (MDAnalysis) | `pip install -e ".[formats]"` |
+| `formats` | H5MD, vaspout.h5, MDTraj HDF5 (h5py) and GROMACS XTC/TRR, DCD, NetCDF (MDAnalysis) | `pip install -e ".[formats]"` |
 | `ovito` | `DislocationAnalysis` (DXA) and `OvitoModifier`; the `ovito` wheel pins its own PySide6, so install it in the same command as `gui` | `pip install -e ".[gui,ovito]"` |
 | `plumed` | PLUMED Python binding for `Plumed` (the PLUMED library itself: conda-forge or your build, see [PLUMED](plumed.md)) | `pip install -e ".[plumed]"` |
 | `remote` | files on SSH hosts (`import_file("host:/path")`) through paramiko | `pip install -e ".[remote]"` |
 | `llm` | Claude agent and MCP server | `pip install -e ".[llm]"` |
-| `dev` | pytest, paramiko | `pip install -e ".[dev]"` |
+| `symmetry` | spglib, for `SymmetryAnalysis` (space group, Wyckoff positions) | `pip install -e ".[symmetry]"` |
+| `dev` | pytest, paramiko, spglib | `pip install -e ".[dev]"` |
 
 Extras combine: `pip install -e ".[gui,gpu,movie]"`. pymatgen is used when it happens to be
 installed (bond-valence oxidation states for the Shannon ionic radii) but is not needed.

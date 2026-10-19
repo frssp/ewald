@@ -12,20 +12,44 @@ files directly.
 | VASP XDATCAR | native, lazy | fixed and variable cell (NpT), VASP 6.4 `Si/hash` species labels |
 | VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics, CONTCAR velocities (`Velocity`, Å/fs) |
 | VASP OUTCAR | native, lazy | every ionic step: `Force`, `Magnetic Moment` (collinear, or N x 3 non-collinear), energies, stress, pressure, magnetization, MD temperature (see [Simulation results](#simulation-results)); a partial last step is skipped with a warning |
+| VASP OUTCAR of a phonon run (IBRION = 5-8) | native | Gamma-point phonon modes, animated by `PhononMode` (see [Phonon modes](phonons.md)) |
+| phonopy `band.yaml`, `mesh.yaml`, `qpoints.yaml` | native | phonon modes with eigenvectors, band structure as the table "Phonon Bands" (see [Phonon modes](phonons.md)) |
 | VASP vasprun.xml | native, lazy | every ionic step: cell, `Force`, energies, stress; a running job's open last step is skipped with a warning |
 | VASP CHGCAR/LOCPOT/ELFCAR, Gaussian cube | native | atoms plus a grid in `data.grids` |
+| VASP 6 `vaspout.h5` | native, lazy, needs `h5py` | every ionic step from `/intermediate/ion_dynamics` (the final structure when there is no history): cell with `scale`, `Force`, `Velocity` (Å/fs), `Magnetic Moment` (summed over orbitals, N x 3 non-collinear), energies, `Stress`, `Pressure`; the local potential (`WRT_POTENTIAL`/`LVTOT`) as `data.grids["potential"]` of the last frame |
+| VASP 6 `vaspwave.h5` | native, needs `h5py` | `LCHARGH5` charge density as `data.grids["charge-density"]` (divided by the cell volume like a CHGCAR, e/Å³, plus `Magnetization`); the structure comes from `vaspout.h5` next to it or `structure=` |
 | XYZ, extended XYZ (`*.xyz`, `*.extxyz`) | native, lazy | frames indexed by their atom-count lines, each parsed on demand by ASE's extxyz parser: `Lattice=`, `Properties=`, `pbc=`, per-frame info (attributes), `forces` (`Force`), `energy` (`Energy`); a partial last frame is skipped with a warning |
 | XCrySDen XSF/AXSF (`*.xsf`, `*.axsf`) | native, lazy | `CRYSTAL`/`SLAB`/`POLYMER`/`MOLECULE`, `ANIMSTEPS` trajectories with fixed or variable cell, forces (`Force`), every `DATAGRID_3D` as a property of `data.grids["xsf"]` (Quantum ESPRESSO `pp.x`, VESTA); the repeated end points of XSF's general grid are dropped for periodic axes |
 | H5MD (`*.h5md`, `*.h5`) | native, lazy, needs `h5py` | LAMMPS `dump h5md`, MDAnalysis, ESPResSo; fixed or time-dependent box, `velocity`, `force`, `image`, `id`, `charge`, `mass`, scalar `/observables` as attributes; species names from string species, `/parameters/vmd_structure` or `type_map=`; `nm` converted to Å; `group=` picks a particle group |
+| MDTraj / OpenMM HDF5 (`*.h5`) | native, lazy, needs `h5py` | OpenMM `HDF5Reporter`, `mdtraj.save_hdf5`: elements, residues (`Molecule Identifier`) and bonds from the JSON topology, cell from lengths and angles, `Velocity` (Å/fs), `Time` (ps), `Kinetic Energy`/`Potential Energy` (eV), `Temperature` |
 | GROMACS XTC/TRR, DCD, AMBER NetCDF | MDAnalysis, lazy, needs `MDAnalysis` | atom types from `topology=` (`.gro`, `.pdb`, `.tpr`, `.psf`, LAMMPS `.data`, ...) or a file with the same stem, or `conf.gro`/`topol.tpr` next to it; type "X" without one; TRR velocities in Å/ps |
 | ASE database (`*.db`, `.json`) | ASE, lazy | one row per frame; `selection="natoms<100,relaxed=1"` is an `ase db` query; key-value pairs, `Row Id`, `Unique Id` become attributes |
 | ASE trajectory (`*.traj`) | ASE, lazy | written by ASE optimizers and MD |
+| NEB runs (VASP folder `00 .. NN`, LAMMPS `neb`) | native | one frame per image, energies per image; see [NEB runs](#neb-runs) |
 | CIF | ASE | every data block is a frame |
 | others | ASE | anything `ase.io.read` understands, with `format=` set to the ASE name |
 
 `ewald plugins` prints every reader and writer with its file-name patterns. The H5MD and
 MDAnalysis formats need the `formats` extra: `pip install "ewald[formats]"` (h5py and
 MDAnalysis).
+
+### HDF5 files
+
+Several `*.h5` formats share the extension; ewald looks inside the file to pick the reader:
+`vaspout.h5`/`vaspwave.h5` by their VASP groups, MDTraj files by `/coordinates` and the
+"Pande" convention, H5MD by its `/h5md` group. Other simulation codes that write HDF5 (or
+netCDF-4, which is HDF5 underneath), and where they stand in ewald:
+
+| Code | HDF5 output | In ewald |
+|---|---|---|
+| VASP 6 | `vaspout.h5` (structures, forces, energies, DOS, bands, ...), `vaspwave.h5` (charge, wavefunctions) | read (structures, energies, potential, charge) |
+| LAMMPS, ESPResSo, MDAnalysis, pyiron | H5MD | read and written |
+| GROMACS 2026 | H5MD from `gmx mdrun` (experimental) | the H5MD reader; not tried on GROMACS output yet |
+| OpenMM, MDTraj | MDTraj HDF5 (`HDF5Reporter`) | read |
+| Quantum ESPRESSO (built with HDF5) | `charge-density.hdf5`, `wfc*.hdf5` in `prefix.save` (G-space) | not yet |
+| ABINIT | netCDF-4 `*_HIST.nc`, `*_DEN.nc`, `*_GSR.nc` | not yet |
+| phonopy, phono3py | `band.hdf5`, `mesh.hdf5`, `kappa-*.hdf5` | not yet |
+| BerkeleyGW, QMCPACK, FLEUR, PySCF (chkfile), DeePMD-kit/dpdata | HDF5 | not planned |
 
 "Lazy" means the file is indexed once and each frame is read when it is needed, so a
 multi-gigabyte trajectory opens immediately and uses memory for the frames in the cache only.
@@ -38,11 +62,11 @@ attributes, matched to frames by `Timestep` = step, and the whole series is the 
 
 | Source | Found how | Attributes |
 |---|---|---|
-| OUTCAR, vasprun.xml | carried by the file | `Energy` (energy(sigma→0), eV), `Free Energy` (TOTEN), `Pressure` (external pressure, kB), `Stress` (xx yy zz yz xz xy, eV/Å³, ASE's sign), `Magnetization` (μB, OUTCAR); MD: `Temperature` (K), `Kinetic Energy`, `Total Energy` |
+| OUTCAR, vasprun.xml, vaspout.h5 | carried by the file | `Energy` (energy(sigma→0), eV), `Free Energy` (TOTEN), `Pressure` (external pressure, kB), `Stress` (xx yy zz yz xz xy, eV/Å³, ASE's sign), `Magnetization` (μB, OUTCAR); MD: `Temperature` (K), `Kinetic Energy`, `Total Energy` |
 | OSZICAR | next to an XDATCAR | `Energy` (E0), `Free Energy` (F), `Magnetization` (mag, \|m\| when non-collinear); MD: `Temperature`, `Total Energy` (E), `Kinetic Energy` (EK), `Nose Potential` (SP), `Nose Kinetic` (SK) |
 | log.lammps | next to a LAMMPS dump | every `thermo_style` column under its log name (`Temp`, `PotEng`, `Press`, `c_myT`, ...), in the run's units |
 
-VASP frames from OUTCAR, vasprun.xml and XDATCAR all count ionic steps from 1, as OSZICAR
+VASP frames from OUTCAR, vasprun.xml, vaspout.h5 and XDATCAR all count ionic steps from 1, as OSZICAR
 does. A LAMMPS log may hold several runs with different `thermo_style` columns: they are
 joined by `Step`, a column a run does not print is missing for its frames, and the step two
 runs share keeps the values of both. Frames whose timestep the log does not print (dump
@@ -63,6 +87,30 @@ OUTCAR and vasprun.xml are indexed by searching only for the lines that matter, 
 OUTCAR opens about three times faster than with ASE and holds one ionic step in memory at a
 time; over SSH the search runs as `grep` on the host. `format="vasp-out"` / `"vasp-xml"`
 still use ASE's readers.
+
+## NEB runs
+
+A nudged elastic band run opens as a trajectory with one frame per image (`Timestep` = image
+number), and the pipeline starts with `NebEnergyProfile`, which gives the energy profile and
+barrier ([Modifiers](modifiers.md#nudged-elastic-band)), and `OverlayFrames`, which draws every
+other image see-through behind the current one, so the moving atoms show their whole path.
+
+| Layout | Open with | Each image | Energies |
+|---|---|---|---|
+| VASP (VTST) folder with `00`, `01`, ..., `NN` | `import_file("neb/")` | OUTCAR (last ionic step, with forces), else CONTCAR, else POSCAR | `Energy` from the OUTCAR; endpoints with only a POSCAR have none unless `energies=` gives them |
+| LAMMPS `neb` run folder | `import_file("run/")` | last frame of the replica's dump (`dump ... dump.neb.$u`) | `PE1 .. PEN` of the last row of the master `log.lammps` NEB table |
+| one file per image | `import_file("dump.neb.*", format="neb")` | last frame of each file (`frame=` picks another), natural order | from each file, or `log=` names the LAMMPS log |
+
+```python
+pipe = import_file("neb")                              # VASP NEB folder
+data = pipe.compute(0)
+data.attributes["NEB.Barrier"], data.attributes["NEB.Reverse Barrier"]   # eV, from the images
+data.tables["NEB"]                                     # Reaction Coordinate, Energy, Tangent Force, Image, Frame
+pipe = import_file("neb", energies=[-120.31, None, None, None, -120.12])  # endpoint energies by hand (None: from file)
+```
+
+In the GUI, File › Load NEB folder opens either folder layout and shows the profile in the
+Plots tab. Remote (SSH) NEB folders are not read yet.
 
 ## Reader options
 

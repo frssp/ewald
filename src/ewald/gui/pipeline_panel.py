@@ -29,12 +29,20 @@ MODIFIER_MENU = {
         "Centrosymmetry": mods.CentroSymmetry,
         "Atomic strain": mods.AtomicStrain,
     },
+    "Symmetry & diffraction": {
+        "Space group / Wyckoff positions (spglib)": mods.SymmetryAnalysis,
+        "Powder XRD pattern": mods.PowderDiffraction,
+        "Powder neutron diffraction": lambda: mods.PowderDiffraction(radiation="neutron", wavelength="1.54"),
+        "Structure factor S(q)": mods.StructureFactor,
+    },
     "Trajectory": {
         "Mean squared displacement / diffusion": mods.MeanSquaredDisplacement,
         "Velocity autocorrelation": mods.VelocityAutocorrelation,
         "Time averaging (g(r), attributes)": mods.TimeAveraging,
         "Time series of attributes": mods.TimeSeries,
         "Trajectory lines / paths": mods.GenerateTrajectoryLines,
+        "NEB energy profile / barrier": mods.NebEnergyProfile,
+        "Overlay frames (see-through images)": mods.OverlayFrames,
     },
     "Bonds & polyhedra": {
         "Create bonds": lambda: mods.CreateBonds(mode="covalent"),
@@ -55,6 +63,9 @@ MODIFIER_MENU = {
         "Magnetic moment arrows": lambda: mods.VectorVis("Magnetic Moment", scaling=0.5, alignment="center",
                                                          color=(0.85, 0.15, 0.15)),
         "Arrows colored by length": lambda: mods.VectorVis(color_mapping_property="Magnitude"),
+    },
+    "Phonons": {
+        "Phonon mode animation (band.yaml, OUTCAR)": mods.PhononMode,
     },
     "Coloring": {
         "Color coding": lambda: mods.ColorCoding("Position.Z"),

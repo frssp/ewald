@@ -1,0 +1,25 @@
+# Vacancy hop in a Lennard-Jones fcc crystal (Cu-like parameters), 7 replicas.
+# Regenerate: LD_LIBRARY_PATH=/usr/local/lib mpirun -np 7 lmp -partition 7x1 -in in.neb
+# then keep log.lammps (the NEB table) and dump.neb.* (one file per replica).
+units           metal
+atom_style      atomic
+atom_modify     map array sort 0 0.0
+boundary        p p p
+lattice         fcc 3.70
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 63.546
+pair_style      lj/cut 5.5
+pair_coeff      1 1 0.4093 2.338
+pair_modify     shift yes
+group           gone id 1
+delete_atoms    group gone compress no
+variable        u uloop 7
+timestep        0.002
+fix             1 all neb 1.0 parallel ideal
+min_style       quickmin
+thermo          50
+dump            1 all custom 100 dump.neb.$u id type x y z fx fy fz
+dump_modify     1 sort id
+neb             0.0 0.01 400 200 50 final final.coords

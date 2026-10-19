@@ -81,6 +81,9 @@ READER_GROUP = "ewald.readers"
 MODIFIER_GROUP = "ewald.modifiers"
 WRITER_GROUP = "ewald.writers"
 VISUAL_GROUP = "ewald.visuals"
+OVERLAY_GROUP = "ewald.overlays"
+COLORMAP_GROUP = "ewald.colormaps"
+THEME_GROUP = "ewald.themes"
 
 
 @dataclass
@@ -217,11 +220,79 @@ def _builtin_visuals() -> dict:
 
 
 @dataclass
+class OverlayPlugin:
+    name: str
+    cls: type
+    category: str = "Plugins"
+    description: str = ""
+    origin: str = ""
+    builtin: bool = False
+
+
+def _builtin_overlays() -> dict:
+    from . import overlays
+
+    out = {}
+    for cls in overlays.BUILTIN:
+        doc = inspect.cleandoc(cls.__doc__ or "").split("\n\n")[0]
+        out[cls.name] = OverlayPlugin(cls.name, cls, "Built-in", " ".join(doc.split()), "built-in", True)
+    return out
+
+
+@dataclass
+class ColormapPlugin:
+    """A named color map; ``factory()`` returns a matplotlib Colormap or a list/array of colors."""
+
+    name: str
+    factory: Callable
+    kind: str = "sequential"
+    description: str = ""
+    origin: str = ""
+    _cmap: object = field(default=None, repr=False)
+
+    def colormap(self):
+        if self._cmap is None:
+            from .colormaps import as_colormap
+
+            value = self.factory() if callable(self.factory) and not hasattr(self.factory, "N") else self.factory
+            self._cmap = as_colormap(self.name, value)
+        return self._cmap
+
+
+@dataclass
+class ThemePlugin:
+    """A named theme; ``factory()`` returns a :class:`ewald.themes.Theme` (or it is one)."""
+
+    name: str
+    factory: object
+    description: str = ""
+    origin: str = ""
+    builtin: bool = False
+
+    def theme(self):
+        from .themes import Theme
+
+        t = self.factory if isinstance(self.factory, Theme) else self.factory()
+        if not isinstance(t, Theme):
+            raise TypeError(f"theme {self.name!r} returned {type(t).__name__}, not a Theme")
+        return t
+
+
+def _builtin_themes() -> dict:
+    from .themes import BUILTIN
+
+    return {k: ThemePlugin(k, t, t.description, "built-in", True) for k, t in BUILTIN.items()}
+
+
+@dataclass
 class _Registry:
     readers: dict = field(default_factory=_builtin_readers)
     modifiers: dict = field(default_factory=dict)
     writers: dict = field(default_factory=_builtin_writers)
     visuals: dict = field(default_factory=_builtin_visuals)
+    overlays: dict = field(default_factory=_builtin_overlays)
+    colormaps: dict = field(default_factory=dict)
+    themes: dict = field(default_factory=_builtin_themes)
     errors: dict = field(default_factory=dict)      # origin -> message
     loaded: bool = False
 
@@ -343,6 +414,117 @@ def visual_name(cls: type) -> str:
     return getattr(cls, "name", "") or cls.__name__
 
 
+def overlay(cls=None, *, name: str | None = None, category: str = "Plugins", description: str = ""):
+    """Class decorator registering an :class:`ewald.overlays.OverlayElement` subclass; bare or with arguments."""
+
+    def deco(c):
+        register_overlay(c, name=name, category=category, description=description)
+        return c
+
+    return deco(cls) if cls is not None else deco
+
+
+def register_overlay(cls: type, name: str | None = None, category: str = "Plugins", description: str = "",
+                     origin: str = "python") -> OverlayPlugin:
+    from .overlays import OverlayElement
+
+    if not (isinstance(cls, type) and issubclass(cls, OverlayElement)):
+        raise TypeError(f"{cls!r} is not an OverlayElement subclass")
+    name = name or cls.__dict__.get("name") or cls.__name__
+    old = _registry.overlays.get(name)
+    if old is not None and old.builtin and old.cls is not cls:
+        raise ValueError(f"overlay name {name!r} is taken by a built-in overlay; use another name")
+    if not cls.__dict__.get("name"):
+        cls.name = name
+    doc = inspect.cleandoc(cls.__doc__ or "").split("\n\n")[0]
+    plugin = OverlayPlugin(name, cls, getattr(cls, "category", None) or category,
+                           description or " ".join(doc.split()), getattr(_loading, "origin", None) or origin)
+    _registry.overlays[name] = plugin
+    return plugin
+
+
+def overlays() -> dict[str, OverlayPlugin]:
+    """Overlay elements by name: the built-in ones (Coordinate tripod, Attributes) and plugins."""
+    load_plugins()
+    return dict(_registry.overlays)
+
+
+def overlay_name(cls: type) -> str:
+    """The registered name of an overlay class (its ``name`` when it is not registered)."""
+    for name, p in _registry.overlays.items():
+        if p.cls is cls:
+            return name
+    return getattr(cls, "name", "") or cls.__name__
+
+
+def colormap(fn=None, *, name: str | None = None, kind: str = "sequential", description: str = ""):
+    """Decorator registering a function that returns a color map (a list/array of colors or a
+    matplotlib Colormap) under ``name`` (default: the function name); bare or with arguments."""
+
+    def deco(f):
+        register_colormap(name or f.__name__, f, kind=kind, description=description)
+        return f
+
+    return deco(fn) if fn is not None else deco
+
+
+def register_colormap(name: str, colors, kind: str = "sequential", description: str = "",
+                      origin: str = "python") -> ColormapPlugin:
+    """Register ``colors`` (a function returning colors or a Colormap, a list of colors, or a
+    Colormap) as the color map ``name``; ``kind`` is one of ``ewald.colormaps.KINDS``."""
+    from .colormaps import KINDS, as_colormap
+
+    if kind not in KINDS:
+        raise ValueError(f"kind must be one of {', '.join(KINDS)}, not {kind!r}")
+    doc = (getattr(colors, "__doc__", None) or "").strip().splitlines() if callable(colors) else []
+    plugin = ColormapPlugin(name, colors, kind, description or (doc[0] if doc else ""),
+                            getattr(_loading, "origin", None) or origin)
+    if not callable(colors) or hasattr(colors, "N"):   # plain data: check it now
+        plugin._cmap = as_colormap(name, colors)
+    _registry.colormaps[name] = plugin
+    return plugin
+
+
+def colormaps() -> dict[str, ColormapPlugin]:
+    """Plugin color maps by name (matplotlib's own maps are not listed; ``get_colormap`` finds both)."""
+    load_plugins()
+    return dict(_registry.colormaps)
+
+
+def theme(fn=None, *, name: str | None = None, description: str = ""):
+    """Decorator registering a function that returns a :class:`ewald.themes.Theme` under ``name``
+    (default: the function name with underscores as spaces, capitalized); bare or with arguments."""
+
+    def deco(f):
+        register_theme(name or f.__name__.replace("_", " ").capitalize(), f, description=description)
+        return f
+
+    return deco(fn) if fn is not None else deco
+
+
+def register_theme(name: str, theme, description: str = "", origin: str = "python") -> ThemePlugin:
+    """Register a :class:`ewald.themes.Theme` (or a function returning one) as ``name``."""
+    from .themes import Theme
+
+    if not (isinstance(theme, Theme) or callable(theme)):
+        raise TypeError(f"{theme!r} is neither a Theme nor a function returning one")
+    old = _registry.themes.get(name)
+    if old is not None and old.builtin:
+        raise ValueError(f"theme name {name!r} is taken by a built-in theme; use another name")
+    if not description:
+        description = theme.description if isinstance(theme, Theme) else \
+            " ".join(inspect.cleandoc(theme.__doc__ or "").split("\n\n")[0].split())
+    plugin = ThemePlugin(name, theme, description, getattr(_loading, "origin", None) or origin)
+    _registry.themes[name] = plugin
+    return plugin
+
+
+def themes() -> dict[str, ThemePlugin]:
+    """Themes by name: the built-in ones (Default, VESTA, CPK, Journal, Dark slide) and plugins."""
+    load_plugins()
+    return dict(_registry.themes)
+
+
 class _Loading:
     origin: str | None = None
 
@@ -363,6 +545,11 @@ def load_plugins(force: bool = False):
         _registry.writers = {**_builtin_writers(), **keep}
         keep = {k: v for k, v in _registry.visuals.items() if v.origin == "python" and not v.builtin}
         _registry.visuals = {**_builtin_visuals(), **keep}
+        keep = {k: v for k, v in _registry.overlays.items() if v.origin == "python" and not v.builtin}
+        _registry.overlays = {**_builtin_overlays(), **keep}
+        _registry.colormaps = {k: v for k, v in _registry.colormaps.items() if v.origin == "python"}
+        keep = {k: v for k, v in _registry.themes.items() if v.origin == "python" and not v.builtin}
+        _registry.themes = {**_builtin_themes(), **keep}
         _registry.errors.clear()
     if os.environ.get("EWALD_NO_PLUGINS"):
         return
@@ -376,7 +563,10 @@ def _load_entry_points():
     for group, register in ((READER_GROUP, lambda name, obj: register_reader(name, obj)),
                             (MODIFIER_GROUP, lambda name, obj: register_modifier(obj, name=name)),
                             (WRITER_GROUP, lambda name, obj: register_writer(name, obj)),
-                            (VISUAL_GROUP, lambda name, obj: register_visual(obj, name=name))):
+                            (VISUAL_GROUP, lambda name, obj: register_visual(obj, name=name)),
+                            (OVERLAY_GROUP, lambda name, obj: register_overlay(obj, name=name)),
+                            (COLORMAP_GROUP, lambda name, obj: register_colormap(name, obj)),
+                            (THEME_GROUP, lambda name, obj: register_theme(name, obj))):
         try:
             eps = entry_points(group=group)
         except Exception as exc:
@@ -474,6 +664,12 @@ def status() -> dict:
                                         key=lambda p: (p.priority is None, p.priority or 0, p.name))],
             "visuals": [{"name": p.name, "category": p.category, "description": p.description,
                          "origin": p.origin} for p in _registry.visuals.values()],
+            "overlays": [{"name": p.name, "category": p.category, "description": p.description,
+                          "origin": p.origin} for p in _registry.overlays.values()],
+            "colormaps": [{"name": p.name, "kind": p.kind, "description": p.description, "origin": p.origin}
+                          for p in _registry.colormaps.values()],
+            "themes": [{"name": p.name, "description": p.description, "origin": p.origin}
+                       for p in _registry.themes.values()],
             "errors": dict(_registry.errors)}
 
 

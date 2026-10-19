@@ -31,6 +31,8 @@ for in words ends up as an ordinary pipeline.
 | `modifiers/ovito_bridge.py` | DXA and `OvitoModifier` through the optional `ovito` package |
 | `_csrc/` | C++ ports of OVITO's CNA, PTM, Voronoi and CSP plus vendored ptm, voro++ and mwm_csp |
 | `scene.py` | the renderer-neutral scene: `VisualElement`s (built-in Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell, and plugins) turn a `DataCollection` into primitives (`Spheres`, `Cylinders`, `Lines`, `SurfaceMesh`, `Arrows`) |
+| `overlays.py` | image-space overlays for every renderer: text label, legends, scale bar, and `OverlayElement`s (Coordinate tripod, Attributes, plugins) returning 2D items |
+| `colormaps.py`, `themes.py` | color maps by name (matplotlib plus `@colormap` plugins, with a grayscale check) and themes (element colors, background, cell color, radius preset; VESTA colors in `tables/colors.json`) |
 | `render.py`, `raytrace.py`, `vector.py` | draw a scene: VTK/PyVista (impostors above 150k atoms), the numba ray tracer, SVG/PDF via matplotlib; each draws every primitive kind |
 | `settings.py` | user preferences as a registry of `Option`s, stored as JSON with only non-default values |
 | `gui/` | PySide6 main window, viewport, pipeline panel, generated parameter forms, render page, preferences, console, inspector, plots |

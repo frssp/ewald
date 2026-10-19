@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-49 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+55 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -56,6 +56,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | `TimeAveraging` | Average upstream results over a frame range (OVITO's TimeAveragingModifier). |
 | `TimeSeries` | Global attributes as a function of time (OVITO's TimeSeriesModifier). |
 | `GenerateTrajectoryLines` | Particle paths over a frame range, drawn as lines, plus path metrics. |
+| `OverlayFrames` | Every frame of ``start:stop:step`` drawn at once: the current frame opaque, the others as see-through copies of the atoms (``transparency`` 0..1), e.g. all images of a NEB band over the image shown on the timeline. |
 
 ### Bonds and polyhedra
 
@@ -78,7 +79,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | Modifier | What it does |
 |---|---|
 | `AssignColor` | Give the selected particles (all, if nothing selected) one color. |
-| `ColorCoding` | Map a scalar property or expression to colors through a matplotlib colormap. |
+| `ColorCoding` | Map a scalar property or expression to colors through a color map. |
 
 ### Selection
 
@@ -106,6 +107,25 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 |---|---|
 | `PythonScript` | Run ``modify(frame, data)`` defined in ``source``. |
 
+### diffraction
+
+| Modifier | What it does |
+|---|---|
+| `PowderDiffraction` | Powder X-ray or neutron diffraction pattern of the (periodic) cell. |
+| `StructureFactor` | Static structure factor S(q) (q = 4 pi sin(theta) / lambda in 1/Angstrom), for liquids, glasses and MD. |
+
+### neb
+
+| Modifier | What it does |
+|---|---|
+| `NebEnergyProfile` | Energy along a NEB band, with the barrier, from frames that are the band's images. |
+
+### phonon
+
+| Modifier | What it does |
+|---|---|
+| `PhononMode` | Animate one phonon mode read from phonopy band.yaml/mesh.yaml/qpoints.yaml or a VASP IBRION=5-8 OUTCAR: frame ``f`` of ``N`` shows phase ``2 pi f / N`` of the vibration, so the trajectory loops over one period. |
+
 ### plumed
 
 | Modifier | What it does |
@@ -127,6 +147,12 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | Modifier | What it does |
 |---|---|
 | `SteinhardtOrderParameters` | Per-particle q_l (and w_l) for every degree in ``degrees``. |
+
+### symmetry
+
+| Modifier | What it does |
+|---|---|
+| `SymmetryAnalysis` | Space group, Wyckoff positions and symmetry-equivalent atoms (spglib). |
 
 ### topology
 
@@ -150,16 +176,22 @@ Tried in this order when no `format=` is given; reader plugins slot in at priori
 
 | Format | File names | Reads | `format=` aliases |
 |---|---|---|---|
+| `neb` | (by content) | NEB band, one frame per image: VASP NEB folder (00..NN) or LAMMPS neb run folder (detected), or format='neb' with one file per image (dump.neb.*) | `vasp-neb`, `lammps-neb` |
 | `cube` | `*.cube` `*.cub` | Gaussian cube volumetric data (atoms + grid) | `gaussian-cube` |
 | `vasp-volumetric` | `CHGCAR*` `CHG*` `PARCHG*` `AECCAR*` `LOCPOT*` `ELFCAR*` | VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR (atoms + grid) | `vasp-chgcar`, `chgcar`, `vasp-locpot`, `locpot`, `vasp-elfcar`, `elfcar` |
 | `h5md` | `*.h5md` `*.h5` | H5MD trajectory (LAMMPS dump h5md, MDAnalysis, ...), lazy; needs h5py |  |
+| `mdtraj-h5` | `*.h5` | MDTraj/OpenMM HDF5 trajectory (HDF5Reporter), topology and bonds, lazy; needs h5py | `mdtraj`, `openmm-h5` |
+| `vaspout` | `vaspout*.h5` | VASP 6 vaspout.h5: ionic steps with forces, energies, stress, velocities, moments, local potential grid, lazy; needs h5py | `vasp-h5`, `vaspout.h5` |
+| `vaspwave` | `vaspwave*.h5` | VASP 6 vaspwave.h5 charge density (structure from vaspout.h5 next to it); needs h5py | `vaspwave.h5` |
 | `xsf` | `*.xsf` `*.axsf` | XCrySDen XSF/AXSF: structure, ANIMSTEPS trajectory, DATAGRID_3D grids |  |
+| `phonopy` | `band.yaml` `mesh.yaml` `qpoints.yaml` `*.yaml` | phonopy band.yaml/mesh.yaml/qpoints.yaml with eigenvectors: phonon modes (PhononMode animates one); frames= per period, structure= for qpoints.yaml | `phonopy-yaml`, `band.yaml`, `phonon` |
 | `lammps-dump` | `*.lammpstrj` `*.dump` | LAMMPS text dump (atom/custom), lazy | `lammps/dump`, `lammps-dump-text` |
 | `xdatcar` | `XDATCAR*` | VASP XDATCAR, fixed or variable cell, lazy | `vasp-xdatcar` |
 | `lammps-data` | `*.data` | LAMMPS data file | `lammps/data`, `lammps-data-native` |
 | `ase-db` | `*.db` | ASE database (SQLite .db or .json), one row per frame, lazy; selection= query | `db`, `ase.db` |
 | `ase-traj` | `*.traj` | ASE binary trajectory (.traj), lazy | `traj` |
 | `md-trajectory` | `*.xtc` `*.trr` `*.dcd` `*.nc` `*.ncdf` | GROMACS XTC/TRR, DCD, AMBER NetCDF via MDAnalysis, lazy; topology= (.gro/.pdb/.tpr/...) for atom types | `xtc`, `trr`, `dcd`, `netcdf`, `ncdf`, `mdanalysis` |
+| `vasp-phonon` | `OUTCAR*` | VASP OUTCAR of an IBRION=5-8 run: Gamma phonon modes (PhononMode animates one) | `outcar-phonon` |
 | `outcar` | `OUTCAR*` | VASP OUTCAR: ionic steps with forces, energies, stress, magnetic moments, lazy | `vasp-outcar` |
 | `vasprun` | `vasprun*.xml` | VASP vasprun.xml: ionic steps with cell, forces, stress, energies, lazy | `vasp-vasprun` |
 | `extxyz` | `*.xyz` `*.extxyz` | XYZ / extended XYZ (Lattice=, Properties=), lazy | `xyz`, `ext-xyz` |
@@ -215,6 +247,27 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 | `Trajectory lines` | ``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle in its atom color; ``width`` in pixels, 0 hides them. |
 | `Simulation cell` | The cell edges as lines, ``width`` pixels wide; ``color`` None uses the renderer's ink (black, or light grey on dark backgrounds). ``radius`` (Angstrom) sizes the ray-traced tubes, None = 0.15 % of the cell diagonal. |
 
+### Overlays
+
+`text`, `legend` (color bar), `type_legend` and `scale_bar` are `render()` options; overlay elements are added with `overlays=[...]` or the Render page's "+ Overlay". Plugins add more ([Overlay plugins](plugins/overlays.md)).
+
+| Overlay | What it draws |
+|---|---|
+| `Coordinate tripod` | Axis directions as arrows in a corner that turn with the camera: Cartesian x, y, z or the cell vectors a, b, c. |
+| `Attributes` | Global attributes (temperature, energy, timestep, ...) as "name = value" lines in a corner. |
+
+### Themes and color maps
+
+`theme=` (View › Theme in the GUI) sets element colors, background, cell color and radius preset; every `cmap` takes a matplotlib name or a color map plugin ([Color maps and themes](plugins/styles.md)).
+
+| Theme | What it sets |
+|---|---|
+| `Default` | Jmol element colors and covalent radii (ewald's defaults) |
+| `VESTA` | VESTA's element colors on white |
+| `CPK` | CPK element colors |
+| `Journal` | Jmol colors muted 35% toward gray, white background, dark gray cell |
+| `Dark slide` | Jmol colors on black, light cell lines, for slides |
+
 ### Output formats
 
 - Images: `.png` `.jpg` `.jpeg` `.tif` `.tiff`; vector pages: `.svg` `.pdf` `.eps` `.ps` (true vectors with `renderer="vector"`, an embedded image otherwise)
@@ -231,7 +284,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 ### `render()` options
 
-`size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`.
+`size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`.
 
 ## Command line
 
@@ -239,8 +292,8 @@ Details: [Command line](user/cli.md).
 
 | Command | What it does | Options |
 |---|---|---|
-| `ewald render INPUT OUTPUT` | render a frame to an image (.png/.jpg/.tif/.svg/.pdf/.eps) | `--frame` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--ao` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` `--dpi` |
-| `ewald movie INPUT OUTPUT` | render frames to .mp4/.gif/.avi/.mov or a PNG sequence | `--fps` `--start` `--stop` `--every` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--time-per-frame` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` |
+| `ewald render INPUT OUTPUT` | render a frame to an image (.png/.jpg/.tif/.svg/.pdf/.eps) | `--frame` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--ao` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` `--theme` `--overlay` `--dpi` |
+| `ewald movie INPUT OUTPUT` | render frames to .mp4/.gif/.avi/.mov or a PNG sequence | `--fps` `--start` `--stop` `--every` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--time-per-frame` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` `--theme` `--overlay` |
 | `ewald gui [INPUT]` | open the desktop viewer | `--type-map` `--device` |
 | `ewald info INPUT` | print frames and properties | `--type-map` |
 | `ewald describe INPUT` | JSON summary of a frame or, with --trajectory, of the run | `--frame` `--trajectory` `--type-map` |
@@ -258,7 +311,7 @@ The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (
 
 | Tool | What it does |
 |---|---|
-| `load_structure` | Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, cif, ... ; wildcards allowed) as the session pipeline, replacing any previous one. |
+| `load_structure` | Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vaspout.h5, LAMMPS dump/data, extxyz, cif, ... ; wildcards allowed) as the session pipeline, replacing any previous one. |
 | `describe_frame` | Compact description of one frame after the current modifiers: composition, cell, density, minimum distance, coordination histogram per type, g(r) peaks, property ranges, sanity warnings. |
 | `describe_selection` | Describe particles and their surroundings: per-atom neighbor lists, coordination numbers, structure types (if CNA/PTM ran), property values against the environment and frame averages, the nearest defect, and a close-up render with the particles highlighted. |
 | `describe_trajectory` | Scan the trajectory (source frames, subsampled to max_frames) and return per-frame descriptor statistics (volume, min distance, MSD and max displacement vs the first frame, coordination) and 'events': frames where a descriptor shifts abruptly. |
@@ -270,6 +323,8 @@ The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (
 | `set_frame` | Set the current frame used by tools that take no frame argument. |
 | `evaluate_expression` | Evaluate an OVITO-style per-particle expression on a frame and return statistics (count of true values for conditions; min/max/mean/percentiles for numbers). |
 | `compute_rdf` | Radial distribution function g(r) of a frame (total, plus partial pairs). |
+| `analyze_symmetry` | Space group (Hermann-Mauguin and number), point group, crystal system and the Wyckoff site of every symmetry-unique atom of a frame (spglib). |
+| `compute_diffraction` | Powder X-ray or neutron diffraction peaks of a frame (2-theta, d, hkl, relative intensity; strongest first), or the structure factor S(q) when kind='sq'. |
 | `compute_msd` | Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per type, with a linear-regime fit D = slope/6. |
 | `compute_plumed_cvs` | Collective variables computed by PLUMED (needs the PLUMED library) over the trajectory from a plumed.dat (text or path): e.g. 'd: DISTANCE ATOMS=1,2' (atoms numbered from 1, by Particle Identifier when present), TORSION, COORDINATION, RMSD, METAD with temperature. |
 | `read_plumed_output` | Read a PLUMED output file. |
@@ -277,6 +332,10 @@ The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (
 | `list_visuals` | Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell; configured through render_image and modifiers) and installed plugins, which add_visual draws on top in every renderer. |
 | `add_visual` | Draw a plugin visual element (see list_visuals) in every later render_image, with optional constructor parameters. |
 | `remove_visual` | Stop drawing the visual element at 'index' of the added list. |
+| `list_overlays` | Overlay elements drawn on top of rendered images (built-in: Coordinate tripod, Attributes; plus plugins), with their parameters, and the ones currently added. |
+| `add_overlay` | Draw an overlay element (see list_overlays) on every later render_image, with optional constructor parameters. |
+| `remove_overlay` | Stop drawing the overlay at 'index' of the added list. |
+| `list_styles` | Themes (element colors, background, cell color, radius preset; pass one to render_image) and the color maps usable as 'cmap' in ColorCoding, GridSlice and VectorVis: common matplotlib names and plugins, each marked whether it reads in grayscale. |
 | `export_file` | Write frames of the pipeline (after its modifiers) to a file: POSCAR, LAMMPS data/dump, extxyz, CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... The format follows the file name (POSCAR, *.data, *.extxyz, *.h5md) unless given. |
 | `get_script` | Standalone Python script that reproduces the current pipeline. |
 | `python_api` *code* | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature). |
@@ -286,9 +345,10 @@ Also: `ewald describe` / `ewald narrate` (rule-based descriptors and a trajector
 
 ## Plugins
 
-Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers` and `ewald.visuals`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual`; `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
+Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.visuals`, `ewald.overlays`, `ewald.colormaps` and `ewald.themes`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / `@colormap` / `@theme`; `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
 
 - `examples/plugins/cell_axes.py`: Example visual element plugins: cell axes and a halo around selected atoms.
+- `examples/plugins/figure_extras.py`: Example figure-style plugins: a color map, a theme and an overlay.
 - `examples/plugins/local_composition.py`: Example modifier plugin: local chemical composition around every particle.
 - `examples/plugins/npz_trajectory.py`: Example reader plugin: trajectories stored as NumPy ``.npz`` archives.
 
@@ -381,6 +441,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 - Load file… (`Ctrl+O`)
 - Load remote file (SSH)… (`Ctrl+Alt+O`)
+- Load NEB folder…
 - Load session… (`Ctrl+Shift+O`)
 - Save session (`Ctrl+S`)
 - Save session as… (`Ctrl+Shift+S`)
@@ -408,6 +469,12 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Zoom to fit (`Ctrl+0`)
 - Dark background
 - White background
+- Theme
+  - Default
+  - VESTA
+  - CPK
+  - Journal
+  - Dark slide
 
 **Pipeline**
 
@@ -430,12 +497,19 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Chill+ (ice, hydrate)
   - Centrosymmetry
   - Atomic strain
+- Symmetry & diffraction
+  - Space group / Wyckoff positions (spglib)
+  - Powder XRD pattern
+  - Powder neutron diffraction
+  - Structure factor S(q)
 - Trajectory
   - Mean squared displacement / diffusion
   - Velocity autocorrelation
   - Time averaging (g(r), attributes)
   - Time series of attributes
   - Trajectory lines / paths
+  - NEB energy profile / barrier
+  - Overlay frames (see-through images)
 - Bonds & polyhedra
   - Create bonds
   - Edit bonds (add / delete)
@@ -452,6 +526,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Force / displacement / velocity arrows
   - Magnetic moment arrows
   - Arrows colored by length
+- Phonons
+  - Phonon mode animation (band.yaml, OUTCAR)
 - Coloring
   - Color coding
   - Assign color
@@ -503,6 +579,25 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Python API reference
 - Open plugin folder
 - About ewald
+
+**Viewport (right click)**
+
+- Overlay other frames (see-through)
+- Overlay transparency
+  - 50 %
+  - 70 %
+  - 85 %
+  - 95 %
+- Overlay only atoms that move
+- View along
+  - a
+  - b
+  - c
+  - a*
+  - b*
+  - c*
+- Zoom to fit
+- Ask Claude about selection…
 
 ### Toolbar
 

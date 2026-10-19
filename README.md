@@ -134,7 +134,8 @@ ewald movie dump.lammpstrj movie.gif --every 5 --fps 12 --text "t = [Time] ps" -
 * `Pipeline`: source + modifier list, evaluated lazily per frame; source frames are
   cached (up to 8 frames and `cache_memory=2 GiB` of arrays, the current frame always
   kept) and never mutated by modifiers.
-* Readers: native lazy readers for LAMMPS dumps, VASP XDATCAR, extxyz, XSF and H5MD,
+* Readers: native lazy readers for LAMMPS dumps, VASP XDATCAR, OUTCAR, vasprun.xml and
+  vaspout.h5, extxyz, XSF, H5MD and MDTraj HDF5,
   LAMMPS data files and VASP/cube volumetric data, GROMACS XTC/TRR and DCD through
   MDAnalysis, everything else through ASE; matching writers for POSCAR, LAMMPS
   data/dump, extxyz, XSF, H5MD, XTC, CIF and more (see [File formats](#file-formats)).
@@ -169,12 +170,16 @@ Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
 | log.lammps, OSZICAR | native | thermo columns as frame attributes and `data.tables["Thermo"]`, matched by step; found next to a dump/XDATCAR or `thermo=` |
 | XYZ / extended XYZ | native, lazy | frames indexed by atom counts, each parsed by ASE's extxyz parser (`Lattice=`, `Properties=`, forces, energy, info) |
 | XCrySDen XSF/AXSF | native, lazy | `ANIMSTEPS`, forces, `DATAGRID_3D` grids in `data.grids["xsf"]` |
+| VASP 6 vaspout.h5, vaspwave.h5 | native, lazy (`h5py`) | ionic steps with `Force`, `Velocity`, `Magnetic Moment`, energies, `Stress`; local potential and `LCHARGH5` charge density as grids |
+| MDTraj / OpenMM HDF5 | native, lazy (`h5py`) | OpenMM `HDF5Reporter`; elements, residues, bonds, velocities, energies |
 | H5MD | native, lazy (`h5py`) | LAMMPS `dump h5md`, MDAnalysis; species names, box, velocities, forces, observables |
 | GROMACS XTC/TRR, DCD, NetCDF | MDAnalysis, lazy | atom types from `topology=` or a same-stem `.gro`/`.pdb`/`.tpr` |
 | ASE database, ASE `.traj` | ASE, lazy | `selection=` query for databases; key-value pairs as attributes |
+| NEB runs | native | VASP folder `00 .. NN` or LAMMPS `neb` (replica dumps + log), one frame per image with `NebEnergyProfile` |
 | CIF, ... | ASE | anything `ase.io.read` understands |
 
-`pip install "ewald[formats]"` adds h5py and MDAnalysis for H5MD and XTC/TRR/DCD.
+`pip install "ewald[formats]"` adds h5py and MDAnalysis for H5MD, vaspout.h5, MDTraj HDF5
+and XTC/TRR/DCD.
 `export_file(pipe, "out.xtc")` writes through the matching writer, chosen by file name or
 `format=`: POSCAR (species grouped), LAMMPS data (type names in `Masses` comments) and dump,
 extxyz, XSF (with grid), H5MD, XTC/TRR/DCD, CIF, ASE db/traj, cube, CHGCAR, or any ASE
@@ -256,7 +261,12 @@ it is drawn by the OpenGL viewport, the ray tracer and SVG/PDF output alike, and
 the GUI's "+ Visual" button and in the Claude `add_visual` tool
 ([`examples/plugins/cell_axes.py`](examples/plugins/cell_axes.py),
 [visual element plugins](docs/plugins/visuals.md)). ewald's own atoms, bonds, cell, surfaces,
-arrows and trajectory lines are built the same way.
+arrows and trajectory lines are built the same way. Overlays (`@overlay`: inset plots,
+readouts, a coordinate tripod), color maps (`@colormap`, usable as any `cmap`) and themes
+(`@theme`: element colors, background, cell color; `render(..., theme="VESTA")`, View › Theme)
+plug in the same way ([overlay plugins](docs/plugins/overlays.md),
+[color maps and themes](docs/plugins/styles.md),
+[`examples/plugins/figure_extras.py`](examples/plugins/figure_extras.py)).
 
 `ewald forge "what to compute"` has Claude write such a modifier together with tests that
 have a known answer. ewald runs them in a subprocess, along with checks for the plugin
@@ -312,7 +322,8 @@ names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
 `DeleteSelected`, `Slice`, `AssignColor`, `ColorCoding`, `ComputeProperty`,
 `CoordinationAnalysis` (+ total/partial RDF), `ClusterAnalysis` (OVITO-compatible: size, COM, gyration tensor, unwrap),
 `CalculateDisplacements` (+ MSD),
-`Replicate`, `WrapAtoms`, `AffineTransformation`, `VectorVis` (arrows), and any Python function
+`Replicate`, `WrapAtoms`, `AffineTransformation`, `VectorVis` (arrows), `PhononMode` (phonon mode
+animation from phonopy `band.yaml` or a VASP IBRION=5-8 OUTCAR), and any Python function
 `f(frame, data)`.
 
 OVITO Pro-style statistics, checked against OVITO 3.16 bin for bin: `Histogram`,
@@ -321,6 +332,11 @@ OVITO Pro-style statistics, checked against OVITO 3.16 bin for bin: `Histogram`,
 selection). `FindRings` gives shortest-path ring statistics of the bond network and
 `SteinhardtOrderParameters` the q_l/w_l bond-orientational order (plain or Lechner-Dellago
 averaged, checked against freud).
+
+Symmetry and diffraction: `SymmetryAnalysis` (space group, Wyckoff positions and equivalent
+atoms via spglib), `PowderDiffraction` (powder XRD and neutron patterns, identical to pymatgen,
+overlaid on a measured pattern with an Rwp) and `StructureFactor` (S(q) of liquids, glasses and
+MD: direct, from g(r) or Debye; X-ray or neutron weighted).
 
 ### Vector arrows
 
@@ -338,6 +354,21 @@ from ewald.modifiers import VectorVis
 pipe = import_file("OUTCAR")
 pipe.modifiers.append(VectorVis("Force", scaling=2.0, color_mapping_property="Magnitude"))
 pipe.render("forces.png", renderer="raytrace", radius_scale=0.5)
+```
+
+### Phonon modes
+
+phonopy `band.yaml`/`mesh.yaml`/`qpoints.yaml` (with eigenvectors) and OUTCARs of VASP
+IBRION=5-8 runs open as a looping trajectory; `PhononMode` displaces the atoms along one mode
+in a commensurate supercell, as `phonopy --modulation` does, and draws the pattern as arrows.
+In the GUI the Plots tab shows the band structure and clicking a band plays that mode.
+
+```python
+from ewald.modifiers import PhononMode
+
+pipe = import_file("band.yaml", frames=24)
+pipe.modifiers.append(PhononMode(qpoint=50, band=3, amplitude=0.3))
+render_animation(pipe, "mode.gif")
 ```
 
 ### Bonds and coordination polyhedra
@@ -372,8 +403,9 @@ result and show it at every frame:
 matched by id, Einstein diffusion coefficient), `VelocityAutocorrelation` (VACF from
 `vx vy vz` or differentiated positions, Green-Kubo D), `TimeAveraging` (OVITO's
 time averaging of a table, attribute or property, e.g. the time-averaged g(r)),
-`TimeSeries` (attributes vs. time) and `GenerateTrajectoryLines` (particle paths
-drawn as lines, plus 'Path Length', 'Net Displacement', 'Max Displacement').
+`TimeSeries` (attributes vs. time), `GenerateTrajectoryLines` (particle paths
+drawn as lines, plus 'Path Length', 'Net Displacement', 'Max Displacement') and
+`OverlayFrames` (other frames as see-through copies of the moving atoms).
 
 ```python
 from ewald.modifiers import CoordinationAnalysis, MeanSquaredDisplacement, TimeAveraging
@@ -385,6 +417,21 @@ pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
 data = pipe.compute(0, device="cuda")
 data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # A^2/ps
 data.tables["coordination-rdf[average]"]                               # time-averaged g(r)
+```
+
+### Nudged elastic band
+
+A VASP NEB folder (`00 .. NN`) or a LAMMPS `neb` run folder opens with one frame per image,
+and `NebEnergyProfile` (added automatically there, or appended to any band such as an ASE NEB
+trajectory with `images=`) gives the energy profile along the reaction coordinate, VTST's
+force-based cubic spline and the forward/reverse barriers. `OverlayFrames` (also added) draws
+every other image see-through behind the current one, so the moving atoms show their path. The GUI's Plots tab draws it with
+the current image marked; clicking an image jumps to it.
+
+```python
+pipe = import_file("neb")                              # or "lammps_run/", or "dump.neb.*" with format="neb"
+data = pipe.compute(0)
+data.attributes["NEB.Barrier"], data.tables["NEB spline"]
 ```
 
 ### Volumetric data (CHGCAR, LOCPOT, ELFCAR, cube)
