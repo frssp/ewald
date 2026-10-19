@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from . import import_file
 from .render import RENDERERS
@@ -97,9 +98,26 @@ def build_parser():
     return ap
 
 
+# optional package -> the extra that installs it (for "ewald CMD" without that extra)
+EXTRAS = {"PySide6": "gui", "pyvistaqt": "gui", "qtconsole": "gui", "anthropic": "llm", "mcp": "llm",
+          "anyio": "llm", "paramiko": "remote", "h5py": "formats", "MDAnalysis": "formats",
+          "cupy": "gpu", "plumed": "plumed", "imageio_ffmpeg": "movie"}
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    try:
+        return _run(args)
+    except ImportError as exc:  # a missing optional dependency: one line, not a traceback
+        top = (getattr(exc, "name", None) or "").split(".")[0]
+        if top in EXTRAS:
+            sys.exit(f"ewald {args.cmd}: needs {top}: pip install 'ewald[{EXTRAS[top]}]'")
+        if "pip install" in str(exc):
+            sys.exit(f"ewald {args.cmd}: {exc}")
+        raise
 
+
+def _run(args):
     if args.cmd == "gui":
         from .gui import main as gui_main
 

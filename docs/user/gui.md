@@ -7,8 +7,9 @@ ewald gui run.lammpstrj --device cuda    # start with GPU compute
 ```
 
 From Python, `ewald.gui.show(pipe)` opens the viewer on a pipeline you built in a script. In
-Jupyter, run `%gui qt` first; `show` then returns at once and the window stays live
-next to the notebook.
+Jupyter, run `import ewald.gui` and then `%gui qt` (in that order, so IPython picks PySide6 even
+when PyQt is installed); `show` then returns at once and the window stays live next to the
+notebook. Linux system libraries and startup errors: [Install](install.md#linux-gui-system-libraries).
 
 The layout follows OVITO 3, with VESTA's crystal-viewing controls added: the viewport is in the
 middle, the pipeline and the selected item's parameters are on the right, the timeline is under

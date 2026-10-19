@@ -8,13 +8,12 @@ version = "0.1.0"
 description = "Atomistic structure and trajectory visualization and analysis with a Python pipeline API"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.24", "scipy", "ase>=3.23", "matplotlib", "pyvista>=0.44", "vtk>=9.3", "numba>=0.59"]
+dependencies = ["numpy>=1.24", "scipy", "ase>=3.23", "matplotlib", "pillow", "pyvista>=0.44", "vtk>=9.3", "numba>=0.59"]
 
 [project.optional-dependencies]
-gui = ["PySide6>=6.5", "pyvistaqt>=0.11", "qtconsole>=5.5", "ipykernel"]
+gui = ["PySide6>=6.5", "pyvistaqt>=0.11", "qtconsole>=5.5", "ipykernel"]   # PySide6 only: no PyQt5/PyQt6 (see ewald/gui/__init__.py)
 gpu = ["cupy-cuda12x"]
-analysis = ["freud-analysis"]
-movie = ["imageio[ffmpeg]"]
+movie = ["imageio-ffmpeg"]   # bundled ffmpeg binary for MP4/AVI/MOV
 formats = ["h5py", "MDAnalysis>=2.7"]   # H5MD; GROMACS XTC/TRR, DCD, NetCDF
 ovito = ["ovito"]   # DislocationAnalysis (DXA) and OvitoModifier bridge
 plumed = ["plumed"]   # PLUMED Python binding; the PLUMED library itself comes from conda-forge or a build (PLUMED_KERNEL)

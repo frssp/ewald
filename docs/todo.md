@@ -108,6 +108,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - The native OUTCAR and vasprun.xml readers on real VASP 5/6 output (relaxations with ISIF=3,
   non-collinear and MD runs, multi-GB files); the test fixtures are hand-written in VASP 6.4
   format and checked against ASE.
+- GUI startup checks on a Wayland desktop and on Fedora (the xcb library check is skipped when
+  `WAYLAND_DISPLAY` is set; the Fedora package names in its message are untested).
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
   CI has no PLUMED, so those tests skip).
 
@@ -115,6 +117,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 - GitHub Actions minutes ran out on 2026-10-19; CI does not run until that is fixed, so pull
   requests are verified locally (`xvfb-run -a python -m pytest -q`, `mkdocs build --strict`).
+
+- CI installs each extra on its own only through the test suite's `importorskip`s; a job that
+  installs every extra in a clean venv and imports its modules would catch broken extras
+  (`tests/test_dependencies.py` only checks that every import is declared).
 
 ## Deferred until the user asks
 
