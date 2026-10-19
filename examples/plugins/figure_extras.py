@@ -61,7 +61,7 @@ class InsetRDF(OverlayElement):
         dpi = 100
         fig = Figure(figsize=(w / dpi, h / dpi), dpi=dpi)
         fig.patch.set_alpha(0.0)
-        ax = fig.add_axes([0.22, 0.2, 0.74, 0.74])
+        ax = fig.add_axes([0.22, 0.25, 0.74, 0.69])
         ax.patch.set_alpha(0.0)
         ax.plot(table["r"], table["g(r)"], color=ctx.ink, linewidth=1.0)
         ax.set_xlabel("r (Å)", fontsize=ctx.small * 0.7, color=ctx.ink)
