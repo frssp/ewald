@@ -64,14 +64,22 @@ class MDAnalysisReader(FrameReader):
         self.types = self._types()
 
     def _types(self):
+        from ase.data import chemical_symbols
+
         atoms = self.universe.atoms
+        fallback = None
         for attr in ("elements", "types", "names"):
             values = getattr(atoms, attr, None)
             if values is not None and len(values) and all(str(v).strip() for v in values):
                 if attr == "types" and all(str(v).isdigit() for v in values):
                     return np.asarray(values).astype(str)  # LAMMPS numeric types stay numbers
-                return np.array([species_name(str(v)) for v in values])
-        return np.full(len(atoms), "X")
+                species = np.array([species_name(str(v)) for v in values])
+                # GRO types are guessed from names and can be cut short ('LA' -> 'L'): prefer the
+                # first attribute that names real elements.
+                if set(species) <= set(chemical_symbols[1:]):
+                    return species
+                fallback = species if fallback is None else fallback
+        return fallback if fallback is not None else np.full(len(atoms), "X")
 
     def __len__(self):
         return len(self.universe.trajectory)
