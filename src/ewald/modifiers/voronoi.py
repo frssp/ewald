@@ -1,5 +1,5 @@
 """Voronoi analysis (port of OVITO's VoronoiAnalysisModifier, Copyright 2026 OVITO GmbH,
-used under the MIT option of its GPLv3-or-MIT license), built on voro++."""
+used under the MIT option of its GPLv3-or-MIT license; see ewald/_csrc/LICENSE.OVITO-MIT.txt), built on voro++."""
 from __future__ import annotations
 
 import numpy as np

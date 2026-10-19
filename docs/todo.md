@@ -179,6 +179,20 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
   CI has no PLUMED, so those tests skip).
 
+## Security
+
+From the 2026-10-19 review (expression sandbox, session classes, Forge consent and environment,
+`export_file` paths, PLUMED `LOAD` and the known_hosts key type are fixed):
+
+- Claude's read tools (`load_structure`, `read_plumed_output`) open any local path and any
+  `host:/path` in known_hosts; add an optional folder allow-list and a GUI confirmation before
+  connecting to a host the model chose.
+- The GUI's "Python code in session" question covers only top-level PythonScript and
+  PythonModifier entries; nested `__modifier__` code and a disabled `Plumed` load silently
+  disabled, with only a log message.
+- `plumed.py` reads numbers like `pi/2` with `eval` (no builtins, only `pi`); replace it with a
+  small arithmetic parser.
+
 ## Infrastructure
 
 - GitHub Actions minutes ran out on 2026-10-19; CI does not run until that is fixed, so pull

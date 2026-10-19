@@ -1,5 +1,5 @@
 """Cluster analysis (port of OVITO's ClusterAnalysisModifier, Copyright 2026 OVITO GmbH,
-used under the MIT option of its GPLv3-or-MIT license), CPU/GPU."""
+used under the MIT option of its GPLv3-or-MIT license; see ewald/_csrc/LICENSE.OVITO-MIT.txt), CPU/GPU."""
 from __future__ import annotations
 
 import colorsys

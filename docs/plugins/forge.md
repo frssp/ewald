@@ -43,11 +43,17 @@ and keeps them away from your plugin folder, but it is not a security sandbox. S
 starts (`--yes` skips the question). `ewald forge --draft` and `forge(..., run_code=False)`
 return Claude's first draft without running or saving it.
 
+The subprocess gets a minimal environment: `PATH`, locale and library paths, and a scratch
+`HOME`, but none of your API keys, tokens, cloud credentials or SSH agent. A version that
+passes is shown and saved only after you agree, because a saved plugin is imported every time
+ewald starts (`--yes` saves without asking; from Python, `forge(..., confirm=fn)` asks
+`fn(result)` and saves when it returns True).
+
 ## Options
 
 | CLI | Python | Meaning |
 |---|---|---|
-| `--yes` | `run_code=True` | run the checks without asking |
+| `--yes` | `run_code=True` | run the checks and save a passing plugin without asking |
 | `--draft` | `run_code=False` | print the first draft only |
 | `--overwrite` | `overwrite=True` | replace a plugin file of the same name |
 | `--rounds N` | `max_rounds=N` | attempts to fix failing checks |

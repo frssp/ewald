@@ -32,6 +32,12 @@ whether it reads in grayscale) and `get_script`.
 `run_python`, which executes model-written code in your Python process, is off unless you pass
 `allow_code=True` (or `--allow-code` on the command line).
 
+Claude may act on text inside the files it reads (a comment line or a type name can carry
+instructions), so the always-on tools are limited to what such text cannot abuse: expressions
+accept only arithmetic, comparisons and NumPy array functions; `export_file` replaces files only
+inside its work dir and never writes into hidden folders such as `~/.ssh`; and
+`compute_plumed_cvs` refuses `LOAD` (native code) and absolute or `..` file paths.
+
 ## Asking about a selection
 
 A question can be about a few atoms rather than the whole structure: atoms picked in the GUI

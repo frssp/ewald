@@ -168,3 +168,11 @@ def test_cli_asks_first_then_saves(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "failed: no in-place writes" in out and "passed after 2 round(s)" in out
     assert (plugins.plugin_dir() / "height_above_min.py").exists()
+
+
+def test_forge_asks_before_saving():
+    seen = []
+    result = forge_mod.forge("x", client=FakeClient((GOOD, TESTS)), run_code=True,
+                             confirm=lambda r: seen.append(r.module_source) or False)
+    assert result.ok and result.path is None and seen == [GOOD]
+    assert not (plugins.plugin_dir() / "height_above_min.py").exists()

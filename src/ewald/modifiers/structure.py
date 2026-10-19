@@ -2,8 +2,9 @@
 
 The algorithms follow OVITO 3.16 (CommonNeighborAnalysisModifier.cpp,
 PolyhedralTemplateMatchingModifier.cpp; Copyright 2026 OVITO GmbH, used under
-the MIT option of its GPLv3-or-MIT dual license).  Output names, structure type
-ids, colors and attribute names match OVITO so scripts and results carry over.
+the MIT option of its GPLv3-or-MIT dual license; see ewald/_csrc/LICENSE.OVITO-MIT.txt).
+Output names, structure type ids, colors and attribute names match OVITO so scripts and
+results carry over.
 """
 from __future__ import annotations
 
