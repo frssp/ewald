@@ -218,8 +218,10 @@ class PluginsPanel(QtWidgets.QWidget):
             self._row(e, False)
         for url, err in self.catalog_errors.items():
             if pc.is_missing(err):      # e.g. the default index before it is published
-                self.list_layout.addWidget(QtWidgets.QLabel(f"No plugin index at {url} yet.",
-                                                            objectName="muted", wordWrap=True))
+                private = pc._wants_token(url) and not pc.github_token()
+                self.list_layout.addWidget(QtWidgets.QLabel(
+                    f"No plugin index at {url}" + (" (if it is private, set GITHUB_TOKEN or run gh auth login)."
+                                                   if private else "."), objectName="muted", wordWrap=True))
             else:
                 self.list_layout.addWidget(QtWidgets.QLabel(f"{url}: {err}", objectName="cellError", wordWrap=True))
         if not available and not any(not pc.is_missing(e) for e in self.catalog_errors.values()):

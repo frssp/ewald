@@ -27,8 +27,7 @@ GUI
   can use a conda env without ewald's GUI dependencies.
 - Analysis verbs for notebooks (`rdf(pipe, cutoff=6)`, `msd(pipe)`, ... returning tables and
   adding the step), next to `load` and `pipe.add`.
-- Plugins side bar: publish the default index repo `frssp/ewald-plugins` (until then the side bar
-  shows "No plugin index at ... yet"), an "updates available" badge on the activity bar, disable per notebook,
+- Plugins side bar: an "updates available" badge on the activity bar, disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
 - Spectra, Figure and Forge views from the redesign mock-ups, built as view cells
