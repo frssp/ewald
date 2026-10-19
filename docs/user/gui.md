@@ -125,6 +125,16 @@ The `DOS` and `Bands` tables of a VASP run are drawn as a density of states and 
 structure; atoms selected in the viewport show as their projected DOS or as fat bands (see
 [DOS and band structure](electronic.md)).
 
+*Save plot…* (and *Save plot…* in a view cell's menu) writes a publication figure, not a
+screenshot of the panel: the plot is redrawn at a journal column width (Preferences ›
+Rendering › Plots: 1-column 3.5 in, 1.5-column or 2-column 7.2 in) with 8 pt sans-serif type,
+inward ticks on all four sides, labels with units (*r* (Å), 2*θ* (°), *q* (Å⁻¹), MSD (Å²),
+*E* − *E*<sub>F</sub> (eV)), a colorblind-safe color cycle and a white background,
+whatever the UI theme. PDF, SVG and EPS keep the text as text (TrueType, editable in
+Illustrator or Inkscape); PNG uses the DPI of the image quality (Draft 150, Standard 300,
+Publication 600). Hints such as the current-frame marker are left out. On screen the same
+style is drawn in the Paper or Graphite colors.
+
 **Linked selection.** Plots and the viewport share one selection, in both directions:
 
 - Drag an x range on a histogram (the "histogram of" box, `Histogram`, CSP or PTM RMSD), g(r),

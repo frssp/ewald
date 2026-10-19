@@ -72,6 +72,21 @@ phonon band plays that mode. Choosing another table, column or histogram in the 
 rewrites the cell. Run as a script, `show` draws the same plot with matplotlib. Add one with
 **+ View** or Insert › View, which list the tables and properties of the current frame.
 
+Every plot ewald draws (view cells, `show`, a verb table's picture, the figures saved into an
+`.ewd`) uses one publication style from `ewald.plotstyle`: a 3.5 in single-column figure,
+8 pt sans-serif text, inward ticks with minor ticks, axis labels with units and a
+colorblind-safe color cycle. Use it for your own figures too:
+
+```python
+from ewald import plotstyle
+from ewald.views import figure
+
+fig = figure(pipe, table="coordination-rdf", size="2-column")   # a Figure, no pyplot
+plotstyle.save(fig, "gr.pdf")                # editable text, tight box; PNG at 600 dpi
+with plotstyle.context():                    # the style for your own matplotlib code
+    plt.plot(r, g); plt.xlabel(plotstyle.axis_label("r"))
+```
+
 Spectra, diffraction patterns and time series are not separate panels. They are views in the
 notebook, next to the steps that compute them.
 
