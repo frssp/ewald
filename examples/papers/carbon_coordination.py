@@ -2,7 +2,7 @@
 
 Data: 6 of the 546 C-GAP-17 melt-quench-anneal trajectories of https://github.com/jla-gardner/carbon-data
 (200 atoms, 211 frames 1 ps apart, annealed at 3000 K, densities 1.0-3.5 g/cm3; MIT as listed by
-load-atoms). Paper: J. L. A. Gardner, Z. F. Beaulieu, V. L. Deringer, Digital Discovery 2, 651 (2023).
+load-atoms). Paper: J. L. A. Gardner, Z. F. Beaulieu, V. L. Deringer, Digital Discovery (2023).
 
 Fig. 2a of the paper shows the C-GAP-17 local energies of sp (2-coordinated), sp2 (3) and sp3 (4)
 atoms, counted with a 1.85 A cutoff: sp2 and sp3 distributions are similar and sp atoms sit
