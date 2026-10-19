@@ -267,7 +267,7 @@ def write_lammps_data(path, data, atom_style: str | None = None, masses: bool = 
     becomes a ``Velocities`` section. A cell that is not in LAMMPS' lower-triangular form
     is rotated rigidly into it.
     """
-    from ase.data import atomic_masses, atomic_numbers
+    from ..radii import element_masses
 
     types = np.asarray(data.types).astype(str)
     names = list(dict.fromkeys(types))
@@ -301,7 +301,7 @@ def write_lammps_data(path, data, atom_style: str | None = None, masses: bool = 
                 if mass_prop is not None:
                     m = float(np.asarray(mass_prop)[types == t][0])
                 else:
-                    m = float(atomic_masses[atomic_numbers[t]]) if t in atomic_numbers else 1.0
+                    m = float(element_masses([t])[0])
                 comment = f" # {t}" if not t.isdigit() else ""
                 fh.write(f"{type_id[t]} {m:.6f}{comment}\n")
         fh.write(f"\nAtoms # {style}\n\n")

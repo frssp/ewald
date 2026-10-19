@@ -131,12 +131,8 @@ def event_details(pipeline, frame: int, window: int = 5, cutoff: float | None = 
     pa, _, ids_a, oa = _matched_positions(after)
     if len(pb) != len(pa) or np.any(ids != ids_a):
         return {"frames": [fb, fa], "error": "particle count or identifiers change across the event"}
-    dr = pa - pb
     cell = after.cell
-    if cell.is_valid:
-        f = dr @ np.linalg.inv(cell.matrix)
-        f[:, cell.pbc] -= np.round(f[:, cell.pbc])
-        dr = f @ cell.matrix
+    dr = cell.minimum_image(pa - pb)
     d = np.linalg.norm(dr, axis=1)
     cnb, cna = _coordination(before, cutoff)[ob], _coordination(after, cutoff)[oa]
     moved = d > threshold
@@ -146,11 +142,7 @@ def event_details(pipeline, frame: int, window: int = 5, cutoff: float | None = 
                   "by_type": dict(Counter(str(t) for t in tb[moved]))}}
     if moved.any():
         centre = pb[moved].mean(0)
-        rel = pb[moved] - centre
-        if cell.is_valid:
-            fr = rel @ np.linalg.inv(cell.matrix)
-            fr[:, cell.pbc] -= np.round(fr[:, cell.pbc])
-            rel = fr @ cell.matrix
+        rel = cell.minimum_image(pb[moved] - centre)
         rg = float(np.sqrt((rel ** 2).sum(1).mean()))
         box = float(np.min(cell.perpendicular_widths())) if cell.is_valid else float(np.ptp(pb, 0).min())
         out["moved"]["centroid"] = _round(centre.tolist())

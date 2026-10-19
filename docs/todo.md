@@ -201,6 +201,22 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
   CI has no PLUMED, so those tests skip).
 
+## Code health
+
+Left from the 2026-10-19 review (minimum image, element masses, color parsing and the
+dark-background test are shared now):
+
+- Split `gui/app.py` (files, menus, selection/console mixins) and `gui/preferences.py`
+  (widgets, element table, applying settings), after the viewport/menu work in PR #45.
+- One camera basis (right/up/forward) for `vector.py`, `overlays.camera_axes` and `raytrace.py`;
+  only the overlays one handles `up` parallel to the view direction.
+- One element color lookup: `themes.element_colors`, `Settings.element_color` (Preferences
+  offers only Jmol and CPK, not VESTA) and `render.type_color`.
+- `plugins.py`: the visual-element and overlay registries are copies of each other; the
+  renderer-neutral type color/radius tables in `render.py` belong in their own module.
+- `Viewport._mic` and the bond-angle code in `gui/viewport.py` can use `Cell.minimum_image`
+  and share the angle helper with `llm/selection.py`.
+
 ## Security
 
 From the 2026-10-19 review (expression sandbox, session classes, Forge consent and environment,

@@ -273,9 +273,9 @@ def _structure(structure):
 
 
 def _ase_masses(types):
-    from ase.data import atomic_masses, atomic_numbers
+    from .radii import element_masses
 
-    return np.array([atomic_masses[atomic_numbers.get(str(t), 0)] for t in types])
+    return element_masses(types)
 
 
 # --------------------------------------------------------------------------- VASP

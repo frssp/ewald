@@ -49,7 +49,6 @@ class AffineTransformation(Modifier):
 
     def __init__(self, matrix, transform_cell: bool = True):
         self.matrix = matrix
-
         self.transform_cell = transform_cell
 
     def modify(self, data, ctx):
