@@ -1,7 +1,8 @@
 # Releases
 
-How a version of ewald is cut and what it ships. Windows-specific packaging (the standalone app,
-the installer, CUDA bundling) is in [Windows release](windows-release.md).
+How a version of ewald is cut and what it ships. Platform packaging is in
+[Windows release](windows-release.md) (standalone app, installer, CUDA bundling) and
+[macOS release](macos-release.md) (EWALD.app, disk image).
 
 ## What a release ships
 
@@ -9,15 +10,15 @@ the installer, CUDA bundling) is in [Windows release](windows-release.md).
 |---|---|---|
 | `ewald-X.Y.Z.tar.gz` (sdist) | `release.yml` | builds `ewald._native` on install when a C++17 compiler is present |
 | `ewald-X.Y.Z-cp3XX-*-manylinux_*_x86_64.whl` | `release.yml` | Python 3.10 to 3.13 |
-| `ewald-X.Y.Z-cp3XX-*-macosx_*_{arm64,x86_64}.whl` | `release.yml` | macOS 11 or later; optional input `macos` |
+| `ewald-X.Y.Z-cp3XX-*-macosx_11_0_{arm64,x86_64}.whl` | `macos-release.yml` | Python 3.10 to 3.13 |
+| `ewald-X.Y.Z-macos-{arm64,x86_64}.dmg` | `macos-release.yml` | EWALD.app, not notarized |
 | `ewald-X.Y.Z-cp3XX-*-win_amd64.whl` | `windows-release.yml` | Python 3.10 to 3.13 |
 | `ewald-X.Y.Z-win64-{cpu,gpu}-setup.exe`, `-portable.zip` | `windows-release.yml` | standalone app with the EWALD icon |
 
 All wheels carry the compiled `ewald._native` (`EWALD_REQUIRE_NATIVE=1` turns a failed C++ build
-into an error), so wheel users never need a compiler. A macOS app bundle (`ewald.app` with
-`ewald.icns`, as a `.dmg`) has a slot in `release.yml` and is not built yet.
+into an error), so wheel users never need a compiler.
 
-Both workflows attach their files to one GitHub Release for the tag, with the notes taken from the
+All three workflows attach their files to one GitHub Release for the tag, with the notes taken from the
 version's section of `CHANGELOG.md`. ewald is not on PyPI: the repository is private, and the
 `Private :: Do Not Upload` classifier in `pyproject.toml` makes PyPI reject an accidental upload.
 Colleagues install a wheel from the release page, or straight from the repository:
@@ -29,7 +30,7 @@ pip install "ewald[gui] @ git+https://github.com/frssp/ewald@v0.1.0"
 ## Version
 
 The version is written in one place, `__version__` in `src/ewald/__init__.py`. `pyproject.toml`
-reads it (`dynamic = ["version"]`), the Windows workflow checks the tag against it, and
+reads it (`dynamic = ["version"]`), every release workflow checks the tag against it, and
 `ewald --version` and Help › About print it. Versions follow [Semantic Versioning](https://semver.org/);
 before 1.0 a minor version may change the API. Pre-releases use `0.2.0rc1`, tagged `v0.2.0rc1`.
 
@@ -59,16 +60,17 @@ user would notice add a line there (what changed, in user terms, with the PR num
    git push origin vX.Y.Z
    ```
 
-5. Run both release workflows on the tag. Pushing a tag starts nothing while the workflows are
+5. Run the three release workflows on the tag. Pushing a tag starts nothing while the workflows are
    manual-only (below):
 
    ```bash
-   gh workflow run release.yml --ref vX.Y.Z            # add -f macos=false to skip macOS wheels
+   gh workflow run release.yml --ref vX.Y.Z
    gh workflow run windows-release.yml --ref vX.Y.Z
+   gh workflow run macos-release.yml --ref vX.Y.Z      # macOS minutes bill 10x; skip if not needed
    ```
 
-   or Actions › Release › Run workflow and Actions › Windows release › Run workflow, choosing the
-   tag under "Use workflow from". Each workflow checks that the tag matches `__version__` and
+   or Actions › Release / Windows release / macOS release › Run workflow, choosing the tag under
+   "Use workflow from". Each workflow checks that the tag matches `__version__` and
    fails before building anything if it does not.
 6. Before announcing a GPU build, run a script with `device="cuda"` on an NVIDIA machine with the
    GPU app (the runners have no GPU).
@@ -80,10 +82,10 @@ fix on main, and tag again. Once anyone has installed it, release `X.Y.(Z+1)` in
 
 Every workflow in `.github/workflows/` is `workflow_dispatch` only while Actions minutes are short
 (the repository is private; Windows minutes bill 2x and macOS 10x). A full release run is roughly
-3 Linux, 2 macOS (x10) and 3 Windows (x2) jobs; the GPU Windows app is the longest at about 30
-minutes. Dispatch with `-f macos=false` to save most of the cost when macOS wheels are not needed.
+3 Linux, 4 macOS (x10) and 3 Windows (x2) jobs; the GPU Windows app is the longest at about 30
+minutes. Leaving out `macos-release.yml` saves most of the cost when no Mac user is waiting.
 
-To release on tag push again, add the trigger under `on:` in both release workflows:
+To release on tag push again, add the trigger under `on:` in the three release workflows:
 
 ```yaml
 on:
@@ -92,5 +94,4 @@ on:
   workflow_dispatch:
 ```
 
-A tag push builds the macOS wheels too (the `macos` input applies to manual runs only). CI triggers
-are restored the same way, as [Testing](testing.md) describes.
+CI triggers are restored the same way, as [Testing](testing.md) describes.

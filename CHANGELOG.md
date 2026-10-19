@@ -75,6 +75,7 @@ a PySide6 desktop GUI built around Python notebooks, and Claude tools.
   helpers and notebook tabs; a VS Code-style Plugins side bar; minimal mode (#63). Notebook files
   as `.ewd` (notebook, results, figures, data and plugins in one file, opened restricted until
   trusted) and `.ipynb` (#70).
+- The UI style sheet is set only when it changes (#72).
 - Linked plots: drag on a plot to select atoms or frames (#34); atom info on hover (#51);
   context-dependent right-click menu and toolbar icons (#45); example files to open first (#41).
 - Phonon mode animation (click a band to play) (#37).
@@ -86,7 +87,8 @@ a PySide6 desktop GUI built around Python notebooks, and Claude tools.
 
 - Plugins for readers, writers, modifiers, visual elements, overlays, color maps and themes, from
   entry points or the user plugin folder (#14, #22, #33, #36); `ewald-plugin.toml` manifests with
-  a `requires-ewald` check, enable/disable and `plugins.installed()` (#65).
+  a `requires-ewald` check, enable/disable and `plugins.installed()` (#65); plugin catalogs with
+  an Update button, compatibility check, a default index and GitHub tokens (#71).
 - `ewald.llm`: structure descriptors, a Claude tool layer, an agent and an MCP server (#8); Modifier
   Forge (`ewald forge`) writes and verifies plugins (#22); Ask about selection (#26); API key in
   the OS keychain, model and effort in Preferences › Claude (#52).
@@ -95,8 +97,10 @@ a PySide6 desktop GUI built around Python notebooks, and Claude tools.
 
 - Windows release build: wheels for Python 3.10 to 3.13, a standalone app (CPU and GPU) with an
   Inno Setup installer and portable zip (#15), now with the EWALD icon.
-- Release tooling: one version source (`ewald.__version__`), `ewald --version`, sdist plus Linux
-  and macOS wheels (`release.yml`), release notes from this file, and
+- macOS support: clang build, Finder file-open, `EWALD.app` in a `.dmg` for Apple Silicon and
+  Intel, CPU fallback on Apple GPUs (#73).
+- Release tooling: one version source (`ewald.__version__`), `ewald --version`, sdist and Linux
+  wheels (`release.yml`), release notes from this file, and
   `packaging/release_check.py` to build and smoke-test a release locally before tagging.
 - The manual (user guide, plugin author guide, developer guide, API reference) (#20), a feature
   inventory generated from the code and one TODO list (#28), `llms.txt` for LLM use.

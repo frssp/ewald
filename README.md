@@ -29,8 +29,10 @@ Without a C++ compiler (Windows: "Microsoft Visual C++ 14.0 or greater is requir
 still succeeds, minus PTM, Voronoi, matching CSP and interval CNA; install the
 [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and reinstall to
 add them ([details](docs/user/install.md#without-a-c-compiler)). Releases ship prebuilt
-wheels for Linux, macOS and Windows plus a Windows installer
+wheels for Linux, macOS and Windows plus a Windows installer and a macOS app
 ([install from a release](docs/user/install.md#from-a-release)); changes are listed in [CHANGELOG.md](CHANGELOG.md).
+On macOS (Apple Silicon or Intel) run `xcode-select --install` first; see
+[docs/user/install.md](docs/user/install.md#macos) and [docs/developer/macos-release.md](docs/developer/macos-release.md).
 
 Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
 

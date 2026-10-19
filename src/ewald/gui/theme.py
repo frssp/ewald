@@ -98,6 +98,7 @@ QToolBar#activity-bar QToolButton:checked {{ background: {accent_soft}; }}
 QFrame#pluginRow {{ background: {raised}; border: 1px solid {border}; border-radius: 6px; }}
 QFrame#pluginRow:hover {{ border-color: {accent}; }}
 QFrame#pluginRow QLabel {{ background: transparent; }}
+QFrame#pluginRow[incompatible="true"] QLabel {{ color: {muted}; }}
 QLabel#pluginSummary {{ color: {secondary}; }}
 QLabel#pluginKinds {{ color: {data}; font-size: 11px; }}
 QPushButton#pluginInstall {{ background: {accent}; color: {on_accent}; border: none; border-radius: 4px; padding: 2px 10px; }}
@@ -131,16 +132,26 @@ QToolButton#tabNew:hover {{ color: {accent}; }}
 """
 
 
-def stylesheet() -> str:
-    return QSS.format(**TOKENS)
+def stylesheet(font_size: int = 12) -> str:
+    return QSS.format(**TOKENS).replace("font-size: 12px", f"font-size: {font_size}px")
 
 
-def apply(app, name: str | None = None):
+def current_font_size(app) -> int:
+    """The UI font size of the style sheet in use (12 before any)."""
+    import re
+
+    m = re.search(r"font-size: (\d+)px", app.styleSheet() or "")
+    return int(m.group(1)) if m else 12
+
+
+def apply(app, name: str | None = None, font_size: int | None = None):
     from PySide6 import QtGui
 
     if name is not None:
         use(name)
-    app.setStyle("Fusion")
+    if not app.property("ewald_fusion"):  # style().name() is empty once a style sheet wraps it
+        app.setStyle("Fusion")
+        app.setProperty("ewald_fusion", True)
     pal = app.palette()
     for role, key in ((QtGui.QPalette.Window, "panel"), (QtGui.QPalette.Base, "bg"),
                       (QtGui.QPalette.Text, "text"), (QtGui.QPalette.WindowText, "text"),
@@ -148,5 +159,8 @@ def apply(app, name: str | None = None):
                       (QtGui.QPalette.Highlight, "accent"), (QtGui.QPalette.ToolTipBase, "raised"),
                       (QtGui.QPalette.ToolTipText, "text"), (QtGui.QPalette.PlaceholderText, "muted")):
         pal.setColor(role, QtGui.QColor(TOKENS[key]))
-    app.setPalette(pal)
-    app.setStyleSheet(stylesheet())
+    if pal != app.palette():
+        app.setPalette(pal)
+    css = stylesheet(font_size or current_font_size(app))
+    if app.styleSheet() != css:  # re-polishing every widget of every window is slow; skip when unchanged
+        app.setStyleSheet(css)
