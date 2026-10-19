@@ -34,6 +34,10 @@ GUI
 - Flat (ASE) style in the ray tracer and the vector renderer (now OpenGL only), and a
   per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.
+- Boundary (VESTA): repeat isosurfaces and grid slices over the boundary range too (now only
+  atoms, bonds and coordination polyhedra are repeated), VESTA's recursive "search molecules"
+  mode, and keep the images while the coarse viewport level of detail is shown (they disappear
+  during rotation of systems above the interactive atom limit).
 - Bonds above the automatic-bonds limit (100 000 atoms): a fast path (bond impostors or lines)
   so large systems can show bonds by default too.
 
@@ -145,6 +149,18 @@ Visualization plugins (later phases of the Scene IR plan)
   elements (a Visual Forge, like Modifier Forge).
 
 Plugins and Claude
+
+- Plugin manifests, phase 2 (from the VS Code comparison): contributions declared in
+  `ewald-plugin.toml` (`[[readers]]`, `[[modifiers]]`, ... with `python = "module:object"`)
+  registered lazily and imported on first use; `settings` and `commands` contribution points
+  (plugin `Option`s on a generated Preferences page; commands in the palette, as notebook
+  functions and as Claude tools).
+- Plugin manifests, phase 3: a curated plugin index (JSON in a GitHub repository), install and
+  update with `pip` into the running interpreter, notebooks recording the plugins they use and
+  offering to install missing ones.
+- Plugin manifests, phase 4: notebook/session trust (Restricted mode for files from others),
+  index curation rules, signatures if the index opens to outside publishers.
+- Per-notebook plugin enable/disable; `plugins.json` holds only the global switch.
 
 - LLM plugin ideas: Paper-to-modifier (Forge from a paper's definition, checked against its
   numbers), Run doctor (diagnose a VASP/LAMMPS run from its outputs), phase identification,

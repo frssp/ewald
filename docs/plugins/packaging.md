@@ -64,6 +64,64 @@ Modifiers use the group `ewald.modifiers`; the entry-point name becomes the modi
 LocalComposition = "ewald_sro.modifiers:LocalComposition"
 ```
 
+## Manifest
+
+A plugin can describe itself in a manifest, which ewald reads without importing the plugin's
+code (as VS Code reads an extension's `package.json`). `ewald plugins`, `plugins.installed()`
+and the GUI's plugin list show what it says, and ewald checks `requires-ewald` before it
+imports anything: a plugin that needs another ewald version is listed as incompatible and left
+alone instead of failing halfway through an import.
+
+In a package, put `ewald-plugin.toml` inside the package and name the package in the
+`ewald.plugins` entry point group. The entry-point name is the plugin id:
+
+```toml
+# src/ewald_cp2k/ewald-plugin.toml (add it to package-data)
+id = "cp2k"
+display-name = "CP2K formats"
+version = "0.1.0"            # default: the distribution version
+publisher = "your-github-name"
+description = "CP2K trajectory readers"
+requires-ewald = ">=0.1, <1"
+```
+
+```toml
+# pyproject.toml
+[project.entry-points."ewald.plugins"]
+cp2k = "ewald_cp2k"
+```
+
+ewald locates the package with `importlib.util.find_spec`, which does not run it, so name a
+top-level package there. A package without this entry point still works; its id is the
+distribution name (`ewald-cp2k`) and its version and description come from the package metadata.
+
+In a single plugin file, assign a dict of plain literals to `__ewald__` anywhere at the top
+level; ewald reads it with `ast`. The end of the file is a good place, after a docstring or
+`from __future__` imports:
+
+```python
+__ewald__ = {"id": "lab-tools", "display-name": "Lab tools", "version": "1.2.0",
+             "requires-ewald": ">=0.1"}
+```
+
+A plugin folder with an `__init__.py` can use either form. Without a manifest the id is the
+file or folder name. Modifier Forge writes `__ewald__` with `"source": "forge"` into the
+plugins it saves, so they are listed as Forge plugins. `requires-ewald` takes comma-separated
+`>=`, `>`, `<=`, `<`, `==`, `!=` and `~=` clauses on release numbers.
+
+## Switching a plugin off
+
+`ewald plugins --disable ID` (or `ewald.plugins.set_enabled(ID, False)`) keeps the plugin
+installed but stops ewald from importing it; `--enable ID` switches it back on. The choice is
+stored in `<config dir>/plugins.json` and applies to every later session. In a running
+process, readers, modifiers and other contributions of a disabled plugin leave the registries
+at once; a package that was already imported stays in memory until restart.
+
+`plugins.installed()` returns every plugin with its id, version, kind (`package`, `folder`,
+`forge`), state (`loaded`, `disabled`, `incompatible`, `failed`), errors and contributions (the
+readers, modifiers, writers, visuals, overlays, color maps and themes it registered).
+`ewald plugins --json` prints the same under `"plugins"`.
+
 ## Dependencies
 
 Depend on `ewald` and what the plugin imports at module level, nothing more. Import optional

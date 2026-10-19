@@ -152,6 +152,12 @@ def rendering_section() -> list[str]:
     params = [p for p in inspect.signature(render).parameters.values() if p.kind is p.KEYWORD_ONLY]
     out += ["", "### `render()` options", "",
             ", ".join(f"`{p.name}`" for p in params) + ".", ""]
+    from .render import build_scene
+
+    taken = {p.name for p in params}
+    scene = [p for p in inspect.signature(build_scene).parameters.values()
+             if p.kind is p.KEYWORD_ONLY and p.name not in taken and p.name not in ("only_visible", "frame")]
+    out += ["Scene keywords `render()` also takes: " + ", ".join(f"`{p.name}`" for p in scene) + ".", ""]
     return out
 
 

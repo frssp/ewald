@@ -86,6 +86,9 @@ from the modifier's constructor, so every argument you can pass in Python can be
 
 **Visual elements.** The top of the list holds what is drawn: Particles, Bonds and Simulation
 cell, plus any [visual element plugins](../plugins/visuals.md) added with the "+ Visual" button.
+Simulation cell has VESTA's boundary range: tick Boundary and set the fractional range (e.g.
+-0.1 to 1.1) to draw the periodic images of atoms on the faces, edges and corners, with bonds and
+polyhedra completed across the cell; [display only](rendering.md#boundary-vesta).
 A plugin element has a checkbox to hide it, a parameter form generated from its constructor
 (Apply or Ctrl+Enter redraws), and Del removes it. Plugin elements are saved with the session
 and drawn in rendered images too.
