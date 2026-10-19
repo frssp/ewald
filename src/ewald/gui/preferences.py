@@ -28,7 +28,8 @@ LAYOUT = {
     "General": ("Startup behaviour and file handling.", [
         ("Startup", ["general.startup_workspace", "general.restore_layout"]),
         ("Appearance", ["general.font_size"]),
-        ("LAMMPS files", ["general.lammps_type_prompt", "general.lammps_type_map"])]),
+        ("LAMMPS files", ["general.lammps_type_prompt", "general.lammps_type_map"]),
+        ("Help", ["general.docs_url"])]),
     "Viewports": ("Defaults for the interactive 3D view.", [
         ("View", ["viewport.background", "viewport.projection", "viewport.initial_view", "viewport.style_preset"]),
         ("Navigation", ["viewport.rotation_step"]),

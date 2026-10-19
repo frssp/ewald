@@ -10,13 +10,14 @@ import traceback
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .. import manual
 from .. import modifiers as mods
 from ..io import import_file
 from ..render import camera_state, render
 from .console import make_console
 from .inspector import DataInspector
 from .palette import CommandPalette, menu_entries
-from .pipeline_panel import MODIFIER_MENU, PipelinePanel
+from .pipeline_panel import MODIFIER_MENU, PipelinePanel, fill_modifier_menu
 from .plots import PlotsPanel
 from . import preferences as prefs
 from .render_page import RenderPage
@@ -168,10 +169,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for bg in ("Dark background", "White background"):
             v.addAction(bg, lambda bg=bg: self._set_background(TOKENS["bg"] if bg.startswith("Dark") else "white"))
         m = mb.addMenu("&Pipeline")
-        for group, items in MODIFIER_MENU.items():
-            sub = m.addMenu(group)
-            for label, factory in items.items():
-                sub.addAction(label, lambda fct=factory: self.panel.add_modifier(fct()))
+        m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier))
+        fill_modifier_menu(m, self.panel.add_modifier)
         t = mb.addMenu("&Tools")
         for key, _icon, tip in Viewport.TOOLS:
             t.addAction(tip.split(":")[0], lambda k=key: self.viewport.set_tool(k))
@@ -182,6 +181,35 @@ class MainWindow(QtWidgets.QMainWindow):
         w.addAction("Data inspector", lambda: self.bottom.setCurrentWidget(self.inspector))
         w.addAction("Plots", lambda: self.bottom.setCurrentWidget(self.plots))
         w.addAction("Command palette", self.command_palette)
+        h = mb.addMenu("&Help")
+        for label, page in manual.PAGES.items():
+            h.addAction(label, lambda page=page: self.open_help(page))
+        h.addSeparator()
+        h.addAction("Open plugin folder", self.open_plugin_folder)
+        about = h.addAction("About ewald", self.about)
+        about.setMenuRole(QtGui.QAction.AboutRole)
+
+    def help_url(self, page="index.md"):
+        return manual.url(page, self.settings["general.docs_url"] or None)
+
+    def open_help(self, page="index.md"):
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl(self.help_url(page)))
+
+    def open_plugin_folder(self):
+        from ..settings import config_dir
+
+        folder = config_dir() / "plugins"
+        folder.mkdir(parents=True, exist_ok=True)
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(folder)))
+        self.message(f"Plugin folder: {folder}")
+
+    def about(self):
+        from .. import __version__
+
+        QtWidgets.QMessageBox.about(
+            self, "About ewald",
+            f"<b>ewald {__version__}</b><p>Atomistic structure and trajectory visualization and analysis "
+            f"with an OVITO-style Python pipeline.</p><p><a href='{self.help_url()}'>Manual</a></p>")
 
     def set_workspace(self, index):
         self.workspaces.setCurrentIndex(index)
