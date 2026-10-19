@@ -149,9 +149,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   non-collinear, `LCHARGH5`); the fixtures follow py4vasp's schema and are checked against
   py4vasp, and the charge density is assumed to be stored as rho * V like a CHGCAR. The H5MD
   reader on GROMACS 2026 `mdrun` output.
-- The SSH X11 forwarding probe and Mesa fallback on a real `ssh -X` session (RHEL 9 crashed with
-  `XIO: fatal IO error`); the cloud container's Xvfb renders even without GLX, so only the
-  detection and fallback order are tested.
+- The Legacy GL viewport on a real `ssh -X` session (RHEL 9 crashed with `XIO: fatal IO error`
+  under VTK): whether Qt's GLX integration gets an indirect context there, and how fast display
+  lists are over the network. The container's X servers crash on indirect GLX, so it is tested on
+  direct Mesa only. If Qt's context fails where plain GLX works, draw into a raw GLX child window
+  instead of `QOpenGLWindow`. Same for the VTK probe and Mesa fallback.
 - GUI startup checks on a Wayland desktop and on Fedora (the xcb library check is skipped when
   `WAYLAND_DISPLAY` is set; the Fedora package names in its message are untested).
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;

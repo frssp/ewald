@@ -72,7 +72,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.session_path = None
 
         # --- central: workspaces (Analyze = viewport + timeline, Render = render page)
-        self.viewport = Viewport(self.style)
+        self.viewport = make_viewport(self.style, self.settings["viewport.backend"])
         self.viewport.picked.connect(self._on_pick)
         self.viewport.bondEdit.connect(self.toggle_bond)
         self.viewport.styleChanged.connect(self._style_changed)
@@ -910,15 +910,28 @@ def _has_phonon_modes(pipe) -> bool:
         return False
 
 
+def make_viewport(style, choice: str | None = None) -> Viewport:
+    """The VTK viewport, or the OpenGL 1.x one for SSH X11 forwarding (see ``viewport_backend``)."""
+    from . import viewport_backend
+
+    if viewport_backend(choice) == "legacy-gl":
+        from .legacy_viewport import LegacyViewport
+
+        return LegacyViewport(style)
+    return Viewport(style)
+
+
 def _app():
     from . import theme
 
     app = QtWidgets.QApplication.instance()
     if app is None:
-        from . import check_qt_platform, check_remote_display
+        from . import check_qt_platform, check_remote_display, viewport_backend
+        from .. import settings as settings_mod
 
         check_qt_platform()
-        check_remote_display()
+        if viewport_backend(settings_mod.load()["viewport.backend"]) == "vtk":
+            check_remote_display()
         app = QtWidgets.QApplication(sys.argv)
         app.setApplicationName("ewald")
         theme.apply(app)

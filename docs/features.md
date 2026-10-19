@@ -379,6 +379,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `viewport.rotation_step` | Step rotation | `15.0` |
 | `viewport.show_axes` | Show axes tripod | `True` |
 | `viewport.show_overlay` | Show frame / timestep text | `True` |
+| `viewport.backend` | 3D view | `'auto'` |
 | `viewport.sphere_drawing` | Sphere drawing | `'impostor'` |
 | `viewport.sphere_resolution` | Sphere resolution | `16` |
 | `viewport.mesh_limit` | Impostor threshold | `150000` |

@@ -83,14 +83,22 @@ listed under [Linux: GUI system libraries](#linux-gui-system-libraries).
 
 **`libEGL.so.1: cannot open shared object file`.** `sudo apt install libegl1 libgl1`.
 
-**Crash over `ssh -X` (`The X11 connection broke`, `XIO: fatal IO error`, `malloc_consolidate()`,
-core dump).** With `DISPLAY=localhost:10.0` and up the window goes through SSH X11 forwarding, whose
-OpenGL (indirect GLX) is version 1.x; VTK needs 3.2 and takes the X connection down with it. When
-`ewald gui` sees a forwarded display, it first opens a small test window in a child process; if
-that fails it retries with Mesa's software OpenGL (`LIBGL_ALWAYS_SOFTWARE=1`, then also
-`QT_XCB_GL_INTEGRATION=none`), keeps the first setting that draws and says so, and otherwise
-stops with a message instead of crashing. Software rendering over the network is slow for large
-systems. Better options, in order:
+**`ssh -X` (X11 forwarding).** With `DISPLAY=localhost:10.0` and up the window goes through SSH X11
+forwarding, whose OpenGL (indirect GLX) is version 1.x. VTK needs 3.2 and used to take the X
+connection down with it (`The X11 connection broke`, `XIO: fatal IO error`, `malloc_consolidate()`,
+core dump). On a forwarded display `ewald gui` therefore uses the **Legacy GL** viewport, which
+draws like VESTA: OpenGL 1.x display lists, so the structure crosses the network once, your own
+computer's GPU draws it, and rotating only sends a new camera matrix. Picking, measuring, the view
+buttons, styles and sessions work as usual; impostor spheres, smooth edges, the color bar and 3D
+text don't (spheres are meshes, and above 400,000 atoms points), and Render still uses the full
+renderers offscreen. Preferences › Viewports › 3D view (`auto`, `vtk`, `legacy-gl`) or
+`EWALD_VIEWPORT=vtk|legacy-gl` choose it by hand; the setting takes effect at the next start.
+
+If you choose `vtk` on a forwarded display, `ewald gui` first opens a small test window in a child
+process; if that fails it retries with Mesa's software OpenGL (`LIBGL_ALWAYS_SOFTWARE=1`, then also
+`QT_XCB_GL_INTEGRATION=none`), keeps the first setting that draws and says so, and otherwise stops
+with a message instead of crashing. If neither viewport works, or for large systems, the options
+in order are:
 
 1. Run ewald on your own computer and open the cluster's files over SSH:
    `ewald gui user@cluster:/scratch/run/XDATCAR`, or File › Load remote file (SSH). Only the
@@ -99,7 +107,7 @@ systems. Better options, in order:
    X2Go, NoMachine, or an Open OnDemand desktop.
 3. Mesa software OpenGL on the cluster, if the automatic fallback finds none
    (RHEL/Rocky 9: `sudo dnf install mesa-dri-drivers mesa-libGL`; Debian/Ubuntu: `libgl1-mesa-dri`),
-   then `LIBGL_ALWAYS_SOFTWARE=1 ewald gui`.
+   then `EWALD_VIEWPORT=vtk LIBGL_ALWAYS_SOFTWARE=1 ewald gui`.
 4. No window at all: `ewald render FILE out.png` or the Python API (headless rendering below).
 
 `EWALD_SKIP_GL_PROBE=1` skips the test window (for example when it misjudges a working setup).

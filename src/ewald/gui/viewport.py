@@ -50,8 +50,6 @@ class Viewport(QtWidgets.QWidget):
 
     def __init__(self, style: ViewStyle, parent=None):
         super().__init__(parent)
-        from pyvistaqt import QtInteractor
-
         self.style = style
         self.data = None
         self.ortho = True
@@ -87,12 +85,17 @@ class Viewport(QtWidgets.QWidget):
         grid.setSpacing(0)
         grid.addWidget(self._build_viewbar(), 0, 0, 1, 2)
         grid.addWidget(self._build_rail(), 1, 0)
-        # always interactive, even when PYVISTA_OFF_SCREEN is set for headless rendering
-        self.plotter = QtInteractor(self, off_screen=False)
-        grid.addWidget(self.plotter.interactor, 1, 1)
+        grid.addWidget(self._create_view(), 1, 1)
         grid.setColumnStretch(1, 1)
         grid.setRowStretch(1, 1)
-        self.plotter.set_background(style.background)
+
+    def _create_view(self) -> QtWidgets.QWidget:
+        """The 3D widget: a VTK QtInteractor (``self.plotter``) wired to the pick and LOD handlers."""
+        from pyvistaqt import QtInteractor
+
+        # always interactive, even when PYVISTA_OFF_SCREEN is set for headless rendering
+        self.plotter = QtInteractor(self, off_screen=False)
+        self.plotter.set_background(self.style.background)
         self.plotter.enable_parallel_projection()
         self.anti_aliasing = False
         self.set_anti_aliasing(True)
@@ -105,6 +108,7 @@ class Viewport(QtWidgets.QWidget):
         iren.add_observer("MouseMoveEvent", self._on_move)
         for wheel in ("MouseWheelForwardEvent", "MouseWheelBackwardEvent"):
             iren.add_observer(wheel, self._on_wheel)
+        return self.plotter.interactor
 
     # ------------------------------------------------------------------ chrome
     def _build_viewbar(self):

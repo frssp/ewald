@@ -161,6 +161,12 @@ cache holds; the current frame is always kept. Scripts set the same cap with
 `python benchmarks/large_files.py` times opening, frame switching and memory on generated
 multi-million-atom files.
 
+*3D view* picks the viewport itself. Auto uses VTK, except on an SSH-forwarded display
+(`ssh -X`), where it uses Legacy GL: OpenGL 1.x display lists drawn like VESTA, with the frame text
+above the view instead of on it, mesh spheres (points above 400,000 atoms) and no smooth edges or
+color bar. See [Troubleshooting the GUI](install.md#troubleshooting-the-gui). It takes effect at
+the next start; `EWALD_VIEWPORT=vtk|legacy-gl` overrides it.
+
 The Compute switch in the toolbar changes the device for the current session only; the
 preference sets the device the GUI starts with.
 
