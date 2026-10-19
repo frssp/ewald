@@ -98,6 +98,20 @@ def test_command_palette_fuzzy():
     assert fuzzy_score("xyz", "Slice") is None
 
 
+def test_app_icon_ships_and_loads(app):
+    from pathlib import Path
+
+    from ewald.gui.icons import APP_ICON_DIR, APP_ICON_SIZES, app_icon
+
+    sizes = {s.width() for s in app_icon().availableSizes()}
+    assert set(APP_ICON_SIZES) <= sizes
+    tomllib = pytest.importorskip("tomllib")
+    root = Path(__file__).resolve().parent.parent
+    data = tomllib.loads((root / "pyproject.toml").read_text())["tool"]["setuptools"]["package-data"]["ewald"]
+    shipped = {p for pattern in data for p in (root / "src" / "ewald").glob(pattern)}
+    assert {*APP_ICON_DIR.glob("ewald*.*")} <= shipped
+
+
 def test_vesta_elements_ini(tmp_path):
     from ewald.gui.pipeline_panel import read_vesta_elements
 
