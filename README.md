@@ -168,6 +168,7 @@ Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
 | H5MD | native, lazy (`h5py`) | LAMMPS `dump h5md`, MDAnalysis; species names, box, velocities, forces, observables |
 | GROMACS XTC/TRR, DCD, NetCDF | MDAnalysis, lazy | atom types from `topology=` or a same-stem `.gro`/`.pdb`/`.tpr` |
 | ASE database, ASE `.traj` | ASE, lazy | `selection=` query for databases; key-value pairs as attributes |
+| NEB runs | native | VASP folder `00 .. NN` or LAMMPS `neb` (replica dumps + log), one frame per image with `NebEnergyProfile` |
 | CIF, ... | ASE | anything `ase.io.read` understands |
 
 `pip install "ewald[formats]"` adds h5py and MDAnalysis for H5MD, vaspout.h5, MDTraj HDF5
@@ -390,8 +391,9 @@ result and show it at every frame:
 matched by id, Einstein diffusion coefficient), `VelocityAutocorrelation` (VACF from
 `vx vy vz` or differentiated positions, Green-Kubo D), `TimeAveraging` (OVITO's
 time averaging of a table, attribute or property, e.g. the time-averaged g(r)),
-`TimeSeries` (attributes vs. time) and `GenerateTrajectoryLines` (particle paths
-drawn as lines, plus 'Path Length', 'Net Displacement', 'Max Displacement').
+`TimeSeries` (attributes vs. time), `GenerateTrajectoryLines` (particle paths
+drawn as lines, plus 'Path Length', 'Net Displacement', 'Max Displacement') and
+`OverlayFrames` (other frames as see-through copies of the moving atoms).
 
 ```python
 from ewald.modifiers import CoordinationAnalysis, MeanSquaredDisplacement, TimeAveraging
@@ -403,6 +405,21 @@ pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
 data = pipe.compute(0, device="cuda")
 data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # A^2/ps
 data.tables["coordination-rdf[average]"]                               # time-averaged g(r)
+```
+
+### Nudged elastic band
+
+A VASP NEB folder (`00 .. NN`) or a LAMMPS `neb` run folder opens with one frame per image,
+and `NebEnergyProfile` (added automatically there, or appended to any band such as an ASE NEB
+trajectory with `images=`) gives the energy profile along the reaction coordinate, VTST's
+force-based cubic spline and the forward/reverse barriers. `OverlayFrames` (also added) draws
+every other image see-through behind the current one, so the moving atoms show their path. The GUI's Plots tab draws it with
+the current image marked; clicking an image jumps to it.
+
+```python
+pipe = import_file("neb")                              # or "lammps_run/", or "dump.neb.*" with format="neb"
+data = pipe.compute(0)
+data.attributes["NEB.Barrier"], data.tables["NEB spline"]
 ```
 
 ### Volumetric data (CHGCAR, LOCPOT, ELFCAR, cube)

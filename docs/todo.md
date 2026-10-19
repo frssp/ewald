@@ -62,6 +62,14 @@ Volumetric data
 
 Formats
 
+- NEB: VTST's `neb.dat`/`spline.dat` and the `NEB: projections` lines of VTST OUTCARs (the
+  profile is computed from positions, energies and forces now); NEB folders over SSH; an
+  `images=` option on the reader for ASE NEB trajectories, so the band history needs no
+  modifier parameter; dimer and string-method outputs.
+- NEB: interpolate between images for a smoother movie; `OverlayFrames` copies are extra
+  particles, so picking one in the viewport selects a copy, not the real atom.
+- Ray tracer: see-through spheres are tessellated glass (`OverlayFrames` copies, Transparency);
+  fine for small sets, slow for thousands.
 - GROMACS `.gro` with velocities.
 - LAMMPS binary dump.
 - LAMMPS logs written with `thermo_style multi` or `thermo_modify line yaml` (only one-line
@@ -101,8 +109,6 @@ Docs
 
 From the feature-ideas review (2026-10-19), after the four in progress above.
 
-- P1: NEB viewer: open `00/ ... 0N/` image folders as one trajectory, energy along the reaction
-  coordinate synced with the timeline, saddle point marked.
 - P1: Jupyter widget: `pipe.show()` with a rotatable viewport and frame slider in a notebook
   (PyVista trame backend).
 - P1: Linked selection, rest: picking atoms plots their property time series over all frames;
@@ -130,6 +136,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - The native OUTCAR and vasprun.xml readers on real VASP 5/6 output (relaxations with ISIF=3,
   non-collinear and MD runs, multi-GB files); the test fixtures are hand-written in VASP 6.4
   format and checked against ASE.
+- NEB folders from real VTST runs (the VASP fixture is an EMT band written in VASP layout;
+  the LAMMPS fixture is a real `neb` run).
 - The vaspout.h5/vaspwave.h5 readers on real VASP 6.4/6.5 output (MD, relaxation, ISPIN=2,
   non-collinear, `LCHARGH5`); the fixtures follow py4vasp's schema and are checked against
   py4vasp, and the charge density is assumed to be stored as rho * V like a CHGCAR. The H5MD

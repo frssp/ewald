@@ -10,6 +10,7 @@ from .voronoi import VoronoiAnalysis
 from .wigner_seitz import WignerSeitzAnalysis
 from .local_order import AcklandJones, AtomicStrain, CentroSymmetry, ChillPlus
 from .ovito_bridge import DislocationAnalysis, OvitoModifier
+from .neb import NebEnergyProfile
 from .phonon import PhononMode
 from .plumed import FreeEnergySurface, LoadColvar, Plumed
 from .selection import (ClearSelection, DeleteSelected, ExpressionSelection, InvertSelection,
@@ -19,7 +20,7 @@ from .statistics import Histogram, ReduceProperty, SpatialBinning
 from .steinhardt import SteinhardtOrderParameters
 from .symmetry import SymmetryAnalysis
 from .topology import BondAngleDistribution, BondLengthDistribution, FindRings
-from .trajectory import (GenerateTrajectoryLines, MeanSquaredDisplacement, TimeAveraging, TimeSeries,
+from .trajectory import (GenerateTrajectoryLines, MeanSquaredDisplacement, OverlayFrames, TimeAveraging, TimeSeries,
                          VelocityAutocorrelation)
 from .transform import AffineTransformation, ComputeProperty, Replicate, WrapAtoms
 from .vectors import VectorVis
@@ -35,8 +36,8 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "GenerateTrajectoryLines", "CreateBonds", "EditBonds", "CoordinationPolyhedra",
            "CreateIsosurface", "GridSlice", "GridDifference", "Histogram", "SpatialBinning", "ReduceProperty",
            "SteinhardtOrderParameters", "BondAngleDistribution", "BondLengthDistribution", "FindRings", "VectorVis",
-           "Plumed", "LoadColvar", "FreeEnergySurface", "PhononMode", "SymmetryAnalysis",
-           "PowderDiffraction", "StructureFactor"]
+           "Plumed", "LoadColvar", "FreeEnergySurface", "NebEnergyProfile", "OverlayFrames", "PhononMode",
+           "SymmetryAnalysis", "PowderDiffraction", "StructureFactor"]
 
 # OVITO spellings (``CommonNeighborAnalysisModifier``, ``WrapPeriodicImagesModifier``, ...) resolve to the
 # ewald class, so OVITO scripts - and code written by LLMs that learned OVITO - run unchanged.

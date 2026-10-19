@@ -77,7 +77,8 @@ def link_for(data, table: str | None = None, column: str | None = None,
     if x in ("Angle", "Cosine") and table.startswith("bond-angle-distr"):
         return Link("angles", table, col, _partial(col, "Count ", 3))
     n = len(np.asarray(t[x]))
-    if x in _FRAME_COLUMNS + _STEP_COLUMNS or table == "colvar" or (num_frames and n == num_frames > 1):
+    if x in _FRAME_COLUMNS + _STEP_COLUMNS or table == "colvar" or (num_frames and n == num_frames > 1) \
+            or any(c in t for c in _FRAME_COLUMNS):  # e.g. the NEB profile: one row per image frame
         return Link("frames", table, col)
     return None
 
@@ -235,15 +236,16 @@ def _angles(data, link):
 # ------------------------------------------------------------------ frames
 def frame_rows(pipeline, data, table: str) -> np.ndarray:
     """For every frame of ``pipeline``, the row of ``data.tables[table]`` that belongs to it
-    (-1 when none): by the 'Frame' column, by timestep for 'Step'/'Timestep' tables, through the
+    (-1 when none): by a 'Frame' column, by timestep for 'Step'/'Timestep' tables, through the
     pipeline's :class:`~ewald.modifiers.LoadColvar` for 'colvar', else row k for frame k."""
     nf = pipeline.num_frames if pipeline is not None else 1
     t = data.tables[table]
     x0 = next(iter(t))
     nrows = len(np.asarray(t[x0]))
     rows = np.full(nf, -1, dtype=np.int64)
-    if x0 in _FRAME_COLUMNS:
-        f = np.asarray(t[x0]).astype(np.int64)
+    fc = x0 if x0 in _FRAME_COLUMNS else next((c for c in _FRAME_COLUMNS if c in t), None)
+    if fc is not None:
+        f = np.asarray(t[fc]).astype(np.int64)
         ok = (f >= 0) & (f < nf)
         rows[f[ok][::-1]] = np.nonzero(ok)[0][::-1]  # first row of each frame wins
         return rows

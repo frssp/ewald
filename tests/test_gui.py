@@ -336,6 +336,64 @@ def test_main_window_links_plots_and_viewport(app, cu_fcc, lammps_dir):
     w.close()
 
 
+def test_plots_neb_profile_marks_image_and_jumps(app, vasp_dir):
+    from matplotlib.backend_bases import MouseEvent
+
+    from ewald import import_file
+    from ewald.gui.plots import PlotsPanel
+
+    pipe = import_file(vasp_dir / "neb")
+    panel = PlotsPanel()
+    panel.resize(600, 400)
+    panel.pipeline = pipe
+    panel.set_data(pipe.compute(1))
+    assert panel.table.currentText() == "NEB" and panel.column.currentText() == "Energy"
+    ax = panel.figure.axes[0]
+    assert ax.get_xlabel().startswith("Reaction coordinate") and "Ea →" in ax.texts[0].get_text()
+    spline, points = ax.lines[:2]
+    assert len(spline.get_xdata()) == 200 and len(points.get_xdata()) == 4  # image 04 has no energy
+    d = pipe.compute(2)
+    panel.set_data(d)
+    assert panel.figure.axes[0] is ax  # frame change moves the marker only
+    assert list(panel._marker.get_xdata()) == [d.attributes["NEB.Reaction Coordinate"]]
+    assert panel.link.kind == "frames"  # linked by the table's Frame column
+    jumps = []
+    panel.frameRequested.connect(jumps.append)
+    panel.canvas.draw()
+    ax = panel._ax
+    x3 = d.tables["NEB"]["Reaction Coordinate"][3]
+    px, py = ax.transData.transform((x3, 0.4))
+    for kind in ("button_press_event", "button_release_event"):
+        panel.canvas.callbacks.process(kind, MouseEvent(kind, panel.canvas, px, py, button=1))
+    assert jumps == [3]
+    panel.set_data(pipe.compute(4))
+    assert not panel._marker.get_visible()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_viewport_context_menu_toggles_frame_overlay(app, vasp_dir):
+    from ewald import import_file
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(import_file(vasp_dir / "neb"))  # NEB sources start with OverlayFrames on
+    w.timeline._set(2)
+    n_real = w.pipeline.source.compute(2).count
+    assert w.data.count > n_real
+    menu = w.viewport_menu()
+    overlay, transparency, moving = menu.actions()[:3]
+    assert overlay.isChecked() and transparency.menu().isEnabled() and moving.isChecked()
+    overlay.setChecked(False)  # toggled -> off
+    assert w.data.count == n_real and not w._overlay().enabled
+    w.set_overlay(True, transparency=0.5)
+    ghosts = w.data["Overlay Frame"] >= 0
+    assert np.allclose(w.data["Transparency"][ghosts], 0.5)
+    menu = w.viewport_menu()
+    assert [a.text() for a in menu.actions()[1].menu().actions() if a.isChecked()] == ["50 %"]
+    menu.actions()[2].setChecked(False)  # every atom, moving or not
+    assert w.data.count == 5 * n_real
+    w.close()
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_main_window_smoke(app, pipe, tmp_path):
     from ewald.gui.app import MainWindow

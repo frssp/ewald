@@ -23,6 +23,10 @@ between orbit, pick (click an atom to see its id, type, position and every prope
 Shift+click adds atoms to the pick or removes them),
 distance (click two atoms) and angle (click three atoms, vertex in the middle). Above 150 000
 atoms the viewport draws GPU impostors instead of sphere meshes; the threshold is a preference.
+A right click (without dragging, which zooms) opens the viewport menu: Overlay other frames
+draws every other frame as see-through copies behind the current one (`OverlayFrames`; on by
+default for NEB folders), with its transparency (50 to 95 %) and whether only the atoms that
+move get copies; then View along, Zoom to fit and Ask Claude about selection.
 
 **Ask Claude.** The Ask Claude tab next to the pipeline (Tools › Ask Claude about selection,
 Ctrl+J) answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
@@ -62,7 +66,10 @@ pipeline panel and redraw the view.
 **Plots.** Any table in the current frame (g(r), MSD, histograms, time series) can be plotted
 and saved. The `Thermo` table (log.lammps, OSZICAR, OUTCAR, vasprun.xml; see
 [File formats](formats.md#simulation-results)) is drawn one column at a time, picked under
-"y", with a dashed line at the current frame's step that follows the timeline. Diffraction
+"y", with a dashed line at the current frame's step that follows the timeline. The `NEB`
+table (a NEB folder, or `NebEnergyProfile`) is drawn as the energy profile: the spline, the
+images as points, the current image highlighted and the barriers in the corner. Clicking an
+image jumps to its frame. Diffraction
 reflections (`diffraction-peaks`) are drawn as sticks, and a measured pattern loaded through a
 modifier's `experimental` file (the "…" button picks it) as points under the calculated curve.
 
@@ -105,7 +112,9 @@ made in the GUI can be reproduced in a batch script. See [Rendering figures](ren
 
 File › Load file opens any format ewald can read ([File formats](formats.md)), including
 formats added by [reader plugins](../plugins/readers.md). LAMMPS dumps ask for a
-type-to-element map unless you set a default in Preferences. File › Export data writes the
+type-to-element map unless you set a default in Preferences. File › Load NEB folder opens a
+VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image
+([NEB runs](formats.md#neb-runs)). File › Export data writes the
 current frame or the whole trajectory through `export_file`, and File › Export movie writes an
 MP4 or GIF (needs the `movie` extra).
 

@@ -155,6 +155,24 @@ def spheres_cloud(spheres):
     return cloud
 
 
+def _split_by_alpha(cloud):
+    """``[(cloud, name suffix)]``: when some spheres are see-through and some are not, the
+    opaque ones (RGB) and, as ``":glass"``, the see-through ones (RGBA); else the cloud as is."""
+    import pyvista as pv
+
+    rgb = cloud["rgb"]
+    if rgb.shape[1] == 3 or (rgb[:, 3] < 255).all():
+        return [(cloud, "")]
+    out = []
+    for mask, suffix, cols in ((rgb[:, 3] == 255, "", 3), (rgb[:, 3] < 255, ":glass", 4)):
+        if mask.any():
+            part = pv.PolyData(np.ascontiguousarray(cloud.points[mask]))
+            part["rgb"] = np.ascontiguousarray(rgb[mask, :cols])
+            part["radius"] = cloud["radius"][mask]
+            out.append((part, suffix))
+    return out
+
+
 def needs_depth_peeling(scene) -> bool:
     """Whether an OpenGL scene has see-through layers (meshes, spheres or arrows)."""
     for layer in scene.layers:
@@ -240,8 +258,10 @@ def draw_scene(plotter, scene, *, atom_style: str = "auto", mesh_limit: int = 15
         prim, name = layer.primitive, layer.name
         if layer.kind == "spheres":
             if prim.count:
-                add_atoms(plotter, spheres_cloud(prim), atom_style=atom_style, mesh_limit=mesh_limit,
-                          sphere_resolution=sphere_resolution, name=name)
+                # see-through spheres get their own actor: RGBA on the opaque ones too spoils their shading
+                for part, suffix in _split_by_alpha(spheres_cloud(prim)):
+                    add_atoms(plotter, part, atom_style=atom_style, mesh_limit=mesh_limit,
+                              sphere_resolution=sphere_resolution, name=name + suffix)
         elif layer.kind == "cylinders":
             _add_cylinders(plotter, prim, name)
         elif layer.kind == "mesh":

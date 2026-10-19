@@ -93,7 +93,8 @@ def io_section() -> list[str]:
            "Tried in this order when no `format=` is given; reader plugins slot in at priority 50. "
            "Details: [File formats](user/formats.md).", ""]
     out += _table(("Format", "File names", "Reads", "`format=` aliases"),
-                  [(f"`{r.name}`", " ".join(f"`{p}`" for p in r.patterns) or "(by `format=` only)",
+                  [(f"`{r.name}`", " ".join(f"`{p}`" for p in r.patterns)
+                    or ("(by content)" if r.sniff is not None else "(by `format=` only)"),
                     r.description.replace("|", "\\|"), ", ".join(f"`{a}`" for a in r.aliases))
                    for r in readers])
     writers = [w for w in plugins.writers().values() if w.origin == "built-in"]
@@ -238,6 +239,8 @@ def gui_section(window) -> list[str]:
     for act in window.menuBar().actions():
         if act.menu():
             out += [f"**{clean(act.text())}**", ""] + walk(act.menu(), 0) + [""]
+    if hasattr(window, "viewport_menu"):
+        out += ["**Viewport (right click)**", ""] + walk(window.viewport_menu(), 0) + [""]
     tb = window.findChild(QtWidgets.QToolBar, "main-toolbar")
     items = [clean(a.text()) for a in tb.actions() if a.text()]
     items += [clean(w.text()) for w in tb.findChildren(QtWidgets.QAbstractButton) if w.text().strip()]

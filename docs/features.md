@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-53 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+55 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -56,6 +56,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | `TimeAveraging` | Average upstream results over a frame range (OVITO's TimeAveragingModifier). |
 | `TimeSeries` | Global attributes as a function of time (OVITO's TimeSeriesModifier). |
 | `GenerateTrajectoryLines` | Particle paths over a frame range, drawn as lines, plus path metrics. |
+| `OverlayFrames` | Every frame of ``start:stop:step`` drawn at once: the current frame opaque, the others as see-through copies of the atoms (``transparency`` 0..1), e.g. all images of a NEB band over the image shown on the timeline. |
 
 ### Bonds and polyhedra
 
@@ -113,6 +114,12 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | `PowderDiffraction` | Powder X-ray or neutron diffraction pattern of the (periodic) cell. |
 | `StructureFactor` | Static structure factor S(q) (q = 4 pi sin(theta) / lambda in 1/Angstrom), for liquids, glasses and MD. |
 
+### neb
+
+| Modifier | What it does |
+|---|---|
+| `NebEnergyProfile` | Energy along a NEB band, with the barrier, from frames that are the band's images. |
+
 ### phonon
 
 | Modifier | What it does |
@@ -169,6 +176,7 @@ Tried in this order when no `format=` is given; reader plugins slot in at priori
 
 | Format | File names | Reads | `format=` aliases |
 |---|---|---|---|
+| `neb` | (by content) | NEB band, one frame per image: VASP NEB folder (00..NN) or LAMMPS neb run folder (detected), or format='neb' with one file per image (dump.neb.*) | `vasp-neb`, `lammps-neb` |
 | `cube` | `*.cube` `*.cub` | Gaussian cube volumetric data (atoms + grid) | `gaussian-cube` |
 | `vasp-volumetric` | `CHGCAR*` `CHG*` `PARCHG*` `AECCAR*` `LOCPOT*` `ELFCAR*` | VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR (atoms + grid) | `vasp-chgcar`, `chgcar`, `vasp-locpot`, `locpot`, `vasp-elfcar`, `elfcar` |
 | `h5md` | `*.h5md` `*.h5` | H5MD trajectory (LAMMPS dump h5md, MDAnalysis, ...), lazy; needs h5py |  |
@@ -407,6 +415,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 - Load file… (`Ctrl+O`)
 - Load remote file (SSH)… (`Ctrl+Alt+O`)
+- Load NEB folder…
 - Load session… (`Ctrl+Shift+O`)
 - Save session (`Ctrl+S`)
 - Save session as… (`Ctrl+Shift+S`)
@@ -467,6 +476,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Time averaging (g(r), attributes)
   - Time series of attributes
   - Trajectory lines / paths
+  - NEB energy profile / barrier
+  - Overlay frames (see-through images)
 - Bonds & polyhedra
   - Create bonds
   - Edit bonds (add / delete)
@@ -536,6 +547,25 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Python API reference
 - Open plugin folder
 - About ewald
+
+**Viewport (right click)**
+
+- Overlay other frames (see-through)
+- Overlay transparency
+  - 50 %
+  - 70 %
+  - 85 %
+  - 95 %
+- Overlay only atoms that move
+- View along
+  - a
+  - b
+  - c
+  - a*
+  - b*
+  - c*
+- Zoom to fit
+- Ask Claude about selection…
 
 ### Toolbar
 
