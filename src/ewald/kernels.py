@@ -356,6 +356,188 @@ def average_tables(tables):
     return {k: (np.asarray(first[k]) if k == key0 else sums[k] / counts[k]) for k in keys}
 
 
+# --------------------------------------------------------------------------- ion transport
+
+# e^2 / (A * ps * J): converts q^2 [e^2] * D [A^2/ps] / (V [A^3] * kB T [J]) to S/m
+_SIGMA_SI = 1.602176634e-19 ** 2 * 1e-20 / 1e-12 / 1e-30
+_KB = 1.380649e-23
+
+
+def conductivity_from_slope(diffusivity, volume: float, temperature: float) -> float:
+    """Ionic conductivity in S/cm from ``diffusivity`` = slope / 6 of a charge MSD
+    (e^2 A^2/ps), the cell ``volume`` (A^3) and ``temperature`` (K): sigma = D_q / (V kB T)."""
+    return float(diffusivity) * _SIGMA_SI / (volume * _KB * temperature) / 100.0
+
+
+def displacement_moments(unwrapped, max_origins: int | None = 200, backend=None):
+    """``<|dr|^2>`` and ``<|dr|^4>`` for every lag of an unwrapped trajectory ``(T, N, 3)``,
+    averaged over atoms and up to ``max_origins`` evenly spaced time origins (all if None).
+    Returns numpy arrays of length T (lag 0 is 0)."""
+    be = get_backend(backend)
+    xp = be.xp
+    x = xp.asarray(unwrapped, dtype=xp.float64)
+    T, n = x.shape[0], x.shape[1]
+    r2, r4, count = xp.zeros(T), xp.zeros(T), np.zeros(T)
+    if T == 0 or n == 0:
+        return np.zeros(T), np.zeros(T)
+    for o in _origins(T - 1, max_origins):
+        d2 = ((x[o:] - x[o][None]) ** 2).sum(-1)           # (T-o, N)
+        r2[:T - o] += d2.sum(1)
+        r4[:T - o] += (d2 * d2).sum(1)
+        count[:T - o] += n
+    count = np.maximum(count, 1)
+    return be.to_numpy(r2) / count, be.to_numpy(r4) / count
+
+
+def non_gaussian_parameter(r2, r4, dimensions: int = 3):
+    """alpha_2(t) = d <dr^4> / ((d + 2) <dr^2>^2) - 1 (0 for Gaussian displacements; NaN at t=0)."""
+    r2, r4 = np.asarray(r2, float), np.asarray(r4, float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        a = dimensions * r4 / ((dimensions + 2) * r2 * r2) - 1.0
+    return np.where(r2 > 0, a, np.nan)
+
+
+def _origins(last: int, max_origins: int | None):
+    """Time origins 0..last (inclusive), evenly thinned to at most ``max_origins``."""
+    if last < 0:
+        return np.zeros(0, int)
+    if max_origins is None or last + 1 <= max_origins:
+        return np.arange(last + 1)
+    return np.unique(np.linspace(0, last, int(max_origins)).round().astype(int))
+
+
+def van_hove_self(unwrapped, lags, r_max: float, nbins: int = 100, max_origins: int | None = 100,
+                  backend=None):
+    """Self part of the van Hove function for each lag (frames) in ``lags``.
+
+    Returns ``(r, P)`` with bin centers ``r`` and ``P`` of shape ``(len(lags), nbins)``: the
+    radial probability density ``4 pi r^2 G_s(r, t)`` of the displacement length, normalized
+    so its integral up to ``r_max`` is the fraction of displacements shorter than ``r_max``.
+    """
+    be = get_backend(backend)
+    xp = be.xp
+    x = xp.asarray(unwrapped, dtype=xp.float64)
+    T, n = x.shape[0], x.shape[1]
+    edges = np.linspace(0.0, r_max, nbins + 1)
+    dr = edges[1] - edges[0]
+    out = np.zeros((len(lags), nbins))
+    for row, m in enumerate(lags):
+        m = int(m)
+        if m >= T or n == 0:
+            out[row] = np.nan
+            continue
+        origins = _origins(T - 1 - m, max_origins)
+        o = xp.asarray(origins)
+        d = xp.sqrt(((x[o + m] - x[o]) ** 2).sum(-1)).ravel()
+        h = xp.histogram(d, bins=xp.asarray(edges))[0]
+        out[row] = be.to_numpy(h) / (len(origins) * n * dr)
+    return 0.5 * (edges[1:] + edges[:-1]), out
+
+
+def van_hove_distinct(positions, cells, pbc, lags, r_max: float, nbins: int = 100,
+                      max_origins: int | None = 20, backend=None):
+    """Distinct part ``G_d(r, t)`` for each lag in ``lags``, normalized like g(r)
+    (``G_d(r, 0) = g(r)``, tending to 1 at large r).
+
+    ``positions`` is a wrapped or unwrapped trajectory ``(T, N, 3)`` (minimum image is taken in
+    the cell of the origin frame); ``r_max`` is clipped to half the narrowest periodic width.
+    Returns ``(r, G)`` with ``G`` of shape ``(len(lags), nbins)``.
+    """
+    be = get_backend(backend)
+    x = np.asarray(positions, dtype=float)
+    cells = np.asarray(cells, dtype=float)
+    if cells.ndim == 2:
+        cells = np.broadcast_to(cells, (len(x), 3, 3))
+    T, n = x.shape[0], x.shape[1]
+    edges = np.linspace(0.0, r_max, nbins + 1)
+    shell = 4.0 / 3.0 * np.pi * (edges[1:] ** 3 - edges[:-1] ** 3)
+    out = np.zeros((len(lags), nbins))
+    for row, m in enumerate(lags):
+        m = int(m)
+        if m >= T or n < 2:
+            out[row] = np.nan
+            continue
+        hist = np.zeros(nbins)
+        origins = _origins(T - 1 - m, max_origins)
+        volume = 0.0
+        for o in origins:
+            hist += _cross_histogram(x[o], x[o + m], cells[o], pbc, r_max, nbins, be)
+            volume += abs(np.linalg.det(cells[o]))
+        rho = (n - 1) / (volume / len(origins))       # n (n - 1) ordered pairs, as in rdf()
+        out[row] = hist / (len(origins) * n * rho * shell)
+    return 0.5 * (edges[1:] + edges[:-1]), out
+
+
+def _cross_histogram(a, b, matrix, pbc, r_max: float, nbins: int, be, chunk_bytes=2**26):
+    """Histogram of the minimum-image distances |b_j - a_i|, i != j, below ``r_max``."""
+    xp = be.xp
+    inv = xp.asarray(np.linalg.inv(matrix))
+    mat = xp.asarray(matrix)
+    per = xp.asarray(np.asarray(pbc, dtype=float))
+    fa, fb = xp.matmul(xp.asarray(a), inv), xp.matmul(xp.asarray(b), inv)
+    n = len(a)
+    hist = xp.zeros(nbins, dtype=xp.int64)
+    chunk = max(1, int(chunk_bytes // (len(b) * 3 * 8 * 4)))
+    cols = xp.arange(len(b))
+    for s in range(0, n, chunk):
+        f = fb[None] - fa[s:s + chunk, None]
+        f = f - xp.round(f) * per
+        d = xp.sqrt((xp.matmul(f, mat) ** 2).sum(-1))
+        d = xp.where(cols[None] == xp.arange(s, min(s + chunk, n))[:, None], r_max, d)   # j == i
+        k = (d / (r_max / nbins)).astype(xp.int64)
+        k = k[k < nbins]
+        hist += xp.bincount(k, minlength=nbins)[:nbins]
+    return be.to_numpy(hist).astype(float)
+
+
+def fibonacci_directions(count: int):
+    """``count`` nearly uniform unit vectors on the upper half sphere (``q`` and ``-q`` give the
+    same self intermediate scattering function)."""
+    k = np.arange(count) + 0.5
+    z = 1.0 - k / count                                   # (0, 1]
+    phi = np.pi * (3.0 - np.sqrt(5.0)) * k
+    s = np.sqrt(1.0 - z * z)
+    return np.stack([s * np.cos(phi), s * np.sin(phi), z], axis=1)
+
+
+def self_intermediate_scattering(unwrapped, q, directions: int = 16, backend=None, chunk_bytes=2**27):
+    """Self intermediate scattering function ``F_s(q, t) = < exp(i q.(r(t0+t) - r(t0))) >`` for
+    every lag of an unwrapped trajectory ``(T, N, 3)``, averaged over atoms, every time origin
+    (FFT) and ``directions`` orientations of ``q`` (powder average). ``q`` is a number or a
+    sequence of moduli (1/length). Returns an array ``(len(q), T)``."""
+    be = get_backend(backend)
+    xp = be.xp
+    x = xp.asarray(unwrapped, dtype=xp.float64)
+    qs = np.atleast_1d(np.asarray(q, dtype=float))
+    T, n = x.shape[0], x.shape[1]
+    if T == 0 or n == 0:
+        return np.zeros((len(qs), T))
+    dirs = xp.asarray(fibonacci_directions(max(1, int(directions))))
+    proj = xp.matmul(x, dirs.T)                           # (T, N, D)
+    nfft = 2 * T
+    chunk = max(1, int(chunk_bytes // (nfft * proj.shape[2] * 32)))
+    lags = xp.arange(T, 0, -1, dtype=xp.float64)
+    out = np.zeros((len(qs), T))
+    for row, qv in enumerate(qs):
+        acc = xp.zeros(T)
+        for s in range(0, n, chunk):
+            z = xp.exp(1j * qv * proj[:, s:s + chunk])
+            F = xp.fft.fft(z, n=nfft, axis=0)
+            acc += xp.fft.ifft(F * F.conj(), n=nfft, axis=0)[:T].real.reshape(T, -1).sum(axis=1)
+        out[row] = be.to_numpy(acc / lags) / (n * proj.shape[2])
+    return out
+
+
+def decay_time(time, values, level: float = np.exp(-1.0)) -> float:
+    """First time at which ``values`` falls below ``level`` (linear interpolation), else NaN."""
+    t, y = np.asarray(time, float), np.asarray(values, float)
+    below = np.nonzero(y < level)[0]
+    if len(below) == 0 or below[0] == 0:
+        return float("nan")
+    k = below[0]
+    return float(t[k - 1] + (y[k - 1] - level) / (y[k - 1] - y[k]) * (t[k] - t[k - 1]))
+
+
 # --------------------------------------------------------------------------- clusters
 
 def _scatter_min(xp, out, idx, vals):

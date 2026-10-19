@@ -110,6 +110,12 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
   `GenerateTrajectoryLines`) read every frame of `start:stop:step` through the modifiers above them and cache the
   result, so e.g. `CoordinationAnalysis(3.0)` then `TimeAveraging("table:coordination-rdf")` gives the
   time-averaged g(r) in `tables["coordination-rdf[average]"]`.
+- Ion transport modifiers work the same way: `IonicConductivity(temperature, time_per_frame, charges)` (collective
+  charge MSD -> `IonicConductivity.conductivity` in S/cm, `.nernst_einstein_conductivity`, `.haven_ratio`; charges
+  from the dict, the 'Charge' property or guessed oxidation states), `VanHoveCorrelation(times, part)`,
+  `SelfIntermediateScattering(q)` (F_s(q,t), `.relaxation_time`), `NonGaussianParameter()` (alpha_2) and
+  `SiteHopping(sites, site_radius)` (hops, residence times, jump D). Put `SelectType("Li")` above them with
+  `only_selected=True` to analyze one species; `time_per_frame` is in ps.
 - Volumetric files (`CHGCAR`, `CHG`, `PARCHG`, `AECCAR*`, `LOCPOT`, `ELFCAR`, `*.cube`): `import_file` gives the atoms
   plus `data.grids[name]` (a `VoxelGrid`: `.shape`, `.domain` (a Cell), `grid["Charge Density"]` (e/A^3, already divided
   by the cell volume), `"Magnetization"`, `"Spin Up"`/`"Spin Down"`, `"Potential"`, `"ELF"`, cube `"Value"`,

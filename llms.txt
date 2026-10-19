@@ -98,6 +98,12 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
   `GenerateTrajectoryLines`) read every frame of `start:stop:step` through the modifiers above them and cache the
   result, so e.g. `CoordinationAnalysis(3.0)` then `TimeAveraging("table:coordination-rdf")` gives the
   time-averaged g(r) in `tables["coordination-rdf[average]"]`.
+- Ion transport modifiers work the same way: `IonicConductivity(temperature, time_per_frame, charges)` (collective
+  charge MSD -> `IonicConductivity.conductivity` in S/cm, `.nernst_einstein_conductivity`, `.haven_ratio`; charges
+  from the dict, the 'Charge' property or guessed oxidation states), `VanHoveCorrelation(times, part)`,
+  `SelfIntermediateScattering(q)` (F_s(q,t), `.relaxation_time`), `NonGaussianParameter()` (alpha_2) and
+  `SiteHopping(sites, site_radius)` (hops, residence times, jump D). Put `SelectType("Li")` above them with
+  `only_selected=True` to analyze one species; `time_per_frame` is in ps.
 - Volumetric files (`CHGCAR`, `CHG`, `PARCHG`, `AECCAR*`, `LOCPOT`, `ELFCAR`, `*.cube`): `import_file` gives the atoms
   plus `data.grids[name]` (a `VoxelGrid`: `.shape`, `.domain` (a Cell), `grid["Charge Density"]` (e/A^3, already divided
   by the cell volume), `"Magnetization"`, `"Spin Up"`/`"Spin Down"`, `"Potential"`, `"ELF"`, cube `"Value"`,
@@ -170,3 +176,8 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 - `SymmetryAnalysis(symprec: float = 0.01, angle_tolerance: float = -1.0, select_unique: bool = False)`: Space group, Wyckoff positions and symmetry-equivalent atoms (spglib).
 - `PowderDiffraction(radiation: str = 'xray', wavelength: str = 'CuKa', two_theta_min: float = 5.0, two_theta_max: float = 90.0, step: float = 0.02, fwhm: float = 0.1, eta: float = 0.5, debye_waller: dict | None = None, elements: dict | None = None, experimental: str = '')`: Powder X-ray or neutron diffraction pattern of the (periodic) cell.
 - `StructureFactor(method: str = 'auto', q_max: float = 10.0, q_min: float = 0.0, number_of_bins: int = 200, weighting: str = 'none', cutoff: float = 0.0, lorch: bool = True, elements: dict | None = None, experimental: str = '')`: Static structure factor S(q) (q = 4 pi sin(theta) / lambda in 1/Angstrom), for liquids, glasses and MD.
+- `IonicConductivity(temperature: float = 300.0, time_per_frame: float = 0.0, charges: dict | None = None, start: int = 0, stop: int | None = None, step: int = 1, fit_range: tuple = (0.2, 0.8), unwrapped: bool = False, subtract_drift: bool = True, only_selected: bool = False)`: Ionic conductivity from the collective charge displacement, its Nernst-Einstein estimate and the Haven ratio.
+- `VanHoveCorrelation(times: tuple | None = None, part: str = 'self', r_max: float = 6.0, nbins: int = 120, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, max_origins: int = 100, unwrapped: bool = False, only_selected: bool = True)`: Van Hove correlation function at a few times: the self part (how far one ion gets, with peaks at the hop distances) and the distinct part (where the other ions are).
+- `SelfIntermediateScattering(q=None, directions: int = 16, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, unwrapped: bool = False, only_selected: bool = True)`: Self intermediate scattering function F_s(q, t) and its relaxation time.
+- `NonGaussianParameter(time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, max_origins: int = 200, unwrapped: bool = False, only_selected: bool = True)`: Non-Gaussian parameter alpha_2(t) = 3 <dr^4> / (5 <dr^2>^2) - 1 of the displacements.
+- `SiteHopping(sites=None, site_type: str = '', site_radius: float = 0.0, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, only_selected: bool = True, nbins: int = 50)`: Site occupancy, hops between sites and residence times of mobile ions.

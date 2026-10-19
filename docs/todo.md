@@ -9,6 +9,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 ## In progress
 
 - Simple (ASE) style and Ball & stick as the default style (this branch).
+- Ion transport analysis: conductivity and Haven ratio, van Hove, F_s(q, t), non-Gaussian
+  parameter, site hopping (this branch).
 
 ## Next
 
@@ -46,6 +48,14 @@ Analysis
   offer an OVITO-compatible mode once its rule is known.
 - FindRings in numba for networks above ~100k atoms (8000 a-Si atoms, rings up to 10: 1 s).
 - Spatial correlation function and Voronoi-weighted Steinhardt (OVITO / freud have them).
+- Ion transport: error bars for the conductivity and Haven ratio (block averaging over
+  independent windows; the collective charge MSD is one vector and noisy), Onsager
+  coefficients L_ij per species pair, and the conductivity checked against a published
+  Li-conductor trajectory (tests use synthetic walks with known answers).
+- Site hopping: find sites without a reference structure (density maxima of the mobile ions
+  over the trajectory), draw sites and hop paths in the viewport, and a hop-correlation
+  (back-jump) statistic.
+- Plots tab: G_s(r, t) / F_s(q, t) as a 2D map over r or q and t.
 
 Symmetry and diffraction
 
