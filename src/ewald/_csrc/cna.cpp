@@ -20,6 +20,7 @@
 #include <limits>
 #include <vector>
 
+#include "cna_bonds.h"
 #include "parallel.h"
 
 namespace py = pybind11;
@@ -28,82 +29,13 @@ namespace {
 
 enum StructureType { OTHER = 0, FCC, HCP, BCC, ICO };
 constexpr int MAX_NEIGHBORS = 14;
-using CNAPairBond = unsigned int;
+using namespace ewald::cna;
 
 struct Vec3 {
     double x, y, z;
     Vec3 operator-(const Vec3& o) const { return {x - o.x, y - o.y, z - o.z}; }
     double squaredLength() const { return x * x + y * y + z * z; }
 };
-
-struct NeighborBondArray {
-    unsigned int neighborArray[32];
-    NeighborBondArray() { std::memset(neighborArray, 0, sizeof(neighborArray)); }
-    void setNeighborBond(int a, int b, bool bonded) {
-        if(bonded) { neighborArray[a] |= (1u << b); neighborArray[b] |= (1u << a); }
-        else { neighborArray[a] &= ~(1u << b); neighborArray[b] &= ~(1u << a); }
-    }
-};
-
-inline int popcount(unsigned int v) { int c = 0; for(; v; c++) v &= v - 1; return c; }
-inline int ctz(unsigned int v) { int c = 0; while(!(v & 1u)) { v >>= 1; c++; } return c; }
-
-int findCommonNeighbors(const NeighborBondArray& na, int neighborIndex, unsigned int& commonNeighbors)
-{
-    commonNeighbors = na.neighborArray[neighborIndex];
-    return popcount(commonNeighbors);
-}
-
-int findNeighborBonds(const NeighborBondArray& na, unsigned int commonNeighbors, int numNeighbors, CNAPairBond* neighborBonds)
-{
-    int numBonds = 0;
-    unsigned int nib[32];
-    int nibn = 0;
-    unsigned int ni1b = 1;
-    for(int ni1 = 0; ni1 < numNeighbors; ni1++, ni1b <<= 1) {
-        if(commonNeighbors & ni1b) {
-            unsigned int b = commonNeighbors & na.neighborArray[ni1];
-            for(int n = 0; n < nibn; n++)
-                if(b & nib[n]) neighborBonds[numBonds++] = ni1b | nib[n];
-            nib[nibn++] = ni1b;
-        }
-    }
-    return numBonds;
-}
-
-int getAdjacentBonds(unsigned int atom, CNAPairBond* bondsToProcess, int& numBonds, unsigned int& atomsToProcess, unsigned int& atomsProcessed)
-{
-    int adjacentBonds = 0;
-    for(int b = numBonds - 1; b >= 0; b--) {
-        if(atom & *bondsToProcess) {
-            ++adjacentBonds;
-            atomsToProcess |= *bondsToProcess & (~atomsProcessed);
-            std::memmove(bondsToProcess, bondsToProcess + 1, sizeof(CNAPairBond) * b);
-            numBonds--;
-        }
-        else ++bondsToProcess;
-    }
-    return adjacentBonds;
-}
-
-int calcMaxChainLength(CNAPairBond* neighborBonds, int numBonds)
-{
-    int maxChainLength = 0;
-    while(numBonds) {
-        numBonds--;
-        unsigned int atomsToProcess = neighborBonds[numBonds];
-        unsigned int atomsProcessed = 0;
-        int clusterSize = 1;
-        do {
-            unsigned int nextAtom = 1u << ctz(atomsToProcess);
-            atomsProcessed |= nextAtom;
-            atomsToProcess &= ~nextAtom;
-            clusterSize += getAdjacentBonds(nextAtom, neighborBonds, numBonds, atomsToProcess, atomsProcessed);
-        } while(atomsToProcess);
-        maxChainLength = std::max(clusterSize, maxChainLength);
-    }
-    return maxChainLength;
-}
 
 StructureType analyzeSmallSignature(const NeighborBondArray& na)
 {

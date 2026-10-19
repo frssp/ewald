@@ -22,7 +22,7 @@ from ..io import import_file
 from ..render import camera_state, render
 from .ask_panel import AskPanel, agent_from_settings
 from .console import make_console
-from .icons import icon
+from .icons import app_icon, icon
 from .inspector import DataInspector
 from .palette import CommandPalette, menu_entries
 from .pipeline_panel import MODIFIER_MENU, PipelinePanel, fill_modifier_menu
@@ -65,6 +65,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.settings = settings if settings is not None else settings_mod.load()
         self.setWindowTitle("EWALD")
+        self.setWindowIcon(app_icon())
         self.resize(1600, 1000)
         self.pipeline = None
         self.data = None
@@ -1112,6 +1113,17 @@ def make_viewport(style, choice: str | None = None) -> Viewport:
     return Viewport(style)
 
 
+def _set_windows_app_id():
+    """Own taskbar entry and icon on Windows instead of python.exe's."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("ewald.gui")
+        except (AttributeError, OSError):
+            pass
+
+
 def _app():
     from . import theme
 
@@ -1123,8 +1135,11 @@ def _app():
         check_qt_platform()
         if viewport_backend(settings_mod.load()["viewport.backend"]) == "vtk":
             check_remote_display()
+        _set_windows_app_id()
         app = QtWidgets.QApplication(sys.argv)
         app.setApplicationName("ewald")
+        app.setDesktopFileName("ewald")
+        app.setWindowIcon(app_icon())
         theme.apply(app)
     return app
 

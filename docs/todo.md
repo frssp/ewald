@@ -8,7 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Simple (ASE) style and Ball & stick as the default style (this branch).
 
 ## Next
 
@@ -22,6 +21,9 @@ GUI
 - Picking without a render: click picks still use a `vtkPropPicker` selection render; the hover
   readout already does a CPU ray-sphere test (`camera_ray`, `ray_spheres` in `gui/viewport.py`)
   that `pick_at` could reuse.
+- App icon outside the running window: a Linux `.desktop` entry and hicolor icons installed
+  with the package, the Windows installer/shortcut (`ewald.ico`) and a macOS app bundle
+  (`ewald.icns`); the EWALD mark in the main window header (the Notebook redesign) and the docs.
 - Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
   categories; the view-bar rotation arrows are still text glyphs.
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
@@ -46,6 +48,12 @@ Analysis
   offer an OVITO-compatible mode once its rule is known.
 - FindRings in numba for networks above ~100k atoms (8000 a-Si atoms, rings up to 10: 1 s).
 - Spatial correlation function and Voronoi-weighted Steinhardt (OVITO / freud have them).
+- Grain segmentation: the center of mass of a grain that percolates through the periodic
+  boundaries depends on bond order (as in OVITO, so values differ from OVITO's for those grains);
+  a grain-boundary surface mesh and misorientation-colored boundary bonds in the viewport; a
+  Plots-tab view of `grains-log` with the chosen threshold to pick a manual one.
+- Elastic strain and grain segmentation run single-threaded on the CPU (cluster building is
+  sequential in OVITO too); parallel neighbor matching and a CuPy path if large systems need it.
 
 Symmetry and diffraction
 
@@ -217,8 +225,10 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 
 ## Infrastructure
 
-- GitHub Actions minutes ran out on 2026-10-19; CI does not run until that is fixed, so pull
-  requests are verified locally (`xvfb-run -a python -m pytest -q`, `mkdocs build --strict`).
+- GitHub Actions minutes ran out on 2026-10-19, so every workflow now runs only on manual
+  dispatch and pull requests are verified locally (`xvfb-run -a python -m pytest -q`,
+  `mkdocs build --strict`). Restore the `push`/`pull_request`/tag triggers once minutes are
+  available again (docs/developer/testing.md shows the block).
 
 - CI installs each extra on its own only through the test suite's `importorskip`s; a job that
   installs every extra in a clean venv and imports its modules would catch broken extras
