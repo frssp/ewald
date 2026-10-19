@@ -149,3 +149,30 @@ def test_type_groups_first_appearance_order():
     assert names == list(dict.fromkeys(many)) and all(np.array(names)[inverse] == many)
     names, inverse = type_groups(np.array([], dtype=str))
     assert names == [] and len(inverse) == 0
+
+
+def test_opengl_draws_plugin_primitives_and_see_through_spheres(tmp_path):
+    import pyvista as pv
+
+    from ewald.render import build_scene, needs_depth_peeling
+    from ewald.scene import Cylinders, Lines, Spheres, VisualElement
+
+    class Markers(VisualElement):
+        name = "Markers"
+
+        def build(self, data, ctx):
+            return [("halo", Spheres(data.positions, 1.5, (1, 1, 0), 0.3)),
+                    ("sticks", Cylinders([[0, 0, 0], [0, 0, 0]], [[1, 0, 0], [0, 1, 0]], [0.1, 0.2], (0, 0, 1))),
+                    ("path", Lines(data.positions, [[0, 1]], [(1, 0, 0)], width=3))]
+
+    data = DataCollection([[1, 1, 1], [3, 3, 3]], ["Fe", "Fe"], Cell(np.eye(3) * 4))
+    p = pv.Plotter(off_screen=True, window_size=(80, 60))
+    scene = build_scene(p, data, visuals=[Markers()])
+    assert {"visual:markers:halo", "visual:markers:sticks:0.1", "visual:markers:sticks:0.2",
+            "visual:markers:path", "atoms", "cell"} <= set(p.actors)
+    assert needs_depth_peeling(scene)
+    p.close()
+    from ewald.render import spheres_cloud
+
+    rgba = spheres_cloud(scene["visual:markers:halo"].primitive)["rgb"]
+    assert rgba.shape == (2, 4) and rgba[0].tolist() == [255, 255, 0, 76]

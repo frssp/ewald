@@ -82,63 +82,140 @@ class Scene:
 def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None, bonds=None, bond_pairs=None,
                     bond_radius=0.15, show_cell=True, cell_color=(0.0, 0.0, 0.0), cell_radius=None,
                     radius_preset="covalent", oxidation_states=None, coordination=None, vectors=None,
-                    arrow_resolution=24, view_direction=None, **_ignored):
+                    arrow_resolution=24, view_direction=None, trajectory_width=2.0, visuals=None, frame=0,
+                    **_ignored):
     """Build a Scene with the same colors/radii/bonds/arrows as :func:`ewald.render.build_scene`.
 
     ``view_direction`` (scene -> camera) lets 'flat' arrows face the viewer evenly lit.
+    ``visuals``: extra visual elements (plugins), see :mod:`ewald.scene`.
     """
-    from .bonds import bond_segments
-    from .render import _rgb, default_colors, default_radii, scene_bonds
+    from . import scene as ir
+
+    scene = ir.build(data, ctx=ir.SceneContext(frame=frame, view_direction=view_direction), visuals=visuals,
+                     radius_scale=radius_scale, type_colors=type_colors, type_radii=type_radii,
+                     radius_preset=radius_preset, oxidation_states=oxidation_states, coordination=coordination,
+                     bonds=bonds, bond_pairs=bond_pairs, bond_radius=bond_radius, vectors=vectors,
+                     trajectory_width=trajectory_width, show_cell=show_cell, cell_radius=cell_radius)
+    return scene_from_ir(scene, arrow_resolution=arrow_resolution, view_direction=view_direction, ink=cell_color)
+
+
+def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 0.0, 0.0)) -> Scene:
+    """Ray-tracer primitives for every layer of an :class:`ewald.scene.Scene`. The ray tracer is
+    opaque except for triangles: sphere and cylinder ``alpha`` is ignored. Lines without a
+    ``radius`` (screen-space only, such as trajectory lines) are not drawn."""
+    from .render import _rgb
 
     sc = Scene()
-    if data.count:
-        colors = np.clip(default_colors(data, type_colors), 0, 1)
-        radii = default_radii(data, type_radii=type_radii, radius_preset=radius_preset,
-                              oxidation_states=oxidation_states, coordination=coordination) * radius_scale
-        keep = np.asarray(data["Transparency"]) < 1 if "Transparency" in data else np.ones(data.count, bool)
-        sc.add_spheres(data.positions[keep], radii[keep], colors[keep])
-        if bonds or bond_pairs or data.bonds is not None:
-            b = scene_bonds(data, bonds, bond_pairs)
-            if b.count:
-                start, end, rgb, _ = bond_segments(data, b, colors)
-                sc.add_cylinders(start, end, bond_radius, rgb)
-                sc.add_spheres(end, bond_radius, rgb)  # close the open tube end
-    for mesh in getattr(data, "surfaces", {}).values():
-        if mesh.face_count:
-            v, f = mesh.vertices, mesh.faces
-            vn, vc = mesh.vertex_properties.get("Normal"), mesh.vertex_properties.get("Color")
-            sc.add_triangles(v[f[:, 0]], v[f[:, 1]], v[f[:, 2]], np.clip(mesh.face_colors(), 0, 1),
-                             1.0 - mesh.transparency, None if vn is None else np.asarray(vn, float)[f],
-                             None if vc is None else np.clip(np.asarray(vc, float), 0, 1)[f])
-            if mesh.edges is not None and len(mesh.edges):
-                e = mesh.edges
-                sc.add_cylinders(v[e[:, 0]], v[e[:, 1]], 0.5 * mesh.edge_width, _rgb(mesh.edge_color))
-    _add_arrows(sc, data, vectors, arrow_resolution, view_direction)
-    if show_cell and data.cell.is_valid:
-        o, (a, b, c) = data.cell.origin, data.cell.matrix
-        corners = np.array([o, o + a, o + b, o + c, o + a + b, o + a + c, o + b + c, o + a + b + c])
-        edges = [(0, 1), (0, 2), (0, 3), (1, 4), (1, 5), (2, 4), (2, 6), (3, 5), (3, 6), (4, 7), (5, 7), (6, 7)]
-        r = cell_radius or 0.0015 * float(np.linalg.norm(a + b + c))
-        sc.add_cylinders(corners[[e[0] for e in edges]], corners[[e[1] for e in edges]], r, _rgb(cell_color))
-        # round joints so corners look closed
-        sc.add_spheres(corners, r, _rgb(cell_color))
+    for layer in scene.layers:
+        prim = layer.primitive
+        if layer.kind == "spheres":
+            if prim.count:
+                c, r, rgb, a = prim.centers, prim.sizes(), prim.colors(), prim.alpha
+                solid = a >= 1
+                if solid.all():
+                    sc.add_spheres(c, r, rgb)
+                else:  # only triangles can be see-through: tessellate those spheres
+                    if solid.any():
+                        sc.add_spheres(c[solid], r[solid], rgb[solid])
+                    _add_glass_spheres(sc, c[~solid], r[~solid], rgb[~solid], a[~solid])
+        elif layer.kind == "cylinders":
+            if prim.count:
+                sc.add_cylinders(prim.start, prim.end, prim.radius, prim.rgb)
+                if prim.cap_end:
+                    sc.add_spheres(prim.end, prim.radius, prim.rgb)  # close the open tube end
+        elif layer.kind == "mesh":
+            mesh = prim
+            if mesh.face_count:
+                v, f = mesh.vertices, mesh.faces
+                vn, vc = mesh.vertex_properties.get("Normal"), mesh.vertex_properties.get("Color")
+                sc.add_triangles(v[f[:, 0]], v[f[:, 1]], v[f[:, 2]], np.clip(mesh.face_colors(), 0, 1),
+                                 1.0 - mesh.transparency, None if vn is None else np.asarray(vn, float)[f],
+                                 None if vc is None else np.clip(np.asarray(vc, float), 0, 1)[f])
+                if mesh.edges is not None and len(mesh.edges):
+                    e = mesh.edges
+                    sc.add_cylinders(v[e[:, 0]], v[e[:, 1]], 0.5 * mesh.edge_width, _rgb(mesh.edge_color))
+        elif layer.kind == "arrows":
+            _add_arrows(sc, prim, arrow_resolution, view_direction)
+        elif layer.kind == "lines":
+            if prim.radius is None or not prim.count:
+                continue
+            seg = prim.segments()
+            if not len(seg):
+                continue
+            if prim.rgb is None:
+                seg_rgb = _rgb(ink)
+            else:
+                strip_of = np.concatenate([np.full(max(len(s) - 1, 0), k) for k, s in enumerate(prim.strips)])
+                seg_rgb = prim.rgb[strip_of]
+            sc.add_cylinders(prim.points[seg[:, 0]], prim.points[seg[:, 1]], prim.radius, seg_rgb)
+            # round joints so corners look closed
+            joints = np.unique(seg)
+            if prim.rgb is None:
+                sc.add_spheres(prim.points[joints], prim.radius, seg_rgb)
+            else:
+                rgb = np.empty((len(prim.points), 3))
+                rgb[seg[:, 1]] = seg_rgb
+                rgb[seg[:, 0]] = seg_rgb
+                sc.add_spheres(prim.points[joints], prim.radius, rgb[joints])
     return sc
 
 
-def _add_arrows(sc, data, vectors, sides, view_direction):
-    """Arrow shafts as cylinders, base/head discs and cones as smooth-normal triangles."""
-    from .arrows import arrow_mesh, scene_arrows
+def _unit_sphere(level: int = 2):
+    """Vertices and faces of a subdivided icosahedron on the unit sphere."""
+    t = (1 + 5 ** 0.5) / 2
+    v = [(-1, t, 0), (1, t, 0), (-1, -t, 0), (1, -t, 0), (0, -1, t), (0, 1, t), (0, -1, -t), (0, 1, -t),
+         (t, 0, -1), (t, 0, 1), (-t, 0, -1), (-t, 0, 1)]
+    f = [(0, 11, 5), (0, 5, 1), (0, 1, 7), (0, 7, 10), (0, 10, 11), (1, 5, 9), (5, 11, 4), (11, 10, 2),
+         (10, 7, 6), (7, 1, 8), (3, 9, 4), (3, 4, 2), (3, 2, 6), (3, 6, 8), (3, 8, 9), (4, 9, 5), (2, 4, 11),
+         (6, 2, 10), (8, 6, 7), (9, 8, 1)]
+    verts = [np.array(p, float) / np.linalg.norm(p) for p in v]
+    for _ in range(level):
+        cache, out = {}, []
 
-    for arrows in scene_arrows(data, vectors):
-        see_through = arrows.alpha < 1  # only triangles can be see-through
-        verts, faces, normals, owner = arrow_mesh(arrows, sides, shaft=see_through)
-        if arrows.shading == "flat" and view_direction is not None:
-            toward = np.asarray(view_direction, float)
-            normals = np.broadcast_to(toward / np.linalg.norm(toward), normals.shape)
-        if not see_through:
-            sc.add_cylinders(arrows.base, arrows.neck, arrows.radius, arrows.rgb)
-        sc.add_triangles(verts[faces[:, 0]], verts[faces[:, 1]], verts[faces[:, 2]], arrows.rgb[owner[faces[:, 0]]],
-                         arrows.alpha, normals[faces], None)
+        def mid(i, j):
+            key = (min(i, j), max(i, j))
+            if key not in cache:
+                p = verts[i] + verts[j]
+                verts.append(p / np.linalg.norm(p))
+                cache[key] = len(verts) - 1
+            return cache[key]
+
+        for a, b, c in f:
+            ab, bc, ca = mid(a, b), mid(b, c), mid(c, a)
+            out += [(a, ab, ca), (b, bc, ab), (c, ca, bc), (ab, bc, ca)]
+        f = out
+    return np.array(verts), np.array(f)
+
+
+def _add_glass_spheres(sc, centers, radii, rgb, alpha, level=2):
+    """See-through spheres as smooth triangle meshes (the ray tracer's transparent primitive)."""
+    v, f = _unit_sphere(level)
+    tri = v[f]                                          # F x 3 x 3 unit corners = normals
+    keep = alpha > 0
+    centers, radii, rgb, alpha = centers[keep], radii[keep], rgb[keep], alpha[keep]
+    if not len(centers):
+        return
+    p = (centers[:, None, None] + radii[:, None, None, None] * tri[None]).reshape(-1, 3, 3)
+    nf = len(f)
+    sc.add_triangles(p[:, 0], p[:, 1], p[:, 2], np.repeat(rgb, nf, axis=0), np.repeat(alpha, nf),
+                     np.tile(tri, (len(centers), 1, 1)), None)
+
+
+def _add_arrows(sc, arrows, sides, view_direction):
+    """Arrow shafts as cylinders, base/head discs and cones as smooth-normal triangles."""
+    from .arrows import arrow_mesh
+
+    if not arrows.count:
+        return
+    see_through = arrows.alpha < 1  # only triangles can be see-through
+    verts, faces, normals, owner = arrow_mesh(arrows, sides, shaft=see_through)
+    if arrows.shading == "flat" and view_direction is not None:
+        toward = np.asarray(view_direction, float)
+        normals = np.broadcast_to(toward / np.linalg.norm(toward), normals.shape)
+    if not see_through:
+        sc.add_cylinders(arrows.base, arrows.neck, arrows.radius, arrows.rgb)
+    sc.add_triangles(verts[faces[:, 0]], verts[faces[:, 1]], verts[faces[:, 2]], arrows.rgb[owner[faces[:, 0]]],
+                     arrows.alpha, normals[faces], None)
 
 
 # ----------------------------------------------------------------------------- grid

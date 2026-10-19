@@ -58,7 +58,7 @@ def _hull(pts):
     return half(pts) + half(pts[::-1])
 
 
-def _arrow_prims(data, vectors, camera, size, pt, shading, sides=16):
+def _arrow_prims(data, vectors, camera, size, pt, shading, sides=16, arrow_sets=None):
     """Arrows as their true silhouettes: hulls of the projected shaft rings, then of the head rim
     and tip (an arrow pointing at the viewer becomes a disc, as it should). The shaft is split
     where it passes its atom, and each piece is painted in front of the atom only if it is
@@ -67,10 +67,12 @@ def _arrow_prims(data, vectors, camera, size, pt, shading, sides=16):
 
     from .arrows import _frame, scene_arrows
 
+    if arrow_sets is None:
+        arrow_sets = scene_arrows(data, vectors)
     prims = []
     ang = 2 * np.pi * np.arange(sides) / sides
     cs, sn = np.cos(ang)[None, :, None], np.sin(ang)[None, :, None]
-    for arrows in scene_arrows(data, vectors):
+    for arrows in arrow_sets:
         m = arrows.count
         d = arrows.direction
         e1, e2 = _frame(d)
@@ -109,25 +111,181 @@ def _arrow_prims(data, vectors, camera, size, pt, shading, sides=16):
     return prims
 
 
+def scene_prims(scene, camera, size, pt, shading="gradient", ink="black"):
+    """Every layer of an :class:`ewald.scene.Scene` as depth-tagged matplotlib patches
+    ``(depth, patches, facecolors, edgecolors, linewidths)``, to be painted far to near."""
+    prims = []
+    for layer in scene.layers:
+        prim = layer.primitive
+        if layer.kind == "spheres":
+            prims += _sphere_prims(prim, camera, size, pt, shading)
+        elif layer.kind == "cylinders":
+            prims += _cylinder_prims(prim, camera, size, pt, shading)
+        elif layer.kind == "arrows":
+            prims += _arrow_prims(None, None, camera, size, pt, shading, arrow_sets=[prim])
+        elif layer.kind == "mesh":
+            prims += _mesh_prims(prim, camera, size, pt)
+        elif layer.kind == "lines":
+            prims += _line_prims(prim, camera, size, ink)
+    return prims
+
+
+def _sphere_prims(sph, camera, size, pt, shading):
+    """Shaded discs (or flat discs with an outline)."""
+    from matplotlib.patches import Circle
+
+    prims = []
+    if not sph.count:
+        return prims
+    colors, radii, alpha = sph.colors(), sph.sizes(), sph.alpha
+    keep = np.flatnonzero(alpha > 0)
+    sx, sy, z, s = _project(sph.centers[keep], camera, size)
+    for k, i in enumerate(keep):
+        if z[k] <= 0 and not camera.get("parallel_projection", True):
+            continue
+        c, r, a = colors[i], radii[i] * s[k], alpha[i]
+        x, y = sx[k], sy[k]
+        edge = (*(c * 0.45), a)
+        if shading == "flat":
+            prims.append((z[k], [Circle((x, y), r)], [(*c, a)], [edge], [max(0.4, 0.06 * r) * pt]))
+        else:
+            prims.append((z[k], [Circle((x, y), r), Circle((x - 0.06 * r, y - 0.06 * r), 0.86 * r),
+                                 Circle((x - 0.2 * r, y - 0.2 * r), 0.52 * r),
+                                 Circle((x - 0.3 * r, y - 0.3 * r), 0.2 * r)],
+                          [(*(c * 0.62), a), (*c, a), (*_mix(c, 0.3), a), (*_mix(c, 0.7), a)],
+                          [edge, "none", "none", "none"], [max(0.3, 0.03 * r) * pt, 0, 0, 0]))
+    return prims
+
+
+def _cylinder_prims(cyl, camera, size, pt, shading):
+    """Projected sticks with a highlight stripe, each painted just before its start (a half-bond's
+    own atom hides the stick's root)."""
+    from matplotlib.patches import Polygon
+
+    prims = []
+    keep = np.flatnonzero(cyl.alpha > 0)
+    if not len(keep):
+        return prims
+    ax0, ay0, z0, s0 = _project(cyl.start[keep], camera, size)
+    ax1, ay1, z1, s1 = _project(cyl.end[keep], camera, size)
+    for k, i in enumerate(keep):
+        dx, dy = ax1[k] - ax0[k], ay1[k] - ay0[k]
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            continue
+        nx, ny = -dy / length, dx / length
+        c, a = cyl.rgb[i], cyl.alpha[i]
+        r0, r1 = cyl.radius[i] * s0[k], cyl.radius[i] * s1[k]
+        quad = [(ax0[k] + nx * r0, ay0[k] + ny * r0), (ax1[k] + nx * r1, ay1[k] + ny * r1),
+                (ax1[k] - nx * r1, ay1[k] - ny * r1), (ax0[k] - nx * r0, ay0[k] - ny * r0)]
+        patches, fc, ec, lw = [Polygon(quad, closed=True)], [(*(c * 0.85), a)], [(*(c * 0.45), a)], \
+            [max(0.3, 0.06 * r0) * pt]
+        if shading != "flat":  # highlight stripe toward the light (upper left)
+            side = 1.0 if nx + ny < 0 else -1.0
+            o0, o1 = 0.35 * r0 * side, 0.35 * r1 * side
+            hw0, hw1 = 0.25 * r0, 0.25 * r1
+            patches.append(Polygon([(ax0[k] + nx * (o0 + hw0), ay0[k] + ny * (o0 + hw0)),
+                                    (ax1[k] + nx * (o1 + hw1), ay1[k] + ny * (o1 + hw1)),
+                                    (ax1[k] + nx * (o1 - hw1), ay1[k] + ny * (o1 - hw1)),
+                                    (ax0[k] + nx * (o0 - hw0), ay0[k] + ny * (o0 - hw0))], closed=True))
+            fc.append((*_mix(c, 0.35), a)); ec.append("none"); lw.append(0)
+        prims.append((z0[k] + 1e-6, patches, fc, ec, lw))
+    return prims
+
+
+def _mesh_prims(mesh, camera, size, pt):
+    """Lit triangles (two-sided, like the OpenGL faces) and edge strips just in front of them."""
+    from matplotlib.patches import Polygon
+
+    from .render import _rgb
+
+    prims = []
+    if not mesh.face_count:
+        return prims
+    v, f = mesh.vertices, mesh.faces
+    vx, vy, vz, vs = _project(v, camera, size)
+    _, right, up, fwd = _basis(camera)
+    light = np.array([-0.4, 0.6, 1.0]) @ np.array([right, up, -fwd])  # same key light as the ray tracer
+    light /= np.linalg.norm(light)
+    vn, vc = mesh.vertex_properties.get("Normal"), mesh.vertex_properties.get("Color")
+    n = np.cross(v[f[:, 1]] - v[f[:, 0]], v[f[:, 2]] - v[f[:, 0]]) if vn is None \
+        else np.asarray(vn, float)[f].mean(1)  # smooth isosurface normals when given
+    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    lit = 0.55 + 0.45 * np.abs(n @ light)
+    if vc is not None:  # color-mapped slices keep their exact colormap (unlit)
+        fcol = np.clip(np.asarray(vc, float), 0, 1)[f].mean(1)
+    else:
+        fcol = np.clip(mesh.face_colors(), 0, 1) * lit[:, None]
+    a = 1.0 - mesh.transparency
+    for k, tri in enumerate(f):
+        poly = Polygon(np.column_stack([vx[tri], vy[tri]]), closed=True)
+        # the face color as a hairline outline closes anti-aliasing seams between triangles
+        prims.append((vz[tri].mean(), [poly], [(*fcol[k], a)], [(*fcol[k], a)], [0.3 * pt]))
+    if mesh.edges is not None and len(mesh.edges):
+        ec = _rgb(mesh.edge_color)
+        for i, j in mesh.edges:
+            dx, dy = vx[j] - vx[i], vy[j] - vy[i]
+            length = math.hypot(dx, dy)
+            if length < 1e-6:
+                continue
+            hw = max(0.5, 0.5 * mesh.edge_width * 0.5 * (vs[i] + vs[j]))
+            nx, ny = -dy / length * hw, dx / length * hw
+            quad = [(vx[i] + nx, vy[i] + ny), (vx[j] + nx, vy[j] + ny), (vx[j] - nx, vy[j] - ny),
+                    (vx[i] - nx, vy[i] - ny)]
+            prims.append((0.5 * (vz[i] + vz[j]) - 1e-3, [Polygon(quad, closed=True)], [(*ec, 1.0)], ["none"], [0]))
+    return prims
+
+
+def _line_prims(lines, camera, size, ink):
+    """Line pieces as screen-space strips, ``width`` scaled with the image height, extended by half a
+    width so corners close."""
+    from matplotlib.patches import Polygon
+
+    from .render import _rgb
+
+    prims = []
+    seg = lines.segments()
+    if not len(seg):
+        return prims
+    cx, cy, cz, _ = _project(lines.points, camera, size)
+    half = max(0.5, lines.width * size[1] / 1600)
+    if lines.rgb is None:
+        seg_rgb = np.tile(_rgb(ink), (len(seg), 1))
+    else:
+        seg_rgb = lines.rgb[np.concatenate([np.full(max(len(s) - 1, 0), k) for k, s in enumerate(lines.strips)])]
+    for (i, j), cc in zip(seg, seg_rgb):
+        dx, dy = cx[j] - cx[i], cy[j] - cy[i]
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            continue
+        nx, ny = -dy / length * half, dx / length * half
+        ex, ey = dx / length * half, dy / length * half
+        quad = [(cx[i] - ex + nx, cy[i] - ey + ny), (cx[j] + ex + nx, cy[j] + ey + ny),
+                (cx[j] + ex - nx, cy[j] + ey - ny), (cx[i] - ex - nx, cy[i] - ey - ny)]
+        prims.append((0.5 * (cz[i] + cz[j]), [Polygon(quad, closed=True)], [(*cc, 1.0)], ["none"], [0]))
+    return prims
+
+
 def render_vector(data, filename=None, *, camera, size=(1600, 1200), background="white",
                   transparent_background=False, radius_scale=1.0, type_colors=None, type_radii=None,
                   bonds=None, bond_pairs=None, bond_radius=0.15, show_cell=True, cell_color=None,
                   cell_width=2.0, shading="gradient", text=None, legend=True, type_legend=False,
                   scale_bar=None, dpi=None, radius_preset="covalent", oxidation_states=None, coordination=None,
-                  vectors=None, **_ignored):
+                  vectors=None, trajectory_width=2.0, visuals=None, frame=0, **_ignored):
     """Draw ``data`` as a vector figure and save it (format from the extension).
 
     ``shading``: 'gradient' (shaded discs) or 'flat' (one color plus outline, VESTA's
     flat style). ``dpi`` sets the physical page size (``size / dpi`` inches; 100 when
-    not given). Returns the rasterized image as an RGB(A) uint8 array.
+    not given). ``visuals``: extra visual elements (plugins), see :mod:`ewald.scene`.
+    Returns the rasterized image as an RGB(A) uint8 array.
     """
     from matplotlib.collections import PatchCollection
     from matplotlib.figure import Figure
-    from matplotlib.patches import Circle, Polygon, Rectangle
+    from matplotlib.patches import Circle, Rectangle
 
+    from . import scene as ir
     from .overlays import ink_color, overlay_layout
-    from .bonds import bond_segments
-    from .render import _rgb, default_colors, default_radii, scene_bonds
+    from .render import _rgb
 
     w, h = int(size[0]), int(size[1])
     dpi = float(dpi or 100)
@@ -141,119 +299,14 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
     ax.patch.set_alpha(0.0)
     pt = 72.0 / dpi  # points per pixel
 
-    prims = []  # (depth, patches, facecolors, edgecolors, linewidths)
-    if data.count:
-        colors = np.clip(default_colors(data, type_colors), 0, 1)
-        radii = default_radii(data, type_radii=type_radii, radius_preset=radius_preset,
-                              oxidation_states=oxidation_states, coordination=coordination) * radius_scale
-        alpha = 1 - np.clip(np.asarray(data["Transparency"], float), 0, 1) if "Transparency" in data \
-            else np.ones(data.count)
-        keep = np.flatnonzero(alpha > 0)
-        sx, sy, z, s = _project(data.positions[keep], camera, (w, h))
-        for k, i in enumerate(keep):
-            if z[k] <= 0 and not camera.get("parallel_projection", True):
-                continue
-            c, r, a = colors[i], radii[i] * s[k], alpha[i]
-            x, y = sx[k], sy[k]
-            edge = (*(c * 0.45), a)
-            if shading == "flat":
-                prims.append((z[k], [Circle((x, y), r)], [(*c, a)], [edge], [max(0.4, 0.06 * r) * pt]))
-            else:
-                prims.append((z[k], [Circle((x, y), r), Circle((x - 0.06 * r, y - 0.06 * r), 0.86 * r),
-                                     Circle((x - 0.2 * r, y - 0.2 * r), 0.52 * r),
-                                     Circle((x - 0.3 * r, y - 0.3 * r), 0.2 * r)],
-                              [(*(c * 0.62), a), (*c, a), (*_mix(c, 0.3), a), (*_mix(c, 0.7), a)],
-                              [edge, "none", "none", "none"], [max(0.3, 0.03 * r) * pt, 0, 0, 0]))
-        if bonds or bond_pairs or data.bonds is not None:
-            b = scene_bonds(data, bonds, bond_pairs)
-            seg_start, seg_end, seg_rgb, _ = bond_segments(data, b, colors) if b.count else ([], [], [], [])
-            if len(seg_start):
-                i_, j_ = b.topology.T
-                bi = np.concatenate([i_, j_])  # atom each half-bond starts at
-                keep_b = alpha[bi] > 0
-                bi, seg_start, seg_end, seg_rgb = bi[keep_b], seg_start[keep_b], seg_end[keep_b], seg_rgb[keep_b]
-                ax0, ay0, z0, s0 = _project(seg_start, camera, (w, h))
-                ax1, ay1, z1, s1 = _project(seg_end, camera, (w, h))
-                for k, i in enumerate(bi):
-                    dx, dy = ax1[k] - ax0[k], ay1[k] - ay0[k]
-                    length = math.hypot(dx, dy)
-                    if length < 1e-6:
-                        continue
-                    nx, ny = -dy / length, dx / length
-                    c, a = seg_rgb[k], alpha[i]
-                    r0, r1 = bond_radius * s0[k], bond_radius * s1[k]
-                    quad = [(ax0[k] + nx * r0, ay0[k] + ny * r0), (ax1[k] + nx * r1, ay1[k] + ny * r1),
-                            (ax1[k] - nx * r1, ay1[k] - ny * r1), (ax0[k] - nx * r0, ay0[k] - ny * r0)]
-                    patches, fc, ec, lw = [Polygon(quad, closed=True)], [(*(c * 0.85), a)], [(*(c * 0.45), a)], \
-                        [max(0.3, 0.06 * r0) * pt]
-                    if shading != "flat":  # highlight stripe toward the light (upper left)
-                        side = 1.0 if nx + ny < 0 else -1.0
-                        o0, o1 = 0.35 * r0 * side, 0.35 * r1 * side
-                        hw0, hw1 = 0.25 * r0, 0.25 * r1
-                        patches.append(Polygon([(ax0[k] + nx * (o0 + hw0), ay0[k] + ny * (o0 + hw0)),
-                                                (ax1[k] + nx * (o1 + hw1), ay1[k] + ny * (o1 + hw1)),
-                                                (ax1[k] + nx * (o1 - hw1), ay1[k] + ny * (o1 - hw1)),
-                                                (ax0[k] + nx * (o0 - hw0), ay0[k] + ny * (o0 - hw0))], closed=True))
-                        fc.append((*_mix(c, 0.35), a)); ec.append("none"); lw.append(0)
-                    # paint just before the bond's own atom, so the sphere hides the stick's root
-                    prims.append((z0[k] + 1e-6, patches, fc, ec, lw))
-    prims += _arrow_prims(data, vectors, camera, (w, h), pt, shading)
-    for mesh in getattr(data, "surfaces", {}).values():  # polyhedra and other triangle meshes
-        if not mesh.face_count:
-            continue
-        v, f = mesh.vertices, mesh.faces
-        vx, vy, vz, vs = _project(v, camera, (w, h))
-        _, right, up, fwd = _basis(camera)
-        light = np.array([-0.4, 0.6, 1.0]) @ np.array([right, up, -fwd])  # same key light as the ray tracer
-        light /= np.linalg.norm(light)
-        vn, vc = mesh.vertex_properties.get("Normal"), mesh.vertex_properties.get("Color")
-        n = np.cross(v[f[:, 1]] - v[f[:, 0]], v[f[:, 2]] - v[f[:, 0]]) if vn is None \
-            else np.asarray(vn, float)[f].mean(1)  # smooth isosurface normals when given
-        n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
-        lit = 0.55 + 0.45 * np.abs(n @ light)  # two-sided, like the OpenGL faces
-        if vc is not None:  # color-mapped slices keep their exact colormap (unlit)
-            fcol = np.clip(np.asarray(vc, float), 0, 1)[f].mean(1)
-        else:
-            fcol = np.clip(mesh.face_colors(), 0, 1) * lit[:, None]
-        a = 1.0 - mesh.transparency
-        for k, tri in enumerate(f):
-            poly = Polygon(np.column_stack([vx[tri], vy[tri]]), closed=True)
-            # the face color as a hairline outline closes anti-aliasing seams between triangles
-            prims.append((vz[tri].mean(), [poly], [(*fcol[k], a)], [(*fcol[k], a)], [0.3 * pt]))
-        if mesh.edges is not None and len(mesh.edges):
-            ec = _rgb(mesh.edge_color)
-            for i, j in mesh.edges:
-                dx, dy = vx[j] - vx[i], vy[j] - vy[i]
-                length = math.hypot(dx, dy)
-                if length < 1e-6:
-                    continue
-                hw = max(0.5, 0.5 * mesh.edge_width * 0.5 * (vs[i] + vs[j]))
-                nx, ny = -dy / length * hw, dx / length * hw
-                quad = [(vx[i] + nx, vy[i] + ny), (vx[j] + nx, vy[j] + ny), (vx[j] - nx, vy[j] - ny),
-                        (vx[i] - nx, vy[i] - ny)]
-                # just in front of the faces it borders
-                prims.append((0.5 * (vz[i] + vz[j]) - 1e-3, [Polygon(quad, closed=True)], [(*ec, 1.0)], ["none"], [0]))
-    if show_cell and data.cell.is_valid:
-        if cell_color is None:
-            cell_color = "#AEB4BE" if sum(bg) < 1.5 and not transparent_background else "black"
-        o, (a_, b_, c_) = data.cell.origin, data.cell.matrix
-        corners = np.array([o, o + a_, o + b_, o + c_, o + a_ + b_, o + a_ + c_, o + b_ + c_, o + a_ + b_ + c_])
-        edges = [(0, 1), (0, 2), (0, 3), (1, 4), (1, 5), (2, 4), (2, 6), (3, 5), (3, 6), (4, 7), (5, 7), (6, 7)]
-        cx, cy, cz, _ = _project(corners, camera, (w, h))
-        half = max(0.5, cell_width * h / 1600)
-        cc = _rgb(cell_color)
-        for i, j in edges:
-            dx, dy = cx[j] - cx[i], cy[j] - cy[i]
-            length = math.hypot(dx, dy)
-            if length < 1e-6:
-                continue
-            nx, ny = -dy / length * half, dx / length * half
-            # extend by half a width so corners close
-            ex, ey = dx / length * half, dy / length * half
-            quad = [(cx[i] - ex + nx, cy[i] - ey + ny), (cx[j] + ex + nx, cy[j] + ey + ny),
-                    (cx[j] + ex - nx, cy[j] + ey - ny), (cx[i] - ex - nx, cy[i] - ey - ny)]
-            prims.append((0.5 * (cz[i] + cz[j]), [Polygon(quad, closed=True)], [(*cc, 1.0)], ["none"], [0]))
-
+    scene = ir.build(data, ctx=ir.SceneContext(frame=frame), visuals=visuals, radius_scale=radius_scale,
+                     type_colors=type_colors, type_radii=type_radii, radius_preset=radius_preset,
+                     oxidation_states=oxidation_states, coordination=coordination, bonds=bonds,
+                     bond_pairs=bond_pairs, bond_radius=bond_radius, vectors=vectors,
+                     trajectory_width=trajectory_width, show_cell=show_cell, cell_color=cell_color,
+                     cell_width=cell_width)
+    ink = "#AEB4BE" if sum(bg) < 1.5 and not transparent_background else "black"
+    prims = scene_prims(scene, camera, (w, h), pt, shading, ink)
     prims.sort(key=lambda p: -p[0])  # far first
     patches, fc, ec, lw = [], [], [], []
     for _, p, f, e, l in prims:

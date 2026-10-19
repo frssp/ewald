@@ -66,6 +66,7 @@ nav:
       - Reader plugins: plugins/readers.md
       - Writer plugins: plugins/writers.md
       - Modifier plugins: plugins/modifiers.md
+      - Visual element plugins: plugins/visuals.md
       - Modifier Forge: plugins/forge.md
       - Testing a plugin: plugins/testing.md
       - Packaging and sharing: plugins/packaging.md

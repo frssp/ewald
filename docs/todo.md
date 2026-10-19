@@ -52,6 +52,17 @@ Figures
   the coarse (moving) viewport scene, as lines; in SVG/PDF, hide the part of an arrow inside its
   atom exactly (now the shaft is split at the atom and painted by depth).
 
+Visualization plugins (later phases of the Scene IR plan)
+
+- GUI: the built-in elements (Particles, Bonds, Cell, ...) as rows with forms generated from
+  their `VisualElement` parameters, replacing the hand-written style controls.
+- OpenGL and the ray tracer ignore `Cylinders.alpha`; see-through bonds need it.
+- Ray tracer: trajectory lines and other `Lines` without a `radius` are not drawn.
+- Phase 1: color map and theme registries, overlay plugins (`@overlay`), material presets.
+- Phase 2: renderer backend registry, so a plugin can add a renderer that consumes the Scene IR.
+- Phase 3 and later: glTF/HTML export from the IR, animated visuals, Claude-written visual
+  elements (a Visual Forge, like Modifier Forge).
+
 Plugins and Claude
 
 - LLM plugin ideas: Run doctor (diagnose a VASP/LAMMPS run from its outputs), phase

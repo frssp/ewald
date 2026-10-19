@@ -132,6 +132,7 @@ class Toolset:
         self._source_call: dict | None = None
         self._code_blocks: list[str] = []
         self._namespace: dict = {}
+        self.visuals: list[dict] = []  # plugin visual elements drawn by render_image: {name, params, enabled}
         self.tools: dict[str, Tool] = {}
         self._register()
 
@@ -172,6 +173,9 @@ class Toolset:
             else:
                 lines.append(f"pipe.modifiers.append({m!r})")
         lines += ["", f"data = pipe.compute({self.frame})"]
+        if self.visuals:
+            lines += [f"visuals = {self.visuals!r}",
+                      "# from ewald.render import render; render(data, 'figure.png', visuals=visuals)"]
         return "\n".join(lines) + "\n"
 
     # ----------------------------------------------------------- registration
@@ -458,11 +462,45 @@ class Toolset:
             size = (width or self.render_size[0], height or self.render_size[1])
             name = filename or f"frame{f:05d}_{len(self.figures):03d}.png"
             path = os.path.join(self.workdir, os.path.basename(name))
-            render_png(pipe.compute(f), path, size=size, direction=direction, bonds=bonds, zoom=zoom)
+            extra = {"visuals": list(self.visuals)} if self.visuals else {}
+            render_png(pipe.compute(f), path, size=size, direction=direction, bonds=bonds, zoom=zoom, **extra)
             self.figures.append(path)
             with open(path, "rb") as fh:
                 png = fh.read()
             return ToolResult({"path": path, "frame": f, "size": list(size)}, images=[png])
+
+        @T("list_visuals",
+           "Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation "
+           "cell; configured through render_image and modifiers) and installed plugins, which add_visual draws "
+           "on top in every renderer. Lists each with its parameters, plus the ones currently added.",
+           _obj({}))
+        def list_visuals():
+            out = {p.name: {"builtin": p.builtin, "category": p.category, "doc": p.description,
+                            "params": _signature(p.cls)} for p in plugins.visuals().values()}
+            return {"available": out, "added": list(self.visuals)}
+
+        @T("add_visual",
+           "Draw a plugin visual element (see list_visuals) in every later render_image, with optional "
+           "constructor parameters. Returns the visuals now added.",
+           _obj({"name": {"type": "string"}, "params": {"type": "object"}}, ["name"]))
+        def add_visual(name, params=None):
+            from ..scene import coerce_visuals, visual_to_dict
+
+            reg = plugins.visuals()
+            if name not in reg:
+                raise ValueError(f"unknown visual element {name!r}; available: {', '.join(reg)}")
+            if reg[name].builtin:
+                raise ValueError(f"{name!r} is built in and always drawn; set it up through render_image or "
+                                 "a modifier (CreateBonds, VectorVis, ...)")
+            (el,) = coerce_visuals([{"name": name, "params": params or {}}])
+            self.visuals.append(visual_to_dict(el))
+            return {"visuals": list(self.visuals)}
+
+        @T("remove_visual", "Stop drawing the visual element at 'index' of the added list.",
+           _obj({"index": {"type": "integer"}}, ["index"]))
+        def remove_visual(index):
+            removed = self.visuals.pop(index)
+            return {"removed": removed, "visuals": list(self.visuals)}
 
         writer_names = ", ".join(sorted(plugins.writers()))
 
