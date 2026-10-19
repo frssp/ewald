@@ -1,0 +1,107 @@
+name: macOS release
+
+# Builds macOS wheels and EWALD.app (PyInstaller) packed in a .dmg, for Apple Silicon (arm64) and
+# Intel (x86_64), smoke-tests the frozen app, and on a v* tag attaches everything to the GitHub
+# Release. See docs/developer/macos-release.md.
+# Manual only: macOS runners bill 10x Linux minutes. Dispatch it on a v* tag to publish.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wheels:
+    name: wheels (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: arm64, runner: macos-14}
+          - {arch: x86_64, runner: macos-15-intel}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
+          CIBW_ARCHS_MACOS: ${{ matrix.arch }}
+          CIBW_ENVIRONMENT: EWALD_REQUIRE_NATIVE=1 MACOSX_DEPLOYMENT_TARGET=11.0
+          CIBW_TEST_COMMAND: python -c "import ewald, ewald._native; print(ewald.__version__)"
+        with:
+          output-dir: dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-${{ matrix.arch }}
+          path: dist/*.whl
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 3 }}
+
+  app:
+    name: app (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: arm64, runner: macos-14}
+          - {arch: x86_64, runner: macos-15-intel}
+    env:
+      EWALD_REQUIRE_NATIVE: "1"
+      MACOSX_DEPLOYMENT_TARGET: "12.0"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[gui]" pyinstaller
+      - name: Version
+        id: version
+        run: |
+          v=$(python -c "import ewald; print(ewald.__version__)")
+          if [[ "$GITHUB_REF" == refs/tags/v* && "${GITHUB_REF#refs/tags/v}" != "$v" ]]; then
+            echo "tag ${GITHUB_REF#refs/tags/} does not match ewald.__version__ $v"; exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: PyInstaller
+        run: pyinstaller --noconfirm --clean packaging/macos/ewald.spec
+      - name: Smoke test (CLI, analysis, rendering, GUI offscreen)
+        run: |
+          ./dist/EWALD.app/Contents/MacOS/ewald info tests/data/vasp/XDATCAR
+          ./dist/EWALD.app/Contents/MacOS/ewald run packaging/windows/smoke.py tests/data smoke_out | tee smoke.log
+          grep -q "SMOKE OK" smoke.log
+      - name: Smoke test (windowed GUI)
+        run: EWALD_SMOKE_TEST=1 ./dist/EWALD.app/Contents/MacOS/ewald-gui tests/data/vasp/XDATCAR
+      - name: Signature and size
+        run: |
+          codesign --verify --deep --verbose=2 dist/EWALD.app || true
+          du -sh dist/EWALD.app
+      - name: Disk image
+        run: packaging/macos/make_dmg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-macos-${{ matrix.arch }}
+          path: dist/*.dmg
+          compression-level: 0
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 3 }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [wheels, app]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
