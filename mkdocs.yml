@@ -78,4 +78,6 @@ nav:
       - Windows release: developer/windows-release.md
   - Reference:
       - Python API: reference/api.md
+      - Feature inventory: features.md
       - Roadmap: ROADMAP.md
+      - TODO: todo.md

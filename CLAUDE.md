@@ -3,8 +3,9 @@
 ewald is an OVITO-style atomistic structure/trajectory viewer and analysis library:
 `import_file` -> `pipe.modifiers` -> `pipe.compute(frame, device=...)` -> `pipe.render(...)`,
 plus a PySide6 desktop GUI and Claude tools. User-facing docs: the manual in docs/ (MkDocs,
-`mkdocs.yml`; user/, plugins/, developer/, reference/) and README.md; plan and state:
-docs/ROADMAP.md; GUI design specs live outside the repo (project files `design/`).
+`mkdocs.yml`; user/, plugins/, developer/, reference/) and README.md; what exists:
+docs/features.md (generated); open work: docs/todo.md; milestones: docs/ROADMAP.md; GUI design
+specs live outside the repo (project files `design/`).
 
 ## Commands
 
@@ -15,6 +16,7 @@ xvfb-run -a python -m pytest -q  # full suite; rendering and GUI tests need an X
 python -m pytest -q --ignore=tests/test_render.py --ignore=tests/test_gui.py --ignore=tests/test_visual.py   # no display
 xvfb-run -a python -m pytest tests/test_visual.py [--update-references]   # visual regression (reference images)
 python -m ewald api > llms.txt   # regenerate the LLM API reference (see below)
+xvfb-run -a python -m ewald inventory -o docs/features.md --gui   # regenerate the feature inventory
 python benchmarks/neighbors.py   # neighbor-list timings
 python benchmarks/large_files.py # open/frame-switch/memory on generated multi-million-atom files
 python examples/demo.py          # sample trajectories + figures into demo_out/
@@ -66,6 +68,7 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   Examples in `examples/plugins/`.
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
+- `inventory.py`: `ewald inventory`, docs/features.md from the registries, CLI parser and GUI menus.
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
 - `gui/`: `app.py` main window, `viewport.py`, `pipeline_panel.py`, `params.py`, `render_page.py`,
   `preferences.py`, `remote_dialog.py` (SSH browser), `console.py`, `inspector.py`, `plots.py`,
@@ -96,6 +99,12 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 
 ## When you change the API
 
+- Every PR that adds or changes a feature (modifier, reader/writer, renderer option, CLI command,
+  Claude tool, preference, GUI menu entry) regenerates docs/features.md with
+  `xvfb-run -a python -m ewald inventory -o docs/features.md --gui` and updates docs/todo.md: drop
+  finished items, add what is left open, keep "In progress" current. features.md is generated,
+  never hand-edited; `tests/test_docs.py` and `tests/test_gui.py` fail when it is stale. todo.md
+  is the only TODO list; docs/ROADMAP.md keeps milestones and decisions.
 - `llms.txt` is a snapshot of `ewald api` (`llm/reference.py`: the `GUIDE` text plus every modifier
   signature and docstring from `ewald.modifiers.__all__`). After adding, renaming or changing the
   signature/docstring of a modifier, or editing `GUIDE`, run `python -m ewald api > llms.txt` and
