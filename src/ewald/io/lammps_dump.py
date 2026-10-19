@@ -8,14 +8,13 @@ files (``.gz``/``.bz2``/``.xz``) and a truncated last frame from a killed run.
 from __future__ import annotations
 
 import io
-import warnings
 
 import numpy as np
 
 from ..data import Cell, DataCollection
 from . import remote
 from ._textparse import parse_table
-from .base import FrameReader, file_size, head_lines, open_binary
+from .base import FrameReader, IncompleteFileError, file_size, head_lines, open_binary
 
 # LAMMPS column name -> (OVITO-style property, component)
 _COLUMN_MAP = {
@@ -59,10 +58,11 @@ class LammpsDumpReader(FrameReader):
             raise ValueError(f"{path}: no 'ITEM: TIMESTEP' found; not a LAMMPS dump file")
         self._end = None  # where the last frame ends (None: end of file)
         if not last_complete:  # a run killed mid-write leaves a partial last frame; drop it
-            warnings.warn(f"{path}: last frame is incomplete and was skipped", stacklevel=2)
             self._end = self._offsets.pop()
             if not self._offsets:
-                raise ValueError(f"{path}: the only frame is incomplete") from None
+                raise IncompleteFileError(f"{path}: the only frame is incomplete (LAMMPS still writing it, "
+                                          f"or stopped)") from None
+            self._set_incomplete(f"{len(self._offsets)} frame(s) read, the partial last one skipped")
         self._last = None
         self._units = None  # LAMMPS writes ITEM: UNITS only in the first snapshot
         self._read_units()
@@ -97,6 +97,8 @@ class LammpsDumpReader(FrameReader):
         # the old last frame was scanned again: its last line may have been half written
         changed = keep < len(self._offsets) or offsets != self._offsets
         self._offsets, self._end, self._last = offsets, end, None
+        self._set_incomplete(f"{len(offsets)} frame(s) read, the partial last one skipped" if end is not None
+                             else None, warn=False)
         if keep == 0 or (self._units is None and len(offsets) > 1):
             self._read_units()
         return keep if changed else None

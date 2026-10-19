@@ -232,14 +232,16 @@ remote file is unchanged. Host aliases need at least two characters, so `C:\data
 
 ## Runs that are still writing
 
-A LAMMPS dump, XDATCAR, OUTCAR or extxyz file can be opened while the simulation is still
-writing it, locally or over SSH. `pipe.refresh()` looks for frames appended since the file was
+A LAMMPS dump, XDATCAR, OUTCAR, vasprun.xml, extxyz or H5MD file, or a VASP NEB folder, can be
+opened while the simulation is still writing it, locally or over SSH. `pipe.refresh()` looks for frames appended since the file was
 opened (or last refreshed), reads only the new bytes (on an SSH host `tail -c | grep -b` runs
 there), drops cached frames that may have changed and returns how many frames were added.
 A half-written last frame is left out until it is complete, a file that shrank (a new run
 overwrote it) is indexed again, and a wildcard such as `dump.*.lammpstrj` also picks up files
 that appeared. Thermo tables next to the trajectory (log.lammps, OSZICAR) are read again too.
-Compressed files are not followed.
+Compressed files are not followed. A vasprun.xml is indexed again from the start when it grew
+(its structure has no cheap resume point), so the DOS and bands appear on every frame once
+VASP writes them at the end of the run.
 
 ```python
 pipe = import_file("cluster:/scratch/me/run1/dump.lammpstrj")
@@ -251,6 +253,38 @@ if pipe.refresh():               # new frames since the last look
 The GUI does this by itself every two seconds (Preferences › General › Live reload, and
 File › Live reload for the current session): the timeline grows, and if it was on the last
 frame it moves on to the newest one, as in OVITO and VMD.
+
+## Calculations that have not finished
+
+A file of a calculation that is still running, or was killed (queue time limit, a crash), is
+read up to the last complete step: the half-written step at the end is left out, and the
+reader says what is missing instead of failing.
+
+| File | Read | Said |
+| --- | --- | --- |
+| vasprun.xml | every finished ionic step; before the first one, the initial structure | no `</modeling>`; DOS and bands "not written yet" or "cut short" (not shown) |
+| OUTCAR | every ionic step with positions; before the first one, the initial positions (`Timestep` 0) | no timing summary at the end |
+| vaspout.h5 | opened without HDF5 file locking (a running VASP holds a write lock); trailing all-zero steps left out | a file HDF5 cannot open (killed before it was closed) falls back to the vasprun.xml, OUTCAR or XDATCAR next to it |
+| XDATCAR, LAMMPS dump, extxyz | every complete frame | the partial last frame |
+| OSZICAR | every complete line | |
+| CHGCAR, LOCPOT, ... | the complete grid blocks; a cut first block gives the atoms alone | the cut block |
+| H5MD | frames whose step is written | |
+| NEB folder | an image whose OUTCAR has no finished step yet shows its CONTCAR or POSCAR | the image |
+
+Each such file gives an `IncompleteFileWarning` (a `UserWarning`) when it is opened, and the
+note stays on the reader (`reader.incomplete`) and the source:
+
+```python
+pipe = import_file("run/vasprun.xml")      # VASP still running
+pipe.source.incomplete
+# ['vasprun.xml: 12 ionic step(s) read, the partial last one skipped; DOS and bands not written
+#   yet (vasprun.xml has no </modeling>: VASP still running or stopped)']
+```
+
+When nothing is complete yet (VASP has only written the header), opening raises
+`IncompleteFileError`, a `ValueError`; try again later or open another output of the run. The
+GUI shows the note in the status bar and the log, follows the file with live reload, and
+says "Calculation finished" when the run has written the rest.
 
 ## Formats ewald does not read
 

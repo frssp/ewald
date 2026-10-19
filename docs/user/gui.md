@@ -90,7 +90,9 @@ usual tools, and modifiers it adds appear in the pipeline. It needs the `llm` ex
 
 **Timeline.** Play, step and scrub through frames. Every frame is computed through the whole
 pipeline when you move to it. While a simulation is still writing the file, new frames are
-added to the timeline as they appear ([live reload](formats.md#runs-that-are-still-writing)).
+added to the timeline as they appear ([live reload](formats.md#runs-that-are-still-writing)). A file of a
+calculation that has not finished (VASP still running or killed) opens with what is complete,
+and the status bar says what is missing ([details](formats.md#calculations-that-have-not-finished)).
 
 **Pipeline panel.** The list shows the data source at the bottom and modifiers above it, the
 last-applied modifier on top, as in OVITO. "Add modification" (or the Pipeline menu) inserts a

@@ -12,8 +12,31 @@ from . import remote
 _OPENERS = {".gz": gzip.open, ".bz2": bz2.open, ".xz": lzma.open}
 
 
+class IncompleteFileWarning(UserWarning):
+    """The file belongs to a calculation that is still running or was stopped: everything
+    complete was read, the part being written was left out (see :attr:`FrameReader.incomplete`)."""
+
+
+class IncompleteFileError(ValueError):
+    """The file belongs to a calculation that is still running or was stopped, and nothing in it
+    is complete yet (no finished step). Try again later, or open another output of the run."""
+
+
 class FrameReader:
     """Interface: index a file once, then load any frame on demand."""
+
+    #: why the file is incomplete (a calculation still running or stopped), or None when it is
+    #: complete or that cannot be told; set by the readers, shown by the GUI
+    incomplete: str | None = None
+
+    def _set_incomplete(self, note: str | None, warn: bool = True, stacklevel: int = 3):
+        """Record (and by default warn about, as :class:`IncompleteFileWarning`) an incomplete file."""
+        self.incomplete = note
+        if note and warn:
+            import warnings
+
+            warnings.warn(f"{getattr(self, 'path', '')}: calculation incomplete: {note}", IncompleteFileWarning,
+                          stacklevel=stacklevel)
 
     def __len__(self) -> int:  # number of frames
         raise NotImplementedError

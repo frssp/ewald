@@ -18,7 +18,7 @@ import os
 import numpy as np
 
 from ..data import Cell, DataCollection
-from .base import FrameReader
+from .base import FrameReader, IncompleteFileError
 
 _ELEMENTS = {"position": "Position", "velocity": "Velocity", "force": "Force", "image": "Periodic Image",
              "id": "Particle Identifier", "mass": "Mass", "charge": "Charge", "species": "Particle Type"}
@@ -34,15 +34,36 @@ def _h5py():
     return h5py
 
 
+def open_h5(path):
+    """``h5py.File`` opened for reading a file another program may still be writing.
+
+    A running VASP or LAMMPS holds an HDF5 write lock, so the file is opened without locking
+    (it is only read). A file HDF5 cannot open at all (cut short, or a run killed before it
+    closed the file) raises :class:`~ewald.io.base.IncompleteFileError`.
+    """
+    h5py = _h5py()
+    try:
+        return h5py.File(path, "r", locking=False)
+    except TypeError:  # h5py < 3.5 has no locking argument
+        return h5py.File(path, "r")
+    except FileNotFoundError:
+        raise
+    except OSError as exc:
+        if not os.path.isfile(path):
+            raise
+        raise IncompleteFileError(f"{path}: HDF5 file cannot be opened ({exc}); a run still writing it or "
+                                  f"killed before closing it?") from None
+
+
 def is_h5md(path) -> bool:
     try:
         with open(path, "rb") as fh:
             if fh.read(8) != b"\x89HDF\r\n\x1a\n":
                 return False
         h5py = _h5py()
-        with h5py.File(path, "r") as f:
+        with open_h5(path) as f:
             return "h5md" in f and "particles" in f
-    except (OSError, ImportError):
+    except (OSError, ValueError, ImportError):
         return False
 
 
@@ -73,10 +94,9 @@ class H5mdReader(FrameReader):
     """H5MD particles group (the first, or ``group=``), lazy."""
 
     def __init__(self, path, group: str | None = None, type_map: dict | None = None):
-        h5py = _h5py()
         self.path = str(path)
         self.type_map = {str(k): v for k, v in (type_map or {}).items()}
-        with h5py.File(self.path, "r") as f:
+        with open_h5(self.path) as f:
             groups = list(f["particles"])
             if not groups:
                 raise ValueError(f"{path}: no particle groups")
@@ -87,8 +107,9 @@ class H5mdReader(FrameReader):
             value, step = _element(g, "position")
             if value is None:
                 raise ValueError(f"{path}: particle group {self.group!r} has no position")
-            self._n = value.shape[0] if step is not None else 1
-            self._steps = step if step is not None else np.zeros(1, int)
+            # a running LAMMPS may have grown the value dataset before writing its step
+            self._n = min(value.shape[0], len(step)) if step is not None else 1
+            self._steps = step[: self._n] if step is not None else np.zeros(1, int)
             self.elements = [k for k in g if k != "box"]
             self._names = self._species_names(f)
 
@@ -103,6 +124,18 @@ class H5mdReader(FrameReader):
     def __len__(self):
         return self._n
 
+    def refresh(self) -> int | None:
+        """Frames a running simulation appended since the last look (the file is indexed again)."""
+        try:
+            fresh = H5mdReader(self.path, self.group, self.type_map)
+        except (OSError, ValueError, KeyError):
+            return None
+        old = self._n
+        if fresh._n == old and np.array_equal(fresh._steps, self._steps):
+            return None
+        self.__dict__.update(fresh.__dict__)
+        return 0 if fresh._n < old else max(old - 1, 0)
+
     def _frame_index(self, steps, index):
         if steps is None:
             return None  # time-independent
@@ -112,9 +145,8 @@ class H5mdReader(FrameReader):
         return int(hit[0]) if hit.size else -1
 
     def read(self, index: int) -> DataCollection:
-        h5py = _h5py()
         index = range(self._n)[index]
-        with h5py.File(self.path, "r") as f:
+        with open_h5(self.path) as f:
             g = f["particles"][self.group]
             value, step = _element(g, "position")
             pos = np.asarray(value[index] if step is not None else value[()], float) * _scale(value)

@@ -17,7 +17,7 @@ import numpy as np
 
 from ..data import Cell, DataCollection
 from .base import FrameReader
-from .h5md import _h5py
+from .h5md import open_h5
 
 _NM = 10.0
 _KJMOL_TO_EV = 0.010364269656262175
@@ -32,11 +32,11 @@ def is_mdtraj_h5(path) -> bool:
         with open(path, "rb") as fh:
             if fh.read(8) != b"\x89HDF\r\n\x1a\n":
                 return False
-        with _h5py().File(path, "r") as f:
+        with open_h5(path) as f:
             conv = f.attrs.get("conventions", b"")
             conv = conv.decode() if isinstance(conv, bytes) else str(conv)
             return "coordinates" in f and (conv == "Pande" or "topology" in f)
-    except (OSError, ImportError):
+    except (OSError, ValueError, ImportError):
         return False
 
 
@@ -65,9 +65,8 @@ class MdtrajH5Reader(FrameReader):
     """MDTraj / OpenMM HDF5 trajectory, lazy."""
 
     def __init__(self, path):
-        h5py = _h5py()
         self.path = str(path)
-        with h5py.File(self.path, "r") as f:
+        with open_h5(self.path) as f:
             if "coordinates" not in f:
                 raise ValueError(f"{path}: no /coordinates; not an MDTraj HDF5 file?")
             self._n, self.natoms = f["coordinates"].shape[:2]
@@ -97,9 +96,8 @@ class MdtrajH5Reader(FrameReader):
         return self._n
 
     def read(self, index: int) -> DataCollection:
-        h5py = _h5py()
         index = range(self._n)[index]
-        with h5py.File(self.path, "r") as f:
+        with open_h5(self.path) as f:
             ds = f["coordinates"]
             pos = np.asarray(ds[index], float) * _factor(ds, _NM)
             cell = Cell()

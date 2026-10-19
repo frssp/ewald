@@ -269,8 +269,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - P2: glTF, interactive HTML and Blender export.
 - P2: Batch render CLI: apply one `.ewald` session to many run folders.
 - P2: Native GSD reader (H5MD and XTC/TRR/DCD are done).
-- P2: Live reload for vasprun.xml, H5MD, XTC/TRR/DCD and compressed files (dump, XDATCAR,
-  OUTCAR and extxyz follow a growing file now); a file-system watcher instead of polling.
+- P2: Live reload for XTC/TRR/DCD and compressed files (dump, XDATCAR, OUTCAR, vasprun.xml,
+  extxyz, H5MD and NEB folders follow a growing file now); a file-system watcher instead of
+  polling; resume a growing vasprun.xml from its last step instead of indexing it again.
+- P2: Unfinished calculations, rest: a persistent "running" badge on the timeline (the note is a
+  status-bar message and a log line now); the GUI's AI chat and `ewald ask` could mention
+  `reader.incomplete`; QE, CP2K, ABINIT outputs go through ASE, which fails on a cut file.
 - P2: More HDF5 output: Quantum ESPRESSO `charge-density.hdf5` (G-space, needs an FFT to the
   real-space grid), ABINIT netCDF-4 `*_HIST.nc` trajectories and `*_DEN.nc` densities, VASP
   `vaspout.h5` `/results/partial_charges` (PARCHG).
@@ -284,6 +288,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   Windows Credential Manager, GNOME Keyring) and a passphrase-protected key from a real agent.
 - Live reload on a real running LAMMPS/VASP job (local and over SSH), where the writer flushes
   in arbitrary pieces; tests grow fixture files byte by byte.
+- A vaspout.h5 from a real running and a real killed VASP 6 job: which groups exist mid-run,
+  whether unwritten steps are zeros, and whether HDF5 can open the file of a killed job (tests
+  use h5py-written fixtures, a second process holding the write lock, and a cut file).
 - Claude features with a real API key: `ewald ask` (also `--select`), the GUI AI chat side bar
   (notebook code in the prompt, Insert as notebook cell), the classic Ask Claude tab,
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › Claude › Test connection.

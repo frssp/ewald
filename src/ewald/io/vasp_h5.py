@@ -27,8 +27,8 @@ import os
 import numpy as np
 
 from ..data import Cell, DataCollection, VoxelGrid
-from .base import FrameReader
-from .h5md import _h5py
+from .base import FrameReader, IncompleteFileError
+from .h5md import open_h5
 from .vasp_output import _KB_TO_EV_A3, _table
 from .xdatcar import species_name
 
@@ -54,9 +54,9 @@ def _has(path, *groups) -> bool:
     if not _hdf5(path):
         return False
     try:
-        with _h5py().File(path, "r") as f:
+        with open_h5(path) as f:
             return all(g in f for g in groups)
-    except (OSError, ImportError):
+    except (OSError, ValueError, ImportError):
         return False
 
 
@@ -109,11 +109,13 @@ class VaspoutReader(FrameReader):
     """VASP 6 ``vaspout.h5``: every ionic step with forces, energies, stress, velocities, lazy."""
 
     def __init__(self, path, grids: bool = True):
-        h5py = _h5py()
         self.path = str(path)
         self.grids = grids
-        with h5py.File(self.path, "r") as f:
+        with open_h5(self.path) as f:
             if _FINAL + "/ion_types" not in f:
+                if "input" in f or "intermediate" in f:
+                    raise IncompleteFileError(f"{path}: no {_FINAL}/ion_types yet (VASP still running, or "
+                                              f"stopped before writing it)")
                 raise ValueError(f"{path}: no {_FINAL}/ion_types; not a vaspout.h5?")
             names = [species_name(_text(t)) for t in f[_FINAL + "/ion_types"][()]]
             counts = np.atleast_1d(f[_FINAL + "/number_ion_types"][()]).astype(int)
@@ -123,6 +125,16 @@ class VaspoutReader(FrameReader):
             dyn = f.get(_DYN + "/position_ions")
             self._history = dyn is not None and dyn.ndim == 3 and dyn.shape[0] > 0
             self._n = dyn.shape[0] if self._history else 1
+            skipped = 0
+            if self._history:  # steps a stopped run left unwritten (all zeros) at the end
+                lat = f.get(_DYN + "/lattice_vectors")
+                while self._n > 0 and (not np.any(dyn[self._n - 1]) and len(self.types) > 1
+                                       or lat is not None and lat.ndim == 3 and self._n <= lat.shape[0]
+                                       and not np.any(lat[self._n - 1])):
+                    self._n -= 1
+                    skipped += 1
+                if self._n == 0:
+                    raise IncompleteFileError(f"{path}: no ionic step written yet")
             if not self._history and _FINAL + "/position_ions" not in f:
                 raise ValueError(f"{path}: no ionic positions")
             self._energies = {}
@@ -148,6 +160,8 @@ class VaspoutReader(FrameReader):
                 row["Pressure"] = p
             rows.append(row)
         self.thermo = _table(rows) if self._energies or self._stress is not None else None
+        if skipped:
+            self._set_incomplete(f"{self._n} ionic step(s) read, {skipped} empty step(s) at the end skipped")
 
     def __len__(self):
         return self._n
@@ -217,7 +231,7 @@ class VaspoutReader(FrameReader):
             path = self.path
 
             def load():
-                with _h5py().File(path, "r") as h:
+                with open_h5(path) as h:
                     p = np.asarray(h[par][()], float)                # (spin, atom, orbital, k, band)
                 p = p[:1] if len(p) == 4 else p
                 p = np.transpose(p, (0, 3, 4, 1, 2))
@@ -245,9 +259,8 @@ class VaspoutReader(FrameReader):
         return Cell(matrix, np.zeros(3), np.ones(3, bool))
 
     def read(self, index: int) -> DataCollection:
-        h5py = _h5py()
         index = range(self._n)[index]
-        with h5py.File(self.path, "r") as f:
+        with open_h5(self.path) as f:
             if self._history:
                 group = _DYN if _DYN + "/lattice_vectors" in f else _FINAL
                 cell = self._cell(f, group, index)
@@ -313,7 +326,7 @@ class VaspwaveReader(FrameReader):
         data.attributes.pop("Timestep", None)
         cell = data.cell
         grid = VoxelGrid(cell.copy())
-        with _h5py().File(self.path, "r") as f:
+        with open_h5(self.path) as f:
             if "charge/charge" in f:
                 _add_components(grid, "Charge Density", np.asarray(f["charge/charge"][()], float) / cell.volume,
                                 "Magnetization")

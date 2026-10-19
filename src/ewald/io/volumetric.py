@@ -17,7 +17,7 @@ import warnings
 import numpy as np
 
 from ..data import Cell, DataCollection, VoxelGrid
-from .base import FrameReader, open_binary, strip_compression
+from .base import FrameReader, IncompleteFileWarning, open_binary, strip_compression
 from .xdatcar import species_name
 
 BOHR = 0.529177210903  # Angstrom
@@ -114,11 +114,16 @@ def read_vasp_volumetric(path, kind: str | None = None) -> DataCollection:
         dims = d
         values, i = _read_block(lines, i + 1, dims)
         if values is None:
-            warnings.warn(f"{path}: grid block {len(blocks) + 1} is incomplete and was skipped", stacklevel=2)
+            warnings.warn(f"{path}: calculation incomplete: grid block {len(blocks) + 1} is cut short and was "
+                          f"skipped", IncompleteFileWarning, stacklevel=2)
             break
         blocks.append(values)
+    data = DataCollection(positions, np.repeat(species, counts), cell)
+    data.particles["Particle Identifier"] = np.arange(1, natoms + 1)
     if not blocks:
-        raise ValueError(f"{path}: no volumetric data found")
+        if dims is None:
+            raise ValueError(f"{path}: no volumetric data found")
+        return data  # VASP was killed while writing the grid: the atoms alone
 
     ident, prop, per_volume = _VASP_KINDS[kind]
     if per_volume:
@@ -132,8 +137,6 @@ def read_vasp_volumetric(path, kind: str | None = None) -> DataCollection:
     else:  # extra blocks of LOCPOT/ELFCAR (spin channels; their meaning depends on the VASP version)
         for k, b in enumerate(blocks[1:], start=2):
             grid[f"{prop} {k}"] = b
-    data = DataCollection(positions, np.repeat(species, counts), cell)
-    data.particles["Particle Identifier"] = np.arange(1, natoms + 1)
     data.grids[ident] = grid
     return data
 
@@ -196,7 +199,21 @@ class VolumetricReader(FrameReader):
     def read(self, index: int) -> DataCollection:
         if index != 0:
             raise IndexError(index)
-        return read_cube(self.path, self.pbc) if self.cube else read_vasp_volumetric(self.path, self.kind)
+        if self.cube:
+            return read_cube(self.path, self.pbc)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", IncompleteFileWarning)
+            data = read_vasp_volumetric(self.path, self.kind)
+        notes = []
+        for w in caught:
+            if issubclass(w.category, IncompleteFileWarning):
+                notes.append(str(w.message).split("calculation incomplete: ", 1)[-1])
+            else:
+                warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
+        if not data.grids and not notes:
+            notes.append("the grid is cut short; only the atoms were read")
+        self._set_incomplete("; ".join(notes) or None, stacklevel=2)
+        return data
 
 
 def _pick_grid(data, grid=None, property=None):

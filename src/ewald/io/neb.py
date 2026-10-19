@@ -28,7 +28,7 @@ import re
 import numpy as np
 
 from ..data import DataCollection
-from .base import FrameReader, open_binary
+from .base import FrameReader, IncompleteFileError, open_binary
 
 
 def _natural_key(path: str):
@@ -172,8 +172,44 @@ class NebReader(FrameReader):
         if r is None:
             from . import open_reader
 
-            r = self._readers[i] = open_reader(self.files[i], **self.kwargs)
+            try:
+                r = open_reader(self.files[i], **self.kwargs)
+            except IncompleteFileError:
+                # an image whose OUTCAR has no finished ionic step yet: its CONTCAR or POSCAR
+                folder = os.path.dirname(self.files[i])
+                start = next((os.path.join(folder, n) for n in ("CONTCAR", "POSCAR")
+                              if os.path.isfile(os.path.join(folder, n)) and os.path.getsize(os.path.join(folder, n))),
+                             None)
+                if start is None:
+                    raise
+                r = open_reader(start)
+                r.incomplete = f"{os.path.basename(self.files[i])} has no finished ionic step yet, " \
+                               f"{os.path.basename(start)} shown"
+            self._readers[i] = r
         return r
+
+    @property
+    def incomplete(self) -> str | None:
+        """Images whose files are still being written (of the images read so far)."""
+        notes = [f"image {i:02d}: {r.incomplete}" for i, r in sorted(self._readers.items())
+                 if getattr(r, "incomplete", None)]
+        return "; ".join(notes) or None
+
+    def refresh(self) -> int | None:
+        """A running NEB: images whose files grew (or that can now be read) are read again."""
+        changed = []
+        for i, r in list(self._readers.items()):
+            if os.path.abspath(self.files[i]) != os.path.abspath(getattr(r, "path", self.files[i])):
+                from . import open_reader
+
+                try:  # shown from CONTCAR/POSCAR: has the OUTCAR finished a step now?
+                    self._readers[i] = open_reader(self.files[i], **self.kwargs)
+                except (OSError, ValueError):
+                    continue
+                changed.append(i)
+            elif r.refresh() is not None:
+                changed.append(i)
+        return min(changed) if changed else None
 
     def _endpoint(self, index: int, outcar: DataCollection) -> DataCollection:
         """The POSCAR of endpoint ``index`` with the energies of its OUTCAR, and the OUTCAR's
