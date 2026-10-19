@@ -66,6 +66,28 @@ and saved. The `Thermo` table (log.lammps, OSZICAR, OUTCAR, vasprun.xml; see
 [File formats](formats.md#simulation-results)) is drawn one column at a time, picked under
 "y", with a dashed line at the current frame's step that follows the timeline.
 
+**Linked selection.** Plots and the viewport share one selection, in both directions:
+
+- Drag an x range on a histogram (the "histogram of" box, `Histogram`, CSP or PTM RMSD), g(r),
+  bond length or bond angle plot to select the particles behind it: particles with that
+  property value, particles in a pair at that distance (only A-B pairs on a partial `g(r) A-B`
+  column), both ends of the bonds with that length, or the vertex atoms of those bond angles.
+  They are picked in the viewport, so Ask Claude about selection uses them, and the range is
+  re-applied on every frame. **Keep as selection** turns a property range into an
+  `ExpressionSelection` modifier.
+- Drag on a per-frame plot (`Thermo`, `time-series`, `plumed`, `colvar`, MSD) to select the
+  frames in that x range; Shift+drag a box to select by value as well (for example the frames
+  where a CV lies in a window). Drag a box on a 2D free energy surface to select the frames whose
+  CV pair (from `LoadColvar` or `Plumed`) falls in it. The frames are marked on the timeline,
+  playback steps through them only, and the ✕ on the timeline clears them. A click on a
+  per-frame plot jumps to the nearest frame.
+- The other way, atoms picked in the viewport (or the `Selection` property) are drawn on the
+  plot: as a highlighted sub-histogram on count plots, or as a second axis ("selected") on g(r).
+  Selected frames are marked as points on per-frame plots.
+
+The same mapping is available without the GUI in `ewald.linking` (`link_for`,
+`atoms_in_range`, `frames_in_box`, `selection_expression`).
+
 **Command palette.** Window › Command palette searches every menu action and every modifier by
 name.
 

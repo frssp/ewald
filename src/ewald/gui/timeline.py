@@ -1,11 +1,42 @@
-"""Animation timeline: slider, spinbox, play/pause."""
+"""Animation timeline: slider, spinbox, play/pause, and the frames selected on a plot."""
 from __future__ import annotations
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
+
+from .theme import TOKENS
+
+
+class _MarkedSlider(QtWidgets.QSlider):
+    """Slider with a tick under every selected frame."""
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.marks: list[int] = []
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self.marks or self.maximum() <= self.minimum():
+            return
+        opt = QtWidgets.QStyleOptionSlider()
+        self.initStyleOption(opt)
+        style = self.style()
+        groove = style.subControlRect(QtWidgets.QStyle.CC_Slider, opt, QtWidgets.QStyle.SC_SliderGroove, self)
+        handle = style.subControlRect(QtWidgets.QStyle.CC_Slider, opt, QtWidgets.QStyle.SC_SliderHandle, self)
+        span = groove.width() - handle.width()
+        x0 = groove.x() + handle.width() // 2
+        p = QtGui.QPainter(self)
+        p.setPen(QtGui.QPen(QtGui.QColor(TOKENS["pick"]), 1))
+        top, bottom = self.rect().top() + 1, self.rect().bottom() - 1
+        for f in self.marks:
+            x = x0 + QtWidgets.QStyle.sliderPositionFromValue(self.minimum(), self.maximum(), f, span)
+            p.drawLine(x, top, x, top + 3)
+            p.drawLine(x, bottom - 3, x, bottom)
+        p.end()
 
 
 class Timeline(QtWidgets.QWidget):
     frameChanged = QtCore.Signal(int)
+    selectionChanged = QtCore.Signal(object)  # selected frames (empty: none), from the clear button
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -16,14 +47,18 @@ class Timeline(QtWidgets.QWidget):
         self.play = QtWidgets.QToolButton(text="▶", toolTip="Play / pause (Space)", checkable=True)
         self.next = QtWidgets.QToolButton(text="▶|", toolTip="Next frame (Alt+→)")
         self.last = QtWidgets.QToolButton(text="⏭", toolTip="Last frame (End)")
-        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider = _MarkedSlider(QtCore.Qt.Horizontal)
+        self.sel = QtWidgets.QToolButton(text="", toolTip="Frames selected on a plot; playback steps through "
+                                         "them. Click to clear.")
+        self.sel.setStyleSheet(f"color: {TOKENS['pick']};")
+        self.sel.clicked.connect(lambda: self.set_selection([], emit=True))
         self.spin = QtWidgets.QSpinBox()
         self.count = QtWidgets.QLabel("/ 0")
         self.fps = QtWidgets.QSpinBox(suffix=" fps", minimum=1, maximum=120, value=10)
         self.stride = QtWidgets.QSpinBox(prefix="every ", minimum=1, maximum=10000, value=1)
         self.loop = QtWidgets.QCheckBox("Loop", checked=True)
         for w in (self.first, self.prev, self.play, self.next, self.last, self.slider, self.spin, self.count,
-                  self.fps, self.stride, self.loop):
+                  self.sel, self.fps, self.stride, self.loop):
             lay.addWidget(w)
         lay.setStretch(5, 1)
         self.prev.clicked.connect(lambda: self._set(max(0, self.frame - self.stride.value())))
@@ -49,6 +84,23 @@ class Timeline(QtWidgets.QWidget):
             w.blockSignals(False)
         self.count.setText(f"/ {max(0, n - 1)}")
         self.setEnabled(n > 1)
+        self.set_selection([])
+
+    @property
+    def selection(self) -> list[int]:
+        """Selected frames (sorted), or [] for none."""
+        return list(self.slider.marks)
+
+    def set_selection(self, frames, emit: bool = False):
+        """Mark ``frames`` on the slider; playback then steps through them only."""
+        n = self.slider.maximum() + 1
+        self.slider.marks = sorted({int(f) for f in frames or () if 0 <= int(f) < n})
+        k = len(self.slider.marks)
+        self.sel.setText(f"{k} selected ✕" if k else "")
+        self.sel.setVisible(bool(k))
+        self.slider.update()
+        if emit:
+            self.selectionChanged.emit(self.selection)
 
     def _set(self, value: int):
         for w in (self.slider, self.spin):
@@ -66,6 +118,14 @@ class Timeline(QtWidgets.QWidget):
             self.timer.stop()
 
     def _advance(self):
+        marks = self.slider.marks
+        if marks:
+            later = [f for f in marks if f > self.frame]
+            if not later and not self.loop.isChecked():
+                self.play.setChecked(False)
+                return
+            self._set(later[0] if later else marks[0])
+            return
         nxt = self.frame + self.stride.value()
         if nxt > self.slider.maximum():
             if not self.loop.isChecked():
