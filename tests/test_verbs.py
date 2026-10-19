@@ -50,3 +50,32 @@ def test_sq_table_is_a_plain_dict_of_columns(cu_pipe):
     s = ewald.sq(cu_pipe, q_max=6.0, bins=60)
     assert s.name == "structure-factor" and s.columns[0] == "q" and s.x.max() <= 6.0
     assert all(len(v) == len(s.x) for v in s.values())
+
+
+def test_structure_verbs_return_counts_by_name(cu_pipe):
+    s = ewald.cna(cu_pipe)
+    n = cu_pipe.compute(0).count
+    assert s.name == "structures" and s.counts == {"OTHER": 0, "FCC": n, "HCP": 0, "BCC": 0, "ICO": 0}
+    assert repr(s).startswith("<Table 'structures': OTHER 0, FCC ")
+    ewald.cna(cu_pipe, mode="interval")                                      # replaces its step
+    assert [type(m).__name__ for m in cu_pipe.modifiers] == ["CommonNeighborAnalysis"]
+    assert cu_pipe.modifiers[0].mode == "interval"
+    assert ewald.ptm(cu_pipe).counts["FCC"] == n and len(cu_pipe.modifiers) == 2
+    assert s._repr_png_()[:4] == b"\x89PNG"                                   # drawn as bars with the names
+
+
+def test_voronoi_and_clusters_verbs(cu_fcc):
+    from ewald.verbs import VERB_CELLS, verb_cell
+
+    d = cu_fcc.copy()
+    types = np.array(["Cu"] * d.count, dtype=object)
+    types[:4] = "Ni"
+    d.particles["Particle Type"] = types
+    pipe = Pipeline(StaticSource(d))
+    v = ewald.voronoi(pipe)
+    assert v.counts == {12: d.count} and v["Count Ni"].tolist() == [4] and v["Count Cu"].tolist() == [d.count - 4]
+    c = ewald.clusters(pipe, cutoff=2.0)                                     # below the nn distance: singletons
+    assert len(c.counts) == d.count and set(c.counts.values()) == {1}
+    assert ewald.clusters(pipe, cutoff=3.0).counts == {1: d.count} and len(pipe.modifiers) == 2
+    assert verb_cell("cna") == "from ewald import cna\nstructures = cna(pipe)\nstructures"
+    assert all(callable(getattr(ewald, verb)) for verb, _, _ in VERB_CELLS)

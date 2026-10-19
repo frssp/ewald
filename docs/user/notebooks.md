@@ -114,11 +114,17 @@ and Radius properties, which every renderer draws. Import them with
 **Analysis cells** use a verb: one call adds the analysis step and returns its table.
 
 ```python
-from ewald import rdf, msd, sq, xrd, vacf, bond_angles
+from ewald import rdf, msd, sq, xrd, vacf, bond_angles, cna, ptm, voronoi, clusters
 g = rdf(pipe, cutoff=6)          # CoordinationAnalysis; g.x is r, g["g(r)"] the curve
 d = msd(pipe, time_per_frame=2)  # MeanSquaredDisplacement over the trajectory
 g                                # shows the g(r) curve; repr(g) is <Table 'coordination-rdf': ...>
+cna(pipe).counts                 # {'OTHER': 3, 'FCC': 497, 'HCP': 0, 'BCC': 0, 'ICO': 0}
+voronoi(pipe)                    # bars: particles per Voronoi coordination number, per type
+clusters(pipe, cutoff=3.2)       # cluster sizes, largest first; .counts is {id: size}
 ```
+
+Counting tables (`cna`, `ptm`, `voronoi`, `clusters`) show as bar charts and have `.counts`.
+Insert › Analysis adds any of these as a cell and runs it.
 
 A table is a dict of numpy columns with `.x`, `.columns` and `.plot()`; `pandas.DataFrame(g)`
 turns it into a data frame.
