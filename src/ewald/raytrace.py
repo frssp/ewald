@@ -81,8 +81,12 @@ class Scene:
 
 def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None, bonds=None, bond_pairs=None,
                     bond_radius=0.15, show_cell=True, cell_color=(0.0, 0.0, 0.0), cell_radius=None,
-                    radius_preset="covalent", oxidation_states=None, coordination=None, **_ignored):
-    """Build a Scene with the same colors/radii/bonds as :func:`ewald.render.build_scene`."""
+                    radius_preset="covalent", oxidation_states=None, coordination=None, vectors=None,
+                    arrow_resolution=24, view_direction=None, **_ignored):
+    """Build a Scene with the same colors/radii/bonds/arrows as :func:`ewald.render.build_scene`.
+
+    ``view_direction`` (scene -> camera) lets 'flat' arrows face the viewer evenly lit.
+    """
     from .bonds import bond_segments
     from .render import _rgb, default_colors, default_radii, scene_bonds
 
@@ -109,6 +113,7 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
             if mesh.edges is not None and len(mesh.edges):
                 e = mesh.edges
                 sc.add_cylinders(v[e[:, 0]], v[e[:, 1]], 0.5 * mesh.edge_width, _rgb(mesh.edge_color))
+    _add_arrows(sc, data, vectors, arrow_resolution, view_direction)
     if show_cell and data.cell.is_valid:
         o, (a, b, c) = data.cell.origin, data.cell.matrix
         corners = np.array([o, o + a, o + b, o + c, o + a + b, o + a + c, o + b + c, o + a + b + c])
@@ -118,6 +123,22 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
         # round joints so corners look closed
         sc.add_spheres(corners, r, _rgb(cell_color))
     return sc
+
+
+def _add_arrows(sc, data, vectors, sides, view_direction):
+    """Arrow shafts as cylinders, base/head discs and cones as smooth-normal triangles."""
+    from .arrows import arrow_mesh, scene_arrows
+
+    for arrows in scene_arrows(data, vectors):
+        see_through = arrows.alpha < 1  # only triangles can be see-through
+        verts, faces, normals, owner = arrow_mesh(arrows, sides, shaft=see_through)
+        if arrows.shading == "flat" and view_direction is not None:
+            toward = np.asarray(view_direction, float)
+            normals = np.broadcast_to(toward / np.linalg.norm(toward), normals.shape)
+        if not see_through:
+            sc.add_cylinders(arrows.base, arrows.neck, arrows.radius, arrows.rgb)
+        sc.add_triangles(verts[faces[:, 0]], verts[faces[:, 1]], verts[faces[:, 2]], arrows.rgb[owner[faces[:, 0]]],
+                         arrows.alpha, normals[faces], None)
 
 
 # ----------------------------------------------------------------------------- grid

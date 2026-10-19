@@ -157,7 +157,8 @@ class DataCollection:
     ``bonds`` (an :class:`ewald.bonds.Bonds`, or None) holds bonds between particles,
     ``surfaces`` maps names to :class:`ewald.mesh.SurfaceMesh` geometry (polyhedra,
     isosurfaces, grid slices) and ``grids`` maps names to volumetric
-    :class:`VoxelGrid` data (CHGCAR, LOCPOT, cube files).
+    :class:`VoxelGrid` data (CHGCAR, LOCPOT, cube files). ``vectors`` maps particle property
+    names to :class:`ewald.arrows.VectorStyle`: those properties are drawn as arrows (VectorVis).
 
     Modifiers receive a shallow copy, so they must *replace* arrays instead of
     writing into them in place; this keeps cached source frames untouched.
@@ -170,6 +171,7 @@ class DataCollection:
         self.bonds = None
         self.surfaces: dict = {}
         self.grids: dict[str, VoxelGrid] = {}
+        self.vectors: dict = {}
         self.cell = cell if cell is not None else Cell()
         if positions is not None:
             self.particles["Position"] = np.asarray(positions, dtype=float).reshape(-1, 3)
@@ -232,6 +234,7 @@ class DataCollection:
         new.bonds = None if getattr(self, "bonds", None) is None else self.bonds.copy()
         new.surfaces = dict(getattr(self, "surfaces", {}))
         new.grids = {k: v.copy() for k, v in getattr(self, "grids", {}).items()}
+        new.vectors = dict(getattr(self, "vectors", {}))
         new.cell = self.cell.copy()
         return new
 
@@ -321,6 +324,10 @@ class DataCollection:
         for name, mesh in getattr(self, "surfaces", {}).items():
             lines.append(f"surface {name!r}: {mesh.vertex_count} vertices, {mesh.face_count} faces, "
                          f"area {mesh.area:.4g} A^2")
+        for name, style in getattr(self, "vectors", {}).items():
+            from .arrows import summary_line
+
+            lines.append(summary_line(name, style))
         for name, table in self.tables.items():
             lines.append(f"table {name!r}: columns {list(table)}")
         for name, grid in getattr(self, "grids", {}).items():

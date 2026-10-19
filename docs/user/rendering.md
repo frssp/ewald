@@ -69,6 +69,7 @@ Every renderer draws the same overlays, sized relative to the image:
 | `renderer`, `quality` | `"opengl"`, `"raytrace"` or `"vector"`; `"draft"`, `"standard"` or `"publication"` |
 | `legend`, `type_legend`, `scale_bar`, `text` | overlays (see above) |
 | `show_cell`, `dpi` | cell outline; resolution stored in the file |
+| `vectors` | particle properties drawn as arrows: `"Force"`, `["Force", "Velocity"]` or `{"Force": {"scaling": 2, "color": "red"}}` (options of [`VectorVis`](modifiers.md#vector-arrows)); added to, and overriding, the arrows `VectorVis` set |
 
 Particle colors come from the `Color` property when a modifier set one (`ColorCoding`,
 `AssignColor`, structure analyses with `color_by_type`), otherwise from the element.
@@ -115,7 +116,9 @@ The Slater, Clementi and Shannon tables ship with ewald in `ewald/tables/radii.j
 
 Above 150 000 atoms the OpenGL renderer draws GPU impostors (shaded point sprites) instead of
 sphere meshes, which keeps million-atom frames interactive. Pass `mesh_limit=` to move the
-threshold.
+threshold; above it, vector arrows are drawn as colored lines. `arrow_resolution=` sets the
+sides per arrow (the viewport uses Preferences › Viewports › Arrow resolution while you
+interact, file output follows the quality preset).
 
 ## Animations
 
