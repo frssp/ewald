@@ -260,3 +260,16 @@ def test_opengl_mixed_transparency_draws_glass_spheres_separately():
     assert (s1, s2) == ("", ":glass") and solid.n_points == glass.n_points == 1
     assert solid["rgb"].shape == (1, 3) and glass["rgb"].shape == (1, 4)
     np.testing.assert_allclose(glass.points, [[3, 3, 3]])
+
+
+def test_boundary_in_every_renderer(tmp_path):
+    from ewald.modifiers import CoordinationPolyhedra, CreateBonds
+
+    pipe = Pipeline(StaticSource(_perovskite()), [CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.2)]),
+                                                  CoordinationPolyhedra(["Ti"], transparency=0.0)])
+    kw = dict(size=(160, 120), direction="iso", radius_scale=0.3, quality="draft")
+    for renderer, name in (("opengl", "o.png"), ("raytrace", "r.png"), ("vector", "v.svg")):
+        off = pipe.render(tmp_path / ("off_" + name), renderer=renderer, **kw)
+        on = pipe.render(tmp_path / name, renderer=renderer, boundary=(-0.1, 1.1), **kw)
+        assert on.shape == off.shape
+        assert np.abs(on.astype(int) - off.astype(int)).sum(-1).astype(bool).mean() > 0.05, renderer

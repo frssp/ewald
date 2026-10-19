@@ -34,6 +34,10 @@ GUI
 - Flat (ASE) style in the ray tracer and the vector renderer (now OpenGL only), and a
   per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.
+- Boundary (VESTA): repeat isosurfaces and grid slices over the boundary range too (now only
+  atoms, bonds and coordination polyhedra are repeated), VESTA's recursive "search molecules"
+  mode, and keep the images while the coarse viewport level of detail is shown (they disappear
+  during rotation of systems above the interactive atom limit).
 - Bonds above the automatic-bonds limit (100 000 atoms): a fast path (bond impostors or lines)
   so large systems can show bonds by default too.
 

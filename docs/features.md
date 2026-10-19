@@ -305,6 +305,8 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 `size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`.
 
+Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`.
+
 ## Command line
 
 Details: [Command line](user/cli.md).
