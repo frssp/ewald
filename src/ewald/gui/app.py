@@ -10,13 +10,14 @@ import traceback
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .. import manual
 from .. import modifiers as mods
 from ..io import import_file
 from ..render import camera_state, render
 from .console import make_console
 from .inspector import DataInspector
 from .palette import CommandPalette, menu_entries
-from .pipeline_panel import MODIFIER_MENU, PipelinePanel
+from .pipeline_panel import MODIFIER_MENU, PipelinePanel, fill_modifier_menu
 from .plots import PlotsPanel
 from . import preferences as prefs
 from .render_page import RenderPage
@@ -26,7 +27,8 @@ from .timeline import Timeline
 from .viewport import Viewport
 
 FILE_FILTER = ("Simulation files (*.lammpstrj *.dump *.data XDATCAR* POSCAR* CONTCAR* OUTCAR* "
-               "vasprun*.xml *.xyz *.extxyz *.cif *.vasp);;All files (*)")
+               "vasprun*.xml *.xyz *.extxyz *.cif *.vasp);;"
+               "Volumetric data (CHGCAR* CHG* PARCHG* AECCAR* LOCPOT* ELFCAR* *.cube *.cub);;All files (*)")
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -46,6 +48,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # --- central: workspaces (Analyze = viewport + timeline, Render = render page)
         self.viewport = Viewport(self.style)
         self.viewport.picked.connect(self._on_pick)
+        self.viewport.bondEdit.connect(self.toggle_bond)
         self.viewport.styleChanged.connect(self._style_changed)
         self.timeline = Timeline()
         self.timeline.frameChanged.connect(self.set_frame)
@@ -168,10 +171,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for bg in ("Dark background", "White background"):
             v.addAction(bg, lambda bg=bg: self._set_background(TOKENS["bg"] if bg.startswith("Dark") else "white"))
         m = mb.addMenu("&Pipeline")
-        for group, items in MODIFIER_MENU.items():
-            sub = m.addMenu(group)
-            for label, factory in items.items():
-                sub.addAction(label, lambda fct=factory: self.panel.add_modifier(fct()))
+        m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier))
+        fill_modifier_menu(m, self.panel.add_modifier)
         t = mb.addMenu("&Tools")
         for key, _icon, tip in Viewport.TOOLS:
             t.addAction(tip.split(":")[0], lambda k=key: self.viewport.set_tool(k))
@@ -182,6 +183,35 @@ class MainWindow(QtWidgets.QMainWindow):
         w.addAction("Data inspector", lambda: self.bottom.setCurrentWidget(self.inspector))
         w.addAction("Plots", lambda: self.bottom.setCurrentWidget(self.plots))
         w.addAction("Command palette", self.command_palette)
+        h = mb.addMenu("&Help")
+        for label, page in manual.PAGES.items():
+            h.addAction(label, lambda page=page: self.open_help(page))
+        h.addSeparator()
+        h.addAction("Open plugin folder", self.open_plugin_folder)
+        about = h.addAction("About ewald", self.about)
+        about.setMenuRole(QtGui.QAction.AboutRole)
+
+    def help_url(self, page="index.md"):
+        return manual.url(page, self.settings["general.docs_url"] or None)
+
+    def open_help(self, page="index.md"):
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl(self.help_url(page)))
+
+    def open_plugin_folder(self):
+        from ..settings import config_dir
+
+        folder = config_dir() / "plugins"
+        folder.mkdir(parents=True, exist_ok=True)
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(folder)))
+        self.message(f"Plugin folder: {folder}")
+
+    def about(self):
+        from .. import __version__
+
+        QtWidgets.QMessageBox.about(
+            self, "About ewald",
+            f"<b>ewald {__version__}</b><p>Atomistic structure and trajectory visualization and analysis "
+            f"with an OVITO-style Python pipeline.</p><p><a href='{self.help_url()}'>Manual</a></p>")
 
     def set_workspace(self, index):
         self.workspaces.setCurrentIndex(index)
@@ -314,6 +344,23 @@ class MainWindow(QtWidgets.QMainWindow):
             pass  # editor already reflects the change
         else:
             self.panel.refresh()
+
+    def toggle_bond(self, i, j):
+        """Bond tool: delete the i-j bond if it exists, else add it, via an EditBonds modifier on top."""
+        from ..modifiers import EditBonds
+
+        if self.pipeline is None or self.data is None:
+            return
+        d = self.data
+        ids = d["Particle Identifier"] if "Particle Identifier" in d else np.arange(d.count)
+        bonded = d.bonds is not None and bool(np.any(np.all(np.sort(d.bonds.topology, axis=1) == sorted((i, j)), axis=1)))
+        mods = self.pipeline.modifiers
+        if not (mods and isinstance(mods[-1], EditBonds)):
+            mods.append(EditBonds())
+        mods[-1].toggle(int(ids[i]), int(ids[j]), bonded)
+        self.panel.refresh(select=("mod", mods[-1]))
+        self.recompute()
+        self.message(f"{'Deleted' if bonded else 'Added'} bond {d.types[i]}{int(ids[i])}-{d.types[j]}{int(ids[j])}")
 
     def _on_pick(self, text):
         self.pick_label.setText(text)

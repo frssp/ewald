@@ -50,6 +50,103 @@ class Cell:
         return Cell(self.matrix.copy(), self.origin.copy(), self.pbc.copy())
 
 
+_COMPONENTS = {"X": 0, "Y": 1, "Z": 2}
+
+
+class VoxelGrid:
+    """Values on a regular 3D grid spanning ``domain`` (OVITO's VoxelGrid).
+
+    Point ``(i, j, k)`` sits at ``domain.origin + (i/Nx, j/Ny, k/Nz) @ domain.matrix``,
+    the VASP CHGCAR / Gaussian cube convention. ``properties`` maps names
+    ("Charge Density", "Magnetization", "Potential", "ELF", ...) to arrays of shape
+    ``shape`` or ``shape + (k,)``. ``domain.pbc`` says along which axes the grid repeats
+    (isosurfaces close across those cell faces). Like particle arrays, property arrays
+    are shared between copies: replace them, never write into them.
+    """
+
+    def __init__(self, domain: Cell, properties: dict | None = None, shape=None):
+        self.domain = domain
+        self.properties: dict[str, np.ndarray] = {}
+        self.shape = tuple(int(n) for n in shape) if shape is not None else None
+        for name, values in (properties or {}).items():
+            self[name] = values
+
+    def __setitem__(self, name: str, values) -> None:
+        values = np.asarray(values)
+        if self.shape is None:
+            self.shape = tuple(values.shape[:3])
+        if tuple(values.shape[:3]) != self.shape:
+            raise ValueError(f"grid property '{name}' has shape {values.shape}, expected {self.shape}")
+        self.properties[name] = values
+
+    def __getitem__(self, name: str) -> np.ndarray:
+        """A property; also "Name.X"/"Name.Y"/"Name.Z" (or "Name.1") components and, for a
+        spin-polarised charge density, "Spin Up"/"Spin Down" = (total +- magnetization) / 2."""
+        if name in self.properties:
+            return self.properties[name]
+        base, _, comp = name.rpartition(".")
+        if base in self.properties and (comp.upper() in _COMPONENTS or comp.isdigit()):
+            k = _COMPONENTS.get(comp.upper(), None)
+            return self.properties[base][..., int(comp) - 1 if k is None else k]
+        if name in ("Spin Up", "Spin Down") and "Charge Density" in self.properties \
+                and self.properties.get("Magnetization", np.zeros(0)).ndim == 3:
+            sign = 1.0 if name == "Spin Up" else -1.0
+            return 0.5 * (self.properties["Charge Density"] + sign * self.properties["Magnetization"])
+        raise KeyError(f"grid has no property {name!r} (has {list(self.properties)})")
+
+    def __contains__(self, name: str) -> bool:
+        try:
+            self[name]
+        except KeyError:
+            return False
+        return True
+
+    def names(self) -> list[str]:
+        """Property names, including the derived spin channels when available."""
+        out = list(self.properties)
+        if "Spin Up" in self and "Spin Up" not in out:
+            out += ["Spin Up", "Spin Down"]
+        return out
+
+    @property
+    def voxel_volume(self) -> float:
+        return self.domain.volume / float(np.prod(self.shape))
+
+    def integrate(self, name: str) -> float:
+        """Sum of values times voxel volume (e.g. the electron count of a charge density)."""
+        return float(np.sum(self[name]) * self.voxel_volume)
+
+    def fractional_points(self) -> np.ndarray:
+        """Fractional coordinates of every voxel point, shape ``shape + (3,)``."""
+        axes = [np.arange(n) / n for n in self.shape]
+        return np.stack(np.meshgrid(*axes, indexing="ij"), axis=-1)
+
+    def interpolate(self, name: str, points, order: int = 1) -> np.ndarray:
+        """Values at Cartesian ``points`` (M x 3) by spline interpolation (``order=1``: trilinear),
+        periodic along ``domain.pbc`` axes, clamped elsewhere."""
+        from scipy.ndimage import map_coordinates
+
+        values = np.asarray(self[name], float)
+        if values.ndim != 3:
+            raise ValueError(f"{name!r} is not a scalar grid property; pick a component like '{name}.Z'")
+        idx = (self.domain.to_fractional(np.asarray(points, float).reshape(-1, 3)) * self.shape).T
+        if self.domain.pbc.all():
+            return map_coordinates(values, idx, order=order, mode="grid-wrap")
+        for k in range(3):
+            if self.domain.pbc[k]:
+                idx[k] %= self.shape[k]
+        pad = [(0, 1) if p else (0, 0) for p in self.domain.pbc]
+        return map_coordinates(np.pad(values, pad, mode="wrap"), idx, order=order, mode="nearest")
+
+    def copy(self) -> "VoxelGrid":
+        new = VoxelGrid(self.domain.copy(), shape=self.shape)
+        new.properties = dict(self.properties)
+        return new
+
+    def __repr__(self) -> str:
+        return f"<VoxelGrid {'x'.join(map(str, self.shape))} props={self.names()}>"
+
+
 class DataCollection:
     """One snapshot flowing through a pipeline.
 
@@ -57,6 +154,10 @@ class DataCollection:
     names ('Position', 'Particle Type', 'Particle Identifier', 'Color', 'Radius',
     'Selection', ...) to arrays whose first axis has length N.  Global values go
     into ``attributes`` and tabulated results (e.g. an RDF) into ``tables``.
+    ``bonds`` (an :class:`ewald.bonds.Bonds`, or None) holds bonds between particles,
+    ``surfaces`` maps names to :class:`ewald.mesh.SurfaceMesh` geometry (polyhedra,
+    isosurfaces, grid slices) and ``grids`` maps names to volumetric
+    :class:`VoxelGrid` data (CHGCAR, LOCPOT, cube files).
 
     Modifiers receive a shallow copy, so they must *replace* arrays instead of
     writing into them in place; this keeps cached source frames untouched.
@@ -66,6 +167,9 @@ class DataCollection:
         self.particles: dict[str, np.ndarray] = {}
         self.attributes: dict[str, object] = {}
         self.tables: dict[str, dict[str, np.ndarray]] = {}
+        self.bonds = None
+        self.surfaces: dict = {}
+        self.grids: dict[str, VoxelGrid] = {}
         self.cell = cell if cell is not None else Cell()
         if positions is not None:
             self.particles["Position"] = np.asarray(positions, dtype=float).reshape(-1, 3)
@@ -120,6 +224,9 @@ class DataCollection:
         new.particles = dict(self.particles)
         new.attributes = dict(self.attributes)
         new.tables = {k: dict(v) for k, v in self.tables.items()}
+        new.bonds = None if getattr(self, "bonds", None) is None else self.bonds.copy()
+        new.surfaces = dict(getattr(self, "surfaces", {}))
+        new.grids = {k: v.copy() for k, v in getattr(self, "grids", {}).items()}
         new.cell = self.cell.copy()
         return new
 
@@ -127,6 +234,8 @@ class DataCollection:
         """Return a copy containing only the particles selected by ``index``."""
         new = self.copy()
         new.particles = {k: v[index] for k, v in self.particles.items()}
+        if new.bonds is not None:
+            new.bonds = new.bonds.remap_particles(index, self.count)
         return new
 
     def delete(self, mask) -> "DataCollection":
@@ -202,8 +311,19 @@ class DataCollection:
         scalars = {k: v for k, v in self.attributes.items() if np.isscalar(v)}
         if scalars:
             lines.append("attributes: " + ", ".join(f"{k}={v!r}" for k, v in scalars.items()))
+        if getattr(self, "bonds", None) is not None:
+            lines.append(f"bonds: {self.bonds.count} (properties {list(self.bonds.properties)})")
+        for name, mesh in getattr(self, "surfaces", {}).items():
+            lines.append(f"surface {name!r}: {mesh.vertex_count} vertices, {mesh.face_count} faces, "
+                         f"area {mesh.area:.4g} A^2")
         for name, table in self.tables.items():
             lines.append(f"table {name!r}: columns {list(table)}")
+        for name, grid in getattr(self, "grids", {}).items():
+            lines.append(f"grid {name!r}: {'x'.join(map(str, grid.shape))} voxels")
+            for prop in grid.names():
+                a = np.asarray(grid[prop])
+                comp = f" [{a.shape[3]} components]" if a.ndim == 4 else ""
+                lines.append(f"  {prop!r}{comp}: min {a.min():.4g}, max {a.max():.4g}, mean {a.mean():.4g}")
         return "\n".join(lines)
 
     def __repr__(self) -> str:

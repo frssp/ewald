@@ -51,6 +51,8 @@ OPTIONS = (
     Option("general.lammps_type_prompt", "ask", "LAMMPS type names",
            "Ask for a type → element map when opening a LAMMPS dump.", choices=("ask", "never")),
     Option("general.lammps_type_map", "", "Default LAMMPS type map", "e.g. 1=Cu,2=Zr; pre-fills the prompt."),
+    Option("general.docs_url", "", "Documentation URL",
+           "Where Help opens the manual. Empty = the docs folder on GitHub; or a hosted or built site."),
 
     Option("viewport.background", "#14161A", "Background", kind="color"),
     Option("viewport.projection", "ortho", "Projection", choices=("ortho", "persp")),

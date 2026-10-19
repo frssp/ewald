@@ -22,12 +22,14 @@ class Viewport(QtWidgets.QWidget):
     """QtInteractor wrapped with the view toolbar, tool rail and picking."""
 
     picked = QtCore.Signal(str)          # status text for the picked atom / measurement
+    bondEdit = QtCore.Signal(int, int)   # bond tool: add or delete the bond between two atoms
     styleChanged = QtCore.Signal()
 
     TOOLS = (("orbit", "⟲", "Orbit / pan / zoom (mouse)"),
              ("pick", "⌖", "Pick atom: shows id, type, position and properties"),
              ("distance", "↔", "Measure distance: click two atoms"),
-             ("angle", "∠", "Measure angle: click three atoms (vertex in the middle)"))
+             ("angle", "∠", "Measure angle: click three atoms (vertex in the middle)"),
+             ("bond", "⌇", "Edit bonds: click two atoms to add or delete the bond between them"))
 
     def __init__(self, style: ViewStyle, parent=None):
         super().__init__(parent)
@@ -134,7 +136,8 @@ class Viewport(QtWidgets.QWidget):
 
     def redraw(self):
         p = self.plotter
-        for name in ("atoms", "bonds", "cell", "_legend", "_overlay"):
+        stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:"))]
+        for name in ("atoms", "bonds", "cell", "trajectories", "_legend", "_overlay", *stale):
             p.remove_actor(name, render=False)
         if p.scalar_bars:
             p.remove_scalar_bar()
@@ -147,6 +150,9 @@ class Viewport(QtWidgets.QWidget):
         kw["cell_color"] = "#AEB4BE" if dark else "black"
         kw["sphere_resolution"] = self.sphere_resolution  # interactive; image export uses full quality
         build_scene(p, self.data, mesh_limit=self.mesh_limit, **kw)
+        if any(s.transparency > 0 for s in self.data.surfaces.values()) and not getattr(self, "_peeling", False):
+            p.enable_depth_peeling()
+            self._peeling = True
         if "ColorCoding.range" in self.data.attributes:
             _add_colorbar(p, self.data, font_size=12)
             sb = p.scalar_bar
@@ -249,8 +255,15 @@ class Viewport(QtWidgets.QWidget):
         idx = self.pick_at(x, y)
         if idx is None:
             return
-        need = {"pick": 1, "distance": 2, "angle": 3}[self.tool]
+        need = {"pick": 1, "distance": 2, "angle": 3, "bond": 2}[self.tool]
         self._picks = (self._picks + [idx])[-need:] if len(self._picks) < need else [idx]
+        if self.tool == "bond" and len(self._picks) == 2:
+            a, b = self._picks
+            self._picks = []
+            self._draw_picks()
+            if a != b:
+                self.bondEdit.emit(a, b)
+            return
         self._draw_picks()
         self.plotter.render()
         self.picked.emit(self.describe_picks())
