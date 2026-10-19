@@ -298,6 +298,7 @@ class _Registry:
 
 
 _registry = _Registry()
+_REGISTRIES = ("readers", "writers", "modifiers", "visuals", "overlays", "colormaps", "themes")
 
 
 def plugin_dir() -> Path:
@@ -590,25 +591,49 @@ def _load_directory(folder: Path):
     for path in sorted(folder.iterdir()):
         if path.name.startswith(("_", ".")):
             continue
-        if path.suffix == ".py":
-            target = path
-        elif path.is_dir() and (path / "__init__.py").exists():
-            target = path / "__init__.py"
-        else:
-            continue
-        module_name = f"ewald_plugin_{path.stem}"
-        try:
-            spec = importlib.util.spec_from_file_location(
-                module_name, target, submodule_search_locations=[str(path)] if path.is_dir() else None)
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            _loading.origin = str(path)
-            spec.loader.exec_module(module)
-        except Exception as exc:
-            sys.modules.pop(module_name, None)
-            _registry.errors[str(path)] = f"{type(exc).__name__}: {exc}"
-        finally:
-            _loading.origin = None
+        _load_path(path)
+
+
+def _load_path(path: Path) -> bool:
+    """Import one plugin file or package folder; errors go to ``_registry.errors``."""
+    if path.suffix == ".py":
+        target = path
+    elif path.is_dir() and (path / "__init__.py").exists():
+        target = path / "__init__.py"
+    else:
+        return False
+    module_name = f"ewald_plugin_{path.stem}"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            module_name, target, submodule_search_locations=[str(path)] if path.is_dir() else None)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        _loading.origin = str(path)
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        sys.modules.pop(module_name, None)
+        _registry.errors[str(path)] = f"{type(exc).__name__}: {exc}"
+        return False
+    finally:
+        _loading.origin = None
+    return True
+
+
+def load_plugin_file(path) -> list[str]:
+    """Import a plugin file (or package folder) from anywhere, e.g. in a notebook cell::
+
+        from ewald.plugins import load_plugin_file
+        load_plugin_file("local_strain.py")   # its @modifier classes become step cells
+
+    Returns the names it registered (modifiers, readers, visuals, ...); raises if the
+    import failed."""
+    load_plugins()
+    before = {k: set(getattr(_registry, k)) for k in _REGISTRIES}
+    path = Path(path).expanduser().resolve()
+    _registry.errors.pop(str(path), None)
+    if not _load_path(path):
+        raise ImportError(_registry.errors.get(str(path), f"{path} is not a .py file or a package folder"))
+    return [n for k in _REGISTRIES for n in getattr(_registry, k) if n not in before[k]]
 
 
 def readers() -> dict[str, ReaderPlugin]:

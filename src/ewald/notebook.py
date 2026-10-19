@@ -17,8 +17,10 @@ Jupyter, VS Code and jupytext open as a notebook and ``python file.py`` runs as 
 Cells run in one namespace, like Jupyter. The variable ``pipe`` is the notebook's
 pipeline; the viewer shows it. A cell that is a single ``pipe.modifiers.append(...)``
 (optionally after imports) is a *step*: the GUI shows it as a parameter form and keeps
-its source in sync with the modifier. Running any cell again replaces the modifiers it
-added the last time at the same place, so re-running never stacks duplicates.
+its source in sync with the modifier. A cell that is a single ``show(pipe, ...)`` call
+(:mod:`ewald.views`) is a *view*: a plot of a data table or a histogram, live and linked to
+the 3D view in the GUI. Running any cell again replaces the modifiers it added the last
+time at the same place, so re-running never stacks duplicates.
 
     nb = Notebook.load("analysis.py")
     nb.run_all()
@@ -64,6 +66,19 @@ class Cell:
     @property
     def is_step(self) -> bool:
         return self.kind == "code" and step_call(self.source) is not None
+
+    @property
+    def view(self) -> dict | None:
+        """The arguments of a view cell (``show(pipe, table=...)``), else None."""
+        if self.kind != "code":
+            return None
+        from .views import view_args
+
+        return view_args(self.source)
+
+    @property
+    def is_view(self) -> bool:
+        return self.view is not None
 
     @property
     def modifier(self) -> Modifier | None:
@@ -117,6 +132,16 @@ def step_source(modifier: Modifier, namespace: dict | None = None, name: str = P
     if not modifier.enabled:
         lines.append(f"{name}.modifiers[-1].enabled = False")
     return "\n".join(lines)
+
+
+def load_code(pipeline: Pipeline, name: str = PIPELINE_NAME) -> str | None:
+    """``pipe = import_file(...)`` reproducing a pipeline's file source (None for other sources)."""
+    src = getattr(pipeline, "source", None)
+    if src is None or not hasattr(src, "path"):
+        return None
+    args = [repr(src.path)] + ([f"format={src.format!r}"] if getattr(src, "format", None) else []) + \
+        [f"{k}={v!r}" for k, v in getattr(src, "kwargs", {}).items()]
+    return f"{name} = import_file({', '.join(args)})"
 
 
 def _owned(cells) -> list:
@@ -291,6 +316,30 @@ class Notebook:
             cell.state = "ok"
         return cell
 
+    def add_view(self, index: int | None = None, **kwargs) -> Cell:
+        """Insert a view cell (``show(pipe, **kwargs)``) at ``index`` (default: the end)."""
+        from .views import view_source
+
+        source = view_source(self.pipeline_name, **kwargs)
+        if "show" not in self.namespace:
+            source = "from ewald.views import show\n" + source
+        cell = Cell(source)
+        self.insert(len(self.cells) if index is None else index, cell)
+        return cell
+
+    def update_view(self, cell: Cell, **kwargs):
+        """Rewrite a view cell for new arguments (the GUI plot's table or column changed)."""
+        from .views import view_source
+
+        args = dict(cell.view or {})
+        source = args.pop("source", self.pipeline_name)
+        args.update(kwargs)
+        head = [line for line in cell.source.splitlines() if line.startswith(("import ", "from "))]
+        new = "\n".join(head + [view_source(source, **args)])
+        if new != cell.source:
+            cell.source = new
+            self.dirty = True
+
     def update_step(self, cell: Cell):
         """Rewrite a step cell's source from its modifier (after the form changed it)."""
         if cell.modifier is not None:
@@ -402,11 +451,11 @@ class Notebook:
         an import cell, a load cell (``source_code``, e.g. ``pipe = import_file(...)``) and one
         step per modifier. The pipeline object itself is used, nothing is read again."""
         nb = cls(**kwargs)
-        imports = Cell("from ewald import import_file\nfrom ewald.modifiers import *")
+        imports = Cell(IMPORTS)
         nb.cells.append(imports)
         nb.run_cell(0)
-        load = Cell(source_code or f"{nb.pipeline_name} = import_file(...)  # source not reproducible from code",
-                    state="ok")
+        source_code = source_code or load_code(pipeline, nb.pipeline_name)
+        load = Cell(source_code or f"# {nb.pipeline_name}: built in memory, not reproducible from a file", state="ok")
         nb.cells.append(load)
         nb.namespace[nb.pipeline_name] = pipeline
         for m in pipeline.modifiers:
@@ -415,14 +464,13 @@ class Notebook:
         return nb
 
 
+IMPORTS = "from ewald import import_file\nfrom ewald.modifiers import *\nfrom ewald.views import show"
 NEW_NOTEBOOK = '''# %% [markdown]
 # # {title}
 
 # %%
 import numpy as np
-from ewald import import_file
-from ewald.modifiers import *
-'''
+''' + IMPORTS + "\n"
 
 
 def new_notebook(name: str = "Notebook 1") -> Notebook:

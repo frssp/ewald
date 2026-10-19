@@ -45,6 +45,12 @@ PAGE_OF_PREFIX = {"general": "General", "viewport": "Viewports", "elements": "El
                   "render": "Rendering", "compute": "Compute", "performance": "Compute", "python": "Python"}
 
 OPTIONS = (
+    Option("general.layout", "notebook", "Window layout",
+           "Notebook: Python cells build the pipeline (like Jupyter). Classic: pipeline list and "
+           "properties panel. Takes effect after a restart.", choices=("notebook", "classic")),
+    Option("general.ui_theme", "paper", "UI theme",
+           "Paper: light, teal accents. Graphite: dark. Takes full effect after a restart.",
+           choices=("paper", "graphite")),
     Option("general.startup_workspace", "Analyze", "Startup workspace", choices=("Analyze", "Render")),
     Option("general.font_size", 12, "UI font size", "Pixels; applies to every panel.", minimum=9, maximum=20),
     Option("general.restore_layout", True, "Restore window layout", "Reopen docks and window size as you left them."),
@@ -54,7 +60,7 @@ OPTIONS = (
     Option("general.docs_url", "", "Documentation URL",
            "Where Help opens the manual. Empty = the docs folder on GitHub; or a hosted or built site."),
 
-    Option("viewport.background", "#14161A", "Background", kind="color"),
+    Option("viewport.background", "#ECEDE9", "Background", kind="color"),
     Option("viewport.projection", "ortho", "Projection", choices=("ortho", "persp")),
     Option("viewport.initial_view", "iso", "Initial view direction", choices=("iso", "x", "y", "z", "front")),
     Option("viewport.style_preset", "Space-filling", "Default style",
@@ -129,6 +135,9 @@ OPTIONS = (
     Option("compute.threads", 0, "CPU threads", "Numba threads for CPU kernels; 0 = all cores.",
            minimum=0, maximum=1024),
 
+    Option("python.run_notebooks", "ask", "Run notebooks when opened",
+           "Opening a notebook (.py) runs its cells only after you agree, since they are Python code.",
+           choices=("ask", "always", "never")),
     Option("python.startup_script", "", "Console startup script", "Run in the Python console when the GUI starts.",
            kind="file"),
     Option("python.extra_paths", "", "Extra module paths", "Folders added to sys.path, separated by ';'.", kind="dir"),

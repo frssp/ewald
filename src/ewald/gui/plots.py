@@ -60,15 +60,17 @@ class PlotsPanel(QtWidgets.QWidget):
         self.column.currentTextChanged.connect(self.redraw)
         self.hist = QtWidgets.QComboBox()
         self.hist.currentTextChanged.connect(self.redraw)
-        save = QtWidgets.QPushButton("Save plot…")
-        save.clicked.connect(self._save)
-        bar.addWidget(QtWidgets.QLabel("Table", objectName="muted"))
+        self.save_button = QtWidgets.QPushButton("Save plot…")
+        self.save_button.clicked.connect(self._save)
+        self.table_label = QtWidgets.QLabel("Table", objectName="muted")
+        self.hist_label = QtWidgets.QLabel("or histogram of", objectName="muted")
+        bar.addWidget(self.table_label)
         bar.addWidget(self.table, 1)
         bar.addWidget(QtWidgets.QLabel("y", objectName="muted"))
         bar.addWidget(self.column, 1)
-        bar.addWidget(QtWidgets.QLabel("or histogram of", objectName="muted"))
+        bar.addWidget(self.hist_label)
         bar.addWidget(self.hist, 1)
-        bar.addWidget(save)
+        bar.addWidget(self.save_button)
         lay.addLayout(bar)
         sel = QtWidgets.QHBoxLayout()
         self.link_label = QtWidgets.QLabel(objectName="muted")
@@ -105,6 +107,20 @@ class PlotsPanel(QtWidgets.QWidget):
         self._rubber = None
         self._overlays = []
         self._update_controls()
+
+    def compact(self):
+        """Narrow layout for a notebook view cell: shorter labels, Save in the cell's menu."""
+        self.table_label.hide()
+        self.hist_label.setText("or")
+        self.save_button.hide()
+        for combo in (self.table, self.column, self.hist):
+            combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(4)
+        self.link_label.setWordWrap(True)
+        self.link_label.setMinimumWidth(40)
+
+    def save_plot(self):
+        self._save()
 
     def set_data(self, data):
         self.data = data

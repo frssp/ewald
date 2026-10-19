@@ -28,7 +28,7 @@ _CHOICE_LABELS = {"auto": "Auto", "coarse": "Always coarse", "full": "Always ful
 LAYOUT = {
     "General": ("Startup behaviour and file handling.", [
         ("Startup", ["general.startup_workspace", "general.restore_layout"]),
-        ("Appearance", ["general.font_size"]),
+        ("Appearance", ["general.layout", "general.ui_theme", "general.font_size"]),
         ("LAMMPS files", ["general.lammps_type_prompt", "general.lammps_type_map"]),
         ("Help", ["general.docs_url"])]),
     "Viewports": ("Defaults for the interactive 3D view.", [
@@ -51,7 +51,8 @@ LAYOUT = {
     "Compute": ("Where pipelines run, and which optional packages are available.", [
         ("Device", ["compute.device", "compute.threads"]),
         ("Memory", ["performance.cache_memory"])]),
-    "Python": ("Console and module search path.", [
+    "Python": ("Notebooks, console and module search path.", [
+        ("Notebooks", ["python.run_notebooks"]),
         ("Console", ["python.startup_script"]),
         ("Modules", ["python.extra_paths"])]),
 }
@@ -128,9 +129,9 @@ QFrame#footer {{ background: {panel}; border: none; border-top: 1px solid {borde
 QPushButton#footerButton {{ background: {raised}; border: 1px solid {border}; border-radius: 6px; padding: 6px 16px;
     min-width: 64px; }}
 QPushButton#footerButton:hover {{ border-color: {muted}; }}
-QPushButton#footerPrimary {{ background: {accent}; color: #0B1220; border: none; border-radius: 6px; padding: 6px 18px;
+QPushButton#footerPrimary {{ background: {accent}; color: {on_accent}; border: none; border-radius: 6px; padding: 6px 18px;
     min-width: 64px; font-weight: 600; }}
-QPushButton#footerPrimary:hover {{ background: #78B9FF; }}
+QPushButton#footerPrimary:hover {{ background: {accent}; }}
 QPushButton#link {{ background: transparent; border: none; color: {secondary}; padding: 4px 6px; }}
 QPushButton#link:hover {{ color: {accent}; }}
 QLabel#path {{ color: {muted}; font-size: 11px; font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace; }}
@@ -191,7 +192,7 @@ class Toggle(QtWidgets.QCheckBox):
         p.setPen(QtCore.Qt.NoPen)
         p.setBrush(QtGui.QColor(TOKENS["accent"] if on else TOKENS["border"]))
         p.drawRoundedRect(QtCore.QRectF(0, 0, 36, 20), 10, 10)
-        p.setBrush(QtGui.QColor("#0B1220" if on else TOKENS["secondary"]))
+        p.setBrush(QtGui.QColor(TOKENS["on_accent"] if on else TOKENS["secondary"]))
         p.drawEllipse(QtCore.QRectF(19 if on else 3, 3, 14, 14))
 
 
@@ -842,6 +843,8 @@ def apply_settings(win, s: Settings, startup: bool = False):
     win.settings = s
     app = QtWidgets.QApplication.instance()
     if app is not None:
+        if startup or theme.TOKENS != theme.PALETTES.get(s["general.ui_theme"]):
+            theme.apply(app, s["general.ui_theme"])
         app.setStyleSheet(theme.stylesheet().replace("font-size: 12px", f"font-size: {s['general.font_size']}px"))
 
     style.background = s["viewport.background"]

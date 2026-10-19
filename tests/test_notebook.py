@@ -211,3 +211,50 @@ def test_modifier_output_summary(cu_file):
 def test_cell_defaults():
     c = Cell("x = 1")
     assert c.kind == "code" and c.state == "new" and c.modifier is None and not c.is_step
+
+
+def test_load_plugin_file_registers_its_modifier(tmp_path, cu_file):
+    plugin = tmp_path / "shift_plugin.py"
+    plugin.write_text(
+        "from ewald.plugins import modifier\nfrom ewald.pipeline import Modifier\n\n"
+        "@modifier(category='Test')\nclass ShiftZ(Modifier):\n"
+        "    def __init__(self, dz: float = 1.0):\n        self.dz = dz\n\n"
+        "    def modify(self, data, ctx):\n        out = data.copy()\n"
+        "        out.positions = data.positions + [0, 0, self.dz]\n        return out\n")
+    nb = Notebook.from_py(f"# %%\nfrom ewald import import_file\nfrom ewald.plugins import load_plugin_file\n"
+                          f"names = load_plugin_file({str(plugin)!r})\npipe = import_file({cu_file!r})\n\n"
+                          "# %%\nfrom ewald.modifiers import ShiftZ\npipe.modifiers.append(ShiftZ(dz=2.0))\n")
+    assert nb.run_all(), nb.cells[0].outputs
+    assert nb.namespace["names"] == ["ShiftZ"]
+    assert nb.cells[1].modifier.dz == 2.0
+    assert step_source(nb.cells[1].modifier) == "from ewald.modifiers import ShiftZ\npipe.modifiers.append(ShiftZ(dz=2.0))"
+
+
+def test_from_pipeline_writes_the_load_line(cu_file):
+    pipe = import_file(cu_file)
+    nb = Notebook.from_pipeline(pipe)
+    assert nb.cells[1].source == f"pipe = import_file({cu_file!r})"
+
+
+def test_view_cells_plot_tables_and_histograms(nb):
+    pytest.importorskip("matplotlib")
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from ewald.views import view_args, view_source
+
+    assert view_args("show(pipe, table='coordination-rdf', y='g(r)')") == \
+        {"source": "pipe", "table": "coordination-rdf", "y": "g(r)"}
+    for src in ("show(pipe, table=name)", "x = 1\nshow(pipe)", "show(pipe.compute(0))", "plot(pipe)"):
+        assert view_args(src) is None, src
+    assert view_source("pipe", table="DOS", y=None) == "show(pipe, table='DOS')"
+    nb.cells.insert(0, Cell("from ewald.views import show"))
+    table = nb.add_view(table="coordination-rdf")
+    hist = nb.add_view(histogram="Coordination", bins=12)
+    assert table.is_view and hist.view == {"source": "pipe", "histogram": "Coordination", "bins": 12}
+    assert not nb.cells[3].is_view and nb.cells[3].is_step
+    assert nb.run_all(), [o.data for c in nb.cells for o in c.outputs if o.kind == "error"]
+    assert [o.kind for o in table.outputs] == ["image"] and [o.kind for o in hist.outputs] == ["image"]
+    nb.update_view(table, y="g(r)")
+    assert table.source.splitlines()[-1] == "show(pipe, table='coordination-rdf', y='g(r)')" and nb.dirty
+    assert Notebook.from_py(nb.to_py()).cells[-1].view == hist.view

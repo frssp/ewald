@@ -14,7 +14,10 @@ from ewald import modifiers as mods  # noqa: E402
 
 @pytest.fixture(scope="module")
 def app():
+    from ewald.gui import notebook_panel
+
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    notebook_panel.CONFIRM_UNSAVED = False  # no modal "unsaved changes" questions in tests
     yield app
     # Destroy every window (VTK render windows, in-process kernels) while Qt is still alive;
     # leaving them to interpreter shutdown can segfault after all tests have passed.
@@ -637,7 +640,7 @@ def test_help_menu_and_late_registered_modifier(app, pipe, monkeypatch):
 
     # registered after the window exists (startup script, plugin): appears when the menus open
     monkeypatch.setitem(pipeline_panel.MODIFIER_MENU, "Plugins", {"Late wrap": mods.WrapAtoms})
-    for menu in (w.panel.add_menu, menus["Pipeline"]):
+    for menu in (w.panel.add_menu, w.step_menu):
         menu.aboutToShow.emit()
         groups = {a.text(): a.menu() for a in menu.actions()}
         assert [a.text() for a in groups["Plugins"].actions()] == ["Late wrap"]
@@ -777,10 +780,10 @@ def test_main_window_ask_uses_picks_and_selection(app, pipe):
     w.show()
     app.processEvents()
     shown = lambda wid: not wid.visibleRegion().isEmpty()  # noqa: E731
-    assert shown(w.panel) and not shown(w.ask_dock)      # tabbed with the pipeline, which is in front
+    assert shown(w.display) and not shown(w.ask_dock)    # tabbed with the display panel, which is in front
     w.ask_claude()
     app.processEvents()
-    assert shown(w.ask_dock) and not shown(w.panel)
+    assert shown(w.ask_dock) and not shown(w.display)
     w.close()
 
 
@@ -1102,3 +1105,65 @@ def test_open_example_menu(app):
     assert "POSCAR.SrTiO3" in w.windowTitle()
     w.close()
     w.deleteLater()
+
+
+@pytest.fixture
+def cu_path(tmp_path):
+    from ase.build import bulk
+    from ase.io import write
+
+    atoms = bulk("Cu", "fcc", a=3.615, cubic=True).repeat((3, 3, 3))
+    del atoms[[0]]
+    path = tmp_path / "cu.extxyz"
+    write(path, atoms)
+    return str(path)
+
+
+def test_notebook_layout_rail_steps_views_and_files(app, cu_path, tmp_path, monkeypatch):
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+
+    w = MainWindow(settings=settings.Settings())
+    menus = [a.text().replace("&", "") for a in w.menuBar().actions()]
+    assert "Notebook" in menus and "Insert" in menus and "Pipeline" not in menus
+    rail = w.panel.tabs
+    assert rail.count() == 1 and rail.tabText(0) == "Notebook 1"
+    w.open_any(cu_path, ask_types=False)                      # the empty notebook makes way for the file
+    assert rail.count() == 1 and rail.tabText(0) == "cu" and w.pipeline is w.panel.pipeline
+    w.panel.add_modifier(mods.CoordinationAnalysis(cutoff=3.0))
+    w.recompute()
+    view = w.panel.view
+    step = view.notebook.cells[-1]
+    assert step.is_step and w.pipeline.modifiers == [step.modifier]
+    assert "Coordination" in view.widget_for(step).chips.text()
+
+    cell = view.add_view(table="coordination-rdf")             # a view cell: a live, linked plot
+    w.recompute()
+    plot = view.widget_for(cell).plot_panel
+    assert plot in w.plot_panels() and plot.table.currentText() == "coordination-rdf"
+    plot.hist.setCurrentText("Coordination")                   # switching the plot rewrites the cell
+    assert cell.source.endswith("show(pipe, histogram='Coordination')")
+    picked = []
+    w.viewport.set_picks = picked.append                       # dragging on the plot selects atoms
+    plot.atomsSelected.emit([1, 2])
+    assert picked == [[1, 2]]
+
+    path = tmp_path / "cu_nb.py"
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName", lambda *a, **k: (str(path), ""))
+    assert w.save_notebook() == str(path) and rail.tabText(0) == "cu_nb"
+    again = Notebook.load(path)
+    assert [c.is_step for c in again.cells].count(True) == 1 and again.cells[-1].view == {
+        "source": "pipe", "histogram": "Coordination"}
+
+    w.panel.new_notebook()
+    assert rail.count() == 2 and rail.currentIndex() == 1
+    w.panel.close_tab(1)
+    w.settings["python.run_notebooks"] = "always"
+    w.open_notebook(str(path))                                 # already open: back to its tab
+    assert rail.count() == 1
+    w.panel.close_tab(0)                                       # the last tab leaves an empty notebook
+    assert rail.count() == 1 and w.panel.notebook.pipeline is None
+    w.open_notebook(str(path))
+    assert rail.tabText(0) == "cu_nb" and [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis"]
+    w.close()

@@ -80,7 +80,12 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   parsing, `fes_from_hills` (same kernels as `plumed sum_hills`). Tests compare with `plumed driver` and
   the sum_hills files in `tests/data/plumed/` (regenerate with `make_plumed_reference.py`, never by hand).
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
-- `gui/`: `app.py` main window, `viewport.py`, `pipeline_panel.py`, `params.py`, `render_page.py`,
+- `notebook.py`: notebooks as percent-format `.py` files (`# %%` cells, one namespace, `pipe` is the
+  pipeline; step cells = one `pipe.modifiers.append(...)`, view cells = one `show(pipe, ...)` from
+  `views.py`). The GUI's default layout is built on it (`general.layout`: notebook | classic).
+- `gui/`: `app.py` main window, `notebook_panel.py` (cells, steps, view cells with live `PlotsPanel`s)
+  and `notebook_rail.py` (one button per open notebook), `viewport.py`, `pipeline_panel.py`
+  (classic layout; `DisplayPanel` is its visual-elements part in the notebook layout), `params.py`, `render_page.py`,
   `preferences.py`, `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
   `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`.
 - `llm/`: Claude agent (`agent.py`), tools (`tools.py`), Modifier Forge (`forge.py`: Claude writes a

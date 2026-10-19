@@ -8,12 +8,19 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-Nothing right now.
+- Notebook layout (GUI redesign): notebooks as `.py` cells with step and view cells, a notebook
+  rail on the left, Paper/Graphite themes. Branch `claude/project-thread-x53vio`.
 
 ## Next
 
 GUI
 
+- Notebook layout: the viewport could follow the current notebook even when it has no
+  pipeline yet (now it keeps the last one); 3D snapshot views (`show(pipe, frame=...)` drawing
+  the structure) and image/figure cells; drag cells to reorder; undo for cell edits; inline
+  Ask Claude suggestions as diffs; per-notebook render settings.
+- Spectra, Figure and Plugins (Forge) views from the redesign mock-ups, built as view cells
+  rather than separate panels.
 - Quad views (top, front, left, perspective), as in OVITO.
 - Undo/redo for pipeline edits.
 - Compute frames in a background thread so the GUI stays responsive.

@@ -23,12 +23,13 @@ from .ask_panel import AskPanel
 from .console import make_console
 from .inspector import DataInspector
 from .palette import CommandPalette, menu_entries
-from .pipeline_panel import MODIFIER_MENU, PipelinePanel, fill_modifier_menu
+from .notebook_panel import NotebookPanel, fill_view_menu
+from .pipeline_panel import MODIFIER_MENU, DisplayPanel, PipelinePanel, fill_modifier_menu
 from .plots import PlotsPanel
 from . import preferences as prefs
 from .render_page import RenderPage
 from .style import ViewStyle
-from .theme import TOKENS
+from .theme import PALETTES, TOKENS
 from .timeline import Timeline
 from .viewport import Viewport
 
@@ -38,10 +39,11 @@ def file_filter() -> str:
 
     return (f"Simulation files ({' '.join(plugins.file_patterns('structure'))});;"
             f"Volumetric data ({' '.join(plugins.file_patterns('volumetric'))});;"
-            "Sessions (*.ewald);;All files (*)")
+            "Notebooks (*.py);;Sessions (*.ewald);;All files (*)")
 
 
 SESSION_FILTER = "ewald session (*.ewald)"
+NOTEBOOK_FILTER = "Notebook (*.py)"
 
 
 def save_filters() -> list[tuple[str, str | None]]:
@@ -92,27 +94,39 @@ class MainWindow(QtWidgets.QMainWindow):
         self.workspaces.addWidget(self.render_page)
         self.setCentralWidget(self.workspaces)
 
-        # --- right: command panel
-        self.panel = PipelinePanel(self.style)
-        self.panel.changed.connect(self.recompute)
-        self.panel.styleChanged.connect(self._style_changed)
-        pipeline_dock = self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
+        self.layout_mode = self.settings["general.layout"]
         self.ask_panel = AskPanel(self._ask_context)
         self.ask_panel.pipelineChanged.connect(self._after_claude)
+        if self.layout_mode == "notebook":
+            # --- left: notebook rail (the pipeline as Python cells); right: display settings, Ask Claude
+            self.panel = NotebookPanel()
+            self.panel.changed.connect(self.recompute)
+            self.panel.pipelineReplaced.connect(self.set_pipeline)
+            self.panel.askRequested.connect(self.ask_claude)
+            self.panel.plotCreated.connect(self._connect_plot)
+            self.notebook_dock = self._dock(self.panel, "Notebook", QtCore.Qt.LeftDockWidgetArea, 560)
+            if not prefs.layout_path(self.settings).exists():  # first start: a wide notebook
+                QtCore.QTimer.singleShot(0, lambda: self.resizeDocks([self.notebook_dock], [640], QtCore.Qt.Horizontal))
+            self.display = DisplayPanel(self.style)
+            self.display.styleChanged.connect(self._style_changed)
+            self.display.modifierRequested.connect(lambda m: self.panel.add_modifier(m))
+            side_dock = self._dock(self.display, "Display", QtCore.Qt.RightDockWidgetArea, 320)
+            self.display.refresh()
+        else:
+            # --- right: command panel (pipeline list + properties)
+            self.panel = self.display = PipelinePanel(self.style)
+            self.panel.changed.connect(self.recompute)
+            self.panel.styleChanged.connect(self._style_changed)
+            side_dock = self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
         self.ask_dock = self._dock(self.ask_panel, "Ask Claude", QtCore.Qt.RightDockWidgetArea, None)
-        self.tabifyDockWidget(pipeline_dock, self.ask_dock)
-        pipeline_dock.raise_()
+        self.tabifyDockWidget(side_dock, self.ask_dock)
+        side_dock.raise_()
 
         # --- bottom: console / inspector / plots / log
         self.inspector = DataInspector()
         self.console = make_console(self._console_namespace(), self._after_console, self)
         self.plots = PlotsPanel()
-        self.plots.phononModePicked.connect(self.play_phonon_mode)
-        self.plots.atomsSelected.connect(self._plot_selected_atoms)
-        self.plots.framesSelected.connect(self._plot_selected_frames)
-        self.plots.frameRequested.connect(self.timeline._set)
-        self.plots.expressionRequested.connect(self._keep_plot_selection)
-        self.timeline.selectionChanged.connect(self.plots.set_frame_selection)
+        self._connect_plot(self.plots)
         self._plot_picking = False
         self.log = QtWidgets.QPlainTextEdit(readOnly=True)
         self.bottom = QtWidgets.QTabWidget()
@@ -121,6 +135,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.bottom.addTab(self.plots, "Plots")
         self.bottom.addTab(self.log, "Log")
         self.bottom_dock = self._dock(self.bottom, "Data", QtCore.Qt.BottomDockWidgetArea, None)
+        if self.layout_mode == "notebook":  # notebook and side panels run the full height
+            self.setCorner(QtCore.Qt.BottomLeftCorner, QtCore.Qt.LeftDockWidgetArea)
+            self.setCorner(QtCore.Qt.BottomRightCorner, QtCore.Qt.RightDockWidgetArea)
         self.resizeDocks([self.bottom_dock], [280], QtCore.Qt.Vertical)
 
         self._build_menus()
@@ -160,18 +177,27 @@ class MainWindow(QtWidgets.QMainWindow):
         tb = self.addToolBar("Main")
         tb.setObjectName("main-toolbar")
         tb.setMovable(False)
+        nb = self.layout_mode == "notebook"
         tb.addAction("Open", self.open_dialog)
-        tb.addAction("Open remote", self.open_remote_dialog)
+        if nb:
+            tb.addAction("Save", self.save_notebook)
+            run = QtWidgets.QPushButton("▶ Run all", toolTip="Run every cell of the notebook (Ctrl+Shift+Enter)")
+            run.setObjectName("primary")
+            run.clicked.connect(lambda: self.panel.view.run_all())
+            tb.addWidget(run)
+        else:
+            tb.addAction("Open remote", self.open_remote_dialog)
         tb.addSeparator()
         self.ws_buttons = []
-        for i, name in enumerate(("Analyze", "Render")):
+        for i, name in enumerate(("Notebook" if nb else "Analyze", "Render")):
             b = QtWidgets.QToolButton(text=name, checkable=True)
             b.clicked.connect(lambda _=False, i=i: self.set_workspace(i))
             tb.addWidget(b)
             self.ws_buttons.append(b)
         self.ws_buttons[0].setChecked(True)
         tb.addSeparator()
-        search = QtWidgets.QPushButton("  Search commands, modifiers…      Ctrl K")
+        search = QtWidgets.QPushButton("  Search commands, steps, cells…      Ctrl K" if nb else
+                                       "  Search commands, modifiers…      Ctrl K")
         search.setStyleSheet(f"text-align: left; color: {TOKENS['muted']}; background: {TOKENS['panel']}; min-width: 320px;")
         search.clicked.connect(self.command_palette)
         tb.addWidget(search)
@@ -191,19 +217,31 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_menus(self):
         mb = self.menuBar()
+        nb = self.layout_mode == "notebook"
         f = mb.addMenu("&File")
-        f.addAction("&Load file…", self.open_dialog, QtGui.QKeySequence.Open)
-        f.addAction("Load &remote file (SSH)…", self.open_remote_dialog, "Ctrl+Alt+O")
-        f.addAction("Load &NEB folder…", self.open_neb_dialog)
+        if nb:
+            f.addAction("&New notebook", lambda: self.panel.new_notebook(), "Ctrl+T")
+        f.addAction("&Open…" if nb else "&Load file…", self.open_dialog, QtGui.QKeySequence.Open)
+        f.addAction("Open &remote file (SSH)…", self.open_remote_dialog, "Ctrl+Alt+O")
+        f.addAction("Open &NEB folder…", self.open_neb_dialog)
         ex = f.addMenu("Open e&xample")
         for example in examples.EXAMPLES:
             act = ex.addAction(f"{example.file}  ({example.format})", lambda e=example: self.open_example(e.file))
             act.setToolTip(example.description)
             act.setStatusTip(example.description)
         ex.setToolTipsVisible(True)
-        f.addAction("Load &session…", self.load_session_dialog, "Ctrl+Shift+O")
-        f.addAction("&Save session", self.save_session, QtGui.QKeySequence.Save)
-        f.addAction("Save session &as…", lambda: self.save_session(ask=True), QtGui.QKeySequence.SaveAs)
+        f.addSeparator()
+        if nb:
+            f.addAction("&Save notebook", self.save_notebook, QtGui.QKeySequence.Save)
+            f.addAction("Save notebook &as…", lambda: self.save_notebook(ask=True), QtGui.QKeySequence.SaveAs)
+            f.addAction("&Close notebook", lambda: self.panel.close_tab(self.panel.tabs.currentIndex()), "Ctrl+W")
+            f.addSeparator()
+            f.addAction("Load &session (.ewald)…", self.load_session_dialog, "Ctrl+Shift+O")
+            f.addAction("Save session (.ewald) as…", lambda: self.save_session(ask=True))
+        else:
+            f.addAction("Load &session…", self.load_session_dialog, "Ctrl+Shift+O")
+            f.addAction("&Save session", self.save_session, QtGui.QKeySequence.Save)
+            f.addAction("Save session &as…", lambda: self.save_session(ask=True), QtGui.QKeySequence.SaveAs)
         f.addSeparator()
         f.addAction("Render &image…", self.render_image, "Ctrl+Shift+R")
         f.addAction("E&xport data…", self.export_dialog, "Ctrl+E")
@@ -224,21 +262,55 @@ class MainWindow(QtWidgets.QMainWindow):
         v.addAction("Zoom to fit", self.viewport.zoom_fit, "Ctrl+0")
         v.addSeparator()
         for bg in ("Dark background", "White background"):
-            v.addAction(bg, lambda bg=bg: self._set_background(TOKENS["bg"] if bg.startswith("Dark") else "white"))
+            v.addAction(bg, lambda bg=bg: self._set_background(PALETTES["graphite"]["viewport"] if bg.startswith("Dark") else "white"))
         self.theme_menu = v.addMenu("Theme")
         self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
         self._fill_theme_menu()
-        m = mb.addMenu("&Pipeline")
-        m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier))
-        fill_modifier_menu(m, self.panel.add_modifier)
+        if nb:
+            v.addSeparator()
+            v.addAction("Focus on the viewport", self.toggle_focus, "Ctrl+\\")
+            n = mb.addMenu("&Notebook")
+            n.addAction("Run &all", lambda: self.panel.view.run_all(), "Ctrl+Shift+Return")
+            n.addAction("Run current cell and &below", lambda: self._cell_action("below"))
+            n.addAction("&Restart", lambda: self.panel.view.restart())
+            n.addAction("Restart and run all", lambda: self.panel.view.run_all())
+            n.addSeparator()
+            n.addAction("Move cell &up", lambda: self._cell_action("up"), "Ctrl+Shift+Up")
+            n.addAction("Move cell &down", lambda: self._cell_action("down"), "Ctrl+Shift+Down")
+            n.addAction("D&elete cell", lambda: self._cell_action("delete"))
+            n.addSeparator()
+            n.addAction("Show as Python &file", lambda: self.panel.view.py_button.toggle())
+            ins = mb.addMenu("&Insert")
+            ins.addAction("&Code cell", lambda: self.panel.view.add_cell("code"), "Ctrl+Shift+N")
+            ins.addAction("&Text cell", lambda: self.panel.view.add_cell("markdown"))
+            ins.addSeparator()
+            m = ins.addMenu("&Step")
+            m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier))
+            fill_modifier_menu(m, self.panel.add_modifier)
+            vm = ins.addMenu("&View")
+            vm.aboutToShow.connect(lambda: fill_view_menu(vm, self.data, lambda **kw: self.panel.view.add_view(**kw)))
+            plug = ins.addMenu("&Plugin step")
+            plug.aboutToShow.connect(lambda: self._fill_plugin_menu(plug))
+            ins.addAction("&Load plugin file…", lambda: self.panel.view._load_plugin_file())
+            ins.addSeparator()
+            ins.addAction("Ask Claude to add steps…", self.ask_claude)
+            self.step_menu = m
+        else:
+            m = mb.addMenu("&Pipeline")
+            m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier))
+            fill_modifier_menu(m, self.panel.add_modifier)
+            self.step_menu = m
         t = mb.addMenu("&Tools")
         for key, _icon, tip in Viewport.TOOLS:
             t.addAction(tip.split(":")[0], lambda k=key: self.viewport.set_tool(k))
         t.addSeparator()
         t.addAction("Ask Claude about selection…", self.ask_claude, "Ctrl+J")
         w = mb.addMenu("&Window")
-        w.addAction("Analyze workspace", lambda: self.set_workspace(0), "Ctrl+1")
+        w.addAction("Notebook workspace" if nb else "Analyze workspace", lambda: self.set_workspace(0), "Ctrl+1")
         w.addAction("Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
+        if nb:
+            w.addAction("Notebook", lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))
+            w.addAction("Display settings", lambda: (self.display.parent().show(), self.display.parent().raise_()))
         w.addAction("Python console", lambda: self.bottom.setCurrentWidget(self.console))
         w.addAction("Data inspector", lambda: self.bottom.setCurrentWidget(self.inspector))
         w.addAction("Plots", lambda: self.bottom.setCurrentWidget(self.plots))
@@ -251,6 +323,30 @@ class MainWindow(QtWidgets.QMainWindow):
         h.addAction("Open plugin folder", self.open_plugin_folder)
         about = h.addAction("About EWALD", self.about)
         about.setMenuRole(QtGui.QAction.AboutRole)
+
+    def _fill_plugin_menu(self, menu):
+        view = self.panel.view
+        view._fill_plugin_menu()
+        menu.clear()
+        for act in view.plugin_menu.actions():
+            menu.addAction(act)
+
+    def _cell_action(self, action):
+        view = self.panel.view
+        if view is not None and view.current is not None:
+            view._cell_action(view.current, action)
+
+    def toggle_focus(self):
+        """Hide or show the notebook and side panels, leaving the viewport (Ctrl+\\)."""
+        docks = [self.notebook_dock, self.display.parent(), self.ask_dock, self.bottom_dock]
+        hide = self.notebook_dock.isVisible()
+        if hide:
+            self._focus_restore = [d for d in docks if d.isVisible()]
+            for d in docks:
+                d.hide()
+        else:
+            for d in getattr(self, "_focus_restore", None) or [self.notebook_dock, self.bottom_dock]:
+                d.show()
 
     def help_url(self, page="index.md"):
         return manual.url(page, self.settings["general.docs_url"] or None)
@@ -392,15 +488,68 @@ class MainWindow(QtWidgets.QMainWindow):
         return pipe
 
     def open_dialog(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load file", "", file_filter())
-        if not path:
-            return
+        nb = self.layout_mode == "notebook"
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open" if nb else "Load file", "", file_filter())
+        if path:
+            self.open_any(path)
+
+    def open_any(self, path, ask_types: bool = True, **kwargs):
+        """A session, a notebook (.py, notebook layout) or a data file."""
         from ..session import is_session_file
 
         if is_session_file(path):
             self.load_session(path)
-            return
-        self._open_asking_types(path)
+        elif self.layout_mode == "notebook" and str(path).endswith(".py") and os.path.isfile(path):
+            self.open_notebook(path)
+        elif kwargs or not ask_types:
+            self.open_file(path, **kwargs)
+        else:
+            self._open_asking_types(path)
+
+    # ---------------------------------------------------------------- notebooks
+    def open_notebook(self, path, run: bool | None = None):
+        """Open a ``.py`` notebook in a new tab. Its cells run when ``python.run_notebooks``
+        says so ("ask" asks: a notebook is code)."""
+        if run is None:
+            policy = self.settings["python.run_notebooks"]
+            if policy == "ask":
+                run = QtWidgets.QMessageBox.question(
+                    self, "Run notebook", f"Run the cells of {os.path.basename(path)} now?\n\n"
+                    "A notebook is Python code: run it only if you trust it.") == QtWidgets.QMessageBox.Yes
+            else:
+                run = policy == "always"
+        try:
+            view = self.panel.open_notebook(path, run=run)
+        except Exception as exc:
+            self.message(f"Open failed: {path}: {exc}", error=True)
+            QtWidgets.QMessageBox.critical(self, "Open failed", f"{path}\n\n{exc}")
+            return None
+        self.notebook_dock.show()
+        self.setWindowTitle(f"EWALD — {os.path.basename(str(path))}")
+        self.message(f"Opened notebook {path}" + ("" if run else " (not run: Notebook › Run all)"))
+        return view
+
+    def save_notebook(self, ask: bool = False):
+        """Save the current notebook as a ``.py`` file (asks for a name the first time)."""
+        nb = self.panel.notebook
+        if nb is None:
+            return None
+        path = nb.path
+        if ask or not path:
+            start = path or os.path.join(os.path.dirname(self.session_path or "") or os.getcwd(),
+                                         nb.name.replace(" ", "_") + ".py")
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save notebook", start, NOTEBOOK_FILTER)
+            if not path:
+                return None
+            if not path.endswith(".py"):
+                path += ".py"
+        try:
+            self.panel.save(path)
+        except OSError as exc:
+            QtWidgets.QMessageBox.critical(self, "Save failed", f"{path}\n\n{exc}")
+            return None
+        self.message(f"Saved notebook {path}")
+        return path
 
     def open_neb_dialog(self):
         """A VASP NEB folder (00 .. NN) or a LAMMPS NEB run folder, one frame per image."""
@@ -444,6 +593,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plots.pipeline = pipeline
         self.plots.forget_selection()
         self.panel.set_pipeline(pipeline)
+        if self.display is not self.panel:
+            self.display.set_pipeline(pipeline)
         self.timeline.set_num_frames(pipeline.num_frames)
         self._push_console()
         self.frame = 0
@@ -483,12 +634,14 @@ class MainWindow(QtWidgets.QMainWindow):
             self.style.ensure_bond_pairs(self.data.types)
         self._apply_element_defaults()
         self.panel.set_data(self.data)
+        if self.display is not self.panel:
+            self.display.set_data(self.data)
         ts = self.data.attributes.get("Timestep", self.frame)
         self.viewport.overlay_text = f"Frame {self.frame}   timestep {ts}"
         self.viewport.set_data(self.data, interactive=interactive)
         self.inspector.set_data(self.data)
         self.plots.set_data(self.data)
-        self.plots.set_highlight(self._selected_indices())
+        self._each_plot(lambda p: p.set_highlight(self._selected_indices()))
         self._push_console()
         dev = (self.device or "cpu").upper()
         self.status.setText(f"N = {self.data.count}   frame {self.frame}/{self.pipeline.num_frames - 1}   "
@@ -532,10 +685,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.viewport.style_combo.setCurrentText(self.style.preset)
         self.viewport.style_combo.blockSignals(False)
         self.viewport.redraw()
-        if self.panel._current() and self.panel._current()[0] == "visual":
+        if self.display._current() and self.display._current()[0] == "visual":
             pass  # editor already reflects the change
         else:
-            self.panel.refresh()
+            self.display.refresh()
 
     def toggle_bond(self, i, j):
         """Bond tool: delete the i-j bond if it exists, else add it, via an EditBonds modifier on top."""
@@ -557,13 +710,31 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_pick(self, text):
         self.pick_label.setText(text)
         if not self._plot_picking:
-            self.plots.forget_selection(frames=False)  # a click in the view replaces a plot range
-        self.plots.set_highlight(self._selected_indices())
+            self._each_plot(lambda p: p.forget_selection(frames=False))  # a click in the view replaces a plot range
+        self._each_plot(lambda p: p.set_highlight(self._selected_indices()))
         self.ask_panel.update_selection()
         if text:
             self.log.appendPlainText(time.strftime("%H:%M:%S ") + text)
 
     # ---------------------------------------------------------------- linked plots
+    def _connect_plot(self, p):
+        """Link a plot (the Plots tab or a notebook view cell) to the viewport and timeline."""
+        p.phononModePicked.connect(self.play_phonon_mode)
+        p.atomsSelected.connect(self._plot_selected_atoms)
+        p.framesSelected.connect(self._plot_selected_frames)
+        p.frameRequested.connect(self.timeline._set)
+        p.expressionRequested.connect(self._keep_plot_selection)
+        self.timeline.selectionChanged.connect(p.set_frame_selection)
+
+    def plot_panels(self) -> list:
+        """The Plots tab and the live plots of the current notebook's view cells."""
+        view = self.panel.view if self.layout_mode == "notebook" else None
+        return [self.plots] + ([w.plot_panel for w in view.widgets if w.plot_panel is not None] if view else [])
+
+    def _each_plot(self, fn):
+        for p in self.plot_panels():
+            fn(p)
+
     def _selected_indices(self):
         """The viewport picks, else the 'Selection' property of the current frame."""
         indices = self.viewport.picks
@@ -590,7 +761,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         m = ExpressionSelection(expression)
         self.pipeline.modifiers.append(m)
-        self.plots.forget_selection(frames=False)
+        self._each_plot(lambda p: p.forget_selection(frames=False))
         self.viewport.clear_picks()
         self.panel.refresh(select=("mod", m))
         self.recompute()
@@ -867,6 +1038,9 @@ class MainWindow(QtWidgets.QMainWindow):
         return s
 
     def closeEvent(self, event):
+        if self.layout_mode == "notebook" and self.isVisible() and not self.panel.confirm_discard(title="Quit"):
+            event.ignore()
+            return
         prefs.save_layout(self, self.settings)
         self.timeline.timer.stop()
         self.viewport.plotter.close()  # release the VTK/OpenGL context before Qt tears down
@@ -884,6 +1058,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def _push_console(self):
         shell = getattr(self.console, "shell", None)
         ns = {"pipeline": self.pipeline, "pipe": self.pipeline, "data": self.data}
+        if self.layout_mode == "notebook" and self.panel.notebook is not None:
+            # the console sees the notebook's variables, so cells and console work on the same objects
+            ns = {k: v for k, v in self.panel.notebook.namespace.items() if not k.startswith("__")} | ns
+            ns["notebook"] = self.panel.notebook
         if hasattr(shell, "push") and hasattr(shell, "user_ns"):
             shell.push(ns)
         elif shell is not None and hasattr(shell, "locals"):
@@ -921,7 +1099,13 @@ def _app():
         check_remote_display()
         app = QtWidgets.QApplication(sys.argv)
         app.setApplicationName("ewald")
-        theme.apply(app)
+        from .. import settings as settings_mod
+
+        try:
+            name = settings_mod.load()["general.ui_theme"]
+        except Exception:  # a broken settings file must not stop the GUI
+            name = None
+        theme.apply(app, name)
     return app
 
 
@@ -954,10 +1138,8 @@ def main(argv=None):
     app = _app()
     win = MainWindow(device=args.device)
     if args.file:
-        from ..session import is_session_file
-
         kw = {"type_map": dict(p.split("=") for p in args.type_map.split(","))} if args.type_map else {}
-        win.load_session(args.file) if is_session_file(args.file) else win.open_file(args.file, **kw)
+        win.open_any(args.file, ask_types=False, **kw)
     win.show()
     return app.exec()
 

@@ -128,8 +128,13 @@ def _snapshot(data: DataCollection) -> tuple:
     """Cheap fingerprint of a collection (array identities, not contents): modifiers
     replace arrays instead of writing into them, so identity tells what changed."""
     return (data.count, {k: id(v) for k, v in data.particles.items()},
-            {k: id(v) for k, v in data.attributes.items()}, {k: id(v) for k, v in data.tables.items()},
+            {k: id(v) for k, v in data.attributes.items()}, {k: _table_id(v) for k, v in data.tables.items()},
             int(data.selection.sum()) if "Selection" in data.particles else None)
+
+
+def _table_id(table) -> tuple:
+    """Identity of a table's columns: ``copy()`` makes new dicts around the same arrays."""
+    return tuple((k, id(v)) for k, v in table.items()) if isinstance(table, dict) else (id(table),)
 
 
 def output_summary(before: tuple, data: DataCollection, frame: int) -> dict:
@@ -143,7 +148,7 @@ def output_summary(before: tuple, data: DataCollection, frame: int) -> dict:
         changed = [k for k, v in data.particles.items() if props.get(k) != id(v)]
     return {"frame": frame, "count_before": count, "count": data.count, "properties": changed,
             "attributes": [k for k, v in data.attributes.items() if attrs.get(k) != id(v)],
-            "tables": [k for k, v in data.tables.items() if tables.get(k) != id(v)],
+            "tables": [k for k, v in data.tables.items() if tables.get(k) != _table_id(v)],
             "selected": int(data.selection.sum()) if "Selection" in data.particles else None}
 
 
