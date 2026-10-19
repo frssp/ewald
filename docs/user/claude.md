@@ -5,7 +5,7 @@ and still ends up as an ordinary, reproducible pipeline.
 
 ```bash
 pip install -e ".[llm]"
-export ANTHROPIC_API_KEY=...          # or: ant auth login
+export ANTHROPIC_API_KEY=...          # or: ant auth login, or Preferences › Claude in the GUI
 ```
 
 ```python
@@ -37,6 +37,33 @@ instructions), so the always-on tools are limited to what such text cannot abuse
 accept only arithmetic, comparisons and NumPy array functions; `export_file` replaces files only
 inside its work dir and never writes into hidden folders such as `~/.ssh`; and
 `compute_plumed_cvs` refuses `LOAD` (native code) and absolute or `..` file paths.
+
+## API key
+
+In the GUI, Edit › Preferences › Claude takes the key in a masked field. *Test connection*
+asks the Models API whether the key and the chosen model work, which costs no tokens; Apply
+saves the key. It goes to the system keychain (macOS Keychain, Windows Credential Manager,
+GNOME Keyring or KWallet through `keyring`). Where no keychain works, such as a headless Linux
+machine or an ssh session without a desktop, it goes to `credentials.json` in the config
+folder, readable only by you. The key is never written to `settings.json`, session files or
+logs. The same page picks the model (Opus 5.5 by default; Sonnet 5.5 and Haiku 5.5 are faster
+and cheaper) and the effort for Ask Claude.
+
+Every Claude feature (`Agent`, `ewald ask`, `ewald narrate`, `ewald forge`, the GUI) uses the
+saved key first, then `ANTHROPIC_API_KEY`, then the SDK's own lookup (`ANTHROPIC_AUTH_TOKEN`,
+`ant auth login`). From Python:
+
+```python
+from ewald.llm import credentials
+
+credentials.save_api_key("sk-ant-...")   # keychain, or the private file
+credentials.check()                      # (True, "Connected: Claude Opus 5.5")
+credentials.delete_api_key()
+```
+
+The key is handed to the client object, never put into the environment, so the code that the
+Modifier Forge tests in a subprocess cannot read it (that subprocess also runs with a null
+keyring backend).
 
 ## Asking about a selection
 

@@ -264,6 +264,7 @@ _ENV_KEEP = ("PATH", "LANG", "LANGUAGE", "TZ", "TMPDIR", "TEMP", "TMP", "SYSTEMR
 def _subprocess_env(home) -> dict:
     env = {k: v for k, v in os.environ.items() if k in _ENV_KEEP or k.startswith("LC_")}
     env["HOME"] = env["USERPROFILE"] = str(home)  # no ~/.ssh, ~/.aws, ... through the home folder
+    env["PYTHON_KEYRING_BACKEND"] = "keyring.backends.null.Keyring"  # no saved API key via keyring
     return env
 
 
@@ -310,7 +311,7 @@ def forge(request: str, *, client=None, model: str = DEFAULT_MODEL, run_code: bo
           max_tokens: int = 16000, on_event=None, confirm=None) -> ForgeResult:
     """Have Claude write a modifier plugin for ``request``; verify and save it (see module docs).
 
-    ``client`` defaults to ``anthropic.Anthropic()``; any object with ``messages.create`` works
+    ``client`` defaults to ``credentials.client()`` (the saved key); any object with ``messages.create`` works
     (tests pass a fake). With ``run_code=False`` the first draft is returned unverified and
     nothing is run or saved. ``confirm(result) -> bool`` is asked before a verified plugin is
     saved, since a saved plugin is imported on every start; False keeps it unsaved.
@@ -318,9 +319,9 @@ def forge(request: str, *, client=None, model: str = DEFAULT_MODEL, run_code: bo
     from .. import plugins
 
     if client is None:
-        import anthropic
+        from .credentials import client as make_client
 
-        client = anthropic.Anthropic()
+        client = make_client()
     emit = on_event or (lambda kind, payload: None)
     system = [{"type": "text", "text": _system(), "cache_control": {"type": "ephemeral"}}]
     messages: list[dict] = [{"role": "user", "content": request}]

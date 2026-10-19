@@ -287,7 +287,8 @@ and VASP-format files written to match VASP 6 output.
 
 `ewald.llm` exposes the pipeline as tools for Claude, so an analysis can be asked for in
 words and still ends up as an ordinary, reproducible pipeline. Install with
-`pip install -e ".[llm]"` and set `ANTHROPIC_API_KEY` (or `ant auth login`).
+`pip install -e ".[llm]"` and enter an API key in Preferences › Claude (saved in the system
+keychain), or set `ANTHROPIC_API_KEY` (or `ant auth login`).
 
 ```python
 from ewald.llm import Agent

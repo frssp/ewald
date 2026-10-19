@@ -19,7 +19,7 @@ from .. import examples, manual
 from .. import modifiers as mods
 from ..io import import_file
 from ..render import camera_state, render
-from .ask_panel import AskPanel
+from .ask_panel import AskPanel, agent_from_settings
 from .console import make_console
 from .icons import icon
 from .inspector import DataInspector
@@ -98,7 +98,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.panel.changed.connect(self.recompute)
         self.panel.styleChanged.connect(self._style_changed)
         pipeline_dock = self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
-        self.ask_panel = AskPanel(self._ask_context)
+        self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings))
         self.ask_panel.pipelineChanged.connect(self._after_claude)
         self.ask_dock = self._dock(self.ask_panel, "Ask Claude", QtCore.Qt.RightDockWidgetArea, None)
         self.tabifyDockWidget(pipeline_dock, self.ask_dock)

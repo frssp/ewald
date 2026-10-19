@@ -436,6 +436,13 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `python.startup_script` | Console startup script | `''` |
 | `python.extra_paths` | Extra module paths | `''` |
 
+### Claude
+
+| Key | Label | Default |
+|---|---|---|
+| `llm.model` | Model | `'claude-opus-5-5'` |
+| `llm.effort` | Effort | `'high'` |
+
 <!-- gui:start -->
 ## Desktop GUI
 

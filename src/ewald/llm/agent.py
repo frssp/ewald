@@ -5,8 +5,8 @@
 >>> print(agent.ask("What happens in this run? Show me the most interesting frame."))
 >>> print(agent.toolset.to_script())     # the analysis as a reproducible script
 
-Requires ``pip install anthropic`` and credentials (``ANTHROPIC_API_KEY`` or
-``ant auth login``). The loop is written out by hand rather than using the SDK
+Requires ``pip install anthropic`` and credentials (the key saved in Preferences › Claude,
+``ANTHROPIC_API_KEY`` or ``ant auth login``; see :mod:`ewald.llm.credentials`). The loop is written out by hand rather than using the SDK
 tool runner so tool results can carry rendered images and the toolset stays
 shared with the MCP server and GUI.
 """
@@ -54,7 +54,7 @@ def _tool_result_block(tool_use_id: str, result: ToolResult) -> dict:
 class Agent:
     """Conversation with Claude over one ewald session.
 
-    ``client`` defaults to ``anthropic.Anthropic()``; pass any object with the
+    ``client`` defaults to ``credentials.client()`` (the saved key); pass any object with the
     same ``beta.messages.create`` method to test without network access.
     ``fallbacks=True`` enables server-side refusal fallback (another model
     continues if the request is declined).
@@ -66,9 +66,9 @@ class Agent:
                  on_event: Callable[[str, object], None] | None = None):
         self.toolset = toolset or Toolset()
         if client is None:
-            import anthropic
+            from .credentials import client as make_client
 
-            client = anthropic.Anthropic()
+            client = make_client()
         self.client = client
         self.model = model
         self.effort = effort
