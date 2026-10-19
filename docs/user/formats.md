@@ -189,6 +189,28 @@ trajectory is not copied. Other formats, including plugin formats, are downloade
 local cache (`ewald.io.remote.cache_dir()`, `EWALD_CACHE_DIR` overrides) and reused while the
 remote file is unchanged. Host aliases need at least two characters, so `C:\data` stays local.
 
+## Runs that are still writing
+
+A LAMMPS dump, XDATCAR, OUTCAR or extxyz file can be opened while the simulation is still
+writing it, locally or over SSH. `pipe.refresh()` looks for frames appended since the file was
+opened (or last refreshed), reads only the new bytes (on an SSH host `tail -c | grep -b` runs
+there), drops cached frames that may have changed and returns how many frames were added.
+A half-written last frame is left out until it is complete, a file that shrank (a new run
+overwrote it) is indexed again, and a wildcard such as `dump.*.lammpstrj` also picks up files
+that appeared. Thermo tables next to the trajectory (log.lammps, OSZICAR) are read again too.
+Compressed files are not followed.
+
+```python
+pipe = import_file("cluster:/scratch/me/run1/dump.lammpstrj")
+...
+if pipe.refresh():               # new frames since the last look
+    data = pipe.compute(-1)      # the newest one
+```
+
+The GUI does this by itself every two seconds (Preferences › General › Live reload, and
+File › Live reload for the current session): the timeline grows, and if it was on the last
+frame it moves on to the newest one, as in OVITO and VMD.
+
 ## Formats ewald does not read
 
 A [reader plugin](../plugins/readers.md) adds a format without changing ewald: once it is

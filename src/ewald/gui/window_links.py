@@ -110,5 +110,5 @@ class LinksMixin:
                 return
         if self.pipeline is not None:
             self.panel.refresh()
-            self.timeline.set_num_frames(self.pipeline.num_frames)
+            self.timeline.set_num_frames(self.pipeline.num_frames, keep_selection=True)
             self.recompute()

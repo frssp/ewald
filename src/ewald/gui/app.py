@@ -26,6 +26,7 @@ from . import preferences as prefs
 from .render_page import RenderPage
 from .style import ViewStyle
 from .theme import TOKENS
+from .live_reload import LiveReload
 from .timeline import Timeline
 from .viewport import Viewport
 from .viewport_menu import ViewportMenuMixin
@@ -59,6 +60,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self.viewport.contextMenuRequested.connect(self._show_viewport_menu)
         self.timeline = Timeline()
         self.timeline.frameChanged.connect(self.set_frame)
+        self.live_reload = LiveReload.attach(self)
         analyze = QtWidgets.QWidget()
         al = QtWidgets.QVBoxLayout(analyze)
         al.setContentsMargins(0, 0, 0, 0)
@@ -164,6 +166,11 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         if index == 1:
             self.render_page.update_code()
 
+    def _toggle_live_reload(self, on):
+        """File › Live reload: on or off for this session (the default is in Preferences › General)."""
+        self.live_reload.configure(on, self.settings["general.live_reload_interval"])
+        self.message(f"Live reload {'on' if on else 'off'}")
+
     def preferences(self):
         dlg = prefs.PreferencesDialog(self.settings, self)
         dlg.applied.connect(lambda s: prefs.apply_settings(self, s))
@@ -210,6 +217,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self.plots.forget_selection()
         self.panel.set_pipeline(pipeline)
         self.timeline.set_num_frames(pipeline.num_frames)
+        self.live_reload.set_pipeline(pipeline)
         self._push_console()
         self.frame = 0
         self.timeline._set(0) if self.timeline.frame != 0 else self.recompute()
@@ -376,6 +384,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
     def closeEvent(self, event):
         prefs.save_layout(self, self.settings)
         self.timeline.timer.stop()
+        self.live_reload.timer.stop()
         self.viewport.plotter.close()  # release the VTK/OpenGL context before Qt tears down
         km = getattr(self.console, "kernel_manager", None)
         if km is not None:

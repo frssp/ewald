@@ -34,6 +34,7 @@ LAYOUT = {
         ("Startup", ["general.startup_workspace", "general.restore_layout"]),
         ("Appearance", ["general.font_size", "general.toolbar_style"]),
         ("LAMMPS files", ["general.lammps_type_prompt", "general.lammps_type_map"]),
+        ("Running jobs", ["general.live_reload", "general.live_reload_interval"]),
         ("Help", ["general.docs_url"])]),
     "Viewports": ("Defaults for the interactive 3D view.", [
         ("View", ["viewport.background", "viewport.projection", "viewport.initial_view", "viewport.style_preset"]),

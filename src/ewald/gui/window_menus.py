@@ -91,6 +91,12 @@ class MenusMixin:
         f.addAction("E&xport data…", self.export_dialog, "Ctrl+E")
         f.addAction("Export &movie…", self.export_movie)
         f.addSeparator()
+        self.live_reload_action = f.addAction("&Live reload")
+        self.live_reload_action.setCheckable(True)
+        self.live_reload_action.triggered.connect(self._toggle_live_reload)
+        self.live_reload_action.setStatusTip("Follow a trajectory that is still being written: new frames "
+                                             "extend the timeline (Preferences › General).")
+        f.addSeparator()
         f.addAction("&Quit", self.close, QtGui.QKeySequence.Quit)
         e = mb.addMenu("&Edit")
         act = e.addAction("&Preferences…", self.preferences, QtGui.QKeySequence.Preferences)

@@ -398,6 +398,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `general.restore_layout` | Restore window layout | `True` |
 | `general.lammps_type_prompt` | LAMMPS type names | `'ask'` |
 | `general.lammps_type_map` | Default LAMMPS type map | `''` |
+| `general.live_reload` | Live reload | `True` |
+| `general.live_reload_interval` | Live reload interval | `2.0` |
 | `general.docs_url` | Documentation URL | `''` |
 
 ### Viewports
@@ -504,6 +506,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Render image… (`Ctrl+Shift+R`)
 - Export data… (`Ctrl+E`)
 - Export movie…
+- Live reload
 - Quit (`Ctrl+Q`)
 
 **Edit**

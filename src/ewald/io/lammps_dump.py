@@ -15,7 +15,7 @@ import numpy as np
 from ..data import Cell, DataCollection
 from . import remote
 from ._textparse import parse_table
-from .base import FrameReader, head_lines, open_binary
+from .base import FrameReader, file_size, head_lines, open_binary
 
 # LAMMPS column name -> (OVITO-style property, component)
 _COLUMN_MAP = {
@@ -53,6 +53,7 @@ class LammpsDumpReader(FrameReader):
         self.path = str(path)
         self.type_map = {str(k): v for k, v in (type_map or {}).items()}
         self.sort_by_id = sort_by_id
+        self._size = file_size(self.path)
         self._offsets, last_complete = _scan_frames(self.path)
         if not self._offsets:
             raise ValueError(f"{path}: no 'ITEM: TIMESTEP' found; not a LAMMPS dump file")
@@ -64,12 +65,41 @@ class LammpsDumpReader(FrameReader):
                 raise ValueError(f"{path}: the only frame is incomplete") from None
         self._last = None
         self._units = None  # LAMMPS writes ITEM: UNITS only in the first snapshot
+        self._read_units()
+
+    def _read_units(self):
         if len(self._offsets) > 1:
             with open_binary(self.path) as fh:
                 self._units = _parse_header(fh)[0].get("Units")
 
     def __len__(self):
         return len(self._offsets)
+
+    def refresh(self) -> int | None:
+        """Index frames a running LAMMPS appended since the last look (only the new bytes are
+        scanned); the old last frame is scanned again, so it counts as changed."""
+        size = file_size(self.path)
+        if size is None or size == self._size:
+            return None
+        if size < self._size:  # truncated or rewritten (a new run): index from scratch
+            self._size, start, keep = size, 0, 0
+        else:
+            self._size = size
+            start = self._end if self._end is not None else self._offsets[-1]
+            keep = len(self._offsets) - (self._end is None)
+        offsets, complete = _scan_frames(self.path, start)
+        end = None
+        if offsets and not complete:  # the frame being written right now
+            end = offsets.pop()
+        offsets = self._offsets[:keep] + offsets
+        if not offsets:
+            return None
+        # the old last frame was scanned again: its last line may have been half written
+        changed = keep < len(self._offsets) or offsets != self._offsets
+        self._offsets, self._end, self._last = offsets, end, None
+        if keep == 0 or (self._units is None and len(offsets) > 1):
+            self._read_units()
+        return keep if changed else None
 
     def read(self, index: int) -> DataCollection:
         index = range(len(self._offsets))[index]
@@ -214,15 +244,16 @@ def _type_labels(values, type_map=None) -> np.ndarray:
     return np.array(names, dtype=str)[inverse]
 
 
-def _scan_frames(path, chunk_size: int = 1 << 24) -> tuple[list[int], bool]:
+def _scan_frames(path, start: int = 0, chunk_size: int = 1 << 24) -> tuple[list[int], bool]:
     """Byte offset of the first ITEM line of every frame (UNITS/TIME may precede TIMESTEP),
-    and whether the last frame holds all of its atom lines.
+    and whether the last frame holds all of its atom lines. ``start`` (a frame start)
+    skips the bytes before it.
 
     Reads the file in large chunks and only looks at 'ITEM:' lines, so indexing a
     multi-GB dump costs about as much as reading it from disk. A remote dump is indexed
     by ``grep`` on the host instead (only the ITEM lines cross the network).
     """
-    hits = remote.line_offsets(path, "^ITEM: (TIME|UNITS|ATOMS)") if remote.is_remote(path) else None
+    hits = remote.line_offsets(path, "^ITEM: (TIME|UNITS|ATOMS)", start) if remote.is_remote(path) else None
     if hits is not None:
         return _scan_remote(path, hits)
     offsets: list[int] = []
@@ -231,9 +262,11 @@ def _scan_frames(path, chunk_size: int = 1 << 24) -> tuple[list[int], bool]:
     ncols = 0  # columns in its ATOMS line
     counted = None  # atom lines seen since the ATOMS line, None outside the atom block
     want_n = False  # the next line holds the atom count
-    pos = 0  # file offset of buf[0]
+    pos = start  # file offset of buf[0]
     carry = b""
     with open_binary(path) as fh:
+        if start:
+            fh.seek(start)
         # read1 on a compressed stream returns what decompressed so far, so a truncated
         # .gz still yields every complete frame before the cut
         read = fh.read if isinstance(fh, io.BufferedReader) else fh.read1
