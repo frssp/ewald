@@ -46,6 +46,8 @@ def test_view_figure_saves_editable_text(tmp_path, vasp_dir):
     pdf = (tmp_path / "g.pdf").read_bytes()
     assert b"/CIDFontType2" in pdf and b"/Type3" not in pdf   # Type 42 (TrueType): text stays text
     assert "<text" in (tmp_path / "g.svg").read_text()
+    zoomed = figure(pipe, table="coordination-rdf", xlim=(1.5, 2.5), ylim=(0, 3))   # what a zoomed view cell writes
+    assert zoomed.axes[0].get_xlim() == (1.5, 2.5) and zoomed.axes[0].get_ylim() == (0, 3)
 
 
 def test_table_picture_uses_the_style():

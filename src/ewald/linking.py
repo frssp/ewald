@@ -336,6 +336,19 @@ def frame_at(pipeline, data, link: Link, x: float) -> int | None:
     return int(frames[np.argmin(np.abs(xs[rows[frames]] - float(x)))])
 
 
+def frame_xy(pipeline, data, link: Link):
+    """``(frames, x, y)`` of every frame's point on a "frames2d" plot (the two CVs), to find
+    the frame nearest to a click."""
+    if link is None or link.kind != "frames2d":
+        return np.zeros(0, int), np.zeros(0), np.zeros(0)
+    t = data.tables[link.column]
+    keys = list(data.tables[link.name])[:2]
+    rows = frame_rows(pipeline, data, link.column)
+    frames = np.nonzero(rows >= 0)[0]
+    r = rows[frames]
+    return frames, np.asarray(t[keys[0]], float)[r], np.asarray(t[keys[1]], float)[r]
+
+
 def frame_points(pipeline, data, link: Link, frames, column=None):
     """(x, y) of the plotted points that belong to ``frames``, to mark a frame selection."""
     if link is None or link.kind not in ("frames", "frames2d") or not len(frames):

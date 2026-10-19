@@ -520,6 +520,7 @@ class CellWidget(QtWidgets.QFrame):
         self.plot_panel.compact()
         for combo in (self.plot_panel.table, self.plot_panel.column, self.plot_panel.hist):
             combo.currentTextChanged.connect(self._view_changed)
+        self.plot_panel.viewChanged.connect(self._view_changed)
         self.body.addWidget(self.plot_panel)
         self.outputs = OutputArea()  # errors only: the plot replaces the image show() draws
         self.body.addWidget(self.outputs)
@@ -540,6 +541,13 @@ class CellWidget(QtWidgets.QFrame):
                 p.table.setCurrentText(args["table"])
             if args.get("y"):
                 p.column.setCurrentText(args["y"])
+            view = (args.get("xlim"), args.get("ylim"))
+            if view != p.view_limits() and view != getattr(self, "_applied_view", None):
+                if view == (None, None):
+                    p.reset_view(emit=False)
+                else:
+                    p.set_view(*view, emit=False)
+            self._applied_view = view
         finally:
             self._applying = False
 
@@ -551,6 +559,9 @@ class CellWidget(QtWidgets.QFrame):
         y = p.column.currentText()
         kw = {"histogram": hist, "table": None if hist else (p.table.currentText() or None),
               "y": None if hist or y in ("", "(all)") or not p.column.isEnabled() else y}
+        kw["xlim"], kw["ylim"] = (None if lim is None else tuple(float(f"{v:.4g}") for v in lim)
+                                  for lim in p.view_limits())
+        self._applied_view = (kw["xlim"], kw["ylim"])
         old = self.cell.source
         self.notebook.update_view(self.cell, **kw)  # other arguments (frame, bins) stay
         if self.cell.source != old:

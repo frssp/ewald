@@ -87,22 +87,35 @@ def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool
 
 
 def figure(source, table: str | None = None, y: str | None = None, histogram: str | None = None,
-           frame: int = 0, bins: int = 50, size: str | tuple | None = None, title: bool = False):
+           frame: int = 0, bins: int = 50, size: str | tuple | None = None, title: bool = False,
+           xlim: tuple | None = None, ylim: tuple | None = None):
     """The matplotlib Figure of a view (what :func:`show` draws), without pyplot, in the
-    publication style of :mod:`ewald.plotstyle` (``size``: a column width name or inches).
+    publication style of :mod:`ewald.plotstyle` (``size``: a column width name or inches;
+    ``xlim``/``ylim``: the range shown, e.g. ``xlim=(-3, 3)`` for a DOS energy window).
     Save it with :func:`ewald.plotstyle.save` to keep the text editable in PDF/SVG."""
     from . import plotstyle
 
     fig = plotstyle.figure(size)
     with plotstyle.context(*fig._ewald_style):
-        _draw(fig.add_subplot(), *view_data(source, table, y, histogram, frame, bins), histogram, show_title=title)
+        ax = fig.add_subplot()
+        _draw(ax, *view_data(source, table, y, histogram, frame, bins), histogram, show_title=title)
+        _limit(ax, xlim, ylim)
     return fig
 
 
+def _limit(ax, xlim, ylim):
+    if xlim is not None:
+        ax.set_xlim(*xlim)
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+
+
 def show(source, table: str | None = None, y: str | None = None, histogram: str | None = None,
-         frame: int = 0, bins: int = 50):
+         frame: int = 0, bins: int = 50, xlim: tuple | None = None, ylim: tuple | None = None):
     """Plot a data table or a particle-property histogram of ``source`` (a Pipeline or a
-    DataCollection) at ``frame`` with matplotlib (``plt.show()``), in the publication style."""
+    DataCollection) at ``frame`` with matplotlib (``plt.show()``), in the publication style;
+    ``xlim``/``ylim`` set the range shown. In the GUI a view cell is the live, linked plot,
+    and zooming it writes the range back into these arguments."""
     import matplotlib.pyplot as plt
 
     from . import plotstyle
@@ -111,6 +124,7 @@ def show(source, table: str | None = None, y: str | None = None, histogram: str 
     with plotstyle.context():
         _fig, ax = plt.subplots(figsize=plotstyle.figsize(), layout="constrained")
         _draw(ax, title, columns, histogram)
+        _limit(ax, xlim, ylim)
     plt.show()
 
 

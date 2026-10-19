@@ -130,6 +130,16 @@ The `DOS` and `Bands` tables of a VASP run are drawn as a density of states and 
 structure; atoms selected in the viewport show as their projected DOS or as fat bands (see
 [DOS and band structure](electronic.md)).
 
+**Zoom, pan and hover.** Every plot (the Plots tab and view cells) moves the same way. The
+wheel zooms the x axis around the cursor and Ctrl+wheel the y axis (on a band structure the
+wheel zooms the energy). A right or middle drag pans, and a double-click goes back to the full
+range. On a plot that selects nothing (DOS, bands, phonon bands, maps) a left drag zooms to the
+dragged range; elsewhere a left drag still selects. The zoomed range stays while the frame
+changes, and *Save plot…* writes the range you see. The DOS and the band structure share one
+energy window, shown in the **E** boxes, where you can also type it. Hovering shows the values
+under the cursor (*E* − *E*<sub>F</sub> on electronic plots), and on a per-frame or NEB plot
+also the frame or image a click goes to, with its value.
+
 *Save plot…* (and *Save plot…* in a view cell's menu) writes a publication figure, not a
 screenshot of the panel: the plot is redrawn at a journal column width (Preferences ›
 Rendering › Plots: 1-column 3.5 in, 1.5-column or 2-column 7.2 in) with 8 pt sans-serif type,
@@ -154,7 +164,8 @@ style is drawn in the Paper or Graphite colors.
   where a CV lies in a window). Drag a box on a 2D free energy surface to select the frames whose
   CV pair (from `LoadColvar` or `Plumed`) falls in it. The frames are marked on the timeline,
   playback steps through them only, and the ✕ on the timeline clears them. A click on a
-  per-frame plot jumps to the nearest frame.
+  per-frame plot (or an NEB profile) jumps to the nearest frame, and a click on a free energy
+  surface jumps to the frame whose CV pair is nearest to it.
 - The other way, atoms picked in the viewport (or the `Selection` property) are drawn on the
   plot: as a highlighted sub-histogram on count plots, or as a second axis ("selected") on g(r).
   Selected frames are marked as points on per-frame plots.

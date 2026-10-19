@@ -13,6 +13,13 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 GUI
 
+- Interactive plots (zoom, pan, energy window, hover and click-to-frame on every plot exist):
+  drag on an axis to zoom that axis only and pinch zoom on touchpads; hover readout of the
+  phonon mode (q-point, band, frequency) and band index under the cursor; hovering a per-frame
+  plot previews that frame on the timeline; linked zoom between plots (a DOS beside the bands
+  sharing the energy axis, once the panel layout can place plots side by side); a scatter view
+  of two particle properties where a brushed box selects atoms; the `show()` script path draws
+  DOS/bands like the GUI (it plots the raw table columns now).
 - AI chat side bar (`gui/ask_panel.py`, activity bar): stream answers as they arrive (now the
   whole answer at once), a Stop button, keep chats per notebook tab and save them in `.ewd`,
   show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
@@ -137,11 +144,11 @@ Electronic structure
 - DOSCAR, EIGENVAL and PROCAR readers (VASP 5 runs without vasprun.xml), and Quantum ESPRESSO /
   other codes' DOS and bands.
 - vasprun.xml: the KPOINTS_OPT sections (`<eigenvalues_kpoints_opt>`); vaspout.h5 reads them.
-- Plot style (`ewald/plotstyle.py`): per-plot overrides in view cells (`show(..., size=, xlim=,
-  ylim=, labels=)`), time units on MSD/VACF axes when `time_per_frame` is set (the unit is not
+- Plot style (`ewald/plotstyle.py`): per-plot overrides in view cells (`show(..., size=,
+  labels=)`; `xlim=`/`ylim=` exist), time units on MSD/VACF axes when `time_per_frame` is set (the unit is not
   stored now, so the axis says "Time"), multi-panel figures (DOS beside bands sharing the energy
   axis), and a journal preset list (ACS, APS, Nature widths and fonts).
-- Plots tab: adjustable energy window (fixed at ±6 eV now), Gaussian smearing of the DOS,
+- Plots tab: Gaussian smearing of the DOS,
   orbital choice for fat bands independent of the DOS column, spin texture of non-collinear runs.
 - Drag an energy window on the DOS to select the atoms with the largest PDOS there, and the
   integrated PDOS in a window as a particle property to color by.
