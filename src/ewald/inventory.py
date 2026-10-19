@@ -30,6 +30,7 @@ CATEGORIES = {
     "coloring": "Coloring",
     "selection": "Selection",
     "transform": "Modification",
+    "datasets": "Combining files",
     "script": "Python",
 }
 

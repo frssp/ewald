@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-55 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+60 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -57,6 +57,8 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | `TimeSeries` | Global attributes as a function of time (OVITO's TimeSeriesModifier). |
 | `GenerateTrajectoryLines` | Particle paths over a frame range, drawn as lines, plus path metrics. |
 | `OverlayFrames` | Every frame of ``start:stop:step`` drawn at once: the current frame opaque, the others as see-through copies of the atoms (``transparency`` 0..1), e.g. all images of a NEB band over the image shown on the timeline. |
+| `FreezeProperty` | Copy a particle property as it was at frame ``freeze_at`` to every frame (OVITO's FreezePropertyModifier). |
+| `UnwrapTrajectories` | Undo the wrapping of particles at periodic boundaries, so trajectories are continuous (OVITO's UnwrapTrajectoriesModifier). |
 
 ### Bonds and polyhedra
 
@@ -91,6 +93,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | `InvertSelection` | Select the unselected particles and unselect the selected ones. |
 | `SelectType` | Select particles whose 'Particle Type' (or another property) is in ``types``. |
 | `Slice` | Keep (or select) particles in a slab ``\|n.r - distance\| <= width/2``. |
+| `ExpandSelection` | Grow the selection to the neighbors of selected particles (OVITO's ExpandSelectionModifier). |
 
 ### Modification
 
@@ -100,6 +103,13 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | `ComputeProperty` | Set ``output`` to an expression, e.g. ``ComputeProperty("Height", "Position.Z - 5")``. |
 | `Replicate` | Tile the periodic cell ``n = (na, nb, nc)`` times. |
 | `WrapAtoms` | Map particles back into the periodic cell (bond periodic images follow). |
+
+### Combining files
+
+| Modifier | What it does |
+|---|---|
+| `LoadTrajectory` | Positions (and other per-particle properties) of every frame from a trajectory file, on top of a topology from the pipeline source (OVITO's LoadTrajectoryModifier). |
+| `CombineDatasets` | Add the particles (and bonds) of another file to the current frame (OVITO's CombineDatasetsModifier). |
 
 ### Python
 
@@ -537,6 +547,9 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Trajectory lines / paths
   - NEB energy profile / barrier
   - Overlay frames (see-through images)
+  - Unwrap trajectories
+  - Freeze property (values of frame 0)
+  - Load trajectory (topology + dump)
 - Bonds & polyhedra
   - Create bonds
   - Edit bonds (add / delete)
@@ -565,9 +578,11 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Affine transformation
   - Compute property
   - Delete selected
+  - Combine datasets (add particles from a file)
 - Selection
   - Expression selection
   - Select type
+  - Expand selection (neighbors)
   - Invert selection
   - Clear selection
 - Collective variables (PLUMED)

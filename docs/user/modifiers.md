@@ -47,6 +47,10 @@ session files and from Claude, and plain `eval` would let them reach the rest of
 `ClearSelection()` do what they say. `DeleteSelected()` removes the selected particles.
 `Slice(normal, distance, width, inverse, select, miller)` keeps, deletes or selects a slab;
 `miller=True` reads `normal` as Miller indices of the cell.
+`ExpandSelection(mode, cutoff, num_neighbors, iterations)` grows the selection to the
+neighbors of selected particles: within `cutoff` (`mode="cutoff"`), the `num_neighbors`
+nearest ones (`"nearest"`) or the bonded ones (`"bonded"`, after `CreateBonds`);
+`iterations=2` reaches second neighbors. Results match OVITO's ExpandSelectionModifier.
 
 ## Coloring
 
@@ -285,6 +289,19 @@ recomputes them.
   atoms that moved more than `min_displacement` Å from where they are now (all NEB images
   behind the one on the timeline, a diffusion hop over an MD window). The copies are appended
   as extra particles with `Transparency` and `Overlay Frame`, so put it last in the pipeline.
+- `UnwrapTrajectories()`: undoes the wrapping at periodic boundaries so paths are continuous
+  (OVITO's UnwrapTrajectoriesModifier, same positions). LAMMPS `ix iy iz` image flags are used
+  when present; otherwise crossings are followed from frame 0, with checkpoints so a jump to a
+  distant frame does not replay the whole run. Bond periodic images follow.
+- `FreezeProperty(source_property, destination_property, freeze_at=0)`: the values of a
+  property at `freeze_at` copied onto every frame, matched by identifier, e.g. the structure
+  type at the start of a run next to the current one.
+
+```python
+pipe.modifiers.append(CommonNeighborAnalysis())
+pipe.modifiers.append(FreezeProperty("Structure Type", "Initial Structure", freeze_at=0))
+pipe.modifiers.append(ExpressionSelection("(InitialStructure == 1) & (StructureType != 1)"))  # fcc atoms that changed
+```
 
 ```python
 pipe.modifiers.append(MeanSquaredDisplacement(time_per_frame=0.002))   # ps per frame
@@ -293,6 +310,24 @@ pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
 data = pipe.compute(0)
 data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # Å²/ps
 data.tables["coordination-rdf[average]"]
+```
+
+## Combining files
+
+- `LoadTrajectory(file, format=None, type_map=None)`: positions and other per-particle
+  properties of every frame of `file` laid onto the pipeline's source, e.g. a LAMMPS data
+  file (bonds, charges, molecule ids, type names) plus the dump of the run. The pipeline then
+  has the trajectory's frame count. Particles are matched by identifier (else by index); the
+  source's type names win, the cell and attributes come from the trajectory, and bonds are
+  re-imaged by minimum image.
+- `CombineDatasets(file, format=None, type_map=None)`: adds the particles and bonds of another
+  file (its frame with the same index), e.g. a solvent box next to a slab. Missing properties
+  are zero-filled and clashing identifiers are renumbered.
+
+```python
+pipe = import_file("system.data")
+pipe.modifiers.append(LoadTrajectory("run.lammpstrj"))
+pipe.num_frames   # the dump's frames
 ```
 
 ## Nudged elastic band

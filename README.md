@@ -327,7 +327,7 @@ names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
 
 ## Modifiers available now
 
-`ExpressionSelection`, `SelectType`, `InvertSelection`, `ClearSelection`,
+`ExpressionSelection`, `SelectType`, `InvertSelection`, `ClearSelection`, `ExpandSelection`,
 `DeleteSelected`, `Slice`, `AssignColor`, `ColorCoding`, `ComputeProperty`,
 `CoordinationAnalysis` (+ total/partial RDF), `ClusterAnalysis` (OVITO-compatible: size, COM, gyration tensor, unwrap),
 `CalculateDisplacements` (+ MSD),
@@ -429,6 +429,9 @@ time averaging of a table, attribute or property, e.g. the time-averaged g(r)),
 `TimeSeries` (attributes vs. time), `GenerateTrajectoryLines` (particle paths
 drawn as lines, plus 'Path Length', 'Net Displacement', 'Max Displacement') and
 `OverlayFrames` (other frames as see-through copies of the moving atoms).
+OVITO's everyday helpers, with the same results as OVITO: `UnwrapTrajectories`,
+`FreezeProperty` (a property at one frame copied to all), `LoadTrajectory` (a dump on a
+LAMMPS data topology) and `CombineDatasets` (particles from another file).
 
 ```python
 from ewald.modifiers import CoordinationAnalysis, MeanSquaredDisplacement, TimeAveraging

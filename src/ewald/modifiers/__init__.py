@@ -3,6 +3,7 @@ from ..pipeline import Modifier, PythonModifier
 from .analysis import CalculateDisplacements, CoordinationAnalysis
 from .bonds import CoordinationPolyhedra, CreateBonds, EditBonds
 from .cluster import ClusterAnalysis
+from .datasets import CombineDatasets, LoadTrajectory
 from .coloring import AssignColor, ColorCoding
 from .diffraction import PowderDiffraction, StructureFactor
 from .structure import CommonNeighborAnalysis, IdentifyDiamond, PolyhedralTemplateMatching
@@ -13,15 +14,15 @@ from .ovito_bridge import DislocationAnalysis, OvitoModifier
 from .neb import NebEnergyProfile
 from .phonon import PhononMode
 from .plumed import FreeEnergySurface, LoadColvar, Plumed
-from .selection import (ClearSelection, DeleteSelected, ExpressionSelection, InvertSelection,
+from .selection import (ClearSelection, DeleteSelected, ExpandSelection, ExpressionSelection, InvertSelection,
                         SelectType, Slice)
 from .script import PythonScript
 from .statistics import Histogram, ReduceProperty, SpatialBinning
 from .steinhardt import SteinhardtOrderParameters
 from .symmetry import SymmetryAnalysis
 from .topology import BondAngleDistribution, BondLengthDistribution, FindRings
-from .trajectory import (GenerateTrajectoryLines, MeanSquaredDisplacement, OverlayFrames, TimeAveraging, TimeSeries,
-                         VelocityAutocorrelation)
+from .trajectory import (FreezeProperty, GenerateTrajectoryLines, MeanSquaredDisplacement, OverlayFrames,
+                         TimeAveraging, TimeSeries, UnwrapTrajectories, VelocityAutocorrelation)
 from .transform import AffineTransformation, ComputeProperty, Replicate, WrapAtoms
 from .vectors import VectorVis
 from .volume import CreateIsosurface, GridDifference, GridSlice
@@ -37,7 +38,8 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "CreateIsosurface", "GridSlice", "GridDifference", "Histogram", "SpatialBinning", "ReduceProperty",
            "SteinhardtOrderParameters", "BondAngleDistribution", "BondLengthDistribution", "FindRings", "VectorVis",
            "Plumed", "LoadColvar", "FreeEnergySurface", "NebEnergyProfile", "OverlayFrames", "PhononMode",
-           "SymmetryAnalysis", "PowderDiffraction", "StructureFactor"]
+           "SymmetryAnalysis", "PowderDiffraction", "StructureFactor", "FreezeProperty", "UnwrapTrajectories",
+           "ExpandSelection", "LoadTrajectory", "CombineDatasets"]
 
 # OVITO spellings (``CommonNeighborAnalysisModifier``, ``WrapPeriodicImagesModifier``, ...) resolve to the
 # ewald class, so OVITO scripts - and code written by LLMs that learned OVITO - run unchanged.

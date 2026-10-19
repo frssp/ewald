@@ -46,6 +46,9 @@ Analysis
   offer an OVITO-compatible mode once its rule is known.
 - FindRings in numba for networks above ~100k atoms (8000 a-Si atoms, rings up to 10: 1 s).
 - Spatial correlation function and Voronoi-weighted Steinhardt (OVITO / freud have them).
+- The rest of OVITO's everyday modifiers: manual selection (box or lasso in the viewport, kept as
+  a modifier) and Smooth trajectory (interpolated frames). FreezeProperty, UnwrapTrajectories,
+  ExpandSelection, LoadTrajectory and CombineDatasets are done.
 
 Symmetry and diffraction
 
