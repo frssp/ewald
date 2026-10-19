@@ -23,6 +23,10 @@ between orbit, pick (click an atom to see its id, type, position and every prope
 Shift+click adds atoms to the pick or removes them),
 distance (click two atoms) and angle (click three atoms, vertex in the middle). Above 150 000
 atoms the viewport draws GPU impostors instead of sphere meshes; the threshold is a preference.
+A right click (without dragging, which zooms) opens the viewport menu: Overlay other frames
+draws every other frame as see-through copies behind the current one (`OverlayFrames`; on by
+default for NEB folders), with its transparency (50 to 95 %) and whether only the atoms that
+move get copies; then View along, Zoom to fit and Ask Claude about selection.
 
 **Ask Claude.** The Ask Claude tab next to the pipeline (Tools › Ask Claude about selection,
 Ctrl+J) answers questions about the picked atoms, such as "What are these atoms?" or "Why is the

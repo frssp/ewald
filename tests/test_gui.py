@@ -205,6 +205,30 @@ def test_plots_neb_profile_marks_image_and_jumps(app, vasp_dir):
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_viewport_context_menu_toggles_frame_overlay(app, vasp_dir):
+    from ewald import import_file
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(import_file(vasp_dir / "neb"))  # NEB sources start with OverlayFrames on
+    w.timeline._set(2)
+    n_real = w.pipeline.source.compute(2).count
+    assert w.data.count > n_real
+    menu = w.viewport_menu()
+    overlay, transparency, moving = menu.actions()[:3]
+    assert overlay.isChecked() and transparency.menu().isEnabled() and moving.isChecked()
+    overlay.setChecked(False)  # toggled -> off
+    assert w.data.count == n_real and not w._overlay().enabled
+    w.set_overlay(True, transparency=0.5)
+    ghosts = w.data["Overlay Frame"] >= 0
+    assert np.allclose(w.data["Transparency"][ghosts], 0.5)
+    menu = w.viewport_menu()
+    assert [a.text() for a in menu.actions()[1].menu().actions() if a.isChecked()] == ["50 %"]
+    menu.actions()[2].setChecked(False)  # every atom, moving or not
+    assert w.data.count == 5 * n_real
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_main_window_smoke(app, pipe, tmp_path):
     from ewald.gui.app import MainWindow
 

@@ -35,6 +35,7 @@ class Viewport(QtWidgets.QWidget):
     picked = QtCore.Signal(str)          # status text for the picked atom / measurement
     bondEdit = QtCore.Signal(int, int)   # bond tool: add or delete the bond between two atoms
     styleChanged = QtCore.Signal()
+    contextMenuRequested = QtCore.Signal()  # right click without dragging
 
     TOOLS = (("orbit", "⟲", "Orbit / pan / zoom (mouse)"),
              ("pick", "⌖", "Pick atom: shows id, type, position and properties; Shift+click picks several"),
@@ -270,7 +271,7 @@ class Viewport(QtWidgets.QWidget):
             self._lod_cloud, _ = atom_cloud(self.data, radius_scale=kw["radius_scale"],
                                             only_visible=self._coarse_mask(), **extra)
         add_atoms(p, self._lod_cloud, atom_style="impostor", name="atoms_lod")
-        for name in ("atoms", "bonds"):
+        for name in ("atoms", "atoms:glass", "bonds"):
             if name in p.actors:
                 p.actors[name].SetVisibility(False)
         self.coarse = True
@@ -278,9 +279,14 @@ class Viewport(QtWidgets.QWidget):
     def _on_drag_start(self, obj, event):
         self._dragging = True
         self._refine_timer.stop()
+        self._right_press = QtGui.QCursor.pos() if event == "RightButtonPressEvent" else None
 
     def _on_drag_end(self, obj, event):
         self._dragging = False
+        start = getattr(self, "_right_press", None)
+        if event == "RightButtonReleaseEvent" and start is not None \
+                and (QtGui.QCursor.pos() - start).manhattanLength() < 5:
+            self.contextMenuRequested.emit()  # a click, not a zoom drag
         if self.coarse:
             self._refine_timer.start(int(self.refine_delay * 1000))
 

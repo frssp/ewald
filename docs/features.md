@@ -515,6 +515,25 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Open plugin folder
 - About ewald
 
+**Viewport (right click)**
+
+- Overlay other frames (see-through)
+- Overlay transparency
+  - 50 %
+  - 70 %
+  - 85 %
+  - 95 %
+- Overlay only atoms that move
+- View along
+  - a
+  - b
+  - c
+  - a*
+  - b*
+  - c*
+- Zoom to fit
+- Ask Claude about selection…
+
 ### Toolbar
 
 Open, Open remote, Analyze, Render, Search commands, modifiers… Ctrl K, Compute device switch (CPU / CUDA / auto).

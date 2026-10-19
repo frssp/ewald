@@ -71,6 +71,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.viewport.picked.connect(self._on_pick)
         self.viewport.bondEdit.connect(self.toggle_bond)
         self.viewport.styleChanged.connect(self._style_changed)
+        self.viewport.contextMenuRequested.connect(lambda: self.viewport_menu().exec(QtGui.QCursor.pos()))
         self.timeline = Timeline()
         self.timeline.frameChanged.connect(self.set_frame)
         analyze = QtWidgets.QWidget()
@@ -463,6 +464,63 @@ class MainWindow(QtWidgets.QMainWindow):
         if not indices and self.data is not None and "Selection" in self.data:
             indices = np.nonzero(self.data.selection)[0].tolist()
         return self.pipeline, self.frame, indices
+
+    # ---------------------------------------------------------------- viewport context menu
+    def _overlay(self):
+        from ..modifiers import OverlayFrames
+
+        mods = self.pipeline.modifiers if self.pipeline is not None else []
+        return next((m for m in mods if isinstance(m, OverlayFrames)), None)
+
+    def set_overlay(self, on: bool = True, **params):
+        """Show the other frames as see-through copies (``OverlayFrames``, added last when
+        missing); ``params`` set its fields, e.g. ``transparency=0.5``."""
+        if self.pipeline is None:
+            return
+        from ..modifiers import OverlayFrames
+
+        mod = self._overlay()
+        if mod is None:
+            if not on:
+                return
+            mod = OverlayFrames()
+            self.pipeline.modifiers.append(mod)
+        mod.enabled = on
+        for k, v in params.items():
+            setattr(mod, k, v)
+        self.panel.refresh(select=("mod", mod))
+        self.recompute()
+
+    def viewport_menu(self) -> QtWidgets.QMenu:
+        """Right click in the viewport: frame overlay, views, Ask Claude."""
+        menu = QtWidgets.QMenu(self)
+        mod = self._overlay()
+        on = mod is not None and mod.enabled
+        act = menu.addAction("Overlay other frames (see-through)")
+        act.setCheckable(True)
+        act.setChecked(on)
+        act.setEnabled(self.pipeline is not None and self.pipeline.num_frames > 1)
+        act.toggled.connect(lambda checked: self.set_overlay(checked))
+        sub = menu.addMenu("Overlay transparency")
+        sub.setEnabled(on)
+        for pct in (50, 70, 85, 95):
+            a = sub.addAction(f"{pct} %")
+            a.setCheckable(True)
+            a.setChecked(on and abs(mod.transparency - pct / 100) < 1e-6)
+            a.triggered.connect(lambda _=False, t=pct / 100: self.set_overlay(True, transparency=t))
+        moving = menu.addAction("Overlay only atoms that move")
+        moving.setCheckable(True)
+        moving.setEnabled(on)
+        moving.setChecked(on and mod.min_displacement > 0)
+        moving.toggled.connect(lambda checked: self.set_overlay(True, min_displacement=0.1 if checked else 0.0))
+        menu.addSeparator()
+        views = menu.addMenu("View along")
+        for ax in ("a", "b", "c", "a*", "b*", "c*"):
+            views.addAction(ax, lambda ax=ax: self.viewport.view_along(ax))
+        menu.addAction("Zoom to fit", self.viewport.zoom_fit)
+        menu.addSeparator()
+        menu.addAction("Ask Claude about selection…", self.ask_claude)
+        return menu
 
     def ask_claude(self):
         self.ask_dock.show()
