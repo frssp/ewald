@@ -27,6 +27,9 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
 - `data.py` (`DataCollection`, `Cell`), `pipeline.py` (`Pipeline`, `Modifier`, `PythonModifier`,
   `ComputeContext`, frame cache), `__init__.py` (`import_file`), `__main__.py` (CLI `ewald ...`).
 - `io/`: native lazy readers (`lammps_dump.py`, `xdatcar.py`), everything else via `ase_reader.py`.
+  `remote.py` opens `host:/path` / `ssh://` paths (paramiko): `base.open_binary` streams them to the
+  native readers, `FileSource` downloads them to a local cache for every other reader. Tests use the
+  in-process server in `tests/sftp_server.py` (fixtures `server`, `ssh_env` in conftest), no sshd.
 - `backend.py` (numpy/CuPy `xp` backends), `neighbors.py` (numba CPU cell list, `find_pairs`),
   `cuda_kernels.py` (CUDA C via CuPy `RawKernel`), `kernels.py` (RDF, unwrap, MSD).
 - `modifiers/`: one module per family; `__init__.py` `__all__` is the public list and also resolves
@@ -38,7 +41,8 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
 - `gui/`: `app.py` main window, `viewport.py`, `pipeline_panel.py`, `params.py`, `render_page.py`,
-  `preferences.py`, `console.py`, `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`.
+  `preferences.py`, `remote_dialog.py` (SSH browser), `console.py`, `inspector.py`, `plots.py`,
+  `timeline.py`, `palette.py`, `theme.py`.
 - `llm/`: Claude agent (`agent.py`), tools (`tools.py`), descriptors (`describe.py`, `narrate.py`),
   MCP server (`mcp_server.py`), and `reference.py`, the source of `llms.txt`.
 

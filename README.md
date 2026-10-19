@@ -15,6 +15,7 @@ desktop GUI are in. See [docs/ROADMAP.md](docs/ROADMAP.md).
 pip install -e .            # CPU
 pip install -e ".[gpu]"     # + CuPy for device="cuda" (NVIDIA)
 pip install -e ".[gui]"     # + desktop viewer (PySide6, pyvistaqt, qtconsole)
+pip install -e ".[remote]"  # + files over SSH (paramiko)
 ```
 
 Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
@@ -100,6 +101,31 @@ Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
 | VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics (`Selective Dynamics`, True = free), CONTCAR velocities (`Velocity` in Å/fs) |
 | VASP OUTCAR, vasprun.xml | ASE | all ionic steps with `Energy`, `Force`, `Stress` |
 | extxyz, CIF, ... | ASE | anything `ase.io.read` understands |
+
+### Files on another machine (SSH)
+
+Any path can live on an SSH host, written like `scp` or as a URL; wildcards work too:
+
+```python
+pipe = import_file("cluster:/scratch/me/run1/dump.lammpstrj")   # alias from ~/.ssh/config
+pipe = import_file("me@login.hpc.edu:run1/XDATCAR")              # relative to the remote home
+pipe = import_file("ssh://me@login.hpc.edu:2222/scratch/me/dump.*.lammpstrj")
+```
+
+In the GUI, File › Load remote file (SSH)… (Ctrl+Shift+O) browses the remote folders.
+Connections follow `~/.ssh/config` (HostName, User, Port, IdentityFile, IdentitiesOnly,
+ProxyJump, ProxyCommand, UserKnownHostsFile, StrictHostKeyChecking), the SSH agent and
+your default keys, and host keys are checked against `known_hosts`. If key login fails
+you are asked for the password or one-time code (terminal prompt, or a dialog in the GUI);
+it is never saved. Only recent remote locations are remembered.
+
+LAMMPS dumps/data files and XDATCARs are read in place: a dump is indexed by running
+`grep -b` on the remote host (streamed over SFTP if that is unavailable), and each frame
+is fetched when you look at it, so a large trajectory is never copied. Every other format,
+including reader plugins, is downloaded once into a local cache (`ewald.io.remote.cache_dir()`,
+`EWALD_CACHE_DIR` overrides) and reused while the remote size and modification time match;
+`ewald.io.remote.clear_cache()` empties it. Host aliases must be at least two characters,
+so `C:\data` stays a local Windows path.
 
 LAMMPS values stay in the file's own unit style (`Units` attribute when the dump has it).
 The test fixtures in `tests/data/` come from real LAMMPS runs (`tests/data/lammps/generate.in`)

@@ -5,6 +5,7 @@ import glob
 import os
 
 from ..data import DataCollection
+from . import remote
 from .ase_reader import AseReader
 from .base import FrameReader
 from .lammps_data import LammpsDataReader, is_lammps_data
@@ -16,14 +17,22 @@ class FileSource:
     """Pipeline source backed by one or more files, frames loaded lazily."""
 
     def __init__(self, path, format: str | None = None, **kwargs):
-        paths = sorted(glob.glob(str(path))) if any(c in str(path) for c in "*?[") else [str(path)]
+        path = str(path)
+        wildcard = any(c in path for c in "*?[")
+        if remote.is_remote(path):  # host:/path or ssh://host/path
+            paths = remote.glob(path) if wildcard else [path]
+            if not wildcard:
+                remote.stat(path)  # connect (and authenticate) once, up front; raises if missing
+        else:
+            paths = sorted(glob.glob(path)) if wildcard else [path]
         if not paths:
             raise FileNotFoundError(path)
         self.paths = paths
-        self.path = str(path)
+        self.path = path
         self.format = format
         self.kwargs = kwargs
-        self.readers: list[FrameReader] = [open_reader(p, format, **kwargs) for p in paths]
+        self.readers: list[FrameReader] = [open_reader(_readable_path(p, format), format, **kwargs)
+                                           for p in paths]
         self._index = [(r, i) for r in self.readers for i in range(len(r))]
 
     @property
@@ -57,6 +66,22 @@ class StaticSource:
         return data
 
 
+_STREAMING_FORMATS = ("lammps/dump", "lammps-dump", "lammps-dump-text", "vasp-xdatcar", "xdatcar",
+                      "lammps/data", "lammps-data", "lammps-data-native")
+
+
+def _readable_path(path: str, format: str | None) -> str:
+    """Remote files go to the native readers as they are (read in place, frame by frame);
+    for every other reader, ASE and plugins included, they are downloaded to the local cache."""
+    if not remote.is_remote(path):
+        return path
+    fmt = (format or "").lower()
+    if fmt in _STREAMING_FORMATS or (not fmt and (is_lammps_dump(path) or is_xdatcar(path)
+                                                  or is_lammps_data(path))):
+        return path
+    return remote.fetch(path)
+
+
 def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
     fmt = (format or "").lower()
     if fmt in ("lammps/dump", "lammps-dump", "lammps-dump-text") or (not fmt and is_lammps_dump(path)):
@@ -75,6 +100,11 @@ def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
 
 def import_file(path, format: str | None = None, **kwargs):
     """Create a Pipeline reading ``path`` (wildcards allowed: ``dump.*.lammpstrj``).
+
+    ``path`` may be on another machine: ``host:/path``, ``user@host:path`` or
+    ``ssh://user@host:port/path`` (see :mod:`ewald.io.remote`). LAMMPS dumps and
+    XDATCARs are then read frame by frame over SFTP; other formats are downloaded
+    once to a local cache.
 
     Keyword arguments go to the reader, e.g. ``type_map={1: "Cu", 2: "Zr"}`` for
     LAMMPS dumps/data files that only contain numeric types, or
