@@ -428,6 +428,11 @@ def setup_camera(plotter, data, direction="iso", orthographic=True, zoom=1.0):
 
 
 VECTOR_SUFFIXES = (".svg", ".pdf", ".eps", ".ps")
+RENDERERS = {
+    "opengl": "VTK, fast; SSAO and anti-aliasing; GPU impostors for large systems",
+    "raytrace": "built-in numba ray tracer: ambient occlusion, shadows, anti-aliasing (publication figures)",
+    "vector": "SVG/PDF/EPS with editable shapes and text (matplotlib)",
+}
 
 # Output quality presets (file output puts quality first; the interactive viewport has its own settings).
 # samples: ray-traced rays per pixel; ao_samples: ambient-occlusion rays; antialiasing: OpenGL SSAA;
@@ -484,7 +489,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     """
     import pyvista as pv
 
-    if renderer not in ("opengl", "raytrace", "vector"):
+    if renderer not in RENDERERS:
         raise ValueError(f"unknown renderer {renderer!r}; use 'opengl', 'raytrace' or 'vector'")
     q = quality_settings(quality, samples=samples, ao_samples=ao_samples, shadows=shadows,
                          antialiasing=antialiasing, ambient_occlusion=ambient_occlusion,
