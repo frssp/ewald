@@ -224,6 +224,25 @@ data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # Å²/ps
 data.tables["coordination-rdf[average]"]
 ```
 
+## Nudged elastic band
+
+- `NebEnergyProfile(energy="Energy", images=None, spline_points=200)`: energy profile and
+  barrier of a NEB band whose images are the frames (a NEB folder, an ASE NEB trajectory, an
+  extxyz of images). `images=7` takes the last 7 frames, the final band of an optimizer
+  history. The reaction coordinate is the summed 3N-dimensional distance between images
+  (minimum image), as in VTST's nebbarrier.pl; with `Force` on the frames the profile is
+  VTST's cubic spline through the energies with slopes from the force along the improved
+  tangent, without forces a natural cubic spline. Writes `tables["NEB"]`,
+  `tables["NEB spline"]`, `NEB.Barrier`, `NEB.Reverse Barrier`, `NEB.Reaction Energy`,
+  `NEB.Spline Barrier`, `NEB.Saddle Image`, and on each image `NEB.Image`,
+  `NEB.Reaction Coordinate`, `NEB.Relative Energy`.
+
+```python
+pipe = import_file("neb.traj")                         # ASE NEB: every optimizer step, 7 images each
+pipe.modifiers.append(NebEnergyProfile(images=7))
+pipe.compute(-1).attributes["NEB.Spline Barrier"]
+```
+
 ## Volumetric data
 
 These work on the `VoxelGrid`s in `data.grids` that the CHGCAR, LOCPOT, ELFCAR and cube

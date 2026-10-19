@@ -101,6 +101,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.inspector = DataInspector()
         self.console = make_console(self._console_namespace(), self._after_console, self)
         self.plots = PlotsPanel()
+        self.plots.frameRequested.connect(lambda f: self.timeline._set(f))
         self.log = QtWidgets.QPlainTextEdit(readOnly=True)
         self.bottom = QtWidgets.QTabWidget()
         self.bottom.addTab(self.console, "Python console")
@@ -181,6 +182,7 @@ class MainWindow(QtWidgets.QMainWindow):
         f = mb.addMenu("&File")
         f.addAction("&Load file…", self.open_dialog, QtGui.QKeySequence.Open)
         f.addAction("Load &remote file (SSH)…", self.open_remote_dialog, "Ctrl+Alt+O")
+        f.addAction("Load &NEB folder…", self.open_neb_dialog)
         f.addAction("Load &session…", self.load_session_dialog, "Ctrl+Shift+O")
         f.addAction("&Save session", self.save_session, QtGui.QKeySequence.Save)
         f.addAction("Save session &as…", lambda: self.save_session(ask=True), QtGui.QKeySequence.SaveAs)
@@ -324,6 +326,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.load_session(path)
             return
         self._open_asking_types(path)
+
+    def open_neb_dialog(self):
+        """A VASP NEB folder (00 .. NN) or a LAMMPS NEB run folder, one frame per image."""
+        path = QtWidgets.QFileDialog.getExistingDirectory(self, "Load NEB folder")
+        if path:
+            self.open_file(path)
+            self.bottom.setCurrentWidget(self.plots)
 
     def open_remote_dialog(self):
         from .remote_dialog import RemoteFileDialog

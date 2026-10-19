@@ -17,6 +17,7 @@ from .vasp_output import OutcarReader, VasprunReader, is_outcar, is_vasprun, rea
 from .volumetric import (VolumetricReader, is_cube, is_vasp_volumetric, read_cube, read_vasp_volumetric,
                          write_cube, write_vasp_volumetric)
 from .mdanalysis_reader import MDAnalysisReader, is_md_trajectory, write_md_trajectory
+from .neb import NebReader, is_neb, read_lammps_neb_log
 from .xdatcar import XdatcarReader, is_xdatcar
 from .xsf import XsfReader, is_xsf, write_xsf
 
@@ -32,7 +33,8 @@ class FileSource:
 
     def __init__(self, path, format: str | None = None, thermo="auto", **kwargs):
         path = str(path)
-        wildcard = any(c in path for c in "*?[")
+        # a NEB reader takes the whole wildcard: one file per image, not one trajectory
+        wildcard = any(c in path for c in "*?[") and (format or "").lower() not in _NEB_FORMATS
         if remote.is_remote(path):  # host:/path or ssh://host/path
             paths = remote.glob(path) if wildcard else [path]
             if not wildcard:
@@ -104,6 +106,8 @@ class StaticSource:
         return data
 
 
+_NEB_FORMATS = ("neb", "vasp-neb", "lammps-neb")
+
 _STREAMING_FORMATS = ("lammps/dump", "lammps-dump", "lammps-dump-text", "vasp-xdatcar", "xdatcar",
                       "lammps/data", "lammps-data", "lammps-data-native", "outcar", "vasp-outcar", "vasprun",
                       "vasp-vasprun")
@@ -171,6 +175,9 @@ def builtin_readers():
 
     B = "built-in"
     return [
+        ReaderPlugin("neb", NebReader, (), is_neb,
+                     "NEB band, one frame per image: VASP NEB folder (00..NN) or LAMMPS neb run folder "
+                     "(detected), or format='neb' with one file per image (dump.neb.*)", B, 4, _NEB_FORMATS[1:]),
         ReaderPlugin("cube", _open_cube, ("*.cube", "*.cub"), is_cube,
                      "Gaussian cube volumetric data (atoms + grid)", B, 5, ("gaussian-cube",), category="volumetric"),
         ReaderPlugin("vasp-volumetric", _open_vasp_volumetric,
@@ -231,10 +238,18 @@ def import_file(path, format: str | None = None, **kwargs):
     Volumetric files (VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR, ``*.cube``) give the
     atoms plus a grid in ``data.grids``; ``kind="charge"|"potential"|"elf"`` overrides the
     VASP file-name guess and ``pbc=True`` marks a cube file periodic.
+    A NEB run (a VASP folder with image folders ``00 .. NN``, or ``format="neb"`` with a
+    wildcard naming one file per image) is read with one frame per image, and the pipeline
+    starts with a ``NebEnergyProfile`` modifier (see :mod:`ewald.io.neb`).
     """
     from ..pipeline import Pipeline
 
-    return Pipeline(FileSource(path, format, **kwargs))
+    pipe = Pipeline(FileSource(path, format, **kwargs))
+    if any(isinstance(r, NebReader) for r in pipe.source.readers):
+        from ..modifiers import NebEnergyProfile
+
+        pipe.modifiers.append(NebEnergyProfile())
+    return pipe
 
 
 def _write_poscar(path, data, sort: bool = True, direct: bool = True, **kwargs):
@@ -372,5 +387,6 @@ __all__ = ["FileSource", "StaticSource", "import_file", "export_file", "open_rea
            "AseTrajectoryReader", "write_extxyz", "write_xsf", "write_h5md", "write_md_trajectory",
            "write_lammps_data", "write_lammps_dump",
            "LammpsDumpReader", "LammpsDataReader", "XdatcarReader", "AseReader", "VolumetricReader",
-           "OutcarReader", "VasprunReader", "Thermo", "read_lammps_log", "read_oszicar", "read_thermo",
+           "OutcarReader", "VasprunReader", "NebReader", "read_lammps_neb_log", "Thermo", "read_lammps_log",
+           "read_oszicar", "read_thermo",
            "read_vasp_volumetric", "read_cube", "write_vasp_volumetric", "write_cube"]

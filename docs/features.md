@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-49 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+50 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -106,6 +106,12 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 |---|---|
 | `PythonScript` | Run ``modify(frame, data)`` defined in ``source``. |
 
+### neb
+
+| Modifier | What it does |
+|---|---|
+| `NebEnergyProfile` | Energy along a NEB band, with the barrier, from frames that are the band's images. |
+
 ### plumed
 
 | Modifier | What it does |
@@ -150,6 +156,7 @@ Tried in this order when no `format=` is given; reader plugins slot in at priori
 
 | Format | File names | Reads | `format=` aliases |
 |---|---|---|---|
+| `neb` | (by content) | NEB band, one frame per image: VASP NEB folder (00..NN) or LAMMPS neb run folder (detected), or format='neb' with one file per image (dump.neb.*) | `vasp-neb`, `lammps-neb` |
 | `cube` | `*.cube` `*.cub` | Gaussian cube volumetric data (atoms + grid) | `gaussian-cube` |
 | `vasp-volumetric` | `CHGCAR*` `CHG*` `PARCHG*` `AECCAR*` `LOCPOT*` `ELFCAR*` | VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR (atoms + grid) | `vasp-chgcar`, `chgcar`, `vasp-locpot`, `locpot`, `vasp-elfcar`, `elfcar` |
 | `h5md` | `*.h5md` `*.h5` | H5MD trajectory (LAMMPS dump h5md, MDAnalysis, ...), lazy; needs h5py |  |
@@ -381,6 +388,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 - Load file… (`Ctrl+O`)
 - Load remote file (SSH)… (`Ctrl+Alt+O`)
+- Load NEB folder…
 - Load session… (`Ctrl+Shift+O`)
 - Save session (`Ctrl+S`)
 - Save session as… (`Ctrl+Shift+S`)
@@ -436,6 +444,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Time averaging (g(r), attributes)
   - Time series of attributes
   - Trajectory lines / paths
+  - NEB energy profile / barrier
 - Bonds & polyhedra
   - Create bonds
   - Edit bonds (add / delete)

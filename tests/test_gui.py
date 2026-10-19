@@ -178,6 +178,32 @@ def test_plots_thermo_series_marker_follows_frame(app, lammps_dir):
     assert list(panel._marker.get_xdata()) == [30, 30]
 
 
+def test_plots_neb_profile_marks_image_and_jumps(app, vasp_dir):
+    from types import SimpleNamespace
+
+    from ewald import import_file
+    from ewald.gui.plots import PlotsPanel
+
+    pipe = import_file(vasp_dir / "neb")
+    panel = PlotsPanel()
+    panel.set_data(pipe.compute(1))
+    assert panel.table.currentText() == "NEB" and panel.column.currentText() == "Energy"
+    ax = panel.figure.axes[0]
+    assert ax.get_xlabel().startswith("Reaction coordinate") and "Ea →" in ax.texts[0].get_text()
+    spline, points = ax.lines[:2]
+    assert len(spline.get_xdata()) == 200 and len(points.get_xdata()) == 4  # image 04 has no energy
+    d = pipe.compute(2)
+    panel.set_data(d)
+    assert panel.figure.axes[0] is ax  # frame change moves the marker only
+    assert list(panel._marker.get_xdata()) == [d.attributes["NEB.Reaction Coordinate"]]
+    jumps = []
+    panel.frameRequested.connect(jumps.append)
+    panel._picked(SimpleNamespace(ind=[3]))
+    assert jumps == [3]
+    panel.set_data(pipe.compute(4))
+    assert not panel._marker.get_visible()
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_main_window_smoke(app, pipe, tmp_path):
     from ewald.gui.app import MainWindow

@@ -38,6 +38,12 @@ Volumetric data
 
 Formats
 
+- NEB: VTST's `neb.dat`/`spline.dat` and the `NEB: projections` lines of VTST OUTCARs (the
+  profile is computed from positions, energies and forces now); NEB folders over SSH; an
+  `images=` option on the reader for ASE NEB trajectories, so the band history needs no
+  modifier parameter; dimer and string-method outputs.
+- NEB: draw the hopping atoms' paths through the band (`GenerateTrajectoryLines` works, but
+  is not added for NEB sources), and interpolate between images for a smoother movie.
 - GROMACS `.gro` with velocities.
 - LAMMPS binary dump.
 - LAMMPS logs written with `thermo_style multi` or `thermo_modify line yaml` (only one-line
@@ -81,8 +87,6 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - P0: Symmetry and diffraction: space group, Wyckoff positions and symmetry-equivalent atoms
   via spglib (optional extra) shown in the inspector; hkl planes in the viewport; powder XRD and
   neutron patterns and S(q) for MD, overlaid on an experimental pattern.
-- P1: NEB viewer: open `00/ ... 0N/` image folders as one trajectory, energy along the reaction
-  coordinate synced with the timeline, saddle point marked.
 - P1: Jupyter widget: `pipe.show()` with a rotatable viewport and frame slider in a notebook
   (PyVista trame backend).
 - P1: Linked selection: brushing a histogram or scatter plot selects atoms in the viewport, and
@@ -109,6 +113,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - The native OUTCAR and vasprun.xml readers on real VASP 5/6 output (relaxations with ISIF=3,
   non-collinear and MD runs, multi-GB files); the test fixtures are hand-written in VASP 6.4
   format and checked against ASE.
+- NEB folders from real VTST runs (the VASP fixture is an EMT band written in VASP layout;
+  the LAMMPS fixture is a real `neb` run).
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
   CI has no PLUMED, so those tests skip).
 

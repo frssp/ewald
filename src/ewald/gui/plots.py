@@ -3,16 +3,22 @@
 Tables whose first column is ``Step``/``Timestep`` (the ``Thermo`` table from log.lammps,
 OSZICAR, OUTCAR, vasprun.xml) are time series: a column is picked under "y" and a marker
 follows the current frame. Changing frames only moves that marker.
+
+The ``NEB`` table (``NebEnergyProfile``) is drawn as an energy profile: the spline, the
+images as points, the current image highlighted, the barriers in the corner; clicking an
+image emits ``frameRequested`` with its frame.
 """
 from __future__ import annotations
 
 import numpy as np
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from .theme import TOKENS
 
 
 class PlotsPanel(QtWidgets.QWidget):
+    frameRequested = QtCore.Signal(int)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -41,6 +47,7 @@ class PlotsPanel(QtWidgets.QWidget):
         self.figure = Figure(figsize=(5, 3), facecolor=TOKENS["bg"])
         self.canvas = FigureCanvasQTAgg(self.figure)
         lay.addWidget(self.canvas, 1)
+        self.canvas.mpl_connect("pick_event", self._picked)
         self._drawn = None   # (table x column, y choice) currently on the canvas
         self._marker = None  # current-frame line on a time-series plot
 
@@ -68,7 +75,8 @@ class PlotsPanel(QtWidgets.QWidget):
         table = self._table()
         keys = list(table)[1:] if table else []
         cur = self.column.currentText()
-        items = keys if _is_series(table) else ["(all)"] + keys if len(keys) > 1 else keys
+        items = (["Energy"] if _is_neb(table) else keys if _is_series(table)
+                 else ["(all)"] + keys if len(keys) > 1 else keys)
         self.column.blockSignals(True)
         self.column.clear()
         self.column.addItems(items)
@@ -107,6 +115,8 @@ class PlotsPanel(QtWidgets.QWidget):
             cs = ax.contourf(x, y, z, levels=20, cmap="viridis")
             fig.colorbar(cs, ax=ax, label=keys[2])
             ax.set_xlabel(keys[0]); ax.set_ylabel(keys[1])
+        elif d is not None and _is_neb(d.tables.get(self.table.currentText())):
+            self._draw_neb(ax, d.tables[self.table.currentText()], d.tables.get("NEB spline"))
         elif d is not None and self.table.currentText() in d.tables:
             table = d.tables[self.table.currentText()]
             keys = list(table)
@@ -131,7 +141,38 @@ class PlotsPanel(QtWidgets.QWidget):
         fig.tight_layout()
         self.canvas.draw_idle()
 
+    def _draw_neb(self, ax, table, spline):
+        s, e = np.asarray(table["Reaction Coordinate"], float), np.asarray(table["Energy"], float)
+        if spline is not None:
+            ax.plot(spline["Reaction Coordinate"], spline["Energy"], lw=1.4, color=TOKENS["accent"])
+        ok = ~np.isnan(e)
+        ax.plot(s[ok], e[ok], "o", ms=6, color=TOKENS["accent"], mfc=TOKENS["bg"], picker=6)
+        self._neb_frames = np.asarray(table["Frame"])[ok]
+        ax.set_xlabel("Reaction coordinate (Å)")
+        ax.set_ylabel("Energy (eV)")
+        a = self.data.attributes
+        lines = [f"{label} {a[k]:.3f} eV" for label, k in (("Ea →", "NEB.Barrier"), ("Ea ←", "NEB.Reverse Barrier"),
+                                                         ("ΔE", "NEB.Reaction Energy")) if k in a]
+        if lines:
+            ax.text(0.02, 0.96, "\n".join(lines), transform=ax.transAxes, va="top", fontsize=8,
+                    color=TOKENS["secondary"])
+        self._marker = ax.plot([], [], "o", ms=9, color=TOKENS["accent"])[0]
+        self._place_marker()
+
+    def _picked(self, event):
+        frames = getattr(self, "_neb_frames", None)
+        ind = getattr(event, "ind", None)
+        if frames is not None and ind is not None and len(ind):
+            self.frameRequested.emit(int(frames[ind[0]]))
+
     def _place_marker(self):
+        if _is_neb(self._table()):
+            a = self.data.attributes
+            here = "NEB.Relative Energy" in a
+            self._marker.set_visible(here)
+            if here:
+                self._marker.set_data([a["NEB.Reaction Coordinate"]], [a["NEB.Relative Energy"]])
+            return
         ts = self.data.attributes.get("Timestep") if self.data is not None else None
         visible = isinstance(ts, (int, float, np.integer, np.floating))
         self._marker.set_visible(visible)
@@ -142,6 +183,10 @@ class PlotsPanel(QtWidgets.QWidget):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save plot", "plot.pdf", "PDF (*.pdf);;PNG (*.png);;SVG (*.svg)")
         if path:
             self.figure.savefig(path, dpi=300)
+
+
+def _is_neb(table) -> bool:
+    return bool(table) and next(iter(table)) == "Reaction Coordinate" and "Frame" in table and "Energy" in table
 
 
 def _is_series(table) -> bool:
