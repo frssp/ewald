@@ -72,6 +72,25 @@ def test_bonds_visual_element_and_pairs(app, cu_fcc):
     assert len(none[0]) == 0
 
 
+def test_style_presets_default_ase_and_bond_table():
+    from ewald.gui.style import DEFAULT_PRESET, ViewStyle
+
+    style = ViewStyle()
+    assert style.preset == DEFAULT_PRESET == "Ball & stick" and style.bonds_enabled
+    style.type_colors = {"Cu": (1.0, 0.0, 0.0)}
+    style.apply_preset("Simple (ASE)", ["Cu"])
+    assert style.atom_style == "flat" and style.background == "white" and style.theme == "ASE"
+    assert style.type_colors["Cu"] != (1.0, 0.0, 0.0)  # Jmol colors from the theme
+    style.apply_preset("Space-filling")  # leaving the ASE look restores what was there
+    assert style.background == "#14161A" and style.type_colors == {"Cu": (1.0, 0.0, 0.0)} and style.theme == ""
+
+    style.ensure_bond_pairs(["Sr", "Ti", "O", "O"])  # compound: no metal-metal rows
+    assert {tuple(sorted(r[:2])) for r in style.bond_pairs} == {("O", "O"), ("O", "Sr"), ("O", "Ti")}
+    metal = ViewStyle()
+    metal.ensure_bond_pairs(["Cu", "Zr"])  # a pure metal keeps its bonds
+    assert len(metal.bond_pairs) == 3
+
+
 def test_command_palette_fuzzy():
     from ewald.gui.palette import fuzzy_score
 
@@ -1066,5 +1085,25 @@ def test_open_example_menu(app):
     acts[0].trigger()
     assert w.pipeline is not None and w.data.count == 40
     assert "POSCAR.SrTiO3" in w.windowTitle()
+    w.close()
+    w.deleteLater()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_open_turns_bonds_off_above_limit(app):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    s = settings.Settings()
+    s["bonds.auto_limit"] = 50
+    w = MainWindow(settings=s)
+    assert w.style.preset == "Ball & stick" and w.style.bonds_enabled
+    w.open_file(str(examples.path("Pt_nanoparticle.xyz")))  # more than 50 atoms
+    assert w.data.count > 50 and not w.style.bonds_enabled
+    w.open_file(str(examples.path("POSCAR.SrTiO3")))  # small again: bonds come back, with a fresh table
+    assert w.data.count <= 50 and w.style.bonds_enabled
+    assert {tuple(sorted(r[:2])) for r in w.style.bond_pairs} == {("O", "O"), ("O", "Sr"), ("O", "Ti")}
+    w.viewport.style_combo.setCurrentText("Simple (ASE)")
+    assert w.style.atom_style == "flat" and "bonds" not in w.viewport.plotter.actors
     w.close()
     w.deleteLater()

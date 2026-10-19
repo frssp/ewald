@@ -386,6 +386,8 @@ class MainWindow(QtWidgets.QMainWindow):
         QtWidgets.QApplication.restoreOverrideCursor()
         if _has_phonon_modes(pipe) and not any(isinstance(m, mods.PhononMode) for m in pipe.modifiers):
             pipe.modifiers.append(mods.PhononMode())  # a phonon file opens playing a mode
+        self._check_bond_limit = True
+        self.style.bond_pairs.clear()  # a new structure gets its own VESTA bond table
         self.set_pipeline(pipe)
         self.setWindowTitle(f"EWALD — {os.path.basename(str(path))}")
         self.message(f"Loaded {path}: {pipe.num_frames} frame(s)")
@@ -479,6 +481,17 @@ class MainWindow(QtWidgets.QMainWindow):
         for m in self.pipeline.modifiers:
             if m.enabled and m.status:
                 self.message(f"{m.name}: {m.status}", error=True)
+        if getattr(self, "_check_bond_limit", False):
+            self._check_bond_limit = False
+            limit = self.settings["bonds.auto_limit"]
+            if getattr(self, "_bonds_auto_off", False) and self.data.count <= limit:
+                self.style.bonds_enabled = True  # the previous file was too big; this one gets its bonds back
+            self._bonds_auto_off = False
+            if self.style.bonds_enabled and self.data.count > limit:
+                # bond search and sticks would make a big system slow
+                self.style.bonds_enabled, self._bonds_auto_off = False, True
+                self.message(f"Bonds off: {self.data.count:,} atoms is above the automatic-bonds limit "
+                             f"({limit:,}, Preferences › Elements). Turn them on under Bonds.")
         if self.style.bonds_enabled:
             self.style.ensure_bond_pairs(self.data.types)
         self._apply_element_defaults()

@@ -266,6 +266,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 | `VESTA` | VESTA's element colors on white |
 | `CPK` | CPK element colors |
 | `Journal` | Jmol colors muted 35% toward gray, white background, dark gray cell |
+| `ASE` | ASE GUI: Jmol colors and covalent radii on white (pair with the 'Simple (ASE)' style) |
 | `Dark slide` | Jmol colors on black, light cell lines, for slides |
 
 ### Output formats
@@ -375,7 +376,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `viewport.background` | Background | `'#14161A'` |
 | `viewport.projection` | Projection | `'ortho'` |
 | `viewport.initial_view` | Initial view direction | `'iso'` |
-| `viewport.style_preset` | Default style | `'Space-filling'` |
+| `viewport.style_preset` | Default style | `'Ball & stick'` |
 | `viewport.rotation_step` | Step rotation | `15.0` |
 | `viewport.show_axes` | Show axes tripod | `True` |
 | `viewport.show_overlay` | Show frame / timestep text | `True` |
@@ -399,6 +400,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `elements.overrides` | Per-element overrides | `{}` |
 | `bonds.length_factor` | Bond length factor | `1.15` |
 | `bonds.radius` | Bond radius | `0.15` |
+| `bonds.auto_limit` | Automatic bonds up to | `100000` |
 
 ### Rendering
 
@@ -487,6 +489,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - VESTA
   - CPK
   - Journal
+  - ASE
   - Dark slide
 
 **Pipeline**

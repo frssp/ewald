@@ -91,6 +91,7 @@ def pipelines():
         "isosurface": Pipeline(StaticSource(density()), [CreateIsosurface(0.3, transparency=0.4),
                                                          GridSlice((0, 0, 1), 0.25)]),
         "rocksalt": Pipeline(StaticSource(rocksalt()), []),
+        "perovskite": Pipeline(StaticSource(perovskite()), []),
         "arrows": Pipeline(StaticSource(iron_forces()), [
             VectorVis("Force", scaling=1.2, width=0.25, color_mapping_property="Magnitude", cmap="plasma"),
             VectorVis("Magnetic Moment", scaling=0.7, width=0.3, alignment="center", color=(0.85, 0.1, 0.1))]),
@@ -110,7 +111,9 @@ SCENES = {
                                    vectors={"Force": {"shading": "flat", "scaling": 1.2, "color": (0.1, 0.4, 1.0),
                                                       "alignment": "center"}})),
 }
-OPENGL_ONLY = {"impostor": ("copper", dict(atom_style="impostor", show_cell=False))}
+OPENGL_ONLY = {"impostor": ("copper", dict(atom_style="impostor", show_cell=False)),
+               "flat_ase": ("perovskite", dict(atom_style="flat", theme="ASE", radius_scale=0.5,
+                                               bond_pairs=[("Ti", "O", 0.0, 2.2)], direction=(3, 2, 1)))}
 
 
 def _render(name, renderer, quality="standard", **extra):

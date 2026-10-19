@@ -8,7 +8,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-Nothing right now.
+- Simple (ASE) style and Ball & stick as the default style (this branch).
 
 ## Next
 
@@ -20,6 +20,11 @@ GUI
 - Scene updates without a full rebuild when only colors or a few properties change.
 - Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
   screen edges) and VTK scene lights instead of the fixed head light; bond impostors.
+- Flat (ASE) style in the ray tracer and the vector renderer (now OpenGL only), and a
+  per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
+  covalent-radius sum with metal-metal pairs left out.
+- Bonds above the automatic-bonds limit (100 000 atoms): a fast path (bond impostors or lines)
+  so large systems can show bonds by default too.
 
 Analysis
 

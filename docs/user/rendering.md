@@ -69,7 +69,7 @@ Every renderer draws the same overlays, sized relative to the image:
 | `renderer`, `quality` | `"opengl"`, `"raytrace"` or `"vector"`; `"draft"`, `"standard"` or `"publication"` |
 | `legend`, `type_legend`, `scale_bar`, `text` | overlays (see above) |
 | `overlays` | overlay elements drawn on the image: `"Coordinate tripod"` (axis arrows that turn with the camera), `"Attributes"` (a temperature/energy readout), [plugins](../plugins/overlays.md); names, instances or `{"name": ..., "params": {...}}` |
-| `theme` | `"VESTA"`, `"CPK"`, `"Journal"`, `"Dark slide"` or a [theme plugin](../plugins/styles.md#themes): element colors, background, cell color and radius preset; explicit arguments win |
+| `theme` | `"VESTA"`, `"CPK"`, `"Journal"`, `"ASE"`, `"Dark slide"` or a [theme plugin](../plugins/styles.md#themes): element colors, background, cell color and radius preset; explicit arguments win |
 | `show_cell`, `dpi` | cell outline; resolution stored in the file |
 | `visuals` | extra [visual elements](../plugins/visuals.md) drawn on top in every renderer: registered names, instances, or `{"name": ..., "params": {...}}` |
 | `vectors` | particle properties drawn as arrows: `"Force"`, `["Force", "Velocity"]` or `{"Force": {"scaling": 2, "color": "red"}}` (options of [`VectorVis`](modifiers.md#vector-arrows)); added to, and overriding, the arrows `VectorVis` set |
@@ -123,6 +123,20 @@ per-pixel sphere depth) instead of sphere meshes, which keeps million-atom frame
 threshold; above it, vector arrows are drawn as colored lines. `arrow_resolution=` sets the
 sides per arrow (the viewport uses Preferences › Viewports › Arrow resolution while you
 interact, file output follows the quality preset).
+
+## Simple (ASE-style) drawing
+
+`atom_style="flat"` draws atoms the way ASE's GUI does: unlit discs in the element color with a
+dark outline, and unshaded bonds with dark edges. Combine it with `theme="ASE"` (Jmol colors and
+covalent radii on white) and `radius_scale=1.1` (ASE's 0.89 × covalent radius):
+
+```python
+render(data, "simple.png", atom_style="flat", theme="ASE", radius_scale=1.1, bonds=2.6)
+```
+
+It uses impostors, so it is as fast as `"impostor"` at any size, and screen-space ambient
+occlusion is off unless you pass `ambient_occlusion=True`. It applies to the OpenGL renderer; the
+ray tracer and the vector renderer keep their own shading.
 
 ## Animations
 

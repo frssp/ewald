@@ -10,7 +10,7 @@ OVITO 사용자가 바로 적응할 수 있도록 큰 골격(viewport 중앙, �
 
 1. Menu bar → main toolbar: Open/Save, Undo/Redo, workspace switch (Analyze | Render), command palette (Ctrl K, modifier·command·property·view 통합 검색), Compute device pill (CUDA/CPU), Render 버튼.
 2. 왼쪽 tool rail (46 px): Pick, Orbit, Pan, Zoom, Measure distance, Measure angle. Measure는 viewport에 dashed line + 값 label(Å)로 표시.
-3. Viewport toolbar: View along a b c a* b* c*, rotate ±15°, tilt, Ortho/Persp, Style preset(Space-filling / Ball & stick / Points), layout 1 or 4 (Top/Front/Left/Perspective, active viewport는 노란 outline), Zoom to fit.
+3. Viewport toolbar: View along a b c a* b* c*, rotate ±15°, tilt, Ortho/Persp, Style preset(Ball & stick (default) / Space-filling / Simple (ASE) / Points), layout 1 or 4 (Top/Front/Left/Perspective, active viewport는 노란 outline), Zoom to fit.
 4. Viewport: drag로 orbit, atom click으로 pick(노란 ring, status bar에 id·위치·coordination). Overlay layer로 frame/time text, color legend(현재 coloring mode에 따라 자동: CNA, Color coding bar, type, Selected), 좌하단 crystal axes tripod. Background Dark/White.
 5. Timeline: first/prev/play/next/last, frame slider, frame/time, fps·stride·loop.
 6. Bottom dock tabs: Python console(IPython, `pipe`/`data`/`vp` 미리 bind, console에서 append한 modifier가 pipeline panel에 즉시 반영), Data inspector(Particles/Bonds/Attributes/Tables/Cell, filter expression), Plots(table을 바로 plot: g(r), histogram), Log.
