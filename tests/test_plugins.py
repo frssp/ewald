@@ -186,9 +186,10 @@ def test_builtin_formats_live_in_the_registry(vasp_dir, lammps_dir):
     assert plugins.find_reader(vasp_dir / "XDATCAR").name == "xdatcar"
     assert plugins.find_reader(vasp_dir / "POSCAR").name == "ase"
     assert plugins.find_reader("x", "lammps/dump").name == "lammps-dump"   # alias
-    assert plugins.find_reader("x", "extxyz").name == "ase"                # unknown names go to ASE
+    assert plugins.find_reader("x", "espresso-in").name == "ase"           # unknown names go to ASE
     assert import_file(vasp_dir / "POSCAR", format="vasp").compute(0).count > 0
-    assert plugins.file_patterns("structure")[:2] == ["*.lammpstrj", "*.dump"]
+    structure = plugins.file_patterns("structure")
+    assert structure.index("*.lammpstrj") < structure.index("POSCAR*")   # priority order
 
 
 def test_plugin_can_replace_a_builtin(vasp_dir):

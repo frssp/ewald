@@ -7,7 +7,7 @@ The API mirrors OVITO's, so OVITO knowledge transfers; the differences below are
 from ewald import import_file
 from ewald.modifiers import CoordinationAnalysis, ExpressionSelection, DeleteSelected, ColorCoding
 
-pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, cif, ...
+pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, xsf, h5md, xtc, cif, ...
 # pipe = import_file("dump.*.lammpstrj", type_map={1: "Cu", 2: "Zr"})   # LAMMPS numeric types -> elements
 # pipe = import_file("run.npz", format="npz-trajectory")  # format= also names reader plugins (`ewald plugins`)
 pipe.modifiers.append(CoordinationAnalysis(cutoff=3.0))
@@ -68,7 +68,7 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 | `CreateBondsModifier(mode=CreateBondsModifier.Mode.Pairwise)` | `CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)])` (`set_pairwise_cutoff` also works) |
 | `PythonScriptModifier(function=f)` | `pipe.modifiers.append(f)` |
 | `Viewport(...).render_image(filename=...)`, `pipeline.add_to_scene()` | `pipe.render(filename, frame=, size=, direction=)`; GUI: `ewald gui FILE` |
-| `export_file(pipeline, file, format, columns=[...])` | `export_file(pipe, file, format=...)` (`"lammps/dump"` native, else ASE) |
+| `export_file(pipeline, file, format, columns=[...])` | `export_file(pipe, file, format=None, frames=None)`: writer from the file name (`POSCAR`, `*.data`, `*.extxyz`, `*.xsf`, `*.h5md`, `*.xtc`, `*.cif`, ...) or `format=`; one-frame formats need `frames=[i]` |
 
 ## Other entry points
 

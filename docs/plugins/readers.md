@@ -87,8 +87,12 @@ them in the order below), and readers are tried by `priority`, lowest first:
 | Priority | Readers |
 |---|---|
 | 5, 6 | built-in volumetric: Gaussian cube, VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR |
+| 7, 8 | built-in H5MD, XSF |
 | 10-12 | built-in LAMMPS dump, XDATCAR, LAMMPS data |
+| 13-15 | built-in ASE database, ASE trajectory, XTC/TRR/DCD/NetCDF (MDAnalysis) |
+| 20 | built-in XYZ / extended XYZ |
 | 50 | plugins (default; pass `priority=` to change it) |
+| 90 | built-in CIF (through ASE) |
 | 100 | ASE, for everything else |
 
 1. `import_file(path, format="myformat")` uses the reader with that name or alias
@@ -96,7 +100,8 @@ them in the order below), and readers are tried by `priority`, lowest first:
 2. Without `format=`, each reader in priority order is asked: its `sniff(path)` function if it
    has one, else its `patterns` matched against the file name (without a `.gz`/`.bz2`/`.xz`
    suffix). The first match wins, so a plugin at the default priority cannot take over files
-   the built-in readers recognise.
+   the built-in readers recognise (pass `priority=15` to read `*.xyz` files of your own code
+before the built-in extxyz reader).
 3. Registering a name that already exists replaces that reader, built-in ones included
    (`@reader("xdatcar", sniff=..., priority=11)` swaps in your own XDATCAR reader).
 4. `priority=None` registers a reader that is only used with `format=`.

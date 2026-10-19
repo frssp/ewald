@@ -28,7 +28,9 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
 
 - `data.py` (`DataCollection`, `Cell`), `pipeline.py` (`Pipeline`, `Modifier`, `PythonModifier`,
   `ComputeContext`, frame cache), `__init__.py` (`import_file`), `__main__.py` (CLI `ewald ...`).
-- `io/`: native lazy readers (`lammps_dump.py`, `xdatcar.py`), everything else via `ase_reader.py`.
+- `io/`: native lazy readers (`lammps_dump.py`, `xdatcar.py`, `extxyz.py`, `xsf.py`, `h5md.py`), MDAnalysis
+  for XTC/TRR/DCD (`mdanalysis_reader.py`), everything else via `ase_reader.py`; each module also has its
+  writer. `io.builtin_readers()`/`builtin_writers()` register them in `plugins.py` (reader and writer registries).
 - `bonds.py` (`Bonds`: Topology + Periodic Image, bond search), `mesh.py` (`SurfaceMesh` for
   `data.surfaces`: polyhedra now, surface meshes later); both drawn by `render.py` and `raytrace.py`.
 - `backend.py` (numpy/CuPy `xp` backends), `neighbors.py` (numba CPU cell list, `find_pairs`),
@@ -65,7 +67,7 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
   (`gui/params.py`) is generated from it, so store every constructor argument as an attribute of the
   same name. New modifiers that construct with no arguments appear in the GUI menu automatically;
   otherwise add an entry with a sensible default to `MODIFIER_MENU` in `gui/pipeline_panel.py`.
-- Optional dependencies (`gui`, `gpu`, `ovito`, `llm`, `movie`) are imported lazily; tests use
+- Optional dependencies (`gui`, `gpu`, `ovito`, `llm`, `movie`, `formats`) are imported lazily; tests use
   `pytest.importorskip` for them. Headless `render()`/`compute()` never read `settings` implicitly.
 - Python first; numba or C++ only for measured hot spots. Ported OVITO code is used under its MIT
   option and keeps the notice. No LICENSE file (private project).

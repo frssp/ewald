@@ -46,3 +46,88 @@ def _ovito_names(data: DataCollection, atoms) -> None:
             elif isinstance(c, FixScaled):
                 free[c.index] &= ~np.asarray(c.mask, dtype=bool)
         data.particles["Selective Dynamics"] = free
+
+
+def is_ase_db(path) -> bool:
+    """SQLite file with ASE's ``systems`` table (``*.db``), or an ASE JSON database."""
+    import sqlite3
+
+    path = str(path)
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(16)
+    except OSError:
+        return False
+    if head.startswith(b"SQLite format 3"):
+        try:
+            con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+            try:  # closed explicitly: an open handle keeps the file locked on Windows
+                return con.execute("SELECT 1 FROM sqlite_master WHERE name='systems'").fetchone() is not None
+            finally:
+                con.close()
+        except sqlite3.Error:
+            return False
+    return path.lower().endswith(".json") and b'"ids"' in _head(path, 4096)
+
+
+def _head(path, n):
+    with open(path, "rb") as fh:
+        return fh.read(n)
+
+
+class AseDbReader(FrameReader):
+    """ASE database (``ase db``: SQLite ``.db`` or ``.json``), one row per frame, lazy.
+
+    ``selection`` is an ``ase db`` query (``"natoms<100,energy<-3"``, ``"Cu"``, ``"relaxed=1"``).
+    Each row's key-value pairs, energy, ``id`` and ``unique_id`` become attributes.
+    """
+
+    def __init__(self, path, selection=None, **query):
+        import ase.db
+
+        self.path = str(path)
+        self.db = ase.db.connect(self.path)
+        self.ids = [row.id for row in self.db.select(selection, include_data=False, **query)]
+        if not self.ids:
+            raise ValueError(f"{path}: no rows match {selection or query or 'the query'}")
+
+    def __len__(self):
+        return len(self.ids)
+
+    def read(self, index: int) -> DataCollection:
+        row = self.db.get(id=self.ids[index])
+        atoms = row.toatoms()
+        data = DataCollection.from_ase(atoms)
+        _ovito_names(data, atoms)
+        data.attributes.update({k: v for k, v in row.key_value_pairs.items()})
+        data.attributes["Row Id"] = row.id
+        if "unique_id" in row:
+            data.attributes["Unique Id"] = row.unique_id
+        data.attributes.setdefault("Timestep", index)
+        return data
+
+
+class AseTrajectoryReader(FrameReader):
+    """ASE binary trajectory (``*.traj``, written by ASE optimizers and MD), lazy."""
+
+    def __init__(self, path):
+        from ase.io.trajectory import Trajectory
+
+        self.path = str(path)
+        self.traj = Trajectory(self.path, "r")
+        if len(self.traj) == 0:
+            raise ValueError(f"{path}: empty trajectory")
+
+    def __len__(self):
+        return len(self.traj)
+
+    def read(self, index: int) -> DataCollection:
+        atoms = self.traj[index]
+        data = DataCollection.from_ase(atoms)
+        _ovito_names(data, atoms)
+        data.attributes.setdefault("Timestep", index)
+        return data
+
+
+def is_ase_traj(path) -> bool:
+    return str(path).lower().endswith(".traj") and _head(path, 24).startswith(b"- of Ulm")

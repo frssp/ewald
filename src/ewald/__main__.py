@@ -142,6 +142,9 @@ def _print_plugins(as_json=False):
     for r in st["readers"]:
         pats = " ".join(r["patterns"]) or "(format= only)"
         print(f"reader {r['name']:<16} {pats:<24} {r['description']}  [{r['origin']}]")
+    for w in st.get("writers", []):
+        pats = " ".join(w["patterns"]) or "(format= only)"
+        print(f"writer {w['name']:<16} {pats:<24} {w['description']}  [{w['origin']}]")
     for origin, err in st["errors"].items():
         print(f"FAILED {origin}: {err}")
     return 1 if st["errors"] else None
