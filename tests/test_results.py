@@ -188,3 +188,15 @@ def test_remote_results_read_in_place(server, md_dir, thermo_dir, tmp_path):
     dump = import_file("hpc:/data/dump.lammpstrj")
     assert dump.compute(2).attributes["Volume"] == pytest.approx(377.93307)
     assert not (tmp_path / "cache").exists()  # nothing downloaded
+
+
+def test_session_keeps_explicit_thermo(thermo_dir, md_dir, tmp_path):
+    from ewald.session import load_session, save_session
+
+    log = tmp_path / "md.log"
+    shutil.copy(thermo_dir / "log.lammps", log)
+    save_session(tmp_path / "a.ewald", import_file(thermo_dir / "dump.lammpstrj", thermo=log))
+    src = load_session(tmp_path / "a.ewald").pipeline.source
+    assert src.thermo.sources == [str(log)]
+    save_session(tmp_path / "b.ewald", import_file(md_dir / "XDATCAR", thermo=None))
+    assert load_session(tmp_path / "b.ewald").pipeline.source.thermo is None

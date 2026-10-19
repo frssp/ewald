@@ -58,6 +58,9 @@ _OUTCAR_KEYS = "|".join((
     "number of electron .*magnetization", "kinetic energy EKIN", "total energy   ETOTAL", "POTCAR:",
     "ions per type", "NIONS =",
 ))
+_OUTCAR_LITERALS = (b"Iteration", b"direct lattice vectors", b"TOTAL-FORCE", b"TOTEN", b"without entropy", b"in kB",
+                    b"external pressure", b"magnetization", b"EKIN", b"ETOTAL", b"POTCAR:", b"ions per type",
+                    b"NIONS =")
 
 
 class OutcarReader(FrameReader):
@@ -68,7 +71,7 @@ class OutcarReader(FrameReader):
         potcars, counts, natoms = [], None, None
         steps: dict[int, dict] = {}
         ionic, lattice = 0, None
-        for off, line in grep_lines(self.path, _OUTCAR_KEYS):
+        for off, line in grep_lines(self.path, _OUTCAR_KEYS, _OUTCAR_LITERALS):
             if b"Iteration" in line:
                 ionic = int(re.search(rb"Iteration +(\d+)\(", line).group(1))
                 continue
@@ -102,15 +105,14 @@ class OutcarReader(FrameReader):
             elif b"total energy   ETOTAL" in line:
                 v["Total Energy"] = floats(line.split(b"=")[-1])[0]
             elif b"POTCAR:" in line and counts is None:
-                potcars.append(line.split(b":", 1)[1].split())
+                potcars.append(line.split(b":", 1)[1].split())  # 'PAW_PBE Fe_pv 02Aug2007'
             elif b"ions per type" in line and counts is None:
                 counts = [int(x) for x in line.split(b"=")[1].split()]
             elif b"NIONS =" in line:
                 natoms = int(line.split(b"NIONS =")[1].split()[0])
         if counts is None:
             raise ValueError(f"{path}: no 'ions per type' line; not an OUTCAR?")
-        if len(potcars) == 2 * len(counts) and potcars[: len(counts)] == potcars[len(counts):]:
-            potcars = potcars[: len(counts)]
+        # VASP prints the POTCAR lines more than once (once per type, then again); the first set counts
         species = [species_name(p[1].decode() if len(p) > 1 else p[0].decode()) for p in potcars[: len(counts)]]
         if len(species) != len(counts):
             raise ValueError(f"{path}: {len(potcars)} POTCAR lines for {len(counts)} species")
@@ -179,6 +181,8 @@ _VASPRUN_KEYS = "|".join((
     "<calculation>", "</calculation>", "<structure", "<varray name=\"forces\"", "<varray name=\"stress\"",
     "<scstep>", "</scstep>", "<atominfo>", "<i name=\"(e_fr_energy|e_0_energy|kinetic|total)\"",
 ))
+_VASPRUN_LITERALS = (b"calculation>", b"<structure", b"<varray name=\"f", b"<varray name=\"s", b"scstep>",
+                     b"<atominfo>", b"<i name=\"e_", b"<i name=\"kinetic\"", b"<i name=\"total\"")
 _VASPRUN_VALUES = {b"e_fr_energy": "Free Energy", b"e_0_energy": "Energy", b"kinetic": "Kinetic Energy",
                    b"total": "Total Energy"}
 
@@ -190,7 +194,7 @@ class VasprunReader(FrameReader):
         self.path = str(path)
         self._steps: list[dict] = []
         atominfo, calc, in_scstep = None, None, False
-        for off, line in grep_lines(self.path, _VASPRUN_KEYS):
+        for off, line in grep_lines(self.path, _VASPRUN_KEYS, _VASPRUN_LITERALS):
             if b"<calculation>" in line:
                 calc = {"values": {}}
             elif b"</calculation>" in line:

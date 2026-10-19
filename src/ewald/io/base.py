@@ -85,14 +85,15 @@ def _scan_lines(path, predicate):
     return offsets
 
 
-def grep_lines(path, pattern: str, chunk_size: int = 1 << 24) -> list[tuple[int, bytes]]:
+def grep_lines(path, pattern: str, literals=(), chunk_size: int = 1 << 24) -> list[tuple[int, bytes]]:
     """Byte offset and text (without the newline) of every line matching ``pattern``.
 
     ``pattern`` must be valid both as a Python regex and as a POSIX extended regex
     (use ``[0-9]``, not ``\\d``): a remote file is searched by ``grep -b`` on the host,
     so only the matching lines cross the network. Locally the file is read in large
-    chunks and searched with ``re``, which keeps indexing a multi-GB OUTCAR close to
-    disk speed. Compressed files are decompressed on the fly.
+    chunks and searched with ``re``. ``literals``, byte strings at least one of which every
+    matching line contains, speed that up several times: lines are found with ``bytes.find``
+    and only those are tried against ``pattern``. Compressed files are decompressed on the fly.
     """
     import io
     import re
@@ -119,14 +120,27 @@ def grep_lines(path, pattern: str, chunk_size: int = 1 << 24) -> list[tuple[int,
             else:
                 end = len(buf)
             seg, carry = buf[:end], buf[end:]
-            last = -1
-            for m in regex.finditer(seg):
-                start = seg.rfind(b"\n", 0, m.start()) + 1
-                if start == last:
-                    continue
-                last = start
-                stop = seg.find(b"\n", m.start())
-                out.append((pos + start, seg[start:stop if stop >= 0 else end].rstrip(b"\r")))
+            if literals:
+                starts = set()
+                for lit in literals:
+                    j = seg.find(lit)
+                    while j >= 0:
+                        starts.add(seg.rfind(b"\n", 0, j) + 1)
+                        j = seg.find(lit, j + len(lit))
+                for start in sorted(starts):
+                    stop = seg.find(b"\n", start)
+                    line = seg[start:stop if stop >= 0 else end].rstrip(b"\r")
+                    if regex.search(line):
+                        out.append((pos + start, line))
+            else:
+                last = -1
+                for m in regex.finditer(seg):
+                    start = seg.rfind(b"\n", 0, m.start()) + 1
+                    if start == last:
+                        continue
+                    last = start
+                    stop = seg.find(b"\n", m.start())
+                    out.append((pos + start, seg[start:stop if stop >= 0 else end].rstrip(b"\r")))
             pos += end
             if not chunk:
                 break

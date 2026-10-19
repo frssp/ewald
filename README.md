@@ -158,7 +158,8 @@ Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
 | LAMMPS data file | native | styles atomic, charge, bond/angle/molecular, full, sphere, dipole (from `Atoms # style`, inferred, or `atom_style=`); type names from `Atom Type Labels` or `Masses` comments; Velocities, image flags, Bonds (`data.bonds`); general triclinic `avec bvec cvec` |
 | VASP XDATCAR | native, lazy | fixed and variable cell (NpT), VASP 6.4 `Si/hash` species labels, partial last frame skipped |
 | VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics (`Selective Dynamics`, True = free), CONTCAR velocities (`Velocity` in Å/fs) |
-| VASP OUTCAR, vasprun.xml | ASE | all ionic steps with `Energy`, `Force`, `Stress` |
+| VASP OUTCAR, vasprun.xml | native, lazy | all ionic steps with `Force`, `Magnetic Moment` (OUTCAR), `Energy`, `Free Energy`, `Stress`, `Pressure`, MD `Temperature` |
+| log.lammps, OSZICAR | native | thermo columns as frame attributes and `data.tables["Thermo"]`, matched by step; found next to a dump/XDATCAR or `thermo=` |
 | XYZ / extended XYZ | native, lazy | frames indexed by atom counts, each parsed by ASE's extxyz parser (`Lattice=`, `Properties=`, forces, energy, info) |
 | XCrySDen XSF/AXSF | native, lazy | `ANIMSTEPS`, forces, `DATAGRID_3D` grids in `data.grids["xsf"]` |
 | H5MD | native, lazy (`h5py`) | LAMMPS `dump h5md`, MDAnalysis; species names, box, velocities, forces, observables |
