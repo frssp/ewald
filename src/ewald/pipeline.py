@@ -322,6 +322,11 @@ class Pipeline:
 
         return render(self.compute(frame), filename, **kwargs)
 
+    def _repr_png_(self):  # Jupyter shows frame 0 as a picture (ewald.display.options)
+        from .display import pipeline_png
+
+        return pipeline_png(self)
+
     def __repr__(self):
         mods = ", ".join(m.name for m in self.modifiers)
         return f"<Pipeline frames={self.num_frames} modifiers=[{mods}]>"

@@ -77,7 +77,8 @@ notebook, next to the steps that compute them.
 
 **Code cells** are any other Python. Printed output appears under them, as does the value of the
 last line (as in Jupyter). Matplotlib figures are shown as images, without `plt.show()`
-opening a window.
+opening a window, and so are a pipeline (`pipe` as the last line draws frame 0) and a verb
+table (its curve); a frame (`pipe.compute(0)`) shows its summary.
 
 **Styling cells** color, resize or hide atoms by any property. A Python step runs on every
 frame, so the style follows the trajectory:
@@ -101,7 +102,7 @@ and Radius properties, which every renderer draws. Import them with
 from ewald import rdf, msd, sq, xrd, vacf, bond_angles
 g = rdf(pipe, cutoff=6)          # CoordinationAnalysis; g.x is r, g["g(r)"] the curve
 d = msd(pipe, time_per_frame=2)  # MeanSquaredDisplacement over the trajectory
-g                                # <Table 'coordination-rdf': 200 rows; r, g(r)>
+g                                # shows the g(r) curve; repr(g) is <Table 'coordination-rdf': ...>
 ```
 
 A table is a dict of numpy columns with `.x`, `.columns` and `.plot()`; `pandas.DataFrame(g)`

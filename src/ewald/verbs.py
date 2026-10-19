@@ -37,6 +37,11 @@ class Table(dict):
 
         show(self.pipe, table=self.name, y=y, frame=self.frame)
 
+    def _repr_png_(self):  # the curve, in Jupyter and the GUI notebook
+        from .display import table_png
+
+        return table_png(self)
+
     def __repr__(self):
         n = len(self.x) if self else 0
         return f"<Table {self.name!r}: {n} rows; {', '.join(self.columns)}>"
