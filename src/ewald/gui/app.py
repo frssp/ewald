@@ -24,6 +24,7 @@ from .ask_panel import AskPanel, agent_from_settings
 from .console import make_console
 from .icons import app_icon, icon
 from .inspector import DataInspector
+from .macos import set_app_name, strip_psn
 from .palette import CommandPalette, menu_entries
 from .pipeline_panel import MODIFIER_MENU, PipelinePanel, fill_modifier_menu
 from .plots import PlotsPanel, _is_neb
@@ -155,6 +156,9 @@ class MainWindow(QtWidgets.QMainWindow):
         install_prompts(self)  # SSH password / host-key dialogs for remote files
         if pipeline is not None:
             self.set_pipeline(pipeline)
+        app = QtWidgets.QApplication.instance()
+        if isinstance(app, EwaldApplication):  # files from Finder (Open With, Dock icon, double-click)
+            app.set_file_open_target(self.open_path)
 
     # ---------------------------------------------------------------- chrome
     def _dock(self, widget, title, area, width):
@@ -203,6 +207,10 @@ class MainWindow(QtWidgets.QMainWindow):
         tb.addWidget(QtWidgets.QLabel("Compute ", objectName="muted"))
         self.device_combo = QtWidgets.QComboBox()
         self.device_combo.addItems(["CPU", "CUDA", "auto"])
+        if sys.platform == "darwin":  # no CUDA on macOS; Apple GPUs are not used for compute yet
+            cuda = self.device_combo.model().item(1)
+            cuda.setEnabled(False)
+            cuda.setToolTip("No CUDA on macOS: analysis runs on the CPU")
         self.device_combo.setCurrentText({"cuda": "CUDA", "auto": "auto"}.get((self.device or "cpu").lower(), "CPU"))
         self.device_combo.currentTextChanged.connect(self._set_device)
         tb.addWidget(self.device_combo)
@@ -244,7 +252,7 @@ class MainWindow(QtWidgets.QMainWindow):
         f.addAction("E&xport data…", self.export_dialog, "Ctrl+E")
         f.addAction("Export &movie…", self.export_movie)
         f.addSeparator()
-        f.addAction("&Quit", self.close, QtGui.QKeySequence.Quit)
+        f.addAction("&Quit", self.close, QtGui.QKeySequence.Quit).setMenuRole(QtGui.QAction.QuitRole)
         e = mb.addMenu("&Edit")
         act = e.addAction("&Preferences…", self.preferences, QtGui.QKeySequence.Preferences)
         act.setMenuRole(QtGui.QAction.PreferencesRole)  # app menu on macOS, like OVITO/VESTA
@@ -331,6 +339,8 @@ class MainWindow(QtWidgets.QMainWindow):
             name = cupy.cuda.runtime.getDeviceProperties(0)["name"]
             name = name.decode() if isinstance(name, bytes) else name
             text += f"<br>Compute: CUDA available ({name}); current device {self.device or 'cpu'}"
+        elif sys.platform == "darwin":
+            text += f"<br>Compute: CPU (Apple GPUs are not used for compute yet); current device {self.device or 'cpu'}"
         else:
             text += f"<br>Compute: CPU (no CUDA device or CuPy); current device {self.device or 'cpu'}"
         return text
@@ -416,6 +426,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.log.appendPlainText(time.strftime("%H:%M:%S ") + ("ERROR " if error else "") + text)
 
     # ---------------------------------------------------------------- pipeline / data
+    def open_path(self, path, **kwargs):
+        """Open a structure/trajectory file, or a .ewald session."""
+        from ..session import is_session_file
+
+        return self.load_session(path) if is_session_file(path) else self.open_file(path, **kwargs)
+
     def open_file(self, path, **kwargs):
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
         try:
@@ -1121,6 +1137,40 @@ def _set_windows_app_id():
             pass
 
 
+class EwaldApplication(QtWidgets.QApplication):
+    """QApplication that hands macOS file-open events to the newest main window.
+
+    Finder sends a QFileOpenEvent, not argv, when a file is opened with the .app (double-click,
+    Open With, a drop on the Dock icon). It can arrive before the main window exists, so paths
+    wait until a window registers itself with :meth:`set_file_open_target`.
+    """
+
+    def __init__(self, argv):
+        super().__init__(argv)
+        self._pending_files: list[str] = []
+        self._file_open_target = None
+
+    def set_file_open_target(self, open_path):
+        self._file_open_target = open_path
+        while self._pending_files:
+            try:
+                open_path(self._pending_files[0])
+            except RuntimeError:  # that window was closed and deleted: wait for the next one
+                self._file_open_target = None
+                return
+            self._pending_files.pop(0)
+
+    def event(self, event):
+        if event.type() == QtCore.QEvent.FileOpen:
+            path = event.file() or event.url().toLocalFile()
+            if path:
+                self._pending_files.append(path)
+                if self._file_open_target is not None:
+                    self.set_file_open_target(self._file_open_target)
+            return True
+        return super().event(event)
+
+
 def _app():
     from . import theme
 
@@ -1133,7 +1183,8 @@ def _app():
         if viewport_backend(settings_mod.load()["viewport.backend"]) == "vtk":
             check_remote_display()
         _set_windows_app_id()
-        app = QtWidgets.QApplication(sys.argv)
+        set_app_name()
+        app = EwaldApplication(strip_psn(sys.argv))
         app.setApplicationName("ewald")
         app.setDesktopFileName("ewald")
         app.setWindowIcon(app_icon())
@@ -1166,14 +1217,12 @@ def main(argv=None):
     ap.add_argument("file", nargs="?")
     ap.add_argument("--type-map", default=None, help="LAMMPS types, e.g. 1=Cu,2=Zr")
     ap.add_argument("--device", default=None, help="cpu, cuda or auto")
-    args = ap.parse_args(argv)
+    args = ap.parse_args(strip_psn(sys.argv[1:] if argv is None else argv))
     app = _app()
     win = MainWindow(device=args.device)
     if args.file:
-        from ..session import is_session_file
-
         kw = {"type_map": dict(p.split("=") for p in args.type_map.split(","))} if args.type_map else {}
-        win.load_session(args.file) if is_session_file(args.file) else win.open_file(args.file, **kw)
+        win.open_path(args.file, **kw)
     win.show()
     return app.exec()
 

@@ -1,5 +1,8 @@
 """Array backends: numpy on CPU, CuPy on NVIDIA GPUs.
 
+Apple GPUs (Metal) have no compute backend yet: ``"auto"`` runs on the CPU on a Mac and
+``"metal"``/``"mps"`` raise an error that says so (docs/user/gpu.md, "Apple Silicon").
+
 Compute kernels are written once against an array module ``xp`` and run on
 either device, so the GPU path is exercised by the same tests as the CPU path.
 """
@@ -44,6 +47,12 @@ def gpu_available() -> bool:
         return False
 
 
+APPLE_DEVICES = ("metal", "mps", "apple")
+APPLE_GPU_MESSAGE = ("Apple GPUs (Metal) are not supported for compute yet; use device='cpu' "
+                     "(or 'auto', which picks the CPU on a Mac). The numba and C++ kernels use every CPU core, "
+                     "and the viewport and renderer still draw on the GPU.")
+
+
 def get_backend(device: str | Backend | None = None) -> Backend:
     """``None``/``"cpu"`` -> numpy; ``"cuda"``/``"gpu"`` -> CuPy; ``"auto"`` -> GPU if present."""
     if isinstance(device, Backend):
@@ -62,4 +71,6 @@ def get_backend(device: str | Backend | None = None) -> Backend:
         if not gpu_available():
             raise RuntimeError("CuPy is installed but no CUDA device was found")
         return Backend("cuda", cupy, raw_kernels=True)
+    if device in APPLE_DEVICES:
+        raise RuntimeError(APPLE_GPU_MESSAGE)
     raise ValueError(f"unknown device {device!r}; use 'cpu', 'cuda' or 'auto'")

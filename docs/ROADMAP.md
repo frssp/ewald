@@ -28,3 +28,4 @@ Decisions
 - OVITO's public source is "GPLv3 or MIT"; ported code keeps the MIT notice. DXA is not in the public source.
 - Python first, numba/C++ only for measured hot spots.
 - Windows distribution: wheels plus a PyInstaller app with an Inno Setup installer, in CPU and CUDA variants, built by `windows-release.yml` on `v*` tags (docs/developer/windows-release.md).
+- macOS: source install with Apple clang (arm64 and x86_64), Finder file-open events, and a PyInstaller EWALD.app in a .dmg built by `macos-release.yml` (docs/developer/macos-release.md). Analysis computes on the CPU on a Mac; a Metal backend is open (decision 2026-10-19: CPU fallback first, since MLX/MPS lack the NumPy subset the kernels need).
