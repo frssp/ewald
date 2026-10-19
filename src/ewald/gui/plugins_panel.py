@@ -354,7 +354,14 @@ class PluginsPanel(QtWidgets.QWidget):
         p.finished.connect(lambda code, _status: self._pip_done(action, requirement, code))
         p.start(cmd[0], cmd[1:])
 
+    def install_requirements(self, requirements: list[str]):
+        """pip install the packages a notebook needs (one confirmation, one pip run)."""
+        if requirements:
+            self._run_pip("install", list(requirements))
+
     def _pip_done(self, action, requirement, code):
+        if not isinstance(requirement, str):
+            requirement = " ".join(requirement)
         self._say(f"pip {action} {requirement}: {'done' if code == 0 else f'failed (exit {code})'}")
         if code == 0:
             plugins.load_plugins(force=True)

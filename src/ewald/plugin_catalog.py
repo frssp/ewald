@@ -388,20 +388,23 @@ def remove_file(item: Installed) -> Path:
     return dest
 
 
-def pip_command(action: str, requirement: str) -> list[str]:
+def pip_command(action: str, requirement: str | list[str]) -> list[str]:
     """``python -m pip install|uninstall ...`` for the Python ewald runs in; ``"update"``
-    installs with ``--upgrade``."""
+    installs with ``--upgrade``. ``requirement`` may be a list (several packages at once)."""
+    reqs = [requirement] if isinstance(requirement, str) else list(requirement)
     if action == "install":
-        return [sys.executable, "-m", "pip", "install", requirement]
+        return [sys.executable, "-m", "pip", "install", *reqs]
     if action == "update":
-        return [sys.executable, "-m", "pip", "install", "--upgrade", requirement]
-    return [sys.executable, "-m", "pip", "uninstall", "-y", requirement]
+        return [sys.executable, "-m", "pip", "install", "--upgrade", *reqs]
+    return [sys.executable, "-m", "pip", "uninstall", "-y", *reqs]
 
 
-def pip_env(requirement: str) -> dict:
+def pip_env(requirement: str | list[str]) -> dict:
     """Environment variables for the pip process: for a ``git+https://github.com/...``
     requirement and a GitHub token, a git config entry that sends the token to github.com, so
     it never appears in the command or in pip's output."""
+    if not isinstance(requirement, str):
+        return next((env for r in requirement if (env := pip_env(r))), {})
     url = requirement.split("@", 1)[-1].strip() if " @ " in requirement else requirement
     url = url.removeprefix("git+")
     if not url.startswith("https://github.com/"):

@@ -1330,6 +1330,30 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_ewd_offers_to_install_the_pip_packages_it_needs(app, cu_path, tmp_path, monkeypatch):
+    from ewald import notebook_io, plugins, settings
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+    from test_notebook_io import add_package_plugin
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\npipe = load({str(cu_path)!r})\n")
+    notebook_io.save_ewd(nb, tmp_path / "p.ewd", figures=False)
+    add_package_plugin(tmp_path / "p.ewd")
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.No)
+    w = MainWindow(settings=settings.Settings())
+    view = w.open_notebook(str(tmp_path / "p.ewd"))
+    assert not view.packages_bar.isHidden() and "ewald-cp2k==0.2" in view.packages_text.text()
+    ran = []
+    monkeypatch.setattr(w.plugins_panel, "_run_pip", lambda action, req: ran.append((action, req)))
+    view.packages_button.click()
+    assert ran == [("install", ["ewald-cp2k==0.2"])] and not w.plugins_dock.isHidden()
+    monkeypatch.setattr(plugins, "modifiers", lambda: {"Cp2kCharges": object()})   # pip installed it
+    w.plugins_panel.changed.emit()
+    assert view.packages_bar.isHidden()
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_open_turns_bonds_off_above_limit(app):
     from ewald import examples, settings
     from ewald.gui.app import MainWindow

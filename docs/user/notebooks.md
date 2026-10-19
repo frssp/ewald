@@ -164,7 +164,10 @@ cell runs and its plugins are not imported until you agree: opening asks (unless
 when opened* is *never*), and so do Run all and running a single cell. A bar over the cells
 says the notebook is restricted, with *Trust* and *Trust and run all*; Notebook › *Trust
 notebook…* does the same. A plugin you already have installed under the
-same id is used instead of the copy in the file. A `.ipynb` written by Jupyter opens the same
+same id is used instead of the copy in the file. Plugins that came from a pip package are not
+in the file, only their package and version: when you don't have one, a second bar names it with
+the steps that need it, and *Install…* runs pip for them in the Plugins side bar after you
+confirm the command (`Notebook.load(...).warnings` lists them in a script). A `.ipynb` written by Jupyter opens the same
 way as a `.py`; `pipe.add(...)` cells become steps and its outputs are kept.
 
 ## Undo and redo

@@ -100,6 +100,8 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             self.plugins_panel = PluginsPanel(self.settings)
             self.plugins_panel.stepRequested.connect(lambda m: self.panel.add_modifier(m))
             self.plugins_panel.changed.connect(lambda: self.message("Plugins changed"))
+            self.plugins_panel.changed.connect(self.panel.refresh_packages)
+            self.panel.pipRequested.connect(self._install_notebook_packages)
             self.plugins_panel.createRequested.connect(self._create_plugin)
             self.plugins_dock = self._dock(self.plugins_panel, "Plugins", QtCore.Qt.LeftDockWidgetArea, 300)
             self.splitDockWidget(self.plugins_dock, self.notebook_dock, QtCore.Qt.Horizontal)

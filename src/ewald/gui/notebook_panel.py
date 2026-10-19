@@ -707,6 +707,7 @@ class NotebookView(QtWidgets.QWidget):
     pipelineReplaced = QtCore.Signal(object)  # the notebook bound 'pipe' to a new pipeline
     askRequested = QtCore.Signal()
     titleChanged = QtCore.Signal()
+    pipRequested = QtCore.Signal(list)        # pip requirements of plugins the notebook needs
     plotCreated = QtCore.Signal(object)       # the live PlotsPanel of a new view cell
 
     def __init__(self, notebook: Notebook, parent=None):
@@ -736,6 +737,8 @@ class NotebookView(QtWidgets.QWidget):
         lay.addLayout(bar)
         self.banner = self._make_banner()
         lay.addWidget(self.banner)
+        self.packages_bar = self._make_packages_bar()
+        lay.addWidget(self.packages_bar)
         self.stack = QtWidgets.QStackedWidget()
         self.scroll = _FitWidthScrollArea(objectName="notebookScroll")
         self.scroll.setWidgetResizable(True)
@@ -784,6 +787,32 @@ class NotebookView(QtWidgets.QWidget):
             (f" and its plugins ({', '.join(plugins)})" if plugins else "") + ".")
         banner.setToolTip("It came from an .ewd file. Its cells are Python code, so they run only after you agree.")
         banner.setVisible(nb.restricted)
+
+    def _make_packages_bar(self):
+        """The bar over a notebook whose steps come from pip packages this Python lacks."""
+        w = QtWidgets.QFrame(objectName="restrictedBanner")
+        row = QtWidgets.QHBoxLayout(w)
+        row.setContentsMargins(10, 6, 8, 6)
+        self.packages_text = QtWidgets.QLabel(wordWrap=True)
+        row.addWidget(self.packages_text, 1)
+        self.packages_button = QtWidgets.QPushButton("Install…", toolTip="Install them with pip (you confirm the command)")
+        self.packages_button.clicked.connect(
+            lambda: self.pipRequested.emit([e["requirement"] for e in self.missing_packages()]))
+        row.addWidget(self.packages_button)
+        self.refresh_packages(w)
+        return w
+
+    def missing_packages(self) -> list[dict]:
+        from ..notebook_io import missing_packages
+
+        return missing_packages(getattr(self.notebook, "manifest", None) or {})
+
+    def refresh_packages(self, bar=None):
+        bar = bar or self.packages_bar
+        missing = self.missing_packages()
+        names = ", ".join(f"{e['requirement']} ({', '.join(e.get('modifiers', [])) or e['id']})" for e in missing)
+        self.packages_text.setText(f"<b>Needs plugins from pip:</b> {names}. Their steps fail until they are installed.")
+        bar.setVisible(bool(missing))
 
     def _make_add_bar(self):
         w = QtWidgets.QWidget(objectName="addBar")
@@ -1091,6 +1120,7 @@ class NotebookPanel(QtWidgets.QWidget):
     pipelineReplaced = QtCore.Signal(object)
     askRequested = QtCore.Signal()
     plotCreated = QtCore.Signal(object)       # a view cell's live plot: the main window links it
+    pipRequested = QtCore.Signal(list)        # a notebook's bar asks to pip install its plugins
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1126,6 +1156,11 @@ class NotebookPanel(QtWidgets.QWidget):
     def views(self) -> list[NotebookView]:
         return [self.tabs.widget(i) for i in range(self.tabs.count())]
 
+    def refresh_packages(self):
+        """Plugins changed (a pip install): update every notebook's missing-packages bar."""
+        for v in self.views():
+            v.refresh_packages()
+
     def _next_name(self):
         names = {v.notebook.name for v in self.views()}
         k = 1
@@ -1143,6 +1178,7 @@ class NotebookPanel(QtWidgets.QWidget):
             if w.plot_panel is not None:
                 self.plotCreated.emit(w.plot_panel)
         view.titleChanged.connect(lambda v=view: self._retitle(v))
+        view.pipRequested.connect(self.pipRequested.emit)
         self._switching = True
         i = self.tabs.addTab(view, nb.name)
         self.tabs.setCurrentIndex(i)
