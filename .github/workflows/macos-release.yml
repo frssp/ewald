@@ -97,11 +97,15 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+      # same notes as release.yml, so whichever workflow finishes first creates the same release
+      - name: Release notes from CHANGELOG.md
+        run: python packaging/release_check.py --notes > notes.md
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
+          body_path: notes.md

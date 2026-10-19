@@ -10,6 +10,8 @@ import os
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 HERE = os.path.dirname(os.path.abspath(SPEC))
+# the app icon rendered by src/ewald/assets/icon/make_icons.py; EWALD_ICON overrides it
+ICON = os.environ.get("EWALD_ICON") or os.path.join(HERE, "..", "..", "src", "ewald", "assets", "icon", "ewald.ico")
 GPU = os.environ.get("EWALD_VARIANT", "cpu") == "gpu"
 
 hiddenimports = (collect_submodules("ewald")
@@ -45,7 +47,7 @@ a = Analysis(
 pyz = PYZ(a.pure)
 
 common = dict(debug=False, bootloader_ignore_signals=False, strip=False, upx=False,
-              icon=os.environ.get("EWALD_ICON") or None)
+              icon=ICON if os.path.exists(ICON) else None)
 cli = EXE(pyz, [s for s in a.scripts if s[0] != "launch_gui"], [], exclude_binaries=True,
           name="ewald", console=True, **common)
 gui = EXE(pyz, [s for s in a.scripts if s[0] != "launch_cli"], [], exclude_binaries=True,
