@@ -360,12 +360,13 @@ Also: `ewald describe` / `ewald narrate` (rule-based descriptors and a trajector
 
 ## Plugins
 
-Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.visuals`, `ewald.overlays`, `ewald.colormaps` and `ewald.themes`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / `@colormap` / `@theme`; `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
+Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.visuals`, `ewald.overlays`, `ewald.colormaps`, `ewald.themes`, `ewald.tools` and `ewald.ui_themes`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / `@colormap` / `@theme` / `@claude_tool` / `@ui_theme`; `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
 
 - `examples/plugins/cell_axes.py`: Example visual element plugins: cell axes and a halo around selected atoms.
 - `examples/plugins/figure_extras.py`: Example figure-style plugins: a color map, a theme and an overlay.
 - `examples/plugins/local_composition.py`: Example modifier plugin: local chemical composition around every particle.
 - `examples/plugins/npz_trajectory.py`: Example reader plugin: trajectories stored as NumPy ``.npz`` archives.
+- `examples/plugins/ui_themes.py`: Example UI color themes for the desktop app: "Midnight" (dark, blue accents) and "High contrast" (light, black text and borders).
 
 ## Preferences
 

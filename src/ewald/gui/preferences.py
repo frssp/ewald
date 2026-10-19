@@ -317,9 +317,9 @@ class PreferencesDialog(QtWidgets.QDialog):
         elif opt.kind in ("file", "dir"):
             w = _PathEdit(opt.kind)
             w.edit.textChanged.connect(lambda _, k=opt.key: self._changed(k))
-        elif opt.choices:
+        elif opt.choices or opt.kind == "ui_theme":
             w = QtWidgets.QComboBox()
-            for c in opt.choices:
+            for c in opt.choices or _ui_theme_names(d):
                 w.addItem(_CHOICE_LABELS.get(c, c), c)
             w.currentIndexChanged.connect(lambda _, k=opt.key: self._changed(k))
         elif isinstance(d, bool):
@@ -677,3 +677,11 @@ class PreferencesDialog(QtWidgets.QDialog):
         super().accept()
 
 
+def _ui_theme_names(default: str) -> list[str]:
+    """Built-in and plugin UI themes for the combo box (the built-ins when plugins fail)."""
+    from .. import plugins
+
+    try:
+        return list(plugins.ui_themes())
+    except Exception:
+        return ["paper", "graphite"]
