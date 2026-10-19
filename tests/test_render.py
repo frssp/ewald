@@ -1,6 +1,7 @@
 import numpy as np
 
-from ewald import Pipeline, StaticSource
+from ewald import DataCollection, Pipeline, StaticSource
+from ewald.data import Cell
 from ewald.modifiers import ColorCoding, CoordinationAnalysis
 
 
@@ -44,3 +45,19 @@ def test_raytrace_hits_sphere_center():
     img = raytrace(sc, cam, (21, 21), samples=1, ao_samples=0, shadows=False)
     assert img[10, 10, 0] > 0.5 and img[10, 10, 1] < 0.1      # red sphere in the middle
     assert np.allclose(img[0, 0, :3], 1.0)                    # white background in the corner
+
+
+def test_trajectory_lines_render(tmp_path):
+    from ewald.modifiers import GenerateTrajectoryLines
+
+    t = np.linspace(0, 1, 20)
+    frames = []
+    for s in t:
+        d = DataCollection(np.array([[2.0 + 6 * s, 5.0, 5.0], [5.0, 2.0 + 6 * s, 5.0]]), np.array(["Cu", "O"]),
+                           Cell(np.diag([10.0] * 3)))
+        frames.append(d)
+    pipe = Pipeline(StaticSource(frames), [GenerateTrajectoryLines()])
+    with_lines = pipe.render(tmp_path / "a.png", frame=0, size=(160, 120), direction="z", show_cell=False)
+    without = pipe.render(tmp_path / "b.png", frame=0, size=(160, 120), direction="z", show_cell=False,
+                          trajectory_width=0)
+    assert np.abs(with_lines.astype(int) - without.astype(int)).sum() > 0

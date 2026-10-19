@@ -66,6 +66,12 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 
 - `ewald.kernels.rdf(positions, cell, cutoff, nbins=200, types=None)` -> table with `r`, `g(r)`, partial `g(r) A-B`.
 - `ewald.kernels.trajectory_msd(pipe, start=0, stop=None, step=1)` -> `lag`, `MSD`, `MSD <type>` (unwrapped, by id).
+- `ewald.kernels.trajectory_vacf(pipe, time_per_frame=1.0, velocities="auto")`, `trajectory_rdf(pipe, cutoff, nbins)`
+  (time-averaged g(r)), `diffusion_fit(time, msd)` -> `(D, intercept, fit window)`, `green_kubo(time, vacf)`.
+- Trajectory modifiers (`MeanSquaredDisplacement`, `VelocityAutocorrelation`, `TimeAveraging`, `TimeSeries`,
+  `GenerateTrajectoryLines`) read every frame of `start:stop:step` through the modifiers above them and cache the
+  result, so e.g. `CoordinationAnalysis(3.0)` then `TimeAveraging("table:coordination-rdf")` gives the
+  time-averaged g(r) in `tables["coordination-rdf[average]"]`.
 - `ewald.llm.describe_frame(data)` / `describe_trajectory(pipe)`: compact JSON summaries and detected events.
 - `ewald.llm.narrate(pipe)`: event timeline; `ewald.llm.Agent.from_file(path).ask("...")`: Claude over these tools.
 
@@ -98,3 +104,8 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 - `CentroSymmetry(num_neighbors: int = 12, mode: str = 'conventional', only_selected: bool = False)`: Centrosymmetry parameter (Kelchner et al. 1998) from ``num_neighbors`` neighbors.
 - `ChillPlus(cutoff: float = 3.5, color_by_type: bool = True, only_selected: bool = False)`: Chill+ identification of water structures (Nguyen and Molinero 2015).
 - `IdentifyDiamond(types=None, color_by_type: bool = True, only_selected: bool = False)`: Cubic and hexagonal diamond lattice identification (Maras et al. 2016).
+- `MeanSquaredDisplacement(start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0, fit_range: tuple = (0.2, 0.8), by_type: bool = True, unwrapped: bool = False, subtract_drift: bool = False, only_selected: bool = False)`: Time-averaged mean squared displacement over a frame range and the diffusion coefficient.
+- `VelocityAutocorrelation(start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0, velocities: str = 'auto', by_type: bool = True, max_lag_fraction: float = 0.5, only_selected: bool = False)`: Velocity autocorrelation function and the Green-Kubo diffusion coefficient.
+- `TimeAveraging(operate_on='table:coordination-rdf', start: int = 0, stop: int | None = None, step: int = 1)`: Average upstream results over a frame range (OVITO's TimeAveragingModifier).
+- `TimeSeries(operate_on=None, start: int = 0, stop: int | None = None, step: int = 1)`: Global attributes as a function of time (OVITO's TimeSeriesModifier).
+- `GenerateTrajectoryLines(only_selected: bool = True, start: int = 0, stop: int | None = None, step: int = 1, unwrap_trajectories: bool = True)`: Particle paths over a frame range, drawn as lines, plus path metrics.
