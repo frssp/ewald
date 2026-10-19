@@ -78,5 +78,6 @@ if __name__ == "__main__":
         sys.exit(0)
     for name in sys.argv[1:] or list(SHOTS):
         work = tempfile.mkdtemp()        # notebooks write their figures into the working folder
-        env = dict(os.environ, _EWALD_SHOT=name, EWALD_CONFIG_DIR=tempfile.mkdtemp(), MPLBACKEND="Agg")
+        env = dict(os.environ, _EWALD_SHOT=name, EWALD_CONFIG_DIR=tempfile.mkdtemp(), MPLBACKEND="Agg",
+                   EWALD_PLUGIN_INDEX="")   # only the bundled example plugins, no network
         subprocess.run([sys.executable, os.path.abspath(__file__)], env=env, cwd=work, check=True)
