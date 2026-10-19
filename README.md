@@ -1,6 +1,6 @@
 <img src="src/ewald/assets/icon/ewald-128.png" alt="EWALD icon" width="96" align="right">
 
-# EWALD: Extensible Window for Atomic Lattices & Dynamics
+# EWALD: Extensible Workbench for Atomic Lattices & Dynamics
 
 [![CI](https://github.com/frssp/ewald/actions/workflows/ci.yml/badge.svg)](https://github.com/frssp/ewald/actions/workflows/ci.yml)
 
