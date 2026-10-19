@@ -38,6 +38,7 @@ jobs:
         with:
           name: wheels
           path: dist/*.whl
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 3 }}
 
   app:
     name: app (${{ matrix.variant }})
@@ -45,7 +46,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [cpu, gpu]
+        # the GPU build (about 1.7 GB per file, 30 min) runs only for tags and manual runs
+        variant: ${{ fromJSON(github.event_name == 'pull_request' && '["cpu"]' || '["cpu", "gpu"]') }}
     env:
       EWALD_VARIANT: ${{ matrix.variant }}
     steps:
@@ -115,6 +117,7 @@ jobs:
             dist/*-setup.exe
             dist/*-portable.zip
           compression-level: 0
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 3 }}
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
