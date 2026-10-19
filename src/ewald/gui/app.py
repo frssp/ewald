@@ -108,6 +108,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.settings["general.startup_workspace"] == "Render":
             self.set_workspace(1)
         prefs.run_startup_script(self, self.settings)
+        from .remote_dialog import install_prompts
+
+        install_prompts(self)  # SSH password / host-key dialogs for remote files
         if pipeline is not None:
             self.set_pipeline(pipeline)
 
@@ -127,6 +130,7 @@ class MainWindow(QtWidgets.QMainWindow):
         tb.setObjectName("main-toolbar")
         tb.setMovable(False)
         tb.addAction("Open", self.open_dialog)
+        tb.addAction("Open remote", self.open_remote_dialog)
         tb.addSeparator()
         self.ws_buttons = []
         for i, name in enumerate(("Analyze", "Render")):
@@ -158,6 +162,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mb = self.menuBar()
         f = mb.addMenu("&File")
         f.addAction("&Load file…", self.open_dialog, QtGui.QKeySequence.Open)
+        f.addAction("Load &remote file (SSH)…", self.open_remote_dialog, "Ctrl+Alt+O")
         f.addAction("Load &session…", self.load_session_dialog, "Ctrl+Shift+O")
         f.addAction("&Save session", self.save_session, QtGui.QKeySequence.Save)
         f.addAction("Save session &as…", lambda: self.save_session(ask=True), QtGui.QKeySequence.SaveAs)
@@ -274,12 +279,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- pipeline / data
     def open_file(self, path, **kwargs):
+        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
         try:
             pipe = import_file(path, **kwargs)
         except Exception as exc:
+            QtWidgets.QApplication.restoreOverrideCursor()
             self.message(f"Load failed: {path}: {exc}", error=True)
             QtWidgets.QMessageBox.critical(self, "Load failed", f"{path}\n\n{exc}")
             return None
+        QtWidgets.QApplication.restoreOverrideCursor()
         self.set_pipeline(pipe)
         self.setWindowTitle(f"ewald — {os.path.basename(str(path))}")
         self.message(f"Loaded {path}: {pipe.num_frames} frame(s)")
@@ -294,6 +302,17 @@ class MainWindow(QtWidgets.QMainWindow):
         if is_session_file(path):
             self.load_session(path)
             return
+        self._open_asking_types(path)
+
+    def open_remote_dialog(self):
+        from .remote_dialog import RemoteFileDialog
+
+        dlg = RemoteFileDialog(self)
+        if dlg.exec() and dlg.url:
+            self._open_asking_types(dlg.url)
+        return dlg
+
+    def _open_asking_types(self, path):
         kwargs = {}
         from ..io.lammps_dump import is_lammps_dump
 

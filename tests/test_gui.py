@@ -247,6 +247,30 @@ def test_preferences_layout_covers_every_option_once():
             assert all(__import__("ewald.settings").settings.OPTION[k].page == name for k in ks)
 
 
+def test_remote_file_dialog_browse_and_open(app, server):
+    from ewald.gui import remote_dialog
+    from ewald.gui.remote_dialog import RemoteFileDialog
+
+    dlg = RemoteFileDialog(host="hpc")
+    assert "hpc" in [dlg.host.itemText(i) for i in range(dlg.host.count())]
+    assert dlg.browse("")  # home
+    assert dlg.cwd == "/home/alice"
+    assert not dlg.browse("/nowhere") and dlg.status.text().startswith(("FileNotFoundError", "OSError"))
+    assert dlg.browse("/data")
+    names = [dlg.list.topLevelItem(i).text(0) for i in range(dlg.list.topLevelItemCount())]
+    assert "XDATCAR" in names and "dump.custom.lammpstrj" in names
+    item = dlg.list.findItems("XDATCAR", QtCore.Qt.MatchExactly)[0]
+    dlg.list.setCurrentItem(item)
+    dlg._accept()
+    assert dlg.url == "hpc:/data/XDATCAR" and dlg.result() == QtWidgets.QDialog.Accepted
+    assert remote_dialog.load_recent()[0] == "hpc:/data/XDATCAR"
+    assert RemoteFileDialog().recent.count() == 2
+
+    from ewald import import_file
+
+    assert import_file(dlg.url).num_frames > 1
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_session_save_load_and_publication_output(app, pipe, tmp_path):
     from ewald.gui.app import MainWindow
