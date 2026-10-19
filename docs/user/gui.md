@@ -18,7 +18,9 @@ the viewport, and a bottom dock holds the Python console, the data inspector and
 
 **Viewport.** Drag to orbit and scroll to zoom (VTK's standard mouse controls). View › View
 along a, b, c, a*, b*, c* aligns the view with a cell vector or reciprocal vector, as in
-VESTA, and View › Zoom to fit (Ctrl+0) frames the cell. The tool rail on the left switches
+VESTA, and View › Zoom to fit (Ctrl+0) frames the cell. View › Theme applies a theme (Default,
+VESTA, CPK, Journal, Dark slide, or a [theme plugin](../plugins/styles.md#themes)): element
+colors, background, cell color and radius preset in one step. The tool rail on the left switches
 between orbit, pick (click an atom to see its id, type, position and every property;
 Shift+click adds atoms to the pick or removes them),
 distance (click two atoms) and angle (click three atoms, vertex in the middle). The viewport
@@ -27,6 +29,10 @@ sphere surface, so spheres stay round at any zoom, overlapping spheres and bonds
 with meshes, and 100 000 atoms rotate smoothly. Viewports › Performance › *Sphere drawing* =
 Mesh brings back triangle spheres (*Sphere resolution*, up to the *Impostor threshold*), and
 *Smooth edges* (on) applies FXAA to outlines.
+A right click (without dragging, which zooms) opens the viewport menu: Overlay other frames
+draws every other frame as see-through copies behind the current one (`OverlayFrames`; on by
+default for NEB folders), with its transparency (50 to 95 %) and whether only the atoms that
+move get copies; then View along, Zoom to fit and Ask Claude about selection.
 
 **Ask Claude.** The Ask Claude tab next to the pipeline (Tools › Ask Claude about selection,
 Ctrl+J) answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
@@ -66,7 +72,12 @@ pipeline panel and redraw the view.
 **Plots.** Any table in the current frame (g(r), MSD, histograms, time series) can be plotted
 and saved. The `Thermo` table (log.lammps, OSZICAR, OUTCAR, vasprun.xml; see
 [File formats](formats.md#simulation-results)) is drawn one column at a time, picked under
-"y", with a dashed line at the current frame's step that follows the timeline.
+"y", with a dashed line at the current frame's step that follows the timeline. The `NEB`
+table (a NEB folder, or `NebEnergyProfile`) is drawn as the energy profile: the spline, the
+images as points, the current image highlighted and the barriers in the corner. Clicking an
+image jumps to its frame. Diffraction
+reflections (`diffraction-peaks`) are drawn as sticks, and a measured pattern loaded through a
+modifier's `experimental` file (the "…" button picks it) as points under the calculated curve.
 
 **Linked selection.** Plots and the viewport share one selection, in both directions:
 
@@ -98,7 +109,9 @@ name.
 Window › Render workspace (Ctrl+2), or the Render button, opens the figure settings: renderer
 (the built-in ray tracer or OpenGL), anti-aliasing samples, ambient occlusion and shadows,
 journal size presets (1-column 3.5 in, 2-column 7.2 in, square, 16:9 slide) at a chosen dpi,
-background (white, transparent, black, or the viewport's), and an output file. The preview
+background (white, transparent, black, or the viewport's), overlays, and an output file.
+Under Overlays, "+ Overlay" adds an overlay element (Coordinate tripod, Attributes, or an
+[overlay plugin](../plugins/overlays.md)) with a checkbox and a parameter form. The preview
 shows the final aspect ratio. The "Python for this figure" panel shows the script that
 produces the same image with `pipe.render(...)`, updated as you change settings, so a figure
 made in the GUI can be reproduced in a batch script. See [Rendering figures](rendering.md).
@@ -107,7 +120,9 @@ made in the GUI can be reproduced in a batch script. See [Rendering figures](ren
 
 File › Load file opens any format ewald can read ([File formats](formats.md)), including
 formats added by [reader plugins](../plugins/readers.md). LAMMPS dumps ask for a
-type-to-element map unless you set a default in Preferences. File › Export data writes the
+type-to-element map unless you set a default in Preferences. File › Load NEB folder opens a
+VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image
+([NEB runs](formats.md#neb-runs)). File › Export data writes the
 current frame or the whole trajectory through `export_file`, and File › Export movie writes an
 MP4 or GIF (needs the `movie` extra).
 

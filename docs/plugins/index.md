@@ -13,6 +13,9 @@ against the same API the built-in readers and modifiers use, so everything in th
 | [Writer](writers.md) | a function `f(path, frames, **kwargs)` | `@writer(...)` in the plugin folder, or an `ewald.writers` entry point | available |
 | [Modifier](modifiers.md) | a `Modifier` subclass (or a function `f(frame, data)` in a script) | `@modifier` in the plugin folder, or an `ewald.modifiers` entry point | available |
 | [Visual element](visuals.md) | a `VisualElement` subclass returning scene primitives | `@visual` in the plugin folder, or an `ewald.visuals` entry point | available |
+| [Overlay](overlays.md) | an `OverlayElement` subclass returning 2D items (text, shapes, images) | `@overlay` in the plugin folder, or an `ewald.overlays` entry point | available |
+| [Color map](styles.md#color-maps) | a function returning colors or a matplotlib `Colormap` | `@colormap` in the plugin folder, or an `ewald.colormaps` entry point | available |
+| [Theme](styles.md#themes) | a function returning a `Theme` (element colors, background, cell color, radius preset) | `@theme` in the plugin folder, or an `ewald.themes` entry point | available |
 
 [Modifier Forge](forge.md) writes a modifier plugin from a description: Claude writes the
 module and its tests, and ewald saves it to the plugin folder once its checks pass.

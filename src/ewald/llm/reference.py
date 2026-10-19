@@ -19,7 +19,7 @@ The API mirrors OVITO's, so OVITO knowledge transfers; the differences below are
 from ewald import import_file
 from ewald.modifiers import CoordinationAnalysis, ExpressionSelection, DeleteSelected, ColorCoding
 
-pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, xsf, h5md, xtc, cif, ...
+pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vaspout.h5, LAMMPS dump/data, extxyz, xsf, h5md, xtc, cif, ...
 # pipe = import_file("dump.*.lammpstrj", type_map={1: "Cu", 2: "Zr"})   # LAMMPS numeric types -> elements
 # pipe = import_file("cluster:/scratch/run1/dump.lammpstrj")   # over SSH: host:/path, user@host:path, ssh://host/path
 # pipe = import_file("dump.lammpstrj", thermo="log.lammps")   # thermo columns -> data.attributes["Temp"], data.tables["Thermo"]
@@ -78,7 +78,7 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 | `data.particles_.create_property('X', data=v)` | `data['X'] = v` |
 | `data.particles.particle_types` (type objects, ids) | `data.types` (element strings) |
 | `data.cell[:, :3]`: COLUMNS are the cell vectors, `data.cell[:, 3]` origin | `data.cell.matrix`: ROWS are the cell vectors, `data.cell.origin` |
-| `ColorCodingModifier(property=..., gradient=...)` | `ColorCoding(property, cmap="viridis")` (matplotlib colormap name) |
+| `ColorCodingModifier(property=..., gradient=...)` | `ColorCoding(property, cmap="viridis")` (matplotlib name or `@colormap` plugin) |
 | `WrapPeriodicImagesModifier()` | `WrapAtoms()` |
 | `data.particles.bonds.topology`, `bonds.pbc_vectors` | `data.bonds["Topology"]`, `data.bonds["Periodic Image"]` |
 | `CreateBondsModifier(mode=CreateBondsModifier.Mode.Pairwise)` | `CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)])` (`set_pairwise_cutoff` also works) |
@@ -88,13 +88,19 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 | `TextLabelOverlay`, `ColorLegendOverlay` | `render(..., text="frame [Frame]", legend=True, type_legend=True, scale_bar=True)` |
 | vector export (`.pdf`/`.svg`) | `render(data, "fig.svg", renderer="vector")` (also .pdf/.eps) |
 | `TachyonRenderer(antialiasing_samples=, ambient_occlusion_samples=)` | `render(..., renderer="raytrace", quality="publication")` (default; `"draft"`/`"standard"`, or explicit `samples=`, `ao_samples=`) |
-| visual elements (`data.particles.vis`, custom `ViewportOverlay`/`PythonViewportOverlay`) | `ewald.scene` primitives; plugin elements with `@visual`, drawn by every renderer via `render(..., visuals=["Cell axes", MyElement(...)])` |
+| visual elements (`data.particles.vis`) | `ewald.scene` primitives; plugin elements with `@visual`, drawn by every renderer via `render(..., visuals=["Cell axes", MyElement(...)])` |
+| `CoordinateTripodOverlay`, `PythonViewportOverlay` | `render(..., overlays=["Coordinate tripod", "Attributes"])`; custom ones subclass `ewald.overlays.OverlayElement` (`@overlay`) and return 2D items |
+| element color presets | `render(..., theme="VESTA")` (`"CPK"`, `"Journal"`, `"Dark slide"`, `@theme` plugins) |
 | session state (`.ovito`) | `ewald.session.save_session(path, pipe, camera=..., render=...)`, `load_session(path).pipeline` |
 | `export_file(pipeline, file, format, columns=[...])` | `export_file(pipe, file, format=None, frames=None)`: writer from the file name (`POSCAR`, `*.data`, `*.extxyz`, `*.xsf`, `*.h5md`, `*.xtc`, `*.cif`, ...) or `format=`; one-frame formats need `frames=[i]` |
 
 ## Other entry points
 
 - `ewald.kernels.rdf(positions, cell, cutoff, nbins=200, types=None)` -> table with `r`, `g(r)`, partial `g(r) A-B`.
+- `ewald.diffraction.powder_peaks(positions, types, cell, wavelength="CuKa", radiation="xray", two_theta_range=(0, 90))`
+  -> `2theta`, `Intensity` (max 100), `d`, `h`, `k`, `l`, `Multiplicity` (pymatgen XRDCalculator/NDCalculator formalism);
+  `powder_profile(peaks, two_theta, fwhm, eta)`; `structure_factor(positions, cell, q_max, number_of_bins, q_min, method,
+  types, weighting)` -> `q`, `S(q)`; `load_pattern(path)` reads a measured two-column pattern.
 - `ewald.kernels.trajectory_msd(pipe, start=0, stop=None, step=1)` -> `lag`, `MSD`, `MSD <type>` (unwrapped, by id).
 - `ewald.kernels.trajectory_vacf(pipe, time_per_frame=1.0, velocities="auto")`, `trajectory_rdf(pipe, cutoff, nbins)`
   (time-averaged g(r)), `diffusion_fit(time, msd)` -> `(D, intercept, fit window)`, `green_kubo(time, vacf)`.

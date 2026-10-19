@@ -135,6 +135,8 @@ class Toolset:
         self._code_blocks: list[str] = []
         self._namespace: dict = {}
         self.visuals: list[dict] = []  # plugin visual elements drawn by render_image: {name, params, enabled}
+        self.overlays: list[dict] = []  # overlay elements drawn by render_image: {name, params, enabled}
+        self.theme: str | None = None   # theme render_image uses (ewald.themes)
         self.tools: dict[str, Tool] = {}
         self._register()
 
@@ -175,9 +177,11 @@ class Toolset:
             else:
                 lines.append(f"pipe.modifiers.append({m!r})")
         lines += ["", f"data = pipe.compute({self.frame})"]
-        if self.visuals:
-            lines += [f"visuals = {self.visuals!r}",
-                      "# from ewald.render import render; render(data, 'figure.png', visuals=visuals)"]
+        figure = {k: v for k, v in (("visuals", self.visuals), ("overlays", self.overlays), ("theme", self.theme)) if v}
+        if figure:
+            lines += [f"{k} = {v!r}" for k, v in figure.items()]
+            args = ", ".join(f"{k}={k}" for k in figure)
+            lines.append(f"# from ewald.render import render; render(data, 'figure.png', {args})")
         return "\n".join(lines) + "\n"
 
     # ----------------------------------------------------------- registration
@@ -238,7 +242,7 @@ class Toolset:
         format_help = f"optional; detected from the file when omitted. Readers: {formats}"
 
         @T("load_structure",
-           "Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, "
+           "Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vaspout.h5, LAMMPS dump/data, "
            "extxyz, cif, ... ; wildcards allowed) as the session pipeline, replacing any previous one. "
            "Returns frame count and a description of the first frame.",
            _obj({"path": {"type": "string"},
@@ -404,6 +408,45 @@ class Toolset:
             return {"peaks": _describe.rdf_peaks(data, rmax=cutoff, nbins=bins, partial=partial),
                     "table": _downsample(table)}
 
+        @T("analyze_symmetry",
+           "Space group (Hermann-Mauguin and number), point group, crystal system and the Wyckoff site of every "
+           "symmetry-unique atom of a frame (spglib). symprec is the distance tolerance in Angstrom.",
+           _obj({"frame": frame_p, "symprec": {"type": "number", "description": "default 0.01"}}))
+        def analyze_symmetry(frame=None, symprec=0.01):
+            from ..modifiers.symmetry import SymmetryAnalysis
+
+            data = self._need_pipeline().compute(self._frame(frame)).copy()
+            SymmetryAnalysis(symprec=symprec).modify(data, None)
+            out = {k.split(".", 1)[1]: v for k, v in data.attributes.items() if k.startswith("SymmetryAnalysis.")}
+            frac = data.cell.to_fractional(data.positions) % 1.0
+            eq = data["Equivalent Atom"]
+            out["sites"] = [{"index": int(i), "type": str(data.types[i]), "wyckoff": str(data["Wyckoff Position"][i]),
+                             "site_symmetry": str(data["Site Symmetry"][i]),
+                             "fractional": np.round(frac[i], 4).tolist()} for i in np.unique(eq)[:40]]
+            return out
+
+        @T("compute_diffraction",
+           "Powder X-ray or neutron diffraction peaks of a frame (2-theta, d, hkl, relative intensity; strongest "
+           "first), or the structure factor S(q) when kind='sq'.",
+           _obj({"frame": frame_p, "kind": {"type": "string", "enum": ["xrd", "neutron", "sq"]},
+                 "wavelength": {"type": "string", "description": "Angstrom or 'CuKa', 'MoKa', ... (default CuKa)"},
+                 "two_theta_max": {"type": "number"}, "q_max": {"type": "number"}}))
+        def compute_diffraction(frame=None, kind="xrd", wavelength="CuKa", two_theta_max=90.0, q_max=10.0):
+            from .. import diffraction as dif
+
+            data = self._need_pipeline().compute(self._frame(frame))
+            if kind == "sq":
+                table = dif.structure_factor(data.positions, data.cell, q_max, 200, types=data.types)
+                return {"table": _downsample(table)}
+            p = dif.powder_peaks(data.positions, data.types, data.cell, wavelength,
+                                 "neutron" if kind == "neutron" else "xray", (5.0, two_theta_max))
+            order = np.argsort(-p["Intensity"])[:25]
+            return {"num_peaks": int(len(p["2theta"])), "wavelength": dif.wavelength_of(wavelength),
+                    "peaks": [{"2theta": round(float(p["2theta"][i]), 3), "d": round(float(p["d"][i]), 4),
+                               "hkl": [int(p["h"][i]), int(p["k"][i]), int(p["l"][i])],
+                               "intensity": round(float(p["Intensity"][i]), 2),
+                               "multiplicity": int(p["Multiplicity"][i])} for i in order]}
+
         @T("compute_msd",
            "Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per "
            "type, with a linear-regime fit D = slope/6. Give timestep_fs (time between stored frames) to get D in "
@@ -519,14 +562,23 @@ class Toolset:
            _obj({"frame": frame_p, "direction": {"type": ["string", "array"]},
                  "bonds": {"type": ["number", "null"], "description": "draw bonds shorter than this (A)"},
                  "zoom": {"type": "number"}, "width": {"type": "integer"}, "height": {"type": "integer"},
+                 "theme": {"type": ["string", "null"],
+                           "description": "theme for this and later renders (see list_styles); null keeps it"},
                  "filename": {"type": "string", "description": "also save under this name in the work dir"}}))
-        def render_image(frame=None, direction="iso", bonds=None, zoom=1.0, width=None, height=None, filename=None):
+        def render_image(frame=None, direction="iso", bonds=None, zoom=1.0, width=None, height=None, filename=None,
+                         theme=None):
             pipe = self._need_pipeline()
             f = self._frame(frame)
             size = (width or self.render_size[0], height or self.render_size[1])
             name = filename or f"frame{f:05d}_{len(self.figures):03d}.png"
             path = os.path.join(self.workdir, os.path.basename(name))
-            extra = {"visuals": list(self.visuals)} if self.visuals else {}
+            if theme is not None:
+                from ..themes import get_theme
+
+                get_theme(theme)  # unknown names fail here, before rendering
+                self.theme = theme
+            extra = {k: v for k, v in (("visuals", list(self.visuals)), ("overlays", list(self.overlays)),
+                                       ("theme", self.theme)) if v}
             render_png(pipe.compute(f), path, size=size, direction=direction, bonds=bonds, zoom=zoom, **extra)
             self.figures.append(path)
             with open(path, "rb") as fh:
@@ -565,6 +617,49 @@ class Toolset:
         def remove_visual(index):
             removed = self.visuals.pop(index)
             return {"removed": removed, "visuals": list(self.visuals)}
+
+        @T("list_overlays",
+           "Overlay elements drawn on top of rendered images (built-in: Coordinate tripod, Attributes; plus "
+           "plugins), with their parameters, and the ones currently added. The text label, color legend, "
+           "type legend and scale bar are separate render options.",
+           _obj({}))
+        def list_overlays():
+            out = {p.name: {"builtin": p.builtin, "category": p.category, "doc": p.description,
+                            "params": _signature(p.cls)} for p in plugins.overlays().values()}
+            return {"available": out, "added": list(self.overlays)}
+
+        @T("add_overlay",
+           "Draw an overlay element (see list_overlays) on every later render_image, with optional "
+           "constructor parameters. Returns the overlays now added.",
+           _obj({"name": {"type": "string"}, "params": {"type": "object"}}, ["name"]))
+        def add_overlay(name, params=None):
+            from ..overlays import coerce_overlays, overlay_to_dict
+
+            (el,) = coerce_overlays([{"name": name, "params": params or {}}])
+            self.overlays.append(overlay_to_dict(el))
+            return {"overlays": list(self.overlays)}
+
+        @T("remove_overlay", "Stop drawing the overlay at 'index' of the added list.",
+           _obj({"index": {"type": "integer"}}, ["index"]))
+        def remove_overlay(index):
+            removed = self.overlays.pop(index)
+            return {"removed": removed, "overlays": list(self.overlays)}
+
+        @T("list_styles",
+           "Themes (element colors, background, cell color, radius preset; pass one to render_image) and the "
+           "color maps usable as 'cmap' in ColorCoding, GridSlice and VectorVis: common matplotlib names and "
+           "plugins, each marked whether it reads in grayscale.",
+           _obj({}))
+        def list_styles():
+            from ..colormaps import is_perceptual, names
+
+            kinds = {k: p.kind for k, p in plugins.colormaps().items()}
+            maps = {}
+            for n in names():
+                maps[n] = {"kind": kinds.get(n, "matplotlib"), "plugin": n in kinds,
+                           "grayscale_safe": is_perceptual(n, kinds.get(n))}
+            return {"themes": {k: p.description for k, p in plugins.themes().items()}, "current_theme": self.theme,
+                    "colormaps": maps, "note": "any other matplotlib colormap name also works"}
 
         writer_names = ", ".join(sorted(plugins.writers()))
 

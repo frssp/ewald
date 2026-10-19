@@ -224,3 +224,22 @@ def test_opengl_info_flags_software_rasterizers():
     info = opengl_info(Window("llvmpipe (LLVM 20.1.2, 256 bits)"))
     assert info == {"vendor": "V", "renderer": "llvmpipe (LLVM 20.1.2, 256 bits)", "version": "4.5", "software": True}
     assert not opengl_info(Window("NVIDIA GeForce RTX 4090/PCIe/SSE2"))["software"]
+
+
+def test_opengl_mixed_transparency_draws_glass_spheres_separately():
+    import pyvista as pv
+
+    from ewald.render import _split_by_alpha, build_scene
+
+    data = DataCollection([[1, 1, 1], [3, 3, 3], [2, 2, 2]], ["Fe", "Fe", "Fe"], Cell(np.eye(3) * 4))
+    data.particles["Transparency"] = np.array([0.0, 0.6, 1.0])  # 1 = hidden
+    p = pv.Plotter(off_screen=True, window_size=(80, 60))
+    scene = build_scene(p, data)
+    assert {"atoms", "atoms:glass"} <= set(p.actors)
+    p.close()
+    from ewald.render import spheres_cloud
+
+    (solid, s1), (glass, s2) = _split_by_alpha(spheres_cloud(scene["atoms"].primitive))
+    assert (s1, s2) == ("", ":glass") and solid.n_points == glass.n_points == 1
+    assert solid["rgb"].shape == (1, 3) and glass["rgb"].shape == (1, 4)
+    np.testing.assert_allclose(glass.points, [[3, 3, 3]])

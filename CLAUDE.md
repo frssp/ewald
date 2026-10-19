@@ -63,9 +63,12 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   draws a `Scene`, so new geometry goes into an element, not into one renderer.
 - `render.py` (VTK/PyVista offscreen; impostors above 150k atoms), `raytrace.py` (numba ray tracer,
   the publication renderer; pip VTK has no OSPRay), `vector.py` (SVG/PDF/EPS via matplotlib),
-  `overlays.py` (text, color/type legends, scale bar for every renderer), `movie.py` (GIF/PNG via
+  `overlays.py` (text, color/type legends, scale bar and `OverlayElement`s returning 2D items, for every
+  renderer), `colormaps.py` (`get_colormap`: matplotlib names plus `@colormap` plugins; use it instead of
+  `matplotlib.colormaps[...]`), `themes.py` (element colors, background, cell color, radius preset;
+  VESTA colors in `tables/colors.json`, regenerated with `tables/make_colors.py`, never by hand), `movie.py` (GIF/PNG via
   Pillow, MP4/AVI/MOV via ffmpeg), `session.py` (`.ewald` JSON: source, modifiers, style, camera).
-- `plugins.py`: reader, writer, modifier and visual element registry. Built-in formats (`io.builtin_readers()`, with
+- `plugins.py`: reader, writer, modifier, visual element, overlay, color map and theme registry. Built-in formats (`io.builtin_readers()`, with
   priorities) plus plugins from `ewald.readers` / `ewald.modifiers` entry points and
   `<config dir>/plugins/*.py`; `io.open_reader`, the GUI open filter and menu, the Claude tools and
   `ewald.modifiers.__getattr__` read it. Plugin modifiers stay out of `__all__` and `llms.txt`.
