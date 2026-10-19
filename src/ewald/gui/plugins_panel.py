@@ -3,6 +3,7 @@ catalogs (:mod:`ewald.plugin_catalog`), install, remove, and add a plugin step t
 from __future__ import annotations
 
 import html
+from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -26,12 +27,12 @@ class _CatalogLoader(QtCore.QThread):
 
 
 class PluginRow(QtWidgets.QFrame):
-    """One plugin: name, summary, kinds and its Install or Remove button."""
+    """One plugin: name, summary, kinds and its Install, Update, Disable or Remove buttons."""
 
     clicked = QtCore.Signal(object)
-    action = QtCore.Signal(object, str)   # item, "install" | "remove"
+    action = QtCore.Signal(object, str)   # item (an Entry for "install"/"update"), action name
 
-    def __init__(self, item, installed: bool, parent=None):
+    def __init__(self, item, installed: bool, parent=None, update=None):
         super().__init__(parent)
         self.item = item
         self.setObjectName("pluginRow")
@@ -45,6 +46,11 @@ class PluginRow(QtWidgets.QFrame):
                                   if getattr(item, "version", "") else ""))
         head.addWidget(title, 1)
         if installed and isinstance(item, pc.Installed):
+            if update is not None:
+                u = QtWidgets.QPushButton(f"Update to {update.version}", objectName="pluginInstall")
+                u.setToolTip(f"From {update.catalog}")
+                u.clicked.connect(lambda: self.action.emit(update, "update"))
+                head.addWidget(u)
             if item.id:
                 on = item.enabled
                 t = QtWidgets.QPushButton("Disable" if on else "Enable", objectName="pluginButton")
@@ -57,6 +63,10 @@ class PluginRow(QtWidgets.QFrame):
         elif not installed:
             b = QtWidgets.QPushButton("Install", objectName="pluginInstall")
             b.clicked.connect(lambda: self.action.emit(self.item, "install"))
+            if not item.compatible:
+                b.setEnabled(False)
+                b.setToolTip(f"Needs ewald {item.requires_ewald}; this is {plugins.ewald_version()}")
+                self.setProperty("incompatible", True)
             head.addWidget(b)
         else:
             head.addWidget(QtWidgets.QLabel("installed", objectName="muted"))
@@ -65,7 +75,10 @@ class PluginRow(QtWidgets.QFrame):
         if summary:
             s = QtWidgets.QLabel(summary, objectName="pluginSummary", wordWrap=True)
             lay.addWidget(s)
-        kinds = QtWidgets.QLabel("  ".join(item.kinds + [_origin_badge(item)]).strip(), objectName="pluginKinds")
+        badges = item.kinds + [_origin_badge(item)]
+        if not installed and not item.compatible:
+            badges.append(f"· needs ewald {item.requires_ewald}")
+        kinds = QtWidgets.QLabel("  ".join(badges).strip(), objectName="pluginKinds")
         lay.addWidget(kinds)
         if getattr(item, "error", ""):
             lay.addWidget(QtWidgets.QLabel(item.error, objectName="cellError", wordWrap=True))
@@ -159,7 +172,7 @@ class PluginsPanel(QtWidgets.QWidget):
     # ----------------------------------------------------------- data
     def catalog_urls(self) -> list[str]:
         raw = self.settings["python.plugin_catalogs"] if self.settings is not None else ""
-        return [u.strip() for u in raw.replace("\n", ";").split(";") if u.strip()]
+        return pc.catalog_urls(raw)
 
     def refresh(self):
         self.items = pc.installed()
@@ -197,15 +210,21 @@ class PluginsPanel(QtWidgets.QWidget):
             available = []
         self._section(f"INSTALLED  {len(installed)}")
         for item in installed:
-            self._row(item, True)
+            self._row(item, True, pc.update_for(item, self.entries) if item.id else None)
         if not installed:
             self.list_layout.addWidget(QtWidgets.QLabel("No plugins installed yet.", objectName="muted"))
         self._section(f"AVAILABLE  {len(available)}")
         for e in available:
             self._row(e, False)
         for url, err in self.catalog_errors.items():
-            self.list_layout.addWidget(QtWidgets.QLabel(f"{url}: {err}", objectName="cellError", wordWrap=True))
-        if not available and not self.catalog_errors:
+            if pc.is_missing(err):      # e.g. the default index before it is published
+                private = pc._wants_token(url) and not pc.github_token()
+                self.list_layout.addWidget(QtWidgets.QLabel(
+                    f"No plugin index at {url}" + (" (if it is private, set GITHUB_TOKEN or run gh auth login)."
+                                                   if private else "."), objectName="muted", wordWrap=True))
+            else:
+                self.list_layout.addWidget(QtWidgets.QLabel(f"{url}: {err}", objectName="cellError", wordWrap=True))
+        if not available and not any(not pc.is_missing(e) for e in self.catalog_errors.values()):
             self.list_layout.addWidget(QtWidgets.QLabel(
                 "Nothing more to install here. Add plugin catalogs in Preferences › Python.",
                 objectName="muted", wordWrap=True))
@@ -214,8 +233,8 @@ class PluginsPanel(QtWidgets.QWidget):
     def _section(self, title):
         self.list_layout.addWidget(QtWidgets.QLabel(title, objectName="section"))
 
-    def _row(self, item, installed):
-        row = PluginRow(item, installed)
+    def _row(self, item, installed, update=None):
+        row = PluginRow(item, installed, update=update)
         row.clicked.connect(self.show_details)
         row.action.connect(self._act)
         self.list_layout.addWidget(row)
@@ -254,8 +273,8 @@ class PluginsPanel(QtWidgets.QWidget):
 
     # ----------------------------------------------------------- install / remove
     def _act(self, item, action):
-        if action == "install":
-            self.install(item)
+        if action in ("install", "update"):
+            self.install(item, update=action == "update")
         elif action in ("enable", "disable"):
             pc.set_enabled(item, action == "enable")
             self._say(f"{item.name}: {action}d" + (" (restart ewald to unload its package)"
@@ -265,17 +284,22 @@ class PluginsPanel(QtWidgets.QWidget):
         else:
             self.remove(item)
 
-    def install(self, entry):
+    def install(self, entry, update: bool = False):
+        """Install a catalog entry; ``update`` replaces the installed plugin it matches."""
         if entry.is_pip:
-            self._run_pip("install", entry.source[4:])
+            self._run_pip("update" if update else "install", entry.source[4:])
             return
+        old = pc.match(entry, self.items) if update else None
         try:
+            if old is not None and old.path and Path(old.path).name != entry.file_name:
+                pc.remove_file(old)             # the new version comes under another file name
             names = pc.install_file(entry)
         except Exception as exc:
             self._say(f"Install failed: {exc}")
             QtWidgets.QMessageBox.warning(self, "Install plugin", str(exc))
             return
-        self._say(f"Installed {entry.name}: {', '.join(names) or 'nothing registered'}")
+        self._say(f"{'Updated' if update else 'Installed'} {entry.name}"
+                  f"{' to ' + entry.version if update and entry.version else ''}: {', '.join(names) or 'nothing registered'}")
         self.refresh()
         self.changed.emit()
 
@@ -319,6 +343,12 @@ class PluginsPanel(QtWidgets.QWidget):
         self.log.setVisible(True)
         p = self._process = QtCore.QProcess(self)
         p.setProcessChannelMode(QtCore.QProcess.MergedChannels)
+        extra = pc.pip_env(requirement)         # a GitHub token for git+https sources, never logged
+        if extra:
+            env = QtCore.QProcessEnvironment.systemEnvironment()
+            for k, v in extra.items():
+                env.insert(k, v)
+            p.setProcessEnvironment(env)
         p.readyReadStandardOutput.connect(lambda: self.log.appendPlainText(
             bytes(p.readAllStandardOutput()).decode(errors="replace").rstrip()))
         p.finished.connect(lambda code, _status: self._pip_done(action, requirement, code))

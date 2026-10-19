@@ -27,8 +27,8 @@ pipe = import_file(examples.path("POSCAR.SrTiO3"))   # or examples.load("Cu_md.e
 The structures are textbook crystals; the trajectories, forces and the charge density are
 synthetic (seeded random displacements, harmonic forces, Gaussians on atoms and bonds), made by
 `src/ewald/examples/make_examples.py`. For real data, [Reproducing papers](papers.md) downloads
-published trajectories (AIMD of Li conductors, amorphous carbon and silicon) and reruns the
-papers' analyses.
+published trajectories and structures (AIMD of Li conductors, amorphous carbon and silicon,
+TiOF2, PLUMED-NEST metadynamics) and reruns the papers' analyses.
 
 ## The pipeline
 

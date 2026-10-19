@@ -126,3 +126,48 @@ def test_forge_subprocess_gets_no_secrets(monkeypatch):
     env = forge._subprocess_env("/tmp/forge-home")
     assert not {"ANTHROPIC_API_KEY", "SSH_AUTH_SOCK", "AWS_SECRET_ACCESS_KEY"} & set(env)
     assert env["HOME"] == "/tmp/forge-home" and env.get("PATH") == os.environ.get("PATH")
+
+
+def _ewd(path, cells, files=None, manifest=None):
+    """A hand-made .ewd file (as someone could send it)."""
+    import zipfile
+
+    nb = {"nbformat": 4, "nbformat_minor": 5, "metadata": {},
+          "cells": [{"id": f"c{k}", "cell_type": "code", "metadata": {}, "execution_count": None, "outputs": [],
+                     "source": src} for k, src in enumerate(cells)]}
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("notebook.ipynb", json.dumps(nb))
+        z.writestr("manifest.json", json.dumps(manifest or {"ewald_notebook": 1, "data": [], "plugins": []}))
+        for name, data in (files or {}).items():
+            z.writestr(name, data)
+    return str(path)
+
+
+def test_ewd_opens_without_running_code_or_importing_plugins(tmp_path):
+    from ewald import plugins
+    from ewald.notebook import Notebook
+
+    marker = tmp_path / "pwned"
+    plugin = f"open({str(tmp_path / 'plugin-ran')!r}, 'w').close()\n"
+    path = _ewd(tmp_path / "evil.ewd", [f"open({str(marker)!r}, 'w').close()"],
+                files={"plugins/evil_plugin.py": plugin},
+                manifest={"ewald_notebook": 1, "data": [],
+                          "plugins": [{"id": "evil_plugin", "file": "plugins/evil_plugin.py"}]})
+    nb = Notebook.load(path)
+    assert nb.restricted
+    with pytest.raises(PermissionError):
+        nb.run_all()
+    with pytest.raises(PermissionError):
+        nb.run_cell(0)
+    assert not marker.exists() and not (tmp_path / "plugin-ran").exists()
+    assert "evil_plugin" not in plugins.installed()
+
+
+@pytest.mark.parametrize("name", ["../outside.txt", "/abs.txt", "data/../../outside.txt", "C:/x.txt"])
+def test_ewd_with_unsafe_paths_is_refused(tmp_path, name):
+    from ewald.notebook import Notebook
+
+    path = _ewd(tmp_path / "bad.ewd", ["x = 1"], files={name: "x"})
+    with pytest.raises(ValueError, match="unsafe path"):
+        Notebook.load(path)
+    assert not (tmp_path.parent / "outside.txt").exists()

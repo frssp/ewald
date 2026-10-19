@@ -6,15 +6,25 @@ were loaded from: a file or folder in the plugin folder, an installed package (e
 code run in this session. Available plugins come from catalogs:
 
 - the example plugins that ship with ewald's source (``examples/plugins``), and
-- plugin indexes: JSON files at the URLs (or local paths) in the ``plugins.catalogs`` setting,
-  so a group can publish its own list::
+- plugin indexes: the default index (:data:`DEFAULT_CATALOG`, or ``EWALD_PLUGIN_INDEX``) and JSON files at the URLs (or
+  local paths) in the ``python.plugin_catalogs`` setting, so a group can publish its own list::
 
-    {"plugins": [
-      {"name": "Local strain", "summary": "Atomic strain against a reference frame",
+    {"format": 1, "plugins": [
+      {"id": "local_strain", "name": "Local strain", "summary": "Atomic strain against a reference frame",
        "kinds": ["modifier"], "source": "https://example.org/plugins/local_strain.py",
-       "version": "0.2", "author": "Kim lab", "homepage": "https://example.org"},
-      {"name": "ewald-cp2k", "summary": "CP2K readers", "kinds": ["reader"], "source": "pip:ewald-cp2k"}
+       "version": "0.2", "requires_ewald": ">=0.1", "author": "Kim lab", "homepage": "https://example.org"},
+      {"id": "ewald-cp2k", "name": "ewald-cp2k", "summary": "CP2K readers", "kinds": ["reader"],
+       "source": "pip:ewald-cp2k"}
     ]}
+
+An entry matches an installed plugin by ``id`` (the plugin's id: its file stem or package
+name), then by name. A newer ``version`` offers an update; an entry whose ``requires_ewald``
+this ewald does not meet is listed but cannot be installed.
+
+Indexes and files on GitHub (``raw.githubusercontent.com``, ``api.github.com``) are read with a
+token when there is one, from ``GITHUB_TOKEN`` or ``gh auth token``, so a private index works.
+The token is sent to those hosts only and is never stored; for a ``pip:git+https://github.com/...``
+source it goes to the pip process through git's environment, not its command line.
 
 A ``source`` is a ``.py`` file (path or http(s) URL), copied into the plugin folder, or
 ``pip:<requirement>``, installed with pip into the Python ewald runs in. Removing a file
@@ -24,9 +34,13 @@ removed with pip.
 from __future__ import annotations
 
 import ast
+import base64
 import json
+import os
 import shutil
+import subprocess
 import sys
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -35,6 +49,8 @@ from . import plugins
 
 KINDS = ("modifier", "reader", "writer", "visual", "overlay", "colormap", "theme")
 _DECORATORS = {k: k for k in KINDS} | {f"register_{k}": k for k in KINDS}
+DEFAULT_CATALOG = "https://raw.githubusercontent.com/frssp/ewald-plugins/main/index.json"
+TOKEN_HOSTS = ("raw.githubusercontent.com", "api.github.com")
 _STATUS_KEYS = {"modifiers": "modifier", "readers": "reader", "writers": "writer", "visuals": "visual",
                 "overlays": "overlay", "colormaps": "colormap", "themes": "theme"}
 
@@ -48,6 +64,8 @@ class Entry:
     kinds: list = field(default_factory=list)
     source: str = ""                 # .py path or URL, or "pip:<requirement>"
     version: str = ""
+    id: str = ""                     # the installed plugin's id (file stem or package name)
+    requires_ewald: str = ""         # e.g. ">=0.2, <1"
     author: str = ""
     homepage: str = ""
     description: str = ""
@@ -60,6 +78,24 @@ class Entry:
     @property
     def file_name(self) -> str:
         return self.source.rstrip("/").rsplit("/", 1)[-1] if not self.is_pip else ""
+
+    @property
+    def package(self) -> str:
+        """The distribution name of a ``pip:`` source ("" for git URLs and files)."""
+        if not self.is_pip or "://" in self.source:
+            return ""
+        req = self.source[4:]
+        for sep in "[=<>~!; ":
+            req = req.split(sep)[0]
+        return req.strip()
+
+    @property
+    def compatible(self) -> bool:
+        """Whether this ewald meets ``requires_ewald`` (an unreadable requirement does not)."""
+        try:
+            return plugins.version_satisfies(plugins.ewald_version(), self.requires_ewald)
+        except ValueError:
+            return False
 
 
 @dataclass
@@ -174,6 +210,21 @@ def _title(stem: str) -> str:
     return stem.replace("_", " ").replace("-", " ").strip().capitalize()
 
 
+def default_catalog() -> str:
+    """The default plugin index: ``EWALD_PLUGIN_INDEX`` if set (empty turns it off), else
+    :data:`DEFAULT_CATALOG`."""
+    return os.environ.get("EWALD_PLUGIN_INDEX", DEFAULT_CATALOG).strip()
+
+
+def catalog_urls(setting: str = "", default: bool = True) -> list[str]:
+    """The default index followed by the ``;``- or newline-separated URLs of ``setting``."""
+    urls = [default_catalog()] if default and default_catalog() else []
+    for u in setting.replace("\n", ";").split(";"):
+        if u.strip() and u.strip() not in urls:
+            urls.append(u.strip())
+    return urls
+
+
 def catalog(urls=(), timeout: float = 10.0) -> tuple[list[Entry], dict]:
     """Available plugins: the bundled examples and every index in ``urls``. Returns the entries
     and ``{url: error}`` for indexes that could not be read."""
@@ -191,6 +242,8 @@ def catalog(urls=(), timeout: float = 10.0) -> tuple[list[Entry], dict]:
             continue
         try:
             data = json.loads(_read(url, timeout))
+            if int(data.get("format", 1)) > 1:
+                raise ValueError(f"index format {data['format']} is newer than this ewald reads (1)")
             for raw in data.get("plugins", []):
                 e = Entry(**{k: v for k, v in raw.items() if k in Entry.__dataclass_fields__})
                 e.catalog = url
@@ -208,11 +261,45 @@ def _join(base: str, rel: str) -> str:
     return str(Path(base).expanduser().parent / rel)
 
 
+def github_token() -> str:
+    """A GitHub token from ``GITHUB_TOKEN`` or ``gh auth token``; "" when there is none.
+    Read each time it is needed and never stored."""
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if token:
+        return token
+    gh = shutil.which("gh")
+    if gh is None:
+        return ""
+    try:
+        out = subprocess.run([gh, "auth", "token"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return out.stdout.strip() if out.returncode == 0 else ""
+
+
+def _wants_token(url: str) -> bool:
+    u = urllib.parse.urlsplit(url)
+    return u.scheme == "https" and (u.hostname or "").lower() in TOKEN_HOSTS
+
+
+def _request(url: str) -> urllib.request.Request:
+    req = urllib.request.Request(url)
+    token = github_token() if _wants_token(url) else ""
+    if token:
+        req.add_unredirected_header("Authorization", f"token {token}")  # not sent on to a redirect
+    return req
+
+
 def _read(source: str, timeout: float) -> str:
     if "://" in source:
-        with urllib.request.urlopen(source, timeout=timeout) as r:  # noqa: S310 (user-configured URL)
+        with urllib.request.urlopen(_request(source), timeout=timeout) as r:  # noqa: S310 (user-configured URL)
             return r.read().decode("utf-8")
     return Path(source).expanduser().read_text(encoding="utf-8")
+
+
+def is_missing(error: str) -> bool:
+    """Whether a :func:`catalog` error means the index is not there (HTTP 404, no such file)."""
+    return "404" in error or error.startswith("FileNotFoundError")
 
 
 def search(entries, text: str) -> list:
@@ -226,12 +313,47 @@ def search(entries, text: str) -> list:
 
 
 # ---------------------------------------------------------------- install / remove
-def is_installed(entry: Entry, items=None) -> bool:
+def _norm(name: str) -> str:
+    return name.strip().lower().replace("_", "-")
+
+
+def match(entry: Entry, items=None) -> Installed | None:
+    """The installed plugin a catalog entry describes: by id, then name, then the package or
+    plugin-folder file it would install."""
     items = installed() if items is None else items
-    if entry.is_pip:
-        req = entry.source[4:].split("[")[0].split("=")[0].split("<")[0].split(">")[0].strip().lower()
-        return any(i.package.lower().replace("_", "-") == req.replace("_", "-") for i in items if i.package)
-    return (plugins.plugin_dir() / entry.file_name).exists()
+    for key, attr in ((entry.id, "id"), (entry.name, "name")):
+        if key:
+            for i in items:
+                if getattr(i, attr) and _norm(getattr(i, attr)) == _norm(key):
+                    return i
+    if entry.package:
+        for i in items:
+            if i.package and _norm(i.package) == _norm(entry.package):
+                return i
+    if entry.file_name:
+        target = plugins.plugin_dir() / entry.file_name
+        for i in items:
+            if i.path and Path(i.path) == target:
+                return i
+    return None
+
+
+def is_installed(entry: Entry, items=None) -> bool:
+    if match(entry, items) is not None:
+        return True
+    return bool(entry.file_name) and (plugins.plugin_dir() / entry.file_name).exists()
+
+
+def update_for(item: Installed, entries) -> Entry | None:
+    """A compatible catalog entry with a newer version of ``item``, if any."""
+    best = None
+    for e in entries:
+        if not e.version or not e.compatible or match(e, [item]) is None:
+            continue
+        if not item.version or plugins._version_tuple(e.version) > plugins._version_tuple(item.version):
+            if best is None or plugins._version_tuple(e.version) > plugins._version_tuple(best.version):
+                best = e
+    return best
 
 
 def install_file(entry_or_source, timeout: float = 30.0) -> list[str]:
@@ -267,7 +389,27 @@ def remove_file(item: Installed) -> Path:
 
 
 def pip_command(action: str, requirement: str) -> list[str]:
-    """``python -m pip install|uninstall ...`` for the Python ewald runs in."""
+    """``python -m pip install|uninstall ...`` for the Python ewald runs in; ``"update"``
+    installs with ``--upgrade``."""
     if action == "install":
         return [sys.executable, "-m", "pip", "install", requirement]
+    if action == "update":
+        return [sys.executable, "-m", "pip", "install", "--upgrade", requirement]
     return [sys.executable, "-m", "pip", "uninstall", "-y", requirement]
+
+
+def pip_env(requirement: str) -> dict:
+    """Environment variables for the pip process: for a ``git+https://github.com/...``
+    requirement and a GitHub token, a git config entry that sends the token to github.com, so
+    it never appears in the command or in pip's output."""
+    url = requirement.split("@", 1)[-1].strip() if " @ " in requirement else requirement
+    url = url.removeprefix("git+")
+    if not url.startswith("https://github.com/"):
+        return {}
+    token = github_token()
+    if not token:
+        return {}
+    basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+    n = int(os.environ.get("GIT_CONFIG_COUNT", "0") or 0)
+    return {"GIT_CONFIG_COUNT": str(n + 1), f"GIT_CONFIG_KEY_{n}": "http.https://github.com/.extraheader",
+            f"GIT_CONFIG_VALUE_{n}": f"AUTHORIZATION: basic {basic}"}

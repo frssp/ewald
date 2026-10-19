@@ -1292,6 +1292,39 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, monkeypatch):
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(settings=settings.Settings())
+    w.open_any(cu_path, ask_types=False)
+    w.panel.add_modifier(mods.CoordinationAnalysis(cutoff=3.0))
+    w.panel.view.add_view(histogram="Coordination")
+    w.panel.view.run_all()
+    w.style.radius_scale = 0.8
+    path = tmp_path / "cu.ewd"
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName", lambda *a, **k: (str(tmp_path / "cu"),
+                                                                                   "EWALD notebook with results and data (*.ewd)"))
+    assert w.save_notebook() == str(path)                     # .ewd is the default format
+    w.close()
+
+    asked = []
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question",
+                        lambda *a, **k: asked.append(a[2]) or QtWidgets.QMessageBox.No)
+    w2 = MainWindow(settings=settings.Settings())
+    view = w2.open_notebook(str(path))                        # asks, the answer is No: restricted
+    assert asked and view.notebook.restricted and w2.style.radius_scale == 0.8
+    hist = next(wd for wd in view.widgets if wd.cell.is_view)
+    assert any(o.kind == "image" for o in hist.outputs.outputs)   # the saved figure, nothing ran
+    view.run_all()                                            # asks again; No keeps it restricted
+    assert view.notebook.restricted and len(asked) == 2
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.Yes)
+    view.run_all()
+    assert not view.notebook.restricted and [m.name for m in w2.pipeline.modifiers] == ["CoordinationAnalysis"]
+    w2.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_open_turns_bonds_off_above_limit(app):
     from ewald import examples, settings
     from ewald.gui.app import MainWindow
@@ -1473,6 +1506,44 @@ def test_plugins_side_bar_installs_adds_a_step_and_removes(app, cu_path, tmp_pat
     w.close()
 
 
+def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app, tmp_path):
+    import json
+
+    from ewald import plugin_catalog as pc
+    from ewald import settings
+    from ewald.gui import plugins_panel
+
+    def plugin(folder, version):
+        (tmp_path / folder).mkdir()
+        (tmp_path / folder / "up_shift.py").write_text(
+            f"from ewald.pipeline import Modifier\nfrom ewald.plugins import modifier\n__ewald__ = {{'version': '{version}'}}\n\n"
+            "@modifier(category='Test')\nclass UpShift(Modifier):\n    def modify(self, data, ctx):\n        return None\n")
+        return str(tmp_path / folder / "up_shift.py")
+
+    pc.install_file(plugin("old", "0.1"))
+    index = tmp_path / "index.json"
+    index.write_text(json.dumps({"format": 1, "plugins": [
+        {"id": "up_shift", "name": "Up shift", "version": "0.3", "source": plugin("new", "0.3"), "kinds": ["modifier"]},
+        {"id": "future", "name": "Future plugin", "version": "1.0", "requires_ewald": ">=99",
+         "source": "future.py", "kinds": ["reader"]}]}))
+    s = settings.Settings()
+    s["python.plugin_catalogs"] = f"{index}; {tmp_path / 'not-yet.json'}"
+    panel = plugins_panel.PluginsPanel(settings=s)
+    panel.wait()
+    rows = {r.item.name: r for r in panel.findChildren(plugins_panel.PluginRow)}
+    buttons = {b.text(): b for r in rows.values() for b in r.findChildren(plugins_panel.QtWidgets.QPushButton)}
+    assert "Up shift" not in rows and "Update to 0.3" in buttons          # matched by id, not listed twice
+    assert not buttons["Install"].isEnabled() and rows["Future plugin"].property("incompatible")
+    texts = [w.text() for w in panel.findChildren(plugins_panel.QtWidgets.QLabel)]
+    assert any("needs ewald >=99" in t for t in texts)
+    assert any(t.startswith("No plugin index at") and "not-yet.json" in t for t in texts)   # muted, not an error
+    buttons["Update to 0.3"].click()
+    assert next(i for i in panel.items if i.id == "up_shift").version == "0.3"
+    app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)    # the old rows go
+    assert not any(b.text().startswith("Update") for b in panel.findChildren(plugins_panel.QtWidgets.QPushButton))
+    panel.close()
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_main_window_follows_a_growing_dump(app, lammps_dir, tmp_path):
     from ewald import import_file
@@ -1485,6 +1556,8 @@ def test_main_window_follows_a_growing_dump(app, lammps_dir, tmp_path):
     w = MainWindow(import_file(path))
     assert w.live_reload.timer.isActive() and w.live_reload_action.isChecked()
     assert w.timeline.slider.maximum() == 1
+    w.live_reload.timer.stop()  # only the explicit polls below look at the file (a timer look
+    # racing the writes made this test fail under load)
     w.timeline._set(1)  # on the last frame: follow the newest one
     w.timeline.set_selection([0, 1])
     path.write_bytes(blob)
@@ -1497,6 +1570,7 @@ def test_main_window_follows_a_growing_dump(app, lammps_dir, tmp_path):
     path.write_bytes(blob + blob[offsets[-1]:])
     w.live_reload.poll(wait=True)
     assert w.timeline.slider.maximum() == n and w.frame == 0
+    w.live_reload.timer.start()
     w.live_reload_action.trigger()  # File › Live reload off
     assert not w.live_reload.timer.isActive()
     w.close()

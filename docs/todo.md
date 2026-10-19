@@ -8,9 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- More paper datasets (`examples.fetch`): the argyrodite anion-disorder AIMD set (Morgan 2021, MSD
-  against disorder), TiOF2 structures (Morgan 2024: partial RDFs, Ti-X bond lengths, octahedra)
-  and PLUMED-NEST metadynamics eggs (ammonia borane, alanine dipeptide) with their FES.
 
 ## Next
 
@@ -19,13 +16,16 @@ GUI
 - Notebook layout: the viewport could follow the current notebook even when it has no
   pipeline yet (now it keeps the last one); 3D snapshot views (`show(pipe, frame=...)` drawing
   the structure) and image/figure cells; drag cells to reorder; undo for cell edits; inline
-  Ask Claude suggestions as diffs; per-notebook render settings.
+  Ask Claude suggestions as diffs; per-notebook render settings; a Jupyter display hook so
+  `pipe` shows a rendered image in Jupyter; a `.py` header with the view state and data links;
+  File › Trust notebook and a restricted banner in the notebook panel; pip requirements of
+  package plugins an `.ewd` names (now only recorded).
 - Notebook kernels: run a notebook's cells in another Python environment (a per-tab kernel via
   jupyter_client with a small `ewald-kernel` that streams computed frames back), so a notebook
   can use a conda env without ewald's GUI dependencies.
 - Analysis verbs for notebooks (`rdf(pipe, cutoff=6)`, `msd(pipe)`, ... returning tables and
   adding the step), next to `load` and `pipe.add`.
-- Plugins side bar: updates (version compare against catalogs), disable per notebook,
+- Plugins side bar: an "updates available" badge on the activity bar, disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
 - Spectra, Figure and Forge views from the redesign mock-ups, built as view cells
@@ -203,7 +203,11 @@ Docs
 - Paper reproductions: StructureFactor `method="rdf"` holds every pair inside the cutoff at once,
   so 100,000 atoms with a 30 A cutoff run out of memory (the a-Si script uses 20 A); histogram in
   chunks. kinisi's covariance-weighted D for the LLZO runs is 0.6x a straight-line fit of the same
-  MSD; find out why.
+  MSD; find out why. Candidates found but not added: TiOF2 PDF against experiment (needs an
+  X-ray weighted G(r)), the a-Si 216-atom HSE06 models (vldgroup/papers-defect-free-a-si), LGPS
+  site maps (hacortesp/CrySF), MoSe2 phonons (Ionizing/adom.202403069); no license stated on the
+  last three. Most other paper data sits on Zenodo or Materials Cloud, unreachable from the cloud
+  container, so `examples.fetch` only knows GitHub-hosted files.
 - Host the manual (the repository is private; CI uploads the built site as the `docs-site`
   artifact).
 

@@ -134,3 +134,9 @@ The Claude tools `compute_plumed_cvs` (runs an input on the loaded trajectory an
 (COLVAR statistics, or the FES of a HILLS file with its minimum and a plot) let you ask, for
 example, "compute the O-H coordination of the first water and tell me when it changes".
 `Plumed.*` attributes then work in expressions and the other tools like any attribute.
+
+## Examples on published data
+
+Two PLUMED-NEST eggs are in [Reproducing papers](papers.md): `ammonia_borane_fes.py` sums the
+hills of four walkers with `fes_from_hills` and compares them with the authors' `sum_hills`
+output, and `alanine_dipeptide_fes.py` draws the phi/psi free energy surface.
