@@ -102,6 +102,8 @@ BUILTIN = {
     "CPK": Theme(base="CPK", description="CPK element colors"),
     "Journal": Theme(mute=0.35, background="white", cell_color="#333333",
                      description="Jmol colors muted 35% toward gray, white background, dark gray cell"),
+    "ASE": Theme(background="white", cell_color="black", radius_preset="covalent",
+                 description="ASE GUI: Jmol colors and covalent radii on white (pair with the 'Simple (ASE)' style)"),
     "Dark slide": Theme(background="black", cell_color="#AEB4BE",
                         description="Jmol colors on black, light cell lines, for slides"),
 }

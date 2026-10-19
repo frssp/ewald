@@ -253,6 +253,20 @@ def _valid_identifier(name: str) -> bool:
     return name.isidentifier() and not keyword.iskeyword(name)
 
 
+# environment variables the test subprocess keeps; everything else (API keys, tokens, the SSH
+# agent socket, cloud credentials) stays out of reach of the code Claude wrote
+_ENV_KEEP = ("PATH", "LANG", "LANGUAGE", "TZ", "TMPDIR", "TEMP", "TMP", "SYSTEMROOT", "WINDIR", "COMSPEC",
+             "PATHEXT", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH", "CUDA_PATH",
+             "CUDA_HOME", "CUDA_VISIBLE_DEVICES", "OMP_NUM_THREADS", "NUMBA_NUM_THREADS", "VIRTUAL_ENV",
+             "CONDA_PREFIX")
+
+
+def _subprocess_env(home) -> dict:
+    env = {k: v for k, v in os.environ.items() if k in _ENV_KEEP or k.startswith("LC_")}
+    env["HOME"] = env["USERPROFILE"] = str(home)  # no ~/.ssh, ~/.aws, ... through the home folder
+    return env
+
+
 def verify(module_name: str, class_name: str, module_source: str, test_source: str, timeout: float = 120) -> dict:
     """Run the contract checks and the tests in a subprocess; returns the report dict."""
     if not (_valid_identifier(module_name) and _valid_identifier(class_name)):
@@ -265,7 +279,7 @@ def verify(module_name: str, class_name: str, module_source: str, test_source: s
         Path(tmp, f"{test_name}.py").write_text(test_source)
         runner = Path(tmp, "_forge_runner.py")
         runner.write_text(_RUNNER)
-        env = {**os.environ, "EWALD_CONFIG_DIR": str(Path(tmp, "config")), "EWALD_NO_PLUGINS": "1",
+        env = {**_subprocess_env(tmp), "EWALD_CONFIG_DIR": str(Path(tmp, "config")), "EWALD_NO_PLUGINS": "1",
                "MPLBACKEND": "Agg"}
         try:
             proc = subprocess.run([sys.executable, "-I", str(runner), tmp, module_name, class_name, test_name],
@@ -293,12 +307,13 @@ def _system() -> str:
 
 def forge(request: str, *, client=None, model: str = DEFAULT_MODEL, run_code: bool = False,
           max_rounds: int = 4, save: bool = True, overwrite: bool = False, timeout: float = 120,
-          max_tokens: int = 16000, on_event=None) -> ForgeResult:
+          max_tokens: int = 16000, on_event=None, confirm=None) -> ForgeResult:
     """Have Claude write a modifier plugin for ``request``; verify and save it (see module docs).
 
     ``client`` defaults to ``anthropic.Anthropic()``; any object with ``messages.create`` works
     (tests pass a fake). With ``run_code=False`` the first draft is returned unverified and
-    nothing is run or saved.
+    nothing is run or saved. ``confirm(result) -> bool`` is asked before a verified plugin is
+    saved, since a saved plugin is imported on every start; False keeps it unsaved.
     """
     from .. import plugins
 
@@ -343,7 +358,7 @@ def forge(request: str, *, client=None, model: str = DEFAULT_MODEL, run_code: bo
             "type": "tool_result", "tool_use_id": call.id, "is_error": True,
             "content": "Checks or tests failed; fix the code (or a test that is wrong) and submit again.\n"
                        + json.dumps(result.report, indent=1)}]})
-    if result.ok and save:
+    if result.ok and save and (confirm is None or confirm(result)):
         result.path = save_plugin(result, overwrite=overwrite)
         plugins.load_plugins(force=True)
     return result

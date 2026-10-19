@@ -2,7 +2,7 @@
 
 Ported from OVITO 3.16 (CentroSymmetryModifier.cpp, AcklandJonesModifier.cpp,
 ChillPlusModifier.cpp, AtomicStrainModifier.cpp; Copyright 2026 OVITO GmbH, used under the MIT option
-of its GPLv3-or-MIT license).  The array code runs on the pipeline device.
+of its GPLv3-or-MIT license; see ewald/_csrc/LICENSE.OVITO-MIT.txt).  The array code runs on the pipeline device.
 """
 from __future__ import annotations
 

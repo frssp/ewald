@@ -1,5 +1,6 @@
 """Wigner-Seitz defect analysis (port of OVITO's WignerSeitzAnalysisModifier,
-Copyright 2026 OVITO GmbH, used under the MIT option of its GPLv3-or-MIT license)."""
+Copyright 2026 OVITO GmbH, used under the MIT option of its GPLv3-or-MIT license;
+see ewald/_csrc/LICENSE.OVITO-MIT.txt)."""
 from __future__ import annotations
 
 import numpy as np

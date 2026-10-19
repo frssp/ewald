@@ -19,6 +19,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import pathlib
 import tempfile
 import textwrap
 import traceback
@@ -492,8 +493,12 @@ class Toolset:
                 ["input"]))
         def compute_plumed_cvs(input, start=0, stop=None, step=1, time_per_frame=1.0, temperature=0.0, keep=True):
             from ..modifiers import Plumed
+            from ..plumed import untrusted_input_problems
 
             pipe = self._need_pipeline()
+            problems = untrusted_input_problems(input)
+            if problems:
+                raise PermissionError("not run: " + "; ".join(problems))
             mod = Plumed(input, start=start, stop=stop, step=step, time_per_frame=time_per_frame,
                          temperature=temperature)
             pipe.modifiers.append(mod)
@@ -668,7 +673,8 @@ class Toolset:
            "CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... The format follows the file name (POSCAR, *.data, "
            "*.extxyz, *.h5md) unless given. One-frame formats (POSCAR, LAMMPS data, CHGCAR, cube) write the "
            "frame they are given (default: the current one). Relative paths go to the work dir; an existing "
-           "file is only replaced with overwrite=true.",
+           "file is only replaced with overwrite=true, and only inside the work dir. Outside it, only new "
+           "files in folders that are not hidden can be written.",
            _obj({"path": {"type": "string"},
                  "format": {"type": "string", "description": f"optional writer name or ASE format; writers: {writer_names}"},
                  "frames": {"type": ["string", "array"], "items": {"type": "integer"},
@@ -682,9 +688,22 @@ class Toolset:
             target = os.path.expanduser(path)
             if not os.path.isabs(target):
                 target = os.path.join(self.workdir, target)
-                os.makedirs(os.path.dirname(target), exist_ok=True)
-            if os.path.exists(target) and not overwrite:
+            target = os.path.realpath(target)
+            work = os.path.realpath(self.workdir)
+            try:
+                inside = os.path.commonpath([target, work]) == work
+            except ValueError:  # another drive on Windows
+                inside = False
+            if not inside:
+                # the request may come from text inside a structure file (prompt injection):
+                # never replace the user's files or write into ~/.ssh, ~/.config, ...
+                if any(part.startswith(".") for part in pathlib.PurePath(target).parts[1:]):
+                    raise PermissionError(f"{target}: writing into hidden folders or files is not allowed")
+                if os.path.exists(target):
+                    raise FileExistsError(f"{target} exists; files outside the work dir {work} are never replaced")
+            elif os.path.exists(target) and not overwrite:
                 raise FileExistsError(f"{target} exists; pass overwrite=true to replace it")
+            os.makedirs(os.path.dirname(target), exist_ok=True)
             writer = plugins.find_writer(target, format)
             if frames == "all":
                 idx = list(range(pipe.num_frames))

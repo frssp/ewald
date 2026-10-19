@@ -16,6 +16,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import settings as settings_mod
 from ..settings import DEVICES, OPTION, OPTIONS, PAGES, Settings
+from .style import PRESET_THEMES
 from .theme import TOKENS
 
 _CHOICE_LABELS = {"auto": "Auto", "coarse": "Always coarse", "full": "Always full", "ortho": "Orthographic", "persp": "Perspective", "raytrace": "Ray tracing (AO + shadows)",
@@ -28,7 +29,7 @@ _CHOICE_LABELS = {"auto": "Auto", "coarse": "Always coarse", "full": "Always ful
 LAYOUT = {
     "General": ("Startup behaviour and file handling.", [
         ("Startup", ["general.startup_workspace", "general.restore_layout"]),
-        ("Appearance", ["general.font_size"]),
+        ("Appearance", ["general.font_size", "general.toolbar_style"]),
         ("LAMMPS files", ["general.lammps_type_prompt", "general.lammps_type_map"]),
         ("Help", ["general.docs_url"])]),
     "Viewports": ("Defaults for the interactive 3D view.", [
@@ -42,7 +43,7 @@ LAYOUT = {
                          "viewport.mesh_limit"])]),
     "Elements": ("Default atom colors, radii and bond search, like VESTA's elements.ini.", [
         ("Atoms", ["elements.color_scheme", "elements.radius_source", "elements.radius_scale"]),
-        ("Bonds", ["bonds.length_factor", "bonds.radius"]),
+        ("Bonds", ["bonds.length_factor", "bonds.radius", "bonds.auto_limit"]),
         ("Element table", ["elements.overrides"])]),
     "Rendering": ("Starting values for the Render workspace.", [
         ("Renderer", ["render.renderer", "render.quality", "render.movie_quality", "render.samples",
@@ -845,10 +846,12 @@ def apply_settings(win, s: Settings, startup: bool = False):
     if app is not None:
         app.setStyleSheet(theme.stylesheet().replace("font-size: 12px", f"font-size: {s['general.font_size']}px"))
 
-    style.background = s["viewport.background"]
+    win.set_button_style(s["general.toolbar_style"])
+    if style.preset not in PRESET_THEMES:  # those presets keep their theme's background
+        style.background = s["viewport.background"]
     style.bond_radius = s["bonds.radius"]
     if startup or style.preset != s["viewport.style_preset"]:
-        style.apply_preset(s["viewport.style_preset"])
+        style.apply_preset(s["viewport.style_preset"], win.data.types if win.data is not None else ())
     vp.rotation_step = s["viewport.rotation_step"]
     vp.hover_info = s["viewport.hover_info"]
     vp.hover_delay = s["viewport.hover_delay"]

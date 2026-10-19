@@ -21,10 +21,11 @@ from ..io import import_file
 from ..render import camera_state, render
 from .ask_panel import AskPanel
 from .console import make_console
+from .icons import icon
 from .inspector import DataInspector
 from .palette import CommandPalette, menu_entries
 from .pipeline_panel import MODIFIER_MENU, PipelinePanel, fill_modifier_menu
-from .plots import PlotsPanel
+from .plots import PlotsPanel, _is_neb
 from . import preferences as prefs
 from .render_page import RenderPage
 from .style import ViewStyle
@@ -77,7 +78,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.viewport.hovered.connect(lambda text: self.hover_label.setText(text))
         self.viewport.bondEdit.connect(self.toggle_bond)
         self.viewport.styleChanged.connect(self._style_changed)
-        self.viewport.contextMenuRequested.connect(lambda: self.viewport_menu().exec(QtGui.QCursor.pos()))
+        self.viewport.contextMenuRequested.connect(self._show_viewport_menu)
         self.timeline = Timeline()
         self.timeline.frameChanged.connect(self.set_frame)
         analyze = QtWidgets.QWidget()
@@ -121,6 +122,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.bottom.addTab(self.inspector, "Data inspector")
         self.bottom.addTab(self.plots, "Plots")
         self.bottom.addTab(self.log, "Log")
+        self.bottom.currentChanged.connect(self._update_bottom_tab)
+        self._stale_tabs = set()  # bottom tabs not yet showing the current frame
         self.bottom_dock = self._dock(self.bottom, "Data", QtCore.Qt.BottomDockWidgetArea, None)
         self.resizeDocks([self.bottom_dock], [280], QtCore.Qt.Vertical)
 
@@ -163,14 +166,25 @@ class MainWindow(QtWidgets.QMainWindow):
         tb = self.addToolBar("Main")
         tb.setObjectName("main-toolbar")
         tb.setMovable(False)
-        tb.addAction("Open", self.open_dialog)
-        tb.addAction("Open remote", self.open_remote_dialog)
+        tb.setIconSize(QtCore.QSize(18, 18))
+        self.styled_buttons = []  # (button, text in the default style); see icons.button_style
+
+        def button(text, icon_name, slot, tip, text_in_hybrid=True, checkable=False):
+            b = QtWidgets.QToolButton(text=text, checkable=checkable, toolTip=tip)
+            b.setProperty("ewald_icon", icon_name)
+            b.clicked.connect(slot)
+            tb.addWidget(b)
+            self.styled_buttons.append((b, text_in_hybrid))
+            return b
+
+        button("Open", "open", self.open_dialog, "Load file (Ctrl+O)")
+        button("Open remote", "remote", self.open_remote_dialog, "Load remote file over SSH (Ctrl+Alt+O)", False)
+        button("Save", "save", lambda: self.save_session(), "Save session (Ctrl+S)", False)
         tb.addSeparator()
         self.ws_buttons = []
-        for i, name in enumerate(("Analyze", "Render")):
-            b = QtWidgets.QToolButton(text=name, checkable=True)
-            b.clicked.connect(lambda _=False, i=i: self.set_workspace(i))
-            tb.addWidget(b)
+        for i, (name, icon_name) in enumerate((("Analyze", "analyze"), ("Render", "render"))):
+            b = button(name, icon_name, lambda _=False, i=i: self.set_workspace(i), f"{name} workspace (Ctrl+{i + 1})",
+                       checkable=True)
             self.ws_buttons.append(b)
         self.ws_buttons[0].setChecked(True)
         tb.addSeparator()
@@ -187,28 +201,41 @@ class MainWindow(QtWidgets.QMainWindow):
         self.device_combo.setCurrentText({"cuda": "CUDA", "auto": "auto"}.get((self.device or "cpu").lower(), "CPU"))
         self.device_combo.currentTextChanged.connect(self._set_device)
         tb.addWidget(self.device_combo)
-        render_btn = QtWidgets.QPushButton("Render")
+        render_btn = QtWidgets.QPushButton("Render", toolTip="Render workspace: image, movie and figure code")
         render_btn.setObjectName("primary")
+        render_btn.setProperty("ewald_icon", "render")
+        render_btn.setProperty("ewald_icon_color", "#0B1220")
         render_btn.clicked.connect(lambda: self.set_workspace(1))
         tb.addWidget(render_btn)
+        self.styled_buttons.append((render_btn, True))
+
+    def set_button_style(self, style: str):
+        """Toolbar and tool rail buttons as icons with text, icons or text
+        (Preferences › General › Toolbar buttons); menus show icons unless 'Text'."""
+        from .icons import button_style
+
+        for b, text_in_hybrid in self.styled_buttons + self.viewport.styled_buttons:
+            button_style(b, style, text_in_hybrid)
+        self.viewport.set_button_style(style)
+        QtWidgets.QApplication.instance().setAttribute(QtCore.Qt.AA_DontShowIconsInMenus, style == "Text")
 
     def _build_menus(self):
         mb = self.menuBar()
         f = mb.addMenu("&File")
-        f.addAction("&Load file…", self.open_dialog, QtGui.QKeySequence.Open)
-        f.addAction("Load &remote file (SSH)…", self.open_remote_dialog, "Ctrl+Alt+O")
+        f.addAction(icon("open"), "&Load file…", QtGui.QKeySequence.Open, self.open_dialog)
+        f.addAction(icon("remote"), "Load &remote file (SSH)…", QtGui.QKeySequence("Ctrl+Alt+O"), self.open_remote_dialog)
         f.addAction("Load &NEB folder…", self.open_neb_dialog)
-        ex = f.addMenu("Open e&xample")
+        ex = f.addMenu(icon("example"), "Open e&xample")
         for example in examples.EXAMPLES:
             act = ex.addAction(f"{example.file}  ({example.format})", lambda e=example: self.open_example(e.file))
             act.setToolTip(example.description)
             act.setStatusTip(example.description)
         ex.setToolTipsVisible(True)
         f.addAction("Load &session…", self.load_session_dialog, "Ctrl+Shift+O")
-        f.addAction("&Save session", self.save_session, QtGui.QKeySequence.Save)
+        f.addAction(icon("save"), "&Save session", QtGui.QKeySequence.Save, self.save_session)
         f.addAction("Save session &as…", lambda: self.save_session(ask=True), QtGui.QKeySequence.SaveAs)
         f.addSeparator()
-        f.addAction("Render &image…", self.render_image, "Ctrl+Shift+R")
+        f.addAction(icon("image"), "Render &image…", QtGui.QKeySequence("Ctrl+Shift+R"), self.render_image)
         f.addAction("E&xport data…", self.export_dialog, "Ctrl+E")
         f.addAction("Export &movie…", self.export_movie)
         f.addSeparator()
@@ -389,6 +416,8 @@ class MainWindow(QtWidgets.QMainWindow):
         QtWidgets.QApplication.restoreOverrideCursor()
         if _has_phonon_modes(pipe) and not any(isinstance(m, mods.PhononMode) for m in pipe.modifiers):
             pipe.modifiers.append(mods.PhononMode())  # a phonon file opens playing a mode
+        self._check_bond_limit = True
+        self.style.bond_pairs.clear()  # a new structure gets its own VESTA bond table
         self.set_pipeline(pipe)
         self.setWindowTitle(f"EWALD — {os.path.basename(str(path))}")
         self.message(f"Loaded {path}: {pipe.num_frames} frame(s)")
@@ -482,6 +511,17 @@ class MainWindow(QtWidgets.QMainWindow):
         for m in self.pipeline.modifiers:
             if m.enabled and m.status:
                 self.message(f"{m.name}: {m.status}", error=True)
+        if getattr(self, "_check_bond_limit", False):
+            self._check_bond_limit = False
+            limit = self.settings["bonds.auto_limit"]
+            if getattr(self, "_bonds_auto_off", False) and self.data.count <= limit:
+                self.style.bonds_enabled = True  # the previous file was too big; this one gets its bonds back
+            self._bonds_auto_off = False
+            if self.style.bonds_enabled and self.data.count > limit:
+                # bond search and sticks would make a big system slow
+                self.style.bonds_enabled, self._bonds_auto_off = False, True
+                self.message(f"Bonds off: {self.data.count:,} atoms is above the automatic-bonds limit "
+                             f"({limit:,}, Preferences › Elements). Turn them on under Bonds.")
         if self.style.bonds_enabled:
             self.style.ensure_bond_pairs(self.data.types)
         self._apply_element_defaults()
@@ -489,15 +529,29 @@ class MainWindow(QtWidgets.QMainWindow):
         ts = self.data.attributes.get("Timestep", self.frame)
         self.viewport.overlay_text = f"Frame {self.frame}   timestep {ts}"
         self.viewport.set_data(self.data, interactive=interactive)
-        self.inspector.set_data(self.data)
-        self.plots.set_data(self.data)
-        self.plots.set_highlight(self._selected_indices())
+        self._stale_tabs = {self.inspector, self.plots}
+        self._update_bottom_tab()
         self._push_console()
         dev = (self.device or "cpu").upper()
         self.status.setText(f"N = {self.data.count}   frame {self.frame}/{self.pipeline.num_frames - 1}   "
                             f"pipeline {dt * 1000:.0f} ms   {dev}")
         if self.workspaces.currentIndex() == 1:
             self.render_page.update_code()
+
+    def _update_bottom_tab(self, *_):
+        """Fill the inspector or plots tab with the current frame, only while it is the open
+        tab (a plot range linked to the viewport follows the frame either way): a hidden
+        histogram or particle table cost a redraw on every frame of playback."""
+        if self.data is None:
+            return
+        for tab in list(self._stale_tabs):
+            linked = tab is self.plots and self.plots._range is not None
+            if tab is not self.bottom.currentWidget() and not linked:
+                continue
+            self._stale_tabs.discard(tab)
+            tab.set_data(self.data)
+            if tab is self.plots:
+                self.plots.set_highlight(self._selected_indices())
 
     def play_phonon_mode(self, qpoint: int, band: int):
         """Show phonon mode (qpoint, band), e.g. clicked in the band plot, and start playback."""
@@ -631,15 +685,88 @@ class MainWindow(QtWidgets.QMainWindow):
         self.panel.refresh(select=("mod", mod))
         self.recompute()
 
-    def viewport_menu(self) -> QtWidgets.QMenu:
-        """Right click in the viewport: frame overlay, views, Ask Claude."""
+    def viewport_menu(self, everything: bool = False) -> QtWidgets.QMenu:
+        """Right click in the viewport. The entries follow what is loaded and picked: picked
+        atoms, the kind of data (phonon modes, NEB band, volumetric grid), trajectory
+        playback and frame overlay, display toggles and views. ``everything`` lists every
+        section regardless (for the feature inventory)."""
         menu = QtWidgets.QMenu(self)
+        d, pipe = self.data, self.pipeline
+        if d is None and not everything:
+            menu.addAction(icon("open"), "Load file…", self.open_dialog)
+            menu.addAction(icon("remote"), "Load remote file (SSH)…", self.open_remote_dialog)
+            ex = menu.addMenu(icon("example"), "Open example")
+            for example in examples.EXAMPLES:
+                ex.addAction(example.file, lambda e=example: self.open_example(e.file))
+            return menu
+
+        picks = self.viewport.picks
+        if picks or everything:
+            count = f"{len(picks)} atom{'s' if len(picks) != 1 else ''}" if picks else "N atoms"
+            head = menu.addAction(f"{count} picked")
+            head.setEnabled(False)
+            menu.addAction(icon("center"), "Center view on picked", self.center_on_picks)
+            menu.addAction(icon("select"), "Select picked atoms", lambda: self.select_picked())
+            menu.addAction(icon("delete"), "Delete picked atoms", lambda: self.select_picked(delete=True))
+            menu.addAction(icon("clear"), "Clear picks", self.viewport.clear_picks)
+            menu.addSeparator()
+
+        tables = d.tables if d is not None else {}
+        neb = next((name for name, t in tables.items() if _is_neb(t)), None)
+        phonon = d is not None and "Phonon Modes" in d.attributes
+        grids = list(d.grids) if d is not None else []
+        if phonon or everything:
+            menu.addAction(icon("chart"), "Phonon band structure", lambda: self.show_plot())
+        if neb or everything:
+            menu.addAction(icon("chart"), "NEB energy profile", lambda: self.show_plot(neb))
+        if grids or everything:
+            iso = [m for m in pipe.modifiers if isinstance(m, mods.CreateIsosurface)] if pipe else []
+            if iso:
+                menu.addAction(icon("isosurface"), "Edit isosurface", lambda: self.panel.refresh(select=("mod", iso[0])))
+            else:
+                menu.addAction(icon("isosurface"), "Add isosurface", self.add_isosurface)
+        if phonon or neb or grids or everything:
+            menu.addSeparator()
+
+        if (pipe is not None and pipe.num_frames > 1) or everything:
+            playing = self.timeline.play.isChecked()
+            play = menu.addAction(icon("pause" if playing else "play"), "Pause" if playing else "Play")
+            play.setShortcut("Space")
+            play.triggered.connect(self.timeline.play.toggle)
+            self._overlay_entries(menu)
+            menu.addSeparator()
+
+        show = menu.addMenu(icon("eye"), "Show")
+        for label, attr in (("Bonds", "bonds_enabled"), ("Simulation cell", "show_cell")):
+            act = show.addAction(label)
+            act.setCheckable(True)
+            act.setChecked(bool(getattr(self.style, attr)))
+            act.toggled.connect(lambda on, attr=attr: self._toggle_style(attr, on))
+        if (d is not None and d.cell.is_valid) or everything:
+            views = menu.addMenu("View along")
+            for ax in ("a", "b", "c", "a*", "b*", "c*"):
+                views.addAction(ax, lambda ax=ax: self.viewport.view_along(ax))
+        ortho = menu.addAction("Orthographic")
+        ortho.setCheckable(True)
+        ortho.setChecked(self.viewport.ortho)
+        ortho.toggled.connect(self.viewport.ortho_button.setChecked)
+        menu.addAction(icon("fit"), "Zoom to fit", self.viewport.zoom_fit)
+        menu.addSeparator()
+        menu.addAction(icon("claude"), "Ask Claude about selection…" if picks or everything else "Ask Claude about this structure…",
+                       self.ask_claude)
+        return menu
+
+    def _show_viewport_menu(self):
+        menu = self.viewport_menu()
+        menu.exec(QtGui.QCursor.pos())
+        menu.deleteLater()  # a new menu is built for every right click
+
+    def _overlay_entries(self, menu):
         mod = self._overlay()
         on = mod is not None and mod.enabled
-        act = menu.addAction("Overlay other frames (see-through)")
+        act = menu.addAction(icon("layers"), "Overlay other frames (see-through)")
         act.setCheckable(True)
         act.setChecked(on)
-        act.setEnabled(self.pipeline is not None and self.pipeline.num_frames > 1)
         act.toggled.connect(lambda checked: self.set_overlay(checked))
         sub = menu.addMenu("Overlay transparency")
         sub.setEnabled(on)
@@ -653,14 +780,56 @@ class MainWindow(QtWidgets.QMainWindow):
         moving.setEnabled(on)
         moving.setChecked(on and mod.min_displacement > 0)
         moving.toggled.connect(lambda checked: self.set_overlay(True, min_displacement=0.1 if checked else 0.0))
-        menu.addSeparator()
-        views = menu.addMenu("View along")
-        for ax in ("a", "b", "c", "a*", "b*", "c*"):
-            views.addAction(ax, lambda ax=ax: self.viewport.view_along(ax))
-        menu.addAction("Zoom to fit", self.viewport.zoom_fit)
-        menu.addSeparator()
-        menu.addAction("Ask Claude about selection…", self.ask_claude)
-        return menu
+
+    def _toggle_style(self, attr, on):
+        setattr(self.style, attr, on)
+        if attr == "bonds_enabled" and on and self.data is not None:
+            self.style.ensure_bond_pairs(self.data.types)
+        self._style_changed()
+
+    def center_on_picks(self):
+        """Rotate and zoom about the picked atoms (their mean position)."""
+        picks = self.viewport.picks
+        if picks and self.data is not None:
+            self.viewport.plotter.set_focus(self.data.positions[picks].mean(axis=0))
+            self.viewport.render()
+
+    def select_picked(self, delete: bool = False):
+        """Turn the viewport picks into an ``ExpressionSelection`` (by particle identifier when
+        the data has one, so the same atoms stay selected on every frame), followed by
+        ``DeleteSelected`` when ``delete``."""
+        picks, d = self.viewport.picks, self.data
+        if self.pipeline is None or d is None or not picks:
+            return
+        if "Particle Identifier" in d.particles:
+            ids = sorted(int(i) for i in np.asarray(d["Particle Identifier"])[picks])
+            expr = f"np.isin(ParticleIdentifier, {ids})"
+        else:
+            expr = f"np.isin(ParticleIndex, {sorted(picks)})"
+        self.viewport.clear_picks()
+        self.pipeline.modifiers.append(mods.ExpressionSelection(expr))
+        if delete:
+            self.pipeline.modifiers.append(mods.DeleteSelected())
+        self.panel.refresh(select=("mod", self.pipeline.modifiers[-1]))
+        self.recompute()
+
+    def add_isosurface(self):
+        """Add ``CreateIsosurface`` for the first grid property of the current frame."""
+        if self.pipeline is None or self.data is None or not self.data.grids:
+            return
+        name, grid = next(iter(self.data.grids.items()))
+        mod = mods.CreateIsosurface(property=next(iter(grid.properties)), grid=name)
+        self.pipeline.modifiers.append(mod)
+        self.panel.refresh(select=("mod", mod))
+        self.recompute()
+
+    def show_plot(self, table: str | None = None):
+        """Open the Plots tab, on ``table`` when given (phonon bands show by themselves)."""
+        self.bottom_dock.show()
+        self.bottom.setCurrentWidget(self.plots)
+        if table is not None:
+            self.plots.hist.setCurrentText("")
+            self.plots.table.setCurrentText(table)
 
     def ask_claude(self):
         self.ask_dock.show()
@@ -861,7 +1030,7 @@ class MainWindow(QtWidgets.QMainWindow):
             from ..render import apply_camera_state
 
             apply_camera_state(self.viewport.plotter, s.camera)
-            self.viewport.plotter.render()
+            self.viewport.render()
         self.render_page.set_state(s.render)
         self._style_changed()
         self.session_path = path
