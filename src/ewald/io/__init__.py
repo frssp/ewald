@@ -38,7 +38,11 @@ class FileSource:
         path = str(path)
         # a NEB reader takes the whole wildcard: one file per image, not one trajectory
         wildcard = any(c in path for c in "*?[") and (format or "").lower() not in _NEB_FORMATS
-        if remote.is_remote(path):  # host:/path or ssh://host/path
+        from .. import plugins
+
+        if plugins.scheme_reader(path) is not None:  # aiida:1234 and other plugin schemes
+            paths = [path]
+        elif remote.is_remote(path):  # host:/path or ssh://host/path
             paths = remote.glob(path) if wildcard else [path]
             if not wildcard:
                 remote.stat(path)  # connect (and authenticate) once, up front; raises if missing
@@ -166,7 +170,9 @@ _STREAMING_FORMATS = ("lammps/dump", "lammps-dump", "lammps-dump-text", "vasp-xd
 def _readable_path(path: str, format: str | None) -> str:
     """Remote files go to the native readers as they are (read in place, frame by frame);
     for every other reader, ASE and plugins included, they are downloaded to the local cache."""
-    if not remote.is_remote(path):
+    from .. import plugins
+
+    if not remote.is_remote(path) or plugins.scheme_reader(path) is not None:
         return path
     fmt = (format or "").lower()
     if fmt in _STREAMING_FORMATS or (not fmt and (is_lammps_dump(path) or is_xdatcar(path)
