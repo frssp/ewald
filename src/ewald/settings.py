@@ -66,7 +66,10 @@ OPTIONS = (
     Option("viewport.sphere_resolution", 10, "Sphere resolution", "Interactive mesh detail; exports use full quality.",
            minimum=4, maximum=40),
     Option("viewport.mesh_limit", 150_000, "Impostor threshold",
-           "Above this many atoms spheres are drawn as GPU impostors.", minimum=1000, maximum=100_000_000),
+           "Above this many atoms spheres are drawn as GPU impostors (and arrows as lines).",
+           minimum=1000, maximum=100_000_000),
+    Option("viewport.arrow_resolution", 6, "Arrow resolution",
+           "Sides per vector arrow while interacting; exports use full quality.", minimum=3, maximum=32),
 
     Option("elements.color_scheme", "Jmol", "Color scheme", choices=("Jmol", "CPK")),
     Option("elements.radius_source", "covalent", "Radius preset",

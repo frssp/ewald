@@ -5,6 +5,7 @@ import ast
 
 from PySide6 import QtWidgets
 
+_CHOICES = {"alignment": ("base", "center", "head"), "shading": ("normal", "flat")}
 _CMAPS = ["viridis", "plasma", "inferno", "magma", "cividis", "coolwarm", "coolwarm_r", "jet",
           "rainbow", "turbo", "RdBu", "RdBu_r", "Spectral", "hot", "Greys"]
 
@@ -46,6 +47,11 @@ class ParameterForm(QtWidgets.QWidget):
             w.setEditable(True)
             w.addItems(_CMAPS)
             w.setCurrentText(str(value))
+            self.editors[name] = (w, str)
+        elif name in _CHOICES and isinstance(value, str):
+            w = QtWidgets.QComboBox()
+            w.addItems(_CHOICES[name])
+            w.setCurrentText(value)
             self.editors[name] = (w, str)
         elif isinstance(value, str):
             w = QtWidgets.QLineEdit(value)

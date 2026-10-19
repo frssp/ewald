@@ -40,12 +40,81 @@ def _mix(c, white):
     return c + (1 - c) * white
 
 
+def _hull(pts):
+    """Convex hull of 2D points (Andrew's monotone chain), counter-clockwise."""
+    pts = sorted(map(tuple, np.round(pts, 6)))
+    if len(pts) < 3:
+        return pts
+
+    def half(points):
+        out = []
+        for p in points:
+            while len(out) >= 2 and ((out[-1][0] - out[-2][0]) * (p[1] - out[-2][1])
+                                     - (out[-1][1] - out[-2][1]) * (p[0] - out[-2][0])) <= 0:
+                out.pop()
+            out.append(p)
+        return out[:-1]
+
+    return half(pts) + half(pts[::-1])
+
+
+def _arrow_prims(data, vectors, camera, size, pt, shading, sides=16):
+    """Arrows as their true silhouettes: hulls of the projected shaft rings, then of the head rim
+    and tip (an arrow pointing at the viewer becomes a disc, as it should). The shaft is split
+    where it passes its atom, and each piece is painted in front of the atom only if it is
+    nearer than the atom center, so arrows run through atoms instead of lying on top."""
+    from matplotlib.patches import Polygon
+
+    from .arrows import _frame, scene_arrows
+
+    prims = []
+    ang = 2 * np.pi * np.arange(sides) / sides
+    cs, sn = np.cos(ang)[None, :, None], np.sin(ang)[None, :, None]
+    for arrows in scene_arrows(data, vectors):
+        m = arrows.count
+        d = arrows.direction
+        e1, e2 = _frame(d)
+        ring = cs * e1[:, None] + sn * e2[:, None]
+        neck = arrows.neck
+        h = np.clip(np.einsum("ij,ij->i", arrows.anchor - arrows.base, d), 0, None)
+        h = np.minimum(h, np.linalg.norm(neck - arrows.base, axis=1))
+        mid = arrows.base + h[:, None] * d  # where the shaft passes its atom
+        r, R = arrows.radius[:, None, None], arrows.head_radius[:, None, None]
+        pts = np.concatenate([arrows.base[:, None] + r * ring, mid[:, None] + r * ring, neck[:, None] + r * ring,
+                              neck[:, None] + R * ring, arrows.tip[:, None]], axis=1)  # m x (4s+1) x 3
+        px, py, pz, _ = _project(pts.reshape(-1, 3), camera, size)
+        px, py, pz = (a.reshape(m, -1) for a in (px, py, pz))
+        _, _, za, _ = _project(arrows.anchor, camera, size)
+        _, _, zc, _ = _project(np.concatenate([arrows.base, mid, neck, arrows.tip]), camera, size)
+        zb, zm, zn, zt = zc.reshape(4, m)
+        flat = arrows.shading == "flat" or shading == "flat"
+        a = arrows.alpha
+        s = sides
+        for k in range(m):
+            if not camera.get("parallel_projection", True) and pz[k].min() <= 0:
+                continue
+            xy = np.column_stack([px[k], py[k]])
+            c = arrows.rgb[k]
+            edge, lw = (*(c * 0.45), a), 0.6 * pt
+            body = (*(c if flat else c * 0.85), a)
+            L = np.linalg.norm(neck[k] - arrows.base[k])
+            # (outline points, depth of the piece's end away from the atom, fill)
+            pieces = [(xy[:2 * s], zb[k], body, h[k] > 1e-9), (xy[s:3 * s], zn[k], body, h[k] < L - 1e-9),
+                      (xy[3 * s:], zt[k] if h[k] < L + 0.5 * arrows.head_length[k] else zn[k], (*c, a), True)]
+            for ring_xy, z_far, fill, present in pieces:
+                if not present:
+                    continue
+                depth = z_far - 1e-6 if z_far < za[k] else za[k] + 1e-6
+                prims.append((depth, [Polygon(_hull(ring_xy), closed=True)], [fill], [edge], [lw]))
+    return prims
+
+
 def render_vector(data, filename=None, *, camera, size=(1600, 1200), background="white",
                   transparent_background=False, radius_scale=1.0, type_colors=None, type_radii=None,
                   bonds=None, bond_pairs=None, bond_radius=0.15, show_cell=True, cell_color=None,
                   cell_width=2.0, shading="gradient", text=None, legend=True, type_legend=False,
                   scale_bar=None, dpi=None, radius_preset="covalent", oxidation_states=None, coordination=None,
-                  **_ignored):
+                  vectors=None, **_ignored):
     """Draw ``data`` as a vector figure and save it (format from the extension).
 
     ``shading``: 'gradient' (shaded discs) or 'flat' (one color plus outline, VESTA's
@@ -128,6 +197,7 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                         fc.append((*_mix(c, 0.35), a)); ec.append("none"); lw.append(0)
                     # paint just before the bond's own atom, so the sphere hides the stick's root
                     prims.append((z0[k] + 1e-6, patches, fc, ec, lw))
+    prims += _arrow_prims(data, vectors, camera, (w, h), pt, shading)
     for mesh in getattr(data, "surfaces", {}).values():  # polyhedra and other triangle meshes
         if not mesh.face_count:
             continue

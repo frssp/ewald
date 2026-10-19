@@ -44,6 +44,7 @@ class Viewport(QtWidgets.QWidget):
         self.rotation_step = 15.0
         self.sphere_resolution = 10
         self.mesh_limit = 150_000
+        self.arrow_resolution = 6
         self.show_overlay = True
         self.show_axes = True
         self.initial_view = "iso"
@@ -136,7 +137,7 @@ class Viewport(QtWidgets.QWidget):
 
     def redraw(self):
         p = self.plotter
-        stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:"))]
+        stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:"))]
         for name in ("atoms", "bonds", "cell", "trajectories", "_legend", "_overlay", *stale):
             p.remove_actor(name, render=False)
         if p.scalar_bars:
@@ -149,6 +150,7 @@ class Viewport(QtWidgets.QWidget):
         kw = self.style.scene_kwargs()
         kw["cell_color"] = "#AEB4BE" if dark else "black"
         kw["sphere_resolution"] = self.sphere_resolution  # interactive; image export uses full quality
+        kw["arrow_resolution"] = self.arrow_resolution
         build_scene(p, self.data, mesh_limit=self.mesh_limit, **kw)
         if any(s.transparency > 0 for s in self.data.surfaces.values()) and not getattr(self, "_peeling", False):
             p.enable_depth_peeling()

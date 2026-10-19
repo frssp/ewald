@@ -256,7 +256,8 @@ class Session:
             kw.update(ViewStyle(**{k: v for k, v in self.style.items() if k in names}).scene_kwargs())
         allowed = set(inspect.signature(render).parameters) | {
             "type_colors", "type_radii", "bond_pairs", "bond_radius", "atom_style", "cell_width", "cell_color",
-            "shading", "trajectory_width", "radius_preset", "oxidation_states", "coordination"}
+            "shading", "trajectory_width", "radius_preset", "oxidation_states", "coordination", "vectors",
+            "arrow_resolution"}
         kw.update({k: v for k, v in self.render.items()
                    if k in allowed and k not in ("data", "filename", "text", "camera")})
         r = self.render  # keys written by the GUI's Render page

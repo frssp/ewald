@@ -432,3 +432,29 @@ def test_viewport_draws_and_clears_surfaces(app):
     v.set_data(data)
     assert not any(str(k).startswith("surface:") for k in v.plotter.actors)
     v.close()
+
+
+def test_viewport_draws_vector_arrows(app):
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.params import ParameterForm
+    from ewald.gui.pipeline_panel import MODIFIER_MENU
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    menu = MODIFIER_MENU["Vectors (arrows)"]
+    assert all(isinstance(f(), mods.VectorVis) for f in menu.values())
+    data = DataCollection([[1, 1, 1], [3, 3, 3]], ["Fe", "Fe"], Cell(np.eye(3) * 4))
+    data.particles["Force"] = np.array([[0, 0, 1.0], [1.0, 0, 0]])
+    mod = mods.VectorVis()
+    form = ParameterForm(mod)
+    form.editors["alignment"][0].setCurrentText("center")  # choices, not free text
+    form.apply()
+    assert mod.alignment == "center"
+    v = Viewport(ViewStyle())
+    v.arrow_resolution = 5
+    v.set_data(Pipeline(StaticSource(data), [mod]).compute())
+    actor = v.plotter.actors["vectors:Force"]
+    assert actor.GetMapper().GetInput().GetNumberOfPoints() == 2 * (6 * 5 + 2)
+    v.set_data(data)
+    assert not any(str(k).startswith("vectors:") for k in v.plotter.actors)
+    v.close()

@@ -35,7 +35,7 @@ LAYOUT = {
         ("View", ["viewport.background", "viewport.projection", "viewport.initial_view", "viewport.style_preset"]),
         ("Navigation", ["viewport.rotation_step"]),
         ("Overlays", ["viewport.show_axes", "viewport.show_overlay"]),
-        ("Performance", ["viewport.sphere_resolution", "viewport.mesh_limit"])]),
+        ("Performance", ["viewport.sphere_resolution", "viewport.arrow_resolution", "viewport.mesh_limit"])]),
     "Elements": ("Default atom colors, radii and bond search, like VESTA's elements.ini.", [
         ("Atoms", ["elements.color_scheme", "elements.radius_source", "elements.radius_scale"]),
         ("Bonds", ["bonds.length_factor", "bonds.radius"]),
@@ -845,6 +845,7 @@ def apply_settings(win, s: Settings, startup: bool = False):
     vp.rotation_step = s["viewport.rotation_step"]
     vp.sphere_resolution = s["viewport.sphere_resolution"]
     vp.mesh_limit = s["viewport.mesh_limit"]
+    vp.arrow_resolution = s["viewport.arrow_resolution"]
     vp.show_overlay = s["viewport.show_overlay"]
     vp.initial_view = s["viewport.initial_view"]
     vp.set_axes_visible(s["viewport.show_axes"])

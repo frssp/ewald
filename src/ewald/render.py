@@ -112,7 +112,7 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 type_colors: dict | None = None, type_radii: dict | None = None,
                 bond_pairs: list | None = None, trajectory_width: float = 2.0,
                 radius_preset: str = "covalent", oxidation_states: dict | None = None,
-                coordination: dict | None = None):
+                coordination: dict | None = None, vectors=None, arrow_resolution: int | None = None):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter.
 
     ``atom_style``: 'mesh' (sphere meshes, publication shading), 'impostor' (GPU
@@ -125,6 +125,10 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     Bonds in ``data.bonds`` (CreateBonds, EditBonds) are drawn whenever present and take
     precedence over ``bonds``/``bond_pairs``; ``data.surfaces`` meshes (polyhedra) are drawn too.
     ``trajectory_width``: line width of ``tables['trajectory-lines']`` (GenerateTrajectoryLines); 0 hides them.
+    ``vectors``: particle properties to draw as arrows on top of ``data.vectors`` (VectorVis), e.g.
+    ``"Force"``, ``["Force", "Velocity"]`` or ``{"Force": {"scaling": 2, "color": "red"}}`` (see
+    :class:`ewald.arrows.VectorStyle`). ``arrow_resolution``: sides per arrow (default from the
+    sphere detail); above ``mesh_limit`` arrows they are drawn as lines.
     """
     import pyvista as pv
 
@@ -164,6 +168,7 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
         if bonds or bond_pairs or data.bonds is not None:
             _add_bonds(plotter, data, colors, bonds, bond_radius, bond_pairs)
     _add_surfaces(plotter, data)
+    _add_vectors(plotter, data, vectors, arrow_resolution or max(6, (sphere_resolution or 16) // 2 + 2), mesh_limit)
     if trajectory_width > 0 and "trajectory-lines" in data.tables:
         _add_trajectory_lines(plotter, data, trajectory_width)
     if show_cell and data.cell.is_valid:
@@ -257,6 +262,36 @@ def _add_surfaces(plotter, data):
             lines = np.column_stack([np.full(len(mesh.edges), 2), mesh.edges]).ravel()
             plotter.add_mesh(pv.PolyData(mesh.vertices, lines=lines), color=_rgb(mesh.edge_color), line_width=1.5,
                              name=f"surface-edges:{name}", render=False)
+
+
+def _add_vectors(plotter, data, vectors, sides, line_limit):
+    """One actor per arrow set (``vectors:<property>``): cylinder + cone meshes, or colored
+    lines above ``line_limit`` arrows so the interactive viewport stays fast."""
+    import pyvista as pv
+
+    from .arrows import arrow_mesh, scene_arrows
+
+    for arrows in scene_arrows(data, vectors):
+        m = arrows.count
+        flat = arrows.shading == "flat"
+        light = dict(ambient=1.0, diffuse=0.0, specular=0.0) if flat else \
+            dict(ambient=0.25, diffuse=0.8, specular=0.3, specular_power=40)
+        if m > line_limit:
+            pts = np.empty((2 * m, 3))
+            pts[0::2], pts[1::2] = arrows.base, arrows.tip
+            lines = np.column_stack([np.full(m, 2), np.arange(0, 2 * m, 2), np.arange(1, 2 * m, 2)]).ravel()
+            poly = pv.PolyData(pts, lines=lines)
+            poly.cell_data["rgb"] = (arrows.rgb * 255).astype(np.uint8)
+            plotter.add_mesh(poly, scalars="rgb", rgb=True, line_width=2, opacity=arrows.alpha,
+                             name=f"vectors:{arrows.name}", render=False, lighting=False)
+            continue
+        verts, faces, normals, owner = arrow_mesh(arrows, sides)
+        poly = pv.PolyData(verts, faces=np.column_stack([np.full(len(faces), 3), faces]).ravel())
+        poly.point_data["Normals"] = normals
+        poly.point_data.active_normals_name = "Normals"
+        poly.point_data["rgb"] = (arrows.rgb[owner] * 255).astype(np.uint8)
+        plotter.add_mesh(poly, scalars="rgb", rgb=True, opacity=arrows.alpha, smooth_shading=not flat,
+                         name=f"vectors:{arrows.name}", render=False, **light)
 
 
 def _add_trajectory_lines(plotter, data, width):
@@ -402,7 +437,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
 
         if camera is None:
             camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
-        for k in ("atom_style", "sphere_resolution", "mesh_limit", "trajectory_width"):
+        for k in ("atom_style", "sphere_resolution", "mesh_limit", "trajectory_width", "arrow_resolution"):
             scene_kwargs.pop(k, None)
         return render_vector(data, filename, camera=camera, size=size, background=background,
                              transparent_background=transparent_background, radius_scale=radius_scale,
@@ -450,7 +485,7 @@ def default_camera(data, size=(1600, 1200), direction="iso", orthographic=True, 
 
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     build_scene(p, data, radius_scale=radius_scale, show_cell=True, sphere_resolution=6,
-                **{k: v for k, v in (scene_kwargs or {}).items() if k in _RADIUS_KEYS + ("type_colors",)})
+                **{k: v for k, v in (scene_kwargs or {}).items() if k in _RADIUS_KEYS + ("type_colors", "vectors")})
     _setup_camera(p, data, direction, orthographic, zoom)
     cam = camera_state(p)
     p.close()
@@ -499,8 +534,11 @@ def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, ba
     if camera is None:  # same framing as the OpenGL path
         camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
     cell_color = "#AEB4BE" if sum(_rgb(background)) < 1.5 and not transparent_background else "black"
+    view = np.asarray(camera["position"], float) - np.asarray(camera["focal_point"], float)
+    scene_kwargs.setdefault("arrow_resolution", 16 if samples <= 4 else 24)
     scene = scene_from_data(data, radius_scale=radius_scale, bonds=bonds, show_cell=show_cell,
-                            cell_color=scene_kwargs.pop("cell_color", cell_color), **scene_kwargs)
+                            cell_color=scene_kwargs.pop("cell_color", cell_color), view_direction=view,
+                            **scene_kwargs)
     img = raytrace(scene, camera, size, samples=samples, ao_samples=ao_samples, shadows=shadows,
                    background=background, transparent_background=transparent_background)
     rgba = (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)
