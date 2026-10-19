@@ -49,7 +49,8 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
 - `gui/`: `app.py` main window, `viewport.py`, `pipeline_panel.py`, `params.py`, `render_page.py`,
   `preferences.py`, `console.py`, `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`.
-- `llm/`: Claude agent (`agent.py`), tools (`tools.py`), descriptors (`describe.py`, `narrate.py`),
+- `llm/`: Claude agent (`agent.py`), tools (`tools.py`), Modifier Forge (`forge.py`: Claude writes a
+  plugin + tests, verified in a subprocess, saved to the plugin folder), descriptors (`describe.py`, `narrate.py`),
   MCP server (`mcp_server.py`), and `reference.py`, the source of `llms.txt`.
 
 ## Conventions

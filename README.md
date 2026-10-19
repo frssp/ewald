@@ -151,6 +151,12 @@ the plugin folder, or an `ewald.modifiers` entry point. A registered modifier im
 by the Claude `add_modifier` tool ([`examples/plugins/local_composition.py`](examples/plugins/local_composition.py)).
 `llms.txt` stays core-only; `ewald api --with-plugins` appends the plugins installed here.
 
+`ewald forge "what to compute"` has Claude write such a modifier together with tests that
+have a known answer. ewald runs them in a subprocess, along with checks for the plugin
+contract (no in-place writes, the GPU code path), returns any failure to Claude to fix, and
+saves the modifier to the plugin folder only once everything passes
+([Modifier Forge](docs/plugins/forge.md)). It asks before running the generated code.
+
 LAMMPS values stay in the file's own unit style (`Units` attribute when the dump has it).
 The test fixtures in `tests/data/` come from real LAMMPS runs (`tests/data/lammps/generate.in`)
 and VASP-format files written to match VASP 6 output.
