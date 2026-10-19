@@ -23,7 +23,12 @@ _DIRECTIONS = {
 def _element(t: str):
     from ase.data import atomic_numbers
 
-    return atomic_numbers.get(str(t))
+    from .radii import element_of
+
+    return atomic_numbers.get(element_of(t))
+
+
+_RADIUS_KEYS = ("type_radii", "radius_preset", "oxidation_states", "coordination")
 
 
 def type_color(t: str, index: int = 0) -> np.ndarray:
@@ -34,11 +39,12 @@ def type_color(t: str, index: int = 0) -> np.ndarray:
     return np.array(jmol_colors[z] if z else _FALLBACK_PALETTE[index % len(_FALLBACK_PALETTE)], float)
 
 
-def type_radius(t: str, scale: float = 0.8) -> float:
-    from ase.data import covalent_radii
+def type_radius(t: str, scale: float = 0.8, preset: str = "covalent") -> float:
+    """Default radius of a particle type: ``scale`` x the ``preset`` radius (see :mod:`ewald.radii`)."""
+    from .radii import element_radius
 
-    z = _element(t)
-    return float(covalent_radii[z] * scale) if z else 0.5
+    r = element_radius(str(t), preset)
+    return float(r * scale) if r is not None else 0.5
 
 
 def default_colors(data: DataCollection, type_colors: dict | None = None) -> np.ndarray:
@@ -53,14 +59,30 @@ def default_colors(data: DataCollection, type_colors: dict | None = None) -> np.
     return out
 
 
-def default_radii(data: DataCollection, scale: float = 0.8, type_radii: dict | None = None) -> np.ndarray:
+def default_radii(data: DataCollection, scale: float = 0.8, type_radii: dict | None = None,
+                  radius_preset: str = "covalent", oxidation_states: dict | None = None,
+                  coordination: dict | None = None) -> np.ndarray:
+    """Per-particle radii: the 'Radius' property, else ``type_radii``, else ``scale`` x the preset radius.
+
+    ``radius_preset`` is one of :data:`ewald.radii.PRESETS` ('covalent', 'atomic', 'vdW', 'ionic', ...);
+    the ionic presets use ``oxidation_states``/``coordination`` per type, or guess them.
+    """
     if "Radius" in data:
         return np.asarray(data["Radius"], float)
     types = data.types
     out = np.full(data.count, 0.5)
+    type_radii = type_radii or {}
+    todo = [t for t in dict.fromkeys(types) if type_radii.get(t) is None]
+    table = {}
+    if todo:
+        from .radii import resolve
+
+        table = resolve(data, radius_preset, oxidation_states, coordination).radii
     for t in dict.fromkeys(types):
-        r = (type_radii or {}).get(t)
-        out[types == t] = r if r is not None else type_radius(t, scale)
+        r = type_radii.get(t)
+        if r is None:
+            r = table[str(t)] * scale if str(t) in table else 0.5
+        out[types == t] = r
     return out
 
 
@@ -88,20 +110,28 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 bond_radius: float = 0.15, only_visible=None, atom_style: str = "auto",
                 mesh_limit: int = 150_000, sphere_resolution: int | None = None,
                 type_colors: dict | None = None, type_radii: dict | None = None,
-                bond_pairs: list | None = None, trajectory_width: float = 2.0):
+                bond_pairs: list | None = None, trajectory_width: float = 2.0,
+                radius_preset: str = "covalent", oxidation_states: dict | None = None,
+                coordination: dict | None = None):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter.
 
     ``atom_style``: 'mesh' (sphere meshes, publication shading), 'impostor' (GPU
     point sprites for very large systems) or 'auto' (mesh up to ``mesh_limit`` atoms).
     ``type_colors``/``type_radii`` override per-type defaults, e.g. ``{"Cu": "#c8794a"}``.
+    ``radius_preset`` picks the default radii: 'covalent' (default), 'atomic', 'atomic (calc.)', 'vdW',
+    'vdW (Bondi)', 'ionic' or 'ionic (crystal)' (Shannon; ``oxidation_states={"Ti": 4, "O": -2}`` and
+    ``coordination={"Ti": 6}`` per type, else guessed from the structure; see :mod:`ewald.radii`).
     ``bond_pairs``: VESTA-style list of ``(A, B, dmin, dmax)``; '*' matches any type.
+    Bonds in ``data.bonds`` (CreateBonds, EditBonds) are drawn whenever present and take
+    precedence over ``bonds``/``bond_pairs``; ``data.surfaces`` meshes (polyhedra) are drawn too.
     ``trajectory_width``: line width of ``tables['trajectory-lines']`` (GenerateTrajectoryLines); 0 hides them.
     """
     import pyvista as pv
 
     if data.count:
         colors = np.clip(default_colors(data, type_colors), 0, 1)
-        radii = default_radii(data, type_radii=type_radii) * radius_scale
+        radii = default_radii(data, type_radii=type_radii, radius_preset=radius_preset,
+                              oxidation_states=oxidation_states, coordination=coordination) * radius_scale
         if only_visible is not None:
             keep = np.asarray(only_visible, bool)
         elif "Transparency" in data:
@@ -131,8 +161,9 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
             mapper.SetScaleArray("radius")
             mapper.SetScaleFactor(1.0)
             mapper.SetSplatShaderCode(_IMPOSTOR_SHADER)
-        if bonds or bond_pairs:
+        if bonds or bond_pairs or data.bonds is not None:
             _add_bonds(plotter, data, colors, bonds, bond_radius, bond_pairs)
+    _add_surfaces(plotter, data)
     if trajectory_width > 0 and "trajectory-lines" in data.tables:
         _add_trajectory_lines(plotter, data, trajectory_width)
     if show_cell and data.cell.is_valid:
@@ -160,41 +191,72 @@ def bond_list(data, cutoff=None, pairs=None):
     With ``pairs`` [(A, B, dmin, dmax), ...] only pairs whose types and length
     match a row are kept (VESTA's bond search table); otherwise ``cutoff``.
     """
-    from .neighbors import find_pairs
+    from .bonds import find_bonds
 
-    rmax = max(p[3] for p in pairs) if pairs else cutoff
-    i, j, d, dist = find_pairs(data.positions, data.cell, rmax)
-    i, j, d, dist = (np.asarray(x) for x in (i, j, d, dist))
-    if pairs:
-        types = data.types
-        ti, tj = types[i], types[j]
-        keep = np.zeros(len(i), bool)
-        for a, b, lo, hi in pairs:
-            ok_t = (((ti == a) | (a == "*")) & ((tj == b) | (b == "*"))) | \
-                   (((ti == b) | (b == "*")) & ((tj == a) | (a == "*")))
-            keep |= ok_t & (dist >= lo) & (dist <= hi)
-        i, j, d = i[keep], j[keep], d[keep]
-    return i, j, d
+    b = find_bonds(data, cutoff, pairs)
+    i, j = b.topology.T
+    d = b.vectors(data)
+    return np.concatenate([i, j]), np.concatenate([j, i]), np.concatenate([d, -d])
+
+
+def scene_bonds(data, cutoff=None, pairs=None):
+    """The bonds a renderer draws: ``data.bonds`` if present, else a search by ``cutoff``/``pairs``."""
+    from .bonds import find_bonds
+
+    if data.bonds is not None:
+        return data.bonds
+    return find_bonds(data, cutoff, pairs)
 
 
 def _add_bonds(plotter, data, colors, cutoff, bond_radius, pairs=None):
-    """Half-bonds from each atom along the minimum-image vector (correct across PBC)."""
+    """Half-bonds from each atom along its periodic-image bond vector (correct across PBC)."""
     import pyvista as pv
 
-    i, j, d = bond_list(data, cutoff, pairs)
-    if not len(i):
+    from .bonds import bond_segments
+
+    b = scene_bonds(data, cutoff, pairs)
+    if not b.count:
         return
-    start = data.positions[i]
-    pts = np.empty((2 * len(i), 3))
+    start, end, rgb, _ = bond_segments(data, b, colors)
+    m = len(start)
+    pts = np.empty((2 * m, 3))
     pts[0::2] = start
-    pts[1::2] = start + 0.5 * d
-    lines = np.column_stack([np.full(len(i), 2), np.arange(0, 2 * len(i), 2),
-                             np.arange(1, 2 * len(i), 2)]).ravel()
+    pts[1::2] = end
+    lines = np.column_stack([np.full(m, 2), np.arange(0, 2 * m, 2), np.arange(1, 2 * m, 2)]).ravel()
     poly = pv.PolyData(pts, lines=lines)
-    poly.cell_data["rgb"] = (colors[i] * 255).astype(np.uint8)
+    poly.cell_data["rgb"] = (rgb * 255).astype(np.uint8)
     tubes = poly.tube(radius=bond_radius, n_sides=12, capping=False)
     plotter.add_mesh(tubes, scalars="rgb", rgb=True, name="bonds", smooth_shading=True, render=False,
                      ambient=0.25, diffuse=0.8, specular=0.2, specular_power=30)
+
+
+def _add_surfaces(plotter, data):
+    """Every ``data.surfaces`` mesh as one actor (faces) plus its outline edges. Meshes with
+    vertex "Normal"s (isosurfaces) are smooth-shaded; vertex "Color"s (grid slices) are interpolated."""
+    import pyvista as pv
+
+    for name, mesh in getattr(data, "surfaces", {}).items():
+        if not mesh.face_count:
+            continue
+        poly = mesh.to_pyvista()
+        kw = dict(opacity=1.0 - mesh.transparency, name=f"surface:{name}", ambient=0.3, diffuse=0.7,
+                  specular=0.2, render=False, smooth_shading=False)
+        normals = mesh.vertex_properties.get("Normal")
+        if normals is not None:
+            poly.point_data["Normals"] = np.asarray(normals, float)
+            poly.point_data.active_normals_name = "Normals"
+            kw.update(smooth_shading=True, specular=0.25, specular_power=30)
+        vcolors = mesh.vertex_properties.get("Color")
+        if vcolors is not None:
+            poly.point_data["rgb"] = (np.clip(vcolors, 0, 1) * 255).astype(np.uint8)
+            kw.update(ambient=0.6, diffuse=0.45, specular=0.0)  # colour maps should read true, not shaded
+        else:
+            poly.cell_data["rgb"] = (np.clip(mesh.face_colors(), 0, 1) * 255).astype(np.uint8)
+        plotter.add_mesh(poly, scalars="rgb", rgb=True, **kw)
+        if mesh.edges is not None and len(mesh.edges):
+            lines = np.column_stack([np.full(len(mesh.edges), 2), mesh.edges]).ravel()
+            plotter.add_mesh(pv.PolyData(mesh.vertices, lines=lines), color=_rgb(mesh.edge_color), line_width=1.5,
+                             name=f"surface-edges:{name}", render=False)
 
 
 def _add_trajectory_lines(plotter, data, width):
@@ -267,39 +329,99 @@ def setup_camera(plotter, data, direction="iso", orthographic=True, zoom=1.0):
     _setup_camera(plotter, data, direction, orthographic, zoom)
 
 
+VECTOR_SUFFIXES = (".svg", ".pdf", ".eps", ".ps")
+
+# Output quality presets (file output puts quality first; the interactive viewport has its own settings).
+# samples: ray-traced rays per pixel; ao_samples: ambient-occlusion rays; antialiasing: OpenGL SSAA;
+# ambient_occlusion: OpenGL SSAO; sphere_resolution: OpenGL sphere mesh detail; scale: pixel size factor.
+QUALITY_PRESETS = {
+    "draft": {"samples": 1, "ao_samples": 0, "shadows": False, "antialiasing": False,
+              "ambient_occlusion": False, "sphere_resolution": 8, "scale": 0.5},
+    "standard": {"samples": 4, "ao_samples": 8, "shadows": True, "antialiasing": True,
+                 "ambient_occlusion": False, "sphere_resolution": 16, "scale": 1.0},
+    "publication": {"samples": 16, "ao_samples": 32, "shadows": True, "antialiasing": True,
+                    "ambient_occlusion": True, "sphere_resolution": 28, "scale": 1.0},
+}
+
+
+def quality_settings(quality: str | None = "publication", **explicit) -> dict:
+    """Preset values with every explicitly given (non-None) setting taking precedence."""
+    name = (quality or "publication").lower()
+    if name not in QUALITY_PRESETS:
+        raise ValueError(f"unknown quality {quality!r}; use one of {', '.join(QUALITY_PRESETS)}")
+    out = dict(QUALITY_PRESETS[name])
+    out.update({k: v for k, v in explicit.items() if v is not None})
+    return out
+
+
 def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction="iso",
            orthographic: bool = True, zoom: float = 1.0, background="white",
-           transparent_background: bool = False, ambient_occlusion: bool = False,
+           transparent_background: bool = False, ambient_occlusion: bool | None = None,
            legend: bool = True, show_cell: bool = True, bonds: float | None = None,
-           radius_scale: float = 1.0, antialiasing: bool = True, text: str | None = None,
-           camera: dict | None = None, renderer: str = "opengl", samples: int = 8, ao_samples: int = 16,
-           shadows: bool = True, **scene_kwargs):
-    """Render one DataCollection to ``filename`` (PNG/JPG/TIFF) or return an RGB array.
+           radius_scale: float = 1.0, antialiasing: bool | None = None, text: str | None = None,
+           camera: dict | None = None, renderer: str = "opengl", samples: int | None = None,
+           ao_samples: int | None = None, shadows: bool | None = None, type_legend: bool = False,
+           scale_bar: bool | float | None = None, dpi: float | None = None, quality: str = "publication",
+           scale: float | None = None, **scene_kwargs):
+    """Render one DataCollection to ``filename`` or return an RGB array.
 
     ``direction`` is a view vector *from* the scene to the camera, or one of
     'x', 'y', 'z', '-x', ..., 'iso'. ``bonds=2.8`` draws bonds shorter than 2.8 A.
     ``camera`` (see :func:`camera_state`) reproduces an interactive view exactly.
-    ``renderer="raytrace"`` uses the built-in ray tracer (ambient occlusion with
-    ``ao_samples`` rays, ``shadows``, ``samples`` rays per pixel) instead of OpenGL.
+
+    ``renderer``: 'opengl' (VTK, fast), 'raytrace' (built-in ray tracer: ambient
+    occlusion with ``ao_samples`` rays, ``shadows``, ``samples`` rays per pixel) or
+    'vector' (SVG/PDF/EPS with real circles and editable text, see :mod:`ewald.vector`).
+    Raster renderers can also write .pdf/.svg/.eps, embedding the image.
+
+    ``quality``: 'draft', 'standard' or 'publication' (default) fills in every sampling
+    setting left as None (``samples``, ``ao_samples``, ``shadows``, ``antialiasing``,
+    ``ambient_occlusion``, sphere mesh detail and ``scale``, a factor on ``size``);
+    see ``QUALITY_PRESETS``. Explicit arguments always win.
+
+    Overlays: ``text`` label, ``legend`` (ColorCoding color bar), ``type_legend``
+    (one swatch per particle type), ``scale_bar`` (True = round length, or a length
+    in Angstrom; exact in orthographic views). ``dpi`` is stored in PNG/TIFF files
+    and sets the page size of vector output.
     """
     import pyvista as pv
 
+    if renderer not in ("opengl", "raytrace", "vector"):
+        raise ValueError(f"unknown renderer {renderer!r}; use 'opengl', 'raytrace' or 'vector'")
+    q = quality_settings(quality, samples=samples, ao_samples=ao_samples, shadows=shadows,
+                         antialiasing=antialiasing, ambient_occlusion=ambient_occlusion,
+                         sphere_resolution=scene_kwargs.pop("sphere_resolution", None), scale=scale)
+    samples, ao_samples, shadows = q["samples"], q["ao_samples"], q["shadows"]
+    antialiasing, ambient_occlusion = q["antialiasing"], q["ambient_occlusion"]
+    if q["scale"] != 1.0:
+        size = (max(16, round(size[0] * q["scale"])), max(16, round(size[1] * q["scale"])))
+    overlays = {"text": text, "legend": legend, "type_legend": type_legend, "scale_bar": scale_bar,
+                "type_colors": scene_kwargs.get("type_colors")}
+    if renderer == "vector":
+        from .vector import render_vector
+
+        if camera is None:
+            camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
+        for k in ("atom_style", "sphere_resolution", "mesh_limit", "trajectory_width"):
+            scene_kwargs.pop(k, None)
+        return render_vector(data, filename, camera=camera, size=size, background=background,
+                             transparent_background=transparent_background, radius_scale=radius_scale,
+                             bonds=bonds, show_cell=show_cell, dpi=dpi,
+                             **{k: v for k, v in overlays.items() if k != "type_colors"}, **scene_kwargs)
     if renderer == "raytrace":
         return _render_raytraced(data, filename, size=size, direction=direction, orthographic=orthographic,
                                  zoom=zoom, background=background, transparent_background=transparent_background,
-                                 legend=legend, show_cell=show_cell, bonds=bonds, radius_scale=radius_scale,
-                                 text=text, camera=camera, samples=samples, ao_samples=ao_samples,
-                                 shadows=shadows, **scene_kwargs)
-    if renderer != "opengl":
-        raise ValueError(f"unknown renderer {renderer!r}; use 'opengl' or 'raytrace'")
+                                 show_cell=show_cell, bonds=bonds, radius_scale=radius_scale, camera=camera,
+                                 samples=samples, ao_samples=ao_samples, shadows=shadows, overlays=overlays,
+                                 dpi=dpi, **scene_kwargs)
 
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     p.set_background(background)
-    build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, bonds=bonds, **scene_kwargs)
-    if legend and "ColorCoding.range" in data.attributes:
-        _add_colorbar(p, data)
-    if text:
-        p.add_text(text, font_size=12, color="black" if background == "white" else "white")
+    res = q["sphere_resolution"] if data.count <= 20_000 else min(q["sphere_resolution"], 16)
+    build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, bonds=bonds, sphere_resolution=res,
+                **scene_kwargs)
+    if any(s.transparency > 0 for s in data.surfaces.values()):
+        p.enable_depth_peeling()
     if camera is not None:
         apply_camera_state(p, camera)
     else:
@@ -315,81 +437,74 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
             p.enable_ssao(radius=radius, kernel_size=128)
         except Exception:
             pass
-    img = p.screenshot(filename, transparent_background=transparent_background, return_img=True)
+    img = p.screenshot(None, transparent_background=transparent_background, return_img=True)
+    cam = camera_state(p)
     p.close()
-    return img
+    return _finish(img, data, filename, cam, overlays, background, transparent_background, dpi)
+
+
+def default_camera(data, size=(1600, 1200), direction="iso", orthographic=True, zoom=1.0, radius_scale=1.0,
+                   scene_kwargs=None) -> dict:
+    """Camera that frames ``data`` like the OpenGL renderer (no window is shown)."""
+    import pyvista as pv
+
+    p = pv.Plotter(off_screen=True, window_size=tuple(size))
+    build_scene(p, data, radius_scale=radius_scale, show_cell=True, sphere_resolution=6,
+                **{k: v for k, v in (scene_kwargs or {}).items() if k in _RADIUS_KEYS + ("type_colors",)})
+    _setup_camera(p, data, direction, orthographic, zoom)
+    cam = camera_state(p)
+    p.close()
+    return cam
+
+
+def _finish(img, data, filename, camera, overlays, background, transparent, dpi):
+    """Draw overlays on a rendered raster image, save it, return RGB (or RGBA if transparent)."""
+    from .overlays import draw_overlays
+
+    rgba = draw_overlays(np.asarray(img, np.uint8), data, camera=camera, background=background,
+                         transparent=transparent, **overlays)
+    if filename:
+        save_image(rgba, filename, transparent=transparent, dpi=dpi)
+    return rgba if transparent else rgba[..., :3]
+
+
+def save_image(rgba, filename, *, transparent=False, dpi=None):
+    """Save an RGB(A) uint8 image; .pdf/.svg/.eps embed it in a vector page of the same size."""
+    from PIL import Image
+
+    rgba = np.asarray(rgba, np.uint8)
+    name = str(filename)
+    if name.lower().endswith(VECTOR_SUFFIXES):
+        from matplotlib.figure import Figure
+
+        d = float(dpi or 100)
+        fig = Figure(figsize=(rgba.shape[1] / d, rgba.shape[0] / d), dpi=d)
+        fig.figimage(rgba if transparent else rgba[..., :3], resize=False)
+        fig.savefig(name, dpi=d, transparent=transparent)
+        return
+    im = Image.fromarray(rgba)
+    if not (transparent and name.lower().endswith((".png", ".tif", ".tiff", ".webp"))):
+        im = im.convert("RGB")
+    kw = {"dpi": (float(dpi), float(dpi))} if dpi and name.lower().endswith((".png", ".tif", ".tiff", ".jpg", ".jpeg")) else {}
+    im.save(name, **kw)
 
 
 def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, background, transparent_background,
-                      legend, show_cell, bonds, radius_scale, text, camera, samples, ao_samples, shadows,
+                      show_cell, bonds, radius_scale, camera, samples, ao_samples, shadows, overlays, dpi,
                       **scene_kwargs):
-    import pyvista as pv
-
     from .raytrace import raytrace, scene_from_data
 
-    scene_kwargs.pop("atom_style", None); scene_kwargs.pop("sphere_resolution", None)
-    scene_kwargs.pop("mesh_limit", None); scene_kwargs.pop("antialiasing", None)
-    scene_kwargs.pop("ambient_occlusion", None); scene_kwargs.pop("cell_width", None)
+    for k in ("atom_style", "sphere_resolution", "mesh_limit", "antialiasing", "ambient_occlusion", "cell_width"):
+        scene_kwargs.pop(k, None)
     if camera is None:  # same framing as the OpenGL path
-        p = pv.Plotter(off_screen=True, window_size=tuple(size))
-        build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, sphere_resolution=6,
-                    **{k: v for k, v in scene_kwargs.items() if k in ("type_colors", "type_radii")})
-        _setup_camera(p, data, direction, orthographic, zoom)
-        camera = camera_state(p)
-        p.close()
+        camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
     cell_color = "#AEB4BE" if sum(_rgb(background)) < 1.5 and not transparent_background else "black"
     scene = scene_from_data(data, radius_scale=radius_scale, bonds=bonds, show_cell=show_cell,
                             cell_color=scene_kwargs.pop("cell_color", cell_color), **scene_kwargs)
     img = raytrace(scene, camera, size, samples=samples, ao_samples=ao_samples, shadows=shadows,
                    background=background, transparent_background=transparent_background)
     rgba = (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)
-    rgba = _draw_overlays(rgba, data, text if text else None, legend, background, transparent_background)
-    if filename:
-        from PIL import Image
-
-        im = Image.fromarray(rgba, "RGBA")
-        if not transparent_background and not str(filename).lower().endswith(".png"):
-            im = im.convert("RGB")
-        im.save(filename)
-    return rgba[..., :3] if not transparent_background else rgba
-
-
-def _draw_overlays(rgba, data, text, legend, background, transparent):
-    """Text label and color legend for ray-traced images (PIL, sized relative to the image)."""
-    if not text and not (legend and "ColorCoding.range" in data.attributes):
-        return rgba
-    import matplotlib
-    from PIL import Image, ImageDraw, ImageFont
-
-    h, w = rgba.shape[:2]
-    im = Image.fromarray(rgba, "RGBA")
-    draw = ImageDraw.Draw(im)
-    dark = not transparent and sum(_rgb(background)) < 1.5
-    ink = (235, 235, 238, 255) if dark else (20, 20, 20, 255)
-    fs = max(10, int(h * 0.03))
-    try:
-        font = ImageFont.truetype("DejaVuSans.ttf", fs)
-        small = ImageFont.truetype("DejaVuSans.ttf", int(fs * 0.8))
-    except OSError:
-        font = small = ImageFont.load_default()
-    if text:
-        draw.text((int(0.02 * w), int(0.02 * h)), text, fill=ink, font=font)
-    if legend and "ColorCoding.range" in data.attributes:
-        lo, hi = data.attributes["ColorCoding.range"]
-        cmap = matplotlib.colormaps[data.attributes.get("ColorCoding.cmap", "viridis")]
-        x0, x1 = int(0.88 * w), int(0.91 * w)
-        y0, y1 = int(0.15 * h), int(0.85 * h)
-        for y in range(y0, y1):
-            c = cmap(1 - (y - y0) / max(1, y1 - y0 - 1))
-            draw.line([(x0, y), (x1, y)], fill=tuple(int(255 * v) for v in c[:3]) + (255,))
-        draw.rectangle([x0, y0, x1, y1 - 1], outline=ink)
-        title = str(data.attributes.get("ColorCoding.property", ""))
-        draw.text((x0, y0 - int(1.4 * fs)), title, fill=ink, font=small)
-        for frac in (0, 0.25, 0.5, 0.75, 1):
-            y = int(y1 - 1 - frac * (y1 - y0 - 1))
-            draw.line([(x1, y), (x1 + int(0.006 * w), y)], fill=ink)
-            draw.text((x1 + int(0.01 * w), y - fs // 2), f"{lo + frac * (hi - lo):.3g}", fill=ink, font=small)
-    return np.asarray(im)
+    return _finish(rgba, data, filename, camera, overlays, background, transparent_background, dpi)
 
 
 def _add_colorbar(plotter, data, font_size=None):
@@ -407,11 +522,10 @@ def _add_colorbar(plotter, data, font_size=None):
                            **({"title_font_size": font_size + 2, "label_font_size": font_size} if font_size else {}))
 
 
-def render_animation(pipeline, filename, *, frames=None, fps: int = 10, device=None, **kwargs):
-    """Render frames of a pipeline into a movie (.mp4/.gif) via imageio."""
-    import imageio.v2 as imageio
+def render_animation(pipeline, filename, *, frames=None, fps: float = 10, device=None, text=None,
+                     time_per_frame: float | None = None, progress=None, **kwargs):
+    """Render frames of a pipeline into a movie; see :func:`ewald.movie.render_animation`."""
+    from .movie import render_animation as _render_animation
 
-    idx = range(pipeline.num_frames) if frames is None else frames
-    with imageio.get_writer(filename, fps=fps) as writer:
-        for f in idx:
-            writer.append_data(render(pipeline.compute(f, device=device), None, **kwargs))
+    return _render_animation(pipeline, filename, frames=frames, fps=fps, device=device, text=text,
+                             time_per_frame=time_per_frame, progress=progress, **kwargs)

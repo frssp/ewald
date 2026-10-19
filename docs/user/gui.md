@@ -1,0 +1,96 @@
+# Desktop GUI
+
+```bash
+pip install -e ".[gui]"
+ewald gui XDATCAR                        # or: ewald-gui dump.lammpstrj --type-map 1=Cu
+ewald gui run.lammpstrj --device cuda    # start with GPU compute
+```
+
+From Python, `ewald.gui.show(pipe)` opens the viewer on a pipeline you built in a script. In
+Jupyter, run `%gui qt` first; `show` then returns at once and the window stays live
+next to the notebook.
+
+The layout follows OVITO 3, with VESTA's crystal-viewing controls added: the viewport is in the
+middle, the pipeline and the selected item's parameters are on the right, the timeline is under
+the viewport, and a bottom dock holds the Python console, the data inspector and plots.
+
+## Analyze workspace
+
+**Viewport.** Drag to orbit and scroll to zoom (VTK's standard mouse controls). View › View
+along a, b, c, a*, b*, c* aligns the view with a cell vector or reciprocal vector, as in
+VESTA, and View › Zoom to fit (Ctrl+0) frames the cell. The tool rail on the left switches
+between orbit, pick (click an atom to see its id, type, position and every property),
+distance (click two atoms) and angle (click three atoms, vertex in the middle). Above 150 000
+atoms the viewport draws GPU impostors instead of sphere meshes; the threshold is a preference.
+
+**Timeline.** Play, step and scrub through frames. Every frame is computed through the whole
+pipeline when you move to it.
+
+**Pipeline panel.** The list shows the data source at the bottom and modifiers above it, the
+last-applied modifier on top, as in OVITO. "Add modification" (or the Pipeline menu) inserts a
+modifier; the eye toggle disables one without removing it; the arrow buttons move it up or down. Each row shows the
+time the modifier took and, if it failed, its error. A failing modifier is skipped so the view
+never goes blank. Selecting a row opens its parameters below the list; the form is generated
+from the modifier's constructor, so every argument you can pass in Python can be edited here.
+
+**Python script modifier.** Pipeline › Python › Python script adds a modifier whose code is
+edited in place. The code defines `modify(frame, data)` and runs on every frame like any other
+modifier. See [Python scripting](scripting.md).
+
+**Python console.** An IPython console where `pipeline` (also `pipe`), `data` (the current
+frame), `viewer` (the window), `vp` (the viewport), `mods` (`ewald.modifiers`) and `np` are
+defined. Changes made in the console, such as `pipe.modifiers.append(...)`, update the
+pipeline panel and redraw the view.
+
+**Data inspector.** The particle table with a filter expression (the same syntax as
+`ExpressionSelection`), plus global attributes and tables.
+
+**Plots.** Any table in the current frame (g(r), MSD, histograms, time series) can be plotted
+and saved.
+
+**Command palette.** Window › Command palette searches every menu action and every modifier by
+name.
+
+## Render workspace
+
+Window › Render workspace (Ctrl+2), or the Render button, opens the figure settings: renderer
+(the built-in ray tracer or OpenGL), anti-aliasing samples, ambient occlusion and shadows,
+journal size presets (1-column 3.5 in, 2-column 7.2 in, square, 16:9 slide) at a chosen dpi,
+background (white, transparent, black, or the viewport's), and an output file. The preview
+shows the final aspect ratio. The "Python for this figure" panel shows the script that
+produces the same image with `pipe.render(...)`, updated as you change settings, so a figure
+made in the GUI can be reproduced in a batch script. See [Rendering figures](rendering.md).
+
+## Files
+
+File › Load file opens any format ewald can read ([File formats](formats.md)), including
+formats added by [reader plugins](../plugins/readers.md). LAMMPS dumps ask for a
+type-to-element map unless you set a default in Preferences. File › Export data writes the
+current frame or the whole trajectory through `export_file`, and File › Export movie writes an
+MP4 or GIF (needs the `movie` extra).
+
+## Preferences
+
+Edit › Preferences (Ctrl+, ; the application menu on macOS) has six pages: General, Viewports,
+Elements (per-element color and radius, Jmol or CPK scheme, radius preset, VESTA `elements.ini` import),
+Rendering, Compute (default device, CPU threads, installed components) and Python (console
+startup script, extra module paths). Only values that differ from the defaults are saved, as
+JSON in the ewald config folder: `~/.config/ewald` on Linux,
+`~/Library/Application Support/ewald` on macOS, `%APPDATA%\ewald` on Windows, or
+`$EWALD_CONFIG_DIR` when set. Preferences affect the GUI only; scripts that call `compute` or
+`render` are not changed by them.
+
+The radius preset (covalent, atomic, van der Waals or Shannon ionic radii; see
+[Atom radii](rendering.md#atom-radii)) is the one new sessions start with. The Particles visual
+element in the pipeline panel switches it for the current session and takes oxidation states
+for the ionic presets (`Sr=2, Ti=4, O=-2`; types left out are guessed). The log says which
+types fell back to covalent radii.
+
+The Compute switch in the toolbar changes the device for the current session only; the
+preference sets the device the GUI starts with.
+
+## Help
+
+The Help menu opens this manual, the plugin guide and the API reference. By default it opens
+the `docs/` folder of the repository on GitHub; set Preferences › General › Documentation URL
+to point it at a hosted copy of the site instead.

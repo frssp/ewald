@@ -9,6 +9,8 @@ from ewald.modifiers import CoordinationAnalysis, ExpressionSelection, DeleteSel
 
 pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, cif, ...
 # pipe = import_file("dump.*.lammpstrj", type_map={1: "Cu", 2: "Zr"})   # LAMMPS numeric types -> elements
+# pipe = import_file("cluster:/scratch/run1/dump.lammpstrj")   # over SSH: host:/path, user@host:path, ssh://host/path
+# pipe = import_file("run.npz", format="npz-trajectory")  # format= also names reader plugins (`ewald plugins`)
 pipe.modifiers.append(CoordinationAnalysis(cutoff=3.0))
 pipe.modifiers.append(ExpressionSelection("Coordination < 12"))
 
@@ -34,6 +36,11 @@ pipe.render("frame10.png", frame=10, direction="iso", bonds=2.8)
 - `data.take(mask_or_index)`, `data.delete(mask)` return new collections; `data.to_ase()`, `DataCollection.from_ase(atoms)`.
 - **Never write into an array in place** (`data.positions[0] = ...`, `data["Color"][sel] = ...`): arrays are shared
   with cached frames. Build a new array and assign it: `pos = data.positions.copy(); pos[0] += 1; data.positions = pos`.
+- `data.bonds` (None until `CreateBonds`, `EditBonds` or a LAMMPS data file adds them) stores each bond once:
+  `data.bonds["Topology"]` (M x 2 particle indices), `data.bonds["Periodic Image"]` (M x 3), optional "Bond Type",
+  "Color"; `data.bonds.vectors(data)`, `.lengths(data)`, `.neighbor_counts(N)`. `take`/`delete`/`Replicate`/`WrapAtoms`
+  keep bonds consistent. `data.surfaces` maps names to `SurfaceMesh` (`vertices`, `faces`, `face_properties`, `vertex_properties`,
+  `edges`), e.g. `data.surfaces["coordination-polyhedra"]` from `CoordinationPolyhedra`; renderers draw both.
 - A modifier function may take a third argument `ctx`: `ctx.source_frame(k)` (reference frame), `ctx.frame`,
   `ctx.xp` (numpy or cupy). Return nothing to keep `data`, or return a new DataCollection (e.g. `data.delete(mask)`).
 
@@ -58,8 +65,15 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 | `data.cell[:, :3]`: COLUMNS are the cell vectors, `data.cell[:, 3]` origin | `data.cell.matrix`: ROWS are the cell vectors, `data.cell.origin` |
 | `ColorCodingModifier(property=..., gradient=...)` | `ColorCoding(property, cmap="viridis")` (matplotlib colormap name) |
 | `WrapPeriodicImagesModifier()` | `WrapAtoms()` |
+| `data.particles.bonds.topology`, `bonds.pbc_vectors` | `data.bonds["Topology"]`, `data.bonds["Periodic Image"]` |
+| `CreateBondsModifier(mode=CreateBondsModifier.Mode.Pairwise)` | `CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)])` (`set_pairwise_cutoff` also works) |
 | `PythonScriptModifier(function=f)` | `pipe.modifiers.append(f)` |
 | `Viewport(...).render_image(filename=...)`, `pipeline.add_to_scene()` | `pipe.render(filename, frame=, size=, direction=)`; GUI: `ewald gui FILE` |
+| `vp.render_anim(filename="movie.mp4", fps=10)` | `render_animation(pipe, "movie.mp4", fps=10, text="t = [Time] ps")` (`from ewald.render import render_animation`; .gif/.avi/.mov/PNG sequence too) |
+| `TextLabelOverlay`, `ColorLegendOverlay` | `render(..., text="frame [Frame]", legend=True, type_legend=True, scale_bar=True)` |
+| vector export (`.pdf`/`.svg`) | `render(data, "fig.svg", renderer="vector")` (also .pdf/.eps) |
+| `TachyonRenderer(antialiasing_samples=, ambient_occlusion_samples=)` | `render(..., renderer="raytrace", quality="publication")` (default; `"draft"`/`"standard"`, or explicit `samples=`, `ao_samples=`) |
+| session state (`.ovito`) | `ewald.session.save_session(path, pipe, camera=..., render=...)`, `load_session(path).pipeline` |
 | `export_file(pipeline, file, format, columns=[...])` | `export_file(pipe, file, format=...)` (`"lammps/dump"` native, else ASE) |
 
 ## Other entry points
@@ -72,6 +86,18 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
   `GenerateTrajectoryLines`) read every frame of `start:stop:step` through the modifiers above them and cache the
   result, so e.g. `CoordinationAnalysis(3.0)` then `TimeAveraging("table:coordination-rdf")` gives the
   time-averaged g(r) in `tables["coordination-rdf[average]"]`.
+- Volumetric files (`CHGCAR`, `CHG`, `PARCHG`, `AECCAR*`, `LOCPOT`, `ELFCAR`, `*.cube`): `import_file` gives the atoms
+  plus `data.grids[name]` (a `VoxelGrid`: `.shape`, `.domain` (a Cell), `grid["Charge Density"]` (e/A^3, already divided
+  by the cell volume), `"Magnetization"`, `"Spin Up"`/`"Spin Down"`, `"Potential"`, `"ELF"`, cube `"Value"`,
+  components `"Magnetization.Z"`, `.integrate(name)`, `.interpolate(name, points)`). Grid names: "charge-density",
+  "potential", "elf", "cube". `CreateIsosurface`/`GridSlice` put `SurfaceMesh`es into `data.surfaces`, which
+  `render()` draws. Isolevels are absolute values in the property's units (VESTA's default style: e/A^3).
+- Atom sizes: `render(..., radius_preset=)` picks the default radii ("covalent" Cordero 2008, "atomic" Slater 1964,
+  "atomic (calc.)" Clementi 1967, "vdW" Alvarez 2013, "vdW (Bondi)", "ionic"/"ionic (crystal)" Shannon 1976), times
+  0.8 x `radius_scale`. Ionic radii need oxidation states and CN: pass `oxidation_states={"Ti": 4, "O": -2}` and
+  `coordination={"Ti": 6}`, else they are guessed (type names like "Fe3+", charges, charge balance; CN from the
+  structure); `ewald.radii.resolve(data, "ionic").summary()` shows what was used. A "Radius" property or
+  `type_radii` wins.
 - `ewald.llm.describe_frame(data)` / `describe_trajectory(pipe)`: compact JSON summaries and detected events.
 - `ewald.llm.narrate(pipe)`: event timeline; `ewald.llm.Agent.from_file(path).ask("...")`: Claude over these tools.
 
@@ -91,7 +117,7 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 - `AffineTransformation(matrix, transform_cell: bool = True)`: Apply a 3x3 (or 3x4 with translation) matrix to particles and, optionally, the cell.
 - `ComputeProperty(output: str, expressions, only_selected: bool = False)`: Set ``output`` to an expression, e.g. ``ComputeProperty("Height", "Position.Z - 5")``.
 - `Replicate(n=(2, 2, 2), adjust_box: bool = True, unique_ids: bool = True)`: Tile the periodic cell ``n = (na, nb, nc)`` times.
-- `WrapAtoms()`: Map particles back into the periodic cell.
+- `WrapAtoms()`: Map particles back into the periodic cell (bond periodic images follow).
 - `PythonScript(source: str = ..., title: str = 'Python script', **params)`: Run ``modify(frame, data)`` defined in ``source``.
 - `CommonNeighborAnalysis(mode: str = 'adaptive', cutoff: float = 3.2, types=None, color_by_type: bool = True, only_selected: bool = False, chunk_size: int = 32768)`: Common neighbor analysis (Honeycutt-Andersen; adaptive a-CNA of Stukowski 2012).
 - `PolyhedralTemplateMatching(types=None, rmsd_cutoff: float = 0.1, output_rmsd: bool = True, output_interatomic_distance: bool = False, output_orientation: bool = False, output_deformation_gradient: bool = False, output_ordering: bool = False, color_by_type: bool = True, only_selected: bool = False, num_threads: int = 0)`: Polyhedral template matching (Larsen, Schmidt, Schiotz 2016), using the PTM library.
@@ -109,3 +135,9 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 - `TimeAveraging(operate_on='table:coordination-rdf', start: int = 0, stop: int | None = None, step: int = 1)`: Average upstream results over a frame range (OVITO's TimeAveragingModifier).
 - `TimeSeries(operate_on=None, start: int = 0, stop: int | None = None, step: int = 1)`: Global attributes as a function of time (OVITO's TimeSeriesModifier).
 - `GenerateTrajectoryLines(only_selected: bool = True, start: int = 0, stop: int | None = None, step: int = 1, unwrap_trajectories: bool = True)`: Particle paths over a frame range, drawn as lines, plus path metrics.
+- `CreateBonds(cutoff: float = 3.2, mode: str = 'uniform', pairs=None, lower_cutoff: float = 0.0, factor: float = 1.15)`: Create bonds between nearby particles (OVITO's CreateBondsModifier, plus VESTA's bond search).
+- `EditBonds(add=(), remove=())`: Add or delete individual bonds by hand, as in VESTA's bond editing.
+- `CoordinationPolyhedra(center_types=None, transparency: float = 0.25, edges: bool = True)`: Polyhedra spanned by the bonded neighbors of each center particle (OVITO's CoordinationPolyhedraModifier, VESTA's polyhedral style). Needs bonds upstream (CreateBonds).
+- `CreateIsosurface(isolevel: float | None = None, property: str = 'Charge Density', grid: str | None = None, signed: bool = False, color=(1.0, 0.86, 0.0), negative_color=(0.0, 0.75, 1.0), transparency: float = 0.0, identifier: str = 'isosurface')`: VESTA-style isosurface of a grid property (OVITO's CreateIsosurfaceModifier).
+- `GridSlice(miller=(0, 0, 1), distance: float = 0.5, property: str = 'Charge Density', grid: str | None = None, cmap: str = 'viridis', range=None, scale: str = 'linear', resolution: float | None = None, transparency: float = 0.0, identifier: str = 'slice')`: Colour-mapped cross-section of a grid property on a lattice plane (VESTA's 2D slice).
+- `GridDifference(subtract=(), property: str = 'Charge Density', grid: str | None = None, output: str | None = None)`: Charge-density difference: subtract the grids of other files, e.g. rho(AB) - rho(A) - rho(B) with ``GridDifference(["A/CHGCAR", "B/CHGCAR"])``.

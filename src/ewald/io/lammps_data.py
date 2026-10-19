@@ -7,8 +7,9 @@ sphere, dipole), optional image flags, orthogonal, restricted-triclinic
 ``Atom Type Labels`` section or from ``# Cu`` comments in ``Masses``.
 Values stay in the file's own LAMMPS units.
 
-Bonds are stored as ``data.tables["Bonds"]`` with ``"Topology"`` (M x 2, zero-based
-particle indices into the returned collection) and ``"Bond Type"``.
+Bonds are stored in ``data.bonds`` (shortest periodic image) and, for older code, as
+``data.tables["Bonds"]`` with ``"Topology"`` (M x 2, zero-based particle indices into the
+returned collection) and ``"Bond Type"``.
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ import re
 
 import numpy as np
 
+from ..bonds import Bonds, minimum_images
 from ..data import Cell, DataCollection
 from .base import FrameReader, head_lines, open_binary
 from .lammps_dump import _cell_from_bounds
@@ -134,6 +136,8 @@ class LammpsDataReader(FrameReader):
             topo = np.array([[id_to_row[int(r[2])], id_to_row[int(r[3])]] for r in body], dtype=np.int64)
             btype = np.array([r[1] for r in body])
             data.tables["Bonds"] = {"Topology": topo.reshape(-1, 2), "Bond Type": btype}
+            topo = topo.reshape(-1, 2)
+            data.bonds = Bonds(topo, minimum_images(data, topo[:, 0], topo[:, 1]), bond_type=btype)
 
         if self.sort_by_id and n:
             order = np.argsort(ids, kind="stable")

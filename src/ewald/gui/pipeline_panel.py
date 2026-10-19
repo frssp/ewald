@@ -23,6 +23,17 @@ MODIFIER_MENU = {
         "Time series of attributes": mods.TimeSeries,
         "Trajectory lines / paths": mods.GenerateTrajectoryLines,
     },
+    "Bonds & polyhedra": {
+        "Create bonds": lambda: mods.CreateBonds(mode="covalent"),
+        "Edit bonds (add / delete)": mods.EditBonds,
+        "Coordination polyhedra": mods.CoordinationPolyhedra,
+    },
+    "Volume (CHGCAR, LOCPOT, cube)": {
+        "Isosurface": mods.CreateIsosurface,
+        "Isosurface, signed (density difference / spin)": lambda: mods.CreateIsosurface(signed=True),
+        "Slice plane (2D map)": mods.GridSlice,
+        "Charge density difference": lambda: mods.GridDifference(["CHGCAR_A", "CHGCAR_B"]),
+    },
     "Coloring": {
         "Color coding": lambda: mods.ColorCoding("Position.Z"),
         "Assign color": lambda: mods.AssignColor((1.0, 0.2, 0.2)),
@@ -52,6 +63,17 @@ def register_modifier(category: str, label: str, factory):
     MODIFIER_MENU.setdefault(category, {})[label] = factory
 
 
+def fill_modifier_menu(menu, add):
+    """(Re)populate ``menu`` with MODIFIER_MENU; ``add`` receives the new modifier."""
+    menu.clear()
+    for sub in menu.findChildren(QtWidgets.QMenu, options=QtCore.Qt.FindDirectChildrenOnly):
+        sub.deleteLater()
+    for group, items in MODIFIER_MENU.items():
+        sub = menu.addMenu(group)
+        for label, factory in items.items():
+            sub.addAction(label, lambda f=factory: add(f()))
+
+
 def _discover():
     """Pick up modifiers other threads add to ewald.modifiers without touching this file."""
     known = {type(f()).__name__ for items in MODIFIER_MENU.values() for f in items.values()}
@@ -64,6 +86,16 @@ def _discover():
             except Exception:
                 continue  # needs arguments we cannot guess
             register_modifier("Analysis" if "Analysis" in name or "Structure" in name else "Other", name, cls)
+    from .. import plugins
+
+    for name, plugin in plugins.modifiers().items():
+        if name in known:
+            continue
+        try:
+            plugin.cls()
+        except Exception:
+            continue  # needs arguments we cannot guess
+        register_modifier(plugin.category, name, plugin.cls)
 
 
 BADGES = {"CoordinationAnalysis": "CN", "CalculateDisplacements": "DV", "ColorCoding": "CC", "AssignColor": "AC",
@@ -71,7 +103,9 @@ BADGES = {"CoordinationAnalysis": "CN", "CalculateDisplacements": "DV", "ColorCo
           "DeleteSelected": "DS", "ExpressionSelection": "ES", "SelectType": "ST", "InvertSelection": "IS",
           "ClearSelection": "CS", "PythonScript": "Py", "PythonModifier": "Py",
           "MeanSquaredDisplacement": "MS", "VelocityAutocorrelation": "VA", "TimeAveraging": "TA",
-          "TimeSeries": "TS", "GenerateTrajectoryLines": "TL"}
+          "TimeSeries": "TS", "GenerateTrajectoryLines": "TL", "CreateBonds": "CB", "EditBonds": "EB",
+          "CoordinationPolyhedra": "PH",
+          "CreateIsosurface": "SF", "GridSlice": "GS", "GridDifference": "GD"}
 
 KIND = QtCore.Qt.UserRole + 1
 
@@ -95,10 +129,9 @@ class PipelinePanel(QtWidgets.QWidget):
         self.add_button = QtWidgets.QPushButton("Add modification  ▾")
         self.add_button.setObjectName("primary")
         self.add_menu = QtWidgets.QMenu(self)
-        for group, items in MODIFIER_MENU.items():
-            sub = self.add_menu.addMenu(group)
-            for label, factory in items.items():
-                sub.addAction(label, lambda f=factory: self.add_modifier(f()))
+        # rebuilt on every open, so entries registered later (startup script, plugins) show up
+        self.add_menu.aboutToShow.connect(lambda: fill_modifier_menu(self.add_menu, self.add_modifier))
+        fill_modifier_menu(self.add_menu, self.add_modifier)
         self.add_button.setMenu(self.add_menu)
         bar.addWidget(self.add_button, 1)
         for text, tip, slot in (("▲", "Move up (later in the pipeline)", lambda: self._move(-1)),
@@ -356,6 +389,7 @@ class PipelinePanel(QtWidgets.QWidget):
         self.refresh(select=("mod", mod))
 
     def _particles_editor(self):
+        from ..radii import IONIC, PRESETS, format_oxidation_states
         from ..render import type_color, type_radius
 
         w = QtWidgets.QWidget()
@@ -363,6 +397,20 @@ class PipelinePanel(QtWidgets.QWidget):
         scale = QtWidgets.QDoubleSpinBox(minimum=0.05, maximum=5, singleStep=0.05, value=self.style.radius_scale)
         scale.valueChanged.connect(lambda v: (setattr(self.style, "radius_scale", v), self.styleChanged.emit()))
         f.addRow("Radius scale", scale)
+        preset = QtWidgets.QComboBox()
+        preset.addItems(list(PRESETS))
+        for k, cite in enumerate(PRESETS.values()):
+            preset.setItemData(k, cite, QtCore.Qt.ToolTipRole)
+        preset.setCurrentText(self.style.radius_preset)
+        preset.currentTextChanged.connect(self._set_radius_preset)
+        f.addRow("Radius preset", preset)
+        oxi = QtWidgets.QLineEdit(placeholderText="auto, e.g. Sr=2, Ti=4, O=-2")
+        oxi.setText(format_oxidation_states(self.style.oxidation_states))
+        oxi.setToolTip("Oxidation state per type for the ionic presets; empty types are guessed "
+                       "(type name, charges, bond valence, charge balance)")
+        oxi.editingFinished.connect(lambda e=oxi: self._set_oxidation_states(e))
+        oxi.setEnabled(self.style.radius_preset in IONIC)
+        f.addRow("Oxidation states", oxi)
         shape = QtWidgets.QComboBox()
         shape.addItems(["auto", "mesh", "impostor"])
         shape.setCurrentText(self.style.atom_style)
@@ -383,7 +431,7 @@ class PipelinePanel(QtWidgets.QWidget):
             btn.clicked.connect(lambda _=False, t=t, b=btn: self._pick_color(t, b))
             table.setCellWidget(r, 1, btn)
             rad = QtWidgets.QDoubleSpinBox(minimum=0.05, maximum=5, singleStep=0.05,
-                                           value=self.style.type_radii.get(t, type_radius(t)))
+                                           value=self.style.type_radii.get(t, type_radius(t, preset=self.style.radius_preset)))
             rad.valueChanged.connect(lambda v, t=t: (self.style.type_radii.__setitem__(t, v), self.styleChanged.emit()))
             table.setCellWidget(r, 2, rad)
             table.setItem(r, 3, QtWidgets.QTableWidgetItem(str(int((self.data.types == t).sum()))))
@@ -399,6 +447,26 @@ class PipelinePanel(QtWidgets.QWidget):
         row.addWidget(imp); row.addWidget(reset)
         f.addRow(row)
         return w
+
+    def _set_radius_preset(self, name):
+        self.style.radius_preset = name
+        self.styleChanged.emit()
+        QtCore.QTimer.singleShot(0, self.refresh)  # rebuilds this editor; not from inside the combo's signal
+
+    def _set_oxidation_states(self, edit):
+        from ..radii import parse_oxidation_states
+
+        try:
+            states = parse_oxidation_states(edit.text())
+        except ValueError as exc:
+            edit.setToolTip(str(exc))
+            edit.setStyleSheet(f"border: 1px solid {TOKENS['error']};")
+            return
+        edit.setStyleSheet("")
+        if states != self.style.oxidation_states:
+            self.style.oxidation_states = states
+            self.styleChanged.emit()
+            QtCore.QTimer.singleShot(0, self.refresh)
 
     def _pick_color(self, t, button):
         c = QtWidgets.QColorDialog.getColor(parent=self, title=f"Color of {t}")
@@ -458,7 +526,15 @@ class PipelinePanel(QtWidgets.QWidget):
                                     self.styleChanged.emit(), self.refresh()))
         row.addWidget(add); row.addWidget(rm)
         f.addRow(row)
-        if self.data is not None and self.style.bonds_enabled:
+        to_mod = QtWidgets.QPushButton("Use as Create bonds modifier")
+        to_mod.setToolTip("Add a CreateBonds modifier with this table, so bonds can be edited and used "
+                          "by Coordination polyhedra")
+        to_mod.clicked.connect(lambda: self.add_modifier(
+            mods.CreateBonds(mode="pairwise", pairs=[tuple(p) for p in self.style.bond_pairs])))
+        f.addRow(to_mod)
+        if self.data is not None and self.data.bonds is not None:
+            f.addRow("Pipeline bonds", QtWidgets.QLabel(f"{self.data.bonds.count} (drawn instead of the table)"))
+        elif self.data is not None and self.style.bonds_enabled:
             from ..render import bond_list
 
             try:

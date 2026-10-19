@@ -196,18 +196,41 @@ def test_element_defaults_fill_only_unset_types(app, cu_fcc):
 
     style = ViewStyle()
     s = settings.Settings()
-    apply_element_defaults(style, cu_fcc.types, s)
+    apply_element_defaults(style, cu_fcc, s)
     assert style.type_colors == {}                            # defaults: nothing redundant
     s["elements.overrides"] = {"Cu": {"color": "#c8794a"}}
-    apply_element_defaults(style, cu_fcc.types, s)
+    apply_element_defaults(style, cu_fcc, s)
     assert style.type_colors["Cu"] == "#c8794a"
     s["elements.overrides"] = {}
     s["elements.color_scheme"] = "CPK"
-    apply_element_defaults(style, cu_fcc.types, s)            # previous fill replaced
+    apply_element_defaults(style, cu_fcc, s)            # previous fill replaced
     assert style.type_colors["Cu"] != "#c8794a"
     style.type_colors["Cu"] = "#000000"                       # session edit wins
-    apply_element_defaults(style, cu_fcc.types, s)
+    apply_element_defaults(style, cu_fcc, s)
     assert style.type_colors["Cu"] == "#000000"
+
+
+def test_ionic_radius_preset_fills_type_radii(app):
+    from ase.spacegroup import crystal
+
+    from ewald import settings
+    from ewald.data import DataCollection
+    from ewald.gui.preferences import apply_element_defaults
+    from ewald.gui.style import ViewStyle
+
+    sto = DataCollection.from_ase(crystal(["Sr", "Ti", "O"], [(0, 0, 0), (0.5, 0.5, 0.5), (0.5, 0.5, 0)],
+                                          spacegroup=221, cellpar=[3.905] * 3 + [90] * 3))
+    style, s = ViewStyle(), settings.Settings()
+    style.radius_preset = "vdW"
+    assert apply_element_defaults(style, sto, s) is None and style.type_radii == {}   # preset goes via kwargs
+    assert style.scene_kwargs()["radius_preset"] == "vdW"
+    style.radius_preset = "ionic"
+    table = apply_element_defaults(style, sto, s)
+    assert style.type_radii["Ti"] == pytest.approx(0.8 * 0.605) and table.coordination["Sr"] == 12
+    style.oxidation_states = {"Ti": 3}
+    apply_element_defaults(style, sto, s)                     # refilled for the new oxidation state
+    assert style.type_radii["Ti"] == pytest.approx(0.8 * 0.67)
+    assert style.scene_kwargs()["oxidation_states"] == {"Ti": 3}
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
@@ -245,3 +268,167 @@ def test_preferences_layout_covers_every_option_once():
     for name in PAGES:
         for _title, ks in LAYOUT[name][1]:
             assert all(__import__("ewald.settings").settings.OPTION[k].page == name for k in ks)
+
+
+def test_remote_file_dialog_browse_and_open(app, server):
+    from ewald.gui import remote_dialog
+    from ewald.gui.remote_dialog import RemoteFileDialog
+
+    dlg = RemoteFileDialog(host="hpc")
+    assert "hpc" in [dlg.host.itemText(i) for i in range(dlg.host.count())]
+    assert dlg.browse("")  # home
+    assert dlg.cwd == "/home/alice"
+    assert not dlg.browse("/nowhere") and dlg.status.text().startswith(("FileNotFoundError", "OSError"))
+    assert dlg.browse("/data")
+    names = [dlg.list.topLevelItem(i).text(0) for i in range(dlg.list.topLevelItemCount())]
+    assert "XDATCAR" in names and "dump.custom.lammpstrj" in names
+    item = dlg.list.findItems("XDATCAR", QtCore.Qt.MatchExactly)[0]
+    dlg.list.setCurrentItem(item)
+    dlg._accept()
+    assert dlg.url == "hpc:/data/XDATCAR" and dlg.result() == QtWidgets.QDialog.Accepted
+    assert remote_dialog.load_recent()[0] == "hpc:/data/XDATCAR"
+    assert RemoteFileDialog().recent.count() == 2
+
+    from ewald import import_file
+
+    assert import_file(dlg.url).num_frames > 1
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_session_save_load_and_publication_output(app, pipe, tmp_path):
+    from ewald.gui.app import MainWindow
+    from ewald.render import camera_state
+
+    w = MainWindow(pipe)
+    w.panel.add_modifier(mods.ColorCoding("Position.Z", cmap="plasma"))
+    w.style.apply_preset("Ball & stick")
+    w.viewport.view_along("a")
+    page = w.render_page
+    page.set_renderer("vector")
+    assert page.output.text().endswith(".svg")
+    page.preset.setCurrentText("Custom (px)")
+    page.width.setValue(200)
+    page.height.setValue(150)
+    page.type_legend.setChecked(True)
+    page.scale_bar.setChecked(True)
+    page.text.setText("frame [Frame]")
+    page.output.setText(str(tmp_path / "fig.svg"))
+    w.render_from_page()
+    assert "frame 0" in (tmp_path / "fig.svg").read_text()
+    assert not page.preview.pixmap().isNull()
+    page.movie_format.setCurrentText("GIF")
+    assert page.is_movie and page.output.text().endswith(".gif")
+    assert "render_animation(pipe" in page.code.toPlainText()
+    assert w.export_movie(page.output.text()) and os.path.getsize(page.output.text()) > 100
+    cam = camera_state(w.viewport.plotter)
+    path = w.save_session(str(tmp_path / "s.ewald"))
+
+    w2 = MainWindow()
+    w2.load_session(path)
+    assert [m.name for m in w2.pipeline.modifiers] == ["ColorCoding"]
+    assert w2.style.preset == "Ball & stick" and w2.style.radius_scale == w.style.radius_scale
+    assert w2.render_page.renderer_name == "vector" and w2.render_page.type_legend.isChecked()
+    assert w2.render_page.text.text() == "frame [Frame]" and w2.render_page.width.value() == 200
+    np.testing.assert_allclose(camera_state(w2.viewport.plotter)["position"], cam["position"], rtol=1e-6)
+    w.close()
+    w2.close()
+
+
+def test_render_page_quality_presets(app):
+    from ewald.gui.render_page import RenderPage
+    from ewald.render import QUALITY_PRESETS
+
+    class Win:  # the page only needs these for code generation
+        pipeline = None
+        frame = 0
+        device = None
+        data = None
+
+    page = RenderPage.__new__(RenderPage)
+    page.update_code = lambda *a: None
+    RenderPage.__init__(page, Win())
+    assert page.quality.currentText() == "Publication"
+    assert page.samples.value() == QUALITY_PRESETS["publication"]["samples"]
+    assert page.render_kwargs()["quality"] == "publication" and "samples" not in page.render_kwargs()
+    page.quality.setCurrentText("Draft")
+    assert page.samples.value() == 1 and not page.shadows.isChecked()
+    page.samples.setValue(5)
+    assert page.quality.currentText() == "Custom" and page.render_kwargs()["samples"] == 5
+    page.movie_quality.setCurrentText("Standard")
+    assert page.render_kwargs(movie=True) == {**page.render_kwargs(movie=True), "quality": "standard"}
+    st = page.state()
+    page.quality.setCurrentText("Publication")
+    page.set_state(st)
+    assert page.quality.currentText() == "Custom" and page.samples.value() == 5
+
+
+def test_help_menu_and_late_registered_modifier(app, pipe, monkeypatch):
+    from ewald import settings
+    from ewald.gui import pipeline_panel
+    from ewald.gui.app import MainWindow
+
+    s = settings.Settings()
+    s["general.docs_url"] = "https://example.org/ewald"
+    w = MainWindow(pipe, settings=s)
+    menus = {a.text().replace("&", ""): a.menu() for a in w.menuBar().actions()}
+    labels = [a.text() for a in menus["Help"].actions()]
+    assert "Writing plugins" in labels and "Open plugin folder" in labels
+    assert w.help_url("plugins/index.md") == "https://example.org/ewald/plugins/"
+
+    # registered after the window exists (startup script, plugin): appears when the menus open
+    monkeypatch.setitem(pipeline_panel.MODIFIER_MENU, "Plugins", {"Late wrap": mods.WrapAtoms})
+    for menu in (w.panel.add_menu, menus["Pipeline"]):
+        menu.aboutToShow.emit()
+        groups = {a.text(): a.menu() for a in menu.actions()}
+        assert [a.text() for a in groups["Plugins"].actions()] == ["Late wrap"]
+    w.close()
+    w.deleteLater()
+
+
+def test_bond_tool_and_menu(app, srtio3_pipe):
+    from ewald.gui.app import MainWindow
+    from ewald.gui.pipeline_panel import MODIFIER_MENU
+
+    assert "Coordination polyhedra" in MODIFIER_MENU["Bonds & polyhedra"]
+    w = MainWindow(srtio3_pipe)
+    w.recompute()
+    n = w.data.bonds.count
+    w.toggle_bond(1, 2)                                  # Ti-O bond exists: delete it
+    assert isinstance(srtio3_pipe.modifiers[-1], mods.EditBonds) and w.data.bonds.count == n - 1
+    w.toggle_bond(1, 2)                                  # and add it back
+    assert w.data.bonds.count == n and len(srtio3_pipe.modifiers) == 3
+    assert "coordination-polyhedra" not in w.data.surfaces
+    srtio3_pipe.modifiers.append(mods.CoordinationPolyhedra(["Ti"]))
+    w.recompute()
+    assert any(name.startswith("surface:") for name in w.viewport.plotter.actors)
+    w.close()
+
+
+@pytest.fixture
+def srtio3_pipe():
+    from ase.spacegroup import crystal
+
+    from ewald import DataCollection
+
+    atoms = crystal(["Sr", "Ti", "O"], basis=[(0, 0, 0), (0.5, 0.5, 0.5), (0.5, 0.5, 0)], spacegroup=221,
+                    cellpar=[3.905] * 3 + [90] * 3)
+    return Pipeline(StaticSource(DataCollection.from_ase(atoms)),
+                    [mods.CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.2)]), mods.Replicate((2, 2, 2))])
+
+
+def test_viewport_draws_and_clears_surfaces(app):
+    from ewald.data import Cell, DataCollection, VoxelGrid
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    cell = Cell(np.diag([5.0, 5.0, 5.0]))
+    f = np.stack(np.meshgrid(*[np.arange(12) / 12] * 3, indexing="ij"), -1)
+    data = DataCollection([[2.5, 2.5, 2.5]], ["Si"], cell)
+    data.grids["g"] = VoxelGrid(cell.copy(), {"Charge Density": np.exp(-(((f - 0.5) * 5) ** 2).sum(-1))})
+    pipe = Pipeline(StaticSource(data), [mods.CreateIsosurface(0.3, transparency=0.5), mods.GridSlice()])
+    v = Viewport(ViewStyle())
+    v.set_data(pipe.compute())
+    assert {"surface:isosurface", "surface:slice"} <= set(v.plotter.actors)
+    v.set_data(data)
+    assert not any(str(k).startswith("surface:") for k in v.plotter.actors)
+    v.close()

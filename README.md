@@ -9,12 +9,18 @@ scripting + GPU), built on open libraries (ASE, VTK/PyVista, NumPy/CuPy).
 Status: core, readers, pipeline, first modifiers, offscreen rendering and a first
 desktop GUI are in. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
+Documentation: the [manual](docs/index.md) covers using ewald ([user manual](docs/user/install.md)),
+extending it ([plugins](docs/plugins/index.md)) and working on it
+([developer guide](docs/developer/architecture.md)). It is also an MkDocs site:
+`pip install -r docs/requirements.txt && mkdocs serve`. The GUI's Help menu opens it.
+
 ## Install
 
 ```bash
 pip install -e .            # CPU
 pip install -e ".[gpu]"     # + CuPy for device="cuda" (NVIDIA)
 pip install -e ".[gui]"     # + desktop viewer (PySide6, pyvistaqt, qtconsole)
+pip install -e ".[remote]"  # + files over SSH (paramiko)
 ```
 
 On Windows, releases also ship wheels and a standalone installer (CPU or CUDA build) that needs no
@@ -40,6 +46,7 @@ pipe.modifiers.append(my_modifier)
 data = pipe.compute(10, device="cuda")   # analysis on the GPU (falls back with a clear error if no CuPy)
 pipe.render("frame10.png", frame=10, size=(2000, 1500), direction="iso", bonds=None)
 pipe.render("frame10_rt.png", frame=10, renderer="raytrace", ao_samples=32)   # ray traced, AO + shadows
+pipe.render("ionic.png", radius_preset="ionic")   # Shannon radii; also "atomic", "vdW", ... (docs/user/rendering.md)
 ```
 
 Desktop viewer:
@@ -55,7 +62,8 @@ show(pipe)        # open the viewer on a pipeline built in a script (in Jupyter:
 
 The window has a 3D viewport with a timeline underneath, a pipeline panel
 (add/reorder/enable modifiers, edit parameters, edit Python script modifiers
-in place), render settings with "Render active viewport" to PNG at any size,
+in place), a Render workspace (ray traced, OpenGL or vector output, journal size presets,
+overlays, movies), session save/load,
 a data inspector (particle table with expression filter, attributes, tables)
 and an IPython console where `pipeline`, `data` and `viewer` are live; changes
 made in the console redraw the view.
@@ -70,11 +78,52 @@ ewald render dump.lammpstrj out.png --frame 5 --type-map 1=Cu,2=Zr --color-by "P
 `python examples/demo.py` builds sample LAMMPS and VASP trajectories and renders
 example figures.
 
+### Figures, movies and sessions
+
+```python
+from ewald.render import render, render_animation
+
+data = pipe.compute(10)
+render(data, "fig.png", renderer="raytrace", size=(2100, 1575), dpi=600,
+       text="t = [Time] ps", type_legend=True, scale_bar=True)      # PNG with dpi metadata
+render(data, "fig.svg", renderer="vector")                         # SVG/PDF/EPS: real circles, editable text
+render_animation(pipe, "movie.mp4", fps=15, text="frame [Frame]")  # also .gif, .avi, .mov, frames_%04d.png
+```
+
+Output puts quality first: `quality="publication"` is the default (16 rays/pixel,
+32 AO rays, shadows; SSAO and fine sphere meshes in OpenGL). `quality="standard"`
+is balanced and `quality="draft"` renders half-size frames without AO or shadows
+for quick previews and long test movies; any explicit `samples=`, `ao_samples=`,
+`shadows=`, `antialiasing=` or `scale=` overrides the preset. The Render workspace
+has the same presets (plus Custom) and a separate movie quality, with defaults in
+Preferences › Rendering. The interactive viewport keeps its own speed settings.
+
+Renderers: `opengl` (VTK, fast), `raytrace` (built-in ray tracer with ambient
+occlusion and shadows) and `vector` (shaded discs and bond sticks painted far to
+near, overlays stay text). Raster renderers can also write .pdf/.svg/.eps with
+the image embedded. Overlays work with every renderer: `text` (expands `[Frame]`,
+`[Timestep]`, `[Time]` and any attribute name), `legend` (ColorCoding color bar),
+`type_legend` and `scale_bar` (a round length, or `scale_bar=10` for 10 Å).
+GIF and image sequences need nothing extra; MP4/AVI/MOV use ffmpeg from
+`pip install 'ewald[movie]'` or the system PATH.
+
+Sessions (`.ewald`, JSON) hold the input file, modifiers, visual style, camera and
+render settings. The GUI saves them with Ctrl+S and opens them like any file;
+scripts use `ewald.session.save_session(path, pipe, camera=..., render=...)` and
+`load_session(path)`. Python modifiers are stored as source and only run when
+loaded with `allow_code=True` (the GUI asks first).
+
+```bash
+ewald render figure.ewald figure.pdf --renderer vector     # re-render a saved session
+ewald movie dump.lammpstrj movie.gif --every 5 --fps 12 --text "t = [Time] ps" --time-per-frame 0.5
+```
+
 ## Design
 
 * `DataCollection`: per-particle arrays with OVITO property names
   (`Position`, `Particle Type`, `Particle Identifier`, `Color`, `Radius`, ...),
-  plus `cell`, `attributes`, `tables`.
+  plus `cell`, `attributes`, `tables`, `grids` (volumetric `VoxelGrid`s) and
+  `surfaces` (display meshes such as isosurfaces).
 * `Pipeline`: source + modifier list, evaluated lazily per frame; source frames are
   cached and never mutated by modifiers.
 * Readers: native readers for LAMMPS dumps, LAMMPS data files and VASP
@@ -98,11 +147,86 @@ Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
 | Format | Reader | Notes |
 |---|---|---|
 | LAMMPS text dump (`dump atom/custom`) | native, lazy | orthogonal, `xy xz yz` and general (`abc origin`) triclinic boxes; `x`/`xu`/`xs`/`xsu`; `c_x[1] c_x[2]` become one vector property; `dump_modify units/time yes`; partial last frame skipped with a warning; `type_map={1: "Cu"}` |
-| LAMMPS data file | native | styles atomic, charge, bond/angle/molecular, full, sphere, dipole (from `Atoms # style`, inferred, or `atom_style=`); type names from `Atom Type Labels` or `Masses` comments; Velocities, image flags, Bonds (`data.tables["Bonds"]`); general triclinic `avec bvec cvec` |
+| LAMMPS data file | native | styles atomic, charge, bond/angle/molecular, full, sphere, dipole (from `Atoms # style`, inferred, or `atom_style=`); type names from `Atom Type Labels` or `Masses` comments; Velocities, image flags, Bonds (`data.bonds`); general triclinic `avec bvec cvec` |
 | VASP XDATCAR | native, lazy | fixed and variable cell (NpT), VASP 6.4 `Si/hash` species labels, partial last frame skipped |
 | VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics (`Selective Dynamics`, True = free), CONTCAR velocities (`Velocity` in Å/fs) |
 | VASP OUTCAR, vasprun.xml | ASE | all ionic steps with `Energy`, `Force`, `Stress` |
 | extxyz, CIF, ... | ASE | anything `ase.io.read` understands |
+
+### Files on another machine (SSH)
+
+Any path can live on an SSH host, written like `scp` or as a URL; wildcards work too:
+
+```python
+pipe = import_file("cluster:/scratch/me/run1/dump.lammpstrj")   # alias from ~/.ssh/config
+pipe = import_file("me@login.hpc.edu:run1/XDATCAR")              # relative to the remote home
+pipe = import_file("ssh://me@login.hpc.edu:2222/scratch/me/dump.*.lammpstrj")
+```
+
+In the GUI, File › Load remote file (SSH)… (Ctrl+Alt+O) browses the remote folders.
+Connections follow `~/.ssh/config` (HostName, User, Port, IdentityFile, IdentitiesOnly,
+ProxyJump, ProxyCommand, UserKnownHostsFile, StrictHostKeyChecking), the SSH agent and
+your default keys, and host keys are checked against `known_hosts`. If key login fails
+you are asked for the password or one-time code (terminal prompt, or a dialog in the GUI);
+it is never saved. Only recent remote locations are remembered.
+
+LAMMPS dumps/data files and XDATCARs are read in place: a dump is indexed by running
+`grep -b` on the remote host (streamed over SFTP if that is unavailable), and each frame
+is fetched when you look at it, so a large trajectory is never copied. Every other format,
+including reader plugins, is downloaded once into a local cache (`ewald.io.remote.cache_dir()`,
+`EWALD_CACHE_DIR` overrides) and reused while the remote size and modification time match;
+`ewald.io.remote.clear_cache()` empties it. Host aliases must be at least two characters,
+so `C:\data` stays a local Windows path.
+
+### Reader plugins
+
+Formats ewald does not know can be added without touching ewald. A plugin is a
+`FrameReader` subclass (lazy: `__len__` + `read(i)`) or a function returning frames
+(`DataCollection` or `ase.Atoms`), registered with a decorator in a file dropped into the
+plugin folder, or with an `ewald.readers` entry point in an installed package. Once
+registered, `import_file`, the GUI's File › Open filter and the Claude `load_structure`
+tool all use it.
+
+```python
+# <config dir>/plugins/my_format.py   (ewald plugins prints the folder)
+from ewald import DataCollection
+from ewald.plugins import reader
+
+@reader("my-format", patterns=("*.myf",), description="what the file holds")
+def read_my_format(path, **kwargs):
+    ...
+    return [DataCollection(positions, types)]   # one entry per frame
+```
+
+```toml
+# or, in a package's pyproject.toml
+[project.entry-points."ewald.readers"]
+my-format = "my_pkg.io:MyFormatReader"
+```
+
+The formats in the table above are registered the same way (origin `built-in`), so one
+registry drives format detection, the GUI filter and the Claude tools. Without `format=`,
+readers are tried by `priority`: volumetric cube (5) and VASP CHGCAR/LOCPOT/ELFCAR (6), the
+native LAMMPS dump/data and XDATCAR readers (10-12),
+then plugins (50 unless given), then ASE (100). A reader with `sniff(path)` is matched on
+content, one without on its file-name `patterns`. `format="my-format"` (or an alias such as
+`"lammps/dump"`) selects a reader directly, other names go to ASE, and registering an
+existing name replaces that reader. `ewald plugins` lists installed readers and any plugin that failed to import (a
+broken plugin never stops ewald from starting); `EWALD_NO_PLUGINS=1` skips loading them.
+[`examples/plugins/npz_trajectory.py`](examples/plugins/npz_trajectory.py) is a complete
+example for NumPy `.npz` trajectories (positions, types, cell, forces, energies).
+
+Modifiers plug in the same way: `@modifier(category="Analysis")` on a `Modifier` subclass in
+the plugin folder, or an `ewald.modifiers` entry point. A registered modifier imports as
+`from ewald.modifiers import Name`, appears in the GUI's Add modification menu and is offered
+by the Claude `add_modifier` tool ([`examples/plugins/local_composition.py`](examples/plugins/local_composition.py)).
+`llms.txt` stays core-only; `ewald api --with-plugins` appends the plugins installed here.
+
+`ewald forge "what to compute"` has Claude write such a modifier together with tests that
+have a known answer. ewald runs them in a subprocess, along with checks for the plugin
+contract (no in-place writes, the GPU code path), returns any failure to Claude to fix, and
+saves the modifier to the plugin folder only once everything passes
+([Modifier Forge](docs/plugins/forge.md)). It asks before running the generated code.
 
 LAMMPS values stay in the file's own unit style (`Units` attribute when the dump has it).
 The test fixtures in `tests/data/` come from real LAMMPS runs (`tests/data/lammps/generate.in`)
@@ -152,6 +276,29 @@ names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
 `Replicate`, `WrapAtoms`, `AffineTransformation`, and any Python function
 `f(frame, data)`.
 
+### Bonds and coordination polyhedra
+
+`data.bonds` stores each bond once (OVITO's `Topology` + `Periodic Image`), so bonds
+stay correct across periodic boundaries and in primitive cells smaller than twice the
+bond length; `DeleteSelected`, `Slice`, `Replicate` and `WrapAtoms` keep them consistent.
+`CreateBonds` finds them with a uniform cutoff, a VESTA-style pair table
+(`pairs=[("Ti", "O", 2.4)]`, `*` = any type, or OVITO's `set_pairwise_cutoff`) or
+covalent radii (`mode="covalent"`, VESTA's default). `EditBonds(add=[(a, b)], remove=[...])`
+adds or deletes single bonds by particle identifier; in the GUI the bond tool (⌇) does it by
+clicking two atoms. `CoordinationPolyhedra` puts a convex polyhedron (or a flat polygon for
+planar coordination) around each center particle, colored like the center, into
+`data.surfaces["coordination-polyhedra"]`. The OpenGL viewport and the ray tracer draw
+bonds, polyhedra, their edges and transparency. LAMMPS data files fill `data.bonds` too.
+
+```python
+from ewald.modifiers import CreateBonds, CoordinationPolyhedra
+
+pipe = import_file("CONTCAR")
+pipe.modifiers.append(CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)]))
+pipe.modifiers.append(CoordinationPolyhedra(center_types=["Ti"], transparency=0.3))
+pipe.render("octahedra.png", renderer="raytrace", radius_scale=0.4)
+```
+
 ### Trajectory analysis
 
 These modifiers read every frame of `start:stop:step` through the modifiers above
@@ -174,6 +321,29 @@ pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
 data = pipe.compute(0, device="cuda")
 data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # A^2/ps
 data.tables["coordination-rdf[average]"]                               # time-averaged g(r)
+```
+
+### Volumetric data (CHGCAR, LOCPOT, ELFCAR, cube)
+
+`import_file("CHGCAR")` gives the atoms plus a `VoxelGrid` in `data.grids`
+(VASP CHGCAR/CHG/PARCHG/AECCAR as "Charge Density" in e/A^3 with "Magnetization",
+"Spin Up", "Spin Down" for spin-polarised runs; LOCPOT "Potential"; ELFCAR "ELF";
+Gaussian cube "Value", `pbc=True` for plane-wave output). `CreateIsosurface`
+draws VESTA-style isosurfaces (`signed=True` adds the negative level in a second
+colour, for density differences and spin densities), `GridSlice` a colour-mapped
+(hkl) plane, `GridDifference` subtracts other files' grids, and `export_file`
+writes `.cube` or CHGCAR. Both the OpenGL renderer and the ray tracer draw the
+surfaces, translucent ones included.
+
+```python
+from ewald.modifiers import CreateIsosurface, GridDifference, GridSlice
+
+pipe = import_file("AB/CHGCAR")
+pipe.modifiers.append(GridDifference(["A/CHGCAR", "B/CHGCAR"]))       # rho_AB - rho_A - rho_B
+pipe.modifiers.append(CreateIsosurface(0.002, signed=True, transparency=0.3))
+pipe.modifiers.append(GridSlice(miller=(0, 0, 1), distance=0.5, cmap="RdBu_r", range=(-0.01, 0.01)))
+pipe.render("ccd.png", renderer="raytrace")
+spin = import_file("CHGCAR").compute().grids["charge-density"]["Spin Up"]  # numpy array
 ```
 
 ### Structure analysis (ported from OVITO)

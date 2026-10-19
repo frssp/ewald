@@ -17,6 +17,16 @@ SIZE_PRESETS = {
 }
 
 
+RENDERERS = ("raytrace", "opengl", "vector")
+QUALITIES = ("Draft", "Standard", "Publication", "Custom")
+VECTOR_EXTS = (".svg", ".pdf", ".eps", ".ps")
+MOVIE_FORMATS = {"MP4 (H.264)": ".mp4", "GIF": ".gif", "AVI (Motion JPEG)": ".avi", "MOV (H.264)": ".mov",
+                 "PNG sequence": ".png"}
+MOVIE_EXTS = (".mp4", ".gif", ".avi", ".mov", ".webm", ".m4v")
+OUTPUT_FILTER = ("Images (*.png *.jpg *.tif);;Vector (*.svg *.pdf *.eps);;"
+                 "Movies (*.mp4 *.gif *.avi *.mov);;All files (*)")
+
+
 class RenderPage(QtWidgets.QWidget):
     renderRequested = QtCore.Signal()
 
@@ -37,9 +47,16 @@ class RenderPage(QtWidgets.QWidget):
         self.renderer = QtWidgets.QComboBox()
         self.renderer.addItem("Ray tracing (AO + shadows)")
         self.renderer.addItem("OpenGL (fast preview)")
+        self.renderer.addItem("Vector (SVG / PDF / EPS)")
         self.renderer.addItem("OSPRay path tracing (needs a VTK build with OSPRay)")
-        self.renderer.model().item(2).setEnabled(False)
+        self.renderer.model().item(3).setEnabled(False)
         form.addRow("Renderer", self.renderer)
+        self.quality = QtWidgets.QComboBox()
+        self.quality.addItems(QUALITIES)
+        self.quality.setToolTip("Draft: half size, no AO or shadows (fast previews). Standard: balanced. "
+                                "Publication: 16 rays/pixel, 32 AO rays, shadows, SSAO, fine spheres. "
+                                "Custom: the values below.")
+        form.addRow("Quality", self.quality)
         self.samples = QtWidgets.QSpinBox(minimum=1, maximum=256, value=8, suffix=" rays/pixel")
         self.ao_samples = QtWidgets.QSpinBox(minimum=0, maximum=512, value=16, suffix=" AO rays")
         self.shadows = QtWidgets.QCheckBox("Shadows", checked=True)
@@ -68,9 +85,16 @@ class RenderPage(QtWidgets.QWidget):
         self.text = QtWidgets.QLineEdit(placeholderText="Text label, e.g. t = [Time] ps   frame [Frame]")
         self.time_per_frame = QtWidgets.QDoubleSpinBox(minimum=0, maximum=1e9, value=1.0, decimals=4, suffix=" ps/frame")
         self.legend = QtWidgets.QCheckBox("Color legend", checked=True)
+        self.type_legend = QtWidgets.QCheckBox("Particle type legend")
+        self.scale_bar = QtWidgets.QCheckBox("Scale bar")
+        self.scale_length = QtWidgets.QDoubleSpinBox(minimum=0, maximum=1e6, value=0, decimals=1, suffix=" Å",
+                                                     specialValueText="auto")
+        bar = QtWidgets.QHBoxLayout(); bar.addWidget(self.scale_bar); bar.addWidget(self.scale_length, 1)
         form.addRow("Text", self.text)
         form.addRow("[Time] =", self.time_per_frame)
         form.addRow(self.legend)
+        form.addRow(self.type_legend)
+        form.addRow(bar)
         form.addRow(QtWidgets.QLabel("Output", objectName="section"))
         out = QtWidgets.QHBoxLayout()
         self.output = QtWidgets.QLineEdit("render.png")
@@ -80,6 +104,13 @@ class RenderPage(QtWidgets.QWidget):
         form.addRow("File", out)
         self.animation = QtWidgets.QCheckBox("Render animation (all frames, uses timeline fps/stride)")
         form.addRow(self.animation)
+        self.movie_format = QtWidgets.QComboBox()
+        self.movie_format.addItems(list(MOVIE_FORMATS))
+        self.movie_format.currentTextChanged.connect(self._movie_format_changed)
+        form.addRow("Movie format", self.movie_format)
+        self.movie_quality = QtWidgets.QComboBox()
+        self.movie_quality.addItems(["Same as image", "Draft", "Standard", "Publication"])
+        form.addRow("Movie quality", self.movie_quality)
         go = QtWidgets.QPushButton("Render")
         go.setObjectName("primary")
         go.clicked.connect(self.renderRequested)
@@ -102,26 +133,99 @@ class RenderPage(QtWidgets.QWidget):
 
         self.preset.currentTextChanged.connect(self._apply_preset)
         self.dpi.valueChanged.connect(lambda _: self._apply_preset(self.preset.currentText()))
-        for w in (self.ao, self.aa, self.legend, self.animation, self.shadows):
+        for w in (self.ao, self.aa, self.legend, self.animation, self.shadows, self.type_legend, self.scale_bar):
             w.toggled.connect(self.update_code)
         self.renderer.currentIndexChanged.connect(self.update_code)
-        for w in (self.width, self.height, self.dpi, self.time_per_frame, self.samples, self.ao_samples):
+        for w in (self.width, self.height, self.dpi, self.time_per_frame, self.samples, self.ao_samples,
+                  self.scale_length):
             w.valueChanged.connect(self.update_code)
         for w in (self.text, self.output):
             w.textChanged.connect(self.update_code)
         self.background.currentTextChanged.connect(self.update_code)
         self._apply_preset(self.preset.currentText())
         self._renderer_changed()
+        self._syncing_quality = False
+        self.quality.currentTextChanged.connect(self._quality_changed)
+        for w in (self.samples, self.ao_samples):
+            w.valueChanged.connect(self._quality_edited)
+        for w in (self.shadows, self.ao, self.aa):
+            w.toggled.connect(self._quality_edited)
+        self.quality.currentTextChanged.connect(self.update_code)
+        self.movie_quality.currentTextChanged.connect(self.update_code)
+        self.quality.setCurrentText("Publication")
+        self._quality_changed("Publication")
 
     @property
     def raytrace(self) -> bool:
         return self.renderer.currentIndex() == 0
 
+    # ---------------------------------------------------------------- quality presets
+    def _quality_changed(self, name):
+        from ..render import QUALITY_PRESETS
+
+        preset = QUALITY_PRESETS.get(name.lower())
+        if preset is None:  # Custom keeps whatever is in the fields
+            return
+        self._syncing_quality = True
+        try:
+            self.samples.setValue(preset["samples"])
+            self.ao_samples.setValue(preset["ao_samples"])
+            self.shadows.setChecked(preset["shadows"])
+            self.ao.setChecked(preset["ambient_occlusion"])
+            self.aa.setChecked(preset["antialiasing"])
+        finally:
+            self._syncing_quality = False
+
+    def _quality_edited(self, *_):
+        if not self._syncing_quality and self.quality.currentText() != "Custom":
+            self.quality.blockSignals(True)
+            self.quality.setCurrentText("Custom")
+            self.quality.blockSignals(False)
+            self.update_code()
+
+    def quality_kwargs(self, movie: bool = False) -> dict:
+        """render() keywords for the sampling settings: a preset name, or the explicit Custom values."""
+        name = self.quality.currentText()
+        if movie and self.movie_quality.currentText() != "Same as image":
+            name = self.movie_quality.currentText()
+        if name != "Custom":
+            return {"quality": name.lower()}
+        if self.renderer_name == "raytrace":
+            return {"samples": self.samples.value(), "ao_samples": self.ao_samples.value(),
+                    "shadows": self.shadows.isChecked()}
+        if self.renderer_name == "opengl":
+            return {"ambient_occlusion": self.ao.isChecked(), "antialiasing": self.aa.isChecked()}
+        return {}
+
+    @property
+    def renderer_name(self) -> str:
+        return RENDERERS[min(self.renderer.currentIndex(), len(RENDERERS) - 1)]
+
+    def set_renderer(self, name: str):
+        self.renderer.setCurrentIndex(RENDERERS.index(name) if name in RENDERERS else 0)
+
     def _renderer_changed(self, *_):
         for w in (self.samples, self.ao_samples, self.shadows):
             w.setEnabled(self.raytrace)
         for w in (self.ao, self.aa):
-            w.setEnabled(not self.raytrace)
+            w.setEnabled(self.renderer_name == "opengl")
+        out = self.output.text()
+        root, ext = os.path.splitext(out)
+        if self.renderer_name == "vector" and ext.lower() not in VECTOR_EXTS + MOVIE_EXTS:
+            self.output.setText(root + ".svg")
+        elif self.renderer_name != "vector" and ext.lower() in VECTOR_EXTS:
+            self.output.setText(root + ".png")
+
+    def _movie_format_changed(self, label):
+        ext = MOVIE_FORMATS[label]
+        root, old = os.path.splitext(self.output.text() or "movie")
+        self.output.setText(root + ext)
+        self.animation.setChecked(True)
+
+    @property
+    def is_movie(self) -> bool:
+        ext = os.path.splitext(self.output.text())[1].lower()
+        return self.animation.isChecked() or ext in MOVIE_EXTS
 
     def _apply_preset(self, name):
         spec = SIZE_PRESETS.get(name)
@@ -135,26 +239,27 @@ class RenderPage(QtWidgets.QWidget):
 
     def _browse(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Output", self.output.text(),
-                                                        "Images (*.png *.jpg *.tif);;Movies (*.mp4 *.gif)")
+                                                        OUTPUT_FILTER)
         if path:
             self.output.setText(path)
 
     def label_text(self, frame: int, data) -> str:
-        t = self.text.text()
-        if not t:
-            return ""
-        ts = data.attributes.get("Timestep", frame) if data is not None else frame
-        return (t.replace("[Frame]", str(frame)).replace("[Timestep]", str(ts))
-                 .replace("[Time]", f"{frame * self.time_per_frame.value():g}"))
+        from ..overlays import format_label
 
-    def render_kwargs(self) -> dict:
+        return format_label(self.text.text(), frame, data, self.time_per_frame.value())
+
+    def render_kwargs(self, movie: bool = False) -> dict:
         bg = self.background.currentText()
         kw = {"size": (self.width.value(), self.height.value()), "legend": self.legend.isChecked()}
-        if self.raytrace:
-            kw.update(renderer="raytrace", samples=self.samples.value(), ao_samples=self.ao_samples.value(),
-                      shadows=self.shadows.isChecked())
-        else:
-            kw.update(ambient_occlusion=self.ao.isChecked(), antialiasing=self.aa.isChecked())
+        if self.type_legend.isChecked():
+            kw["type_legend"] = True
+        if self.scale_bar.isChecked():
+            kw["scale_bar"] = self.scale_length.value() or True
+        if self.renderer_name != "opengl":
+            kw["renderer"] = self.renderer_name
+        kw.update(self.quality_kwargs(movie))
+        if self.preset.currentText() != "Custom (px)" and SIZE_PRESETS.get(self.preset.currentText(), ("px",))[0] != "px":
+            kw["dpi"] = self.dpi.value()
         if bg == "transparent":
             kw.update(background="white", transparent_background=True)
         elif bg == "viewport":
@@ -165,6 +270,49 @@ class RenderPage(QtWidgets.QWidget):
 
     def update_code(self, *_):
         self.code.setPlainText(figure_code(self.window, self))
+
+    # ---------------------------------------------------------------- sessions
+    def state(self) -> dict:
+        """Everything on this page, for session files (GUI keys next to render() keywords)."""
+        return {"renderer_name": self.renderer_name, "quality": self.quality.currentText(),
+                "movie_quality": self.movie_quality.currentText(), "samples": self.samples.value(),
+                "ao_samples": self.ao_samples.value(), "shadows": self.shadows.isChecked(),
+                "ambient_occlusion": self.ao.isChecked(), "antialiasing": self.aa.isChecked(),
+                "preset": self.preset.currentText(), "dpi": self.dpi.value(),
+                "size": (self.width.value(), self.height.value()), "background_choice": self.background.currentText(),
+                "text_template": self.text.text(), "time_per_frame": self.time_per_frame.value(),
+                "legend": self.legend.isChecked(), "type_legend": self.type_legend.isChecked(),
+                "scale_bar_on": self.scale_bar.isChecked(), "scale_bar_length": self.scale_length.value(),
+                "output": self.output.text(), "animation": self.animation.isChecked()}
+
+    def set_state(self, st: dict):
+        if "renderer_name" in st:
+            self.set_renderer(st["renderer_name"])
+        if st.get("movie_quality"):
+            self.movie_quality.setCurrentText(st["movie_quality"])
+        for key, w in (("samples", self.samples), ("ao_samples", self.ao_samples), ("dpi", self.dpi),
+                       ("time_per_frame", self.time_per_frame), ("scale_bar_length", self.scale_length)):
+            if key in st:
+                w.setValue(st[key])
+        for key, w in (("shadows", self.shadows), ("ambient_occlusion", self.ao), ("antialiasing", self.aa),
+                       ("legend", self.legend), ("type_legend", self.type_legend), ("scale_bar_on", self.scale_bar),
+                       ("animation", self.animation)):
+            if key in st:
+                w.setChecked(bool(st[key]))
+        if st.get("preset") in SIZE_PRESETS:
+            self.preset.setCurrentText(st["preset"])
+        if "size" in st and self.preset.currentText() == "Custom (px)":
+            self.width.setValue(int(st["size"][0])); self.height.setValue(int(st["size"][1]))
+        if "background_choice" in st:
+            self.background.setCurrentText(st["background_choice"])
+        if "text_template" in st:
+            self.text.setText(st["text_template"])
+        if st.get("output"):
+            self.output.setText(st["output"])
+        if st.get("quality") in QUALITIES:  # last: a preset overwrites the fields, Custom keeps them
+            self.quality.setCurrentText(st["quality"])
+            self._quality_changed(st["quality"])
+        self.update_code()
 
 
 def figure_code(window, page) -> str:
@@ -189,15 +337,29 @@ def figure_code(window, page) -> str:
     device = window.device
     lines.append(f"data = pipe.compute({frame}" + (f", device={device!r})" if device and device != "cpu" else ")"))
     kw = dict(window.style.scene_kwargs())
-    kw.update(page.render_kwargs())
+    kw.update(page.render_kwargs(movie=page.is_movie))
     from ..render import camera_state
 
     kw["camera"] = {k: (tuple(round(x, 4) for x in v) if isinstance(v, tuple) else round(v, 4) if isinstance(v, float) else v)
                     for k, v in camera_state(window.viewport.plotter).items()}
+    out = page.output.text() or "render.png"
+    if page.is_movie and pipe is not None:
+        lines[2] = "from ewald.render import render_animation"
+        lines.pop()  # no single-frame compute
+        stride = window.timeline.stride.value() if hasattr(window, "timeline") else 1
+        kw["size"] = (kw["size"][0] // 2 * 2, kw["size"][1] // 2 * 2)
+        if page.text.text():
+            kw["text"] = page.text.text()
+            kw["time_per_frame"] = page.time_per_frame.value()
+        fps = window.timeline.fps.value() if hasattr(window, "timeline") else 10
+        head = f"range(0, pipe.num_frames, {stride})"
+        body = ",\n                 ".join(f"{k}={v!r}" for k, v in kw.items())
+        dev = f", device={device!r}" if device and device != "cpu" else ""
+        lines.append(f"render_animation(pipe, {out!r}, frames={head}, fps={fps}{dev},\n                 {body})")
+        return "\n".join(lines) + "\n"
     text = page.label_text(frame, window.data)
     if text:
         kw["text"] = text
-    out = page.output.text() or "render.png"
     body = ",\n       ".join(f"{k}={v!r}" for k, v in kw.items())
     lines.append(f"render(data, {out!r},\n       {body})")
     return "\n".join(lines) + "\n"
