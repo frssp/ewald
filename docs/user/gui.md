@@ -24,7 +24,12 @@ VESTA, CPK, Journal, Dark slide, or a [theme plugin](../plugins/styles.md#themes
 colors, background, cell color and radius preset in one step. The tool rail on the left switches
 between orbit, pick (click an atom to see its id, type, position and every property;
 Shift+click adds atoms to the pick or removes them),
-distance (click two atoms) and angle (click three atoms, vertex in the middle). The viewport
+distance (click two atoms) and angle (click three atoms, vertex in the middle). Resting the
+cursor on an atom with any tool shows its element, index (and id), Cartesian position in Å and,
+when there is a cell, fractional coordinates, in a tooltip and on the right of the status bar.
+The ray cast runs once, after the cursor rests (Viewports › Hover › *Hover delay*, 0.25 s), and
+never while the view moves, so it costs nothing during rotation; *Atom info on hover* turns it
+off. Atoms drawn only as periodic images (VESTA boundary) are not reported. The viewport
 draws atoms as GPU impostors: each sphere is one point shaded per pixel, with the depth of the
 sphere surface, so spheres stay round at any zoom, overlapping spheres and bonds intersect as
 with meshes, and 100 000 atoms rotate smoothly. Viewports › Performance › *Sphere drawing* =

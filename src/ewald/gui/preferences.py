@@ -35,6 +35,7 @@ LAYOUT = {
         ("View", ["viewport.background", "viewport.projection", "viewport.initial_view", "viewport.style_preset"]),
         ("Navigation", ["viewport.rotation_step"]),
         ("Overlays", ["viewport.show_axes", "viewport.show_overlay"]),
+        ("Hover", ["viewport.hover_info", "viewport.hover_delay"]),
         ("Performance", ["viewport.interactive_detail", "viewport.target_fps", "viewport.interactive_atoms",
                          "viewport.refine_delay", "viewport.sphere_drawing", "viewport.anti_aliasing",
                          "viewport.sphere_resolution", "viewport.arrow_resolution",
@@ -849,6 +850,10 @@ def apply_settings(win, s: Settings, startup: bool = False):
     if startup or style.preset != s["viewport.style_preset"]:
         style.apply_preset(s["viewport.style_preset"])
     vp.rotation_step = s["viewport.rotation_step"]
+    vp.hover_info = s["viewport.hover_info"]
+    vp.hover_delay = s["viewport.hover_delay"]
+    if not vp.hover_info:
+        vp.hover_leave()
     vp.sphere_drawing = s["viewport.sphere_drawing"]
     vp.sphere_resolution = s["viewport.sphere_resolution"]
     vp.set_anti_aliasing(s["viewport.anti_aliasing"])
