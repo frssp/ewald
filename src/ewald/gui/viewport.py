@@ -230,9 +230,45 @@ class Viewport(QtWidgets.QWidget):
     # ------------------------------------------------------------------ scene
     def set_data(self, data, interactive: bool = False):
         """Show ``data``; ``interactive`` (scrubbing, playback) allows a coarse scene that
-        is refined once frames stop arriving."""
+        is refined once frames stop arriving. A parked viewport keeps the data and draws it
+        when it is shown again."""
         self.data = data
+        if self.parked:
+            self._parked_stale = True
+            return
         self.redraw(coarse=interactive and self.needs_coarse(scrub=True))
+
+    parked = False
+    _parked_stale = False
+
+    def set_parked(self, parked: bool):
+        """Parked: behind another tab or in a folded panel (the window's workbench says so).
+        Frames that arrive meanwhile build no scene; the last one is drawn on return."""
+        was, self.parked = self.parked, parked
+        if was and not parked and self._parked_stale:
+            self._parked_stale = False
+            self.redraw()
+
+    def snapshot(self) -> QtGui.QPixmap:
+        """The widget as a picture, 3D view included (``grab`` leaves a GL window black); shown
+        in its place while a tab is dragged over it."""
+        pix = self.grab()
+        try:
+            gl, img = self._gl_widget(), self._gl_image()
+        except Exception:  # no read-back on this driver: the toolbars alone still help
+            return pix
+        painter = QtGui.QPainter(pix)
+        painter.drawImage(QtCore.QRect(gl.mapTo(self, QtCore.QPoint(0, 0)), gl.size()), img)
+        painter.end()
+        return pix
+
+    def _gl_widget(self) -> QtWidgets.QWidget:
+        return self.plotter  # the QtInteractor is the GL widget
+
+    def _gl_image(self) -> QtGui.QImage:
+        arr = np.ascontiguousarray(self.plotter.screenshot(None, return_img=True)[..., :3])
+        h, w = arr.shape[:2]
+        return QtGui.QImage(arr.data, w, h, 3 * w, QtGui.QImage.Format_RGB888).copy()
 
     def needs_coarse(self, scrub: bool = False) -> bool:
         """Whether moving the view (or changing frames when ``scrub``) should use the coarse scene."""

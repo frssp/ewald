@@ -355,7 +355,7 @@ def test_main_window_links_plots_and_viewport(app, cu_fcc, lammps_dir):
 
     w = MainWindow(Pipeline(StaticSource([cu_fcc, cu_fcc]), [mods.CoordinationAnalysis(3.0)]))
     assert w.plots.data is None  # a hidden tab is filled when it is opened
-    w.bottom.setCurrentWidget(w.plots)
+    w.workbench.show(w.plots)
     w.plots.table.setCurrentText("coordination-rdf")
     w.plots.select(2.4, 2.7)
     assert len(w.viewport.picks) == cu_fcc.count and w._ask_context()[2] == w.viewport.picks
@@ -373,7 +373,7 @@ def test_main_window_links_plots_and_viewport(app, cu_fcc, lammps_dir):
     assert len(w.plots.highlight) == cu_fcc.count  # the Selection property is drawn on the plot
     w.close()
     w = MainWindow(import_file(lammps_dir / "thermo" / "dump.lammpstrj"))
-    w.bottom.setCurrentWidget(w.plots)
+    w.workbench.show(w.plots)
     w.plots.select(15, 32)
     assert w.timeline.selection == [2, 3] and w.frame == 2
     w.plots.frameRequested.emit(4)
@@ -444,7 +444,7 @@ def test_viewport_context_menu_toggles_frame_overlay(app, vasp_dir):
     menu["Overlay only atoms that move"].setChecked(False)  # every atom, moving or not
     assert w.data.count == 5 * n_real
     menu["NEB energy profile"].trigger()
-    assert w.bottom.currentWidget() is w.plots and w.plots.table.currentText() == "NEB"
+    assert w.workbench.is_shown(w.plots) and w.plots.table.currentText() == "NEB"
     w.close()
 
 
@@ -1698,6 +1698,9 @@ def test_main_window_legacy_gl_viewport(app, pipe, tmp_path, monkeypatch):
     bg = img.pixelColor(2, 2)
     assert img.pixelColor(W // 2, H // 2) != bg  # atoms drawn in the middle
     assert "Frame 0" in vp.caption.text()
+    snap = vp.snapshot().toImage()  # what a tab drag shows in place of the GL window
+    gl = vp._gl_widget().mapTo(vp, vp._gl_widget().rect().center())
+    assert snap.pixelColor(gl.x(), gl.y()) != snap.pixelColor(gl.x() - W // 2 + 2, gl.y() - H // 2 + 2)
     vp.set_tool("distance")
     vp.click(W / 2, H / 2, W, H)
     vp.click(W / 2 + 25, H / 2, W, H)
@@ -2008,10 +2011,10 @@ def test_panels_and_cells_fold(app, cu_path, tmp_path):
     app.processEvents()
     assert not bar.collapsed and w.notebook_dock.widget() is w.panel and w.panel.isVisible()
     assert w.notebook_dock.width() > 4 * STRIP
-    data = w.bottom_dock.titleBarWidget()
-    data.set_collapsed(True)
-    assert w.bottom_dock.height() == STRIP or w.bottom_dock.maximumHeight() == STRIP
-    data.set_collapsed(False)
+    w.workbench.set_panel_collapsed(True)                   # the panel folds to its tab bar
+    app.processEvents()
+    assert w.workbench.panel_host.maximumHeight() < 60 and not w.console.isVisible()
+    w.workbench.set_panel_collapsed(False)
     w.remotes_dock.show()
     w.tabifyDockWidget(w.display.parent(), w.remotes_dock)
     app.processEvents()
@@ -2033,6 +2036,92 @@ def test_panels_and_cells_fold(app, cu_path, tmp_path):
     cw.set_collapsed(False)
     assert not cw.content.isHidden()
     w.close()
+
+
+def test_workbench_drag_plot_over_3d_view(app, pipe):
+    """Drag the Plots tab onto the 3D view: it opens large there, the 3D view waits behind its
+    tab (parked, no scene builds) and comes back where its slot is; splits, extra plot views,
+    the keyboard actions and the saved layout."""
+    import time
+
+    from PySide6 import QtCore, QtGui, QtTest
+
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.gui.preferences import save_layout
+
+    def settle():
+        for _ in range(10):
+            app.processEvents()
+            time.sleep(0.01)
+
+    s = settings.Settings()
+    w = MainWindow(pipe, settings=s)
+    w.resize(1400, 900)
+    w.show()
+    settle()
+    wb, vp = w.workbench, w.viewport
+    assert wb.titles("editor") == ["3D view"] and wb.titles("panel") == ["Python console", "Data inspector", "Plots", "Log"]
+    slot = wb.slot("viewport")
+    assert vp.parent() is wb and vp.geometry() == QtCore.QRect(slot.mapTo(wb, QtCore.QPoint()), slot.size())
+
+    bar = wb.tab_group(wb.group_of(w.plots)).bar          # a real mouse drag of the Plots tab
+    start = bar.tabRect(2).center()
+    QtTest.QTest.mousePress(bar, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, start)
+    QtTest.QTest.mouseMove(bar, start + QtCore.QPoint(40, 0))
+    assert wb._drag is not None and not vp.isVisible()    # a snapshot stands in for the GL widget
+    over = bar.mapFromGlobal(slot.mapToGlobal(slot.rect().center()))
+    QtTest.QTest.mouseMove(bar, over)
+    assert wb._drag["target"][1] == "center" and wb.marks.rect_ is not None
+    QtTest.QTest.mouseRelease(bar, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, over)
+    settle()
+    assert wb.titles("editor") == ["3D view", "Plots"] and wb.is_shown(w.plots) and w.plots.data is not None
+    assert vp.parked and not vp.isVisible() and wb.can_close("plot:1")
+    built = vp._build_time
+    w.set_frame(1)
+    settle()
+    assert vp._parked_stale and vp.data is w.data           # the frame waits for the 3D view
+    wb.show(vp)
+    settle()
+    assert not vp.parked and not vp._parked_stale and vp.isVisible() and vp._build_time != built
+
+    g = wb.split(w.plots, "right")                         # side by side
+    settle()
+    assert wb.is_shown(vp) and wb.is_shown(w.plots) and wb.layout.area_of(g) == "editor"
+    assert abs(vp.width() - w.plots.width()) < 0.3 * vp.width()
+    edge = slot.mapToGlobal(QtCore.QPoint(slot.width() - 3, slot.height() // 2))
+    wb.begin_drag("log")
+    assert wb.target_at(edge)[1:] == ("right", None)
+    QtTest.QTest.keyClick(w, QtCore.Qt.Key_Escape)        # Esc cancels
+    assert wb._drag is None and vp.isVisible() and wb.titles("panel")[-1] == "Log"
+
+    p2 = w.new_plot_view("plot:1")                          # a second plot next to the first
+    assert wb.group_of(p2) is g and "plot:2" in w.extra_plots and wb.can_close(p2)
+    menu = QtWidgets.QMenu()
+    wb.fill_view_menu(menu, "plot:2")
+    assert [a.text() for a in menu.actions() if a.text()] == [
+        "Split right", "Split down", "Move to panel", "Maximize group", "New plot view", "Close"]
+    acts = {a.text(): a for a in wb.actions()}
+    assert acts["Move view down"].shortcut() == QtGui.QKeySequence("Ctrl+Alt+Down")
+    wb.active = g
+    acts["Maximize group"].trigger()
+    settle()
+    assert wb.is_shown(p2) and not wb.is_shown(vp) and vp.parked
+    acts["Maximize group"].trigger()
+    acts["Move view down"].trigger()                       # from the editor area into the panel
+    settle()
+    assert wb.layout.area_of(wb.group_of(p2)) == "panel" and not vp.parked
+
+    save_layout(w, s)
+    w.close()
+    w2 = MainWindow(pipe, settings=s)                       # the layout comes back, plot:2 included
+    assert wb.layout.to_json() == w2.workbench.layout.to_json() and "plot:2" in w2.extra_plots
+    w2.workbench.close_view("plot:2")
+    assert "plot:2" not in w2.extra_plots and "plot:2" not in w2.workbench.specs
+    w2.workbench.reset()
+    assert w2.workbench.titles("editor") == ["3D view"]
+    assert w2.workbench.titles("panel") == ["Python console", "Data inspector", "Plots", "Log"]
+    w2.close()
 
 
 def test_plot_export_is_a_print_figure_in_any_theme(app, vasp_dir, tmp_path):

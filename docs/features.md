@@ -533,6 +533,19 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Journal
   - ASE
   - Dark slide
+- Layout
+  - Split right (`Ctrl+Alt+\`)
+  - Split down
+  - Move view left (`Ctrl+Alt+Left`)
+  - Move view right (`Ctrl+Alt+Right`)
+  - Move view up (`Ctrl+Alt+Up`)
+  - Move view down (`Ctrl+Alt+Down`)
+  - Move view to editor area
+  - Move view to panel
+  - Return view home (`Ctrl+Alt+W`)
+  - Maximize group (`Ctrl+Alt+M`)
+  - Fold or unfold panel (`Ctrl+Alt+J`)
+  - Reset layout
 - Focus on the viewport (`Ctrl+\`)
 - Minimal mode (menus hidden) (`Ctrl+Shift+M`)
 
@@ -666,9 +679,12 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Notebook
 - Plugins (`Ctrl+Shift+X`)
 - Display settings
+- 3D view
 - Python console
 - Data inspector
 - Plots
+- New plot view
+- Log
 - AI chat
 - Command palette
 
@@ -722,8 +738,9 @@ Open, Save, Run all, Notebook, Render, Search commands, steps, cells… Ctrl K, 
 ### Panels
 
 - Workspaces: Notebook, Render
-- Docks: AI chat, Data, Display, Notebook, Plugins, Remotes
-- Bottom tabs: Python console, Data inspector, Plots, Log
+- Docks: AI chat, Display, Notebook, Plugins, Remotes
+- Editor area tabs: 3D view
+- Panel tabs: Python console, Data inspector, Plots, Log (tabs drag between groups: centre = tab, edge = split; View › Layout)
 - Viewport tools: Orbit / pan / zoom (mouse); Pick atom: shows id, type, position and properties; Shift+click picks several; Measure distance: click two atoms; Measure angle: click three atoms (vertex in the middle); Edit bonds: click two atoms to add or delete the bond between them
 
 <!-- gui:end -->

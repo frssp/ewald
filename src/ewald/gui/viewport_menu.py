@@ -180,8 +180,7 @@ class ViewportMenuMixin:
 
     def show_plot(self, table: str | None = None):
         """Open the Plots tab, on ``table`` when given (phonon bands show by themselves)."""
-        self.bottom_dock.show()
-        self.bottom.setCurrentWidget(self.plots)
+        self.workbench.show(self.plots)
         if table is not None:
             self.plots.hist.setCurrentText("")
             self.plots.table.setCurrentText(table)
