@@ -63,13 +63,15 @@ particle-property histogram:
 show(pipe, table="coordination-rdf")         # g(r), XRD, S(q), DOS, Bands, Thermo, NEB, ...
 show(pipe, table="DOS", y="Ga d")            # one column
 show(pipe, histogram="Coordination")         # histogram of a particle property
+show(pipe, table="DOS", xlim=(-3, 2))        # the range shown (DOS energy window)
 ```
 
 In the GUI the plot is linked to the 3D view, like the Plots tab. Dragging an x range selects
 those atoms, or those frames on a per-frame plot. The atoms you pick appear on the plot. The DOS
 and the band structure follow the picked atoms as projected DOS or fat bands, and clicking a
 phonon band plays that mode. Choosing another table, column or histogram in the plot's bar
-rewrites the cell. Run as a script, `show` draws the same plot with matplotlib. Add one with
+rewrites the cell, and so does zooming: the wheel, a drag on a DOS or band plot, or a pan
+writes `xlim=`/`ylim=`, and a double-click removes them. Run as a script, `show` draws the same plot with matplotlib. Add one with
 **+ View** or Insert › View, which list the tables and properties of the current frame.
 
 Every plot ewald draws (view cells, `show`, a verb table's picture, the figures saved into an
@@ -244,10 +246,11 @@ folder, pip package or this session) and any error it raised, and the plugins yo
 ewald's example plugins, the default plugin index and every catalog in Preferences › Python ›
 *Plugin catalogs* (see
 [Packaging and sharing](../plugins/packaging.md#plugin-catalogs)). Type to search, or filter with
-`@installed`, `@available` or a kind such as `@modifier`. *Install* copies a plugin file into the
+`@installed`, `@updates`, `@available` or a kind such as `@modifier`. *Install* copies a plugin file into the
 plugin folder and loads it at once; a `pip:` entry runs pip in the Python ewald runs in, after
 you confirm the command. *Update to …* appears on an installed plugin when a catalog has a
-newer version, and entries that need a newer ewald are greyed out. *Disable* switches a plugin off without removing it
+newer version (the Plugins icon on the activity bar then carries the number of updates, and
+`@updates` lists them), and entries that need a newer ewald are greyed out. *Disable* switches a plugin off without removing it
 ([Switching a plugin off](../plugins/packaging.md#switching-a-plugin-off)); disabled,
 incompatible and failed plugins say so in their row. *Remove* moves a file to the plugin
 folder's `.removed` folder (its steps stay available until ewald restarts). Selecting a modifier plugin shows its documentation

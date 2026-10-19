@@ -120,6 +120,7 @@ class PluginsPanel(QtWidgets.QWidget):
     changed = QtCore.Signal()               # plugins were loaded or removed
     stepRequested = QtCore.Signal(object)   # a modifier instance to add to the notebook
     createRequested = QtCore.Signal(str)    # a prompt for Ask Claude to write a new plugin
+    updatesChanged = QtCore.Signal(int)     # how many installed plugins a catalog has a newer version of
 
     def __init__(self, settings=None, parent=None):
         super().__init__(parent)
@@ -130,10 +131,11 @@ class PluginsPanel(QtWidgets.QWidget):
         self.current = None
         self._loader = None
         self._process = None
+        self._updates = 0
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(6)
-        self.search = QtWidgets.QLineEdit(placeholderText="Search plugins  (@installed, @available, @modifier…)")
+        self.search = QtWidgets.QLineEdit(placeholderText="Search plugins  (@installed, @updates, @available, @modifier…)")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._fill)
         lay.addWidget(self.search)
@@ -192,7 +194,20 @@ class PluginsPanel(QtWidgets.QWidget):
         self.entries, self.catalog_errors = entries, errors
         self._fill()
 
+    def updates(self) -> list:
+        """``[(installed item, newer catalog entry)]`` for every plugin with an update."""
+        out = []
+        for item in self.items:
+            new = pc.update_for(item, self.entries) if item.id else None
+            if new is not None:
+                out.append((item, new))
+        return out
+
     def _fill(self):
+        n = len(self.updates())
+        if n != self._updates:
+            self._updates = n
+            self.updatesChanged.emit(n)
         while self.list_layout.count():
             w = self.list_layout.takeAt(0).widget()
             if w is not None:
@@ -204,6 +219,9 @@ class PluginsPanel(QtWidgets.QWidget):
         installed = [i for i in pc.search(self.items, text) if not kinds or kinds & set(i.kinds)]
         available = [e for e in pc.search(self.entries, text)
                      if not pc.is_installed(e, self.items) and (not kinds or kinds & set(e.kinds))]
+        if "updates" in filters:
+            ids = {id(i) for i, _ in self.updates()}
+            installed, available = [i for i in installed if id(i) in ids], []
         if "available" in filters:
             installed = []
         if "installed" in filters:

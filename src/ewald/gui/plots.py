@@ -24,6 +24,15 @@ fat bands whose markers grow with the selected atoms' weight in each state.
 The ``NEB`` table (``NebEnergyProfile``) is drawn as an energy profile: the spline, the
 images as points, the current image highlighted, the barriers in the corner; clicking an
 image goes to its frame (its ``Frame`` column links it like a per-frame plot).
+
+Every plot can be navigated the same way: the wheel zooms x around the cursor (Ctrl+wheel: y;
+the energy axis on a band structure), a right or middle drag pans, a left drag on a plot that
+selects nothing (DOS, bands, phonons, maps) zooms to the dragged range and a double-click goes
+back to the full range (:meth:`set_view`, :meth:`reset_view`; ``viewChanged`` reports it). The
+range stays while frames change and *Save plot…* writes what is shown. DOS and band structure
+share one energy window, also typed in the E boxes. Hovering shows the values under the cursor
+and, on a per-frame plot, the frame (the NEB image) a click goes to; a click on a two-CV plot
+goes to the nearest frame.
 """
 from __future__ import annotations
 
@@ -36,6 +45,9 @@ from .theme import TOKENS
 
 
 ENERGY_WINDOW = (-6.0, 6.0)  # eV around the Fermi energy shown for DOS and bands
+ZOOM_STEP = 1.25             # range factor per wheel step
+CLICK_RADIUS = 12.0          # px: a click on a two-CV plot goes to a frame this close
+NAV_HINT = "Wheel: zoom (Ctrl: other axis) · right or middle drag: pan · double-click: full range"
 SCREEN_FONT = 9.0            # pt on the canvas (12 px at 100 dpi, the UI font)
 
 
@@ -54,6 +66,7 @@ class PlotsPanel(QtWidgets.QWidget):
     frameRequested = QtCore.Signal(int)         # click on a time series: go to this frame
     expressionRequested = QtCore.Signal(str)    # keep the range as an ExpressionSelection
     phononModePicked = QtCore.Signal(int, int)  # click on a phonon band: (q-point, band), 0-based
+    viewChanged = QtCore.Signal(object, object)  # zoomed / panned range (xlim, ylim), None = full
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -83,6 +96,16 @@ class PlotsPanel(QtWidgets.QWidget):
         bar.addWidget(self.save_button)
         lay.addLayout(bar)
         sel = QtWidgets.QHBoxLayout()
+        self.energy_label = QtWidgets.QLabel("E", objectName="muted")
+        self.e_min, self.e_max = (QtWidgets.QDoubleSpinBox(minimum=-1000, maximum=1000, singleStep=0.5, decimals=2,
+                                                           suffix=" eV", value=v, keyboardTracking=False)
+                                  for v in ENERGY_WINDOW)
+        self.e_min.setToolTip("Lowest energy shown, relative to the Fermi energy")
+        self.e_max.setToolTip("Highest energy shown, relative to the Fermi energy")
+        sel.addWidget(self.energy_label)
+        for box in (self.e_min, self.e_max):
+            box.valueChanged.connect(self._energy_typed)
+            sel.addWidget(box)
         self.link_label = QtWidgets.QLabel(objectName="muted")
         self.keep = QtWidgets.QPushButton("Keep as selection", toolTip="Add an Expression selection "
                                           "modifier for this range, re-evaluated on every frame")
@@ -90,6 +113,8 @@ class PlotsPanel(QtWidgets.QWidget):
         self.clear = QtWidgets.QPushButton("Clear", toolTip="Clear the plot selection")
         self.clear.clicked.connect(self.clear_selection)
         sel.addWidget(self.link_label, 1)
+        self.readout = QtWidgets.QLabel(objectName="muted", toolTip=NAV_HINT)
+        sel.addWidget(self.readout)
         sel.addWidget(self.keep)
         sel.addWidget(self.clear)
         lay.addLayout(sel)
@@ -99,7 +124,7 @@ class PlotsPanel(QtWidgets.QWidget):
         self.canvas.mpl_connect("button_press_event", self._on_press)
         self.canvas.mpl_connect("motion_notify_event", self._on_motion)
         self.canvas.mpl_connect("button_release_event", self._on_release)
-        self.canvas.mpl_connect("button_press_event", self._clicked)
+        self.canvas.mpl_connect("scroll_event", self._on_scroll)
         self._drawn = None   # (table x column, y choice) currently on the canvas
         self._marker = None  # current-frame line on a time-series plot, current mode on a band plot
         self._phonon = None  # (modes, x) while a phonon band structure is on the canvas
@@ -119,6 +144,10 @@ class PlotsPanel(QtWidgets.QWidget):
         self._font_size = SCREEN_FONT
         self._exporting = False      # drawing a file: no UI hints, no current-frame marker
         self._xname = ""             # x column of the plot, for the selection text
+        self._view = {}              # ranges the user zoomed to: {"x": (lo, hi), "y": (lo, hi)}
+        self._view_key = None        # (table, column, histogram) the zoom belongs to
+        self._energy_window = tuple(ENERGY_WINDOW)  # shared by the DOS and the band structure
+        self._pan = None
         self._update_controls()
 
     def compact(self):
@@ -179,6 +208,9 @@ class PlotsPanel(QtWidgets.QWidget):
         if link != self.link:
             self._range = self._box = None
             self.link = link
+        vkey = (self.table.currentText(), self.column.currentText(), self.hist.currentText())
+        if vkey != self._view_key:
+            self._view_key, self._view = vkey, {}
         if key is not None and key == self._drawn and self._marker is not None:
             self._place_marker()  # same series, new frame: move the marker only
             self._draw_overlays()
@@ -260,6 +292,10 @@ class PlotsPanel(QtWidgets.QWidget):
                 self._edges = np.concatenate([[x[0] - (mid[0] - x[0])], mid, [x[-1] + (x[-1] - mid[-1])]])
         if self._exporting and self._marker is not None:   # current frame / image / mode: UI state
             self._marker.set_visible(False)
+        energy = self._energy_axis()
+        for axis, lim in self._view.items():
+            if axis != energy:
+                (ax.set_xlim if axis == "x" else ax.set_ylim)(lim)
         fig.tight_layout(pad=0.4)
         self._draw_overlays()
         self._update_controls()
@@ -366,6 +402,16 @@ class PlotsPanel(QtWidgets.QWidget):
             text = "Drag to select frames (Shift+drag: by value too), click to go to a frame" \
                 if link.kind == "frames" else "Drag a box to select the frames in it"
         self.link_label.setText(text)
+        energy = self._elec is not None
+        for w in (self.energy_label, self.e_min, self.e_max):
+            w.setVisible(energy)
+        if energy:
+            lo, hi = (self._ax.get_xlim() if self._elec[1] == "DOS" else self._ax.get_ylim()) \
+                if self._ax is not None else self._energy_window
+            for box, v in ((self.e_min, lo), (self.e_max, hi)):
+                box.blockSignals(True)
+                box.setValue(v)
+                box.blockSignals(False)
         self.keep.setVisible(link is not None and link.kind == "property")
         self.keep.setEnabled(self._range is not None)
         self.clear.setEnabled(self._range is not None or self._box is not None or bool(self.frame_selection))
@@ -497,18 +543,166 @@ class PlotsPanel(QtWidgets.QWidget):
         self._marker = ax.plot([], [], "o", ms=9, color=TOKENS["accent"])[0]
         self._place_marker()
 
-    # mouse: drag selects, click on a per-frame plot goes to that frame
+    # navigation: zoom, pan and reset, the same on every plot
+    def _energy_axis(self):
+        """"x" on a DOS, "y" on a band structure (the axis of the shared energy window), else None."""
+        if self._elec is not None:
+            return "x" if self._elec[1] == "DOS" else "y"
+        which = self._electronic()
+        return None if which is None else "x" if which[1] == "DOS" else "y"
+
+    def set_view(self, xlim=None, ylim=None, emit: bool = True):
+        """Show the range ``xlim`` / ``ylim`` (None keeps that axis as it is). The range stays
+        while frames change, until :meth:`reset_view` or another table; on a DOS or band plot
+        the energy axis sets the energy window that both share."""
+        energy = self._energy_axis()
+        redraw = False
+        for axis, lim in (("x", xlim), ("y", ylim)):
+            if lim is None:
+                continue
+            lo, hi = sorted(float(v) for v in lim)
+            if not hi > lo:
+                continue
+            if axis == energy:
+                redraw |= (lo, hi) != self._energy_window
+                self._energy_window = (lo, hi)
+            else:
+                self._view[axis] = (lo, hi)
+        if redraw or self._ax is None:
+            self._drawn = None
+            self.redraw()
+        else:
+            for axis, lim in self._view.items():
+                (self._ax.set_xlim if axis == "x" else self._ax.set_ylim)(lim)
+            self.canvas.draw_idle()
+            self._update_controls()
+        if emit:
+            self.viewChanged.emit(*self.view_limits())
+
+    def reset_view(self, emit: bool = True):
+        """The full range again (and the default energy window on DOS and bands)."""
+        self._view = {}
+        self._energy_window = tuple(ENERGY_WINDOW)
+        self._drawn = None
+        self.redraw()
+        if emit:
+            self.viewChanged.emit(None, None)
+
+    def view_limits(self):
+        """``(xlim, ylim)`` the user chose (the energy window counts when it is not the
+        default), None for an axis left at its full range."""
+        lims = dict(self._view)
+        energy = self._energy_axis()
+        if energy is not None and self._energy_window != tuple(ENERGY_WINDOW):
+            lims[energy] = self._energy_window
+        return lims.get("x"), lims.get("y")
+
+    def _energy_typed(self, *_):
+        lo, hi = self.e_min.value(), self.e_max.value()
+        if hi > lo and self._energy_axis() is not None:
+            energy = self._energy_axis()
+            self.set_view(**{f"{energy}lim": (lo, hi)})
+
+    def _on_scroll(self, event):
+        ax = self._ax
+        if ax is None or event.inaxes is None or event.x is None:
+            return
+        key = event.key or ""
+        axis = "y" if "control" in key or "ctrl" in key else "x"
+        if self._energy_axis() == "y":   # band structure: the wheel zooms the energy
+            axis = "x" if axis == "y" else "y"
+        x, y = ax.transData.inverted().transform((event.x, event.y))
+        c = x if axis == "x" else y
+        lo, hi = ax.get_xlim() if axis == "x" else ax.get_ylim()
+        f = ZOOM_STEP ** -float(event.step)   # wheel up zooms in
+        self.set_view(**{f"{axis}lim": (c - (c - lo) * f, c + (hi - c) * f)})
+
+    def _pan_to(self, event):
+        ax = self._ax
+        px, py, (x0, x1), (y0, y1) = self._pan
+        bb = ax.bbox
+        dx = (event.x - px) * (x1 - x0) / max(bb.width, 1.0)
+        dy = (event.y - py) * (y1 - y0) / max(bb.height, 1.0)
+        if ax.get_xscale() == "linear":
+            ax.set_xlim(x0 - dx, x1 - dx)
+        if ax.get_yscale() == "linear":
+            ax.set_ylim(y0 - dy, y1 - dy)
+        self.canvas.draw_idle()
+
+    # hover: the values under the cursor and the frame a click goes to
+    def _readout(self, event):
+        ax = self._ax
+        if ax is None or event.inaxes is None or event.x is None or self.data is None:
+            self.readout.setText("")
+            return
+        x, y = ax.transData.inverted().transform((event.x, event.y))
+        text = f"{_num(x)}, {_num(y)}"
+        energy = self._energy_axis()
+        if energy is not None:
+            text = f"E − E_F = {_num(x if energy == 'x' else y)} eV"
+        link = self.link
+        try:
+            if link is not None and link.kind == "frames":
+                f = linking.frame_at(self.pipeline, self.data, link, x)
+                if f is not None:
+                    text += f"   {'image' if _is_neb(self._table()) else 'frame'} {f}" + self._frame_value(f)
+            elif link is not None and link.kind == "frames2d":
+                f = self._frame_near(event)
+                if f is not None:
+                    text += f"   frame {f}"
+        except Exception:   # a table that does not map to frames on this pipeline
+            pass
+        self.readout.setText(text)
+
+    def _frame_value(self, frame):
+        """``": <column> <value>"`` of the one plotted column at ``frame``, or ""."""
+        cols = self._plotted_columns() or []
+        if len(cols) != 1:
+            return ""
+        rows = linking.frame_rows(self.pipeline, self.data, self.link.name)
+        if not 0 <= frame < len(rows) or rows[frame] < 0:
+            return ""
+        v = float(np.asarray(self._table()[cols[0]], float)[rows[frame]])
+        return "" if np.isnan(v) else f": {_num(v)}"
+
+    def _frame_near(self, event, pixels: float = CLICK_RADIUS):
+        """The frame whose point on a two-CV plot is within ``pixels`` of the cursor, or None."""
+        ax = self._ax
+        frames, xs, ys = linking.frame_xy(self.pipeline, self.data, self.link)
+        if not len(frames):
+            return None
+        pts = ax.transData.transform(np.column_stack([xs, ys]))
+        d = np.hypot(pts[:, 0] - event.x, pts[:, 1] - event.y)
+        k = int(np.argmin(d))
+        return int(frames[k]) if d[k] <= pixels else None
+
+    # mouse: left drag selects (or zooms on a plot that selects nothing), click goes to a frame
     def _on_press(self, event):
-        if event.button != 1 or self._ax is None or self.link is None or event.inaxes is None \
-                or event.inaxes not in (self._ax, self._ax2):
-            self._press = None
+        self._press = self._pan = None
+        if self._ax is None or event.inaxes is None or event.inaxes not in (self._ax, self._ax2):
+            return
+        if event.button in (2, 3):
+            self._pan = (event.x, event.y, self._ax.get_xlim(), self._ax.get_ylim())
+            return
+        if event.button != 1:
+            return
+        if event.dblclick:
+            self.reset_view()
             return
         x, y = self._ax.transData.inverted().transform((event.x, event.y))
         shift = "shift" in (event.key or "")
         self._press = (x, y, event.x, event.y, shift)
 
+    def _zoom_axis(self):
+        """The axis a left drag zooms on a plot that selects nothing."""
+        return "y" if self._energy_axis() == "y" else "x"
+
     def _on_motion(self, event):
+        if self._pan is not None and event.x is not None:
+            self._pan_to(event)
+            return
         if self._press is None or event.x is None:
+            self._readout(event)
             return
         x0, y0, *_, shift = self._press
         x, y = self._ax.transData.inverted().transform((event.x, event.y))
@@ -517,18 +711,27 @@ class PlotsPanel(QtWidgets.QWidget):
                 self._rubber.remove()
             except (ValueError, NotImplementedError):
                 pass
-        box = self.link.kind == "frames2d" or (shift and self.link.kind == "frames")
+        link = self.link
+        box = link is not None and (link.kind == "frames2d" or (shift and link.kind == "frames"))
         if box:
             from matplotlib.patches import Rectangle
 
             self._rubber = self._ax.add_patch(Rectangle((min(x0, x), min(y0, y)), abs(x - x0), abs(y - y0),
                                                         fill=False, ec=TOKENS["pick"], lw=1))
+        elif link is None and self._zoom_axis() == "y":
+            self._rubber = self._ax.axhspan(min(y0, y), max(y0, y), color=TOKENS["muted"], alpha=0.2, lw=0)
         else:
-            self._rubber = self._ax.axvspan(min(x0, x), max(x0, x), color=TOKENS["pick"], alpha=0.25, lw=0)
+            color = TOKENS["pick"] if link is not None else TOKENS["muted"]
+            self._rubber = self._ax.axvspan(min(x0, x), max(x0, x), color=color, alpha=0.25, lw=0)
         self.canvas.draw_idle()
 
     def _on_release(self, event):
         press, self._press = self._press, None
+        if self._pan is not None:
+            pan, self._pan = self._pan, None
+            if event.x is not None and abs(event.x - pan[0]) + abs(event.y - pan[1]) >= 4:
+                self.set_view(self._ax.get_xlim(), self._ax.get_ylim())
+            return
         if self._rubber is not None:
             try:
                 self._rubber.remove()
@@ -539,14 +742,25 @@ class PlotsPanel(QtWidgets.QWidget):
             return
         x0, y0, px, py, shift = press
         x, y = self._ax.transData.inverted().transform((event.x, event.y))
+        link = self.link
         if abs(event.x - px) + abs(event.y - py) < 4:  # a click
-            if self.link.kind == "frames":
-                f = linking.frame_at(self.pipeline, self.data, self.link, x)
-                if f is not None:
-                    self.frameRequested.emit(f)
+            self._clicked(event)   # a phonon band: play that mode
+            f = None
+            if link is not None and link.kind == "frames":
+                f = linking.frame_at(self.pipeline, self.data, link, x)
+            elif link is not None and link.kind == "frames2d":
+                f = self._frame_near(event)
+            if f is not None:
+                self.frameRequested.emit(f)
             self.canvas.draw_idle()
             return
-        box = self.link.kind == "frames2d" or (shift and self.link.kind == "frames")
+        if link is None:   # nothing to select: zoom to the dragged range
+            if self._zoom_axis() == "y":
+                self.set_view(ylim=(y0, y))
+            else:
+                self.set_view(xlim=(x0, x))
+            return
+        box = link.kind == "frames2d" or (shift and link.kind == "frames")
         self.select(x0, x, *((y0, y) if box else (None, None)))
 
     # phonon band structure: click a band to play that mode
@@ -620,7 +834,8 @@ class PlotsPanel(QtWidgets.QWidget):
         es, name = which
         col = self.column.currentText()
         table = self.data.tables[name]
-        lo, hi = ENERGY_WINDOW
+        lo, hi = self._energy_window
+        clamp = self._energy_window == tuple(ENERGY_WINDOW)  # the default window stops at the data
         if name == "DOS":
             e = np.asarray(table["Energy"], float)
             totals = [k for k in table if k.startswith("Total")]
@@ -641,7 +856,7 @@ class PlotsPanel(QtWidgets.QWidget):
             ax.axvline(0, color=TOKENS["secondary"], lw=0.6, ls="--")
             if es.num_spins == 2:
                 ax.axhline(0, color=TOKENS["border"], lw=0.6)
-            ax.set_xlim(max(lo, e.min()), min(hi, e.max()))
+            ax.set_xlim((max(lo, e.min()), min(hi, e.max())) if clamp else (lo, hi))
             ax.set_xlabel(E_FERMI)
             ax.set_ylabel("DOS (states/eV)")
             inside = (e >= lo) & (e <= hi)
@@ -668,7 +883,7 @@ class PlotsPanel(QtWidgets.QWidget):
                 ax.set_xlabel(next(iter(table)))
             ax.axhline(0, color=TOKENS["secondary"], lw=0.6, ls="--")
             e = es.eigenvalues - es.efermi
-            ax.set_ylim(max(lo, e.min() - 0.2), min(hi, e.max() + 0.2))
+            ax.set_ylim((max(lo, e.min() - 0.2), min(hi, e.max() + 0.2)) if clamp else (lo, hi))
             ax.set_ylabel(E_FERMI)
         gap = self.data.attributes.get("Band Gap")
         if gap is not None:
@@ -792,6 +1007,11 @@ class PlotsPanel(QtWidgets.QWidget):
 
 
 E_FERMI = "$E - E_\\mathrm{F}$ (eV)"
+
+
+def _num(v: float) -> str:
+    """A value for the hover readout: 4 significant digits, no exponent for ordinary sizes."""
+    return f"{v:.4g}" if v == 0 or 1e-3 <= abs(v) < 1e5 else f"{v:.3e}"
 
 
 def _kpoint_label(label: str) -> str:

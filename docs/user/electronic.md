@@ -61,7 +61,11 @@ Two tables are added, so the DOS and bands can also be saved or plotted like any
 The Plots tab opens the `DOS` table first. With "y" set to "(all)" it draws the total DOS
 shaded with the per-element PDOS on top; picking a column draws that one. The `Bands` table is
 drawn as a band structure with its high-symmetry labels, spin-down bands dashed. Both show
-6 eV around the Fermi energy (dashed line) and the band gap in the corner.
+6 eV around the Fermi energy (dashed line) and the band gap in the corner. The energy window
+is shared by both plots: type it in the **E** boxes, drag an energy range on the DOS (or on
+the bands, vertically) to zoom to it, or use the wheel; a double-click goes back to ±6 eV. In
+a notebook the window is part of the view cell, `show(pipe, table="DOS", xlim=(-3, 2))` (the
+bands take `ylim=`).
 
 Select atoms in the viewport and the plot follows: on the DOS their summed PDOS is filled in the
 selection color, and on the bands each state gets a marker whose size is the selected atoms'
