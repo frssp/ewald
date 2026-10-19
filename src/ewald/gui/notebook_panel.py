@@ -111,7 +111,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if event.oldSize().width() != event.size().width():
-            QtCore.QTimer.singleShot(0, self._fit)  # rewrapped after the layout
+            QtCore.QTimer.singleShot(0, self, self._fit)  # rewrapped after the layout; dropped if deleted
 
     def keyPressEvent(self, event):
         key, mods = event.key(), event.modifiers()
@@ -760,7 +760,7 @@ class NotebookView(QtWidgets.QWidget):
         self.run(cell)  # rebuilds: the new cell gets its plot
         w = self.widget_for(cell)
         if w is not None:
-            QtCore.QTimer.singleShot(0, lambda: self.scroll.ensureWidgetVisible(w))
+            QtCore.QTimer.singleShot(0, w, lambda: self.scroll.ensureWidgetVisible(w))
         return cell
 
     def _fill_plugin_menu(self):
@@ -866,7 +866,7 @@ class NotebookView(QtWidgets.QWidget):
         w = self.widget_for(cell)
         if w is not None and w.editor is not None:
             w.editor.setFocus()
-            QtCore.QTimer.singleShot(0, lambda: self.scroll.ensureWidgetVisible(w))
+            QtCore.QTimer.singleShot(0, w, lambda: self.scroll.ensureWidgetVisible(w))
         self.titleChanged.emit()
         return cell
 
@@ -885,7 +885,7 @@ class NotebookView(QtWidgets.QWidget):
         w = self.widget_for(cell)
         if w is not None:
             w.form_button.setChecked(True)
-            QtCore.QTimer.singleShot(0, lambda: self.scroll.ensureWidgetVisible(w))
+            QtCore.QTimer.singleShot(0, w, lambda: self.scroll.ensureWidgetVisible(w))
         self.changed.emit()
         self.titleChanged.emit()
         return cell
@@ -1173,7 +1173,7 @@ class NotebookPanel(QtWidgets.QWidget):
             if cell is not None:
                 view.select(cell)
                 w = view.widget_for(cell)
-                QtCore.QTimer.singleShot(0, lambda: view.scroll.ensureWidgetVisible(w))
+                QtCore.QTimer.singleShot(0, w, lambda: view.scroll.ensureWidgetVisible(w))
         view.update_results()
 
     def update_status(self):
