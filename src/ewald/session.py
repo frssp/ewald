@@ -105,16 +105,21 @@ def modifier_to_dict(m) -> dict:
 
 
 def _modifier_class(entry: dict, allow_code: bool):
+    """The ``Modifier`` subclass an entry names. Anything else is refused: the entry's
+    parameters are passed to it, so ``{"type": "system", "module": "os"}`` would run a command."""
     from . import modifiers
+    from .pipeline import Modifier
 
     name, module = entry["type"], entry.get("module", "")
+    cls = None
     if module.startswith("ewald.") or name in modifiers.__all__:
-        try:
-            return getattr(modifiers, name)
-        except AttributeError:
-            pass
-    if module in sys.modules or (allow_code and module):
-        return getattr(importlib.import_module(module), name)
+        cls = getattr(modifiers, name, None)
+    if cls is None and (module in sys.modules or (allow_code and module)):
+        cls = getattr(importlib.import_module(module), name)
+    if cls is not None:
+        if not (isinstance(cls, type) and issubclass(cls, Modifier)):
+            raise LookupError(f"{module}.{name} is not a modifier")
+        return cls
     raise LookupError(f"modifier {module}.{name} is not available (import its package first, "
                       "or load with allow_code=True)")
 
@@ -156,6 +161,18 @@ def modifier_from_dict(entry: dict, allow_code: bool = False):
     if name in CODE_MODIFIERS and not allow_code and m.enabled:
         m.enabled = False
         warning = f"{m.name}: Python code not run (allow_code=False); modifier disabled"
+    elif name == "Plumed" and not allow_code and m.enabled:
+        from .plumed import untrusted_input_problems
+
+        try:
+            problems = untrusted_input_problems(m.input)
+        except Exception as exc:  # unreadable input: PLUMED would fail on it anyway
+            problems = [str(exc)]
+        if m.kernel:
+            problems.append(f"kernel={m.kernel!r} loads a library")
+        if problems:
+            m.enabled = False
+            warning = f"{m.name}: not run (allow_code=False): {'; '.join(problems)}; modifier disabled"
     return m, warning
 
 
