@@ -21,4 +21,4 @@ Decisions
 - Private, personal project without a LICENSE file for now; reuse freely, treating MIT compatibility as the bar when it matters.
 - OVITO's public source is "GPLv3 or MIT"; ported code keeps the MIT notice. DXA is not in the public source.
 - Python first, numba/C++ only for measured hot spots.
-- Windows distribution: wheels plus a PyInstaller app with an Inno Setup installer, in CPU and CUDA variants, built by `windows-release.yml` on `v*` tags (docs/windows-release.md).
+- Windows distribution: wheels plus a PyInstaller app with an Inno Setup installer, in CPU and CUDA variants, built by `windows-release.yml` on `v*` tags (docs/developer/windows-release.md).

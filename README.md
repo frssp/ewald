@@ -24,7 +24,7 @@ pip install -e ".[remote]"  # + files over SSH (paramiko)
 ```
 
 On Windows, releases also ship wheels and a standalone installer (CPU or CUDA build) that needs no
-Python; see [docs/windows-release.md](docs/windows-release.md).
+Python; see [docs/developer/windows-release.md](docs/developer/windows-release.md).
 
 Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
 

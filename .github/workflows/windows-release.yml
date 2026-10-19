@@ -2,7 +2,7 @@ name: Windows release
 
 # Builds Windows wheels and the standalone app (PyInstaller folder + Inno Setup installer),
 # smoke-tests the frozen app, and on a v* tag attaches everything to a GitHub Release.
-# See docs/windows-release.md.
+# See docs/developer/windows-release.md.
 on:
   push:
     tags: ["v*"]
