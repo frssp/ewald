@@ -593,8 +593,17 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Open plugin folder
 - About EWALD
 
-**Viewport (right click)**
+**Viewport (right click)**, entries shown only when they apply (picked atoms, phonon modes, NEB band, volumetric grid, trajectory):
 
+- N atoms picked
+- Center view on picked
+- Select picked atoms
+- Delete picked atoms
+- Clear picks
+- Phonon band structure
+- NEB energy profile
+- Add isosurface
+- Play (`Space`)
 - Overlay other frames (see-through)
 - Overlay transparency
   - 50 %
@@ -602,6 +611,9 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - 85 %
   - 95 %
 - Overlay only atoms that move
+- Show
+  - Bonds
+  - Simulation cell
 - View along
   - a
   - b
@@ -609,6 +621,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - a*
   - b*
   - c*
+- Orthographic
 - Zoom to fit
 - Ask Claude about selection…
 
