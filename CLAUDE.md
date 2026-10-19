@@ -4,8 +4,9 @@ ewald is an OVITO-style atomistic structure/trajectory viewer and analysis libra
 `import_file` -> `pipe.modifiers` -> `pipe.compute(frame, device=...)` -> `pipe.render(...)`,
 plus a PySide6 desktop GUI and Claude tools. User-facing docs: the manual in docs/ (MkDocs,
 `mkdocs.yml`; user/, plugins/, developer/, reference/) and README.md; what exists:
-docs/features.md (generated); open work: docs/todo.md; milestones: docs/ROADMAP.md; GUI design
-specs live outside the repo (project files `design/`).
+docs/features.md (generated); open work: docs/todo.md; milestones: docs/ROADMAP.md. Current GUI
+design specs live outside the repo (project files `design/`); `docs/design/` is an older snapshot
+kept for history.
 
 ## Commands
 
@@ -46,7 +47,7 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   writer. `io.builtin_readers()`/`builtin_writers()` register them in `plugins.py` (reader and writer registries).
   `remote.py` opens `host:/path` / `ssh://` paths (paramiko): `base.open_binary` streams them to the
   native readers, `FileSource` downloads them to a local cache for every other reader. Tests use the
-  in-process server in `tests/sftp_server.py` (fixtures `server`, `ssh_env` in conftest), no sshd.
+  in-process server in `tests/helpers/sftp_server.py` (fixtures `server`, `ssh_env` in conftest), no sshd.
 - `bonds.py` (`Bonds`: Topology + Periodic Image, bond search), `mesh.py` (`SurfaceMesh` for
   `data.surfaces`: polyhedra now, surface meshes later); both drawn by `render.py` and `raytrace.py`.
 - `backend.py` (numpy/CuPy `xp` backends), `neighbors.py` (numba CPU cell list, `find_pairs`),

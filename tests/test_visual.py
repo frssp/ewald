@@ -21,7 +21,7 @@ from ewald import DataCollection, Pipeline, StaticSource
 from ewald.data import Cell, VoxelGrid
 from ewald.modifiers import (ColorCoding, CoordinationPolyhedra, CreateBonds, CreateIsosurface, GridSlice,
                              VectorVis)
-from visual import EXACT, check_image, check_json
+from helpers.visual import EXACT, check_image, check_json
 
 pytestmark = pytest.mark.visual
 
