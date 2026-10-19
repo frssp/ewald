@@ -8,10 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- App icon: the Ewald-sphere mark in the window title bar and taskbar (this branch).
-- Ion transport analysis: conductivity and Haven ratio, van Hove, F_s(q, t), non-Gaussian
-  parameter, site hopping (this branch).
-
 ## Next
 
 GUI
@@ -59,6 +55,12 @@ Analysis
   over the trajectory), draw sites and hop paths in the viewport, and a hop-correlation
   (back-jump) statistic.
 - Plots tab: G_s(r, t) / F_s(q, t) as a 2D map over r or q and t.
+- Grain segmentation: the center of mass of a grain that percolates through the periodic
+  boundaries depends on bond order (as in OVITO, so values differ from OVITO's for those grains);
+  a grain-boundary surface mesh and misorientation-colored boundary bonds in the viewport; a
+  Plots-tab view of `grains-log` with the chosen threshold to pick a manual one.
+- Elastic strain and grain segmentation run single-threaded on the CPU (cluster building is
+  sequential in OVITO too); parallel neighbor matching and a CuPy path if large systems need it.
 
 Symmetry and diffraction
 
@@ -226,8 +228,10 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 
 ## Infrastructure
 
-- GitHub Actions minutes ran out on 2026-10-19; CI does not run until that is fixed, so pull
-  requests are verified locally (`xvfb-run -a python -m pytest -q`, `mkdocs build --strict`).
+- GitHub Actions minutes ran out on 2026-10-19, so every workflow now runs only on manual
+  dispatch and pull requests are verified locally (`xvfb-run -a python -m pytest -q`,
+  `mkdocs build --strict`). Restore the `push`/`pull_request`/tag triggers once minutes are
+  available again (docs/developer/testing.md shows the block).
 
 - CI installs each extra on its own only through the test suite's `importorskip`s; a job that
   installs every extra in a clean venv and imports its modules would catch broken extras
