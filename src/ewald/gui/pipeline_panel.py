@@ -63,6 +63,17 @@ def register_modifier(category: str, label: str, factory):
     MODIFIER_MENU.setdefault(category, {})[label] = factory
 
 
+def fill_modifier_menu(menu, add):
+    """(Re)populate ``menu`` with MODIFIER_MENU; ``add`` receives the new modifier."""
+    menu.clear()
+    for sub in menu.findChildren(QtWidgets.QMenu, options=QtCore.Qt.FindDirectChildrenOnly):
+        sub.deleteLater()
+    for group, items in MODIFIER_MENU.items():
+        sub = menu.addMenu(group)
+        for label, factory in items.items():
+            sub.addAction(label, lambda f=factory: add(f()))
+
+
 def _discover():
     """Pick up modifiers other threads add to ewald.modifiers without touching this file."""
     known = {type(f()).__name__ for items in MODIFIER_MENU.values() for f in items.values()}
@@ -108,10 +119,9 @@ class PipelinePanel(QtWidgets.QWidget):
         self.add_button = QtWidgets.QPushButton("Add modification  ▾")
         self.add_button.setObjectName("primary")
         self.add_menu = QtWidgets.QMenu(self)
-        for group, items in MODIFIER_MENU.items():
-            sub = self.add_menu.addMenu(group)
-            for label, factory in items.items():
-                sub.addAction(label, lambda f=factory: self.add_modifier(f()))
+        # rebuilt on every open, so entries registered later (startup script, plugins) show up
+        self.add_menu.aboutToShow.connect(lambda: fill_modifier_menu(self.add_menu, self.add_modifier))
+        fill_modifier_menu(self.add_menu, self.add_modifier)
         self.add_button.setMenu(self.add_menu)
         bar.addWidget(self.add_button, 1)
         for text, tip, slot in (("▲", "Move up (later in the pipeline)", lambda: self._move(-1)),

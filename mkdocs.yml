@@ -1,0 +1,78 @@
+site_name: ewald
+site_description: Atomistic structure and trajectory visualization and analysis with an OVITO-style Python pipeline
+repo_url: https://github.com/frssp/ewald
+repo_name: frssp/ewald
+edit_uri: edit/main/docs/
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: {icon: material/weather-night, name: Dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: {icon: material/weather-sunny, name: Light mode}
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc: {permalink: true}
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: sphinx
+            show_source: false
+            show_root_heading: true
+            members_order: source
+            filters: ["!^_"]
+
+# design notes and research live in docs/ for history but are not part of the manual
+not_in_nav: |
+  design/*
+  research/*
+
+nav:
+  - Home: index.md
+  - User manual:
+      - Install: user/install.md
+      - Quick start: user/quickstart.md
+      - Desktop GUI: user/gui.md
+      - File formats: user/formats.md
+      - Modifiers: user/modifiers.md
+      - Python scripting: user/scripting.md
+      - GPU compute: user/gpu.md
+      - Rendering figures: user/rendering.md
+      - Claude integration: user/claude.md
+      - Command line: user/cli.md
+  - Plugins:
+      - Overview: plugins/index.md
+      - Reader plugins: plugins/readers.md
+      - Modifier plugins: plugins/modifiers.md
+      - Testing a plugin: plugins/testing.md
+      - Packaging and sharing: plugins/packaging.md
+  - Developer guide:
+      - Architecture: developer/architecture.md
+      - Data model and pipeline: developer/data-model.md
+      - Compute backends: developer/backends.md
+      - Native code: developer/native.md
+      - Testing and CI: developer/testing.md
+      - Writing docs: developer/docs.md
+  - Reference:
+      - Python API: reference/api.md
+      - Roadmap: ROADMAP.md

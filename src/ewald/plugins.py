@@ -131,6 +131,9 @@ def register_reader(name: str, factory: Callable, patterns=(), sniff: Callable |
     # attributes on the factory fill in what the call left out (entry-point classes carry their own)
     patterns = tuple(patterns or getattr(factory, "patterns", ()))
     sniff = sniff or getattr(factory, "sniff", None)
+    priority = getattr(factory, "priority", priority) if priority == 50 else priority
+    aliases = aliases or getattr(factory, "aliases", ())
+    category = getattr(factory, "category", category) if category == "structure" else category
     doc = (factory.__doc__ or "").strip().splitlines()
     description = description or getattr(factory, "description", "") or (doc[0] if doc else "")
     plugin = ReaderPlugin(name.lower(), factory, patterns, sniff, description,

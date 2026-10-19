@@ -12,6 +12,7 @@ scripting (headless and inside the GUI) and NVIDIA GPU acceleration.
 | 3b. Volumetric data | `VoxelGrid` in `data.grids`; readers for VASP CHGCAR/CHG/PARCHG/AECCAR (spin and non-collinear), LOCPOT, ELFCAR and Gaussian cube, writers for cube/CHGCAR; `CreateIsosurface` (signed, VESTA colours), `GridSlice` (hkl plane, linear/log colour map), `GridDifference` (charge-density difference); drawn by the OpenGL viewport/renderer and the ray tracer (triangles with translucency) | done; next: section caps at cell faces, surface colouring by a second grid (e.g. ESP on density), XSF/BXSF |
 | 4. Figures | Built-in numba ray tracer (AO, shadows, anti-aliasing) and Render workspace with journal presets done; next: GPU (CUDA) tracer, session save/load, PDF/vector overlays | in progress |
 | Plugins | One reader registry for built-in formats and plugins (`ewald.readers` entry points, `<config dir>/plugins/*.py`) used by `import_file`, GUI open and Claude tools; `ewald plugins` | readers done; next: modifier plugins, LLM Modifier Forge, Ask about selection |
+| Docs | Manual in `docs/` (user manual, plugin author guide, developer guide, API reference), MkDocs build in CI, GUI Help menu; next: hosting the site, pages for modifier plugin registration | in progress |
 
 Decisions
 
