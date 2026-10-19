@@ -8,8 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Notebook files: `.ewd` (zip of notebook.ipynb, manifest, figures, data, plugins) and `.ipynb`,
-  restricted mode for received notebooks. Branch `claude/project-thread-x53vio`.
 
 ## Next
 
@@ -27,7 +25,7 @@ GUI
   can use a conda env without ewald's GUI dependencies.
 - Analysis verbs for notebooks (`rdf(pipe, cutoff=6)`, `msd(pipe)`, ... returning tables and
   adding the step), next to `load` and `pipe.add`.
-- Plugins side bar: updates (version compare against catalogs), disable per notebook,
+- Plugins side bar: an "updates available" badge on the activity bar, disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
 - Spectra, Figure and Forge views from the redesign mock-ups, built as view cells

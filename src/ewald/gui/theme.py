@@ -98,6 +98,7 @@ QToolBar#activity-bar QToolButton:checked {{ background: {accent_soft}; }}
 QFrame#pluginRow {{ background: {raised}; border: 1px solid {border}; border-radius: 6px; }}
 QFrame#pluginRow:hover {{ border-color: {accent}; }}
 QFrame#pluginRow QLabel {{ background: transparent; }}
+QFrame#pluginRow[incompatible="true"] QLabel {{ color: {muted}; }}
 QLabel#pluginSummary {{ color: {secondary}; }}
 QLabel#pluginKinds {{ color: {data}; font-size: 11px; }}
 QPushButton#pluginInstall {{ background: {accent}; color: {on_accent}; border: none; border-radius: 4px; padding: 2px 10px; }}
