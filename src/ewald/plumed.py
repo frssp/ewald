@@ -98,17 +98,9 @@ def plumed_executable() -> str | None:
 def _masses(data) -> np.ndarray:
     if "Mass" in data:
         return np.asarray(data["Mass"], dtype=float)
-    from ase.data import atomic_masses, atomic_numbers
+    from .radii import element_masses
 
-    table = {}
-    out = np.empty(data.count)
-    for i, t in enumerate(data.types):
-        t = str(t)
-        if t not in table:
-            z = atomic_numbers.get(t) or atomic_numbers.get(t.capitalize())
-            table[t] = float(atomic_masses[z]) if z else 1.0
-        out[i] = table[t]
-    return out
+    return element_masses(data.types)
 
 
 class PlumedEngine:

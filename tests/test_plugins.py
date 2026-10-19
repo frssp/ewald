@@ -1,4 +1,3 @@
-import gzip
 import shutil
 import textwrap
 from pathlib import Path

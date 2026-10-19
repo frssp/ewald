@@ -376,6 +376,7 @@ static py::dict voronoi_analysis(DoubleArray positions, DoubleArray cell_matrix,
 }
 
 void register_cna(py::module_& m);
+void register_crystal(py::module_& m);
 
 // ---------------------------------------------------------------------------
 // Centrosymmetry parameter, minimum-weight matching mode (mwm_csp, MIT, PM Larsen)
@@ -408,6 +409,7 @@ static DoubleArray csp_matching(DoubleArray nbr_delta, Int32Array nbr_count, int
 PYBIND11_MODULE(_native, m)
 {
     register_cna(m);
+    register_crystal(m);
     m.doc() = "Native CNA, PTM and Voronoi kernels ported from OVITO (MIT).";
     m.def("ptm_identify", &ptm_identify, py::arg("nbr_index"), py::arg("nbr_delta"), py::arg("nbr_count"),
           py::arg("types") = py::none(), py::arg("flags") = PTM_CHECK_DEFAULT,

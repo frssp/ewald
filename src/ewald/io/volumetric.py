@@ -243,7 +243,7 @@ def write_vasp_volumetric(path, data: DataCollection, property: str | None = Non
 
 def write_cube(path, data: DataCollection, property: str | None = None, grid: str | None = None):
     """Write one scalar grid property and the atoms as a Gaussian cube file (Bohr units)."""
-    from ase.data import atomic_numbers
+    from ..radii import atomic_number
 
     g = _pick_grid(data, grid, property)
     prop = property or next(iter(g.properties))
@@ -257,7 +257,7 @@ def write_cube(path, data: DataCollection, property: str | None = None, grid: st
         for n, v in zip(g.shape, step):
             fh.write(f"{n:5d} " + " ".join(f"{x:12.6f}" for x in v) + "\n")
         for t, p in zip(data.types, data.positions / BOHR if data.count else []):
-            z = atomic_numbers.get(str(t), 0)
+            z = atomic_number(t)
             fh.write(f"{z:5d} {float(z):12.6f} " + " ".join(f"{x:12.6f}" for x in p) + "\n")
         flat = values.reshape(-1, values.shape[2])
         for row in flat:

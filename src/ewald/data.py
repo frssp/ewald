@@ -46,6 +46,15 @@ class Cell:
         f[:, self.pbc] %= 1.0
         return self.to_cartesian(f)
 
+    def minimum_image(self, vectors: np.ndarray) -> np.ndarray:
+        """Displacement vectors (..., 3) wrapped to their nearest periodic image; unchanged
+        without a valid cell or periodic directions."""
+        v = np.asarray(vectors, float)
+        if not (self.is_valid and self.pbc.any()):
+            return v
+        f = v @ np.linalg.inv(self.matrix)
+        return (f - np.round(f) * self.pbc) @ self.matrix
+
     def copy(self) -> "Cell":
         return Cell(self.matrix.copy(), self.origin.copy(), self.pbc.copy())
 
