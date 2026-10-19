@@ -65,6 +65,18 @@ Phonons
 - OUTCAR modes checked against real VASP IBRION=5-8 output; the fixture is written in VASP's
   layout from phonopy results.
 
+Electronic structure
+
+- DOSCAR, EIGENVAL and PROCAR readers (VASP 5 runs without vasprun.xml), and Quantum ESPRESSO /
+  other codes' DOS and bands.
+- vasprun.xml: the KPOINTS_OPT sections (`<eigenvalues_kpoints_opt>`); vaspout.h5 reads them.
+- Plots tab: adjustable energy window (fixed at ±6 eV now), Gaussian smearing of the DOS,
+  orbital choice for fat bands independent of the DOS column, spin texture of non-collinear runs.
+- Drag an energy window on the DOS to select the atoms with the largest PDOS there, and the
+  integrated PDOS in a window as a particle property to color by.
+- Band projections of large runs (`<projected>` of a few GB) are read whole into memory on the
+  first selection; read them per atom on demand.
+
 Volumetric data
 
 - Section caps where an isosurface meets the cell faces.
@@ -130,14 +142,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - P1: Linked selection, rest: picking atoms plots their property time series over all frames;
   scatter plots of two properties (brushing a box selects atoms); keep a pair, bond or angle
   range as a modifier (only property ranges become an `ExpressionSelection` now).
-- P1: DOS and band structure plots (vasprun.xml, DOSCAR, EIGENVAL, PROCAR), with the PDOS of the
-  picked atoms.
 - P2: glTF, interactive HTML and Blender export.
 - P2: Batch render CLI: apply one `.ewald` session to many run folders.
 - P2: Native GSD reader (H5MD and XTC/TRR/DCD are done).
 - P2: More HDF5 output: Quantum ESPRESSO `charge-density.hdf5` (G-space, needs an FFT to the
   real-space grid), ABINIT netCDF-4 `*_HIST.nc` trajectories and `*_DEN.nc` densities, VASP
-  `vaspout.h5` DOS/bands for the DOS and band plots, `/results/partial_charges` (PARCHG).
+  `vaspout.h5` `/results/partial_charges` (PARCHG).
 
 ## Verify outside the cloud container
 
@@ -154,6 +164,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   format and checked against ASE.
 - NEB folders from real VTST runs (the VASP fixture is an EMT band written in VASP layout;
   the LAMMPS fixture is a real `neb` run).
+- DOS, PDOS and band reading on real VASP output (ISPIN = 2, LORBIT = 10/11/12, non-collinear,
+  HSE band runs, KPOINTS_OPT); the fixtures are synthetic, checked against pymatgen (vasprun.xml)
+  and py4vasp (vaspout.h5).
 - The vaspout.h5/vaspwave.h5 readers on real VASP 6.4/6.5 output (MD, relaxation, ISPIN=2,
   non-collinear, `LCHARGH5`); the fixtures follow py4vasp's schema and are checked against
   py4vasp, and the charge density is assumed to be stored as rho * V like a CHGCAR. The H5MD

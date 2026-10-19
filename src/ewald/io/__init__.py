@@ -202,7 +202,7 @@ def builtin_readers():
                      takes_format=True, category="volumetric"),
         ReaderPlugin("vaspout", VaspoutReader, ("vaspout*.h5",), is_vaspout,
                      "VASP 6 vaspout.h5: ionic steps with forces, energies, stress, velocities, moments, "
-                     "local potential grid, lazy; needs h5py", B, 7, ("vasp-h5", "vaspout.h5")),
+                     "local potential grid, DOS/PDOS and bands, lazy; needs h5py", B, 7, ("vasp-h5", "vaspout.h5")),
         ReaderPlugin("vaspwave", VaspwaveReader, ("vaspwave*.h5",), is_vaspwave,
                      "VASP 6 vaspwave.h5 charge density (structure from vaspout.h5 next to it); needs h5py",
                      B, 7, ("vaspwave.h5",), category="volumetric"),
@@ -242,7 +242,7 @@ def builtin_readers():
                      "VASP OUTCAR: ionic steps with forces, energies, stress, magnetic moments, lazy", B, 16,
                      ("vasp-outcar",)),
         ReaderPlugin("vasprun", VasprunReader, ("vasprun*.xml",), is_vasprun,
-                     "VASP vasprun.xml: ionic steps with cell, forces, stress, energies, lazy", B, 17,
+                     "VASP vasprun.xml: ionic steps with cell, forces, stress, energies, DOS/PDOS and bands, lazy", B, 17,
                      ("vasp-vasprun",)),
         ReaderPlugin("lammps-data-ase", _open_ase_lammps_data, (), None,
                      "LAMMPS data file via ASE", B, None),

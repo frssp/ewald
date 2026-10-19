@@ -92,6 +92,9 @@ images as points, the current image highlighted and the barriers in the corner. 
 image jumps to its frame. Diffraction
 reflections (`diffraction-peaks`) are drawn as sticks, and a measured pattern loaded through a
 modifier's `experimental` file (the "…" button picks it) as points under the calculated curve.
+The `DOS` and `Bands` tables of a VASP run are drawn as a density of states and a band
+structure; atoms selected in the viewport show as their projected DOS or as fat bands (see
+[DOS and band structure](electronic.md)).
 
 **Linked selection.** Plots and the viewport share one selection, in both directions:
 
