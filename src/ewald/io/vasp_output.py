@@ -180,9 +180,11 @@ def is_vasprun(path) -> bool:
 _VASPRUN_KEYS = "|".join((
     "<calculation>", "</calculation>", "<structure", "<varray name=\"forces\"", "<varray name=\"stress\"",
     "<scstep>", "</scstep>", "<atominfo>", "<i name=\"(e_fr_energy|e_0_energy|kinetic|total)\"",
+    "^ *<(kpoints|dos|eigenvalues|projected)>", "</projected>",
 ))
 _VASPRUN_LITERALS = (b"calculation>", b"<structure", b"<varray name=\"f", b"<varray name=\"s", b"scstep>",
-                     b"<atominfo>", b"<i name=\"e_", b"<i name=\"kinetic\"", b"<i name=\"total\"")
+                     b"<atominfo>", b"<i name=\"e_", b"<i name=\"kinetic\"", b"<i name=\"total\"",
+                     b"<kpoints>", b"<dos>", b"<eigenvalues>", b"projected>")
 _VASPRUN_VALUES = {b"e_fr_energy": "Free Energy", b"e_0_energy": "Energy", b"kinetic": "Kinetic Energy",
                    b"total": "Total Energy"}
 
@@ -193,8 +195,20 @@ class VasprunReader(FrameReader):
     def __init__(self, path):
         self.path = str(path)
         self._steps: list[dict] = []
-        atominfo, calc, in_scstep = None, None, False
+        self._electronic_offsets: dict[str, int] = {}
+        self.electronic = None
+        atominfo, calc, in_scstep, in_projected = None, None, False, False
         for off, line in grep_lines(self.path, _VASPRUN_KEYS, _VASPRUN_LITERALS):
+            tag = line.strip()
+            if tag in (b"<kpoints>", b"<dos>", b"<eigenvalues>", b"<projected>"):
+                if tag == b"<projected>":
+                    in_projected = True
+                if not (in_projected and tag == b"<eigenvalues>"):  # the copy inside <projected>
+                    self._electronic_offsets[tag[1:-1].decode()] = off
+                continue
+            if tag == b"</projected>":
+                in_projected = False
+                continue
             if b"<calculation>" in line:
                 calc = {"values": {}}
             elif b"</calculation>" in line:
@@ -246,9 +260,137 @@ class VasprunReader(FrameReader):
             raise ValueError(f"{path}: no ionic steps found")
         self.thermo = _table([{"Step": i + 1, **{k: x for k, x in rec["values"].items() if np.isscalar(x)}}
                               for i, rec in enumerate(self._steps)])
+        if "dos" in self._electronic_offsets or "eigenvalues" in self._electronic_offsets:
+            try:
+                self.electronic = self._read_electronic(self.read(len(self._steps) - 1).cell.matrix)
+            except (ValueError, ET.ParseError, IndexError, KeyError) as exc:
+                warnings.warn(f"{path}: DOS / eigenvalues could not be read ({exc})", stacklevel=2)
 
     def __len__(self):
         return len(self._steps)
+
+    # ------------------------------------------------------------ DOS and bands
+    def _scan(self, offset, closing: bytes, sections=()):
+        """Rows (``<r>``), field names and ``<set comment="word n">`` counts of the element at
+        ``offset``, per section; a line starting with one of ``sections`` (tag prefixes) starts
+        the section of that name. Line by line, without building a tree: a PDOS or projection
+        block can hold millions of numbers."""
+        out = {"": {"rows": [], "fields": [], "sets": {}, "values": {}}}
+        cur = out[""]
+        with open_binary(self.path) as fh:
+            fh.seek(offset)
+            for line in fh:
+                s = line.strip()
+                if s.startswith(b"<r>"):
+                    cur["rows"].append(s[3:-4])
+                    continue
+                for prefix in sections:
+                    if s.startswith(prefix):
+                        cur = out.setdefault(prefix.decode(), {"rows": [], "fields": [], "sets": {}, "values": {}})
+                if s.startswith(b"<field"):
+                    cur["fields"].append(s.split(b">", 1)[1].split(b"<", 1)[0].strip().decode())
+                elif s.startswith(b"<set comment="):
+                    word = re.match(rb'<set comment="([a-z]+)', s)
+                    if word:
+                        w = word.group(1).decode()
+                        cur["sets"][w] = cur["sets"].get(w, 0) + 1
+                elif s.startswith(b"<i ") and b"name=" in s:
+                    name = re.search(rb'name="(\w+)"', s).group(1).decode()
+                    try:
+                        cur["values"][name] = float(s.split(b">", 1)[1].split(b"<", 1)[0])
+                    except ValueError:
+                        pass
+                if closing in line:
+                    break
+            else:
+                raise ValueError(f"{self.path}: element at byte {offset} is not closed")
+        for sec in out.values():
+            rows = sec["rows"]
+            sec["array"] = np.array(b" ".join(rows).split(), dtype=float).reshape(len(rows), -1) \
+                if rows else np.zeros((0, 0))
+        return out
+
+    def _read_electronic(self, lattice):
+        from ..electronic import ElectronicStructure, kpoints_file_labels, line_ticks, path_distances
+
+        offs = self._electronic_offsets
+        es = ElectronicStructure(types=self.types.copy(), source=os.path.basename(self.path))
+        natoms, band = len(self.types), None
+        if "dos" in offs:
+            dos = self._scan(offs["dos"], b"</dos>", (b"<total", b"<partial"))
+            es.efermi = dos[""]["values"].get("efermi", 0.0)
+            tot = dos.get("<total", {}).get("array")
+            if tot is not None and tot.size:
+                nspin = dos["<total"]["sets"].get("spin", 1)
+                ne = tot.shape[0] // nspin
+                tot = tot.reshape(nspin, ne, -1)[: 1 if nspin == 4 else nspin]
+                es.dos_energies, es.dos = tot[0, :, 0].copy(), tot[:, :, 1].copy()
+                part = dos.get("<partial")
+                if part is not None and part["array"].size:
+                    nsets = part["sets"].get("spin", 1)
+                    ns = nsets // natoms
+                    a = part["array"].reshape(natoms, ns, ne, -1)[:, : 1 if ns == 4 else ns]
+                    es.orbitals = part["fields"][1:]
+                    es.pdos = np.ascontiguousarray(np.transpose(a[..., 1:], (0, 1, 3, 2)))
+        if "eigenvalues" in offs:
+            eig = self._scan(offs["eigenvalues"], b"</eigenvalues>")[""]
+            a = eig["array"]
+            nspin = eig["sets"].get("spin", 1)
+            nk = eig["sets"].get("kpoint", 1) // nspin
+            a = a.reshape(nspin, nk, -1, a.shape[1])
+            es.eigenvalues, es.occupations = a[..., 0].copy(), a[..., 1].copy()
+        if "kpoints" in offs and es.eigenvalues is not None:
+            kp = self._element(offs["kpoints"], b"</kpoints>")
+            k = np.array([v.text.split() for v in kp.findall("varray[@name='kpointlist']/v")], dtype=float)
+            w = np.array([v.text.split()[0] for v in kp.findall("varray[@name='weights']/v")], dtype=float)
+            if len(k) == es.eigenvalues.shape[1]:
+                gen = kp.find("generation")
+                div = gen.find("i[@name='divisions']") if gen is not None and \
+                    gen.get("param", "").lower().startswith("list") else None
+                segment = int(div.text.split()[0]) if div is not None else None
+                band = np.flatnonzero(w == 0) if (w == 0).any() and (w > 0).any() else None
+                if band is not None:  # hybrid functional band run: the zero-weight points are the path
+                    es.eigenvalues, es.occupations = es.eigenvalues[:, band], es.occupations[:, band]
+                    k, w, segment = k[band], w[band], None
+                es.kpoints, es.weights = k, w
+                es.distances, es.breaks = path_distances(k, lattice, segment)
+                if segment:
+                    labels = kpoints_file_labels(os.path.join(os.path.dirname(os.path.abspath(self.path)), "KPOINTS"))
+                    labels = labels[1] if labels and labels[0] == segment else None
+                    es.ticks = line_ticks(es.distances, segment, labels, k)
+        if "projected" in offs and es.eigenvalues is not None:
+            off, shape = offs["projected"], es.eigenvalues.shape
+
+            def load():
+                p = self._scan(off, b"</projected>", (b"</eigenvalues>",)).get("</eigenvalues>")
+                if p is None or not p["array"].size:
+                    return None
+                ns = p["sets"].get("spin", 1)
+                a = p["array"].reshape(ns, -1, shape[2], natoms, p["array"].shape[1])[: 1 if ns == 4 else ns]
+                if band_idx is not None:
+                    a = a[:, band_idx]
+                return a if a.shape[:3] == shape else None
+
+            band_idx = band
+            es.orbitals = es.orbitals or self._scan_fields(off)
+            es.projections_loader = load
+        return es
+
+    def _scan_fields(self, offset) -> list[str]:
+        """Field names of the projection array at ``offset`` (just the header)."""
+        fields = []
+        with open_binary(self.path) as fh:
+            fh.seek(offset)
+            seen_eig = False
+            for line in fh:
+                s = line.strip()
+                if s.startswith(b"</eigenvalues>"):
+                    seen_eig = True
+                elif seen_eig and s.startswith(b"<field"):
+                    fields.append(s.split(b">", 1)[1].split(b"<", 1)[0].strip().decode())
+                elif seen_eig and s.startswith(b"<set"):
+                    break
+        return fields
 
     def _element(self, offset, closing: bytes):
         with open_binary(self.path) as fh:
@@ -283,6 +425,8 @@ class VasprunReader(FrameReader):
                 data.particles["Force"] = forces
         data.attributes["Timestep"] = index + 1
         data.attributes.update(rec["values"])
+        if self.electronic is not None:
+            self.electronic.attach(data)
         return data
 
 

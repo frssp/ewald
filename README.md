@@ -361,6 +361,20 @@ pipe.modifiers.append(VectorVis("Force", scaling=2.0, color_mapping_property="Ma
 pipe.render("forces.png", renderer="raytrace", radius_scale=0.5)
 ```
 
+### DOS and band structure
+
+vasprun.xml and vaspout.h5 bring the total and projected DOS, the band structure (line-mode
+path with its labels) and the band projections along: `data.attributes["Electronic Structure"]`,
+the tables "DOS" and "Bands", and the attributes `Fermi Energy` and `Band Gap`. In the GUI the
+Plots tab draws them, and atoms picked in the viewport show as their PDOS or as fat bands.
+
+```python
+data = import_file("vasprun.xml").compute(-1)
+es = data.attributes["Electronic Structure"]
+ti_d = es.pdos_of(data.types == "Ti", "d")      # (nspin, nE)
+print(es.band_gap())
+```
+
 ### Phonon modes
 
 phonopy `band.yaml`/`mesh.yaml`/`qpoints.yaml` (with eigenvectors) and OUTCARs of VASP
