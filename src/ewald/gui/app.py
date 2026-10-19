@@ -31,7 +31,11 @@ def file_filter() -> str:
     from .. import plugins
 
     return (f"Simulation files ({' '.join(plugins.file_patterns('structure'))});;"
-            f"Volumetric data ({' '.join(plugins.file_patterns('volumetric'))});;All files (*)")
+            f"Volumetric data ({' '.join(plugins.file_patterns('volumetric'))});;"
+            "Sessions (*.ewald);;All files (*)")
+
+
+SESSION_FILTER = "ewald session (*.ewald)"
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -47,6 +51,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.device = device
         self.frame = 0
         self.style = ViewStyle()
+        self.session_path = None
 
         # --- central: workspaces (Analyze = viewport + timeline, Render = render page)
         self.viewport = Viewport(self.style)
@@ -153,6 +158,10 @@ class MainWindow(QtWidgets.QMainWindow):
         mb = self.menuBar()
         f = mb.addMenu("&File")
         f.addAction("&Load file…", self.open_dialog, QtGui.QKeySequence.Open)
+        f.addAction("Load &session…", self.load_session_dialog, "Ctrl+Shift+O")
+        f.addAction("&Save session", self.save_session, QtGui.QKeySequence.Save)
+        f.addAction("Save session &as…", lambda: self.save_session(ask=True), QtGui.QKeySequence.SaveAs)
+        f.addSeparator()
         f.addAction("Render &image…", self.render_image, "Ctrl+Shift+R")
         f.addAction("E&xport data…", self.export_dialog, "Ctrl+E")
         f.addAction("Export &movie…", self.export_movie)
@@ -280,6 +289,11 @@ class MainWindow(QtWidgets.QMainWindow):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load file", "", file_filter())
         if not path:
             return
+        from ..session import is_session_file
+
+        if is_session_file(path):
+            self.load_session(path)
+            return
         kwargs = {}
         from ..io.lammps_dump import is_lammps_dump
 
@@ -371,34 +385,45 @@ class MainWindow(QtWidgets.QMainWindow):
             self.log.appendPlainText(time.strftime("%H:%M:%S ") + text)
 
     # ---------------------------------------------------------------- output
-    def render_image(self, filename=None, **overrides):
+    def render_image(self, filename=None, return_image=False, **overrides):
         if self.data is None:
             return None
         if not filename:
-            filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Render image", "render.png",
-                                                                "Images (*.png *.jpg *.tif)")
+            filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, "Render image", "render.png", "Images (*.png *.jpg *.tif);;Vector (*.svg *.pdf *.eps)")
             if not filename:
                 return None
         kw = dict(self.style.scene_kwargs())
         kw.update(self.render_page.render_kwargs())
         kw.update(overrides)
         text = self.render_page.label_text(self.frame, self.data)
-        render(self.data, filename, camera=camera_state(self.viewport.plotter), text=text or None, **kw)
+        try:
+            img = render(self.data, filename, camera=camera_state(self.viewport.plotter), text=text or None, **kw)
+        except Exception as exc:
+            self.message(f"Render failed: {exc}", error=True)
+            QtWidgets.QMessageBox.critical(self, "Render failed", str(exc))
+            return None
         self.message(f"Rendered {filename}")
-        return filename
+        return img if return_image else filename
 
     def render_from_page(self):
         page = self.render_page
         out = page.output.text() or "render.png"
-        if page.animation.isChecked() or out.endswith((".mp4", ".gif")):
+        if page.is_movie:
             self.export_movie(out)
             return
-        self.render_image(out)
-        pix = QtGui.QPixmap(out)
-        if not pix.isNull():
-            page.preview.setPixmap(pix.scaled(page.preview.size(), QtCore.Qt.KeepAspectRatio,
-                                              QtCore.Qt.SmoothTransformation))
+        img = self.render_image(out, return_image=True)
+        if img is not None:
+            self.show_preview(img)
         page.update_code()
+
+    def show_preview(self, img):
+        page = self.render_page
+        img = np.ascontiguousarray(img)
+        fmt = QtGui.QImage.Format_RGBA8888 if img.shape[-1] == 4 else QtGui.QImage.Format_RGB888
+        qimg = QtGui.QImage(img.data, img.shape[1], img.shape[0], img.strides[0], fmt).copy()
+        page.preview.setPixmap(QtGui.QPixmap.fromImage(qimg).scaled(
+            page.preview.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
 
     def export_dialog(self):
         if self.pipeline is None:
@@ -417,18 +442,124 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.pipeline is None:
             return
         if not path:
-            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export movie", "movie.mp4", "Movies (*.mp4 *.gif)")
+            from .render_page import MOVIE_FORMATS
+
+            ext = MOVIE_FORMATS.get(self.render_page.movie_format.currentText(), ".mp4")
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, "Export movie", "movie" + ext, "Movies (*.mp4 *.gif *.avi *.mov);;PNG sequence (*.png)")
             if not path:
                 return
         from ..render import render_animation
 
+        page = self.render_page
         kw = dict(self.style.scene_kwargs())
-        kw.update(self.render_page.render_kwargs())
+        kw.update(page.render_kwargs(movie=True))
         w, h = kw.pop("size")
         frames = range(0, self.pipeline.num_frames, self.timeline.stride.value())
-        render_animation(self.pipeline, path, frames=frames, fps=self.timeline.fps.value(), device=self.device,
-                         size=(w // 2 * 2, h // 2 * 2), camera=camera_state(self.viewport.plotter), **kw)
-        self.message(f"Wrote {path}")
+        dlg = QtWidgets.QProgressDialog(f"Rendering {os.path.basename(path)}…", "Cancel", 0, len(frames), self)
+        dlg.setWindowModality(QtCore.Qt.WindowModal)
+        dlg.setMinimumDuration(0)
+
+        def progress(i, n):
+            dlg.setValue(i)
+            QtWidgets.QApplication.processEvents()
+            return not dlg.wasCanceled()
+
+        try:
+            n = render_animation(self.pipeline, path, frames=frames, fps=self.timeline.fps.value(),
+                                 device=self.device, size=(w // 2 * 2, h // 2 * 2),
+                                 camera=camera_state(self.viewport.plotter), text=page.text.text() or None,
+                                 time_per_frame=page.time_per_frame.value(), progress=progress, **kw)
+        except Exception as exc:
+            self.message(f"Movie export failed: {exc}", error=True)
+            QtWidgets.QMessageBox.critical(self, "Movie export failed", str(exc))
+            return None
+        finally:
+            dlg.close()
+        self.message(f"Wrote {path} ({n} frames)")
+        return path
+
+    # ---------------------------------------------------------------- sessions
+    def save_session(self, path=None, ask=False):
+        """Save pipeline, style, camera and Render settings to an .ewald file."""
+        if self.pipeline is None:
+            return None
+        path = path or (None if ask else self.session_path)
+        if not path:
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save session", "session.ewald", SESSION_FILTER)
+            if not path:
+                return None
+        from ..session import save_session
+
+        try:
+            save_session(path, self.pipeline, frame=self.frame, camera=camera_state(self.viewport.plotter),
+                         style=self.style, render=self.render_page.state(), device=self.device)
+        except (TypeError, OSError) as exc:
+            self.message(f"Save failed: {exc}", error=True)
+            QtWidgets.QMessageBox.critical(self, "Save session failed", str(exc))
+            return None
+        self.session_path = path
+        self.setWindowTitle(f"ewald — {os.path.basename(path)}")
+        self.message(f"Saved session {path}")
+        return path
+
+    def load_session_dialog(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load session", "", SESSION_FILTER + ";;All files (*)")
+        if path:
+            self.load_session(path)
+
+    def load_session(self, path, allow_code=None):
+        """Restore a session. Python modifiers run only after the user agrees (or ``allow_code=True``)."""
+        import json
+        import warnings
+
+        from ..session import CODE_MODIFIERS, load_session
+
+        if allow_code is None:
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    has_code = any(m.get("type") in CODE_MODIFIERS for m in json.load(fh).get("modifiers", []))
+            except (OSError, ValueError):
+                has_code = False
+            allow_code = has_code and QtWidgets.QMessageBox.question(
+                self, "Python code in session",
+                "This session contains Python modifiers. Run their code?\n\n"
+                "Only answer Yes for sessions you trust; otherwise they are loaded disabled.") \
+                == QtWidgets.QMessageBox.Yes
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                s = load_session(path, allow_code=bool(allow_code))
+        except Exception as exc:
+            self.message(f"Session load failed: {path}: {exc}", error=True)
+            QtWidgets.QMessageBox.critical(self, "Load session failed", f"{path}\n\n{exc}")
+            return None
+        for w in s.warnings:
+            self.message(w, error=True)
+        if s.style:
+            self.style._pref_filled = {}
+            for k, v in s.style.items():  # in place: viewport, panel and console share this object
+                if k in self.style.__dataclass_fields__:
+                    setattr(self.style, k, list(map(list, v)) if k == "bond_pairs" else v)
+        if s.device:
+            self.device = s.device
+            self.device_combo.blockSignals(True)
+            self.device_combo.setCurrentText({"cuda": "CUDA", "auto": "auto"}.get(s.device, "CPU"))
+            self.device_combo.blockSignals(False)
+        self.set_pipeline(s.pipeline)
+        if s.frame:
+            self.timeline._set(min(s.frame, s.pipeline.num_frames - 1))
+        if s.camera:
+            from ..render import apply_camera_state
+
+            apply_camera_state(self.viewport.plotter, s.camera)
+            self.viewport.plotter.render()
+        self.render_page.set_state(s.render)
+        self._style_changed()
+        self.session_path = path
+        self.setWindowTitle(f"ewald — {os.path.basename(path)}")
+        self.message(f"Loaded session {path}")
+        return s
 
     def closeEvent(self, event):
         prefs.save_layout(self, self.settings)
@@ -507,8 +638,10 @@ def main(argv=None):
     app = _app()
     win = MainWindow(device=args.device)
     if args.file:
+        from ..session import is_session_file
+
         kw = {"type_map": dict(p.split("=") for p in args.type_map.split(","))} if args.type_map else {}
-        win.open_file(args.file, **kw)
+        win.load_session(args.file) if is_session_file(args.file) else win.open_file(args.file, **kw)
     win.show()
     return app.exec()
 
