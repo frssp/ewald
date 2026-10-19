@@ -1,3 +1,5 @@
+<img src="src/ewald/assets/icon/ewald-128.png" alt="EWALD icon" width="96" align="right">
+
 # EWALD: Extensible Window for Atomic Lattices & Dynamics
 
 [![CI](https://github.com/frssp/ewald/actions/workflows/ci.yml/badge.svg)](https://github.com/frssp/ewald/actions/workflows/ci.yml)
@@ -491,7 +493,12 @@ per-type occupancies), `IdentifyDiamond` (cubic/hexagonal diamond and their
 first/second neighbors), `ChillPlus` (hexagonal/cubic/interfacial ice, hydrate),
 `CentroSymmetry` (conventional and minimum-weight
 matching), `AcklandJones` and `AtomicStrain` (von Mises/volumetric strain,
-F, Green-Lagrange tensor, D2min, rotation, stretch). Property names, structure type ids, colors and
+F, Green-Lagrange tensor, D2min, rotation, stretch), `ElasticStrain` (atomic elastic
+strain and deformation gradient relative to an ideal FCC/HCP/BCC/diamond lattice),
+`GrainSegmentation` (grains from PTM orientations: automatic or manual graph clustering
+or minimum spanning tree, grain table with orientation, size and center) and
+`IdentifyFCCPlanarFaults` (intrinsic stacking faults, twin boundaries, multilayer faults
+and their areas). Property names, structure type ids, colors and
 attribute names follow OVITO, and the test suite checks the results against
 OVITO 3.16 on eleven test structures plus ice/hydrate, defect and strain cases (`tests/data/make_ovito_reference.py`).
 
@@ -526,7 +533,8 @@ pipe.modifiers.append(Plumed("d: DISTANCE ATOMS=1,2\nphi: TORSION ATOMS=5,7,9,15
 pipe.modifiers.append(FreeEnergySurface("HILLS", bins=(60, 60)))
 ```
 
-CNA, PTM, Voronoi and matching-mode CSP use a C++ extension (`ewald._native`,
+CNA, PTM, Voronoi, matching-mode CSP, elastic strain, grain segmentation and fcc
+planar faults use a C++ extension (`ewald._native`,
 compiled by `pip install -e .` with pybind11; sources and licenses in
 `src/ewald/_csrc/`). Building it needs a C++17 compiler (gcc/clang, Xcode command
 line tools on macOS, MSVC Build Tools on Windows); without one ewald installs without these. For 108k atoms on 4 cores:

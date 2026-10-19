@@ -1,7 +1,8 @@
 # Install
 
 ewald needs Python 3.10 or newer. A C++17 compiler is recommended: `pip` uses it to build the
-native extension `ewald._native` (CNA, PTM, Voronoi and centrosymmetry kernels ported from OVITO)
+native extension `ewald._native` (CNA, PTM, Voronoi, centrosymmetry, elastic strain and grain segmentation kernels ported
+from OVITO)
 during installation. On Linux that is gcc or clang, on macOS the Xcode command line tools
 (`xcode-select --install`), on Windows the Microsoft C++ Build Tools.
 
@@ -21,6 +22,7 @@ the install still finishes, without `ewald._native`, and pip prints a warning bo
 - `VoronoiAnalysis`
 - `CentroSymmetry(mode="matching")` (the default `conventional` mode works)
 - `CommonNeighborAnalysis(mode="interval")` (adaptive and fixed-cutoff CNA fall back to Python)
+- `ElasticStrain`, `GrainSegmentation` and `IdentifyFCCPlanarFaults`
 
 Edit › Preferences › Compute lists `ewald._native` as missing, and the GUI's Log tab says so at
 startup. To add it later, install a compiler and run `pip install -e .` again. On Windows: install

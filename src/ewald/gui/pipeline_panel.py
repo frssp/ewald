@@ -28,6 +28,9 @@ MODIFIER_MENU = {
         "Chill+ (ice, hydrate)": mods.ChillPlus,
         "Centrosymmetry": mods.CentroSymmetry,
         "Atomic strain": mods.AtomicStrain,
+        "Elastic strain (crystal)": lambda: mods.ElasticStrain(lattice_constant=3.615),
+        "Grain segmentation (after PTM)": mods.GrainSegmentation,
+        "fcc planar faults (after PTM)": mods.IdentifyFCCPlanarFaults,
     },
     "Symmetry & diffraction": {
         "Space group / Wyckoff positions (spglib)": mods.SymmetryAnalysis,
