@@ -131,6 +131,18 @@ Visualization plugins (later phases of the Scene IR plan)
 
 Plugins and Claude
 
+- Plugin manifests, phase 2 (from the VS Code comparison): contributions declared in
+  `ewald-plugin.toml` (`[[readers]]`, `[[modifiers]]`, ... with `python = "module:object"`)
+  registered lazily and imported on first use; `settings` and `commands` contribution points
+  (plugin `Option`s on a generated Preferences page; commands in the palette, as notebook
+  functions and as Claude tools).
+- Plugin manifests, phase 3: a curated plugin index (JSON in a GitHub repository), install and
+  update with `pip` into the running interpreter, notebooks recording the plugins they use and
+  offering to install missing ones.
+- Plugin manifests, phase 4: notebook/session trust (Restricted mode for files from others),
+  index curation rules, signatures if the index opens to outside publishers.
+- Per-notebook plugin enable/disable; `plugins.json` holds only the global switch.
+
 - LLM plugin ideas: Paper-to-modifier (Forge from a paper's definition, checked against its
   numbers), Run doctor (diagnose a VASP/LAMMPS run from its outputs), phase identification,
   campaign report over many runs.

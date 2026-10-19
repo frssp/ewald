@@ -32,6 +32,8 @@ def test_every_third_party_import_is_declared():
     for path in (ROOT / "src" / "ewald").rglob("*.py"):
         if path.parent.name == "tables" and path.name.startswith("make_"):
             continue  # table generators run by developers (pymatgen, PyYAML), not at runtime
+        if path.name == "make_icons.py":
+            continue  # icon renderer run by developers (cairosvg), not at runtime
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Import):
                 names = [a.name for a in node.names]
