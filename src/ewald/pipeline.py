@@ -202,6 +202,31 @@ class Pipeline:
             self._trim_cache()
         return self._cache[frame].copy()
 
+    def refresh(self) -> int:
+        """Pick up frames a running simulation appended to the source file(s) since they were
+        opened (LAMMPS dump, XDATCAR, OUTCAR, extxyz; local or over SSH) and drop cached frames
+        that may have changed. Returns how many frames were added (negative if the file was
+        rewritten shorter); call it again whenever you want to look for more::
+
+            pipe = import_file("dump.lammpstrj")   # while LAMMPS is running
+            ...
+            if pipe.refresh():
+                data = pipe.compute(-1)            # the newest frame
+        """
+        refresh = getattr(self.source, "refresh", None)
+        if refresh is None:
+            return 0
+        before = self.num_frames
+        first = refresh()
+        if first is not None:
+            self.invalidate(first)
+        return self.num_frames - before
+
+    def invalidate(self, first: int = 0):
+        """Forget cached source frames from ``first`` on (their file changed)."""
+        for frame in [f for f in self._cache if f >= first]:
+            del self._cache[frame]
+
     def _trim_cache(self):
         while len(self._cache) > max(self._cache_size, 1):
             self._cache.popitem(last=False)

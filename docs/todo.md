@@ -202,6 +202,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - P2: glTF, interactive HTML and Blender export.
 - P2: Batch render CLI: apply one `.ewald` session to many run folders.
 - P2: Native GSD reader (H5MD and XTC/TRR/DCD are done).
+- P2: Live reload for vasprun.xml, H5MD, XTC/TRR/DCD and compressed files (dump, XDATCAR,
+  OUTCAR and extxyz follow a growing file now); a file-system watcher instead of polling.
 - P2: More HDF5 output: Quantum ESPRESSO `charge-density.hdf5` (G-space, needs an FFT to the
   real-space grid), ABINIT netCDF-4 `*_HIST.nc` trajectories and `*_DEN.nc` densities, VASP
   `vaspout.h5` `/results/partial_charges` (PARCHG).
@@ -212,6 +214,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `--device cuda` GUI switch. CI and the cloud container have no GPU.
 - SSH remote files against a real HPC login node (ProxyJump, OTP, large dumps); tests use an
   in-process SFTP server.
+- Live reload on a real running LAMMPS/VASP job (local and over SSH), where the writer flushes
+  in arbitrary pieces; tests grow fixture files byte by byte.
 - Claude features with a real API key: `ewald ask` (also `--select`), the GUI Ask Claude tab,
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › Claude › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
@@ -247,10 +251,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 ## Code health
 
 Left from the 2026-10-19 review (minimum image, element masses, color parsing and the
-dark-background test are shared now):
+dark-background test are shared now; `gui/app.py` and `gui/preferences.py` are split into
+mixins and helper modules):
 
-- Split `gui/app.py` (files, menus, selection/console mixins) and `gui/preferences.py`
-  (widgets, element table, applying settings), after the viewport/menu work in PR #45.
 - One camera basis (right/up/forward) for `vector.py`, `overlays.camera_axes` and `raytrace.py`;
   only the overlays one handles `up` parallel to the view direction.
 - One element color lookup: `themes.element_colors`, `Settings.element_color` (Preferences

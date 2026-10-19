@@ -94,13 +94,17 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   the sum_hills files in `tests/data/plumed/` (regenerate with `make_plumed_reference.py`, never by hand).
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
 - `notebook.py`: notebooks as percent-format `.py` files (`# %%` cells, one namespace, `pipe` is the
-  pipeline; step cells = one `pipe.modifiers.append(...)`, view cells = one `show(pipe, ...)` from
+  pipeline; step cells = one `pipe.add(...)`, view cells = one `show(pipe, ...)` from
   `views.py`). The GUI's default layout is built on it (`general.layout`: notebook | classic).
-- `gui/`: `app.py` main window, `notebook_panel.py` (cells, steps, view cells with live `PlotsPanel`s)
-  and `notebook_tabs.py` (one tab per open notebook), `viewport.py` (VTK; `legacy_viewport.py` + Qt-free
+- `gui/`: `app.py` main window (frames, recompute, styling; built from mixins: `window_menus.py` toolbar,
+  menus, activity bar and minimal mode, `window_files.py` open/export/sessions/notebooks, `viewport_menu.py`
+  right-click menu, `window_links.py` picks, plot links (Plots tab and view cells), Ask Claude and console),
+  `notebook_panel.py` (cells, steps, view cells with live `PlotsPanel`s), `notebook_tabs.py` (one tab per
+  open notebook), `plugins_panel.py` (Plugins side bar), `viewport.py` (VTK; `legacy_viewport.py` + Qt-free
   `legacy_gl.py` are the OpenGL 1.x viewport for `ssh -X`, chosen by `gui.viewport_backend`), `pipeline_panel.py`
   (classic layout; `DisplayPanel` is its visual-elements part in the notebook layout), `params.py`, `render_page.py`,
-  `preferences.py`, `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
+  `preferences.py` (dialog; `pref_widgets.py`, `element_table.py`, `prefs_apply.py` apply settings to the window),
+  `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
   `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`.
 - `llm/`: Claude agent (`agent.py`), tools (`tools.py`), `credentials.py` (API key in the OS keychain via
   `keyring`, 0600 file fallback, never in settings.json; every Claude client comes from `credentials.client()`), Modifier Forge (`forge.py`: Claude writes a

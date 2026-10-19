@@ -1473,6 +1473,35 @@ def test_plugins_side_bar_installs_adds_a_step_and_removes(app, cu_path, tmp_pat
     w.close()
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_main_window_follows_a_growing_dump(app, lammps_dir, tmp_path):
+    from ewald import import_file
+    from ewald.gui.app import MainWindow
+
+    blob = (lammps_dir / "dump.custom.lammpstrj").read_bytes()
+    offsets = import_file(lammps_dir / "dump.custom.lammpstrj").source.readers[0]._offsets
+    path = tmp_path / "dump.lammpstrj"
+    path.write_bytes(blob[:offsets[2]])
+    w = MainWindow(import_file(path))
+    assert w.live_reload.timer.isActive() and w.live_reload_action.isChecked()
+    assert w.timeline.slider.maximum() == 1
+    w.timeline._set(1)  # on the last frame: follow the newest one
+    w.timeline.set_selection([0, 1])
+    path.write_bytes(blob)
+    w.live_reload.poll(wait=True)
+    n = len(offsets)
+    assert w.timeline.slider.maximum() == n - 1 and w.frame == n - 1
+    assert w.timeline.selection == [0, 1]  # kept while the file grows
+    assert f"frame {n - 1}/{n - 1}" in w.status.text()
+    w.timeline._set(0)  # looking at an early frame: stay there
+    path.write_bytes(blob + blob[offsets[-1]:])
+    w.live_reload.poll(wait=True)
+    assert w.timeline.slider.maximum() == n and w.frame == 0
+    w.live_reload_action.trigger()  # File › Live reload off
+    assert not w.live_reload.timer.isActive()
+    w.close()
+
+
 def test_cell_panel_boundary_range(app):
     from ewald.gui.pipeline_panel import PipelinePanel
     from ewald.gui.style import ViewStyle

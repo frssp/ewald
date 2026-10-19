@@ -61,6 +61,11 @@ OPTIONS = (
     Option("general.lammps_type_prompt", "ask", "LAMMPS type names",
            "Ask for a type → element map when opening a LAMMPS dump.", choices=("ask", "never")),
     Option("general.lammps_type_map", "", "Default LAMMPS type map", "e.g. 1=Cu,2=Zr; pre-fills the prompt."),
+    Option("general.live_reload", True, "Live reload",
+           "Follow trajectories a running simulation is still writing (LAMMPS dump, XDATCAR, OUTCAR, "
+           "extxyz; local or SSH): new frames extend the timeline."),
+    Option("general.live_reload_interval", 2.0, "Live reload interval", "Seconds between looks at the file.",
+           minimum=0.5, maximum=600),
     Option("general.docs_url", "", "Documentation URL",
            "Where Help opens the manual. Empty = the docs folder on GitHub; or a hosted or built site."),
 

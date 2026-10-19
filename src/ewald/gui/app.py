@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import importlib.util
-import logging
-import os
 import sys
 import time
 import traceback
@@ -16,50 +14,28 @@ check_qt_binding()  # before PySide6: a clear error when another Qt binding is l
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .. import examples, manual
 from .. import modifiers as mods
-from ..io import import_file
 from ..render import camera_state, render
 from .ask_panel import AskPanel, agent_from_settings
 from .console import make_console
-from .icons import app_icon, icon
+from .icons import app_icon
 from .inspector import DataInspector
-from .palette import CommandPalette, menu_entries
-from .notebook_panel import NotebookPanel, fill_view_menu
-from .pipeline_panel import MODIFIER_MENU, DisplayPanel, PipelinePanel, fill_modifier_menu
-from .plots import PlotsPanel, _is_neb
+from .notebook_panel import NotebookPanel
+from .pipeline_panel import DisplayPanel, PipelinePanel
+from .plots import PlotsPanel
 from . import preferences as prefs
 from .render_page import RenderPage
 from .style import ViewStyle
-from .theme import PALETTES, TOKENS
+from .theme import TOKENS
+from .live_reload import LiveReload
 from .timeline import Timeline
 from .viewport import Viewport
+from .viewport_menu import ViewportMenuMixin
+from .window_files import SESSION_FILTER, FilesMixin, file_filter, save_filters  # noqa: F401 (public)
+from .window_links import LinksMixin
+from .window_menus import MenusMixin
 
-def file_filter() -> str:
-    """Open-dialog filter from the reader registry (built-in formats and plugins)."""
-    from .. import plugins
-
-    return (f"Simulation files ({' '.join(plugins.file_patterns('structure'))});;"
-            f"Volumetric data ({' '.join(plugins.file_patterns('volumetric'))});;"
-            "Notebooks (*.py);;Sessions (*.ewald);;All files (*)")
-
-
-SESSION_FILTER = "ewald session (*.ewald)"
-NOTEBOOK_FILTER = "Notebook (*.py)"
-
-
-def save_filters() -> list[tuple[str, str | None]]:
-    """Save-dialog filters from the writer registry: (filter text, writer name or None)."""
-    from .. import plugins
-
-    out = []
-    for plugin in sorted(plugins.writers().values(), key=lambda p: (p.priority is None, p.priority or 0)):
-        if plugin.patterns:
-            out.append((f"{plugin.description} ({' '.join(plugin.patterns)})", plugin.name))
-    return out + [("All files, format from the name (*)", None)]
-
-
-class MainWindow(QtWidgets.QMainWindow):
+class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidgets.QMainWindow):
     def __init__(self, pipeline=None, device=None, settings=None):
         super().__init__()
         from .. import settings as settings_mod
@@ -85,6 +61,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.viewport.contextMenuRequested.connect(self._show_viewport_menu)
         self.timeline = Timeline()
         self.timeline.frameChanged.connect(self.set_frame)
+        self.live_reload = LiveReload.attach(self)
         analyze = QtWidgets.QWidget()
         al = QtWidgets.QVBoxLayout(analyze)
         al.setContentsMargins(0, 0, 0, 0)
@@ -195,297 +172,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.resizeDocks([d], [width], QtCore.Qt.Horizontal)
         return d
 
-    def _build_activity_bar(self):
-        """Icons on the far left that show or hide the side bars (Notebook, Plugins)."""
-        from .icons import icon
-
-        bar = self.activity_bar = QtWidgets.QToolBar("Activity bar")
-        bar.setObjectName("activity-bar")
-        bar.setMovable(False)
-        bar.setIconSize(QtCore.QSize(22, 22))
-        self.addToolBar(QtCore.Qt.LeftToolBarArea, bar)
-        self.activity_buttons = {}
-        for name, icon_name, dock in (("Notebook", "notebook", self.notebook_dock),
-                                      ("Plugins", "plugins", self.plugins_dock)):
-            act = dock.toggleViewAction()
-            act.setIcon(icon(icon_name))
-            act.setToolTip(f"Show or hide the {name} side bar")
-            bar.addAction(act)
-            self.activity_buttons[name] = act
-        self.plugins_dock.visibilityChanged.connect(
-            lambda shown: shown and self.plugins_panel.search.setFocus())
-
-    def set_minimal(self, on: bool | None = None):
-        """Hide the menu bar, toolbars and status bar, leaving the notebook, the viewport and the
-        command palette (Ctrl+K); menu shortcuts keep working (View › Minimal mode, Ctrl+Shift+M)."""
-        on = self.menuBar().isVisible() if on is None else on
-        if on:
-            for menu in self.menuBar().findChildren(QtWidgets.QMenu):
-                for act in menu.actions():
-                    if not act.shortcut().isEmpty() and act not in self.actions():
-                        self.addAction(act)  # shortcuts of a hidden menu bar do not fire otherwise
-        self.minimal = on
-        self.menuBar().setVisible(not on)
-        self.statusBar().setVisible(not on)
-        for tb in self.findChildren(QtWidgets.QToolBar):
-            if tb.objectName() in ("main-toolbar", "activity-bar"):
-                tb.setVisible(not on)
-        if on:
-            self.message("Minimal mode: Ctrl+K for commands, Ctrl+Shift+M to bring the menus back")
-
-    def _build_toolbar(self):
-        tb = self.addToolBar("Main")
-        tb.setObjectName("main-toolbar")
-        tb.setMovable(False)
-        tb.setIconSize(QtCore.QSize(18, 18))
-        self.styled_buttons = []  # (button, text in the default style); see icons.button_style
-        nb = self.layout_mode == "notebook"
-
-        def button(text, icon_name, slot, tip, text_in_hybrid=True, checkable=False):
-            b = QtWidgets.QToolButton(text=text, checkable=checkable, toolTip=tip)
-            b.setProperty("ewald_icon", icon_name)
-            b.clicked.connect(slot)
-            tb.addWidget(b)
-            self.styled_buttons.append((b, text_in_hybrid))
-            return b
-
-        if nb:
-            button("Open", "open", self.open_dialog, "Open a data file, notebook (.py) or session (Ctrl+O)")
-            button("Save", "save", lambda: self.save_notebook(), "Save the notebook (Ctrl+S)", False)
-            run = QtWidgets.QPushButton("Run all", toolTip="Restart and run every cell of the notebook (Ctrl+Shift+Enter)")
-            run.setObjectName("primary")
-            run.setProperty("ewald_icon", "play")
-            run.setProperty("ewald_icon_color", TOKENS["on_accent"])
-            run.clicked.connect(lambda: self.panel.view.run_all())
-            tb.addWidget(run)
-            self.styled_buttons.append((run, True))
-        else:
-            button("Open", "open", self.open_dialog, "Load file (Ctrl+O)")
-            button("Open remote", "remote", self.open_remote_dialog, "Load remote file over SSH (Ctrl+Alt+O)", False)
-            button("Save", "save", lambda: self.save_session(), "Save session (Ctrl+S)", False)
-        tb.addSeparator()
-        self.ws_buttons = []
-        for i, (name, icon_name) in enumerate((("Notebook" if nb else "Analyze", "analyze"), ("Render", "render"))):
-            b = button(name, icon_name, lambda _=False, i=i: self.set_workspace(i), f"{name} workspace (Ctrl+{i + 1})",
-                       checkable=True)
-            self.ws_buttons.append(b)
-        self.ws_buttons[0].setChecked(True)
-        tb.addSeparator()
-        search = QtWidgets.QPushButton("  Search commands, steps, cells…      Ctrl K" if nb else
-                                       "  Search commands, modifiers…      Ctrl K")
-        search.setStyleSheet(f"text-align: left; color: {TOKENS['muted']}; background: {TOKENS['panel']}; min-width: 320px;")
-        search.clicked.connect(self.command_palette)
-        tb.addWidget(search)
-        spacer = QtWidgets.QWidget()
-        spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
-        tb.addWidget(spacer)
-        tb.addWidget(QtWidgets.QLabel("Compute ", objectName="muted"))
-        self.device_combo = QtWidgets.QComboBox()
-        self.device_combo.addItems(["CPU", "CUDA", "auto"])
-        self.device_combo.setCurrentText({"cuda": "CUDA", "auto": "auto"}.get((self.device or "cpu").lower(), "CPU"))
-        self.device_combo.currentTextChanged.connect(self._set_device)
-        tb.addWidget(self.device_combo)
-        render_btn = QtWidgets.QPushButton("Render", toolTip="Render workspace: image, movie and figure code")
-        render_btn.setObjectName("primary")
-        render_btn.setProperty("ewald_icon", "render")
-        render_btn.setProperty("ewald_icon_color", TOKENS["on_accent"])
-        render_btn.clicked.connect(lambda: self.set_workspace(1))
-        tb.addWidget(render_btn)
-        self.styled_buttons.append((render_btn, True))
-
-    def set_button_style(self, style: str):
-        """Toolbar and tool rail buttons as icons with text, icons or text
-        (Preferences › General › Toolbar buttons); menus show icons unless 'Text'."""
-        from .icons import button_style
-
-        for b, text_in_hybrid in self.styled_buttons + self.viewport.styled_buttons:
-            button_style(b, style, text_in_hybrid)
-        self.viewport.set_button_style(style)
-        QtWidgets.QApplication.instance().setAttribute(QtCore.Qt.AA_DontShowIconsInMenus, style == "Text")
-
-    def _build_menus(self):
-        mb = self.menuBar()
-        nb = self.layout_mode == "notebook"
-        f = mb.addMenu("&File")
-        if nb:
-            f.addAction("&New notebook", lambda: self.panel.new_notebook(), "Ctrl+T")
-        f.addAction(icon("open"), "&Open…" if nb else "&Load file…", QtGui.QKeySequence.Open, self.open_dialog)
-        f.addAction(icon("remote"), "Load &remote file (SSH)…", QtGui.QKeySequence("Ctrl+Alt+O"), self.open_remote_dialog)
-        f.addAction("Load &NEB folder…", self.open_neb_dialog)
-        ex = f.addMenu(icon("example"), "Open e&xample")
-        for example in examples.EXAMPLES:
-            act = ex.addAction(f"{example.file}  ({example.format})", lambda e=example: self.open_example(e.file))
-            act.setToolTip(example.description)
-            act.setStatusTip(example.description)
-        ex.setToolTipsVisible(True)
-        f.addSeparator()
-        if nb:
-            f.addAction(icon("save"), "&Save notebook", QtGui.QKeySequence.Save, self.save_notebook)
-            f.addAction("Save notebook &as…", lambda: self.save_notebook(ask=True), QtGui.QKeySequence.SaveAs)
-            f.addAction("&Close notebook", lambda: self.panel.close_tab(self.panel.tabs.currentIndex()), "Ctrl+W")
-            f.addSeparator()
-            f.addAction("Load &session (.ewald)…", self.load_session_dialog, "Ctrl+Shift+O")
-            f.addAction("Save session (.ewald) as…", lambda: self.save_session(ask=True))
-        else:
-            f.addAction("Load &session…", self.load_session_dialog, "Ctrl+Shift+O")
-            f.addAction(icon("save"), "&Save session", QtGui.QKeySequence.Save, self.save_session)
-            f.addAction("Save session &as…", lambda: self.save_session(ask=True), QtGui.QKeySequence.SaveAs)
-        f.addSeparator()
-        f.addAction(icon("image"), "Render &image…", QtGui.QKeySequence("Ctrl+Shift+R"), self.render_image)
-        f.addAction("E&xport data…", self.export_dialog, "Ctrl+E")
-        f.addAction("Export &movie…", self.export_movie)
-        f.addSeparator()
-        f.addAction("&Quit", self.close, QtGui.QKeySequence.Quit)
-        e = mb.addMenu("&Edit")
-        act = e.addAction("&Preferences…", self.preferences, QtGui.QKeySequence.Preferences)
-        act.setMenuRole(QtGui.QAction.PreferencesRole)  # app menu on macOS, like OVITO/VESTA
-        if act.shortcut().isEmpty():
-            act.setShortcut("Ctrl+,")
-        v = mb.addMenu("&View")
-        for ax in ("a", "b", "c", "a*", "b*", "c*"):
-            v.addAction(f"View along {ax}", lambda ax=ax: self.viewport.view_along(ax))
-        v.addSeparator()
-        for label, d in (("Top (+z)", "z"), ("Front (-y)", "front"), ("Right (+x)", "x"), ("Isometric", "iso")):
-            v.addAction(label, lambda d=d: self.viewport.view_direction(d))
-        v.addAction("Zoom to fit", self.viewport.zoom_fit, "Ctrl+0")
-        v.addSeparator()
-        for bg in ("Dark background", "White background"):
-            v.addAction(bg, lambda bg=bg: self._set_background(PALETTES["graphite"]["viewport"] if bg.startswith("Dark") else "white"))
-        self.theme_menu = v.addMenu("Theme")
-        self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
-        self._fill_theme_menu()
-        if nb:
-            v.addSeparator()
-            v.addAction("Focus on the viewport", self.toggle_focus, "Ctrl+\\")
-            v.addAction("Minimal mode (menus hidden)", lambda: self.set_minimal(self.menuBar().isVisible()), "Ctrl+Shift+M")
-            n = mb.addMenu("&Notebook")
-            n.addAction("Run &all", lambda: self.panel.view.run_all(), "Ctrl+Shift+Return")
-            n.addAction("Run current cell and &below", lambda: self._cell_action("below"))
-            n.addAction("&Restart", lambda: self.panel.view.restart())
-            n.addAction("Restart and run all", lambda: self.panel.view.run_all())
-            n.addSeparator()
-            n.addAction("Move cell &up", lambda: self._cell_action("up"), "Ctrl+Shift+Up")
-            n.addAction("Move cell &down", lambda: self._cell_action("down"), "Ctrl+Shift+Down")
-            n.addAction("D&elete cell", lambda: self._cell_action("delete"))
-            n.addSeparator()
-            n.addAction("Show as Python &file", lambda: self.panel.view.py_button.toggle())
-            ins = mb.addMenu("&Insert")
-            ins.addAction("&Code cell", lambda: self.panel.view.add_cell("code"), "Ctrl+Shift+N")
-            ins.addAction("&Text cell", lambda: self.panel.view.add_cell("markdown"))
-            ins.addSeparator()
-            m = ins.addMenu("&Step")
-            m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier))
-            fill_modifier_menu(m, self.panel.add_modifier)
-            vm = ins.addMenu("&View")
-            vm.aboutToShow.connect(lambda: fill_view_menu(vm, self.data, lambda **kw: self.panel.view.add_view(**kw)))
-            plug = ins.addMenu("&Plugin step")
-            plug.aboutToShow.connect(lambda: self._fill_plugin_menu(plug))
-            ins.addAction("&Load plugin file…", lambda: self.panel.view._load_plugin_file())
-            ins.addSeparator()
-            ins.addAction("Ask Claude to add steps…", self.ask_claude)
-            self.step_menu = m
-        else:
-            m = mb.addMenu("&Pipeline")
-            m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier))
-            fill_modifier_menu(m, self.panel.add_modifier)
-            self.step_menu = m
-        t = mb.addMenu("&Tools")
-        for key, _icon, tip in Viewport.TOOLS:
-            t.addAction(tip.split(":")[0], lambda k=key: self.viewport.set_tool(k))
-        t.addSeparator()
-        t.addAction("Ask Claude about selection…", self.ask_claude, "Ctrl+J")
-        w = mb.addMenu("&Window")
-        w.addAction("Notebook workspace" if nb else "Analyze workspace", lambda: self.set_workspace(0), "Ctrl+1")
-        w.addAction("Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
-        if nb:
-            w.addAction("Notebook", lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))
-            w.addAction("Plugins", lambda: (self.plugins_dock.show(), self.plugins_dock.raise_()), "Ctrl+Shift+X")
-            w.addAction("Display settings", lambda: (self.display.parent().show(), self.display.parent().raise_()))
-        w.addAction("Python console", lambda: self.bottom.setCurrentWidget(self.console))
-        w.addAction("Data inspector", lambda: self.bottom.setCurrentWidget(self.inspector))
-        w.addAction("Plots", lambda: self.bottom.setCurrentWidget(self.plots))
-        w.addAction("Ask Claude", self.ask_claude)
-        w.addAction("Command palette", self.command_palette)
-        h = mb.addMenu("&Help")
-        for label, page in manual.PAGES.items():
-            h.addAction(label, lambda page=page: self.open_help(page))
-        h.addSeparator()
-        h.addAction("Open plugin folder", self.open_plugin_folder)
-        about = h.addAction("About EWALD", self.about)
-        about.setMenuRole(QtGui.QAction.AboutRole)
-
-    def _fill_plugin_menu(self, menu):
-        view = self.panel.view
-        view._fill_plugin_menu()
-        menu.clear()
-        for act in view.plugin_menu.actions():
-            menu.addAction(act)
-
-    def _cell_action(self, action):
-        view = self.panel.view
-        if view is not None and view.current is not None:
-            view._cell_action(view.current, action)
-
-    def toggle_focus(self):
-        """Hide or show the notebook and side panels, leaving the viewport (Ctrl+\\)."""
-        docks = [self.notebook_dock, self.plugins_dock, self.display.parent(), self.ask_dock, self.bottom_dock]
-        hide = self.notebook_dock.isVisible()
-        if hide:
-            self._focus_restore = [d for d in docks if d.isVisible()]
-            for d in docks:
-                d.hide()
-        else:
-            for d in getattr(self, "_focus_restore", None) or [self.notebook_dock, self.bottom_dock]:
-                d.show()
-
-    def help_url(self, page="index.md"):
-        return manual.url(page, self.settings["general.docs_url"] or None)
-
-    def open_help(self, page="index.md"):
-        QtGui.QDesktopServices.openUrl(QtCore.QUrl(self.help_url(page)))
-
-    def open_plugin_folder(self):
-        from ..settings import config_dir
-
-        folder = config_dir() / "plugins"
-        folder.mkdir(parents=True, exist_ok=True)
-        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(folder)))
-        self.message(f"Plugin folder: {folder}")
-
-    def about(self):
-        from .. import __title__, __version__
-
-        QtWidgets.QMessageBox.about(
-            self, "About EWALD",
-            f"<b>EWALD {__version__}</b><br>{__title__.split(': ', 1)[1].replace('&', '&amp;')}<p>Atomistic structure and trajectory visualization and analysis "
-            f"with an OVITO-style Python pipeline.</p><p>{self.hardware_summary()}</p>"
-            f"<p><a href='{self.help_url()}'>Manual</a></p>")
-
-    def _gpu_available(self) -> bool:
-        if getattr(self, "_gpu", None) is None:
-            from ..backend import gpu_available
-
-            self._gpu = gpu_available()
-        return self._gpu
-
-    def hardware_summary(self) -> str:
-        """OpenGL driver of the viewport and the CUDA device for compute, as HTML for About."""
-        from ..backend import gpu_available
-
-        gl = self.viewport.opengl_info()
-        text = f"Viewport OpenGL: {gl['renderer'] or 'unknown'} ({gl['vendor']}, {gl['version']})"
-        if gl["software"]:
-            text += "<br><b>Software rendering (no GPU acceleration)</b>"
-        if gpu_available():
-            import cupy
-
-            name = cupy.cuda.runtime.getDeviceProperties(0)["name"]
-            name = name.decode() if isinstance(name, bytes) else name
-            text += f"<br>Compute: CUDA available ({name}); current device {self.device or 'cpu'}"
-        else:
-            text += f"<br>Compute: CPU (no CUDA device or CuPy); current device {self.device or 'cpu'}"
-        return text
-
     def showEvent(self, event):
         super().showEvent(event)
         if not getattr(self, "_gl_checked", False):  # the GL context exists once the window shows
@@ -507,21 +193,16 @@ class MainWindow(QtWidgets.QMainWindow):
         if index == 1:
             self.render_page.update_code()
 
+    def _toggle_live_reload(self, on):
+        """File › Live reload: on or off for this session (the default is in Preferences › General)."""
+        self.live_reload.configure(on, self.settings["general.live_reload_interval"])
+        self.message(f"Live reload {'on' if on else 'off'}")
+
     def preferences(self):
         dlg = prefs.PreferencesDialog(self.settings, self)
         dlg.applied.connect(lambda s: prefs.apply_settings(self, s))
         dlg.exec()
         return dlg
-
-    def command_palette(self):
-        entries = [(label, f"Add modification › {group}", lambda f=factory: self.panel.add_modifier(f()))
-                   for group, items in MODIFIER_MENU.items() for label, factory in items.items()]
-        entries += menu_entries(self.menuBar())
-        pal = CommandPalette(entries, self)
-        geo = self.geometry()
-        pal.move(geo.x() + (geo.width() - 560) // 2, geo.y() + 90)
-        pal.edit.setFocus()
-        pal.exec()
 
     def _set_device(self, text):
         dev = {"CPU": "cpu", "CUDA": "cuda", "auto": "auto"}[text]
@@ -544,18 +225,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.style.cell_color = None
         self._style_changed()
 
-    def _fill_theme_menu(self):
-        from .. import plugins
-
-        self.theme_menu.clear()
-        group = QtGui.QActionGroup(self.theme_menu)
-        for name, p in plugins.themes().items():
-            act = self.theme_menu.addAction(name, lambda n=name: self.apply_theme(n))
-            act.setCheckable(True)
-            act.setChecked(name == self.style.theme)
-            act.setToolTip(p.description)
-            group.addAction(act)
-
     def apply_theme(self, name: str):
         """Apply a theme (element colors, background, cell color, radius preset) to the view."""
         self.style.apply_theme(name, self.data.types if self.data is not None else ())
@@ -565,124 +234,6 @@ class MainWindow(QtWidgets.QMainWindow):
     def message(self, text, error=False):
         self.statusBar().showMessage(text, 10000)
         self.log.appendPlainText(time.strftime("%H:%M:%S ") + ("ERROR " if error else "") + text)
-
-    # ---------------------------------------------------------------- pipeline / data
-    def open_file(self, path, **kwargs):
-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-        try:
-            pipe = import_file(path, **kwargs)
-        except Exception as exc:
-            QtWidgets.QApplication.restoreOverrideCursor()
-            self.message(f"Load failed: {path}: {exc}", error=True)
-            QtWidgets.QMessageBox.critical(self, "Load failed", f"{path}\n\n{exc}")
-            return None
-        QtWidgets.QApplication.restoreOverrideCursor()
-        if _has_phonon_modes(pipe) and not any(isinstance(m, mods.PhononMode) for m in pipe.modifiers):
-            pipe.modifiers.append(mods.PhononMode())  # a phonon file opens playing a mode
-        self._check_bond_limit = True
-        self.style.bond_pairs.clear()  # a new structure gets its own VESTA bond table
-        self.set_pipeline(pipe)
-        self.setWindowTitle(f"EWALD — {os.path.basename(str(path))}")
-        self.message(f"Loaded {path}: {pipe.num_frames} frame(s)")
-        return pipe
-
-    def open_dialog(self):
-        nb = self.layout_mode == "notebook"
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open" if nb else "Load file", "", file_filter())
-        if path:
-            self.open_any(path)
-
-    def open_any(self, path, ask_types: bool = True, **kwargs):
-        """A session, a notebook (.py, notebook layout) or a data file."""
-        from ..session import is_session_file
-
-        if is_session_file(path):
-            self.load_session(path)
-        elif self.layout_mode == "notebook" and str(path).endswith(".py") and os.path.isfile(path):
-            self.open_notebook(path)
-        elif kwargs or not ask_types:
-            self.open_file(path, **kwargs)
-        else:
-            self._open_asking_types(path)
-
-    # ---------------------------------------------------------------- notebooks
-    def open_notebook(self, path, run: bool | None = None):
-        """Open a ``.py`` notebook in a new tab. Its cells run when ``python.run_notebooks``
-        says so ("ask" asks: a notebook is code)."""
-        if run is None:
-            policy = self.settings["python.run_notebooks"]
-            if policy == "ask":
-                run = QtWidgets.QMessageBox.question(
-                    self, "Run notebook", f"Run the cells of {os.path.basename(path)} now?\n\n"
-                    "A notebook is Python code: run it only if you trust it.") == QtWidgets.QMessageBox.Yes
-            else:
-                run = policy == "always"
-        try:
-            view = self.panel.open_notebook(path, run=run)
-        except Exception as exc:
-            self.message(f"Open failed: {path}: {exc}", error=True)
-            QtWidgets.QMessageBox.critical(self, "Open failed", f"{path}\n\n{exc}")
-            return None
-        self.notebook_dock.show()
-        self.setWindowTitle(f"EWALD — {os.path.basename(str(path))}")
-        self.message(f"Opened notebook {path}" + ("" if run else " (not run: Notebook › Run all)"))
-        return view
-
-    def save_notebook(self, ask: bool = False):
-        """Save the current notebook as a ``.py`` file (asks for a name the first time)."""
-        nb = self.panel.notebook
-        if nb is None:
-            return None
-        path = nb.path
-        if ask or not path:
-            start = path or os.path.join(os.path.dirname(self.session_path or "") or os.getcwd(),
-                                         nb.name.replace(" ", "_") + ".py")
-            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save notebook", start, NOTEBOOK_FILTER)
-            if not path:
-                return None
-            if not path.endswith(".py"):
-                path += ".py"
-        try:
-            self.panel.save(path)
-        except OSError as exc:
-            QtWidgets.QMessageBox.critical(self, "Save failed", f"{path}\n\n{exc}")
-            return None
-        self.message(f"Saved notebook {path}")
-        return path
-
-    def open_neb_dialog(self):
-        """A VASP NEB folder (00 .. NN) or a LAMMPS NEB run folder, one frame per image."""
-        path = QtWidgets.QFileDialog.getExistingDirectory(self, "Load NEB folder")
-        if path:
-            self.open_file(path)
-            self.bottom.setCurrentWidget(self.plots)
-
-    def open_example(self, name):
-        """Open one of the shipped example files (File › Open example)."""
-        return self.open_file(str(examples.path(name)))
-
-    def open_remote_dialog(self):
-        from .remote_dialog import RemoteFileDialog
-
-        dlg = RemoteFileDialog(self)
-        if dlg.exec() and dlg.url:
-            self._open_asking_types(dlg.url)
-        return dlg
-
-    def _open_asking_types(self, path):
-        kwargs = {}
-        from ..io.lammps_dump import is_lammps_dump
-
-        if is_lammps_dump(path):
-            default_map = self.settings["general.lammps_type_map"]
-            if self.settings["general.lammps_type_prompt"] == "ask":
-                text, ok = QtWidgets.QInputDialog.getText(
-                    self, "LAMMPS types", "Optional type → element map (e.g. 1=Cu,2=Zr):", text=default_map)
-            else:
-                text, ok = default_map, True
-            if ok and text.strip():
-                kwargs["type_map"] = dict(p.split("=") for p in text.replace(" ", "").split(","))
-        self.open_file(path, **kwargs)
 
     def set_pipeline(self, pipeline):
         self.pipeline = pipeline
@@ -695,6 +246,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.display is not self.panel:
             self.display.set_pipeline(pipeline)
         self.timeline.set_num_frames(pipeline.num_frames)
+        self.live_reload.set_pipeline(pipeline)
         self._push_console()
         self.frame = 0
         self.timeline._set(0) if self.timeline.frame != 0 else self.recompute()
@@ -821,275 +373,6 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.display.refresh()
 
-    def toggle_bond(self, i, j):
-        """Bond tool: delete the i-j bond if it exists, else add it, via an EditBonds modifier on top."""
-        from ..modifiers import EditBonds
-
-        if self.pipeline is None or self.data is None:
-            return
-        d = self.data
-        ids = d["Particle Identifier"] if "Particle Identifier" in d else np.arange(d.count)
-        bonded = d.bonds is not None and bool(np.any(np.all(np.sort(d.bonds.topology, axis=1) == sorted((i, j)), axis=1)))
-        mods = self.pipeline.modifiers
-        if not (mods and isinstance(mods[-1], EditBonds)):
-            mods.append(EditBonds())
-        mods[-1].toggle(int(ids[i]), int(ids[j]), bonded)
-        self.panel.refresh(select=("mod", mods[-1]))
-        self.recompute()
-        self.message(f"{'Deleted' if bonded else 'Added'} bond {d.types[i]}{int(ids[i])}-{d.types[j]}{int(ids[j])}")
-
-    def _on_pick(self, text):
-        self.pick_label.setText(text)
-        if not self._plot_picking:
-            self._each_plot(lambda p: p.forget_selection(frames=False))  # a click in the view replaces a plot range
-        self._each_plot(lambda p: p.set_highlight(self._selected_indices()))
-        self.ask_panel.update_selection()
-        if text:
-            self.log.appendPlainText(time.strftime("%H:%M:%S ") + text)
-
-    # ---------------------------------------------------------------- linked plots
-    def _connect_plot(self, p):
-        """Link a plot (the Plots tab or a notebook view cell) to the viewport and timeline."""
-        p.phononModePicked.connect(self.play_phonon_mode)
-        p.atomsSelected.connect(self._plot_selected_atoms)
-        p.framesSelected.connect(self._plot_selected_frames)
-        p.frameRequested.connect(self.timeline._set)
-        p.expressionRequested.connect(self._keep_plot_selection)
-        self.timeline.selectionChanged.connect(p.set_frame_selection)
-
-    def plot_panels(self) -> list:
-        """The Plots tab and the live plots of the current notebook's view cells."""
-        view = self.panel.view if self.layout_mode == "notebook" else None
-        return [self.plots] + ([w.plot_panel for w in view.widgets if w.plot_panel is not None] if view else [])
-
-    def _each_plot(self, fn):
-        for p in self.plot_panels():
-            fn(p)
-
-    def _selected_indices(self):
-        """The viewport picks, else the 'Selection' property of the current frame."""
-        indices = self.viewport.picks
-        if not indices and self.data is not None and "Selection" in self.data:
-            indices = np.nonzero(self.data.selection)[0].tolist()
-        return indices
-
-    def _plot_selected_atoms(self, indices):
-        self._plot_picking = True
-        try:
-            self.viewport.set_picks(indices)
-        finally:
-            self._plot_picking = False
-
-    def _plot_selected_frames(self, frames):
-        self.timeline.set_selection(frames)
-        if frames and self.frame not in frames:
-            self.timeline._set(frames[0])
-
-    def _keep_plot_selection(self, expression):
-        from ..modifiers import ExpressionSelection
-
-        if self.pipeline is None:
-            return
-        m = ExpressionSelection(expression)
-        self.pipeline.modifiers.append(m)
-        self._each_plot(lambda p: p.forget_selection(frames=False))
-        self.viewport.clear_picks()
-        self.panel.refresh(select=("mod", m))
-        self.recompute()
-        self.message(f"Added Expression selection: {expression}")
-
-    # ---------------------------------------------------------------- Claude
-    def _ask_context(self):
-        """(pipeline, frame, indices) for the Ask Claude panel: the viewport picks, else the
-        'Selection' property of the current frame."""
-        return self.pipeline, self.frame, self._selected_indices()
-
-    # ---------------------------------------------------------------- viewport context menu
-    def _overlay(self):
-        from ..modifiers import OverlayFrames
-
-        mods = self.pipeline.modifiers if self.pipeline is not None else []
-        return next((m for m in mods if isinstance(m, OverlayFrames)), None)
-
-    def set_overlay(self, on: bool = True, **params):
-        """Show the other frames as see-through copies (``OverlayFrames``, added last when
-        missing); ``params`` set its fields, e.g. ``transparency=0.5``."""
-        if self.pipeline is None:
-            return
-        from ..modifiers import OverlayFrames
-
-        mod = self._overlay()
-        if mod is None:
-            if not on:
-                return
-            mod = OverlayFrames()
-            self.pipeline.modifiers.append(mod)
-        mod.enabled = on
-        for k, v in params.items():
-            setattr(mod, k, v)
-        self.panel.refresh(select=("mod", mod))
-        self.recompute()
-
-    def viewport_menu(self, everything: bool = False) -> QtWidgets.QMenu:
-        """Right click in the viewport. The entries follow what is loaded and picked: picked
-        atoms, the kind of data (phonon modes, NEB band, volumetric grid), trajectory
-        playback and frame overlay, display toggles and views. ``everything`` lists every
-        section regardless (for the feature inventory)."""
-        menu = QtWidgets.QMenu(self)
-        d, pipe = self.data, self.pipeline
-        if d is None and not everything:
-            menu.addAction(icon("open"), "Load file…", self.open_dialog)
-            menu.addAction(icon("remote"), "Load remote file (SSH)…", self.open_remote_dialog)
-            ex = menu.addMenu(icon("example"), "Open example")
-            for example in examples.EXAMPLES:
-                ex.addAction(example.file, lambda e=example: self.open_example(e.file))
-            return menu
-
-        picks = self.viewport.picks
-        if picks or everything:
-            count = f"{len(picks)} atom{'s' if len(picks) != 1 else ''}" if picks else "N atoms"
-            head = menu.addAction(f"{count} picked")
-            head.setEnabled(False)
-            menu.addAction(icon("center"), "Center view on picked", self.center_on_picks)
-            menu.addAction(icon("select"), "Select picked atoms", lambda: self.select_picked())
-            menu.addAction(icon("delete"), "Delete picked atoms", lambda: self.select_picked(delete=True))
-            menu.addAction(icon("clear"), "Clear picks", self.viewport.clear_picks)
-            menu.addSeparator()
-
-        tables = d.tables if d is not None else {}
-        neb = next((name for name, t in tables.items() if _is_neb(t)), None)
-        phonon = d is not None and "Phonon Modes" in d.attributes
-        grids = list(d.grids) if d is not None else []
-        if phonon or everything:
-            menu.addAction(icon("chart"), "Phonon band structure", lambda: self.show_plot())
-        if neb or everything:
-            menu.addAction(icon("chart"), "NEB energy profile", lambda: self.show_plot(neb))
-        if grids or everything:
-            iso = [m for m in pipe.modifiers if isinstance(m, mods.CreateIsosurface)] if pipe else []
-            if iso:
-                menu.addAction(icon("isosurface"), "Edit isosurface", lambda: self.panel.refresh(select=("mod", iso[0])))
-            else:
-                menu.addAction(icon("isosurface"), "Add isosurface", self.add_isosurface)
-        if phonon or neb or grids or everything:
-            menu.addSeparator()
-
-        if (pipe is not None and pipe.num_frames > 1) or everything:
-            playing = self.timeline.play.isChecked()
-            play = menu.addAction(icon("pause" if playing else "play"), "Pause" if playing else "Play")
-            play.setShortcut("Space")
-            play.triggered.connect(self.timeline.play.toggle)
-            self._overlay_entries(menu)
-            menu.addSeparator()
-
-        show = menu.addMenu(icon("eye"), "Show")
-        for label, attr in (("Bonds", "bonds_enabled"), ("Simulation cell", "show_cell")):
-            act = show.addAction(label)
-            act.setCheckable(True)
-            act.setChecked(bool(getattr(self.style, attr)))
-            act.toggled.connect(lambda on, attr=attr: self._toggle_style(attr, on))
-        if (d is not None and d.cell.is_valid) or everything:
-            views = menu.addMenu("View along")
-            for ax in ("a", "b", "c", "a*", "b*", "c*"):
-                views.addAction(ax, lambda ax=ax: self.viewport.view_along(ax))
-        ortho = menu.addAction("Orthographic")
-        ortho.setCheckable(True)
-        ortho.setChecked(self.viewport.ortho)
-        ortho.toggled.connect(self.viewport.ortho_button.setChecked)
-        menu.addAction(icon("fit"), "Zoom to fit", self.viewport.zoom_fit)
-        menu.addSeparator()
-        menu.addAction(icon("claude"), "Ask Claude about selection…" if picks or everything else "Ask Claude about this structure…",
-                       self.ask_claude)
-        return menu
-
-    def _show_viewport_menu(self):
-        menu = self.viewport_menu()
-        menu.exec(QtGui.QCursor.pos())
-        menu.deleteLater()  # a new menu is built for every right click
-
-    def _overlay_entries(self, menu):
-        mod = self._overlay()
-        on = mod is not None and mod.enabled
-        act = menu.addAction(icon("layers"), "Overlay other frames (see-through)")
-        act.setCheckable(True)
-        act.setChecked(on)
-        act.toggled.connect(lambda checked: self.set_overlay(checked))
-        sub = menu.addMenu("Overlay transparency")
-        sub.setEnabled(on)
-        for pct in (50, 70, 85, 95):
-            a = sub.addAction(f"{pct} %")
-            a.setCheckable(True)
-            a.setChecked(on and abs(mod.transparency - pct / 100) < 1e-6)
-            a.triggered.connect(lambda _=False, t=pct / 100: self.set_overlay(True, transparency=t))
-        moving = menu.addAction("Overlay only atoms that move")
-        moving.setCheckable(True)
-        moving.setEnabled(on)
-        moving.setChecked(on and mod.min_displacement > 0)
-        moving.toggled.connect(lambda checked: self.set_overlay(True, min_displacement=0.1 if checked else 0.0))
-
-    def _toggle_style(self, attr, on):
-        setattr(self.style, attr, on)
-        if attr == "bonds_enabled" and on and self.data is not None:
-            self.style.ensure_bond_pairs(self.data.types)
-        self._style_changed()
-
-    def center_on_picks(self):
-        """Rotate and zoom about the picked atoms (their mean position)."""
-        picks = self.viewport.picks
-        if picks and self.data is not None:
-            self.viewport.plotter.set_focus(self.data.positions[picks].mean(axis=0))
-            self.viewport.render()
-
-    def select_picked(self, delete: bool = False):
-        """Turn the viewport picks into an ``ExpressionSelection`` (by particle identifier when
-        the data has one, so the same atoms stay selected on every frame), followed by
-        ``DeleteSelected`` when ``delete``."""
-        picks, d = self.viewport.picks, self.data
-        if self.pipeline is None or d is None or not picks:
-            return
-        if "Particle Identifier" in d.particles:
-            ids = sorted(int(i) for i in np.asarray(d["Particle Identifier"])[picks])
-            expr = f"np.isin(ParticleIdentifier, {ids})"
-        else:
-            expr = f"np.isin(ParticleIndex, {sorted(picks)})"
-        self.viewport.clear_picks()
-        self.pipeline.modifiers.append(mods.ExpressionSelection(expr))
-        if delete:
-            self.pipeline.modifiers.append(mods.DeleteSelected())
-        self.panel.refresh(select=("mod", self.pipeline.modifiers[-1]))
-        self.recompute()
-
-    def add_isosurface(self):
-        """Add ``CreateIsosurface`` for the first grid property of the current frame."""
-        if self.pipeline is None or self.data is None or not self.data.grids:
-            return
-        name, grid = next(iter(self.data.grids.items()))
-        mod = mods.CreateIsosurface(property=next(iter(grid.properties)), grid=name)
-        self.pipeline.modifiers.append(mod)
-        self.panel.refresh(select=("mod", mod))
-        self.recompute()
-
-    def show_plot(self, table: str | None = None):
-        """Open the Plots tab, on ``table`` when given (phonon bands show by themselves)."""
-        self.bottom_dock.show()
-        self.bottom.setCurrentWidget(self.plots)
-        if table is not None:
-            self.plots.hist.setCurrentText("")
-            self.plots.table.setCurrentText(table)
-
-    def ask_claude(self):
-        self.ask_dock.show()
-        self.ask_dock.raise_()
-        self.ask_panel.update_selection()
-        self.ask_panel.input.setFocus()
-
-    def _create_plugin(self, prompt):
-        self.ask_claude()
-        self.ask_panel.input.setPlainText(prompt)
-
-    def _after_claude(self):
-        self.panel.refresh()
-        self.recompute()
-
     # ---------------------------------------------------------------- output
     def render_image(self, filename=None, return_image=False, **overrides):
         if self.data is None:
@@ -1131,212 +414,19 @@ class MainWindow(QtWidgets.QMainWindow):
         page.preview.setPixmap(QtGui.QPixmap.fromImage(qimg).scaled(
             page.preview.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
 
-    def export_dialog(self):
-        if self.pipeline is None:
-            return
-        from .. import plugins
-        from ..io import export_file
-
-        filters = save_filters()
-        path, chosen = QtWidgets.QFileDialog.getSaveFileName(
-            self, "Export data", "export.extxyz", ";;".join(f for f, _ in filters))
-        if not path:
-            return
-        fmt = dict(filters).get(chosen)
-        writer = plugins.find_writer(path, fmt)
-        all_frames = False
-        n = self.pipeline.num_frames
-        if writer.multi_frame and n > 1:
-            answer = QtWidgets.QMessageBox.question(
-                self, "Export trajectory", f"{writer.description}\n\nExport all {n} frames? "
-                "(No exports only the current frame.)",
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Cancel)
-            if answer == QtWidgets.QMessageBox.Cancel:
-                return
-            all_frames = answer == QtWidgets.QMessageBox.Yes
-        try:
-            if all_frames:
-                export_file(self.pipeline, path, format=fmt)
-            else:
-                export_file(self.data, path, format=fmt)
-        except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "Export failed", f"{path}\n\n{exc}")
-            return
-        self.message(f"Exported {path} ({writer.name})")
-
-    def export_movie(self, path=None):
-        if self.pipeline is None:
-            return
-        if not path:
-            from .render_page import MOVIE_FORMATS
-
-            ext = MOVIE_FORMATS.get(self.render_page.movie_format.currentText(), ".mp4")
-            path, _ = QtWidgets.QFileDialog.getSaveFileName(
-                self, "Export movie", "movie" + ext, "Movies (*.mp4 *.gif *.avi *.mov);;PNG sequence (*.png)")
-            if not path:
-                return
-        from ..render import render_animation
-
-        page = self.render_page
-        kw = dict(self.style.scene_kwargs())
-        kw.update(page.render_kwargs(movie=True))
-        w, h = kw.pop("size")
-        frames = range(0, self.pipeline.num_frames, self.timeline.stride.value())
-        dlg = QtWidgets.QProgressDialog(f"Rendering {os.path.basename(path)}…", "Cancel", 0, len(frames), self)
-        dlg.setWindowModality(QtCore.Qt.WindowModal)
-        dlg.setMinimumDuration(0)
-
-        def progress(i, n):
-            dlg.setValue(i)
-            QtWidgets.QApplication.processEvents()
-            return not dlg.wasCanceled()
-
-        try:
-            n = render_animation(self.pipeline, path, frames=frames, fps=self.timeline.fps.value(),
-                                 device=self.device, size=(w // 2 * 2, h // 2 * 2),
-                                 camera=camera_state(self.viewport.plotter), text=page.text.text() or None,
-                                 time_per_frame=page.time_per_frame.value(), progress=progress, **kw)
-        except Exception as exc:
-            self.message(f"Movie export failed: {exc}", error=True)
-            QtWidgets.QMessageBox.critical(self, "Movie export failed", str(exc))
-            return None
-        finally:
-            dlg.close()
-        self.message(f"Wrote {path} ({n} frames)")
-        return path
-
-    # ---------------------------------------------------------------- sessions
-    def save_session(self, path=None, ask=False):
-        """Save pipeline, style, camera and Render settings to an .ewald file."""
-        if self.pipeline is None:
-            return None
-        path = path or (None if ask else self.session_path)
-        if not path:
-            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save session", "session.ewald", SESSION_FILTER)
-            if not path:
-                return None
-        from ..session import save_session
-
-        try:
-            save_session(path, self.pipeline, frame=self.frame, camera=camera_state(self.viewport.plotter),
-                         style=self.style, render=self.render_page.state(), device=self.device)
-        except (TypeError, OSError) as exc:
-            self.message(f"Save failed: {exc}", error=True)
-            QtWidgets.QMessageBox.critical(self, "Save session failed", str(exc))
-            return None
-        self.session_path = path
-        self.setWindowTitle(f"EWALD — {os.path.basename(path)}")
-        self.message(f"Saved session {path}")
-        return path
-
-    def load_session_dialog(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load session", "", SESSION_FILTER + ";;All files (*)")
-        if path:
-            self.load_session(path)
-
-    def load_session(self, path, allow_code=None):
-        """Restore a session. Python modifiers run only after the user agrees (or ``allow_code=True``)."""
-        import json
-        import warnings
-
-        from ..session import CODE_MODIFIERS, load_session
-
-        if allow_code is None:
-            try:
-                with open(path, encoding="utf-8") as fh:
-                    has_code = any(m.get("type") in CODE_MODIFIERS for m in json.load(fh).get("modifiers", []))
-            except (OSError, ValueError):
-                has_code = False
-            allow_code = has_code and QtWidgets.QMessageBox.question(
-                self, "Python code in session",
-                "This session contains Python modifiers. Run their code?\n\n"
-                "Only answer Yes for sessions you trust; otherwise they are loaded disabled.") \
-                == QtWidgets.QMessageBox.Yes
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                s = load_session(path, allow_code=bool(allow_code))
-        except Exception as exc:
-            self.message(f"Session load failed: {path}: {exc}", error=True)
-            QtWidgets.QMessageBox.critical(self, "Load session failed", f"{path}\n\n{exc}")
-            return None
-        for w in s.warnings:
-            self.message(w, error=True)
-        if s.style:
-            self.style._pref_filled = {}
-            for k, v in s.style.items():  # in place: viewport, panel and console share this object
-                if k in self.style.__dataclass_fields__:
-                    setattr(self.style, k, list(map(list, v)) if k == "bond_pairs" else v)
-        if s.device:
-            self.device = s.device
-            self.device_combo.blockSignals(True)
-            self.device_combo.setCurrentText({"cuda": "CUDA", "auto": "auto"}.get(s.device, "CPU"))
-            self.device_combo.blockSignals(False)
-        self.set_pipeline(s.pipeline)
-        if s.frame:
-            self.timeline._set(min(s.frame, s.pipeline.num_frames - 1))
-        if s.camera:
-            from ..render import apply_camera_state
-
-            apply_camera_state(self.viewport.plotter, s.camera)
-            self.viewport.render()
-        self.render_page.set_state(s.render)
-        self._style_changed()
-        self.session_path = path
-        self.setWindowTitle(f"ewald — {os.path.basename(path)}")
-        self.message(f"Loaded session {path}")
-        return s
-
     def closeEvent(self, event):
         if self.layout_mode == "notebook" and self.isVisible() and not self.panel.confirm_discard(title="Quit"):
             event.ignore()
             return
         prefs.save_layout(self, self.settings)
         self.timeline.timer.stop()
+        self.live_reload.timer.stop()
         self.viewport.plotter.close()  # release the VTK/OpenGL context before Qt tears down
         km = getattr(self.console, "kernel_manager", None)
         if km is not None:
             self.console.kernel_client.stop_channels()
             km.shutdown_kernel()
         super().closeEvent(event)
-
-    # ---------------------------------------------------------------- console
-    def _console_namespace(self):
-        return {"np": np, "mods": mods, "viewer": self, "vp": self.viewport, "pipeline": self.pipeline,
-                "pipe": self.pipeline, "data": self.data, "import_file": import_file, "style": self.style}
-
-    def _push_console(self):
-        shell = getattr(self.console, "shell", None)
-        ns = {"pipeline": self.pipeline, "pipe": self.pipeline, "data": self.data}
-        if self.layout_mode == "notebook" and self.panel.notebook is not None:
-            # the console sees the notebook's variables, so cells and console work on the same objects
-            ns = {k: v for k, v in self.panel.notebook.namespace.items() if not k.startswith("__")} | ns
-            ns["notebook"] = self.panel.notebook
-        if hasattr(shell, "push") and hasattr(shell, "user_ns"):
-            shell.push(ns)
-        elif shell is not None and hasattr(shell, "locals"):
-            shell.locals.update(ns)
-
-    def _after_console(self, *args):
-        shell = getattr(self.console, "shell", None)
-        ns = getattr(shell, "user_ns", None) or getattr(shell, "locals", {})
-        for key in ("pipe", "pipeline"):
-            pipe = ns.get(key)
-            if pipe is not None and pipe is not self.pipeline:
-                self.set_pipeline(pipe)  # user did pipe = import_file(...)
-                return
-        if self.pipeline is not None:
-            self.panel.refresh()
-            self.timeline.set_num_frames(self.pipeline.num_frames)
-            self.recompute()
-
-
-def _has_phonon_modes(pipe) -> bool:
-    try:
-        return "Phonon Modes" in pipe.source_frame(0).attributes
-    except Exception:
-        return False
-
 
 def make_viewport(style, choice: str | None = None) -> Viewport:
     """The VTK viewport, or the OpenGL 1.x one for SSH X11 forwarding (see ``viewport_backend``)."""
