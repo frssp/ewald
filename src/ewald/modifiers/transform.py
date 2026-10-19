@@ -32,10 +32,16 @@ class ComputeProperty(Modifier):
 
 
 class WrapAtoms(Modifier):
-    """Map particles back into the periodic cell."""
+    """Map particles back into the periodic cell (bond periodic images follow)."""
 
     def modify(self, data, ctx):
-        data.positions = data.cell.wrap(data.positions)
+        old = data.positions
+        data.positions = data.cell.wrap(old)
+        if data.bonds is not None and data.bonds.count and data.cell.is_valid:
+            shift = np.rint(data.cell.to_fractional(data.positions) - data.cell.to_fractional(old)).astype(np.int32)
+            i, j = data.bonds.topology.T
+            data.bonds = data.bonds.copy()
+            data.bonds.properties["Periodic Image"] = data.bonds.pbc_images - shift[j] + shift[i]
 
 
 class AffineTransformation(Modifier):
@@ -73,6 +79,27 @@ class Replicate(Modifier):
             ids = data["Particle Identifier"]
             span = int(ids.max()) if count else 0
             out.particles["Particle Identifier"] = (ids[None] + span * np.arange(len(shifts))[:, None]).ravel()
+        if data.bonds is not None:
+            out.bonds = _replicate_bonds(data.bonds, (na, nb, nc), count)
         if self.adjust_box:
             out.cell = Cell(data.cell.matrix * np.array([[na], [nb], [nc]]), data.cell.origin, data.cell.pbc)
         return out
+
+
+def _replicate_bonds(bonds, n, count):
+    """Bonds of a tiled cell: copy c of bond (i, j, image) ends in copy (c + image) mod n of j."""
+    from ..bonds import Bonds
+
+    n = np.asarray(n)
+    copies = np.array([(i, j, k) for i in range(n[0]) for j in range(n[1]) for k in range(n[2])])
+    flat = lambda c: (c[..., 0] * n[1] + c[..., 1]) * n[2] + c[..., 2]  # noqa: E731
+    target = copies[:, None, :] + bonds.pbc_images[None]                  # (copies, M, 3)
+    wrapped = target % n
+    i, j = bonds.topology.T
+    new_i = (flat(copies)[:, None] * count + i[None]).ravel()
+    new_j = (flat(wrapped) * count + j[None]).ravel()
+    out = Bonds.__new__(Bonds)
+    out.properties = {k: np.tile(v, (len(copies),) + (1,) * (v.ndim - 1)) for k, v in bonds.properties.items()}
+    out.properties["Topology"] = np.column_stack([new_i, new_j])
+    out.properties["Periodic Image"] = ((target - wrapped) // n).reshape(-1, 3).astype(np.int32)
+    return out

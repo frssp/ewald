@@ -29,6 +29,8 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
 - `data.py` (`DataCollection`, `Cell`), `pipeline.py` (`Pipeline`, `Modifier`, `PythonModifier`,
   `ComputeContext`, frame cache), `__init__.py` (`import_file`), `__main__.py` (CLI `ewald ...`).
 - `io/`: native lazy readers (`lammps_dump.py`, `xdatcar.py`), everything else via `ase_reader.py`.
+- `bonds.py` (`Bonds`: Topology + Periodic Image, bond search), `mesh.py` (`SurfaceMesh` for
+  `data.surfaces`: polyhedra now, surface meshes later); both drawn by `render.py` and `raytrace.py`.
 - `backend.py` (numpy/CuPy `xp` backends), `neighbors.py` (numba CPU cell list, `find_pairs`),
   `cuda_kernels.py` (CUDA C via CuPy `RawKernel`), `kernels.py` (RDF, unwrap, MSD).
 - `modifiers/`: one module per family; `__init__.py` `__all__` is the public list and also resolves

@@ -17,6 +17,8 @@ data["Coordination"]           # any per-particle property by its OVITO name
 data.particles                 # dict: property name -> array
 data.attributes                # dict of global values ("Timestep", "Energy", analysis results)
 data.tables                    # dict of tables, each a dict of columns (g(r), MSD, ...)
+data.bonds                     # bonds (None until CreateBonds or a LAMMPS data file adds them)
+data.surfaces                  # meshes such as coordination polyhedra
 data.cell.matrix               # 3x3, ROWS are the cell vectors a, b, c
 data.cell.origin, data.cell.pbc, data.cell.volume
 print(data.summary())          # everything above with dtypes and ranges

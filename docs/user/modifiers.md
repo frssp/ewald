@@ -62,6 +62,23 @@ particles connected by distances below the cutoff, with size, center of mass, gy
 and unwrapped coordinates as OVITO computes them. `CalculateDisplacements(reference_frame)`
 gives each particle's displacement from a reference frame, matched by id.
 
+## Bonds and coordination polyhedra
+
+`CreateBonds(cutoff, mode, pairs)` finds bonds with a uniform cutoff, a VESTA-style pair table
+(`mode="pairwise", pairs=[("Ti", "O", 2.4)]`, `*` matches any type) or covalent radii
+(`mode="covalent"`, VESTA's default). Bonds are stored once each in `data.bonds`, with periodic
+images, so they stay correct across boundaries and through `DeleteSelected`, `Slice`,
+`Replicate` and `WrapAtoms`. `EditBonds(add=[(a, b)], remove=[...])` adds or deletes single
+bonds by particle identifier; the GUI's bond tool does the same by clicking two atoms.
+`CoordinationPolyhedra(center_types)` puts a polyhedron around each center particle, colored
+like the center, into `data.surfaces["coordination-polyhedra"]`; it needs bonds upstream. LAMMPS
+data files with a Bonds section fill `data.bonds` directly.
+
+```python
+pipe.modifiers.append(CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)]))
+pipe.modifiers.append(CoordinationPolyhedra(center_types=["Ti"]))
+```
+
 ## Structure identification (ported from OVITO)
 
 These run in the C++ extension and are tested against OVITO 3.16 results.

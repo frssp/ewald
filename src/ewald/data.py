@@ -57,6 +57,8 @@ class DataCollection:
     names ('Position', 'Particle Type', 'Particle Identifier', 'Color', 'Radius',
     'Selection', ...) to arrays whose first axis has length N.  Global values go
     into ``attributes`` and tabulated results (e.g. an RDF) into ``tables``.
+    ``bonds`` (an :class:`ewald.bonds.Bonds`, or None) holds bonds between particles and
+    ``surfaces`` maps names to :class:`ewald.mesh.SurfaceMesh` geometry (e.g. polyhedra).
 
     Modifiers receive a shallow copy, so they must *replace* arrays instead of
     writing into them in place; this keeps cached source frames untouched.
@@ -66,6 +68,8 @@ class DataCollection:
         self.particles: dict[str, np.ndarray] = {}
         self.attributes: dict[str, object] = {}
         self.tables: dict[str, dict[str, np.ndarray]] = {}
+        self.bonds = None
+        self.surfaces: dict = {}
         self.cell = cell if cell is not None else Cell()
         if positions is not None:
             self.particles["Position"] = np.asarray(positions, dtype=float).reshape(-1, 3)
@@ -120,6 +124,8 @@ class DataCollection:
         new.particles = dict(self.particles)
         new.attributes = dict(self.attributes)
         new.tables = {k: dict(v) for k, v in self.tables.items()}
+        new.bonds = None if getattr(self, "bonds", None) is None else self.bonds.copy()
+        new.surfaces = dict(getattr(self, "surfaces", {}))
         new.cell = self.cell.copy()
         return new
 
@@ -127,6 +133,8 @@ class DataCollection:
         """Return a copy containing only the particles selected by ``index``."""
         new = self.copy()
         new.particles = {k: v[index] for k, v in self.particles.items()}
+        if new.bonds is not None:
+            new.bonds = new.bonds.remap_particles(index, self.count)
         return new
 
     def delete(self, mask) -> "DataCollection":
@@ -202,6 +210,10 @@ class DataCollection:
         scalars = {k: v for k, v in self.attributes.items() if np.isscalar(v)}
         if scalars:
             lines.append("attributes: " + ", ".join(f"{k}={v!r}" for k, v in scalars.items()))
+        if getattr(self, "bonds", None) is not None:
+            lines.append(f"bonds: {self.bonds.count} (properties {list(self.bonds.properties)})")
+        for name, mesh in getattr(self, "surfaces", {}).items():
+            lines.append(f"surface {name!r}: {mesh.vertex_count} vertices, {mesh.face_count} faces")
         for name, table in self.tables.items():
             lines.append(f"table {name!r}: columns {list(table)}")
         return "\n".join(lines)

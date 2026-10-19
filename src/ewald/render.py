@@ -95,6 +95,8 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     point sprites for very large systems) or 'auto' (mesh up to ``mesh_limit`` atoms).
     ``type_colors``/``type_radii`` override per-type defaults, e.g. ``{"Cu": "#c8794a"}``.
     ``bond_pairs``: VESTA-style list of ``(A, B, dmin, dmax)``; '*' matches any type.
+    Bonds in ``data.bonds`` (CreateBonds, EditBonds) are drawn whenever present and take
+    precedence over ``bonds``/``bond_pairs``; ``data.surfaces`` meshes (polyhedra) are drawn too.
     ``trajectory_width``: line width of ``tables['trajectory-lines']`` (GenerateTrajectoryLines); 0 hides them.
     """
     import pyvista as pv
@@ -131,8 +133,9 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
             mapper.SetScaleArray("radius")
             mapper.SetScaleFactor(1.0)
             mapper.SetSplatShaderCode(_IMPOSTOR_SHADER)
-        if bonds or bond_pairs:
+        if bonds or bond_pairs or data.bonds is not None:
             _add_bonds(plotter, data, colors, bonds, bond_radius, bond_pairs)
+    _add_surfaces(plotter, data)
     if trajectory_width > 0 and "trajectory-lines" in data.tables:
         _add_trajectory_lines(plotter, data, trajectory_width)
     if show_cell and data.cell.is_valid:
@@ -160,41 +163,60 @@ def bond_list(data, cutoff=None, pairs=None):
     With ``pairs`` [(A, B, dmin, dmax), ...] only pairs whose types and length
     match a row are kept (VESTA's bond search table); otherwise ``cutoff``.
     """
-    from .neighbors import find_pairs
+    from .bonds import find_bonds
 
-    rmax = max(p[3] for p in pairs) if pairs else cutoff
-    i, j, d, dist = find_pairs(data.positions, data.cell, rmax)
-    i, j, d, dist = (np.asarray(x) for x in (i, j, d, dist))
-    if pairs:
-        types = data.types
-        ti, tj = types[i], types[j]
-        keep = np.zeros(len(i), bool)
-        for a, b, lo, hi in pairs:
-            ok_t = (((ti == a) | (a == "*")) & ((tj == b) | (b == "*"))) | \
-                   (((ti == b) | (b == "*")) & ((tj == a) | (a == "*")))
-            keep |= ok_t & (dist >= lo) & (dist <= hi)
-        i, j, d = i[keep], j[keep], d[keep]
-    return i, j, d
+    b = find_bonds(data, cutoff, pairs)
+    i, j = b.topology.T
+    d = b.vectors(data)
+    return np.concatenate([i, j]), np.concatenate([j, i]), np.concatenate([d, -d])
+
+
+def scene_bonds(data, cutoff=None, pairs=None):
+    """The bonds a renderer draws: ``data.bonds`` if present, else a search by ``cutoff``/``pairs``."""
+    from .bonds import find_bonds
+
+    if data.bonds is not None:
+        return data.bonds
+    return find_bonds(data, cutoff, pairs)
 
 
 def _add_bonds(plotter, data, colors, cutoff, bond_radius, pairs=None):
-    """Half-bonds from each atom along the minimum-image vector (correct across PBC)."""
+    """Half-bonds from each atom along its periodic-image bond vector (correct across PBC)."""
     import pyvista as pv
 
-    i, j, d = bond_list(data, cutoff, pairs)
-    if not len(i):
+    from .bonds import bond_segments
+
+    b = scene_bonds(data, cutoff, pairs)
+    if not b.count:
         return
-    start = data.positions[i]
-    pts = np.empty((2 * len(i), 3))
+    start, end, rgb, _ = bond_segments(data, b, colors)
+    m = len(start)
+    pts = np.empty((2 * m, 3))
     pts[0::2] = start
-    pts[1::2] = start + 0.5 * d
-    lines = np.column_stack([np.full(len(i), 2), np.arange(0, 2 * len(i), 2),
-                             np.arange(1, 2 * len(i), 2)]).ravel()
+    pts[1::2] = end
+    lines = np.column_stack([np.full(m, 2), np.arange(0, 2 * m, 2), np.arange(1, 2 * m, 2)]).ravel()
     poly = pv.PolyData(pts, lines=lines)
-    poly.cell_data["rgb"] = (colors[i] * 255).astype(np.uint8)
+    poly.cell_data["rgb"] = (rgb * 255).astype(np.uint8)
     tubes = poly.tube(radius=bond_radius, n_sides=12, capping=False)
     plotter.add_mesh(tubes, scalars="rgb", rgb=True, name="bonds", smooth_shading=True, render=False,
                      ambient=0.25, diffuse=0.8, specular=0.2, specular_power=30)
+
+
+def _add_surfaces(plotter, data):
+    """Every ``data.surfaces`` mesh as one actor (faces) plus its outline edges."""
+    import pyvista as pv
+
+    for name, mesh in getattr(data, "surfaces", {}).items():
+        if not mesh.face_count:
+            continue
+        poly = mesh.to_pyvista()
+        poly.cell_data["rgb"] = (np.clip(mesh.face_colors(), 0, 1) * 255).astype(np.uint8)
+        plotter.add_mesh(poly, scalars="rgb", rgb=True, opacity=1.0 - mesh.transparency, name=f"surface:{name}",
+                         ambient=0.3, diffuse=0.7, specular=0.2, render=False, smooth_shading=False)
+        if mesh.edges is not None and len(mesh.edges):
+            lines = np.column_stack([np.full(len(mesh.edges), 2), mesh.edges]).ravel()
+            plotter.add_mesh(pv.PolyData(mesh.vertices, lines=lines), color=_rgb(mesh.edge_color), line_width=1.5,
+                             name=f"surface-edges:{name}", render=False)
 
 
 def _add_trajectory_lines(plotter, data, width):
