@@ -46,7 +46,7 @@ def _isolated_settings(tmp_path, monkeypatch):
     monkeypatch.setenv("EWALD_CONFIG_DIR", str(tmp_path / "config"))
 
 
-# --- SSH/SFTP: an in-process server (tests/sftp_server.py) and an isolated ~/.ssh/config
+# --- SSH/SFTP: an in-process server (tests/helpers/sftp_server.py) and an isolated ~/.ssh/config
 @pytest.fixture
 def client_key(tmp_path):
     paramiko = pytest.importorskip("paramiko")
@@ -102,7 +102,7 @@ def server(tmp_path, client_key, ssh_env, lammps_dir, vasp_dir):
         shutil.copy(lammps_dir / f, data / f)
     for f in ("XDATCAR", "POSCAR"):
         shutil.copy(vasp_dir / f, data / f)
-    from sftp_server import SFTPTestServer
+    from helpers.sftp_server import SFTPTestServer
 
     srv = SFTPTestServer(root, client_key=client_key[0])
     known = ssh_env("hpc", srv, identity=client_key[1])
