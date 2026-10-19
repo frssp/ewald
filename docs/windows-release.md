@@ -63,7 +63,10 @@ The GPU build bundles `cupy-cuda12x` and the CUDA 12 runtime wheels it loads at 
 `-cusparse-`). NVRTC is what compiles our `RawKernel` neighbor-list source; cuFFT backs the MSD FFT;
 cuBLAS/cuSOLVER back `linalg` calls in the local-order modifiers. The runtime hook adds each bundled
 `nvidia/*/bin` folder to the DLL search path. The user needs only an NVIDIA driver new enough for
-CUDA 12 (R525 or later); no CUDA Toolkit install. Cost: the GPU installer is several hundred MB larger.
+CUDA 12 (R525 or later); no CUDA Toolkit install. Cost: measured on the first CI build, the CPU
+installer and zip are about 240 MB each, the GPU ones about 1.7 GB each (cuBLAS, cuSOLVER and
+cuSPARSE dominate), close to GitHub's 2 GiB limit per release file. Dropping libraries we do not
+call (cuSPARSE is only needed for `cupyx.scipy.sparse`) is the first size fix.
 
 Kept as a separate installer rather than one build because most machines that open trajectory files
 have no NVIDIA GPU, and the CUDA libraries roughly double the download. The GitHub runners have no
