@@ -23,8 +23,11 @@ pip install -e ".[gui]"     # + desktop viewer (PySide6, pyvistaqt, qtconsole)
 pip install -e ".[remote]"  # + files over SSH (paramiko)
 ```
 
-On Windows, releases also ship wheels and a standalone installer (CPU or CUDA build) that needs no
-Python; see [docs/developer/windows-release.md](docs/developer/windows-release.md).
+Without a C++ compiler (Windows: "Microsoft Visual C++ 14.0 or greater is required") the install
+still succeeds, minus PTM, Voronoi, matching CSP and interval CNA; install the
+[Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and reinstall to
+add them ([details](docs/user/install.md#without-a-c-compiler)). Windows releases will also ship wheels
+and a standalone installer; see [docs/developer/windows-release.md](docs/developer/windows-release.md).
 
 Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
 
@@ -33,8 +36,8 @@ On Linux the GUI also needs a few X11 libraries that minimal installs lack
 libxcb-render-util0 libxcb-image0 libxcb-randr0`). If importing PySide6 fails with
 `undefined symbol ... Qt_6_PRIVATE_API`, remove system directories (`/lib`, `/usr/lib`,
 `/lib/x86_64-linux-gnu`, ...) from `LD_LIBRARY_PATH`; they make a system Qt shadow the wheel's.
-Over `ssh -X` the GUI checks that OpenGL works and falls back to Mesa software rendering; running
-ewald locally and opening `user@cluster:/path` files over SSH is faster.
+Over `ssh -X` the GUI switches to a VESTA-style OpenGL 1.x viewport (`EWALD_VIEWPORT=vtk|legacy-gl`
+chooses by hand); running ewald locally and opening `user@cluster:/path` files over SSH is faster.
 Details: [docs/user/install.md](docs/user/install.md#troubleshooting-the-gui).
 
 ## Quick start
@@ -524,7 +527,7 @@ pipe.modifiers.append(FreeEnergySurface("HILLS", bins=(60, 60)))
 
 CNA, PTM, Voronoi and matching-mode CSP use a C++ extension (`ewald._native`,
 compiled by `pip install -e .` with pybind11; sources and licenses in
-`src/ewald/_csrc/`). Installing needs a C++17 compiler (gcc/clang, Xcode command
-line tools on macOS, MSVC Build Tools on Windows). For 108k atoms on 4 cores:
+`src/ewald/_csrc/`). Building it needs a C++17 compiler (gcc/clang, Xcode command
+line tools on macOS, MSVC Build Tools on Windows); without one ewald installs without these. For 108k atoms on 4 cores:
 CNA ~1 s, PTM ~1.6 s, Voronoi ~1.7 s. With `device="cuda"` the CNA signatures
 run as CuPy kernels.

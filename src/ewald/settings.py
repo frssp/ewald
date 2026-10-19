@@ -67,6 +67,11 @@ OPTIONS = (
            minimum=0.5, maximum=90),
     Option("viewport.show_axes", True, "Show axes tripod"),
     Option("viewport.show_overlay", True, "Show frame / timestep text"),
+    Option("viewport.backend", "auto", "3D view",
+           "VTK: the full viewport (OpenGL 3.2+). Legacy GL: OpenGL 1.x display lists like VESTA, which "
+           "work over SSH X11 forwarding (ssh -X) but have no impostors, smoothing or 3D text. Auto uses "
+           "Legacy GL on an ssh -X display. EWALD_VIEWPORT overrides this. Takes effect at the next start.",
+           choices=("auto", "vtk", "legacy-gl")),
     Option("viewport.hover_info", True, "Atom info on hover",
            "Resting the cursor on an atom shows its element, index and Cartesian and fractional "
            "coordinates in a tooltip and the status bar. Nothing is computed while the view moves."),
@@ -174,6 +179,8 @@ DEVICES = (
 
 # module, purpose, install command
 COMPONENTS = (
+    ("ewald._native", "PTM, Voronoi, CSP matching, interval CNA (C++ extension)",
+     "install a C++ compiler, then reinstall ewald (docs/user/install.md)"),
     ("cupy", "GPU compute (CUDA)", "pip install 'ewald[gpu]'"),
     ("ovito", "Dislocation analysis (DXA)", "pip install 'ewald[gui,ovito]'"),
     ("imageio_ffmpeg", "Movie export (.mp4)", "pip install 'ewald[movie]'"),
@@ -190,7 +197,7 @@ def component_status():
     for mod, purpose, cmd in COMPONENTS:
         found = importlib.util.find_spec(mod) is not None
         version = ""
-        if found:
+        if found and not mod.startswith("ewald."):
             names = [dist.get(mod) or mod] if mod != "cupy" else ["cupy-cuda12x", "cupy-cuda11x", "cupy"]
             for n in names:
                 try:

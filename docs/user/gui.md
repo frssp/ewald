@@ -200,6 +200,12 @@ one render rather than two, and nothing is redrawn while the window is idle or t
 hidden. The Data inspector and Plots tabs follow the current frame only while they are open; a
 plot range linked to the viewport keeps following it either way.
 
+*3D view* picks the viewport itself. Auto uses VTK, except on an SSH-forwarded display
+(`ssh -X`), where it uses Legacy GL: OpenGL 1.x display lists drawn like VESTA, with the frame text
+above the view instead of on it, mesh spheres (points above 400,000 atoms) and no smooth edges or
+color bar. See [Troubleshooting the GUI](install.md#troubleshooting-the-gui). It takes effect at
+the next start; `EWALD_VIEWPORT=vtk|legacy-gl` overrides it.
+
 The Compute switch in the toolbar changes the device for the current session only; the
 preference sets the device the GUI starts with.
 

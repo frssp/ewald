@@ -1264,3 +1264,48 @@ def test_viewport_hover_shows_atom_type_index_and_coordinates(app):
     v.hover_move(*screen(data.positions[0]), w, h)
     assert not v._hover_timer.isActive()
     v.close()
+
+
+def test_main_window_legacy_gl_viewport(app, pipe, tmp_path, monkeypatch):
+    """The OpenGL 1.x viewport (for ssh -X) draws, picks, measures and keeps the camera in sessions."""
+    import time
+
+    from ewald.gui.app import MainWindow
+    from ewald.gui.legacy_viewport import LegacyViewport
+    from ewald.render import camera_state
+
+    monkeypatch.setenv("EWALD_VIEWPORT", "legacy-gl")
+    w = MainWindow(pipe)
+    vp = w.viewport
+    assert isinstance(vp, LegacyViewport)
+    w.resize(900, 700)
+    w.show()
+    for _ in range(20):
+        app.processEvents()
+        time.sleep(0.01)
+    assert vp.opengl_info()["backend"] == "legacy-gl" and vp.opengl_info()["version"]
+    img = vp.view.grabFramebuffer()
+    W, H = vp.view.width(), vp.view.height()
+    bg = img.pixelColor(2, 2)
+    assert img.pixelColor(W // 2, H // 2) != bg  # atoms drawn in the middle
+    assert "Frame 0" in vp.caption.text()
+    vp.set_tool("distance")
+    vp.click(W / 2, H / 2, W, H)
+    vp.click(W / 2 + 25, H / 2, W, H)
+    assert len(vp.picks) == 2 and "Å" in w.pick_label.text()
+    vp.click(2, 2, W, H)  # empty background: nothing picked
+    assert len(vp.picks) == 2
+    vp.hover_info = True
+    assert vp.hover_index(W / 2, H / 2, W, H) is not None  # the hover readout shares the camera
+    assert vp.hover_index(2, 2, W, H) is None
+    vp.view_along("c")
+    vp.rotate("azimuth", 15)
+    w.set_frame(1)
+    app.processEvents()
+    cam = camera_state(vp.plotter)
+    path = w.save_session(str(tmp_path / "s.ewald"))
+    w2 = MainWindow()
+    w2.load_session(path)
+    np.testing.assert_allclose(camera_state(w2.viewport.plotter)["position"], cam["position"], rtol=1e-6)
+    w.close()
+    w2.close()
