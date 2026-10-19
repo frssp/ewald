@@ -119,6 +119,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - P2: glTF, interactive HTML and Blender export.
 - P2: Batch render CLI: apply one `.ewald` session to many run folders.
 - P2: Native GSD reader (H5MD and XTC/TRR/DCD are done).
+- P2: More HDF5 output: Quantum ESPRESSO `charge-density.hdf5` (G-space, needs an FFT to the
+  real-space grid), ABINIT netCDF-4 `*_HIST.nc` trajectories and `*_DEN.nc` densities, VASP
+  `vaspout.h5` DOS/bands for the DOS and band plots, `/results/partial_charges` (PARCHG).
 
 ## Verify outside the cloud container
 
@@ -135,6 +138,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   format and checked against ASE.
 - NEB folders from real VTST runs (the VASP fixture is an EMT band written in VASP layout;
   the LAMMPS fixture is a real `neb` run).
+- The vaspout.h5/vaspwave.h5 readers on real VASP 6.4/6.5 output (MD, relaxation, ISPIN=2,
+  non-collinear, `LCHARGH5`); the fixtures follow py4vasp's schema and are checked against
+  py4vasp, and the charge density is assumed to be stored as rho * V like a CHGCAR. The H5MD
+  reader on GROMACS 2026 `mdrun` output.
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
   CI has no PLUMED, so those tests skip).
 

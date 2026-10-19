@@ -1,6 +1,6 @@
 """H5MD (HDF5 molecular data, https://www.nongnu.org/h5md/) trajectories, lazy read and streaming write.
 
-Needs ``h5py`` (``pip install ewald[formats]``). Written by LAMMPS ``dump h5md``, ESPResSo,
+Needs ``h5py`` (``pip install ewald[formats]``). Written by LAMMPS ``dump h5md``, GROMACS 2026 ``mdrun``, ESPResSo,
 pyiron, MDAnalysis and ewald itself. Frames are slices of ``/particles/<group>/position/value``
 read on demand, so a trajectory of any length opens instantly. Element mapping to ewald:
 ``position`` -> "Position", ``velocity`` -> "Velocity", ``force`` -> "Force", ``image`` ->
