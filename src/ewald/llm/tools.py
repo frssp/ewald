@@ -450,6 +450,40 @@ class Toolset:
                 png = fh.read()
             return ToolResult({"path": path, "frame": f, "size": list(size)}, images=[png])
 
+        writer_names = ", ".join(sorted(plugins.writers()))
+
+        @T("export_file",
+           "Write frames of the pipeline (after its modifiers) to a file: POSCAR, LAMMPS data/dump, extxyz, "
+           "CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... The format follows the file name (POSCAR, *.data, "
+           "*.extxyz, *.h5md) unless given. One-frame formats (POSCAR, LAMMPS data, CHGCAR, cube) write the "
+           "frame they are given (default: the current one). Relative paths go to the work dir; an existing "
+           "file is only replaced with overwrite=true.",
+           _obj({"path": {"type": "string"},
+                 "format": {"type": "string", "description": f"optional writer name or ASE format; writers: {writer_names}"},
+                 "frames": {"type": ["string", "array"], "items": {"type": "integer"},
+                            "description": "'current' (default), 'all', or a list of frame indices"},
+                 "overwrite": {"type": "boolean", "description": "replace an existing file (default false)"}},
+                ["path"]))
+        def export_file(path, format=None, frames="current", overwrite=False):
+            from ..io import export_file as _export
+
+            pipe = self._need_pipeline()
+            target = os.path.expanduser(path)
+            if not os.path.isabs(target):
+                target = os.path.join(self.workdir, target)
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+            if os.path.exists(target) and not overwrite:
+                raise FileExistsError(f"{target} exists; pass overwrite=true to replace it")
+            writer = plugins.find_writer(target, format)
+            if frames == "all":
+                idx = list(range(pipe.num_frames))
+            elif frames in (None, "current"):
+                idx = [self.frame]
+            else:
+                idx = [int(i) for i in frames]
+            _export(pipe, target, format=format, frames=idx)
+            return {"path": target, "writer": writer.name, "frames": len(idx)}
+
         @T("get_script", "Standalone Python script that reproduces the current pipeline.", _obj({}))
         def get_script():
             return {"script": self.to_script()}

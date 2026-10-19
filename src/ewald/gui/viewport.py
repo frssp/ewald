@@ -297,7 +297,7 @@ class Viewport(QtWidgets.QWidget):
             return None
         d = np.linalg.norm(pos - world, axis=1)
         i = int(np.argmin(d))
-        rmax = float(default_radii(self.data, type_radii=self.style.type_radii or None).max()) * self.style.radius_scale
+        rmax = float(default_radii(self.data, **self.style.radius_kwargs()).max()) * self.style.radius_scale
         return i if d[i] <= 1.5 * rmax + 0.3 else None
 
     def _mic(self, v):
@@ -345,7 +345,7 @@ class Viewport(QtWidgets.QWidget):
             self._picks = []
             return
         pos = self.data.positions[self._picks]
-        r = default_radii(self.data, type_radii=self.style.type_radii or None)[self._picks] * self.style.radius_scale
+        r = default_radii(self.data, **self.style.radius_kwargs())[self._picks] * self.style.radius_scale
         rings = pv.MultiBlock([pv.Sphere(radius=ri * 1.18, center=c, theta_resolution=16, phi_resolution=16)
                                for c, ri in zip(pos, r)]).combine()
         p.add_mesh(rings, color=TOKENS["pick"], style="wireframe", line_width=1.5, opacity=0.9,

@@ -5,6 +5,10 @@ extension `ewald._native` (CNA, PTM, Voronoi and centrosymmetry kernels ported f
 during installation. On Linux that is gcc or clang, on macOS the Xcode command line tools
 (`xcode-select --install`), on Windows the MSVC Build Tools.
 
+On Windows you can skip the compiler: each release on GitHub carries prebuilt wheels
+(`pip install ewald-X.Y.Z-cp312-cp312-win_amd64.whl[gui]`) and a standalone installer that needs no
+Python at all, in a CPU and a CUDA build ([Windows release](../developer/windows-release.md)).
+
 ```bash
 git clone https://github.com/frssp/ewald
 cd ewald

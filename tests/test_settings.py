@@ -46,10 +46,12 @@ def test_element_scheme_and_overrides():
     assert s.element_radius("Cu") == pytest.approx(0.8 * covalent_radii[29])
     assert s.element_color("X1") is None
     s["elements.color_scheme"] = "CPK"
-    s["elements.radius_source"] = "vdW"
+    s["elements.radius_source"] = "vdW (Bondi)"
     s["elements.radius_scale"] = 1.0
     assert s.element_color("O") == pytest.approx(tuple(cpk_colors[8]))
     assert s.element_radius("O") == pytest.approx(vdw_radii[8])
+    s["elements.radius_source"] = "ionic"                   # most common state at CN VI: O2-
+    assert s.element_radius("O") == pytest.approx(1.40)
     s["elements.overrides"] = {"Cu": {"color": "#c8794a", "radius": 1.28}}
     assert s.element_color("Cu") == "#c8794a" and s.element_radius("Cu") == 1.28
 

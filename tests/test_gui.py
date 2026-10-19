@@ -196,18 +196,41 @@ def test_element_defaults_fill_only_unset_types(app, cu_fcc):
 
     style = ViewStyle()
     s = settings.Settings()
-    apply_element_defaults(style, cu_fcc.types, s)
+    apply_element_defaults(style, cu_fcc, s)
     assert style.type_colors == {}                            # defaults: nothing redundant
     s["elements.overrides"] = {"Cu": {"color": "#c8794a"}}
-    apply_element_defaults(style, cu_fcc.types, s)
+    apply_element_defaults(style, cu_fcc, s)
     assert style.type_colors["Cu"] == "#c8794a"
     s["elements.overrides"] = {}
     s["elements.color_scheme"] = "CPK"
-    apply_element_defaults(style, cu_fcc.types, s)            # previous fill replaced
+    apply_element_defaults(style, cu_fcc, s)            # previous fill replaced
     assert style.type_colors["Cu"] != "#c8794a"
     style.type_colors["Cu"] = "#000000"                       # session edit wins
-    apply_element_defaults(style, cu_fcc.types, s)
+    apply_element_defaults(style, cu_fcc, s)
     assert style.type_colors["Cu"] == "#000000"
+
+
+def test_ionic_radius_preset_fills_type_radii(app):
+    from ase.spacegroup import crystal
+
+    from ewald import settings
+    from ewald.data import DataCollection
+    from ewald.gui.preferences import apply_element_defaults
+    from ewald.gui.style import ViewStyle
+
+    sto = DataCollection.from_ase(crystal(["Sr", "Ti", "O"], [(0, 0, 0), (0.5, 0.5, 0.5), (0.5, 0.5, 0)],
+                                          spacegroup=221, cellpar=[3.905] * 3 + [90] * 3))
+    style, s = ViewStyle(), settings.Settings()
+    style.radius_preset = "vdW"
+    assert apply_element_defaults(style, sto, s) is None and style.type_radii == {}   # preset goes via kwargs
+    assert style.scene_kwargs()["radius_preset"] == "vdW"
+    style.radius_preset = "ionic"
+    table = apply_element_defaults(style, sto, s)
+    assert style.type_radii["Ti"] == pytest.approx(0.8 * 0.605) and table.coordination["Sr"] == 12
+    style.oxidation_states = {"Ti": 3}
+    apply_element_defaults(style, sto, s)                     # refilled for the new oxidation state
+    assert style.type_radii["Ti"] == pytest.approx(0.8 * 0.67)
+    assert style.scene_kwargs()["oxidation_states"] == {"Ti": 3}
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")

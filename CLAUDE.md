@@ -15,6 +15,7 @@ xvfb-run -a python -m pytest -q  # full suite; rendering and GUI tests need an X
 python -m pytest -q --ignore=tests/test_render.py --ignore=tests/test_gui.py   # no display
 python -m ewald api > llms.txt   # regenerate the LLM API reference (see below)
 python benchmarks/neighbors.py   # neighbor-list timings
+python benchmarks/large_files.py # open/frame-switch/memory on generated multi-million-atom files
 python examples/demo.py          # sample trajectories + figures into demo_out/
 mkdocs build --strict            # the manual (pip install -r docs/requirements.txt); CI runs it
 ```
@@ -28,7 +29,9 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
 
 - `data.py` (`DataCollection`, `Cell`), `pipeline.py` (`Pipeline`, `Modifier`, `PythonModifier`,
   `ComputeContext`, frame cache), `__init__.py` (`import_file`), `__main__.py` (CLI `ewald ...`).
-- `io/`: native lazy readers (`lammps_dump.py`, `xdatcar.py`), everything else via `ase_reader.py`.
+- `io/`: native lazy readers (`lammps_dump.py`, `xdatcar.py`, `extxyz.py`, `xsf.py`, `h5md.py`), MDAnalysis
+  for XTC/TRR/DCD (`mdanalysis_reader.py`), everything else via `ase_reader.py`; each module also has its
+  writer. `io.builtin_readers()`/`builtin_writers()` register them in `plugins.py` (reader and writer registries).
   `remote.py` opens `host:/path` / `ssh://` paths (paramiko): `base.open_binary` streams them to the
   native readers, `FileSource` downloads them to a local cache for every other reader. Tests use the
   in-process server in `tests/sftp_server.py` (fixtures `server`, `ssh_env` in conftest), no sshd.
@@ -40,6 +43,8 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
   OVITO names (`XxxModifier` -> `Xxx`). `ovito_bridge.py` wraps the optional `ovito` package (DXA).
 - `_csrc/`: C++ ports of OVITO CNA/PTM/Voronoi/CSP plus vendored ptm, voro++, mwm_csp; origins and
   licenses in `_csrc/README.md`. Built by `setup.py` (pybind11).
+- `radii.py`: radius presets (covalent, Slater, Clementi, vdW, Shannon ionic with oxidation-state and CN guessing);
+  tables in `tables/radii.json`, regenerated from pymatgen with `tables/make_radii.py`, never by hand.
 - `render.py` (VTK/PyVista offscreen; impostors above 150k atoms), `raytrace.py` (numba ray tracer,
   the publication renderer; pip VTK has no OSPRay), `vector.py` (SVG/PDF/EPS via matplotlib),
   `overlays.py` (text, color/type legends, scale bar for every renderer), `movie.py` (GIF/PNG via
@@ -75,7 +80,7 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
   (`gui/params.py`) is generated from it, so store every constructor argument as an attribute of the
   same name. New modifiers that construct with no arguments appear in the GUI menu automatically;
   otherwise add an entry with a sensible default to `MODIFIER_MENU` in `gui/pipeline_panel.py`.
-- Optional dependencies (`gui`, `gpu`, `ovito`, `llm`, `movie`) are imported lazily; tests use
+- Optional dependencies (`gui`, `gpu`, `ovito`, `llm`, `movie`, `formats`) are imported lazily; tests use
   `pytest.importorskip` for them. Headless `render()`/`compute()` never read `settings` implicitly.
 - Python first; numba or C++ only for measured hot spots. Ported OVITO code is used under its MIT
   option and keeps the notice. No LICENSE file (private project).

@@ -19,7 +19,7 @@ The API mirrors OVITO's, so OVITO knowledge transfers; the differences below are
 from ewald import import_file
 from ewald.modifiers import CoordinationAnalysis, ExpressionSelection, DeleteSelected, ColorCoding
 
-pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, cif, ...
+pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, xsf, h5md, xtc, cif, ...
 # pipe = import_file("dump.*.lammpstrj", type_map={1: "Cu", 2: "Zr"})   # LAMMPS numeric types -> elements
 # pipe = import_file("cluster:/scratch/run1/dump.lammpstrj")   # over SSH: host:/path, user@host:path, ssh://host/path
 # pipe = import_file("run.npz", format="npz-trajectory")  # format= also names reader plugins (`ewald plugins`)
@@ -86,7 +86,7 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 | vector export (`.pdf`/`.svg`) | `render(data, "fig.svg", renderer="vector")` (also .pdf/.eps) |
 | `TachyonRenderer(antialiasing_samples=, ambient_occlusion_samples=)` | `render(..., renderer="raytrace", quality="publication")` (default; `"draft"`/`"standard"`, or explicit `samples=`, `ao_samples=`) |
 | session state (`.ovito`) | `ewald.session.save_session(path, pipe, camera=..., render=...)`, `load_session(path).pipeline` |
-| `export_file(pipeline, file, format, columns=[...])` | `export_file(pipe, file, format=...)` (`"lammps/dump"` native, else ASE) |
+| `export_file(pipeline, file, format, columns=[...])` | `export_file(pipe, file, format=None, frames=None)`: writer from the file name (`POSCAR`, `*.data`, `*.extxyz`, `*.xsf`, `*.h5md`, `*.xtc`, `*.cif`, ...) or `format=`; one-frame formats need `frames=[i]` |
 
 ## Other entry points
 
@@ -104,6 +104,12 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
   components `"Magnetization.Z"`, `.integrate(name)`, `.interpolate(name, points)`). Grid names: "charge-density",
   "potential", "elf", "cube". `CreateIsosurface`/`GridSlice` put `SurfaceMesh`es into `data.surfaces`, which
   `render()` draws. Isolevels are absolute values in the property's units (VESTA's default style: e/A^3).
+- Atom sizes: `render(..., radius_preset=)` picks the default radii ("covalent" Cordero 2008, "atomic" Slater 1964,
+  "atomic (calc.)" Clementi 1967, "vdW" Alvarez 2013, "vdW (Bondi)", "ionic"/"ionic (crystal)" Shannon 1976), times
+  0.8 x `radius_scale`. Ionic radii need oxidation states and CN: pass `oxidation_states={"Ti": 4, "O": -2}` and
+  `coordination={"Ti": 6}`, else they are guessed (type names like "Fe3+", charges, charge balance; CN from the
+  structure); `ewald.radii.resolve(data, "ionic").summary()` shows what was used. A "Radius" property or
+  `type_radii` wins.
 - `ewald.llm.describe_frame(data)` / `describe_trajectory(pipe)`: compact JSON summaries and detected events.
 - `ewald.llm.narrate(pipe)`: event timeline; `ewald.llm.Agent.from_file(path).ask("...")`: Claude over these tools.
 '''
