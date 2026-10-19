@@ -103,3 +103,40 @@ def test_cli_names_the_extra_for_a_missing_package(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_run", boom)
     with pytest.raises(SystemExit, match=r"pip install 'ewald\[llm\]'"):
         cli.main(["mcp"])
+
+
+def test_ssh_forwarded_display_detection(monkeypatch):
+    monkeypatch.setenv("SSH_CONNECTION", "10.0.0.2 5000 10.0.0.1 22")
+    for display, forwarded in (("localhost:11.0", True), ("localhost:10", True), (":0", False),
+                               (":1.0", False), ("localhost:2.0", False)):
+        monkeypatch.setenv("DISPLAY", display)
+        assert gui.ssh_forwarded_display() is forwarded, display
+    monkeypatch.delenv("SSH_CONNECTION")
+    monkeypatch.delenv("SSH_CLIENT", raising=False)
+    monkeypatch.setenv("DISPLAY", "localhost:11.0")
+    assert not gui.ssh_forwarded_display()
+
+
+def test_forwarded_display_falls_back_to_software_opengl(monkeypatch, capsys):
+    monkeypatch.setenv("SSH_CONNECTION", "1 2 3 4")
+    monkeypatch.setenv("DISPLAY", "localhost:11.0")
+    for key in ("LIBGL_ALWAYS_SOFTWARE", "QT_XCB_GL_INTEGRATION", "EWALD_SKIP_GL_PROBE"):
+        monkeypatch.delenv(key, raising=False)
+    tried = []
+
+    def probe(extra):
+        tried.append(extra)
+        return bool(extra), "XIO: fatal IO error 17"
+
+    gui.check_remote_display(probe)
+    assert tried == [{}, {"LIBGL_ALWAYS_SOFTWARE": "1"}]
+    import os
+
+    assert os.environ["LIBGL_ALWAYS_SOFTWARE"] == "1"
+    assert "software rendering" in capsys.readouterr().err
+
+    monkeypatch.delenv("LIBGL_ALWAYS_SOFTWARE")
+    with pytest.raises(gui.QtStartupError, match="(?s)forwarded over SSH.*XIO: fatal IO error 17.*vglrun"):
+        gui.check_remote_display(lambda extra: (False, "XIO: fatal IO error 17"))
+    monkeypatch.setenv("EWALD_SKIP_GL_PROBE", "1")
+    gui.check_remote_display(lambda extra: pytest.fail("probe should be skipped"))

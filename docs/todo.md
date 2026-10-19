@@ -18,6 +18,8 @@ GUI
 - Undo/redo for pipeline edits.
 - Compute frames in a background thread so the GUI stays responsive.
 - Scene updates without a full rebuild when only colors or a few properties change.
+- Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
+  screen edges) and VTK scene lights instead of the fixed head light; bond impostors.
 
 Analysis
 
@@ -147,6 +149,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   non-collinear, `LCHARGH5`); the fixtures follow py4vasp's schema and are checked against
   py4vasp, and the charge density is assumed to be stored as rho * V like a CHGCAR. The H5MD
   reader on GROMACS 2026 `mdrun` output.
+- The SSH X11 forwarding probe and Mesa fallback on a real `ssh -X` session (RHEL 9 crashed with
+  `XIO: fatal IO error`); the cloud container's Xvfb renders even without GLX, so only the
+  detection and fallback order are tested.
 - GUI startup checks on a Wayland desktop and on Fedora (the xcb library check is skipped when
   `WAYLAND_DISPLAY` is set; the Fedora package names in its message are untested).
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;

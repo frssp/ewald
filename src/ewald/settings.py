@@ -63,11 +63,17 @@ OPTIONS = (
            minimum=0.5, maximum=90),
     Option("viewport.show_axes", True, "Show axes tripod"),
     Option("viewport.show_overlay", True, "Show frame / timestep text"),
-    Option("viewport.sphere_resolution", 10, "Sphere resolution", "Interactive mesh detail; exports use full quality.",
-           minimum=4, maximum=40),
+    Option("viewport.sphere_drawing", "impostor", "Sphere drawing",
+           "Impostor: GPU spheres that are round at any zoom and fast for any number of atoms. "
+           "Mesh: triangle spheres (Sphere resolution) up to the impostor threshold. "
+           "A style's own Shape (mesh/impostor) wins over this.", choices=("impostor", "mesh")),
+    Option("viewport.sphere_resolution", 16, "Sphere resolution",
+           "Mesh sphere detail when Sphere drawing is Mesh; exports use full quality.", minimum=4, maximum=40),
     Option("viewport.mesh_limit", 150_000, "Impostor threshold",
            "Above this many atoms spheres are drawn as GPU impostors (and arrows as lines).",
            minimum=1000, maximum=100_000_000),
+    Option("viewport.anti_aliasing", True, "Smooth edges", "FXAA on the viewport: removes jagged sphere and "
+           "bond outlines at almost no cost."),
     Option("viewport.arrow_resolution", 6, "Arrow resolution",
            "Sides per vector arrow while interacting; exports use full quality.", minimum=3, maximum=32),
     Option("viewport.interactive_detail", "auto", "Detail while moving",

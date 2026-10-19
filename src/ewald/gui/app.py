@@ -272,7 +272,40 @@ class MainWindow(QtWidgets.QMainWindow):
         QtWidgets.QMessageBox.about(
             self, "About EWALD",
             f"<b>EWALD {__version__}</b><br>{__title__.split(': ', 1)[1].replace('&', '&amp;')}<p>Atomistic structure and trajectory visualization and analysis "
-            f"with an OVITO-style Python pipeline.</p><p><a href='{self.help_url()}'>Manual</a></p>")
+            f"with an OVITO-style Python pipeline.</p><p>{self.hardware_summary()}</p>"
+            f"<p><a href='{self.help_url()}'>Manual</a></p>")
+
+    def hardware_summary(self) -> str:
+        """OpenGL driver of the viewport and the CUDA device for compute, as HTML for About."""
+        from ..backend import gpu_available
+
+        gl = self.viewport.opengl_info()
+        text = f"Viewport OpenGL: {gl['renderer'] or 'unknown'} ({gl['vendor']}, {gl['version']})"
+        if gl["software"]:
+            text += "<br><b>Software rendering (no GPU acceleration)</b>"
+        if gpu_available():
+            import cupy
+
+            name = cupy.cuda.runtime.getDeviceProperties(0)["name"]
+            name = name.decode() if isinstance(name, bytes) else name
+            text += f"<br>Compute: CUDA available ({name}); current device {self.device or 'cpu'}"
+        else:
+            text += f"<br>Compute: CPU (no CUDA device or CuPy); current device {self.device or 'cpu'}"
+        return text
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not getattr(self, "_gl_checked", False):  # the GL context exists once the window shows
+            self._gl_checked = True
+            QtCore.QTimer.singleShot(0, self.check_opengl)
+
+    def check_opengl(self):
+        """Warn once in the status bar when the viewport runs on a software OpenGL driver."""
+        gl = self.viewport.opengl_info()
+        if gl["software"]:
+            self.message(f"Viewport uses software OpenGL ({gl['renderer']}): no GPU acceleration, "
+                         "so large scenes are slow. Check the graphics driver (Help › About EWALD).")
+        return gl
 
     def set_workspace(self, index):
         self.workspaces.setCurrentIndex(index)
@@ -882,9 +915,10 @@ def _app():
 
     app = QtWidgets.QApplication.instance()
     if app is None:
-        from . import check_qt_platform
+        from . import check_qt_platform, check_remote_display
 
         check_qt_platform()
+        check_remote_display()
         app = QtWidgets.QApplication(sys.argv)
         app.setApplicationName("ewald")
         theme.apply(app)

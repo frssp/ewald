@@ -155,6 +155,21 @@ def spheres_cloud(spheres):
     return cloud
 
 
+_SOFTWARE_GL = ("llvmpipe", "softpipe", "swrast", "software rasterizer", "microsoft basic render", "swiftshader")
+
+
+def opengl_info(render_window) -> dict:
+    """The OpenGL driver a (rendered) VTK window uses: 'vendor', 'renderer', 'version' and
+    'software' (True for Mesa llvmpipe and other CPU rasterizers, which are slow)."""
+    info = {"vendor": "", "renderer": "", "version": ""}
+    for line in render_window.ReportCapabilities().splitlines():
+        key, _, value = line.partition(" string:")
+        if key.startswith("OpenGL ") and key[7:] in info:
+            info[key[7:]] = value.strip()
+    info["software"] = any(s in info["renderer"].lower() for s in _SOFTWARE_GL)
+    return info
+
+
 def _split_by_alpha(cloud):
     """``[(cloud, name suffix)]``: when some spheres are see-through and some are not, the
     opaque ones (RGB) and, as ``":glass"``, the see-through ones (RGBA); else the cloud as is."""
@@ -207,7 +222,29 @@ def add_atoms(plotter, cloud, *, atom_style: str = "auto", mesh_limit: int = 150
     mapper.SetScaleArray("radius")
     mapper.SetScaleFactor(1.0)
     mapper.SetSplatShaderCode(_IMPOSTOR_SHADER)
+    ren = plotter.renderer
+    if not getattr(ren, "_impostor_observer", False):
+        ren.AddObserver("StartEvent", _impostor_camera)
+        ren._impostor_observer = True
+    _impostor_camera(ren)
     return actor
+
+
+def _impostor_camera(renderer, *_):
+    """Pass the projection to every impostor actor of ``renderer`` (on each render), so their
+    fragments get the depth of the sphere surface."""
+    cam = renderer.GetActiveCamera()
+    m = cam.GetProjectionTransformMatrix(renderer)
+    width = renderer.GetSize()[0]
+    proj = [m.GetElement(0, 0) * width / 2, m.GetElement(2, 2), m.GetElement(2, 3),
+            0.0 if cam.GetParallelProjection() else 1.0]
+    actors = renderer.GetActors()
+    actors.InitTraversal()
+    for _ in range(actors.GetNumberOfItems()):
+        actor = actors.GetNextActor()
+        mapper = actor.GetMapper()
+        if hasattr(mapper, "GetSplatShaderCode") and mapper.GetSplatShaderCode() == _IMPOSTOR_SHADER:
+            actor.GetShaderProperty().GetFragmentCustomUniforms().SetUniform4f("impostorProj", proj)
 
 
 def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, show_cell: bool = True,
@@ -274,16 +311,28 @@ def draw_scene(plotter, scene, *, atom_style: str = "auto", mesh_limit: int = 15
 
 # Fragment code for sphere impostors: discard outside the disc, then Blinn-Phong with a
 # fixed head light plus ambient, matching the mesh material (ambient 0.25, diffuse 0.8).
+# The sprite sits at the sphere center; moving each fragment's depth to the sphere surface makes
+# overlapping spheres intersect and bonds enter them like real meshes. The world radius comes from
+# the sprite's size in pixels (screen derivative of the offset) and ``impostorProj`` =
+# (pixels per eye unit at unit depth or in ortho, P22, P23, perspective) from _impostor_camera.
 _IMPOSTOR_SHADER = """
 //VTK::Color::Impl
 float r2 = dot(offsetVCVSOutput.xy, offsetVCVSOutput.xy);
 if (r2 > 1.0) { discard; }
-vec3 n = vec3(offsetVCVSOutput.xy, sqrt(1.0 - r2));
+float nz = sqrt(1.0 - r2);
+vec3 n = vec3(offsetVCVSOutput.xy, nz);
 vec3 l = normalize(vec3(-0.25, 0.35, 1.0));
 float diff = max(dot(n, l), 0.0);
 float spec = pow(max(dot(n, normalize(l + vec3(0.0, 0.0, 1.0))), 0.0), 40.0);
 diffuseColor = diffuseColor * (0.3 + 0.75 * diff) + vec3(0.3 * spec);
 ambientColor = vec3(0.0);
+float rpix = 1.0 / max(length(vec2(dFdx(offsetVCVSOutput.x), dFdy(offsetVCVSOutput.x))), 1e-6);
+float zn = 2.0 * gl_FragCoord.z - 1.0;
+bool persp = impostorProj.w > 0.5;
+float ze = persp ? -impostorProj.z / (zn + impostorProj.y) : (zn - impostorProj.z) / impostorProj.y;
+ze += nz * rpix / (persp ? impostorProj.x / -ze : impostorProj.x);
+zn = persp ? (impostorProj.y * ze + impostorProj.z) / -ze : impostorProj.y * ze + impostorProj.z;
+gl_FragDepth = 0.5 * zn + 0.5;
 """
 
 

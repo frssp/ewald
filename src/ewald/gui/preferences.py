@@ -36,7 +36,8 @@ LAYOUT = {
         ("Navigation", ["viewport.rotation_step"]),
         ("Overlays", ["viewport.show_axes", "viewport.show_overlay"]),
         ("Performance", ["viewport.interactive_detail", "viewport.target_fps", "viewport.interactive_atoms",
-                         "viewport.refine_delay", "viewport.sphere_resolution", "viewport.arrow_resolution",
+                         "viewport.refine_delay", "viewport.sphere_drawing", "viewport.anti_aliasing",
+                         "viewport.sphere_resolution", "viewport.arrow_resolution",
                          "viewport.mesh_limit"])]),
     "Elements": ("Default atom colors, radii and bond search, like VESTA's elements.ini.", [
         ("Atoms", ["elements.color_scheme", "elements.radius_source", "elements.radius_scale"]),
@@ -848,7 +849,9 @@ def apply_settings(win, s: Settings, startup: bool = False):
     if startup or style.preset != s["viewport.style_preset"]:
         style.apply_preset(s["viewport.style_preset"])
     vp.rotation_step = s["viewport.rotation_step"]
+    vp.sphere_drawing = s["viewport.sphere_drawing"]
     vp.sphere_resolution = s["viewport.sphere_resolution"]
+    vp.set_anti_aliasing(s["viewport.anti_aliasing"])
     vp.mesh_limit = s["viewport.mesh_limit"]
     vp.arrow_resolution = s["viewport.arrow_resolution"]
     vp.detail_mode = s["viewport.interactive_detail"]

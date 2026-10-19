@@ -103,6 +103,82 @@ def check_qt_platform():
             "xcb-util-wm, xcb-util-keysyms, xcb-util-image, xcb-util-renderutil, libxkbcommon-x11).")
 
 
+# Run in a child process: an OpenGL failure over a forwarded X display can corrupt the X
+# connection and abort the process (malloc_consolidate, XIO fatal error) instead of raising.
+GL_PROBE = """
+import sys
+from PySide6 import QtWidgets
+from pyvistaqt import QtInteractor
+import pyvista as pv
+app = QtWidgets.QApplication(sys.argv[:1])
+w = QtInteractor(None, off_screen=False)
+w.add_mesh(pv.Sphere())
+w.show(); app.processEvents(); w.render(); app.processEvents()
+print(w.ren_win.ReportCapabilities().splitlines()[1:3])
+w.close()
+"""
+# tried in order when the display is forwarded over SSH; the first that renders is kept
+GL_FALLBACKS = ({}, {"LIBGL_ALWAYS_SOFTWARE": "1"},
+                {"LIBGL_ALWAYS_SOFTWARE": "1", "QT_XCB_GL_INTEGRATION": "none"})
+
+
+def ssh_forwarded_display() -> bool:
+    """True when DISPLAY is an SSH X11 forwarding (``ssh -X``/``-Y``: ``localhost:10.0`` and up)."""
+    display = os.environ.get("DISPLAY", "")
+    if not (os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_CLIENT")) or ":" not in display:
+        return False
+    host, _, number = display.rpartition(":")
+    try:
+        return bool(host) and int(number.split(".")[0]) >= 10
+    except ValueError:
+        return False
+
+
+def probe_opengl(extra_env: dict, timeout: float = 60) -> tuple[bool, str]:
+    """Open a small VTK window in a child process with ``extra_env``; (rendered, output)."""
+    import subprocess
+
+    try:
+        out = subprocess.run([sys.executable, "-c", GL_PROBE], env={**os.environ, **extra_env},
+                             capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, "timed out"
+    return out.returncode == 0, (out.stdout + out.stderr).strip()
+
+
+def check_remote_display(probe=probe_opengl):
+    """Over SSH X11 forwarding, make sure VTK can draw, falling back to Mesa software OpenGL.
+
+    Forwarded GLX is indirect rendering (OpenGL 1.x), which VTK can't use. If the first probe
+    fails, the fallbacks in ``GL_FALLBACKS`` are tried and the one that works is set in
+    ``os.environ`` for this process; if none works, :class:`QtStartupError` lists the options.
+    ``EWALD_SKIP_GL_PROBE=1`` skips the check.
+    """
+    if os.environ.get("EWALD_SKIP_GL_PROBE") or not ssh_forwarded_display():
+        return
+    last = ""
+    for extra in GL_FALLBACKS:
+        if any(os.environ.get(k) not in (None, v) for k, v in extra.items()):
+            continue  # the user chose a different value
+        ok, last = probe(extra)
+        if ok:
+            if extra:
+                os.environ.update(extra)
+                print("ewald-gui: OpenGL over SSH X11 forwarding failed; using "
+                      + " ".join(f"{k}={v}" for k, v in extra.items()) + " (software rendering, slower)",
+                      file=sys.stderr)
+            return
+    raise QtStartupError(
+        f"the display {os.environ.get('DISPLAY')} is forwarded over SSH, and VTK could not draw on it "
+        "(forwarded GLX only offers OpenGL 1.x), not even with Mesa software rendering "
+        f"(LIBGL_ALWAYS_SOFTWARE=1). Last error: {last[-400:] or 'none'}\n"
+        "Options: run ewald on your own computer and open the cluster's files over SSH "
+        "(ewald gui host:/path/to/file, or File > Load remote file (SSH)); use a remote desktop with GPU "
+        "OpenGL (TurboVNC + VirtualGL: vglrun ewald-gui, X2Go, NoMachine, Open OnDemand); install "
+        "Mesa's software OpenGL on the cluster (RHEL: dnf install mesa-dri-drivers mesa-libGL) and "
+        "retry; or render without a window: ewald render FILE out.png. "
+        "See 'Troubleshooting the GUI' in docs/user/install.md.")
+
 def show(pipeline=None, device=None, block: bool = True):
     from .app import show as _show
 

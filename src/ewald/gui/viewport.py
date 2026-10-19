@@ -59,7 +59,8 @@ class Viewport(QtWidgets.QWidget):
         self.overlay_text = ""
         # set from Preferences (ewald.settings)
         self.rotation_step = 15.0
-        self.sphere_resolution = 10
+        self.sphere_drawing = "impostor"  # 'auto' styles: GPU impostors, or 'mesh' up to mesh_limit atoms
+        self.sphere_resolution = 16
         self.mesh_limit = 150_000
         self.arrow_resolution = 6
         self.show_overlay = True
@@ -93,6 +94,8 @@ class Viewport(QtWidgets.QWidget):
         grid.setRowStretch(1, 1)
         self.plotter.set_background(style.background)
         self.plotter.enable_parallel_projection()
+        self.anti_aliasing = False
+        self.set_anti_aliasing(True)
         iren = self.plotter.iren
         iren.add_observer("LeftButtonPressEvent", self._on_press)
         iren.add_observer("LeftButtonReleaseEvent", self._on_release)
@@ -212,6 +215,8 @@ class Viewport(QtWidgets.QWidget):
         kw = self.style.scene_kwargs()
         kw["cell_color"] = self.style.cell_color or ("#AEB4BE" if dark else "black")
         kw["sphere_resolution"] = self.sphere_resolution  # interactive; image export uses full quality
+        if kw["atom_style"] == "auto" and self.sphere_drawing == "impostor":
+            kw["atom_style"] = "impostor"
         kw["arrow_resolution"] = self.arrow_resolution
         scene = self.data
         if coarse:  # impostors only, no bonds: cheap to build and to draw
@@ -303,6 +308,27 @@ class Viewport(QtWidgets.QWidget):
         self._go_coarse_for_motion()
         if self.coarse:
             self._refine_timer.start(int(self.refine_delay * 1000))
+
+    def opengl_info(self) -> dict:
+        """The OpenGL driver of the viewport (see :func:`ewald.render.opengl_info`)."""
+        from ..render import opengl_info
+
+        info = getattr(self, "_gl_info", None)
+        if info is None:
+            info = opengl_info(self.plotter.render_window)
+            if info["renderer"]:  # known once the window has a GL context
+                self._gl_info = info
+        return info
+
+    def set_anti_aliasing(self, on: bool):
+        """FXAA on or off (Preferences › Viewports › Smooth edges)."""
+        if on == self.anti_aliasing:
+            return
+        if on:
+            self.plotter.enable_anti_aliasing("fxaa")
+        else:
+            self.plotter.disable_anti_aliasing()
+        self.anti_aliasing = on
 
     def reset_view(self):
         self._first = True
