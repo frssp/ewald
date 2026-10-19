@@ -15,7 +15,7 @@ gui = ["PySide6>=6.5", "pyvistaqt>=0.11", "qtconsole>=5.5", "ipykernel"]
 gpu = ["cupy-cuda12x"]
 analysis = ["freud-analysis"]
 movie = ["imageio[ffmpeg]"]
-formats = ["h5py", "MDAnalysis>=2.7"]   # H5MD; GROMACS XTC/TRR, DCD, NetCDF
+formats = ["h5py", "MDAnalysis>=2.7"]   # H5MD, vaspout.h5, MDTraj HDF5; GROMACS XTC/TRR, DCD, NetCDF
 ovito = ["ovito"]   # DislocationAnalysis (DXA) and OvitoModifier bridge
 plumed = ["plumed"]   # PLUMED Python binding; the PLUMED library itself comes from conda-forge or a build (PLUMED_KERNEL)
 llm = ["anthropic>=1.0", "mcp"]

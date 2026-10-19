@@ -19,7 +19,7 @@ The API mirrors OVITO's, so OVITO knowledge transfers; the differences below are
 from ewald import import_file
 from ewald.modifiers import CoordinationAnalysis, ExpressionSelection, DeleteSelected, ColorCoding
 
-pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, xsf, h5md, xtc, cif, ...
+pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vaspout.h5, LAMMPS dump/data, extxyz, xsf, h5md, xtc, cif, ...
 # pipe = import_file("dump.*.lammpstrj", type_map={1: "Cu", 2: "Zr"})   # LAMMPS numeric types -> elements
 # pipe = import_file("cluster:/scratch/run1/dump.lammpstrj")   # over SSH: host:/path, user@host:path, ssh://host/path
 # pipe = import_file("dump.lammpstrj", thermo="log.lammps")   # thermo columns -> data.attributes["Temp"], data.tables["Thermo"]

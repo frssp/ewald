@@ -238,7 +238,7 @@ class Toolset:
         format_help = f"optional; detected from the file when omitted. Readers: {formats}"
 
         @T("load_structure",
-           "Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, "
+           "Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vaspout.h5, LAMMPS dump/data, "
            "extxyz, cif, ... ; wildcards allowed) as the session pipeline, replacing any previous one. "
            "Returns frame count and a description of the first frame.",
            _obj({"path": {"type": "string"},
