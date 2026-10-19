@@ -35,6 +35,7 @@ DiskSpanning=no
 OutputDir={#OutputDir}
 OutputBaseFilename=ewald-{#AppVersion}-win64-{#Variant}-setup
 UninstallDisplayIcon={app}\ewald-gui.exe
+SetupIconFile=..\..\src\ewald\assets\icon\ewald.ico
 WizardStyle=modern
 
 [Tasks]

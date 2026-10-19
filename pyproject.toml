@@ -4,16 +4,27 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ewald"
-version = "0.1.0"
+dynamic = ["version"]   # ewald.__version__ in src/ewald/__init__.py, the one place to bump
 description = "EWALD (Extensible Workbench for Atomic Lattices & Dynamics): atomistic structure and trajectory visualization and analysis with a Python pipeline API"
 readme = "README.md"
 requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C++",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Operating System :: OS Independent",
+    "Private :: Do Not Upload",
+]
 dependencies = ["numpy>=1.24", "scipy", "ase>=3.23", "matplotlib", "pillow", "pyvista>=0.44", "vtk>=9.3", "numba>=0.59",
                 "tomli>=1.1; python_version < '3.11'"]   # tomli: plugin manifests on Python 3.10
 
 [project.optional-dependencies]
 gui = ["PySide6>=6.5", "pyvistaqt>=0.11", "qtconsole>=5.5", "ipykernel"]   # PySide6 only: no PyQt5/PyQt6 (see ewald/gui/__init__.py)
-gpu = ["cupy-cuda12x"]
+gpu = ["cupy-cuda12x; sys_platform != 'darwin'"]   # no CUDA on macOS: the extra installs nothing there
 symmetry = ["spglib>=2.0"]   # SymmetryAnalysis (space group, Wyckoff positions)
 movie = ["imageio-ffmpeg"]   # bundled ffmpeg binary for MP4/AVI/MOV
 formats = ["h5py", "MDAnalysis>=2.7"]   # H5MD, vaspout.h5, MDTraj HDF5; GROMACS XTC/TRR, DCD, NetCDF
@@ -25,6 +36,14 @@ dev = ["pytest", "paramiko>=3.2", "spglib>=2.0"]
 [project.scripts]
 ewald = "ewald.__main__:main"
 ewald-gui = "ewald.gui:main"
+
+[project.urls]
+Homepage = "https://github.com/frssp/ewald"
+Documentation = "https://github.com/frssp/ewald/tree/main/docs"
+Changelog = "https://github.com/frssp/ewald/blob/main/CHANGELOG.md"
+
+[tool.setuptools.dynamic]
+version = {attr = "ewald.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]

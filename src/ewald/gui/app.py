@@ -20,6 +20,7 @@ from .ask_panel import AskPanel, agent_from_settings
 from .console import make_console
 from .icons import app_icon
 from .inspector import DataInspector
+from .macos import set_app_name, strip_psn
 from .notebook_panel import NotebookPanel
 from .pipeline_panel import DisplayPanel, PipelinePanel
 from .plots import PlotsPanel
@@ -160,6 +161,9 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         install_prompts(self)  # SSH password / host-key dialogs for remote files
         if pipeline is not None:
             self.set_pipeline(pipeline)
+        app = QtWidgets.QApplication.instance()
+        if isinstance(app, EwaldApplication):  # files from Finder (Open With, Dock icon, double-click)
+            app.set_file_open_target(self.open_any)
 
     # ---------------------------------------------------------------- chrome
     def _dock(self, widget, title, area, width):
@@ -456,6 +460,40 @@ def _set_windows_app_id():
             pass
 
 
+class EwaldApplication(QtWidgets.QApplication):
+    """QApplication that hands macOS file-open events to the newest main window.
+
+    Finder sends a QFileOpenEvent, not argv, when a file is opened with the .app (double-click,
+    Open With, a drop on the Dock icon). It can arrive before the main window exists, so paths
+    wait until a window registers itself with :meth:`set_file_open_target`.
+    """
+
+    def __init__(self, argv):
+        super().__init__(argv)
+        self._pending_files: list[str] = []
+        self._file_open_target = None
+
+    def set_file_open_target(self, open_path):
+        self._file_open_target = open_path
+        while self._pending_files:
+            try:
+                open_path(self._pending_files[0])
+            except RuntimeError:  # that window was closed and deleted: wait for the next one
+                self._file_open_target = None
+                return
+            self._pending_files.pop(0)
+
+    def event(self, event):
+        if event.type() == QtCore.QEvent.FileOpen:
+            path = event.file() or event.url().toLocalFile()
+            if path:
+                self._pending_files.append(path)
+                if self._file_open_target is not None:
+                    self.set_file_open_target(self._file_open_target)
+            return True
+        return super().event(event)
+
+
 def _app():
     from . import theme
 
@@ -468,7 +506,8 @@ def _app():
         if viewport_backend(settings_mod.load()["viewport.backend"]) == "vtk":
             check_remote_display()
         _set_windows_app_id()
-        app = QtWidgets.QApplication(sys.argv)
+        set_app_name()
+        app = EwaldApplication(strip_psn(sys.argv))
         app.setApplicationName("ewald")
         app.setDesktopFileName("ewald")
         app.setWindowIcon(app_icon())
@@ -505,7 +544,7 @@ def main(argv=None):
     ap.add_argument("file", nargs="?")
     ap.add_argument("--type-map", default=None, help="LAMMPS types, e.g. 1=Cu,2=Zr")
     ap.add_argument("--device", default=None, help="cpu, cuda or auto")
-    args = ap.parse_args(argv)
+    args = ap.parse_args(strip_psn(sys.argv[1:] if argv is None else argv))
     app = _app()
     win = MainWindow(device=args.device)
     if args.file:
