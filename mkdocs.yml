@@ -1,5 +1,5 @@
-site_name: ewald
-site_description: Atomistic structure and trajectory visualization and analysis with an OVITO-style Python pipeline
+site_name: "EWALD: Extensible Window for Atomic Lattices & Dynamics"
+site_description: EWALD (Extensible Window for Atomic Lattices & Dynamics). Atomistic structure and trajectory visualization and analysis with an OVITO-style Python pipeline
 repo_url: https://github.com/frssp/ewald
 repo_name: frssp/ewald
 edit_uri: edit/main/docs/

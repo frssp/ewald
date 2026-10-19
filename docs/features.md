@@ -535,7 +535,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Writing plugins
 - Python API reference
 - Open plugin folder
-- About ewald
+- About EWALD
 
 ### Toolbar
 
