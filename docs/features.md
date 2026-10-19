@@ -558,6 +558,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Run current cell and below
 - Restart
 - Restart and run all
+- Kernel
 - Trust notebook…
 - Move cell up (`Ctrl+Shift+Up`)
 - Move cell down (`Ctrl+Shift+Down`)

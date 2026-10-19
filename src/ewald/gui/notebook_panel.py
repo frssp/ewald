@@ -728,8 +728,15 @@ class NotebookView(QtWidgets.QWidget):
         restart.clicked.connect(self.restart)
         self.py_button = QtWidgets.QToolButton(text=".py", checkable=True, toolTip="Show the notebook as its Python file")
         self.py_button.toggled.connect(self._show_file)
+        self.kernel_button = QtWidgets.QToolButton(objectName="kernelButton", autoRaise=True,
+                                                   popupMode=QtWidgets.QToolButton.InstantPopup,
+                                                   toolTip="Where the cells run: this app's Python or another one")
+        self.kernel_menu = QtWidgets.QMenu(self.kernel_button)
+        self.kernel_menu.aboutToShow.connect(lambda: self.fill_kernel_menu(self.kernel_menu))
+        self.kernel_button.setMenu(self.kernel_menu)
         bar.addWidget(run_all)
         bar.addWidget(restart)
+        bar.addWidget(self.kernel_button)
         bar.addStretch()
         self.status = QtWidgets.QLabel(objectName="muted")
         bar.addWidget(self.status)
@@ -760,6 +767,7 @@ class NotebookView(QtWidgets.QWidget):
         self.stack.addWidget(self.file_view)
         lay.addWidget(self.stack, 1)
         self.add_bar = self._make_add_bar()
+        self._update_kernel_button()
         self.rebuild()
 
     def _make_banner(self):
@@ -934,7 +942,8 @@ class NotebookView(QtWidgets.QWidget):
                 w.set_view_data(self.data, self.notebook.pipeline)
         nb = self.notebook
         pipe = nb.pipeline
-        self.status.setText(("" if pipe is None else f"{len(pipe.modifiers)} steps · ") +
+        steps = None if pipe is None else len(pipe.modifiers) + sum(len(c.steps) for c in nb.cells)
+        self.status.setText(("" if pipe is None else f"{steps} steps · ") +
                             (os.path.basename(nb.path) if nb.path else "not saved") + (" ●" if nb.dirty else ""))
         if self.py_button.isChecked():
             self.file_view.setPlainText(nb.to_py())
@@ -1106,6 +1115,55 @@ class NotebookView(QtWidgets.QWidget):
         self.notebook.reset()
         self.update_results()
 
+    # ------------------------------------------------------------ kernel
+    def _update_kernel_button(self):
+        k = self.notebook.kernel
+        self.kernel_button.setText(f"⚙ {k.display_name if k else 'This app'}")
+
+    def fill_kernel_menu(self, menu):
+        """Kernel choices: this app's Python, the installed Jupyter kernels, another Python."""
+        from .. import kernel as kmod
+
+        menu.clear()
+        current = self.notebook.kernel
+        here = menu.addAction("This app's Python", lambda: self.set_kernel(None))
+        here.setCheckable(True)
+        here.setChecked(current is None)
+        menu.addSeparator()
+        try:
+            specs = kmod.available()
+        except Exception:  # noqa: BLE001 - no jupyter_client: only this app and "Other Python…"
+            specs = []
+        for spec in specs:
+            a = menu.addAction(spec["display_name"], lambda sp=spec: self.set_kernel(
+                kmod.Kernel(name=sp["name"], display_name=sp["display_name"])))
+            a.setCheckable(True)
+            a.setChecked(current is not None and current.name == spec["name"])
+            a.setToolTip(spec["python"])
+        if current is not None and not current.name:
+            a = menu.addAction(current.display_name)
+            a.setCheckable(True)
+            a.setChecked(True)
+            a.setToolTip(current.python or "")
+        menu.addAction("Other Python…", self._choose_python)
+
+    def _choose_python(self):
+        from ..kernel import Kernel
+
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Python to run the cells", "",
+                                                        "Python (python* python*.exe);;All files (*)")
+        if path:
+            self.set_kernel(Kernel(python=path))
+
+    def set_kernel(self, kernel):
+        """Run this notebook's cells in ``kernel`` (None: in this app). The namespace starts over."""
+        before = self.notebook.pipeline
+        self.notebook.set_kernel(kernel)
+        self._update_kernel_button()
+        self.update_results()
+        self._after_run(before)
+        self.titleChanged.emit()
+
 
 # ---------------------------------------------------------------- tabs
 CONFIRM_UNSAVED = True  # ask before closing notebooks with unsaved changes (tests turn it off)
@@ -1169,6 +1227,11 @@ class NotebookPanel(QtWidgets.QWidget):
         return f"Notebook {k}"
 
     def add_notebook(self, nb: Notebook) -> NotebookView:
+        spec = (nb.metadata.get("ewald") or {}).get("kernel")
+        if spec and nb.kernel is None:  # saved with a kernel: it starts when a cell runs
+            from ..kernel import Kernel
+
+            nb.kernel = Kernel.from_spec(spec)
         view = NotebookView(nb)
         view.changed.connect(self.changed.emit)
         view.pipelineReplaced.connect(self._replaced)
@@ -1228,6 +1291,8 @@ class NotebookPanel(QtWidgets.QWidget):
         view = self.tabs.widget(index)
         if view is None or not self.confirm_discard([view]):
             return
+        if view.notebook.kernel is not None:
+            view.notebook.kernel.shutdown()
         self.tabs.removeTab(index)
         view.deleteLater()
         if self.tabs.count() == 0:

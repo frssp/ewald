@@ -466,6 +466,10 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             event.ignore()
             return
         prefs.save_layout(self, self.settings)
+        if self.layout_mode == "notebook":
+            for view in self.panel.views():
+                if view.notebook.kernel is not None:
+                    view.notebook.kernel.shutdown()
         self.timeline.timer.stop()
         self.live_reload.timer.stop()
         self.runner.shutdown()

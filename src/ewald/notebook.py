@@ -66,6 +66,7 @@ class Cell:
     state: str = "new"                 # 'new', 'ok', 'error' or 'stale'
     id: str = field(default_factory=lambda: os.urandom(4).hex())   # nbformat cell id, kept in .ipynb
     collapsed: bool = False            # folded in the GUI; kept in .ipynb as Jupyter's source/outputs_hidden
+    steps: list = field(default_factory=list)   # in a kernel: summaries of the steps it added (no objects here)
 
     @property
     def is_step(self) -> bool:
@@ -194,16 +195,33 @@ class Notebook:
         self.restricted = False       # an .ewd that was not trusted yet: cells do not run
         self.manifest: dict = {}      # an .ewd file's manifest
         self.warnings: list = []      # data files that moved or changed (from the manifest)
+        self.kernel = None            # an ewald.kernel.Kernel: cells run in another Python
         self.reset()
 
     # ------------------------------------------------------------ namespace
     def reset(self):
         """Fresh namespace (like restarting a Jupyter kernel); cells keep their source."""
         self.namespace = {"__name__": "__main__", "__file__": self.path or "<notebook>"}
+        if self.kernel is not None:
+            self.kernel.reset()
         for c in self.cells:
-            c.added = []
+            c.added, c.steps = [], []
             if c.kind == "code" and c.state != "new":
                 c.state = "stale"
+
+    def set_kernel(self, kernel):
+        """Run the cells in ``kernel`` (an :class:`ewald.kernel.Kernel`), or here again with None.
+        The namespace starts over; the choice is saved with the notebook."""
+        if self.kernel is not None and self.kernel is not kernel:
+            self.kernel.shutdown()
+        self.kernel = kernel
+        ewald = self.metadata.setdefault("ewald", {})
+        if kernel is None:
+            ewald.pop("kernel", None)
+        else:
+            ewald["kernel"] = kernel.spec
+        self.dirty = True
+        self.reset()
 
     @property
     def pipeline(self) -> Pipeline | None:
@@ -233,6 +251,8 @@ class Notebook:
         cell = self.cells[index]
         if cell.kind != "code":
             return True
+        if self.kernel is not None:
+            return self._run_in_kernel(index, run_below)
         pipe = self.pipeline
         slot = None
         if pipe is not None and cell.added:
@@ -267,6 +287,48 @@ class Notebook:
                     later.added = []
         cell.state = "ok" if ok else "error"
         return ok
+
+    def _run_in_kernel(self, index: int, run_below: bool) -> bool:
+        """Run a cell in the notebook's kernel (the same rules apply there, see
+        :mod:`ewald.kernel_bridge`); ``pipe`` here becomes a pipeline over the kernel's one."""
+        import base64
+
+        from .kernel import KernelError, KernelSource, kernel_pipeline
+
+        if self.restricted:
+            raise PermissionError(f"{self.name} came from an .ewd file and is not trusted yet: "
+                                  "call notebook.trust() (Run all in the GUI asks first)")
+        cell = self.cells[index]
+        specs = [{"id": c.id, "kind": c.kind, "source": c.source} for c in self.cells]
+        try:
+            r = self.kernel.run(specs, index, run_below, self.counter, self.pipeline_name, self.path,
+                                self._data_dirs())
+        except KernelError as exc:
+            self.counter += 1
+            cell.count, cell.state, cell.outputs = self.counter, "error", [Output("error", str(exc))]
+            return False
+        self.counter = r["counter"]
+        by_id = {c.id: c for c in self.cells}
+        for rc in r["cells"]:
+            c = by_id.get(rc["id"])
+            if c is None:
+                continue
+            c.count, c.state, c.steps = rc["count"], rc["state"], rc["steps"]
+            c.outputs = [Output(o["kind"], base64.b64decode(o["png"]) if "png" in o else o["text"])
+                         for o in rc["outputs"]]
+        for cid, state in r["states"].items():
+            if cid in by_id:
+                by_id[cid].state = state
+        info = r["pipeline"]
+        pipe = self.namespace.get(self.pipeline_name)
+        if info is None:
+            self.namespace.pop(self.pipeline_name, None)
+        elif isinstance(pipe, Pipeline) and isinstance(pipe.source, KernelSource) and pipe.source.kernel is self.kernel:
+            pipe.source._num_frames = info["num_frames"]
+            pipe.invalidate()
+        else:
+            self.namespace[self.pipeline_name] = kernel_pipeline(self.kernel, self.pipeline_name, info["num_frames"])
+        return r["ok"]
 
     def _slot(self, index: int, pipe: Pipeline) -> int:
         """Where a cell's new modifiers go: after those of the cells above it."""
@@ -367,6 +429,9 @@ class Notebook:
         index = len(self.cells) if index is None else index
         cell = Cell(step_source(modifier, self.namespace, self.pipeline_name))
         self.insert(index, cell)
+        if self.kernel is not None:  # the kernel builds its own modifier from the cell
+            self.run_cell(index, run_below=False)
+            return cell
         pipe = self.pipeline
         if pipe is not None:
             pipe.modifiers.insert(self._slot(index, pipe), modifier)
