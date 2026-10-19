@@ -31,10 +31,26 @@ workload *Desktop development with C++* (MSVC and the Windows SDK), then open a 
 pip finds it. `EWALD_REQUIRE_NATIVE=1 pip install -e .` makes a failed C++ build an error instead
 of a warning; CI and the release wheels use it.
 
-Windows releases on GitHub will carry prebuilt wheels
-(`pip install ewald-X.Y.Z-cp312-cp312-win_amd64.whl[gui]`) and a standalone installer that needs no
-Python at all, in a CPU and a CUDA build ([Windows release](../developer/windows-release.md)).
-None has been published yet.
+## From a release
+
+Each GitHub Release carries prebuilt wheels with `ewald._native` included, so no compiler is
+needed: Linux (x86_64), macOS (arm64 and Intel) and Windows, for Python 3.10 to 3.13. Download
+the one for your platform and Python from the release page, then
+
+```bash
+pip install "ewald-0.1.0-cp312-cp312-win_amd64.whl[gui]"
+```
+
+or install a tagged version straight from the repository (this builds from source):
+
+```bash
+pip install "ewald[gui] @ git+https://github.com/frssp/ewald@v0.1.0"
+```
+
+Windows releases also carry a standalone installer that needs no Python at all, in a CPU and a
+CUDA build ([Windows release](../developer/windows-release.md)). `ewald --version` prints the
+installed version; what changed between versions is in
+[CHANGELOG.md](https://github.com/frssp/ewald/blob/main/CHANGELOG.md).
 
 ## Extras
 

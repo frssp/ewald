@@ -60,8 +60,9 @@ TODO.
 
 ## Release
 
-Bump `ewald.__version__`, push a `v*` tag, then dispatch both `windows-release.yml` and
-`macos-release.yml` on that tag; each attaches its files to the same GitHub Release.
+Follow [Releases](release.md): bump `ewald.__version__`, add the CHANGELOG section, push a `v*`
+tag, then dispatch `release.yml`, `windows-release.yml` and `macos-release.yml` on that tag; each
+attaches its files to the same GitHub Release, with the notes from CHANGELOG.md.
 
 ## Checked without a Mac
 

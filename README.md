@@ -26,8 +26,10 @@ pip install -e ".[remote]"  # + files on SSH hosts (paramiko)
 ```
 
 A C++17 compiler builds the native analyses (PTM, Voronoi, CSP matching, interval CNA); without one
-the install still works, minus those. On macOS run `xcode-select --install` first. Linux system
-libraries, `ssh -X`, headless machines, macOS and Windows: [Install](docs/user/install.md).
+the install still works, minus those. On macOS run `xcode-select --install` first. Releases ship
+prebuilt wheels for Linux, macOS and Windows plus a Windows installer and a macOS app
+([install from a release](docs/user/install.md#from-a-release)); changes are in [CHANGELOG.md](CHANGELOG.md).
+Linux system libraries, `ssh -X`, headless machines, macOS and Windows: [Install](docs/user/install.md).
 
 ## Five minutes with a notebook
 

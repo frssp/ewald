@@ -96,6 +96,10 @@ def resolve_data_path(path):
     if not isinstance(path, (str, os.PathLike)):
         return path
     text = os.fspath(path)
+    from . import plugins
+
+    if plugins.scheme_reader(text) is not None:  # aiida:1234 and other plugin sources
+        return path
     if os.path.exists(text) or "://" in text or re.match(r"^[^/\\]+:/", text) or any(c in text for c in "*?["):
         return path
     for folder in _DATA_DIRS.get():
