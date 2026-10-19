@@ -8,6 +8,11 @@ import time
 import traceback
 
 import numpy as np
+
+from . import check_qt_binding
+
+check_qt_binding()  # before PySide6: a clear error when another Qt binding is loaded
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import examples, manual
@@ -877,6 +882,9 @@ def _app():
 
     app = QtWidgets.QApplication.instance()
     if app is None:
+        from . import check_qt_platform
+
+        check_qt_platform()
         app = QtWidgets.QApplication(sys.argv)
         app.setApplicationName("ewald")
         theme.apply(app)

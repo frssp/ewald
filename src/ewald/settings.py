@@ -157,8 +157,7 @@ DEVICES = (
 # module, purpose, install command
 COMPONENTS = (
     ("cupy", "GPU compute (CUDA)", "pip install 'ewald[gpu]'"),
-    ("ovito", "Dislocation analysis (DXA)", "pip install ovito"),
-    ("freud", "Extra analysis (freud)", "pip install 'ewald[analysis]'"),
+    ("ovito", "Dislocation analysis (DXA)", "pip install 'ewald[gui,ovito]'"),
     ("imageio_ffmpeg", "Movie export (.mp4)", "pip install 'ewald[movie]'"),
     ("qtconsole", "IPython console in the GUI", "pip install 'ewald[gui]'"),
 )
@@ -168,7 +167,7 @@ def component_status():
     """[(module, purpose, installed, version, install command)] without importing heavy packages."""
     from importlib import metadata
 
-    dist = {"cupy": None, "freud": "freud-analysis", "imageio_ffmpeg": "imageio-ffmpeg"}
+    dist = {"cupy": None, "imageio_ffmpeg": "imageio-ffmpeg"}
     out = []
     for mod, purpose, cmd in COMPONENTS:
         found = importlib.util.find_spec(mod) is not None
