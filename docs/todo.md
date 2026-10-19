@@ -13,6 +13,10 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 GUI
 
+- AI chat side bar (`gui/ask_panel.py`, activity bar): stream answers as they arrive (now the
+  whole answer at once), a Stop button, keep chats per notebook tab and save them in `.ewd`,
+  show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
+  replace or diff against an existing cell instead of always inserting a new one.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
   still set inline colors (render preview, pick labels, color swatches, field error borders), so
   they keep the old palette until a restart after a theme switch; move them to QSS object names.
@@ -273,7 +277,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   Windows Credential Manager, GNOME Keyring) and a passphrase-protected key from a real agent.
 - Live reload on a real running LAMMPS/VASP job (local and over SSH), where the writer flushes
   in arbitrary pieces; tests grow fixture files byte by byte.
-- Claude features with a real API key: `ewald ask` (also `--select`), the GUI Ask Claude tab,
+- Claude features with a real API key: `ewald ask` (also `--select`), the GUI AI chat side bar
+  (notebook code in the prompt, Insert as notebook cell), the classic Ask Claude tab,
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › Claude › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
   KWallet); the container has none, so only the 0600 file fallback runs for real.
