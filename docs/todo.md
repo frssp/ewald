@@ -15,7 +15,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - OVITO Pro analysis gaps: spatial binning, Steinhardt bond order, bond-angle distribution,
   histogram / reduce property, ring statistics.
 - PLUMED plugin and collective variables.
-- Screenshot regression tests for the viewport and renderers.
 - Ask Claude about picked atoms ([#26](https://github.com/frssp/ewald/pull/26)).
 
 ## Next
