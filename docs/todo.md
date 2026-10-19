@@ -197,6 +197,14 @@ Plugins and Claude
   index curation rules, signatures if the index opens to outside publishers.
 - Per-notebook plugin enable/disable; `plugins.json` holds only the global switch.
 
+- AiiDA (ewald-aiida in frssp/ewald-plugins: local profiles, and remote ones over SSH with
+  `aiida://user@host/1234`): an AiiDA side bar (profiles and hosts, recent workflows, outputs;
+  copy `load("aiida:...")`), a Claude tool to find and open workflows, PDOS/projected bands
+  from aiida-quantumespresso, NEB and aiida-lammps outputs, streaming very long remote
+  trajectories frame by frame instead of one bundle, export of analysis results back as new
+  nodes (opt-in, never default). Not yet tried against a real remote AiiDA host.
+- Other `schemes=` sources: Materials Project (`mp:mp-149`), OPTIMADE, NOMAD.
+
 - LLM plugin ideas: Paper-to-modifier (Forge from a paper's definition, checked against its
   numbers), Run doctor (diagnose a VASP/LAMMPS run from its outputs), phase identification,
   campaign report over many runs.

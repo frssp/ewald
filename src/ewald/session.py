@@ -210,11 +210,16 @@ def source_to_dict(source, base_dir: str) -> dict:
     from .io import FileSource, StaticSource
 
     if isinstance(source, FileSource):
-        path = os.path.abspath(source.path)
-        try:
-            rel = os.path.relpath(path, base_dir)
-        except ValueError:  # other drive on Windows
-            rel = None
+        from . import plugins
+
+        if plugins.scheme_reader(source.path) is not None:  # aiida:1234: not a file
+            path, rel = source.path, None
+        else:
+            path = os.path.abspath(source.path)
+            try:
+                rel = os.path.relpath(path, base_dir)
+            except ValueError:  # other drive on Windows
+                rel = None
         out = {"kind": "file", "path": path, "relative_path": rel, "format": source.format,
                "kwargs": encode(source.kwargs)}
         if source.thermo_arg != "auto":  # explicit log.lammps/OSZICAR files, or None
@@ -245,8 +250,10 @@ def source_from_dict(entry: dict, base_dir: str):
     path = entry["path"]
     rel = entry.get("relative_path")
     candidates = ([os.path.normpath(os.path.join(base_dir, rel))] if rel else []) + [path]
+    from . import plugins
+
     for cand in candidates:
-        if os.path.exists(cand) or any(c in cand for c in "*?["):
+        if os.path.exists(cand) or any(c in cand for c in "*?[") or plugins.scheme_reader(cand) is not None:
             try:
                 return FileSource(cand, entry.get("format"), thermo=entry.get("thermo", "auto"),
                                   **decode(entry.get("kwargs", {})))
