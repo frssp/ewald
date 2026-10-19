@@ -41,6 +41,12 @@ time the modifier took and, if it failed, its error. A failing modifier is skipp
 never goes blank. Selecting a row opens its parameters below the list; the form is generated
 from the modifier's constructor, so every argument you can pass in Python can be edited here.
 
+**Visual elements.** The top of the list holds what is drawn: Particles, Bonds and Simulation
+cell, plus any [visual element plugins](../plugins/visuals.md) added with the "+ Visual" button.
+A plugin element has a checkbox to hide it, a parameter form generated from its constructor
+(Apply or Ctrl+Enter redraws), and Del removes it. Plugin elements are saved with the session
+and drawn in rendered images too.
+
 **Python script modifier.** Pipeline › Python › Python script adds a modifier whose code is
 edited in place. The code defines `modify(frame, data)` and runs on every frame like any other
 modifier. See [Python scripting](scripting.md).
@@ -54,7 +60,9 @@ pipeline panel and redraw the view.
 `ExpressionSelection`), plus global attributes and tables.
 
 **Plots.** Any table in the current frame (g(r), MSD, histograms, time series) can be plotted
-and saved.
+and saved. The `Thermo` table (log.lammps, OSZICAR, OUTCAR, vasprun.xml; see
+[File formats](formats.md#simulation-results)) is drawn one column at a time, picked under
+"y", with a dashed line at the current frame's step that follows the timeline.
 
 **Command palette.** Window › Command palette searches every menu action and every modifier by
 name.

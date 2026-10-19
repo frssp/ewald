@@ -15,6 +15,19 @@ MODIFIER_MENU = {
     "Analysis": {
         "Coordination analysis / RDF": lambda: mods.CoordinationAnalysis(cutoff=3.2),
         "Displacement vectors": lambda: mods.CalculateDisplacements(0),
+        "Histogram": lambda: mods.Histogram("Position.Z"),
+        "Spatial binning (profiles, density maps)": lambda: mods.SpatialBinning("", "sumvol", "Z", 50),
+        "Reduce property (mean, sum, ...)": lambda: mods.ReduceProperty("Position.Z"),
+        "Steinhardt order parameters (q4, q6)": mods.SteinhardtOrderParameters,
+    },
+    "Structure identification": {
+        "Common neighbor analysis": mods.CommonNeighborAnalysis,
+        "Polyhedral template matching": mods.PolyhedralTemplateMatching,
+        "Ackland-Jones bond angles": mods.AcklandJones,
+        "Identify diamond structure": mods.IdentifyDiamond,
+        "Chill+ (ice, hydrate)": mods.ChillPlus,
+        "Centrosymmetry": mods.CentroSymmetry,
+        "Atomic strain": mods.AtomicStrain,
     },
     "Trajectory": {
         "Mean squared displacement / diffusion": mods.MeanSquaredDisplacement,
@@ -27,6 +40,9 @@ MODIFIER_MENU = {
         "Create bonds": lambda: mods.CreateBonds(mode="covalent"),
         "Edit bonds (add / delete)": mods.EditBonds,
         "Coordination polyhedra": mods.CoordinationPolyhedra,
+        "Bond angle distribution": mods.BondAngleDistribution,
+        "Bond length distribution": mods.BondLengthDistribution,
+        "Ring statistics": mods.FindRings,
     },
     "Volume (CHGCAR, LOCPOT, cube)": {
         "Isosurface": mods.CreateIsosurface,
@@ -57,6 +73,11 @@ MODIFIER_MENU = {
         "Select type": lambda: mods.SelectType("Cu"),
         "Invert selection": mods.InvertSelection,
         "Clear selection": mods.ClearSelection,
+    },
+    "Collective variables (PLUMED)": {
+        "PLUMED input (plumed.dat)": mods.Plumed,
+        "Load COLVAR file": mods.LoadColvar,
+        "Free energy surface from HILLS": mods.FreeEnergySurface,
     },
     "Python": {
         "Python script": mods.PythonScript,
@@ -140,6 +161,12 @@ class PipelinePanel(QtWidgets.QWidget):
         fill_modifier_menu(self.add_menu, self.add_modifier)
         self.add_button.setMenu(self.add_menu)
         bar.addWidget(self.add_button, 1)
+        self.visual_button = QtWidgets.QToolButton(text="+ Visual", toolTip="Add a visual element plugin")
+        self.visual_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        self.visual_menu = QtWidgets.QMenu(self)
+        self.visual_menu.aboutToShow.connect(self._fill_visual_menu)
+        self.visual_button.setMenu(self.visual_menu)
+        bar.addWidget(self.visual_button)
         for text, tip, slot in (("▲", "Move up (later in the pipeline)", lambda: self._move(-1)),
                                 ("▼", "Move down (earlier)", lambda: self._move(1)),
                                 ("✕", "Delete modifier (Del)", self._remove)):
@@ -210,6 +237,13 @@ class PipelinePanel(QtWidgets.QWidget):
                 it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
                 it.setCheckState(0, QtCore.Qt.Checked if on else QtCore.Qt.Unchecked)
             if select == ("visual", key):
+                target = it
+        for k, entry in enumerate(self.style.visuals):
+            it = QtWidgets.QTreeWidgetItem(self.tree, ["", entry["name"], ""])
+            it.setData(0, KIND, ("plugin-visual", k))
+            it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
+            it.setCheckState(0, QtCore.Qt.Checked if entry.get("enabled", True) else QtCore.Qt.Unchecked)
+            if select == ("plugin-visual", k):
                 target = it
         section("Modifications")
         if self.pipeline is not None:
@@ -290,8 +324,36 @@ class PipelinePanel(QtWidgets.QWidget):
         self.refresh(select=("mod", self.pipeline.modifiers[pos]))
         self.changed.emit()
 
+    def _fill_visual_menu(self):
+        from .. import plugins
+
+        self.visual_menu.clear()
+        extra = [p for p in plugins.visuals().values() if not p.builtin]
+        if not extra:
+            act = self.visual_menu.addAction("No visual element plugins installed")
+            act.setEnabled(False)
+            return
+        for p in sorted(extra, key=lambda p: (p.category, p.name)):
+            act = self.visual_menu.addAction(p.name)
+            act.setToolTip(p.description)
+            act.triggered.connect(lambda _=False, p=p: self.add_visual(p.name))
+
+    def add_visual(self, name: str):
+        """Add a registered visual element (constructed with its defaults) to the style."""
+        from ..scene import coerce_visuals, visual_to_dict
+
+        (el,) = coerce_visuals([name])
+        self.style.visuals.append(visual_to_dict(el))
+        self.refresh(select=("plugin-visual", len(self.style.visuals) - 1))
+        self.styleChanged.emit()
+
     def _remove(self):
         cur = self._current()
+        if cur and cur[0] == "plugin-visual":
+            del self.style.visuals[cur[1]]
+            self.refresh(select=("visual", "particles"))
+            self.styleChanged.emit()
+            return
         if not cur or cur[0] != "mod":
             return
         idx = self.pipeline.modifiers.index(cur[1])
@@ -329,6 +391,9 @@ class PipelinePanel(QtWidgets.QWidget):
             elif kind[1] == "cell":
                 self.style.show_cell = on
             self.styleChanged.emit()
+        elif kind[0] == "plugin-visual":
+            self.style.visuals[kind[1]]["enabled"] = on
+            self.styleChanged.emit()
 
     # ------------------------------------------------------------------ properties
     def _set_editor(self, title, widget):
@@ -349,6 +414,8 @@ class PipelinePanel(QtWidgets.QWidget):
         elif kind[0] == "visual":
             build = {"particles": self._particles_editor, "bonds": self._bonds_editor, "cell": self._cell_editor}
             self._set_editor(item.text(1), build[kind[1]]())
+        elif kind[0] == "plugin-visual":
+            self._set_editor(item.text(1), self._plugin_visual_editor(kind[1]))
         else:
             self._set_editor("Data source", self._source_editor())
 
@@ -393,6 +460,40 @@ class PipelinePanel(QtWidgets.QWidget):
             mod.source = self._script.toPlainText()
         self.changed.emit()
         self.refresh(select=("mod", mod))
+
+    def _plugin_visual_editor(self, k):
+        """Parameter form of a plugin visual element, built from its constructor like a modifier's."""
+        from ..scene import coerce_visuals, visual_to_dict
+
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        try:
+            (el,) = coerce_visuals([self.style.visuals[k]])
+        except Exception as exc:  # plugin no longer installed, or its parameters changed
+            err = QtWidgets.QLabel(f"{type(exc).__name__}: {exc}", wordWrap=True)
+            err.setStyleSheet(f"color:{TOKENS['error']}")
+            lay.addWidget(err)
+            lay.addStretch()
+            return w
+        doc = (type(el).__doc__ or "").strip().split("\n\n")[0]
+        if doc:
+            lay.addWidget(QtWidgets.QLabel(" ".join(doc.replace("``", "").split()), wordWrap=True, objectName="muted"))
+        self._form = ParameterForm(el)
+        lay.addWidget(self._form)
+
+        def apply():
+            self._form.apply()
+            self.style.visuals[k] = {**visual_to_dict(el), "enabled": self.style.visuals[k].get("enabled", True)}
+            self.styleChanged.emit()
+
+        button = QtWidgets.QPushButton("Apply  (Ctrl+Enter)")
+        button.setObjectName("primary")
+        button.clicked.connect(apply)
+        QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), w, activated=apply)
+        lay.addWidget(button)
+        lay.addStretch()
+        return w
 
     def _particles_editor(self):
         from ..radii import IONIC, PRESETS, format_oxidation_states

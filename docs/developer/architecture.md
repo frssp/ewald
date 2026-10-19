@@ -30,7 +30,8 @@ for in words ends up as an ordinary pipeline.
 | `modifiers/` | one module per family; `__init__.py`'s `__all__` is the public list and resolves OVITO names |
 | `modifiers/ovito_bridge.py` | DXA and `OvitoModifier` through the optional `ovito` package |
 | `_csrc/` | C++ ports of OVITO's CNA, PTM, Voronoi and CSP plus vendored ptm, voro++ and mwm_csp |
-| `render.py`, `raytrace.py` | VTK/PyVista offscreen rendering (impostors above 150k atoms); numba ray tracer |
+| `scene.py` | the renderer-neutral scene: `VisualElement`s (built-in Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell, and plugins) turn a `DataCollection` into primitives (`Spheres`, `Cylinders`, `Lines`, `SurfaceMesh`, `Arrows`) |
+| `render.py`, `raytrace.py`, `vector.py` | draw a scene: VTK/PyVista (impostors above 150k atoms), the numba ray tracer, SVG/PDF via matplotlib; each draws every primitive kind |
 | `settings.py` | user preferences as a registry of `Option`s, stored as JSON with only non-default values |
 | `gui/` | PySide6 main window, viewport, pipeline panel, generated parameter forms, render page, preferences, console, inspector, plots |
 | `llm/` | Claude agent, tools, descriptors, narration, MCP server, and `reference.py`, the source of `llms.txt` |

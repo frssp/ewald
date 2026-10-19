@@ -32,4 +32,7 @@ Ported analyses are checked against OVITO's own results on a set of test structu
 `tests/data/ovito_reference.npz` and `ovito_cluster_reference.npz`. Regenerate them with
 `python tests/data/make_ovito_reference.py` (needs `pip install ovito`), never by hand. When you
 port another OVITO analysis, add its cases to that script and compare property by property,
-including structure type ids and attribute names.
+including structure type ids and attribute names. Histogram, binning, reduction, bond
+distribution, ring and Steinhardt references live in `tests/data/analysis_reference.npz`,
+written by `python tests/data/make_analysis_reference.py` (needs `pip install ovito
+freud-analysis`).

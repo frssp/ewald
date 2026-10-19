@@ -27,6 +27,7 @@ class ViewStyle:
     cell_width: float = 2.0
     background: str = "#14161A"
     bond_factor: float = 1.15                         # VESTA: max bond = factor * (r_A + r_B)
+    visuals: list = field(default_factory=list)       # plugin visual elements: {name, params, enabled}
 
     def apply_preset(self, name: str):
         self.preset = name
@@ -42,6 +43,8 @@ class ViewStyle:
         kw.update(self.radius_kwargs(with_type_radii=False))
         if self.bonds_enabled and self.bond_pairs:
             kw["bond_pairs"] = [tuple(p) for p in self.bond_pairs]
+        if self.visuals:
+            kw["visuals"] = [dict(v) for v in self.visuals]
         return kw
 
     def radius_kwargs(self, with_type_radii: bool = True) -> dict:

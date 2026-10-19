@@ -1,0 +1,491 @@
+"""Renderer-neutral scene: what to draw, separate from how each renderer draws it.
+
+A :class:`VisualElement` (OVITO's "visual element") reads a :class:`~ewald.data.DataCollection`
+and returns primitives; every renderer (OpenGL viewport and images, the ray tracer, the vector
+renderer) draws every primitive kind. So a new element, built in or a plugin, appears in all
+renderers without touching them:
+
+==================  ============================================================================
+:class:`Spheres`     centers, radii, colors, opacity (atoms, markers)
+:class:`Cylinders`   start/end, radius, colors (half-bonds, sticks)
+:class:`Lines`       polylines with a width in pixels (cell, trajectories); a world ``radius``
+                     lets renderers without lines (the ray tracer) draw them as tubes
+``SurfaceMesh``      triangle meshes with edges (:class:`ewald.mesh.SurfaceMesh`)
+``Arrows``           shaft + cone arrows (:class:`ewald.arrows.Arrows`)
+==================  ============================================================================
+
+Positions are world coordinates in Angstrom; primitives know nothing about the camera.
+:func:`build` runs the built-in elements (configured from the ``render()`` keyword arguments)
+and then any extra elements given as ``visuals=[...]``.
+"""
+from __future__ import annotations
+
+import inspect
+from dataclasses import dataclass, field
+
+import numpy as np
+
+from .arrows import Arrows
+from .mesh import SurfaceMesh
+
+
+# ----------------------------------------------------------------------------- primitives
+@dataclass
+class Spheres:
+    """``centers`` (N x 3), ``radii`` (N), ``rgb`` (N x 3, 0..1), ``alpha`` (N, 1 = opaque) and the
+    particle ``index`` of each sphere. Large particle sets may instead give per-type tables
+    ``palette`` (T x 3) and ``radius_table`` (T) with ``palette_index`` (N); :attr:`rgb` and
+    :attr:`radii` then expand on first use, and the OpenGL renderer never expands them."""
+
+    centers: np.ndarray
+    radii: np.ndarray | None = None
+    rgb: np.ndarray | None = None
+    alpha: np.ndarray | None = None
+    index: np.ndarray | None = None
+    palette: np.ndarray | None = None
+    radius_table: np.ndarray | None = None
+    palette_index: np.ndarray | None = None
+
+    def __post_init__(self):
+        self.centers = np.asarray(self.centers, float).reshape(-1, 3)
+        n = len(self.centers)
+        if self.rgb is None and self.palette is None:
+            self.rgb = np.full((n, 3), 0.6)
+        if self.radii is None and self.radius_table is None:
+            self.radii = np.full(n, 0.5)
+        if self.radii is not None:
+            self.radii = np.broadcast_to(np.asarray(self.radii, float), (n,))
+        if self.rgb is not None:
+            self.rgb = np.broadcast_to(np.asarray(self.rgb, float), (n, 3))
+        if self.alpha is None:
+            self.alpha = np.ones(n)
+        self.alpha = np.broadcast_to(np.asarray(self.alpha, float), (n,))
+        if self.index is None:
+            self.index = np.arange(n)
+
+    @property
+    def count(self) -> int:
+        return len(self.centers)
+
+    def colors(self) -> np.ndarray:
+        return self.rgb if self.rgb is not None else self.palette[self.palette_index]
+
+    def sizes(self) -> np.ndarray:
+        return self.radii if self.radii is not None else self.radius_table[self.palette_index]
+
+
+@dataclass
+class Cylinders:
+    """Cylinders from ``start`` to ``end`` (M x 3) with ``radius`` (M) and ``rgb`` (M x 3).
+    ``owner`` is the particle each one belongs to (the vector renderer paints a half-bond just
+    behind its atom), ``alpha`` its opacity (renderers without transparency skip only 0), and
+    ``cap_end`` closes the end with a sphere in the ray tracer."""
+
+    start: np.ndarray
+    end: np.ndarray
+    radius: np.ndarray | float = 0.15
+    rgb: np.ndarray | None = None
+    alpha: np.ndarray | None = None
+    owner: np.ndarray | None = None
+    cap_end: bool = True
+
+    def __post_init__(self):
+        self.start = np.asarray(self.start, float).reshape(-1, 3)
+        self.end = np.asarray(self.end, float).reshape(-1, 3)
+        m = len(self.start)
+        self.radius = np.broadcast_to(np.asarray(self.radius, float), (m,))
+        self.rgb = np.broadcast_to(np.asarray((0.6, 0.6, 0.6) if self.rgb is None else self.rgb, float), (m, 3))
+        self.alpha = np.broadcast_to(np.asarray(1.0 if self.alpha is None else self.alpha, float), (m,))
+
+    @property
+    def count(self) -> int:
+        return len(self.start)
+
+
+@dataclass
+class Lines:
+    """Polylines: ``points`` (P x 3) and ``strips``, one array of point indices per line, with one
+    ``rgb`` per strip (S x 3) or ``None`` for the renderer's ink color (black on light backgrounds).
+    ``width`` is in pixels of a 1600-pixel-high image; ``radius`` (Angstrom), when given, lets
+    renderers that have no lines draw them as tubes with round joints."""
+
+    points: np.ndarray
+    strips: list
+    rgb: np.ndarray | None = None
+    width: float = 2.0
+    radius: float | None = None
+
+    def __post_init__(self):
+        self.points = np.asarray(self.points, float).reshape(-1, 3)
+        self.strips = [np.asarray(s, np.int64) for s in self.strips]
+        if self.rgb is not None:
+            self.rgb = np.broadcast_to(np.asarray(self.rgb, float), (len(self.strips), 3))
+
+    @property
+    def count(self) -> int:
+        return len(self.strips)
+
+    def segments(self) -> np.ndarray:
+        """Every line piece as a pair of point indices (K x 2), and the strip of each."""
+        pairs = [np.column_stack([s[:-1], s[1:]]) for s in self.strips if len(s) > 1]
+        return np.vstack(pairs) if pairs else np.zeros((0, 2), np.int64)
+
+
+def make_arrows(base, tip, width: float = 0.2, rgb=(0.85, 0.2, 0.2), alpha: float = 1.0,
+                shading: str = "normal", name: str = "") -> Arrows:
+    """Arrows from ``base`` to ``tip`` (M x 3) with OVITO's head proportions, for plugin elements."""
+    from .arrows import HEAD_LENGTH, HEAD_RADIUS
+
+    base = np.asarray(base, float).reshape(-1, 3)
+    tip = np.asarray(tip, float).reshape(-1, 3)
+    m = len(base)
+    length = np.linalg.norm(tip - base, axis=1)
+    r = np.full(m, 0.5 * float(width))
+    head_len = np.minimum(HEAD_LENGTH * r, length)
+    head_rad = HEAD_RADIUS * r * np.where(r > 0, head_len / np.maximum(HEAD_LENGTH * r, 1e-300), 1.0)
+    rgb = np.broadcast_to(np.asarray(rgb, float), (m, 3)).copy()
+    return Arrows(base, tip, r, head_rad, head_len, rgb, float(alpha), np.arange(m), base.copy(), shading, name)
+
+
+KINDS = {Spheres: "spheres", Cylinders: "cylinders", Lines: "lines", SurfaceMesh: "mesh", Arrows: "arrows"}
+
+
+@dataclass
+class Layer:
+    """One primitive set and the element that made it. ``name`` is unique in a scene and names the
+    OpenGL actor ('atoms', 'bonds', 'cell', 'surface:<name>', 'vectors:<property>', ...)."""
+
+    name: str
+    primitive: object
+    element: str = ""
+
+    @property
+    def kind(self) -> str:
+        return KINDS[type(self.primitive)]
+
+
+@dataclass
+class Scene:
+    """Everything one image shows, in drawing order."""
+
+    layers: list = field(default_factory=list)
+
+    def add(self, name: str, primitive, element: str = "") -> Layer:
+        if type(primitive) not in KINDS:
+            raise TypeError(f"{type(primitive).__name__} is not a scene primitive; use one of "
+                            + ", ".join(k.__name__ for k in KINDS))
+        taken = {lay.name for lay in self.layers}
+        base, k = name, 2
+        while name in taken:
+            name, k = f"{base}:{k}", k + 1
+        layer = Layer(name, primitive, element)
+        self.layers.append(layer)
+        return layer
+
+    def of(self, kind: str) -> list[Layer]:
+        return [lay for lay in self.layers if lay.kind == kind]
+
+    def __getitem__(self, name: str) -> Layer:
+        for lay in self.layers:
+            if lay.name == name:
+                return lay
+        raise KeyError(name)
+
+    def __contains__(self, name: str) -> bool:
+        return any(lay.name == name for lay in self.layers)
+
+    def summary(self) -> str:
+        return "; ".join(f"{lay.name} ({lay.kind}, {getattr(lay.primitive, 'count', getattr(lay.primitive, 'face_count', 0))})"
+                         for lay in self.layers) or "empty"
+
+
+@dataclass
+class SceneContext:
+    """What an element may know besides the data: the ``frame``, the direction toward the camera
+    (``view_direction``, may be None), ``only_visible`` (a particle mask the viewport uses for its
+    coarse level of detail) and ``particle_colors``, the per-particle RGB of the Particles element
+    (Bonds and other per-particle elements reuse it)."""
+
+    frame: int = 0
+    view_direction: np.ndarray | None = None
+    only_visible: np.ndarray | None = None
+    particle_colors: np.ndarray | None = None
+    particle_radii: np.ndarray | None = None
+    extras: dict = field(default_factory=dict)
+
+
+# ----------------------------------------------------------------------------- elements
+class VisualElement:
+    """Base class of everything that draws: ``build(data, ctx)`` returns primitives.
+
+    Store every constructor argument as an attribute of the same name (as for modifiers):
+    :meth:`parameters`, sessions, the GUI form and the Claude tools read them from there.
+    ``build`` returns one primitive, a list of them, or ``(name, primitive)`` pairs, or None;
+    it must not modify ``data``. ``enabled=False`` keeps an element in a session without drawing.
+    """
+
+    #: shown in the GUI and in ``ewald plugins``; defaults to the class name
+    name: str = ""
+    enabled: bool = True
+
+    def applies(self, data) -> bool:
+        """Whether there is anything to draw in ``data`` (cheap; default True)."""
+        return True
+
+    def build(self, data, ctx: SceneContext):
+        raise NotImplementedError
+
+    def parameters(self) -> dict:
+        sig = inspect.signature(type(self).__init__)
+        return {k: getattr(self, k) for k in list(sig.parameters)[1:]
+                if hasattr(self, k) and sig.parameters[k].kind not in (inspect.Parameter.VAR_KEYWORD,
+                                                                       inspect.Parameter.VAR_POSITIONAL)}
+
+    @property
+    def title(self) -> str:
+        return self.name or type(self).__name__
+
+    def __repr__(self):
+        return f"{type(self).__name__}(" + ", ".join(f"{k}={v!r}" for k, v in self.parameters().items()) + ")"
+
+
+class ParticlesVis(VisualElement):
+    """Atoms as spheres: the 'Color' and 'Radius' properties, else per-type colors (``type_colors``
+    first) and radii (``type_radii``, else ``radius_preset``, see :mod:`ewald.radii`), times
+    ``radius_scale``. Particles with Transparency 1 are left out."""
+
+    name = "Particles"
+
+    def __init__(self, radius_scale: float = 1.0, type_colors: dict | None = None, type_radii: dict | None = None,
+                 radius_preset: str = "covalent", oxidation_states: dict | None = None,
+                 coordination: dict | None = None):
+        self.radius_scale = radius_scale
+        self.type_colors = type_colors
+        self.type_radii = type_radii
+        self.radius_preset = radius_preset
+        self.oxidation_states = oxidation_states
+        self.coordination = coordination
+
+    def applies(self, data) -> bool:
+        return data.count > 0
+
+    def build(self, data, ctx):
+        from .render import _color_table, _radius_table, type_groups
+
+        if ctx.only_visible is not None:
+            keep = np.flatnonzero(np.asarray(ctx.only_visible, bool))
+        elif "Transparency" in data:
+            keep = np.flatnonzero(np.asarray(data["Transparency"]) < 1)
+        else:
+            keep = None
+        sel = slice(None) if keep is None else keep
+        alpha = (1 - np.clip(np.asarray(data["Transparency"], float)[sel], 0, 1)) if "Transparency" in data else None
+        # Per-type tables gathered by type index: no per-atom clipping or float math on 1e6+ atoms.
+        groups = type_groups(data.types) if "Color" not in data or "Radius" not in data else None
+        colors = rgb = palette = radii = radius_table = None
+        if "Color" in data:
+            colors = np.clip(np.asarray(data["Color"], float), 0, 1)
+            rgb = colors[sel]
+        else:
+            palette = np.clip(_color_table(groups[0], self.type_colors), 0, 1)
+        if "Radius" in data:
+            radii = np.asarray(data["Radius"], float)[sel] * self.radius_scale
+        else:
+            radius_table = _radius_table(groups[0], 0.8, self.type_radii, data, self.radius_preset,
+                                         self.oxidation_states, self.coordination) * self.radius_scale
+        prim = Spheres(np.ascontiguousarray(data.positions[sel]), radii, rgb, alpha,
+                       np.arange(data.count) if keep is None else keep, palette, radius_table,
+                       None if groups is None else groups[1][sel])
+        ctx.particle_colors = colors if colors is not None else palette[groups[1]]
+        return [("atoms", prim)]
+
+
+class BondsVis(VisualElement):
+    """Half-bonds as cylinders in their atoms' colors (or the bonds' 'Color'): ``data.bonds``
+    when present, else a search by ``cutoff`` or VESTA-style ``pairs`` [(A, B, dmin, dmax)]."""
+
+    name = "Bonds"
+
+    def __init__(self, cutoff: float | None = None, pairs: list | None = None, radius: float = 0.15):
+        self.cutoff = cutoff
+        self.pairs = pairs
+        self.radius = radius
+
+    def applies(self, data) -> bool:
+        return data.count > 0 and bool(self.cutoff or self.pairs or data.bonds is not None)
+
+    def build(self, data, ctx):
+        from .bonds import bond_segments
+        from .render import default_colors, scene_bonds
+
+        b = scene_bonds(data, self.cutoff, self.pairs)
+        if not b.count:
+            return None
+        colors = ctx.particle_colors if ctx.particle_colors is not None else np.clip(default_colors(data), 0, 1)
+        start, end, rgb, _ = bond_segments(data, b, colors)
+        i, j = b.topology.T
+        owner = np.concatenate([i, j])
+        alpha = 1 - np.clip(np.asarray(data["Transparency"], float), 0, 1)[owner] if "Transparency" in data else None
+        return [("bonds", Cylinders(start, end, self.radius, np.clip(rgb, 0, 1), alpha, owner, cap_end=True))]
+
+
+class SurfacesVis(VisualElement):
+    """Every ``data.surfaces`` mesh (polyhedra, isosurfaces, grid slices)."""
+
+    name = "Surfaces"
+
+    def applies(self, data) -> bool:
+        return bool(getattr(data, "surfaces", None))
+
+    def build(self, data, ctx):
+        return [(f"surface:{name}", mesh) for name, mesh in data.surfaces.items() if mesh.face_count]
+
+
+class VectorsVis(VisualElement):
+    """Per-particle vectors as arrows: ``data.vectors`` (VectorVis) plus ``vectors`` (a property
+    name, a list, or ``{name: {VectorStyle fields}}``, see :class:`ewald.arrows.VectorStyle`)."""
+
+    name = "Vectors"
+
+    def __init__(self, vectors=None):
+        self.vectors = vectors
+
+    def applies(self, data) -> bool:
+        return bool(getattr(data, "vectors", None) or self.vectors)
+
+    def build(self, data, ctx):
+        from .arrows import scene_arrows
+
+        return [(f"vectors:{a.name}", a) for a in scene_arrows(data, self.vectors, ctx.frame)]
+
+
+class TrajectoryLinesVis(VisualElement):
+    """``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle in its
+    atom color; ``width`` in pixels, 0 hides them."""
+
+    name = "Trajectory lines"
+
+    def __init__(self, width: float = 2.0):
+        self.width = width
+
+    def applies(self, data) -> bool:
+        return self.width > 0 and "trajectory-lines" in data.tables
+
+    def build(self, data, ctx):
+        from .render import default_colors
+
+        table = data.tables["trajectory-lines"]
+        pts = np.asarray(table["Position"], dtype=float)
+        ids = np.asarray(table["Particle Identifier"])
+        if len(pts) < 2:
+            return None
+        starts = np.flatnonzero(np.r_[True, ids[1:] != ids[:-1]])
+        sizes = np.diff(np.r_[starts, len(ids)])
+        colors = np.tile([0.3, 0.3, 0.3], (len(starts), 1))
+        if data.count:
+            here = np.asarray(data["Particle Identifier"]) if "Particle Identifier" in data else np.arange(data.count)
+            order = np.argsort(here)
+            pos = np.clip(np.searchsorted(here[order], ids[starts]), 0, data.count - 1)
+            hit = here[order][pos] == ids[starts]
+            colors[hit] = np.clip(default_colors(data), 0, 1)[order][pos[hit]]
+        strips = [np.arange(s, s + m) for s, m in zip(starts, sizes)]
+        return [("trajectories", Lines(pts, strips, colors, self.width))]
+
+
+_CELL_EDGES = [(0, 1), (0, 2), (0, 3), (1, 4), (1, 5), (2, 4), (2, 6), (3, 5), (3, 6), (4, 7), (5, 7), (6, 7)]
+
+
+class SimulationCellVis(VisualElement):
+    """The cell edges as lines, ``width`` pixels wide; ``color`` None uses the renderer's ink
+    (black, or light grey on dark backgrounds). ``radius`` (Angstrom) sizes the ray-traced tubes,
+    None = 0.15 % of the cell diagonal."""
+
+    name = "Simulation cell"
+
+    def __init__(self, color=None, width: float = 2.0, radius: float | None = None):
+        self.color = color
+        self.width = width
+        self.radius = radius
+
+    def applies(self, data) -> bool:
+        return data.cell.is_valid
+
+    def build(self, data, ctx):
+        from .render import _rgb
+
+        o, (a, b, c) = data.cell.origin, data.cell.matrix
+        corners = np.array([o, o + a, o + b, o + c, o + a + b, o + a + c, o + b + c, o + a + b + c])
+        rgb = None if self.color is None else _rgb(self.color)
+        radius = self.radius or 0.0015 * float(np.linalg.norm(a + b + c))
+        return [("cell", Lines(corners, [list(e) for e in _CELL_EDGES], rgb, self.width, radius))]
+
+
+BUILTIN = (ParticlesVis, BondsVis, SurfacesVis, VectorsVis, TrajectoryLinesVis, SimulationCellVis)
+
+
+def builtin_elements(*, radius_scale=1.0, type_colors=None, type_radii=None, radius_preset="covalent",
+                     oxidation_states=None, coordination=None, bonds=None, bond_pairs=None, bond_radius=0.15,
+                     vectors=None, trajectory_width=2.0, show_cell=True, cell_color=None, cell_width=2.0,
+                     cell_radius=None, **_ignored) -> list[VisualElement]:
+    """The built-in elements configured from ``render()`` keyword arguments, in drawing order."""
+    out = [ParticlesVis(radius_scale, type_colors, type_radii, radius_preset, oxidation_states, coordination),
+           BondsVis(bonds, bond_pairs, bond_radius), SurfacesVis(), VectorsVis(vectors),
+           TrajectoryLinesVis(trajectory_width)]
+    if show_cell:
+        out.append(SimulationCellVis(cell_color, cell_width, cell_radius))
+    return out
+
+
+def coerce_visuals(visuals) -> list[VisualElement]:
+    """``visuals`` as accepted by ``render()``: elements, registered names, or ``{"name": ..., "params":
+    {...}}`` dicts (the session form)."""
+    if not visuals:
+        return []
+    if isinstance(visuals, (VisualElement, str, dict)):
+        visuals = [visuals]
+    out = []
+    for v in visuals:
+        if isinstance(v, VisualElement):
+            out.append(v)
+            continue
+        from .plugins import visuals as registry
+
+        name, params = (v, {}) if isinstance(v, str) else (v["name"], dict(v.get("params") or {}))
+        reg = registry()
+        if name not in reg:
+            raise KeyError(f"no visual element {name!r}; registered: {', '.join(reg) or 'none'}")
+        enabled = params.pop("enabled", True) if isinstance(v, dict) else True
+        el = reg[name].cls(**params)
+        el.enabled = bool(v.get("enabled", enabled)) if isinstance(v, dict) else True
+        out.append(el)
+    return out
+
+
+def visual_to_dict(el: VisualElement) -> dict:
+    """``{"name", "params", "enabled"}``, the form sessions, the GUI style and the Claude tools store."""
+    from .plugins import visual_name
+
+    return {"name": visual_name(type(el)), "params": el.parameters(), "enabled": bool(el.enabled)}
+
+
+def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None, **render_kwargs) -> Scene:
+    """Run ``elements`` (default: :func:`builtin_elements` from ``render_kwargs``) and then ``visuals``
+    on ``data``; returns the :class:`Scene` every renderer draws."""
+    ctx = ctx or SceneContext()
+    elements = list(builtin_elements(**render_kwargs) if elements is None else elements) + coerce_visuals(visuals)
+    scene = Scene()
+    for el in elements:
+        if not getattr(el, "enabled", True) or not el.applies(data):
+            continue
+        out = el.build(data, ctx)
+        if out is None:
+            continue
+        if not isinstance(out, (list, tuple)) or (len(out) == 2 and isinstance(out[0], str)):
+            out = [out]
+        builtin = isinstance(el, BUILTIN)
+        slug = el.title.lower().replace(" ", "-")
+        for item in out:
+            name, prim = item if isinstance(item, tuple) else (slug, item)
+            # plugin layers get their own actor namespace, so they never replace a built-in one
+            scene.add(name if builtin else f"visual:{slug}" + ("" if name == slug else f":{name}"), prim, el.title)
+    return scene

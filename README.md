@@ -158,7 +158,8 @@ Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
 | LAMMPS data file | native | styles atomic, charge, bond/angle/molecular, full, sphere, dipole (from `Atoms # style`, inferred, or `atom_style=`); type names from `Atom Type Labels` or `Masses` comments; Velocities, image flags, Bonds (`data.bonds`); general triclinic `avec bvec cvec` |
 | VASP XDATCAR | native, lazy | fixed and variable cell (NpT), VASP 6.4 `Si/hash` species labels, partial last frame skipped |
 | VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics (`Selective Dynamics`, True = free), CONTCAR velocities (`Velocity` in Å/fs) |
-| VASP OUTCAR, vasprun.xml | ASE | all ionic steps with `Energy`, `Force`, `Stress` |
+| VASP OUTCAR, vasprun.xml | native, lazy | all ionic steps with `Force`, `Magnetic Moment` (OUTCAR), `Energy`, `Free Energy`, `Stress`, `Pressure`, MD `Temperature` |
+| log.lammps, OSZICAR | native | thermo columns as frame attributes and `data.tables["Thermo"]`, matched by step; found next to a dump/XDATCAR or `thermo=` |
 | XYZ / extended XYZ | native, lazy | frames indexed by atom counts, each parsed by ASE's extxyz parser (`Lattice=`, `Properties=`, forces, energy, info) |
 | XCrySDen XSF/AXSF | native, lazy | `ANIMSTEPS`, forces, `DATAGRID_3D` grids in `data.grids["xsf"]` |
 | H5MD | native, lazy (`h5py`) | LAMMPS `dump h5md`, MDAnalysis; species names, box, velocities, forces, observables |
@@ -242,6 +243,14 @@ the plugin folder, or an `ewald.modifiers` entry point. A registered modifier im
 by the Claude `add_modifier` tool ([`examples/plugins/local_composition.py`](examples/plugins/local_composition.py)).
 `llms.txt` stays core-only; `ewald api --with-plugins` appends the plugins installed here.
 
+Visual elements plug in too: a `VisualElement` subclass with `@visual` returns
+renderer-neutral primitives (spheres, cylinders, lines, meshes, arrows) from `ewald.scene`, so
+it is drawn by the OpenGL viewport, the ray tracer and SVG/PDF output alike, and appears under
+the GUI's "+ Visual" button and in the Claude `add_visual` tool
+([`examples/plugins/cell_axes.py`](examples/plugins/cell_axes.py),
+[visual element plugins](docs/plugins/visuals.md)). ewald's own atoms, bonds, cell, surfaces,
+arrows and trajectory lines are built the same way.
+
 `ewald forge "what to compute"` has Claude write such a modifier together with tests that
 have a known answer. ewald runs them in a subprocess, along with checks for the plugin
 contract (no in-place writes, the GPU code path), returns any failure to Claude to fix, and
@@ -298,6 +307,13 @@ names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
 `CalculateDisplacements` (+ MSD),
 `Replicate`, `WrapAtoms`, `AffineTransformation`, `VectorVis` (arrows), and any Python function
 `f(frame, data)`.
+
+OVITO Pro-style statistics, checked against OVITO 3.16 bin for bin: `Histogram`,
+`SpatialBinning` (1D profiles with derivatives, 2D/3D maps into `data.grids`),
+`ReduceProperty`, `BondAngleDistribution` and `BondLengthDistribution` (partitioned by type or
+selection). `FindRings` gives shortest-path ring statistics of the bond network and
+`SteinhardtOrderParameters` the q_l/w_l bond-orientational order (plain or Lechner-Dellago
+averaged, checked against freud).
 
 ### Vector arrows
 
@@ -416,6 +432,22 @@ With the optional `ovito` package (`pip install ovito` or `pip install -e ".[ovi
 `DislocationAnalysis` runs OVITO's DXA (Burgers vectors, line lengths, segment
 polylines in `tables["dislocations"]`), and `OvitoModifier(any_ovito_modifier)`
 runs any other OVITO modifier inside an ewald pipeline.
+
+### PLUMED collective variables
+
+With the PLUMED library (`conda install -c conda-forge plumed py-plumed`), `Plumed(input)`
+runs a `plumed.dat` over the trajectory (Angstrom to nm, masses, charges and the cell handed
+over as an MD code would; results identical to `plumed driver`) and stores every CV as the
+attribute `Plumed.<name>`, per-atom CVs as properties; `LoadColvar` aligns an existing COLVAR
+with the frames and `FreeEnergySurface` turns a HILLS file into the FES that `plumed sum_hills`
+gives. See docs/user/plumed.md.
+
+```python
+from ewald.modifiers import FreeEnergySurface, Plumed
+
+pipe.modifiers.append(Plumed("d: DISTANCE ATOMS=1,2\nphi: TORSION ATOMS=5,7,9,15"))
+pipe.modifiers.append(FreeEnergySurface("HILLS", bins=(60, 60)))
+```
 
 CNA, PTM, Voronoi and matching-mode CSP use a C++ extension (`ewald._native`,
 compiled by `pip install -e .` with pybind11; sources and licenses in

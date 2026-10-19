@@ -100,6 +100,31 @@ def test_parameter_form_roundtrip(app):
     assert mod.distance == 2.5 and mod.normal == (1, 0, 0) and mod.inverse is True
 
 
+def test_multiline_parameter_and_fes_map(app):
+    from ewald.gui.params import ParameterForm
+    from ewald.gui.plots import PlotsPanel, _grid
+
+    mod = mods.Plumed()
+    form = ParameterForm(mod)
+    editor = form.editors["input"][0]
+    assert isinstance(editor, QtWidgets.QPlainTextEdit)     # a plumed.dat, not one line
+    editor.setPlainText("d: DISTANCE ATOMS=1,2\nt: TORSION ATOMS=1,2,3,4\n")
+    form.apply()
+    assert mod.input.count("\n") == 2
+    x, y = np.meshgrid(np.linspace(0, 1, 4), np.linspace(-1, 1, 5), indexing="ij")
+    table = {"d": x.ravel(), "t": y.ravel(), "Free Energy": (x + y).ravel()}
+    names, (ux, uy, z) = _grid(table)
+    assert z.shape == (5, 4) and z[0, 3] == pytest.approx(1 - 1)
+    assert _grid({"r": [0, 1], "g": [1, 2]}) is None
+    from ewald import DataCollection
+
+    d = DataCollection(np.zeros((1, 3)), np.array(["C"]))
+    d.tables["fes"] = table
+    panel = PlotsPanel()
+    panel.set_data(d)
+    assert panel.figure.axes[0].get_ylabel() == "t"
+
+
 def test_python_script_modifier_and_error_skip(pipe):
     script = mods.PythonScript("def modify(frame, data):\n    data['F'] = np.full(data.count, frame)\n")
     bad = mods.ExpressionSelection("NoSuchProperty > 1")
@@ -132,6 +157,25 @@ def test_timeline(app):
     tl._advance()
     tl._advance()
     assert seen == [3, 4, 0]
+
+
+def test_plots_thermo_series_marker_follows_frame(app, lammps_dir):
+    from ewald import import_file
+    from ewald.gui.plots import PlotsPanel
+
+    pipe = import_file(lammps_dir / "thermo" / "dump.lammpstrj")
+    panel = PlotsPanel()
+    panel.set_data(pipe.compute(0))
+    assert panel.table.currentText() == "Thermo"
+    assert panel.column.currentText() == "Temp"  # one column at a time for a time series
+    ax = panel.figure.axes[0]
+    assert ax.get_xlabel() == "Step" and len(ax.lines) == 2  # Temp + frame marker
+    panel.column.setCurrentText("Volume")  # only printed in run 2: NaNs dropped
+    np.testing.assert_array_equal(panel.figure.axes[0].lines[0].get_xdata(), [20, 25, 30, 35, 40])
+    ax = panel.figure.axes[0]
+    panel.set_data(pipe.compute(3))
+    assert panel.figure.axes[0] is ax  # frame change moves the marker, no full redraw
+    assert list(panel._marker.get_xdata()) == [30, 30]
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
@@ -616,3 +660,46 @@ def test_feature_inventory_gui_section_is_current(tmp_path):
     assert saved == live.rstrip("\n").split("\n"), (
         "the GUI section of docs/features.md is stale; regenerate with: "
         "xvfb-run -a python -m ewald inventory -o docs/features.md --gui")
+
+
+def test_plugin_visual_element_in_panel_and_viewport(app, monkeypatch):
+    import shutil
+    from pathlib import Path
+
+    from ewald import plugins
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.pipeline_panel import PipelinePanel
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(Path(__file__).parents[1] / "examples" / "plugins" / "cell_axes.py", folder)
+    data = DataCollection([[1, 1, 1], [3, 3, 3]], ["Fe", "Fe"], Cell(np.eye(3) * 4))
+    style = ViewStyle()
+    panel = PipelinePanel(style)
+    panel.set_pipeline(Pipeline(StaticSource(data)))
+    panel._fill_visual_menu()
+    assert [a.text() for a in panel.visual_menu.actions()] == ["Cell axes", "Selection halo"]
+    redraws = []
+    panel.styleChanged.connect(lambda: redraws.append(1))
+    panel.add_visual("Cell axes")
+    assert style.visuals == [{"name": "Cell axes", "params": {"length": 2.0, "width": 0.25}, "enabled": True}]
+    form = panel._form  # the new element is selected and its form is open
+    form.editors["length"][0].setValue(3.0)
+    panel.scroll.widget().findChild(QtWidgets.QPushButton).click()
+    assert style.visuals[0]["params"]["length"] == 3.0 and redraws
+    v = Viewport(style)
+    v.set_data(data)
+    assert "visual:cell-axes" in v.plotter.actors
+    item = [panel.tree.topLevelItem(k) for k in range(panel.tree.topLevelItemCount())
+            if panel.tree.topLevelItem(k).text(1) == "Cell axes"][0]
+    item.setCheckState(0, QtCore.Qt.Unchecked)
+    assert style.visuals[0]["enabled"] is False
+    v.redraw()
+    assert "visual:cell-axes" not in v.plotter.actors
+    panel.tree.setCurrentItem(item)
+    panel._remove()
+    assert style.visuals == []
+    v.close()

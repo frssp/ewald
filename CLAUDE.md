@@ -52,16 +52,20 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `backend.py` (numpy/CuPy `xp` backends), `neighbors.py` (numba CPU cell list, `find_pairs`),
   `cuda_kernels.py` (CUDA C via CuPy `RawKernel`), `kernels.py` (RDF, unwrap, MSD).
 - `modifiers/`: one module per family; `__init__.py` `__all__` is the public list and also resolves
-  OVITO names (`XxxModifier` -> `Xxx`). `ovito_bridge.py` wraps the optional `ovito` package (DXA).
+  OVITO names (`XxxModifier` -> `Xxx`). `ovito_bridge.py` wraps the optional `ovito` package (DXA);
+  `plumed.py` holds the `Plumed`/`LoadColvar`/`FreeEnergySurface` modifiers.
 - `_csrc/`: C++ ports of OVITO CNA/PTM/Voronoi/CSP plus vendored ptm, voro++, mwm_csp; origins and
   licenses in `_csrc/README.md`. Built by `setup.py` (pybind11).
 - `radii.py`: radius presets (covalent, Slater, Clementi, vdW, Shannon ionic with oxidation-state and CN guessing);
   tables in `tables/radii.json`, regenerated from pymatgen with `tables/make_radii.py`, never by hand.
+- `scene.py`: renderer-neutral Scene IR (Spheres, Cylinders, Lines, SurfaceMesh, Arrows) and
+  `VisualElement`s (built-in Particles, Bonds, Cell, ... and `@visual` plugins); every renderer
+  draws a `Scene`, so new geometry goes into an element, not into one renderer.
 - `render.py` (VTK/PyVista offscreen; impostors above 150k atoms), `raytrace.py` (numba ray tracer,
   the publication renderer; pip VTK has no OSPRay), `vector.py` (SVG/PDF/EPS via matplotlib),
   `overlays.py` (text, color/type legends, scale bar for every renderer), `movie.py` (GIF/PNG via
   Pillow, MP4/AVI/MOV via ffmpeg), `session.py` (`.ewald` JSON: source, modifiers, style, camera).
-- `plugins.py`: reader and modifier registry. Built-in formats (`io.builtin_readers()`, with
+- `plugins.py`: reader, writer, modifier and visual element registry. Built-in formats (`io.builtin_readers()`, with
   priorities) plus plugins from `ewald.readers` / `ewald.modifiers` entry points and
   `<config dir>/plugins/*.py`; `io.open_reader`, the GUI open filter and menu, the Claude tools and
   `ewald.modifiers.__getattr__` read it. Plugin modifiers stay out of `__all__` and `llms.txt`.
@@ -69,6 +73,9 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
 - `inventory.py`: `ewald inventory`, docs/features.md from the registries, CLI parser and GUI menus.
+- `plumed.py`: PLUMED through its Python binding as an MD engine (`run`, `PlumedEngine`), COLVAR/HILLS
+  parsing, `fes_from_hills` (same kernels as `plumed sum_hills`). Tests compare with `plumed driver` and
+  the sum_hills files in `tests/data/plumed/` (regenerate with `make_plumed_reference.py`, never by hand).
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
 - `gui/`: `app.py` main window, `viewport.py`, `pipeline_panel.py`, `params.py`, `render_page.py`,
   `preferences.py`, `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
@@ -88,12 +95,14 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - Follow OVITO for property names ("Position", "Particle Type", "Structure Type", ...), structure
   type ids, colors and attribute names. Ported analyses are tested against OVITO results stored in
   `tests/data/ovito_reference.npz` and `ovito_cluster_reference.npz`; regenerate them with
-  `tests/data/make_ovito_reference.py` (needs `pip install ovito`), never by hand.
+  `tests/data/make_ovito_reference.py` (needs `pip install ovito`), never by hand. Statistics,
+  bond-network and Steinhardt references (OVITO + freud) are in `analysis_reference.npz`, from
+  `tests/data/make_analysis_reference.py` (needs `pip install ovito freud-analysis`).
 - `Modifier.parameters()` comes from the constructor signature, and the GUI parameter form
   (`gui/params.py`) is generated from it, so store every constructor argument as an attribute of the
   same name. New modifiers that construct with no arguments appear in the GUI menu automatically;
   otherwise add an entry with a sensible default to `MODIFIER_MENU` in `gui/pipeline_panel.py`.
-- Optional dependencies (`gui`, `gpu`, `ovito`, `llm`, `movie`, `formats`) are imported lazily; tests use
+- Optional dependencies (`gui`, `gpu`, `ovito`, `plumed`, `llm`, `movie`, `formats`) are imported lazily; tests use
   `pytest.importorskip` for them. Headless `render()`/`compute()` never read `settings` implicitly.
 - Python first; numba or C++ only for measured hot spots. Ported OVITO code is used under its MIT
   option and keeps the notice. No LICENSE file (private project).

@@ -55,6 +55,7 @@ nav:
       - Desktop GUI: user/gui.md
       - File formats: user/formats.md
       - Modifiers: user/modifiers.md
+      - PLUMED collective variables: user/plumed.md
       - Python scripting: user/scripting.md
       - GPU compute: user/gpu.md
       - Rendering figures: user/rendering.md
@@ -65,6 +66,7 @@ nav:
       - Reader plugins: plugins/readers.md
       - Writer plugins: plugins/writers.md
       - Modifier plugins: plugins/modifiers.md
+      - Visual element plugins: plugins/visuals.md
       - Modifier Forge: plugins/forge.md
       - Testing a plugin: plugins/testing.md
       - Packaging and sharing: plugins/packaging.md

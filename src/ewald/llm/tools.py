@@ -134,6 +134,7 @@ class Toolset:
         self._source_call: dict | None = None
         self._code_blocks: list[str] = []
         self._namespace: dict = {}
+        self.visuals: list[dict] = []  # plugin visual elements drawn by render_image: {name, params, enabled}
         self.tools: dict[str, Tool] = {}
         self._register()
 
@@ -174,6 +175,9 @@ class Toolset:
             else:
                 lines.append(f"pipe.modifiers.append({m!r})")
         lines += ["", f"data = pipe.compute({self.frame})"]
+        if self.visuals:
+            lines += [f"visuals = {self.visuals!r}",
+                      "# from ewald.render import render; render(data, 'figure.png', visuals=visuals)"]
         return "\n".join(lines) + "\n"
 
     # ----------------------------------------------------------- registration
@@ -431,6 +435,84 @@ class Toolset:
             return {"fit_lags": [float(lag[lo]), float(lag[min(hi, len(lag)) - 1])] if len(lag) else [],
                     "fits": fits, "table": _downsample(table)}
 
+        @T("compute_plumed_cvs",
+           "Collective variables computed by PLUMED (needs the PLUMED library) over the trajectory from a plumed.dat "
+           "(text or path): e.g. 'd: DISTANCE ATOMS=1,2' (atoms numbered from 1, by Particle Identifier when present), "
+           "TORSION, COORDINATION, RMSD, METAD with temperature. Appends a Plumed modifier (unless keep=false), so "
+           "every frame gets attributes Plumed.<name> (PLUMED units: nm, rad, kJ/mol) and per-atom labels become "
+           "properties 'Plumed <label>'. Returns statistics per value and a downsampled table over frames.",
+           _obj({"input": {"type": "string", "description": "PLUMED input text, or the path of a plumed.dat"},
+                 "start": {"type": "integer"}, "stop": {"type": "integer"}, "step": {"type": "integer"},
+                 "time_per_frame": {"type": "number", "description": "ps between stored frames (default 1)"},
+                 "temperature": {"type": "number", "description": "K, for METAD and other biases"},
+                 "keep": {"type": "boolean", "description": "keep the modifier in the pipeline (default true)"}},
+                ["input"]))
+        def compute_plumed_cvs(input, start=0, stop=None, step=1, time_per_frame=1.0, temperature=0.0, keep=True):
+            from ..modifiers import Plumed
+
+            pipe = self._need_pipeline()
+            mod = Plumed(input, start=start, stop=stop, step=step, time_per_frame=time_per_frame,
+                         temperature=temperature)
+            pipe.modifiers.append(mod)
+            try:
+                data = pipe.compute(self.frame)
+            except Exception:
+                pipe.modifiers.remove(mod)
+                raise
+            if not keep:
+                pipe.modifiers.remove(mod)
+            table = {k: np.asarray(v, float) for k, v in data.tables["plumed"].items()}
+            stats = {k: {"min": float(np.nanmin(v)), "max": float(np.nanmax(v)), "mean": float(np.nanmean(v)),
+                         "first": float(v[0]), "last": float(v[-1])} for k, v in table.items() if k != "Frame"}
+            per_atom = {name: {"min": float(np.min(data[name])), "max": float(np.max(data[name])),
+                               "mean": float(np.mean(data[name])), "frame": self.frame}
+                        for name in data.particles if name.startswith("Plumed ")}
+            cols = ["Frame"] + [k for k in table if k != "Frame"][:12]
+            return {"values": stats, "per_atom": per_atom, "table": _downsample({k: table[k] for k in cols}),
+                    "pipeline": self._pipeline_list()}
+
+        @T("read_plumed_output",
+           "Read a PLUMED output file. COLVAR (any '#! FIELDS' file): columns, statistics and a downsampled table. "
+           "HILLS: the metadynamics free energy surface F = -sum of hills (as plumed sum_hills), with its minimum, "
+           "range and a plot image.",
+           _obj({"path": {"type": "string"},
+                 "bins": {"type": "integer", "description": "FES grid bins per CV (default 100)"}}, ["path"]))
+        def read_plumed_output(path, bins=100):
+            from .. import plumed as pl
+
+            path = os.path.expanduser(path)
+            table = pl.read_colvar(path)
+            if not any(k.startswith("sigma_") for k in table):
+                stats = {k: {"min": float(np.nanmin(v)), "max": float(np.nanmax(v)), "mean": float(np.nanmean(v))}
+                         for k, v in table.items()}
+                return {"kind": "colvar", "rows": len(next(iter(table.values()), [])), "columns": stats,
+                        "table": _downsample(dict(table)) if table else {}}
+            fes = pl.fes_from_hills(path, bins=bins)
+            f = np.asarray(fes["fes"])
+            at = np.unravel_index(int(np.argmin(f)), f.shape)
+            out = {"kind": "hills", "hills": len(table["height"]), "cvs": fes["cvs"],
+                   "minimum": {cv: float(ax[i]) for cv, ax, i in zip(fes["cvs"], fes["grid"], at)},
+                   "fes_max_kJ_mol": float(f.max()),
+                   "ranges": {cv: [float(ax[0]), float(ax[-1])] for cv, ax in zip(fes["cvs"], fes["grid"])}}
+            if len(fes["cvs"]) == 1:
+                out["table"] = _downsample(fes["table"])
+            if len(fes["cvs"]) > 2:
+                return out
+            import matplotlib
+
+            matplotlib.use("Agg", force=False)
+            from matplotlib.figure import Figure
+
+            fig = Figure(figsize=(5, 3.6))
+            pl.plot_fes(fes, fig.add_subplot(111))
+            fig.tight_layout()
+            png = os.path.join(self.workdir, f"fes_{len(self.figures):03d}.png")
+            fig.savefig(png, dpi=120)
+            self.figures.append(png)
+            out["plot"] = png
+            with open(png, "rb") as fh:
+                return ToolResult(out, images=[fh.read()])
+
         @T("render_image",
            "Render a frame of the pipeline to PNG and return the image so you can inspect it. "
            "direction: 'x','y','z','-x',...,'iso' or a view vector [x,y,z].",
@@ -444,11 +526,45 @@ class Toolset:
             size = (width or self.render_size[0], height or self.render_size[1])
             name = filename or f"frame{f:05d}_{len(self.figures):03d}.png"
             path = os.path.join(self.workdir, os.path.basename(name))
-            render_png(pipe.compute(f), path, size=size, direction=direction, bonds=bonds, zoom=zoom)
+            extra = {"visuals": list(self.visuals)} if self.visuals else {}
+            render_png(pipe.compute(f), path, size=size, direction=direction, bonds=bonds, zoom=zoom, **extra)
             self.figures.append(path)
             with open(path, "rb") as fh:
                 png = fh.read()
             return ToolResult({"path": path, "frame": f, "size": list(size)}, images=[png])
+
+        @T("list_visuals",
+           "Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation "
+           "cell; configured through render_image and modifiers) and installed plugins, which add_visual draws "
+           "on top in every renderer. Lists each with its parameters, plus the ones currently added.",
+           _obj({}))
+        def list_visuals():
+            out = {p.name: {"builtin": p.builtin, "category": p.category, "doc": p.description,
+                            "params": _signature(p.cls)} for p in plugins.visuals().values()}
+            return {"available": out, "added": list(self.visuals)}
+
+        @T("add_visual",
+           "Draw a plugin visual element (see list_visuals) in every later render_image, with optional "
+           "constructor parameters. Returns the visuals now added.",
+           _obj({"name": {"type": "string"}, "params": {"type": "object"}}, ["name"]))
+        def add_visual(name, params=None):
+            from ..scene import coerce_visuals, visual_to_dict
+
+            reg = plugins.visuals()
+            if name not in reg:
+                raise ValueError(f"unknown visual element {name!r}; available: {', '.join(reg)}")
+            if reg[name].builtin:
+                raise ValueError(f"{name!r} is built in and always drawn; set it up through render_image or "
+                                 "a modifier (CreateBonds, VectorVis, ...)")
+            (el,) = coerce_visuals([{"name": name, "params": params or {}}])
+            self.visuals.append(visual_to_dict(el))
+            return {"visuals": list(self.visuals)}
+
+        @T("remove_visual", "Stop drawing the visual element at 'index' of the added list.",
+           _obj({"index": {"type": "integer"}}, ["index"]))
+        def remove_visual(index):
+            removed = self.visuals.pop(index)
+            return {"removed": removed, "visuals": list(self.visuals)}
 
         writer_names = ", ".join(sorted(plugins.writers()))
 

@@ -198,8 +198,13 @@ def source_to_dict(source, base_dir: str) -> dict:
             rel = os.path.relpath(path, base_dir)
         except ValueError:  # other drive on Windows
             rel = None
-        return {"kind": "file", "path": path, "relative_path": rel, "format": source.format,
-                "kwargs": encode(source.kwargs)}
+        out = {"kind": "file", "path": path, "relative_path": rel, "format": source.format,
+               "kwargs": encode(source.kwargs)}
+        if source.thermo_arg != "auto":  # explicit log.lammps/OSZICAR files, or None
+            arg = source.thermo_arg
+            out["thermo"] = arg if arg is None or isinstance(arg, str) else [str(a) for a in arg] \
+                if not isinstance(arg, os.PathLike) else str(arg)
+        return out
     if isinstance(source, StaticSource):
         attrs = []
         for d in source.frames:
@@ -226,7 +231,8 @@ def source_from_dict(entry: dict, base_dir: str):
     for cand in candidates:
         if os.path.exists(cand) or any(c in cand for c in "*?["):
             try:
-                return FileSource(cand, entry.get("format"), **decode(entry.get("kwargs", {})))
+                return FileSource(cand, entry.get("format"), thermo=entry.get("thermo", "auto"),
+                                  **decode(entry.get("kwargs", {})))
             except FileNotFoundError:
                 continue
     raise FileNotFoundError(f"session input not found: {path}" + (f" (or {candidates[0]})" if rel else ""))
@@ -257,7 +263,7 @@ class Session:
         allowed = set(inspect.signature(render).parameters) | {
             "type_colors", "type_radii", "bond_pairs", "bond_radius", "atom_style", "cell_width", "cell_color",
             "shading", "trajectory_width", "radius_preset", "oxidation_states", "coordination", "vectors",
-            "arrow_resolution"}
+            "arrow_resolution", "visuals"}
         kw.update({k: v for k, v in self.render.items()
                    if k in allowed and k not in ("data", "filename", "text", "camera")})
         r = self.render  # keys written by the GUI's Render page

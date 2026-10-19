@@ -1,4 +1,9 @@
-"""Plots tab: draw any data table (g(r), histograms, user tables) with matplotlib."""
+"""Plots tab: draw any data table (g(r), histograms, user tables) with matplotlib.
+
+Tables whose first column is ``Step``/``Timestep`` (the ``Thermo`` table from log.lammps,
+OSZICAR, OUTCAR, vasprun.xml) are time series: a column is picked under "y" and a marker
+follows the current frame. Changing frames only moves that marker.
+"""
 from __future__ import annotations
 
 import numpy as np
@@ -19,12 +24,16 @@ class PlotsPanel(QtWidgets.QWidget):
         bar = QtWidgets.QHBoxLayout()
         self.table = QtWidgets.QComboBox()
         self.table.currentTextChanged.connect(self.redraw)
+        self.column = QtWidgets.QComboBox(toolTip="Column to plot (all columns share one axis)")
+        self.column.currentTextChanged.connect(self.redraw)
         self.hist = QtWidgets.QComboBox()
         self.hist.currentTextChanged.connect(self.redraw)
         save = QtWidgets.QPushButton("Save plot…")
         save.clicked.connect(self._save)
         bar.addWidget(QtWidgets.QLabel("Table", objectName="muted"))
         bar.addWidget(self.table, 1)
+        bar.addWidget(QtWidgets.QLabel("y", objectName="muted"))
+        bar.addWidget(self.column, 1)
         bar.addWidget(QtWidgets.QLabel("or histogram of", objectName="muted"))
         bar.addWidget(self.hist, 1)
         bar.addWidget(save)
@@ -32,6 +41,8 @@ class PlotsPanel(QtWidgets.QWidget):
         self.figure = Figure(figsize=(5, 3), facecolor=TOKENS["bg"])
         self.canvas = FigureCanvasQTAgg(self.figure)
         lay.addWidget(self.canvas, 1)
+        self._drawn = None   # (table x column, y choice) currently on the canvas
+        self._marker = None  # current-frame line on a time-series plot
 
     def set_data(self, data):
         self.data = data
@@ -46,9 +57,34 @@ class PlotsPanel(QtWidgets.QWidget):
             combo.blockSignals(False)
         if not self.table.currentText() and not self.hist.currentText() and data is not None and data.tables:
             self.table.setCurrentText(next(iter(data.tables)))
+        self._fill_columns()
         self.redraw()
 
+    def _table(self):
+        d = self.data
+        return d.tables.get(self.table.currentText()) if d is not None and not self.hist.currentText() else None
+
+    def _fill_columns(self):
+        table = self._table()
+        keys = list(table)[1:] if table else []
+        cur = self.column.currentText()
+        items = keys if _is_series(table) else ["(all)"] + keys if len(keys) > 1 else keys
+        self.column.blockSignals(True)
+        self.column.clear()
+        self.column.addItems(items)
+        self.column.setCurrentText(cur if cur in items else items[0] if items else "")
+        self.column.setEnabled(len(items) > 1)
+        self.column.blockSignals(False)
+
     def redraw(self, *_):
+        self._fill_columns()
+        table = self._table()
+        key = (id(next(iter(table.values()))), self.column.currentText()) if table else None
+        if key is not None and key == self._drawn and self._marker is not None:
+            self._place_marker()  # same series, new frame: move the marker only
+            self.canvas.draw_idle()
+            return
+        self._drawn, self._marker = key, None
         fig = self.figure
         fig.clear()
         ax = fig.add_subplot(111, facecolor=TOKENS["bg"])
@@ -66,13 +102,26 @@ class PlotsPanel(QtWidgets.QWidget):
             else:
                 ax.hist(v, bins=50, color=TOKENS["accent"])
             ax.set_xlabel(name); ax.set_ylabel("count")
+        elif d is not None and self.table.currentText() in d.tables and _grid(d.tables[self.table.currentText()]):
+            keys, (x, y, z) = _grid(d.tables[self.table.currentText()])
+            cs = ax.contourf(x, y, z, levels=20, cmap="viridis")
+            fig.colorbar(cs, ax=ax, label=keys[2])
+            ax.set_xlabel(keys[0]); ax.set_ylabel(keys[1])
         elif d is not None and self.table.currentText() in d.tables:
             table = d.tables[self.table.currentText()]
             keys = list(table)
             x = np.asarray(table[keys[0]])
+            col = self.column.currentText()
+            if col in table:
+                keys = [keys[0], col]
             for k in keys[1:]:
-                ax.plot(x, np.asarray(table[k]), lw=1.4, label=k)
+                y = np.asarray(table[k], dtype=float)
+                ok = ~np.isnan(y)  # thermo columns a run did not print
+                ax.plot(x[ok], y[ok], lw=1.4, label=k)
             ax.set_xlabel(keys[0])
+            if _is_series(table):
+                self._marker = ax.axvline(x[0], color=TOKENS["secondary"], lw=1, ls="--")
+                self._place_marker()
             if len(keys) > 2:
                 leg = ax.legend(frameon=False)
                 for t in leg.get_texts():
@@ -82,7 +131,36 @@ class PlotsPanel(QtWidgets.QWidget):
         fig.tight_layout()
         self.canvas.draw_idle()
 
+    def _place_marker(self):
+        ts = self.data.attributes.get("Timestep") if self.data is not None else None
+        visible = isinstance(ts, (int, float, np.integer, np.floating))
+        self._marker.set_visible(visible)
+        if visible:
+            self._marker.set_xdata([ts, ts])
+
     def _save(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save plot", "plot.pdf", "PDF (*.pdf);;PNG (*.png);;SVG (*.svg)")
         if path:
             self.figure.savefig(path, dpi=300)
+
+
+def _is_series(table) -> bool:
+    return bool(table) and next(iter(table)) in ("Step", "Timestep") and len(table) > 1
+
+
+def _grid(table):
+    """``(names, (x, y, z))`` when ``table`` is a map on a regular 2D grid (three columns, the
+    first two covering every combination of their values, e.g. a 2D free energy surface)."""
+    keys = list(table)
+    if len(keys) != 3:
+        return None
+    x, y, z = (np.asarray(table[k], float) for k in keys)
+    ux, uy = np.unique(x), np.unique(y)
+    if len(ux) < 2 or len(uy) < 2 or len(ux) * len(uy) != len(z):
+        return None
+    ix, iy = np.searchsorted(ux, x), np.searchsorted(uy, y)
+    grid = np.full((len(uy), len(ux)), np.nan)
+    grid[iy, ix] = z
+    if np.isnan(grid).any():
+        return None
+    return keys, (ux, uy, grid)

@@ -21,8 +21,9 @@ density, minimum distance, coordination histograms, g(r) peaks, sanity warnings)
 `describe_trajectory` flags the frames where a descriptor jumps. Renders come back as images
 the model can look at. The tools are: `load_structure`, `describe_frame`,
 `describe_trajectory`, `event_details`, `list_modifiers`, `add_modifier`, `remove_modifier`,
-`show_pipeline`, `set_frame`, `evaluate_expression`, `compute_rdf`, `compute_msd`, `describe_selection`,
-`render_image` and `get_script`.
+`show_pipeline`, `set_frame`, `evaluate_expression`, `compute_rdf`, `compute_msd`,
+`describe_selection`, `compute_plumed_cvs`, `read_plumed_output` ([PLUMED](plumed.md)),
+`render_image`, `list_visuals`, `add_visual`, `remove_visual` (visual element plugins drawn by later renders) and `get_script`.
 
 `run_python`, which executes model-written code in your Python process, is off unless you pass
 `allow_code=True` (or `--allow-code` on the command line).

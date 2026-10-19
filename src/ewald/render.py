@@ -126,48 +126,43 @@ def _rgb(c) -> np.ndarray:
     return c / 255.0 if c.max() > 1 else c
 
 
-def _cell_lines(cell):
-    import pyvista as pv
-
-    o, (a, b, c) = cell.origin, cell.matrix
-    corners = np.array([o, o + a, o + b, o + c, o + a + b, o + a + c, o + b + c, o + a + b + c])
-    edges = [(0, 1), (0, 2), (0, 3), (1, 4), (1, 5), (2, 4), (2, 6), (3, 5), (3, 6), (4, 7), (5, 7), (6, 7)]
-    lines = np.hstack([[2, i, j] for i, j in edges])
-    return pv.PolyData(corners, lines=lines)
-
-
 def atom_cloud(data: DataCollection, *, radius_scale: float = 1.0, only_visible=None,
                type_colors: dict | None = None, type_radii: dict | None = None,
                radius_preset: str = "covalent", oxidation_states: dict | None = None,
                coordination: dict | None = None):
     """Visible atoms as a ``pv.PolyData`` with 'rgb' and 'radius' point arrays, plus the
     per-particle colors of all atoms (bonds reuse them)."""
+    from .scene import ParticlesVis, SceneContext
+
+    ctx = SceneContext(only_visible=only_visible)
+    ((_, spheres),) = ParticlesVis(radius_scale, type_colors, type_radii, radius_preset, oxidation_states,
+                                   coordination).build(data, ctx)
+    return spheres_cloud(spheres), ctx.particle_colors
+
+
+def spheres_cloud(spheres):
+    """A :class:`ewald.scene.Spheres` as a ``pv.PolyData`` with 'rgb' (uint8) and 'radius' point arrays."""
     import pyvista as pv
 
-    if only_visible is not None:
-        keep = np.asarray(only_visible, bool)
-    elif "Transparency" in data:
-        keep = np.asarray(data["Transparency"]) < 1
+    cloud = pv.PolyData(np.ascontiguousarray(spheres.centers))
+    if spheres.rgb is None:  # per-type table: one conversion per type, not per atom
+        cloud["rgb"] = (np.clip(spheres.palette, 0, 1) * 255).astype(np.uint8)[spheres.palette_index]
     else:
-        keep = slice(None)
-    # Per-type tables gathered by type index: no per-atom clipping or float math on 1e6+ atoms.
-    groups = type_groups(data.types) if "Color" not in data or "Radius" not in data else None
-    if "Color" in data:
-        colors = np.asarray(data["Color"], float)
-        rgb = (np.clip(colors[keep], 0, 1) * 255).astype(np.uint8)
-    else:
-        table = _color_table(groups[0], type_colors)
-        colors = table[groups[1]]
-        rgb = (np.clip(table, 0, 1) * 255).astype(np.uint8)[groups[1][keep]]
-    if "Radius" in data:
-        radii = np.asarray(data["Radius"], float)[keep] * radius_scale
-    else:
-        table = _radius_table(groups[0], 0.8, type_radii, data, radius_preset, oxidation_states, coordination)
-        radii = (table * radius_scale)[groups[1][keep]]
-    cloud = pv.PolyData(np.ascontiguousarray(data.positions[keep]))
-    cloud["rgb"] = rgb
-    cloud["radius"] = radii
-    return cloud, colors
+        cloud["rgb"] = (np.clip(spheres.rgb, 0, 1) * 255).astype(np.uint8)
+    if (spheres.alpha < 1).any():  # see-through spheres: RGBA scalars
+        cloud["rgb"] = np.column_stack([cloud["rgb"], (np.clip(spheres.alpha, 0, 1) * 255).astype(np.uint8)])
+    cloud["radius"] = spheres.radii if spheres.radii is not None else spheres.radius_table[spheres.palette_index]
+    return cloud
+
+
+def needs_depth_peeling(scene) -> bool:
+    """Whether an OpenGL scene has see-through layers (meshes, spheres or arrows)."""
+    for layer in scene.layers:
+        p = layer.primitive
+        if (layer.kind == "mesh" and p.transparency > 0) or (layer.kind == "spheres" and (p.alpha < 1).any()) \
+                or (layer.kind == "arrows" and p.alpha < 1):
+            return True
+    return False
 
 
 def add_atoms(plotter, cloud, *, atom_style: str = "auto", mesh_limit: int = 150_000,
@@ -204,8 +199,10 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 type_colors: dict | None = None, type_radii: dict | None = None,
                 bond_pairs: list | None = None, trajectory_width: float = 2.0,
                 radius_preset: str = "covalent", oxidation_states: dict | None = None,
-                coordination: dict | None = None, vectors=None, arrow_resolution: int | None = None):
-    """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter.
+                coordination: dict | None = None, vectors=None, arrow_resolution: int | None = None,
+                visuals=None, frame: int = 0):
+    """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter; returns the
+    :class:`ewald.scene.Scene` it drew.
 
     ``atom_style``: 'mesh' (sphere meshes, publication shading), 'impostor' (GPU
     point sprites for very large systems) or 'auto' (mesh up to ``mesh_limit`` atoms).
@@ -221,21 +218,38 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     ``"Force"``, ``["Force", "Velocity"]`` or ``{"Force": {"scaling": 2, "color": "red"}}`` (see
     :class:`ewald.arrows.VectorStyle`). ``arrow_resolution``: sides per arrow (default from the
     sphere detail); above ``mesh_limit`` arrows they are drawn as lines.
+    ``visuals``: extra visual elements (plugins), see :mod:`ewald.scene`.
     """
-    if data.count:
-        cloud, colors = atom_cloud(data, radius_scale=radius_scale, only_visible=only_visible,
-                                   type_colors=type_colors, type_radii=type_radii, radius_preset=radius_preset,
-                                   oxidation_states=oxidation_states, coordination=coordination)
-        add_atoms(plotter, cloud, atom_style=atom_style, mesh_limit=mesh_limit,
-                  sphere_resolution=sphere_resolution)
-        if bonds or bond_pairs or data.bonds is not None:
-            _add_bonds(plotter, data, colors, bonds, bond_radius, bond_pairs)
-    _add_surfaces(plotter, data)
-    _add_vectors(plotter, data, vectors, arrow_resolution or max(6, (sphere_resolution or 16) // 2 + 2), mesh_limit)
-    if trajectory_width > 0 and "trajectory-lines" in data.tables:
-        _add_trajectory_lines(plotter, data, trajectory_width)
-    if show_cell and data.cell.is_valid:
-        plotter.add_mesh(_cell_lines(data.cell), color=cell_color, line_width=cell_width, name="cell", render=False)
+    from .scene import SceneContext, build
+
+    scene = build(data, ctx=SceneContext(frame=frame, only_visible=only_visible), visuals=visuals,
+                  radius_scale=radius_scale, type_colors=type_colors, type_radii=type_radii,
+                  radius_preset=radius_preset, oxidation_states=oxidation_states, coordination=coordination,
+                  bonds=bonds, bond_pairs=bond_pairs, bond_radius=bond_radius, vectors=vectors,
+                  trajectory_width=trajectory_width, show_cell=show_cell, cell_width=cell_width)
+    draw_scene(plotter, scene, atom_style=atom_style, mesh_limit=mesh_limit, sphere_resolution=sphere_resolution,
+               arrow_resolution=arrow_resolution or max(6, (sphere_resolution or 16) // 2 + 2), ink=cell_color)
+    return scene
+
+
+def draw_scene(plotter, scene, *, atom_style: str = "auto", mesh_limit: int = 150_000,
+               sphere_resolution: int | None = None, arrow_resolution: int = 10, ink="black"):
+    """Add every layer of an :class:`ewald.scene.Scene` to a PyVista plotter, one actor per layer
+    named after it. ``ink`` colors lines that have no color of their own (the cell)."""
+    for layer in scene.layers:
+        prim, name = layer.primitive, layer.name
+        if layer.kind == "spheres":
+            if prim.count:
+                add_atoms(plotter, spheres_cloud(prim), atom_style=atom_style, mesh_limit=mesh_limit,
+                          sphere_resolution=sphere_resolution, name=name)
+        elif layer.kind == "cylinders":
+            _add_cylinders(plotter, prim, name)
+        elif layer.kind == "mesh":
+            _add_mesh(plotter, prim, name)
+        elif layer.kind == "arrows":
+            _add_arrows(plotter, prim, name, arrow_resolution, mesh_limit)
+        elif layer.kind == "lines":
+            _add_lines(plotter, prim, name, ink)
 
 
 # Fragment code for sphere impostors: discard outside the disc, then Blinn-Phong with a
@@ -276,109 +290,101 @@ def scene_bonds(data, cutoff=None, pairs=None):
     return find_bonds(data, cutoff, pairs)
 
 
-def _add_bonds(plotter, data, colors, cutoff, bond_radius, pairs=None):
-    """Half-bonds from each atom along its periodic-image bond vector (correct across PBC)."""
+def _add_cylinders(plotter, cyl, name):
+    """Cylinders as tubes (half-bonds: one per atom, in its color)."""
     import pyvista as pv
 
-    from .bonds import bond_segments
-
-    b = scene_bonds(data, cutoff, pairs)
-    if not b.count:
+    if not cyl.count:
         return
-    start, end, rgb, _ = bond_segments(data, b, colors)
-    m = len(start)
-    pts = np.empty((2 * m, 3))
-    pts[0::2] = start
-    pts[1::2] = end
-    lines = np.column_stack([np.full(m, 2), np.arange(0, 2 * m, 2), np.arange(1, 2 * m, 2)]).ravel()
-    poly = pv.PolyData(pts, lines=lines)
-    poly.cell_data["rgb"] = (np.clip(rgb, 0, 1) * 255).astype(np.uint8)
-    tubes = poly.tube(radius=bond_radius, n_sides=12, capping=False)
-    plotter.add_mesh(tubes, scalars="rgb", rgb=True, name="bonds", smooth_shading=True, render=False,
-                     ambient=0.25, diffuse=0.8, specular=0.2, specular_power=30)
+    radii = np.unique(cyl.radius)
+    for r in radii:  # one tube actor per radius (bonds have one)
+        pick = np.flatnonzero(cyl.radius == r) if len(radii) > 1 else np.arange(cyl.count)
+        k = len(pick)
+        pts = np.empty((2 * k, 3))
+        pts[0::2] = cyl.start[pick]
+        pts[1::2] = cyl.end[pick]
+        lines = np.column_stack([np.full(k, 2), np.arange(0, 2 * k, 2), np.arange(1, 2 * k, 2)]).ravel()
+        poly = pv.PolyData(pts, lines=lines)
+        poly.cell_data["rgb"] = (np.clip(cyl.rgb[pick], 0, 1) * 255).astype(np.uint8)
+        tubes = poly.tube(radius=float(r), n_sides=12, capping=False)
+        plotter.add_mesh(tubes, scalars="rgb", rgb=True, name=name if len(radii) == 1 else f"{name}:{r:g}",
+                         smooth_shading=True, render=False, ambient=0.25, diffuse=0.8, specular=0.2,
+                         specular_power=30)
 
 
-def _add_surfaces(plotter, data):
-    """Every ``data.surfaces`` mesh as one actor (faces) plus its outline edges. Meshes with
-    vertex "Normal"s (isosurfaces) are smooth-shaded; vertex "Color"s (grid slices) are interpolated."""
+def _add_mesh(plotter, mesh, name):
+    """A triangle mesh (faces) plus its outline edges. Meshes with vertex "Normal"s (isosurfaces) are
+    smooth-shaded; vertex "Color"s (grid slices) are interpolated."""
     import pyvista as pv
 
-    for name, mesh in getattr(data, "surfaces", {}).items():
-        if not mesh.face_count:
-            continue
-        poly = mesh.to_pyvista()
-        kw = dict(opacity=1.0 - mesh.transparency, name=f"surface:{name}", ambient=0.3, diffuse=0.7,
-                  specular=0.2, render=False, smooth_shading=False)
-        normals = mesh.vertex_properties.get("Normal")
-        if normals is not None:
-            poly.point_data["Normals"] = np.asarray(normals, float)
-            poly.point_data.active_normals_name = "Normals"
-            kw.update(smooth_shading=True, specular=0.25, specular_power=30)
-        vcolors = mesh.vertex_properties.get("Color")
-        if vcolors is not None:
-            poly.point_data["rgb"] = (np.clip(vcolors, 0, 1) * 255).astype(np.uint8)
-            kw.update(ambient=0.6, diffuse=0.45, specular=0.0)  # colour maps should read true, not shaded
-        else:
-            poly.cell_data["rgb"] = (np.clip(mesh.face_colors(), 0, 1) * 255).astype(np.uint8)
-        plotter.add_mesh(poly, scalars="rgb", rgb=True, **kw)
-        if mesh.edges is not None and len(mesh.edges):
-            lines = np.column_stack([np.full(len(mesh.edges), 2), mesh.edges]).ravel()
-            plotter.add_mesh(pv.PolyData(mesh.vertices, lines=lines), color=_rgb(mesh.edge_color), line_width=1.5,
-                             name=f"surface-edges:{name}", render=False)
-
-
-def _add_vectors(plotter, data, vectors, sides, line_limit):
-    """One actor per arrow set (``vectors:<property>``): cylinder + cone meshes, or colored
-    lines above ``line_limit`` arrows so the interactive viewport stays fast."""
-    import pyvista as pv
-
-    from .arrows import arrow_mesh, scene_arrows
-
-    for arrows in scene_arrows(data, vectors):
-        m = arrows.count
-        flat = arrows.shading == "flat"
-        light = dict(ambient=1.0, diffuse=0.0, specular=0.0) if flat else \
-            dict(ambient=0.25, diffuse=0.8, specular=0.3, specular_power=40)
-        if m > line_limit:
-            pts = np.empty((2 * m, 3))
-            pts[0::2], pts[1::2] = arrows.base, arrows.tip
-            lines = np.column_stack([np.full(m, 2), np.arange(0, 2 * m, 2), np.arange(1, 2 * m, 2)]).ravel()
-            poly = pv.PolyData(pts, lines=lines)
-            poly.cell_data["rgb"] = (arrows.rgb * 255).astype(np.uint8)
-            plotter.add_mesh(poly, scalars="rgb", rgb=True, line_width=2, opacity=arrows.alpha,
-                             name=f"vectors:{arrows.name}", render=False, lighting=False)
-            continue
-        verts, faces, normals, owner = arrow_mesh(arrows, sides)
-        poly = pv.PolyData(verts, faces=np.column_stack([np.full(len(faces), 3), faces]).ravel())
-        poly.point_data["Normals"] = normals
+    if not mesh.face_count:
+        return
+    poly = mesh.to_pyvista()
+    kw = dict(opacity=1.0 - mesh.transparency, name=name, ambient=0.3, diffuse=0.7,
+              specular=0.2, render=False, smooth_shading=False)
+    normals = mesh.vertex_properties.get("Normal")
+    if normals is not None:
+        poly.point_data["Normals"] = np.asarray(normals, float)
         poly.point_data.active_normals_name = "Normals"
-        poly.point_data["rgb"] = (arrows.rgb[owner] * 255).astype(np.uint8)
-        plotter.add_mesh(poly, scalars="rgb", rgb=True, opacity=arrows.alpha, smooth_shading=not flat,
-                         name=f"vectors:{arrows.name}", render=False, **light)
+        kw.update(smooth_shading=True, specular=0.25, specular_power=30)
+    vcolors = mesh.vertex_properties.get("Color")
+    if vcolors is not None:
+        poly.point_data["rgb"] = (np.clip(vcolors, 0, 1) * 255).astype(np.uint8)
+        kw.update(ambient=0.6, diffuse=0.45, specular=0.0)  # colour maps should read true, not shaded
+    else:
+        poly.cell_data["rgb"] = (np.clip(mesh.face_colors(), 0, 1) * 255).astype(np.uint8)
+    plotter.add_mesh(poly, scalars="rgb", rgb=True, **kw)
+    if mesh.edges is not None and len(mesh.edges):
+        lines = np.column_stack([np.full(len(mesh.edges), 2), mesh.edges]).ravel()
+        edges = name.replace("surface:", "surface-edges:", 1) if name.startswith("surface:") else f"{name}:edges"
+        plotter.add_mesh(pv.PolyData(mesh.vertices, lines=lines), color=_rgb(mesh.edge_color), line_width=1.5,
+                         name=edges, render=False)
 
 
-def _add_trajectory_lines(plotter, data, width):
-    """Polylines through ``tables['trajectory-lines']``, one per particle, in its atom color."""
+def _add_arrows(plotter, arrows, name, sides, line_limit):
+    """One arrow set: cylinder + cone meshes, or colored lines above ``line_limit`` arrows so the
+    interactive viewport stays fast."""
     import pyvista as pv
 
-    table = data.tables["trajectory-lines"]
-    pts = np.asarray(table["Position"], dtype=float)
-    ids = np.asarray(table["Particle Identifier"])
-    if len(pts) < 2:
+    from .arrows import arrow_mesh
+
+    m = arrows.count
+    if not m:
         return
-    starts = np.flatnonzero(np.r_[True, ids[1:] != ids[:-1]])
-    sizes = np.diff(np.r_[starts, len(ids)])
-    lines = np.concatenate([np.r_[m, np.arange(s, s + m)] for s, m in zip(starts, sizes)])
-    poly = pv.PolyData(pts, lines=lines)
-    colors = np.tile([0.3, 0.3, 0.3], (len(starts), 1))
-    if data.count:
-        here = np.asarray(data["Particle Identifier"]) if "Particle Identifier" in data else np.arange(data.count)
-        order = np.argsort(here)
-        pos = np.clip(np.searchsorted(here[order], ids[starts]), 0, data.count - 1)
-        hit = here[order][pos] == ids[starts]
-        colors[hit] = np.clip(default_colors(data), 0, 1)[order][pos[hit]]
-    poly.cell_data["rgb"] = (colors * 255).astype(np.uint8)
-    plotter.add_mesh(poly, scalars="rgb", rgb=True, line_width=width, name="trajectories", render=False)
+    flat = arrows.shading == "flat"
+    light = dict(ambient=1.0, diffuse=0.0, specular=0.0) if flat else \
+        dict(ambient=0.25, diffuse=0.8, specular=0.3, specular_power=40)
+    if m > line_limit:
+        pts = np.empty((2 * m, 3))
+        pts[0::2], pts[1::2] = arrows.base, arrows.tip
+        lines = np.column_stack([np.full(m, 2), np.arange(0, 2 * m, 2), np.arange(1, 2 * m, 2)]).ravel()
+        poly = pv.PolyData(pts, lines=lines)
+        poly.cell_data["rgb"] = (arrows.rgb * 255).astype(np.uint8)
+        plotter.add_mesh(poly, scalars="rgb", rgb=True, line_width=2, opacity=arrows.alpha,
+                         name=name, render=False, lighting=False)
+        return
+    verts, faces, normals, owner = arrow_mesh(arrows, sides)
+    poly = pv.PolyData(verts, faces=np.column_stack([np.full(len(faces), 3), faces]).ravel())
+    poly.point_data["Normals"] = normals
+    poly.point_data.active_normals_name = "Normals"
+    poly.point_data["rgb"] = (arrows.rgb[owner] * 255).astype(np.uint8)
+    plotter.add_mesh(poly, scalars="rgb", rgb=True, opacity=arrows.alpha, smooth_shading=not flat,
+                     name=name, render=False, **light)
+
+
+def _add_lines(plotter, lines, name, ink):
+    """Polylines ``width`` pixels wide, each in its color (or ``ink``)."""
+    import pyvista as pv
+
+    if not lines.count or len(lines.points) < 2:
+        return
+    cells = np.concatenate([np.r_[len(s), s] for s in lines.strips])
+    poly = pv.PolyData(lines.points, lines=cells)
+    if lines.rgb is None:
+        plotter.add_mesh(poly, color=ink, line_width=lines.width, name=name, render=False)
+        return
+    poly.cell_data["rgb"] = (np.clip(lines.rgb, 0, 1) * 255).astype(np.uint8)
+    plotter.add_mesh(poly, scalars="rgb", rgb=True, line_width=lines.width, name=name, render=False)
 
 
 def _setup_camera(plotter, data, direction, orthographic, zoom):
@@ -521,9 +527,9 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     p.set_background(background)
     res = q["sphere_resolution"] if data.count <= 20_000 else min(q["sphere_resolution"], 16)
-    build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, bonds=bonds, sphere_resolution=res,
-                **scene_kwargs)
-    if any(s.transparency > 0 for s in data.surfaces.values()):
+    scene = build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, bonds=bonds,
+                        sphere_resolution=res, **scene_kwargs)
+    if any(s.transparency > 0 for s in data.surfaces.values()) or needs_depth_peeling(scene):
         p.enable_depth_peeling()
     if camera is not None:
         apply_camera_state(p, camera)
@@ -553,7 +559,7 @@ def default_camera(data, size=(1600, 1200), direction="iso", orthographic=True, 
 
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     build_scene(p, data, radius_scale=radius_scale, show_cell=True, sphere_resolution=6,
-                **{k: v for k, v in (scene_kwargs or {}).items() if k in _RADIUS_KEYS + ("type_colors", "vectors")})
+                **{k: v for k, v in (scene_kwargs or {}).items() if k in _RADIUS_KEYS + ("type_colors", "vectors", "visuals")})
     _setup_camera(p, data, direction, orthographic, zoom)
     cam = camera_state(p)
     p.close()
