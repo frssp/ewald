@@ -69,6 +69,7 @@ def test_projections_and_orbitals():
 
 
 def test_vaspout_matches_vasprun():
+    pytest.importorskip("h5py")
     a, b = electronic(XML), electronic(H5)
     for name in ("dos_energies", "dos", "pdos", "eigenvalues", "occupations", "distances", "kpoints", "projections"):
         np.testing.assert_allclose(getattr(b, name), getattr(a, name), atol=1e-7, err_msg=name)  # XML: 8 decimals
