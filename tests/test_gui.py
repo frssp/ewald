@@ -1205,6 +1205,85 @@ def test_colormap_combo_lists_plugins(app, monkeypatch):
     assert "grayscale" in combo.itemData(0, QtCore.Qt.ToolTipRole)
 
 
+def _mouse(panel, kind, x, y, button=1, key=None, step=0, dblclick=False):
+    """Send a matplotlib mouse event at data point (x, y) of the panel's plot."""
+    from matplotlib.backend_bases import MouseEvent
+
+    px, py = panel._ax.transData.transform((x, y))
+    ev = MouseEvent(kind, panel.canvas, px, py, button=button, key=key, step=step, dblclick=dblclick)
+    panel.canvas.callbacks.process(kind, ev)
+
+
+def test_plots_zoom_pan_reset_and_hover(app, lammps_dir):
+    from ewald import import_file
+    from ewald.gui.plots import PlotsPanel
+
+    pipe = import_file(lammps_dir / "thermo" / "dump.lammpstrj")
+    panel = PlotsPanel()
+    panel.resize(600, 400)
+    panel.pipeline = pipe
+    views = []
+    panel.viewChanged.connect(lambda x, y: views.append((x, y)))
+    panel.set_data(pipe.compute(0))
+    panel.canvas.draw()
+    ax = panel._ax
+    x0, x1 = full = ax.get_xlim()
+    y = sum(ax.get_ylim()) / 2
+    _mouse(panel, "scroll_event", 20, y, button="up", step=1)           # wheel up: zoom in around x = 20
+    lo, hi = ax.get_xlim()
+    assert hi - lo == pytest.approx((x1 - x0) / 1.25) and lo < 20 < hi
+    assert views[-1][0] == (lo, hi) and views[-1][1] is None
+    panel.set_data(pipe.compute(2))                                     # the zoom stays while frames change
+    assert panel._ax.get_xlim() == (lo, hi)
+    panel._drawn = None
+    panel.set_data(pipe.compute(3))                                     # also through a full redraw
+    assert panel._ax.get_xlim() == (lo, hi)
+    ax = panel._ax
+    panel.canvas.draw()
+    _mouse(panel, "button_press_event", 20, y, button=3)                # right drag pans
+    _mouse(panel, "motion_notify_event", 25, y, button=3)
+    _mouse(panel, "button_release_event", 25, y, button=3)
+    assert ax.get_xlim() == pytest.approx((lo - 5, hi - 5), abs=0.1)  # whole pixels
+    assert panel._range is None and panel.frame_selection == []         # a pan selects nothing
+    _mouse(panel, "motion_notify_event", 21, y, button=None)            # hover: values and the frame
+    assert panel.readout.text().endswith("frame 2: 273.4")
+    _mouse(panel, "button_press_event", 21, y, dblclick=True)           # double-click: full range
+    _mouse(panel, "button_release_event", 21, y)
+    assert panel._ax.get_xlim() == pytest.approx(full) and views[-1] == (None, None)
+    panel.set_view(ylim=(0, 1), emit=False)
+    assert panel.view_limits() == (None, (0.0, 1.0))
+    panel.table.setCurrentText("")                                      # another plot: full range again
+    panel.hist.setCurrentText(next(k for k in pipe.compute(0).particles if k != "Position"))
+    assert panel.view_limits() == (None, None)
+
+
+def test_plots_click_on_two_cv_plot_goes_to_nearest_frame(app, cu_fcc):
+    from ewald.gui.plots import PlotsPanel
+
+    def cvs(frame, data):
+        data.tables["colvar"] = {"Frame": np.arange(3), "d1": np.array([0.1, 0.5, 0.9]),
+                                 "d2": np.array([0.2, 0.6, 0.8])}
+        x, y = np.meshgrid(np.linspace(0, 1, 5), np.linspace(0, 1, 5))
+        data.tables["fes"] = {"d1": x.ravel(), "d2": y.ravel(), "Free Energy": (x + y).ravel()}
+
+    pipe = Pipeline(StaticSource([cu_fcc] * 3), [mods.PythonModifier(cvs)])
+    panel = PlotsPanel()
+    panel.resize(600, 400)
+    panel.pipeline = pipe
+    panel.set_data(pipe.compute(0))
+    panel.table.setCurrentText("fes")
+    assert panel.link.kind == "frames2d"
+    panel.canvas.draw()
+    jumps = []
+    panel.frameRequested.connect(jumps.append)
+    for x, y in ((0.52, 0.58), (0.3, 0.95)):                            # near frame 1; far from every frame
+        _mouse(panel, "button_press_event", x, y)
+        _mouse(panel, "button_release_event", x, y)
+    assert jumps == [1]
+    _mouse(panel, "motion_notify_event", 0.88, 0.8, button=None)
+    assert "frame 2" in panel.readout.text()
+
+
 def test_dos_and_band_plots_show_selected_atoms(app):
     from pathlib import Path
 
@@ -1237,6 +1316,26 @@ def test_dos_and_band_plots_show_selected_atoms(app):
     assert sizes.max() <= 60 and len(sizes) > 100
     panel.set_highlight([])
     assert not panel._overlays and "Select atoms" in panel.link_label.text()
+    # one energy window for DOS and bands: typed, dragged or zoomed with the wheel
+    assert panel.e_max.isVisibleTo(panel)
+    panel.e_max.setValue(2.0)
+    assert panel._ax.get_ylim()[1] == 2.0 and panel.view_limits()[1][1] == 2.0
+    panel.table.setCurrentText("DOS")
+    assert panel._ax.get_xlim()[1] == 2.0 and panel.e_max.value() == 2.0
+    panel.canvas.draw()
+    _mouse(panel, "button_press_event", -1.0, 0.5)                      # left drag on the DOS: zoom to it
+    _mouse(panel, "motion_notify_event", 1.0, 0.5)
+    _mouse(panel, "button_release_event", 1.0, 0.5)
+    assert panel._ax.get_xlim() == pytest.approx((-1.0, 1.0), abs=0.02) and panel.e_min.value() == pytest.approx(-1.0, abs=0.02)
+    panel.table.setCurrentText("Bands")
+    assert panel._ax.get_ylim() == pytest.approx((-1.0, 1.0), abs=0.02)
+    panel.canvas.draw()
+    _mouse(panel, "scroll_event", panel._ax.get_xlim()[0] + 0.01, 0.0, button="down", step=-1)  # zoom out E
+    assert panel._ax.get_ylim() == pytest.approx((-1.25, 1.25), abs=0.03)
+    _mouse(panel, "motion_notify_event", 0.01, 0.5, button=None)
+    assert panel.readout.text().startswith("E − E_F = 0.4") or panel.readout.text().startswith("E − E_F = 0.5")
+    panel.reset_view()
+    assert panel.view_limits() == (None, None) and not panel.figure.axes[0].get_ylim()[1] > 6.0
 
 
 def test_open_example_menu(app):
@@ -1296,6 +1395,11 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w.viewport.set_picks = picked.append                       # dragging on the plot selects atoms
     plot.atomsSelected.emit([1, 2])
     assert picked == [[1, 2]]
+    plot.set_view(xlim=(10.5, 12.25))                          # zooming writes the range into the cell
+    assert cell.source.endswith("show(pipe, histogram='Coordination', xlim=(10.5, 12.25))")
+    assert plot._ax.get_xlim() == (10.5, 12.25)
+    plot.reset_view()
+    assert cell.source.endswith("show(pipe, histogram='Coordination')")
 
     path = tmp_path / "cu_nb.py"
     monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName", lambda *a, **k: (str(path), ""))

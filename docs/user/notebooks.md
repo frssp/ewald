@@ -63,13 +63,15 @@ particle-property histogram:
 show(pipe, table="coordination-rdf")         # g(r), XRD, S(q), DOS, Bands, Thermo, NEB, ...
 show(pipe, table="DOS", y="Ga d")            # one column
 show(pipe, histogram="Coordination")         # histogram of a particle property
+show(pipe, table="DOS", xlim=(-3, 2))        # the range shown (DOS energy window)
 ```
 
 In the GUI the plot is linked to the 3D view, like the Plots tab. Dragging an x range selects
 those atoms, or those frames on a per-frame plot. The atoms you pick appear on the plot. The DOS
 and the band structure follow the picked atoms as projected DOS or fat bands, and clicking a
 phonon band plays that mode. Choosing another table, column or histogram in the plot's bar
-rewrites the cell. Run as a script, `show` draws the same plot with matplotlib. Add one with
+rewrites the cell, and so does zooming: the wheel, a drag on a DOS or band plot, or a pan
+writes `xlim=`/`ylim=`, and a double-click removes them. Run as a script, `show` draws the same plot with matplotlib. Add one with
 **+ View** or Insert › View, which list the tables and properties of the current frame.
 
 Every plot ewald draws (view cells, `show`, a verb table's picture, the figures saved into an
