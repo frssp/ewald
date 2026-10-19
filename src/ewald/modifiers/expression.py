@@ -1,7 +1,7 @@
 """OVITO-style per-particle expressions evaluated with numpy.
 
 Property names are used as in OVITO: ``Position.Z``, ``ParticleType``,
-``ParticleIdentifier``, ``Velocity.X``, ``Coordination``; globals ``N``,
+``ParticleIdentifier``, ``ParticleIndex`` (0-based row), ``Velocity.X``, ``Coordination``; globals ``N``,
 ``Frame``, ``Timestep``, ``CellSize.X``. Combine conditions with numpy
 operators: ``(Position.Z > 10) & (ParticleType == "Cu")``; numpy is ``np``.
 """
@@ -23,6 +23,7 @@ def namespace(data, frame=None) -> dict:
             letters = _COMPONENTS.get(name, "XYZ")
             for k in range(arr.shape[1]):
                 ns[f"{key}.{letters[k]}"] = arr[:, k]
+    ns.setdefault("ParticleIndex", np.arange(data.count))
     m = data.cell.matrix
     ns.update({"N": data.count, "CellSize.X": m[0, 0], "CellSize.Y": m[1, 1], "CellSize.Z": m[2, 2],
                "CellOrigin.X": data.cell.origin[0], "CellOrigin.Y": data.cell.origin[1],
