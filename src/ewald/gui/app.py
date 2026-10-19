@@ -29,7 +29,8 @@ def file_filter() -> str:
     """Open-dialog filter from the reader registry (built-in formats and plugins)."""
     from .. import plugins
 
-    return f"Simulation files ({' '.join(plugins.file_patterns())});;All files (*)"
+    return (f"Simulation files ({' '.join(plugins.file_patterns('structure'))});;"
+            f"Volumetric data ({' '.join(plugins.file_patterns('volumetric'))});;All files (*)")
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -49,6 +50,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # --- central: workspaces (Analyze = viewport + timeline, Render = render page)
         self.viewport = Viewport(self.style)
         self.viewport.picked.connect(self._on_pick)
+        self.viewport.bondEdit.connect(self.toggle_bond)
         self.viewport.styleChanged.connect(self._style_changed)
         self.timeline = Timeline()
         self.timeline.frameChanged.connect(self.set_frame)
@@ -317,6 +319,23 @@ class MainWindow(QtWidgets.QMainWindow):
             pass  # editor already reflects the change
         else:
             self.panel.refresh()
+
+    def toggle_bond(self, i, j):
+        """Bond tool: delete the i-j bond if it exists, else add it, via an EditBonds modifier on top."""
+        from ..modifiers import EditBonds
+
+        if self.pipeline is None or self.data is None:
+            return
+        d = self.data
+        ids = d["Particle Identifier"] if "Particle Identifier" in d else np.arange(d.count)
+        bonded = d.bonds is not None and bool(np.any(np.all(np.sort(d.bonds.topology, axis=1) == sorted((i, j)), axis=1)))
+        mods = self.pipeline.modifiers
+        if not (mods and isinstance(mods[-1], EditBonds)):
+            mods.append(EditBonds())
+        mods[-1].toggle(int(ids[i]), int(ids[j]), bonded)
+        self.panel.refresh(select=("mod", mods[-1]))
+        self.recompute()
+        self.message(f"{'Deleted' if bonded else 'Added'} bond {d.types[i]}{int(ids[i])}-{d.types[j]}{int(ids[j])}")
 
     def _on_pick(self, text):
         self.pick_label.setText(text)

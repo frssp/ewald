@@ -88,13 +88,16 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 bond_radius: float = 0.15, only_visible=None, atom_style: str = "auto",
                 mesh_limit: int = 150_000, sphere_resolution: int | None = None,
                 type_colors: dict | None = None, type_radii: dict | None = None,
-                bond_pairs: list | None = None):
+                bond_pairs: list | None = None, trajectory_width: float = 2.0):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter.
 
     ``atom_style``: 'mesh' (sphere meshes, publication shading), 'impostor' (GPU
     point sprites for very large systems) or 'auto' (mesh up to ``mesh_limit`` atoms).
     ``type_colors``/``type_radii`` override per-type defaults, e.g. ``{"Cu": "#c8794a"}``.
     ``bond_pairs``: VESTA-style list of ``(A, B, dmin, dmax)``; '*' matches any type.
+    Bonds in ``data.bonds`` (CreateBonds, EditBonds) are drawn whenever present and take
+    precedence over ``bonds``/``bond_pairs``; ``data.surfaces`` meshes (polyhedra) are drawn too.
+    ``trajectory_width``: line width of ``tables['trajectory-lines']`` (GenerateTrajectoryLines); 0 hides them.
     """
     import pyvista as pv
 
@@ -130,8 +133,11 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
             mapper.SetScaleArray("radius")
             mapper.SetScaleFactor(1.0)
             mapper.SetSplatShaderCode(_IMPOSTOR_SHADER)
-        if bonds or bond_pairs:
+        if bonds or bond_pairs or data.bonds is not None:
             _add_bonds(plotter, data, colors, bonds, bond_radius, bond_pairs)
+    _add_surfaces(plotter, data)
+    if trajectory_width > 0 and "trajectory-lines" in data.tables:
+        _add_trajectory_lines(plotter, data, trajectory_width)
     if show_cell and data.cell.is_valid:
         plotter.add_mesh(_cell_lines(data.cell), color=cell_color, line_width=cell_width, name="cell", render=False)
 
@@ -157,41 +163,96 @@ def bond_list(data, cutoff=None, pairs=None):
     With ``pairs`` [(A, B, dmin, dmax), ...] only pairs whose types and length
     match a row are kept (VESTA's bond search table); otherwise ``cutoff``.
     """
-    from .neighbors import find_pairs
+    from .bonds import find_bonds
 
-    rmax = max(p[3] for p in pairs) if pairs else cutoff
-    i, j, d, dist = find_pairs(data.positions, data.cell, rmax)
-    i, j, d, dist = (np.asarray(x) for x in (i, j, d, dist))
-    if pairs:
-        types = data.types
-        ti, tj = types[i], types[j]
-        keep = np.zeros(len(i), bool)
-        for a, b, lo, hi in pairs:
-            ok_t = (((ti == a) | (a == "*")) & ((tj == b) | (b == "*"))) | \
-                   (((ti == b) | (b == "*")) & ((tj == a) | (a == "*")))
-            keep |= ok_t & (dist >= lo) & (dist <= hi)
-        i, j, d = i[keep], j[keep], d[keep]
-    return i, j, d
+    b = find_bonds(data, cutoff, pairs)
+    i, j = b.topology.T
+    d = b.vectors(data)
+    return np.concatenate([i, j]), np.concatenate([j, i]), np.concatenate([d, -d])
+
+
+def scene_bonds(data, cutoff=None, pairs=None):
+    """The bonds a renderer draws: ``data.bonds`` if present, else a search by ``cutoff``/``pairs``."""
+    from .bonds import find_bonds
+
+    if data.bonds is not None:
+        return data.bonds
+    return find_bonds(data, cutoff, pairs)
 
 
 def _add_bonds(plotter, data, colors, cutoff, bond_radius, pairs=None):
-    """Half-bonds from each atom along the minimum-image vector (correct across PBC)."""
+    """Half-bonds from each atom along its periodic-image bond vector (correct across PBC)."""
     import pyvista as pv
 
-    i, j, d = bond_list(data, cutoff, pairs)
-    if not len(i):
+    from .bonds import bond_segments
+
+    b = scene_bonds(data, cutoff, pairs)
+    if not b.count:
         return
-    start = data.positions[i]
-    pts = np.empty((2 * len(i), 3))
+    start, end, rgb, _ = bond_segments(data, b, colors)
+    m = len(start)
+    pts = np.empty((2 * m, 3))
     pts[0::2] = start
-    pts[1::2] = start + 0.5 * d
-    lines = np.column_stack([np.full(len(i), 2), np.arange(0, 2 * len(i), 2),
-                             np.arange(1, 2 * len(i), 2)]).ravel()
+    pts[1::2] = end
+    lines = np.column_stack([np.full(m, 2), np.arange(0, 2 * m, 2), np.arange(1, 2 * m, 2)]).ravel()
     poly = pv.PolyData(pts, lines=lines)
-    poly.cell_data["rgb"] = (colors[i] * 255).astype(np.uint8)
+    poly.cell_data["rgb"] = (rgb * 255).astype(np.uint8)
     tubes = poly.tube(radius=bond_radius, n_sides=12, capping=False)
     plotter.add_mesh(tubes, scalars="rgb", rgb=True, name="bonds", smooth_shading=True, render=False,
                      ambient=0.25, diffuse=0.8, specular=0.2, specular_power=30)
+
+
+def _add_surfaces(plotter, data):
+    """Every ``data.surfaces`` mesh as one actor (faces) plus its outline edges. Meshes with
+    vertex "Normal"s (isosurfaces) are smooth-shaded; vertex "Color"s (grid slices) are interpolated."""
+    import pyvista as pv
+
+    for name, mesh in getattr(data, "surfaces", {}).items():
+        if not mesh.face_count:
+            continue
+        poly = mesh.to_pyvista()
+        kw = dict(opacity=1.0 - mesh.transparency, name=f"surface:{name}", ambient=0.3, diffuse=0.7,
+                  specular=0.2, render=False, smooth_shading=False)
+        normals = mesh.vertex_properties.get("Normal")
+        if normals is not None:
+            poly.point_data["Normals"] = np.asarray(normals, float)
+            poly.point_data.active_normals_name = "Normals"
+            kw.update(smooth_shading=True, specular=0.25, specular_power=30)
+        vcolors = mesh.vertex_properties.get("Color")
+        if vcolors is not None:
+            poly.point_data["rgb"] = (np.clip(vcolors, 0, 1) * 255).astype(np.uint8)
+            kw.update(ambient=0.6, diffuse=0.45, specular=0.0)  # colour maps should read true, not shaded
+        else:
+            poly.cell_data["rgb"] = (np.clip(mesh.face_colors(), 0, 1) * 255).astype(np.uint8)
+        plotter.add_mesh(poly, scalars="rgb", rgb=True, **kw)
+        if mesh.edges is not None and len(mesh.edges):
+            lines = np.column_stack([np.full(len(mesh.edges), 2), mesh.edges]).ravel()
+            plotter.add_mesh(pv.PolyData(mesh.vertices, lines=lines), color=_rgb(mesh.edge_color), line_width=1.5,
+                             name=f"surface-edges:{name}", render=False)
+
+
+def _add_trajectory_lines(plotter, data, width):
+    """Polylines through ``tables['trajectory-lines']``, one per particle, in its atom color."""
+    import pyvista as pv
+
+    table = data.tables["trajectory-lines"]
+    pts = np.asarray(table["Position"], dtype=float)
+    ids = np.asarray(table["Particle Identifier"])
+    if len(pts) < 2:
+        return
+    starts = np.flatnonzero(np.r_[True, ids[1:] != ids[:-1]])
+    sizes = np.diff(np.r_[starts, len(ids)])
+    lines = np.concatenate([np.r_[m, np.arange(s, s + m)] for s, m in zip(starts, sizes)])
+    poly = pv.PolyData(pts, lines=lines)
+    colors = np.tile([0.3, 0.3, 0.3], (len(starts), 1))
+    if data.count:
+        here = np.asarray(data["Particle Identifier"]) if "Particle Identifier" in data else np.arange(data.count)
+        order = np.argsort(here)
+        pos = np.clip(np.searchsorted(here[order], ids[starts]), 0, data.count - 1)
+        hit = here[order][pos] == ids[starts]
+        colors[hit] = np.clip(default_colors(data), 0, 1)[order][pos[hit]]
+    poly.cell_data["rgb"] = (colors * 255).astype(np.uint8)
+    plotter.add_mesh(poly, scalars="rgb", rgb=True, line_width=width, name="trajectories", render=False)
 
 
 def _setup_camera(plotter, data, direction, orthographic, zoom):
@@ -269,6 +330,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     p.set_background(background)
     build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, bonds=bonds, **scene_kwargs)
+    if any(s.transparency > 0 for s in data.surfaces.values()):
+        p.enable_depth_peeling()
     if legend and "ColorCoding.range" in data.attributes:
         _add_colorbar(p, data)
     if text:
@@ -357,7 +420,8 @@ def _draw_overlays(rgba, data, text, legend, background, transparent):
             draw.line([(x0, y), (x1, y)], fill=tuple(int(255 * v) for v in c[:3]) + (255,))
         draw.rectangle([x0, y0, x1, y1 - 1], outline=ink)
         title = str(data.attributes.get("ColorCoding.property", ""))
-        draw.text((x0, y0 - int(1.4 * fs)), title, fill=ink, font=small)
+        tw = draw.textlength(title, font=small)
+        draw.text((min(x0, w - tw - int(0.01 * w)), y0 - int(1.4 * fs)), title, fill=ink, font=small)
         for frac in (0, 0.25, 0.5, 0.75, 1):
             y = int(y1 - 1 - frac * (y1 - y0 - 1))
             draw.line([(x1, y), (x1 + int(0.006 * w), y)], fill=ink)

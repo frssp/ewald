@@ -71,7 +71,8 @@ example figures.
 
 * `DataCollection`: per-particle arrays with OVITO property names
   (`Position`, `Particle Type`, `Particle Identifier`, `Color`, `Radius`, ...),
-  plus `cell`, `attributes`, `tables`.
+  plus `cell`, `attributes`, `tables`, `grids` (volumetric `VoxelGrid`s) and
+  `surfaces` (display meshes such as isosurfaces).
 * `Pipeline`: source + modifier list, evaluated lazily per frame; source frames are
   cached and never mutated by modifiers.
 * Readers: native readers for LAMMPS dumps, LAMMPS data files and VASP
@@ -95,7 +96,7 @@ Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
 | Format | Reader | Notes |
 |---|---|---|
 | LAMMPS text dump (`dump atom/custom`) | native, lazy | orthogonal, `xy xz yz` and general (`abc origin`) triclinic boxes; `x`/`xu`/`xs`/`xsu`; `c_x[1] c_x[2]` become one vector property; `dump_modify units/time yes`; partial last frame skipped with a warning; `type_map={1: "Cu"}` |
-| LAMMPS data file | native | styles atomic, charge, bond/angle/molecular, full, sphere, dipole (from `Atoms # style`, inferred, or `atom_style=`); type names from `Atom Type Labels` or `Masses` comments; Velocities, image flags, Bonds (`data.tables["Bonds"]`); general triclinic `avec bvec cvec` |
+| LAMMPS data file | native | styles atomic, charge, bond/angle/molecular, full, sphere, dipole (from `Atoms # style`, inferred, or `atom_style=`); type names from `Atom Type Labels` or `Masses` comments; Velocities, image flags, Bonds (`data.bonds`); general triclinic `avec bvec cvec` |
 | VASP XDATCAR | native, lazy | fixed and variable cell (NpT), VASP 6.4 `Si/hash` species labels, partial last frame skipped |
 | VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics (`Selective Dynamics`, True = free), CONTCAR velocities (`Velocity` in Å/fs) |
 | VASP OUTCAR, vasprun.xml | ASE | all ionic steps with `Energy`, `Force`, `Stress` |
@@ -129,7 +130,8 @@ my-format = "my_pkg.io:MyFormatReader"
 
 The formats in the table above are registered the same way (origin `built-in`), so one
 registry drives format detection, the GUI filter and the Claude tools. Without `format=`,
-readers are tried by `priority`: the native LAMMPS dump/data and XDATCAR readers (10-12),
+readers are tried by `priority`: volumetric cube (5) and VASP CHGCAR/LOCPOT/ELFCAR (6), the
+native LAMMPS dump/data and XDATCAR readers (10-12),
 then plugins (50 unless given), then ASE (100). A reader with `sniff(path)` is matched on
 content, one without on its file-name `patterns`. `format="my-format"` (or an alias such as
 `"lammps/dump"`) selects a reader directly, other names go to ASE, and registering an
@@ -185,6 +187,76 @@ names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
 `CalculateDisplacements` (+ MSD),
 `Replicate`, `WrapAtoms`, `AffineTransformation`, and any Python function
 `f(frame, data)`.
+
+### Bonds and coordination polyhedra
+
+`data.bonds` stores each bond once (OVITO's `Topology` + `Periodic Image`), so bonds
+stay correct across periodic boundaries and in primitive cells smaller than twice the
+bond length; `DeleteSelected`, `Slice`, `Replicate` and `WrapAtoms` keep them consistent.
+`CreateBonds` finds them with a uniform cutoff, a VESTA-style pair table
+(`pairs=[("Ti", "O", 2.4)]`, `*` = any type, or OVITO's `set_pairwise_cutoff`) or
+covalent radii (`mode="covalent"`, VESTA's default). `EditBonds(add=[(a, b)], remove=[...])`
+adds or deletes single bonds by particle identifier; in the GUI the bond tool (⌇) does it by
+clicking two atoms. `CoordinationPolyhedra` puts a convex polyhedron (or a flat polygon for
+planar coordination) around each center particle, colored like the center, into
+`data.surfaces["coordination-polyhedra"]`. The OpenGL viewport and the ray tracer draw
+bonds, polyhedra, their edges and transparency. LAMMPS data files fill `data.bonds` too.
+
+```python
+from ewald.modifiers import CreateBonds, CoordinationPolyhedra
+
+pipe = import_file("CONTCAR")
+pipe.modifiers.append(CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)]))
+pipe.modifiers.append(CoordinationPolyhedra(center_types=["Ti"], transparency=0.3))
+pipe.render("octahedra.png", renderer="raytrace", radius_scale=0.4)
+```
+
+### Trajectory analysis
+
+These modifiers read every frame of `start:stop:step` through the modifiers above
+them (one frame at a time, so lazy LAMMPS dumps and XDATCARs stay lazy), cache the
+result and show it at every frame:
+`MeanSquaredDisplacement` (FFT time-origin-averaged MSD, per type, unwrapped and
+matched by id, Einstein diffusion coefficient), `VelocityAutocorrelation` (VACF from
+`vx vy vz` or differentiated positions, Green-Kubo D), `TimeAveraging` (OVITO's
+time averaging of a table, attribute or property, e.g. the time-averaged g(r)),
+`TimeSeries` (attributes vs. time) and `GenerateTrajectoryLines` (particle paths
+drawn as lines, plus 'Path Length', 'Net Displacement', 'Max Displacement').
+
+```python
+from ewald.modifiers import CoordinationAnalysis, MeanSquaredDisplacement, TimeAveraging
+
+pipe = import_file("XDATCAR")
+pipe.modifiers.append(MeanSquaredDisplacement(time_per_frame=0.002))   # ps between frames
+pipe.modifiers.append(CoordinationAnalysis(cutoff=3.0))
+pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
+data = pipe.compute(0, device="cuda")
+data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # A^2/ps
+data.tables["coordination-rdf[average]"]                               # time-averaged g(r)
+```
+
+### Volumetric data (CHGCAR, LOCPOT, ELFCAR, cube)
+
+`import_file("CHGCAR")` gives the atoms plus a `VoxelGrid` in `data.grids`
+(VASP CHGCAR/CHG/PARCHG/AECCAR as "Charge Density" in e/A^3 with "Magnetization",
+"Spin Up", "Spin Down" for spin-polarised runs; LOCPOT "Potential"; ELFCAR "ELF";
+Gaussian cube "Value", `pbc=True` for plane-wave output). `CreateIsosurface`
+draws VESTA-style isosurfaces (`signed=True` adds the negative level in a second
+colour, for density differences and spin densities), `GridSlice` a colour-mapped
+(hkl) plane, `GridDifference` subtracts other files' grids, and `export_file`
+writes `.cube` or CHGCAR. Both the OpenGL renderer and the ray tracer draw the
+surfaces, translucent ones included.
+
+```python
+from ewald.modifiers import CreateIsosurface, GridDifference, GridSlice
+
+pipe = import_file("AB/CHGCAR")
+pipe.modifiers.append(GridDifference(["A/CHGCAR", "B/CHGCAR"]))       # rho_AB - rho_A - rho_B
+pipe.modifiers.append(CreateIsosurface(0.002, signed=True, transparency=0.3))
+pipe.modifiers.append(GridSlice(miller=(0, 0, 1), distance=0.5, cmap="RdBu_r", range=(-0.01, 0.01)))
+pipe.render("ccd.png", renderer="raytrace")
+spin = import_file("CHGCAR").compute().grids["charge-density"]["Spin Up"]  # numpy array
+```
 
 ### Structure analysis (ported from OVITO)
 

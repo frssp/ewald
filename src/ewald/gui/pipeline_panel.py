@@ -16,6 +16,24 @@ MODIFIER_MENU = {
         "Coordination analysis / RDF": lambda: mods.CoordinationAnalysis(cutoff=3.2),
         "Displacement vectors": lambda: mods.CalculateDisplacements(0),
     },
+    "Trajectory": {
+        "Mean squared displacement / diffusion": mods.MeanSquaredDisplacement,
+        "Velocity autocorrelation": mods.VelocityAutocorrelation,
+        "Time averaging (g(r), attributes)": mods.TimeAveraging,
+        "Time series of attributes": mods.TimeSeries,
+        "Trajectory lines / paths": mods.GenerateTrajectoryLines,
+    },
+    "Bonds & polyhedra": {
+        "Create bonds": lambda: mods.CreateBonds(mode="covalent"),
+        "Edit bonds (add / delete)": mods.EditBonds,
+        "Coordination polyhedra": mods.CoordinationPolyhedra,
+    },
+    "Volume (CHGCAR, LOCPOT, cube)": {
+        "Isosurface": mods.CreateIsosurface,
+        "Isosurface, signed (density difference / spin)": lambda: mods.CreateIsosurface(signed=True),
+        "Slice plane (2D map)": mods.GridSlice,
+        "Charge density difference": lambda: mods.GridDifference(["CHGCAR_A", "CHGCAR_B"]),
+    },
     "Coloring": {
         "Color coding": lambda: mods.ColorCoding("Position.Z"),
         "Assign color": lambda: mods.AssignColor((1.0, 0.2, 0.2)),
@@ -62,7 +80,11 @@ def _discover():
 BADGES = {"CoordinationAnalysis": "CN", "CalculateDisplacements": "DV", "ColorCoding": "CC", "AssignColor": "AC",
           "Slice": "SL", "Replicate": "RP", "WrapAtoms": "WR", "AffineTransformation": "AT", "ComputeProperty": "CP",
           "DeleteSelected": "DS", "ExpressionSelection": "ES", "SelectType": "ST", "InvertSelection": "IS",
-          "ClearSelection": "CS", "PythonScript": "Py", "PythonModifier": "Py"}
+          "ClearSelection": "CS", "PythonScript": "Py", "PythonModifier": "Py",
+          "MeanSquaredDisplacement": "MS", "VelocityAutocorrelation": "VA", "TimeAveraging": "TA",
+          "TimeSeries": "TS", "GenerateTrajectoryLines": "TL", "CreateBonds": "CB", "EditBonds": "EB",
+          "CoordinationPolyhedra": "PH",
+          "CreateIsosurface": "SF", "GridSlice": "GS", "GridDifference": "GD"}
 
 KIND = QtCore.Qt.UserRole + 1
 
@@ -449,7 +471,15 @@ class PipelinePanel(QtWidgets.QWidget):
                                     self.styleChanged.emit(), self.refresh()))
         row.addWidget(add); row.addWidget(rm)
         f.addRow(row)
-        if self.data is not None and self.style.bonds_enabled:
+        to_mod = QtWidgets.QPushButton("Use as Create bonds modifier")
+        to_mod.setToolTip("Add a CreateBonds modifier with this table, so bonds can be edited and used "
+                          "by Coordination polyhedra")
+        to_mod.clicked.connect(lambda: self.add_modifier(
+            mods.CreateBonds(mode="pairwise", pairs=[tuple(p) for p in self.style.bond_pairs])))
+        f.addRow(to_mod)
+        if self.data is not None and self.data.bonds is not None:
+            f.addRow("Pipeline bonds", QtWidgets.QLabel(f"{self.data.bonds.count} (drawn instead of the table)"))
+        elif self.data is not None and self.style.bonds_enabled:
             from ..render import bond_list
 
             try:

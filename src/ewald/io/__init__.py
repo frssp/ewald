@@ -9,6 +9,8 @@ from .ase_reader import AseReader
 from .base import FrameReader
 from .lammps_data import LammpsDataReader, is_lammps_data
 from .lammps_dump import LammpsDumpReader, is_lammps_dump, write_lammps_dump
+from .volumetric import (VolumetricReader, is_cube, is_vasp_volumetric, read_cube, read_vasp_volumetric,
+                         write_cube, write_vasp_volumetric)
 from .xdatcar import XdatcarReader, is_xdatcar
 
 
@@ -75,6 +77,17 @@ def _open_ase(path, format=None, **kwargs):
     return AseReader(path, format=format, **kwargs)
 
 
+def _open_cube(path, pbc=False, **kwargs):
+    return VolumetricReader(path, "cube", pbc=pbc)
+
+
+def _open_vasp_volumetric(path, format=None, kind=None, **kwargs):
+    fmt = (format or "").lower()
+    kind = kind or ("potential" if "locpot" in fmt else "elf" if "elfcar" in fmt else
+                    "charge" if "chgcar" in fmt else None)
+    return VolumetricReader(path, "vasp", kind=kind)
+
+
 def _open_ase_lammps_data(path, **kwargs):
     return AseReader(path, format="lammps-data", **kwargs)
 
@@ -85,6 +98,13 @@ def builtin_readers():
 
     B = "built-in"
     return [
+        ReaderPlugin("cube", _open_cube, ("*.cube", "*.cub"), is_cube,
+                     "Gaussian cube volumetric data (atoms + grid)", B, 5, ("gaussian-cube",), category="volumetric"),
+        ReaderPlugin("vasp-volumetric", _open_vasp_volumetric,
+                     ("CHGCAR*", "CHG*", "PARCHG*", "AECCAR*", "LOCPOT*", "ELFCAR*"), is_vasp_volumetric,
+                     "VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR (atoms + grid)", B, 6,
+                     ("vasp-chgcar", "chgcar", "vasp-locpot", "locpot", "vasp-elfcar", "elfcar"),
+                     takes_format=True, category="volumetric"),
         ReaderPlugin("lammps-dump", LammpsDumpReader, ("*.lammpstrj", "*.dump"), is_lammps_dump,
                      "LAMMPS text dump (atom/custom), lazy", B, 10, ("lammps/dump", "lammps-dump-text")),
         ReaderPlugin("xdatcar", XdatcarReader, ("XDATCAR*",), is_xdatcar,
@@ -108,6 +128,9 @@ def import_file(path, format: str | None = None, **kwargs):
     Keyword arguments go to the reader, e.g. ``type_map={1: "Cu", 2: "Zr"}`` for
     LAMMPS dumps/data files that only contain numeric types, or
     ``atom_style="atomic"`` for LAMMPS data files without an ``Atoms # style`` hint.
+    Volumetric files (VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR, ``*.cube``) give the
+    atoms plus a grid in ``data.grids``; ``kind="charge"|"potential"|"elf"`` overrides the
+    VASP file-name guess and ``pbc=True`` marks a cube file periodic.
     """
     from ..pipeline import Pipeline
 
@@ -119,6 +142,8 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
 
     ``format="lammps/dump"`` uses the native writer; anything else goes through ASE
     (``vasp``, ``vasp-xdatcar``, ``extxyz``, ``lammps-data``, ``cif``, ...).
+    ``format="cube"`` (or a ``.cube`` name) and ``format="vasp-chgcar"`` write a grid of
+    one frame; pass ``property="Charge Density"`` (and ``grid=``) to pick what.
     """
     from ..pipeline import Pipeline
 
@@ -129,6 +154,11 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
         items = [source]
     else:
         items = list(source)
+    fmt = (format or "").lower()
+    if fmt in ("cube", "vasp-chgcar", "chgcar") or (not fmt and str(path).lower().endswith(".cube")):
+        writer = write_cube if fmt in ("cube", "") else write_vasp_volumetric
+        writer(path, items[0], **kwargs)
+        return
     if (format or "").lower() in ("lammps/dump", "lammps-dump") or str(path).endswith((".dump", ".lammpstrj")):
         write_lammps_dump(path, items, **kwargs)
         return
@@ -139,4 +169,5 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
 
 
 __all__ = ["FileSource", "StaticSource", "import_file", "export_file", "open_reader",
-           "LammpsDumpReader", "LammpsDataReader", "XdatcarReader", "AseReader"]
+           "LammpsDumpReader", "LammpsDataReader", "XdatcarReader", "AseReader", "VolumetricReader",
+           "read_vasp_volumetric", "read_cube", "write_vasp_volumetric", "write_cube"]

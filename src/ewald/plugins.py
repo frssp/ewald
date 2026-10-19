@@ -31,7 +31,8 @@ the GUI open filter and the Claude tools list every format from this one registr
 
 Format selection: ``format="name"`` (or an alias such as ``"lammps/dump"``) picks that reader;
 an unknown name is handed to ASE. Without a format, readers are tried by ``priority``: the
-native LAMMPS dump/data and XDATCAR readers (10-12), then plugins (50 unless given), then
+volumetric readers (cube 5, VASP CHGCAR/LOCPOT/ELFCAR 6), the native LAMMPS dump/data
+and XDATCAR readers (10-12), then plugins (50 unless given), then
 ASE (100) for everything else. A reader with ``sniff(path)`` is matched on content;
 one without is matched on the file-name ``patterns`` (compression suffix ignored). Registering
 an existing name replaces that reader. A plugin that fails to import is recorded in
@@ -67,6 +68,7 @@ class ReaderPlugin:
     priority: int | None = 50    # lower is tried first; None = only by explicit format=
     aliases: tuple = ()
     takes_format: bool = False   # factory receives the requested format name (the ASE fallback)
+    category: str = "structure"  # "structure" or "volumetric" (groups the GUI open filter)
 
     def matches(self, path) -> bool:
         if self.sniff is not None:
@@ -110,12 +112,12 @@ def plugin_dir() -> Path:
 
 
 def reader(name: str, patterns=(), sniff: Callable | None = None, description: str = "",
-           priority: int | None = 50, aliases=()):
+           priority: int | None = 50, aliases=(), category: str = "structure"):
     """Decorator registering a reader class or function under the format ``name``."""
 
     def deco(factory):
         register_reader(name, factory, patterns=patterns, sniff=sniff, description=description,
-                        priority=priority, aliases=aliases)
+                        priority=priority, aliases=aliases, category=category)
         return factory
 
     return deco
@@ -123,7 +125,7 @@ def reader(name: str, patterns=(), sniff: Callable | None = None, description: s
 
 def register_reader(name: str, factory: Callable, patterns=(), sniff: Callable | None = None,
                     description: str = "", origin: str = "python", priority: int | None = 50,
-                    aliases=()) -> ReaderPlugin:
+                    aliases=(), category: str = "structure") -> ReaderPlugin:
     if isinstance(patterns, str):
         patterns = (patterns,)
     # attributes on the factory fill in what the call left out (entry-point classes carry their own)
@@ -133,7 +135,7 @@ def register_reader(name: str, factory: Callable, patterns=(), sniff: Callable |
     description = description or getattr(factory, "description", "") or (doc[0] if doc else "")
     plugin = ReaderPlugin(name.lower(), factory, patterns, sniff, description,
                           getattr(_loading, "origin", None) or origin, priority,
-                          tuple(a.lower() for a in aliases))
+                          tuple(a.lower() for a in aliases), category=category)
     _registry.readers[plugin.name] = plugin
     return plugin
 
@@ -222,7 +224,7 @@ def find_reader(path, format: str | None = None) -> ReaderPlugin:
         for plugin in plugins.values():
             if fmt == plugin.name or fmt in plugin.aliases:
                 return plugin
-        return next(p for p in plugins.values() if p.takes_format)
+        return plugins["ase"]          # unknown names are ASE format names
     ranked = sorted((p for p in plugins.values() if p.priority is not None), key=lambda p: p.priority)
     for plugin in ranked:
         if plugin.matches(path):
@@ -234,10 +236,12 @@ def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
     return find_reader(path, format).open(path, format=format, **kwargs)
 
 
-def file_patterns() -> list[str]:
-    """Glob patterns of all readers, built-in ones first (for file dialogs)."""
+def file_patterns(category: str | None = None) -> list[str]:
+    """Glob patterns of all readers (of one ``category``), in priority order (for file dialogs)."""
     out = []
     for plugin in sorted(readers().values(), key=lambda p: (p.priority is None, p.priority or 0)):
+        if category and plugin.category != category:
+            continue
         out += [p for p in plugin.patterns if p not in out]
     return out
 

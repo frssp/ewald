@@ -188,10 +188,20 @@ def test_builtin_formats_live_in_the_registry(vasp_dir, lammps_dir):
     assert plugins.find_reader("x", "lammps/dump").name == "lammps-dump"   # alias
     assert plugins.find_reader("x", "extxyz").name == "ase"                # unknown names go to ASE
     assert import_file(vasp_dir / "POSCAR", format="vasp").compute(0).count > 0
-    assert plugins.file_patterns()[:2] == ["*.lammpstrj", "*.dump"]
+    assert plugins.file_patterns("structure")[:2] == ["*.lammpstrj", "*.dump"]
 
 
 def test_plugin_can_replace_a_builtin(vasp_dir):
     plugins.register_reader("xdatcar", lambda p: [DataCollection([[0, 0, 0]], ["Si"])],
                             sniff=lambda p: "XDATCAR" in str(p), priority=11)
     assert import_file(vasp_dir / "XDATCAR").num_frames == 1
+
+
+def test_volumetric_readers_are_builtin_plugins(tmp_path):
+    names = plugins.readers()
+    assert names["cube"].category == names["vasp-volumetric"].category == "volumetric"
+    assert plugins.find_reader(tmp_path / "LOCPOT").name == "vasp-volumetric"
+    assert plugins.find_reader(tmp_path / "x.cube.gz").name == "cube"
+    assert plugins.find_reader("x", "locpot").name == "vasp-volumetric"   # alias, kind from the name
+    assert "CHGCAR*" in plugins.file_patterns("volumetric")
+    assert "CHGCAR*" not in plugins.file_patterns("structure")
