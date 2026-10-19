@@ -142,10 +142,12 @@ def normalize_pairs(pairs):
 
 def covalent_pairs(types, factor: float = 1.15):
     """One row per type pair with dmax = factor * (r_A + r_B) from covalent radii (VESTA's default)."""
-    from ase.data import atomic_numbers, covalent_radii
+    from ase.data import covalent_radii
+
+    from .radii import atomic_number
 
     uniq = sorted(set(str(t) for t in types))
-    rad = {t: covalent_radii[atomic_numbers[t]] if t in atomic_numbers else 0.8 for t in uniq}
+    rad = {t: covalent_radii[z] if (z := atomic_number(t)) else 0.8 for t in uniq}
     return [(a, b, 0.0, round(factor * (rad[a] + rad[b]), 4)) for k, a in enumerate(uniq) for b in uniq[k:]]
 
 
