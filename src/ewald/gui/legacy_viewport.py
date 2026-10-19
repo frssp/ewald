@@ -59,12 +59,15 @@ class GLView(QOpenGLWindow):
 
     # mouse: VTK trackball-camera conventions (left rotate, middle/Shift+left pan, right/wheel zoom)
     def mousePressEvent(self, e):
+        self.viewport._dragging = True
+        self.viewport.hover_leave()
         self._last = self._press = e.position()
         self._button = e.button()
         self._shift = bool(e.modifiers() & QtCore.Qt.ShiftModifier)
 
     def mouseMoveEvent(self, e):
-        if getattr(self, "_press", None) is None:
+        if getattr(self, "_press", None) is None:  # no button down: the hover readout
+            self.viewport.hover_move(e.position().x(), e.position().y(), self.width(), self.height())
             return
         pos = e.position()
         dx, dy = pos.x() - self._last.x(), pos.y() - self._last.y()
@@ -83,6 +86,7 @@ class GLView(QOpenGLWindow):
     def mouseReleaseEvent(self, e):
         press, button = getattr(self, "_press", None), getattr(self, "_button", None)
         self._press = None
+        self.viewport._dragging = False
         if press is None:
             return
         pos = e.position()
@@ -92,6 +96,9 @@ class GLView(QOpenGLWindow):
         elif click and button == QtCore.Qt.LeftButton:
             self.viewport.click(pos.x(), pos.y(), self.width(), self.height(),
                                 extend=bool(e.modifiers() & QtCore.Qt.ShiftModifier))
+
+    def leaveEvent(self, e):
+        self.viewport.hover_leave()
 
     def wheelEvent(self, e):
         self.viewport.zoom(1.1 ** (e.angleDelta().y() / 120))
