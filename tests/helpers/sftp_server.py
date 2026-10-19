@@ -193,12 +193,22 @@ class SFTPTestServer:
         while args and "=" in args[0]:
             k, v = args.pop(0).split("=", 1)
             env[k] = v
+        stdin = None
+        if args[:2] == ["tail", "-c"] and "|" in args:  # tail -c +N -- path | grep ... (a growing file)
+            k = args.index("|")
+            with open(self.local(args[k - 1]), "rb") as fh:
+                fh.seek(int(args[2].lstrip("+")) - 1)
+                stdin = fh.read()
+            args = args[k + 1:]
+            while args and "=" in args[0]:
+                key, v = args.pop(0).split("=", 1)
+                env[key] = v
         grep = shutil.which("grep")
         if not args or args[0] != "grep" or grep is None:
             channel.send_exit_status(127)
             return
-        args = [grep] + args[1:-1] + [self.local(args[-1])]
-        proc = subprocess.run(args, capture_output=True, env={**os.environ, **env})
+        args = [grep] + (args[1:] if stdin is not None else args[1:-1] + [self.local(args[-1])])
+        proc = subprocess.run(args, capture_output=True, input=stdin, env={**os.environ, **env})
         channel.sendall(proc.stdout)
         channel.send_exit_status(proc.returncode)
 

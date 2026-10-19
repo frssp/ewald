@@ -35,6 +35,7 @@ LAYOUT = {
         ("Startup", ["general.startup_workspace", "general.restore_layout"]),
         ("Appearance", ["general.font_size", "general.toolbar_style"]),
         ("LAMMPS files", ["general.lammps_type_prompt", "general.lammps_type_map"]),
+        ("Running jobs", ["general.live_reload", "general.live_reload_interval"]),
         ("Help", ["general.docs_url"])]),
     "Viewports": ("Defaults for the interactive 3D view.", [
         ("View", ["viewport.background", "viewport.projection", "viewport.initial_view", "viewport.style_preset"]),
@@ -1010,6 +1011,8 @@ def apply_settings(win, s: Settings, startup: bool = False):
     vp.refine_delay = s["viewport.refine_delay"]
     if win.pipeline is not None:
         win.pipeline.cache_memory = s["performance.cache_memory"] * 2**20
+    win.live_reload.configure(s["general.live_reload"], s["general.live_reload_interval"])
+    win.live_reload_action.setChecked(s["general.live_reload"])
     vp.show_overlay = s["viewport.show_overlay"]
     vp.initial_view = s["viewport.initial_view"]
     vp.set_axes_visible(s["viewport.show_axes"])

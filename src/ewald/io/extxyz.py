@@ -15,7 +15,7 @@ import numpy as np
 
 from ..data import DataCollection
 from .ase_reader import _ovito_names
-from .base import FrameReader, head_lines, open_binary, strip_compression
+from .base import FrameReader, file_size, head_lines, open_binary, strip_compression
 
 
 def is_extxyz(path) -> bool:
@@ -30,9 +30,19 @@ class ExtxyzReader(FrameReader):
 
     def __init__(self, path):
         self.path = str(path)
-        self._frames: list[tuple[int, int]] = []  # (byte offset, byte length)
+        self._size = file_size(self.path)
+        self._frames, truncated = self._scan(0)  # (byte offset, byte length)
+        if truncated:
+            warnings.warn(f"{path}: last frame is incomplete and was skipped", stacklevel=2)
+        if not self._frames:
+            raise ValueError(f"{path}: no frames found")
+
+    def _scan(self, pos) -> tuple[list[tuple[int, int]], bool]:
+        """Frames from byte ``pos`` (a frame start) on, and whether the last one was cut short."""
+        frames = []
         with open_binary(self.path) as fh:
-            pos = 0
+            if pos:
+                fh.seek(pos)
             while True:
                 line = fh.readline()
                 if not line:
@@ -43,23 +53,45 @@ class ExtxyzReader(FrameReader):
                 try:
                     n = int(line.split()[0])
                 except ValueError:
-                    raise ValueError(f"{path}: expected an atom count at byte {pos}, got "
+                    if not line.endswith(b"\n"):  # the count line is still being written
+                        return frames, True
+                    raise ValueError(f"{self.path}: expected an atom count at byte {pos}, got "
                                      f"{line[:60].decode(errors='replace')!r}") from None
                 size = len(line)
                 lines = 0
+                prev = body = b""
                 for _ in range(n + 1):
-                    body = fh.readline()
+                    prev, body = body, fh.readline()
                     if not body:
                         break
                     size += len(body)
                     lines += 1
-                if lines < n + 1:
-                    warnings.warn(f"{path}: last frame is incomplete and was skipped", stacklevel=2)
-                    break
-                self._frames.append((pos, size))
+                if lines < n + 1 or (n and not body.endswith(b"\n") and len(body.split()) < len(prev.split())):
+                    return frames, True  # cut short, or its last line is still being written
+                frames.append((pos, size))
                 pos += size
-        if not self._frames:
-            raise ValueError(f"{path}: no frames found")
+        return frames, False
+
+    def refresh(self) -> int | None:
+        """Index frames appended since the last look; the old last frame is scanned again,
+        so it counts as changed."""
+        size = file_size(self.path)
+        if size is None or size == self._size:
+            return None
+        if size < self._size:  # rewritten: index from scratch
+            self._size = size
+            frames, _ = self._scan(0)
+            if not frames:
+                return None
+            self._frames = frames
+            return 0
+        self._size = size
+        frames, _ = self._scan(self._frames[-1][0])
+        if len(frames) <= 1 and frames[:1] == self._frames[-1:]:
+            return None
+        first = len(self._frames) - 1
+        self._frames = self._frames[:-1] + frames if frames else self._frames
+        return first
 
     def __len__(self):
         return len(self._frames)

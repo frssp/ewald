@@ -74,7 +74,8 @@ usual tools, and modifiers it adds appear in the pipeline. It needs the `llm` ex
 (Preferences › Claude, or `ANTHROPIC_API_KEY`).
 
 **Timeline.** Play, step and scrub through frames. Every frame is computed through the whole
-pipeline when you move to it.
+pipeline when you move to it. While a simulation is still writing the file, new frames are
+added to the timeline as they appear ([live reload](formats.md#runs-that-are-still-writing)).
 
 **Pipeline panel.** The list shows the data source at the bottom and modifiers above it, the
 last-applied modifier on top, as in OVITO. "Add modification" (or the Pipeline menu) inserts a
@@ -160,7 +161,8 @@ type-to-element map unless you set a default in Preferences. File › Load NEB f
 VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image
 ([NEB runs](formats.md#neb-runs)). File › Export data writes the
 current frame or the whole trajectory through `export_file`, and File › Export movie writes an
-MP4 or GIF (needs the `movie` extra).
+MP4 or GIF (needs the `movie` extra). File › Live reload turns following a growing trajectory
+on or off for the session; the default and the interval are in Preferences › General.
 
 ## Preferences
 
