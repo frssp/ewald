@@ -12,7 +12,7 @@ import warnings
 import numpy as np
 
 from ..data import Cell, DataCollection
-from .base import FrameReader, head_lines, open_binary, strip_compression
+from .base import FrameReader, file_size, head_lines, open_binary, strip_compression
 
 
 def is_xdatcar(path) -> bool:
@@ -33,10 +33,21 @@ def species_name(label: str) -> str:
 class XdatcarReader(FrameReader):
     def __init__(self, path):
         self.path = str(path)
-        self._frames: list[tuple[int, int]] = []  # (header offset, configuration-line offset)
-        truncated = False
+        self._size = file_size(self.path)
+        self._frames, truncated = self._scan(0, 0, None)  # (header offset, configuration-line offset)
+        if truncated:
+            warnings.warn(f"{path}: last configuration is incomplete and was skipped", stacklevel=2)
+        if not self._frames:
+            raise ValueError(f"{path}: no configurations found")
+        self._header_cache: dict[int, tuple] = {}
+
+    def _scan(self, start, header, natoms) -> tuple[list[tuple[int, int]], bool]:
+        """Frames from byte ``start`` on (``header``/``natoms``: the header in force there),
+        and whether the scan stopped at an incomplete configuration or header."""
+        frames = []
         with open_binary(self.path) as fh:
-            header, natoms = 0, None
+            if start:
+                fh.seek(start)
             while True:
                 offset = fh.tell()
                 line = fh.readline()
@@ -46,26 +57,46 @@ class XdatcarReader(FrameReader):
                     continue
                 if line.strip().lower().startswith((b"direct", b"cartesian")):
                     if natoms is None:
-                        raise ValueError(f"{path}: configuration before header")
+                        raise ValueError(f"{self.path}: configuration before header")
                     complete = all(len(fh.readline().split()) >= 3 for _ in range(natoms))
                     if not complete:
-                        truncated = True
-                        break
-                    self._frames.append((header, offset))
+                        return frames, True
+                    frames.append((header, offset))
                 else:  # a (possibly repeated, variable-cell) 7-line header starts here
                     header = offset
                     for _ in range(6):
                         last = fh.readline()
+                    if not last.endswith(b"\n"):  # VASP is still writing it
+                        return frames, True
                     try:
                         natoms = sum(int(c) for c in last.split())
                     except ValueError:
-                        raise ValueError(f"{path}: cannot read atom counts from header line "
+                        raise ValueError(f"{self.path}: cannot read atom counts from header line "
                                          f"{last.decode(errors='replace').strip()!r}") from None
-        if truncated:
-            warnings.warn(f"{path}: last configuration is incomplete and was skipped", stacklevel=2)
-        if not self._frames:
-            raise ValueError(f"{path}: no configurations found")
-        self._header_cache: dict[int, tuple] = {}
+        return frames, False
+
+    def refresh(self) -> int | None:
+        """Index configurations VASP appended since the last look; the old last one is
+        scanned again (from its own line on) and counts as changed, since its last line
+        may have been half written when it was read."""
+        size = file_size(self.path)
+        if size is None or size == self._size:
+            return None
+        if size < self._size:  # rewritten (a new run): index from scratch
+            self._size = size
+            frames, _ = self._scan(0, 0, None)
+            if not frames:
+                return None
+            self._frames, self._header_cache = frames, {}
+            return 0
+        self._size = size
+        header, cfg = self._frames[-1]
+        natoms = sum(self._read_header(header)[3])
+        frames, _ = self._scan(cfg, header, natoms)
+        first = len(self._frames) - 1  # its last line may have been half written
+        if frames:
+            self._frames = self._frames[:-1] + frames
+        return first
 
     def _read_header(self, offset):
         if offset in self._header_cache:

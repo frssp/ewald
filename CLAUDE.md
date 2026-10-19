@@ -90,10 +90,15 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   parsing, `fes_from_hills` (same kernels as `plumed sum_hills`). Tests compare with `plumed driver` and
   the sum_hills files in `tests/data/plumed/` (regenerate with `make_plumed_reference.py`, never by hand).
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
-- `gui/`: `app.py` main window, `viewport.py` (VTK; `legacy_viewport.py` + Qt-free `legacy_gl.py` are
+- `gui/`: `app.py` main window (frames, recompute, styling; built from mixins: `window_menus.py` toolbar
+  and menus, `window_files.py` open/export/sessions, `viewport_menu.py` right-click menu, `window_links.py`
+  picks, plot links, Ask Claude and console), `viewport.py` (VTK; `legacy_viewport.py` + Qt-free `legacy_gl.py` are
   the OpenGL 1.x viewport for `ssh -X`, chosen by `gui.viewport_backend`), `pipeline_panel.py`, `params.py`, `render_page.py`,
-  `preferences.py`, `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
-  `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`.
+  `preferences.py` (dialog; `pref_widgets.py`, `element_table.py`, `prefs_apply.py` apply settings to the window),
+  `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
+  `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`, `macos.py` (menu bar name; Finder file-open
+  events go through `app.EwaldApplication`). Frozen apps: `packaging/windows/` and `packaging/macos/` (EWALD.app,
+  docs/developer/macos-release.md); the macOS workflow is manual only (10x minutes) and never needs to run for a PR.
 - `llm/`: Claude agent (`agent.py`), tools (`tools.py`), `credentials.py` (API key in the OS keychain via
   `keyring`, 0600 file fallback, never in settings.json; every Claude client comes from `credentials.client()`), Modifier Forge (`forge.py`: Claude writes a
   plugin + tests, verified in a subprocess, saved to the plugin folder), descriptors (`describe.py`, `narrate.py`),

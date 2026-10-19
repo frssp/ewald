@@ -20,7 +20,7 @@ import numpy as np
 from ..data import DataCollection
 from ._textparse import parse_mixed
 from .ase_reader import _ovito_names
-from .base import FrameReader, head_lines, open_binary, strip_compression
+from .base import FrameReader, file_size, head_lines, open_binary, strip_compression
 
 
 def is_extxyz(path) -> bool:
@@ -35,11 +35,34 @@ class ExtxyzReader(FrameReader):
 
     def __init__(self, path):
         self.path = str(path)
-        self._frames, complete = _scan_frames(self.path)
+        self._size = file_size(self.path)
+        self._frames, complete = _scan_frames(self.path)  # (byte offset, byte length)
         if not complete:
             warnings.warn(f"{path}: last frame is incomplete and was skipped", stacklevel=2)
         if not self._frames:
             raise ValueError(f"{path}: no frames found")
+
+    def refresh(self) -> int | None:
+        """Index frames appended since the last look; the old last frame is scanned again,
+        so it counts as changed."""
+        size = file_size(self.path)
+        if size is None or size == self._size:
+            return None
+        if size < self._size:  # rewritten: index from scratch
+            self._size = size
+            frames, _ = _scan_frames(self.path, growing=True)
+            if not frames:
+                return None
+            self._frames = frames
+            return 0
+        self._size = size
+        frames, _ = _scan_frames(self.path, offset=self._frames[-1][0], growing=True)
+        if frames[:1] == self._frames[-1:] and len(frames) == 1:
+            return None
+        first = len(self._frames) - 1
+        # an old last frame read with half its last line is dropped until it is complete
+        self._frames = self._frames[:-1] + frames or self._frames
+        return first
 
     def __len__(self):
         return len(self._frames)
@@ -61,8 +84,11 @@ class ExtxyzReader(FrameReader):
         return data
 
 
-def _scan_frames(path, chunk_size: int = 1 << 24) -> tuple[list[tuple[int, int]], bool]:
+def _scan_frames(path, chunk_size: int = 1 << 24, offset: int = 0,
+                 growing: bool = False) -> tuple[list[tuple[int, int]], bool]:
     """(byte offset, byte length) of every complete frame, and whether the file ends cleanly.
+    ``offset`` (a frame start) skips the bytes before it, and ``growing`` ignores a last line
+    without a newline (still being written), for following a growing file.
 
     Walks newline positions found by numpy, jumping over each frame's n + 1 body lines;
     blank lines between frames are skipped. Python work is per frame, not per line.
@@ -70,12 +96,15 @@ def _scan_frames(path, chunk_size: int = 1 << 24) -> tuple[list[tuple[int, int]]
     frames: list[tuple[int, int]] = []
     skip = 0  # body lines (comment + atoms) still to pass in the current frame
     start = 0
-    base = 0  # file offset of data[0]
+    base = offset  # file offset of data[0]
     carry = b""
     with open_binary(path) as fh:
+        if offset:
+            fh.seek(offset)
         while True:
             chunk = fh.read(chunk_size)
-            data = carry + (chunk if chunk else b"\n")  # EOF: close a last line without a newline
+            # EOF: close a last line without a newline (a file ending in one gets no empty extra line)
+            data = carry + (chunk if chunk else b"\n" if carry and not growing else b"")
             nl = np.flatnonzero(np.frombuffer(data, dtype=np.uint8) == 10)
             m = len(nl)
             i = 0
