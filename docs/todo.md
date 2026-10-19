@@ -162,7 +162,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - SSH remote files against a real HPC login node (ProxyJump, OTP, large dumps); tests use an
   in-process SFTP server.
 - Claude features with a real API key: `ewald ask` (also `--select`), the GUI Ask Claude tab,
-  `ewald narrate`, `ewald forge`, `ewald mcp`.
+  `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › Claude › Test connection.
+- The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
+  KWallet); the container has none, so only the 0600 file fallback runs for real.
 - The Windows release workflow (wheels, PyInstaller app, installer) on a real `v*` tag; no
   release exists yet, so Windows users without Build Tools get ewald without `ewald._native`
   until the first one (blocked on GitHub Actions minutes).
@@ -202,6 +204,10 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 - The GUI's "Python code in session" question covers only top-level PythonScript and
   PythonModifier entries; nested `__modifier__` code and a disabled `Plumed` load silently
   disabled, with only a log message.
+- The saved API key: the Forge test subprocess gets a null keyring backend and a scratch config
+  folder, but plugin code there could still read `~/.config/ewald/credentials.json` (file
+  fallback) by absolute path or call the OS keychain tool directly. Run that subprocess as a
+  sandboxed user or container to close this.
 - `plumed.py` reads numbers like `pi/2` with `eval` (no builtins, only `pi`); replace it with a
   small arithmetic parser.
 

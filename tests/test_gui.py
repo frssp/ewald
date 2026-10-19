@@ -480,6 +480,52 @@ def test_main_window_smoke(app, pipe, tmp_path):
     w.close()
 
 
+def test_preferences_claude_page_saves_key_outside_settings(app, monkeypatch):
+    from ewald import settings
+    from ewald.gui.preferences import PreferencesDialog
+    from ewald.llm import credentials
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(credentials, "_keyring", lambda: None)   # file fallback, like a headless box
+    checked = []
+    monkeypatch.setattr(credentials, "check", lambda key, model: checked.append((key, model)) or (True, "Connected"))
+    s = settings.load()
+    dlg = PreferencesDialog(s)
+    assert "Not set" in dlg.key_status.text()
+    assert dlg.key_edit.echoMode() == dlg.key_edit.EchoMode.Password
+    dlg.key_edit.setText("sk-ant-gui-key-0123456789")
+    dlg.set_value("llm.model", "claude-sonnet-5-5")
+    dlg.test_api_key(wait=True)
+    assert checked == [("sk-ant-gui-key-0123456789", "claude-sonnet-5-5")]
+    assert dlg.key_result.text() == "Connected"
+    assert credentials.get_api_key() == (None, None)          # nothing saved before Apply
+    dlg.apply()
+    assert credentials.get_api_key() == ("sk-ant-gui-key-0123456789", "file")
+    assert dlg.key_edit.text() == "" and "sk-ant-…6789" in dlg.key_status.text()
+    assert "sk-ant" not in s.path.read_text() and settings.load()["llm.model"] == "claude-sonnet-5-5"
+    dlg._search("api key")
+    visible = {dlg.pages.item(i).text() for i in range(dlg.pages.count()) if not dlg.pages.item(i).isHidden()}
+    assert visible == {"Claude"}
+    dlg._search("")
+    dlg.remove_api_key()
+    assert credentials.get_api_key()[0] is not None            # removal waits for Apply too
+    dlg.apply()
+    assert credentials.get_api_key() == (None, None)
+    dlg.close()
+
+
+def test_ask_panel_agent_uses_claude_preferences(app, monkeypatch):
+    from ewald import settings
+    from ewald.gui import ask_panel
+
+    made = []
+    monkeypatch.setattr(ask_panel, "_default_agent", lambda p, ev, **kw: made.append(kw))
+    s = settings.load()
+    s["llm.model"], s["llm.effort"] = "claude-haiku-5-5", "low"
+    ask_panel.agent_from_settings(lambda: s)(None, None)
+    assert made == [{"model": "claude-haiku-5-5", "effort": "low"}]
+
+
 def test_preferences_dialog_edit_search_restore(app, tmp_path):
     from ewald import settings
     from ewald.gui.preferences import ElementTable, PreferencesDialog

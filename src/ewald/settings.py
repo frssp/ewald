@@ -40,9 +40,10 @@ class Option:
         return PAGE_OF_PREFIX[self.key.split(".")[0]]
 
 
-PAGES = ("General", "Viewports", "Elements", "Rendering", "Compute", "Python")
+PAGES = ("General", "Viewports", "Elements", "Rendering", "Compute", "Python", "Claude")
 PAGE_OF_PREFIX = {"general": "General", "viewport": "Viewports", "elements": "Elements", "bonds": "Elements",
-                  "render": "Rendering", "compute": "Compute", "performance": "Compute", "python": "Python"}
+                  "render": "Rendering", "compute": "Compute", "performance": "Compute", "python": "Python",
+                  "llm": "Claude"}
 
 OPTIONS = (
     Option("general.startup_workspace", "Analyze", "Startup workspace", choices=("Analyze", "Render")),
@@ -149,6 +150,12 @@ OPTIONS = (
     Option("python.startup_script", "", "Console startup script", "Run in the Python console when the GUI starts.",
            kind="file"),
     Option("python.extra_paths", "", "Extra module paths", "Folders added to sys.path, separated by ';'.", kind="dir"),
+
+    # the API key itself is not an option: it lives in the OS keychain (ewald.llm.credentials)
+    Option("llm.model", "claude-opus-5-5", "Model", "Used by Ask Claude.",
+           choices=("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1")),
+    Option("llm.effort", "high", "Effort", "How hard Claude thinks before answering; lower is faster and cheaper.",
+           choices=("low", "medium", "high", "xhigh", "max")),
 )
 OPTION = {o.key: o for o in OPTIONS}
 

@@ -23,7 +23,11 @@ _CHOICE_LABELS = {"auto": "Auto", "coarse": "Always coarse", "full": "Always ful
                   "opengl": "OpenGL (fast preview)", "iso": "Isometric", "x": "Along +x", "y": "Along +y",
                   "z": "Along +z (top)", "front": "Front (−y)", "ask": "Ask when opening", "never": "Use default map",
                   "covalent": "Covalent", "vdW": "van der Waals", "white": "White", "black": "Black",
-                  "transparent": "Transparent", "viewport": "Same as viewport"}
+                  "transparent": "Transparent", "viewport": "Same as viewport",
+                  "claude-opus-5-5": "Claude Opus 5.5", "claude-sonnet-5-5": "Claude Sonnet 5.5 (faster)",
+                  "claude-haiku-5-5": "Claude Haiku 5.5 (fastest)",
+                  "claude-fable-5-1": "Claude Fable 5.1 (most capable)", "low": "Low", "medium": "Medium",
+                  "high": "High", "xhigh": "Extra high", "max": "Max"}
 
 # page -> (subtitle, [(section, [option keys])])
 LAYOUT = {
@@ -56,6 +60,8 @@ LAYOUT = {
     "Python": ("Console and module search path.", [
         ("Console", ["python.startup_script"]),
         ("Modules", ["python.extra_paths"])]),
+    "Claude": ("API key and model for Ask Claude.", [
+        ("Model", ["llm.model", "llm.effort"])]),
 }
 
 # 24x24 line icons (stroke = currentColor), drawn in the Lucide style
@@ -71,6 +77,7 @@ _ICONS = {
     "Compute": '<rect x="6" y="6" width="12" height="12" rx="1.5"/><rect x="9.5" y="9.5" width="5" height="5"/>'
                '<path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
     "Python": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/>',
+    "Claude": '<path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6z"/><path d="M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z"/>',
 }
 
 
@@ -461,6 +468,14 @@ class PreferencesDialog(QtWidgets.QDialog):
         col.setSpacing(6)
         col.addWidget(QtWidgets.QLabel(name, objectName="pageTitle"))
         col.addWidget(QtWidgets.QLabel(subtitle, objectName="pageSubtitle"))
+        if name == "Claude":
+            col.addSpacing(16)
+            heading = QtWidgets.QLabel("API KEY", objectName="sectionTitle")
+            col.addWidget(heading)
+            card, rows = self._card()
+            self._api_key_rows(rows)
+            col.addWidget(card)
+            self.api_key_card = (heading, card)
         for title, keys in sections:
             col.addSpacing(16)
             heading = QtWidgets.QLabel(title.upper(), objectName="sectionTitle")
@@ -640,6 +655,127 @@ class PreferencesDialog(QtWidgets.QDialog):
                 lay.addWidget(QtWidgets.QLabel("Not installed", objectName="badgeOff"))
             self.component_rows[mod] = row
 
+    def _api_key_rows(self, rows):
+        """Masked key field, where the key comes from, Test connection and Remove.
+
+        The saved key is never loaded into the field; Apply/OK save what was typed into the
+        keychain (``ewald.llm.credentials``), never into settings.json.
+        """
+        from ..llm import credentials
+
+        self._key_removed = False
+        self._key_worker = None
+        row = self._row_frame(rows)
+        grid = QtWidgets.QGridLayout(row)
+        grid.setContentsMargins(16, 12, 16, 12)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(8)
+        text = QtWidgets.QVBoxLayout()
+        text.setSpacing(2)
+        text.addWidget(QtWidgets.QLabel("Anthropic API key", objectName="rowLabel"))
+        where = credentials.keyring_name()
+        text.addWidget(QtWidgets.QLabel(
+            f"Saved in {where}, never in the settings file." if where else
+            "No system keychain here: saved to credentials.json in the settings folder, readable "
+            "only by you.", objectName="rowHelp", wordWrap=True))
+        self.key_status = QtWidgets.QLabel(objectName="rowHelp", wordWrap=True)
+        text.addWidget(self.key_status)
+        grid.addLayout(text, 0, 0)
+        grid.setColumnStretch(0, 1)
+        self.key_edit = QtWidgets.QLineEdit(objectName="field", placeholderText="sk-ant-…")
+        self.key_edit.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.key_edit.setFixedWidth(self.EDITOR_WIDTH)
+        self.key_edit.textChanged.connect(lambda _: self._key_note(""))
+        grid.addWidget(self.key_edit, 0, 1, QtCore.Qt.AlignRight | QtCore.Qt.AlignTop)
+        buttons = QtWidgets.QHBoxLayout()
+        buttons.addStretch()
+        show = QtWidgets.QPushButton("Show", objectName="secondary", checkable=True, toolTip="Show the typed key")
+        show.toggled.connect(lambda on: self.key_edit.setEchoMode(
+            QtWidgets.QLineEdit.Normal if on else QtWidgets.QLineEdit.Password))
+        buttons.addWidget(show)
+        self.key_test = QtWidgets.QPushButton("Test connection", objectName="secondary",
+                                              toolTip="Ask the API whether the key and model work (no tokens used)")
+        self.key_test.clicked.connect(self.test_api_key)
+        self.key_remove = QtWidgets.QPushButton("Remove", objectName="secondary",
+                                                toolTip="Forget the saved key when you press Apply or OK")
+        self.key_remove.clicked.connect(self.remove_api_key)
+        buttons.addWidget(self.key_test)
+        buttons.addWidget(self.key_remove)
+        grid.addLayout(buttons, 1, 0, 1, 2)
+        self.key_result = QtWidgets.QLabel(objectName="rowHelp", wordWrap=True)
+        grid.addWidget(self.key_result, 2, 0, 1, 2)
+        self.key_result.hide()
+        self._key_status()
+
+    def _key_status(self):
+        from ..llm import credentials
+
+        key, source = (None, None) if self._key_removed else credentials.stored_api_key()
+        env = os.environ.get(credentials.ENV_VAR, "").strip()
+        if self._key_removed:
+            text = "Will be removed when you press Apply."
+        elif key:
+            text = f"Saved key {credentials.mask(key)}."
+            if env:
+                text += f" It is used instead of ${credentials.ENV_VAR}."
+        elif env:
+            text = f"Using ${credentials.ENV_VAR} from the environment ({credentials.mask(env)})."
+        else:
+            text = "Not set. Get a key at console.anthropic.com, or run ant auth login."
+        self.key_status.setText(text)
+        self.key_remove.setEnabled(bool(key) and not self._key_removed)
+
+    def _key_note(self, text, ok=None):
+        self.key_result.setVisible(bool(text))
+        self.key_result.setText(text)
+        self.key_result.setStyleSheet("" if ok is None else f"color: {TOKENS['ok' if ok else 'error']};")
+
+    def remove_api_key(self):
+        self._key_removed = True
+        self.key_edit.clear()
+        self._key_status()
+
+    def test_api_key(self, wait: bool = False):
+        """Check the typed key (or the current one) against the Models API in a worker thread."""
+        from ..llm import credentials
+
+        if self._key_worker is not None and self._key_worker.isRunning():
+            return
+        key = self.key_edit.text().strip() or None
+        model = self.work["llm.model"]
+        self.key_test.setEnabled(False)
+        self._key_note("Testing…")
+        worker = QtCore.QThread(self)
+        result = {}
+        worker.run = lambda: result.update(r=credentials.check(key, model))
+
+        def done():
+            ok, msg = result.get("r", (False, "no result"))
+            self._key_note(msg, ok)
+            self.key_test.setEnabled(True)
+
+        worker.finished.connect(done)
+        self._key_worker = worker
+        worker.start()
+        if wait:
+            worker.wait()
+            QtWidgets.QApplication.processEvents()
+
+    def _apply_api_key(self):
+        from ..llm import credentials
+
+        typed = self.key_edit.text().strip()
+        try:
+            if typed:
+                credentials.save_api_key(typed)
+                self.key_edit.clear()
+            elif self._key_removed:
+                credentials.delete_api_key()
+        except OSError as exc:
+            QtWidgets.QMessageBox.warning(self, "Preferences", f"Could not save the API key:\n{exc}")
+        self._key_removed = False
+        self._key_status()
+
     # ---------------------------------------------------------------- values
     def _load(self):
         self._loading = True
@@ -752,6 +888,11 @@ class PreferencesDialog(QtWidgets.QDialog):
                     first = False
             heading.setVisible(not first)
             card.setVisible(not first)
+        key_hit = not text or any(text in s for s in ("api key", "anthropic", "claude", "token", "keychain"))
+        self.api_key_card[0].setVisible(key_hit)
+        self.api_key_card[1].setVisible(key_hit)
+        if key_hit:
+            matched_pages.add("Claude")
         comp = not text or any(text in s for s in ("component", "install", "package", "ovito", "dxa", "cupy"))
         self.components_card[0].setVisible(comp)
         self.components_card[1].setVisible(comp)
@@ -778,6 +919,7 @@ class PreferencesDialog(QtWidgets.QDialog):
             self.work.save(path)
 
     def apply(self):
+        self._apply_api_key()
         self.settings.update(self.work)
         try:
             self.settings.save()

@@ -70,7 +70,8 @@ Ctrl+J) answers questions about the picked atoms, such as "What are these atoms?
 coordination low here?". Without picks it uses the particles a selection modifier selected, and
 with neither the question is about the whole frame. Claude receives the description from
 [Asking about a selection](claude.md#asking-about-a-selection) and a close-up render, can run the
-usual tools, and modifiers it adds appear in the pipeline. It needs the `llm` extra and an API key.
+usual tools, and modifiers it adds appear in the pipeline. It needs the `llm` extra and an API key
+(Preferences › Claude, or `ANTHROPIC_API_KEY`).
 
 **Timeline.** Play, step and scrub through frames. Every frame is computed through the whole
 pipeline when you move to it.
@@ -163,10 +164,11 @@ MP4 or GIF (needs the `movie` extra).
 
 ## Preferences
 
-Edit › Preferences (Ctrl+, ; the application menu on macOS) has six pages: General, Viewports,
+Edit › Preferences (Ctrl+, ; the application menu on macOS) has seven pages: General, Viewports,
 Elements (per-element color and radius, Jmol or CPK scheme, radius preset, VESTA `elements.ini` import),
-Rendering, Compute (default device, CPU threads, installed components) and Python (console
-startup script, extra module paths). Only values that differ from the defaults are saved, as
+Rendering, Compute (default device, CPU threads, installed components), Python (console
+startup script, extra module paths) and Claude (API key, model and effort for Ask Claude; see
+[API key](claude.md#api-key)). Only values that differ from the defaults are saved, as
 JSON in the ewald config folder: `~/.config/ewald` on Linux,
 `~/Library/Application Support/ewald` on macOS, `%APPDATA%\ewald` on Windows, or
 `$EWALD_CONFIG_DIR` when set. Preferences affect the GUI only; scripts that call `compute` or
