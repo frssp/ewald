@@ -7,7 +7,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Python API
 
-`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `StaticSource`, `import_file`, `load`, `export_file`, `get_backend`, `gpu_available`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
+`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `export_file`, `get_backend`, `gpu_available`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
 
 ## Modifiers
 
@@ -465,6 +465,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 |---|---|---|
 | `compute.device` | Default device | `'auto'` |
 | `performance.cache_memory` | Frame cache memory | `2048` |
+| `performance.background_compute` | Compute in the background | `True` |
 | `compute.threads` | CPU threads | `0` |
 
 ### Python
@@ -522,6 +523,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 **Edit**
 
+- Undo (`Ctrl+Z`)
+- Redo (`Ctrl+Shift+Z`)
 - Preferences… (`Ctrl+,`)
 
 **View**

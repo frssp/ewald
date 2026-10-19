@@ -15,7 +15,7 @@ GUI
 
 - Notebook layout: the viewport could follow the current notebook even when it has no
   pipeline yet (now it keeps the last one); 3D snapshot views (`show(pipe, frame=...)` drawing
-  the structure) and image/figure cells; drag cells to reorder; undo for cell edits; inline
+  the structure) and image/figure cells; drag cells to reorder; inline
   Ask Claude suggestions as diffs; per-notebook render settings; a Jupyter display hook so
   `pipe` shows a rendered image in Jupyter; a `.py` header with the view state and data links;
   File › Trust notebook and a restricted banner in the notebook panel; pip requirements of
@@ -36,8 +36,13 @@ GUI
 - Spectra, Figure and Forge views from the redesign mock-ups, built as view cells
   rather than separate panels.
 - Quad views (top, front, left, perspective), as in OVITO.
-- Undo/redo for pipeline edits.
-- Compute frames in a background thread so the GUI stays responsive.
+- Undo/redo: display style changes (colors, radii, camera) and the classic layout (only notebook
+  edits are undone now); a View cell's table or column change is its own entry instead of
+  joining the next one.
+- Background compute: notebook cells still run on the GUI thread (stdout capture is
+  process-wide), so a cell that computes many frames itself blocks the window until the
+  notebook kernels below exist; view cells and the Plots tab compute other frames on the GUI
+  thread too.
 - Scene updates without a full rebuild when only colors or a few properties change, and frame
   changes with the same atoms that replace only the point coordinates.
 - Picking without a render: click picks still use a `vtkPropPicker` selection render; the hover

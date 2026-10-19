@@ -441,6 +441,47 @@ class Notebook:
         self.dirty |= changed
         return changed
 
+    # ------------------------------------------------------------ undo
+    def snapshot(self) -> tuple:
+        """The notebook's content as text: (kind, title, source) per cell. Everything else
+        (pipeline, outputs) follows from it by running the cells."""
+        return tuple((c.kind, c.title, c.source) for c in self.cells)
+
+    def restore(self, snap: tuple) -> list[Cell]:
+        """Make the cells match ``snap`` (undo/redo). Unchanged cells keep their outputs and
+        modifiers; removed cells take their modifiers out of the pipeline. Changed or restored
+        step and view cells run again so the pipeline follows; other code cells are only
+        marked stale, since running them may have side effects. Returns the cells that changed."""
+        import difflib
+
+        old = self.cells
+        matcher = difflib.SequenceMatcher(a=self.snapshot(), b=snap, autojunk=False)
+        cells, fresh = [], []
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                cells.extend(old[i1:i2])
+                continue
+            pipe = self.pipeline
+            for c in old[i1:i2]:
+                if pipe is not None:
+                    for m in c.added:
+                        _remove(pipe.modifiers, m)
+            for kind, title, source in snap[j1:j2]:
+                cell = Cell(source, kind=kind, title=title, state="new" if kind == "code" else "ok")
+                cells.append(cell)
+                fresh.append(cell)
+        self.cells = cells
+        for cell in fresh:
+            if cell.kind != "code":
+                continue
+            if cell.is_step or cell.is_view:
+                self.run_cell(cell, run_below=False)
+            else:
+                cell.state = "stale"
+        self._reorder()
+        self.dirty = True
+        return fresh
+
     # ------------------------------------------------------------ files
     def to_py(self) -> str:
         """The notebook as a percent-format Python file."""
@@ -550,6 +591,82 @@ NEW_NOTEBOOK = '''# %% [markdown]
 # %%
 import numpy as np
 ''' + IMPORTS + "\n"
+
+
+class History:
+    """Undo/redo for a notebook, one entry per user action, kept as text snapshots.
+
+    Call :meth:`commit` after every edit; it records an entry when the cells changed since the
+    last commit. Edits with the same ``merge`` key in a row (dragging one slider of one step
+    form) become one entry.
+    """
+
+    def __init__(self, notebook: Notebook, limit: int = 200):
+        self.notebook = notebook
+        self.limit = limit
+        self._undo: list[tuple[str, tuple, tuple]] = []   # (label, before, after)
+        self._redo: list[tuple[str, tuple, tuple]] = []
+        self._last = notebook.snapshot()
+        self._merge = None
+
+    def commit(self, label: str = "Edit", merge=None) -> bool:
+        now = self.notebook.snapshot()
+        if now == self._last:
+            return False
+        if merge is not None and merge == self._merge and self._undo:
+            lbl, before, _ = self._undo[-1]
+            self._undo[-1] = (lbl, before, now)
+        else:
+            self._undo.append((label, self._last, now))
+            del self._undo[:-self.limit]
+        self._redo.clear()
+        self._last, self._merge = now, merge
+        return True
+
+    def reset(self):
+        """Forget the history (a notebook was opened or replaced)."""
+        self._undo.clear()
+        self._redo.clear()
+        self._last, self._merge = self.notebook.snapshot(), None
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self._undo) or self.notebook.snapshot() != self._last
+
+    @property
+    def can_redo(self) -> bool:
+        return bool(self._redo)
+
+    @property
+    def undo_label(self) -> str | None:
+        if self.notebook.snapshot() != self._last:
+            return "Edit cell"
+        return self._undo[-1][0] if self._undo else None
+
+    @property
+    def redo_label(self) -> str | None:
+        return self._redo[-1][0] if self._redo else None
+
+    def undo(self) -> str | None:
+        """Go back one entry (an edit not committed yet, such as typing in a cell, counts as
+        one); returns its label, or None if there was nothing to undo."""
+        self.commit("Edit cell")
+        if not self._undo:
+            return None
+        label, before, after = self._undo.pop()
+        self.notebook.restore(before)
+        self._redo.append((label, before, after))
+        self._last, self._merge = before, None
+        return label
+
+    def redo(self) -> str | None:
+        if not self._redo:
+            return None
+        label, before, after = self._redo.pop()
+        self.notebook.restore(after)
+        self._undo.append((label, before, after))
+        self._last, self._merge = after, None
+        return label
 
 
 def new_notebook(name: str = "Notebook 1") -> Notebook:

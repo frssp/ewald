@@ -169,6 +169,13 @@ class MenusMixin:
         f.addSeparator()
         f.addAction("&Quit", self.close, QtGui.QKeySequence.Quit).setMenuRole(QtGui.QAction.QuitRole)
         e = mb.addMenu("&Edit")
+        if self.layout_mode == "notebook":
+            # A focused cell editor takes Ctrl+Z itself (its typing); elsewhere these undo
+            # notebook edits: cells added, deleted, moved or run, step forms, pipeline changes.
+            self.undo_action = e.addAction("&Undo", self.undo, QtGui.QKeySequence.Undo)
+            self.redo_action = e.addAction("&Redo", self.redo, QtGui.QKeySequence.Redo)
+            e.aboutToShow.connect(self._update_undo_actions)
+            e.addSeparator()
         act = e.addAction("&Preferences…", self.preferences, QtGui.QKeySequence.Preferences)
         act.setMenuRole(QtGui.QAction.PreferencesRole)  # app menu on macOS, like OVITO/VESTA
         if act.shortcut().isEmpty():
