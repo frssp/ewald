@@ -171,6 +171,12 @@ current frame or the whole trajectory through `export_file`, and File › Export
 MP4 or GIF (needs the `movie` extra). File › Live reload turns following a growing trajectory
 on or off for the session; the default and the interval are in Preferences › General.
 
+File › Load remote file (SSH) browses a folder on another machine once. For machines you use
+often, the Remotes side bar (the monitor icon in the activity bar, or File › Remote computers,
+Ctrl+Alt+R) keeps saved remote computers with their login, jump host, start folder and
+bookmarks, and browses their files; passwords and key passphrases go to the OS keychain
+([Saved remote computers](formats.md#saved-remote-computers)).
+
 ## Preferences
 
 Edit › Preferences (Ctrl+, ; the application menu on macOS) has seven pages: General, Viewports,

@@ -25,6 +25,7 @@ from .notebook_panel import NotebookPanel
 from .pipeline_panel import DisplayPanel, PipelinePanel
 from .plots import PlotsPanel
 from . import preferences as prefs
+from .remotes_panel import install as install_remotes
 from .render_page import RenderPage
 from .style import ViewStyle
 from .theme import TOKENS
@@ -99,6 +100,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             self.plugins_dock = self._dock(self.plugins_panel, "Plugins", QtCore.Qt.LeftDockWidgetArea, 300)
             self.splitDockWidget(self.plugins_dock, self.notebook_dock, QtCore.Qt.Horizontal)
             self.plugins_dock.hide()
+            self.remotes_dock = install_remotes(self)
             self._build_activity_bar()
             self.display = DisplayPanel(self.style)
             self.display.styleChanged.connect(self._style_changed)
@@ -111,6 +113,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             self.panel.changed.connect(self.recompute)
             self.panel.styleChanged.connect(self._style_changed)
             side_dock = self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
+            self.remotes_dock = install_remotes(self)
         self.ask_dock = self._dock(self.ask_panel, "Ask Claude", QtCore.Qt.RightDockWidgetArea, None)
         self.tabifyDockWidget(side_dock, self.ask_dock)
         side_dock.raise_()

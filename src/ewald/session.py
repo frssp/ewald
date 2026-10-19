@@ -211,9 +211,11 @@ def source_to_dict(source, base_dir: str) -> dict:
 
     if isinstance(source, FileSource):
         from . import plugins
+        from .io import remote
 
-        if plugins.scheme_reader(source.path) is not None:  # aiida:1234: not a file
-            path, rel = source.path, None
+        # aiida:1234 (a plugin scheme, not a file) or 'profile:/path' / 'user@host:/path' (no secrets in it)
+        if plugins.scheme_reader(source.path) is not None or remote.is_remote(source.path):
+            path, rel = str(source.path), None
         else:
             path = os.path.abspath(source.path)
             try:
@@ -248,6 +250,11 @@ def source_from_dict(entry: dict, base_dir: str):
         frames = _data_from_npz(entry["npz"], [decode(a) for a in entry["attributes"]])
         return StaticSource(frames)
     path = entry["path"]
+    from .io import remote
+
+    if remote.is_remote(path) and not entry.get("relative_path"):
+        return FileSource(path, entry.get("format"), thermo=entry.get("thermo", "auto"),
+                          **decode(entry.get("kwargs", {})))
     rel = entry.get("relative_path")
     candidates = ([os.path.normpath(os.path.join(base_dir, rel))] if rel else []) + [path]
     from . import plugins

@@ -18,7 +18,7 @@ class MenusMixin:
     """Part of :class:`ewald.gui.app.MainWindow`."""
 
     def _build_activity_bar(self):
-        """Icons on the far left that show or hide the side bars (Notebook, Plugins)."""
+        """Icons on the far left that show or hide the side bars (Notebook, Plugins, Remotes)."""
         bar = self.activity_bar = QtWidgets.QToolBar("Activity bar")
         bar.setObjectName("activity-bar")
         bar.setMovable(False)
@@ -26,7 +26,8 @@ class MenusMixin:
         self.addToolBar(QtCore.Qt.LeftToolBarArea, bar)
         self.activity_buttons = {}
         for name, icon_name, dock in (("Notebook", "notebook", self.notebook_dock),
-                                      ("Plugins", "plugins", self.plugins_dock)):
+                                      ("Plugins", "plugins", self.plugins_dock),
+                                      ("Remotes", "remote", self.remotes_dock)):
             act = dock.toggleViewAction()
             act.setIcon(icon(icon_name))
             act.setToolTip(f"Show or hide the {name} side bar")
@@ -135,6 +136,7 @@ class MenusMixin:
             f.addAction("&New notebook", lambda: self.panel.new_notebook(), "Ctrl+T")
         f.addAction(icon("open"), "&Open…" if nb else "&Load file…", QtGui.QKeySequence.Open, self.open_dialog)
         f.addAction(icon("remote"), "Load &remote file (SSH)…", QtGui.QKeySequence("Ctrl+Alt+O"), self.open_remote_dialog)
+        f.addAction("Remote &computers (SSH profiles)…", QtGui.QKeySequence("Ctrl+Alt+R"), self.show_remotes)
         f.addAction("Load &NEB folder…", self.open_neb_dialog)
         ex = f.addMenu(icon("example"), "Open e&xample")
         for example in examples.EXAMPLES:
