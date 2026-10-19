@@ -3,15 +3,8 @@ name: Windows release
 # Builds Windows wheels and the standalone app (PyInstaller folder + Inno Setup installer),
 # smoke-tests the frozen app, and on a v* tag attaches everything to a GitHub Release.
 # See docs/developer/windows-release.md.
+# Manual only (Actions minutes); dispatch it on a v* tag to publish a release.
 on:
-  push:
-    tags: ["v*"]
-  pull_request:
-    paths:
-      - "packaging/windows/**"
-      - ".github/workflows/windows-release.yml"
-      - "setup.py"
-      - "pyproject.toml"
   workflow_dispatch:
 
 concurrency:

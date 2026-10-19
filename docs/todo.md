@@ -221,8 +221,10 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 
 ## Infrastructure
 
-- GitHub Actions minutes ran out on 2026-10-19; CI does not run until that is fixed, so pull
-  requests are verified locally (`xvfb-run -a python -m pytest -q`, `mkdocs build --strict`).
+- GitHub Actions minutes ran out on 2026-10-19, so every workflow now runs only on manual
+  dispatch and pull requests are verified locally (`xvfb-run -a python -m pytest -q`,
+  `mkdocs build --strict`). Restore the `push`/`pull_request`/tag triggers once minutes are
+  available again (docs/developer/testing.md shows the block).
 
 - CI installs each extra on its own only through the test suite's `importorskip`s; a job that
   installs every extra in a clean venv and imports its modules would catch broken extras

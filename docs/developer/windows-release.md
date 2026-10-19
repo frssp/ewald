@@ -113,12 +113,17 @@ executables in `dist/ewald` before `iscc`, then the installer itself.
 3. `release` (tags only): attaches all wheels, installers and zips to a GitHub Release with
    generated notes.
 
-It runs on pull requests that touch packaging files, on manual dispatch, and on `v*` tags. Pull requests build only the CPU app, and non-release artifacts are kept 3 days, to save
-Actions minutes and storage (the repo is private, so both count against the account quota). A tag
+It runs only on manual dispatch (Actions › Windows release › Run workflow, or `gh workflow run
+windows-release.yml --ref <branch or tag>`), to save Actions minutes and storage (the repo is
+private, so both count against the account quota). Dispatched on a `v*` tag it also runs `release`.
+Non-release artifacts are kept 3 days. To re-enable automatic runs, add `push: tags: ["v*"]` and a
+`pull_request:` trigger with the packaging `paths` back under `on:`; pull-request runs build only
+the CPU app. A tag
 must match `ewald.__version__`, or the build fails.
 
 To cut a release: bump `version` in `pyproject.toml` and `__version__` in `src/ewald/__init__.py`,
-merge, then `git tag v0.2.0 && git push origin v0.2.0`.
+merge, then `git tag v0.2.0 && git push origin v0.2.0` and dispatch the workflow on that tag
+(`gh workflow run windows-release.yml --ref v0.2.0`).
 
 ## Later
 
