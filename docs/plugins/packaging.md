@@ -129,29 +129,48 @@ readers, modifiers, writers, visuals, overlays, color maps and themes it registe
 
 ## Plugin catalogs
 
-The GUI's Plugins side bar lists plugins to install from catalogs: JSON indexes at the URLs or
-paths in Preferences › Python › *Plugin catalogs* (`python.plugin_catalogs`, separated by `;`).
-A lab or a project can publish its own list:
+The GUI's Plugins side bar lists plugins to install from catalogs: the default index
+(`https://raw.githubusercontent.com/frssp/ewald-plugins/main/index.json`) and JSON indexes at
+the URLs or paths in Preferences › Python › *Plugin catalogs* (`python.plugin_catalogs`,
+separated by `;`). The environment variable `EWALD_PLUGIN_INDEX` replaces the default index,
+and an empty value turns it off. An index that cannot be found (or, on GitHub, is private and
+there is no token) shows as one muted line. A lab
+or a project can publish its own list:
 
 ```json
-{"plugins": [
-  {"name": "Local strain", "summary": "Atomic strain against a reference frame",
+{"format": 1, "plugins": [
+  {"id": "local_strain", "name": "Local strain", "summary": "Atomic strain against a reference frame",
    "kinds": ["modifier"], "source": "https://example.org/plugins/local_strain.py",
-   "version": "0.2", "author": "Kim lab", "homepage": "https://example.org"},
-  {"name": "ewald-cp2k", "summary": "CP2K readers", "kinds": ["reader"], "source": "pip:ewald-cp2k"}
+   "version": "0.2", "requires_ewald": ">=0.1", "author": "Kim lab", "homepage": "https://example.org"},
+  {"id": "ewald-cp2k", "name": "ewald-cp2k", "summary": "CP2K readers", "kinds": ["reader"],
+   "source": "pip:ewald-cp2k"}
 ]}
 ```
 
 `source` is a `.py` file (a URL, an absolute path, or a path relative to the index), which
 *Install* copies into the plugin folder, or `pip:<requirement>`, which it installs with pip.
+`id` is the plugin's id once installed (the file stem, or the package's `ewald-plugin.toml`
+name); the side bar matches an entry to an installed plugin by `id`, then by name, so an
+installed plugin is not offered twice. When an entry has a newer `version` than the installed
+plugin, the installed row gets an *Update to …* button (a newer file replaces the old one; a
+package is upgraded with `pip install --upgrade`). An entry whose `requires_ewald` this ewald
+does not meet is greyed out with the version it needs. An index with a `format` above 1 is
+refused with a message, so an older ewald does not misread a newer index.
+
+Private indexes and plugins on GitHub work too: requests to `raw.githubusercontent.com` and
+`api.github.com` carry a token from `GITHUB_TOKEN` or, without it, `gh auth token`. The token is
+read when needed, sent to those two hosts only (and not on to a redirect), and never stored.
+For a `pip:git+https://github.com/...` source it reaches the pip process through git's
+environment (`GIT_CONFIG_*`), so it does not appear in the command or in the pip log.
+
 The same functions work from Python:
 
 ```python
 from ewald import plugin_catalog as pc
 
-entries, errors = pc.catalog(["https://example.org/ewald-plugins.json"])
+entries, errors = pc.catalog(pc.catalog_urls("https://example.org/ewald-plugins.json"))
 pc.install_file(pc.search(entries, "strain")[0])   # copy + load; returns the registered names
-[i.name for i in pc.installed()]
+[(i.name, i.version, pc.update_for(i, entries)) for i in pc.installed()]
 ```
 
 ## Dependencies

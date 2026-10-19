@@ -1465,6 +1465,44 @@ def test_plugins_side_bar_installs_adds_a_step_and_removes(app, cu_path, tmp_pat
     w.close()
 
 
+def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app, tmp_path):
+    import json
+
+    from ewald import plugin_catalog as pc
+    from ewald import settings
+    from ewald.gui import plugins_panel
+
+    def plugin(folder, version):
+        (tmp_path / folder).mkdir()
+        (tmp_path / folder / "up_shift.py").write_text(
+            f"from ewald.pipeline import Modifier\nfrom ewald.plugins import modifier\n__ewald__ = {{'version': '{version}'}}\n\n"
+            "@modifier(category='Test')\nclass UpShift(Modifier):\n    def modify(self, data, ctx):\n        return None\n")
+        return str(tmp_path / folder / "up_shift.py")
+
+    pc.install_file(plugin("old", "0.1"))
+    index = tmp_path / "index.json"
+    index.write_text(json.dumps({"format": 1, "plugins": [
+        {"id": "up_shift", "name": "Up shift", "version": "0.3", "source": plugin("new", "0.3"), "kinds": ["modifier"]},
+        {"id": "future", "name": "Future plugin", "version": "1.0", "requires_ewald": ">=99",
+         "source": "future.py", "kinds": ["reader"]}]}))
+    s = settings.Settings()
+    s["python.plugin_catalogs"] = f"{index}; {tmp_path / 'not-yet.json'}"
+    panel = plugins_panel.PluginsPanel(settings=s)
+    panel.wait()
+    rows = {r.item.name: r for r in panel.findChildren(plugins_panel.PluginRow)}
+    buttons = {b.text(): b for r in rows.values() for b in r.findChildren(plugins_panel.QtWidgets.QPushButton)}
+    assert "Up shift" not in rows and "Update to 0.3" in buttons          # matched by id, not listed twice
+    assert not buttons["Install"].isEnabled() and rows["Future plugin"].property("incompatible")
+    texts = [w.text() for w in panel.findChildren(plugins_panel.QtWidgets.QLabel)]
+    assert any("needs ewald >=99" in t for t in texts)
+    assert any(t.startswith("No plugin index at") and "not-yet.json" in t for t in texts)   # muted, not an error
+    buttons["Update to 0.3"].click()
+    assert next(i for i in panel.items if i.id == "up_shift").version == "0.3"
+    app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)    # the old rows go
+    assert not any(b.text().startswith("Update") for b in panel.findChildren(plugins_panel.QtWidgets.QPushButton))
+    panel.close()
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_main_window_follows_a_growing_dump(app, lammps_dir, tmp_path):
     from ewald import import_file
