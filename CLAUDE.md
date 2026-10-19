@@ -2,7 +2,8 @@
 
 ewald is an OVITO-style atomistic structure/trajectory viewer and analysis library:
 `import_file` -> `pipe.modifiers` -> `pipe.compute(frame, device=...)` -> `pipe.render(...)`,
-plus a PySide6 desktop GUI and Claude tools. User-facing docs: README.md; plan and state:
+plus a PySide6 desktop GUI and Claude tools. User-facing docs: the manual in docs/ (MkDocs,
+`mkdocs.yml`; user/, plugins/, developer/, reference/) and README.md; plan and state:
 docs/ROADMAP.md; GUI design specs live outside the repo (project files `design/`).
 
 ## Commands
@@ -15,6 +16,7 @@ python -m pytest -q --ignore=tests/test_render.py --ignore=tests/test_gui.py   #
 python -m ewald api > llms.txt   # regenerate the LLM API reference (see below)
 python benchmarks/neighbors.py   # neighbor-list timings
 python examples/demo.py          # sample trajectories + figures into demo_out/
+mkdocs build --strict            # the manual (pip install -r docs/requirements.txt); CI runs it
 ```
 
 Without a display, VTK rendering aborts the whole pytest process (fatal error, not a test failure),
@@ -39,6 +41,7 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
   the publication renderer; pip VTK has no OSPRay).
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
+- `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
 - `gui/`: `app.py` main window, `viewport.py`, `pipeline_panel.py`, `params.py`, `render_page.py`,
   `preferences.py`, `console.py`, `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`.
 - `llm/`: Claude agent (`agent.py`), tools (`tools.py`), descriptors (`describe.py`, `narrate.py`),
@@ -70,5 +73,8 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
   signature and docstring from `ewald.modifiers.__all__`). After adding, renaming or changing the
   signature/docstring of a modifier, or editing `GUIDE`, run `python -m ewald api > llms.txt` and
   commit it. `tests/test_llm.py::test_llms_txt_lists_every_modifier` fails when a modifier is missing.
-- Add new modifiers to `__all__` in `modifiers/__init__.py` and to the modifier list in README.md;
-  update docs/ROADMAP.md when a roadmap item lands.
+- Add new modifiers to `__all__` in `modifiers/__init__.py`, to the modifier list in README.md and
+  to docs/user/modifiers.md (`tests/test_docs.py` checks); update docs/ROADMAP.md when a roadmap
+  item lands.
+- User-visible changes update the matching manual page (docs/developer/docs.md says which); new
+  pages go into `nav` in mkdocs.yml. Pages are plain Markdown that also reads on GitHub.

@@ -9,6 +9,11 @@ scripting + GPU), built on open libraries (ASE, VTK/PyVista, NumPy/CuPy).
 Status: core, readers, pipeline, first modifiers, offscreen rendering and a first
 desktop GUI are in. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
+Documentation: the [manual](docs/index.md) covers using ewald ([user manual](docs/user/install.md)),
+extending it ([plugins](docs/plugins/index.md)) and working on it
+([developer guide](docs/developer/architecture.md)). It is also an MkDocs site:
+`pip install -r docs/requirements.txt && mkdocs serve`. The GUI's Help menu opens it.
+
 ## Install
 
 ```bash
