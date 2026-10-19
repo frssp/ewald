@@ -29,6 +29,12 @@ MODIFIER_MENU = {
         "Centrosymmetry": mods.CentroSymmetry,
         "Atomic strain": mods.AtomicStrain,
     },
+    "Symmetry & diffraction": {
+        "Space group / Wyckoff positions (spglib)": mods.SymmetryAnalysis,
+        "Powder XRD pattern": mods.PowderDiffraction,
+        "Powder neutron diffraction": lambda: mods.PowderDiffraction(radiation="neutron", wavelength="1.54"),
+        "Structure factor S(q)": mods.StructureFactor,
+    },
     "Trajectory": {
         "Mean squared displacement / diffusion": mods.MeanSquaredDisplacement,
         "Velocity autocorrelation": mods.VelocityAutocorrelation,

@@ -27,7 +27,8 @@ Optional parts are extras, installed only when you need them:
 | `remote` | files on SSH hosts (`import_file("host:/path")`) through paramiko | `pip install -e ".[remote]"` |
 | `llm` | Claude agent and MCP server | `pip install -e ".[llm]"` |
 | `analysis` | freud, for cross-checks | `pip install -e ".[analysis]"` |
-| `dev` | pytest, paramiko | `pip install -e ".[dev]"` |
+| `symmetry` | spglib, for `SymmetryAnalysis` (space group, Wyckoff positions) | `pip install -e ".[symmetry]"` |
+| `dev` | pytest, paramiko, spglib | `pip install -e ".[dev]"` |
 
 Extras combine: `pip install -e ".[gui,gpu,movie]"`.
 
