@@ -1,6 +1,7 @@
 """ewald main window: Analyze and Render workspaces (layout per docs/design)."""
 from __future__ import annotations
 
+import importlib.util
 import logging
 import os
 import sys
@@ -19,9 +20,9 @@ from .. import examples, manual
 from .. import modifiers as mods
 from ..io import import_file
 from ..render import camera_state, render
-from .ask_panel import AskPanel
+from .ask_panel import AskPanel, agent_from_settings
 from .console import make_console
-from .icons import icon
+from .icons import app_icon, icon
 from .inspector import DataInspector
 from .palette import CommandPalette, menu_entries
 from .pipeline_panel import MODIFIER_MENU, PipelinePanel, fill_modifier_menu
@@ -63,6 +64,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.settings = settings if settings is not None else settings_mod.load()
         self.setWindowTitle("EWALD")
+        self.setWindowIcon(app_icon())
         self.resize(1600, 1000)
         self.pipeline = None
         self.data = None
@@ -73,8 +75,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.session_path = None
 
         # --- central: workspaces (Analyze = viewport + timeline, Render = render page)
-        self.viewport = Viewport(self.style)
+        self.viewport = make_viewport(self.style, self.settings["viewport.backend"])
         self.viewport.picked.connect(self._on_pick)
+        self.viewport.hovered.connect(lambda text: self.hover_label.setText(text))
         self.viewport.bondEdit.connect(self.toggle_bond)
         self.viewport.styleChanged.connect(self._style_changed)
         self.viewport.contextMenuRequested.connect(self._show_viewport_menu)
@@ -98,7 +101,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.panel.changed.connect(self.recompute)
         self.panel.styleChanged.connect(self._style_changed)
         pipeline_dock = self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
-        self.ask_panel = AskPanel(self._ask_context)
+        self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings))
         self.ask_panel.pipelineChanged.connect(self._after_claude)
         self.ask_dock = self._dock(self.ask_panel, "Ask Claude", QtCore.Qt.RightDockWidgetArea, None)
         self.tabifyDockWidget(pipeline_dock, self.ask_dock)
@@ -121,6 +124,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.bottom.addTab(self.inspector, "Data inspector")
         self.bottom.addTab(self.plots, "Plots")
         self.bottom.addTab(self.log, "Log")
+        if importlib.util.find_spec("ewald._native") is None:
+            self.log.appendPlainText("ewald._native (C++ extension) is not installed: PTM, Voronoi, CSP matching "
+                                     "and interval CNA are unavailable. See Preferences › Compute.")
         self.bottom.currentChanged.connect(self._update_bottom_tab)
         self._stale_tabs = set()  # bottom tabs not yet showing the current frame
         self.bottom_dock = self._dock(self.bottom, "Data", QtCore.Qt.BottomDockWidgetArea, None)
@@ -131,7 +137,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status = QtWidgets.QLabel()
         self.pick_label = QtWidgets.QLabel()
         self.pick_label.setStyleSheet(f"color: {TOKENS['pick']};")
+        self.hover_label = QtWidgets.QLabel(objectName="muted")
         self.statusBar().addWidget(self.pick_label, 1)
+        self.statusBar().addPermanentWidget(self.hover_label)
         self.statusBar().addPermanentWidget(self.status)
         QtGui.QShortcut(QtGui.QKeySequence("Space"), self.viewport, activated=self.timeline.play.toggle)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+K"), self, activated=self.command_palette)
@@ -413,6 +421,8 @@ class MainWindow(QtWidgets.QMainWindow):
         QtWidgets.QApplication.restoreOverrideCursor()
         if _has_phonon_modes(pipe) and not any(isinstance(m, mods.PhononMode) for m in pipe.modifiers):
             pipe.modifiers.append(mods.PhononMode())  # a phonon file opens playing a mode
+        self._check_bond_limit = True
+        self.style.bond_pairs.clear()  # a new structure gets its own VESTA bond table
         self.set_pipeline(pipe)
         self.setWindowTitle(f"EWALD — {os.path.basename(str(path))}")
         self.message(f"Loaded {path}: {pipe.num_frames} frame(s)")
@@ -506,6 +516,17 @@ class MainWindow(QtWidgets.QMainWindow):
         for m in self.pipeline.modifiers:
             if m.enabled and m.status:
                 self.message(f"{m.name}: {m.status}", error=True)
+        if getattr(self, "_check_bond_limit", False):
+            self._check_bond_limit = False
+            limit = self.settings["bonds.auto_limit"]
+            if getattr(self, "_bonds_auto_off", False) and self.data.count <= limit:
+                self.style.bonds_enabled = True  # the previous file was too big; this one gets its bonds back
+            self._bonds_auto_off = False
+            if self.style.bonds_enabled and self.data.count > limit:
+                # bond search and sticks would make a big system slow
+                self.style.bonds_enabled, self._bonds_auto_off = False, True
+                self.message(f"Bonds off: {self.data.count:,} atoms is above the automatic-bonds limit "
+                             f"({limit:,}, Preferences › Elements). Turn them on under Bonds.")
         if self.style.bonds_enabled:
             self.style.ensure_bond_pairs(self.data.types)
         self._apply_element_defaults()
@@ -1066,17 +1087,44 @@ def _has_phonon_modes(pipe) -> bool:
         return False
 
 
+def make_viewport(style, choice: str | None = None) -> Viewport:
+    """The VTK viewport, or the OpenGL 1.x one for SSH X11 forwarding (see ``viewport_backend``)."""
+    from . import viewport_backend
+
+    if viewport_backend(choice) == "legacy-gl":
+        from .legacy_viewport import LegacyViewport
+
+        return LegacyViewport(style)
+    return Viewport(style)
+
+
+def _set_windows_app_id():
+    """Own taskbar entry and icon on Windows instead of python.exe's."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("ewald.gui")
+        except (AttributeError, OSError):
+            pass
+
+
 def _app():
     from . import theme
 
     app = QtWidgets.QApplication.instance()
     if app is None:
-        from . import check_qt_platform, check_remote_display
+        from . import check_qt_platform, check_remote_display, viewport_backend
+        from .. import settings as settings_mod
 
         check_qt_platform()
-        check_remote_display()
+        if viewport_backend(settings_mod.load()["viewport.backend"]) == "vtk":
+            check_remote_display()
+        _set_windows_app_id()
         app = QtWidgets.QApplication(sys.argv)
         app.setApplicationName("ewald")
+        app.setDesktopFileName("ewald")
+        app.setWindowIcon(app_icon())
         theme.apply(app)
     return app
 

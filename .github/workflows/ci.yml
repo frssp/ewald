@@ -1,9 +1,7 @@
 name: CI
 
+# Manual only (Actions minutes on a private repo); see docs/developer/testing.md to re-enable.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 concurrency:
@@ -36,6 +34,8 @@ jobs:
         uses: pyvista/setup-headless-display-action@v3
       - name: Install package
         run: python -m pip install -e ".[dev,formats]"
+        env:
+          EWALD_REQUIRE_NATIVE: "1"  # a failed C++ build is an error here, not a warning
       # GUI tests (PySide6 widgets + main window under Xvfb) on Linux only
       - name: Install GUI extras (Linux)
         if: runner.os == 'Linux'

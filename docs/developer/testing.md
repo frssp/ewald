@@ -61,6 +61,21 @@ regenerates the LAMMPS ones.
 
 ## CI
 
+CI runs only when started by hand: every workflow in `.github/workflows/` has `workflow_dispatch` as
+its only trigger, so pushes, pull requests and tags start nothing and use no Actions minutes (the
+repository is private, so minutes count against the account quota). Run the local checks from
+CLAUDE.md before merging instead. To run CI, open Actions › CI › Run workflow on GitHub and pick
+the branch, or use `gh workflow run ci.yml --ref <branch>`. To turn automatic runs back on, add
+the triggers back under `on:` in `ci.yml`:
+
+```yaml
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+```
+
 `.github/workflows/ci.yml` runs `pytest -ra` on Linux with Python 3.10, 3.12 and 3.13, on macOS
 and on Windows (Python 3.12), with a headless OpenGL set up by
 `pyvista/setup-headless-display-action`. When a test fails, `visual-diffs/` is uploaded as an

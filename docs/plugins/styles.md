@@ -54,6 +54,7 @@ background, cell color and radius preset. Built-in themes:
 | `VESTA` | VESTA's element colors on white |
 | `CPK` | CPK element colors |
 | `Journal` | Jmol colors muted 35% toward gray, white background, dark gray cell |
+| `ASE` | ASE's GUI: Jmol colors and covalent radii on white, black cell (pair with `atom_style="flat"`) |
 | `Dark slide` | Jmol colors on black, light cell lines |
 
 ```python

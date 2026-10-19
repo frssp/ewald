@@ -26,11 +26,28 @@ from menus).
 **Viewport.** Drag to orbit and scroll to zoom (VTK's standard mouse controls). View › View
 along a, b, c, a*, b*, c* aligns the view with a cell vector or reciprocal vector, as in
 VESTA, and View › Zoom to fit (Ctrl+0) frames the cell. View › Theme applies a theme (Default,
-VESTA, CPK, Journal, Dark slide, or a [theme plugin](../plugins/styles.md#themes)): element
-colors, background, cell color and radius preset in one step. The tool rail on the left switches
+VESTA, CPK, Journal, ASE, Dark slide, or a [theme plugin](../plugins/styles.md#themes)): element
+colors, background, cell color and radius preset in one step.
+
+**Styles.** The Style box on the view toolbar switches between Ball & stick (the default: small
+balls and bonds found automatically), Space-filling, Simple (ASE) and Points; Preferences ›
+Viewports › *Default style* picks the one a new window starts with. Simple (ASE) looks like ASE's
+GUI: flat discs in the element color with a dark outline, unshaded bonds with outlined edges, and
+the ASE theme (white background). It is drawn with impostors, so it stays fast for any number of
+atoms; leaving it restores the colors and background you had. Particles › Rendering = flat gives
+the same look with any radius. Automatic bonds come from a VESTA-style table (Bonds), one row per
+pair of types up to 1.15 × the sum of covalent radii; in compounds metal-metal pairs are left
+out, so SrTiO3 gets Ti-O and Sr-O bonds but not Sr-Ti. Opening a structure with more than
+Preferences › Elements › *Automatic bonds up to* atoms (100 000) turns bonds off, because the
+bond search and the sticks would slow the viewport down; turn them on under Bonds if you want them. The tool rail on the left switches
 between orbit, pick (click an atom to see its id, type, position and every property;
 Shift+click adds atoms to the pick or removes them),
-distance (click two atoms) and angle (click three atoms, vertex in the middle). The viewport
+distance (click two atoms) and angle (click three atoms, vertex in the middle). Resting the
+cursor on an atom with any tool shows its element, index (and id), Cartesian position in Å and,
+when there is a cell, fractional coordinates, in a tooltip and on the right of the status bar.
+The ray cast runs once, after the cursor rests (Viewports › Hover › *Hover delay*, 0.25 s), and
+never while the view moves, so it costs nothing during rotation; *Atom info on hover* turns it
+off. Atoms drawn only as periodic images (VESTA boundary) are not reported. The viewport
 draws atoms as GPU impostors: each sphere is one point shaded per pixel, with the depth of the
 sphere surface, so spheres stay round at any zoom, overlapping spheres and bonds intersect as
 with meshes, and 100 000 atoms rotate smoothly. Viewports › Performance › *Sphere drawing* =
@@ -53,7 +70,8 @@ Ctrl+J) answers questions about the picked atoms, such as "What are these atoms?
 coordination low here?". Without picks it uses the particles a selection modifier selected, and
 with neither the question is about the whole frame. Claude receives the description from
 [Asking about a selection](claude.md#asking-about-a-selection) and a close-up render, can run the
-usual tools, and modifiers it adds appear in the pipeline. It needs the `llm` extra and an API key.
+usual tools, and modifiers it adds appear in the pipeline. It needs the `llm` extra and an API key
+(Preferences › Claude, or `ANTHROPIC_API_KEY`).
 
 **Timeline.** Play, step and scrub through frames. Every frame is computed through the whole
 pipeline when you move to it.
@@ -146,10 +164,11 @@ MP4 or GIF (needs the `movie` extra).
 
 ## Preferences
 
-Edit › Preferences (Ctrl+, ; the application menu on macOS) has six pages: General, Viewports,
+Edit › Preferences (Ctrl+, ; the application menu on macOS) has seven pages: General, Viewports,
 Elements (per-element color and radius, Jmol or CPK scheme, radius preset, VESTA `elements.ini` import),
-Rendering, Compute (default device, CPU threads, installed components) and Python (console
-startup script, extra module paths). Only values that differ from the defaults are saved, as
+Rendering, Compute (default device, CPU threads, installed components), Python (console
+startup script, extra module paths) and Claude (API key, model and effort for Ask Claude; see
+[API key](claude.md#api-key)). Only values that differ from the defaults are saved, as
 JSON in the ewald config folder: `~/.config/ewald` on Linux,
 `~/Library/Application Support/ewald` on macOS, `%APPDATA%\ewald` on Windows, or
 `$EWALD_CONFIG_DIR` when set. Preferences affect the GUI only; scripts that call `compute` or
@@ -182,6 +201,12 @@ repaint (a new frame, picks, a camera move) cost one render, a mouse move while 
 one render rather than two, and nothing is redrawn while the window is idle or the viewport is
 hidden. The Data inspector and Plots tabs follow the current frame only while they are open; a
 plot range linked to the viewport keeps following it either way.
+
+*3D view* picks the viewport itself. Auto uses VTK, except on an SSH-forwarded display
+(`ssh -X`), where it uses Legacy GL: OpenGL 1.x display lists drawn like VESTA, with the frame text
+above the view instead of on it, mesh spheres (points above 400,000 atoms) and no smooth edges or
+color bar. See [Troubleshooting the GUI](install.md#troubleshooting-the-gui). It takes effect at
+the next start; `EWALD_VIEWPORT=vtk|legacy-gl` overrides it.
 
 The Compute switch in the toolbar changes the device for the current session only; the
 preference sets the device the GUI starts with.

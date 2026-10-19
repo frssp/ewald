@@ -24,6 +24,23 @@ def test_impostor_shading_has_no_black_rims(tmp_path, cu_fcc):
     assert np.percentile(img[..., :3].astype(int).sum(-1)[atoms], 1) > 60  # rims stay lit
 
 
+def test_flat_style_is_unshaded_with_outlines():
+    """atom_style='flat' (ASE GUI look): one color inside each disc, a dark outline, outlined bonds."""
+    from ewald.render import render
+
+    data = DataCollection([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]], ["Cu", "Cu"], Cell(np.eye(3) * 20, pbc=(False,) * 3))
+    img = render(data, size=(320, 240), atom_style="flat", background="white", show_cell=False, bonds=2.5,
+                 direction="z", radius_scale=0.6, zoom=0.4, antialiasing=False)[..., :3].astype(int)
+    cu = np.array([200, 128, 51])  # Jmol copper
+    fill = np.abs(img - cu).sum(-1) < 12
+    assert fill.sum() > 2000  # unlit: the whole disc has the element color, no highlight or falloff
+    dark = img.sum(-1) < 150
+    assert dark.sum() > 100  # outlines around discs and along the bond
+    row = img[120]  # through both centers: color, then the dark outline, then white background
+    inside = np.flatnonzero(np.abs(row - cu).sum(-1) < 12)
+    assert row[inside.max() + 1:inside.max() + 4].sum(-1).min() < 150
+
+
 def test_impostors_have_sphere_depth():
     """Overlapping impostors take the depth of the sphere surface, as a fine mesh does, in both projections."""
     import pyvista as pv

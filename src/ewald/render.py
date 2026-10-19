@@ -216,7 +216,9 @@ def add_atoms(plotter, cloud, *, atom_style: str = "auto", mesh_limit: int = 150
     mapper = actor.GetMapper()
     mapper.SetScaleArray("radius")
     mapper.SetScaleFactor(1.0)
-    mapper.SetSplatShaderCode(_IMPOSTOR_SHADER)
+    mapper.SetSplatShaderCode(_FLAT_SHADER if atom_style == "flat" else _IMPOSTOR_SHADER)
+    if atom_style == "flat":
+        actor.GetProperty().LightingOff()  # the shader's color is final
     ren = plotter.renderer
     if not getattr(ren, "_impostor_observer", False):
         ren.AddObserver("StartEvent", _impostor_camera)
@@ -238,7 +240,7 @@ def _impostor_camera(renderer, *_):
     for _ in range(actors.GetNumberOfItems()):
         actor = actors.GetNextActor()
         mapper = actor.GetMapper()
-        if hasattr(mapper, "GetSplatShaderCode") and mapper.GetSplatShaderCode() == _IMPOSTOR_SHADER:
+        if hasattr(mapper, "GetSplatShaderCode") and mapper.GetSplatShaderCode() in (_IMPOSTOR_SHADER, _FLAT_SHADER):
             actor.GetShaderProperty().GetFragmentCustomUniforms().SetUniform4f("impostorProj", proj)
 
 
@@ -255,7 +257,8 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     :class:`ewald.scene.Scene` it drew.
 
     ``atom_style``: 'mesh' (sphere meshes, publication shading), 'impostor' (GPU
-    point sprites for very large systems) or 'auto' (mesh up to ``mesh_limit`` atoms).
+    point sprites for very large systems), 'auto' (mesh up to ``mesh_limit`` atoms) or 'flat'
+    (ASE-GUI look: unshaded discs with a dark outline and unshaded bonds; impostors, so fast at any size).
     ``type_colors``/``type_radii`` override per-type defaults, e.g. ``{"Cu": "#c8794a"}``.
     ``radius_preset`` picks the default radii: 'covalent' (default), 'atomic', 'atomic (calc.)', 'vdW',
     'vdW (Bondi)', 'ionic' or 'ionic (crystal)' (Shannon; ``oxidation_states={"Ti": 4, "O": -2}`` and
@@ -295,7 +298,7 @@ def draw_scene(plotter, scene, *, atom_style: str = "auto", mesh_limit: int = 15
                     add_atoms(plotter, part, atom_style=atom_style, mesh_limit=mesh_limit,
                               sphere_resolution=sphere_resolution, name=name + suffix)
         elif layer.kind == "cylinders":
-            _add_cylinders(plotter, prim, name)
+            _add_cylinders(plotter, prim, name, flat=atom_style == "flat")
         elif layer.kind == "mesh":
             _add_mesh(plotter, prim, name)
         elif layer.kind == "arrows":
@@ -330,6 +333,20 @@ zn = persp ? (impostorProj.y * ze + impostorProj.z) / -ze : impostorProj.y * ze 
 gl_FragDepth = 0.5 * zn + 0.5;
 """
 
+# The 'flat' style (ASE GUI): the atom's own color, unlit, inside a dark outline (1 pixel or 5% of
+# the radius, antialiased), with the same sphere-surface depth as _IMPOSTOR_SHADER.
+_FLAT_SHADER = _IMPOSTOR_SHADER.replace("""vec3 l = normalize(vec3(-0.25, 0.35, 1.0));
+float diff = max(dot(n, l), 0.0);
+float spec = pow(max(dot(n, normalize(l + vec3(0.0, 0.0, 1.0))), 0.0), 40.0);
+diffuseColor = diffuseColor * (0.3 + 0.75 * diff) + vec3(0.3 * spec);
+ambientColor = vec3(0.0);
+float rpix = 1.0 / max(length(vec2(dFdx(offsetVCVSOutput.x), dFdy(offsetVCVSOutput.x))), 1e-6);
+""", """float rpix = 1.0 / max(length(vec2(dFdx(offsetVCVSOutput.x), dFdy(offsetVCVSOutput.x))), 1e-6);
+float edge = clamp((1.0 - sqrt(r2)) * rpix - max(0.8, 0.05 * rpix), 0.0, 1.0);
+diffuseColor = mix(vec3(0.08), diffuseColor, edge);
+ambientColor = vec3(0.0);
+""")
+
 
 def bond_list(data, cutoff=None, pairs=None):
     """Bonds as (i, j, delta); both directions (i, j) and (j, i) are listed (half-bond drawing).
@@ -354,8 +371,8 @@ def scene_bonds(data, cutoff=None, pairs=None):
     return find_bonds(data, cutoff, pairs)
 
 
-def _add_cylinders(plotter, cyl, name):
-    """Cylinders as tubes (half-bonds: one per atom, in its color)."""
+def _add_cylinders(plotter, cyl, name, flat: bool = False):
+    """Cylinders as tubes (half-bonds: one per atom, in its color); ``flat``: unshaded (ASE-GUI look)."""
     import pyvista as pv
 
     if not cyl.count:
@@ -371,9 +388,44 @@ def _add_cylinders(plotter, cyl, name):
         poly = pv.PolyData(pts, lines=lines)
         poly.cell_data["rgb"] = (np.clip(cyl.rgb[pick], 0, 1) * 255).astype(np.uint8)
         tubes = poly.tube(radius=float(r), n_sides=12, capping=False)
-        plotter.add_mesh(tubes, scalars="rgb", rgb=True, name=name if len(radii) == 1 else f"{name}:{r:g}",
-                         smooth_shading=True, render=False, ambient=0.25, diffuse=0.8, specular=0.2,
-                         specular_power=30)
+        light = dict(ambient=1.0, diffuse=0.0, specular=0.0) if flat else \
+            dict(ambient=0.25, diffuse=0.8, specular=0.2, specular_power=30)
+        actor_name = name if len(radii) == 1 else f"{name}:{r:g}"
+        plotter.add_mesh(tubes, scalars="rgb", rgb=True, name=actor_name, smooth_shading=not flat, render=False,
+                         **light)
+        if flat:
+            _add_stick_outline(plotter, cyl.start[pick], cyl.end[pick], float(r), f"{actor_name}:outline")
+
+
+def _add_stick_outline(plotter, start, end, radius, name):
+    """Dark silhouette edges of sticks (ASE GUI look), recomputed by VTK whenever the camera moves.
+    The two halves of a bond (same midpoint ``end``) become one tube, so no ring is drawn between them;
+    a half without its partner (a bond across the periodic boundary) keeps its real end."""
+    import pyvista as pv
+    import vtk
+
+    _, inv, cnt = np.unique(np.round(end / 1e-4).astype(np.int64), axis=0, return_inverse=True,
+                            return_counts=True)
+    inv = inv.ravel()
+    paired = cnt[inv] == 2
+    halves = np.flatnonzero(paired)[np.argsort(inv[paired], kind="stable")].reshape(-1, 2)
+    single = np.flatnonzero(~paired)
+    a = np.concatenate([start[halves[:, 0]], start[single]])
+    b = np.concatenate([start[halves[:, 1]], end[single]])
+    k = len(a)
+    pts = np.empty((2 * k, 3))
+    pts[0::2], pts[1::2] = a, b
+    lines = np.column_stack([np.full(k, 2), np.arange(0, 2 * k, 2), np.arange(1, 2 * k, 2)]).ravel()
+    tubes = pv.PolyData(pts, lines=lines).tube(radius=radius, n_sides=12, capping=False).triangulate()
+    sil = vtk.vtkPolyDataSilhouette()  # needs polygons, hence triangulate (tube makes strips)
+    sil.SetInputData(tubes)
+    sil.SetCamera(plotter.renderer.GetActiveCamera())
+    sil.SetDirectionToCameraVector()
+    actor = plotter.add_mesh(sil, color=(0.08, 0.08, 0.08), line_width=1.5, name=name, render=False,
+                             lighting=False)
+    m = actor.GetMapper()  # the lines lie on the tube surface: pull them in front of it
+    m.SetResolveCoincidentTopologyToPolygonOffset()
+    m.SetRelativeCoincidentTopologyLineOffsetParameters(-2, -4)
 
 
 def _add_mesh(plotter, mesh, name):
@@ -558,7 +610,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     (Coordinate tripod, Attributes, plugins; see :mod:`ewald.overlays`). ``dpi`` is stored
     in PNG/TIFF files and sets the page size of vector output.
 
-    ``theme``: a theme name ('VESTA', 'Journal', 'Dark slide', plugins; see :mod:`ewald.themes`)
+    ``theme``: a theme name ('VESTA', 'Journal', 'ASE', 'Dark slide', plugins; see :mod:`ewald.themes`)
     that sets element colors, background, cell color and radius preset; explicit arguments win.
     ``background`` defaults to white.
     """
@@ -574,6 +626,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
         background = themed.pop("background")
         scene_kwargs.update({k: v for k, v in themed.items() if v is not None})
     background = "white" if background is None else background
+    if scene_kwargs.get("atom_style") == "flat" and ambient_occlusion is None:
+        ambient_occlusion = False  # SSAO would shade the flat discs
     q = quality_settings(quality, samples=samples, ao_samples=ao_samples, shadows=shadows,
                          antialiasing=antialiasing, ambient_occlusion=ambient_occlusion,
                          sphere_resolution=scene_kwargs.pop("sphere_resolution", None), scale=scale)

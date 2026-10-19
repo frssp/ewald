@@ -3,15 +3,8 @@ name: Windows release
 # Builds Windows wheels and the standalone app (PyInstaller folder + Inno Setup installer),
 # smoke-tests the frozen app, and on a v* tag attaches everything to a GitHub Release.
 # See docs/developer/windows-release.md.
+# Manual only (Actions minutes); dispatch it on a v* tag to publish a release.
 on:
-  push:
-    tags: ["v*"]
-  pull_request:
-    paths:
-      - "packaging/windows/**"
-      - ".github/workflows/windows-release.yml"
-      - "setup.py"
-      - "pyproject.toml"
   workflow_dispatch:
 
 concurrency:
@@ -28,6 +21,7 @@ jobs:
         env:
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
           CIBW_ARCHS_WINDOWS: AMD64
+          CIBW_ENVIRONMENT: EWALD_REQUIRE_NATIVE=1
           # vendor msvcp140.dll (pybind11/C++ runtime) into the wheel
           CIBW_BEFORE_BUILD_WINDOWS: pip install delvewheel
           CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: delvewheel repair -w {dest_dir} {wheel}
@@ -50,6 +44,7 @@ jobs:
         variant: ${{ fromJSON(github.event_name == 'pull_request' && '["cpu"]' || '["cpu", "gpu"]') }}
     env:
       EWALD_VARIANT: ${{ matrix.variant }}
+      EWALD_REQUIRE_NATIVE: "1"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

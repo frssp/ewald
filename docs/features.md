@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-55 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+58 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -106,6 +106,14 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | Modifier | What it does |
 |---|---|
 | `PythonScript` | Run ``modify(frame, data)`` defined in ``source``. |
+
+### crystal
+
+| Modifier | What it does |
+|---|---|
+| `ElasticStrain` | Atomic-level elastic strain in a crystal (OVITO's Elastic strain calculation). |
+| `GrainSegmentation` | Decompose a polycrystal into grains from PTM orientations (OVITO's Grain segmentation). |
+| `IdentifyFCCPlanarFaults` | Classify hcp-like atoms in fcc crystals by planar fault (OVITO's Identify fcc planar faults). |
 
 ### diffraction
 
@@ -266,6 +274,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 | `VESTA` | VESTA's element colors on white |
 | `CPK` | CPK element colors |
 | `Journal` | Jmol colors muted 35% toward gray, white background, dark gray cell |
+| `ASE` | ASE GUI: Jmol colors and covalent radii on white (pair with the 'Simple (ASE)' style) |
 | `Dark slide` | Jmol colors on black, light cell lines, for slides |
 
 ### Output formats
@@ -376,10 +385,13 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `viewport.background` | Background | `'#14161A'` |
 | `viewport.projection` | Projection | `'ortho'` |
 | `viewport.initial_view` | Initial view direction | `'iso'` |
-| `viewport.style_preset` | Default style | `'Space-filling'` |
+| `viewport.style_preset` | Default style | `'Ball & stick'` |
 | `viewport.rotation_step` | Step rotation | `15.0` |
 | `viewport.show_axes` | Show axes tripod | `True` |
 | `viewport.show_overlay` | Show frame / timestep text | `True` |
+| `viewport.backend` | 3D view | `'auto'` |
+| `viewport.hover_info` | Atom info on hover | `True` |
+| `viewport.hover_delay` | Hover delay | `0.25` |
 | `viewport.sphere_drawing` | Sphere drawing | `'impostor'` |
 | `viewport.sphere_resolution` | Sphere resolution | `16` |
 | `viewport.mesh_limit` | Impostor threshold | `150000` |
@@ -400,6 +412,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `elements.overrides` | Per-element overrides | `{}` |
 | `bonds.length_factor` | Bond length factor | `1.15` |
 | `bonds.radius` | Bond radius | `0.15` |
+| `bonds.auto_limit` | Automatic bonds up to | `100000` |
 
 ### Rendering
 
@@ -433,6 +446,13 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 |---|---|---|
 | `python.startup_script` | Console startup script | `''` |
 | `python.extra_paths` | Extra module paths | `''` |
+
+### Claude
+
+| Key | Label | Default |
+|---|---|---|
+| `llm.model` | Model | `'claude-opus-5-5'` |
+| `llm.effort` | Effort | `'high'` |
 
 <!-- gui:start -->
 ## Desktop GUI
@@ -488,6 +508,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - VESTA
   - CPK
   - Journal
+  - ASE
   - Dark slide
 
 **Pipeline**
@@ -511,6 +532,9 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Chill+ (ice, hydrate)
   - Centrosymmetry
   - Atomic strain
+  - Elastic strain (crystal)
+  - Grain segmentation (after PTM)
+  - fcc planar faults (after PTM)
 - Symmetry & diffraction
   - Space group / Wyckoff positions (spglib)
   - Powder XRD pattern
