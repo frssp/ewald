@@ -52,7 +52,9 @@ pipeline panel and redraw the view.
 `ExpressionSelection`), plus global attributes and tables.
 
 **Plots.** Any table in the current frame (g(r), MSD, histograms, time series) can be plotted
-and saved.
+and saved. The `Thermo` table (log.lammps, OSZICAR, OUTCAR, vasprun.xml; see
+[File formats](formats.md#simulation-results)) is drawn one column at a time, picked under
+"y", with a dashed line at the current frame's step that follows the timeline.
 
 **Command palette.** Window › Command palette searches every menu action and every modifier by
 name.

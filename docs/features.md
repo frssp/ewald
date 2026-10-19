@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-39 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+49 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -106,6 +106,36 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 |---|---|
 | `PythonScript` | Run ``modify(frame, data)`` defined in ``source``. |
 
+### plumed
+
+| Modifier | What it does |
+|---|---|
+| `Plumed` | Collective variables computed by PLUMED for every frame, from a ``plumed.dat``. |
+| `LoadColvar` | Values from a PLUMED COLVAR file (or any ``#! FIELDS`` file) attached to the frames. |
+| `FreeEnergySurface` | Free energy surface from a metadynamics HILLS file, F(s) = -sum of the hills. |
+
+### statistics
+
+| Modifier | What it does |
+|---|---|
+| `Histogram` | Histogram of a particle or bond property ('Mass', 'Position.Z', ...). |
+| `SpatialBinning` | Coarse-grain a particle property on a 1D, 2D or 3D grid of bins along the cell vectors. |
+| `ReduceProperty` | Reduce a particle or bond property to one number per component. |
+
+### steinhardt
+
+| Modifier | What it does |
+|---|---|
+| `SteinhardtOrderParameters` | Per-particle q_l (and w_l) for every degree in ``degrees``. |
+
+### topology
+
+| Modifier | What it does |
+|---|---|
+| `BondAngleDistribution` | Histogram of the angles between pairs of bonds at each particle. |
+| `BondLengthDistribution` | Histogram of bond lengths from 0 to ``length_cutoff`` in ``bins`` bins (longer bonds are skipped). |
+| `FindRings` | Rings of ``minimum_ring_size``..``maximum_ring_size`` bonds in the bond network. |
+
 ### vectors
 
 | Modifier | What it does |
@@ -130,6 +160,8 @@ Tried in this order when no `format=` is given; reader plugins slot in at priori
 | `ase-db` | `*.db` | ASE database (SQLite .db or .json), one row per frame, lazy; selection= query | `db`, `ase.db` |
 | `ase-traj` | `*.traj` | ASE binary trajectory (.traj), lazy | `traj` |
 | `md-trajectory` | `*.xtc` `*.trr` `*.dcd` `*.nc` `*.ncdf` | GROMACS XTC/TRR, DCD, AMBER NetCDF via MDAnalysis, lazy; topology= (.gro/.pdb/.tpr/...) for atom types | `xtc`, `trr`, `dcd`, `netcdf`, `ncdf`, `mdanalysis` |
+| `outcar` | `OUTCAR*` | VASP OUTCAR: ionic steps with forces, energies, stress, magnetic moments, lazy | `vasp-outcar` |
+| `vasprun` | `vasprun*.xml` | VASP vasprun.xml: ionic steps with cell, forces, stress, energies, lazy | `vasp-vasprun` |
 | `extxyz` | `*.xyz` `*.extxyz` | XYZ / extended XYZ (Lattice=, Properties=), lazy | `xyz`, `ext-xyz` |
 | `cif` | `*.cif` | Crystallographic Information File via ASE |  |
 | `ase` | `POSCAR*` `CONTCAR*` `OUTCAR*` `vasprun*.xml` `*.xyz` `*.extxyz` `*.cif` `*.vasp` | anything ase.io.read understands (POSCAR, OUTCAR, vasprun.xml, extxyz, cif, ...); other format= names are passed to ASE |  |
@@ -238,6 +270,8 @@ The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (
 | `evaluate_expression` | Evaluate an OVITO-style per-particle expression on a frame and return statistics (count of true values for conditions; min/max/mean/percentiles for numbers). |
 | `compute_rdf` | Radial distribution function g(r) of a frame (total, plus partial pairs). |
 | `compute_msd` | Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per type, with a linear-regime fit D = slope/6. |
+| `compute_plumed_cvs` | Collective variables computed by PLUMED (needs the PLUMED library) over the trajectory from a plumed.dat (text or path): e.g. 'd: DISTANCE ATOMS=1,2' (atoms numbered from 1, by Particle Identifier when present), TORSION, COORDINATION, RMSD, METAD with temperature. |
+| `read_plumed_output` | Read a PLUMED output file. |
 | `render_image` | Render a frame of the pipeline to PNG and return the image so you can inspect it. |
 | `list_visuals` | Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell; configured through render_image and modifiers) and installed plugins, which add_visual draws on top in every renderer. |
 | `add_visual` | Draw a plugin visual element (see list_visuals) in every later render_image, with optional constructor parameters. |
@@ -379,11 +413,22 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Analysis
   - Coordination analysis / RDF
   - Displacement vectors
+  - Histogram
+  - Spatial binning (profiles, density maps)
+  - Reduce property (mean, sum, ...)
+  - Steinhardt order parameters (q4, q6)
   - ClusterAnalysis
-  - CommonNeighborAnalysis
   - VoronoiAnalysis
   - WignerSeitzAnalysis
   - DislocationAnalysis
+- Structure identification
+  - Common neighbor analysis
+  - Polyhedral template matching
+  - Ackland-Jones bond angles
+  - Identify diamond structure
+  - Chill+ (ice, hydrate)
+  - Centrosymmetry
+  - Atomic strain
 - Trajectory
   - Mean squared displacement / diffusion
   - Velocity autocorrelation
@@ -394,6 +439,9 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Create bonds
   - Edit bonds (add / delete)
   - Coordination polyhedra
+  - Bond angle distribution
+  - Bond length distribution
+  - Ring statistics
 - Volume (CHGCAR, LOCPOT, cube)
   - Isosurface
   - Isosurface, signed (density difference / spin)
@@ -418,15 +466,12 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Select type
   - Invert selection
   - Clear selection
+- Collective variables (PLUMED)
+  - PLUMED input (plumed.dat)
+  - Load COLVAR file
+  - Free energy surface from HILLS
 - Python
   - Python script
-- Other
-  - PolyhedralTemplateMatching
-  - AcklandJones
-  - AtomicStrain
-  - CentroSymmetry
-  - ChillPlus
-  - IdentifyDiamond
 
 **Tools**
 
