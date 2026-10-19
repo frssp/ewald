@@ -262,6 +262,10 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `viewport.show_overlay` | Show frame / timestep text | `True` |
 | `viewport.sphere_resolution` | Sphere resolution | `10` |
 | `viewport.mesh_limit` | Impostor threshold | `150000` |
+| `viewport.interactive_detail` | Detail while moving | `'auto'` |
+| `viewport.target_fps` | Target frame rate | `30` |
+| `viewport.interactive_atoms` | Atoms while moving | `1000000` |
+| `viewport.refine_delay` | Refine after | `0.3` |
 
 ### Elements
 
@@ -297,6 +301,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | Key | Label | Default |
 |---|---|---|
 | `compute.device` | Default device | `'cpu'` |
+| `performance.cache_memory` | Frame cache memory | `2048` |
 | `compute.threads` | CPU threads | `0` |
 
 ### Python

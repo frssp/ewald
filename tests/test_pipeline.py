@@ -83,3 +83,19 @@ def test_slice_replicate_color(cu_fcc):
     assert d.count == 2 * int((np.abs(cu_fcc.positions[:, 2] - 1.8) <= 0.5).sum())
     assert d["Color"].shape == (d.count, 3)
     assert d.attributes["ColorCoding.range"][0] == pytest.approx(d["Height"].min())
+
+
+def test_frame_cache_respects_memory_budget(cu_fcc):
+    frames = [cu_fcc.copy() for _ in range(6)]
+    per_frame = cu_fcc.nbytes
+    pipe = Pipeline(StaticSource(frames), cache_memory=2.5 * per_frame)
+    for f in range(6):
+        pipe.compute(f)
+    assert list(pipe._cache) == [4, 5]
+    pipe.cache_memory = 1  # smaller than one frame: the newest frame is still kept
+    pipe.compute(2)
+    assert list(pipe._cache) == [2]
+    pipe.cache_memory = None
+    for f in range(6):
+        pipe.compute(f)
+    assert len(pipe._cache) == 6

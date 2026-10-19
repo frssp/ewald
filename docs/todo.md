@@ -17,8 +17,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - PLUMED plugin and collective variables.
 - Screenshot regression tests for the viewport and renderers.
 - Ask Claude about picked atoms ([#26](https://github.com/frssp/ewald/pull/26)).
-- Large systems: interactive level of detail, frame-cache memory cap, parallel dump parser
-  ([#25](https://github.com/frssp/ewald/pull/25)).
 
 ## Next
 
@@ -50,10 +48,6 @@ Figures
 
 - GPU (CUDA) ray tracer.
 - Ray tracer: shadows of the cell edges show as arcs on atoms.
-
-Scale
-
-- Faster atom-table parser for very large dumps.
 
 Plugins and Claude
 
