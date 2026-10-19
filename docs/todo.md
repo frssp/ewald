@@ -8,7 +8,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Viewport: GPU impostor spheres by default, FXAA, software-OpenGL warning (thread "처음 연 화면 느림").
+Nothing right now.
 
 ## Next
 
