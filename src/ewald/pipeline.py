@@ -48,6 +48,7 @@ class Modifier:
     enabled: bool = True
     status: str | None = None  # last error message, None when the last evaluation succeeded
     last_time: float | None = None  # seconds spent in the last evaluation
+    last_output: dict | None = None  # what the last evaluation changed, see :func:`output_summary`
 
     def modify(self, data: DataCollection, ctx: ComputeContext):
         raise NotImplementedError
@@ -123,6 +124,29 @@ class ModifierList(list):
         super().__setitem__(i, [self._wrap(x) for x in m] if isinstance(i, slice) else self._wrap(m))
 
 
+def _snapshot(data: DataCollection) -> tuple:
+    """Cheap fingerprint of a collection (array identities, not contents): modifiers
+    replace arrays instead of writing into them, so identity tells what changed."""
+    return (data.count, {k: id(v) for k, v in data.particles.items()},
+            {k: id(v) for k, v in data.attributes.items()}, {k: id(v) for k, v in data.tables.items()},
+            int(data.selection.sum()) if "Selection" in data.particles else None)
+
+
+def output_summary(before: tuple, data: DataCollection, frame: int) -> dict:
+    """What one modifier did to the data: particle count before and after, properties,
+    attributes and tables it added or replaced, and the selection count. Notebook cells
+    show this under each step."""
+    count, props, attrs, tables, _ = before
+    if data.count != count:  # deleting particles replaces every array: report only new ones
+        changed = [k for k in data.particles if k not in props]
+    else:
+        changed = [k for k, v in data.particles.items() if props.get(k) != id(v)]
+    return {"frame": frame, "count_before": count, "count": data.count, "properties": changed,
+            "attributes": [k for k, v in data.attributes.items() if attrs.get(k) != id(v)],
+            "tables": [k for k, v in data.tables.items() if tables.get(k) != id(v)],
+            "selected": int(data.selection.sum()) if "Selection" in data.particles else None}
+
+
 class Pipeline:
     """A source plus an ordered list of modifiers, evaluated lazily per frame.
 
@@ -182,6 +206,7 @@ class Pipeline:
             if not mod.enabled:
                 continue
             ctx = ComputeContext(frame, self, backend, modifier_index=index)
+            before = _snapshot(data)
             t0 = time.perf_counter()
             try:
                 result = mod.modify(data, ctx)
@@ -195,6 +220,7 @@ class Pipeline:
             mod.last_time = time.perf_counter() - t0
             if result is not None:
                 data = result
+            mod.last_output = output_summary(before, data, frame)
         return data
 
     def frames(self, start: int = 0, stop: int | None = None, step: int = 1, device=None):

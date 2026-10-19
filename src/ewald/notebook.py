@@ -1,0 +1,508 @@
+"""Notebooks: a pipeline written as Python cells, the document behind the GUI's notebook view.
+
+A notebook is a plain ``.py`` file in the percent format (``# %%`` starts a cell) that
+Jupyter, VS Code and jupytext open as a notebook and ``python file.py`` runs as a script::
+
+    # %% [markdown]
+    # # Cu void annealing
+
+    # %%
+    from ewald import import_file
+    from ewald.modifiers import *
+    pipe = import_file("cu_void.lammpstrj")
+
+    # %%
+    pipe.modifiers.append(CoordinationAnalysis(cutoff=3.08))
+
+Cells run in one namespace, like Jupyter. The variable ``pipe`` is the notebook's
+pipeline; the viewer shows it. A cell that is a single ``pipe.modifiers.append(...)``
+(optionally after imports) is a *step*: the GUI shows it as a parameter form and keeps
+its source in sync with the modifier. Running any cell again replaces the modifiers it
+added the last time at the same place, so re-running never stacks duplicates.
+
+    nb = Notebook.load("analysis.py")
+    nb.run_all()
+    data = nb.pipeline.compute(0)
+"""
+from __future__ import annotations
+
+import ast
+import contextlib
+import io
+import linecache
+import os
+import re
+import sys
+import traceback
+from dataclasses import dataclass, field
+
+from .pipeline import Modifier, Pipeline, PythonModifier
+
+PIPELINE_NAME = "pipe"
+_MARK = re.compile(r"^# %%(.*)$")
+
+
+@dataclass
+class Output:
+    """One result shown under a cell: ``kind`` is 'text' (stdout), 'error', 'value'
+    (repr of the last expression) or 'image' (PNG bytes: a matplotlib figure or a rendered image)."""
+
+    kind: str
+    data: object
+
+
+@dataclass
+class Cell:
+    source: str = ""
+    kind: str = "code"                 # 'code' or 'markdown'
+    title: str = ""                    # text after '# %%' (besides [markdown])
+    outputs: list = field(default_factory=list)
+    added: list = field(default_factory=list)   # modifiers this cell's last run put into the pipeline
+    count: int | None = None           # execution counter, like Jupyter's In [n]
+    state: str = "new"                 # 'new', 'ok', 'error' or 'stale'
+
+    @property
+    def is_step(self) -> bool:
+        return self.kind == "code" and step_call(self.source) is not None
+
+    @property
+    def modifier(self) -> Modifier | None:
+        """The modifier of a step cell (after it ran or was added by the GUI)."""
+        return self.added[0] if self.is_step and len(self.added) == 1 else None
+
+
+def step_call(source: str, name: str = PIPELINE_NAME) -> ast.expr | None:
+    """The argument of ``<name>.modifiers.append(arg)`` if ``source`` is only that call,
+    optionally preceded by import statements; None otherwise."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+    *head, last = tree.body or [None]
+    if not isinstance(last, ast.Expr) or not all(isinstance(s, (ast.Import, ast.ImportFrom)) for s in head):
+        return None
+    call = last.value
+    if (isinstance(call, ast.Call) and len(call.args) == 1 and not call.keywords
+            and isinstance(call.func, ast.Attribute) and call.func.attr == "append"
+            and isinstance(call.func.value, ast.Attribute) and call.func.value.attr == "modifiers"
+            and isinstance(call.func.value.value, ast.Name) and call.func.value.value.id == name):
+        return call.args[0]
+    return None
+
+
+def step_source(modifier: Modifier, namespace: dict | None = None, name: str = PIPELINE_NAME) -> str:
+    """Source of a step cell that adds ``modifier``. Classes outside ``ewald.modifiers.__all__``
+    (plugins) get their own import line unless the namespace already has them."""
+    from . import modifiers
+
+    if isinstance(modifier, PythonModifier):
+        fn = modifier.function
+        try:
+            import inspect
+            import textwrap
+
+            src = textwrap.dedent(inspect.getsource(fn)).rstrip()
+        except (OSError, TypeError):
+            src = f"# {fn.__name__}: Python function defined elsewhere (console); its source is not available"
+        params = "".join(f", {k}={v!r}" for k, v in modifier.params.items())
+        call = f"{fn.__name__}" if not params else f"PythonModifier({fn.__name__}{params})"
+        return f"{src}\n\n{name}.modifiers.append({call})"
+    cls = type(modifier)
+    lines = []
+    known = namespace is not None and namespace.get(cls.__name__) is cls
+    if not known and cls.__name__ not in getattr(modifiers, "__all__", ()):
+        module = "ewald.modifiers" if getattr(modifiers, cls.__name__, None) is cls else cls.__module__
+        lines.append(f"from {module} import {cls.__name__}")
+    lines.append(f"{name}.modifiers.append({modifier!r})")
+    if not modifier.enabled:
+        lines.append(f"{name}.modifiers[-1].enabled = False")
+    return "\n".join(lines)
+
+
+def _owned(cells) -> list:
+    return [m for c in cells for m in c.added]
+
+
+class Notebook:
+    """Cells, the namespace they run in, and the file they come from."""
+
+    def __init__(self, cells=(), name: str = "Notebook 1", path: str | None = None, pipeline_name: str = PIPELINE_NAME):
+        self.cells: list[Cell] = list(cells)
+        self.name = name
+        self.path = path
+        self.pipeline_name = pipeline_name
+        self.namespace: dict = {}
+        self.counter = 0
+        self.dirty = False
+        self.reset()
+
+    # ------------------------------------------------------------ namespace
+    def reset(self):
+        """Fresh namespace (like restarting a Jupyter kernel); cells keep their source."""
+        self.namespace = {"__name__": "__main__", "__file__": self.path or "<notebook>"}
+        for c in self.cells:
+            c.added = []
+            if c.kind == "code" and c.state != "new":
+                c.state = "stale"
+
+    @property
+    def pipeline(self) -> Pipeline | None:
+        p = self.namespace.get(self.pipeline_name)
+        return p if isinstance(p, Pipeline) else None
+
+    # ------------------------------------------------------------ running
+    def run_all(self, stop_on_error: bool = True) -> bool:
+        """Restart and run every cell in order; True if all succeeded."""
+        self.reset()
+        self.counter = 0
+        for k, cell in enumerate(self.cells):
+            if not self.run_cell(k, run_below=False) and stop_on_error:
+                for later in self.cells[k + 1:]:
+                    if later.kind == "code":
+                        later.state = "stale"
+                return False
+        return True
+
+    def run_cell(self, cell, run_below: bool = True) -> bool:
+        """Run one cell (a Cell or its index) in the notebook namespace; True on success.
+
+        Modifiers the cell added on its previous run are taken out first and the new ones
+        land at the same place. When the cell rebinds ``pipe`` (a new import_file), the
+        cells below run again so the new pipeline gets their steps (``run_below``)."""
+        index = cell if isinstance(cell, int) else self.cells.index(cell)
+        cell = self.cells[index]
+        if cell.kind != "code":
+            return True
+        pipe = self.pipeline
+        slot = None
+        if pipe is not None and cell.added:
+            idx = [i for i, m in enumerate(pipe.modifiers) if any(m is a for a in cell.added)]
+            if idx:
+                slot = min(idx)
+            for m in cell.added:
+                _remove(pipe.modifiers, m)
+        if pipe is not None and slot is None:
+            slot = self._slot(index, pipe)
+        cell.added = []
+        before = [] if pipe is None else list(pipe.modifiers)
+        self.counter += 1
+        cell.count = self.counter
+        ok = self._exec(cell, f"<cell {index + 1}>")
+        after = self.pipeline
+        if after is not None and after is pipe:
+            new = [m for m in after.modifiers if not any(m is b for b in before)]
+            for m in new:
+                _remove(after.modifiers, m)
+            for k, m in enumerate(new):
+                after.modifiers.insert(min(slot, len(after.modifiers)) + k, m)
+            cell.added = new
+        elif after is not None:
+            cell.added = list(after.modifiers)
+            if run_below:
+                for k in range(index + 1, len(self.cells)):
+                    if not self.run_cell(k, run_below=False):
+                        break
+            else:
+                for later in self.cells[index + 1:]:
+                    later.added = []
+        cell.state = "ok" if ok else "error"
+        return ok
+
+    def _slot(self, index: int, pipe: Pipeline) -> int:
+        """Where a cell's new modifiers go: after those of the cells above it."""
+        above = [m for c in self.cells[:index] for m in c.added]
+        positions = [i for i, m in enumerate(pipe.modifiers) if any(m is a for a in above)]
+        return max(positions) + 1 if positions else 0 if any(c.added for c in self.cells[index + 1:]) else len(pipe.modifiers)
+
+    def _exec(self, cell: Cell, filename: str) -> bool:
+        cell.outputs = []
+        lines = cell.source.splitlines(True)
+        linecache.cache[filename] = (len(cell.source), None, lines, filename)
+        out = io.StringIO()
+        figures_before = _figure_numbers()
+        restore_show = _patch_show()
+        try:
+            tree = ast.parse(cell.source, filename)
+            last = tree.body.pop() if tree.body and isinstance(tree.body[-1], ast.Expr) else None
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+                exec(compile(tree, filename, "exec"), self.namespace)
+                value = None if last is None else eval(compile(ast.Expression(last.value), filename, "eval"),
+                                                       self.namespace)
+            ok = True
+        except BaseException as exc:  # noqa: BLE001 - shown in the cell, like Jupyter
+            if isinstance(exc, KeyboardInterrupt):
+                raise
+            value, ok = None, False
+            error = _format_error(exc, filename)
+        finally:
+            restore_show()
+        if out.getvalue():
+            cell.outputs.append(Output("text", out.getvalue()))
+        if not ok:
+            cell.outputs.append(Output("error", error))
+        cell.outputs.extend(Output("image", png) for png in _new_figures(figures_before))
+        if ok and value is not None:
+            cell.outputs.append(_display(value))
+        return ok
+
+    # ------------------------------------------------------------ editing
+    def insert(self, index: int, cell: Cell) -> Cell:
+        self.cells.insert(index, cell)
+        self.dirty = True
+        return cell
+
+    def delete(self, cell):
+        """Remove a cell and the modifiers it added."""
+        index = cell if isinstance(cell, int) else self.cells.index(cell)
+        cell = self.cells.pop(index)
+        pipe = self.pipeline
+        if pipe is not None:
+            for m in cell.added:
+                _remove(pipe.modifiers, m)
+        self.dirty = True
+        return cell
+
+    def move(self, cell, to: int):
+        """Move a cell to position ``to``; the pipeline follows the new cell order."""
+        index = cell if isinstance(cell, int) else self.cells.index(cell)
+        cell = self.cells.pop(index)
+        self.cells.insert(max(0, min(to, len(self.cells))), cell)
+        self._reorder()
+        self.dirty = True
+
+    def _reorder(self):
+        pipe = self.pipeline
+        if pipe is None:
+            return
+        owned = [m for m in _owned(self.cells) if any(m is p for p in pipe.modifiers)]
+        rest = [m for m in pipe.modifiers if not any(m is o for o in owned)]
+        pipe.modifiers[:] = owned + rest
+
+    def add_step(self, modifier: Modifier, index: int | None = None) -> Cell:
+        """Insert a step cell for an already constructed modifier (GUI menus) at ``index``
+        (default: the end) and put the modifier into the pipeline at the matching place."""
+        index = len(self.cells) if index is None else index
+        cell = Cell(step_source(modifier, self.namespace, self.pipeline_name))
+        self.insert(index, cell)
+        pipe = self.pipeline
+        if pipe is not None:
+            pipe.modifiers.insert(self._slot(index, pipe), modifier)
+            cell.added = [modifier]
+            cell.state = "ok"
+        return cell
+
+    def update_step(self, cell: Cell):
+        """Rewrite a step cell's source from its modifier (after the form changed it)."""
+        if cell.modifier is not None:
+            cell.source = step_source(cell.modifier, self.namespace, self.pipeline_name)
+            self.dirty = True
+
+    def sync(self) -> bool:
+        """Follow pipeline changes made outside the cells (console, Claude, menus): new
+        modifiers become step cells after the cell owning the modifier before them, and
+        step cells whose modifier left the pipeline are removed. True if cells changed."""
+        pipe = self.pipeline
+        if pipe is None:
+            return False
+        changed = False
+        for cell in list(self.cells):
+            keep = [m for m in cell.added if any(m is p for p in pipe.modifiers)]
+            if len(keep) != len(cell.added):
+                if cell.is_step and not keep:
+                    self.cells.remove(cell)
+                else:
+                    cell.added = keep
+                changed = True
+        for i, m in enumerate(pipe.modifiers):
+            if any(m is o for o in _owned(self.cells)):
+                continue
+            prev = pipe.modifiers[i - 1] if i else None
+            at = len(self.cells)
+            if prev is not None:
+                at = next((k + 1 for k, c in enumerate(self.cells) if any(prev is a for a in c.added)), at)
+            else:
+                at = next((k for k, c in enumerate(self.cells) if c.added and c.added[0] is not None
+                           and any(c.added[0] is p for p in pipe.modifiers)), at)
+            cell = Cell(step_source(m, self.namespace, self.pipeline_name), added=[m], state="ok")
+            self.cells.insert(at, cell)
+            changed = True
+        for cell in self.cells:  # sources follow parameter edits made elsewhere
+            if cell.modifier is not None:
+                src = step_source(cell.modifier, self.namespace, self.pipeline_name)
+                if src != cell.source:
+                    cell.source = src
+                    changed = True
+        self.dirty |= changed
+        return changed
+
+    # ------------------------------------------------------------ files
+    def to_py(self) -> str:
+        """The notebook as a percent-format Python file."""
+        parts = []
+        for cell in self.cells:
+            head = "# %%" + (f" {cell.title}" if cell.title else "")
+            if cell.kind == "markdown":
+                head += " [markdown]"
+                body = "\n".join(("# " + line) if line else "#" for line in cell.source.rstrip("\n").splitlines())
+            else:
+                body = cell.source.rstrip("\n")
+            parts.append(head + ("\n" + body if body else ""))
+        return "\n\n".join(parts) + "\n"
+
+    @classmethod
+    def from_py(cls, text: str, **kwargs) -> "Notebook":
+        """Parse a percent-format file; text before the first marker becomes a code cell
+        (a plain script is one big cell)."""
+        cells, current = [], None
+        lines = []
+
+        def close():
+            if current is None and not "".join(lines).strip():
+                return
+            cell = current or Cell()
+            body = "\n".join(lines).strip("\n")
+            if cell.kind == "markdown":
+                body = "\n".join(re.sub(r"^# ?", "", ln) for ln in body.splitlines())
+            cell.source = body
+            cells.append(cell)
+
+        for line in text.splitlines():
+            m = _MARK.match(line)
+            if m:
+                close()
+                rest = m.group(1).strip()
+                kind = "markdown" if re.search(r"\[(markdown|md)\]", rest) else "code"
+                title = re.sub(r"\[(markdown|md)\]", "", rest).strip()
+                current, lines = Cell(kind=kind, title=title), []
+            else:
+                lines.append(line)
+        close()
+        return cls(cells, **kwargs)
+
+    @classmethod
+    def load(cls, path, **kwargs) -> "Notebook":
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        kwargs.setdefault("name", os.path.splitext(os.path.basename(path))[0])
+        return cls.from_py(text, path=os.path.abspath(path), **kwargs)
+
+    def save(self, path=None):
+        path = path or self.path
+        if path is None:
+            raise ValueError("no file name for this notebook")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(self.to_py())
+        self.path = os.path.abspath(path)
+        self.namespace["__file__"] = self.path
+        self.dirty = False
+
+    @classmethod
+    def from_pipeline(cls, pipeline: Pipeline, source_code: str | None = None, **kwargs) -> "Notebook":
+        """A notebook for a pipeline that already exists (a file opened from the menu):
+        an import cell, a load cell (``source_code``, e.g. ``pipe = import_file(...)``) and one
+        step per modifier. The pipeline object itself is used, nothing is read again."""
+        nb = cls(**kwargs)
+        imports = Cell("from ewald import import_file\nfrom ewald.modifiers import *")
+        nb.cells.append(imports)
+        nb.run_cell(0)
+        load = Cell(source_code or f"{nb.pipeline_name} = import_file(...)  # source not reproducible from code",
+                    state="ok")
+        nb.cells.append(load)
+        nb.namespace[nb.pipeline_name] = pipeline
+        for m in pipeline.modifiers:
+            nb.cells.append(Cell(step_source(m, nb.namespace, nb.pipeline_name), added=[m], state="ok"))
+        nb.dirty = False
+        return nb
+
+
+NEW_NOTEBOOK = '''# %% [markdown]
+# # {title}
+
+# %%
+import numpy as np
+from ewald import import_file
+from ewald.modifiers import *
+'''
+
+
+def new_notebook(name: str = "Notebook 1") -> Notebook:
+    """An empty notebook with the usual imports."""
+    return Notebook.from_py(NEW_NOTEBOOK.format(title=name), name=name)
+
+
+# ---------------------------------------------------------------- helpers
+def _remove(modifiers, m):
+    for i, x in enumerate(modifiers):
+        if x is m:
+            del modifiers[i]
+            return
+
+
+def _format_error(exc: BaseException, filename: str) -> str:
+    frames = traceback.extract_tb(exc.__traceback__)
+    keep = [f for f in frames if f.filename == filename]
+    start = next((i for i, f in enumerate(frames) if f.filename == filename), len(frames))
+    frames = frames[start:] if keep else []
+    text = "".join(traceback.format_list(frames)) if frames else ""
+    return (("Traceback (most recent call last):\n" + text) if text else "") + \
+        "".join(traceback.format_exception_only(type(exc), exc))
+
+
+def _figure_numbers() -> set:
+    plt = sys.modules.get("matplotlib.pyplot")
+    return set(plt.get_fignums()) if plt is not None else set()
+
+
+def _patch_show():
+    """plt.show() inside a cell only marks figures for display (inline, like Jupyter)."""
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return lambda: None
+    original = plt.show
+    plt.show = lambda *a, **k: None
+
+    def restore():
+        plt.show = original
+    return restore
+
+
+def _new_figures(before: set) -> list:
+    plt = sys.modules.get("matplotlib.pyplot")
+    if plt is None:
+        return []
+    out = []
+    for num in plt.get_fignums():
+        if num in before:
+            continue
+        fig = plt.figure(num)
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=100, bbox_inches="tight")
+        plt.close(fig)
+        out.append(buf.getvalue())
+    return out
+
+
+def _display(value) -> Output:
+    import numpy as np
+
+    if isinstance(value, np.ndarray) and value.dtype == np.uint8 and value.ndim == 3 and value.shape[2] in (3, 4):
+        from PIL import Image
+
+        buf = io.BytesIO()
+        Image.fromarray(value).save(buf, format="PNG")
+        return Output("image", buf.getvalue())
+    png = getattr(value, "_repr_png_", None)
+    if callable(png):
+        try:
+            data = png()
+            if data:
+                return Output("image", data)
+        except Exception:  # noqa: BLE001 - fall back to text
+            pass
+    summary = getattr(value, "summary", None)
+    if callable(summary) and type(value).__name__ == "DataCollection":
+        text = summary()
+    else:
+        text = repr(value)
+    return Output("value", text if len(text) < 4000 else text[:4000] + " …")
