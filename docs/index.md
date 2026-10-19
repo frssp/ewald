@@ -1,24 +1,35 @@
 # EWALD: Extensible Workbench for Atomic Lattices & Dynamics
 
-EWALD (Python package `ewald`) is an atomistic structure and trajectory viewer and analysis library with an
-OVITO-style pipeline in Python. A file becomes a pipeline, modifiers analyse or change each
-frame, and the result is computed on the CPU or an NVIDIA GPU and rendered to a figure or
-shown in the desktop GUI:
+EWALD (Python package `ewald`) is a notebook for atomistic structures and trajectories. A file
+opens as a notebook next to a 3D view: steps add analyses, views plot their results linked to the
+atoms, and the notebook is saved as a file that also runs as a plain Python script. Claude can read
+the structure and add steps, and plugins add formats, analyses and drawing.
+
+![The EWALD window](images/notebook.png)
+
+Under the notebook is an OVITO-style pipeline in Python. A file becomes a pipeline, modifiers
+analyse or change each frame, and the result is computed on the CPU or an NVIDIA GPU and rendered
+to a figure:
 
 ```python
-from ewald import import_file
+from ewald import load
 from ewald.modifiers import CommonNeighborAnalysis
 
-pipe = import_file("dump.lammpstrj", type_map={1: "Cu"})
-pipe.modifiers.append(CommonNeighborAnalysis())
+pipe = load("dump.lammpstrj", type_map={1: "Cu"})
+pipe.add(CommonNeighborAnalysis())
 data = pipe.compute(10, device="cuda")
 pipe.render("frame10.png", frame=10, renderer="raytrace")
 ```
 
+New here? Start with the [Quick start](user/quickstart.md) and the three tutorials:
+[your first notebook](user/tutorials/first-notebook.md),
+[a crystal structure figure](user/tutorials/structure-figure.md) and
+[a trajectory](user/tutorials/trajectory.md).
+
 The manual has three parts.
 
 **[User manual](user/install.md)** is for people analysing simulations: installing, the
-desktop GUI, which files can be read, every modifier, Python scripting, GPU compute,
+tutorials, notebooks, the desktop GUI, which files can be read, every modifier, Python scripting, GPU compute,
 publication rendering, the Claude tools and the command line.
 
 **[Plugins](plugins/index.md)** is for people extending ewald without changing it: reader

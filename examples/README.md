@@ -43,6 +43,12 @@ examples.copy("my_examples")
 
 ## Scripts in this folder
 
+- `notebooks/`: the notebooks of the manual's tutorials (docs/user/tutorials/), built on the example
+  files above. Open them in the GUI (File › Open) or run them with `python`; `tests/test_tutorials.py`
+  runs them.
+  - `cu_void.py`: surface atoms of a void by coordination, styled and plotted (tutorial 1).
+  - `srtio3_octahedra.py`: space group, TiO6 octahedra, bond lengths and a figure (tutorial 2).
+  - `cu_md_trajectory.py`: displacements, MSD and force arrows over an MD run (tutorial 3).
 - `demo.py`: renders sample trajectories and figures into `demo_out/`.
 - `papers/`: reruns analyses from published papers on their own data, downloaded on first use
   with `examples.fetch` (see `docs/user/papers.md`; `ewald examples --papers` lists the data).

@@ -52,9 +52,12 @@ nav:
   - User manual:
       - Install: user/install.md
       - Quick start: user/quickstart.md
+      - "Tutorial 1: your first notebook": user/tutorials/first-notebook.md
+      - "Tutorial 2: a structure figure": user/tutorials/structure-figure.md
+      - "Tutorial 3: a trajectory": user/tutorials/trajectory.md
       - Reproducing papers: user/papers.md
-      - Desktop GUI: user/gui.md
       - Notebooks: user/notebooks.md
+      - Desktop GUI: user/gui.md
       - File formats: user/formats.md
       - Modifiers: user/modifiers.md
       - Phonon modes (plugin): user/phonons.md
