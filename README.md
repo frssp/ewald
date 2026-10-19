@@ -125,7 +125,8 @@ ewald movie dump.lammpstrj movie.gif --every 5 --fps 12 --text "t = [Time] ps" -
   plus `cell`, `attributes`, `tables`, `grids` (volumetric `VoxelGrid`s) and
   `surfaces` (display meshes such as isosurfaces).
 * `Pipeline`: source + modifier list, evaluated lazily per frame; source frames are
-  cached and never mutated by modifiers.
+  cached (up to 8 frames and `cache_memory=2 GiB` of arrays, the current frame always
+  kept) and never mutated by modifiers.
 * Readers: native lazy readers for LAMMPS dumps, VASP XDATCAR, extxyz, XSF and H5MD,
   LAMMPS data files and VASP/cube volumetric data, GROMACS XTC/TRR and DCD through
   MDAnalysis, everything else through ASE; matching writers for POSCAR, LAMMPS
@@ -139,7 +140,12 @@ ewald movie dump.lammpstrj movie.gif --every 5 --fps 12 --text "t = [Time] ps" -
   partial RDF, trajectory unwrapping and FFT time-averaged MSD
   (`trajectory_msd(pipe, device="cuda")`).
 * Rendering: VTK via PyVista, offscreen; sphere meshes for figures and GPU
-  impostors above 150k atoms.
+  impostors above 150k atoms. The GUI viewport favors speed while you interact:
+  when a full-detail frame misses the target frame rate, rotating, zooming,
+  scrubbing and playback draw a coarse scene (impostors, no bonds, every k-th atom)
+  that is refined once the view rests (Preferences › Viewports › Performance).
+  Rendered images and movies always use full quality. Timings for big files:
+  `python benchmarks/large_files.py`.
 
 ## File formats
 
