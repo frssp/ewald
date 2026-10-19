@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- EWALD app icon for 16-32 px: the Ewald circle, the origin and three reflections, no lattice. -->
+  <rect x="32" y="32" width="960" height="960" rx="200" fill="#12786A"/>
+  <circle cx="512" cy="512" r="300" fill="none" stroke="#FFFFFF" stroke-width="96"/>
+  <g fill="#D9622B" stroke="#12786A" stroke-width="36">
+    <circle cx="378" cy="244" r="120"/><circle cx="780" cy="378" r="120"/><circle cx="646" cy="780" r="120"/>
+  </g>
+  <circle cx="244" cy="646" r="100" fill="#FFFFFF" stroke="#12786A" stroke-width="36"/>
+</svg>

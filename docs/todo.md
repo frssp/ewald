@@ -8,7 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Simple (ASE) style and Ball & stick as the default style (this branch).
 - Elastic strain, grain segmentation and fcc planar faults ported from OVITO (this branch).
 
 ## Next
@@ -23,6 +22,9 @@ GUI
 - Picking without a render: click picks still use a `vtkPropPicker` selection render; the hover
   readout already does a CPU ray-sphere test (`camera_ray`, `ray_spheres` in `gui/viewport.py`)
   that `pick_at` could reuse.
+- App icon outside the running window: a Linux `.desktop` entry and hicolor icons installed
+  with the package, the Windows installer/shortcut (`ewald.ico`) and a macOS app bundle
+  (`ewald.icns`); the EWALD mark in the main window header (the Notebook redesign) and the docs.
 - Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
   categories; the view-bar rotation arrows are still text glyphs.
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
