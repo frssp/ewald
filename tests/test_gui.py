@@ -1056,6 +1056,40 @@ def test_phonon_band_plot_click_picks_mode(app):
     assert picked == [(12, 9)]
 
 
+def test_dos_and_band_plots_show_selected_atoms(app):
+    from pathlib import Path
+
+    from ewald import import_file
+    from ewald.gui.plots import PlotsPanel
+
+    data = import_file(Path(__file__).parent / "data" / "vasp" / "electronic" / "vasprun.xml").compute(0)
+    es = data.attributes["Electronic Structure"]
+    panel = PlotsPanel()
+    panel.resize(600, 400)
+    panel.set_data(data)
+    assert panel.table.currentText() == "DOS" and panel.link is None
+    ax = panel.figure.axes[0]
+    assert ax.get_xlabel() == "E − E_F (eV)" and [t.get_text() for t in ax.get_legend().get_texts()] == \
+        ["Total", "Ga", "As"]
+    assert "Select atoms" in panel.link_label.text() and not panel._overlays
+    panel.set_highlight([1])                                    # As selected in the viewport
+    assert panel.link_label.text() == "PDOS of 1 selected atom"
+    up = next(a for a in panel._overlays if hasattr(a, "get_ydata"))
+    np.testing.assert_allclose(up.get_ydata(), es.pdos_of([1])[0])
+    panel.column.setCurrentText("As p (up)")                    # one orbital: the selection follows it
+    assert panel.link_label.text() == "p PDOS of 1 selected atom"
+    up = next(a for a in panel._overlays if hasattr(a, "get_ydata"))
+    np.testing.assert_allclose(up.get_ydata(), es.pdos_of([1], "p")[0])
+    panel.table.setCurrentText("Bands")
+    ax = panel.figure.axes[0]
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["Γ", "X", "W|K", "Γ"]
+    assert panel.link_label.text().startswith("Fat bands: weight of 1 selected atom")
+    sizes = np.concatenate([a.get_sizes() for a in panel._overlays])
+    assert sizes.max() <= 60 and len(sizes) > 100
+    panel.set_highlight([])
+    assert not panel._overlays and "Select atoms" in panel.link_label.text()
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_main_window_plays_phonon_mode(app):
     from pathlib import Path
