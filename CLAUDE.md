@@ -39,9 +39,11 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
   licenses in `_csrc/README.md`. Built by `setup.py` (pybind11).
 - `render.py` (VTK/PyVista offscreen; impostors above 150k atoms), `raytrace.py` (numba ray tracer,
   the publication renderer; pip VTK has no OSPRay).
-- `plugins.py`: reader registry. Built-in formats (`io.builtin_readers()`, with priorities) plus
-  plugins from `ewald.readers` entry points and `<config dir>/plugins/*.py`; `io.open_reader`,
-  the GUI open filter and the `load_structure` tool all read it. Example in `examples/plugins/`.
+- `plugins.py`: reader and modifier registry. Built-in formats (`io.builtin_readers()`, with
+  priorities) plus plugins from `ewald.readers` / `ewald.modifiers` entry points and
+  `<config dir>/plugins/*.py`; `io.open_reader`, the GUI open filter and menu, the Claude tools and
+  `ewald.modifiers.__getattr__` read it. Plugin modifiers stay out of `__all__` and `llms.txt`.
+  Examples in `examples/plugins/`.
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).

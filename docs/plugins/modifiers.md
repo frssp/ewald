@@ -6,9 +6,9 @@ way, and so is the complete example in
 [`examples/plugins/local_composition.py`](https://github.com/frssp/ewald/blob/main/examples/plugins/local_composition.py),
 which this page walks through.
 
-> **State:** writing, using and adding modifiers to the GUI menu works on `main` today.
-> Automatic discovery from the plugin folder and from an `ewald.modifiers` entry point, as for
-> [readers](readers.md), is planned; this page will document it when it lands.
+Put the file in the plugin folder and decorate the class with `@modifier`, or publish it as an
+`ewald.modifiers` entry point, and ewald finds it like a built-in modifier: in the GUI menu, in
+the Claude tools and as `from ewald.modifiers import LocalComposition`.
 
 ## A modifier class
 
@@ -128,32 +128,41 @@ parameters. In the GUI, the Python script modifier keeps the function's code wit
 Write a class when the analysis has parameters you want in the GUI form, or when you want to
 share it.
 
-## Using it in the GUI
-
-Until modifier plugins are discovered automatically, register the class from the console
-startup script (Preferences › Python › Console startup script), and add the folder holding the
-module to Preferences › Python › Extra module paths:
+## Registering it
 
 ```python
-# startup.py
-from ewald.gui.pipeline_panel import register_modifier
-from local_composition import LocalComposition
+from ewald.plugins import modifier
 
-register_modifier("Plugins", "Local composition", LocalComposition)
+
+@modifier(category="Analysis")          # bare @modifier puts it under "Plugins"
+class LocalComposition(Modifier):
+    ...
 ```
 
-The modifier then appears under Add modification › Plugins, in the Pipeline menu and in the
-command palette, and its parameters get a form generated from the constructor: a checkbox for
-`bool`, spin boxes for `int` and `float`, a text field for `str`, and a Python-literal field
-for tuples, lists and `None`. The factory is called with no arguments, so pass a lambda when the
-class needs some: `register_modifier("Plugins", "Local Cu", lambda: LocalComposition(3.0, "Cu"))`.
+In a file in the plugin folder (`ewald plugins` prints where it is), or in an installed package
+with an entry point (see [Packaging and sharing](packaging.md)), this registers the class once
+per process. `ewald.plugins.register_modifier(cls, name=None, category="Plugins")` does the same
+from a script or the GUI console. A plugin cannot use the name of a built-in modifier; that
+raises `ValueError`, and `ewald plugins` reports the file as failed.
 
-In the console you can also append it directly: `pipe.modifiers.append(LocalComposition())`.
+A registered modifier
+
+- imports like a built-in: `from ewald.modifiers import LocalComposition`, so the scripts that
+  the Render workspace and the Claude tools generate run unchanged on any installation that
+  has the plugin;
+- appears in the GUI under Add modification › *category*, in the Pipeline menu and in the
+  command palette, if it constructs with no arguments. Its parameter form is generated from the
+  constructor: a checkbox for `bool`, spin boxes for `int` and `float`, a text field for `str`,
+  and a Python-literal field for tuples, lists and `None`;
+- is listed by `ewald plugins`.
+
+For a menu entry with specific arguments, add it yourself:
+`ewald.gui.pipeline_panel.register_modifier("Analysis", "Local Cu", lambda: LocalComposition(3.0, "Cu"))`.
 
 ## Claude tools and `llms.txt`
 
-The Claude tools (`list_modifiers`, `add_modifier`) and `llms.txt` list the modifiers in
-`ewald.modifiers.__all__`, which is core ewald only. Plugin modifiers will be offered to the
-Claude tools once they are registered as plugins; `llms.txt` stays core-only by design. Write
-the class docstring's first paragraph as a one-sentence description, because that is what both
-show.
+The Claude tools (`list_modifiers`, `add_modifier`) offer registered plugin modifiers next to
+the built-in ones, with the signature and the first paragraph of the class docstring, so write
+that paragraph as a one-sentence description. `llms.txt` stays core-only by design, so the same
+file is valid on every installation; `ewald api --with-plugins` prints the reference with the
+plugins installed here appended.

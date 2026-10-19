@@ -144,6 +144,19 @@ def modifier_reference() -> str:
     return "\n".join(lines) + "\n"
 
 
-def api_reference() -> str:
-    """The full reference: guide + live modifier list."""
-    return GUIDE + "\n" + modifier_reference()
+def plugin_reference() -> str:
+    """Installed modifier plugins, in the same format (not part of llms.txt)."""
+    from .. import plugins
+
+    found = plugins.modifiers()
+    lines = ["## Modifier plugins installed here", ""]
+    for name, plugin in found.items():
+        doc = _doc(plugin.cls)
+        lines.append(f"- `{name}{_signature(plugin.cls)}`" + (f": {doc}" if doc else "") + f" [{plugin.origin}]")
+    return "\n".join(lines) + "\n" if found else ""
+
+
+def api_reference(with_plugins: bool = False) -> str:
+    """The full reference: guide + live modifier list (+ installed modifier plugins)."""
+    text = GUIDE + "\n" + modifier_reference()
+    return text + ("\n" + plugin_reference() if with_plugins and plugin_reference() else "")

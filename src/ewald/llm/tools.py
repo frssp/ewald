@@ -93,6 +93,10 @@ def _modifier_classes(allow_code: bool = False) -> dict[str, type]:
             continue
         if isinstance(obj, type) and issubclass(obj, Modifier) and obj not in (Modifier, PythonModifier):
             out[name] = obj
+    from .. import plugins
+
+    for name, plugin in plugins.modifiers().items():
+        out.setdefault(name, plugin.cls)
     return out
 
 

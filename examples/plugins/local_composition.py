@@ -6,17 +6,21 @@ fraction of neighbors within ``cutoff`` that are Cu) and the attribute
 short-range order analysis. It is written against ``ctx.xp``, so it runs on NumPy and, with
 ``device="cuda"``, on CuPy. See docs/plugins/modifiers.md.
 
-Use it from a script::
+Copy this file into ewald's plugin folder (``ewald plugins`` prints where it is) and it shows
+up in the GUI's Add modification › Analysis menu and in the Claude tools, and imports like a
+built-in modifier::
 
-    from local_composition import LocalComposition
+    from ewald.modifiers import LocalComposition
     pipe.modifiers.append(LocalComposition(cutoff=3.0, element="Cu"))
 """
 import numpy as np
 
 from ewald import Modifier
 from ewald.neighbors import find_pairs
+from ewald.plugins import modifier
 
 
+@modifier(category="Analysis")
 class LocalComposition(Modifier):
     """Fraction of neighbors within ``cutoff`` that are ``element``."""
 

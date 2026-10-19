@@ -45,7 +45,8 @@ def main(argv=None):
     n.add_argument("--no-llm", action="store_true", help="rule-based titles only")
     n.add_argument("--render", action="store_true", help="show Claude renders of the frames around events")
     n.add_argument("--json", action="store_true", help="print JSON instead of Markdown")
-    sub.add_parser("api", help="print the Python API reference for LLMs (llms.txt)")
+    a = sub.add_parser("api", help="print the Python API reference for LLMs (llms.txt)")
+    a.add_argument("--with-plugins", action="store_true", help="append the modifier plugins installed here")
     pl = sub.add_parser("plugins", help="list installed plugins and any that failed to load")
     pl.add_argument("--json", action="store_true")
     m = sub.add_parser("mcp", help="serve the analysis tools over MCP (stdio)")
@@ -61,7 +62,7 @@ def main(argv=None):
     if args.cmd == "api":
         from .llm.reference import api_reference
 
-        print(api_reference(), end="")
+        print(api_reference(with_plugins=args.with_plugins), end="")
         return
     if args.cmd == "plugins":
         return _print_plugins(args.json)
@@ -142,6 +143,8 @@ def _print_plugins(as_json=False):
     for r in st["readers"]:
         pats = " ".join(r["patterns"]) or "(format= only)"
         print(f"reader {r['name']:<16} {pats:<24} {r['description']}  [{r['origin']}]")
+    for m in st["modifiers"]:
+        print(f"modifier {m['name']:<24} {m['category']:<14} {m['description'][:60]}  [{m['origin']}]")
     for origin, err in st["errors"].items():
         print(f"FAILED {origin}: {err}")
     return 1 if st["errors"] else None
