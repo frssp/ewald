@@ -26,7 +26,8 @@ from .timeline import Timeline
 from .viewport import Viewport
 
 FILE_FILTER = ("Simulation files (*.lammpstrj *.dump *.data XDATCAR* POSCAR* CONTCAR* OUTCAR* "
-               "vasprun*.xml *.xyz *.extxyz *.cif *.vasp);;All files (*)")
+               "vasprun*.xml *.xyz *.extxyz *.cif *.vasp);;"
+               "Volumetric data (CHGCAR* CHG* PARCHG* AECCAR* LOCPOT* ELFCAR* *.cube *.cub);;All files (*)")
 
 
 class MainWindow(QtWidgets.QMainWindow):

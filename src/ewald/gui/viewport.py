@@ -137,7 +137,7 @@ class Viewport(QtWidgets.QWidget):
     def redraw(self):
         p = self.plotter
         stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:"))]
-        for name in ("atoms", "bonds", "cell", "_legend", "_overlay", *stale):
+        for name in ("atoms", "bonds", "cell", "trajectories", "_legend", "_overlay", *stale):
             p.remove_actor(name, render=False)
         if p.scalar_bars:
             p.remove_scalar_bar()
@@ -150,6 +150,9 @@ class Viewport(QtWidgets.QWidget):
         kw["cell_color"] = "#AEB4BE" if dark else "black"
         kw["sphere_resolution"] = self.sphere_resolution  # interactive; image export uses full quality
         build_scene(p, self.data, mesh_limit=self.mesh_limit, **kw)
+        if any(s.transparency > 0 for s in self.data.surfaces.values()) and not getattr(self, "_peeling", False):
+            p.enable_depth_peeling()
+            self._peeling = True
         if "ColorCoding.range" in self.data.attributes:
             _add_colorbar(p, self.data, font_size=12)
             sb = p.scalar_bar
