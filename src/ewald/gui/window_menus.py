@@ -157,6 +157,13 @@ class MenusMixin:
             f"with an OVITO-style Python pipeline.</p><p>{self.hardware_summary()}</p>"
             f"<p><a href='{self.help_url()}'>Manual</a></p>")
 
+    def _gpu_available(self) -> bool:
+        if getattr(self, "_gpu", None) is None:
+            from ..backend import gpu_available
+
+            self._gpu = gpu_available()
+        return self._gpu
+
     def hardware_summary(self) -> str:
         """OpenGL driver of the viewport and the CUDA device for compute, as HTML for About."""
         from ..backend import gpu_available

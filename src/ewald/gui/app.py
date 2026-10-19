@@ -269,6 +269,8 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self._update_bottom_tab()
         self._push_console()
         dev = (self.device or "cpu").upper()
+        if dev == "AUTO":  # show what auto resolved to
+            dev = "AUTO (CUDA)" if self._gpu_available() else "AUTO (CPU)"
         self.status.setText(f"N = {self.data.count}   frame {self.frame}/{self.pipeline.num_frames - 1}   "
                             f"pipeline {dt * 1000:.0f} ms   {dev}")
         if self.workspaces.currentIndex() == 1:
