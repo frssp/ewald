@@ -1268,3 +1268,45 @@ def test_viewport_renders_on_paint_and_falls_back(app, cu_fcc):
     assert len(renders) >= 2
     vp.plotter.render_window.RemoveObserver(tag)
     w.close()
+
+
+def test_viewport_hover_shows_atom_type_index_and_coordinates(app):
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    data = DataCollection([[2.0, 2.0, 2.0], [6.0, 6.0, 6.0], [6.0, 6.0, 2.0]], ["O", "Ti", "Sr"],
+                          Cell(np.diag([8.0, 8.0, 8.0])))
+    v = Viewport(ViewStyle())
+    v.set_data(data)
+    v.view_along("c")
+    cam, w, h = v.plotter.camera, 400, 300
+
+    def screen(p):  # world -> window pixel (y from the top), the inverse of camera_ray
+        m = cam.GetCompositeProjectionTransformMatrix(w / h, -1, 1)
+        m = np.array([[m.GetElement(i, j) for j in range(4)] for i in range(4)])
+        c = m @ [*p, 1]
+        return (c[0] / c[3] + 1) * w / 2, (1 - c[1] / c[3]) * h / 2
+
+    # viewed along c, Ti (z=3) sits in front of Sr (z=1) at the same x, y: the front one wins
+    assert v.hover_index(*screen(data.positions[1]), w, h) in (1, 2)
+    front = 1 if np.dot(data.positions[1] - data.positions[2], np.asarray(cam.position) - cam.focal_point) > 0 else 2
+    assert v.hover_index(*screen(data.positions[1]), w, h) == front
+    assert v.hover_index(*screen(data.positions[0]), w, h) == 0
+    assert v.hover_index(*screen([2.0, 6.0, 4.0]), w, h) is None  # empty space between atoms
+
+    seen = []
+    v.hovered.connect(seen.append)
+    v.hover_move(*screen(data.positions[0]), w, h)
+    v._hover_fire()  # what the rest timer does
+    assert seen[-1].startswith("O  index 0") and "2.0000  2.0000  2.0000 Å" in seen[-1]
+    assert "frac 0.2500  0.2500  0.2500" in seen[-1]
+    v._on_drag_start(None, "LeftButtonPressEvent")  # rotating clears it and stops hover
+    assert seen[-1] == ""
+    v.hover_move(*screen(data.positions[0]), w, h)
+    assert not v._hover_timer.isActive()
+    v._on_drag_end(None, "LeftButtonReleaseEvent")
+    v.hover_info = False  # Preferences › Viewports › Hover
+    v.hover_move(*screen(data.positions[0]), w, h)
+    assert not v._hover_timer.isActive()
+    v.close()

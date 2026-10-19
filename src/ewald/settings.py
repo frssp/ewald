@@ -68,6 +68,11 @@ OPTIONS = (
            minimum=0.5, maximum=90),
     Option("viewport.show_axes", True, "Show axes tripod"),
     Option("viewport.show_overlay", True, "Show frame / timestep text"),
+    Option("viewport.hover_info", True, "Atom info on hover",
+           "Resting the cursor on an atom shows its element, index and Cartesian and fractional "
+           "coordinates in a tooltip and the status bar. Nothing is computed while the view moves."),
+    Option("viewport.hover_delay", 0.25, "Hover delay", "Seconds the cursor rests before the atom info appears.",
+           minimum=0.05, maximum=3),
     Option("viewport.sphere_drawing", "impostor", "Sphere drawing",
            "Impostor: GPU spheres that are round at any zoom and fast for any number of atoms. "
            "Mesh: triangle spheres (Sphere resolution) up to the impostor threshold. "

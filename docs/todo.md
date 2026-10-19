@@ -19,8 +19,11 @@ GUI
 - Compute frames in a background thread so the GUI stays responsive.
 - Scene updates without a full rebuild when only colors or a few properties change, and frame
   changes with the same atoms that replace only the point coordinates.
-- Picking without a render: ray-sphere intersection with the atoms on the CPU (now a
-  `vtkPropPicker` selection render per click).
+- Picking without a render: click picks still use a `vtkPropPicker` selection render; the hover
+  readout already does a CPU ray-sphere test (`camera_ray`, `ray_spheres` in `gui/viewport.py`)
+  that `pick_at` could reuse.
+- Hover readout in the legacy OpenGL 1.x viewport (PR #49): forward its button-less mouse moves
+  to `Viewport.hover_move`; the ray cast itself is renderer-neutral.
 - Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
   categories; the view-bar rotation arrows are still text glyphs.
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of

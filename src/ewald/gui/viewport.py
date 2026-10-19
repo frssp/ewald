@@ -34,6 +34,32 @@ def _button(text, tip, checkable=False, parent=None):
     return b
 
 
+def camera_ray(camera, x, y, width, height):
+    """World-space ray (origin, unit direction) under window position (x, y from the top-left)
+    of a ``vtkCamera`` drawn into a width x height view."""
+    m = camera.GetCompositeProjectionTransformMatrix(width / height, -1, 1)
+    inv = np.linalg.inv(np.array([[m.GetElement(i, j) for j in range(4)] for i in range(4)]))
+    ndc = (2 * x / width - 1, 1 - 2 * y / height)
+    near = inv @ [ndc[0], ndc[1], -1, 1]
+    far = inv @ [ndc[0], ndc[1], 1, 1]
+    near, far = near[:3] / near[3], far[:3] / far[3]
+    d = far - near
+    return near, d / np.linalg.norm(d)
+
+
+def ray_spheres(origin, direction, centers, radii):
+    """Index of the first sphere hit by the ray, or None."""
+    oc = centers - origin
+    t = oc @ direction
+    d2 = np.einsum("ij,ij->i", oc, oc) - t * t
+    r2 = radii * radii
+    hit = np.flatnonzero(d2 <= r2)
+    if not len(hit):
+        return None
+    t_hit = t[hit] - np.sqrt(np.maximum(r2[hit] - d2[hit], 0))
+    return int(hit[np.argmin(t_hit)])
+
+
 class Viewport(QtWidgets.QWidget):
     """QtInteractor wrapped with the view toolbar, tool rail and picking."""
 
@@ -41,6 +67,7 @@ class Viewport(QtWidgets.QWidget):
     bondEdit = QtCore.Signal(int, int)   # bond tool: add or delete the bond between two atoms
     styleChanged = QtCore.Signal()
     contextMenuRequested = QtCore.Signal()  # right click without dragging
+    hovered = QtCore.Signal(str)         # one-line description of the atom under the cursor, "" for none
 
     TOOLS = (("orbit", "Orbit", "Orbit / pan / zoom (mouse)"),
              ("pick", "Pick", "Pick atom: shows id, type, position and properties; Shift+click picks several"),
@@ -81,6 +108,15 @@ class Viewport(QtWidgets.QWidget):
         self._refine_timer.timeout.connect(self.refine)
         self._picks: list[int] = []
         self._press = None
+        # hover readout (Preferences › Viewports › Hover): ray cast once the cursor rests
+        self.hover_info = True
+        self.hover_delay = 0.25           # seconds the cursor rests before the readout appears
+        self._hover_at = None             # (x, y, width, height) of the resting cursor, y from the top
+        self._hover_global = None         # same position on screen, for the tooltip
+        self._hover_index = None
+        self._hover_radii = (None, None)  # (key, radii) cached per frame and radius style
+        self._hover_timer = QtCore.QTimer(self, singleShot=True)
+        self._hover_timer.timeout.connect(self._hover_fire)
         self._first = True
 
         grid = QtWidgets.QGridLayout(self)
@@ -107,6 +143,7 @@ class Viewport(QtWidgets.QWidget):
             iren.add_observer(f"{button}ButtonPressEvent", self._on_drag_start)
             iren.add_observer(f"{button}ButtonReleaseEvent", self._on_drag_end)
         iren.add_observer("MouseMoveEvent", self._on_move)
+        iren.add_observer("LeaveEvent", lambda *_: self.hover_leave())
         for wheel in ("MouseWheelForwardEvent", "MouseWheelBackwardEvent"):
             iren.add_observer(wheel, self._on_wheel)
 
@@ -312,6 +349,7 @@ class Viewport(QtWidgets.QWidget):
 
     def _on_drag_start(self, obj, event):
         self._dragging = True
+        self.hover_leave()
         self._refine_timer.stop()
         self._right_press = QtGui.QCursor.pos() if event == "RightButtonPressEvent" else None
 
@@ -325,8 +363,13 @@ class Viewport(QtWidgets.QWidget):
             self._refine_timer.start(int(self.refine_delay * 1000))
 
     def _on_move(self, obj, event):
-        if self._dragging and not self.coarse:
-            self._go_coarse_for_motion()
+        if self._dragging:
+            if not self.coarse:
+                self._go_coarse_for_motion()
+            return
+        w = self.plotter.interactor
+        pos = w.mapFromGlobal(QtGui.QCursor.pos())
+        self.hover_move(pos.x(), pos.y(), w.width(), w.height())
 
     def _on_wheel(self, obj, event):
         self._go_coarse_for_motion()
@@ -541,6 +584,80 @@ class Viewport(QtWidgets.QWidget):
         i = int(np.argmin(d))
         rmax = float(default_radii(self.data, **self.style.radius_kwargs()).max()) * self.style.radius_scale
         return i if d[i] <= 1.5 * rmax + 0.3 else None
+
+    # ------------------------------------------------------------------ hover
+    def hover_move(self, x, y, width, height):
+        """The cursor moved to window position (x, y from the top-left) without a button down.
+
+        Nothing is computed while it moves: the ray cast runs once it rests for ``hover_delay``,
+        so hovering never slows rotation, even with millions of atoms.
+        """
+        if not self.hover_info or self._dragging or self.data is None:
+            return
+        last = self._hover_at
+        if last is not None and abs(x - last[0]) + abs(y - last[1]) <= 2 and self._hover_index is not None:
+            return  # jitter over the same atom keeps the tooltip
+        self._hover_at = (x, y, width, height)
+        self._hover_global = QtGui.QCursor.pos()
+        if self._hover_index is not None:
+            QtWidgets.QToolTip.hideText()
+        self._hover_timer.start(int(self.hover_delay * 1000))
+
+    def hover_leave(self):
+        """Cursor left the view or a drag started: drop the readout."""
+        self._hover_timer.stop()
+        self._hover_at = None
+        if self._hover_index is not None:
+            self._hover_index = None
+            QtWidgets.QToolTip.hideText()
+            self.hovered.emit("")
+
+    def _hover_fire(self):
+        if self._hover_at is None or self._dragging or self.data is None or not self.hover_info:
+            return
+        idx = self.hover_index(*self._hover_at)
+        if idx == self._hover_index:
+            return
+        self._hover_index = idx
+        if idx is None:
+            QtWidgets.QToolTip.hideText()
+            self.hovered.emit("")
+            return
+        lines = self.describe_atom(idx)
+        QtWidgets.QToolTip.showText(self._hover_global, "\n".join(lines))
+        self.hovered.emit("   ".join(lines))
+
+    def hover_index(self, x, y, width, height):
+        """Front-most atom under window position (x, y from the top-left), or None.
+
+        Ray-sphere test on the CPU against the camera, so it does not depend on the renderer
+        (VTK meshes or impostors, the OpenGL 1.x viewport) and needs no extra render pass.
+        """
+        d = self.data
+        if d is None or not d.count or width <= 0 or height <= 0:
+            return None
+        origin, direction = camera_ray(self.plotter.camera, x, y, width, height)
+        idx = ray_spheres(origin, direction, d.positions, self._hover_radii_for(d))
+        return None if idx is None else int(idx)
+
+    def _hover_radii_for(self, d):
+        kw = self.style.radius_kwargs()
+        key = (id(d), d.count, repr(sorted(kw.items())), self.style.radius_scale)
+        if self._hover_radii[0] != key:
+            self._hover_radii = (key, np.asarray(default_radii(d, **kw), float) * self.style.radius_scale)
+        return self._hover_radii[1]
+
+    def describe_atom(self, i) -> list[str]:
+        """Hover readout of particle ``i``: type and index, Cartesian and (with a cell) fractional position."""
+        d = self.data
+        pid = d.particles.get("Particle Identifier")
+        head = f"{d.types[i]}  index {i}" + (f"  id {int(pid[i])}" if pid is not None else "")
+        x, y, z = d.positions[i]
+        lines = [head, f"xyz  {x:.4f}  {y:.4f}  {z:.4f} Å"]
+        if d.cell.is_valid:
+            f = d.cell.to_fractional(d.positions[i])
+            lines.append(f"frac {f[0]:.4f}  {f[1]:.4f}  {f[2]:.4f}")
+        return lines
 
     def _mic(self, v):
         cell = self.data.cell
