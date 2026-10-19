@@ -10,7 +10,9 @@ from .render import RENDERERS
 
 def build_parser():
     """The ``ewald`` argument parser (also read by ``ewald inventory`` for docs/features.md)."""
-    ap = argparse.ArgumentParser(prog="ewald")
+    from . import __title__
+
+    ap = argparse.ArgumentParser(prog="ewald", description=__title__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("render", help="render a frame to an image (.png/.jpg/.tif/.svg/.pdf/.eps)")
     r.add_argument("input", help="structure/trajectory file or .ewald session")

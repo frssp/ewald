@@ -1,9 +1,9 @@
-# ewald
+# EWALD: Extensible Window for Atomic Lattices & Dynamics
 
 [![CI](https://github.com/frssp/ewald/actions/workflows/ci.yml/badge.svg)](https://github.com/frssp/ewald/actions/workflows/ci.yml)
 
-Atomistic structure and trajectory visualization and analysis with an OVITO-style
-pipeline API in Python. Goal: an open alternative to OVITO Pro (GUI + Python
+EWALD (Python package `ewald`) does atomistic structure and trajectory visualization and
+analysis with an OVITO-style pipeline API in Python. Goal: an open alternative to OVITO Pro (GUI + Python
 scripting + GPU), built on open libraries (ASE, VTK/PyVista, NumPy/CuPy).
 
 Status: core, readers, pipeline, first modifiers, offscreen rendering and a first

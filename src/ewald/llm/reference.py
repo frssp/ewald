@@ -10,7 +10,7 @@ from __future__ import annotations
 import inspect
 
 GUIDE = '''\
-# ewald Python API (for LLMs and people writing ewald code)
+# EWALD (Extensible Window for Atomic Lattices & Dynamics): `ewald` Python API (for LLMs and people writing ewald code)
 
 ewald is an OVITO-style atomistic pipeline: `import_file` -> modifiers -> `compute(frame)` -> render.
 The API mirrors OVITO's, so OVITO knowledge transfers; the differences below are where it doesn't.

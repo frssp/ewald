@@ -61,7 +61,7 @@ class MainWindow(QtWidgets.QMainWindow):
         from .. import settings as settings_mod
 
         self.settings = settings if settings is not None else settings_mod.load()
-        self.setWindowTitle("ewald")
+        self.setWindowTitle("EWALD")
         self.resize(1600, 1000)
         self.pipeline = None
         self.data = None
@@ -249,7 +249,7 @@ class MainWindow(QtWidgets.QMainWindow):
             h.addAction(label, lambda page=page: self.open_help(page))
         h.addSeparator()
         h.addAction("Open plugin folder", self.open_plugin_folder)
-        about = h.addAction("About ewald", self.about)
+        about = h.addAction("About EWALD", self.about)
         about.setMenuRole(QtGui.QAction.AboutRole)
 
     def help_url(self, page="index.md"):
@@ -267,11 +267,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.message(f"Plugin folder: {folder}")
 
     def about(self):
-        from .. import __version__
+        from .. import __title__, __version__
 
         QtWidgets.QMessageBox.about(
-            self, "About ewald",
-            f"<b>ewald {__version__}</b><p>Atomistic structure and trajectory visualization and analysis "
+            self, "About EWALD",
+            f"<b>EWALD {__version__}</b><br>{__title__.split(': ', 1)[1].replace('&', '&amp;')}<p>Atomistic structure and trajectory visualization and analysis "
             f"with an OVITO-style Python pipeline.</p><p>{self.hardware_summary()}</p>"
             f"<p><a href='{self.help_url()}'>Manual</a></p>")
 
@@ -304,7 +304,7 @@ class MainWindow(QtWidgets.QMainWindow):
         gl = self.viewport.opengl_info()
         if gl["software"]:
             self.message(f"Viewport uses software OpenGL ({gl['renderer']}): no GPU acceleration, "
-                         "so large scenes are slow. Check the graphics driver (Help › About ewald).")
+                         "so large scenes are slow. Check the graphics driver (Help › About EWALD).")
         return gl
 
     def set_workspace(self, index):
@@ -387,7 +387,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if _has_phonon_modes(pipe) and not any(isinstance(m, mods.PhononMode) for m in pipe.modifiers):
             pipe.modifiers.append(mods.PhononMode())  # a phonon file opens playing a mode
         self.set_pipeline(pipe)
-        self.setWindowTitle(f"ewald — {os.path.basename(str(path))}")
+        self.setWindowTitle(f"EWALD — {os.path.basename(str(path))}")
         self.message(f"Loaded {path}: {pipe.num_frames} frame(s)")
         return pipe
 
@@ -804,7 +804,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.critical(self, "Save session failed", str(exc))
             return None
         self.session_path = path
-        self.setWindowTitle(f"ewald — {os.path.basename(path)}")
+        self.setWindowTitle(f"EWALD — {os.path.basename(path)}")
         self.message(f"Saved session {path}")
         return path
 
@@ -946,7 +946,7 @@ def _in_ipython_qt_loop():
 def main(argv=None):
     import argparse
 
-    ap = argparse.ArgumentParser(prog="ewald-gui")
+    ap = argparse.ArgumentParser(prog="ewald-gui", description="EWALD desktop GUI (Extensible Window for Atomic Lattices & Dynamics)")
     ap.add_argument("file", nargs="?")
     ap.add_argument("--type-map", default=None, help="LAMMPS types, e.g. 1=Cu,2=Zr")
     ap.add_argument("--device", default=None, help="cpu, cuda or auto")

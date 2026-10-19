@@ -1,6 +1,6 @@
-# ewald
+# EWALD: Extensible Window for Atomic Lattices & Dynamics
 
-ewald is an atomistic structure and trajectory viewer and analysis library with an
+EWALD (Python package `ewald`) is an atomistic structure and trajectory viewer and analysis library with an
 OVITO-style pipeline in Python. A file becomes a pipeline, modifiers analyse or change each
 frame, and the result is computed on the CPU or an NVIDIA GPU and rendered to a figure or
 shown in the desktop GUI:
