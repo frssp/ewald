@@ -34,6 +34,12 @@ MODIFIER_MENU = {
         "Slice plane (2D map)": mods.GridSlice,
         "Charge density difference": lambda: mods.GridDifference(["CHGCAR_A", "CHGCAR_B"]),
     },
+    "Vectors (arrows)": {
+        "Force / displacement / velocity arrows": mods.VectorVis,
+        "Magnetic moment arrows": lambda: mods.VectorVis("Magnetic Moment", scaling=0.5, alignment="center",
+                                                         color=(0.85, 0.15, 0.15)),
+        "Arrows colored by length": lambda: mods.VectorVis(color_mapping_property="Magnitude"),
+    },
     "Coloring": {
         "Color coding": lambda: mods.ColorCoding("Position.Z"),
         "Assign color": lambda: mods.AssignColor((1.0, 0.2, 0.2)),
@@ -69,7 +75,7 @@ def fill_modifier_menu(menu, add):
     for sub in menu.findChildren(QtWidgets.QMenu, options=QtCore.Qt.FindDirectChildrenOnly):
         sub.deleteLater()
     for group, items in MODIFIER_MENU.items():
-        sub = menu.addMenu(group)
+        sub = menu.addMenu(group.replace("&", "&&"))  # a single "&" would be a mnemonic
         for label, factory in items.items():
             sub.addAction(label, lambda f=factory: add(f()))
 

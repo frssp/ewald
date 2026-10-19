@@ -118,3 +118,34 @@ def test_render_isosurface_and_slice(tmp_path):
         assert img.shape[:2] == (120, 160) and img.std() > 5
         yellow = (img[..., 0] > 150) & (img[..., 1] > 120) & (img[..., 2] < 80)
         assert yellow.sum() > 50, renderer  # the isosurface is drawn in its colour
+
+
+def test_render_vector_arrows(tmp_path):
+    from ewald.modifiers import VectorVis
+    from ewald.render import render
+
+    data = DataCollection([[1, 1, 1], [3, 3, 3]], ["Fe", "Fe"], Cell(np.eye(3) * 4))
+    data.particles["Force"] = np.array([[0, 0, 1.5], [1.5, 0, 0]])
+    kw = dict(size=(160, 120), direction="y", show_cell=False, radius_scale=0.3, background="white")
+    plain = render(data, **kw)
+    out = Pipeline(StaticSource(data), [VectorVis("Force", color=(0, 0, 1), width=0.4)]).compute(0)
+    arrows = render(out, tmp_path / "a.png", **kw)
+    blue = lambda img: ((img[..., 2].astype(int) - img[..., 0]) > 80).sum()
+    assert blue(plain) == 0 and blue(arrows) > 100
+    lines = render(out, mesh_limit=1, **kw)  # above the limit arrows become lines
+    assert 0 < blue(lines) < blue(arrows)
+    rt = render(out, renderer="raytrace", samples=1, ao_samples=0, **kw)
+    assert blue(rt) > 100
+
+
+def test_type_groups_first_appearance_order():
+    from ewald.render import type_groups
+
+    types = np.array(["Zr", "Cu", "Zr", "O", "Cu"])
+    names, inverse = type_groups(types)
+    assert names == ["Zr", "Cu", "O"] and list(inverse) == [0, 1, 0, 2, 1]
+    many = np.array([f"T{k % 50}" for k in range(500)][::-1])  # more types than the scan handles
+    names, inverse = type_groups(many, max_scan=8)
+    assert names == list(dict.fromkeys(many)) and all(np.array(names)[inverse] == many)
+    names, inverse = type_groups(np.array([], dtype=str))
+    assert names == [] and len(inverse) == 0

@@ -41,6 +41,8 @@ pipe.render("frame10.png", frame=10, direction="iso", bonds=2.8)
   "Color"; `data.bonds.vectors(data)`, `.lengths(data)`, `.neighbor_counts(N)`. `take`/`delete`/`Replicate`/`WrapAtoms`
   keep bonds consistent. `data.surfaces` maps names to `SurfaceMesh` (`vertices`, `faces`, `face_properties`, `vertex_properties`,
   `edges`), e.g. `data.surfaces["coordination-polyhedra"]` from `CoordinationPolyhedra`; renderers draw both.
+- Arrows for a vector property (forces, displacements, velocities, magnetic moments): add `VectorVis("Force", scaling=2)`
+  (it fills `data.vectors`), or pass `vectors="Force"` / `{"Force": {"scaling": 2, "color": "red"}}` to `render`.
 - A modifier function may take a third argument `ctx`: `ctx.source_frame(k)` (reference frame), `ctx.frame`,
   `ctx.xp` (numpy or cupy). Return nothing to keep `data`, or return a new DataCollection (e.g. `data.delete(mask)`).
 
@@ -108,10 +110,10 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 - `ClusterAnalysis(cutoff: float = 3.2, sort_by_size: bool = False, compute_com: bool = False, compute_gyration: bool = False, unwrap_particles: bool = False, only_selected: bool = False, cluster_coloring: bool = False)`: Group particles into clusters connected by distances below ``cutoff``.
 - `AssignColor(color=(0.3, 0.3, 1.0), keep_selection: bool = False)`: Give the selected particles (all, if nothing selected) one color.
 - `ColorCoding(property: str, cmap: str = 'viridis', start=None, end=None, only_selected: bool = False)`: Map a scalar property or expression to colors through a matplotlib colormap.
-- `ClearSelection()`
-- `DeleteSelected()`
+- `ClearSelection()`: Remove the 'Selection' property.
+- `DeleteSelected()`: Delete the selected particles.
 - `ExpressionSelection(expression: str)`: Select particles where ``expression`` is true (sets 'Selection').
-- `InvertSelection()`
+- `InvertSelection()`: Select the unselected particles and unselect the selected ones.
 - `SelectType(types, property: str = 'Particle Type')`: Select particles whose 'Particle Type' (or another property) is in ``types``.
 - `Slice(normal=(0, 0, 1), distance: float = 0.0, width: float = 0.0, inverse: bool = False, select: bool = False, miller: bool = False)`: Keep (or select) particles in a slab ``|n.r - distance| <= width/2``.
 - `AffineTransformation(matrix, transform_cell: bool = True)`: Apply a 3x3 (or 3x4 with translation) matrix to particles and, optionally, the cell.
@@ -141,3 +143,4 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 - `CreateIsosurface(isolevel: float | None = None, property: str = 'Charge Density', grid: str | None = None, signed: bool = False, color=(1.0, 0.86, 0.0), negative_color=(0.0, 0.75, 1.0), transparency: float = 0.0, identifier: str = 'isosurface')`: VESTA-style isosurface of a grid property (OVITO's CreateIsosurfaceModifier).
 - `GridSlice(miller=(0, 0, 1), distance: float = 0.5, property: str = 'Charge Density', grid: str | None = None, cmap: str = 'viridis', range=None, scale: str = 'linear', resolution: float | None = None, transparency: float = 0.0, identifier: str = 'slice')`: Colour-mapped cross-section of a grid property on a lattice plane (VESTA's 2D slice).
 - `GridDifference(subtract=(), property: str = 'Charge Density', grid: str | None = None, output: str | None = None)`: Charge-density difference: subtract the grids of other files, e.g. rho(AB) - rho(A) - rho(B) with ``GridDifference(["A/CHGCAR", "B/CHGCAR"])``.
+- `VectorVis(property: str = '', scaling: float = 1.0, width: float = 0.3, alignment: str = 'base', reverse: bool = False, color=(1.0, 1.0, 0.0), shading: str = 'normal', transparency: float = 0.0, offset=(0.0, 0.0, 0.0), color_mapping_property: str = '', cmap: str = 'viridis', color_mapping_interval=None, only_selected: bool = False, min_length: float = 1e-06)`: Draw an N x 3 particle property as arrows: 'Force', 'Displacement', 'Velocity', 'Magnetic Moment' (a scalar moment points along z), or any other vector property.

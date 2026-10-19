@@ -522,3 +522,97 @@ def test_main_window_ask_uses_picks_and_selection(app, pipe):
     app.processEvents()
     assert shown(w.ask_dock) and not shown(w.panel)
     w.close()
+
+
+def test_viewport_draws_vector_arrows(app):
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.params import ParameterForm
+    from ewald.gui.pipeline_panel import MODIFIER_MENU
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    menu = MODIFIER_MENU["Vectors (arrows)"]
+    assert all(isinstance(f(), mods.VectorVis) for f in menu.values())
+    data = DataCollection([[1, 1, 1], [3, 3, 3]], ["Fe", "Fe"], Cell(np.eye(3) * 4))
+    data.particles["Force"] = np.array([[0, 0, 1.0], [1.0, 0, 0]])
+    mod = mods.VectorVis()
+    form = ParameterForm(mod)
+    form.editors["alignment"][0].setCurrentText("center")  # choices, not free text
+    form.apply()
+    assert mod.alignment == "center"
+    v = Viewport(ViewStyle())
+    v.arrow_resolution = 5
+    v.set_data(Pipeline(StaticSource(data), [mod]).compute())
+    actor = v.plotter.actors["vectors:Force"]
+    assert actor.GetMapper().GetInput().GetNumberOfPoints() == 2 * (6 * 5 + 2)
+    v.set_data(data)
+    assert not any(str(k).startswith("vectors:") for k in v.plotter.actors)
+    v.close()
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_interactive_detail_coarse_then_refine(app, pipe):
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+
+    s = settings.Settings()
+    s["viewport.interactive_detail"] = "coarse"
+    s["performance.cache_memory"] = 64
+    w = MainWindow(pipe, settings=s)
+    vp, n = w.viewport, pipe.compute(0).count
+
+    def impostors(name="atoms"):  # point-sprite actor -> its atom count, sphere mesh -> None
+        mapper = vp.plotter.actors[name].GetMapper()
+        if "PointGaussian" not in mapper.GetClassName():
+            return None
+        source = mapper.GetInputAlgorithm()
+        source.Update()
+        return source.GetOutputDataObject(0).GetNumberOfPoints()
+
+    assert pipe.cache_memory == 64 * 2**20
+    vp.interactive_atoms = 100  # below the Preferences minimum, to subsample the 256-atom test cell
+    assert not vp.coarse and impostors() is None
+    # scrubbing: requests made while a frame is computed collapse into the latest one
+    w.timeline.slider.setSliderDown(True)
+    calls = []
+    real = w.recompute
+    w.recompute = lambda interactive=False: (calls.append(interactive), real(interactive))
+    w.timeline._set(1)
+    w.timeline._set(0)
+    w.timeline._set(1)
+    app.processEvents()
+    assert calls.count(True) == 1 and calls[-1] and w.frame == 1 and vp.coarse
+    assert 0 < impostors() <= 100 < n  # every k-th atom, as impostors
+    vp.refine()
+    assert not vp.coarse and impostors() is None
+    # rotating: atoms swap for a subsampled impostor actor until the camera rests
+    vp._go_coarse_for_motion()
+    assert vp.coarse and not vp.plotter.actors["atoms"].GetVisibility()
+    assert 0 < impostors("atoms_lod") <= 100
+    vp.refine()
+    assert "atoms_lod" not in vp.plotter.actors and vp.plotter.actors["atoms"].GetVisibility()
+    # 'full' never goes coarse; 'auto' only when a full frame misses the target rate
+    vp.detail_mode = "full"
+    assert not vp.needs_coarse(scrub=True)
+    vp.detail_mode, vp._render_time = "auto", 1.0
+    assert vp.needs_coarse() and not (setattr(vp, "_render_time", 0.0) or vp.needs_coarse())
+    w.timeline.slider.setSliderDown(False)
+    w.close()
+    w.deleteLater()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_feature_inventory_gui_section_is_current(tmp_path):
+    # in a fresh process: other tests register plugin modifiers in the (global) Pipeline menu
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from ewald import inventory
+
+    env = dict(os.environ, EWALD_CONFIG_DIR=str(tmp_path))
+    code = "from ewald import inventory; print(*inventory.live_gui_lines(), sep=chr(10))"
+    live = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True,
+                          timeout=300).stdout
+    saved = inventory.saved_gui_lines((Path(__file__).parents[1] / "docs" / "features.md").read_text())
+    assert saved == live.rstrip("\n").split("\n"), (
+        "the GUI section of docs/features.md is stale; regenerate with: "
+        "xvfb-run -a python -m ewald inventory -o docs/features.md --gui")

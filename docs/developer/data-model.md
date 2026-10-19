@@ -7,6 +7,12 @@ One frame. `particles` maps property names to arrays whose first axis is the par
 `cell` is a `Cell` with `matrix` (rows are the cell vectors a, b, c), `origin` and `pbc`.
 Assigning `data["Name"] = value` checks the length and broadcasts scalars.
 
+Besides particles, a frame carries things the renderers draw: `bonds` (`ewald.bonds.Bonds`),
+`surfaces` (name to `ewald.mesh.SurfaceMesh`), `grids` (volumetric `VoxelGrid`s) and `vectors`
+(particle property name to `ewald.arrows.VectorStyle`, set by `VectorVis`). `vectors` holds only
+a style; `arrows.arrow_geometry` builds the arrows from the final particles when a renderer draws
+the frame, so modifiers after `VectorVis` that delete or replicate particles need not know about it.
+
 ## Copy-on-write, and why arrays are never written in place
 
 `DataCollection.copy()` is shallow: the dicts are new, the arrays are shared. The pipeline caches

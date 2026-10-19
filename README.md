@@ -125,7 +125,8 @@ ewald movie dump.lammpstrj movie.gif --every 5 --fps 12 --text "t = [Time] ps" -
   plus `cell`, `attributes`, `tables`, `grids` (volumetric `VoxelGrid`s) and
   `surfaces` (display meshes such as isosurfaces).
 * `Pipeline`: source + modifier list, evaluated lazily per frame; source frames are
-  cached and never mutated by modifiers.
+  cached (up to 8 frames and `cache_memory=2 GiB` of arrays, the current frame always
+  kept) and never mutated by modifiers.
 * Readers: native lazy readers for LAMMPS dumps, VASP XDATCAR, extxyz, XSF and H5MD,
   LAMMPS data files and VASP/cube volumetric data, GROMACS XTC/TRR and DCD through
   MDAnalysis, everything else through ASE; matching writers for POSCAR, LAMMPS
@@ -139,7 +140,12 @@ ewald movie dump.lammpstrj movie.gif --every 5 --fps 12 --text "t = [Time] ps" -
   partial RDF, trajectory unwrapping and FFT time-averaged MSD
   (`trajectory_msd(pipe, device="cuda")`).
 * Rendering: VTK via PyVista, offscreen; sphere meshes for figures and GPU
-  impostors above 150k atoms.
+  impostors above 150k atoms. The GUI viewport favors speed while you interact:
+  when a full-detail frame misses the target frame rate, rotating, zooming,
+  scrubbing and playback draw a coarse scene (impostors, no bonds, every k-th atom)
+  that is refined once the view rests (Preferences › Viewports › Performance).
+  Rendered images and movies always use full quality. Timings for big files:
+  `python benchmarks/large_files.py`.
 
 ## File formats
 
@@ -290,8 +296,26 @@ names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
 `DeleteSelected`, `Slice`, `AssignColor`, `ColorCoding`, `ComputeProperty`,
 `CoordinationAnalysis` (+ total/partial RDF), `ClusterAnalysis` (OVITO-compatible: size, COM, gyration tensor, unwrap),
 `CalculateDisplacements` (+ MSD),
-`Replicate`, `WrapAtoms`, `AffineTransformation`, and any Python function
+`Replicate`, `WrapAtoms`, `AffineTransformation`, `VectorVis` (arrows), and any Python function
 `f(frame, data)`.
+
+### Vector arrows
+
+`VectorVis` draws a per-particle vector property as arrows, like OVITO's vector visual
+element: forces, displacements, velocities, magnetic moments (a collinear, scalar moment
+points along z) or any N x 3 property. It has OVITO's options (scaling, width, alignment
+base/center/head, reverse, offset, flat or lit shading, transparency) and colors arrows
+uniformly or by a property such as their own length, with a color legend. Every renderer
+draws them: the viewport, the ray tracer and SVG/PDF output. Without a modifier,
+`render(data, vectors="Force")` does the same.
+
+```python
+from ewald.modifiers import VectorVis
+
+pipe = import_file("OUTCAR")
+pipe.modifiers.append(VectorVis("Force", scaling=2.0, color_mapping_property="Magnitude"))
+pipe.render("forces.png", renderer="raytrace", radius_scale=0.5)
+```
 
 ### Bonds and coordination polyhedra
 

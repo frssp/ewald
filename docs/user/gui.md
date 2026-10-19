@@ -94,6 +94,22 @@ element in the pipeline panel switches it for the current session and takes oxid
 for the ionic presets (`Sr=2, Ti=4, O=-2`; types left out are guessed). The log says which
 types fell back to covalent radii.
 
+### Large systems
+
+Interaction comes first in the viewport, and quality comes first in rendered output. Under
+Viewports › Performance, *Detail while moving* (Auto by default) controls what happens while
+you rotate, zoom, drag the timeline slider or play. Auto switches to a coarse scene only when a
+full-detail frame takes longer than 1/*Target frame rate* (30 fps). The coarse scene uses
+impostors, leaves out bonds and draws every k-th atom, so at most *Atoms while moving*
+(1,000,000) remain. Full detail returns after *Refine after* (0.3 s) of idle. *Always coarse*
+and *Always full* fix the choice. When frames are requested faster than they can be computed,
+the queued requests collapse into the latest one. Rendered images and movies always use full
+detail. Compute › Memory › *Frame cache memory* (2048 MB) caps how much the trajectory frame
+cache holds; the current frame is always kept. Scripts set the same cap with
+`Pipeline(..., cache_memory=bytes)` or `pipe.cache_memory`.
+`python benchmarks/large_files.py` times opening, frame switching and memory on generated
+multi-million-atom files.
+
 The Compute switch in the toolbar changes the device for the current session only; the
 preference sets the device the GUI starts with.
 

@@ -211,7 +211,9 @@ def resolve(data, preset: str = "covalent", oxidation_states: dict | None = None
             coordination: dict | None = None) -> RadiusTable:
     """Radius of every particle type in ``data`` under ``preset`` (unscaled), see the module docstring."""
     preset = preset_name(preset)
-    types = list(dict.fromkeys(str(t) for t in data.types)) if data.count else []
+    from .render import type_groups
+
+    types = [str(t) for t in type_groups(data.types)[0]] if data.count else []
     out = RadiusTable(preset)
     elements = {t: element_of(t) for t in types}
     if preset not in IONIC:
@@ -247,7 +249,9 @@ def resolve(data, preset: str = "covalent", oxidation_states: dict | None = None
 
 def guess_oxidation_states(data, given: dict | None = None) -> dict:
     """``{type: (oxidation_state or None, source)}``; see the module docstring for the order."""
-    types = list(dict.fromkeys(str(t) for t in data.types)) if data.count else []
+    from .render import type_groups
+
+    types = [str(t) for t in type_groups(data.types)[0]] if data.count else []
     out = {}
     given = {str(k): v for k, v in (given or {}).items()}
     for t in types:

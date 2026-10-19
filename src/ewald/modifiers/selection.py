@@ -35,16 +35,22 @@ class SelectType(Modifier):
 
 
 class InvertSelection(Modifier):
+    """Select the unselected particles and unselect the selected ones."""
+
     def modify(self, data, ctx):
         data.particles["Selection"] = (~data.selection).astype(np.int8)
 
 
 class ClearSelection(Modifier):
+    """Remove the 'Selection' property."""
+
     def modify(self, data, ctx):
         data.particles.pop("Selection", None)
 
 
 class DeleteSelected(Modifier):
+    """Delete the selected particles."""
+
     def modify(self, data, ctx):
         sel = data.selection
         out = data.delete(sel)

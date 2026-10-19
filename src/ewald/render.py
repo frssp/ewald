@@ -47,16 +47,60 @@ def type_radius(t: str, scale: float = 0.8, preset: str = "covalent") -> float:
     return float(r * scale) if r is not None else 0.5
 
 
+def type_groups(types, max_scan: int = 32):
+    """Distinct types in order of first appearance and each particle's index into them.
+
+    One vectorized comparison per type: ~20x faster than ``dict.fromkeys`` or
+    ``np.unique`` on millions of string labels; many types fall back to ``np.unique``.
+    """
+    types = np.asarray(types)
+    inverse = np.zeros(len(types), dtype=np.int32)
+    names: list = []
+    left = np.ones(len(types), bool)
+    while len(types) and len(names) < max_scan:
+        i = int(np.argmax(left))
+        if not left[i]:
+            break
+        match = types == types[i]
+        inverse[match] = len(names)
+        names.append(types[i].item())
+        left &= ~match
+    rest = np.flatnonzero(left)
+    if not len(rest):
+        return names, inverse
+    uniq, first, inv = np.unique(types[rest], return_index=True, return_inverse=True)
+    order = np.argsort(first)
+    rank = np.empty(len(order), dtype=np.int32)
+    rank[order] = np.arange(len(order), dtype=np.int32)
+    inverse[rest] = len(names) + rank[inv.ravel()]
+    names.extend(uniq[order].tolist())
+    return names, inverse
+
+
+def _color_table(names, type_colors=None) -> np.ndarray:
+    return np.array([_rgb(c) if (c := (type_colors or {}).get(t)) is not None else type_color(t, k)
+                     for k, t in enumerate(names)], float).reshape(-1, 3)
+
+
+def _radius_table(names, scale=0.8, type_radii=None, data=None, radius_preset="covalent",
+                  oxidation_states=None, coordination=None) -> np.ndarray:
+    """Radius per type name: ``type_radii`` first, else ``scale`` x the preset radius (0.5 if unknown)."""
+    type_radii = type_radii or {}
+    table = {}
+    if data is not None and any(type_radii.get(t) is None for t in names):
+        from .radii import resolve
+
+        table = resolve(data, radius_preset, oxidation_states, coordination).radii
+    return np.array([r if (r := type_radii.get(t)) is not None
+                     else (table[str(t)] * scale if str(t) in table else 0.5) for t in names], float)
+
+
 def default_colors(data: DataCollection, type_colors: dict | None = None) -> np.ndarray:
     """Per-particle RGB: the 'Color' property, else per-type colors (overrides first)."""
     if "Color" in data:
         return np.asarray(data["Color"], float)
-    types = data.types
-    out = np.zeros((data.count, 3))
-    for k, t in enumerate(dict.fromkeys(types)):
-        c = (type_colors or {}).get(t)
-        out[types == t] = _rgb(c) if c is not None else type_color(t, k)
-    return out
+    names, inverse = type_groups(data.types)
+    return _color_table(names, type_colors)[inverse]
 
 
 def default_radii(data: DataCollection, scale: float = 0.8, type_radii: dict | None = None,
@@ -69,21 +113,8 @@ def default_radii(data: DataCollection, scale: float = 0.8, type_radii: dict | N
     """
     if "Radius" in data:
         return np.asarray(data["Radius"], float)
-    types = data.types
-    out = np.full(data.count, 0.5)
-    type_radii = type_radii or {}
-    todo = [t for t in dict.fromkeys(types) if type_radii.get(t) is None]
-    table = {}
-    if todo:
-        from .radii import resolve
-
-        table = resolve(data, radius_preset, oxidation_states, coordination).radii
-    for t in dict.fromkeys(types):
-        r = type_radii.get(t)
-        if r is None:
-            r = table[str(t)] * scale if str(t) in table else 0.5
-        out[types == t] = r
-    return out
+    names, inverse = type_groups(data.types)
+    return _radius_table(names, scale, type_radii, data, radius_preset, oxidation_states, coordination)[inverse]
 
 
 def _rgb(c) -> np.ndarray:
@@ -105,6 +136,67 @@ def _cell_lines(cell):
     return pv.PolyData(corners, lines=lines)
 
 
+def atom_cloud(data: DataCollection, *, radius_scale: float = 1.0, only_visible=None,
+               type_colors: dict | None = None, type_radii: dict | None = None,
+               radius_preset: str = "covalent", oxidation_states: dict | None = None,
+               coordination: dict | None = None):
+    """Visible atoms as a ``pv.PolyData`` with 'rgb' and 'radius' point arrays, plus the
+    per-particle colors of all atoms (bonds reuse them)."""
+    import pyvista as pv
+
+    if only_visible is not None:
+        keep = np.asarray(only_visible, bool)
+    elif "Transparency" in data:
+        keep = np.asarray(data["Transparency"]) < 1
+    else:
+        keep = slice(None)
+    # Per-type tables gathered by type index: no per-atom clipping or float math on 1e6+ atoms.
+    groups = type_groups(data.types) if "Color" not in data or "Radius" not in data else None
+    if "Color" in data:
+        colors = np.asarray(data["Color"], float)
+        rgb = (np.clip(colors[keep], 0, 1) * 255).astype(np.uint8)
+    else:
+        table = _color_table(groups[0], type_colors)
+        colors = table[groups[1]]
+        rgb = (np.clip(table, 0, 1) * 255).astype(np.uint8)[groups[1][keep]]
+    if "Radius" in data:
+        radii = np.asarray(data["Radius"], float)[keep] * radius_scale
+    else:
+        table = _radius_table(groups[0], 0.8, type_radii, data, radius_preset, oxidation_states, coordination)
+        radii = (table * radius_scale)[groups[1][keep]]
+    cloud = pv.PolyData(np.ascontiguousarray(data.positions[keep]))
+    cloud["rgb"] = rgb
+    cloud["radius"] = radii
+    return cloud, colors
+
+
+def add_atoms(plotter, cloud, *, atom_style: str = "auto", mesh_limit: int = 150_000,
+              sphere_resolution: int | None = None, name: str = "atoms"):
+    """Add an :func:`atom_cloud` as sphere meshes or GPU impostors; returns the actor."""
+    import pyvista as pv
+
+    if atom_style == "auto":
+        atom_style = "mesh" if cloud.n_points <= mesh_limit else "impostor"
+    if atom_style == "mesh":
+        # Real sphere meshes: best shading for figures, fine up to ~1e5 atoms.
+        res = sphere_resolution or (20 if cloud.n_points < 20_000 else 12)
+        sphere = pv.Sphere(radius=1.0, theta_resolution=res, phi_resolution=res)
+        atoms = cloud.glyph(geom=sphere, scale="radius", orient=False)
+        return plotter.add_mesh(atoms, scalars="rgb", rgb=True, smooth_shading=True, ambient=0.25,
+                                diffuse=0.8, specular=0.3, specular_power=40, name=name, render=False)
+    # GPU sphere impostors: one vertex per atom, scales to millions of atoms.
+    # VTK's built-in lit sprites have no ambient term (black rims), so shade them ourselves;
+    # with custom splat code VTK skips its own sprite lighting.
+    actor = plotter.add_mesh(cloud, style="points_gaussian", scalars="rgb", rgb=True,
+                             emissive=False, render_points_as_spheres=True, name=name,
+                             render=False)
+    mapper = actor.GetMapper()
+    mapper.SetScaleArray("radius")
+    mapper.SetScaleFactor(1.0)
+    mapper.SetSplatShaderCode(_IMPOSTOR_SHADER)
+    return actor
+
+
 def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, show_cell: bool = True,
                 cell_color="black", cell_width: float = 2.0, bonds: float | None = None,
                 bond_radius: float = 0.15, only_visible=None, atom_style: str = "auto",
@@ -112,7 +204,7 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 type_colors: dict | None = None, type_radii: dict | None = None,
                 bond_pairs: list | None = None, trajectory_width: float = 2.0,
                 radius_preset: str = "covalent", oxidation_states: dict | None = None,
-                coordination: dict | None = None):
+                coordination: dict | None = None, vectors=None, arrow_resolution: int | None = None):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter.
 
     ``atom_style``: 'mesh' (sphere meshes, publication shading), 'impostor' (GPU
@@ -125,45 +217,21 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     Bonds in ``data.bonds`` (CreateBonds, EditBonds) are drawn whenever present and take
     precedence over ``bonds``/``bond_pairs``; ``data.surfaces`` meshes (polyhedra) are drawn too.
     ``trajectory_width``: line width of ``tables['trajectory-lines']`` (GenerateTrajectoryLines); 0 hides them.
+    ``vectors``: particle properties to draw as arrows on top of ``data.vectors`` (VectorVis), e.g.
+    ``"Force"``, ``["Force", "Velocity"]`` or ``{"Force": {"scaling": 2, "color": "red"}}`` (see
+    :class:`ewald.arrows.VectorStyle`). ``arrow_resolution``: sides per arrow (default from the
+    sphere detail); above ``mesh_limit`` arrows they are drawn as lines.
     """
-    import pyvista as pv
-
     if data.count:
-        colors = np.clip(default_colors(data, type_colors), 0, 1)
-        radii = default_radii(data, type_radii=type_radii, radius_preset=radius_preset,
-                              oxidation_states=oxidation_states, coordination=coordination) * radius_scale
-        if only_visible is not None:
-            keep = np.asarray(only_visible, bool)
-        elif "Transparency" in data:
-            keep = np.asarray(data["Transparency"]) < 1
-        else:
-            keep = slice(None)
-        cloud = pv.PolyData(np.ascontiguousarray(data.positions[keep]))
-        cloud["rgb"] = (colors[keep] * 255).astype(np.uint8)
-        cloud["radius"] = radii[keep]
-        if atom_style == "auto":
-            atom_style = "mesh" if cloud.n_points <= mesh_limit else "impostor"
-        if atom_style == "mesh":
-            # Real sphere meshes: best shading for figures, fine up to ~1e5 atoms.
-            res = sphere_resolution or (20 if cloud.n_points < 20_000 else 12)
-            sphere = pv.Sphere(radius=1.0, theta_resolution=res, phi_resolution=res)
-            atoms = cloud.glyph(geom=sphere, scale="radius", orient=False)
-            plotter.add_mesh(atoms, scalars="rgb", rgb=True, smooth_shading=True, ambient=0.25,
-                             diffuse=0.8, specular=0.3, specular_power=40, name="atoms", render=False)
-        else:
-            # GPU sphere impostors: one vertex per atom, scales to millions of atoms.
-            # VTK's built-in lit sprites have no ambient term (black rims), so shade them ourselves;
-            # with custom splat code VTK skips its own sprite lighting.
-            actor = plotter.add_mesh(cloud, style="points_gaussian", scalars="rgb", rgb=True,
-                                     emissive=False, render_points_as_spheres=True, name="atoms",
-                                     render=False)
-            mapper = actor.GetMapper()
-            mapper.SetScaleArray("radius")
-            mapper.SetScaleFactor(1.0)
-            mapper.SetSplatShaderCode(_IMPOSTOR_SHADER)
+        cloud, colors = atom_cloud(data, radius_scale=radius_scale, only_visible=only_visible,
+                                   type_colors=type_colors, type_radii=type_radii, radius_preset=radius_preset,
+                                   oxidation_states=oxidation_states, coordination=coordination)
+        add_atoms(plotter, cloud, atom_style=atom_style, mesh_limit=mesh_limit,
+                  sphere_resolution=sphere_resolution)
         if bonds or bond_pairs or data.bonds is not None:
             _add_bonds(plotter, data, colors, bonds, bond_radius, bond_pairs)
     _add_surfaces(plotter, data)
+    _add_vectors(plotter, data, vectors, arrow_resolution or max(6, (sphere_resolution or 16) // 2 + 2), mesh_limit)
     if trajectory_width > 0 and "trajectory-lines" in data.tables:
         _add_trajectory_lines(plotter, data, trajectory_width)
     if show_cell and data.cell.is_valid:
@@ -224,7 +292,7 @@ def _add_bonds(plotter, data, colors, cutoff, bond_radius, pairs=None):
     pts[1::2] = end
     lines = np.column_stack([np.full(m, 2), np.arange(0, 2 * m, 2), np.arange(1, 2 * m, 2)]).ravel()
     poly = pv.PolyData(pts, lines=lines)
-    poly.cell_data["rgb"] = (rgb * 255).astype(np.uint8)
+    poly.cell_data["rgb"] = (np.clip(rgb, 0, 1) * 255).astype(np.uint8)
     tubes = poly.tube(radius=bond_radius, n_sides=12, capping=False)
     plotter.add_mesh(tubes, scalars="rgb", rgb=True, name="bonds", smooth_shading=True, render=False,
                      ambient=0.25, diffuse=0.8, specular=0.2, specular_power=30)
@@ -257,6 +325,36 @@ def _add_surfaces(plotter, data):
             lines = np.column_stack([np.full(len(mesh.edges), 2), mesh.edges]).ravel()
             plotter.add_mesh(pv.PolyData(mesh.vertices, lines=lines), color=_rgb(mesh.edge_color), line_width=1.5,
                              name=f"surface-edges:{name}", render=False)
+
+
+def _add_vectors(plotter, data, vectors, sides, line_limit):
+    """One actor per arrow set (``vectors:<property>``): cylinder + cone meshes, or colored
+    lines above ``line_limit`` arrows so the interactive viewport stays fast."""
+    import pyvista as pv
+
+    from .arrows import arrow_mesh, scene_arrows
+
+    for arrows in scene_arrows(data, vectors):
+        m = arrows.count
+        flat = arrows.shading == "flat"
+        light = dict(ambient=1.0, diffuse=0.0, specular=0.0) if flat else \
+            dict(ambient=0.25, diffuse=0.8, specular=0.3, specular_power=40)
+        if m > line_limit:
+            pts = np.empty((2 * m, 3))
+            pts[0::2], pts[1::2] = arrows.base, arrows.tip
+            lines = np.column_stack([np.full(m, 2), np.arange(0, 2 * m, 2), np.arange(1, 2 * m, 2)]).ravel()
+            poly = pv.PolyData(pts, lines=lines)
+            poly.cell_data["rgb"] = (arrows.rgb * 255).astype(np.uint8)
+            plotter.add_mesh(poly, scalars="rgb", rgb=True, line_width=2, opacity=arrows.alpha,
+                             name=f"vectors:{arrows.name}", render=False, lighting=False)
+            continue
+        verts, faces, normals, owner = arrow_mesh(arrows, sides)
+        poly = pv.PolyData(verts, faces=np.column_stack([np.full(len(faces), 3), faces]).ravel())
+        poly.point_data["Normals"] = normals
+        poly.point_data.active_normals_name = "Normals"
+        poly.point_data["rgb"] = (arrows.rgb[owner] * 255).astype(np.uint8)
+        plotter.add_mesh(poly, scalars="rgb", rgb=True, opacity=arrows.alpha, smooth_shading=not flat,
+                         name=f"vectors:{arrows.name}", render=False, **light)
 
 
 def _add_trajectory_lines(plotter, data, width):
@@ -330,6 +428,11 @@ def setup_camera(plotter, data, direction="iso", orthographic=True, zoom=1.0):
 
 
 VECTOR_SUFFIXES = (".svg", ".pdf", ".eps", ".ps")
+RENDERERS = {
+    "opengl": "VTK, fast; SSAO and anti-aliasing; GPU impostors for large systems",
+    "raytrace": "built-in numba ray tracer: ambient occlusion, shadows, anti-aliasing (publication figures)",
+    "vector": "SVG/PDF/EPS with editable shapes and text (matplotlib)",
+}
 
 # Output quality presets (file output puts quality first; the interactive viewport has its own settings).
 # samples: ray-traced rays per pixel; ao_samples: ambient-occlusion rays; antialiasing: OpenGL SSAA;
@@ -386,7 +489,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     """
     import pyvista as pv
 
-    if renderer not in ("opengl", "raytrace", "vector"):
+    if renderer not in RENDERERS:
         raise ValueError(f"unknown renderer {renderer!r}; use 'opengl', 'raytrace' or 'vector'")
     q = quality_settings(quality, samples=samples, ao_samples=ao_samples, shadows=shadows,
                          antialiasing=antialiasing, ambient_occlusion=ambient_occlusion,
@@ -402,7 +505,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
 
         if camera is None:
             camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
-        for k in ("atom_style", "sphere_resolution", "mesh_limit", "trajectory_width"):
+        for k in ("atom_style", "sphere_resolution", "mesh_limit", "trajectory_width", "arrow_resolution"):
             scene_kwargs.pop(k, None)
         return render_vector(data, filename, camera=camera, size=size, background=background,
                              transparent_background=transparent_background, radius_scale=radius_scale,
@@ -450,7 +553,7 @@ def default_camera(data, size=(1600, 1200), direction="iso", orthographic=True, 
 
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     build_scene(p, data, radius_scale=radius_scale, show_cell=True, sphere_resolution=6,
-                **{k: v for k, v in (scene_kwargs or {}).items() if k in _RADIUS_KEYS + ("type_colors",)})
+                **{k: v for k, v in (scene_kwargs or {}).items() if k in _RADIUS_KEYS + ("type_colors", "vectors")})
     _setup_camera(p, data, direction, orthographic, zoom)
     cam = camera_state(p)
     p.close()
@@ -499,8 +602,11 @@ def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, ba
     if camera is None:  # same framing as the OpenGL path
         camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
     cell_color = "#AEB4BE" if sum(_rgb(background)) < 1.5 and not transparent_background else "black"
+    view = np.asarray(camera["position"], float) - np.asarray(camera["focal_point"], float)
+    scene_kwargs.setdefault("arrow_resolution", 16 if samples <= 4 else 24)
     scene = scene_from_data(data, radius_scale=radius_scale, bonds=bonds, show_cell=show_cell,
-                            cell_color=scene_kwargs.pop("cell_color", cell_color), **scene_kwargs)
+                            cell_color=scene_kwargs.pop("cell_color", cell_color), view_direction=view,
+                            **scene_kwargs)
     img = raytrace(scene, camera, size, samples=samples, ao_samples=ao_samples, shadows=shadows,
                    background=background, transparent_background=transparent_background)
     rgba = (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)

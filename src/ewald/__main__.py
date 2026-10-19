@@ -4,9 +4,11 @@ from __future__ import annotations
 import argparse
 
 from . import import_file
+from .render import RENDERERS
 
 
-def main(argv=None):
+def build_parser():
+    """The ``ewald`` argument parser (also read by ``ewald inventory`` for docs/features.md)."""
     ap = argparse.ArgumentParser(prog="ewald")
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("render", help="render a frame to an image (.png/.jpg/.tif/.svg/.pdf/.eps)")
@@ -35,7 +37,7 @@ def main(argv=None):
     mv.add_argument("--type-map", default=None, help="LAMMPS types, e.g. 1=Cu,2=Zr")
     mv.add_argument("--time-per-frame", type=float, default=None, help="for [Time] in --text")
     for parser in (r, mv):
-        parser.add_argument("--renderer", choices=("opengl", "raytrace", "vector"), default=None)
+        parser.add_argument("--renderer", choices=tuple(RENDERERS), default=None)
         parser.add_argument("--allow-code", action="store_true", help="run Python modifiers stored in a session")
         parser.add_argument("--quality", choices=("draft", "standard", "publication"), default=None,
                             help="sampling preset (default publication; draft renders at half size)")
@@ -87,7 +89,16 @@ def main(argv=None):
     m = sub.add_parser("mcp", help="serve the analysis tools over MCP (stdio)")
     m.add_argument("input", nargs="?")
     m.add_argument("--allow-code", action="store_true")
-    args = ap.parse_args(argv)
+    inv = sub.add_parser("inventory", help="print or update the feature inventory (docs/features.md)")
+    inv.add_argument("--output", "-o", default=None, help="rewrite this file, e.g. docs/features.md")
+    inv.add_argument("--gui", action="store_true",
+                     help="regenerate the GUI section from a live main window (needs PySide6 and a display); "
+                          "otherwise it is kept from --output")
+    return ap
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
 
     if args.cmd == "gui":
         from .gui import main as gui_main
@@ -103,6 +114,10 @@ def main(argv=None):
         return _print_plugins(args.json)
     if args.cmd == "forge":
         return _forge(args)
+    if args.cmd == "inventory":
+        from .inventory import update
+
+        return update(args.output, gui=args.gui)
     if args.cmd == "mcp":
         from .llm.mcp_server import serve
 
