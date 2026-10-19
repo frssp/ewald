@@ -1,2 +1,3 @@
 recursive-include src/ewald/_csrc *.cpp *.cc *.h *.hh LICENSE* README.md
 include tests/data/*.npz
+recursive-include src/ewald/examples/files *

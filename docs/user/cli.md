@@ -5,6 +5,7 @@ LAMMPS numeric types wherever a file is read.
 
 | Command | Does |
 |---|---|
+| `ewald examples [--copy DIR]` | list the shipped [example files](quickstart.md#example-files) with their paths, or copy them into DIR |
 | `ewald info FILE` | frame count, particle count, properties and cell of frame 0 |
 | `ewald render FILE OUT.png [--frame N] [--size W H] [--direction iso] [--bonds 2.8] [--color-by EXPR] [--cmap NAME] [--ao]` | render one frame |
 | `ewald gui [FILE] [--device cuda]` | open the desktop viewer (also `ewald-gui`) |

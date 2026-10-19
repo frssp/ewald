@@ -105,6 +105,8 @@ Plugins and Claude
 
 Docs
 
+- Example files: add real (not synthetic) VASP OUTCAR/vasprun.xml and LAMMPS log examples, and
+  list the examples on an empty viewport at first start.
 - Host the manual (the repository is private; CI uploads the built site as the `docs-site`
   artifact).
 

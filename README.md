@@ -75,6 +75,9 @@ ewald info XDATCAR
 ewald render dump.lammpstrj out.png --frame 5 --type-map 1=Cu,2=Zr --color-by "Position.Z"
 ```
 
+`ewald examples` lists small example files shipped with the package (POSCAR, CIF, XYZ/extxyz,
+XDATCAR, CHGCAR, LAMMPS dump/data, phonopy band.yaml); the GUI has them under File › Open
+example, and `ewald.examples.path("POSCAR.SrTiO3")` gives their paths in Python.
 `python examples/demo.py` builds sample LAMMPS and VASP trajectories and renders
 example figures.
 
