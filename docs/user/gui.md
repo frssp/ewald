@@ -15,13 +15,31 @@ The layout follows OVITO 3, with VESTA's crystal-viewing controls added: the vie
 middle, the pipeline and the selected item's parameters are on the right, the timeline is under
 the viewport, and a bottom dock holds the Python console, the data inspector and plots.
 
+Buttons use one line-icon set. By default mode switches and less frequent buttons (Open,
+Analyze, Render) show an icon with text, and the tool rail and frequent buttons (Open remote,
+Save, Fit) show the icon alone, with the name and shortcut in the tooltip. Preferences ›
+General › Toolbar buttons switches to icons only or to text only (which also drops the icons
+from menus).
+
 ## Analyze workspace
 
 **Viewport.** Drag to orbit and scroll to zoom (VTK's standard mouse controls). View › View
 along a, b, c, a*, b*, c* aligns the view with a cell vector or reciprocal vector, as in
 VESTA, and View › Zoom to fit (Ctrl+0) frames the cell. View › Theme applies a theme (Default,
-VESTA, CPK, Journal, Dark slide, or a [theme plugin](../plugins/styles.md#themes)): element
-colors, background, cell color and radius preset in one step. The tool rail on the left switches
+VESTA, CPK, Journal, ASE, Dark slide, or a [theme plugin](../plugins/styles.md#themes)): element
+colors, background, cell color and radius preset in one step.
+
+**Styles.** The Style box on the view toolbar switches between Ball & stick (the default: small
+balls and bonds found automatically), Space-filling, Simple (ASE) and Points; Preferences ›
+Viewports › *Default style* picks the one a new window starts with. Simple (ASE) looks like ASE's
+GUI: flat discs in the element color with a dark outline, unshaded bonds with outlined edges, and
+the ASE theme (white background). It is drawn with impostors, so it stays fast for any number of
+atoms; leaving it restores the colors and background you had. Particles › Rendering = flat gives
+the same look with any radius. Automatic bonds come from a VESTA-style table (Bonds), one row per
+pair of types up to 1.15 × the sum of covalent radii; in compounds metal-metal pairs are left
+out, so SrTiO3 gets Ti-O and Sr-O bonds but not Sr-Ti. Opening a structure with more than
+Preferences › Elements › *Automatic bonds up to* atoms (100 000) turns bonds off, because the
+bond search and the sticks would slow the viewport down; turn them on under Bonds if you want them. The tool rail on the left switches
 between orbit, pick (click an atom to see its id, type, position and every property;
 Shift+click adds atoms to the pick or removes them),
 distance (click two atoms) and angle (click three atoms, vertex in the middle). The viewport
@@ -30,10 +48,17 @@ sphere surface, so spheres stay round at any zoom, overlapping spheres and bonds
 with meshes, and 100 000 atoms rotate smoothly. Viewports › Performance › *Sphere drawing* =
 Mesh brings back triangle spheres (*Sphere resolution*, up to the *Impostor threshold*), and
 *Smooth edges* (on) applies FXAA to outlines.
-A right click (without dragging, which zooms) opens the viewport menu: Overlay other frames
-draws every other frame as see-through copies behind the current one (`OverlayFrames`; on by
-default for NEB folders), with its transparency (50 to 95 %) and whether only the atoms that
-move get copies; then View along, Zoom to fit and Ask Claude about selection.
+A right click (without dragging, which zooms) opens the viewport menu, whose entries follow
+what is loaded and picked. With nothing loaded it offers Load file, Load remote file and the
+examples. With picked atoms it starts with their count and Center view on picked, Select picked
+atoms (an `ExpressionSelection` on their identifiers, so the same atoms stay selected on every
+frame), Delete picked atoms (the selection plus `DeleteSelected`) and Clear picks. Phonon modes
+add Phonon band structure, an NEB band adds NEB energy profile (both open the Plots tab), and a
+volumetric grid adds Add isosurface (or Edit isosurface once there is one). A trajectory adds
+Play/Pause and Overlay other frames, which draws every other frame as see-through copies behind
+the current one (`OverlayFrames`; on by default for NEB folders), with its transparency (50 to
+95 %) and whether only the atoms that move get copies. Show (bonds, simulation cell), View
+along, Orthographic, Zoom to fit and Ask Claude are always there.
 
 **Ask Claude.** The Ask Claude tab next to the pipeline (Tools › Ask Claude about selection,
 Ctrl+J) answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
@@ -163,6 +188,12 @@ cache holds; the current frame is always kept. Scripts set the same cap with
 `Pipeline(..., cache_memory=bytes)` or `pipe.cache_memory`.
 `python benchmarks/large_files.py` times opening, frame switching and memory on generated
 multi-million-atom files.
+
+The viewport draws a change once, in the next repaint: several changes made before the
+repaint (a new frame, picks, a camera move) cost one render, a mouse move while rotating costs
+one render rather than two, and nothing is redrawn while the window is idle or the viewport is
+hidden. The Data inspector and Plots tabs follow the current frame only while they are open; a
+plot range linked to the viewport keeps following it either way.
 
 *3D view* picks the viewport itself. Auto uses VTK, except on an SSH-forwarded display
 (`ssh -X`), where it uses Legacy GL: OpenGL 1.x display lists drawn like VESTA, with the frame text

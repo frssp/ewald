@@ -72,6 +72,25 @@ def test_bonds_visual_element_and_pairs(app, cu_fcc):
     assert len(none[0]) == 0
 
 
+def test_style_presets_default_ase_and_bond_table():
+    from ewald.gui.style import DEFAULT_PRESET, ViewStyle
+
+    style = ViewStyle()
+    assert style.preset == DEFAULT_PRESET == "Ball & stick" and style.bonds_enabled
+    style.type_colors = {"Cu": (1.0, 0.0, 0.0)}
+    style.apply_preset("Simple (ASE)", ["Cu"])
+    assert style.atom_style == "flat" and style.background == "white" and style.theme == "ASE"
+    assert style.type_colors["Cu"] != (1.0, 0.0, 0.0)  # Jmol colors from the theme
+    style.apply_preset("Space-filling")  # leaving the ASE look restores what was there
+    assert style.background == "#14161A" and style.type_colors == {"Cu": (1.0, 0.0, 0.0)} and style.theme == ""
+
+    style.ensure_bond_pairs(["Sr", "Ti", "O", "O"])  # compound: no metal-metal rows
+    assert {tuple(sorted(r[:2])) for r in style.bond_pairs} == {("O", "O"), ("O", "Sr"), ("O", "Ti")}
+    metal = ViewStyle()
+    metal.ensure_bond_pairs(["Cu", "Zr"])  # a pure metal keeps its bonds
+    assert len(metal.bond_pairs) == 3
+
+
 def test_command_palette_fuzzy():
     from ewald.gui.palette import fuzzy_score
 
@@ -310,6 +329,8 @@ def test_main_window_links_plots_and_viewport(app, cu_fcc, lammps_dir):
     from ewald.gui.app import MainWindow
 
     w = MainWindow(Pipeline(StaticSource([cu_fcc, cu_fcc]), [mods.CoordinationAnalysis(3.0)]))
+    assert w.plots.data is None  # a hidden tab is filled when it is opened
+    w.bottom.setCurrentWidget(w.plots)
     w.plots.table.setCurrentText("coordination-rdf")
     w.plots.select(2.4, 2.7)
     assert len(w.viewport.picks) == cu_fcc.count and w._ask_context()[2] == w.viewport.picks
@@ -327,6 +348,7 @@ def test_main_window_links_plots_and_viewport(app, cu_fcc, lammps_dir):
     assert len(w.plots.highlight) == cu_fcc.count  # the Selection property is drawn on the plot
     w.close()
     w = MainWindow(import_file(lammps_dir / "thermo" / "dump.lammpstrj"))
+    w.bottom.setCurrentWidget(w.plots)
     w.plots.select(15, 32)
     assert w.timeline.selection == [2, 3] and w.frame == 2
     w.plots.frameRequested.emit(4)
@@ -379,18 +401,58 @@ def test_viewport_context_menu_toggles_frame_overlay(app, vasp_dir):
     w.timeline._set(2)
     n_real = w.pipeline.source.compute(2).count
     assert w.data.count > n_real
-    menu = w.viewport_menu()
-    overlay, transparency, moving = menu.actions()[:3]
+    def entries(menu):
+        return {a.text(): a for a in menu.actions() if a.text()}
+
+    menu = entries(w.viewport_menu())
+    assert "NEB energy profile" in menu and "Add isosurface" not in menu and "Clear picks" not in menu
+    overlay, transparency, moving = (menu[k] for k in ("Overlay other frames (see-through)", "Overlay transparency",
+                                                       "Overlay only atoms that move"))
     assert overlay.isChecked() and transparency.menu().isEnabled() and moving.isChecked()
     overlay.setChecked(False)  # toggled -> off
     assert w.data.count == n_real and not w._overlay().enabled
     w.set_overlay(True, transparency=0.5)
     ghosts = w.data["Overlay Frame"] >= 0
     assert np.allclose(w.data["Transparency"][ghosts], 0.5)
-    menu = w.viewport_menu()
-    assert [a.text() for a in menu.actions()[1].menu().actions() if a.isChecked()] == ["50 %"]
-    menu.actions()[2].setChecked(False)  # every atom, moving or not
+    menu = entries(w.viewport_menu())
+    assert [a.text() for a in menu["Overlay transparency"].menu().actions() if a.isChecked()] == ["50 %"]
+    menu["Overlay only atoms that move"].setChecked(False)  # every atom, moving or not
     assert w.data.count == 5 * n_real
+    menu["NEB energy profile"].trigger()
+    assert w.bottom.currentWidget() is w.plots and w.plots.table.currentText() == "NEB"
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_viewport_context_menu_follows_data_and_picks(app, cu_fcc, tmp_path):
+    from ewald.gui.app import MainWindow
+
+    def entries(menu):
+        return {a.text(): a for a in menu.actions() if a.text()}
+
+    w = MainWindow()
+    assert "Load file…" in entries(w.viewport_menu())  # nothing loaded yet
+    w.set_pipeline(Pipeline(StaticSource([cu_fcc])))
+    menu = entries(w.viewport_menu())
+    assert "Load file…" not in menu and "Play" not in menu and "Clear picks" not in menu  # one frame, no picks
+    assert "View along" in menu and "Ask Claude about this structure…" in menu
+    w.viewport.set_tool("pick")
+    w.viewport.add_pick(3)
+    w.viewport.add_pick(5, extend=True)
+    menu = entries(w.viewport_menu())
+    assert "2 atoms picked" in menu and not menu["2 atoms picked"].isEnabled()
+    menu["Delete picked atoms"].trigger()
+    assert w.data.count == cu_fcc.count - 2 and w.viewport.picks == []
+    assert [m.name for m in w.pipeline.modifiers] == ["ExpressionSelection", "DeleteSelected"]
+    show = entries(entries(w.viewport_menu())["Show"].menu())
+    show["Bonds"].setChecked(True)
+    assert w.style.bonds_enabled
+    w.open_example("CHGCAR.Si")
+    entries(w.viewport_menu())["Add isosurface"].trigger()
+    assert w.data.surfaces and "Edit isosurface" in entries(w.viewport_menu())
+    w.open_example("Cu3Au_band.yaml")
+    menu = entries(w.viewport_menu())
+    assert "Phonon band structure" in menu and "Play" in menu
     w.close()
 
 
@@ -1105,6 +1167,63 @@ def test_open_example_menu(app):
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_open_turns_bonds_off_above_limit(app):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    s = settings.Settings()
+    s["bonds.auto_limit"] = 50
+    w = MainWindow(settings=s)
+    assert w.style.preset == "Ball & stick" and w.style.bonds_enabled
+    w.open_file(str(examples.path("Pt_nanoparticle.xyz")))  # more than 50 atoms
+    assert w.data.count > 50 and not w.style.bonds_enabled
+    w.open_file(str(examples.path("POSCAR.SrTiO3")))  # small again: bonds come back, with a fresh table
+    assert w.data.count <= 50 and w.style.bonds_enabled
+    assert {tuple(sorted(r[:2])) for r in w.style.bond_pairs} == {("O", "O"), ("O", "Sr"), ("O", "Ti")}
+    w.viewport.style_combo.setCurrentText("Simple (ASE)")
+    assert w.style.atom_style == "flat" and "bonds" not in w.viewport.plotter.actors
+    w.close()
+    w.deleteLater()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_toolbar_button_styles(app):
+    from PySide6 import QtCore
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    analyze, orbit = w.ws_buttons[0], w.viewport.tool_buttons["orbit"]
+    assert w.settings["general.toolbar_style"] == "Icons and text"
+    assert analyze.toolButtonStyle() == QtCore.Qt.ToolButtonTextBesideIcon and not analyze.icon().isNull()
+    assert orbit.toolButtonStyle() == QtCore.Qt.ToolButtonIconOnly and orbit.text() == "Orbit"
+    w.set_button_style("Text")
+    assert analyze.icon().isNull() and orbit.toolButtonStyle() == QtCore.Qt.ToolButtonTextOnly
+    assert app.testAttribute(QtCore.Qt.AA_DontShowIconsInMenus)
+    w.set_button_style("Icons")
+    assert analyze.toolButtonStyle() == QtCore.Qt.ToolButtonIconOnly
+    assert not app.testAttribute(QtCore.Qt.AA_DontShowIconsInMenus)
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_viewport_renders_on_paint_and_falls_back(app, cu_fcc):
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(Pipeline(StaticSource([cu_fcc])))
+    w.show()
+    app.processEvents()
+    vp = w.viewport
+    assert vp._paint_driven and not vp.plotter.render_timer.isActive()  # no idle re-rendering
+    renders = []
+    tag = vp.plotter.render_window.AddObserver("StartEvent", lambda *_: renders.append(1))
+    vp._paint_driven = False  # a pyvistaqt without the paint flag: render directly
+    vp.render()
+    vp.zoom_fit()
+    assert len(renders) >= 2
+    vp.plotter.render_window.RemoveObserver(tag)
+    w.close()
+
+
 def test_main_window_legacy_gl_viewport(app, pipe, tmp_path, monkeypatch):
     """The OpenGL 1.x viewport (for ssh -X) draws, picks, measures and keeps the camera in sessions."""
     import time

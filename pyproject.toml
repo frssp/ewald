@@ -30,7 +30,8 @@ ewald-gui = "ewald.gui:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ewald = ["tables/*.json", "examples/files/*"]
+# the license notices of the ported and vendored C++ in ewald/_csrc ship with every install
+ewald = ["tables/*.json", "examples/files/*", "_csrc/README.md", "_csrc/LICENSE*", "_csrc/*/LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

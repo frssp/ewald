@@ -8,7 +8,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-Nothing right now.
+- Simple (ASE) style and Ball & stick as the default style (this branch).
 
 ## Next
 
@@ -17,9 +17,23 @@ GUI
 - Quad views (top, front, left, perspective), as in OVITO.
 - Undo/redo for pipeline edits.
 - Compute frames in a background thread so the GUI stays responsive.
-- Scene updates without a full rebuild when only colors or a few properties change.
+- Scene updates without a full rebuild when only colors or a few properties change, and frame
+  changes with the same atoms that replace only the point coordinates.
+- Picking without a render: ray-sphere intersection with the atoms on the CPU (now a
+  `vtkPropPicker` selection render per click).
+- Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
+  categories; the view-bar rotation arrows are still text glyphs.
+- Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
+  Add modification for the loaded data, view-along buttons hidden without a cell, the timeline
+  folded for a single structure, a right-click menu on pipeline items.
+- Shortcuts for the viewport tools (orbit, pick, distance, angle, bond) and view-along axes.
 - Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
   screen edges) and VTK scene lights instead of the fixed head light; bond impostors.
+- Flat (ASE) style in the ray tracer and the vector renderer (now OpenGL only), and a
+  per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
+  covalent-radius sum with metal-metal pairs left out.
+- Bonds above the automatic-bonds limit (100 000 atoms): a fast path (bond impostors or lines)
+  so large systems can show bonds by default too.
 
 Analysis
 
@@ -171,6 +185,20 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `WAYLAND_DISPLAY` is set; the Fedora package names in its message are untested).
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
   CI has no PLUMED, so those tests skip).
+
+## Security
+
+From the 2026-10-19 review (expression sandbox, session classes, Forge consent and environment,
+`export_file` paths, PLUMED `LOAD` and the known_hosts key type are fixed):
+
+- Claude's read tools (`load_structure`, `read_plumed_output`) open any local path and any
+  `host:/path` in known_hosts; add an optional folder allow-list and a GUI confirmation before
+  connecting to a host the model chose.
+- The GUI's "Python code in session" question covers only top-level PythonScript and
+  PythonModifier entries; nested `__modifier__` code and a disabled `Plumed` load silently
+  disabled, with only a log message.
+- `plumed.py` reads numbers like `pi/2` with `eval` (no builtins, only `pi`); replace it with a
+  small arithmetic parser.
 
 ## Infrastructure
 

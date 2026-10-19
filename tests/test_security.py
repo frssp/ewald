@@ -1,0 +1,128 @@
+"""Inputs that may come from an untrusted file or from Claude cannot run code or touch the user's files."""
+from __future__ import annotations
+
+import json
+import os
+
+import numpy as np
+import pytest
+from ase.build import bulk
+
+from ewald import DataCollection, Pipeline, StaticSource
+from ewald import modifiers as mods
+from ewald.modifiers.expression import evaluate
+from ewald.session import load_session, modifier_from_dict
+
+
+@pytest.fixture
+def cu():
+    return DataCollection.from_ase(bulk("Cu", "fcc", a=3.615, cubic=True).repeat(2))
+
+
+@pytest.mark.parametrize("expr", [
+    'np.testing._private.utils.os.system("echo pwned")', "().__class__.__mro__", 'np.load("x.npy")',
+    "np.ctypeslib", "np.lib.npyio", "np.linalg.inv.__globals__", '__import__("os")', "(lambda: 1)()",
+    "[p for p in Position]", "Position.ctypes", 'f"{N}"'])
+def test_expression_cannot_reach_python(cu, expr):
+    with pytest.raises(ValueError, match="not allowed"):
+        evaluate(expr, cu)
+
+
+@pytest.mark.parametrize("expr", [
+    '(Position.Z > 2) & (ParticleType == "Cu")', "np.isin(N, [32])",
+    "sqrt(Position.X**2 + Position.Y**2)", "np.linalg.norm(Position, axis=1) > 1", "np.where(Position.Z > 1, 1, 0)",
+    "abs(Position.X - CellSize.X / 2) < 1", "Position[:, 2] > 1", "Position.T[2] > 1", "~(Position.Z > 1)",
+    "Position.Z > Position.Z.mean()", "Position.Z.astype(\"int64\") == 0"])
+def test_expressions_still_work(cu, expr):
+    np.asarray(evaluate(expr, cu))
+
+
+def test_missing_component_is_a_name_error(cu):
+    with pytest.raises(NameError, match="Available"):
+        evaluate("Velocity.X > 0", cu)
+
+
+def test_expression_selection_in_pipeline_is_checked(cu):
+    pipe = Pipeline(StaticSource([cu]), [mods.ExpressionSelection('np.testing._private.utils.os.system("x")')])
+    with pytest.raises(ValueError, match="not allowed"):
+        pipe.compute(0)
+
+
+def test_session_entry_must_be_a_modifier(tmp_path):
+    marker = tmp_path / "ran"
+    entry = {"type": "system", "module": "os", "parameters": {"command": f"touch {marker}"}}
+    m, warning = modifier_from_dict(entry)
+    assert m is None and "not a modifier" in warning and not marker.exists()
+    nested = {"type": "ExpressionSelection", "module": "ewald.modifiers.selection",
+              "parameters": {"expression": {"__modifier__": entry}}}
+    modifier_from_dict(nested)
+    assert not marker.exists()
+    session = tmp_path / "evil.ewald"
+    session.write_text(json.dumps({"version": 1, "modifiers": [entry]}))
+    try:
+        load_session(session)
+    except Exception:
+        pass
+    assert not marker.exists()
+
+
+def test_session_plumed_with_load_or_kernel_is_disabled():
+    pytest.importorskip("ewald.modifiers.plumed")
+    entry = {"type": "Plumed", "module": "ewald.modifiers.plumed",
+             "parameters": {"input": "LOAD FILE=/tmp/evil.so\nd: DISTANCE ATOMS=1,2\n"}}
+    m, warning = modifier_from_dict(entry)
+    assert not m.enabled and "LOAD" in warning
+    entry["parameters"] = {"input": "d: DISTANCE ATOMS=1,2\n", "kernel": "/tmp/evil.so"}
+    m, warning = modifier_from_dict(entry)
+    assert not m.enabled and "kernel" in warning
+    entry["parameters"] = {"input": "d: DISTANCE ATOMS=1,2\nPRINT ARG=d FILE=COLVAR\n"}
+    m, warning = modifier_from_dict(entry)
+    assert m.enabled and warning is None
+    assert modifier_from_dict({**entry, "parameters": {"input": "LOAD FILE=x.so\n"}}, allow_code=True)[0].enabled
+
+
+def test_untrusted_plumed_input():
+    from ewald.plumed import untrusted_input_problems
+
+    assert untrusted_input_problems("d: DISTANCE ATOMS=1,2\nPRINT ARG=d FILE=COLVAR\n") == []
+    problems = untrusted_input_problems("x: LOAD FILE=a.cpp\nPRINT ARG=d FILE=~/.bashrc\nREFERENCE=../../a.pdb\n")
+    assert len(problems) == 3
+
+
+def test_claude_tools_refuse_plumed_load(tmp_path):
+    from ewald.llm.tools import Toolset
+
+    ts = Toolset(Pipeline(StaticSource([DataCollection.from_ase(bulk("Cu"))])))
+    r = ts.call("compute_plumed_cvs", {"input": "LOAD FILE=/tmp/evil.so\nd: DISTANCE ATOMS=1,2\n"})
+    assert r.is_error and "LOAD" in str(r.content)
+
+
+def test_claude_export_stays_out_of_user_files(tmp_path, cu):
+    from ewald.llm.tools import Toolset
+
+    work, home = tmp_path / "work", tmp_path / "home"
+    work.mkdir()
+    (home / ".ssh").mkdir(parents=True)
+    precious = home / "notes.txt"
+    precious.write_text("keep")
+    ts = Toolset(Pipeline(StaticSource([cu])), workdir=str(work))
+    for path, overwrite in [(str(precious), True), (str(home / ".ssh" / "authorized_keys"), False),
+                            ("../home/notes.txt", True), (str(home / ".bashrc"), False)]:
+        r = ts.call("export_file", {"path": path, "format": "extxyz", "overwrite": overwrite})
+        assert r.is_error, path
+    assert precious.read_text() == "keep" and not (home / ".ssh" / "authorized_keys").exists()
+    assert not ts.call("export_file", {"path": "out/a.extxyz"}).is_error
+    assert ts.call("export_file", {"path": "out/a.extxyz"}).is_error  # exists
+    assert not ts.call("export_file", {"path": "out/a.extxyz", "overwrite": True}).is_error
+    assert not ts.call("export_file", {"path": str(home / "new.extxyz")}).is_error  # a new file is fine
+
+
+def test_forge_subprocess_gets_no_secrets(monkeypatch):
+    from ewald.llm import forge
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")
+    monkeypatch.setenv("SSH_AUTH_SOCK", "/tmp/agent.sock")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "aws")
+    env = forge._subprocess_env("/tmp/forge-home")
+    assert not {"ANTHROPIC_API_KEY", "SSH_AUTH_SOCK", "AWS_SECRET_ACCESS_KEY"} & set(env)
+    assert env["HOME"] == "/tmp/forge-home" and env.get("PATH") == os.environ.get("PATH")

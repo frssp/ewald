@@ -520,7 +520,7 @@ def register_theme(name: str, theme, description: str = "", origin: str = "pytho
 
 
 def themes() -> dict[str, ThemePlugin]:
-    """Themes by name: the built-in ones (Default, VESTA, CPK, Journal, Dark slide) and plugins."""
+    """Themes by name: the built-in ones (Default, VESTA, CPK, Journal, ASE, Dark slide) and plugins."""
     load_plugins()
     return dict(_registry.themes)
 

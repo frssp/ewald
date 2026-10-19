@@ -105,6 +105,7 @@ class LegacyViewport(Viewport):
 
     def _create_view(self) -> QtWidgets.QWidget:
         self.anti_aliasing = False
+        self._paint_driven = False  # render() -> plotter.render() -> one QOpenGLWindow update
         self._first_pending = True
         self.view = GLView(self)
         self.plotter = CameraPlotter(self.view.update)

@@ -254,6 +254,10 @@ class Connection:
         policy = str(opts.get("stricthostkeychecking", "ask")).lower()
         if policy == "no":
             return
+        if entry:  # known, but the server offers another key type: refuse, never ask or add
+            raise RemoteError(f"Host {name} is in known_hosts with a {', '.join(sorted(entry))} key, but the "
+                              f"server offered {key.get_name()} {fingerprint}. Someone may be intercepting the "
+                              f"connection; check with `ssh {self.alias}`.")
         if policy == "accept-new" or (policy != "yes" and _host_key_prompt
                                       and _host_key_prompt(name, key.get_name(), fingerprint)):
             _append_known_host(files[0], name, key)
