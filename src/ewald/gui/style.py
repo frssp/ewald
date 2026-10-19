@@ -18,6 +18,8 @@ class ViewStyle:
     atom_style: str = "auto"
     type_colors: dict = field(default_factory=dict)   # type -> (r, g, b) in 0..1 or '#hex'
     type_radii: dict = field(default_factory=dict)    # type -> radius (A)
+    radius_preset: str = "covalent"                   # ewald.radii.PRESETS; type_radii win over it
+    oxidation_states: dict = field(default_factory=dict)  # type -> oxidation state for the ionic presets
     bonds_enabled: bool = False
     bond_pairs: list = field(default_factory=list)    # [(A, B, dmin, dmax)]
     bond_radius: float = 0.15
@@ -37,8 +39,18 @@ class ViewStyle:
             kw["type_colors"] = dict(self.type_colors)
         if self.type_radii:
             kw["type_radii"] = dict(self.type_radii)
+        kw.update(self.radius_kwargs(with_type_radii=False))
         if self.bonds_enabled and self.bond_pairs:
             kw["bond_pairs"] = [tuple(p) for p in self.bond_pairs]
+        return kw
+
+    def radius_kwargs(self, with_type_radii: bool = True) -> dict:
+        """Keyword arguments of :func:`ewald.render.default_radii` for this style (defaults left out)."""
+        kw = {"type_radii": dict(self.type_radii)} if with_type_radii and self.type_radii else {}
+        if self.radius_preset != "covalent":
+            kw["radius_preset"] = self.radius_preset
+        if self.oxidation_states:
+            kw["oxidation_states"] = dict(self.oxidation_states)
         return kw
 
     def to_dict(self) -> dict:

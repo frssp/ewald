@@ -44,7 +44,8 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                   transparent_background=False, radius_scale=1.0, type_colors=None, type_radii=None,
                   bonds=None, bond_pairs=None, bond_radius=0.15, show_cell=True, cell_color=None,
                   cell_width=2.0, shading="gradient", text=None, legend=True, type_legend=False,
-                  scale_bar=None, dpi=None, **_ignored):
+                  scale_bar=None, dpi=None, radius_preset="covalent", oxidation_states=None, coordination=None,
+                  **_ignored):
     """Draw ``data`` as a vector figure and save it (format from the extension).
 
     ``shading``: 'gradient' (shaded discs) or 'flat' (one color plus outline, VESTA's
@@ -74,7 +75,8 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
     prims = []  # (depth, patches, facecolors, edgecolors, linewidths)
     if data.count:
         colors = np.clip(default_colors(data, type_colors), 0, 1)
-        radii = default_radii(data, type_radii=type_radii) * radius_scale
+        radii = default_radii(data, type_radii=type_radii, radius_preset=radius_preset,
+                              oxidation_states=oxidation_states, coordination=coordination) * radius_scale
         alpha = 1 - np.clip(np.asarray(data["Transparency"], float), 0, 1) if "Transparency" in data \
             else np.ones(data.count)
         keep = np.flatnonzero(alpha > 0)

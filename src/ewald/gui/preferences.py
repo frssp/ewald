@@ -11,6 +11,7 @@ import json
 import os
 import sys
 
+import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import settings as settings_mod
@@ -782,28 +783,49 @@ class PreferencesDialog(QtWidgets.QDialog):
 
 
 # ---------------------------------------------------------------- applying to the main window
-def apply_element_defaults(style, types, s: Settings):
-    """Fill per-type colors/radii from the settings without touching what the user set in the session."""
+def apply_element_defaults(style, data, s: Settings):
+    """Fill per-type colors/radii from the settings without touching what the user set in the session.
+
+    Returns the :class:`ewald.radii.RadiusTable` used for the radii (None when nothing was filled).
+    """
+    from ..radii import IONIC, element_of
+
     # drop what we filled last time (unless the user has since edited it) so scheme changes take effect
     for t, (c, r) in getattr(style, "_pref_filled", {}).items():
-        if style.type_colors.get(t) == c and style.type_radii.get(t) == r:
+        if c is not None and style.type_colors.get(t) == c:
             style.type_colors.pop(t, None)
+        if r is not None and style.type_radii.get(t) == r:
             style.type_radii.pop(t, None)
     filled = {}
-    element_keys = ("elements.color_scheme", "elements.radius_source", "elements.radius_scale", "elements.overrides")
-    if all(s.is_default(k) for k in element_keys):
-        style._pref_filled = filled
-        return  # built-in defaults already match; keep generated scripts free of redundant type_colors
-    for t in dict.fromkeys(types):
-        if t in style.type_colors or t in style.type_radii:
-            continue
-        c, r = s.element_color(t), s.element_radius(t)
-        if c is None:
-            continue
-        style.type_colors[t] = _hex(c)
-        style.type_radii[t] = r
-        filled[t] = (style.type_colors[t], r)
     style._pref_filled = filled
+    overrides = s["elements.overrides"]
+    fill_colors = not s.is_default("elements.color_scheme") or any("color" in o for o in overrides.values())
+    # ionic radii depend on the structure: resolve them once per composition rather than on every draw
+    fill_radii = (not s.is_default("elements.radius_scale") or any("radius" in o for o in overrides.values())
+                  or style.radius_preset in IONIC)
+    if not (fill_colors or fill_radii):
+        return None  # built-in defaults already match; keep generated scripts free of redundant type_colors
+    table = None
+    if fill_radii:
+        uniq, counts = np.unique(np.asarray(data.types).astype(str), return_counts=True)
+        key = (style.radius_preset, tuple(sorted(style.oxidation_states.items())), tuple(uniq), tuple(counts),
+               s["elements.radius_scale"], repr(sorted(overrides.items())))
+        cache = getattr(style, "_radius_cache", None)
+        if cache is None or cache[0] != key:
+            cache = style._radius_cache = (key, *s.type_radii(data, style.radius_preset, style.oxidation_states))
+        radii, table = cache[1], cache[2]
+    for t in dict.fromkeys(str(t) for t in data.types):
+        sym = element_of(t)
+        if sym is None:
+            continue
+        c = r = None
+        if fill_colors and t not in style.type_colors:
+            c = style.type_colors[t] = _hex(s.element_color(sym))
+        if fill_radii and t not in style.type_radii and t in radii:
+            r = style.type_radii[t] = radii[t]
+        if c is not None or r is not None:
+            filled[t] = (c, r)
+    return table
 
 
 def apply_settings(win, s: Settings, startup: bool = False):
@@ -871,10 +893,12 @@ def apply_settings(win, s: Settings, startup: bool = False):
     if getattr(style, "bond_factor", None) != s["bonds.length_factor"]:
         style.bond_factor = s["bonds.length_factor"]
         style.bond_pairs.clear()  # re-seeded from the new factor on the next draw
+    if startup or getattr(style, "_pref_preset", None) != s["elements.radius_source"]:
+        style.radius_preset = style._pref_preset = s["elements.radius_source"]
     if win.data is not None:
         if style.bonds_enabled:
             style.ensure_bond_pairs(win.data.types)
-        apply_element_defaults(style, win.data.types, s)
+        apply_element_defaults(style, win.data, s)
     win._style_changed()
 
 

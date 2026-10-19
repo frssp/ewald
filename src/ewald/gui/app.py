@@ -357,7 +357,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.message(f"{m.name}: {m.status}", error=True)
         if self.style.bonds_enabled:
             self.style.ensure_bond_pairs(self.data.types)
-        prefs.apply_element_defaults(self.style, self.data.types, self.settings)
+        self._apply_element_defaults()
         self.panel.set_data(self.data)
         ts = self.data.attributes.get("Timestep", self.frame)
         self.viewport.overlay_text = f"Frame {self.frame}   timestep {ts}"
@@ -371,7 +371,15 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.workspaces.currentIndex() == 1:
             self.render_page.update_code()
 
+    def _apply_element_defaults(self):
+        table = prefs.apply_element_defaults(self.style, self.data, self.settings)
+        if table is not None and table.fallback and table.summary() != getattr(self, "_radius_note", None):
+            self._radius_note = table.summary()  # say once which types fell back, not on every frame
+            self.message(f"{self._radius_note}. Set oxidation states under Particles.")
+
     def _style_changed(self):
+        if self.data is not None:
+            self._apply_element_defaults()  # a new radius preset or oxidation states refill the type radii
         self.viewport.style_combo.blockSignals(True)
         self.viewport.style_combo.setCurrentText(self.style.preset)
         self.viewport.style_combo.blockSignals(False)

@@ -43,6 +43,7 @@ pipe.modifiers.append(my_modifier)
 data = pipe.compute(10, device="cuda")   # analysis on the GPU (falls back with a clear error if no CuPy)
 pipe.render("frame10.png", frame=10, size=(2000, 1500), direction="iso", bonds=None)
 pipe.render("frame10_rt.png", frame=10, renderer="raytrace", ao_samples=32)   # ray traced, AO + shadows
+pipe.render("ionic.png", radius_preset="ionic")   # Shannon radii; also "atomic", "vdW", ... (docs/user/rendering.md)
 ```
 
 Desktop viewer:
