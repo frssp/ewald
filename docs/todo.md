@@ -25,10 +25,8 @@ GUI
   pipeline yet (now it keeps the last one); 3D snapshot views (`show(pipe, frame=...)` drawing
   the structure) and image/figure cells; drag cells to reorder; inline
   Ask Claude suggestions as diffs; per-notebook render settings; a `.py` header with the view state and data links.
-- Notebook kernels (MVP landed: `ewald/kernel.py`): step forms, enable checkboxes and step
-  results for steps that live in the kernel (now shown as code); an Interrupt button; frames
-  without blocking the GUI thread while a cell runs; surfaces, grids and vectors in the frames
-  sent back (now particles, cell, bonds, tables, attributes); kernels on SSH hosts.
+- Notebook kernels (`ewald/kernel.py`): kernels on SSH hosts; step forms for steps a kernel
+  cell adds with code the app cannot import (a class only the kernel's Python has stays as code).
 - More analysis verbs (`cna(pipe)`, `voronoi(pipe)`, `clusters(pipe)`, returning per-type counts),
   and verbs in the Insert menu and Ask Claude's suggestions.
 - Plugins side bar: an "updates available" badge on the activity bar, disable per notebook,
