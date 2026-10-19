@@ -17,6 +17,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from .. import modifiers as mods
 from ..render import camera_state, render
 from .ask_panel import AskPanel, agent_from_settings
+from .collapsible import make_collapsible
 from .console import make_console
 from .icons import app_icon
 from .inspector import DataInspector
@@ -171,6 +172,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         d.setObjectName(title)
         d.setWidget(widget)
         d.setFeatures(QtWidgets.QDockWidget.DockWidgetMovable | QtWidgets.QDockWidget.DockWidgetFloatable)
+        make_collapsible(d)  # ▾ in the title bar folds the panel to a strip
         self.addDockWidget(area, d)
         if width:
             self.resizeDocks([d], [width], QtCore.Qt.Horizontal)

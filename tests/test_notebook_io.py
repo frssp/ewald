@@ -162,3 +162,13 @@ def test_ewd_carries_the_plugins_its_steps_use(cu_file, tmp_path):
                                     "modifiers": ["EwdShift"], "file": "plugins/ewd_shift.py"}]
     with zipfile.ZipFile(tmp_path / "p.ewd") as z:
         assert "class EwdShift" in z.read("plugins/ewd_shift.py").decode()
+
+
+def test_folded_cells_round_trip_as_jupyter_hidden_cells():
+    nb = Notebook.from_py("# %%\nx = 1\n\n# %%\ny = 2\n")
+    nb.cells[1].collapsed = True
+    doc = notebook_io.to_ipynb(nb)
+    assert doc["cells"][1]["metadata"]["jupyter"] == {"source_hidden": True, "outputs_hidden": True}
+    assert "jupyter" not in doc["cells"][0]["metadata"]
+    back = notebook_io.from_ipynb(doc)
+    assert [c.collapsed for c in back.cells] == [False, True]

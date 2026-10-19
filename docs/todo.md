@@ -8,6 +8,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
+- Collapsible panels and cells; restricted banner and File › Trust notebook next. Branch
+  `claude/project-thread-x53vio`.
 
 ## Next
 

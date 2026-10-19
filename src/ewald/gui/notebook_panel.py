@@ -96,7 +96,10 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
         self._fit()
 
     def _fit(self):
-        doc, lines = self.document(), 0
+        try:
+            doc, lines = self.document(), 0
+        except RuntimeError:  # a late textChanged while the editor is being deleted
+            return
         block = doc.firstBlock()
         while block.isValid():  # wrapped lines count too
             lines += max(1, block.layout().lineCount() if block.layout() is not None else 1)
@@ -304,13 +307,24 @@ class CellWidget(QtWidgets.QFrame):
         self.counter = QtWidgets.QLabel(objectName="cellCounter")
         self.counter.setFont(mono_font())
         self.counter.setAlignment(QtCore.Qt.AlignCenter)
+        self.fold_button = QtWidgets.QToolButton(text="▾", toolTip="Collapse or expand the cell",
+                                                 objectName="cellFold", autoRaise=True)
+        self.fold_button.clicked.connect(lambda: self.set_collapsed(not self.cell.collapsed))
         gutter.addWidget(self.run_button, 0, QtCore.Qt.AlignHCenter)
         gutter.addWidget(self.counter, 0, QtCore.Qt.AlignHCenter)
+        gutter.addWidget(self.fold_button, 0, QtCore.Qt.AlignHCenter)
         gutter.addStretch()
         outer.addLayout(gutter)
-        self.body = QtWidgets.QVBoxLayout()
+        right = QtWidgets.QVBoxLayout()
+        self.content = QtWidgets.QWidget()
+        self.body = QtWidgets.QVBoxLayout(self.content)
+        self.body.setContentsMargins(0, 0, 0, 0)
         self.body.setSpacing(6)
-        outer.addLayout(self.body, 1)
+        self.folded_label = QtWidgets.QLabel(objectName="cellFolded")
+        self.folded_label.setToolTip("Collapsed: click ▸ or double-click to expand")
+        right.addWidget(self.content)
+        right.addWidget(self.folded_label)
+        outer.addLayout(right, 1)
         if cell.kind == "markdown":
             self.run_button.setVisible(False)
             self.counter.setVisible(False)
@@ -322,6 +336,21 @@ class CellWidget(QtWidgets.QFrame):
         else:
             self._build_code()
         self.update_state()
+        self.set_collapsed(cell.collapsed)
+
+    def set_collapsed(self, on: bool):
+        """Fold the cell to one line (its title, step name or first line of code), or unfold it."""
+        self.cell.collapsed = bool(on)
+        self.content.setVisible(not on)
+        self.folded_label.setVisible(on)
+        self.fold_button.setText("▸" if on else "▾")
+        if on:
+            first = next((ln for ln in self.cell.source.splitlines() if ln.strip()), "")
+            if self.cell.kind == "markdown":
+                first = first.lstrip("# ")
+            text = self.cell.title or (self.cell.modifier.name if self.cell.modifier is not None else first)
+            n = len(self.cell.source.splitlines())
+            self.folded_label.setText(f"{text}   ·  {n} line{'s' if n != 1 else ''}" if n > 1 else text)
 
     # ----------------------------------------------------------- bodies
     def _menu_button(self):
@@ -389,7 +418,9 @@ class CellWidget(QtWidgets.QFrame):
         self.outputs = None
 
     def mouseDoubleClickEvent(self, event):
-        if self.cell.kind == "markdown":
+        if self.cell.collapsed:
+            self.set_collapsed(False)
+        elif self.cell.kind == "markdown":
             self.view.setVisible(False)
             self.editor.setVisible(True)
             self.editor.setFocus()

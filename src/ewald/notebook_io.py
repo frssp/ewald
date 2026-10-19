@@ -82,6 +82,8 @@ def to_ipynb(nb, outputs: bool = True) -> dict:
     cells = []
     for cell in nb.cells:
         meta = {"title": cell.title} if cell.title else {}
+        if cell.collapsed:  # JupyterLab's collapsed input and output
+            meta["jupyter"] = {"source_hidden": True, "outputs_hidden": True}
         if cell.kind == "markdown":
             cells.append({"id": cell.id, "cell_type": "markdown", "metadata": meta, "source": _lines(cell.source)})
             continue
@@ -119,7 +121,9 @@ def from_ipynb(doc, cls=None, **kwargs):
             continue  # raw cells
         source = raw.get("source", "")
         source = "".join(source) if isinstance(source, list) else source
-        cell = Cell(source.rstrip("\n"), kind=kind, title=(raw.get("metadata") or {}).get("title", ""))
+        raw_meta = raw.get("metadata") or {}
+        cell = Cell(source.rstrip("\n"), kind=kind, title=raw_meta.get("title", ""),
+                    collapsed=bool((raw_meta.get("jupyter") or {}).get("source_hidden")))
         if raw.get("id"):
             cell.id = str(raw["id"])
         if kind == "code":

@@ -1619,3 +1619,45 @@ def test_viewport_boundary_images_hover_as_real_atom(app):
 
     assert v.hover_index(*screen([4.0, 4.0, 4.0]), w, h) == 0  # the corner image is Ti 0
     assert v.hover_index(*screen([2.0, 2.0, 2.0]), w, h) == 1
+
+
+def test_panels_and_cells_fold(app, cu_path, tmp_path):
+    from ewald.gui.app import MainWindow
+    from ewald.gui.collapsible import STRIP, DockTitleBar
+    from ewald.notebook import Notebook
+
+    w = MainWindow()
+    w.resize(1400, 900)
+    w.show()
+    app.processEvents()
+    bar = w.notebook_dock.titleBarWidget()
+    assert isinstance(bar, DockTitleBar)
+    bar.fold.click()
+    app.processEvents()
+    assert bar.collapsed and w.notebook_dock.width() == STRIP and not w.panel.isVisible()
+    bar.toggle()
+    app.processEvents()
+    assert not bar.collapsed and w.notebook_dock.widget() is w.panel and w.panel.isVisible()
+    assert w.notebook_dock.width() > 4 * STRIP
+    data = w.bottom_dock.titleBarWidget()
+    data.set_collapsed(True)
+    assert w.bottom_dock.height() == STRIP or w.bottom_dock.maximumHeight() == STRIP
+    data.set_collapsed(False)
+    side = w.ask_dock.titleBarWidget()                      # tabbed with Display: they fold together
+    side.set_collapsed(True)
+    assert all(d.maximumWidth() == STRIP for d in [w.ask_dock] + w.tabifiedDockWidgets(w.ask_dock))
+    assert w.tabPosition(QtCore.Qt.RightDockWidgetArea) == QtWidgets.QTabWidget.East   # tabs turn sideways
+    side.set_collapsed(False)
+    assert w.tabPosition(QtCore.Qt.RightDockWidgetArea) == QtWidgets.QTabWidget.South
+
+    view = w.panel.view
+    view.add_cell("code", "print('hi')\nx = 1")
+    cw = view.widgets[-1]
+    cw.fold_button.click()
+    assert cw.cell.collapsed and cw.content.isHidden() and "print('hi')" in cw.folded_label.text()
+    nb_path = tmp_path / "folded.ipynb"
+    view.notebook.save(str(nb_path))
+    assert Notebook.load(str(nb_path)).cells[-1].collapsed               # Jupyter's source_hidden
+    cw.set_collapsed(False)
+    assert not cw.content.isHidden()
+    w.close()

@@ -38,6 +38,10 @@ the next one. Notebook › Run all (Ctrl+Shift+Enter) restarts the namespace and
 from the top. If a cell fails, its traceback appears under it, and Run all stops there and
 marks the cells below as stale.
 
+The ▾ under a cell's counter folds the cell to one line (its title, step name or first line of
+code); ▸ or a double-click unfolds it. Folded cells stay folded in `.ipynb` and `.ewd` files,
+as JupyterLab's hidden input and output, so they open folded in Jupyter too.
+
 Running a cell again replaces the modifiers it added last time, in the same place, so you can
 edit a cell and re-run it without stacking duplicates. A cell that assigns `pipe` again (a new
 `load`) re-runs the cells below it on the new pipeline.
@@ -203,7 +207,11 @@ Preferences › General › *Window layout* switches between `notebook` (the def
 the OVITO-style pipeline list and properties panel, after a restart. In the notebook layout,
 display settings (particle radii and colors, bonds, cell and visual plugins) are in the
 **Display** panel on the right, tabbed with Ask Claude. View › Focus on the viewport (Ctrl+\\)
-hides the panels, and pressing it again brings them back. View › *Minimal mode* (Ctrl+Shift+M)
+hides the panels, and pressing it again brings them back. The ▾ in a panel's title bar (or a
+double-click on the title) folds that panel: the Notebook, Plugins, Display and Ask Claude
+panels fold to a thin strip with their name written down it, and the Data panel to its title
+bar. Panels shown as tabs fold together, and their tabs turn sideways; click the strip, ▸ or a
+tab to unfold. ⧉ floats a panel in its own window. View › *Minimal mode* (Ctrl+Shift+M)
 hides the menu bar, toolbars and status bar, leaving the notebook and the viewport. Every
 command stays one search away in the command palette (Ctrl+K), menu shortcuts keep working,
 and Ctrl+Shift+M brings the menus back. *UI theme* picks Paper (light, the
