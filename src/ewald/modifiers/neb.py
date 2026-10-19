@@ -4,6 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..pipeline import Modifier
+from .trajectory import _mic
 
 _ENERGY_NAMES = ("Energy", "energy", "Potential Energy", "PotEng", "Free Energy")
 
@@ -128,15 +129,6 @@ def _index_of(ids, order, frame):
     idx = np.empty(len(ids), dtype=int)
     idx[pos] = np.arange(len(ids))
     return idx
-
-
-def _mic(delta, cell):
-    """Displacements wrapped to the nearest periodic image of ``cell``."""
-    if not cell.is_valid or not cell.pbc.any():
-        return delta
-    frac = delta @ np.linalg.inv(cell.matrix)
-    frac[:, cell.pbc] -= np.round(frac[:, cell.pbc])
-    return frac @ cell.matrix
 
 
 def _tangent(steps, e, i):

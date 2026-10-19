@@ -193,7 +193,7 @@ class Viewport(QtWidgets.QWidget):
         self._refine_timer.stop()
         self._lod_cloud = None
         stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:", "visual:"))]
-        for name in ("atoms", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay", *stale):
+        for name in ("atoms", "atoms:glass", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay", *stale):
             p.remove_actor(name, render=False)
         if p.scalar_bars:
             p.remove_scalar_bar()

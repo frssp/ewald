@@ -68,8 +68,9 @@ still use ASE's readers.
 ## NEB runs
 
 A nudged elastic band run opens as a trajectory with one frame per image (`Timestep` = image
-number), and the pipeline starts with a `NebEnergyProfile` modifier that gives the energy
-profile and barrier ([Modifiers](modifiers.md#nudged-elastic-band)).
+number), and the pipeline starts with `NebEnergyProfile`, which gives the energy profile and
+barrier ([Modifiers](modifiers.md#nudged-elastic-band)), and `OverlayFrames`, which draws every
+other image see-through behind the current one, so the moving atoms show their whole path.
 
 | Layout | Open with | Each image | Energies |
 |---|---|---|---|

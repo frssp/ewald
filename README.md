@@ -366,8 +366,9 @@ result and show it at every frame:
 matched by id, Einstein diffusion coefficient), `VelocityAutocorrelation` (VACF from
 `vx vy vz` or differentiated positions, Green-Kubo D), `TimeAveraging` (OVITO's
 time averaging of a table, attribute or property, e.g. the time-averaged g(r)),
-`TimeSeries` (attributes vs. time) and `GenerateTrajectoryLines` (particle paths
-drawn as lines, plus 'Path Length', 'Net Displacement', 'Max Displacement').
+`TimeSeries` (attributes vs. time), `GenerateTrajectoryLines` (particle paths
+drawn as lines, plus 'Path Length', 'Net Displacement', 'Max Displacement') and
+`OverlayFrames` (other frames as see-through copies of the moving atoms).
 
 ```python
 from ewald.modifiers import CoordinationAnalysis, MeanSquaredDisplacement, TimeAveraging
@@ -386,7 +387,8 @@ data.tables["coordination-rdf[average]"]                               # time-av
 A VASP NEB folder (`00 .. NN`) or a LAMMPS `neb` run folder opens with one frame per image,
 and `NebEnergyProfile` (added automatically there, or appended to any band such as an ASE NEB
 trajectory with `images=`) gives the energy profile along the reaction coordinate, VTST's
-force-based cubic spline and the forward/reverse barriers. The GUI's Plots tab draws it with
+force-based cubic spline and the forward/reverse barriers. `OverlayFrames` (also added) draws
+every other image see-through behind the current one, so the moving atoms show their path. The GUI's Plots tab draws it with
 the current image marked; clicking an image jumps to it.
 
 ```python

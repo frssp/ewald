@@ -24,7 +24,7 @@ def test_vasp_neb_folder(vasp_dir):
     folder = vasp_dir / "neb"
     assert is_neb(folder) and not is_neb(vasp_dir)
     pipe = import_file(folder)
-    assert pipe.num_frames == 5 and [type(m) for m in pipe.modifiers] == [mods.NebEnergyProfile]
+    assert pipe.num_frames == 5 and type(pipe.modifiers[0]) is mods.NebEnergyProfile
     reader = pipe.source.readers[0]
     assert isinstance(reader, NebReader)
     assert [p.split("/")[-2:] for p in reader.files] == [["00", "OUTCAR"], ["01", "OUTCAR"], ["02", "OUTCAR"],
@@ -160,3 +160,35 @@ def test_profile_without_forces_or_energies():
         f.attributes.clear()
     with pytest.raises(ValueError, match="no image has an energy"):
         Pipeline(StaticSource(cell_frames), [mods.NebEnergyProfile()]).compute(0, errors="raise")
+
+
+def test_overlay_frames_ghosts_moving_atoms(vasp_dir, lammps_dir):
+    pipe = import_file(vasp_dir / "neb")
+    assert [type(m) for m in pipe.modifiers] == [mods.NebEnergyProfile, mods.OverlayFrames]
+    plain = pipe.source.compute(2)
+    d = pipe.compute(2)
+    n = plain.count
+    frame = d["Overlay Frame"]
+    assert (frame[:n] == -1).all() and (d["Transparency"][:n] == 0).all()
+    np.testing.assert_array_equal(d.positions[:n], plain.positions)
+    ghosts = np.flatnonzero(frame >= 0)
+    assert len(ghosts) == d.attributes["OverlayFrames.count"] > 0 and 2 not in frame
+    assert np.allclose(d["Transparency"][ghosts], 0.7)
+    # each copy sits where its atom is in that image (minimum image next to the current position)
+    from ewald.modifiers.trajectory import _mic
+
+    ids = d["Particle Identifier"]
+    for g in ghosts:
+        other = pipe.source.compute(int(frame[g]))
+        k = int(np.flatnonzero(other["Particle Identifier"] == ids[g])[0]) if "Particle Identifier" in other \
+            else int(ids[g]) - 1
+        here = d.positions[int(ids[g]) - 1]
+        np.testing.assert_allclose(d.positions[g], here + _mic(other.positions[[k]] - here, d.cell)[0], atol=1e-9)
+        assert np.linalg.norm(d.positions[g] - here) > 0.1
+    # the hopping atom of the LAMMPS band leaves a copy at every other image
+    lp = import_file(lammps_dir / "neb")
+    d = lp.compute(0)
+    hop = d["Overlay Frame"][d["Particle Identifier"] == 2]
+    assert set(hop) == {-1, 1, 2, 3, 4, 5, 6}
+    lp.modifiers[-1].min_displacement = 100.0
+    assert lp.compute(0).count == lp.source.compute(0).count  # nothing moved that far: no copies

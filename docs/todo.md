@@ -42,8 +42,10 @@ Formats
   profile is computed from positions, energies and forces now); NEB folders over SSH; an
   `images=` option on the reader for ASE NEB trajectories, so the band history needs no
   modifier parameter; dimer and string-method outputs.
-- NEB: draw the hopping atoms' paths through the band (`GenerateTrajectoryLines` works, but
-  is not added for NEB sources), and interpolate between images for a smoother movie.
+- NEB: interpolate between images for a smoother movie; `OverlayFrames` copies are extra
+  particles, so picking one in the viewport selects a copy, not the real atom.
+- Ray tracer: see-through spheres are tessellated glass (`OverlayFrames` copies, Transparency);
+  fine for small sets, slow for thousands.
 - GROMACS `.gro` with velocities.
 - LAMMPS binary dump.
 - LAMMPS logs written with `thermo_style multi` or `thermo_modify line yaml` (only one-line

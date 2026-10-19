@@ -36,6 +36,7 @@ MODIFIER_MENU = {
         "Time series of attributes": mods.TimeSeries,
         "Trajectory lines / paths": mods.GenerateTrajectoryLines,
         "NEB energy profile / barrier": mods.NebEnergyProfile,
+        "Overlay frames (see-through images)": mods.OverlayFrames,
     },
     "Bonds & polyhedra": {
         "Create bonds": lambda: mods.CreateBonds(mode="covalent"),

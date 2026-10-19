@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-50 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+51 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -56,6 +56,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | `TimeAveraging` | Average upstream results over a frame range (OVITO's TimeAveragingModifier). |
 | `TimeSeries` | Global attributes as a function of time (OVITO's TimeSeriesModifier). |
 | `GenerateTrajectoryLines` | Particle paths over a frame range, drawn as lines, plus path metrics. |
+| `OverlayFrames` | Every frame of ``start:stop:step`` drawn at once: the current frame opaque, the others as see-through copies of the atoms (``transparency`` 0..1), e.g. all images of a NEB band over the image shown on the timeline. |
 
 ### Bonds and polyhedra
 
@@ -445,6 +446,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Time series of attributes
   - Trajectory lines / paths
   - NEB energy profile / barrier
+  - Overlay frames (see-through images)
 - Bonds & polyhedra
   - Create bonds
   - Edit bonds (add / delete)

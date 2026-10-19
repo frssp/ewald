@@ -214,6 +214,11 @@ recomputes them.
 - `TimeSeries(operate_on)`: attributes as a function of time.
 - `GenerateTrajectoryLines(...)`: particle paths drawn as lines, plus path length, net and
   maximum displacement.
+- `OverlayFrames(transparency=0.7, min_displacement=0.1, start, stop, step)`: every frame of
+  the range drawn at once, the current one opaque and the others as see-through copies of the
+  atoms that moved more than `min_displacement` Å from where they are now (all NEB images
+  behind the one on the timeline, a diffusion hop over an MD window). The copies are appended
+  as extra particles with `Transparency` and `Overlay Frame`, so put it last in the pipeline.
 
 ```python
 pipe.modifiers.append(MeanSquaredDisplacement(time_per_frame=0.002))   # ps per frame
