@@ -77,14 +77,16 @@ class Timeline(QtWidgets.QWidget):
     def frame(self) -> int:
         return self.slider.value()
 
-    def set_num_frames(self, n: int):
+    def set_num_frames(self, n: int, keep_selection: bool = False):
+        """New frame count; ``keep_selection`` keeps the selected frames that still exist
+        (a growing file, see live_reload.py)."""
         for w in (self.slider, self.spin):
             w.blockSignals(True)
             w.setRange(0, max(0, n - 1))
             w.blockSignals(False)
         self.count.setText(f"/ {max(0, n - 1)}")
         self.setEnabled(n > 1)
-        self.set_selection([])
+        self.set_selection(self.selection if keep_selection else [])
 
     @property
     def selection(self) -> list[int]:

@@ -31,6 +31,7 @@ from . import preferences as prefs
 from .render_page import RenderPage
 from .style import ViewStyle
 from .theme import TOKENS
+from .live_reload import LiveReload
 from .timeline import Timeline
 from .viewport import Viewport
 
@@ -83,6 +84,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.viewport.contextMenuRequested.connect(self._show_viewport_menu)
         self.timeline = Timeline()
         self.timeline.frameChanged.connect(self.set_frame)
+        self.live_reload = LiveReload.attach(self)
         analyze = QtWidgets.QWidget()
         al = QtWidgets.QVBoxLayout(analyze)
         al.setContentsMargins(0, 0, 0, 0)
@@ -244,6 +246,12 @@ class MainWindow(QtWidgets.QMainWindow):
         f.addAction("E&xport data…", self.export_dialog, "Ctrl+E")
         f.addAction("Export &movie…", self.export_movie)
         f.addSeparator()
+        self.live_reload_action = f.addAction("&Live reload")
+        self.live_reload_action.setCheckable(True)
+        self.live_reload_action.triggered.connect(self._toggle_live_reload)
+        self.live_reload_action.setStatusTip("Follow a trajectory that is still being written: new frames "
+                                             "extend the timeline (Preferences › General).")
+        f.addSeparator()
         f.addAction("&Quit", self.close, QtGui.QKeySequence.Quit)
         e = mb.addMenu("&Edit")
         act = e.addAction("&Preferences…", self.preferences, QtGui.QKeySequence.Preferences)
@@ -355,6 +363,11 @@ class MainWindow(QtWidgets.QMainWindow):
             b.setChecked(i == index)
         if index == 1:
             self.render_page.update_code()
+
+    def _toggle_live_reload(self, on):
+        """File › Live reload: on or off for this session (the default is in Preferences › General)."""
+        self.live_reload.configure(on, self.settings["general.live_reload_interval"])
+        self.message(f"Live reload {'on' if on else 'off'}")
 
     def preferences(self):
         dlg = prefs.PreferencesDialog(self.settings, self)
@@ -489,6 +502,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plots.forget_selection()
         self.panel.set_pipeline(pipeline)
         self.timeline.set_num_frames(pipeline.num_frames)
+        self.live_reload.set_pipeline(pipeline)
         self._push_console()
         self.frame = 0
         self.timeline._set(0) if self.timeline.frame != 0 else self.recompute()
@@ -1058,6 +1072,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def closeEvent(self, event):
         prefs.save_layout(self, self.settings)
         self.timeline.timer.stop()
+        self.live_reload.timer.stop()
         self.viewport.plotter.close()  # release the VTK/OpenGL context before Qt tears down
         km = getattr(self.console, "kernel_manager", None)
         if km is not None:
@@ -1088,7 +1103,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
         if self.pipeline is not None:
             self.panel.refresh()
-            self.timeline.set_num_frames(self.pipeline.num_frames)
+            self.timeline.set_num_frames(self.pipeline.num_frames, keep_selection=True)
             self.recompute()
 
 

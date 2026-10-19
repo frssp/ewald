@@ -592,8 +592,11 @@ def glob(pattern) -> list[str]:
     return out
 
 
-def line_offsets(path, regex: str) -> list[tuple[int, bytes]] | None:
+def line_offsets(path, regex: str, start: int = 0) -> list[tuple[int, bytes]] | None:
     """Byte offset and text of every line matching the extended ``regex``, found by remote ``grep -b``.
+
+    ``start`` (a line start) skips the bytes before it (``tail -c``), so a file that grows
+    while it is being written is searched only from where the last search ended.
 
     Returns ``None`` when ``path`` is local or compressed, or the host has no
     usable grep, so the caller falls back to streaming the file.
@@ -605,12 +608,16 @@ def line_offsets(path, regex: str) -> list[tuple[int, bytes]] | None:
     if conn._grep is False:
         return None
     try:
-        status, out = conn.run(f"LC_ALL=C grep -b -E {shlex.quote(regex)} -- {shlex.quote(rp.path)}")
+        grep = f"LC_ALL=C grep -b -E {shlex.quote(regex)}"
+        command = f"{grep} -- {shlex.quote(rp.path)}" if not start else \
+            f"tail -c +{int(start) + 1} -- {shlex.quote(rp.path)} | {grep}"
+        status, out = conn.run(command)
     except Exception:
         conn._grep = False
         return None
     if status not in (0, 1):
-        conn._grep = False if status in (126, 127) else conn._grep
+        if not start:  # a failing tail must not turn grep off for the whole connection
+            conn._grep = False if status in (126, 127) else conn._grep
         return None
     conn._grep = True
     hits = []
@@ -618,7 +625,7 @@ def line_offsets(path, regex: str) -> list[tuple[int, bytes]] | None:
         off, sep, text = line.partition(b":")
         if not sep or not off.isdigit():
             return None
-        hits.append((int(off), text))
+        hits.append((int(off) + start, text))
     return hits
 
 
