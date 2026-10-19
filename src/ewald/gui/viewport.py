@@ -285,6 +285,9 @@ class Viewport(QtWidgets.QWidget):
                 scene = scene.copy()
                 scene.bonds, scene.vectors = None, {}
         drawn = build_scene(p, scene, mesh_limit=self.mesh_limit, **kw)
+        # boundary images are hovered through the drawn spheres (each knows its real atom)
+        atoms = drawn["atoms"].primitive if "boundary" in kw and not coarse and "atoms" in drawn else None
+        self._boundary_atoms = None if atoms is None else (atoms.centers, atoms.index, atoms.sizes())
         if (any(s.transparency > 0 for s in self.data.surfaces.values()) or needs_depth_peeling(drawn)) \
                 and not getattr(self, "_peeling", False):
             p.enable_depth_peeling()
@@ -584,7 +587,12 @@ class Viewport(QtWidgets.QWidget):
         pos = self.data.positions
         if not len(pos):
             return None
-        d = np.linalg.norm(pos - world, axis=1)
+        diff = pos - world
+        if self.style.boundary and self.data.cell.is_valid:  # a boundary ghost picks its real atom
+            cell = self.data.cell
+            f = diff @ np.linalg.inv(cell.matrix)
+            diff = (f - np.rint(f) * cell.pbc) @ cell.matrix
+        d = np.linalg.norm(diff, axis=1)
         i = int(np.argmin(d))
         rmax = float(default_radii(self.data, **self.style.radius_kwargs()).max()) * self.style.radius_scale
         return i if d[i] <= 1.5 * rmax + 0.3 else None
@@ -641,6 +649,10 @@ class Viewport(QtWidgets.QWidget):
         if d is None or not d.count or width <= 0 or height <= 0:
             return None
         origin, direction = camera_ray(self.plotter.camera, x, y, width, height)
+        ghosts = getattr(self, "_boundary_atoms", None)
+        if ghosts is not None and self.style.boundary:
+            idx = ray_spheres(origin, direction, ghosts[0], ghosts[2])
+            return None if idx is None else int(ghosts[1][idx])
         idx = ray_spheres(origin, direction, d.positions, self._hover_radii_for(d))
         return None if idx is None else int(idx)
 

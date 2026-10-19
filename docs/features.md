@@ -315,6 +315,8 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 `size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`.
 
+Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`.
+
 ## Command line
 
 Details: [Command line](user/cli.md).
@@ -330,7 +332,7 @@ Details: [Command line](user/cli.md).
 | `ewald ask INPUT [QUESTION...]` | ask Claude about a structure (needs anthropic + credentials) | `--type-map` `--model` `--allow-code` `--script` `--select` `--ids` `--frame` |
 | `ewald narrate INPUT` | timeline of events in a trajectory (Claude writes it if available) | `--type-map` `--no-llm` `--render` `--json` |
 | `ewald api` | print the Python API reference for LLMs (llms.txt) | `--with-plugins` |
-| `ewald plugins` | list installed plugins and any that failed to load | `--json` |
+| `ewald plugins` | list installed plugins and any that failed to load | `--json` `--enable` `--disable` |
 | `ewald forge [REQUEST...]` | have Claude write a modifier plugin, test it and save it | `--yes` `--draft` `--overwrite` `--rounds` `--model` |
 | `ewald mcp [INPUT]` | serve the analysis tools over MCP (stdio) | `--allow-code` |
 | `ewald inventory` | print or update the feature inventory (docs/features.md) | `-o` `--gui` |
