@@ -1275,6 +1275,11 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w = MainWindow(settings=settings.Settings())
     menus = [a.text().replace("&", "") for a in w.menuBar().actions()]
     assert "Notebook" in menus and "Insert" in menus and "Pipeline" not in menus
+    plugins_button = w.activity_buttons["Plugins"]
+    w._plugin_updates(2)                                       # a count badge while plugins have updates
+    assert plugins_button.property("updates") == 2 and "2 updates available" in plugins_button.toolTip()
+    w._plugin_updates(0)
+    assert plugins_button.toolTip() == "Show or hide the Plugins side bar"
     tabs = w.panel.tabs
     assert tabs.count() == 1 and tabs.tabText(0) == "Notebook 1"
     w.open_any(cu_path, ask_types=False)                      # the empty notebook makes way for the file
@@ -1731,7 +1736,15 @@ def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app,
     s = settings.Settings()
     s["python.plugin_catalogs"] = f"{index}; {tmp_path / 'not-yet.json'}"
     panel = plugins_panel.PluginsPanel(settings=s)
+    counts = []
+    panel.updatesChanged.connect(counts.append)
     panel.wait()
+    assert counts == [1] and [(i.id, e.version) for i, e in panel.updates()] == [("up_shift", "0.3")]
+    panel.search.setText("@updates")                                     # only what has an update
+    app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)
+    assert [r.item.id for r in panel.findChildren(plugins_panel.PluginRow)] == ["up_shift"]
+    panel.search.clear()
+    app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)
     rows = {r.item.name: r for r in panel.findChildren(plugins_panel.PluginRow)}
     buttons = {b.text(): b for r in rows.values() for b in r.findChildren(plugins_panel.QtWidgets.QPushButton)}
     assert "Up shift" not in rows and "Update to 0.3" in buttons          # matched by id, not listed twice
@@ -1743,6 +1756,7 @@ def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app,
     assert next(i for i in panel.items if i.id == "up_shift").version == "0.3"
     app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)    # the old rows go
     assert not any(b.text().startswith("Update") for b in panel.findChildren(plugins_panel.QtWidgets.QPushButton))
+    assert counts == [1, 0]                                              # the activity bar badge goes away
     panel.close()
 
 
