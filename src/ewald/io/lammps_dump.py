@@ -7,12 +7,14 @@ files (``.gz``/``.bz2``/``.xz``) and a truncated last frame from a killed run.
 """
 from __future__ import annotations
 
+import io
 import warnings
 
 import numpy as np
 
 from ..data import Cell, DataCollection
 from . import remote
+from ._textparse import parse_table
 from .base import FrameReader, head_lines, open_binary
 
 # LAMMPS column name -> (OVITO-style property, component)
@@ -51,64 +53,38 @@ class LammpsDumpReader(FrameReader):
         self.path = str(path)
         self.type_map = {str(k): v for k, v in (type_map or {}).items()}
         self.sort_by_id = sort_by_id
-        self._offsets = _scan_frames(self.path)
+        self._offsets, last_complete = _scan_frames(self.path)
         if not self._offsets:
             raise ValueError(f"{path}: no 'ITEM: TIMESTEP' found; not a LAMMPS dump file")
-        self._last = None
-        self._units = None  # LAMMPS writes ITEM: UNITS only in the first snapshot
-        self._units = self.read(0).attributes.get("Units") if len(self._offsets) > 1 else None
-        try:  # a run killed mid-write leaves a partial last frame; drop it
-            self.read(len(self._offsets) - 1)
-        except (ValueError, IndexError, EOFError):
+        self._end = None  # where the last frame ends (None: end of file)
+        if not last_complete:  # a run killed mid-write leaves a partial last frame; drop it
             warnings.warn(f"{path}: last frame is incomplete and was skipped", stacklevel=2)
-            self._offsets.pop()
+            self._end = self._offsets.pop()
             if not self._offsets:
                 raise ValueError(f"{path}: the only frame is incomplete") from None
+        self._last = None
+        self._units = None  # LAMMPS writes ITEM: UNITS only in the first snapshot
+        if len(self._offsets) > 1:
+            with open_binary(self.path) as fh:
+                self._units = _parse_header(fh)[0].get("Units")
 
     def __len__(self):
         return len(self._offsets)
 
     def read(self, index: int) -> DataCollection:
         index = range(len(self._offsets))[index]
-        if self._last is None or self._last[0] != index:  # the frame checked in __init__ is reused
+        if self._last is None or self._last[0] != index:
             with open_binary(self.path) as fh:
                 fh.seek(self._offsets[index])
-                self._last = (index, self._parse(fh))
+                end = self._offsets[index + 1] if index + 1 < len(self._offsets) else self._end
+                self._last = (index, self._parse(fh, end))
         return self._last[1].copy()
 
-    def _parse(self, fh) -> DataCollection:
-        attrs: dict[str, object] = {}
-        n = None
-        cell = None
-        line = fh.readline()
-        while True:
-            if not line:
-                raise EOFError("unexpected end of file inside a frame")
-            item = line.decode().strip()
-            if not item.startswith("ITEM:"):
-                line = fh.readline()
-                continue
-            item = item[5:].strip()
-            if item == "TIMESTEP":
-                attrs["Timestep"] = int(fh.readline().split()[0])
-            elif item == "UNITS":
-                attrs["Units"] = fh.readline().decode().strip()
-            elif item == "TIME":
-                attrs["Time"] = float(fh.readline())
-            elif item == "NUMBER OF ATOMS":
-                n = int(fh.readline())
-            elif item.startswith("BOX BOUNDS"):
-                cell = _parse_box(item.split()[2:], [fh.readline().split() for _ in range(3)])
-            elif item.startswith("ATOMS"):
-                cols = item.split()[1:]
-                break
-            line = fh.readline()
-        if n is None or cell is None:
-            raise ValueError("frame lacks NUMBER OF ATOMS or BOX BOUNDS")
-        lines = [fh.readline() for _ in range(n)]
-        if n and (not lines[-1].strip() or lines[-1].startswith(b"ITEM:")):
-            raise ValueError(f"frame has fewer than {n} atom lines")
-        table = _read_table(b"".join(lines), n, cols)
+    def _parse(self, fh, end=None) -> DataCollection:
+        attrs, n, cell, cols = _parse_header(fh)
+        # One read of the whole atom block (up to the next frame) instead of n readline calls.
+        block = fh.read() if end is None else fh.read(max(end - fh.tell(), 0))
+        table = _read_table(block, n, cols)
 
         data = DataCollection(np.zeros((n, 3)), cell=cell)
         vectors: dict[str, dict[int, np.ndarray]] = {}
@@ -120,10 +96,8 @@ class LammpsDumpReader(FrameReader):
                 if index is not None and index.dtype.kind != "i":
                     index = None  # type labels instead of numbers
                 if col == "element" or "Particle Type" not in data.particles:
-                    values = index.astype(str) if index is not None else column.astype(str)
-                    if col == "type" and self.type_map:
-                        values = np.array([self.type_map.get(v, v) for v in values])
-                    data.particles["Particle Type"] = values
+                    data.particles["Particle Type"] = _type_labels(
+                        index if index is not None else column, self.type_map if col == "type" else None)
                 if index is not None:
                     data.particles["Type Index"] = index
             elif comp is None:
@@ -137,8 +111,8 @@ class LammpsDumpReader(FrameReader):
             data.particles[name] = arr if name != "Periodic Image" else arr.astype(int)
         _resolve_positions(data, cell, vectors)
         if self.sort_by_id and "Particle Identifier" in data.particles:
-            order = np.argsort(data.particles["Particle Identifier"], kind="stable")
-            if np.any(order != np.arange(n)):
+            order = _id_order(data.particles["Particle Identifier"])
+            if order is not None:
                 data = data.take(order)
         data.attributes.update(attrs)
         data.attributes.setdefault("Timestep", 0)
@@ -147,62 +121,198 @@ class LammpsDumpReader(FrameReader):
         return data
 
 
+def _parse_header(fh):
+    """Read the ITEM lines of one frame up to and including 'ITEM: ATOMS'."""
+    attrs: dict[str, object] = {}
+    n = None
+    cell = None
+    line = fh.readline()
+    while True:
+        if not line:
+            raise EOFError("unexpected end of file inside a frame")
+        item = line.decode().strip()
+        if not item.startswith("ITEM:"):
+            line = fh.readline()
+            continue
+        item = item[5:].strip()
+        if item == "TIMESTEP":
+            attrs["Timestep"] = int(fh.readline().split()[0])
+        elif item == "UNITS":
+            attrs["Units"] = fh.readline().decode().strip()
+        elif item == "TIME":
+            attrs["Time"] = float(fh.readline())
+        elif item == "NUMBER OF ATOMS":
+            n = int(fh.readline())
+        elif item.startswith("BOX BOUNDS"):
+            cell = _parse_box(item.split()[2:], [fh.readline().split() for _ in range(3)])
+        elif item.startswith("ATOMS"):
+            cols = item.split()[1:]
+            break
+        line = fh.readline()
+    if n is None or cell is None:
+        raise ValueError("frame lacks NUMBER OF ATOMS or BOX BOUNDS")
+    return attrs, n, cell, cols
+
+
 def _read_table(block: bytes, n: int, cols) -> list[np.ndarray]:
     """Atom lines -> one array per column (float, or bytes for text columns such as 'element')."""
-    import io
-
     if n == 0:
         return [np.empty(0) for _ in cols]
     text = [k for k, c in enumerate(cols) if c == "element"]
     numeric = [k for k in range(len(cols)) if k not in text]
-    try:  # numpy's C parser: ~4x faster than splitting in Python
-        values = np.loadtxt(io.BytesIO(block), dtype=float, usecols=numeric, ndmin=2,
-                            comments=None)
-        if values.shape != (n, len(numeric)):
-            raise ValueError
+    try:  # parallel numba parser, np.loadtxt for rows it cannot convert exactly
+        values = parse_table(block, n, len(cols), numeric)
         out: list = [None] * len(cols)
         for j, k in enumerate(numeric):
             out[k] = values[:, j]
         if text:
-            raw = np.array(block.split(), dtype=bytes).reshape(n, len(cols))
+            raw = np.array(block.split()[:n * len(cols)], dtype=bytes).reshape(n, len(cols))
             for k in text:
                 out[k] = raw[:, k]
         return out
     except ValueError:
-        raw = block.split()
+        raw = block.split()[:n * len(cols)]
         if len(raw) != n * len(cols):
             raise ValueError(f"atom table has {len(raw)} values, expected {n} x {len(cols)}") from None
         raw = np.array(raw, dtype=bytes).reshape(n, len(cols))
         return [raw[:, k] for k in range(len(cols))]
 
 
-def _scan_frames(path) -> list[int]:
-    """Byte offset of the first ITEM line of every frame (UNITS/TIME may precede TIMESTEP)."""
+def _id_order(ids) -> np.ndarray | None:
+    """Permutation sorting atoms by id, or None when they are already sorted.
+
+    MPI runs write ids in scrambled order, usually a permutation of a dense range;
+    then a scatter (O(n)) replaces the argsort.
+    """
+    n = len(ids)
+    if n == 0 or np.all(ids[1:] >= ids[:-1]):
+        return None
+    lo = ids.min()
+    if ids.dtype.kind in "iu" and ids.max() - lo == n - 1:
+        order = np.full(n, -1, dtype=np.int64)
+        order[ids - lo] = np.arange(n)
+        if order.min() >= 0:  # every slot filled: ids are a permutation
+            return order
+    return np.argsort(ids, kind="stable")
+
+
+def _type_labels(values, type_map=None) -> np.ndarray:
+    """Per-atom type names as a compact string array, converting each distinct value once.
+
+    ``astype(str)`` on 1e6+ int64 values is slow and yields 21-character strings (84 bytes
+    per atom); mapping the few distinct types through a lookup table avoids both.
+    """
+    values = np.asarray(values)
+    if values.dtype.kind == "i" and len(values) and 0 <= values.min() and values.max() < 1 << 16:
+        uniq = np.arange(values.max() + 1)
+        inverse = values
+    else:
+        uniq, inverse = np.unique(values, return_inverse=True)
+    names = [v.decode() if isinstance(v, bytes) else str(v) for v in uniq.tolist()]
+    if type_map:
+        names = [type_map.get(v, v) for v in names]
+    return np.array(names, dtype=str)[inverse]
+
+
+def _scan_frames(path, chunk_size: int = 1 << 24) -> tuple[list[int], bool]:
+    """Byte offset of the first ITEM line of every frame (UNITS/TIME may precede TIMESTEP),
+    and whether the last frame holds all of its atom lines.
+
+    Reads the file in large chunks and only looks at 'ITEM:' lines, so indexing a
+    multi-GB dump costs about as much as reading it from disk. A remote dump is indexed
+    by ``grep`` on the host instead (only the ITEM lines cross the network).
+    """
+    hits = remote.line_offsets(path, "^ITEM: (TIME|UNITS|ATOMS)") if remote.is_remote(path) else None
+    if hits is not None:
+        return _scan_remote(path, hits)
+    offsets: list[int] = []
+    in_header = False
+    natoms = None  # NUMBER OF ATOMS of the current frame
+    ncols = 0  # columns in its ATOMS line
+    counted = None  # atom lines seen since the ATOMS line, None outside the atom block
+    want_n = False  # the next line holds the atom count
+    pos = 0  # file offset of buf[0]
+    carry = b""
+    with open_binary(path) as fh:
+        # read1 on a compressed stream returns what decompressed so far, so a truncated
+        # .gz still yields every complete frame before the cut
+        read = fh.read if isinstance(fh, io.BufferedReader) else fh.read1
+        while True:
+            try:
+                chunk = read(chunk_size)
+            except EOFError:  # truncated compressed stream; the partial frame is dropped later
+                chunk = b""
+            buf = carry + chunk
+            if chunk:
+                end = buf.rfind(b"\n") + 1
+                if end == 0:
+                    carry = buf
+                    continue
+            else:
+                end = len(buf)
+            seg, carry = buf[:end], buf[end:]
+            i = 0
+            if want_n and seg:
+                eol = seg.find(b"\n") + 1 or end
+                natoms, want_n, i = int(seg[:eol]), False, eol
+            while True:
+                j = seg.find(b"ITEM:", i)
+                while j > 0 and seg[j - 1] != 10:  # 'ITEM:' not at a line start
+                    j = seg.find(b"ITEM:", j + 5)
+                stop = end if j < 0 else j
+                if counted is not None:
+                    counted += seg.count(b"\n", i, stop)
+                    if not chunk and stop == end and not seg.endswith(b"\n"):
+                        tail = seg[seg.rfind(b"\n", i, stop) + 1:stop]  # unterminated last line
+                        counted += len(tail.split()) >= ncols
+                if j < 0:
+                    break
+                counted = None
+                eol = seg.find(b"\n", j) + 1 or end
+                line = seg[j:eol]
+                if line.startswith(_FRAME_START):
+                    if not in_header:
+                        offsets.append(pos + j)
+                        in_header, natoms = True, None
+                elif line.startswith(b"ITEM: NUMBER OF ATOMS"):
+                    nl = seg.find(b"\n", eol) + 1
+                    if nl:
+                        natoms, eol = int(seg[eol:nl]), nl
+                    else:
+                        want_n = True
+                elif line.startswith(b"ITEM: ATOMS"):
+                    in_header, counted, ncols = False, 0, len(line.split()) - 2
+                i = eol
+            pos += end
+            if not chunk:
+                break
+    complete = bool(offsets) and natoms is not None and counted is not None and counted >= natoms
+    return offsets, complete
+
+
+def _scan_remote(path, hits) -> tuple[list[int], bool]:
+    """Frame offsets from remote ITEM-line hits; the last frame is checked by reading only it."""
     offsets, in_header = [], False
-    for pos, line in _item_lines(path):
+    for pos, line in hits:
         if line.startswith(_FRAME_START):
             if not in_header:
                 offsets.append(pos)
                 in_header = True
         elif line.startswith(b"ITEM: ATOMS"):
             in_header = False
-    return offsets
-
-
-def _item_lines(path):
-    """(offset, line) of every line; for a remote dump only the ITEM lines, found by grep on the host."""
-    hits = remote.line_offsets(path, "^ITEM: (TIME|UNITS|ATOMS)") if remote.is_remote(path) else None
-    if hits is not None:
-        yield from hits
-        return
-    pos = 0
-    with open_binary(path) as fh:
-        try:
-            for line in fh:
-                yield pos, line
-                pos += len(line)
-        except EOFError:  # truncated compressed stream; the partial frame is dropped later
-            pass
+    if not offsets:
+        return offsets, False
+    try:
+        with open_binary(path) as fh:
+            fh.seek(offsets[-1])
+            _, n, _, cols = _parse_header(fh)
+            block = fh.read()
+    except (ValueError, IndexError, EOFError):
+        return offsets, False
+    lines = block.count(b"\n")
+    if block and not block.endswith(b"\n"):
+        lines += len(block[block.rfind(b"\n") + 1:].split()) >= len(cols)
+    return offsets, lines >= n
 
 
 def _column_property(col: str):

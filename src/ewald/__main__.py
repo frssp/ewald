@@ -222,6 +222,9 @@ def _print_plugins(as_json=False):
         print(f"reader {r['name']:<16} {pats:<24} {r['description']}  [{r['origin']}]")
     for m in st["modifiers"]:
         print(f"modifier {m['name']:<24} {m['category']:<14} {m['description'][:60]}  [{m['origin']}]")
+    for w in st.get("writers", []):
+        pats = " ".join(w["patterns"]) or "(format= only)"
+        print(f"writer {w['name']:<16} {pats:<24} {w['description']}  [{w['origin']}]")
     for origin, err in st["errors"].items():
         print(f"FAILED {origin}: {err}")
     return 1 if st["errors"] else None

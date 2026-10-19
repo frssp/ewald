@@ -16,6 +16,7 @@ python -m pytest -q --ignore=tests/test_render.py --ignore=tests/test_gui.py --i
 xvfb-run -a python -m pytest tests/test_visual.py [--update-references]   # visual regression (reference images)
 python -m ewald api > llms.txt   # regenerate the LLM API reference (see below)
 python benchmarks/neighbors.py   # neighbor-list timings
+python benchmarks/large_files.py # open/frame-switch/memory on generated multi-million-atom files
 python examples/demo.py          # sample trajectories + figures into demo_out/
 mkdocs build --strict            # the manual (pip install -r docs/requirements.txt); CI runs it
 ```
@@ -38,7 +39,9 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 
 - `data.py` (`DataCollection`, `Cell`), `pipeline.py` (`Pipeline`, `Modifier`, `PythonModifier`,
   `ComputeContext`, frame cache), `__init__.py` (`import_file`), `__main__.py` (CLI `ewald ...`).
-- `io/`: native lazy readers (`lammps_dump.py`, `xdatcar.py`), everything else via `ase_reader.py`.
+- `io/`: native lazy readers (`lammps_dump.py`, `xdatcar.py`, `extxyz.py`, `xsf.py`, `h5md.py`), MDAnalysis
+  for XTC/TRR/DCD (`mdanalysis_reader.py`), everything else via `ase_reader.py`; each module also has its
+  writer. `io.builtin_readers()`/`builtin_writers()` register them in `plugins.py` (reader and writer registries).
   `remote.py` opens `host:/path` / `ssh://` paths (paramiko): `base.open_binary` streams them to the
   native readers, `FileSource` downloads them to a local cache for every other reader. Tests use the
   in-process server in `tests/sftp_server.py` (fixtures `server`, `ssh_env` in conftest), no sshd.
@@ -86,7 +89,7 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   (`gui/params.py`) is generated from it, so store every constructor argument as an attribute of the
   same name. New modifiers that construct with no arguments appear in the GUI menu automatically;
   otherwise add an entry with a sensible default to `MODIFIER_MENU` in `gui/pipeline_panel.py`.
-- Optional dependencies (`gui`, `gpu`, `ovito`, `llm`, `movie`) are imported lazily; tests use
+- Optional dependencies (`gui`, `gpu`, `ovito`, `llm`, `movie`, `formats`) are imported lazily; tests use
   `pytest.importorskip` for them. Headless `render()`/`compute()` never read `settings` implicitly.
 - Python first; numba or C++ only for measured hot spots. Ported OVITO code is used under its MIT
   option and keeps the notice. No LICENSE file (private project).

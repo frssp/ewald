@@ -432,3 +432,54 @@ def test_viewport_draws_and_clears_surfaces(app):
     v.set_data(data)
     assert not any(str(k).startswith("surface:") for k in v.plotter.actors)
     v.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_interactive_detail_coarse_then_refine(app, pipe):
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+
+    s = settings.Settings()
+    s["viewport.interactive_detail"] = "coarse"
+    s["performance.cache_memory"] = 64
+    w = MainWindow(pipe, settings=s)
+    vp, n = w.viewport, pipe.compute(0).count
+
+    def impostors(name="atoms"):  # point-sprite actor -> its atom count, sphere mesh -> None
+        mapper = vp.plotter.actors[name].GetMapper()
+        if "PointGaussian" not in mapper.GetClassName():
+            return None
+        source = mapper.GetInputAlgorithm()
+        source.Update()
+        return source.GetOutputDataObject(0).GetNumberOfPoints()
+
+    assert pipe.cache_memory == 64 * 2**20
+    vp.interactive_atoms = 100  # below the Preferences minimum, to subsample the 256-atom test cell
+    assert not vp.coarse and impostors() is None
+    # scrubbing: requests made while a frame is computed collapse into the latest one
+    w.timeline.slider.setSliderDown(True)
+    calls = []
+    real = w.recompute
+    w.recompute = lambda interactive=False: (calls.append(interactive), real(interactive))
+    w.timeline._set(1)
+    w.timeline._set(0)
+    w.timeline._set(1)
+    app.processEvents()
+    assert calls.count(True) == 1 and calls[-1] and w.frame == 1 and vp.coarse
+    assert 0 < impostors() <= 100 < n  # every k-th atom, as impostors
+    vp.refine()
+    assert not vp.coarse and impostors() is None
+    # rotating: atoms swap for a subsampled impostor actor until the camera rests
+    vp._go_coarse_for_motion()
+    assert vp.coarse and not vp.plotter.actors["atoms"].GetVisibility()
+    assert 0 < impostors("atoms_lod") <= 100
+    vp.refine()
+    assert "atoms_lod" not in vp.plotter.actors and vp.plotter.actors["atoms"].GetVisibility()
+    # 'full' never goes coarse; 'auto' only when a full frame misses the target rate
+    vp.detail_mode = "full"
+    assert not vp.needs_coarse(scrub=True)
+    vp.detail_mode, vp._render_time = "auto", 1.0
+    assert vp.needs_coarse() and not (setattr(vp, "_render_time", 0.0) or vp.needs_coarse())
+    w.timeline.slider.setSliderDown(False)
+    w.close()
+    w.deleteLater()

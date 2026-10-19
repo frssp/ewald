@@ -23,6 +23,9 @@ pip install -e ".[gui]"     # + desktop viewer (PySide6, pyvistaqt, qtconsole)
 pip install -e ".[remote]"  # + files over SSH (paramiko)
 ```
 
+On Windows, releases also ship wheels and a standalone installer (CPU or CUDA build) that needs no
+Python; see [docs/developer/windows-release.md](docs/developer/windows-release.md).
+
 Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
 
 ## Quick start
@@ -122,9 +125,12 @@ ewald movie dump.lammpstrj movie.gif --every 5 --fps 12 --text "t = [Time] ps" -
   plus `cell`, `attributes`, `tables`, `grids` (volumetric `VoxelGrid`s) and
   `surfaces` (display meshes such as isosurfaces).
 * `Pipeline`: source + modifier list, evaluated lazily per frame; source frames are
-  cached and never mutated by modifiers.
-* Readers: native readers for LAMMPS dumps, LAMMPS data files and VASP
-  XDATCAR; everything else through ASE (see [File formats](#file-formats)).
+  cached (up to 8 frames and `cache_memory=2 GiB` of arrays, the current frame always
+  kept) and never mutated by modifiers.
+* Readers: native lazy readers for LAMMPS dumps, VASP XDATCAR, extxyz, XSF and H5MD,
+  LAMMPS data files and VASP/cube volumetric data, GROMACS XTC/TRR and DCD through
+  MDAnalysis, everything else through ASE; matching writers for POSCAR, LAMMPS
+  data/dump, extxyz, XSF, H5MD, XTC, CIF and more (see [File formats](#file-formats)).
 * Compute backends: kernels are written against an array module, so the same
   code runs on NumPy (CPU) and CuPy (CUDA). The neighbor list has a compiled,
   multithreaded numba kernel on CPU (256k-atom fcc, 3 Å cutoff: ~0.3–0.6 s vs ~5 s
@@ -134,7 +140,12 @@ ewald movie dump.lammpstrj movie.gif --every 5 --fps 12 --text "t = [Time] ps" -
   partial RDF, trajectory unwrapping and FFT time-averaged MSD
   (`trajectory_msd(pipe, device="cuda")`).
 * Rendering: VTK via PyVista, offscreen; sphere meshes for figures and GPU
-  impostors above 150k atoms.
+  impostors above 150k atoms. The GUI viewport favors speed while you interact:
+  when a full-detail frame misses the target frame rate, rotating, zooming,
+  scrubbing and playback draw a coarse scene (impostors, no bonds, every k-th atom)
+  that is refined once the view rests (Preferences › Viewports › Performance).
+  Rendered images and movies always use full quality. Timings for big files:
+  `python benchmarks/large_files.py`.
 
 ## File formats
 
@@ -148,7 +159,19 @@ Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
 | VASP XDATCAR | native, lazy | fixed and variable cell (NpT), VASP 6.4 `Si/hash` species labels, partial last frame skipped |
 | VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics (`Selective Dynamics`, True = free), CONTCAR velocities (`Velocity` in Å/fs) |
 | VASP OUTCAR, vasprun.xml | ASE | all ionic steps with `Energy`, `Force`, `Stress` |
-| extxyz, CIF, ... | ASE | anything `ase.io.read` understands |
+| XYZ / extended XYZ | native, lazy | frames indexed by atom counts, each parsed by ASE's extxyz parser (`Lattice=`, `Properties=`, forces, energy, info) |
+| XCrySDen XSF/AXSF | native, lazy | `ANIMSTEPS`, forces, `DATAGRID_3D` grids in `data.grids["xsf"]` |
+| H5MD | native, lazy (`h5py`) | LAMMPS `dump h5md`, MDAnalysis; species names, box, velocities, forces, observables |
+| GROMACS XTC/TRR, DCD, NetCDF | MDAnalysis, lazy | atom types from `topology=` or a same-stem `.gro`/`.pdb`/`.tpr` |
+| ASE database, ASE `.traj` | ASE, lazy | `selection=` query for databases; key-value pairs as attributes |
+| CIF, ... | ASE | anything `ase.io.read` understands |
+
+`pip install "ewald[formats]"` adds h5py and MDAnalysis for H5MD and XTC/TRR/DCD.
+`export_file(pipe, "out.xtc")` writes through the matching writer, chosen by file name or
+`format=`: POSCAR (species grouped), LAMMPS data (type names in `Masses` comments) and dump,
+extxyz, XSF (with grid), H5MD, XTC/TRR/DCD, CIF, ASE db/traj, cube, CHGCAR, or any ASE
+format. Pipeline frames are written one at a time, and writer plugins (`@writer`,
+`ewald.writers` entry points) register the same way as reader plugins.
 
 ### Files on another machine (SSH)
 

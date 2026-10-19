@@ -89,6 +89,35 @@ def test_dump_truncated_last_frame(lammps_dir, tmp_path):
     assert pipe.compute(pipe.num_frames - 1).count == 32
 
 
+def test_dump_scan_independent_of_chunk_boundaries(lammps_dir, tmp_path):
+    from ewald.io.lammps_dump import _scan_frames
+
+    for name in ("dump.custom.lammpstrj", "dump.atom", "dump.triclinic.lammpstrj"):
+        path = lammps_dir / name
+        ref = _scan_frames(path)
+        assert ref[1] and len(ref[0]) >= 2
+        for chunk in (1, 5, 7, 64, 1000):  # boundaries inside ITEM lines and the atom count
+            assert _scan_frames(path, chunk_size=chunk) == ref
+    # a missing final newline still counts the last atom line, a cut-off one does not
+    raw = (lammps_dir / "dump.atom").read_bytes()
+    (tmp_path / "a.dump").write_bytes(raw.rstrip(b"\n"))
+    assert _scan_frames(tmp_path / "a.dump", chunk_size=7)[1]
+    (tmp_path / "b.dump").write_bytes(raw.rstrip(b"\n")[:-12])
+    assert not _scan_frames(tmp_path / "b.dump", chunk_size=7)[1]
+
+
+def test_dump_type_labels_are_compact(tmp_path):
+    path = tmp_path / "t.dump"
+    path.write_text("ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n4\nITEM: BOX BOUNDS pp pp pp\n"
+                    "0 1\n0 1\n0 1\nITEM: ATOMS id type x y z\n"
+                    "4 12 0 0 0\n3 2 0 0 0\n2 1 0 0 0\n1 2 0 0 0\n")
+    d = import_file(path).compute(0)
+    assert d.types.dtype == np.dtype("<U2") and list(d.types) == ["2", "1", "2", "12"]
+    np.testing.assert_array_equal(d["Type Index"], [2, 1, 2, 12])
+    d = import_file(path, type_map={2: "Cu", 12: "Zr"}).compute(0)
+    assert list(d.types) == ["Cu", "1", "Cu", "Zr"]
+
+
 def test_dump_empty_frame(tmp_path):
     path = tmp_path / "empty.dump"
     path.write_text("ITEM: TIMESTEP\n5\nITEM: NUMBER OF ATOMS\n0\nITEM: BOX BOUNDS pp pp pp\n"
@@ -150,3 +179,25 @@ def test_data_explicit_style_and_errors(tmp_path):
 
 def test_dump_reader_is_selected_for_units_header(lammps_dir):
     assert isinstance(open_reader(lammps_dir / "dump.custom.lammpstrj"), LammpsDumpReader)
+
+
+def test_fast_table_parser_matches_loadtxt():
+    import io
+
+    from ewald.io._textparse import parse_table
+
+    rng = np.random.default_rng(3)
+    vals = rng.standard_normal((700, 4)) * 10.0 ** rng.integers(-30, 30, (700, 4))
+    fmts = ["%.6f", "%g", "%.15g", "%.17g", "%.8e", "%.3E", "%.1f"]
+    lines = [" ".join(fmts[i % len(fmts)] % v for v in row) for i, row in enumerate(vals)]
+    lines[:4] = ["1 2 inf -nan", "  +1.5e+3\t-0.0 00012 .5", "1. -2 3e-5 4E+2", "7 8 9 10\r"]
+    block = ("\n".join(lines) + "\n\n").encode()
+    ref = np.loadtxt(io.BytesIO(block), ndmin=2)
+    out = parse_table(block, 700, 4, [0, 1, 2, 3])
+    np.testing.assert_array_equal(out, ref)  # bit-identical, NaN and -0.0 included
+    np.testing.assert_array_equal(np.signbit(out), np.signbit(ref))
+    np.testing.assert_array_equal(parse_table(block, 700, 4, [3, 1]), ref[:, [3, 1]])
+    with pytest.raises(ValueError):
+        parse_table(block, 701, 4, [0])
+    with pytest.raises(ValueError):
+        parse_table(b"1 2\n3\n", 2, 2, [0, 1])

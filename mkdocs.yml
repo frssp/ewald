@@ -63,6 +63,7 @@ nav:
   - Plugins:
       - Overview: plugins/index.md
       - Reader plugins: plugins/readers.md
+      - Writer plugins: plugins/writers.md
       - Modifier plugins: plugins/modifiers.md
       - Modifier Forge: plugins/forge.md
       - Testing a plugin: plugins/testing.md
@@ -74,6 +75,7 @@ nav:
       - Native code: developer/native.md
       - Testing and CI: developer/testing.md
       - Writing docs: developer/docs.md
+      - Windows release: developer/windows-release.md
   - Reference:
       - Python API: reference/api.md
       - Roadmap: ROADMAP.md

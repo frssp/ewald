@@ -38,6 +38,17 @@ def file_filter() -> str:
 SESSION_FILTER = "ewald session (*.ewald)"
 
 
+def save_filters() -> list[tuple[str, str | None]]:
+    """Save-dialog filters from the writer registry: (filter text, writer name or None)."""
+    from .. import plugins
+
+    out = []
+    for plugin in sorted(plugins.writers().values(), key=lambda p: (p.priority is None, p.priority or 0)):
+        if plugin.patterns:
+            out.append((f"{plugin.description} ({' '.join(plugin.patterns)})", plugin.name))
+    return out + [("All files, format from the name (*)", None)]
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, pipeline=None, device=None, settings=None):
         super().__init__()
@@ -50,6 +61,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.data = None
         self.device = device
         self.frame = 0
+        self._frame_pending = False
         self.style = ViewStyle()
         self.session_path = None
 
@@ -329,6 +341,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def set_pipeline(self, pipeline):
         self.pipeline = pipeline
+        pipeline.cache_memory = self.settings["performance.cache_memory"] * 2**20
         self.viewport.reset_view()
         self.viewport.clear_picks()
         self.panel.set_pipeline(pipeline)
@@ -339,9 +352,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def set_frame(self, frame):
         self.frame = frame
-        self.recompute()
+        tl = self.timeline
+        if tl.slider.isSliderDown() or tl.play.isChecked():
+            # Scrubbing/playback: frames arriving while one is computed collapse into the
+            # latest, which is drawn coarse and refined when the timeline comes to rest.
+            if not self._frame_pending:
+                self._frame_pending = True
+                QtCore.QTimer.singleShot(0, self._apply_pending_frame)
+        else:
+            self.recompute()
 
-    def recompute(self):
+    def _apply_pending_frame(self):
+        self._frame_pending = False
+        self.recompute(interactive=True)
+
+    def recompute(self, interactive: bool = False):
         if self.pipeline is None:
             return
         t = time.perf_counter()
@@ -361,7 +386,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.panel.set_data(self.data)
         ts = self.data.attributes.get("Timestep", self.frame)
         self.viewport.overlay_text = f"Frame {self.frame}   timestep {ts}"
-        self.viewport.set_data(self.data)
+        self.viewport.set_data(self.data, interactive=interactive)
         self.inspector.set_data(self.data)
         self.plots.set_data(self.data)
         self._push_console()
@@ -455,15 +480,35 @@ class MainWindow(QtWidgets.QMainWindow):
     def export_dialog(self):
         if self.pipeline is None:
             return
+        from .. import plugins
         from ..io import export_file
 
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, "Export data", "export.extxyz",
-            "Extended XYZ (*.extxyz);;LAMMPS dump (*.lammpstrj);;VASP POSCAR (POSCAR*);;All (*)")
-        if path:
-            fmt = "vasp" if os.path.basename(path).startswith("POSCAR") else None
-            export_file(self.data, path, format=fmt)
-            self.message(f"Exported {path}")
+        filters = save_filters()
+        path, chosen = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export data", "export.extxyz", ";;".join(f for f, _ in filters))
+        if not path:
+            return
+        fmt = dict(filters).get(chosen)
+        writer = plugins.find_writer(path, fmt)
+        all_frames = False
+        n = self.pipeline.num_frames
+        if writer.multi_frame and n > 1:
+            answer = QtWidgets.QMessageBox.question(
+                self, "Export trajectory", f"{writer.description}\n\nExport all {n} frames? "
+                "(No exports only the current frame.)",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Cancel)
+            if answer == QtWidgets.QMessageBox.Cancel:
+                return
+            all_frames = answer == QtWidgets.QMessageBox.Yes
+        try:
+            if all_frames:
+                export_file(self.pipeline, path, format=fmt)
+            else:
+                export_file(self.data, path, format=fmt)
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Export failed", f"{path}\n\n{exc}")
+            return
+        self.message(f"Exported {path} ({writer.name})")
 
     def export_movie(self, path=None):
         if self.pipeline is None:

@@ -131,13 +131,18 @@ class Pipeline:
     >>> data = pipe.compute(10, device="cuda")
     """
 
-    def __init__(self, source, modifiers=(), device: str | None = None, cache_size: int = 8):
+    def __init__(self, source, modifiers=(), device: str | None = None, cache_size: int = 8,
+                 cache_memory: float | None = 2 * 2**30):
+        """``cache_size`` caps how many source frames stay in memory and ``cache_memory``
+        their total array bytes (None = no byte limit); the newest frame is always kept,
+        so multi-million-atom trajectories hold a frame or two instead of eight."""
         self.source = source
         self.modifiers = ModifierList()
         self.modifiers.extend(modifiers)
         self.device = device
         self._cache: OrderedDict[int, DataCollection] = OrderedDict()
         self._cache_size = cache_size
+        self.cache_memory = cache_memory
 
     @property
     def num_frames(self) -> int:
@@ -152,9 +157,15 @@ class Pipeline:
             self._cache.move_to_end(frame)
         else:
             self._cache[frame] = self.source.compute(frame)
-            while len(self._cache) > self._cache_size:
-                self._cache.popitem(last=False)
+            self._trim_cache()
         return self._cache[frame].copy()
+
+    def _trim_cache(self):
+        while len(self._cache) > max(self._cache_size, 1):
+            self._cache.popitem(last=False)
+        if self.cache_memory is not None:
+            while len(self._cache) > 1 and sum(d.nbytes for d in self._cache.values()) > self.cache_memory:
+                self._cache.popitem(last=False)
 
     def compute(self, frame: int = 0, device: str | None = None, errors: str = "raise",
                 upto: int | None = None) -> DataCollection:
