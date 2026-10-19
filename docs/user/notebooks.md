@@ -114,11 +114,17 @@ and Radius properties, which every renderer draws. Import them with
 **Analysis cells** use a verb: one call adds the analysis step and returns its table.
 
 ```python
-from ewald import rdf, msd, sq, xrd, vacf, bond_angles
+from ewald import rdf, msd, sq, xrd, vacf, bond_angles, cna, ptm, voronoi, clusters
 g = rdf(pipe, cutoff=6)          # CoordinationAnalysis; g.x is r, g["g(r)"] the curve
 d = msd(pipe, time_per_frame=2)  # MeanSquaredDisplacement over the trajectory
 g                                # shows the g(r) curve; repr(g) is <Table 'coordination-rdf': ...>
+cna(pipe).counts                 # {'OTHER': 3, 'FCC': 497, 'HCP': 0, 'BCC': 0, 'ICO': 0}
+voronoi(pipe)                    # bars: particles per Voronoi coordination number, per type
+clusters(pipe, cutoff=3.2)       # cluster sizes, largest first; .counts is {id: size}
 ```
+
+Counting tables (`cna`, `ptm`, `voronoi`, `clusters`) show as bar charts and have `.counts`.
+Insert › Analysis adds any of these as a cell and runs it.
 
 A table is a dict of numpy columns with `.x`, `.columns` and `.plot()`; `pandas.DataFrame(g)`
 turns it into a data frame.
@@ -198,9 +204,14 @@ restart it, and closing the tab or the window stops it.
 
 The rules are the same as in the app: re-running a cell replaces the steps it added, and a new
 `pipe` re-runs the cells below. `pipe` in the app is a pipeline over the kernel's one: the
-kernel computes each frame and sends back its particles, cell, bonds, tables and attributes, so
-the viewport, view cells, plots and Display settings work as usual. Step cells show their code
-rather than a form, because the modifier objects live in the kernel. From Python:
+kernel computes each frame and sends back its particles, cell, bonds, tables, attributes,
+surfaces (polyhedra, isosurfaces), voxel grids and vector styles, so the viewport, view cells,
+plots and Display settings work as usual. Step cells keep their form and on/off checkbox: the
+app builds a local copy of each step from its cell, an edit runs the cell again in the kernel,
+and the status, time and results of the kernel's steps come back with every frame (a failing
+step is skipped and reports its error on its cell, as in the app). The window stays usable
+while a cell runs; **■ Interrupt** in the notebook's bar stops it with a `KeyboardInterrupt`
+shown under the cell. From Python:
 
 ```python
 from ewald.kernel import Kernel, available

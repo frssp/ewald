@@ -1314,6 +1314,12 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     assert tabs.count() == 1 and w.panel.notebook.pipeline is None
     w.open_notebook(str(path))
     assert tabs.tabText(0) == "cu_nb" and [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis"]
+    act = next(a for a in w.analysis_menu.actions() if a.text() == "Common neighbor analysis")
+    act.trigger()                                              # Insert › Analysis: a verb cell, run at once
+    cell = w.panel.view.current
+    assert cell.source.startswith("from ewald import cna\n") and cell.state == "ok"
+    assert cell.outputs[-1].kind == "image" and isinstance(cell.outputs[-1].data, bytes)
+    assert [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis", "CommonNeighborAnalysis"]
     w.close()
 
 
@@ -1405,6 +1411,9 @@ def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, m
     try:
         assert k is not None and view.kernel_button.text() == "⚙ This Python"
         view.run_all()
+        assert view.running and not view.interrupt_button.isHidden()  # on a thread: the window keeps responding
+        assert view.wait()
+        assert view.interrupt_button.isHidden() and view.run_all_button.isEnabled()
         assert k.alive and [c.state for c in view.notebook.cells] == ["ok", "ok"]
         assert w.pipeline is view.notebook.pipeline and "Coordination" in w.pipeline.compute(0).particles
         assert "1 steps" in view.status.text()
@@ -1413,6 +1422,17 @@ def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, m
         reopened = w.open_notebook(str(tmp_path / "k3.ipynb"))      # the kernel choice is kept
         assert reopened.notebook.kernel is not None and not reopened.notebook.kernel.alive
         assert reopened.kernel_button.text() == "⚙ This Python"
+        w.panel.tabs.setCurrentWidget(view)
+        view.add_cell("code")
+        sleeper = view.notebook.cells[-1]
+        sleeper.source = "import time\ntime.sleep(60)"
+        view.run(sleeper)
+        import time
+
+        time.sleep(1.0)
+        view.interrupt()                                           # ■ Interrupt
+        assert view.wait(30)
+        assert sleeper.state == "error" and "KeyboardInterrupt" in sleeper.outputs[-1].data
     finally:
         import ewald.gui.notebook_panel as npn
 
@@ -1898,3 +1918,25 @@ def test_plot_export_is_a_print_figure_in_any_theme(app, vasp_dir, tmp_path):
     assert abs(img.width / plotstyle.DPI["draft"] - 7.2) < 0.5     # 2-column wide (tight box)
     svg = (tmp_path / "neb.svg").read_text()
     assert "Reaction coordinate" in svg and "#ffffff" in svg.lower()
+
+
+def test_notebook_cells_sit_at_the_top(app):
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    w.resize(1400, 900)
+    w.show()
+    for _ in range(3):
+        app.processEvents()
+    view = w.panel.view
+    for cell in view.widgets:                               # spare height goes below the cells
+        assert cell.height() <= cell.sizeHint().height() + 2
+    code = next(c for c in view.widgets if c.cell.kind == "code")
+    w.resizeDocks([w.notebook_dock], [300], QtCore.Qt.Horizontal)   # narrow: lines wrap
+    for _ in range(3):
+        app.processEvents()
+    ed = code.editor
+    lines = sum(round(ed.blockBoundingRect(b).height() / ed.fontMetrics().lineSpacing())
+                for b in (ed.document().findBlockByNumber(i) for i in range(ed.document().blockCount())))
+    assert ed.viewport().height() >= lines * ed.fontMetrics().lineSpacing()   # no clipped last line
+    w.close()

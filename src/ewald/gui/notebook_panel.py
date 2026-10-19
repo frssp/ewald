@@ -100,13 +100,15 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
             doc, lines = self.document(), 0
         except RuntimeError:  # a late textChanged while the editor is being deleted
             return
+        ls = self.fontMetrics().lineSpacing()
         block = doc.firstBlock()
-        while block.isValid():  # wrapped lines count too
-            lines += max(1, block.layout().lineCount() if block.layout() is not None else 1)
+        while block.isValid():  # wrapped lines count too; blockBoundingRect lays the block out first
+            lines += max(1, round(self.blockBoundingRect(block).height() / ls))
             block = block.next()
         lines = max(1, lines)
         shown = min(lines, MAX_EDITOR_LINES)
-        h = shown * self.fontMetrics().lineSpacing() + 2 * self.document().documentMargin() + 6
+        m = self.contentsMargins()  # frame and style sheet padding
+        h = shown * ls + 2 * self.document().documentMargin() + max(6, m.top() + m.bottom())
         self.setFixedHeight(int(h))
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded if lines > MAX_EDITOR_LINES
                                         else QtCore.Qt.ScrollBarAlwaysOff)
@@ -700,6 +702,23 @@ def fill_view_menu(menu, data, add):
 
 
 # ---------------------------------------------------------------- one notebook
+class _CellWorker(QtCore.QThread):
+    """Runs cells that execute in a kernel off the GUI thread (the kernel does the work; this
+    thread only waits for its answers)."""
+
+    def __init__(self, fn, parent=None):
+        super().__init__(parent)
+        self.fn = fn
+
+    def run(self):
+        try:
+            self.fn()
+        except Exception:  # noqa: BLE001 - kernel errors land in the cell's outputs
+            import traceback
+
+            traceback.print_exc()
+
+
 class NotebookView(QtWidgets.QWidget):
     """The cells of one notebook, a toolbar and the add-cell bar."""
 
@@ -722,10 +741,17 @@ class NotebookView(QtWidgets.QWidget):
         lay.setSpacing(0)
         bar = QtWidgets.QHBoxLayout()
         bar.setContentsMargins(8, 6, 8, 6)
-        run_all = QtWidgets.QPushButton("▶  Run all", objectName="primary", toolTip="Restart and run every cell")
+        self._worker = None
+        run_all = self.run_all_button = QtWidgets.QPushButton("▶  Run all", objectName="primary",
+                                                              toolTip="Restart and run every cell")
         run_all.clicked.connect(self.run_all)
-        restart = QtWidgets.QToolButton(text="Restart", toolTip="Clear the namespace (cells keep their code)")
+        restart = self.restart_button = QtWidgets.QToolButton(text="Restart",
+                                                              toolTip="Clear the namespace (cells keep their code)")
         restart.clicked.connect(self.restart)
+        self.interrupt_button = QtWidgets.QToolButton(text="■ Interrupt", objectName="interrupt",
+                                                      toolTip="Stop the running cell (Ctrl+C in the kernel)")
+        self.interrupt_button.clicked.connect(self.interrupt)
+        self.interrupt_button.setVisible(False)
         self.py_button = QtWidgets.QToolButton(text=".py", checkable=True, toolTip="Show the notebook as its Python file")
         self.py_button.toggled.connect(self._show_file)
         self.kernel_button = QtWidgets.QToolButton(objectName="kernelButton", autoRaise=True,
@@ -736,6 +762,7 @@ class NotebookView(QtWidgets.QWidget):
         self.kernel_button.setMenu(self.kernel_menu)
         bar.addWidget(run_all)
         bar.addWidget(restart)
+        bar.addWidget(self.interrupt_button)
         bar.addWidget(self.kernel_button)
         bar.addStretch()
         self.status = QtWidgets.QLabel(objectName="muted")
@@ -917,7 +944,9 @@ class NotebookView(QtWidgets.QWidget):
             if w.plot_panel is not None:
                 self.plotCreated.emit(w.plot_panel)
         self.cells_layout.addWidget(self.add_bar)
-        self.cells_layout.addStretch()
+        # the spare height goes below the cells, not into them: a cell's gutter stretch makes it
+        # count as vertically expanding, so a plain addStretch() would share the space with it
+        self.cells_layout.addStretch(1)
         self.current = keep if keep in self.notebook.cells else (self.notebook.cells[-1] if self.notebook.cells else None)
         self._mark_current()
         self.update_results()
@@ -936,6 +965,7 @@ class NotebookView(QtWidgets.QWidget):
     def update_results(self, data=None):
         if data is not None:
             self.data = data
+        self.notebook.refresh_kernel_steps()  # what the kernel's steps did at this frame
         for w in self.widgets:
             w.update_state(self.data)
             if w.plot_panel is not None and (data is not None or w.plot_panel.data is None):
@@ -994,6 +1024,9 @@ class NotebookView(QtWidgets.QWidget):
     def _step_edited(self, cell):
         mod = cell.modifier
         self.history.commit(f"Edit {mod.name if mod is not None else 'step'}", merge=("form", id(cell)))
+        if self.notebook.kernel is not None:  # the step lives in the kernel: run its new code there
+            self.run(cell)
+            return
         self.changed.emit()
         self.titleChanged.emit()
 
@@ -1024,6 +1057,62 @@ class NotebookView(QtWidgets.QWidget):
             return fn()
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
+
+    @property
+    def running(self) -> bool:
+        """Cells are running in the notebook's kernel (the GUI stays usable meanwhile)."""
+        return self._worker is not None
+
+    def _execute(self, fn, before, then=None):
+        """Run ``fn`` (cells): here with a wait cursor, or on a thread when the cells run in a
+        kernel, so the window keeps responding and Interrupt can stop them."""
+        if self.running:
+            return
+        if self.notebook.kernel is None:
+            self._busy(fn)
+            self._after_run(before)
+            if then:
+                then()
+            return
+        worker = self._worker = _CellWorker(fn, self)
+        self._set_running(True)
+
+        def finished():
+            self._worker = None
+            worker.deleteLater()
+            self._set_running(False)
+            self._after_run(before)
+            if then:
+                then()
+
+        worker.finished.connect(finished)
+        worker.start()
+
+    def _set_running(self, on: bool):
+        for w in (self.run_all_button, self.restart_button, self.kernel_button):
+            w.setEnabled(not on)
+        self.interrupt_button.setVisible(on)
+        if on:
+            self.status.setText(f"Running in {self.notebook.kernel.display_name}…")
+        for w in self.widgets:
+            w.update_state(self.data)
+
+    def interrupt(self):
+        """Stop the cell running in the kernel (KeyboardInterrupt there, like Jupyter's ■)."""
+        if self.notebook.kernel is not None:
+            self.notebook.kernel.interrupt()
+
+    def wait(self, timeout: float = 120.0) -> bool:
+        """Process events until kernel cells finish (scripts and tests); False on timeout."""
+        import time
+
+        end = time.monotonic() + timeout
+        while self.running and time.monotonic() < end:
+            QtWidgets.QApplication.processEvents(QtCore.QEventLoop.AllEvents, 50)
+            if self._worker is not None:
+                self._worker.wait(20)
+        QtWidgets.QApplication.processEvents()
+        return not self.running
 
     def _after_run(self, before):
         nb = self.notebook
@@ -1062,6 +1151,7 @@ class NotebookView(QtWidgets.QWidget):
             return
         nb = self.notebook
         before = nb.pipeline
+        go = None
         if cell in nb.cells and not nb.cells[nb.cells.index(cell)].kind == "markdown":
             start = nb.cells.index(cell)
             if below:
@@ -1069,11 +1159,14 @@ class NotebookView(QtWidgets.QWidget):
                     for k in range(start, len(nb.cells)):
                         if not nb.run_cell(k, run_below=False):
                             break
-                self._busy(go)
             else:
-                self._busy(lambda: nb.run_cell(cell))
-        self._after_run(before)
-        if advance and cell in nb.cells:
+                def go():
+                    nb.run_cell(cell)
+        self._execute(go or (lambda: None), before, (lambda: self._advance(cell)) if advance else None)
+
+    def _advance(self, cell):
+        nb = self.notebook
+        if cell in nb.cells:
             i = nb.cells.index(cell)
             if i + 1 < len(nb.cells):
                 self.select(nb.cells[i + 1])
@@ -1087,8 +1180,7 @@ class NotebookView(QtWidgets.QWidget):
         if not self._trusted():
             return
         before = self.notebook.pipeline
-        self._busy(self.notebook.run_all)
-        self._after_run(before)
+        self._execute(self.notebook.run_all, before)
 
     def _trusted(self) -> bool:
         """A restricted notebook (an .ewd someone sent) runs only after you agree."""
@@ -1112,6 +1204,8 @@ class NotebookView(QtWidgets.QWidget):
         return True
 
     def restart(self):
+        if self.running:
+            return
         self.notebook.reset()
         self.update_results()
 
