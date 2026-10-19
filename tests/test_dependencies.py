@@ -150,9 +150,12 @@ def test_missing_native_extension_explains_itself(monkeypatch, cu_fcc):
     from ewald import modifiers as mods
 
     assert "ewald._native" in {row[0] for row in settings.component_status()}
+    import ewald
+
     monkeypatch.setitem(sys.modules, "ewald._native", None)  # import now raises ImportError
+    monkeypatch.delattr(ewald, "_native", raising=False)  # set once another test imported it
     for mod in (mods.PolyhedralTemplateMatching(), mods.VoronoiAnalysis(),
-                mods.CommonNeighborAnalysis(mode="interval")):
+                mods.CommonNeighborAnalysis(mode="interval"), mods.ElasticStrain()):
         with pytest.raises(ImportError, match="Build Tools"):
             Pipeline(StaticSource([cu_fcc]), [mod]).compute(0)
     out = Pipeline(StaticSource([cu_fcc]), [mods.CommonNeighborAnalysis()]).compute(0)
