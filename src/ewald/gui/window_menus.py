@@ -33,7 +33,7 @@ class MenusMixin:
             act = QtGui.QAction(icon(icon_name), name, bar, checkable=True)
             act.triggered.connect(lambda on, d=dock: self._show_side_bar(d) if on else d.hide())
             dock.visibilityChanged.connect(lambda _shown, a=act, d=dock: a.setChecked(not d.isHidden()))
-            act.setToolTip("Chat with Claude beside the notebook (Ctrl+J)" if dock is self.ask_dock
+            act.setToolTip("Chat with Claude (Ctrl+J)" if dock is self.ask_dock
                            else f"Show or hide the {name} side bar")
             bar.addAction(act)
             self.activity_buttons[name] = act
@@ -42,14 +42,11 @@ class MenusMixin:
         self.ask_dock.visibilityChanged.connect(lambda shown: shown and self.ask_panel.input.setFocus())
 
     def _show_side_bar(self, dock):
-        """Show an activity-bar side bar in a column of its own: Plugins and Remotes left of the
-        notebook, the AI chat right of it (Qt would otherwise stack a re-shown dock above it)."""
+        """Show an activity-bar side bar (Plugins, Remotes, AI chat) in a column of its own left of
+        the notebook (Qt would otherwise stack a re-shown dock above it)."""
         placed = dock.isHidden() and not dock.isFloating() and self.notebook_dock.isVisible()
         if placed:
-            if dock is self.ask_dock:
-                self.splitDockWidget(self.notebook_dock, dock, QtCore.Qt.Horizontal)
-            else:
-                self.splitDockWidget(dock, self.notebook_dock, QtCore.Qt.Horizontal)
+            self.splitDockWidget(dock, self.notebook_dock, QtCore.Qt.Horizontal)
         dock.show()
         dock.raise_()
         if placed:
