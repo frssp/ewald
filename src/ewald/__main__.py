@@ -88,6 +88,8 @@ def build_parser():
     a.add_argument("--with-plugins", action="store_true", help="append the modifier plugins installed here")
     pl = sub.add_parser("plugins", help="list installed plugins and any that failed to load")
     pl.add_argument("--json", action="store_true")
+    pl.add_argument("--enable", metavar="ID", help="switch a disabled plugin back on")
+    pl.add_argument("--disable", metavar="ID", help="switch a plugin off (it stays installed; its code is not imported)")
     f = sub.add_parser("forge", help="have Claude write a modifier plugin, test it and save it")
     f.add_argument("request", nargs="+", help="the analysis, in words")
     f.add_argument("--yes", action="store_true", help="run and save the generated code without asking")
@@ -139,7 +141,7 @@ def _run(args):
     if args.cmd == "examples":
         return _examples(args.copy)
     if args.cmd == "plugins":
-        return _print_plugins(args.json)
+        return _print_plugins(args.json, enable=args.enable, disable=args.disable)
     if args.cmd == "forge":
         return _forge(args)
     if args.cmd == "inventory":
@@ -278,9 +280,15 @@ def _examples(dest=None):
     print(f"\nin {examples.FILES}; open one with: ewald gui {examples.EXAMPLES[0].path}")
 
 
-def _print_plugins(as_json=False):
+def _print_plugins(as_json=False, enable=None, disable=None):
     from . import plugins
 
+    for plugin_id, on in ((enable, True), (disable, False)):
+        if plugin_id:
+            if plugin_id not in plugins.installed():
+                print(f"no installed plugin {plugin_id!r}; `ewald plugins` lists the ids")
+                return 1
+            plugins.set_enabled(plugin_id, on)
     st = plugins.status()
     if as_json:
         import json
@@ -288,6 +296,10 @@ def _print_plugins(as_json=False):
         print(json.dumps(st, indent=1))
         return
     print("plugin folder:", st["plugin_dir"])
+    for p in st["plugins"]:
+        made = ", ".join(f"{len(v)} {k[:-1] if len(v) == 1 else k}" for k, v in p["contributions"].items() if v)
+        print(f"plugin {p['id']:<20} {p['version'] or '-':<9} {p['kind']:<8} {p['state']:<12} "
+              f"{(made or p['description'])[:60]}  [{p['origin']}]")
     if not st["readers"]:
         print("no reader plugins")
     for r in st["readers"]:

@@ -23,6 +23,7 @@ is executed unless ``run_code=True``; ``ewald forge`` asks first.
 """
 from __future__ import annotations
 
+import datetime
 import json
 import keyword
 import os
@@ -379,7 +380,11 @@ def save_plugin(result: ForgeResult, overwrite: bool = False) -> Path:
               + textwrap.indent(textwrap.fill(result.request, 96), "#   ") + "\n"
               + "# Verified: contract checks and the tests in _forge_tests/"
               + f"test_{result.module_name}.py passed.\n")
-    target.write_text(header + result.module_source.lstrip("\n"))
+    # the manifest goes last: a module may open with a docstring or ``from __future__`` imports
+    manifest = {"id": result.module_name, "description": result.request[:200], "source": "forge",
+                "created": datetime.date.today().isoformat()}
+    target.write_text(header + result.module_source.lstrip("\n").rstrip("\n")
+                      + f"\n\n\n__ewald__ = {manifest!r}   # plugin manifest (ewald plugins)\n")
     (tests / f"test_{result.module_name}.py").write_text(result.test_source)
     return target
 

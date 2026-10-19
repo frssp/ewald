@@ -37,6 +37,11 @@ file to a colleague.
 modifiers) as entry points in `pyproject.toml`, so `pip install ewald-myformat` is all a user
 does. See [Packaging and sharing](packaging.md).
 
+A plugin can carry a [manifest](packaging.md#manifest) (`ewald-plugin.toml` in a package,
+`__ewald__ = {...}` in a file) with its id, version, publisher and the ewald versions it works
+with; ewald reads it without importing the plugin. `ewald plugins --disable ID` switches a
+plugin off without uninstalling it ([details](packaging.md#switching-a-plugin-off)).
+
 ## Where a plugin shows up
 
 Once registered, a plugin is used everywhere ewald reads files or runs modifiers:
