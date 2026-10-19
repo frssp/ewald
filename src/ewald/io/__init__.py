@@ -18,6 +18,7 @@ from .volumetric import (VolumetricReader, is_cube, is_vasp_volumetric, read_cub
                          write_cube, write_vasp_volumetric)
 from .mdtraj_h5 import MdtrajH5Reader, is_mdtraj_h5
 from .vasp_h5 import VaspoutReader, VaspwaveReader, is_vaspout, is_vaspwave
+from .phonon import PhononReader
 from .mdanalysis_reader import MDAnalysisReader, is_md_trajectory, write_md_trajectory
 from .xdatcar import XdatcarReader, is_xdatcar
 from .xsf import XsfReader, is_xsf, write_xsf
@@ -131,6 +132,18 @@ def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
     return plugins.open_reader(path, format, **kwargs)
 
 
+def _is_phonopy(path):
+    from ..phonon import is_phonopy_yaml
+
+    return is_phonopy_yaml(path)
+
+
+def _is_outcar_phonon(path):
+    from ..phonon import is_outcar_phonon
+
+    return is_outcar_phonon(path)
+
+
 def _open_lammps_data(path, **kwargs):
     if "style" in kwargs:  # ASE's keyword name
         kwargs["atom_style"] = kwargs.pop("style")
@@ -211,6 +224,13 @@ def builtin_readers():
         ReaderPlugin("extxyz", ExtxyzReader, ("*.xyz", "*.extxyz"), is_extxyz,
                      "XYZ / extended XYZ (Lattice=, Properties=), lazy", B, 20, ("xyz", "ext-xyz")),
         ReaderPlugin("cif", _open_cif, ("*.cif",), None, "Crystallographic Information File via ASE", B, 90),
+        ReaderPlugin("phonopy", PhononReader, ("band.yaml", "mesh.yaml", "qpoints.yaml", "*.yaml"), _is_phonopy,
+                     "phonopy band.yaml/mesh.yaml/qpoints.yaml with eigenvectors: phonon modes "
+                     "(PhononMode animates one); frames= per period, structure= for qpoints.yaml", B, 9,
+                     ("phonopy-yaml", "band.yaml", "phonon")),
+        ReaderPlugin("vasp-phonon", PhononReader, ("OUTCAR*",), _is_outcar_phonon,
+                     "VASP OUTCAR of an IBRION=5-8 run: Gamma phonon modes (PhononMode animates one)", B, 15,
+                     ("outcar-phonon",)),
         ReaderPlugin("outcar", OutcarReader, ("OUTCAR*",), is_outcar,
                      "VASP OUTCAR: ionic steps with forces, energies, stress, magnetic moments, lazy", B, 16,
                      ("vasp-outcar",)),

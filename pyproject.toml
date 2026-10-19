@@ -14,13 +14,14 @@ dependencies = ["numpy>=1.24", "scipy", "ase>=3.23", "matplotlib", "pyvista>=0.4
 gui = ["PySide6>=6.5", "pyvistaqt>=0.11", "qtconsole>=5.5", "ipykernel"]
 gpu = ["cupy-cuda12x"]
 analysis = ["freud-analysis"]
+symmetry = ["spglib>=2.0"]   # SymmetryAnalysis (space group, Wyckoff positions)
 movie = ["imageio[ffmpeg]"]
 formats = ["h5py", "MDAnalysis>=2.7"]   # H5MD, vaspout.h5, MDTraj HDF5; GROMACS XTC/TRR, DCD, NetCDF
 ovito = ["ovito"]   # DislocationAnalysis (DXA) and OvitoModifier bridge
 plumed = ["plumed"]   # PLUMED Python binding; the PLUMED library itself comes from conda-forge or a build (PLUMED_KERNEL)
 llm = ["anthropic>=1.0", "mcp"]
 remote = ["paramiko>=3.2"]  # import_file("host:/path") over SSH/SFTP
-dev = ["pytest", "paramiko>=3.2"]
+dev = ["pytest", "paramiko>=3.2", "spglib>=2.0"]
 
 [project.scripts]
 ewald = "ewald.__main__:main"

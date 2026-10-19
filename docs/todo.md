@@ -30,6 +30,30 @@ Analysis
 - FindRings in numba for networks above ~100k atoms (8000 a-Si atoms, rings up to 10: 1 s).
 - Spatial correlation function and Voronoi-weighted Steinhardt (OVITO / freud have them).
 
+Symmetry and diffraction
+
+- hkl planes in the viewport (pick a reflection in the Plots tab, draw its lattice planes).
+- Powder profile: 2-theta-dependent widths (Caglioti U, V, W), the K-alpha2 doublet, background,
+  preferred orientation and absorption; a Rietveld-style scale/zero-shift fit to the measured
+  pattern instead of the plain Rwp.
+- Partial S_ab(q) columns from `StructureFactor`, and S(q) to G(r)/D(r) (PDF) for comparison
+  with PDFgui-style data.
+- Large cells: `PowderDiffraction` and `StructureFactor(method="direct")` cost atoms x
+  reflections; above ~50k atoms sample reciprocal space instead of using every lattice point.
+- Show the symmetry summary (space group, Wyckoff sites) in the inspector header rather than only
+  as attributes.
+
+Phonons
+
+- Phonon DOS / projected DOS from phonopy `total_dos.dat`/`projected_dos.dat` in the Plots tab.
+- Non-diagonal supercells for a mode (`supercell` as a 3x3 matrix), and several modes
+  superposed (phonopy `--modulation` takes a list).
+- Export a modulated structure (frame 0 as POSCAR) from the GUI; irreducible-representation
+  labels of the modes (phonopy `--irreps`).
+- Fast reading of large `mesh.yaml` files (the parser holds the whole file in memory).
+- OUTCAR modes checked against real VASP IBRION=5-8 output; the fixture is written in VASP's
+  layout from phonopy results.
+
 Volumetric data
 
 - Section caps where an isosurface meets the cell faces.
@@ -77,9 +101,6 @@ Docs
 
 From the feature-ideas review (2026-10-19), after the four in progress above.
 
-- P0: Symmetry and diffraction: space group, Wyckoff positions and symmetry-equivalent atoms
-  via spglib (optional extra) shown in the inspector; hkl planes in the viewport; powder XRD and
-  neutron patterns and S(q) for MD, overlaid on an experimental pattern.
 - P1: NEB viewer: open `00/ ... 0N/` image folders as one trajectory, energy along the reaction
   coordinate synced with the timeline, saddle point marked.
 - P1: Jupyter widget: `pipe.show()` with a rotatable viewport and frame slider in a notebook
@@ -87,8 +108,6 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - P1: Linked selection, rest: picking atoms plots their property time series over all frames;
   scatter plots of two properties (brushing a box selects atoms); keep a pair, bond or angle
   range as a modifier (only property ranges become an `ExpressionSelection` now).
-- P1: Phonon modes: read phonopy `band.yaml`/`mesh.yaml` and VASP IBRION=5-8 OUTCAR eigenvectors,
-  animate a mode or draw it as arrows.
 - P1: DOS and band structure plots (vasprun.xml, DOSCAR, EIGENVAL, PROCAR), with the PDOS of the
   picked atoms.
 - P2: glTF, interactive HTML and Blender export.
