@@ -73,18 +73,6 @@ def head_lines(path, n: int) -> list[bytes]:
         return []
 
 
-def _scan_lines(path, predicate):
-    """Return byte offsets of lines for which ``predicate(line_bytes)`` is true."""
-    offsets = []
-    pos = 0
-    with open_binary(path) as fh:
-        for line in fh:
-            if predicate(line):
-                offsets.append(pos)
-            pos += len(line)
-    return offsets
-
-
 def grep_lines(path, pattern: str, literals=(), chunk_size: int = 1 << 24) -> list[tuple[int, bytes]]:
     """Byte offset and text (without the newline) of every line matching ``pattern``.
 
