@@ -4,568 +4,145 @@
 
 [![CI](https://github.com/frssp/ewald/actions/workflows/ci.yml/badge.svg)](https://github.com/frssp/ewald/actions/workflows/ci.yml)
 
-EWALD (Python package `ewald`) does atomistic structure and trajectory visualization and
-analysis with an OVITO-style pipeline API in Python. Goal: an open alternative to OVITO Pro (GUI + Python
-scripting + GPU), built on open libraries (ASE, VTK/PyVista, NumPy/CuPy).
+EWALD (Python package `ewald`) is a notebook for atomistic structures and trajectories. You open a
+VASP, LAMMPS, extxyz or any other file, and the analysis is written as Python cells next to a 3D
+view: each step adds a modifier, each view is a live plot linked to the atoms, and the whole thing
+is saved as one file that also runs as a plain Python script. Claude can read the structure and add
+steps for you, and plugins add file formats, analyses and drawing without changing EWALD itself.
 
-Status: core, readers, pipeline, first modifiers, offscreen rendering and a first
-desktop GUI are in. See [docs/ROADMAP.md](docs/ROADMAP.md).
+![The EWALD window: a notebook on the left, the 3D view in the middle, display settings on the right](docs/images/notebook.png)
 
-Documentation: the [manual](docs/index.md) covers using ewald ([user manual](docs/user/install.md)),
-extending it ([plugins](docs/plugins/index.md)) and working on it
-([developer guide](docs/developer/architecture.md)). It is also an MkDocs site:
-`pip install -r docs/requirements.txt && mkdocs serve`. The GUI's Help menu opens it.
+Under the notebook is an OVITO-style pipeline (`load` → `pipe.add(...)` → `pipe.compute(frame)` →
+`pipe.render(...)`) that runs the same in a script, on the CPU or an NVIDIA GPU, with a built-in
+ray tracer and vector output for publication figures.
 
 ## Install
 
 ```bash
-pip install -e .            # CPU
+pip install -e ".[gui]"     # the desktop app (PySide6, VTK); leave out [gui] for scripts only
 pip install -e ".[gpu]"     # + CuPy for device="cuda" (NVIDIA)
-pip install -e ".[gui]"     # + desktop viewer (PySide6, pyvistaqt, qtconsole)
-pip install -e ".[remote]"  # + files over SSH (paramiko)
+pip install -e ".[llm]"     # + Claude (Ask Claude, ewald ask)
+pip install -e ".[remote]"  # + files on SSH hosts (paramiko)
 ```
 
-Without a C++ compiler (Windows: "Microsoft Visual C++ 14.0 or greater is required") the install
-still succeeds, minus PTM, Voronoi, matching CSP and interval CNA; install the
-[Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and reinstall to
-add them ([details](docs/user/install.md#without-a-c-compiler)). Releases ship prebuilt
-wheels for Linux, macOS and Windows plus a Windows installer and a macOS app
-([install from a release](docs/user/install.md#from-a-release)); changes are listed in [CHANGELOG.md](CHANGELOG.md).
-On macOS (Apple Silicon or Intel) run `xcode-select --install` first; see
-[docs/user/install.md](docs/user/install.md#macos) and [docs/developer/macos-release.md](docs/developer/macos-release.md).
+A C++17 compiler builds the native analyses (PTM, Voronoi, CSP matching, interval CNA); without one
+the install still works, minus those. On macOS run `xcode-select --install` first. Releases ship
+prebuilt wheels for Linux, macOS and Windows plus a Windows installer and a macOS app
+([install from a release](docs/user/install.md#from-a-release)); changes are in [CHANGELOG.md](CHANGELOG.md).
+Linux system libraries, `ssh -X`, headless machines, macOS and Windows: [Install](docs/user/install.md).
 
-Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
-
-On Linux the GUI also needs a few X11 libraries that minimal installs lack
-(`sudo apt install libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0
-libxcb-render-util0 libxcb-image0 libxcb-randr0`). If importing PySide6 fails with
-`undefined symbol ... Qt_6_PRIVATE_API`, remove system directories (`/lib`, `/usr/lib`,
-`/lib/x86_64-linux-gnu`, ...) from `LD_LIBRARY_PATH`; they make a system Qt shadow the wheel's.
-Over `ssh -X` the GUI switches to a VESTA-style OpenGL 1.x viewport (`EWALD_VIEWPORT=vtk|legacy-gl`
-chooses by hand); running ewald locally and opening `user@cluster:/path` files over SSH is faster.
-Details: [docs/user/install.md](docs/user/install.md#troubleshooting-the-gui).
-
-## Quick start
-
-```python
-from ewald import import_file
-from ewald.modifiers import CoordinationAnalysis, ColorCoding, Slice
-
-pipe = import_file("dump.lammpstrj", type_map={1: "Cu", 2: "Zr"})   # or "XDATCAR", "OUTCAR", "POSCAR", ...
-pipe.modifiers.append(CoordinationAnalysis(cutoff=3.1))
-pipe.modifiers.append(ColorCoding("Coordination", cmap="coolwarm_r"))
-pipe.modifiers.append(Slice(normal=(0, 1, 0), distance=20.0, inverse=True))
-
-def my_modifier(frame, data):            # OVITO-compatible Python modifier
-    data["Undercoordinated"] = data["Coordination"] < 12
-pipe.modifiers.append(my_modifier)
-
-data = pipe.compute(10, device="cuda")   # analysis on the GPU (falls back with a clear error if no CuPy)
-pipe.render("frame10.png", frame=10, size=(2000, 1500), direction="iso", bonds=None)
-pipe.render("frame10_rt.png", frame=10, renderer="raytrace", ao_samples=32)   # ray traced, AO + shadows
-pipe.render("ionic.png", radius_preset="ionic")   # Shannon radii; also "atomic", "vdW", ... (docs/user/rendering.md)
-```
-
-Desktop viewer:
+## Five minutes with a notebook
 
 ```bash
-ewald gui dump.lammpstrj --type-map 1=Cu      # or: ewald-gui XDATCAR
+ewald gui                       # opens with an empty notebook; File › Open example › Cu_void.lammpstrj
+ewald gui dump.lammpstrj        # or open your own file
 ```
+
+Opening a file makes a notebook for it. Click **+ Step** to add an analysis, **+ View** to plot what
+it produced, and write any Python in between. This is the notebook from the
+[first tutorial](docs/user/tutorials/first-notebook.md), as it is saved:
 
 ```python
-from ewald.gui import show
-show(pipe)        # open the viewer on a pipeline built in a script (in Jupyter: %gui qt first)
+# %%
+from ewald import examples, load
+from ewald.modifiers import *
+from ewald.paint import paint, hide
+from ewald.views import show
+
+pipe = load(examples.path("Cu_void.lammpstrj"))
+
+# %% coordination
+pipe.add(CoordinationAnalysis(cutoff=3.0))
+
+# %% style: surface atoms, every frame
+@pipe.add
+def style(frame, data):
+    paint(data, data["Coordination"] < 12, "#C8551F")
+    hide(data, data["Position"][:, 0] > 8)           # cut the block open
+
+# %%
+show(pipe, histogram="Coordination")
 ```
 
-The window has a 3D viewport with a timeline underneath, a pipeline panel
-(add/reorder/enable modifiers, edit parameters, edit Python script modifiers
-in place), a Render workspace (ray traced, OpenGL or vector output, journal size presets,
-overlays, movies), session save/load,
-a data inspector (particle table with expression filter, attributes, tables)
-and an IPython console where `pipeline`, `data` and `viewer` are live; changes
-made in the console redraw the view.
+In the GUI the `pipe.add` cell is a step with a parameter form and the time it took, `show(...)` is a
+live histogram (drag a range to select those atoms in the 3D view), and the style follows every
+frame of the trajectory. `python cu_void.py` runs the same file without the GUI and draws the plots
+with matplotlib. File › Save notebook writes it as a `.py`, a Jupyter `.ipynb`, or an `.ewd` that
+also carries the outputs, figures, small data files and the plugins it uses, so a colleague can open
+it with everything in place ([Notebooks](docs/user/notebooks.md)).
 
-Command line:
-
-```bash
-ewald info XDATCAR
-ewald render dump.lammpstrj out.png --frame 5 --type-map 1=Cu,2=Zr --color-by "Position.Z"
-```
-
-`ewald examples` lists small example files shipped with the package (POSCAR, CIF, XYZ/extxyz,
-XDATCAR, CHGCAR, LAMMPS dump/data, phonopy band.yaml); the GUI has them under File › Open
-example, and `ewald.examples.path("POSCAR.SrTiO3")` gives their paths in Python.
-`python examples/demo.py` builds sample LAMMPS and VASP trajectories and renders
-example figures.
-
-### Figures, movies and sessions
+The same pipeline from a script, with GPU compute and a ray-traced figure:
 
 ```python
-from ewald.render import render, render_animation
+from ewald import load
+from ewald.modifiers import CommonNeighborAnalysis
 
-data = pipe.compute(10)
-render(data, "fig.png", renderer="raytrace", size=(2100, 1575), dpi=600,
-       text="t = [Time] ps", type_legend=True, scale_bar=True)      # PNG with dpi metadata
-render(data, "fig.svg", renderer="vector")                         # SVG/PDF/EPS: real circles, editable text
-render_animation(pipe, "movie.mp4", fps=15, text="frame [Frame]")  # also .gif, .avi, .mov, frames_%04d.png
+pipe = load("dump.lammpstrj", type_map={1: "Cu"})
+pipe.add(CommonNeighborAnalysis())
+data = pipe.compute(10, device="cuda")
+print(data.summary())
+pipe.render("frame10.png", frame=10, renderer="raytrace")     # also "opengl" and "vector" (SVG/PDF)
 ```
 
-Output puts quality first: `quality="publication"` is the default (16 rays/pixel,
-32 AO rays, shadows; SSAO and fine sphere meshes in OpenGL). `quality="standard"`
-is balanced and `quality="draft"` renders half-size frames without AO or shadows
-for quick previews and long test movies; any explicit `samples=`, `ao_samples=`,
-`shadows=`, `antialiasing=` or `scale=` overrides the preset. The Render workspace
-has the same presets (plus Custom) and a separate movie quality, with defaults in
-Preferences › Rendering. The interactive viewport keeps its own speed settings.
-
-Renderers: `opengl` (VTK, fast), `raytrace` (built-in ray tracer with ambient
-occlusion and shadows) and `vector` (shaded discs and bond sticks painted far to
-near, overlays stay text). Raster renderers can also write .pdf/.svg/.eps with
-the image embedded. Overlays work with every renderer: `text` (expands `[Frame]`,
-`[Timestep]`, `[Time]` and any attribute name), `legend` (ColorCoding color bar),
-`type_legend` and `scale_bar` (a round length, or `scale_bar=10` for 10 Å).
-GIF and image sequences need nothing extra; MP4/AVI/MOV use ffmpeg from
-`pip install 'ewald[movie]'` or the system PATH.
-
-Sessions (`.ewald`, JSON) hold the input file, modifiers, visual style, camera and
-render settings. The GUI saves them with Ctrl+S and opens them like any file;
-scripts use `ewald.session.save_session(path, pipe, camera=..., render=...)` and
-`load_session(path)`. Python modifiers are stored as source and only run when
-loaded with `allow_code=True` (the GUI asks first).
-
-```bash
-ewald render figure.ewald figure.pdf --renderer vector     # re-render a saved session
-ewald movie dump.lammpstrj movie.gif --every 5 --fps 12 --text "t = [Time] ps" --time-per-frame 0.5
-```
-
-## Design
-
-* `DataCollection`: per-particle arrays with OVITO property names
-  (`Position`, `Particle Type`, `Particle Identifier`, `Color`, `Radius`, ...),
-  plus `cell`, `attributes`, `tables`, `grids` (volumetric `VoxelGrid`s) and
-  `surfaces` (display meshes such as isosurfaces).
-* `Pipeline`: source + modifier list, evaluated lazily per frame; source frames are
-  cached (up to 8 frames and `cache_memory=2 GiB` of arrays, the current frame always
-  kept) and never mutated by modifiers.
-* Readers: native lazy readers for LAMMPS dumps, VASP XDATCAR, OUTCAR, vasprun.xml and
-  vaspout.h5, extxyz, XSF, H5MD and MDTraj HDF5,
-  LAMMPS data files and VASP/cube volumetric data, GROMACS XTC/TRR and DCD through
-  MDAnalysis, everything else through ASE; matching writers for POSCAR, LAMMPS
-  data/dump, extxyz, XSF, H5MD, XTC, CIF and more (see [File formats](#file-formats)).
-* Compute backends: kernels are written against an array module, so the same
-  code runs on NumPy (CPU) and CuPy (CUDA). The neighbor list has a compiled,
-  multithreaded numba kernel on CPU (256k-atom fcc, 3 Å cutoff: ~0.3–0.6 s vs ~5 s
-  pure NumPy) and the same algorithm as a CUDA C kernel on GPU (CuPy `RawKernel`,
-  with the vectorized array code as fallback, `method="xp"`). Timings:
-  `python benchmarks/neighbors.py`; `ewald.kernels` adds total and
-  partial RDF, trajectory unwrapping and FFT time-averaged MSD
-  (`trajectory_msd(pipe, device="cuda")`).
-* Rendering: VTK via PyVista, offscreen; sphere meshes for figures and GPU
-  impostors above 150k atoms. The GUI viewport favors speed while you interact:
-  when a full-detail frame misses the target frame rate, rotating, zooming,
-  scrubbing and playback draw a coarse scene (impostors, no bonds, every k-th atom)
-  that is refined once the view rests (Preferences › Viewports › Performance).
-  Rendered images and movies always use full quality. Timings for big files:
-  `python benchmarks/large_files.py`; reader speed against ASE, OVITO, MDAnalysis
-  and chemfiles: `python benchmarks/readers.py` ([results](docs/developer/readers.md)).
-
-## File formats
-
-The format is detected from the file name and content; pass `format=` to force one.
-Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
-
-| Format | Reader | Notes |
-|---|---|---|
-| LAMMPS text dump (`dump atom/custom`) | native, lazy | orthogonal, `xy xz yz` and general (`abc origin`) triclinic boxes; `x`/`xu`/`xs`/`xsu`; `c_x[1] c_x[2]` become one vector property; `dump_modify units/time yes`; partial last frame skipped with a warning; `type_map={1: "Cu"}` |
-| LAMMPS data file | native | styles atomic, charge, bond/angle/molecular, full, sphere, dipole (from `Atoms # style`, inferred, or `atom_style=`); type names from `Atom Type Labels` or `Masses` comments; Velocities, image flags, Bonds (`data.bonds`); general triclinic `avec bvec cvec` |
-| VASP XDATCAR | native, lazy | fixed and variable cell (NpT), VASP 6.4 `Si/hash` species labels, partial last frame skipped |
-| VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics (`Selective Dynamics`, True = free), CONTCAR velocities (`Velocity` in Å/fs) |
-| VASP OUTCAR, vasprun.xml | native, lazy | all ionic steps with `Force`, `Magnetic Moment` (OUTCAR), `Energy`, `Free Energy`, `Stress`, `Pressure`, MD `Temperature` |
-| log.lammps, OSZICAR | native | thermo columns as frame attributes and `data.tables["Thermo"]`, matched by step; found next to a dump/XDATCAR or `thermo=` |
-| XYZ / extended XYZ | native, lazy | frames indexed by atom counts; atom table parsed by the numba kernel, comment line and naming by ASE's extxyz code (`Lattice=`, `Properties=`, forces, energy, info) |
-| XCrySDen XSF/AXSF | native, lazy | `ANIMSTEPS`, forces, `DATAGRID_3D` grids in `data.grids["xsf"]` |
-| VASP 6 vaspout.h5, vaspwave.h5 | native, lazy (`h5py`) | ionic steps with `Force`, `Velocity`, `Magnetic Moment`, energies, `Stress`; local potential and `LCHARGH5` charge density as grids |
-| MDTraj / OpenMM HDF5 | native, lazy (`h5py`) | OpenMM `HDF5Reporter`; elements, residues, bonds, velocities, energies |
-| H5MD | native, lazy (`h5py`) | LAMMPS `dump h5md`, MDAnalysis; species names, box, velocities, forces, observables |
-| GROMACS XTC/TRR, DCD, NetCDF | MDAnalysis, lazy | atom types from `topology=` or a same-stem `.gro`/`.pdb`/`.tpr` |
-| ASE database, ASE `.traj` | ASE, lazy | `selection=` query for databases; key-value pairs as attributes |
-| NEB runs | native | VASP folder `00 .. NN` or LAMMPS `neb` (replica dumps + log), one frame per image with `NebEnergyProfile` |
-| CIF, ... | ASE | anything `ase.io.read` understands |
-
-`pip install "ewald[formats]"` adds h5py and MDAnalysis for H5MD, vaspout.h5, MDTraj HDF5
-and XTC/TRR/DCD.
-`export_file(pipe, "out.xtc")` writes through the matching writer, chosen by file name or
-`format=`: POSCAR (species grouped), LAMMPS data (type names in `Masses` comments) and dump,
-extxyz, XSF (with grid), H5MD, XTC/TRR/DCD, CIF, ASE db/traj, cube, CHGCAR, or any ASE
-format. Pipeline frames are written one at a time, and writer plugins (`@writer`,
-`ewald.writers` entry points) register the same way as reader plugins.
-
-### Files on another machine (SSH)
-
-Any path can live on an SSH host, written like `scp` or as a URL; wildcards work too:
-
-```python
-pipe = import_file("cluster:/scratch/me/run1/dump.lammpstrj")   # alias from ~/.ssh/config
-pipe = import_file("me@login.hpc.edu:run1/XDATCAR")              # relative to the remote home
-pipe = import_file("ssh://me@login.hpc.edu:2222/scratch/me/dump.*.lammpstrj")
-```
-
-In the GUI, File › Load remote file (SSH)… (Ctrl+Alt+O) browses the remote folders.
-Connections follow `~/.ssh/config` (HostName, User, Port, IdentityFile, IdentitiesOnly,
-ProxyJump, ProxyCommand, UserKnownHostsFile, StrictHostKeyChecking), the SSH agent and
-your default keys, and host keys are checked against `known_hosts`. If key login fails
-you are asked for the password or one-time code (terminal prompt, or a dialog in the GUI).
-
-Remote computers can be saved like sessions in an SSH terminal app (GUI: the Remotes side bar,
-Ctrl+Alt+R; terminal: `ewald remote add nurion --host nurion.ksc.re.kr --user me --password`).
-The profile name then works as the host, `import_file("nurion:/scratch/me/run3/XDATCAR")`, and
-notebooks keep only that string. A saved password or key passphrase lives in the OS keychain
-(a file readable only by you where there is none), never in settings or notebooks; one-time
-codes are always asked. `ewald remote ls|get|test` browse, download and check from a terminal.
-
-LAMMPS dumps/data files and XDATCARs are read in place: a dump is indexed by running
-`grep -b` on the remote host (streamed over SFTP if that is unavailable), and each frame
-is fetched when you look at it, so a large trajectory is never copied. Every other format,
-including reader plugins, is downloaded once into a local cache (`ewald.io.remote.cache_dir()`,
-`EWALD_CACHE_DIR` overrides) and reused while the remote size and modification time match;
-`ewald.io.remote.clear_cache()` empties it. Host aliases must be at least two characters,
-so `C:\data` stays a local Windows path.
-
-### Reader plugins
-
-Formats ewald does not know can be added without touching ewald. A plugin is a
-`FrameReader` subclass (lazy: `__len__` + `read(i)`) or a function returning frames
-(`DataCollection` or `ase.Atoms`), registered with a decorator in a file dropped into the
-plugin folder, or with an `ewald.readers` entry point in an installed package. Once
-registered, `import_file`, the GUI's File › Open filter and the Claude `load_structure`
-tool all use it.
-
-```python
-# <config dir>/plugins/my_format.py   (ewald plugins prints the folder)
-from ewald import DataCollection
-from ewald.plugins import reader
-
-@reader("my-format", patterns=("*.myf",), description="what the file holds")
-def read_my_format(path, **kwargs):
-    ...
-    return [DataCollection(positions, types)]   # one entry per frame
-```
-
-```toml
-# or, in a package's pyproject.toml
-[project.entry-points."ewald.readers"]
-my-format = "my_pkg.io:MyFormatReader"
-```
-
-The formats in the table above are registered the same way (origin `built-in`), so one
-registry drives format detection, the GUI filter and the Claude tools. Without `format=`,
-readers are tried by `priority`: volumetric cube (5) and VASP CHGCAR/LOCPOT/ELFCAR (6), the
-native LAMMPS dump/data and XDATCAR readers (10-12),
-then plugins (50 unless given), then ASE (100). A reader with `sniff(path)` is matched on
-content, one without on its file-name `patterns`. `format="my-format"` (or an alias such as
-`"lammps/dump"`) selects a reader directly, other names go to ASE, and registering an
-existing name replaces that reader. `ewald plugins` lists installed readers and any plugin that failed to import (a
-broken plugin never stops ewald from starting); `EWALD_NO_PLUGINS=1` skips loading them.
-[`examples/plugins/npz_trajectory.py`](examples/plugins/npz_trajectory.py) is a complete
-example for NumPy `.npz` trajectories (positions, types, cell, forces, energies).
-
-Modifiers plug in the same way: `@modifier(category="Analysis")` on a `Modifier` subclass in
-the plugin folder, or an `ewald.modifiers` entry point. A registered modifier imports as
-`from ewald.modifiers import Name`, appears in the GUI's Add modification menu and is offered
-by the Claude `add_modifier` tool ([`examples/plugins/local_composition.py`](examples/plugins/local_composition.py)).
-`llms.txt` stays core-only; `ewald api --with-plugins` appends the plugins installed here.
-
-Visual elements plug in too: a `VisualElement` subclass with `@visual` returns
-renderer-neutral primitives (spheres, cylinders, lines, meshes, arrows) from `ewald.scene`, so
-it is drawn by the OpenGL viewport, the ray tracer and SVG/PDF output alike, and appears under
-the GUI's "+ Visual" button and in the Claude `add_visual` tool
-([`examples/plugins/cell_axes.py`](examples/plugins/cell_axes.py),
-[visual element plugins](docs/plugins/visuals.md)). ewald's own atoms, bonds, cell, surfaces,
-arrows and trajectory lines are built the same way. Overlays (`@overlay`: inset plots,
-readouts, a coordinate tripod), color maps (`@colormap`, usable as any `cmap`) and themes
-(`@theme`: element colors, background, cell color; `render(..., theme="VESTA")`, View › Theme)
-plug in the same way ([overlay plugins](docs/plugins/overlays.md),
-[color maps and themes](docs/plugins/styles.md),
-[`examples/plugins/figure_extras.py`](examples/plugins/figure_extras.py)).
-
-`ewald forge "what to compute"` has Claude write such a modifier together with tests that
-have a known answer. ewald runs them in a subprocess, along with checks for the plugin
-contract (no in-place writes, the GPU code path), returns any failure to Claude to fix, and
-saves the modifier to the plugin folder only once everything passes
-([Modifier Forge](docs/plugins/forge.md)). It asks before running the generated code.
-
-LAMMPS values stay in the file's own unit style (`Units` attribute when the dump has it).
-The test fixtures in `tests/data/` come from real LAMMPS runs (`tests/data/lammps/generate.in`)
-and VASP-format files written to match VASP 6 output.
-
-## Claude integration (`ewald.llm`)
-
-`ewald.llm` exposes the pipeline as tools for Claude, so an analysis can be asked for in
-words and still ends up as an ordinary, reproducible pipeline. Install with
-`pip install -e ".[llm]"` and enter an API key in Preferences › Claude (saved in the system
-keychain), or set `ANTHROPIC_API_KEY` (or `ant auth login`).
-
-```python
-from ewald.llm import Agent
-
-agent = Agent.from_file("XDATCAR")            # default model: claude-opus-5-5
-print(agent.ask("What happens in this run? Render the frame where it changes."))
-print(agent.toolset.to_script())             # the analysis as a standalone script
-```
-
-The model never reads raw coordinates. Tools return compact descriptors instead
-(composition, cell, density, minimum distance, coordination histograms, g(r) peaks,
-sanity warnings) and `describe_trajectory` flags the frames where a descriptor jumps.
-Renders come back as images the model can look at. In the GUI, the Ask Claude tab answers
-questions about the atoms you picked (Shift+click picks several) from a description of their
-neighbors, structure types and surroundings plus a close-up render. These parts need no LLM:
-
-```bash
-ewald describe dump.lammpstrj --trajectory --type-map 1=Cu   # JSON summary + events
-ewald narrate dump.lammpstrj --type-map 1=Cu                 # event timeline (Claude-written if available)
-ewald ask XDATCAR "Is this cell reasonable? What is the Si coordination?"
-ewald ask dump.lammpstrj "What are these atoms?" --select "StructureType == 0"   # about a selection
-ewald mcp                                                     # same tools over MCP (stdio)
-claude mcp add ewald -- ewald mcp                             # use them from Claude Code
-```
-
-For agents that write ewald code instead (Claude Code, Cursor, ...), `llms.txt` in the repository
-root is a compact API reference with the differences from OVITO's API (`ewald api` prints the
-current version), `data.summary()` shows a frame's properties and ranges, and OVITO modifier
-names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
-
-`run_python` (model-written code executed in your process) is off unless you pass
-`allow_code=True` / `--allow-code`.
-
-## Modifiers available now
-
-`ExpressionSelection`, `SelectType`, `InvertSelection`, `ClearSelection`, `ExpandSelection`,
-`DeleteSelected`, `Slice`, `AssignColor`, `ColorCoding`, `ComputeProperty`,
-`CoordinationAnalysis` (+ total/partial RDF), `ClusterAnalysis` (OVITO-compatible: size, COM, gyration tensor, unwrap),
-`CalculateDisplacements` (+ MSD),
-`Replicate`, `WrapAtoms`, `AffineTransformation`, `VectorVis` (arrows), `PhononMode` (phonon mode
-animation from phonopy `band.yaml` or a VASP IBRION=5-8 OUTCAR), and any Python function
-`f(frame, data)`.
-
-OVITO Pro-style statistics, checked against OVITO 3.16 bin for bin: `Histogram`,
-`SpatialBinning` (1D profiles with derivatives, 2D/3D maps into `data.grids`),
-`ReduceProperty`, `BondAngleDistribution` and `BondLengthDistribution` (partitioned by type or
-selection). `FindRings` gives shortest-path ring statistics of the bond network and
-`SteinhardtOrderParameters` the q_l/w_l bond-orientational order (plain or Lechner-Dellago
-averaged, checked against freud).
-
-Symmetry and diffraction: `SymmetryAnalysis` (space group, Wyckoff positions and equivalent
-atoms via spglib), `PowderDiffraction` (powder XRD and neutron patterns, identical to pymatgen,
-overlaid on a measured pattern with an Rwp) and `StructureFactor` (S(q) of liquids, glasses and
-MD: direct, from g(r) or Debye; X-ray or neutron weighted).
-
-### Vector arrows
-
-`VectorVis` draws a per-particle vector property as arrows, like OVITO's vector visual
-element: forces, displacements, velocities, magnetic moments (a collinear, scalar moment
-points along z) or any N x 3 property. It has OVITO's options (scaling, width, alignment
-base/center/head, reverse, offset, flat or lit shading, transparency) and colors arrows
-uniformly or by a property such as their own length, with a color legend. Every renderer
-draws them: the viewport, the ray tracer and SVG/PDF output. Without a modifier,
-`render(data, vectors="Force")` does the same.
-
-```python
-from ewald.modifiers import VectorVis
-
-pipe = import_file("OUTCAR")
-pipe.modifiers.append(VectorVis("Force", scaling=2.0, color_mapping_property="Magnitude"))
-pipe.render("forces.png", renderer="raytrace", radius_scale=0.5)
-```
-
-### DOS and band structure
-
-vasprun.xml and vaspout.h5 bring the total and projected DOS, the band structure (line-mode
-path with its labels) and the band projections along: `data.attributes["Electronic Structure"]`,
-the tables "DOS" and "Bands", and the attributes `Fermi Energy` and `Band Gap`. In the GUI the
-Plots tab draws them, and atoms picked in the viewport show as their PDOS or as fat bands.
-
-```python
-data = import_file("vasprun.xml").compute(-1)
-es = data.attributes["Electronic Structure"]
-ti_d = es.pdos_of(data.types == "Ti", "d")      # (nspin, nE)
-print(es.band_gap())
-```
-
-### Phonon modes
-
-phonopy `band.yaml`/`mesh.yaml`/`qpoints.yaml` (with eigenvectors) and OUTCARs of VASP
-IBRION=5-8 runs open as a looping trajectory; `PhononMode` displaces the atoms along one mode
-in a commensurate supercell, as `phonopy --modulation` does, and draws the pattern as arrows.
-In the GUI the Plots tab shows the band structure and clicking a band plays that mode.
-
-```python
-from ewald.modifiers import PhononMode
-
-pipe = import_file("band.yaml", frames=24)
-pipe.modifiers.append(PhononMode(qpoint=50, band=3, amplitude=0.3))
-render_animation(pipe, "mode.gif")
-```
-
-### Bonds and coordination polyhedra
-
-`data.bonds` stores each bond once (OVITO's `Topology` + `Periodic Image`), so bonds
-stay correct across periodic boundaries and in primitive cells smaller than twice the
-bond length; `DeleteSelected`, `Slice`, `Replicate` and `WrapAtoms` keep them consistent.
-`CreateBonds` finds them with a uniform cutoff, a VESTA-style pair table
-(`pairs=[("Ti", "O", 2.4)]`, `*` = any type, or OVITO's `set_pairwise_cutoff`) or
-covalent radii (`mode="covalent"`, VESTA's default). `EditBonds(add=[(a, b)], remove=[...])`
-adds or deletes single bonds by particle identifier; in the GUI the bond tool (⌇) does it by
-clicking two atoms. `CoordinationPolyhedra` puts a convex polyhedron (or a flat polygon for
-planar coordination) around each center particle, colored like the center, into
-`data.surfaces["coordination-polyhedra"]`. The OpenGL viewport and the ray tracer draw
-bonds, polyhedra, their edges and transparency. LAMMPS data files fill `data.bonds` too.
-
-```python
-from ewald.modifiers import CreateBonds, CoordinationPolyhedra
-
-pipe = import_file("CONTCAR")
-pipe.modifiers.append(CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)]))
-pipe.modifiers.append(CoordinationPolyhedra(center_types=["Ti"], transparency=0.3))
-pipe.render("octahedra.png", renderer="raytrace", radius_scale=0.4)
-```
-
-### Trajectory analysis
-
-These modifiers read every frame of `start:stop:step` through the modifiers above
-them (one frame at a time, so lazy LAMMPS dumps and XDATCARs stay lazy), cache the
-result and show it at every frame:
-`MeanSquaredDisplacement` (FFT time-origin-averaged MSD, per type, unwrapped and
-matched by id, Einstein diffusion coefficient), `VelocityAutocorrelation` (VACF from
-`vx vy vz` or differentiated positions, Green-Kubo D), `TimeAveraging` (OVITO's
-time averaging of a table, attribute or property, e.g. the time-averaged g(r)),
-`TimeSeries` (attributes vs. time), `GenerateTrajectoryLines` (particle paths
-drawn as lines, plus 'Path Length', 'Net Displacement', 'Max Displacement') and
-`OverlayFrames` (other frames as see-through copies of the moving atoms).
-OVITO's everyday helpers, with the same results as OVITO: `UnwrapTrajectories`,
-`FreezeProperty` (a property at one frame copied to all), `LoadTrajectory` (a dump on a
-LAMMPS data topology) and `CombineDatasets` (particles from another file).
-
-```python
-from ewald.modifiers import CoordinationAnalysis, MeanSquaredDisplacement, TimeAveraging
-
-pipe = import_file("XDATCAR")
-pipe.modifiers.append(MeanSquaredDisplacement(time_per_frame=0.002))   # ps between frames
-pipe.modifiers.append(CoordinationAnalysis(cutoff=3.0))
-pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
-data = pipe.compute(0, device="cuda")
-data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # A^2/ps
-data.tables["coordination-rdf[average]"]                               # time-averaged g(r)
-```
-
-### Ion transport
-
-`IonicConductivity` (collective charge MSD: conductivity in S/cm, Nernst-Einstein
-conductivity and Haven ratio; charges given, from the `Charge` property or guessed
-oxidation states), `VanHoveCorrelation` (self and distinct G(r, t)),
-`SelfIntermediateScattering` (F_s(q, t) and its relaxation time), `NonGaussianParameter`
-(α₂(t)) and `SiteHopping` (site assignment, hops, residence times, site occupancy, jump
-diffusion coefficient) are trajectory modifiers like the ones above.
-
-```python
-pipe.modifiers.append(IonicConductivity(temperature=600, time_per_frame=0.002,
-                                        charges={"Li": 1, "P": 5, "S": -2, "Cl": -1}))
-data = pipe.compute(0)
-data.attributes["IonicConductivity.conductivity"], data.attributes["IonicConductivity.haven_ratio"]
-```
-
-### Nudged elastic band
-
-A VASP NEB folder (`00 .. NN`) or a LAMMPS `neb` run folder opens with one frame per image,
-and `NebEnergyProfile` (added automatically there, or appended to any band such as an ASE NEB
-trajectory with `images=`) gives the energy profile along the reaction coordinate, VTST's
-force-based cubic spline and the forward/reverse barriers. `OverlayFrames` (also added) draws
-every other image see-through behind the current one, so the moving atoms show their path. The GUI's Plots tab draws it with
-the current image marked; clicking an image jumps to it.
-
-```python
-pipe = import_file("neb")                              # or "lammps_run/", or "dump.neb.*" with format="neb"
-data = pipe.compute(0)
-data.attributes["NEB.Barrier"], data.tables["NEB spline"]
-```
-
-### Volumetric data (CHGCAR, LOCPOT, ELFCAR, cube)
-
-`import_file("CHGCAR")` gives the atoms plus a `VoxelGrid` in `data.grids`
-(VASP CHGCAR/CHG/PARCHG/AECCAR as "Charge Density" in e/A^3 with "Magnetization",
-"Spin Up", "Spin Down" for spin-polarised runs; LOCPOT "Potential"; ELFCAR "ELF";
-Gaussian cube "Value", `pbc=True` for plane-wave output). `CreateIsosurface`
-draws VESTA-style isosurfaces (`signed=True` adds the negative level in a second
-colour, for density differences and spin densities), `GridSlice` a colour-mapped
-(hkl) plane, `GridDifference` subtracts other files' grids, and `export_file`
-writes `.cube` or CHGCAR. Both the OpenGL renderer and the ray tracer draw the
-surfaces, translucent ones included.
-
-```python
-from ewald.modifiers import CreateIsosurface, GridDifference, GridSlice
-
-pipe = import_file("AB/CHGCAR")
-pipe.modifiers.append(GridDifference(["A/CHGCAR", "B/CHGCAR"]))       # rho_AB - rho_A - rho_B
-pipe.modifiers.append(CreateIsosurface(0.002, signed=True, transparency=0.3))
-pipe.modifiers.append(GridSlice(miller=(0, 0, 1), distance=0.5, cmap="RdBu_r", range=(-0.01, 0.01)))
-pipe.render("ccd.png", renderer="raytrace")
-spin = import_file("CHGCAR").compute().grids["charge-density"]["Spin Up"]  # numpy array
-```
-
-### Structure analysis (ported from OVITO)
-
-`CommonNeighborAnalysis` (adaptive, interval and fixed-cutoff modes),
-`PolyhedralTemplateMatching` (FCC/HCP/BCC/ICO/SC/diamond/graphene, RMSD,
-orientation, elastic deformation gradient, chemical ordering),
-`VoronoiAnalysis` (atomic volume, coordination, Voronoi indices, radical
-tessellation, face list) and `WignerSeitzAnalysis` (vacancies/interstitials,
-per-type occupancies), `IdentifyDiamond` (cubic/hexagonal diamond and their
-first/second neighbors), `ChillPlus` (hexagonal/cubic/interfacial ice, hydrate),
-`CentroSymmetry` (conventional and minimum-weight
-matching), `AcklandJones` and `AtomicStrain` (von Mises/volumetric strain,
-F, Green-Lagrange tensor, D2min, rotation, stretch), `ElasticStrain` (atomic elastic
-strain and deformation gradient relative to an ideal FCC/HCP/BCC/diamond lattice),
-`GrainSegmentation` (grains from PTM orientations: automatic or manual graph clustering
-or minimum spanning tree, grain table with orientation, size and center) and
-`IdentifyFCCPlanarFaults` (intrinsic stacking faults, twin boundaries, multilayer faults
-and their areas). Property names, structure type ids, colors and
-attribute names follow OVITO, and the test suite checks the results against
-OVITO 3.16 on eleven test structures plus ice/hydrate, defect and strain cases (`tests/data/make_ovito_reference.py`).
-
-```python
-from ewald.modifiers import PolyhedralTemplateMatching, VoronoiAnalysis
-
-pipe.modifiers.append(PolyhedralTemplateMatching(output_orientation=True))
-pipe.modifiers.append(VoronoiAnalysis(compute_indices=True))
-data = pipe.compute(0)
-print(data.attributes["PolyhedralTemplateMatching.counts.FCC"])
-ico = (data["Voronoi Index"][:, 4] == 12) & (data["Coordination"] == 12)   # <0,0,0,0,12> cells
-```
-
-With the optional `ovito` package (`pip install -e ".[gui,ovito]"`; one command, since ovito pins PySide6),
-`DislocationAnalysis` runs OVITO's DXA (Burgers vectors, line lengths, segment
-polylines in `tables["dislocations"]`), and `OvitoModifier(any_ovito_modifier)`
-runs any other OVITO modifier inside an ewald pipeline.
-
-### PLUMED collective variables
-
-With the PLUMED library (`conda install -c conda-forge plumed py-plumed`), `Plumed(input)`
-runs a `plumed.dat` over the trajectory (Angstrom to nm, masses, charges and the cell handed
-over as an MD code would; results identical to `plumed driver`) and stores every CV as the
-attribute `Plumed.<name>`, per-atom CVs as properties; `LoadColvar` aligns an existing COLVAR
-with the frames and `FreeEnergySurface` turns a HILLS file into the FES that `plumed sum_hills`
-gives. See docs/user/plumed.md.
-
-```python
-from ewald.modifiers import FreeEnergySurface, Plumed
-
-pipe.modifiers.append(Plumed("d: DISTANCE ATOMS=1,2\nphi: TORSION ATOMS=5,7,9,15"))
-pipe.modifiers.append(FreeEnergySurface("HILLS", bins=(60, 60)))
-```
-
-CNA, PTM, Voronoi, matching-mode CSP, elastic strain, grain segmentation and fcc
-planar faults use a C++ extension (`ewald._native`,
-compiled by `pip install -e .` with pybind11; sources and licenses in
-`src/ewald/_csrc/`). Building it needs a C++17 compiler (gcc/clang, Xcode command
-line tools on macOS, MSVC Build Tools on Windows); without one ewald installs without these. For 108k atoms on 4 cores:
-CNA ~1 s, PTM ~1.6 s, Voronoi ~1.7 s. With `device="cuda"` the CNA signatures
-run as CuPy kernels.
+## Tutorials
+
+1. [Your first notebook](docs/user/tutorials/first-notebook.md): find the surface atoms of a void,
+   style them, plot and save. (Cu void, LAMMPS dump)
+2. [A crystal structure figure](docs/user/tutorials/structure-figure.md): space group, octahedra,
+   bond lengths and a publication render. (SrTiO3, POSCAR)
+3. [A trajectory](docs/user/tutorials/trajectory.md): displacements, MSD, force arrows and frames
+   picked on a plot. (Cu MD, extxyz)
+4. [Reproducing papers](docs/user/papers.md): published AIMD, MD and metadynamics data downloaded
+   and reanalysed (Li conductors, amorphous C and Si, TiOF2).
+
+The tutorial notebooks are in [examples/notebooks](examples/notebooks); every example file they use
+ships with the package (File › Open example, `ewald examples`).
+
+## What is in it
+
+**Notebook GUI.** Notebook tabs, step and view cells, Markdown, matplotlib inline, a Python console
+on the same namespace, a command palette (Ctrl+K) and a minimal mode (Ctrl+Shift+M) that leaves only
+the notebook and the view. A VESTA-like crystal view (view along a, b, c, a*, ..., boundary images,
+polyhedra, isosurfaces), hover readout, picking and measuring, and an OVITO-style classic layout as
+an option. [Desktop GUI](docs/user/gui.md)
+
+**Analysis.** About 70 modifiers: OVITO's structure identification (CNA, PTM, CSP, Voronoi,
+Wigner-Seitz, DXA through the `ovito` package), clusters, rings, Steinhardt order, statistics and
+binning, symmetry, powder XRD and S(q), trajectories (MSD, displacements, unwrapping, time series),
+ion transport (van Hove, conductivity, site hops), NEB profiles, isosurfaces and grid slices,
+DOS and band structures from VASP. Ported analyses are tested against OVITO and freud.
+[Modifiers](docs/user/modifiers.md)
+
+**Files.** Native lazy readers for big text trajectories (LAMMPS dump, XDATCAR, extxyz, OUTCAR,
+vasprun.xml), H5MD and vaspout.h5, MDAnalysis for XTC/TRR/DCD and ASE for everything else, with
+matching writers. Files on an SSH host open by path (`cluster:/scratch/run/dump.lammpstrj`); remote
+computers can be saved as profiles like in an SSH terminal app (the Remotes side bar, Ctrl+Alt+R, or
+`ewald remote add`), with passwords kept in the OS keychain. Runs that are still writing grow on the
+timeline. [File formats](docs/user/formats.md)
+
+**Figures.** A numba ray tracer with ambient occlusion and shadows, vector SVG/PDF/EPS, OpenGL,
+journal size presets, overlays (legends, color bars, scale bars, text) and movies.
+[Rendering figures](docs/user/rendering.md)
+
+**Claude.** Ask Claude about the atoms you picked, or ask for an analysis in words: Claude works
+through the same tools and its steps land in the notebook as ordinary code. `ewald ask`, `ewald
+describe` and an MCP server (`ewald mcp`) do the same from a shell or Claude Code, and `llms.txt`
+is an API reference for agents that write EWALD code. [Claude integration](docs/user/claude.md)
+
+**Plugins.** Readers, writers, modifiers, visual elements, overlays, color maps and themes are all
+plugins, built-in ones included. The Plugins side bar (Ctrl+Shift+X) installs them from catalogs,
+and Modifier Forge has Claude write and test a new one. PLUMED and phonopy support are moving into
+the `ewald-plumed` and `ewald-phonopy` plugins ([frssp/ewald-plugins](https://github.com/frssp/ewald-plugins)).
+[Plugins](docs/plugins/index.md)
+
+**Speed.** Analysis kernels run on NumPy or CuPy from one source; neighbor lists are numba or CUDA C;
+the viewport draws GPU impostors and coarsens while you rotate multi-million-atom systems.
+[GPU compute](docs/user/gpu.md)
+
+## Documentation
+
+The [manual](docs/index.md) has the [user manual](docs/user/install.md), the
+[plugin guide](docs/plugins/index.md) and the [developer guide](docs/developer/architecture.md);
+the GUI's Help menu opens it. What exists, generated from the code: [feature inventory](docs/features.md).
+Open work: [TODO](docs/todo.md). Milestones: [roadmap](docs/ROADMAP.md). To build it as a site:
+`pip install -r docs/requirements.txt && mkdocs serve`.

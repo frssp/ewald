@@ -226,6 +226,15 @@ Docs
   container, so `examples.fetch` only knows GitHub-hosted files.
 - Host the manual (the repository is private; CI uploads the built site as the `docs-site`
   artifact).
+- More tutorials in the notebook style (examples/notebooks, tested by tests/test_tutorials.py):
+  Ask Claude and Modifier Forge on a real question, a plugin from the Plugins side bar, a volumetric
+  file (CHGCAR isosurface), opening a run on a cluster over SSH, and PLUMED/phonopy once they are
+  plugins. The remaining manual pages (Python scripting, Rendering figures, Modifiers) still show
+  `pipe.modifiers.append` and `import_file`; switch their examples to `load`/`pipe.add` when they
+  are next edited.
+- GUI screenshots in docs/images are made by docs/images/make_screenshots.py; Help › About and the
+  Render workspace have none yet, and a GIF of linked selection (drag on a histogram) would show
+  what a still cannot.
 
 ## Ideas backlog
 
