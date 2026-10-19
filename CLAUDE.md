@@ -12,7 +12,8 @@ docs/ROADMAP.md; GUI design specs live outside the repo (project files `design/`
 pip install -e ".[dev]"          # builds the C++ extension ewald._native (needs a C++17 compiler)
 pip install -e ".[dev,gui]"      # + PySide6/pyvistaqt/qtconsole for tests/test_gui.py
 xvfb-run -a python -m pytest -q  # full suite; rendering and GUI tests need an X display with OpenGL
-python -m pytest -q --ignore=tests/test_render.py --ignore=tests/test_gui.py   # no display
+python -m pytest -q --ignore=tests/test_render.py --ignore=tests/test_gui.py --ignore=tests/test_visual.py   # no display
+xvfb-run -a python -m pytest tests/test_visual.py [--update-references]   # visual regression (reference images)
 python -m ewald api > llms.txt   # regenerate the LLM API reference (see below)
 python benchmarks/neighbors.py   # neighbor-list timings
 python benchmarks/large_files.py # open/frame-switch/memory on generated multi-million-atom files
@@ -24,6 +25,15 @@ Without a display, VTK rendering aborts the whole pytest process (fatal error, n
 so use `xvfb-run` or the `--ignore` form. Re-run `pip install -e .` after editing anything in
 `src/ewald/_csrc/`; the extension is not rebuilt automatically. CI (`.github/workflows/ci.yml`)
 runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only on Linux.
+
+Visual regression: `tests/test_visual.py` compares fixed scenes (OpenGL, ray tracer, vector; atoms,
+bonds, polyhedra, isosurface, overlays, radius and quality presets) with `tests/data/visual/*.png`.
+Run it before merging any change to `render.py`, `raytrace.py`, `vector.py`, `overlays.py`,
+`bonds.py`, `mesh.py` or `radii.py`, since CI may not run. A failure writes expected/actual/diff
+images to `visual-diffs/`; look at them. If the change is intended, rerun with
+`--update-references` (optionally `-k <scene>`), view the new PNGs and commit them with the change;
+never edit references by hand. OpenGL references are made with Mesa llvmpipe (`xvfb-run`) and skip
+on other drivers. Keep scenes at 200x150 so the references stay small.
 
 ## Layout (`src/ewald/`)
 
