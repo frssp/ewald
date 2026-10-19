@@ -221,6 +221,9 @@ class MenusMixin:
         self.theme_menu = v.addMenu("Theme")
         self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
         self._fill_theme_menu()
+        lay = v.addMenu("Layout")  # tabs drag between groups; these are the keyboard and menu way
+        for act in self.workbench.actions():
+            lay.addAction(act)
         if nb:
             v.addSeparator()
             v.addAction("Focus on the viewport", self.toggle_focus, "Ctrl+\\")
@@ -284,9 +287,12 @@ class MenusMixin:
             w.addAction("Notebook", lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))
             w.addAction("Plugins", lambda: self._show_side_bar(self.plugins_dock), "Ctrl+Shift+X")
             w.addAction("Display settings", lambda: (self.display.parent().show(), self.display.parent().raise_()))
-        w.addAction("Python console", lambda: self.bottom.setCurrentWidget(self.console))
-        w.addAction("Data inspector", lambda: self.bottom.setCurrentWidget(self.inspector))
-        w.addAction("Plots", lambda: self.bottom.setCurrentWidget(self.plots))
+        w.addAction("3D view", lambda: self.workbench.show(self.viewport))
+        w.addAction("Python console", lambda: self.workbench.show(self.console))
+        w.addAction("Data inspector", lambda: self.workbench.show(self.inspector))
+        w.addAction("Plots", lambda: self.workbench.show(self.plots))
+        w.addAction("New plot view", lambda: self.new_plot_view())
+        w.addAction("Log", lambda: self.workbench.show(self.log))
         w.addAction("AI chat" if nb else "Ask Claude", self.ask_claude)
         w.addAction("Command palette", self.command_palette)
         h = mb.addMenu("&Help")
@@ -351,15 +357,18 @@ class MenusMixin:
 
     def toggle_focus(self):
         """Hide or show the notebook and side panels, leaving the viewport (Ctrl+\\)."""
-        docks = [self.notebook_dock, self.plugins_dock, self.display.parent(), self.ask_dock, self.bottom_dock]
+        docks = [self.notebook_dock, self.plugins_dock, self.display.parent(), self.ask_dock]
         hide = self.notebook_dock.isVisible()
         if hide:
             self._focus_restore = [d for d in docks if d.isVisible()]
+            self._focus_panel = not self.workbench.panel_host.isHidden()
             for d in docks:
                 d.hide()
+            self.workbench.set_panel_visible(False)
         else:
-            for d in getattr(self, "_focus_restore", None) or [self.notebook_dock, self.bottom_dock]:
+            for d in getattr(self, "_focus_restore", None) or [self.notebook_dock]:
                 d.show()
+            self.workbench.set_panel_visible(getattr(self, "_focus_panel", True))
 
     def help_url(self, page="index.md"):
         return manual.url(page, self.settings["general.docs_url"] or None)

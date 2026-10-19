@@ -155,7 +155,8 @@ def apply_settings(win, s: Settings, startup: bool = False):
 def save_layout(win, s: Settings):
     if s["general.restore_layout"]:
         state = {"geometry": bytes(win.saveGeometry().toBase64()).decode(),
-                 "state": bytes(win.saveState().toBase64()).decode()}
+                 "state": bytes(win.saveState().toBase64()).decode(),
+                 "workbench": win.workbench.state()}
         try:
             layout_path(s).parent.mkdir(parents=True, exist_ok=True)
             layout_path(s).write_text(json.dumps(state))
@@ -167,12 +168,15 @@ def restore_layout(win, s: Settings):
     p = layout_path(s)
     if not s["general.restore_layout"] or not p.exists():
         return
+    state = None
     try:
         state = json.loads(p.read_text())
         win.restoreGeometry(QtCore.QByteArray(base64.b64decode(state["geometry"])))
         win.restoreState(QtCore.QByteArray(base64.b64decode(state["state"])))
     except Exception:
         pass
+    if isinstance(state, dict) and isinstance(state.get("workbench"), dict):
+        win.workbench.restore_state(state["workbench"])  # tab groups; older files keep the default
 
 
 def layout_path(s: Settings):

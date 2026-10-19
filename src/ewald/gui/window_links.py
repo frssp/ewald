@@ -51,7 +51,43 @@ class LinksMixin:
     def plot_panels(self) -> list:
         """The Plots tab and the live plots of the current notebook's view cells."""
         view = self.panel.view if self.layout_mode == "notebook" else None
-        return [self.plots] + ([w.plot_panel for w in view.widgets if w.plot_panel is not None] if view else [])
+        return [self.plots, *self.extra_plots.values()] + ([w.plot_panel for w in view.widgets if w.plot_panel is not None] if view else [])
+
+    def new_plot_view(self, beside: str = "plot:1", view: str | None = None):
+        """Another Plots view (a second table or histogram side by side), as a tab next to ``beside``."""
+        if view is None:
+            n = 2
+            while f"plot:{n}" in self.workbench.specs:
+                n += 1
+            view = f"plot:{n}"
+        from .plots import PlotsPanel
+
+        p = PlotsPanel()
+        self._connect_plot(p)
+        p.pipeline = self.pipeline
+        self.extra_plots[view] = p
+        group = self.workbench.group_of(beside) if beside in self.workbench.specs else None
+        self.workbench.register(view, p, f"Plots {view.split(':')[1]}", closable=True, group=group)
+        self.workbench.show(view)
+        self._stale_tabs.add(p)
+        self._update_bottom_tab()
+        return p
+
+    def _make_view(self, view: str) -> bool:
+        """Views a saved layout names that don't exist yet: extra plot views."""
+        if view.startswith("plot:") and view[5:].isdigit() and view != "plot:1":
+            self.new_plot_view(view=view)
+            return True
+        return False
+
+    def _plot_view_closed(self, view):
+        p = self.extra_plots.pop(view, None)
+        self._stale_tabs.discard(p)
+
+    def _extra_view_actions(self, view):
+        if view.startswith("plot:"):
+            return [("New plot view", lambda: self.new_plot_view(view))]
+        return []
 
     def _each_plot(self, fn):
         for p in self.plot_panels():

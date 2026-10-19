@@ -14,7 +14,9 @@ notebook. Linux system libraries and startup errors: [Install](install.md#linux-
 The window has the analysis on the left as a [notebook](notebooks.md): Python cells, steps and
 linked plots, saved as an `.ewd`, `.ipynb` or `.py` file, with one tab per open notebook. The
 [tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline are in the middle. Display settings are on the
-right, the AI chat with Claude opens left of the notebook from the activity bar, and a bottom dock holds the Python console, the data inspector and plots.
+right, the AI chat with Claude opens left of the notebook from the activity bar, and the panel
+below the viewport holds the Python console, the data inspector, plots and the log. Tabs in the
+middle can be rearranged as in VS Code (see [Panel layout](#panel-layout)).
 
 ![The notebook layout](../images/notebook.png)
  The notebook
@@ -27,6 +29,36 @@ Analyze, Render) show an icon with text, and the tool rail and frequent buttons 
 Save, Fit) show the icon alone, with the name and shortcut in the tooltip. Preferences ›
 General › Toolbar buttons switches to icons only or to text only (which also drops the icons
 from menus).
+
+## Panel layout
+
+The viewport and the panel below it are tab groups. Drag a tab onto another group to move it:
+the middle of the group adds it as a tab, an edge splits the group in that direction, and a
+tab bar inserts it at that place. Esc cancels the drag. To look at the pair correlation
+function large, for example, drag the Plots tab onto the 3D view: the plot fills the main area
+and the 3D view waits behind its tab, without redrawing, until you click it again. Drop it on
+the right edge of the 3D view instead to see structure and plot side by side; both follow the
+timeline and linked selections.
+
+Right click a tab (or use the group's menu button) for the same moves without dragging: Split
+right, Split down, Move to editor area or panel, Maximize group, New plot view (a second plot,
+for example g(r) next to the MSD) and Close or Return to panel. Double-click a tab to maximize
+its group. View › Layout lists the moves with their shortcuts, and the command palette (Ctrl+K)
+finds them too:
+
+| Action | Shortcut |
+| --- | --- |
+| Split the current view to the right | Ctrl+Alt+\ |
+| Move the current view to the next group (or split that way) | Ctrl+Alt+arrow |
+| Maximize or restore the group | Ctrl+Alt+M |
+| Return the view to its home area, or close an extra plot view | Ctrl+Alt+W |
+| Fold or unfold the panel | Ctrl+Alt+J |
+| Back to the default layout | View › Layout › Reset layout |
+
+The layout is saved with the window when Preferences › General › *Restore window layout* is
+on (the default), extra plot views included. The 3D view itself never moves between windows:
+it can be placed anywhere in the middle but not closed, and the timeline stays under the
+editor area.
 
 ## Analyze workspace
 
@@ -254,8 +286,9 @@ multi-million-atom files.
 The viewport draws a change once, in the next repaint: several changes made before the
 repaint (a new frame, picks, a camera move) cost one render, a mouse move while rotating costs
 one render rather than two, and nothing is redrawn while the window is idle or the viewport is
-hidden. The Data inspector and Plots tabs follow the current frame only while they are open; a
-plot range linked to the viewport keeps following it either way.
+hidden, which includes a 3D view sitting behind another tab (it draws the last frame when you
+return to it). The Data inspector and plot views follow the current frame only while they are
+on screen; a plot range linked to the viewport keeps following it either way.
 
 *3D view* picks the viewport itself. Auto uses VTK, except on an SSH-forwarded display
 (`ssh -X`), where it uses Legacy GL: OpenGL 1.x display lists drawn like VESTA, with the frame text

@@ -204,7 +204,7 @@ class FilesMixin:
         path = QtWidgets.QFileDialog.getExistingDirectory(self, "Load NEB folder")
         if path:
             self.open_file(path)
-            self.bottom.setCurrentWidget(self.plots)
+            self.workbench.show(self.plots)
 
     def open_example(self, name):
         """Open one of the shipped example files (File › Open example)."""
