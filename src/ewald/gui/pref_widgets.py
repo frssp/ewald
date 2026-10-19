@@ -1,7 +1,6 @@
 """Small widgets of the Preferences dialog: toggle switch, color and path fields, icons."""
 from __future__ import annotations
 
-import os
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -41,16 +40,10 @@ def _icon(name, color, size=18) -> QtGui.QPixmap:
 
 
 def _chevron() -> str:
-    """Down-arrow image for combo boxes (QSS needs a file)."""
-    import tempfile
+    """Down-arrow image for combo boxes (QSS needs a file), in the active palette."""
+    from .theme import image
 
-    path = os.path.join(tempfile.gettempdir(), "ewald-chevron.svg")
-    if not os.path.exists(path):
-        with open(path, "w") as fh:
-            fh.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
-                     f'stroke="{TOKENS["secondary"]}" stroke-width="2.5" stroke-linecap="round" '
-                     'stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>')
-    return path.replace("\\", "/")
+    return image("chevron")
 
 
 def _hex(c) -> str:
