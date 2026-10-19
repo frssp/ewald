@@ -8,10 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- More paper datasets (`examples.fetch`): the argyrodite anion-disorder AIMD set (Morgan 2021, MSD
-  against disorder), TiOF2 structures (Morgan 2024: partial RDFs, Ti-X bond lengths, octahedra)
-  and PLUMED-NEST metadynamics eggs (ammonia borane, alanine dipeptide) with their FES.
-
 ## Next
 
 GUI
@@ -200,7 +196,11 @@ Docs
 - Paper reproductions: StructureFactor `method="rdf"` holds every pair inside the cutoff at once,
   so 100,000 atoms with a 30 A cutoff run out of memory (the a-Si script uses 20 A); histogram in
   chunks. kinisi's covariance-weighted D for the LLZO runs is 0.6x a straight-line fit of the same
-  MSD; find out why.
+  MSD; find out why. Candidates found but not added: TiOF2 PDF against experiment (needs an
+  X-ray weighted G(r)), the a-Si 216-atom HSE06 models (vldgroup/papers-defect-free-a-si), LGPS
+  site maps (hacortesp/CrySF), MoSe2 phonons (Ionizing/adom.202403069); no license stated on the
+  last three. Most other paper data sits on Zenodo or Materials Cloud, unreachable from the cloud
+  container, so `examples.fetch` only knows GitHub-hosted files.
 - Host the manual (the repository is private; CI uploads the built site as the `docs-site`
   artifact).
 
