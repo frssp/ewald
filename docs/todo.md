@@ -22,8 +22,8 @@ GUI
 - Notebook kernels: run a notebook's cells in another Python environment (a per-tab kernel via
   jupyter_client with a small `ewald-kernel` that streams computed frames back), so a notebook
   can use a conda env without ewald's GUI dependencies.
-- Analysis verbs for notebooks (`rdf(pipe, cutoff=6)`, `msd(pipe)`, ... returning tables and
-  adding the step), next to `load` and `pipe.add`.
+- More analysis verbs (`cna(pipe)`, `voronoi(pipe)`, `clusters(pipe)`, returning per-type counts),
+  and verbs in the Insert menu and Ask Claude's suggestions.
 - Plugins side bar: an "updates available" badge on the activity bar, disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
