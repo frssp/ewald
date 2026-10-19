@@ -55,6 +55,7 @@ nav:
       - Desktop GUI: user/gui.md
       - File formats: user/formats.md
       - Modifiers: user/modifiers.md
+      - PLUMED collective variables: user/plumed.md
       - Python scripting: user/scripting.md
       - GPU compute: user/gpu.md
       - Rendering figures: user/rendering.md

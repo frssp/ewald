@@ -161,6 +161,24 @@ pipe.modifiers.append(GridDifference(["A/CHGCAR", "B/CHGCAR"]))
 pipe.modifiers.append(CreateIsosurface(0.002, signed=True))
 ```
 
+## PLUMED collective variables
+
+With the optional PLUMED library ([PLUMED collective variables](plumed.md)):
+
+- `Plumed(input, start, stop, step, time_per_frame, temperature, ...)`: runs a `plumed.dat`
+  (text or path) over the trajectory through PLUMED's MD-engine interface; every value becomes
+  the attribute `Plumed.<name>`, per-atom vectors the property `Plumed <label>`, the series
+  `tables["plumed"]`.
+- `LoadColvar(file, align="index"|"time", stride, offset, ...)`: an existing COLVAR as
+  attributes `Colvar.<field>` aligned to the frames.
+- `FreeEnergySurface(hills, bins, ranges, up_to_frame=False)`: the metadynamics FES from a
+  HILLS file, as `plumed sum_hills` computes it, in `tables["fes"]`.
+
+```python
+pipe.modifiers.append(Plumed("d: DISTANCE ATOMS=1,2\nphi: TORSION ATOMS=5,7,9,15", time_per_frame=0.1))
+pipe.modifiers.append(FreeEnergySurface("HILLS", bins=(60, 60)))
+```
+
 ## Python
 
 `PythonScript(source)` runs `modify(frame, data)` from code kept as text, which the GUI edits

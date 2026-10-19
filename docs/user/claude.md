@@ -22,7 +22,7 @@ density, minimum distance, coordination histograms, g(r) peaks, sanity warnings)
 the model can look at. The tools are: `load_structure`, `describe_frame`,
 `describe_trajectory`, `event_details`, `list_modifiers`, `add_modifier`, `remove_modifier`,
 `show_pipeline`, `set_frame`, `evaluate_expression`, `compute_rdf`, `compute_msd`,
-`render_image` and `get_script`.
+`compute_plumed_cvs`, `read_plumed_output` ([PLUMED](plumed.md)), `render_image` and `get_script`.
 
 `run_python`, which executes model-written code in your Python process, is off unless you pass
 `allow_code=True` (or `--allow-code` on the command line).

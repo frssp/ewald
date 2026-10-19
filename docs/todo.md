@@ -14,7 +14,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   OUTCAR and OSZICAR, thermo columns from log.lammps, as frame attributes and per-atom properties.
 - OVITO Pro analysis gaps: spatial binning, Steinhardt bond order, bond-angle distribution,
   histogram / reduce property, ring statistics.
-- PLUMED plugin and collective variables.
+- PLUMED collective variables: `Plumed`, `LoadColvar`, `FreeEnergySurface`, Claude tools.
 - Ask Claude about picked atoms ([#26](https://github.com/frssp/ewald/pull/26)).
 
 ## Next
@@ -30,6 +30,8 @@ GUI
 
 Analysis
 
+- PLUMED: draw the bias forces as arrows, take MOLINFO residue names from the loaded topology,
+  and plot `Plumed.*` attributes directly on the timeline with a current-frame marker.
 - ConstructSurfaceMesh (alpha-shape surface), drawn with the existing `SurfaceMesh`.
 
 Volumetric data
@@ -89,6 +91,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - Claude features with a real API key: `ewald ask`, `ewald narrate`, `ewald forge`, `ewald mcp`.
 - The Windows release workflow (wheels, PyInstaller app, installer) on a real `v*` tag.
 - `DislocationAnalysis` and `OvitoModifier` with the `ovito` package installed.
+- PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
+  CI has no PLUMED, so those tests skip).
 
 ## Infrastructure
 

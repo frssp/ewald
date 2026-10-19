@@ -78,19 +78,11 @@ def _new_plumed(kernel: str | None = None):
     return p, int(version[0])
 
 
-def version(kernel: str | None = None) -> str:
-    """PLUMED version string of the loaded kernel, e.g. ``"2.10"``."""
-    p, _api = _new_plumed(kernel)
-    buf = np.zeros(1, dtype=np.intc)
-    p.cmd("getApiVersion", buf)
-    out = bytearray(32)
-    try:
-        p.cmd("getVersion", out)   # not in every API version
-        return out.split(b"\0")[0].decode()
-    except Exception:
-        return f"API {buf[0]}"
-    finally:
-        p.finalize()
+def api_version(kernel: str | None = None) -> int:
+    """API version of the loaded PLUMED kernel (10 for PLUMED 2.10; per-atom values need >= 6)."""
+    p, api = _new_plumed(kernel)
+    p.finalize()
+    return api
 
 
 def plumed_executable() -> str | None:
