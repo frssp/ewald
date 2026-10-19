@@ -8,8 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Plugin catalog updates: ids, Update button, compatibility, default index, GitHub token.
-  Branch `claude/project-thread-x53vio`.
 
 ## Next
 
