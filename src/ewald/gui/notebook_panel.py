@@ -734,6 +734,8 @@ class NotebookView(QtWidgets.QWidget):
         bar.addWidget(self.status)
         bar.addWidget(self.py_button)
         lay.addLayout(bar)
+        self.banner = self._make_banner()
+        lay.addWidget(self.banner)
         self.stack = QtWidgets.QStackedWidget()
         self.scroll = _FitWidthScrollArea(objectName="notebookScroll")
         self.scroll.setWidgetResizable(True)
@@ -756,6 +758,32 @@ class NotebookView(QtWidgets.QWidget):
         lay.addWidget(self.stack, 1)
         self.add_bar = self._make_add_bar()
         self.rebuild()
+
+    def _make_banner(self):
+        """The bar over a restricted notebook: saved results only, until you trust it."""
+        w = QtWidgets.QFrame(objectName="restrictedBanner")
+        row = QtWidgets.QHBoxLayout(w)
+        row.setContentsMargins(10, 6, 8, 6)
+        self.banner_text = QtWidgets.QLabel(wordWrap=True)
+        row.addWidget(self.banner_text, 1)
+        trust = QtWidgets.QPushButton("Trust", toolTip="Allow this notebook's code and plugins to run")
+        trust.clicked.connect(lambda: self.trust(ask=False))
+        trust_run = QtWidgets.QPushButton("Trust and run all", objectName="primary")
+        trust_run.clicked.connect(lambda: self.trust(ask=False) and self.run_all())
+        row.addWidget(trust)
+        row.addWidget(trust_run)
+        self._update_banner(w)
+        return w
+
+    def _update_banner(self, banner=None):
+        banner = banner or self.banner
+        nb = self.notebook
+        plugins = [p.get("name") or p.get("id") for p in nb.manifest.get("plugins", []) if p.get("file")]
+        self.banner_text.setText(
+            "<b>Restricted:</b> saved results only. Cells run once you trust this notebook" +
+            (f" and its plugins ({', '.join(plugins)})" if plugins else "") + ".")
+        banner.setToolTip("It came from an .ewd file. Its cells are Python code, so they run only after you agree.")
+        banner.setVisible(nb.restricted)
 
     def _make_add_bar(self):
         w = QtWidgets.QWidget(objectName="addBar")
@@ -992,6 +1020,8 @@ class NotebookView(QtWidgets.QWidget):
         return label
 
     def run(self, cell, advance=False, below=False):
+        if not self._trusted():
+            return
         nb = self.notebook
         before = nb.pipeline
         if cell in nb.cells and not nb.cells[nb.cells.index(cell)].kind == "markdown":
@@ -1024,16 +1054,23 @@ class NotebookView(QtWidgets.QWidget):
 
     def _trusted(self) -> bool:
         """A restricted notebook (an .ewd someone sent) runs only after you agree."""
+        return not self.notebook.restricted or self.trust(ask=True)
+
+    def trust(self, ask: bool = True) -> bool:
+        """Let a restricted notebook run (File › Trust notebook, the banner); ``ask`` confirms first."""
         nb = self.notebook
         if not nb.restricted:
             return True
-        plugins = [p.get("name") or p.get("id") for p in nb.manifest.get("plugins", []) if p.get("file")]
-        text = (f"{nb.name} came from an .ewd file. Its cells are Python code" +
-                (f" and it carries plugins ({', '.join(plugins)})" if plugins else "") +
-                ". Trust it and run?")
-        if QtWidgets.QMessageBox.question(self, "Trust notebook", text) != QtWidgets.QMessageBox.Yes:
-            return False
+        if ask:
+            plugins = [p.get("name") or p.get("id") for p in nb.manifest.get("plugins", []) if p.get("file")]
+            text = (f"{nb.name} came from an .ewd file. Its cells are Python code" +
+                    (f" and it carries plugins ({', '.join(plugins)})" if plugins else "") +
+                    ". Trust it and run?")
+            if QtWidgets.QMessageBox.question(self, "Trust notebook", text) != QtWidgets.QMessageBox.Yes:
+                return False
         nb.trust()
+        self._update_banner()
+        self.titleChanged.emit()
         return True
 
     def restart(self):
