@@ -11,7 +11,7 @@ from ewald import import_file  # noqa: E402
 from ewald.io import remote  # noqa: E402
 from ewald.io.remote import RemotePath, parse_remote  # noqa: E402
 
-from sftp_server import SFTPTestServer  # noqa: E402
+from helpers.sftp_server import SFTPTestServer  # noqa: E402
 
 
 def test_parse_remote_forms(tmp_path, monkeypatch):
