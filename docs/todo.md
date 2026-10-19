@@ -51,6 +51,9 @@ Analysis
   offer an OVITO-compatible mode once its rule is known.
 - FindRings in numba for networks above ~100k atoms (8000 a-Si atoms, rings up to 10: 1 s).
 - Spatial correlation function and Voronoi-weighted Steinhardt (OVITO / freud have them).
+- The rest of OVITO's everyday modifiers: manual selection (box or lasso in the viewport, kept as
+  a modifier) and Smooth trajectory (interpolated frames). FreezeProperty, UnwrapTrajectories,
+  ExpandSelection, LoadTrajectory and CombineDatasets are done.
 - Ion transport: error bars for the conductivity and Haven ratio (block averaging over
   independent windows; the collective charge MSD is one vector and noisy), Onsager
   coefficients L_ij per species pair, and the conductivity checked against a published

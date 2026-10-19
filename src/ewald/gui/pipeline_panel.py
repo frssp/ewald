@@ -46,6 +46,9 @@ MODIFIER_MENU = {
         "Trajectory lines / paths": mods.GenerateTrajectoryLines,
         "NEB energy profile / barrier": mods.NebEnergyProfile,
         "Overlay frames (see-through images)": mods.OverlayFrames,
+        "Unwrap trajectories": mods.UnwrapTrajectories,
+        "Freeze property (values of frame 0)": mods.FreezeProperty,
+        "Load trajectory (topology + dump)": mods.LoadTrajectory,
     },
     "Ion transport": {
         "Ionic conductivity / Haven ratio": mods.IonicConductivity,
@@ -88,10 +91,12 @@ MODIFIER_MENU = {
         "Affine transformation": lambda: mods.AffineTransformation([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
         "Compute property": lambda: mods.ComputeProperty("MyProperty", "Position.Z"),
         "Delete selected": mods.DeleteSelected,
+        "Combine datasets (add particles from a file)": mods.CombineDatasets,
     },
     "Selection": {
         "Expression selection": lambda: mods.ExpressionSelection("Position.Z > 0"),
         "Select type": lambda: mods.SelectType("Cu"),
+        "Expand selection (neighbors)": mods.ExpandSelection,
         "Invert selection": mods.InvertSelection,
         "Clear selection": mods.ClearSelection,
     },
