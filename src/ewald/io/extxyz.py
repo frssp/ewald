@@ -13,14 +13,13 @@ from __future__ import annotations
 
 import io
 import os
-import warnings
 
 import numpy as np
 
 from ..data import DataCollection
 from ._textparse import parse_mixed
 from .ase_reader import _ovito_names
-from .base import FrameReader, file_size, head_lines, open_binary, strip_compression
+from .base import FrameReader, IncompleteFileError, file_size, head_lines, open_binary, strip_compression
 
 
 def is_extxyz(path) -> bool:
@@ -37,10 +36,13 @@ class ExtxyzReader(FrameReader):
         self.path = str(path)
         self._size = file_size(self.path)
         self._frames, complete = _scan_frames(self.path)  # (byte offset, byte length)
-        if not complete:
-            warnings.warn(f"{path}: last frame is incomplete and was skipped", stacklevel=2)
         if not self._frames:
+            if not complete:
+                raise IncompleteFileError(f"{path}: the only frame is incomplete (still being written, or the "
+                                          f"run stopped)")
             raise ValueError(f"{path}: no frames found")
+        if not complete:
+            self._set_incomplete(f"{len(self._frames)} frame(s) read, the partial last one skipped")
 
     def refresh(self) -> int | None:
         """Index frames appended since the last look; the old last frame is scanned again,
@@ -50,18 +52,22 @@ class ExtxyzReader(FrameReader):
             return None
         if size < self._size:  # rewritten: index from scratch
             self._size = size
-            frames, _ = _scan_frames(self.path, growing=True)
+            frames, complete = _scan_frames(self.path, growing=True)
             if not frames:
                 return None
             self._frames = frames
+            self._set_incomplete(None if complete else f"{len(frames)} frame(s) read, the partial last one skipped",
+                                 warn=False)
             return 0
         self._size = size
-        frames, _ = _scan_frames(self.path, offset=self._frames[-1][0], growing=True)
+        frames, complete = _scan_frames(self.path, offset=self._frames[-1][0], growing=True)
         if frames[:1] == self._frames[-1:] and len(frames) == 1:
             return None
         first = len(self._frames) - 1
         # an old last frame read with half its last line is dropped until it is complete
         self._frames = self._frames[:-1] + frames or self._frames
+        self._set_incomplete(None if complete else f"{len(self._frames)} frame(s) read, the partial last one skipped",
+                             warn=False)
         return first
 
     def __len__(self):

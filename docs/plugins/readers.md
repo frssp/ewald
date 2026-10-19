@@ -79,6 +79,14 @@ A class is constructed as `cls(path, **kwargs)`. `ewald.io.base` also has `head_
 for sniffing and `strip_compression(path)` for name checks. The native LAMMPS dump and XDATCAR
 readers in `src/ewald/io/` are complete examples of this pattern.
 
+A file the program is still writing (or that a killed run left behind) should give the frames
+that are complete. Leave out the half-written last frame and record why with
+`self._set_incomplete("12 frame(s) read, the partial last one skipped")`: that sets
+`reader.incomplete`, which the GUI shows, and warns with `IncompleteFileWarning`. Raise
+`IncompleteFileError` (from `ewald.io.base`, a `ValueError`) when nothing is complete yet. A
+`refresh()` method that returns the first frame that may have changed (or None) lets live
+reload follow the file.
+
 ## How the format is chosen
 
 Every format, built-in or plugin, is a `ReaderPlugin` in one registry (`ewald plugins` lists

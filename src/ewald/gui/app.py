@@ -252,9 +252,10 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self.message(f"Theme: {name}")
         self._style_changed()
 
-    def message(self, text, error=False):
-        self.statusBar().showMessage(text, 10000)
-        self.log.appendPlainText(time.strftime("%H:%M:%S ") + ("ERROR " if error else "") + text)
+    def message(self, text, error=False, warning=False):
+        self.statusBar().showMessage(text, 20000 if warning else 10000)
+        self.log.appendPlainText(time.strftime("%H:%M:%S ") + ("ERROR " if error else "WARNING " if warning else "")
+                                 + text)
 
     def set_pipeline(self, pipeline):
         self.pipeline = pipeline
@@ -271,6 +272,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self._push_console()
         self.frame = 0
         self.timeline._set(0) if self.timeline.frame != 0 else self.recompute()
+        self.live_reload.report_incomplete()
 
     def set_frame(self, frame):
         self.frame = frame

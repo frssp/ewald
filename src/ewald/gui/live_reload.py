@@ -35,6 +35,7 @@ class LiveReload(QtCore.QObject):
         self.enabled = enabled
         self._busy = False
         self._error = None
+        self._incomplete = []
         self.timer = QtCore.QTimer(self)
         self.timer.setInterval(int(interval * 1000))
         self.timer.timeout.connect(self.poll)
@@ -56,7 +57,22 @@ class LiveReload(QtCore.QObject):
     def set_pipeline(self, pipeline):
         self.pipeline = pipeline
         self._error = None
+        self._incomplete = []
         self._restart()
+
+    def report_incomplete(self):
+        """Tell the window when the files belong to a calculation still running (or stopped),
+        and when such a calculation has finished."""
+        notes = list(getattr(getattr(self.pipeline, "source", None), "incomplete", None) or [])
+        if notes == self._incomplete:
+            return
+        win = self.parent()
+        if win is not None and hasattr(win, "message"):
+            if notes:
+                win.message("Calculation incomplete: " + "; ".join(notes), warning=True)
+            else:
+                win.message("Calculation finished: all of the file is read")
+        self._incomplete = notes
 
     def _restart(self):
         source = getattr(self.pipeline, "source", None)
@@ -91,6 +107,7 @@ class LiveReload(QtCore.QObject):
         if first is not None:
             self.pipeline.invalidate(first)
             self.grew.emit(first, self.pipeline.num_frames)
+        self.report_incomplete()
 
 
 def _follow(win, first: int, n: int):

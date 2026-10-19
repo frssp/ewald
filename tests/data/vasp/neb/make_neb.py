@@ -60,6 +60,8 @@ def outcar(atoms, path):
         fh.write(" " + "-" * 83 + "\n")
         fh.write(f"\n  free  energy   TOTEN  = {energy:18.8f} eV\n\n")
         fh.write(f"  energy  without entropy= {energy:18.8f}  energy(sigma->0) = {energy:18.8f}\n")
+        fh.write("\n\n General timing and accounting informations for this job:\n"
+                 " ========================================================\n")
 
 
 for i, (im, im0) in enumerate(zip(images, start)):

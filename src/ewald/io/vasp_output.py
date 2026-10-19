@@ -24,7 +24,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 
 from ..data import Cell, DataCollection
-from .base import (FrameReader, complete_size, file_size, floats, grep_lines, head_lines, open_binary,
+from .base import (FrameReader, IncompleteFileError, complete_size, file_size, floats, grep_lines, head_lines, open_binary,
                    strip_compression)
 from .xdatcar import species_name
 
@@ -57,11 +57,11 @@ _OUTCAR_KEYS = "|".join((
     r"Iteration +[0-9]+\(", "direct lattice vectors", "POSITION +TOTAL-FORCE", "free  energy   TOTEN",
     "energy  without entropy", "^  in kB", "external pressure", r"^ magnetization \([xyz]\)",
     "number of electron .*magnetization", "kinetic energy EKIN", "total energy   ETOTAL", "POTCAR:",
-    "ions per type", "NIONS =",
+    "ions per type", "NIONS =", "position of ions in cartesian coordinates", "General timing and accounting",
 ))
 _OUTCAR_LITERALS = (b"Iteration", b"direct lattice vectors", b"TOTAL-FORCE", b"TOTEN", b"without entropy", b"in kB",
                     b"external pressure", b"magnetization", b"EKIN", b"ETOTAL", b"POTCAR:", b"ions per type",
-                    b"NIONS =")
+                    b"NIONS =", b"position of ions in cartesian", b"General timing")
 
 
 class OutcarReader(FrameReader):
@@ -71,7 +71,7 @@ class OutcarReader(FrameReader):
         self.path = str(path)
         self._potcars, self._counts, self._natoms = [], None, None
         self._all_steps: dict[int, dict] = {}
-        self._ionic, self._lattice = 0, None
+        self._ionic, self._lattice, self._initial, self._finished = 0, None, None, False
         size = file_size(self.path)
         # a running VASP may have written half a line; it is looked at again by refresh()
         self._scanned = complete_size(self.path, size) if size else None
@@ -79,6 +79,9 @@ class OutcarReader(FrameReader):
         self._consume(hits if self._scanned is None else [h for h in hits if h[0] < self._scanned])
         counts = self._counts
         if counts is None:
+            if self._scanned is not None or self._potcars:  # VASP has only just started writing it
+                raise IncompleteFileError(f"{path}: OUTCAR ends before the 'ions per type' line (VASP has just "
+                                          f"started, or stopped)")
             raise ValueError(f"{path}: no 'ions per type' line; not an OUTCAR?")
         # VASP prints the POTCAR lines more than once (once per type, then again); the first set counts
         potcars = self._potcars
@@ -87,16 +90,34 @@ class OutcarReader(FrameReader):
             raise ValueError(f"{path}: {len(potcars)} POTCAR lines for {len(counts)} species")
         self.types = np.repeat(species, counts)
         self.natoms = self._natoms or int(sum(counts))
-        if not self._collect():
-            warnings.warn(f"{path}: last ionic step is incomplete and was skipped", stacklevel=2)
+        skipped = not self._collect()
         if not self._steps:
-            raise ValueError(f"{path}: no ionic steps with positions found")
+            raise IncompleteFileError(f"{path}: no ionic step with positions yet (VASP still running the first "
+                                      f"one, or stopped)")
+        self._set_incomplete(self._note(skipped))
+
+    def _note(self, skipped: bool) -> str | None:
+        """What is missing, for :attr:`incomplete`; None for a finished run."""
+        if self._finished and not skipped:
+            return None
+        n = len(self._steps)
+        note = f"{n} ionic step(s) read" + (", the partial last one skipped" if skipped else "")
+        if self._steps and self._steps[0][0] == 0:
+            note = "no ionic step finished yet; showing the initial structure"
+        return note + ("" if self._finished else " (OUTCAR has no timing summary: VASP still running or stopped)")
 
     def _consume(self, hits):
         steps = self._all_steps
         for off, line in hits:
             if b"Iteration" in line:
                 self._ionic = int(re.search(rb"Iteration +(\d+)\(", line).group(1))
+                continue
+            if b"General timing" in line:
+                self._finished = True
+                continue
+            if b"position of ions in cartesian" in line:
+                if self._initial is None:
+                    self._initial = (off, self._lattice)
                 continue
             rec = steps.setdefault(self._ionic, {"values": {}, "mag": {}})
             v = rec["values"]
@@ -138,6 +159,8 @@ class OutcarReader(FrameReader):
         """Ionic steps with positions -> ``self._steps`` and ``self.thermo``; False when the
         last one could not be read (VASP is still writing it) and was left out."""
         steps = [(n, rec) for n, rec in sorted(self._all_steps.items()) if "pos" in rec]
+        if not steps and self._initial is not None:  # no ionic step done yet: the starting structure
+            steps = [(0, {"values": {}, "mag": {}, "pos": self._initial[0], "lat": self._initial[1], "initial": True})]
         for _, rec in steps:
             if "kb" in rec:
                 rec["values"]["Stress"] = _voigt_from_kb(*rec["kb"])
@@ -174,7 +197,7 @@ class OutcarReader(FrameReader):
         before = self._signature()
         self._consume([h for h in hits if h[0] < end])
         self._scanned = end
-        self._collect()
+        self.incomplete = self._note(not self._collect())
         if self._signature() == before:  # only electronic steps were written
             return None
         return max(before[0] - 1, 0)
@@ -202,7 +225,10 @@ class OutcarReader(FrameReader):
             if rec["lat"] is None:
                 raise ValueError(f"{self.path}: no lattice vectors before ionic step {step}")
             lattice = np.array([r[:3] for r in self._block(fh, rec["lat"], 1, 3)])
-            table = np.array([r[:6] for r in self._block(fh, rec["pos"], 2, n)])
+            if rec.get("initial"):
+                table = np.array([r[:3] + [0.0] * 3 for r in self._block(fh, rec["pos"], 1, n) if len(r) >= 3])
+            else:
+                table = np.array([r[:6] for r in self._block(fh, rec["pos"], 2, n)])
             mags = {axis: np.array([r[-1] for r in self._block(fh, off, 4, n)])
                     for axis, off in sorted(rec["mag"].items())}
         if table.shape != (n, 6):
@@ -210,6 +236,8 @@ class OutcarReader(FrameReader):
         data = DataCollection(table[:, :3], self.types, Cell(lattice, np.zeros(3), np.ones(3, bool)))
         data.particles["Particle Identifier"] = np.arange(1, n + 1)
         data.particles["Force"] = table[:, 3:]
+        if rec.get("initial"):
+            del data.particles["Force"]
         if mags:
             data.particles["Magnetic Moment"] = mags[0] if len(mags) == 1 else \
                 np.stack([mags.get(a, np.zeros(n)) for a in range(3)], axis=1)
@@ -230,12 +258,12 @@ _VASPRUN_KEYS = "|".join((
     "<calculation>", "</calculation>", "<structure", "<varray name=\"forces\"", "<varray name=\"stress\"",
     "<scstep>", "</scstep>", "<atominfo>", "<i name=\"(e_fr_energy|e_0_energy|kinetic|total)\"",
     "^ *<(kpoints|dos|eigenvalues|projected)>", "</projected>",
-    "^ *</?(electronvelocities|eigenvalues_kpoints_opt|projected_kpoints_opt)[ >]",
+    "^ *</?(electronvelocities|eigenvalues_kpoints_opt|projected_kpoints_opt)[ >]", "^ *</modeling>",
 ))
 _VASPRUN_LITERALS = (b"calculation>", b"<structure", b"<varray name=\"f", b"<varray name=\"s", b"scstep>",
                      b"<atominfo>", b"<i name=\"e_", b"<i name=\"kinetic\"", b"<i name=\"total\"",
                      b"<kpoints>", b"<dos>", b"<eigenvalues>", b"projected>", b"electronvelocities>",
-                     b"_kpoints_opt")
+                     b"_kpoints_opt", b"</modeling>")
 # blocks with their own <kpoints> / <eigenvalues> (LVEL velocities, KPOINTS_OPT bands), not the run's
 _VASPRUN_NESTED = (b"<electronvelocities", b"<eigenvalues_kpoints_opt", b"<projected_kpoints_opt")
 _VASPRUN_VALUES = {b"e_fr_energy": "Free Energy", b"e_0_energy": "Energy", b"kinetic": "Kinetic Energy",
@@ -247,13 +275,18 @@ class VasprunReader(FrameReader):
 
     def __init__(self, path):
         self.path = str(path)
+        self._size = file_size(self.path)
         self._steps: list[dict] = []
         self._electronic_offsets: dict[str, int] = {}
         self.electronic = None
+        finished = False
         atominfo, calc, in_scstep, in_projected, nested = None, None, False, False, False
         fallback, last_values = {}, {}
         for off, line in grep_lines(self.path, _VASPRUN_KEYS, _VASPRUN_LITERALS):
             tag = line.strip()
+            if tag == b"</modeling>":
+                finished = True
+                continue
             if tag.replace(b"</", b"<", 1).startswith(_VASPRUN_NESTED):
                 nested = not tag.startswith(b"</")
                 continue
@@ -315,13 +348,16 @@ class VasprunReader(FrameReader):
                     pass
         if calc is not None and "structure" in calc:  # running job: the open last step
             self._steps.append(calc)
-        if not self._steps and ("finalpos" in fallback or "initialpos" in fallback):
-            # GW, BSE and optics runs have no ionic step: one frame of the structure (with DOS / bands)
-            self._steps.append({"structure": fallback.get("finalpos", fallback.get("initialpos")),
-                                "values": dict(last_values)})
         if atominfo is None:
+            if not finished:
+                raise IncompleteFileError(f"{path}: vasprun.xml ends before <atominfo> (VASP has just started, "
+                                          f"or stopped)")
             raise ValueError(f"{path}: no <atominfo>; not a vasprun.xml?")
-        root = self._element(atominfo, b"</atominfo>")
+        try:
+            root = self._element(atominfo, b"</atominfo>")
+        except ValueError:
+            raise IncompleteFileError(f"{path}: vasprun.xml ends inside <atominfo> (VASP has just started, "
+                                      f"or stopped)") from None
         rows = root.find("array[@name='atoms']/set")
         self.types = np.array([species_name(rc[0].text.strip()) for rc in rows], dtype=str)
         for rec in self._steps:
@@ -332,21 +368,74 @@ class VasprunReader(FrameReader):
                     continue
                 rec["values"]["Stress"] = _voigt_from_kb(kb[0, 0], kb[1, 1], kb[2, 2], kb[0, 1], kb[1, 2], kb[2, 0])
                 rec["values"]["Pressure"] = float(np.trace(kb) / 3)
+        skipped = False
         if self._steps:
             try:
                 self.read(len(self._steps) - 1)
             except (ValueError, ET.ParseError, IndexError):
-                warnings.warn(f"{path}: last ionic step is incomplete and was skipped", stacklevel=2)
                 self._steps.pop()
+                skipped = True
+        initial = False
+        if not self._steps and ("finalpos" in fallback or "initialpos" in fallback):
+            # GW, BSE and optics runs have no ionic step: one frame of the structure (with DOS / bands);
+            # a running job without a finished step shows its starting structure
+            self._steps.append({"structure": fallback.get("finalpos", fallback.get("initialpos")),
+                                "values": dict(last_values)})
+            try:
+                self.read(0)
+            except (ValueError, ET.ParseError, IndexError):
+                self._steps.pop()
+            initial = not finished and "finalpos" not in fallback
         if not self._steps:
+            if not finished:
+                raise IncompleteFileError(f"{path}: no ionic step in vasprun.xml yet (VASP still running the first "
+                                          f"one, or stopped)")
             raise ValueError(f"{path}: no ionic steps found")
         self.thermo = _table([{"Step": i + 1, **{k: x for k, x in rec["values"].items() if np.isscalar(x)}}
                               for i, rec in enumerate(self._steps)])
+        electronic_note = None
         if "dos" in self._electronic_offsets or "eigenvalues" in self._electronic_offsets:
             try:
                 self.electronic = self._read_electronic(self.read(len(self._steps) - 1).cell.matrix)
             except (ValueError, ET.ParseError, IndexError, KeyError) as exc:
-                warnings.warn(f"{path}: DOS / eigenvalues could not be read ({exc})", stacklevel=2)
+                if finished:
+                    warnings.warn(f"{path}: DOS / eigenvalues could not be read ({exc})", stacklevel=2)
+                electronic_note = "DOS and bands cut short, not shown"
+        elif not finished:
+            electronic_note = "DOS and bands not written yet"
+        if finished and not skipped:
+            note = None
+        else:
+            n = len(self._steps)
+            note = ("no ionic step finished yet; showing the initial structure" if initial else
+                    f"{n} ionic step(s) read" + (", the partial last one skipped" if skipped else ""))
+            if electronic_note:
+                note += "; " + electronic_note
+            if not finished:
+                note += " (vasprun.xml has no </modeling>: VASP still running or stopped)"
+        self._set_incomplete(note)
+
+    def refresh(self) -> int | None:
+        """Follow a vasprun.xml VASP is still writing: index it again when it grew (the
+        old last step, and with the end of the run the DOS and bands, may have changed)."""
+        size = file_size(self.path)
+        if size is None or self._size is None or size == self._size:
+            return None
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            try:
+                fresh = VasprunReader(self.path)
+            except (OSError, ValueError, ET.ParseError):
+                return None
+        old, old_size = len(self._steps), self._size
+        electronic = (self.electronic is None, sorted(self._electronic_offsets))
+        before = (old, self._steps[-1].get("structure"), str(self._steps[-1]["values"]))
+        self.__dict__.update(fresh.__dict__)
+        if size < old_size or (self.electronic is None, sorted(self._electronic_offsets)) != electronic:
+            return 0  # DOS / bands appeared: every frame carries them
+        if (len(self._steps), self._steps[-1].get("structure"), str(self._steps[-1]["values"])) == before:
+            return None  # only electronic steps were written
+        return max(old - 1, 0)
 
     def __len__(self):
         return len(self._steps)
@@ -530,7 +619,11 @@ def read_oszicar(path) -> dict:
     """OSZICAR ionic-step lines as a table: ``Step`` plus ``Energy`` (E0), ``Free Energy`` (F),
     ``Magnetization`` and, for MD, ``Temperature``, ``Total Energy``, ``Kinetic Energy``, ..."""
     rows = []
-    for _, line in grep_lines(path, r"^ *[0-9]+ +(T|F)="):
+    size = file_size(path)
+    end = complete_size(path, size) if size else None  # VASP may be half way through the last line
+    for off, line in grep_lines(path, r"^ *[0-9]+ +(T|F)="):
+        if end is not None and off >= end:
+            continue
         parts = _OSZICAR_KEY.split(line)
         row = {"Step": int(parts[0])}
         for key, value in zip(parts[1::2], parts[2::2]):
