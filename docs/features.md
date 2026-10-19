@@ -250,6 +250,7 @@ Details: [Command line](user/cli.md).
 | `ewald render INPUT OUTPUT` | render a frame to an image (.png/.jpg/.tif/.svg/.pdf/.eps) | `--frame` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--ao` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` `--dpi` |
 | `ewald movie INPUT OUTPUT` | render frames to .mp4/.gif/.avi/.mov or a PNG sequence | `--fps` `--start` `--stop` `--every` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--time-per-frame` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` |
 | `ewald gui [INPUT]` | open the desktop viewer | `--type-map` `--device` |
+| `ewald examples` | list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...) | `--copy` |
 | `ewald info INPUT` | print frames and properties | `--type-map` |
 | `ewald describe INPUT` | JSON summary of a frame or, with --trajectory, of the run | `--frame` `--trajectory` `--type-map` |
 | `ewald ask INPUT [QUESTION...]` | ask Claude about a structure (needs anthropic + credentials) | `--type-map` `--model` `--allow-code` `--script` `--select` `--ids` `--frame` |
@@ -389,6 +390,16 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 - Load file… (`Ctrl+O`)
 - Load remote file (SSH)… (`Ctrl+Alt+O`)
+- Open example
+  - POSCAR.SrTiO3 (VASP POSCAR)
+  - Si.cif (CIF)
+  - Pt_nanoparticle.xyz (XYZ)
+  - Cu_md.extxyz (extended XYZ)
+  - XDATCAR.Si (VASP XDATCAR)
+  - CHGCAR.Si (VASP CHGCAR)
+  - Cu_void.lammpstrj (LAMMPS dump)
+  - CuZr.data (LAMMPS data)
+  - Cu3Au_band.yaml (phonopy band.yaml)
 - Load session… (`Ctrl+Shift+O`)
 - Save session (`Ctrl+S`)
 - Save session as… (`Ctrl+Shift+S`)

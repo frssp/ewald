@@ -101,7 +101,8 @@ made in the GUI can be reproduced in a batch script. See [Rendering figures](ren
 
 ## Files
 
-File › Load file opens any format ewald can read ([File formats](formats.md)), including
+File › Open example opens one of the [example files](quickstart.md#example-files) shipped
+with ewald. File › Load file opens any format ewald can read ([File formats](formats.md)), including
 formats added by [reader plugins](../plugins/readers.md). LAMMPS dumps ask for a
 type-to-element map unless you set a default in Preferences. File › Export data writes the
 current frame or the whole trajectory through `export_file`, and File › Export movie writes an

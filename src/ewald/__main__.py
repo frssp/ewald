@@ -50,6 +50,8 @@ def build_parser():
     g.add_argument("input", nargs="?", help="structure/trajectory file or .ewald session")
     g.add_argument("--type-map", default=None)
     g.add_argument("--device", default=None)
+    ex = sub.add_parser("examples", help="list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...)")
+    ex.add_argument("--copy", default=None, metavar="DIR", help="copy them into DIR")
     i = sub.add_parser("info", help="print frames and properties")
     i.add_argument("input")
     i.add_argument("--type-map", default=None)
@@ -110,6 +112,8 @@ def main(argv=None):
 
         print(api_reference(with_plugins=args.with_plugins), end="")
         return
+    if args.cmd == "examples":
+        return _examples(args.copy)
     if args.cmd == "plugins":
         return _print_plugins(args.json)
     if args.cmd == "forge":
@@ -232,6 +236,18 @@ def _render_cmd(args, reader_kwargs):
         opts["dpi"] = args.dpi
     render(data, args.output, text=format_label(text, frame, data, tpf) or None, **opts)
     print("wrote", args.output)
+
+
+def _examples(dest=None):
+    from . import examples
+
+    if dest:
+        print(f"copied {len(examples.EXAMPLES)} files to {examples.copy(dest)}")
+        return
+    width = max(len(ex.file) for ex in examples.EXAMPLES)
+    for ex in examples.EXAMPLES:
+        print(f"{ex.file:<{width}}  {ex.format}: {ex.description}")
+    print(f"\nin {examples.FILES}; open one with: ewald gui {examples.EXAMPLES[0].path}")
 
 
 def _print_plugins(as_json=False):

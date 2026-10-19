@@ -16,7 +16,7 @@ hiddenimports = (collect_submodules("ewald")
                  # ASE picks readers by format name at runtime
                  + collect_submodules("ase.io") + collect_submodules("ase.calculators")
                  + ["qtconsole.inprocess", "ipykernel.inprocess", "pyvistaqt"])
-datas = collect_data_files("ase") + collect_data_files("pyvista") + collect_data_files("qtconsole")
+datas = collect_data_files("ewald") + collect_data_files("ase") + collect_data_files("pyvista") + collect_data_files("qtconsole")
 binaries = []
 # debugpy: ipykernel imports it optionally, but its vendored pydevd tree breaks when frozen
 excludes = ["tkinter", "ovito", "torch", "tensorflow", "PyQt5", "PyQt6", "PySide2", "debugpy"]

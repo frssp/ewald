@@ -10,7 +10,7 @@ import traceback
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .. import manual
+from .. import examples, manual
 from .. import modifiers as mods
 from ..io import import_file
 from ..render import camera_state, render
@@ -188,6 +188,12 @@ class MainWindow(QtWidgets.QMainWindow):
         f = mb.addMenu("&File")
         f.addAction("&Load file…", self.open_dialog, QtGui.QKeySequence.Open)
         f.addAction("Load &remote file (SSH)…", self.open_remote_dialog, "Ctrl+Alt+O")
+        ex = f.addMenu("Open e&xample")
+        for example in examples.EXAMPLES:
+            act = ex.addAction(f"{example.file}  ({example.format})", lambda e=example: self.open_example(e.file))
+            act.setToolTip(example.description)
+            act.setStatusTip(example.description)
+        ex.setToolTipsVisible(True)
         f.addAction("Load &session…", self.load_session_dialog, "Ctrl+Shift+O")
         f.addAction("&Save session", self.save_session, QtGui.QKeySequence.Save)
         f.addAction("Save session &as…", lambda: self.save_session(ask=True), QtGui.QKeySequence.SaveAs)
@@ -333,6 +339,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.load_session(path)
             return
         self._open_asking_types(path)
+
+    def open_example(self, name):
+        """Open one of the shipped example files (File › Open example)."""
+        return self.open_file(str(examples.path(name)))
 
     def open_remote_dialog(self):
         from .remote_dialog import RemoteFileDialog

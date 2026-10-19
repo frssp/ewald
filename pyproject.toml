@@ -30,7 +30,7 @@ ewald-gui = "ewald.gui:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ewald = ["tables/*.json"]
+ewald = ["tables/*.json", "examples/files/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
