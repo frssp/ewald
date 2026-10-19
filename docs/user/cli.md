@@ -13,6 +13,7 @@ LAMMPS numeric types wherever a file is read.
 | `ewald ask FILE "question" [--allow-code] [--script out.py] [--model ID]` | ask Claude about a structure; `--script` saves the resulting pipeline |
 | `ewald mcp [FILE] [--allow-code]` | serve the analysis tools over MCP (stdio) |
 | `ewald api` | print the LLM API reference (`llms.txt`) |
+| `ewald inventory [-o docs/features.md] [--gui]` | print or rewrite the [feature inventory](../features.md); `--gui` reads the menus from a live window |
 
 Examples:
 

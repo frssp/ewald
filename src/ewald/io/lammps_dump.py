@@ -14,6 +14,7 @@ import numpy as np
 
 from ..data import Cell, DataCollection
 from . import remote
+from ._textparse import parse_table
 from .base import FrameReader, head_lines, open_binary
 
 # LAMMPS column name -> (OVITO-style property, component)
@@ -159,11 +160,8 @@ def _read_table(block: bytes, n: int, cols) -> list[np.ndarray]:
         return [np.empty(0) for _ in cols]
     text = [k for k, c in enumerate(cols) if c == "element"]
     numeric = [k for k in range(len(cols)) if k not in text]
-    try:  # numpy's C parser: ~4x faster than splitting in Python
-        values = np.loadtxt(io.BytesIO(block), dtype=float, usecols=numeric, ndmin=2,
-                            comments=None, max_rows=n)
-        if values.shape != (n, len(numeric)):
-            raise ValueError
+    try:  # parallel numba parser, np.loadtxt for rows it cannot convert exactly
+        values = parse_table(block, n, len(cols), numeric)
         out: list = [None] * len(cols)
         for j, k in enumerate(numeric):
             out[k] = values[:, j]

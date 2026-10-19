@@ -186,6 +186,11 @@ class DataCollection:
         return self.count
 
     @property
+    def nbytes(self) -> int:
+        """Bytes held by the per-particle arrays (what a cached frame costs)."""
+        return sum(getattr(a, "nbytes", 0) for a in self.particles.values())
+
+    @property
     def positions(self) -> np.ndarray:
         return self.particles["Position"]
 

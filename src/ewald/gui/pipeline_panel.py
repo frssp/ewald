@@ -74,7 +74,7 @@ def fill_modifier_menu(menu, add):
     for sub in menu.findChildren(QtWidgets.QMenu, options=QtCore.Qt.FindDirectChildrenOnly):
         sub.deleteLater()
     for group, items in MODIFIER_MENU.items():
-        sub = menu.addMenu(group)
+        sub = menu.addMenu(group.replace("&", "&&"))  # a single "&" would be a mnemonic
         for label, factory in items.items():
             sub.addAction(label, lambda f=factory: add(f()))
 
