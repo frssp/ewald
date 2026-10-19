@@ -113,7 +113,13 @@ def _modifier_class(entry: dict, allow_code: bool):
     name, module = entry["type"], entry.get("module", "")
     cls = None
     if module.startswith("ewald.") or name in modifiers.__all__:
-        cls = getattr(modifiers, name, None)
+        cls = getattr(modifiers, name, None)  # ImportError with an install hint for moved modifiers
+    if cls is None:
+        from . import plugins
+
+        found = plugins.modifiers().get(name)  # installed plugins are trusted like ewald itself
+        if found is not None and found.cls.__module__ == module:
+            cls = found.cls
     if cls is None and (module in sys.modules or (allow_code and module)):
         cls = getattr(importlib.import_module(module), name)
     if cls is not None:
@@ -161,15 +167,12 @@ def modifier_from_dict(entry: dict, allow_code: bool = False):
     if name in CODE_MODIFIERS and not allow_code and m.enabled:
         m.enabled = False
         warning = f"{m.name}: Python code not run (allow_code=False); modifier disabled"
-    elif name == "Plumed" and not allow_code and m.enabled:
-        from .plumed import untrusted_input_problems
-
+    elif not allow_code and m.enabled and callable(getattr(m, "untrusted_problems", None)):
+        # a modifier that can load code or files (e.g. the ewald-plumed plugin's Plumed) says why
         try:
-            problems = untrusted_input_problems(m.input)
-        except Exception as exc:  # unreadable input: PLUMED would fail on it anyway
-            problems = [str(exc)]
-        if m.kernel:
-            problems.append(f"kernel={m.kernel!r} loads a library")
+            problems = list(m.untrusted_problems())
+        except Exception as exc:
+            problems = [f"could not check: {type(exc).__name__}: {exc}"]
         if problems:
             m.enabled = False
             warning = f"{m.name}: not run (allow_code=False): {'; '.join(problems)}; modifier disabled"

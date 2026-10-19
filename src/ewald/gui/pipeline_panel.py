@@ -77,9 +77,6 @@ MODIFIER_MENU = {
                                                          color=(0.85, 0.15, 0.15)),
         "Arrows colored by length": lambda: mods.VectorVis(color_mapping_property="Magnitude"),
     },
-    "Phonons": {
-        "Phonon mode animation (band.yaml, OUTCAR)": mods.PhononMode,
-    },
     "Coloring": {
         "Color coding": lambda: mods.ColorCoding("Position.Z"),
         "Assign color": lambda: mods.AssignColor((1.0, 0.2, 0.2)),
@@ -99,11 +96,6 @@ MODIFIER_MENU = {
         "Expand selection (neighbors)": mods.ExpandSelection,
         "Invert selection": mods.InvertSelection,
         "Clear selection": mods.ClearSelection,
-    },
-    "Collective variables (PLUMED)": {
-        "PLUMED input (plumed.dat)": mods.Plumed,
-        "Load COLVAR file": mods.LoadColvar,
-        "Free energy surface from HILLS": mods.FreeEnergySurface,
     },
     "Python": {
         "Python script": mods.PythonScript,

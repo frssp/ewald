@@ -5,6 +5,16 @@ variable PLUMED knows (distances, torsions, coordination numbers, RMSD, path CVs
 ...) becomes a per-frame attribute you can plot, select on and hand to Claude. It also reads
 PLUMED's own COLVAR and HILLS files and draws the metadynamics free energy surface.
 
+This is the **ewald-plumed plugin** (id `plumed`), not part of ewald itself: install it from the
+Plugins panel or with
+
+```bash
+pip install 'git+https://github.com/frssp/ewald-plugins#subdirectory=packages/ewald-plumed'
+```
+
+Its modifiers then import from `ewald.modifiers` like built-in ones, its library is
+`ewald_plumed.plumed` (`import ewald.plumed` still works), and Claude gets its two tools.
+
 ```python
 from ewald import import_file
 from ewald.modifiers import Plumed, TimeSeries
@@ -23,17 +33,18 @@ data.tables["plumed"]              # Frame, d, phi, Bias over the trajectory
 
 ## Installing PLUMED
 
-PLUMED is optional: ewald works without it, and the PLUMED modifiers fail with a message
-saying what to install. You need the PLUMED library (the "kernel") and its Python binding.
+`LoadColvar`, `FreeEnergySurface` and `read_plumed_output` need only the plugin. `Plumed` and
+`compute_plumed_cvs` also need the PLUMED library (the "kernel") and its Python binding, and
+fail with a message saying what to install when they are missing.
 
 | Route | Command |
 |---|---|
 | conda-forge (library and binding, sets `PLUMED_KERNEL`) | `conda install -c conda-forge plumed py-plumed` |
-| pip binding + your own PLUMED build | `pip install -e ".[plumed]"`, then `export PLUMED_KERNEL=<prefix>/lib/libplumedKernel.so` |
+| pip binding + your own PLUMED build | `pip install plumed` (or the plugin with its `[engine]` extra), then `export PLUMED_KERNEL=<prefix>/lib/libplumedKernel.so` |
 
 The binding finds the library through `PLUMED_KERNEL`; `Plumed(kernel="/path/libplumedKernel.so")`
 overrides it per modifier. Values of vector CVs (one per atom) need PLUMED 2.10 or later.
-`ewald.plumed.available()` tells you whether everything loads.
+`ewald_plumed.plumed.available()` tells you whether everything loads.
 
 ## How frames reach PLUMED
 
@@ -116,7 +127,7 @@ CV as a curve and two CVs as a filled contour map.
 From Python:
 
 ```python
-from ewald import plumed
+from ewald_plumed import plumed
 
 fes = plumed.fes_from_hills("HILLS", bins=(60, 60))
 plumed.plot_fes(fes).figure.savefig("fes.pdf")

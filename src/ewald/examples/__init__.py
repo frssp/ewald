@@ -41,7 +41,6 @@ EXAMPLES = [
     Example("CHGCAR.Si", "VASP CHGCAR", "diamond Si with a synthetic valence density; try CreateIsosurface(isolevel=0.3)"),
     Example("Cu_void.lammpstrj", "LAMMPS dump", "Cu block with a spherical void, 5 frames"),
     Example("CuZr.data", "LAMMPS data", "B2 CuZr (128 atoms), types named in Masses"),
-    Example("Cu3Au_band.yaml", "phonopy band.yaml", "Cu3Au phonon bands with eigenvectors; opens playing a mode"),
 ]
 
 

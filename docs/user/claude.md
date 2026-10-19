@@ -23,11 +23,13 @@ the model can look at. The tools are: `load_structure`, `describe_frame`,
 `describe_trajectory`, `event_details`, `list_modifiers`, `add_modifier`, `remove_modifier`,
 `show_pipeline`, `set_frame`, `evaluate_expression`, `compute_rdf`, `analyze_symmetry`,
 `compute_diffraction`, `compute_msd`,
-`describe_selection`, `compute_plumed_cvs`, `read_plumed_output` ([PLUMED](plumed.md)),
+`describe_selection`,
 `render_image` (with an optional `theme`), `list_visuals`, `add_visual`, `remove_visual` (visual
 element plugins drawn by later renders), `list_overlays`, `add_overlay`, `remove_overlay`
 (overlays such as the coordinate tripod), `list_styles` (themes and color maps, each marked
-whether it reads in grayscale) and `get_script`.
+whether it reads in grayscale) and `get_script`. Plugins add their own tools with
+`@claude_tool` ([Claude tool plugins](../plugins/tools.md)); the ewald-plumed plugin adds
+`compute_plumed_cvs` and `read_plumed_output` ([PLUMED](plumed.md)).
 
 `run_python`, which executes model-written code in your Python process, is off unless you pass
 `allow_code=True` (or `--allow-code` on the command line).
@@ -35,7 +37,7 @@ whether it reads in grayscale) and `get_script`.
 Claude may act on text inside the files it reads (a comment line or a type name can carry
 instructions), so the always-on tools are limited to what such text cannot abuse: expressions
 accept only arithmetic, comparisons and NumPy array functions; `export_file` replaces files only
-inside its work dir and never writes into hidden folders such as `~/.ssh`; and
+inside its work dir and never writes into hidden folders such as `~/.ssh`; and the plugin tool
 `compute_plumed_cvs` refuses `LOAD` (native code) and absolute or `..` file paths.
 
 ## API key

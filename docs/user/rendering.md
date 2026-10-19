@@ -197,8 +197,9 @@ s.pipeline.render("figure.png", camera=s.camera, **s.render_kwargs())
 
 The input is found by its absolute path or relative to the session file, so a folder holding
 both can be moved. Python modifiers are saved as source and run only with
-`load_session(path, allow_code=True)`; otherwise they load disabled, and so does a `Plumed`
-modifier whose input uses `LOAD`, a `kernel` library or file paths outside its folder. Entries
+`load_session(path, allow_code=True)`; otherwise they load disabled, and so does a plugin
+modifier that reports `untrusted_problems()`, such as the ewald-plumed plugin's `Plumed` whose input
+uses `LOAD`, a `kernel` library or file paths outside its folder. Entries
 that name anything but a modifier class are skipped. `ewald render figure.ewald
 figure.pdf` re-renders a saved session from the shell.
 

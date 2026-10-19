@@ -13,8 +13,6 @@ from .wigner_seitz import WignerSeitzAnalysis
 from .local_order import AcklandJones, AtomicStrain, CentroSymmetry, ChillPlus
 from .ovito_bridge import DislocationAnalysis, OvitoModifier
 from .neb import NebEnergyProfile
-from .phonon import PhononMode
-from .plumed import FreeEnergySurface, LoadColvar, Plumed
 from .selection import (ClearSelection, DeleteSelected, ExpandSelection, ExpressionSelection, InvertSelection,
                         SelectType, Slice)
 from .script import PythonScript
@@ -40,7 +38,7 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "GenerateTrajectoryLines", "CreateBonds", "EditBonds", "CoordinationPolyhedra",
            "CreateIsosurface", "GridSlice", "GridDifference", "Histogram", "SpatialBinning", "ReduceProperty",
            "SteinhardtOrderParameters", "BondAngleDistribution", "BondLengthDistribution", "FindRings", "VectorVis",
-           "Plumed", "LoadColvar", "FreeEnergySurface", "NebEnergyProfile", "OverlayFrames", "PhononMode",
+           "NebEnergyProfile", "OverlayFrames",
            "SymmetryAnalysis", "PowderDiffraction", "StructureFactor", "ElasticStrain", "GrainSegmentation",
            "IdentifyFCCPlanarFaults", "FreezeProperty", "UnwrapTrajectories", "ExpandSelection", "LoadTrajectory",
            "CombineDatasets", "IonicConductivity", "VanHoveCorrelation", "SelfIntermediateScattering",
@@ -49,6 +47,20 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
 # OVITO spellings (``CommonNeighborAnalysisModifier``, ``WrapPeriodicImagesModifier``, ...) resolve to the
 # ewald class, so OVITO scripts - and code written by LLMs that learned OVITO - run unchanged.
 _OVITO_NAMES = {"WrapPeriodicImagesModifier": "WrapAtoms", "PythonScriptModifier": "PythonScript"}
+
+# modifiers that moved out of ewald into first-party plugins (frssp/ewald-plugins): name -> plugin
+MOVED = {"PhononMode": "phonopy", "Plumed": "plumed", "LoadColvar": "plumed", "FreeEnergySurface": "plumed"}
+PLUGIN_PACKAGES = {"phonopy": "ewald-phonopy", "plumed": "ewald-plumed"}
+
+
+def moved_hint(name: str) -> str | None:
+    """How to get a modifier that moved into a plugin, or None."""
+    plugin = MOVED.get(name)
+    if plugin is None:
+        return None
+    package = PLUGIN_PACKAGES[plugin]
+    return (f"{name} moved to the {package} plugin: install {plugin!r} from the Plugins panel, or "
+            f"pip install 'git+https://github.com/frssp/ewald-plugins#subdirectory=packages/{package}'")
 
 
 def __getattr__(name):
@@ -61,4 +73,7 @@ def __getattr__(name):
         found = plugins.modifiers().get(name) or (plugins.modifiers().get(target) if target else None)
         if found is not None:
             return found.cls
+    hint = moved_hint(name) or (moved_hint(target) if target else None)
+    if hint:
+        raise ImportError(hint, name=name)
     raise AttributeError(f"module 'ewald.modifiers' has no attribute {name!r}")

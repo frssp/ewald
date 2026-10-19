@@ -1,3 +1,4 @@
+import importlib.metadata
 import shutil
 import textwrap
 from pathlib import Path
@@ -11,8 +12,22 @@ from ewald.io.base import FrameReader
 EXAMPLE = Path(__file__).parents[1] / "examples" / "plugins" / "npz_trajectory.py"
 
 
+# plugin packages installed in this environment (e.g. ewald-phonopy) stay out of these tests
+_GROUPS = ("ewald.readers", "ewald.modifiers", "ewald.plugins", "ewald.tools")
+_INSTALLED = {(g, ep.name, ep.value) for g in _GROUPS for ep in importlib.metadata.entry_points(group=g)}
+
+
 @pytest.fixture(autouse=True)
 def fresh_registry(monkeypatch):
+    real = importlib.metadata.entry_points
+
+    def entry_points(**kw):
+        eps = real(**kw)
+        if "group" not in kw:
+            return eps
+        return [ep for ep in eps if (kw["group"], ep.name, ep.value) not in _INSTALLED]
+
+    monkeypatch.setattr(importlib.metadata, "entry_points", entry_points)
     monkeypatch.setattr(plugins, "_registry", plugins._Registry())
     yield
     monkeypatch.setattr(plugins, "_registry", plugins._Registry())
@@ -343,7 +358,7 @@ def test_file_manifest_is_read_without_running_the_file(tmp_path):
     st = plugins.status()
     assert any("needs ewald" in e for e in st["errors"].values())
     assert not any("must not be imported" in e for e in st["errors"].values())
-    assert {p["id"] for p in st["plugins"]} == {"lab-tools", "future"}
+    assert {p["id"] for p in st["plugins"] if p["kind"] != "built-in"} == {"lab-tools", "future"}
 
 
 def test_plugin_without_manifest_gets_its_file_name():
@@ -434,6 +449,54 @@ def test_forge_saves_a_manifest(tmp_path):
     manifest = plugins.file_manifest(path)
     assert manifest["source"] == "forge" and manifest["id"] == "atom_count"
     assert plugins.installed()["atom_count"].kind == "forge"
+
+
+def test_builtin_formats_are_listed_and_can_be_switched_off(tmp_path):
+    found = plugins.installed()
+    vasp = found["vasp"]
+    assert (vasp.kind, vasp.state, vasp.version) == ("built-in", "loaded", plugins.ewald_version())
+    assert "xdatcar" in vasp.contributions["readers"] and "poscar" in vasp.contributions["writers"]
+    assert found["lammps"].contributions["readers"][0] == "lammps-dump"
+    grouped = {n for g in plugins.BUILTIN_PLUGINS.values() for n in g[2]}
+    assert set(plugins.readers()) - grouped == {"extxyz", "ase"}     # core formats stay on
+    plugins.set_enabled("vasp", False)
+    assert "xdatcar" not in plugins.readers() and "poscar" not in plugins.writers()
+    assert plugins.installed()["vasp"].state == "disabled"
+    assert "lammps-dump" in plugins.readers()
+    plugins.set_enabled("vasp", True)
+    assert "xdatcar" in plugins.readers()
+
+
+def test_builtin_plugins_without_external_plugins(monkeypatch):
+    monkeypatch.setenv("EWALD_NO_PLUGINS", "1")
+    _write_plugin("ignored.py", "raise RuntimeError('not loaded')\n")
+    assert {p.kind for p in plugins.installed().values()} == {"built-in"}
+
+
+def test_claude_tool_plugin_joins_the_toolset():
+    _write_plugin("tools.py", '''
+        from ewald.plugins import claude_tool
+
+        @claude_tool(schema={"type": "object", "properties": {"n": {"type": "integer"}}})
+        def count_atoms(toolset, n=1):
+            """Number of atoms in the current frame, times n."""
+            return {"atoms": toolset.pipeline.compute(toolset.frame).count * n}
+
+        @claude_tool("load_structure")
+        def shadow(toolset):
+            return "never called"
+    ''')
+    from ase.build import bulk
+
+    from ewald import Pipeline, StaticSource
+    from ewald.llm.tools import Toolset
+
+    assert set(plugins.tools()) == {"count_atoms", "load_structure"}
+    assert plugins.installed()["tools"].contributions["tools"] == ["count_atoms", "load_structure"]
+    ts = Toolset(Pipeline(StaticSource([DataCollection.from_ase(bulk("Cu"))])))
+    assert ts.tools["count_atoms"].description.startswith("Number of atoms")
+    assert ts.call("count_atoms", {"n": 3}).content == {"atoms": 3}
+    assert ts.tools["load_structure"].function.__name__ == "load_structure"  # built-in tools win
 
 
 def test_scheme_reader_takes_uri_paths(tmp_path, monkeypatch):

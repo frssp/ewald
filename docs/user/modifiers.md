@@ -88,9 +88,9 @@ pipe.modifiers.append(VectorVis("Force", scaling=2.0, color_mapping_property="Ma
 pipe.modifiers.append(VectorVis("Magnetic Moment", scaling=0.5, alignment="center", color="crimson"))
 ```
 
-## Phonon modes
+## Phonon modes (ewald-phonopy plugin)
 
-`PhononMode(qpoint, band, amplitude, supercell, arrows, ...)` animates one phonon mode of a
+With the [ewald-phonopy plugin](phonons.md) installed, `PhononMode(qpoint, band, amplitude, supercell, arrows, ...)` animates one phonon mode of a
 phonopy `band.yaml`/`mesh.yaml`/`qpoints.yaml` or a VASP IBRION=5-8 OUTCAR over one period (the
 file's frames), in a commensurate supercell, with the mode pattern as arrows. See
 [Phonon modes](phonons.md).
@@ -438,9 +438,9 @@ pipe.modifiers.append(GridDifference(["A/CHGCAR", "B/CHGCAR"]))
 pipe.modifiers.append(CreateIsosurface(0.002, signed=True))
 ```
 
-## PLUMED collective variables
+## PLUMED collective variables (ewald-plumed plugin)
 
-With the optional PLUMED library ([PLUMED collective variables](plumed.md)):
+With the [ewald-plumed plugin](plumed.md) installed (`Plumed` also needs the PLUMED library):
 
 - `Plumed(input, start, stop, step, time_per_frame, temperature, ...)`: runs a `plumed.dat`
   (text or path) over the trajectory through PLUMED's MD-engine interface; every value becomes

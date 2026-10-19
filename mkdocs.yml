@@ -60,9 +60,9 @@ nav:
       - Desktop GUI: user/gui.md
       - File formats: user/formats.md
       - Modifiers: user/modifiers.md
-      - Phonon modes: user/phonons.md
+      - Phonon modes (plugin): user/phonons.md
       - DOS and band structure: user/electronic.md
-      - PLUMED collective variables: user/plumed.md
+      - PLUMED collective variables (plugin): user/plumed.md
       - Python scripting: user/scripting.md
       - GPU compute: user/gpu.md
       - Rendering figures: user/rendering.md
@@ -76,6 +76,7 @@ nav:
       - Visual element plugins: plugins/visuals.md
       - Overlay plugins: plugins/overlays.md
       - Color maps and themes: plugins/styles.md
+      - Claude tool plugins: plugins/tools.md
       - Modifier Forge: plugins/forge.md
       - Testing a plugin: plugins/testing.md
       - Packaging and sharing: plugins/packaging.md

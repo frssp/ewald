@@ -16,6 +16,7 @@ against the same API the built-in readers and modifiers use, so everything in th
 | [Overlay](overlays.md) | an `OverlayElement` subclass returning 2D items (text, shapes, images) | `@overlay` in the plugin folder, or an `ewald.overlays` entry point | available |
 | [Color map](styles.md#color-maps) | a function returning colors or a matplotlib `Colormap` | `@colormap` in the plugin folder, or an `ewald.colormaps` entry point | available |
 | [Theme](styles.md#themes) | a function returning a `Theme` (element colors, background, cell color, radius preset) | `@theme` in the plugin folder, or an `ewald.themes` entry point | available |
+| [Claude tool](tools.md) | a function `f(toolset, **arguments)` returning JSON-ready data | `@claude_tool` in the plugin folder, or an `ewald.tools` entry point | available |
 
 [Modifier Forge](forge.md) writes a modifier plugin from a description: Claude writes the
 module and its tests, and ewald saves it to the plugin folder once its checks pass.
@@ -23,6 +24,31 @@ module and its tests, and ewald saves it to the plugin folder once its checks pa
 ewald's own formats (LAMMPS, VASP, extxyz, XSF, H5MD, XTC, cube, ASE) are registered as built-in
 readers and writers in the same registries, so a plugin is a first-class format: `ewald plugins`
 lists both.
+
+## Built-in and first-party plugins
+
+As in VS Code, ewald's own formats are listed as **built-in plugins** that ship with ewald and
+can be switched off but not uninstalled: `vasp`, `lammps`, `cube`, `md-formats` (H5MD, XTC, DCD,
+MDTraj HDF5), `xsf` and `ase-formats` (cif, ASE trajectory and database). extxyz and the ASE
+fallback reader are always on. `ewald plugins --disable vasp` removes the VASP readers and
+writers from `import_file`, the GUI and Claude until `--enable vasp`.
+
+Support tied to one outside code lives in **first-party plugins** in
+[frssp/ewald-plugins](https://github.com/frssp/ewald-plugins) (`packages/ewald-<name>`), installed
+from the Plugins panel or with pip:
+
+| Plugin | Package | Adds |
+|---|---|---|
+| `phonopy` | `ewald-phonopy` | phonopy band/mesh/qpoints.yaml and force-constant readers, VASP IBRION=5-8 OUTCARs, `PhononMode` ([Phonon modes](../user/phonons.md)) |
+| `plumed` | `ewald-plumed` | `Plumed`, `LoadColvar`, `FreeEnergySurface`, the `ewald_plumed.plumed` library and two Claude tools ([PLUMED](../user/plumed.md)) |
+
+```bash
+pip install 'git+https://github.com/frssp/ewald-plugins#subdirectory=packages/ewald-phonopy'
+```
+
+They were part of ewald before; scripts and sessions written then keep working once the plugin
+is installed (`from ewald.modifiers import PhononMode`, `import ewald.plumed`), and without it
+the import fails with an `ImportError` that says how to install it.
 
 ## Two ways to ship a plugin
 

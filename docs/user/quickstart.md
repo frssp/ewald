@@ -111,7 +111,6 @@ in the GUI under File › Open example, from a shell with `ewald examples` (prin
 | `CHGCAR.Si` | VASP CHGCAR | diamond Si with a valence density on a 16³ grid; try `CreateIsosurface(isolevel=0.3)` |
 | `Cu_void.lammpstrj` | LAMMPS dump | Cu block with a spherical void (462 atoms), 5 frames, `element` column |
 | `CuZr.data` | LAMMPS data | B2 CuZr (128 atoms), types named in `Masses` |
-| `Cu3Au_band.yaml` | phonopy band.yaml | Cu3Au phonon bands with eigenvectors; opens playing a mode |
 
 The structures are textbook crystals; the trajectories, forces and the charge density are synthetic
 (seeded random displacements, harmonic forces, Gaussians on atoms and bonds), made by

@@ -7,6 +7,19 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ## [Unreleased]
 
+### Changed
+
+- Phonon support (phonopy and VASP IBRION=5-8 readers, `PhononMode`) and PLUMED support (`Plumed`,
+  `LoadColvar`, `FreeEnergySurface`, `ewald.plumed`, the PLUMED Claude tools) moved to the
+  first-party plugins `ewald-phonopy` and `ewald-plumed` in frssp/ewald-plugins. Old imports and
+  sessions work once the plugin is installed; without it they raise an `ImportError` with the
+  install command. The `plumed` extra is gone (#75).
+
+### Added
+
+- Claude tool plugins (`@claude_tool`, `ewald.tools` entry points); built-in formats listed as
+  plugins that `ewald plugins --disable` can switch off (#75).
+
 ## [0.1.0] - 2026-10-19
 
 First release: EWALD (Extensible Workbench for Atomic Lattices & Dynamics), an atomistic

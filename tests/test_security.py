@@ -11,6 +11,7 @@ from ase.build import bulk
 from ewald import DataCollection, Pipeline, StaticSource
 from ewald import modifiers as mods
 from ewald.modifiers.expression import evaluate
+from ewald.pipeline import Modifier
 from ewald.session import load_session, modifier_from_dict
 
 
@@ -66,35 +67,38 @@ def test_session_entry_must_be_a_modifier(tmp_path):
     assert not marker.exists()
 
 
-def test_session_plumed_with_load_or_kernel_is_disabled():
-    pytest.importorskip("ewald.modifiers.plumed")
-    entry = {"type": "Plumed", "module": "ewald.modifiers.plumed",
-             "parameters": {"input": "LOAD FILE=/tmp/evil.so\nd: DISTANCE ATOMS=1,2\n"}}
+class Untrusted(Modifier):
+    """A modifier that loads files or code (like the ewald-plumed plugin's Plumed)."""
+
+    def __init__(self, input: str = ""):
+        super().__init__()
+        self.input = input
+
+    def untrusted_problems(self):
+        return ["LOAD"] if "LOAD" in self.input else []
+
+    def modify(self, data, ctx):
+        return None
+
+
+def test_session_modifier_with_untrusted_problems_is_disabled():
+    entry = {"type": "Untrusted", "module": __name__, "parameters": {"input": "LOAD FILE=/tmp/evil.so"}}
     m, warning = modifier_from_dict(entry)
     assert not m.enabled and "LOAD" in warning
-    entry["parameters"] = {"input": "d: DISTANCE ATOMS=1,2\n", "kernel": "/tmp/evil.so"}
-    m, warning = modifier_from_dict(entry)
-    assert not m.enabled and "kernel" in warning
-    entry["parameters"] = {"input": "d: DISTANCE ATOMS=1,2\nPRINT ARG=d FILE=COLVAR\n"}
-    m, warning = modifier_from_dict(entry)
+    m, warning = modifier_from_dict({**entry, "parameters": {"input": "d: DISTANCE ATOMS=1,2"}})
     assert m.enabled and warning is None
-    assert modifier_from_dict({**entry, "parameters": {"input": "LOAD FILE=x.so\n"}}, allow_code=True)[0].enabled
+    assert modifier_from_dict(entry, allow_code=True)[0].enabled
 
 
-def test_untrusted_plumed_input():
-    from ewald.plumed import untrusted_input_problems
+def test_session_with_moved_modifier_says_how_to_install(monkeypatch):
+    from ewald import modifiers, plugins
 
-    assert untrusted_input_problems("d: DISTANCE ATOMS=1,2\nPRINT ARG=d FILE=COLVAR\n") == []
-    problems = untrusted_input_problems("x: LOAD FILE=a.cpp\nPRINT ARG=d FILE=~/.bashrc\nREFERENCE=../../a.pdb\n")
-    assert len(problems) == 3
-
-
-def test_claude_tools_refuse_plumed_load(tmp_path):
-    from ewald.llm.tools import Toolset
-
-    ts = Toolset(Pipeline(StaticSource([DataCollection.from_ase(bulk("Cu"))])))
-    r = ts.call("compute_plumed_cvs", {"input": "LOAD FILE=/tmp/evil.so\nd: DISTANCE ATOMS=1,2\n"})
-    assert r.is_error and "LOAD" in str(r.content)
+    monkeypatch.setattr(plugins, "modifiers", lambda: {})  # as without the ewald-plumed plugin
+    m, warning = modifier_from_dict({"type": "Plumed", "module": "ewald.modifiers.plumed",
+                                     "parameters": {"input": "d: DISTANCE ATOMS=1,2"}})
+    assert m is None and "ewald-plumed" in warning and "pip install" in warning
+    with pytest.raises(ImportError, match="ewald-phonopy"):
+        modifiers.PhononMode
 
 
 def test_claude_export_stays_out_of_user_files(tmp_path, cu):

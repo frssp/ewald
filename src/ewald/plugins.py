@@ -87,6 +87,7 @@ VISUAL_GROUP = "ewald.visuals"
 OVERLAY_GROUP = "ewald.overlays"
 COLORMAP_GROUP = "ewald.colormaps"
 THEME_GROUP = "ewald.themes"
+TOOL_GROUP = "ewald.tools"
 PLUGIN_GROUP = "ewald.plugins"      # names the package that holds ewald-plugin.toml
 MANIFEST_NAME = "ewald-plugin.toml"
 
@@ -293,6 +294,18 @@ def _builtin_themes() -> dict:
 
 
 @dataclass
+class ToolPlugin:
+    """A Claude tool: ``function(toolset, **arguments)`` returns JSON-ready data (or a
+    ``ewald.llm.tools.ToolResult``); ``schema`` is the JSON schema of the arguments."""
+
+    name: str
+    function: Callable
+    description: str = ""
+    schema: dict = field(default_factory=lambda: {"type": "object", "properties": {}})
+    origin: str = ""
+
+
+@dataclass
 class _Registry:
     readers: dict = field(default_factory=_builtin_readers)
     modifiers: dict = field(default_factory=dict)
@@ -301,6 +314,7 @@ class _Registry:
     overlays: dict = field(default_factory=_builtin_overlays)
     colormaps: dict = field(default_factory=dict)
     themes: dict = field(default_factory=_builtin_themes)
+    tools: dict = field(default_factory=dict)
     errors: dict = field(default_factory=dict)      # origin -> message
     plugins: dict = field(default_factory=dict)     # id -> Plugin
     loaded: bool = False
@@ -547,6 +561,42 @@ def themes() -> dict[str, ThemePlugin]:
     return dict(_registry.themes)
 
 
+def claude_tool(name: str | None = None, description: str = "", schema: dict | None = None):
+    """Decorator registering ``f(toolset, **arguments)`` as a tool of the Claude agent, the MCP
+    server and the GUI's Ask panel (:class:`ewald.llm.tools.Toolset`). ``toolset.pipeline`` is the
+    loaded pipeline and ``toolset.frame`` the current frame; return JSON-ready data. ``schema``
+    is the JSON schema of the arguments (default: none); ``description`` defaults to the
+    docstring. A tool cannot take the name of a built-in one."""
+
+    def deco(f):
+        f.tool_name = name or f.__name__
+        f.tool_description = description or inspect.cleandoc(f.__doc__ or "")
+        f.tool_schema = schema or {"type": "object", "properties": {}}
+        register_tool(f.tool_name, f)
+        return f
+
+    return deco
+
+
+def register_tool(name: str, function: Callable, description: str = "", schema: dict | None = None,
+                  origin: str = "python") -> ToolPlugin:
+    if not callable(function):
+        raise TypeError(f"{function!r} is not callable")
+    plugin = ToolPlugin(name, function, description or getattr(function, "tool_description", "")
+                        or inspect.cleandoc(function.__doc__ or ""),
+                        schema or getattr(function, "tool_schema", None) or {"type": "object", "properties": {}},
+                        getattr(_loading, "origin", None) or origin)
+    _registry.tools[name] = plugin
+    _contribute("tools", name)
+    return plugin
+
+
+def tools() -> dict[str, ToolPlugin]:
+    """Claude tools contributed by plugins, by name."""
+    load_plugins()
+    return dict(_registry.tools)
+
+
 class _Loading:
     origin: str | None = None
     plugin: "Plugin | None" = None
@@ -574,7 +624,8 @@ class Plugin:
     description: str = ""
     publisher: str = ""
     requires_ewald: str = ""     # e.g. ">=0.2, <1"
-    kind: str = "folder"         # "package" (pip), "folder" (plugin folder) or "forge" (written by Modifier Forge)
+    kind: str = "folder"         # "built-in" (ships with ewald), "package" (pip), "folder" (plugin folder)
+    #                              or "forge" (written by Modifier Forge)
     origin: str = ""             # distribution name or file path
     enabled: bool = True
     compatible: bool = True
@@ -679,6 +730,47 @@ def ewald_version() -> str:
     return __version__
 
 
+# ewald's own formats, grouped like VS Code's built-in extensions: always installed, listed by
+# :func:`installed` with kind "built-in", and switched off with :func:`set_enabled` (their readers
+# and writers leave the registries; ASE may still read some of those files). Formats outside
+# these groups (extxyz, the ASE fallback) are core and cannot be switched off.
+BUILTIN_PLUGINS = {
+    "vasp": ("VASP", "POSCAR/CONTCAR, XDATCAR, OUTCAR, vasprun.xml, vaspout.h5, CHGCAR/LOCPOT/ELFCAR "
+             "and NEB folders",
+             ("neb", "vasp-volumetric", "vaspout", "vaspwave", "xdatcar", "outcar", "vasprun"),
+             ("vasp-volumetric", "poscar", "xdatcar")),
+    "lammps": ("LAMMPS", "LAMMPS text dumps and data files",
+               ("lammps-dump", "lammps-data", "lammps-data-ase"), ("lammps-dump", "lammps-data")),
+    "cube": ("Gaussian cube", "Volumetric data in Gaussian cube files", ("cube",), ("cube",)),
+    "md-formats": ("MD trajectories", "GROMACS XTC/TRR, DCD, AMBER NetCDF, H5MD and MDTraj HDF5",
+                   ("md-trajectory", "h5md", "mdtraj-h5"), ("md-trajectory", "h5md")),
+    "xsf": ("XCrySDen XSF", "XSF/AXSF structures, trajectories and 3D grids", ("xsf",), ("xsf",)),
+    "ase-formats": ("ASE files", "ASE databases (.db) and trajectories (.traj), and CIF via ASE",
+                    ("ase-db", "ase-traj", "cif"), ("ase-db", "ase-traj", "cif")),
+}
+
+
+def _load_builtin(off: set):
+    """List the built-in plugins and drop the formats of the disabled ones."""
+    version = ewald_version()
+    for pid, (name, description, reader_names, writer_names) in BUILTIN_PLUGINS.items():
+        plugin = Plugin(id=pid, name=name, version=version, description=description, publisher="ewald",
+                        kind="built-in", origin="built-in")
+        if pid in off:
+            plugin.enabled = False
+        for registry, kind, names in ((_registry.readers, "readers", reader_names),
+                                      (_registry.writers, "writers", writer_names)):
+            present = [n for n in names if n in registry and registry[n].origin == "built-in"]
+            if plugin.enabled:
+                if present:
+                    plugin.contributions[kind] = present
+            else:
+                for n in present:
+                    del registry[n]
+        plugin.loaded = plugin.enabled
+        _registry.plugins[pid] = plugin
+
+
 def _state_path() -> Path:
     from .settings import config_dir
 
@@ -718,8 +810,9 @@ def set_enabled(plugin_id: str, enabled: bool = True, reload: bool = True):
 
 
 def installed() -> dict[str, Plugin]:
-    """Installed plugins by id (pip packages and plugin-folder files), including disabled,
-    incompatible and failed ones, with what each contributed. Built-in formats are not listed."""
+    """Installed plugins by id: ewald's built-in format groups (:data:`BUILTIN_PLUGINS`), pip
+    packages and plugin-folder files, including disabled, incompatible and failed ones, with what
+    each contributed."""
     load_plugins()
     return dict(_registry.plugins)
 
@@ -767,11 +860,13 @@ def load_plugins(force: bool = False):
         _registry.colormaps = {k: v for k, v in _registry.colormaps.items() if v.origin == "python"}
         keep = {k: v for k, v in _registry.themes.items() if v.origin == "python" and not v.builtin}
         _registry.themes = {**_builtin_themes(), **keep}
+        _registry.tools = {k: v for k, v in _registry.tools.items() if v.origin == "python"}
         _registry.errors.clear()
         _registry.plugins = {}
+    off = disabled()
+    _load_builtin(off)
     if os.environ.get("EWALD_NO_PLUGINS"):
         return
-    off = disabled()
     _load_entry_points(off)
     _load_directory(plugin_dir(), off)
 
@@ -807,7 +902,8 @@ def _load_entry_points(off: set = frozenset()):
                             (VISUAL_GROUP, lambda name, obj: register_visual(obj, name=name)),
                             (OVERLAY_GROUP, lambda name, obj: register_overlay(obj, name=name)),
                             (COLORMAP_GROUP, lambda name, obj: register_colormap(name, obj)),
-                            (THEME_GROUP, lambda name, obj: register_theme(name, obj))):
+                            (THEME_GROUP, lambda name, obj: register_theme(name, obj)),
+                            (TOOL_GROUP, lambda name, obj: register_tool(name, obj))):
         try:
             eps = entry_points(group=group)
         except Exception as exc:
@@ -840,8 +936,8 @@ def _load_entry_points(off: set = frozenset()):
         for register, ep in items:
             origin = f"entry point {ep.value}"
             try:
+                _loading.origin, _loading.plugin = origin, plugin   # also for decorators run by the import
                 obj = ep.load()
-                _loading.origin, _loading.plugin = origin, plugin
                 register(ep.name, obj)
             except Exception as exc:
                 _registry.errors[origin] = f"{type(exc).__name__}: {exc}"
@@ -1006,6 +1102,8 @@ def status() -> dict:
             "themes": [{"name": p.name, "description": p.description, "origin": p.origin}
                        for p in _registry.themes.values()],
             "plugins": [p.as_dict() for p in _registry.plugins.values()],
+            "tools": [{"name": p.name, "description": p.description.split("\n")[0], "origin": p.origin}
+                      for p in _registry.tools.values()],
             "errors": dict(_registry.errors)}
 
 

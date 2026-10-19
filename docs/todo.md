@@ -72,7 +72,7 @@ Analysis
 - Apple GPU compute (Metal): a backend in `backend.py` for MLX or PyTorch MPS, starting with the
   dense kernels (powder diffraction, S(q)); the neighbor list needs data-dependent shapes they
   lack. Macs compute on the CPU until then.
-- PLUMED: draw the bias forces as arrows, take MOLINFO residue names from the loaded topology,
+- PLUMED (ewald-plumed plugin): draw the bias forces as arrows, take MOLINFO residue names from the loaded topology,
   and plot `Plumed.*` attributes directly on the timeline with a current-frame marker.
 - ConstructSurfaceMesh (alpha-shape surface), drawn with the existing `SurfaceMesh`.
 - FindRings keeps every shortest-path ring; OVITO drops some near-maximum-size rings that differ
@@ -111,7 +111,7 @@ Symmetry and diffraction
 - Show the symmetry summary (space group, Wyckoff sites) in the inspector header rather than only
   as attributes.
 
-Phonons
+Phonons (ewald-phonopy plugin, frssp/ewald-plugins `packages/ewald-phonopy`)
 
 - Phonon DOS / projected DOS from phonopy `total_dos.dat`/`projected_dos.dat` in the Plots tab.
 - Non-diagonal supercells for a mode (`supercell` as a 3x3 matrix), and several modes
@@ -193,9 +193,13 @@ Plugins and Claude
   registered lazily and imported on first use; `settings` and `commands` contribution points
   (plugin `Option`s on a generated Preferences page; commands in the palette, as notebook
   functions and as Claude tools).
-- Plugin manifests, phase 3: a curated plugin index (JSON in a GitHub repository), install and
-  update with `pip` into the running interpreter, notebooks recording the plugins they use and
-  offering to install missing ones.
+- Plugin manifests, phase 3: the index repository exists (frssp/ewald-plugins: `plugins/*.toml`,
+  `index.json`, first-party `packages/ewald-phonopy` and `packages/ewald-plumed` pinned to tags).
+  Left: install and update with `pip` from the Plugins panel into the running interpreter,
+  notebooks recording the plugins they use and offering to install missing ones, and a CI job in
+  ewald-plugins that runs each package's tests against ewald main (run them by hand until then).
+- More first-party plugins where core support is tied to one outside code (candidates: the
+  `ovito` bridge, MDAnalysis formats); built-in format groups stay in core.
 - Plugin manifests, phase 4: notebook/session trust (Restricted mode for files from others),
   index curation rules, signatures if the index opens to outside publishers.
 - Per-notebook plugin enable/disable; `plugins.json` holds only the global switch.
@@ -300,8 +304,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   instead of `QOpenGLWindow`. Same for the VTK probe and Mesa fallback.
 - GUI startup checks on a Wayland desktop and on Fedora (the xcb library check is skipped when
   `WAYLAND_DISPLAY` is set; the Fedora package names in its message are untested).
-- PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
-  CI has no PLUMED, so those tests skip).
+- The ewald-plumed plugin with PLUMED from conda-forge on macOS and Windows, and with a 2.10
+  kernel (checked here with a 2.9.2 source build on Linux, where the two tests that need 2.10,
+  `SUM` and per-atom vectors, fail).
 
 ## Code health
 
@@ -333,7 +338,7 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
   folder, but plugin code there could still read `~/.config/ewald/credentials.json` (file
   fallback) by absolute path or call the OS keychain tool directly. Run that subprocess as a
   sandboxed user or container to close this.
-- `plumed.py` reads numbers like `pi/2` with `eval` (no builtins, only `pi`); replace it with a
+- `ewald_plumed/plumed.py` reads numbers like `pi/2` with `eval` (no builtins, only `pi`); replace it with a
   small arithmetic parser.
 
 ## Infrastructure
