@@ -79,6 +79,23 @@ pipe.modifiers.append(CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)]))
 pipe.modifiers.append(CoordinationPolyhedra(center_types=["Ti"]))
 ```
 
+## Volumetric data
+
+Charge densities and potentials (VASP CHGCAR/CHG/PARCHG/AECCAR, LOCPOT, ELFCAR, Gaussian cube)
+load into `data.grids`. `CreateIsosurface(isolevel, property)` draws a surface at `isolevel`
+(the mean of |values| when None); `signed=True` adds the negative surface in `negative_color`,
+the usual view of spin densities and density differences. `GridSlice(miller, distance)` cuts
+an (hkl) plane at a fractional `distance` and maps the values through `cmap`
+(`scale="log"` for valence densities), with its own color legend. `GridDifference(["A/CHGCAR",
+"B/CHGCAR"])` subtracts other files' grids, e.g. rho(AB) − rho(A) − rho(B). Surfaces go into
+`data.surfaces` and are drawn by every renderer, including vector output.
+
+```python
+pipe = import_file("CHGCAR")
+pipe.modifiers.append(CreateIsosurface(0.05, transparency=0.3))
+pipe.modifiers.append(GridSlice((0, 0, 1), 0.5, scale="log"))
+```
+
 ## Structure identification (ported from OVITO)
 
 These run in the C++ extension and are tested against OVITO 3.16 results.

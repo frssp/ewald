@@ -9,19 +9,43 @@ from . import import_file
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ewald")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    r = sub.add_parser("render", help="render a frame to an image")
-    r.add_argument("input")
+    r = sub.add_parser("render", help="render a frame to an image (.png/.jpg/.tif/.svg/.pdf/.eps)")
+    r.add_argument("input", help="structure/trajectory file or .ewald session")
     r.add_argument("output")
-    r.add_argument("--frame", type=int, default=0)
-    r.add_argument("--size", type=int, nargs=2, default=(1600, 1200))
-    r.add_argument("--direction", default="iso")
+    r.add_argument("--frame", type=int, default=None)
+    r.add_argument("--size", type=int, nargs=2, default=None, help="pixels (default 1600 1200)")
+    r.add_argument("--direction", default=None, help="view direction (default iso)")
     r.add_argument("--bonds", type=float, default=None, help="bond cutoff in Angstrom")
     r.add_argument("--color-by", default=None, help="property or expression to color code")
     r.add_argument("--cmap", default="viridis")
     r.add_argument("--type-map", default=None, help="LAMMPS types, e.g. 1=Cu,2=Zr")
     r.add_argument("--ao", action="store_true", help="screen-space ambient occlusion")
+    mv = sub.add_parser("movie", help="render frames to .mp4/.gif/.avi/.mov or a PNG sequence")
+    mv.add_argument("input", help="structure/trajectory file or .ewald session")
+    mv.add_argument("output")
+    mv.add_argument("--fps", type=float, default=10)
+    mv.add_argument("--start", type=int, default=0)
+    mv.add_argument("--stop", type=int, default=None)
+    mv.add_argument("--every", type=int, default=1, help="frame stride")
+    mv.add_argument("--size", type=int, nargs=2, default=None, help="pixels (default 1280 960)")
+    mv.add_argument("--direction", default=None, help="view direction (default iso)")
+    mv.add_argument("--bonds", type=float, default=None, help="bond cutoff in Angstrom")
+    mv.add_argument("--color-by", default=None, help="property or expression to color code")
+    mv.add_argument("--cmap", default="viridis")
+    mv.add_argument("--type-map", default=None, help="LAMMPS types, e.g. 1=Cu,2=Zr")
+    mv.add_argument("--time-per-frame", type=float, default=None, help="for [Time] in --text")
+    for parser in (r, mv):
+        parser.add_argument("--renderer", choices=("opengl", "raytrace", "vector"), default=None)
+        parser.add_argument("--allow-code", action="store_true", help="run Python modifiers stored in a session")
+        parser.add_argument("--quality", choices=("draft", "standard", "publication"), default=None,
+                            help="sampling preset (default publication; draft renders at half size)")
+        parser.add_argument("--text", default=None, help="label, e.g. 'frame [Frame]  t = [Time] ps'")
+        parser.add_argument("--type-legend", action="store_true", help="swatch per particle type")
+        parser.add_argument("--scale-bar", nargs="?", type=float, const=0.0, default=None, metavar="LENGTH",
+                            help="scale bar; optional length in Angstrom (default: a round length)")
+    r.add_argument("--dpi", type=float, default=None, help="stored in PNG/TIFF; page size of vector output")
     g = sub.add_parser("gui", help="open the desktop viewer")
-    g.add_argument("input", nargs="?")
+    g.add_argument("input", nargs="?", help="structure/trajectory file or .ewald session")
     g.add_argument("--type-map", default=None)
     g.add_argument("--device", default=None)
     i = sub.add_parser("info", help="print frames and properties")
@@ -83,6 +107,8 @@ def main(argv=None):
     kw = {}
     if args.type_map:
         kw["type_map"] = dict(item.split("=") for item in args.type_map.split(","))
+    if args.cmd in ("render", "movie"):
+        return _render_cmd(args, kw)
     pipe = import_file(args.input, **kw)
     if args.cmd == "describe":
         import json
@@ -128,12 +154,54 @@ def main(argv=None):
         print("properties:", ", ".join(d.particles))
         print("cell:\n", d.cell.matrix, "\npbc:", d.cell.pbc)
         return
+
+
+
+def _render_cmd(args, reader_kwargs):
+    """``render`` and ``movie``: a file or a session, with command-line flags overriding the session."""
+    from .session import is_session_file, load_session
+
+    if is_session_file(args.input):
+        sess = load_session(args.input, allow_code=args.allow_code)
+        pipe, opts, frame = sess.pipeline, sess.render_kwargs(), sess.frame
+        if sess.camera and args.direction is None:
+            opts["camera"] = sess.camera
+        text = args.text if args.text is not None else sess.text
+        tpf = sess.render.get("time_per_frame")
+    else:
+        pipe, opts, frame, text, tpf = import_file(args.input, **reader_kwargs), {}, 0, args.text, None
     if args.color_by:
         from .modifiers import ColorCoding
 
         pipe.modifiers.append(ColorCoding(args.color_by, cmap=args.cmap))
-    pipe.render(args.output, frame=args.frame, size=tuple(args.size), direction=args.direction,
-                bonds=args.bonds, ambient_occlusion=args.ao)
+    for key, value in (("size", tuple(args.size) if args.size else None), ("direction", args.direction),
+                       ("bonds", args.bonds), ("renderer", args.renderer), ("quality", args.quality)):
+        if value is not None:
+            opts[key] = value
+    if args.type_legend:
+        opts["type_legend"] = True
+    if args.scale_bar is not None:
+        opts["scale_bar"] = args.scale_bar or True
+    if args.cmd == "movie":
+        from .render import render_animation
+
+        opts.setdefault("size", (1280, 960))
+        frames = range(args.start, pipe.num_frames if args.stop is None else args.stop, args.every)
+        n = render_animation(pipe, args.output, frames=frames, fps=args.fps, text=text,
+                             time_per_frame=args.time_per_frame if args.time_per_frame is not None else tpf,
+                             progress=lambda i, n: print(f"\rframe {i}/{n}", end="", flush=True), **opts)
+        print(f"\nwrote {args.output} ({n} frames)")
+        return
+    from .overlays import format_label
+    from .render import render
+
+    frame = args.frame if args.frame is not None else frame
+    data = pipe.compute(frame)
+    if args.ao:
+        opts["ambient_occlusion"] = True
+    if args.dpi:
+        opts["dpi"] = args.dpi
+    render(data, args.output, text=format_label(text, frame, data, tpf) or None, **opts)
     print("wrote", args.output)
 
 
