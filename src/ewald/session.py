@@ -210,9 +210,11 @@ def source_to_dict(source, base_dir: str) -> dict:
     from .io import FileSource, StaticSource
 
     if isinstance(source, FileSource):
+        from . import plugins
         from .io import remote
 
-        if remote.is_remote(source.path):  # 'profile:/path' or 'user@host:/path': no secrets in it
+        # aiida:1234 (a plugin scheme, not a file) or 'profile:/path' / 'user@host:/path' (no secrets in it)
+        if plugins.scheme_reader(source.path) is not None or remote.is_remote(source.path):
             path, rel = str(source.path), None
         else:
             path = os.path.abspath(source.path)
@@ -255,8 +257,10 @@ def source_from_dict(entry: dict, base_dir: str):
                           **decode(entry.get("kwargs", {})))
     rel = entry.get("relative_path")
     candidates = ([os.path.normpath(os.path.join(base_dir, rel))] if rel else []) + [path]
+    from . import plugins
+
     for cand in candidates:
-        if os.path.exists(cand) or any(c in cand for c in "*?["):
+        if os.path.exists(cand) or any(c in cand for c in "*?[") or plugins.scheme_reader(cand) is not None:
             try:
                 return FileSource(cand, entry.get("format"), thermo=entry.get("thermo", "auto"),
                                   **decode(entry.get("kwargs", {})))

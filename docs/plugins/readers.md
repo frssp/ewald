@@ -106,6 +106,17 @@ before the built-in extxyz reader).
    (`@reader("xdatcar", sniff=..., priority=11)` swaps in your own XDATCAR reader).
 4. `priority=None` registers a reader that is only used with `format=`.
 
+### Sources that are not files
+
+A reader can serve a URI scheme instead of files: `@reader("aiida", schemes=("aiida",))` (or a
+`schemes` class attribute) receives every path that starts with `aiida:`, such as
+`load("aiida:1234")`, before any other reader is asked. Such a path is passed to the reader as
+it is: it is not looked up next to the notebook, globbed, or opened over SSH (otherwise
+`aiida:1234` would read as the SSH host `aiida`), and sessions and notebooks store the string
+unchanged. Database, archive and web sources (AiiDA, Materials Project, OPTIMADE) fit here; the
+[ewald-aiida](https://github.com/frssp/ewald-plugins/tree/main/packages/ewald-aiida) plugin is
+the reference.
+
 Use `sniff` when the file name says little (`OUTPUT`, `traj.dat`):
 
 ```python
@@ -140,12 +151,12 @@ Run `data.summary()` on a frame of your reader to check what it produced.
 ## Registering without the decorator
 
 `ewald.plugins.register_reader(name, factory, patterns=..., sniff=..., description=..., priority=...,
-aliases=..., category=...)` does
+aliases=..., category=..., schemes=...)` does
 the same as `@reader` and can be called from a script or the GUI console. In an installed
 package, an entry point registers the reader without any code running at import time; see
 [Packaging and sharing](packaging.md). An entry-point class can carry `patterns`, `sniff`, `description`,
-`priority`, `aliases` and `category` (`"structure"` or `"volumetric"`, which groups the GUI
-file filter) as class attributes.
+`priority`, `aliases`, `schemes` and `category` (`"structure"` or `"volumetric"`, which groups
+the GUI file filter) as class attributes.
 
 ## Example
 
