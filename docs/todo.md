@@ -27,8 +27,6 @@ GUI
   Ask Claude suggestions as diffs; per-notebook render settings; a `.py` header with the view state and data links.
 - Notebook kernels (`ewald/kernel.py`): kernels on SSH hosts; step forms for steps a kernel
   cell adds with code the app cannot import (a class only the kernel's Python has stays as code).
-- More analysis verbs (`cna(pipe)`, `voronoi(pipe)`, `clusters(pipe)`, returning per-type counts),
-  and verbs in the Insert menu and Ask Claude's suggestions.
 - Plugins side bar: an "updates available" badge on the activity bar, disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.

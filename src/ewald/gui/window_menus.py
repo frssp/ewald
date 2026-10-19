@@ -239,6 +239,12 @@ class MenusMixin:
             fill_modifier_menu(m, self.panel.add_modifier)
             vm = ins.addMenu("&View")
             vm.aboutToShow.connect(lambda: fill_view_menu(vm, self.data, lambda **kw: self.panel.view.add_view(**kw)))
+            am = ins.addMenu("&Analysis")
+            from ..verbs import VERB_CELLS
+
+            for verb, label, _code in VERB_CELLS:
+                am.addAction(label, lambda v=verb: self._insert_verb(v)).setToolTip(f"A {verb}(pipe) cell, run at once")
+            self.analysis_menu = am
             plug = ins.addMenu("&Plugin step")
             plug.aboutToShow.connect(lambda: self._fill_plugin_menu(plug))
             ins.addAction("&Load plugin file…", lambda: self.panel.view._load_plugin_file())
@@ -281,6 +287,21 @@ class MenusMixin:
         menu.clear()
         for act in view.plugin_menu.actions():
             menu.addAction(act)
+
+    def _insert_verb(self, verb):
+        """Insert › Analysis: a ``verb(pipe)`` cell after the current one, run at once (its table shows below)."""
+        from ..verbs import verb_cell
+
+        view = self.panel.view
+        if view is None:
+            return
+        if view.notebook.pipeline is None:
+            QtWidgets.QMessageBox.information(self, "No pipeline yet",
+                                              "Open a file first, or run a cell that sets pipe = import_file(...).")
+            return
+        cell = view.add_cell("code", verb_cell(verb))
+        view.run(cell)
+        self.notebook_dock.show()
 
     def _cell_action(self, action):
         view = self.panel.view

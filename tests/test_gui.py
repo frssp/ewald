@@ -1314,6 +1314,12 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     assert tabs.count() == 1 and w.panel.notebook.pipeline is None
     w.open_notebook(str(path))
     assert tabs.tabText(0) == "cu_nb" and [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis"]
+    act = next(a for a in w.analysis_menu.actions() if a.text() == "Common neighbor analysis")
+    act.trigger()                                              # Insert › Analysis: a verb cell, run at once
+    cell = w.panel.view.current
+    assert cell.source.startswith("from ewald import cna\n") and cell.state == "ok"
+    assert cell.outputs[-1].kind == "image" and isinstance(cell.outputs[-1].data, bytes)
+    assert [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis", "CommonNeighborAnalysis"]
     w.close()
 
 
