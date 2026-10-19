@@ -38,6 +38,17 @@ def file_filter() -> str:
 SESSION_FILTER = "ewald session (*.ewald)"
 
 
+def save_filters() -> list[tuple[str, str | None]]:
+    """Save-dialog filters from the writer registry: (filter text, writer name or None)."""
+    from .. import plugins
+
+    out = []
+    for plugin in sorted(plugins.writers().values(), key=lambda p: (p.priority is None, p.priority or 0)):
+        if plugin.patterns:
+            out.append((f"{plugin.description} ({' '.join(plugin.patterns)})", plugin.name))
+    return out + [("All files, format from the name (*)", None)]
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, pipeline=None, device=None, settings=None):
         super().__init__()
@@ -469,15 +480,35 @@ class MainWindow(QtWidgets.QMainWindow):
     def export_dialog(self):
         if self.pipeline is None:
             return
+        from .. import plugins
         from ..io import export_file
 
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, "Export data", "export.extxyz",
-            "Extended XYZ (*.extxyz);;LAMMPS dump (*.lammpstrj);;VASP POSCAR (POSCAR*);;All (*)")
-        if path:
-            fmt = "vasp" if os.path.basename(path).startswith("POSCAR") else None
-            export_file(self.data, path, format=fmt)
-            self.message(f"Exported {path}")
+        filters = save_filters()
+        path, chosen = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export data", "export.extxyz", ";;".join(f for f, _ in filters))
+        if not path:
+            return
+        fmt = dict(filters).get(chosen)
+        writer = plugins.find_writer(path, fmt)
+        all_frames = False
+        n = self.pipeline.num_frames
+        if writer.multi_frame and n > 1:
+            answer = QtWidgets.QMessageBox.question(
+                self, "Export trajectory", f"{writer.description}\n\nExport all {n} frames? "
+                "(No exports only the current frame.)",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Cancel)
+            if answer == QtWidgets.QMessageBox.Cancel:
+                return
+            all_frames = answer == QtWidgets.QMessageBox.Yes
+        try:
+            if all_frames:
+                export_file(self.pipeline, path, format=fmt)
+            else:
+                export_file(self.data, path, format=fmt)
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Export failed", f"{path}\n\n{exc}")
+            return
+        self.message(f"Exported {path} ({writer.name})")
 
     def export_movie(self, path=None):
         if self.pipeline is None:

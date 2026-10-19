@@ -13,6 +13,7 @@ returned collection) and ``"Bond Type"``.
 """
 from __future__ import annotations
 
+import os
 import re
 
 import numpy as np
@@ -237,3 +238,88 @@ def _is_number(t: str) -> bool:
 
 def _is_int(t: str) -> bool:
     return t.lstrip("+-").isdigit()
+
+
+def lammps_box(matrix):
+    """LAMMPS' restricted triclinic form of a cell: (lower-triangular matrix, rotation R)
+    with ``matrix @ R == lower``; rotate positions, velocities and forces by ``R``."""
+    a, b, c = np.asarray(matrix, float)
+    if np.linalg.det(matrix) <= 0:
+        raise ValueError("LAMMPS needs a right-handed cell (positive determinant)")
+    ax = np.linalg.norm(a)
+    bx = b @ a / ax
+    by = np.sqrt(max(b @ b - bx * bx, 0.0))
+    cx = c @ a / ax
+    cy = (b @ c - bx * cx) / by
+    cz = np.sqrt(max(c @ c - cx * cx - cy * cy, 0.0))
+    lower = np.array([[ax, 0, 0], [bx, by, 0], [cx, cy, cz]])
+    lower[np.abs(lower) < 1e-12 * ax] = 0.0
+    return lower, np.linalg.solve(matrix, lower)
+
+
+def write_lammps_data(path, data, atom_style: str | None = None, masses: bool = True):
+    """Write one frame as a LAMMPS data file that LAMMPS ``read_data`` and ewald read back.
+
+    Types are numbered in order of first appearance (numeric types such as "2" keep their
+    number) and named in ``Masses`` comments (``1 63.546 # Cu``). ``atom_style`` is
+    ``"atomic"``, or ``"charge"`` when the frame has a "Charge" property; ``"molecular"``
+    and ``"full"`` take molecule ids from "Molecule Identifier" (0 without it). A "Velocity" property
+    becomes a ``Velocities`` section. A cell that is not in LAMMPS' lower-triangular form
+    is rotated rigidly into it.
+    """
+    from ase.data import atomic_masses, atomic_numbers
+
+    types = np.asarray(data.types).astype(str)
+    names = list(dict.fromkeys(types))
+    if all(t.isdigit() for t in names):
+        type_id = {t: int(t) for t in names}
+    else:
+        type_id = {t: i + 1 for i, t in enumerate(names)}
+    style = atom_style or ("charge" if "Charge" in data.particles else "atomic")
+    cell = data.cell
+    if cell.is_valid:
+        lower, rotation = lammps_box(cell.matrix)
+        origin = cell.origin
+    else:  # bounding box with a margin
+        lo, hi = (data.positions.min(axis=0), data.positions.max(axis=0)) if data.count else (np.zeros(3), np.ones(3))
+        origin, lower, rotation = lo - 1.0, np.diag(hi - lo + 2.0), np.eye(3)
+    pos = (data.positions - origin) @ rotation
+    ids = np.asarray(data.particles.get("Particle Identifier", np.arange(1, data.count + 1))).astype(int)
+    charge = np.asarray(data.particles.get("Charge", np.zeros(data.count)), float)
+    mol = np.asarray(data.particles.get("Molecule Identifier", np.zeros(data.count)), int)
+    mass_prop = data.particles.get("Mass")
+    with open(os.fspath(path), "w") as fh:
+        fh.write("LAMMPS data file written by ewald\n\n")
+        fh.write(f"{data.count} atoms\n{max(type_id.values(), default=0)} atom types\n\n")
+        for k, axis in enumerate("xyz"):
+            fh.write(f"0.0 {lower[k, k]:.10f} {axis}lo {axis}hi\n")
+        if np.any(lower[[1, 2, 2], [0, 0, 1]]):
+            fh.write(f"{lower[1, 0]:.10f} {lower[2, 0]:.10f} {lower[2, 1]:.10f} xy xz yz\n")
+        if masses:
+            fh.write("\nMasses\n\n")
+            for t in names:
+                if mass_prop is not None:
+                    m = float(np.asarray(mass_prop)[types == t][0])
+                else:
+                    m = float(atomic_masses[atomic_numbers[t]]) if t in atomic_numbers else 1.0
+                comment = f" # {t}" if not t.isdigit() else ""
+                fh.write(f"{type_id[t]} {m:.6f}{comment}\n")
+        fh.write(f"\nAtoms # {style}\n\n")
+        for i in range(data.count):
+            x, y, z = pos[i]
+            t = type_id[types[i]]
+            if style == "atomic":
+                fh.write(f"{ids[i]} {t} {x:.10f} {y:.10f} {z:.10f}\n")
+            elif style == "charge":
+                fh.write(f"{ids[i]} {t} {charge[i]:.6f} {x:.10f} {y:.10f} {z:.10f}\n")
+            elif style == "full":
+                fh.write(f"{ids[i]} {mol[i]} {t} {charge[i]:.6f} {x:.10f} {y:.10f} {z:.10f}\n")
+            elif style == "molecular":
+                fh.write(f"{ids[i]} {mol[i]} {t} {x:.10f} {y:.10f} {z:.10f}\n")
+            else:
+                raise ValueError(f"atom_style {style!r} not supported (atomic, charge, molecular, full)")
+        if "Velocity" in data.particles:
+            vel = np.asarray(data["Velocity"], float) @ rotation
+            fh.write("\nVelocities\n\n")
+            for i in range(data.count):
+                fh.write(f"{ids[i]} " + " ".join(f"{v:.10f}" for v in vel[i]) + "\n")
