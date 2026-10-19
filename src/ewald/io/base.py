@@ -6,6 +6,7 @@ import gzip
 import lzma
 
 from ..data import DataCollection
+from . import remote
 
 _OPENERS = {".gz": gzip.open, ".bz2": bz2.open, ".xz": lzma.open}
 
@@ -25,12 +26,33 @@ def open_binary(path):
 
     Compressed streams support ``seek`` by re-reading from the start, so random
     access into a compressed trajectory costs O(offset); fine for typical sizes.
+    Remote paths (``host:/path``, ``ssh://...``) are read in place over SFTP.
     """
     path = str(path)
+    if remote.is_remote(path):
+        return _open_remote(path)
     for ext, opener in _OPENERS.items():
         if path.endswith(ext):
             return opener(path, "rb")
     return open(path, "rb")
+
+
+def _open_remote(path):
+    raw = remote.open_remote(path)
+    for ext, opener in _OPENERS.items():
+        if path.endswith(ext):
+            fh = opener(raw, "rb")
+            close = fh.close
+
+            def close_both():  # the decompressor does not close a file object it was given
+                try:
+                    close()
+                finally:
+                    raw.close()
+
+            fh.close = close_both
+            return fh
+    return raw
 
 
 def strip_compression(path) -> str:

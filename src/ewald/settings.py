@@ -69,7 +69,10 @@ OPTIONS = (
            "Above this many atoms spheres are drawn as GPU impostors.", minimum=1000, maximum=100_000_000),
 
     Option("elements.color_scheme", "Jmol", "Color scheme", choices=("Jmol", "CPK")),
-    Option("elements.radius_source", "covalent", "Radius source", choices=("covalent", "vdW")),
+    Option("elements.radius_source", "covalent", "Radius preset",
+           "Covalent (Cordero 2008), atomic (Slater 1964; calc.: Clementi 1967), vdW (Alvarez 2013; Bondi 1964) "
+           "or Shannon (1976) ionic/crystal radii by oxidation state and CN.",
+           choices=("covalent", "atomic", "atomic (calc.)", "vdW", "vdW (Bondi)", "ionic", "ionic (crystal)")),
     Option("elements.radius_scale", 0.8, "Radius scale", "Multiplies the tabulated radius.", minimum=0.05, maximum=3),
     Option("elements.overrides", {}, "Per-element overrides", "Color and radius per element; wins over the scheme.",
            kind="table"),
@@ -77,15 +80,25 @@ OPTIONS = (
            minimum=0.5, maximum=2),
     Option("bonds.radius", 0.15, "Bond radius", "Stick radius in ball-and-stick views.", minimum=0.01, maximum=1),
 
-    Option("render.renderer", "raytrace", "Default renderer", choices=("raytrace", "opengl")),
-    Option("render.samples", 8, "Anti-aliasing rays/pixel", minimum=1, maximum=256),
-    Option("render.ao_samples", 16, "Ambient occlusion rays", minimum=0, maximum=512),
-    Option("render.shadows", True, "Shadows"),
+    Option("render.renderer", "raytrace", "Default renderer", "Vector writes SVG/PDF/EPS with editable text.",
+           choices=("raytrace", "opengl", "vector")),
+    Option("render.quality", "Publication", "Image quality",
+           "Draft = half size, no AO/shadows; Publication = 16 rays/pixel, 32 AO rays, shadows. "
+           "Custom uses the three values below.", choices=("Draft", "Standard", "Publication", "Custom")),
+    Option("render.movie_quality", "Same as image", "Movie quality", "Lower it to export long movies faster.",
+           choices=("Same as image", "Draft", "Standard", "Publication")),
+    Option("render.samples", 16, "Anti-aliasing rays/pixel", "Used when quality is Custom.", minimum=1, maximum=256),
+    Option("render.ao_samples", 32, "Ambient occlusion rays", "Used when quality is Custom.", minimum=0, maximum=512),
+    Option("render.shadows", True, "Shadows", "Used when quality is Custom."),
     Option("render.size_preset", "1-column (3.5 in, 4:3)", "Size preset",
            choices=("1-column (3.5 in, 4:3)", "2-column (7.2 in, 16:9)", "Square (3.5 in)", "Slide 16:9 (1920×1080)")),
     Option("render.dpi", 600, "Resolution", "Print resolution used by the size presets.", minimum=72, maximum=2400),
     Option("render.background", "white", "Background", choices=("white", "transparent", "black", "viewport")),
     Option("render.output_dir", "", "Output folder", "Empty = current folder.", kind="dir"),
+    Option("render.type_legend", False, "Particle type legend", "One color swatch per type in the corner."),
+    Option("render.scale_bar", False, "Scale bar", "Round length in Å or nm; exact in orthographic views."),
+    Option("render.movie_format", "MP4 (H.264)", "Movie format", "AVI uses Motion JPEG for PowerPoint.",
+           choices=("MP4 (H.264)", "GIF", "AVI (Motion JPEG)", "MOV (H.264)", "PNG sequence")),
 
     Option("compute.device", "cpu", "Default device", "Toolbar Compute switch changes only the current session.",
            choices=("cpu", "cuda", "auto")),
@@ -267,20 +280,33 @@ class Settings:
             from ase.data.colors import jmol_colors as table
         return tuple(float(c) for c in table[z])
 
-    def element_radius(self, symbol: str):
+    def element_radius(self, symbol: str, preset: str | None = None):
+        """Scaled radius of an element under ``preset`` (default: the Radius preset) and the overrides.
+
+        Ionic presets use the element's most common oxidation state at CN VI here; per-type values
+        for a structure come from :meth:`type_radii`.
+        """
         o = self["elements.overrides"].get(symbol, {})
         if "radius" in o:
             return float(o["radius"])
-        import numpy as np
-        from ase.data import atomic_numbers, covalent_radii, vdw_radii
+        from .radii import element_radius
 
-        z = atomic_numbers.get(symbol)
-        if not z:
-            return None
-        r = vdw_radii[z] if self["elements.radius_source"] == "vdW" else np.nan
-        if np.isnan(r):  # vdW is missing for many elements: fall back to covalent
-            r = covalent_radii[z]
-        return float(r * self["elements.radius_scale"])
+        r = element_radius(symbol, preset or self["elements.radius_source"])
+        return None if r is None else float(r * self["elements.radius_scale"])
+
+    def type_radii(self, data, preset: str | None = None, oxidation_states: dict | None = None,
+                   coordination: dict | None = None):
+        """``(radii, table)``: scaled per-type radii of ``data`` with overrides applied, and the
+        :class:`ewald.radii.RadiusTable` they came from (oxidation states, CN, fallbacks)."""
+        from .radii import element_of, resolve
+
+        table = resolve(data, preset or self["elements.radius_source"], oxidation_states, coordination)
+        overrides = self["elements.overrides"]
+        out = {}
+        for t, r in table.radii.items():
+            o = overrides.get(t) or overrides.get(element_of(t)) or {}
+            out[t] = float(o["radius"]) if "radius" in o else float(r * self["elements.radius_scale"])
+        return out, table
 
 
 def load(path=None) -> Settings:

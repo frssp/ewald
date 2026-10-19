@@ -33,6 +33,12 @@ site (`mkdocs serve`) or use `help()` in Python, or read `llms.txt` for a compac
 
 ::: ewald.render.render_animation
 
+::: ewald.radii
+
+::: ewald.session.save_session
+
+::: ewald.session.load_session
+
 ## Modifiers
 
 ::: ewald.modifiers

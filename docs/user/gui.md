@@ -72,13 +72,19 @@ MP4 or GIF (needs the `movie` extra).
 ## Preferences
 
 Edit › Preferences (Ctrl+, ; the application menu on macOS) has six pages: General, Viewports,
-Elements (per-element color and radius, Jmol or CPK scheme, VESTA `elements.ini` import),
+Elements (per-element color and radius, Jmol or CPK scheme, radius preset, VESTA `elements.ini` import),
 Rendering, Compute (default device, CPU threads, installed components) and Python (console
 startup script, extra module paths). Only values that differ from the defaults are saved, as
 JSON in the ewald config folder: `~/.config/ewald` on Linux,
 `~/Library/Application Support/ewald` on macOS, `%APPDATA%\ewald` on Windows, or
 `$EWALD_CONFIG_DIR` when set. Preferences affect the GUI only; scripts that call `compute` or
 `render` are not changed by them.
+
+The radius preset (covalent, atomic, van der Waals or Shannon ionic radii; see
+[Atom radii](rendering.md#atom-radii)) is the one new sessions start with. The Particles visual
+element in the pipeline panel switches it for the current session and takes oxidation states
+for the ionic presets (`Sr=2, Ti=4, O=-2`; types left out are guessed). The log says which
+types fell back to covalent radii.
 
 The Compute switch in the toolbar changes the device for the current session only; the
 preference sets the device the GUI starts with.

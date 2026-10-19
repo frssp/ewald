@@ -5,6 +5,7 @@ import glob
 import os
 
 from ..data import DataCollection
+from . import remote
 from .ase_reader import AseReader
 from .base import FrameReader
 from .lammps_data import LammpsDataReader, is_lammps_data
@@ -18,14 +19,22 @@ class FileSource:
     """Pipeline source backed by one or more files, frames loaded lazily."""
 
     def __init__(self, path, format: str | None = None, **kwargs):
-        paths = sorted(glob.glob(str(path))) if any(c in str(path) for c in "*?[") else [str(path)]
+        path = str(path)
+        wildcard = any(c in path for c in "*?[")
+        if remote.is_remote(path):  # host:/path or ssh://host/path
+            paths = remote.glob(path) if wildcard else [path]
+            if not wildcard:
+                remote.stat(path)  # connect (and authenticate) once, up front; raises if missing
+        else:
+            paths = sorted(glob.glob(path)) if wildcard else [path]
         if not paths:
             raise FileNotFoundError(path)
         self.paths = paths
-        self.path = str(path)
+        self.path = path
         self.format = format
         self.kwargs = kwargs
-        self.readers: list[FrameReader] = [open_reader(p, format, **kwargs) for p in paths]
+        self.readers: list[FrameReader] = [open_reader(_readable_path(p, format), format, **kwargs)
+                                           for p in paths]
         self._index = [(r, i) for r in self.readers for i in range(len(r))]
 
     @property
@@ -59,31 +68,92 @@ class StaticSource:
         return data
 
 
-def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
+_STREAMING_FORMATS = ("lammps/dump", "lammps-dump", "lammps-dump-text", "vasp-xdatcar", "xdatcar",
+                      "lammps/data", "lammps-data", "lammps-data-native")
+
+
+def _readable_path(path: str, format: str | None) -> str:
+    """Remote files go to the native readers as they are (read in place, frame by frame);
+    for every other reader, ASE and plugins included, they are downloaded to the local cache."""
+    if not remote.is_remote(path):
+        return path
     fmt = (format or "").lower()
-    if fmt in ("cube", "gaussian-cube") or (not fmt and is_cube(path)):
-        return VolumetricReader(path, "cube", pbc=kwargs.pop("pbc", False))
-    if fmt in ("vasp-chgcar", "chgcar", "vasp-volumetric", "vasp-locpot", "locpot", "vasp-elfcar", "elfcar") \
-            or (not fmt and is_vasp_volumetric(path)):
-        kind = kwargs.pop("kind", None) or ("potential" if "locpot" in fmt else "elf" if "elfcar" in fmt else
-                                            "charge" if "chgcar" in fmt else None)
-        return VolumetricReader(path, "vasp", kind=kind)
-    if fmt in ("lammps/dump", "lammps-dump", "lammps-dump-text") or (not fmt and is_lammps_dump(path)):
-        return LammpsDumpReader(path, **kwargs)
-    if fmt in ("vasp-xdatcar", "xdatcar") or (not fmt and is_xdatcar(path)):
-        return XdatcarReader(path, **kwargs)
-    if fmt in ("lammps/data", "lammps-data", "lammps-data-native") or (not fmt and is_lammps_data(path)):
-        if "style" in kwargs:  # ASE's keyword name
-            kwargs["atom_style"] = kwargs.pop("style")
-        kwargs.pop("units", None)
-        return LammpsDataReader(path, **kwargs)
-    if fmt == "lammps-data-ase":
-        return AseReader(path, format="lammps-data", **kwargs)
+    if fmt in _STREAMING_FORMATS or (not fmt and (is_lammps_dump(path) or is_xdatcar(path)
+                                                  or is_lammps_data(path))):
+        return path
+    return remote.fetch(path)
+
+
+def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
+    """Reader for ``path``: chosen from the reader registry (built-in formats and plugins)."""
+    from .. import plugins
+
+    return plugins.open_reader(path, format, **kwargs)
+
+
+def _open_lammps_data(path, **kwargs):
+    if "style" in kwargs:  # ASE's keyword name
+        kwargs["atom_style"] = kwargs.pop("style")
+    kwargs.pop("units", None)
+    return LammpsDataReader(path, **kwargs)
+
+
+def _open_ase(path, format=None, **kwargs):
     return AseReader(path, format=format, **kwargs)
+
+
+def _open_cube(path, pbc=False, **kwargs):
+    return VolumetricReader(path, "cube", pbc=pbc)
+
+
+def _open_vasp_volumetric(path, format=None, kind=None, **kwargs):
+    fmt = (format or "").lower()
+    kind = kind or ("potential" if "locpot" in fmt else "elf" if "elfcar" in fmt else
+                    "charge" if "chgcar" in fmt else None)
+    return VolumetricReader(path, "vasp", kind=kind)
+
+
+def _open_ase_lammps_data(path, **kwargs):
+    return AseReader(path, format="lammps-data", **kwargs)
+
+
+def builtin_readers():
+    """ewald's own formats, registered in :mod:`ewald.plugins` like any reader plugin."""
+    from ..plugins import ReaderPlugin
+
+    B = "built-in"
+    return [
+        ReaderPlugin("cube", _open_cube, ("*.cube", "*.cub"), is_cube,
+                     "Gaussian cube volumetric data (atoms + grid)", B, 5, ("gaussian-cube",), category="volumetric"),
+        ReaderPlugin("vasp-volumetric", _open_vasp_volumetric,
+                     ("CHGCAR*", "CHG*", "PARCHG*", "AECCAR*", "LOCPOT*", "ELFCAR*"), is_vasp_volumetric,
+                     "VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR (atoms + grid)", B, 6,
+                     ("vasp-chgcar", "chgcar", "vasp-locpot", "locpot", "vasp-elfcar", "elfcar"),
+                     takes_format=True, category="volumetric"),
+        ReaderPlugin("lammps-dump", LammpsDumpReader, ("*.lammpstrj", "*.dump"), is_lammps_dump,
+                     "LAMMPS text dump (atom/custom), lazy", B, 10, ("lammps/dump", "lammps-dump-text")),
+        ReaderPlugin("xdatcar", XdatcarReader, ("XDATCAR*",), is_xdatcar,
+                     "VASP XDATCAR, fixed or variable cell, lazy", B, 11, ("vasp-xdatcar",)),
+        ReaderPlugin("lammps-data", _open_lammps_data, ("*.data",), is_lammps_data,
+                     "LAMMPS data file", B, 12, ("lammps/data", "lammps-data-native")),
+        ReaderPlugin("lammps-data-ase", _open_ase_lammps_data, (), None,
+                     "LAMMPS data file via ASE", B, None),
+        ReaderPlugin("ase", _open_ase, ("POSCAR*", "CONTCAR*", "OUTCAR*", "vasprun*.xml", "*.xyz", "*.extxyz",
+                                        "*.cif", "*.vasp"), lambda path: True,
+                     "anything ase.io.read understands (POSCAR, OUTCAR, vasprun.xml, extxyz, cif, ...); "
+                     "other format= names are passed to ASE", B, 100, takes_format=True),
+    ]
 
 
 def import_file(path, format: str | None = None, **kwargs):
     """Create a Pipeline reading ``path`` (wildcards allowed: ``dump.*.lammpstrj``).
+
+    ``format`` names a built-in format, an ASE format, or a reader plugin (see
+    :mod:`ewald.plugins`); without it the format is detected from the file.
+    ``path`` may be on another machine: ``host:/path``, ``user@host:path`` or
+    ``ssh://user@host:port/path`` (see :mod:`ewald.io.remote`). LAMMPS dumps and
+    XDATCARs are then read frame by frame over SFTP; other formats are downloaded
+    once to a local cache.
 
     Keyword arguments go to the reader, e.g. ``type_map={1: "Cu", 2: "Zr"}`` for
     LAMMPS dumps/data files that only contain numeric types, or

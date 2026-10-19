@@ -88,8 +88,11 @@ class PythonModifier(Modifier):
     def modify(self, data, ctx):
         import inspect
 
-        try:
-            nargs = len(inspect.signature(self.function).parameters)
+        try:  # positional slots not filled by keyword parameters decide whether ctx is passed
+            params = inspect.signature(self.function).parameters.values()
+            nargs = 3 if any(p.kind == p.VAR_POSITIONAL for p in params) else \
+                sum(p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD) and p.name not in self.params
+                    for p in params)
         except (TypeError, ValueError):
             nargs = 2
         args = (ctx.frame, data, ctx)[: max(2, min(nargs, 3))]

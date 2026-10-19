@@ -13,6 +13,7 @@ import warnings
 import numpy as np
 
 from ..data import Cell, DataCollection
+from . import remote
 from .base import FrameReader, head_lines, open_binary
 
 # LAMMPS column name -> (OVITO-style property, component)
@@ -220,8 +221,12 @@ def _scan_frames(path, chunk_size: int = 1 << 24) -> tuple[list[int], bool]:
     and whether the last frame holds all of its atom lines.
 
     Reads the file in large chunks and only looks at 'ITEM:' lines, so indexing a
-    multi-GB dump costs about as much as reading it from disk.
+    multi-GB dump costs about as much as reading it from disk. A remote dump is indexed
+    by ``grep`` on the host instead (only the ITEM lines cross the network).
     """
+    hits = remote.line_offsets(path, "^ITEM: (TIME|UNITS|ATOMS)") if remote.is_remote(path) else None
+    if hits is not None:
+        return _scan_remote(path, hits)
     offsets: list[int] = []
     in_header = False
     natoms = None  # NUMBER OF ATOMS of the current frame
@@ -285,6 +290,31 @@ def _scan_frames(path, chunk_size: int = 1 << 24) -> tuple[list[int], bool]:
                 break
     complete = bool(offsets) and natoms is not None and counted is not None and counted >= natoms
     return offsets, complete
+
+
+def _scan_remote(path, hits) -> tuple[list[int], bool]:
+    """Frame offsets from remote ITEM-line hits; the last frame is checked by reading only it."""
+    offsets, in_header = [], False
+    for pos, line in hits:
+        if line.startswith(_FRAME_START):
+            if not in_header:
+                offsets.append(pos)
+                in_header = True
+        elif line.startswith(b"ITEM: ATOMS"):
+            in_header = False
+    if not offsets:
+        return offsets, False
+    try:
+        with open_binary(path) as fh:
+            fh.seek(offsets[-1])
+            _, n, _, cols = _parse_header(fh)
+            block = fh.read()
+    except (ValueError, IndexError, EOFError):
+        return offsets, False
+    lines = block.count(b"\n")
+    if block and not block.endswith(b"\n"):
+        lines += len(block[block.rfind(b"\n") + 1:].split()) >= len(cols)
+    return offsets, lines >= n
 
 
 def _column_property(col: str):
