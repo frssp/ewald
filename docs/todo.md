@@ -17,7 +17,16 @@ GUI
 - Quad views (top, front, left, perspective), as in OVITO.
 - Undo/redo for pipeline edits.
 - Compute frames in a background thread so the GUI stays responsive.
-- Scene updates without a full rebuild when only colors or a few properties change.
+- Scene updates without a full rebuild when only colors or a few properties change, and frame
+  changes with the same atoms that replace only the point coordinates.
+- Picking without a render: ray-sphere intersection with the atoms on the CPU (now a
+  `vtkPropPicker` selection render per click).
+- Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
+  categories; the view-bar rotation arrows are still text glyphs.
+- Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
+  Add modification for the loaded data, view-along buttons hidden without a cell, the timeline
+  folded for a single structure, a right-click menu on pipeline items.
+- Shortcuts for the viewport tools (orbit, pick, distance, angle, bond) and view-along axes.
 - Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
   screen edges) and VTK scene lights instead of the fixed head light; bond impostors.
 - Flat (ASE) style in the ray tracer and the vector renderer (now OpenGL only), and a

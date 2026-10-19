@@ -42,11 +42,11 @@ class Viewport(QtWidgets.QWidget):
     styleChanged = QtCore.Signal()
     contextMenuRequested = QtCore.Signal()  # right click without dragging
 
-    TOOLS = (("orbit", "⟲", "Orbit / pan / zoom (mouse)"),
-             ("pick", "⌖", "Pick atom: shows id, type, position and properties; Shift+click picks several"),
-             ("distance", "↔", "Measure distance: click two atoms"),
-             ("angle", "∠", "Measure angle: click three atoms (vertex in the middle)"),
-             ("bond", "⌇", "Edit bonds: click two atoms to add or delete the bond between them"))
+    TOOLS = (("orbit", "Orbit", "Orbit / pan / zoom (mouse)"),
+             ("pick", "Pick", "Pick atom: shows id, type, position and properties; Shift+click picks several"),
+             ("distance", "Dist", "Measure distance: click two atoms"),
+             ("angle", "Angle", "Measure angle: click three atoms (vertex in the middle)"),
+             ("bond", "Bond", "Edit bonds: click two atoms to add or delete the bond between them"))
 
     def __init__(self, style: ViewStyle, parent=None):
         super().__init__(parent)
@@ -73,6 +73,7 @@ class Viewport(QtWidgets.QWidget):
         self.refine_delay = 0.3           # seconds of idle before the full-detail scene returns
         self._render_time = 0.0           # last full-detail render, seconds
         self._build_time = 0.0            # last full-detail scene build + render, seconds
+        self._pending_build = None        # build time of a scene not rendered yet
         self.coarse = False               # the scene on screen is the coarse one
         self._dragging = False
         self._lod_cloud = None            # subsampled impostor cloud of the current scene, built on first drag
@@ -85,10 +86,12 @@ class Viewport(QtWidgets.QWidget):
         grid = QtWidgets.QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(0)
+        self.styled_buttons = []  # (button, text in the default style); MainWindow.set_button_style
         grid.addWidget(self._build_viewbar(), 0, 0, 1, 2)
         grid.addWidget(self._build_rail(), 1, 0)
         # always interactive, even when PYVISTA_OFF_SCREEN is set for headless rendering
-        self.plotter = QtInteractor(self, off_screen=False)
+        # no auto-update timer: it re-rendered the scene 5 times a second even when idle
+        self.plotter = QtInteractor(self, off_screen=False, auto_update=False)
         grid.addWidget(self.plotter.interactor, 1, 1)
         grid.setColumnStretch(1, 1)
         grid.setRowStretch(1, 1)
@@ -96,6 +99,7 @@ class Viewport(QtWidgets.QWidget):
         self.plotter.enable_parallel_projection()
         self.anti_aliasing = False
         self.set_anti_aliasing(True)
+        self._paint_driven = self._render_on_paint()
         iren = self.plotter.iren
         iren.add_observer("LeftButtonPressEvent", self._on_press)
         iren.add_observer("LeftButtonReleaseEvent", self._on_release)
@@ -141,8 +145,10 @@ class Viewport(QtWidgets.QWidget):
         lay.addWidget(self.style_combo)
         lay.addStretch()
         fit = _button("Fit", "Zoom to fit (Ctrl+0)")
+        fit.setProperty("ewald_icon", "fit")
         fit.clicked.connect(self.zoom_fit)
         lay.addWidget(fit)
+        self.styled_buttons.append((fit, False))
         return bar
 
     def _build_rail(self):
@@ -153,20 +159,32 @@ class Viewport(QtWidgets.QWidget):
         group = QtWidgets.QButtonGroup(self)
         group.setExclusive(True)
         self.tool_buttons = {}
-        for key, icon, tip in self.TOOLS:
-            b = _button(icon, tip, True)
-            b.setFixedSize(36, 36)
+        for key, label, tip in self.TOOLS:
+            b = _button(label, tip, True)
+            b.setProperty("ewald_icon", key)
             b.clicked.connect(lambda _=False, k=key: self.set_tool(k))
             group.addButton(b)
             lay.addWidget(b)
             self.tool_buttons[key] = b
+            self.styled_buttons.append((b, False))
         self.tool_buttons["orbit"].setChecked(True)
         lay.addStretch()
-        clear = _button("✕", "Clear picks and measurements")
-        clear.setFixedSize(36, 36)
+        clear = _button("Clear", "Clear picks and measurements")
+        clear.setProperty("ewald_icon", "clear")
         clear.clicked.connect(self.clear_picks)
         lay.addWidget(clear)
+        self.styled_buttons.append((clear, False))
+        self._rail = rail
         return rail
+
+    def set_button_style(self, style: str):
+        """Size the tool rail for icons (36 px squares) or text labels (see ``icons.button_style``)."""
+        text = style == "Text"
+        self._rail.setFixedWidth(58 if text else 46)
+        for b, _ in self.styled_buttons:
+            if b.parent() is self._rail:
+                b.setFixedSize(50 if text else 36, 28 if text else 36)
+                b.setIconSize(QtCore.QSize(20, 20))
 
     # ------------------------------------------------------------------ scene
     def set_data(self, data, interactive: bool = False):
@@ -207,7 +225,7 @@ class Viewport(QtWidgets.QWidget):
         if p.scalar_bars:
             p.remove_scalar_bar()
         if self.data is None:
-            p.render()
+            self.render()
             return
         t0 = time.perf_counter()
         dark = _is_dark(self.style.background)
@@ -246,12 +264,16 @@ class Viewport(QtWidgets.QWidget):
             p.add_axes(color="#E7E9EC" if dark else "black", line_width=2)
             self._axes = dark
         self._draw_picks()
-        t1 = time.perf_counter()
-        p.render()
         self.coarse = coarse
         if coarse:
             self._refine_timer.start(int(self.refine_delay * 1000))
-        else:
+        if self._paint_driven:
+            self._pending_build = None if coarse else time.perf_counter() - t0
+            self.render()  # timed by _render_ended when the paint draws it
+            return
+        t1 = time.perf_counter()
+        p.render()
+        if not coarse:
             t2 = time.perf_counter()
             self._render_time, self._build_time = t2 - t1, t2 - t0
 
@@ -269,7 +291,7 @@ class Viewport(QtWidgets.QWidget):
             if name in p.actors:
                 p.actors[name].SetVisibility(True)
         self.coarse = False
-        p.render()
+        self.render()
 
     def _go_coarse_for_motion(self):
         """Swap the full atoms (and bonds) for subsampled impostors while the camera moves."""
@@ -335,6 +357,50 @@ class Viewport(QtWidgets.QWidget):
     def reset_view(self):
         self._first = True
 
+    def _render_on_paint(self) -> bool:
+        """Draw each change once, in the widget's next paint.
+
+        pyvistaqt renders when asked (camera moves, ``plotter.render()``) and then again in
+        the paint that shows the result, so every frame and every mouse move cost two
+        renders. Here the interactor only schedules a paint (as VTK's own Qt widget does,
+        through ``RenderEvent``), requests made before the paint collapse into one, and a
+        hidden viewport renders nothing. Returns False on a pyvistaqt without the paint
+        flag this relies on, which keeps its own behavior."""
+        widget, iren = self.plotter.interactor, self.plotter.iren.interactor
+        if not hasattr(widget, "_in_paint"):
+            return False
+        rw = self.plotter.render_window
+
+        def on_render(*_):
+            if widget._in_paint:
+                rw.Render()  # the paint's own render
+            else:
+                widget.update()
+
+        iren.EnableRenderOff()
+        iren.AddObserver("RenderEvent", on_render)
+        rw.AddObserver("StartEvent", self._render_started)
+        rw.AddObserver("EndEvent", self._render_ended)
+        return True
+
+    def _render_started(self, *_):
+        self._t_render = time.perf_counter()
+
+    def _render_ended(self, *_):
+        if self.coarse or getattr(self, "_t_render", None) is None:
+            return
+        dt = time.perf_counter() - self._t_render
+        self._render_time = dt
+        if self._pending_build is not None:  # the first render of a rebuilt scene
+            self._build_time, self._pending_build = self._pending_build + dt, None
+
+    def render(self):
+        """Show the current scene: schedules one paint (see ``_render_on_paint``)."""
+        if self._paint_driven:
+            self.plotter.interactor.update()
+        else:
+            self.plotter.render()
+
     # ------------------------------------------------------------------ camera
     def view_along(self, axis: str):
         if self.data is None or not self.data.cell.is_valid:
@@ -354,35 +420,35 @@ class Viewport(QtWidgets.QWidget):
         setup_camera(self.plotter, self.data, tuple(d), self.ortho)
         self.plotter.camera.up = tuple(up / np.linalg.norm(up))
         self.plotter.reset_camera()
-        self.plotter.render()
+        self.render()
 
     def view_direction(self, direction):
         if self.data is not None:
             setup_camera(self.plotter, self.data, direction, self.ortho)
-            self.plotter.render()
+            self.render()
 
     def rotate(self, kind, degrees):
         cam = self.plotter.camera
         {"azimuth": cam.Azimuth, "elevation": cam.Elevation, "roll": cam.Roll}[kind](degrees)
         cam.OrthogonalizeViewUp()
         self.plotter.reset_camera_clipping_range()
-        self.plotter.render()
+        self.render()
 
     def set_ortho(self, on):
         self.ortho = on
         self.ortho_button.setText("Ortho" if on else "Persp")
         (self.plotter.enable_parallel_projection if on else self.plotter.disable_parallel_projection)()
-        self.plotter.render()
+        self.render()
 
     def set_axes_visible(self, on):
         self.show_axes = on
         if getattr(self, "_axes", None) is not None:
             (self.plotter.show_axes if on else self.plotter.hide_axes)()
-            self.plotter.render()
+            self.render()
 
     def zoom_fit(self):
         self.plotter.reset_camera()
-        self.plotter.render()
+        self.render()
 
     def _preset(self, name):
         self.style.apply_preset(name, self.data.types if self.data is not None else ())
@@ -396,7 +462,7 @@ class Viewport(QtWidgets.QWidget):
         self.tool_buttons[tool].setChecked(True)
         self._picks = []
         self._draw_picks()
-        self.plotter.render()
+        self.render()
 
     @property
     def picks(self) -> list[int]:
@@ -412,14 +478,14 @@ class Viewport(QtWidgets.QWidget):
             self.tool = "pick"
             self.tool_buttons["pick"].setChecked(True)
         self._draw_picks()
-        self.plotter.render()
+        self.render()
         if emit:
             self.picked.emit(self.describe_picks())
 
     def clear_picks(self):
         self._picks = []
         self._draw_picks()
-        self.plotter.render()
+        self.render()
         self.picked.emit("")
 
     def _on_press(self, obj, event):
@@ -444,7 +510,7 @@ class Viewport(QtWidgets.QWidget):
         if extend:
             self._picks = [p for p in self._picks if p != idx] if idx in self._picks else self._picks + [idx]
             self._draw_picks()
-            self.plotter.render()
+            self.render()
             self.picked.emit(self.describe_picks())
             return
         need = {"pick": 1, "distance": 2, "angle": 3, "bond": 2}[self.tool]
@@ -457,7 +523,7 @@ class Viewport(QtWidgets.QWidget):
                 self.bondEdit.emit(a, b)
             return
         self._draw_picks()
-        self.plotter.render()
+        self.render()
         self.picked.emit(self.describe_picks())
 
     def pick_at(self, x, y):

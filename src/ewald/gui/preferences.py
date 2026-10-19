@@ -29,7 +29,7 @@ _CHOICE_LABELS = {"auto": "Auto", "coarse": "Always coarse", "full": "Always ful
 LAYOUT = {
     "General": ("Startup behaviour and file handling.", [
         ("Startup", ["general.startup_workspace", "general.restore_layout"]),
-        ("Appearance", ["general.font_size"]),
+        ("Appearance", ["general.font_size", "general.toolbar_style"]),
         ("LAMMPS files", ["general.lammps_type_prompt", "general.lammps_type_map"]),
         ("Help", ["general.docs_url"])]),
     "Viewports": ("Defaults for the interactive 3D view.", [
@@ -845,6 +845,7 @@ def apply_settings(win, s: Settings, startup: bool = False):
     if app is not None:
         app.setStyleSheet(theme.stylesheet().replace("font-size: 12px", f"font-size: {s['general.font_size']}px"))
 
+    win.set_button_style(s["general.toolbar_style"])
     if style.preset not in PRESET_THEMES:  # those presets keep their theme's background
         style.background = s["viewport.background"]
     style.bond_radius = s["bonds.radius"]

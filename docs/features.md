@@ -363,6 +363,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | Key | Label | Default |
 |---|---|---|
 | `general.startup_workspace` | Startup workspace | `'Analyze'` |
+| `general.toolbar_style` | Toolbar buttons | `'Icons and text'` |
 | `general.font_size` | UI font size | `12` |
 | `general.restore_layout` | Restore window layout | `True` |
 | `general.lammps_type_prompt` | LAMMPS type names | `'ask'` |
@@ -596,8 +597,17 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Open plugin folder
 - About EWALD
 
-**Viewport (right click)**
+**Viewport (right click)**, entries shown only when they apply (picked atoms, phonon modes, NEB band, volumetric grid, trajectory):
 
+- N atoms picked
+- Center view on picked
+- Select picked atoms
+- Delete picked atoms
+- Clear picks
+- Phonon band structure
+- NEB energy profile
+- Add isosurface
+- Play (`Space`)
 - Overlay other frames (see-through)
 - Overlay transparency
   - 50 %
@@ -605,6 +615,9 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - 85 %
   - 95 %
 - Overlay only atoms that move
+- Show
+  - Bonds
+  - Simulation cell
 - View along
   - a
   - b
@@ -612,12 +625,13 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - a*
   - b*
   - c*
+- Orthographic
 - Zoom to fit
 - Ask Claude about selection…
 
 ### Toolbar
 
-Open, Open remote, Analyze, Render, Search commands, modifiers… Ctrl K, Compute device switch (CPU / CUDA / auto).
+Open, Open remote, Save, Analyze, Render, Search commands, modifiers… Ctrl K, Compute device switch (CPU / CUDA / auto).
 
 ### Panels
 
