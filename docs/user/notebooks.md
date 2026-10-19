@@ -145,7 +145,9 @@ sets the size limit (*Copy data files up to*, 0 for links only) and whether figu
 
 An `.ewd` from someone else opens **restricted**. You see its code, outputs and figures, but no
 cell runs and its plugins are not imported until you agree: opening asks (unless *Run notebooks
-when opened* is *never*), and so does Run all. A plugin you already have installed under the
+when opened* is *never*), and so do Run all and running a single cell. A bar over the cells
+says the notebook is restricted, with *Trust* and *Trust and run all*; Notebook › *Trust
+notebook…* does the same. A plugin you already have installed under the
 same id is used instead of the copy in the file. A `.ipynb` written by Jupyter opens the same
 way as a `.py`; `pipe.add(...)` cells become steps and its outputs are kept.
 

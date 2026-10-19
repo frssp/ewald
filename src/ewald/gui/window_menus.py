@@ -202,6 +202,10 @@ class MenusMixin:
             n.addAction("Run current cell and &below", lambda: self._cell_action("below"))
             n.addAction("&Restart", lambda: self.panel.view.restart())
             n.addAction("Restart and run all", lambda: self.panel.view.run_all())
+            self.trust_action = n.addAction("&Trust notebook…", lambda: self.panel.view.trust())
+            self.trust_action.setToolTip("Allow a notebook received as an .ewd file to run its code and plugins")
+            n.aboutToShow.connect(lambda: self.trust_action.setEnabled(
+                self.panel.view is not None and self.panel.view.notebook.restricted))
             n.addSeparator()
             n.addAction("Move cell &up", lambda: self._cell_action("up"), "Ctrl+Shift+Up")
             n.addAction("Move cell &down", lambda: self._cell_action("down"), "Ctrl+Shift+Down")

@@ -1317,11 +1317,15 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert asked and view.notebook.restricted and w2.style.radius_scale == 0.8
     hist = next(wd for wd in view.widgets if wd.cell.is_view)
     assert any(o.kind == "image" for o in hist.outputs.outputs)   # the saved figure, nothing ran
+    assert not view.banner.isHidden() and "Restricted" in view.banner_text.text()
     view.run_all()                                            # asks again; No keeps it restricted
-    assert view.notebook.restricted and len(asked) == 2
+    view.run(view.notebook.cells[0])                          # so does running one cell
+    assert view.notebook.restricted and len(asked) == 3 and view.notebook.cells[0].state != "error"
     monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.Yes)
+    w2.trust_action.trigger()                                 # Notebook › Trust notebook…
+    assert not view.notebook.restricted and view.banner.isHidden()
     view.run_all()
-    assert not view.notebook.restricted and [m.name for m in w2.pipeline.modifiers] == ["CoordinationAnalysis"]
+    assert [m.name for m in w2.pipeline.modifiers] == ["CoordinationAnalysis"]
     w2.close()
 
 

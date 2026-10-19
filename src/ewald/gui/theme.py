@@ -114,6 +114,8 @@ QFrame#cell[state="stale"] {{ background: {panel}; }}
 QFrame#cell QLabel, QFrame#cell QCheckBox {{ background: transparent; }}
 QToolButton#cellRun {{ color: {accent}; padding: 2px 5px; }}
 QLabel#cellCounter {{ color: {muted}; font-size: 11px; }}
+QFrame#restrictedBanner {{ background: {data_soft}; border-bottom: 1px solid {data}; }}
+QFrame#restrictedBanner QLabel {{ color: {text}; background: transparent; }}
 QToolButton#cellFold {{ color: {muted}; padding: 0 4px; border: none; }}
 QToolButton#cellFold:hover {{ color: {accent}; }}
 QLabel#cellFolded {{ color: {secondary}; font-style: italic; padding: 3px 0; }}
