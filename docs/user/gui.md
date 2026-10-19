@@ -21,8 +21,12 @@ along a, b, c, a*, b*, c* aligns the view with a cell vector or reciprocal vecto
 VESTA, and View › Zoom to fit (Ctrl+0) frames the cell. The tool rail on the left switches
 between orbit, pick (click an atom to see its id, type, position and every property;
 Shift+click adds atoms to the pick or removes them),
-distance (click two atoms) and angle (click three atoms, vertex in the middle). Above 150 000
-atoms the viewport draws GPU impostors instead of sphere meshes; the threshold is a preference.
+distance (click two atoms) and angle (click three atoms, vertex in the middle). The viewport
+draws atoms as GPU impostors: each sphere is one point shaded per pixel, with the depth of the
+sphere surface, so spheres stay round at any zoom, overlapping spheres and bonds intersect as
+with meshes, and 100 000 atoms rotate smoothly. Viewports › Performance › *Sphere drawing* =
+Mesh brings back triangle spheres (*Sphere resolution*, up to the *Impostor threshold*), and
+*Smooth edges* (on) applies FXAA to outlines.
 
 **Ask Claude.** The Ask Claude tab next to the pipeline (Tools › Ask Claude about selection,
 Ctrl+J) answers questions about the picked atoms, such as "What are these atoms?" or "Why is the

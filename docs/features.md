@@ -326,8 +326,10 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `viewport.rotation_step` | Step rotation | `15.0` |
 | `viewport.show_axes` | Show axes tripod | `True` |
 | `viewport.show_overlay` | Show frame / timestep text | `True` |
-| `viewport.sphere_resolution` | Sphere resolution | `10` |
+| `viewport.sphere_drawing` | Sphere drawing | `'impostor'` |
+| `viewport.sphere_resolution` | Sphere resolution | `16` |
 | `viewport.mesh_limit` | Impostor threshold | `150000` |
+| `viewport.anti_aliasing` | Smooth edges | `True` |
 | `viewport.arrow_resolution` | Arrow resolution | `6` |
 | `viewport.interactive_detail` | Detail while moving | `'auto'` |
 | `viewport.target_fps` | Target frame rate | `30` |

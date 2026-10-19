@@ -24,6 +24,39 @@ def test_impostor_shading_has_no_black_rims(tmp_path, cu_fcc):
     assert np.percentile(img[..., :3].astype(int).sum(-1)[atoms], 1) > 60  # rims stay lit
 
 
+def test_impostors_have_sphere_depth():
+    """Overlapping impostors take the depth of the sphere surface, as a fine mesh does, in both projections."""
+    import pyvista as pv
+
+    from ewald.render import add_atoms
+
+    rng = np.random.default_rng(0)
+    cloud = pv.PolyData(rng.random((40, 3)) * 5)
+    cloud["rgb"] = (rng.random((40, 3)) * 255).astype(np.uint8)
+    cloud["radius"] = rng.random(40) * 0.6 + 0.6
+    for ortho in (True, False):
+        depths = []
+        for style in ("impostor", "mesh"):
+            p = pv.Plotter(off_screen=True, window_size=(300, 240))
+            if ortho:
+                p.enable_parallel_projection()
+            add_atoms(p, cloud, atom_style=style, sphere_resolution=96)
+            p.view_isometric()
+            p.camera.position, p.camera.focal_point = (14.0, 11.0, 9.0), (2.5, 2.5, 2.5)
+            p.camera.parallel_scale, p.camera.view_angle = 5.0, 40.0  # same framing for both
+            p.reset_camera_clipping_range()
+            p.screenshot(None)
+            depths.append(p.get_image_depth(fill_value=np.nan))
+            p.close()
+        imp, mesh = depths
+        both = ~np.isnan(imp) & ~np.isnan(mesh)
+        assert (np.isnan(imp) != np.isnan(mesh)).sum() < 0.02 * both.sum()
+        err = np.abs(imp - mesh)[both]
+        # flat sprites: median ~0.7; perspective is approximate (rays treated as parallel per sphere)
+        tol = (0.03, 0.15) if ortho else (0.15, 0.4)
+        assert np.median(err) < tol[0] and np.percentile(err, 95) < tol[1]
+
+
 def test_raytrace_png(tmp_path, cu_fcc):
     from ewald.render import render
 
@@ -176,3 +209,18 @@ def test_opengl_draws_plugin_primitives_and_see_through_spheres(tmp_path):
 
     rgba = spheres_cloud(scene["visual:markers:halo"].primitive)["rgb"]
     assert rgba.shape == (2, 4) and rgba[0].tolist() == [255, 255, 0, 76]
+
+
+def test_opengl_info_flags_software_rasterizers():
+    from ewald.render import opengl_info
+
+    class Window:
+        def __init__(self, renderer):
+            self.text = f"OpenGL vendor string:  V\nOpenGL renderer string:  {renderer}\nOpenGL version string:  4.5"
+
+        def ReportCapabilities(self):
+            return self.text
+
+    info = opengl_info(Window("llvmpipe (LLVM 20.1.2, 256 bits)"))
+    assert info == {"vendor": "V", "renderer": "llvmpipe (LLVM 20.1.2, 256 bits)", "version": "4.5", "software": True}
+    assert not opengl_info(Window("NVIDIA GeForce RTX 4090/PCIe/SSE2"))["software"]

@@ -8,7 +8,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-Nothing at the moment.
+- Viewport: GPU impostor spheres by default, FXAA, software-OpenGL warning (thread "처음 연 화면 느림").
 
 ## Next
 
@@ -18,6 +18,8 @@ GUI
 - Undo/redo for pipeline edits.
 - Compute frames in a background thread so the GUI stays responsive.
 - Scene updates without a full rebuild when only colors or a few properties change.
+- Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
+  screen edges) and VTK scene lights instead of the fixed head light; bond impostors.
 
 Analysis
 

@@ -115,8 +115,9 @@ The Slater, Clementi and Shannon tables ship with ewald in `ewald/tables/radii.j
 
 ## Large systems
 
-Above 150 000 atoms the OpenGL renderer draws GPU impostors (shaded point sprites) instead of
-sphere meshes, which keeps million-atom frames interactive. Pass `mesh_limit=` to move the
+Above 150 000 atoms the OpenGL renderer draws GPU impostors (shaded point sprites with
+per-pixel sphere depth) instead of sphere meshes, which keeps million-atom frames interactive;
+`atom_style="impostor"` uses them at any size. The GUI viewport draws impostors by default. Pass `mesh_limit=` to move the
 threshold; above it, vector arrows are drawn as colored lines. `arrow_resolution=` sets the
 sides per arrow (the viewport uses Preferences › Viewports › Arrow resolution while you
 interact, file output follows the quality preset).
