@@ -8,7 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Analysis verbs (`rdf`, `msd`, `sq`, ...). Branch `claude/project-thread-x53vio`.
 
 ## Next
 

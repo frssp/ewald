@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["Table", "rdf", "msd", "vacf", "sq", "xrd", "bond_angles"]
+__all__ = ["Table", "bond_angles", "msd", "rdf", "sq", "vacf", "xrd"]
 
 
 class Table(dict):
