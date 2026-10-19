@@ -18,7 +18,7 @@ from .. import settings as settings_mod
 from ..settings import DEVICES, OPTION, OPTIONS, PAGES, Settings
 from .theme import TOKENS
 
-_CHOICE_LABELS = {"ortho": "Orthographic", "persp": "Perspective", "raytrace": "Ray tracing (AO + shadows)",
+_CHOICE_LABELS = {"auto": "Auto", "coarse": "Always coarse", "full": "Always full", "ortho": "Orthographic", "persp": "Perspective", "raytrace": "Ray tracing (AO + shadows)",
                   "opengl": "OpenGL (fast preview)", "iso": "Isometric", "x": "Along +x", "y": "Along +y",
                   "z": "Along +z (top)", "front": "Front (−y)", "ask": "Ask when opening", "never": "Use default map",
                   "covalent": "Covalent", "vdW": "van der Waals", "white": "White", "black": "Black",
@@ -35,7 +35,8 @@ LAYOUT = {
         ("View", ["viewport.background", "viewport.projection", "viewport.initial_view", "viewport.style_preset"]),
         ("Navigation", ["viewport.rotation_step"]),
         ("Overlays", ["viewport.show_axes", "viewport.show_overlay"]),
-        ("Performance", ["viewport.sphere_resolution", "viewport.mesh_limit"])]),
+        ("Performance", ["viewport.interactive_detail", "viewport.target_fps", "viewport.interactive_atoms",
+                         "viewport.refine_delay", "viewport.sphere_resolution", "viewport.mesh_limit"])]),
     "Elements": ("Default atom colors, radii and bond search, like VESTA's elements.ini.", [
         ("Atoms", ["elements.color_scheme", "elements.radius_source", "elements.radius_scale"]),
         ("Bonds", ["bonds.length_factor", "bonds.radius"]),
@@ -46,7 +47,8 @@ LAYOUT = {
         ("Output", ["render.size_preset", "render.dpi", "render.background", "render.output_dir"]),
         ("Overlays and movies", ["render.type_legend", "render.scale_bar", "render.movie_format"])]),
     "Compute": ("Where pipelines run, and which optional packages are available.", [
-        ("Device", ["compute.device", "compute.threads"])]),
+        ("Device", ["compute.device", "compute.threads"]),
+        ("Memory", ["performance.cache_memory"])]),
     "Python": ("Console and module search path.", [
         ("Console", ["python.startup_script"]),
         ("Modules", ["python.extra_paths"])]),
@@ -576,7 +578,9 @@ class PreferencesDialog(QtWidgets.QDialog):
         if isinstance(w, (QtWidgets.QSpinBox, QtWidgets.QDoubleSpinBox)):
             w.setAlignment(QtCore.Qt.AlignRight)
             suffix = {"general.font_size": " px", "viewport.rotation_step": "°", "bonds.radius": " Å",
-                      "render.dpi": " dpi", "viewport.mesh_limit": " atoms"}.get(opt.key)
+                      "render.dpi": " dpi", "viewport.mesh_limit": " atoms",
+                      "viewport.interactive_atoms": " atoms", "viewport.target_fps": " fps",
+                      "viewport.refine_delay": " s", "performance.cache_memory": " MB"}.get(opt.key)
             if suffix:
                 w.setSuffix(suffix)
         return w
@@ -845,6 +849,12 @@ def apply_settings(win, s: Settings, startup: bool = False):
     vp.rotation_step = s["viewport.rotation_step"]
     vp.sphere_resolution = s["viewport.sphere_resolution"]
     vp.mesh_limit = s["viewport.mesh_limit"]
+    vp.detail_mode = s["viewport.interactive_detail"]
+    vp.target_fps = s["viewport.target_fps"]
+    vp.interactive_atoms = s["viewport.interactive_atoms"]
+    vp.refine_delay = s["viewport.refine_delay"]
+    if win.pipeline is not None:
+        win.pipeline.cache_memory = s["performance.cache_memory"] * 2**20
     vp.show_overlay = s["viewport.show_overlay"]
     vp.initial_view = s["viewport.initial_view"]
     vp.set_axes_visible(s["viewport.show_axes"])

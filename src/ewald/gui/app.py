@@ -50,6 +50,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.data = None
         self.device = device
         self.frame = 0
+        self._frame_pending = False
         self.style = ViewStyle()
         self.session_path = None
 
@@ -329,6 +330,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def set_pipeline(self, pipeline):
         self.pipeline = pipeline
+        pipeline.cache_memory = self.settings["performance.cache_memory"] * 2**20
         self.viewport.reset_view()
         self.viewport.clear_picks()
         self.panel.set_pipeline(pipeline)
@@ -339,9 +341,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def set_frame(self, frame):
         self.frame = frame
-        self.recompute()
+        tl = self.timeline
+        if tl.slider.isSliderDown() or tl.play.isChecked():
+            # Scrubbing/playback: frames arriving while one is computed collapse into the
+            # latest, which is drawn coarse and refined when the timeline comes to rest.
+            if not self._frame_pending:
+                self._frame_pending = True
+                QtCore.QTimer.singleShot(0, self._apply_pending_frame)
+        else:
+            self.recompute()
 
-    def recompute(self):
+    def _apply_pending_frame(self):
+        self._frame_pending = False
+        self.recompute(interactive=True)
+
+    def recompute(self, interactive: bool = False):
         if self.pipeline is None:
             return
         t = time.perf_counter()
@@ -361,7 +375,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.panel.set_data(self.data)
         ts = self.data.attributes.get("Timestep", self.frame)
         self.viewport.overlay_text = f"Frame {self.frame}   timestep {ts}"
-        self.viewport.set_data(self.data)
+        self.viewport.set_data(self.data, interactive=interactive)
         self.inspector.set_data(self.data)
         self.plots.set_data(self.data)
         self._push_console()
