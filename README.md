@@ -28,6 +28,13 @@ Python; see [docs/developer/windows-release.md](docs/developer/windows-release.m
 
 Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
 
+On Linux the GUI also needs a few X11 libraries that minimal installs lack
+(`sudo apt install libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0
+libxcb-render-util0 libxcb-image0 libxcb-randr0`). If importing PySide6 fails with
+`undefined symbol ... Qt_6_PRIVATE_API`, remove system directories (`/lib`, `/usr/lib`,
+`/lib/x86_64-linux-gnu`, ...) from `LD_LIBRARY_PATH`; they make a system Qt shadow the wheel's.
+Details: [docs/user/install.md](docs/user/install.md#troubleshooting-the-gui).
+
 ## Quick start
 
 ```python
@@ -75,6 +82,9 @@ ewald info XDATCAR
 ewald render dump.lammpstrj out.png --frame 5 --type-map 1=Cu,2=Zr --color-by "Position.Z"
 ```
 
+`ewald examples` lists small example files shipped with the package (POSCAR, CIF, XYZ/extxyz,
+XDATCAR, CHGCAR, LAMMPS dump/data, phonopy band.yaml); the GUI has them under File › Open
+example, and `ewald.examples.path("POSCAR.SrTiO3")` gives their paths in Python.
 `python examples/demo.py` builds sample LAMMPS and VASP trajectories and renders
 example figures.
 
@@ -475,7 +485,7 @@ print(data.attributes["PolyhedralTemplateMatching.counts.FCC"])
 ico = (data["Voronoi Index"][:, 4] == 12) & (data["Coordination"] == 12)   # <0,0,0,0,12> cells
 ```
 
-With the optional `ovito` package (`pip install ovito` or `pip install -e ".[ovito]"`),
+With the optional `ovito` package (`pip install -e ".[gui,ovito]"`; one command, since ovito pins PySide6),
 `DislocationAnalysis` runs OVITO's DXA (Burgers vectors, line lengths, segment
 polylines in `tables["dislocations"]`), and `OvitoModifier(any_ovito_modifier)`
 runs any other OVITO modifier inside an ewald pipeline.

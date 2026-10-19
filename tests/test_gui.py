@@ -1052,3 +1052,19 @@ def test_main_window_plays_phonon_mode(app):
     assert w.timeline.play.isChecked()
     w.timeline.play.setChecked(False)
     w.close()
+
+
+def test_open_example_menu(app):
+    from ewald import examples
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    menus = {a.text().replace("&", ""): a.menu() for a in w.menuBar().actions()}
+    sub = {a.text().replace("&", ""): a.menu() for a in menus["File"].actions() if a.menu()}["Open example"]
+    acts = sub.actions()
+    assert len(acts) == len(examples.EXAMPLES) and acts[0].toolTip() == examples.EXAMPLES[0].description
+    acts[0].trigger()
+    assert w.pipeline is not None and w.data.count == 40
+    assert "POSCAR.SrTiO3" in w.windowTitle()
+    w.close()
+    w.deleteLater()

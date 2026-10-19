@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from . import import_file
 from .render import RENDERERS
@@ -54,6 +55,8 @@ def build_parser():
     g.add_argument("input", nargs="?", help="structure/trajectory file or .ewald session")
     g.add_argument("--type-map", default=None)
     g.add_argument("--device", default=None)
+    ex = sub.add_parser("examples", help="list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...)")
+    ex.add_argument("--copy", default=None, metavar="DIR", help="copy them into DIR")
     i = sub.add_parser("info", help="print frames and properties")
     i.add_argument("input")
     i.add_argument("--type-map", default=None)
@@ -101,9 +104,26 @@ def build_parser():
     return ap
 
 
+# optional package -> the extra that installs it (for "ewald CMD" without that extra)
+EXTRAS = {"PySide6": "gui", "pyvistaqt": "gui", "qtconsole": "gui", "anthropic": "llm", "mcp": "llm",
+          "anyio": "llm", "paramiko": "remote", "h5py": "formats", "MDAnalysis": "formats",
+          "cupy": "gpu", "plumed": "plumed", "imageio_ffmpeg": "movie"}
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    try:
+        return _run(args)
+    except ImportError as exc:  # a missing optional dependency: one line, not a traceback
+        top = (getattr(exc, "name", None) or "").split(".")[0]
+        if top in EXTRAS:
+            sys.exit(f"ewald {args.cmd}: needs {top}: pip install 'ewald[{EXTRAS[top]}]'")
+        if "pip install" in str(exc):
+            sys.exit(f"ewald {args.cmd}: {exc}")
+        raise
 
+
+def _run(args):
     if args.cmd == "gui":
         from .gui import main as gui_main
 
@@ -114,6 +134,8 @@ def main(argv=None):
 
         print(api_reference(with_plugins=args.with_plugins), end="")
         return
+    if args.cmd == "examples":
+        return _examples(args.copy)
     if args.cmd == "plugins":
         return _print_plugins(args.json)
     if args.cmd == "forge":
@@ -240,6 +262,18 @@ def _render_cmd(args, reader_kwargs):
         opts["dpi"] = args.dpi
     render(data, args.output, text=format_label(text, frame, data, tpf) or None, **opts)
     print("wrote", args.output)
+
+
+def _examples(dest=None):
+    from . import examples
+
+    if dest:
+        print(f"copied {len(examples.EXAMPLES)} files to {examples.copy(dest)}")
+        return
+    width = max(len(ex.file) for ex in examples.EXAMPLES)
+    for ex in examples.EXAMPLES:
+        print(f"{ex.file:<{width}}  {ex.format}: {ex.description}")
+    print(f"\nin {examples.FILES}; open one with: ewald gui {examples.EXAMPLES[0].path}")
 
 
 def _print_plugins(as_json=False):

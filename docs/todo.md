@@ -107,6 +107,8 @@ Plugins and Claude
 
 Docs
 
+- Example files: add real (not synthetic) VASP OUTCAR/vasprun.xml and LAMMPS log examples, and
+  list the examples on an empty viewport at first start.
 - Host the manual (the repository is private; CI uploads the built site as the `docs-site`
   artifact).
 
@@ -147,6 +149,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   non-collinear, `LCHARGH5`); the fixtures follow py4vasp's schema and are checked against
   py4vasp, and the charge density is assumed to be stored as rho * V like a CHGCAR. The H5MD
   reader on GROMACS 2026 `mdrun` output.
+- GUI startup checks on a Wayland desktop and on Fedora (the xcb library check is skipped when
+  `WAYLAND_DISPLAY` is set; the Fedora package names in its message are untested).
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
   CI has no PLUMED, so those tests skip).
 
@@ -154,6 +158,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 - GitHub Actions minutes ran out on 2026-10-19; CI does not run until that is fixed, so pull
   requests are verified locally (`xvfb-run -a python -m pytest -q`, `mkdocs build --strict`).
+
+- CI installs each extra on its own only through the test suite's `importorskip`s; a job that
+  installs every extra in a clean venv and imports its modules would catch broken extras
+  (`tests/test_dependencies.py` only checks that every import is declared).
 
 ## Deferred until the user asks
 

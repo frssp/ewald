@@ -7,8 +7,9 @@ ewald gui run.lammpstrj --device cuda    # start with GPU compute
 ```
 
 From Python, `ewald.gui.show(pipe)` opens the viewer on a pipeline you built in a script. In
-Jupyter, run `%gui qt` first; `show` then returns at once and the window stays live
-next to the notebook.
+Jupyter, run `import ewald.gui` and then `%gui qt` (in that order, so IPython picks PySide6 even
+when PyQt is installed); `show` then returns at once and the window stays live next to the
+notebook. Linux system libraries and startup errors: [Install](install.md#linux-gui-system-libraries).
 
 The layout follows OVITO 3, with VESTA's crystal-viewing controls added: the viewport is in the
 middle, the pipeline and the selected item's parameters are on the right, the timeline is under
@@ -118,7 +119,8 @@ made in the GUI can be reproduced in a batch script. See [Rendering figures](ren
 
 ## Files
 
-File › Load file opens any format ewald can read ([File formats](formats.md)), including
+File › Open example opens one of the [example files](quickstart.md#example-files) shipped
+with ewald. File › Load file opens any format ewald can read ([File formats](formats.md)), including
 formats added by [reader plugins](../plugins/readers.md). LAMMPS dumps ask for a
 type-to-element map unless you set a default in Preferences. File › Load NEB folder opens a
 VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image

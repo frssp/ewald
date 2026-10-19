@@ -8,9 +8,14 @@ import time
 import traceback
 
 import numpy as np
+
+from . import check_qt_binding
+
+check_qt_binding()  # before PySide6: a clear error when another Qt binding is loaded
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .. import manual
+from .. import examples, manual
 from .. import modifiers as mods
 from ..io import import_file
 from ..render import camera_state, render
@@ -190,6 +195,12 @@ class MainWindow(QtWidgets.QMainWindow):
         f.addAction("&Load file…", self.open_dialog, QtGui.QKeySequence.Open)
         f.addAction("Load &remote file (SSH)…", self.open_remote_dialog, "Ctrl+Alt+O")
         f.addAction("Load &NEB folder…", self.open_neb_dialog)
+        ex = f.addMenu("Open e&xample")
+        for example in examples.EXAMPLES:
+            act = ex.addAction(f"{example.file}  ({example.format})", lambda e=example: self.open_example(e.file))
+            act.setToolTip(example.description)
+            act.setStatusTip(example.description)
+        ex.setToolTipsVisible(True)
         f.addAction("Load &session…", self.load_session_dialog, "Ctrl+Shift+O")
         f.addAction("&Save session", self.save_session, QtGui.QKeySequence.Save)
         f.addAction("Save session &as…", lambda: self.save_session(ask=True), QtGui.QKeySequence.SaveAs)
@@ -397,6 +408,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if path:
             self.open_file(path)
             self.bottom.setCurrentWidget(self.plots)
+
+    def open_example(self, name):
+        """Open one of the shipped example files (File › Open example)."""
+        return self.open_file(str(examples.path(name)))
 
     def open_remote_dialog(self):
         from .remote_dialog import RemoteFileDialog
@@ -900,6 +915,9 @@ def _app():
 
     app = QtWidgets.QApplication.instance()
     if app is None:
+        from . import check_qt_platform
+
+        check_qt_platform()
         app = QtWidgets.QApplication(sys.argv)
         app.setApplicationName("ewald")
         theme.apply(app)

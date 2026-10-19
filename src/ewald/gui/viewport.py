@@ -4,6 +4,11 @@ from __future__ import annotations
 import time
 
 import numpy as np
+
+from . import check_qt_binding
+
+check_qt_binding()  # before PySide6: a clear error when another Qt binding is loaded
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..render import (
