@@ -12,17 +12,20 @@ import math
 
 import numpy as np
 
+def _basis(camera):
+    """Camera eye and orthonormal (right, up, forward) axes."""
+    eye = np.asarray(camera["position"], float)
+    fwd = np.asarray(camera["focal_point"], float) - eye
+    fwd /= np.linalg.norm(fwd)
+    right = np.cross(fwd, np.asarray(camera["up"], float))
+    right /= np.linalg.norm(right)
+    return eye, right, np.cross(right, fwd), fwd
+
+
 def _project(points, camera, size):
     """World -> (screen x, screen y, depth, pixels per Angstrom at that depth)."""
     w, h = size
-    eye = np.asarray(camera["position"], float)
-    focal = np.asarray(camera["focal_point"], float)
-    fwd = focal - eye
-    fwd /= np.linalg.norm(fwd)
-    up = np.asarray(camera["up"], float)
-    right = np.cross(fwd, up)
-    right /= np.linalg.norm(right)
-    up = np.cross(right, fwd)
+    eye, right, up, fwd = _basis(camera)
     rel = np.asarray(points, float).reshape(-1, 3) - eye
     x, y, z = rel @ right, rel @ up, rel @ fwd
     if camera.get("parallel_projection", True):
@@ -53,7 +56,8 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
     from matplotlib.patches import Circle, Polygon, Rectangle
 
     from .overlays import ink_color, overlay_layout
-    from .render import _rgb, bond_list, default_colors, default_radii
+    from .bonds import bond_segments
+    from .render import _rgb, default_colors, default_radii, scene_bonds
 
     w, h = int(size[0]), int(size[1])
     dpi = float(dpi or 100)
@@ -89,21 +93,23 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                                      Circle((x - 0.3 * r, y - 0.3 * r), 0.2 * r)],
                               [(*(c * 0.62), a), (*c, a), (*_mix(c, 0.3), a), (*_mix(c, 0.7), a)],
                               [edge, "none", "none", "none"], [max(0.3, 0.03 * r) * pt, 0, 0, 0]))
-        if bonds or bond_pairs:
-            bi, bj, bd = bond_list(data, bonds, bond_pairs)
-            keep_b = alpha[bi] > 0
-            bi, bd = bi[keep_b], bd[keep_b]
-            if len(bi):
-                p0 = data.positions[bi]
-                ax0, ay0, z0, s0 = _project(p0, camera, (w, h))
-                ax1, ay1, z1, s1 = _project(p0 + 0.5 * bd, camera, (w, h))
+        if bonds or bond_pairs or data.bonds is not None:
+            b = scene_bonds(data, bonds, bond_pairs)
+            seg_start, seg_end, seg_rgb, _ = bond_segments(data, b, colors) if b.count else ([], [], [], [])
+            if len(seg_start):
+                i_, j_ = b.topology.T
+                bi = np.concatenate([i_, j_])  # atom each half-bond starts at
+                keep_b = alpha[bi] > 0
+                bi, seg_start, seg_end, seg_rgb = bi[keep_b], seg_start[keep_b], seg_end[keep_b], seg_rgb[keep_b]
+                ax0, ay0, z0, s0 = _project(seg_start, camera, (w, h))
+                ax1, ay1, z1, s1 = _project(seg_end, camera, (w, h))
                 for k, i in enumerate(bi):
                     dx, dy = ax1[k] - ax0[k], ay1[k] - ay0[k]
                     length = math.hypot(dx, dy)
                     if length < 1e-6:
                         continue
                     nx, ny = -dy / length, dx / length
-                    c, a = colors[i], alpha[i]
+                    c, a = seg_rgb[k], alpha[i]
                     r0, r1 = bond_radius * s0[k], bond_radius * s1[k]
                     quad = [(ax0[k] + nx * r0, ay0[k] + ny * r0), (ax1[k] + nx * r1, ay1[k] + ny * r1),
                             (ax1[k] - nx * r1, ay1[k] - ny * r1), (ax0[k] - nx * r0, ay0[k] - ny * r0)]
@@ -120,6 +126,36 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                         fc.append((*_mix(c, 0.35), a)); ec.append("none"); lw.append(0)
                     # paint just before the bond's own atom, so the sphere hides the stick's root
                     prims.append((z0[k] + 1e-6, patches, fc, ec, lw))
+    for mesh in getattr(data, "surfaces", {}).values():  # polyhedra and other triangle meshes
+        if not mesh.face_count:
+            continue
+        v, f = mesh.vertices, mesh.faces
+        vx, vy, vz, vs = _project(v, camera, (w, h))
+        _, right, up, fwd = _basis(camera)
+        light = np.array([-0.4, 0.6, 1.0]) @ np.array([right, up, -fwd])  # same key light as the ray tracer
+        light /= np.linalg.norm(light)
+        n = np.cross(v[f[:, 1]] - v[f[:, 0]], v[f[:, 2]] - v[f[:, 0]])
+        n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+        lit = 0.55 + 0.45 * np.abs(n @ light)  # two-sided, like the OpenGL faces
+        fcol = np.clip(mesh.face_colors(), 0, 1) * lit[:, None]
+        a = 1.0 - mesh.transparency
+        for k, tri in enumerate(f):
+            poly = Polygon(np.column_stack([vx[tri], vy[tri]]), closed=True)
+            # the face color as a hairline outline closes anti-aliasing seams between triangles
+            prims.append((vz[tri].mean(), [poly], [(*fcol[k], a)], [(*fcol[k], a)], [0.3 * pt]))
+        if mesh.edges is not None and len(mesh.edges):
+            ec = _rgb(mesh.edge_color)
+            for i, j in mesh.edges:
+                dx, dy = vx[j] - vx[i], vy[j] - vy[i]
+                length = math.hypot(dx, dy)
+                if length < 1e-6:
+                    continue
+                hw = max(0.5, 0.5 * mesh.edge_width * 0.5 * (vs[i] + vs[j]))
+                nx, ny = -dy / length * hw, dx / length * hw
+                quad = [(vx[i] + nx, vy[i] + ny), (vx[j] + nx, vy[j] + ny), (vx[j] - nx, vy[j] - ny),
+                        (vx[i] - nx, vy[i] - ny)]
+                # just in front of the faces it borders
+                prims.append((0.5 * (vz[i] + vz[j]) - 1e-3, [Polygon(quad, closed=True)], [(*ec, 1.0)], ["none"], [0]))
     if show_cell and data.cell.is_valid:
         if cell_color is None:
             cell_color = "#AEB4BE" if sum(bg) < 1.5 and not transparent_background else "black"

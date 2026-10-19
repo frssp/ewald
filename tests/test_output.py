@@ -257,3 +257,41 @@ def test_session_quality_preset_wins_over_stored_fields(moving):
     assert kw["quality"] == "draft" and "samples" not in kw and "shadows" not in kw
     s = Session(pipeline=moving, render={"quality": "Custom", "samples": 3})
     assert s.render_kwargs() == {"samples": 3}
+
+
+def test_vector_draws_bonds_and_polyhedra(tmp_path):
+    from ase.spacegroup import crystal
+
+    from ewald.modifiers import CoordinationPolyhedra, CreateBonds
+    from ewald.render import render
+
+    a = crystal(["Sr", "Ti", "O"], [(0, 0, 0), (0.5, 0.5, 0.5), (0.5, 0.5, 0)], spacegroup=221,
+                cellpar=[3.905] * 3 + [90] * 3)
+    pipe = Pipeline(StaticSource(DataCollection.from_ase(a)), [CreateBonds(cutoff=2.0)])
+    cam = {"position": (1.95, -30, 1.95), "focal_point": (1.95, 1.95, 1.95), "up": (0, 0, 1),
+           "parallel_projection": True, "parallel_scale": 3.5}
+    bonds_only = render(pipe.compute(0), None, size=(120, 120), renderer="vector", camera=cam, radius_scale=0.3,
+                        show_cell=False)
+    pipe.modifiers.append(CoordinationPolyhedra(center_types=["Ti"], transparency=0.0))
+    out = tmp_path / "poly.svg"
+    with_poly = render(pipe.compute(0), out, size=(120, 120), renderer="vector", camera=cam, radius_scale=0.3,
+                       show_cell=False)
+    red = (bonds_only[..., 0] > 200) & (bonds_only[..., 1] < 80)
+    assert red.sum() > 50                                   # O atoms and their red half-bonds (data.bonds)
+    def gray(img):
+        return ((np.ptp(img.astype(int), axis=-1) < 20) & (img.astype(int).sum(-1) < 600)).sum()
+
+    assert gray(with_poly) > gray(bonds_only) + 1000         # the opaque gray octahedron covers the middle
+    assert out.read_text().count("<path") > 20
+
+
+def test_session_keeps_bond_modifiers(tmp_path, cu_fcc):
+    from ewald.modifiers import CoordinationPolyhedra, CreateBonds, EditBonds
+    from ewald.session import load_session, save_session
+
+    pipe = Pipeline(StaticSource(cu_fcc), [CreateBonds(mode="pairwise", pairs=[("Cu", "Cu", 0.0, 2.7)]),
+                                           EditBonds(add=[(0, 5)], remove=[(0, 1)]),
+                                           CoordinationPolyhedra(center_types=["Cu"], transparency=0.4)])
+    s = load_session(save_session(tmp_path / "b.ewald", pipe))
+    assert [repr(m) for m in s.pipeline.modifiers] == [repr(m) for m in pipe.modifiers]
+    assert s.pipeline.compute(0).bonds.count == pipe.compute(0).bonds.count
