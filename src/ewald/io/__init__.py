@@ -16,6 +16,9 @@ from .thermo import Thermo, merge_tables, read_lammps_log, read_thermo, sibling_
 from .vasp_output import OutcarReader, VasprunReader, is_outcar, is_vasprun, read_oszicar
 from .volumetric import (VolumetricReader, is_cube, is_vasp_volumetric, read_cube, read_vasp_volumetric,
                          write_cube, write_vasp_volumetric)
+from .mdtraj_h5 import MdtrajH5Reader, is_mdtraj_h5
+from .vasp_h5 import VaspoutReader, VaspwaveReader, is_vaspout, is_vaspwave
+from .phonon import PhononReader
 from .mdanalysis_reader import MDAnalysisReader, is_md_trajectory, write_md_trajectory
 from .xdatcar import XdatcarReader, is_xdatcar
 from .xsf import XsfReader, is_xsf, write_xsf
@@ -129,6 +132,18 @@ def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
     return plugins.open_reader(path, format, **kwargs)
 
 
+def _is_phonopy(path):
+    from ..phonon import is_phonopy_yaml
+
+    return is_phonopy_yaml(path)
+
+
+def _is_outcar_phonon(path):
+    from ..phonon import is_outcar_phonon
+
+    return is_outcar_phonon(path)
+
+
 def _open_lammps_data(path, **kwargs):
     if "style" in kwargs:  # ASE's keyword name
         kwargs["atom_style"] = kwargs.pop("style")
@@ -178,6 +193,15 @@ def builtin_readers():
                      "VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR (atoms + grid)", B, 6,
                      ("vasp-chgcar", "chgcar", "vasp-locpot", "locpot", "vasp-elfcar", "elfcar"),
                      takes_format=True, category="volumetric"),
+        ReaderPlugin("vaspout", VaspoutReader, ("vaspout*.h5",), is_vaspout,
+                     "VASP 6 vaspout.h5: ionic steps with forces, energies, stress, velocities, moments, "
+                     "local potential grid, lazy; needs h5py", B, 7, ("vasp-h5", "vaspout.h5")),
+        ReaderPlugin("vaspwave", VaspwaveReader, ("vaspwave*.h5",), is_vaspwave,
+                     "VASP 6 vaspwave.h5 charge density (structure from vaspout.h5 next to it); needs h5py",
+                     B, 7, ("vaspwave.h5",), category="volumetric"),
+        ReaderPlugin("mdtraj-h5", MdtrajH5Reader, ("*.h5",), is_mdtraj_h5,
+                     "MDTraj/OpenMM HDF5 trajectory (HDF5Reporter), topology and bonds, lazy; needs h5py", B, 7,
+                     ("mdtraj", "openmm-h5")),
         ReaderPlugin("h5md", H5mdReader, ("*.h5md", "*.h5"), is_h5md,
                      "H5MD trajectory (LAMMPS dump h5md, MDAnalysis, ...), lazy; needs h5py", B, 7),
         ReaderPlugin("xsf", XsfReader, ("*.xsf", "*.axsf"), is_xsf,
@@ -200,6 +224,13 @@ def builtin_readers():
         ReaderPlugin("extxyz", ExtxyzReader, ("*.xyz", "*.extxyz"), is_extxyz,
                      "XYZ / extended XYZ (Lattice=, Properties=), lazy", B, 20, ("xyz", "ext-xyz")),
         ReaderPlugin("cif", _open_cif, ("*.cif",), None, "Crystallographic Information File via ASE", B, 90),
+        ReaderPlugin("phonopy", PhononReader, ("band.yaml", "mesh.yaml", "qpoints.yaml", "*.yaml"), _is_phonopy,
+                     "phonopy band.yaml/mesh.yaml/qpoints.yaml with eigenvectors: phonon modes "
+                     "(PhononMode animates one); frames= per period, structure= for qpoints.yaml", B, 9,
+                     ("phonopy-yaml", "band.yaml", "phonon")),
+        ReaderPlugin("vasp-phonon", PhononReader, ("OUTCAR*",), _is_outcar_phonon,
+                     "VASP OUTCAR of an IBRION=5-8 run: Gamma phonon modes (PhononMode animates one)", B, 15,
+                     ("outcar-phonon",)),
         ReaderPlugin("outcar", OutcarReader, ("OUTCAR*",), is_outcar,
                      "VASP OUTCAR: ionic steps with forces, energies, stress, magnetic moments, lazy", B, 16,
                      ("vasp-outcar",)),
@@ -372,5 +403,5 @@ __all__ = ["FileSource", "StaticSource", "import_file", "export_file", "open_rea
            "AseTrajectoryReader", "write_extxyz", "write_xsf", "write_h5md", "write_md_trajectory",
            "write_lammps_data", "write_lammps_dump",
            "LammpsDumpReader", "LammpsDataReader", "XdatcarReader", "AseReader", "VolumetricReader",
-           "OutcarReader", "VasprunReader", "Thermo", "read_lammps_log", "read_oszicar", "read_thermo",
+           "OutcarReader", "VasprunReader", "VaspoutReader", "VaspwaveReader", "MdtrajH5Reader", "Thermo", "read_lammps_log", "read_oszicar", "read_thermo",
            "read_vasp_volumetric", "read_cube", "write_vasp_volumetric", "write_cube"]

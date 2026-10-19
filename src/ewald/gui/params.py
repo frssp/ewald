@@ -82,11 +82,22 @@ class ParameterForm(QtWidgets.QWidget):
         elif name == "cmap":
             w = colormap_combo(value)
             self.editors[name] = (w, str)
-        elif name in _CHOICES and isinstance(value, str):
+        elif isinstance(value, str) and name in (choices := {**_CHOICES, **getattr(self.modifier, "choice_parameters", {})}):
             w = QtWidgets.QComboBox()
-            w.addItems(_CHOICES[name])
+            w.addItems(choices[name])
             w.setCurrentText(value)
             self.editors[name] = (w, str)
+        elif isinstance(value, str) and name in getattr(self.modifier, "file_parameters", ()):
+            line = QtWidgets.QLineEdit(value)
+            w = QtWidgets.QWidget()
+            row = QtWidgets.QHBoxLayout(w)
+            row.setContentsMargins(0, 0, 0, 0)
+            browse = QtWidgets.QPushButton("…", toolTip="Choose a file")
+            browse.setFixedWidth(28)
+            browse.clicked.connect(lambda _=False, e=line: self._browse(e))
+            row.addWidget(line, 1)
+            row.addWidget(browse)
+            self.editors[name] = (line, str)
         elif isinstance(value, str) and (name in getattr(self.modifier, "multiline_parameters", ()) or "\n" in value):
             w = QtWidgets.QPlainTextEdit(value)   # e.g. a PLUMED input
             w.setMinimumHeight(110)
@@ -100,6 +111,12 @@ class ParameterForm(QtWidgets.QWidget):
             w.setToolTip("Python literal, e.g. (0, 0, 1) or None")
             self.editors[name] = (w, object)
         return w
+
+    def _browse(self, line):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Choose a file", line.text(),
+                                                        "Data (*.xy *.xye *.dat *.txt *.csv *.chi);;All files (*)")
+        if path:
+            line.setText(path)
 
     def apply(self):
         for name, (w, kind) in self.editors.items():

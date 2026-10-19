@@ -64,7 +64,9 @@ pipeline panel and redraw the view.
 **Plots.** Any table in the current frame (g(r), MSD, histograms, time series) can be plotted
 and saved. The `Thermo` table (log.lammps, OSZICAR, OUTCAR, vasprun.xml; see
 [File formats](formats.md#simulation-results)) is drawn one column at a time, picked under
-"y", with a dashed line at the current frame's step that follows the timeline.
+"y", with a dashed line at the current frame's step that follows the timeline. Diffraction
+reflections (`diffraction-peaks`) are drawn as sticks, and a measured pattern loaded through a
+modifier's `experimental` file (the "…" button picks it) as points under the calculated curve.
 
 **Linked selection.** Plots and the viewport share one selection, in both directions:
 

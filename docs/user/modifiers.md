@@ -77,6 +77,18 @@ pipe.modifiers.append(VectorVis("Force", scaling=2.0, color_mapping_property="Ma
 pipe.modifiers.append(VectorVis("Magnetic Moment", scaling=0.5, alignment="center", color="crimson"))
 ```
 
+## Phonon modes
+
+`PhononMode(qpoint, band, amplitude, supercell, arrows, ...)` animates one phonon mode of a
+phonopy `band.yaml`/`mesh.yaml`/`qpoints.yaml` or a VASP IBRION=5-8 OUTCAR over one period (the
+file's frames), in a commensurate supercell, with the mode pattern as arrows. See
+[Phonon modes](phonons.md).
+
+```python
+pipe = import_file("band.yaml")
+pipe.modifiers.append(PhononMode(qpoint=50, band=3, amplitude=0.3))
+```
+
 ## Transformations
 
 `AffineTransformation(matrix)` applies a 3×3 or 3×4 matrix to particles and optionally the
@@ -158,6 +170,53 @@ pipe.modifiers.append(CreateBonds(cutoff=2.85))
 pipe.modifiers.append(BondAngleDistribution(partition="particle_type"))
 pipe.modifiers.append(FindRings(3, 10))
 pipe.modifiers.append(SteinhardtOrderParameters((4, 6), average=True))
+```
+
+## Symmetry and diffraction
+
+- `SymmetryAnalysis(symprec, angle_tolerance, select_unique)`: space group (Hermann-Mauguin
+  symbol and number), Hall symbol, point group and crystal system through spglib
+  (`pip install "ewald[symmetry]"`), as `SymmetryAnalysis.*` attributes in the Attributes tab,
+  and per atom the 'Wyckoff Position' ('4a'), 'Site Symmetry' and 'Equivalent Atom'.
+  `select_unique=True` selects one atom per orbit (the asymmetric unit). `symprec` is in
+  Angstrom; 0.01 finds the symmetry of relaxed DFT cells.
+- `PowderDiffraction(radiation, wavelength, two_theta_min, two_theta_max, step, fwhm, eta,
+  debye_waller, elements, experimental)`: the powder X-ray (atomic form factors,
+  Lorentz-polarization factor) or neutron (coherent scattering lengths) pattern of the cell,
+  identical to pymatgen's XRDCalculator and NDCalculator. `tables["diffraction"]` is the
+  pattern broadened by a pseudo-Voigt (`fwhm` in degrees, Lorentzian fraction `eta`, maximum
+  100) and `tables["diffraction-peaks"]` the reflections with d, h k l and multiplicity, drawn
+  as sticks in the Plots tab. `wavelength` takes Angstrom or a name (`"CuKa"`, `"CuKa1"`,
+  `"MoKa"`, `"CoKa"`, `"AgKa"`, ...).
+- `StructureFactor(method, q_max, q_min, number_of_bins, weighting, cutoff, lorch, elements,
+  experimental)`: S(q) for liquids, glasses and MD in `tables["structure-factor"]`, by the
+  direct sum over the reciprocal lattice of the cell (`"direct"`, exact for the periodic
+  configuration), the Fourier transform of g(r) (`"rdf"`, smooth, with the Lorch window) or the
+  Debye equation over all pairs (`"debye"`, for clusters and nanoparticles). `weighting="xray"`
+  or `"neutron"` gives the Faber-Ziman total S(q) to compare with total-scattering data.
+  The direct and Debye results match freud.
+
+`experimental` is a measured pattern, any two-column text file (`.xy`, `.xye`, `.dat`, `.csv`;
+headers and comments are skipped). It becomes the 'Experimental' column of the table, drawn as
+points under the calculated curve, and the attribute `PowderDiffraction.Rwp` (or
+`StructureFactor.Rwp`) is the weighted profile R factor between the two. For numbered LAMMPS
+types, `elements={"1": "Si", "2": "O"}` (or `"1=Si, 2=O"` in the GUI) names the elements. A
+supercell or MD frame gives the pattern of that configuration, thermal diffuse scattering
+included, and `TimeAveraging("table:diffraction")` averages it over a trajectory. The cost grows
+with atoms times reflections, about a second for 7000 atoms at Cu K-alpha.
+
+```python
+from ewald.modifiers import PowderDiffraction, StructureFactor, SymmetryAnalysis, TimeAveraging
+
+pipe = import_file("CONTCAR")
+pipe.modifiers.append(SymmetryAnalysis())
+pipe.modifiers.append(PowderDiffraction(wavelength="CuKa", two_theta_max=80, experimental="measured.xy"))
+data = pipe.compute()
+print(data.attributes["SymmetryAnalysis.space_group"], data.attributes["PowderDiffraction.Rwp"])
+
+md = import_file("dump.melt")
+md.modifiers.append(StructureFactor(q_max=12, weighting="neutron"))
+md.modifiers.append(TimeAveraging("table:structure-factor"))
 ```
 
 ## Volumetric data

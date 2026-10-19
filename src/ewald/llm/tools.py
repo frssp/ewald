@@ -242,7 +242,7 @@ class Toolset:
         format_help = f"optional; detected from the file when omitted. Readers: {formats}"
 
         @T("load_structure",
-           "Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, "
+           "Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vaspout.h5, LAMMPS dump/data, "
            "extxyz, cif, ... ; wildcards allowed) as the session pipeline, replacing any previous one. "
            "Returns frame count and a description of the first frame.",
            _obj({"path": {"type": "string"},
@@ -407,6 +407,45 @@ class Toolset:
             table = rdf(data.positions, data.cell, cutoff, bins, types=types)
             return {"peaks": _describe.rdf_peaks(data, rmax=cutoff, nbins=bins, partial=partial),
                     "table": _downsample(table)}
+
+        @T("analyze_symmetry",
+           "Space group (Hermann-Mauguin and number), point group, crystal system and the Wyckoff site of every "
+           "symmetry-unique atom of a frame (spglib). symprec is the distance tolerance in Angstrom.",
+           _obj({"frame": frame_p, "symprec": {"type": "number", "description": "default 0.01"}}))
+        def analyze_symmetry(frame=None, symprec=0.01):
+            from ..modifiers.symmetry import SymmetryAnalysis
+
+            data = self._need_pipeline().compute(self._frame(frame)).copy()
+            SymmetryAnalysis(symprec=symprec).modify(data, None)
+            out = {k.split(".", 1)[1]: v for k, v in data.attributes.items() if k.startswith("SymmetryAnalysis.")}
+            frac = data.cell.to_fractional(data.positions) % 1.0
+            eq = data["Equivalent Atom"]
+            out["sites"] = [{"index": int(i), "type": str(data.types[i]), "wyckoff": str(data["Wyckoff Position"][i]),
+                             "site_symmetry": str(data["Site Symmetry"][i]),
+                             "fractional": np.round(frac[i], 4).tolist()} for i in np.unique(eq)[:40]]
+            return out
+
+        @T("compute_diffraction",
+           "Powder X-ray or neutron diffraction peaks of a frame (2-theta, d, hkl, relative intensity; strongest "
+           "first), or the structure factor S(q) when kind='sq'.",
+           _obj({"frame": frame_p, "kind": {"type": "string", "enum": ["xrd", "neutron", "sq"]},
+                 "wavelength": {"type": "string", "description": "Angstrom or 'CuKa', 'MoKa', ... (default CuKa)"},
+                 "two_theta_max": {"type": "number"}, "q_max": {"type": "number"}}))
+        def compute_diffraction(frame=None, kind="xrd", wavelength="CuKa", two_theta_max=90.0, q_max=10.0):
+            from .. import diffraction as dif
+
+            data = self._need_pipeline().compute(self._frame(frame))
+            if kind == "sq":
+                table = dif.structure_factor(data.positions, data.cell, q_max, 200, types=data.types)
+                return {"table": _downsample(table)}
+            p = dif.powder_peaks(data.positions, data.types, data.cell, wavelength,
+                                 "neutron" if kind == "neutron" else "xray", (5.0, two_theta_max))
+            order = np.argsort(-p["Intensity"])[:25]
+            return {"num_peaks": int(len(p["2theta"])), "wavelength": dif.wavelength_of(wavelength),
+                    "peaks": [{"2theta": round(float(p["2theta"][i]), 3), "d": round(float(p["d"][i]), 4),
+                               "hkl": [int(p["h"][i]), int(p["k"][i]), int(p["l"][i])],
+                               "intensity": round(float(p["Intensity"][i]), 2),
+                               "multiplicity": int(p["Multiplicity"][i])} for i in order]}
 
         @T("compute_msd",
            "Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per "

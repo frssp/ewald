@@ -8,8 +8,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Visualization plugins, phase 1: color maps (`@colormap`), themes (`@theme`, View › Theme) and
-  overlay elements (`@overlay`, Coordinate tripod, Attributes).
+Nothing right now.
 
 ## Next
 
@@ -30,6 +29,30 @@ Analysis
   offer an OVITO-compatible mode once its rule is known.
 - FindRings in numba for networks above ~100k atoms (8000 a-Si atoms, rings up to 10: 1 s).
 - Spatial correlation function and Voronoi-weighted Steinhardt (OVITO / freud have them).
+
+Symmetry and diffraction
+
+- hkl planes in the viewport (pick a reflection in the Plots tab, draw its lattice planes).
+- Powder profile: 2-theta-dependent widths (Caglioti U, V, W), the K-alpha2 doublet, background,
+  preferred orientation and absorption; a Rietveld-style scale/zero-shift fit to the measured
+  pattern instead of the plain Rwp.
+- Partial S_ab(q) columns from `StructureFactor`, and S(q) to G(r)/D(r) (PDF) for comparison
+  with PDFgui-style data.
+- Large cells: `PowderDiffraction` and `StructureFactor(method="direct")` cost atoms x
+  reflections; above ~50k atoms sample reciprocal space instead of using every lattice point.
+- Show the symmetry summary (space group, Wyckoff sites) in the inspector header rather than only
+  as attributes.
+
+Phonons
+
+- Phonon DOS / projected DOS from phonopy `total_dos.dat`/`projected_dos.dat` in the Plots tab.
+- Non-diagonal supercells for a mode (`supercell` as a 3x3 matrix), and several modes
+  superposed (phonopy `--modulation` takes a list).
+- Export a modulated structure (frame 0 as POSCAR) from the GUI; irreducible-representation
+  labels of the modes (phonopy `--irreps`).
+- Fast reading of large `mesh.yaml` files (the parser holds the whole file in memory).
+- OUTCAR modes checked against real VASP IBRION=5-8 output; the fixture is written in VASP's
+  layout from phonopy results.
 
 Volumetric data
 
@@ -81,9 +104,6 @@ Docs
 
 From the feature-ideas review (2026-10-19), after the four in progress above.
 
-- P0: Symmetry and diffraction: space group, Wyckoff positions and symmetry-equivalent atoms
-  via spglib (optional extra) shown in the inspector; hkl planes in the viewport; powder XRD and
-  neutron patterns and S(q) for MD, overlaid on an experimental pattern.
 - P1: NEB viewer: open `00/ ... 0N/` image folders as one trajectory, energy along the reaction
   coordinate synced with the timeline, saddle point marked.
 - P1: Jupyter widget: `pipe.show()` with a rotatable viewport and frame slider in a notebook
@@ -91,13 +111,14 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - P1: Linked selection, rest: picking atoms plots their property time series over all frames;
   scatter plots of two properties (brushing a box selects atoms); keep a pair, bond or angle
   range as a modifier (only property ranges become an `ExpressionSelection` now).
-- P1: Phonon modes: read phonopy `band.yaml`/`mesh.yaml` and VASP IBRION=5-8 OUTCAR eigenvectors,
-  animate a mode or draw it as arrows.
 - P1: DOS and band structure plots (vasprun.xml, DOSCAR, EIGENVAL, PROCAR), with the PDOS of the
   picked atoms.
 - P2: glTF, interactive HTML and Blender export.
 - P2: Batch render CLI: apply one `.ewald` session to many run folders.
 - P2: Native GSD reader (H5MD and XTC/TRR/DCD are done).
+- P2: More HDF5 output: Quantum ESPRESSO `charge-density.hdf5` (G-space, needs an FFT to the
+  real-space grid), ABINIT netCDF-4 `*_HIST.nc` trajectories and `*_DEN.nc` densities, VASP
+  `vaspout.h5` DOS/bands for the DOS and band plots, `/results/partial_charges` (PARCHG).
 
 ## Verify outside the cloud container
 
@@ -112,6 +133,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - The native OUTCAR and vasprun.xml readers on real VASP 5/6 output (relaxations with ISIF=3,
   non-collinear and MD runs, multi-GB files); the test fixtures are hand-written in VASP 6.4
   format and checked against ASE.
+- The vaspout.h5/vaspwave.h5 readers on real VASP 6.4/6.5 output (MD, relaxation, ISPIN=2,
+  non-collinear, `LCHARGH5`); the fixtures follow py4vasp's schema and are checked against
+  py4vasp, and the charge density is assumed to be stored as rho * V like a CHGCAR. The H5MD
+  reader on GROMACS 2026 `mdrun` output.
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
   CI has no PLUMED, so those tests skip).
 

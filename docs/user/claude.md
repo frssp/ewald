@@ -21,7 +21,8 @@ density, minimum distance, coordination histograms, g(r) peaks, sanity warnings)
 `describe_trajectory` flags the frames where a descriptor jumps. Renders come back as images
 the model can look at. The tools are: `load_structure`, `describe_frame`,
 `describe_trajectory`, `event_details`, `list_modifiers`, `add_modifier`, `remove_modifier`,
-`show_pipeline`, `set_frame`, `evaluate_expression`, `compute_rdf`, `compute_msd`,
+`show_pipeline`, `set_frame`, `evaluate_expression`, `compute_rdf`, `analyze_symmetry`,
+`compute_diffraction`, `compute_msd`,
 `describe_selection`, `compute_plumed_cvs`, `read_plumed_output` ([PLUMED](plumed.md)),
 `render_image` (with an optional `theme`), `list_visuals`, `add_visual`, `remove_visual` (visual
 element plugins drawn by later renders), `list_overlays`, `add_overlay`, `remove_overlay`

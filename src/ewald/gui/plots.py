@@ -2,13 +2,18 @@
 
 Tables whose first column is ``Step``/``Timestep`` (the ``Thermo`` table from log.lammps,
 OSZICAR, OUTCAR, vasprun.xml) are time series: a column is picked under "y" and a marker
-follows the current frame. Changing frames only moves that marker.
+follows the current frame. Changing frames only moves that marker. Tables named ``*-peaks``
+(``PowderDiffraction``) draw as sticks, and an ``Experimental`` column as points under the rest.
 
 Plots are linked to the 3D view (:mod:`ewald.linking`): dragging an x range on a histogram,
 g(r), bond length or bond angle plot selects those particles (``atomsSelected``), dragging on a
 per-frame plot selects frames (``framesSelected``; Shift+drag a box to select by value too) and
 a click there jumps to a frame (``frameRequested``). The other way, :meth:`set_highlight` draws
 the viewport's selected particles on the plot and :meth:`set_frame_selection` the selected frames.
+
+The "Phonon Bands" table of a phonon file (band.yaml, OUTCAR of IBRION=5-8) is drawn as a band
+structure with its high-symmetry labels; clicking a band picks that mode (``phononModePicked``,
+which the main window plays through the PhononMode modifier) and a circle marks the mode shown.
 """
 from __future__ import annotations
 
@@ -25,6 +30,7 @@ class PlotsPanel(QtWidgets.QWidget):
     framesSelected = QtCore.Signal(object)      # frame numbers picked on a per-frame plot
     frameRequested = QtCore.Signal(int)         # click on a time series: go to this frame
     expressionRequested = QtCore.Signal(str)    # keep the range as an ExpressionSelection
+    phononModePicked = QtCore.Signal(int, int)  # click on a phonon band: (q-point, band), 0-based
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -68,8 +74,10 @@ class PlotsPanel(QtWidgets.QWidget):
         self.canvas.mpl_connect("button_press_event", self._on_press)
         self.canvas.mpl_connect("motion_notify_event", self._on_motion)
         self.canvas.mpl_connect("button_release_event", self._on_release)
+        self.canvas.mpl_connect("button_press_event", self._clicked)
         self._drawn = None   # (table x column, y choice) currently on the canvas
-        self._marker = None  # current-frame line on a time-series plot
+        self._marker = None  # current-frame line on a time-series plot, current mode on a band plot
+        self._phonon = None  # (modes, x) while a phonon band structure is on the canvas
         self.pipeline = None         # for mapping table rows to frames
         self.link = None             # linking.Link of the plot on the canvas
         self.highlight = []          # particles selected in the viewport, drawn on the plot
@@ -122,7 +130,7 @@ class PlotsPanel(QtWidgets.QWidget):
         self._fill_columns()
         table = self._table()
         key = (id(next(iter(table.values()))), self.column.currentText()) if table else None
-        link = self._make_link()
+        link = None if self._phonon_modes() is not None else self._make_link()
         if link != self.link:
             self._range = self._box = None
             self.link = link
@@ -131,7 +139,7 @@ class PlotsPanel(QtWidgets.QWidget):
             self._draw_overlays()
             self._update_controls()
             return
-        self._drawn, self._marker = key, None
+        self._drawn, self._marker, self._phonon = key, None, None
         fig = self.figure
         fig.clear()
         ax = self._ax = fig.add_subplot(111, facecolor=TOKENS["bg"])
@@ -153,6 +161,8 @@ class PlotsPanel(QtWidgets.QWidget):
             else:
                 _, self._edges, _ = ax.hist(v, bins=50, color=TOKENS["accent"])
             ax.set_xlabel(name); ax.set_ylabel("count")
+        elif d is not None and self._phonon_modes() is not None:
+            self._draw_phonon(ax, self._phonon_modes())
         elif d is not None and self.table.currentText() in d.tables and grid_map(d.tables[self.table.currentText()]):
             keys, (x, y, z) = grid_map(d.tables[self.table.currentText()])
             cs = ax.contourf(x, y, z, levels=20, cmap="viridis")
@@ -165,10 +175,18 @@ class PlotsPanel(QtWidgets.QWidget):
             col = self.column.currentText()
             if col in table:
                 keys = [keys[0], col]
-            for k in keys[1:]:
+            sticks = self.table.currentText().endswith("-peaks") and "Intensity" in table
+            if sticks:   # reflections (PowderDiffraction)
+                keys = [keys[0], "Intensity"]
+                ax.vlines(x, 0, np.asarray(table["Intensity"], float), color=TOKENS["accent"], lw=1.2)
+                ax.set_ylim(bottom=0)
+            for k in [] if sticks else keys[1:]:
                 y = np.asarray(table[k], dtype=float)
                 ok = ~np.isnan(y)  # thermo columns a run did not print
-                ax.plot(x[ok], y[ok], lw=1.4, label=k)
+                if k == "Experimental":   # measured pattern under the calculated one
+                    ax.plot(x[ok], y[ok], lw=0, marker=".", ms=2.5, color=TOKENS["secondary"], label=k, zorder=1)
+                else:
+                    ax.plot(x[ok], y[ok], lw=1.4, label=k, zorder=2)
             ax.set_xlabel(keys[0])
             if _is_series(table):
                 self._marker = ax.axvline(x[0], color=TOKENS["secondary"], lw=1, ls="--")
@@ -445,7 +463,69 @@ class PlotsPanel(QtWidgets.QWidget):
         box = self.link.kind == "frames2d" or (shift and self.link.kind == "frames")
         self.select(x0, x, *((y0, y) if box else (None, None)))
 
+    # phonon band structure: click a band to play that mode
+    def _phonon_modes(self):
+        """The PhononModes behind the selected table when it is a phonon band table shown whole."""
+        d = self.data
+        if d is None or self.hist.currentText() or self.table.currentText() != "Phonon Bands":
+            return None
+        modes = d.attributes.get("Phonon Modes")
+        if modes is None or not hasattr(modes, "frequencies"):
+            return None
+        return modes if self.column.currentText() in ("(all)", "Frequency") else None
+
+    def _draw_phonon(self, ax, modes):
+        f = modes.frequencies
+        if modes.num_qpoints == 1:  # Gamma only (VASP): one tick per mode
+            x = np.arange(1, modes.num_bands + 1, dtype=float)
+            ax.scatter(x, f[0], marker="_", s=160, color=TOKENS["accent"], linewidths=2)
+            ax.set_xlabel("Mode")
+        else:
+            x = modes.distances if modes.is_path else np.arange(modes.num_qpoints, dtype=float)
+            for b in range(modes.num_bands):
+                ax.plot(x, f[:, b], lw=1.2, color=TOKENS["accent"])
+            ax.set_xlim(x[0], x[-1])
+            if modes.ticks:
+                for d, _ in modes.ticks:
+                    ax.axvline(d, color=TOKENS["border"], lw=0.8)
+                ax.set_xticks([d for d, _ in modes.ticks])
+                ax.set_xticklabels([lab for _, lab in modes.ticks])
+            else:
+                ax.set_xlabel("Q-point" if not modes.is_path else "Distance")
+        ax.axhline(0, color=TOKENS["border"], lw=0.8)
+        ax.set_ylabel("Frequency (THz)")
+        ax.set_title("Click a band to play the mode", color=TOKENS["secondary"], fontsize=9)
+        self._phonon = (modes, x)
+        self._marker, = ax.plot([], [], "o", ms=8, mfc="none", mew=2, color=TOKENS["pick"])
+        self._place_marker()
+
+    def _clicked(self, event):
+        if self._phonon is None or event.inaxes is None or event.button != 1:
+            return
+        modes, x = self._phonon
+        f = modes.frequencies
+        if modes.num_qpoints == 1:
+            q, xs, ys = np.zeros(modes.num_bands, int), x, f[0]
+            bands = np.arange(modes.num_bands)
+        else:
+            q = np.repeat(np.arange(modes.num_qpoints), modes.num_bands)
+            bands = np.tile(np.arange(modes.num_bands), modes.num_qpoints)
+            xs, ys = x[q], f.ravel()
+        pts = event.inaxes.transData.transform(np.column_stack([xs, ys]))
+        k = int(np.argmin(np.hypot(pts[:, 0] - event.x, pts[:, 1] - event.y)))
+        self.phononModePicked.emit(int(q[k]), int(bands[k]))
+
     def _place_marker(self):
+        if self._phonon is not None:
+            modes, x = self._phonon
+            a = self.data.attributes if self.data is not None else {}
+            if "Phonon.QPoint" in a and "Phonon.Band" in a:
+                q, b = int(a["Phonon.QPoint"]), int(a["Phonon.Band"])
+                xm = x[b] if modes.num_qpoints == 1 else x[q]
+                self._marker.set_data([xm], [modes.frequencies[q, b]])
+            else:
+                self._marker.set_data([], [])
+            return
         ts = self.data.attributes.get("Timestep") if self.data is not None else None
         visible = isinstance(ts, (int, float, np.integer, np.floating))
         self._marker.set_visible(visible)
