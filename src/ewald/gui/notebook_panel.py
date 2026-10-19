@@ -100,13 +100,15 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
             doc, lines = self.document(), 0
         except RuntimeError:  # a late textChanged while the editor is being deleted
             return
+        ls = self.fontMetrics().lineSpacing()
         block = doc.firstBlock()
-        while block.isValid():  # wrapped lines count too
-            lines += max(1, block.layout().lineCount() if block.layout() is not None else 1)
+        while block.isValid():  # wrapped lines count too; blockBoundingRect lays the block out first
+            lines += max(1, round(self.blockBoundingRect(block).height() / ls))
             block = block.next()
         lines = max(1, lines)
         shown = min(lines, MAX_EDITOR_LINES)
-        h = shown * self.fontMetrics().lineSpacing() + 2 * self.document().documentMargin() + 6
+        m = self.contentsMargins()  # frame and style sheet padding
+        h = shown * ls + 2 * self.document().documentMargin() + max(6, m.top() + m.bottom())
         self.setFixedHeight(int(h))
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded if lines > MAX_EDITOR_LINES
                                         else QtCore.Qt.ScrollBarAlwaysOff)
@@ -917,7 +919,9 @@ class NotebookView(QtWidgets.QWidget):
             if w.plot_panel is not None:
                 self.plotCreated.emit(w.plot_panel)
         self.cells_layout.addWidget(self.add_bar)
-        self.cells_layout.addStretch()
+        # the spare height goes below the cells, not into them: a cell's gutter stretch makes it
+        # count as vertically expanding, so a plain addStretch() would share the space with it
+        self.cells_layout.addStretch(1)
         self.current = keep if keep in self.notebook.cells else (self.notebook.cells[-1] if self.notebook.cells else None)
         self._mark_current()
         self.update_results()
