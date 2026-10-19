@@ -4,8 +4,9 @@ ewald is an OVITO-style atomistic structure/trajectory viewer and analysis libra
 `import_file` -> `pipe.modifiers` -> `pipe.compute(frame, device=...)` -> `pipe.render(...)`,
 plus a PySide6 desktop GUI and Claude tools. User-facing docs: the manual in docs/ (MkDocs,
 `mkdocs.yml`; user/, plugins/, developer/, reference/) and README.md; what exists:
-docs/features.md (generated); open work: docs/todo.md; milestones: docs/ROADMAP.md; GUI design
-specs live outside the repo (project files `design/`).
+docs/features.md (generated); open work: docs/todo.md; milestones: docs/ROADMAP.md. Current GUI
+design specs live outside the repo (project files `design/`); `docs/design/` is an older snapshot
+kept for history.
 
 ## Commands
 
@@ -47,7 +48,7 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   writer. `io.builtin_readers()`/`builtin_writers()` register them in `plugins.py` (reader and writer registries).
   `remote.py` opens `host:/path` / `ssh://` paths (paramiko): `base.open_binary` streams them to the
   native readers, `FileSource` downloads them to a local cache for every other reader. Tests use the
-  in-process server in `tests/sftp_server.py` (fixtures `server`, `ssh_env` in conftest), no sshd.
+  in-process server in `tests/helpers/sftp_server.py` (fixtures `server`, `ssh_env` in conftest), no sshd.
   `_textparse.py` is the numba atom-table parser shared by the dump and extxyz readers. Write a native
   reader only where an index plus that parser beats ASE by a wide margin (big text trajectories);
   delegate everything else (docs/developer/readers.md has the measurements and the rule).
@@ -77,6 +78,9 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   `<config dir>/plugins/*.py`; `io.open_reader`, the GUI open filter and menu, the Claude tools and
   `ewald.modifiers.__getattr__` read it. Plugin modifiers stay out of `__all__` and `llms.txt`.
   Examples in `examples/plugins/`.
+- `assets/icon/`: app icon. `ewald.svg` (and `ewald-small.svg` for 16-32 px) are the sources; the PNG
+  sizes, `ewald.ico` and `ewald.icns` are rendered by `make_icons.py` (cairosvg), never by hand.
+  `gui.icons.app_icon()` loads them.
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
 - `inventory.py`: `ewald inventory`, docs/features.md from the registries, CLI parser and GUI menus.

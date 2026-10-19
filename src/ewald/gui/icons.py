@@ -8,6 +8,7 @@ icons only or text only (:func:`button_style`).
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -40,6 +41,9 @@ PATHS = {
     "settings": '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>',
     "eye": '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
 }
+
+APP_ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "icon"
+APP_ICON_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 
 STYLES = ("Icons and text", "Icons", "Text")
 
@@ -76,6 +80,18 @@ def icon(name: str, color: str | None = None) -> QtGui.QIcon:
         for mode in (QtGui.QIcon.Normal, QtGui.QIcon.Active):
             ic.addPixmap(_pixmap(name, TOKENS["accent"], size), mode, QtGui.QIcon.On)
         ic.addPixmap(_pixmap(name, TOKENS["muted"], size), QtGui.QIcon.Disabled, QtGui.QIcon.Off)
+    return ic
+
+
+@lru_cache(maxsize=None)
+def app_icon() -> QtGui.QIcon:
+    """The EWALD app icon (window title bar, taskbar, dock), from the PNGs in ``ewald/assets/icon``;
+    sizes up to 32 px are the simplified small variant (see ``make_icons.py`` there)."""
+    ic = QtGui.QIcon()
+    for size in APP_ICON_SIZES:
+        path = APP_ICON_DIR / f"ewald-{size}.png"
+        if path.exists():
+            ic.addFile(str(path), QtCore.QSize(size, size))
     return ic
 
 

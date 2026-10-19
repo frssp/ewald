@@ -15,8 +15,8 @@ from pathlib import Path
 
 import numpy as np
 
-REF_DIR = Path(__file__).parent / "data" / "visual"
-DIFF_DIR = Path(os.environ.get("EWALD_VISUAL_DIFFS", Path(__file__).parent.parent / "visual-diffs"))
+REF_DIR = Path(__file__).parent.parent / "data" / "visual"
+DIFF_DIR = Path(os.environ.get("EWALD_VISUAL_DIFFS", Path(__file__).parents[2] / "visual-diffs"))
 
 
 @dataclass
