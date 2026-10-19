@@ -280,6 +280,43 @@ def result_plot(out: dict | None, data):
 
 
 # ---------------------------------------------------------------- cells
+CELL_MIME = "application/x-ewald-cell"
+
+
+class _DragHandle(QtWidgets.QLabel):
+    """The ⠿ grip in a cell's gutter: drag it to move the cell (the notebook view drops it)."""
+
+    def __init__(self, cell_id: str, parent=None):
+        super().__init__("⠿", parent, objectName="cellDrag")
+        self.cell_id = cell_id
+        self.setToolTip("Drag to move the cell")
+        self.setCursor(QtCore.Qt.OpenHandCursor)
+        self.setAlignment(QtCore.Qt.AlignCenter)
+        self._start = None
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            self._start = event.position().toPoint()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._start is None or (event.position().toPoint() - self._start).manhattanLength() < \
+                QtWidgets.QApplication.startDragDistance():
+            return
+        self._start = None
+        mime = QtCore.QMimeData()
+        mime.setData(CELL_MIME, self.cell_id.encode())
+        drag = QtGui.QDrag(self)
+        drag.setMimeData(mime)
+        cell = self.parent()
+        while cell is not None and not isinstance(cell, CellWidget):
+            cell = cell.parent()
+        if cell is not None:
+            pix = cell.grab()
+            drag.setPixmap(pix.scaledToWidth(min(pix.width(), 360), QtCore.Qt.SmoothTransformation))
+        drag.exec(QtCore.Qt.MoveAction)
+
+
 class CellWidget(QtWidgets.QFrame):
     """One cell: gutter (run button, counter) and the code, markdown or step body."""
 
@@ -312,6 +349,8 @@ class CellWidget(QtWidgets.QFrame):
         self.fold_button = QtWidgets.QToolButton(text="▾", toolTip="Collapse or expand the cell",
                                                  objectName="cellFold", autoRaise=True)
         self.fold_button.clicked.connect(lambda: self.set_collapsed(not self.cell.collapsed))
+        self.drag_handle = _DragHandle(cell.id)
+        gutter.addWidget(self.drag_handle, 0, QtCore.Qt.AlignHCenter)
         gutter.addWidget(self.run_button, 0, QtCore.Qt.AlignHCenter)
         gutter.addWidget(self.counter, 0, QtCore.Qt.AlignHCenter)
         gutter.addWidget(self.fold_button, 0, QtCore.Qt.AlignHCenter)
@@ -794,6 +833,11 @@ class NotebookView(QtWidgets.QWidget):
         self.cells_layout.setContentsMargins(8, 4, 8, 12)
         self.cells_layout.setSpacing(8)
         self.scroll.setWidget(self.container)
+        self.container.setAcceptDrops(True)       # cells dragged by their ⠿ grip
+        self.container.installEventFilter(self)
+        self.drop_line = QtWidgets.QFrame(self.container, objectName="cellDropLine")
+        self.drop_line.setFixedHeight(3)
+        self.drop_line.hide()
         self.stack.addWidget(self.scroll)
         self.file_view = CodeEditor()
         self.file_view.setReadOnly(True)
@@ -1061,6 +1105,54 @@ class NotebookView(QtWidgets.QWidget):
         self.history.commit({"delete": "Delete cell", "up": "Move cell", "down": "Move cell"}.get(action, "Edit cell"))
         self.titleChanged.emit()
 
+    def move_cell(self, cell, before: int):
+        """Move ``cell`` in front of the cell at ``before`` (``len(cells)``: to the end)."""
+        nb = self.notebook
+        i = nb.cells.index(cell)
+        to = before - 1 if before > i else before
+        if to == i:
+            return
+        nb.move(cell, to)
+        self.current = cell
+        self.rebuild()
+        self.changed.emit()
+        self.history.commit("Move cell")
+        self.titleChanged.emit()
+
+    def _drop_index(self, y: float) -> int:
+        """Where a cell dropped at height ``y`` of the page goes: before the first cell whose middle is lower."""
+        for k, w in enumerate(self.widgets):
+            if y < w.geometry().center().y():
+                return k
+        return len(self.widgets)
+
+    def eventFilter(self, obj, event):
+        if obj is self.container and event.type() in (QtCore.QEvent.DragEnter, QtCore.QEvent.DragMove,
+                                                      QtCore.QEvent.DragLeave, QtCore.QEvent.Drop):
+            if event.type() == QtCore.QEvent.DragLeave:
+                self.drop_line.hide()
+                return True
+            if not event.mimeData().hasFormat(CELL_MIME):
+                return False
+            y = event.position().y()
+            k = self._drop_index(y)
+            if event.type() == QtCore.QEvent.Drop:
+                self.drop_line.hide()
+                cid = bytes(event.mimeData().data(CELL_MIME)).decode()
+                cell = next((c for c in self.notebook.cells if c.id == cid), None)
+                if cell is not None:
+                    event.acceptProposedAction()
+                    QtCore.QTimer.singleShot(0, self, lambda: self.move_cell(cell, k))  # not inside the drag
+                return True
+            event.acceptProposedAction()
+            ref = self.widgets[k].geometry().top() - 5 if k < len(self.widgets) else \
+                (self.widgets[-1].geometry().bottom() + 3 if self.widgets else 0)
+            self.drop_line.setGeometry(8, max(0, ref), self.container.width() - 16, 3)
+            self.drop_line.show()
+            self.drop_line.raise_()
+            return True
+        return super().eventFilter(obj, event)
+
     # ----------------------------------------------------------- running
     def _busy(self, fn):
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
@@ -1284,6 +1376,7 @@ class NotebookPanel(QtWidgets.QWidget):
     askRequested = QtCore.Signal()
     plotCreated = QtCore.Signal(object)       # a view cell's live plot: the main window links it
     pipRequested = QtCore.Signal(list)        # a notebook's bar asks to pip install its plugins
+    switched = QtCore.Signal(object, object)  # notebooks of the tab left and the tab shown (either may be None)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1404,6 +1497,10 @@ class NotebookPanel(QtWidgets.QWidget):
             self.new_notebook()
 
     def _tab_changed(self, index):
+        old, self._shown = getattr(self, "_shown", None), self.view
+        if old is not self._shown:   # also for tabs added or closed (_switching)
+            self.switched.emit(None if old is None else old.notebook,
+                               None if self._shown is None else self._shown.notebook)
         if self._switching or index < 0:
             return
         pipe = self.pipeline

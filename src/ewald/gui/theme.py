@@ -245,6 +245,9 @@ QFrame#restrictedBanner QLabel {{ color: {text}; background: transparent; }}
 QToolButton#cellFold {{ color: {muted}; padding: 0 4px; border: none; }}
 QToolButton#cellFold:hover {{ color: {accent}; }}
 QLabel#cellFolded {{ color: {secondary}; font-style: italic; padding: 3px 0; }}
+QLabel#cellDrag {{ color: {muted}; font-size: 13px; padding: 0; }}
+QLabel#cellDrag:hover {{ color: {accent}; }}
+QFrame#cellDropLine {{ background: {accent}; border-radius: 1px; }}
 QFrame#cell[current="true"] QLabel#cellCounter {{ color: {accent}; }}
 QPlainTextEdit#cellEditor {{ background: {panel}; border: 1px solid {border}; border-radius: 6px; padding: 4px 6px; }}
 QLabel#cellError {{ color: {error}; }}

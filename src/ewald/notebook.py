@@ -32,12 +32,14 @@ import ast
 import contextlib
 import contextvars
 import io
+import json
 import linecache
 import os
 import re
 import sys
 import traceback
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from .pipeline import Modifier, Pipeline, PythonModifier
 
@@ -241,6 +243,8 @@ class Notebook:
         self.manifest: dict = {}      # an .ewd file's manifest
         self.warnings: list = []      # data files that moved or changed (from the manifest)
         self.kernel = None            # an ewald.kernel.Kernel: cells run in another Python
+        self.links: list = []         # data files a .py header links (path, size, fingerprint)
+        self.py_header: list = []     # other lines of a .py file's jupytext header, kept on save
         self.reset()
 
     # ------------------------------------------------------------ namespace
@@ -607,9 +611,12 @@ class Notebook:
         return fresh
 
     # ------------------------------------------------------------ files
-    def to_py(self) -> str:
-        """The notebook as a percent-format Python file."""
-        parts = []
+    def to_py(self, header: bool = False) -> str:
+        """The notebook as a percent-format Python file. With ``header`` (what :meth:`save` writes)
+        a jupytext-style comment header keeps the kernel, the viewer state (style, frame,
+        camera, render settings) and links to the data files (path, size, fingerprint)."""
+        parts = [self._py_header()] if header else []
+        parts = [p for p in parts if p]
         for cell in self.cells:
             head = "# %%" + (f" {cell.title}" if cell.title else "")
             if cell.kind == "markdown":
@@ -620,12 +627,71 @@ class Notebook:
             parts.append(head + ("\n" + body if body else ""))
         return "\n\n".join(parts) + "\n"
 
+    def _py_header(self) -> str:
+        from . import notebook_io
+
+        ewald = {k: v for k, v in (self.metadata.get("ewald") or {}).items() if k not in ("version", "state", "data")}
+        if self.pipeline_name != PIPELINE_NAME:
+            ewald["pipeline"] = self.pipeline_name
+        if self.state:
+            ewald["state"] = notebook_io._jsonable(self.state)
+        base = os.path.dirname(self.path) if self.path else os.getcwd()
+        links = [{"path": notebook_io._relative(f, base), "size": os.path.getsize(f),
+                  "fingerprint": notebook_io.fingerprint(f)} for f in notebook_io.data_files(self)]
+        links = links or self.links   # not run yet: keep the links it was opened with
+        if links:
+            ewald["data"] = links
+        if not ewald and not self.py_header:
+            return ""
+        lines = ["# ---"]
+        rest = list(self.py_header)
+        if "# jupyter:" in rest:
+            lines += rest[:rest.index("# jupyter:") + 1]
+            rest = rest[rest.index("# jupyter:") + 1:]
+        else:
+            lines.append("# jupyter:")
+        if ewald:
+            lines.append("#   ewald:")
+            lines += [f"#     {k}: {json.dumps(v, ensure_ascii=False)}" for k, v in ewald.items()]
+        return "\n".join(lines + rest + ["# ---"])
+
+    def _read_py_header(self, header: list):
+        """The ``ewald:`` part of a ``.py`` header back into metadata, state and data links; the
+        other header lines (jupytext's own) are kept as they are."""
+        ewald, other, inside = {}, [], False
+        for line in header:
+            if line.rstrip() == "#   ewald:":
+                inside = True
+                continue
+            m = re.match(r"^#     ([A-Za-z_]+): (.*)$", line) if inside else None
+            if m:
+                try:
+                    ewald[m.group(1)] = json.loads(m.group(2))
+                    continue
+                except ValueError:
+                    pass
+            inside = False
+            other.append(line)
+        self.py_header = [ln for ln in other if ln.rstrip() != "# jupyter:" or len(other) > 1]
+        self.state = dict(ewald.pop("state", None) or {})
+        self.links = list(ewald.pop("data", None) or [])
+        if ewald.get("pipeline"):
+            self.pipeline_name = ewald["pipeline"]
+        if ewald:
+            self.metadata.setdefault("ewald", {}).update(ewald)
+
     @classmethod
     def from_py(cls, text: str, **kwargs) -> "Notebook":
         """Parse a percent-format file; text before the first marker becomes a code cell
-        (a plain script is one big cell)."""
+        (a plain script is one big cell). A leading ``# ---`` header (jupytext's) is read
+        for ewald's kernel, viewer state and data links."""
         cells, current = [], None
         lines = []
+        header = []
+        rows = text.splitlines()
+        if rows and rows[0].rstrip() == "# ---" and "# ---" in [r.rstrip() for r in rows[1:]]:
+            end = 1 + [r.rstrip() for r in rows[1:]].index("# ---")
+            header, text = rows[1:end], "\n".join(rows[end + 1:])
 
         def close():
             if current is None and not "".join(lines).strip():
@@ -648,7 +714,10 @@ class Notebook:
             else:
                 lines.append(line)
         close()
-        return cls(cells, **kwargs)
+        nb = cls(cells, **kwargs)
+        if header:
+            nb._read_py_header(header)
+        return nb
 
     @classmethod
     def load(cls, path, **kwargs) -> "Notebook":
@@ -664,7 +733,10 @@ class Notebook:
             text = fh.read()
         if ext == ".ipynb":
             return notebook_io.from_ipynb(text, cls=cls, path=os.path.abspath(path), **kwargs)
-        return cls.from_py(text, path=os.path.abspath(path), **kwargs)
+        nb = cls.from_py(text, path=os.path.abspath(path), **kwargs)
+        if nb.links:
+            nb.warnings = notebook_io.check_data({"data": nb.links}, os.path.dirname(nb.path), Path())
+        return nb
 
     def save(self, path=None, **options):
         """Write the notebook; the extension picks the format: ``.ewd`` (code, outputs, figures,
@@ -679,7 +751,8 @@ class Notebook:
         if ext == ".ewd":
             notebook_io.save_ewd(self, path, **options)
         else:
-            text = notebook_io.to_ipynb_text(self) if ext == ".ipynb" else self.to_py()
+            self.path = os.path.abspath(path)   # data links are relative to the new file
+            text = notebook_io.to_ipynb_text(self) if ext == ".ipynb" else self.to_py(header=True)
             tmp = str(path) + ".tmp"
             with open(tmp, "w", encoding="utf-8") as fh:
                 fh.write(text)

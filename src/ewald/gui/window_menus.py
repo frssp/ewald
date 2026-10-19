@@ -251,6 +251,8 @@ class MenusMixin:
             fill_modifier_menu(m, self.panel.add_modifier)
             vm = ins.addMenu("&View")
             vm.aboutToShow.connect(lambda: fill_view_menu(vm, self.data, lambda **kw: self.panel.view.add_view(**kw)))
+            ins.addAction("3D &snapshot of the view", self._insert_snapshot).setToolTip(
+                "A cell with a picture of the viewport as it is now (frame, camera, display style)")
             am = ins.addMenu("&Analysis")
             from ..verbs import VERB_CELLS
 
@@ -299,6 +301,31 @@ class MenusMixin:
         menu.clear()
         for act in view.plugin_menu.actions():
             menu.addAction(act)
+
+    def snapshot_code(self) -> str:
+        """The ``snapshot(pipe, ...)`` cell for the viewport as it is now."""
+        from ..render import camera_state
+
+        def short(v):
+            return tuple(round(x, 4) for x in v) if isinstance(v, tuple) else round(v, 4) if isinstance(v, float) else v
+
+        kw = {"camera": {k: short(v) for k, v in camera_state(self.viewport.plotter).items()},
+              "background": self.style.background}
+        kw.update(self.style.scene_kwargs())
+        name = self.panel.view.notebook.pipeline_name
+        body = ",\n         ".join(f"{k}={v!r}" for k, v in kw.items())
+        return f"from ewald.views import snapshot\nsnapshot({name}, frame={int(self.frame)},\n         {body})"
+
+    def _insert_snapshot(self):
+        """Insert › 3D snapshot: a cell that draws the current view, run at once."""
+        view = self.panel.view
+        if view is None or view.notebook.pipeline is None:
+            QtWidgets.QMessageBox.information(self, "No pipeline yet",
+                                              "Open a file first, or run a cell that sets pipe = import_file(...).")
+            return
+        cell = view.add_cell("code", self.snapshot_code())
+        view.run(cell)
+        self.notebook_dock.show()
 
     def _insert_verb(self, verb):
         """Insert › Analysis: a ``verb(pipe)`` cell after the current one, run at once (its table shows below)."""

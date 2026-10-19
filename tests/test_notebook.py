@@ -191,6 +191,42 @@ def test_from_pipeline_and_save_load_roundtrip(cu_file, tmp_path):
     assert ns["pipe"].compute(0).count == 107
 
 
+def test_py_header_keeps_kernel_view_state_and_data_links(cu_file, tmp_path):
+    import shutil
+
+    data = tmp_path / "cu.xyz"
+    shutil.copy(cu_file, data)
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\npipe = load({str(data)!r})\n")
+    assert nb.run_all()
+    nb.state = {"frame": 1, "camera": {"position": [1.0, 2.0, 3.0]}, "render": {"quality": "Draft"}}
+    nb.metadata["ewald"] = {"kernel": {"name": None, "python": "/env/bin/python", "display_name": "Python (env)"}}
+    nb.save(tmp_path / "a.py")
+    text = (tmp_path / "a.py").read_text()
+    assert text.startswith("# ---\n# jupyter:\n#   ewald:\n#     kernel: {") and '"path": "cu.xyz"' in text
+    back = Notebook.load(tmp_path / "a.py")
+    assert back.state == nb.state and back.metadata["ewald"]["kernel"]["python"] == "/env/bin/python"
+    assert back.links[0]["path"] == "cu.xyz" and back.warnings == [] and len(back.cells) == 1
+    back.save(tmp_path / "b.py")                                  # not run: the links stay
+    assert (tmp_path / "b.py").read_text() == text
+    data.write_text(data.read_text() + "\n")
+    assert Notebook.load(tmp_path / "a.py").warnings == ["cu.xyz changed since the notebook was saved"]
+    assert nb.to_py().startswith("# %%")                          # the shown code has no header
+    import runpy
+
+    assert runpy.run_path(str(tmp_path / "a.py"))["pipe"].num_frames == 1   # still a plain script
+
+
+def test_py_header_keeps_jupytext_lines():
+    text = ("# ---\n# jupyter:\n#   jupytext:\n#     formats: ipynb,py:percent\n#   kernelspec:\n"
+            "#     name: python3\n# ---\n\n# %%\nx = 1\n")
+    nb = Notebook.from_py(text)
+    assert [c.source for c in nb.cells] == ["x = 1"] and nb.to_py(header=True) == text
+    nb.state = {"frame": 2}
+    again = Notebook.from_py(nb.to_py(header=True))
+    assert again.state == {"frame": 2} and again.to_py(header=True) == nb.to_py(header=True)
+    assert Notebook.from_py("# %%\nx = 1\n").to_py(header=True) == "# %%\nx = 1\n"
+
+
 def test_new_notebook_has_imports():
     nb = new_notebook("Notebook 2")
     assert nb.cells[0].kind == "markdown" and "Notebook 2" in nb.cells[0].source

@@ -136,8 +136,17 @@ in a live view cell.
 
 **Text cells** are Markdown. Double-click one to edit it.
 
+**Snapshot cells** keep a picture of the 3D view. Insert › 3D snapshot of the view adds one for
+the viewport as it is (frame, camera, display style) and runs it:
+
+```python
+from ewald.views import snapshot
+snapshot(pipe, frame=3, camera={...}, radius_scale=0.5)   # shows the picture; .save("fig.png") writes it
+```
+
 The ⋯ menu of a cell has Run, Run this and below, Move up/down, Delete and, for steps and views,
-Show as code cell. The `.py` button at the top shows the whole file.
+Show as code cell. Drag a cell by the ⠿ grip above its ▶ to move it; steps move with it in the
+pipeline. The `.py` button at the top shows the whole file.
 
 ## Notebook tabs
 
@@ -162,7 +171,24 @@ menu.
 |---|---|---|
 | `.ewd` | code, outputs, figures, small data files, plugins, view state | ewald (unzipped: Jupyter, any CSV/SVG tool) |
 | `.ipynb` | code, outputs, view state | ewald, Jupyter, VS Code, GitHub |
-| `.py` | code | ewald, `python`, VS Code, jupytext; the one to keep in git |
+| `.py` | code, view state, kernel, data links | ewald, `python`, VS Code, jupytext; the one to keep in git |
+
+A `.py` notebook keeps what ewald needs besides the code in a jupytext-style comment header,
+which Python, VS Code and jupytext ignore or keep:
+
+```python
+# ---
+# jupyter:
+#   ewald:
+#     kernel: {"python": "/opt/conda/envs/ml/bin/python", "display_name": "Python (ml)"}
+#     state: {"frame": 3, "camera": {...}, "style": {...}, "render": {...}}
+#     data: [{"path": "traj.dump", "size": 81234567, "fingerprint": "sha256-ends:..."}]
+# ---
+```
+
+Opening it restores the viewer and says when a linked data file changed or is missing, as for
+an `.ewd`. Each notebook tab also keeps its own Render page settings (renderer, quality, size,
+overlays): switching tabs switches them, and saving the notebook saves them.
 
 An `.ewd` file is a zip archive:
 
