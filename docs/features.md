@@ -7,7 +7,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Python API
 
-`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `StaticSource`, `import_file`, `export_file`, `get_backend`, `gpu_available`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
+`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `StaticSource`, `import_file`, `load`, `export_file`, `get_backend`, `gpu_available`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
 
 ## Modifiers
 
@@ -439,6 +439,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | Key | Label | Default |
 |---|---|---|
 | `python.run_notebooks` | Run notebooks when opened | `'ask'` |
+| `python.plugin_catalogs` | Plugin catalogs | `''` |
 | `python.startup_script` | Console startup script | `''` |
 | `python.extra_paths` | Extra module paths | `''` |
 
@@ -509,6 +510,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - ASE
   - Dark slide
 - Focus on the viewport (`Ctrl+\`)
+- Minimal mode (menus hidden) (`Ctrl+Shift+M`)
 
 **Notebook**
 
@@ -616,6 +618,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Notebook workspace (`Ctrl+1`)
 - Render workspace (`Ctrl+2`)
 - Notebook
+- Plugins (`Ctrl+Shift+X`)
 - Display settings
 - Python console
 - Data inspector
@@ -673,7 +676,7 @@ Open, Save, Run all, Notebook, Render, Search commands, steps, cells… Ctrl K, 
 ### Panels
 
 - Workspaces: Notebook, Render
-- Docks: Ask Claude, Data, Display, Notebook
+- Docks: Ask Claude, Data, Display, Notebook, Plugins
 - Bottom tabs: Python console, Data inspector, Plots, Log
 - Viewport tools: Orbit / pan / zoom (mouse); Pick atom: shows id, type, position and properties; Shift+click picks several; Measure distance: click two atoms; Measure angle: click three atoms (vertex in the middle); Edit bonds: click two atoms to add or delete the bond between them
 

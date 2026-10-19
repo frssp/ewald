@@ -9,7 +9,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 ## In progress
 
 - Notebook layout (GUI redesign): notebooks as `.py` cells with step and view cells, notebook
-  tabs, Paper/Graphite themes. Branch `claude/project-thread-x53vio`.
+  tabs, `load`/`pipe.add`/`ewald.paint`, the Plugins side bar with catalogs, minimal mode,
+  Paper/Graphite themes. Branch `claude/project-thread-x53vio`.
 - Simple (ASE) style and Ball & stick as the default style (this branch).
 
 ## Next
@@ -20,7 +21,15 @@ GUI
   pipeline yet (now it keeps the last one); 3D snapshot views (`show(pipe, frame=...)` drawing
   the structure) and image/figure cells; drag cells to reorder; undo for cell edits; inline
   Ask Claude suggestions as diffs; per-notebook render settings.
-- Spectra, Figure and Plugins (Forge) views from the redesign mock-ups, built as view cells
+- Notebook kernels: run a notebook's cells in another Python environment (a per-tab kernel via
+  jupyter_client with a small `ewald-kernel` that streams computed frames back), so a notebook
+  can use a conda env without ewald's GUI dependencies.
+- Analysis verbs for notebooks (`rdf(pipe, cutoff=6)`, `msd(pipe)`, ... returning tables and
+  adding the step), next to `load` and `pipe.add`.
+- Plugins side bar: updates (version compare against catalogs), disable per notebook,
+  "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
+  view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
+- Spectra, Figure and Forge views from the redesign mock-ups, built as view cells
   rather than separate panels.
 - Quad views (top, front, left, perspective), as in OVITO.
 - Undo/redo for pipeline edits.

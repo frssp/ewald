@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from ewald import import_file
@@ -61,6 +62,7 @@ def test_plain_script_is_one_cell():
 
 def test_step_detection():
     assert step_call("pipe.modifiers.append(Slice())") is not None
+    assert step_call("pipe.add(Slice())") is not None and step_call("other.add(Slice())") is None
     assert step_call("from ewald.modifiers import Slice\npipe.modifiers.append(Slice())") is not None
     for src in ("x = 1\npipe.modifiers.append(Slice())", "pipe.modifiers.append(a, b)", "other.modifiers.append(A())",
                 "pipe.modifiers.extend([A()])", "", "def f(:"):
@@ -150,8 +152,8 @@ def test_step_source_imports_classes_outside_the_public_list():
 
     src = step_source(LocalThing(2))
     assert src.splitlines()[0] == f"from {__name__} import LocalThing"
-    assert src.splitlines()[1] == "pipe.modifiers.append(LocalThing(k=2))"
-    assert step_source(LocalThing(2), {"LocalThing": LocalThing}) == "pipe.modifiers.append(LocalThing(k=2))"
+    assert src.splitlines()[1] == "pipe.add(LocalThing(k=2))"
+    assert step_source(LocalThing(2), {"LocalThing": LocalThing}) == "pipe.add(LocalThing(k=2))"
     m = mods.WrapAtoms()
     m.enabled = False
     assert step_source(m).endswith("pipe.modifiers[-1].enabled = False")
@@ -227,13 +229,13 @@ def test_load_plugin_file_registers_its_modifier(tmp_path, cu_file):
     assert nb.run_all(), nb.cells[0].outputs
     assert nb.namespace["names"] == ["ShiftZ"]
     assert nb.cells[1].modifier.dz == 2.0
-    assert step_source(nb.cells[1].modifier) == "from ewald.modifiers import ShiftZ\npipe.modifiers.append(ShiftZ(dz=2.0))"
+    assert step_source(nb.cells[1].modifier) == "from ewald.modifiers import ShiftZ\npipe.add(ShiftZ(dz=2.0))"
 
 
 def test_from_pipeline_writes_the_load_line(cu_file):
     pipe = import_file(cu_file)
     nb = Notebook.from_pipeline(pipe)
-    assert nb.cells[1].source == f"pipe = import_file({cu_file!r})"
+    assert nb.cells[1].source == f"pipe = load({cu_file!r})"
 
 
 def test_view_cells_plot_tables_and_histograms(nb):
@@ -258,3 +260,28 @@ def test_view_cells_plot_tables_and_histograms(nb):
     nb.update_view(table, y="g(r)")
     assert table.source.splitlines()[-1] == "show(pipe, table='coordination-rdf', y='g(r)')" and nb.dirty
     assert Notebook.from_py(nb.to_py()).cells[-1].view == hist.view
+
+
+def test_load_add_and_paint(cu_file):
+    from ewald import load
+    from ewald.paint import fade, hide, isolate, paint, resize
+
+    pipe = load(cu_file)
+    coord = pipe.add(mods.CoordinationAnalysis(cutoff=3.0))
+    assert pipe.modifiers == [coord]
+
+    @pipe.add
+    def style(frame, data):
+        paint(data, data["Coordination"] < 12, "red")
+        resize(data, "Coordination < 12", 2.0)
+        hide(data, [0, 1])
+        fade(data, [2], 0.5)
+
+    assert callable(style) and pipe.modifiers[-1].name == "style"
+    d = pipe.compute(0)
+    surface = d["Coordination"] < 12
+    assert surface.sum() == 12 and (d["Color"][surface] == [1, 0, 0]).all() and not (d["Color"][~surface] == [1, 0, 0]).all(1).any()
+    assert np.allclose(d["Radius"][surface], 2 * d["Radius"][~surface][0])
+    assert list(d["Transparency"][:3]) == [1, 1, 0.5]
+    isolate(d, surface)
+    assert (d["Transparency"][~surface] == 1).all()

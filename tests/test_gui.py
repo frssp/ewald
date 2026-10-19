@@ -1420,3 +1420,40 @@ def test_main_window_legacy_gl_viewport(app, pipe, tmp_path, monkeypatch):
     np.testing.assert_allclose(camera_state(w2.viewport.plotter)["position"], cam["position"], rtol=1e-6)
     w.close()
     w2.close()
+
+
+def test_plugins_side_bar_installs_adds_a_step_and_removes(app, cu_path, tmp_path, monkeypatch):
+    from ewald import settings
+    from ewald.gui import plugins_panel
+    from ewald.gui.app import MainWindow
+
+    src = tmp_path / "bar_shift.py"
+    src.write_text('"""Shift along z."""\nfrom ewald.pipeline import Modifier\nfrom ewald.plugins import modifier\n\n\n'
+                   '@modifier(category="Test")\nclass BarShift(Modifier):\n    def __init__(self, dz: float = 1.0):\n'
+                   '        self.dz = dz\n\n    def modify(self, data, ctx):\n        return None\n')
+    index = tmp_path / "index.json"
+    index.write_text('{"plugins": [{"name": "Bar shift", "kinds": ["modifier"], "source": "bar_shift.py"}]}')
+    s = settings.Settings()
+    s["python.plugin_catalogs"] = str(index)
+    monkeypatch.setattr(plugins_panel.QtWidgets.QMessageBox, "question",
+                        lambda *a, **k: plugins_panel.QtWidgets.QMessageBox.Yes)
+    w = MainWindow(settings=s)
+    assert not w.plugins_dock.isVisible() and "Plugins" in w.activity_buttons
+    panel = w.plugins_panel
+    panel.wait()
+    entry = next(e for e in panel.entries if e.name == "Bar shift")
+    panel.install(entry)
+    item = next(i for i in panel.items if i.path.endswith("bar_shift.py"))
+    panel.show_details(item)
+    assert not panel.use_button.isHidden()
+    w.open_any(cu_path, ask_types=False)
+    panel._use()
+    assert type(w.panel.view.notebook.cells[-1].modifier).__name__ == "BarShift"
+    panel.remove(item)
+    assert not any(i.path.endswith("bar_shift.py") for i in panel.items)
+    panel.search.setText("@installed bar")
+    assert panel.list_layout.count() > 0
+    w.set_minimal(True)
+    assert w.menuBar().isHidden() and w.minimal
+    w.set_minimal(False)
+    w.close()

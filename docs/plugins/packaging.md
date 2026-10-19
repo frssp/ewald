@@ -64,6 +64,33 @@ Modifiers use the group `ewald.modifiers`; the entry-point name becomes the modi
 LocalComposition = "ewald_sro.modifiers:LocalComposition"
 ```
 
+## Plugin catalogs
+
+The GUI's Plugins side bar lists plugins to install from catalogs: JSON indexes at the URLs or
+paths in Preferences › Python › *Plugin catalogs* (`python.plugin_catalogs`, separated by `;`).
+A lab or a project can publish its own list:
+
+```json
+{"plugins": [
+  {"name": "Local strain", "summary": "Atomic strain against a reference frame",
+   "kinds": ["modifier"], "source": "https://example.org/plugins/local_strain.py",
+   "version": "0.2", "author": "Kim lab", "homepage": "https://example.org"},
+  {"name": "ewald-cp2k", "summary": "CP2K readers", "kinds": ["reader"], "source": "pip:ewald-cp2k"}
+]}
+```
+
+`source` is a `.py` file (a URL, an absolute path, or a path relative to the index), which
+*Install* copies into the plugin folder, or `pip:<requirement>`, which it installs with pip.
+The same functions work from Python:
+
+```python
+from ewald import plugin_catalog as pc
+
+entries, errors = pc.catalog(["https://example.org/ewald-plugins.json"])
+pc.install_file(pc.search(entries, "strain")[0])   # copy + load; returns the registered names
+[i.name for i in pc.installed()]
+```
+
 ## Dependencies
 
 Depend on `ewald` and what the plugin imports at module level, nothing more. Import optional

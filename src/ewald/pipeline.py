@@ -173,6 +173,12 @@ class Pipeline:
         self._cache_size = cache_size
         self.cache_memory = cache_memory
 
+    def add(self, *modifiers):
+        """Append modifiers (``pipe.add(m)`` is ``pipe.modifiers.append(m)``) and return the last
+        argument, so it also works as a decorator: ``@pipe.add`` on ``def f(frame, data)``."""
+        self.modifiers.extend(modifiers)
+        return modifiers[-1] if modifiers else None
+
     @property
     def num_frames(self) -> int:
         return self.source.num_frames

@@ -60,7 +60,7 @@ class PluginRow(QtWidgets.QFrame):
         if summary:
             s = QtWidgets.QLabel(summary, objectName="pluginSummary", wordWrap=True)
             lay.addWidget(s)
-        kinds = QtWidgets.QLabel("  ".join(item.kinds), objectName="pluginKinds")
+        kinds = QtWidgets.QLabel("  ".join(item.kinds + [_origin_badge(item)]).strip(), objectName="pluginKinds")
         lay.addWidget(kinds)
         if getattr(item, "error", ""):
             lay.addWidget(QtWidgets.QLabel(item.error, objectName="cellError", wordWrap=True))
@@ -68,6 +68,26 @@ class PluginRow(QtWidgets.QFrame):
     def mousePressEvent(self, event):
         self.clicked.emit(self.item)
         super().mousePressEvent(event)
+
+
+def _origin_badge(item) -> str:
+    """Where a plugin comes from: folder, pip package, this session, or its catalog."""
+    if isinstance(item, pc.Installed):
+        return "· pip" if item.package else "· folder" if item.path else "· session"
+    return "· pip" if item.is_pip else "· example" if item.catalog == "examples" else ""
+
+
+def _doc_html(doc: str) -> str:
+    """A docstring as HTML: paragraphs re-flowed, indented blocks kept as code."""
+    out = []
+    for para in doc.strip().split("\n\n"):
+        lines = para.splitlines()
+        if lines and all(ln.startswith("    ") for ln in lines if ln.strip()):
+            out.append(f"<pre>{html.escape(chr(10).join(ln[4:] for ln in lines))}</pre>")
+        else:
+            text = html.escape(" ".join(ln.strip() for ln in lines)).replace("``", "")
+            out.append(f"<p>{text.removesuffix('::') + (':' if text.endswith('::') else '')}</p>")
+    return "".join(out)
 
 
 def _provides_text(item) -> str:
@@ -80,6 +100,7 @@ class PluginsPanel(QtWidgets.QWidget):
 
     changed = QtCore.Signal()               # plugins were loaded or removed
     stepRequested = QtCore.Signal(object)   # a modifier instance to add to the notebook
+    createRequested = QtCore.Signal(str)    # a prompt for Ask Claude to write a new plugin
 
     def __init__(self, settings=None, parent=None):
         super().__init__(parent)
@@ -93,7 +114,7 @@ class PluginsPanel(QtWidgets.QWidget):
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(6)
-        self.search = QtWidgets.QLineEdit(placeholderText="Search plugins")
+        self.search = QtWidgets.QLineEdit(placeholderText="Search plugins  (@installed, @available, @modifier…)")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._fill)
         lay.addWidget(self.search)
@@ -119,6 +140,7 @@ class PluginsPanel(QtWidgets.QWidget):
         row = QtWidgets.QHBoxLayout()
         for text, slot, tip in (("From file…", self.install_from_file, "Install a plugin .py file"),
                                 ("pip…", self.install_with_pip, "Install a plugin package with pip"),
+                                ("Create…", self.create_with_claude, "Ask Claude to write a new plugin"),
                                 ("Folder", self.open_folder, "Open the plugin folder"),
                                 ("Refresh", self.refresh, "Reload the installed plugins and the catalogs")):
             b = QtWidgets.QToolButton(text=text, toolTip=tip)
@@ -156,9 +178,17 @@ class PluginsPanel(QtWidgets.QWidget):
             w = self.list_layout.takeAt(0).widget()
             if w is not None:
                 w.deleteLater()
-        text = self.search.text()
-        installed = pc.search(self.items, text)
-        available = [e for e in pc.search(self.entries, text) if not pc.is_installed(e, self.items)]
+        words = self.search.text().split()
+        filters = {w[1:].lower() for w in words if w.startswith("@")}
+        text = " ".join(w for w in words if not w.startswith("@"))
+        kinds = filters & set(pc.KINDS)
+        installed = [i for i in pc.search(self.items, text) if not kinds or kinds & set(i.kinds)]
+        available = [e for e in pc.search(self.entries, text)
+                     if not pc.is_installed(e, self.items) and (not kinds or kinds & set(e.kinds))]
+        if "available" in filters:
+            installed = []
+        if "installed" in filters:
+            available = []
         self._section(f"INSTALLED  {len(installed)}")
         for item in installed:
             self._row(item, True)
@@ -194,7 +224,7 @@ class PluginsPanel(QtWidgets.QWidget):
         for kind, names in provides.items():
             parts.append(f"<p><b>{kind}</b>: {html.escape(', '.join(names))}</p>")
         if getattr(item, "description", ""):
-            parts.append(f"<pre style='white-space:pre-wrap'>{html.escape(item.description)}</pre>")
+            parts.append(_doc_html(item.description))
         src = getattr(item, "source", "") or getattr(item, "path", "") or getattr(item, "origin", "")
         if src:
             parts.append(f"<p style='color:{TOKENS['muted']}'>{html.escape(src)}</p>")
@@ -260,6 +290,14 @@ class PluginsPanel(QtWidgets.QWidget):
         if ok and req.strip():
             self._run_pip("install", req.strip())
 
+    def create_with_claude(self):
+        what, ok = QtWidgets.QInputDialog.getText(self, "Create a plugin with Claude",
+                                                  "What should the new step compute?")
+        if ok and what.strip():
+            self.createRequested.emit(
+                f"Write an ewald modifier plugin that {what.strip()}. Save it in the plugin folder, "
+                "load it with ewald.plugins.load_plugin_file and add it as a step.")
+
     def _run_pip(self, action, requirement):
         cmd = pc.pip_command(action, requirement)
         if QtWidgets.QMessageBox.question(
@@ -278,6 +316,8 @@ class PluginsPanel(QtWidgets.QWidget):
         self._say(f"pip {action} {requirement}: {'done' if code == 0 else f'failed (exit {code})'}")
         if code == 0:
             plugins.load_plugins(force=True)
+            if action == "uninstall":
+                self._say("Restart ewald to unload the removed package's classes.")
             self.refresh()
             self.changed.emit()
 

@@ -92,6 +92,16 @@ QPushButton#primary:hover {{ background: {accent}; border: none; }}
 /* notebook */
 QWidget#notebookPage, QScrollArea#notebookScroll, QScrollArea#notebookScroll > QWidget > QWidget {{ background: {panel}; }}
 QFrame#cell {{ background: {raised}; border: 1px solid {border}; border-radius: 8px; }}
+QToolBar#activity-bar {{ background: {panel}; border: none; border-right: 1px solid {border}; padding: 6px 2px; spacing: 6px; }}
+QToolBar#activity-bar QToolButton {{ padding: 6px; border-radius: 6px; }}
+QToolBar#activity-bar QToolButton:checked {{ background: {accent_soft}; }}
+QFrame#pluginRow {{ background: {raised}; border: 1px solid {border}; border-radius: 6px; }}
+QFrame#pluginRow:hover {{ border-color: {accent}; }}
+QFrame#pluginRow QLabel {{ background: transparent; }}
+QLabel#pluginSummary {{ color: {secondary}; }}
+QLabel#pluginKinds {{ color: {data}; font-size: 11px; }}
+QPushButton#pluginInstall {{ background: {accent}; color: {on_accent}; border: none; border-radius: 4px; padding: 2px 10px; }}
+QPushButton#pluginButton {{ border-radius: 4px; padding: 2px 10px; }}
 QFrame#cell[current="true"] {{ border: 2px solid {accent}; }}
 QFrame#cell[state="error"] {{ border-color: {error}; }}
 QFrame#cell[state="stale"] {{ background: {panel}; }}

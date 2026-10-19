@@ -110,6 +110,17 @@ class MainWindow(QtWidgets.QMainWindow):
             self.notebook_dock = self._dock(self.panel, "Notebook", QtCore.Qt.LeftDockWidgetArea, 560)
             if not prefs.layout_path(self.settings).exists():  # first start: a wide notebook
                 QtCore.QTimer.singleShot(0, lambda: self.resizeDocks([self.notebook_dock], [640], QtCore.Qt.Horizontal))
+            # VS Code-like activity bar: the Plugins side bar opens beside the notebook
+            from .plugins_panel import PluginsPanel
+
+            self.plugins_panel = PluginsPanel(self.settings)
+            self.plugins_panel.stepRequested.connect(lambda m: self.panel.add_modifier(m))
+            self.plugins_panel.changed.connect(lambda: self.message("Plugins changed"))
+            self.plugins_panel.createRequested.connect(self._create_plugin)
+            self.plugins_dock = self._dock(self.plugins_panel, "Plugins", QtCore.Qt.LeftDockWidgetArea, 300)
+            self.splitDockWidget(self.plugins_dock, self.notebook_dock, QtCore.Qt.Horizontal)
+            self.plugins_dock.hide()
+            self._build_activity_bar()
             self.display = DisplayPanel(self.style)
             self.display.styleChanged.connect(self._style_changed)
             self.display.modifierRequested.connect(lambda m: self.panel.add_modifier(m))
@@ -182,6 +193,44 @@ class MainWindow(QtWidgets.QMainWindow):
         if width:
             self.resizeDocks([d], [width], QtCore.Qt.Horizontal)
         return d
+
+    def _build_activity_bar(self):
+        """Icons on the far left that show or hide the side bars (Notebook, Plugins)."""
+        from .icons import icon
+
+        bar = self.activity_bar = QtWidgets.QToolBar("Activity bar")
+        bar.setObjectName("activity-bar")
+        bar.setMovable(False)
+        bar.setIconSize(QtCore.QSize(22, 22))
+        self.addToolBar(QtCore.Qt.LeftToolBarArea, bar)
+        self.activity_buttons = {}
+        for name, icon_name, dock in (("Notebook", "notebook", self.notebook_dock),
+                                      ("Plugins", "plugins", self.plugins_dock)):
+            act = dock.toggleViewAction()
+            act.setIcon(icon(icon_name))
+            act.setToolTip(f"Show or hide the {name} side bar")
+            bar.addAction(act)
+            self.activity_buttons[name] = act
+        self.plugins_dock.visibilityChanged.connect(
+            lambda shown: shown and self.plugins_panel.search.setFocus())
+
+    def set_minimal(self, on: bool | None = None):
+        """Hide the menu bar, toolbars and status bar, leaving the notebook, the viewport and the
+        command palette (Ctrl+K); menu shortcuts keep working (View › Minimal mode, Ctrl+Shift+M)."""
+        on = self.menuBar().isVisible() if on is None else on
+        if on:
+            for menu in self.menuBar().findChildren(QtWidgets.QMenu):
+                for act in menu.actions():
+                    if not act.shortcut().isEmpty() and act not in self.actions():
+                        self.addAction(act)  # shortcuts of a hidden menu bar do not fire otherwise
+        self.minimal = on
+        self.menuBar().setVisible(not on)
+        self.statusBar().setVisible(not on)
+        for tb in self.findChildren(QtWidgets.QToolBar):
+            if tb.objectName() in ("main-toolbar", "activity-bar"):
+                tb.setVisible(not on)
+        if on:
+            self.message("Minimal mode: Ctrl+K for commands, Ctrl+Shift+M to bring the menus back")
 
     def _build_toolbar(self):
         tb = self.addToolBar("Main")
@@ -307,6 +356,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if nb:
             v.addSeparator()
             v.addAction("Focus on the viewport", self.toggle_focus, "Ctrl+\\")
+            v.addAction("Minimal mode (menus hidden)", lambda: self.set_minimal(self.menuBar().isVisible()), "Ctrl+Shift+M")
             n = mb.addMenu("&Notebook")
             n.addAction("Run &all", lambda: self.panel.view.run_all(), "Ctrl+Shift+Return")
             n.addAction("Run current cell and &below", lambda: self._cell_action("below"))
@@ -348,6 +398,7 @@ class MainWindow(QtWidgets.QMainWindow):
         w.addAction("Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
         if nb:
             w.addAction("Notebook", lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))
+            w.addAction("Plugins", lambda: (self.plugins_dock.show(), self.plugins_dock.raise_()), "Ctrl+Shift+X")
             w.addAction("Display settings", lambda: (self.display.parent().show(), self.display.parent().raise_()))
         w.addAction("Python console", lambda: self.bottom.setCurrentWidget(self.console))
         w.addAction("Data inspector", lambda: self.bottom.setCurrentWidget(self.inspector))
@@ -376,7 +427,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def toggle_focus(self):
         """Hide or show the notebook and side panels, leaving the viewport (Ctrl+\\)."""
-        docks = [self.notebook_dock, self.display.parent(), self.ask_dock, self.bottom_dock]
+        docks = [self.notebook_dock, self.plugins_dock, self.display.parent(), self.ask_dock, self.bottom_dock]
         hide = self.notebook_dock.isVisible()
         if hide:
             self._focus_restore = [d for d in docks if d.isVisible()]
@@ -1017,6 +1068,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ask_dock.raise_()
         self.ask_panel.update_selection()
         self.ask_panel.input.setFocus()
+
+    def _create_plugin(self, prompt):
+        self.ask_claude()
+        self.ask_panel.input.setPlainText(prompt)
 
     def _after_claude(self):
         self.panel.refresh()

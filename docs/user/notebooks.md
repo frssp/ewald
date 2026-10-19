@@ -10,16 +10,17 @@ jupytext and Spyder open it as a notebook too.
 # # Cu void annealing
 
 # %%
-from ewald import import_file
+from ewald import load
 from ewald.modifiers import *
 from ewald.views import show
-pipe = import_file("cu_void.lammpstrj")
+from ewald.paint import paint, hide
+pipe = load("cu_void.lammpstrj")
 
 # %%
-pipe.modifiers.append(CoordinationAnalysis(cutoff=3.08))
+pipe.add(CoordinationAnalysis(cutoff=3.08))
 
 # %%
-pipe.modifiers.append(ExpressionSelection(expression="Coordination < 12"))
+pipe.add(ExpressionSelection(expression="Coordination < 12"))
 
 # %%
 show(pipe, table="coordination-rdf")
@@ -38,12 +39,12 @@ marks the cells below as stale.
 
 Running a cell again replaces the modifiers it added last time, in the same place, so you can
 edit a cell and re-run it without stacking duplicates. A cell that assigns `pipe` again (a new
-`import_file`) re-runs the cells below it on the new pipeline.
+`load`) re-runs the cells below it on the new pipeline.
 
 There are four kinds of cell.
 
-**Step cells** are a single `pipe.modifiers.append(Modifier(...))`, optionally preceded by
-imports. The notebook shows them as a step: the modifier's name, its parameters, a checkbox to
+**Step cells** are a single `pipe.add(Modifier(...))`, optionally preceded by imports
+(`pipe.modifiers.append(...)` works too; `load` is another name for `import_file`). The notebook shows them as a step: the modifier's name, its parameters, a checkbox to
 switch it off, the time it took and what it produced (new properties, selected atoms, tables,
 removed atoms). A small histogram or curve of the new property or table sits next to the
 results. *Form* opens the parameter form, and Apply writes the new values back into the cell's
@@ -73,6 +74,22 @@ notebook, next to the steps that compute them.
 last line (as in Jupyter). Matplotlib figures are shown as images, without `plt.show()`
 opening a window.
 
+**Styling cells** color, resize or hide atoms by any property. A Python step runs on every
+frame, so the style follows the trajectory:
+
+```python
+@pipe.add
+def style(frame, data):
+    cn = data["Coordination"]
+    paint(data, cn < 12, "crimson")             # any matplotlib color or RGB
+    hide(data, data["Position"][:, 0] > 9)      # cut the block open
+    resize(data, "Coordination < 9", 1.3)       # a condition can be an expression string
+```
+
+`paint`, `hide`, `isolate` (hide the rest), `fade` and `resize` write new Color, Transparency
+and Radius properties, which every renderer draws. Import them with
+`from ewald.paint import paint, hide, isolate, fade, resize` (new notebooks already do).
+
 **Text cells** are Markdown. Double-click one to edit it.
 
 The ⋯ menu of a cell has Run, Run this and below, Move up/down, Delete and, for steps and views,
@@ -85,8 +102,8 @@ File › New notebook (Ctrl+T) opens an empty one. Right-click a tab to rename o
 A dot marks unsaved changes. Each notebook has its own namespace and pipeline, and switching to
 a notebook that has a pipeline shows it in the viewport.
 
-Opening a data file (File › Open, or `ewald gui file`) makes a notebook for it: the imports, an
-`import_file` cell and one step per modifier the file needs. It replaces the empty notebook you
+Opening a data file (File › Open, or `ewald gui file`) makes a notebook for it: the imports, a
+`load` cell and one step per modifier the file needs. It replaces the empty notebook you
 start with. File › Open on a `.py` file opens it as a notebook. The cells only run after you
 choose to (Notebook › Run all), because a notebook is code. Preferences › Python ›
 *Run notebooks when opened* can change that to always run them or never run them.
@@ -95,6 +112,17 @@ File › Save notebook (Ctrl+S) writes the `.py` file. Sessions (`.ewald`) still
 from the File menu.
 
 ## Plugins and changes from elsewhere
+
+The puzzle icon on the far left opens the **Plugins** side bar, next to the notebook (Window ›
+Plugins, Ctrl+Shift+X). It lists the installed plugins, with where each comes from (plugin
+folder, pip package or this session) and any error it raised, and the plugins you can install:
+ewald's example plugins and every catalog in Preferences › Python › *Plugin catalogs* (see
+[Packaging and sharing](../plugins/packaging.md#plugin-catalogs)). Type to search, or filter with
+`@installed`, `@available` or a kind such as `@modifier`. *Install* copies a plugin file into the
+plugin folder and loads it at once; a `pip:` entry runs pip in the Python ewald runs in, after
+you confirm the command. *Remove* moves a file to the plugin folder's `.removed` folder (its
+steps stay available until ewald restarts). Selecting a modifier plugin shows its documentation
+and *Add as a step in the notebook*. *Create…* asks Claude to write a new plugin.
 
 Plugin modifiers ([Writing plugins](../plugins/index.md)) are steps like the built-in ones.
 Insert › Plugin step (or **+ Plugin**) lists the installed ones and writes the import line for
@@ -131,5 +159,8 @@ Preferences › General › *Window layout* switches between `notebook` (the def
 the OVITO-style pipeline list and properties panel, after a restart. In the notebook layout,
 display settings (particle radii and colors, bonds, cell and visual plugins) are in the
 **Display** panel on the right, tabbed with Ask Claude. View › Focus on the viewport (Ctrl+\\)
-hides the panels, and pressing it again brings them back. *UI theme* picks Paper (light, the
+hides the panels, and pressing it again brings them back. View › *Minimal mode* (Ctrl+Shift+M)
+hides the menu bar, toolbars and status bar, leaving the notebook and the viewport. Every
+command stays one search away in the command palette (Ctrl+K), menu shortcuts keep working,
+and Ctrl+Shift+M brings the menus back. *UI theme* picks Paper (light, the
 default) or Graphite (dark).

@@ -7,15 +7,15 @@ Jupyter, VS Code and jupytext open as a notebook and ``python file.py`` runs as 
     # # Cu void annealing
 
     # %%
-    from ewald import import_file
+    from ewald import load
     from ewald.modifiers import *
-    pipe = import_file("cu_void.lammpstrj")
+    pipe = load("cu_void.lammpstrj")
 
     # %%
-    pipe.modifiers.append(CoordinationAnalysis(cutoff=3.08))
+    pipe.add(CoordinationAnalysis(cutoff=3.08))
 
 Cells run in one namespace, like Jupyter. The variable ``pipe`` is the notebook's
-pipeline; the viewer shows it. A cell that is a single ``pipe.modifiers.append(...)``
+pipeline; the viewer shows it. A cell that is a single ``pipe.add(...)`` (or ``pipe.modifiers.append(...)``)
 (optionally after imports) is a *step*: the GUI shows it as a parameter form and keeps
 its source in sync with the modifier. A cell that is a single ``show(pipe, ...)`` call
 (:mod:`ewald.views`) is a *view*: a plot of a data table or a histogram, live and linked to
@@ -87,7 +87,7 @@ class Cell:
 
 
 def step_call(source: str, name: str = PIPELINE_NAME) -> ast.expr | None:
-    """The argument of ``<name>.modifiers.append(arg)`` if ``source`` is only that call,
+    """The argument of ``<name>.add(arg)`` or ``<name>.modifiers.append(arg)`` if ``source`` is only that call,
     optionally preceded by import statements; None otherwise."""
     try:
         tree = ast.parse(source)
@@ -97,11 +97,15 @@ def step_call(source: str, name: str = PIPELINE_NAME) -> ast.expr | None:
     if not isinstance(last, ast.Expr) or not all(isinstance(s, (ast.Import, ast.ImportFrom)) for s in head):
         return None
     call = last.value
-    if (isinstance(call, ast.Call) and len(call.args) == 1 and not call.keywords
-            and isinstance(call.func, ast.Attribute) and call.func.attr == "append"
-            and isinstance(call.func.value, ast.Attribute) and call.func.value.attr == "modifiers"
-            and isinstance(call.func.value.value, ast.Name) and call.func.value.value.id == name):
-        return call.args[0]
+    if not (isinstance(call, ast.Call) and len(call.args) == 1 and not call.keywords
+            and isinstance(call.func, ast.Attribute)):
+        return None
+    target = call.func.value
+    if call.func.attr == "add" and isinstance(target, ast.Name) and target.id == name:
+        return call.args[0]                                   # pipe.add(X(...))
+    if (call.func.attr == "append" and isinstance(target, ast.Attribute) and target.attr == "modifiers"
+            and isinstance(target.value, ast.Name) and target.value.id == name):
+        return call.args[0]                                   # pipe.modifiers.append(X(...))
     return None
 
 
@@ -121,27 +125,27 @@ def step_source(modifier: Modifier, namespace: dict | None = None, name: str = P
             src = f"# {fn.__name__}: Python function defined elsewhere (console); its source is not available"
         params = "".join(f", {k}={v!r}" for k, v in modifier.params.items())
         call = f"{fn.__name__}" if not params else f"PythonModifier({fn.__name__}{params})"
-        return f"{src}\n\n{name}.modifiers.append({call})"
+        return f"{src}\n\n{name}.add({call})"
     cls = type(modifier)
     lines = []
     known = namespace is not None and namespace.get(cls.__name__) is cls
     if not known and cls.__name__ not in getattr(modifiers, "__all__", ()):
         module = "ewald.modifiers" if getattr(modifiers, cls.__name__, None) is cls else cls.__module__
         lines.append(f"from {module} import {cls.__name__}")
-    lines.append(f"{name}.modifiers.append({modifier!r})")
+    lines.append(f"{name}.add({modifier!r})")
     if not modifier.enabled:
         lines.append(f"{name}.modifiers[-1].enabled = False")
     return "\n".join(lines)
 
 
 def load_code(pipeline: Pipeline, name: str = PIPELINE_NAME) -> str | None:
-    """``pipe = import_file(...)`` reproducing a pipeline's file source (None for other sources)."""
+    """``pipe = load(...)`` reproducing a pipeline's file source (None for other sources)."""
     src = getattr(pipeline, "source", None)
     if src is None or not hasattr(src, "path"):
         return None
     args = [repr(src.path)] + ([f"format={src.format!r}"] if getattr(src, "format", None) else []) + \
         [f"{k}={v!r}" for k, v in getattr(src, "kwargs", {}).items()]
-    return f"{name} = import_file({', '.join(args)})"
+    return f"{name} = load({', '.join(args)})"
 
 
 def _owned(cells) -> list:
@@ -464,7 +468,8 @@ class Notebook:
         return nb
 
 
-IMPORTS = "from ewald import import_file\nfrom ewald.modifiers import *\nfrom ewald.views import show"
+IMPORTS = ("from ewald import import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show\n"
+           "from ewald.paint import paint, hide, isolate, fade, resize")
 NEW_NOTEBOOK = '''# %% [markdown]
 # # {title}
 

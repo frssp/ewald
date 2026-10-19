@@ -98,7 +98,9 @@ def installed() -> list[Installed]:
     for origin, error in status["errors"].items():
         item = groups.get(origin) or groups.setdefault(origin, _installed_item(origin, folder))
         item.error = error
-    return sorted(groups.values(), key=lambda i: i.name.lower())
+    # a removed file's classes stay registered until restart; it is no longer installed
+    gone = [o for o in groups if Path(o).is_absolute() and not Path(o).exists()]
+    return sorted((i for o, i in groups.items() if o not in gone), key=lambda i: i.name.lower())
 
 
 def _installed_item(origin: str, folder: Path) -> Installed:
