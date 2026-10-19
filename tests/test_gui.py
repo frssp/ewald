@@ -548,13 +548,13 @@ def test_preferences_dialog_edit_search_restore(app, tmp_path):
     dlg = PreferencesDialog(s)
     assert [dlg.pages.item(i).text() for i in range(dlg.pages.count())] == list(settings.PAGES)
     dlg.set_value("viewport.rotation_step", 45.0)
-    dlg.set_value("compute.device", "auto")
+    dlg.set_value("compute.device", "cpu")
     assert s.is_default("viewport.rotation_step")           # untouched until Apply
     applied = []
     dlg.applied.connect(applied.append)
     dlg.apply()
     assert applied and s["viewport.rotation_step"] == 45.0
-    assert settings.load()["compute.device"] == "auto"       # saved to disk
+    assert settings.load()["compute.device"] == "cpu"        # saved to disk
     dlg._search("radius")
     visible = {dlg.pages.item(i).text() for i in range(dlg.pages.count()) if not dlg.pages.item(i).isHidden()}
     assert visible == {"Elements"}
@@ -628,7 +628,7 @@ def test_main_window_applies_settings(app, pipe):
     s["render.renderer"] = "opengl"
     s["elements.overrides"] = {"Cu": {"color": "#c8794a"}}
     w = MainWindow(pipe, settings=s)
-    assert w.device == "cpu" and w.style.background == "#ffffff" and w.style.bonds_enabled
+    assert w.device == "auto" and w.style.background == "#ffffff" and w.style.bonds_enabled
     assert w.viewport.rotation_step == 30.0 and not w.render_page.raytrace
     assert w.style.type_colors["Cu"] == "#c8794a"
     assert any(a.text() == "&Preferences…" for a in w.menuBar().actions()[1].menu().actions())
