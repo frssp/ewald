@@ -16,11 +16,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from .. import modifiers as mods
 from ..render import camera_state, render
 from .ask_panel import AskPanel, agent_from_settings
-<<<<<<< HEAD
 from .collapsible import make_collapsible
-=======
 from .compute import ComputeRunner
->>>>>>> origin/main
 from .console import make_console
 from .icons import app_icon
 from .inspector import DataInspector
