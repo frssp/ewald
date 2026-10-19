@@ -56,7 +56,8 @@ After `pip install ewald-cp2k` (or `pip install -e .` while developing), `ewald 
 the reader with its origin. Entry points are read once per process, so restart the GUI after
 installing.
 
-Modifier entry points (group `ewald.modifiers`) are planned and will follow the same shape:
+Modifiers use the group `ewald.modifiers`; the entry-point name becomes the modifier's name
+(class attribute `category` picks its GUI submenu):
 
 ```toml
 [project.entry-points."ewald.modifiers"]

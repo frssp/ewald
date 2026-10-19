@@ -206,3 +206,108 @@ def test_volumetric_readers_are_builtin_plugins(tmp_path):
     assert plugins.find_reader("x", "locpot").name == "vasp-volumetric"   # alias, kind from the name
     assert "CHGCAR*" in plugins.file_patterns("volumetric")
     assert "CHGCAR*" not in plugins.file_patterns("structure")
+
+
+LOCAL_COMPOSITION = EXAMPLE.parent / "local_composition.py"
+
+
+def test_modifier_plugin_from_folder_is_everywhere(cu_fcc):
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True)
+    shutil.copy(LOCAL_COMPOSITION, folder)
+    from ewald import StaticSource, Pipeline
+    from ewald.modifiers import LocalComposition          # imports like a built-in
+
+    assert plugins.modifiers()["LocalComposition"].category == "Analysis"
+    pipe = Pipeline(StaticSource(cu_fcc))
+    pipe.modifiers.append(LocalComposition(cutoff=3.0, element="Cu"))
+    assert np.allclose(pipe.compute(0)["Local Cu Fraction"], 1.0)
+
+    from ewald.llm import Toolset
+
+    ts = Toolset(pipe)
+    listed = ts.call("list_modifiers", {}).text()
+    assert "LocalComposition" in listed
+    res = ts.call("add_modifier", {"name": "LocalComposition", "params": {"cutoff": 2.9}})
+    assert not res.is_error, res.text()
+    script = ts.to_script()
+    assert "from ewald.modifiers import" in script and "LocalComposition" in script
+
+    from ewald.llm.reference import api_reference
+
+    assert "LocalComposition" not in api_reference()
+    assert "`LocalComposition(cutoff: float = 3.0" in api_reference(with_plugins=True)
+
+
+def test_modifier_name_clash_and_type_checks(capsys):
+    from ewald import Modifier
+
+    with pytest.raises(ValueError, match="built-in"):
+        plugins.register_modifier(type("CoordinationAnalysis", (Modifier,), {}))
+    with pytest.raises(TypeError):
+        plugins.register_modifier(object)
+    _write_plugin("clash.py", '''
+        from ewald import Modifier
+        from ewald.plugins import modifier
+
+        @modifier
+        class Slice(Modifier):
+            pass
+    ''')
+    st = plugins.status()
+    assert any(k.endswith("clash.py") and "built-in" in v for k, v in st["errors"].items())
+
+
+def test_modifier_entry_point_and_cli(monkeypatch, capsys):
+    import importlib.metadata as md
+
+    from ewald import Modifier
+
+    class Shift(Modifier):
+        """Move every particle by ``dz`` along z."""
+
+        category = "Transform"
+
+        def __init__(self, dz: float = 1.0):
+            self.dz = dz
+
+        def modify(self, data, ctx):
+            data.positions = data.positions + [0, 0, self.dz]
+
+    class EP:
+        name, value = "ShiftZ", "pkg:Shift"
+
+        def load(self):
+            return Shift
+
+    real = md.entry_points
+    monkeypatch.setattr(md, "entry_points", lambda **kw: [EP()] if kw.get("group") == "ewald.modifiers" else real(**kw))
+    import ewald.modifiers as mods
+
+    assert mods.ShiftZ is Shift and mods.ShiftZModifier is Shift   # OVITO-style suffix too
+    assert plugins.modifiers()["ShiftZ"].category == "Transform"
+    from ewald.__main__ import main
+
+    assert main(["plugins"]) is None
+    out = capsys.readouterr().out
+    assert "ShiftZ" in out and "Move every particle" in out
+    with pytest.raises(AttributeError):
+        mods.NoSuchModifier
+
+
+def test_gui_menu_lists_modifier_plugins():
+    pytest.importorskip("PySide6")
+    pytest.importorskip("pyvistaqt")
+    from ewald import Modifier
+    from ewald.gui import pipeline_panel
+
+    @plugins.modifier(category="My lab")
+    class Tagger(Modifier):
+        def modify(self, data, ctx):
+            data["Tag"] = np.ones(data.count)
+
+    pipeline_panel._discover()
+    try:
+        assert pipeline_panel.MODIFIER_MENU["My lab"]["Tagger"] is Tagger
+    finally:
+        pipeline_panel.MODIFIER_MENU.pop("My lab", None)

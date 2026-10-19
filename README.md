@@ -20,6 +20,7 @@ extending it ([plugins](docs/plugins/index.md)) and working on it
 pip install -e .            # CPU
 pip install -e ".[gpu]"     # + CuPy for device="cuda" (NVIDIA)
 pip install -e ".[gui]"     # + desktop viewer (PySide6, pyvistaqt, qtconsole)
+pip install -e ".[remote]"  # + files over SSH (paramiko)
 ```
 
 Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
@@ -57,7 +58,8 @@ show(pipe)        # open the viewer on a pipeline built in a script (in Jupyter:
 
 The window has a 3D viewport with a timeline underneath, a pipeline panel
 (add/reorder/enable modifiers, edit parameters, edit Python script modifiers
-in place), render settings with "Render active viewport" to PNG at any size,
+in place), a Render workspace (ray traced, OpenGL or vector output, journal size presets,
+overlays, movies), session save/load,
 a data inspector (particle table with expression filter, attributes, tables)
 and an IPython console where `pipeline`, `data` and `viewer` are live; changes
 made in the console redraw the view.
@@ -71,6 +73,46 @@ ewald render dump.lammpstrj out.png --frame 5 --type-map 1=Cu,2=Zr --color-by "P
 
 `python examples/demo.py` builds sample LAMMPS and VASP trajectories and renders
 example figures.
+
+### Figures, movies and sessions
+
+```python
+from ewald.render import render, render_animation
+
+data = pipe.compute(10)
+render(data, "fig.png", renderer="raytrace", size=(2100, 1575), dpi=600,
+       text="t = [Time] ps", type_legend=True, scale_bar=True)      # PNG with dpi metadata
+render(data, "fig.svg", renderer="vector")                         # SVG/PDF/EPS: real circles, editable text
+render_animation(pipe, "movie.mp4", fps=15, text="frame [Frame]")  # also .gif, .avi, .mov, frames_%04d.png
+```
+
+Output puts quality first: `quality="publication"` is the default (16 rays/pixel,
+32 AO rays, shadows; SSAO and fine sphere meshes in OpenGL). `quality="standard"`
+is balanced and `quality="draft"` renders half-size frames without AO or shadows
+for quick previews and long test movies; any explicit `samples=`, `ao_samples=`,
+`shadows=`, `antialiasing=` or `scale=` overrides the preset. The Render workspace
+has the same presets (plus Custom) and a separate movie quality, with defaults in
+Preferences › Rendering. The interactive viewport keeps its own speed settings.
+
+Renderers: `opengl` (VTK, fast), `raytrace` (built-in ray tracer with ambient
+occlusion and shadows) and `vector` (shaded discs and bond sticks painted far to
+near, overlays stay text). Raster renderers can also write .pdf/.svg/.eps with
+the image embedded. Overlays work with every renderer: `text` (expands `[Frame]`,
+`[Timestep]`, `[Time]` and any attribute name), `legend` (ColorCoding color bar),
+`type_legend` and `scale_bar` (a round length, or `scale_bar=10` for 10 Å).
+GIF and image sequences need nothing extra; MP4/AVI/MOV use ffmpeg from
+`pip install 'ewald[movie]'` or the system PATH.
+
+Sessions (`.ewald`, JSON) hold the input file, modifiers, visual style, camera and
+render settings. The GUI saves them with Ctrl+S and opens them like any file;
+scripts use `ewald.session.save_session(path, pipe, camera=..., render=...)` and
+`load_session(path)`. Python modifiers are stored as source and only run when
+loaded with `allow_code=True` (the GUI asks first).
+
+```bash
+ewald render figure.ewald figure.pdf --renderer vector     # re-render a saved session
+ewald movie dump.lammpstrj movie.gif --every 5 --fps 12 --text "t = [Time] ps" --time-per-frame 0.5
+```
 
 ## Design
 
@@ -121,6 +163,31 @@ extxyz, XSF (with grid), H5MD, XTC/TRR/DCD, CIF, ASE db/traj, cube, CHGCAR, or a
 format. Pipeline frames are written one at a time, and writer plugins (`@writer`,
 `ewald.writers` entry points) register the same way as reader plugins.
 
+### Files on another machine (SSH)
+
+Any path can live on an SSH host, written like `scp` or as a URL; wildcards work too:
+
+```python
+pipe = import_file("cluster:/scratch/me/run1/dump.lammpstrj")   # alias from ~/.ssh/config
+pipe = import_file("me@login.hpc.edu:run1/XDATCAR")              # relative to the remote home
+pipe = import_file("ssh://me@login.hpc.edu:2222/scratch/me/dump.*.lammpstrj")
+```
+
+In the GUI, File › Load remote file (SSH)… (Ctrl+Alt+O) browses the remote folders.
+Connections follow `~/.ssh/config` (HostName, User, Port, IdentityFile, IdentitiesOnly,
+ProxyJump, ProxyCommand, UserKnownHostsFile, StrictHostKeyChecking), the SSH agent and
+your default keys, and host keys are checked against `known_hosts`. If key login fails
+you are asked for the password or one-time code (terminal prompt, or a dialog in the GUI);
+it is never saved. Only recent remote locations are remembered.
+
+LAMMPS dumps/data files and XDATCARs are read in place: a dump is indexed by running
+`grep -b` on the remote host (streamed over SFTP if that is unavailable), and each frame
+is fetched when you look at it, so a large trajectory is never copied. Every other format,
+including reader plugins, is downloaded once into a local cache (`ewald.io.remote.cache_dir()`,
+`EWALD_CACHE_DIR` overrides) and reused while the remote size and modification time match;
+`ewald.io.remote.clear_cache()` empties it. Host aliases must be at least two characters,
+so `C:\data` stays a local Windows path.
+
 ### Reader plugins
 
 Formats ewald does not know can be added without touching ewald. A plugin is a
@@ -158,6 +225,18 @@ existing name replaces that reader. `ewald plugins` lists installed readers and 
 broken plugin never stops ewald from starting); `EWALD_NO_PLUGINS=1` skips loading them.
 [`examples/plugins/npz_trajectory.py`](examples/plugins/npz_trajectory.py) is a complete
 example for NumPy `.npz` trajectories (positions, types, cell, forces, energies).
+
+Modifiers plug in the same way: `@modifier(category="Analysis")` on a `Modifier` subclass in
+the plugin folder, or an `ewald.modifiers` entry point. A registered modifier imports as
+`from ewald.modifiers import Name`, appears in the GUI's Add modification menu and is offered
+by the Claude `add_modifier` tool ([`examples/plugins/local_composition.py`](examples/plugins/local_composition.py)).
+`llms.txt` stays core-only; `ewald api --with-plugins` appends the plugins installed here.
+
+`ewald forge "what to compute"` has Claude write such a modifier together with tests that
+have a known answer. ewald runs them in a subprocess, along with checks for the plugin
+contract (no in-place writes, the GPU code path), returns any failure to Claude to fix, and
+saves the modifier to the plugin folder only once everything passes
+([Modifier Forge](docs/plugins/forge.md)). It asks before running the generated code.
 
 LAMMPS values stay in the file's own unit style (`Units` attribute when the dump has it).
 The test fixtures in `tests/data/` come from real LAMMPS runs (`tests/data/lammps/generate.in`)

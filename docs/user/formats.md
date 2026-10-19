@@ -90,6 +90,22 @@ One-frame formats raise an error when given several frames; pass `frames=[i]`. T
 File › Export data lists the same writers and asks whether to write the current frame or the
 whole trajectory. A [writer plugin](../plugins/writers.md) adds a format.
 
+## Files on an SSH host
+
+Any path can be on another machine, written like `scp` or as a URL (needs the `remote` extra):
+`import_file("cluster:/scratch/me/run1/dump.lammpstrj")`, `"me@login.hpc.edu:run1/XDATCAR"`
+(relative to the remote home) or `"ssh://me@login.hpc.edu:2222/scratch/me/dump.*.lammpstrj"`.
+In the GUI, File › Load remote file (SSH)… browses the remote folders.
+
+Connections follow `~/.ssh/config` (HostName, User, Port, IdentityFile, IdentitiesOnly,
+ProxyJump, ProxyCommand, UserKnownHostsFile, StrictHostKeyChecking), the SSH agent and your
+keys, and host keys are checked against `known_hosts`. If key login fails, ewald asks for the
+password or one-time code and never saves it. LAMMPS dumps, LAMMPS data files and XDATCARs are
+read in place, frame by frame (a dump is indexed with `grep -b` on the host), so a large
+trajectory is not copied. Other formats, including plugin formats, are downloaded once into a
+local cache (`ewald.io.remote.cache_dir()`, `EWALD_CACHE_DIR` overrides) and reused while the
+remote file is unchanged. Host aliases need at least two characters, so `C:\data` stays local.
+
 ## Formats ewald does not read
 
 A [reader plugin](../plugins/readers.md) adds a format without changing ewald: once it is

@@ -21,6 +21,7 @@ from ewald.modifiers import CoordinationAnalysis, ExpressionSelection, DeleteSel
 
 pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, xsf, h5md, xtc, cif, ...
 # pipe = import_file("dump.*.lammpstrj", type_map={1: "Cu", 2: "Zr"})   # LAMMPS numeric types -> elements
+# pipe = import_file("cluster:/scratch/run1/dump.lammpstrj")   # over SSH: host:/path, user@host:path, ssh://host/path
 # pipe = import_file("run.npz", format="npz-trajectory")  # format= also names reader plugins (`ewald plugins`)
 pipe.modifiers.append(CoordinationAnalysis(cutoff=3.0))
 pipe.modifiers.append(ExpressionSelection("Coordination < 12"))
@@ -80,6 +81,11 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 | `CreateBondsModifier(mode=CreateBondsModifier.Mode.Pairwise)` | `CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)])` (`set_pairwise_cutoff` also works) |
 | `PythonScriptModifier(function=f)` | `pipe.modifiers.append(f)` |
 | `Viewport(...).render_image(filename=...)`, `pipeline.add_to_scene()` | `pipe.render(filename, frame=, size=, direction=)`; GUI: `ewald gui FILE` |
+| `vp.render_anim(filename="movie.mp4", fps=10)` | `render_animation(pipe, "movie.mp4", fps=10, text="t = [Time] ps")` (`from ewald.render import render_animation`; .gif/.avi/.mov/PNG sequence too) |
+| `TextLabelOverlay`, `ColorLegendOverlay` | `render(..., text="frame [Frame]", legend=True, type_legend=True, scale_bar=True)` |
+| vector export (`.pdf`/`.svg`) | `render(data, "fig.svg", renderer="vector")` (also .pdf/.eps) |
+| `TachyonRenderer(antialiasing_samples=, ambient_occlusion_samples=)` | `render(..., renderer="raytrace", quality="publication")` (default; `"draft"`/`"standard"`, or explicit `samples=`, `ao_samples=`) |
+| session state (`.ovito`) | `ewald.session.save_session(path, pipe, camera=..., render=...)`, `load_session(path).pipeline` |
 | `export_file(pipeline, file, format, columns=[...])` | `export_file(pipe, file, format=None, frames=None)`: writer from the file name (`POSCAR`, `*.data`, `*.extxyz`, `*.xsf`, `*.h5md`, `*.xtc`, `*.cif`, ...) or `format=`; one-frame formats need `frames=[i]` |
 
 ## Other entry points
@@ -144,6 +150,19 @@ def modifier_reference() -> str:
     return "\n".join(lines) + "\n"
 
 
-def api_reference() -> str:
-    """The full reference: guide + live modifier list."""
-    return GUIDE + "\n" + modifier_reference()
+def plugin_reference() -> str:
+    """Installed modifier plugins, in the same format (not part of llms.txt)."""
+    from .. import plugins
+
+    found = plugins.modifiers()
+    lines = ["## Modifier plugins installed here", ""]
+    for name, plugin in found.items():
+        doc = _doc(plugin.cls)
+        lines.append(f"- `{name}{_signature(plugin.cls)}`" + (f": {doc}" if doc else "") + f" [{plugin.origin}]")
+    return "\n".join(lines) + "\n" if found else ""
+
+
+def api_reference(with_plugins: bool = False) -> str:
+    """The full reference: guide + live modifier list (+ installed modifier plugins)."""
+    text = GUIDE + "\n" + modifier_reference()
+    return text + ("\n" + plugin_reference() if with_plugins and plugin_reference() else "")

@@ -31,6 +31,9 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
 - `io/`: native lazy readers (`lammps_dump.py`, `xdatcar.py`, `extxyz.py`, `xsf.py`, `h5md.py`), MDAnalysis
   for XTC/TRR/DCD (`mdanalysis_reader.py`), everything else via `ase_reader.py`; each module also has its
   writer. `io.builtin_readers()`/`builtin_writers()` register them in `plugins.py` (reader and writer registries).
+  `remote.py` opens `host:/path` / `ssh://` paths (paramiko): `base.open_binary` streams them to the
+  native readers, `FileSource` downloads them to a local cache for every other reader. Tests use the
+  in-process server in `tests/sftp_server.py` (fixtures `server`, `ssh_env` in conftest), no sshd.
 - `bonds.py` (`Bonds`: Topology + Periodic Image, bond search), `mesh.py` (`SurfaceMesh` for
   `data.surfaces`: polyhedra now, surface meshes later); both drawn by `render.py` and `raytrace.py`.
 - `backend.py` (numpy/CuPy `xp` backends), `neighbors.py` (numba CPU cell list, `find_pairs`),
@@ -40,16 +43,22 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
 - `_csrc/`: C++ ports of OVITO CNA/PTM/Voronoi/CSP plus vendored ptm, voro++, mwm_csp; origins and
   licenses in `_csrc/README.md`. Built by `setup.py` (pybind11).
 - `render.py` (VTK/PyVista offscreen; impostors above 150k atoms), `raytrace.py` (numba ray tracer,
-  the publication renderer; pip VTK has no OSPRay).
-- `plugins.py`: reader registry. Built-in formats (`io.builtin_readers()`, with priorities) plus
-  plugins from `ewald.readers` entry points and `<config dir>/plugins/*.py`; `io.open_reader`,
-  the GUI open filter and the `load_structure` tool all read it. Example in `examples/plugins/`.
+  the publication renderer; pip VTK has no OSPRay), `vector.py` (SVG/PDF/EPS via matplotlib),
+  `overlays.py` (text, color/type legends, scale bar for every renderer), `movie.py` (GIF/PNG via
+  Pillow, MP4/AVI/MOV via ffmpeg), `session.py` (`.ewald` JSON: source, modifiers, style, camera).
+- `plugins.py`: reader and modifier registry. Built-in formats (`io.builtin_readers()`, with
+  priorities) plus plugins from `ewald.readers` / `ewald.modifiers` entry points and
+  `<config dir>/plugins/*.py`; `io.open_reader`, the GUI open filter and menu, the Claude tools and
+  `ewald.modifiers.__getattr__` read it. Plugin modifiers stay out of `__all__` and `llms.txt`.
+  Examples in `examples/plugins/`.
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
 - `gui/`: `app.py` main window, `viewport.py`, `pipeline_panel.py`, `params.py`, `render_page.py`,
-  `preferences.py`, `console.py`, `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`.
-- `llm/`: Claude agent (`agent.py`), tools (`tools.py`), descriptors (`describe.py`, `narrate.py`),
+  `preferences.py`, `remote_dialog.py` (SSH browser), `console.py`, `inspector.py`, `plots.py`,
+  `timeline.py`, `palette.py`, `theme.py`.
+- `llm/`: Claude agent (`agent.py`), tools (`tools.py`), Modifier Forge (`forge.py`: Claude writes a
+  plugin + tests, verified in a subprocess, saved to the plugin folder), descriptors (`describe.py`, `narrate.py`),
   MCP server (`mcp_server.py`), and `reference.py`, the source of `llms.txt`.
 
 ## Conventions
