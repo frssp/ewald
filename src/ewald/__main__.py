@@ -113,7 +113,7 @@ def build_parser():
 # optional package -> the extra that installs it (for "ewald CMD" without that extra)
 EXTRAS = {"PySide6": "gui", "pyvistaqt": "gui", "qtconsole": "gui", "anthropic": "llm", "mcp": "llm",
           "anyio": "llm", "paramiko": "remote", "h5py": "formats", "MDAnalysis": "formats",
-          "cupy": "gpu", "plumed": "plumed", "imageio_ffmpeg": "movie"}
+          "cupy": "gpu", "imageio_ffmpeg": "movie"}
 
 
 def main(argv=None):

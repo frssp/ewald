@@ -4,6 +4,17 @@ ewald reads phonon eigenvectors from phonopy and VASP and animates a mode: the a
 along it over one period, the mode pattern is drawn as arrows, and in the desktop GUI the
 Plots tab shows the band structure, where clicking a band plays that mode.
 
+This is the **ewald-phonopy plugin** (id `phonopy`), not part of ewald itself: install it from
+the Plugins panel or with
+
+```bash
+pip install 'git+https://github.com/frssp/ewald-plugins#subdirectory=packages/ewald-phonopy'
+```
+
+It brings phonopy along. `PhononMode` then imports from `ewald.modifiers` like a built-in
+modifier, the readers below join `import_file`, and the example file `Cu3Au_band.yaml` ships in
+the plugin (`ewald_phonopy.EXAMPLES`).
+
 ```python
 from ewald import import_file
 from ewald.modifiers import PhononMode
@@ -23,6 +34,7 @@ render_animation(pipe, "mode.gif", fps=24)           # loops seamlessly
 |---|---|
 | phonopy `band.yaml` | band structure along a path; needs eigenvectors (`phonopy --eigvecs`, `EIGENVECTORS = .TRUE.`). High-symmetry labels come from `labels` or the per-point `label` keys |
 | phonopy `mesh.yaml`, `qpoints.yaml` | modes on a mesh or a list of q-points, with eigenvectors. `qpoints.yaml` has no cell: pass the primitive cell as `structure="POSCAR"` |
+| phonopy `phonopy.yaml`, `phonopy_params.yaml`, `phonopy_disp.yaml` with `FORCE_SETS` or `FORCE_CONSTANTS` | format `phonopy-fc`: phonopy computes the band structure with eigenvectors along the seekpath path, so no `band.yaml` is needed |
 | VASP OUTCAR, IBRION = 5, 6, 7 or 8 | Gamma-point modes from "Eigenvectors and eigenvalues of the dynamical matrix"; the structure is the first ionic step and the masses come from POMASS. Imaginary modes (`f/i=`) become negative frequencies, as in phonopy |
 
 A phonon OUTCAR is recognized by `IBRION` in its header; any other OUTCAR still opens as ionic

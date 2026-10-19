@@ -1,5 +1,9 @@
 """Ramachandran free energy surface of alanine dipeptide from metadynamics hills (PLUMED-NEST 20.023).
 
+Needs the ewald-plumed plugin (Plugins panel, or pip install
+'git+https://github.com/frssp/ewald-plugins#subdirectory=packages/ewald-plumed'); the PLUMED library
+itself is not needed.
+
 Data: https://github.com/spiwokv/metadynminerdata (no license stated; downloaded, not
 redistributed), 2D well-tempered metadynamics of alanine dipeptide in water on phi and psi
 (300 K, bias factor 10, 30,000 hills, kJ/mol).
@@ -21,7 +25,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from ewald import examples
-from ewald.plumed import fes_from_hills
+from ewald_plumed.plumed import fes_from_hills
 
 out = Path(sys.argv[1] if len(sys.argv) > 1 else "papers_out")
 out.mkdir(exist_ok=True)

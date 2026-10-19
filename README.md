@@ -90,7 +90,7 @@ ewald render dump.lammpstrj out.png --frame 5 --type-map 1=Cu,2=Zr --color-by "P
 ```
 
 `ewald examples` lists small example files shipped with the package (POSCAR, CIF, XYZ/extxyz,
-XDATCAR, CHGCAR, LAMMPS dump/data, phonopy band.yaml); the GUI has them under File › Open
+XDATCAR, CHGCAR, LAMMPS dump/data); the GUI has them under File › Open
 example, and `ewald.examples.path("POSCAR.SrTiO3")` gives their paths in Python.
 `python examples/demo.py` builds sample LAMMPS and VASP trajectories and renders
 example figures.
@@ -278,6 +278,12 @@ readouts, a coordinate tripod), color maps (`@colormap`, usable as any `cmap`) a
 plug in the same way ([overlay plugins](docs/plugins/overlays.md),
 [color maps and themes](docs/plugins/styles.md),
 [`examples/plugins/figure_extras.py`](examples/plugins/figure_extras.py)).
+Claude tools come from plugins too (`@claude_tool`, [Claude tool plugins](docs/plugins/tools.md)).
+
+ewald's own formats are listed as built-in plugins that can be switched off
+(`ewald plugins --disable vasp`), and the phonopy and PLUMED support are first-party plugins in
+[frssp/ewald-plugins](https://github.com/frssp/ewald-plugins), installed from the Plugins panel or
+with pip ([built-in and first-party plugins](docs/plugins/index.md#built-in-and-first-party-plugins)).
 
 `ewald forge "what to compute"` has Claude write such a modifier together with tests that
 have a known answer. ewald runs them in a subprocess, along with checks for the plugin
@@ -334,8 +340,7 @@ names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
 `DeleteSelected`, `Slice`, `AssignColor`, `ColorCoding`, `ComputeProperty`,
 `CoordinationAnalysis` (+ total/partial RDF), `ClusterAnalysis` (OVITO-compatible: size, COM, gyration tensor, unwrap),
 `CalculateDisplacements` (+ MSD),
-`Replicate`, `WrapAtoms`, `AffineTransformation`, `VectorVis` (arrows), `PhononMode` (phonon mode
-animation from phonopy `band.yaml` or a VASP IBRION=5-8 OUTCAR), and any Python function
+`Replicate`, `WrapAtoms`, `AffineTransformation`, `VectorVis` (arrows), and any Python function
 `f(frame, data)`.
 
 OVITO Pro-style statistics, checked against OVITO 3.16 bin for bin: `Histogram`,
@@ -382,10 +387,12 @@ ti_d = es.pdos_of(data.types == "Ti", "d")      # (nspin, nE)
 print(es.band_gap())
 ```
 
-### Phonon modes
+### Phonon modes (ewald-phonopy plugin)
 
+With the `phonopy` plugin from [frssp/ewald-plugins](https://github.com/frssp/ewald-plugins)
+(`pip install 'git+https://github.com/frssp/ewald-plugins#subdirectory=packages/ewald-phonopy'`),
 phonopy `band.yaml`/`mesh.yaml`/`qpoints.yaml` (with eigenvectors) and OUTCARs of VASP
-IBRION=5-8 runs open as a looping trajectory; `PhononMode` displaces the atoms along one mode
+IBRION=5-8 runs open as a looping trajectory (so do `phonopy.yaml` + `FORCE_SETS`); `PhononMode` displaces the atoms along one mode
 in a commensurate supercell, as `phonopy --modulation` does, and draws the pattern as arrows.
 In the GUI the Plots tab shows the band structure and clicking a band plays that mode.
 
@@ -537,9 +544,10 @@ With the optional `ovito` package (`pip install -e ".[gui,ovito]"`; one command,
 polylines in `tables["dislocations"]`), and `OvitoModifier(any_ovito_modifier)`
 runs any other OVITO modifier inside an ewald pipeline.
 
-### PLUMED collective variables
+### PLUMED collective variables (ewald-plumed plugin)
 
-With the PLUMED library (`conda install -c conda-forge plumed py-plumed`), `Plumed(input)`
+With the `plumed` plugin from [frssp/ewald-plugins](https://github.com/frssp/ewald-plugins)
+and the PLUMED library (`conda install -c conda-forge plumed py-plumed`), `Plumed(input)`
 runs a `plumed.dat` over the trajectory (Angstrom to nm, masses, charges and the cell handed
 over as an MD code would; results identical to `plumed driver`) and stores every CV as the
 attribute `Plumed.<name>`, per-atom CVs as properties; `LoadColvar` aligns an existing COLVAR

@@ -247,7 +247,7 @@ PAPERS = [
         description="PLUMED HILLS of 4 walkers (2 CVs: B-N intermolecular and B-H bridge coordination, "
                     "kJ/mol) and the authors' plumed sum_hills fes.dat",
         reproduces="the AB -> AaDB free energy surface, compared point by point with the authors' "
-                   "sum_hills output (ewald.plumed.fes_from_hills)",
+                   "sum_hills output (fes_from_hills of the ewald-plumed plugin)",
         script="ammonia_borane_fes.py",
         files=(*(RemoteFile(f"HILLS.{i}", _github(*_AB, f"Ammonia_borane/1.AB_to_AaDB/HILLS.{i}"), sha, size)
                  for i, (sha, size) in enumerate(_AB_HILLS)),
@@ -262,7 +262,7 @@ PAPERS = [
         source="https://github.com/spiwokv/metadynminerdata",
         license="none stated (downloaded from the authors' repository, not redistributed)",
         description="PLUMED HILLS (30,000 hills on phi, psi; kJ/mol, 300 K, bias factor 10) and plumed.dat",
-        reproduces="the Ramachandran free energy surface and its minima (ewald.plumed.fes_from_hills)",
+        reproduces="the Ramachandran free energy surface and its minima (fes_from_hills of the ewald-plumed plugin)",
         script="alanine_dipeptide_fes.py",
         files=(RemoteFile("HILLS", _github(*_ALA, "2D/HILLS"),
                           "b5729a8968d8978ce926ae6773551de7266ebbc2047c22d367ce317c8fa63573", 4860156),

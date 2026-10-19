@@ -2,12 +2,11 @@
 
 The structures are textbook crystals built with ASE; the trajectories, forces and the charge
 density are synthetic (seeded random displacements, harmonic forces, Gaussians on atoms and
-bond centres), so the files stay small and need no simulation code. ``Cu3Au_band.yaml`` is a
-copy of the phonopy fixture in ``tests/data/phonon/`` (see ``make_phonon_reference.py``).
+bond centres), so the files stay small and need no simulation code. Phonon examples ship with the
+ewald-phonopy plugin (``ewald_phonopy.EXAMPLES``).
 """
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 import numpy as np
@@ -101,11 +100,6 @@ def main(out: Path = OUT):
     grid["Charge Density"] = rho
     data.grids["charge-density"] = grid
     export_file(data, out / "CHGCAR.Si", format="chgcar")
-
-    # phonopy band.yaml with eigenvectors (L1_2 Cu3Au): PhononMode animates a mode
-    fixture = HERE.parents[2] / "tests" / "data" / "phonon" / "band.yaml"
-    if fixture.exists():
-        shutil.copyfile(fixture, out / "Cu3Au_band.yaml")
 
 
 if __name__ == "__main__":

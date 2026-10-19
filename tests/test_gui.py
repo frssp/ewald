@@ -140,10 +140,17 @@ def test_multiline_parameter_and_fes_map(app):
     from ewald.gui.params import ParameterForm
     from ewald.gui.plots import PlotsPanel, _grid
 
-    mod = mods.Plumed()
+    class Script(mods.Modifier):  # like the ewald-plumed plugin's Plumed: its input is a plumed.dat
+        multiline_parameters = ("input",)
+
+        def __init__(self, input: str = "d: DISTANCE ATOMS=1,2"):
+            super().__init__()
+            self.input = input
+
+    mod = Script()
     form = ParameterForm(mod)
     editor = form.editors["input"][0]
-    assert isinstance(editor, QtWidgets.QPlainTextEdit)     # a plumed.dat, not one line
+    assert isinstance(editor, QtWidgets.QPlainTextEdit)     # a multi-line text, not one line
     editor.setPlainText("d: DISTANCE ATOMS=1,2\nt: TORSION ATOMS=1,2,3,4\n")
     form.apply()
     assert mod.input.count("\n") == 2
@@ -467,10 +474,7 @@ def test_viewport_context_menu_follows_data_and_picks(app, cu_fcc, tmp_path):
     w.open_example("CHGCAR.Si")
     entries(w.viewport_menu())["Add isosurface"].trigger()
     assert w.data.surfaces and "Edit isosurface" in entries(w.viewport_menu())
-    w.open_example("Cu3Au_band.yaml")
-    menu = entries(w.viewport_menu())
-    assert "Phonon band structure" in menu and "Play" in menu
-    w.close()
+    w.close()  # the phonon entries are tested with the ewald-phonopy plugin
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
@@ -1134,34 +1138,6 @@ def test_colormap_combo_lists_plugins(app, monkeypatch):
     assert "grayscale" in combo.itemData(0, QtCore.Qt.ToolTipRole)
 
 
-def test_phonon_band_plot_click_picks_mode(app):
-    from pathlib import Path
-
-    from matplotlib.backend_bases import MouseEvent
-
-    from ewald import import_file
-    from ewald.gui.plots import PlotsPanel
-
-    pipe = import_file(Path(__file__).parent / "data" / "phonon" / "band.yaml", frames=4)
-    pipe.modifiers.append(mods.PhononMode(qpoint=4, band=5))
-    panel = PlotsPanel()
-    panel.resize(600, 400)
-    panel.set_data(pipe.compute(0))
-    ax = panel.figure.axes[0]
-    assert panel.table.currentText() == "Phonon Bands" and ax.get_ylabel() == "Frequency (THz)"
-    assert [t.get_text() for t in ax.get_xticklabels()] == ["$\\Gamma$", "X", "M", "$\\Gamma$", "R"]
-    modes = pipe.source_frame(0).attributes["Phonon Modes"]
-    assert list(panel._marker.get_ydata()) == [modes.frequencies[4, 5]]
-    panel.set_data(pipe.compute(1))
-    assert panel.figure.axes[0] is ax  # next frame of the animation: no redraw
-    picked = []
-    panel.phononModePicked.connect(lambda q, b: picked.append((q, b)))
-    panel.canvas.draw()
-    x, y = ax.transData.transform((modes.distances[12], modes.frequencies[12, 9]))
-    panel._clicked(MouseEvent("button_press_event", panel.canvas, x, y, button=1))
-    assert picked == [(12, 9)]
-
-
 def test_dos_and_band_plots_show_selected_atoms(app):
     from pathlib import Path
 
@@ -1194,23 +1170,6 @@ def test_dos_and_band_plots_show_selected_atoms(app):
     assert sizes.max() <= 60 and len(sizes) > 100
     panel.set_highlight([])
     assert not panel._overlays and "Select atoms" in panel.link_label.text()
-
-
-@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
-def test_main_window_plays_phonon_mode(app):
-    from pathlib import Path
-
-    from ewald.gui.app import MainWindow
-
-    w = MainWindow()
-    pipe = w.open_file(Path(__file__).parent / "data" / "phonon" / "OUTCAR.phonon")
-    assert [type(m).__name__ for m in pipe.modifiers] == ["PhononMode"]  # added on open
-    assert w.data.attributes["Phonon.Band"] == 3 and "Phonon Mode" in w.data.vectors
-    w.play_phonon_mode(0, 9)
-    assert pipe.modifiers[0].band == 9 and w.data.attributes["Phonon.Band"] == 9
-    assert w.timeline.play.isChecked()
-    w.timeline.play.setChecked(False)
-    w.close()
 
 
 def test_open_example_menu(app):

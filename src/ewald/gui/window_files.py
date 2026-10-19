@@ -6,7 +6,7 @@ import os
 from PySide6 import QtCore, QtWidgets
 
 from .. import examples
-from .. import modifiers as mods
+from .. import plugins
 from ..io import import_file
 from ..render import camera_state
 
@@ -59,8 +59,9 @@ class FilesMixin:
             QtWidgets.QMessageBox.critical(self, "Load failed", f"{path}\n\n{exc}")
             return None
         QtWidgets.QApplication.restoreOverrideCursor()
-        if _has_phonon_modes(pipe) and not any(isinstance(m, mods.PhononMode) for m in pipe.modifiers):
-            pipe.modifiers.append(mods.PhononMode())  # a phonon file opens playing a mode
+        phonon = plugins.modifiers().get("PhononMode")   # the ewald-phonopy plugin
+        if phonon is not None and _has_phonon_modes(pipe) and not any(isinstance(m, phonon.cls) for m in pipe.modifiers):
+            pipe.modifiers.append(phonon.cls())  # a phonon file opens playing a mode
         self._check_bond_limit = True
         self.style.bond_pairs.clear()  # a new structure gets its own VESTA bond table
         self.set_pipeline(pipe)

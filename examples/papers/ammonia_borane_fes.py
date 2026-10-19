@@ -1,5 +1,9 @@
 """Free energy surface of ammonia borane dehydrogenation from metadynamics hills (PLUMED-NEST 19.082).
 
+Needs the ewald-plumed plugin (Plugins panel, or pip install
+'git+https://github.com/frssp/ewald-plugins#subdirectory=packages/ewald-plumed'); the PLUMED library
+itself is not needed.
+
 Data: https://github.com/gilgalad33/Ammonia-Borane-Dehydrogenation (no license stated; downloaded,
 not redistributed), step 1 (AB + AB -> AaDB): HILLS of four walkers of a well-tempered
 metadynamics at 400 K (bias factor 16, kJ/mol) on two coordination CVs, and the authors' fes.dat
@@ -7,7 +11,7 @@ written by `plumed sum_hills`.
 Paper: V. Rizzi, D. Polino, E. Sicilia, N. Russo, M. Parrinello, Angew. Chem. Int. Ed. (2019),
 doi:10.1002/anie.201900134.
 
-ewald.plumed.fes_from_hills sums the same 9,003 hills on the same 201 x 201 grid without PLUMED
+ewald_plumed.plumed.fes_from_hills sums the same 9,003 hills on the same 201 x 201 grid without PLUMED
 and agrees with fes.dat to a few hundredths of a kJ/mol.
 
     python examples/papers/ammonia_borane_fes.py [outdir]
@@ -22,7 +26,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from ewald import examples
-from ewald.plumed import Hills, fes_from_hills, read_fes, read_hills
+from ewald_plumed.plumed import Hills, fes_from_hills, read_fes, read_hills
 
 out = Path(sys.argv[1] if len(sys.argv) > 1 else "papers_out")
 out.mkdir(exist_ok=True)

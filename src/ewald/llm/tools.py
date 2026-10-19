@@ -16,6 +16,7 @@ and interprets it. Arrays are summarized, never dumped.
 """
 from __future__ import annotations
 
+import functools
 import inspect
 import json
 import os
@@ -74,7 +75,8 @@ def _obj(properties: dict, required=()) -> dict:
     return {"type": "object", "properties": properties, "required": list(required)}
 
 
-def _downsample(table: dict, max_rows: int = 60) -> dict:
+def downsample(table: dict, max_rows: int = 60) -> dict:
+    """At most ``max_rows`` evenly spaced rows of a column table, 4 significant digits (for tool results)."""
     n = len(next(iter(table.values())))
     idx = np.unique(np.linspace(0, n - 1, min(n, max_rows)).astype(int))
     return {k: [float(f"{v:.4g}") for v in np.asarray(col)[idx]] for k, col in table.items()}
@@ -407,7 +409,7 @@ class Toolset:
             types = data.types if partial and len(np.unique(data.types)) > 1 else None
             table = rdf(data.positions, data.cell, cutoff, bins, types=types)
             return {"peaks": _describe.rdf_peaks(data, rmax=cutoff, nbins=bins, partial=partial),
-                    "table": _downsample(table)}
+                    "table": downsample(table)}
 
         @T("analyze_symmetry",
            "Space group (Hermann-Mauguin and number), point group, crystal system and the Wyckoff site of every "
@@ -438,7 +440,7 @@ class Toolset:
             data = self._need_pipeline().compute(self._frame(frame))
             if kind == "sq":
                 table = dif.structure_factor(data.positions, data.cell, q_max, 200, types=data.types)
-                return {"table": _downsample(table)}
+                return {"table": downsample(table)}
             p = dif.powder_peaks(data.positions, data.types, data.cell, wavelength,
                                  "neutron" if kind == "neutron" else "xray", (5.0, two_theta_max))
             order = np.argsort(-p["Intensity"])[:25]
@@ -477,89 +479,7 @@ class Toolset:
                     entry["D_A2_per_frame"] = float(d)
                 fits[k] = entry
             return {"fit_lags": [float(lag[lo]), float(lag[min(hi, len(lag)) - 1])] if len(lag) else [],
-                    "fits": fits, "table": _downsample(table)}
-
-        @T("compute_plumed_cvs",
-           "Collective variables computed by PLUMED (needs the PLUMED library) over the trajectory from a plumed.dat "
-           "(text or path): e.g. 'd: DISTANCE ATOMS=1,2' (atoms numbered from 1, by Particle Identifier when present), "
-           "TORSION, COORDINATION, RMSD, METAD with temperature. Appends a Plumed modifier (unless keep=false), so "
-           "every frame gets attributes Plumed.<name> (PLUMED units: nm, rad, kJ/mol) and per-atom labels become "
-           "properties 'Plumed <label>'. Returns statistics per value and a downsampled table over frames.",
-           _obj({"input": {"type": "string", "description": "PLUMED input text, or the path of a plumed.dat"},
-                 "start": {"type": "integer"}, "stop": {"type": "integer"}, "step": {"type": "integer"},
-                 "time_per_frame": {"type": "number", "description": "ps between stored frames (default 1)"},
-                 "temperature": {"type": "number", "description": "K, for METAD and other biases"},
-                 "keep": {"type": "boolean", "description": "keep the modifier in the pipeline (default true)"}},
-                ["input"]))
-        def compute_plumed_cvs(input, start=0, stop=None, step=1, time_per_frame=1.0, temperature=0.0, keep=True):
-            from ..modifiers import Plumed
-            from ..plumed import untrusted_input_problems
-
-            pipe = self._need_pipeline()
-            problems = untrusted_input_problems(input)
-            if problems:
-                raise PermissionError("not run: " + "; ".join(problems))
-            mod = Plumed(input, start=start, stop=stop, step=step, time_per_frame=time_per_frame,
-                         temperature=temperature)
-            pipe.modifiers.append(mod)
-            try:
-                data = pipe.compute(self.frame)
-            except Exception:
-                pipe.modifiers.remove(mod)
-                raise
-            if not keep:
-                pipe.modifiers.remove(mod)
-            table = {k: np.asarray(v, float) for k, v in data.tables["plumed"].items()}
-            stats = {k: {"min": float(np.nanmin(v)), "max": float(np.nanmax(v)), "mean": float(np.nanmean(v)),
-                         "first": float(v[0]), "last": float(v[-1])} for k, v in table.items() if k != "Frame"}
-            per_atom = {name: {"min": float(np.min(data[name])), "max": float(np.max(data[name])),
-                               "mean": float(np.mean(data[name])), "frame": self.frame}
-                        for name in data.particles if name.startswith("Plumed ")}
-            cols = ["Frame"] + [k for k in table if k != "Frame"][:12]
-            return {"values": stats, "per_atom": per_atom, "table": _downsample({k: table[k] for k in cols}),
-                    "pipeline": self._pipeline_list()}
-
-        @T("read_plumed_output",
-           "Read a PLUMED output file. COLVAR (any '#! FIELDS' file): columns, statistics and a downsampled table. "
-           "HILLS: the metadynamics free energy surface F = -sum of hills (as plumed sum_hills), with its minimum, "
-           "range and a plot image.",
-           _obj({"path": {"type": "string"},
-                 "bins": {"type": "integer", "description": "FES grid bins per CV (default 100)"}}, ["path"]))
-        def read_plumed_output(path, bins=100):
-            from .. import plumed as pl
-
-            path = os.path.expanduser(path)
-            table = pl.read_colvar(path)
-            if not any(k.startswith("sigma_") for k in table):
-                stats = {k: {"min": float(np.nanmin(v)), "max": float(np.nanmax(v)), "mean": float(np.nanmean(v))}
-                         for k, v in table.items()}
-                return {"kind": "colvar", "rows": len(next(iter(table.values()), [])), "columns": stats,
-                        "table": _downsample(dict(table)) if table else {}}
-            fes = pl.fes_from_hills(path, bins=bins)
-            f = np.asarray(fes["fes"])
-            at = np.unravel_index(int(np.argmin(f)), f.shape)
-            out = {"kind": "hills", "hills": len(table["height"]), "cvs": fes["cvs"],
-                   "minimum": {cv: float(ax[i]) for cv, ax, i in zip(fes["cvs"], fes["grid"], at)},
-                   "fes_max_kJ_mol": float(f.max()),
-                   "ranges": {cv: [float(ax[0]), float(ax[-1])] for cv, ax in zip(fes["cvs"], fes["grid"])}}
-            if len(fes["cvs"]) == 1:
-                out["table"] = _downsample(fes["table"])
-            if len(fes["cvs"]) > 2:
-                return out
-            import matplotlib
-
-            matplotlib.use("Agg", force=False)
-            from matplotlib.figure import Figure
-
-            fig = Figure(figsize=(5, 3.6))
-            pl.plot_fes(fes, fig.add_subplot(111))
-            fig.tight_layout()
-            png = os.path.join(self.workdir, f"fes_{len(self.figures):03d}.png")
-            fig.savefig(png, dpi=120)
-            self.figures.append(png)
-            out["plot"] = png
-            with open(png, "rb") as fh:
-                return ToolResult(out, images=[fh.read()])
+                    "fits": fits, "table": downsample(table)}
 
         @T("render_image",
            "Render a frame of the pipeline to PNG and return the image so you can inspect it. "
@@ -754,6 +674,11 @@ class Toolset:
                 if add_as_modifier:
                     self._need_pipeline().modifiers.append(ns[add_as_modifier])
                 return {"stdout": buf.getvalue()[-4000:], "pipeline": self._pipeline_list() if self.pipeline else []}
+
+        for plugin in plugins.tools().values():  # @claude_tool plugins; built-in names win
+            if plugin.name not in self.tools:
+                self.tools[plugin.name] = Tool(plugin.name, plugin.description, plugin.schema,
+                                               functools.partial(plugin.function, self))
 
     # -------------------------------------------------------------- helpers
     def _frame(self, frame) -> int:

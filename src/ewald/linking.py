@@ -237,7 +237,8 @@ def _angles(data, link):
 def frame_rows(pipeline, data, table: str) -> np.ndarray:
     """For every frame of ``pipeline``, the row of ``data.tables[table]`` that belongs to it
     (-1 when none): by a 'Frame' column, by timestep for 'Step'/'Timestep' tables, through the
-    pipeline's :class:`~ewald.modifiers.LoadColvar` for 'colvar', else row k for frame k."""
+    pipeline's LoadColvar modifier (ewald-plumed plugin; any enabled modifier with a ``row(frame)`` method
+    that writes the 'colvar' table) for 'colvar', else row k for frame k."""
     nf = pipeline.num_frames if pipeline is not None else 1
     t = data.tables[table]
     x0 = next(iter(t))
@@ -250,9 +251,8 @@ def frame_rows(pipeline, data, table: str) -> np.ndarray:
         rows[f[ok][::-1]] = np.nonzero(ok)[0][::-1]  # first row of each frame wins
         return rows
     if table == "colvar" and pipeline is not None:
-        from .modifiers import LoadColvar
-
-        m = next((m for m in pipeline.modifiers if isinstance(m, LoadColvar) and m.enabled), None)
+        m = next((m for m in pipeline.modifiers
+                  if type(m).__name__ == "LoadColvar" and m.enabled and callable(getattr(m, "row", None))), None)
         if m is not None:
             for k in range(nf):
                 r = m.row(k)

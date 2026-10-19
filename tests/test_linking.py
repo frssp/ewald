@@ -87,7 +87,21 @@ def test_fes_box_selects_frames_through_colvar(tmp_path, cu_fcc):
         data.tables["fes"] = {"d1": x.ravel(), "d2": y.ravel(), "Free Energy": (x + y).ravel()}
 
     # stride 2: frame k is COLVAR row 2k, so rows 1, 3 and 5 belong to no frame
-    pipe = Pipeline(StaticSource([cu_fcc] * 3), [mods.LoadColvar(str(colvar), stride=2), mods.PythonModifier(fes)])
+    class LoadColvar(mods.Modifier):  # stands in for the ewald-plumed plugin's: frame k is COLVAR row stride*k
+        def __init__(self, path: str = "", stride: int = 1):
+            super().__init__()
+            self.path, self.stride = path, stride
+
+        def row(self, frame):
+            return frame * self.stride
+
+        def modify(self, data, ctx):
+            t = np.loadtxt(self.path)
+            data.tables["colvar"] = {"time": t[:, 0], "d1": t[:, 1], "d2": t[:, 2]}
+            row = t[self.row(ctx.frame)]
+            data.attributes.update({"Colvar.d1": row[1], "Colvar.d2": row[2]})
+
+    pipe = Pipeline(StaticSource([cu_fcc] * 3), [LoadColvar(str(colvar), stride=2), mods.PythonModifier(fes)])
     d = pipe.compute(0)
     L = linking.link_for(d, "fes")
     assert L == linking.Link("frames2d", "fes", "colvar")

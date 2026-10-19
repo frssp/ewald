@@ -42,17 +42,21 @@ for in words ends up as an ordinary pipeline.
 ### One feature, three layers
 
 A feature that has science code, a file format and a pipeline step keeps the same module name in
-each layer, so `phonon` lives in three places on purpose:
+each layer (the phonon support kept `phonon.py`, `io/phonon.py` and `modifiers/phonon.py` before it
+became the ewald-phonopy plugin, which keeps the same split):
 
 | Layer | Holds | Examples |
 |---|---|---|
-| `ewald/<name>.py` | the domain library: plain functions and types with no pipeline or GUI | `phonon.py`, `diffraction.py`, `electronic.py`, `plumed.py`, `bonds.py` |
-| `ewald/io/<name>.py` | readers and writers for that domain's files | `io/phonon.py`, `io/neb.py`, `io/volumetric.py` |
-| `ewald/modifiers/<name>.py` | `Modifier` classes that call the library inside a pipeline | `modifiers/phonon.py`, `modifiers/diffraction.py`, `modifiers/neb.py` |
+| `ewald/<name>.py` | the domain library: plain functions and types with no pipeline or GUI | `diffraction.py`, `electronic.py`, `bonds.py` |
+| `ewald/io/<name>.py` | readers and writers for that domain's files | `io/neb.py`, `io/volumetric.py` |
+| `ewald/modifiers/<name>.py` | `Modifier` classes that call the library inside a pipeline | `modifiers/neb.py`, `modifiers/diffraction.py` |
 
 Dependencies point one way: `modifiers/` imports the root module and `io/`; the root module may use
 `io.base` helpers to parse files but never imports `modifiers/`, `gui/` or `llm/`. New features follow the same split; a feature
-that is only a pipeline step needs only the `modifiers/` module.
+that is only a pipeline step needs only the `modifiers/` module. Support tied to one outside
+code (phonopy, PLUMED) is a first-party plugin in
+[frssp/ewald-plugins](https://github.com/frssp/ewald-plugins) (`packages/ewald-<name>`) rather
+than a core module.
 
 ## Principles
 
