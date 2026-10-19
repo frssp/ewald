@@ -80,6 +80,7 @@ log = logging.getLogger(__name__)
 READER_GROUP = "ewald.readers"
 MODIFIER_GROUP = "ewald.modifiers"
 WRITER_GROUP = "ewald.writers"
+VISUAL_GROUP = "ewald.visuals"
 
 
 @dataclass
@@ -196,10 +197,31 @@ class ModifierPlugin:
 
 
 @dataclass
+class VisualPlugin:
+    name: str
+    cls: type
+    category: str = "Plugins"
+    description: str = ""
+    origin: str = ""
+    builtin: bool = False
+
+
+def _builtin_visuals() -> dict:
+    from . import scene
+
+    out = {}
+    for cls in scene.BUILTIN:
+        doc = inspect.cleandoc(cls.__doc__ or "").split("\n\n")[0]
+        out[cls.name] = VisualPlugin(cls.name, cls, "Built-in", " ".join(doc.split()), "built-in", True)
+    return out
+
+
+@dataclass
 class _Registry:
     readers: dict = field(default_factory=_builtin_readers)
     modifiers: dict = field(default_factory=dict)
     writers: dict = field(default_factory=_builtin_writers)
+    visuals: dict = field(default_factory=_builtin_visuals)
     errors: dict = field(default_factory=dict)      # origin -> message
     loaded: bool = False
 
@@ -278,6 +300,49 @@ def modifiers() -> dict[str, ModifierPlugin]:
     return dict(_registry.modifiers)
 
 
+def visual(cls=None, *, name: str | None = None, category: str = "Plugins", description: str = ""):
+    """Class decorator registering a :class:`ewald.scene.VisualElement` subclass; bare or with arguments."""
+
+    def deco(c):
+        register_visual(c, name=name, category=category, description=description)
+        return c
+
+    return deco(cls) if cls is not None else deco
+
+
+def register_visual(cls: type, name: str | None = None, category: str = "Plugins", description: str = "",
+                    origin: str = "python") -> VisualPlugin:
+    from .scene import VisualElement
+
+    if not (isinstance(cls, type) and issubclass(cls, VisualElement)):
+        raise TypeError(f"{cls!r} is not a VisualElement subclass")
+    name = name or cls.__dict__.get("name") or cls.__name__
+    old = _registry.visuals.get(name)
+    if old is not None and old.builtin and old.cls is not cls:
+        raise ValueError(f"visual element name {name!r} is taken by a built-in element; use another name")
+    if not cls.__dict__.get("name"):
+        cls.name = name
+    doc = inspect.cleandoc(cls.__doc__ or "").split("\n\n")[0]
+    plugin = VisualPlugin(name, cls, getattr(cls, "category", None) or category,
+                          description or " ".join(doc.split()), getattr(_loading, "origin", None) or origin)
+    _registry.visuals[name] = plugin
+    return plugin
+
+
+def visuals() -> dict[str, VisualPlugin]:
+    """Visual elements by name: the built-in ones (Particles, Bonds, ...) and plugins."""
+    load_plugins()
+    return dict(_registry.visuals)
+
+
+def visual_name(cls: type) -> str:
+    """The registered name of a visual element class (its ``name`` when it is not registered)."""
+    for name, p in _registry.visuals.items():
+        if p.cls is cls:
+            return name
+    return getattr(cls, "name", "") or cls.__name__
+
+
 class _Loading:
     origin: str | None = None
 
@@ -296,6 +361,8 @@ def load_plugins(force: bool = False):
         _registry.modifiers = {k: v for k, v in _registry.modifiers.items() if v.origin == "python"}
         keep = {k: v for k, v in _registry.writers.items() if v.origin == "python"}
         _registry.writers = {**_builtin_writers(), **keep}
+        keep = {k: v for k, v in _registry.visuals.items() if v.origin == "python" and not v.builtin}
+        _registry.visuals = {**_builtin_visuals(), **keep}
         _registry.errors.clear()
     if os.environ.get("EWALD_NO_PLUGINS"):
         return
@@ -308,7 +375,8 @@ def _load_entry_points():
 
     for group, register in ((READER_GROUP, lambda name, obj: register_reader(name, obj)),
                             (MODIFIER_GROUP, lambda name, obj: register_modifier(obj, name=name)),
-                            (WRITER_GROUP, lambda name, obj: register_writer(name, obj))):
+                            (WRITER_GROUP, lambda name, obj: register_writer(name, obj)),
+                            (VISUAL_GROUP, lambda name, obj: register_visual(obj, name=name))):
         try:
             eps = entry_points(group=group)
         except Exception as exc:
@@ -404,6 +472,8 @@ def status() -> dict:
                          "multi_frame": p.multi_frame}
                         for p in sorted(_registry.writers.values(),
                                         key=lambda p: (p.priority is None, p.priority or 0, p.name))],
+            "visuals": [{"name": p.name, "category": p.category, "description": p.description,
+                         "origin": p.origin} for p in _registry.visuals.values()],
             "errors": dict(_registry.errors)}
 
 

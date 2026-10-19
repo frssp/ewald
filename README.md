@@ -242,6 +242,14 @@ the plugin folder, or an `ewald.modifiers` entry point. A registered modifier im
 by the Claude `add_modifier` tool ([`examples/plugins/local_composition.py`](examples/plugins/local_composition.py)).
 `llms.txt` stays core-only; `ewald api --with-plugins` appends the plugins installed here.
 
+Visual elements plug in too: a `VisualElement` subclass with `@visual` returns
+renderer-neutral primitives (spheres, cylinders, lines, meshes, arrows) from `ewald.scene`, so
+it is drawn by the OpenGL viewport, the ray tracer and SVG/PDF output alike, and appears under
+the GUI's "+ Visual" button and in the Claude `add_visual` tool
+([`examples/plugins/cell_axes.py`](examples/plugins/cell_axes.py),
+[visual element plugins](docs/plugins/visuals.md)). ewald's own atoms, bonds, cell, surfaces,
+arrows and trajectory lines are built the same way.
+
 `ewald forge "what to compute"` has Claude write such a modifier together with tests that
 have a known answer. ewald runs them in a subprocess, along with checks for the plugin
 contract (no in-place writes, the GPU code path), returns any failure to Claude to fix, and

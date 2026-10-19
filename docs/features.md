@@ -170,6 +170,19 @@ Details: [Rendering figures](user/rendering.md).
 | `raytrace` | built-in numba ray tracer: ambient occlusion, shadows, anti-aliasing (publication figures) |
 | `vector` | SVG/PDF/EPS with editable shapes and text (matplotlib) |
 
+### Visual elements
+
+What gets drawn; every renderer draws every element. Plugins add more ([Visual element plugins](plugins/visuals.md)).
+
+| Element | What it draws |
+|---|---|
+| `Particles` | Atoms as spheres: the 'Color' and 'Radius' properties, else per-type colors (``type_colors`` first) and radii (``type_radii``, else ``radius_preset``, see :mod:`ewald.radii`), times ``radius_scale``. Particles with Transparency 1 are left out. |
+| `Bonds` | Half-bonds as cylinders in their atoms' colors (or the bonds' 'Color'): ``data.bonds`` when present, else a search by ``cutoff`` or VESTA-style ``pairs`` [(A, B, dmin, dmax)]. |
+| `Surfaces` | Every ``data.surfaces`` mesh (polyhedra, isosurfaces, grid slices). |
+| `Vectors` | Per-particle vectors as arrows: ``data.vectors`` (VectorVis) plus ``vectors`` (a property name, a list, or ``{name: {VectorStyle fields}}``, see :class:`ewald.arrows.VectorStyle`). |
+| `Trajectory lines` | ``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle in its atom color; ``width`` in pixels, 0 hides them. |
+| `Simulation cell` | The cell edges as lines, ``width`` pixels wide; ``color`` None uses the renderer's ink (black, or light grey on dark backgrounds). ``radius`` (Angstrom) sizes the ray-traced tubes, None = 0.15 % of the cell diagonal. |
+
 ### Output formats
 
 - Images: `.png` `.jpg` `.jpeg` `.tif` `.tiff`; vector pages: `.svg` `.pdf` `.eps` `.ps` (true vectors with `renderer="vector"`, an embedded image otherwise)
@@ -226,6 +239,9 @@ The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (
 | `compute_rdf` | Radial distribution function g(r) of a frame (total, plus partial pairs). |
 | `compute_msd` | Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per type, with a linear-regime fit D = slope/6. |
 | `render_image` | Render a frame of the pipeline to PNG and return the image so you can inspect it. |
+| `list_visuals` | Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell; configured through render_image and modifiers) and installed plugins, which add_visual draws on top in every renderer. |
+| `add_visual` | Draw a plugin visual element (see list_visuals) in every later render_image, with optional constructor parameters. |
+| `remove_visual` | Stop drawing the visual element at 'index' of the added list. |
 | `export_file` | Write frames of the pipeline (after its modifiers) to a file: POSCAR, LAMMPS data/dump, extxyz, CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... The format follows the file name (POSCAR, *.data, *.extxyz, *.h5md) unless given. |
 | `get_script` | Standalone Python script that reproduces the current pipeline. |
 | `python_api` *code* | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature). |
@@ -235,8 +251,9 @@ Also: `ewald describe` / `ewald narrate` (rule-based descriptors and a trajector
 
 ## Plugins
 
-Entry point groups `ewald.readers`, `ewald.writers` and `ewald.modifiers`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier`; `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
+Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers` and `ewald.visuals`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual`; `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
 
+- `examples/plugins/cell_axes.py`: Example visual element plugins: cell axes and a halo around selected atoms.
 - `examples/plugins/local_composition.py`: Example modifier plugin: local chemical composition around every particle.
 - `examples/plugins/npz_trajectory.py`: Example reader plugin: trajectories stored as NumPy ``.npz`` archives.
 

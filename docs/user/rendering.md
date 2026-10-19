@@ -69,6 +69,7 @@ Every renderer draws the same overlays, sized relative to the image:
 | `renderer`, `quality` | `"opengl"`, `"raytrace"` or `"vector"`; `"draft"`, `"standard"` or `"publication"` |
 | `legend`, `type_legend`, `scale_bar`, `text` | overlays (see above) |
 | `show_cell`, `dpi` | cell outline; resolution stored in the file |
+| `visuals` | extra [visual elements](../plugins/visuals.md) drawn on top in every renderer: registered names, instances, or `{"name": ..., "params": {...}}` |
 | `vectors` | particle properties drawn as arrows: `"Force"`, `["Force", "Velocity"]` or `{"Force": {"scaling": 2, "color": "red"}}` (options of [`VectorVis`](modifiers.md#vector-arrows)); added to, and overriding, the arrows `VectorVis` set |
 
 Particle colors come from the `Color` property when a modifier set one (`ColorCoding`,

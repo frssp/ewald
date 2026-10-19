@@ -526,3 +526,46 @@ def test_feature_inventory_gui_section_is_current(tmp_path):
     assert saved == live.rstrip("\n").split("\n"), (
         "the GUI section of docs/features.md is stale; regenerate with: "
         "xvfb-run -a python -m ewald inventory -o docs/features.md --gui")
+
+
+def test_plugin_visual_element_in_panel_and_viewport(app, monkeypatch):
+    import shutil
+    from pathlib import Path
+
+    from ewald import plugins
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.pipeline_panel import PipelinePanel
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(Path(__file__).parents[1] / "examples" / "plugins" / "cell_axes.py", folder)
+    data = DataCollection([[1, 1, 1], [3, 3, 3]], ["Fe", "Fe"], Cell(np.eye(3) * 4))
+    style = ViewStyle()
+    panel = PipelinePanel(style)
+    panel.set_pipeline(Pipeline(StaticSource(data)))
+    panel._fill_visual_menu()
+    assert [a.text() for a in panel.visual_menu.actions()] == ["Cell axes", "Selection halo"]
+    redraws = []
+    panel.styleChanged.connect(lambda: redraws.append(1))
+    panel.add_visual("Cell axes")
+    assert style.visuals == [{"name": "Cell axes", "params": {"length": 2.0, "width": 0.25}, "enabled": True}]
+    form = panel._form  # the new element is selected and its form is open
+    form.editors["length"][0].setValue(3.0)
+    panel.scroll.widget().findChild(QtWidgets.QPushButton).click()
+    assert style.visuals[0]["params"]["length"] == 3.0 and redraws
+    v = Viewport(style)
+    v.set_data(data)
+    assert "visual:cell-axes" in v.plotter.actors
+    item = [panel.tree.topLevelItem(k) for k in range(panel.tree.topLevelItemCount())
+            if panel.tree.topLevelItem(k).text(1) == "Cell axes"][0]
+    item.setCheckState(0, QtCore.Qt.Unchecked)
+    assert style.visuals[0]["enabled"] is False
+    v.redraw()
+    assert "visual:cell-axes" not in v.plotter.actors
+    panel.tree.setCurrentItem(item)
+    panel._remove()
+    assert style.visuals == []
+    v.close()

@@ -12,6 +12,7 @@ against the same API the built-in readers and modifiers use, so everything in th
 | [Reader](readers.md) | a `FrameReader` class or a function returning frames | `@reader(...)` in the plugin folder, or an `ewald.readers` entry point | available |
 | [Writer](writers.md) | a function `f(path, frames, **kwargs)` | `@writer(...)` in the plugin folder, or an `ewald.writers` entry point | available |
 | [Modifier](modifiers.md) | a `Modifier` subclass (or a function `f(frame, data)` in a script) | `@modifier` in the plugin folder, or an `ewald.modifiers` entry point | available |
+| [Visual element](visuals.md) | a `VisualElement` subclass returning scene primitives | `@visual` in the plugin folder, or an `ewald.visuals` entry point | available |
 
 [Modifier Forge](forge.md) writes a modifier plugin from a description: Claude writes the
 module and its tests, and ewald saves it to the plugin folder once its checks pass.

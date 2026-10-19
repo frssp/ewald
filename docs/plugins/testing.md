@@ -108,6 +108,22 @@ A reader-plugin test can copy the plugin file into
 `import_file` picks the plugin without `format=` and that `ewald.plugins.status()["errors"]`
 is empty. ewald's `tests/test_plugins.py` does this.
 
+## Visual elements: check the scene, not the pixels
+
+`ewald.scene.build` returns the primitives an element produces without rendering anything, so
+geometry is checked with plain asserts and no display:
+
+```python
+from ewald.scene import build
+
+scene = build(data, visuals=[CellAxes(length=3.0)])
+arrows = scene["visual:cell-axes"].primitive
+assert arrows.count == 3
+```
+
+When pixels matter, render with `renderer="raytrace"` or `"vector"` and a fixed `camera=`;
+both run headless. See [Visual element plugins](visuals.md).
+
 ## Checking the GUI integration
 
 The GUI tests need PySide6 and a display; `pytest.importorskip("PySide6")` skips them

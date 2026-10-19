@@ -14,6 +14,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   histogram / reduce property, ring statistics.
 - PLUMED plugin and collective variables.
 - Ask Claude about picked atoms ([#26](https://github.com/frssp/ewald/pull/26)).
+- Visualization plugins, phase 0: Scene IR (`ewald.scene`) and visual element plugins
+  (`@visual`, `ewald.visuals`).
 
 ## Next
 
@@ -48,6 +50,17 @@ Figures
 - Vector arrows: their own color legend when a `ColorCoding` already owns the legend; arrows in
   the coarse (moving) viewport scene, as lines; in SVG/PDF, hide the part of an arrow inside its
   atom exactly (now the shaft is split at the atom and painted by depth).
+
+Visualization plugins (later phases of the Scene IR plan)
+
+- GUI: the built-in elements (Particles, Bonds, Cell, ...) as rows with forms generated from
+  their `VisualElement` parameters, replacing the hand-written style controls.
+- OpenGL and the ray tracer ignore `Cylinders.alpha`; see-through bonds need it.
+- Ray tracer: trajectory lines and other `Lines` without a `radius` are not drawn.
+- Phase 1: color map and theme registries, overlay plugins (`@overlay`), material presets.
+- Phase 2: renderer backend registry, so a plugin can add a renderer that consumes the Scene IR.
+- Phase 3 and later: glTF/HTML export from the IR, animated visuals, Claude-written visual
+  elements (a Visual Forge, like Modifier Forge).
 
 Plugins and Claude
 

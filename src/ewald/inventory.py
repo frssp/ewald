@@ -116,6 +116,13 @@ def rendering_section() -> list[str]:
 
     out = ["## Rendering and output", "", "Details: [Rendering figures](user/rendering.md).", "", "### Renderers", ""]
     out += _table(("`renderer=`", "What it is"), [(f"`{k}`", v) for k, v in RENDERERS.items()])
+    out += ["", "### Visual elements", "",
+            "What gets drawn; every renderer draws every element. Plugins add more "
+            "([Visual element plugins](plugins/visuals.md)).", ""]
+    from .plugins import _builtin_visuals
+
+    out += _table(("Element", "What it draws"), [(f"`{name}`", p.description.replace("|", "\\|"))
+                                                for name, p in _builtin_visuals().items()])
     out += ["", "### Output formats", "",
             "- Images: " + " ".join(f"`{s}`" for s in IMAGE_SUFFIXES) + "; vector pages: "
             + " ".join(f"`{s}`" for s in VECTOR_SUFFIXES) + " (true vectors with `renderer=\"vector\"`, "
@@ -172,8 +179,9 @@ def plugins_section() -> list[str]:
 
     examples = sorted((Path(__file__).resolve().parents[2] / "examples" / "plugins").glob("*.py"))
     out = ["## Plugins", "",
-           f"Entry point groups `{plugins.READER_GROUP}`, `{plugins.WRITER_GROUP}` and `{plugins.MODIFIER_GROUP}`, "
-           "or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier`; `ewald plugins` lists "
+           f"Entry point groups `{plugins.READER_GROUP}`, `{plugins.WRITER_GROUP}`, `{plugins.MODIFIER_GROUP}` and "
+           f"`{plugins.VISUAL_GROUP}`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / "
+           "`@visual`; `ewald plugins` lists "
            "what loaded. "
            "Details: [Plugins](plugins/index.md).", ""]
     for path in examples:

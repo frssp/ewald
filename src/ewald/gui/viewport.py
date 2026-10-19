@@ -13,6 +13,7 @@ from ..render import (
     atom_cloud,
     build_scene,
     default_radii,
+    needs_depth_peeling,
     setup_camera,
 )
 from .style import STYLE_PRESETS, ViewStyle
@@ -191,7 +192,7 @@ class Viewport(QtWidgets.QWidget):
         p = self.plotter
         self._refine_timer.stop()
         self._lod_cloud = None
-        stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:"))]
+        stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:", "visual:"))]
         for name in ("atoms", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay", *stale):
             p.remove_actor(name, render=False)
         if p.scalar_bars:
@@ -212,8 +213,9 @@ class Viewport(QtWidgets.QWidget):
             if scene.bonds is not None or scene.vectors:
                 scene = scene.copy()
                 scene.bonds, scene.vectors = None, {}
-        build_scene(p, scene, mesh_limit=self.mesh_limit, **kw)
-        if any(s.transparency > 0 for s in self.data.surfaces.values()) and not getattr(self, "_peeling", False):
+        drawn = build_scene(p, scene, mesh_limit=self.mesh_limit, **kw)
+        if (any(s.transparency > 0 for s in self.data.surfaces.values()) or needs_depth_peeling(drawn)) \
+                and not getattr(self, "_peeling", False):
             p.enable_depth_peeling()
             self._peeling = True
         if "ColorCoding.range" in self.data.attributes:
