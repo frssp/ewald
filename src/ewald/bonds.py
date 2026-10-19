@@ -140,15 +140,25 @@ def normalize_pairs(pairs):
     return out
 
 
+# Not bonded to each other by default in compounds (metal-metal contacts would clutter oxides etc.)
+NONMETALS = frozenset("H He B C N O F Ne Si P S Cl Ar Ge As Se Br Kr Sb Te I Xe At Rn".split())
+
+
 def covalent_pairs(types, factor: float = 1.15):
-    """One row per type pair with dmax = factor * (r_A + r_B) from covalent radii (VESTA's default)."""
-    from ase.data import covalent_radii
+    """One row per type pair with dmax = factor * (r_A + r_B) from covalent radii (VESTA's default).
+    In compounds metal-metal pairs are left out (SrTiO3 gets Ti-O and Sr-O, not Sr-Ti or Sr-Sr);
+    a pure metal or alloy keeps them."""
+    from ase.data import chemical_symbols, covalent_radii
 
     from .radii import atomic_number
 
     uniq = sorted(set(str(t) for t in types))
-    rad = {t: covalent_radii[z] if (z := atomic_number(t)) else 0.8 for t in uniq}
-    return [(a, b, 0.0, round(factor * (rad[a] + rad[b]), 4)) for k, a in enumerate(uniq) for b in uniq[k:]]
+    z = {t: atomic_number(t) for t in uniq}
+    rad = {t: covalent_radii[z[t]] if z[t] else 0.8 for t in uniq}
+    metal = {t: bool(z[t]) and chemical_symbols[z[t]] not in NONMETALS for t in uniq}
+    compound = not all(metal.values())
+    return [(a, b, 0.0, round(factor * (rad[a] + rad[b]), 4)) for k, a in enumerate(uniq) for b in uniq[k:]
+            if not (compound and metal[a] and metal[b])]
 
 
 def _pair_mask(ti, tj, dist, pairs):
