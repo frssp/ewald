@@ -203,16 +203,28 @@ def _add_bonds(plotter, data, colors, cutoff, bond_radius, pairs=None):
 
 
 def _add_surfaces(plotter, data):
-    """Every ``data.surfaces`` mesh as one actor (faces) plus its outline edges."""
+    """Every ``data.surfaces`` mesh as one actor (faces) plus its outline edges. Meshes with
+    vertex "Normal"s (isosurfaces) are smooth-shaded; vertex "Color"s (grid slices) are interpolated."""
     import pyvista as pv
 
     for name, mesh in getattr(data, "surfaces", {}).items():
         if not mesh.face_count:
             continue
         poly = mesh.to_pyvista()
-        poly.cell_data["rgb"] = (np.clip(mesh.face_colors(), 0, 1) * 255).astype(np.uint8)
-        plotter.add_mesh(poly, scalars="rgb", rgb=True, opacity=1.0 - mesh.transparency, name=f"surface:{name}",
-                         ambient=0.3, diffuse=0.7, specular=0.2, render=False, smooth_shading=False)
+        kw = dict(opacity=1.0 - mesh.transparency, name=f"surface:{name}", ambient=0.3, diffuse=0.7,
+                  specular=0.2, render=False, smooth_shading=False)
+        normals = mesh.vertex_properties.get("Normal")
+        if normals is not None:
+            poly.point_data["Normals"] = np.asarray(normals, float)
+            poly.point_data.active_normals_name = "Normals"
+            kw.update(smooth_shading=True, specular=0.25, specular_power=30)
+        vcolors = mesh.vertex_properties.get("Color")
+        if vcolors is not None:
+            poly.point_data["rgb"] = (np.clip(vcolors, 0, 1) * 255).astype(np.uint8)
+            kw.update(ambient=0.6, diffuse=0.45, specular=0.0)  # colour maps should read true, not shaded
+        else:
+            poly.cell_data["rgb"] = (np.clip(mesh.face_colors(), 0, 1) * 255).astype(np.uint8)
+        plotter.add_mesh(poly, scalars="rgb", rgb=True, **kw)
         if mesh.edges is not None and len(mesh.edges):
             lines = np.column_stack([np.full(len(mesh.edges), 2), mesh.edges]).ravel()
             plotter.add_mesh(pv.PolyData(mesh.vertices, lines=lines), color=_rgb(mesh.edge_color), line_width=1.5,
@@ -318,6 +330,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     p.set_background(background)
     build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, bonds=bonds, **scene_kwargs)
+    if any(s.transparency > 0 for s in data.surfaces.values()):
+        p.enable_depth_peeling()
     if legend and "ColorCoding.range" in data.attributes:
         _add_colorbar(p, data)
     if text:
@@ -406,7 +420,8 @@ def _draw_overlays(rgba, data, text, legend, background, transparent):
             draw.line([(x0, y), (x1, y)], fill=tuple(int(255 * v) for v in c[:3]) + (255,))
         draw.rectangle([x0, y0, x1, y1 - 1], outline=ink)
         title = str(data.attributes.get("ColorCoding.property", ""))
-        draw.text((x0, y0 - int(1.4 * fs)), title, fill=ink, font=small)
+        tw = draw.textlength(title, font=small)
+        draw.text((min(x0, w - tw - int(0.01 * w)), y0 - int(1.4 * fs)), title, fill=ink, font=small)
         for frac in (0, 0.25, 0.5, 0.75, 1):
             y = int(y1 - 1 - frac * (y1 - y0 - 1))
             draw.line([(x1, y), (x1 + int(0.006 * w), y)], fill=ink)
