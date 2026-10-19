@@ -42,7 +42,6 @@ Formats
 - LAMMPS binary dump.
 - LAMMPS logs written with `thermo_style multi` or `thermo_modify line yaml` (only one-line
   thermo output is read now).
-- Click a point of a time-series plot (the `Thermo` table) to jump to that frame.
 
 Figures
 
@@ -85,9 +84,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   coordinate synced with the timeline, saddle point marked.
 - P1: Jupyter widget: `pipe.show()` with a rotatable viewport and frame slider in a notebook
   (PyVista trame backend).
-- P1: Linked selection: brushing a histogram or scatter plot selects atoms in the viewport, and
-  picking atoms plots their property time series; the selection is stored as an
-  `ExpressionSelection`.
+- P1: Linked selection, rest: picking atoms plots their property time series over all frames;
+  scatter plots of two properties (brushing a box selects atoms); keep a pair, bond or angle
+  range as a modifier (only property ranges become an `ExpressionSelection` now).
 - P1: Phonon modes: read phonopy `band.yaml`/`mesh.yaml` and VASP IBRION=5-8 OUTCAR eigenvectors,
   animate a mode or draw it as arrows.
 - P1: DOS and band structure plots (vasprun.xml, DOSCAR, EIGENVAL, PROCAR), with the PDOS of the
