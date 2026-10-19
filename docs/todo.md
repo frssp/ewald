@@ -8,7 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Elastic strain, grain segmentation and fcc planar faults ported from OVITO (this branch).
 
 ## Next
 
