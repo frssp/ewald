@@ -68,6 +68,8 @@ nav:
       - Writer plugins: plugins/writers.md
       - Modifier plugins: plugins/modifiers.md
       - Visual element plugins: plugins/visuals.md
+      - Overlay plugins: plugins/overlays.md
+      - Color maps and themes: plugins/styles.md
       - Modifier Forge: plugins/forge.md
       - Testing a plugin: plugins/testing.md
       - Packaging and sharing: plugins/packaging.md

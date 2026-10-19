@@ -135,6 +135,8 @@ class Toolset:
         self._code_blocks: list[str] = []
         self._namespace: dict = {}
         self.visuals: list[dict] = []  # plugin visual elements drawn by render_image: {name, params, enabled}
+        self.overlays: list[dict] = []  # overlay elements drawn by render_image: {name, params, enabled}
+        self.theme: str | None = None   # theme render_image uses (ewald.themes)
         self.tools: dict[str, Tool] = {}
         self._register()
 
@@ -175,9 +177,11 @@ class Toolset:
             else:
                 lines.append(f"pipe.modifiers.append({m!r})")
         lines += ["", f"data = pipe.compute({self.frame})"]
-        if self.visuals:
-            lines += [f"visuals = {self.visuals!r}",
-                      "# from ewald.render import render; render(data, 'figure.png', visuals=visuals)"]
+        figure = {k: v for k, v in (("visuals", self.visuals), ("overlays", self.overlays), ("theme", self.theme)) if v}
+        if figure:
+            lines += [f"{k} = {v!r}" for k, v in figure.items()]
+            args = ", ".join(f"{k}={k}" for k in figure)
+            lines.append(f"# from ewald.render import render; render(data, 'figure.png', {args})")
         return "\n".join(lines) + "\n"
 
     # ----------------------------------------------------------- registration
@@ -558,14 +562,23 @@ class Toolset:
            _obj({"frame": frame_p, "direction": {"type": ["string", "array"]},
                  "bonds": {"type": ["number", "null"], "description": "draw bonds shorter than this (A)"},
                  "zoom": {"type": "number"}, "width": {"type": "integer"}, "height": {"type": "integer"},
+                 "theme": {"type": ["string", "null"],
+                           "description": "theme for this and later renders (see list_styles); null keeps it"},
                  "filename": {"type": "string", "description": "also save under this name in the work dir"}}))
-        def render_image(frame=None, direction="iso", bonds=None, zoom=1.0, width=None, height=None, filename=None):
+        def render_image(frame=None, direction="iso", bonds=None, zoom=1.0, width=None, height=None, filename=None,
+                         theme=None):
             pipe = self._need_pipeline()
             f = self._frame(frame)
             size = (width or self.render_size[0], height or self.render_size[1])
             name = filename or f"frame{f:05d}_{len(self.figures):03d}.png"
             path = os.path.join(self.workdir, os.path.basename(name))
-            extra = {"visuals": list(self.visuals)} if self.visuals else {}
+            if theme is not None:
+                from ..themes import get_theme
+
+                get_theme(theme)  # unknown names fail here, before rendering
+                self.theme = theme
+            extra = {k: v for k, v in (("visuals", list(self.visuals)), ("overlays", list(self.overlays)),
+                                       ("theme", self.theme)) if v}
             render_png(pipe.compute(f), path, size=size, direction=direction, bonds=bonds, zoom=zoom, **extra)
             self.figures.append(path)
             with open(path, "rb") as fh:
@@ -604,6 +617,49 @@ class Toolset:
         def remove_visual(index):
             removed = self.visuals.pop(index)
             return {"removed": removed, "visuals": list(self.visuals)}
+
+        @T("list_overlays",
+           "Overlay elements drawn on top of rendered images (built-in: Coordinate tripod, Attributes; plus "
+           "plugins), with their parameters, and the ones currently added. The text label, color legend, "
+           "type legend and scale bar are separate render options.",
+           _obj({}))
+        def list_overlays():
+            out = {p.name: {"builtin": p.builtin, "category": p.category, "doc": p.description,
+                            "params": _signature(p.cls)} for p in plugins.overlays().values()}
+            return {"available": out, "added": list(self.overlays)}
+
+        @T("add_overlay",
+           "Draw an overlay element (see list_overlays) on every later render_image, with optional "
+           "constructor parameters. Returns the overlays now added.",
+           _obj({"name": {"type": "string"}, "params": {"type": "object"}}, ["name"]))
+        def add_overlay(name, params=None):
+            from ..overlays import coerce_overlays, overlay_to_dict
+
+            (el,) = coerce_overlays([{"name": name, "params": params or {}}])
+            self.overlays.append(overlay_to_dict(el))
+            return {"overlays": list(self.overlays)}
+
+        @T("remove_overlay", "Stop drawing the overlay at 'index' of the added list.",
+           _obj({"index": {"type": "integer"}}, ["index"]))
+        def remove_overlay(index):
+            removed = self.overlays.pop(index)
+            return {"removed": removed, "overlays": list(self.overlays)}
+
+        @T("list_styles",
+           "Themes (element colors, background, cell color, radius preset; pass one to render_image) and the "
+           "color maps usable as 'cmap' in ColorCoding, GridSlice and VectorVis: common matplotlib names and "
+           "plugins, each marked whether it reads in grayscale.",
+           _obj({}))
+        def list_styles():
+            from ..colormaps import is_perceptual, names
+
+            kinds = {k: p.kind for k, p in plugins.colormaps().items()}
+            maps = {}
+            for n in names():
+                maps[n] = {"kind": kinds.get(n, "matplotlib"), "plugin": n in kinds,
+                           "grayscale_safe": is_perceptual(n, kinds.get(n))}
+            return {"themes": {k: p.description for k, p in plugins.themes().items()}, "current_theme": self.theme,
+                    "colormaps": maps, "note": "any other matplotlib colormap name also works"}
 
         writer_names = ", ".join(sorted(plugins.writers()))
 

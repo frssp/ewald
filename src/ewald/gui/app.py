@@ -214,6 +214,9 @@ class MainWindow(QtWidgets.QMainWindow):
         v.addSeparator()
         for bg in ("Dark background", "White background"):
             v.addAction(bg, lambda bg=bg: self._set_background(TOKENS["bg"] if bg.startswith("Dark") else "white"))
+        self.theme_menu = v.addMenu("Theme")
+        self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
+        self._fill_theme_menu()
         m = mb.addMenu("&Pipeline")
         m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier))
         fill_modifier_menu(m, self.panel.add_modifier)
@@ -301,6 +304,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _set_background(self, color):
         self.style.background = color
+        self.style.cell_color = None
+        self._style_changed()
+
+    def _fill_theme_menu(self):
+        from .. import plugins
+
+        self.theme_menu.clear()
+        group = QtGui.QActionGroup(self.theme_menu)
+        for name, p in plugins.themes().items():
+            act = self.theme_menu.addAction(name, lambda n=name: self.apply_theme(n))
+            act.setCheckable(True)
+            act.setChecked(name == self.style.theme)
+            act.setToolTip(p.description)
+            group.addAction(act)
+
+    def apply_theme(self, name: str):
+        """Apply a theme (element colors, background, cell color, radius preset) to the view."""
+        self.style.apply_theme(name, self.data.types if self.data is not None else ())
+        self.message(f"Theme: {name}")
         self._style_changed()
 
     def message(self, text, error=False):

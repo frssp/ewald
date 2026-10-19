@@ -254,7 +254,12 @@ it is drawn by the OpenGL viewport, the ray tracer and SVG/PDF output alike, and
 the GUI's "+ Visual" button and in the Claude `add_visual` tool
 ([`examples/plugins/cell_axes.py`](examples/plugins/cell_axes.py),
 [visual element plugins](docs/plugins/visuals.md)). ewald's own atoms, bonds, cell, surfaces,
-arrows and trajectory lines are built the same way.
+arrows and trajectory lines are built the same way. Overlays (`@overlay`: inset plots,
+readouts, a coordinate tripod), color maps (`@colormap`, usable as any `cmap`) and themes
+(`@theme`: element colors, background, cell color; `render(..., theme="VESTA")`, View › Theme)
+plug in the same way ([overlay plugins](docs/plugins/overlays.md),
+[color maps and themes](docs/plugins/styles.md),
+[`examples/plugins/figure_extras.py`](examples/plugins/figure_extras.py)).
 
 `ewald forge "what to compute"` has Claude write such a modifier together with tests that
 have a known answer. ewald runs them in a subprocess, along with checks for the plugin

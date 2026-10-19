@@ -484,14 +484,14 @@ def quality_settings(quality: str | None = "publication", **explicit) -> dict:
 
 
 def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction="iso",
-           orthographic: bool = True, zoom: float = 1.0, background="white",
+           orthographic: bool = True, zoom: float = 1.0, background=None,
            transparent_background: bool = False, ambient_occlusion: bool | None = None,
            legend: bool = True, show_cell: bool = True, bonds: float | None = None,
            radius_scale: float = 1.0, antialiasing: bool | None = None, text: str | None = None,
            camera: dict | None = None, renderer: str = "opengl", samples: int | None = None,
            ao_samples: int | None = None, shadows: bool | None = None, type_legend: bool = False,
            scale_bar: bool | float | None = None, dpi: float | None = None, quality: str = "publication",
-           scale: float | None = None, **scene_kwargs):
+           scale: float | None = None, theme=None, overlays=None, **scene_kwargs):
     """Render one DataCollection to ``filename`` or return an RGB array.
 
     ``direction`` is a view vector *from* the scene to the camera, or one of
@@ -510,13 +510,26 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
 
     Overlays: ``text`` label, ``legend`` (ColorCoding color bar), ``type_legend``
     (one swatch per particle type), ``scale_bar`` (True = round length, or a length
-    in Angstrom; exact in orthographic views). ``dpi`` is stored in PNG/TIFF files
-    and sets the page size of vector output.
+    in Angstrom; exact in orthographic views), and ``overlays``: overlay elements
+    (Coordinate tripod, Attributes, plugins; see :mod:`ewald.overlays`). ``dpi`` is stored
+    in PNG/TIFF files and sets the page size of vector output.
+
+    ``theme``: a theme name ('VESTA', 'Journal', 'Dark slide', plugins; see :mod:`ewald.themes`)
+    that sets element colors, background, cell color and radius preset; explicit arguments win.
+    ``background`` defaults to white.
     """
     import pyvista as pv
 
     if renderer not in RENDERERS:
         raise ValueError(f"unknown renderer {renderer!r}; use 'opengl', 'raytrace' or 'vector'")
+    if theme is not None:
+        from .themes import apply_theme
+
+        themed = apply_theme(theme, data, {"background": background, **{
+            k: scene_kwargs.get(k) for k in ("type_colors", "cell_color", "radius_preset")}})
+        background = themed.pop("background")
+        scene_kwargs.update({k: v for k, v in themed.items() if v is not None})
+    background = "white" if background is None else background
     q = quality_settings(quality, samples=samples, ao_samples=ao_samples, shadows=shadows,
                          antialiasing=antialiasing, ambient_occlusion=ambient_occlusion,
                          sphere_resolution=scene_kwargs.pop("sphere_resolution", None), scale=scale)
@@ -525,7 +538,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     if q["scale"] != 1.0:
         size = (max(16, round(size[0] * q["scale"])), max(16, round(size[1] * q["scale"])))
     overlays = {"text": text, "legend": legend, "type_legend": type_legend, "scale_bar": scale_bar,
-                "type_colors": scene_kwargs.get("type_colors")}
+                "type_colors": scene_kwargs.get("type_colors"), "overlays": overlays,
+                "frame": scene_kwargs.get("frame", 0)}
     if renderer == "vector":
         from .vector import render_vector
 
@@ -536,7 +550,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
         return render_vector(data, filename, camera=camera, size=size, background=background,
                              transparent_background=transparent_background, radius_scale=radius_scale,
                              bonds=bonds, show_cell=show_cell, dpi=dpi,
-                             **{k: v for k, v in overlays.items() if k != "type_colors"}, **scene_kwargs)
+                             **{k: v for k, v in overlays.items() if k not in ("type_colors", "frame")},
+                             **scene_kwargs)
     if renderer == "raytrace":
         return _render_raytraced(data, filename, size=size, direction=direction, orthographic=orthographic,
                                  zoom=zoom, background=background, transparent_background=transparent_background,
@@ -642,10 +657,12 @@ def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, ba
 def _add_colorbar(plotter, data, font_size=None):
     import pyvista as pv
 
+    from .colormaps import get_colormap
+
     lo, hi = data.attributes["ColorCoding.range"]
     dummy = pv.PolyData(np.zeros((2, 3)))
     dummy["v"] = np.array([lo, hi])
-    actor = plotter.add_mesh(dummy, scalars="v", cmap=data.attributes.get("ColorCoding.cmap", "viridis"),
+    actor = plotter.add_mesh(dummy, scalars="v", cmap=get_colormap(data.attributes.get("ColorCoding.cmap", "viridis")),
                              clim=(lo, hi), opacity=0.0, show_scalar_bar=False, name="_legend")
     actor.VisibilityOff()
     plotter.add_scalar_bar(title=str(data.attributes.get("ColorCoding.property", "")), mapper=actor.mapper,

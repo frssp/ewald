@@ -148,7 +148,7 @@ class GridSlice(Modifier):
     ``miller=(h, k, l)``, i.e. ``distance`` is in units of the interplanar spacing d_hkl
     (``(0, 0, 1)``, 0.5 cuts the cell halfway along c). Values are trilinearly
     interpolated (periodically) onto a mesh with ``resolution`` Angstrom spacing (None:
-    one voxel) and mapped through the matplotlib colormap ``cmap`` over ``range``
+    one voxel) and mapped through the color map ``cmap`` (matplotlib or plugin) over ``range``
     (None: the min/max on the plane); ``scale="log"`` maps log10(|value|), which shows
     the valence density between nuclei. The slice goes into ``data.surfaces[identifier]``
     and its colour range into the ``ColorCoding.*`` attributes, so a legend is drawn
@@ -170,7 +170,7 @@ class GridSlice(Modifier):
         self.identifier = identifier
 
     def modify(self, data, ctx):
-        import matplotlib
+        from ..colormaps import get_colormap
 
         if self.scale not in ("linear", "log"):
             raise ValueError(f"scale must be 'linear' or 'log', got {self.scale!r}")
@@ -189,7 +189,7 @@ class GridSlice(Modifier):
             label = f"log10 {self.property}"
         lo, hi = (float(values.min()), float(values.max())) if self.range is None else map(float, self.range)
         t = np.clip((values - lo) / (hi - lo if hi != lo else 1.0), 0, 1)
-        colors = matplotlib.colormaps[self.cmap](t)[:, :3]
+        colors = get_colormap(self.cmap)(t)[:, :3]
         data.surfaces[self.identifier] = SurfaceMesh(
             verts, faces, transparency=self.transparency,
             vertex_properties={"Normal": np.broadcast_to(normal, verts.shape), "Color": colors})

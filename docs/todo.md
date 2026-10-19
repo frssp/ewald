@@ -8,7 +8,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-Nothing at the moment.
+Nothing right now.
 
 ## Next
 
@@ -89,7 +89,10 @@ Visualization plugins (later phases of the Scene IR plan)
   their `VisualElement` parameters, replacing the hand-written style controls.
 - OpenGL and the ray tracer ignore `Cylinders.alpha`; see-through bonds need it.
 - Ray tracer: trajectory lines and other `Lines` without a `radius` are not drawn.
-- Phase 1: color map and theme registries, overlay plugins (`@overlay`), material presets.
+- Material presets (`@material`: roughness, metallic, glass, outline/toon) mapped onto each
+  renderer (VTK PBR, ray tracer shading, vector flat/gradient/outline), the rest of phase 1.
+- Overlay elements show in rendered images and the Render page preview, not in the interactive
+  viewport.
 - Phase 2: renderer backend registry, so a plugin can add a renderer that consumes the Scene IR.
 - Phase 3 and later: glTF/HTML export from the IR, animated visuals, Claude-written visual
   elements (a Visual Forge, like Modifier Forge).

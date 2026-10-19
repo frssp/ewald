@@ -68,6 +68,8 @@ Every renderer draws the same overlays, sized relative to the image:
 | `background`, `transparent_background` | `"white"`, any color, or a transparent PNG |
 | `renderer`, `quality` | `"opengl"`, `"raytrace"` or `"vector"`; `"draft"`, `"standard"` or `"publication"` |
 | `legend`, `type_legend`, `scale_bar`, `text` | overlays (see above) |
+| `overlays` | overlay elements drawn on the image: `"Coordinate tripod"` (axis arrows that turn with the camera), `"Attributes"` (a temperature/energy readout), [plugins](../plugins/overlays.md); names, instances or `{"name": ..., "params": {...}}` |
+| `theme` | `"VESTA"`, `"CPK"`, `"Journal"`, `"Dark slide"` or a [theme plugin](../plugins/styles.md#themes): element colors, background, cell color and radius preset; explicit arguments win |
 | `show_cell`, `dpi` | cell outline; resolution stored in the file |
 | `visuals` | extra [visual elements](../plugins/visuals.md) drawn on top in every renderer: registered names, instances, or `{"name": ..., "params": {...}}` |
 | `vectors` | particle properties drawn as arrows: `"Force"`, `["Force", "Velocity"]` or `{"Force": {"scaling": 2, "color": "red"}}` (options of [`VectorVis`](modifiers.md#vector-arrows)); added to, and overriding, the arrows `VectorVis` set |

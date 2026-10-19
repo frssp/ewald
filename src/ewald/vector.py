@@ -271,12 +271,13 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                   bonds=None, bond_pairs=None, bond_radius=0.15, show_cell=True, cell_color=None,
                   cell_width=2.0, shading="gradient", text=None, legend=True, type_legend=False,
                   scale_bar=None, dpi=None, radius_preset="covalent", oxidation_states=None, coordination=None,
-                  vectors=None, trajectory_width=2.0, visuals=None, frame=0, **_ignored):
+                  vectors=None, trajectory_width=2.0, visuals=None, frame=0, overlays=None, **_ignored):
     """Draw ``data`` as a vector figure and save it (format from the extension).
 
     ``shading``: 'gradient' (shaded discs) or 'flat' (one color plus outline, VESTA's
     flat style). ``dpi`` sets the physical page size (``size / dpi`` inches; 100 when
-    not given). ``visuals``: extra visual elements (plugins), see :mod:`ewald.scene`.
+    not given). ``visuals``: extra visual elements (plugins), see :mod:`ewald.scene`;
+    ``overlays``: overlay elements, see :mod:`ewald.overlays`.
     Returns the rasterized image as an RGB(A) uint8 array.
     """
     from matplotlib.collections import PatchCollection
@@ -284,7 +285,7 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
     from matplotlib.patches import Circle, Rectangle
 
     from . import scene as ir
-    from .overlays import ink_color, overlay_layout
+    from .overlays import draw_items_mpl, ink_color, overlay_layout
     from .render import _rgb
 
     w, h = int(size[0]), int(size[1])
@@ -316,7 +317,8 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                                           match_original=False, antialiased=True))
 
     lay = overlay_layout(data, (w, h), text=text, legend=legend, type_legend=type_legend, scale_bar=scale_bar,
-                         camera=camera, type_colors=type_colors)
+                         camera=camera, type_colors=type_colors, overlays=overlays, frame=frame,
+                         background=background, transparent=transparent_background)
     ink = ink_color(background, transparent_background)
     fs, small = lay["font_size"] * pt, lay["small"] * pt
     if "text" in lay:
@@ -328,11 +330,11 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                             linewidth=max(1, d // 14) * pt))
         ax.text(row["x"] + 1.5 * d, row["y"] + d / 2, row["name"], color=ink, fontsize=fs, va="center", ha="left")
     if "colorbar" in lay:
-        import matplotlib
+        from .colormaps import get_colormap
 
         cb = lay["colorbar"]
         x0, y0, x1, y1 = cb["box"]
-        cmap = matplotlib.colormaps[cb["cmap"]]
+        cmap = get_colormap(cb["cmap"])
         n = 64
         stripes = [Rectangle((x0, y0 + (y1 - y0) * k / n), x1 - x0, (y1 - y0) / n + 0.5) for k in range(n)]
         ax.add_collection(PatchCollection(stripes, facecolors=[cmap(1 - (k + 0.5) / n) for k in range(n)],
@@ -348,6 +350,9 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
         ax.add_patch(Rectangle((sb["x0"], sb["y"] - th), sb["x1"] - sb["x0"], th, facecolor=ink, edgecolor="none"))
         ax.text((sb["x0"] + sb["x1"]) / 2, sb["y"] - th - 0.3 * lay["font_size"], sb["label"], color=ink,
                 fontsize=small, va="bottom", ha="center")
+
+    if "items" in lay:
+        draw_items_mpl(ax, lay["items"], ink, pt, lay["font_size"])
 
     if filename:
         fig.savefig(filename, dpi=dpi, transparent=transparent_background, facecolor=fig.get_facecolor())

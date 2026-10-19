@@ -205,7 +205,7 @@ class Viewport(QtWidgets.QWidget):
         dark = _is_dark(self.style.background)
         p.set_background(self.style.background)
         kw = self.style.scene_kwargs()
-        kw["cell_color"] = "#AEB4BE" if dark else "black"
+        kw["cell_color"] = self.style.cell_color or ("#AEB4BE" if dark else "black")
         kw["sphere_resolution"] = self.sphere_resolution  # interactive; image export uses full quality
         kw["arrow_resolution"] = self.arrow_resolution
         scene = self.data
