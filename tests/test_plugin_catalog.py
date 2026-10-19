@@ -70,6 +70,7 @@ def test_pip_command_uses_this_python():
 
     assert pc.pip_command("install", "ewald-x") == [sys.executable, "-m", "pip", "install", "ewald-x"]
     assert pc.pip_command("uninstall", "ewald-x")[-2:] == ["-y", "ewald-x"]
+    assert pc.pip_command("install", ["ewald-a==1", "ewald-b"])[-3:] == ["install", "ewald-a==1", "ewald-b"]
 
 
 def _versioned(tmp_path, version):
@@ -134,6 +135,7 @@ def test_github_token_goes_only_to_github_hosts(monkeypatch):
     assert env[key] == "http.https://github.com/.extraheader"
     assert base64.b64decode(value.split()[-1]).decode() == "x-access-token:secret-token"
     assert pc.pip_env("ewald-x") == {} and pc.pip_env("git+https://gitlab.com/a/b") == {}
+    assert pc.pip_env(["ewald-x", "git+https://github.com/frssp/private-plugin"]) == env   # a list: its GitHub source
     monkeypatch.delenv("GITHUB_TOKEN")
     monkeypatch.setattr(pc.shutil, "which", lambda name: None)
     assert pc.github_token() == "" and pc.pip_env("git+https://github.com/a/b") == {}

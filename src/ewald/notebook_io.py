@@ -332,6 +332,8 @@ def load_ewd(path, cls=None, trusted: bool = False, **kwargs):
     nb.manifest = manifest
     nb.state = dict(manifest.get("state") or nb.state)
     nb.warnings = check_data(manifest, os.path.dirname(path), bundle)
+    nb.warnings += [f"needs the pip package {e['requirement']} for {', '.join(e.get('modifiers', [])) or e['id']} "
+                    f"(pip install {e['requirement']})" for e in missing_packages(manifest)]
     nb.data_dirs = [str(bundle / "data")]
     nb.restricted = not trusted
     if trusted:
@@ -353,6 +355,25 @@ def check_data(manifest: dict, base: str, bundle: Path) -> list[str]:
         else:
             found.append(f"{rel} not found ({entry.get('size', 0) / 1e6:.1f} MB, not saved in the notebook)")
     return found
+
+
+def missing_packages(manifest: dict) -> list[dict]:
+    """Plugin entries of an ``.ewd`` manifest that come from a pip package this Python lacks
+    (not installed under that id, and their modifiers are not registered either): each has
+    ``requirement`` (``name==version``), ``id``, ``name`` and ``modifiers``."""
+    from . import plugins as registry
+
+    have = registry.installed()
+    known = set(registry.modifiers())
+    out = []
+    for entry in (manifest or {}).get("plugins", []):
+        if entry.get("kind") != "package" or not entry.get("requirement") or entry.get("id") in have:
+            continue
+        mods = entry.get("modifiers") or []
+        if mods and set(mods) <= known:
+            continue
+        out.append(entry)
+    return out
 
 
 def load_bundled_plugins(nb) -> list[str]:
