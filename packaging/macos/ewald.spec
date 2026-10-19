@@ -51,7 +51,7 @@ coll = COLLECT(gui, cli, a.binaries, a.datas, strip=False, upx=False, name="ewal
 # Finder offers EWALD under Open With for these; VASP files (POSCAR, XDATCAR, OUTCAR) have no
 # extension, so any file can also be dropped on the Dock icon ("public.data", rank Alternate).
 EXTENSIONS = ["lammpstrj", "dump", "data", "lmp", "xyz", "extxyz", "cif", "xsf", "axsf", "vasp", "poscar",
-              "contcar", "h5md", "h5", "xtc", "trr", "dcd", "pdb", "gro", "traj", "cube", "ewald"]
+              "contcar", "h5md", "h5", "xtc", "trr", "dcd", "pdb", "gro", "traj", "cube", "ewald", "ewd", "ipynb"]
 INFO = {
     "CFBundleName": "EWALD",
     "CFBundleDisplayName": "EWALD",
