@@ -45,5 +45,17 @@ examples.copy("my_examples")
 ## Scripts in this folder
 
 - `demo.py`: renders sample trajectories and figures into `demo_out/`.
+- `papers/`: reruns analyses from published papers on their own data, downloaded on first use
+  with `examples.fetch` (see `docs/user/papers.md`; `ewald examples --papers` lists the data).
+  Each writes a figure into `papers_out/` (or the folder given as argument) and prints the
+  comparison with the paper:
+  - `li6ps5cl_diffusion.py`: Li MSD and D* in the Li6PS5Cl argyrodite (AIMD), against kinisi.
+  - `llzo_arrhenius.py`: Arrhenius activation energy of Li in LLZO from MD at 500-800 K.
+  - `carbon_coordination.py`: amorphous carbon local energy by sp/sp2/sp3 and sp3 fraction vs density.
+  - `asi_paracrystalline.py`: S(q), g(r) and diamond-like fraction of 100,000-atom amorphous Si.
+  - `argyrodite_disorder.py`: Li MSD in Li6PS5I/Li6PS5Cl against anion site disorder (37 XDATCARs).
+  - `tiof2_octahedra.py`: TiOF2 bond-length table, TiO(6-n)Fn octahedra and partial RDFs (POSCAR, CIF).
+  - `ammonia_borane_fes.py`: PLUMED-NEST metadynamics FES from 4 walkers against `plumed sum_hills`.
+  - `alanine_dipeptide_fes.py`: PLUMED-NEST alanine dipeptide phi/psi free energy surface.
 - `plugins/`: example reader, modifier, visual-element and overlay plugins (see the plugin guide in
   `docs/plugins/`).

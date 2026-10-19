@@ -233,19 +233,22 @@ def _atom_index(atoms, n):
 
 
 # ---------------------------------------------------------------------- k-point paths
-def path_distances(kpoints, lattice, segment: int | None = None) -> tuple[np.ndarray, list]:
+def path_distances(kpoints, lattice, segment: int | None = None, starts=None) -> tuple[np.ndarray, list]:
     """Distance along the path (1/Angstrom, without 2 pi) of reduced ``kpoints`` in the
     reciprocal cell of ``lattice`` (rows are the cell vectors). With ``segment`` (points per
-    line, VASP line mode) the distance does not grow from the end of one line to the start of
-    the next. Returns ``(distances, breaks)``, ``breaks`` the indices that start a line which
-    does not continue the previous one."""
+    line, VASP line mode), or ``starts`` (the first index of every line after the first), the
+    distance does not grow from the end of one line to the start of the next. Returns
+    ``(distances, breaks)``, ``breaks`` the indices that start a line which does not continue
+    the previous one."""
     k = np.asarray(kpoints, float) @ np.linalg.inv(np.asarray(lattice, float)).T
     step = np.r_[0.0, np.linalg.norm(np.diff(k, axis=0), axis=1)]
     breaks = []
-    if segment and segment > 1 and len(k) % segment == 0:
-        for s in range(segment, len(k), segment):
+    if starts is None and segment and segment > 1 and len(k) % segment == 0:
+        starts = range(segment, len(k), segment)
+    if starts is not None:
+        for s in starts:
             if step[s] > 1e-6:
-                breaks.append(s)
+                breaks.append(int(s))
             step[s] = 0.0
     return np.cumsum(step), breaks
 
@@ -257,7 +260,7 @@ def line_ticks(distances, segment: int, labels: list[str] | None, kpoints=None) 
     ends = []
     for s in range(0, n, segment):
         ends += [s, min(s + segment, n) - 1]
-    out = []
+    ticks = []
     for i, idx in enumerate(ends):
         if labels and i < len(labels) and labels[i]:
             lab = pretty_label(labels[i])
@@ -265,7 +268,15 @@ def line_ticks(distances, segment: int, labels: list[str] | None, kpoints=None) 
             lab = _coord_label(kpoints[idx])
         else:
             lab = ""
-        d = float(distances[idx])
+        ticks.append((float(distances[idx]), lab))
+    return merge_ticks(ticks)
+
+
+def merge_ticks(ticks) -> list:
+    """``(distance, label)`` ticks with the ticks at one distance merged: ``K|U`` where a line
+    ends at K and the next starts at U."""
+    out = []
+    for d, lab in ticks:
         if out and abs(out[-1][0] - d) < 1e-9:
             if lab and lab != out[-1][1]:
                 out[-1] = (d, f"{out[-1][1]}|{lab}" if out[-1][1] else lab)

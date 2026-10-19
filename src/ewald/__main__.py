@@ -59,6 +59,8 @@ def build_parser():
     g.add_argument("--device", default=None)
     ex = sub.add_parser("examples", help="list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...)")
     ex.add_argument("--copy", default=None, metavar="DIR", help="copy them into DIR")
+    ex.add_argument("--papers", action="store_true", help="list the published datasets that --fetch downloads")
+    ex.add_argument("--fetch", default=None, metavar="NAME", help="download a published dataset (checksummed)")
     i = sub.add_parser("info", help="print frames and properties")
     i.add_argument("input")
     i.add_argument("--type-map", default=None)
@@ -139,7 +141,7 @@ def _run(args):
         print(api_reference(with_plugins=args.with_plugins), end="")
         return
     if args.cmd == "examples":
-        return _examples(args.copy)
+        return _examples(args.copy, args.papers, args.fetch)
     if args.cmd == "plugins":
         return _print_plugins(args.json, enable=args.enable, disable=args.disable)
     if args.cmd == "forge":
@@ -268,9 +270,19 @@ def _render_cmd(args, reader_kwargs):
     print("wrote", args.output)
 
 
-def _examples(dest=None):
+def _examples(dest=None, papers=False, fetch=None):
     from . import examples
+    from .examples import papers as published
 
+    if fetch:
+        print(examples.fetch(fetch))
+        return
+    if papers:
+        for p in published.PAPERS:
+            print(f"{p.name}  ({p.size / 1e6:.1f} MB, {p.license})\n  {p.title}\n  {p.citation}\n"
+                  f"  reproduces: {p.reproduces}\n  script: examples/papers/{p.script}\n")
+        print(f"downloaded into {published.data_dir()}")
+        return
     if dest:
         print(f"copied {len(examples.EXAMPLES)} files to {examples.copy(dest)}")
         return
@@ -278,6 +290,7 @@ def _examples(dest=None):
     for ex in examples.EXAMPLES:
         print(f"{ex.file:<{width}}  {ex.format}: {ex.description}")
     print(f"\nin {examples.FILES}; open one with: ewald gui {examples.EXAMPLES[0].path}")
+    print("published data from papers: ewald examples --papers")
 
 
 def _print_plugins(as_json=False, enable=None, disable=None):

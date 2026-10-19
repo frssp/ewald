@@ -155,7 +155,7 @@ class VaspoutReader(FrameReader):
     def _read_electronic(self, f):
         """DOS from ``results/electron_dos``, bands from ``results/electron_eigenvalues_kpoints_opt``
         (KPOINTS_OPT, the band path of a self-consistent run) or else ``results/electron_eigenvalues``."""
-        from ..electronic import ElectronicStructure, line_ticks, path_distances, pretty_label
+        from ..electronic import ElectronicStructure, line_ticks, merge_ticks, path_distances, pretty_label
 
         es = ElectronicStructure(types=self.types.copy(), source=os.path.basename(self.path))
         if "results/electron_dos/dos" in f:
@@ -167,7 +167,10 @@ class VaspoutReader(FrameReader):
                 par = np.asarray(g["dospar"][()], float)            # (spin, atom, orbital, E)
                 es.pdos = np.ascontiguousarray(np.transpose(par[:1] if len(par) == 4 else par, (1, 0, 2, 3)))
         if "results/projectors/lchar" in f:
-            es.orbitals = [_text(o) for o in f["results/projectors/lchar"][()]]
+            # lchar always lists s..f (16); dospar and par hold only the first LMAX^2 of them
+            norb = next((f[k].shape[2] for k in ("results/electron_dos/dospar", "results/projectors/par")
+                         if k in f and f[k].ndim >= 4), None)
+            es.orbitals = [_text(o) for o in f["results/projectors/lchar"][()]][:norb]
         suffix = "_kpoints_opt" if "results/electron_eigenvalues_kpoints_opt/eigenvalues" in f else ""
         eig = f.get(f"results/electron_eigenvalues{suffix}")
         if eig is None or "eigenvalues" not in eig:
@@ -180,6 +183,12 @@ class VaspoutReader(FrameReader):
         es.kpoints = k
         es.weights = np.asarray(eig["kpoints_symmetry_weight"][()], float) \
             if "kpoints_symmetry_weight" in eig else None
+        w = es.weights
+        band = np.flatnonzero(w == 0) if w is not None and (w == 0).any() and (w > 0).any() else None
+        if band is not None:  # hybrid functional band run: the zero-weight points are the path
+            es.eigenvalues, es.kpoints, es.weights, k = es.eigenvalues[:, band], k[band], w[band], k[band]
+            if es.occupations is not None:
+                es.occupations = es.occupations[:, band]
         inp = f.get(f"input/kpoints{suffix}")
         mode = _text(inp["mode"][()]).lower()[:1] if inp is not None and "mode" in inp else ""
         segment = int(inp["number_kpoints"][()]) if mode == "l" and "number_kpoints" in inp else None
@@ -188,6 +197,9 @@ class VaspoutReader(FrameReader):
         labels = [_text(x) for x in inp["labels_kpoints"][()]] if inp is not None and "labels_kpoints" in inp else []
         where = np.asarray(inp["positions_labels_kpoints"][()], int) if labels and \
             "positions_labels_kpoints" in inp else None
+        if band is not None and where is not None:  # label positions count the full list
+            keep = np.isin(where - 1, band)
+            labels, where = [lab for lab, ok in zip(labels, keep) if ok], np.searchsorted(band, where[keep] - 1) + 1
         if segment:
             ends = [""] * (2 * (len(k) // segment))
             for lab, pos in zip(labels, where if where is not None else []):
@@ -195,8 +207,11 @@ class VaspoutReader(FrameReader):
                     ends[pos - 1] = lab
             es.ticks = line_ticks(es.distances, segment, ends, k)
         elif where is not None:
-            es.ticks = [(float(es.distances[p - 1]), pretty_label(lab)) for lab, p in zip(labels, where)
-                        if 0 < p <= len(k)]
+            if len(where) % 2 == 0 and len(where) and (np.diff(where) >= 0).all() and where[-1] <= len(k):
+                # labels at both ends of every line (explicit band path): no distance between lines
+                es.distances, es.breaks = path_distances(k, lattice, starts=where[2::2] - 1)
+            es.ticks = merge_ticks([(float(es.distances[p - 1]), pretty_label(lab)) for lab, p in zip(labels, where)
+                                    if 0 < p <= len(k)])
         par = f"results/projectors{suffix}/par"
         if par in f:
             path = self.path
@@ -205,7 +220,8 @@ class VaspoutReader(FrameReader):
                 with _h5py().File(path, "r") as h:
                     p = np.asarray(h[par][()], float)                # (spin, atom, orbital, k, band)
                 p = p[:1] if len(p) == 4 else p
-                return np.ascontiguousarray(np.transpose(p, (0, 3, 4, 1, 2)))
+                p = np.transpose(p, (0, 3, 4, 1, 2))
+                return np.ascontiguousarray(p if band is None else p[:, band])
 
             es.projections_loader = load
         return es
