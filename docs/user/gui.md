@@ -209,7 +209,8 @@ color bar. See [Troubleshooting the GUI](install.md#troubleshooting-the-gui). It
 the next start; `EWALD_VIEWPORT=vtk|legacy-gl` overrides it.
 
 The Compute switch in the toolbar changes the device for the current session only; the
-preference sets the device the GUI starts with.
+preference sets the device the GUI starts with: Auto by default, which uses the CUDA GPU when
+CuPy finds one (the status bar then reads `AUTO (CUDA)`) and the CPU otherwise.
 
 ## Help
 
