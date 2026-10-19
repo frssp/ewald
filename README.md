@@ -95,7 +95,7 @@ Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
 | Format | Reader | Notes |
 |---|---|---|
 | LAMMPS text dump (`dump atom/custom`) | native, lazy | orthogonal, `xy xz yz` and general (`abc origin`) triclinic boxes; `x`/`xu`/`xs`/`xsu`; `c_x[1] c_x[2]` become one vector property; `dump_modify units/time yes`; partial last frame skipped with a warning; `type_map={1: "Cu"}` |
-| LAMMPS data file | native | styles atomic, charge, bond/angle/molecular, full, sphere, dipole (from `Atoms # style`, inferred, or `atom_style=`); type names from `Atom Type Labels` or `Masses` comments; Velocities, image flags, Bonds (`data.tables["Bonds"]`); general triclinic `avec bvec cvec` |
+| LAMMPS data file | native | styles atomic, charge, bond/angle/molecular, full, sphere, dipole (from `Atoms # style`, inferred, or `atom_style=`); type names from `Atom Type Labels` or `Masses` comments; Velocities, image flags, Bonds (`data.bonds`); general triclinic `avec bvec cvec` |
 | VASP XDATCAR | native, lazy | fixed and variable cell (NpT), VASP 6.4 `Si/hash` species labels, partial last frame skipped |
 | VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics (`Selective Dynamics`, True = free), CONTCAR velocities (`Velocity` in Å/fs) |
 | VASP OUTCAR, vasprun.xml | ASE | all ionic steps with `Energy`, `Force`, `Stress` |
@@ -148,6 +148,29 @@ names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
 `CalculateDisplacements` (+ MSD),
 `Replicate`, `WrapAtoms`, `AffineTransformation`, and any Python function
 `f(frame, data)`.
+
+### Bonds and coordination polyhedra
+
+`data.bonds` stores each bond once (OVITO's `Topology` + `Periodic Image`), so bonds
+stay correct across periodic boundaries and in primitive cells smaller than twice the
+bond length; `DeleteSelected`, `Slice`, `Replicate` and `WrapAtoms` keep them consistent.
+`CreateBonds` finds them with a uniform cutoff, a VESTA-style pair table
+(`pairs=[("Ti", "O", 2.4)]`, `*` = any type, or OVITO's `set_pairwise_cutoff`) or
+covalent radii (`mode="covalent"`, VESTA's default). `EditBonds(add=[(a, b)], remove=[...])`
+adds or deletes single bonds by particle identifier; in the GUI the bond tool (⌇) does it by
+clicking two atoms. `CoordinationPolyhedra` puts a convex polyhedron (or a flat polygon for
+planar coordination) around each center particle, colored like the center, into
+`data.surfaces["coordination-polyhedra"]`. The OpenGL viewport and the ray tracer draw
+bonds, polyhedra, their edges and transparency. LAMMPS data files fill `data.bonds` too.
+
+```python
+from ewald.modifiers import CreateBonds, CoordinationPolyhedra
+
+pipe = import_file("CONTCAR")
+pipe.modifiers.append(CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)]))
+pipe.modifiers.append(CoordinationPolyhedra(center_types=["Ti"], transparency=0.3))
+pipe.render("octahedra.png", renderer="raytrace", radius_scale=0.4)
+```
 
 ### Trajectory analysis
 

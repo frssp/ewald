@@ -1,6 +1,7 @@
 """Built-in modifiers."""
 from ..pipeline import Modifier, PythonModifier
 from .analysis import CalculateDisplacements, CoordinationAnalysis
+from .bonds import CoordinationPolyhedra, CreateBonds, EditBonds
 from .cluster import ClusterAnalysis
 from .coloring import AssignColor, ColorCoding
 from .structure import CommonNeighborAnalysis, IdentifyDiamond, PolyhedralTemplateMatching
@@ -22,7 +23,7 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "VoronoiAnalysis", "WignerSeitzAnalysis", "DislocationAnalysis", "OvitoModifier",
            "AcklandJones", "AtomicStrain", "CentroSymmetry", "ChillPlus", "IdentifyDiamond",
            "MeanSquaredDisplacement", "VelocityAutocorrelation", "TimeAveraging", "TimeSeries",
-           "GenerateTrajectoryLines"]
+           "GenerateTrajectoryLines", "CreateBonds", "EditBonds", "CoordinationPolyhedra"]
 
 # OVITO spellings (``CommonNeighborAnalysisModifier``, ``WrapPeriodicImagesModifier``, ...) resolve to the
 # ewald class, so OVITO scripts - and code written by LLMs that learned OVITO - run unchanged.
