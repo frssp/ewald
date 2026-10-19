@@ -176,3 +176,22 @@ def test_opengl_draws_plugin_primitives_and_see_through_spheres(tmp_path):
 
     rgba = spheres_cloud(scene["visual:markers:halo"].primitive)["rgb"]
     assert rgba.shape == (2, 4) and rgba[0].tolist() == [255, 255, 0, 76]
+
+
+def test_opengl_mixed_transparency_draws_glass_spheres_separately():
+    import pyvista as pv
+
+    from ewald.render import _split_by_alpha, build_scene
+
+    data = DataCollection([[1, 1, 1], [3, 3, 3], [2, 2, 2]], ["Fe", "Fe", "Fe"], Cell(np.eye(3) * 4))
+    data.particles["Transparency"] = np.array([0.0, 0.6, 1.0])  # 1 = hidden
+    p = pv.Plotter(off_screen=True, window_size=(80, 60))
+    scene = build_scene(p, data)
+    assert {"atoms", "atoms:glass"} <= set(p.actors)
+    p.close()
+    from ewald.render import spheres_cloud
+
+    (solid, s1), (glass, s2) = _split_by_alpha(spheres_cloud(scene["atoms"].primitive))
+    assert (s1, s2) == ("", ":glass") and solid.n_points == glass.n_points == 1
+    assert solid["rgb"].shape == (1, 3) and glass["rgb"].shape == (1, 4)
+    np.testing.assert_allclose(glass.points, [[3, 3, 3]])

@@ -95,6 +95,23 @@ class RenderPage(QtWidgets.QWidget):
         form.addRow(self.legend)
         form.addRow(self.type_legend)
         form.addRow(bar)
+        self.overlays: list[dict] = []   # overlay elements: {name, params, enabled}
+        self.overlay_list = QtWidgets.QListWidget()
+        self.overlay_list.setMaximumHeight(90)
+        self.overlay_list.itemChanged.connect(self._overlay_toggled)
+        self.overlay_list.currentRowChanged.connect(self._show_overlay_form)
+        self.overlay_menu = QtWidgets.QMenu(self)
+        self.overlay_menu.aboutToShow.connect(self._fill_overlay_menu)
+        add = QtWidgets.QToolButton(text="+ Overlay", popupMode=QtWidgets.QToolButton.InstantPopup)
+        add.setMenu(self.overlay_menu)
+        remove = QtWidgets.QPushButton("Remove")
+        remove.clicked.connect(lambda: self.remove_overlay(self.overlay_list.currentRow()))
+        row = QtWidgets.QHBoxLayout(); row.addWidget(add); row.addWidget(remove); row.addStretch()
+        form.addRow(self.overlay_list)
+        form.addRow(row)
+        self.overlay_form_holder = QtWidgets.QVBoxLayout()
+        form.addRow(self.overlay_form_holder)
+        self._overlay_form = None
         form.addRow(QtWidgets.QLabel("Output", objectName="section"))
         out = QtWidgets.QHBoxLayout()
         self.output = QtWidgets.QLineEdit("render.png")
@@ -243,6 +260,76 @@ class RenderPage(QtWidgets.QWidget):
         if path:
             self.output.setText(path)
 
+    # ---------------------------------------------------------------- overlay elements
+    def _fill_overlay_menu(self):
+        from .. import plugins
+
+        self.overlay_menu.clear()
+        for name, p in plugins.overlays().items():
+            act = self.overlay_menu.addAction(name, lambda n=name: self.add_overlay(n))
+            act.setToolTip(p.description)
+        self.overlay_menu.setToolTipsVisible(True)
+
+    def add_overlay(self, name: str, params: dict | None = None):
+        """Add an overlay element (built-in or plugin) drawn on every rendered figure."""
+        from ..overlays import coerce_overlays, overlay_to_dict
+
+        (el,) = coerce_overlays([{"name": name, "params": params or {}}])
+        self.overlays.append(overlay_to_dict(el))
+        self._refresh_overlays(len(self.overlays) - 1)
+
+    def remove_overlay(self, k: int):
+        if 0 <= k < len(self.overlays):
+            self.overlays.pop(k)
+            self._refresh_overlays(min(k, len(self.overlays) - 1))
+
+    def _refresh_overlays(self, current: int = -1):
+        self.overlay_list.blockSignals(True)
+        self.overlay_list.clear()
+        for ov in self.overlays:
+            item = QtWidgets.QListWidgetItem(ov["name"])
+            item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
+            item.setCheckState(QtCore.Qt.Checked if ov.get("enabled", True) else QtCore.Qt.Unchecked)
+            self.overlay_list.addItem(item)
+        self.overlay_list.blockSignals(False)
+        self.overlay_list.setCurrentRow(current)
+        self._show_overlay_form(current)
+        self.update_code()
+
+    def _overlay_toggled(self, item):
+        k = self.overlay_list.row(item)
+        self.overlays[k]["enabled"] = item.checkState() == QtCore.Qt.Checked
+        self.update_code()
+
+    def _show_overlay_form(self, k: int):
+        from ..overlays import coerce_overlays, overlay_to_dict
+        from .params import ParameterForm
+
+        while self.overlay_form_holder.count():
+            w = self.overlay_form_holder.takeAt(0).widget()
+            if w is not None:
+                w.deleteLater()
+        self._overlay_form = None
+        if not 0 <= k < len(self.overlays):
+            return
+        try:
+            (el,) = coerce_overlays([self.overlays[k]])
+        except Exception as exc:  # plugin no longer installed, or its parameters changed
+            self.overlay_form_holder.addWidget(QtWidgets.QLabel(f"{type(exc).__name__}: {exc}", wordWrap=True))
+            return
+        form = ParameterForm(el)
+        self._overlay_form = form
+
+        def apply():
+            form.apply()
+            self.overlays[k] = {**overlay_to_dict(el), "enabled": self.overlays[k].get("enabled", True)}
+            self.update_code()
+
+        button = QtWidgets.QPushButton("Apply overlay")
+        button.clicked.connect(apply)
+        self.overlay_form_holder.addWidget(form)
+        self.overlay_form_holder.addWidget(button)
+
     def label_text(self, frame: int, data) -> str:
         from ..overlays import format_label
 
@@ -255,6 +342,8 @@ class RenderPage(QtWidgets.QWidget):
             kw["type_legend"] = True
         if self.scale_bar.isChecked():
             kw["scale_bar"] = self.scale_length.value() or True
+        if self.overlays:
+            kw["overlays"] = [dict(o) for o in self.overlays]
         if self.renderer_name != "opengl":
             kw["renderer"] = self.renderer_name
         kw.update(self.quality_kwargs(movie))
@@ -283,7 +372,8 @@ class RenderPage(QtWidgets.QWidget):
                 "text_template": self.text.text(), "time_per_frame": self.time_per_frame.value(),
                 "legend": self.legend.isChecked(), "type_legend": self.type_legend.isChecked(),
                 "scale_bar_on": self.scale_bar.isChecked(), "scale_bar_length": self.scale_length.value(),
-                "output": self.output.text(), "animation": self.animation.isChecked()}
+                "output": self.output.text(), "animation": self.animation.isChecked(),
+                "overlays": [dict(o) for o in self.overlays]}
 
     def set_state(self, st: dict):
         if "renderer_name" in st:
@@ -309,6 +399,9 @@ class RenderPage(QtWidgets.QWidget):
             self.text.setText(st["text_template"])
         if st.get("output"):
             self.output.setText(st["output"])
+        if "overlays" in st:
+            self.overlays = [dict(o) for o in st["overlays"] or []]
+            self._refresh_overlays()
         if st.get("quality") in QUALITIES:  # last: a preset overwrites the fields, Custom keeps them
             self.quality.setCurrentText(st["quality"])
             self._quality_changed(st["quality"])

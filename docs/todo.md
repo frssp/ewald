@@ -8,7 +8,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-Nothing at the moment.
+Nothing right now.
 
 ## Next
 
@@ -30,6 +30,19 @@ Analysis
 - FindRings in numba for networks above ~100k atoms (8000 a-Si atoms, rings up to 10: 1 s).
 - Spatial correlation function and Voronoi-weighted Steinhardt (OVITO / freud have them).
 
+Symmetry and diffraction
+
+- hkl planes in the viewport (pick a reflection in the Plots tab, draw its lattice planes).
+- Powder profile: 2-theta-dependent widths (Caglioti U, V, W), the K-alpha2 doublet, background,
+  preferred orientation and absorption; a Rietveld-style scale/zero-shift fit to the measured
+  pattern instead of the plain Rwp.
+- Partial S_ab(q) columns from `StructureFactor`, and S(q) to G(r)/D(r) (PDF) for comparison
+  with PDFgui-style data.
+- Large cells: `PowderDiffraction` and `StructureFactor(method="direct")` cost atoms x
+  reflections; above ~50k atoms sample reciprocal space instead of using every lattice point.
+- Show the symmetry summary (space group, Wyckoff sites) in the inspector header rather than only
+  as attributes.
+
 Phonons
 
 - Phonon DOS / projected DOS from phonopy `total_dos.dat`/`projected_dos.dat` in the Plots tab.
@@ -49,6 +62,14 @@ Volumetric data
 
 Formats
 
+- NEB: VTST's `neb.dat`/`spline.dat` and the `NEB: projections` lines of VTST OUTCARs (the
+  profile is computed from positions, energies and forces now); NEB folders over SSH; an
+  `images=` option on the reader for ASE NEB trajectories, so the band history needs no
+  modifier parameter; dimer and string-method outputs.
+- NEB: interpolate between images for a smoother movie; `OverlayFrames` copies are extra
+  particles, so picking one in the viewport selects a copy, not the real atom.
+- Ray tracer: see-through spheres are tessellated glass (`OverlayFrames` copies, Transparency);
+  fine for small sets, slow for thousands.
 - GROMACS `.gro` with velocities.
 - LAMMPS binary dump.
 - LAMMPS logs written with `thermo_style multi` or `thermo_modify line yaml` (only one-line
@@ -68,7 +89,10 @@ Visualization plugins (later phases of the Scene IR plan)
   their `VisualElement` parameters, replacing the hand-written style controls.
 - OpenGL and the ray tracer ignore `Cylinders.alpha`; see-through bonds need it.
 - Ray tracer: trajectory lines and other `Lines` without a `radius` are not drawn.
-- Phase 1: color map and theme registries, overlay plugins (`@overlay`), material presets.
+- Material presets (`@material`: roughness, metallic, glass, outline/toon) mapped onto each
+  renderer (VTK PBR, ray tracer shading, vector flat/gradient/outline), the rest of phase 1.
+- Overlay elements show in rendered images and the Render page preview, not in the interactive
+  viewport.
 - Phase 2: renderer backend registry, so a plugin can add a renderer that consumes the Scene IR.
 - Phase 3 and later: glTF/HTML export from the IR, animated visuals, Claude-written visual
   elements (a Visual Forge, like Modifier Forge).
@@ -90,11 +114,6 @@ Docs
 
 From the feature-ideas review (2026-10-19), after the four in progress above.
 
-- P0: Symmetry and diffraction: space group, Wyckoff positions and symmetry-equivalent atoms
-  via spglib (optional extra) shown in the inspector; hkl planes in the viewport; powder XRD and
-  neutron patterns and S(q) for MD, overlaid on an experimental pattern.
-- P1: NEB viewer: open `00/ ... 0N/` image folders as one trajectory, energy along the reaction
-  coordinate synced with the timeline, saddle point marked.
 - P1: Jupyter widget: `pipe.show()` with a rotatable viewport and frame slider in a notebook
   (PyVista trame backend).
 - P1: Linked selection, rest: picking atoms plots their property time series over all frames;
@@ -105,6 +124,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - P2: glTF, interactive HTML and Blender export.
 - P2: Batch render CLI: apply one `.ewald` session to many run folders.
 - P2: Native GSD reader (H5MD and XTC/TRR/DCD are done).
+- P2: More HDF5 output: Quantum ESPRESSO `charge-density.hdf5` (G-space, needs an FFT to the
+  real-space grid), ABINIT netCDF-4 `*_HIST.nc` trajectories and `*_DEN.nc` densities, VASP
+  `vaspout.h5` DOS/bands for the DOS and band plots, `/results/partial_charges` (PARCHG).
 
 ## Verify outside the cloud container
 
@@ -119,6 +141,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - The native OUTCAR and vasprun.xml readers on real VASP 5/6 output (relaxations with ISIF=3,
   non-collinear and MD runs, multi-GB files); the test fixtures are hand-written in VASP 6.4
   format and checked against ASE.
+- NEB folders from real VTST runs (the VASP fixture is an EMT band written in VASP layout;
+  the LAMMPS fixture is a real `neb` run).
+- The vaspout.h5/vaspwave.h5 readers on real VASP 6.4/6.5 output (MD, relaxation, ISPIN=2,
+  non-collinear, `LCHARGH5`); the fixtures follow py4vasp's schema and are checked against
+  py4vasp, and the charge density is assumed to be stored as rho * V like a CHGCAR. The H5MD
+  reader on GROMACS 2026 `mdrun` output.
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
   CI has no PLUMED, so those tests skip).
 

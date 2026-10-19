@@ -183,7 +183,7 @@ def arrow_geometry(data, style: VectorStyle, frame: int = 0) -> Arrows:
     head_len = np.minimum(HEAD_LENGTH * r, length)
     head_rad = HEAD_RADIUS * r * np.where(HEAD_LENGTH * r > 0, head_len / np.maximum(HEAD_LENGTH * r, 1e-300), 1.0)
     if style.color_mapping_property:
-        import matplotlib
+        from .colormaps import get_colormap
 
         values = mapping_values(data, style.color_mapping_property, frame)
         if style.color_mapping_interval is not None:
@@ -191,7 +191,7 @@ def arrow_geometry(data, style: VectorStyle, frame: int = 0) -> Arrows:
         else:
             lo, hi = (float(np.nanmin(values)), float(np.nanmax(values))) if n else (0.0, 1.0)
         t = np.clip((values[idx] - lo) / (hi - lo if hi != lo else 1.0), 0, 1)
-        rgb = matplotlib.colormaps[style.cmap](t)[:, :3]
+        rgb = get_colormap(style.cmap)(t)[:, :3]
     else:
         rgb = np.tile(np.clip(_rgb(style.color), 0, 1), (len(idx), 1))
     return Arrows(base, tip, r, head_rad, head_len, rgb, 1.0 - float(style.transparency), idx, pos,

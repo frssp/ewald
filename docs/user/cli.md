@@ -21,5 +21,6 @@ Examples:
 ```bash
 ewald info XDATCAR
 ewald render dump.lammpstrj frame5.png --frame 5 --type-map 1=Cu,2=Zr --color-by "Position.Z"
+ewald render POSCAR fig.pdf --renderer vector --theme VESTA --overlay "Coordinate tripod"
 ewald ask OUTCAR "Is the final structure reasonable?" --script analysis.py
 ```

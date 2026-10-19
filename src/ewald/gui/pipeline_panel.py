@@ -29,12 +29,20 @@ MODIFIER_MENU = {
         "Centrosymmetry": mods.CentroSymmetry,
         "Atomic strain": mods.AtomicStrain,
     },
+    "Symmetry & diffraction": {
+        "Space group / Wyckoff positions (spglib)": mods.SymmetryAnalysis,
+        "Powder XRD pattern": mods.PowderDiffraction,
+        "Powder neutron diffraction": lambda: mods.PowderDiffraction(radiation="neutron", wavelength="1.54"),
+        "Structure factor S(q)": mods.StructureFactor,
+    },
     "Trajectory": {
         "Mean squared displacement / diffusion": mods.MeanSquaredDisplacement,
         "Velocity autocorrelation": mods.VelocityAutocorrelation,
         "Time averaging (g(r), attributes)": mods.TimeAveraging,
         "Time series of attributes": mods.TimeSeries,
         "Trajectory lines / paths": mods.GenerateTrajectoryLines,
+        "NEB energy profile / barrier": mods.NebEnergyProfile,
+        "Overlay frames (see-through images)": mods.OverlayFrames,
     },
     "Bonds & polyhedra": {
         "Create bonds": lambda: mods.CreateBonds(mode="covalent"),

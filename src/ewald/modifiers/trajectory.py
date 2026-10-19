@@ -333,3 +333,85 @@ class GenerateTrajectoryLines(_TrajectoryModifier):
         stats = {"Path Length": path, "Net Displacement": net, "Max Displacement": peak}
         index = {k: traj[k] for k in ("Particle Identifier", "Index")}
         return lines, index, stats
+
+
+class OverlayFrames(_TrajectoryModifier):
+    """Every frame of ``start:stop:step`` drawn at once: the current frame opaque, the others
+    as see-through copies of the atoms (``transparency`` 0..1), e.g. all images of a NEB band
+    over the image shown on the timeline.
+
+    Only atoms that sit more than ``min_displacement`` (Angstrom) away from where they are in
+    the current frame get a copy, so the atoms that move leave a translucent trail and the rest
+    of the structure is drawn once. Copies are placed at the minimum image next to the current
+    position, matched by 'Particle Identifier' when there are identifiers, else by index.
+    They are appended after the real particles with the current frame's properties (type,
+    color, radius), 'Transparency', 'Overlay Frame' (the frame each copy comes from; -1 for
+    the real particles), no selection and zero vector properties, so put this modifier last.
+    """
+
+    def __init__(self, transparency: float = 0.7, min_displacement: float = 0.1, start: int = 0,
+                 stop: int | None = None, step: int = 1):
+        self.transparency = transparency
+        self.min_displacement = min_displacement
+        self.start = start
+        self.stop = stop
+        self.step = step
+
+    def modify(self, data, ctx):
+        frames = self._cached(ctx, lambda: self._compute(ctx))
+        here = ctx.frame % ctx.pipeline.num_frames
+        x = np.asarray(data.positions, float)
+        ids = np.asarray(data["Particle Identifier"]) if "Particle Identifier" in data else None
+        src, pos, origin = [], [], []
+        for k, (kids, kx) in frames.items():
+            if k == here:
+                continue
+            if ids is not None and kids is not None:
+                order = np.argsort(kids)
+                at = np.clip(np.searchsorted(kids, ids, sorter=order), 0, len(kids) - 1)
+                found = kids[order[at]] == ids
+                own, theirs = np.flatnonzero(found), order[at[found]]
+            elif len(kx) == len(x):
+                own = theirs = np.arange(len(x))
+            else:
+                raise ValueError(f"frame {k} has {len(kx)} atoms and frame {here} has {len(x)}, and there "
+                                 f"are no particle identifiers to match them")
+            d = _mic(kx[theirs] - x[own], data.cell)
+            moved = np.linalg.norm(d, axis=1) > self.min_displacement
+            src.append(own[moved])
+            pos.append(x[own[moved]] + d[moved])
+            origin.append(np.full(int(moved.sum()), k))
+        src = np.concatenate(src) if src else np.zeros(0, int)
+        n, m = data.count, len(src)
+        new = {}
+        for name, v in data.particles.items():
+            v = np.asarray(v)
+            if name == "Position":
+                extra = np.concatenate(pos) if m else np.zeros((0, 3))
+            elif name == "Selection" or name in data.vectors:
+                extra = np.zeros((m,) + v.shape[1:], v.dtype)
+            else:
+                extra = v[src]
+            new[name] = np.concatenate([v, extra])
+        base = np.asarray(data["Transparency"], float) if "Transparency" in data else np.zeros(n)
+        new["Transparency"] = np.concatenate([base, np.full(m, float(np.clip(self.transparency, 0, 1)))])
+        new["Overlay Frame"] = np.concatenate([np.full(n, -1), np.concatenate(origin) if m else np.zeros(0, int)])
+        data.particles = new
+        data.attributes["OverlayFrames.count"] = m
+
+    def _compute(self, ctx):
+        out = {}
+        for k in self._frames(ctx):
+            d = ctx.input_frame(k)
+            ids = np.asarray(d["Particle Identifier"]) if "Particle Identifier" in d else None
+            out[k] = (ids, np.asarray(d.positions, float))
+        return out
+
+
+def _mic(delta, cell):
+    """Displacements wrapped to the nearest periodic image of ``cell``."""
+    if not cell.is_valid or not cell.pbc.any():
+        return delta
+    frac = delta @ np.linalg.inv(cell.matrix)
+    frac[:, cell.pbc] -= np.round(frac[:, cell.pbc])
+    return frac @ cell.matrix
