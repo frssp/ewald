@@ -12,8 +12,12 @@ when PyQt is installed); `show` then returns at once and the window stays live n
 notebook. Linux system libraries and startup errors: [Install](install.md#linux-gui-system-libraries).
 
 The window has the analysis on the left as a [notebook](notebooks.md): Python cells, steps and
-linked plots, saved as a `.py` file, with one tab per open notebook. The viewport and timeline are in the middle. Display settings and Ask Claude are on the
-right, and a bottom dock holds the Python console, the data inspector and plots. The notebook
+linked plots, saved as an `.ewd`, `.ipynb` or `.py` file, with one tab per open notebook. The
+[tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline are in the middle. Display settings and Ask Claude are on the
+right, and a bottom dock holds the Python console, the data inspector and plots.
+
+![The notebook layout](../images/notebook.png)
+ The notebook
 replaces the pipeline panel, but the sections below apply to both. Preferences › General ›
 *Window layout* = `classic` brings back the OVITO 3 style layout, with the pipeline and the
 selected item's parameters on the right. VESTA's crystal-viewing controls are in both.
@@ -68,7 +72,7 @@ the current one (`OverlayFrames`; on by default for NEB folders), with its trans
 95 %) and whether only the atoms that move get copies. Show (bonds, simulation cell), View
 along, Orthographic, Zoom to fit and Ask Claude are always there.
 
-**Ask Claude.** The Ask Claude tab next to the pipeline (Tools › Ask Claude about selection,
+**Ask Claude.** The Ask Claude tab next to the Display panel (next to the pipeline in the classic layout) (Tools › Ask Claude about selection,
 Ctrl+J) answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
 coordination low here?". Without picks it uses the particles a selection modifier selected, and
 with neither the question is about the whole frame. Claude receives the description from

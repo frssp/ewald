@@ -147,6 +147,8 @@ way as a `.py`; `pipe.add(...)` cells become steps and its outputs are kept.
 
 ## Plugins and changes from elsewhere
 
+![The Plugins side bar next to the notebook](../images/plugins.png)
+
 The puzzle icon on the far left opens the **Plugins** side bar, next to the notebook (Window ›
 Plugins, Ctrl+Shift+X). It lists the installed plugins, with where each comes from (plugin
 folder, pip package or this session) and any error it raised, and the plugins you can install:
@@ -206,3 +208,5 @@ hides the menu bar, toolbars and status bar, leaving the notebook and the viewpo
 command stays one search away in the command palette (Ctrl+K), menu shortcuts keep working,
 and Ctrl+Shift+M brings the menus back. *UI theme* picks Paper (light, the
 default) or Graphite (dark).
+
+![Minimal mode: only the notebook, the viewport and the Display panel](../images/minimal-mode.png)

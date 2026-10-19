@@ -3,7 +3,8 @@
 ewald is an OVITO-style atomistic structure/trajectory viewer and analysis library:
 `import_file` -> `pipe.modifiers` -> `pipe.compute(frame, device=...)` -> `pipe.render(...)`,
 plus a PySide6 desktop GUI and Claude tools. User-facing docs: the manual in docs/ (MkDocs,
-`mkdocs.yml`; user/, plugins/, developer/, reference/) and README.md; what exists:
+`mkdocs.yml`; user/ with tutorials/, plugins/, developer/, reference/) and README.md, both
+notebook-first; tutorial notebooks in examples/notebooks/ (run by tests/test_tutorials.py); what exists:
 docs/features.md (generated); open work: docs/todo.md; milestones: docs/ROADMAP.md. Current GUI
 design specs live outside the repo (project files `design/`); `docs/design/` is an older snapshot
 kept for history.
@@ -23,6 +24,7 @@ python benchmarks/large_files.py # open/frame-switch/memory on generated multi-m
 python benchmarks/readers.py     # native readers vs ASE/OVITO/MDAnalysis/chemfiles (docs/developer/readers.md)
 python examples/demo.py          # sample trajectories + figures into demo_out/
 mkdocs build --strict            # the manual (pip install -r docs/requirements.txt); CI runs it
+xvfb-run -a -s "-screen 0 1920x1200x24" python docs/images/make_screenshots.py   # manual screenshots from examples/notebooks
 ```
 
 Without a display, VTK rendering aborts the whole pytest process (fatal error, not a test failure),
