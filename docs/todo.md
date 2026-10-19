@@ -39,6 +39,13 @@ GUI
 - Notebook layout: the viewport could follow the current notebook even when it has no
   pipeline yet (now it keeps the last one); image/figure cells; inline Ask Claude suggestions
   as diffs; a snapshot cell that updates when the camera of its view changes (now it is code).
+- 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
+  view does not have yet (per-type transparency, atom labels drawn in the view, light direction
+  and strength, polyhedra color and opacity without a step); the camera reaches the view cell
+  only through Insert › View settings with the camera (not on every rotation); the Render page
+  keeps its own per-notebook state in the `.py` header next to the view cell's picture settings
+  (one place for both); in a kernel notebook a viewport edit reaches the kernel's `pipe.view`
+  only when the view cell runs again.
 - Notebook kernels (`ewald/kernel.py`): kernels on SSH hosts; step forms for steps a kernel
   cell adds with code the app cannot import (a class only the kernel's Python has stays as code).
 - Plugins side bar: disable per notebook,

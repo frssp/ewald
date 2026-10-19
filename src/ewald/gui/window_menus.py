@@ -256,6 +256,8 @@ class MenusMixin:
             vm.aboutToShow.connect(lambda: fill_view_menu(vm, self.data, lambda **kw: self.panel.view.add_view(**kw)))
             ins.addAction("3D &snapshot of the view", self._insert_snapshot).setToolTip(
                 "A cell with a picture of the viewport as it is now (frame, camera, display style)")
+            ins.addAction("View &settings with the camera", self.write_camera).setToolTip(
+                "Write the display style, the camera and the frame into the notebook's view(pipe, ...) cell")
             am = ins.addMenu("&Analysis")
             from ..verbs import VERB_CELLS
 

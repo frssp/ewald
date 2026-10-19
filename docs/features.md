@@ -7,7 +7,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Python API
 
-`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
+`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `View`, `view`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
 
 ## Modifiers
 
@@ -344,6 +344,8 @@ The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (
 | `compute_diffraction` | Powder X-ray or neutron diffraction peaks of a frame (2-theta, d, hkl, relative intensity; strongest first), or the structure factor S(q) when kind='sq'. |
 | `compute_msd` | Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per type, with a linear-regime fit D = slope/6. |
 | `render_image` | Render a frame of the pipeline to PNG and return the image so you can inspect it. |
+| `get_view` | The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, 'help' what each means. |
+| `set_view` | Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style preset, theme, element colors and radii, bonds on/off, bond table, cell, background, VESTA boundary, plugin visuals, vectors, camera (direction, zoom, rotate), frame, and picture options (renderer, quality, legends, scale bar, text). |
 | `list_visuals` | Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell; configured through render_image and modifiers) and installed plugins, which add_visual draws on top in every renderer. |
 | `add_visual` | Draw a plugin visual element (see list_visuals) in every later render_image, with optional constructor parameters. |
 | `remove_visual` | Stop drawing the visual element at 'index' of the added list. |
@@ -648,6 +650,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
     - Python script
 - View
 - 3D snapshot of the view
+- View settings with the camera
 - Analysis
   - Radial distribution g(r)
   - Structure factor S(q)

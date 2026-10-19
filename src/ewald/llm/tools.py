@@ -131,6 +131,7 @@ class Toolset:
         self.workdir = workdir or tempfile.mkdtemp(prefix="ewald-llm-")
         self.render_size = tuple(render_size)
         self.frame = 0
+        self.pipeline_name = "pipe"   # what the user's notebook calls the pipeline (code in set_view results)
         #: Particle indices the user picked (set by the GUI); describe_selection's default.
         self.selection: list[int] | None = None
         self.figures: list[str] = []
@@ -179,6 +180,9 @@ class Toolset:
                 lines.append(f"pipe.modifiers.append({m.name})")
             else:
                 lines.append(f"pipe.modifiers.append({m!r})")
+        if self.pipeline is not None and self.pipeline.view.changed():
+            lines.insert(1, "from ewald import view")
+            lines += ["", self.pipeline.view.source("pipe")]
         lines += ["", f"data = pipe.compute({self.frame})"]
         figure = {k: v for k, v in (("visuals", self.visuals), ("overlays", self.overlays), ("theme", self.theme)) if v}
         if figure:
@@ -482,15 +486,16 @@ class Toolset:
                     "fits": fits, "table": downsample(table)}
 
         @T("render_image",
-           "Render a frame of the pipeline to PNG and return the image so you can inspect it. "
-           "direction: 'x','y','z','-x',...,'iso' or a view vector [x,y,z].",
+           "Render a frame of the pipeline to PNG and return the image so you can inspect it. It draws with the "
+           "pipeline's view settings (set_view: style, colors, radii, bonds, cell, camera, ...); the arguments "
+           "here override them for this picture only. direction: 'x','y','z','-x',...,'iso' or a view vector [x,y,z].",
            _obj({"frame": frame_p, "direction": {"type": ["string", "array"]},
                  "bonds": {"type": ["number", "null"], "description": "draw bonds shorter than this (A)"},
                  "zoom": {"type": "number"}, "width": {"type": "integer"}, "height": {"type": "integer"},
                  "theme": {"type": ["string", "null"],
                            "description": "theme for this and later renders (see list_styles); null keeps it"},
                  "filename": {"type": "string", "description": "also save under this name in the work dir"}}))
-        def render_image(frame=None, direction="iso", bonds=None, zoom=1.0, width=None, height=None, filename=None,
+        def render_image(frame=None, direction=None, bonds=None, zoom=None, width=None, height=None, filename=None,
                          theme=None):
             pipe = self._need_pipeline()
             f = self._frame(frame)
@@ -502,13 +507,72 @@ class Toolset:
 
                 get_theme(theme)  # unknown names fail here, before rendering
                 self.theme = theme
-            extra = {k: v for k, v in (("visuals", list(self.visuals)), ("overlays", list(self.overlays)),
-                                       ("theme", self.theme)) if v}
-            render_png(pipe.compute(f), path, size=size, direction=direction, bonds=bonds, zoom=zoom, **extra)
+                pipe.view.theme = theme
+            data = pipe.compute(f)
+            kw = pipe.view.render_kwargs(data, f)
+            for key in ("size", "renderer", "quality"):
+                kw.pop(key, None)
+            if direction is not None:
+                kw.pop("camera", None)
+                kw["direction"] = direction
+            if zoom is not None:
+                kw.pop("camera", None)
+                kw["zoom"] = zoom
+            if bonds is not None:
+                kw.pop("bond_pairs", None)
+                kw["bonds"] = bonds
+            if self.visuals:
+                kw["visuals"] = list(kw.get("visuals", [])) + list(self.visuals)
+            if self.overlays:
+                kw["overlays"] = list(kw.get("overlays", [])) + list(self.overlays)
+            if self.theme and "theme" not in kw:
+                kw["theme"] = self.theme
+            render_png(data, path, size=size, **kw)
             self.figures.append(path)
             with open(path, "rb") as fh:
                 png = fh.read()
             return ToolResult({"path": path, "frame": f, "size": list(size)}, images=[png])
+
+        from ..view3d import GROUPS, SETTINGS
+
+        view_props = {k: {**st.schema, "description": st.doc} for k, st in SETTINGS.items()}
+        groups = "; ".join(f"{g}: {', '.join(k for k, st in SETTINGS.items() if st.group == g)}" for g in GROUPS)
+
+        @T("get_view",
+           "The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the "
+           "GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, "
+           f"'help' what each means. Groups: {groups}.",
+           _obj({}))
+        def get_view():
+            v = self._need_pipeline().view
+            return {"changed": v.changed(), "settings": v.settings(),
+                    "help": {k: st.doc for k, st in SETTINGS.items()}, "code": v.source(self.pipeline_name)}
+
+        @T("set_view",
+           "Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style "
+           "preset, theme, element colors and radii, bonds on/off, bond table, cell, background, VESTA boundary, "
+           "plugin visuals, vectors, camera (direction, zoom, rotate), frame, and picture options (renderer, "
+           "quality, legends, scale bar, text). Only the settings given change; null resets one to its default. "
+           "'rotate' turns the current view by [azimuth, elevation] degrees; 'reset' (true or a list of names) "
+           "goes back to defaults first. Per-atom colors by condition are steps instead (add_modifier "
+           "ColorCoding / expression selection). Returns the changed settings and the notebook code for them.",
+           _obj({**view_props,
+                 "rotate": {"type": "array", "items": {"type": "number"},
+                            "description": "[azimuth, elevation] in degrees, applied after the other settings"},
+                 "reset": {"type": ["boolean", "array"], "items": {"type": "string"},
+                           "description": "true: every setting back to its default first; or a list of names"}}))
+        def set_view(rotate=None, reset=None, **settings):
+            v = self._need_pipeline().view
+            if reset is True:
+                v.reset()
+            elif reset:
+                v.reset(*reset)
+            v.update(**settings)
+            if rotate is not None:
+                v.rotate(*rotate)
+            if "frame" in settings:
+                self.frame = self._frame(v.frame)
+            return {"changed": v.changed(), "code": v.source(self.pipeline_name)}
 
         @T("list_visuals",
            "Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation "

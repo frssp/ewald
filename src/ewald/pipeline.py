@@ -317,10 +317,29 @@ class Pipeline:
         for i in range(start, stop, step):
             yield self.compute(i, device=device)
 
-    def render(self, filename=None, frame: int = 0, **kwargs):
-        from .render import render
+    @property
+    def view(self):
+        """How this pipeline's structure is drawn (:class:`ewald.view3d.View`): style, colors, radii,
+        bonds, cell, camera, ... Notebook ``view(pipe, ...)`` cells, the GUI and Claude set it;
+        :meth:`render`, ``snapshot(pipe)`` and the Jupyter picture draw with it."""
+        v = self.__dict__.get("_view")
+        if v is None:
+            from .view3d import View
 
-        return render(self.compute(frame), filename, **kwargs)
+            v = self.__dict__["_view"] = View(self)
+        return v
+
+    @view.setter
+    def view(self, value):
+        from .view3d import View
+
+        if not isinstance(value, View):
+            raise TypeError("pipe.view is a View; use view(pipe, ...) or pipe.view.update(...) to change it")
+        self.__dict__["_view"] = value.copy(self)
+
+    def render(self, filename=None, frame: int | None = None, **kwargs):
+        """Draw ``frame`` (default: the view's frame) with :attr:`view`; ``kwargs`` override it for this call."""
+        return self.view.render(filename, frame, **kwargs)
 
     def _repr_png_(self):  # Jupyter shows frame 0 as a picture (ewald.display.options)
         from .display import pipeline_png

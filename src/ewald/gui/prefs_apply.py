@@ -149,7 +149,7 @@ def apply_settings(win, s: Settings, startup: bool = False):
         if style.bonds_enabled:
             style.ensure_bond_pairs(win.data.types)
         apply_element_defaults(style, win.data, s)
-    win._style_changed()
+    win._style_changed(write=False)
 
 
 def save_layout(win, s: Settings):

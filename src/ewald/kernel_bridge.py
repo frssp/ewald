@@ -75,6 +75,18 @@ def _jsonable(value):
         return repr(value)
 
 
+def _plain_view(view) -> dict:
+    """The settings of ``view`` that survive JSON (a visual element object stays in the kernel)."""
+    out = {}
+    for k, v in view.changed().items():
+        try:
+            json.dumps(v)
+        except (TypeError, ValueError):
+            continue
+        out[k] = v
+    return out
+
+
 def run(cells: list, index: int, run_below: bool, counter: int, result_path: str, pipeline_name: str = "pipe",
         path: str | None = None, data_dirs: tuple = ()):
     """Run cell ``index`` of ``cells`` and write the result JSON to ``result_path``. ``path`` and
@@ -92,7 +104,9 @@ def run(cells: list, index: int, run_below: bool, counter: int, result_path: str
                    "steps": [_step(m) for m in c.added]} for c in ran],
         "states": {c.id: c.state for c in nb.cells},
         "pipeline": None if pipe is None else {"num_frames": pipe.num_frames,
-                                               "modifiers": [_step(m) for m in pipe.modifiers]},
+                                               "modifiers": [_step(m) for m in pipe.modifiers],
+                                               "view": _plain_view(pipe.view),
+                                               "view_version": [id(pipe.view), pipe.view.version]},
     }
     with open(result_path, "w", encoding="utf-8") as f:
         json.dump(result, f)

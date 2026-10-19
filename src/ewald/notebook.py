@@ -380,6 +380,15 @@ class Notebook:
             pipe.invalidate()
         else:
             self.namespace[self.pipeline_name] = kernel_pipeline(self.kernel, self.pipeline_name, info["num_frames"])
+        version = info.get("view_version") if info is not None else None
+        if version and version[1] and version != getattr(self, "_kernel_view", None):
+            # a cell changed the kernel's pipe.view: the GUI viewport follows it
+            from .view3d import View
+
+            self._kernel_view = version
+            view, settings = self.namespace[self.pipeline_name].view, View(**info["view"]).changed()
+            if view.changed() != settings:
+                view.reset().update(**settings)
         return r["ok"]
 
     def refresh_kernel_steps(self):
@@ -524,6 +533,38 @@ class Notebook:
         if new != cell.source:
             cell.source = new
             self.dirty = True
+
+    def view_cell(self) -> Cell | None:
+        """The view cell (``view(pipe, ...)``, the 3D view's display settings), or None."""
+        from .view3d import view_cell_args
+
+        for cell in self.cells:
+            if cell.kind == "code":
+                args = view_cell_args(cell.source)
+                if args is not None and args["source"] == self.pipeline_name:
+                    return cell
+        return None
+
+    def set_view_cell(self, settings: dict) -> Cell | None:
+        """Write ``settings`` (:meth:`ewald.view3d.View.changed`) into the view cell, adding one at the
+        end when there is none (and something to say). The cell is not run: the pipeline's view
+        already holds these settings. Returns the cell, or None when nothing was written."""
+        from .view3d import view_source
+
+        cell = self.view_cell()
+        if cell is None and not settings:
+            return None
+        head = [line for line in (cell.source if cell else "").splitlines() if line.startswith(("import ", "from "))]
+        if cell is None and "view" not in self.namespace:
+            head = ["from ewald import view"]
+        new = "\n".join(head + [view_source(self.pipeline_name, **settings)])
+        if cell is None:
+            cell = self.insert(len(self.cells), Cell(new, state="ok"))
+            self.namespace.setdefault("view", __import__("ewald").view)
+        elif cell.source != new:
+            cell.source = new
+            self.dirty = True
+        return cell
 
     def update_step(self, cell: Cell):
         """Rewrite a step cell's source from its modifier (after the form changed it)."""
@@ -780,7 +821,7 @@ class Notebook:
         return nb
 
 
-IMPORTS = ("from ewald import import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show\n"
+IMPORTS = ("from ewald import import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\n"
            "from ewald.paint import paint, hide, isolate, fade, resize")
 NEW_NOTEBOOK = '''# %% [markdown]
 # # {title}
@@ -933,6 +974,8 @@ def _display(value) -> Output:
         buf = io.BytesIO()
         Image.fromarray(value).save(buf, format="PNG")
         return Output("image", buf.getvalue())
+    if type(value).__name__ == "View":   # a view cell: the viewport shows it, the cell says what it set
+        return Output("value", repr(value))
     summary = getattr(value, "summary", None)
     if callable(summary) and type(value).__name__ == "DataCollection":  # the summary says more here
         text = summary()

@@ -38,8 +38,9 @@ from .workbench import Workbench
 from .window_files import SESSION_FILTER, FilesMixin, file_filter, save_filters  # noqa: F401 (public)
 from .window_links import LinksMixin
 from .window_menus import MenusMixin
+from .window_view import ViewSyncMixin
 
-class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidgets.QMainWindow):
+class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSyncMixin, QtWidgets.QMainWindow):
     def __init__(self, pipeline=None, device=None, settings=None):
         super().__init__()
         from .. import settings as settings_mod
@@ -334,6 +335,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             self.message(f"Error: {job.error}", error=True)
             return
         self.data, dt, interactive = job.data, job.seconds, job.interactive
+        self.follow_view(self.data)  # a view cell, Claude or the console changed pipe.view
         n = self.pipeline.num_frames  # LoadTrajectory changes the frame count
         if self.timeline.slider.maximum() != max(0, n - 1):
             self.timeline.set_num_frames(n)
@@ -360,6 +362,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         ts = self.data.attributes.get("Timestep", job.frame)
         self.viewport.overlay_text = f"Frame {job.frame}   timestep {ts}"
         self.viewport.set_data(self.data, interactive=interactive)
+        self.follow_view_camera()
         self._stale_tabs = {self.inspector, self.plots, *self.extra_plots.values()}
         self._update_bottom_tab()
         for p in self.plot_panels()[1:]:  # view cells: their data comes with the notebook's
@@ -424,7 +427,11 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             self._radius_note = table.summary()  # say once which types fell back, not on every frame
             self.message(f"{self._radius_note}. Set oxidation states under Particles.")
 
-    def _style_changed(self):
+    def _style_changed(self, write: bool = True):
+        """Redraw after the style changed; ``write`` (a user's edit) also writes it into ``pipe.view``
+        and the notebook's view cell."""
+        if write is True:
+            self.write_view()
         if self.data is not None:
             self._apply_element_defaults()  # a new radius preset or oxidation states refill the type radii
         self.viewport.style_combo.blockSignals(True)
