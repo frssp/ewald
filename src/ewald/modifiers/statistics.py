@@ -2,7 +2,8 @@
 Property modifiers).
 
 Results match OVITO 3.16 (tests/data/make_analysis_reference.py). The Histogram binning rule follows
-HistogramModifier.cpp (Copyright OVITO GmbH, used under the MIT option of its GPLv3-or-MIT license).
+HistogramModifier.cpp (Copyright OVITO GmbH, used under the MIT option of its GPLv3-or-MIT license;
+see ewald/_csrc/LICENSE.OVITO-MIT.txt).
 """
 from __future__ import annotations
 
