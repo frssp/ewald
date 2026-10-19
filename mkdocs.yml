@@ -88,6 +88,7 @@ nav:
       - Testing and CI: developer/testing.md
       - Writing docs: developer/docs.md
       - Windows release: developer/windows-release.md
+      - macOS release: developer/macos-release.md
   - Reference:
       - Python API: reference/api.md
       - Feature inventory: features.md

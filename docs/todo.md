@@ -39,8 +39,8 @@ GUI
   readout already does a CPU ray-sphere test (`camera_ray`, `ray_spheres` in `gui/viewport.py`)
   that `pick_at` could reuse.
 - App icon outside the running window: a Linux `.desktop` entry and hicolor icons installed
-  with the package, the Windows installer/shortcut (`ewald.ico`) and a macOS app bundle
-  (`ewald.icns`); the EWALD mark in the main window header (the Notebook redesign) and the docs.
+  with the package and the Windows installer/shortcut (`ewald.ico`; the macOS bundle uses
+  `ewald.icns`); the EWALD mark in the main window header (the Notebook redesign) and the docs.
 - Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
   categories; the view-bar rotation arrows are still text glyphs.
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
@@ -61,6 +61,9 @@ GUI
 
 Analysis
 
+- Apple GPU compute (Metal): a backend in `backend.py` for MLX or PyTorch MPS, starting with the
+  dense kernels (powder diffraction, S(q)); the neighbor list needs data-dependent shapes they
+  lack. Macs compute on the CPU until then.
 - PLUMED: draw the bias forces as arrows, take MOLINFO residue names from the loaded topology,
   and plot `Plumed.*` attributes directly on the timeline with a current-frame marker.
 - ConstructSurfaceMesh (alpha-shape surface), drawn with the existing `SurfaceMesh`.
@@ -252,6 +255,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   until the first one (blocked on GitHub Actions minutes).
 - Installing without a compiler on real Windows (MSVC missing raises in `build_ext.run`; tested
   here with `CXX=/bin/false` on Linux). pip shows the "not built" warning only with `-v`.
+- macOS on a real Mac (Apple Silicon and Intel): the source install and the full test suite, the
+  GUI on Retina (the VTK view filling the whole widget, picking and hover at the right atom),
+  trackpad orbit/zoom, the EWALD menu bar name, and EWALD.app from `macos-release.yml` with
+  Finder Open With and Dock drops. The list is in docs/developer/macos-release.md; the container
+  checks clang, the spec and the dependency wheels only.
 - `DislocationAnalysis` and `OvitoModifier` with the `ovito` package installed.
 - The native OUTCAR and vasprun.xml readers on multi-GB real output. Checked on the real
   pymatgen test files (VASP 5.2-6.3: relaxations, MD, NEB, SOC, DFPT, GW/BSE, HSE, LVEL,
@@ -319,6 +327,10 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 - CI installs each extra on its own only through the test suite's `importorskip`s; a job that
   installs every extra in a clean venv and imports its modules would catch broken extras
   (`tests/test_dependencies.py` only checks that every import is declared).
+
+- macOS release: a first run of `macos-release.yml` (manual; macOS minutes bill 10x), then
+  Developer ID signing and notarization so the downloaded app opens without the Gatekeeper
+  override (needs an Apple Developer account and the certificate as a workflow secret).
 
 ## Deferred until the user asks
 

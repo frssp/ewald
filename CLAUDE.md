@@ -109,7 +109,9 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   (classic layout; `DisplayPanel` is its visual-elements part in the notebook layout), `params.py`, `render_page.py`,
   `preferences.py` (dialog; `pref_widgets.py`, `element_table.py`, `prefs_apply.py` apply settings to the window),
   `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
-  `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`.
+  `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`, `macos.py` (menu bar name; Finder file-open
+  events go through `app.EwaldApplication`). Frozen apps: `packaging/windows/` and `packaging/macos/` (EWALD.app,
+  docs/developer/macos-release.md); the macOS workflow is manual only (10x minutes) and never needs to run for a PR.
 - `llm/`: Claude agent (`agent.py`), tools (`tools.py`), `credentials.py` (API key in the OS keychain via
   `keyring`, 0600 file fallback, never in settings.json; every Claude client comes from `credentials.client()`), Modifier Forge (`forge.py`: Claude writes a
   plugin + tests, verified in a subprocess, saved to the plugin folder), descriptors (`describe.py`, `narrate.py`),
