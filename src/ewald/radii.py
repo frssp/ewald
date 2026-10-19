@@ -92,6 +92,25 @@ def element_of(type_name) -> str | None:
     return m.group(1) if m and m.group(1) in atomic_numbers else None
 
 
+def atomic_number(type_name) -> int:
+    """Atomic number of a particle type name ('Cu', 'cu', 'Fe3+'), 0 when it names no element."""
+    from ase.data import atomic_numbers
+
+    el = element_of(type_name) or element_of(str(type_name).capitalize())
+    return atomic_numbers[el] if el else 0
+
+
+def element_masses(types, default: float | None = 1.0) -> np.ndarray:
+    """Standard atomic mass (amu) of each type name; ``default`` for names that are no element
+    (NaN when ``default`` is None)."""
+    from ase.data import atomic_masses
+
+    names, inverse = np.unique(np.asarray([str(t) for t in types], dtype=object), return_inverse=True)
+    fill = np.nan if default is None else default
+    table = np.array([atomic_masses[z] if (z := atomic_number(t)) else fill for t in names], float)
+    return table[inverse.reshape(-1)] if len(names) else np.zeros(0)
+
+
 def parse_oxidation_states(text: str) -> dict:
     """``"Sr=2, Ti=+4, O=-2"`` (or ``Ti:4``, spaces) -> ``{"Sr": 2, "Ti": 4, "O": -2}``."""
     out = {}

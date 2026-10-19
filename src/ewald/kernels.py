@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .backend import Backend, get_backend
+from .backend import get_backend
 from .data import Cell
 from .neighbors import find_pairs
 
