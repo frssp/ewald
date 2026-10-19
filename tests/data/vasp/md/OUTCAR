@@ -1,0 +1,188 @@
+ vasp.6.4.2 20Jul23 (build Nov 20 2023 10:00:00) complex                       
+ 
+ executed on             LinuxIFC date 2026.10.18  12:00:00
+ running    4 mpi-ranks, with    1 threads/rank
+ POTCAR:    PAW_PBE Fe_pv 02Aug2007
+   VRHFIN =Fe: 3p4s3d
+   LEXCH  = PE
+   TITEL  = PAW_PBE Fe_pv 02Aug2007
+ POTCAR:    PAW_PBE Fe_pv 02Aug2007
+
+ Dimension of arrays:
+   k-points           NKPTS =      1   k-points in BZ     NKDIM =      1   number of bands    NBANDS=     24
+   number of dos      NEDOS =    301   number of ions     NIONS =      2
+   non local maximal  LDIM  =      6   non local SUM 2l+1 LMDIM =     18
+   ions per type =               2
+
+ k-points in reciprocal lattice and weights: Gamma
+   0.00000000  0.00000000  0.00000000       1.000
+
+   ISPIN  =      2    spin polarized calculation?
+   IBRION =      0    ionic relax: 0-MD 1-quasi-New 2-CG
+   POTIM  =   1.0000    time-step for ionic-motion
+   TEBEG  =    300.0;   TEEND  =    300.0 temperature during run
+
+ Lattice vectors:
+
+      direct lattice vectors                 reciprocal lattice vectors
+   2.866000000  0.000000000  0.000000000   0.348918353  0.000000000  0.000000000
+   0.000000000  2.866000000  0.000000000   0.000000000  0.348918353  0.000000000
+   0.000000000  0.000000000  2.866000000   0.000000000  0.000000000  0.348918353
+
+----------------------------------------- Iteration      1(   1)  ---------------------------------------
+
+    POTLOK:  cpu time      0.0123: real time      0.0125
+
+  free energy    TOTEN  =       -16.28000000 eV
+
+  energy without entropy =      -16.29000000  energy(sigma->0) =      -16.29500000
+
+ number of electron      16.0000000 magnetization       4.6200000
+ augmentation part       16.0000000 magnetization       4.4200000
+
+----------------------------------------- Iteration      1(   2)  ---------------------------------------
+
+    POTLOK:  cpu time      0.0123: real time      0.0125
+
+  free energy    TOTEN  =       -16.29000000 eV
+
+  energy without entropy =      -16.29000000  energy(sigma->0) =      -16.29500000
+
+ number of electron      16.0000000 magnetization       4.5200000
+ augmentation part       16.0000000 magnetization       4.4200000
+
+----------------------------------------- Iteration      1(   3)  ---------------------------------------
+
+    POTLOK:  cpu time      0.0123: real time      0.0125
+
+  free energy    TOTEN  =       -16.30000000 eV
+
+  energy without entropy =      -16.29000000  energy(sigma->0) =      -16.29500000
+
+ number of electron      16.0000000 magnetization       4.4200000
+ augmentation part       16.0000000 magnetization       4.4200000
+
+ magnetization (x)
+ 
+# of ion       s       p       d       tot
+------------------------------------------
+    1        0.012   0.023   2.181   2.216
+    2        0.012   0.023   2.169   2.204
+--------------------------------------------------
+tot          0.024   0.046   4.350   4.420
+
+  FORCE on cell =-STRESS in cart. coord.  units (eV):
+  Direction    XX          YY          ZZ          XY          YZ          ZX
+  --------------------------------------------------------------------------------------
+  Total         1.81500     1.81500     1.81500     0.00000     0.00000     0.00000
+  in kB        12.34567    12.34567    12.34567     0.00000     0.00000     0.00000
+  external pressure =       12.10 kB  Pullay stress =        0.25 kB
+
+  kinetic pressure (ideal gas correction) =      0.38 kB
+  total pressure  =     12.73 kB
+
+ VOLUME and BASIS-vectors are now :
+ -----------------------------------------------------------------------------
+  energy-cutoff  :      400.00
+  volume of cell :       23.54
+      direct lattice vectors                 reciprocal lattice vectors
+   2.866000000  0.000000000  0.000000000   0.348918353  0.000000000  0.000000000
+   0.000000000  2.866000000  0.000000000   0.000000000  0.348918353  0.000000000
+   0.000000000  0.000000000  2.866000000   0.000000000  0.000000000  0.348918353
+
+ POSITION                                       TOTAL-FORCE (eV/Angst)
+ -----------------------------------------------------------------------------------
+       0.00000      0.00000      0.00000           0.120000      0.000000      0.000000  
+       1.43300      1.43300      1.43300          -0.120000      0.000000      0.000000  
+ -----------------------------------------------------------------------------------
+    total drift:                                0.000000      0.000000      0.000000
+
+  FREE ENERGIE OF THE ION-ELECTRON SYSTEM (eV)
+  ---------------------------------------------------
+  free  energy   TOTEN  =       -16.30000000 eV
+
+  energy  without entropy=      -16.29000000  energy(sigma->0) =      -16.29500000
+
+  kinetic energy EKIN   =         0.077556  (temperature  300.00 K)
+  total energy   ETOTAL =       -16.22244400 eV
+
+----------------------------------------- Iteration      2(   1)  ---------------------------------------
+
+    POTLOK:  cpu time      0.0123: real time      0.0125
+
+  free energy    TOTEN  =       -16.26000000 eV
+
+  energy without entropy =      -16.27000000  energy(sigma->0) =      -16.27500000
+
+ number of electron      16.0000000 magnetization       4.6290000
+ augmentation part       16.0000000 magnetization       4.4290000
+
+----------------------------------------- Iteration      2(   2)  ---------------------------------------
+
+    POTLOK:  cpu time      0.0123: real time      0.0125
+
+  free energy    TOTEN  =       -16.27000000 eV
+
+  energy without entropy =      -16.27000000  energy(sigma->0) =      -16.27500000
+
+ number of electron      16.0000000 magnetization       4.5290000
+ augmentation part       16.0000000 magnetization       4.4290000
+
+----------------------------------------- Iteration      2(   3)  ---------------------------------------
+
+    POTLOK:  cpu time      0.0123: real time      0.0125
+
+  free energy    TOTEN  =       -16.28000000 eV
+
+  energy without entropy =      -16.27000000  energy(sigma->0) =      -16.27500000
+
+ number of electron      16.0000000 magnetization       4.4290000
+ augmentation part       16.0000000 magnetization       4.4290000
+
+ magnetization (x)
+ 
+# of ion       s       p       d       tot
+------------------------------------------
+    1        0.012   0.023   2.196   2.231
+    2        0.012   0.023   2.163   2.198
+--------------------------------------------------
+tot          0.024   0.046   4.359   4.429
+
+  FORCE on cell =-STRESS in cart. coord.  units (eV):
+  Direction    XX          YY          ZZ          XY          YZ          ZX
+  --------------------------------------------------------------------------------------
+  Total         1.81500     1.81500     1.81500     0.00000     0.00000     0.00000
+  in kB        11.50000    11.50000    11.50000     0.00000     0.00000     0.00000
+  external pressure =       11.25 kB  Pullay stress =        0.25 kB
+
+  kinetic pressure (ideal gas correction) =      0.38 kB
+  total pressure  =     12.73 kB
+
+ VOLUME and BASIS-vectors are now :
+ -----------------------------------------------------------------------------
+  energy-cutoff  :      400.00
+  volume of cell :       23.54
+      direct lattice vectors                 reciprocal lattice vectors
+   2.866000000  0.000000000  0.000000000   0.348918353  0.000000000  0.000000000
+   0.000000000  2.866000000  0.000000000   0.000000000  0.348918353  0.000000000
+   0.000000000  0.000000000  2.866000000   0.000000000  0.000000000  0.348918353
+
+ POSITION                                       TOTAL-FORCE (eV/Angst)
+ -----------------------------------------------------------------------------------
+       0.02866      0.00000      0.00000           0.080000     -0.010000      0.000000  
+       1.43300      1.40434      1.43300          -0.080000      0.010000      0.000000  
+ -----------------------------------------------------------------------------------
+    total drift:                                0.000000      0.000000      0.000000
+
+  FREE ENERGIE OF THE ION-ELECTRON SYSTEM (eV)
+  ---------------------------------------------------
+  free  energy   TOTEN  =       -16.28000000 eV
+
+  energy  without entropy=      -16.27000000  energy(sigma->0) =      -16.27500000
+
+  kinetic energy EKIN   =         0.060310  (temperature  233.29 K)
+  total energy   ETOTAL =       -16.21969000 eV
+
+ General timing and accounting informations for this job:
+ ========================================================
+

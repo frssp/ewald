@@ -8,8 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- VASP/LAMMPS output readers: energies, forces, stress and magnetic moments from vasprun.xml,
-  OUTCAR and OSZICAR, thermo columns from log.lammps, as frame attributes and per-atom properties.
 - PLUMED plugin and collective variables.
 - Ask Claude about picked atoms ([#26](https://github.com/frssp/ewald/pull/26)).
 
@@ -41,6 +39,9 @@ Formats
 
 - GROMACS `.gro` with velocities.
 - LAMMPS binary dump.
+- LAMMPS logs written with `thermo_style multi` or `thermo_modify line yaml` (only one-line
+  thermo output is read now).
+- Click a point of a time-series plot (the `Thermo` table) to jump to that frame.
 
 Figures
 
@@ -91,6 +92,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - Claude features with a real API key: `ewald ask`, `ewald narrate`, `ewald forge`, `ewald mcp`.
 - The Windows release workflow (wheels, PyInstaller app, installer) on a real `v*` tag.
 - `DislocationAnalysis` and `OvitoModifier` with the `ovito` package installed.
+- The native OUTCAR and vasprun.xml readers on real VASP 5/6 output (relaxations with ISIF=3,
+  non-collinear and MD runs, multi-GB files); the test fixtures are hand-written in VASP 6.4
+  format and checked against ASE.
 
 ## Infrastructure
 

@@ -11,7 +11,8 @@ files directly.
 | LAMMPS data file | native | styles atomic, charge, bond/angle/molecular, full, sphere, dipole (from `Atoms # style`, inferred, or `atom_style=`); type names from `Atom Type Labels` or `Masses` comments; velocities, image flags, bonds in `data.bonds` |
 | VASP XDATCAR | native, lazy | fixed and variable cell (NpT), VASP 6.4 `Si/hash` species labels |
 | VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics, CONTCAR velocities (`Velocity`, Å/fs) |
-| VASP OUTCAR, vasprun.xml | ASE | every ionic step, with `Energy`, `Force`, `Stress` |
+| VASP OUTCAR | native, lazy | every ionic step: `Force`, `Magnetic Moment` (collinear, or N x 3 non-collinear), energies, stress, pressure, magnetization, MD temperature (see [Simulation results](#simulation-results)); a partial last step is skipped with a warning |
+| VASP vasprun.xml | native, lazy | every ionic step: cell, `Force`, energies, stress; a running job's open last step is skipped with a warning |
 | VASP CHGCAR/LOCPOT/ELFCAR, Gaussian cube | native | atoms plus a grid in `data.grids` |
 | XYZ, extended XYZ (`*.xyz`, `*.extxyz`) | native, lazy | frames indexed by their atom-count lines, each parsed on demand by ASE's extxyz parser: `Lattice=`, `Properties=`, `pbc=`, per-frame info (attributes), `forces` (`Force`), `energy` (`Energy`); a partial last frame is skipped with a warning |
 | XCrySDen XSF/AXSF (`*.xsf`, `*.axsf`) | native, lazy | `CRYSTAL`/`SLAB`/`POLYMER`/`MOLECULE`, `ANIMSTEPS` trajectories with fixed or variable cell, forces (`Force`), every `DATAGRID_3D` as a property of `data.grids["xsf"]` (Quantum ESPRESSO `pp.x`, VESTA); the repeated end points of XSF's general grid are dropped for periodic axes |
@@ -28,6 +29,40 @@ MDAnalysis).
 
 "Lazy" means the file is indexed once and each frame is read when it is needed, so a
 multi-gigabyte trajectory opens immediately and uses memory for the frames in the cache only.
+
+## Simulation results
+
+Energies, temperature, pressure and the other per-step numbers a code writes become frame
+attributes, matched to frames by `Timestep` = step, and the whole series is the table
+`data.tables["Thermo"]`, which the GUI's Plots tab draws with a marker at the current frame.
+
+| Source | Found how | Attributes |
+|---|---|---|
+| OUTCAR, vasprun.xml | carried by the file | `Energy` (energy(sigma→0), eV), `Free Energy` (TOTEN), `Pressure` (external pressure, kB), `Stress` (xx yy zz yz xz xy, eV/Å³, ASE's sign), `Magnetization` (μB, OUTCAR); MD: `Temperature` (K), `Kinetic Energy`, `Total Energy` |
+| OSZICAR | next to an XDATCAR | `Energy` (E0), `Free Energy` (F), `Magnetization` (mag, \|m\| when non-collinear); MD: `Temperature`, `Total Energy` (E), `Kinetic Energy` (EK), `Nose Potential` (SP), `Nose Kinetic` (SK) |
+| log.lammps | next to a LAMMPS dump | every `thermo_style` column under its log name (`Temp`, `PotEng`, `Press`, `c_myT`, ...), in the run's units |
+
+VASP frames from OUTCAR, vasprun.xml and XDATCAR all count ionic steps from 1, as OSZICAR
+does. A LAMMPS log may hold several runs with different `thermo_style` columns: they are
+joined by `Step`, a column a run does not print is missing for its frames, and the step two
+runs share keeps the values of both. Frames whose timestep the log does not print (dump
+every 10 steps, thermo every 100) get the table but no attributes. Only one-line thermo
+output is read (not `thermo_style multi` or YAML).
+
+```python
+pipe = import_file("XDATCAR")                          # OSZICAR in the same folder is picked up
+pipe = import_file("dump.lammpstrj", thermo="../log.lammps")   # or a list of logs; thermo=None turns it off
+data = pipe.compute(10)
+data.attributes["Temp"], data.attributes["PotEng"]
+pipe.source.thermo.table["Step"], pipe.source.thermo.table["Press"]   # the whole series (numpy arrays)
+
+from ewald.io import read_lammps_log, read_oszicar     # the parsers alone, as {column: array}
+```
+
+OUTCAR and vasprun.xml are indexed by searching only for the lines that matter, so a large
+OUTCAR opens about three times faster than with ASE and holds one ionic step in memory at a
+time; over SSH the search runs as `grep` on the host. `format="vasp-out"` / `"vasp-xml"`
+still use ASE's readers.
 
 ## Reader options
 
@@ -100,8 +135,8 @@ In the GUI, File › Load remote file (SSH)… browses the remote folders.
 Connections follow `~/.ssh/config` (HostName, User, Port, IdentityFile, IdentitiesOnly,
 ProxyJump, ProxyCommand, UserKnownHostsFile, StrictHostKeyChecking), the SSH agent and your
 keys, and host keys are checked against `known_hosts`. If key login fails, ewald asks for the
-password or one-time code and never saves it. LAMMPS dumps, LAMMPS data files and XDATCARs are
-read in place, frame by frame (a dump is indexed with `grep -b` on the host), so a large
+password or one-time code and never saves it. LAMMPS dumps, LAMMPS data files, XDATCARs, OUTCARs and
+vasprun.xml files are read in place, frame by frame (a dump is indexed with `grep -b` on the host), so a large
 trajectory is not copied. Other formats, including plugin formats, are downloaded once into a
 local cache (`ewald.io.remote.cache_dir()`, `EWALD_CACHE_DIR` overrides) and reused while the
 remote file is unchanged. Host aliases need at least two characters, so `C:\data` stays local.
