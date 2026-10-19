@@ -31,7 +31,8 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 # the license notices of the ported and vendored C++ in ewald/_csrc ship with every install
-ewald = ["tables/*.json", "examples/files/*", "_csrc/README.md", "_csrc/LICENSE*", "_csrc/*/LICENSE"]
+ewald = ["tables/*.json", "examples/files/*", "_csrc/README.md", "_csrc/LICENSE*", "_csrc/*/LICENSE",
+         "assets/icon/*.png", "assets/icon/*.svg", "assets/icon/*.ico", "assets/icon/*.icns"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
