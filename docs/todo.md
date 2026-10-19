@@ -21,9 +21,8 @@ GUI
   changes with the same atoms that replace only the point coordinates.
 - Picking without a render: ray-sphere intersection with the atoms on the CPU (now a
   `vtkPropPicker` selection render per click).
-- Toolbar and menu appearance: one SVG icon set (icons with text for mode switches and rarely
-  used buttons, icons alone for the tool rail), a Preferences choice between icons, text and
-  both, and the same icons in the menus. Waiting on the user's choice (GUI review, 2026-10-19).
+- Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
+  categories; the view-bar rotation arrows are still text glyphs.
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
   Add modification for the loaded data, view-along buttons hidden without a cell, the timeline
   folded for a single structure, a right-click menu on pipeline items.

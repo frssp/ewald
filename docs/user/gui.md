@@ -15,6 +15,12 @@ The layout follows OVITO 3, with VESTA's crystal-viewing controls added: the vie
 middle, the pipeline and the selected item's parameters are on the right, the timeline is under
 the viewport, and a bottom dock holds the Python console, the data inspector and plots.
 
+Buttons use one line-icon set. By default mode switches and less frequent buttons (Open,
+Analyze, Render) show an icon with text, and the tool rail and frequent buttons (Open remote,
+Save, Fit) show the icon alone, with the name and shortcut in the tooltip. Preferences ›
+General › Toolbar buttons switches to icons only or to text only (which also drops the icons
+from menus).
+
 ## Analyze workspace
 
 **Viewport.** Drag to orbit and scroll to zoom (VTK's standard mouse controls). View › View

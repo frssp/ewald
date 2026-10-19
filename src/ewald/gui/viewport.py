@@ -42,11 +42,11 @@ class Viewport(QtWidgets.QWidget):
     styleChanged = QtCore.Signal()
     contextMenuRequested = QtCore.Signal()  # right click without dragging
 
-    TOOLS = (("orbit", "⟲", "Orbit / pan / zoom (mouse)"),
-             ("pick", "⌖", "Pick atom: shows id, type, position and properties; Shift+click picks several"),
-             ("distance", "↔", "Measure distance: click two atoms"),
-             ("angle", "∠", "Measure angle: click three atoms (vertex in the middle)"),
-             ("bond", "⌇", "Edit bonds: click two atoms to add or delete the bond between them"))
+    TOOLS = (("orbit", "Orbit", "Orbit / pan / zoom (mouse)"),
+             ("pick", "Pick", "Pick atom: shows id, type, position and properties; Shift+click picks several"),
+             ("distance", "Dist", "Measure distance: click two atoms"),
+             ("angle", "Angle", "Measure angle: click three atoms (vertex in the middle)"),
+             ("bond", "Bond", "Edit bonds: click two atoms to add or delete the bond between them"))
 
     def __init__(self, style: ViewStyle, parent=None):
         super().__init__(parent)
@@ -86,6 +86,7 @@ class Viewport(QtWidgets.QWidget):
         grid = QtWidgets.QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(0)
+        self.styled_buttons = []  # (button, text in the default style); MainWindow.set_button_style
         grid.addWidget(self._build_viewbar(), 0, 0, 1, 2)
         grid.addWidget(self._build_rail(), 1, 0)
         # always interactive, even when PYVISTA_OFF_SCREEN is set for headless rendering
@@ -144,8 +145,10 @@ class Viewport(QtWidgets.QWidget):
         lay.addWidget(self.style_combo)
         lay.addStretch()
         fit = _button("Fit", "Zoom to fit (Ctrl+0)")
+        fit.setProperty("ewald_icon", "fit")
         fit.clicked.connect(self.zoom_fit)
         lay.addWidget(fit)
+        self.styled_buttons.append((fit, False))
         return bar
 
     def _build_rail(self):
@@ -156,20 +159,32 @@ class Viewport(QtWidgets.QWidget):
         group = QtWidgets.QButtonGroup(self)
         group.setExclusive(True)
         self.tool_buttons = {}
-        for key, icon, tip in self.TOOLS:
-            b = _button(icon, tip, True)
-            b.setFixedSize(36, 36)
+        for key, label, tip in self.TOOLS:
+            b = _button(label, tip, True)
+            b.setProperty("ewald_icon", key)
             b.clicked.connect(lambda _=False, k=key: self.set_tool(k))
             group.addButton(b)
             lay.addWidget(b)
             self.tool_buttons[key] = b
+            self.styled_buttons.append((b, False))
         self.tool_buttons["orbit"].setChecked(True)
         lay.addStretch()
-        clear = _button("✕", "Clear picks and measurements")
-        clear.setFixedSize(36, 36)
+        clear = _button("Clear", "Clear picks and measurements")
+        clear.setProperty("ewald_icon", "clear")
         clear.clicked.connect(self.clear_picks)
         lay.addWidget(clear)
+        self.styled_buttons.append((clear, False))
+        self._rail = rail
         return rail
+
+    def set_button_style(self, style: str):
+        """Size the tool rail for icons (36 px squares) or text labels (see ``icons.button_style``)."""
+        text = style == "Text"
+        self._rail.setFixedWidth(58 if text else 46)
+        for b, _ in self.styled_buttons:
+            if b.parent() is self._rail:
+                b.setFixedSize(50 if text else 36, 28 if text else 36)
+                b.setIconSize(QtCore.QSize(20, 20))
 
     # ------------------------------------------------------------------ scene
     def set_data(self, data, interactive: bool = False):

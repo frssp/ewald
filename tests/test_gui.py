@@ -1111,3 +1111,22 @@ def test_open_example_menu(app):
     assert "POSCAR.SrTiO3" in w.windowTitle()
     w.close()
     w.deleteLater()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_toolbar_button_styles(app):
+    from PySide6 import QtCore
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    analyze, orbit = w.ws_buttons[0], w.viewport.tool_buttons["orbit"]
+    assert w.settings["general.toolbar_style"] == "Icons and text"
+    assert analyze.toolButtonStyle() == QtCore.Qt.ToolButtonTextBesideIcon and not analyze.icon().isNull()
+    assert orbit.toolButtonStyle() == QtCore.Qt.ToolButtonIconOnly and orbit.text() == "Orbit"
+    w.set_button_style("Text")
+    assert analyze.icon().isNull() and orbit.toolButtonStyle() == QtCore.Qt.ToolButtonTextOnly
+    assert app.testAttribute(QtCore.Qt.AA_DontShowIconsInMenus)
+    w.set_button_style("Icons")
+    assert analyze.toolButtonStyle() == QtCore.Qt.ToolButtonIconOnly
+    assert not app.testAttribute(QtCore.Qt.AA_DontShowIconsInMenus)
+    w.close()

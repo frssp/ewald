@@ -21,6 +21,7 @@ from ..io import import_file
 from ..render import camera_state, render
 from .ask_panel import AskPanel
 from .console import make_console
+from .icons import icon
 from .inspector import DataInspector
 from .palette import CommandPalette, menu_entries
 from .pipeline_panel import MODIFIER_MENU, PipelinePanel, fill_modifier_menu
@@ -162,14 +163,25 @@ class MainWindow(QtWidgets.QMainWindow):
         tb = self.addToolBar("Main")
         tb.setObjectName("main-toolbar")
         tb.setMovable(False)
-        tb.addAction("Open", self.open_dialog)
-        tb.addAction("Open remote", self.open_remote_dialog)
+        tb.setIconSize(QtCore.QSize(18, 18))
+        self.styled_buttons = []  # (button, text in the default style); see icons.button_style
+
+        def button(text, icon_name, slot, tip, text_in_hybrid=True, checkable=False):
+            b = QtWidgets.QToolButton(text=text, checkable=checkable, toolTip=tip)
+            b.setProperty("ewald_icon", icon_name)
+            b.clicked.connect(slot)
+            tb.addWidget(b)
+            self.styled_buttons.append((b, text_in_hybrid))
+            return b
+
+        button("Open", "open", self.open_dialog, "Load file (Ctrl+O)")
+        button("Open remote", "remote", self.open_remote_dialog, "Load remote file over SSH (Ctrl+Alt+O)", False)
+        button("Save", "save", lambda: self.save_session(), "Save session (Ctrl+S)", False)
         tb.addSeparator()
         self.ws_buttons = []
-        for i, name in enumerate(("Analyze", "Render")):
-            b = QtWidgets.QToolButton(text=name, checkable=True)
-            b.clicked.connect(lambda _=False, i=i: self.set_workspace(i))
-            tb.addWidget(b)
+        for i, (name, icon_name) in enumerate((("Analyze", "analyze"), ("Render", "render"))):
+            b = button(name, icon_name, lambda _=False, i=i: self.set_workspace(i), f"{name} workspace (Ctrl+{i + 1})",
+                       checkable=True)
             self.ws_buttons.append(b)
         self.ws_buttons[0].setChecked(True)
         tb.addSeparator()
@@ -186,28 +198,41 @@ class MainWindow(QtWidgets.QMainWindow):
         self.device_combo.setCurrentText({"cuda": "CUDA", "auto": "auto"}.get((self.device or "cpu").lower(), "CPU"))
         self.device_combo.currentTextChanged.connect(self._set_device)
         tb.addWidget(self.device_combo)
-        render_btn = QtWidgets.QPushButton("Render")
+        render_btn = QtWidgets.QPushButton("Render", toolTip="Render workspace: image, movie and figure code")
         render_btn.setObjectName("primary")
+        render_btn.setProperty("ewald_icon", "render")
+        render_btn.setProperty("ewald_icon_color", "#0B1220")
         render_btn.clicked.connect(lambda: self.set_workspace(1))
         tb.addWidget(render_btn)
+        self.styled_buttons.append((render_btn, True))
+
+    def set_button_style(self, style: str):
+        """Toolbar and tool rail buttons as icons with text, icons or text
+        (Preferences › General › Toolbar buttons); menus show icons unless 'Text'."""
+        from .icons import button_style
+
+        for b, text_in_hybrid in self.styled_buttons + self.viewport.styled_buttons:
+            button_style(b, style, text_in_hybrid)
+        self.viewport.set_button_style(style)
+        QtWidgets.QApplication.instance().setAttribute(QtCore.Qt.AA_DontShowIconsInMenus, style == "Text")
 
     def _build_menus(self):
         mb = self.menuBar()
         f = mb.addMenu("&File")
-        f.addAction("&Load file…", self.open_dialog, QtGui.QKeySequence.Open)
-        f.addAction("Load &remote file (SSH)…", self.open_remote_dialog, "Ctrl+Alt+O")
+        f.addAction(icon("open"), "&Load file…", QtGui.QKeySequence.Open, self.open_dialog)
+        f.addAction(icon("remote"), "Load &remote file (SSH)…", QtGui.QKeySequence("Ctrl+Alt+O"), self.open_remote_dialog)
         f.addAction("Load &NEB folder…", self.open_neb_dialog)
-        ex = f.addMenu("Open e&xample")
+        ex = f.addMenu(icon("example"), "Open e&xample")
         for example in examples.EXAMPLES:
             act = ex.addAction(f"{example.file}  ({example.format})", lambda e=example: self.open_example(e.file))
             act.setToolTip(example.description)
             act.setStatusTip(example.description)
         ex.setToolTipsVisible(True)
         f.addAction("Load &session…", self.load_session_dialog, "Ctrl+Shift+O")
-        f.addAction("&Save session", self.save_session, QtGui.QKeySequence.Save)
+        f.addAction(icon("save"), "&Save session", QtGui.QKeySequence.Save, self.save_session)
         f.addAction("Save session &as…", lambda: self.save_session(ask=True), QtGui.QKeySequence.SaveAs)
         f.addSeparator()
-        f.addAction("Render &image…", self.render_image, "Ctrl+Shift+R")
+        f.addAction(icon("image"), "Render &image…", QtGui.QKeySequence("Ctrl+Shift+R"), self.render_image)
         f.addAction("E&xport data…", self.export_dialog, "Ctrl+E")
         f.addAction("Export &movie…", self.export_movie)
         f.addSeparator()
@@ -652,9 +677,9 @@ class MainWindow(QtWidgets.QMainWindow):
         menu = QtWidgets.QMenu(self)
         d, pipe = self.data, self.pipeline
         if d is None and not everything:
-            menu.addAction("Load file…", self.open_dialog)
-            menu.addAction("Load remote file (SSH)…", self.open_remote_dialog)
-            ex = menu.addMenu("Open example")
+            menu.addAction(icon("open"), "Load file…", self.open_dialog)
+            menu.addAction(icon("remote"), "Load remote file (SSH)…", self.open_remote_dialog)
+            ex = menu.addMenu(icon("example"), "Open example")
             for example in examples.EXAMPLES:
                 ex.addAction(example.file, lambda e=example: self.open_example(e.file))
             return menu
@@ -664,10 +689,10 @@ class MainWindow(QtWidgets.QMainWindow):
             count = f"{len(picks)} atom{'s' if len(picks) != 1 else ''}" if picks else "N atoms"
             head = menu.addAction(f"{count} picked")
             head.setEnabled(False)
-            menu.addAction("Center view on picked", self.center_on_picks)
-            menu.addAction("Select picked atoms", lambda: self.select_picked())
-            menu.addAction("Delete picked atoms", lambda: self.select_picked(delete=True))
-            menu.addAction("Clear picks", self.viewport.clear_picks)
+            menu.addAction(icon("center"), "Center view on picked", self.center_on_picks)
+            menu.addAction(icon("select"), "Select picked atoms", lambda: self.select_picked())
+            menu.addAction(icon("delete"), "Delete picked atoms", lambda: self.select_picked(delete=True))
+            menu.addAction(icon("clear"), "Clear picks", self.viewport.clear_picks)
             menu.addSeparator()
 
         tables = d.tables if d is not None else {}
@@ -675,26 +700,27 @@ class MainWindow(QtWidgets.QMainWindow):
         phonon = d is not None and "Phonon Modes" in d.attributes
         grids = list(d.grids) if d is not None else []
         if phonon or everything:
-            menu.addAction("Phonon band structure", lambda: self.show_plot())
+            menu.addAction(icon("chart"), "Phonon band structure", lambda: self.show_plot())
         if neb or everything:
-            menu.addAction("NEB energy profile", lambda: self.show_plot(neb))
+            menu.addAction(icon("chart"), "NEB energy profile", lambda: self.show_plot(neb))
         if grids or everything:
             iso = [m for m in pipe.modifiers if isinstance(m, mods.CreateIsosurface)] if pipe else []
             if iso:
-                menu.addAction("Edit isosurface", lambda: self.panel.refresh(select=("mod", iso[0])))
+                menu.addAction(icon("isosurface"), "Edit isosurface", lambda: self.panel.refresh(select=("mod", iso[0])))
             else:
-                menu.addAction("Add isosurface", self.add_isosurface)
+                menu.addAction(icon("isosurface"), "Add isosurface", self.add_isosurface)
         if phonon or neb or grids or everything:
             menu.addSeparator()
 
         if (pipe is not None and pipe.num_frames > 1) or everything:
-            play = menu.addAction("Pause" if self.timeline.play.isChecked() else "Play")
+            playing = self.timeline.play.isChecked()
+            play = menu.addAction(icon("pause" if playing else "play"), "Pause" if playing else "Play")
             play.setShortcut("Space")
             play.triggered.connect(self.timeline.play.toggle)
             self._overlay_entries(menu)
             menu.addSeparator()
 
-        show = menu.addMenu("Show")
+        show = menu.addMenu(icon("eye"), "Show")
         for label, attr in (("Bonds", "bonds_enabled"), ("Simulation cell", "show_cell")):
             act = show.addAction(label)
             act.setCheckable(True)
@@ -708,9 +734,9 @@ class MainWindow(QtWidgets.QMainWindow):
         ortho.setCheckable(True)
         ortho.setChecked(self.viewport.ortho)
         ortho.toggled.connect(self.viewport.ortho_button.setChecked)
-        menu.addAction("Zoom to fit", self.viewport.zoom_fit)
+        menu.addAction(icon("fit"), "Zoom to fit", self.viewport.zoom_fit)
         menu.addSeparator()
-        menu.addAction("Ask Claude about selection…" if picks or everything else "Ask Claude about this structure…",
+        menu.addAction(icon("claude"), "Ask Claude about selection…" if picks or everything else "Ask Claude about this structure…",
                        self.ask_claude)
         return menu
 
@@ -722,7 +748,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _overlay_entries(self, menu):
         mod = self._overlay()
         on = mod is not None and mod.enabled
-        act = menu.addAction("Overlay other frames (see-through)")
+        act = menu.addAction(icon("layers"), "Overlay other frames (see-through)")
         act.setCheckable(True)
         act.setChecked(on)
         act.toggled.connect(lambda checked: self.set_overlay(checked))

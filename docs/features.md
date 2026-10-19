@@ -362,6 +362,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | Key | Label | Default |
 |---|---|---|
 | `general.startup_workspace` | Startup workspace | `'Analyze'` |
+| `general.toolbar_style` | Toolbar buttons | `'Icons and text'` |
 | `general.font_size` | UI font size | `12` |
 | `general.restore_layout` | Restore window layout | `True` |
 | `general.lammps_type_prompt` | LAMMPS type names | `'ask'` |
@@ -627,7 +628,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 ### Toolbar
 
-Open, Open remote, Analyze, Render, Search commands, modifiers… Ctrl K, Compute device switch (CPU / CUDA / auto).
+Open, Open remote, Save, Analyze, Render, Search commands, modifiers… Ctrl K, Compute device switch (CPU / CUDA / auto).
 
 ### Panels
 
