@@ -90,3 +90,39 @@ theme does not know keep their default colors. An installed package registers th
 `ewald.themes` entry point group, and a plugin cannot take a built-in theme's name.
 
 `examples/plugins/figure_extras.py` holds both examples above and an overlay.
+
+## UI themes
+
+A UI theme colors the desktop app itself: panels, text, buttons, the notebook, plots and
+the code editor. It is separate from the figure themes above, which color atoms and rendered images.
+ewald ships Paper (light, the default) and Graphite (dark); a `@ui_theme` plugin returns the
+design tokens it changes, and every token it leaves out comes from its `base` palette.
+
+```python
+from ewald.plugins import ui_theme
+
+
+@ui_theme(name="Midnight", base="graphite")
+def midnight():
+    """Dark blue-gray panels with periwinkle accents."""
+    return {"bg": "#11131C", "panel": "#171A26", "accent": "#7AA2F7", "on_accent": "#0B1020"}
+```
+
+| Token | Where it shows |
+|---|---|
+| `bg`, `panel`, `raised`, `border` | window background, panels, cards and inputs, lines between them |
+| `text`, `secondary`, `muted` | main text, secondary labels, hints |
+| `accent`, `on_accent`, `accent_soft` | what you can act on (buttons, links, focus), text on it, its tint |
+| `data`, `data_soft` | results computed from the data (plots, readouts) |
+| `selection`, `pick` | selected atoms, picked atoms |
+| `error`, `ok` | error and success messages |
+| `viewport` | the theme's suggested viewport color (the 3D view itself follows Preferences › Viewport › Background) |
+
+Values are `#rrggbb` colors. Pick the theme under Preferences › General › *UI theme*; it takes
+full effect after a restart. A theme with an unknown token, a color that is not `#rrggbb` or a
+base other than `paper`/`graphite` is reported in the log and the app falls back to Paper rather
+than failing to open. An installed package registers UI themes under the `ewald.ui_themes` entry
+point group (an object that is a dict of tokens, which may name its `"base"`, or a function
+returning one), and a plugin cannot take the name of a built-in theme.
+
+`examples/plugins/ui_themes.py` holds Midnight and a High contrast light theme.

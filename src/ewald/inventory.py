@@ -202,9 +202,10 @@ def plugins_section() -> list[str]:
     examples = sorted((Path(__file__).resolve().parents[2] / "examples" / "plugins").glob("*.py"))
     out = ["## Plugins", "",
            f"Entry point groups `{plugins.READER_GROUP}`, `{plugins.WRITER_GROUP}`, `{plugins.MODIFIER_GROUP}`, "
-           f"`{plugins.VISUAL_GROUP}`, `{plugins.OVERLAY_GROUP}`, `{plugins.COLORMAP_GROUP}` and "
-           f"`{plugins.THEME_GROUP}`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / "
-           "`@visual` / `@overlay` / `@colormap` / `@theme`; `ewald plugins` lists "
+           f"`{plugins.VISUAL_GROUP}`, `{plugins.OVERLAY_GROUP}`, `{plugins.COLORMAP_GROUP}`, "
+           f"`{plugins.THEME_GROUP}`, `{plugins.TOOL_GROUP}` and `{plugins.UI_THEME_GROUP}`, or a file in "
+           "`<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / "
+           "`@colormap` / `@theme` / `@claude_tool` / `@ui_theme`; `ewald plugins` lists "
            "what loaded. "
            "Details: [Plugins](plugins/index.md).", ""]
     for path in examples:

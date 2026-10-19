@@ -422,6 +422,8 @@ def _print_plugins(as_json=False, enable=None, disable=None):
         print(f"colormap {v['name']:<22} {v['kind']:<14} {v['description'][:60]}  [{v['origin']}]")
     for v in st.get("themes", []):
         print(f"theme {v['name']:<25} {'':<14} {v['description'][:60]}  [{v['origin']}]")
+    for v in st.get("ui_themes", []):
+        print(f"ui theme {v['name']:<22} {v['base']:<14} {v['description'][:60]}  [{v['origin']}]")
     for origin, err in st["errors"].items():
         print(f"FAILED {origin}: {err}")
     return 1 if st["errors"] else None

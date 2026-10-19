@@ -1,10 +1,14 @@
 """UI themes from the design tokens (project design files, redesign canvas).
 
-Paper (light, the default) and Graphite (dark). ``accent`` (teal) marks what you can act on,
+Paper (light, the default) and Graphite (dark); ``@ui_theme`` plugins add more (:func:`palette`). ``accent`` (teal) marks what you can act on,
 ``data`` (orange) marks results computed from the data. ``TOKENS`` is the active palette; it is
 updated in place by :func:`use`, so ``from .theme import TOKENS`` sees the change.
 """
 from __future__ import annotations
+
+import logging
+
+log = logging.getLogger(__name__)
 
 PALETTES = {
     "paper": {
@@ -26,10 +30,28 @@ DEFAULT = "paper"
 TOKENS = dict(PALETTES[DEFAULT])
 
 
+def palette(name: str) -> dict:
+    """The design tokens of UI theme ``name``: a built-in palette or a ``@ui_theme`` plugin
+    (:func:`ewald.plugins.ui_theme`); unknown or broken themes fall back to the default."""
+    if name in PALETTES:
+        return dict(PALETTES[name])
+    from .. import plugins
+
+    found = plugins.ui_themes().get(name)
+    if found is not None:
+        try:
+            return found.palette()
+        except Exception as exc:  # a broken theme must not keep the window from opening
+            log.warning("UI theme %r: %s; using %s", name, exc, DEFAULT)
+    elif name:
+        log.warning("unknown UI theme %r; using %s", name, DEFAULT)
+    return dict(PALETTES[DEFAULT])
+
+
 def use(name: str) -> dict:
     """Make ``name`` the active palette (unknown names fall back to the default)."""
     TOKENS.clear()
-    TOKENS.update(PALETTES.get(name, PALETTES[DEFAULT]))
+    TOKENS.update(palette(name))
     return TOKENS
 
 QSS = """

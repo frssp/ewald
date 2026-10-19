@@ -17,6 +17,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- UI theme plugins (`@ui_theme`, `ewald.ui_themes` entry points): color themes for the desktop app
+  built on Paper or Graphite, chosen under Preferences › General › UI theme; example
+  `examples/plugins/ui_themes.py` (Midnight, High contrast).
 - Claude tool plugins (`@claude_tool`, `ewald.tools` entry points); built-in formats listed as
   plugins that `ewald plugins --disable` can switch off (#75).
 

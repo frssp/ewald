@@ -88,6 +88,7 @@ OVERLAY_GROUP = "ewald.overlays"
 COLORMAP_GROUP = "ewald.colormaps"
 THEME_GROUP = "ewald.themes"
 TOOL_GROUP = "ewald.tools"
+UI_THEME_GROUP = "ewald.ui_themes"
 PLUGIN_GROUP = "ewald.plugins"      # names the package that holds ewald-plugin.toml
 MANIFEST_NAME = "ewald-plugin.toml"
 
@@ -294,6 +295,46 @@ def _builtin_themes() -> dict:
 
 
 @dataclass
+class UiThemePlugin:
+    """A color theme of the desktop app: ``tokens`` (a dict, or a function returning one) overrides
+    the design tokens of the ``base`` palette ("paper" light or "graphite" dark)."""
+
+    name: str
+    tokens: object
+    base: str = "paper"
+    description: str = ""
+    origin: str = ""
+    builtin: bool = False
+
+    def palette(self) -> dict:
+        """Every design token as ``#rrggbb``: the base palette with this theme's overrides."""
+        from .gui.theme import PALETTES
+
+        own = self.tokens() if callable(self.tokens) else self.tokens
+        if not isinstance(own, dict):
+            raise TypeError(f"UI theme {self.name!r} returned {type(own).__name__}, not a dict of tokens")
+        base = PALETTES.get(self.base)
+        if base is None:
+            raise ValueError(f"UI theme {self.name!r}: base must be one of {', '.join(PALETTES)}")
+        unknown = sorted(set(own) - set(base))
+        if unknown:
+            raise ValueError(f"UI theme {self.name!r}: unknown tokens {', '.join(unknown)} "
+                             f"(known: {', '.join(base)})")
+        bad = [k for k, v in own.items() if not (isinstance(v, str) and _HEX.fullmatch(v))]
+        if bad:
+            raise ValueError(f"UI theme {self.name!r}: tokens {', '.join(bad)} must be colors like '#1e1e2e'")
+        return {**base, **own}
+
+
+_HEX = re.compile(r"#[0-9a-fA-F]{6}")
+
+
+def _builtin_ui_themes() -> dict:
+    return {"paper": UiThemePlugin("paper", {}, "paper", "light, teal accents (default)", "built-in", True),
+            "graphite": UiThemePlugin("graphite", {}, "graphite", "dark", "built-in", True)}
+
+
+@dataclass
 class ToolPlugin:
     """A Claude tool: ``function(toolset, **arguments)`` returns JSON-ready data (or a
     ``ewald.llm.tools.ToolResult``); ``schema`` is the JSON schema of the arguments."""
@@ -315,13 +356,15 @@ class _Registry:
     colormaps: dict = field(default_factory=dict)
     themes: dict = field(default_factory=_builtin_themes)
     tools: dict = field(default_factory=dict)
+    ui_themes: dict = field(default_factory=_builtin_ui_themes)
     errors: dict = field(default_factory=dict)      # origin -> message
     plugins: dict = field(default_factory=dict)     # id -> Plugin
     loaded: bool = False
 
 
 _registry = _Registry()
-_REGISTRIES = ("readers", "writers", "modifiers", "visuals", "overlays", "colormaps", "themes")
+_REGISTRIES = ("readers", "writers", "modifiers", "visuals", "overlays", "colormaps", "themes", "tools",
+               "ui_themes")
 
 
 def plugin_dir() -> Path:
@@ -559,6 +602,45 @@ def themes() -> dict[str, ThemePlugin]:
     """Themes by name: the built-in ones (Default, VESTA, CPK, Journal, ASE, Dark slide) and plugins."""
     load_plugins()
     return dict(_registry.themes)
+
+
+def ui_theme(fn=None, *, name: str | None = None, base: str = "paper", description: str = ""):
+    """Decorator registering a function that returns design tokens (``{"accent": "#cba6f7", ...}``)
+    as a color theme of the desktop app, chosen under Preferences > General > UI theme. Tokens
+    left out come from ``base`` ("paper" light or "graphite" dark); the token names are those of
+    ``ewald.gui.theme.PALETTES``. ``name`` defaults to the function name."""
+
+    def deco(f):
+        register_ui_theme(name or f.__name__, f, base=base, description=description)
+        return f
+
+    return deco(fn) if fn is not None else deco
+
+
+def register_ui_theme(name: str, tokens, base: str | None = None, description: str = "",
+                      origin: str = "python") -> UiThemePlugin:
+    """Register design tokens (a dict, or a function returning one) as the UI theme ``name``.
+    A dict may name its base palette under the key ``"base"``."""
+    if not (isinstance(tokens, dict) or callable(tokens)):
+        raise TypeError(f"{tokens!r} is neither a dict of design tokens nor a function returning one")
+    old = _registry.ui_themes.get(name)
+    if old is not None and old.builtin:
+        raise ValueError(f"UI theme name {name!r} is built in; use another name")
+    if isinstance(tokens, dict) and "base" in tokens:
+        tokens = dict(tokens)
+        base = base or tokens.pop("base")
+    if not description and callable(tokens):
+        description = " ".join(inspect.cleandoc(tokens.__doc__ or "").split("\n\n")[0].split())
+    plugin = UiThemePlugin(name, tokens, base or "paper", description, getattr(_loading, "origin", None) or origin)
+    _registry.ui_themes[name] = plugin
+    _contribute("ui_themes", name)
+    return plugin
+
+
+def ui_themes() -> dict[str, UiThemePlugin]:
+    """Color themes of the desktop app by name: built-in "paper" and "graphite", then plugins."""
+    load_plugins()
+    return dict(_registry.ui_themes)
 
 
 def claude_tool(name: str | None = None, description: str = "", schema: dict | None = None):
@@ -861,6 +943,8 @@ def load_plugins(force: bool = False):
         keep = {k: v for k, v in _registry.themes.items() if v.origin == "python" and not v.builtin}
         _registry.themes = {**_builtin_themes(), **keep}
         _registry.tools = {k: v for k, v in _registry.tools.items() if v.origin == "python"}
+        keep = {k: v for k, v in _registry.ui_themes.items() if v.origin == "python" and not v.builtin}
+        _registry.ui_themes = {**_builtin_ui_themes(), **keep}
         _registry.errors.clear()
         _registry.plugins = {}
     off = disabled()
@@ -903,7 +987,8 @@ def _load_entry_points(off: set = frozenset()):
                             (OVERLAY_GROUP, lambda name, obj: register_overlay(obj, name=name)),
                             (COLORMAP_GROUP, lambda name, obj: register_colormap(name, obj)),
                             (THEME_GROUP, lambda name, obj: register_theme(name, obj)),
-                            (TOOL_GROUP, lambda name, obj: register_tool(name, obj))):
+                            (TOOL_GROUP, lambda name, obj: register_tool(name, obj)),
+                            (UI_THEME_GROUP, lambda name, obj: register_ui_theme(name, obj))):
         try:
             eps = entry_points(group=group)
         except Exception as exc:
@@ -1104,6 +1189,8 @@ def status() -> dict:
             "plugins": [p.as_dict() for p in _registry.plugins.values()],
             "tools": [{"name": p.name, "description": p.description.split("\n")[0], "origin": p.origin}
                       for p in _registry.tools.values()],
+            "ui_themes": [{"name": p.name, "base": p.base, "description": p.description, "origin": p.origin}
+                          for p in _registry.ui_themes.values()],
             "errors": dict(_registry.errors)}
 
 
