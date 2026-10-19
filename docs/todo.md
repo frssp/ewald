@@ -41,8 +41,8 @@ GUI
   readout already does a CPU ray-sphere test (`camera_ray`, `ray_spheres` in `gui/viewport.py`)
   that `pick_at` could reuse.
 - App icon outside the running window: a Linux `.desktop` entry and hicolor icons installed
-  with the package, the Windows installer/shortcut (`ewald.ico`) and a macOS app bundle
-  (`ewald.icns`); the EWALD mark in the main window header (the Notebook redesign) and the docs.
+  with the package and a macOS app bundle (`ewald.icns`) (the Windows app and installer use
+  `ewald.ico` since the v0.1 release prep); the EWALD mark in the main window header (the Notebook redesign) and the docs.
 - Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
   categories; the view-bar rotation arrows are still text glyphs.
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
@@ -240,9 +240,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › Claude › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
   KWallet); the container has none, so only the 0600 file fallback runs for real.
-- The Windows release workflow (wheels, PyInstaller app, installer) on a real `v*` tag; no
-  release exists yet, so Windows users without Build Tools get ewald without `ewald._native`
-  until the first one (blocked on GitHub Actions minutes).
+- The release workflows (`release.yml`: sdist, Linux and macOS wheels; `windows-release.yml`:
+  Windows wheels, app, installer) on a real `v*` tag. v0.1.0 is prepared (CHANGELOG, version,
+  `packaging/release_check.py` passes locally) and waits only for `git tag v0.1.0`, a push and
+  dispatching both workflows ([Releases](developer/release.md)); until then Windows users
+  without Build Tools get ewald without `ewald._native` (blocked on GitHub Actions minutes).
+  The macOS wheels and the `ewald.icns` window icon have not run on a real Mac.
 - Installing without a compiler on real Windows (MSVC missing raises in `build_ext.run`; tested
   here with `CXX=/bin/false` on Linux). pip shows the "not built" warning only with `-v`.
 - `DislocationAnalysis` and `OvitoModifier` with the `ovito` package installed.
@@ -307,7 +310,10 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 - GitHub Actions minutes ran out on 2026-10-19, so every workflow now runs only on manual
   dispatch and pull requests are verified locally (`xvfb-run -a python -m pytest -q`,
   `mkdocs build --strict`). Restore the `push`/`pull_request`/tag triggers once minutes are
-  available again (docs/developer/testing.md shows the block).
+  available again (docs/developer/testing.md and docs/developer/release.md show the blocks).
+- Release follow-ups: a macOS app bundle (`ewald.app` + `.dmg`, slot left in `release.yml`),
+  a Linux `.desktop` entry, a version resource on the Windows executables, aarch64 Linux
+  wheels, and an `[Unreleased]` CHANGELOG line from every user-visible pull request.
 
 - CI installs each extra on its own only through the test suite's `importorskip`s; a job that
   installs every extra in a clean venv and imports its modules would catch broken extras

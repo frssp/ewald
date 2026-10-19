@@ -28,8 +28,9 @@ pip install -e ".[remote]"  # + files over SSH (paramiko)
 Without a C++ compiler (Windows: "Microsoft Visual C++ 14.0 or greater is required") the install
 still succeeds, minus PTM, Voronoi, matching CSP and interval CNA; install the
 [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and reinstall to
-add them ([details](docs/user/install.md#without-a-c-compiler)). Windows releases will also ship wheels
-and a standalone installer; see [docs/developer/windows-release.md](docs/developer/windows-release.md).
+add them ([details](docs/user/install.md#without-a-c-compiler)). Releases ship prebuilt
+wheels for Linux, macOS and Windows plus a Windows installer
+([install from a release](docs/user/install.md#from-a-release)); changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
 
