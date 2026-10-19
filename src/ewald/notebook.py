@@ -737,6 +737,10 @@ def _display(value) -> Output:
         buf = io.BytesIO()
         Image.fromarray(value).save(buf, format="PNG")
         return Output("image", buf.getvalue())
+    summary = getattr(value, "summary", None)
+    if callable(summary) and type(value).__name__ == "DataCollection":  # the summary says more here
+        text = summary()
+        return Output("value", text if len(text) < 4000 else text[:4000] + " …")
     png = getattr(value, "_repr_png_", None)
     if callable(png):
         try:
@@ -745,9 +749,5 @@ def _display(value) -> Output:
                 return Output("image", data)
         except Exception:  # noqa: BLE001 - fall back to text
             pass
-    summary = getattr(value, "summary", None)
-    if callable(summary) and type(value).__name__ == "DataCollection":
-        text = summary()
-    else:
-        text = repr(value)
+    text = repr(value)
     return Output("value", text if len(text) < 4000 else text[:4000] + " …")

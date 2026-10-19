@@ -106,6 +106,8 @@ analysis step and returns its table: `rdf(pipe, cutoff=6, bins=200, partial=Fals
 `coordination-rdf`), `msd(pipe, **kw)` (`msd`), `vacf` (`vacf`), `sq(pipe, q_max=10)` (`structure-factor`),
 `xrd(pipe, **kw)` (`diffraction`), `bond_angles(pipe)` (`bond-angle-distr`). The `Table` is a dict of
 columns (`pandas.DataFrame(table)` works) with `.x`, `.plot()`; calling the verb again replaces its step.
+In Jupyter a Pipeline, DataCollection or Table as a cell's last line shows a picture (ray-traced frame 0, or the
+curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] = False` turns it off.
 
 ## Other entry points
 

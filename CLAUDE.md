@@ -86,7 +86,7 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
 - `paint.py` (`paint`/`hide`/`isolate`/`fade`/`resize` for Python steps), `views.py` (`show`, the
-  notebook view cells), `verbs.py` (`rdf`/`msd`/`sq`/... add a step and return its `Table`), `plugin_catalog.py` (installed plugins, catalog indexes, install/remove;
+  notebook view cells), `verbs.py` (`rdf`/`msd`/`sq`/... add a step and return its `Table`), `display.py` (`_repr_png_` of Pipeline/DataCollection/Table for Jupyter, `options`), `plugin_catalog.py` (installed plugins, catalog indexes, install/remove;
   GUI side `gui/plugins_panel.py`, the left Plugins side bar).
 - `inventory.py`: `ewald inventory`, docs/features.md from the registries, CLI parser and GUI menus.
 - `plumed.py`: PLUMED through its Python binding as an MD engine (`run`, `PlumedEngine`), COLVAR/HILLS
