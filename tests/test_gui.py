@@ -809,6 +809,32 @@ def test_viewport_draws_vector_arrows(app):
     assert not any(str(k).startswith("vectors:") for k in v.plotter.actors)
     v.close()
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_viewport_impostors_smooth_edges_and_opengl_check(app, pipe):
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+
+    s = settings.Settings()
+    w = MainWindow(pipe, settings=s)
+    w.show()
+    app.processEvents()
+    vp = w.viewport
+    assert "PointGaussian" in vp.plotter.actors["atoms"].GetMapper().GetClassName()  # default: impostors
+    assert vp.anti_aliasing and vp.plotter.renderer.GetUseFXAA()
+    gl = w.check_opengl()
+    assert gl["renderer"] and "OpenGL" in w.hardware_summary()
+    if gl["software"]:  # xvfb: Mesa llvmpipe
+        assert "software OpenGL" in w.statusBar().currentMessage()
+    s["viewport.sphere_drawing"], s["viewport.anti_aliasing"] = "mesh", False
+    from ewald.gui import preferences as prefs
+
+    prefs.apply_settings(w, s)
+    vp.redraw()
+    assert "PointGaussian" not in vp.plotter.actors["atoms"].GetMapper().GetClassName()
+    assert not vp.plotter.renderer.GetUseFXAA()
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_interactive_detail_coarse_then_refine(app, pipe):
     from ewald import settings
     from ewald.gui.app import MainWindow
@@ -820,6 +846,7 @@ def test_interactive_detail_coarse_then_refine(app, pipe):
     vp, n = w.viewport, pipe.compute(0).count
 
     def impostors(name="atoms"):  # point-sprite actor -> its atom count, sphere mesh -> None
+        # (the full scene is impostors too, by default: Sphere drawing = impostor)
         mapper = vp.plotter.actors[name].GetMapper()
         if "PointGaussian" not in mapper.GetClassName():
             return None
@@ -829,7 +856,7 @@ def test_interactive_detail_coarse_then_refine(app, pipe):
 
     assert pipe.cache_memory == 64 * 2**20
     vp.interactive_atoms = 100  # below the Preferences minimum, to subsample the 256-atom test cell
-    assert not vp.coarse and impostors() is None
+    assert not vp.coarse and impostors() == n
     # scrubbing: requests made while a frame is computed collapse into the latest one
     w.timeline.slider.setSliderDown(True)
     calls = []
@@ -842,7 +869,7 @@ def test_interactive_detail_coarse_then_refine(app, pipe):
     assert calls.count(True) == 1 and calls[-1] and w.frame == 1 and vp.coarse
     assert 0 < impostors() <= 100 < n  # every k-th atom, as impostors
     vp.refine()
-    assert not vp.coarse and impostors() is None
+    assert not vp.coarse and impostors() == n
     # rotating: atoms swap for a subsampled impostor actor until the camera rests
     vp._go_coarse_for_motion()
     assert vp.coarse and not vp.plotter.actors["atoms"].GetVisibility()

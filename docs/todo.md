@@ -18,6 +18,8 @@ GUI
 - Undo/redo for pipeline edits.
 - Compute frames in a background thread so the GUI stays responsive.
 - Scene updates without a full rebuild when only colors or a few properties change.
+- Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
+  screen edges) and VTK scene lights instead of the fixed head light; bond impostors.
 
 Analysis
 
