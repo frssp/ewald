@@ -1,4 +1,3 @@
-import gzip
 import shutil
 import textwrap
 from pathlib import Path
@@ -311,3 +310,127 @@ def test_gui_menu_lists_modifier_plugins():
         assert pipeline_panel.MODIFIER_MENU["My lab"]["Tagger"] is Tagger
     finally:
         pipeline_panel.MODIFIER_MENU.pop("My lab", None)
+
+
+# --- plugin manifests, enable/disable and installed() ---------------------------------------------
+
+def test_file_manifest_is_read_without_running_the_file(tmp_path):
+    _write_plugin("labtools.py", '''
+        """Lab tools."""
+        from __future__ import annotations
+        from ewald import Modifier
+        from ewald.plugins import modifier
+
+        @modifier(category="Lab")
+        class LabCount(Modifier):
+            """Counts atoms."""
+            def modify(self, data, ctx):
+                data.attributes["LabCount.n"] = data.count
+
+        __ewald__ = {"id": "lab-tools", "display-name": "Lab tools", "version": "1.2.0",
+                     "publisher": "frssp", "requires-ewald": ">=0.1"}
+    ''')
+    _write_plugin("future.py", '''
+        raise RuntimeError("must not be imported")
+        __ewald__ = {"requires-ewald": ">=99"}
+    ''')
+    found = plugins.installed()
+    lab = found["lab-tools"]
+    assert (lab.name, lab.version, lab.publisher, lab.kind, lab.state) == ("Lab tools", "1.2.0", "frssp", "folder", "loaded")
+    assert lab.contributions == {"modifiers": ["LabCount"]}
+    future = found["future"]
+    assert future.state == "incompatible" and "needs ewald >=99" in future.errors[0]
+    st = plugins.status()
+    assert any("needs ewald" in e for e in st["errors"].values())
+    assert not any("must not be imported" in e for e in st["errors"].values())
+    assert {p["id"] for p in st["plugins"]} == {"lab-tools", "future"}
+
+
+def test_plugin_without_manifest_gets_its_file_name():
+    _write_plugin("plain.py", '''
+        from ewald.plugins import colormap
+
+        @colormap
+        def stripes():
+            return ["black", "white"]
+    ''')
+    p = plugins.installed()["plain"]
+    assert p.name == "plain" and p.version == "" and p.contributions == {"colormaps": ["stripes"]}
+
+
+def test_disable_and_enable_a_plugin():
+    _write_plugin("tool.py", '''
+        from ewald import Modifier
+        from ewald.plugins import modifier
+
+        @modifier
+        class ToolMod(Modifier):
+            def modify(self, data, ctx):
+                pass
+    ''')
+    assert "ToolMod" in plugins.modifiers()
+    plugins.set_enabled("tool", False)
+    assert "ToolMod" not in plugins.modifiers()
+    assert plugins.installed()["tool"].state == "disabled"
+    assert plugins.disabled() == {"tool"}
+    plugins._registry.loaded = False      # a new session reads the saved state
+    assert "ToolMod" not in plugins.modifiers()
+    plugins.set_enabled("tool", True)
+    assert "ToolMod" in plugins.modifiers() and plugins.installed()["tool"].state == "loaded"
+
+
+def test_package_manifest_and_entry_points(tmp_path, monkeypatch):
+    site = tmp_path / "site"
+    pkg = site / "ewald_fakefmt"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text(textwrap.dedent('''
+        from ewald import DataCollection
+
+        def read(path):
+            """Fake format."""
+            return [DataCollection([[0, 0, 0]], ["H"])]
+    '''))
+    (pkg / "ewald-plugin.toml").write_text(textwrap.dedent('''
+        id = "fakefmt"
+        display-name = "Fake format"
+        version = "0.3.0"
+        requires-ewald = ">=0.1, <99"
+    '''))
+    info = site / "ewald_fakefmt-0.2.dist-info"
+    info.mkdir()
+    (info / "METADATA").write_text("Metadata-Version: 2.1\nName: ewald-fakefmt\nVersion: 0.2\nSummary: Fake\n")
+    (info / "entry_points.txt").write_text("[ewald.readers]\nfake = ewald_fakefmt:read\n\n"
+                                           "[ewald.plugins]\nfakefmt = ewald_fakefmt\n")
+    monkeypatch.syspath_prepend(str(site))
+    p = plugins.installed()["fakefmt"]
+    assert (p.kind, p.name, p.version, p.origin, p.state) == ("package", "Fake format", "0.3.0", "ewald-fakefmt", "loaded")
+    assert p.contributions == {"readers": ["fake"]}
+    assert plugins.readers()["fake"].origin == "entry point ewald_fakefmt:read"
+    plugins.set_enabled("fakefmt", False)
+    assert "fake" not in plugins.readers()
+
+
+@pytest.mark.parametrize("version, requirement, ok", [
+    ("0.1.0", ">=0.1", True), ("0.1.0", ">0.1", False), ("0.1.0", ">=0.1, <1", True),
+    ("1.0", "<1", False), ("0.3.2", "~=0.3.0", True), ("0.4", "~=0.3.0", False),
+    ("0.1.0", "==0.1", True), ("0.1.0", "!=0.1.0", False), ("0.2.0.dev1", ">=0.2", True), ("0.1", "", True)])
+def test_version_satisfies(version, requirement, ok):
+    assert plugins.version_satisfies(version, requirement) is ok
+
+
+def test_bad_version_requirement_is_reported():
+    with pytest.raises(ValueError, match="version requirement"):
+        plugins.version_satisfies("0.1", "latest")
+    _write_plugin("odd.py", '__ewald__ = {"requires-ewald": "latest"}\n')
+    assert plugins.installed()["odd"].state == "incompatible"
+
+
+def test_forge_saves_a_manifest(tmp_path):
+    from ewald.llm.forge import ForgeResult, save_plugin
+
+    result = ForgeResult("Count the atoms", module_name="atom_count", class_name="AtomCount",
+                         module_source='"""Doc."""\nfrom __future__ import annotations\nX = 1\n', test_source="")
+    path = save_plugin(result)
+    manifest = plugins.file_manifest(path)
+    assert manifest["source"] == "forge" and manifest["id"] == "atom_count"
+    assert plugins.installed()["atom_count"].kind == "forge"

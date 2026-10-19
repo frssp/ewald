@@ -45,6 +45,11 @@ class PluginRow(QtWidgets.QFrame):
                                   if getattr(item, "version", "") else ""))
         head.addWidget(title, 1)
         if installed and isinstance(item, pc.Installed):
+            if item.id:
+                on = item.enabled
+                t = QtWidgets.QPushButton("Disable" if on else "Enable", objectName="pluginButton")
+                t.clicked.connect(lambda: self.action.emit(self.item, "disable" if on else "enable"))
+                head.addWidget(t)
             if item.removable:
                 b = QtWidgets.QPushButton("Remove", objectName="pluginButton")
                 b.clicked.connect(lambda: self.action.emit(self.item, "remove"))
@@ -73,7 +78,8 @@ class PluginRow(QtWidgets.QFrame):
 def _origin_badge(item) -> str:
     """Where a plugin comes from: folder, pip package, this session, or its catalog."""
     if isinstance(item, pc.Installed):
-        return "· pip" if item.package else "· folder" if item.path else "· session"
+        origin = "· pip" if item.package else "· folder" if item.path else "· session" if not item.id else "· file"
+        return origin + ("" if item.state in ("loaded", "not loaded") else f"  · {item.state}")
     return "· pip" if item.is_pip else "· example" if item.catalog == "examples" else ""
 
 
@@ -250,6 +256,12 @@ class PluginsPanel(QtWidgets.QWidget):
     def _act(self, item, action):
         if action == "install":
             self.install(item)
+        elif action in ("enable", "disable"):
+            pc.set_enabled(item, action == "enable")
+            self._say(f"{item.name}: {action}d" + (" (restart ewald to unload its package)"
+                                                    if action == "disable" and item.package else ""))
+            self.refresh()
+            self.changed.emit()
         else:
             self.remove(item)
 

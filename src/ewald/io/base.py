@@ -4,6 +4,7 @@ from __future__ import annotations
 import bz2
 import gzip
 import lzma
+import os
 
 from ..data import DataCollection
 from . import remote
@@ -19,6 +20,15 @@ class FrameReader:
 
     def read(self, index: int) -> DataCollection:
         raise NotImplementedError
+
+    def refresh(self) -> int | None:
+        """Pick up frames appended since the file was indexed (a run still writing it).
+
+        Returns the first frame whose data may have changed (the old last frame, which
+        may have been re-read, or the first new one), or None when nothing changed.
+        Readers that cannot follow a growing file keep the default: None.
+        """
+        return None
 
 
 def open_binary(path):
@@ -64,6 +74,33 @@ def strip_compression(path) -> str:
     return path
 
 
+def file_size(path) -> int | None:
+    """Current size in bytes of a local or remote file; None for compressed files, whose
+    size says nothing about how much has been written, and for missing ones."""
+    path = str(path)
+    if path.endswith(tuple(_OPENERS)):
+        return None
+    try:
+        return remote.stat(path).st_size if remote.is_remote(path) else os.path.getsize(path)
+    except OSError:
+        return None
+
+
+def complete_size(path, size: int, chunk: int = 1 << 16) -> int:
+    """Offset just past the last newline within the first ``size`` bytes: a file being written
+    may end in half a line, and everything up to here holds whole lines only."""
+    with open_binary(path) as fh:
+        end = size
+        while end > 0:
+            start = max(0, end - chunk)
+            fh.seek(start)
+            j = fh.read(end - start).rfind(b"\n")
+            if j >= 0:
+                return start + j + 1
+            end = start
+    return 0
+
+
 def head_lines(path, n: int) -> list[bytes]:
     """First ``n`` lines of a (possibly compressed) file; empty list if unreadable."""
     try:
@@ -73,19 +110,8 @@ def head_lines(path, n: int) -> list[bytes]:
         return []
 
 
-def _scan_lines(path, predicate):
-    """Return byte offsets of lines for which ``predicate(line_bytes)`` is true."""
-    offsets = []
-    pos = 0
-    with open_binary(path) as fh:
-        for line in fh:
-            if predicate(line):
-                offsets.append(pos)
-            pos += len(line)
-    return offsets
-
-
-def grep_lines(path, pattern: str, literals=(), chunk_size: int = 1 << 24) -> list[tuple[int, bytes]]:
+def grep_lines(path, pattern: str, literals=(), chunk_size: int = 1 << 24,
+               start: int = 0) -> list[tuple[int, bytes]]:
     """Byte offset and text (without the newline) of every line matching ``pattern``.
 
     ``pattern`` must be valid both as a Python regex and as a POSIX extended regex
@@ -94,17 +120,20 @@ def grep_lines(path, pattern: str, literals=(), chunk_size: int = 1 << 24) -> li
     chunks and searched with ``re``. ``literals``, byte strings at least one of which every
     matching line contains, speed that up several times: lines are found with ``bytes.find``
     and only those are tried against ``pattern``. Compressed files are decompressed on the fly.
+    ``start`` (a line start) skips the bytes before it, for following a growing file.
     """
     import io
     import re
 
-    hits = remote.line_offsets(path, pattern) if remote.is_remote(path) else None
+    hits = remote.line_offsets(path, pattern, start) if remote.is_remote(path) else None
     if hits is not None:
         return [(off, text.rstrip(b"\r")) for off, text in hits]
     regex = re.compile(pattern.encode(), re.M)
     out: list[tuple[int, bytes]] = []
-    pos, carry = 0, b""
+    pos, carry = start, b""
     with open_binary(path) as fh:
+        if start:
+            fh.seek(start)
         read = fh.read if isinstance(fh, io.BufferedReader) else getattr(fh, "read1", fh.read)
         while True:
             try:

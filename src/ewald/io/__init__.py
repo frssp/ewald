@@ -80,6 +80,53 @@ class FileSource:
     def num_frames(self) -> int:
         return len(self._index)
 
+    def refresh(self) -> int | None:
+        """Follow files a running simulation is still writing: frames appended to the files
+        (LAMMPS dump, XDATCAR, OUTCAR, extxyz), and for a wildcard, files that appeared.
+
+        Returns the first frame whose data may have changed (see :meth:`FrameReader.refresh`),
+        or None when nothing changed. Thermo tables (log.lammps, OSZICAR) are read again.
+        Use :meth:`ewald.pipeline.Pipeline.refresh`, which also drops stale cached frames.
+        """
+        readers = dict(zip(self.paths, self.readers))
+        paths = self.paths
+        if any(c in self.path for c in "*?[") and (self.format or "").lower() not in _NEB_FORMATS:
+            try:
+                paths = remote.glob(self.path) if remote.is_remote(self.path) else sorted(glob.glob(self.path))
+            except OSError:
+                paths = self.paths
+        first = None
+        offset = 0
+        for k, p in enumerate(paths):
+            reader = readers.get(p)
+            if reader is None:  # a new file of the series
+                try:
+                    reader = open_reader(_readable_path(p, self.format), self.format, **self.kwargs)
+                except (OSError, ValueError):
+                    paths = paths[:k]  # still being created; try again next time
+                    break
+                readers[p] = reader
+                changed = 0
+            elif p != (self.paths[k] if k < len(self.paths) else None):
+                changed = 0  # the series was renumbered around it
+            else:
+                changed = reader.refresh()
+            if changed is not None and first is None:
+                first = offset + changed
+            offset += len(reader)
+        if first is None and len(paths) == len(self.paths):
+            return None
+        if first is None:  # files went away
+            first = sum(len(readers[p]) for p in paths)
+        self.paths = list(paths)
+        self.readers = [readers[p] for p in paths]
+        self._index = [(r, i) for r in self.readers for i in range(len(r))]
+        try:
+            self.thermo = self._load_thermo(self.thermo_arg)
+        except (OSError, ValueError):
+            pass
+        return first
+
     def compute(self, frame: int) -> DataCollection:
         if not -self.num_frames <= frame < self.num_frames:
             raise IndexError(f"frame {frame} out of range (0..{self.num_frames - 1})")

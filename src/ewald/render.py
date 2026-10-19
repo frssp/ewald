@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from .colormaps import to_rgb
 from .data import DataCollection
 
 _FALLBACK_PALETTE = np.array([
@@ -117,13 +118,7 @@ def default_radii(data: DataCollection, scale: float = 0.8, type_radii: dict | N
     return _radius_table(names, scale, type_radii, data, radius_preset, oxidation_states, coordination)[inverse]
 
 
-def _rgb(c) -> np.ndarray:
-    if isinstance(c, str):
-        from matplotlib.colors import to_rgb
-
-        return np.array(to_rgb(c))
-    c = np.asarray(c, float)[:3]
-    return c / 255.0 if c.max() > 1 else c
+_rgb = to_rgb  # many modules import it from here
 
 
 def atom_cloud(data: DataCollection, *, radius_scale: float = 1.0, only_visible=None,
@@ -257,7 +252,7 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 bond_pairs: list | None = None, trajectory_width: float = 2.0,
                 radius_preset: str = "covalent", oxidation_states: dict | None = None,
                 coordination: dict | None = None, vectors=None, arrow_resolution: int | None = None,
-                visuals=None, frame: int = 0):
+                visuals=None, frame: int = 0, boundary=None, boundary_bonds: str = "half"):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter; returns the
     :class:`ewald.scene.Scene` it drew.
 
@@ -277,6 +272,9 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     :class:`ewald.arrows.VectorStyle`). ``arrow_resolution``: sides per arrow (default from the
     sphere detail); above ``mesh_limit`` arrows they are drawn as lines.
     ``visuals``: extra visual elements (plugins), see :mod:`ewald.scene`.
+    ``boundary``: VESTA-style boundary range in fractional coordinates, e.g. ``(-0.1, 1.1)``: also
+    draws the periodic images inside it, with cut bonds and polyhedra completed (display only;
+    ``boundary_bonds`` 'half', 'complete' or 'none', see :mod:`ewald.boundary`).
     """
     from .scene import SceneContext, build
 
@@ -284,7 +282,8 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                   radius_scale=radius_scale, type_colors=type_colors, type_radii=type_radii,
                   radius_preset=radius_preset, oxidation_states=oxidation_states, coordination=coordination,
                   bonds=bonds, bond_pairs=bond_pairs, bond_radius=bond_radius, vectors=vectors,
-                  trajectory_width=trajectory_width, show_cell=show_cell, cell_width=cell_width)
+                  trajectory_width=trajectory_width, show_cell=show_cell, cell_width=cell_width,
+                  boundary=boundary, boundary_bonds=boundary_bonds)
     draw_scene(plotter, scene, atom_style=atom_style, mesh_limit=mesh_limit, sphere_resolution=sphere_resolution,
                arrow_resolution=arrow_resolution or max(6, (sphere_resolution or 16) // 2 + 2), ink=cell_color)
     return scene
@@ -615,6 +614,10 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     (Coordinate tripod, Attributes, plugins; see :mod:`ewald.overlays`). ``dpi`` is stored
     in PNG/TIFF files and sets the page size of vector output.
 
+    ``boundary``: VESTA-style boundary range, e.g. ``(-0.1, 1.1)`` (fractional; or three pairs): also
+    draws the periodic images of atoms inside it and completes bonds and polyhedra cut by the cell;
+    display only (``boundary_bonds``: 'half', 'complete' or 'none'; see :mod:`ewald.boundary`).
+
     ``theme``: a theme name ('VESTA', 'Journal', 'ASE', 'Dark slide', plugins; see :mod:`ewald.themes`)
     that sets element colors, background, cell color and radius preset; explicit arguments win.
     ``background`` defaults to white.
@@ -690,6 +693,10 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     return _finish(img, data, filename, cam, overlays, background, transparent_background, dpi)
 
 
+# scene keywords that change what the default camera frames (boundary ghosts and their bond partners)
+_CAMERA_KEYS = _RADIUS_KEYS + ("type_colors", "vectors", "visuals", "boundary", "boundary_bonds", "bond_pairs")
+
+
 def default_camera(data, size=(1600, 1200), direction="iso", orthographic=True, zoom=1.0, radius_scale=1.0,
                    scene_kwargs=None) -> dict:
     """Camera that frames ``data`` like the OpenGL renderer (no window is shown)."""
@@ -697,7 +704,7 @@ def default_camera(data, size=(1600, 1200), direction="iso", orthographic=True, 
 
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     build_scene(p, data, radius_scale=radius_scale, show_cell=True, sphere_resolution=6,
-                **{k: v for k, v in (scene_kwargs or {}).items() if k in _RADIUS_KEYS + ("type_colors", "vectors", "visuals")})
+                **{k: v for k, v in (scene_kwargs or {}).items() if k in _CAMERA_KEYS})
     _setup_camera(p, data, direction, orthographic, zoom)
     cam = camera_state(p)
     p.close()
@@ -739,13 +746,14 @@ def save_image(rgba, filename, *, transparent=False, dpi=None):
 def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, background, transparent_background,
                       show_cell, bonds, radius_scale, camera, samples, ao_samples, shadows, overlays, dpi,
                       **scene_kwargs):
+    from .overlays import cell_line_color
     from .raytrace import raytrace, scene_from_data
 
     for k in ("atom_style", "sphere_resolution", "mesh_limit", "antialiasing", "ambient_occlusion", "cell_width"):
         scene_kwargs.pop(k, None)
     if camera is None:  # same framing as the OpenGL path
         camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
-    cell_color = "#AEB4BE" if sum(_rgb(background)) < 1.5 and not transparent_background else "black"
+    cell_color = cell_line_color(background, transparent_background)
     view = np.asarray(camera["position"], float) - np.asarray(camera["focal_point"], float)
     scene_kwargs.setdefault("arrow_resolution", 16 if samples <= 4 else 24)
     scene = scene_from_data(data, radius_scale=radius_scale, bonds=bonds, show_cell=show_cell,

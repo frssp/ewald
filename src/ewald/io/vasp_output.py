@@ -24,7 +24,8 @@ import xml.etree.ElementTree as ET
 import numpy as np
 
 from ..data import Cell, DataCollection
-from .base import FrameReader, floats, grep_lines, head_lines, open_binary, strip_compression
+from .base import (FrameReader, complete_size, file_size, floats, grep_lines, head_lines, open_binary,
+                   strip_compression)
 from .xdatcar import species_name
 
 _KB_TO_EV_A3 = 1e-1 / 160.21766208  # kBar -> GPa -> eV/A^3 (ase.units.GPa)
@@ -68,19 +69,41 @@ class OutcarReader(FrameReader):
 
     def __init__(self, path):
         self.path = str(path)
-        potcars, counts, natoms = [], None, None
-        steps: dict[int, dict] = {}
-        ionic, lattice = 0, None
-        for off, line in grep_lines(self.path, _OUTCAR_KEYS, _OUTCAR_LITERALS):
+        self._potcars, self._counts, self._natoms = [], None, None
+        self._all_steps: dict[int, dict] = {}
+        self._ionic, self._lattice = 0, None
+        size = file_size(self.path)
+        # a running VASP may have written half a line; it is looked at again by refresh()
+        self._scanned = complete_size(self.path, size) if size else None
+        hits = grep_lines(self.path, _OUTCAR_KEYS, _OUTCAR_LITERALS)
+        self._consume(hits if self._scanned is None else [h for h in hits if h[0] < self._scanned])
+        counts = self._counts
+        if counts is None:
+            raise ValueError(f"{path}: no 'ions per type' line; not an OUTCAR?")
+        # VASP prints the POTCAR lines more than once (once per type, then again); the first set counts
+        potcars = self._potcars
+        species = [species_name(p[1].decode() if len(p) > 1 else p[0].decode()) for p in potcars[: len(counts)]]
+        if len(species) != len(counts):
+            raise ValueError(f"{path}: {len(potcars)} POTCAR lines for {len(counts)} species")
+        self.types = np.repeat(species, counts)
+        self.natoms = self._natoms or int(sum(counts))
+        if not self._collect():
+            warnings.warn(f"{path}: last ionic step is incomplete and was skipped", stacklevel=2)
+        if not self._steps:
+            raise ValueError(f"{path}: no ionic steps with positions found")
+
+    def _consume(self, hits):
+        steps = self._all_steps
+        for off, line in hits:
             if b"Iteration" in line:
-                ionic = int(re.search(rb"Iteration +(\d+)\(", line).group(1))
+                self._ionic = int(re.search(rb"Iteration +(\d+)\(", line).group(1))
                 continue
-            rec = steps.setdefault(ionic, {"values": {}, "mag": {}})
+            rec = steps.setdefault(self._ionic, {"values": {}, "mag": {}})
             v = rec["values"]
             if b"direct lattice vectors" in line:
-                lattice = off
+                self._lattice = off
             elif b"TOTAL-FORCE" in line:
-                rec["pos"], rec["lat"] = off, lattice
+                rec["pos"], rec["lat"] = off, self._lattice
             elif b"free  energy   TOTEN" in line:
                 v["Free Energy"] = floats(line.split(b"=")[-1])[0]
             elif b"energy  without entropy" in line:
@@ -104,35 +127,61 @@ class OutcarReader(FrameReader):
                     v["Temperature"] = f[1]
             elif b"total energy   ETOTAL" in line:
                 v["Total Energy"] = floats(line.split(b"=")[-1])[0]
-            elif b"POTCAR:" in line and counts is None:
-                potcars.append(line.split(b":", 1)[1].split())  # 'PAW_PBE Fe_pv 02Aug2007'
-            elif b"ions per type" in line and counts is None:
-                counts = [int(x) for x in line.split(b"=")[1].split()]
+            elif b"POTCAR:" in line and self._counts is None:
+                self._potcars.append(line.split(b":", 1)[1].split())  # 'PAW_PBE Fe_pv 02Aug2007'
+            elif b"ions per type" in line and self._counts is None:
+                self._counts = [int(x) for x in line.split(b"=")[1].split()]
             elif b"NIONS =" in line:
-                natoms = int(line.split(b"NIONS =")[1].split()[0])
-        if counts is None:
-            raise ValueError(f"{path}: no 'ions per type' line; not an OUTCAR?")
-        # VASP prints the POTCAR lines more than once (once per type, then again); the first set counts
-        species = [species_name(p[1].decode() if len(p) > 1 else p[0].decode()) for p in potcars[: len(counts)]]
-        if len(species) != len(counts):
-            raise ValueError(f"{path}: {len(potcars)} POTCAR lines for {len(counts)} species")
-        self.types = np.repeat(species, counts)
-        self.natoms = natoms or int(sum(counts))
-        self._steps = [(n, rec) for n, rec in sorted(steps.items()) if "pos" in rec]
-        for _, rec in self._steps:
+                self._natoms = int(line.split(b"NIONS =")[1].split()[0])
+
+    def _collect(self) -> bool:
+        """Ionic steps with positions -> ``self._steps`` and ``self.thermo``; False when the
+        last one could not be read (VASP is still writing it) and was left out."""
+        steps = [(n, rec) for n, rec in sorted(self._all_steps.items()) if "pos" in rec]
+        for _, rec in steps:
             if "kb" in rec:
                 rec["values"]["Stress"] = _voigt_from_kb(*rec["kb"])
                 rec["values"].setdefault("Pressure", sum(rec["kb"][:3]) / 3)
-        if self._steps:
+        self._steps = steps
+        complete = True
+        if steps:
             try:
-                self.read(len(self._steps) - 1)
+                self.read(len(steps) - 1)
             except (ValueError, IndexError):
-                warnings.warn(f"{path}: last ionic step is incomplete and was skipped", stacklevel=2)
-                self._steps.pop()
-        if not self._steps:
-            raise ValueError(f"{path}: no ionic steps with positions found")
+                self._steps = steps = steps[:-1]
+                complete = False
         self.thermo = _table([{"Step": n, **{k: x for k, x in rec["values"].items() if np.isscalar(x)}}
-                              for n, rec in self._steps])
+                              for n, rec in steps])
+        return complete
+
+    def refresh(self) -> int | None:
+        """Index ionic steps VASP appended since the last look: only the new part of the
+        file is searched. The old last step may gain energies or stress, so it counts as changed."""
+        size = file_size(self.path)
+        if size is None or self._scanned is None or size == self._scanned:
+            return None
+        if size < self._scanned:  # rewritten (a new run): index from scratch
+            try:
+                fresh = OutcarReader(self.path)
+            except ValueError:
+                return None
+            self.__dict__.update(fresh.__dict__)
+            return 0
+        end = complete_size(self.path, size)
+        if end <= self._scanned:
+            return None
+        hits = grep_lines(self.path, _OUTCAR_KEYS, _OUTCAR_LITERALS, start=self._scanned)
+        before = self._signature()
+        self._consume([h for h in hits if h[0] < end])
+        self._scanned = end
+        self._collect()
+        if self._signature() == before:  # only electronic steps were written
+            return None
+        return max(before[0] - 1, 0)
+
+    def _signature(self):
+        n, rec = self._steps[-1] if self._steps else (None, {"values": {}, "mag": {}})
+        return len(self._steps), n, tuple(rec["values"]), tuple(rec["mag"]), "kb" in rec
 
     def __len__(self):
         return len(self._steps)

@@ -210,13 +210,20 @@ class Pipeline:
 
     @property
     def num_frames(self) -> int:
-        return self.source.num_frames
+        """Frames of the source, or of the trajectory a modifier loads on top of it
+        (a modifier with a ``frame_count()`` method, such as LoadTrajectory)."""
+        n = self.source.num_frames
+        for m in self.modifiers:
+            count = m.frame_count() if m.enabled and hasattr(m, "frame_count") else None
+            if count:
+                n = count
+        return n
 
     def __len__(self):
         return self.num_frames
 
     def source_frame(self, frame: int) -> DataCollection:
-        frame %= self.num_frames
+        frame %= self.source.num_frames
         with self._cache_lock:
             data = self._cache.get(frame)
             if data is not None:
@@ -228,6 +235,33 @@ class Pipeline:
             self._cache.move_to_end(frame)
             self._trim_cache()
         return data.copy()
+
+    def refresh(self) -> int:
+        """Pick up frames a running simulation appended to the source file(s) since they were
+        opened (LAMMPS dump, XDATCAR, OUTCAR, extxyz; local or over SSH) and drop cached frames
+        that may have changed. Returns how many frames were added (negative if the file was
+        rewritten shorter); call it again whenever you want to look for more::
+
+            pipe = import_file("dump.lammpstrj")   # while LAMMPS is running
+            ...
+            if pipe.refresh():
+                data = pipe.compute(-1)            # the newest frame
+        """
+        refresh = getattr(self.source, "refresh", None)
+        if refresh is None:
+            return 0
+        with self._compute_lock:  # not while a worker thread reads the source
+            before = self.num_frames
+            first = refresh()
+            if first is not None:
+                self.invalidate(first)
+            return self.num_frames - before
+
+    def invalidate(self, first: int = 0):
+        """Forget cached source frames from ``first`` on (their file changed)."""
+        with self._cache_lock:
+            for frame in [f for f in self._cache if f >= first]:
+                del self._cache[frame]
 
     def _trim_cache(self):
         while len(self._cache) > max(self._cache_size, 1):

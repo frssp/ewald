@@ -43,10 +43,9 @@ def cell_parameters(cell) -> dict:
 
 
 def _masses(types) -> np.ndarray | None:
-    from ase.data import atomic_masses, chemical_symbols
+    from ..radii import element_masses
 
-    lookup = {s: atomic_masses[i] for i, s in enumerate(chemical_symbols)}
-    m = np.array([lookup.get(str(t), np.nan) for t in types])
+    m = element_masses(types, default=None)
     return None if np.isnan(m).any() else m
 
 
@@ -263,11 +262,7 @@ def trajectory_series(pipeline, start: int = 0, stop: int | None = None, step: i
         if ref is None:
             ref = pos
         if len(pos) == len(ref):
-            dr = pos - ref
-            if data.cell.is_valid:
-                fr = dr @ np.linalg.inv(data.cell.matrix)
-                fr[:, data.cell.pbc] -= np.round(fr[:, data.cell.pbc])
-                dr = fr @ data.cell.matrix
+            dr = data.cell.minimum_image(pos - ref)
             d2 = (dr ** 2).sum(1)
             cols["msd"].append(float(d2.mean()))
             cols["max_displacement"].append(float(np.sqrt(d2.max())))

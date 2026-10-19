@@ -16,8 +16,10 @@ device can be:
 | `"auto"` | the GPU when one is available, else the CPU |
 
 Set a default for a pipeline with `pipe.device = "cuda"`; a `device=` passed to `compute`
-wins. In the GUI, the Compute switch in the toolbar sets the device for the session and
-Preferences › Compute sets the default.
+wins. Scripts default to the CPU. The GUI defaults to `auto` (Preferences › Compute ›
+Default device): it computes on the GPU when CuPy finds one and on the CPU otherwise, and the
+status bar shows which, for example `AUTO (CUDA)`. The Compute switch in the toolbar changes the
+device for the session only.
 
 ## What runs on the GPU
 

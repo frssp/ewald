@@ -113,8 +113,8 @@ class ParameterForm(QtWidgets.QWidget):
         return w
 
     def _browse(self, line):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Choose a file", line.text(),
-                                                        "Data (*.xy *.xye *.dat *.txt *.csv *.chi);;All files (*)")
+        filt = getattr(self.modifier, "file_filter", "Data (*.xy *.xye *.dat *.txt *.csv *.chi);;All files (*)")
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Choose a file", line.text(), filt)
         if path:
             line.setText(path)
 

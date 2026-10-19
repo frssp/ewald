@@ -552,13 +552,13 @@ def test_preferences_dialog_edit_search_restore(app, tmp_path):
     dlg = PreferencesDialog(s)
     assert [dlg.pages.item(i).text() for i in range(dlg.pages.count())] == list(settings.PAGES)
     dlg.set_value("viewport.rotation_step", 45.0)
-    dlg.set_value("compute.device", "auto")
+    dlg.set_value("compute.device", "cpu")
     assert s.is_default("viewport.rotation_step")           # untouched until Apply
     applied = []
     dlg.applied.connect(applied.append)
     dlg.apply()
     assert applied and s["viewport.rotation_step"] == 45.0
-    assert settings.load()["compute.device"] == "auto"       # saved to disk
+    assert settings.load()["compute.device"] == "cpu"        # saved to disk
     dlg._search("radius")
     visible = {dlg.pages.item(i).text() for i in range(dlg.pages.count()) if not dlg.pages.item(i).isHidden()}
     assert visible == {"Elements"}
@@ -632,7 +632,7 @@ def test_main_window_applies_settings(app, pipe):
     s["render.renderer"] = "opengl"
     s["elements.overrides"] = {"Cu": {"color": "#c8794a"}}
     w = MainWindow(pipe, settings=s)
-    assert w.device == "cpu" and w.style.background == "#ffffff" and w.style.bonds_enabled
+    assert w.device == "auto" and w.style.background == "#ffffff" and w.style.bonds_enabled
     assert w.viewport.rotation_step == 30.0 and not w.render_page.raytrace
     assert w.style.type_colors["Cu"] == "#c8794a"
     assert any(a.text() == "&Preferences…" for a in w.menuBar().actions()[1].menu().actions())
@@ -1557,3 +1557,77 @@ def test_notebook_undo_redo_from_the_edit_menu(app, cu_path):
     w.undo()
     assert [m.name for m in w.pipeline.modifiers] == ["CoordinationAnalysis"]
     w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_main_window_follows_a_growing_dump(app, lammps_dir, tmp_path):
+    from ewald import import_file
+    from ewald.gui.app import MainWindow
+
+    blob = (lammps_dir / "dump.custom.lammpstrj").read_bytes()
+    offsets = import_file(lammps_dir / "dump.custom.lammpstrj").source.readers[0]._offsets
+    path = tmp_path / "dump.lammpstrj"
+    path.write_bytes(blob[:offsets[2]])
+    w = MainWindow(import_file(path))
+    assert w.live_reload.timer.isActive() and w.live_reload_action.isChecked()
+    assert w.timeline.slider.maximum() == 1
+    w.timeline._set(1)  # on the last frame: follow the newest one
+    w.timeline.set_selection([0, 1])
+    path.write_bytes(blob)
+    w.live_reload.poll(wait=True)
+    n = len(offsets)
+    assert w.timeline.slider.maximum() == n - 1 and w.frame == n - 1
+    assert w.timeline.selection == [0, 1]  # kept while the file grows
+    assert f"frame {n - 1}/{n - 1}" in w.status.text()
+    w.timeline._set(0)  # looking at an early frame: stay there
+    path.write_bytes(blob + blob[offsets[-1]:])
+    w.live_reload.poll(wait=True)
+    assert w.timeline.slider.maximum() == n and w.frame == 0
+    w.live_reload_action.trigger()  # File › Live reload off
+    assert not w.live_reload.timer.isActive()
+    w.close()
+
+
+def test_cell_panel_boundary_range(app):
+    from ewald.gui.pipeline_panel import PipelinePanel
+    from ewald.gui.style import ViewStyle
+
+    style = ViewStyle()
+    panel = PipelinePanel(style)
+    seen = []
+    panel.styleChanged.connect(lambda: seen.append(1))
+    box = panel._boundary_editor()
+    assert not box.isChecked() and "boundary" not in style.scene_kwargs()
+    box.setChecked(True)
+    assert style.boundary == [0.0, 1.0] and seen
+    lo, hi = box.findChildren(QtWidgets.QDoubleSpinBox)
+    lo.setValue(-0.1)
+    hi.setValue(1.1)
+    box.findChild(QtWidgets.QComboBox).setCurrentText("complete")
+    kw = style.scene_kwargs()
+    assert kw["boundary"] == pytest.approx([-0.1, 1.1]) and kw["boundary_bonds"] == "complete"
+    box.setChecked(False)
+    assert "boundary" not in style.scene_kwargs()
+
+
+def test_viewport_boundary_images_hover_as_real_atom(app):
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    data = DataCollection([[0.0, 0.0, 0.0], [2.0, 2.0, 2.0]], ["Ti", "Sr"], Cell(np.diag([4.0, 4.0, 4.0])))
+    style = ViewStyle(boundary=[0.0, 1.0], bonds_enabled=False)
+    v = Viewport(style)
+    v.set_data(data)
+    v.view_along("c")
+    assert v._boundary_atoms[0].shape == (9, 3)  # Ti on every corner, Sr in the middle
+    cam, w, h = v.plotter.camera, 400, 300
+
+    def screen(p):
+        m = cam.GetCompositeProjectionTransformMatrix(w / h, -1, 1)
+        m = np.array([[m.GetElement(i, j) for j in range(4)] for i in range(4)])
+        c = m @ [*p, 1]
+        return (c[0] / c[3] + 1) * w / 2, (1 - c[1] / c[3]) * h / 2
+
+    assert v.hover_index(*screen([4.0, 4.0, 4.0]), w, h) == 0  # the corner image is Ti 0
+    assert v.hover_index(*screen([2.0, 2.0, 2.0]), w, h) == 1

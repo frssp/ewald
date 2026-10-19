@@ -8,7 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-
 ## Next
 
 GUI
@@ -54,6 +53,10 @@ GUI
 - Flat (ASE) style in the ray tracer and the vector renderer (now OpenGL only), and a
   per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.
+- Boundary (VESTA): repeat isosurfaces and grid slices over the boundary range too (now only
+  atoms, bonds and coordination polyhedra are repeated), VESTA's recursive "search molecules"
+  mode, and keep the images while the coarse viewport level of detail is shown (they disappear
+  during rotation of systems above the interactive atom limit).
 - Bonds above the automatic-bonds limit (100 000 atoms): a fast path (bond impostors or lines)
   so large systems can show bonds by default too.
 
@@ -67,6 +70,17 @@ Analysis
   offer an OVITO-compatible mode once its rule is known.
 - FindRings in numba for networks above ~100k atoms (8000 a-Si atoms, rings up to 10: 1 s).
 - Spatial correlation function and Voronoi-weighted Steinhardt (OVITO / freud have them).
+- The rest of OVITO's everyday modifiers: manual selection (box or lasso in the viewport, kept as
+  a modifier) and Smooth trajectory (interpolated frames). FreezeProperty, UnwrapTrajectories,
+  ExpandSelection, LoadTrajectory and CombineDatasets are done.
+- Ion transport: error bars for the conductivity and Haven ratio (block averaging over
+  independent windows; the collective charge MSD is one vector and noisy), Onsager
+  coefficients L_ij per species pair, and the conductivity checked against a published
+  Li-conductor trajectory (tests use synthetic walks with known answers).
+- Site hopping: find sites without a reference structure (density maxima of the mobile ions
+  over the trajectory), draw sites and hop paths in the viewport, and a hop-correlation
+  (back-jump) statistic.
+- Plots tab: G_s(r, t) / F_s(q, t) as a 2D map over r or q and t.
 - Grain segmentation: the center of mass of a grain that percolates through the periodic
   boundaries depends on bond order (as in OVITO, so values differ from OVITO's for those grains);
   a grain-boundary surface mesh and misorientation-colored boundary bonds in the viewport; a
@@ -128,6 +142,9 @@ Formats
   fine for small sets, slow for thousands.
 - GROMACS `.gro` with velocities.
 - LAMMPS binary dump.
+- Large-frame reading against OVITO (docs/developer/readers.md): a 1M-atom dump frame takes
+  0.45 s and 367 MB in ewald vs 0.23 s and 188 MB in OVITO (per-column copies, id sort); a
+  1M-atom extxyz frame 0.85 s vs 0.33 s (ASE `Atoms` assembly).
 - LAMMPS logs written with `thermo_style multi` or `thermo_modify line yaml` (only one-line
   thermo output is read now).
 
@@ -155,6 +172,18 @@ Visualization plugins (later phases of the Scene IR plan)
 
 Plugins and Claude
 
+- Plugin manifests, phase 2 (from the VS Code comparison): contributions declared in
+  `ewald-plugin.toml` (`[[readers]]`, `[[modifiers]]`, ... with `python = "module:object"`)
+  registered lazily and imported on first use; `settings` and `commands` contribution points
+  (plugin `Option`s on a generated Preferences page; commands in the palette, as notebook
+  functions and as Claude tools).
+- Plugin manifests, phase 3: a curated plugin index (JSON in a GitHub repository), install and
+  update with `pip` into the running interpreter, notebooks recording the plugins they use and
+  offering to install missing ones.
+- Plugin manifests, phase 4: notebook/session trust (Restricted mode for files from others),
+  index curation rules, signatures if the index opens to outside publishers.
+- Per-notebook plugin enable/disable; `plugins.json` holds only the global switch.
+
 - LLM plugin ideas: Paper-to-modifier (Forge from a paper's definition, checked against its
   numbers), Run doctor (diagnose a VASP/LAMMPS run from its outputs), phase identification,
   campaign report over many runs.
@@ -178,6 +207,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - P2: glTF, interactive HTML and Blender export.
 - P2: Batch render CLI: apply one `.ewald` session to many run folders.
 - P2: Native GSD reader (H5MD and XTC/TRR/DCD are done).
+- P2: Live reload for vasprun.xml, H5MD, XTC/TRR/DCD and compressed files (dump, XDATCAR,
+  OUTCAR and extxyz follow a growing file now); a file-system watcher instead of polling.
 - P2: More HDF5 output: Quantum ESPRESSO `charge-density.hdf5` (G-space, needs an FFT to the
   real-space grid), ABINIT netCDF-4 `*_HIST.nc` trajectories and `*_DEN.nc` densities, VASP
   `vaspout.h5` `/results/partial_charges` (PARCHG).
@@ -188,6 +219,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `--device cuda` GUI switch. CI and the cloud container have no GPU.
 - SSH remote files against a real HPC login node (ProxyJump, OTP, large dumps); tests use an
   in-process SFTP server.
+- Live reload on a real running LAMMPS/VASP job (local and over SSH), where the writer flushes
+  in arbitrary pieces; tests grow fixture files byte by byte.
 - Claude features with a real API key: `ewald ask` (also `--select`), the GUI Ask Claude tab,
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › Claude › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
@@ -219,6 +252,21 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `WAYLAND_DISPLAY` is set; the Fedora package names in its message are untested).
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
   CI has no PLUMED, so those tests skip).
+
+## Code health
+
+Left from the 2026-10-19 review (minimum image, element masses, color parsing and the
+dark-background test are shared now; `gui/app.py` and `gui/preferences.py` are split into
+mixins and helper modules):
+
+- One camera basis (right/up/forward) for `vector.py`, `overlays.camera_axes` and `raytrace.py`;
+  only the overlays one handles `up` parallel to the view direction.
+- One element color lookup: `themes.element_colors`, `Settings.element_color` (Preferences
+  offers only Jmol and CPK, not VESTA) and `render.type_color`.
+- `plugins.py`: the visual-element and overlay registries are copies of each other; the
+  renderer-neutral type color/radius tables in `render.py` belong in their own module.
+- `Viewport._mic` and the bond-angle code in `gui/viewport.py` can use `Cell.minimum_image`
+  and share the angle helper with `llm/selection.py`.
 
 ## Security
 

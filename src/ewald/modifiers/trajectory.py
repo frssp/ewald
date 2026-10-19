@@ -376,7 +376,7 @@ class OverlayFrames(_TrajectoryModifier):
             else:
                 raise ValueError(f"frame {k} has {len(kx)} atoms and frame {here} has {len(x)}, and there "
                                  f"are no particle identifiers to match them")
-            d = _mic(kx[theirs] - x[own], data.cell)
+            d = data.cell.minimum_image(kx[theirs] - x[own])
             moved = np.linalg.norm(d, axis=1) > self.min_displacement
             src.append(own[moved])
             pos.append(x[own[moved]] + d[moved])
@@ -408,10 +408,136 @@ class OverlayFrames(_TrajectoryModifier):
         return out
 
 
-def _mic(delta, cell):
-    """Displacements wrapped to the nearest periodic image of ``cell``."""
-    if not cell.is_valid or not cell.pbc.any():
-        return delta
-    frac = delta @ np.linalg.inv(cell.matrix)
-    frac[:, cell.pbc] -= np.round(frac[:, cell.pbc])
-    return frac @ cell.matrix
+def _match_identifiers(ref_ids, ids):
+    """Index into ``ref_ids`` of every entry of ``ids`` (-1 where it is missing)."""
+    order = np.argsort(ref_ids, kind="stable")
+    pos = np.clip(np.searchsorted(ref_ids[order], ids), 0, max(len(order) - 1, 0))
+    if not len(order):
+        return np.full(len(ids), -1, np.int64)
+    found = ref_ids[order][pos] == ids
+    return np.where(found, order[pos], -1)
+
+
+class FreezeProperty(Modifier):
+    """Copy a particle property as it was at frame ``freeze_at`` to every frame
+    (OVITO's FreezePropertyModifier).
+
+    Typical use: keep the selection, the structure type or the coordination of the starting
+    configuration, e.g. ``FreezeProperty("Structure Type", "Initial Structure", freeze_at=0)``
+    after CNA, then select the atoms that were fcc at the start. The frozen values come from
+    the pipeline above this modifier at ``freeze_at``. Particles are matched by
+    'Particle Identifier' when present, else by index; particles that did not exist at
+    ``freeze_at`` get zero. ``destination_property`` defaults to ``source_property``.
+    """
+
+    def __init__(self, source_property: str = "Selection", destination_property: str | None = None,
+                 freeze_at: int = 0):
+        self.source_property = source_property
+        self.destination_property = destination_property
+        self.freeze_at = freeze_at
+
+    def _frozen(self, data, ctx):
+        frame = self.freeze_at % ctx.pipeline.num_frames
+        key = (ctx.upstream_key(), self.source_property, frame)
+        cache = self.__dict__.get("_cache")
+        if cache is None or cache[0] != key:
+            ref = data if frame == ctx.frame else ctx.input_frame(frame)
+            if self.source_property not in ref:
+                raise KeyError(f"no particle property {self.source_property!r} at frame {frame}")
+            ids = np.asarray(ref["Particle Identifier"]) if "Particle Identifier" in ref else None
+            cache = (key, np.asarray(ref[self.source_property]), ids)
+            self._cache = cache
+        return cache[1], cache[2]
+
+    def modify(self, data, ctx):
+        values, ids = self._frozen(data, ctx)
+        if ids is not None and "Particle Identifier" in data:
+            index = _match_identifiers(ids, np.asarray(data["Particle Identifier"]))
+            out = np.zeros((data.count,) + values.shape[1:], values.dtype)
+            hit = index >= 0
+            out[hit] = values[index[hit]]
+        elif len(values) == data.count:
+            out = values
+        else:
+            raise ValueError(f"frame {ctx.frame} has {data.count} particles, frame {self.freeze_at} had "
+                             f"{len(values)}, and there are no identifiers to match them")
+        data.particles[self.destination_property or self.source_property] = out
+
+
+class UnwrapTrajectories(Modifier):
+    """Undo the wrapping of particles at periodic boundaries, so trajectories are continuous
+    (OVITO's UnwrapTrajectoriesModifier).
+
+    With a 'Periodic Image' property (LAMMPS ``ix iy iz``) the positions are shifted by those
+    image counts and the counts reset to zero. Otherwise every crossing is detected by following
+    the trajectory from frame 0 (a particle must move less than half a cell width between
+    stored frames); particles are matched by 'Particle Identifier', else by index. Bond periodic
+    images are adjusted so bonds stay the same. Checkpoints along the trajectory keep a jump to
+    a distant frame from replaying it from the start.
+    """
+
+    max_checkpoints = 16
+
+    def modify(self, data, ctx):
+        cell = data.cell
+        if not (cell.is_valid and cell.pbc.any()):
+            return None
+        if "Periodic Image" in data:
+            img = np.asarray(data["Periodic Image"]).astype(np.int64)
+            data.particles["Periodic Image"] = np.zeros_like(data["Periodic Image"])
+        else:
+            img = self._images(data, ctx)
+        img = img * cell.pbc.astype(np.int64)
+        if not img.any():
+            return None
+        data.positions = data.positions + img @ cell.matrix
+        if data.bonds is not None and data.bonds.count:
+            i, j = data.bonds.topology.T
+            data.bonds.properties["Periodic Image"] = (data.bonds.pbc_images + img[i] - img[j]).astype(np.int32)
+        return None
+
+    @staticmethod
+    def _state(d, ids):
+        """Positions of ``d`` in the order of the reference identifiers ``ids`` (None: by index)."""
+        if ids is None:
+            return np.asarray(d.positions, float), None
+        index = _match_identifiers(np.asarray(d["Particle Identifier"]), ids)
+        if (index < 0).any() or d.count != len(ids):
+            raise ValueError("UnwrapTrajectories: particles appear or vanish between frames")
+        return np.asarray(d.positions, float)[index], index
+
+    def _images(self, data, ctx):
+        n = ctx.pipeline.num_frames
+        key = ctx.upstream_key()
+        st = self.__dict__.get("_unwrap")
+        if st is None or st["key"] != key:
+            first = data if ctx.frame == 0 else ctx.input_frame(0)
+            ids = np.asarray(first["Particle Identifier"]) if "Particle Identifier" in first else None
+            st = {"key": key, "ids": ids, "stride": max(1, -(-n // self.max_checkpoints)),
+                  "points": {0: (np.asarray(first.positions, float), np.zeros((first.count, 3), np.int64))}}
+            self._unwrap = st
+        ids = st["ids"]
+        start = max(k for k in st["points"] if k <= ctx.frame)
+        prev, img = st["points"][start]
+        img = img.copy()
+        for k in range(start + 1, ctx.frame + 1):
+            d = data if k == ctx.frame else ctx.input_frame(k)
+            pos, _ = self._state(d, ids)
+            if ids is None and len(pos) != len(prev):
+                raise ValueError("UnwrapTrajectories: the particle count changes and there are no identifiers")
+            f = (pos - prev) @ np.linalg.inv(d.cell.matrix)
+            img -= np.round(f).astype(np.int64) * d.cell.pbc.astype(np.int64)
+            prev = pos
+            if k % st["stride"] == 0 or k == ctx.frame:
+                st["points"][k] = (pos, img.copy())
+        # drop the previous "last frame" point unless it is a checkpoint
+        for k in [k for k in st["points"] if k % st["stride"] and k != ctx.frame]:
+            del st["points"][k]
+        if ids is None:
+            if len(img) != data.count:
+                raise ValueError("UnwrapTrajectories: the particle count changes and there are no identifiers")
+            return img
+        _, index = self._state(data, ids)  # data order -> reference order
+        out = np.empty_like(img)
+        out[index] = img
+        return out

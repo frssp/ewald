@@ -53,7 +53,13 @@ def test_catalog_index_install_search_and_remove(tmp_path):
     assert pc.install_file(ours[0]) == ["CatalogShift"]
     assert pc.is_installed(ours[0]) and "CatalogShift" in plugins.modifiers()
     item = next(i for i in pc.installed() if i.path.endswith("catalog_shift.py"))
-    assert item.removable and item.provides == {"modifier": ["CatalogShift"]}
+    assert item.removable and item.provides == {"modifier": ["CatalogShift"]} and item.id == "catalog_shift"
+    pc.set_enabled(item, False)
+    item = next(i for i in pc.installed() if i.id == "catalog_shift")
+    assert item.state == "disabled" and not item.enabled and "CatalogShift" not in plugins.modifiers()
+    pc.set_enabled(item, True)
+    item = next(i for i in pc.installed() if i.id == "catalog_shift")
+    assert item.enabled and "CatalogShift" in plugins.modifiers()
     dest = pc.remove_file(item)
     assert dest.parent.name == ".removed" and dest.exists() and not pc.is_installed(ours[0])
     assert not any(i.path.endswith("catalog_shift.py") for i in pc.installed())

@@ -20,6 +20,7 @@ python -m ewald api > llms.txt   # regenerate the LLM API reference (see below)
 xvfb-run -a python -m ewald inventory -o docs/features.md --gui   # regenerate the feature inventory
 python benchmarks/neighbors.py   # neighbor-list timings
 python benchmarks/large_files.py # open/frame-switch/memory on generated multi-million-atom files
+python benchmarks/readers.py     # native readers vs ASE/OVITO/MDAnalysis/chemfiles (docs/developer/readers.md)
 python examples/demo.py          # sample trajectories + figures into demo_out/
 mkdocs build --strict            # the manual (pip install -r docs/requirements.txt); CI runs it
 ```
@@ -48,6 +49,9 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   `remote.py` opens `host:/path` / `ssh://` paths (paramiko): `base.open_binary` streams them to the
   native readers, `FileSource` downloads them to a local cache for every other reader. Tests use the
   in-process server in `tests/helpers/sftp_server.py` (fixtures `server`, `ssh_env` in conftest), no sshd.
+  `_textparse.py` is the numba atom-table parser shared by the dump and extxyz readers. Write a native
+  reader only where an index plus that parser beats ASE by a wide margin (big text trajectories);
+  delegate everything else (docs/developer/readers.md has the measurements and the rule).
 - `bonds.py` (`Bonds`: Topology + Periodic Image, bond search), `mesh.py` (`SurfaceMesh` for
   `data.surfaces`: polyhedra now, surface meshes later); both drawn by `render.py` and `raytrace.py`.
 - `backend.py` (numpy/CuPy `xp` backends), `neighbors.py` (numba CPU cell list, `find_pairs`),
@@ -62,6 +66,8 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `scene.py`: renderer-neutral Scene IR (Spheres, Cylinders, Lines, SurfaceMesh, Arrows) and
   `VisualElement`s (built-in Particles, Bonds, Cell, ... and `@visual` plugins); every renderer
   draws a `Scene`, so new geometry goes into an element, not into one renderer.
+  `boundary.py`: VESTA boundary ghosts (display copy with periodic images, bonds/polyhedra completed);
+  `scene.build(boundary=...)` applies it and maps primitives back to real atoms. Display only.
 - `render.py` (VTK/PyVista offscreen; impostors above 150k atoms), `raytrace.py` (numba ray tracer,
   the publication renderer; pip VTK has no OSPRay), `vector.py` (SVG/PDF/EPS via matplotlib),
   `overlays.py` (text, color/type legends, scale bar and `OverlayElement`s returning 2D items, for every
@@ -88,13 +94,17 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   the sum_hills files in `tests/data/plumed/` (regenerate with `make_plumed_reference.py`, never by hand).
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
 - `notebook.py`: notebooks as percent-format `.py` files (`# %%` cells, one namespace, `pipe` is the
-  pipeline; step cells = one `pipe.modifiers.append(...)`, view cells = one `show(pipe, ...)` from
+  pipeline; step cells = one `pipe.add(...)`, view cells = one `show(pipe, ...)` from
   `views.py`). The GUI's default layout is built on it (`general.layout`: notebook | classic).
-- `gui/`: `app.py` main window, `notebook_panel.py` (cells, steps, view cells with live `PlotsPanel`s)
-  and `notebook_tabs.py` (one tab per open notebook), `viewport.py` (VTK; `legacy_viewport.py` + Qt-free
+- `gui/`: `app.py` main window (frames, recompute, styling; built from mixins: `window_menus.py` toolbar,
+  menus, activity bar and minimal mode, `window_files.py` open/export/sessions/notebooks, `viewport_menu.py`
+  right-click menu, `window_links.py` picks, plot links (Plots tab and view cells), Ask Claude and console),
+  `notebook_panel.py` (cells, steps, view cells with live `PlotsPanel`s), `notebook_tabs.py` (one tab per
+  open notebook), `plugins_panel.py` (Plugins side bar), `viewport.py` (VTK; `legacy_viewport.py` + Qt-free
   `legacy_gl.py` are the OpenGL 1.x viewport for `ssh -X`, chosen by `gui.viewport_backend`), `pipeline_panel.py`
   (classic layout; `DisplayPanel` is its visual-elements part in the notebook layout), `params.py`, `render_page.py`,
-  `preferences.py`, `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
+  `preferences.py` (dialog; `pref_widgets.py`, `element_table.py`, `prefs_apply.py` apply settings to the window),
+  `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
   `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`.
 - `llm/`: Claude agent (`agent.py`), tools (`tools.py`), `credentials.py` (API key in the OS keychain via
   `keyring`, 0600 file fallback, never in settings.json; every Claude client comes from `credentials.client()`), Modifier Forge (`forge.py`: Claude writes a

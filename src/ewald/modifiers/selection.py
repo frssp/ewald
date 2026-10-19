@@ -89,3 +89,63 @@ class Slice(Modifier):
             data.particles["Selection"] = remove.astype(np.int8)
             return None
         return data.delete(remove)
+
+
+class ExpandSelection(Modifier):
+    """Grow the selection to the neighbors of selected particles (OVITO's ExpandSelectionModifier).
+
+    ``mode``: 'cutoff' adds every particle within ``cutoff`` of a selected one, 'nearest' the
+    ``num_neighbors`` nearest neighbors of each selected particle, 'bonded' the particles bonded
+    to a selected one (needs bonds, e.g. CreateBonds). The step is repeated ``iterations``
+    times, so ``iterations=2`` reaches second neighbors. Writes 'Selection' and the attributes
+    ``ExpandSelection.num_added`` and ``ExpandSelection.num_selected``.
+    """
+
+    choice_parameters = {"mode": ["cutoff", "nearest", "bonded"]}
+
+    def __init__(self, mode: str = "cutoff", cutoff: float = 3.2, num_neighbors: int = 1, iterations: int = 1):
+        self.mode = mode
+        self.cutoff = cutoff
+        self.num_neighbors = num_neighbors
+        self.iterations = iterations
+
+    def _pairs(self, data, ctx):
+        """Directed pairs (i, j): selecting i selects j."""
+        mode = self.mode.lower()
+        if mode == "cutoff":
+            from ..neighbors import find_pairs
+
+            i, j, _, _ = find_pairs(data.positions, data.cell, self.cutoff, ctx.backend)
+            return ctx.backend.to_numpy(i), ctx.backend.to_numpy(j)
+        if mode == "nearest":
+            from ._knn import nearest_neighbors
+
+            k = min(int(self.num_neighbors), data.count - 1)
+            if k < 1:
+                return np.zeros(0, np.int64), np.zeros(0, np.int64)
+            index, _, _ = nearest_neighbors(data.positions, data.cell, k)
+            i = np.repeat(np.arange(data.count), k)
+            j = np.asarray(index).ravel()
+            ok = j >= 0
+            return i[ok], j[ok]
+        if mode == "bonded":
+            if data.bonds is None:
+                raise ValueError("ExpandSelection(mode='bonded') needs bonds; add CreateBonds first")
+            t = data.bonds.topology
+            return np.concatenate([t[:, 0], t[:, 1]]), np.concatenate([t[:, 1], t[:, 0]])
+        raise ValueError(f"unknown mode {self.mode!r}; use 'cutoff', 'nearest' or 'bonded'")
+
+    def modify(self, data, ctx):
+        sel = data.selection.copy()
+        before = int(sel.sum())
+        if before and data.count:
+            i, j = self._pairs(data, ctx)
+            for _ in range(max(int(self.iterations), 0)):
+                new = sel.copy()
+                new[j[sel[i]]] = True
+                if (new == sel).all():
+                    break
+                sel = new
+        data.particles["Selection"] = sel.astype(np.int8)
+        data.attributes["ExpandSelection.num_added"] = int(sel.sum()) - before
+        data.attributes["ExpandSelection.num_selected"] = int(sel.sum())

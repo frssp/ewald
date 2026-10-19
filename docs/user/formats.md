@@ -18,7 +18,7 @@ files directly.
 | VASP CHGCAR/LOCPOT/ELFCAR, Gaussian cube | native | atoms plus a grid in `data.grids` |
 | VASP 6 `vaspout.h5` | native, lazy, needs `h5py` | every ionic step from `/intermediate/ion_dynamics` (the final structure when there is no history): cell with `scale`, `Force`, `Velocity` (Å/fs), `Magnetic Moment` (summed over orbitals, N x 3 non-collinear), energies, `Stress`, `Pressure`; the local potential (`WRT_POTENTIAL`/`LVTOT`) as `data.grids["potential"]` of the last frame; DOS, PDOS and bands (also KPOINTS_OPT) as for vasprun.xml |
 | VASP 6 `vaspwave.h5` | native, needs `h5py` | `LCHARGH5` charge density as `data.grids["charge-density"]` (divided by the cell volume like a CHGCAR, e/Å³, plus `Magnetization`); the structure comes from `vaspout.h5` next to it or `structure=` |
-| XYZ, extended XYZ (`*.xyz`, `*.extxyz`) | native, lazy | frames indexed by their atom-count lines, each parsed on demand by ASE's extxyz parser: `Lattice=`, `Properties=`, `pbc=`, per-frame info (attributes), `forces` (`Force`), `energy` (`Energy`); a partial last frame is skipped with a warning |
+| XYZ, extended XYZ (`*.xyz`, `*.extxyz`) | native, lazy | frames indexed by their atom-count lines and parsed on demand; the atom table goes through the same parallel numba parser as LAMMPS dumps and the rest through ASE's extxyz code, so the result is identical to `ase.io.read`: `Lattice=`, `Properties=`, `pbc=`, per-frame info (attributes), `forces` (`Force`), `energy` (`Energy`); a partial last frame is skipped with a warning |
 | XCrySDen XSF/AXSF (`*.xsf`, `*.axsf`) | native, lazy | `CRYSTAL`/`SLAB`/`POLYMER`/`MOLECULE`, `ANIMSTEPS` trajectories with fixed or variable cell, forces (`Force`), every `DATAGRID_3D` as a property of `data.grids["xsf"]` (Quantum ESPRESSO `pp.x`, VESTA); the repeated end points of XSF's general grid are dropped for periodic axes |
 | H5MD (`*.h5md`, `*.h5`) | native, lazy, needs `h5py` | LAMMPS `dump h5md`, MDAnalysis, ESPResSo; fixed or time-dependent box, `velocity`, `force`, `image`, `id`, `charge`, `mass`, scalar `/observables` as attributes; species names from string species, `/parameters/vmd_structure` or `type_map=`; `nm` converted to Å; `group=` picks a particle group |
 | MDTraj / OpenMM HDF5 (`*.h5`) | native, lazy, needs `h5py` | OpenMM `HDF5Reporter`, `mdtraj.save_hdf5`: elements, residues (`Molecule Identifier`) and bonds from the JSON topology, cell from lengths and angles, `Velocity` (Å/fs), `Time` (ps), `Kinetic Energy`/`Potential Energy` (eV), `Temperature` |
@@ -188,6 +188,28 @@ vasprun.xml files are read in place, frame by frame (a dump is indexed with `gre
 trajectory is not copied. Other formats, including plugin formats, are downloaded once into a
 local cache (`ewald.io.remote.cache_dir()`, `EWALD_CACHE_DIR` overrides) and reused while the
 remote file is unchanged. Host aliases need at least two characters, so `C:\data` stays local.
+
+## Runs that are still writing
+
+A LAMMPS dump, XDATCAR, OUTCAR or extxyz file can be opened while the simulation is still
+writing it, locally or over SSH. `pipe.refresh()` looks for frames appended since the file was
+opened (or last refreshed), reads only the new bytes (on an SSH host `tail -c | grep -b` runs
+there), drops cached frames that may have changed and returns how many frames were added.
+A half-written last frame is left out until it is complete, a file that shrank (a new run
+overwrote it) is indexed again, and a wildcard such as `dump.*.lammpstrj` also picks up files
+that appeared. Thermo tables next to the trajectory (log.lammps, OSZICAR) are read again too.
+Compressed files are not followed.
+
+```python
+pipe = import_file("cluster:/scratch/me/run1/dump.lammpstrj")
+...
+if pipe.refresh():               # new frames since the last look
+    data = pipe.compute(-1)      # the newest one
+```
+
+The GUI does this by itself every two seconds (Preferences › General › Live reload, and
+File › Live reload for the current session): the timeline grows, and if it was on the last
+frame it moves on to the newest one, as in OVITO and VMD.
 
 ## Formats ewald does not read
 

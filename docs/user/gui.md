@@ -77,7 +77,8 @@ usual tools, and modifiers it adds appear in the pipeline. It needs the `llm` ex
 (Preferences › Claude, or `ANTHROPIC_API_KEY`).
 
 **Timeline.** Play, step and scrub through frames. Every frame is computed through the whole
-pipeline when you move to it.
+pipeline when you move to it. While a simulation is still writing the file, new frames are
+added to the timeline as they appear ([live reload](formats.md#runs-that-are-still-writing)).
 
 **Pipeline panel.** The list shows the data source at the bottom and modifiers above it, the
 last-applied modifier on top, as in OVITO. "Add modification" (or the Pipeline menu) inserts a
@@ -88,6 +89,9 @@ from the modifier's constructor, so every argument you can pass in Python can be
 
 **Visual elements.** The top of the list holds what is drawn: Particles, Bonds and Simulation
 cell, plus any [visual element plugins](../plugins/visuals.md) added with the "+ Visual" button.
+Simulation cell has VESTA's boundary range: tick Boundary and set the fractional range (e.g.
+-0.1 to 1.1) to draw the periodic images of atoms on the faces, edges and corners, with bonds and
+polyhedra completed across the cell; [display only](rendering.md#boundary-vesta).
 A plugin element has a checkbox to hide it, a parameter form generated from its constructor
 (Apply or Ctrl+Enter redraws), and Del removes it. Plugin elements are saved with the session
 and drawn in rendered images too.
@@ -164,7 +168,8 @@ VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image
 ([NEB runs](formats.md#neb-runs)). In the notebook layout, File › Open also opens `.py`
 notebooks, and File › Save notebook writes one ([Notebooks](notebooks.md)). File › Export data writes the
 current frame or the whole trajectory through `export_file`, and File › Export movie writes an
-MP4 or GIF (needs the `movie` extra).
+MP4 or GIF (needs the `movie` extra). File › Live reload turns following a growing trajectory
+on or off for the session; the default and the interval are in Preferences › General.
 
 ## Preferences
 
@@ -218,7 +223,8 @@ color bar. See [Troubleshooting the GUI](install.md#troubleshooting-the-gui). It
 the next start; `EWALD_VIEWPORT=vtk|legacy-gl` overrides it.
 
 The Compute switch in the toolbar changes the device for the current session only; the
-preference sets the device the GUI starts with.
+preference sets the device the GUI starts with: Auto by default, which uses the CUDA GPU when
+CuPy finds one (the status bar then reads `AUTO (CUDA)`) and the CPU otherwise.
 
 ## Help
 

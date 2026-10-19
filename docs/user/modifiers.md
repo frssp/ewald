@@ -47,6 +47,10 @@ session files and from Claude, and plain `eval` would let them reach the rest of
 `ClearSelection()` do what they say. `DeleteSelected()` removes the selected particles.
 `Slice(normal, distance, width, inverse, select, miller)` keeps, deletes or selects a slab;
 `miller=True` reads `normal` as Miller indices of the cell.
+`ExpandSelection(mode, cutoff, num_neighbors, iterations)` grows the selection to the
+neighbors of selected particles: within `cutoff` (`mode="cutoff"`), the `num_neighbors`
+nearest ones (`"nearest"`) or the bonded ones (`"bonded"`, after `CreateBonds`);
+`iterations=2` reaches second neighbors. Results match OVITO's ExpandSelectionModifier.
 
 ## Coloring
 
@@ -314,6 +318,19 @@ recomputes them.
   atoms that moved more than `min_displacement` Å from where they are now (all NEB images
   behind the one on the timeline, a diffusion hop over an MD window). The copies are appended
   as extra particles with `Transparency` and `Overlay Frame`, so put it last in the pipeline.
+- `UnwrapTrajectories()`: undoes the wrapping at periodic boundaries so paths are continuous
+  (OVITO's UnwrapTrajectoriesModifier, same positions). LAMMPS `ix iy iz` image flags are used
+  when present; otherwise crossings are followed from frame 0, with checkpoints so a jump to a
+  distant frame does not replay the whole run. Bond periodic images follow.
+- `FreezeProperty(source_property, destination_property, freeze_at=0)`: the values of a
+  property at `freeze_at` copied onto every frame, matched by identifier, e.g. the structure
+  type at the start of a run next to the current one.
+
+```python
+pipe.modifiers.append(CommonNeighborAnalysis())
+pipe.modifiers.append(FreezeProperty("Structure Type", "Initial Structure", freeze_at=0))
+pipe.modifiers.append(ExpressionSelection("(InitialStructure == 1) & (StructureType != 1)"))  # fcc atoms that changed
+```
 
 ```python
 pipe.modifiers.append(MeanSquaredDisplacement(time_per_frame=0.002))   # ps per frame
@@ -322,6 +339,64 @@ pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
 data = pipe.compute(0)
 data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # Å²/ps
 data.tables["coordination-rdf[average]"]
+```
+
+## Combining files
+
+- `LoadTrajectory(file, format=None, type_map=None)`: positions and other per-particle
+  properties of every frame of `file` laid onto the pipeline's source, e.g. a LAMMPS data
+  file (bonds, charges, molecule ids, type names) plus the dump of the run. The pipeline then
+  has the trajectory's frame count. Particles are matched by identifier (else by index); the
+  source's type names win, the cell and attributes come from the trajectory, and bonds are
+  re-imaged by minimum image.
+- `CombineDatasets(file, format=None, type_map=None)`: adds the particles and bonds of another
+  file (its frame with the same index), e.g. a solvent box next to a slab. Missing properties
+  are zero-filled and clashing identifiers are renumbered.
+
+```python
+pipe = import_file("system.data")
+pipe.modifiers.append(LoadTrajectory("run.lammpstrj"))
+pipe.num_frames   # the dump's frames
+```
+
+## Ion transport
+
+Trajectory modifiers for ionic conductors and liquids. They read `start:stop:step` like the
+ones above; `time_per_frame` is the time between stored frames in ps (0 reports times in
+frames). With `only_selected=True` they use the particles selected at `start`, so put
+`SelectType("Li")` above them to look at one species.
+
+- `IonicConductivity(temperature=300, time_per_frame, charges=None, ...)`: conductivity from
+  the collective charge displacement (Einstein-Helfand, σ = d/dt ⟨|Σ qᵢ Δrᵢ|²⟩ / 6VkT, in
+  S/cm), its Nernst-Einstein estimate from the self terms only, and the Haven ratio
+  σ_NE / σ. Charges come from `charges={"Li": 1, "S": -2, ...}`, the `Charge` property, or
+  formal oxidation states guessed from the types. `tables["conductivity"]` has the charge MSD
+  and its fit.
+- `VanHoveCorrelation(times=None, part="self", r_max=6.0)`: self part 4πr²G_s(r, t) (peaks
+  at the hop distances) and distinct part G_d(r, t) (g(r) at t = 0) at a few lags.
+- `SelfIntermediateScattering(q=None, directions=16)`: F_s(q, t) powder-averaged over q
+  directions and every time origin, and the relaxation time where it drops below 1/e. The
+  default q is 2π/d for the mean spacing d of the analyzed particles.
+- `NonGaussianParameter()`: α₂(t) = 3⟨Δr⁴⟩ / 5⟨Δr²⟩² − 1, zero for Fickian motion and
+  peaked at the hopping time scale.
+- `SiteHopping(sites=None, site_type="", site_radius=0.0)`: assigns each mobile ion to a
+  site (its own position at `start`, an array of positions, or the atoms of a structure file
+  such as the ideal Li sublattice) and records hops (`tables["site-hops"]`), residence times,
+  site occupancy, per-ion `Site Index` and `Hop Count`, the hop rate and the jump diffusion
+  coefficient Σl²/6Nt. `site_radius` > 0 counts a hop only once the ion reaches the new site,
+  so rattling across a site boundary is not a hop.
+
+```python
+pipe = import_file("XDATCAR")                     # e.g. Li6PS5Cl at 600 K, 2 fs steps
+pipe.modifiers.append(IonicConductivity(temperature=600, time_per_frame=0.002,
+                                        charges={"Li": 1, "P": 5, "S": -2, "Cl": -1}))
+pipe.modifiers.append(SelectType("Li"))
+pipe.modifiers.append(SelfIntermediateScattering(time_per_frame=0.002))
+pipe.modifiers.append(SiteHopping(site_radius=0.8, time_per_frame=0.002))
+data = pipe.compute(0)
+data.attributes["IonicConductivity.conductivity"]     # S/cm
+data.attributes["IonicConductivity.haven_ratio"]
+data.attributes["SiteHopping.mean_residence_time"]    # ps
 ```
 
 ## Nudged elastic band

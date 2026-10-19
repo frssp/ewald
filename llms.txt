@@ -1,4 +1,4 @@
-# EWALD (Extensible Window for Atomic Lattices & Dynamics): `ewald` Python API (for LLMs and people writing ewald code)
+# EWALD (Extensible Workbench for Atomic Lattices & Dynamics): `ewald` Python API (for LLMs and people writing ewald code)
 
 ewald is an OVITO-style atomistic pipeline: `import_file` -> modifiers -> `compute(frame)` -> render.
 The API mirrors OVITO's, so OVITO knowledge transfers; the differences below are where it doesn't.
@@ -27,6 +27,8 @@ pipe.render("frame10.png", frame=10, direction="iso", bonds=2.8)
 ## Data model
 
 - `pipe.num_frames`, `pipe.compute(i)`, `pipe.frames(start, stop, step)`, `pipe.source_frame(i)` (unmodified input).
+- `pipe.refresh()` picks up frames a running job appended since the file was opened (dump, XDATCAR, OUTCAR,
+  extxyz; local or SSH) and returns how many were added; then `pipe.compute(-1)` is the newest frame.
 - `data = pipe.compute(i)` is a `DataCollection`: `data.count`, `data.positions` (N x 3, Angstrom),
   `data.types` (element strings), `data["Name"]` for any per-particle property, `"Name" in data`,
   `data.particles` (dict name -> array), `data.attributes` (dict of globals), `data.tables` (dict of column dicts),
@@ -98,6 +100,12 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
   `GenerateTrajectoryLines`) read every frame of `start:stop:step` through the modifiers above them and cache the
   result, so e.g. `CoordinationAnalysis(3.0)` then `TimeAveraging("table:coordination-rdf")` gives the
   time-averaged g(r) in `tables["coordination-rdf[average]"]`.
+- Ion transport modifiers work the same way: `IonicConductivity(temperature, time_per_frame, charges)` (collective
+  charge MSD -> `IonicConductivity.conductivity` in S/cm, `.nernst_einstein_conductivity`, `.haven_ratio`; charges
+  from the dict, the 'Charge' property or guessed oxidation states), `VanHoveCorrelation(times, part)`,
+  `SelfIntermediateScattering(q)` (F_s(q,t), `.relaxation_time`), `NonGaussianParameter()` (alpha_2) and
+  `SiteHopping(sites, site_radius)` (hops, residence times, jump D). Put `SelectType("Li")` above them with
+  `only_selected=True` to analyze one species; `time_per_frame` is in ps.
 - Volumetric files (`CHGCAR`, `CHG`, `PARCHG`, `AECCAR*`, `LOCPOT`, `ELFCAR`, `*.cube`): `import_file` gives the atoms
   plus `data.grids[name]` (a `VoxelGrid`: `.shape`, `.domain` (a Cell), `grid["Charge Density"]` (e/A^3, already divided
   by the cell volume), `"Magnetization"`, `"Spin Up"`/`"Spin Down"`, `"Potential"`, `"ELF"`, cube `"Value"`,
@@ -173,3 +181,13 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 - `ElasticStrain(input_crystal_structure: str = 'FCC', lattice_constant: float = 1.0, axial_ratio: float = 1.632993161855452, calculate_strain_tensors: bool = True, calculate_deformation_gradients: bool = False, push_strain_tensors_forward: bool = True, color_by_type: bool = True, only_selected: bool = False, num_threads: int = 0)`: Atomic-level elastic strain in a crystal (OVITO's Elastic strain calculation).
 - `GrainSegmentation(algorithm: str = 'auto', merging_threshold: float = 0.0, min_grain_size: int = 100, handle_stacking_faults: bool = True, orphan_adoption: bool = True, color_particles: bool = True, output_bonds: bool = False)`: Decompose a polycrystal into grains from PTM orientations (OVITO's Grain segmentation).
 - `IdentifyFCCPlanarFaults(color_other=(1.0, 0.4, 0.4), color_isf=(0.9, 0.7, 0.2), color_twin=(0.4, 0.4, 1.0), color_multi=(0.0, 1.0, 0.9))`: Classify hcp-like atoms in fcc crystals by planar fault (OVITO's Identify fcc planar faults).
+- `FreezeProperty(source_property: str = 'Selection', destination_property: str | None = None, freeze_at: int = 0)`: Copy a particle property as it was at frame ``freeze_at`` to every frame (OVITO's FreezePropertyModifier).
+- `UnwrapTrajectories()`: Undo the wrapping of particles at periodic boundaries, so trajectories are continuous (OVITO's UnwrapTrajectoriesModifier).
+- `ExpandSelection(mode: str = 'cutoff', cutoff: float = 3.2, num_neighbors: int = 1, iterations: int = 1)`: Grow the selection to the neighbors of selected particles (OVITO's ExpandSelectionModifier).
+- `LoadTrajectory(file: str = '', format: str | None = None, type_map: dict | None = None)`: Positions (and other per-particle properties) of every frame from a trajectory file, on top of a topology from the pipeline source (OVITO's LoadTrajectoryModifier).
+- `CombineDatasets(file: str = '', format: str | None = None, type_map: dict | None = None)`: Add the particles (and bonds) of another file to the current frame (OVITO's CombineDatasetsModifier).
+- `IonicConductivity(temperature: float = 300.0, time_per_frame: float = 0.0, charges: dict | None = None, start: int = 0, stop: int | None = None, step: int = 1, fit_range: tuple = (0.2, 0.8), unwrapped: bool = False, subtract_drift: bool = True, only_selected: bool = False)`: Ionic conductivity from the collective charge displacement, its Nernst-Einstein estimate and the Haven ratio.
+- `VanHoveCorrelation(times: tuple | None = None, part: str = 'self', r_max: float = 6.0, nbins: int = 120, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, max_origins: int = 100, unwrapped: bool = False, only_selected: bool = True)`: Van Hove correlation function at a few times: the self part (how far one ion gets, with peaks at the hop distances) and the distinct part (where the other ions are).
+- `SelfIntermediateScattering(q=None, directions: int = 16, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, unwrapped: bool = False, only_selected: bool = True)`: Self intermediate scattering function F_s(q, t) and its relaxation time.
+- `NonGaussianParameter(time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, max_origins: int = 200, unwrapped: bool = False, only_selected: bool = True)`: Non-Gaussian parameter alpha_2(t) = 3 <dr^4> / (5 <dr^2>^2) - 1 of the displacements.
+- `SiteHopping(sites=None, site_type: str = '', site_radius: float = 0.0, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, only_selected: bool = True, nbins: int = 50)`: Site occupancy, hops between sites and residence times of mobile ions.

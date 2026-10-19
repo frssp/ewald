@@ -18,6 +18,17 @@ from __future__ import annotations
 
 import numpy as np
 
+def to_rgb(color) -> np.ndarray:
+    """RGB in 0..1 from a matplotlib color name or hex string, or an RGB(A) tuple in 0..1 or
+    0..255 (any component above 1 means 0..255)."""
+    if isinstance(color, str):
+        from matplotlib.colors import to_rgb as _mpl_rgb
+
+        return np.array(_mpl_rgb(color))
+    c = np.asarray(color, float)[:3]
+    return c / 255.0 if c.max() > 1 else c
+
+
 KINDS = ("sequential", "diverging", "cyclic", "categorical")
 
 #: Offered first in menus (the GUI lists plugins after these); any matplotlib name works.
