@@ -119,6 +119,7 @@ QToolButton:hover {{ background: {hover}; color: {text}; }}
 QToolButton:pressed {{ background: {pressed}; }}
 QToolButton:checked {{ background: {accent_soft}; color: {accent}; }}
 QToolButton:disabled {{ color: {muted}; background: transparent; }}
+QToolButton#groupButton {{ padding: 2px; border-radius: 4px; }}
 QToolButton[popupMode="2"] {{ padding-right: 18px; }}
 QToolButton::menu-indicator {{ image: url("{img_chevron}"); width: 9px; height: 9px;
     subcontrol-origin: padding; subcontrol-position: center right; right: 5px; }}

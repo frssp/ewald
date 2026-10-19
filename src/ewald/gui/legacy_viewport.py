@@ -117,7 +117,7 @@ class LegacyViewport(Viewport):
         self.view = GLView(self)
         self.plotter = CameraPlotter(self.view.update)
         self.plotter.enable_parallel_projection()
-        container = QtWidgets.QWidget.createWindowContainer(self.view, self)
+        container = self._container = QtWidgets.QWidget.createWindowContainer(self.view, self)
         container.setFocusPolicy(QtCore.Qt.StrongFocus)
         container.setMinimumSize(200, 150)
         # a native GL window can't have widgets drawn over it: the frame text goes above it
@@ -130,6 +130,12 @@ class LegacyViewport(Viewport):
         lay.addWidget(self.caption)
         lay.addWidget(container, 1)
         return box
+
+    def _gl_widget(self):
+        return self._container
+
+    def _gl_image(self):
+        return self.view.grabFramebuffer()
 
     # ------------------------------------------------------------------ scene
     def redraw(self, coarse: bool = False):

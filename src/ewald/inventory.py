@@ -272,7 +272,9 @@ def gui_section(window) -> list[str]:
             "### Panels", "",
             "- Workspaces: " + ", ".join(b.text() for b in window.ws_buttons),
             "- Docks: " + ", ".join(sorted(d.windowTitle() for d in window.findChildren(QtWidgets.QDockWidget))),
-            "- Bottom tabs: " + ", ".join(window.bottom.tabText(i) for i in range(window.bottom.count())),
+            "- Editor area tabs: " + ", ".join(window.workbench.titles("editor")),
+            "- Panel tabs: " + ", ".join(window.workbench.titles("panel"))
+            + " (tabs drag between groups: centre = tab, edge = split; View › Layout)",
             "- Viewport tools: " + "; ".join(tip for _key, _icon, tip in Viewport.TOOLS), "", GUI_END]
     return out
 

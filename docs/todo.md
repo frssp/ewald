@@ -13,6 +13,14 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 GUI
 
+- Panel layout (phase 1 landed: `gui/workbench.py`, `gui/layout_model.py`; plan in project
+  files `design/panel-layout.md`): phase 2 opens a notebook view cell's plot large in the
+  editor area ("Open large" or drag the cell header, a Bring back placeholder in the cell, the
+  layout saved in the notebook metadata) and makes the Render workspace a tab there; phase 3
+  makes the Notebook, Display, Ask Claude, Plugins and Remotes side bars views too, adds Move
+  to new window (multi-monitor), named layouts, drop bands along an area's outer edge for
+  full-length splits, a second 3D view (another camera) and a `@view` plugin API. Not yet tried
+  on a real `ssh -X` display.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
   still set inline colors (render preview, pick labels, color swatches, field error borders), so
   they keep the old palette until a restart after a theme switch; move them to QSS object names.

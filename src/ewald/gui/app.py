@@ -34,6 +34,7 @@ from .live_reload import LiveReload
 from .timeline import Timeline
 from .viewport import Viewport
 from .viewport_menu import ViewportMenuMixin
+from .workbench import Workbench
 from .window_files import SESSION_FILTER, FilesMixin, file_filter, save_filters  # noqa: F401 (public)
 from .window_links import LinksMixin
 from .window_menus import MenusMixin
@@ -58,7 +59,8 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self.style = ViewStyle()
         self.session_path = None
 
-        # --- central: workspaces (Analyze = viewport + timeline, Render = render page)
+        # --- central: the workbench (tab groups: 3D view and timeline above, the panel below;
+        # tabs drag between groups as in VS Code), whose first page is swapped for Render
         self.viewport = make_viewport(self.style, self.settings["viewport.backend"])
         self.viewport.picked.connect(self._on_pick)
         self.viewport.hovered.connect(lambda text: self.hover_label.setText(text))
@@ -68,18 +70,13 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self.timeline = Timeline()
         self.timeline.frameChanged.connect(self.set_frame)
         self.live_reload = LiveReload.attach(self)
-        analyze = QtWidgets.QWidget()
-        al = QtWidgets.QVBoxLayout(analyze)
-        al.setContentsMargins(0, 0, 0, 0)
-        al.setSpacing(0)
-        al.addWidget(self.viewport, 1)
-        al.addWidget(self.timeline)
+        self.workbench = Workbench(self.timeline)
+        self.workbench.register("viewport", self.viewport, "3D view", home="editor", native=True)
         self.render_page = RenderPage(self)
         self.render_page.renderRequested.connect(self.render_from_page)
-        self.workspaces = QtWidgets.QStackedWidget()
-        self.workspaces.addWidget(analyze)
+        self.workspaces = self.workbench.pages
         self.workspaces.addWidget(self.render_page)
-        self.setCentralWidget(self.workspaces)
+        self.setCentralWidget(self.workbench)
 
         self.layout_mode = self.settings["general.layout"]
         self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings))
@@ -124,28 +121,30 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self.tabifyDockWidget(side_dock, self.ask_dock)
         side_dock.raise_()
 
-        # --- bottom: console / inspector / plots / log
+        # --- panel (below the 3D view): console / inspector / plots / log
         self.inspector = DataInspector()
         self.console = make_console(self._console_namespace(), self._after_console, self)
         self.plots = PlotsPanel()
         self._connect_plot(self.plots)
+        self.extra_plots = {}  # view id -> PlotsPanel made with "New plot view"
         self._plot_picking = False
         self.log = QtWidgets.QPlainTextEdit(readOnly=True)
-        self.bottom = QtWidgets.QTabWidget()
-        self.bottom.addTab(self.console, "Python console")
-        self.bottom.addTab(self.inspector, "Data inspector")
-        self.bottom.addTab(self.plots, "Plots")
-        self.bottom.addTab(self.log, "Log")
+        for view, widget, title in (("console", self.console, "Python console"),
+                                    ("inspector", self.inspector, "Data inspector"),
+                                    ("plot:1", self.plots, "Plots"), ("log", self.log, "Log")):
+            self.workbench.register(view, widget, title)
         if importlib.util.find_spec("ewald._native") is None:
             self.log.appendPlainText("ewald._native (C++ extension) is not installed: PTM, Voronoi, CSP matching "
                                      "and interval CNA are unavailable. See Preferences › Compute.")
-        self.bottom.currentChanged.connect(self._update_bottom_tab)
-        self._stale_tabs = set()  # bottom tabs not yet showing the current frame
-        self.bottom_dock = self._dock(self.bottom, "Data", QtCore.Qt.BottomDockWidgetArea, None)
+        self.workbench.viewShown.connect(self._update_bottom_tab)
+        self.workbench.layoutChanged.connect(self._update_bottom_tab)
+        self.workbench.viewClosed.connect(self._plot_view_closed)
+        self.workbench.factory = self._make_view
+        self.workbench.extra_view_actions = self._extra_view_actions
+        self._stale_tabs = set()  # panel tabs not yet showing the current frame
         if self.layout_mode == "notebook":  # notebook and side panels run the full height
             self.setCorner(QtCore.Qt.BottomLeftCorner, QtCore.Qt.LeftDockWidgetArea)
             self.setCorner(QtCore.Qt.BottomRightCorner, QtCore.Qt.RightDockWidgetArea)
-        self.resizeDocks([self.bottom_dock], [280], QtCore.Qt.Vertical)
 
         self._build_menus()
         self._build_toolbar()
@@ -254,8 +253,9 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         pipeline.cache_memory = self.settings["performance.cache_memory"] * 2**20
         self.viewport.reset_view()
         self.viewport.clear_picks()
-        self.plots.pipeline = pipeline
-        self.plots.forget_selection()
+        for p in [self.plots, *self.extra_plots.values()]:
+            p.pipeline = pipeline
+            p.forget_selection()
         self.panel.set_pipeline(pipeline)
         if self.display is not self.panel:
             self.display.set_pipeline(pipeline)
@@ -350,7 +350,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         ts = self.data.attributes.get("Timestep", job.frame)
         self.viewport.overlay_text = f"Frame {job.frame}   timestep {ts}"
         self.viewport.set_data(self.data, interactive=interactive)
-        self._stale_tabs = {self.inspector, self.plots}
+        self._stale_tabs = {self.inspector, self.plots, *self.extra_plots.values()}
         self._update_bottom_tab()
         for p in self.plot_panels()[1:]:  # view cells: their data comes with the notebook's
             p.set_highlight(self._selected_indices())
@@ -364,19 +364,54 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             self.render_page.update_code()
 
     def _update_bottom_tab(self, *_):
-        """Fill the inspector or plots tab with the current frame, only while it is the open
-        tab (a plot range linked to the viewport follows the frame either way): a hidden
-        histogram or particle table cost a redraw on every frame of playback."""
+        """Fill the inspector or a plot view with the current frame, only while it is on screen
+        (a plot range linked to the viewport follows the frame either way): a hidden histogram
+        or particle table cost a redraw on every frame of playback."""
         if self.data is None:
             return
         for tab in list(self._stale_tabs):
-            linked = tab is self.plots and self.plots._range is not None
-            if tab is not self.bottom.currentWidget() and not linked:
+            plot = tab is not self.inspector
+            if not self.workbench.is_shown(tab) and not (plot and tab._range is not None):
                 continue
             self._stale_tabs.discard(tab)
             tab.set_data(self.data)
-            if tab is self.plots:
-                self.plots.set_highlight(self._selected_indices())
+            if plot:
+                tab.set_highlight(self._selected_indices())
+
+    # ---------------------------------------------------------------- plot views
+    def new_plot_view(self, beside: str = "plot:1", view: str | None = None):
+        """Another Plots view (a second table or histogram side by side), as a tab next to ``beside``."""
+        if view is None:
+            n = 2
+            while f"plot:{n}" in self.workbench.specs:
+                n += 1
+            view = f"plot:{n}"
+        p = PlotsPanel()
+        self._connect_plot(p)
+        p.pipeline = self.pipeline
+        self.extra_plots[view] = p
+        group = self.workbench.group_of(beside) if beside in self.workbench.specs else None
+        self.workbench.register(view, p, f"Plots {view.split(':')[1]}", closable=True, group=group)
+        self.workbench.show(view)
+        self._stale_tabs.add(p)
+        self._update_bottom_tab()
+        return p
+
+    def _make_view(self, view: str) -> bool:
+        """Views a saved layout names that don't exist yet: extra plot views."""
+        if view.startswith("plot:") and view[5:].isdigit() and view != "plot:1":
+            self.new_plot_view(view=view)
+            return True
+        return False
+
+    def _plot_view_closed(self, view):
+        p = self.extra_plots.pop(view, None)
+        self._stale_tabs.discard(p)
+
+    def _extra_view_actions(self, view):
+        if view.startswith("plot:"):
+            return [("New plot view", lambda: self.new_plot_view(view))]
+        return []
 
     def play_phonon_mode(self, qpoint: int, band: int):
         """Show phonon mode (qpoint, band), e.g. clicked in the band plot, and start playback."""

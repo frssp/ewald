@@ -51,7 +51,7 @@ class LinksMixin:
     def plot_panels(self) -> list:
         """The Plots tab and the live plots of the current notebook's view cells."""
         view = self.panel.view if self.layout_mode == "notebook" else None
-        return [self.plots] + ([w.plot_panel for w in view.widgets if w.plot_panel is not None] if view else [])
+        return [self.plots, *self.extra_plots.values()] + ([w.plot_panel for w in view.widgets if w.plot_panel is not None] if view else [])
 
     def _each_plot(self, fn):
         for p in self.plot_panels():
