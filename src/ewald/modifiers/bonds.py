@@ -117,7 +117,9 @@ class EditBonds(Modifier):
 
 class CoordinationPolyhedra(Modifier):
     """Polyhedra spanned by the bonded neighbors of each center particle (OVITO's
-    CoordinationPolyhedraModifier, VESTA's polyhedral style). Needs bonds upstream (CreateBonds).
+    CoordinationPolyhedraModifier, VESTA's polyhedral style). Uses the bonds from upstream
+    (CreateBonds); without any it finds them as ``CreateBonds(mode="covalent")`` would, for
+    the polyhedra only (``data.bonds`` stays empty).
 
     Centers are particles of ``center_types`` (e.g. ``["Ti"]``) or, when None, the selected
     particles. Each polyhedron is the convex hull of the neighbor positions (unwrapped across
@@ -135,8 +137,6 @@ class CoordinationPolyhedra(Modifier):
     def modify(self, data, ctx):
         from ..render import default_colors
 
-        if data.bonds is None:
-            raise ValueError("no bonds: add CreateBonds before CoordinationPolyhedra")
         if self.center_types is not None:
             types = [self.center_types] if isinstance(self.center_types, str) else list(self.center_types)
             centers = np.flatnonzero(np.isin(np.asarray(data.types).astype(str), [str(t) for t in types]))
@@ -145,6 +145,8 @@ class CoordinationPolyhedra(Modifier):
             if not len(centers):
                 raise ValueError("no center particles: select them or set center_types, e.g. ['Ti']")
         bonds = data.bonds
+        if bonds is None:  # e.g. the GUI's display-only bonds: search covalent bonds like VESTA
+            bonds = find_bonds(data, pairs=covalent_pairs(data.types), backend=getattr(ctx, "backend", None))
         i, j = bonds.topology.T
         d = bonds.vectors(data)
         # neighbor vectors seen from each end of every bond
