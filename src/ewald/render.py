@@ -23,7 +23,12 @@ _DIRECTIONS = {
 def _element(t: str):
     from ase.data import atomic_numbers
 
-    return atomic_numbers.get(str(t))
+    from .radii import element_of
+
+    return atomic_numbers.get(element_of(t))
+
+
+_RADIUS_KEYS = ("type_radii", "radius_preset", "oxidation_states", "coordination")
 
 
 def type_color(t: str, index: int = 0) -> np.ndarray:
@@ -34,11 +39,12 @@ def type_color(t: str, index: int = 0) -> np.ndarray:
     return np.array(jmol_colors[z] if z else _FALLBACK_PALETTE[index % len(_FALLBACK_PALETTE)], float)
 
 
-def type_radius(t: str, scale: float = 0.8) -> float:
-    from ase.data import covalent_radii
+def type_radius(t: str, scale: float = 0.8, preset: str = "covalent") -> float:
+    """Default radius of a particle type: ``scale`` x the ``preset`` radius (see :mod:`ewald.radii`)."""
+    from .radii import element_radius
 
-    z = _element(t)
-    return float(covalent_radii[z] * scale) if z else 0.5
+    r = element_radius(str(t), preset)
+    return float(r * scale) if r is not None else 0.5
 
 
 def default_colors(data: DataCollection, type_colors: dict | None = None) -> np.ndarray:
@@ -53,14 +59,30 @@ def default_colors(data: DataCollection, type_colors: dict | None = None) -> np.
     return out
 
 
-def default_radii(data: DataCollection, scale: float = 0.8, type_radii: dict | None = None) -> np.ndarray:
+def default_radii(data: DataCollection, scale: float = 0.8, type_radii: dict | None = None,
+                  radius_preset: str = "covalent", oxidation_states: dict | None = None,
+                  coordination: dict | None = None) -> np.ndarray:
+    """Per-particle radii: the 'Radius' property, else ``type_radii``, else ``scale`` x the preset radius.
+
+    ``radius_preset`` is one of :data:`ewald.radii.PRESETS` ('covalent', 'atomic', 'vdW', 'ionic', ...);
+    the ionic presets use ``oxidation_states``/``coordination`` per type, or guess them.
+    """
     if "Radius" in data:
         return np.asarray(data["Radius"], float)
     types = data.types
     out = np.full(data.count, 0.5)
+    type_radii = type_radii or {}
+    todo = [t for t in dict.fromkeys(types) if type_radii.get(t) is None]
+    table = {}
+    if todo:
+        from .radii import resolve
+
+        table = resolve(data, radius_preset, oxidation_states, coordination).radii
     for t in dict.fromkeys(types):
-        r = (type_radii or {}).get(t)
-        out[types == t] = r if r is not None else type_radius(t, scale)
+        r = type_radii.get(t)
+        if r is None:
+            r = table[str(t)] * scale if str(t) in table else 0.5
+        out[types == t] = r
     return out
 
 
@@ -88,12 +110,17 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 bond_radius: float = 0.15, only_visible=None, atom_style: str = "auto",
                 mesh_limit: int = 150_000, sphere_resolution: int | None = None,
                 type_colors: dict | None = None, type_radii: dict | None = None,
-                bond_pairs: list | None = None, trajectory_width: float = 2.0):
+                bond_pairs: list | None = None, trajectory_width: float = 2.0,
+                radius_preset: str = "covalent", oxidation_states: dict | None = None,
+                coordination: dict | None = None):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter.
 
     ``atom_style``: 'mesh' (sphere meshes, publication shading), 'impostor' (GPU
     point sprites for very large systems) or 'auto' (mesh up to ``mesh_limit`` atoms).
     ``type_colors``/``type_radii`` override per-type defaults, e.g. ``{"Cu": "#c8794a"}``.
+    ``radius_preset`` picks the default radii: 'covalent' (default), 'atomic', 'atomic (calc.)', 'vdW',
+    'vdW (Bondi)', 'ionic' or 'ionic (crystal)' (Shannon; ``oxidation_states={"Ti": 4, "O": -2}`` and
+    ``coordination={"Ti": 6}`` per type, else guessed from the structure; see :mod:`ewald.radii`).
     ``bond_pairs``: VESTA-style list of ``(A, B, dmin, dmax)``; '*' matches any type.
     Bonds in ``data.bonds`` (CreateBonds, EditBonds) are drawn whenever present and take
     precedence over ``bonds``/``bond_pairs``; ``data.surfaces`` meshes (polyhedra) are drawn too.
@@ -103,7 +130,8 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
 
     if data.count:
         colors = np.clip(default_colors(data, type_colors), 0, 1)
-        radii = default_radii(data, type_radii=type_radii) * radius_scale
+        radii = default_radii(data, type_radii=type_radii, radius_preset=radius_preset,
+                              oxidation_states=oxidation_states, coordination=coordination) * radius_scale
         if only_visible is not None:
             keep = np.asarray(only_visible, bool)
         elif "Transparency" in data:
@@ -369,7 +397,7 @@ def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, ba
     if camera is None:  # same framing as the OpenGL path
         p = pv.Plotter(off_screen=True, window_size=tuple(size))
         build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, sphere_resolution=6,
-                    **{k: v for k, v in scene_kwargs.items() if k in ("type_colors", "type_radii")})
+                    **{k: v for k, v in scene_kwargs.items() if k in _RADIUS_KEYS + ("type_colors",)})
         _setup_camera(p, data, direction, orthographic, zoom)
         camera = camera_state(p)
         p.close()

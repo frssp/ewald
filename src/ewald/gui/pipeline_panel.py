@@ -379,6 +379,7 @@ class PipelinePanel(QtWidgets.QWidget):
         self.refresh(select=("mod", mod))
 
     def _particles_editor(self):
+        from ..radii import IONIC, PRESETS, format_oxidation_states
         from ..render import type_color, type_radius
 
         w = QtWidgets.QWidget()
@@ -386,6 +387,20 @@ class PipelinePanel(QtWidgets.QWidget):
         scale = QtWidgets.QDoubleSpinBox(minimum=0.05, maximum=5, singleStep=0.05, value=self.style.radius_scale)
         scale.valueChanged.connect(lambda v: (setattr(self.style, "radius_scale", v), self.styleChanged.emit()))
         f.addRow("Radius scale", scale)
+        preset = QtWidgets.QComboBox()
+        preset.addItems(list(PRESETS))
+        for k, cite in enumerate(PRESETS.values()):
+            preset.setItemData(k, cite, QtCore.Qt.ToolTipRole)
+        preset.setCurrentText(self.style.radius_preset)
+        preset.currentTextChanged.connect(self._set_radius_preset)
+        f.addRow("Radius preset", preset)
+        oxi = QtWidgets.QLineEdit(placeholderText="auto, e.g. Sr=2, Ti=4, O=-2")
+        oxi.setText(format_oxidation_states(self.style.oxidation_states))
+        oxi.setToolTip("Oxidation state per type for the ionic presets; empty types are guessed "
+                       "(type name, charges, bond valence, charge balance)")
+        oxi.editingFinished.connect(lambda e=oxi: self._set_oxidation_states(e))
+        oxi.setEnabled(self.style.radius_preset in IONIC)
+        f.addRow("Oxidation states", oxi)
         shape = QtWidgets.QComboBox()
         shape.addItems(["auto", "mesh", "impostor"])
         shape.setCurrentText(self.style.atom_style)
@@ -406,7 +421,7 @@ class PipelinePanel(QtWidgets.QWidget):
             btn.clicked.connect(lambda _=False, t=t, b=btn: self._pick_color(t, b))
             table.setCellWidget(r, 1, btn)
             rad = QtWidgets.QDoubleSpinBox(minimum=0.05, maximum=5, singleStep=0.05,
-                                           value=self.style.type_radii.get(t, type_radius(t)))
+                                           value=self.style.type_radii.get(t, type_radius(t, preset=self.style.radius_preset)))
             rad.valueChanged.connect(lambda v, t=t: (self.style.type_radii.__setitem__(t, v), self.styleChanged.emit()))
             table.setCellWidget(r, 2, rad)
             table.setItem(r, 3, QtWidgets.QTableWidgetItem(str(int((self.data.types == t).sum()))))
@@ -422,6 +437,26 @@ class PipelinePanel(QtWidgets.QWidget):
         row.addWidget(imp); row.addWidget(reset)
         f.addRow(row)
         return w
+
+    def _set_radius_preset(self, name):
+        self.style.radius_preset = name
+        self.styleChanged.emit()
+        QtCore.QTimer.singleShot(0, self.refresh)  # rebuilds this editor; not from inside the combo's signal
+
+    def _set_oxidation_states(self, edit):
+        from ..radii import parse_oxidation_states
+
+        try:
+            states = parse_oxidation_states(edit.text())
+        except ValueError as exc:
+            edit.setToolTip(str(exc))
+            edit.setStyleSheet(f"border: 1px solid {TOKENS['error']};")
+            return
+        edit.setStyleSheet("")
+        if states != self.style.oxidation_states:
+            self.style.oxidation_states = states
+            self.styleChanged.emit()
+            QtCore.QTimer.singleShot(0, self.refresh)
 
     def _pick_color(self, t, button):
         c = QtWidgets.QColorDialog.getColor(parent=self, title=f"Color of {t}")

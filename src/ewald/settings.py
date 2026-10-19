@@ -69,7 +69,10 @@ OPTIONS = (
            "Above this many atoms spheres are drawn as GPU impostors.", minimum=1000, maximum=100_000_000),
 
     Option("elements.color_scheme", "Jmol", "Color scheme", choices=("Jmol", "CPK")),
-    Option("elements.radius_source", "covalent", "Radius source", choices=("covalent", "vdW")),
+    Option("elements.radius_source", "covalent", "Radius preset",
+           "Covalent (Cordero 2008), atomic (Slater 1964; calc.: Clementi 1967), vdW (Alvarez 2013; Bondi 1964) "
+           "or Shannon (1976) ionic/crystal radii by oxidation state and CN.",
+           choices=("covalent", "atomic", "atomic (calc.)", "vdW", "vdW (Bondi)", "ionic", "ionic (crystal)")),
     Option("elements.radius_scale", 0.8, "Radius scale", "Multiplies the tabulated radius.", minimum=0.05, maximum=3),
     Option("elements.overrides", {}, "Per-element overrides", "Color and radius per element; wins over the scheme.",
            kind="table"),
@@ -267,20 +270,33 @@ class Settings:
             from ase.data.colors import jmol_colors as table
         return tuple(float(c) for c in table[z])
 
-    def element_radius(self, symbol: str):
+    def element_radius(self, symbol: str, preset: str | None = None):
+        """Scaled radius of an element under ``preset`` (default: the Radius preset) and the overrides.
+
+        Ionic presets use the element's most common oxidation state at CN VI here; per-type values
+        for a structure come from :meth:`type_radii`.
+        """
         o = self["elements.overrides"].get(symbol, {})
         if "radius" in o:
             return float(o["radius"])
-        import numpy as np
-        from ase.data import atomic_numbers, covalent_radii, vdw_radii
+        from .radii import element_radius
 
-        z = atomic_numbers.get(symbol)
-        if not z:
-            return None
-        r = vdw_radii[z] if self["elements.radius_source"] == "vdW" else np.nan
-        if np.isnan(r):  # vdW is missing for many elements: fall back to covalent
-            r = covalent_radii[z]
-        return float(r * self["elements.radius_scale"])
+        r = element_radius(symbol, preset or self["elements.radius_source"])
+        return None if r is None else float(r * self["elements.radius_scale"])
+
+    def type_radii(self, data, preset: str | None = None, oxidation_states: dict | None = None,
+                   coordination: dict | None = None):
+        """``(radii, table)``: scaled per-type radii of ``data`` with overrides applied, and the
+        :class:`ewald.radii.RadiusTable` they came from (oxidation states, CN, fallbacks)."""
+        from .radii import element_of, resolve
+
+        table = resolve(data, preset or self["elements.radius_source"], oxidation_states, coordination)
+        overrides = self["elements.overrides"]
+        out = {}
+        for t, r in table.radii.items():
+            o = overrides.get(t) or overrides.get(element_of(t)) or {}
+            out[t] = float(o["radius"]) if "radius" in o else float(r * self["elements.radius_scale"])
+        return out, table
 
 
 def load(path=None) -> Settings:

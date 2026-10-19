@@ -80,7 +80,8 @@ class Scene:
 
 
 def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None, bonds=None, bond_pairs=None,
-                    bond_radius=0.15, show_cell=True, cell_color=(0.0, 0.0, 0.0), cell_radius=None, **_ignored):
+                    bond_radius=0.15, show_cell=True, cell_color=(0.0, 0.0, 0.0), cell_radius=None,
+                    radius_preset="covalent", oxidation_states=None, coordination=None, **_ignored):
     """Build a Scene with the same colors/radii/bonds as :func:`ewald.render.build_scene`."""
     from .bonds import bond_segments
     from .render import _rgb, default_colors, default_radii, scene_bonds
@@ -88,7 +89,8 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
     sc = Scene()
     if data.count:
         colors = np.clip(default_colors(data, type_colors), 0, 1)
-        radii = default_radii(data, type_radii=type_radii) * radius_scale
+        radii = default_radii(data, type_radii=type_radii, radius_preset=radius_preset,
+                              oxidation_states=oxidation_states, coordination=coordination) * radius_scale
         keep = np.asarray(data["Transparency"]) < 1 if "Transparency" in data else np.ones(data.count, bool)
         sc.add_spheres(data.positions[keep], radii[keep], colors[keep])
         if bonds or bond_pairs or data.bonds is not None:
