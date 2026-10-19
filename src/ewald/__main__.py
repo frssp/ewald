@@ -45,6 +45,10 @@ def build_parser():
         parser.add_argument("--type-legend", action="store_true", help="swatch per particle type")
         parser.add_argument("--scale-bar", nargs="?", type=float, const=0.0, default=None, metavar="LENGTH",
                             help="scale bar; optional length in Angstrom (default: a round length)")
+        parser.add_argument("--theme", default=None,
+                            help="element colors, background and cell color, e.g. VESTA, Journal, 'Dark slide'")
+        parser.add_argument("--overlay", action="append", default=None, metavar="NAME",
+                            help="overlay element, e.g. 'Coordinate tripod' or Attributes (repeatable)")
     r.add_argument("--dpi", type=float, default=None, help="stored in PNG/TIFF; page size of vector output")
     g = sub.add_parser("gui", help="open the desktop viewer")
     g.add_argument("input", nargs="?", help="structure/trajectory file or .ewald session")
@@ -211,6 +215,10 @@ def _render_cmd(args, reader_kwargs):
         opts["type_legend"] = True
     if args.scale_bar is not None:
         opts["scale_bar"] = args.scale_bar or True
+    if args.theme:
+        opts["theme"] = args.theme
+    if args.overlay:
+        opts["overlays"] = list(opts.get("overlays") or []) + list(args.overlay)
     if args.cmd == "movie":
         from .render import render_animation
 
@@ -256,6 +264,12 @@ def _print_plugins(as_json=False):
         print(f"writer {w['name']:<16} {pats:<24} {w['description']}  [{w['origin']}]")
     for v in st.get("visuals", []):
         print(f"visual {v['name']:<24} {v['category']:<14} {v['description'][:60]}  [{v['origin']}]")
+    for v in st.get("overlays", []):
+        print(f"overlay {v['name']:<23} {v['category']:<14} {v['description'][:60]}  [{v['origin']}]")
+    for v in st.get("colormaps", []):
+        print(f"colormap {v['name']:<22} {v['kind']:<14} {v['description'][:60]}  [{v['origin']}]")
+    for v in st.get("themes", []):
+        print(f"theme {v['name']:<25} {'':<14} {v['description'][:60]}  [{v['origin']}]")
     for origin, err in st["errors"].items():
         print(f"FAILED {origin}: {err}")
     return 1 if st["errors"] else None

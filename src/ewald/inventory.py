@@ -123,6 +123,20 @@ def rendering_section() -> list[str]:
 
     out += _table(("Element", "What it draws"), [(f"`{name}`", p.description.replace("|", "\\|"))
                                                 for name, p in _builtin_visuals().items()])
+    from .plugins import _builtin_overlays, _builtin_themes
+
+    out += ["", "### Overlays", "",
+            "`text`, `legend` (color bar), `type_legend` and `scale_bar` are `render()` options; overlay "
+            "elements are added with `overlays=[...]` or the Render page's \"+ Overlay\". Plugins add more "
+            "([Overlay plugins](plugins/overlays.md)).", ""]
+    out += _table(("Overlay", "What it draws"), [(f"`{name}`", p.description.replace("|", "\\|"))
+                                                for name, p in _builtin_overlays().items()])
+    out += ["", "### Themes and color maps", "",
+            "`theme=` (View › Theme in the GUI) sets element colors, background, cell color and radius "
+            "preset; every `cmap` takes a matplotlib name or a color map plugin "
+            "([Color maps and themes](plugins/styles.md)).", ""]
+    out += _table(("Theme", "What it sets"), [(f"`{name}`", p.description.replace("|", "\\|"))
+                                              for name, p in _builtin_themes().items()])
     out += ["", "### Output formats", "",
             "- Images: " + " ".join(f"`{s}`" for s in IMAGE_SUFFIXES) + "; vector pages: "
             + " ".join(f"`{s}`" for s in VECTOR_SUFFIXES) + " (true vectors with `renderer=\"vector\"`, "
@@ -179,9 +193,10 @@ def plugins_section() -> list[str]:
 
     examples = sorted((Path(__file__).resolve().parents[2] / "examples" / "plugins").glob("*.py"))
     out = ["## Plugins", "",
-           f"Entry point groups `{plugins.READER_GROUP}`, `{plugins.WRITER_GROUP}`, `{plugins.MODIFIER_GROUP}` and "
-           f"`{plugins.VISUAL_GROUP}`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / "
-           "`@visual`; `ewald plugins` lists "
+           f"Entry point groups `{plugins.READER_GROUP}`, `{plugins.WRITER_GROUP}`, `{plugins.MODIFIER_GROUP}`, "
+           f"`{plugins.VISUAL_GROUP}`, `{plugins.OVERLAY_GROUP}`, `{plugins.COLORMAP_GROUP}` and "
+           f"`{plugins.THEME_GROUP}`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / "
+           "`@visual` / `@overlay` / `@colormap` / `@theme`; `ewald plugins` lists "
            "what loaded. "
            "Details: [Plugins](plugins/index.md).", ""]
     for path in examples:

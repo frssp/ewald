@@ -703,3 +703,64 @@ def test_plugin_visual_element_in_panel_and_viewport(app, monkeypatch):
     panel._remove()
     assert style.visuals == []
     v.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_theme_menu_and_render_page_overlays(app, pipe, tmp_path):
+    from ewald.gui.app import MainWindow
+    from ewald.gui.params import ParameterForm
+
+    w = MainWindow(pipe)
+    w._fill_theme_menu()
+    names = [a.text() for a in w.theme_menu.actions()]
+    assert names[:2] == ["Default", "VESTA"] and "Dark slide" in names
+    [a for a in w.theme_menu.actions() if a.text() == "Dark slide"][0].trigger()
+    assert w.style.theme == "Dark slide" and w.style.background == "black" and "Cu" in w.style.type_colors
+    w._fill_theme_menu()
+    assert [a.text() for a in w.theme_menu.actions() if a.isChecked()] == ["Dark slide"]
+
+    page = w.render_page
+    page._fill_overlay_menu()
+    assert [a.text() for a in page.overlay_menu.actions()][:2] == ["Coordinate tripod", "Attributes"]
+    page.add_overlay("Coordinate tripod")
+    form = page._overlay_form
+    assert isinstance(form, ParameterForm) and isinstance(form.editors["axes"][0], QtWidgets.QComboBox)
+    form.editors["axes"][0].setCurrentText("abc")
+    page.overlay_form_holder.itemAt(1).widget().click()          # Apply overlay
+    assert page.overlays == [{"name": "Coordinate tripod",
+                              "params": {"axes": "abc", "corner": "bottom-right", "size": 0.09}, "enabled": True}]
+    assert page.render_kwargs()["overlays"] == page.overlays and "Coordinate tripod" in page.code.toPlainText()
+    page.overlay_list.item(0).setCheckState(QtCore.Qt.Unchecked)
+    assert page.overlays[0]["enabled"] is False
+    page.overlay_list.item(0).setCheckState(QtCore.Qt.Checked)
+    page.set_renderer("vector")
+    page.preset.setCurrentText("Custom (px)")
+    page.width.setValue(200)
+    page.height.setValue(150)
+    page.output.setText(str(tmp_path / "fig.svg"))
+    w.render_from_page()
+    svg = (tmp_path / "fig.svg").read_text()
+    assert all(f"<!-- {c} -->" in svg for c in "abc")             # tripod labels drawn as text
+    path = w.save_session(str(tmp_path / "s.ewald"))
+    w2 = MainWindow()
+    w2.load_session(path)
+    assert w2.render_page.overlays == page.overlays and w2.render_page.overlay_list.count() == 1
+    assert w2.style.theme == "Dark slide" and w2.style.cell_color == "#AEB4BE"
+    page.remove_overlay(0)
+    assert page.overlays == [] and page.overlay_list.count() == 0
+    w.close()
+    w2.close()
+
+
+def test_colormap_combo_lists_plugins(app, monkeypatch):
+    from ewald import plugins
+    from ewald.gui.params import ParameterForm
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    plugins.register_colormap("two", ["navy", "gold"])
+    form = ParameterForm(mods.ColorCoding("Position.Z", cmap="two"))
+    combo = form.editors["cmap"][0]
+    items = [combo.itemText(k) for k in range(combo.count())]
+    assert items[0] == "viridis" and items[-1] == "two" and combo.currentText() == "two"
+    assert not combo.itemIcon(0).isNull()
+    assert "grayscale" in combo.itemData(0, QtCore.Qt.ToolTipRole)

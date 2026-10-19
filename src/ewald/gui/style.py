@@ -28,6 +28,8 @@ class ViewStyle:
     background: str = "#14161A"
     bond_factor: float = 1.15                         # VESTA: max bond = factor * (r_A + r_B)
     visuals: list = field(default_factory=list)       # plugin visual elements: {name, params, enabled}
+    theme: str = ""                                   # last applied ewald.themes name (its values are above)
+    cell_color: str | None = None                     # None: picked from the background
 
     def apply_preset(self, name: str):
         self.preset = name
@@ -45,7 +47,22 @@ class ViewStyle:
             kw["bond_pairs"] = [tuple(p) for p in self.bond_pairs]
         if self.visuals:
             kw["visuals"] = [dict(v) for v in self.visuals]
+        if self.cell_color:
+            kw["cell_color"] = self.cell_color
         return kw
+
+    def apply_theme(self, name: str, types=()):
+        """Copy a theme's colors (for ``types``), background, cell color and radius preset into the style."""
+        from ..themes import get_theme
+
+        t = get_theme(name)
+        self.theme = name
+        self.type_colors = {k: tuple(v) for k, v in t.type_colors(types).items()}
+        if t.background is not None:
+            self.background = t.background
+        self.cell_color = t.cell_color
+        if t.radius_preset is not None:
+            self.radius_preset = t.radius_preset
 
     def radius_kwargs(self, with_type_radii: bool = True) -> dict:
         """Keyword arguments of :func:`ewald.render.default_radii` for this style (defaults left out)."""

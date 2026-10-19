@@ -3,11 +3,48 @@ from __future__ import annotations
 
 import ast
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
-_CHOICES = {"alignment": ("base", "center", "head"), "shading": ("normal", "flat")}
-_CMAPS = ["viridis", "plasma", "inferno", "magma", "cividis", "coolwarm", "coolwarm_r", "jet",
-          "rainbow", "turbo", "RdBu", "RdBu_r", "Spectral", "hot", "Greys"]
+_CHOICES = {"alignment": ("base", "center", "head"), "shading": ("normal", "flat"),
+            "corner": ("top-left", "top-right", "bottom-left", "bottom-right"), "axes": ("xyz", "abc")}
+
+
+def colormap_icon(name: str, width: int = 64, height: int = 12):
+    """A strip of the color map ``name`` for menus and combo boxes (None if it does not resolve)."""
+    import numpy as np
+
+    from ..colormaps import get_colormap
+
+    try:
+        rgba = (get_colormap(name)(np.linspace(0, 1, width)) * 255).astype(np.uint8)
+    except (KeyError, ValueError):
+        return None
+    strip = np.ascontiguousarray(np.repeat(rgba[None], height, axis=0))
+    image = QtGui.QImage(strip.data, width, height, 4 * width, QtGui.QImage.Format_RGBA8888).copy()
+    return QtGui.QIcon(QtGui.QPixmap.fromImage(image))
+
+
+def colormap_combo(value: str) -> QtWidgets.QComboBox:
+    """Editable combo box of color maps (common matplotlib maps, then plugins) with preview strips;
+    the tooltip says whether a map reads in grayscale."""
+    from .. import plugins
+    from ..colormaps import is_perceptual, names
+
+    w = QtWidgets.QComboBox()
+    w.setEditable(True)
+    w.setIconSize(QtCore.QSize(64, 12))
+    kinds = {k: p.kind for k, p in plugins.colormaps().items()}
+    for k, name in enumerate(names()):
+        icon = colormap_icon(name)
+        w.addItem(icon, name) if icon is not None else w.addItem(name)
+        try:
+            ok = is_perceptual(name, kinds.get(name))
+        except (KeyError, ValueError):
+            continue
+        tip = "reads in grayscale (monotonic lightness)" if ok else "not monotonic in lightness"
+        w.setItemData(k, f"{name}: {tip}" + (" · plugin" if name in kinds else ""), QtCore.Qt.ToolTipRole)
+    w.setCurrentText(str(value))
+    return w
 
 
 class ParameterForm(QtWidgets.QWidget):
@@ -43,10 +80,7 @@ class ParameterForm(QtWidgets.QWidget):
             w.setValue(value)
             self.editors[name] = (w, float)
         elif name == "cmap":
-            w = QtWidgets.QComboBox()
-            w.setEditable(True)
-            w.addItems(_CMAPS)
-            w.setCurrentText(str(value))
+            w = colormap_combo(value)
             self.editors[name] = (w, str)
         elif name in _CHOICES and isinstance(value, str):
             w = QtWidgets.QComboBox()
