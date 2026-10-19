@@ -8,8 +8,9 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Notebook layout (GUI redesign): notebooks as `.py` cells with step and view cells, a notebook
-  rail on the left, Paper/Graphite themes. Branch `claude/project-thread-x53vio`.
+- Notebook layout (GUI redesign): notebooks as `.py` cells with step and view cells, notebook
+  tabs, Paper/Graphite themes. Branch `claude/project-thread-x53vio`.
+- Simple (ASE) style and Ball & stick as the default style (this branch).
 
 ## Next
 
@@ -24,9 +25,24 @@ GUI
 - Quad views (top, front, left, perspective), as in OVITO.
 - Undo/redo for pipeline edits.
 - Compute frames in a background thread so the GUI stays responsive.
-- Scene updates without a full rebuild when only colors or a few properties change.
+- Scene updates without a full rebuild when only colors or a few properties change, and frame
+  changes with the same atoms that replace only the point coordinates.
+- Picking without a render: click picks still use a `vtkPropPicker` selection render; the hover
+  readout already does a CPU ray-sphere test (`camera_ray`, `ray_spheres` in `gui/viewport.py`)
+  that `pick_at` could reuse.
+- Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
+  categories; the view-bar rotation arrows are still text glyphs.
+- Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
+  Add modification for the loaded data, view-along buttons hidden without a cell, the timeline
+  folded for a single structure, a right-click menu on pipeline items.
+- Shortcuts for the viewport tools (orbit, pick, distance, angle, bond) and view-along axes.
 - Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
   screen edges) and VTK scene lights instead of the fixed head light; bond impostors.
+- Flat (ASE) style in the ray tracer and the vector renderer (now OpenGL only), and a
+  per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
+  covalent-radius sum with metal-metal pairs left out.
+- Bonds above the automatic-bonds limit (100 000 atoms): a fast path (bond impostors or lines)
+  so large systems can show bonds by default too.
 
 Analysis
 
@@ -154,8 +170,14 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - SSH remote files against a real HPC login node (ProxyJump, OTP, large dumps); tests use an
   in-process SFTP server.
 - Claude features with a real API key: `ewald ask` (also `--select`), the GUI Ask Claude tab,
-  `ewald narrate`, `ewald forge`, `ewald mcp`.
-- The Windows release workflow (wheels, PyInstaller app, installer) on a real `v*` tag.
+  `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › Claude › Test connection.
+- The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
+  KWallet); the container has none, so only the 0600 file fallback runs for real.
+- The Windows release workflow (wheels, PyInstaller app, installer) on a real `v*` tag; no
+  release exists yet, so Windows users without Build Tools get ewald without `ewald._native`
+  until the first one (blocked on GitHub Actions minutes).
+- Installing without a compiler on real Windows (MSVC missing raises in `build_ext.run`; tested
+  here with `CXX=/bin/false` on Linux). pip shows the "not built" warning only with `-v`.
 - `DislocationAnalysis` and `OvitoModifier` with the `ovito` package installed.
 - The native OUTCAR and vasprun.xml readers on real VASP 5/6 output (relaxations with ISIF=3,
   non-collinear and MD runs, multi-GB files); the test fixtures are hand-written in VASP 6.4
@@ -169,13 +191,33 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   non-collinear, `LCHARGH5`); the fixtures follow py4vasp's schema and are checked against
   py4vasp, and the charge density is assumed to be stored as rho * V like a CHGCAR. The H5MD
   reader on GROMACS 2026 `mdrun` output.
-- The SSH X11 forwarding probe and Mesa fallback on a real `ssh -X` session (RHEL 9 crashed with
-  `XIO: fatal IO error`); the cloud container's Xvfb renders even without GLX, so only the
-  detection and fallback order are tested.
+- The Legacy GL viewport on a real `ssh -X` session (RHEL 9 crashed with `XIO: fatal IO error`
+  under VTK): whether Qt's GLX integration gets an indirect context there, and how fast display
+  lists are over the network. The container's X servers crash on indirect GLX, so it is tested on
+  direct Mesa only. If Qt's context fails where plain GLX works, draw into a raw GLX child window
+  instead of `QOpenGLWindow`. Same for the VTK probe and Mesa fallback.
 - GUI startup checks on a Wayland desktop and on Fedora (the xcb library check is skipped when
   `WAYLAND_DISPLAY` is set; the Fedora package names in its message are untested).
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
   CI has no PLUMED, so those tests skip).
+
+## Security
+
+From the 2026-10-19 review (expression sandbox, session classes, Forge consent and environment,
+`export_file` paths, PLUMED `LOAD` and the known_hosts key type are fixed):
+
+- Claude's read tools (`load_structure`, `read_plumed_output`) open any local path and any
+  `host:/path` in known_hosts; add an optional folder allow-list and a GUI confirmation before
+  connecting to a host the model chose.
+- The GUI's "Python code in session" question covers only top-level PythonScript and
+  PythonModifier entries; nested `__modifier__` code and a disabled `Plumed` load silently
+  disabled, with only a log message.
+- The saved API key: the Forge test subprocess gets a null keyring backend and a scratch config
+  folder, but plugin code there could still read `~/.config/ewald/credentials.json` (file
+  fallback) by absolute path or call the OS keychain tool directly. Run that subprocess as a
+  sandboxed user or container to close this.
+- `plumed.py` reads numbers like `pi/2` with `eval` (no builtins, only `pi`); replace it with a
+  small arithmetic parser.
 
 ## Infrastructure
 

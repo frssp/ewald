@@ -18,7 +18,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ..notebook import Cell, Notebook, new_notebook, step_call
 from .params import ParameterForm
 from .pipeline_panel import _discover, fill_modifier_menu
-from .notebook_rail import NotebookRail
+from .notebook_tabs import NotebookTabs
 from .theme import TOKENS
 
 MAX_EDITOR_LINES = 30
@@ -987,8 +987,7 @@ class NotebookPanel(QtWidgets.QWidget):
         self.data = None
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        self.tabs = NotebookRail()
-        self.tabs.setObjectName("notebookTabs")
+        self.tabs = NotebookTabs()
         self.tabs.newRequested.connect(lambda: self.new_notebook())
         self.tabs.tabCloseRequested.connect(self.close_tab)
         self.tabs.renameRequested.connect(self.rename)

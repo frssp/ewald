@@ -320,6 +320,24 @@ def _with_includes(text: str, base: Path, depth: int = 0) -> str:
     return "\n".join(lines)
 
 
+def untrusted_input_problems(input: str) -> list[str]:
+    """Reasons not to run ``input`` when it comes from Claude or a session file rather than the
+    user: ``LOAD`` loads (or compiles) native code into the process, and file keys with an
+    absolute or ``..`` path read or write outside the input's folder (``PRINT FILE=~/.bashrc``)."""
+    text, base = input_text(input)
+    problems = []
+    for line in _logical_lines(_with_includes(text, base or Path.cwd())):
+        words = line.split()
+        action = words[1] if words and words[0].endswith(":") and len(words) > 1 else (words[0] if words else "")
+        if action.upper() == "LOAD":
+            problems.append(f"{line!r}: LOAD runs native code")
+        for m in re.finditer(r"(?:^|\s)(\w*FILE\w*|INCLUDE|REFERENCE\w*|STRUCTURE|MOLINFO|PDB)=(\S+)", line, re.I):
+            value = os.path.expanduser(m.group(2))
+            if os.path.isabs(value) or ".." in Path(value).parts:
+                problems.append(f"{m.group(1)}={m.group(2)}: only files next to the input are allowed")
+    return problems
+
+
 _FILE_KEYS = re.compile(r"(?:^|\s)(?:FILE|REFERENCE|STRUCTURE|MOLINFO|TEMPLATE|GRID_RFILE|RFILE|PDB|"
                         r"INCLUDE|COEFFS|BASIS|REFERENCE_\w+)=(\S+)", re.IGNORECASE)
 

@@ -90,7 +90,7 @@ def build_parser():
     pl.add_argument("--json", action="store_true")
     f = sub.add_parser("forge", help="have Claude write a modifier plugin, test it and save it")
     f.add_argument("request", nargs="+", help="the analysis, in words")
-    f.add_argument("--yes", action="store_true", help="run the generated code without asking")
+    f.add_argument("--yes", action="store_true", help="run and save the generated code without asking")
     f.add_argument("--draft", action="store_true", help="print Claude's first draft; run and save nothing")
     f.add_argument("--overwrite", action="store_true", help="replace a plugin file of the same name")
     f.add_argument("--rounds", type=int, default=4, help="attempts to fix failing checks (default 4)")
@@ -173,9 +173,9 @@ def _run(args):
         client = None
         if not args.no_llm:
             try:
-                import anthropic
+                from .llm.credentials import client as make_client
 
-                client = anthropic.Anthropic()
+                client = make_client()
             except Exception as exc:  # no SDK or no credentials: fall back to rule-based titles
                 print(f"(no Claude client: {exc}; using rule-based titles)")
         tl = narrate(pipe, client, render=args.render)
@@ -330,16 +330,25 @@ def _forge(args):
                       if not i["ok"]]
             print("  failed: " + ", ".join(failed), flush=True)
 
+    def confirm(result):
+        if args.yes:
+            return True
+        print(f"# ---- {result.module_name}.py ----\n{result.module_source}")
+        answer = input("Tests passed. Save this plugin? It is loaded every time ewald starts. [y/N] ")
+        return answer.strip().lower() in ("y", "yes")
+
     result = forge(request, model=args.model or DEFAULT_MODEL, run_code=not args.draft, max_rounds=args.rounds,
-                   overwrite=args.overwrite, on_event=show)
+                   overwrite=args.overwrite, on_event=show, confirm=confirm)
     if args.draft:
         print(result.module_source)
         print("# ---- tests ----")
         print(result.test_source)
         return
     print(result.summary())
-    if result.ok:
+    if result.ok and result.path:
         print(f"use it: from ewald.modifiers import {result.class_name}  (also in the GUI and Claude's tools)")
+    elif result.ok:
+        print("not saved")
     return None if result.ok else 1
 
 

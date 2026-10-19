@@ -255,7 +255,8 @@ def gui_section(window) -> list[str]:
         if act.menu():
             out += [f"**{clean(act.text())}**", ""] + walk(act.menu(), 0) + [""]
     if hasattr(window, "viewport_menu"):
-        out += ["**Viewport (right click)**", ""] + walk(window.viewport_menu(), 0) + [""]
+        out += ["**Viewport (right click)**, entries shown only when they apply (picked atoms, phonon "
+                "modes, NEB band, volumetric grid, trajectory):", ""] + walk(window.viewport_menu(everything=True), 0) + [""]
     tb = window.findChild(QtWidgets.QToolBar, "main-toolbar")
     items = [clean(a.text()) for a in tb.actions() if a.text()]
     items += [clean(w.text()) for w in tb.findChildren(QtWidgets.QAbstractButton) if w.text().strip()]

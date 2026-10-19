@@ -11,7 +11,7 @@ from ewald import import_file  # noqa: E402
 from ewald.io import remote  # noqa: E402
 from ewald.io.remote import RemotePath, parse_remote  # noqa: E402
 
-from sftp_server import SFTPTestServer  # noqa: E402
+from helpers.sftp_server import SFTPTestServer  # noqa: E402
 
 
 def test_parse_remote_forms(tmp_path, monkeypatch):
@@ -203,3 +203,23 @@ def test_plugin_reader_gets_a_local_copy(server, monkeypatch):
         fh.write("0 0 0\n1 1 1\n")
     data = import_file("hpc:/data/atoms.xyzlist").compute(0)
     assert data.count == 2 and os.path.isfile(seen[0])  # the plugin read a local cached file
+
+
+def test_known_host_with_another_key_type_is_refused(tmp_path, ssh_env, client_key, lammps_dir):
+    import paramiko
+
+    root = tmp_path / "fs"
+    root.mkdir()
+    shutil.copy(lammps_dir / "dump.atom", root / "dump.atom")
+    srv = SFTPTestServer(root, client_key=client_key[0])  # offers only its RSA key
+    try:
+        known = ssh_env("swapped", srv, identity=client_key[1])
+        other = paramiko.ECDSAKey.generate()
+        known.write_text(f"[127.0.0.1]:{srv.port} {other.get_name()} {other.get_base64()}\n")
+        asked = []
+        remote.set_host_key_prompt(lambda *a: asked.append(a) or True)
+        with pytest.raises(OSError, match="intercepting"):
+            import_file("swapped:/dump.atom")
+        assert not asked and srv.host_key.get_base64() not in known.read_text()  # neither asked nor added
+    finally:
+        srv.close()

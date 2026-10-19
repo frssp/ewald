@@ -22,7 +22,7 @@ the full docstring.
 
 `ExpressionSelection`, `ComputeProperty` and `ColorCoding` take OVITO-style expressions,
 evaluated with NumPy. Property names lose their spaces (`ParticleType`,
-`ParticleIdentifier`), vector components get a suffix (`Position.Z`, `Velocity.X`,
+`ParticleIdentifier`; `ParticleIndex` is the 0-based row), vector components get a suffix (`Position.Z`, `Velocity.X`,
 `Color.R`), and the globals `N`, `Frame`, `CellSize.X`, `CellOrigin.X` and every scalar
 attribute are available. Combine conditions with `&`, `|`, `~` and parentheses, not
 `and`/`or`/`not`:
@@ -32,6 +32,13 @@ ExpressionSelection('(Position.Z > 10) & (ParticleType == "Cu")')
 ComputeProperty("Speed", "sqrt(Velocity.X**2 + Velocity.Y**2 + Velocity.Z**2)")
 ColorCoding("Position.Z - CellOrigin.Z", cmap="viridis")
 ```
+
+Besides `abs`, `sqrt`, `exp`, `log`, `sin`, `cos`, `min` and `max`, an expression can call
+NumPy's ufuncs and array functions such as `np.where`, `np.isin`, `np.clip`, `np.unique` and
+`np.linalg.norm`, index arrays (`Position[:, 2]`) and use `.T`, `.sum()`, `.astype()` and
+similar array attributes. Anything else (other attributes, names starting with `_`, lambdas,
+comprehensions) is refused before the expression runs, because expressions also arrive from
+session files and from Claude, and plain `eval` would let them reach the rest of Python.
 
 ## Selection and deletion
 

@@ -140,3 +140,20 @@ def test_forwarded_display_falls_back_to_software_opengl(monkeypatch, capsys):
         gui.check_remote_display(lambda extra: (False, "XIO: fatal IO error 17"))
     monkeypatch.setenv("EWALD_SKIP_GL_PROBE", "1")
     gui.check_remote_display(lambda extra: pytest.fail("probe should be skipped"))
+
+
+def test_missing_native_extension_explains_itself(monkeypatch, cu_fcc):
+    """Installed without a C++ compiler: the modifiers that need ewald._native say how to get it."""
+    import sys
+
+    from ewald import Pipeline, StaticSource, settings
+    from ewald import modifiers as mods
+
+    assert "ewald._native" in {row[0] for row in settings.component_status()}
+    monkeypatch.setitem(sys.modules, "ewald._native", None)  # import now raises ImportError
+    for mod in (mods.PolyhedralTemplateMatching(), mods.VoronoiAnalysis(),
+                mods.CommonNeighborAnalysis(mode="interval")):
+        with pytest.raises(ImportError, match="Build Tools"):
+            Pipeline(StaticSource([cu_fcc]), [mod]).compute(0)
+    out = Pipeline(StaticSource([cu_fcc]), [mods.CommonNeighborAnalysis()]).compute(0)
+    assert (out["Structure Type"] == 1).all()  # adaptive CNA falls back to Python: all FCC

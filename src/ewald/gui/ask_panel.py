@@ -5,7 +5,8 @@ press Ask. The panel sends ewald's description of the picked atoms and their sur
 plus a close-up render (:meth:`ewald.llm.Agent.ask_about_selection`); Claude can call the
 usual tools, and modifiers it adds show up in the pipeline. With nothing picked, the
 question goes about the whole pipeline. Claude runs in a worker thread, so the viewer stays
-responsive. Needs ``pip install ewald[llm]`` and an API key (``ANTHROPIC_API_KEY``).
+responsive. Needs ``pip install ewald[llm]`` and an API key (Preferences › Claude, or
+``ANTHROPIC_API_KEY``).
 """
 from __future__ import annotations
 
@@ -15,14 +16,22 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .theme import TOKENS
 
-_SETUP_HINT = ("Claude needs the `anthropic` package (`pip install ewald[llm]`) and an API key "
-               "(`ANTHROPIC_API_KEY`).")
+_SETUP_HINT = ("Claude needs the `anthropic` package (`pip install ewald[llm]`) and an API key: "
+               "Edit › Preferences › Claude, or `ANTHROPIC_API_KEY`.")
 
 
-def _default_agent(pipeline, on_event):
+def _default_agent(pipeline, on_event, **kwargs):
     from ..llm import Agent
 
-    return Agent.from_pipeline(pipeline, on_event=on_event)
+    return Agent.from_pipeline(pipeline, on_event=on_event, **kwargs)
+
+
+def agent_from_settings(get_settings: Callable[[], object]):
+    """Agent factory using Preferences › Claude (model, effort), read when a chat starts."""
+    def factory(pipeline, on_event):
+        s = get_settings()
+        return _default_agent(pipeline, on_event, model=s["llm.model"], effort=s["llm.effort"])
+    return factory
 
 
 class _Worker(QtCore.QThread):
@@ -178,7 +187,8 @@ class AskPanel(QtWidgets.QWidget):
         self._render()
 
     def _on_failed(self, message):
-        hint = f" {_SETUP_HINT}" if "anthropic" in message.lower() or "api_key" in message.lower() else ""
+        low = message.lower()
+        hint = f" {_SETUP_HINT}" if any(w in low for w in ("anthropic", "api_key", "authentication")) else ""
         self.entries.append(f"**Error.** `{message}`{hint}")
         self._finish()
         self._render()

@@ -114,14 +114,10 @@ QToolButton#segment:checked {{ background: {accent_soft}; color: {accent}; borde
 QPushButton#addCell {{ border: 1px dashed {muted}; border-radius: 6px; padding: 5px 10px; color: {secondary}; }}
 QPushButton#addCell:hover {{ border-color: {accent}; color: {accent}; }}
 QPushButton#addCell::menu-indicator {{ image: none; width: 0; }}
-QFrame#notebookRail {{ background: {bg}; border-right: 1px solid {border}; }}
-QToolButton#railTab {{ color: {secondary}; border-radius: 8px; padding: 8px 4px; font-size: 11px; }}
-QToolButton#railTab:checked {{ background: {accent_soft}; color: {accent}; font-weight: 600; border: none; }}
-QToolButton#railTab[dirty="true"] {{ color: {data}; }}
-QToolButton#railTab:checked[dirty="true"] {{ color: {accent}; }}
-QToolButton#railNew {{ font-size: 18px; color: {muted}; border: 1px dashed {border}; border-radius: 8px;
-                      min-width: 40px; min-height: 28px; }}
-QToolButton#railNew:hover {{ color: {accent}; border-color: {accent}; }}
+QTabWidget#notebookTabs QTabBar::tab {{ font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace; padding: 7px 14px; }}
+QTabWidget#notebookTabs QTabBar::tab:selected {{ color: {accent}; border-bottom: 2px solid {accent}; font-weight: 600; }}
+QToolButton#tabNew {{ font-size: 16px; color: {muted}; padding: 2px 10px; }}
+QToolButton#tabNew:hover {{ color: {accent}; }}
 """
 
 

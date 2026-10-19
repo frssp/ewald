@@ -2,8 +2,9 @@
 
 The algorithms follow OVITO 3.16 (CommonNeighborAnalysisModifier.cpp,
 PolyhedralTemplateMatchingModifier.cpp; Copyright 2026 OVITO GmbH, used under
-the MIT option of its GPLv3-or-MIT dual license).  Output names, structure type
-ids, colors and attribute names match OVITO so scripts and results carry over.
+the MIT option of its GPLv3-or-MIT dual license; see ewald/_csrc/LICENSE.OVITO-MIT.txt).
+Output names, structure type ids, colors and attribute names match OVITO so scripts and
+results carry over.
 """
 from __future__ import annotations
 
@@ -161,9 +162,9 @@ class CommonNeighborAnalysis(StructureIdentificationModifier):
         if be.name == "cpu" or self.mode == "interval":
             try:
                 from .. import _native as native
-            except ImportError:
+            except ImportError as exc:
                 if self.mode == "interval":
-                    raise
+                    raise ImportError(NATIVE_MISSING) from exc
         if len(pos) > k or (len(pos) and data.cell.is_valid and data.cell.pbc.any()):
             _, delta, dist = nearest_neighbors(pos, data.cell, k)
             if native is not None:
@@ -229,12 +230,18 @@ _PTM_FLAGS = {FCC: 1 << 0, HCP: 1 << 1, BCC: 1 << 2, ICO: 1 << 3, SC: 1 << 4,
 PTM_MAX_INPUT_NEIGHBORS = 18
 
 
+NATIVE_MISSING = (
+    "this modifier needs the C++ extension ewald._native, which was not built because no C++ compiler "
+    "was found at install time. Install one (Windows: Microsoft C++ Build Tools, workload 'Desktop "
+    "development with C++'; macOS: xcode-select --install; Linux: g++), then reinstall ewald "
+    "(pip install -e . from the source folder). See 'Without a C++ compiler' in docs/user/install.md.")
+
+
 def _native():
     try:
         from .. import _native
     except ImportError as exc:  # pragma: no cover - depends on the build
-        raise ImportError("this modifier needs the compiled extension ewald._native; reinstall with "
-                          "a C++ compiler available (pip install -e .)") from exc
+        raise ImportError(NATIVE_MISSING) from exc
     return _native
 
 

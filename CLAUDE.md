@@ -4,8 +4,9 @@ ewald is an OVITO-style atomistic structure/trajectory viewer and analysis libra
 `import_file` -> `pipe.modifiers` -> `pipe.compute(frame, device=...)` -> `pipe.render(...)`,
 plus a PySide6 desktop GUI and Claude tools. User-facing docs: the manual in docs/ (MkDocs,
 `mkdocs.yml`; user/, plugins/, developer/, reference/) and README.md; what exists:
-docs/features.md (generated); open work: docs/todo.md; milestones: docs/ROADMAP.md; GUI design
-specs live outside the repo (project files `design/`).
+docs/features.md (generated); open work: docs/todo.md; milestones: docs/ROADMAP.md. Current GUI
+design specs live outside the repo (project files `design/`); `docs/design/` is an older snapshot
+kept for history.
 
 ## Commands
 
@@ -46,7 +47,7 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   writer. `io.builtin_readers()`/`builtin_writers()` register them in `plugins.py` (reader and writer registries).
   `remote.py` opens `host:/path` / `ssh://` paths (paramiko): `base.open_binary` streams them to the
   native readers, `FileSource` downloads them to a local cache for every other reader. Tests use the
-  in-process server in `tests/sftp_server.py` (fixtures `server`, `ssh_env` in conftest), no sshd.
+  in-process server in `tests/helpers/sftp_server.py` (fixtures `server`, `ssh_env` in conftest), no sshd.
 - `bonds.py` (`Bonds`: Topology + Periodic Image, bond search), `mesh.py` (`SurfaceMesh` for
   `data.surfaces`: polyhedra now, surface meshes later); both drawn by `render.py` and `raytrace.py`.
 - `backend.py` (numpy/CuPy `xp` backends), `neighbors.py` (numba CPU cell list, `find_pairs`),
@@ -84,11 +85,13 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   pipeline; step cells = one `pipe.modifiers.append(...)`, view cells = one `show(pipe, ...)` from
   `views.py`). The GUI's default layout is built on it (`general.layout`: notebook | classic).
 - `gui/`: `app.py` main window, `notebook_panel.py` (cells, steps, view cells with live `PlotsPanel`s)
-  and `notebook_rail.py` (one button per open notebook), `viewport.py`, `pipeline_panel.py`
+  and `notebook_tabs.py` (one tab per open notebook), `viewport.py` (VTK; `legacy_viewport.py` + Qt-free
+  `legacy_gl.py` are the OpenGL 1.x viewport for `ssh -X`, chosen by `gui.viewport_backend`), `pipeline_panel.py`
   (classic layout; `DisplayPanel` is its visual-elements part in the notebook layout), `params.py`, `render_page.py`,
   `preferences.py`, `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
   `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`.
-- `llm/`: Claude agent (`agent.py`), tools (`tools.py`), Modifier Forge (`forge.py`: Claude writes a
+- `llm/`: Claude agent (`agent.py`), tools (`tools.py`), `credentials.py` (API key in the OS keychain via
+  `keyring`, 0600 file fallback, never in settings.json; every Claude client comes from `credentials.client()`), Modifier Forge (`forge.py`: Claude writes a
   plugin + tests, verified in a subprocess, saved to the plugin folder), descriptors (`describe.py`, `narrate.py`),
   `selection.py` (descriptor + close-up scene for Ask about selection; GUI side `gui/ask_panel.py`),
   MCP server (`mcp_server.py`), and `reference.py`, the source of `llms.txt`.

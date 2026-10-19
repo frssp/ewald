@@ -18,7 +18,7 @@ movie = ["imageio-ffmpeg"]   # bundled ffmpeg binary for MP4/AVI/MOV
 formats = ["h5py", "MDAnalysis>=2.7"]   # H5MD, vaspout.h5, MDTraj HDF5; GROMACS XTC/TRR, DCD, NetCDF
 ovito = ["ovito"]   # DislocationAnalysis (DXA) and OvitoModifier bridge
 plumed = ["plumed"]   # PLUMED Python binding; the PLUMED library itself comes from conda-forge or a build (PLUMED_KERNEL)
-llm = ["anthropic>=1.0", "mcp"]
+llm = ["anthropic>=1.0", "mcp", "keyring>=24"]   # keyring: API key in the OS keychain
 remote = ["paramiko>=3.2"]  # import_file("host:/path") over SSH/SFTP
 dev = ["pytest", "paramiko>=3.2", "spglib>=2.0"]
 
@@ -30,7 +30,8 @@ ewald-gui = "ewald.gui:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ewald = ["tables/*.json", "examples/files/*"]
+# the license notices of the ported and vendored C++ in ewald/_csrc ship with every install
+ewald = ["tables/*.json", "examples/files/*", "_csrc/README.md", "_csrc/LICENSE*", "_csrc/*/LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

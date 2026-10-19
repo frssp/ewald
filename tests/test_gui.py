@@ -75,6 +75,25 @@ def test_bonds_visual_element_and_pairs(app, cu_fcc):
     assert len(none[0]) == 0
 
 
+def test_style_presets_default_ase_and_bond_table():
+    from ewald.gui.style import DEFAULT_PRESET, ViewStyle
+
+    style = ViewStyle()
+    assert style.preset == DEFAULT_PRESET == "Ball & stick" and style.bonds_enabled
+    style.type_colors = {"Cu": (1.0, 0.0, 0.0)}
+    style.apply_preset("Simple (ASE)", ["Cu"])
+    assert style.atom_style == "flat" and style.background == "white" and style.theme == "ASE"
+    assert style.type_colors["Cu"] != (1.0, 0.0, 0.0)  # Jmol colors from the theme
+    style.apply_preset("Space-filling")  # leaving the ASE look restores what was there
+    assert style.background == "#14161A" and style.type_colors == {"Cu": (1.0, 0.0, 0.0)} and style.theme == ""
+
+    style.ensure_bond_pairs(["Sr", "Ti", "O", "O"])  # compound: no metal-metal rows
+    assert {tuple(sorted(r[:2])) for r in style.bond_pairs} == {("O", "O"), ("O", "Sr"), ("O", "Ti")}
+    metal = ViewStyle()
+    metal.ensure_bond_pairs(["Cu", "Zr"])  # a pure metal keeps its bonds
+    assert len(metal.bond_pairs) == 3
+
+
 def test_command_palette_fuzzy():
     from ewald.gui.palette import fuzzy_score
 
@@ -313,6 +332,8 @@ def test_main_window_links_plots_and_viewport(app, cu_fcc, lammps_dir):
     from ewald.gui.app import MainWindow
 
     w = MainWindow(Pipeline(StaticSource([cu_fcc, cu_fcc]), [mods.CoordinationAnalysis(3.0)]))
+    assert w.plots.data is None  # a hidden tab is filled when it is opened
+    w.bottom.setCurrentWidget(w.plots)
     w.plots.table.setCurrentText("coordination-rdf")
     w.plots.select(2.4, 2.7)
     assert len(w.viewport.picks) == cu_fcc.count and w._ask_context()[2] == w.viewport.picks
@@ -330,6 +351,7 @@ def test_main_window_links_plots_and_viewport(app, cu_fcc, lammps_dir):
     assert len(w.plots.highlight) == cu_fcc.count  # the Selection property is drawn on the plot
     w.close()
     w = MainWindow(import_file(lammps_dir / "thermo" / "dump.lammpstrj"))
+    w.bottom.setCurrentWidget(w.plots)
     w.plots.select(15, 32)
     assert w.timeline.selection == [2, 3] and w.frame == 2
     w.plots.frameRequested.emit(4)
@@ -382,18 +404,58 @@ def test_viewport_context_menu_toggles_frame_overlay(app, vasp_dir):
     w.timeline._set(2)
     n_real = w.pipeline.source.compute(2).count
     assert w.data.count > n_real
-    menu = w.viewport_menu()
-    overlay, transparency, moving = menu.actions()[:3]
+    def entries(menu):
+        return {a.text(): a for a in menu.actions() if a.text()}
+
+    menu = entries(w.viewport_menu())
+    assert "NEB energy profile" in menu and "Add isosurface" not in menu and "Clear picks" not in menu
+    overlay, transparency, moving = (menu[k] for k in ("Overlay other frames (see-through)", "Overlay transparency",
+                                                       "Overlay only atoms that move"))
     assert overlay.isChecked() and transparency.menu().isEnabled() and moving.isChecked()
     overlay.setChecked(False)  # toggled -> off
     assert w.data.count == n_real and not w._overlay().enabled
     w.set_overlay(True, transparency=0.5)
     ghosts = w.data["Overlay Frame"] >= 0
     assert np.allclose(w.data["Transparency"][ghosts], 0.5)
-    menu = w.viewport_menu()
-    assert [a.text() for a in menu.actions()[1].menu().actions() if a.isChecked()] == ["50 %"]
-    menu.actions()[2].setChecked(False)  # every atom, moving or not
+    menu = entries(w.viewport_menu())
+    assert [a.text() for a in menu["Overlay transparency"].menu().actions() if a.isChecked()] == ["50 %"]
+    menu["Overlay only atoms that move"].setChecked(False)  # every atom, moving or not
     assert w.data.count == 5 * n_real
+    menu["NEB energy profile"].trigger()
+    assert w.bottom.currentWidget() is w.plots and w.plots.table.currentText() == "NEB"
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_viewport_context_menu_follows_data_and_picks(app, cu_fcc, tmp_path):
+    from ewald.gui.app import MainWindow
+
+    def entries(menu):
+        return {a.text(): a for a in menu.actions() if a.text()}
+
+    w = MainWindow()
+    assert "Load file…" in entries(w.viewport_menu())  # nothing loaded yet
+    w.set_pipeline(Pipeline(StaticSource([cu_fcc])))
+    menu = entries(w.viewport_menu())
+    assert "Load file…" not in menu and "Play" not in menu and "Clear picks" not in menu  # one frame, no picks
+    assert "View along" in menu and "Ask Claude about this structure…" in menu
+    w.viewport.set_tool("pick")
+    w.viewport.add_pick(3)
+    w.viewport.add_pick(5, extend=True)
+    menu = entries(w.viewport_menu())
+    assert "2 atoms picked" in menu and not menu["2 atoms picked"].isEnabled()
+    menu["Delete picked atoms"].trigger()
+    assert w.data.count == cu_fcc.count - 2 and w.viewport.picks == []
+    assert [m.name for m in w.pipeline.modifiers] == ["ExpressionSelection", "DeleteSelected"]
+    show = entries(entries(w.viewport_menu())["Show"].menu())
+    show["Bonds"].setChecked(True)
+    assert w.style.bonds_enabled
+    w.open_example("CHGCAR.Si")
+    entries(w.viewport_menu())["Add isosurface"].trigger()
+    assert w.data.surfaces and "Edit isosurface" in entries(w.viewport_menu())
+    w.open_example("Cu3Au_band.yaml")
+    menu = entries(w.viewport_menu())
+    assert "Phonon band structure" in menu and "Play" in menu
     w.close()
 
 
@@ -419,6 +481,52 @@ def test_main_window_smoke(app, pipe, tmp_path):
     code = w.render_page.code.toPlainText()
     assert "CoordinationAnalysis(cutoff=3.0" in code and "camera=" in code
     w.close()
+
+
+def test_preferences_claude_page_saves_key_outside_settings(app, monkeypatch):
+    from ewald import settings
+    from ewald.gui.preferences import PreferencesDialog
+    from ewald.llm import credentials
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(credentials, "_keyring", lambda: None)   # file fallback, like a headless box
+    checked = []
+    monkeypatch.setattr(credentials, "check", lambda key, model: checked.append((key, model)) or (True, "Connected"))
+    s = settings.load()
+    dlg = PreferencesDialog(s)
+    assert "Not set" in dlg.key_status.text()
+    assert dlg.key_edit.echoMode() == dlg.key_edit.EchoMode.Password
+    dlg.key_edit.setText("sk-ant-gui-key-0123456789")
+    dlg.set_value("llm.model", "claude-sonnet-5-5")
+    dlg.test_api_key(wait=True)
+    assert checked == [("sk-ant-gui-key-0123456789", "claude-sonnet-5-5")]
+    assert dlg.key_result.text() == "Connected"
+    assert credentials.get_api_key() == (None, None)          # nothing saved before Apply
+    dlg.apply()
+    assert credentials.get_api_key() == ("sk-ant-gui-key-0123456789", "file")
+    assert dlg.key_edit.text() == "" and "sk-ant-…6789" in dlg.key_status.text()
+    assert "sk-ant" not in s.path.read_text() and settings.load()["llm.model"] == "claude-sonnet-5-5"
+    dlg._search("api key")
+    visible = {dlg.pages.item(i).text() for i in range(dlg.pages.count()) if not dlg.pages.item(i).isHidden()}
+    assert visible == {"Claude"}
+    dlg._search("")
+    dlg.remove_api_key()
+    assert credentials.get_api_key()[0] is not None            # removal waits for Apply too
+    dlg.apply()
+    assert credentials.get_api_key() == (None, None)
+    dlg.close()
+
+
+def test_ask_panel_agent_uses_claude_preferences(app, monkeypatch):
+    from ewald import settings
+    from ewald.gui import ask_panel
+
+    made = []
+    monkeypatch.setattr(ask_panel, "_default_agent", lambda p, ev, **kw: made.append(kw))
+    s = settings.load()
+    s["llm.model"], s["llm.effort"] = "claude-haiku-5-5", "low"
+    ask_panel.agent_from_settings(lambda: s)(None, None)
+    assert made == [{"model": "claude-haiku-5-5", "effort": "low"}]
 
 
 def test_preferences_dialog_edit_search_restore(app, tmp_path):
@@ -1119,7 +1227,7 @@ def cu_path(tmp_path):
     return str(path)
 
 
-def test_notebook_layout_rail_steps_views_and_files(app, cu_path, tmp_path, monkeypatch):
+def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monkeypatch):
     from ewald import settings
     from ewald.gui.app import MainWindow
     from ewald.notebook import Notebook
@@ -1127,10 +1235,10 @@ def test_notebook_layout_rail_steps_views_and_files(app, cu_path, tmp_path, monk
     w = MainWindow(settings=settings.Settings())
     menus = [a.text().replace("&", "") for a in w.menuBar().actions()]
     assert "Notebook" in menus and "Insert" in menus and "Pipeline" not in menus
-    rail = w.panel.tabs
-    assert rail.count() == 1 and rail.tabText(0) == "Notebook 1"
+    tabs = w.panel.tabs
+    assert tabs.count() == 1 and tabs.tabText(0) == "Notebook 1"
     w.open_any(cu_path, ask_types=False)                      # the empty notebook makes way for the file
-    assert rail.count() == 1 and rail.tabText(0) == "cu" and w.pipeline is w.panel.pipeline
+    assert tabs.count() == 1 and tabs.tabText(0) == "cu" and w.pipeline is w.panel.pipeline
     w.panel.add_modifier(mods.CoordinationAnalysis(cutoff=3.0))
     w.recompute()
     view = w.panel.view
@@ -1151,19 +1259,164 @@ def test_notebook_layout_rail_steps_views_and_files(app, cu_path, tmp_path, monk
 
     path = tmp_path / "cu_nb.py"
     monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName", lambda *a, **k: (str(path), ""))
-    assert w.save_notebook() == str(path) and rail.tabText(0) == "cu_nb"
+    assert w.save_notebook() == str(path) and tabs.tabText(0) == "cu_nb"
     again = Notebook.load(path)
     assert [c.is_step for c in again.cells].count(True) == 1 and again.cells[-1].view == {
         "source": "pipe", "histogram": "Coordination"}
 
     w.panel.new_notebook()
-    assert rail.count() == 2 and rail.currentIndex() == 1
+    assert tabs.count() == 2 and tabs.currentIndex() == 1
     w.panel.close_tab(1)
     w.settings["python.run_notebooks"] = "always"
     w.open_notebook(str(path))                                 # already open: back to its tab
-    assert rail.count() == 1
+    assert tabs.count() == 1
     w.panel.close_tab(0)                                       # the last tab leaves an empty notebook
-    assert rail.count() == 1 and w.panel.notebook.pipeline is None
+    assert tabs.count() == 1 and w.panel.notebook.pipeline is None
     w.open_notebook(str(path))
-    assert rail.tabText(0) == "cu_nb" and [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis"]
+    assert tabs.tabText(0) == "cu_nb" and [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis"]
     w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_open_turns_bonds_off_above_limit(app):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    s = settings.Settings()
+    s["bonds.auto_limit"] = 50
+    w = MainWindow(settings=s)
+    assert w.style.preset == "Ball & stick" and w.style.bonds_enabled
+    w.open_file(str(examples.path("Pt_nanoparticle.xyz")))  # more than 50 atoms
+    assert w.data.count > 50 and not w.style.bonds_enabled
+    w.open_file(str(examples.path("POSCAR.SrTiO3")))  # small again: bonds come back, with a fresh table
+    assert w.data.count <= 50 and w.style.bonds_enabled
+    assert {tuple(sorted(r[:2])) for r in w.style.bond_pairs} == {("O", "O"), ("O", "Sr"), ("O", "Ti")}
+    w.viewport.style_combo.setCurrentText("Simple (ASE)")
+    assert w.style.atom_style == "flat" and "bonds" not in w.viewport.plotter.actors
+    w.close()
+    w.deleteLater()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_toolbar_button_styles(app):
+    from PySide6 import QtCore
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    analyze, orbit = w.ws_buttons[0], w.viewport.tool_buttons["orbit"]
+    assert w.settings["general.toolbar_style"] == "Icons and text"
+    assert analyze.toolButtonStyle() == QtCore.Qt.ToolButtonTextBesideIcon and not analyze.icon().isNull()
+    assert orbit.toolButtonStyle() == QtCore.Qt.ToolButtonIconOnly and orbit.text() == "Orbit"
+    w.set_button_style("Text")
+    assert analyze.icon().isNull() and orbit.toolButtonStyle() == QtCore.Qt.ToolButtonTextOnly
+    assert app.testAttribute(QtCore.Qt.AA_DontShowIconsInMenus)
+    w.set_button_style("Icons")
+    assert analyze.toolButtonStyle() == QtCore.Qt.ToolButtonIconOnly
+    assert not app.testAttribute(QtCore.Qt.AA_DontShowIconsInMenus)
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_viewport_renders_on_paint_and_falls_back(app, cu_fcc):
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(Pipeline(StaticSource([cu_fcc])))
+    w.show()
+    app.processEvents()
+    vp = w.viewport
+    assert vp._paint_driven and not vp.plotter.render_timer.isActive()  # no idle re-rendering
+    renders = []
+    tag = vp.plotter.render_window.AddObserver("StartEvent", lambda *_: renders.append(1))
+    vp._paint_driven = False  # a pyvistaqt without the paint flag: render directly
+    vp.render()
+    vp.zoom_fit()
+    assert len(renders) >= 2
+    vp.plotter.render_window.RemoveObserver(tag)
+    w.close()
+
+
+def test_viewport_hover_shows_atom_type_index_and_coordinates(app):
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    data = DataCollection([[2.0, 2.0, 2.0], [6.0, 6.0, 6.0], [6.0, 6.0, 2.0]], ["O", "Ti", "Sr"],
+                          Cell(np.diag([8.0, 8.0, 8.0])))
+    v = Viewport(ViewStyle())
+    v.set_data(data)
+    v.view_along("c")
+    cam, w, h = v.plotter.camera, 400, 300
+
+    def screen(p):  # world -> window pixel (y from the top), the inverse of camera_ray
+        m = cam.GetCompositeProjectionTransformMatrix(w / h, -1, 1)
+        m = np.array([[m.GetElement(i, j) for j in range(4)] for i in range(4)])
+        c = m @ [*p, 1]
+        return (c[0] / c[3] + 1) * w / 2, (1 - c[1] / c[3]) * h / 2
+
+    # viewed along c, Ti (z=3) sits in front of Sr (z=1) at the same x, y: the front one wins
+    assert v.hover_index(*screen(data.positions[1]), w, h) in (1, 2)
+    front = 1 if np.dot(data.positions[1] - data.positions[2], np.asarray(cam.position) - cam.focal_point) > 0 else 2
+    assert v.hover_index(*screen(data.positions[1]), w, h) == front
+    assert v.hover_index(*screen(data.positions[0]), w, h) == 0
+    assert v.hover_index(*screen([2.0, 6.0, 4.0]), w, h) is None  # empty space between atoms
+
+    seen = []
+    v.hovered.connect(seen.append)
+    v.hover_move(*screen(data.positions[0]), w, h)
+    v._hover_fire()  # what the rest timer does
+    assert seen[-1].startswith("O  index 0") and "2.0000  2.0000  2.0000 Å" in seen[-1]
+    assert "frac 0.2500  0.2500  0.2500" in seen[-1]
+    v._on_drag_start(None, "LeftButtonPressEvent")  # rotating clears it and stops hover
+    assert seen[-1] == ""
+    v.hover_move(*screen(data.positions[0]), w, h)
+    assert not v._hover_timer.isActive()
+    v._on_drag_end(None, "LeftButtonReleaseEvent")
+    v.hover_info = False  # Preferences › Viewports › Hover
+    v.hover_move(*screen(data.positions[0]), w, h)
+    assert not v._hover_timer.isActive()
+    v.close()
+
+
+def test_main_window_legacy_gl_viewport(app, pipe, tmp_path, monkeypatch):
+    """The OpenGL 1.x viewport (for ssh -X) draws, picks, measures and keeps the camera in sessions."""
+    import time
+
+    from ewald.gui.app import MainWindow
+    from ewald.gui.legacy_viewport import LegacyViewport
+    from ewald.render import camera_state
+
+    monkeypatch.setenv("EWALD_VIEWPORT", "legacy-gl")
+    w = MainWindow(pipe)
+    vp = w.viewport
+    assert isinstance(vp, LegacyViewport)
+    w.resize(900, 700)
+    w.show()
+    for _ in range(20):
+        app.processEvents()
+        time.sleep(0.01)
+    assert vp.opengl_info()["backend"] == "legacy-gl" and vp.opengl_info()["version"]
+    img = vp.view.grabFramebuffer()
+    W, H = vp.view.width(), vp.view.height()
+    bg = img.pixelColor(2, 2)
+    assert img.pixelColor(W // 2, H // 2) != bg  # atoms drawn in the middle
+    assert "Frame 0" in vp.caption.text()
+    vp.set_tool("distance")
+    vp.click(W / 2, H / 2, W, H)
+    vp.click(W / 2 + 25, H / 2, W, H)
+    assert len(vp.picks) == 2 and "Å" in w.pick_label.text()
+    vp.click(2, 2, W, H)  # empty background: nothing picked
+    assert len(vp.picks) == 2
+    vp.hover_info = True
+    assert vp.hover_index(W / 2, H / 2, W, H) is not None  # the hover readout shares the camera
+    assert vp.hover_index(2, 2, W, H) is None
+    vp.view_along("c")
+    vp.rotate("azimuth", 15)
+    w.set_frame(1)
+    app.processEvents()
+    cam = camera_state(vp.plotter)
+    path = w.save_session(str(tmp_path / "s.ewald"))
+    w2 = MainWindow()
+    w2.load_session(path)
+    np.testing.assert_allclose(camera_state(w2.viewport.plotter)["position"], cam["position"], rtol=1e-6)
+    w.close()
+    w2.close()

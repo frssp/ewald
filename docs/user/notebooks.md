@@ -78,10 +78,10 @@ opening a window.
 The ⋯ menu of a cell has Run, Run this and below, Move up/down, Delete and, for steps and views,
 Show as code cell. The `.py` button at the top shows the whole file.
 
-## Notebooks on the left
+## Notebook tabs
 
-The rail on the left of the notebook has one button per open notebook, like tabs. **+** or
-File › New notebook (Ctrl+T) opens an empty one. Right-click a notebook to rename or close it.
+Each open notebook has a tab at the top of the notebook panel. **+** or
+File › New notebook (Ctrl+T) opens an empty one. Right-click a tab to rename or close it, or double-click it to rename.
 A dot marks unsaved changes. Each notebook has its own namespace and pipeline, and switching to
 a notebook that has a pipeline shows it in the viewport.
 

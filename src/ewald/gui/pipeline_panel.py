@@ -537,9 +537,10 @@ class PipelinePanel(QtWidgets.QWidget):
         oxi.setEnabled(self.style.radius_preset in IONIC)
         f.addRow("Oxidation states", oxi)
         shape = QtWidgets.QComboBox()
-        shape.addItems(["auto", "mesh", "impostor"])
+        shape.addItems(["auto", "mesh", "impostor", "flat"])
         shape.setCurrentText(self.style.atom_style)
-        shape.setToolTip("mesh: best shading for figures; impostor: GPU sprites for millions of atoms")
+        shape.setToolTip("mesh: best shading for figures; impostor: GPU sprites for millions of atoms; "
+                         "flat: ASE-GUI look, unshaded discs with outlines")
         shape.currentTextChanged.connect(lambda v: (setattr(self.style, "atom_style", v), self.styleChanged.emit()))
         f.addRow("Rendering", shape)
         types = [] if self.data is None else list(dict.fromkeys(self.data.types))
