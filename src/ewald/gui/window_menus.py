@@ -18,7 +18,7 @@ class MenusMixin:
     """Part of :class:`ewald.gui.app.MainWindow`."""
 
     def _build_activity_bar(self):
-        """Icons on the far left that show or hide the side bars (Notebook, Plugins, Remotes)."""
+        """Icons on the far left that show or hide the side bars (Notebook, Plugins, Remotes, AI chat)."""
         bar = self.activity_bar = QtWidgets.QToolBar("Activity bar")
         bar.setObjectName("activity-bar")
         bar.setMovable(False)
@@ -27,14 +27,33 @@ class MenusMixin:
         self.activity_buttons = {}
         for name, icon_name, dock in (("Notebook", "notebook", self.notebook_dock),
                                       ("Plugins", "plugins", self.plugins_dock),
-                                      ("Remotes", "remote", self.remotes_dock)):
-            act = dock.toggleViewAction()
-            act.setIcon(icon(icon_name))
-            act.setToolTip(f"Show or hide the {name} side bar")
+                                      ("Remotes", "remote", self.remotes_dock),
+                                      ("AI chat", "claude", self.ask_dock)):
+            # not dock.toggleViewAction(): Qt disables it for docks without DockWidgetClosable
+            act = QtGui.QAction(icon(icon_name), name, bar, checkable=True)
+            act.triggered.connect(lambda on, d=dock: self._show_side_bar(d) if on else d.hide())
+            dock.visibilityChanged.connect(lambda _shown, a=act, d=dock: a.setChecked(not d.isHidden()))
+            act.setToolTip("Chat with Claude beside the notebook (Ctrl+J)" if dock is self.ask_dock
+                           else f"Show or hide the {name} side bar")
             bar.addAction(act)
             self.activity_buttons[name] = act
         self.plugins_dock.visibilityChanged.connect(
             lambda shown: shown and self.plugins_panel.search.setFocus())
+        self.ask_dock.visibilityChanged.connect(lambda shown: shown and self.ask_panel.input.setFocus())
+
+    def _show_side_bar(self, dock):
+        """Show an activity-bar side bar in a column of its own: Plugins and Remotes left of the
+        notebook, the AI chat right of it (Qt would otherwise stack a re-shown dock above it)."""
+        placed = dock.isHidden() and not dock.isFloating() and self.notebook_dock.isVisible()
+        if placed:
+            if dock is self.ask_dock:
+                self.splitDockWidget(self.notebook_dock, dock, QtCore.Qt.Horizontal)
+            else:
+                self.splitDockWidget(dock, self.notebook_dock, QtCore.Qt.Horizontal)
+        dock.show()
+        dock.raise_()
+        if placed:
+            self.resizeDocks([dock], [380 if dock is self.ask_dock else 320], QtCore.Qt.Horizontal)
 
     def set_minimal(self, on: bool | None = None):
         """Hide the menu bar, toolbars and status bar, leaving the notebook, the viewport and the
@@ -244,12 +263,12 @@ class MenusMixin:
         w.addAction("Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
         if nb:
             w.addAction("Notebook", lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))
-            w.addAction("Plugins", lambda: (self.plugins_dock.show(), self.plugins_dock.raise_()), "Ctrl+Shift+X")
+            w.addAction("Plugins", lambda: self._show_side_bar(self.plugins_dock), "Ctrl+Shift+X")
             w.addAction("Display settings", lambda: (self.display.parent().show(), self.display.parent().raise_()))
         w.addAction("Python console", lambda: self.bottom.setCurrentWidget(self.console))
         w.addAction("Data inspector", lambda: self.bottom.setCurrentWidget(self.inspector))
         w.addAction("Plots", lambda: self.bottom.setCurrentWidget(self.plots))
-        w.addAction("Ask Claude", self.ask_claude)
+        w.addAction("AI chat" if nb else "Ask Claude", self.ask_claude)
         w.addAction("Command palette", self.command_palette)
         h = mb.addMenu("&Help")
         for label, page in manual.PAGES.items():

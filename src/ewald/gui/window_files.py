@@ -209,8 +209,11 @@ class FilesMixin:
 
     def show_remotes(self):
         """Show the Remotes side bar (saved SSH computers and their files)."""
-        self.remotes_dock.show()
-        self.remotes_dock.raise_()
+        if self.layout_mode == "notebook":
+            self._show_side_bar(self.remotes_dock)
+        else:
+            self.remotes_dock.show()
+            self.remotes_dock.raise_()
         self.remotes_panel.list.setFocus()
 
     def _open_asking_types(self, path):
