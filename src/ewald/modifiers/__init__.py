@@ -10,6 +10,7 @@ from .wigner_seitz import WignerSeitzAnalysis
 from .local_order import AcklandJones, AtomicStrain, CentroSymmetry, ChillPlus
 from .ovito_bridge import DislocationAnalysis, OvitoModifier
 from .neb import NebEnergyProfile
+from .phonon import PhononMode
 from .plumed import FreeEnergySurface, LoadColvar, Plumed
 from .selection import (ClearSelection, DeleteSelected, ExpressionSelection, InvertSelection,
                         SelectType, Slice)
@@ -34,7 +35,7 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "CreateIsosurface", "GridSlice", "GridDifference", "Histogram", "SpatialBinning", "ReduceProperty",
            "SteinhardtOrderParameters", "BondAngleDistribution", "BondLengthDistribution", "FindRings", "VectorVis",
            "Plumed", "LoadColvar", "FreeEnergySurface", "NebEnergyProfile",
-           "OverlayFrames"]
+           "OverlayFrames", "PhononMode"]
 
 # OVITO spellings (``CommonNeighborAnalysisModifier``, ``WrapPeriodicImagesModifier``, ...) resolve to the
 # ewald class, so OVITO scripts - and code written by LLMs that learned OVITO - run unchanged.

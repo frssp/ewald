@@ -77,6 +77,18 @@ pipe.modifiers.append(VectorVis("Force", scaling=2.0, color_mapping_property="Ma
 pipe.modifiers.append(VectorVis("Magnetic Moment", scaling=0.5, alignment="center", color="crimson"))
 ```
 
+## Phonon modes
+
+`PhononMode(qpoint, band, amplitude, supercell, arrows, ...)` animates one phonon mode of a
+phonopy `band.yaml`/`mesh.yaml`/`qpoints.yaml` or a VASP IBRION=5-8 OUTCAR over one period (the
+file's frames), in a commensurate supercell, with the mode pattern as arrows. See
+[Phonon modes](phonons.md).
+
+```python
+pipe = import_file("band.yaml")
+pipe.modifiers.append(PhononMode(qpoint=50, band=3, amplitude=0.3))
+```
+
 ## Transformations
 
 `AffineTransformation(matrix)` applies a 3×3 or 3×4 matrix to particles and optionally the

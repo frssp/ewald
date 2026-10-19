@@ -16,6 +16,7 @@ from .thermo import Thermo, merge_tables, read_lammps_log, read_thermo, sibling_
 from .vasp_output import OutcarReader, VasprunReader, is_outcar, is_vasprun, read_oszicar
 from .volumetric import (VolumetricReader, is_cube, is_vasp_volumetric, read_cube, read_vasp_volumetric,
                          write_cube, write_vasp_volumetric)
+from .phonon import PhononReader
 from .mdanalysis_reader import MDAnalysisReader, is_md_trajectory, write_md_trajectory
 from .neb import NebReader, is_neb, read_lammps_neb_log
 from .xdatcar import XdatcarReader, is_xdatcar
@@ -133,6 +134,18 @@ def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
     return plugins.open_reader(path, format, **kwargs)
 
 
+def _is_phonopy(path):
+    from ..phonon import is_phonopy_yaml
+
+    return is_phonopy_yaml(path)
+
+
+def _is_outcar_phonon(path):
+    from ..phonon import is_outcar_phonon
+
+    return is_outcar_phonon(path)
+
+
 def _open_lammps_data(path, **kwargs):
     if "style" in kwargs:  # ASE's keyword name
         kwargs["atom_style"] = kwargs.pop("style")
@@ -207,6 +220,13 @@ def builtin_readers():
         ReaderPlugin("extxyz", ExtxyzReader, ("*.xyz", "*.extxyz"), is_extxyz,
                      "XYZ / extended XYZ (Lattice=, Properties=), lazy", B, 20, ("xyz", "ext-xyz")),
         ReaderPlugin("cif", _open_cif, ("*.cif",), None, "Crystallographic Information File via ASE", B, 90),
+        ReaderPlugin("phonopy", PhononReader, ("band.yaml", "mesh.yaml", "qpoints.yaml", "*.yaml"), _is_phonopy,
+                     "phonopy band.yaml/mesh.yaml/qpoints.yaml with eigenvectors: phonon modes "
+                     "(PhononMode animates one); frames= per period, structure= for qpoints.yaml", B, 9,
+                     ("phonopy-yaml", "band.yaml", "phonon")),
+        ReaderPlugin("vasp-phonon", PhononReader, ("OUTCAR*",), _is_outcar_phonon,
+                     "VASP OUTCAR of an IBRION=5-8 run: Gamma phonon modes (PhononMode animates one)", B, 15,
+                     ("outcar-phonon",)),
         ReaderPlugin("outcar", OutcarReader, ("OUTCAR*",), is_outcar,
                      "VASP OUTCAR: ionic steps with forces, energies, stress, magnetic moments, lazy", B, 16,
                      ("vasp-outcar",)),
