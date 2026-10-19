@@ -48,6 +48,10 @@ GUI
 - Flat (ASE) style in the ray tracer and the vector renderer (now OpenGL only), and a
   per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.
+- Boundary (VESTA): repeat isosurfaces and grid slices over the boundary range too (now only
+  atoms, bonds and coordination polyhedra are repeated), VESTA's recursive "search molecules"
+  mode, and keep the images while the coarse viewport level of detail is shown (they disappear
+  during rotation of systems above the interactive atom limit).
 - Bonds above the automatic-bonds limit (100 000 atoms): a fast path (bond impostors or lines)
   so large systems can show bonds by default too.
 
@@ -61,6 +65,9 @@ Analysis
   offer an OVITO-compatible mode once its rule is known.
 - FindRings in numba for networks above ~100k atoms (8000 a-Si atoms, rings up to 10: 1 s).
 - Spatial correlation function and Voronoi-weighted Steinhardt (OVITO / freud have them).
+- The rest of OVITO's everyday modifiers: manual selection (box or lasso in the viewport, kept as
+  a modifier) and Smooth trajectory (interpolated frames). FreezeProperty, UnwrapTrajectories,
+  ExpandSelection, LoadTrajectory and CombineDatasets are done.
 - Ion transport: error bars for the conductivity and Haven ratio (block averaging over
   independent windows; the collective charge MSD is one vector and noisy), Onsager
   coefficients L_ij per species pair, and the conductivity checked against a published

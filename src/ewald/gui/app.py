@@ -461,6 +461,13 @@ class MainWindow(QtWidgets.QMainWindow):
             f"with an OVITO-style Python pipeline.</p><p>{self.hardware_summary()}</p>"
             f"<p><a href='{self.help_url()}'>Manual</a></p>")
 
+    def _gpu_available(self) -> bool:
+        if getattr(self, "_gpu", None) is None:
+            from ..backend import gpu_available
+
+            self._gpu = gpu_available()
+        return self._gpu
+
     def hardware_summary(self) -> str:
         """OpenGL driver of the viewport and the CUDA device for compute, as HTML for About."""
         from ..backend import gpu_available
@@ -719,6 +726,9 @@ class MainWindow(QtWidgets.QMainWindow):
             traceback.print_exc()
             return
         dt = time.perf_counter() - t
+        n = self.pipeline.num_frames  # LoadTrajectory changes the frame count
+        if self.timeline.slider.maximum() != max(0, n - 1):
+            self.timeline.set_num_frames(n)
         for m in self.pipeline.modifiers:
             if m.enabled and m.status:
                 self.message(f"{m.name}: {m.status}", error=True)
@@ -748,6 +758,8 @@ class MainWindow(QtWidgets.QMainWindow):
             p.set_highlight(self._selected_indices())
         self._push_console()
         dev = (self.device or "cpu").upper()
+        if dev == "AUTO":  # show what auto resolved to
+            dev = "AUTO (CUDA)" if self._gpu_available() else "AUTO (CPU)"
         self.status.setText(f"N = {self.data.count}   frame {self.frame}/{self.pipeline.num_frames - 1}   "
                             f"pipeline {dt * 1000:.0f} ms   {dev}")
         if self.workspaces.currentIndex() == 1:

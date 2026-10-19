@@ -31,6 +31,7 @@ for in words ends up as an ordinary pipeline.
 | `modifiers/ovito_bridge.py` | DXA and `OvitoModifier` through the optional `ovito` package |
 | `_csrc/` | C++ ports of OVITO's CNA, PTM, Voronoi and CSP plus vendored ptm, voro++ and mwm_csp |
 | `scene.py` | the renderer-neutral scene: `VisualElement`s (built-in Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell, and plugins) turn a `DataCollection` into primitives (`Spheres`, `Cylinders`, `Lines`, `SurfaceMesh`, `Arrows`) |
+| `boundary.py` | VESTA's boundary range for drawing: periodic images inside a fractional range, bonds and polyhedra completed across the cell; `scene.build(boundary=...)` runs the elements on that display copy and maps every primitive back to its real atom |
 | `overlays.py` | image-space overlays for every renderer: text label, legends, scale bar, and `OverlayElement`s (Coordinate tripod, Attributes, plugins) returning 2D items |
 | `colormaps.py`, `themes.py` | color maps by name (matplotlib plus `@colormap` plugins, with a grayscale check) and themes (element colors, background, cell color, radius preset; VESTA colors in `tables/colors.json`) |
 | `render.py`, `raytrace.py`, `vector.py` | draw a scene: VTK/PyVista (impostors above 150k atoms), the numba ray tracer, SVG/PDF via matplotlib; each draws every primitive kind |

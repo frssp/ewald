@@ -181,13 +181,20 @@ class Pipeline:
 
     @property
     def num_frames(self) -> int:
-        return self.source.num_frames
+        """Frames of the source, or of the trajectory a modifier loads on top of it
+        (a modifier with a ``frame_count()`` method, such as LoadTrajectory)."""
+        n = self.source.num_frames
+        for m in self.modifiers:
+            count = m.frame_count() if m.enabled and hasattr(m, "frame_count") else None
+            if count:
+                n = count
+        return n
 
     def __len__(self):
         return self.num_frames
 
     def source_frame(self, frame: int) -> DataCollection:
-        frame %= self.num_frames
+        frame %= self.source.num_frames
         if frame in self._cache:
             self._cache.move_to_end(frame)
         else:

@@ -71,6 +71,7 @@ Every renderer draws the same overlays, sized relative to the image:
 | `overlays` | overlay elements drawn on the image: `"Coordinate tripod"` (axis arrows that turn with the camera), `"Attributes"` (a temperature/energy readout), [plugins](../plugins/overlays.md); names, instances or `{"name": ..., "params": {...}}` |
 | `theme` | `"VESTA"`, `"CPK"`, `"Journal"`, `"ASE"`, `"Dark slide"` or a [theme plugin](../plugins/styles.md#themes): element colors, background, cell color and radius preset; explicit arguments win |
 | `show_cell`, `dpi` | cell outline; resolution stored in the file |
+| `boundary`, `boundary_bonds` | VESTA's boundary: `boundary=(-0.1, 1.1)` (fractional; or three `(lo, hi)` pairs) also draws the periodic images inside the range and completes bonds and polyhedra cut by the cell (see [below](#boundary-vesta)) |
 | `visuals` | extra [visual elements](../plugins/visuals.md) drawn on top in every renderer: registered names, instances, or `{"name": ..., "params": {...}}` |
 | `vectors` | particle properties drawn as arrows: `"Force"`, `["Force", "Velocity"]` or `{"Force": {"scaling": 2, "color": "red"}}` (options of [`VectorVis`](modifiers.md#vector-arrows)); added to, and overriding, the arrows `VectorVis` set |
 
@@ -137,6 +138,29 @@ render(data, "simple.png", atom_style="flat", theme="ASE", radius_scale=1.1, bon
 It uses impostors, so it is as fast as `"impostor"` at any size, and screen-space ambient
 occlusion is off unless you pass `ambient_occlusion=True`. It applies to the OpenGL renderer; the
 ray tracer and the vector renderer keep their own shading.
+
+## Boundary (VESTA)
+
+A crystal drawn with only its own atoms looks cut open: the atom at the origin is not repeated on
+the other corners, and bonds and polyhedra stop at the cell faces. `boundary` draws it the way
+VESTA does. Every periodic image whose fractional coordinates fall inside the range is drawn as
+well, bonds between drawn atoms become whole, and coordination polyhedra are repeated on the
+images of their centers, with the corner atoms added so each polyhedron is complete:
+
+```python
+pipe = Pipeline(src, [CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.2)]), CoordinationPolyhedra(["Ti"])])
+pipe.render("srtio3.png", boundary=(0, 1))                  # Ti on all eight corners, eight octahedra
+pipe.render("srtio3_more.png", boundary=[(-0.1, 1.1), (-0.1, 1.1), (0, 1)], boundary_bonds="complete")
+```
+
+`boundary_bonds` decides what a bond that leaves the range looks like: `"half"` (default) draws
+the half at the drawn atom, as without a boundary; `"complete"` adds the partner atom, VESTA's
+"search additional atoms"; `"none"` leaves it out. Only periodic directions get images.
+
+It is display only. `pipe.compute()` and every modifier still see the real atoms, the images are
+made by the renderers (OpenGL, ray tracer and vector alike), and an image picks, hovers and
+selects as its real atom in the GUI. In the GUI it is the Boundary box of the Simulation cell
+entry in the pipeline panel; the range is saved with the session.
 
 ## Animations
 

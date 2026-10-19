@@ -145,7 +145,8 @@ OPTIONS = (
     Option("render.movie_format", "MP4 (H.264)", "Movie format", "AVI uses Motion JPEG for PowerPoint.",
            choices=("MP4 (H.264)", "GIF", "AVI (Motion JPEG)", "MOV (H.264)", "PNG sequence")),
 
-    Option("compute.device", "cpu", "Default device", "Toolbar Compute switch changes only the current session.",
+    Option("compute.device", "auto", "Default device", "Auto uses the CUDA GPU when CuPy finds one, else the CPU. "
+           "The toolbar Compute switch changes only the current session.",
            choices=("cpu", "cuda", "auto")),
     Option("performance.cache_memory", 2048, "Frame cache memory",
            "Upper bound for cached trajectory frames (MB); the current frame is always kept.",

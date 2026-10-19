@@ -46,6 +46,9 @@ MODIFIER_MENU = {
         "Trajectory lines / paths": mods.GenerateTrajectoryLines,
         "NEB energy profile / barrier": mods.NebEnergyProfile,
         "Overlay frames (see-through images)": mods.OverlayFrames,
+        "Unwrap trajectories": mods.UnwrapTrajectories,
+        "Freeze property (values of frame 0)": mods.FreezeProperty,
+        "Load trajectory (topology + dump)": mods.LoadTrajectory,
     },
     "Ion transport": {
         "Ionic conductivity / Haven ratio": mods.IonicConductivity,
@@ -88,10 +91,12 @@ MODIFIER_MENU = {
         "Affine transformation": lambda: mods.AffineTransformation([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
         "Compute property": lambda: mods.ComputeProperty("MyProperty", "Position.Z"),
         "Delete selected": mods.DeleteSelected,
+        "Combine datasets (add particles from a file)": mods.CombineDatasets,
     },
     "Selection": {
         "Expression selection": lambda: mods.ExpressionSelection("Position.Z > 0"),
         "Select type": lambda: mods.SelectType("Cu"),
+        "Expand selection (neighbors)": mods.ExpandSelection,
         "Invert selection": mods.InvertSelection,
         "Clear selection": mods.ClearSelection,
     },
@@ -690,9 +695,45 @@ class PipelinePanel(QtWidgets.QWidget):
         width.valueChanged.connect(lambda v: (setattr(self.style, "cell_width", v), self.styleChanged.emit()))
         f.addRow(show)
         f.addRow("Line width", width)
+        f.addRow(self._boundary_editor())
         if self.data is not None and self.data.cell.is_valid:
             f.addRow(QtWidgets.QLabel(cell_summary(self.data.cell), objectName="muted"))
         return w
+
+    def _boundary_editor(self):
+        """VESTA's boundary range: periodic images inside lo..hi (fractional) are drawn too."""
+        from ..boundary import BOND_MODES
+
+        box = QtWidgets.QGroupBox("Boundary (VESTA)", checkable=True, checked=bool(self.style.boundary))
+        box.setToolTip("Also draw the periodic images of atoms inside this fractional range, and complete "
+                       "bonds and polyhedra cut by the cell. Display only: analysis keeps the real atoms.")
+        lo_hi = (self.style.boundary if np.ndim(self.style.boundary) == 1 else self.style.boundary[0]) \
+            if self.style.boundary else (0.0, 1.0)
+        lo = QtWidgets.QDoubleSpinBox(minimum=-5, maximum=1, singleStep=0.05, decimals=3, value=float(lo_hi[0]))
+        hi = QtWidgets.QDoubleSpinBox(minimum=0, maximum=6, singleStep=0.05, decimals=3, value=float(lo_hi[1]))
+        mode = QtWidgets.QComboBox()
+        mode.addItems(list(BOND_MODES))
+        mode.setCurrentText(self.style.boundary_bonds)
+        for k, tip in enumerate(BOND_MODES.values()):
+            mode.setItemData(k, tip, QtCore.Qt.ToolTipRole)
+
+        def apply(*_):
+            self.style.boundary = [lo.value(), max(hi.value(), lo.value())] if box.isChecked() else []
+            self.style.boundary_bonds = mode.currentText()
+            self.styleChanged.emit()
+
+        box.toggled.connect(apply)
+        lo.valueChanged.connect(apply)
+        hi.valueChanged.connect(apply)
+        mode.currentTextChanged.connect(apply)
+        g = QtWidgets.QFormLayout(box)
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(lo)
+        row.addWidget(QtWidgets.QLabel("to"))
+        row.addWidget(hi)
+        g.addRow("Range", row)
+        g.addRow("Bonds leaving it", mode)
+        return box
 
     def _source_editor(self):
         w = QtWidgets.QWidget()
