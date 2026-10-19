@@ -364,6 +364,19 @@ class Viewport(QtWidgets.QWidget):
         """Indices of the picked particles in the current frame."""
         return list(self._picks)
 
+    def set_picks(self, indices, emit: bool = True):
+        """Select particles ``indices`` (e.g. a range dragged on a plot), drawn like picks;
+        the pick tool's Shift+click then adds to or removes from them."""
+        n = self.data.count if self.data is not None else 0
+        self._picks = [int(i) for i in indices if 0 <= int(i) < n]
+        if self._picks and self.tool not in ("pick", "orbit"):
+            self.tool = "pick"
+            self.tool_buttons["pick"].setChecked(True)
+        self._draw_picks()
+        self.plotter.render()
+        if emit:
+            self.picked.emit(self.describe_picks())
+
     def clear_picks(self):
         self._picks = []
         self._draw_picks()
@@ -439,7 +452,7 @@ class Viewport(QtWidgets.QWidget):
         def label(i):
             pid = d.particles.get("Particle Identifier")
             return f"{d.types[i]}#{int(pid[i]) if pid is not None else i}"
-        if self.tool == "pick" and len(P) > 1:
+        if self.tool in ("pick", "orbit") and len(P) > 1:
             shown = ", ".join(label(i) for i in P[:6]) + (" …" if len(P) > 6 else "")
             return f"{len(P)} atoms picked: {shown}"
         if self.tool == "pick" or len(P) == 1:
@@ -470,10 +483,17 @@ class Viewport(QtWidgets.QWidget):
             return
         pos = self.data.positions[self._picks]
         r = default_radii(self.data, **self.style.radius_kwargs())[self._picks] * self.style.radius_scale
-        rings = pv.MultiBlock([pv.Sphere(radius=ri * 1.18, center=c, theta_resolution=16, phi_resolution=16)
-                               for c, ri in zip(pos, r)]).combine()
-        p.add_mesh(rings, color=TOKENS["pick"], style="wireframe", line_width=1.5, opacity=0.9,
-                   name="_pick", render=False, pickable=False)
+        cloud = pv.PolyData(np.asarray(pos, float))
+        if len(pos) > 20000:  # a plot range can select very many atoms: dots, not spheres
+            p.add_mesh(cloud, color=TOKENS["pick"], point_size=4, render_points_as_spheres=True,
+                       name="_pick", render=False, pickable=False)
+        else:
+            res = 16 if len(pos) <= 500 else 8
+            cloud["scale"] = np.asarray(r, float) * 1.18
+            rings = cloud.glyph(scale="scale", orient=False,
+                                geom=pv.Sphere(radius=1.0, theta_resolution=res, phi_resolution=res))
+            p.add_mesh(rings, color=TOKENS["pick"], style="wireframe", line_width=1.5, opacity=0.9,
+                       name="_pick", render=False, pickable=False)
         if len(self._picks) >= 2 and self.tool in ("distance", "angle"):
             line = pv.lines_from_points(pos)
             p.add_mesh(line, color=TOKENS["pick"], line_width=3, name="_measure", render=False, pickable=False)

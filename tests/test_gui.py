@@ -211,6 +211,131 @@ def test_plots_thermo_series_marker_follows_frame(app, lammps_dir):
     assert list(panel._marker.get_xdata()) == [30, 30]
 
 
+def test_timeline_frame_selection_playback(app):
+    from ewald.gui.timeline import Timeline
+
+    tl = Timeline()
+    tl.set_num_frames(10)
+    seen, cleared = [], []
+    tl.frameChanged.connect(seen.append)
+    tl.selectionChanged.connect(cleared.append)
+    tl.set_selection([7, 2, 2, 5, 42])
+    assert tl.selection == [2, 5, 7] and tl.sel.text() == "3 selected ✕"
+    tl._set(3)
+    tl._advance(); tl._advance(); tl._advance()
+    assert seen == [3, 5, 7, 2]  # playback steps through the selected frames, looping
+    tl.grab()  # paints the selection ticks
+    tl.sel.click()
+    assert tl.selection == [] and cleared == [[]] and tl.sel.isHidden()
+
+
+def test_plots_drag_selects_atoms_and_shows_viewport_selection(app, cu_fcc):
+    from ewald.gui.plots import PlotsPanel
+
+    pipe = Pipeline(StaticSource([cu_fcc]), [mods.CoordinationAnalysis(3.0), mods.CreateBonds(3.0),
+                                             mods.BondLengthDistribution()])
+    d = pipe.compute(0)
+    panel = PlotsPanel()
+    panel.pipeline = pipe
+    panel.show()  # the highlight is only computed while the tab is visible
+    got, exprs = [], []
+    panel.atomsSelected.connect(got.append)
+    panel.expressionRequested.connect(exprs.append)
+    panel.set_data(d)
+    panel.hist.setCurrentText("Coordination")
+    assert panel.link.kind == "property" and panel.keep.isVisibleTo(panel) and not panel.keep.isEnabled()
+    panel.select(11.5, 12.5)
+    assert len(got[-1]) == d.count and panel.link_label.text().startswith(f"{d.count} particles")
+    panel._keep()
+    assert exprs == ["(Coordination >= 11.5) & (Coordination <= 12.5)"]
+    panel.set_data(d)  # new frame: the range is re-applied
+    assert len(got) == 2
+    panel.set_highlight([0, 1, 2])
+    bars = [a for a in panel._overlays if hasattr(a, "get_height") and round(a.get_alpha(), 2) == 0.85]
+    assert sum(b.get_height() for b in bars) == 3 and panel._ax2 is None  # counts: same axis
+    # the g(r) plot: pairs at the first-neighbour distance
+    panel.hist.setCurrentText("")
+    panel.table.setCurrentText("coordination-rdf")
+    assert panel.link.kind == "pairs" and panel._range is None  # a new plot drops the old range
+    panel.select(2.4, 2.7)
+    assert len(got[-1]) == d.count
+    assert panel._ax2 is not None and panel._ax2.get_visible()  # g(r): selection on a second axis
+    panel.select(0.5, 1.0)
+    assert len(got[-1]) == 0
+    panel.clear_selection()
+    assert panel._range is None and len(got[-1]) == 0 and not panel.clear.isEnabled()
+
+
+def test_plots_time_series_selects_and_jumps_to_frames(app, lammps_dir):
+    from matplotlib.backend_bases import MouseEvent
+
+    from ewald import import_file
+    from ewald.gui.plots import PlotsPanel
+
+    pipe = import_file(lammps_dir / "thermo" / "dump.lammpstrj")
+    panel = PlotsPanel()
+    panel.resize(600, 400)
+    panel.pipeline = pipe
+    frames, jumps = [], []
+    panel.framesSelected.connect(frames.append)
+    panel.frameRequested.connect(jumps.append)
+    panel.set_data(pipe.compute(0))
+    assert panel.link.kind == "frames" and not panel.keep.isVisibleTo(panel)
+    panel.select(15, 32)
+    assert frames == [[2, 3]] and "2 frames selected" in panel.link_label.text()
+    marks = [ln for ln in panel._overlays if hasattr(ln, "get_xdata") and ln.get_marker() == "o"]
+    assert list(marks[0].get_xdata()) == [20, 30]
+    panel.set_frame_selection([0, 4])  # from the timeline: marks only
+    assert frames == [[2, 3]]
+    # mouse: a click jumps, a drag selects
+    panel.canvas.draw()
+    ax = panel._ax
+
+    def event(kind, x, y):
+        px, py = ax.transData.transform((x, y))
+        return MouseEvent(kind, panel.canvas, px, py, button=1)
+
+    for kind in ("button_press_event", "button_release_event"):
+        panel.canvas.callbacks.process(kind, event(kind, 21, ax.get_ylim()[0] + 1))
+    assert jumps == [2]
+    panel.canvas.callbacks.process("button_press_event", event("button_press_event", 5, ax.get_ylim()[0] + 1))
+    panel.canvas.callbacks.process("motion_notify_event", event("motion_notify_event", 22, ax.get_ylim()[0] + 1))
+    panel.canvas.callbacks.process("button_release_event", event("button_release_event", 22, ax.get_ylim()[0] + 1))
+    assert frames[-1] == [1, 2]
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_main_window_links_plots_and_viewport(app, cu_fcc, lammps_dir):
+    from ewald import import_file
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(Pipeline(StaticSource([cu_fcc, cu_fcc]), [mods.CoordinationAnalysis(3.0)]))
+    w.plots.table.setCurrentText("coordination-rdf")
+    w.plots.select(2.4, 2.7)
+    assert len(w.viewport.picks) == cu_fcc.count and w._ask_context()[2] == w.viewport.picks
+    assert f"{cu_fcc.count} atoms picked" in w.pick_label.text()
+    w.timeline._set(1)  # the plot range follows the frame
+    assert len(w.viewport.picks) == cu_fcc.count
+    w.viewport.set_tool("pick")
+    w.viewport.add_pick(3)  # a click in the view replaces the plot range ...
+    assert w.plots._range is None and w.plots.highlight == [3]  # ... and shows on the plot
+    w.plots.table.setCurrentText("")
+    w.plots.hist.setCurrentText("Coordination")
+    w.plots.select(11, 13)
+    w.plots._keep()
+    assert w.pipeline.modifiers[-1].name == "ExpressionSelection" and w.viewport.picks == []
+    assert len(w.plots.highlight) == cu_fcc.count  # the Selection property is drawn on the plot
+    w.close()
+    w = MainWindow(import_file(lammps_dir / "thermo" / "dump.lammpstrj"))
+    w.plots.select(15, 32)
+    assert w.timeline.selection == [2, 3] and w.frame == 2
+    w.plots.frameRequested.emit(4)
+    assert w.frame == 4
+    w.timeline.sel.click()
+    assert w.plots.frame_selection == []
+    w.close()
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_main_window_smoke(app, pipe, tmp_path):
     from ewald.gui.app import MainWindow
