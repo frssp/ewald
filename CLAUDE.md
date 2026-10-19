@@ -96,6 +96,8 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `notebook.py`: notebooks as percent-format `.py` files (`# %%` cells, one namespace, `pipe` is the
   pipeline; step cells = one `pipe.add(...)`, view cells = one `show(pipe, ...)` from
   `views.py`). The GUI's default layout is built on it (`general.layout`: notebook | classic).
+  `notebook_io.py` reads and writes `.ipynb` and `.ewd` (zip: notebook.ipynb, manifest.json,
+  figures/, data/, plugins/); an `.ewd` opens restricted until `Notebook.trust()`.
 - `gui/`: `app.py` main window (frames, recompute, styling; built from mixins: `window_menus.py` toolbar,
   menus, activity bar and minimal mode, `window_files.py` open/export/sessions/notebooks, `viewport_menu.py`
   right-click menu, `window_links.py` picks, plot links (Plots tab and view cells), Ask Claude and console),
