@@ -162,3 +162,41 @@ def test_ewd_carries_the_plugins_its_steps_use(cu_file, tmp_path):
                                     "modifiers": ["EwdShift"], "file": "plugins/ewd_shift.py"}]
     with zipfile.ZipFile(tmp_path / "p.ewd") as z:
         assert "class EwdShift" in z.read("plugins/ewd_shift.py").decode()
+
+
+def add_package_plugin(path, requirement="ewald-cp2k==0.2", modifiers=("Cp2kCharges",)):
+    """Rewrite an .ewd so its manifest names a plugin from a pip package (as one saved where it was installed)."""
+    with zipfile.ZipFile(path) as z:
+        items = {n: z.read(n) for n in z.namelist()}
+    manifest = json.loads(items["manifest.json"])
+    manifest["plugins"] = manifest.get("plugins", []) + [
+        {"id": requirement.split("==")[0], "name": requirement.split("==")[0], "version": "0.2", "kind": "package",
+         "modifiers": list(modifiers), "file": None, "requirement": requirement}]
+    items["manifest.json"] = json.dumps(manifest).encode()
+    with zipfile.ZipFile(path, "w") as z:
+        for n, b in items.items():
+            z.writestr(n, b)
+
+
+def test_ewd_lists_the_pip_packages_it_needs(cu_file, tmp_path, monkeypatch):
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\npipe = load({cu_file!r})\n")
+    notebook_io.save_ewd(nb, tmp_path / "p.ewd", figures=False)
+    add_package_plugin(tmp_path / "p.ewd")
+    sent = Notebook.load(tmp_path / "p.ewd")
+    assert [e["requirement"] for e in notebook_io.missing_packages(sent.manifest)] == ["ewald-cp2k==0.2"]
+    assert any("pip install ewald-cp2k==0.2" in w and "Cp2kCharges" in w for w in sent.warnings)
+    # a package whose modifiers are registered (installed under another id) is not missing
+    from ewald import plugins
+
+    monkeypatch.setattr(plugins, "modifiers", lambda: {"Cp2kCharges": object()})
+    assert notebook_io.missing_packages(sent.manifest) == []
+
+
+def test_folded_cells_round_trip_as_jupyter_hidden_cells():
+    nb = Notebook.from_py("# %%\nx = 1\n\n# %%\ny = 2\n")
+    nb.cells[1].collapsed = True
+    doc = notebook_io.to_ipynb(nb)
+    assert doc["cells"][1]["metadata"]["jupyter"] == {"source_hidden": True, "outputs_hidden": True}
+    assert "jupyter" not in doc["cells"][0]["metadata"]
+    back = notebook_io.from_ipynb(doc)
+    assert [c.collapsed for c in back.cells] == [False, True]

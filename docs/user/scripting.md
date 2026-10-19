@@ -76,6 +76,26 @@ msd = trajectory_msd(pipe, device="cuda")              # table: lag, MSD, MSD <t
 gr = trajectory_rdf(pipe, cutoff=6.0, nbins=300)       # time-averaged g(r)
 ```
 
+## In Jupyter
+
+A pipeline, a frame or a verb table as the last line of a Jupyter cell shows a picture: the
+structure (frame 0 of a pipeline) drawn by the built-in ray tracer, which needs no OpenGL or
+display, so it works on a remote Jupyter server too, or the table's curve.
+
+```python
+from ewald import load, rdf
+pipe = load("cu_void.lammpstrj")
+pipe                     # picture of frame 0
+pipe.compute(40)         # another frame
+rdf(pipe, cutoff=6)      # the g(r) curve
+```
+
+`ewald.display.options` changes the picture: `size` (480x360), `renderer` (`"raytrace"` or
+`"opengl"`), `quality` (`None` picks `"standard"`, or `"draft"` above 100 000 atoms) and any
+other `render()` keyword such as `direction="z"` or `theme="VESTA"`.
+`ewald.display.options["enabled"] = False` goes back to the text repr, which consoles and
+`print()` always show. A picture that fails also falls back to the text.
+
 ## Errors
 
 `pipe.compute(i)` raises the first error a modifier hits. `compute(i, errors="skip")` keeps

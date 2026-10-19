@@ -175,6 +175,12 @@ current frame or the whole trajectory through `export_file`, and File › Export
 MP4 or GIF (needs the `movie` extra). File › Live reload turns following a growing trajectory
 on or off for the session; the default and the interval are in Preferences › General.
 
+File › Load remote file (SSH) browses a folder on another machine once. For machines you use
+often, the Remotes side bar (the monitor icon in the activity bar, or File › Remote computers,
+Ctrl+Alt+R) keeps saved remote computers with their login, jump host, start folder and
+bookmarks, and browses their files; passwords and key passphrases go to the OS keychain
+([Saved remote computers](formats.md#saved-remote-computers)).
+
 ## Preferences
 
 Edit › Preferences (Ctrl+, ; the application menu on macOS) has seven pages: General, Viewports,
@@ -202,7 +208,12 @@ full-detail frame takes longer than 1/*Target frame rate* (30 fps). The coarse s
 impostors, leaves out bonds and draws every k-th atom, so at most *Atoms while moving*
 (1,000,000) remain. Full detail returns after *Refine after* (0.3 s) of idle. *Always coarse*
 and *Always full* fix the choice. When frames are requested faster than they can be computed,
-the queued requests collapse into the latest one. Rendered images and movies always use full
+the queued requests collapse into the latest one. The pipeline runs on a worker thread, so the
+window stays responsive while a long analysis computes: the view keeps the previous result and
+the status bar says *Computing frame n…* until the new one arrives, and changing the frame or a
+parameter meanwhile cancels the running computation (trajectory modifiers stop at their next
+frame). Results that take less than 50 ms appear at once, as before. Compute › Device ›
+*Compute in the background* turns this off. Rendered images and movies always use full
 detail. Compute › Memory › *Frame cache memory* (2048 MB) caps how much the trajectory frame
 cache holds; the current frame is always kept. Scripts set the same cap with
 `Pipeline(..., cache_memory=bytes)` or `pipe.cache_memory`.

@@ -74,7 +74,7 @@ def test_run_all_builds_the_pipeline_and_shows_outputs(nb):
     pipe = nb.pipeline
     assert [m.name for m in pipe.modifiers] == ["CoordinationAnalysis", "ExpressionSelection"]
     assert nb.cells[2].modifier is pipe.modifiers[0] and nb.cells[3].modifier is pipe.modifiers[1]
-    last = nb.cells[4]
+    last = nb.cells[-1]
     assert [o.kind for o in last.outputs] == ["text", "value"]
     assert last.outputs[0].data == "atoms 107\n"
     assert last.outputs[1].data == "12"
@@ -285,3 +285,38 @@ def test_load_add_and_paint(cu_file):
     assert list(d["Transparency"][:3]) == [1, 1, 0.5]
     isolate(d, surface)
     assert (d["Transparency"][~surface] == 1).all()
+
+
+def test_history_undo_redo_follows_the_pipeline(cu_file):
+    from ewald.notebook import History
+
+    nb = Notebook.from_py(NOTEBOOK.format(path=cu_file))
+    nb.run_all()
+    hist = History(nb)
+    pipe = nb.pipeline
+    assert not hist.can_undo and hist.undo() is None
+    coord = nb.cells[2]
+    # a step form edit, dragged in three moves: one entry
+    for cutoff in (3.1, 3.2, 3.3):
+        coord.modifier.cutoff = cutoff
+        nb.update_step(coord)
+        hist.commit("Edit CoordinationAnalysis", merge=("form", id(coord)))
+    nb.delete(nb.cells[3])  # the ExpressionSelection step
+    hist.commit("Delete cell")
+    assert [m.name for m in pipe.modifiers] == ["CoordinationAnalysis"]
+    nb.cells[-1].source += "\nprint('typed, not run')"  # typing counts as one entry on undo
+    assert hist.undo_label == "Edit cell"
+    assert hist.undo() == "Edit cell" and "typed" not in nb.cells[-1].source
+    assert nb.cells[-1].state == "stale"  # plain code is not re-run on undo
+    assert hist.undo() == "Delete cell"
+    assert [m.name for m in pipe.modifiers] == ["CoordinationAnalysis", "ExpressionSelection"]
+    assert nb.cells[3].modifier is pipe.modifiers[1]
+    kept = pipe.modifiers[0]
+    assert hist.undo() == "Edit CoordinationAnalysis"
+    assert pipe.modifiers[0].cutoff == 3.0 and pipe.modifiers[0] is not kept  # the step ran again
+    assert int(pipe.compute(0).selection.sum()) == 12
+    assert hist.undo() is None and hist.can_redo
+    assert hist.redo() == "Edit CoordinationAnalysis" and pipe.modifiers[0].cutoff == 3.3
+    assert hist.redo() == "Delete cell" and len(pipe.modifiers) == 1
+    nb.add_step(mods.ExpressionSelection("Coordination < 12"))
+    assert hist.commit("Add step") and not hist.can_redo  # a new edit drops the redo entries

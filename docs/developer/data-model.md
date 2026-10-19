@@ -35,6 +35,13 @@ after `compute`.
 5. on an exception, stores the message in `modifier.status` and either re-raises
    (`errors="raise"`) or continues (`errors="skip"`, what the GUI uses).
 
+`cancel` takes a `threading.Event`: when another thread sets it, `compute` raises
+`ComputeCancelled` before the next modifier, in `ctx.source_frame`/`ctx.input_frame`, or where a
+modifier calls `ctx.check_cancel()`; that exception is never stored as a modifier error. The GUI
+computes on a worker thread (`gui/compute.py`, `ComputeRunner`) and sets it when a newer frame or
+parameter change supersedes a computation. The source-frame cache is guarded by a lock, so a
+pipeline can be computed from two threads at once.
+
 `upto` stops before a modifier index. `ComputeContext.input_frame(k)` uses it to evaluate
 another frame through the modifiers above the running one, which is how trajectory modifiers
 see upstream selections. `ComputeContext.upstream_key()` fingerprints the source, frame count,

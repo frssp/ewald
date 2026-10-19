@@ -65,6 +65,8 @@ class Cell:
     count: int | None = None           # execution counter, like Jupyter's In [n]
     state: str = "new"                 # 'new', 'ok', 'error' or 'stale'
     id: str = field(default_factory=lambda: os.urandom(4).hex())   # nbformat cell id, kept in .ipynb
+    collapsed: bool = False            # folded in the GUI; kept in .ipynb as Jupyter's source/outputs_hidden
+    steps: list = field(default_factory=list)   # in a kernel: summaries of the steps it added (no objects here)
 
     @property
     def is_step(self) -> bool:
@@ -193,16 +195,33 @@ class Notebook:
         self.restricted = False       # an .ewd that was not trusted yet: cells do not run
         self.manifest: dict = {}      # an .ewd file's manifest
         self.warnings: list = []      # data files that moved or changed (from the manifest)
+        self.kernel = None            # an ewald.kernel.Kernel: cells run in another Python
         self.reset()
 
     # ------------------------------------------------------------ namespace
     def reset(self):
         """Fresh namespace (like restarting a Jupyter kernel); cells keep their source."""
         self.namespace = {"__name__": "__main__", "__file__": self.path or "<notebook>"}
+        if self.kernel is not None:
+            self.kernel.reset()
         for c in self.cells:
-            c.added = []
+            c.added, c.steps = [], []
             if c.kind == "code" and c.state != "new":
                 c.state = "stale"
+
+    def set_kernel(self, kernel):
+        """Run the cells in ``kernel`` (an :class:`ewald.kernel.Kernel`), or here again with None.
+        The namespace starts over; the choice is saved with the notebook."""
+        if self.kernel is not None and self.kernel is not kernel:
+            self.kernel.shutdown()
+        self.kernel = kernel
+        ewald = self.metadata.setdefault("ewald", {})
+        if kernel is None:
+            ewald.pop("kernel", None)
+        else:
+            ewald["kernel"] = kernel.spec
+        self.dirty = True
+        self.reset()
 
     @property
     def pipeline(self) -> Pipeline | None:
@@ -232,6 +251,8 @@ class Notebook:
         cell = self.cells[index]
         if cell.kind != "code":
             return True
+        if self.kernel is not None:
+            return self._run_in_kernel(index, run_below)
         pipe = self.pipeline
         slot = None
         if pipe is not None and cell.added:
@@ -266,6 +287,48 @@ class Notebook:
                     later.added = []
         cell.state = "ok" if ok else "error"
         return ok
+
+    def _run_in_kernel(self, index: int, run_below: bool) -> bool:
+        """Run a cell in the notebook's kernel (the same rules apply there, see
+        :mod:`ewald.kernel_bridge`); ``pipe`` here becomes a pipeline over the kernel's one."""
+        import base64
+
+        from .kernel import KernelError, KernelSource, kernel_pipeline
+
+        if self.restricted:
+            raise PermissionError(f"{self.name} came from an .ewd file and is not trusted yet: "
+                                  "call notebook.trust() (Run all in the GUI asks first)")
+        cell = self.cells[index]
+        specs = [{"id": c.id, "kind": c.kind, "source": c.source} for c in self.cells]
+        try:
+            r = self.kernel.run(specs, index, run_below, self.counter, self.pipeline_name, self.path,
+                                self._data_dirs())
+        except KernelError as exc:
+            self.counter += 1
+            cell.count, cell.state, cell.outputs = self.counter, "error", [Output("error", str(exc))]
+            return False
+        self.counter = r["counter"]
+        by_id = {c.id: c for c in self.cells}
+        for rc in r["cells"]:
+            c = by_id.get(rc["id"])
+            if c is None:
+                continue
+            c.count, c.state, c.steps = rc["count"], rc["state"], rc["steps"]
+            c.outputs = [Output(o["kind"], base64.b64decode(o["png"]) if "png" in o else o["text"])
+                         for o in rc["outputs"]]
+        for cid, state in r["states"].items():
+            if cid in by_id:
+                by_id[cid].state = state
+        info = r["pipeline"]
+        pipe = self.namespace.get(self.pipeline_name)
+        if info is None:
+            self.namespace.pop(self.pipeline_name, None)
+        elif isinstance(pipe, Pipeline) and isinstance(pipe.source, KernelSource) and pipe.source.kernel is self.kernel:
+            pipe.source._num_frames = info["num_frames"]
+            pipe.invalidate()
+        else:
+            self.namespace[self.pipeline_name] = kernel_pipeline(self.kernel, self.pipeline_name, info["num_frames"])
+        return r["ok"]
 
     def _slot(self, index: int, pipe: Pipeline) -> int:
         """Where a cell's new modifiers go: after those of the cells above it."""
@@ -366,6 +429,9 @@ class Notebook:
         index = len(self.cells) if index is None else index
         cell = Cell(step_source(modifier, self.namespace, self.pipeline_name))
         self.insert(index, cell)
+        if self.kernel is not None:  # the kernel builds its own modifier from the cell
+            self.run_cell(index, run_below=False)
+            return cell
         pipe = self.pipeline
         if pipe is not None:
             pipe.modifiers.insert(self._slot(index, pipe), modifier)
@@ -440,6 +506,47 @@ class Notebook:
                     changed = True
         self.dirty |= changed
         return changed
+
+    # ------------------------------------------------------------ undo
+    def snapshot(self) -> tuple:
+        """The notebook's content as text: (kind, title, source) per cell. Everything else
+        (pipeline, outputs) follows from it by running the cells."""
+        return tuple((c.kind, c.title, c.source) for c in self.cells)
+
+    def restore(self, snap: tuple) -> list[Cell]:
+        """Make the cells match ``snap`` (undo/redo). Unchanged cells keep their outputs and
+        modifiers; removed cells take their modifiers out of the pipeline. Changed or restored
+        step and view cells run again so the pipeline follows; other code cells are only
+        marked stale, since running them may have side effects. Returns the cells that changed."""
+        import difflib
+
+        old = self.cells
+        matcher = difflib.SequenceMatcher(a=self.snapshot(), b=snap, autojunk=False)
+        cells, fresh = [], []
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                cells.extend(old[i1:i2])
+                continue
+            pipe = self.pipeline
+            for c in old[i1:i2]:
+                if pipe is not None:
+                    for m in c.added:
+                        _remove(pipe.modifiers, m)
+            for kind, title, source in snap[j1:j2]:
+                cell = Cell(source, kind=kind, title=title, state="new" if kind == "code" else "ok")
+                cells.append(cell)
+                fresh.append(cell)
+        self.cells = cells
+        for cell in fresh:
+            if cell.kind != "code":
+                continue
+            if cell.is_step or cell.is_view:
+                self.run_cell(cell, run_below=False)
+            else:
+                cell.state = "stale"
+        self._reorder()
+        self.dirty = True
+        return fresh
 
     # ------------------------------------------------------------ files
     def to_py(self) -> str:
@@ -552,6 +659,82 @@ import numpy as np
 ''' + IMPORTS + "\n"
 
 
+class History:
+    """Undo/redo for a notebook, one entry per user action, kept as text snapshots.
+
+    Call :meth:`commit` after every edit; it records an entry when the cells changed since the
+    last commit. Edits with the same ``merge`` key in a row (dragging one slider of one step
+    form) become one entry.
+    """
+
+    def __init__(self, notebook: Notebook, limit: int = 200):
+        self.notebook = notebook
+        self.limit = limit
+        self._undo: list[tuple[str, tuple, tuple]] = []   # (label, before, after)
+        self._redo: list[tuple[str, tuple, tuple]] = []
+        self._last = notebook.snapshot()
+        self._merge = None
+
+    def commit(self, label: str = "Edit", merge=None) -> bool:
+        now = self.notebook.snapshot()
+        if now == self._last:
+            return False
+        if merge is not None and merge == self._merge and self._undo:
+            lbl, before, _ = self._undo[-1]
+            self._undo[-1] = (lbl, before, now)
+        else:
+            self._undo.append((label, self._last, now))
+            del self._undo[:-self.limit]
+        self._redo.clear()
+        self._last, self._merge = now, merge
+        return True
+
+    def reset(self):
+        """Forget the history (a notebook was opened or replaced)."""
+        self._undo.clear()
+        self._redo.clear()
+        self._last, self._merge = self.notebook.snapshot(), None
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self._undo) or self.notebook.snapshot() != self._last
+
+    @property
+    def can_redo(self) -> bool:
+        return bool(self._redo)
+
+    @property
+    def undo_label(self) -> str | None:
+        if self.notebook.snapshot() != self._last:
+            return "Edit cell"
+        return self._undo[-1][0] if self._undo else None
+
+    @property
+    def redo_label(self) -> str | None:
+        return self._redo[-1][0] if self._redo else None
+
+    def undo(self) -> str | None:
+        """Go back one entry (an edit not committed yet, such as typing in a cell, counts as
+        one); returns its label, or None if there was nothing to undo."""
+        self.commit("Edit cell")
+        if not self._undo:
+            return None
+        label, before, after = self._undo.pop()
+        self.notebook.restore(before)
+        self._redo.append((label, before, after))
+        self._last, self._merge = before, None
+        return label
+
+    def redo(self) -> str | None:
+        if not self._redo:
+            return None
+        label, before, after = self._redo.pop()
+        self.notebook.restore(after)
+        self._undo.append((label, before, after))
+        self._last, self._merge = after, None
+        return label
+
+
 def new_notebook(name: str = "Notebook 1") -> Notebook:
     """An empty notebook with the usual imports."""
     return Notebook.from_py(NEW_NOTEBOOK.format(title=name), name=name)
@@ -619,6 +802,10 @@ def _display(value) -> Output:
         buf = io.BytesIO()
         Image.fromarray(value).save(buf, format="PNG")
         return Output("image", buf.getvalue())
+    summary = getattr(value, "summary", None)
+    if callable(summary) and type(value).__name__ == "DataCollection":  # the summary says more here
+        text = summary()
+        return Output("value", text if len(text) < 4000 else text[:4000] + " …")
     png = getattr(value, "_repr_png_", None)
     if callable(png):
         try:
@@ -627,9 +814,5 @@ def _display(value) -> Output:
                 return Output("image", data)
         except Exception:  # noqa: BLE001 - fall back to text
             pass
-    summary = getattr(value, "summary", None)
-    if callable(summary) and type(value).__name__ == "DataCollection":
-        text = summary()
-    else:
-        text = repr(value)
+    text = repr(value)
     return Output("value", text if len(text) < 4000 else text[:4000] + " …")

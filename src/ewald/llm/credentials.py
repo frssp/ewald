@@ -15,11 +15,13 @@ test subprocess (``forge._subprocess_env``) cannot see it.
 """
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
-SERVICE = "ewald"
+from .. import keychain
+from ..keychain import _keyring, keyring_name  # noqa: F401  (tests replace _keyring)
+
+SERVICE = keychain.SERVICE
 USERNAME = "anthropic-api-key"
 ENV_VAR = "ANTHROPIC_API_KEY"
 
@@ -33,71 +35,13 @@ MODELS = {
 DEFAULT_MODEL = next(iter(MODELS))
 
 
-def _keyring():
-    """The keyring module when a real backend is usable, else None."""
-    try:
-        import keyring
-        from keyring.backends import fail
-    except Exception:
-        return None
-    try:
-        backend = keyring.get_keyring()
-    except Exception:
-        return None
-    if isinstance(backend, fail.Keyring) or getattr(backend, "priority", 1) <= 0:
-        return None
-    if type(backend).__name__ == "ChainerBackend" and not getattr(backend, "backends", ()):
-        return None
-    return keyring
-
-
-def keyring_name() -> str:
-    """Human name of the keychain in use ('' when there is none)."""
-    kr = _keyring()
-    if kr is None:
-        return ""
-    name = type(kr.get_keyring()).__module__.rsplit(".", 1)[-1]
-    return {"macOS": "macOS Keychain", "Windows": "Windows Credential Manager",
-            "SecretService": "Secret Service (GNOME Keyring / KWallet)", "kwallet": "KWallet"}.get(name, name)
-
-
 def _file() -> Path:
-    from ..settings import config_dir
-
-    return config_dir() / "credentials.json"
-
-
-def _read_file() -> str | None:
-    try:
-        return json.loads(_file().read_text()).get(USERNAME) or None
-    except (OSError, ValueError, AttributeError):
-        return None
-
-
-def _write_file(key: str | None):
-    path = _file()
-    if key is None:
-        path.unlink(missing_ok=True)
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump({USERNAME: key}, f)
-    os.chmod(path, 0o600)  # an existing file keeps its old mode through O_CREAT
+    return keychain.secrets_file()
 
 
 def stored_api_key() -> tuple[str | None, str | None]:
     """(key, where) for the saved key; where is 'keychain', 'file' or None."""
-    kr = _keyring()
-    if kr is not None:
-        try:
-            key = kr.get_password(SERVICE, USERNAME)
-        except Exception:
-            key = None
-        if key:
-            return key, "keychain"
-    key = _read_file()
-    return (key, "file") if key else (None, None)
+    return keychain.get_secret(USERNAME, _kr=_keyring())
 
 
 def get_api_key() -> tuple[str | None, str | None]:
@@ -114,27 +58,12 @@ def save_api_key(key: str) -> str:
     key = key.strip()
     if not key:
         raise ValueError("empty API key")
-    kr = _keyring()
-    if kr is not None:
-        try:
-            kr.set_password(SERVICE, USERNAME, key)
-            _write_file(None)
-            return "keychain"
-        except Exception:
-            pass
-    _write_file(key)
-    return "file"
+    return keychain.set_secret(USERNAME, key, _kr=_keyring())
 
 
 def delete_api_key():
     """Forget the saved key (keychain and file); ``ANTHROPIC_API_KEY`` is left alone."""
-    kr = _keyring()
-    if kr is not None:
-        try:
-            kr.delete_password(SERVICE, USERNAME)
-        except Exception:
-            pass
-    _write_file(None)
+    keychain.delete_secret(USERNAME, _kr=_keyring())
 
 
 def mask(key: str | None) -> str:

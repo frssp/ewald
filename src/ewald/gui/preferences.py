@@ -55,7 +55,7 @@ LAYOUT = {
         ("Output", ["render.size_preset", "render.dpi", "render.background", "render.output_dir"]),
         ("Overlays and movies", ["render.type_legend", "render.scale_bar", "render.movie_format"])]),
     "Compute": ("Where pipelines run, and which optional packages are available.", [
-        ("Device", ["compute.device", "compute.threads"]),
+        ("Device", ["compute.device", "compute.threads", "performance.background_compute"]),
         ("Memory", ["performance.cache_memory"])]),
     "Python": ("Notebooks, console and module search path.", [
         ("Notebooks", ["python.run_notebooks", "python.save_figures", "python.bundle_data_mb"]),

@@ -82,7 +82,7 @@ def _size(n: int) -> str:
 
 
 class RemoteFileDialog(QtWidgets.QDialog):
-    """Pick a file on an SSH host: hosts from ~/.ssh/config, a directory browser, recent files."""
+    """Pick a file on an SSH host: saved profiles and ~/.ssh/config hosts, a directory browser, recent files."""
 
     def __init__(self, parent=None, host: str = "", path: str = ""):
         super().__init__(parent)
@@ -98,7 +98,9 @@ class RemoteFileDialog(QtWidgets.QDialog):
         self.recent.activated.connect(self._pick_recent)
 
         self.host = QtWidgets.QComboBox(editable=True)
-        hosts = remote.config_hosts()
+        from ..io import profiles
+
+        hosts = profiles.names() + [h for h in remote.config_hosts() if h not in profiles.names()]
         for u in recent:
             rp = remote.parse_remote(u)
             name = f"{rp.user}@{rp.host}" if rp and rp.user else rp.host if rp else None
@@ -106,7 +108,7 @@ class RemoteFileDialog(QtWidgets.QDialog):
                 hosts.append(name)
         self.host.addItems(hosts)
         self.host.setEditText(host or (hosts[0] if hosts else ""))
-        self.host.lineEdit().setPlaceholderText("host alias from ~/.ssh/config, or user@host")
+        self.host.lineEdit().setPlaceholderText("saved remote computer, ~/.ssh/config alias, or user@host")
         connect = QtWidgets.QPushButton("Connect")
         connect.clicked.connect(lambda: self.browse(""))
 

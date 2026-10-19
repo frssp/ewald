@@ -101,6 +101,12 @@ class LinksMixin:
         self.ask_panel.update_selection()
         self.ask_panel.input.setFocus()
 
+    def _install_notebook_packages(self, requirements):
+        """A notebook's bar asked for the pip packages its steps need: pip runs in the Plugins side bar."""
+        self.plugins_dock.show()
+        self.plugins_dock.raise_()
+        self.plugins_panel.install_requirements(requirements)
+
     def _create_plugin(self, prompt):
         self.ask_claude()
         self.ask_panel.input.setPlainText(prompt)

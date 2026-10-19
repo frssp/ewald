@@ -15,7 +15,7 @@ import os
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ..notebook import Cell, Notebook, new_notebook, step_call
+from ..notebook import Cell, History, Notebook, new_notebook, step_call
 from .params import ParameterForm
 from .pipeline_panel import _discover, fill_modifier_menu
 from .notebook_tabs import NotebookTabs
@@ -96,7 +96,10 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
         self._fit()
 
     def _fit(self):
-        doc, lines = self.document(), 0
+        try:
+            doc, lines = self.document(), 0
+        except RuntimeError:  # a late textChanged while the editor is being deleted
+            return
         block = doc.firstBlock()
         while block.isValid():  # wrapped lines count too
             lines += max(1, block.layout().lineCount() if block.layout() is not None else 1)
@@ -304,13 +307,24 @@ class CellWidget(QtWidgets.QFrame):
         self.counter = QtWidgets.QLabel(objectName="cellCounter")
         self.counter.setFont(mono_font())
         self.counter.setAlignment(QtCore.Qt.AlignCenter)
+        self.fold_button = QtWidgets.QToolButton(text="▾", toolTip="Collapse or expand the cell",
+                                                 objectName="cellFold", autoRaise=True)
+        self.fold_button.clicked.connect(lambda: self.set_collapsed(not self.cell.collapsed))
         gutter.addWidget(self.run_button, 0, QtCore.Qt.AlignHCenter)
         gutter.addWidget(self.counter, 0, QtCore.Qt.AlignHCenter)
+        gutter.addWidget(self.fold_button, 0, QtCore.Qt.AlignHCenter)
         gutter.addStretch()
         outer.addLayout(gutter)
-        self.body = QtWidgets.QVBoxLayout()
+        right = QtWidgets.QVBoxLayout()
+        self.content = QtWidgets.QWidget()
+        self.body = QtWidgets.QVBoxLayout(self.content)
+        self.body.setContentsMargins(0, 0, 0, 0)
         self.body.setSpacing(6)
-        outer.addLayout(self.body, 1)
+        self.folded_label = QtWidgets.QLabel(objectName="cellFolded")
+        self.folded_label.setToolTip("Collapsed: click ▸ or double-click to expand")
+        right.addWidget(self.content)
+        right.addWidget(self.folded_label)
+        outer.addLayout(right, 1)
         if cell.kind == "markdown":
             self.run_button.setVisible(False)
             self.counter.setVisible(False)
@@ -322,6 +336,21 @@ class CellWidget(QtWidgets.QFrame):
         else:
             self._build_code()
         self.update_state()
+        self.set_collapsed(cell.collapsed)
+
+    def set_collapsed(self, on: bool):
+        """Fold the cell to one line (its title, step name or first line of code), or unfold it."""
+        self.cell.collapsed = bool(on)
+        self.content.setVisible(not on)
+        self.folded_label.setVisible(on)
+        self.fold_button.setText("▸" if on else "▾")
+        if on:
+            first = next((ln for ln in self.cell.source.splitlines() if ln.strip()), "")
+            if self.cell.kind == "markdown":
+                first = first.lstrip("# ")
+            text = self.cell.title or (self.cell.modifier.name if self.cell.modifier is not None else first)
+            n = len(self.cell.source.splitlines())
+            self.folded_label.setText(f"{text}   ·  {n} line{'s' if n != 1 else ''}" if n > 1 else text)
 
     # ----------------------------------------------------------- bodies
     def _menu_button(self):
@@ -389,7 +418,9 @@ class CellWidget(QtWidgets.QFrame):
         self.outputs = None
 
     def mouseDoubleClickEvent(self, event):
-        if self.cell.kind == "markdown":
+        if self.cell.collapsed:
+            self.set_collapsed(False)
+        elif self.cell.kind == "markdown":
             self.view.setVisible(False)
             self.editor.setVisible(True)
             self.editor.setFocus()
@@ -676,11 +707,13 @@ class NotebookView(QtWidgets.QWidget):
     pipelineReplaced = QtCore.Signal(object)  # the notebook bound 'pipe' to a new pipeline
     askRequested = QtCore.Signal()
     titleChanged = QtCore.Signal()
+    pipRequested = QtCore.Signal(list)        # pip requirements of plugins the notebook needs
     plotCreated = QtCore.Signal(object)       # the live PlotsPanel of a new view cell
 
     def __init__(self, notebook: Notebook, parent=None):
         super().__init__(parent)
         self.notebook = notebook
+        self.history = History(notebook)  # Edit › Undo/Redo, one entry per action below
         self.widgets: list[CellWidget] = []
         self.current = None
         self.data = None
@@ -695,13 +728,24 @@ class NotebookView(QtWidgets.QWidget):
         restart.clicked.connect(self.restart)
         self.py_button = QtWidgets.QToolButton(text=".py", checkable=True, toolTip="Show the notebook as its Python file")
         self.py_button.toggled.connect(self._show_file)
+        self.kernel_button = QtWidgets.QToolButton(objectName="kernelButton", autoRaise=True,
+                                                   popupMode=QtWidgets.QToolButton.InstantPopup,
+                                                   toolTip="Where the cells run: this app's Python or another one")
+        self.kernel_menu = QtWidgets.QMenu(self.kernel_button)
+        self.kernel_menu.aboutToShow.connect(lambda: self.fill_kernel_menu(self.kernel_menu))
+        self.kernel_button.setMenu(self.kernel_menu)
         bar.addWidget(run_all)
         bar.addWidget(restart)
+        bar.addWidget(self.kernel_button)
         bar.addStretch()
         self.status = QtWidgets.QLabel(objectName="muted")
         bar.addWidget(self.status)
         bar.addWidget(self.py_button)
         lay.addLayout(bar)
+        self.banner = self._make_banner()
+        lay.addWidget(self.banner)
+        self.packages_bar = self._make_packages_bar()
+        lay.addWidget(self.packages_bar)
         self.stack = QtWidgets.QStackedWidget()
         self.scroll = _FitWidthScrollArea(objectName="notebookScroll")
         self.scroll.setWidgetResizable(True)
@@ -723,7 +767,60 @@ class NotebookView(QtWidgets.QWidget):
         self.stack.addWidget(self.file_view)
         lay.addWidget(self.stack, 1)
         self.add_bar = self._make_add_bar()
+        self._update_kernel_button()
         self.rebuild()
+
+    def _make_banner(self):
+        """The bar over a restricted notebook: saved results only, until you trust it."""
+        w = QtWidgets.QFrame(objectName="restrictedBanner")
+        row = QtWidgets.QHBoxLayout(w)
+        row.setContentsMargins(10, 6, 8, 6)
+        self.banner_text = QtWidgets.QLabel(wordWrap=True)
+        row.addWidget(self.banner_text, 1)
+        trust = QtWidgets.QPushButton("Trust", toolTip="Allow this notebook's code and plugins to run")
+        trust.clicked.connect(lambda: self.trust(ask=False))
+        trust_run = QtWidgets.QPushButton("Trust and run all", objectName="primary")
+        trust_run.clicked.connect(lambda: self.trust(ask=False) and self.run_all())
+        row.addWidget(trust)
+        row.addWidget(trust_run)
+        self._update_banner(w)
+        return w
+
+    def _update_banner(self, banner=None):
+        banner = banner or self.banner
+        nb = self.notebook
+        plugins = [p.get("name") or p.get("id") for p in nb.manifest.get("plugins", []) if p.get("file")]
+        self.banner_text.setText(
+            "<b>Restricted:</b> saved results only. Cells run once you trust this notebook" +
+            (f" and its plugins ({', '.join(plugins)})" if plugins else "") + ".")
+        banner.setToolTip("It came from an .ewd file. Its cells are Python code, so they run only after you agree.")
+        banner.setVisible(nb.restricted)
+
+    def _make_packages_bar(self):
+        """The bar over a notebook whose steps come from pip packages this Python lacks."""
+        w = QtWidgets.QFrame(objectName="restrictedBanner")
+        row = QtWidgets.QHBoxLayout(w)
+        row.setContentsMargins(10, 6, 8, 6)
+        self.packages_text = QtWidgets.QLabel(wordWrap=True)
+        row.addWidget(self.packages_text, 1)
+        self.packages_button = QtWidgets.QPushButton("Install…", toolTip="Install them with pip (you confirm the command)")
+        self.packages_button.clicked.connect(
+            lambda: self.pipRequested.emit([e["requirement"] for e in self.missing_packages()]))
+        row.addWidget(self.packages_button)
+        self.refresh_packages(w)
+        return w
+
+    def missing_packages(self) -> list[dict]:
+        from ..notebook_io import missing_packages
+
+        return missing_packages(getattr(self.notebook, "manifest", None) or {})
+
+    def refresh_packages(self, bar=None):
+        bar = bar or self.packages_bar
+        missing = self.missing_packages()
+        names = ", ".join(f"{e['requirement']} ({', '.join(e.get('modifiers', [])) or e['id']})" for e in missing)
+        self.packages_text.setText(f"<b>Needs plugins from pip:</b> {names}. Their steps fail until they are installed.")
+        bar.setVisible(bool(missing))
 
     def _make_add_bar(self):
         w = QtWidgets.QWidget(objectName="addBar")
@@ -845,7 +942,8 @@ class NotebookView(QtWidgets.QWidget):
                 w.set_view_data(self.data, self.notebook.pipeline)
         nb = self.notebook
         pipe = nb.pipeline
-        self.status.setText(("" if pipe is None else f"{len(pipe.modifiers)} steps · ") +
+        steps = None if pipe is None else len(pipe.modifiers) + sum(len(c.steps) for c in nb.cells)
+        self.status.setText(("" if pipe is None else f"{steps} steps · ") +
                             (os.path.basename(nb.path) if nb.path else "not saved") + (" ●" if nb.dirty else ""))
         if self.py_button.isChecked():
             self.file_view.setPlainText(nb.to_py())
@@ -868,6 +966,7 @@ class NotebookView(QtWidgets.QWidget):
         if w is not None and w.editor is not None:
             w.editor.setFocus()
             QtCore.QTimer.singleShot(0, w, lambda: self.scroll.ensureWidgetVisible(w))
+        self.history.commit("Insert cell")
         self.titleChanged.emit()
         return cell
 
@@ -887,11 +986,14 @@ class NotebookView(QtWidgets.QWidget):
         if w is not None:
             w.form_button.setChecked(True)
             QtCore.QTimer.singleShot(0, w, lambda: self.scroll.ensureWidgetVisible(w))
+        self.history.commit(f"Add {modifier.name}")
         self.changed.emit()
         self.titleChanged.emit()
         return cell
 
     def _step_edited(self, cell):
+        mod = cell.modifier
+        self.history.commit(f"Edit {mod.name if mod is not None else 'step'}", merge=("form", id(cell)))
         self.changed.emit()
         self.titleChanged.emit()
 
@@ -912,6 +1014,7 @@ class NotebookView(QtWidgets.QWidget):
             w.code_button.setChecked(True)
         elif action == "below":
             self.run(cell, below=True)
+        self.history.commit({"delete": "Delete cell", "up": "Move cell", "down": "Move cell"}.get(action, "Edit cell"))
         self.titleChanged.emit()
 
     # ----------------------------------------------------------- running
@@ -927,6 +1030,7 @@ class NotebookView(QtWidgets.QWidget):
         if len(nb.cells) != len(self.widgets) or any(not _same_shape(w.built_for, _shape(c))
                                                      for w, c in zip(self.widgets, nb.cells)):
             self.rebuild()
+        self.history.commit("Run cell")  # what was typed into the cells that ran
         if nb.pipeline is not before and nb.pipeline is not None:
             self.pipelineReplaced.emit(nb.pipeline)
         else:
@@ -934,7 +1038,28 @@ class NotebookView(QtWidgets.QWidget):
         self.update_results()
         self.titleChanged.emit()
 
+    def undo(self) -> str | None:
+        return self._step_history(self.history.undo)
+
+    def redo(self) -> str | None:
+        return self._step_history(self.history.redo)
+
+    def _step_history(self, step):
+        before = self.notebook.pipeline
+        label = self._busy(step)
+        if label is None:
+            return None
+        self.rebuild()
+        if self.notebook.pipeline is not before and self.notebook.pipeline is not None:
+            self.pipelineReplaced.emit(self.notebook.pipeline)
+        else:
+            self.changed.emit()
+        self.titleChanged.emit()
+        return label
+
     def run(self, cell, advance=False, below=False):
+        if not self._trusted():
+            return
         nb = self.notebook
         before = nb.pipeline
         if cell in nb.cells and not nb.cells[nb.cells.index(cell)].kind == "markdown":
@@ -967,21 +1092,77 @@ class NotebookView(QtWidgets.QWidget):
 
     def _trusted(self) -> bool:
         """A restricted notebook (an .ewd someone sent) runs only after you agree."""
+        return not self.notebook.restricted or self.trust(ask=True)
+
+    def trust(self, ask: bool = True) -> bool:
+        """Let a restricted notebook run (File › Trust notebook, the banner); ``ask`` confirms first."""
         nb = self.notebook
         if not nb.restricted:
             return True
-        plugins = [p.get("name") or p.get("id") for p in nb.manifest.get("plugins", []) if p.get("file")]
-        text = (f"{nb.name} came from an .ewd file. Its cells are Python code" +
-                (f" and it carries plugins ({', '.join(plugins)})" if plugins else "") +
-                ". Trust it and run?")
-        if QtWidgets.QMessageBox.question(self, "Trust notebook", text) != QtWidgets.QMessageBox.Yes:
-            return False
+        if ask:
+            plugins = [p.get("name") or p.get("id") for p in nb.manifest.get("plugins", []) if p.get("file")]
+            text = (f"{nb.name} came from an .ewd file. Its cells are Python code" +
+                    (f" and it carries plugins ({', '.join(plugins)})" if plugins else "") +
+                    ". Trust it and run?")
+            if QtWidgets.QMessageBox.question(self, "Trust notebook", text) != QtWidgets.QMessageBox.Yes:
+                return False
         nb.trust()
+        self._update_banner()
+        self.titleChanged.emit()
         return True
 
     def restart(self):
         self.notebook.reset()
         self.update_results()
+
+    # ------------------------------------------------------------ kernel
+    def _update_kernel_button(self):
+        k = self.notebook.kernel
+        self.kernel_button.setText(f"⚙ {k.display_name if k else 'This app'}")
+
+    def fill_kernel_menu(self, menu):
+        """Kernel choices: this app's Python, the installed Jupyter kernels, another Python."""
+        from .. import kernel as kmod
+
+        menu.clear()
+        current = self.notebook.kernel
+        here = menu.addAction("This app's Python", lambda: self.set_kernel(None))
+        here.setCheckable(True)
+        here.setChecked(current is None)
+        menu.addSeparator()
+        try:
+            specs = kmod.available()
+        except Exception:  # noqa: BLE001 - no jupyter_client: only this app and "Other Python…"
+            specs = []
+        for spec in specs:
+            a = menu.addAction(spec["display_name"], lambda sp=spec: self.set_kernel(
+                kmod.Kernel(name=sp["name"], display_name=sp["display_name"])))
+            a.setCheckable(True)
+            a.setChecked(current is not None and current.name == spec["name"])
+            a.setToolTip(spec["python"])
+        if current is not None and not current.name:
+            a = menu.addAction(current.display_name)
+            a.setCheckable(True)
+            a.setChecked(True)
+            a.setToolTip(current.python or "")
+        menu.addAction("Other Python…", self._choose_python)
+
+    def _choose_python(self):
+        from ..kernel import Kernel
+
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Python to run the cells", "",
+                                                        "Python (python* python*.exe);;All files (*)")
+        if path:
+            self.set_kernel(Kernel(python=path))
+
+    def set_kernel(self, kernel):
+        """Run this notebook's cells in ``kernel`` (None: in this app). The namespace starts over."""
+        before = self.notebook.pipeline
+        self.notebook.set_kernel(kernel)
+        self._update_kernel_button()
+        self.update_results()
+        self._after_run(before)
+        self.titleChanged.emit()
 
 
 # ---------------------------------------------------------------- tabs
@@ -997,6 +1178,7 @@ class NotebookPanel(QtWidgets.QWidget):
     pipelineReplaced = QtCore.Signal(object)
     askRequested = QtCore.Signal()
     plotCreated = QtCore.Signal(object)       # a view cell's live plot: the main window links it
+    pipRequested = QtCore.Signal(list)        # a notebook's bar asks to pip install its plugins
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1032,6 +1214,11 @@ class NotebookPanel(QtWidgets.QWidget):
     def views(self) -> list[NotebookView]:
         return [self.tabs.widget(i) for i in range(self.tabs.count())]
 
+    def refresh_packages(self):
+        """Plugins changed (a pip install): update every notebook's missing-packages bar."""
+        for v in self.views():
+            v.refresh_packages()
+
     def _next_name(self):
         names = {v.notebook.name for v in self.views()}
         k = 1
@@ -1040,6 +1227,11 @@ class NotebookPanel(QtWidgets.QWidget):
         return f"Notebook {k}"
 
     def add_notebook(self, nb: Notebook) -> NotebookView:
+        spec = (nb.metadata.get("ewald") or {}).get("kernel")
+        if spec and nb.kernel is None:  # saved with a kernel: it starts when a cell runs
+            from ..kernel import Kernel
+
+            nb.kernel = Kernel.from_spec(spec)
         view = NotebookView(nb)
         view.changed.connect(self.changed.emit)
         view.pipelineReplaced.connect(self._replaced)
@@ -1049,6 +1241,7 @@ class NotebookPanel(QtWidgets.QWidget):
             if w.plot_panel is not None:
                 self.plotCreated.emit(w.plot_panel)
         view.titleChanged.connect(lambda v=view: self._retitle(v))
+        view.pipRequested.connect(self.pipRequested.emit)
         self._switching = True
         i = self.tabs.addTab(view, nb.name)
         self.tabs.setCurrentIndex(i)
@@ -1098,6 +1291,8 @@ class NotebookPanel(QtWidgets.QWidget):
         view = self.tabs.widget(index)
         if view is None or not self.confirm_discard([view]):
             return
+        if view.notebook.kernel is not None:
+            view.notebook.kernel.shutdown()
         self.tabs.removeTab(index)
         view.deleteLater()
         if self.tabs.count() == 0:
@@ -1185,6 +1380,7 @@ class NotebookPanel(QtWidgets.QWidget):
         if view.notebook.sync():
             view.rebuild()
             self._retitle(view)
+        view.history.commit("Change pipeline")  # console, Ask Claude, viewport tools
         if select is not None:
             mod = select[1] if isinstance(select, tuple) and len(select) == 2 else select
             cell = next((c for c in view.notebook.cells if c.modifier is mod), None)
@@ -1197,6 +1393,13 @@ class NotebookPanel(QtWidgets.QWidget):
     def update_status(self):
         if self.view is not None:
             self.view.update_results()
+
+    def undo(self) -> str | None:
+        """Undo the last edit of the current notebook; returns what was undone."""
+        return self.view.undo() if self.view is not None else None
+
+    def redo(self) -> str | None:
+        return self.view.redo() if self.view is not None else None
 
     def _current(self):
         return None

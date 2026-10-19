@@ -18,7 +18,7 @@ class MenusMixin:
     """Part of :class:`ewald.gui.app.MainWindow`."""
 
     def _build_activity_bar(self):
-        """Icons on the far left that show or hide the side bars (Notebook, Plugins)."""
+        """Icons on the far left that show or hide the side bars (Notebook, Plugins, Remotes)."""
         bar = self.activity_bar = QtWidgets.QToolBar("Activity bar")
         bar.setObjectName("activity-bar")
         bar.setMovable(False)
@@ -26,7 +26,8 @@ class MenusMixin:
         self.addToolBar(QtCore.Qt.LeftToolBarArea, bar)
         self.activity_buttons = {}
         for name, icon_name, dock in (("Notebook", "notebook", self.notebook_dock),
-                                      ("Plugins", "plugins", self.plugins_dock)):
+                                      ("Plugins", "plugins", self.plugins_dock),
+                                      ("Remotes", "remote", self.remotes_dock)):
             act = dock.toggleViewAction()
             act.setIcon(icon(icon_name))
             act.setToolTip(f"Show or hide the {name} side bar")
@@ -135,6 +136,7 @@ class MenusMixin:
             f.addAction("&New notebook", lambda: self.panel.new_notebook(), "Ctrl+T")
         f.addAction(icon("open"), "&Open…" if nb else "&Load file…", QtGui.QKeySequence.Open, self.open_dialog)
         f.addAction(icon("remote"), "Load &remote file (SSH)…", QtGui.QKeySequence("Ctrl+Alt+O"), self.open_remote_dialog)
+        f.addAction("Remote &computers (SSH profiles)…", QtGui.QKeySequence("Ctrl+Alt+R"), self.show_remotes)
         f.addAction("Load &NEB folder…", self.open_neb_dialog)
         ex = f.addMenu(icon("example"), "Open e&xample")
         for example in examples.EXAMPLES:
@@ -167,6 +169,13 @@ class MenusMixin:
         f.addSeparator()
         f.addAction("&Quit", self.close, QtGui.QKeySequence.Quit).setMenuRole(QtGui.QAction.QuitRole)
         e = mb.addMenu("&Edit")
+        if self.layout_mode == "notebook":
+            # A focused cell editor takes Ctrl+Z itself (its typing); elsewhere these undo
+            # notebook edits: cells added, deleted, moved or run, step forms, pipeline changes.
+            self.undo_action = e.addAction("&Undo", self.undo, QtGui.QKeySequence.Undo)
+            self.redo_action = e.addAction("&Redo", self.redo, QtGui.QKeySequence.Redo)
+            e.aboutToShow.connect(self._update_undo_actions)
+            e.addSeparator()
         act = e.addAction("&Preferences…", self.preferences, QtGui.QKeySequence.Preferences)
         act.setMenuRole(QtGui.QAction.PreferencesRole)  # app menu on macOS, like OVITO/VESTA
         if act.shortcut().isEmpty():
@@ -193,6 +202,12 @@ class MenusMixin:
             n.addAction("Run current cell and &below", lambda: self._cell_action("below"))
             n.addAction("&Restart", lambda: self.panel.view.restart())
             n.addAction("Restart and run all", lambda: self.panel.view.run_all())
+            self.kernel_menu = n.addMenu("&Kernel")
+            self.kernel_menu.aboutToShow.connect(lambda: self.panel.view.fill_kernel_menu(self.kernel_menu))
+            self.trust_action = n.addAction("&Trust notebook…", lambda: self.panel.view.trust())
+            self.trust_action.setToolTip("Allow a notebook received as an .ewd file to run its code and plugins")
+            n.aboutToShow.connect(lambda: self.trust_action.setEnabled(
+                self.panel.view is not None and self.panel.view.notebook.restricted))
             n.addSeparator()
             n.addAction("Move cell &up", lambda: self._cell_action("up"), "Ctrl+Shift+Up")
             n.addAction("Move cell &down", lambda: self._cell_action("down"), "Ctrl+Shift+Down")

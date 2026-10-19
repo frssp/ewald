@@ -115,8 +115,10 @@ DOS and band structures from VASP. Ported analyses are tested against OVITO and 
 
 **Files.** Native lazy readers for big text trajectories (LAMMPS dump, XDATCAR, extxyz, OUTCAR,
 vasprun.xml), H5MD and vaspout.h5, MDAnalysis for XTC/TRR/DCD and ASE for everything else, with
-matching writers. Files on an SSH host open by path (`cluster:/scratch/run/dump.lammpstrj`), and
-runs that are still writing grow on the timeline. [File formats](docs/user/formats.md)
+matching writers. Files on an SSH host open by path (`cluster:/scratch/run/dump.lammpstrj`); remote
+computers can be saved as profiles like in an SSH terminal app (the Remotes side bar, Ctrl+Alt+R, or
+`ewald remote add`), with passwords kept in the OS keychain. Runs that are still writing grow on the
+timeline. [File formats](docs/user/formats.md)
 
 **Figures.** A numba ray tracer with ambient occlusion and shadows, vector SVG/PDF/EPS, OpenGL,
 journal size presets, overlays (legends, color bars, scale bars, text) and movies.

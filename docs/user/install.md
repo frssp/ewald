@@ -59,6 +59,7 @@ Optional parts are extras, installed only when you need them:
 | Extra | Adds | Install |
 |---|---|---|
 | `gui` | desktop viewer (PySide6, pyvistaqt, qtconsole) | `pip install -e ".[gui]"` |
+| `kernel` | jupyter_client and ipykernel, for a notebook whose cells run in another Python ([Kernels](notebooks.md#kernels)); in that other Python, ewald itself is enough | `pip install -e ".[kernel]"` |
 | `gpu` | `device="cuda"` through CuPy (NVIDIA, CUDA 12) | `pip install -e ".[gpu]"` |
 | `movie` | MP4/AVI/MOV export with the ffmpeg binary from imageio-ffmpeg (GIF and PNG need no extra) | `pip install -e ".[movie]"` |
 | `formats` | H5MD, vaspout.h5, MDTraj HDF5 (h5py) and GROMACS XTC/TRR, DCD, NetCDF (MDAnalysis) | `pip install -e ".[formats]"` |
