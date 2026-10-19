@@ -1,13 +1,53 @@
 # CLAUDE.md
 
-ewald is an OVITO-style atomistic structure/trajectory viewer and analysis library:
-`import_file` -> `pipe.modifiers` -> `pipe.compute(frame, device=...)` -> `pipe.render(...)`,
-plus a PySide6 desktop GUI and Claude tools. User-facing docs: the manual in docs/ (MkDocs,
+EWALD (Extensible Workbench for Atomic Lattices & Dynamics; package and import name `ewald`) is an
+atomistic structure/trajectory viewer and analysis library at OVITO Pro level, for VASP and LAMMPS
+first: `load`/`import_file` -> `pipe.add(...)` -> `pipe.compute(frame, device=...)` -> `show`/`pipe.render(...)`.
+Its identity is not "OVITO clone" but a Jupyter-like notebook (scripts plus Python visualization)
+with Claude and plugins built in: the GUI is notebooks as top tabs, step and view cells, a VS Code
+style plugin side bar and an AI chat side bar. User-facing docs: the manual in docs/ (MkDocs,
 `mkdocs.yml`; user/ with tutorials/, plugins/, developer/, reference/) and README.md, both
 notebook-first; tutorial notebooks in examples/notebooks/ (run by tests/test_tutorials.py); what exists:
 docs/features.md (generated); open work: docs/todo.md; milestones: docs/ROADMAP.md. Current GUI
 design specs live outside the repo (project files `design/`); `docs/design/` is an older snapshot
 kept for history.
+
+## How we work (decisions from the project, 2026-10-18/19)
+
+- The owner (Sunghyun) writes Korean with English technical terms; answer the same way. Ask the
+  few real decisions up front, then work autonomously. Code, commits, PRs and docs stay in English.
+- Merging: a thread merges its own PR once it has merged the latest `main` and the relevant local
+  tests pass (full suite under `xvfb-run` when GUI or rendering is touched, `tests/test_visual.py`
+  for renderer files). No need to wait for an explicit "merge". When PRs must land in order, the
+  thread that merges tells the next one.
+- GitHub Actions minutes are exhausted, so every workflow is `workflow_dispatch` only (PR #62) and
+  CI does not run on PRs; local runs are the gate. Do not watch, re-run or re-enable Actions, and do
+  not push tags (v0.1.0 is prepared but untagged; docs/developer/release.md, testing.md say how to
+  restore triggers when minutes return).
+- Quality vs speed (owner's rule): file and render output put quality first (render presets
+  Draft/Standard/Publication, default Publication); the interactive viewport puts speed first (LOD,
+  target FPS, cache budget under `viewport.*`/`performance.*`). Both stay adjustable in settings.
+- Core vs plugins: VASP and LAMMPS (and the other core formats) are built in, registered as
+  "built-in" plugin groups that can be disabled. Domain extras live as first-party packages in
+  frssp/ewald-plugins: `ewald-phonopy` (phonons), `ewald-plumed` (all PLUMED), `ewald-aiida`; the
+  core keeps only stubs and `modifiers.MOVED` hints. The plugin index pins commits, so merge plugin
+  PRs with a merge commit, not squash. Plugins declare themselves in `ewald-plugin.toml` (no import
+  needed to list them) and run in-process.
+- Deferred until the owner asks: structure editing (supercell, slab, defects); the remaining
+  folder/renaming steps 2-4 of the layout review (gui renames, internal renames, splitting the
+  package root); a separate DXA implementation (use the optional `ovito` package).
+- Reuse first: OVITO's public source is GPLv3-or-MIT, so ports are taken under MIT with the notice
+  kept (`tests/test_licenses.py`); freud, VIAMD/mdlib and tomviz are fine references, VMD code is not.
+- Security: a session, notebook, `.ewd` or text inside a structure file (prompt injection to Claude)
+  must not run code unless trusted (`allow_code`, `Notebook.trust()`). Code that evaluates strings,
+  imports by name, or writes files for Claude needs the same checks and a case in
+  `tests/test_security.py`. The Claude API key lives in the keychain (`ewald/keychain.py`,
+  `llm/credentials.py`); never put it in `os.environ` or settings.json.
+- GUI: PySide6 only (`QT_API=pyside6`). Over `ssh -X` the legacy OpenGL 1.x viewport is chosen
+  automatically (`viewport.backend` / `EWALD_VIEWPORT`); this is still unverified on a real ssh -X
+  host, as are macOS, real HPC SSH and remote AiiDA. Restyle through QSS object names in
+  `gui/theme.py`, not inline `setStyleSheet`. New window menu, file or pick code goes into the
+  matching `window_*.py` mixin, not `app.py`.
 
 ## Commands
 
@@ -30,7 +70,8 @@ xvfb-run -a -s "-screen 0 1920x1200x24" python docs/images/make_screenshots.py  
 Without a display, VTK rendering aborts the whole pytest process (fatal error, not a test failure),
 so use `xvfb-run` or the `--ignore` form. Re-run `pip install -e .` after editing anything in
 `src/ewald/_csrc/`; the extension is not rebuilt automatically. CI (`.github/workflows/ci.yml`)
-runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only on Linux.
+runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows (GUI extras only on Linux), but only
+when dispatched by hand for now (see "How we work").
 
 Visual regression: `tests/test_visual.py` compares fixed scenes (OpenGL, ray tracer, vector; atoms,
 bonds, polyhedra, isosurface, overlays, radius and quality presets) with `tests/data/visual/*.png`.
@@ -45,13 +86,15 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 
 - `data.py` (`DataCollection`, `Cell`), `pipeline.py` (`Pipeline`, `Modifier`, `PythonModifier`,
   `ComputeContext`, frame cache), `__init__.py` (`import_file`), `__main__.py` (CLI `ewald ...`).
-- `io/`: native lazy readers (`lammps_dump.py`, `xdatcar.py`, `extxyz.py`, `xsf.py`, `h5md.py`), MDAnalysis
+- `io/`: native lazy readers (`lammps_dump.py`, `lammps_data.py`, `xdatcar.py`, `vasp_output.py` for
+  OUTCAR/vasprun.xml/OSZICAR, `vasp_h5.py`, `extxyz.py`, `xsf.py`, `h5md.py`, `mdtraj_h5.py`), MDAnalysis
   for XTC/TRR/DCD (`mdanalysis_reader.py`), everything else via `ase_reader.py`; each module also has its
   writer. `io.builtin_readers()`/`builtin_writers()` register them in `plugins.py` (reader and writer registries).
   `remote.py` opens `host:/path` / `ssh://` paths (paramiko): `base.open_binary` streams them to the
   native readers, `FileSource` downloads them to a local cache for every other reader. Tests use the
   in-process server in `tests/helpers/sftp_server.py` (fixtures `server`, `ssh_env` in conftest), no sshd.
-  `_textparse.py` is the numba atom-table parser shared by the dump and extxyz readers. Write a native
+  `profiles.py` keeps saved SSH computers (no secrets; passwords in `keychain.py`; GUI
+  `gui/remotes_panel.py`, CLI `ewald remote`). `_textparse.py` is the numba atom-table parser shared by the dump and extxyz readers. Write a native
   reader only where an index plus that parser beats ASE by a wide margin (big text trajectories);
   delegate everything else (docs/developer/readers.md has the measurements and the rule).
 - `bonds.py` (`Bonds`: Topology + Periodic Image, bond search), `mesh.py` (`SurfaceMesh` for
@@ -59,8 +102,8 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `backend.py` (numpy/CuPy `xp` backends), `neighbors.py` (numba CPU cell list, `find_pairs`),
   `cuda_kernels.py` (CUDA C via CuPy `RawKernel`), `kernels.py` (RDF, unwrap, MSD).
 - `modifiers/`: one module per family; `__init__.py` `__all__` is the public list and also resolves
-  OVITO names (`XxxModifier` -> `Xxx`). `ovito_bridge.py` wraps the optional `ovito` package (DXA);
-  `plumed.py` holds the `Plumed`/`LoadColvar`/`FreeEnergySurface` modifiers.
+  OVITO names (`XxxModifier` -> `Xxx`) and moved ones (`MOVED`: an ImportError with the pip hint for
+  the plugin). `ovito_bridge.py` wraps the optional `ovito` package (DXA).
 - `_csrc/`: C++ ports of OVITO CNA/PTM/Voronoi/CSP plus vendored ptm, voro++, mwm_csp; origins and
   licenses in `_csrc/README.md`. Built by `setup.py` (pybind11).
 - `radii.py`: radius presets (covalent, Slater, Clementi, vdW, Shannon ionic with oxidation-state and CN guessing);
@@ -91,9 +134,11 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   notebook view cells), `verbs.py` (`rdf`/`msd`/`sq`/... add a step and return its `Table`), `display.py` (`_repr_png_` of Pipeline/DataCollection/Table for Jupyter, `options`), `plugin_catalog.py` (installed plugins, catalog indexes, install/remove;
   GUI side `gui/plugins_panel.py`, the left Plugins side bar).
 - `inventory.py`: `ewald inventory`, docs/features.md from the registries, CLI parser and GUI menus.
-- `plumed.py`: PLUMED through its Python binding as an MD engine (`run`, `PlumedEngine`), COLVAR/HILLS
-  parsing, `fes_from_hills` (same kernels as `plumed sum_hills`). Tests compare with `plumed driver` and
-  the sum_hills files in `tests/data/plumed/` (regenerate with `make_plumed_reference.py`, never by hand).
+- `plumed.py`, `phonon.py`: stubs that alias the `ewald-plumed` / `ewald-phonopy` plugin modules
+  (frssp/ewald-plugins); the code and its tests live there.
+- Domain modules: `electronic.py` (VASP DOS/bands), `diffraction.py` (XRD, S(q)), `arrows.py`
+  (per-atom vectors), `linking.py` (linked selection between plots and the 3D view), `keychain.py`
+  (Claude key, SSH secrets); readers `io/volumetric.py` (CHGCAR/cube grids), `io/neb.py`, `io/thermo.py`.
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
 - `notebook.py`: notebooks as percent-format `.py` files (`# %%` cells, one namespace, `pipe` is the
   pipeline; step cells = one `pipe.add(...)`, view cells = one `show(pipe, ...)` from
@@ -138,7 +183,7 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   (`gui/params.py`) is generated from it, so store every constructor argument as an attribute of the
   same name. New modifiers that construct with no arguments appear in the GUI menu automatically;
   otherwise add an entry with a sensible default to `MODIFIER_MENU` in `gui/pipeline_panel.py`.
-- Optional dependencies (`gui`, `gpu`, `ovito`, `plumed`, `llm`, `movie`, `formats`) are imported lazily; tests use
+- Optional dependencies (`gui`, `gpu`, `ovito`, `llm`, `movie`, `formats`) are imported lazily; tests use
   `pytest.importorskip` for them. Headless `render()`/`compute()` never read `settings` implicitly.
 - Python first; numba or C++ only for measured hot spots. Ported OVITO code is used under its MIT
   option and keeps the notice. No LICENSE file (private project).
