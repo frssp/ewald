@@ -56,6 +56,7 @@ nav:
       - File formats: user/formats.md
       - Modifiers: user/modifiers.md
       - Phonon modes: user/phonons.md
+      - DOS and band structure: user/electronic.md
       - PLUMED collective variables: user/plumed.md
       - Python scripting: user/scripting.md
       - GPU compute: user/gpu.md

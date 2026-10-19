@@ -15,6 +15,12 @@ The "Phonon Bands" table of a phonon file (band.yaml, OUTCAR of IBRION=5-8) is d
 structure with its high-symmetry labels; clicking a band picks that mode (``phononModePicked``,
 which the main window plays through the PhononMode modifier) and a circle marks the mode shown.
 
+The "DOS" and "Bands" tables of a VASP run with electronic output (vasprun.xml, vaspout.h5;
+:mod:`ewald.electronic`) are drawn as a density of states and a band structure, relative to the
+Fermi energy. The particles selected in the viewport show up as their projected DOS (restricted
+to the orbital of the chosen column, e.g. "Ga d") or, with band projections (LORBIT >= 10), as
+fat bands whose markers grow with the selected atoms' weight in each state.
+
 The ``NEB`` table (``NebEnergyProfile``) is drawn as an energy profile: the spline, the
 images as points, the current image highlighted, the barriers in the corner; clicking an
 image goes to its frame (its ``Frame`` column links it like a per-frame plot).
@@ -27,6 +33,9 @@ from PySide6 import QtCore, QtWidgets
 from .. import linking
 from ..linking import grid_map
 from .theme import TOKENS
+
+
+ENERGY_WINDOW = (-6.0, 6.0)  # eV around the Fermi energy shown for DOS and bands
 
 
 class PlotsPanel(QtWidgets.QWidget):
@@ -82,6 +91,7 @@ class PlotsPanel(QtWidgets.QWidget):
         self._drawn = None   # (table x column, y choice) currently on the canvas
         self._marker = None  # current-frame line on a time-series plot, current mode on a band plot
         self._phonon = None  # (modes, x) while a phonon band structure is on the canvas
+        self._elec = None    # (ElectronicStructure, "DOS" | "Bands", column) while one is on the canvas
         self.pipeline = None         # for mapping table rows to frames
         self.link = None             # linking.Link of the plot on the canvas
         self.highlight = []          # particles selected in the viewport, drawn on the plot
@@ -135,7 +145,7 @@ class PlotsPanel(QtWidgets.QWidget):
         self._fill_columns()
         table = self._table()
         key = (id(next(iter(table.values()))), self.column.currentText()) if table else None
-        link = None if self._phonon_modes() is not None else self._make_link()
+        link = None if self._phonon_modes() is not None or self._electronic() is not None else self._make_link()
         if link != self.link:
             self._range = self._box = None
             self.link = link
@@ -144,7 +154,7 @@ class PlotsPanel(QtWidgets.QWidget):
             self._draw_overlays()
             self._update_controls()
             return
-        self._drawn, self._marker, self._phonon = key, None, None
+        self._drawn, self._marker, self._phonon, self._elec = key, None, None, None
         fig = self.figure
         fig.clear()
         ax = self._ax = fig.add_subplot(111, facecolor=TOKENS["bg"])
@@ -168,6 +178,8 @@ class PlotsPanel(QtWidgets.QWidget):
             ax.set_xlabel(name); ax.set_ylabel("count")
         elif d is not None and self._phonon_modes() is not None:
             self._draw_phonon(ax, self._phonon_modes())
+        elif d is not None and self._electronic() is not None:
+            self._draw_electronic(ax, self._electronic())
         elif d is not None and self.table.currentText() in d.tables and grid_map(d.tables[self.table.currentText()]):
             keys, (x, y, z) = grid_map(d.tables[self.table.currentText()])
             cs = ax.contourf(x, y, z, levels=20, cmap="viridis")
@@ -282,6 +294,8 @@ class PlotsPanel(QtWidgets.QWidget):
         """Draw the particles selected in the viewport on the plot (no signal)."""
         self.highlight = list(np.asarray(indices, dtype=int)) if indices is not None else []
         self._draw_overlays()
+        if self._elec is not None:
+            self._update_controls()
 
     def set_frame_selection(self, frames):
         """Mark the selected frames on a per-frame plot (no signal)."""
@@ -294,7 +308,9 @@ class PlotsPanel(QtWidgets.QWidget):
     def _update_controls(self):
         link = self.link
         text = ""
-        if link is None:
+        if self._elec is not None:
+            text = self._electronic_status()
+        elif link is None:
             text = ""
         elif self._range is not None:
             lo, hi = self._range
@@ -359,6 +375,10 @@ class PlotsPanel(QtWidgets.QWidget):
                 pass
         self._overlays = []
         ax, link, d = self._ax, self.link, self.data
+        if self._elec is not None and ax is not None and ax.figure is self.figure:
+            self._draw_electronic_selection(ax)
+            self.canvas.draw_idle()
+            return
         if ax is None or link is None or d is None or ax.figure is not self.figure:
             self.canvas.draw_idle()
             return
@@ -539,6 +559,131 @@ class PlotsPanel(QtWidgets.QWidget):
         k = int(np.argmin(np.hypot(pts[:, 0] - event.x, pts[:, 1] - event.y)))
         self.phononModePicked.emit(int(q[k]), int(bands[k]))
 
+    # electronic structure: DOS and bands, the viewport selection as PDOS / fat bands
+    def _electronic(self):
+        """``(ElectronicStructure, table name)`` when the selected table is its DOS or band table."""
+        d = self.data
+        name = self.table.currentText()
+        if d is None or self.hist.currentText() or name not in ("DOS", "Bands") or name not in d.tables:
+            return None
+        es = d.attributes.get("Electronic Structure")
+        return (es, name) if es is not None and hasattr(es, "dos_table") else None
+
+    def _draw_electronic(self, ax, which):
+        es, name = which
+        col = self.column.currentText()
+        table = self.data.tables[name]
+        lo, hi = ENERGY_WINDOW
+        if name == "DOS":
+            e = np.asarray(table["Energy"], float)
+            totals = [k for k in table if k.startswith("Total")]
+            for k in totals:
+                ax.fill_between(e, np.asarray(table[k], float), color=TOKENS["secondary"], alpha=0.25, lw=0,
+                                label="Total" if k == totals[0] else None)
+            if col == "(all)":
+                shown = [k for k in table if k not in totals and k != "Energy" and " " not in _spinless(k)]
+            else:
+                shown = [k for k in table if _spinless(k) == _spinless(col) and k not in totals]
+            colors = {}
+            for k in shown:
+                base = _spinless(k)
+                c = colors.setdefault(base, f"C{len(colors)}")
+                ax.plot(e, np.asarray(table[k], float), lw=1.3, color=c, label=base if base not in
+                        [t.get_label() for t in ax.lines] else None)
+            ax.axvline(0, color=TOKENS["secondary"], lw=0.8, ls="--")
+            if es.num_spins == 2:
+                ax.axhline(0, color=TOKENS["border"], lw=0.8)
+            ax.set_xlim(max(lo, e.min()), min(hi, e.max()))
+            ax.set_xlabel("E − E_F (eV)")
+            ax.set_ylabel("DOS (states/eV)")
+            inside = (e >= lo) & (e <= hi)
+            vals = np.concatenate([np.abs(np.asarray(table[k], float)[inside]) for k in totals + shown] or [[1.0]])
+            top = 1.08 * (vals.max() if vals.size and vals.max() > 0 else 1.0)
+            ax.set_ylim(-top if es.num_spins == 2 else 0, top)
+        else:
+            x = np.asarray(table[next(iter(table))], float)
+            cut = np.asarray(es.breaks, int)
+            for k in list(table)[1:]:
+                y = np.insert(np.asarray(table[k], float), cut, np.nan)
+                xs = np.insert(x, cut, np.nan)
+                pick = col not in ("(all)", k)
+                ax.plot(xs, y, lw=0.8 if pick else 1.3, ls="--" if k.endswith("(down)") else "-",
+                        color=TOKENS["border"] if pick else TOKENS["accent"], zorder=2 if pick else 3)
+            ax.set_xlim(x[0], x[-1])
+            for d, _ in es.ticks:
+                ax.axvline(d, color=TOKENS["border"], lw=0.8)
+            if es.ticks:
+                ax.set_xticks([d for d, _ in es.ticks])
+                ax.set_xticklabels([lab for _, lab in es.ticks])
+            else:
+                ax.set_xlabel(next(iter(table)))
+            ax.axhline(0, color=TOKENS["secondary"], lw=0.8, ls="--")
+            e = es.eigenvalues - es.efermi
+            ax.set_ylim(max(lo, e.min() - 0.2), min(hi, e.max() + 0.2))
+            ax.set_ylabel("E − E_F (eV)")
+        gap = self.data.attributes.get("Band Gap")
+        if gap is not None:
+            ax.text(0.98, 0.97, f"gap {gap:.3f} eV", transform=ax.transAxes, ha="right", va="top", fontsize=8,
+                    color=TOKENS["secondary"])
+        if name == "DOS":
+            leg = ax.legend(frameon=False, fontsize=8, loc="upper left")
+            for t in leg.get_texts():
+                t.set_color(TOKENS["secondary"])
+        self._elec = (es, name, col)
+
+    def _selected_atoms(self):
+        es = self._elec[0]
+        h = np.asarray(self.highlight, dtype=int)
+        return h[(h >= 0) & (h < len(es.types))]
+
+    def _column_orbital(self):
+        """The l of a column like "Ga d (up)", or None."""
+        parts = _spinless(self._elec[2]).split()
+        return parts[1] if len(parts) == 2 and parts[1] in "spdf" else None
+
+    def _draw_electronic_selection(self, ax):
+        es, name, _ = self._elec
+        atoms = self._selected_atoms()
+        if not len(atoms):
+            return
+        pick, orb = TOKENS["pick"], self._column_orbital()
+        try:
+            if name == "DOS" and es.pdos is not None:
+                e = es.dos_energies - es.efermi
+                p = es.pdos_of(atoms, orb)
+                for s in range(es.num_spins):
+                    y = -p[s] if s == 1 else p[s]
+                    self._overlays.append(ax.fill_between(e, y, color=pick, alpha=0.35, lw=0))
+                    self._overlays.extend(ax.plot(e, y, color=pick, lw=1.4))
+            elif name == "Bands" and es.has_projections:
+                w = es.band_weights(atoms, orb)
+                x = es.distances if es.distances is not None else np.arange(w.shape[1], dtype=float)
+                e = es.eigenvalues - es.efermi
+                lo, hi = ax.get_ylim()
+                for s in range(es.num_spins):
+                    xs = np.repeat(x, w.shape[2])
+                    ys, ws = e[s].ravel(), w[s].ravel()
+                    ok = (ys >= lo) & (ys <= hi) & (ws > 1e-3)
+                    self._overlays.append(ax.scatter(xs[ok], ys[ok], s=60 * ws[ok], color=pick, alpha=0.6,
+                                                     lw=0, zorder=4, marker="o" if s == 0 else "s"))
+        except (ValueError, KeyError, IndexError) as exc:
+            self.link_label.setText(f"Projection failed: {exc}")
+
+    def _electronic_status(self):
+        es, name, _ = self._elec
+        n = len(self._selected_atoms())
+        orb = self._column_orbital()
+        what = f"{orb} " if orb else ""
+        if name == "DOS":
+            if es.pdos is None:
+                return "No projected DOS in this run (LORBIT >= 10 writes it)"
+            return f"{what}PDOS of {n} selected atom{'s' if n != 1 else ''}" if n else \
+                "Select atoms in the view to see their projected DOS"
+        if not es.has_projections:
+            return "No band projections in this run (LORBIT >= 10 writes them)"
+        return f"Fat bands: {what}weight of {n} selected atom{'s' if n != 1 else ''}" if n else \
+            "Select atoms in the view to see their weight in each band"
+
     def _place_marker(self):
         if _is_neb(self._table()):
             a = self.data.attributes
@@ -567,6 +712,10 @@ class PlotsPanel(QtWidgets.QWidget):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save plot", "plot.pdf", "PDF (*.pdf);;PNG (*.png);;SVG (*.svg)")
         if path:
             self.figure.savefig(path, dpi=300)
+
+
+def _spinless(column: str) -> str:
+    return column.replace(" (up)", "").replace(" (down)", "")
 
 
 def _is_neb(table) -> bool:
