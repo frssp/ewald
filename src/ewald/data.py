@@ -365,6 +365,11 @@ class DataCollection:
                 lines.append(f"  {prop!r}{comp}: min {a.min():.4g}, max {a.max():.4g}, mean {a.mean():.4g}")
         return "\n".join(lines)
 
+    def _repr_png_(self):  # Jupyter shows the frame as a picture (ewald.display.options)
+        from .display import data_png
+
+        return data_png(self)
+
     def __repr__(self) -> str:
         props = ", ".join(self.particles)
         return f"<DataCollection N={self.count} props=[{props}]>"

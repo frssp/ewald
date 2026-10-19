@@ -181,10 +181,50 @@ Any path can be on another machine, written like `scp` or as a URL (needs the `r
 (relative to the remote home) or `"ssh://me@login.hpc.edu:2222/scratch/me/dump.*.lammpstrj"`.
 In the GUI, File › Load remote file (SSH)… browses the remote folders.
 
+### Saved remote computers
+
+Like the session list of an SSH terminal app, a remote computer can be saved once under a
+short name, and the name then works as the host everywhere:
+
+```python
+from ewald.io import profiles
+profiles.save(profiles.Profile("nurion", host="nurion.ksc.re.kr", user="me", auth="key",
+                               key_file="~/.ssh/id_ed25519", jump="", folder="/scratch/me"),
+              passphrase="...")            # optional; goes to the OS keychain
+pipe = import_file("nurion:/scratch/me/run3/dump.lammpstrj")
+```
+
+A profile has a host (host name, IP or `~/.ssh/config` alias), user, port, login (*agent /
+default keys*, *key file* or *password*), a jump host (another profile, an alias or
+`user@host:port`, like `ProxyJump`), a start folder for the file browser, bookmarks and a note.
+Profiles are kept in `remote_profiles.json` in the config folder without any secret. A password
+or key passphrase you choose to save goes to the OS keychain (macOS Keychain, Windows Credential
+Manager, Secret Service/KWallet), or, where there is none, to `credentials.json` readable only by
+you; it never goes into settings, sessions or notebooks, which keep only `nurion:/path`.
+One-time codes are always asked. If a saved password is refused you are asked for it.
+
+In the GUI the Remotes side bar (activity bar, or File › Remote computers, Ctrl+Alt+R) lists
+the profiles and the `~/.ssh/config` hosts not saved yet (right-click › Save as profile), with
++ New, Edit, Test connection, Duplicate and Delete. Below it a file browser opens the start
+folder of the picked computer: double-click opens a file in place (streamed or cached, as
+below), the ★ button bookmarks a folder, the drop-down holds bookmarks and recent files, and a
+file's right-click menu offers Download and open local copy, Download to…, Copy path and Copy
+Python (`pipe = load("nurion:/…")`) for a notebook cell. The same works from a terminal:
+
+```bash
+ewald remote add nurion --host nurion.ksc.re.kr --user me --key ~/.ssh/id_ed25519 --passphrase
+ewald remote add lab --host 10.0.0.5 --user me --password --jump nurion   # asks, saves in the keychain
+ewald remote list                 # profiles and unsaved ~/.ssh/config hosts
+ewald remote test nurion          # connect and print the remote home
+ewald remote ls nurion            # the start folder; or nurion:/scratch/me/run3
+ewald remote get nurion:/scratch/me/run3/vasprun.xml .   # a local copy for analysis
+ewald remote remove lab           # also forgets its saved password
+```
+
 Connections follow `~/.ssh/config` (HostName, User, Port, IdentityFile, IdentitiesOnly,
 ProxyJump, ProxyCommand, UserKnownHostsFile, StrictHostKeyChecking), the SSH agent and your
 keys, and host keys are checked against `known_hosts`. If key login fails, ewald asks for the
-password or one-time code and never saves it. LAMMPS dumps, LAMMPS data files, XDATCARs, OUTCARs and
+password or one-time code; only a saved profile keeps a password, in the keychain. LAMMPS dumps, LAMMPS data files, XDATCARs, OUTCARs and
 vasprun.xml files are read in place, frame by frame (a dump is indexed with `grep -b` on the host), so a large
 trajectory is not copied. Other formats, including plugin formats, are downloaded once into a
 local cache (`ewald.io.remote.cache_dir()`, `EWALD_CACHE_DIR` overrides) and reused while the

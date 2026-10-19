@@ -14,10 +14,11 @@ from ewald import modifiers as mods  # noqa: E402
 
 @pytest.fixture(scope="module")
 def app():
-    from ewald.gui import notebook_panel
+    from ewald.gui import compute, notebook_panel
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     notebook_panel.CONFIRM_UNSAVED = False  # no modal "unsaved changes" questions in tests
+    compute.BUDGET = None  # every frame is shown before recompute() returns; background tests set it
     yield app
     # Destroy every window (VTK render windows, in-process kernels) while Qt is still alive;
     # leaving them to interpreter shutdown can segfault after all tests have passed.
@@ -1275,12 +1276,83 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert asked and view.notebook.restricted and w2.style.radius_scale == 0.8
     hist = next(wd for wd in view.widgets if wd.cell.is_view)
     assert any(o.kind == "image" for o in hist.outputs.outputs)   # the saved figure, nothing ran
+    assert not view.banner.isHidden() and "Restricted" in view.banner_text.text()
     view.run_all()                                            # asks again; No keeps it restricted
-    assert view.notebook.restricted and len(asked) == 2
+    view.run(view.notebook.cells[0])                          # so does running one cell
+    assert view.notebook.restricted and len(asked) == 3 and view.notebook.cells[0].state != "error"
     monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.Yes)
+    w2.trust_action.trigger()                                 # Notebook › Trust notebook…
+    assert not view.notebook.restricted and view.banner.isHidden()
     view.run_all()
-    assert not view.notebook.restricted and [m.name for m in w2.pipeline.modifiers] == ["CoordinationAnalysis"]
+    assert [m.name for m in w2.pipeline.modifiers] == ["CoordinationAnalysis"]
     w2.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_ewd_offers_to_install_the_pip_packages_it_needs(app, cu_path, tmp_path, monkeypatch):
+    from ewald import notebook_io, plugins, settings
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+    from test_notebook_io import add_package_plugin
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\npipe = load({str(cu_path)!r})\n")
+    notebook_io.save_ewd(nb, tmp_path / "p.ewd", figures=False)
+    add_package_plugin(tmp_path / "p.ewd")
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.No)
+    w = MainWindow(settings=settings.Settings())
+    view = w.open_notebook(str(tmp_path / "p.ewd"))
+    assert not view.packages_bar.isHidden() and "ewald-cp2k==0.2" in view.packages_text.text()
+    ran = []
+    monkeypatch.setattr(w.plugins_panel, "_run_pip", lambda action, req: ran.append((action, req)))
+    view.packages_button.click()
+    assert ran == [("install", ["ewald-cp2k==0.2"])] and not w.plugins_dock.isHidden()
+    monkeypatch.setattr(plugins, "modifiers", lambda: {"Cp2kCharges": object()})   # pip installed it
+    w.plugins_panel.changed.emit()
+    assert view.packages_bar.isHidden()
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, monkeypatch):
+    pytest.importorskip("jupyter_client")
+    import sys
+
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.kernel import Kernel
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\nfrom ewald.modifiers import *\npipe = load({str(cu_path)!r})\n\n"
+                          "# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n")
+    nb.save(tmp_path / "k.ipynb")
+    s = settings.Settings()
+    s["python.run_notebooks"] = "never"
+    w = MainWindow(settings=s)
+    view = w.open_notebook(str(tmp_path / "k.ipynb"))
+    assert view.kernel_button.text() == "⚙ This app"
+    view.fill_kernel_menu(view.kernel_menu)
+    labels = [a.text() for a in view.kernel_menu.actions()]
+    assert labels[0] == "This app's Python" and labels[-1] == "Other Python…"
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileName", lambda *a, **k: (sys.executable, ""))
+    view.kernel_menu.actions()[-1].trigger()                      # Other Python…
+    k = view.notebook.kernel
+    try:
+        assert k is not None and view.kernel_button.text() == "⚙ This Python"
+        view.run_all()
+        assert k.alive and [c.state for c in view.notebook.cells] == ["ok", "ok"]
+        assert w.pipeline is view.notebook.pipeline and "Coordination" in w.pipeline.compute(0).particles
+        assert "1 steps" in view.status.text()
+        view.notebook.save(tmp_path / "k2.ipynb")
+        (tmp_path / "k3.ipynb").write_bytes((tmp_path / "k2.ipynb").read_bytes())
+        reopened = w.open_notebook(str(tmp_path / "k3.ipynb"))      # the kernel choice is kept
+        assert reopened.notebook.kernel is not None and not reopened.notebook.kernel.alive
+        assert reopened.kernel_button.text() == "⚙ This Python"
+    finally:
+        import ewald.gui.notebook_panel as npn
+
+        monkeypatch.setattr(npn, "CONFIRM_UNSAVED", False)
+        w.close()
+    assert not k.alive                                             # closing the window stops it
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
@@ -1465,6 +1537,91 @@ def test_plugins_side_bar_installs_adds_a_step_and_removes(app, cu_path, tmp_pat
     w.close()
 
 
+def test_background_compute_keeps_the_window_responsive_and_cancels(app, cu_fcc, monkeypatch):
+    import threading
+    import time
+
+    from ewald.gui import compute
+    from ewald.gui.app import MainWindow
+
+    gate, runs = threading.Event(), []
+
+    class Slow(mods.Modifier):
+        def __init__(self, scale=1.0):
+            super().__init__()
+            self.scale = scale
+
+        def modify(self, data, ctx):
+            runs.append((ctx.frame, self.scale))
+            while not gate.is_set():  # a long analysis that checks for cancellation
+                ctx.check_cancel()
+                time.sleep(0.005)
+            out = data.copy()
+            out.attributes["Scale"] = self.scale
+            return out
+
+    gate.set()
+    slow = Slow()
+    w = MainWindow(Pipeline(StaticSource([cu_fcc] * 3), [slow]))
+    assert w.data.attributes["Scale"] == 1.0  # opening a file still shows frame 0 right away
+    monkeypatch.setattr(compute, "BUDGET", 0.01)
+    gate.clear()
+    runs.clear()
+    w.timeline._set(1)
+    assert w.data.attributes["Scale"] == 1.0  # still the previous result
+    assert w.frame == 1 and w.runner.busy and "Computing frame 1" in w.status.text()
+    slow.scale = 2.0
+    w.recompute()  # a parameter change while frame 1 is still running cancels it
+    gate.set()
+    assert w.runner.wait(5)
+    app.processEvents()
+    assert not w.runner.busy and w.data.attributes["Scale"] == 2.0
+    assert runs[0] == (1, 1.0) and runs[-1] == (1, 2.0)
+    assert "frame 1/2" in w.status.text()
+    w.settings["performance.background_compute"] = False
+    gate.clear()
+    threading.Timer(0.1, gate.set).start()
+    w.timeline._set(2)  # synchronous when turned off
+    assert w.data.attributes["Scale"] == 2.0 and w.frame == 2 and not w.runner.busy
+    w.close()
+
+
+def test_notebook_undo_redo_from_the_edit_menu(app, cu_path):
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(settings=settings.Settings())
+    w.open_any(cu_path, ask_types=False)
+    view = w.panel.view
+    assert not view.history.can_undo  # opening a file is not an edit
+    w.panel.add_modifier(mods.CoordinationAnalysis(cutoff=3.0))
+    step = view.notebook.cells[-1]
+    form = view.widget_for(step)
+    for cutoff in (2.0, 2.6):  # what the form does on each change, twice: one entry
+        step.modifier.cutoff = cutoff
+        view.notebook.update_step(step)
+        form.edited.emit(step)
+    assert w.data["Coordination"].max() == 12
+    w._update_undo_actions()
+    assert w.undo_action.text() == "&Undo Edit CoordinationAnalysis" and not w.redo_action.isEnabled()
+    w.undo()
+    assert w.pipeline.modifiers[0].cutoff == 3.0 and w.data["Coordination"].max() == 12
+    w.undo()
+    assert w.pipeline.modifiers == [] and "Coordination" not in w.data
+    w.undo()
+    assert w.statusBar().currentMessage() == "Nothing to undo"
+    w.redo()
+    w.redo()
+    assert w.pipeline.modifiers[0].cutoff == 2.6
+    w.pipeline.modifiers.append(mods.ExpressionSelection("Coordination < 12"))  # e.g. from the console
+    w.panel.refresh()
+    w._update_undo_actions()
+    assert w.undo_action.text() == "&Undo Change pipeline"
+    w.undo()
+    assert [m.name for m in w.pipeline.modifiers] == ["CoordinationAnalysis"]
+    w.close()
+
+
 def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app, tmp_path):
     import json
 
@@ -1578,3 +1735,45 @@ def test_viewport_boundary_images_hover_as_real_atom(app):
 
     assert v.hover_index(*screen([4.0, 4.0, 4.0]), w, h) == 0  # the corner image is Ti 0
     assert v.hover_index(*screen([2.0, 2.0, 2.0]), w, h) == 1
+
+
+def test_panels_and_cells_fold(app, cu_path, tmp_path):
+    from ewald.gui.app import MainWindow
+    from ewald.gui.collapsible import STRIP, DockTitleBar
+    from ewald.notebook import Notebook
+
+    w = MainWindow()
+    w.resize(1400, 900)
+    w.show()
+    app.processEvents()
+    bar = w.notebook_dock.titleBarWidget()
+    assert isinstance(bar, DockTitleBar)
+    bar.fold.click()
+    app.processEvents()
+    assert bar.collapsed and w.notebook_dock.width() == STRIP and not w.panel.isVisible()
+    bar.toggle()
+    app.processEvents()
+    assert not bar.collapsed and w.notebook_dock.widget() is w.panel and w.panel.isVisible()
+    assert w.notebook_dock.width() > 4 * STRIP
+    data = w.bottom_dock.titleBarWidget()
+    data.set_collapsed(True)
+    assert w.bottom_dock.height() == STRIP or w.bottom_dock.maximumHeight() == STRIP
+    data.set_collapsed(False)
+    side = w.ask_dock.titleBarWidget()                      # tabbed with Display: they fold together
+    side.set_collapsed(True)
+    assert all(d.maximumWidth() == STRIP for d in [w.ask_dock] + w.tabifiedDockWidgets(w.ask_dock))
+    assert w.tabPosition(QtCore.Qt.RightDockWidgetArea) == QtWidgets.QTabWidget.East   # tabs turn sideways
+    side.set_collapsed(False)
+    assert w.tabPosition(QtCore.Qt.RightDockWidgetArea) == QtWidgets.QTabWidget.South
+
+    view = w.panel.view
+    view.add_cell("code", "print('hi')\nx = 1")
+    cw = view.widgets[-1]
+    cw.fold_button.click()
+    assert cw.cell.collapsed and cw.content.isHidden() and "print('hi')" in cw.folded_label.text()
+    nb_path = tmp_path / "folded.ipynb"
+    view.notebook.save(str(nb_path))
+    assert Notebook.load(str(nb_path)).cells[-1].collapsed               # Jupyter's source_hidden
+    cw.set_collapsed(False)
+    assert not cw.content.isHidden()
+    w.close()

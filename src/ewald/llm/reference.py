@@ -98,6 +98,17 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 | session state (`.ovito`) | `ewald.session.save_session(path, pipe, camera=..., render=...)`, `load_session(path).pipeline` |
 | `export_file(pipeline, file, format, columns=[...])` | `export_file(pipe, file, format=None, frames=None)`: writer from the file name (`POSCAR`, `*.data`, `*.extxyz`, `*.xsf`, `*.h5md`, `*.xtc`, `*.cif`, ...) or `format=`; one-frame formats need `frames=[i]` |
 
+## Notebook verbs
+
+`from ewald import load, rdf, msd, vacf, sq, xrd, bond_angles`: `pipe = load(path)` is `import_file`;
+`pipe.add(m)` appends a modifier (and works as `@pipe.add` on `def f(frame, data)`). A verb adds its
+analysis step and returns its table: `rdf(pipe, cutoff=6, bins=200, partial=False)` (CoordinationAnalysis,
+`coordination-rdf`), `msd(pipe, **kw)` (`msd`), `vacf` (`vacf`), `sq(pipe, q_max=10)` (`structure-factor`),
+`xrd(pipe, **kw)` (`diffraction`), `bond_angles(pipe)` (`bond-angle-distr`). The `Table` is a dict of
+columns (`pandas.DataFrame(table)` works) with `.x`, `.plot()`; calling the verb again replaces its step.
+In Jupyter a Pipeline, DataCollection or Table as a cell's last line shows a picture (ray-traced frame 0, or the
+curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] = False` turns it off.
+
 ## Other entry points
 
 - `ewald.kernels.rdf(positions, cell, cutoff, nbins=200, types=None)` -> table with `r`, `g(r)`, partial `g(r) A-B`.

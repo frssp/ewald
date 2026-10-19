@@ -7,7 +7,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Python API
 
-`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `StaticSource`, `import_file`, `load`, `export_file`, `get_backend`, `gpu_available`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
+`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
 
 ## Modifiers
 
@@ -319,6 +319,7 @@ Details: [Command line](user/cli.md).
 | `ewald plugins` | list installed plugins and any that failed to load | `--json` `--enable` `--disable` |
 | `ewald forge [REQUEST...]` | have Claude write a modifier plugin, test it and save it | `--yes` `--draft` `--overwrite` `--rounds` `--model` |
 | `ewald mcp [INPUT]` | serve the analysis tools over MCP (stdio) | `--allow-code` |
+| `ewald remote [REMOTE_CMD]` | saved SSH profiles: list, add, remove, test, ls, get |  |
 | `ewald inventory` | print or update the feature inventory (docs/features.md) | `-o` `--gui` |
 
 ## Claude integration
@@ -446,6 +447,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 |---|---|---|
 | `compute.device` | Default device | `'auto'` |
 | `performance.cache_memory` | Frame cache memory | `2048` |
+| `performance.background_compute` | Compute in the background | `True` |
 | `compute.threads` | CPU threads | `0` |
 
 ### Python
@@ -478,6 +480,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - New notebook (`Ctrl+T`)
 - Open… (`Ctrl+O`)
 - Load remote file (SSH)… (`Ctrl+Alt+O`)
+- Remote computers (SSH profiles)… (`Ctrl+Alt+R`)
 - Load NEB folder…
 - Open example
   - POSCAR.SrTiO3 (VASP POSCAR)
@@ -501,6 +504,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 **Edit**
 
+- Undo (`Ctrl+Z`)
+- Redo (`Ctrl+Shift+Z`)
 - Preferences… (`Ctrl+,`)
 
 **View**
@@ -534,6 +539,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Run current cell and below
 - Restart
 - Restart and run all
+- Kernel
+- Trust notebook…
 - Move cell up (`Ctrl+Shift+Up`)
 - Move cell down (`Ctrl+Shift+Down`)
 - Delete cell
@@ -700,7 +707,7 @@ Open, Save, Run all, Notebook, Render, Search commands, steps, cells… Ctrl K, 
 ### Panels
 
 - Workspaces: Notebook, Render
-- Docks: Ask Claude, Data, Display, Notebook, Plugins
+- Docks: Ask Claude, Data, Display, Notebook, Plugins, Remotes
 - Bottom tabs: Python console, Data inspector, Plots, Log
 - Viewport tools: Orbit / pan / zoom (mouse); Pick atom: shows id, type, position and properties; Shift+click picks several; Measure distance: click two atoms; Measure angle: click three atoms (vertex in the middle); Edit bonds: click two atoms to add or delete the bond between them
 

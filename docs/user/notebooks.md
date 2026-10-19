@@ -38,6 +38,10 @@ the next one. Notebook › Run all (Ctrl+Shift+Enter) restarts the namespace and
 from the top. If a cell fails, its traceback appears under it, and Run all stops there and
 marks the cells below as stale.
 
+The ▾ under a cell's counter folds the cell to one line (its title, step name or first line of
+code); ▸ or a double-click unfolds it. Folded cells stay folded in `.ipynb` and `.ewd` files,
+as JupyterLab's hidden input and output, so they open folded in Jupyter too.
+
 Running a cell again replaces the modifiers it added last time, in the same place, so you can
 edit a cell and re-run it without stacking duplicates. A cell that assigns `pipe` again (a new
 `load`) re-runs the cells below it on the new pipeline.
@@ -73,7 +77,8 @@ notebook, next to the steps that compute them.
 
 **Code cells** are any other Python. Printed output appears under them, as does the value of the
 last line (as in Jupyter). Matplotlib figures are shown as images, without `plt.show()`
-opening a window.
+opening a window, and so are a pipeline (`pipe` as the last line draws frame 0) and a verb
+table (its curve); a frame (`pipe.compute(0)`) shows its summary.
 
 **Styling cells** color, resize or hide atoms by any property. A Python step runs on every
 frame, so the style follows the trajectory:
@@ -90,6 +95,21 @@ def style(frame, data):
 `paint`, `hide`, `isolate` (hide the rest), `fade` and `resize` write new Color, Transparency
 and Radius properties, which every renderer draws. Import them with
 `from ewald.paint import paint, hide, isolate, fade, resize` (new notebooks already do).
+
+**Analysis cells** use a verb: one call adds the analysis step and returns its table.
+
+```python
+from ewald import rdf, msd, sq, xrd, vacf, bond_angles
+g = rdf(pipe, cutoff=6)          # CoordinationAnalysis; g.x is r, g["g(r)"] the curve
+d = msd(pipe, time_per_frame=2)  # MeanSquaredDisplacement over the trajectory
+g                                # shows the g(r) curve; repr(g) is <Table 'coordination-rdf': ...>
+```
+
+A table is a dict of numpy columns with `.x`, `.columns` and `.plot()`; `pandas.DataFrame(g)`
+turns it into a data frame.
+Running the cell (or calling the verb) again replaces the step it added, so changing
+`cutoff=` never stacks duplicates. `show(pipe, table="coordination-rdf")` puts the same table
+in a live view cell.
 
 **Text cells** are Markdown. Double-click one to edit it.
 
@@ -141,9 +161,52 @@ sets the size limit (*Copy data files up to*, 0 for links only) and whether figu
 
 An `.ewd` from someone else opens **restricted**. You see its code, outputs and figures, but no
 cell runs and its plugins are not imported until you agree: opening asks (unless *Run notebooks
-when opened* is *never*), and so does Run all. A plugin you already have installed under the
-same id is used instead of the copy in the file. A `.ipynb` written by Jupyter opens the same
+when opened* is *never*), and so do Run all and running a single cell. A bar over the cells
+says the notebook is restricted, with *Trust* and *Trust and run all*; Notebook › *Trust
+notebook…* does the same. A plugin you already have installed under the
+same id is used instead of the copy in the file. Plugins that came from a pip package are not
+in the file, only their package and version: when you don't have one, a second bar names it with
+the steps that need it, and *Install…* runs pip for them in the Plugins side bar after you
+confirm the command (`Notebook.load(...).warnings` lists them in a script). A `.ipynb` written by Jupyter opens the same
 way as a `.py`; `pipe.add(...)` cells become steps and its outputs are kept.
+
+## Kernels
+
+A notebook's cells run in the app's own Python unless you pick another one. **⚙** in the
+notebook's bar (or Notebook › Kernel) lists *This app's Python*, the Jupyter kernels installed
+on the computer and *Other Python…*, which takes any interpreter, for example a conda
+environment's `envs/ml/bin/python`. The cells then run in a kernel started from that Python, so
+a notebook can use packages ewald's GUI cannot import there. That Python needs ewald and
+ipykernel (`pip install ewald ipykernel`), not the GUI extras. The choice is saved with the
+notebook (`.ipynb` and `.ewd`), and the kernel starts when a cell first runs; Restart and Run all
+restart it, and closing the tab or the window stops it.
+
+The rules are the same as in the app: re-running a cell replaces the steps it added, and a new
+`pipe` re-runs the cells below. `pipe` in the app is a pipeline over the kernel's one: the
+kernel computes each frame and sends back its particles, cell, bonds, tables and attributes, so
+the viewport, view cells, plots and Display settings work as usual. Step cells show their code
+rather than a form, because the modifier objects live in the kernel. From Python:
+
+```python
+from ewald.kernel import Kernel, available
+nb.set_kernel(Kernel(python="/opt/conda/envs/ml/bin/python"))   # or Kernel(name="ml") from available()
+nb.run_all()
+nb.pipeline.compute(0)                                           # computed in the kernel
+nb.set_kernel(None)                                              # back to this Python
+```
+
+## Undo and redo
+
+Edit › Undo (Ctrl+Z) and Redo (Ctrl+Shift+Z) step through the notebook's edits, one entry per
+action: inserting, deleting or moving a cell, running cells (with what you typed into them), a
+step form (dragging one slider counts once) and pipeline changes made from elsewhere (console,
+Ask Claude, viewport tools). The menu names the entry it would undo. While the cursor is in a
+cell, Ctrl+Z undoes typing in that cell instead.
+
+Undo restores the cells' text. Step and view cells that come back or change run again, so the
+pipeline and the viewport follow; other code cells are marked stale and run only when you run
+them, since they may do anything (write files, read data). Each notebook tab has its own
+history, which starts empty when the notebook is opened.
 
 ## Plugins and changes from elsewhere
 
@@ -203,7 +266,11 @@ Preferences › General › *Window layout* switches between `notebook` (the def
 the OVITO-style pipeline list and properties panel, after a restart. In the notebook layout,
 display settings (particle radii and colors, bonds, cell and visual plugins) are in the
 **Display** panel on the right, tabbed with Ask Claude. View › Focus on the viewport (Ctrl+\\)
-hides the panels, and pressing it again brings them back. View › *Minimal mode* (Ctrl+Shift+M)
+hides the panels, and pressing it again brings them back. The ▾ in a panel's title bar (or a
+double-click on the title) folds that panel: the Notebook, Plugins, Display and Ask Claude
+panels fold to a thin strip with their name written down it, and the Data panel to its title
+bar. Panels shown as tabs fold together, and their tabs turn sideways; click the strip, ▸ or a
+tab to unfold. ⧉ floats a panel in its own window. View › *Minimal mode* (Ctrl+Shift+M)
 hides the menu bar, toolbars and status bar, leaving the notebook and the viewport. Every
 command stays one search away in the command palette (Ctrl+K), menu shortcuts keep working,
 and Ctrl+Shift+M brings the menus back. *UI theme* picks Paper (light, the

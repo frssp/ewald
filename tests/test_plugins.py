@@ -497,3 +497,32 @@ def test_claude_tool_plugin_joins_the_toolset():
     assert ts.tools["count_atoms"].description.startswith("Number of atoms")
     assert ts.call("count_atoms", {"n": 3}).content == {"atoms": 3}
     assert ts.tools["load_structure"].function.__name__ == "load_structure"  # built-in tools win
+
+
+def test_scheme_reader_takes_uri_paths(tmp_path, monkeypatch):
+    """``aiida:1234`` would parse as an SSH host:path; a reader with ``schemes=`` gets it instead,
+    and notebooks and sessions keep the string as it is."""
+    from ewald import load
+    from ewald.io import remote
+    from ewald.session import load_session, save_session
+
+    seen = []
+
+    @plugins.reader("demo-db", schemes=("demo",), description="nodes of a demo database")
+    def read_demo(path, scale=1.0):
+        seen.append(path)
+        n = int(path.split(":", 1)[1])
+        return [DataCollection([[0.0, 0.0, i * scale] for i in range(n)], ["Ar"] * n)]
+
+    monkeypatch.setattr(remote, "stat", lambda p: pytest.fail(f"tried SSH for {p}"))
+    pipe = load("demo:3", scale=2.0)
+    assert pipe.compute(0).count == 3 and pipe.compute(0).positions[2, 2] == 4.0
+    assert plugins.find_reader("demo:7").name == "demo-db"
+    assert plugins.scheme_reader("aiida:1") is None and plugins.scheme_reader("POSCAR") is None
+    assert plugins.path_scheme("demo:3") == "demo" and plugins.path_scheme("/tmp/x") is None
+    assert plugins.status()["readers"][0]["schemes"] in ([], ["demo"])
+
+    save_session(tmp_path / "s.ewald", pipe)
+    again = load_session(tmp_path / "s.ewald").pipeline
+    assert again.source.path == "demo:3" and again.compute(0).count == 3
+    assert seen == ["demo:3", "demo:3"]

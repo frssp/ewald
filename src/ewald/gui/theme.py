@@ -61,6 +61,10 @@ QTabBar::tab:selected {{ color: {text}; border-bottom-color: {accent}; }}
 QTabBar::tab:hover {{ color: {text}; }}
 QDockWidget {{ color: {muted}; titlebar-close-icon: none; }}
 QDockWidget::title {{ background: {bg}; padding: 4px 8px; border-bottom: 1px solid {border}; }}
+QWidget#dockTitle {{ background: {bg}; border-bottom: 1px solid {border}; }}
+QLabel#dockTitleText {{ color: {muted}; }}
+QToolButton#dockFold {{ color: {muted}; border: none; padding: 0 3px; }}
+QToolButton#dockFold:hover {{ color: {accent}; }}
 QTreeView, QListView, QTableView, QTableWidget {{ background: {bg}; alternate-background-color: {panel};
     border: 1px solid {border}; gridline-color: {border}; selection-background-color: {raised};
     selection-color: {text}; outline: none; }}
@@ -102,6 +106,7 @@ QFrame#pluginRow[incompatible="true"] QLabel {{ color: {muted}; }}
 QLabel#pluginSummary {{ color: {secondary}; }}
 QLabel#pluginKinds {{ color: {data}; font-size: 11px; }}
 QPushButton#pluginInstall {{ background: {accent}; color: {on_accent}; border: none; border-radius: 4px; padding: 2px 10px; }}
+QPushButton#pluginInstall:disabled {{ background: {border}; color: {muted}; }}
 QPushButton#pluginButton {{ border-radius: 4px; padding: 2px 10px; }}
 QFrame#cell[current="true"] {{ border: 2px solid {accent}; }}
 QFrame#cell[state="error"] {{ border-color: {error}; }}
@@ -109,6 +114,11 @@ QFrame#cell[state="stale"] {{ background: {panel}; }}
 QFrame#cell QLabel, QFrame#cell QCheckBox {{ background: transparent; }}
 QToolButton#cellRun {{ color: {accent}; padding: 2px 5px; }}
 QLabel#cellCounter {{ color: {muted}; font-size: 11px; }}
+QFrame#restrictedBanner {{ background: {data_soft}; border-bottom: 1px solid {data}; }}
+QFrame#restrictedBanner QLabel {{ color: {text}; background: transparent; }}
+QToolButton#cellFold {{ color: {muted}; padding: 0 4px; border: none; }}
+QToolButton#cellFold:hover {{ color: {accent}; }}
+QLabel#cellFolded {{ color: {secondary}; font-style: italic; padding: 3px 0; }}
 QFrame#cell[current="true"] QLabel#cellCounter {{ color: {accent}; }}
 QPlainTextEdit#cellEditor {{ background: {panel}; border: 1px solid {border}; border-radius: 6px; padding: 4px 6px; }}
 QLabel#cellError {{ color: {error}; }}

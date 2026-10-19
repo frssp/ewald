@@ -15,24 +15,32 @@ GUI
 
 - Notebook layout: the viewport could follow the current notebook even when it has no
   pipeline yet (now it keeps the last one); 3D snapshot views (`show(pipe, frame=...)` drawing
-  the structure) and image/figure cells; drag cells to reorder; undo for cell edits; inline
-  Ask Claude suggestions as diffs; per-notebook render settings; a Jupyter display hook so
-  `pipe` shows a rendered image in Jupyter; a `.py` header with the view state and data links;
-  File › Trust notebook and a restricted banner in the notebook panel; pip requirements of
-  package plugins an `.ewd` names (now only recorded).
-- Notebook kernels: run a notebook's cells in another Python environment (a per-tab kernel via
-  jupyter_client with a small `ewald-kernel` that streams computed frames back), so a notebook
-  can use a conda env without ewald's GUI dependencies.
-- Analysis verbs for notebooks (`rdf(pipe, cutoff=6)`, `msd(pipe)`, ... returning tables and
-  adding the step), next to `load` and `pipe.add`.
+  the structure) and image/figure cells; drag cells to reorder; inline
+  Ask Claude suggestions as diffs; per-notebook render settings; a `.py` header with the view state and data links.
+- Notebook kernels (MVP landed: `ewald/kernel.py`): step forms, enable checkboxes and step
+  results for steps that live in the kernel (now shown as code); an Interrupt button; frames
+  without blocking the GUI thread while a cell runs; surfaces, grids and vectors in the frames
+  sent back (now particles, cell, bonds, tables, attributes); kernels on SSH hosts.
+- More analysis verbs (`cna(pipe)`, `voronoi(pipe)`, `clusters(pipe)`, returning per-type counts),
+  and verbs in the Insert menu and Ask Claude's suggestions.
 - Plugins side bar: an "updates available" badge on the activity bar, disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
+- Remotes side bar: list folders and connect in a background thread (now the GUI waits, with
+  a busy cursor), drag a remote file onto the notebook, mirror a run folder to a local folder
+  (rsync-like, for offline analysis), remote data links in the `.ewd` manifest (remote paths are
+  skipped now; the code keeps `name:/path`), a remote terminal or `squeue` view, profile import
+  from PuTTY/MobaXterm/Termius, and "remember this password" on the login prompt.
 - Spectra, Figure and Forge views from the redesign mock-ups, built as view cells
   rather than separate panels.
 - Quad views (top, front, left, perspective), as in OVITO.
-- Undo/redo for pipeline edits.
-- Compute frames in a background thread so the GUI stays responsive.
+- Undo/redo: display style changes (colors, radii, camera) and the classic layout (only notebook
+  edits are undone now); a View cell's table or column change is its own entry instead of
+  joining the next one.
+- Background compute: notebook cells still run on the GUI thread (stdout capture is
+  process-wide), so a cell that computes many frames itself blocks the window until the
+  notebook kernels below exist; view cells and the Plots tab compute other frames on the GUI
+  thread too.
 - Scene updates without a full rebuild when only colors or a few properties change, and frame
   changes with the same atoms that replace only the point coordinates.
 - Picking without a render: click picks still use a `vtkPropPicker` selection render; the hover
@@ -196,6 +204,14 @@ Plugins and Claude
   index curation rules, signatures if the index opens to outside publishers.
 - Per-notebook plugin enable/disable; `plugins.json` holds only the global switch.
 
+- AiiDA (ewald-aiida in frssp/ewald-plugins: local profiles, and remote ones over SSH with
+  `aiida://user@host/1234`): an AiiDA side bar (profiles and hosts, recent workflows, outputs;
+  copy `load("aiida:...")`), a Claude tool to find and open workflows, PDOS/projected bands
+  from aiida-quantumespresso, NEB and aiida-lammps outputs, streaming very long remote
+  trajectories frame by frame instead of one bundle, export of analysis results back as new
+  nodes (opt-in, never default). Not yet tried against a real remote AiiDA host.
+- Other `schemes=` sources: Materials Project (`mp:mp-149`), OPTIMADE, NOMAD.
+
 - LLM plugin ideas: Paper-to-modifier (Forge from a paper's definition, checked against its
   numbers), Run doctor (diagnose a VASP/LAMMPS run from its outputs), phase identification,
   campaign report over many runs.
@@ -238,7 +254,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - CUDA paths on a real NVIDIA GPU: CuPy kernels, neighbor lists, cluster analysis, the
   `--device cuda` GUI switch. CI and the cloud container have no GPU.
 - SSH remote files against a real HPC login node (ProxyJump, OTP, large dumps); tests use an
-  in-process SFTP server.
+  in-process SFTP server. Saved remote computers with a real OS keychain (macOS Keychain,
+  Windows Credential Manager, GNOME Keyring) and a passphrase-protected key from a real agent.
 - Live reload on a real running LAMMPS/VASP job (local and over SSH), where the writer flushes
   in arbitrary pieces; tests grow fixture files byte by byte.
 - Claude features with a real API key: `ewald ask` (also `--select`), the GUI Ask Claude tab,
