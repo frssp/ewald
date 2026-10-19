@@ -260,6 +260,12 @@ class Session:
         kw.update({k: v for k, v in self.render.items()
                    if k in allowed and k not in ("data", "filename", "text", "camera")})
         r = self.render  # keys written by the GUI's Render page
+        if str(r.get("quality", "")).lower() == "custom":
+            kw.pop("quality", None)
+        elif r.get("quality"):  # a preset decides the sampling; the stored field values are only for Custom
+            for k in ("samples", "ao_samples", "shadows", "antialiasing", "ambient_occlusion"):
+                kw.pop(k, None)
+            kw["quality"] = str(r["quality"]).lower()
         if r.get("renderer_name"):
             kw["renderer"] = r["renderer_name"]
         if r.get("scale_bar_on"):

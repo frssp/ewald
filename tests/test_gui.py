@@ -285,3 +285,31 @@ def test_session_save_load_and_publication_output(app, pipe, tmp_path):
     np.testing.assert_allclose(camera_state(w2.viewport.plotter)["position"], cam["position"], rtol=1e-6)
     w.close()
     w2.close()
+
+
+def test_render_page_quality_presets(app):
+    from ewald.gui.render_page import RenderPage
+    from ewald.render import QUALITY_PRESETS
+
+    class Win:  # the page only needs these for code generation
+        pipeline = None
+        frame = 0
+        device = None
+        data = None
+
+    page = RenderPage.__new__(RenderPage)
+    page.update_code = lambda *a: None
+    RenderPage.__init__(page, Win())
+    assert page.quality.currentText() == "Publication"
+    assert page.samples.value() == QUALITY_PRESETS["publication"]["samples"]
+    assert page.render_kwargs()["quality"] == "publication" and "samples" not in page.render_kwargs()
+    page.quality.setCurrentText("Draft")
+    assert page.samples.value() == 1 and not page.shadows.isChecked()
+    page.samples.setValue(5)
+    assert page.quality.currentText() == "Custom" and page.render_kwargs()["samples"] == 5
+    page.movie_quality.setCurrentText("Standard")
+    assert page.render_kwargs(movie=True) == {**page.render_kwargs(movie=True), "quality": "standard"}
+    st = page.state()
+    page.quality.setCurrentText("Publication")
+    page.set_state(st)
+    assert page.quality.currentText() == "Custom" and page.samples.value() == 5

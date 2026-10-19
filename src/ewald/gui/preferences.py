@@ -39,7 +39,8 @@ LAYOUT = {
         ("Bonds", ["bonds.length_factor", "bonds.radius"]),
         ("Element table", ["elements.overrides"])]),
     "Rendering": ("Starting values for the Render workspace.", [
-        ("Renderer", ["render.renderer", "render.samples", "render.ao_samples", "render.shadows"]),
+        ("Renderer", ["render.renderer", "render.quality", "render.movie_quality", "render.samples",
+                      "render.ao_samples", "render.shadows"]),
         ("Output", ["render.size_preset", "render.dpi", "render.background", "render.output_dir"]),
         ("Overlays and movies", ["render.type_legend", "render.scale_bar", "render.movie_format"])]),
     "Compute": ("Where pipelines run, and which optional packages are available.", [
@@ -830,6 +831,9 @@ def apply_settings(win, s: Settings, startup: bool = False):
     page.samples.setValue(s["render.samples"])
     page.ao_samples.setValue(s["render.ao_samples"])
     page.shadows.setChecked(s["render.shadows"])
+    page.quality.setCurrentText(s["render.quality"])  # after the Custom values: a preset overwrites them
+    page._quality_changed(s["render.quality"])
+    page.movie_quality.setCurrentText(s["render.movie_quality"])
     page.dpi.setValue(s["render.dpi"])
     page.preset.setCurrentText(s["render.size_preset"])
     page.background.setCurrentText(s["render.background"])

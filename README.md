@@ -80,6 +80,14 @@ render(data, "fig.svg", renderer="vector")                         # SVG/PDF/EPS
 render_animation(pipe, "movie.mp4", fps=15, text="frame [Frame]")  # also .gif, .avi, .mov, frames_%04d.png
 ```
 
+Output puts quality first: `quality="publication"` is the default (16 rays/pixel,
+32 AO rays, shadows; SSAO and fine sphere meshes in OpenGL). `quality="standard"`
+is balanced and `quality="draft"` renders half-size frames without AO or shadows
+for quick previews and long test movies; any explicit `samples=`, `ao_samples=`,
+`shadows=`, `antialiasing=` or `scale=` overrides the preset. The Render workspace
+has the same presets (plus Custom) and a separate movie quality, with defaults in
+Preferences › Rendering. The interactive viewport keeps its own speed settings.
+
 Renderers: `opengl` (VTK, fast), `raytrace` (built-in ray tracer with ambient
 occlusion and shadows) and `vector` (shaded discs and bond sticks painted far to
 near, overlays stay text). Raster renderers can also write .pdf/.svg/.eps with

@@ -269,15 +269,38 @@ def setup_camera(plotter, data, direction="iso", orthographic=True, zoom=1.0):
 
 VECTOR_SUFFIXES = (".svg", ".pdf", ".eps", ".ps")
 
+# Output quality presets (file output puts quality first; the interactive viewport has its own settings).
+# samples: ray-traced rays per pixel; ao_samples: ambient-occlusion rays; antialiasing: OpenGL SSAA;
+# ambient_occlusion: OpenGL SSAO; sphere_resolution: OpenGL sphere mesh detail; scale: pixel size factor.
+QUALITY_PRESETS = {
+    "draft": {"samples": 1, "ao_samples": 0, "shadows": False, "antialiasing": False,
+              "ambient_occlusion": False, "sphere_resolution": 8, "scale": 0.5},
+    "standard": {"samples": 4, "ao_samples": 8, "shadows": True, "antialiasing": True,
+                 "ambient_occlusion": False, "sphere_resolution": 16, "scale": 1.0},
+    "publication": {"samples": 16, "ao_samples": 32, "shadows": True, "antialiasing": True,
+                    "ambient_occlusion": True, "sphere_resolution": 28, "scale": 1.0},
+}
+
+
+def quality_settings(quality: str | None = "publication", **explicit) -> dict:
+    """Preset values with every explicitly given (non-None) setting taking precedence."""
+    name = (quality or "publication").lower()
+    if name not in QUALITY_PRESETS:
+        raise ValueError(f"unknown quality {quality!r}; use one of {', '.join(QUALITY_PRESETS)}")
+    out = dict(QUALITY_PRESETS[name])
+    out.update({k: v for k, v in explicit.items() if v is not None})
+    return out
+
 
 def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction="iso",
            orthographic: bool = True, zoom: float = 1.0, background="white",
-           transparent_background: bool = False, ambient_occlusion: bool = False,
+           transparent_background: bool = False, ambient_occlusion: bool | None = None,
            legend: bool = True, show_cell: bool = True, bonds: float | None = None,
-           radius_scale: float = 1.0, antialiasing: bool = True, text: str | None = None,
-           camera: dict | None = None, renderer: str = "opengl", samples: int = 8, ao_samples: int = 16,
-           shadows: bool = True, type_legend: bool = False, scale_bar: bool | float | None = None,
-           dpi: float | None = None, **scene_kwargs):
+           radius_scale: float = 1.0, antialiasing: bool | None = None, text: str | None = None,
+           camera: dict | None = None, renderer: str = "opengl", samples: int | None = None,
+           ao_samples: int | None = None, shadows: bool | None = None, type_legend: bool = False,
+           scale_bar: bool | float | None = None, dpi: float | None = None, quality: str = "publication",
+           scale: float | None = None, **scene_kwargs):
     """Render one DataCollection to ``filename`` or return an RGB array.
 
     ``direction`` is a view vector *from* the scene to the camera, or one of
@@ -289,6 +312,11 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     'vector' (SVG/PDF/EPS with real circles and editable text, see :mod:`ewald.vector`).
     Raster renderers can also write .pdf/.svg/.eps, embedding the image.
 
+    ``quality``: 'draft', 'standard' or 'publication' (default) fills in every sampling
+    setting left as None (``samples``, ``ao_samples``, ``shadows``, ``antialiasing``,
+    ``ambient_occlusion``, sphere mesh detail and ``scale``, a factor on ``size``);
+    see ``QUALITY_PRESETS``. Explicit arguments always win.
+
     Overlays: ``text`` label, ``legend`` (ColorCoding color bar), ``type_legend``
     (one swatch per particle type), ``scale_bar`` (True = round length, or a length
     in Angstrom; exact in orthographic views). ``dpi`` is stored in PNG/TIFF files
@@ -298,6 +326,13 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
 
     if renderer not in ("opengl", "raytrace", "vector"):
         raise ValueError(f"unknown renderer {renderer!r}; use 'opengl', 'raytrace' or 'vector'")
+    q = quality_settings(quality, samples=samples, ao_samples=ao_samples, shadows=shadows,
+                         antialiasing=antialiasing, ambient_occlusion=ambient_occlusion,
+                         sphere_resolution=scene_kwargs.pop("sphere_resolution", None), scale=scale)
+    samples, ao_samples, shadows = q["samples"], q["ao_samples"], q["shadows"]
+    antialiasing, ambient_occlusion = q["antialiasing"], q["ambient_occlusion"]
+    if q["scale"] != 1.0:
+        size = (max(16, round(size[0] * q["scale"])), max(16, round(size[1] * q["scale"])))
     overlays = {"text": text, "legend": legend, "type_legend": type_legend, "scale_bar": scale_bar,
                 "type_colors": scene_kwargs.get("type_colors")}
     if renderer == "vector":
@@ -320,7 +355,9 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
 
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     p.set_background(background)
-    build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, bonds=bonds, **scene_kwargs)
+    res = q["sphere_resolution"] if data.count <= 20_000 else min(q["sphere_resolution"], 16)
+    build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, bonds=bonds, sphere_resolution=res,
+                **scene_kwargs)
     if camera is not None:
         apply_camera_state(p, camera)
     else:

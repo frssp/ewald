@@ -400,7 +400,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         page = self.render_page
         kw = dict(self.style.scene_kwargs())
-        kw.update(page.render_kwargs())
+        kw.update(page.render_kwargs(movie=True))
         w, h = kw.pop("size")
         frames = range(0, self.pipeline.num_frames, self.timeline.stride.value())
         dlg = QtWidgets.QProgressDialog(f"Rendering {os.path.basename(path)}…", "Cancel", 0, len(frames), self)

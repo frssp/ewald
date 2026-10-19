@@ -77,9 +77,14 @@ OPTIONS = (
 
     Option("render.renderer", "raytrace", "Default renderer", "Vector writes SVG/PDF/EPS with editable text.",
            choices=("raytrace", "opengl", "vector")),
-    Option("render.samples", 8, "Anti-aliasing rays/pixel", minimum=1, maximum=256),
-    Option("render.ao_samples", 16, "Ambient occlusion rays", minimum=0, maximum=512),
-    Option("render.shadows", True, "Shadows"),
+    Option("render.quality", "Publication", "Image quality",
+           "Draft = half size, no AO/shadows; Publication = 16 rays/pixel, 32 AO rays, shadows. "
+           "Custom uses the three values below.", choices=("Draft", "Standard", "Publication", "Custom")),
+    Option("render.movie_quality", "Same as image", "Movie quality", "Lower it to export long movies faster.",
+           choices=("Same as image", "Draft", "Standard", "Publication")),
+    Option("render.samples", 16, "Anti-aliasing rays/pixel", "Used when quality is Custom.", minimum=1, maximum=256),
+    Option("render.ao_samples", 32, "Ambient occlusion rays", "Used when quality is Custom.", minimum=0, maximum=512),
+    Option("render.shadows", True, "Shadows", "Used when quality is Custom."),
     Option("render.size_preset", "1-column (3.5 in, 4:3)", "Size preset",
            choices=("1-column (3.5 in, 4:3)", "2-column (7.2 in, 16:9)", "Square (3.5 in)", "Slide 16:9 (1920×1080)")),
     Option("render.dpi", 600, "Resolution", "Print resolution used by the size presets.", minimum=72, maximum=2400),

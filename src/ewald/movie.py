@@ -126,7 +126,8 @@ def render_animation(pipeline, filename, *, frames=None, fps: float = 10, device
     expanded per frame (``"t = [Time] ps"``, see :func:`ewald.overlays.format_label`)
     or a callable ``f(frame, data) -> str``. ``progress(i, n)`` is called after each
     frame; returning False stops early (the file written so far is kept).
-    Other keywords go to :func:`ewald.render.render` (size, camera, renderer, ...).
+    Other keywords go to :func:`ewald.render.render` (size, camera, renderer, ``quality``
+    ='draft'|'standard'|'publication', ...); 'draft' renders half-size frames for quick previews.
     """
     from .overlays import format_label
     from .render import _rgb, render

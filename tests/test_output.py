@@ -233,3 +233,27 @@ def test_cli_render_and_movie_from_session(tmp_path, moving, capsys):
     assert "f2" in (tmp_path / "f.svg").read_text()
     main(["movie", str(sess), str(tmp_path / "m.gif"), "--every", "2"])
     assert "(3 frames)" in capsys.readouterr().out
+
+
+def test_quality_presets(cu_fcc):
+    from ewald.render import QUALITY_PRESETS, quality_settings, render
+
+    assert quality_settings()["samples"] == QUALITY_PRESETS["publication"]["samples"]
+    assert quality_settings("draft", samples=3)["samples"] == 3            # explicit wins
+    assert quality_settings("Standard")["ao_samples"] == QUALITY_PRESETS["standard"]["ao_samples"]
+    with pytest.raises(ValueError, match="publication"):
+        quality_settings("ultra")
+    img = render(cu_fcc, None, size=(160, 120), renderer="raytrace", camera=CAMERA, quality="draft")
+    assert img.shape == (60, 80, 3)                                         # draft renders at half size
+    img = render(cu_fcc, None, size=(160, 120), renderer="vector", camera=CAMERA, quality="draft", scale=1.0)
+    assert img.shape == (120, 160, 3)
+
+
+def test_session_quality_preset_wins_over_stored_fields(moving):
+    from ewald.session import Session
+
+    s = Session(pipeline=moving, render={"quality": "Draft", "samples": 16, "shadows": True})
+    kw = s.render_kwargs()
+    assert kw["quality"] == "draft" and "samples" not in kw and "shadows" not in kw
+    s = Session(pipeline=moving, render={"quality": "Custom", "samples": 3})
+    assert s.render_kwargs() == {"samples": 3}

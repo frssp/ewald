@@ -37,6 +37,8 @@ def main(argv=None):
     for parser in (r, mv):
         parser.add_argument("--renderer", choices=("opengl", "raytrace", "vector"), default=None)
         parser.add_argument("--allow-code", action="store_true", help="run Python modifiers stored in a session")
+        parser.add_argument("--quality", choices=("draft", "standard", "publication"), default=None,
+                            help="sampling preset (default publication; draft renders at half size)")
         parser.add_argument("--text", default=None, help="label, e.g. 'frame [Frame]  t = [Time] ps'")
         parser.add_argument("--type-legend", action="store_true", help="swatch per particle type")
         parser.add_argument("--scale-bar", nargs="?", type=float, const=0.0, default=None, metavar="LENGTH",
@@ -159,7 +161,7 @@ def _render_cmd(args, reader_kwargs):
 
         pipe.modifiers.append(ColorCoding(args.color_by, cmap=args.cmap))
     for key, value in (("size", tuple(args.size) if args.size else None), ("direction", args.direction),
-                       ("bonds", args.bonds), ("renderer", args.renderer)):
+                       ("bonds", args.bonds), ("renderer", args.renderer), ("quality", args.quality)):
         if value is not None:
             opts[key] = value
     if args.type_legend:
