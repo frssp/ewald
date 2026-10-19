@@ -134,10 +134,15 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
         _, right, up, fwd = _basis(camera)
         light = np.array([-0.4, 0.6, 1.0]) @ np.array([right, up, -fwd])  # same key light as the ray tracer
         light /= np.linalg.norm(light)
-        n = np.cross(v[f[:, 1]] - v[f[:, 0]], v[f[:, 2]] - v[f[:, 0]])
+        vn, vc = mesh.vertex_properties.get("Normal"), mesh.vertex_properties.get("Color")
+        n = np.cross(v[f[:, 1]] - v[f[:, 0]], v[f[:, 2]] - v[f[:, 0]]) if vn is None \
+            else np.asarray(vn, float)[f].mean(1)  # smooth isosurface normals when given
         n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
         lit = 0.55 + 0.45 * np.abs(n @ light)  # two-sided, like the OpenGL faces
-        fcol = np.clip(mesh.face_colors(), 0, 1) * lit[:, None]
+        if vc is not None:  # color-mapped slices keep their exact colormap (unlit)
+            fcol = np.clip(np.asarray(vc, float), 0, 1)[f].mean(1)
+        else:
+            fcol = np.clip(mesh.face_colors(), 0, 1) * lit[:, None]
         a = 1.0 - mesh.transparency
         for k, tri in enumerate(f):
             poly = Polygon(np.column_stack([vx[tri], vy[tri]]), closed=True)

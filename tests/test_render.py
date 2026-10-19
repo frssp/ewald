@@ -101,3 +101,20 @@ def test_raytrace_triangles_and_transparency():
     assert opaque[10, 10, 0] > 0.4 and opaque[10, 10, 2] < 0.05     # red plane hides the sphere
     assert glass[10, 10, 0] > 0.2 and glass[10, 10, 2] > 0.2        # sphere shows through
     assert glass[2, 2, 1] > 0.3                                     # white background through the corner
+
+
+def test_render_isosurface_and_slice(tmp_path):
+    from ewald.data import VoxelGrid
+    from ewald.modifiers import CreateIsosurface, GridSlice
+
+    cell = Cell(np.diag([6.0, 6.0, 6.0]))
+    f = np.stack(np.meshgrid(*[np.arange(20) / 20] * 3, indexing="ij"), -1)
+    rho = np.exp(-(((f - 0.5) @ cell.matrix) ** 2).sum(-1))
+    data = DataCollection([[3.0, 3.0, 3.0]], ["Si"], cell)
+    data.grids["charge-density"] = VoxelGrid(cell.copy(), {"Charge Density": rho})
+    pipe = Pipeline(StaticSource(data), [CreateIsosurface(0.2, transparency=0.5), GridSlice((0, 0, 1), 0.25)])
+    for renderer in ("opengl", "raytrace"):
+        img = pipe.render(tmp_path / f"{renderer}.png", size=(160, 120), renderer=renderer, samples=1, ao_samples=2)
+        assert img.shape[:2] == (120, 160) and img.std() > 5
+        yellow = (img[..., 0] > 150) & (img[..., 1] > 120) & (img[..., 2] < 80)
+        assert yellow.sum() > 50, renderer  # the isosurface is drawn in its colour

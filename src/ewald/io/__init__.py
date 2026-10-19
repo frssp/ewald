@@ -9,6 +9,8 @@ from .ase_reader import AseReader
 from .base import FrameReader
 from .lammps_data import LammpsDataReader, is_lammps_data
 from .lammps_dump import LammpsDumpReader, is_lammps_dump, write_lammps_dump
+from .volumetric import (VolumetricReader, is_cube, is_vasp_volumetric, read_cube, read_vasp_volumetric,
+                         write_cube, write_vasp_volumetric)
 from .xdatcar import XdatcarReader, is_xdatcar
 
 
@@ -59,6 +61,13 @@ class StaticSource:
 
 def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
     fmt = (format or "").lower()
+    if fmt in ("cube", "gaussian-cube") or (not fmt and is_cube(path)):
+        return VolumetricReader(path, "cube", pbc=kwargs.pop("pbc", False))
+    if fmt in ("vasp-chgcar", "chgcar", "vasp-volumetric", "vasp-locpot", "locpot", "vasp-elfcar", "elfcar") \
+            or (not fmt and is_vasp_volumetric(path)):
+        kind = kwargs.pop("kind", None) or ("potential" if "locpot" in fmt else "elf" if "elfcar" in fmt else
+                                            "charge" if "chgcar" in fmt else None)
+        return VolumetricReader(path, "vasp", kind=kind)
     if fmt in ("lammps/dump", "lammps-dump", "lammps-dump-text") or (not fmt and is_lammps_dump(path)):
         return LammpsDumpReader(path, **kwargs)
     if fmt in ("vasp-xdatcar", "xdatcar") or (not fmt and is_xdatcar(path)):
@@ -79,6 +88,9 @@ def import_file(path, format: str | None = None, **kwargs):
     Keyword arguments go to the reader, e.g. ``type_map={1: "Cu", 2: "Zr"}`` for
     LAMMPS dumps/data files that only contain numeric types, or
     ``atom_style="atomic"`` for LAMMPS data files without an ``Atoms # style`` hint.
+    Volumetric files (VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR, ``*.cube``) give the
+    atoms plus a grid in ``data.grids``; ``kind="charge"|"potential"|"elf"`` overrides the
+    VASP file-name guess and ``pbc=True`` marks a cube file periodic.
     """
     from ..pipeline import Pipeline
 
@@ -90,6 +102,8 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
 
     ``format="lammps/dump"`` uses the native writer; anything else goes through ASE
     (``vasp``, ``vasp-xdatcar``, ``extxyz``, ``lammps-data``, ``cif``, ...).
+    ``format="cube"`` (or a ``.cube`` name) and ``format="vasp-chgcar"`` write a grid of
+    one frame; pass ``property="Charge Density"`` (and ``grid=``) to pick what.
     """
     from ..pipeline import Pipeline
 
@@ -100,6 +114,11 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
         items = [source]
     else:
         items = list(source)
+    fmt = (format or "").lower()
+    if fmt in ("cube", "vasp-chgcar", "chgcar") or (not fmt and str(path).lower().endswith(".cube")):
+        writer = write_cube if fmt in ("cube", "") else write_vasp_volumetric
+        writer(path, items[0], **kwargs)
+        return
     if (format or "").lower() in ("lammps/dump", "lammps-dump") or str(path).endswith((".dump", ".lammpstrj")):
         write_lammps_dump(path, items, **kwargs)
         return
@@ -110,4 +129,5 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
 
 
 __all__ = ["FileSource", "StaticSource", "import_file", "export_file", "open_reader",
-           "LammpsDumpReader", "LammpsDataReader", "XdatcarReader", "AseReader"]
+           "LammpsDumpReader", "LammpsDataReader", "XdatcarReader", "AseReader", "VolumetricReader",
+           "read_vasp_volumetric", "read_cube", "write_vasp_volumetric", "write_cube"]

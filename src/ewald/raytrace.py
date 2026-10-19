@@ -27,6 +27,8 @@ class Scene:
         self.cyl_rgb = np.zeros((0, 3))
         self.tri_a = np.zeros((0, 3)); self.tri_b = np.zeros((0, 3)); self.tri_c = np.zeros((0, 3))
         self.tri_rgb = np.zeros((0, 3)); self.tri_alpha = np.zeros(0)
+        # per-vertex normals and colours (M x 3 x 3), for smooth isosurfaces and colour-mapped slices
+        self.tri_n = np.zeros((0, 3, 3)); self.tri_vrgb = np.zeros((0, 3, 3))
 
     def add_spheres(self, centers, radii, colors):
         self.sph_c = np.vstack([self.sph_c, np.asarray(centers, float).reshape(-1, 3)])
@@ -40,13 +42,26 @@ class Scene:
         self.cyl_r = np.concatenate([self.cyl_r, np.broadcast_to(np.asarray(radii, float), (len(a),))])
         self.cyl_rgb = np.vstack([self.cyl_rgb, np.broadcast_to(np.asarray(colors, float), (len(a), 3))])
 
-    def add_triangles(self, a, b, c, colors, alpha=1.0):
-        """Two-sided triangles; ``alpha`` < 1 makes them see-through (no shadows, no AO)."""
+    def add_triangles(self, a, b, c, colors, alpha=1.0, normals=None, vertex_colors=None):
+        """Two-sided triangles; ``alpha`` < 1 makes them see-through (no shadows, no AO).
+        ``normals``/``vertex_colors`` (M x 3 x 3, one row per corner) are interpolated across
+        each triangle; without them it is flat-shaded in its face colour."""
         a = np.asarray(a, float).reshape(-1, 3)
+        b = np.asarray(b, float).reshape(-1, 3)
+        c = np.asarray(c, float).reshape(-1, 3)
+        rgb = np.broadcast_to(np.asarray(colors, float), (len(a), 3))
+        if normals is None:
+            nf = np.cross(b - a, c - a)
+            nf /= np.maximum(np.linalg.norm(nf, axis=1, keepdims=True), 1e-300)
+            normals = np.repeat(nf[:, None], 3, axis=1)
+        if vertex_colors is None:
+            vertex_colors = np.repeat(rgb[:, None], 3, axis=1)
         self.tri_a = np.vstack([self.tri_a, a])
-        self.tri_b = np.vstack([self.tri_b, np.asarray(b, float).reshape(-1, 3)])
-        self.tri_c = np.vstack([self.tri_c, np.asarray(c, float).reshape(-1, 3)])
-        self.tri_rgb = np.vstack([self.tri_rgb, np.broadcast_to(np.asarray(colors, float), (len(a), 3))])
+        self.tri_b = np.vstack([self.tri_b, b])
+        self.tri_c = np.vstack([self.tri_c, c])
+        self.tri_rgb = np.vstack([self.tri_rgb, rgb])
+        self.tri_n = np.concatenate([self.tri_n, np.asarray(normals, float).reshape(-1, 3, 3)])
+        self.tri_vrgb = np.concatenate([self.tri_vrgb, np.asarray(vertex_colors, float).reshape(-1, 3, 3)])
         self.tri_alpha = np.concatenate([self.tri_alpha, np.broadcast_to(np.asarray(alpha, float), (len(a),))])
 
     def bounds(self):
@@ -85,8 +100,10 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
     for mesh in getattr(data, "surfaces", {}).values():
         if mesh.face_count:
             v, f = mesh.vertices, mesh.faces
+            vn, vc = mesh.vertex_properties.get("Normal"), mesh.vertex_properties.get("Color")
             sc.add_triangles(v[f[:, 0]], v[f[:, 1]], v[f[:, 2]], np.clip(mesh.face_colors(), 0, 1),
-                             1.0 - mesh.transparency)
+                             1.0 - mesh.transparency, None if vn is None else np.asarray(vn, float)[f],
+                             None if vc is None else np.clip(np.asarray(vc, float), 0, 1)[f])
             if mesh.edges is not None and len(mesh.edges):
                 e = mesh.edges
                 sc.add_cylinders(v[e[:, 0]], v[e[:, 1]], 0.5 * mesh.edge_width, _rgb(mesh.edge_color))
@@ -110,6 +127,9 @@ def build_grid(scene: Scene, target_per_cell: float = 2.0):
     extent = hi - lo
     vol = float(np.prod(np.maximum(extent, 1e-6)))
     cell = (vol * target_per_cell / max(n_obj, 1)) ** (1 / 3)
+    if len(scene.tri_alpha):  # surfaces fill a 2D sheet, not the volume: size cells by the triangles
+        edge = float(np.median(np.linalg.norm(scene.tri_b - scene.tri_a, axis=1)))
+        cell = min(cell, max(2.0 * edge, (vol / 2 ** 24) ** (1 / 3)))
     dims = np.clip(np.ceil(extent / cell).astype(np.int64), 1, 512)
     # object AABBs
     boxes_lo, boxes_hi, kinds, idx = [], [], [], []
@@ -366,7 +386,7 @@ def _shade(p, n, d, cr, cg, cb, light, ambient, diffuse, specular, shininess, sh
 def _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, samples, ao_samples, ao_dist,
             light, ambient, diffuse, specular, shininess, shadows, bg,
             lo, size, dims, starts, items, sph_c, sph_r, sph_rgb, cyl_a, cyl_b, cyl_r, cyl_rgb,
-            tri_a, tri_b, tri_c, tri_rgb, tri_alpha, seed):
+            tri_a, tri_b, tri_c, tri_n, tri_vrgb, tri_alpha, seed):
     img = np.zeros((height, width, 4))
     for py in prange(height):
         state = np.empty(1, np.uint64)
@@ -418,13 +438,28 @@ def _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, samples, 
                             n[k] /= nn
                         cr, cg, cb = cyl_rgb[i, 0], cyl_rgb[i, 1], cyl_rgb[i, 2]
                     else:
+                        # barycentric weights of the hit point, then interpolate normal and colour
                         e1x = tri_b[i, 0] - tri_a[i, 0]; e1y = tri_b[i, 1] - tri_a[i, 1]; e1z = tri_b[i, 2] - tri_a[i, 2]
                         e2x = tri_c[i, 0] - tri_a[i, 0]; e2y = tri_c[i, 1] - tri_a[i, 1]; e2z = tri_c[i, 2] - tri_a[i, 2]
-                        n[0] = e1y * e2z - e1z * e2y; n[1] = e1z * e2x - e1x * e2z; n[2] = e1x * e2y - e1y * e2x
+                        qx = p[0] - tri_a[i, 0]; qy = p[1] - tri_a[i, 1]; qz = p[2] - tri_a[i, 2]
+                        d11 = e1x * e1x + e1y * e1y + e1z * e1z; d12 = e1x * e2x + e1y * e2y + e1z * e2z
+                        d22 = e2x * e2x + e2y * e2y + e2z * e2z
+                        dq1 = qx * e1x + qy * e1y + qz * e1z; dq2 = qx * e2x + qy * e2y + qz * e2z
+                        den = d11 * d22 - d12 * d12
+                        wb = (d22 * dq1 - d12 * dq2) / den if den > 0 else 0.0
+                        wc = (d11 * dq2 - d12 * dq1) / den if den > 0 else 0.0
+                        wa = 1.0 - wb - wc
+                        for k in range(3):
+                            n[k] = wa * tri_n[i, 0, k] + wb * tri_n[i, 1, k] + wc * tri_n[i, 2, k]
                         nn = math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2])
+                        if nn < 1e-12:  # degenerate normals: use the face normal
+                            n[0] = e1y * e2z - e1z * e2y; n[1] = e1z * e2x - e1x * e2z; n[2] = e1x * e2y - e1y * e2x
+                            nn = math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2])
                         for k in range(3):
                             n[k] /= nn
-                        cr, cg, cb = tri_rgb[i, 0], tri_rgb[i, 1], tri_rgb[i, 2]
+                        cr = wa * tri_vrgb[i, 0, 0] + wb * tri_vrgb[i, 1, 0] + wc * tri_vrgb[i, 2, 0]
+                        cg = wa * tri_vrgb[i, 0, 1] + wb * tri_vrgb[i, 1, 1] + wc * tri_vrgb[i, 2, 1]
+                        cb = wa * tri_vrgb[i, 0, 2] + wb * tri_vrgb[i, 1, 2] + wc * tri_vrgb[i, 2, 2]
                         alpha = tri_alpha[i]
                     if n[0] * d[0] + n[1] * d[1] + n[2] * d[2] > 0:
                         for k in range(3):
@@ -494,4 +529,5 @@ def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8,
                    float(ao_distance), light, ambient, diffuse, specular, shininess, bool(shadows), bg,
                    lo, gsize, dims, starts, items, scene.sph_c, scene.sph_r, scene.sph_rgb,
                    scene.cyl_a, scene.cyl_b, scene.cyl_r, scene.cyl_rgb,
-                   scene.tri_a, scene.tri_b, scene.tri_c, scene.tri_rgb, scene.tri_alpha, int(seed))
+                   scene.tri_a, scene.tri_b, scene.tri_c, np.ascontiguousarray(scene.tri_n),
+                   np.ascontiguousarray(scene.tri_vrgb), scene.tri_alpha, int(seed))
