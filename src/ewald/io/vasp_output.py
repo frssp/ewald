@@ -230,10 +230,14 @@ _VASPRUN_KEYS = "|".join((
     "<calculation>", "</calculation>", "<structure", "<varray name=\"forces\"", "<varray name=\"stress\"",
     "<scstep>", "</scstep>", "<atominfo>", "<i name=\"(e_fr_energy|e_0_energy|kinetic|total)\"",
     "^ *<(kpoints|dos|eigenvalues|projected)>", "</projected>",
+    "^ *</?(electronvelocities|eigenvalues_kpoints_opt|projected_kpoints_opt)[ >]",
 ))
 _VASPRUN_LITERALS = (b"calculation>", b"<structure", b"<varray name=\"f", b"<varray name=\"s", b"scstep>",
                      b"<atominfo>", b"<i name=\"e_", b"<i name=\"kinetic\"", b"<i name=\"total\"",
-                     b"<kpoints>", b"<dos>", b"<eigenvalues>", b"projected>")
+                     b"<kpoints>", b"<dos>", b"<eigenvalues>", b"projected>", b"electronvelocities>",
+                     b"_kpoints_opt")
+# blocks with their own <kpoints> / <eigenvalues> (LVEL velocities, KPOINTS_OPT bands), not the run's
+_VASPRUN_NESTED = (b"<electronvelocities", b"<eigenvalues_kpoints_opt", b"<projected_kpoints_opt")
 _VASPRUN_VALUES = {b"e_fr_energy": "Free Energy", b"e_0_energy": "Energy", b"kinetic": "Kinetic Energy",
                    b"total": "Total Energy"}
 
@@ -246,9 +250,15 @@ class VasprunReader(FrameReader):
         self._steps: list[dict] = []
         self._electronic_offsets: dict[str, int] = {}
         self.electronic = None
-        atominfo, calc, in_scstep, in_projected = None, None, False, False
+        atominfo, calc, in_scstep, in_projected, nested = None, None, False, False, False
+        fallback, last_values = {}, {}
         for off, line in grep_lines(self.path, _VASPRUN_KEYS, _VASPRUN_LITERALS):
             tag = line.strip()
+            if tag.replace(b"</", b"<", 1).startswith(_VASPRUN_NESTED):
+                nested = not tag.startswith(b"</")
+                continue
+            if nested:
+                continue
             if tag in (b"<kpoints>", b"<dos>", b"<eigenvalues>", b"<projected>"):
                 if tag == b"<projected>":
                     in_projected = True
@@ -261,24 +271,43 @@ class VasprunReader(FrameReader):
             if b"<calculation>" in line:
                 calc = {"values": {}}
             elif b"</calculation>" in line:
-                if calc is not None and "structure" in calc:
-                    self._steps.append(calc)
+                if calc is not None:
+                    # VASP 5 writes a wrong e_0_energy (0 or the -sigma/2 term) after the last
+                    # <scstep>, whose own values lack the vdW correction: E0 = F + (E0 - F)
+                    # of the last <scstep>, as ASE reads it
+                    scf, v = calc.pop("scf", {}), calc["values"]
+                    if "Free Energy" in v and "e_0_energy" in scf and "e_fr_energy" in scf:
+                        v["Energy"] = v["Free Energy"] + scf["e_0_energy"] - scf["e_fr_energy"]
+                    last_values = calc["values"]
+                    if "structure" in calc:
+                        self._steps.append(calc)
                 calc = None
             elif b"<atominfo>" in line:
                 atominfo = off
             elif calc is None:
+                name = re.search(rb'<structure name="(\w+)"', line)
+                if name:  # initialpos / finalpos
+                    fallback[name.group(1).decode()] = off
                 continue
             elif b"<scstep>" in line:
                 in_scstep = True
             elif b"</scstep>" in line:
                 in_scstep = False
+            elif in_scstep:
+                name = re.search(rb'name="(e_0_energy|e_fr_energy)"', line)
+                if name:
+                    scf, key = calc.setdefault("scf", {}), name.group(1).decode()
+                    try:
+                        scf[key] = float(line.split(b">", 1)[1].split(b"<")[0])
+                    except ValueError:  # ***** overflow
+                        scf.pop(key, None)
             elif b"<structure" in line:
                 calc["structure"] = off
             elif b"\"forces\"" in line:
                 calc["forces"] = off
             elif b"\"stress\"" in line:
                 calc["stress"] = off
-            elif not in_scstep:
+            else:
                 name = re.search(rb'name="(\w+)"', line).group(1)
                 try:
                     calc["values"][_VASPRUN_VALUES[name]] = float(line.split(b">", 1)[1].split(b"<")[0])
@@ -286,6 +315,10 @@ class VasprunReader(FrameReader):
                     pass
         if calc is not None and "structure" in calc:  # running job: the open last step
             self._steps.append(calc)
+        if not self._steps and ("finalpos" in fallback or "initialpos" in fallback):
+            # GW, BSE and optics runs have no ionic step: one frame of the structure (with DOS / bands)
+            self._steps.append({"structure": fallback.get("finalpos", fallback.get("initialpos")),
+                                "values": dict(last_values)})
         if atominfo is None:
             raise ValueError(f"{path}: no <atominfo>; not a vasprun.xml?")
         root = self._element(atominfo, b"</atominfo>")
@@ -418,7 +451,10 @@ class VasprunReader(FrameReader):
                 a = p["array"].reshape(ns, -1, shape[2], natoms, p["array"].shape[1])[: 1 if ns == 4 else ns]
                 if band_idx is not None:
                     a = a[:, band_idx]
-                return a if a.shape[:3] == shape else None
+                norb, have = len(es.orbitals), a.shape[-1]
+                if have < norb and p["fields"] == es.orbitals[:have]:  # VASP 5.2: fewer columns than the PDOS
+                    a = np.concatenate([a, np.zeros(a.shape[:-1] + (norb - have,))], axis=-1)
+                return a if a.shape[:3] == shape and a.shape[-1] == norb else None
 
             band_idx = band
             es.orbitals = es.orbitals or self._scan_fields(off)
@@ -454,8 +490,9 @@ class VasprunReader(FrameReader):
         return ET.fromstring(b"".join(lines))
 
     def _varray(self, offset) -> np.ndarray:
-        el = self._element(offset, b"</varray>")
-        return np.array([v.text.split() for v in el.findall("v")], dtype=float)
+        el = self._element(offset, b"</varray>")  # ***** (Fortran overflow) reads as NaN
+        return np.array([[np.nan if t[0] == "*" else t for t in v.text.split()] for v in el.findall("v")],
+                        dtype=float)
 
     def read(self, index: int) -> DataCollection:
         rec = self._steps[index]

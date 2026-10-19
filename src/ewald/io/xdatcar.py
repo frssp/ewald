@@ -12,7 +12,7 @@ import warnings
 import numpy as np
 
 from ..data import Cell, DataCollection
-from .base import FrameReader, file_size, head_lines, open_binary, strip_compression
+from .base import FrameReader, file_size, floats, head_lines, open_binary, strip_compression
 
 
 def is_xdatcar(path) -> bool:
@@ -28,6 +28,16 @@ def species_name(label: str) -> str:
     base = label.split("/")[0].split("_")[0]
     letters = "".join(c for c in base if c.isalpha())
     return letters[:1].upper() + letters[1:2].lower() if letters else label
+
+
+def _xyz(line: bytes) -> list:
+    """Three coordinates, also when VASP runs the columns together (``-0.63265286-0.11227753``)."""
+    xyz = line.split()[:3]
+    return xyz if len(xyz) == 3 else floats(line)[:3]
+
+
+def _has_xyz(line: bytes) -> bool:
+    return len(_xyz(line)) == 3
 
 
 class XdatcarReader(FrameReader):
@@ -58,7 +68,7 @@ class XdatcarReader(FrameReader):
                 if line.strip().lower().startswith((b"direct", b"cartesian")):
                     if natoms is None:
                         raise ValueError(f"{self.path}: configuration before header")
-                    complete = all(len(fh.readline().split()) >= 3 for _ in range(natoms))
+                    complete = all(_has_xyz(fh.readline()) for _ in range(natoms))
                     if not complete:
                         return frames, True
                     frames.append((header, offset))
@@ -127,7 +137,7 @@ class XdatcarReader(FrameReader):
         with open_binary(self.path) as fh:
             fh.seek(cfg)
             kind = fh.readline().strip().lower()
-            coords = np.array([fh.readline().split()[:3] for _ in range(n)], dtype=float)
+            coords = np.array([_xyz(fh.readline()) for _ in range(n)], dtype=float)
         coords = coords.reshape(n, 3)
         cell = Cell(lattice, np.zeros(3), np.ones(3, bool))
         pos = cell.to_cartesian(coords) if kind.startswith(b"direct") else coords * scale
