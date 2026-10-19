@@ -159,6 +159,39 @@ def test_timeline(app):
     assert seen == [3, 4, 0]
 
 
+def test_diffraction_form_and_plots(app, tmp_path):
+    from ase.build import bulk
+
+    from ewald import DataCollection
+    from ewald.backend import CPU
+    from ewald.gui.params import ParameterForm
+    from ewald.gui.plots import PlotsPanel
+    from ewald.pipeline import ComputeContext
+
+    mod = mods.PowderDiffraction()
+    form = ParameterForm(mod)
+    radiation = form.editors["radiation"][0]
+    assert isinstance(radiation, QtWidgets.QComboBox) and radiation.count() == 2
+    radiation.setCurrentText("neutron")
+    exp = tmp_path / "measured.xy"
+    exp.write_text("20 1\n40 5\n60 2\n")
+    form.editors["experimental"][0].setText(str(exp))   # line edit next to a "..." file button
+    form.apply()
+    assert mod.radiation == "neutron" and mod.experimental == str(exp)
+    d = DataCollection.from_ase(bulk("Cu", "fcc", a=3.615))
+    out = d.copy()
+    mod.modify(out, ComputeContext(0, None, CPU))
+    panel = PlotsPanel()
+    panel.set_data(out)
+    panel.table.setCurrentText("diffraction")
+    ax = panel.figure.axes[0]
+    assert [l.get_label() for l in ax.lines] == ["Intensity", "Experimental"]
+    assert ax.lines[1].get_marker() == "."    # the measured pattern as points
+    panel.table.setCurrentText("diffraction-peaks")
+    ax = panel.figure.axes[0]
+    assert len(ax.collections) == 1 and not ax.lines   # reflections as sticks
+
+
 def test_plots_thermo_series_marker_follows_frame(app, lammps_dir):
     from ewald import import_file
     from ewald.gui.plots import PlotsPanel

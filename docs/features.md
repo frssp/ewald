@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-49 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+52 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -106,6 +106,13 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 |---|---|
 | `PythonScript` | Run ``modify(frame, data)`` defined in ``source``. |
 
+### diffraction
+
+| Modifier | What it does |
+|---|---|
+| `PowderDiffraction` | Powder X-ray or neutron diffraction pattern of the (periodic) cell. |
+| `StructureFactor` | Static structure factor S(q) (q = 4 pi sin(theta) / lambda in 1/Angstrom), for liquids, glasses and MD. |
+
 ### plumed
 
 | Modifier | What it does |
@@ -127,6 +134,12 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | Modifier | What it does |
 |---|---|
 | `SteinhardtOrderParameters` | Per-particle q_l (and w_l) for every degree in ``degrees``. |
+
+### symmetry
+
+| Modifier | What it does |
+|---|---|
+| `SymmetryAnalysis` | Space group, Wyckoff positions and symmetry-equivalent atoms (spglib). |
 
 ### topology
 
@@ -270,6 +283,8 @@ The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (
 | `set_frame` | Set the current frame used by tools that take no frame argument. |
 | `evaluate_expression` | Evaluate an OVITO-style per-particle expression on a frame and return statistics (count of true values for conditions; min/max/mean/percentiles for numbers). |
 | `compute_rdf` | Radial distribution function g(r) of a frame (total, plus partial pairs). |
+| `analyze_symmetry` | Space group (Hermann-Mauguin and number), point group, crystal system and the Wyckoff site of every symmetry-unique atom of a frame (spglib). |
+| `compute_diffraction` | Powder X-ray or neutron diffraction peaks of a frame (2-theta, d, hkl, relative intensity; strongest first), or the structure factor S(q) when kind='sq'. |
 | `compute_msd` | Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per type, with a linear-regime fit D = slope/6. |
 | `compute_plumed_cvs` | Collective variables computed by PLUMED (needs the PLUMED library) over the trajectory from a plumed.dat (text or path): e.g. 'd: DISTANCE ATOMS=1,2' (atoms numbered from 1, by Particle Identifier when present), TORSION, COORDINATION, RMSD, METAD with temperature. |
 | `read_plumed_output` | Read a PLUMED output file. |
@@ -430,6 +445,11 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Chill+ (ice, hydrate)
   - Centrosymmetry
   - Atomic strain
+- Symmetry & diffraction
+  - Space group / Wyckoff positions (spglib)
+  - Powder XRD pattern
+  - Powder neutron diffraction
+  - Structure factor S(q)
 - Trajectory
   - Mean squared displacement / diffusion
   - Velocity autocorrelation

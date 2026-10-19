@@ -315,6 +315,11 @@ selection). `FindRings` gives shortest-path ring statistics of the bond network 
 `SteinhardtOrderParameters` the q_l/w_l bond-orientational order (plain or Lechner-Dellago
 averaged, checked against freud).
 
+Symmetry and diffraction: `SymmetryAnalysis` (space group, Wyckoff positions and equivalent
+atoms via spglib), `PowderDiffraction` (powder XRD and neutron patterns, identical to pymatgen,
+overlaid on a measured pattern with an Rwp) and `StructureFactor` (S(q) of liquids, glasses and
+MD: direct, from g(r) or Debye; X-ray or neutron weighted).
+
 ### Vector arrows
 
 `VectorVis` draws a per-particle vector property as arrows, like OVITO's vector visual
