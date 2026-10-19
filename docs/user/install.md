@@ -23,6 +23,7 @@ Optional parts are extras, installed only when you need them:
 | `gpu` | `device="cuda"` through CuPy (NVIDIA, CUDA 12) | `pip install -e ".[gpu]"` |
 | `movie` | MP4/GIF export through imageio and ffmpeg | `pip install -e ".[movie]"` |
 | `ovito` | `DislocationAnalysis` (DXA) and `OvitoModifier` | `pip install -e ".[ovito]"` |
+| `plumed` | PLUMED Python binding for `Plumed` (the PLUMED library itself: conda-forge or your build, see [PLUMED](plumed.md)) | `pip install -e ".[plumed]"` |
 | `remote` | files on SSH hosts (`import_file("host:/path")`) through paramiko | `pip install -e ".[remote]"` |
 | `llm` | Claude agent and MCP server | `pip install -e ".[llm]"` |
 | `analysis` | freud, for cross-checks | `pip install -e ".[analysis]"` |

@@ -422,6 +422,22 @@ With the optional `ovito` package (`pip install ovito` or `pip install -e ".[ovi
 polylines in `tables["dislocations"]`), and `OvitoModifier(any_ovito_modifier)`
 runs any other OVITO modifier inside an ewald pipeline.
 
+### PLUMED collective variables
+
+With the PLUMED library (`conda install -c conda-forge plumed py-plumed`), `Plumed(input)`
+runs a `plumed.dat` over the trajectory (Angstrom to nm, masses, charges and the cell handed
+over as an MD code would; results identical to `plumed driver`) and stores every CV as the
+attribute `Plumed.<name>`, per-atom CVs as properties; `LoadColvar` aligns an existing COLVAR
+with the frames and `FreeEnergySurface` turns a HILLS file into the FES that `plumed sum_hills`
+gives. See docs/user/plumed.md.
+
+```python
+from ewald.modifiers import FreeEnergySurface, Plumed
+
+pipe.modifiers.append(Plumed("d: DISTANCE ATOMS=1,2\nphi: TORSION ATOMS=5,7,9,15"))
+pipe.modifiers.append(FreeEnergySurface("HILLS", bins=(60, 60)))
+```
+
 CNA, PTM, Voronoi and matching-mode CSP use a C++ extension (`ewald._native`,
 compiled by `pip install -e .` with pybind11; sources and licenses in
 `src/ewald/_csrc/`). Installing needs a C++17 compiler (gcc/clang, Xcode command

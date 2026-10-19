@@ -17,6 +17,7 @@ analysis = ["freud-analysis"]
 movie = ["imageio[ffmpeg]"]
 formats = ["h5py", "MDAnalysis>=2.7"]   # H5MD; GROMACS XTC/TRR, DCD, NetCDF
 ovito = ["ovito"]   # DislocationAnalysis (DXA) and OvitoModifier bridge
+plumed = ["plumed"]   # PLUMED Python binding; the PLUMED library itself comes from conda-forge or a build (PLUMED_KERNEL)
 llm = ["anthropic>=1.0", "mcp"]
 remote = ["paramiko>=3.2"]  # import_file("host:/path") over SSH/SFTP
 dev = ["pytest", "paramiko>=3.2"]

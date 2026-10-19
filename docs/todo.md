@@ -8,7 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- PLUMED plugin and collective variables.
 - Ask Claude about picked atoms ([#26](https://github.com/frssp/ewald/pull/26)).
 
 ## Next
@@ -22,6 +21,8 @@ GUI
 
 Analysis
 
+- PLUMED: draw the bias forces as arrows, take MOLINFO residue names from the loaded topology,
+  and plot `Plumed.*` attributes directly on the timeline with a current-frame marker.
 - ConstructSurfaceMesh (alpha-shape surface), drawn with the existing `SurfaceMesh`.
 - FindRings keeps every shortest-path ring; OVITO drops some near-maximum-size rings that differ
   from a same-size ring by a smaller one (closed-source, order-dependent). Decide whether to
@@ -95,6 +96,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - The native OUTCAR and vasprun.xml readers on real VASP 5/6 output (relaxations with ISIF=3,
   non-collinear and MD runs, multi-GB files); the test fixtures are hand-written in VASP 6.4
   format and checked against ASE.
+- PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
+  CI has no PLUMED, so those tests skip).
 
 ## Infrastructure
 

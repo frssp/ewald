@@ -52,7 +52,8 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `backend.py` (numpy/CuPy `xp` backends), `neighbors.py` (numba CPU cell list, `find_pairs`),
   `cuda_kernels.py` (CUDA C via CuPy `RawKernel`), `kernels.py` (RDF, unwrap, MSD).
 - `modifiers/`: one module per family; `__init__.py` `__all__` is the public list and also resolves
-  OVITO names (`XxxModifier` -> `Xxx`). `ovito_bridge.py` wraps the optional `ovito` package (DXA).
+  OVITO names (`XxxModifier` -> `Xxx`). `ovito_bridge.py` wraps the optional `ovito` package (DXA);
+  `plumed.py` holds the `Plumed`/`LoadColvar`/`FreeEnergySurface` modifiers.
 - `_csrc/`: C++ ports of OVITO CNA/PTM/Voronoi/CSP plus vendored ptm, voro++, mwm_csp; origins and
   licenses in `_csrc/README.md`. Built by `setup.py` (pybind11).
 - `radii.py`: radius presets (covalent, Slater, Clementi, vdW, Shannon ionic with oxidation-state and CN guessing);
@@ -69,6 +70,9 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
 - `inventory.py`: `ewald inventory`, docs/features.md from the registries, CLI parser and GUI menus.
+- `plumed.py`: PLUMED through its Python binding as an MD engine (`run`, `PlumedEngine`), COLVAR/HILLS
+  parsing, `fes_from_hills` (same kernels as `plumed sum_hills`). Tests compare with `plumed driver` and
+  the sum_hills files in `tests/data/plumed/` (regenerate with `make_plumed_reference.py`, never by hand).
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
 - `gui/`: `app.py` main window, `viewport.py`, `pipeline_panel.py`, `params.py`, `render_page.py`,
   `preferences.py`, `remote_dialog.py` (SSH browser), `console.py`, `inspector.py`, `plots.py`,
@@ -94,7 +98,7 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   (`gui/params.py`) is generated from it, so store every constructor argument as an attribute of the
   same name. New modifiers that construct with no arguments appear in the GUI menu automatically;
   otherwise add an entry with a sensible default to `MODIFIER_MENU` in `gui/pipeline_panel.py`.
-- Optional dependencies (`gui`, `gpu`, `ovito`, `llm`, `movie`, `formats`) are imported lazily; tests use
+- Optional dependencies (`gui`, `gpu`, `ovito`, `plumed`, `llm`, `movie`, `formats`) are imported lazily; tests use
   `pytest.importorskip` for them. Headless `render()`/`compute()` never read `settings` implicitly.
 - Python first; numba or C++ only for measured hot spots. Ported OVITO code is used under its MIT
   option and keeps the notice. No LICENSE file (private project).

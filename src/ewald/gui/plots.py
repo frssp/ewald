@@ -102,6 +102,11 @@ class PlotsPanel(QtWidgets.QWidget):
             else:
                 ax.hist(v, bins=50, color=TOKENS["accent"])
             ax.set_xlabel(name); ax.set_ylabel("count")
+        elif d is not None and self.table.currentText() in d.tables and _grid(d.tables[self.table.currentText()]):
+            keys, (x, y, z) = _grid(d.tables[self.table.currentText()])
+            cs = ax.contourf(x, y, z, levels=20, cmap="viridis")
+            fig.colorbar(cs, ax=ax, label=keys[2])
+            ax.set_xlabel(keys[0]); ax.set_ylabel(keys[1])
         elif d is not None and self.table.currentText() in d.tables:
             table = d.tables[self.table.currentText()]
             keys = list(table)
@@ -141,3 +146,21 @@ class PlotsPanel(QtWidgets.QWidget):
 
 def _is_series(table) -> bool:
     return bool(table) and next(iter(table)) in ("Step", "Timestep") and len(table) > 1
+
+
+def _grid(table):
+    """``(names, (x, y, z))`` when ``table`` is a map on a regular 2D grid (three columns, the
+    first two covering every combination of their values, e.g. a 2D free energy surface)."""
+    keys = list(table)
+    if len(keys) != 3:
+        return None
+    x, y, z = (np.asarray(table[k], float) for k in keys)
+    ux, uy = np.unique(x), np.unique(y)
+    if len(ux) < 2 or len(uy) < 2 or len(ux) * len(uy) != len(z):
+        return None
+    ix, iy = np.searchsorted(ux, x), np.searchsorted(uy, y)
+    grid = np.full((len(uy), len(ux)), np.nan)
+    grid[iy, ix] = z
+    if np.isnan(grid).any():
+        return None
+    return keys, (ux, uy, grid)
