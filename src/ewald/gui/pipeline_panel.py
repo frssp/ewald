@@ -52,6 +52,11 @@ MODIFIER_MENU = {
         "Invert selection": mods.InvertSelection,
         "Clear selection": mods.ClearSelection,
     },
+    "Collective variables (PLUMED)": {
+        "PLUMED input (plumed.dat)": mods.Plumed,
+        "Load COLVAR file": mods.LoadColvar,
+        "Free energy surface from HILLS": mods.FreeEnergySurface,
+    },
     "Python": {
         "Python script": mods.PythonScript,
     },

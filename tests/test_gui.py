@@ -100,6 +100,31 @@ def test_parameter_form_roundtrip(app):
     assert mod.distance == 2.5 and mod.normal == (1, 0, 0) and mod.inverse is True
 
 
+def test_multiline_parameter_and_fes_map(app):
+    from ewald.gui.params import ParameterForm
+    from ewald.gui.plots import PlotsPanel, _grid
+
+    mod = mods.Plumed()
+    form = ParameterForm(mod)
+    editor = form.editors["input"][0]
+    assert isinstance(editor, QtWidgets.QPlainTextEdit)     # a plumed.dat, not one line
+    editor.setPlainText("d: DISTANCE ATOMS=1,2\nt: TORSION ATOMS=1,2,3,4\n")
+    form.apply()
+    assert mod.input.count("\n") == 2
+    x, y = np.meshgrid(np.linspace(0, 1, 4), np.linspace(-1, 1, 5), indexing="ij")
+    table = {"d": x.ravel(), "t": y.ravel(), "Free Energy": (x + y).ravel()}
+    names, (ux, uy, z) = _grid(table)
+    assert z.shape == (5, 4) and z[0, 3] == pytest.approx(1 - 1)
+    assert _grid({"r": [0, 1], "g": [1, 2]}) is None
+    from ewald import DataCollection
+
+    d = DataCollection(np.zeros((1, 3)), np.array(["C"]))
+    d.tables["fes"] = table
+    panel = PlotsPanel()
+    panel.set_data(d)
+    assert panel.figure.axes[0].get_ylabel() == "t"
+
+
 def test_python_script_modifier_and_error_skip(pipe):
     script = mods.PythonScript("def modify(frame, data):\n    data['F'] = np.full(data.count, frame)\n")
     bad = mods.ExpressionSelection("NoSuchProperty > 1")

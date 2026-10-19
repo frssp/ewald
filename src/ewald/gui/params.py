@@ -47,6 +47,11 @@ class ParameterForm(QtWidgets.QWidget):
             w.addItems(_CMAPS)
             w.setCurrentText(str(value))
             self.editors[name] = (w, str)
+        elif isinstance(value, str) and (name in getattr(self.modifier, "multiline_parameters", ()) or "\n" in value):
+            w = QtWidgets.QPlainTextEdit(value)   # e.g. a PLUMED input
+            w.setMinimumHeight(110)
+            w.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+            self.editors[name] = (w, str)
         elif isinstance(value, str):
             w = QtWidgets.QLineEdit(value)
             self.editors[name] = (w, str)
@@ -64,6 +69,8 @@ class ParameterForm(QtWidgets.QWidget):
                 value = w.value()
             elif isinstance(w, QtWidgets.QComboBox):
                 value = w.currentText()
+            elif isinstance(w, QtWidgets.QPlainTextEdit):
+                value = w.toPlainText()
             elif kind is str:
                 value = w.text()
             else:
