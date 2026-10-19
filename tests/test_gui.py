@@ -865,8 +865,11 @@ def test_ask_panel_selection_and_frame(app, pipe):
     panel.ask()
     _wait(app, panel)
     assert agents[0].calls == [("selection", "What are these?", [3, 1], 1)]
-    text = panel.transcript.toPlainText()
-    assert "What are these?" in text and "2 atoms: fcc neighbors" in text
+    text = panel.text()
+    assert "What are these?" in text and "2 atoms: **fcc** neighbors" in text
+    user, claude = panel.messages
+    assert user.role == "user" and claude.role == "assistant"
+    assert [claude.steps.itemAt(i).widget().text() for i in range(claude.steps.count())] == ["✓ Used describe_selection"]
     assert changed == [1] and panel.ask_button.isEnabled() and panel.input.toPlainText() == ""
 
     ctx["indices"] = []
@@ -874,7 +877,7 @@ def test_ask_panel_selection_and_frame(app, pipe):
     _wait(app, panel)
     assert agents[0].calls[-1] == ("frame", "And the frame?") and len(agents) == 1   # same conversation
     panel.reset()
-    assert panel.transcript.toPlainText() == ""
+    assert panel.text() == "" and not panel.welcome.isHidden()
 
 
 def test_ask_panel_without_claude(app, pipe):
@@ -885,7 +888,7 @@ def test_ask_panel_without_claude(app, pipe):
 
     panel = AskPanel(lambda: (pipe, 0, []), agent_factory=missing)
     panel.ask("hello")
-    assert "not available" in panel.transcript.toPlainText() and "pip install ewald[llm]" in panel.transcript.toPlainText()
+    assert "not available" in panel.text() and "pip install ewald[llm]" in panel.text()
     assert not panel.busy()
 
 
@@ -907,11 +910,74 @@ def test_main_window_ask_uses_picks_and_selection(app, pipe):
     w.show()
     app.processEvents()
     shown = lambda wid: not wid.visibleRegion().isEmpty()  # noqa: E731
-    assert shown(w.display) and not shown(w.ask_dock)    # tabbed with the display panel, which is in front
+    assert shown(w.display) and not shown(w.ask_dock)    # the AI chat side bar starts hidden
     w.ask_claude()
     app.processEvents()
-    assert shown(w.ask_dock) and not shown(w.display)
+    assert shown(w.ask_dock) and shown(w.display)         # left of the notebook, not over Display
+    assert w.dockWidgetArea(w.ask_dock) == QtCore.Qt.LeftDockWidgetArea
+    app.processEvents()
+    a, n = w.ask_dock.geometry(), w.notebook_dock.geometry()
+    assert a.center().x() < n.center().x() and a.top() == n.top()   # left of it, not stacked
     w.close()
+
+
+def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
+    from ewald.gui import ask_panel
+    from ewald.gui.app import MainWindow
+
+    agents = []
+
+    class NotebookAgent(_FakeAgent):
+        def ask(self, question):
+            self.calls.append(("frame", question))
+            return "Try this:\n\n```python\npipe.add(CoordinationAnalysis(cutoff=3.0))\n```\n\nand ```x``` inline."
+
+    w = MainWindow(pipe)
+    w.ask_panel.agent_factory = lambda p, ev: agents.append(NotebookAgent(p, ev)) or agents[-1]
+    act = w.activity_buttons["AI chat"]
+    assert w.ask_dock.isHidden()
+    act.trigger()                                          # the AI button in the activity bar
+    assert not w.ask_dock.isHidden()
+    w.ask_panel.ask("Add coordination")
+    _wait(app, w.ask_panel)
+    first = agents[0].calls[0][1]
+    assert first.startswith("The notebook now reads:") and "pipe" in first and first.endswith("Add coordination")
+    assert w.ask_panel.snippets == ["pipe.add(CoordinationAnalysis(cutoff=3.0))\n"]
+    answer = w.ask_panel.messages[1]
+    assert [b.insert_button is not None for b in answer.code_blocks] == [True]
+    w.ask_panel.ask("Again")                               # unchanged notebook: not sent twice
+    _wait(app, w.ask_panel)
+    assert agents[0].calls[1][1] == "Again"
+
+    view = w.panel.view
+    n = len(view.notebook.cells)
+    answer.code_blocks[0].insert_button.click()            # + Insert as cell under the code block
+    assert len(view.notebook.cells) == n + 1
+    assert any(c.source.strip() == "pipe.add(CoordinationAnalysis(cutoff=3.0))" for c in view.notebook.cells)
+    assert not w.notebook_dock.isHidden()
+    w.ask_panel.ask("And now?")                            # the notebook changed: sent again
+    _wait(app, w.ask_panel)
+    assert agents[0].calls[2][1].startswith("The notebook now reads:") and "cutoff=3.0" in agents[0].calls[2][1]
+    assert ask_panel.code_blocks("a\n```py\nx = 1\n```\n```bash\nls\n```") == ["x = 1\n"]
+    assert ask_panel.split_answer("a\n```bash\nls\n```\nb") == [("text", "", "a"), ("code", "bash", "ls\n"),
+                                                                ("text", "", "b")]
+    w.ask_panel.reset()
+    w.ask_panel.starters[0].click()                        # a starter sends its question
+    _wait(app, w.ask_panel)
+    assert w.ask_panel.messages[0].text == ask_panel.STARTERS[0]
+    w.close()
+
+
+def test_ai_chat_tells_claude_about_the_notebook(app, monkeypatch):
+    from ewald import settings
+    from ewald.gui import ask_panel
+
+    made = []
+    monkeypatch.setattr(ask_panel, "_default_agent", lambda p, ev, **kw: made.append(kw))
+    s = settings.Settings()
+    ask_panel.agent_from_settings(lambda: s, notebook=True)(None, None)
+    ask_panel.agent_from_settings(lambda: s)(None, None)
+    assert "Insert as notebook cell" in made[0]["system"] and "system" not in made[1]
 
 
 def test_viewport_draws_vector_arrows(app):
@@ -1139,11 +1205,90 @@ def test_colormap_combo_lists_plugins(app, monkeypatch):
     assert "grayscale" in combo.itemData(0, QtCore.Qt.ToolTipRole)
 
 
+def _mouse(panel, kind, x, y, button=1, key=None, step=0, dblclick=False):
+    """Send a matplotlib mouse event at data point (x, y) of the panel's plot."""
+    from matplotlib.backend_bases import MouseEvent
+
+    px, py = panel._ax.transData.transform((x, y))
+    ev = MouseEvent(kind, panel.canvas, px, py, button=button, key=key, step=step, dblclick=dblclick)
+    panel.canvas.callbacks.process(kind, ev)
+
+
+def test_plots_zoom_pan_reset_and_hover(app, lammps_dir):
+    from ewald import import_file
+    from ewald.gui.plots import PlotsPanel
+
+    pipe = import_file(lammps_dir / "thermo" / "dump.lammpstrj")
+    panel = PlotsPanel()
+    panel.resize(600, 400)
+    panel.pipeline = pipe
+    views = []
+    panel.viewChanged.connect(lambda x, y: views.append((x, y)))
+    panel.set_data(pipe.compute(0))
+    panel.canvas.draw()
+    ax = panel._ax
+    x0, x1 = full = ax.get_xlim()
+    y = sum(ax.get_ylim()) / 2
+    _mouse(panel, "scroll_event", 20, y, button="up", step=1)           # wheel up: zoom in around x = 20
+    lo, hi = ax.get_xlim()
+    assert hi - lo == pytest.approx((x1 - x0) / 1.25) and lo < 20 < hi
+    assert views[-1][0] == (lo, hi) and views[-1][1] is None
+    panel.set_data(pipe.compute(2))                                     # the zoom stays while frames change
+    assert panel._ax.get_xlim() == (lo, hi)
+    panel._drawn = None
+    panel.set_data(pipe.compute(3))                                     # also through a full redraw
+    assert panel._ax.get_xlim() == (lo, hi)
+    ax = panel._ax
+    panel.canvas.draw()
+    _mouse(panel, "button_press_event", 20, y, button=3)                # right drag pans
+    _mouse(panel, "motion_notify_event", 25, y, button=3)
+    _mouse(panel, "button_release_event", 25, y, button=3)
+    assert ax.get_xlim() == pytest.approx((lo - 5, hi - 5), abs=0.1)  # whole pixels
+    assert panel._range is None and panel.frame_selection == []         # a pan selects nothing
+    _mouse(panel, "motion_notify_event", 21, y, button=None)            # hover: values and the frame
+    assert panel.readout.text().endswith("frame 2: 273.4")
+    _mouse(panel, "button_press_event", 21, y, dblclick=True)           # double-click: full range
+    _mouse(panel, "button_release_event", 21, y)
+    assert panel._ax.get_xlim() == pytest.approx(full) and views[-1] == (None, None)
+    panel.set_view(ylim=(0, 1), emit=False)
+    assert panel.view_limits() == (None, (0.0, 1.0))
+    panel.table.setCurrentText("")                                      # another plot: full range again
+    panel.hist.setCurrentText(next(k for k in pipe.compute(0).particles if k != "Position"))
+    assert panel.view_limits() == (None, None)
+
+
+def test_plots_click_on_two_cv_plot_goes_to_nearest_frame(app, cu_fcc):
+    from ewald.gui.plots import PlotsPanel
+
+    def cvs(frame, data):
+        data.tables["colvar"] = {"Frame": np.arange(3), "d1": np.array([0.1, 0.5, 0.9]),
+                                 "d2": np.array([0.2, 0.6, 0.8])}
+        x, y = np.meshgrid(np.linspace(0, 1, 5), np.linspace(0, 1, 5))
+        data.tables["fes"] = {"d1": x.ravel(), "d2": y.ravel(), "Free Energy": (x + y).ravel()}
+
+    pipe = Pipeline(StaticSource([cu_fcc] * 3), [mods.PythonModifier(cvs)])
+    panel = PlotsPanel()
+    panel.resize(600, 400)
+    panel.pipeline = pipe
+    panel.set_data(pipe.compute(0))
+    panel.table.setCurrentText("fes")
+    assert panel.link.kind == "frames2d"
+    panel.canvas.draw()
+    jumps = []
+    panel.frameRequested.connect(jumps.append)
+    for x, y in ((0.52, 0.58), (0.3, 0.95)):                            # near frame 1; far from every frame
+        _mouse(panel, "button_press_event", x, y)
+        _mouse(panel, "button_release_event", x, y)
+    assert jumps == [1]
+    _mouse(panel, "motion_notify_event", 0.88, 0.8, button=None)
+    assert "frame 2" in panel.readout.text()
+
+
 def test_dos_and_band_plots_show_selected_atoms(app):
     from pathlib import Path
 
     from ewald import import_file
-    from ewald.gui.plots import PlotsPanel
+    from ewald.gui.plots import E_FERMI, PlotsPanel
 
     data = import_file(Path(__file__).parent / "data" / "vasp" / "electronic" / "vasprun.xml").compute(0)
     es = data.attributes["Electronic Structure"]
@@ -1152,7 +1297,7 @@ def test_dos_and_band_plots_show_selected_atoms(app):
     panel.set_data(data)
     assert panel.table.currentText() == "DOS" and panel.link is None
     ax = panel.figure.axes[0]
-    assert ax.get_xlabel() == "E − E_F (eV)" and [t.get_text() for t in ax.get_legend().get_texts()] == \
+    assert ax.get_xlabel() == E_FERMI and [t.get_text() for t in ax.get_legend().get_texts()] == \
         ["Total", "Ga", "As"]
     assert "Select atoms" in panel.link_label.text() and not panel._overlays
     panel.set_highlight([1])                                    # As selected in the viewport
@@ -1171,6 +1316,26 @@ def test_dos_and_band_plots_show_selected_atoms(app):
     assert sizes.max() <= 60 and len(sizes) > 100
     panel.set_highlight([])
     assert not panel._overlays and "Select atoms" in panel.link_label.text()
+    # one energy window for DOS and bands: typed, dragged or zoomed with the wheel
+    assert panel.e_max.isVisibleTo(panel)
+    panel.e_max.setValue(2.0)
+    assert panel._ax.get_ylim()[1] == 2.0 and panel.view_limits()[1][1] == 2.0
+    panel.table.setCurrentText("DOS")
+    assert panel._ax.get_xlim()[1] == 2.0 and panel.e_max.value() == 2.0
+    panel.canvas.draw()
+    _mouse(panel, "button_press_event", -1.0, 0.5)                      # left drag on the DOS: zoom to it
+    _mouse(panel, "motion_notify_event", 1.0, 0.5)
+    _mouse(panel, "button_release_event", 1.0, 0.5)
+    assert panel._ax.get_xlim() == pytest.approx((-1.0, 1.0), abs=0.02) and panel.e_min.value() == pytest.approx(-1.0, abs=0.02)
+    panel.table.setCurrentText("Bands")
+    assert panel._ax.get_ylim() == pytest.approx((-1.0, 1.0), abs=0.02)
+    panel.canvas.draw()
+    _mouse(panel, "scroll_event", panel._ax.get_xlim()[0] + 0.01, 0.0, button="down", step=-1)  # zoom out E
+    assert panel._ax.get_ylim() == pytest.approx((-1.25, 1.25), abs=0.03)
+    _mouse(panel, "motion_notify_event", 0.01, 0.5, button=None)
+    assert panel.readout.text().startswith("E − E_F = 0.4") or panel.readout.text().startswith("E − E_F = 0.5")
+    panel.reset_view()
+    assert panel.view_limits() == (None, None) and not panel.figure.axes[0].get_ylim()[1] > 6.0
 
 
 def test_open_example_menu(app):
@@ -1209,6 +1374,11 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w = MainWindow(settings=settings.Settings())
     menus = [a.text().replace("&", "") for a in w.menuBar().actions()]
     assert "Notebook" in menus and "Insert" in menus and "Pipeline" not in menus
+    plugins_button = w.activity_buttons["Plugins"]
+    w._plugin_updates(2)                                       # a count badge while plugins have updates
+    assert plugins_button.property("updates") == 2 and "2 updates available" in plugins_button.toolTip()
+    w._plugin_updates(0)
+    assert plugins_button.toolTip() == "Show or hide the Plugins side bar"
     tabs = w.panel.tabs
     assert tabs.count() == 1 and tabs.tabText(0) == "Notebook 1"
     w.open_any(cu_path, ask_types=False)                      # the empty notebook makes way for the file
@@ -1230,6 +1400,11 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w.viewport.set_picks = picked.append                       # dragging on the plot selects atoms
     plot.atomsSelected.emit([1, 2])
     assert picked == [[1, 2]]
+    plot.set_view(xlim=(10.5, 12.25))                          # zooming writes the range into the cell
+    assert cell.source.endswith("show(pipe, histogram='Coordination', xlim=(10.5, 12.25))")
+    assert plot._ax.get_xlim() == (10.5, 12.25)
+    plot.reset_view()
+    assert cell.source.endswith("show(pipe, histogram='Coordination')")
 
     path = tmp_path / "cu_nb.py"
     monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName", lambda *a, **k: (str(path), ""))
@@ -1238,8 +1413,15 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     assert [c.is_step for c in again.cells].count(True) == 1 and again.cells[-1].view == {
         "source": "pipe", "histogram": "Coordination"}
 
+    first = w.render_page.quality.currentText()
     w.panel.new_notebook()
     assert tabs.count() == 2 and tabs.currentIndex() == 1
+    other = "Draft" if first != "Draft" else "Standard"
+    w.render_page.quality.setCurrentText(other)               # render settings belong to the notebook
+    tabs.setCurrentIndex(0)
+    assert w.render_page.quality.currentText() == first
+    tabs.setCurrentIndex(1)
+    assert w.render_page.quality.currentText() == other
     w.panel.close_tab(1)
     w.settings["python.run_notebooks"] = "always"
     w.open_notebook(str(path))                                 # already open: back to its tab
@@ -1248,6 +1430,30 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     assert tabs.count() == 1 and w.panel.notebook.pipeline is None
     w.open_notebook(str(path))
     assert tabs.tabText(0) == "cu_nb" and [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis"]
+    act = next(a for a in w.analysis_menu.actions() if a.text() == "Common neighbor analysis")
+    act.trigger()                                              # Insert › Analysis: a verb cell, run at once
+    cell = w.panel.view.current
+    assert cell.source.startswith("from ewald import cna\n") and cell.state == "ok"
+    assert cell.outputs[-1].kind == "image" and isinstance(cell.outputs[-1].data, bytes)
+    assert [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis", "CommonNeighborAnalysis"]
+
+    view = w.panel.view
+    assert w.snapshot_code().startswith("from ewald.views import snapshot\nsnapshot(pipe, frame=0,\n         camera={")
+    w._insert_snapshot()                                       # Insert › 3D snapshot: a picture of the view
+    snap = view.current
+    assert snap.state == "ok" and snap.outputs[-1].kind == "image"
+    from PySide6 import QtGui
+
+    mime = QtCore.QMimeData()                                  # drag the cell by its grip to the top
+    mime.setData("application/x-ewald-cell", snap.id.encode())
+    drop = QtGui.QDropEvent(QtCore.QPointF(20, -1), QtCore.Qt.MoveAction, mime, QtCore.Qt.LeftButton,
+                            QtCore.Qt.NoModifier)
+    assert view.eventFilter(view.container, drop)              # Qt delivers synthetic drops only during a drag
+    app.processEvents()
+    assert view.notebook.cells[0] is snap and view.widgets[0].cell is snap
+    view.move_cell(snap, len(view.notebook.cells))             # and back to the end
+    assert view.notebook.cells[-1] is snap
+    assert [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis", "CommonNeighborAnalysis"]
     w.close()
 
 
@@ -1339,6 +1545,9 @@ def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, m
     try:
         assert k is not None and view.kernel_button.text() == "⚙ This Python"
         view.run_all()
+        assert view.running and not view.interrupt_button.isHidden()  # on a thread: the window keeps responding
+        assert view.wait()
+        assert view.interrupt_button.isHidden() and view.run_all_button.isEnabled()
         assert k.alive and [c.state for c in view.notebook.cells] == ["ok", "ok"]
         assert w.pipeline is view.notebook.pipeline and "Coordination" in w.pipeline.compute(0).particles
         assert "1 steps" in view.status.text()
@@ -1347,6 +1556,17 @@ def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, m
         reopened = w.open_notebook(str(tmp_path / "k3.ipynb"))      # the kernel choice is kept
         assert reopened.notebook.kernel is not None and not reopened.notebook.kernel.alive
         assert reopened.kernel_button.text() == "⚙ This Python"
+        w.panel.tabs.setCurrentWidget(view)
+        view.add_cell("code")
+        sleeper = view.notebook.cells[-1]
+        sleeper.source = "import time\ntime.sleep(60)"
+        view.run(sleeper)
+        import time
+
+        time.sleep(1.0)
+        view.interrupt()                                           # ■ Interrupt
+        assert view.wait(30)
+        assert sleeper.state == "error" and "KeyboardInterrupt" in sleeper.outputs[-1].data
     finally:
         import ewald.gui.notebook_panel as npn
 
@@ -1648,7 +1868,15 @@ def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app,
     s = settings.Settings()
     s["python.plugin_catalogs"] = f"{index}; {tmp_path / 'not-yet.json'}"
     panel = plugins_panel.PluginsPanel(settings=s)
+    counts = []
+    panel.updatesChanged.connect(counts.append)
     panel.wait()
+    assert counts == [1] and [(i.id, e.version) for i, e in panel.updates()] == [("up_shift", "0.3")]
+    panel.search.setText("@updates")                                     # only what has an update
+    app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)
+    assert [r.item.id for r in panel.findChildren(plugins_panel.PluginRow)] == ["up_shift"]
+    panel.search.clear()
+    app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)
     rows = {r.item.name: r for r in panel.findChildren(plugins_panel.PluginRow)}
     buttons = {b.text(): b for r in rows.values() for b in r.findChildren(plugins_panel.QtWidgets.QPushButton)}
     assert "Up shift" not in rows and "Update to 0.3" in buttons          # matched by id, not listed twice
@@ -1660,6 +1888,7 @@ def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app,
     assert next(i for i in panel.items if i.id == "up_shift").version == "0.3"
     app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)    # the old rows go
     assert not any(b.text().startswith("Update") for b in panel.findChildren(plugins_panel.QtWidgets.QPushButton))
+    assert counts == [1, 0]                                              # the activity bar badge goes away
     panel.close()
 
 
@@ -1692,6 +1921,30 @@ def test_main_window_follows_a_growing_dump(app, lammps_dir, tmp_path):
     w.live_reload.timer.start()
     w.live_reload_action.trigger()  # File › Live reload off
     assert not w.live_reload.timer.isActive()
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_main_window_reports_an_unfinished_calculation(app, vasp_dir, tmp_path):
+    import warnings
+
+    from ewald import import_file
+    from ewald.gui.app import MainWindow
+
+    xml = (vasp_dir / "vasprun.xml").read_text()
+    path = tmp_path / "vasprun.xml"
+    path.write_text(xml[: xml.rindex("<calculation>") + 20])  # VASP running step 2
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        w = MainWindow(import_file(path))
+    w.live_reload.timer.stop()
+    log = w.log.toPlainText()
+    assert "WARNING Calculation incomplete: vasprun.xml: 1 ionic step(s) read" in log
+    assert "DOS and bands not written yet" in w.statusBar().currentMessage()
+    path.write_text(xml)
+    w.live_reload.poll(wait=True)
+    assert w.timeline.slider.maximum() == 1
+    assert "Calculation finished" in w.log.toPlainText()
     w.close()
 
 
@@ -1762,9 +2015,12 @@ def test_panels_and_cells_fold(app, cu_path, tmp_path):
     app.processEvents()
     assert w.workbench.panel_host.maximumHeight() < 60 and not w.console.isVisible()
     w.workbench.set_panel_collapsed(False)
-    side = w.ask_dock.titleBarWidget()                      # tabbed with Display: they fold together
+    w.remotes_dock.show()
+    w.tabifyDockWidget(w.display.parent(), w.remotes_dock)
+    app.processEvents()
+    side = w.remotes_dock.titleBarWidget()                  # tabbed with Display: they fold together
     side.set_collapsed(True)
-    assert all(d.maximumWidth() == STRIP for d in [w.ask_dock] + w.tabifiedDockWidgets(w.ask_dock))
+    assert all(d.maximumWidth() == STRIP for d in [w.remotes_dock] + w.tabifiedDockWidgets(w.remotes_dock))
     assert w.tabPosition(QtCore.Qt.RightDockWidgetArea) == QtWidgets.QTabWidget.East   # tabs turn sideways
     side.set_collapsed(False)
     assert w.tabPosition(QtCore.Qt.RightDockWidgetArea) == QtWidgets.QTabWidget.South
@@ -1866,3 +2122,53 @@ def test_workbench_drag_plot_over_3d_view(app, pipe):
     assert w2.workbench.titles("editor") == ["3D view"]
     assert w2.workbench.titles("panel") == ["Python console", "Data inspector", "Plots", "Log"]
     w2.close()
+
+
+def test_plot_export_is_a_print_figure_in_any_theme(app, vasp_dir, tmp_path):
+    from PIL import Image
+
+    from ewald import import_file, plotstyle
+    from ewald.gui import theme
+    from ewald.gui.plots import PlotsPanel
+
+    pipe = import_file(vasp_dir / "neb")
+    theme.use("graphite")
+    try:
+        panel = PlotsPanel()
+        panel.resize(600, 400)
+        panel.pipeline = pipe
+        panel.set_data(pipe.compute(1))
+        screen = panel.figure
+        panel.export(tmp_path / "neb.png", "2-column", quality="Draft")
+        panel.export(tmp_path / "neb.svg")
+        assert panel.figure is screen and theme.TOKENS["bg"] == theme.PALETTES["graphite"]["bg"]
+        assert panel.figure.axes[0].get_facecolor()[:3] != (1.0, 1.0, 1.0)   # the canvas keeps the theme
+    finally:
+        theme.use(theme.DEFAULT)
+    img = Image.open(tmp_path / "neb.png").convert("RGB")
+    assert img.getpixel((2, 2)) == (255, 255, 255)
+    assert abs(img.width / plotstyle.DPI["draft"] - 7.2) < 0.5     # 2-column wide (tight box)
+    svg = (tmp_path / "neb.svg").read_text()
+    assert "Reaction coordinate" in svg and "#ffffff" in svg.lower()
+
+
+def test_notebook_cells_sit_at_the_top(app):
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    w.resize(1400, 900)
+    w.show()
+    for _ in range(3):
+        app.processEvents()
+    view = w.panel.view
+    for cell in view.widgets:                               # spare height goes below the cells
+        assert cell.height() <= cell.sizeHint().height() + 2
+    code = next(c for c in view.widgets if c.cell.kind == "code")
+    w.resizeDocks([w.notebook_dock], [300], QtCore.Qt.Horizontal)   # narrow: lines wrap
+    for _ in range(3):
+        app.processEvents()
+    ed = code.editor
+    lines = sum(round(ed.blockBoundingRect(b).height() / ed.fontMetrics().lineSpacing())
+                for b in (ed.document().findBlockByNumber(i) for i in range(ed.document().blockCount())))
+    assert ed.viewport().height() >= lines * ed.fontMetrics().lineSpacing()   # no clipped last line
+    w.close()

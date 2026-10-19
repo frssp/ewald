@@ -93,7 +93,7 @@ itself, since it is small. See [Notebooks](../notebooks.md#notebook-files).
 
 ## Going further
 
-- Ask Claude (right panel, or Ctrl+J with atoms picked) "what are these atoms?" about the gold
+- Ask Claude (the AI button in the activity bar opens the chat left of the notebook, or Ctrl+J with atoms picked) "what are these atoms?" about the gold
   ones; its answer can add steps, which appear as cells ([Claude integration](../claude.md)).
 - Replace the coordination step with `PolyhedralTemplateMatching()` or
   `CommonNeighborAnalysis()` to classify the local structure instead ([Modifiers](../modifiers.md)).

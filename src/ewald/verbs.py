@@ -5,6 +5,7 @@
     g = rdf(pipe, cutoff=6)      # adds CoordinationAnalysis, returns the g(r) table
     g.x, g["g(r)"]               # columns are numpy arrays; pandas.DataFrame(g), g.plot()
     d = msd(pipe)                # MeanSquaredDisplacement over the trajectory
+    cna(pipe).counts             # {"OTHER": 0, "FCC": 500, ...}
 
 Calling a verb again replaces the step it added before (in a notebook, re-running the cell
 does the same), so changing ``cutoff=`` and running again never stacks duplicate steps.
@@ -13,15 +14,47 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["Table", "bond_angles", "msd", "rdf", "sq", "vacf", "xrd"]
+#: Insert › Analysis in the GUI: (verb, menu label, the code cell it inserts and runs)
+VERB_CELLS = [
+    ("rdf", "Radial distribution g(r)", "g = rdf(pipe, cutoff=6.0)\ng"),
+    ("sq", "Structure factor S(q)", "s = sq(pipe, q_max=10.0)\ns"),
+    ("xrd", "Powder diffraction (XRD)", "pattern = xrd(pipe)\npattern"),
+    ("bond_angles", "Bond angles", "angles = bond_angles(pipe)\nangles"),
+    ("cna", "Common neighbor analysis", "structures = cna(pipe)\nstructures"),
+    ("ptm", "Polyhedral template matching", "structures = ptm(pipe)\nstructures"),
+    ("voronoi", "Voronoi coordination", "vor = voronoi(pipe)\nvor"),
+    ("clusters", "Clusters", "cl = clusters(pipe, cutoff=3.2)\ncl"),
+    ("msd", "Mean squared displacement", "d = msd(pipe)\nd"),
+    ("vacf", "Velocity autocorrelation", "v = vacf(pipe)\nv"),
+]
+
+
+def verb_cell(verb: str) -> str:
+    """The code cell Insert › Analysis adds for ``verb`` (with its import)."""
+    code = next(c for v, _label, c in VERB_CELLS if v == verb)
+    return f"from ewald import {verb}\n{code}"
+
+
+__all__ = ["Table", "bond_angles", "clusters", "cna", "msd", "ptm", "rdf", "sq", "vacf", "voronoi", "xrd"]
 
 
 class Table(dict):
     """A data table (``{column: array}``, the first column is x) with where it came from."""
 
-    def __init__(self, name: str, columns: dict, pipe=None, frame: int = 0):
+    def __init__(self, name: str, columns: dict, pipe=None, frame: int = 0, labels=None):
         super().__init__((k, np.asarray(v)) for k, v in columns.items())
         self.name, self.pipe, self.frame = name, pipe, frame
+        self.labels = None if labels is None else list(labels)  # names of the rows (structure types)
+
+    @property
+    def counts(self) -> dict:
+        """``{row: Count}`` for a counting table (structure types, coordination numbers, clusters);
+        rows are named by ``labels`` when the table has them, else by the first column."""
+        col = "Count" if "Count" in self else next((c for c in self if c.endswith("Size")), None)
+        if col is None:
+            raise KeyError(f"{self.name!r} has no Count column")
+        keys = self.labels if self.labels is not None else [k.item() for k in self.x]
+        return {k: int(v) for k, v in zip(keys, self[col])}
 
     @property
     def x(self) -> np.ndarray:
@@ -44,10 +77,12 @@ class Table(dict):
 
     def __repr__(self):
         n = len(self.x) if self else 0
+        if self.labels is not None:
+            return f"<Table {self.name!r}: {', '.join(f'{k} {v}' for k, v in self.counts.items())}>"
         return f"<Table {self.name!r}: {n} rows; {', '.join(self.columns)}>"
 
 
-def _verb(pipe, cls, table: str, frame: int, **params) -> Table:
+def _verb(pipe, cls, table: str, frame: int, labels=None, **params) -> Table:
     """Add ``cls(**params)`` to ``pipe`` (replacing the one an earlier verb call added) and return
     ``table`` at ``frame``."""
     mod = cls(**params)
@@ -61,7 +96,10 @@ def _verb(pipe, cls, table: str, frame: int, **params) -> Table:
     data = pipe.compute(frame)
     if table not in data.tables:
         raise RuntimeError(f"{cls.__name__} wrote no {table!r} table: {mod.status or 'see the step for details'}")
-    return Table(table, data.tables[table], pipe, frame)
+    columns = data.tables[table]
+    if callable(labels):
+        labels = labels(mod, columns)
+    return Table(table, columns, pipe, frame, labels)
 
 
 def rdf(pipe, cutoff: float = 6.0, bins: int = 200, partial: bool = False, frame: int = 0) -> Table:
@@ -112,3 +150,43 @@ def bond_angles(pipe, bins: int = 180, frame: int = 0, **kwargs) -> Table:
     from .modifiers import BondAngleDistribution
 
     return _verb(pipe, BondAngleDistribution, "bond-angle-distr", frame, bins=bins, **kwargs)
+
+
+def _structure_names(mod, columns):
+    return [mod._names[int(t)] for t in columns["Structure Type"]]
+
+
+def cna(pipe, mode: str = "adaptive", frame: int = 0, **kwargs) -> Table:
+    """Common neighbor analysis (FCC, HCP, BCC, ICO): adds
+    :class:`~ewald.modifiers.CommonNeighborAnalysis` (``mode=`` adaptive, interval or fixed) and
+    returns its ``structures`` table; ``.counts`` is ``{"OTHER": n, "FCC": n, ...}``."""
+    from .modifiers import CommonNeighborAnalysis
+
+    return _verb(pipe, CommonNeighborAnalysis, "structures", frame, _structure_names, mode=mode, **kwargs)
+
+
+def ptm(pipe, frame: int = 0, **kwargs) -> Table:
+    """Polyhedral template matching: :class:`~ewald.modifiers.PolyhedralTemplateMatching` with
+    ``kwargs`` (``types=``, ``rmsd_cutoff=``, ...); the ``structures`` table, ``.counts`` by name."""
+    from .modifiers import PolyhedralTemplateMatching
+
+    return _verb(pipe, PolyhedralTemplateMatching, "structures", frame, _structure_names, **kwargs)
+
+
+def voronoi(pipe, frame: int = 0, **kwargs) -> Table:
+    """Voronoi tessellation: adds :class:`~ewald.modifiers.VoronoiAnalysis` (Atomic Volume,
+    Coordination, ...) and returns the ``voronoi-coordination`` table (how many particles have
+    each coordination number, also per type); ``.counts`` is ``{coordination: n}``."""
+    from .modifiers import VoronoiAnalysis
+
+    return _verb(pipe, VoronoiAnalysis, "voronoi-coordination", frame, **kwargs)
+
+
+def clusters(pipe, cutoff: float = 3.2, frame: int = 0, **kwargs) -> Table:
+    """Clusters of particles closer than ``cutoff``: adds :class:`~ewald.modifiers.ClusterAnalysis`
+    (largest first) and returns its ``clusters`` table; ``.counts`` is ``{cluster id: size}``."""
+    from .modifiers import ClusterAnalysis
+
+    kwargs.setdefault("sort_by_size", True)
+    return _verb(pipe, ClusterAnalysis, "clusters", frame, cutoff=cutoff, **kwargs)
+

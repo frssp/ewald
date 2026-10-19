@@ -63,14 +63,31 @@ particle-property histogram:
 show(pipe, table="coordination-rdf")         # g(r), XRD, S(q), DOS, Bands, Thermo, NEB, ...
 show(pipe, table="DOS", y="Ga d")            # one column
 show(pipe, histogram="Coordination")         # histogram of a particle property
+show(pipe, table="DOS", xlim=(-3, 2))        # the range shown (DOS energy window)
 ```
 
 In the GUI the plot is linked to the 3D view, like the Plots tab. Dragging an x range selects
 those atoms, or those frames on a per-frame plot. The atoms you pick appear on the plot. The DOS
 and the band structure follow the picked atoms as projected DOS or fat bands, and clicking a
 phonon band plays that mode. Choosing another table, column or histogram in the plot's bar
-rewrites the cell. Run as a script, `show` draws the same plot with matplotlib. Add one with
+rewrites the cell, and so does zooming: the wheel, a drag on a DOS or band plot, or a pan
+writes `xlim=`/`ylim=`, and a double-click removes them. Run as a script, `show` draws the same plot with matplotlib. Add one with
 **+ View** or Insert › View, which list the tables and properties of the current frame.
+
+Every plot ewald draws (view cells, `show`, a verb table's picture, the figures saved into an
+`.ewd`) uses one publication style from `ewald.plotstyle`: a 3.5 in single-column figure,
+8 pt sans-serif text, inward ticks with minor ticks, axis labels with units and a
+colorblind-safe color cycle. Use it for your own figures too:
+
+```python
+from ewald import plotstyle
+from ewald.views import figure
+
+fig = figure(pipe, table="coordination-rdf", size="2-column")   # a Figure, no pyplot
+plotstyle.save(fig, "gr.pdf")                # editable text, tight box; PNG at 600 dpi
+with plotstyle.context():                    # the style for your own matplotlib code
+    plt.plot(r, g); plt.xlabel(plotstyle.axis_label("r"))
+```
 
 Spectra, diffraction patterns and time series are not separate panels. They are views in the
 notebook, next to the steps that compute them.
@@ -99,11 +116,17 @@ and Radius properties, which every renderer draws. Import them with
 **Analysis cells** use a verb: one call adds the analysis step and returns its table.
 
 ```python
-from ewald import rdf, msd, sq, xrd, vacf, bond_angles
+from ewald import rdf, msd, sq, xrd, vacf, bond_angles, cna, ptm, voronoi, clusters
 g = rdf(pipe, cutoff=6)          # CoordinationAnalysis; g.x is r, g["g(r)"] the curve
 d = msd(pipe, time_per_frame=2)  # MeanSquaredDisplacement over the trajectory
 g                                # shows the g(r) curve; repr(g) is <Table 'coordination-rdf': ...>
+cna(pipe).counts                 # {'OTHER': 3, 'FCC': 497, 'HCP': 0, 'BCC': 0, 'ICO': 0}
+voronoi(pipe)                    # bars: particles per Voronoi coordination number, per type
+clusters(pipe, cutoff=3.2)       # cluster sizes, largest first; .counts is {id: size}
 ```
+
+Counting tables (`cna`, `ptm`, `voronoi`, `clusters`) show as bar charts and have `.counts`.
+Insert › Analysis adds any of these as a cell and runs it.
 
 A table is a dict of numpy columns with `.x`, `.columns` and `.plot()`; `pandas.DataFrame(g)`
 turns it into a data frame.
@@ -113,8 +136,17 @@ in a live view cell.
 
 **Text cells** are Markdown. Double-click one to edit it.
 
+**Snapshot cells** keep a picture of the 3D view. Insert › 3D snapshot of the view adds one for
+the viewport as it is (frame, camera, display style) and runs it:
+
+```python
+from ewald.views import snapshot
+snapshot(pipe, frame=3, camera={...}, radius_scale=0.5)   # shows the picture; .save("fig.png") writes it
+```
+
 The ⋯ menu of a cell has Run, Run this and below, Move up/down, Delete and, for steps and views,
-Show as code cell. The `.py` button at the top shows the whole file.
+Show as code cell. Drag a cell by the ⠿ grip above its ▶ to move it; steps move with it in the
+pipeline. The `.py` button at the top shows the whole file.
 
 ## Notebook tabs
 
@@ -139,7 +171,24 @@ menu.
 |---|---|---|
 | `.ewd` | code, outputs, figures, small data files, plugins, view state | ewald (unzipped: Jupyter, any CSV/SVG tool) |
 | `.ipynb` | code, outputs, view state | ewald, Jupyter, VS Code, GitHub |
-| `.py` | code | ewald, `python`, VS Code, jupytext; the one to keep in git |
+| `.py` | code, view state, kernel, data links | ewald, `python`, VS Code, jupytext; the one to keep in git |
+
+A `.py` notebook keeps what ewald needs besides the code in a jupytext-style comment header,
+which Python, VS Code and jupytext ignore or keep:
+
+```python
+# ---
+# jupyter:
+#   ewald:
+#     kernel: {"python": "/opt/conda/envs/ml/bin/python", "display_name": "Python (ml)"}
+#     state: {"frame": 3, "camera": {...}, "style": {...}, "render": {...}}
+#     data: [{"path": "traj.dump", "size": 81234567, "fingerprint": "sha256-ends:..."}]
+# ---
+```
+
+Opening it restores the viewer and says when a linked data file changed or is missing, as for
+an `.ewd`. Each notebook tab also keeps its own Render page settings (renderer, quality, size,
+overlays): switching tabs switches them, and saving the notebook saves them.
 
 An `.ewd` file is a zip archive:
 
@@ -183,9 +232,14 @@ restart it, and closing the tab or the window stops it.
 
 The rules are the same as in the app: re-running a cell replaces the steps it added, and a new
 `pipe` re-runs the cells below. `pipe` in the app is a pipeline over the kernel's one: the
-kernel computes each frame and sends back its particles, cell, bonds, tables and attributes, so
-the viewport, view cells, plots and Display settings work as usual. Step cells show their code
-rather than a form, because the modifier objects live in the kernel. From Python:
+kernel computes each frame and sends back its particles, cell, bonds, tables, attributes,
+surfaces (polyhedra, isosurfaces), voxel grids and vector styles, so the viewport, view cells,
+plots and Display settings work as usual. Step cells keep their form and on/off checkbox: the
+app builds a local copy of each step from its cell, an edit runs the cell again in the kernel,
+and the status, time and results of the kernel's steps come back with every frame (a failing
+step is skipped and reports its error on its cell, as in the app). The window stays usable
+while a cell runs; **■ Interrupt** in the notebook's bar stops it with a `KeyboardInterrupt`
+shown under the cell. From Python:
 
 ```python
 from ewald.kernel import Kernel, available
@@ -218,10 +272,11 @@ folder, pip package or this session) and any error it raised, and the plugins yo
 ewald's example plugins, the default plugin index and every catalog in Preferences › Python ›
 *Plugin catalogs* (see
 [Packaging and sharing](../plugins/packaging.md#plugin-catalogs)). Type to search, or filter with
-`@installed`, `@available` or a kind such as `@modifier`. *Install* copies a plugin file into the
+`@installed`, `@updates`, `@available` or a kind such as `@modifier`. *Install* copies a plugin file into the
 plugin folder and loads it at once; a `pip:` entry runs pip in the Python ewald runs in, after
 you confirm the command. *Update to …* appears on an installed plugin when a catalog has a
-newer version, and entries that need a newer ewald are greyed out. *Disable* switches a plugin off without removing it
+newer version (the Plugins icon on the activity bar then carries the number of updates, and
+`@updates` lists them), and entries that need a newer ewald are greyed out. *Disable* switches a plugin off without removing it
 ([Switching a plugin off](../plugins/packaging.md#switching-a-plugin-off)); disabled,
 incompatible and failed plugins say so in their row. *Remove* moves a file to the plugin
 folder's `.removed` folder (its steps stay available until ewald restarts). Selecting a modifier plugin shows its documentation
@@ -267,9 +322,10 @@ sent.run_all()
 Preferences › General › *Window layout* switches between `notebook` (the default) and `classic`,
 the OVITO-style pipeline list and properties panel, after a restart. In the notebook layout,
 display settings (particle radii and colors, bonds, cell and visual plugins) are in the
-**Display** panel on the right, tabbed with Ask Claude. View › Focus on the viewport (Ctrl+\\)
+**Display** panel on the right; the AI chat with Claude opens left of the notebook from the
+activity bar, and code from its answers can be inserted as cells. View › Focus on the viewport (Ctrl+\\)
 hides the panels, and pressing it again brings them back. The ▾ in a panel's title bar (or a
-double-click on the title) folds that panel: the Notebook, Plugins, Display and Ask Claude
+double-click on the title) folds that panel: the Notebook, Plugins, Display and AI chat
 panels fold to a thin strip with their name written down it, and the Data panel to its title
 bar. Panels shown as tabs fold together, and their tabs turn sideways; click the strip, ▸ or a
 tab to unfold. ⧉ floats a panel in its own window. View › *Minimal mode* (Ctrl+Shift+M)

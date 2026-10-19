@@ -13,9 +13,10 @@ notebook. Linux system libraries and startup errors: [Install](install.md#linux-
 
 The window has the analysis on the left as a [notebook](notebooks.md): Python cells, steps and
 linked plots, saved as an `.ewd`, `.ipynb` or `.py` file, with one tab per open notebook. The
-[tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline are in the middle. Display settings and Ask Claude are on the
-right, and the panel below the viewport holds the Python console, the data inspector, plots
-and the log. Tabs in the middle can be rearranged as in VS Code (see [Panel layout](#panel-layout)).
+[tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline are in the middle. Display settings are on the
+right, the AI chat with Claude opens left of the notebook from the activity bar, and the panel
+below the viewport holds the Python console, the data inspector, plots and the log. Tabs in the
+middle can be rearranged as in VS Code (see [Panel layout](#panel-layout)).
 
 ![The notebook layout](../images/notebook.png)
  The notebook
@@ -103,8 +104,16 @@ the current one (`OverlayFrames`; on by default for NEB folders), with its trans
 95 %) and whether only the atoms that move get copies. Show (bonds, simulation cell), View
 along, Orthographic, Zoom to fit and Ask Claude are always there.
 
-**Ask Claude.** The Ask Claude tab next to the Display panel (next to the pipeline in the classic layout) (Tools › Ask Claude about selection,
-Ctrl+J) answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
+**AI chat (Ask Claude).** The Claude button at the bottom of the activity bar on the far left (also Tools ›
+Ask Claude about selection, Ctrl+J, and Window › AI chat) opens a chat side bar left of the
+notebook; in the classic layout it is the Ask Claude tab next to the pipeline. It reads like a
+chat app: your messages in bubbles on the right, Claude's answers under its avatar on the left,
+the tools it ran as small chips (*Running …*, then *Used …*), and code blocks as framed code with
+*Copy* and *+ Insert as cell*. Enter sends, Shift+Enter starts a new line, and the suggestions
+on an empty chat send a first question. In the notebook layout each question also sends the
+current notebook's code (only when it changed since the last question); *+ Insert as cell* adds
+a Python block as a code cell after the current one, without running it (Shift+Enter runs it).
+The chat answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
 coordination low here?". Without picks it uses the particles a selection modifier selected, and
 with neither the question is about the whole frame. Claude receives the description from
 [Asking about a selection](claude.md#asking-about-a-selection) and a close-up render, can run the
@@ -113,7 +122,9 @@ usual tools, and modifiers it adds appear in the pipeline. It needs the `llm` ex
 
 **Timeline.** Play, step and scrub through frames. Every frame is computed through the whole
 pipeline when you move to it. While a simulation is still writing the file, new frames are
-added to the timeline as they appear ([live reload](formats.md#runs-that-are-still-writing)).
+added to the timeline as they appear ([live reload](formats.md#runs-that-are-still-writing)). A file of a
+calculation that has not finished (VASP still running or killed) opens with what is complete,
+and the status bar says what is missing ([details](formats.md#calculations-that-have-not-finished)).
 
 **Pipeline panel.** The list shows the data source at the bottom and modifiers above it, the
 last-applied modifier on top, as in OVITO. "Add modification" (or the Pipeline menu) inserts a
@@ -156,6 +167,26 @@ The `DOS` and `Bands` tables of a VASP run are drawn as a density of states and 
 structure; atoms selected in the viewport show as their projected DOS or as fat bands (see
 [DOS and band structure](electronic.md)).
 
+**Zoom, pan and hover.** Every plot (the Plots tab and view cells) moves the same way. The
+wheel zooms the x axis around the cursor and Ctrl+wheel the y axis (on a band structure the
+wheel zooms the energy). A right or middle drag pans, and a double-click goes back to the full
+range. On a plot that selects nothing (DOS, bands, phonon bands, maps) a left drag zooms to the
+dragged range; elsewhere a left drag still selects. The zoomed range stays while the frame
+changes, and *Save plot…* writes the range you see. The DOS and the band structure share one
+energy window, shown in the **E** boxes, where you can also type it. Hovering shows the values
+under the cursor (*E* − *E*<sub>F</sub> on electronic plots), and on a per-frame or NEB plot
+also the frame or image a click goes to, with its value.
+
+*Save plot…* (and *Save plot…* in a view cell's menu) writes a publication figure, not a
+screenshot of the panel: the plot is redrawn at a journal column width (Preferences ›
+Rendering › Plots: 1-column 3.5 in, 1.5-column or 2-column 7.2 in) with 8 pt sans-serif type,
+inward ticks on all four sides, labels with units (*r* (Å), 2*θ* (°), *q* (Å⁻¹), MSD (Å²),
+*E* − *E*<sub>F</sub> (eV)), a colorblind-safe color cycle and a white background,
+whatever the UI theme. PDF, SVG and EPS keep the text as text (TrueType, editable in
+Illustrator or Inkscape); PNG uses the DPI of the image quality (Draft 150, Standard 300,
+Publication 600). Hints such as the current-frame marker are left out. On screen the same
+style is drawn in the Paper or Graphite colors.
+
 **Linked selection.** Plots and the viewport share one selection, in both directions:
 
 - Drag an x range on a histogram (the "histogram of" box, `Histogram`, CSP or PTM RMSD), g(r),
@@ -170,7 +201,8 @@ structure; atoms selected in the viewport show as their projected DOS or as fat 
   where a CV lies in a window). Drag a box on a 2D free energy surface to select the frames whose
   CV pair (from `LoadColvar` or `Plumed`) falls in it. The frames are marked on the timeline,
   playback steps through them only, and the ✕ on the timeline clears them. A click on a
-  per-frame plot jumps to the nearest frame.
+  per-frame plot (or an NEB profile) jumps to the nearest frame, and a click on a free energy
+  surface jumps to the frame whose CV pair is nearest to it.
 - The other way, atoms picked in the viewport (or the `Selection` property) are drawn on the
   plot: as a highlighted sub-histogram on count plots, or as a second axis ("selected") on g(r).
   Selected frames are marked as points on per-frame plots.

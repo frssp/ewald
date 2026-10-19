@@ -18,7 +18,7 @@ class MenusMixin:
     """Part of :class:`ewald.gui.app.MainWindow`."""
 
     def _build_activity_bar(self):
-        """Icons on the far left that show or hide the side bars (Notebook, Plugins, Remotes)."""
+        """Icons on the far left that show or hide the side bars (Notebook, Plugins, Remotes, AI chat)."""
         bar = self.activity_bar = QtWidgets.QToolBar("Activity bar")
         bar.setObjectName("activity-bar")
         bar.setMovable(False)
@@ -27,14 +27,42 @@ class MenusMixin:
         self.activity_buttons = {}
         for name, icon_name, dock in (("Notebook", "notebook", self.notebook_dock),
                                       ("Plugins", "plugins", self.plugins_dock),
-                                      ("Remotes", "remote", self.remotes_dock)):
-            act = dock.toggleViewAction()
-            act.setIcon(icon(icon_name))
-            act.setToolTip(f"Show or hide the {name} side bar")
+                                      ("Remotes", "remote", self.remotes_dock),
+                                      ("AI chat", "claude", self.ask_dock)):
+            # not dock.toggleViewAction(): Qt disables it for docks without DockWidgetClosable
+            act = QtGui.QAction(icon(icon_name), name, bar, checkable=True)
+            act.triggered.connect(lambda on, d=dock: self._show_side_bar(d) if on else d.hide())
+            dock.visibilityChanged.connect(lambda _shown, a=act, d=dock: a.setChecked(not d.isHidden()))
+            act.setToolTip("Chat with Claude (Ctrl+J)" if dock is self.ask_dock
+                           else f"Show or hide the {name} side bar")
             bar.addAction(act)
             self.activity_buttons[name] = act
         self.plugins_dock.visibilityChanged.connect(
             lambda shown: shown and self.plugins_panel.search.setFocus())
+        self.plugins_panel.updatesChanged.connect(self._plugin_updates)
+        self._plugin_updates(len(self.plugins_panel.updates()))
+        self.ask_dock.visibilityChanged.connect(lambda shown: shown and self.ask_panel.input.setFocus())
+
+    def _plugin_updates(self, count):
+        """A count badge on the Plugins icon while installed plugins have newer catalog versions."""
+        from .icons import badged
+
+        act = self.activity_buttons["Plugins"]
+        act.setIcon(badged("plugins", count))
+        act.setToolTip(f"Plugins: {count} update{'s' if count != 1 else ''} available" if count
+                       else "Show or hide the Plugins side bar")
+        act.setProperty("updates", count)
+
+    def _show_side_bar(self, dock):
+        """Show an activity-bar side bar (Plugins, Remotes, AI chat) in a column of its own left of
+        the notebook (Qt would otherwise stack a re-shown dock above it)."""
+        placed = dock.isHidden() and not dock.isFloating() and self.notebook_dock.isVisible()
+        if placed:
+            self.splitDockWidget(dock, self.notebook_dock, QtCore.Qt.Horizontal)
+        dock.show()
+        dock.raise_()
+        if placed:
+            self.resizeDocks([dock], [380 if dock is self.ask_dock else 320], QtCore.Qt.Horizontal)
 
     def set_minimal(self, on: bool | None = None):
         """Hide the menu bar, toolbars and status bar, leaving the notebook, the viewport and the
@@ -226,6 +254,14 @@ class MenusMixin:
             fill_modifier_menu(m, self.panel.add_modifier)
             vm = ins.addMenu("&View")
             vm.aboutToShow.connect(lambda: fill_view_menu(vm, self.data, lambda **kw: self.panel.view.add_view(**kw)))
+            ins.addAction("3D &snapshot of the view", self._insert_snapshot).setToolTip(
+                "A cell with a picture of the viewport as it is now (frame, camera, display style)")
+            am = ins.addMenu("&Analysis")
+            from ..verbs import VERB_CELLS
+
+            for verb, label, _code in VERB_CELLS:
+                am.addAction(label, lambda v=verb: self._insert_verb(v)).setToolTip(f"A {verb}(pipe) cell, run at once")
+            self.analysis_menu = am
             plug = ins.addMenu("&Plugin step")
             plug.aboutToShow.connect(lambda: self._fill_plugin_menu(plug))
             ins.addAction("&Load plugin file…", lambda: self.panel.view._load_plugin_file())
@@ -247,7 +283,7 @@ class MenusMixin:
         w.addAction("Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
         if nb:
             w.addAction("Notebook", lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))
-            w.addAction("Plugins", lambda: (self.plugins_dock.show(), self.plugins_dock.raise_()), "Ctrl+Shift+X")
+            w.addAction("Plugins", lambda: self._show_side_bar(self.plugins_dock), "Ctrl+Shift+X")
             w.addAction("Display settings", lambda: (self.display.parent().show(), self.display.parent().raise_()))
         w.addAction("3D view", lambda: self.workbench.show(self.viewport))
         w.addAction("Python console", lambda: self.workbench.show(self.console))
@@ -255,7 +291,7 @@ class MenusMixin:
         w.addAction("Plots", lambda: self.workbench.show(self.plots))
         w.addAction("New plot view", lambda: self.new_plot_view())
         w.addAction("Log", lambda: self.workbench.show(self.log))
-        w.addAction("Ask Claude", self.ask_claude)
+        w.addAction("AI chat" if nb else "Ask Claude", self.ask_claude)
         w.addAction("Command palette", self.command_palette)
         h = mb.addMenu("&Help")
         for label, page in manual.PAGES.items():
@@ -271,6 +307,46 @@ class MenusMixin:
         menu.clear()
         for act in view.plugin_menu.actions():
             menu.addAction(act)
+
+    def snapshot_code(self) -> str:
+        """The ``snapshot(pipe, ...)`` cell for the viewport as it is now."""
+        from ..render import camera_state
+
+        def short(v):
+            return tuple(round(x, 4) for x in v) if isinstance(v, tuple) else round(v, 4) if isinstance(v, float) else v
+
+        kw = {"camera": {k: short(v) for k, v in camera_state(self.viewport.plotter).items()},
+              "background": self.style.background}
+        kw.update(self.style.scene_kwargs())
+        name = self.panel.view.notebook.pipeline_name
+        body = ",\n         ".join(f"{k}={v!r}" for k, v in kw.items())
+        return f"from ewald.views import snapshot\nsnapshot({name}, frame={int(self.frame)},\n         {body})"
+
+    def _insert_snapshot(self):
+        """Insert › 3D snapshot: a cell that draws the current view, run at once."""
+        view = self.panel.view
+        if view is None or view.notebook.pipeline is None:
+            QtWidgets.QMessageBox.information(self, "No pipeline yet",
+                                              "Open a file first, or run a cell that sets pipe = import_file(...).")
+            return
+        cell = view.add_cell("code", self.snapshot_code())
+        view.run(cell)
+        self.notebook_dock.show()
+
+    def _insert_verb(self, verb):
+        """Insert › Analysis: a ``verb(pipe)`` cell after the current one, run at once (its table shows below)."""
+        from ..verbs import verb_cell
+
+        view = self.panel.view
+        if view is None:
+            return
+        if view.notebook.pipeline is None:
+            QtWidgets.QMessageBox.information(self, "No pipeline yet",
+                                              "Open a file first, or run a cell that sets pipe = import_file(...).")
+            return
+        cell = view.add_cell("code", verb_cell(verb))
+        view.run(cell)
+        self.notebook_dock.show()
 
     def _cell_action(self, action):
         view = self.panel.view

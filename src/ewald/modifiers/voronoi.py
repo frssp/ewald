@@ -22,8 +22,11 @@ class VoronoiAnalysis(Modifier):
     are ignored for coordination and indices, as in OVITO.
 
     With ``compute_bonds``, the table ``tables['voronoi-faces']`` lists every
-    face as (i, j, area, order).  Attributes: 'Voronoi.max_face_order' and
-    'Voronoi.volume_sum' (equals the cell volume for a periodic system).
+    face as (i, j, area, order).  ``tables['voronoi-coordination']`` counts the
+    particles with each coordination number ('Coordination', 'Count', and
+    'Count <type>' when there are several particle types).  Attributes:
+    'Voronoi.max_face_order' and 'Voronoi.volume_sum' (equals the cell volume
+    for a periodic system).
     """
 
     def __init__(self, compute_indices: bool = False, use_radii: bool = False, edge_threshold: float = 0.0,
@@ -106,6 +109,7 @@ class VoronoiAnalysis(Modifier):
         max_order = int(mfo.max()) if n_all else 0
         data.attributes["Voronoi.max_face_order"] = max_order
         data.attributes["Voronoi.volume_sum"] = float(data.particles["Atomic Volume"].sum())
+        data.tables["voronoi-coordination"] = _coordination_table(data.particles["Coordination"], data.types, subset)
         if self.compute_indices:
             width = min(max(max_order, 1), native.FACE_ORDER_STORAGE_LIMIT)
             data.particles["Voronoi Index"] = full("indices", (width,), np.int32)
@@ -118,3 +122,18 @@ class VoronoiAnalysis(Modifier):
                 "i": fi, "j": fj,
                 "area": np.concatenate(res["face_area"]) if res else np.zeros(0),
                 "order": np.concatenate(res["face_order"]) if res else np.zeros(0, np.int32)}
+
+
+def _coordination_table(coordination, types, subset=None) -> dict:
+    """How many particles have each Voronoi coordination number, also per type with more than one."""
+    if subset is not None:
+        coordination, types = coordination[subset], np.asarray(types)[subset]
+    lo, top = (int(coordination.min()), int(coordination.max())) if len(coordination) else (0, 0)
+    table = {"Coordination": np.arange(lo, top + 1), "Count": np.bincount(coordination, minlength=top + 1)[lo:]}
+    types = np.asarray(types).astype(str)
+    names = np.unique(types)
+    if len(names) > 1:
+        for name in names:
+            table[f"Count {name}"] = np.bincount(coordination[types == name], minlength=top + 1)[lo:]
+    return table
+

@@ -68,15 +68,16 @@ def table_png(table) -> bytes | None:
     """The curve of a verb :class:`~ewald.verbs.Table` (what ``table.plot()`` draws)."""
     if not options.get("enabled", True) or not table:
         return None
-    from matplotlib.figure import Figure
-
+    from . import plotstyle
     from .views import _draw
 
-    fig = Figure(figsize=(5.2, 3.0), layout="constrained")
+    fig = plotstyle.figure()
     try:
-        _draw(fig.add_subplot(), table.name, dict(table), None)
+        with plotstyle.context(*fig._ewald_style):
+            _draw(fig.add_subplot(), table.name, dict(table), None, show_title=False,
+                  labels=getattr(table, "labels", None))
         buf = io.BytesIO()
-        fig.savefig(buf, format="png", dpi=100)
+        plotstyle.save(fig, buf, format="png", dpi=150)
     except Exception:  # noqa: BLE001
         return None
     return buf.getvalue()

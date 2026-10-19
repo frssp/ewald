@@ -17,6 +17,11 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- Publication style for every plot (`ewald.plotstyle`): journal column sizes, 8 pt sans-serif
+  type, inward ticks with minor ticks, axis labels with units, a colorblind-safe color cycle in
+  Paper and Graphite variants, and editable text in PDF/SVG. *Save plot…* now redraws the plot as
+  a print figure (white background, chosen width, PNG at the image-quality DPI) instead of
+  saving the panel; new preferences `plots.size` and `plots.font_size`.
 - UI theme plugins (`@ui_theme`, `ewald.ui_themes` entry points): color themes for the desktop app
   built on Paper or Graphite, chosen under Preferences › General › UI theme; example
   `examples/plugins/ui_themes.py` (Midnight, High contrast).

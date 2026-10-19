@@ -32,12 +32,14 @@ import ast
 import contextlib
 import contextvars
 import io
+import json
 import linecache
 import os
 import re
 import sys
 import traceback
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from .pipeline import Modifier, Pipeline, PythonModifier
 
@@ -67,6 +69,7 @@ class Cell:
     id: str = field(default_factory=lambda: os.urandom(4).hex())   # nbformat cell id, kept in .ipynb
     collapsed: bool = False            # folded in the GUI; kept in .ipynb as Jupyter's source/outputs_hidden
     steps: list = field(default_factory=list)   # in a kernel: summaries of the steps it added (no objects here)
+    shadow: object = field(default=None, repr=False, compare=False)  # in a kernel: a local copy of the step's modifier
 
     @property
     def is_step(self) -> bool:
@@ -87,8 +90,42 @@ class Cell:
 
     @property
     def modifier(self) -> Modifier | None:
-        """The modifier of a step cell (after it ran or was added by the GUI)."""
-        return self.added[0] if self.is_step and len(self.added) == 1 else None
+        """The modifier of a step cell (after it ran or was added by the GUI). In a kernel it is
+        a local copy (``shadow``) built from the cell's code, for the form and the results."""
+        if not self.is_step:
+            return None
+        if len(self.added) == 1:
+            return self.added[0]
+        return self.shadow
+
+
+def _shadow_step(cell: Cell):
+    """A local modifier built from a step cell's code (its imports and the ``pipe.add(...)``
+    argument), or None when it cannot be built here (a class only the kernel has, a variable)."""
+    from . import modifiers, plugins
+
+    arg = step_call(cell.source)
+    if arg is None:
+        return None
+    ns = {n: getattr(modifiers, n) for n in getattr(modifiers, "__all__", ())}
+    ns.update({name: p.cls for name, p in plugins.modifiers().items() if getattr(p, "cls", None) is not None})
+    try:
+        tree = ast.parse(cell.source)
+        head = ast.Module(body=[s for s in tree.body if isinstance(s, (ast.Import, ast.ImportFrom))], type_ignores=[])
+        exec(compile(head, "<step>", "exec"), ns)  # noqa: S102 - the cell's own import lines
+        mod = eval(compile(ast.Expression(arg), "<step>", "eval"), ns)  # noqa: S307
+    except Exception:  # noqa: BLE001 - shown as code then
+        return None
+    return mod if isinstance(mod, Modifier) else None
+
+
+def _apply_summary(mod, summary: dict):
+    mod.enabled = bool(summary.get("enabled", True))
+    mod.status = summary.get("status")
+    mod.last_time = summary.get("time")
+    out = summary.get("output")
+    mod.last_output = out if isinstance(out, dict) else None
+    mod._kernel_id = summary.get("id")
 
 
 def resolve_data_path(path):
@@ -111,6 +148,13 @@ def resolve_data_path(path):
     return path
 
 
+def _disables_last(stmt, name: str) -> bool:
+    """``<name>.modifiers[-1].enabled = False`` (what :func:`step_source` writes for a step that is off)."""
+    return (isinstance(stmt, ast.Assign) and len(stmt.targets) == 1
+            and ast.unparse(stmt.targets[0]) == f"{name}.modifiers[-1].enabled"
+            and isinstance(stmt.value, ast.Constant) and stmt.value.value is False)
+
+
 def step_call(source: str, name: str = PIPELINE_NAME) -> ast.expr | None:
     """The argument of ``<name>.add(arg)`` or ``<name>.modifiers.append(arg)`` if ``source`` is only that call,
     optionally preceded by import statements; None otherwise."""
@@ -118,7 +162,10 @@ def step_call(source: str, name: str = PIPELINE_NAME) -> ast.expr | None:
         tree = ast.parse(source)
     except SyntaxError:
         return None
-    *head, last = tree.body or [None]
+    body = list(tree.body)
+    if body and _disables_last(body[-1], name):  # a switched-off step: pipe.modifiers[-1].enabled = False
+        body.pop()
+    *head, last = body or [None]
     if not isinstance(last, ast.Expr) or not all(isinstance(s, (ast.Import, ast.ImportFrom)) for s in head):
         return None
     call = last.value
@@ -196,6 +243,8 @@ class Notebook:
         self.manifest: dict = {}      # an .ewd file's manifest
         self.warnings: list = []      # data files that moved or changed (from the manifest)
         self.kernel = None            # an ewald.kernel.Kernel: cells run in another Python
+        self.links: list = []         # data files a .py header links (path, size, fingerprint)
+        self.py_header: list = []     # other lines of a .py file's jupytext header, kept on save
         self.reset()
 
     # ------------------------------------------------------------ namespace
@@ -314,6 +363,9 @@ class Notebook:
             if c is None:
                 continue
             c.count, c.state, c.steps = rc["count"], rc["state"], rc["steps"]
+            c.shadow = _shadow_step(c) if c.is_step and c.state == "ok" and len(c.steps) == 1 else None
+            if c.shadow is not None:
+                _apply_summary(c.shadow, c.steps[0])
             c.outputs = [Output(o["kind"], base64.b64decode(o["png"]) if "png" in o else o["text"])
                          for o in rc["outputs"]]
         for cid, state in r["states"].items():
@@ -329,6 +381,16 @@ class Notebook:
         else:
             self.namespace[self.pipeline_name] = kernel_pipeline(self.kernel, self.pipeline_name, info["num_frames"])
         return r["ok"]
+
+    def refresh_kernel_steps(self):
+        """Copy what each step did at the last frame the kernel computed onto its cell's local copy."""
+        if self.kernel is None:
+            return
+        results = getattr(self.kernel, "steps", {}) or {}
+        for c in self.cells:
+            if c.shadow is not None and c.steps and c.steps[0]["id"] in results:
+                c.steps[0] = results[c.steps[0]["id"]]
+                _apply_summary(c.shadow, c.steps[0])
 
     def _slot(self, index: int, pipe: Pipeline) -> int:
         """Where a cell's new modifiers go: after those of the cells above it."""
@@ -549,9 +611,12 @@ class Notebook:
         return fresh
 
     # ------------------------------------------------------------ files
-    def to_py(self) -> str:
-        """The notebook as a percent-format Python file."""
-        parts = []
+    def to_py(self, header: bool = False) -> str:
+        """The notebook as a percent-format Python file. With ``header`` (what :meth:`save` writes)
+        a jupytext-style comment header keeps the kernel, the viewer state (style, frame,
+        camera, render settings) and links to the data files (path, size, fingerprint)."""
+        parts = [self._py_header()] if header else []
+        parts = [p for p in parts if p]
         for cell in self.cells:
             head = "# %%" + (f" {cell.title}" if cell.title else "")
             if cell.kind == "markdown":
@@ -562,12 +627,71 @@ class Notebook:
             parts.append(head + ("\n" + body if body else ""))
         return "\n\n".join(parts) + "\n"
 
+    def _py_header(self) -> str:
+        from . import notebook_io
+
+        ewald = {k: v for k, v in (self.metadata.get("ewald") or {}).items() if k not in ("version", "state", "data")}
+        if self.pipeline_name != PIPELINE_NAME:
+            ewald["pipeline"] = self.pipeline_name
+        if self.state:
+            ewald["state"] = notebook_io._jsonable(self.state)
+        base = os.path.dirname(self.path) if self.path else os.getcwd()
+        links = [{"path": notebook_io._relative(f, base), "size": os.path.getsize(f),
+                  "fingerprint": notebook_io.fingerprint(f)} for f in notebook_io.data_files(self)]
+        links = links or self.links   # not run yet: keep the links it was opened with
+        if links:
+            ewald["data"] = links
+        if not ewald and not self.py_header:
+            return ""
+        lines = ["# ---"]
+        rest = list(self.py_header)
+        if "# jupyter:" in rest:
+            lines += rest[:rest.index("# jupyter:") + 1]
+            rest = rest[rest.index("# jupyter:") + 1:]
+        else:
+            lines.append("# jupyter:")
+        if ewald:
+            lines.append("#   ewald:")
+            lines += [f"#     {k}: {json.dumps(v, ensure_ascii=False)}" for k, v in ewald.items()]
+        return "\n".join(lines + rest + ["# ---"])
+
+    def _read_py_header(self, header: list):
+        """The ``ewald:`` part of a ``.py`` header back into metadata, state and data links; the
+        other header lines (jupytext's own) are kept as they are."""
+        ewald, other, inside = {}, [], False
+        for line in header:
+            if line.rstrip() == "#   ewald:":
+                inside = True
+                continue
+            m = re.match(r"^#     ([A-Za-z_]+): (.*)$", line) if inside else None
+            if m:
+                try:
+                    ewald[m.group(1)] = json.loads(m.group(2))
+                    continue
+                except ValueError:
+                    pass
+            inside = False
+            other.append(line)
+        self.py_header = [ln for ln in other if ln.rstrip() != "# jupyter:" or len(other) > 1]
+        self.state = dict(ewald.pop("state", None) or {})
+        self.links = list(ewald.pop("data", None) or [])
+        if ewald.get("pipeline"):
+            self.pipeline_name = ewald["pipeline"]
+        if ewald:
+            self.metadata.setdefault("ewald", {}).update(ewald)
+
     @classmethod
     def from_py(cls, text: str, **kwargs) -> "Notebook":
         """Parse a percent-format file; text before the first marker becomes a code cell
-        (a plain script is one big cell)."""
+        (a plain script is one big cell). A leading ``# ---`` header (jupytext's) is read
+        for ewald's kernel, viewer state and data links."""
         cells, current = [], None
         lines = []
+        header = []
+        rows = text.splitlines()
+        if rows and rows[0].rstrip() == "# ---" and "# ---" in [r.rstrip() for r in rows[1:]]:
+            end = 1 + [r.rstrip() for r in rows[1:]].index("# ---")
+            header, text = rows[1:end], "\n".join(rows[end + 1:])
 
         def close():
             if current is None and not "".join(lines).strip():
@@ -590,7 +714,10 @@ class Notebook:
             else:
                 lines.append(line)
         close()
-        return cls(cells, **kwargs)
+        nb = cls(cells, **kwargs)
+        if header:
+            nb._read_py_header(header)
+        return nb
 
     @classmethod
     def load(cls, path, **kwargs) -> "Notebook":
@@ -606,7 +733,10 @@ class Notebook:
             text = fh.read()
         if ext == ".ipynb":
             return notebook_io.from_ipynb(text, cls=cls, path=os.path.abspath(path), **kwargs)
-        return cls.from_py(text, path=os.path.abspath(path), **kwargs)
+        nb = cls.from_py(text, path=os.path.abspath(path), **kwargs)
+        if nb.links:
+            nb.warnings = notebook_io.check_data({"data": nb.links}, os.path.dirname(nb.path), Path())
+        return nb
 
     def save(self, path=None, **options):
         """Write the notebook; the extension picks the format: ``.ewd`` (code, outputs, figures,
@@ -621,7 +751,8 @@ class Notebook:
         if ext == ".ewd":
             notebook_io.save_ewd(self, path, **options)
         else:
-            text = notebook_io.to_ipynb_text(self) if ext == ".ipynb" else self.to_py()
+            self.path = os.path.abspath(path)   # data links are relative to the new file
+            text = notebook_io.to_ipynb_text(self) if ext == ".ipynb" else self.to_py(header=True)
             tmp = str(path) + ".tmp"
             with open(tmp, "w", encoding="utf-8") as fh:
                 fh.write(text)

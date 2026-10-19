@@ -21,20 +21,27 @@ GUI
   to new window (multi-monitor), named layouts, drop bands along an area's outer edge for
   full-length splits, a second 3D view (another camera) and a `@view` plugin API. Not yet tried
   on a real `ssh -X` display.
+- Interactive plots (zoom, pan, energy window, hover and click-to-frame on every plot exist):
+  drag on an axis to zoom that axis only and pinch zoom on touchpads; hover readout of the
+  phonon mode (q-point, band, frequency) and band index under the cursor; hovering a per-frame
+  plot previews that frame on the timeline; linked zoom between plots (a DOS beside the bands
+  sharing the energy axis, once the panel layout can place plots side by side); a scatter view
+  of two particle properties where a brushed box selects atoms; the `show()` script path draws
+  DOS/bands like the GUI (it plots the raw table columns now).
+- AI chat side bar (`gui/ask_panel.py`, activity bar): stream answers as they arrive (now the
+  whole answer at once), a Stop button, keep chats per notebook tab and save them in `.ewd`,
+  show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
+  replace or diff against an existing cell instead of always inserting a new one, edit or
+  regenerate a sent message.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
   still set inline colors (render preview, pick labels, color swatches, field error borders), so
   they keep the old palette until a restart after a theme switch; move them to QSS object names.
 - Notebook layout: the viewport could follow the current notebook even when it has no
-  pipeline yet (now it keeps the last one); 3D snapshot views (`show(pipe, frame=...)` drawing
-  the structure) and image/figure cells; drag cells to reorder; inline
-  Ask Claude suggestions as diffs; per-notebook render settings; a `.py` header with the view state and data links.
-- Notebook kernels (MVP landed: `ewald/kernel.py`): step forms, enable checkboxes and step
-  results for steps that live in the kernel (now shown as code); an Interrupt button; frames
-  without blocking the GUI thread while a cell runs; surfaces, grids and vectors in the frames
-  sent back (now particles, cell, bonds, tables, attributes); kernels on SSH hosts.
-- More analysis verbs (`cna(pipe)`, `voronoi(pipe)`, `clusters(pipe)`, returning per-type counts),
-  and verbs in the Insert menu and Ask Claude's suggestions.
-- Plugins side bar: an "updates available" badge on the activity bar, disable per notebook,
+  pipeline yet (now it keeps the last one); image/figure cells; inline Ask Claude suggestions
+  as diffs; a snapshot cell that updates when the camera of its view changes (now it is code).
+- Notebook kernels (`ewald/kernel.py`): kernels on SSH hosts; step forms for steps a kernel
+  cell adds with code the app cannot import (a class only the kernel's Python has stays as code).
+- Plugins side bar: disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
 - UI themes (`@ui_theme`): switch fully without a restart (now the style sheet changes at once,
@@ -141,7 +148,11 @@ Electronic structure
 - DOSCAR, EIGENVAL and PROCAR readers (VASP 5 runs without vasprun.xml), and Quantum ESPRESSO /
   other codes' DOS and bands.
 - vasprun.xml: the KPOINTS_OPT sections (`<eigenvalues_kpoints_opt>`); vaspout.h5 reads them.
-- Plots tab: adjustable energy window (fixed at ±6 eV now), Gaussian smearing of the DOS,
+- Plot style (`ewald/plotstyle.py`): per-plot overrides in view cells (`show(..., size=,
+  labels=)`; `xlim=`/`ylim=` exist), time units on MSD/VACF axes when `time_per_frame` is set (the unit is not
+  stored now, so the axis says "Time"), multi-panel figures (DOS beside bands sharing the energy
+  axis), and a journal preset list (ACS, APS, Nature widths and fonts).
+- Plots tab: Gaussian smearing of the DOS,
   orbital choice for fat bands independent of the DOS column, spin texture of non-collinear runs.
 - Drag an energy window on the DOS to select the atoms with the largest PDOS there, and the
   integrated PDOS in a window as a particle property to color by.
@@ -266,8 +277,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - P2: glTF, interactive HTML and Blender export.
 - P2: Batch render CLI: apply one `.ewald` session to many run folders.
 - P2: Native GSD reader (H5MD and XTC/TRR/DCD are done).
-- P2: Live reload for vasprun.xml, H5MD, XTC/TRR/DCD and compressed files (dump, XDATCAR,
-  OUTCAR and extxyz follow a growing file now); a file-system watcher instead of polling.
+- P2: Live reload for XTC/TRR/DCD and compressed files (dump, XDATCAR, OUTCAR, vasprun.xml,
+  extxyz, H5MD and NEB folders follow a growing file now); a file-system watcher instead of
+  polling; resume a growing vasprun.xml from its last step instead of indexing it again.
+- P2: Unfinished calculations, rest: a persistent "running" badge on the timeline (the note is a
+  status-bar message and a log line now); the GUI's AI chat and `ewald ask` could mention
+  `reader.incomplete`; QE, CP2K, ABINIT outputs go through ASE, which fails on a cut file.
 - P2: More HDF5 output: Quantum ESPRESSO `charge-density.hdf5` (G-space, needs an FFT to the
   real-space grid), ABINIT netCDF-4 `*_HIST.nc` trajectories and `*_DEN.nc` densities, VASP
   `vaspout.h5` `/results/partial_charges` (PARCHG).
@@ -281,7 +296,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   Windows Credential Manager, GNOME Keyring) and a passphrase-protected key from a real agent.
 - Live reload on a real running LAMMPS/VASP job (local and over SSH), where the writer flushes
   in arbitrary pieces; tests grow fixture files byte by byte.
-- Claude features with a real API key: `ewald ask` (also `--select`), the GUI Ask Claude tab,
+- A vaspout.h5 from a real running and a real killed VASP 6 job: which groups exist mid-run,
+  whether unwritten steps are zeros, and whether HDF5 can open the file of a killed job (tests
+  use h5py-written fixtures, a second process holding the write lock, and a cut file).
+- Claude features with a real API key: `ewald ask` (also `--select`), the GUI AI chat side bar
+  (notebook code in the prompt, Insert as notebook cell), the classic Ask Claude tab,
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › Claude › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
   KWallet); the container has none, so only the 0600 file fallback runs for real.

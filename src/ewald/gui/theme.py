@@ -246,6 +246,9 @@ QFrame#restrictedBanner QLabel {{ color: {text}; background: transparent; }}
 QToolButton#cellFold {{ color: {muted}; padding: 0 4px; border: none; }}
 QToolButton#cellFold:hover {{ color: {accent}; }}
 QLabel#cellFolded {{ color: {secondary}; font-style: italic; padding: 3px 0; }}
+QLabel#cellDrag {{ color: {muted}; font-size: 13px; padding: 0; }}
+QLabel#cellDrag:hover {{ color: {accent}; }}
+QFrame#cellDropLine {{ background: {accent}; border-radius: 1px; }}
 QFrame#cell[current="true"] QLabel#cellCounter {{ color: {accent}; }}
 QPlainTextEdit#cellEditor {{ background: {panel}; border: 1px solid {border}; border-radius: 6px; padding: 4px 6px; }}
 QLabel#cellError {{ color: {error}; }}
@@ -269,6 +272,39 @@ QTabWidget#notebookTabs QTabBar::tab {{ font-family: "JetBrains Mono", "DejaVu S
 QTabWidget#notebookTabs QTabBar::tab:selected {{ color: {accent}; border-bottom: 2px solid {accent}; font-weight: 600; }}
 QToolButton#tabNew {{ font-size: 16px; color: {muted}; padding: 0 8px; border-radius: 6px; }}
 QToolButton#tabNew:hover {{ color: {accent}; }}
+QWidget#chatPanel, QWidget#chatPage, QScrollArea#chatScroll, QWidget#chatWelcome {{ background: {bg}; }}
+QLabel#chatContext {{ color: {muted}; background: transparent; font-size: 11px; }}
+QLabel#chatContext[picked="true"] {{ color: {pick}; }}
+QToolButton#chatHeaderButton {{ color: {secondary}; border-radius: 6px; padding: 3px 10px; }}
+QToolButton#chatHeaderButton:hover {{ background: {hover}; color: {text}; }}
+QFrame#chatUserBubble {{ background: {accent_soft}; border-radius: 14px; border-top-right-radius: 4px; }}
+QLabel#chatUserText {{ color: {text}; background: transparent; }}
+QLabel#chatMeta {{ color: {muted}; font-size: 10px; background: transparent; }}
+QLabel#chatAvatar, QLabel#chatAvatarLarge {{ background: {accent}; color: {on_accent}; font-weight: 700;
+    border-radius: 13px; }}
+QLabel#chatAvatarLarge {{ border-radius: 22px; font-size: 20px; }}
+QLabel#chatAuthor {{ color: {text}; background: transparent; font-weight: 600; }}
+QLabel#chatText {{ color: {text}; background: transparent; }}
+QLabel#chatError {{ color: {error}; background: transparent; }}
+QLabel#chatNote {{ color: {muted}; background: transparent; font-size: 11px; }}
+QLabel#chatThinking {{ color: {muted}; background: transparent; font-style: italic; }}
+QLabel#chatStep {{ background: {panel}; color: {secondary}; border: 1px solid {border}; border-radius: 10px;
+    padding: 2px 9px; font-size: 11px; }}
+QFrame#chatCode {{ background: {panel}; border: 1px solid {border}; border-radius: 8px; }}
+QLabel#chatCodeLang {{ color: {muted}; font-size: 11px; background: transparent; }}
+QToolButton#chatCodeButton {{ color: {secondary}; border-radius: 5px; padding: 2px 8px; font-size: 11px; }}
+QToolButton#chatCodeButton:hover {{ background: {accent_soft}; color: {accent}; }}
+QPlainTextEdit#chatCodeEditor {{ background: transparent; border: none; padding: 2px 8px; }}
+QFrame#chatComposer {{ background: {raised}; border: 1px solid {border}; border-radius: 16px; }}
+QPlainTextEdit#chatInput {{ background: transparent; border: none; }}
+QToolButton#chatSend {{ background: {accent}; color: {on_accent}; border-radius: 15px; font-weight: 700; font-size: 15px; }}
+QToolButton#chatSend:hover {{ background: {accent_hover}; }}
+QToolButton#chatSend:disabled {{ background: {border}; color: {muted}; }}
+QLabel#chatHint {{ color: {muted}; background: transparent; font-size: 10px; }}
+QLabel#chatWelcomeTitle {{ color: {text}; background: transparent; font-size: 15px; font-weight: 600; }}
+QPushButton#chatStarter {{ background: {raised}; border: 1px solid {border}; border-radius: 14px; padding: 5px 14px;
+    color: {secondary}; font-weight: normal; }}
+QPushButton#chatStarter:hover {{ border-color: {accent}; color: {accent}; }}
 """
 
 

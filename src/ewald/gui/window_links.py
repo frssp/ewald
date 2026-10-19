@@ -53,6 +53,42 @@ class LinksMixin:
         view = self.panel.view if self.layout_mode == "notebook" else None
         return [self.plots, *self.extra_plots.values()] + ([w.plot_panel for w in view.widgets if w.plot_panel is not None] if view else [])
 
+    def new_plot_view(self, beside: str = "plot:1", view: str | None = None):
+        """Another Plots view (a second table or histogram side by side), as a tab next to ``beside``."""
+        if view is None:
+            n = 2
+            while f"plot:{n}" in self.workbench.specs:
+                n += 1
+            view = f"plot:{n}"
+        from .plots import PlotsPanel
+
+        p = PlotsPanel()
+        self._connect_plot(p)
+        p.pipeline = self.pipeline
+        self.extra_plots[view] = p
+        group = self.workbench.group_of(beside) if beside in self.workbench.specs else None
+        self.workbench.register(view, p, f"Plots {view.split(':')[1]}", closable=True, group=group)
+        self.workbench.show(view)
+        self._stale_tabs.add(p)
+        self._update_bottom_tab()
+        return p
+
+    def _make_view(self, view: str) -> bool:
+        """Views a saved layout names that don't exist yet: extra plot views."""
+        if view.startswith("plot:") and view[5:].isdigit() and view != "plot:1":
+            self.new_plot_view(view=view)
+            return True
+        return False
+
+    def _plot_view_closed(self, view):
+        p = self.extra_plots.pop(view, None)
+        self._stale_tabs.discard(p)
+
+    def _extra_view_actions(self, view):
+        if view.startswith("plot:"):
+            return [("New plot view", lambda: self.new_plot_view(view))]
+        return []
+
     def _each_plot(self, fn):
         for p in self.plot_panels():
             fn(p)
@@ -96,15 +132,33 @@ class LinksMixin:
         return self.pipeline, self.frame, self._selected_indices()
 
     def ask_claude(self):
-        self.ask_dock.show()
-        self.ask_dock.raise_()
+        if self.layout_mode == "notebook":
+            self._show_side_bar(self.ask_dock)  # the AI chat side bar beside the notebook
+        else:
+            self.ask_dock.show()
+            self.ask_dock.raise_()
         self.ask_panel.update_selection()
         self.ask_panel.input.setFocus()
 
+    def _notebook_code(self):
+        """The current notebook as percent-format Python, for the AI chat (None without one)."""
+        nb = self.panel.notebook
+        return nb.to_py() if nb is not None and nb.cells else None
+
+    def _insert_claude_cell(self, code):
+        """'Insert as notebook cell' in the AI chat: a code cell after the current one, not run."""
+        view = getattr(self.panel, "view", None)
+        if view is None:
+            if not hasattr(self.panel, "new_notebook"):
+                return
+            view = self.panel.new_notebook()
+        view.add_cell("code", code)
+        self.notebook_dock.show()
+        self.message("Inserted Claude's code as a notebook cell (Shift+Enter runs it)")
+
     def _install_notebook_packages(self, requirements):
         """A notebook's bar asked for the pip packages its steps need: pip runs in the Plugins side bar."""
-        self.plugins_dock.show()
-        self.plugins_dock.raise_()
+        self._show_side_bar(self.plugins_dock)
         self.plugins_panel.install_requirements(requirements)
 
     def _create_plugin(self, prompt):

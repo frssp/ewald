@@ -7,7 +7,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Python API
 
-`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
+`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
 
 ## Modifiers
 
@@ -195,7 +195,7 @@ Tried in this order when no `format=` is given; reader plugins slot in at priori
 | `vasp-volumetric` | `CHGCAR*` `CHG*` `PARCHG*` `AECCAR*` `LOCPOT*` `ELFCAR*` | VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR (atoms + grid) | `vasp-chgcar`, `chgcar`, `vasp-locpot`, `locpot`, `vasp-elfcar`, `elfcar` |
 | `h5md` | `*.h5md` `*.h5` | H5MD trajectory (LAMMPS dump h5md, MDAnalysis, ...), lazy; needs h5py |  |
 | `mdtraj-h5` | `*.h5` | MDTraj/OpenMM HDF5 trajectory (HDF5Reporter), topology and bonds, lazy; needs h5py | `mdtraj`, `openmm-h5` |
-| `vaspout` | `vaspout*.h5` | VASP 6 vaspout.h5: ionic steps with forces, energies, stress, velocities, moments, local potential grid, DOS/PDOS and bands, lazy; needs h5py | `vasp-h5`, `vaspout.h5` |
+| `vaspout` | `vaspout*.h5` | VASP 6 vaspout.h5: ionic steps with forces, energies, stress, velocities, moments, local potential grid, DOS/PDOS and bands, lazy; a file VASP has not closed yet is read from the vasprun.xml/OUTCAR next to it; needs h5py | `vasp-h5`, `vaspout.h5` |
 | `vaspwave` | `vaspwave*.h5` | VASP 6 vaspwave.h5 charge density (structure from vaspout.h5 next to it); needs h5py | `vaspwave.h5` |
 | `xsf` | `*.xsf` `*.axsf` | XCrySDen XSF/AXSF: structure, ANIMSTEPS trajectory, DATAGRID_3D grids |  |
 | `lammps-dump` | `*.lammpstrj` `*.dump` | LAMMPS text dump (atom/custom), lazy | `lammps/dump`, `lammps-dump-text` |
@@ -440,6 +440,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `render.output_dir` | Output folder | `''` |
 | `render.type_legend` | Particle type legend | `False` |
 | `render.scale_bar` | Scale bar | `False` |
+| `plots.size` | Saved plot size | `'1-column (3.5 in)'` |
+| `plots.font_size` | Saved plot font size | `8.0` |
 | `render.movie_format` | Movie format | `'MP4 (H.264)'` |
 
 ### Compute
@@ -645,6 +647,18 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Python
     - Python script
 - View
+- 3D snapshot of the view
+- Analysis
+  - Radial distribution g(r)
+  - Structure factor S(q)
+  - Powder diffraction (XRD)
+  - Bond angles
+  - Common neighbor analysis
+  - Polyhedral template matching
+  - Voronoi coordination
+  - Clusters
+  - Mean squared displacement
+  - Velocity autocorrelation
 - Plugin step
 - Load plugin file…
 - Ask Claude to add steps…
@@ -671,7 +685,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Plots
 - New plot view
 - Log
-- Ask Claude
+- AI chat
 - Command palette
 
 **Help**
@@ -724,7 +738,7 @@ Open, Save, Run all, Notebook, Render, Search commands, steps, cells… Ctrl K, 
 ### Panels
 
 - Workspaces: Notebook, Render
-- Docks: Ask Claude, Display, Notebook, Plugins, Remotes
+- Docks: AI chat, Display, Notebook, Plugins, Remotes
 - Editor area tabs: 3D view
 - Panel tabs: Python console, Data inspector, Plots, Log (tabs drag between groups: centre = tab, edge = split; View › Layout)
 - Viewport tools: Orbit / pan / zoom (mouse); Pick atom: shows id, type, position and properties; Shift+click picks several; Measure distance: click two atoms; Measure angle: click three atoms (vertex in the middle); Edit bonds: click two atoms to add or delete the bond between them

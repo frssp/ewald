@@ -79,8 +79,11 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self.setCentralWidget(self.workbench)
 
         self.layout_mode = self.settings["general.layout"]
-        self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings))
+        nb_layout = self.layout_mode == "notebook"
+        self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings, notebook=nb_layout),
+                                  notebook=self._notebook_code if nb_layout else None)
         self.ask_panel.pipelineChanged.connect(self._after_claude)
+        self.ask_panel.insertRequested.connect(self._insert_claude_cell)
         if self.layout_mode == "notebook":
             # --- left: notebook tabs (the pipeline as Python cells); right: display settings, Ask Claude
             self.panel = NotebookPanel()
@@ -99,11 +102,16 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             self.plugins_panel.changed.connect(lambda: self.message("Plugins changed"))
             self.plugins_panel.changed.connect(self.panel.refresh_packages)
             self.panel.pipRequested.connect(self._install_notebook_packages)
+            self.panel.switched.connect(self._notebook_switched)
             self.plugins_panel.createRequested.connect(self._create_plugin)
             self.plugins_dock = self._dock(self.plugins_panel, "Plugins", QtCore.Qt.LeftDockWidgetArea, 300)
             self.splitDockWidget(self.plugins_dock, self.notebook_dock, QtCore.Qt.Horizontal)
             self.plugins_dock.hide()
             self.remotes_dock = install_remotes(self)
+            # the AI chat side bar opens left of the notebook, like the other side bars
+            self.ask_dock = self._dock(self.ask_panel, "AI chat", QtCore.Qt.LeftDockWidgetArea, None)
+            self.splitDockWidget(self.ask_dock, self.notebook_dock, QtCore.Qt.Horizontal)
+            self.ask_dock.hide()
             self._build_activity_bar()
             self.display = DisplayPanel(self.style)
             self.display.styleChanged.connect(self._style_changed)
@@ -117,9 +125,9 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             self.panel.styleChanged.connect(self._style_changed)
             side_dock = self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
             self.remotes_dock = install_remotes(self)
-        self.ask_dock = self._dock(self.ask_panel, "Ask Claude", QtCore.Qt.RightDockWidgetArea, None)
-        self.tabifyDockWidget(side_dock, self.ask_dock)
-        side_dock.raise_()
+            self.ask_dock = self._dock(self.ask_panel, "Ask Claude", QtCore.Qt.RightDockWidgetArea, None)
+            self.tabifyDockWidget(side_dock, self.ask_dock)
+            side_dock.raise_()
 
         # --- panel (below the 3D view): console / inspector / plots / log
         self.inspector = DataInspector()
@@ -244,9 +252,10 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self.message(f"Theme: {name}")
         self._style_changed()
 
-    def message(self, text, error=False):
-        self.statusBar().showMessage(text, 10000)
-        self.log.appendPlainText(time.strftime("%H:%M:%S ") + ("ERROR " if error else "") + text)
+    def message(self, text, error=False, warning=False):
+        self.statusBar().showMessage(text, 20000 if warning else 10000)
+        self.log.appendPlainText(time.strftime("%H:%M:%S ") + ("ERROR " if error else "WARNING " if warning else "")
+                                 + text)
 
     def set_pipeline(self, pipeline):
         self.pipeline = pipeline
@@ -264,6 +273,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self._push_console()
         self.frame = 0
         self.timeline._set(0) if self.timeline.frame != 0 else self.recompute()
+        self.live_reload.report_incomplete()
 
     def set_frame(self, frame):
         self.frame = frame
@@ -377,41 +387,6 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             tab.set_data(self.data)
             if plot:
                 tab.set_highlight(self._selected_indices())
-
-    # ---------------------------------------------------------------- plot views
-    def new_plot_view(self, beside: str = "plot:1", view: str | None = None):
-        """Another Plots view (a second table or histogram side by side), as a tab next to ``beside``."""
-        if view is None:
-            n = 2
-            while f"plot:{n}" in self.workbench.specs:
-                n += 1
-            view = f"plot:{n}"
-        p = PlotsPanel()
-        self._connect_plot(p)
-        p.pipeline = self.pipeline
-        self.extra_plots[view] = p
-        group = self.workbench.group_of(beside) if beside in self.workbench.specs else None
-        self.workbench.register(view, p, f"Plots {view.split(':')[1]}", closable=True, group=group)
-        self.workbench.show(view)
-        self._stale_tabs.add(p)
-        self._update_bottom_tab()
-        return p
-
-    def _make_view(self, view: str) -> bool:
-        """Views a saved layout names that don't exist yet: extra plot views."""
-        if view.startswith("plot:") and view[5:].isdigit() and view != "plot:1":
-            self.new_plot_view(view=view)
-            return True
-        return False
-
-    def _plot_view_closed(self, view):
-        p = self.extra_plots.pop(view, None)
-        self._stale_tabs.discard(p)
-
-    def _extra_view_actions(self, view):
-        if view.startswith("plot:"):
-            return [("New plot view", lambda: self.new_plot_view(view))]
-        return []
 
     def play_phonon_mode(self, qpoint: int, band: int):
         """Show phonon mode (qpoint, band), e.g. clicked in the band plot, and start playback."""
