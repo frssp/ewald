@@ -94,7 +94,7 @@ class MenusMixin:
         tb.addSeparator()
         search = QtWidgets.QPushButton("  Search commands, steps, cells…      Ctrl K" if nb else
                                        "  Search commands, modifiers…      Ctrl K")
-        search.setStyleSheet(f"text-align: left; color: {TOKENS['muted']}; background: {TOKENS['panel']}; min-width: 320px;")
+        search.setObjectName("searchBox")
         search.clicked.connect(self.command_palette)
         tb.addWidget(search)
         spacer = QtWidgets.QWidget()

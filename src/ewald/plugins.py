@@ -323,7 +323,11 @@ class UiThemePlugin:
         bad = [k for k, v in own.items() if not (isinstance(v, str) and _HEX.fullmatch(v))]
         if bad:
             raise ValueError(f"UI theme {self.name!r}: tokens {', '.join(bad)} must be colors like '#1e1e2e'")
-        return {**base, **own}
+        if not own:
+            return dict(base)
+        from .gui.theme import derive
+
+        return derive({**base, **own}, own)
 
 
 _HEX = re.compile(r"#[0-9a-fA-F]{6}")

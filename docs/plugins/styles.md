@@ -116,6 +116,7 @@ def midnight():
 | `data`, `data_soft` | results computed from the data (plots, readouts) |
 | `selection`, `pick` | selected atoms, picked atoms |
 | `error`, `ok` | error and success messages |
+| `hover`, `pressed`, `accent_hover`, `accent_pressed` | button and row shades under the mouse and while pressed; left out, they are mixed from `raised`/`accent` toward `text` |
 | `viewport` | the theme's suggested viewport color (the 3D view itself follows Preferences › Viewport › Background) |
 
 Values are `#rrggbb` colors. Pick the theme under Preferences › General › *UI theme*; it takes

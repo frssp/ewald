@@ -78,6 +78,7 @@ QListWidget#nav::item:selected {{ background: {raised}; color: {text}; border-le
 QScrollArea#content, QWidget#contentInner {{ background: {bg}; border: none; }}
 QWidget#contentInner QLabel, QWidget#contentInner QWidget#noteHolder {{ background: transparent; }}
 QFrame#card QAbstractSpinBox::up-button, QFrame#card QAbstractSpinBox::down-button {{ width: 0px; border: none; }}
+QFrame#card QAbstractSpinBox::up-arrow, QFrame#card QAbstractSpinBox::down-arrow {{ image: none; width: 0px; }}
 QFrame#card QComboBox::drop-down {{ border: none; width: 22px; }}
 QFrame#card QComboBox::down-arrow {{ image: url("{chevron}"); width: 10px; height: 10px; margin-right: 8px; }}
 QLabel#pageTitle {{ font-size: 20px; font-weight: 600; color: {text}; }}
