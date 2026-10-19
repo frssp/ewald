@@ -336,11 +336,20 @@ def type_entries(data, type_colors: dict | None = None) -> list[tuple[str, np.nd
     return out
 
 
-def ink_color(background, transparent: bool) -> tuple:
-    from .render import _rgb
+def is_dark(background, transparent: bool = False) -> bool:
+    """Whether lines and text on ``background`` should be light (never on a transparent one)."""
+    from .colormaps import to_rgb
 
-    dark = not transparent and sum(_rgb(background)) < 1.5
-    return (0.92, 0.92, 0.93) if dark else (0.08, 0.08, 0.08)
+    return not transparent and sum(to_rgb(background)) < 1.5
+
+
+def ink_color(background, transparent: bool) -> tuple:
+    return (0.92, 0.92, 0.93) if is_dark(background, transparent) else (0.08, 0.08, 0.08)
+
+
+def cell_line_color(background, transparent: bool = False) -> str:
+    """Default simulation-cell color: light gray on dark backgrounds, black otherwise."""
+    return "#AEB4BE" if is_dark(background, transparent) else "black"
 
 
 def overlay_layout(data, size, *, text=None, legend=True, type_legend=False, scale_bar=None, camera=None,

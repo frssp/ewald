@@ -7,12 +7,7 @@ from ..pipeline import Modifier
 from .expression import evaluate
 
 
-def _to_rgb(color) -> np.ndarray:
-    if isinstance(color, str):
-        from matplotlib.colors import to_rgb
-
-        return np.array(to_rgb(color))
-    return np.asarray(color, float)[:3]
+from ..colormaps import to_rgb as _to_rgb
 
 
 class AssignColor(Modifier):

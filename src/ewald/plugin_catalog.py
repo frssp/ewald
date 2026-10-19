@@ -64,18 +64,28 @@ class Entry:
 
 @dataclass
 class Installed:
-    """Plugins loaded from one place: a plugin-folder file, a package or this session."""
+    """One installed plugin (a plugin-folder file or folder, a package), or the plugins
+    registered by code run in this session; built from :func:`ewald.plugins.installed`."""
 
     name: str
-    origin: str                      # file path, "entry point <module:attr>" or "python"
+    origin: str                      # file path, distribution name or "python"
     provides: dict = field(default_factory=dict)   # kind -> [registered names]
     error: str = ""
-    package: str = ""                # distribution name for entry-point plugins
+    package: str = ""                # distribution name for package plugins
     path: str = ""                   # the file or folder for plugin-folder plugins
+    id: str = ""                     # plugins.installed() id; "" for this session's code
+    version: str = ""
+    summary: str = ""
+    publisher: str = ""
+    state: str = "loaded"            # "loaded", "disabled", "incompatible", "failed", "not loaded"
 
     @property
     def removable(self) -> bool:
         return bool(self.path or self.package)
+
+    @property
+    def enabled(self) -> bool:
+        return self.state != "disabled"
 
     @property
     def kinds(self) -> list:
@@ -84,45 +94,38 @@ class Installed:
 
 # ---------------------------------------------------------------- installed
 def installed() -> list[Installed]:
-    """Every non-built-in plugin, one item per file, package or session, plus files that failed."""
-    status = plugins.status()
-    folder = Path(status["plugin_dir"])
-    groups: dict[str, Installed] = {}
-    for key, kind in _STATUS_KEYS.items():
-        for p in status[key]:
-            origin = p.get("origin") or ""
-            if origin in ("built-in", "") or origin.startswith("built-in"):
+    """Every non-built-in plugin (disabled and broken ones too), plus one item for plugins
+    registered by code run in this session."""
+    folder = plugins.plugin_dir().resolve()
+    items = []
+    for pid, p in plugins.installed().items():
+        if "@" in pid:                        # a duplicate id, already reported on the first one
+            continue
+        path = ""
+        if p.kind != "package":
+            src = Path(p.origin)
+            if not src.exists():              # removed: its classes stay registered until restart
                 continue
-            item = groups.get(origin) or groups.setdefault(origin, _installed_item(origin, folder))
-            item.provides.setdefault(kind, []).append(p["name"])
-    for origin, error in status["errors"].items():
-        item = groups.get(origin) or groups.setdefault(origin, _installed_item(origin, folder))
-        item.error = error
-    # a removed file's classes stay registered until restart; it is no longer installed
-    gone = [o for o in groups if Path(o).is_absolute() and not Path(o).exists()]
-    return sorted((i for o, i in groups.items() if o not in gone), key=lambda i: i.name.lower())
+            path = str(src) if src.resolve().parent == folder else ""
+        items.append(Installed(
+            name=p.name or pid, origin=p.origin, id=pid, version=p.version, summary=p.description,
+            publisher=p.publisher, state=p.state, error="; ".join(p.errors),
+            package=p.origin if p.kind == "package" else "", path=path,
+            provides={k.rstrip("s"): list(v) for k, v in p.contributions.items() if v}))
+    session = Installed(name="This session", origin="python")
+    status = plugins.status()
+    for key, kind in _STATUS_KEYS.items():
+        for entry in status[key]:
+            if entry.get("origin") == "python":
+                session.provides.setdefault(kind, []).append(entry["name"])
+    if session.provides:
+        items.append(session)
+    return sorted(items, key=lambda i: i.name.lower())
 
 
-def _installed_item(origin: str, folder: Path) -> Installed:
-    if origin.startswith("entry point "):
-        module = origin.split(" ", 2)[2].split(":")[0].split(".")[0]
-        return Installed(name=_distribution_of(module) or module, origin=origin, package=_distribution_of(module))
-    path = Path(origin)
-    if path.is_absolute():
-        top = path if path.parent == folder else next((p for p in path.parents if p.parent == folder), path)
-        inside = top.parent == folder
-        return Installed(name=_title(top.stem), origin=origin, path=str(top) if inside else "")
-    return Installed(name="This session" if origin == "python" else origin, origin=origin)
-
-
-def _distribution_of(module: str) -> str:
-    from importlib.metadata import packages_distributions
-
-    try:
-        names = packages_distributions().get(module) or []
-    except Exception:
-        names = []
-    return names[0] if names else ""
+def set_enabled(item: Installed, enabled: bool):
+    """Switch a plugin on or off (kept across sessions); see :func:`ewald.plugins.set_enabled`."""
+    plugins.set_enabled(item.id, enabled)
 
 
 # ---------------------------------------------------------------- catalogs

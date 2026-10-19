@@ -30,15 +30,6 @@ _SKIP = {"Position", "Particle Type", "Particle Identifier", "Color", "Selection
 _COUNTS = re.compile(r"^(?P<prefix>.+)\.counts\.(?P<name>[^.]+)$")
 
 
-def _mic(cell: Cell, v: np.ndarray) -> np.ndarray:
-    """Minimum-image version of displacement vectors ``v`` (..., 3)."""
-    if not (cell.is_valid and cell.pbc.any()):
-        return v
-    f = v @ np.linalg.inv(cell.matrix)
-    f = f - np.round(f) * cell.pbc
-    return f @ cell.matrix
-
-
 def structure_names(data: DataCollection) -> list[str] | None:
     """Names of the 'Structure Type' ids, read from the ``<Modifier>.counts.<NAME>`` attributes
     that every structure-identification modifier writes in id order (the last one wins)."""
@@ -71,7 +62,7 @@ def _ids(data: DataCollection) -> np.ndarray:
 
 
 def _distances_to(data: DataCollection, center: np.ndarray) -> np.ndarray:
-    return np.linalg.norm(_mic(data.cell, data.positions - center), axis=1)
+    return np.linalg.norm(data.cell.minimum_image(data.positions - center), axis=1)
 
 
 def _environment_mask(data: DataCollection, idx: np.ndarray, centroid: np.ndarray, extent: float,
@@ -118,7 +109,7 @@ def describe_selection(data: DataCollection, indices, radius: float = 6.0, cutof
     cn = np.bincount(i, minlength=data.count) + np.bincount(j, minlength=data.count)
 
     ref = pos[idx[0]]
-    rel = _mic(cell, pos[idx] - ref)
+    rel = cell.minimum_image(pos[idx] - ref)
     centroid = ref + rel.mean(axis=0)
     extent = float(np.linalg.norm(rel - rel.mean(axis=0), axis=1).max())
     selected = np.zeros(data.count, bool)
@@ -152,11 +143,11 @@ def describe_selection(data: DataCollection, indices, radius: float = 6.0, cutof
         sel["structures"] = dict(Counter(_structure_label(names, t) for t in struct[idx]))
     if 2 <= len(idx) <= 6:
         sel["distances"] = [{"ids": [int(ids[a]), int(ids[b])],
-                             "d": _round(np.linalg.norm(_mic(cell, pos[b] - pos[a])), 5)}
+                             "d": _round(np.linalg.norm(cell.minimum_image(pos[b] - pos[a])), 5)}
                             for n, a in enumerate(idx) for b in idx[n + 1:]]
     if len(idx) == 3:
         a, b, c = idx   # angle at the middle particle, as the viewport's angle tool measures it
-        v1, v2 = _mic(cell, pos[a] - pos[b]), _mic(cell, pos[c] - pos[b])
+        v1, v2 = cell.minimum_image(pos[a] - pos[b]), cell.minimum_image(pos[c] - pos[b])
         sel["angle_at_middle"] = _round(np.degrees(np.arccos(np.clip(
             v1 @ v2 / np.linalg.norm(v1) / np.linalg.norm(v2), -1, 1))), 5)
 
@@ -203,7 +194,7 @@ def selection_scene(data: DataCollection, indices, radius: float = 6.0) -> DataC
     idx = np.unique(np.asarray(indices, dtype=int).ravel())
     pos, cell = data.positions, data.cell
     ref = pos[idx[0]]
-    rel = _mic(cell, pos[idx] - ref)
+    rel = cell.minimum_image(pos[idx] - ref)
     centroid = ref + rel.mean(axis=0)
     extent = float(np.linalg.norm(rel - rel.mean(axis=0), axis=1).max())
     mask = _environment_mask(data, idx, centroid, extent, radius)
@@ -217,7 +208,7 @@ def selection_scene(data: DataCollection, indices, radius: float = 6.0) -> DataC
     out.bonds = None
     out.surfaces = {}
     out.grids = {}
-    out.particles["Position"] = centroid + _mic(cell, pos[keep] - centroid)
+    out.particles["Position"] = centroid + cell.minimum_image(pos[keep] - centroid)
     out.particles["Color"] = colors[keep]
     out.particles["Radius"] = radii[keep]
     out.cell = Cell(cell.matrix.copy(), cell.origin.copy(), np.zeros(3, bool))

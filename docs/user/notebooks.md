@@ -120,8 +120,10 @@ ewald's example plugins and every catalog in Preferences › Python › *Plugin 
 [Packaging and sharing](../plugins/packaging.md#plugin-catalogs)). Type to search, or filter with
 `@installed`, `@available` or a kind such as `@modifier`. *Install* copies a plugin file into the
 plugin folder and loads it at once; a `pip:` entry runs pip in the Python ewald runs in, after
-you confirm the command. *Remove* moves a file to the plugin folder's `.removed` folder (its
-steps stay available until ewald restarts). Selecting a modifier plugin shows its documentation
+you confirm the command. *Disable* switches a plugin off without removing it
+([Switching a plugin off](../plugins/packaging.md#switching-a-plugin-off)); disabled,
+incompatible and failed plugins say so in their row. *Remove* moves a file to the plugin
+folder's `.removed` folder (its steps stay available until ewald restarts). Selecting a modifier plugin shows its documentation
 and *Add as a step in the notebook*. *Create…* asks Claude to write a new plugin.
 
 Plugin modifiers ([Writing plugins](../plugins/index.md)) are steps like the built-in ones.

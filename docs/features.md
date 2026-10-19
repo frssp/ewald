@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-58 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+63 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -170,6 +170,16 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | `BondLengthDistribution` | Histogram of bond lengths from 0 to ``length_cutoff`` in ``bins`` bins (longer bonds are skipped). |
 | `FindRings` | Rings of ``minimum_ring_size``..``maximum_ring_size`` bonds in the bond network. |
 
+### transport
+
+| Modifier | What it does |
+|---|---|
+| `IonicConductivity` | Ionic conductivity from the collective charge displacement, its Nernst-Einstein estimate and the Haven ratio. |
+| `VanHoveCorrelation` | Van Hove correlation function at a few times: the self part (how far one ion gets, with peaks at the hop distances) and the distinct part (where the other ions are). |
+| `SelfIntermediateScattering` | Self intermediate scattering function F_s(q, t) and its relaxation time. |
+| `NonGaussianParameter` | Non-Gaussian parameter alpha_2(t) = 3 <dr^4> / (5 <dr^2>^2) - 1 of the displacements. |
+| `SiteHopping` | Site occupancy, hops between sites and residence times of mobile ions. |
+
 ### vectors
 
 | Modifier | What it does |
@@ -310,7 +320,7 @@ Details: [Command line](user/cli.md).
 | `ewald ask INPUT [QUESTION...]` | ask Claude about a structure (needs anthropic + credentials) | `--type-map` `--model` `--allow-code` `--script` `--select` `--ids` `--frame` |
 | `ewald narrate INPUT` | timeline of events in a trajectory (Claude writes it if available) | `--type-map` `--no-llm` `--render` `--json` |
 | `ewald api` | print the Python API reference for LLMs (llms.txt) | `--with-plugins` |
-| `ewald plugins` | list installed plugins and any that failed to load | `--json` |
+| `ewald plugins` | list installed plugins and any that failed to load | `--json` `--enable` `--disable` |
 | `ewald forge [REQUEST...]` | have Claude write a modifier plugin, test it and save it | `--yes` `--draft` `--overwrite` `--rounds` `--model` |
 | `ewald mcp [INPUT]` | serve the analysis tools over MCP (stdio) | `--allow-code` |
 | `ewald inventory` | print or update the feature inventory (docs/features.md) | `-o` `--gui` |
@@ -571,6 +581,12 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
     - Trajectory lines / paths
     - NEB energy profile / barrier
     - Overlay frames (see-through images)
+  - Ion transport
+    - Ionic conductivity / Haven ratio
+    - Van Hove correlation G(r, t)
+    - Self intermediate scattering Fs(q, t)
+    - Non-Gaussian parameter
+    - Site hopping / residence time
   - Bonds & polyhedra
     - Create bonds
     - Edit bonds (add / delete)
