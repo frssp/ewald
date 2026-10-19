@@ -376,7 +376,7 @@ class OverlayFrames(_TrajectoryModifier):
             else:
                 raise ValueError(f"frame {k} has {len(kx)} atoms and frame {here} has {len(x)}, and there "
                                  f"are no particle identifiers to match them")
-            d = _mic(kx[theirs] - x[own], data.cell)
+            d = data.cell.minimum_image(kx[theirs] - x[own])
             moved = np.linalg.norm(d, axis=1) > self.min_displacement
             src.append(own[moved])
             pos.append(x[own[moved]] + d[moved])
@@ -408,10 +408,3 @@ class OverlayFrames(_TrajectoryModifier):
         return out
 
 
-def _mic(delta, cell):
-    """Displacements wrapped to the nearest periodic image of ``cell``."""
-    if not cell.is_valid or not cell.pbc.any():
-        return delta
-    frac = delta @ np.linalg.inv(cell.matrix)
-    frac[:, cell.pbc] -= np.round(frac[:, cell.pbc])
-    return frac @ cell.matrix

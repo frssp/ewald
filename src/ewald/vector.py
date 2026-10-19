@@ -286,7 +286,7 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
     from matplotlib.patches import Circle, Rectangle
 
     from . import scene as ir
-    from .overlays import draw_items_mpl, ink_color, overlay_layout
+    from .overlays import cell_line_color, draw_items_mpl, ink_color, overlay_layout
     from .render import _rgb
 
     w, h = int(size[0]), int(size[1])
@@ -307,7 +307,7 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                      bond_pairs=bond_pairs, bond_radius=bond_radius, vectors=vectors,
                      trajectory_width=trajectory_width, show_cell=show_cell, cell_color=cell_color,
                      cell_width=cell_width, boundary=boundary, boundary_bonds=boundary_bonds)
-    ink = "#AEB4BE" if sum(bg) < 1.5 and not transparent_background else "black"
+    ink = cell_line_color(bg, transparent_background)
     prims = scene_prims(scene, camera, (w, h), pt, shading, ink)
     prims.sort(key=lambda p: -p[0])  # far first
     patches, fc, ec, lw = [], [], [], []

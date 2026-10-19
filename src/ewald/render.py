@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from .colormaps import to_rgb
 from .data import DataCollection
 
 _FALLBACK_PALETTE = np.array([
@@ -117,13 +118,7 @@ def default_radii(data: DataCollection, scale: float = 0.8, type_radii: dict | N
     return _radius_table(names, scale, type_radii, data, radius_preset, oxidation_states, coordination)[inverse]
 
 
-def _rgb(c) -> np.ndarray:
-    if isinstance(c, str):
-        from matplotlib.colors import to_rgb
-
-        return np.array(to_rgb(c))
-    c = np.asarray(c, float)[:3]
-    return c / 255.0 if c.max() > 1 else c
+_rgb = to_rgb  # many modules import it from here
 
 
 def atom_cloud(data: DataCollection, *, radius_scale: float = 1.0, only_visible=None,
@@ -751,13 +746,14 @@ def save_image(rgba, filename, *, transparent=False, dpi=None):
 def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, background, transparent_background,
                       show_cell, bonds, radius_scale, camera, samples, ao_samples, shadows, overlays, dpi,
                       **scene_kwargs):
+    from .overlays import cell_line_color
     from .raytrace import raytrace, scene_from_data
 
     for k in ("atom_style", "sphere_resolution", "mesh_limit", "antialiasing", "ambient_occlusion", "cell_width"):
         scene_kwargs.pop(k, None)
     if camera is None:  # same framing as the OpenGL path
         camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
-    cell_color = "#AEB4BE" if sum(_rgb(background)) < 1.5 and not transparent_background else "black"
+    cell_color = cell_line_color(background, transparent_background)
     view = np.asarray(camera["position"], float) - np.asarray(camera["focal_point"], float)
     scene_kwargs.setdefault("arrow_resolution", 16 if samples <= 4 else 24)
     scene = scene_from_data(data, radius_scale=radius_scale, bonds=bonds, show_cell=show_cell,

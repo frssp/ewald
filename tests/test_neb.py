@@ -175,7 +175,6 @@ def test_overlay_frames_ghosts_moving_atoms(vasp_dir, lammps_dir):
     assert len(ghosts) == d.attributes["OverlayFrames.count"] > 0 and 2 not in frame
     assert np.allclose(d["Transparency"][ghosts], 0.7)
     # each copy sits where its atom is in that image (minimum image next to the current position)
-    from ewald.modifiers.trajectory import _mic
 
     ids = d["Particle Identifier"]
     for g in ghosts:
@@ -183,7 +182,7 @@ def test_overlay_frames_ghosts_moving_atoms(vasp_dir, lammps_dir):
         k = int(np.flatnonzero(other["Particle Identifier"] == ids[g])[0]) if "Particle Identifier" in other \
             else int(ids[g]) - 1
         here = d.positions[int(ids[g]) - 1]
-        np.testing.assert_allclose(d.positions[g], here + _mic(other.positions[[k]] - here, d.cell)[0], atol=1e-9)
+        np.testing.assert_allclose(d.positions[g], here + d.cell.minimum_image(other.positions[[k]] - here)[0], atol=1e-9)
         assert np.linalg.norm(d.positions[g] - here) > 0.1
     # the hopping atom of the LAMMPS band leaves a copy at every other image
     lp = import_file(lammps_dir / "neb")

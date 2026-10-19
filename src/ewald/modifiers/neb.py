@@ -4,7 +4,6 @@ from __future__ import annotations
 import numpy as np
 
 from ..pipeline import Modifier
-from .trajectory import _mic
 
 _ENERGY_NAMES = ("Energy", "energy", "Potential Energy", "PotEng", "Free Energy")
 
@@ -93,7 +92,7 @@ class NebEnergyProfile(Modifier):
         energies = np.asarray(energies)
         if np.isnan(energies).all():
             raise ValueError(f"no image has an energy attribute {self.energy!r}")
-        steps = [_mic(pos[i + 1] - pos[i], cells[i]) for i in range(len(pos) - 1)]
+        steps = [cells[i].minimum_image(pos[i + 1] - pos[i]) for i in range(len(pos) - 1)]
         s = np.concatenate([[0.0], np.cumsum([np.linalg.norm(v) for v in steps])])
         ref = energies[np.nonzero(~np.isnan(energies))[0][0]]
         rel = energies - ref

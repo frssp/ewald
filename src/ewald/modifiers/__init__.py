@@ -23,6 +23,8 @@ from .symmetry import SymmetryAnalysis
 from .topology import BondAngleDistribution, BondLengthDistribution, FindRings
 from .trajectory import (GenerateTrajectoryLines, MeanSquaredDisplacement, OverlayFrames, TimeAveraging, TimeSeries,
                          VelocityAutocorrelation)
+from .transport import (IonicConductivity, NonGaussianParameter, SelfIntermediateScattering, SiteHopping,
+                        VanHoveCorrelation)
 from .transform import AffineTransformation, ComputeProperty, Replicate, WrapAtoms
 from .vectors import VectorVis
 from .volume import CreateIsosurface, GridDifference, GridSlice
@@ -39,7 +41,8 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "SteinhardtOrderParameters", "BondAngleDistribution", "BondLengthDistribution", "FindRings", "VectorVis",
            "Plumed", "LoadColvar", "FreeEnergySurface", "NebEnergyProfile", "OverlayFrames", "PhononMode",
            "SymmetryAnalysis", "PowderDiffraction", "StructureFactor", "ElasticStrain", "GrainSegmentation",
-           "IdentifyFCCPlanarFaults"]
+           "IdentifyFCCPlanarFaults", "IonicConductivity",
+           "VanHoveCorrelation", "SelfIntermediateScattering", "NonGaussianParameter", "SiteHopping"]
 
 # OVITO spellings (``CommonNeighborAnalysisModifier``, ``WrapPeriodicImagesModifier``, ...) resolve to the
 # ewald class, so OVITO scripts - and code written by LLMs that learned OVITO - run unchanged.
