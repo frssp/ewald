@@ -13,8 +13,8 @@ notebook. Linux system libraries and startup errors: [Install](install.md#linux-
 
 The window has the analysis on the left as a [notebook](notebooks.md): Python cells, steps and
 linked plots, saved as an `.ewd`, `.ipynb` or `.py` file, with one tab per open notebook. The
-[tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline are in the middle. Display settings and Ask Claude are on the
-right, and a bottom dock holds the Python console, the data inspector and plots.
+[tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline are in the middle. Display settings are on the
+right, the AI chat with Claude opens beside the notebook from the activity bar, and a bottom dock holds the Python console, the data inspector and plots.
 
 ![The notebook layout](../images/notebook.png)
  The notebook
@@ -72,8 +72,13 @@ the current one (`OverlayFrames`; on by default for NEB folders), with its trans
 95 %) and whether only the atoms that move get copies. Show (bonds, simulation cell), View
 along, Orthographic, Zoom to fit and Ask Claude are always there.
 
-**Ask Claude.** The Ask Claude tab next to the Display panel (next to the pipeline in the classic layout) (Tools › Ask Claude about selection,
-Ctrl+J) answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
+**AI chat (Ask Claude).** The Claude button at the bottom of the activity bar on the far left (also Tools ›
+Ask Claude about selection, Ctrl+J, and Window › AI chat) opens a chat side bar between the
+notebook and the viewport; in the classic layout it is the Ask Claude tab next to the pipeline.
+In the notebook layout each question also sends the current notebook's code (only when it
+changed since the last question), and every Python block in an answer gets an *Insert as
+notebook cell* link that adds it as a code cell after the current one, without running it
+(Shift+Enter runs it). The chat answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
 coordination low here?". Without picks it uses the particles a selection modifier selected, and
 with neither the question is about the whole frame. Claude receives the description from
 [Asking about a selection](claude.md#asking-about-a-selection) and a close-up render, can run the

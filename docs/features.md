@@ -657,7 +657,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Python console
 - Data inspector
 - Plots
-- Ask Claude
+- AI chat
 - Command palette
 
 **Help**
@@ -710,7 +710,7 @@ Open, Save, Run all, Notebook, Render, Search commands, steps, cells… Ctrl K, 
 ### Panels
 
 - Workspaces: Notebook, Render
-- Docks: Ask Claude, Data, Display, Notebook, Plugins, Remotes
+- Docks: AI chat, Data, Display, Notebook, Plugins, Remotes
 - Bottom tabs: Python console, Data inspector, Plots, Log
 - Viewport tools: Orbit / pan / zoom (mouse); Pick atom: shows id, type, position and properties; Shift+click picks several; Measure distance: click two atoms; Measure angle: click three atoms (vertex in the middle); Edit bonds: click two atoms to add or delete the bond between them
 

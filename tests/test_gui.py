@@ -907,11 +907,67 @@ def test_main_window_ask_uses_picks_and_selection(app, pipe):
     w.show()
     app.processEvents()
     shown = lambda wid: not wid.visibleRegion().isEmpty()  # noqa: E731
-    assert shown(w.display) and not shown(w.ask_dock)    # tabbed with the display panel, which is in front
+    assert shown(w.display) and not shown(w.ask_dock)    # the AI chat side bar starts hidden
     w.ask_claude()
     app.processEvents()
-    assert shown(w.ask_dock) and not shown(w.display)
+    assert shown(w.ask_dock) and shown(w.display)         # beside the notebook, not over Display
+    assert w.dockWidgetArea(w.ask_dock) == QtCore.Qt.LeftDockWidgetArea
+    app.processEvents()
+    a, n = w.ask_dock.geometry(), w.notebook_dock.geometry()
+    assert a.center().x() > n.center().x() and a.top() == n.top()   # right of it, not stacked
     w.close()
+
+
+def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
+    from ewald.gui import ask_panel
+    from ewald.gui.app import MainWindow
+
+    agents = []
+
+    class NotebookAgent(_FakeAgent):
+        def ask(self, question):
+            self.calls.append(("frame", question))
+            return "Try this:\n\n```python\npipe.add(CoordinationAnalysis(cutoff=3.0))\n```\n\nand ```x``` inline."
+
+    w = MainWindow(pipe)
+    w.ask_panel.agent_factory = lambda p, ev: agents.append(NotebookAgent(p, ev)) or agents[-1]
+    act = w.activity_buttons["AI chat"]
+    assert w.ask_dock.isHidden()
+    act.trigger()                                          # the AI button in the activity bar
+    assert not w.ask_dock.isHidden()
+    w.ask_panel.ask("Add coordination")
+    _wait(app, w.ask_panel)
+    first = agents[0].calls[0][1]
+    assert first.startswith("The notebook now reads:") and "pipe" in first and first.endswith("Add coordination")
+    assert w.ask_panel.snippets == ["pipe.add(CoordinationAnalysis(cutoff=3.0))\n"]
+    assert "Insert as notebook cell" in w.ask_panel.transcript.toPlainText()
+    w.ask_panel.ask("Again")                               # unchanged notebook: not sent twice
+    _wait(app, w.ask_panel)
+    assert agents[0].calls[1][1] == "Again"
+
+    view = w.panel.view
+    n = len(view.notebook.cells)
+    w.ask_panel._link(QtCore.QUrl("ewald-insert:0"))      # what clicking the link does
+    assert len(view.notebook.cells) == n + 1
+    assert any(c.source.strip() == "pipe.add(CoordinationAnalysis(cutoff=3.0))" for c in view.notebook.cells)
+    assert not w.notebook_dock.isHidden()
+    w.ask_panel.ask("And now?")                            # the notebook changed: sent again
+    _wait(app, w.ask_panel)
+    assert agents[0].calls[2][1].startswith("The notebook now reads:") and "cutoff=3.0" in agents[0].calls[2][1]
+    assert ask_panel.code_blocks("a\n```py\nx = 1\n```\n```bash\nls\n```") == ["x = 1\n"]
+    w.close()
+
+
+def test_ai_chat_tells_claude_about_the_notebook(app, monkeypatch):
+    from ewald import settings
+    from ewald.gui import ask_panel
+
+    made = []
+    monkeypatch.setattr(ask_panel, "_default_agent", lambda p, ev, **kw: made.append(kw))
+    s = settings.Settings()
+    ask_panel.agent_from_settings(lambda: s, notebook=True)(None, None)
+    ask_panel.agent_from_settings(lambda: s)(None, None)
+    assert "Insert as notebook cell" in made[0]["system"] and "system" not in made[1]
 
 
 def test_viewport_draws_vector_arrows(app):
@@ -1759,9 +1815,12 @@ def test_panels_and_cells_fold(app, cu_path, tmp_path):
     data.set_collapsed(True)
     assert w.bottom_dock.height() == STRIP or w.bottom_dock.maximumHeight() == STRIP
     data.set_collapsed(False)
-    side = w.ask_dock.titleBarWidget()                      # tabbed with Display: they fold together
+    w.remotes_dock.show()
+    w.tabifyDockWidget(w.display.parent(), w.remotes_dock)
+    app.processEvents()
+    side = w.remotes_dock.titleBarWidget()                  # tabbed with Display: they fold together
     side.set_collapsed(True)
-    assert all(d.maximumWidth() == STRIP for d in [w.ask_dock] + w.tabifiedDockWidgets(w.ask_dock))
+    assert all(d.maximumWidth() == STRIP for d in [w.remotes_dock] + w.tabifiedDockWidgets(w.remotes_dock))
     assert w.tabPosition(QtCore.Qt.RightDockWidgetArea) == QtWidgets.QTabWidget.East   # tabs turn sideways
     side.set_collapsed(False)
     assert w.tabPosition(QtCore.Qt.RightDockWidgetArea) == QtWidgets.QTabWidget.South

@@ -282,9 +282,10 @@ sent.run_all()
 Preferences › General › *Window layout* switches between `notebook` (the default) and `classic`,
 the OVITO-style pipeline list and properties panel, after a restart. In the notebook layout,
 display settings (particle radii and colors, bonds, cell and visual plugins) are in the
-**Display** panel on the right, tabbed with Ask Claude. View › Focus on the viewport (Ctrl+\\)
+**Display** panel on the right; the AI chat with Claude opens beside the notebook from the
+activity bar, and code from its answers can be inserted as cells. View › Focus on the viewport (Ctrl+\\)
 hides the panels, and pressing it again brings them back. The ▾ in a panel's title bar (or a
-double-click on the title) folds that panel: the Notebook, Plugins, Display and Ask Claude
+double-click on the title) folds that panel: the Notebook, Plugins, Display and AI chat
 panels fold to a thin strip with their name written down it, and the Data panel to its title
 bar. Panels shown as tabs fold together, and their tabs turn sideways; click the strip, ▸ or a
 tab to unfold. ⧉ floats a panel in its own window. View › *Minimal mode* (Ctrl+Shift+M)

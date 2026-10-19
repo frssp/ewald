@@ -49,7 +49,7 @@ GNOME Keyring or KWallet through `keyring`). Where no keychain works, such as a 
 machine or an ssh session without a desktop, it goes to `credentials.json` in the config
 folder, readable only by you. The key is never written to `settings.json`, session files or
 logs. The same page picks the model (Opus 5.5 by default; Sonnet 5.5 and Haiku 5.5 are faster
-and cheaper) and the effort for Ask Claude.
+and cheaper) and the effort for Ask Claude and the AI chat side bar.
 
 Every Claude feature (`Agent`, `ewald ask`, `ewald narrate`, `ewald forge`, the GUI) uses the
 saved key first, then `ANTHROPIC_API_KEY`, then the SDK's own lookup (`ANTHROPIC_AUTH_TOKEN`,
