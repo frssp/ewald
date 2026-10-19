@@ -4,17 +4,52 @@
 
 [![CI](https://github.com/frssp/ewald/actions/workflows/ci.yml/badge.svg)](https://github.com/frssp/ewald/actions/workflows/ci.yml)
 
-EWALD (Python package `ewald`) is a notebook for atomistic structures and trajectories. You open a
-VASP, LAMMPS, extxyz or any other file, and the analysis is written as Python cells next to a 3D
-view: each step adds a modifier, each view is a live plot linked to the atoms, and the whole thing
-is saved as one file that also runs as a plain Python script. Claude can read the structure and add
-steps for you, and plugins add file formats, analyses and drawing without changing EWALD itself.
+EWALD (Python package `ewald`) is a notebook for atomistic structures and trajectories, with Claude
+built in. You open a VASP, LAMMPS, extxyz or any other file and ask for what you want to see, or
+write it yourself: the analysis becomes Python cells next to a 3D view, each step adds a modifier,
+each view is a live plot linked to the atoms, and the whole thing is saved as one file that also
+runs as a plain Python script. Plugins add file formats, analyses and drawing without changing
+EWALD itself.
 
 ![The EWALD window: a notebook on the left, the 3D view in the middle, display settings on the right](docs/images/notebook.png)
 
 Under the notebook is an OVITO-style pipeline (`load` → `pipe.add(...)` → `pipe.compute(frame)` →
 `pipe.render(...)`) that runs the same in a script, on the CPU or an NVIDIA GPU, with a built-in
 ray tracer and vector output for publication figures.
+
+## The idea
+
+EWALD is for computational materials researchers who run VASP and LAMMPS, often on a remote
+cluster, and need to go from raw output to analysis to a figure for a paper. Today that usually
+means one program to look, scripts to analyse and another tool to draw, and what was clicked is
+never written down. EWALD aims at OVITO Pro's level of analysis and figures, but its working unit
+is a notebook, not a list of modifiers, so looking, analysing and drawing live in one reproducible
+file.
+
+- **AI first, one API.** The GUI, a script and Claude all drive the same notebook API (`load`,
+  `pipe.add`, `pipe.compute`, `show`, `pipe.render`). Claude reads the structure, adds steps and
+  changes the 3D view by writing ordinary cells you can read and edit; a click in the GUI is
+  recorded the same way.
+- **Quality for files, speed for the screen.** Rendered images, vector figures and movies put
+  quality first (Draft, Standard and Publication presets; Publication by default). The interactive
+  view puts speed first (level of detail, target frame rate, cache budget). Both are settings.
+- **A small core, everything else a plugin.** VASP, LAMMPS and the common formats are built in but
+  registered as plugins that can be switched off; phonopy, PLUMED and AiiDA live in
+  [frssp/ewald-plugins](https://github.com/frssp/ewald-plugins). Plugins declare themselves in an
+  `ewald-plugin.toml` manifest, as in VS Code.
+- **Reuse before writing.** Analyses are ported from OVITO's MIT-licensed source and tested against
+  OVITO and freud; names follow OVITO, so OVITO users find what they know.
+- **Running jobs and remote files are normal.** `cluster:/scratch/run/dump.lammpstrj` opens like a
+  local file, and a trajectory a job is still writing grows on the timeline.
+- **One compute code for CPU and GPU.** Kernels are written once against NumPy/CuPy (NVIDIA CUDA);
+  the backend is pluggable.
+- **Nothing runs until you trust it.** A notebook, `.ewd` bundle or text inside a structure file
+  cannot run code (or steer Claude into running it) until you trust it.
+
+What EWALD is not: a clone of OVITO's interface, a workflow engine that submits calculations (that
+is AiiDA's job, reachable through a plugin), a biomolecular viewer, or a web service; your data
+stays on your machine and your cluster. Structure editing (supercells, slabs, defects) is not
+decided yet and comes later, if at all.
 
 ## Install
 
