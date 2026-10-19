@@ -62,6 +62,8 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `scene.py`: renderer-neutral Scene IR (Spheres, Cylinders, Lines, SurfaceMesh, Arrows) and
   `VisualElement`s (built-in Particles, Bonds, Cell, ... and `@visual` plugins); every renderer
   draws a `Scene`, so new geometry goes into an element, not into one renderer.
+  `boundary.py`: VESTA boundary ghosts (display copy with periodic images, bonds/polyhedra completed);
+  `scene.build(boundary=...)` applies it and maps primitives back to real atoms. Display only.
 - `render.py` (VTK/PyVista offscreen; impostors above 150k atoms), `raytrace.py` (numba ray tracer,
   the publication renderer; pip VTK has no OSPRay), `vector.py` (SVG/PDF/EPS via matplotlib),
   `overlays.py` (text, color/type legends, scale bar and `OverlayElement`s returning 2D items, for every

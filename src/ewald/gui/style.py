@@ -39,6 +39,8 @@ class ViewStyle:
     visuals: list = field(default_factory=list)       # plugin visual elements: {name, params, enabled}
     theme: str = ""                                   # last applied ewald.themes name (its values are above)
     cell_color: str | None = None                     # None: picked from the background
+    boundary: list = field(default_factory=list)      # VESTA boundary [lo, hi] (fractional); empty = off
+    boundary_bonds: str = "half"                      # bonds leaving it: half / complete / none
 
     def apply_preset(self, name: str, types=()):
         """Switch to a style preset. 'Simple (ASE)' also applies the ASE theme (white background);
@@ -69,6 +71,11 @@ class ViewStyle:
             kw["visuals"] = [dict(v) for v in self.visuals]
         if self.cell_color:
             kw["cell_color"] = self.cell_color
+        if self.boundary:
+            kw["boundary"] = [list(map(float, p)) for p in self.boundary] if np.ndim(self.boundary) == 2 \
+                else [float(x) for x in self.boundary]
+            if self.boundary_bonds != "half":
+                kw["boundary_bonds"] = self.boundary_bonds
         return kw
 
     def apply_theme(self, name: str, types=()):

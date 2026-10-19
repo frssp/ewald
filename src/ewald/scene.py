@@ -291,7 +291,9 @@ class ParticlesVis(VisualElement):
         if "Radius" in data:
             radii = np.asarray(data["Radius"], float)[sel] * self.radius_scale
         else:
-            radius_table = _radius_table(groups[0], 0.8, self.type_radii, data, self.radius_preset,
+            # ionic radii guess coordination from the structure: use the real atoms, not boundary ghosts
+            radius_table = _radius_table(groups[0], 0.8, self.type_radii, ctx.extras.get("real_data", data),
+                                         self.radius_preset,
                                          self.oxidation_states, self.coordination) * self.radius_scale
         prim = Spheres(np.ascontiguousarray(data.positions[sel]), radii, rgb, alpha,
                        np.arange(data.count) if keep is None else keep, palette, radius_table,
@@ -325,6 +327,9 @@ class BondsVis(VisualElement):
         start, end, rgb, _ = bond_segments(data, b, colors)
         i, j = b.topology.T
         owner = np.concatenate([i, j])
+        if "Half Bond" in b:  # boundary display: only the half at the displayed atom
+            keep = np.r_[np.ones(b.count, bool), ~np.asarray(b["Half Bond"], bool)]
+            start, end, rgb, owner = start[keep], end[keep], rgb[keep], owner[keep]
         alpha = 1 - np.clip(np.asarray(data["Transparency"], float), 0, 1)[owner] if "Transparency" in data else None
         return [("bonds", Cylinders(start, end, self.radius, np.clip(rgb, 0, 1), alpha, owner, cap_end=True))]
 
@@ -468,11 +473,21 @@ def visual_to_dict(el: VisualElement) -> dict:
     return {"name": visual_name(type(el)), "params": el.parameters(), "enabled": bool(el.enabled)}
 
 
-def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None, **render_kwargs) -> Scene:
+def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None, boundary=None,
+          boundary_bonds: str = "half", **render_kwargs) -> Scene:
     """Run ``elements`` (default: :func:`builtin_elements` from ``render_kwargs``) and then ``visuals``
-    on ``data``; returns the :class:`Scene` every renderer draws."""
+    on ``data``; returns the :class:`Scene` every renderer draws.
+
+    ``boundary`` (VESTA's boundary range, fractional: ``(-0.1, 1.1)``, three pairs, or a margin)
+    also draws the periodic images inside that range, with bonds and coordination polyhedra
+    completed across the cell; ``boundary_bonds`` says what happens to bonds that leave it
+    ('half', 'complete', 'none'; see :mod:`ewald.boundary`). The elements then see those ghost
+    atoms as particles, but each primitive's particle ``index``/``owner`` is the real atom."""
     ctx = ctx or SceneContext()
     elements = list(builtin_elements(**render_kwargs) if elements is None else elements) + coerce_visuals(visuals)
+    source = None
+    if boundary is not None and boundary is not False:
+        data, source = _with_boundary(data, elements, ctx, boundary, boundary_bonds)
     scene = Scene()
     for el in elements:
         if not getattr(el, "enabled", True) or not el.applies(data):
@@ -488,4 +503,37 @@ def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None,
             name, prim = item if isinstance(item, tuple) else (slug, item)
             # plugin layers get their own actor namespace, so they never replace a built-in one
             scene.add(name if builtin else f"visual:{slug}" + ("" if name == slug else f":{name}"), prim, el.title)
+    if source is not None:  # ghosts pick, hover and select as their real atom
+        for lay in scene.layers:
+            prim = lay.primitive
+            if isinstance(prim, (Spheres, Arrows)) and prim.index is not None and len(prim.index):
+                prim.index = source[np.asarray(prim.index, np.int64)]
+            elif isinstance(prim, Cylinders) and prim.owner is not None and len(prim.owner):
+                prim.owner = source[np.asarray(prim.owner, np.int64)]
     return scene
+
+
+def _with_boundary(data, elements, ctx, boundary, bond_mode):
+    """The data with boundary ghosts (see :func:`ewald.boundary.expand`) and the real atom of each.
+    Bonds are found on the real atoms first, so ghosts never bond through the periodic cell."""
+    from .boundary import expand
+    from .render import scene_bonds
+
+    if not data.cell.is_valid or not data.count:
+        return data, None
+    bonds = data.bonds
+    for el in elements:
+        if isinstance(el, BondsVis) and getattr(el, "enabled", True) and el.applies(data):
+            bonds = scene_bonds(data, el.cutoff, el.pairs)
+            break
+    disp, source = expand(data, boundary, bonds, bond_mode=bond_mode)
+    if source is None:
+        return data, None
+    if disp.bonds is None and any(isinstance(el, BondsVis) for el in elements):
+        from .bonds import Bonds
+
+        disp.bonds = Bonds()  # never let BondsVis search the ghosts through the periodic cell
+    ctx.extras["real_data"] = data
+    if ctx.only_visible is not None:
+        ctx.only_visible = np.asarray(ctx.only_visible, bool)[source]
+    return disp, source
