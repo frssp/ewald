@@ -62,7 +62,7 @@ def _output(o) -> dict:
 
 
 def _step(m) -> dict:
-    return {"name": getattr(m, "name", type(m).__name__), "class": type(m).__name__,
+    return {"id": id(m), "name": getattr(m, "name", type(m).__name__), "class": type(m).__name__,
             "enabled": bool(getattr(m, "enabled", True)), "status": getattr(m, "status", None),
             "time": getattr(m, "last_time", None), "output": _jsonable(getattr(m, "last_output", None))}
 
@@ -105,7 +105,20 @@ def reset():
 
 
 # ---------------------------------------------------------------- frames
-def save_frame(data, path: str):
+def frame(pipe, frame: int, path: str):
+    """Compute ``frame`` like the GUI does (a failing step is skipped and keeps its message) and
+    write it with the steps' results (status, time, output) to ``path``."""
+    save_frame(pipe.compute(frame, errors="skip"), path, steps=[_step(m) for m in pipe.modifiers])
+
+
+def set_enabled(pipe, step_id: int, on: bool):
+    """Switch one step (by the id the results carry) on or off."""
+    for m in pipe.modifiers:
+        if id(m) == step_id:
+            m.enabled = bool(on)
+
+
+def save_frame(data, path: str, steps: list | None = None):
     """Write a DataCollection's particles, cell, tables, bonds and simple attributes to ``.npz``."""
     arrays = {"cell": data.cell.matrix, "origin": data.cell.origin, "pbc": np.asarray(data.cell.pbc)}
     for name, a in data.particles.items():
@@ -117,8 +130,32 @@ def save_frame(data, path: str):
     if data.bonds is not None:
         for name, a in data.bonds.properties.items():
             arrays[f"b/{name}"] = np.asarray(a)
+    meta = {"surfaces": [], "grids": [], "vectors": {}}
+    for i, (name, m) in enumerate(data.surfaces.items()):
+        meta["surfaces"].append({"name": name, "transparency": m.transparency, "edge_width": m.edge_width,
+                                 "edge_color": [float(c) for c in m.edge_color] if not isinstance(m.edge_color, str)
+                                 else m.edge_color})
+        arrays[f"s{i}/vertices"], arrays[f"s{i}/faces"] = m.vertices, m.faces
+        if m.edges is not None:
+            arrays[f"s{i}/edges"] = m.edges
+        for prop, a in m.face_properties.items():
+            arrays[f"s{i}/f/{prop}"] = np.asarray(a)
+        for prop, a in m.vertex_properties.items():
+            arrays[f"s{i}/v/{prop}"] = np.asarray(a)
+    for i, (name, g) in enumerate(data.grids.items()):
+        meta["grids"].append(name)
+        arrays[f"g{i}/cell"], arrays[f"g{i}/origin"] = g.domain.matrix, g.domain.origin
+        arrays[f"g{i}/pbc"] = np.asarray(g.domain.pbc)
+        for prop, a in g.properties.items():
+            arrays[f"g{i}/p/{prop}"] = np.asarray(a)
+    for prop, style in data.vectors.items():
+        if hasattr(style, "to_dict") and _plain(style.to_dict()):
+            meta["vectors"][prop] = style.to_dict()
+    arrays["meta"] = np.asarray(json.dumps(meta))
     attrs = {k: v for k, v in data.attributes.items() if _plain(v)}
     arrays["attributes"] = np.asarray(json.dumps(attrs))
+    if steps is not None:
+        arrays["steps"] = np.asarray(json.dumps(steps))
     np.savez(path, **arrays)
 
 
@@ -152,4 +189,39 @@ def load_frame(path: str):
             b.properties.update(bonds)
             d.bonds = b
         d.attributes.update(json.loads(str(z["attributes"])))
+        meta = json.loads(str(z["meta"])) if "meta" in z.files else {}
+        _load_extras(d, z, meta)
     return d
+
+
+def _load_extras(d, z, meta: dict):
+    """Surfaces, voxel grids and vector styles of a frame written by :func:`save_frame`."""
+    from .arrows import VectorStyle
+    from .data import Cell, VoxelGrid
+    from .mesh import SurfaceMesh
+
+    files = z.files
+    for i, info in enumerate(meta.get("surfaces", [])):
+        pre = f"s{i}/"
+        m = SurfaceMesh(z[pre + "vertices"], z[pre + "faces"], edges=z[pre + "edges"] if pre + "edges" in files else None,
+                        transparency=info.get("transparency", 0.0), edge_width=info.get("edge_width", 0.04),
+                        edge_color=tuple(info["edge_color"]) if isinstance(info.get("edge_color"), list)
+                        else info.get("edge_color", (0.25, 0.25, 0.25)))
+        for key in files:
+            if key.startswith(pre + "f/"):
+                m.face_properties[key[len(pre) + 2:]] = z[key]
+            elif key.startswith(pre + "v/"):
+                m.vertex_properties[key[len(pre) + 2:]] = z[key]
+        d.surfaces[info["name"]] = m
+    for i, name in enumerate(meta.get("grids", [])):
+        pre = f"g{i}/"
+        g = VoxelGrid(Cell(z[pre + "cell"], z[pre + "origin"], z[pre + "pbc"]))
+        for key in files:
+            if key.startswith(pre + "p/"):
+                g[key[len(pre) + 2:]] = z[key]
+        d.grids[name] = g
+    for prop, style in meta.get("vectors", {}).items():
+        try:
+            d.vectors[prop] = VectorStyle(**style)
+        except TypeError:
+            pass

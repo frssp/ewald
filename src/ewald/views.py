@@ -42,7 +42,33 @@ def view_data(source, table: str | None = None, y: str | None = None, histogram:
     return table, {n: np.asarray(columns[n]) for n in keep}
 
 
-def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool = True):
+COUNT_TABLES = {"structures": "Count", "voronoi-coordination": "Count", "clusters": "Cluster Size"}
+
+
+def _draw_counts(ax, x, columns, column, labels, color):
+    """Bars of a counting table; with per-type columns ('Count Cu', ...) side by side."""
+    from .plotstyle import axis_label
+
+    ys = [column] + [n for n in columns if n.startswith(column + " ")]
+    if len(ys) > 1:
+        ys = ys[1:]
+    width = 0.8 / len(ys)
+    for k, name in enumerate(ys):
+        off = (k - (len(ys) - 1) / 2) * width
+        ax.bar(x + off, np.asarray(columns[name], float), width=width, lw=0,
+               color=color if len(ys) == 1 else None, label=name[len(column):].strip() or None)
+    names = list(columns)
+    if labels is not None:
+        ax.set_xticks(x, labels, rotation=45 if len(labels) > 5 else 0, ha="right" if len(labels) > 5 else "center")
+    else:
+        ax.set_xlabel(axis_label(names[0]))
+    ax.set_ylabel(axis_label(column))
+    ax.set_ylim(bottom=0)
+    if len(ys) > 1:
+        ax.legend(loc="best")
+
+
+def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool = True, labels=None):
     """Draw a view onto ``ax`` in the active :mod:`ewald.plotstyle` (labels with units)."""
     from .plotstyle import axis_label, legend_labels, start_at_zero
 
@@ -59,6 +85,11 @@ def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool
         ax.set_ylim(bottom=0)
         return
     ys = names[1:]
+    if title in COUNT_TABLES:   # structure types, coordination numbers, cluster sizes: bars
+        _draw_counts(ax, x, columns, COUNT_TABLES[title], labels, first)
+        if show_title:
+            ax.set_title(title)
+        return
     sticks = title.endswith("-peaks")
     if sticks and "Intensity" in columns:
         ys = ["Intensity"]

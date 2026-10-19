@@ -88,12 +88,14 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 
 ## Notebook verbs
 
-`from ewald import load, rdf, msd, vacf, sq, xrd, bond_angles`: `pipe = load(path)` is `import_file`;
+`from ewald import load, rdf, msd, vacf, sq, xrd, bond_angles, cna, ptm, voronoi, clusters`: `pipe = load(path)` is `import_file`;
 `pipe.add(m)` appends a modifier (and works as `@pipe.add` on `def f(frame, data)`). A verb adds its
 analysis step and returns its table: `rdf(pipe, cutoff=6, bins=200, partial=False)` (CoordinationAnalysis,
 `coordination-rdf`), `msd(pipe, **kw)` (`msd`), `vacf` (`vacf`), `sq(pipe, q_max=10)` (`structure-factor`),
-`xrd(pipe, **kw)` (`diffraction`), `bond_angles(pipe)` (`bond-angle-distr`). The `Table` is a dict of
-columns (`pandas.DataFrame(table)` works) with `.x`, `.plot()`; calling the verb again replaces its step.
+`xrd(pipe, **kw)` (`diffraction`), `bond_angles(pipe)` (`bond-angle-distr`), `cna(pipe, mode="adaptive")` and
+`ptm(pipe)` (`structures`), `voronoi(pipe)` (`voronoi-coordination`), `clusters(pipe, cutoff=3.2)` (`clusters`,
+largest first). The `Table` is a dict of columns (`pandas.DataFrame(table)` works) with `.x`, `.plot()` and, for
+counting tables, `.counts` (`cna(pipe).counts == {"OTHER": 0, "FCC": 500, ...}`); calling the verb again replaces its step.
 In Jupyter a Pipeline, DataCollection or Table as a cell's last line shows a picture (ray-traced frame 0, or the
 curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] = False` turns it off.
 

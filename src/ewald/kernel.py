@@ -56,6 +56,7 @@ class Kernel:
         self._km = self._kc = None
         self._lock = threading.RLock()  # the GUI computes frames on a worker thread too
         self._dir = None
+        self.steps: dict = {}  # id -> results of each step at the last frame computed (status, time, output)
 
     def __repr__(self):
         return f"<Kernel {self.display_name!r}{' running' if self.alive else ''}>"
@@ -118,14 +119,16 @@ class Kernel:
             self._km.interrupt_kernel()
 
     def shutdown(self):
+        """Stop the kernel, also while a cell runs (that request then fails with KernelError)."""
+        km = self._km
+        if km is not None:  # without the lock: a running request holds it until the kernel is gone
+            try:
+                km.shutdown_kernel(now=True)
+            except Exception:  # noqa: BLE001 - already gone
+                pass
         with self._lock:
             if self._kc is not None:
                 self._kc.stop_channels()
-            if self._km is not None:
-                try:
-                    self._km.shutdown_kernel(now=True)
-                except Exception:  # noqa: BLE001 - already gone
-                    pass
             self._km = self._kc = None
             if self._dir:
                 shutil.rmtree(self._dir, ignore_errors=True)
@@ -140,11 +143,18 @@ class Kernel:
             kc = self._kc
             msg_id = kc.execute(code, silent=False, store_history=False, allow_stdin=False)
             printed, error = [], None
+            waited = 0.0
             while True:
                 try:
-                    msg = kc.get_iopub_msg(timeout=timeout)
-                except Exception as exc:  # queue.Empty on timeout
-                    raise KernelError(f"{self.display_name} did not answer") from exc
+                    msg = kc.get_iopub_msg(timeout=1.0)
+                except Exception as exc:  # queue.Empty: still busy, or gone
+                    waited += 1.0
+                    km = self._km
+                    if km is None or not km.is_alive():
+                        raise KernelError(f"{self.display_name} stopped") from exc
+                    if timeout is not None and waited >= timeout:
+                        raise KernelError(f"{self.display_name} did not answer") from exc
+                    continue
                 if msg.get("parent_header", {}).get("msg_id") != msg_id:
                     continue
                 kind, content = msg["msg_type"], msg["content"]
@@ -177,13 +187,22 @@ class Kernel:
         """Frame ``frame`` of the kernel's pipeline, computed there and read back here."""
         from .kernel_bridge import load_frame
 
+        import numpy as np
+
         with self._lock:
             path = os.path.join(self._dir or tempfile.gettempdir(), f"frame-{frame}.npz")
-            self._call(f"_ewald_bridge.save_frame({pipeline_name}.compute({int(frame)}), {path!r})")
+            self._call(f"_ewald_bridge.frame({pipeline_name}, {int(frame)}, {path!r})")
             try:
+                with np.load(path, allow_pickle=False) as z:
+                    if "steps" in z.files:
+                        self.steps = {s["id"]: s for s in json.loads(str(z["steps"]))}
                 return load_frame(path)
             finally:
                 os.remove(path)
+
+    def set_enabled(self, pipeline_name: str, step_id: int, on: bool):
+        """Switch a step of the kernel's pipeline on or off (the GUI's step checkbox)."""
+        self._call(f"_ewald_bridge.set_enabled({pipeline_name}, {int(step_id)}, {bool(on)})")
 
 
 def _short(python: str | None) -> str:

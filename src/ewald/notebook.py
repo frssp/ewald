@@ -67,6 +67,7 @@ class Cell:
     id: str = field(default_factory=lambda: os.urandom(4).hex())   # nbformat cell id, kept in .ipynb
     collapsed: bool = False            # folded in the GUI; kept in .ipynb as Jupyter's source/outputs_hidden
     steps: list = field(default_factory=list)   # in a kernel: summaries of the steps it added (no objects here)
+    shadow: object = field(default=None, repr=False, compare=False)  # in a kernel: a local copy of the step's modifier
 
     @property
     def is_step(self) -> bool:
@@ -87,8 +88,42 @@ class Cell:
 
     @property
     def modifier(self) -> Modifier | None:
-        """The modifier of a step cell (after it ran or was added by the GUI)."""
-        return self.added[0] if self.is_step and len(self.added) == 1 else None
+        """The modifier of a step cell (after it ran or was added by the GUI). In a kernel it is
+        a local copy (``shadow``) built from the cell's code, for the form and the results."""
+        if not self.is_step:
+            return None
+        if len(self.added) == 1:
+            return self.added[0]
+        return self.shadow
+
+
+def _shadow_step(cell: Cell):
+    """A local modifier built from a step cell's code (its imports and the ``pipe.add(...)``
+    argument), or None when it cannot be built here (a class only the kernel has, a variable)."""
+    from . import modifiers, plugins
+
+    arg = step_call(cell.source)
+    if arg is None:
+        return None
+    ns = {n: getattr(modifiers, n) for n in getattr(modifiers, "__all__", ())}
+    ns.update({name: p.cls for name, p in plugins.modifiers().items() if getattr(p, "cls", None) is not None})
+    try:
+        tree = ast.parse(cell.source)
+        head = ast.Module(body=[s for s in tree.body if isinstance(s, (ast.Import, ast.ImportFrom))], type_ignores=[])
+        exec(compile(head, "<step>", "exec"), ns)  # noqa: S102 - the cell's own import lines
+        mod = eval(compile(ast.Expression(arg), "<step>", "eval"), ns)  # noqa: S307
+    except Exception:  # noqa: BLE001 - shown as code then
+        return None
+    return mod if isinstance(mod, Modifier) else None
+
+
+def _apply_summary(mod, summary: dict):
+    mod.enabled = bool(summary.get("enabled", True))
+    mod.status = summary.get("status")
+    mod.last_time = summary.get("time")
+    out = summary.get("output")
+    mod.last_output = out if isinstance(out, dict) else None
+    mod._kernel_id = summary.get("id")
 
 
 def resolve_data_path(path):
@@ -111,6 +146,13 @@ def resolve_data_path(path):
     return path
 
 
+def _disables_last(stmt, name: str) -> bool:
+    """``<name>.modifiers[-1].enabled = False`` (what :func:`step_source` writes for a step that is off)."""
+    return (isinstance(stmt, ast.Assign) and len(stmt.targets) == 1
+            and ast.unparse(stmt.targets[0]) == f"{name}.modifiers[-1].enabled"
+            and isinstance(stmt.value, ast.Constant) and stmt.value.value is False)
+
+
 def step_call(source: str, name: str = PIPELINE_NAME) -> ast.expr | None:
     """The argument of ``<name>.add(arg)`` or ``<name>.modifiers.append(arg)`` if ``source`` is only that call,
     optionally preceded by import statements; None otherwise."""
@@ -118,7 +160,10 @@ def step_call(source: str, name: str = PIPELINE_NAME) -> ast.expr | None:
         tree = ast.parse(source)
     except SyntaxError:
         return None
-    *head, last = tree.body or [None]
+    body = list(tree.body)
+    if body and _disables_last(body[-1], name):  # a switched-off step: pipe.modifiers[-1].enabled = False
+        body.pop()
+    *head, last = body or [None]
     if not isinstance(last, ast.Expr) or not all(isinstance(s, (ast.Import, ast.ImportFrom)) for s in head):
         return None
     call = last.value
@@ -314,6 +359,9 @@ class Notebook:
             if c is None:
                 continue
             c.count, c.state, c.steps = rc["count"], rc["state"], rc["steps"]
+            c.shadow = _shadow_step(c) if c.is_step and c.state == "ok" and len(c.steps) == 1 else None
+            if c.shadow is not None:
+                _apply_summary(c.shadow, c.steps[0])
             c.outputs = [Output(o["kind"], base64.b64decode(o["png"]) if "png" in o else o["text"])
                          for o in rc["outputs"]]
         for cid, state in r["states"].items():
@@ -329,6 +377,16 @@ class Notebook:
         else:
             self.namespace[self.pipeline_name] = kernel_pipeline(self.kernel, self.pipeline_name, info["num_frames"])
         return r["ok"]
+
+    def refresh_kernel_steps(self):
+        """Copy what each step did at the last frame the kernel computed onto its cell's local copy."""
+        if self.kernel is None:
+            return
+        results = getattr(self.kernel, "steps", {}) or {}
+        for c in self.cells:
+            if c.shadow is not None and c.steps and c.steps[0]["id"] in results:
+                c.steps[0] = results[c.steps[0]["id"]]
+                _apply_summary(c.shadow, c.steps[0])
 
     def _slot(self, index: int, pipe: Pipeline) -> int:
         """Where a cell's new modifiers go: after those of the cells above it."""

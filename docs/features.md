@@ -7,7 +7,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Python API
 
-`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
+`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
 
 ## Modifiers
 
@@ -634,6 +634,17 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Python
     - Python script
 - View
+- Analysis
+  - Radial distribution g(r)
+  - Structure factor S(q)
+  - Powder diffraction (XRD)
+  - Bond angles
+  - Common neighbor analysis
+  - Polyhedral template matching
+  - Voronoi coordination
+  - Clusters
+  - Mean squared displacement
+  - Velocity autocorrelation
 - Plugin step
 - Load plugin file…
 - Ask Claude to add steps…
