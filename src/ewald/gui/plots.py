@@ -124,7 +124,6 @@ class PlotsPanel(QtWidgets.QWidget):
         self.canvas.mpl_connect("button_press_event", self._on_press)
         self.canvas.mpl_connect("motion_notify_event", self._on_motion)
         self.canvas.mpl_connect("button_release_event", self._on_release)
-        self.canvas.mpl_connect("button_press_event", self._clicked)
         self.canvas.mpl_connect("scroll_event", self._on_scroll)
         self._drawn = None   # (table x column, y choice) currently on the canvas
         self._marker = None  # current-frame line on a time-series plot, current mode on a band plot
@@ -745,6 +744,7 @@ class PlotsPanel(QtWidgets.QWidget):
         x, y = self._ax.transData.inverted().transform((event.x, event.y))
         link = self.link
         if abs(event.x - px) + abs(event.y - py) < 4:  # a click
+            self._clicked(event)   # a phonon band: play that mode
             f = None
             if link is not None and link.kind == "frames":
                 f = linking.frame_at(self.pipeline, self.data, link, x)
