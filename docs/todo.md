@@ -8,7 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-
 ## Next
 
 GUI
@@ -48,6 +47,14 @@ Analysis
   offer an OVITO-compatible mode once its rule is known.
 - FindRings in numba for networks above ~100k atoms (8000 a-Si atoms, rings up to 10: 1 s).
 - Spatial correlation function and Voronoi-weighted Steinhardt (OVITO / freud have them).
+- Ion transport: error bars for the conductivity and Haven ratio (block averaging over
+  independent windows; the collective charge MSD is one vector and noisy), Onsager
+  coefficients L_ij per species pair, and the conductivity checked against a published
+  Li-conductor trajectory (tests use synthetic walks with known answers).
+- Site hopping: find sites without a reference structure (density maxima of the mobile ions
+  over the trajectory), draw sites and hop paths in the viewport, and a hop-correlation
+  (back-jump) statistic.
+- Plots tab: G_s(r, t) / F_s(q, t) as a 2D map over r or q and t.
 - Grain segmentation: the center of mass of a grain that percolates through the periodic
   boundaries depends on bond order (as in OVITO, so values differ from OVITO's for those grains);
   a grain-boundary surface mesh and misorientation-colored boundary bonds in the viewport; a
@@ -109,6 +116,9 @@ Formats
   fine for small sets, slow for thousands.
 - GROMACS `.gro` with velocities.
 - LAMMPS binary dump.
+- Large-frame reading against OVITO (docs/developer/readers.md): a 1M-atom dump frame takes
+  0.45 s and 367 MB in ewald vs 0.23 s and 188 MB in OVITO (per-column copies, id sort); a
+  1M-atom extxyz frame 0.85 s vs 0.33 s (ASE `Atoms` assembly).
 - LAMMPS logs written with `thermo_style multi` or `thermo_modify line yaml` (only one-line
   thermo output is read now).
 
@@ -204,6 +214,22 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `WAYLAND_DISPLAY` is set; the Fedora package names in its message are untested).
 - PLUMED from conda-forge on macOS and Windows (tested here with a 2.10 source build on Linux;
   CI has no PLUMED, so those tests skip).
+
+## Code health
+
+Left from the 2026-10-19 review (minimum image, element masses, color parsing and the
+dark-background test are shared now):
+
+- Split `gui/app.py` (files, menus, selection/console mixins) and `gui/preferences.py`
+  (widgets, element table, applying settings), after the viewport/menu work in PR #45.
+- One camera basis (right/up/forward) for `vector.py`, `overlays.camera_axes` and `raytrace.py`;
+  only the overlays one handles `up` parallel to the view direction.
+- One element color lookup: `themes.element_colors`, `Settings.element_color` (Preferences
+  offers only Jmol and CPK, not VESTA) and `render.type_color`.
+- `plugins.py`: the visual-element and overlay registries are copies of each other; the
+  renderer-neutral type color/radius tables in `render.py` belong in their own module.
+- `Viewport._mic` and the bond-angle code in `gui/viewport.py` can use `Cell.minimum_image`
+  and share the angle helper with `llm/selection.py`.
 
 ## Security
 

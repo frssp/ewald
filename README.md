@@ -1,6 +1,6 @@
 <img src="src/ewald/assets/icon/ewald-128.png" alt="EWALD icon" width="96" align="right">
 
-# EWALD: Extensible Window for Atomic Lattices & Dynamics
+# EWALD: Extensible Workbench for Atomic Lattices & Dynamics
 
 [![CI](https://github.com/frssp/ewald/actions/workflows/ci.yml/badge.svg)](https://github.com/frssp/ewald/actions/workflows/ci.yml)
 
@@ -163,7 +163,8 @@ ewald movie dump.lammpstrj movie.gif --every 5 --fps 12 --text "t = [Time] ps" -
   scrubbing and playback draw a coarse scene (impostors, no bonds, every k-th atom)
   that is refined once the view rests (Preferences › Viewports › Performance).
   Rendered images and movies always use full quality. Timings for big files:
-  `python benchmarks/large_files.py`.
+  `python benchmarks/large_files.py`; reader speed against ASE, OVITO, MDAnalysis
+  and chemfiles: `python benchmarks/readers.py` ([results](docs/developer/readers.md)).
 
 ## File formats
 
@@ -178,7 +179,7 @@ Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
 | VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics (`Selective Dynamics`, True = free), CONTCAR velocities (`Velocity` in Å/fs) |
 | VASP OUTCAR, vasprun.xml | native, lazy | all ionic steps with `Force`, `Magnetic Moment` (OUTCAR), `Energy`, `Free Energy`, `Stress`, `Pressure`, MD `Temperature` |
 | log.lammps, OSZICAR | native | thermo columns as frame attributes and `data.tables["Thermo"]`, matched by step; found next to a dump/XDATCAR or `thermo=` |
-| XYZ / extended XYZ | native, lazy | frames indexed by atom counts, each parsed by ASE's extxyz parser (`Lattice=`, `Properties=`, forces, energy, info) |
+| XYZ / extended XYZ | native, lazy | frames indexed by atom counts; atom table parsed by the numba kernel, comment line and naming by ASE's extxyz code (`Lattice=`, `Properties=`, forces, energy, info) |
 | XCrySDen XSF/AXSF | native, lazy | `ANIMSTEPS`, forces, `DATAGRID_3D` grids in `data.grids["xsf"]` |
 | VASP 6 vaspout.h5, vaspwave.h5 | native, lazy (`h5py`) | ionic steps with `Force`, `Velocity`, `Magnetic Moment`, energies, `Stress`; local potential and `LCHARGH5` charge density as grids |
 | MDTraj / OpenMM HDF5 | native, lazy (`h5py`) | OpenMM `HDF5Reporter`; elements, residues, bonds, velocities, energies |
@@ -442,6 +443,22 @@ pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
 data = pipe.compute(0, device="cuda")
 data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # A^2/ps
 data.tables["coordination-rdf[average]"]                               # time-averaged g(r)
+```
+
+### Ion transport
+
+`IonicConductivity` (collective charge MSD: conductivity in S/cm, Nernst-Einstein
+conductivity and Haven ratio; charges given, from the `Charge` property or guessed
+oxidation states), `VanHoveCorrelation` (self and distinct G(r, t)),
+`SelfIntermediateScattering` (F_s(q, t) and its relaxation time), `NonGaussianParameter`
+(α₂(t)) and `SiteHopping` (site assignment, hops, residence times, site occupancy, jump
+diffusion coefficient) are trajectory modifiers like the ones above.
+
+```python
+pipe.modifiers.append(IonicConductivity(temperature=600, time_per_frame=0.002,
+                                        charges={"Li": 1, "P": 5, "S": -2, "Cl": -1}))
+data = pipe.compute(0)
+data.attributes["IonicConductivity.conductivity"], data.attributes["IonicConductivity.haven_ratio"]
 ```
 
 ### Nudged elastic band

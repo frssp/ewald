@@ -18,7 +18,6 @@ from __future__ import annotations
 import os
 
 import numpy as np
-from ase.build import bulk
 from ase.calculators.emt import EMT
 from phonopy import Phonopy
 from phonopy.phonon.band_structure import get_band_qpoints_and_path_connections
