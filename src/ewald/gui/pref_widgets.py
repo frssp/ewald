@@ -86,7 +86,7 @@ class Toggle(QtWidgets.QCheckBox):
         p.setPen(QtCore.Qt.NoPen)
         p.setBrush(QtGui.QColor(TOKENS["accent"] if on else TOKENS["border"]))
         p.drawRoundedRect(QtCore.QRectF(0, 0, 36, 20), 10, 10)
-        p.setBrush(QtGui.QColor("#0B1220" if on else TOKENS["secondary"]))
+        p.setBrush(QtGui.QColor(TOKENS["on_accent"] if on else TOKENS["secondary"]))
         p.drawEllipse(QtCore.QRectF(19 if on else 3, 3, 14, 14))
 
 

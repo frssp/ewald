@@ -53,6 +53,7 @@ nav:
       - Install: user/install.md
       - Quick start: user/quickstart.md
       - Desktop GUI: user/gui.md
+      - Notebooks: user/notebooks.md
       - File formats: user/formats.md
       - Modifiers: user/modifiers.md
       - Phonon modes: user/phonons.md

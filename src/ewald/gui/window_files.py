@@ -17,10 +17,11 @@ def file_filter() -> str:
 
     return (f"Simulation files ({' '.join(plugins.file_patterns('structure'))});;"
             f"Volumetric data ({' '.join(plugins.file_patterns('volumetric'))});;"
-            "Sessions (*.ewald);;All files (*)")
+            "Notebooks (*.py);;Sessions (*.ewald);;All files (*)")
 
 
 SESSION_FILTER = "ewald session (*.ewald)"
+NOTEBOOK_FILTER = "Notebook (*.py)"
 
 
 def save_filters() -> list[tuple[str, str | None]]:
@@ -65,15 +66,68 @@ class FilesMixin:
         return pipe
 
     def open_dialog(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load file", "", file_filter())
-        if not path:
-            return
+        nb = self.layout_mode == "notebook"
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open" if nb else "Load file", "", file_filter())
+        if path:
+            self.open_any(path)
+
+    def open_any(self, path, ask_types: bool = True, **kwargs):
+        """A session, a notebook (.py, notebook layout) or a data file."""
         from ..session import is_session_file
 
         if is_session_file(path):
             self.load_session(path)
-            return
-        self._open_asking_types(path)
+        elif self.layout_mode == "notebook" and str(path).endswith(".py") and os.path.isfile(path):
+            self.open_notebook(path)
+        elif kwargs or not ask_types:
+            self.open_file(path, **kwargs)
+        else:
+            self._open_asking_types(path)
+
+    # ---------------------------------------------------------------- notebooks
+    def open_notebook(self, path, run: bool | None = None):
+        """Open a ``.py`` notebook in a new tab. Its cells run when ``python.run_notebooks``
+        says so ("ask" asks: a notebook is code)."""
+        if run is None:
+            policy = self.settings["python.run_notebooks"]
+            if policy == "ask":
+                run = QtWidgets.QMessageBox.question(
+                    self, "Run notebook", f"Run the cells of {os.path.basename(path)} now?\n\n"
+                    "A notebook is Python code: run it only if you trust it.") == QtWidgets.QMessageBox.Yes
+            else:
+                run = policy == "always"
+        try:
+            view = self.panel.open_notebook(path, run=run)
+        except Exception as exc:
+            self.message(f"Open failed: {path}: {exc}", error=True)
+            QtWidgets.QMessageBox.critical(self, "Open failed", f"{path}\n\n{exc}")
+            return None
+        self.notebook_dock.show()
+        self.setWindowTitle(f"EWALD — {os.path.basename(str(path))}")
+        self.message(f"Opened notebook {path}" + ("" if run else " (not run: Notebook › Run all)"))
+        return view
+
+    def save_notebook(self, ask: bool = False):
+        """Save the current notebook as a ``.py`` file (asks for a name the first time)."""
+        nb = self.panel.notebook
+        if nb is None:
+            return None
+        path = nb.path
+        if ask or not path:
+            start = path or os.path.join(os.path.dirname(self.session_path or "") or os.getcwd(),
+                                         nb.name.replace(" ", "_") + ".py")
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save notebook", start, NOTEBOOK_FILTER)
+            if not path:
+                return None
+            if not path.endswith(".py"):
+                path += ".py"
+        try:
+            self.panel.save(path)
+        except OSError as exc:
+            QtWidgets.QMessageBox.critical(self, "Save failed", f"{path}\n\n{exc}")
+            return None
+        self.message(f"Saved notebook {path}")
+        return path
 
     def open_neb_dialog(self):
         """A VASP NEB folder (00 .. NN) or a LAMMPS NEB run folder, one frame per image."""
