@@ -63,11 +63,14 @@ to skip loading external plugins.
 """
 from __future__ import annotations
 
+import ast
 import fnmatch
 import importlib.util
 import inspect
+import json
 import logging
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -84,6 +87,8 @@ VISUAL_GROUP = "ewald.visuals"
 OVERLAY_GROUP = "ewald.overlays"
 COLORMAP_GROUP = "ewald.colormaps"
 THEME_GROUP = "ewald.themes"
+PLUGIN_GROUP = "ewald.plugins"      # names the package that holds ewald-plugin.toml
+MANIFEST_NAME = "ewald-plugin.toml"
 
 
 @dataclass
@@ -294,6 +299,7 @@ class _Registry:
     colormaps: dict = field(default_factory=dict)
     themes: dict = field(default_factory=_builtin_themes)
     errors: dict = field(default_factory=dict)      # origin -> message
+    plugins: dict = field(default_factory=dict)     # id -> Plugin
     loaded: bool = False
 
 
@@ -335,6 +341,7 @@ def register_reader(name: str, factory: Callable, patterns=(), sniff: Callable |
                           getattr(_loading, "origin", None) or origin, priority,
                           tuple(a.lower() for a in aliases), category=category)
     _registry.readers[plugin.name] = plugin
+    _contribute("readers", plugin.name)
     return plugin
 
 
@@ -362,6 +369,7 @@ def register_modifier(cls: type, name: str | None = None, category: str = "Plugi
     plugin = ModifierPlugin(name, cls, getattr(cls, "category", None) or category,
                             description or " ".join(doc.split()), getattr(_loading, "origin", None) or origin)
     _registry.modifiers[name] = plugin
+    _contribute("modifiers", name)
     return plugin
 
 
@@ -397,6 +405,7 @@ def register_visual(cls: type, name: str | None = None, category: str = "Plugins
     plugin = VisualPlugin(name, cls, getattr(cls, "category", None) or category,
                           description or " ".join(doc.split()), getattr(_loading, "origin", None) or origin)
     _registry.visuals[name] = plugin
+    _contribute("visuals", name)
     return plugin
 
 
@@ -440,6 +449,7 @@ def register_overlay(cls: type, name: str | None = None, category: str = "Plugin
     plugin = OverlayPlugin(name, cls, getattr(cls, "category", None) or category,
                            description or " ".join(doc.split()), getattr(_loading, "origin", None) or origin)
     _registry.overlays[name] = plugin
+    _contribute("overlays", name)
     return plugin
 
 
@@ -482,6 +492,7 @@ def register_colormap(name: str, colors, kind: str = "sequential", description: 
     if not callable(colors) or hasattr(colors, "N"):   # plain data: check it now
         plugin._cmap = as_colormap(name, colors)
     _registry.colormaps[name] = plugin
+    _contribute("colormaps", name)
     return plugin
 
 
@@ -516,6 +527,7 @@ def register_theme(name: str, theme, description: str = "", origin: str = "pytho
             " ".join(inspect.cleandoc(theme.__doc__ or "").split("\n\n")[0].split())
     plugin = ThemePlugin(name, theme, description, getattr(_loading, "origin", None) or origin)
     _registry.themes[name] = plugin
+    _contribute("themes", name)
     return plugin
 
 
@@ -527,9 +539,204 @@ def themes() -> dict[str, ThemePlugin]:
 
 class _Loading:
     origin: str | None = None
+    plugin: "Plugin | None" = None
 
 
 _loading = _Loading()
+
+
+def _contribute(kind: str, name: str):
+    """Record ``name`` as a contribution of the plugin being loaded (see :func:`installed`)."""
+    plugin = _loading.plugin
+    if plugin is not None and name not in plugin.contributions.setdefault(kind, []):
+        plugin.contributions[kind].append(name)
+
+
+@dataclass
+class Plugin:
+    """One installed plugin: a pip distribution with ewald entry points, or a file or folder in
+    :func:`plugin_dir`. Its metadata comes from its manifest (``ewald-plugin.toml`` in a package,
+    ``__ewald__ = {...}`` in a plugin file), read without importing the plugin's code."""
+
+    id: str
+    name: str = ""               # display name
+    version: str = ""
+    description: str = ""
+    publisher: str = ""
+    requires_ewald: str = ""     # e.g. ">=0.2, <1"
+    kind: str = "folder"         # "package" (pip), "folder" (plugin folder) or "forge" (written by Modifier Forge)
+    origin: str = ""             # distribution name or file path
+    enabled: bool = True
+    compatible: bool = True
+    loaded: bool = False
+    contributions: dict = field(default_factory=dict)   # registry ("readers", "modifiers", ...) -> names
+    errors: list = field(default_factory=list)
+    manifest: dict = field(default_factory=dict, repr=False)
+
+    @property
+    def state(self) -> str:
+        """"disabled", "incompatible", "failed", "loaded" or "not loaded"."""
+        if not self.enabled:
+            return "disabled"
+        if not self.compatible:
+            return "incompatible"
+        if self.errors:
+            return "failed"
+        return "loaded" if self.loaded else "not loaded"
+
+    def apply_manifest(self, manifest: dict):
+        self.manifest = dict(manifest)
+
+        def get(*keys):
+            return next((manifest[k] for k in keys if manifest.get(k) not in (None, "")), "")
+
+        self.id = str(get("id") or self.id)
+        self.name = str(get("display-name", "display_name", "name") or self.name or self.id)
+        self.version = str(get("version") or self.version)
+        self.description = str(get("description") or self.description)
+        self.publisher = str(get("publisher") or self.publisher)
+        self.requires_ewald = str(get("requires-ewald", "requires_ewald") or self.requires_ewald)
+        if manifest.get("source") == "forge":
+            self.kind = "forge"
+
+    def as_dict(self) -> dict:
+        return {"id": self.id, "name": self.name or self.id, "version": self.version,
+                "description": self.description, "publisher": self.publisher,
+                "requires_ewald": self.requires_ewald, "kind": self.kind, "origin": self.origin,
+                "state": self.state, "enabled": self.enabled, "compatible": self.compatible,
+                "contributions": {k: list(v) for k, v in self.contributions.items()},
+                "errors": list(self.errors)}
+
+
+def _read_toml(path: Path) -> dict:
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10
+        import tomli as tomllib
+    return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+def file_manifest(path) -> dict:
+    """The ``__ewald__ = {...}`` dict at the top level of a plugin file, read with ``ast``
+    (the file is not run); ``{}`` when it has none."""
+    path = Path(path)
+    tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
+    for node in tree.body:
+        targets = node.targets if isinstance(node, ast.Assign) else \
+            [node.target] if isinstance(node, ast.AnnAssign) and node.value is not None else []
+        if any(isinstance(t, ast.Name) and t.id == "__ewald__" for t in targets):
+            value = ast.literal_eval(node.value)
+            if not isinstance(value, dict):
+                raise TypeError(f"__ewald__ in {path.name} must be a dict of literals")
+            return value
+    return {}
+
+
+def _version_tuple(version: str) -> tuple:
+    out = []
+    for part in str(version).split("."):
+        m = re.match(r"\d+", part)
+        if not m:
+            break
+        out.append(int(m.group()))
+    return tuple(out)
+
+
+def version_satisfies(version: str, requirement: str) -> bool:
+    """Whether ``version`` meets ``requirement``: comma-separated clauses such as ``">=0.2, <1"``
+    with ``>= > <= < == != ~=`` on numeric release versions (pre/dev suffixes are ignored)."""
+    v = _version_tuple(version)
+    for clause in str(requirement or "").split(","):
+        clause = clause.strip()
+        if not clause:
+            continue
+        m = re.fullmatch(r"(~=|==|!=|>=|<=|>|<)?\s*(\d+(?:\.\d+)*)", clause)
+        if not m:
+            raise ValueError(f"cannot read the version requirement {clause!r} (use e.g. '>=0.2, <1')")
+        op, t = m.group(1) or "==", _version_tuple(m.group(2))
+        n = max(len(v), len(t))
+        a, b = v + (0,) * (n - len(v)), t + (0,) * (n - len(t))
+        ok = {"==": a == b, "!=": a != b, ">=": a >= b, "<=": a <= b, ">": a > b, "<": a < b,
+              "~=": a >= b and v[:len(t) - 1] == t[:len(t) - 1]}[op]
+        if not ok:
+            return False
+    return True
+
+
+def ewald_version() -> str:
+    from . import __version__
+
+    return __version__
+
+
+def _state_path() -> Path:
+    from .settings import config_dir
+
+    return config_dir() / "plugins.json"
+
+
+def disabled() -> set[str]:
+    """Ids of the plugins switched off with :func:`set_enabled` (kept in ``<config dir>/plugins.json``)."""
+    try:
+        return set(json.loads(_state_path().read_text(encoding="utf-8")).get("disabled", []))
+    except (OSError, ValueError, AttributeError):
+        return set()
+
+
+def set_enabled(plugin_id: str, enabled: bool = True, reload: bool = True):
+    """Switch a plugin on or off for every later session, and (``reload``) reload the plugins now.
+
+    A disabled plugin is still listed by :func:`installed` but none of its code is imported.
+    A package that was already imported stays in memory until restart, but its readers,
+    modifiers and other contributions leave the registries.
+    """
+    path = _state_path()
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    off = set(state.get("disabled", []))
+    if enabled:
+        off.discard(plugin_id)
+    else:
+        off.add(plugin_id)
+    state["disabled"] = sorted(off)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=1) + "\n", encoding="utf-8")
+    if reload:
+        load_plugins(force=True)
+
+
+def installed() -> dict[str, Plugin]:
+    """Installed plugins by id (pip packages and plugin-folder files), including disabled,
+    incompatible and failed ones, with what each contributed. Built-in formats are not listed."""
+    load_plugins()
+    return dict(_registry.plugins)
+
+
+def _admit(plugin: Plugin, off: set) -> bool:
+    """Record ``plugin`` and decide whether its code may be imported."""
+    if plugin.id in _registry.plugins:
+        plugin.errors.append(f"plugin id {plugin.id!r} is also used by {_registry.plugins[plugin.id].origin}")
+        _registry.errors[plugin.origin] = plugin.errors[-1]
+        _registry.plugins[f"{plugin.id}@{plugin.origin}"] = plugin
+        return False
+    _registry.plugins[plugin.id] = plugin
+    if plugin.id in off:
+        plugin.enabled = False
+        return False
+    if plugin.requires_ewald:
+        try:
+            plugin.compatible = version_satisfies(ewald_version(), plugin.requires_ewald)
+            problem = "" if plugin.compatible else \
+                f"needs ewald {plugin.requires_ewald}; this is ewald {ewald_version()}"
+        except ValueError as exc:
+            plugin.compatible, problem = False, str(exc)
+        if problem:
+            plugin.errors.append(problem)
+            _registry.errors[plugin.origin] = problem
+            return False
+    return True
 
 
 def load_plugins(force: bool = False):
@@ -551,15 +758,39 @@ def load_plugins(force: bool = False):
         keep = {k: v for k, v in _registry.themes.items() if v.origin == "python" and not v.builtin}
         _registry.themes = {**_builtin_themes(), **keep}
         _registry.errors.clear()
+        _registry.plugins = {}
     if os.environ.get("EWALD_NO_PLUGINS"):
         return
-    _load_entry_points()
-    _load_directory(plugin_dir())
+    off = disabled()
+    _load_entry_points(off)
+    _load_directory(plugin_dir(), off)
 
 
-def _load_entry_points():
+def _dist_key(ep) -> str:
+    dist = getattr(ep, "dist", None)
+    return dist.name if dist is not None else ep.value.split(":")[0].split(".")[0]
+
+
+def _package_manifest(value: str) -> dict:
+    """``ewald-plugin.toml`` next to the module or inside the package ``value`` (an
+    ``ewald.plugins`` entry point), located with ``find_spec`` so no plugin code runs."""
+    spec = importlib.util.find_spec(value.split(":")[0])
+    if spec is None:
+        raise ModuleNotFoundError(f"no module named {value!r}")
+    if spec.submodule_search_locations:
+        folder = Path(list(spec.submodule_search_locations)[0])
+    elif spec.origin:
+        folder = Path(spec.origin).parent
+    else:
+        return {}
+    path = folder / MANIFEST_NAME
+    return _read_toml(path) if path.is_file() else {}
+
+
+def _load_entry_points(off: set = frozenset()):
     from importlib.metadata import entry_points
 
+    found = {}    # distribution -> [(register, entry point)]
     for group, register in ((READER_GROUP, lambda name, obj: register_reader(name, obj)),
                             (MODIFIER_GROUP, lambda name, obj: register_modifier(obj, name=name)),
                             (WRITER_GROUP, lambda name, obj: register_writer(name, obj)),
@@ -573,18 +804,44 @@ def _load_entry_points():
             _registry.errors[group] = str(exc)
             continue
         for ep in eps:
+            found.setdefault(_dist_key(ep), []).append((register, ep))
+    try:
+        manifests = {_dist_key(ep): ep for ep in entry_points(group=PLUGIN_GROUP)}
+    except Exception as exc:
+        _registry.errors[PLUGIN_GROUP] = str(exc)
+        manifests = {}
+    for key in manifests:
+        found.setdefault(key, [])
+    for key, items in found.items():
+        some = manifests.get(key) or items[0][1]
+        dist = getattr(some, "dist", None)
+        plugin = Plugin(id=manifests[key].name if key in manifests else key, kind="package", origin=key,
+                        version=dist.version if dist is not None else "")
+        if dist is not None:
+            plugin.description = dist.metadata.get("Summary") or ""
+        if key in manifests:
+            try:
+                plugin.apply_manifest(_package_manifest(manifests[key].value))
+            except Exception as exc:
+                plugin.errors.append(f"manifest: {type(exc).__name__}: {exc}")
+                _registry.errors[f"manifest of {key}"] = plugin.errors[-1]
+        if not _admit(plugin, off):
+            continue
+        for register, ep in items:
             origin = f"entry point {ep.value}"
             try:
                 obj = ep.load()
-                _loading.origin = origin
+                _loading.origin, _loading.plugin = origin, plugin
                 register(ep.name, obj)
             except Exception as exc:
                 _registry.errors[origin] = f"{type(exc).__name__}: {exc}"
+                plugin.errors.append(f"{ep.name}: {type(exc).__name__}: {exc}")
             finally:
-                _loading.origin = None
+                _loading.origin = _loading.plugin = None
+        plugin.loaded = True
 
 
-def _load_directory(folder: Path):
+def _load_directory(folder: Path, off: set = frozenset()):
     if not folder.is_dir():
         return
     for path in sorted(folder.iterdir()):
@@ -596,19 +853,34 @@ def _load_directory(folder: Path):
             target = path / "__init__.py"
         else:
             continue
+        plugin = Plugin(id=path.stem, kind="folder", origin=str(path))
+        try:
+            toml = path / MANIFEST_NAME if path.is_dir() else None
+            plugin.apply_manifest(_read_toml(toml) if toml and toml.is_file() else file_manifest(target))
+        except Exception as exc:
+            plugin.errors.append(f"manifest: {type(exc).__name__}: {exc}")
+        if not plugin.name:
+            plugin.name = plugin.id
+        if not _admit(plugin, off):
+            continue
+        if plugin.errors:   # an unreadable manifest also means the file would not import
+            _registry.errors[str(path)] = plugin.errors[-1]
+            continue
         module_name = f"ewald_plugin_{path.stem}"
         try:
             spec = importlib.util.spec_from_file_location(
                 module_name, target, submodule_search_locations=[str(path)] if path.is_dir() else None)
             module = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = module
-            _loading.origin = str(path)
+            _loading.origin, _loading.plugin = str(path), plugin
             spec.loader.exec_module(module)
+            plugin.loaded = True
         except Exception as exc:
             sys.modules.pop(module_name, None)
             _registry.errors[str(path)] = f"{type(exc).__name__}: {exc}"
+            plugin.errors.append(_registry.errors[str(path)])
         finally:
-            _loading.origin = None
+            _loading.origin = _loading.plugin = None
 
 
 def readers() -> dict[str, ReaderPlugin]:
@@ -670,6 +942,7 @@ def status() -> dict:
                           for p in _registry.colormaps.values()],
             "themes": [{"name": p.name, "description": p.description, "origin": p.origin}
                        for p in _registry.themes.values()],
+            "plugins": [p.as_dict() for p in _registry.plugins.values()],
             "errors": dict(_registry.errors)}
 
 
@@ -701,6 +974,7 @@ def register_writer(name: str, factory: Callable, patterns=(), description: str 
                           getattr(_loading, "origin", None) or origin, priority,
                           tuple(a.lower() for a in aliases), multi_frame=multi_frame, category=category)
     _registry.writers[plugin.name] = plugin
+    _contribute("writers", plugin.name)
     return plugin
 
 

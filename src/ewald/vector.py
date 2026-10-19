@@ -271,7 +271,8 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                   bonds=None, bond_pairs=None, bond_radius=0.15, show_cell=True, cell_color=None,
                   cell_width=2.0, shading="gradient", text=None, legend=True, type_legend=False,
                   scale_bar=None, dpi=None, radius_preset="covalent", oxidation_states=None, coordination=None,
-                  vectors=None, trajectory_width=2.0, visuals=None, frame=0, overlays=None, **_ignored):
+                  vectors=None, trajectory_width=2.0, visuals=None, frame=0, overlays=None, boundary=None,
+                  boundary_bonds="half", **_ignored):
     """Draw ``data`` as a vector figure and save it (format from the extension).
 
     ``shading``: 'gradient' (shaded discs) or 'flat' (one color plus outline, VESTA's
@@ -305,7 +306,7 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                      oxidation_states=oxidation_states, coordination=coordination, bonds=bonds,
                      bond_pairs=bond_pairs, bond_radius=bond_radius, vectors=vectors,
                      trajectory_width=trajectory_width, show_cell=show_cell, cell_color=cell_color,
-                     cell_width=cell_width)
+                     cell_width=cell_width, boundary=boundary, boundary_bonds=boundary_bonds)
     ink = cell_line_color(bg, transparent_background)
     prims = scene_prims(scene, camera, (w, h), pt, shading, ink)
     prims.sort(key=lambda p: -p[0])  # far first
