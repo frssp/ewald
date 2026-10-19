@@ -45,6 +45,12 @@ It cannot take the name of a built-in modifier.
 ewald's own formats are registered the same way (origin ``built-in``), so ``ewald plugins``,
 the GUI open filter and the Claude tools list every format from this one registry.
 
+Writers mirror readers: ``@writer(name, patterns=...)`` (or the ``ewald.writers`` entry point
+group) registers ``f(path, frames, **kwargs)``, which receives an iterator of
+``DataCollection``; ``multi_frame=False`` writers get one ``DataCollection``. ``export_file``,
+the GUI's File > Export and the Claude tools pick a writer by ``format=`` or by the output file
+name, with ASE as the fallback.
+
 Format selection: ``format="name"`` (or an alias such as ``"lammps/dump"``) picks that reader;
 an unknown name is handed to ASE. Without a format, readers are tried by ``priority``: the
 volumetric readers (cube 5, VASP CHGCAR/LOCPOT/ELFCAR 6), the native LAMMPS dump/data
@@ -73,6 +79,7 @@ log = logging.getLogger(__name__)
 
 READER_GROUP = "ewald.readers"
 MODIFIER_GROUP = "ewald.modifiers"
+WRITER_GROUP = "ewald.writers"
 
 
 @dataclass
@@ -107,10 +114,76 @@ class ReaderPlugin:
         return result if isinstance(result, FrameReader) else ListReader(result)
 
 
+@dataclass
+class WriterPlugin:
+    """A file writer, the export-side twin of :class:`ReaderPlugin`.
+
+    ``factory(path, frames, **kwargs)`` gets an iterator of ``DataCollection`` (frames are
+    computed one at a time, so a streaming writer never holds the whole trajectory); with
+    ``multi_frame=False`` it gets one ``DataCollection`` instead: ``factory(path, data, **kwargs)``.
+    Without ``format=``, writers are matched on the output file name ``patterns`` by
+    ``priority``; ASE (100) takes everything else.
+    """
+    name: str
+    factory: Callable
+    patterns: tuple = ()
+    description: str = ""
+    origin: str = ""
+    priority: int | None = 50
+    aliases: tuple = ()
+    takes_format: bool = False   # factory receives the requested format name (the ASE fallback)
+    multi_frame: bool = True     # False: one frame per file (POSCAR, CHGCAR, cube, LAMMPS data)
+    category: str = "structure"
+
+    def matches(self, path) -> bool:
+        base = os.path.basename(strip_compression(path))
+        return any(fnmatch.fnmatch(base, p) or fnmatch.fnmatch(base.lower(), p.lower()) for p in self.patterns)
+
+    def write(self, path, frames, format: str | None = None, **kwargs):
+        """Write ``frames`` (iterable of DataCollection) to ``path``; a ``.gz``/``.bz2``/``.xz``
+        name is written uncompressed next to it first, then compressed."""
+        plain = strip_compression(path)
+        if plain != str(path):
+            import shutil
+            import tempfile
+
+            from .io.base import _OPENERS
+
+            folder, base = os.path.split(plain)
+            fd, tmp = tempfile.mkstemp(prefix=".ewald-", suffix="-" + base, dir=folder or ".")
+            os.close(fd)
+            try:
+                result = self.write(tmp, frames, format=format, **kwargs)
+                opener = _OPENERS[str(path)[len(plain):]]
+                with open(tmp, "rb") as src, opener(str(path), "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+            finally:
+                os.remove(tmp)
+            return result
+        if self.takes_format:
+            kwargs["format"] = format
+        if self.multi_frame:
+            return self.factory(path, iter(frames), **kwargs)
+        it = iter(frames)
+        try:
+            first = next(it)
+        except StopIteration:
+            raise ValueError("nothing to write") from None
+        if next(it, None) is not None:
+            raise ValueError(f"format {self.name!r} holds one frame; pick one, e.g. frames=[-1]")
+        return self.factory(path, first, **kwargs)
+
+
 def _builtin_readers() -> dict:
     from . import io
 
     return {p.name: p for p in io.builtin_readers()}
+
+
+def _builtin_writers() -> dict:
+    from . import io
+
+    return {p.name: p for p in io.builtin_writers()}
 
 
 @dataclass
@@ -126,6 +199,7 @@ class ModifierPlugin:
 class _Registry:
     readers: dict = field(default_factory=_builtin_readers)
     modifiers: dict = field(default_factory=dict)
+    writers: dict = field(default_factory=_builtin_writers)
     errors: dict = field(default_factory=dict)      # origin -> message
     loaded: bool = False
 
@@ -220,6 +294,8 @@ def load_plugins(force: bool = False):
         keep = {k: v for k, v in _registry.readers.items() if v.origin == "python"}
         _registry.readers = {**_builtin_readers(), **keep}
         _registry.modifiers = {k: v for k, v in _registry.modifiers.items() if v.origin == "python"}
+        keep = {k: v for k, v in _registry.writers.items() if v.origin == "python"}
+        _registry.writers = {**_builtin_writers(), **keep}
         _registry.errors.clear()
     if os.environ.get("EWALD_NO_PLUGINS"):
         return
@@ -231,7 +307,8 @@ def _load_entry_points():
     from importlib.metadata import entry_points
 
     for group, register in ((READER_GROUP, lambda name, obj: register_reader(name, obj)),
-                            (MODIFIER_GROUP, lambda name, obj: register_modifier(obj, name=name))):
+                            (MODIFIER_GROUP, lambda name, obj: register_modifier(obj, name=name)),
+                            (WRITER_GROUP, lambda name, obj: register_writer(name, obj))):
         try:
             eps = entry_points(group=group)
         except Exception as exc:
@@ -322,7 +399,80 @@ def status() -> dict:
                                         key=lambda p: (p.priority is None, p.priority or 0, p.name))],
             "modifiers": [{"name": p.name, "category": p.category, "description": p.description,
                            "origin": p.origin} for p in _registry.modifiers.values()],
+            "writers": [{"name": p.name, "aliases": list(p.aliases), "patterns": list(p.patterns),
+                         "description": p.description, "origin": p.origin, "priority": p.priority,
+                         "multi_frame": p.multi_frame}
+                        for p in sorted(_registry.writers.values(),
+                                        key=lambda p: (p.priority is None, p.priority or 0, p.name))],
             "errors": dict(_registry.errors)}
+
+
+def writer(name: str, patterns=(), description: str = "", priority: int | None = 50, aliases=(),
+           multi_frame: bool = True, category: str = "structure"):
+    """Decorator registering a writer function ``f(path, frames, **kwargs)`` under ``name``
+    (``f(path, data, **kwargs)`` with ``multi_frame=False``)."""
+
+    def deco(factory):
+        register_writer(name, factory, patterns=patterns, description=description, priority=priority,
+                        aliases=aliases, multi_frame=multi_frame, category=category)
+        return factory
+
+    return deco
+
+
+def register_writer(name: str, factory: Callable, patterns=(), description: str = "", origin: str = "python",
+                    priority: int | None = 50, aliases=(), multi_frame: bool = True,
+                    category: str = "structure") -> WriterPlugin:
+    if isinstance(patterns, str):
+        patterns = (patterns,)
+    patterns = tuple(patterns or getattr(factory, "patterns", ()))
+    priority = getattr(factory, "priority", priority) if priority == 50 else priority
+    aliases = aliases or getattr(factory, "aliases", ())
+    multi_frame = getattr(factory, "multi_frame", multi_frame) if multi_frame else multi_frame
+    doc = (factory.__doc__ or "").strip().splitlines()
+    description = description or getattr(factory, "description", "") or (doc[0] if doc else "")
+    plugin = WriterPlugin(name.lower(), factory, patterns, description,
+                          getattr(_loading, "origin", None) or origin, priority,
+                          tuple(a.lower() for a in aliases), multi_frame=multi_frame, category=category)
+    _registry.writers[plugin.name] = plugin
+    return plugin
+
+
+def writers() -> dict[str, WriterPlugin]:
+    load_plugins()
+    return dict(_registry.writers)
+
+
+def find_writer(path, format: str | None = None) -> WriterPlugin:
+    """The writer for ``format`` (name or alias; unknown names go to ASE), else the first by
+    priority whose patterns match the file name of ``path``."""
+    plugins = writers()
+    if format:
+        fmt = format.lower()
+        for plugin in plugins.values():
+            if fmt == plugin.name or fmt in plugin.aliases:
+                return plugin
+        return plugins["ase"]
+    ranked = sorted((p for p in plugins.values() if p.priority is not None), key=lambda p: p.priority)
+    for plugin in ranked:
+        if plugin.matches(path):
+            return plugin
+    return plugins["ase"]
+
+
+def write_file(path, frames, format: str | None = None, **kwargs):
+    """Write an iterable of DataCollection with the writer for ``path``/``format``."""
+    writer_ = find_writer(path, format)
+    return writer_.write(path, frames, format=format, **kwargs)
+
+
+def save_patterns(category: str | None = None) -> list[tuple[str, list[str]]]:
+    """(description, patterns) of every writer with patterns, in priority order (save dialogs)."""
+    out = []
+    for plugin in sorted(writers().values(), key=lambda p: (p.priority is None, p.priority or 0)):
+        if plugin.patterns and (not category or plugin.category == category):
+            out.append((plugin.description, list(plugin.patterns)))
+    return out
 
 
 class ListReader(FrameReader):
@@ -346,4 +496,5 @@ class ListReader(FrameReader):
 
 __all__ = ["reader", "register_reader", "load_plugins", "readers", "find_reader", "open_reader", "file_patterns",
            "status", "plugin_dir", "ReaderPlugin", "ListReader", "modifier", "register_modifier", "modifiers",
-           "ModifierPlugin"]
+           "ModifierPlugin", "writer", "register_writer", "writers", "find_writer", "write_file",
+           "save_patterns", "WriterPlugin"]

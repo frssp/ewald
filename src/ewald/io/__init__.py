@@ -6,13 +6,17 @@ import os
 
 from ..data import DataCollection
 from . import remote
-from .ase_reader import AseReader
+from .ase_reader import AseDbReader, AseReader, AseTrajectoryReader, is_ase_db, is_ase_traj
 from .base import FrameReader
-from .lammps_data import LammpsDataReader, is_lammps_data
+from .extxyz import ExtxyzReader, is_extxyz, write_extxyz
+from .h5md import H5mdReader, is_h5md, write_h5md
+from .lammps_data import LammpsDataReader, is_lammps_data, write_lammps_data
 from .lammps_dump import LammpsDumpReader, is_lammps_dump, write_lammps_dump
 from .volumetric import (VolumetricReader, is_cube, is_vasp_volumetric, read_cube, read_vasp_volumetric,
                          write_cube, write_vasp_volumetric)
+from .mdanalysis_reader import MDAnalysisReader, is_md_trajectory, write_md_trajectory
 from .xdatcar import XdatcarReader, is_xdatcar
+from .xsf import XsfReader, is_xsf, write_xsf
 
 
 class FileSource:
@@ -117,6 +121,16 @@ def _open_ase_lammps_data(path, **kwargs):
     return AseReader(path, format="lammps-data", **kwargs)
 
 
+def _open_cif(path, **kwargs):
+    return AseReader(path, format="cif", **kwargs)
+
+
+def _open_md_trajectory(path, format=None, topology=None, **kwargs):
+    fmt = (format or "").upper()
+    fmt = {"NETCDF": "NCDF", "MDANALYSIS": None, "": None}.get(fmt, fmt)
+    return MDAnalysisReader(path, topology=topology, format=fmt)
+
+
 def builtin_readers():
     """ewald's own formats, registered in :mod:`ewald.plugins` like any reader plugin."""
     from ..plugins import ReaderPlugin
@@ -130,12 +144,28 @@ def builtin_readers():
                      "VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR (atoms + grid)", B, 6,
                      ("vasp-chgcar", "chgcar", "vasp-locpot", "locpot", "vasp-elfcar", "elfcar"),
                      takes_format=True, category="volumetric"),
+        ReaderPlugin("h5md", H5mdReader, ("*.h5md", "*.h5"), is_h5md,
+                     "H5MD trajectory (LAMMPS dump h5md, MDAnalysis, ...), lazy; needs h5py", B, 7),
+        ReaderPlugin("xsf", XsfReader, ("*.xsf", "*.axsf"), is_xsf,
+                     "XCrySDen XSF/AXSF: structure, ANIMSTEPS trajectory, DATAGRID_3D grids", B, 8),
         ReaderPlugin("lammps-dump", LammpsDumpReader, ("*.lammpstrj", "*.dump"), is_lammps_dump,
                      "LAMMPS text dump (atom/custom), lazy", B, 10, ("lammps/dump", "lammps-dump-text")),
         ReaderPlugin("xdatcar", XdatcarReader, ("XDATCAR*",), is_xdatcar,
                      "VASP XDATCAR, fixed or variable cell, lazy", B, 11, ("vasp-xdatcar",)),
         ReaderPlugin("lammps-data", _open_lammps_data, ("*.data",), is_lammps_data,
                      "LAMMPS data file", B, 12, ("lammps/data", "lammps-data-native")),
+        ReaderPlugin("ase-db", AseDbReader, ("*.db",), is_ase_db,
+                     "ASE database (SQLite .db or .json), one row per frame, lazy; selection= query", B, 13,
+                     ("db", "ase.db")),
+        ReaderPlugin("ase-traj", AseTrajectoryReader, ("*.traj",), is_ase_traj,
+                     "ASE binary trajectory (.traj), lazy", B, 14, ("traj",)),
+        ReaderPlugin("md-trajectory", _open_md_trajectory, ("*.xtc", "*.trr", "*.dcd", "*.nc", "*.ncdf"),
+                     is_md_trajectory, "GROMACS XTC/TRR, DCD, AMBER NetCDF via MDAnalysis, lazy; "
+                     "topology= (.gro/.pdb/.tpr/...) for atom types", B, 15,
+                     ("xtc", "trr", "dcd", "netcdf", "ncdf", "mdanalysis"), takes_format=True),
+        ReaderPlugin("extxyz", ExtxyzReader, ("*.xyz", "*.extxyz"), is_extxyz,
+                     "XYZ / extended XYZ (Lattice=, Properties=), lazy", B, 20, ("xyz", "ext-xyz")),
+        ReaderPlugin("cif", _open_cif, ("*.cif",), None, "Crystallographic Information File via ASE", B, 90),
         ReaderPlugin("lammps-data-ase", _open_ase_lammps_data, (), None,
                      "LAMMPS data file via ASE", B, None),
         ReaderPlugin("ase", _open_ase, ("POSCAR*", "CONTCAR*", "OUTCAR*", "vasprun*.xml", "*.xyz", "*.extxyz",
@@ -167,37 +197,139 @@ def import_file(path, format: str | None = None, **kwargs):
     return Pipeline(FileSource(path, format, **kwargs))
 
 
+def _write_poscar(path, data, sort: bool = True, direct: bool = True, **kwargs):
+    import ase.io
+
+    from .extxyz import _to_atoms
+
+    atoms = _to_atoms(data)
+    if sort:  # one species block per element, in order of first appearance (stable)
+        first = {s: i for i, s in reversed(list(enumerate(atoms.get_chemical_symbols())))}
+        atoms = atoms[sorted(range(len(atoms)), key=lambda i: first[atoms[i].symbol])]
+    ase.io.write(os.fspath(path), atoms, format="vasp", direct=direct, **kwargs)
+
+
+def _write_with_ase(format):
+    def write(path, frames, **kwargs):
+        import ase.io
+
+        from .extxyz import _to_atoms
+
+        images = [_to_atoms(d) for d in frames]
+        ase.io.write(os.fspath(path), images if len(images) > 1 else images[0], format=format, **kwargs)
+
+    return write
+
+
+def _write_ase_fallback(path, frames, format=None, **kwargs):
+    return _write_with_ase(format)(path, frames, **kwargs)
+
+
+def _write_ase_traj(path, frames, **kwargs):
+    from ase.io.trajectory import Trajectory
+
+    from .extxyz import _to_atoms
+
+    with Trajectory(os.fspath(path), "w", **kwargs) as traj:
+        for d in frames:
+            traj.write(_to_atoms(d))
+
+
+def _write_ase_db(path, frames, append: bool = True, **kwargs):
+    import re
+
+    import ase.db
+    from ase.db.core import reserved_keys
+
+    from .extxyz import _to_atoms
+
+    db = ase.db.connect(os.fspath(path), append=append)
+    ok = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+    for d in frames:
+        atoms = _to_atoms(d)
+        pairs = {k: v.item() if hasattr(v, "item") else v for k, v in atoms.info.items()
+                 if ok.match(k) and k not in reserved_keys and isinstance(getattr(v, "item", lambda: v)(),
+                                                                       (bool, int, float, str))}
+        atoms.info = {}
+        db.write(atoms, key_value_pairs=pairs, **kwargs)
+
+
+def _write_md_trajectory(path, frames, format=None, **kwargs):
+    fmt = (format or "").upper()
+    return write_md_trajectory(path, frames, format={"MD-TRAJECTORY": None, "": None}.get(fmt, fmt), **kwargs)
+
+
+def _write_cube(path, data, **kwargs):
+    write_cube(path, data, **kwargs)
+
+
+def _write_vasp_volumetric(path, data, format=None, **kwargs):
+    write_vasp_volumetric(path, data, **kwargs)
+
+
+def builtin_writers():
+    """ewald's own writers, registered in :mod:`ewald.plugins` like any writer plugin."""
+    from ..plugins import WriterPlugin
+
+    B = "built-in"
+    return [
+        WriterPlugin("cube", _write_cube, ("*.cube",), "Gaussian cube (one grid property + atoms)", B, 5,
+                     ("gaussian-cube",), multi_frame=False, category="volumetric"),
+        WriterPlugin("vasp-volumetric", _write_vasp_volumetric, ("CHGCAR*", "LOCPOT*", "ELFCAR*", "PARCHG*"),
+                     "VASP CHGCAR-style grid (VESTA reads it)", B, 6, ("vasp-chgcar", "chgcar"),
+                     takes_format=True, multi_frame=False, category="volumetric"),
+        WriterPlugin("h5md", write_h5md, ("*.h5md", "*.h5"), "H5MD trajectory, streamed; needs h5py", B, 7),
+        WriterPlugin("xsf", write_xsf, ("*.xsf", "*.axsf"), "XCrySDen XSF (structure, ANIMSTEPS, grid)", B, 8),
+        WriterPlugin("lammps-dump", write_lammps_dump, ("*.lammpstrj", "*.dump"), "LAMMPS text dump", B, 10,
+                     ("lammps/dump",)),
+        WriterPlugin("poscar", _write_poscar, ("POSCAR*", "CONTCAR*", "*.vasp", "*.poscar"),
+                     "VASP POSCAR (species grouped, Direct)", B, 11, ("vasp",), multi_frame=False),
+        WriterPlugin("xdatcar", _write_with_ase("vasp-xdatcar"), ("XDATCAR*",), "VASP XDATCAR", B, 11,
+                     ("vasp-xdatcar",)),
+        WriterPlugin("lammps-data", write_lammps_data, ("*.data", "*.lmp"),
+                     "LAMMPS data file (atomic/charge/molecular/full)", B, 12, ("lammps/data",), multi_frame=False),
+        WriterPlugin("ase-db", _write_ase_db, ("*.db",), "ASE database, one row per frame", B, 13, ("db", "ase.db")),
+        WriterPlugin("ase-traj", _write_ase_traj, ("*.traj",), "ASE binary trajectory", B, 14, ("traj",)),
+        WriterPlugin("md-trajectory", _write_md_trajectory, ("*.xtc", "*.trr", "*.dcd"),
+                     "GROMACS XTC/TRR or DCD via MDAnalysis, streamed", B, 15, ("xtc", "trr", "dcd"),
+                     takes_format=True),
+        WriterPlugin("extxyz", write_extxyz, ("*.extxyz", "*.xyz"), "extended XYZ, streamed", B, 20, ("xyz",)),
+        WriterPlugin("cif", _write_with_ase("cif"), ("*.cif",), "CIF via ASE", B, 90),
+        WriterPlugin("ase", _write_ase_fallback, (), "any format ase.io.write knows (format= name)", B, 100,
+                     takes_format=True),
+    ]
+
+
 def export_file(source, path, format: str | None = None, frames=None, **kwargs):
     """Write a DataCollection, a list of them, or a Pipeline's frames to ``path``.
 
-    ``format="lammps/dump"`` uses the native writer; anything else goes through ASE
-    (``vasp``, ``vasp-xdatcar``, ``extxyz``, ``lammps-data``, ``cif``, ...).
-    ``format="cube"`` (or a ``.cube`` name) and ``format="vasp-chgcar"`` write a grid of
-    one frame; pass ``property="Charge Density"`` (and ``grid=``) to pick what.
+    The writer comes from ``format`` (a writer name or alias such as ``"lammps/dump"``,
+    ``"poscar"``, ``"xtc"``; unknown names go to ``ase.io.write``) or from the file name
+    (``*.extxyz``, ``POSCAR``, ``*.data``, ``*.h5md``, ``*.xtc``, ``*.xsf``, ``*.cube``, ...;
+    ``ewald plugins`` lists them, writer plugins included). Pipeline frames are computed and
+    written one at a time. ``frames=`` picks frames of a Pipeline; one-frame formats (POSCAR,
+    LAMMPS data, CHGCAR, cube) need exactly one, e.g. ``frames=[-1]``. Grid writers take
+    ``property="Charge Density"`` (and ``grid=``); other keyword arguments go to the writer
+    (``columns=`` for LAMMPS dumps, ``atom_style=`` for LAMMPS data).
     """
+    from .. import plugins
     from ..pipeline import Pipeline
 
     if isinstance(source, Pipeline):
         idx = range(source.num_frames) if frames is None else frames
-        items = [source.compute(i) for i in idx]
+        items = (source.compute(i) for i in idx)
     elif isinstance(source, DataCollection):
         items = [source]
     else:
         items = list(source)
-    fmt = (format or "").lower()
-    if fmt in ("cube", "vasp-chgcar", "chgcar") or (not fmt and str(path).lower().endswith(".cube")):
-        writer = write_cube if fmt in ("cube", "") else write_vasp_volumetric
-        writer(path, items[0], **kwargs)
-        return
-    if (format or "").lower() in ("lammps/dump", "lammps-dump") or str(path).endswith((".dump", ".lammpstrj")):
-        write_lammps_dump(path, items, **kwargs)
-        return
-    import ase.io
-
-    images = [d.to_ase() for d in items]
-    ase.io.write(os.fspath(path), images if len(images) > 1 else images[0], format=format, **kwargs)
+        if frames is not None:
+            items = [items[i] for i in frames]
+    return plugins.write_file(path, items, format=format, **kwargs)
 
 
-__all__ = ["FileSource", "StaticSource", "import_file", "export_file", "open_reader",
+__all__ = ["FileSource", "StaticSource", "import_file", "export_file", "open_reader", "builtin_readers",
+           "builtin_writers", "ExtxyzReader", "XsfReader", "H5mdReader", "MDAnalysisReader", "AseDbReader",
+           "AseTrajectoryReader", "write_extxyz", "write_xsf", "write_h5md", "write_md_trajectory",
+           "write_lammps_data", "write_lammps_dump",
            "LammpsDumpReader", "LammpsDataReader", "XdatcarReader", "AseReader", "VolumetricReader",
            "read_vasp_volumetric", "read_cube", "write_vasp_volumetric", "write_cube"]
