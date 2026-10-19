@@ -34,7 +34,7 @@ GUI
   Ask Claude suggestions as diffs; per-notebook render settings; a `.py` header with the view state and data links.
 - Notebook kernels (`ewald/kernel.py`): kernels on SSH hosts; step forms for steps a kernel
   cell adds with code the app cannot import (a class only the kernel's Python has stays as code).
-- Plugins side bar: an "updates available" badge on the activity bar, disable per notebook,
+- Plugins side bar: disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
 - UI themes (`@ui_theme`): switch fully without a restart (now the style sheet changes at once,

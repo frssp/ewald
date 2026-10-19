@@ -246,10 +246,11 @@ folder, pip package or this session) and any error it raised, and the plugins yo
 ewald's example plugins, the default plugin index and every catalog in Preferences › Python ›
 *Plugin catalogs* (see
 [Packaging and sharing](../plugins/packaging.md#plugin-catalogs)). Type to search, or filter with
-`@installed`, `@available` or a kind such as `@modifier`. *Install* copies a plugin file into the
+`@installed`, `@updates`, `@available` or a kind such as `@modifier`. *Install* copies a plugin file into the
 plugin folder and loads it at once; a `pip:` entry runs pip in the Python ewald runs in, after
 you confirm the command. *Update to …* appears on an installed plugin when a catalog has a
-newer version, and entries that need a newer ewald are greyed out. *Disable* switches a plugin off without removing it
+newer version (the Plugins icon on the activity bar then carries the number of updates, and
+`@updates` lists them), and entries that need a newer ewald are greyed out. *Disable* switches a plugin off without removing it
 ([Switching a plugin off](../plugins/packaging.md#switching-a-plugin-off)); disabled,
 incompatible and failed plugins say so in their row. *Remove* moves a file to the plugin
 folder's `.removed` folder (its steps stay available until ewald restarts). Selecting a modifier plugin shows its documentation

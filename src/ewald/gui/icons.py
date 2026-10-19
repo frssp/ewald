@@ -85,6 +85,35 @@ def icon(name: str, color: str | None = None) -> QtGui.QIcon:
     return ic
 
 
+def badged(name: str, count: int) -> QtGui.QIcon:
+    """:func:`icon` with a round count badge in its lower right corner (the activity bar's
+    "updates available"); ``count`` 0 gives the plain icon."""
+    if count <= 0:
+        return icon(name)
+    base, out = icon(name), QtGui.QIcon()
+    text = str(count) if count < 10 else "9+"
+    for size in (16, 24, 32, 48):
+        for mode in (QtGui.QIcon.Normal, QtGui.QIcon.Active, QtGui.QIcon.Disabled):
+            for state in (QtGui.QIcon.Off, QtGui.QIcon.On):
+                pix = base.pixmap(size, size, mode, state)
+                painter = QtGui.QPainter(pix)
+                painter.setRenderHint(QtGui.QPainter.Antialiasing)
+                d = size * 0.62
+                rect = QtCore.QRectF(size - d, size - d, d, d)
+                painter.setPen(QtCore.Qt.NoPen)
+                painter.setBrush(QtGui.QColor(TOKENS["accent"]))
+                painter.drawEllipse(rect)
+                font = painter.font()
+                font.setPixelSize(max(6, int(d * (0.78 if len(text) == 1 else 0.58))))
+                font.setBold(True)
+                painter.setFont(font)
+                painter.setPen(QtGui.QColor("white"))
+                painter.drawText(rect, QtCore.Qt.AlignCenter, text)
+                painter.end()
+                out.addPixmap(pix, mode, state)
+    return out
+
+
 @lru_cache(maxsize=None)
 def app_icon() -> QtGui.QIcon:
     """The EWALD app icon (window title bar, taskbar, dock), from the PNGs in ``ewald/assets/icon``;

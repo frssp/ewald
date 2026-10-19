@@ -39,7 +39,19 @@ class MenusMixin:
             self.activity_buttons[name] = act
         self.plugins_dock.visibilityChanged.connect(
             lambda shown: shown and self.plugins_panel.search.setFocus())
+        self.plugins_panel.updatesChanged.connect(self._plugin_updates)
+        self._plugin_updates(len(self.plugins_panel.updates()))
         self.ask_dock.visibilityChanged.connect(lambda shown: shown and self.ask_panel.input.setFocus())
+
+    def _plugin_updates(self, count):
+        """A count badge on the Plugins icon while installed plugins have newer catalog versions."""
+        from .icons import badged
+
+        act = self.activity_buttons["Plugins"]
+        act.setIcon(badged("plugins", count))
+        act.setToolTip(f"Plugins: {count} update{'s' if count != 1 else ''} available" if count
+                       else "Show or hide the Plugins side bar")
+        act.setProperty("updates", count)
 
     def _show_side_bar(self, dock):
         """Show an activity-bar side bar (Plugins, Remotes, AI chat) in a column of its own left of
