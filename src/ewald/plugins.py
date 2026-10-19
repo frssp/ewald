@@ -304,6 +304,7 @@ class _Registry:
 
 
 _registry = _Registry()
+_REGISTRIES = ("readers", "writers", "modifiers", "visuals", "overlays", "colormaps", "themes")
 
 
 def plugin_dir() -> Path:
@@ -847,40 +848,69 @@ def _load_directory(folder: Path, off: set = frozenset()):
     for path in sorted(folder.iterdir()):
         if path.name.startswith(("_", ".")):
             continue
-        if path.suffix == ".py":
-            target = path
-        elif path.is_dir() and (path / "__init__.py").exists():
-            target = path / "__init__.py"
-        else:
-            continue
-        plugin = Plugin(id=path.stem, kind="folder", origin=str(path))
-        try:
-            toml = path / MANIFEST_NAME if path.is_dir() else None
-            plugin.apply_manifest(_read_toml(toml) if toml and toml.is_file() else file_manifest(target))
-        except Exception as exc:
-            plugin.errors.append(f"manifest: {type(exc).__name__}: {exc}")
-        if not plugin.name:
-            plugin.name = plugin.id
-        if not _admit(plugin, off):
-            continue
-        if plugin.errors:   # an unreadable manifest also means the file would not import
-            _registry.errors[str(path)] = plugin.errors[-1]
-            continue
-        module_name = f"ewald_plugin_{path.stem}"
-        try:
-            spec = importlib.util.spec_from_file_location(
-                module_name, target, submodule_search_locations=[str(path)] if path.is_dir() else None)
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            _loading.origin, _loading.plugin = str(path), plugin
-            spec.loader.exec_module(module)
-            plugin.loaded = True
-        except Exception as exc:
-            sys.modules.pop(module_name, None)
-            _registry.errors[str(path)] = f"{type(exc).__name__}: {exc}"
-            plugin.errors.append(_registry.errors[str(path)])
-        finally:
-            _loading.origin = _loading.plugin = None
+        _load_path(path, off)
+
+
+def _load_path(path: Path, off: set = frozenset()) -> bool:
+    """Read the manifest of one plugin file or package folder and import it; errors go to
+    ``_registry.errors`` and the plugin's ``errors``. Returns whether it was imported."""
+    if path.suffix == ".py":
+        target = path
+    elif path.is_dir() and (path / "__init__.py").exists():
+        target = path / "__init__.py"
+    else:
+        return False
+    plugin = Plugin(id=path.stem, kind="folder", origin=str(path))
+    try:
+        toml = path / MANIFEST_NAME if path.is_dir() else None
+        plugin.apply_manifest(_read_toml(toml) if toml and toml.is_file() else file_manifest(target))
+    except Exception as exc:
+        plugin.errors.append(f"manifest: {type(exc).__name__}: {exc}")
+    if not plugin.name:
+        plugin.name = plugin.id
+    if not _admit(plugin, off):
+        return False
+    if plugin.errors:   # an unreadable manifest also means the file would not import
+        _registry.errors[str(path)] = plugin.errors[-1]
+        return False
+    module_name = f"ewald_plugin_{path.stem}"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            module_name, target, submodule_search_locations=[str(path)] if path.is_dir() else None)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        _loading.origin, _loading.plugin = str(path), plugin
+        spec.loader.exec_module(module)
+        plugin.loaded = True
+    except Exception as exc:
+        sys.modules.pop(module_name, None)
+        _registry.errors[str(path)] = f"{type(exc).__name__}: {exc}"
+        plugin.errors.append(_registry.errors[str(path)])
+        return False
+    finally:
+        _loading.origin = _loading.plugin = None
+    return True
+
+
+def load_plugin_file(path) -> list[str]:
+    """Import a plugin file (or package folder) from anywhere, e.g. in a notebook cell::
+
+        from ewald.plugins import load_plugin_file
+        load_plugin_file("local_strain.py")   # its @modifier classes become step cells
+
+    Returns the names it registered (modifiers, readers, visuals, ...); raises if the
+    import failed or the plugin is disabled or incompatible. Loading the same file again
+    (an update) replaces its earlier entry."""
+    load_plugins()
+    before = {k: set(getattr(_registry, k)) for k in _REGISTRIES}
+    path = Path(path).expanduser().resolve()
+    _registry.errors.pop(str(path), None)
+    for key in [k for k, p in _registry.plugins.items() if p.origin == str(path)]:
+        del _registry.plugins[key]
+    if not _load_path(path, disabled()):
+        raise ImportError(_registry.errors.get(str(path), f"{path} is not a .py file or a package folder, "
+                                               "or it is disabled"))
+    return [n for k in _REGISTRIES for n in getattr(_registry, k) if n not in before[k]]
 
 
 def readers() -> dict[str, ReaderPlugin]:

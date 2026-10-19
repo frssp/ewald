@@ -21,7 +21,8 @@ from .console import make_console
 from .icons import app_icon
 from .inspector import DataInspector
 from .macos import set_app_name, strip_psn
-from .pipeline_panel import PipelinePanel
+from .notebook_panel import NotebookPanel
+from .pipeline_panel import DisplayPanel, PipelinePanel
 from .plots import PlotsPanel
 from . import preferences as prefs
 from .render_page import RenderPage
@@ -75,27 +76,50 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self.workspaces.addWidget(self.render_page)
         self.setCentralWidget(self.workspaces)
 
-        # --- right: command panel
-        self.panel = PipelinePanel(self.style)
-        self.panel.changed.connect(self.recompute)
-        self.panel.styleChanged.connect(self._style_changed)
-        pipeline_dock = self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
+        self.layout_mode = self.settings["general.layout"]
         self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings))
         self.ask_panel.pipelineChanged.connect(self._after_claude)
+        if self.layout_mode == "notebook":
+            # --- left: notebook tabs (the pipeline as Python cells); right: display settings, Ask Claude
+            self.panel = NotebookPanel()
+            self.panel.changed.connect(self.recompute)
+            self.panel.pipelineReplaced.connect(self.set_pipeline)
+            self.panel.askRequested.connect(self.ask_claude)
+            self.panel.plotCreated.connect(self._connect_plot)
+            self.notebook_dock = self._dock(self.panel, "Notebook", QtCore.Qt.LeftDockWidgetArea, 560)
+            if not prefs.layout_path(self.settings).exists():  # first start: a wide notebook
+                QtCore.QTimer.singleShot(0, lambda: self.resizeDocks([self.notebook_dock], [640], QtCore.Qt.Horizontal))
+            # VS Code-like activity bar: the Plugins side bar opens beside the notebook
+            from .plugins_panel import PluginsPanel
+
+            self.plugins_panel = PluginsPanel(self.settings)
+            self.plugins_panel.stepRequested.connect(lambda m: self.panel.add_modifier(m))
+            self.plugins_panel.changed.connect(lambda: self.message("Plugins changed"))
+            self.plugins_panel.createRequested.connect(self._create_plugin)
+            self.plugins_dock = self._dock(self.plugins_panel, "Plugins", QtCore.Qt.LeftDockWidgetArea, 300)
+            self.splitDockWidget(self.plugins_dock, self.notebook_dock, QtCore.Qt.Horizontal)
+            self.plugins_dock.hide()
+            self._build_activity_bar()
+            self.display = DisplayPanel(self.style)
+            self.display.styleChanged.connect(self._style_changed)
+            self.display.modifierRequested.connect(lambda m: self.panel.add_modifier(m))
+            side_dock = self._dock(self.display, "Display", QtCore.Qt.RightDockWidgetArea, 320)
+            self.display.refresh()
+        else:
+            # --- right: command panel (pipeline list + properties)
+            self.panel = self.display = PipelinePanel(self.style)
+            self.panel.changed.connect(self.recompute)
+            self.panel.styleChanged.connect(self._style_changed)
+            side_dock = self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
         self.ask_dock = self._dock(self.ask_panel, "Ask Claude", QtCore.Qt.RightDockWidgetArea, None)
-        self.tabifyDockWidget(pipeline_dock, self.ask_dock)
-        pipeline_dock.raise_()
+        self.tabifyDockWidget(side_dock, self.ask_dock)
+        side_dock.raise_()
 
         # --- bottom: console / inspector / plots / log
         self.inspector = DataInspector()
         self.console = make_console(self._console_namespace(), self._after_console, self)
         self.plots = PlotsPanel()
-        self.plots.phononModePicked.connect(self.play_phonon_mode)
-        self.plots.atomsSelected.connect(self._plot_selected_atoms)
-        self.plots.framesSelected.connect(self._plot_selected_frames)
-        self.plots.frameRequested.connect(self.timeline._set)
-        self.plots.expressionRequested.connect(self._keep_plot_selection)
-        self.timeline.selectionChanged.connect(self.plots.set_frame_selection)
+        self._connect_plot(self.plots)
         self._plot_picking = False
         self.log = QtWidgets.QPlainTextEdit(readOnly=True)
         self.bottom = QtWidgets.QTabWidget()
@@ -109,6 +133,9 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self.bottom.currentChanged.connect(self._update_bottom_tab)
         self._stale_tabs = set()  # bottom tabs not yet showing the current frame
         self.bottom_dock = self._dock(self.bottom, "Data", QtCore.Qt.BottomDockWidgetArea, None)
+        if self.layout_mode == "notebook":  # notebook and side panels run the full height
+            self.setCorner(QtCore.Qt.BottomLeftCorner, QtCore.Qt.LeftDockWidgetArea)
+            self.setCorner(QtCore.Qt.BottomRightCorner, QtCore.Qt.RightDockWidgetArea)
         self.resizeDocks([self.bottom_dock], [280], QtCore.Qt.Vertical)
 
         self._build_menus()
@@ -136,7 +163,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             self.set_pipeline(pipeline)
         app = QtWidgets.QApplication.instance()
         if isinstance(app, EwaldApplication):  # files from Finder (Open With, Dock icon, double-click)
-            app.set_file_open_target(self.open_path)
+            app.set_file_open_target(self.open_any)
 
     # ---------------------------------------------------------------- chrome
     def _dock(self, widget, title, area, width):
@@ -220,6 +247,8 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self.plots.pipeline = pipeline
         self.plots.forget_selection()
         self.panel.set_pipeline(pipeline)
+        if self.display is not self.panel:
+            self.display.set_pipeline(pipeline)
         self.timeline.set_num_frames(pipeline.num_frames)
         self.live_reload.set_pipeline(pipeline)
         self._push_console()
@@ -274,11 +303,15 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             self.style.ensure_bond_pairs(self.data.types)
         self._apply_element_defaults()
         self.panel.set_data(self.data)
+        if self.display is not self.panel:
+            self.display.set_data(self.data)
         ts = self.data.attributes.get("Timestep", self.frame)
         self.viewport.overlay_text = f"Frame {self.frame}   timestep {ts}"
         self.viewport.set_data(self.data, interactive=interactive)
         self._stale_tabs = {self.inspector, self.plots}
         self._update_bottom_tab()
+        for p in self.plot_panels()[1:]:  # view cells: their data comes with the notebook's
+            p.set_highlight(self._selected_indices())
         self._push_console()
         dev = (self.device or "cpu").upper()
         if dev == "AUTO":  # show what auto resolved to
@@ -339,10 +372,10 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self.viewport.style_combo.setCurrentText(self.style.preset)
         self.viewport.style_combo.blockSignals(False)
         self.viewport.redraw()
-        if self.panel._current() and self.panel._current()[0] == "visual":
+        if self.display._current() and self.display._current()[0] == "visual":
             pass  # editor already reflects the change
         else:
-            self.panel.refresh()
+            self.display.refresh()
 
     # ---------------------------------------------------------------- output
     def render_image(self, filename=None, return_image=False, **overrides):
@@ -386,6 +419,9 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             page.preview.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
 
     def closeEvent(self, event):
+        if self.layout_mode == "notebook" and self.isVisible() and not self.panel.confirm_discard(title="Quit"):
+            event.ignore()
+            return
         prefs.save_layout(self, self.settings)
         self.timeline.timer.stop()
         self.live_reload.timer.stop()
@@ -469,7 +505,11 @@ def _app():
         app.setApplicationName("ewald")
         app.setDesktopFileName("ewald")
         app.setWindowIcon(app_icon())
-        theme.apply(app)
+        try:
+            name = settings_mod.load()["general.ui_theme"]
+        except Exception:  # a broken settings file must not stop the GUI
+            name = None
+        theme.apply(app, name)
     return app
 
 
@@ -503,7 +543,7 @@ def main(argv=None):
     win = MainWindow(device=args.device)
     if args.file:
         kw = {"type_map": dict(p.split("=") for p in args.type_map.split(","))} if args.type_map else {}
-        win.open_path(args.file, **kw)
+        win.open_any(args.file, ask_types=False, **kw)
     win.show()
     return app.exec()
 

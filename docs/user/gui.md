@@ -11,9 +11,12 @@ Jupyter, run `import ewald.gui` and then `%gui qt` (in that order, so IPython pi
 when PyQt is installed); `show` then returns at once and the window stays live next to the
 notebook. Linux system libraries and startup errors: [Install](install.md#linux-gui-system-libraries).
 
-The layout follows OVITO 3, with VESTA's crystal-viewing controls added: the viewport is in the
-middle, the pipeline and the selected item's parameters are on the right, the timeline is under
-the viewport, and a bottom dock holds the Python console, the data inspector and plots.
+The window has the analysis on the left as a [notebook](notebooks.md): Python cells, steps and
+linked plots, saved as a `.py` file, with one tab per open notebook. The viewport and timeline are in the middle. Display settings and Ask Claude are on the
+right, and a bottom dock holds the Python console, the data inspector and plots. The notebook
+replaces the pipeline panel, but the sections below apply to both. Preferences › General ›
+*Window layout* = `classic` brings back the OVITO 3 style layout, with the pipeline and the
+selected item's parameters on the right. VESTA's crystal-viewing controls are in both.
 
 Buttons use one line-icon set. By default mode switches and less frequent buttons (Open,
 Analyze, Render) show an icon with text, and the tool rail and frequent buttons (Open remote,
@@ -158,11 +161,12 @@ made in the GUI can be reproduced in a batch script. See [Rendering figures](ren
 ## Files
 
 File › Open example opens one of the [example files](quickstart.md#example-files) shipped
-with ewald. File › Load file opens any format ewald can read ([File formats](formats.md)), including
+with ewald. File › Open (File › Load file in the classic layout) opens any format ewald can read ([File formats](formats.md)), including
 formats added by [reader plugins](../plugins/readers.md). LAMMPS dumps ask for a
 type-to-element map unless you set a default in Preferences. File › Load NEB folder opens a
 VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image
-([NEB runs](formats.md#neb-runs)). File › Export data writes the
+([NEB runs](formats.md#neb-runs)). In the notebook layout, File › Open also opens `.py`
+notebooks, and File › Save notebook writes one ([Notebooks](notebooks.md)). File › Export data writes the
 current frame or the whole trajectory through `export_file`, and File › Export movie writes an
 MP4 or GIF (needs the `movie` extra). File › Live reload turns following a growing trajectory
 on or off for the session; the default and the interval are in Preferences › General.

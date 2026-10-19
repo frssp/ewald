@@ -7,7 +7,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Python API
 
-`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `StaticSource`, `import_file`, `export_file`, `get_backend`, `gpu_available`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
+`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `StaticSource`, `import_file`, `load`, `export_file`, `get_backend`, `gpu_available`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
 
 ## Modifiers
 
@@ -326,7 +326,7 @@ Details: [Command line](user/cli.md).
 | `ewald render INPUT OUTPUT` | render a frame to an image (.png/.jpg/.tif/.svg/.pdf/.eps) | `--frame` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--ao` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` `--theme` `--overlay` `--dpi` |
 | `ewald movie INPUT OUTPUT` | render frames to .mp4/.gif/.avi/.mov or a PNG sequence | `--fps` `--start` `--stop` `--every` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--time-per-frame` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` `--theme` `--overlay` |
 | `ewald gui [INPUT]` | open the desktop viewer | `--type-map` `--device` |
-| `ewald examples` | list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...) | `--copy` |
+| `ewald examples` | list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...) | `--copy` `--papers` `--fetch` |
 | `ewald info INPUT` | print frames and properties | `--type-map` |
 | `ewald describe INPUT` | JSON summary of a frame or, with --trajectory, of the run | `--frame` `--trajectory` `--type-map` |
 | `ewald ask INPUT [QUESTION...]` | ask Claude about a structure (needs anthropic + credentials) | `--type-map` `--model` `--allow-code` `--script` `--select` `--ids` `--frame` |
@@ -392,6 +392,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 | Key | Label | Default |
 |---|---|---|
+| `general.layout` | Window layout | `'notebook'` |
+| `general.ui_theme` | UI theme | `'paper'` |
 | `general.startup_workspace` | Startup workspace | `'Analyze'` |
 | `general.toolbar_style` | Toolbar buttons | `'Icons and text'` |
 | `general.font_size` | UI font size | `12` |
@@ -406,7 +408,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 | Key | Label | Default |
 |---|---|---|
-| `viewport.background` | Background | `'#14161A'` |
+| `viewport.background` | Background | `'#ECEDE9'` |
 | `viewport.projection` | Projection | `'ortho'` |
 | `viewport.initial_view` | Initial view direction | `'iso'` |
 | `viewport.style_preset` | Default style | `'Ball & stick'` |
@@ -468,6 +470,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 | Key | Label | Default |
 |---|---|---|
+| `python.run_notebooks` | Run notebooks when opened | `'ask'` |
+| `python.plugin_catalogs` | Plugin catalogs | `''` |
 | `python.startup_script` | Console startup script | `''` |
 | `python.extra_paths` | Extra module paths | `''` |
 
@@ -487,7 +491,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 **File**
 
-- Load file… (`Ctrl+O`)
+- New notebook (`Ctrl+T`)
+- Open… (`Ctrl+O`)
 - Load remote file (SSH)… (`Ctrl+Alt+O`)
 - Load NEB folder…
 - Open example
@@ -500,9 +505,11 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Cu_void.lammpstrj (LAMMPS dump)
   - CuZr.data (LAMMPS data)
   - Cu3Au_band.yaml (phonopy band.yaml)
-- Load session… (`Ctrl+Shift+O`)
-- Save session (`Ctrl+S`)
-- Save session as… (`Ctrl+Shift+S`)
+- Save notebook (`Ctrl+S`)
+- Save notebook as… (`Ctrl+Shift+S`)
+- Close notebook (`Ctrl+W`)
+- Load session (.ewald)… (`Ctrl+Shift+O`)
+- Save session (.ewald) as…
 - Render image… (`Ctrl+Shift+R`)
 - Export data… (`Ctrl+E`)
 - Export movie…
@@ -535,94 +542,114 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Journal
   - ASE
   - Dark slide
+- Focus on the viewport (`Ctrl+\`)
+- Minimal mode (menus hidden) (`Ctrl+Shift+M`)
 
-**Pipeline**
+**Notebook**
 
-- Analysis
-  - Coordination analysis / RDF
-  - Displacement vectors
-  - Histogram
-  - Spatial binning (profiles, density maps)
-  - Reduce property (mean, sum, ...)
-  - Steinhardt order parameters (q4, q6)
-  - ClusterAnalysis
-  - VoronoiAnalysis
-  - WignerSeitzAnalysis
-  - DislocationAnalysis
-- Structure identification
-  - Common neighbor analysis
-  - Polyhedral template matching
-  - Ackland-Jones bond angles
-  - Identify diamond structure
-  - Chill+ (ice, hydrate)
-  - Centrosymmetry
-  - Atomic strain
-  - Elastic strain (crystal)
-  - Grain segmentation (after PTM)
-  - fcc planar faults (after PTM)
-- Symmetry & diffraction
-  - Space group / Wyckoff positions (spglib)
-  - Powder XRD pattern
-  - Powder neutron diffraction
-  - Structure factor S(q)
-- Trajectory
-  - Mean squared displacement / diffusion
-  - Velocity autocorrelation
-  - Time averaging (g(r), attributes)
-  - Time series of attributes
-  - Trajectory lines / paths
-  - NEB energy profile / barrier
-  - Overlay frames (see-through images)
-  - Unwrap trajectories
-  - Freeze property (values of frame 0)
-  - Load trajectory (topology + dump)
-- Ion transport
-  - Ionic conductivity / Haven ratio
-  - Van Hove correlation G(r, t)
-  - Self intermediate scattering Fs(q, t)
-  - Non-Gaussian parameter
-  - Site hopping / residence time
-- Bonds & polyhedra
-  - Create bonds
-  - Edit bonds (add / delete)
-  - Coordination polyhedra
-  - Bond angle distribution
-  - Bond length distribution
-  - Ring statistics
-- Volume (CHGCAR, LOCPOT, cube)
-  - Isosurface
-  - Isosurface, signed (density difference / spin)
-  - Slice plane (2D map)
-  - Charge density difference
-- Vectors (arrows)
-  - Force / displacement / velocity arrows
-  - Magnetic moment arrows
-  - Arrows colored by length
-- Phonons
-  - Phonon mode animation (band.yaml, OUTCAR)
-- Coloring
-  - Color coding
-  - Assign color
-- Modification
-  - Slice
-  - Replicate
-  - Wrap at periodic boundaries
-  - Affine transformation
-  - Compute property
-  - Delete selected
-  - Combine datasets (add particles from a file)
-- Selection
-  - Expression selection
-  - Select type
-  - Expand selection (neighbors)
-  - Invert selection
-  - Clear selection
-- Collective variables (PLUMED)
-  - PLUMED input (plumed.dat)
-  - Load COLVAR file
-  - Free energy surface from HILLS
-- Python
-  - Python script
+- Run all (`Ctrl+Shift+Return`)
+- Run current cell and below
+- Restart
+- Restart and run all
+- Move cell up (`Ctrl+Shift+Up`)
+- Move cell down (`Ctrl+Shift+Down`)
+- Delete cell
+- Show as Python file
+
+**Insert**
+
+- Code cell (`Ctrl+Shift+N`)
+- Text cell
+- Step
+  - Analysis
+    - Coordination analysis / RDF
+    - Displacement vectors
+    - Histogram
+    - Spatial binning (profiles, density maps)
+    - Reduce property (mean, sum, ...)
+    - Steinhardt order parameters (q4, q6)
+    - ClusterAnalysis
+    - VoronoiAnalysis
+    - WignerSeitzAnalysis
+    - DislocationAnalysis
+  - Structure identification
+    - Common neighbor analysis
+    - Polyhedral template matching
+    - Ackland-Jones bond angles
+    - Identify diamond structure
+    - Chill+ (ice, hydrate)
+    - Centrosymmetry
+    - Atomic strain
+    - Elastic strain (crystal)
+    - Grain segmentation (after PTM)
+    - fcc planar faults (after PTM)
+  - Symmetry & diffraction
+    - Space group / Wyckoff positions (spglib)
+    - Powder XRD pattern
+    - Powder neutron diffraction
+    - Structure factor S(q)
+  - Trajectory
+    - Mean squared displacement / diffusion
+    - Velocity autocorrelation
+    - Time averaging (g(r), attributes)
+    - Time series of attributes
+    - Trajectory lines / paths
+    - NEB energy profile / barrier
+    - Overlay frames (see-through images)
+    - Unwrap trajectories
+    - Freeze property (values of frame 0)
+    - Load trajectory (topology + dump)
+  - Ion transport
+    - Ionic conductivity / Haven ratio
+    - Van Hove correlation G(r, t)
+    - Self intermediate scattering Fs(q, t)
+    - Non-Gaussian parameter
+    - Site hopping / residence time
+  - Bonds & polyhedra
+    - Create bonds
+    - Edit bonds (add / delete)
+    - Coordination polyhedra
+    - Bond angle distribution
+    - Bond length distribution
+    - Ring statistics
+  - Volume (CHGCAR, LOCPOT, cube)
+    - Isosurface
+    - Isosurface, signed (density difference / spin)
+    - Slice plane (2D map)
+    - Charge density difference
+  - Vectors (arrows)
+    - Force / displacement / velocity arrows
+    - Magnetic moment arrows
+    - Arrows colored by length
+  - Phonons
+    - Phonon mode animation (band.yaml, OUTCAR)
+  - Coloring
+    - Color coding
+    - Assign color
+  - Modification
+    - Slice
+    - Replicate
+    - Wrap at periodic boundaries
+    - Affine transformation
+    - Compute property
+    - Delete selected
+    - Combine datasets (add particles from a file)
+  - Selection
+    - Expression selection
+    - Select type
+    - Expand selection (neighbors)
+    - Invert selection
+    - Clear selection
+  - Collective variables (PLUMED)
+    - PLUMED input (plumed.dat)
+    - Load COLVAR file
+    - Free energy surface from HILLS
+  - Python
+    - Python script
+- View
+- Plugin step
+- Load plugin file…
+- Ask Claude to add steps…
 
 **Tools**
 
@@ -635,8 +662,11 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 **Window**
 
-- Analyze workspace (`Ctrl+1`)
+- Notebook workspace (`Ctrl+1`)
 - Render workspace (`Ctrl+2`)
+- Notebook
+- Plugins (`Ctrl+Shift+X`)
+- Display settings
 - Python console
 - Data inspector
 - Plots
@@ -688,12 +718,12 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 ### Toolbar
 
-Open, Open remote, Save, Analyze, Render, Search commands, modifiers… Ctrl K, Compute device switch (CPU / CUDA / auto).
+Open, Save, Run all, Notebook, Render, Search commands, steps, cells… Ctrl K, Compute device switch (CPU / CUDA / auto).
 
 ### Panels
 
-- Workspaces: Analyze, Render
-- Docks: Ask Claude, Data, Pipeline
+- Workspaces: Notebook, Render
+- Docks: Ask Claude, Data, Display, Notebook, Plugins
 - Bottom tabs: Python console, Data inspector, Plots, Log
 - Viewport tools: Orbit / pan / zoom (mouse); Pick atom: shows id, type, position and properties; Shift+click picks several; Measure distance: click two atoms; Measure angle: click three atoms (vertex in the middle); Edit bonds: click two atoms to add or delete the bond between them
 

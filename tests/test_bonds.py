@@ -70,6 +70,9 @@ def test_pairwise_and_covalent_modes(srtio3):
     cov = run(srtio3, CreateBonds(mode="covalent"))
     pairs = {tuple(sorted(p)) for p in cov.types[cov.bonds.topology]}
     assert ("O", "Ti") in pairs and ("O", "O") not in pairs
+    assert not pairs & {("Sr", "Ti"), ("Sr", "Sr"), ("Ti", "Ti")}  # no metal-metal bonds in a compound
+    alloy = run(srtio3, ExpressionSelection("ParticleType == 'O'"), DeleteSelected(), CreateBonds(mode="covalent"))
+    assert {tuple(sorted(p)) for p in alloy.types[alloy.bonds.topology]} >= {("Sr", "Ti")}  # an alloy keeps them
     with pytest.raises(ValueError):
         CreateBonds(mode="pairwise").modify(srtio3.copy(), None)
 
@@ -112,8 +115,10 @@ def test_octahedra(srtio3):
     d2 = run(srtio3, CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.2)]), SelectType("Ti"),
              CoordinationPolyhedra(edges=False))
     assert d2.surfaces["coordination-polyhedra"].edges is None
-    with pytest.raises(ValueError, match="CreateBonds"):
-        CoordinationPolyhedra(["Ti"]).modify(srtio3.copy(), None)
+    # no bonds upstream (the GUI's bonds are display only): covalent bonds, Ti-O but not Ti-Sr
+    alone = srtio3.copy()
+    CoordinationPolyhedra(["Ti"]).modify(alone, None)
+    assert alone.bonds is None and alone.surfaces["coordination-polyhedra"].vertex_count == 6
     with pytest.raises(ValueError, match="center"):
         CoordinationPolyhedra().modify(d.copy(), None)
 

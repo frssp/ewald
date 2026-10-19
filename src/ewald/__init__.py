@@ -16,8 +16,10 @@ from .data import Cell, DataCollection
 from .io import StaticSource, export_file, import_file
 from .pipeline import ComputeContext, Modifier, Pipeline, PythonModifier
 
+load = import_file  # the short name notebooks use: pipe = load("XDATCAR")
+
 __version__ = "0.1.0"
 __title__ = "EWALD: Extensible Workbench for Atomic Lattices & Dynamics"
 
 __all__ = ["Cell", "DataCollection", "Pipeline", "Modifier", "PythonModifier", "ComputeContext",
-           "StaticSource", "import_file", "export_file", "get_backend", "gpu_available"]
+           "StaticSource", "import_file", "load", "export_file", "get_backend", "gpu_available"]

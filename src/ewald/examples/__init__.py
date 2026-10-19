@@ -8,6 +8,9 @@
 The GUI lists them under File › Open example; ``ewald examples`` prints their paths and
 ``ewald examples --copy DIR`` copies them somewhere writable. ``make_examples.py`` regenerates
 the files (never edit them by hand).
+
+Published data from papers is not shipped but downloaded on demand: :func:`fetch` (see
+:mod:`ewald.examples.papers`) feeds the reproduction scripts in ``examples/papers/``.
 """
 from __future__ import annotations
 
@@ -64,3 +67,10 @@ def copy(dest) -> Path:
     for ex in EXAMPLES:
         shutil.copyfile(ex.path, dest / ex.file)
     return dest
+
+
+def fetch(name: str, dest=None, quiet: bool = False) -> Path:
+    """Download the published dataset ``name`` (see :data:`papers.PAPERS`) once and return its folder."""
+    from . import papers
+
+    return papers.fetch(name, dest, quiet)

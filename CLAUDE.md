@@ -85,15 +85,24 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   `gui.icons.app_icon()` loads them.
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
+- `paint.py` (`paint`/`hide`/`isolate`/`fade`/`resize` for Python steps), `views.py` (`show`, the
+  notebook view cells), `plugin_catalog.py` (installed plugins, catalog indexes, install/remove;
+  GUI side `gui/plugins_panel.py`, the left Plugins side bar).
 - `inventory.py`: `ewald inventory`, docs/features.md from the registries, CLI parser and GUI menus.
 - `plumed.py`: PLUMED through its Python binding as an MD engine (`run`, `PlumedEngine`), COLVAR/HILLS
   parsing, `fes_from_hills` (same kernels as `plumed sum_hills`). Tests compare with `plumed driver` and
   the sum_hills files in `tests/data/plumed/` (regenerate with `make_plumed_reference.py`, never by hand).
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
-- `gui/`: `app.py` main window (frames, recompute, styling; built from mixins: `window_menus.py` toolbar
-  and menus, `window_files.py` open/export/sessions, `viewport_menu.py` right-click menu, `window_links.py`
-  picks, plot links, Ask Claude and console), `viewport.py` (VTK; `legacy_viewport.py` + Qt-free `legacy_gl.py` are
-  the OpenGL 1.x viewport for `ssh -X`, chosen by `gui.viewport_backend`), `pipeline_panel.py`, `params.py`, `render_page.py`,
+- `notebook.py`: notebooks as percent-format `.py` files (`# %%` cells, one namespace, `pipe` is the
+  pipeline; step cells = one `pipe.add(...)`, view cells = one `show(pipe, ...)` from
+  `views.py`). The GUI's default layout is built on it (`general.layout`: notebook | classic).
+- `gui/`: `app.py` main window (frames, recompute, styling; built from mixins: `window_menus.py` toolbar,
+  menus, activity bar and minimal mode, `window_files.py` open/export/sessions/notebooks, `viewport_menu.py`
+  right-click menu, `window_links.py` picks, plot links (Plots tab and view cells), Ask Claude and console),
+  `notebook_panel.py` (cells, steps, view cells with live `PlotsPanel`s), `notebook_tabs.py` (one tab per
+  open notebook), `plugins_panel.py` (Plugins side bar), `viewport.py` (VTK; `legacy_viewport.py` + Qt-free
+  `legacy_gl.py` are the OpenGL 1.x viewport for `ssh -X`, chosen by `gui.viewport_backend`), `pipeline_panel.py`
+  (classic layout; `DisplayPanel` is its visual-elements part in the notebook layout), `params.py`, `render_page.py`,
   `preferences.py` (dialog; `pref_widgets.py`, `element_table.py`, `prefs_apply.py` apply settings to the window),
   `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
   `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`, `macos.py` (menu bar name; Finder file-open

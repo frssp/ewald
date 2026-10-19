@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import posixpath
+import re
 
 import numpy as np
 
@@ -19,7 +20,7 @@ from .base import open_binary
 
 
 def read_lammps_log(path) -> dict:
-    """Thermo output of every run in a LAMMPS log (one-line ``thermo_style``) as one table.
+    """Thermo output of every run in a LAMMPS log (one-line ``thermo_style`` or ``multi``) as one table.
 
     Runs with different ``thermo_style`` columns are joined by ``Step``: columns a run does
     not print are NaN, and a step printed twice (the last step of a run is the first of
@@ -28,12 +29,28 @@ def read_lammps_log(path) -> dict:
     """
     rows: dict[int, dict] = {}
     names: dict[str, None] = {}
-    cols = None
+    cols, multi = None, None
     with open_binary(path) as fh:
         for line in fh:
             tok = line.split()
             if not tok:
                 continue
+            if tok[0].startswith(b"-----") and len(tok) > 2 and tok[1] == b"Step" and _is_number(tok[2]):
+                # thermo_style multi: '---- Step 100 ----- CPU = 0.1 (sec) ----' then 'Name = value' lines
+                cols, multi = None, rows.setdefault(int(float(tok[2])), {})
+                names["Step"] = None
+                if b"CPU" in tok[3:-2] and _is_number(tok[tok.index(b"CPU") + 2]):
+                    multi["CPU"] = float(tok[tok.index(b"CPU") + 2])
+                    names["CPU"] = None
+                continue
+            if multi is not None:
+                pairs = _MULTI_PAIR.findall(line)
+                if pairs and all(_is_number(v) for _, v in pairs):
+                    for k, v in pairs:
+                        multi[k.decode()] = float(v)
+                        names[k.decode()] = None
+                    continue
+                multi = None
             if cols is not None:
                 if len(tok) == len(cols):
                     try:
@@ -59,6 +76,9 @@ def read_lammps_log(path) -> dict:
         if name != "Step":
             table[name] = np.array([rows[s].get(name, np.nan) for s in order], dtype=float)
     return table
+
+
+_MULTI_PAIR = re.compile(rb"(\S+)\s+=\s+(\S+)")
 
 
 def _is_number(tok: bytes) -> bool:

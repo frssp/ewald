@@ -70,8 +70,9 @@ VASP frames from OUTCAR, vasprun.xml, vaspout.h5 and XDATCAR all count ionic ste
 does. A LAMMPS log may hold several runs with different `thermo_style` columns: they are
 joined by `Step`, a column a run does not print is missing for its frames, and the step two
 runs share keeps the values of both. Frames whose timestep the log does not print (dump
-every 10 steps, thermo every 100) get the table but no attributes. Only one-line thermo
-output is read (not `thermo_style multi` or YAML).
+every 10 steps, thermo every 100) get the table but no attributes. One-line thermo output and
+`thermo_style multi` blocks are read (with `CPU` from the block header); YAML thermo output and
+logs without a `Step` column are not.
 
 ```python
 pipe = import_file("XDATCAR")                          # OSZICAR in the same folder is picked up
@@ -97,7 +98,7 @@ other image see-through behind the current one, so the moving atoms show their w
 
 | Layout | Open with | Each image | Energies |
 |---|---|---|---|
-| VASP (VTST) folder with `00`, `01`, ..., `NN` | `import_file("neb/")` | OUTCAR (last ionic step, with forces), else CONTCAR, else POSCAR | `Energy` from the OUTCAR; endpoints with only a POSCAR have none unless `energies=` gives them |
+| VASP (VTST) folder with `00`, `01`, ..., `NN` | `import_file("neb/")` | OUTCAR (last ionic step, with forces), else CONTCAR, else POSCAR | `Energy` from the OUTCAR; an endpoint with an OUTCAR and a POSCAR takes its atoms from the POSCAR (what the NEB used; the OUTCAR may be a separate relaxation), its energy from the OUTCAR; endpoints with only a POSCAR have none unless `energies=` gives them |
 | LAMMPS `neb` run folder | `import_file("run/")` | last frame of the replica's dump (`dump ... dump.neb.$u`) | `PE1 .. PEN` of the last row of the master `log.lammps` NEB table |
 | one file per image | `import_file("dump.neb.*", format="neb")` | last frame of each file (`frame=` picks another), natural order | from each file, or `log=` names the LAMMPS log |
 

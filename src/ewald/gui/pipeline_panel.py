@@ -194,12 +194,14 @@ class PipelinePanel(QtWidgets.QWidget):
         self.visual_menu.aboutToShow.connect(self._fill_visual_menu)
         self.visual_button.setMenu(self.visual_menu)
         bar.addWidget(self.visual_button)
+        self.edit_buttons = []
         for text, tip, slot in (("▲", "Move up (later in the pipeline)", lambda: self._move(-1)),
                                 ("▼", "Move down (earlier)", lambda: self._move(1)),
                                 ("✕", "Delete modifier (Del)", self._remove)):
             b = QtWidgets.QToolButton(text=text, toolTip=tip)
             b.clicked.connect(slot)
             bar.addWidget(b)
+            self.edit_buttons.append(b)
         lay.addLayout(bar)
 
         self.tree = QtWidgets.QTreeWidget()
@@ -254,24 +256,7 @@ class PipelinePanel(QtWidgets.QWidget):
             f = QtGui.QFont(self.font()); f.setPixelSize(10); f.setLetterSpacing(QtGui.QFont.AbsoluteSpacing, 1); it.setFont(1, f)
             return it
 
-        target = None
-        section("Visual elements")
-        for key, label, on in (("particles", "Particles", True), ("bonds", "Bonds", self.style.bonds_enabled),
-                               ("cell", "Simulation cell", self.style.show_cell)):
-            it = QtWidgets.QTreeWidgetItem(self.tree, ["", label, ""])
-            it.setData(0, KIND, ("visual", key))
-            if key != "particles":
-                it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
-                it.setCheckState(0, QtCore.Qt.Checked if on else QtCore.Qt.Unchecked)
-            if select == ("visual", key):
-                target = it
-        for k, entry in enumerate(self.style.visuals):
-            it = QtWidgets.QTreeWidgetItem(self.tree, ["", entry["name"], ""])
-            it.setData(0, KIND, ("plugin-visual", k))
-            it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
-            it.setCheckState(0, QtCore.Qt.Checked if entry.get("enabled", True) else QtCore.Qt.Unchecked)
-            if select == ("plugin-visual", k):
-                target = it
+        target = self._visual_items(section, select)
         section("Modifications")
         if self.pipeline is not None:
             for mod in reversed(self.pipeline.modifiers):
@@ -299,6 +284,28 @@ class PipelinePanel(QtWidgets.QWidget):
                 self.tree.setCurrentItem(target)
         else:
             self._show_editor(self.tree.currentItem())
+
+    def _visual_items(self, section, select):
+        """Visual element rows (Particles, Bonds, Cell, plugin elements); returns the row to select."""
+        target = None
+        section("Visual elements")
+        for key, label, on in (("particles", "Particles", True), ("bonds", "Bonds", self.style.bonds_enabled),
+                               ("cell", "Simulation cell", self.style.show_cell)):
+            it = QtWidgets.QTreeWidgetItem(self.tree, ["", label, ""])
+            it.setData(0, KIND, ("visual", key))
+            if key != "particles":
+                it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
+                it.setCheckState(0, QtCore.Qt.Checked if on else QtCore.Qt.Unchecked)
+            if select == ("visual", key):
+                target = it
+        for k, entry in enumerate(self.style.visuals):
+            it = QtWidgets.QTreeWidgetItem(self.tree, ["", entry["name"], ""])
+            it.setData(0, KIND, ("plugin-visual", k))
+            it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
+            it.setCheckState(0, QtCore.Qt.Checked if entry.get("enabled", True) else QtCore.Qt.Unchecked)
+            if select == ("plugin-visual", k):
+                target = it
+        return target
 
     def modifier_items(self):
         out = []
@@ -746,6 +753,45 @@ class PipelinePanel(QtWidgets.QWidget):
             props = QtWidgets.QLabel(", ".join(self.data.particles), wordWrap=True, objectName="muted")
             f.addRow("Properties", props)
         return w
+
+
+class DisplayPanel(PipelinePanel):
+    """Visual elements only (Particles, Bonds, Simulation cell, plugin elements) with their
+    editors. The notebook layout keeps modifiers in notebook cells and the display here."""
+
+    modifierRequested = QtCore.Signal(object)  # e.g. "Use as Create bonds modifier"
+
+    def __init__(self, style=None, parent=None):
+        super().__init__(style, parent)
+        self.add_button.hide()
+        for b in self.edit_buttons:
+            b.hide()
+
+    def refresh(self, select=None):
+        if select is None:
+            select = self._current() or ("visual", "particles")
+        self.tree.blockSignals(True)
+        self.tree.clear()
+        target = self._visual_items(lambda title: None, select)
+        self.tree.blockSignals(False)
+        self.update_status()
+        if target is not None and target is not self.tree.currentItem():
+            self.tree.setCurrentItem(target)
+        else:
+            self._show_editor(self.tree.currentItem())
+
+    def add_modifier(self, mod):
+        self.modifierRequested.emit(mod)
+
+    def set_data(self, data):
+        old = _types(self.data)
+        super().set_data(data)
+        if _types(data) != old:  # another file or notebook: the type table and counts change
+            self._show_editor(self.tree.currentItem())
+
+
+def _types(data):
+    return None if data is None else (data.count, tuple(np.unique(data.types)))
 
 
 def cell_summary(cell) -> str:

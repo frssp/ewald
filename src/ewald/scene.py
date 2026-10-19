@@ -331,6 +331,11 @@ class BondsVis(VisualElement):
             keep = np.r_[np.ones(b.count, bool), ~np.asarray(b["Half Bond"], bool)]
             start, end, rgb, owner = start[keep], end[keep], rgb[keep], owner[keep]
         alpha = 1 - np.clip(np.asarray(data["Transparency"], float), 0, 1)[owner] if "Transparency" in data else None
+        if alpha is not None:  # a hidden atom (Transparency 1) takes its half-bonds with it
+            keep = alpha > 0
+            start, end, rgb, owner, alpha = start[keep], end[keep], rgb[keep], owner[keep], alpha[keep]
+            if not len(owner):
+                return None
         return [("bonds", Cylinders(start, end, self.radius, np.clip(rgb, 0, 1), alpha, owner, cap_end=True))]
 
 

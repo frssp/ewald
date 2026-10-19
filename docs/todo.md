@@ -8,10 +8,28 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
+- More paper datasets (`examples.fetch`): the argyrodite anion-disorder AIMD set (Morgan 2021, MSD
+  against disorder), TiOF2 structures (Morgan 2024: partial RDFs, Ti-X bond lengths, octahedra)
+  and PLUMED-NEST metadynamics eggs (ammonia borane, alanine dipeptide) with their FES.
+
 ## Next
 
 GUI
 
+- Notebook layout: the viewport could follow the current notebook even when it has no
+  pipeline yet (now it keeps the last one); 3D snapshot views (`show(pipe, frame=...)` drawing
+  the structure) and image/figure cells; drag cells to reorder; undo for cell edits; inline
+  Ask Claude suggestions as diffs; per-notebook render settings.
+- Notebook kernels: run a notebook's cells in another Python environment (a per-tab kernel via
+  jupyter_client with a small `ewald-kernel` that streams computed frames back), so a notebook
+  can use a conda env without ewald's GUI dependencies.
+- Analysis verbs for notebooks (`rdf(pipe, cutoff=6)`, `msd(pipe)`, ... returning tables and
+  adding the step), next to `load` and `pipe.add`.
+- Plugins side bar: updates (version compare against catalogs), disable per notebook,
+  "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
+  view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
+- Spectra, Figure and Forge views from the redesign mock-ups, built as view cells
+  rather than separate panels.
 - Quad views (top, front, left, perspective), as in OVITO.
 - Undo/redo for pipeline edits.
 - Compute frames in a background thread so the GUI stays responsive.
@@ -129,8 +147,14 @@ Formats
 - Large-frame reading against OVITO (docs/developer/readers.md): a 1M-atom dump frame takes
   0.45 s and 367 MB in ewald vs 0.23 s and 188 MB in OVITO (per-column copies, id sort); a
   1M-atom extxyz frame 0.85 s vs 0.33 s (ASE `Atoms` assembly).
-- LAMMPS logs written with `thermo_style multi` or `thermo_modify line yaml` (only one-line
-  thermo output is read now).
+- LAMMPS logs written with `thermo_modify line yaml`, and logs whose `thermo_style` has no `step`
+  column (only `elapsed`/`time`); one-line and `multi` output are read.
+- OUTCAR with interleaved output of several runs (pymatgen's `OUTCAR.electrostaticerror`: ionic
+  blocks without their `Iteration` line) is read as fewer steps; ASE fails on it too.
+- XDATCAR without `Direct configuration=` lines (frames separated by blank lines, pymatgen's
+  `XDATCAR_4`).
+- Hybrid band runs in vasprun.xml: breaks between lines of the zero-weight path are not found
+  (no labels there; vaspout.h5 has them).
 
 Figures
 
@@ -174,8 +198,12 @@ Plugins and Claude
 
 Docs
 
-- Example files: add real (not synthetic) VASP OUTCAR/vasprun.xml and LAMMPS log examples, and
-  list the examples on an empty viewport at first start.
+- Example files: list the examples (and the downloadable paper datasets) on an empty viewport at
+  first start; a GUI entry for `examples.fetch` (File › Open example › From a paper).
+- Paper reproductions: StructureFactor `method="rdf"` holds every pair inside the cutoff at once,
+  so 100,000 atoms with a 30 A cutoff run out of memory (the a-Si script uses 20 A); histogram in
+  chunks. kinisi's covariance-weighted D for the LLZO runs is 0.6x a straight-line fit of the same
+  MSD; find out why.
 - Host the manual (the repository is private; CI uploads the built site as the `docs-site`
   artifact).
 
@@ -220,11 +248,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   Finder Open With and Dock drops. The list is in docs/developer/macos-release.md; the container
   checks clang, the spec and the dependency wheels only.
 - `DislocationAnalysis` and `OvitoModifier` with the `ovito` package installed.
-- The native OUTCAR and vasprun.xml readers on real VASP 5/6 output (relaxations with ISIF=3,
-  non-collinear and MD runs, multi-GB files); the test fixtures are hand-written in VASP 6.4
-  format and checked against ASE.
-- NEB folders from real VTST runs (the VASP fixture is an EMT band written in VASP layout;
-  the LAMMPS fixture is a real `neb` run).
+- The native OUTCAR and vasprun.xml readers on multi-GB real output. Checked on the real
+  pymatgen test files (VASP 5.2-6.3: relaxations, MD, NEB, SOC, DFPT, GW/BSE, HSE, LVEL,
+  KPOINTS_OPT; 39 OUTCARs, 52 vasprun.xml) against ASE; a few of them are in tests/data/real.
+- NEB folders from more real VTST runs (pymatgen's `neb1` checked: barrier and energies as
+  pymatgen's NEBAnalysis; the VASP fixture is an EMT band written in VASP layout; the LAMMPS
+  fixture is a real `neb` run).
 - DOS, PDOS and band reading on real VASP output (ISPIN = 2, LORBIT = 10/11/12, non-collinear,
   HSE band runs, KPOINTS_OPT); the fixtures are synthetic, checked against pymatgen (vasprun.xml)
   and py4vasp (vaspout.h5).

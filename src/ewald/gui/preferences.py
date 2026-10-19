@@ -32,7 +32,7 @@ _CHOICE_LABELS = {"auto": "Auto", "coarse": "Always coarse", "full": "Always ful
 LAYOUT = {
     "General": ("Startup behaviour and file handling.", [
         ("Startup", ["general.startup_workspace", "general.restore_layout"]),
-        ("Appearance", ["general.font_size", "general.toolbar_style"]),
+        ("Appearance", ["general.layout", "general.ui_theme", "general.font_size", "general.toolbar_style"]),
         ("LAMMPS files", ["general.lammps_type_prompt", "general.lammps_type_map"]),
         ("Running jobs", ["general.live_reload", "general.live_reload_interval"]),
         ("Help", ["general.docs_url"])]),
@@ -57,7 +57,9 @@ LAYOUT = {
     "Compute": ("Where pipelines run, and which optional packages are available.", [
         ("Device", ["compute.device", "compute.threads"]),
         ("Memory", ["performance.cache_memory"])]),
-    "Python": ("Console and module search path.", [
+    "Python": ("Notebooks, console and module search path.", [
+        ("Notebooks", ["python.run_notebooks"]),
+        ("Plugins", ["python.plugin_catalogs"]),
         ("Console", ["python.startup_script"]),
         ("Modules", ["python.extra_paths"])]),
     "Claude": ("API key and model for Ask Claude.", [
@@ -105,9 +107,9 @@ QFrame#footer {{ background: {panel}; border: none; border-top: 1px solid {borde
 QPushButton#footerButton {{ background: {raised}; border: 1px solid {border}; border-radius: 6px; padding: 6px 16px;
     min-width: 64px; }}
 QPushButton#footerButton:hover {{ border-color: {muted}; }}
-QPushButton#footerPrimary {{ background: {accent}; color: #0B1220; border: none; border-radius: 6px; padding: 6px 18px;
+QPushButton#footerPrimary {{ background: {accent}; color: {on_accent}; border: none; border-radius: 6px; padding: 6px 18px;
     min-width: 64px; font-weight: 600; }}
-QPushButton#footerPrimary:hover {{ background: #78B9FF; }}
+QPushButton#footerPrimary:hover {{ background: {accent}; }}
 QPushButton#link {{ background: transparent; border: none; color: {secondary}; padding: 4px 6px; }}
 QPushButton#link:hover {{ color: {accent}; }}
 QLabel#path {{ color: {muted}; font-size: 11px; font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace; }}

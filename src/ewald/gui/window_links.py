@@ -32,13 +32,31 @@ class LinksMixin:
     def _on_pick(self, text):
         self.pick_label.setText(text)
         if not self._plot_picking:
-            self.plots.forget_selection(frames=False)  # a click in the view replaces a plot range
-        self.plots.set_highlight(self._selected_indices())
+            self._each_plot(lambda p: p.forget_selection(frames=False))  # a click in the view replaces a plot range
+        self._each_plot(lambda p: p.set_highlight(self._selected_indices()))
         self.ask_panel.update_selection()
         if text:
             self.log.appendPlainText(time.strftime("%H:%M:%S ") + text)
 
     # ---------------------------------------------------------------- linked plots
+    def _connect_plot(self, p):
+        """Link a plot (the Plots tab or a notebook view cell) to the viewport and timeline."""
+        p.phononModePicked.connect(self.play_phonon_mode)
+        p.atomsSelected.connect(self._plot_selected_atoms)
+        p.framesSelected.connect(self._plot_selected_frames)
+        p.frameRequested.connect(self.timeline._set)
+        p.expressionRequested.connect(self._keep_plot_selection)
+        self.timeline.selectionChanged.connect(p.set_frame_selection)
+
+    def plot_panels(self) -> list:
+        """The Plots tab and the live plots of the current notebook's view cells."""
+        view = self.panel.view if self.layout_mode == "notebook" else None
+        return [self.plots] + ([w.plot_panel for w in view.widgets if w.plot_panel is not None] if view else [])
+
+    def _each_plot(self, fn):
+        for p in self.plot_panels():
+            fn(p)
+
     def _selected_indices(self):
         """The viewport picks, else the 'Selection' property of the current frame."""
         indices = self.viewport.picks
@@ -65,7 +83,7 @@ class LinksMixin:
             return
         m = ExpressionSelection(expression)
         self.pipeline.modifiers.append(m)
-        self.plots.forget_selection(frames=False)
+        self._each_plot(lambda p: p.forget_selection(frames=False))
         self.viewport.clear_picks()
         self.panel.refresh(select=("mod", m))
         self.recompute()
@@ -83,6 +101,10 @@ class LinksMixin:
         self.ask_panel.update_selection()
         self.ask_panel.input.setFocus()
 
+    def _create_plugin(self, prompt):
+        self.ask_claude()
+        self.ask_panel.input.setPlainText(prompt)
+
     def _after_claude(self):
         self.panel.refresh()
         self.recompute()
@@ -95,6 +117,10 @@ class LinksMixin:
     def _push_console(self):
         shell = getattr(self.console, "shell", None)
         ns = {"pipeline": self.pipeline, "pipe": self.pipeline, "data": self.data}
+        if self.layout_mode == "notebook" and self.panel.notebook is not None:
+            # the console sees the notebook's variables, so cells and console work on the same objects
+            ns = {k: v for k, v in self.panel.notebook.namespace.items() if not k.startswith("__")} | ns
+            ns["notebook"] = self.panel.notebook
         if hasattr(shell, "push") and hasattr(shell, "user_ns"):
             shell.push(ns)
         elif shell is not None and hasattr(shell, "locals"):

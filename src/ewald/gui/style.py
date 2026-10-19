@@ -15,8 +15,6 @@ STYLE_PRESETS = {
 # Presets that also apply an ewald.themes theme when picked (ASE's white background).
 PRESET_THEMES = {"Simple (ASE)": "ASE"}
 DEFAULT_PRESET = "Ball & stick"
-# Not bonded to each other by default in compounds (metal-metal contacts would clutter oxides etc.)
-_NONMETALS = frozenset("H He B C N O F Ne Si P S Cl Ar Ge As Se Br Kr Sb Te I Xe At Rn".split())
 _THEMED = ("type_colors", "background", "cell_color", "radius_preset", "theme")
 
 
@@ -108,15 +106,7 @@ class ViewStyle:
         radii. In compounds metal-metal pairs are left out (SrTiO3 gets Ti-O and Sr-O, not Sr-Ti)."""
         if self.bond_pairs:
             return
-        from ase.data import atomic_numbers, covalent_radii
+        from ..bonds import covalent_pairs
 
-        uniq = sorted(map(str, np.unique(np.asarray(types))))
-        metal = {t: t in atomic_numbers and t not in _NONMETALS for t in uniq}
-        compound = not all(metal.values())  # SrTiO3: Ti-O and Sr-O, not Sr-Ti; a pure metal keeps its bonds
-        for a_i, a in enumerate(uniq):
-            for b in uniq[a_i:]:
-                if compound and metal[a] and metal[b]:
-                    continue
-                ra = covalent_radii[atomic_numbers[a]] if a in atomic_numbers else 0.8
-                rb = covalent_radii[atomic_numbers[b]] if b in atomic_numbers else 0.8
-                self.bond_pairs.append([a, b, 0.0, round(float(self.bond_factor * (ra + rb)), 2)])
+        for a, b, lo, hi in covalent_pairs(np.unique(np.asarray(types)), self.bond_factor):
+            self.bond_pairs.append([a, b, lo, round(float(hi), 2)])

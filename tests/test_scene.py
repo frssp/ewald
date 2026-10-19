@@ -65,6 +65,18 @@ def test_particles_leave_out_invisible_atoms_and_keep_opacity():
     assert ctx.particle_colors.shape == (data.count, 3)  # bonds and plugins reuse every atom's color
 
 
+def test_hidden_atoms_take_their_half_bonds_with_them():
+    data = _crystal()
+    full = build(data, bonds=3.0)["bonds"].primitive
+    t = np.zeros(data.count)
+    t[0] = 1.0                                       # paint.hide(): Transparency 1
+    data.particles["Transparency"] = t
+    bonds = build(data, bonds=3.0)["bonds"].primitive
+    assert 0 not in bonds.owner and bonds.count == full.count - np.count_nonzero(full.owner == 0)
+    data.particles["Transparency"] = np.ones(data.count)
+    assert "bonds" not in [lay.name for lay in build(data, bonds=3.0).layers]
+
+
 def test_scene_rejects_non_primitives_and_renames_duplicates():
     scene = Scene()
     scene.add("x", Spheres([[0, 0, 0]]))

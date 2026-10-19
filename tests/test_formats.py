@@ -317,6 +317,19 @@ def test_md_trajectories_via_mdanalysis(tmp_path, ext):
     _same_structure(got, frames[2], atol=2e-3)   # XTC stores 1e-3 nm precision
 
 
+def test_gro_topology_keeps_two_letter_elements(tmp_path):
+    # MDAnalysis guesses GRO types from names and cuts 'La'/'Zr' to 'L'/'Z' (kinisi's LLZO run)
+    pytest.importorskip("MDAnalysis")
+    gro = tmp_path / "llzo.gro"
+    gro.write_text("LLZO\n4\n"
+                   "    1UNK     La    1   0.100   0.100   0.100\n"
+                   "    1UNK    Li1    2   0.300   0.100   0.100\n"
+                   "    1UNK     Zr    3   0.100   0.300   0.100\n"
+                   "    1UNK      O    4   0.100   0.100   0.300\n"
+                   "   1.00000   1.00000   1.00000\n")
+    assert list(import_file(gro).compute(0).types) == ["La", "Li", "Zr", "O"]
+
+
 def test_writer_plugin_from_the_plugin_folder(tmp_path):
     folder = plugins.plugin_dir()
     folder.mkdir(parents=True, exist_ok=True)
