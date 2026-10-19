@@ -8,7 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- App icon: the Ewald-sphere mark in the window title bar and taskbar (this branch).
 
 ## Next
 
@@ -49,6 +48,12 @@ Analysis
   offer an OVITO-compatible mode once its rule is known.
 - FindRings in numba for networks above ~100k atoms (8000 a-Si atoms, rings up to 10: 1 s).
 - Spatial correlation function and Voronoi-weighted Steinhardt (OVITO / freud have them).
+- Grain segmentation: the center of mass of a grain that percolates through the periodic
+  boundaries depends on bond order (as in OVITO, so values differ from OVITO's for those grains);
+  a grain-boundary surface mesh and misorientation-colored boundary bonds in the viewport; a
+  Plots-tab view of `grains-log` with the chosen threshold to pick a manual one.
+- Elastic strain and grain segmentation run single-threaded on the CPU (cluster building is
+  sequential in OVITO too); parallel neighbor matching and a CuPy path if large systems need it.
 
 Symmetry and diffraction
 
