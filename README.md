@@ -17,6 +17,9 @@ pip install -e ".[gpu]"     # + CuPy for device="cuda" (NVIDIA)
 pip install -e ".[gui]"     # + desktop viewer (PySide6, pyvistaqt, qtconsole)
 ```
 
+On Windows, releases also ship wheels and a standalone installer (CPU or CUDA build) that needs no
+Python; see [docs/windows-release.md](docs/windows-release.md).
+
 Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
 
 ## Quick start
