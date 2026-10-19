@@ -23,6 +23,11 @@ MODIFIER_MENU = {
         "Time series of attributes": mods.TimeSeries,
         "Trajectory lines / paths": mods.GenerateTrajectoryLines,
     },
+    "Bonds & polyhedra": {
+        "Create bonds": lambda: mods.CreateBonds(mode="covalent"),
+        "Edit bonds (add / delete)": mods.EditBonds,
+        "Coordination polyhedra": mods.CoordinationPolyhedra,
+    },
     "Coloring": {
         "Color coding": lambda: mods.ColorCoding("Position.Z"),
         "Assign color": lambda: mods.AssignColor((1.0, 0.2, 0.2)),
@@ -71,7 +76,8 @@ BADGES = {"CoordinationAnalysis": "CN", "CalculateDisplacements": "DV", "ColorCo
           "DeleteSelected": "DS", "ExpressionSelection": "ES", "SelectType": "ST", "InvertSelection": "IS",
           "ClearSelection": "CS", "PythonScript": "Py", "PythonModifier": "Py",
           "MeanSquaredDisplacement": "MS", "VelocityAutocorrelation": "VA", "TimeAveraging": "TA",
-          "TimeSeries": "TS", "GenerateTrajectoryLines": "TL"}
+          "TimeSeries": "TS", "GenerateTrajectoryLines": "TL", "CreateBonds": "CB", "EditBonds": "EB",
+          "CoordinationPolyhedra": "PH"}
 
 KIND = QtCore.Qt.UserRole + 1
 
@@ -458,7 +464,15 @@ class PipelinePanel(QtWidgets.QWidget):
                                     self.styleChanged.emit(), self.refresh()))
         row.addWidget(add); row.addWidget(rm)
         f.addRow(row)
-        if self.data is not None and self.style.bonds_enabled:
+        to_mod = QtWidgets.QPushButton("Use as Create bonds modifier")
+        to_mod.setToolTip("Add a CreateBonds modifier with this table, so bonds can be edited and used "
+                          "by Coordination polyhedra")
+        to_mod.clicked.connect(lambda: self.add_modifier(
+            mods.CreateBonds(mode="pairwise", pairs=[tuple(p) for p in self.style.bond_pairs])))
+        f.addRow(to_mod)
+        if self.data is not None and self.data.bonds is not None:
+            f.addRow("Pipeline bonds", QtWidgets.QLabel(f"{self.data.bonds.count} (drawn instead of the table)"))
+        elif self.data is not None and self.style.bonds_enabled:
             from ..render import bond_list
 
             try:
