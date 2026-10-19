@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-68 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+64 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -138,20 +138,6 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 |---|---|
 | `NebEnergyProfile` | Energy along a NEB band, with the barrier, from frames that are the band's images. |
 
-### phonon
-
-| Modifier | What it does |
-|---|---|
-| `PhononMode` | Animate one phonon mode read from phonopy band.yaml/mesh.yaml/qpoints.yaml or a VASP IBRION=5-8 OUTCAR: frame ``f`` of ``N`` shows phase ``2 pi f / N`` of the vibration, so the trajectory loops over one period. |
-
-### plumed
-
-| Modifier | What it does |
-|---|---|
-| `Plumed` | Collective variables computed by PLUMED for every frame, from a ``plumed.dat``. |
-| `LoadColvar` | Values from a PLUMED COLVAR file (or any ``#! FIELDS`` file) attached to the frames. |
-| `FreeEnergySurface` | Free energy surface from a metadynamics HILLS file, F(s) = -sum of the hills. |
-
 ### statistics
 
 | Modifier | What it does |
@@ -212,14 +198,12 @@ Tried in this order when no `format=` is given; reader plugins slot in at priori
 | `vaspout` | `vaspout*.h5` | VASP 6 vaspout.h5: ionic steps with forces, energies, stress, velocities, moments, local potential grid, DOS/PDOS and bands, lazy; needs h5py | `vasp-h5`, `vaspout.h5` |
 | `vaspwave` | `vaspwave*.h5` | VASP 6 vaspwave.h5 charge density (structure from vaspout.h5 next to it); needs h5py | `vaspwave.h5` |
 | `xsf` | `*.xsf` `*.axsf` | XCrySDen XSF/AXSF: structure, ANIMSTEPS trajectory, DATAGRID_3D grids |  |
-| `phonopy` | `band.yaml` `mesh.yaml` `qpoints.yaml` `*.yaml` | phonopy band.yaml/mesh.yaml/qpoints.yaml with eigenvectors: phonon modes (PhononMode animates one); frames= per period, structure= for qpoints.yaml | `phonopy-yaml`, `band.yaml`, `phonon` |
 | `lammps-dump` | `*.lammpstrj` `*.dump` | LAMMPS text dump (atom/custom), lazy | `lammps/dump`, `lammps-dump-text` |
 | `xdatcar` | `XDATCAR*` | VASP XDATCAR, fixed or variable cell, lazy | `vasp-xdatcar` |
 | `lammps-data` | `*.data` | LAMMPS data file | `lammps/data`, `lammps-data-native` |
 | `ase-db` | `*.db` | ASE database (SQLite .db or .json), one row per frame, lazy; selection= query | `db`, `ase.db` |
 | `ase-traj` | `*.traj` | ASE binary trajectory (.traj), lazy | `traj` |
 | `md-trajectory` | `*.xtc` `*.trr` `*.dcd` `*.nc` `*.ncdf` | GROMACS XTC/TRR, DCD, AMBER NetCDF via MDAnalysis, lazy; topology= (.gro/.pdb/.tpr/...) for atom types | `xtc`, `trr`, `dcd`, `netcdf`, `ncdf`, `mdanalysis` |
-| `vasp-phonon` | `OUTCAR*` | VASP OUTCAR of an IBRION=5-8 run: Gamma phonon modes (PhononMode animates one) | `outcar-phonon` |
 | `outcar` | `OUTCAR*` | VASP OUTCAR: ionic steps with forces, energies, stress, magnetic moments, lazy | `vasp-outcar` |
 | `vasprun` | `vasprun*.xml` | VASP vasprun.xml: ionic steps with cell, forces, stress, energies, DOS/PDOS and bands, lazy | `vasp-vasprun` |
 | `extxyz` | `*.xyz` `*.extxyz` | XYZ / extended XYZ (Lattice=, Properties=), lazy | `xyz`, `ext-xyz` |
@@ -358,8 +342,6 @@ The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (
 | `analyze_symmetry` | Space group (Hermann-Mauguin and number), point group, crystal system and the Wyckoff site of every symmetry-unique atom of a frame (spglib). |
 | `compute_diffraction` | Powder X-ray or neutron diffraction peaks of a frame (2-theta, d, hkl, relative intensity; strongest first), or the structure factor S(q) when kind='sq'. |
 | `compute_msd` | Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per type, with a linear-regime fit D = slope/6. |
-| `compute_plumed_cvs` | Collective variables computed by PLUMED (needs the PLUMED library) over the trajectory from a plumed.dat (text or path): e.g. 'd: DISTANCE ATOMS=1,2' (atoms numbered from 1, by Particle Identifier when present), TORSION, COORDINATION, RMSD, METAD with temperature. |
-| `read_plumed_output` | Read a PLUMED output file. |
 | `render_image` | Render a frame of the pipeline to PNG and return the image so you can inspect it. |
 | `list_visuals` | Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell; configured through render_image and modifiers) and installed plugins, which add_visual draws on top in every renderer. |
 | `add_visual` | Draw a plugin visual element (see list_visuals) in every later render_image, with optional constructor parameters. |
@@ -506,7 +488,6 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - CHGCAR.Si (VASP CHGCAR)
   - Cu_void.lammpstrj (LAMMPS dump)
   - CuZr.data (LAMMPS data)
-  - Cu3Au_band.yaml (phonopy band.yaml)
 - Save notebook (`Ctrl+S`)
 - Save notebook as… (`Ctrl+Shift+S`)
 - Close notebook (`Ctrl+W`)
@@ -623,8 +604,6 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
     - Force / displacement / velocity arrows
     - Magnetic moment arrows
     - Arrows colored by length
-  - Phonons
-    - Phonon mode animation (band.yaml, OUTCAR)
   - Coloring
     - Color coding
     - Assign color
@@ -642,10 +621,6 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
     - Expand selection (neighbors)
     - Invert selection
     - Clear selection
-  - Collective variables (PLUMED)
-    - PLUMED input (plumed.dat)
-    - Load COLVAR file
-    - Free energy surface from HILLS
   - Python
     - Python script
 - View
