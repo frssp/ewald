@@ -110,9 +110,9 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             self.splitDockWidget(self.plugins_dock, self.notebook_dock, QtCore.Qt.Horizontal)
             self.plugins_dock.hide()
             self.remotes_dock = install_remotes(self)
-            # the AI chat side bar opens beside the notebook, between it and the viewport
+            # the AI chat side bar opens left of the notebook, like the other side bars
             self.ask_dock = self._dock(self.ask_panel, "AI chat", QtCore.Qt.LeftDockWidgetArea, None)
-            self.splitDockWidget(self.notebook_dock, self.ask_dock, QtCore.Qt.Horizontal)
+            self.splitDockWidget(self.ask_dock, self.notebook_dock, QtCore.Qt.Horizontal)
             self.ask_dock.hide()
             self._build_activity_bar()
             self.display = DisplayPanel(self.style)
