@@ -170,6 +170,31 @@ the steps that need it, and *Install…* runs pip for them in the Plugins side b
 confirm the command (`Notebook.load(...).warnings` lists them in a script). A `.ipynb` written by Jupyter opens the same
 way as a `.py`; `pipe.add(...)` cells become steps and its outputs are kept.
 
+## Kernels
+
+A notebook's cells run in the app's own Python unless you pick another one. **⚙** in the
+notebook's bar (or Notebook › Kernel) lists *This app's Python*, the Jupyter kernels installed
+on the computer and *Other Python…*, which takes any interpreter, for example a conda
+environment's `envs/ml/bin/python`. The cells then run in a kernel started from that Python, so
+a notebook can use packages ewald's GUI cannot import there. That Python needs ewald and
+ipykernel (`pip install ewald ipykernel`), not the GUI extras. The choice is saved with the
+notebook (`.ipynb` and `.ewd`), and the kernel starts when a cell first runs; Restart and Run all
+restart it, and closing the tab or the window stops it.
+
+The rules are the same as in the app: re-running a cell replaces the steps it added, and a new
+`pipe` re-runs the cells below. `pipe` in the app is a pipeline over the kernel's one: the
+kernel computes each frame and sends back its particles, cell, bonds, tables and attributes, so
+the viewport, view cells, plots and Display settings work as usual. Step cells show their code
+rather than a form, because the modifier objects live in the kernel. From Python:
+
+```python
+from ewald.kernel import Kernel, available
+nb.set_kernel(Kernel(python="/opt/conda/envs/ml/bin/python"))   # or Kernel(name="ml") from available()
+nb.run_all()
+nb.pipeline.compute(0)                                           # computed in the kernel
+nb.set_kernel(None)                                              # back to this Python
+```
+
 ## Undo and redo
 
 Edit › Undo (Ctrl+Z) and Redo (Ctrl+Shift+Z) step through the notebook's edits, one entry per

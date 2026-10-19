@@ -1354,6 +1354,49 @@ def test_ewd_offers_to_install_the_pip_packages_it_needs(app, cu_path, tmp_path,
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, monkeypatch):
+    pytest.importorskip("jupyter_client")
+    import sys
+
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.kernel import Kernel
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\nfrom ewald.modifiers import *\npipe = load({str(cu_path)!r})\n\n"
+                          "# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n")
+    nb.save(tmp_path / "k.ipynb")
+    s = settings.Settings()
+    s["python.run_notebooks"] = "never"
+    w = MainWindow(settings=s)
+    view = w.open_notebook(str(tmp_path / "k.ipynb"))
+    assert view.kernel_button.text() == "⚙ This app"
+    view.fill_kernel_menu(view.kernel_menu)
+    labels = [a.text() for a in view.kernel_menu.actions()]
+    assert labels[0] == "This app's Python" and labels[-1] == "Other Python…"
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileName", lambda *a, **k: (sys.executable, ""))
+    view.kernel_menu.actions()[-1].trigger()                      # Other Python…
+    k = view.notebook.kernel
+    try:
+        assert k is not None and view.kernel_button.text() == "⚙ This Python"
+        view.run_all()
+        assert k.alive and [c.state for c in view.notebook.cells] == ["ok", "ok"]
+        assert w.pipeline is view.notebook.pipeline and "Coordination" in w.pipeline.compute(0).particles
+        assert "1 steps" in view.status.text()
+        view.notebook.save(tmp_path / "k2.ipynb")
+        (tmp_path / "k3.ipynb").write_bytes((tmp_path / "k2.ipynb").read_bytes())
+        reopened = w.open_notebook(str(tmp_path / "k3.ipynb"))      # the kernel choice is kept
+        assert reopened.notebook.kernel is not None and not reopened.notebook.kernel.alive
+        assert reopened.kernel_button.text() == "⚙ This Python"
+    finally:
+        import ewald.gui.notebook_panel as npn
+
+        monkeypatch.setattr(npn, "CONFIRM_UNSAVED", False)
+        w.close()
+    assert not k.alive                                             # closing the window stops it
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_open_turns_bonds_off_above_limit(app):
     from ewald import examples, settings
     from ewald.gui.app import MainWindow

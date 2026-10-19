@@ -202,6 +202,8 @@ class MenusMixin:
             n.addAction("Run current cell and &below", lambda: self._cell_action("below"))
             n.addAction("&Restart", lambda: self.panel.view.restart())
             n.addAction("Restart and run all", lambda: self.panel.view.run_all())
+            self.kernel_menu = n.addMenu("&Kernel")
+            self.kernel_menu.aboutToShow.connect(lambda: self.panel.view.fill_kernel_menu(self.kernel_menu))
             self.trust_action = n.addAction("&Trust notebook…", lambda: self.panel.view.trust())
             self.trust_action.setToolTip("Allow a notebook received as an .ewd file to run its code and plugins")
             n.aboutToShow.connect(lambda: self.trust_action.setEnabled(
