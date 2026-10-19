@@ -87,7 +87,9 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - Follow OVITO for property names ("Position", "Particle Type", "Structure Type", ...), structure
   type ids, colors and attribute names. Ported analyses are tested against OVITO results stored in
   `tests/data/ovito_reference.npz` and `ovito_cluster_reference.npz`; regenerate them with
-  `tests/data/make_ovito_reference.py` (needs `pip install ovito`), never by hand.
+  `tests/data/make_ovito_reference.py` (needs `pip install ovito`), never by hand. Statistics,
+  bond-network and Steinhardt references (OVITO + freud) are in `analysis_reference.npz`, from
+  `tests/data/make_analysis_reference.py` (needs `pip install ovito freud-analysis`).
 - `Modifier.parameters()` comes from the constructor signature, and the GUI parameter form
   (`gui/params.py`) is generated from it, so store every constructor argument as an attribute of the
   same name. New modifiers that construct with no arguments appear in the GUI menu automatically;

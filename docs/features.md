@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-39 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+46 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -105,6 +105,28 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | Modifier | What it does |
 |---|---|
 | `PythonScript` | Run ``modify(frame, data)`` defined in ``source``. |
+
+### statistics
+
+| Modifier | What it does |
+|---|---|
+| `Histogram` | Histogram of a particle or bond property ('Mass', 'Position.Z', ...). |
+| `SpatialBinning` | Coarse-grain a particle property on a 1D, 2D or 3D grid of bins along the cell vectors. |
+| `ReduceProperty` | Reduce a particle or bond property to one number per component. |
+
+### steinhardt
+
+| Modifier | What it does |
+|---|---|
+| `SteinhardtOrderParameters` | Per-particle q_l (and w_l) for every degree in ``degrees``. |
+
+### topology
+
+| Modifier | What it does |
+|---|---|
+| `BondAngleDistribution` | Histogram of the angles between pairs of bonds at each particle. |
+| `BondLengthDistribution` | Histogram of bond lengths from 0 to ``length_cutoff`` in ``bins`` bins (longer bonds are skipped). |
+| `FindRings` | Rings of ``minimum_ring_size``..``maximum_ring_size`` bonds in the bond network. |
 
 ### vectors
 
@@ -362,11 +384,22 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Analysis
   - Coordination analysis / RDF
   - Displacement vectors
+  - Histogram
+  - Spatial binning (profiles, density maps)
+  - Reduce property (mean, sum, ...)
+  - Steinhardt order parameters (q4, q6)
   - ClusterAnalysis
-  - CommonNeighborAnalysis
   - VoronoiAnalysis
   - WignerSeitzAnalysis
   - DislocationAnalysis
+- Structure identification
+  - Common neighbor analysis
+  - Polyhedral template matching
+  - Ackland-Jones bond angles
+  - Identify diamond structure
+  - Chill+ (ice, hydrate)
+  - Centrosymmetry
+  - Atomic strain
 - Trajectory
   - Mean squared displacement / diffusion
   - Velocity autocorrelation
@@ -377,6 +410,9 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Create bonds
   - Edit bonds (add / delete)
   - Coordination polyhedra
+  - Bond angle distribution
+  - Bond length distribution
+  - Ring statistics
 - Volume (CHGCAR, LOCPOT, cube)
   - Isosurface
   - Isosurface, signed (density difference / spin)
@@ -403,13 +439,6 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Clear selection
 - Python
   - Python script
-- Other
-  - PolyhedralTemplateMatching
-  - AcklandJones
-  - AtomicStrain
-  - CentroSymmetry
-  - ChillPlus
-  - IdentifyDiamond
 
 **Tools**
 
