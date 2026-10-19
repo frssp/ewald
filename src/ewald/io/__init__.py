@@ -7,7 +7,7 @@ import os
 from ..data import DataCollection
 from . import remote
 from .ase_reader import AseDbReader, AseReader, AseTrajectoryReader, is_ase_db, is_ase_traj
-from .base import FrameReader
+from .base import FrameReader, IncompleteFileError, IncompleteFileWarning
 from .extxyz import ExtxyzReader, is_extxyz, write_extxyz
 from .h5md import H5mdReader, is_h5md, write_h5md
 from .lammps_data import LammpsDataReader, is_lammps_data, write_lammps_data
@@ -83,9 +83,17 @@ class FileSource:
     def num_frames(self) -> int:
         return len(self._index)
 
+    @property
+    def incomplete(self) -> list[str]:
+        """``"file: what is missing"`` for each file of a calculation that is still running or
+        was stopped (see :class:`~ewald.io.base.IncompleteFileWarning`); empty when all are complete."""
+        return [f"{os.path.basename(str(p))}: {r.incomplete}" for p, r in zip(self.paths, self.readers)
+                if getattr(r, "incomplete", None)]
+
     def refresh(self) -> int | None:
         """Follow files a running simulation is still writing: frames appended to the files
-        (LAMMPS dump, XDATCAR, OUTCAR, extxyz), and for a wildcard, files that appeared.
+        (LAMMPS dump, XDATCAR, OUTCAR, vasprun.xml, extxyz, H5MD, NEB images), and for a wildcard,
+        files that appeared.
 
         Returns the first frame whose data may have changed (see :meth:`FrameReader.refresh`),
         or None when nothing changed. Thermo tables (log.lammps, OSZICAR) are read again.
@@ -218,6 +226,34 @@ def _open_cif(path, **kwargs):
     return AseReader(path, format="cif", **kwargs)
 
 
+def _open_vaspout(path, **kwargs):
+    """vaspout.h5, or when VASP has not written a readable one yet (still running, or killed
+    before closing it) the vasprun.xml, OUTCAR or XDATCAR of the same run next to it."""
+    try:
+        return VaspoutReader(path, **kwargs)
+    except IncompleteFileError as exc:
+        folder = os.path.dirname(os.path.abspath(str(path)))
+        for name in ("vasprun.xml", "OUTCAR", "XDATCAR"):
+            other = os.path.join(folder, name)
+            if not os.path.isfile(other):
+                continue
+            import warnings
+
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always", IncompleteFileWarning)
+                try:
+                    reader = open_reader(other)
+                except (OSError, ValueError):
+                    continue
+            for w in caught:
+                if not issubclass(w.category, IncompleteFileWarning):
+                    warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
+            note = f"not readable yet, read from {name} instead"
+            reader._set_incomplete(note + (f": {reader.incomplete}" if reader.incomplete else ""), stacklevel=4)
+            return reader
+        raise exc from None
+
+
 def _open_md_trajectory(path, format=None, topology=None, **kwargs):
     fmt = (format or "").upper()
     fmt = {"NETCDF": "NCDF", "MDANALYSIS": None, "": None}.get(fmt, fmt)
@@ -240,9 +276,10 @@ def builtin_readers():
                      "VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR (atoms + grid)", B, 6,
                      ("vasp-chgcar", "chgcar", "vasp-locpot", "locpot", "vasp-elfcar", "elfcar"),
                      takes_format=True, category="volumetric"),
-        ReaderPlugin("vaspout", VaspoutReader, ("vaspout*.h5",), is_vaspout,
+        ReaderPlugin("vaspout", _open_vaspout, ("vaspout*.h5",), is_vaspout,
                      "VASP 6 vaspout.h5: ionic steps with forces, energies, stress, velocities, moments, "
-                     "local potential grid, DOS/PDOS and bands, lazy; needs h5py", B, 7, ("vasp-h5", "vaspout.h5")),
+                     "local potential grid, DOS/PDOS and bands, lazy; a file VASP has not closed yet is read from "
+                     "the vasprun.xml/OUTCAR next to it; needs h5py", B, 7, ("vasp-h5", "vaspout.h5")),
         ReaderPlugin("vaspwave", VaspwaveReader, ("vaspwave*.h5",), is_vaspwave,
                      "VASP 6 vaspwave.h5 charge density (structure from vaspout.h5 next to it); needs h5py",
                      B, 7, ("vaspwave.h5",), category="volumetric"),
@@ -447,7 +484,7 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
     return plugins.write_file(path, items, format=format, **kwargs)
 
 
-__all__ = ["FileSource", "StaticSource", "import_file", "export_file", "open_reader", "builtin_readers",
+__all__ = ["FileSource", "StaticSource", "IncompleteFileError", "IncompleteFileWarning", "import_file", "export_file", "open_reader", "builtin_readers",
            "builtin_writers", "ExtxyzReader", "XsfReader", "H5mdReader", "MDAnalysisReader", "AseDbReader",
            "AseTrajectoryReader", "write_extxyz", "write_xsf", "write_h5md", "write_md_trajectory",
            "write_lammps_data", "write_lammps_dump",

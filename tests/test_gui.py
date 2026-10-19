@@ -1896,6 +1896,30 @@ def test_main_window_follows_a_growing_dump(app, lammps_dir, tmp_path):
     w.close()
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_main_window_reports_an_unfinished_calculation(app, vasp_dir, tmp_path):
+    import warnings
+
+    from ewald import import_file
+    from ewald.gui.app import MainWindow
+
+    xml = (vasp_dir / "vasprun.xml").read_text()
+    path = tmp_path / "vasprun.xml"
+    path.write_text(xml[: xml.rindex("<calculation>") + 20])  # VASP running step 2
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        w = MainWindow(import_file(path))
+    w.live_reload.timer.stop()
+    log = w.log.toPlainText()
+    assert "WARNING Calculation incomplete: vasprun.xml: 1 ionic step(s) read" in log
+    assert "DOS and bands not written yet" in w.statusBar().currentMessage()
+    path.write_text(xml)
+    w.live_reload.poll(wait=True)
+    assert w.timeline.slider.maximum() == 1
+    assert "Calculation finished" in w.log.toPlainText()
+    w.close()
+
+
 def test_cell_panel_boundary_range(app):
     from ewald.gui.pipeline_panel import PipelinePanel
     from ewald.gui.style import ViewStyle

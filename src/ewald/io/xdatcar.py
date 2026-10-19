@@ -7,12 +7,11 @@ compressed files and a truncated last configuration from a running/killed job.
 from __future__ import annotations
 
 import os
-import warnings
 
 import numpy as np
 
 from ..data import Cell, DataCollection
-from .base import FrameReader, file_size, floats, head_lines, open_binary, strip_compression
+from .base import FrameReader, IncompleteFileError, file_size, floats, head_lines, open_binary, strip_compression
 
 
 def is_xdatcar(path) -> bool:
@@ -45,10 +44,13 @@ class XdatcarReader(FrameReader):
         self.path = str(path)
         self._size = file_size(self.path)
         self._frames, truncated = self._scan(0, 0, None)  # (header offset, configuration-line offset)
-        if truncated:
-            warnings.warn(f"{path}: last configuration is incomplete and was skipped", stacklevel=2)
         if not self._frames:
+            if truncated:
+                raise IncompleteFileError(f"{path}: no complete configuration yet (VASP still running "
+                                          f"or stopped before the first MD step was written)")
             raise ValueError(f"{path}: no configurations found")
+        if truncated:
+            self._set_incomplete(f"{len(self._frames)} configuration(s) read, the partial last one skipped")
         self._header_cache: dict[int, tuple] = {}
 
     def _scan(self, start, header, natoms) -> tuple[list[tuple[int, int]], bool]:
@@ -94,18 +96,22 @@ class XdatcarReader(FrameReader):
             return None
         if size < self._size:  # rewritten (a new run): index from scratch
             self._size = size
-            frames, _ = self._scan(0, 0, None)
+            frames, truncated = self._scan(0, 0, None)
             if not frames:
                 return None
             self._frames, self._header_cache = frames, {}
+            self._set_incomplete(f"{len(frames)} configuration(s) read, the partial last one skipped"
+                                 if truncated else None, warn=False)
             return 0
         self._size = size
         header, cfg = self._frames[-1]
         natoms = sum(self._read_header(header)[3])
-        frames, _ = self._scan(cfg, header, natoms)
+        frames, truncated = self._scan(cfg, header, natoms)
         first = len(self._frames) - 1  # its last line may have been half written
         if frames:
             self._frames = self._frames[:-1] + frames
+        self._set_incomplete(f"{len(self._frames)} configuration(s) read, the partial last one skipped"
+                             if truncated else None, warn=False)
         return first
 
     def _read_header(self, offset):
