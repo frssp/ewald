@@ -60,8 +60,9 @@ OPTIONS = (
     Option("viewport.background", "#14161A", "Background", kind="color"),
     Option("viewport.projection", "ortho", "Projection", choices=("ortho", "persp")),
     Option("viewport.initial_view", "iso", "Initial view direction", choices=("iso", "x", "y", "z", "front")),
-    Option("viewport.style_preset", "Space-filling", "Default style",
-           choices=("Space-filling", "Ball & stick", "Points")),
+    Option("viewport.style_preset", "Ball & stick", "Default style",
+           "Style of a newly opened structure. Simple (ASE) draws flat outlined discs on white, like ASE's GUI.",
+           choices=("Ball & stick", "Space-filling", "Simple (ASE)", "Points")),
     Option("viewport.rotation_step", 15.0, "Step rotation", "Degrees per click of the rotate buttons (VESTA).",
            minimum=0.5, maximum=90),
     Option("viewport.show_axes", True, "Show axes tripod"),
@@ -103,6 +104,9 @@ OPTIONS = (
     Option("bonds.length_factor", 1.15, "Bond length factor", "Max bond = factor × (r_A + r_B), like VESTA.",
            minimum=0.5, maximum=2),
     Option("bonds.radius", 0.15, "Bond radius", "Stick radius in ball-and-stick views.", minimum=0.01, maximum=1),
+    Option("bonds.auto_limit", 100_000, "Automatic bonds up to",
+           "Opening a structure with more atoms turns bonds off (search and sticks get slow); "
+           "turn them on under Bonds.", minimum=0, maximum=100_000_000),
 
     Option("render.renderer", "raytrace", "Default renderer", "Vector writes SVG/PDF/EPS with editable text.",
            choices=("raytrace", "opengl", "vector")),

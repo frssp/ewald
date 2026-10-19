@@ -219,7 +219,7 @@ class Viewport(QtWidgets.QWidget):
         p = self.plotter
         self._refine_timer.stop()
         self._lod_cloud = None
-        stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:", "visual:"))]
+        stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:", "visual:", "bonds:"))]
         for name in ("atoms", "atoms:glass", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay", *stale):
             p.remove_actor(name, render=False)
         if p.scalar_bars:
@@ -238,7 +238,8 @@ class Viewport(QtWidgets.QWidget):
         kw["arrow_resolution"] = self.arrow_resolution
         scene = self.data
         if coarse:  # impostors only, no bonds: cheap to build and to draw
-            kw.update(atom_style="impostor", only_visible=self._coarse_mask(), bond_pairs=None)
+            kw.update(atom_style="flat" if kw["atom_style"] == "flat" else "impostor",
+                      only_visible=self._coarse_mask(), bond_pairs=None)
             if scene.bonds is not None or scene.vectors:
                 scene = scene.copy()
                 scene.bonds, scene.vectors = None, {}
@@ -258,10 +259,10 @@ class Viewport(QtWidgets.QWidget):
                        color="#E7E9EC" if dark else "black", render=False)
         if self._first:
             setup_camera(p, self.data, self.initial_view, self.ortho)
-            if self.show_axes and not getattr(self, "_axes", False):
-                p.add_axes(color="#E7E9EC" if dark else "black", line_width=2)
-                self._axes = True
             self._first = False
+        if self.show_axes and getattr(self, "_axes", None) != dark:  # new, or the background flipped
+            p.add_axes(color="#E7E9EC" if dark else "black", line_width=2)
+            self._axes = dark
         self._draw_picks()
         self.coarse = coarse
         if coarse:
@@ -286,7 +287,7 @@ class Viewport(QtWidgets.QWidget):
             self.redraw()
             return
         p.remove_actor("atoms_lod", render=False)  # rotation only swapped the atoms
-        for name in ("atoms", "bonds"):
+        for name in ("atoms", "bonds", "bonds:outline"):
             if name in p.actors:
                 p.actors[name].SetVisibility(True)
         self.coarse = False
@@ -302,8 +303,9 @@ class Viewport(QtWidgets.QWidget):
             extra = {k: kw[k] for k in (*_RADIUS_KEYS, "type_colors") if k in kw}
             self._lod_cloud, _ = atom_cloud(self.data, radius_scale=kw["radius_scale"],
                                             only_visible=self._coarse_mask(), **extra)
-        add_atoms(p, self._lod_cloud, atom_style="impostor", name="atoms_lod")
-        for name in ("atoms", "atoms:glass", "bonds"):
+        add_atoms(p, self._lod_cloud, atom_style="flat" if self.style.atom_style == "flat" else "impostor",
+                  name="atoms_lod")
+        for name in ("atoms", "atoms:glass", "bonds", "bonds:outline"):
             if name in p.actors:
                 p.actors[name].SetVisibility(False)
         self.coarse = True
@@ -440,7 +442,7 @@ class Viewport(QtWidgets.QWidget):
 
     def set_axes_visible(self, on):
         self.show_axes = on
-        if getattr(self, "_axes", False):
+        if getattr(self, "_axes", None) is not None:
             (self.plotter.show_axes if on else self.plotter.hide_axes)()
             self.render()
 
@@ -449,7 +451,7 @@ class Viewport(QtWidgets.QWidget):
         self.render()
 
     def _preset(self, name):
-        self.style.apply_preset(name)
+        self.style.apply_preset(name, self.data.types if self.data is not None else ())
         if self.style.bonds_enabled and self.data is not None:
             self.style.ensure_bond_pairs(self.data.types)
         self.styleChanged.emit()
