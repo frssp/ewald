@@ -126,6 +126,24 @@ data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # Å²/ps
 data.tables["coordination-rdf[average]"]
 ```
 
+## Volumetric data
+
+These work on the `VoxelGrid`s in `data.grids` that the CHGCAR, LOCPOT, ELFCAR and cube
+readers produce (see the README's volumetric section).
+
+- `CreateIsosurface(isolevel, property="Charge Density", signed=False, ...)`: VESTA-style
+  isosurface, with a second surface at `-isolevel` when `signed=True`.
+- `GridSlice(miller=(0, 0, 1), distance=0.5, ...)`: colour-mapped cross-section on a lattice
+  plane, linear or log scale.
+- `GridDifference(subtract=[...])`: subtract the grids of other files, for example the
+  charge-density difference rho_AB - rho_A - rho_B.
+
+```python
+pipe = import_file("AB/CHGCAR")
+pipe.modifiers.append(GridDifference(["A/CHGCAR", "B/CHGCAR"]))
+pipe.modifiers.append(CreateIsosurface(0.002, signed=True))
+```
+
 ## Python
 
 `PythonScript(source)` runs `modify(frame, data)` from code kept as text, which the GUI edits

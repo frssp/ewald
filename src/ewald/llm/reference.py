@@ -21,6 +21,7 @@ from ewald.modifiers import CoordinationAnalysis, ExpressionSelection, DeleteSel
 
 pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, cif, ...
 # pipe = import_file("dump.*.lammpstrj", type_map={1: "Cu", 2: "Zr"})   # LAMMPS numeric types -> elements
+# pipe = import_file("run.npz", format="npz-trajectory")  # format= also names reader plugins (`ewald plugins`)
 pipe.modifiers.append(CoordinationAnalysis(cutoff=3.0))
 pipe.modifiers.append(ExpressionSelection("Coordination < 12"))
 
