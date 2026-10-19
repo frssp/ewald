@@ -7,6 +7,15 @@ from ase.build import bulk
 from ewald import DataCollection
 
 
+def pytest_addoption(parser):
+    parser.addoption("--update-references", action="store_true",
+                     help="rewrite the reference images in tests/data/visual/ instead of comparing (test_visual.py)")
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "visual: renders compared with reference images (tests/test_visual.py)")
+
+
 @pytest.fixture
 def cu_fcc():
     atoms = bulk("Cu", "fcc", a=3.615, cubic=True).repeat((4, 4, 4))
