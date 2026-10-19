@@ -444,6 +444,22 @@ data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # A^2/ps
 data.tables["coordination-rdf[average]"]                               # time-averaged g(r)
 ```
 
+### Ion transport
+
+`IonicConductivity` (collective charge MSD: conductivity in S/cm, Nernst-Einstein
+conductivity and Haven ratio; charges given, from the `Charge` property or guessed
+oxidation states), `VanHoveCorrelation` (self and distinct G(r, t)),
+`SelfIntermediateScattering` (F_s(q, t) and its relaxation time), `NonGaussianParameter`
+(α₂(t)) and `SiteHopping` (site assignment, hops, residence times, site occupancy, jump
+diffusion coefficient) are trajectory modifiers like the ones above.
+
+```python
+pipe.modifiers.append(IonicConductivity(temperature=600, time_per_frame=0.002,
+                                        charges={"Li": 1, "P": 5, "S": -2, "Cl": -1}))
+data = pipe.compute(0)
+data.attributes["IonicConductivity.conductivity"], data.attributes["IonicConductivity.haven_ratio"]
+```
+
 ### Nudged elastic band
 
 A VASP NEB folder (`00 .. NN`) or a LAMMPS `neb` run folder opens with one frame per image,

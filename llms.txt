@@ -98,6 +98,12 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
   `GenerateTrajectoryLines`) read every frame of `start:stop:step` through the modifiers above them and cache the
   result, so e.g. `CoordinationAnalysis(3.0)` then `TimeAveraging("table:coordination-rdf")` gives the
   time-averaged g(r) in `tables["coordination-rdf[average]"]`.
+- Ion transport modifiers work the same way: `IonicConductivity(temperature, time_per_frame, charges)` (collective
+  charge MSD -> `IonicConductivity.conductivity` in S/cm, `.nernst_einstein_conductivity`, `.haven_ratio`; charges
+  from the dict, the 'Charge' property or guessed oxidation states), `VanHoveCorrelation(times, part)`,
+  `SelfIntermediateScattering(q)` (F_s(q,t), `.relaxation_time`), `NonGaussianParameter()` (alpha_2) and
+  `SiteHopping(sites, site_radius)` (hops, residence times, jump D). Put `SelectType("Li")` above them with
+  `only_selected=True` to analyze one species; `time_per_frame` is in ps.
 - Volumetric files (`CHGCAR`, `CHG`, `PARCHG`, `AECCAR*`, `LOCPOT`, `ELFCAR`, `*.cube`): `import_file` gives the atoms
   plus `data.grids[name]` (a `VoxelGrid`: `.shape`, `.domain` (a Cell), `grid["Charge Density"]` (e/A^3, already divided
   by the cell volume), `"Magnetization"`, `"Spin Up"`/`"Spin Down"`, `"Potential"`, `"ELF"`, cube `"Value"`,
@@ -173,3 +179,8 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 - `ElasticStrain(input_crystal_structure: str = 'FCC', lattice_constant: float = 1.0, axial_ratio: float = 1.632993161855452, calculate_strain_tensors: bool = True, calculate_deformation_gradients: bool = False, push_strain_tensors_forward: bool = True, color_by_type: bool = True, only_selected: bool = False, num_threads: int = 0)`: Atomic-level elastic strain in a crystal (OVITO's Elastic strain calculation).
 - `GrainSegmentation(algorithm: str = 'auto', merging_threshold: float = 0.0, min_grain_size: int = 100, handle_stacking_faults: bool = True, orphan_adoption: bool = True, color_particles: bool = True, output_bonds: bool = False)`: Decompose a polycrystal into grains from PTM orientations (OVITO's Grain segmentation).
 - `IdentifyFCCPlanarFaults(color_other=(1.0, 0.4, 0.4), color_isf=(0.9, 0.7, 0.2), color_twin=(0.4, 0.4, 1.0), color_multi=(0.0, 1.0, 0.9))`: Classify hcp-like atoms in fcc crystals by planar fault (OVITO's Identify fcc planar faults).
+- `IonicConductivity(temperature: float = 300.0, time_per_frame: float = 0.0, charges: dict | None = None, start: int = 0, stop: int | None = None, step: int = 1, fit_range: tuple = (0.2, 0.8), unwrapped: bool = False, subtract_drift: bool = True, only_selected: bool = False)`: Ionic conductivity from the collective charge displacement, its Nernst-Einstein estimate and the Haven ratio.
+- `VanHoveCorrelation(times: tuple | None = None, part: str = 'self', r_max: float = 6.0, nbins: int = 120, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, max_origins: int = 100, unwrapped: bool = False, only_selected: bool = True)`: Van Hove correlation function at a few times: the self part (how far one ion gets, with peaks at the hop distances) and the distinct part (where the other ions are).
+- `SelfIntermediateScattering(q=None, directions: int = 16, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, unwrapped: bool = False, only_selected: bool = True)`: Self intermediate scattering function F_s(q, t) and its relaxation time.
+- `NonGaussianParameter(time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, max_origins: int = 200, unwrapped: bool = False, only_selected: bool = True)`: Non-Gaussian parameter alpha_2(t) = 3 <dr^4> / (5 <dr^2>^2) - 1 of the displacements.
+- `SiteHopping(sites=None, site_type: str = '', site_radius: float = 0.0, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, only_selected: bool = True, nbins: int = 50)`: Site occupancy, hops between sites and residence times of mobile ions.
