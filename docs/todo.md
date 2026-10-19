@@ -30,6 +30,11 @@ GUI
 - Plugins side bar: updates (version compare against catalogs), disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
+- Remotes side bar: list folders and connect in a background thread (now the GUI waits, with
+  a busy cursor), drag a remote file onto the notebook, mirror a run folder to a local folder
+  (rsync-like, for offline analysis), remote data links in the `.ewd` manifest (remote paths are
+  skipped now; the code keeps `name:/path`), a remote terminal or `squeue` view, profile import
+  from PuTTY/MobaXterm/Termius, and "remember this password" on the login prompt.
 - Spectra, Figure and Forge views from the redesign mock-ups, built as view cells
   rather than separate panels.
 - Quad views (top, front, left, perspective), as in OVITO.
@@ -233,7 +238,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - CUDA paths on a real NVIDIA GPU: CuPy kernels, neighbor lists, cluster analysis, the
   `--device cuda` GUI switch. CI and the cloud container have no GPU.
 - SSH remote files against a real HPC login node (ProxyJump, OTP, large dumps); tests use an
-  in-process SFTP server.
+  in-process SFTP server. Saved remote computers with a real OS keychain (macOS Keychain,
+  Windows Credential Manager, GNOME Keyring) and a passphrase-protected key from a real agent.
 - Live reload on a real running LAMMPS/VASP job (local and over SSH), where the writer flushes
   in arbitrary pieces; tests grow fixture files byte by byte.
 - Claude features with a real API key: `ewald ask` (also `--select`), the GUI Ask Claude tab,
