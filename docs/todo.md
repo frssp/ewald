@@ -8,6 +8,10 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
+- More paper datasets (`examples.fetch`): the argyrodite anion-disorder AIMD set (Morgan 2021, MSD
+  against disorder), TiOF2 structures (Morgan 2024: partial RDFs, Ti-X bond lengths, octahedra)
+  and PLUMED-NEST metadynamics eggs (ammonia borane, alanine dipeptide) with their FES.
+
 ## Next
 
 GUI
@@ -145,8 +149,14 @@ Formats
 - Large-frame reading against OVITO (docs/developer/readers.md): a 1M-atom dump frame takes
   0.45 s and 367 MB in ewald vs 0.23 s and 188 MB in OVITO (per-column copies, id sort); a
   1M-atom extxyz frame 0.85 s vs 0.33 s (ASE `Atoms` assembly).
-- LAMMPS logs written with `thermo_style multi` or `thermo_modify line yaml` (only one-line
-  thermo output is read now).
+- LAMMPS logs written with `thermo_modify line yaml`, and logs whose `thermo_style` has no `step`
+  column (only `elapsed`/`time`); one-line and `multi` output are read.
+- OUTCAR with interleaved output of several runs (pymatgen's `OUTCAR.electrostaticerror`: ionic
+  blocks without their `Iteration` line) is read as fewer steps; ASE fails on it too.
+- XDATCAR without `Direct configuration=` lines (frames separated by blank lines, pymatgen's
+  `XDATCAR_4`).
+- Hybrid band runs in vasprun.xml: breaks between lines of the zero-weight path are not found
+  (no labels there; vaspout.h5 has them).
 
 Figures
 
@@ -190,8 +200,12 @@ Plugins and Claude
 
 Docs
 
-- Example files: add real (not synthetic) VASP OUTCAR/vasprun.xml and LAMMPS log examples, and
-  list the examples on an empty viewport at first start.
+- Example files: list the examples (and the downloadable paper datasets) on an empty viewport at
+  first start; a GUI entry for `examples.fetch` (File › Open example › From a paper).
+- Paper reproductions: StructureFactor `method="rdf"` holds every pair inside the cutoff at once,
+  so 100,000 atoms with a 30 A cutoff run out of memory (the a-Si script uses 20 A); histogram in
+  chunks. kinisi's covariance-weighted D for the LLZO runs is 0.6x a straight-line fit of the same
+  MSD; find out why.
 - Host the manual (the repository is private; CI uploads the built site as the `docs-site`
   artifact).
 
@@ -231,11 +245,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - Installing without a compiler on real Windows (MSVC missing raises in `build_ext.run`; tested
   here with `CXX=/bin/false` on Linux). pip shows the "not built" warning only with `-v`.
 - `DislocationAnalysis` and `OvitoModifier` with the `ovito` package installed.
-- The native OUTCAR and vasprun.xml readers on real VASP 5/6 output (relaxations with ISIF=3,
-  non-collinear and MD runs, multi-GB files); the test fixtures are hand-written in VASP 6.4
-  format and checked against ASE.
-- NEB folders from real VTST runs (the VASP fixture is an EMT band written in VASP layout;
-  the LAMMPS fixture is a real `neb` run).
+- The native OUTCAR and vasprun.xml readers on multi-GB real output. Checked on the real
+  pymatgen test files (VASP 5.2-6.3: relaxations, MD, NEB, SOC, DFPT, GW/BSE, HSE, LVEL,
+  KPOINTS_OPT; 39 OUTCARs, 52 vasprun.xml) against ASE; a few of them are in tests/data/real.
+- NEB folders from more real VTST runs (pymatgen's `neb1` checked: barrier and energies as
+  pymatgen's NEBAnalysis; the VASP fixture is an EMT band written in VASP layout; the LAMMPS
+  fixture is a real `neb` run).
 - DOS, PDOS and band reading on real VASP output (ISPIN = 2, LORBIT = 10/11/12, non-collinear,
   HSE band runs, KPOINTS_OPT); the fixtures are synthetic, checked against pymatgen (vasprun.xml)
   and py4vasp (vaspout.h5).

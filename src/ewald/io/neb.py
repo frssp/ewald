@@ -5,7 +5,8 @@ Three layouts are recognized:
 - a VASP (VTST) NEB folder with numbered image folders ``00``, ``01``, ..., ``NN``. Each
   image is read from its OUTCAR (last ionic step: positions, forces, energies) when there
   is one, else from CONTCAR, else from POSCAR; endpoints often have only a POSCAR, and
-  their energy is then unknown unless ``energies=`` gives it.
+  their energy is then unknown unless ``energies=`` gives it. An endpoint with both an OUTCAR
+  and a POSCAR takes its atoms from the POSCAR and its energy from the OUTCAR.
 - a set of files with one file per image, given as a wildcard (``dump.neb.*``, LAMMPS
   ``neb`` with one dump per replica): the last frame of each file is the image, files in
   natural order (``dump.neb.10`` after ``dump.neb.9``). The energies come from the NEB
@@ -128,8 +129,15 @@ class NebReader(FrameReader):
         self.frame = frame
         dirs = vasp_neb_images(self.path)
         lammps, found_log = lammps_neb_images(self.path) if not dirs else ([], None)
+        # an endpoint's OUTCAR is often a separate relaxation (atoms in another order); VASP's
+        # NEB uses its POSCAR, so that gives the structure and the OUTCAR the energy (as pymatgen)
+        self._endpoint_poscars: dict[int, str] = {}
         if dirs:
             self.files = [_image_file(d) for d in dirs]
+            for i in (0, len(dirs) - 1):
+                poscar = os.path.join(dirs[i], "POSCAR")
+                if os.path.basename(self.files[i]).startswith("OUTCAR") and os.path.isfile(poscar):
+                    self._endpoint_poscars[i] = poscar
         elif lammps:
             self.files, log = lammps, log or found_log
         else:
@@ -167,9 +175,24 @@ class NebReader(FrameReader):
             r = self._readers[i] = open_reader(self.files[i], **self.kwargs)
         return r
 
+    def _endpoint(self, index: int, outcar: DataCollection) -> DataCollection:
+        """The POSCAR of endpoint ``index`` with the energies of its OUTCAR, and the OUTCAR's
+        forces too when its atoms are the POSCAR's."""
+        from . import open_reader
+
+        data = open_reader(self._endpoint_poscars[index]).read(0)
+        if data.count == outcar.count:
+            frac = data.cell.to_fractional(np.asarray(outcar.positions)) - data.cell.to_fractional(np.asarray(data.positions))
+            if "Force" in outcar and np.abs((frac - np.round(frac)) @ data.cell.matrix).max() < 1e-3:
+                data.particles["Force"] = outcar["Force"]
+        data.attributes.update({k: v for k, v in outcar.attributes.items() if k != "Timestep"})
+        return data
+
     def read(self, index: int) -> DataCollection:
         r = self._reader(index)
         data = r.read(self.frame % len(r))
+        if index in self._endpoint_poscars:
+            data = self._endpoint(index, data)
         data.attributes["Timestep"] = index
         data.attributes["NEB.Source"] = self.files[index]
         if self.energies is not None:

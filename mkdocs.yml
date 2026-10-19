@@ -52,6 +52,7 @@ nav:
   - User manual:
       - Install: user/install.md
       - Quick start: user/quickstart.md
+      - Reproducing papers: user/papers.md
       - Desktop GUI: user/gui.md
       - Notebooks: user/notebooks.md
       - File formats: user/formats.md
