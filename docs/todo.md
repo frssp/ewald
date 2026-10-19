@@ -8,6 +8,10 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
+- More paper datasets (`examples.fetch`): the argyrodite anion-disorder AIMD set (Morgan 2021, MSD
+  against disorder), TiOF2 structures (Morgan 2024: partial RDFs, Ti-X bond lengths, octahedra)
+  and PLUMED-NEST metadynamics eggs (ammonia borane, alanine dipeptide) with their FES.
+
 ## Next
 
 GUI
@@ -177,8 +181,12 @@ Plugins and Claude
 
 Docs
 
-- Example files: add real (not synthetic) VASP OUTCAR/vasprun.xml and LAMMPS log examples, and
-  list the examples on an empty viewport at first start.
+- Example files: list the examples (and the downloadable paper datasets) on an empty viewport at
+  first start; a GUI entry for `examples.fetch` (File › Open example › From a paper).
+- Paper reproductions: StructureFactor `method="rdf"` holds every pair inside the cutoff at once,
+  so 100,000 atoms with a 30 A cutoff run out of memory (the a-Si script uses 20 A); histogram in
+  chunks. kinisi's covariance-weighted D for the LLZO runs is 0.6x a straight-line fit of the same
+  MSD; find out why.
 - Host the manual (the repository is private; CI uploads the built site as the `docs-site`
   artifact).
 
