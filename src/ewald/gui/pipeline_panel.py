@@ -15,6 +15,19 @@ MODIFIER_MENU = {
     "Analysis": {
         "Coordination analysis / RDF": lambda: mods.CoordinationAnalysis(cutoff=3.2),
         "Displacement vectors": lambda: mods.CalculateDisplacements(0),
+        "Histogram": lambda: mods.Histogram("Position.Z"),
+        "Spatial binning (profiles, density maps)": lambda: mods.SpatialBinning("", "sumvol", "Z", 50),
+        "Reduce property (mean, sum, ...)": lambda: mods.ReduceProperty("Position.Z"),
+        "Steinhardt order parameters (q4, q6)": mods.SteinhardtOrderParameters,
+    },
+    "Structure identification": {
+        "Common neighbor analysis": mods.CommonNeighborAnalysis,
+        "Polyhedral template matching": mods.PolyhedralTemplateMatching,
+        "Ackland-Jones bond angles": mods.AcklandJones,
+        "Identify diamond structure": mods.IdentifyDiamond,
+        "Chill+ (ice, hydrate)": mods.ChillPlus,
+        "Centrosymmetry": mods.CentroSymmetry,
+        "Atomic strain": mods.AtomicStrain,
     },
     "Trajectory": {
         "Mean squared displacement / diffusion": mods.MeanSquaredDisplacement,
@@ -27,12 +40,21 @@ MODIFIER_MENU = {
         "Create bonds": lambda: mods.CreateBonds(mode="covalent"),
         "Edit bonds (add / delete)": mods.EditBonds,
         "Coordination polyhedra": mods.CoordinationPolyhedra,
+        "Bond angle distribution": mods.BondAngleDistribution,
+        "Bond length distribution": mods.BondLengthDistribution,
+        "Ring statistics": mods.FindRings,
     },
     "Volume (CHGCAR, LOCPOT, cube)": {
         "Isosurface": mods.CreateIsosurface,
         "Isosurface, signed (density difference / spin)": lambda: mods.CreateIsosurface(signed=True),
         "Slice plane (2D map)": mods.GridSlice,
         "Charge density difference": lambda: mods.GridDifference(["CHGCAR_A", "CHGCAR_B"]),
+    },
+    "Vectors (arrows)": {
+        "Force / displacement / velocity arrows": mods.VectorVis,
+        "Magnetic moment arrows": lambda: mods.VectorVis("Magnetic Moment", scaling=0.5, alignment="center",
+                                                         color=(0.85, 0.15, 0.15)),
+        "Arrows colored by length": lambda: mods.VectorVis(color_mapping_property="Magnitude"),
     },
     "Coloring": {
         "Color coding": lambda: mods.ColorCoding("Position.Z"),

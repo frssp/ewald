@@ -159,6 +159,25 @@ def test_timeline(app):
     assert seen == [3, 4, 0]
 
 
+def test_plots_thermo_series_marker_follows_frame(app, lammps_dir):
+    from ewald import import_file
+    from ewald.gui.plots import PlotsPanel
+
+    pipe = import_file(lammps_dir / "thermo" / "dump.lammpstrj")
+    panel = PlotsPanel()
+    panel.set_data(pipe.compute(0))
+    assert panel.table.currentText() == "Thermo"
+    assert panel.column.currentText() == "Temp"  # one column at a time for a time series
+    ax = panel.figure.axes[0]
+    assert ax.get_xlabel() == "Step" and len(ax.lines) == 2  # Temp + frame marker
+    panel.column.setCurrentText("Volume")  # only printed in run 2: NaNs dropped
+    np.testing.assert_array_equal(panel.figure.axes[0].lines[0].get_xdata(), [20, 25, 30, 35, 40])
+    ax = panel.figure.axes[0]
+    panel.set_data(pipe.compute(3))
+    assert panel.figure.axes[0] is ax  # frame change moves the marker, no full redraw
+    assert list(panel._marker.get_xdata()) == [30, 30]
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_main_window_smoke(app, pipe, tmp_path):
     from ewald.gui.app import MainWindow
@@ -459,6 +478,30 @@ def test_viewport_draws_and_clears_surfaces(app):
     v.close()
 
 
+def test_viewport_draws_vector_arrows(app):
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.params import ParameterForm
+    from ewald.gui.pipeline_panel import MODIFIER_MENU
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    menu = MODIFIER_MENU["Vectors (arrows)"]
+    assert all(isinstance(f(), mods.VectorVis) for f in menu.values())
+    data = DataCollection([[1, 1, 1], [3, 3, 3]], ["Fe", "Fe"], Cell(np.eye(3) * 4))
+    data.particles["Force"] = np.array([[0, 0, 1.0], [1.0, 0, 0]])
+    mod = mods.VectorVis()
+    form = ParameterForm(mod)
+    form.editors["alignment"][0].setCurrentText("center")  # choices, not free text
+    form.apply()
+    assert mod.alignment == "center"
+    v = Viewport(ViewStyle())
+    v.arrow_resolution = 5
+    v.set_data(Pipeline(StaticSource(data), [mod]).compute())
+    actor = v.plotter.actors["vectors:Force"]
+    assert actor.GetMapper().GetInput().GetNumberOfPoints() == 2 * (6 * 5 + 2)
+    v.set_data(data)
+    assert not any(str(k).startswith("vectors:") for k in v.plotter.actors)
+    v.close()
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_interactive_detail_coarse_then_refine(app, pipe):
     from ewald import settings

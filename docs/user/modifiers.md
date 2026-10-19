@@ -47,6 +47,36 @@ ColorCoding("Position.Z - CellOrigin.Z", cmap="viridis")
 colormap and stores the range, so the renderer can draw a legend. `AssignColor(color)` colors
 the selected particles.
 
+## Vector arrows
+
+`VectorVis(property, scaling, width, alignment, ...)` draws a per-particle vector property as
+arrows: "Force", "Displacement", "Velocity", "Magnetic Moment" or any N x 3 property (an empty
+`property` takes the first of these that exists). A scalar property, such as a collinear
+magnetic moment, points along z, so spin up and down read as up and down arrows. The options
+follow OVITO's vector visual element:
+
+| Option | Meaning |
+|---|---|
+| `scaling` | Å per unit of the property |
+| `width` | shaft diameter in Å; the head is 2.5× as wide and 4.5× the shaft radius long, shrunk for short arrows |
+| `alignment` | `"base"` (arrow starts at the atom), `"center"` or `"head"` (arrow ends at the atom) |
+| `reverse`, `offset` | flip the arrows; shift them by a vector in Å |
+| `color` | one color for every arrow |
+| `color_mapping_property`, `cmap`, `color_mapping_interval` | color by `"Magnitude"` (the arrow's length), another property or an expression; the range is shown as the color legend unless a `ColorCoding` already owns it |
+| `shading`, `transparency` | `"normal"` (lit 3D) or `"flat"` (solid color); 0 to 1 |
+| `only_selected`, `min_length` | arrows of selected particles only; skip arrows shorter than this (Å) |
+
+The modifier stores a style in `data.vectors[property]`; arrows are built from the final
+particles when the frame is drawn, so `Slice`, `DeleteSelected` or `Replicate` after it keep
+every arrow on its atom. Use one `VectorVis` per property. All three renderers draw them, and
+the vector renderer splits each arrow where it passes its atom, so arrows run through atoms in
+SVG/PDF output too.
+
+```python
+pipe.modifiers.append(VectorVis("Force", scaling=2.0, color_mapping_property="Magnitude"))
+pipe.modifiers.append(VectorVis("Magnetic Moment", scaling=0.5, alignment="center", color="crimson"))
+```
+
 ## Transformations
 
 `AffineTransformation(matrix)` applies a 3×3 or 3×4 matrix to particles and optionally the
@@ -77,6 +107,57 @@ data files with a Bonds section fill `data.bonds` directly.
 ```python
 pipe.modifiers.append(CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)]))
 pipe.modifiers.append(CoordinationPolyhedra(center_types=["Ti"]))
+```
+
+## Histograms, binning and reductions
+
+These match OVITO 3.16's Histogram, Spatial Binning and Reduce Property modifiers value for
+value. A property is named as in expressions' dotted form: `"Mass"`, `"Position.Z"`,
+`"Color.R"`, or a bond property such as `"Topology.A"` with `operate_on="bonds"`.
+
+- `Histogram(property, bin_count, ...)`: `tables["histogram[<property>]"]`, as counts, relative
+  frequency or probability density (`normalization`), over the value range or a fixed one;
+  `select_elements=True` selects the elements in a value window.
+- `SpatialBinning(property, reduction_operation, direction, bin_count)`: mean, sum, sum per
+  volume, min or max of a property in bins along one, two or three cell vectors, for density
+  and temperature profiles or 2D maps. 1D results go to `tables["binning"]` (with
+  `first_derivative=True` for gradients), 2D and 3D results to `data.grids["binning"]`, where
+  `GridSlice` and `CreateIsosurface` can show them. `property=""` counts particles; with
+  `"sumvol"` that is the number density.
+- `ReduceProperty(property, reduction_operation)`: min, max, sum, nonzero count, mean, median,
+  variance, standard deviation, argmin or argmax as the attribute
+  `ReduceProperty.particles.Mean.Position.Z` (one per component of a vector property).
+
+```python
+pipe.modifiers.append(SpatialBinning("Velocity.X", "mean", direction="Z", bin_count=40))
+pipe.modifiers.append(SpatialBinning("", "sumvol", direction="XY", bin_count=(64, 64)))
+pipe.modifiers.append(ReduceProperty("Potential Energy", "sum"))
+```
+
+## Bond networks and local order
+
+- `BondAngleDistribution(bins, cosine_mode, partition)` and
+  `BondLengthDistribution(bins, length_cutoff, partition)`: histograms of the angles between
+  bonds at each atom and of bond lengths, as `tables["bond-angle-distr"]` and
+  `tables["bond-length-distr"]`, identical to OVITO's. `partition` splits them by particle type
+  ("Si-O-Si", the middle type at the vertex), particle selection, bond type or bond selection.
+- `FindRings(minimum_ring_size, maximum_ring_size)`: shortest-path ring statistics (Franzblau)
+  of the bond network, for amorphous networks, glasses and zeolites:
+  `tables["ring-size-histogram"]`, the atoms of every ring in `tables["6-rings"]` and so on,
+  and the per-atom 'Ring Count'. Every ring OVITO's Find Rings modifier reports is among
+  them; OVITO drops some of the largest rings that differ from another ring of the same size
+  only by a smaller ring.
+- `SteinhardtOrderParameters(degrees, num_neighbors, cutoff, average, wl)`: bond-orientational
+  order q_l and w_l per atom ('Steinhardt Q6', ...), with the neighbor-averaged form of Lechner
+  and Dellago for solid/liquid separation. It runs on the pipeline device and matches freud.
+
+The bond and ring modifiers need bonds upstream (`CreateBonds`, or a file with bonds).
+
+```python
+pipe.modifiers.append(CreateBonds(cutoff=2.85))
+pipe.modifiers.append(BondAngleDistribution(partition="particle_type"))
+pipe.modifiers.append(FindRings(3, 10))
+pipe.modifiers.append(SteinhardtOrderParameters((4, 6), average=True))
 ```
 
 ## Volumetric data

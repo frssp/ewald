@@ -158,7 +158,8 @@ Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
 | LAMMPS data file | native | styles atomic, charge, bond/angle/molecular, full, sphere, dipole (from `Atoms # style`, inferred, or `atom_style=`); type names from `Atom Type Labels` or `Masses` comments; Velocities, image flags, Bonds (`data.bonds`); general triclinic `avec bvec cvec` |
 | VASP XDATCAR | native, lazy | fixed and variable cell (NpT), VASP 6.4 `Si/hash` species labels, partial last frame skipped |
 | VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics (`Selective Dynamics`, True = free), CONTCAR velocities (`Velocity` in Å/fs) |
-| VASP OUTCAR, vasprun.xml | ASE | all ionic steps with `Energy`, `Force`, `Stress` |
+| VASP OUTCAR, vasprun.xml | native, lazy | all ionic steps with `Force`, `Magnetic Moment` (OUTCAR), `Energy`, `Free Energy`, `Stress`, `Pressure`, MD `Temperature` |
+| log.lammps, OSZICAR | native | thermo columns as frame attributes and `data.tables["Thermo"]`, matched by step; found next to a dump/XDATCAR or `thermo=` |
 | XYZ / extended XYZ | native, lazy | frames indexed by atom counts, each parsed by ASE's extxyz parser (`Lattice=`, `Properties=`, forces, energy, info) |
 | XCrySDen XSF/AXSF | native, lazy | `ANIMSTEPS`, forces, `DATAGRID_3D` grids in `data.grids["xsf"]` |
 | H5MD | native, lazy (`h5py`) | LAMMPS `dump h5md`, MDAnalysis; species names, box, velocities, forces, observables |
@@ -293,8 +294,33 @@ names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
 `DeleteSelected`, `Slice`, `AssignColor`, `ColorCoding`, `ComputeProperty`,
 `CoordinationAnalysis` (+ total/partial RDF), `ClusterAnalysis` (OVITO-compatible: size, COM, gyration tensor, unwrap),
 `CalculateDisplacements` (+ MSD),
-`Replicate`, `WrapAtoms`, `AffineTransformation`, and any Python function
+`Replicate`, `WrapAtoms`, `AffineTransformation`, `VectorVis` (arrows), and any Python function
 `f(frame, data)`.
+
+OVITO Pro-style statistics, checked against OVITO 3.16 bin for bin: `Histogram`,
+`SpatialBinning` (1D profiles with derivatives, 2D/3D maps into `data.grids`),
+`ReduceProperty`, `BondAngleDistribution` and `BondLengthDistribution` (partitioned by type or
+selection). `FindRings` gives shortest-path ring statistics of the bond network and
+`SteinhardtOrderParameters` the q_l/w_l bond-orientational order (plain or Lechner-Dellago
+averaged, checked against freud).
+
+### Vector arrows
+
+`VectorVis` draws a per-particle vector property as arrows, like OVITO's vector visual
+element: forces, displacements, velocities, magnetic moments (a collinear, scalar moment
+points along z) or any N x 3 property. It has OVITO's options (scaling, width, alignment
+base/center/head, reverse, offset, flat or lit shading, transparency) and colors arrows
+uniformly or by a property such as their own length, with a color legend. Every renderer
+draws them: the viewport, the ray tracer and SVG/PDF output. Without a modifier,
+`render(data, vectors="Force")` does the same.
+
+```python
+from ewald.modifiers import VectorVis
+
+pipe = import_file("OUTCAR")
+pipe.modifiers.append(VectorVis("Force", scaling=2.0, color_mapping_property="Magnitude"))
+pipe.render("forces.png", renderer="raytrace", radius_scale=0.5)
+```
 
 ### Bonds and coordination polyhedra
 

@@ -10,6 +10,7 @@ from ewald.modifiers import CoordinationAnalysis, ExpressionSelection, DeleteSel
 pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, xsf, h5md, xtc, cif, ...
 # pipe = import_file("dump.*.lammpstrj", type_map={1: "Cu", 2: "Zr"})   # LAMMPS numeric types -> elements
 # pipe = import_file("cluster:/scratch/run1/dump.lammpstrj")   # over SSH: host:/path, user@host:path, ssh://host/path
+# pipe = import_file("dump.lammpstrj", thermo="log.lammps")   # thermo columns -> data.attributes["Temp"], data.tables["Thermo"]
 # pipe = import_file("run.npz", format="npz-trajectory")  # format= also names reader plugins (`ewald plugins`)
 pipe.modifiers.append(CoordinationAnalysis(cutoff=3.0))
 pipe.modifiers.append(ExpressionSelection("Coordination < 12"))
@@ -41,6 +42,8 @@ pipe.render("frame10.png", frame=10, direction="iso", bonds=2.8)
   "Color"; `data.bonds.vectors(data)`, `.lengths(data)`, `.neighbor_counts(N)`. `take`/`delete`/`Replicate`/`WrapAtoms`
   keep bonds consistent. `data.surfaces` maps names to `SurfaceMesh` (`vertices`, `faces`, `face_properties`, `vertex_properties`,
   `edges`), e.g. `data.surfaces["coordination-polyhedra"]` from `CoordinationPolyhedra`; renderers draw both.
+- Arrows for a vector property (forces, displacements, velocities, magnetic moments): add `VectorVis("Force", scaling=2)`
+  (it fills `data.vectors`), or pass `vectors="Force"` / `{"Force": {"scaling": 2, "color": "red"}}` to `render`.
 - A modifier function may take a third argument `ctx`: `ctx.source_frame(k)` (reference frame), `ctx.frame`,
   `ctx.xp` (numpy or cupy). Return nothing to keep `data`, or return a new DataCollection (e.g. `data.delete(mask)`).
 
@@ -141,6 +144,14 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 - `CreateIsosurface(isolevel: float | None = None, property: str = 'Charge Density', grid: str | None = None, signed: bool = False, color=(1.0, 0.86, 0.0), negative_color=(0.0, 0.75, 1.0), transparency: float = 0.0, identifier: str = 'isosurface')`: VESTA-style isosurface of a grid property (OVITO's CreateIsosurfaceModifier).
 - `GridSlice(miller=(0, 0, 1), distance: float = 0.5, property: str = 'Charge Density', grid: str | None = None, cmap: str = 'viridis', range=None, scale: str = 'linear', resolution: float | None = None, transparency: float = 0.0, identifier: str = 'slice')`: Colour-mapped cross-section of a grid property on a lattice plane (VESTA's 2D slice).
 - `GridDifference(subtract=(), property: str = 'Charge Density', grid: str | None = None, output: str | None = None)`: Charge-density difference: subtract the grids of other files, e.g. rho(AB) - rho(A) - rho(B) with ``GridDifference(["A/CHGCAR", "B/CHGCAR"])``.
+- `Histogram(property: str = 'Position.Z', bin_count: int = 200, fix_xrange: bool = False, xrange_start: float = 0.0, xrange_end: float = 0.0, only_selected: bool = False, normalization: str = 'count', select_elements: bool = False, selection_start: float = 0.0, selection_end: float = 0.0, operate_on: str = 'particles')`: Histogram of a particle or bond property ('Mass', 'Position.Z', ...).
+- `SpatialBinning(property: str = '', reduction_operation: str = 'mean', direction: str = 'Z', bin_count=(50, 50, 20), first_derivative: bool = False, only_selected: bool = False)`: Coarse-grain a particle property on a 1D, 2D or 3D grid of bins along the cell vectors.
+- `ReduceProperty(property: str = 'Position.Z', reduction_operation: str = 'mean', only_selected: bool = False, operate_on: str = 'particles')`: Reduce a particle or bond property to one number per component.
+- `SteinhardtOrderParameters(degrees=(4, 6), num_neighbors: int = 12, cutoff: float | None = None, average: bool = False, wl: bool = False, wl_normalize: bool = True)`: Per-particle q_l (and w_l) for every degree in ``degrees``.
+- `BondAngleDistribution(bins: int = 180, cosine_mode: bool = False, partition: str = 'off')`: Histogram of the angles between pairs of bonds at each particle.
+- `BondLengthDistribution(bins: int = 100, length_cutoff: float = 4.0, partition: str = 'off')`: Histogram of bond lengths from 0 to ``length_cutoff`` in ``bins`` bins (longer bonds are skipped).
+- `FindRings(minimum_ring_size: int = 4, maximum_ring_size: int = 8)`: Rings of ``minimum_ring_size``..``maximum_ring_size`` bonds in the bond network.
+- `VectorVis(property: str = '', scaling: float = 1.0, width: float = 0.3, alignment: str = 'base', reverse: bool = False, color=(1.0, 1.0, 0.0), shading: str = 'normal', transparency: float = 0.0, offset=(0.0, 0.0, 0.0), color_mapping_property: str = '', cmap: str = 'viridis', color_mapping_interval=None, only_selected: bool = False, min_length: float = 1e-06)`: Draw an N x 3 particle property as arrows: 'Force', 'Displacement', 'Velocity', 'Magnetic Moment' (a scalar moment points along z), or any other vector property.
 - `Plumed(input: str = ..., start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 1.0, temperature: float = 0.0, by_identifier: bool = True, workdir: str = '', kernel: str = '')`: Collective variables computed by PLUMED for every frame, from a ``plumed.dat``.
 - `LoadColvar(file: str = 'COLVAR', align: str = 'index', stride: int = 1, offset: int = 0, time_per_frame: float = 1.0, md_timestep: float = 0.0)`: Values from a PLUMED COLVAR file (or any ``#! FIELDS`` file) attached to the frames.
 - `FreeEnergySurface(hills: str = 'HILLS', bins: int = 100, ranges=None, use_plumed: bool = False, up_to_frame: bool = False, time_per_frame: float = 1.0)`: Free energy surface from a metadynamics HILLS file, F(s) = -sum of the hills.

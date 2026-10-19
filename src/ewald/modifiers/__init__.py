@@ -13,9 +13,13 @@ from .plumed import FreeEnergySurface, LoadColvar, Plumed
 from .selection import (ClearSelection, DeleteSelected, ExpressionSelection, InvertSelection,
                         SelectType, Slice)
 from .script import PythonScript
+from .statistics import Histogram, ReduceProperty, SpatialBinning
+from .steinhardt import SteinhardtOrderParameters
+from .topology import BondAngleDistribution, BondLengthDistribution, FindRings
 from .trajectory import (GenerateTrajectoryLines, MeanSquaredDisplacement, TimeAveraging, TimeSeries,
                          VelocityAutocorrelation)
 from .transform import AffineTransformation, ComputeProperty, Replicate, WrapAtoms
+from .vectors import VectorVis
 from .volume import CreateIsosurface, GridDifference, GridSlice
 
 __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "CoordinationAnalysis", "ClusterAnalysis",
@@ -26,7 +30,9 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "AcklandJones", "AtomicStrain", "CentroSymmetry", "ChillPlus", "IdentifyDiamond",
            "MeanSquaredDisplacement", "VelocityAutocorrelation", "TimeAveraging", "TimeSeries",
            "GenerateTrajectoryLines", "CreateBonds", "EditBonds", "CoordinationPolyhedra",
-           "CreateIsosurface", "GridSlice", "GridDifference", "Plumed", "LoadColvar", "FreeEnergySurface"]
+           "CreateIsosurface", "GridSlice", "GridDifference", "Histogram", "SpatialBinning", "ReduceProperty",
+           "SteinhardtOrderParameters", "BondAngleDistribution", "BondLengthDistribution", "FindRings", "VectorVis",
+           "Plumed", "LoadColvar", "FreeEnergySurface"]
 
 # OVITO spellings (``CommonNeighborAnalysisModifier``, ``WrapPeriodicImagesModifier``, ...) resolve to the
 # ewald class, so OVITO scripts - and code written by LLMs that learned OVITO - run unchanged.
