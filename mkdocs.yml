@@ -75,6 +75,7 @@ nav:
       - Native code: developer/native.md
       - Testing and CI: developer/testing.md
       - Writing docs: developer/docs.md
+      - Windows release: developer/windows-release.md
   - Reference:
       - Python API: reference/api.md
       - Roadmap: ROADMAP.md

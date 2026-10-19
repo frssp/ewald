@@ -14,6 +14,7 @@ scripting (headless and inside the GUI) and NVIDIA GPU acceleration.
 | 4. Figures | Built-in numba ray tracer (AO, shadows, anti-aliasing), Render workspace with journal presets, vector renderer (SVG/PDF/EPS), overlays on every renderer (text, color legend, type legend, scale bar), movies (MP4/GIF/AVI/MOV/PNG sequence), `.ewald` session save/load (GUI and CLI), Draft/Standard/Publication quality presets (Publication default for file output) done; next: GPU (CUDA) tracer | in progress |
 | Plugins | One reader registry for built-in formats and plugins (`ewald.readers` entry points, `<config dir>/plugins/*.py`) used by `import_file`, GUI open and Claude tools; modifier plugins (`ewald.modifiers` entry points, `@modifier`) in the GUI menu, Claude tools and `ewald.modifiers`; `ewald plugins`; Modifier Forge (`ewald forge`: Claude writes a modifier and its tests, ewald verifies them in a subprocess and saves them) | readers, writers (`@writer`, `ewald.writers`), modifiers and Modifier Forge (`ewald forge`) done; next: Ask about selection |
 | Formats | Native lazy extxyz, XSF/AXSF (with grids), H5MD; XTC/TRR/DCD/NetCDF via MDAnalysis; ASE db and `.traj`; writers for POSCAR, LAMMPS data, extxyz, XSF, H5MD, XTC/TRR/DCD, ASE db/traj, CIF; `formats` extra (h5py, MDAnalysis) | done; next: BXSF, GROMACS `.gro` with velocities, LAMMPS binary dump |
+| Scale | Multi-million-atom LAMMPS dumps and long XDATCARs: `benchmarks/large_files.py` measures open, frame switch and memory; dump indexing reads in chunks (2M atoms x 4 frames: open 13 s → 0.8 s, frame switch 3.0 s → 1.5 s); next: cache memory budget, scene updates without rebuild, faster atom-table parser | in progress |
 | Docs | Manual in `docs/` (user manual, plugin author guide, developer guide, API reference), MkDocs build in CI, GUI Help menu; next: hosting the site, pages for modifier plugin registration | in progress |
 
 Decisions
@@ -22,3 +23,4 @@ Decisions
 - Private, personal project without a LICENSE file for now; reuse freely, treating MIT compatibility as the bar when it matters.
 - OVITO's public source is "GPLv3 or MIT"; ported code keeps the MIT notice. DXA is not in the public source.
 - Python first, numba/C++ only for measured hot spots.
+- Windows distribution: wheels plus a PyInstaller app with an Inno Setup installer, in CPU and CUDA variants, built by `windows-release.yml` on `v*` tags (docs/developer/windows-release.md).

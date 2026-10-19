@@ -64,6 +64,7 @@ Every renderer draws the same overlays, sized relative to the image:
 | `camera` | an exact camera from the GUI (`ewald.render.camera_state`); the Render workspace fills it in |
 | `bonds=2.8` | draw bonds shorter than 2.8 Å; `bond_pairs=[("Si", "O", 0, 2.0)]` sets VESTA-style pair rules |
 | `radius_scale`, `type_colors`, `type_radii` | atom size and per-type overrides |
+| `radius_preset`, `oxidation_states`, `coordination` | which tabulated radii to use (see below) |
 | `background`, `transparent_background` | `"white"`, any color, or a transparent PNG |
 | `renderer`, `quality` | `"opengl"`, `"raytrace"` or `"vector"`; `"draft"`, `"standard"` or `"publication"` |
 | `legend`, `type_legend`, `scale_bar`, `text` | overlays (see above) |
@@ -71,6 +72,44 @@ Every renderer draws the same overlays, sized relative to the image:
 
 Particle colors come from the `Color` property when a modifier set one (`ColorCoding`,
 `AssignColor`, structure analyses with `color_by_type`), otherwise from the element.
+
+## Atom radii
+
+Atoms are drawn at 0.8 × a tabulated radius × `radius_scale`, unless a `Radius` property or
+`type_radii` sets them. `radius_preset` picks the table:
+
+| Preset | Source |
+|---|---|
+| `"covalent"` (default) | Cordero et al., Dalton Trans. 2832 (2008) |
+| `"atomic"` | Slater, J. Chem. Phys. 41, 3199 (1964), empirical |
+| `"atomic (calc.)"` | Clementi, Raimondi, Reinhardt, J. Chem. Phys. 47, 1300 (1967), calculated |
+| `"vdW"` | Alvarez, Dalton Trans. 42, 8617 (2013) |
+| `"vdW (Bondi)"` | Bondi, J. Phys. Chem. 68, 441 (1964), completed from WebElements |
+| `"ionic"` | Shannon, Acta Cryst. A32, 751 (1976), effective ionic radii |
+| `"ionic (crystal)"` | Shannon (1976) crystal radii |
+
+```python
+pipe.render("sto.png", radius_preset="ionic", radius_scale=1.25)       # Shannon radii at full size
+pipe.render("sto_ti3.png", radius_preset="ionic", oxidation_states={"Ti": 3}, coordination={"Ti": 6})
+```
+
+Shannon radii depend on the oxidation state and the coordination number. For each particle
+type the oxidation state comes from `oxidation_states`, else from the type name (`"Fe3+"`,
+`"O2-"`), an integer `Oxidation State` or `Charge` property, a pymatgen bond-valence analysis
+when pymatgen is installed (cells up to 500 atoms), a charge-neutral combination of the
+oxidation states most common in the ICSD, or finally the most common state alone. The
+coordination number is counted from the structure: counter-ions closer than 1.25 × the median
+nearest cation–anion distance of that pair of types, so O in SrTiO3 gets 2 Ti + 4 Sr = 6. The
+nearest coordination number in Shannon's table is used. Pure elements and ions missing from
+the table get the covalent radius and a logged warning that names them.
+`ewald.radii.resolve(data, "ionic").summary()` prints what was chosen:
+
+```text
+ionic radii: Sr 1.440 (+2, CN 12, charge balance), Ti 0.605 (+4, CN 6, charge balance), O 1.400 (-2, CN 6, charge balance)
+```
+
+The Slater, Clementi and Shannon tables ship with ewald in `ewald/tables/radii.json`
+(extracted from pymatgen, MIT license); covalent and van der Waals radii come from ASE.
 
 ## Large systems
 
