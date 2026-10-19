@@ -1413,8 +1413,15 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     assert [c.is_step for c in again.cells].count(True) == 1 and again.cells[-1].view == {
         "source": "pipe", "histogram": "Coordination"}
 
+    first = w.render_page.quality.currentText()
     w.panel.new_notebook()
     assert tabs.count() == 2 and tabs.currentIndex() == 1
+    other = "Draft" if first != "Draft" else "Standard"
+    w.render_page.quality.setCurrentText(other)               # render settings belong to the notebook
+    tabs.setCurrentIndex(0)
+    assert w.render_page.quality.currentText() == first
+    tabs.setCurrentIndex(1)
+    assert w.render_page.quality.currentText() == other
     w.panel.close_tab(1)
     w.settings["python.run_notebooks"] = "always"
     w.open_notebook(str(path))                                 # already open: back to its tab
@@ -1428,6 +1435,24 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     cell = w.panel.view.current
     assert cell.source.startswith("from ewald import cna\n") and cell.state == "ok"
     assert cell.outputs[-1].kind == "image" and isinstance(cell.outputs[-1].data, bytes)
+    assert [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis", "CommonNeighborAnalysis"]
+
+    view = w.panel.view
+    assert w.snapshot_code().startswith("from ewald.views import snapshot\nsnapshot(pipe, frame=0,\n         camera={")
+    w._insert_snapshot()                                       # Insert › 3D snapshot: a picture of the view
+    snap = view.current
+    assert snap.state == "ok" and snap.outputs[-1].kind == "image"
+    from PySide6 import QtGui
+
+    mime = QtCore.QMimeData()                                  # drag the cell by its grip to the top
+    mime.setData("application/x-ewald-cell", snap.id.encode())
+    drop = QtGui.QDropEvent(QtCore.QPointF(20, -1), QtCore.Qt.MoveAction, mime, QtCore.Qt.LeftButton,
+                            QtCore.Qt.NoModifier)
+    assert view.eventFilter(view.container, drop)              # Qt delivers synthetic drops only during a drag
+    app.processEvents()
+    assert view.notebook.cells[0] is snap and view.widgets[0].cell is snap
+    view.move_cell(snap, len(view.notebook.cells))             # and back to the end
+    assert view.notebook.cells[-1] is snap
     assert [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis", "CommonNeighborAnalysis"]
     w.close()
 

@@ -634,6 +634,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Python
     - Python script
 - View
+- 3D snapshot of the view
 - Analysis
   - Radial distribution g(r)
   - Structure factor S(q)

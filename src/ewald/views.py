@@ -5,6 +5,7 @@ One function for every kind of data view, so a notebook needs no fixed panels::
     show(pipe, table="coordination-rdf")          # any data table: g(r), XRD, DOS, Bands, Thermo, NEB
     show(pipe, table="DOS", y="Ga d")             # one column of it
     show(pipe, histogram="Coordination")          # histogram of a particle property
+    snapshot(pipe, frame=3, camera={...})         # a picture of the 3D view (Insert › 3D snapshot)
 
 A cell that is a single ``show(...)`` call with literal arguments is a *view cell*. In the GUI
 it becomes a live, linked plot (drag a range to select atoms or frames; the DOS and band
@@ -157,6 +158,66 @@ def show(source, table: str | None = None, y: str | None = None, histogram: str 
         _draw(ax, title, columns, histogram)
         _limit(ax, xlim, ylim)
     plt.show()
+
+
+class Snapshot:
+    """A picture of the 3D view of ``source`` at ``frame``: shows as an image under a notebook
+    cell (and in Jupyter); :meth:`save` writes it, :meth:`image` returns the RGB array.
+    ``kwargs`` go to :func:`ewald.render.render` (``camera=``, ``size=``, style keywords)."""
+
+    def __init__(self, source, frame: int = 0, **kwargs):
+        self.source, self.frame, self.kwargs = source, frame, kwargs
+
+    def _data(self):
+        return self.source.compute(self.frame) if hasattr(self.source, "compute") else self.source
+
+    def image(self, **kwargs) -> np.ndarray:
+        from .display import options
+        from .render import render
+
+        kw = {k: v for k, v in options.items() if k not in ("enabled", "size")}
+        kw.update(self.kwargs, **kwargs)
+        if kw.get("quality") is None:
+            kw.pop("quality", None)
+        return render(self._data(), **kw)
+
+    def save(self, filename, **kwargs):
+        """Write the picture (PNG, JPG, SVG/PDF, ...) with the same view; ``kwargs`` override."""
+        from .render import render
+
+        return render(self._data(), filename, **{**self.kwargs, **kwargs})
+
+    def _repr_png_(self):
+        import io
+
+        from PIL import Image
+
+        from .display import _quiet_vtk, options
+
+        if not options.get("enabled", True):
+            return None
+        restore = _quiet_vtk()
+        try:
+            img = self.image()
+        except Exception:  # noqa: BLE001 - the text repr instead
+            return None
+        finally:
+            if restore:
+                restore()
+        buf = io.BytesIO()
+        Image.fromarray(img).save(buf, format="PNG")
+        return buf.getvalue()
+
+    def __repr__(self):
+        return f"<Snapshot frame {self.frame}>"
+
+
+def snapshot(source, frame: int = 0, **kwargs) -> Snapshot:
+    """A picture of ``source`` (a Pipeline or DataCollection) at ``frame`` with ``camera=``,
+    ``size=`` and the style keywords of :func:`ewald.render.render`; the last line of a cell
+    shows it. Insert › 3D snapshot in the GUI writes one for the current view."""
+    kwargs.setdefault("size", (480, 360))
+    return Snapshot(source, frame, **kwargs)
 
 
 def write_csv(path, columns: dict):

@@ -29,9 +29,8 @@ GUI
   still set inline colors (render preview, pick labels, color swatches, field error borders), so
   they keep the old palette until a restart after a theme switch; move them to QSS object names.
 - Notebook layout: the viewport could follow the current notebook even when it has no
-  pipeline yet (now it keeps the last one); 3D snapshot views (`show(pipe, frame=...)` drawing
-  the structure) and image/figure cells; drag cells to reorder; inline
-  Ask Claude suggestions as diffs; per-notebook render settings; a `.py` header with the view state and data links.
+  pipeline yet (now it keeps the last one); image/figure cells; inline Ask Claude suggestions
+  as diffs; a snapshot cell that updates when the camera of its view changes (now it is code).
 - Notebook kernels (`ewald/kernel.py`): kernels on SSH hosts; step forms for steps a kernel
   cell adds with code the app cannot import (a class only the kernel's Python has stays as code).
 - Plugins side bar: disable per notebook,

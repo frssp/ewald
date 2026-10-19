@@ -135,9 +135,11 @@ class FilesMixin:
             "A notebook is Python code: run it only if you trust it." + extra) == QtWidgets.QMessageBox.Yes
 
     def _apply_notebook_state(self, state: dict):
-        """The viewer state an ``.ewd`` or ``.ipynb`` saved: style, frame and camera."""
+        """The viewer state a notebook file saved: style, frame, camera and render settings."""
         if not state:
             return
+        if state.get("render"):
+            self.render_page.set_state(state["render"])
         for k, v in (state.get("style") or {}).items():
             if k in self.style.__dataclass_fields__:
                 setattr(self.style, k, list(map(list, v)) if k == "bond_pairs" else v)
@@ -151,11 +153,20 @@ class FilesMixin:
         self._style_changed()
 
     def notebook_state(self) -> dict:
-        """What an ``.ewd``/``.ipynb`` keeps of the viewer: style, frame and camera."""
-        state = {"style": self.style.to_dict(), "frame": int(self.frame)}
+        """What a notebook file keeps of the viewer: style, frame, camera and render settings."""
+        state = {"style": self.style.to_dict(), "frame": int(self.frame), "render": self.render_page.state()}
         if self.pipeline is not None:
             state["camera"] = camera_state(self.viewport.plotter)
         return state
+
+    def _notebook_switched(self, old, new):
+        """Each notebook tab keeps its own render settings: the page follows the current tab."""
+        if getattr(self, "render_page", None) is None:
+            return
+        if old is not None:
+            old.state["render"] = self.render_page.state()
+        if new is not None and new.state.get("render"):
+            self.render_page.set_state(new.state["render"])
 
     def save_notebook(self, ask: bool = False):
         """Save the current notebook (asks for a name the first time). The extension picks the
