@@ -122,7 +122,26 @@ class WriterPlugin:
         return any(fnmatch.fnmatch(base, p) or fnmatch.fnmatch(base.lower(), p.lower()) for p in self.patterns)
 
     def write(self, path, frames, format: str | None = None, **kwargs):
-        """Write ``frames`` (iterable of DataCollection) to ``path``."""
+        """Write ``frames`` (iterable of DataCollection) to ``path``; a ``.gz``/``.bz2``/``.xz``
+        name is written uncompressed next to it first, then compressed."""
+        plain = strip_compression(path)
+        if plain != str(path):
+            import shutil
+            import tempfile
+
+            from .io.base import _OPENERS
+
+            folder, base = os.path.split(plain)
+            fd, tmp = tempfile.mkstemp(prefix=".ewald-", suffix="-" + base, dir=folder or ".")
+            os.close(fd)
+            try:
+                result = self.write(tmp, frames, format=format, **kwargs)
+                opener = _OPENERS[str(path)[len(plain):]]
+                with open(tmp, "rb") as src, opener(str(path), "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+            finally:
+                os.remove(tmp)
+            return result
         if self.takes_format:
             kwargs["format"] = format
         if self.multi_frame:

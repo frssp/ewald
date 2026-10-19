@@ -49,7 +49,9 @@ and the Claude tool write the current frame.
    (`aliases=(...)`); a name no writer has is passed to `ase.io.write` as an ASE format.
 2. Without `format=`, writers are tried by `priority` (lowest first; plugins default to 50)
    and the first whose `patterns` match the output file name wins. Matching ignores case and a
-   `.gz`/`.bz2`/`.xz` suffix. Nothing matching means ASE, which guesses from the extension.
+   `.gz`/`.bz2`/`.xz` suffix. Nothing matching means ASE, which guesses from the extension. For a compressed name
+   (`run.extxyz.gz`) the writer writes an uncompressed temporary file, which ewald then
+   compresses, so writers never deal with compression.
 3. Registering an existing name replaces that writer, built-in ones included.
 4. `priority=None` registers a writer that is only used with `format=`.
 

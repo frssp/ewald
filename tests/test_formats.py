@@ -294,3 +294,25 @@ def test_gui_export_filter_lists_writers():
     assert filters["probe (*.probe)"] == "probe"
     assert any(name == "poscar" and "POSCAR*" in text for text, name in filters.items())
     assert list(filters.values())[-1] is None   # "All files": format from the name
+
+
+def test_compressed_output_is_compressed(tmp_path):
+    import gzip
+
+    export_file(_trajectory(2), tmp_path / "md.extxyz.gz")
+    with gzip.open(tmp_path / "md.extxyz.gz", "rt") as fh:
+        assert fh.readline().strip() == "8"
+    assert import_file(tmp_path / "md.extxyz.gz").num_frames == 2
+    assert [p.name for p in tmp_path.iterdir()] == ["md.extxyz.gz"]   # no temporary file left
+
+
+def test_claude_export_tool_refuses_to_overwrite(tmp_path):
+    from ewald.llm.tools import Toolset
+
+    src = _write(tmp_path / "md.extxyz", _trajectory(2))
+    ts = Toolset(workdir=str(tmp_path / "work"))
+    ts.call("load_structure", {"path": str(src)})
+    assert not ts.call("export_file", {"path": "POSCAR"}).is_error
+    assert ts.call("export_file", {"path": "POSCAR"}).is_error
+    assert ts.call("export_file", {"path": str(src)}).is_error            # absolute path, existing file
+    assert not ts.call("export_file", {"path": "POSCAR", "overwrite": True}).is_error
