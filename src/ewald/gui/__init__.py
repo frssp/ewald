@@ -134,6 +134,25 @@ def ssh_forwarded_display() -> bool:
         return False
 
 
+VIEWPORT_BACKENDS = ("auto", "vtk", "legacy-gl")
+
+
+def viewport_backend(choice: str | None = None) -> str:
+    """The 3D view to use: ``"vtk"`` or ``"legacy-gl"`` (OpenGL 1.x display lists, VESTA-style).
+
+    ``EWALD_VIEWPORT`` wins over ``choice`` (the ``viewport.backend`` preference); ``"auto"`` picks
+    legacy-gl on an SSH-forwarded display, where GLX is indirect and VTK can't draw.
+    """
+    choice = (os.environ.get("EWALD_VIEWPORT") or choice or "auto").strip().lower()
+    if choice in ("legacy", "gl1", "opengl1"):
+        choice = "legacy-gl"
+    if choice not in VIEWPORT_BACKENDS:
+        raise QtStartupError(f"unknown viewport {choice!r}; use one of {', '.join(VIEWPORT_BACKENDS)}")
+    if choice == "auto":
+        return "legacy-gl" if ssh_forwarded_display() else "vtk"
+    return choice
+
+
 def probe_opengl(extra_env: dict, timeout: float = 60) -> tuple[bool, str]:
     """Open a small VTK window in a child process with ``extra_env``; (rendered, output)."""
     import subprocess

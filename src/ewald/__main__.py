@@ -173,9 +173,9 @@ def _run(args):
         client = None
         if not args.no_llm:
             try:
-                import anthropic
+                from .llm.credentials import client as make_client
 
-                client = anthropic.Anthropic()
+                client = make_client()
             except Exception as exc:  # no SDK or no credentials: fall back to rule-based titles
                 print(f"(no Claude client: {exc}; using rule-based titles)")
         tl = narrate(pipe, client, render=args.render)

@@ -381,6 +381,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `viewport.rotation_step` | Step rotation | `15.0` |
 | `viewport.show_axes` | Show axes tripod | `True` |
 | `viewport.show_overlay` | Show frame / timestep text | `True` |
+| `viewport.backend` | 3D view | `'auto'` |
 | `viewport.hover_info` | Atom info on hover | `True` |
 | `viewport.hover_delay` | Hover delay | `0.25` |
 | `viewport.sphere_drawing` | Sphere drawing | `'impostor'` |
@@ -437,6 +438,13 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 |---|---|---|
 | `python.startup_script` | Console startup script | `''` |
 | `python.extra_paths` | Extra module paths | `''` |
+
+### Claude
+
+| Key | Label | Default |
+|---|---|---|
+| `llm.model` | Model | `'claude-opus-5-5'` |
+| `llm.effort` | Effort | `'high'` |
 
 <!-- gui:start -->
 ## Desktop GUI

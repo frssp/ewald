@@ -80,10 +80,12 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   parsing, `fes_from_hills` (same kernels as `plumed sum_hills`). Tests compare with `plumed driver` and
   the sum_hills files in `tests/data/plumed/` (regenerate with `make_plumed_reference.py`, never by hand).
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
-- `gui/`: `app.py` main window, `viewport.py`, `pipeline_panel.py`, `params.py`, `render_page.py`,
+- `gui/`: `app.py` main window, `viewport.py` (VTK; `legacy_viewport.py` + Qt-free `legacy_gl.py` are
+  the OpenGL 1.x viewport for `ssh -X`, chosen by `gui.viewport_backend`), `pipeline_panel.py`, `params.py`, `render_page.py`,
   `preferences.py`, `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
   `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`.
-- `llm/`: Claude agent (`agent.py`), tools (`tools.py`), Modifier Forge (`forge.py`: Claude writes a
+- `llm/`: Claude agent (`agent.py`), tools (`tools.py`), `credentials.py` (API key in the OS keychain via
+  `keyring`, 0600 file fallback, never in settings.json; every Claude client comes from `credentials.client()`), Modifier Forge (`forge.py`: Claude writes a
   plugin + tests, verified in a subprocess, saved to the plugin folder), descriptors (`describe.py`, `narrate.py`),
   `selection.py` (descriptor + close-up scene for Ask about selection; GUI side `gui/ask_panel.py`),
   MCP server (`mcp_server.py`), and `reference.py`, the source of `llms.txt`.

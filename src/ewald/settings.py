@@ -40,9 +40,10 @@ class Option:
         return PAGE_OF_PREFIX[self.key.split(".")[0]]
 
 
-PAGES = ("General", "Viewports", "Elements", "Rendering", "Compute", "Python")
+PAGES = ("General", "Viewports", "Elements", "Rendering", "Compute", "Python", "Claude")
 PAGE_OF_PREFIX = {"general": "General", "viewport": "Viewports", "elements": "Elements", "bonds": "Elements",
-                  "render": "Rendering", "compute": "Compute", "performance": "Compute", "python": "Python"}
+                  "render": "Rendering", "compute": "Compute", "performance": "Compute", "python": "Python",
+                  "llm": "Claude"}
 
 OPTIONS = (
     Option("general.startup_workspace", "Analyze", "Startup workspace", choices=("Analyze", "Render")),
@@ -67,6 +68,11 @@ OPTIONS = (
            minimum=0.5, maximum=90),
     Option("viewport.show_axes", True, "Show axes tripod"),
     Option("viewport.show_overlay", True, "Show frame / timestep text"),
+    Option("viewport.backend", "auto", "3D view",
+           "VTK: the full viewport (OpenGL 3.2+). Legacy GL: OpenGL 1.x display lists like VESTA, which "
+           "work over SSH X11 forwarding (ssh -X) but have no impostors, smoothing or 3D text. Auto uses "
+           "Legacy GL on an ssh -X display. EWALD_VIEWPORT overrides this. Takes effect at the next start.",
+           choices=("auto", "vtk", "legacy-gl")),
     Option("viewport.hover_info", True, "Atom info on hover",
            "Resting the cursor on an atom shows its element, index and Cartesian and fractional "
            "coordinates in a tooltip and the status bar. Nothing is computed while the view moves."),
@@ -144,6 +150,12 @@ OPTIONS = (
     Option("python.startup_script", "", "Console startup script", "Run in the Python console when the GUI starts.",
            kind="file"),
     Option("python.extra_paths", "", "Extra module paths", "Folders added to sys.path, separated by ';'.", kind="dir"),
+
+    # the API key itself is not an option: it lives in the OS keychain (ewald.llm.credentials)
+    Option("llm.model", "claude-opus-5-5", "Model", "Used by Ask Claude.",
+           choices=("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1")),
+    Option("llm.effort", "high", "Effort", "How hard Claude thinks before answering; lower is faster and cheaper.",
+           choices=("low", "medium", "high", "xhigh", "max")),
 )
 OPTION = {o.key: o for o in OPTIONS}
 
@@ -174,6 +186,8 @@ DEVICES = (
 
 # module, purpose, install command
 COMPONENTS = (
+    ("ewald._native", "PTM, Voronoi, CSP matching, interval CNA (C++ extension)",
+     "install a C++ compiler, then reinstall ewald (docs/user/install.md)"),
     ("cupy", "GPU compute (CUDA)", "pip install 'ewald[gpu]'"),
     ("ovito", "Dislocation analysis (DXA)", "pip install 'ewald[gui,ovito]'"),
     ("imageio_ffmpeg", "Movie export (.mp4)", "pip install 'ewald[movie]'"),
@@ -190,7 +204,7 @@ def component_status():
     for mod, purpose, cmd in COMPONENTS:
         found = importlib.util.find_spec(mod) is not None
         version = ""
-        if found:
+        if found and not mod.startswith("ewald."):
             names = [dist.get(mod) or mod] if mod != "cupy" else ["cupy-cuda12x", "cupy-cuda11x", "cupy"]
             for n in names:
                 try:
