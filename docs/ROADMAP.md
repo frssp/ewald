@@ -10,6 +10,7 @@ scripting (headless and inside the GUI) and NVIDIA GPU acceleration.
 | 2. GUI | OVITO-style layout with VESTA crystal controls: view along a/b/c, pick/measure, per-type styles, bond table, command palette, console, inspector, plots, Render workspace with code generator | done (PR #5); next: quad views, undo/redo, background compute thread |
 | 3. Analysis | CNA, PTM, Voronoi, cluster, Wigner–Seitz (ported from OVITO's MIT-licensed source), RDF/MSD kernels, numba CPU and CuPy GPU neighbor lists, optional DXA via the `ovito` pip package; trajectory analysis: MSD/VACF with diffusion coefficients, time averaging (g(r)), time series, trajectory lines and path metrics | in progress |
 | 4. Figures | Built-in numba ray tracer (AO, shadows, anti-aliasing) and Render workspace with journal presets done; next: GPU (CUDA) tracer, session save/load, PDF/vector overlays | in progress |
+| Scale | Multi-million-atom LAMMPS dumps and long XDATCARs: `benchmarks/large_files.py` measures open, frame switch and memory; dump indexing reads in chunks (2M atoms x 4 frames: open 13 s → 0.8 s, frame switch 3.0 s → 1.5 s); next: cache memory budget, scene updates without rebuild, faster atom-table parser | in progress |
 
 Decisions
 

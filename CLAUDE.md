@@ -14,6 +14,7 @@ xvfb-run -a python -m pytest -q  # full suite; rendering and GUI tests need an X
 python -m pytest -q --ignore=tests/test_render.py --ignore=tests/test_gui.py   # no display
 python -m ewald api > llms.txt   # regenerate the LLM API reference (see below)
 python benchmarks/neighbors.py   # neighbor-list timings
+python benchmarks/large_files.py # open/frame-switch/memory on generated multi-million-atom files
 python examples/demo.py          # sample trajectories + figures into demo_out/
 ```
 
