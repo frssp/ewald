@@ -210,11 +210,18 @@ def source_to_dict(source, base_dir: str) -> dict:
     from .io import FileSource, StaticSource
 
     if isinstance(source, FileSource):
-        path = os.path.abspath(source.path)
-        try:
-            rel = os.path.relpath(path, base_dir)
-        except ValueError:  # other drive on Windows
-            rel = None
+        from . import plugins
+        from .io import remote
+
+        # aiida:1234 (a plugin scheme, not a file) or 'profile:/path' / 'user@host:/path' (no secrets in it)
+        if plugins.scheme_reader(source.path) is not None or remote.is_remote(source.path):
+            path, rel = str(source.path), None
+        else:
+            path = os.path.abspath(source.path)
+            try:
+                rel = os.path.relpath(path, base_dir)
+            except ValueError:  # other drive on Windows
+                rel = None
         out = {"kind": "file", "path": path, "relative_path": rel, "format": source.format,
                "kwargs": encode(source.kwargs)}
         if source.thermo_arg != "auto":  # explicit log.lammps/OSZICAR files, or None
@@ -243,10 +250,17 @@ def source_from_dict(entry: dict, base_dir: str):
         frames = _data_from_npz(entry["npz"], [decode(a) for a in entry["attributes"]])
         return StaticSource(frames)
     path = entry["path"]
+    from .io import remote
+
+    if remote.is_remote(path) and not entry.get("relative_path"):
+        return FileSource(path, entry.get("format"), thermo=entry.get("thermo", "auto"),
+                          **decode(entry.get("kwargs", {})))
     rel = entry.get("relative_path")
     candidates = ([os.path.normpath(os.path.join(base_dir, rel))] if rel else []) + [path]
+    from . import plugins
+
     for cand in candidates:
-        if os.path.exists(cand) or any(c in cand for c in "*?["):
+        if os.path.exists(cand) or any(c in cand for c in "*?[") or plugins.scheme_reader(cand) is not None:
             try:
                 return FileSource(cand, entry.get("format"), thermo=entry.get("thermo", "auto"),
                                   **decode(entry.get("kwargs", {})))

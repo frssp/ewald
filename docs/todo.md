@@ -8,7 +8,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Collapsible panels and cells; restricted banner and File › Trust notebook next. Branch
+- Restricted banner and File › Trust notebook for received `.ewd` notebooks. Branch
   `claude/project-thread-x53vio`.
 
 ## Next
@@ -17,7 +17,7 @@ GUI
 
 - Notebook layout: the viewport could follow the current notebook even when it has no
   pipeline yet (now it keeps the last one); 3D snapshot views (`show(pipe, frame=...)` drawing
-  the structure) and image/figure cells; drag cells to reorder; undo for cell edits; inline
+  the structure) and image/figure cells; drag cells to reorder; inline
   Ask Claude suggestions as diffs; per-notebook render settings; a Jupyter display hook so
   `pipe` shows a rendered image in Jupyter; a `.py` header with the view state and data links;
   File › Trust notebook and a restricted banner in the notebook panel; pip requirements of
@@ -30,18 +30,28 @@ GUI
 - Plugins side bar: an "updates available" badge on the activity bar, disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
+- Remotes side bar: list folders and connect in a background thread (now the GUI waits, with
+  a busy cursor), drag a remote file onto the notebook, mirror a run folder to a local folder
+  (rsync-like, for offline analysis), remote data links in the `.ewd` manifest (remote paths are
+  skipped now; the code keeps `name:/path`), a remote terminal or `squeue` view, profile import
+  from PuTTY/MobaXterm/Termius, and "remember this password" on the login prompt.
 - Spectra, Figure and Forge views from the redesign mock-ups, built as view cells
   rather than separate panels.
 - Quad views (top, front, left, perspective), as in OVITO.
-- Undo/redo for pipeline edits.
-- Compute frames in a background thread so the GUI stays responsive.
+- Undo/redo: display style changes (colors, radii, camera) and the classic layout (only notebook
+  edits are undone now); a View cell's table or column change is its own entry instead of
+  joining the next one.
+- Background compute: notebook cells still run on the GUI thread (stdout capture is
+  process-wide), so a cell that computes many frames itself blocks the window until the
+  notebook kernels below exist; view cells and the Plots tab compute other frames on the GUI
+  thread too.
 - Scene updates without a full rebuild when only colors or a few properties change, and frame
   changes with the same atoms that replace only the point coordinates.
 - Picking without a render: click picks still use a `vtkPropPicker` selection render; the hover
   readout already does a CPU ray-sphere test (`camera_ray`, `ray_spheres` in `gui/viewport.py`)
   that `pick_at` could reuse.
 - App icon outside the running window: a Linux `.desktop` entry and hicolor icons installed
-  with the package and the Windows installer/shortcut (`ewald.ico`; the macOS bundle uses
+  with the package (the Windows app and installer use `ewald.ico`, the macOS bundle
   `ewald.icns`); the EWALD mark in the main window header (the Notebook redesign) and the docs.
 - Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
   categories; the view-bar rotation arrows are still text glyphs.
@@ -194,6 +204,14 @@ Plugins and Claude
   index curation rules, signatures if the index opens to outside publishers.
 - Per-notebook plugin enable/disable; `plugins.json` holds only the global switch.
 
+- AiiDA (ewald-aiida in frssp/ewald-plugins: local profiles, and remote ones over SSH with
+  `aiida://user@host/1234`): an AiiDA side bar (profiles and hosts, recent workflows, outputs;
+  copy `load("aiida:...")`), a Claude tool to find and open workflows, PDOS/projected bands
+  from aiida-quantumespresso, NEB and aiida-lammps outputs, streaming very long remote
+  trajectories frame by frame instead of one bundle, export of analysis results back as new
+  nodes (opt-in, never default). Not yet tried against a real remote AiiDA host.
+- Other `schemes=` sources: Materials Project (`mp:mp-149`), OPTIMADE, NOMAD.
+
 - LLM plugin ideas: Paper-to-modifier (Forge from a paper's definition, checked against its
   numbers), Run doctor (diagnose a VASP/LAMMPS run from its outputs), phase identification,
   campaign report over many runs.
@@ -236,16 +254,19 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - CUDA paths on a real NVIDIA GPU: CuPy kernels, neighbor lists, cluster analysis, the
   `--device cuda` GUI switch. CI and the cloud container have no GPU.
 - SSH remote files against a real HPC login node (ProxyJump, OTP, large dumps); tests use an
-  in-process SFTP server.
+  in-process SFTP server. Saved remote computers with a real OS keychain (macOS Keychain,
+  Windows Credential Manager, GNOME Keyring) and a passphrase-protected key from a real agent.
 - Live reload on a real running LAMMPS/VASP job (local and over SSH), where the writer flushes
   in arbitrary pieces; tests grow fixture files byte by byte.
 - Claude features with a real API key: `ewald ask` (also `--select`), the GUI Ask Claude tab,
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › Claude › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
   KWallet); the container has none, so only the 0600 file fallback runs for real.
-- The Windows release workflow (wheels, PyInstaller app, installer) on a real `v*` tag; no
-  release exists yet, so Windows users without Build Tools get ewald without `ewald._native`
-  until the first one (blocked on GitHub Actions minutes).
+- The release workflows (`release.yml`: sdist and Linux wheels; `windows-release.yml` and
+  `macos-release.yml`: wheels, apps, installers) on a real `v*` tag. v0.1.0 is prepared (CHANGELOG, version,
+  `packaging/release_check.py` passes locally) and waits only for `git tag v0.1.0`, a push and
+  dispatching the three workflows ([Releases](developer/release.md)); until then Windows users
+  without Build Tools get ewald without `ewald._native` (blocked on GitHub Actions minutes).
 - Installing without a compiler on real Windows (MSVC missing raises in `build_ext.run`; tested
   here with `CXX=/bin/false` on Linux). pip shows the "not built" warning only with `-v`.
 - macOS on a real Mac (Apple Silicon and Intel): the source install and the full test suite, the
@@ -315,7 +336,9 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 - GitHub Actions minutes ran out on 2026-10-19, so every workflow now runs only on manual
   dispatch and pull requests are verified locally (`xvfb-run -a python -m pytest -q`,
   `mkdocs build --strict`). Restore the `push`/`pull_request`/tag triggers once minutes are
-  available again (docs/developer/testing.md shows the block).
+  available again (docs/developer/testing.md and docs/developer/release.md show the blocks).
+- Release follow-ups: a Linux `.desktop` entry, a version resource on the Windows executables, aarch64 Linux
+  wheels, and an `[Unreleased]` CHANGELOG line from every user-visible pull request.
 
 - CI installs each extra on its own only through the test suite's `importorskip`s; a job that
   installs every extra in a clean venv and imports its modules would catch broken extras

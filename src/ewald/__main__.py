@@ -10,9 +10,10 @@ from .render import RENDERERS
 
 def build_parser():
     """The ``ewald`` argument parser (also read by ``ewald inventory`` for docs/features.md)."""
-    from . import __title__
+    from . import __title__, __version__
 
     ap = argparse.ArgumentParser(prog="ewald", description=__title__)
+    ap.add_argument("--version", action="version", version=f"ewald {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("render", help="render a frame to an image (.png/.jpg/.tif/.svg/.pdf/.eps)")
     r.add_argument("input", help="structure/trajectory file or .ewald session")
@@ -102,6 +103,29 @@ def build_parser():
     m = sub.add_parser("mcp", help="serve the analysis tools over MCP (stdio)")
     m.add_argument("input", nargs="?")
     m.add_argument("--allow-code", action="store_true")
+    rm = sub.add_parser("remote", help="saved SSH profiles: list, add, remove, test, ls, get")
+    rsub = rm.add_subparsers(dest="remote_cmd", required=True)
+    rsub.add_parser("list", help="saved profiles and unsaved ~/.ssh/config hosts")
+    ra = rsub.add_parser("add", help="add or update a profile (its name is used as host: NAME:/path)")
+    ra.add_argument("name")
+    ra.add_argument("--host", default="", help="host name, IP or ~/.ssh/config alias (default: NAME)")
+    ra.add_argument("--user", default="")
+    ra.add_argument("--port", type=int, default=None)
+    ra.add_argument("--key", default="", help="private key file (auth = key)")
+    ra.add_argument("--password", action="store_true",
+                    help="password login; asks for the password and saves it in the OS keychain")
+    ra.add_argument("--passphrase", action="store_true", help="ask for the key passphrase and save it in the keychain")
+    ra.add_argument("--jump", default="", help="ProxyJump: another profile, an alias or user@host[:port]")
+    ra.add_argument("--folder", default="", help="start folder of the file browser")
+    rr = rsub.add_parser("remove", help="delete a profile and its saved password/passphrase")
+    rr.add_argument("name")
+    rt = rsub.add_parser("test", help="connect with a profile (or ~/.ssh/config alias) and print the remote home")
+    rt.add_argument("name")
+    rl = rsub.add_parser("ls", help="list a remote folder, e.g. nurion:/scratch/me")
+    rl.add_argument("path")
+    rg = rsub.add_parser("get", help="download a remote file for local analysis")
+    rg.add_argument("path")
+    rg.add_argument("dest", nargs="?", default=".", help="file or folder (default: current folder)")
     inv = sub.add_parser("inventory", help="print or update the feature inventory (docs/features.md)")
     inv.add_argument("--output", "-o", default=None, help="rewrite this file, e.g. docs/features.md")
     inv.add_argument("--gui", action="store_true",
@@ -129,6 +153,71 @@ def main(argv=None):
         raise
 
 
+def _remote_cmd(args):
+    import getpass
+    import time
+
+    from .io import profiles, remote
+
+    remote._require_paramiko()
+    cmd = args.remote_cmd
+    if cmd == "list":
+        for p in profiles.profiles():
+            saved = [k for k in ("password", "passphrase") if profiles.secret(p.name, k)]
+            extra = (f"  via {p.jump}" if p.jump else "") + (f"  [{', '.join(saved)} saved]" if saved else "")
+            print(f"{p.name:16s} {p.target}  ({profiles.AUTH[p.auth]}){extra}")
+        hosts = profiles.unsaved_config_hosts()
+        if hosts:
+            print(f"~/.ssh/config: {' '.join(hosts)}")
+        if not profiles.profiles() and not hosts:
+            print("No profiles. Add one with: ewald remote add NAME --host HOST --user USER")
+        return
+    if cmd == "add":
+        old = profiles.get(args.name)
+        auth = "password" if args.password else "key" if args.key else (old.auth if old else "auto")
+        prof = profiles.Profile(args.name, host=args.host or (old.host if old else ""),
+                                user=args.user or (old.user if old else ""),
+                                port=args.port or (old.port if old else None), auth=auth,
+                                key_file=args.key or (old.key_file if old else ""),
+                                jump=args.jump or (old.jump if old else ""),
+                                folder=args.folder or (old.folder if old else ""),
+                                bookmarks=old.bookmarks if old else [])
+        pw = getpass.getpass(f"Password for {prof.target}: ") if args.password else None
+        phrase = getpass.getpass(f"Passphrase for {prof.key_file}: ") if args.passphrase else None
+        try:
+            profiles.save(prof, password=pw, passphrase=phrase)
+        except ValueError as exc:
+            sys.exit(f"ewald remote add: {exc}")
+        where = profiles.secret_location(prof.name, "password" if pw else "passphrase") if (pw or phrase) else None
+        print(f"Saved {prof.name} ({prof.target})" + (f"; secret in the {where}" if where else ""))
+        print(f"Open files as {prof.name}:/path; browse with: ewald remote ls {prof.name}")
+        return
+    if cmd == "remove":
+        if profiles.get(args.name) is None:
+            sys.exit(f"ewald remote remove: no profile named {args.name!r}")
+        profiles.delete(args.name)
+        print(f"Removed {args.name}")
+        return
+    if cmd == "test":
+        prof = profiles.get(args.name) or profiles.from_ssh_config(args.name)
+        ok, msg = profiles.test(prof)
+        print(msg)
+        return 0 if ok else 1
+    if cmd == "ls":
+        path = args.path if remote.is_remote(args.path) else args.path + ":"
+        rp = remote.parse_remote(path)
+        if not rp.path or rp.path == ".":
+            prof = profiles.get(rp.host)
+            path = str(rp.with_path(prof.folder if prof and prof.folder else remote.home(path)))
+        for name, is_dir, size, mtime in remote.listdir(path):
+            stamp = time.strftime("%Y-%m-%d %H:%M", time.localtime(mtime))
+            print(f"{'' if is_dir else size:>12} {stamp}  {name}{'/' if is_dir else ''}")
+        return
+    if cmd == "get":
+        print(remote.download(args.path, args.dest))
+        return
+
+
 def _run(args):
     if args.cmd == "gui":
         from .gui import main as gui_main
@@ -150,6 +239,8 @@ def _run(args):
         from .inventory import update
 
         return update(args.output, gui=args.gui)
+    if args.cmd == "remote":
+        return _remote_cmd(args)
     if args.cmd == "mcp":
         from .llm.mcp_server import serve
 

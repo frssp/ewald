@@ -149,6 +149,19 @@ when opened* is *never*), and so does Run all. A plugin you already have install
 same id is used instead of the copy in the file. A `.ipynb` written by Jupyter opens the same
 way as a `.py`; `pipe.add(...)` cells become steps and its outputs are kept.
 
+## Undo and redo
+
+Edit › Undo (Ctrl+Z) and Redo (Ctrl+Shift+Z) step through the notebook's edits, one entry per
+action: inserting, deleting or moving a cell, running cells (with what you typed into them), a
+step form (dragging one slider counts once) and pipeline changes made from elsewhere (console,
+Ask Claude, viewport tools). The menu names the entry it would undo. While the cursor is in a
+cell, Ctrl+Z undoes typing in that cell instead.
+
+Undo restores the cells' text. Step and view cells that come back or change run again, so the
+pipeline and the viewport follow; other code cells are marked stale and run only when you run
+them, since they may do anything (write files, read data). Each notebook tab has its own
+history, which starts empty when the notebook is opened.
+
 ## Plugins and changes from elsewhere
 
 The puzzle icon on the far left opens the **Plugins** side bar, next to the notebook (Window ›

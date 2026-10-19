@@ -14,6 +14,7 @@ LAMMPS numeric types wherever a file is read.
 | `ewald narrate FILE [--no-llm] [--render] [--json]` | event timeline of a trajectory |
 | `ewald ask FILE "question" [--select EXPR \| --ids 1,2] [--frame N] [--allow-code] [--script out.py] [--model ID]` | ask Claude about a structure, or about the selected particles; `--script` saves the resulting pipeline |
 | `ewald mcp [FILE] [--allow-code]` | serve the analysis tools over MCP (stdio) |
+| `ewald remote list\|add\|remove\|test\|ls\|get` | [saved remote computers](formats.md#saved-remote-computers): `add NAME --host H --user U [--key FILE] [--password] [--passphrase] [--jump J] [--folder DIR]` (secrets asked and saved in the OS keychain), `ls NAME[:DIR]`, `get NAME:/file [DEST]` |
 | `ewald api` | print the LLM API reference (`llms.txt`) |
 | `ewald inventory [-o docs/features.md] [--gui]` | print or rewrite the [feature inventory](../features.md); `--gui` reads the menus from a live window |
 

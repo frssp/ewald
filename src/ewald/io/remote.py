@@ -6,12 +6,16 @@ Remote locations are written like ``scp`` or as URLs::
     import_file("me@login.hpc.edu:run1/XDATCAR")                # relative to the remote home
     import_file("ssh://me@login.hpc.edu:2222/scratch/me/dump.*.lammpstrj")
 
+A saved profile (:mod:`ewald.io.profiles`, the Remotes side bar in the GUI) works as a host:
+``import_file("nurion:/scratch/me/run3/dump.lammpstrj")`` uses its host, user, port, key, jump
+host and the password or key passphrase saved in the OS keychain.
+
 Connections follow ``~/.ssh/config`` (HostName, User, Port, IdentityFile,
 IdentitiesOnly, ProxyJump, ProxyCommand, UserKnownHostsFile,
 StrictHostKeyChecking) and use the SSH agent and default keys. Host keys are
 checked against ``known_hosts``. When key authentication fails, the password or
 one-time code is asked through :func:`set_password_prompt` (a terminal prompt
-by default, a dialog in the GUI) and is never stored.
+by default, a dialog in the GUI); only a profile keeps a password, in the keychain.
 
 The native LAMMPS dump/data and XDATCAR readers read remote files in place:
 frames are fetched on demand through a block cache, and a LAMMPS dump is
@@ -167,11 +171,26 @@ class RemoteError(OSError):
 class Connection:
     """One authenticated SSH transport with an SFTP session, shared by every file on that host."""
 
-    def __init__(self, host: str, user: str | None = None, port: int | None = None, proxyjump: str | None = None):
+    def __init__(self, host: str, user: str | None = None, port: int | None = None, proxyjump: str | None = None,
+                 profile=None, password: str | None = None, passphrase: str | None = None, _depth: int = 0):
+        """``host`` is a saved profile name (:mod:`ewald.io.profiles`), a ``~/.ssh/config`` alias or a
+        host name. ``password``/``passphrase`` override the profile's saved ones."""
         import paramiko
 
+        from . import profiles
+
+        if _depth > 8:
+            raise RemoteError(f"ProxyJump chain through {host!r} is too long (a loop?)")
         self.alias = host
-        opts = _ssh_config().lookup(host)
+        self._depth = _depth
+        prof = profile if profile is not None else profiles.get(host)
+        opts = _ssh_config().lookup(prof.host or host if prof else host)
+        if prof is not None:
+            opts = prof.ssh_options(opts)
+            password = password if password is not None else profiles.secret(prof.name, "password")
+            passphrase = passphrase if passphrase is not None else profiles.secret(prof.name, "passphrase")
+        self.profile = prof
+        self._password, self._passphrase = password or None, passphrase or None
         if proxyjump:  # the earlier hops of a 'ProxyJump a,b' chain
             opts["proxyjump"] = proxyjump
         self.hostname = opts.get("hostname", host)
@@ -210,7 +229,7 @@ class Connection:
             if hop is None:
                 raise RemoteError(f"cannot parse ProxyJump {jump!r}")
             self._jump = Connection(hop[2].strip("[]"), hop[1], int(hop[3]) if hop[3] else None,
-                                    ",".join(earlier) or None)
+                                    ",".join(earlier) or None, _depth=self._depth + 1)
             return self._jump.transport.open_channel("direct-tcpip", (self.hostname, self.port), ("127.0.0.1", 0))
         cmd = opts.get("proxycommand")
         if cmd and cmd.lower() != "none":
@@ -281,7 +300,7 @@ class Connection:
             files += [os.path.expanduser(f"~/.ssh/id_{k}") for k in ("ed25519", "ecdsa", "rsa")]
         for f in dict.fromkeys(files):
             if os.path.isfile(f):
-                key = _load_key(f)
+                key = _load_key(f, self._passphrase)
                 if key is not None:
                     keys.append(key)
         allowed = None
@@ -302,18 +321,37 @@ class Connection:
         self._interactive(allowed)
 
     def _interactive(self, allowed):
+        t = self.transport
+        target = f"{self.user}@{self.hostname}"
+        cancelled = False
+        if self._password:  # saved with the profile: try it first, ask if it is refused
+            cancelled = self._try_password(allowed, self._password)
+        if not t.is_authenticated() and not cancelled:
+            cancelled = self._try_password(allowed, None)
+        if not t.is_authenticated():
+            raise RemoteError(f"Authentication to {target} failed" + (" (cancelled)" if cancelled else
+                              "; check your SSH key or agent, or that the password is right"))
+
+    def _try_password(self, allowed, saved) -> bool:
+        """One password / keyboard-interactive attempt; ``saved`` answers password prompts
+        (other prompts, e.g. one-time codes, are always asked). Returns True if cancelled."""
         import paramiko
 
         t = self.transport
         target = f"{self.user}@{self.hostname}"
         cancelled = False
 
+        def ask(prompt, echo):
+            if saved and not echo and "pass" in prompt.lower():
+                return saved
+            return _password_prompt(prompt, echo)
+
         def handler(title, instructions, prompts):
             nonlocal cancelled
             answers = []
             for text, echo in prompts:
                 text = text.strip() or "Password:"
-                ans = _password_prompt(f"{target} {text} ", echo)
+                ans = ask(f"{target} {text} ", echo)
                 if ans is None:
                     cancelled = True
                     raise paramiko.AuthenticationException("cancelled")
@@ -324,21 +362,24 @@ class Connection:
             if allowed is None or "keyboard-interactive" in allowed:
                 t.auth_interactive(self.user, handler)
             elif "password" in allowed:
-                pw = _password_prompt(f"{target} password: ", False)
+                pw = ask(f"{target} password: ", False)
                 if pw is None:
                     cancelled = True
                 else:
                     t.auth_password(self.user, pw)
         except paramiko.BadAuthenticationType as exc:
             if "password" in exc.allowed_types and not cancelled:
-                pw = _password_prompt(f"{target} password: ", False)
-                if pw is not None:
-                    t.auth_password(self.user, pw)
+                pw = ask(f"{target} password: ", False)
+                if pw is None:
+                    cancelled = True
+                else:
+                    try:
+                        t.auth_password(self.user, pw)
+                    except paramiko.AuthenticationException:
+                        pass
         except paramiko.AuthenticationException:
             pass
-        if not t.is_authenticated():
-            raise RemoteError(f"Authentication to {target} failed" + (" (cancelled)" if cancelled else
-                              "; check your SSH key or agent, or that the password is right"))
+        return cancelled
 
     # --- operations
     def is_active(self) -> bool:
@@ -389,19 +430,29 @@ def _local_user() -> str:
         return "root"
 
 
-def _load_key(path):
+def _load_key(path, passphrase: str | None = None):
     import paramiko
 
+    def load(secret=None):  # passphrase is positional: 'passphrase=' in paramiko 3, 'password=' in 5
+        return paramiko.PKey.from_path(path, secret.encode()) if secret else paramiko.PKey.from_path(path)
+
     try:
-        return paramiko.PKey.from_path(path)
-    except paramiko.PasswordRequiredException:
-        pw = _password_prompt(f"Passphrase for {path}: ", False)
-        if pw is None:
+        return load()
+    except Exception as exc:
+        encrypted = isinstance(exc, paramiko.PasswordRequiredException) or (
+            isinstance(exc, TypeError) and "encrypted" in str(exc))
+        if not encrypted:
             return None
+    if passphrase:
         try:
-            return paramiko.PKey.from_path(path, passphrase=pw)
+            return load(passphrase)
         except Exception:
-            return None
+            pass  # a stale saved passphrase: ask
+    pw = _password_prompt(f"Passphrase for {path}: ", False)
+    if pw is None:
+        return None
+    try:
+        return load(pw)
     except Exception:
         return None
 
@@ -434,6 +485,16 @@ def connect(host: str, user: str | None = None, port: int | None = None) -> Conn
         if conn is None or not conn.is_active():
             conn = _connections[k] = Connection(host, user, port)
         return conn
+
+
+def disconnect(host: str) -> None:
+    """Close the cached connections to ``host`` (e.g. after its profile changed)."""
+    with _connections_lock:
+        for k in [k for k in _connections if k[0] == host]:
+            try:
+                _connections.pop(k).close()
+            except Exception:
+                pass
 
 
 def disconnect_all() -> None:
@@ -677,6 +738,27 @@ def fetch(path) -> str:
     return str(local)
 
 
-__all__ = ["RemotePath", "parse_remote", "is_remote", "connect", "disconnect_all", "open_remote", "stat",
-           "exists", "listdir", "home", "glob", "fetch", "cache_dir", "clear_cache", "config_hosts",
+def download(path, dest) -> str:
+    """Copy a remote file to ``dest`` (a file name, or a folder to keep the remote name); returns the local path."""
+    rp = parse_remote(path)
+    conn = _conn(rp)
+    dest = Path(os.path.expanduser(str(dest)))
+    if dest.is_dir():
+        dest = dest / (posixpath.basename(rp.path.rstrip("/")) or "file")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
+    label = f"{rp.host}:{rp.path}"
+    callback = (lambda done, total: _progress(done, total, label)) if _progress else None
+    try:
+        with conn.lock:
+            conn.sftp.get(rp.path, str(tmp), callback=callback)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    os.replace(tmp, dest)
+    return str(dest)
+
+
+__all__ = ["RemotePath", "parse_remote", "is_remote", "connect", "disconnect", "disconnect_all", "open_remote", "stat",
+           "exists", "listdir", "home", "glob", "fetch", "download", "cache_dir", "clear_cache", "config_hosts",
            "set_password_prompt", "set_host_key_prompt", "set_progress_callback", "RemoteError"]

@@ -103,8 +103,11 @@ class ReaderPlugin:
     aliases: tuple = ()
     takes_format: bool = False   # factory receives the requested format name (the ASE fallback)
     category: str = "structure"  # "structure" or "volumetric" (groups the GUI open filter)
+    schemes: tuple = ()          # URI schemes it serves: ("aiida",) takes every "aiida:..." path
 
     def matches(self, path) -> bool:
+        if self.schemes:
+            return path_scheme(path) in self.schemes
         if self.sniff is not None:
             try:
                 return bool(self.sniff(str(path)))
@@ -314,12 +317,15 @@ def plugin_dir() -> Path:
 
 
 def reader(name: str, patterns=(), sniff: Callable | None = None, description: str = "",
-           priority: int | None = 50, aliases=(), category: str = "structure"):
-    """Decorator registering a reader class or function under the format ``name``."""
+           priority: int | None = 50, aliases=(), category: str = "structure", schemes=()):
+    """Decorator registering a reader class or function under the format ``name``.
+
+    ``schemes=("aiida",)`` makes it the reader of every ``aiida:...`` path: such a path is
+    not a file, so it is handed to this reader as it is (no SSH, wildcard or local lookup)."""
 
     def deco(factory):
         register_reader(name, factory, patterns=patterns, sniff=sniff, description=description,
-                        priority=priority, aliases=aliases, category=category)
+                        priority=priority, aliases=aliases, category=category, schemes=schemes)
         return factory
 
     return deco
@@ -327,9 +333,12 @@ def reader(name: str, patterns=(), sniff: Callable | None = None, description: s
 
 def register_reader(name: str, factory: Callable, patterns=(), sniff: Callable | None = None,
                     description: str = "", origin: str = "python", priority: int | None = 50,
-                    aliases=(), category: str = "structure") -> ReaderPlugin:
+                    aliases=(), category: str = "structure", schemes=()) -> ReaderPlugin:
     if isinstance(patterns, str):
         patterns = (patterns,)
+    if isinstance(schemes, str):
+        schemes = (schemes,)
+    schemes = tuple(x.lower() for x in (schemes or getattr(factory, "schemes", ())))
     # attributes on the factory fill in what the call left out (entry-point classes carry their own)
     patterns = tuple(patterns or getattr(factory, "patterns", ()))
     sniff = sniff or getattr(factory, "sniff", None)
@@ -340,7 +349,7 @@ def register_reader(name: str, factory: Callable, patterns=(), sniff: Callable |
     description = description or getattr(factory, "description", "") or (doc[0] if doc else "")
     plugin = ReaderPlugin(name.lower(), factory, patterns, sniff, description,
                           getattr(_loading, "origin", None) or origin, priority,
-                          tuple(a.lower() for a in aliases), category=category)
+                          tuple(a.lower() for a in aliases), category=category, schemes=schemes)
     _registry.readers[plugin.name] = plugin
     _contribute("readers", plugin.name)
     return plugin
@@ -920,10 +929,31 @@ def readers() -> dict[str, ReaderPlugin]:
     return dict(_registry.readers)
 
 
+_SCHEME = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*):")
+
+
+def path_scheme(path) -> str | None:
+    """The URI scheme of ``path`` (``"aiida"`` for ``aiida:1234``), or None."""
+    m = _SCHEME.match(path) if isinstance(path, str) else None
+    return m.group(1).lower() if m else None
+
+
+def scheme_reader(path) -> ReaderPlugin | None:
+    """The reader registered for the scheme of ``path`` (``schemes=``), or None. A path with a
+    registered scheme is not a file: it is not looked up locally or over SSH."""
+    scheme = path_scheme(path)
+    if scheme is None:
+        return None
+    return next((p for p in readers().values() if scheme in p.schemes), None)
+
+
 def find_reader(path, format: str | None = None) -> ReaderPlugin:
     """The reader for ``format`` (name or alias; unknown names go to ASE), else the first by
     priority that recognises ``path``."""
     plugins = readers()
+    by_scheme = scheme_reader(path)
+    if by_scheme is not None and not format:
+        return by_scheme
     if format:
         fmt = format.lower()
         for plugin in plugins.values():
@@ -956,7 +986,8 @@ def status() -> dict:
     load_plugins()
     return {"plugin_dir": str(plugin_dir()),
             "readers": [{"name": p.name, "aliases": list(p.aliases), "patterns": list(p.patterns),
-                         "description": p.description, "origin": p.origin, "priority": p.priority}
+                         "description": p.description, "origin": p.origin, "priority": p.priority,
+                         "schemes": list(p.schemes)}
                         for p in sorted(_registry.readers.values(),
                                         key=lambda p: (p.priority is None, p.priority or 0, p.name))],
             "modifiers": [{"name": p.name, "category": p.category, "description": p.description,

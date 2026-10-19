@@ -206,6 +206,12 @@ class FilesMixin:
             self._open_asking_types(dlg.url)
         return dlg
 
+    def show_remotes(self):
+        """Show the Remotes side bar (saved SSH computers and their files)."""
+        self.remotes_dock.show()
+        self.remotes_dock.raise_()
+        self.remotes_panel.list.setFocus()
+
     def _open_asking_types(self, path):
         kwargs = {}
         from ..io.lammps_dump import is_lammps_dump

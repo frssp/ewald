@@ -28,8 +28,9 @@ pip install -e ".[remote]"  # + files over SSH (paramiko)
 Without a C++ compiler (Windows: "Microsoft Visual C++ 14.0 or greater is required") the install
 still succeeds, minus PTM, Voronoi, matching CSP and interval CNA; install the
 [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and reinstall to
-add them ([details](docs/user/install.md#without-a-c-compiler)). Windows releases will also ship wheels
-and a standalone installer; see [docs/developer/windows-release.md](docs/developer/windows-release.md).
+add them ([details](docs/user/install.md#without-a-c-compiler)). Releases ship prebuilt
+wheels for Linux, macOS and Windows plus a Windows installer and a macOS app
+([install from a release](docs/user/install.md#from-a-release)); changes are listed in [CHANGELOG.md](CHANGELOG.md).
 On macOS (Apple Silicon or Intel) run `xcode-select --install` first; see
 [docs/user/install.md](docs/user/install.md#macos) and [docs/developer/macos-release.md](docs/developer/macos-release.md).
 
@@ -213,8 +214,14 @@ In the GUI, File › Load remote file (SSH)… (Ctrl+Alt+O) browses the remote f
 Connections follow `~/.ssh/config` (HostName, User, Port, IdentityFile, IdentitiesOnly,
 ProxyJump, ProxyCommand, UserKnownHostsFile, StrictHostKeyChecking), the SSH agent and
 your default keys, and host keys are checked against `known_hosts`. If key login fails
-you are asked for the password or one-time code (terminal prompt, or a dialog in the GUI);
-it is never saved. Only recent remote locations are remembered.
+you are asked for the password or one-time code (terminal prompt, or a dialog in the GUI).
+
+Remote computers can be saved like sessions in an SSH terminal app (GUI: the Remotes side bar,
+Ctrl+Alt+R; terminal: `ewald remote add nurion --host nurion.ksc.re.kr --user me --password`).
+The profile name then works as the host, `import_file("nurion:/scratch/me/run3/XDATCAR")`, and
+notebooks keep only that string. A saved password or key passphrase lives in the OS keychain
+(a file readable only by you where there is none), never in settings or notebooks; one-time
+codes are always asked. `ewald remote ls|get|test` browse, download and check from a terminal.
 
 LAMMPS dumps/data files and XDATCARs are read in place: a dump is indexed by running
 `grep -b` on the remote host (streamed over SFTP if that is unavailable), and each frame

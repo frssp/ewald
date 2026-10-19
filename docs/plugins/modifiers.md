@@ -66,6 +66,7 @@ changes.
 | `ctx.input_frame(k)` | frame `k` as it reaches this modifier, with every modifier above it applied |
 | `ctx.upstream_key()` | a hashable fingerprint of everything above this modifier, for caching |
 | `ctx.pipeline` | the pipeline, e.g. `ctx.pipeline.num_frames` |
+| `ctx.check_cancel()` | raises `ComputeCancelled` when the GUI no longer needs this result; call it in long loops (`source_frame`/`input_frame` call it for you) |
 
 **Errors.** Raise an exception with a message a user can act on (`ValueError("cutoff must be
 below half the cell width")`). The pipeline stores it in `modifier.status`, the GUI shows it on

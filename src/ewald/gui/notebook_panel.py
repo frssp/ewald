@@ -15,7 +15,7 @@ import os
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ..notebook import Cell, Notebook, new_notebook, step_call
+from ..notebook import Cell, History, Notebook, new_notebook, step_call
 from .params import ParameterForm
 from .pipeline_panel import _discover, fill_modifier_menu
 from .notebook_tabs import NotebookTabs
@@ -712,6 +712,7 @@ class NotebookView(QtWidgets.QWidget):
     def __init__(self, notebook: Notebook, parent=None):
         super().__init__(parent)
         self.notebook = notebook
+        self.history = History(notebook)  # Edit › Undo/Redo, one entry per action below
         self.widgets: list[CellWidget] = []
         self.current = None
         self.data = None
@@ -899,6 +900,7 @@ class NotebookView(QtWidgets.QWidget):
         if w is not None and w.editor is not None:
             w.editor.setFocus()
             QtCore.QTimer.singleShot(0, w, lambda: self.scroll.ensureWidgetVisible(w))
+        self.history.commit("Insert cell")
         self.titleChanged.emit()
         return cell
 
@@ -918,11 +920,14 @@ class NotebookView(QtWidgets.QWidget):
         if w is not None:
             w.form_button.setChecked(True)
             QtCore.QTimer.singleShot(0, w, lambda: self.scroll.ensureWidgetVisible(w))
+        self.history.commit(f"Add {modifier.name}")
         self.changed.emit()
         self.titleChanged.emit()
         return cell
 
     def _step_edited(self, cell):
+        mod = cell.modifier
+        self.history.commit(f"Edit {mod.name if mod is not None else 'step'}", merge=("form", id(cell)))
         self.changed.emit()
         self.titleChanged.emit()
 
@@ -943,6 +948,7 @@ class NotebookView(QtWidgets.QWidget):
             w.code_button.setChecked(True)
         elif action == "below":
             self.run(cell, below=True)
+        self.history.commit({"delete": "Delete cell", "up": "Move cell", "down": "Move cell"}.get(action, "Edit cell"))
         self.titleChanged.emit()
 
     # ----------------------------------------------------------- running
@@ -958,12 +964,32 @@ class NotebookView(QtWidgets.QWidget):
         if len(nb.cells) != len(self.widgets) or any(not _same_shape(w.built_for, _shape(c))
                                                      for w, c in zip(self.widgets, nb.cells)):
             self.rebuild()
+        self.history.commit("Run cell")  # what was typed into the cells that ran
         if nb.pipeline is not before and nb.pipeline is not None:
             self.pipelineReplaced.emit(nb.pipeline)
         else:
             self.changed.emit()
         self.update_results()
         self.titleChanged.emit()
+
+    def undo(self) -> str | None:
+        return self._step_history(self.history.undo)
+
+    def redo(self) -> str | None:
+        return self._step_history(self.history.redo)
+
+    def _step_history(self, step):
+        before = self.notebook.pipeline
+        label = self._busy(step)
+        if label is None:
+            return None
+        self.rebuild()
+        if self.notebook.pipeline is not before and self.notebook.pipeline is not None:
+            self.pipelineReplaced.emit(self.notebook.pipeline)
+        else:
+            self.changed.emit()
+        self.titleChanged.emit()
+        return label
 
     def run(self, cell, advance=False, below=False):
         nb = self.notebook
@@ -1216,6 +1242,7 @@ class NotebookPanel(QtWidgets.QWidget):
         if view.notebook.sync():
             view.rebuild()
             self._retitle(view)
+        view.history.commit("Change pipeline")  # console, Ask Claude, viewport tools
         if select is not None:
             mod = select[1] if isinstance(select, tuple) and len(select) == 2 else select
             cell = next((c for c in view.notebook.cells if c.modifier is mod), None)
@@ -1228,6 +1255,13 @@ class NotebookPanel(QtWidgets.QWidget):
     def update_status(self):
         if self.view is not None:
             self.view.update_results()
+
+    def undo(self) -> str | None:
+        """Undo the last edit of the current notebook; returns what was undone."""
+        return self.view.undo() if self.view is not None else None
+
+    def redo(self) -> str | None:
+        return self.view.redo() if self.view is not None else None
 
     def _current(self):
         return None
