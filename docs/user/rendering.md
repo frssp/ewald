@@ -12,6 +12,42 @@ pipe.render("slab.png", direction="y", bonds=2.8, radius_scale=0.6, background="
 pipe.render("fig.svg", frame=10, renderer="vector", type_legend=True, scale_bar=True)
 ```
 
+## The view of a pipeline
+
+`pipe.view` holds how the pipeline's structure is drawn, and `pipe.render()`, `snapshot(pipe)`,
+the picture Jupyter shows and the GUI viewport all use it. Set it with `view(pipe, ...)` (the
+notebook's view cell) or one attribute at a time; keywords given to `pipe.render(...)` override it
+for that call only (`bonds=2.8` replaces the bond table, `direction=` the saved camera).
+
+```python
+from ewald import load, view
+
+pipe = load("POSCAR")
+view(pipe, theme="VESTA", colors={"O": "red"}, cell=False, direction="z", zoom=1.2)
+pipe.view.radius("Ti", 0.6)                   # per-type radius in Angstrom
+pipe.view.look("x").rotate(azimuth=30, elevation=15)
+pipe.render("fig.png", renderer="raytrace")
+print(pipe.view.changed())                    # what differs from the defaults
+print(pipe.view.source())                     # the same as a view(pipe, ...) line
+```
+
+| Group | Settings |
+|---|---|
+| style | `style` (Ball & stick, Space-filling, Simple (ASE), Points), `theme`, `atom_style` (auto, mesh, impostor, flat), `background` |
+| atoms | `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `radius_preset`, `oxidation_states` |
+| bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax]], `bond_factor`, `bond_radius` |
+| cell | `cell`, `cell_width`, `cell_color` |
+| boundary | `boundary` (VESTA range), `boundary_bonds` (half, complete, none) |
+| elements | `visuals` (plugin visual elements), `vectors` (arrows of a vector property), `trajectory_width` |
+| camera | `frame`, `direction`, `zoom`, `orthographic`, `camera` (an exact camera, as the GUI saves it) |
+| picture | `renderer`, `quality`, `size`, `ambient_occlusion`, `shadows`, `transparent_background`, `text`, `legend`, `type_legend`, `scale_bar`, `overlays` |
+
+`View.help()` prints every setting with its default. A style preset sets `radius_scale`, `bonds`
+and `atom_style` unless you give them too, and Simple (ASE) also the ASE theme. The defaults are
+the GUI's: Ball & stick with VESTA-style bonds (off above 100,000 atoms). Per-atom colors, sizes
+and hiding by condition are steps (`paint`, `hide`, `fade`, `resize` in
+[Notebooks](notebooks.md)), and polyhedra, isosurfaces and arrows come from modifiers.
+
 ## Renderers
 
 `renderer="opengl"` (default) uses VTK and is fast; `ambient_occlusion=True` adds VTK's

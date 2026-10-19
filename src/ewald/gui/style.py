@@ -5,16 +5,9 @@ from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
-STYLE_PRESETS = {
-    # name: (radius_scale, bonds_enabled, atom_style)
-    "Ball & stick": (0.5, True, "auto"),
-    "Space-filling": (1.0, False, "auto"),
-    "Simple (ASE)": (1.1, False, "flat"),  # ASE GUI: covalent x 0.89, flat outlined discs
-    "Points": (0.25, False, "impostor"),
-}
-# Presets that also apply an ewald.themes theme when picked (ASE's white background).
-PRESET_THEMES = {"Simple (ASE)": "ASE"}
-DEFAULT_PRESET = "Ball & stick"
+from ..view3d import DEFAULT_PRESET, PRESET_THEMES, STYLE_PRESETS  # noqa: F401 (public here too)
+
+DEFAULT_BACKGROUND = "#14161A"
 _THEMED = ("type_colors", "background", "cell_color", "radius_preset", "theme")
 
 
@@ -32,13 +25,15 @@ class ViewStyle:
     bond_radius: float = 0.15
     show_cell: bool = True
     cell_width: float = 2.0
-    background: str = "#14161A"
+    background: str = DEFAULT_BACKGROUND
     bond_factor: float = 1.15                         # VESTA: max bond = factor * (r_A + r_B)
     visuals: list = field(default_factory=list)       # plugin visual elements: {name, params, enabled}
     theme: str = ""                                   # last applied ewald.themes name (its values are above)
     cell_color: str | None = None                     # None: picked from the background
     boundary: list = field(default_factory=list)      # VESTA boundary [lo, hi] (fractional); empty = off
     boundary_bonds: str = "half"                      # bonds leaving it: half / complete / none
+    vectors: object = None                            # per-atom vector properties drawn as arrows (render's vectors=)
+    trajectory_width: float = 2.0                     # trajectory lines (pixels)
 
     def apply_preset(self, name: str, types=()):
         """Switch to a style preset. 'Simple (ASE)' also applies the ASE theme (white background);
@@ -69,6 +64,10 @@ class ViewStyle:
             kw["visuals"] = [dict(v) for v in self.visuals]
         if self.cell_color:
             kw["cell_color"] = self.cell_color
+        if self.vectors:
+            kw["vectors"] = self.vectors
+        if self.trajectory_width != 2.0:
+            kw["trajectory_width"] = self.trajectory_width
         if self.boundary:
             kw["boundary"] = [list(map(float, p)) for p in self.boundary] if np.ndim(self.boundary) == 2 \
                 else [float(x) for x in self.boundary]
@@ -110,3 +109,109 @@ class ViewStyle:
 
         for a, b, lo, hi in covalent_pairs(np.unique(np.asarray(types)), self.bond_factor):
             self.bond_pairs.append([a, b, lo, round(float(hi), 2)])
+
+    # ------------------------------------------------------------ notebook code (ewald.view3d.View)
+    def apply_view(self, view, types=()):
+        """Take the display settings of a pipeline's :class:`ewald.view3d.View` (a notebook's view cell,
+        Claude's set_view); camera, frame and picture settings are the window's business."""
+        from matplotlib.colors import to_hex
+
+        def hexed(c):
+            return to_hex(c) if isinstance(c, str) else tuple(c)
+
+        self._before_preset_theme = None
+        self.preset = view.style
+        self.radius_scale, self.atom_style = float(view.radius_scale), view.atom_style
+        theme = view.theme
+        self.type_colors, self.cell_color, self.background = {}, None, DEFAULT_BACKGROUND
+        self.radius_preset = "covalent"
+        if theme:
+            self.apply_theme(theme, types)
+        else:
+            self.theme = ""
+        self.type_colors.update({t: hexed(c) for t, c in view.colors.items()})
+        if "radius_preset" in view._values or not theme:
+            self.radius_preset = view.radius_preset
+        if view.background is not None:
+            self.background = to_hex(view.background)
+        if view.cell_color is not None:
+            self.cell_color = hexed(view.cell_color)
+        self.type_radii = {t: float(r) for t, r in view.radii.items()}
+        self.oxidation_states = dict(view.oxidation_states)
+        self._pref_filled = {}   # what Preferences filled is filled again on the next draw
+        self._radius_cache = None
+        bonds = view.bonds
+        self.bonds_enabled = bool(bonds)
+        self.bond_factor, self.bond_radius = float(view.bond_factor), float(view.bond_radius)
+        if view.bond_pairs:
+            self.bond_pairs = [list(p) for p in view.bond_pairs]
+        elif isinstance(bonds, float):   # a plain cutoff: every type pair up to it
+            uniq = sorted({str(t) for t in types})
+            self.bond_pairs = [[a, b, 0.0, bonds] for k, a in enumerate(uniq) for b in uniq[k:]]
+        else:
+            self.bond_pairs = []
+            if self.bonds_enabled and len(types):
+                self.ensure_bond_pairs(types)
+        self.show_cell, self.cell_width = bool(view.cell), float(view.cell_width)
+        self.boundary = list(view.boundary or [])
+        self.boundary_bonds = view.boundary_bonds
+        self.visuals = [{"name": v, "params": {}, "enabled": True} if isinstance(v, str) else dict(v)
+                        for v in view.visuals]
+        self.vectors = view.vectors
+        self.trajectory_width = float(view.trajectory_width)
+
+    def view_settings(self, types=()) -> dict:
+        """The display settings of this style as :class:`ewald.view3d.View` settings (what the notebook's
+        view cell says), leaving out what Preferences and the theme filled in by themselves."""
+        from ..view3d import STYLE_PRESETS as presets
+
+        filled = getattr(self, "_pref_filled", {})
+        theme = None
+        if self.theme:
+            from ..themes import get_theme
+
+            try:
+                theme = get_theme(self.theme)
+            except KeyError:
+                theme = None
+        theme_colors = {k: tuple(v) for k, v in theme.type_colors(types).items()} if theme is not None else {}
+
+        def same_color(a, b):
+            from ..render import _rgb
+
+            try:
+                return np.allclose(_rgb(a), _rgb(b), atol=1e-3)
+            except Exception:  # noqa: BLE001
+                return False
+
+        colors = {}
+        for t, c in self.type_colors.items():
+            if t in filled and filled[t][0] is not None and filled[t][0] == c:
+                continue
+            if t in theme_colors and same_color(c, theme_colors[t]):
+                continue
+            colors[t] = tuple(round(float(x), 4) for x in c) if not isinstance(c, str) else c
+        radii = {t: float(r) for t, r in self.type_radii.items()
+                 if not (t in filled and filled[t][1] is not None and filled[t][1] == r)}
+        out = {"style": self.preset if self.preset in presets else DEFAULT_PRESET,
+               "theme": self.theme or None, "atom_style": self.atom_style, "radius_scale": self.radius_scale,
+               "colors": colors, "radii": radii, "oxidation_states": dict(self.oxidation_states),
+               "bonds": bool(self.bonds_enabled), "bond_factor": self.bond_factor, "bond_radius": self.bond_radius,
+               "cell": bool(self.show_cell), "cell_width": self.cell_width,
+               "boundary": list(self.boundary) or None, "boundary_bonds": self.boundary_bonds,
+               "visuals": [dict(v) for v in self.visuals], "vectors": self.vectors,
+               "trajectory_width": self.trajectory_width}
+        if theme is None or theme.radius_preset != self.radius_preset:
+            out["radius_preset"] = self.radius_preset
+        base = theme.background if theme is not None and theme.background is not None else DEFAULT_BACKGROUND
+        out["background"] = None if self.background == base else self.background
+        if self.cell_color is not None and (theme is None or theme.cell_color != self.cell_color):
+            out["cell_color"] = self.cell_color
+        if self.bond_pairs and len(types):
+            from ..bonds import covalent_pairs
+
+            auto = [[a, b, lo, round(float(hi), 2)] for a, b, lo, hi in
+                    covalent_pairs(np.unique(np.asarray(types)), self.bond_factor)]
+            if [list(p) for p in self.bond_pairs] != auto:
+                out["bond_pairs"] = [list(p) for p in self.bond_pairs]
+        return out

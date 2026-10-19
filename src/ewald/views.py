@@ -175,17 +175,28 @@ class Snapshot:
         from .display import options
         from .render import render
 
+        from .view3d import merge
+
+        data = self._data()
         kw = {k: v for k, v in options.items() if k not in ("enabled", "size")}
-        kw.update(self.kwargs, **kwargs)
+        kw = merge({**kw, **self._view_kwargs(data)}, {**self.kwargs, **kwargs})
         if kw.get("quality") is None:
             kw.pop("quality", None)
-        return render(self._data(), **kw)
+        return render(data, **kw)
+
+    def _view_kwargs(self, data) -> dict:
+        """The pipeline's :attr:`~ewald.pipeline.Pipeline.view` settings (style, colors, bonds, camera, ...)."""
+        v = getattr(self.source, "view", None)
+        return v.render_kwargs(data, self.frame) if v is not None else {}
 
     def save(self, filename, **kwargs):
         """Write the picture (PNG, JPG, SVG/PDF, ...) with the same view; ``kwargs`` override."""
         from .render import render
 
-        return render(self._data(), filename, **{**self.kwargs, **kwargs})
+        from .view3d import merge
+
+        data = self._data()
+        return render(data, filename, **merge(self._view_kwargs(data), {**self.kwargs, **kwargs}))
 
     def _repr_png_(self):
         import io
@@ -212,11 +223,15 @@ class Snapshot:
         return f"<Snapshot frame {self.frame}>"
 
 
-def snapshot(source, frame: int = 0, **kwargs) -> Snapshot:
-    """A picture of ``source`` (a Pipeline or DataCollection) at ``frame`` with ``camera=``,
-    ``size=`` and the style keywords of :func:`ewald.render.render`; the last line of a cell
-    shows it. Insert › 3D snapshot in the GUI writes one for the current view."""
+def snapshot(source, frame: int | None = None, **kwargs) -> Snapshot:
+    """A picture of ``source`` (a Pipeline or DataCollection) at ``frame`` (default: the view's)
+    drawn with the pipeline's ``view`` settings; ``camera=``, ``size=`` and the other keywords of
+    :func:`ewald.render.render` override them. The last line of a cell shows it. Insert › 3D
+    snapshot in the GUI writes one for the current view."""
     kwargs.setdefault("size", (480, 360))
+    if frame is None:
+        v = getattr(source, "view", None)
+        frame = v.frame if v is not None else 0
     return Snapshot(source, frame, **kwargs)
 
 
@@ -230,6 +245,13 @@ def write_csv(path, columns: dict):
         w = csv.writer(fh)
         w.writerow(names)
         w.writerows(rows.tolist())
+
+
+def view(pipe, **settings):
+    """Set the 3D view's display settings of ``pipe`` (see :func:`ewald.view3d.view`)."""
+    from .view3d import view as _view
+
+    return _view(pipe, **settings)
 
 
 def view_args(source: str, function: str = "show") -> dict | None:

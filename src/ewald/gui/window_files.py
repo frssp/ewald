@@ -150,7 +150,7 @@ class FilesMixin:
 
             apply_camera_state(self.viewport.plotter, state["camera"])
             self.viewport.render()
-        self._style_changed()
+        self._style_changed(write=False)
 
     def notebook_state(self) -> dict:
         """What a notebook file keeps of the viewer: style, frame, camera and render settings."""
@@ -392,7 +392,7 @@ class FilesMixin:
             apply_camera_state(self.viewport.plotter, s.camera)
             self.viewport.render()
         self.render_page.set_state(s.render)
-        self._style_changed()
+        self._style_changed(write=False)
         self.session_path = path
         self.setWindowTitle(f"ewald — {os.path.basename(path)}")
         self.message(f"Loaded session {path}")

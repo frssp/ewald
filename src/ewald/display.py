@@ -30,8 +30,13 @@ def _quiet_vtk():
     return lambda: vtkLogger.SetStderrVerbosity(level)
 
 
-def data_png(data) -> bytes | None:
-    """PNG bytes of ``data`` drawn with :data:`options`, or None (disabled, empty or failed)."""
+_BASE = tuple(options)
+
+
+def data_png(data, view=None, frame: int = 0) -> bytes | None:
+    """PNG bytes of ``data`` drawn with :data:`options` (and a pipeline's ``view`` settings, which
+    win over the base options; other keys you put into ``options`` win over the view), or None
+    (disabled, empty or failed)."""
     if not options.get("enabled", True) or data is None or not data.count:
         return None
     from PIL import Image
@@ -39,6 +44,11 @@ def data_png(data) -> bytes | None:
     from .render import render
 
     kwargs = {k: v for k, v in options.items() if k != "enabled"}
+    if view is not None:
+        from .view3d import merge
+
+        kwargs = merge({**kwargs, **view.render_kwargs(data, frame)},
+                       {k: v for k, v in options.items() if k not in _BASE})
     if kwargs.get("quality") is None:
         kwargs["quality"] = "draft" if data.count > LARGE else "standard"
     restore = _quiet_vtk()
@@ -54,14 +64,16 @@ def data_png(data) -> bytes | None:
     return buf.getvalue()
 
 
-def pipeline_png(pipe, frame: int = 0) -> bytes | None:
+def pipeline_png(pipe, frame: int | None = None) -> bytes | None:
     if not options.get("enabled", True) or not pipe.num_frames:
         return None
+    view = pipe.view
+    frame = view.frame if frame is None else frame
     try:
-        data = pipe.compute(frame)
+        data = pipe.compute(min(frame, pipe.num_frames - 1))
     except Exception:  # noqa: BLE001
         return None
-    return data_png(data)
+    return data_png(data, view, frame)
 
 
 def table_png(table) -> bytes | None:

@@ -13,7 +13,7 @@ with jupytext and Spyder open as a notebook.
 # %%
 from ewald import load
 from ewald.modifiers import *
-from ewald.views import show
+from ewald.views import show, view
 from ewald.paint import paint, hide
 pipe = load("cu_void.lammpstrj")
 
@@ -46,7 +46,7 @@ Running a cell again replaces the modifiers it added last time, in the same plac
 edit a cell and re-run it without stacking duplicates. A cell that assigns `pipe` again (a new
 `load`) re-runs the cells below it on the new pipeline.
 
-There are four kinds of cell.
+There are six kinds of cell.
 
 **Step cells** are a single `pipe.add(Modifier(...))`, optionally preceded by imports
 (`pipe.modifiers.append(...)` works too; `load` is another name for `import_file`). The notebook shows them as a step: the modifier's name, its parameters, a checkbox to
@@ -112,6 +112,26 @@ def style(frame, data):
 `paint`, `hide`, `isolate` (hide the rest), `fade` and `resize` write new Color, Transparency
 and Radius properties, which every renderer draws. Import them with
 `from ewald.paint import paint, hide, isolate, fade, resize` (new notebooks already do).
+
+**The view cell** holds the 3D view's display settings: one `view(pipe, ...)` call.
+
+```python
+view(pipe, style="Ball & stick", theme="VESTA", colors={"O": "red"}, radii={"Ti": 0.6},
+     bonds=True, cell=False, background="white", direction="z", zoom=1.3)
+```
+
+Everything you can change in the viewport is a setting here: the style preset, theme, element
+colors and radii, radius preset and oxidation states, bonds on or off and the bond table, the
+cell, the background, the VESTA boundary, plugin visual elements and vector arrows, the camera
+(direction, zoom, projection or an exact camera) and the frame, and the picture settings
+(renderer, quality, size, text, legends, scale bar). See [Rendering › The view of a
+pipeline](rendering.md#the-view-of-a-pipeline) for the list. Running the cell redraws the
+viewport. Changing the style in the viewport, the Display panel or the View menu writes the
+change back into this cell (a new one appears at the end when there is none), so the notebook
+always says how the picture was made. Insert › View settings with the camera also writes the
+current camera and frame. `pipe.view` is the same thing one setting at a time
+(`pipe.view.bonds = False`, `pipe.view.color("O", "red")`, `pipe.view.look("x").rotate(30, 15)`),
+and Claude's `set_view` tool changes it too.
 
 **Analysis cells** use a verb: one call adds the analysis step and returns its table.
 

@@ -111,6 +111,28 @@ counting tables, `.counts` (`cna(pipe).counts == {"OTHER": 0, "FCC": 500, ...}`)
 In Jupyter a Pipeline, DataCollection or Table as a cell's last line shows a picture (ray-traced frame 0, or the
 curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] = False` turns it off.
 
+## The 3D view (`pipe.view`)
+
+Every display setting of the structure view belongs to the pipeline: `view(pipe, **settings)` (`from ewald import view`)
+sets some and returns `pipe.view`; `pipe.render()`, `snapshot(pipe)`, the Jupyter picture and the GUI viewport draw with
+it, and the GUI writes viewport edits back into the notebook's `view(pipe, ...)` cell. Settings not named keep their value;
+`None` resets one. `View.help()` lists them all:
+
+```python
+view(pipe, style="Ball & stick",              # 'Space-filling', 'Simple (ASE)', 'Points' (set radius_scale, bonds, atom_style)
+     theme="VESTA", colors={"O": "red"}, radii={"Ti": 0.6}, radius_preset="ionic", oxidation_states={"Ti": 4},
+     bonds=True, bond_pairs=[["Ti", "O", 0, 2.3]], bond_radius=0.12,   # bonds=False, or a cutoff (A)
+     cell=False, background="white", boundary=[-0.1, 1.1],             # VESTA boundary: periodic images
+     direction="z", zoom=1.3, orthographic=True, frame=5,              # or camera={...} (exact, from the GUI)
+     renderer="raytrace", quality="publication", text="t = [Time] ps", type_legend=True, scale_bar=True)
+pipe.view.bonds = False; pipe.view.color("Sr", "green"); pipe.view.look("x").rotate(azimuth=30, elevation=15)
+pipe.render("fig.png")                                    # draws with pipe.view; keywords override it for one call
+```
+
+Per-atom colors, sizes and hiding by condition are steps (`ewald.paint`: `paint`, `hide`, `fade`, `resize`), and
+polyhedra, isosurfaces and vector arrows come from modifiers (`CoordinationPolyhedra`, `VectorVis`, ...).
+Claude's `set_view` / `get_view` tools take the same settings.
+
 ## Other entry points
 
 - `ewald.kernels.rdf(positions, cell, cutoff, nbins=200, types=None)` -> table with `r`, `g(r)`, partial `g(r) A-B`.
