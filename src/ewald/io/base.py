@@ -83,3 +83,65 @@ def _scan_lines(path, predicate):
                 offsets.append(pos)
             pos += len(line)
     return offsets
+
+
+def grep_lines(path, pattern: str, chunk_size: int = 1 << 24) -> list[tuple[int, bytes]]:
+    """Byte offset and text (without the newline) of every line matching ``pattern``.
+
+    ``pattern`` must be valid both as a Python regex and as a POSIX extended regex
+    (use ``[0-9]``, not ``\\d``): a remote file is searched by ``grep -b`` on the host,
+    so only the matching lines cross the network. Locally the file is read in large
+    chunks and searched with ``re``, which keeps indexing a multi-GB OUTCAR close to
+    disk speed. Compressed files are decompressed on the fly.
+    """
+    import io
+    import re
+
+    hits = remote.line_offsets(path, pattern) if remote.is_remote(path) else None
+    if hits is not None:
+        return [(off, text.rstrip(b"\r")) for off, text in hits]
+    regex = re.compile(pattern.encode(), re.M)
+    out: list[tuple[int, bytes]] = []
+    pos, carry = 0, b""
+    with open_binary(path) as fh:
+        read = fh.read if isinstance(fh, io.BufferedReader) else getattr(fh, "read1", fh.read)
+        while True:
+            try:
+                chunk = read(chunk_size)
+            except EOFError:  # truncated compressed stream: keep what decompressed
+                chunk = b""
+            buf = carry + chunk
+            if chunk:
+                end = buf.rfind(b"\n") + 1
+                if end == 0:
+                    carry = buf
+                    continue
+            else:
+                end = len(buf)
+            seg, carry = buf[:end], buf[end:]
+            last = -1
+            for m in regex.finditer(seg):
+                start = seg.rfind(b"\n", 0, m.start()) + 1
+                if start == last:
+                    continue
+                last = start
+                stop = seg.find(b"\n", m.start())
+                out.append((pos + start, seg[start:stop if stop >= 0 else end].rstrip(b"\r")))
+            pos += end
+            if not chunk:
+                break
+    return out
+
+
+_FLOAT = None
+
+
+def floats(line: bytes) -> list[float]:
+    """Every number in a line of fixed-format Fortran output, also when columns run together
+    (``-10.123456789-0.123``); ``*****`` overflow fields are skipped."""
+    global _FLOAT
+    if _FLOAT is None:
+        import re
+
+        _FLOAT = re.compile(rb"[-+]?(?:\d+\.?\d*|\.\d+)(?:[EeDd][-+]?\d+)?")
+    return [float(x.replace(b"D", b"E").replace(b"d", b"e")) for x in _FLOAT.findall(line)]

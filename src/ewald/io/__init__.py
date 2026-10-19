@@ -10,15 +10,23 @@ from .ase_reader import AseReader
 from .base import FrameReader
 from .lammps_data import LammpsDataReader, is_lammps_data
 from .lammps_dump import LammpsDumpReader, is_lammps_dump, write_lammps_dump
+from .thermo import Thermo, merge_tables, read_lammps_log, read_thermo, sibling_files
+from .vasp_output import OutcarReader, VasprunReader, is_outcar, is_vasprun, read_oszicar
 from .volumetric import (VolumetricReader, is_cube, is_vasp_volumetric, read_cube, read_vasp_volumetric,
                          write_cube, write_vasp_volumetric)
 from .xdatcar import XdatcarReader, is_xdatcar
 
 
 class FileSource:
-    """Pipeline source backed by one or more files, frames loaded lazily."""
+    """Pipeline source backed by one or more files, frames loaded lazily.
 
-    def __init__(self, path, format: str | None = None, **kwargs):
+    ``thermo`` adds per-step results (see :mod:`ewald.io.thermo`): ``"auto"`` (default) picks
+    up an OSZICAR next to an XDATCAR and a log.lammps next to a LAMMPS dump, a path or list
+    of paths names LAMMPS logs / OSZICARs, ``None`` turns it off. OUTCAR and vasprun.xml
+    carry their own. The result is ``self.thermo`` (a :class:`Thermo`, or None).
+    """
+
+    def __init__(self, path, format: str | None = None, thermo="auto", **kwargs):
         path = str(path)
         wildcard = any(c in path for c in "*?[")
         if remote.is_remote(path):  # host:/path or ssh://host/path
@@ -36,6 +44,28 @@ class FileSource:
         self.readers: list[FrameReader] = [open_reader(_readable_path(p, format), format, **kwargs)
                                            for p in paths]
         self._index = [(r, i) for r in self.readers for i in range(len(r))]
+        self.thermo_arg = thermo
+        self.thermo = self._load_thermo(thermo)
+
+    def _load_thermo(self, thermo) -> Thermo | None:
+        tables = [r.thermo for r in self.readers[:1] if len(self.readers) == 1 and isinstance(getattr(r, "thermo", None), dict)]
+        files: list[str] = []
+        if thermo == "auto":
+            kinds = {XdatcarReader: "xdatcar", LammpsDumpReader: "lammps-dump"}
+            for p, r in zip(self.paths, self.readers):
+                files += [f for f in sibling_files(p, kinds.get(type(r), "")) if f not in files]
+        elif thermo:
+            files = [str(thermo)] if isinstance(thermo, (str, os.PathLike)) else [str(t) for t in thermo]
+        for f in files:
+            try:
+                tables.append(read_thermo(f))
+            except (OSError, ValueError) as exc:
+                if thermo != "auto":
+                    raise
+                import warnings
+
+                warnings.warn(f"ignoring {f}: {exc}", stacklevel=3)
+        return Thermo(merge_tables(tables), files) if tables else None
 
     @property
     def num_frames(self) -> int:
@@ -47,6 +77,8 @@ class FileSource:
         reader, i = self._index[frame]
         data = reader.read(i)
         data.attributes["SourceFrame"] = frame % self.num_frames
+        if self.thermo is not None:
+            self.thermo.annotate(data)
         return data
 
 
@@ -69,7 +101,8 @@ class StaticSource:
 
 
 _STREAMING_FORMATS = ("lammps/dump", "lammps-dump", "lammps-dump-text", "vasp-xdatcar", "xdatcar",
-                      "lammps/data", "lammps-data", "lammps-data-native")
+                      "lammps/data", "lammps-data", "lammps-data-native", "outcar", "vasp-outcar", "vasprun",
+                      "vasp-vasprun")
 
 
 def _readable_path(path: str, format: str | None) -> str:
@@ -79,7 +112,8 @@ def _readable_path(path: str, format: str | None) -> str:
         return path
     fmt = (format or "").lower()
     if fmt in _STREAMING_FORMATS or (not fmt and (is_lammps_dump(path) or is_xdatcar(path)
-                                                  or is_lammps_data(path))):
+                                                  or is_lammps_data(path) or is_outcar(path)
+                                                  or is_vasprun(path))):
         return path
     return remote.fetch(path)
 
@@ -136,6 +170,12 @@ def builtin_readers():
                      "VASP XDATCAR, fixed or variable cell, lazy", B, 11, ("vasp-xdatcar",)),
         ReaderPlugin("lammps-data", _open_lammps_data, ("*.data",), is_lammps_data,
                      "LAMMPS data file", B, 12, ("lammps/data", "lammps-data-native")),
+        ReaderPlugin("outcar", OutcarReader, ("OUTCAR*",), is_outcar,
+                     "VASP OUTCAR: ionic steps with forces, energies, stress, magnetic moments, lazy", B, 13,
+                     ("vasp-outcar",)),
+        ReaderPlugin("vasprun", VasprunReader, ("vasprun*.xml",), is_vasprun,
+                     "VASP vasprun.xml: ionic steps with cell, forces, stress, energies, lazy", B, 14,
+                     ("vasp-vasprun",)),
         ReaderPlugin("lammps-data-ase", _open_ase_lammps_data, (), None,
                      "LAMMPS data file via ASE", B, None),
         ReaderPlugin("ase", _open_ase, ("POSCAR*", "CONTCAR*", "OUTCAR*", "vasprun*.xml", "*.xyz", "*.extxyz",
@@ -200,4 +240,5 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
 
 __all__ = ["FileSource", "StaticSource", "import_file", "export_file", "open_reader",
            "LammpsDumpReader", "LammpsDataReader", "XdatcarReader", "AseReader", "VolumetricReader",
+           "OutcarReader", "VasprunReader", "Thermo", "read_lammps_log", "read_oszicar", "read_thermo",
            "read_vasp_volumetric", "read_cube", "write_vasp_volumetric", "write_cube"]
