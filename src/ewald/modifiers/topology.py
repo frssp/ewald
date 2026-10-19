@@ -57,6 +57,39 @@ def _pair_names(names):
     return [f"{names[a]}-{names[b]}" for a in range(len(names)) for b in range(a, len(names))]
 
 
+def bond_angles(data, bonds):
+    """Every angle between two bonds at a shared particle. Returns ``(vertex, other, bond, a, b,
+    cos)``: the bond ends are listed from both sides (``vertex[k]``, ``other[k]``, ``bond[k]``),
+    and each angle is the pair of half-bonds ``a``, ``b`` with cosine ``cos``."""
+    vec = bonds.vectors(data)
+    i, j = bonds.topology.T
+    # Each bond seen from both ends: the half-bond from vertex i points along +vec, from j along -vec.
+    vertex = np.concatenate([i, j])
+    other = np.concatenate([j, i])
+    hv = np.concatenate([vec, -vec])
+    bond = np.concatenate([np.arange(bonds.count)] * 2)
+    order = np.argsort(vertex, kind="stable")
+    vertex, other, hv, bond = vertex[order], other[order], hv[order], bond[order]
+    starts = np.searchsorted(vertex, np.arange(data.count + 1))
+    deg = np.diff(starts)
+    # All unordered pairs of half-bonds sharing a vertex.
+    a_list, b_list = [], []
+    for k in np.unique(deg[deg > 1]):
+        ia, ib = np.triu_indices(k, 1)
+        s = starts[:-1][deg == k]
+        a_list.append((s[:, None] + ia[None, :]).ravel())
+        b_list.append((s[:, None] + ib[None, :]).ravel())
+    a = np.concatenate(a_list) if a_list else np.zeros(0, np.int64)
+    b = np.concatenate(b_list) if b_list else np.zeros(0, np.int64)
+    va, vb = hv[a], hv[b]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        cos = (va * vb).sum(1) / (np.linalg.norm(va, axis=1) * np.linalg.norm(vb, axis=1))
+    ok = np.isfinite(cos)
+    cos = np.clip(cos[ok], -1.0, 1.0)
+    a, b = a[ok], b[ok]
+    return vertex, other, bond, a, b, cos
+
+
 class BondAngleDistribution(Modifier):
     """Histogram of the angles between pairs of bonds at each particle.
 
@@ -75,32 +108,7 @@ class BondAngleDistribution(Modifier):
     def modify(self, data, ctx):
         bonds = _require_bonds(data, "BondAngleDistribution")
         nbins = max(1, int(self.bins))
-        vec = bonds.vectors(data)
-        i, j = bonds.topology.T
-        # Each bond seen from both ends: the half-bond from vertex i points along +vec, from j along -vec.
-        vertex = np.concatenate([i, j])
-        other = np.concatenate([j, i])
-        hv = np.concatenate([vec, -vec])
-        bond = np.concatenate([np.arange(bonds.count)] * 2)
-        order = np.argsort(vertex, kind="stable")
-        vertex, other, hv, bond = vertex[order], other[order], hv[order], bond[order]
-        starts = np.searchsorted(vertex, np.arange(data.count + 1))
-        deg = np.diff(starts)
-        # All unordered pairs of half-bonds sharing a vertex.
-        a_list, b_list = [], []
-        for k in np.unique(deg[deg > 1]):
-            ia, ib = np.triu_indices(k, 1)
-            s = starts[:-1][deg == k]
-            a_list.append((s[:, None] + ia[None, :]).ravel())
-            b_list.append((s[:, None] + ib[None, :]).ravel())
-        a = np.concatenate(a_list) if a_list else np.zeros(0, np.int64)
-        b = np.concatenate(b_list) if b_list else np.zeros(0, np.int64)
-        va, vb = hv[a], hv[b]
-        with np.errstate(invalid="ignore", divide="ignore"):
-            cos = (va * vb).sum(1) / (np.linalg.norm(va, axis=1) * np.linalg.norm(vb, axis=1))
-        ok = np.isfinite(cos)
-        cos = np.clip(cos[ok], -1.0, 1.0)
-        a, b = a[ok], b[ok]
+        vertex, other, bond, a, b, cos = bond_angles(data, bonds)
         if self.cosine_mode:
             idx = ((cos + 1.0) * (nbins / 2.0)).astype(np.int64)
             x = -1.0 + (np.arange(nbins) + 0.5) * (2.0 / nbins)
