@@ -82,8 +82,11 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
         self.setCentralWidget(self.workspaces)
 
         self.layout_mode = self.settings["general.layout"]
-        self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings))
+        nb_layout = self.layout_mode == "notebook"
+        self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings, notebook=nb_layout),
+                                  notebook=self._notebook_code if nb_layout else None)
         self.ask_panel.pipelineChanged.connect(self._after_claude)
+        self.ask_panel.insertRequested.connect(self._insert_claude_cell)
         if self.layout_mode == "notebook":
             # --- left: notebook tabs (the pipeline as Python cells); right: display settings, Ask Claude
             self.panel = NotebookPanel()
@@ -107,6 +110,10 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             self.splitDockWidget(self.plugins_dock, self.notebook_dock, QtCore.Qt.Horizontal)
             self.plugins_dock.hide()
             self.remotes_dock = install_remotes(self)
+            # the AI chat side bar opens beside the notebook, between it and the viewport
+            self.ask_dock = self._dock(self.ask_panel, "AI chat", QtCore.Qt.LeftDockWidgetArea, None)
+            self.splitDockWidget(self.notebook_dock, self.ask_dock, QtCore.Qt.Horizontal)
+            self.ask_dock.hide()
             self._build_activity_bar()
             self.display = DisplayPanel(self.style)
             self.display.styleChanged.connect(self._style_changed)
@@ -120,9 +127,9 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, QtWidget
             self.panel.styleChanged.connect(self._style_changed)
             side_dock = self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
             self.remotes_dock = install_remotes(self)
-        self.ask_dock = self._dock(self.ask_panel, "Ask Claude", QtCore.Qt.RightDockWidgetArea, None)
-        self.tabifyDockWidget(side_dock, self.ask_dock)
-        side_dock.raise_()
+            self.ask_dock = self._dock(self.ask_panel, "Ask Claude", QtCore.Qt.RightDockWidgetArea, None)
+            self.tabifyDockWidget(side_dock, self.ask_dock)
+            side_dock.raise_()
 
         # --- bottom: console / inspector / plots / log
         self.inspector = DataInspector()
