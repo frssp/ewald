@@ -1,9 +1,5 @@
 # Reader plugins
 
-> **State:** the `ewald.plugins` module described here is in review (PR #14) and not yet on
-> `main`. Until it is merged, a reader can be used by wrapping it in a pipeline source
-> yourself; see "Without the registry" at the end.
-
 A reader plugin teaches ewald a file format. After it is registered, `import_file`, the GUI's
 File › Load file and the Claude `load_structure` tool all read that format.
 
@@ -85,12 +81,25 @@ readers in `src/ewald/io/` are complete examples of this pattern.
 
 ## How the format is chosen
 
-1. `import_file(path, format="myformat")` always uses the plugin with that name.
-2. Without `format=`, ewald's native readers (LAMMPS dump, LAMMPS data, XDATCAR) are tried
-   first, so a plugin cannot take over those files by accident.
-3. Then each plugin is asked: its `sniff(path)` function, if it has one, else its `patterns`
-   matched against the file name (without a `.gz`/`.bz2`/`.xz` suffix).
-4. Everything else goes to ASE.
+Every format, built-in or plugin, is a `ReaderPlugin` in one registry (`ewald plugins` lists
+them in the order below), and readers are tried by `priority`, lowest first:
+
+| Priority | Readers |
+|---|---|
+| 5, 6 | built-in volumetric: Gaussian cube, VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR |
+| 10-12 | built-in LAMMPS dump, XDATCAR, LAMMPS data |
+| 50 | plugins (default; pass `priority=` to change it) |
+| 100 | ASE, for everything else |
+
+1. `import_file(path, format="myformat")` uses the reader with that name or alias
+   (`aliases=("my-format",)`); a name no reader has is passed to ASE as an ASE format.
+2. Without `format=`, each reader in priority order is asked: its `sniff(path)` function if it
+   has one, else its `patterns` matched against the file name (without a `.gz`/`.bz2`/`.xz`
+   suffix). The first match wins, so a plugin at the default priority cannot take over files
+   the built-in readers recognise.
+3. Registering a name that already exists replaces that reader, built-in ones included
+   (`@reader("xdatcar", sniff=..., priority=11)` swaps in your own XDATCAR reader).
+4. `priority=None` registers a reader that is only used with `format=`.
 
 Use `sniff` when the file name says little (`OUTPUT`, `traj.dat`):
 
@@ -125,39 +134,16 @@ Run `data.summary()` on a frame of your reader to check what it produced.
 
 ## Registering without the decorator
 
-`ewald.plugins.register_reader(name, factory, patterns=..., sniff=..., description=...)` does
+`ewald.plugins.register_reader(name, factory, patterns=..., sniff=..., description=..., priority=...,
+aliases=..., category=...)` does
 the same as `@reader` and can be called from a script or the GUI console. In an installed
 package, an entry point registers the reader without any code running at import time; see
-[Packaging and sharing](packaging.md). An entry-point class can carry `patterns`, `sniff` and
-`description` as class attributes.
+[Packaging and sharing](packaging.md). An entry-point class can carry `patterns`, `sniff`, `description`,
+`priority`, `aliases` and `category` (`"structure"` or `"volumetric"`, which groups the GUI
+file filter) as class attributes.
 
 ## Example
 
-`examples/plugins/npz_trajectory.py` (in PR #14) is a complete reader for NumPy `.npz`
+`examples/plugins/npz_trajectory.py` is a complete reader for NumPy `.npz`
 trajectories with positions, types, cell, forces and energies. Copy it into the plugin folder
 and `import_file("run.npz")` works.
-
-## Without the registry
-
-Until the registry is on `main`, wrap a reader in a source yourself:
-
-```python
-from ewald import Pipeline
-
-
-class ReaderSource:
-    def __init__(self, reader):
-        self.reader = reader
-
-    @property
-    def num_frames(self):
-        return len(self.reader)
-
-    def compute(self, frame):
-        return self.reader.read(frame)
-
-
-pipe = Pipeline(ReaderSource(MyFormatReader("run.myf")))
-```
-
-For a reader that returns a list of frames, `ewald.StaticSource(frames)` is the same thing.

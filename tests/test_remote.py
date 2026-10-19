@@ -183,3 +183,23 @@ def test_volumetric_chgcar_via_cache(server, tmp_path):
     local_grid = import_file(server.local("/data/CHGCAR")).compute().grids["charge-density"]
     np.testing.assert_allclose(remote_grid["Charge Density"], local_grid["Charge Density"])
     assert list((tmp_path / "cache" / "remote").rglob("CHGCAR"))
+
+
+def test_plugin_reader_gets_a_local_copy(server, monkeypatch):
+    from pathlib import Path
+
+    from ewald import DataCollection, plugins
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    seen = []
+
+    def read_xyzlist(path):
+        seen.append(path)
+        rows = [line.split() for line in Path(path).read_text().splitlines() if line.strip()]
+        return DataCollection(np.array(rows, dtype=float), ["Cu"] * len(rows))
+
+    plugins.register_reader("xyzlist", read_xyzlist, patterns=("*.xyzlist",))
+    with open(server.local("/data/atoms.xyzlist"), "w") as fh:
+        fh.write("0 0 0\n1 1 1\n")
+    data = import_file("hpc:/data/atoms.xyzlist").compute(0)
+    assert data.count == 2 and os.path.isfile(seen[0])  # the plugin read a local cached file
