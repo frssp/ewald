@@ -8,7 +8,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Ask Claude about picked atoms ([#26](https://github.com/frssp/ewald/pull/26)).
+Nothing at the moment.
 
 ## Next
 
@@ -65,8 +65,9 @@ Visualization plugins (later phases of the Scene IR plan)
 
 Plugins and Claude
 
-- LLM plugin ideas: Run doctor (diagnose a VASP/LAMMPS run from its outputs), phase
-  identification, campaign report over many runs.
+- LLM plugin ideas: Paper-to-modifier (Forge from a paper's definition, checked against its
+  numbers), Run doctor (diagnose a VASP/LAMMPS run from its outputs), phase identification,
+  campaign report over many runs.
 
 Docs
 
@@ -101,7 +102,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `--device cuda` GUI switch. CI and the cloud container have no GPU.
 - SSH remote files against a real HPC login node (ProxyJump, OTP, large dumps); tests use an
   in-process SFTP server.
-- Claude features with a real API key: `ewald ask`, `ewald narrate`, `ewald forge`, `ewald mcp`.
+- Claude features with a real API key: `ewald ask` (also `--select`), the GUI Ask Claude tab,
+  `ewald narrate`, `ewald forge`, `ewald mcp`.
 - The Windows release workflow (wheels, PyInstaller app, installer) on a real `v*` tag.
 - `DislocationAnalysis` and `OvitoModifier` with the `ovito` package installed.
 - The native OUTCAR and vasprun.xml readers on real VASP 5/6 output (relaxations with ISIF=3,

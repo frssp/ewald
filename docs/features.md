@@ -244,7 +244,7 @@ Details: [Command line](user/cli.md).
 | `ewald gui [INPUT]` | open the desktop viewer | `--type-map` `--device` |
 | `ewald info INPUT` | print frames and properties | `--type-map` |
 | `ewald describe INPUT` | JSON summary of a frame or, with --trajectory, of the run | `--frame` `--trajectory` `--type-map` |
-| `ewald ask INPUT [QUESTION...]` | ask Claude about a structure (needs anthropic + credentials) | `--type-map` `--model` `--allow-code` `--script` |
+| `ewald ask INPUT [QUESTION...]` | ask Claude about a structure (needs anthropic + credentials) | `--type-map` `--model` `--allow-code` `--script` `--select` `--ids` `--frame` |
 | `ewald narrate INPUT` | timeline of events in a trajectory (Claude writes it if available) | `--type-map` `--no-llm` `--render` `--json` |
 | `ewald api` | print the Python API reference for LLMs (llms.txt) | `--with-plugins` |
 | `ewald plugins` | list installed plugins and any that failed to load | `--json` |
@@ -260,6 +260,7 @@ The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (
 |---|---|
 | `load_structure` | Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, cif, ... ; wildcards allowed) as the session pipeline, replacing any previous one. |
 | `describe_frame` | Compact description of one frame after the current modifiers: composition, cell, density, minimum distance, coordination histogram per type, g(r) peaks, property ranges, sanity warnings. |
+| `describe_selection` | Describe particles and their surroundings: per-atom neighbor lists, coordination numbers, structure types (if CNA/PTM ran), property values against the environment and frame averages, the nearest defect, and a close-up render with the particles highlighted. |
 | `describe_trajectory` | Scan the trajectory (source frames, subsampled to max_frames) and return per-frame descriptor statistics (volume, min distance, MSD and max displacement vs the first frame, coordination) and 'events': frames where a descriptor shifts abruptly. |
 | `event_details` | Measure what changes around a frame (e.g. an event from describe_trajectory): which atoms moved and how far (minimum image, by identifier), by type, local vs system-wide, coordination transitions, and the top movers with positions before/after. |
 | `list_modifiers` | Available modifiers with their parameters and defaults. |
@@ -480,6 +481,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Measure distance
 - Measure angle
 - Edit bonds
+- Ask Claude about selection… (`Ctrl+J`)
 
 **Window**
 
@@ -488,6 +490,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Python console
 - Data inspector
 - Plots
+- Ask Claude
 - Command palette
 
 **Help**
@@ -508,8 +511,8 @@ Open, Open remote, Analyze, Render, Search commands, modifiers… Ctrl K, Comput
 ### Panels
 
 - Workspaces: Analyze, Render
-- Docks: Data, Pipeline
+- Docks: Ask Claude, Data, Pipeline
 - Bottom tabs: Python console, Data inspector, Plots, Log
-- Viewport tools: Orbit / pan / zoom (mouse); Pick atom: shows id, type, position and properties; Measure distance: click two atoms; Measure angle: click three atoms (vertex in the middle); Edit bonds: click two atoms to add or delete the bond between them
+- Viewport tools: Orbit / pan / zoom (mouse); Pick atom: shows id, type, position and properties; Shift+click picks several; Measure distance: click two atoms; Measure angle: click three atoms (vertex in the middle); Edit bonds: click two atoms to add or delete the bond between them
 
 <!-- gui:end -->

@@ -78,10 +78,11 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   the sum_hills files in `tests/data/plumed/` (regenerate with `make_plumed_reference.py`, never by hand).
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
 - `gui/`: `app.py` main window, `viewport.py`, `pipeline_panel.py`, `params.py`, `render_page.py`,
-  `preferences.py`, `remote_dialog.py` (SSH browser), `console.py`, `inspector.py`, `plots.py`,
-  `timeline.py`, `palette.py`, `theme.py`.
+  `preferences.py`, `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
+  `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`.
 - `llm/`: Claude agent (`agent.py`), tools (`tools.py`), Modifier Forge (`forge.py`: Claude writes a
   plugin + tests, verified in a subprocess, saved to the plugin folder), descriptors (`describe.py`, `narrate.py`),
+  `selection.py` (descriptor + close-up scene for Ask about selection; GUI side `gui/ask_panel.py`),
   MCP server (`mcp_server.py`), and `reference.py`, the source of `llms.txt`.
 
 ## Conventions

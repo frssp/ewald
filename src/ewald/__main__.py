@@ -65,6 +65,10 @@ def build_parser():
     q.add_argument("--model", default=None)
     q.add_argument("--allow-code", action="store_true", help="let Claude run Python in this process")
     q.add_argument("--script", default=None, help="write the resulting pipeline as a Python script")
+    q.add_argument("--select", default=None, metavar="EXPR",
+                   help="ask about these particles, e.g. 'ParticleIdentifier == 17' or 'Position.Z > 20'")
+    q.add_argument("--ids", default=None, help="ask about these Particle Identifiers (comma-separated)")
+    q.add_argument("--frame", type=int, default=0, help="frame for --select/--ids (default 0)")
     n = sub.add_parser("narrate", help="timeline of events in a trajectory (Claude writes it if available)")
     n.add_argument("input")
     n.add_argument("--type-map", default=None)
@@ -157,7 +161,17 @@ def main(argv=None):
         agent = Agent(ts, **({"model": args.model} if args.model else {}),
                       on_event=lambda kind, p: print(f"  -> {p['name']}({p['input']})")
                       if kind == "tool_call" else None)
-        print(agent.ask(" ".join(args.question)))
+        question = " ".join(args.question)
+        if args.select or args.ids:
+            data = pipe.compute(args.frame % pipe.num_frames)
+            ids = [int(x) for x in args.ids.split(",")] if args.ids else None
+            indices = ts._selection_indices(data, ids=ids, expression=args.select)
+            if not len(indices):
+                print("the selection is empty")
+                return 1
+            print(agent.ask_about_selection(question, indices, frame=args.frame))
+        else:
+            print(agent.ask(question))
         if args.script:
             with open(args.script, "w") as fh:
                 fh.write(ts.to_script())

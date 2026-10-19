@@ -19,9 +19,17 @@ the viewport, and a bottom dock holds the Python console, the data inspector and
 **Viewport.** Drag to orbit and scroll to zoom (VTK's standard mouse controls). View › View
 along a, b, c, a*, b*, c* aligns the view with a cell vector or reciprocal vector, as in
 VESTA, and View › Zoom to fit (Ctrl+0) frames the cell. The tool rail on the left switches
-between orbit, pick (click an atom to see its id, type, position and every property),
+between orbit, pick (click an atom to see its id, type, position and every property;
+Shift+click adds atoms to the pick or removes them),
 distance (click two atoms) and angle (click three atoms, vertex in the middle). Above 150 000
 atoms the viewport draws GPU impostors instead of sphere meshes; the threshold is a preference.
+
+**Ask Claude.** The Ask Claude tab next to the pipeline (Tools › Ask Claude about selection,
+Ctrl+J) answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
+coordination low here?". Without picks it uses the particles a selection modifier selected, and
+with neither the question is about the whole frame. Claude receives the description from
+[Asking about a selection](claude.md#asking-about-a-selection) and a close-up render, can run the
+usual tools, and modifiers it adds appear in the pipeline. It needs the `llm` extra and an API key.
 
 **Timeline.** Play, step and scrub through frames. Every frame is computed through the whole
 pipeline when you move to it.

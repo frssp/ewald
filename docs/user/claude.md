@@ -22,11 +22,37 @@ density, minimum distance, coordination histograms, g(r) peaks, sanity warnings)
 the model can look at. The tools are: `load_structure`, `describe_frame`,
 `describe_trajectory`, `event_details`, `list_modifiers`, `add_modifier`, `remove_modifier`,
 `show_pipeline`, `set_frame`, `evaluate_expression`, `compute_rdf`, `compute_msd`,
-`compute_plumed_cvs`, `read_plumed_output` ([PLUMED](plumed.md)), `render_image`, `list_visuals`,
-`add_visual`, `remove_visual` (visual element plugins drawn by later renders) and `get_script`.
+`describe_selection`, `compute_plumed_cvs`, `read_plumed_output` ([PLUMED](plumed.md)),
+`render_image`, `list_visuals`, `add_visual`, `remove_visual` (visual element plugins drawn by later renders) and `get_script`.
 
 `run_python`, which executes model-written code in your Python process, is off unless you pass
 `allow_code=True` (or `--allow-code` on the command line).
+
+## Asking about a selection
+
+A question can be about a few atoms rather than the whole structure: atoms picked in the GUI
+(see [GUI](gui.md)), a selection expression, or Particle Identifiers.
+
+```bash
+ewald ask dump.lammpstrj "What are these atoms?" --select "StructureType == 0" --frame 40
+ewald ask POSCAR "Why is this Li under-coordinated?" --ids 17
+```
+
+```python
+agent = Agent.from_pipeline(pipe)
+agent.ask_about_selection("What are these atoms?", indices=[17, 18, 25], frame=40)
+```
+
+ewald sends the question together with a description of the selection and of the atoms within
+6 Å of it (`ewald.llm.selection.describe_selection`, which needs no LLM). The description holds
+each selected atom's neighbors with distances, its coordination number, structure type and
+property values. It also gives the same averages over the surroundings and over the whole
+frame, the distances and angle between up to six selected atoms, and the nearest atom whose
+structure type differs from the bulk. Structure types are included only when a CNA or PTM
+modifier ran upstream; otherwise the description suggests one. A close-up render
+(`selection_scene`) shows the region unwrapped across periodic boundaries, with the selected
+atoms in yellow. Claude can call `describe_selection` again with another radius or cutoff,
+or add a modifier that tests its reading.
 
 ## Without an LLM
 
