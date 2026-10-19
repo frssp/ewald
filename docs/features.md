@@ -440,6 +440,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `render.output_dir` | Output folder | `''` |
 | `render.type_legend` | Particle type legend | `False` |
 | `render.scale_bar` | Scale bar | `False` |
+| `plots.size` | Saved plot size | `'1-column (3.5 in)'` |
+| `plots.font_size` | Saved plot font size | `8.0` |
 | `render.movie_format` | Movie format | `'MP4 (H.264)'` |
 
 ### Compute

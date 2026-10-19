@@ -72,6 +72,21 @@ phonon band plays that mode. Choosing another table, column or histogram in the 
 rewrites the cell. Run as a script, `show` draws the same plot with matplotlib. Add one with
 **+ View** or Insert › View, which list the tables and properties of the current frame.
 
+Every plot ewald draws (view cells, `show`, a verb table's picture, the figures saved into an
+`.ewd`) uses one publication style from `ewald.plotstyle`: a 3.5 in single-column figure,
+8 pt sans-serif text, inward ticks with minor ticks, axis labels with units and a
+colorblind-safe color cycle. Use it for your own figures too:
+
+```python
+from ewald import plotstyle
+from ewald.views import figure
+
+fig = figure(pipe, table="coordination-rdf", size="2-column")   # a Figure, no pyplot
+plotstyle.save(fig, "gr.pdf")                # editable text, tight box; PNG at 600 dpi
+with plotstyle.context():                    # the style for your own matplotlib code
+    plt.plot(r, g); plt.xlabel(plotstyle.axis_label("r"))
+```
+
 Spectra, diffraction patterns and time series are not separate panels. They are views in the
 notebook, next to the steps that compute them.
 
@@ -267,7 +282,7 @@ sent.run_all()
 Preferences › General › *Window layout* switches between `notebook` (the default) and `classic`,
 the OVITO-style pipeline list and properties panel, after a restart. In the notebook layout,
 display settings (particle radii and colors, bonds, cell and visual plugins) are in the
-**Display** panel on the right; the AI chat with Claude opens beside the notebook from the
+**Display** panel on the right; the AI chat with Claude opens left of the notebook from the
 activity bar, and code from its answers can be inserted as cells. View › Focus on the viewport (Ctrl+\\)
 hides the panels, and pressing it again brings them back. The ▾ in a panel's title bar (or a
 double-click on the title) folds that panel: the Notebook, Plugins, Display and AI chat

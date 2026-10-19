@@ -222,6 +222,7 @@ def save_ewd(nb, path, *, figures: bool = True, data_limit_mb: float = 50.0, plu
 def _write_figures(nb, z) -> list:
     import io
 
+    from . import plotstyle
     from .views import figure, view_data
 
     out, used = [], set()
@@ -241,7 +242,7 @@ def _write_figures(nb, z) -> list:
             continue
         for ext in ("svg", "png"):
             buf = io.BytesIO()
-            fig.savefig(buf, format=ext, dpi=200)
+            plotstyle.save(fig, buf, format=ext, dpi=300)
             z.writestr(f"figures/{name}.{ext}", buf.getvalue())
         buf = io.StringIO()
         names = list(columns)

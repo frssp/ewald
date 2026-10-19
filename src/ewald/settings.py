@@ -42,8 +42,8 @@ class Option:
 
 PAGES = ("General", "Viewports", "Elements", "Rendering", "Compute", "Python", "Claude")
 PAGE_OF_PREFIX = {"general": "General", "viewport": "Viewports", "elements": "Elements", "bonds": "Elements",
-                  "render": "Rendering", "compute": "Compute", "performance": "Compute", "python": "Python",
-                  "llm": "Claude"}
+                  "render": "Rendering", "plots": "Rendering", "compute": "Compute", "performance": "Compute",
+                  "python": "Python", "llm": "Claude"}
 
 OPTIONS = (
     Option("general.layout", "notebook", "Window layout",
@@ -147,6 +147,12 @@ OPTIONS = (
     Option("render.output_dir", "", "Output folder", "Empty = current folder.", kind="dir"),
     Option("render.type_legend", False, "Particle type legend", "One color swatch per type in the corner."),
     Option("render.scale_bar", False, "Scale bar", "Round length in Å or nm; exact in orthographic views."),
+    Option("plots.size", "1-column (3.5 in)", "Saved plot size",
+           "Journal column width of plots saved from the Plots tab and view cells (PDF, SVG, PNG); "
+           "PNG uses the DPI of the image quality.",
+           choices=("1-column (3.5 in)", "1.5-column (5.0 in)", "2-column (7.2 in)")),
+    Option("plots.font_size", 8.0, "Saved plot font size", "Points; 7-9 pt is what journals ask for.",
+           minimum=5, maximum=24),
     Option("render.movie_format", "MP4 (H.264)", "Movie format", "AVI uses Motion JPEG for PowerPoint.",
            choices=("MP4 (H.264)", "GIF", "AVI (Motion JPEG)", "MOV (H.264)", "PNG sequence")),
 

@@ -14,7 +14,7 @@ notebook. Linux system libraries and startup errors: [Install](install.md#linux-
 The window has the analysis on the left as a [notebook](notebooks.md): Python cells, steps and
 linked plots, saved as an `.ewd`, `.ipynb` or `.py` file, with one tab per open notebook. The
 [tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline are in the middle. Display settings are on the
-right, the AI chat with Claude opens beside the notebook from the activity bar, and a bottom dock holds the Python console, the data inspector and plots.
+right, the AI chat with Claude opens left of the notebook from the activity bar, and a bottom dock holds the Python console, the data inspector and plots.
 
 ![The notebook layout](../images/notebook.png)
  The notebook
@@ -73,12 +73,15 @@ the current one (`OverlayFrames`; on by default for NEB folders), with its trans
 along, Orthographic, Zoom to fit and Ask Claude are always there.
 
 **AI chat (Ask Claude).** The Claude button at the bottom of the activity bar on the far left (also Tools ›
-Ask Claude about selection, Ctrl+J, and Window › AI chat) opens a chat side bar between the
-notebook and the viewport; in the classic layout it is the Ask Claude tab next to the pipeline.
-In the notebook layout each question also sends the current notebook's code (only when it
-changed since the last question), and every Python block in an answer gets an *Insert as
-notebook cell* link that adds it as a code cell after the current one, without running it
-(Shift+Enter runs it). The chat answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
+Ask Claude about selection, Ctrl+J, and Window › AI chat) opens a chat side bar left of the
+notebook; in the classic layout it is the Ask Claude tab next to the pipeline. It reads like a
+chat app: your messages in bubbles on the right, Claude's answers under its avatar on the left,
+the tools it ran as small chips (*Running …*, then *Used …*), and code blocks as framed code with
+*Copy* and *+ Insert as cell*. Enter sends, Shift+Enter starts a new line, and the suggestions
+on an empty chat send a first question. In the notebook layout each question also sends the
+current notebook's code (only when it changed since the last question); *+ Insert as cell* adds
+a Python block as a code cell after the current one, without running it (Shift+Enter runs it).
+The chat answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
 coordination low here?". Without picks it uses the particles a selection modifier selected, and
 with neither the question is about the whole frame. Claude receives the description from
 [Asking about a selection](claude.md#asking-about-a-selection) and a close-up render, can run the
@@ -129,6 +132,16 @@ modifier's `experimental` file (the "…" button picks it) as points under the c
 The `DOS` and `Bands` tables of a VASP run are drawn as a density of states and a band
 structure; atoms selected in the viewport show as their projected DOS or as fat bands (see
 [DOS and band structure](electronic.md)).
+
+*Save plot…* (and *Save plot…* in a view cell's menu) writes a publication figure, not a
+screenshot of the panel: the plot is redrawn at a journal column width (Preferences ›
+Rendering › Plots: 1-column 3.5 in, 1.5-column or 2-column 7.2 in) with 8 pt sans-serif type,
+inward ticks on all four sides, labels with units (*r* (Å), 2*θ* (°), *q* (Å⁻¹), MSD (Å²),
+*E* − *E*<sub>F</sub> (eV)), a colorblind-safe color cycle and a white background,
+whatever the UI theme. PDF, SVG and EPS keep the text as text (TrueType, editable in
+Illustrator or Inkscape); PNG uses the DPI of the image quality (Draft 150, Standard 300,
+Publication 600). Hints such as the current-frame marker are left out. On screen the same
+style is drawn in the Paper or Graphite colors.
 
 **Linked selection.** Plots and the viewport share one selection, in both directions:
 

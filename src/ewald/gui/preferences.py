@@ -53,7 +53,8 @@ LAYOUT = {
         ("Renderer", ["render.renderer", "render.quality", "render.movie_quality", "render.samples",
                       "render.ao_samples", "render.shadows"]),
         ("Output", ["render.size_preset", "render.dpi", "render.background", "render.output_dir"]),
-        ("Overlays and movies", ["render.type_legend", "render.scale_bar", "render.movie_format"])]),
+        ("Overlays and movies", ["render.type_legend", "render.scale_bar", "render.movie_format"]),
+        ("Plots", ["plots.size", "plots.font_size"])]),
     "Compute": ("Where pipelines run, and which optional packages are available.", [
         ("Device", ["compute.device", "compute.threads", "performance.background_compute"]),
         ("Memory", ["performance.cache_memory"])]),

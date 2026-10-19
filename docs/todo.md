@@ -16,7 +16,8 @@ GUI
 - AI chat side bar (`gui/ask_panel.py`, activity bar): stream answers as they arrive (now the
   whole answer at once), a Stop button, keep chats per notebook tab and save them in `.ewd`,
   show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
-  replace or diff against an existing cell instead of always inserting a new one.
+  replace or diff against an existing cell instead of always inserting a new one, edit or
+  regenerate a sent message.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
   still set inline colors (render preview, pick labels, color swatches, field error borders), so
   they keep the old palette until a restart after a theme switch; move them to QSS object names.
@@ -137,6 +138,10 @@ Electronic structure
 - DOSCAR, EIGENVAL and PROCAR readers (VASP 5 runs without vasprun.xml), and Quantum ESPRESSO /
   other codes' DOS and bands.
 - vasprun.xml: the KPOINTS_OPT sections (`<eigenvalues_kpoints_opt>`); vaspout.h5 reads them.
+- Plot style (`ewald/plotstyle.py`): per-plot overrides in view cells (`show(..., size=, xlim=,
+  ylim=, labels=)`), time units on MSD/VACF axes when `time_per_frame` is set (the unit is not
+  stored now, so the axis says "Time"), multi-panel figures (DOS beside bands sharing the energy
+  axis), and a journal preset list (ACS, APS, Nature widths and fonts).
 - Plots tab: adjustable energy window (fixed at ±6 eV now), Gaussian smearing of the DOS,
   orbital choice for fat bands independent of the DOS column, spin texture of non-collinear runs.
 - Drag an energy window on the DOS to select the atoms with the largest PDOS there, and the
