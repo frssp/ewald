@@ -245,3 +245,43 @@ def test_preferences_layout_covers_every_option_once():
     for name in PAGES:
         for _title, ks in LAYOUT[name][1]:
             assert all(__import__("ewald.settings").settings.OPTION[k].page == name for k in ks)
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_session_save_load_and_publication_output(app, pipe, tmp_path):
+    from ewald.gui.app import MainWindow
+    from ewald.render import camera_state
+
+    w = MainWindow(pipe)
+    w.panel.add_modifier(mods.ColorCoding("Position.Z", cmap="plasma"))
+    w.style.apply_preset("Ball & stick")
+    w.viewport.view_along("a")
+    page = w.render_page
+    page.set_renderer("vector")
+    assert page.output.text().endswith(".svg")
+    page.preset.setCurrentText("Custom (px)")
+    page.width.setValue(200)
+    page.height.setValue(150)
+    page.type_legend.setChecked(True)
+    page.scale_bar.setChecked(True)
+    page.text.setText("frame [Frame]")
+    page.output.setText(str(tmp_path / "fig.svg"))
+    w.render_from_page()
+    assert "frame 0" in (tmp_path / "fig.svg").read_text()
+    assert not page.preview.pixmap().isNull()
+    page.movie_format.setCurrentText("GIF")
+    assert page.is_movie and page.output.text().endswith(".gif")
+    assert "render_animation(pipe" in page.code.toPlainText()
+    assert w.export_movie(page.output.text()) and os.path.getsize(page.output.text()) > 100
+    cam = camera_state(w.viewport.plotter)
+    path = w.save_session(str(tmp_path / "s.ewald"))
+
+    w2 = MainWindow()
+    w2.load_session(path)
+    assert [m.name for m in w2.pipeline.modifiers] == ["ColorCoding"]
+    assert w2.style.preset == "Ball & stick" and w2.style.radius_scale == w.style.radius_scale
+    assert w2.render_page.renderer_name == "vector" and w2.render_page.type_legend.isChecked()
+    assert w2.render_page.text.text() == "frame [Frame]" and w2.render_page.width.value() == 200
+    np.testing.assert_allclose(camera_state(w2.viewport.plotter)["position"], cam["position"], rtol=1e-6)
+    w.close()
+    w2.close()

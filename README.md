@@ -52,7 +52,8 @@ show(pipe)        # open the viewer on a pipeline built in a script (in Jupyter:
 
 The window has a 3D viewport with a timeline underneath, a pipeline panel
 (add/reorder/enable modifiers, edit parameters, edit Python script modifiers
-in place), render settings with "Render active viewport" to PNG at any size,
+in place), a Render workspace (ray traced, OpenGL or vector output, journal size presets,
+overlays, movies), session save/load,
 a data inspector (particle table with expression filter, attributes, tables)
 and an IPython console where `pipeline`, `data` and `viewer` are live; changes
 made in the console redraw the view.
@@ -66,6 +67,38 @@ ewald render dump.lammpstrj out.png --frame 5 --type-map 1=Cu,2=Zr --color-by "P
 
 `python examples/demo.py` builds sample LAMMPS and VASP trajectories and renders
 example figures.
+
+### Figures, movies and sessions
+
+```python
+from ewald.render import render, render_animation
+
+data = pipe.compute(10)
+render(data, "fig.png", renderer="raytrace", size=(2100, 1575), dpi=600,
+       text="t = [Time] ps", type_legend=True, scale_bar=True)      # PNG with dpi metadata
+render(data, "fig.svg", renderer="vector")                         # SVG/PDF/EPS: real circles, editable text
+render_animation(pipe, "movie.mp4", fps=15, text="frame [Frame]")  # also .gif, .avi, .mov, frames_%04d.png
+```
+
+Renderers: `opengl` (VTK, fast), `raytrace` (built-in ray tracer with ambient
+occlusion and shadows) and `vector` (shaded discs and bond sticks painted far to
+near, overlays stay text). Raster renderers can also write .pdf/.svg/.eps with
+the image embedded. Overlays work with every renderer: `text` (expands `[Frame]`,
+`[Timestep]`, `[Time]` and any attribute name), `legend` (ColorCoding color bar),
+`type_legend` and `scale_bar` (a round length, or `scale_bar=10` for 10 Å).
+GIF and image sequences need nothing extra; MP4/AVI/MOV use ffmpeg from
+`pip install 'ewald[movie]'` or the system PATH.
+
+Sessions (`.ewald`, JSON) hold the input file, modifiers, visual style, camera and
+render settings. The GUI saves them with Ctrl+S and opens them like any file;
+scripts use `ewald.session.save_session(path, pipe, camera=..., render=...)` and
+`load_session(path)`. Python modifiers are stored as source and only run when
+loaded with `allow_code=True` (the GUI asks first).
+
+```bash
+ewald render figure.ewald figure.pdf --renderer vector     # re-render a saved session
+ewald movie dump.lammpstrj movie.gif --every 5 --fps 12 --text "t = [Time] ps" --time-per-frame 0.5
+```
 
 ## Design
 

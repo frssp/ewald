@@ -40,7 +40,8 @@ LAYOUT = {
         ("Element table", ["elements.overrides"])]),
     "Rendering": ("Starting values for the Render workspace.", [
         ("Renderer", ["render.renderer", "render.samples", "render.ao_samples", "render.shadows"]),
-        ("Output", ["render.size_preset", "render.dpi", "render.background", "render.output_dir"])]),
+        ("Output", ["render.size_preset", "render.dpi", "render.background", "render.output_dir"]),
+        ("Overlays and movies", ["render.type_legend", "render.scale_bar", "render.movie_format"])]),
     "Compute": ("Where pipelines run, and which optional packages are available.", [
         ("Device", ["compute.device", "compute.threads"])]),
     "Python": ("Console and module search path.", [
@@ -825,13 +826,18 @@ def apply_settings(win, s: Settings, startup: bool = False):
     vp.set_axes_visible(s["viewport.show_axes"])
     vp.ortho_button.setChecked(s["viewport.projection"] == "ortho")
 
-    page.renderer.setCurrentIndex(0 if s["render.renderer"] == "raytrace" else 1)
+    page.set_renderer(s["render.renderer"])
     page.samples.setValue(s["render.samples"])
     page.ao_samples.setValue(s["render.ao_samples"])
     page.shadows.setChecked(s["render.shadows"])
     page.dpi.setValue(s["render.dpi"])
     page.preset.setCurrentText(s["render.size_preset"])
     page.background.setCurrentText(s["render.background"])
+    page.type_legend.setChecked(s["render.type_legend"])
+    page.scale_bar.setChecked(s["render.scale_bar"])
+    page.movie_format.blockSignals(True)
+    page.movie_format.setCurrentText(s["render.movie_format"])
+    page.movie_format.blockSignals(False)
     if s["render.output_dir"] and startup:
         page.output.setText(os.path.join(s["render.output_dir"], os.path.basename(page.output.text() or "render.png")))
 

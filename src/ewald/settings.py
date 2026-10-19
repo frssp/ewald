@@ -75,7 +75,8 @@ OPTIONS = (
            minimum=0.5, maximum=2),
     Option("bonds.radius", 0.15, "Bond radius", "Stick radius in ball-and-stick views.", minimum=0.01, maximum=1),
 
-    Option("render.renderer", "raytrace", "Default renderer", choices=("raytrace", "opengl")),
+    Option("render.renderer", "raytrace", "Default renderer", "Vector writes SVG/PDF/EPS with editable text.",
+           choices=("raytrace", "opengl", "vector")),
     Option("render.samples", 8, "Anti-aliasing rays/pixel", minimum=1, maximum=256),
     Option("render.ao_samples", 16, "Ambient occlusion rays", minimum=0, maximum=512),
     Option("render.shadows", True, "Shadows"),
@@ -84,6 +85,10 @@ OPTIONS = (
     Option("render.dpi", 600, "Resolution", "Print resolution used by the size presets.", minimum=72, maximum=2400),
     Option("render.background", "white", "Background", choices=("white", "transparent", "black", "viewport")),
     Option("render.output_dir", "", "Output folder", "Empty = current folder.", kind="dir"),
+    Option("render.type_legend", False, "Particle type legend", "One color swatch per type in the corner."),
+    Option("render.scale_bar", False, "Scale bar", "Round length in Å or nm; exact in orthographic views."),
+    Option("render.movie_format", "MP4 (H.264)", "Movie format", "AVI uses Motion JPEG for PowerPoint.",
+           choices=("MP4 (H.264)", "GIF", "AVI (Motion JPEG)", "MOV (H.264)", "PNG sequence")),
 
     Option("compute.device", "cpu", "Default device", "Toolbar Compute switch changes only the current session.",
            choices=("cpu", "cuda", "auto")),

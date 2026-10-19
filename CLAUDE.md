@@ -34,7 +34,9 @@ runs `pytest -ra` on Linux py3.10/3.12/3.13, macOS and Windows; GUI extras only 
 - `_csrc/`: C++ ports of OVITO CNA/PTM/Voronoi/CSP plus vendored ptm, voro++, mwm_csp; origins and
   licenses in `_csrc/README.md`. Built by `setup.py` (pybind11).
 - `render.py` (VTK/PyVista offscreen; impostors above 150k atoms), `raytrace.py` (numba ray tracer,
-  the publication renderer; pip VTK has no OSPRay).
+  the publication renderer; pip VTK has no OSPRay), `vector.py` (SVG/PDF/EPS via matplotlib),
+  `overlays.py` (text, color/type legends, scale bar for every renderer), `movie.py` (GIF/PNG via
+  Pillow, MP4/AVI/MOV via ffmpeg), `session.py` (`.ewald` JSON: source, modifiers, style, camera).
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
 - `gui/`: `app.py` main window, `viewport.py`, `pipeline_panel.py`, `params.py`, `render_page.py`,

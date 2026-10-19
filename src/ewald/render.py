@@ -267,39 +267,60 @@ def setup_camera(plotter, data, direction="iso", orthographic=True, zoom=1.0):
     _setup_camera(plotter, data, direction, orthographic, zoom)
 
 
+VECTOR_SUFFIXES = (".svg", ".pdf", ".eps", ".ps")
+
+
 def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction="iso",
            orthographic: bool = True, zoom: float = 1.0, background="white",
            transparent_background: bool = False, ambient_occlusion: bool = False,
            legend: bool = True, show_cell: bool = True, bonds: float | None = None,
            radius_scale: float = 1.0, antialiasing: bool = True, text: str | None = None,
            camera: dict | None = None, renderer: str = "opengl", samples: int = 8, ao_samples: int = 16,
-           shadows: bool = True, **scene_kwargs):
-    """Render one DataCollection to ``filename`` (PNG/JPG/TIFF) or return an RGB array.
+           shadows: bool = True, type_legend: bool = False, scale_bar: bool | float | None = None,
+           dpi: float | None = None, **scene_kwargs):
+    """Render one DataCollection to ``filename`` or return an RGB array.
 
     ``direction`` is a view vector *from* the scene to the camera, or one of
     'x', 'y', 'z', '-x', ..., 'iso'. ``bonds=2.8`` draws bonds shorter than 2.8 A.
     ``camera`` (see :func:`camera_state`) reproduces an interactive view exactly.
-    ``renderer="raytrace"`` uses the built-in ray tracer (ambient occlusion with
-    ``ao_samples`` rays, ``shadows``, ``samples`` rays per pixel) instead of OpenGL.
+
+    ``renderer``: 'opengl' (VTK, fast), 'raytrace' (built-in ray tracer: ambient
+    occlusion with ``ao_samples`` rays, ``shadows``, ``samples`` rays per pixel) or
+    'vector' (SVG/PDF/EPS with real circles and editable text, see :mod:`ewald.vector`).
+    Raster renderers can also write .pdf/.svg/.eps, embedding the image.
+
+    Overlays: ``text`` label, ``legend`` (ColorCoding color bar), ``type_legend``
+    (one swatch per particle type), ``scale_bar`` (True = round length, or a length
+    in Angstrom; exact in orthographic views). ``dpi`` is stored in PNG/TIFF files
+    and sets the page size of vector output.
     """
     import pyvista as pv
 
+    if renderer not in ("opengl", "raytrace", "vector"):
+        raise ValueError(f"unknown renderer {renderer!r}; use 'opengl', 'raytrace' or 'vector'")
+    overlays = {"text": text, "legend": legend, "type_legend": type_legend, "scale_bar": scale_bar,
+                "type_colors": scene_kwargs.get("type_colors")}
+    if renderer == "vector":
+        from .vector import render_vector
+
+        if camera is None:
+            camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
+        for k in ("atom_style", "sphere_resolution", "mesh_limit", "trajectory_width"):
+            scene_kwargs.pop(k, None)
+        return render_vector(data, filename, camera=camera, size=size, background=background,
+                             transparent_background=transparent_background, radius_scale=radius_scale,
+                             bonds=bonds, show_cell=show_cell, dpi=dpi,
+                             **{k: v for k, v in overlays.items() if k != "type_colors"}, **scene_kwargs)
     if renderer == "raytrace":
         return _render_raytraced(data, filename, size=size, direction=direction, orthographic=orthographic,
                                  zoom=zoom, background=background, transparent_background=transparent_background,
-                                 legend=legend, show_cell=show_cell, bonds=bonds, radius_scale=radius_scale,
-                                 text=text, camera=camera, samples=samples, ao_samples=ao_samples,
-                                 shadows=shadows, **scene_kwargs)
-    if renderer != "opengl":
-        raise ValueError(f"unknown renderer {renderer!r}; use 'opengl' or 'raytrace'")
+                                 show_cell=show_cell, bonds=bonds, radius_scale=radius_scale, camera=camera,
+                                 samples=samples, ao_samples=ao_samples, shadows=shadows, overlays=overlays,
+                                 dpi=dpi, **scene_kwargs)
 
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     p.set_background(background)
     build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, bonds=bonds, **scene_kwargs)
-    if legend and "ColorCoding.range" in data.attributes:
-        _add_colorbar(p, data)
-    if text:
-        p.add_text(text, font_size=12, color="black" if background == "white" else "white")
     if camera is not None:
         apply_camera_state(p, camera)
     else:
@@ -315,81 +336,74 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
             p.enable_ssao(radius=radius, kernel_size=128)
         except Exception:
             pass
-    img = p.screenshot(filename, transparent_background=transparent_background, return_img=True)
+    img = p.screenshot(None, transparent_background=transparent_background, return_img=True)
+    cam = camera_state(p)
     p.close()
-    return img
+    return _finish(img, data, filename, cam, overlays, background, transparent_background, dpi)
+
+
+def default_camera(data, size=(1600, 1200), direction="iso", orthographic=True, zoom=1.0, radius_scale=1.0,
+                   scene_kwargs=None) -> dict:
+    """Camera that frames ``data`` like the OpenGL renderer (no window is shown)."""
+    import pyvista as pv
+
+    p = pv.Plotter(off_screen=True, window_size=tuple(size))
+    build_scene(p, data, radius_scale=radius_scale, show_cell=True, sphere_resolution=6,
+                **{k: v for k, v in (scene_kwargs or {}).items() if k in ("type_colors", "type_radii")})
+    _setup_camera(p, data, direction, orthographic, zoom)
+    cam = camera_state(p)
+    p.close()
+    return cam
+
+
+def _finish(img, data, filename, camera, overlays, background, transparent, dpi):
+    """Draw overlays on a rendered raster image, save it, return RGB (or RGBA if transparent)."""
+    from .overlays import draw_overlays
+
+    rgba = draw_overlays(np.asarray(img, np.uint8), data, camera=camera, background=background,
+                         transparent=transparent, **overlays)
+    if filename:
+        save_image(rgba, filename, transparent=transparent, dpi=dpi)
+    return rgba if transparent else rgba[..., :3]
+
+
+def save_image(rgba, filename, *, transparent=False, dpi=None):
+    """Save an RGB(A) uint8 image; .pdf/.svg/.eps embed it in a vector page of the same size."""
+    from PIL import Image
+
+    rgba = np.asarray(rgba, np.uint8)
+    name = str(filename)
+    if name.lower().endswith(VECTOR_SUFFIXES):
+        from matplotlib.figure import Figure
+
+        d = float(dpi or 100)
+        fig = Figure(figsize=(rgba.shape[1] / d, rgba.shape[0] / d), dpi=d)
+        fig.figimage(rgba if transparent else rgba[..., :3], resize=False)
+        fig.savefig(name, dpi=d, transparent=transparent)
+        return
+    im = Image.fromarray(rgba)
+    if not (transparent and name.lower().endswith((".png", ".tif", ".tiff", ".webp"))):
+        im = im.convert("RGB")
+    kw = {"dpi": (float(dpi), float(dpi))} if dpi and name.lower().endswith((".png", ".tif", ".tiff", ".jpg", ".jpeg")) else {}
+    im.save(name, **kw)
 
 
 def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, background, transparent_background,
-                      legend, show_cell, bonds, radius_scale, text, camera, samples, ao_samples, shadows,
+                      show_cell, bonds, radius_scale, camera, samples, ao_samples, shadows, overlays, dpi,
                       **scene_kwargs):
-    import pyvista as pv
-
     from .raytrace import raytrace, scene_from_data
 
-    scene_kwargs.pop("atom_style", None); scene_kwargs.pop("sphere_resolution", None)
-    scene_kwargs.pop("mesh_limit", None); scene_kwargs.pop("antialiasing", None)
-    scene_kwargs.pop("ambient_occlusion", None); scene_kwargs.pop("cell_width", None)
+    for k in ("atom_style", "sphere_resolution", "mesh_limit", "antialiasing", "ambient_occlusion", "cell_width"):
+        scene_kwargs.pop(k, None)
     if camera is None:  # same framing as the OpenGL path
-        p = pv.Plotter(off_screen=True, window_size=tuple(size))
-        build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, sphere_resolution=6,
-                    **{k: v for k, v in scene_kwargs.items() if k in ("type_colors", "type_radii")})
-        _setup_camera(p, data, direction, orthographic, zoom)
-        camera = camera_state(p)
-        p.close()
+        camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
     cell_color = "#AEB4BE" if sum(_rgb(background)) < 1.5 and not transparent_background else "black"
     scene = scene_from_data(data, radius_scale=radius_scale, bonds=bonds, show_cell=show_cell,
                             cell_color=scene_kwargs.pop("cell_color", cell_color), **scene_kwargs)
     img = raytrace(scene, camera, size, samples=samples, ao_samples=ao_samples, shadows=shadows,
                    background=background, transparent_background=transparent_background)
     rgba = (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)
-    rgba = _draw_overlays(rgba, data, text if text else None, legend, background, transparent_background)
-    if filename:
-        from PIL import Image
-
-        im = Image.fromarray(rgba, "RGBA")
-        if not transparent_background and not str(filename).lower().endswith(".png"):
-            im = im.convert("RGB")
-        im.save(filename)
-    return rgba[..., :3] if not transparent_background else rgba
-
-
-def _draw_overlays(rgba, data, text, legend, background, transparent):
-    """Text label and color legend for ray-traced images (PIL, sized relative to the image)."""
-    if not text and not (legend and "ColorCoding.range" in data.attributes):
-        return rgba
-    import matplotlib
-    from PIL import Image, ImageDraw, ImageFont
-
-    h, w = rgba.shape[:2]
-    im = Image.fromarray(rgba, "RGBA")
-    draw = ImageDraw.Draw(im)
-    dark = not transparent and sum(_rgb(background)) < 1.5
-    ink = (235, 235, 238, 255) if dark else (20, 20, 20, 255)
-    fs = max(10, int(h * 0.03))
-    try:
-        font = ImageFont.truetype("DejaVuSans.ttf", fs)
-        small = ImageFont.truetype("DejaVuSans.ttf", int(fs * 0.8))
-    except OSError:
-        font = small = ImageFont.load_default()
-    if text:
-        draw.text((int(0.02 * w), int(0.02 * h)), text, fill=ink, font=font)
-    if legend and "ColorCoding.range" in data.attributes:
-        lo, hi = data.attributes["ColorCoding.range"]
-        cmap = matplotlib.colormaps[data.attributes.get("ColorCoding.cmap", "viridis")]
-        x0, x1 = int(0.88 * w), int(0.91 * w)
-        y0, y1 = int(0.15 * h), int(0.85 * h)
-        for y in range(y0, y1):
-            c = cmap(1 - (y - y0) / max(1, y1 - y0 - 1))
-            draw.line([(x0, y), (x1, y)], fill=tuple(int(255 * v) for v in c[:3]) + (255,))
-        draw.rectangle([x0, y0, x1, y1 - 1], outline=ink)
-        title = str(data.attributes.get("ColorCoding.property", ""))
-        draw.text((x0, y0 - int(1.4 * fs)), title, fill=ink, font=small)
-        for frac in (0, 0.25, 0.5, 0.75, 1):
-            y = int(y1 - 1 - frac * (y1 - y0 - 1))
-            draw.line([(x1, y), (x1 + int(0.006 * w), y)], fill=ink)
-            draw.text((x1 + int(0.01 * w), y - fs // 2), f"{lo + frac * (hi - lo):.3g}", fill=ink, font=small)
-    return np.asarray(im)
+    return _finish(rgba, data, filename, camera, overlays, background, transparent_background, dpi)
 
 
 def _add_colorbar(plotter, data, font_size=None):
@@ -407,11 +421,10 @@ def _add_colorbar(plotter, data, font_size=None):
                            **({"title_font_size": font_size + 2, "label_font_size": font_size} if font_size else {}))
 
 
-def render_animation(pipeline, filename, *, frames=None, fps: int = 10, device=None, **kwargs):
-    """Render frames of a pipeline into a movie (.mp4/.gif) via imageio."""
-    import imageio.v2 as imageio
+def render_animation(pipeline, filename, *, frames=None, fps: float = 10, device=None, text=None,
+                     time_per_frame: float | None = None, progress=None, **kwargs):
+    """Render frames of a pipeline into a movie; see :func:`ewald.movie.render_animation`."""
+    from .movie import render_animation as _render_animation
 
-    idx = range(pipeline.num_frames) if frames is None else frames
-    with imageio.get_writer(filename, fps=fps) as writer:
-        for f in idx:
-            writer.append_data(render(pipeline.compute(f, device=device), None, **kwargs))
+    return _render_animation(pipeline, filename, frames=frames, fps=fps, device=device, text=text,
+                             time_per_frame=time_per_frame, progress=progress, **kwargs)

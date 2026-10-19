@@ -66,6 +66,7 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
             if len(i):
                 start = data.positions[i]
                 sc.add_cylinders(start, start + 0.5 * d, bond_radius, colors[i])
+                sc.add_spheres(start + 0.5 * d, bond_radius, colors[i])  # close the open tube end
     if show_cell and data.cell.is_valid:
         o, (a, b, c) = data.cell.origin, data.cell.matrix
         corners = np.array([o, o + a, o + b, o + c, o + a + b, o + a + c, o + b + c, o + a + b + c])
