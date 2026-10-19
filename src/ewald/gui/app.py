@@ -26,10 +26,15 @@ from .theme import TOKENS
 from .timeline import Timeline
 from .viewport import Viewport
 
-FILE_FILTER = ("Simulation files (*.lammpstrj *.dump *.data XDATCAR* POSCAR* CONTCAR* OUTCAR* "
-               "vasprun*.xml *.xyz *.extxyz *.cif *.vasp);;"
-               "Volumetric data (CHGCAR* CHG* PARCHG* AECCAR* LOCPOT* ELFCAR* *.cube *.cub);;"
-               "Sessions (*.ewald);;All files (*)")
+def file_filter() -> str:
+    """Open-dialog filter from the reader registry (built-in formats and plugins)."""
+    from .. import plugins
+
+    return (f"Simulation files ({' '.join(plugins.file_patterns('structure'))});;"
+            f"Volumetric data ({' '.join(plugins.file_patterns('volumetric'))});;"
+            "Sessions (*.ewald);;All files (*)")
+
+
 SESSION_FILTER = "ewald session (*.ewald)"
 
 
@@ -281,7 +286,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return pipe
 
     def open_dialog(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load file", "", FILE_FILTER)
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load file", "", file_filter())
         if not path:
             return
         from ..session import is_session_file

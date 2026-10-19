@@ -70,6 +70,8 @@ def main(argv=None):
     n.add_argument("--render", action="store_true", help="show Claude renders of the frames around events")
     n.add_argument("--json", action="store_true", help="print JSON instead of Markdown")
     sub.add_parser("api", help="print the Python API reference for LLMs (llms.txt)")
+    pl = sub.add_parser("plugins", help="list installed plugins and any that failed to load")
+    pl.add_argument("--json", action="store_true")
     m = sub.add_parser("mcp", help="serve the analysis tools over MCP (stdio)")
     m.add_argument("input", nargs="?")
     m.add_argument("--allow-code", action="store_true")
@@ -85,6 +87,8 @@ def main(argv=None):
 
         print(api_reference(), end="")
         return
+    if args.cmd == "plugins":
+        return _print_plugins(args.json)
     if args.cmd == "mcp":
         from .llm.mcp_server import serve
 
@@ -189,6 +193,26 @@ def _render_cmd(args, reader_kwargs):
         opts["dpi"] = args.dpi
     render(data, args.output, text=format_label(text, frame, data, tpf) or None, **opts)
     print("wrote", args.output)
+
+
+def _print_plugins(as_json=False):
+    from . import plugins
+
+    st = plugins.status()
+    if as_json:
+        import json
+
+        print(json.dumps(st, indent=1))
+        return
+    print("plugin folder:", st["plugin_dir"])
+    if not st["readers"]:
+        print("no reader plugins")
+    for r in st["readers"]:
+        pats = " ".join(r["patterns"]) or "(format= only)"
+        print(f"reader {r['name']:<16} {pats:<24} {r['description']}  [{r['origin']}]")
+    for origin, err in st["errors"].items():
+        print(f"FAILED {origin}: {err}")
+    return 1 if st["errors"] else None
 
 
 if __name__ == "__main__":

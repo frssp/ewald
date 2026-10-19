@@ -9,12 +9,13 @@ against the same API the built-in readers and modifiers use, so everything in th
 
 | Extension | What you write | How ewald finds it | State |
 |---|---|---|---|
-| [Reader](readers.md) | a `FrameReader` class or a function returning frames | `@reader(...)` in the plugin folder, or an `ewald.readers` entry point | in review (PR #14) |
+| [Reader](readers.md) | a `FrameReader` class or a function returning frames | `@reader(...)` in the plugin folder, or an `ewald.readers` entry point | available |
 | [Modifier](modifiers.md) | a `Modifier` subclass or a function `f(frame, data)` | imported by your script; added to the GUI menu with `register_modifier` | available |
 | Modifier registration | the same class, discovered automatically | plugin folder and entry point, like readers | planned |
 
-Pages here say "in review" or "planned" where the API is not on `main` yet, and change when
-it lands.
+Pages here say "planned" where the API is not on `main` yet, and change when it lands.
+ewald's own formats (LAMMPS, VASP, cube, ASE) are registered as built-in readers in the same
+registry, so a plugin is a first-class format: `ewald plugins` lists both.
 
 ## Two ways to ship a plugin
 
@@ -38,7 +39,7 @@ Once registered, a plugin is used everywhere ewald reads files or runs modifiers
 | `import_file` / scripts | picked by `format=`, `sniff` or file-name pattern | `pipe.modifiers.append(MyModifier(...))` (works today) |
 | GUI | File › Load file filter lists its patterns | Add modification menu and command palette; the parameter form is built from the constructor |
 | Claude tools | `load_structure` lists installed formats | `list_modifiers` / `add_modifier` |
-| `ewald plugins` | listed with patterns and origin | listed |
+| `ewald plugins` | listed with patterns and origin, next to the built-in formats | listed |
 | `llms.txt` | not listed (it documents core ewald only) | not listed |
 
 `llms.txt` and `ewald api` stay a reference for core ewald, so the same file is valid on every
