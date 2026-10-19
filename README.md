@@ -127,7 +127,8 @@ ewald movie dump.lammpstrj movie.gif --every 5 --fps 12 --text "t = [Time] ps" -
 * `Pipeline`: source + modifier list, evaluated lazily per frame; source frames are
   cached (up to 8 frames and `cache_memory=2 GiB` of arrays, the current frame always
   kept) and never mutated by modifiers.
-* Readers: native lazy readers for LAMMPS dumps, VASP XDATCAR, extxyz, XSF and H5MD,
+* Readers: native lazy readers for LAMMPS dumps, VASP XDATCAR, OUTCAR, vasprun.xml and
+  vaspout.h5, extxyz, XSF, H5MD and MDTraj HDF5,
   LAMMPS data files and VASP/cube volumetric data, GROMACS XTC/TRR and DCD through
   MDAnalysis, everything else through ASE; matching writers for POSCAR, LAMMPS
   data/dump, extxyz, XSF, H5MD, XTC, CIF and more (see [File formats](#file-formats)).
@@ -162,12 +163,15 @@ Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
 | log.lammps, OSZICAR | native | thermo columns as frame attributes and `data.tables["Thermo"]`, matched by step; found next to a dump/XDATCAR or `thermo=` |
 | XYZ / extended XYZ | native, lazy | frames indexed by atom counts, each parsed by ASE's extxyz parser (`Lattice=`, `Properties=`, forces, energy, info) |
 | XCrySDen XSF/AXSF | native, lazy | `ANIMSTEPS`, forces, `DATAGRID_3D` grids in `data.grids["xsf"]` |
+| VASP 6 vaspout.h5, vaspwave.h5 | native, lazy (`h5py`) | ionic steps with `Force`, `Velocity`, `Magnetic Moment`, energies, `Stress`; local potential and `LCHARGH5` charge density as grids |
+| MDTraj / OpenMM HDF5 | native, lazy (`h5py`) | OpenMM `HDF5Reporter`; elements, residues, bonds, velocities, energies |
 | H5MD | native, lazy (`h5py`) | LAMMPS `dump h5md`, MDAnalysis; species names, box, velocities, forces, observables |
 | GROMACS XTC/TRR, DCD, NetCDF | MDAnalysis, lazy | atom types from `topology=` or a same-stem `.gro`/`.pdb`/`.tpr` |
 | ASE database, ASE `.traj` | ASE, lazy | `selection=` query for databases; key-value pairs as attributes |
 | CIF, ... | ASE | anything `ase.io.read` understands |
 
-`pip install "ewald[formats]"` adds h5py and MDAnalysis for H5MD and XTC/TRR/DCD.
+`pip install "ewald[formats]"` adds h5py and MDAnalysis for H5MD, vaspout.h5, MDTraj HDF5
+and XTC/TRR/DCD.
 `export_file(pipe, "out.xtc")` writes through the matching writer, chosen by file name or
 `format=`: POSCAR (species grouped), LAMMPS data (type names in `Masses` comments) and dump,
 extxyz, XSF (with grid), H5MD, XTC/TRR/DCD, CIF, ASE db/traj, cube, CHGCAR, or any ASE

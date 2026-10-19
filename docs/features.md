@@ -172,6 +172,9 @@ Tried in this order when no `format=` is given; reader plugins slot in at priori
 | `cube` | `*.cube` `*.cub` | Gaussian cube volumetric data (atoms + grid) | `gaussian-cube` |
 | `vasp-volumetric` | `CHGCAR*` `CHG*` `PARCHG*` `AECCAR*` `LOCPOT*` `ELFCAR*` | VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR (atoms + grid) | `vasp-chgcar`, `chgcar`, `vasp-locpot`, `locpot`, `vasp-elfcar`, `elfcar` |
 | `h5md` | `*.h5md` `*.h5` | H5MD trajectory (LAMMPS dump h5md, MDAnalysis, ...), lazy; needs h5py |  |
+| `mdtraj-h5` | `*.h5` | MDTraj/OpenMM HDF5 trajectory (HDF5Reporter), topology and bonds, lazy; needs h5py | `mdtraj`, `openmm-h5` |
+| `vaspout` | `vaspout*.h5` | VASP 6 vaspout.h5: ionic steps with forces, energies, stress, velocities, moments, local potential grid, lazy; needs h5py | `vasp-h5`, `vaspout.h5` |
+| `vaspwave` | `vaspwave*.h5` | VASP 6 vaspwave.h5 charge density (structure from vaspout.h5 next to it); needs h5py | `vaspwave.h5` |
 | `xsf` | `*.xsf` `*.axsf` | XCrySDen XSF/AXSF: structure, ANIMSTEPS trajectory, DATAGRID_3D grids |  |
 | `phonopy` | `band.yaml` `mesh.yaml` `qpoints.yaml` `*.yaml` | phonopy band.yaml/mesh.yaml/qpoints.yaml with eigenvectors: phonon modes (PhononMode animates one); frames= per period, structure= for qpoints.yaml | `phonopy-yaml`, `band.yaml`, `phonon` |
 | `lammps-dump` | `*.lammpstrj` `*.dump` | LAMMPS text dump (atom/custom), lazy | `lammps/dump`, `lammps-dump-text` |
@@ -279,7 +282,7 @@ The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (
 
 | Tool | What it does |
 |---|---|
-| `load_structure` | Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, extxyz, cif, ... ; wildcards allowed) as the session pipeline, replacing any previous one. |
+| `load_structure` | Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vaspout.h5, LAMMPS dump/data, extxyz, cif, ... ; wildcards allowed) as the session pipeline, replacing any previous one. |
 | `describe_frame` | Compact description of one frame after the current modifiers: composition, cell, density, minimum distance, coordination histogram per type, g(r) peaks, property ranges, sanity warnings. |
 | `describe_selection` | Describe particles and their surroundings: per-atom neighbor lists, coordination numbers, structure types (if CNA/PTM ran), property values against the environment and frame averages, the nearest defect, and a close-up render with the particles highlighted. |
 | `describe_trajectory` | Scan the trajectory (source frames, subsampled to max_frames) and return per-frame descriptor statistics (volume, min distance, MSD and max displacement vs the first frame, coordination) and 'events': frames where a descriptor shifts abruptly. |
