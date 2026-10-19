@@ -31,10 +31,26 @@ workload *Desktop development with C++* (MSVC and the Windows SDK), then open a 
 pip finds it. `EWALD_REQUIRE_NATIVE=1 pip install -e .` makes a failed C++ build an error instead
 of a warning; CI and the release wheels use it.
 
-Windows releases on GitHub will carry prebuilt wheels
-(`pip install ewald-X.Y.Z-cp312-cp312-win_amd64.whl[gui]`) and a standalone installer that needs no
-Python at all, in a CPU and a CUDA build ([Windows release](../developer/windows-release.md)).
-None has been published yet.
+## From a release
+
+Each GitHub Release carries prebuilt wheels with `ewald._native` included, so no compiler is
+needed: Linux (x86_64), macOS (arm64 and Intel) and Windows, for Python 3.10 to 3.13. Download
+the one for your platform and Python from the release page, then
+
+```bash
+pip install "ewald-0.1.0-cp312-cp312-win_amd64.whl[gui]"
+```
+
+or install a tagged version straight from the repository (this builds from source):
+
+```bash
+pip install "ewald[gui] @ git+https://github.com/frssp/ewald@v0.1.0"
+```
+
+Windows releases also carry a standalone installer that needs no Python at all, in a CPU and a
+CUDA build ([Windows release](../developer/windows-release.md)). `ewald --version` prints the
+installed version; what changed between versions is in
+[CHANGELOG.md](https://github.com/frssp/ewald/blob/main/CHANGELOG.md).
 
 ## Extras
 
@@ -83,6 +99,37 @@ On Fedora: `sudo dnf install xcb-util-cursor xcb-util-wm xcb-util-keysyms xcb-ut
 xcb-util-renderutil libxkbcommon-x11 mesa-libEGL`. `ewald gui` checks for the xcb libraries
 before it creates the window and names the missing packages, instead of Qt's
 "xcb-cursor0 or libxcb-cursor0 is needed" abort.
+
+## macOS
+
+ewald runs on Apple Silicon (arm64) and Intel (x86_64) Macs with macOS 12 or newer. Use a Python
+from python.org, Homebrew (`brew install python@3.12`) or Miniforge, not the system
+`/usr/bin/python3`, and install the Xcode command line tools once so pip can build `ewald._native`
+with Apple clang:
+
+```bash
+xcode-select --install
+python3.12 -m venv ~/ewald-env && source ~/ewald-env/bin/activate
+git clone https://github.com/frssp/ewald && cd ewald
+pip install -e ".[gui]"
+ewald gui
+```
+
+The C++ extension needs no OpenMP (it uses `std::thread`), so Homebrew's `libomp` is not needed.
+Without the command line tools the install finishes without `ewald._native`, as described
+[above](#without-a-c-compiler). Every dependency has arm64 and x86_64 wheels; on Intel Macs pip
+picks numba 0.62, the last release with x86_64 macOS wheels.
+
+In the GUI, shortcuts written with Ctrl in this manual use Cmd (Cmd+K for the command palette,
+Cmd+O to open), Preferences is in the EWALD menu (Cmd+,), and the menu bar shows EWALD instead
+of Python. The viewport draws with Apple's OpenGL 4.1 (on top of Metal on Apple Silicon).
+Analysis computes on
+the CPU: the `gpu` extra installs nothing on macOS, and `device="auto"` picks the CPU
+([GPU compute](gpu.md#macos)).
+
+A standalone EWALD.app in a .dmg, which needs no Python and opens files from Finder (Open With,
+or a drop on its Dock icon), is planned ([macOS release](../developer/macos-release.md)); none
+has been published yet.
 
 ## Troubleshooting the GUI
 
