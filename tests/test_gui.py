@@ -271,6 +271,30 @@ def test_remote_file_dialog_browse_and_open(app, server):
     assert import_file(dlg.url).num_frames > 1
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_help_menu_and_late_registered_modifier(app, pipe, monkeypatch):
+    from ewald import settings
+    from ewald.gui import pipeline_panel
+    from ewald.gui.app import MainWindow
+
+    s = settings.Settings()
+    s["general.docs_url"] = "https://example.org/ewald"
+    w = MainWindow(pipe, settings=s)
+    menus = {a.text().replace("&", ""): a.menu() for a in w.menuBar().actions()}
+    labels = [a.text() for a in menus["Help"].actions()]
+    assert "Writing plugins" in labels and "Open plugin folder" in labels
+    assert w.help_url("plugins/index.md") == "https://example.org/ewald/plugins/"
+
+    # registered after the window exists (startup script, plugin): appears when the menus open
+    monkeypatch.setitem(pipeline_panel.MODIFIER_MENU, "Plugins", {"Late wrap": mods.WrapAtoms})
+    for menu in (w.panel.add_menu, menus["Pipeline"]):
+        menu.aboutToShow.emit()
+        groups = {a.text(): a.menu() for a in menu.actions()}
+        assert [a.text() for a in groups["Plugins"].actions()] == ["Late wrap"]
+    w.close()
+    w.deleteLater()
+
+
 def test_bond_tool_and_menu(app, srtio3_pipe):
     from ewald.gui.app import MainWindow
     from ewald.gui.pipeline_panel import MODIFIER_MENU
