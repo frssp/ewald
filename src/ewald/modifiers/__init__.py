@@ -4,6 +4,7 @@ from .analysis import CalculateDisplacements, CoordinationAnalysis
 from .bonds import CoordinationPolyhedra, CreateBonds, EditBonds
 from .cluster import ClusterAnalysis
 from .coloring import AssignColor, ColorCoding
+from .diffraction import PowderDiffraction, StructureFactor
 from .structure import CommonNeighborAnalysis, IdentifyDiamond, PolyhedralTemplateMatching
 from .voronoi import VoronoiAnalysis
 from .wigner_seitz import WignerSeitzAnalysis
@@ -17,6 +18,7 @@ from .selection import (ClearSelection, DeleteSelected, ExpressionSelection, Inv
 from .script import PythonScript
 from .statistics import Histogram, ReduceProperty, SpatialBinning
 from .steinhardt import SteinhardtOrderParameters
+from .symmetry import SymmetryAnalysis
 from .topology import BondAngleDistribution, BondLengthDistribution, FindRings
 from .trajectory import (GenerateTrajectoryLines, MeanSquaredDisplacement, OverlayFrames, TimeAveraging, TimeSeries,
                          VelocityAutocorrelation)
@@ -34,8 +36,8 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "GenerateTrajectoryLines", "CreateBonds", "EditBonds", "CoordinationPolyhedra",
            "CreateIsosurface", "GridSlice", "GridDifference", "Histogram", "SpatialBinning", "ReduceProperty",
            "SteinhardtOrderParameters", "BondAngleDistribution", "BondLengthDistribution", "FindRings", "VectorVis",
-           "Plumed", "LoadColvar", "FreeEnergySurface", "NebEnergyProfile",
-           "OverlayFrames", "PhononMode"]
+           "Plumed", "LoadColvar", "FreeEnergySurface", "NebEnergyProfile", "OverlayFrames", "PhononMode",
+           "SymmetryAnalysis", "PowderDiffraction", "StructureFactor"]
 
 # OVITO spellings (``CommonNeighborAnalysisModifier``, ``WrapPeriodicImagesModifier``, ...) resolve to the
 # ewald class, so OVITO scripts - and code written by LLMs that learned OVITO - run unchanged.

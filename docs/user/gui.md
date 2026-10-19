@@ -69,7 +69,9 @@ and saved. The `Thermo` table (log.lammps, OSZICAR, OUTCAR, vasprun.xml; see
 "y", with a dashed line at the current frame's step that follows the timeline. The `NEB`
 table (a NEB folder, or `NebEnergyProfile`) is drawn as the energy profile: the spline, the
 images as points, the current image highlighted and the barriers in the corner. Clicking an
-image jumps to its frame.
+image jumps to its frame. Diffraction
+reflections (`diffraction-peaks`) are drawn as sticks, and a measured pattern loaded through a
+modifier's `experimental` file (the "…" button picks it) as points under the calculated curve.
 
 **Linked selection.** Plots and the viewport share one selection, in both directions:
 

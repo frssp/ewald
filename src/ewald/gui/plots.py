@@ -2,7 +2,8 @@
 
 Tables whose first column is ``Step``/``Timestep`` (the ``Thermo`` table from log.lammps,
 OSZICAR, OUTCAR, vasprun.xml) are time series: a column is picked under "y" and a marker
-follows the current frame. Changing frames only moves that marker.
+follows the current frame. Changing frames only moves that marker. Tables named ``*-peaks``
+(``PowderDiffraction``) draw as sticks, and an ``Experimental`` column as points under the rest.
 
 Plots are linked to the 3D view (:mod:`ewald.linking`): dragging an x range on a histogram,
 g(r), bond length or bond angle plot selects those particles (``atomsSelected``), dragging on a
@@ -181,10 +182,18 @@ class PlotsPanel(QtWidgets.QWidget):
             col = self.column.currentText()
             if col in table:
                 keys = [keys[0], col]
-            for k in keys[1:]:
+            sticks = self.table.currentText().endswith("-peaks") and "Intensity" in table
+            if sticks:   # reflections (PowderDiffraction)
+                keys = [keys[0], "Intensity"]
+                ax.vlines(x, 0, np.asarray(table["Intensity"], float), color=TOKENS["accent"], lw=1.2)
+                ax.set_ylim(bottom=0)
+            for k in [] if sticks else keys[1:]:
                 y = np.asarray(table[k], dtype=float)
                 ok = ~np.isnan(y)  # thermo columns a run did not print
-                ax.plot(x[ok], y[ok], lw=1.4, label=k)
+                if k == "Experimental":   # measured pattern under the calculated one
+                    ax.plot(x[ok], y[ok], lw=0, marker=".", ms=2.5, color=TOKENS["secondary"], label=k, zorder=1)
+                else:
+                    ax.plot(x[ok], y[ok], lw=1.4, label=k, zorder=2)
             ax.set_xlabel(keys[0])
             if _is_series(table):
                 self._marker = ax.axvline(x[0], color=TOKENS["secondary"], lw=1, ls="--")
