@@ -296,6 +296,13 @@ names such as `CommonNeighborAnalysisModifier` resolve to the ewald class.
 `Replicate`, `WrapAtoms`, `AffineTransformation`, and any Python function
 `f(frame, data)`.
 
+OVITO Pro-style statistics, checked against OVITO 3.16 bin for bin: `Histogram`,
+`SpatialBinning` (1D profiles with derivatives, 2D/3D maps into `data.grids`),
+`ReduceProperty`, `BondAngleDistribution` and `BondLengthDistribution` (partitioned by type or
+selection). `FindRings` gives shortest-path ring statistics of the bond network and
+`SteinhardtOrderParameters` the q_l/w_l bond-orientational order (plain or Lechner-Dellago
+averaged, checked against freud).
+
 ### Bonds and coordination polyhedra
 
 `data.bonds` stores each bond once (OVITO's `Topology` + `Periodic Image`), so bonds

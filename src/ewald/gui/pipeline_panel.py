@@ -15,6 +15,10 @@ MODIFIER_MENU = {
     "Analysis": {
         "Coordination analysis / RDF": lambda: mods.CoordinationAnalysis(cutoff=3.2),
         "Displacement vectors": lambda: mods.CalculateDisplacements(0),
+        "Histogram": lambda: mods.Histogram("Position.Z"),
+        "Spatial binning (profiles, density maps)": lambda: mods.SpatialBinning("", "sumvol", "Z", 50),
+        "Reduce property (mean, sum, ...)": lambda: mods.ReduceProperty("Position.Z"),
+        "Steinhardt order parameters (q4, q6)": mods.SteinhardtOrderParameters,
     },
     "Trajectory": {
         "Mean squared displacement / diffusion": mods.MeanSquaredDisplacement,
@@ -27,6 +31,9 @@ MODIFIER_MENU = {
         "Create bonds": lambda: mods.CreateBonds(mode="covalent"),
         "Edit bonds (add / delete)": mods.EditBonds,
         "Coordination polyhedra": mods.CoordinationPolyhedra,
+        "Bond angle distribution": mods.BondAngleDistribution,
+        "Bond length distribution": mods.BondLengthDistribution,
+        "Ring statistics": mods.FindRings,
     },
     "Volume (CHGCAR, LOCPOT, cube)": {
         "Isosurface": mods.CreateIsosurface,

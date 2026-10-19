@@ -79,6 +79,57 @@ pipe.modifiers.append(CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)]))
 pipe.modifiers.append(CoordinationPolyhedra(center_types=["Ti"]))
 ```
 
+## Histograms, binning and reductions
+
+These match OVITO 3.16's Histogram, Spatial Binning and Reduce Property modifiers value for
+value. A property is named as in expressions' dotted form: `"Mass"`, `"Position.Z"`,
+`"Color.R"`, or a bond property such as `"Topology.A"` with `operate_on="bonds"`.
+
+- `Histogram(property, bin_count, ...)`: `tables["histogram[<property>]"]`, as counts, relative
+  frequency or probability density (`normalization`), over the value range or a fixed one;
+  `select_elements=True` selects the elements in a value window.
+- `SpatialBinning(property, reduction_operation, direction, bin_count)`: mean, sum, sum per
+  volume, min or max of a property in bins along one, two or three cell vectors, for density
+  and temperature profiles or 2D maps. 1D results go to `tables["binning"]` (with
+  `first_derivative=True` for gradients), 2D and 3D results to `data.grids["binning"]`, where
+  `GridSlice` and `CreateIsosurface` can show them. `property=""` counts particles; with
+  `"sumvol"` that is the number density.
+- `ReduceProperty(property, reduction_operation)`: min, max, sum, nonzero count, mean, median,
+  variance, standard deviation, argmin or argmax as the attribute
+  `ReduceProperty.particles.Mean.Position.Z` (one per component of a vector property).
+
+```python
+pipe.modifiers.append(SpatialBinning("Velocity.X", "mean", direction="Z", bin_count=40))
+pipe.modifiers.append(SpatialBinning("", "sumvol", direction="XY", bin_count=(64, 64)))
+pipe.modifiers.append(ReduceProperty("Potential Energy", "sum"))
+```
+
+## Bond networks and local order
+
+- `BondAngleDistribution(bins, cosine_mode, partition)` and
+  `BondLengthDistribution(bins, length_cutoff, partition)`: histograms of the angles between
+  bonds at each atom and of bond lengths, as `tables["bond-angle-distr"]` and
+  `tables["bond-length-distr"]`, identical to OVITO's. `partition` splits them by particle type
+  ("Si-O-Si", the middle type at the vertex), particle selection, bond type or bond selection.
+- `FindRings(minimum_ring_size, maximum_ring_size)`: shortest-path ring statistics (Franzblau)
+  of the bond network, for amorphous networks, glasses and zeolites:
+  `tables["ring-size-histogram"]`, the atoms of every ring in `tables["6-rings"]` and so on,
+  and the per-atom 'Ring Count'. Every ring OVITO's Find Rings modifier reports is among
+  them; OVITO drops some of the largest rings that differ from another ring of the same size
+  only by a smaller ring.
+- `SteinhardtOrderParameters(degrees, num_neighbors, cutoff, average, wl)`: bond-orientational
+  order q_l and w_l per atom ('Steinhardt Q6', ...), with the neighbor-averaged form of Lechner
+  and Dellago for solid/liquid separation. It runs on the pipeline device and matches freud.
+
+The bond and ring modifiers need bonds upstream (`CreateBonds`, or a file with bonds).
+
+```python
+pipe.modifiers.append(CreateBonds(cutoff=2.85))
+pipe.modifiers.append(BondAngleDistribution(partition="particle_type"))
+pipe.modifiers.append(FindRings(3, 10))
+pipe.modifiers.append(SteinhardtOrderParameters((4, 6), average=True))
+```
+
 ## Volumetric data
 
 Charge densities and potentials (VASP CHGCAR/CHG/PARCHG/AECCAR, LOCPOT, ELFCAR, Gaussian cube)
