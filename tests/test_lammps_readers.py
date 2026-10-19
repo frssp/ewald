@@ -179,3 +179,25 @@ def test_data_explicit_style_and_errors(tmp_path):
 
 def test_dump_reader_is_selected_for_units_header(lammps_dir):
     assert isinstance(open_reader(lammps_dir / "dump.custom.lammpstrj"), LammpsDumpReader)
+
+
+def test_fast_table_parser_matches_loadtxt():
+    import io
+
+    from ewald.io._textparse import parse_table
+
+    rng = np.random.default_rng(3)
+    vals = rng.standard_normal((700, 4)) * 10.0 ** rng.integers(-30, 30, (700, 4))
+    fmts = ["%.6f", "%g", "%.15g", "%.17g", "%.8e", "%.3E", "%.1f"]
+    lines = [" ".join(fmts[i % len(fmts)] % v for v in row) for i, row in enumerate(vals)]
+    lines[:4] = ["1 2 inf -nan", "  +1.5e+3\t-0.0 00012 .5", "1. -2 3e-5 4E+2", "7 8 9 10\r"]
+    block = ("\n".join(lines) + "\n\n").encode()
+    ref = np.loadtxt(io.BytesIO(block), ndmin=2)
+    out = parse_table(block, 700, 4, [0, 1, 2, 3])
+    np.testing.assert_array_equal(out, ref)  # bit-identical, NaN and -0.0 included
+    np.testing.assert_array_equal(np.signbit(out), np.signbit(ref))
+    np.testing.assert_array_equal(parse_table(block, 700, 4, [3, 1]), ref[:, [3, 1]])
+    with pytest.raises(ValueError):
+        parse_table(block, 701, 4, [0])
+    with pytest.raises(ValueError):
+        parse_table(b"1 2\n3\n", 2, 2, [0, 1])
