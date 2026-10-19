@@ -909,13 +909,15 @@ def load_plugin_file(path) -> list[str]:
 
     Returns the names it registered (modifiers, readers, visuals, ...); raises if the
     import failed or the plugin is disabled or incompatible. Loading the same file again
-    (an update) replaces its earlier entry."""
+    (an update) replaces its earlier entry, and so does a plugin with the same id whose file
+    was removed (installing it again)."""
     load_plugins()
     before = {k: set(getattr(_registry, k)) for k in _REGISTRIES}
     path = Path(path).expanduser().resolve()
     _registry.errors.pop(str(path), None)
-    for key in [k for k, p in _registry.plugins.items() if p.origin == str(path)]:
-        del _registry.plugins[key]
+    for key in [k for k, p in _registry.plugins.items()
+                if p.origin == str(path) or (p.kind != "package" and not Path(p.origin).exists())]:
+        del _registry.plugins[key]          # this file's earlier entry, and removed files'
     if not _load_path(path, disabled()):
         raise ImportError(_registry.errors.get(str(path), f"{path} is not a .py file or a package folder, "
                                                "or it is disabled"))

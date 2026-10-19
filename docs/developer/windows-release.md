@@ -121,17 +121,17 @@ Non-release artifacts are kept 3 days. To re-enable automatic runs, add `push: t
 the CPU app. A tag
 must match `ewald.__version__`, or the build fails.
 
-To cut a release: bump `version` in `pyproject.toml` and `__version__` in `src/ewald/__init__.py`,
-merge, then `git tag v0.2.0 && git push origin v0.2.0` and dispatch the workflow on that tag
-(`gh workflow run windows-release.yml --ref v0.2.0`).
+To cut a release, follow [Releases](release.md): bump `__version__` in `src/ewald/__init__.py`
+(`pyproject.toml` reads it), add the CHANGELOG section, run `packaging/release_check.py`, merge,
+push a `v*` tag and dispatch this workflow and `release.yml` on it.
 
 ## Later
 
 - Size: VTK is about half the folder. Excluding VTK modules we never import (IO formats, charts,
   web, parallel) with an explicit list could cut a few hundred MB; do it with the smoke test as the
   guard.
-- An app icon (`EWALD_ICON=path.ico` is already read by the spec) and a version resource.
+- A version resource for the executables (the app icon, `src/ewald/assets/icon/ewald.ico`, is
+  already used by the spec and the installer; `EWALD_ICON=path.ico` overrides it).
 - Software OpenGL fallback for machines without OpenGL 3.2 (remote desktop, some VMs): ship Mesa's
   `opengl32.dll` in a subfolder and copy it next to the executables behind a `--software-gl` switch.
 - In-app update check against the latest GitHub Release.
-- Single source of truth for the version (setuptools-scm from the tag).

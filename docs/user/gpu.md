@@ -38,6 +38,20 @@ change with the device.
 The numba and C++ kernels use all cores by default. Preferences › Compute › CPU threads, or
 `NUMBA_NUM_THREADS` in the environment, limits them.
 
+## macOS
+
+Apple GPUs have no compute backend yet, so on a Mac analysis runs on the CPU: `device="auto"`
+(the GUI default) picks the CPU, and `device="metal"` or `"mps"` stops with an error that says
+so. The viewport and the OpenGL renderer still draw on the GPU. Apple Silicon CPUs are fast for
+this work: the numba neighbor list and the C++ kernels use every performance and efficiency
+core (Preferences › Compute › CPU threads).
+
+A Metal backend would go into `backend.py` next to CuPy. The candidates, MLX and PyTorch's MPS
+device, do not cover the NumPy subset the kernels use (boolean masks and other data-dependent
+shapes, `bincount`, scatter-add), so they would need their own versions of the neighbor list
+and the other kernels. The dense ones (powder diffraction and S(q), atoms x reflections) would
+gain the most and are the likely first step.
+
 ## Timing
 
 ```bash
