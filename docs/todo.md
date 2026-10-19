@@ -8,8 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Per-atom vectors drawn as arrows (force, displacement, velocity, magnetic moment) in the
-  viewport, ray tracer and vector renderer.
 - VASP/LAMMPS output readers: energies, forces, stress and magnetic moments from vasprun.xml,
   OUTCAR and OSZICAR, thermo columns from log.lammps, as frame attributes and per-atom properties.
 - OVITO Pro analysis gaps: spatial binning, Steinhardt bond order, bond-angle distribution,
@@ -47,6 +45,9 @@ Figures
 
 - GPU (CUDA) ray tracer.
 - Ray tracer: shadows of the cell edges show as arcs on atoms.
+- Vector arrows: their own color legend when a `ColorCoding` already owns the legend; arrows in
+  the coarse (moving) viewport scene, as lines; in SVG/PDF, hide the part of an arrow inside its
+  atom exactly (now the shaft is split at the atom and painted by depth).
 
 Plugins and Claude
 

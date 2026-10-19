@@ -54,6 +54,7 @@ class Viewport(QtWidgets.QWidget):
         self.rotation_step = 15.0
         self.sphere_resolution = 10
         self.mesh_limit = 150_000
+        self.arrow_resolution = 6
         self.show_overlay = True
         self.show_axes = True
         self.initial_view = "iso"
@@ -190,7 +191,7 @@ class Viewport(QtWidgets.QWidget):
         p = self.plotter
         self._refine_timer.stop()
         self._lod_cloud = None
-        stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:"))]
+        stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:"))]
         for name in ("atoms", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay", *stale):
             p.remove_actor(name, render=False)
         if p.scalar_bars:
@@ -204,12 +205,13 @@ class Viewport(QtWidgets.QWidget):
         kw = self.style.scene_kwargs()
         kw["cell_color"] = "#AEB4BE" if dark else "black"
         kw["sphere_resolution"] = self.sphere_resolution  # interactive; image export uses full quality
+        kw["arrow_resolution"] = self.arrow_resolution
         scene = self.data
         if coarse:  # impostors only, no bonds: cheap to build and to draw
             kw.update(atom_style="impostor", only_visible=self._coarse_mask(), bond_pairs=None)
-            if scene.bonds is not None:
+            if scene.bonds is not None or scene.vectors:
                 scene = scene.copy()
-                scene.bonds = None
+                scene.bonds, scene.vectors = None, {}
         build_scene(p, scene, mesh_limit=self.mesh_limit, **kw)
         if any(s.transparency > 0 for s in self.data.surfaces.values()) and not getattr(self, "_peeling", False):
             p.enable_depth_peeling()
