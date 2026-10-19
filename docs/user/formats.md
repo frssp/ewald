@@ -12,6 +12,8 @@ files directly.
 | VASP XDATCAR | native, lazy | fixed and variable cell (NpT), VASP 6.4 `Si/hash` species labels |
 | VASP POSCAR/CONTCAR | ASE | VASP 4 and 5, selective dynamics, CONTCAR velocities (`Velocity`, Å/fs) |
 | VASP OUTCAR | native, lazy | every ionic step: `Force`, `Magnetic Moment` (collinear, or N x 3 non-collinear), energies, stress, pressure, magnetization, MD temperature (see [Simulation results](#simulation-results)); a partial last step is skipped with a warning |
+| VASP OUTCAR of a phonon run (IBRION = 5-8) | native | Gamma-point phonon modes, animated by `PhononMode` (see [Phonon modes](phonons.md)) |
+| phonopy `band.yaml`, `mesh.yaml`, `qpoints.yaml` | native | phonon modes with eigenvectors, band structure as the table "Phonon Bands" (see [Phonon modes](phonons.md)) |
 | VASP vasprun.xml | native, lazy | every ionic step: cell, `Force`, energies, stress; a running job's open last step is skipped with a warning |
 | VASP CHGCAR/LOCPOT/ELFCAR, Gaussian cube | native | atoms plus a grid in `data.grids` |
 | XYZ, extended XYZ (`*.xyz`, `*.extxyz`) | native, lazy | frames indexed by their atom-count lines, each parsed on demand by ASE's extxyz parser: `Lattice=`, `Properties=`, `pbc=`, per-frame info (attributes), `forces` (`Force`), `energy` (`Energy`); a partial last frame is skipped with a warning |

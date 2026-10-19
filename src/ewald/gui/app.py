@@ -101,6 +101,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.inspector = DataInspector()
         self.console = make_console(self._console_namespace(), self._after_console, self)
         self.plots = PlotsPanel()
+        self.plots.phononModePicked.connect(self.play_phonon_mode)
         self.plots.atomsSelected.connect(self._plot_selected_atoms)
         self.plots.framesSelected.connect(self._plot_selected_frames)
         self.plots.frameRequested.connect(self.timeline._set)
@@ -315,6 +316,8 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.critical(self, "Load failed", f"{path}\n\n{exc}")
             return None
         QtWidgets.QApplication.restoreOverrideCursor()
+        if _has_phonon_modes(pipe) and not any(isinstance(m, mods.PhononMode) for m in pipe.modifiers):
+            pipe.modifiers.append(mods.PhononMode())  # a phonon file opens playing a mode
         self.set_pipeline(pipe)
         self.setWindowTitle(f"ewald — {os.path.basename(str(path))}")
         self.message(f"Loaded {path}: {pipe.num_frames} frame(s)")
@@ -413,6 +416,29 @@ class MainWindow(QtWidgets.QMainWindow):
                             f"pipeline {dt * 1000:.0f} ms   {dev}")
         if self.workspaces.currentIndex() == 1:
             self.render_page.update_code()
+
+    def play_phonon_mode(self, qpoint: int, band: int):
+        """Show phonon mode (qpoint, band), e.g. clicked in the band plot, and start playback."""
+        if self.pipeline is None:
+            return
+        mod = next((m for m in self.pipeline.modifiers if isinstance(m, mods.PhononMode)), None)
+        if mod is None:
+            mod = mods.PhononMode()
+            self.pipeline.modifiers.append(mod)
+        mod.enabled = True
+        mod.qpoint, mod.band = int(qpoint), int(band)
+        before = self.data.attributes.get("Phonon.Supercell") if self.data is not None else None
+        self.panel.refresh(select=("mod", mod))
+        if self.pipeline.compute(self.frame, errors="skip").attributes.get("Phonon.Supercell") != before:
+            self.viewport.reset_view()  # a new q-point may need a bigger supercell: refit the camera
+        self.recompute()
+        if not self.timeline.play.isChecked() and self.pipeline.num_frames > 1:
+            self.timeline.play.setChecked(True)
+        a = self.data.attributes if self.data is not None else {}
+        if "Phonon.Frequency" in a:
+            q = ", ".join(f"{x:g}" for x in a["Phonon.q"])
+            self.message(f"Phonon mode q = ({q}), band {a['Phonon.Band']}: {a['Phonon.Frequency']:.4g} THz "
+                         f"({a['Phonon.Wavenumber']:.4g} cm-1)")
 
     def _apply_element_defaults(self):
         table = prefs.apply_element_defaults(self.style, self.data, self.settings)
@@ -739,6 +765,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.panel.refresh()
             self.timeline.set_num_frames(self.pipeline.num_frames)
             self.recompute()
+
+
+def _has_phonon_modes(pipe) -> bool:
+    try:
+        return "Phonon Modes" in pipe.source_frame(0).attributes
+    except Exception:
+        return False
 
 
 def _app():
