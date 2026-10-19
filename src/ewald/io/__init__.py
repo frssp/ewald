@@ -58,25 +58,46 @@ class StaticSource:
 
 
 def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
+    """Reader for ``path``: chosen from the reader registry (built-in formats and plugins)."""
     from .. import plugins
 
-    fmt = (format or "").lower()
-    if fmt and (plugin := plugins.find_reader(path, fmt)) is not None:
-        return plugin.open(path, **kwargs)
-    if fmt in ("lammps/dump", "lammps-dump", "lammps-dump-text") or (not fmt and is_lammps_dump(path)):
-        return LammpsDumpReader(path, **kwargs)
-    if fmt in ("vasp-xdatcar", "xdatcar") or (not fmt and is_xdatcar(path)):
-        return XdatcarReader(path, **kwargs)
-    if fmt in ("lammps/data", "lammps-data", "lammps-data-native") or (not fmt and is_lammps_data(path)):
-        if "style" in kwargs:  # ASE's keyword name
-            kwargs["atom_style"] = kwargs.pop("style")
-        kwargs.pop("units", None)
-        return LammpsDataReader(path, **kwargs)
-    if fmt == "lammps-data-ase":
-        return AseReader(path, format="lammps-data", **kwargs)
-    if not fmt and (plugin := plugins.find_reader(path)) is not None:
-        return plugin.open(path, **kwargs)
+    return plugins.open_reader(path, format, **kwargs)
+
+
+def _open_lammps_data(path, **kwargs):
+    if "style" in kwargs:  # ASE's keyword name
+        kwargs["atom_style"] = kwargs.pop("style")
+    kwargs.pop("units", None)
+    return LammpsDataReader(path, **kwargs)
+
+
+def _open_ase(path, format=None, **kwargs):
     return AseReader(path, format=format, **kwargs)
+
+
+def _open_ase_lammps_data(path, **kwargs):
+    return AseReader(path, format="lammps-data", **kwargs)
+
+
+def builtin_readers():
+    """ewald's own formats, registered in :mod:`ewald.plugins` like any reader plugin."""
+    from ..plugins import ReaderPlugin
+
+    B = "built-in"
+    return [
+        ReaderPlugin("lammps-dump", LammpsDumpReader, ("*.lammpstrj", "*.dump"), is_lammps_dump,
+                     "LAMMPS text dump (atom/custom), lazy", B, 10, ("lammps/dump", "lammps-dump-text")),
+        ReaderPlugin("xdatcar", XdatcarReader, ("XDATCAR*",), is_xdatcar,
+                     "VASP XDATCAR, fixed or variable cell, lazy", B, 11, ("vasp-xdatcar",)),
+        ReaderPlugin("lammps-data", _open_lammps_data, ("*.data",), is_lammps_data,
+                     "LAMMPS data file", B, 12, ("lammps/data", "lammps-data-native")),
+        ReaderPlugin("lammps-data-ase", _open_ase_lammps_data, (), None,
+                     "LAMMPS data file via ASE", B, None),
+        ReaderPlugin("ase", _open_ase, ("POSCAR*", "CONTCAR*", "OUTCAR*", "vasprun*.xml", "*.xyz", "*.extxyz",
+                                        "*.cif", "*.vasp"), lambda path: True,
+                     "anything ase.io.read understands (POSCAR, OUTCAR, vasprun.xml, extxyz, cif, ...); "
+                     "other format= names are passed to ASE", B, 100, takes_format=True),
+    ]
 
 
 def import_file(path, format: str | None = None, **kwargs):

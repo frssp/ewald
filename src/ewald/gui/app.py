@@ -25,16 +25,11 @@ from .theme import TOKENS
 from .timeline import Timeline
 from .viewport import Viewport
 
-FILE_PATTERNS = ("*.lammpstrj", "*.dump", "*.data", "XDATCAR*", "POSCAR*", "CONTCAR*", "OUTCAR*",
-                 "vasprun*.xml", "*.xyz", "*.extxyz", "*.cif", "*.vasp")
-
-
 def file_filter() -> str:
-    """Open-dialog filter: built-in formats plus the patterns of installed reader plugins."""
+    """Open-dialog filter from the reader registry (built-in formats and plugins)."""
     from .. import plugins
 
-    patterns = list(FILE_PATTERNS) + [p for p in plugins.file_patterns() if p not in FILE_PATTERNS]
-    return f"Simulation files ({' '.join(patterns)});;All files (*)"
+    return f"Simulation files ({' '.join(plugins.file_patterns())});;All files (*)"
 
 
 class MainWindow(QtWidgets.QMainWindow):

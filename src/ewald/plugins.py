@@ -26,11 +26,17 @@ pick the reader. A reader is one of
 - a function ``f(path, **kwargs)`` returning a ``FrameReader``, one frame, or a list of frames
   (``DataCollection`` or ``ase.Atoms``), which are then held in memory.
 
-Format selection: ``format="name"`` always picks that plugin. Without a format, ewald's
-native readers (LAMMPS dump/data, XDATCAR) are tried first, then plugins whose ``sniff(path)``
-returns true or whose ``patterns`` match the file name, then ASE. A plugin that fails to
-import is recorded in :func:`status` (and ``ewald plugins``) instead of breaking ewald.
-Set ``EWALD_NO_PLUGINS=1`` to skip plugin loading.
+ewald's own formats are registered the same way (origin ``built-in``), so ``ewald plugins``,
+the GUI open filter and the Claude tools list every format from this one registry.
+
+Format selection: ``format="name"`` (or an alias such as ``"lammps/dump"``) picks that reader;
+an unknown name is handed to ASE. Without a format, readers are tried by ``priority``: the
+native LAMMPS dump/data and XDATCAR readers (10-12), then plugins (50 unless given), then
+ASE (100) for everything else. A reader with ``sniff(path)`` is matched on content;
+one without is matched on the file-name ``patterns`` (compression suffix ignored). Registering
+an existing name replaces that reader. A plugin that fails to import is recorded in
+:func:`status` (and ``ewald plugins``) instead of breaking ewald. Set ``EWALD_NO_PLUGINS=1``
+to skip loading external plugins.
 """
 from __future__ import annotations
 
@@ -57,28 +63,39 @@ class ReaderPlugin:
     patterns: tuple = ()
     sniff: Callable | None = None
     description: str = ""
-    origin: str = ""             # entry point, file path, or "python" for runtime registration
+    origin: str = ""             # "built-in", entry point, file path, or "python" for runtime registration
+    priority: int | None = 50    # lower is tried first; None = only by explicit format=
+    aliases: tuple = ()
+    takes_format: bool = False   # factory receives the requested format name (the ASE fallback)
 
     def matches(self, path) -> bool:
         if self.sniff is not None:
             try:
-                if self.sniff(str(path)):
-                    return True
+                return bool(self.sniff(str(path)))
             except Exception as exc:  # a broken sniffer must not block other formats
                 log.debug("sniff of %s failed for %s: %s", self.name, path, exc)
+                return False
         base = os.path.basename(strip_compression(path))
         return any(fnmatch.fnmatch(base, p) for p in self.patterns)
 
-    def open(self, path, **kwargs):
+    def open(self, path, format: str | None = None, **kwargs):
+        if self.takes_format:
+            kwargs["format"] = format
         if isinstance(self.factory, type) and issubclass(self.factory, FrameReader):
             return self.factory(path, **kwargs)
         result = self.factory(path, **kwargs)
         return result if isinstance(result, FrameReader) else ListReader(result)
 
 
+def _builtin_readers() -> dict:
+    from . import io
+
+    return {p.name: p for p in io.builtin_readers()}
+
+
 @dataclass
 class _Registry:
-    readers: dict = field(default_factory=dict)
+    readers: dict = field(default_factory=_builtin_readers)
     errors: dict = field(default_factory=dict)      # origin -> message
     loaded: bool = False
 
@@ -92,18 +109,21 @@ def plugin_dir() -> Path:
     return config_dir() / "plugins"
 
 
-def reader(name: str, patterns=(), sniff: Callable | None = None, description: str = ""):
+def reader(name: str, patterns=(), sniff: Callable | None = None, description: str = "",
+           priority: int | None = 50, aliases=()):
     """Decorator registering a reader class or function under the format ``name``."""
 
     def deco(factory):
-        register_reader(name, factory, patterns=patterns, sniff=sniff, description=description)
+        register_reader(name, factory, patterns=patterns, sniff=sniff, description=description,
+                        priority=priority, aliases=aliases)
         return factory
 
     return deco
 
 
 def register_reader(name: str, factory: Callable, patterns=(), sniff: Callable | None = None,
-                    description: str = "", origin: str = "python") -> ReaderPlugin:
+                    description: str = "", origin: str = "python", priority: int | None = 50,
+                    aliases=()) -> ReaderPlugin:
     if isinstance(patterns, str):
         patterns = (patterns,)
     # attributes on the factory fill in what the call left out (entry-point classes carry their own)
@@ -112,7 +132,8 @@ def register_reader(name: str, factory: Callable, patterns=(), sniff: Callable |
     doc = (factory.__doc__ or "").strip().splitlines()
     description = description or getattr(factory, "description", "") or (doc[0] if doc else "")
     plugin = ReaderPlugin(name.lower(), factory, patterns, sniff, description,
-                          getattr(_loading, "origin", None) or origin)
+                          getattr(_loading, "origin", None) or origin, priority,
+                          tuple(a.lower() for a in aliases))
     _registry.readers[plugin.name] = plugin
     return plugin
 
@@ -130,7 +151,8 @@ def load_plugins(force: bool = False):
         return
     _registry.loaded = True
     if force:
-        _registry.readers = {k: v for k, v in _registry.readers.items() if v.origin == "python"}
+        keep = {k: v for k, v in _registry.readers.items() if v.origin == "python"}
+        _registry.readers = {**_builtin_readers(), **keep}
         _registry.errors.clear()
     if os.environ.get("EWALD_NO_PLUGINS"):
         return
@@ -191,28 +213,43 @@ def readers() -> dict[str, ReaderPlugin]:
     return dict(_registry.readers)
 
 
-def find_reader(path, format: str | None = None) -> ReaderPlugin | None:
-    """The plugin for ``format`` (exact name), else the first plugin that recognises ``path``."""
+def find_reader(path, format: str | None = None) -> ReaderPlugin:
+    """The reader for ``format`` (name or alias; unknown names go to ASE), else the first by
+    priority that recognises ``path``."""
     plugins = readers()
     if format:
-        return plugins.get(format.lower())
-    for plugin in plugins.values():
+        fmt = format.lower()
+        for plugin in plugins.values():
+            if fmt == plugin.name or fmt in plugin.aliases:
+                return plugin
+        return next(p for p in plugins.values() if p.takes_format)
+    ranked = sorted((p for p in plugins.values() if p.priority is not None), key=lambda p: p.priority)
+    for plugin in ranked:
         if plugin.matches(path):
             return plugin
-    return None
+    raise ValueError(f"no reader recognises {path}")
+
+
+def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
+    return find_reader(path, format).open(path, format=format, **kwargs)
 
 
 def file_patterns() -> list[str]:
-    """Glob patterns of all reader plugins (for file dialogs)."""
-    return sorted({p for plugin in readers().values() for p in plugin.patterns})
+    """Glob patterns of all readers, built-in ones first (for file dialogs)."""
+    out = []
+    for plugin in sorted(readers().values(), key=lambda p: (p.priority is None, p.priority or 0)):
+        out += [p for p in plugin.patterns if p not in out]
+    return out
 
 
 def status() -> dict:
     """What is installed and what failed to load, as plain data (CLI, GUI, LLM tools)."""
     load_plugins()
     return {"plugin_dir": str(plugin_dir()),
-            "readers": [{"name": p.name, "patterns": list(p.patterns), "description": p.description,
-                         "origin": p.origin} for p in _registry.readers.values()],
+            "readers": [{"name": p.name, "aliases": list(p.aliases), "patterns": list(p.patterns),
+                         "description": p.description, "origin": p.origin, "priority": p.priority}
+                        for p in sorted(_registry.readers.values(),
+                                        key=lambda p: (p.priority is None, p.priority or 0, p.name))],
             "errors": dict(_registry.errors)}
 
 
@@ -235,5 +272,5 @@ class ListReader(FrameReader):
         return self.frames[index].copy()
 
 
-__all__ = ["reader", "register_reader", "load_plugins", "readers", "find_reader", "file_patterns",
+__all__ = ["reader", "register_reader", "load_plugins", "readers", "find_reader", "open_reader", "file_patterns",
            "status", "plugin_dir", "ReaderPlugin", "ListReader"]

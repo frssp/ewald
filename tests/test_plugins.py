@@ -53,7 +53,7 @@ def test_function_reader_from_plugin_folder(tmp_path):
     data = pipe.compute(1)
     assert data.count == 2 and data.positions[1, 0] == 4.0
     assert list(data.types) == ["Ar", "Ar"]
-    assert plugins.status()["readers"][0]["origin"].endswith("simple.py")
+    assert plugins.readers()["pts"].origin.endswith("simple.py")
 
 
 def test_example_npz_plugin_is_lazy_framereader(tmp_path):
@@ -113,7 +113,7 @@ def test_broken_plugin_is_reported_not_raised(tmp_path, capsys):
             raise ValueError("bad file")
     ''')
     st = plugins.status()
-    assert [r["name"] for r in st["readers"]] == ["okfmt"]
+    assert [r["name"] for r in st["readers"] if r["origin"] != "built-in"] == ["okfmt"]
     (err,) = [v for k, v in st["errors"].items() if k.endswith("broken.py")]
     assert "ModuleNotFoundError" in err
 
@@ -153,7 +153,7 @@ def test_entry_point_readers(monkeypatch, tmp_path):
 def test_disable_with_env(monkeypatch):
     _write_plugin("simple.py", "from ewald.plugins import reader\nreader('zzz', patterns=('*.zzz',))(lambda p: [])\n")
     monkeypatch.setenv("EWALD_NO_PLUGINS", "1")
-    assert plugins.readers() == {}
+    assert "zzz" not in plugins.readers() and "xdatcar" in plugins.readers()   # built-ins stay
 
 
 def test_llm_tool_sees_plugin_formats(tmp_path):
@@ -175,3 +175,23 @@ def test_gui_open_dialog_lists_plugin_patterns():
 
     plugins.register_reader("pts", lambda p: [], patterns=("*.pts",))
     assert "*.pts" in file_filter() and "XDATCAR*" in file_filter()
+
+
+def test_builtin_formats_live_in_the_registry(vasp_dir, lammps_dir):
+    st = {r["name"]: r for r in plugins.status()["readers"]}
+    assert {"lammps-dump", "xdatcar", "lammps-data", "ase"} <= set(st)
+    assert all(st[n]["origin"] == "built-in" for n in ("lammps-dump", "xdatcar", "ase"))
+    order = [r["name"] for r in plugins.status()["readers"]]
+    assert order.index("lammps-dump") < order.index("ase")
+    assert plugins.find_reader(vasp_dir / "XDATCAR").name == "xdatcar"
+    assert plugins.find_reader(vasp_dir / "POSCAR").name == "ase"
+    assert plugins.find_reader("x", "lammps/dump").name == "lammps-dump"   # alias
+    assert plugins.find_reader("x", "extxyz").name == "ase"                # unknown names go to ASE
+    assert import_file(vasp_dir / "POSCAR", format="vasp").compute(0).count > 0
+    assert plugins.file_patterns()[:2] == ["*.lammpstrj", "*.dump"]
+
+
+def test_plugin_can_replace_a_builtin(vasp_dir):
+    plugins.register_reader("xdatcar", lambda p: [DataCollection([[0, 0, 0]], ["Si"])],
+                            sniff=lambda p: "XDATCAR" in str(p), priority=11)
+    assert import_file(vasp_dir / "XDATCAR").num_frames == 1

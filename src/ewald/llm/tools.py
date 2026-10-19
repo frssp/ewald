@@ -187,10 +187,9 @@ class Toolset:
         frame_p = {"type": "integer", "description": "frame index (default: current frame; negative counts from the end)"}
         from .. import plugins
 
-        plugin_formats = ", ".join(f"'{p.name}'" + (f" ({p.description})" if p.description else "")
-                                   for p in plugins.readers().values())
-        format_help = "optional reader format, e.g. 'lammps-data'" + (
-            f"; reader plugins installed: {plugin_formats}" if plugin_formats else "")
+        formats = "; ".join(f"'{p.name}': {p.description}" for p in plugins.readers().values()
+                            if p.priority is not None or p.origin != "built-in")
+        format_help = f"optional; detected from the file when omitted. Readers: {formats}"
 
         @T("load_structure",
            "Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR, LAMMPS dump/data, "

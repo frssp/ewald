@@ -127,9 +127,13 @@ def read_my_format(path, **kwargs):
 my-format = "my_pkg.io:MyFormatReader"
 ```
 
-Without `format=`, ewald's native readers are tried first, then plugins (a `sniff(path)`
-function, else the file-name `patterns`), then ASE. `format="my-format"` always selects the
-plugin. `ewald plugins` lists installed readers and any plugin that failed to import (a
+The formats in the table above are registered the same way (origin `built-in`), so one
+registry drives format detection, the GUI filter and the Claude tools. Without `format=`,
+readers are tried by `priority`: the native LAMMPS dump/data and XDATCAR readers (10-12),
+then plugins (50 unless given), then ASE (100). A reader with `sniff(path)` is matched on
+content, one without on its file-name `patterns`. `format="my-format"` (or an alias such as
+`"lammps/dump"`) selects a reader directly, other names go to ASE, and registering an
+existing name replaces that reader. `ewald plugins` lists installed readers and any plugin that failed to import (a
 broken plugin never stops ewald from starting); `EWALD_NO_PLUGINS=1` skips loading them.
 [`examples/plugins/npz_trajectory.py`](examples/plugins/npz_trajectory.py) is a complete
 example for NumPy `.npz` trajectories (positions, types, cell, forces, energies).
