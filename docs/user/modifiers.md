@@ -119,12 +119,14 @@ gives each particle's displacement from a reference frame, matched by id.
 
 `CreateBonds(cutoff, mode, pairs)` finds bonds with a uniform cutoff, a VESTA-style pair table
 (`mode="pairwise", pairs=[("Ti", "O", 2.4)]`, `*` matches any type) or covalent radii
-(`mode="covalent"`, VESTA's default). Bonds are stored once each in `data.bonds`, with periodic
+(`mode="covalent"`, VESTA's default; in a compound metal-metal pairs are left out, so SrTiO3 gets
+Ti-O and Sr-O but not Sr-Ti). Bonds are stored once each in `data.bonds`, with periodic
 images, so they stay correct across boundaries and through `DeleteSelected`, `Slice`,
 `Replicate` and `WrapAtoms`. `EditBonds(add=[(a, b)], remove=[...])` adds or deletes single
 bonds by particle identifier; the GUI's bond tool does the same by clicking two atoms.
 `CoordinationPolyhedra(center_types)` puts a polyhedron around each center particle, colored
-like the center, into `data.surfaces["coordination-polyhedra"]`; it needs bonds upstream. LAMMPS
+like the center, into `data.surfaces["coordination-polyhedra"]` from the bonds upstream; without any it searches
+covalent bonds itself (as `mode="covalent"`), so it also works on the GUI's display bonds. LAMMPS
 data files with a Bonds section fill `data.bonds` directly.
 
 ```python
