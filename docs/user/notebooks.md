@@ -95,6 +95,21 @@ def style(frame, data):
 and Radius properties, which every renderer draws. Import them with
 `from ewald.paint import paint, hide, isolate, fade, resize` (new notebooks already do).
 
+**Analysis cells** use a verb: one call adds the analysis step and returns its table.
+
+```python
+from ewald import rdf, msd, sq, xrd, vacf, bond_angles
+g = rdf(pipe, cutoff=6)          # CoordinationAnalysis; g.x is r, g["g(r)"] the curve
+d = msd(pipe, time_per_frame=2)  # MeanSquaredDisplacement over the trajectory
+g                                # <Table 'coordination-rdf': 200 rows; r, g(r)>
+```
+
+A table is a dict of numpy columns with `.x`, `.columns` and `.plot()`; `pandas.DataFrame(g)`
+turns it into a data frame.
+Running the cell (or calling the verb) again replaces the step it added, so changing
+`cutoff=` never stacks duplicates. `show(pipe, table="coordination-rdf")` puts the same table
+in a live view cell.
+
 **Text cells** are Markdown. Double-click one to edit it.
 
 The ⋯ menu of a cell has Run, Run this and below, Move up/down, Delete and, for steps and views,
