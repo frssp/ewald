@@ -68,9 +68,8 @@ def apply_settings(win, s: Settings, startup: bool = False):
     win.settings = s
     app = QtWidgets.QApplication.instance()
     if app is not None:
-        if startup or theme.TOKENS != theme.PALETTES.get(s["general.ui_theme"]):
-            theme.apply(app, s["general.ui_theme"])
-        app.setStyleSheet(theme.stylesheet().replace("font-size: 12px", f"font-size: {s['general.font_size']}px"))
+        # one style sheet, set only when it changes: each set re-polishes every widget of every window
+        theme.apply(app, s["general.ui_theme"], font_size=s["general.font_size"])
 
     win.set_button_style(s["general.toolbar_style"])
     if style.preset not in PRESET_THEMES:  # those presets keep their theme's background

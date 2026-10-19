@@ -1,6 +1,8 @@
 """Toolbar, menu bar, Help menu and command palette of the main window."""
 from __future__ import annotations
 
+import sys
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import examples, manual
@@ -101,6 +103,10 @@ class MenusMixin:
         tb.addWidget(QtWidgets.QLabel("Compute ", objectName="muted"))
         self.device_combo = QtWidgets.QComboBox()
         self.device_combo.addItems(["CPU", "CUDA", "auto"])
+        if sys.platform == "darwin":  # no CUDA on macOS; Apple GPUs are not used for compute yet
+            cuda = self.device_combo.model().item(1)
+            cuda.setEnabled(False)
+            cuda.setToolTip("No CUDA on macOS: analysis runs on the CPU")
         self.device_combo.setCurrentText({"cuda": "CUDA", "auto": "auto"}.get((self.device or "cpu").lower(), "CPU"))
         self.device_combo.currentTextChanged.connect(self._set_device)
         tb.addWidget(self.device_combo)
@@ -161,7 +167,7 @@ class MenusMixin:
         self.live_reload_action.setStatusTip("Follow a trajectory that is still being written: new frames "
                                              "extend the timeline (Preferences › General).")
         f.addSeparator()
-        f.addAction("&Quit", self.close, QtGui.QKeySequence.Quit)
+        f.addAction("&Quit", self.close, QtGui.QKeySequence.Quit).setMenuRole(QtGui.QAction.QuitRole)
         e = mb.addMenu("&Edit")
         act = e.addAction("&Preferences…", self.preferences, QtGui.QKeySequence.Preferences)
         act.setMenuRole(QtGui.QAction.PreferencesRole)  # app menu on macOS, like OVITO/VESTA
@@ -308,6 +314,8 @@ class MenusMixin:
             name = cupy.cuda.runtime.getDeviceProperties(0)["name"]
             name = name.decode() if isinstance(name, bytes) else name
             text += f"<br>Compute: CUDA available ({name}); current device {self.device or 'cpu'}"
+        elif sys.platform == "darwin":
+            text += f"<br>Compute: CPU (Apple GPUs are not used for compute yet); current device {self.device or 'cpu'}"
         else:
             text += f"<br>Compute: CPU (no CUDA device or CuPy); current device {self.device or 'cpu'}"
         return text

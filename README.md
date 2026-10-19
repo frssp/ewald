@@ -30,6 +30,8 @@ still succeeds, minus PTM, Voronoi, matching CSP and interval CNA; install the
 [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and reinstall to
 add them ([details](docs/user/install.md#without-a-c-compiler)). Windows releases will also ship wheels
 and a standalone installer; see [docs/developer/windows-release.md](docs/developer/windows-release.md).
+On macOS (Apple Silicon or Intel) run `xcode-select --install` first; see
+[docs/user/install.md](docs/user/install.md#macos) and [docs/developer/macos-release.md](docs/developer/macos-release.md).
 
 Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
 

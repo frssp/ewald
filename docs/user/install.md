@@ -84,6 +84,37 @@ xcb-util-renderutil libxkbcommon-x11 mesa-libEGL`. `ewald gui` checks for the xc
 before it creates the window and names the missing packages, instead of Qt's
 "xcb-cursor0 or libxcb-cursor0 is needed" abort.
 
+## macOS
+
+ewald runs on Apple Silicon (arm64) and Intel (x86_64) Macs with macOS 12 or newer. Use a Python
+from python.org, Homebrew (`brew install python@3.12`) or Miniforge, not the system
+`/usr/bin/python3`, and install the Xcode command line tools once so pip can build `ewald._native`
+with Apple clang:
+
+```bash
+xcode-select --install
+python3.12 -m venv ~/ewald-env && source ~/ewald-env/bin/activate
+git clone https://github.com/frssp/ewald && cd ewald
+pip install -e ".[gui]"
+ewald gui
+```
+
+The C++ extension needs no OpenMP (it uses `std::thread`), so Homebrew's `libomp` is not needed.
+Without the command line tools the install finishes without `ewald._native`, as described
+[above](#without-a-c-compiler). Every dependency has arm64 and x86_64 wheels; on Intel Macs pip
+picks numba 0.62, the last release with x86_64 macOS wheels.
+
+In the GUI, shortcuts written with Ctrl in this manual use Cmd (Cmd+K for the command palette,
+Cmd+O to open), Preferences is in the EWALD menu (Cmd+,), and the menu bar shows EWALD instead
+of Python. The viewport draws with Apple's OpenGL 4.1 (on top of Metal on Apple Silicon).
+Analysis computes on
+the CPU: the `gpu` extra installs nothing on macOS, and `device="auto"` picks the CPU
+([GPU compute](gpu.md#macos)).
+
+A standalone EWALD.app in a .dmg, which needs no Python and opens files from Finder (Open With,
+or a drop on its Dock icon), is planned ([macOS release](../developer/macos-release.md)); none
+has been published yet.
+
 ## Troubleshooting the GUI
 
 **`undefined symbol: ..., version Qt_6_PRIVATE_API` (or `Qt_6`) when PySide6 is imported.** Two
