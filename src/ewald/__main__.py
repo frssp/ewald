@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from . import import_file
 from .render import RENDERERS
@@ -47,11 +48,17 @@ def build_parser():
         parser.add_argument("--type-legend", action="store_true", help="swatch per particle type")
         parser.add_argument("--scale-bar", nargs="?", type=float, const=0.0, default=None, metavar="LENGTH",
                             help="scale bar; optional length in Angstrom (default: a round length)")
+        parser.add_argument("--theme", default=None,
+                            help="element colors, background and cell color, e.g. VESTA, Journal, 'Dark slide'")
+        parser.add_argument("--overlay", action="append", default=None, metavar="NAME",
+                            help="overlay element, e.g. 'Coordinate tripod' or Attributes (repeatable)")
     r.add_argument("--dpi", type=float, default=None, help="stored in PNG/TIFF; page size of vector output")
     g = sub.add_parser("gui", help="open the desktop viewer")
     g.add_argument("input", nargs="?", help="structure/trajectory file or .ewald session")
     g.add_argument("--type-map", default=None)
     g.add_argument("--device", default=None)
+    ex = sub.add_parser("examples", help="list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...)")
+    ex.add_argument("--copy", default=None, metavar="DIR", help="copy them into DIR")
     i = sub.add_parser("info", help="print frames and properties")
     i.add_argument("input")
     i.add_argument("--type-map", default=None)
@@ -99,9 +106,26 @@ def build_parser():
     return ap
 
 
+# optional package -> the extra that installs it (for "ewald CMD" without that extra)
+EXTRAS = {"PySide6": "gui", "pyvistaqt": "gui", "qtconsole": "gui", "anthropic": "llm", "mcp": "llm",
+          "anyio": "llm", "paramiko": "remote", "h5py": "formats", "MDAnalysis": "formats",
+          "cupy": "gpu", "plumed": "plumed", "imageio_ffmpeg": "movie"}
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    try:
+        return _run(args)
+    except ImportError as exc:  # a missing optional dependency: one line, not a traceback
+        top = (getattr(exc, "name", None) or "").split(".")[0]
+        if top in EXTRAS:
+            sys.exit(f"ewald {args.cmd}: needs {top}: pip install 'ewald[{EXTRAS[top]}]'")
+        if "pip install" in str(exc):
+            sys.exit(f"ewald {args.cmd}: {exc}")
+        raise
 
+
+def _run(args):
     if args.cmd == "gui":
         from .gui import main as gui_main
 
@@ -112,6 +136,8 @@ def main(argv=None):
 
         print(api_reference(with_plugins=args.with_plugins), end="")
         return
+    if args.cmd == "examples":
+        return _examples(args.copy)
     if args.cmd == "plugins":
         return _print_plugins(args.json)
     if args.cmd == "forge":
@@ -213,6 +239,10 @@ def _render_cmd(args, reader_kwargs):
         opts["type_legend"] = True
     if args.scale_bar is not None:
         opts["scale_bar"] = args.scale_bar or True
+    if args.theme:
+        opts["theme"] = args.theme
+    if args.overlay:
+        opts["overlays"] = list(opts.get("overlays") or []) + list(args.overlay)
     if args.cmd == "movie":
         from .render import render_animation
 
@@ -234,6 +264,18 @@ def _render_cmd(args, reader_kwargs):
         opts["dpi"] = args.dpi
     render(data, args.output, text=format_label(text, frame, data, tpf) or None, **opts)
     print("wrote", args.output)
+
+
+def _examples(dest=None):
+    from . import examples
+
+    if dest:
+        print(f"copied {len(examples.EXAMPLES)} files to {examples.copy(dest)}")
+        return
+    width = max(len(ex.file) for ex in examples.EXAMPLES)
+    for ex in examples.EXAMPLES:
+        print(f"{ex.file:<{width}}  {ex.format}: {ex.description}")
+    print(f"\nin {examples.FILES}; open one with: ewald gui {examples.EXAMPLES[0].path}")
 
 
 def _print_plugins(as_json=False):
@@ -258,6 +300,12 @@ def _print_plugins(as_json=False):
         print(f"writer {w['name']:<16} {pats:<24} {w['description']}  [{w['origin']}]")
     for v in st.get("visuals", []):
         print(f"visual {v['name']:<24} {v['category']:<14} {v['description'][:60]}  [{v['origin']}]")
+    for v in st.get("overlays", []):
+        print(f"overlay {v['name']:<23} {v['category']:<14} {v['description'][:60]}  [{v['origin']}]")
+    for v in st.get("colormaps", []):
+        print(f"colormap {v['name']:<22} {v['kind']:<14} {v['description'][:60]}  [{v['origin']}]")
+    for v in st.get("themes", []):
+        print(f"theme {v['name']:<25} {'':<14} {v['description'][:60]}  [{v['origin']}]")
     for origin, err in st["errors"].items():
         print(f"FAILED {origin}: {err}")
     return 1 if st["errors"] else None

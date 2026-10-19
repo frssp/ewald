@@ -28,6 +28,13 @@ Python; see [docs/developer/windows-release.md](docs/developer/windows-release.m
 
 Headless servers need an offscreen OpenGL (e.g. `apt install libosmesa6` or EGL).
 
+On Linux the GUI also needs a few X11 libraries that minimal installs lack
+(`sudo apt install libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0
+libxcb-render-util0 libxcb-image0 libxcb-randr0`). If importing PySide6 fails with
+`undefined symbol ... Qt_6_PRIVATE_API`, remove system directories (`/lib`, `/usr/lib`,
+`/lib/x86_64-linux-gnu`, ...) from `LD_LIBRARY_PATH`; they make a system Qt shadow the wheel's.
+Details: [docs/user/install.md](docs/user/install.md#troubleshooting-the-gui).
+
 ## Quick start
 
 ```python
@@ -75,6 +82,9 @@ ewald info XDATCAR
 ewald render dump.lammpstrj out.png --frame 5 --type-map 1=Cu,2=Zr --color-by "Position.Z"
 ```
 
+`ewald examples` lists small example files shipped with the package (POSCAR, CIF, XYZ/extxyz,
+XDATCAR, CHGCAR, LAMMPS dump/data, phonopy band.yaml); the GUI has them under File › Open
+example, and `ewald.examples.path("POSCAR.SrTiO3")` gives their paths in Python.
 `python examples/demo.py` builds sample LAMMPS and VASP trajectories and renders
 example figures.
 
@@ -168,6 +178,7 @@ Compressed files (`.gz`, `.bz2`, `.xz`) work for the native readers.
 | H5MD | native, lazy (`h5py`) | LAMMPS `dump h5md`, MDAnalysis; species names, box, velocities, forces, observables |
 | GROMACS XTC/TRR, DCD, NetCDF | MDAnalysis, lazy | atom types from `topology=` or a same-stem `.gro`/`.pdb`/`.tpr` |
 | ASE database, ASE `.traj` | ASE, lazy | `selection=` query for databases; key-value pairs as attributes |
+| NEB runs | native | VASP folder `00 .. NN` or LAMMPS `neb` (replica dumps + log), one frame per image with `NebEnergyProfile` |
 | CIF, ... | ASE | anything `ase.io.read` understands |
 
 `pip install "ewald[formats]"` adds h5py and MDAnalysis for H5MD, vaspout.h5, MDTraj HDF5
@@ -253,7 +264,12 @@ it is drawn by the OpenGL viewport, the ray tracer and SVG/PDF output alike, and
 the GUI's "+ Visual" button and in the Claude `add_visual` tool
 ([`examples/plugins/cell_axes.py`](examples/plugins/cell_axes.py),
 [visual element plugins](docs/plugins/visuals.md)). ewald's own atoms, bonds, cell, surfaces,
-arrows and trajectory lines are built the same way.
+arrows and trajectory lines are built the same way. Overlays (`@overlay`: inset plots,
+readouts, a coordinate tripod), color maps (`@colormap`, usable as any `cmap`) and themes
+(`@theme`: element colors, background, cell color; `render(..., theme="VESTA")`, View › Theme)
+plug in the same way ([overlay plugins](docs/plugins/overlays.md),
+[color maps and themes](docs/plugins/styles.md),
+[`examples/plugins/figure_extras.py`](examples/plugins/figure_extras.py)).
 
 `ewald forge "what to compute"` has Claude write such a modifier together with tests that
 have a known answer. ewald runs them in a subprocess, along with checks for the plugin
@@ -390,8 +406,9 @@ result and show it at every frame:
 matched by id, Einstein diffusion coefficient), `VelocityAutocorrelation` (VACF from
 `vx vy vz` or differentiated positions, Green-Kubo D), `TimeAveraging` (OVITO's
 time averaging of a table, attribute or property, e.g. the time-averaged g(r)),
-`TimeSeries` (attributes vs. time) and `GenerateTrajectoryLines` (particle paths
-drawn as lines, plus 'Path Length', 'Net Displacement', 'Max Displacement').
+`TimeSeries` (attributes vs. time), `GenerateTrajectoryLines` (particle paths
+drawn as lines, plus 'Path Length', 'Net Displacement', 'Max Displacement') and
+`OverlayFrames` (other frames as see-through copies of the moving atoms).
 
 ```python
 from ewald.modifiers import CoordinationAnalysis, MeanSquaredDisplacement, TimeAveraging
@@ -403,6 +420,21 @@ pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
 data = pipe.compute(0, device="cuda")
 data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # A^2/ps
 data.tables["coordination-rdf[average]"]                               # time-averaged g(r)
+```
+
+### Nudged elastic band
+
+A VASP NEB folder (`00 .. NN`) or a LAMMPS `neb` run folder opens with one frame per image,
+and `NebEnergyProfile` (added automatically there, or appended to any band such as an ASE NEB
+trajectory with `images=`) gives the energy profile along the reaction coordinate, VTST's
+force-based cubic spline and the forward/reverse barriers. `OverlayFrames` (also added) draws
+every other image see-through behind the current one, so the moving atoms show their path. The GUI's Plots tab draws it with
+the current image marked; clicking an image jumps to it.
+
+```python
+pipe = import_file("neb")                              # or "lammps_run/", or "dump.neb.*" with format="neb"
+data = pipe.compute(0)
+data.attributes["NEB.Barrier"], data.tables["NEB spline"]
 ```
 
 ### Volumetric data (CHGCAR, LOCPOT, ELFCAR, cube)
@@ -453,7 +485,7 @@ print(data.attributes["PolyhedralTemplateMatching.counts.FCC"])
 ico = (data["Voronoi Index"][:, 4] == 12) & (data["Coordination"] == 12)   # <0,0,0,0,12> cells
 ```
 
-With the optional `ovito` package (`pip install ovito` or `pip install -e ".[ovito]"`),
+With the optional `ovito` package (`pip install -e ".[gui,ovito]"`; one command, since ovito pins PySide6),
 `DislocationAnalysis` runs OVITO's DXA (Burgers vectors, line lengths, segment
 polylines in `tables["dislocations"]`), and `OvitoModifier(any_ovito_modifier)`
 runs any other OVITO modifier inside an ewald pipeline.

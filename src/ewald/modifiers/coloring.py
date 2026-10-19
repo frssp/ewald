@@ -34,8 +34,9 @@ class AssignColor(Modifier):
 
 
 class ColorCoding(Modifier):
-    """Map a scalar property or expression to colors through a matplotlib colormap.
+    """Map a scalar property or expression to colors through a color map.
 
+    ``cmap`` is a matplotlib name or a color map plugin (see :mod:`ewald.colormaps`).
     ``start``/``end`` default to the min/max over the current frame. The range used
     is stored in attributes so a legend can be drawn later.
     """
@@ -49,7 +50,7 @@ class ColorCoding(Modifier):
         self.only_selected = only_selected
 
     def modify(self, data, ctx):
-        import matplotlib
+        from ..colormaps import get_colormap
 
         from ..render import default_colors
 
@@ -64,7 +65,7 @@ class ColorCoding(Modifier):
         lo = np.nanmin(auto) if self.start is None else self.start
         hi = np.nanmax(auto) if self.end is None else self.end
         t = np.clip((values - lo) / (hi - lo if hi != lo else 1.0), 0, 1)
-        rgb = matplotlib.colormaps[self.cmap](t)[:, :3]
+        rgb = get_colormap(self.cmap)(t)[:, :3]
         if self.only_selected:
             colors = np.array(data.particles.get("Color", default_colors(data)), float)
             sel = data.selection

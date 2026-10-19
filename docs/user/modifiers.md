@@ -273,6 +273,11 @@ recomputes them.
 - `TimeSeries(operate_on)`: attributes as a function of time.
 - `GenerateTrajectoryLines(...)`: particle paths drawn as lines, plus path length, net and
   maximum displacement.
+- `OverlayFrames(transparency=0.7, min_displacement=0.1, start, stop, step)`: every frame of
+  the range drawn at once, the current one opaque and the others as see-through copies of the
+  atoms that moved more than `min_displacement` Å from where they are now (all NEB images
+  behind the one on the timeline, a diffusion hop over an MD window). The copies are appended
+  as extra particles with `Transparency` and `Overlay Frame`, so put it last in the pipeline.
 
 ```python
 pipe.modifiers.append(MeanSquaredDisplacement(time_per_frame=0.002))   # ps per frame
@@ -281,6 +286,25 @@ pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
 data = pipe.compute(0)
 data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # Å²/ps
 data.tables["coordination-rdf[average]"]
+```
+
+## Nudged elastic band
+
+- `NebEnergyProfile(energy="Energy", images=None, spline_points=200)`: energy profile and
+  barrier of a NEB band whose images are the frames (a NEB folder, an ASE NEB trajectory, an
+  extxyz of images). `images=7` takes the last 7 frames, the final band of an optimizer
+  history. The reaction coordinate is the summed 3N-dimensional distance between images
+  (minimum image), as in VTST's nebbarrier.pl; with `Force` on the frames the profile is
+  VTST's cubic spline through the energies with slopes from the force along the improved
+  tangent, without forces a natural cubic spline. Writes `tables["NEB"]`,
+  `tables["NEB spline"]`, `NEB.Barrier`, `NEB.Reverse Barrier`, `NEB.Reaction Energy`,
+  `NEB.Spline Barrier`, `NEB.Saddle Image`, and on each image `NEB.Image`,
+  `NEB.Reaction Coordinate`, `NEB.Relative Energy`.
+
+```python
+pipe = import_file("neb.traj")                         # ASE NEB: every optimizer step, 7 images each
+pipe.modifiers.append(NebEnergyProfile(images=7))
+pipe.compute(-1).attributes["NEB.Spline Barrier"]
 ```
 
 ## Volumetric data

@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-53 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+55 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -56,6 +56,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | `TimeAveraging` | Average upstream results over a frame range (OVITO's TimeAveragingModifier). |
 | `TimeSeries` | Global attributes as a function of time (OVITO's TimeSeriesModifier). |
 | `GenerateTrajectoryLines` | Particle paths over a frame range, drawn as lines, plus path metrics. |
+| `OverlayFrames` | Every frame of ``start:stop:step`` drawn at once: the current frame opaque, the others as see-through copies of the atoms (``transparency`` 0..1), e.g. all images of a NEB band over the image shown on the timeline. |
 
 ### Bonds and polyhedra
 
@@ -78,7 +79,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 | Modifier | What it does |
 |---|---|
 | `AssignColor` | Give the selected particles (all, if nothing selected) one color. |
-| `ColorCoding` | Map a scalar property or expression to colors through a matplotlib colormap. |
+| `ColorCoding` | Map a scalar property or expression to colors through a color map. |
 
 ### Selection
 
@@ -112,6 +113,12 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 |---|---|
 | `PowderDiffraction` | Powder X-ray or neutron diffraction pattern of the (periodic) cell. |
 | `StructureFactor` | Static structure factor S(q) (q = 4 pi sin(theta) / lambda in 1/Angstrom), for liquids, glasses and MD. |
+
+### neb
+
+| Modifier | What it does |
+|---|---|
+| `NebEnergyProfile` | Energy along a NEB band, with the barrier, from frames that are the band's images. |
 
 ### phonon
 
@@ -169,6 +176,7 @@ Tried in this order when no `format=` is given; reader plugins slot in at priori
 
 | Format | File names | Reads | `format=` aliases |
 |---|---|---|---|
+| `neb` | (by content) | NEB band, one frame per image: VASP NEB folder (00..NN) or LAMMPS neb run folder (detected), or format='neb' with one file per image (dump.neb.*) | `vasp-neb`, `lammps-neb` |
 | `cube` | `*.cube` `*.cub` | Gaussian cube volumetric data (atoms + grid) | `gaussian-cube` |
 | `vasp-volumetric` | `CHGCAR*` `CHG*` `PARCHG*` `AECCAR*` `LOCPOT*` `ELFCAR*` | VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR (atoms + grid) | `vasp-chgcar`, `chgcar`, `vasp-locpot`, `locpot`, `vasp-elfcar`, `elfcar` |
 | `h5md` | `*.h5md` `*.h5` | H5MD trajectory (LAMMPS dump h5md, MDAnalysis, ...), lazy; needs h5py |  |
@@ -239,6 +247,27 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 | `Trajectory lines` | ``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle in its atom color; ``width`` in pixels, 0 hides them. |
 | `Simulation cell` | The cell edges as lines, ``width`` pixels wide; ``color`` None uses the renderer's ink (black, or light grey on dark backgrounds). ``radius`` (Angstrom) sizes the ray-traced tubes, None = 0.15 % of the cell diagonal. |
 
+### Overlays
+
+`text`, `legend` (color bar), `type_legend` and `scale_bar` are `render()` options; overlay elements are added with `overlays=[...]` or the Render page's "+ Overlay". Plugins add more ([Overlay plugins](plugins/overlays.md)).
+
+| Overlay | What it draws |
+|---|---|
+| `Coordinate tripod` | Axis directions as arrows in a corner that turn with the camera: Cartesian x, y, z or the cell vectors a, b, c. |
+| `Attributes` | Global attributes (temperature, energy, timestep, ...) as "name = value" lines in a corner. |
+
+### Themes and color maps
+
+`theme=` (View › Theme in the GUI) sets element colors, background, cell color and radius preset; every `cmap` takes a matplotlib name or a color map plugin ([Color maps and themes](plugins/styles.md)).
+
+| Theme | What it sets |
+|---|---|
+| `Default` | Jmol element colors and covalent radii (ewald's defaults) |
+| `VESTA` | VESTA's element colors on white |
+| `CPK` | CPK element colors |
+| `Journal` | Jmol colors muted 35% toward gray, white background, dark gray cell |
+| `Dark slide` | Jmol colors on black, light cell lines, for slides |
+
 ### Output formats
 
 - Images: `.png` `.jpg` `.jpeg` `.tif` `.tiff`; vector pages: `.svg` `.pdf` `.eps` `.ps` (true vectors with `renderer="vector"`, an embedded image otherwise)
@@ -255,7 +284,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 ### `render()` options
 
-`size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`.
+`size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`.
 
 ## Command line
 
@@ -263,9 +292,10 @@ Details: [Command line](user/cli.md).
 
 | Command | What it does | Options |
 |---|---|---|
-| `ewald render INPUT OUTPUT` | render a frame to an image (.png/.jpg/.tif/.svg/.pdf/.eps) | `--frame` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--ao` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` `--dpi` |
-| `ewald movie INPUT OUTPUT` | render frames to .mp4/.gif/.avi/.mov or a PNG sequence | `--fps` `--start` `--stop` `--every` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--time-per-frame` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` |
+| `ewald render INPUT OUTPUT` | render a frame to an image (.png/.jpg/.tif/.svg/.pdf/.eps) | `--frame` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--ao` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` `--theme` `--overlay` `--dpi` |
+| `ewald movie INPUT OUTPUT` | render frames to .mp4/.gif/.avi/.mov or a PNG sequence | `--fps` `--start` `--stop` `--every` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--time-per-frame` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` `--theme` `--overlay` |
 | `ewald gui [INPUT]` | open the desktop viewer | `--type-map` `--device` |
+| `ewald examples` | list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...) | `--copy` |
 | `ewald info INPUT` | print frames and properties | `--type-map` |
 | `ewald describe INPUT` | JSON summary of a frame or, with --trajectory, of the run | `--frame` `--trajectory` `--type-map` |
 | `ewald ask INPUT [QUESTION...]` | ask Claude about a structure (needs anthropic + credentials) | `--type-map` `--model` `--allow-code` `--script` `--select` `--ids` `--frame` |
@@ -303,6 +333,10 @@ The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (
 | `list_visuals` | Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell; configured through render_image and modifiers) and installed plugins, which add_visual draws on top in every renderer. |
 | `add_visual` | Draw a plugin visual element (see list_visuals) in every later render_image, with optional constructor parameters. |
 | `remove_visual` | Stop drawing the visual element at 'index' of the added list. |
+| `list_overlays` | Overlay elements drawn on top of rendered images (built-in: Coordinate tripod, Attributes; plus plugins), with their parameters, and the ones currently added. |
+| `add_overlay` | Draw an overlay element (see list_overlays) on every later render_image, with optional constructor parameters. |
+| `remove_overlay` | Stop drawing the overlay at 'index' of the added list. |
+| `list_styles` | Themes (element colors, background, cell color, radius preset; pass one to render_image) and the color maps usable as 'cmap' in ColorCoding, GridSlice and VectorVis: common matplotlib names and plugins, each marked whether it reads in grayscale. |
 | `export_file` | Write frames of the pipeline (after its modifiers) to a file: POSCAR, LAMMPS data/dump, extxyz, CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... The format follows the file name (POSCAR, *.data, *.extxyz, *.h5md) unless given. |
 | `get_script` | Standalone Python script that reproduces the current pipeline. |
 | `python_api` *code* | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature). |
@@ -312,9 +346,10 @@ Also: `ewald describe` / `ewald narrate` (rule-based descriptors and a trajector
 
 ## Plugins
 
-Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers` and `ewald.visuals`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual`; `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
+Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.visuals`, `ewald.overlays`, `ewald.colormaps` and `ewald.themes`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / `@colormap` / `@theme`; `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
 
 - `examples/plugins/cell_axes.py`: Example visual element plugins: cell axes and a halo around selected atoms.
+- `examples/plugins/figure_extras.py`: Example figure-style plugins: a color map, a theme and an overlay.
 - `examples/plugins/local_composition.py`: Example modifier plugin: local chemical composition around every particle.
 - `examples/plugins/npz_trajectory.py`: Example reader plugin: trajectories stored as NumPy ``.npz`` archives.
 
@@ -407,6 +442,17 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 - Load file… (`Ctrl+O`)
 - Load remote file (SSH)… (`Ctrl+Alt+O`)
+- Load NEB folder…
+- Open example
+  - POSCAR.SrTiO3 (VASP POSCAR)
+  - Si.cif (CIF)
+  - Pt_nanoparticle.xyz (XYZ)
+  - Cu_md.extxyz (extended XYZ)
+  - XDATCAR.Si (VASP XDATCAR)
+  - CHGCAR.Si (VASP CHGCAR)
+  - Cu_void.lammpstrj (LAMMPS dump)
+  - CuZr.data (LAMMPS data)
+  - Cu3Au_band.yaml (phonopy band.yaml)
 - Load session… (`Ctrl+Shift+O`)
 - Save session (`Ctrl+S`)
 - Save session as… (`Ctrl+Shift+S`)
@@ -434,6 +480,12 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Zoom to fit (`Ctrl+0`)
 - Dark background
 - White background
+- Theme
+  - Default
+  - VESTA
+  - CPK
+  - Journal
+  - Dark slide
 
 **Pipeline**
 
@@ -467,6 +519,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Time averaging (g(r), attributes)
   - Time series of attributes
   - Trajectory lines / paths
+  - NEB energy profile / barrier
+  - Overlay frames (see-through images)
 - Bonds & polyhedra
   - Create bonds
   - Edit bonds (add / delete)
@@ -536,6 +590,25 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Python API reference
 - Open plugin folder
 - About EWALD
+
+**Viewport (right click)**
+
+- Overlay other frames (see-through)
+- Overlay transparency
+  - 50 %
+  - 70 %
+  - 85 %
+  - 95 %
+- Overlay only atoms that move
+- View along
+  - a
+  - b
+  - c
+  - a*
+  - b*
+  - c*
+- Zoom to fit
+- Ask Claude about selection…
 
 ### Toolbar
 

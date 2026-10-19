@@ -25,6 +25,7 @@ files directly.
 | GROMACS XTC/TRR, DCD, AMBER NetCDF | MDAnalysis, lazy, needs `MDAnalysis` | atom types from `topology=` (`.gro`, `.pdb`, `.tpr`, `.psf`, LAMMPS `.data`, ...) or a file with the same stem, or `conf.gro`/`topol.tpr` next to it; type "X" without one; TRR velocities in Å/ps |
 | ASE database (`*.db`, `.json`) | ASE, lazy | one row per frame; `selection="natoms<100,relaxed=1"` is an `ase db` query; key-value pairs, `Row Id`, `Unique Id` become attributes |
 | ASE trajectory (`*.traj`) | ASE, lazy | written by ASE optimizers and MD |
+| NEB runs (VASP folder `00 .. NN`, LAMMPS `neb`) | native | one frame per image, energies per image; see [NEB runs](#neb-runs) |
 | CIF | ASE | every data block is a frame |
 | others | ASE | anything `ase.io.read` understands, with `format=` set to the ASE name |
 
@@ -86,6 +87,30 @@ OUTCAR and vasprun.xml are indexed by searching only for the lines that matter, 
 OUTCAR opens about three times faster than with ASE and holds one ionic step in memory at a
 time; over SSH the search runs as `grep` on the host. `format="vasp-out"` / `"vasp-xml"`
 still use ASE's readers.
+
+## NEB runs
+
+A nudged elastic band run opens as a trajectory with one frame per image (`Timestep` = image
+number), and the pipeline starts with `NebEnergyProfile`, which gives the energy profile and
+barrier ([Modifiers](modifiers.md#nudged-elastic-band)), and `OverlayFrames`, which draws every
+other image see-through behind the current one, so the moving atoms show their whole path.
+
+| Layout | Open with | Each image | Energies |
+|---|---|---|---|
+| VASP (VTST) folder with `00`, `01`, ..., `NN` | `import_file("neb/")` | OUTCAR (last ionic step, with forces), else CONTCAR, else POSCAR | `Energy` from the OUTCAR; endpoints with only a POSCAR have none unless `energies=` gives them |
+| LAMMPS `neb` run folder | `import_file("run/")` | last frame of the replica's dump (`dump ... dump.neb.$u`) | `PE1 .. PEN` of the last row of the master `log.lammps` NEB table |
+| one file per image | `import_file("dump.neb.*", format="neb")` | last frame of each file (`frame=` picks another), natural order | from each file, or `log=` names the LAMMPS log |
+
+```python
+pipe = import_file("neb")                              # VASP NEB folder
+data = pipe.compute(0)
+data.attributes["NEB.Barrier"], data.attributes["NEB.Reverse Barrier"]   # eV, from the images
+data.tables["NEB"]                                     # Reaction Coordinate, Energy, Tangent Force, Image, Frame
+pipe = import_file("neb", energies=[-120.31, None, None, None, -120.12])  # endpoint energies by hand (None: from file)
+```
+
+In the GUI, File › Load NEB folder opens either folder layout and shows the profile in the
+Plots tab. Remote (SSH) NEB folders are not read yet.
 
 ## Reader options
 
