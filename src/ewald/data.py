@@ -156,6 +156,14 @@ class VoxelGrid:
         return f"<VoxelGrid {'x'.join(map(str, self.shape))} props={self.names()}>"
 
 
+def _same_state(a, b) -> bool:
+    """True when ase.Atoms ``a`` and ``b`` have exactly the same numbers, positions, cell and pbc."""
+    if a is None or len(a) != len(b):
+        return False
+    return (np.array_equal(a.numbers, b.numbers) and np.array_equal(a.positions, b.positions)
+            and np.array_equal(a.cell, b.cell) and np.array_equal(a.pbc, b.pbc))
+
+
 class DataCollection:
     """One snapshot flowing through a pipeline.
 
@@ -274,7 +282,12 @@ class DataCollection:
     @classmethod
     def from_ase(cls, atoms) -> "DataCollection":
         cell = Cell(np.array(atoms.cell), np.zeros(3), np.array(atoms.pbc))
-        data = cls(atoms.get_positions(), atoms.get_chemical_symbols(), cell)
+        from ase.data import chemical_symbols
+
+        # one symbol per distinct element, not per atom (atoms.get_chemical_symbols is a Python loop)
+        elements, which = np.unique(atoms.numbers, return_inverse=True)
+        symbols = np.asarray([chemical_symbols[z] for z in elements]).astype(str)[which.ravel()]
+        data = cls(atoms.get_positions(), symbols, cell)
         skip = {"positions", "numbers"}
         for key, arr in atoms.arrays.items():
             if key not in skip and len(arr) == len(atoms):
@@ -284,13 +297,18 @@ class DataCollection:
                 data.particles[name] = np.asarray(arr)
         calc = getattr(atoms, "calc", None)
         if calc is not None:
+            # A calculator attached to these very atoms (what every ASE reader returns): take its
+            # results directly; get_property's state check costs ~0.4 s per 1M atoms (np.isclose).
+            fresh = _same_state(getattr(calc, "atoms", None), atoms) and isinstance(getattr(calc, "results", None), dict)
             for key, name in (("energy", "Energy"), ("forces", "Force"), ("stress", "Stress")):
                 try:
-                    val = calc.get_property(key, atoms, allow_calculation=False)
+                    val = calc.results.get(key) if fresh else calc.get_property(key, atoms, allow_calculation=False)
                 except Exception:
                     val = None
                 if val is None:
                     continue
+                if fresh and isinstance(val, np.ndarray):
+                    val = val.copy()  # get_property returns copies too
                 if name == "Force":
                     data.particles["Force"] = np.asarray(val)
                 else:

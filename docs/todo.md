@@ -8,7 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-
 ## Next
 
 GUI
@@ -51,6 +50,14 @@ Analysis
 - The rest of OVITO's everyday modifiers: manual selection (box or lasso in the viewport, kept as
   a modifier) and Smooth trajectory (interpolated frames). FreezeProperty, UnwrapTrajectories,
   ExpandSelection, LoadTrajectory and CombineDatasets are done.
+- Ion transport: error bars for the conductivity and Haven ratio (block averaging over
+  independent windows; the collective charge MSD is one vector and noisy), Onsager
+  coefficients L_ij per species pair, and the conductivity checked against a published
+  Li-conductor trajectory (tests use synthetic walks with known answers).
+- Site hopping: find sites without a reference structure (density maxima of the mobile ions
+  over the trajectory), draw sites and hop paths in the viewport, and a hop-correlation
+  (back-jump) statistic.
+- Plots tab: G_s(r, t) / F_s(q, t) as a 2D map over r or q and t.
 - Grain segmentation: the center of mass of a grain that percolates through the periodic
   boundaries depends on bond order (as in OVITO, so values differ from OVITO's for those grains);
   a grain-boundary surface mesh and misorientation-colored boundary bonds in the viewport; a
@@ -112,6 +119,9 @@ Formats
   fine for small sets, slow for thousands.
 - GROMACS `.gro` with velocities.
 - LAMMPS binary dump.
+- Large-frame reading against OVITO (docs/developer/readers.md): a 1M-atom dump frame takes
+  0.45 s and 367 MB in ewald vs 0.23 s and 188 MB in OVITO (per-column copies, id sort); a
+  1M-atom extxyz frame 0.85 s vs 0.33 s (ASE `Atoms` assembly).
 - LAMMPS logs written with `thermo_style multi` or `thermo_modify line yaml` (only one-line
   thermo output is read now).
 

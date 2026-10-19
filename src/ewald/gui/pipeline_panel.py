@@ -50,6 +50,13 @@ MODIFIER_MENU = {
         "Freeze property (values of frame 0)": mods.FreezeProperty,
         "Load trajectory (topology + dump)": mods.LoadTrajectory,
     },
+    "Ion transport": {
+        "Ionic conductivity / Haven ratio": mods.IonicConductivity,
+        "Van Hove correlation G(r, t)": mods.VanHoveCorrelation,
+        "Self intermediate scattering Fs(q, t)": mods.SelfIntermediateScattering,
+        "Non-Gaussian parameter": mods.NonGaussianParameter,
+        "Site hopping / residence time": mods.SiteHopping,
+    },
     "Bonds & polyhedra": {
         "Create bonds": lambda: mods.CreateBonds(mode="covalent"),
         "Edit bonds (add / delete)": mods.EditBonds,
@@ -150,7 +157,8 @@ BADGES = {"CoordinationAnalysis": "CN", "CalculateDisplacements": "DV", "ColorCo
           "ClearSelection": "CS", "PythonScript": "Py", "PythonModifier": "Py",
           "MeanSquaredDisplacement": "MS", "VelocityAutocorrelation": "VA", "TimeAveraging": "TA",
           "TimeSeries": "TS", "GenerateTrajectoryLines": "TL", "CreateBonds": "CB", "EditBonds": "EB",
-          "CoordinationPolyhedra": "PH",
+          "CoordinationPolyhedra": "PH", "IonicConductivity": "IC", "VanHoveCorrelation": "VH",
+          "SelfIntermediateScattering": "Fs", "NonGaussianParameter": "NG", "SiteHopping": "HP",
           "CreateIsosurface": "SF", "GridSlice": "GS", "GridDifference": "GD"}
 
 KIND = QtCore.Qt.UserRole + 1
