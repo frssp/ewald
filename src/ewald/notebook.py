@@ -65,6 +65,7 @@ class Cell:
     count: int | None = None           # execution counter, like Jupyter's In [n]
     state: str = "new"                 # 'new', 'ok', 'error' or 'stale'
     id: str = field(default_factory=lambda: os.urandom(4).hex())   # nbformat cell id, kept in .ipynb
+    collapsed: bool = False            # folded in the GUI; kept in .ipynb as Jupyter's source/outputs_hidden
 
     @property
     def is_step(self) -> bool:
