@@ -865,8 +865,11 @@ def test_ask_panel_selection_and_frame(app, pipe):
     panel.ask()
     _wait(app, panel)
     assert agents[0].calls == [("selection", "What are these?", [3, 1], 1)]
-    text = panel.transcript.toPlainText()
-    assert "What are these?" in text and "2 atoms: fcc neighbors" in text
+    text = panel.text()
+    assert "What are these?" in text and "2 atoms: **fcc** neighbors" in text
+    user, claude = panel.messages
+    assert user.role == "user" and claude.role == "assistant"
+    assert [claude.steps.itemAt(i).widget().text() for i in range(claude.steps.count())] == ["✓ Used describe_selection"]
     assert changed == [1] and panel.ask_button.isEnabled() and panel.input.toPlainText() == ""
 
     ctx["indices"] = []
@@ -874,7 +877,7 @@ def test_ask_panel_selection_and_frame(app, pipe):
     _wait(app, panel)
     assert agents[0].calls[-1] == ("frame", "And the frame?") and len(agents) == 1   # same conversation
     panel.reset()
-    assert panel.transcript.toPlainText() == ""
+    assert panel.text() == "" and not panel.welcome.isHidden()
 
 
 def test_ask_panel_without_claude(app, pipe):
@@ -885,7 +888,7 @@ def test_ask_panel_without_claude(app, pipe):
 
     panel = AskPanel(lambda: (pipe, 0, []), agent_factory=missing)
     panel.ask("hello")
-    assert "not available" in panel.transcript.toPlainText() and "pip install ewald[llm]" in panel.transcript.toPlainText()
+    assert "not available" in panel.text() and "pip install ewald[llm]" in panel.text()
     assert not panel.busy()
 
 
@@ -910,11 +913,11 @@ def test_main_window_ask_uses_picks_and_selection(app, pipe):
     assert shown(w.display) and not shown(w.ask_dock)    # the AI chat side bar starts hidden
     w.ask_claude()
     app.processEvents()
-    assert shown(w.ask_dock) and shown(w.display)         # beside the notebook, not over Display
+    assert shown(w.ask_dock) and shown(w.display)         # left of the notebook, not over Display
     assert w.dockWidgetArea(w.ask_dock) == QtCore.Qt.LeftDockWidgetArea
     app.processEvents()
     a, n = w.ask_dock.geometry(), w.notebook_dock.geometry()
-    assert a.center().x() > n.center().x() and a.top() == n.top()   # right of it, not stacked
+    assert a.center().x() < n.center().x() and a.top() == n.top()   # left of it, not stacked
     w.close()
 
 
@@ -940,14 +943,15 @@ def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
     first = agents[0].calls[0][1]
     assert first.startswith("The notebook now reads:") and "pipe" in first and first.endswith("Add coordination")
     assert w.ask_panel.snippets == ["pipe.add(CoordinationAnalysis(cutoff=3.0))\n"]
-    assert "Insert as notebook cell" in w.ask_panel.transcript.toPlainText()
+    answer = w.ask_panel.messages[1]
+    assert [b.insert_button is not None for b in answer.code_blocks] == [True]
     w.ask_panel.ask("Again")                               # unchanged notebook: not sent twice
     _wait(app, w.ask_panel)
     assert agents[0].calls[1][1] == "Again"
 
     view = w.panel.view
     n = len(view.notebook.cells)
-    w.ask_panel._link(QtCore.QUrl("ewald-insert:0"))      # what clicking the link does
+    answer.code_blocks[0].insert_button.click()            # + Insert as cell under the code block
     assert len(view.notebook.cells) == n + 1
     assert any(c.source.strip() == "pipe.add(CoordinationAnalysis(cutoff=3.0))" for c in view.notebook.cells)
     assert not w.notebook_dock.isHidden()
@@ -955,6 +959,12 @@ def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
     _wait(app, w.ask_panel)
     assert agents[0].calls[2][1].startswith("The notebook now reads:") and "cutoff=3.0" in agents[0].calls[2][1]
     assert ask_panel.code_blocks("a\n```py\nx = 1\n```\n```bash\nls\n```") == ["x = 1\n"]
+    assert ask_panel.split_answer("a\n```bash\nls\n```\nb") == [("text", "", "a"), ("code", "bash", "ls\n"),
+                                                                ("text", "", "b")]
+    w.ask_panel.reset()
+    w.ask_panel.starters[0].click()                        # a starter sends its question
+    _wait(app, w.ask_panel)
+    assert w.ask_panel.messages[0].text == ask_panel.STARTERS[0]
     w.close()
 
 
@@ -1968,3 +1978,25 @@ def test_plot_export_is_a_print_figure_in_any_theme(app, vasp_dir, tmp_path):
     assert abs(img.width / plotstyle.DPI["draft"] - 7.2) < 0.5     # 2-column wide (tight box)
     svg = (tmp_path / "neb.svg").read_text()
     assert "Reaction coordinate" in svg and "#ffffff" in svg.lower()
+
+
+def test_notebook_cells_sit_at_the_top(app):
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    w.resize(1400, 900)
+    w.show()
+    for _ in range(3):
+        app.processEvents()
+    view = w.panel.view
+    for cell in view.widgets:                               # spare height goes below the cells
+        assert cell.height() <= cell.sizeHint().height() + 2
+    code = next(c for c in view.widgets if c.cell.kind == "code")
+    w.resizeDocks([w.notebook_dock], [300], QtCore.Qt.Horizontal)   # narrow: lines wrap
+    for _ in range(3):
+        app.processEvents()
+    ed = code.editor
+    lines = sum(round(ed.blockBoundingRect(b).height() / ed.fontMetrics().lineSpacing())
+                for b in (ed.document().findBlockByNumber(i) for i in range(ed.document().blockCount())))
+    assert ed.viewport().height() >= lines * ed.fontMetrics().lineSpacing()   # no clipped last line
+    w.close()

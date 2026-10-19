@@ -23,7 +23,8 @@ GUI
 - AI chat side bar (`gui/ask_panel.py`, activity bar): stream answers as they arrive (now the
   whole answer at once), a Stop button, keep chats per notebook tab and save them in `.ewd`,
   show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
-  replace or diff against an existing cell instead of always inserting a new one.
+  replace or diff against an existing cell instead of always inserting a new one, edit or
+  regenerate a sent message.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
   still set inline colors (render preview, pick labels, color swatches, field error borders), so
   they keep the old palette until a restart after a theme switch; move them to QSS object names.
