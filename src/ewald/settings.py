@@ -150,6 +150,9 @@ OPTIONS = (
     Option("performance.cache_memory", 2048, "Frame cache memory",
            "Upper bound for cached trajectory frames (MB); the current frame is always kept.",
            minimum=64, maximum=1_048_576),
+    Option("performance.background_compute", True, "Compute in the background",
+           "Evaluate the pipeline on a worker thread so the window stays responsive; a newer frame or "
+           "parameter change cancels the running one."),
     Option("compute.threads", 0, "CPU threads", "Numba threads for CPU kernels; 0 = all cores.",
            minimum=0, maximum=1024),
 

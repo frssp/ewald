@@ -1,6 +1,7 @@
 """Data pipeline: source -> modifiers -> DataCollection."""
 from __future__ import annotations
 
+import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -8,6 +9,11 @@ from typing import Callable
 
 from .backend import Backend, get_backend
 from .data import DataCollection
+
+
+class ComputeCancelled(Exception):
+    """Raised inside :meth:`Pipeline.compute` when its ``cancel`` event is set (the GUI asked for
+    a newer frame or parameters while this one was still being computed)."""
 
 
 @dataclass
@@ -19,6 +25,7 @@ class ComputeContext:
     backend: Backend
     cache: dict = field(default_factory=dict)
     modifier_index: int | None = None  # position of the running modifier in pipeline.modifiers
+    cancel: threading.Event | None = None  # set by the caller to stop a computation early
 
     @property
     def xp(self):
@@ -26,13 +33,21 @@ class ComputeContext:
 
     def source_frame(self, frame: int) -> DataCollection:
         """Unmodified input data of another frame (e.g. a reference configuration)."""
+        self.check_cancel()
         return self.pipeline.source_frame(frame)
 
     def input_frame(self, frame: int) -> DataCollection:
         """Data at ``frame`` as it enters the running modifier: the source plus every
         modifier above it. Trajectory modifiers use this to see upstream selections,
         transformations and tables at other frames."""
-        return self.pipeline.compute(frame, device=self.backend, upto=self.modifier_index)
+        self.check_cancel()
+        return self.pipeline.compute(frame, device=self.backend, upto=self.modifier_index, cancel=self.cancel)
+
+    def check_cancel(self):
+        """Raise :class:`ComputeCancelled` if the caller gave up on this computation. Long
+        modifiers call it in their loops; :meth:`input_frame` calls it for them."""
+        if self.cancel is not None and self.cancel.is_set():
+            raise ComputeCancelled
 
     def upstream_key(self) -> tuple:
         """Hashable fingerprint of the input (source, frame count, upstream modifiers and
@@ -170,8 +185,22 @@ class Pipeline:
         self.modifiers.extend(modifiers)
         self.device = device
         self._cache: OrderedDict[int, DataCollection] = OrderedDict()
+        self._cache_lock = threading.RLock()  # the GUI computes on a worker thread too
+        # One computation at a time per pipeline: modifiers keep caches on themselves, and numba's
+        # fallback threading layer (workqueue) aborts on parallel kernels entered from two threads.
+        self._compute_lock = threading.RLock()
         self._cache_size = cache_size
         self.cache_memory = cache_memory
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state.pop("_cache_lock", None)
+        state.pop("_compute_lock", None)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._cache_lock, self._compute_lock = threading.RLock(), threading.RLock()
 
     def add(self, *modifiers):
         """Append modifiers (``pipe.add(m)`` is ``pipe.modifiers.append(m)``) and return the last
@@ -188,12 +217,17 @@ class Pipeline:
 
     def source_frame(self, frame: int) -> DataCollection:
         frame %= self.num_frames
-        if frame in self._cache:
+        with self._cache_lock:
+            data = self._cache.get(frame)
+            if data is not None:
+                self._cache.move_to_end(frame)
+                return data.copy()
+        data = self.source.compute(frame)  # outside the lock: reading a frame can take seconds
+        with self._cache_lock:
+            self._cache[frame] = data
             self._cache.move_to_end(frame)
-        else:
-            self._cache[frame] = self.source.compute(frame)
             self._trim_cache()
-        return self._cache[frame].copy()
+        return data.copy()
 
     def _trim_cache(self):
         while len(self._cache) > max(self._cache_size, 1):
@@ -203,24 +237,34 @@ class Pipeline:
                 self._cache.popitem(last=False)
 
     def compute(self, frame: int = 0, device: str | None = None, errors: str = "raise",
-                upto: int | None = None) -> DataCollection:
+                upto: int | None = None, cancel: threading.Event | None = None) -> DataCollection:
         """Evaluate the pipeline at ``frame``.
 
         ``errors="skip"`` keeps going past a failing modifier (its message is stored
         in ``modifier.status``); the GUI uses this so one bad modifier never blanks the view.
-        ``upto`` stops before the modifier at that index.
+        ``upto`` stops before the modifier at that index. ``cancel`` is an event a caller on
+        another thread sets to stop early; the computation then raises :class:`ComputeCancelled`
+        between modifiers or wherever a modifier calls ``ctx.check_cancel()``.
         """
+        with self._compute_lock:
+            return self._compute(frame, device, errors, upto, cancel)
+
+    def _compute(self, frame, device, errors, upto, cancel) -> DataCollection:
         frame %= self.num_frames
         backend = get_backend(device or self.device)
         data = self.source_frame(frame)
-        for index, mod in enumerate(self.modifiers[:upto]):
+        for index, mod in enumerate(list(self.modifiers[:upto])):
+            if cancel is not None and cancel.is_set():
+                raise ComputeCancelled
             if not mod.enabled:
                 continue
-            ctx = ComputeContext(frame, self, backend, modifier_index=index)
+            ctx = ComputeContext(frame, self, backend, modifier_index=index, cancel=cancel)
             before = _snapshot(data)
             t0 = time.perf_counter()
             try:
                 result = mod.modify(data, ctx)
+            except ComputeCancelled:
+                raise
             except Exception as exc:
                 mod.last_time = time.perf_counter() - t0
                 mod.status = f"{type(exc).__name__}: {exc}"

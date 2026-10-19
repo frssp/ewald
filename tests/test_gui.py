@@ -14,10 +14,11 @@ from ewald import modifiers as mods  # noqa: E402
 
 @pytest.fixture(scope="module")
 def app():
-    from ewald.gui import notebook_panel
+    from ewald.gui import compute, notebook_panel
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     notebook_panel.CONFIRM_UNSAVED = False  # no modal "unsaved changes" questions in tests
+    compute.BUDGET = None  # every frame is shown before recompute() returns; background tests set it
     yield app
     # Destroy every window (VTK render windows, in-process kernels) while Qt is still alive;
     # leaving them to interpreter shutdown can segfault after all tests have passed.
@@ -1470,4 +1471,89 @@ def test_plugins_side_bar_installs_adds_a_step_and_removes(app, cu_path, tmp_pat
     w.set_minimal(True)
     assert w.menuBar().isHidden() and w.minimal
     w.set_minimal(False)
+    w.close()
+
+
+def test_background_compute_keeps_the_window_responsive_and_cancels(app, cu_fcc, monkeypatch):
+    import threading
+    import time
+
+    from ewald.gui import compute
+    from ewald.gui.app import MainWindow
+
+    gate, runs = threading.Event(), []
+
+    class Slow(mods.Modifier):
+        def __init__(self, scale=1.0):
+            super().__init__()
+            self.scale = scale
+
+        def modify(self, data, ctx):
+            runs.append((ctx.frame, self.scale))
+            while not gate.is_set():  # a long analysis that checks for cancellation
+                ctx.check_cancel()
+                time.sleep(0.005)
+            out = data.copy()
+            out.attributes["Scale"] = self.scale
+            return out
+
+    gate.set()
+    slow = Slow()
+    w = MainWindow(Pipeline(StaticSource([cu_fcc] * 3), [slow]))
+    assert w.data.attributes["Scale"] == 1.0  # opening a file still shows frame 0 right away
+    monkeypatch.setattr(compute, "BUDGET", 0.01)
+    gate.clear()
+    runs.clear()
+    w.timeline._set(1)
+    assert w.data.attributes["Scale"] == 1.0  # still the previous result
+    assert w.frame == 1 and w.runner.busy and "Computing frame 1" in w.status.text()
+    slow.scale = 2.0
+    w.recompute()  # a parameter change while frame 1 is still running cancels it
+    gate.set()
+    assert w.runner.wait(5)
+    app.processEvents()
+    assert not w.runner.busy and w.data.attributes["Scale"] == 2.0
+    assert runs[0] == (1, 1.0) and runs[-1] == (1, 2.0)
+    assert "frame 1/2" in w.status.text()
+    w.settings["performance.background_compute"] = False
+    gate.clear()
+    threading.Timer(0.1, gate.set).start()
+    w.timeline._set(2)  # synchronous when turned off
+    assert w.data.attributes["Scale"] == 2.0 and w.frame == 2 and not w.runner.busy
+    w.close()
+
+
+def test_notebook_undo_redo_from_the_edit_menu(app, cu_path):
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(settings=settings.Settings())
+    w.open_any(cu_path, ask_types=False)
+    view = w.panel.view
+    assert not view.history.can_undo  # opening a file is not an edit
+    w.panel.add_modifier(mods.CoordinationAnalysis(cutoff=3.0))
+    step = view.notebook.cells[-1]
+    form = view.widget_for(step)
+    for cutoff in (2.0, 2.6):  # what the form does on each change, twice: one entry
+        step.modifier.cutoff = cutoff
+        view.notebook.update_step(step)
+        form.edited.emit(step)
+    assert w.data["Coordination"].max() == 12
+    w._update_undo_actions()
+    assert w.undo_action.text() == "&Undo Edit CoordinationAnalysis" and not w.redo_action.isEnabled()
+    w.undo()
+    assert w.pipeline.modifiers[0].cutoff == 3.0 and w.data["Coordination"].max() == 12
+    w.undo()
+    assert w.pipeline.modifiers == [] and "Coordination" not in w.data
+    w.undo()
+    assert w.statusBar().currentMessage() == "Nothing to undo"
+    w.redo()
+    w.redo()
+    assert w.pipeline.modifiers[0].cutoff == 2.6
+    w.pipeline.modifiers.append(mods.ExpressionSelection("Coordination < 12"))  # e.g. from the console
+    w.panel.refresh()
+    w._update_undo_actions()
+    assert w.undo_action.text() == "&Undo Change pipeline"
+    w.undo()
+    assert [m.name for m in w.pipeline.modifiers] == ["CoordinationAnalysis"]
     w.close()

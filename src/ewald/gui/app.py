@@ -21,6 +21,7 @@ from .. import modifiers as mods
 from ..io import import_file
 from ..render import camera_state, render
 from .ask_panel import AskPanel, agent_from_settings
+from .compute import ComputeRunner
 from .console import make_console
 from .icons import app_icon, icon
 from .inspector import DataInspector
@@ -73,6 +74,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.device = device
         self.frame = 0
         self._frame_pending = False
+        self.runner = ComputeRunner(self)  # pipeline evaluation on a worker thread
+        self.runner.finished.connect(self._computed)
+        self.runner.busyChanged.connect(self._compute_busy)
         self.style = ViewStyle()
         self.session_path = None
 
@@ -337,6 +341,13 @@ class MainWindow(QtWidgets.QMainWindow):
         f.addSeparator()
         f.addAction("&Quit", self.close, QtGui.QKeySequence.Quit)
         e = mb.addMenu("&Edit")
+        if self.layout_mode == "notebook":
+            # A focused cell editor takes Ctrl+Z itself (its typing); elsewhere these undo
+            # notebook edits: cells added, deleted, moved or run, step forms, pipeline changes.
+            self.undo_action = e.addAction("&Undo", self.undo, QtGui.QKeySequence.Undo)
+            self.redo_action = e.addAction("&Redo", self.redo, QtGui.QKeySequence.Redo)
+            e.aboutToShow.connect(self._update_undo_actions)
+            e.addSeparator()
         act = e.addAction("&Preferences…", self.preferences, QtGui.QKeySequence.Preferences)
         act.setMenuRole(QtGui.QAction.PreferencesRole)  # app menu on macOS, like OVITO/VESTA
         if act.shortcut().isEmpty():
@@ -708,17 +719,49 @@ class MainWindow(QtWidgets.QMainWindow):
         self._frame_pending = False
         self.recompute(interactive=True)
 
-    def recompute(self, interactive: bool = False):
+    def recompute(self, interactive: bool = False, wait: bool = False):
+        """Evaluate the pipeline at the current frame and show it. The work runs on a worker
+        thread (``performance.background_compute``); a result that takes longer than the
+        budget is shown when it arrives, and any newer request cancels it. ``wait`` blocks
+        until the frame is shown (callers that read ``self.data`` right after)."""
         if self.pipeline is None:
             return
-        t = time.perf_counter()
-        try:
-            self.data = self.pipeline.compute(self.frame, device=self.device, errors="skip")
-        except Exception as exc:  # source failed (bad file/frame)
-            self.message(f"Error: {exc}", error=True)
-            traceback.print_exc()
+        if not self.settings["performance.background_compute"]:
+            wait = True
+        job = self.runner.request(self.pipeline, self.frame, self.device, interactive,
+                                  budget=None if wait else ...)
+        if job is not None:
+            self._computed(job)
+
+    def undo(self):
+        label = self.panel.undo()
+        self.message(f"Undid {label}" if label else "Nothing to undo")
+
+    def redo(self):
+        label = self.panel.redo()
+        self.message(f"Redid {label}" if label else "Nothing to redo")
+
+    def _update_undo_actions(self):
+        view = self.panel.view
+        hist = view.history if view is not None else None
+        for act, verb, label, can in (
+                (self.undo_action, "Undo", hist and hist.undo_label, hist is not None and hist.can_undo),
+                (self.redo_action, "Redo", hist and hist.redo_label, hist is not None and hist.can_redo)):
+            act.setText(f"&{verb} {label}" if label else f"&{verb}")
+            act.setEnabled(bool(can))
+
+    def _compute_busy(self, busy: bool):
+        if busy and self.pipeline is not None:
+            self.status.setText(f"Computing frame {self.frame}…   (the view shows the previous result)")
+
+    def _computed(self, job):
+        """Show a finished computation (on the GUI thread)."""
+        if job.pipeline is not self.pipeline:
+            return  # a pipeline that was replaced meanwhile
+        if job.error is not None:
+            self.message(f"Error: {job.error}", error=True)
             return
-        dt = time.perf_counter() - t
+        self.data, dt, interactive = job.data, job.seconds, job.interactive
         for m in self.pipeline.modifiers:
             if m.enabled and m.status:
                 self.message(f"{m.name}: {m.status}", error=True)
@@ -739,8 +782,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.panel.set_data(self.data)
         if self.display is not self.panel:
             self.display.set_data(self.data)
-        ts = self.data.attributes.get("Timestep", self.frame)
-        self.viewport.overlay_text = f"Frame {self.frame}   timestep {ts}"
+        ts = self.data.attributes.get("Timestep", job.frame)
+        self.viewport.overlay_text = f"Frame {job.frame}   timestep {ts}"
         self.viewport.set_data(self.data, interactive=interactive)
         self._stale_tabs = {self.inspector, self.plots}
         self._update_bottom_tab()
@@ -748,7 +791,7 @@ class MainWindow(QtWidgets.QMainWindow):
             p.set_highlight(self._selected_indices())
         self._push_console()
         dev = (self.device or "cpu").upper()
-        self.status.setText(f"N = {self.data.count}   frame {self.frame}/{self.pipeline.num_frames - 1}   "
+        self.status.setText(f"N = {self.data.count}   frame {job.frame}/{self.pipeline.num_frames - 1}   "
                             f"pipeline {dt * 1000:.0f} ms   {dev}")
         if self.workspaces.currentIndex() == 1:
             self.render_page.update_code()
@@ -780,9 +823,10 @@ class MainWindow(QtWidgets.QMainWindow):
         mod.qpoint, mod.band = int(qpoint), int(band)
         before = self.data.attributes.get("Phonon.Supercell") if self.data is not None else None
         self.panel.refresh(select=("mod", mod))
+        self.runner.cancel()  # this computes on the GUI thread; don't wait for an older frame
         if self.pipeline.compute(self.frame, errors="skip").attributes.get("Phonon.Supercell") != before:
             self.viewport.reset_view()  # a new q-point may need a bigger supercell: refit the camera
-        self.recompute()
+        self.recompute(wait=True)
         if not self.timeline.play.isChecked() and self.pipeline.num_frames > 1:
             self.timeline.play.setChecked(True)
         a = self.data.attributes if self.data is not None else {}
@@ -1281,6 +1325,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         prefs.save_layout(self, self.settings)
         self.timeline.timer.stop()
+        self.runner.shutdown()
         self.viewport.plotter.close()  # release the VTK/OpenGL context before Qt tears down
         km = getattr(self.console, "kernel_manager", None)
         if km is not None:

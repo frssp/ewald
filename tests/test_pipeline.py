@@ -99,3 +99,43 @@ def test_frame_cache_respects_memory_budget(cu_fcc):
     for f in range(6):
         pipe.compute(f)
     assert len(pipe._cache) == 6
+
+
+def test_cancel_stops_between_modifiers_and_in_input_frame(cu_fcc):
+    import threading
+
+    from ewald import ComputeCancelled, Modifier
+
+    seen = []
+
+    class Record(Modifier):
+        def modify(self, data, ctx):
+            seen.append(ctx.frame)
+
+    class Trajectory(Modifier):  # reads every frame, like MSD; stops at the first input_frame after cancel
+        def modify(self, data, ctx):
+            for f in range(ctx.pipeline.num_frames):
+                ctx.input_frame(f)
+                if f == 1 and armed:
+                    cancel.set()
+
+    pipe = Pipeline(StaticSource([cu_fcc] * 5), [Record(), Trajectory(), Record()])
+    cancel, armed = threading.Event(), [True]
+    with pytest.raises(ComputeCancelled):
+        pipe.compute(0, cancel=cancel, errors="skip")  # never swallowed as a modifier error
+    assert pipe.modifiers[1].status is None
+    assert seen == [0, 0, 1]  # frame 0 itself, then input frames 0 and 1; the last Record never ran
+    cancel.clear()
+    seen.clear()
+    armed.clear()
+    pipe.compute(0, cancel=cancel)
+    assert len(seen) == 1 + 5 + 1
+
+
+def test_source_frame_cache_is_thread_safe(cu_fcc):
+    from concurrent.futures import ThreadPoolExecutor
+
+    pipe = Pipeline(StaticSource([cu_fcc] * 20), cache_size=3)
+    with ThreadPoolExecutor(4) as pool:
+        out = list(pool.map(lambda f: pipe.compute(f % 20).count, range(400)))
+    assert set(out) == {cu_fcc.count} and len(pipe._cache) <= 3

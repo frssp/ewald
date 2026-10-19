@@ -14,12 +14,12 @@ Typical use::
 from .backend import gpu_available, get_backend
 from .data import Cell, DataCollection
 from .io import StaticSource, export_file, import_file
-from .pipeline import ComputeContext, Modifier, Pipeline, PythonModifier
+from .pipeline import ComputeCancelled, ComputeContext, Modifier, Pipeline, PythonModifier
 
 load = import_file  # the short name notebooks use: pipe = load("XDATCAR")
 
 __version__ = "0.1.0"
 __title__ = "EWALD: Extensible Window for Atomic Lattices & Dynamics"
 
-__all__ = ["Cell", "DataCollection", "Pipeline", "Modifier", "PythonModifier", "ComputeContext",
+__all__ = ["Cell", "DataCollection", "Pipeline", "Modifier", "PythonModifier", "ComputeContext", "ComputeCancelled",
            "StaticSource", "import_file", "load", "export_file", "get_backend", "gpu_available"]
