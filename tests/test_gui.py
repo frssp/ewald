@@ -432,3 +432,22 @@ def test_viewport_draws_and_clears_surfaces(app):
     v.set_data(data)
     assert not any(str(k).startswith("surface:") for k in v.plotter.actors)
     v.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_feature_inventory_gui_section_is_current(tmp_path):
+    # in a fresh process: other tests register plugin modifiers in the (global) Pipeline menu
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from ewald import inventory
+
+    env = dict(os.environ, EWALD_CONFIG_DIR=str(tmp_path))
+    code = "from ewald import inventory; print(*inventory.live_gui_lines(), sep=chr(10))"
+    live = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True,
+                          timeout=300).stdout
+    saved = inventory.saved_gui_lines((Path(__file__).parents[1] / "docs" / "features.md").read_text())
+    assert saved == live.rstrip("\n").split("\n"), (
+        "the GUI section of docs/features.md is stale; regenerate with: "
+        "xvfb-run -a python -m ewald inventory -o docs/features.md --gui")
