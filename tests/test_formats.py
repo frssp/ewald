@@ -86,6 +86,82 @@ def test_extxyz_keeps_info_and_custom_properties(tmp_path):
     assert got.attributes["config_type"] == "bulk"
 
 
+_MIXED_EXTXYZ = textwrap.dedent("""\
+    3
+    Lattice="4.0 0.0 0.0 0.5 4.0 0.0 0.0 0.0 5.0" Properties=species:S:1:pos:R:3:forces:R:3:id:I:1:move_mask:L:1:tag:S:1:magmoms:R:1 energy=-12.5 stress="1 2 3 2 4 5 3 5 6" pbc="T T F" config_type=bulk note="two words"
+    cu 0.1 0.2 0.3 1e-3 -2.5E+01 0.30000000000000004 1 T alpha 0.5
+    Au 1.0 1.5 2.0 nan 0 -0 2 F beta-long-tag -1
+    CU -0.25 3.75 4.99 1.0 2.0 3.0 3 True alpha 0
+
+    2
+
+    H 0 0 0
+    H 0 0 0.74
+    2
+    Properties=species:S:1:pos:R:3:move_mask:L:3 cutoff=5
+    O 0 0 0 T F T
+    O 0 0 1.2 F F F
+    1
+    Properties=Z:I:1:species:S:1:pos:R:3
+    26 Ni 0 0 0
+    """)
+
+
+def _same(a, b):
+    assert list(a.particles) == list(b.particles)
+    for name in a.particles:
+        x, y = np.asarray(a.particles[name]), np.asarray(b.particles[name])
+        assert x.dtype == y.dtype and x.shape == y.shape, name
+        if x.dtype.kind == "f":
+            np.testing.assert_array_equal(x, y, err_msg=name)   # bit-identical, NaN == NaN
+        else:
+            assert (x == y).all(), name
+    assert a.attributes.keys() == b.attributes.keys()
+    for key in a.attributes:
+        np.testing.assert_array_equal(a.attributes[key], b.attributes[key], err_msg=key)
+    np.testing.assert_array_equal(a.cell.matrix, b.cell.matrix)
+    np.testing.assert_array_equal(a.cell.pbc, b.cell.pbc)
+
+
+def test_extxyz_fast_parser_matches_ase(tmp_path):
+    import io
+
+    from ase.io.extxyz import read_xyz
+
+    from ewald.io.ase_reader import _ovito_names
+    from ewald.io.extxyz import ExtxyzReader, _read_frame
+
+    path = tmp_path / "mixed.extxyz"
+    path.write_text(_MIXED_EXTXYZ)
+    reader = ExtxyzReader(path)
+    assert len(reader) == 4
+    for k, (offset, size) in enumerate(reader._frames):
+        text = path.read_bytes()[offset:offset + size]
+        fast = _read_frame(text)   # must not fall back to ASE for any of these frames
+        ref = next(read_xyz(io.StringIO(text.decode()), 0))
+        a, b = DataCollection.from_ase(fast), DataCollection.from_ase(ref)
+        _ovito_names(a, fast), _ovito_names(b, ref)
+        _same(a, b)
+        assert reader.read(k).count == len(ref)
+    assert list(reader.read(0)["Particle Type"]) == ["Cu", "Au", "Cu"]
+    assert reader.read(0)["tag"].tolist() == ["alpha", "beta-long-tag", "alpha"]
+    assert list(reader.read(3)["Particle Type"]) == ["Fe"]   # a Z column wins over species
+
+
+def test_extxyz_frame_index_is_the_same_for_any_chunk_size(tmp_path):
+    from ewald.io.extxyz import _scan_frames
+
+    path = tmp_path / "md.extxyz"
+    export_file(_trajectory(4), path)
+    path.write_bytes(b"\n" + path.read_bytes().replace(b"\n8\n", b"\n\n\n8\n").rstrip(b"\n"))
+    frames, complete = _scan_frames(path)
+    assert complete and len(frames) == 4
+    for chunk in (1, 7, 64, 1000):
+        assert _scan_frames(path, chunk_size=chunk) == (frames, True)
+    data = path.read_bytes()
+    assert all(data[o:o + 2] == b"8\n" for o, _ in frames)
+
+
 def test_xsf_grid_round_trip_matches_ase(tmp_path):
     from ase.io.xsf import read_xsf
 
