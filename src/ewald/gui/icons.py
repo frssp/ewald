@@ -179,7 +179,8 @@ def button_style(button: QtWidgets.QAbstractButton, style: str, text_in_hybrid: 
     show_icon = style != "Text"
     show_text = style == "Text" or (style == "Icons and text" and text_in_hybrid)
     name = button.property("ewald_icon")
-    button.setIcon(icon(name, button.property("ewald_icon_color")) if show_icon and name else QtGui.QIcon())
+    color = button.property("ewald_icon_color")  # a token name follows the theme, a hex stays
+    button.setIcon(icon(name, TOKENS.get(color, color) if color else None) if show_icon and name else QtGui.QIcon())
     if isinstance(button, QtWidgets.QToolButton):
         button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon if show_icon and show_text
                                   else QtCore.Qt.ToolButtonIconOnly if show_icon else QtCore.Qt.ToolButtonTextOnly)

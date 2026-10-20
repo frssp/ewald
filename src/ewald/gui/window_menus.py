@@ -33,6 +33,7 @@ class MenusMixin:
             act = QtGui.QAction(icon(icon_name), name, bar, checkable=True)
             act.triggered.connect(lambda on, d=dock: self._show_side_bar(d) if on else d.hide())
             dock.visibilityChanged.connect(lambda _shown, a=act, d=dock: a.setChecked(not d.isHidden()))
+            act.setProperty("ewald_icon", icon_name)
             act.setToolTip("Chat with Claude (Ctrl+J)" if dock is self.ask_dock
                            else f"Show or hide the {name} side bar")
             bar.addAction(act)
@@ -42,6 +43,14 @@ class MenusMixin:
         self.plugins_panel.updatesChanged.connect(self._plugin_updates)
         self._plugin_updates(len(self.plugins_panel.updates()))
         self.ask_dock.visibilityChanged.connect(lambda shown: shown and self.ask_panel.input.setFocus())
+
+    def refresh_activity_icons(self):
+        """Redraw the activity bar icons in the colors of the UI theme now active."""
+        for name, act in self.activity_buttons.items():
+            if name == "Plugins":
+                self._plugin_updates(act.property("updates") or 0)
+            else:
+                act.setIcon(icon(act.property("ewald_icon")))
 
     def _plugin_updates(self, count):
         """A count badge on the Plugins icon while installed plugins have newer catalog versions."""

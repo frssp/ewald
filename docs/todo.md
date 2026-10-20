@@ -70,9 +70,10 @@ GUI
 - Plugins side bar: disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
-- UI themes (`@ui_theme`): switch fully without a restart (now the style sheet changes at once,
-  but notebook syntax colors and open plots keep the old tokens), let a theme's `viewport` token
-  drive the 3D view background.
+- UI themes: let a theme's `viewport` token drive the 3D view background (dark themes still show
+  the light default viewport unless Preferences › Viewport › Background changes); prompts already
+  printed in the Python console keep the colors of the theme they were printed in (new input,
+  syntax colors and the background switch at once).
 - Remotes side bar: list folders and connect in a background thread (now the GUI waits, with
   a busy cursor), drag a remote file onto the notebook, mirror a run folder to a local folder
   (rsync-like, for offline analysis), remote data links in the `.ewd` manifest (remote paths are
@@ -98,12 +99,13 @@ GUI
   `ewald.icns`); the EWALD mark in the main window header (the Notebook redesign) and the docs.
 - Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
   categories. Buttons no longer use text glyphs (panel headers, timeline, cells, view bar use
-  line icons from `gui/icons.py`); the activity-bar and toolbar icons still keep the old palette
-  after a theme switch until a restart (`icons.refresh` covers the other buttons).
+  line icons from `gui/icons.py`).
 - Panel headers (`gui/header.py`): checked under xvfb with Windows-like scale factors (100, 125,
   150 %) only; check on a real Windows machine (Segoe UI, per-monitor DPI) and macOS. The Display
   side bar still crowds its form below about 260 px, and the view bar cuts "View along" when the
-  3D view is narrow (could fold into a menu).
+  3D view is narrow (could fold into a menu). The Notebook panel has no title row while docked (its tab row
+  carries fold and float), so it moves to another side only by floating it first; dragging
+  the empty part of the tab row could start the dock drag.
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
   Add modification for the loaded data, view-along buttons hidden without a cell, the timeline
   folded for a single structure, a right-click menu on pipeline items.

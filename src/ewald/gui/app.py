@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import contextlib
 import sys
 import time
 
@@ -94,6 +95,8 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
             self.panel.askRequested.connect(self.ask_claude)
             self.panel.plotCreated.connect(self._connect_plot)
             self.notebook_dock = self._dock(self.panel, "Notebook", QtCore.Qt.LeftDockWidgetArea, 560)
+            # the notebook tabs name the panel: no separate "Notebook" title row while it is open
+            self.notebook_dock.titleBarWidget().merge_into(self.panel.tabs.corner_layout)
             if not prefs.layout_path(self.settings).exists():  # first start: a wide notebook
                 QtCore.QTimer.singleShot(0, lambda: self.resizeDocks([self.notebook_dock], [640], QtCore.Qt.Horizontal))
             # VS Code-like activity bar: the Plugins side bar opens beside the notebook
@@ -119,6 +122,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
             self.display.styleChanged.connect(self._style_changed)
             self.display.modifierRequested.connect(lambda m: self.panel.add_modifier(m))
             side_dock = self._dock(self.display, "Display", QtCore.Qt.RightDockWidgetArea, 320)
+            side_dock.titleBarWidget().add_action(self.display.visual_button)  # not a row of its own
             self.display.refresh()
         else:
             # --- right: command panel (pipeline list + properties)
@@ -500,6 +504,8 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.viewport.plotter.close()  # release the VTK/OpenGL context before Qt tears down
         km = getattr(self.console, "kernel_manager", None)
         if km is not None:
+            with contextlib.suppress(ValueError):
+                self.console.shell.events.unregister("post_execute", self.console.on_execute)
             self.console.kernel_client.stop_channels()
             km.shutdown_kernel()
         super().closeEvent(event)

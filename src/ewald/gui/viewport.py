@@ -576,21 +576,32 @@ class Viewport(QtWidgets.QWidget):
         self.render()
         self.picked.emit("")
 
+    def _event_position(self):
+        """Window position (x, y from the top-left, in Qt pixels) of the current VTK mouse event.
+
+        Read from the render window interactor, not the observer's ``obj``: pyvista sends button
+        release observers to the interactor style, which has no event position."""
+        x, y = self.plotter.iren.interactor.GetEventPosition()
+        w = self.plotter.interactor
+        ratio = w.devicePixelRatioF() or 1.0
+        return x / ratio, w.height() - y / ratio
+
     def _on_press(self, obj, event):
-        self._press = obj.GetEventPosition()
+        self._press = self._event_position()
         self._on_drag_start(obj, event)
 
     def _on_release(self, obj, event):
         self._on_drag_end(obj, event)
         if self.tool == "orbit" or self._press is None or self.data is None:
             return
-        x, y = obj.GetEventPosition()
+        x, y = self._event_position()
         if abs(x - self._press[0]) + abs(y - self._press[1]) > 4:
             return  # it was a drag (rotation), not a click
         idx = self.pick_at(x, y)
         if idx is None:
             return
-        self.add_pick(idx, extend=self.tool == "pick" and bool(obj.GetShiftKey()))
+        shift = bool(self.plotter.iren.interactor.GetShiftKey())
+        self.add_pick(idx, extend=self.tool == "pick" and shift)
 
     def add_pick(self, idx, extend=False):
         """Pick particle ``idx``; ``extend`` (Shift+click with the pick tool) adds it to the picks,
@@ -615,11 +626,18 @@ class Viewport(QtWidgets.QWidget):
         self.picked.emit(self.describe_picks())
 
     def pick_at(self, x, y):
-        """Atom under display position (x, y): ray-cast to the surface, then nearest atom center."""
+        """Atom under window position (x, y from the top-left): the front-most atom sphere on the
+        camera ray (as for hover), else the atom nearest to the surface VTK picks there (a bond,
+        a polyhedron, an isosurface)."""
         import vtk
 
+        w = self.plotter.interactor
+        idx = self.hover_index(x, y, w.width(), w.height())
+        if idx is not None:
+            return idx
+        ratio = w.devicePixelRatioF() or 1.0
         picker = vtk.vtkPropPicker()
-        if not picker.Pick(x, y, 0, self.plotter.renderer):
+        if not picker.Pick(x * ratio, (w.height() - y) * ratio, 0, self.plotter.renderer):
             return None
         world = np.array(picker.GetPickPosition())
         pos = self.data.positions
