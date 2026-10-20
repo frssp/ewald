@@ -79,8 +79,8 @@ from typing import Callable
 
 from .io.base import FrameReader
 from .plugin_kinds import (  # noqa: F401 (part of this module's API)
-    ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, ReaderPlugin, ThemePlugin, ToolPlugin,
-    UiThemePlugin, VisualPlugin, WriterPlugin, _builtin_ai_providers, _builtin_overlays, _builtin_readers,
+    ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, PanelPlugin, ReaderPlugin, SettingsPagePlugin,
+    ThemePlugin, ToolPlugin, UiThemePlugin, VisualPlugin, WriterPlugin, _builtin_ai_providers, _builtin_overlays, _builtin_readers,
     _builtin_themes, _builtin_ui_themes, _builtin_visuals, _builtin_writers, path_scheme)
 from .plugin_manifest import (  # noqa: F401 (part of this module's API)
     Plugin, _read_toml, _version_tuple, ewald_version, file_manifest, version_satisfies)
@@ -97,6 +97,7 @@ THEME_GROUP = "ewald.themes"
 TOOL_GROUP = "ewald.tools"
 UI_THEME_GROUP = "ewald.ui_themes"
 AI_PROVIDER_GROUP = "ewald.ai_providers"
+PANEL_GROUP = "ewald.panels"
 PLUGIN_GROUP = "ewald.plugins"      # names the package that holds ewald-plugin.toml
 MANIFEST_NAME = "ewald-plugin.toml"
 
@@ -113,6 +114,8 @@ class _Registry:
     tools: dict = field(default_factory=dict)
     ui_themes: dict = field(default_factory=_builtin_ui_themes)
     ai_providers: dict = field(default_factory=_builtin_ai_providers)
+    panels: dict = field(default_factory=dict)
+    settings_pages: dict = field(default_factory=dict)
     errors: dict = field(default_factory=dict)      # origin -> message
     plugins: dict = field(default_factory=dict)     # id -> Plugin
     loaded: bool = False
@@ -120,7 +123,7 @@ class _Registry:
 
 _registry = _Registry()
 _REGISTRIES = ("readers", "writers", "modifiers", "visuals", "overlays", "colormaps", "themes", "tools",
-               "ui_themes", "ai_providers")
+               "ui_themes", "ai_providers", "panels", "settings_pages")
 
 
 def plugin_dir() -> Path:
@@ -483,6 +486,148 @@ def ai_providers() -> dict:
     return dict(_registry.ai_providers)
 
 
+def _icon_path(icon: str, anchor) -> str:
+    """``icon`` as given when it names a built-in icon or is SVG markup, else the image file it
+    names, relative to the file ``anchor`` (the plugin module) when not absolute."""
+    if icon and icon.lstrip().startswith("<"):
+        return icon
+    if not icon or Path(icon).suffix.lower() not in (".svg", ".png"):
+        return icon or "plugins"
+    path = Path(icon).expanduser()
+    if not path.is_absolute() and anchor:
+        path = Path(anchor).resolve().parent / path
+    return str(path)
+
+
+def panel(fn=None, *, name: str | None = None, title: str = "", icon: str = "plugins", tooltip: str = "",
+          shortcut: str = "", width: int = 320, description: str = ""):
+    """Decorator registering ``f(context) -> QWidget`` as a side bar of the desktop app: a button
+    on the activity bar (the icon column at the left edge, next to Notebook, Plugins and AI chat)
+    shows or hides it, and Window › Plugin panels lists it. The widget is built the first time
+    the panel opens, so a plugin's Qt code costs nothing until then::
+
+        from ewald.plugin_api import panel
+
+        @panel(title="Sim agent", icon="sim-agent.svg", shortcut="Ctrl+Alt+S")
+        def sim_agent(context):
+            from PySide6 import QtWidgets
+            box = QtWidgets.QLabel(f"server: {context.settings['simagent.server']}")
+            context.on("data", lambda data: box.setText(f"{data.count} atoms"))
+            return box
+
+    ``context`` gives the window's ``settings``, ``pipeline``, ``data`` (the frame on screen) and
+    ``frame``, ``message(text)``, ``open_preferences(page)``, ``insert_cell(code)``,
+    ``add_step(modifier)`` and ``on(event, callback)`` for "data", "pipeline" and "settings".
+    ``icon`` is a built-in icon name, an SVG/PNG file next to the plugin or SVG markup (``"<svg
+    ...>"``, handy in a one-file plugin); an SVG drawn with ``currentColor`` takes the UI theme's
+    colors like the built-in buttons. ``name`` defaults to
+    the function name, ``title`` to ``name``, ``description`` to the docstring."""
+
+    def deco(f):
+        register_panel(name or f.__name__, f, title=title, icon=icon, tooltip=tooltip, shortcut=shortcut,
+                       width=width, description=description)
+        return f
+
+    return deco(fn) if fn is not None else deco
+
+
+def register_panel(name: str, factory: Callable, title: str = "", icon: str = "plugins", tooltip: str = "",
+                   shortcut: str = "", width: int = 320, description: str = "", origin: str = "python") -> PanelPlugin:
+    if not callable(factory):
+        raise TypeError(f"{factory!r} is not callable (a panel is a function or class taking the panel context)")
+    try:
+        anchor = inspect.getfile(factory)
+    except TypeError:
+        anchor = None
+    description = description or " ".join(inspect.cleandoc(factory.__doc__ or "").split("\n\n")[0].split())
+    plugin = PanelPlugin(name, factory, title or name, _icon_path(icon, anchor), tooltip, shortcut, int(width),
+                         description, getattr(_loading, "origin", None) or origin)
+    _registry.panels[name] = plugin
+    _contribute("panels", name)
+    return plugin
+
+
+def panels() -> dict[str, PanelPlugin]:
+    """Side bars contributed by plugins, by name, in registration order."""
+    load_plugins()
+    return dict(_registry.panels)
+
+
+def settings_page(name: str, options, description: str = "", sections=(), icon: str = ""):
+    """Add the page ``name`` to Preferences with ``options`` (``ewald.settings.Option``, whose keys
+    share one prefix of the plugin's own, e.g. ``simagent.``)::
+
+        from ewald.plugin_api import Option, settings_page
+
+        settings_page("Sim agent", [
+            Option("simagent.server", "http://localhost:8000", "Server", "Where the agent runs."),
+            Option("simagent.timeout", 30.0, "Timeout", "Seconds.", minimum=1, maximum=600),
+        ], description="Connection of the sim-agent panel.")
+
+    The values live in settings.json with ewald's own (only those that differ from the default),
+    are read as ``settings["simagent.server"]`` (a panel's ``context.settings``), get Reset,
+    search and Import/Export like every other row, and are kept while the plugin is switched
+    off. ``sections`` groups keys: ``[("Connection", ["simagent.server", "simagent.timeout"])]``.
+    ``icon`` is a built-in icon name or an SVG/PNG next to the plugin file."""
+    anchor = getattr(_loading, "origin", None)
+    if not anchor or not Path(anchor).is_file():
+        anchor = sys._getframe(1).f_code.co_filename
+    return register_settings_page(name, options, description, sections, _icon_path(icon, anchor) if icon else "")
+
+
+def register_settings_page(name: str, options, description: str = "", sections=(), icon: str = "",
+                           origin: str = "python") -> SettingsPagePlugin:
+    import dataclasses
+
+    from . import settings as settings_mod
+
+    options = tuple(options)
+    if not options or not all(isinstance(o, settings_mod.Option) for o in options):
+        raise TypeError("a settings page needs a list of ewald.settings.Option")
+    if name in settings_mod.PAGES:
+        raise ValueError(f"settings page {name!r} is built in; use another name")
+    prefixes = {o.key.split(".")[0] for o in options}
+    if len(prefixes) != 1 or any("." not in o.key for o in options):
+        raise ValueError(f"settings page {name!r}: every key needs the same prefix, like 'myplugin.option' "
+                         f"(got {', '.join(o.key for o in options)})")
+    prefix = prefixes.pop()
+    if prefix in settings_mod.PAGE_OF_PREFIX:
+        raise ValueError(f"settings page {name!r}: the prefix {prefix!r} is ewald's own; use the plugin's name")
+    for other in _registry.settings_pages.values():
+        if other.prefix == prefix and other.name != name:
+            raise ValueError(f"settings page {name!r}: the prefix {prefix!r} is taken by the page {other.name!r}")
+    keys = [o.key for o in options]
+    if len(set(keys)) != len(keys):
+        raise ValueError(f"settings page {name!r}: a key appears twice")
+    sections = tuple((str(t), tuple(k)) for t, k in sections)
+    unknown = sorted({k for _t, ks in sections for k in ks} - set(keys))
+    if unknown:
+        raise ValueError(f"settings page {name!r}: sections name unknown keys {', '.join(unknown)}")
+    for o in options:
+        settings_mod._valid(o, o.default)   # a default its own checks refuse is a plugin bug
+    options = tuple(dataclasses.replace(o, page_name=name) for o in options)
+    plugin = SettingsPagePlugin(name, options, description, sections, icon, getattr(_loading, "origin", None) or origin)
+    _registry.settings_pages[name] = plugin
+    _contribute("settings_pages", name)
+    return plugin
+
+
+def settings_pages() -> dict[str, SettingsPagePlugin]:
+    """Preferences pages contributed by plugins, by name."""
+    load_plugins()
+    return dict(_registry.settings_pages)
+
+
+def plugin_option(key: str):
+    """The ``ewald.settings.Option`` a plugin's settings page declares for ``key``, or None."""
+    load_plugins()
+    prefix = key.split(".")[0]
+    for page in _registry.settings_pages.values():
+        if page.prefix == prefix:
+            return next((o for o in page.options if o.key == key), None)
+    return None
+
+
 class _Loading:
     origin: str | None = None
     plugin: "Plugin | None" = None
@@ -641,6 +786,8 @@ def load_plugins(force: bool = False):
         _registry.ui_themes = {**_builtin_ui_themes(), **keep}
         keep = {k: v for k, v in _registry.ai_providers.items() if v.origin == "python"}
         _registry.ai_providers = {**_builtin_ai_providers(), **keep}
+        _registry.panels = {k: v for k, v in _registry.panels.items() if v.origin == "python"}
+        _registry.settings_pages = {k: v for k, v in _registry.settings_pages.items() if v.origin == "python"}
         _registry.errors.clear()
         _registry.plugins = {}
     off = disabled()
@@ -685,7 +832,8 @@ def _load_entry_points(off: set = frozenset()):
                             (THEME_GROUP, lambda name, obj: register_theme(name, obj)),
                             (TOOL_GROUP, lambda name, obj: register_tool(name, obj)),
                             (UI_THEME_GROUP, lambda name, obj: register_ui_theme(name, obj)),
-                            (AI_PROVIDER_GROUP, lambda name, obj: register_ai_provider(name, obj))):
+                            (AI_PROVIDER_GROUP, lambda name, obj: register_ai_provider(name, obj)),
+                            (PANEL_GROUP, lambda name, obj: register_panel(name, obj))):
         try:
             eps = entry_points(group=group)
         except Exception as exc:
@@ -881,6 +1029,10 @@ def status() -> dict:
                           for p in _registry.ui_themes.values()],
             "ai_providers": [{"name": p.name, "label": p.label, "description": p.description, "origin": p.origin}
                              for p in _registry.ai_providers.values()],
+            "panels": [{"name": p.name, "title": p.title, "description": p.description, "origin": p.origin}
+                       for p in _registry.panels.values()],
+            "settings_pages": [{"name": p.name, "keys": [o.key for o in p.options], "description": p.description,
+                                "origin": p.origin} for p in _registry.settings_pages.values()],
             "errors": dict(_registry.errors)}
 
 

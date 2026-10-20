@@ -560,3 +560,76 @@ def test_scheme_reader_takes_uri_paths(tmp_path, monkeypatch):
     again = load_session(tmp_path / "s.ewald").pipeline
     assert again.source.path == "demo:3" and again.compute(0).count == 3
     assert seen == ["demo:3", "demo:3"]
+
+
+SIM_AGENT = Path(__file__).parents[1] / "examples" / "plugins" / "sim_agent_panel.py"
+
+
+def test_panel_and_settings_page_plugin(tmp_path):
+    """A plugin contributes an activity-bar panel and a Preferences page; its settings are
+    stored with ewald's and survive the plugin being switched off."""
+    import json
+
+    from ewald import settings
+
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(SIM_AGENT, folder)
+    panel = plugins.panels()["sim_agent"]
+    assert panel.title == "Sim agent" and panel.icon.startswith("<svg") and panel.shortcut == "Ctrl+Alt+A"
+    assert "Send simulation tasks" in panel.description
+    page = plugins.settings_pages()["Sim agent"]
+    assert page.prefix == "simagent" and page.layout()[1][0] == ("Connection", ["simagent.server", "simagent.timeout"])
+    assert plugins.installed()["sim-agent-example"].contributions == {"settings_pages": ["Sim agent"],
+                                                                       "panels": ["sim_agent"]}
+    assert plugins.status()["panels"][0]["title"] == "Sim agent"
+    s = settings.load()
+    assert s["simagent.server"] == "http://localhost:8000" and settings.option("simagent.timeout").page == "Sim agent"
+    s["simagent.timeout"] = 5
+    with pytest.raises(ValueError):
+        s["simagent.timeout"] = 0       # the option's own range
+    with pytest.raises(KeyError):
+        s["simagent.nope"] = 1
+    s.save()
+    assert json.loads(s.path.read_text()) == {"simagent.timeout": 5.0}
+    plugins.set_enabled("sim-agent-example", False)
+    assert "sim_agent" not in plugins.panels() and "Sim agent" not in plugins.settings_pages()
+    off = settings.load()
+    off["general.font_size"] = 13       # saving other settings keeps the plugin's
+    off.save()
+    assert json.loads(off.path.read_text())["simagent.timeout"] == 5.0
+    assert off.copy().changed()["simagent.timeout"] == 5.0
+    plugins.set_enabled("sim-agent-example", True)
+    assert settings.load()["simagent.timeout"] == 5.0
+
+
+def test_settings_page_checks():
+    from ewald.settings import Option
+
+    with pytest.raises(ValueError, match="ewald's own"):
+        plugins.settings_page("Mine", [Option("viewport.x", 1, "X")])
+    with pytest.raises(ValueError, match="same prefix"):
+        plugins.settings_page("Mine", [Option("a.x", 1, "X"), Option("b.y", 1, "Y")])
+    with pytest.raises(ValueError, match="built in"):
+        plugins.settings_page("General", [Option("mine.x", 1, "X")])
+    with pytest.raises(ValueError, match="unknown keys"):
+        plugins.settings_page("Mine", [Option("mine.x", 1, "X")], sections=[("S", ["mine.y"])])
+    with pytest.raises(ValueError, match="out of range"):
+        plugins.settings_page("Mine", [Option("mine.x", 0, "X", minimum=1)])
+    plugins.settings_page("Mine", [Option("mine.x", 1, "X")])
+    with pytest.raises(ValueError, match="taken by"):
+        plugins.settings_page("Other", [Option("mine.y", 1, "Y")])
+    with pytest.raises(TypeError):
+        plugins.register_panel("p", "not callable")
+
+
+def test_plugin_settings_of_a_missing_plugin_are_kept(tmp_path):
+    """A value for a plugin that is not installed (yet) loads and saves unchanged; a bad value
+    for a declared option reads as the default."""
+    from ewald import settings
+    from ewald.settings import Option
+
+    s = settings.Settings({"later.thing": [1, 2], "viewport.nope": 3}, tmp_path / "s.json")
+    assert s.changed() == {"later.thing": [1, 2]}       # unknown core keys are still dropped
+    plugins.settings_page("Later", [Option("later.thing", 4, "Thing")])
+    assert s["later.thing"] == 4

@@ -36,10 +36,11 @@ class Option:
     kind: str = ""               # editor hint: color, file, dir, table, ui_theme (installed UI themes),
                                  # ai_provider, ai_model (model ids the chosen provider suggests),
                                  # ai_profiles (saved AI connections)
+    page_name: str = ""          # the Preferences page of a plugin's option (set by plugins.settings_page)
 
     @property
     def page(self) -> str:
-        return PAGE_OF_PREFIX[self.key.split(".")[0]]
+        return self.page_name or PAGE_OF_PREFIX[self.key.split(".")[0]]
 
 
 # python.plot_style choices -> (ewald.plotstyle style, colors from the UI theme?)
@@ -350,38 +351,68 @@ RETIRED = {"general.layout"}
 RENAMED_VALUES = {"general.startup_workspace": {"Analyze": "Notebook"}}
 
 
+def option(key: str) -> Option:
+    """The :class:`Option` of ``key``: ewald's own (:data:`OPTION`) or one a plugin's settings
+    page declares (``ewald.plugins.settings_page``); KeyError when neither knows it."""
+    opt = OPTION.get(key)
+    if opt is None and key.split(".")[0] not in PAGE_OF_PREFIX:
+        from . import plugins
+
+        opt = plugins.plugin_option(key)
+    if opt is None:
+        raise KeyError(f"unknown setting {key!r}")
+    return opt
+
+
 class Settings:
-    """Mapping of option key -> value with defaults; ``save()`` writes only changed keys."""
+    """Mapping of option key -> value with defaults; ``save()`` writes only changed keys.
+
+    Keys of plugin settings pages (any prefix that is not ewald's own) are kept as read even
+    while their plugin is not loaded, so switching a plugin off does not lose its settings."""
 
     def __init__(self, values: dict | None = None, path: str | os.PathLike | None = None):
         self.path = Path(path) if path else default_path()
         self._values: dict = {}
         for k, v in (values or {}).items():
-            if k in RETIRED:
-                continue
-            v = RENAMED_VALUES.get(k, {}).get(v, v) if isinstance(v, str) else v
-            try:
-                self[k] = v
-            except (KeyError, ValueError) as exc:
-                log.warning("ignoring setting %s=%r: %s", k, v, exc)
+            self._take(k, v)
+
+    def _take(self, k, v):
+        """Store ``v`` read from a file or another Settings: checked for ewald's own keys, kept
+        unchecked for a plugin's (checked when read, once the plugin has declared it)."""
+        if k in RETIRED:
+            return
+        v = RENAMED_VALUES.get(k, {}).get(v, v) if isinstance(v, str) else v
+        if k not in OPTION and "." in k and k.split(".")[0] not in PAGE_OF_PREFIX:
+            self._values[k] = v
+            return
+        try:
+            self[k] = v
+        except (KeyError, ValueError) as exc:
+            log.warning("ignoring setting %s=%r: %s", k, v, exc)
 
     def __getitem__(self, key):
-        if key not in OPTION:
-            raise KeyError(key)
-        v = self._values.get(key, OPTION[key].default)
+        opt = option(key)
+        v = self._values.get(key, opt.default)
+        if opt.page_name and key in self._values:   # a plugin's value, stored unchecked
+            try:
+                v = _valid(opt, v)
+            except ValueError:
+                v = opt.default
         return dict(v) if isinstance(v, dict) else v
 
     def __setitem__(self, key, value):
-        if key not in OPTION:
-            raise KeyError(f"unknown setting {key!r}")
-        value = _valid(OPTION[key], value)
-        if value == OPTION[key].default:
+        opt = option(key)
+        value = _valid(opt, value)
+        if value == opt.default:
             self._values.pop(key, None)
         else:
             self._values[key] = value
 
     def get(self, key, default=None):
-        return self[key] if key in OPTION else default
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
     def is_default(self, key) -> bool:
         return key not in self._values
@@ -391,7 +422,13 @@ class Settings:
             self._values.pop(k, None)
 
     def changed(self) -> dict:
-        return {k: self[k] for k in self._values}
+        out = {}
+        for k, v in self._values.items():
+            try:
+                out[k] = self[k]
+            except KeyError:   # a plugin's setting while the plugin is not loaded: kept as is
+                out[k] = v
+        return out
 
     def copy(self) -> "Settings":
         return Settings(self.changed(), self.path)
@@ -400,7 +437,7 @@ class Settings:
         values = other.changed() if isinstance(other, Settings) else other
         self._values.clear()
         for k, v in values.items():
-            self[k] = v
+            self._take(k, v)
 
     def save(self, path=None):
         p = Path(path) if path else self.path

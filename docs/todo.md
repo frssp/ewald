@@ -307,9 +307,16 @@ Plugins and AI
   `GATEWAY_NO_POOL` (sim-agent has both).
 - Plugin manifests, phase 2 (from the VS Code comparison): contributions declared in
   `ewald-plugin.toml` (`[[readers]]`, `[[modifiers]]`, ... with `python = "module:object"`)
-  registered lazily and imported on first use; `settings` and `commands` contribution points
-  (plugin `Option`s on a generated Preferences page; commands in the palette, as notebook
-  functions and as AI tools).
+  registered lazily and imported on first use (`@panel` widgets are already built on first open,
+  but the plugin module is still imported at start); a `commands` contribution point (commands in
+  the palette, as notebook functions and as AI tools).
+- GUI plugins (`@panel`, `settings_page`; `gui/window_plugins.py`): a panel's open/closed state
+  and width are not restored with the window layout (its dock is built lazily, after
+  `restoreState`); panels only dock on the left beside the notebook (no `area="panel"` tab
+  under the 3D view yet, that waits for the workbench `@view` API); reloading plugins rebuilds
+  every open plugin panel, losing its state; no menu, toolbar or context-menu contributions;
+  plugin settings pages accept the plain editors (text, number, choice, toggle, color, file)
+  but not the custom ones (`table`, `ai_profiles`).
 - Plugin manifests, phase 3: the index repository exists (frssp/ewald-plugins: `plugins/*.toml`,
   `index.json`, first-party `packages/ewald-phonopy` and `packages/ewald-plumed` pinned to tags).
   Left: install and update with `pip` from the Plugins panel into the running interpreter,

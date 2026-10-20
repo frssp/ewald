@@ -3108,3 +3108,65 @@ def test_ai_chat_stop_button_and_failed_cells_in_the_question(app, pipe):
     for worker in panel._stopped:
         worker.wait(5000)
     w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatch):
+    """Installing a plugin with @panel and settings_page adds an activity-bar button that opens
+    its side bar (built on first open) and a Preferences page; switching it off removes both."""
+    import shutil
+    from pathlib import Path
+
+    from ewald import plugins
+    from ewald.gui import preferences as prefs
+    from ewald.gui.app import MainWindow
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(Path(__file__).parents[1] / "examples" / "plugins" / "sim_agent_panel.py", folder)
+    built = []
+
+    def broken(context):
+        built.append(context)
+        raise RuntimeError("no server")
+
+    plugins.register_panel("broken", broken, title="Broken")
+    w = MainWindow(pipe)
+    titles = [a.text() for a in w.activity_bar.actions()]
+    assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent"]
+    assert w.plugin_panels["sim_agent"]["dock"] is None          # nothing built before it opens
+    assert [a.text() for a in w.plugin_panel_menu.actions()] == titles[4:]
+    w.plugin_panels["sim_agent"]["action"].trigger()
+    dock = w.plugin_panels["sim_agent"]["dock"]
+    assert dock is not None and not dock.isHidden() and w.plugin_panels["sim_agent"]["action"].isChecked()
+    labels = [lab.text() for lab in dock.widget().findChildren(QtWidgets.QLabel)]
+    assert "Server: http://localhost:8000  (default)" in labels and any("atoms, frame 0" in t for t in labels)
+    edit = dock.widget().findChild(QtWidgets.QLineEdit)
+    edit.setText("relax")
+    edit.returnPressed.emit()
+    assert "sim-agent task: relax" in w.panel.view.notebook.cells[-1].source
+    w.set_frame(1)
+    assert any("frame 1" in lab.text() for lab in dock.widget().findChildren(QtWidgets.QLabel))
+    w.show_plugin_panel("sim_agent", False)
+    assert dock.isHidden()
+    w.show_plugin_panel("broken")
+    assert built and isinstance(w.plugin_panels["broken"]["dock"].widget(), QtWidgets.QPlainTextEdit)
+    assert "no server" in w.plugin_panels["broken"]["dock"].widget().toPlainText()
+
+    dlg = prefs.PreferencesDialog(w.settings, w, page="Sim agent")
+    assert dlg.page_names[-1] == "Sim agent" and dlg.stack.currentIndex() == len(dlg.page_names) - 1
+    dlg.set_value("simagent.server", "http://hpc:9000")
+    dlg.restore_page()
+    assert dlg.work["simagent.server"] == "http://localhost:8000"
+    dlg.set_value("simagent.server", "http://hpc:9000")
+    dlg.apply()
+    assert w.settings["simagent.server"] == "http://hpc:9000"
+    dlg._search("timeout")
+    assert not dlg.pages.item(dlg.page_names.index("Sim agent")).isHidden()
+    dlg.close()
+
+    plugins.set_enabled("sim-agent-example", False)
+    w.refresh_plugin_panels()
+    assert [a.text() for a in w.activity_bar.actions()][4:] == ["Broken"] and "sim_agent" not in w.plugin_panels
+    w.close()

@@ -42,6 +42,8 @@ _NAMES = {
     "Lines": "ewald.scene", "make_arrows": "ewald.scene",
     "OverlayElement": "ewald.overlays", "Text": "ewald.overlays", "Rect": "ewald.overlays",
     "Image": "ewald.overlays", "OverlayContext": "ewald.overlays", "Theme": "ewald.themes",
+    # desktop app: side bars and Preferences pages
+    "Option": "ewald.settings",
     # AI tools
     "ToolResult": "ewald.llm.tools", "downsample": "ewald.llm.tools",
     # registration
@@ -49,6 +51,7 @@ _NAMES = {
     "visual": "ewald.plugins", "overlay": "ewald.plugins", "colormap": "ewald.plugins",
     "theme": "ewald.plugins", "ui_theme": "ewald.plugins", "ai_tool": "ewald.plugins",
     "claude_tool": "ewald.plugins", "ai_provider": "ewald.plugins",
+    "panel": "ewald.plugins", "settings_page": "ewald.plugins",
 }
 
 __all__ = ["PLUGIN_API", "SUPPORTED", *_NAMES]

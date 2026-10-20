@@ -108,6 +108,12 @@ the current one (`OverlayFrames`; on by default for NEB folders), with its trans
 95 %) and whether only the atoms that move get copies. Show (bonds, simulation cell), View
 along, Orthographic, Zoom to fit and Ask AI are always there.
 
+**Plugin side bars.** A plugin can bring its own side bar (a sim-agent panel, a database
+browser, ...): installing it adds a button at the bottom of the activity bar and an entry
+under Window › Plugin panels, and a plugin with settings adds its own page to Preferences.
+Switching the plugin off in the Plugins side bar removes both; its settings are kept for when
+it comes back ([GUI plugins](../plugins/gui.md)).
+
 **AI chat (Ask AI).** The AI button at the bottom of the activity bar on the far left (also
 Window › AI chat, Ctrl+J, and Ask AI in the Structure view's right-click menu) opens a chat side bar left of the
 notebook. It reads like a
