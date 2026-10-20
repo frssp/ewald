@@ -73,8 +73,23 @@ GUI
   camera sideways instead of an off-axis projection (exact at the focal distance only); the
   Overlay elements and text label are not previewed inside the frame; Claude's `set_view` can set
   `region` but no tool tells it the frame on screen.
-- Notebook kernels (`ewald/kernel.py`): kernels on SSH hosts; step forms for steps a kernel
-  cell adds with code the app cannot import (a class only the kernel's Python has stays as code).
+- Notebook kernels (`ewald/kernel.py`): step forms for steps a kernel cell adds with code the
+  app cannot import (a class only the kernel's Python has stays as code).
+- Notebook kernel on the cluster (plan, owner's pick 2026-10-20; not started): run a notebook
+  where its data is, so a 50 GB dump is analysed on the cluster and only the shown frame and the
+  tables come back. Steps: (1) `Kernel.ssh(profile, python=...)` starts `python -m ewald.kernel_bridge`
+  over the saved SSH profile (`io/profiles.py`, paramiko channel; jupyter_client's ssh tunnel or a
+  plain stdio channel, no open port on the login node), with a check that the remote ewald version
+  matches; (2) the bridge already sends frames as `.npz`: add compression and a frame budget so a
+  1M-atom frame over a slow link stays interactive, and send tables and plots only; (3) the
+  Notebook › Kernel menu lists the Remotes profiles, with an option to start the kernel inside an
+  interactive allocation (`salloc`/`srun --pty`, the command kept per profile) so it runs on a
+  compute node, GPU nodes giving `device="cuda"`; (4) `load()` paths in a remote kernel are the
+  cluster's own paths (no `host:` prefix), and the notebook records the profile so it reopens
+  there; (5) trust: a remote kernel runs the notebook's code on the cluster, so the same
+  `Notebook.trust()` gate applies, plus a confirmation naming the host. Tests: the in-process SFTP
+  server with an exec channel (`tests/helpers/sftp_server.py`). Related: a JupyterLab widget
+  (`pipe.show()`, Ideas backlog P1) for groups that use JupyterHub on the cluster.
 - Plugins side bar: disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask AI prompt; uninstalling a pip plugin still needs a restart.
@@ -125,6 +140,28 @@ GUI
   during rotation of systems above the interactive atom limit).
 - Bonds above the automatic-bonds limit (100 000 atoms): a fast path (bond impostors or lines)
   so large systems can show bonds by default too.
+
+Runs (`ewald/runinfo.py`, `ewald/runs.py`; manual page docs/user/runs.md)
+
+- `run_info` / `check_run` on real outputs: VASP 5/6 MD with `NBLOCK` > 1 (whether XDATCAR numbers
+  its configurations by frame or by ionic step; both are handled, only the first is tested),
+  MDALGO 3 NPT, real LAMMPS logs with `variable`-substituted commands, `include` files and several
+  `run`s with different fixes (the last thermostat wins now), and `thermo_modify line yaml`.
+- Quantum ESPRESSO, CP2K and ABINIT inputs (`run_info` knows VASP and LAMMPS only).
+- Use `check.equilibrated` as the default `start=` of MSD, time averaging and the transport
+  modifiers (now the user passes it); the transport modifiers and the GUI step forms still default
+  `time_per_frame` to 0 (frames) instead of the run's value.
+- Time units on plot axes: the MSD/VACF `Time` column is in ps when `time_per_frame` is known, but
+  the table does not say so, so the axis reads "Time".
+- Block-averaged error bars for every per-run number (D, temperature, energy), and an Arrhenius
+  fit weighted by them (now unweighted, with the fit's own standard error).
+- `show(runs, ...)` as a live GUI view cell: a view cell binds to `pipe`, so the overlaid runs show as
+  the `RunTables` picture under the cell instead of an interactive plot; run comparison in the
+  Plots tab.
+- A run folder index: scan a project folder (local or on a cluster) for runs and list them with
+  kind, state and last energy, as the way into `load_runs`.
+- The GUI's run picker binds `pipe` only for notebooks running in this app's Python, not in a
+  kernel.
 
 Analysis
 
@@ -286,8 +323,8 @@ Plugins and AI
 - Other `schemes=` sources: Materials Project (`mp:mp-149`), OPTIMADE, NOMAD.
 
 - LLM plugin ideas: Paper-to-modifier (Forge from a paper's definition, checked against its
-  numbers), Run doctor (diagnose a VASP/LAMMPS run from its outputs), phase identification,
-  campaign report over many runs.
+  numbers), phase identification, campaign report over many runs (`check_run` and `load_runs`
+  are the deterministic base for both; the AI explains the findings).
 
 Docs
 

@@ -16,6 +16,7 @@ import numpy as np
 
 #: Insert › Analysis in the GUI: (verb, menu label, the code cell it inserts and runs)
 VERB_CELLS = [
+    ("check_run", "Run check (convergence, equilibration)", "check = check_run(pipe)\ncheck"),
     ("rdf", "Radial distribution g(r)", "g = rdf(pipe, cutoff=6.0)\ng"),
     ("sq", "Structure factor S(q)", "s = sq(pipe, q_max=10.0)\ns"),
     ("xrd", "Powder diffraction (XRD)", "pattern = xrd(pipe)\npattern"),
@@ -54,10 +55,11 @@ __all__ = ["Table", "bond_angles", "clusters", "cna", "msd", "ptm", "rdf", "sq",
 class Table(dict):
     """A data table (``{column: array}``, the first column is x) with where it came from."""
 
-    def __init__(self, name: str, columns: dict, pipe=None, frame: int = 0, labels=None):
+    def __init__(self, name: str, columns: dict, pipe=None, frame: int = 0, labels=None, attributes=None):
         super().__init__((k, np.asarray(v)) for k, v in columns.items())
         self.name, self.pipe, self.frame = name, pipe, frame
         self.labels = None if labels is None else list(labels)  # names of the rows (structure types)
+        self.attributes = dict(attributes or {})  # global results of the step (diffusion coefficient, ...)
 
     @property
     def counts(self) -> dict:
@@ -97,7 +99,16 @@ class Table(dict):
 
 def _verb(pipe, cls, table: str, frame: int, labels=None, **params) -> Table:
     """Add ``cls(**params)`` to ``pipe`` (replacing the one an earlier verb call added) and return
-    ``table`` at ``frame``."""
+    ``table`` at ``frame``. For :class:`~ewald.runs.Runs` the same on every run: a
+    :class:`~ewald.runs.RunTables` of one table per run."""
+    from .runs import Runs, RunTables
+
+    if isinstance(pipe, Runs):
+        return RunTables(table, {r.label: _verb(r.pipe, cls, table, frame, labels, **params) for r in pipe}, pipe)
+    if "time_per_frame" in params and params["time_per_frame"] is None:
+        from .runinfo import run_info
+
+        params["time_per_frame"] = run_info(pipe).time_per_frame or 0.0
     mod = cls(**params)
     mod._verb = cls.__name__
     for i, m in enumerate(pipe.modifiers):
@@ -112,7 +123,9 @@ def _verb(pipe, cls, table: str, frame: int, labels=None, **params) -> Table:
     columns = data.tables[table]
     if callable(labels):
         labels = labels(mod, columns)
-    return Table(table, columns, pipe, frame, labels)
+    prefix = cls.__name__ + "."
+    attrs = {k: v for k, v in data.attributes.items() if k.startswith(prefix)}
+    return Table(table, columns, pipe, frame, labels, attrs)
 
 
 def rdf(pipe, cutoff: float = 6.0, bins: int = 200, partial: bool = False, frame: int = 0) -> Table:
@@ -125,20 +138,32 @@ def rdf(pipe, cutoff: float = 6.0, bins: int = 200, partial: bool = False, frame
                  partial=partial)
 
 
-def msd(pipe, frame: int = 0, **kwargs) -> Table:
+def msd(pipe, frame: int = 0, time_per_frame: float | None = None, **kwargs) -> Table:
     """Mean squared displacement over the trajectory (per type, with the Einstein fit):
-    :class:`~ewald.modifiers.MeanSquaredDisplacement` with ``kwargs``; the ``msd`` table."""
+    :class:`~ewald.modifiers.MeanSquaredDisplacement` with ``kwargs``; the ``msd`` table, whose
+    ``attributes`` hold the diffusion coefficient. ``time_per_frame`` (ps) defaults to what the
+    run's input files say (:func:`ewald.run_info`), else frames."""
     from .modifiers import MeanSquaredDisplacement
 
-    return _verb(pipe, MeanSquaredDisplacement, "msd", frame, **kwargs)
+    return _verb(pipe, MeanSquaredDisplacement, "msd", frame, time_per_frame=time_per_frame, **kwargs)
 
 
-def vacf(pipe, frame: int = 0, **kwargs) -> Table:
+def vacf(pipe, frame: int = 0, time_per_frame: float | None = None, **kwargs) -> Table:
     """Velocity autocorrelation over the trajectory:
-    :class:`~ewald.modifiers.VelocityAutocorrelation` with ``kwargs``; the ``vacf`` table."""
+    :class:`~ewald.modifiers.VelocityAutocorrelation` with ``kwargs``; the ``vacf`` table.
+    ``time_per_frame`` (ps) defaults to the run's input files (:func:`ewald.run_info`) when the
+    velocities are in A/ps (VASP, LAMMPS metal units), else frames."""
     from .modifiers import VelocityAutocorrelation
+    from .runinfo import run_info
+    from .runs import Runs, RunTables
 
-    return _verb(pipe, VelocityAutocorrelation, "vacf", frame, **kwargs)
+    if isinstance(pipe, Runs):
+        return RunTables("vacf", {r.label: vacf(r.pipe, frame, time_per_frame, **kwargs) for r in pipe}, pipe)
+    if time_per_frame is None:
+        info = run_info(pipe)
+        time_per_frame = (info.time_per_frame or 0.0) if info.code == "vasp" or info.units == "metal" else 0.0
+
+    return _verb(pipe, VelocityAutocorrelation, "vacf", frame, time_per_frame=time_per_frame, **kwargs)
 
 
 def sq(pipe, q_max: float = 10.0, bins: int = 200, frame: int = 0, **kwargs) -> Table:
