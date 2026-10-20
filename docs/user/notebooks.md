@@ -38,7 +38,11 @@ the next one. Notebook › Run all (Ctrl+Shift+Enter) restarts the namespace and
 from the top. If a cell fails, its traceback appears under it, and Run all stops there and
 marks the cells below as stale.
 
-The chevron under a cell's counter folds the cell to one line (its title, step name or first line of
+The number beside a cell's run button is its run count, as in Jupyter. It shows `*` while the cell runs,
+`·` when an earlier cell changed and the cell is out of date (its card turns flat), and the cell gets a red
+border with the traceback in a red-barred box when it fails.
+
+The chevron under a cell's counter (shown when you hover over a cell or select it) folds the cell to one line (its title, step name or first line of
 code); clicking it again or a double-click unfolds it. Folded cells stay folded in `.ipynb` and `.ewd` files,
 as JupyterLab's hidden input and output, so they open folded in Jupyter too.
 
@@ -171,7 +175,7 @@ snapshot(pipe, frame=3, camera={...}, radius_scale=0.5)   # shows the picture; .
 ```
 
 The ⋯ menu of a cell has Run, Run this and below, Move up/down, Delete and, for steps and views,
-Show as code cell. Drag a cell by the dotted grip above its run button to move it; steps move with it in the
+Show as code cell. Drag a cell by the dotted grip above its run button (it appears on hover) to move it; steps move with it in the
 pipeline. The `.py` button at the top shows the whole file.
 
 ## Notebook tabs
