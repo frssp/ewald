@@ -89,19 +89,19 @@ class FilesMixin:
 
     # ---------------------------------------------------------------- notebooks
     def open_notebook(self, path, run: bool | None = None):
-        """Open a notebook (``.ewd``, ``.ipynb`` or ``.py``) in a new tab. Its cells run when
-        ``python.run_notebooks`` says so ("ask" asks: a notebook is code). An ``.ewd`` always
-        asks unless the policy is "never": it may carry plugins, which load only if you trust it.
-        Until then it shows the results saved in it."""
-        ewd = str(path).lower().endswith(".ewd")
+        """Open a notebook (``.ewd``, ``.ipynb`` or ``.py``) in a new tab, as Jupyter does: a
+        notebook you saved or trusted before (the same bytes, :func:`ewald.trust.is_trusted_file`)
+        opens trusted and runs unless ``python.run_notebooks`` is "never"; any other file asks
+        first (unless "never") and otherwise opens restricted, showing the results saved in it.
+        An ``.ewd``'s plugins load only once it is trusted."""
+        from ..trust import is_trusted_file
+
+        trusted = is_trusted_file(path)
         if run is None:
             policy = self.settings["python.run_notebooks"]
-            if policy == "ask" or (ewd and policy == "always"):
-                run = self._ask_trust(path)
-            else:
-                run = policy == "always"
+            run = False if policy == "never" else True if trusted else self._ask_trust(path)
         try:
-            view = self.panel.open_notebook(path, run=run)
+            view = self.panel.open_notebook(path, run=run, trusted=trusted)
         except Exception as exc:
             self.message(f"Open failed: {path}: {exc}", error=True)
             QtWidgets.QMessageBox.critical(self, "Open failed", f"{path}\n\n{exc}")

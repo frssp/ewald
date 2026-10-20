@@ -16,7 +16,7 @@ each cell, readable in Jupyter, VS Code and on GitHub. ewald keeps what Jupyter 
 Large trajectories stay where they are: the manifest records their path relative to the
 ``.ewd`` file, their size and a fingerprint, so opening warns when a file moved or changed.
 
-A received ``.ewd`` is code, so it opens *restricted*: nothing runs and its plugins are not
+A received ``.ewd`` (one this user did not save or trust) is code, so it opens *restricted*: nothing runs and its plugins are not
 imported until :meth:`ewald.notebook.Notebook.trust` (the GUI asks first). Saved outputs and
 figures are readable without running anything.
 """
@@ -304,12 +304,17 @@ def bundle_dir_for(path) -> Path:
     return config_dir() / "cache" / "ewd" / f"{Path(path).stem}-{h}"
 
 
-def load_ewd(path, cls=None, trusted: bool = False, **kwargs):
+def load_ewd(path, cls=None, trusted: bool | None = None, **kwargs):
     """Open an ``.ewd`` file. The notebook keeps its saved outputs and is ``restricted`` (its
-    cells do not run, its plugins are not imported) unless ``trusted``. Data files are found
+    cells do not run, its plugins are not imported) unless ``trusted`` (None: when this user
+    saved or trusted this exact file, :func:`ewald.trust.is_trusted_file`). Data files are found
     where the manifest says, next to the ``.ewd`` file, or in its bundled copy; a changed or
     missing file is listed in ``nb.warnings``."""
     path = os.path.abspath(os.fspath(path))
+    if trusted is None:
+        from .trust import is_trusted_file
+
+        trusted = is_trusted_file(path)
     with zipfile.ZipFile(path) as z:
         names = _safe_members(z)
         if MANIFEST_NAME not in names or NOTEBOOK_NAME not in names:
