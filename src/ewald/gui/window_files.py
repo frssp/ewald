@@ -9,6 +9,7 @@ from .. import examples
 from .. import plugins
 from ..io import import_file
 from ..render import camera_state
+from .busy import busy
 
 
 def file_filter() -> str:
@@ -56,15 +57,14 @@ class FilesMixin:
 
     # ---------------------------------------------------------------- pipeline / data
     def open_file(self, path, **kwargs):
-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        remote = ":" in str(path) and not os.path.exists(str(path))     # host:/path, ssh://
         try:
-            pipe = import_file(path, **kwargs)
+            with busy(self.message, f"{'Downloading' if remote else 'Opening'} {os.path.basename(str(path))}…"):
+                pipe = import_file(path, **kwargs)
         except Exception as exc:
-            QtWidgets.QApplication.restoreOverrideCursor()
             self.message(f"Load failed: {path}: {exc}", error=True)
             QtWidgets.QMessageBox.critical(self, "Load failed", f"{path}\n\n{exc}")
             return None
-        QtWidgets.QApplication.restoreOverrideCursor()
         phonon = plugins.modifiers().get("PhononMode")   # the ewald-phonopy plugin
         if phonon is not None and _has_phonon_modes(pipe) and not any(isinstance(m, phonon.cls) for m in pipe.modifiers):
             pipe.modifiers.append(phonon.cls())  # a phonon file opens playing a mode

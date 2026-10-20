@@ -2,9 +2,25 @@
 background (plugin install, remote connect, ...), and :class:`BusyLabel`, a spinner with a text."""
 from __future__ import annotations
 
+import contextlib
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .theme import TOKENS
+
+
+@contextlib.contextmanager
+def busy(say=None, text: str = ""):
+    """Around a call that blocks the GUI thread: a wait cursor, and ``say(text)`` (a status line)
+    painted before the call starts, so the window shows what it is waiting for."""
+    QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+    try:
+        if say is not None and text:
+            say(text)
+        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
+        yield
+    finally:
+        QtWidgets.QApplication.restoreOverrideCursor()
 
 
 class Spinner(QtWidgets.QWidget):
