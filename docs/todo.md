@@ -10,6 +10,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Several files as one trajectory: the GUI Open dialog takes one file (no multi-select into a
+  list yet), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
+  appended to after a restart (`dump_modify append yes`). Restart detection needs a Timestep per
+  frame, which only the LAMMPS dump reader gives cheaply (extxyz `Timestep=` comments, H5MD
+  steps and XTC steps are not used yet).
 - View tab: folded cards are remembered only while the window is open (not in settings or the
   layout file); no Fold all / Unfold all; a card has no per-card reset to defaults.
 
@@ -38,10 +43,9 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 
 GUI
 
-- UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): still open
-  are opening files (local or remote) and remote connections
-  off the GUI thread (they now say what they wait for, but the window still blocks), and the
-  Render settings column scrolling sideways at the default window width.
+- UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): every
+  finding is fixed. Left over: cancelling an open stops waiting but not the read itself (readers
+  have no cancel hook), so a cancelled SSH connect runs out its timeout in the background.
 - Panel layout (phase 1 landed: `gui/workbench.py`, `gui/layout_model.py`; plan in project
   files `design/panel-layout.md`): phase 2 opens a notebook view cell's plot large in the
   editor area ("Open large" or drag the cell header, a Bring back placeholder in the cell, the
@@ -76,7 +80,9 @@ GUI
   they keep the old palette until a restart after a theme switch; move them to QSS object names.
 - Notebook layout: the viewport could follow the current notebook even when it has no
   pipeline yet (now it keeps the last one); image/figure cells; inline Ask AI suggestions
-  as diffs; a snapshot cell that updates when the camera of its view changes (now it is code).
+  as diffs; a snapshot cell that updates when the camera of its view changes (now it is code);
+  more Jupyter command-mode keys (only Y, M, A, B and Enter so far: no DD, X/C/V, Shift+Enter in
+  command mode, raw cells).
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
   view does not have yet (picks as code, the viewport axes widget; measurement labels in the
   legacy OpenGL 1.x viewport, and lines that show through atoms; audit in the project files `ewald-review/view-elements-audit.md`);
@@ -348,11 +354,11 @@ Plugins and AI
   but the plugin module is still imported at start); a `commands` contribution point (commands in
   the palette, as notebook functions and as AI tools). Settings pages (`@settings_page`) and side
   bars (`@panel`) are registered in code, not declared in the manifest.
-- GUI plugins (`@panel`, `gui/window_plugins.py`; `@settings_page` pages in Preferences): a panel's
-  open/closed state and width are not restored with the window layout (its dock is built lazily,
-  after `restoreState`); panels only dock on the left beside the notebook (no tab under the 3D
-  view yet, that waits for the workbench `@view` API); reloading plugins rebuilds every open
-  plugin panel, losing its state; no menu, toolbar or context-menu contributions. A plugin's
+- GUI plugins (`@panel`, `@menu_item`, `gui/window_plugins.py`; `@settings_page` pages in
+  Preferences): reloading plugins rebuilds every open plugin panel, losing its state; no toolbar
+  contributions and no entries in the notebook cell, Plots or Data inspector context menus (only
+  the menu bar and the 3D view's right-click menu); a bottom tab cannot be placed in the editor
+  area beside the 3D view from the plugin (the user can drag it there). A plugin's
   Preferences page has no changed-dot or per-row Reset, and Edit › Plugin settings and the
   Plugins side bar's Settings still open the separate dialog rather than that page.
 - Plugin manifests, phase 3: the index repository exists (frssp/ewald-plugins: `plugins/*.toml`,

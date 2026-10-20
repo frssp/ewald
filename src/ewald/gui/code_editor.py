@@ -78,6 +78,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
 
     runRequested = QtCore.Signal(bool)
     focused = QtCore.Signal()
+    escaped = QtCore.Signal()       # Esc: leave the editor for the cell (Jupyter's command mode)
 
     def __init__(self, text="", parent=None):
         super().__init__(text, parent)
@@ -133,6 +134,9 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
             return
         if key == QtCore.Qt.Key_Tab and not mods:
             self.insertPlainText("    ")
+            return
+        if key == QtCore.Qt.Key_Escape and not mods:
+            self.escaped.emit()
             return
         super().keyPressEvent(event)
 

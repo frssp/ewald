@@ -33,7 +33,9 @@ CELL_BUDGET: float | None = 0.1
 
 
 class _ElidedLabel(QtWidgets.QLabel):
-    """A one-line label that shrinks with an ellipsis instead of pushing its neighbours."""
+    """A one-line label that shrinks instead of pushing its neighbours: a "a · b · c" text drops
+    whole parts from the end ("a · b", then "a") before anything is elided, so a narrow column
+    never shows a clipped "n…d" (the tooltip keeps the details)."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -42,9 +44,19 @@ class _ElidedLabel(QtWidgets.QLabel):
 
     def paintEvent(self, event):
         p = QtGui.QPainter(self)
-        text = self.fontMetrics().elidedText(self.text(), QtCore.Qt.ElideMiddle, self.contentsRect().width())
+        text = self.shown_text()
         p.setPen(self.palette().color(QtGui.QPalette.WindowText))
         p.drawText(self.contentsRect(), QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight, text)
+
+    def shown_text(self) -> str:
+        """The text as it fits the current width."""
+        fm, width = self.fontMetrics(), self.contentsRect().width()
+        parts = self.text().split(" · ")
+        for k in range(len(parts), 0, -1):
+            text = " · ".join(parts[:k])
+            if fm.horizontalAdvance(text) <= width:
+                return text
+        return ""
 
 
 class _CellWorker(QtCore.QThread):
@@ -79,6 +91,7 @@ class NotebookView(QtWidgets.QWidget):
     changed = QtCore.Signal()                 # pipeline modified: recompute
     pipelineReplaced = QtCore.Signal(object)  # the notebook bound 'pipe' to a new pipeline
     askRequested = QtCore.Signal()
+    askAboutRequested = QtCore.Signal(str)   # Ask AI about this cell: the text for the chat box
     titleChanged = QtCore.Signal()
     pipRequested = QtCore.Signal(list)        # pip requirements of plugins the notebook needs
     plotCreated = QtCore.Signal(object)       # a new live PlotsPanel (view cell or show() output)
@@ -278,26 +291,27 @@ class NotebookView(QtWidgets.QWidget):
         row.setContentsMargins(GUTTER_WIDTH + 2, 2, 0, 0)  # lined up with the cell bodies
         code = QtWidgets.QPushButton("+ Code", objectName="addCell", toolTip="Python cell (Ctrl+Shift+N)")
         code.clicked.connect(lambda: self.add_cell("code"))
-        step = QtWidgets.QPushButton("+ Step", objectName="addCell", toolTip="Add an analysis or modification step")
-        self.step_menu = QtWidgets.QMenu(step)
-        self.step_menu.aboutToShow.connect(lambda: fill_modifier_menu(self.step_menu, self.add_step, self._step_context))
-        step.setMenu(self.step_menu)
-        plugin = QtWidgets.QPushButton("+ Plugin", objectName="addCell", toolTip="Plugin steps, or load a plugin file")
-        self.plugin_menu = QtWidgets.QMenu(plugin)
-        self.plugin_menu.aboutToShow.connect(self._fill_plugin_menu)
-        plugin.setMenu(self.plugin_menu)
         text = QtWidgets.QPushButton("+ Text", objectName="addCell", toolTip="Markdown text cell")
         text.clicked.connect(lambda: self.add_cell("markdown"))
+        step = QtWidgets.QPushButton("+ Step", objectName="addCell",
+                                     toolTip="Add an analysis or modification step (plugin steps under Plugins)")
+        self.step_menu = QtWidgets.QMenu(step)
+        self.step_menu.aboutToShow.connect(self._fill_step_menu)
+        step.setMenu(self.step_menu)
         view = QtWidgets.QPushButton("+ View", objectName="addCell",
                                      toolTip="A plot of a data table (g(r), XRD, DOS, bands, thermo) or a histogram")
         self.view_menu = QtWidgets.QMenu(view)
         self.view_menu.aboutToShow.connect(lambda: fill_view_menu(self.view_menu, self.data, self.add_view))
         view.setMenu(self.view_menu)
-        ask = QtWidgets.QPushButton("+ Ask AI", objectName="addCell", toolTip="Ask AI to add steps (Ctrl+J)")
-        ask.clicked.connect(self.askRequested.emit)
-        for b in (code, step, view, plugin, text, ask):
+        for b in (code, text, step, view):   # Jupyter's order; Ask AI is the side bar (Ctrl+J) and the cell menu
             row.addWidget(b)
         return w
+
+    def _fill_step_menu(self):
+        fill_modifier_menu(self.step_menu, self.add_step, self._step_context)
+        self.step_menu.addSeparator()
+        self.plugin_menu = self.step_menu.addMenu("Plugins")
+        self._fill_plugin_menu()
 
     def add_view(self, **kwargs) -> Cell:
         """Add a view cell (``show(pipe, **kwargs)``) after the current cell."""
@@ -484,6 +498,24 @@ class NotebookView(QtWidgets.QWidget):
             w.code_button.setChecked(True)
         elif action == "below":
             self.run(cell, below=True)
+        elif action.startswith("kind:"):   # Jupyter's Y / M: code <-> text, the source stays
+            self.set_kind(cell, action[5:])
+            return
+        elif action in ("above", "after"):
+            new = Cell("")
+            nb.insert(i if action == "above" else i + 1, new)
+            self.current = new
+            self.rebuild()
+            w = self.widget_for(new)
+            if w is not None and w.editor is not None:
+                w.editor.setFocus()
+            self.history.commit("Insert cell")
+            self.titleChanged.emit()
+            return
+        elif action == "ask":
+            lang = "python" if cell.kind == "code" else "markdown"
+            self.askAboutRequested.emit(f"About cell {i + 1}:\n```{lang}\n{cell.source.rstrip()}\n```\n")
+            return
         elif action == "clear":
             self.clear_outputs(cell)
             return
@@ -501,6 +533,21 @@ class NotebookView(QtWidgets.QWidget):
             return
         self.history.commit({"delete": "Delete cell", "up": "Move cell", "down": "Move cell"}.get(action, "Edit cell"))
         self.titleChanged.emit()
+
+    def set_kind(self, cell, kind: str):
+        """Turn ``cell`` into a code or text cell (Notebook › Change cell to code/text, Esc then Y / M)."""
+        had_steps = bool(cell.added)
+        if not self.notebook.set_kind(cell, kind):
+            return
+        self.current = cell
+        self.rebuild()
+        if had_steps:
+            self.changed.emit()   # its steps left the pipeline: the view recomputes
+        self.history.commit("Change cell type")
+        self.titleChanged.emit()
+        w = self.widget_for(cell)
+        if w is not None:
+            w.setFocus()   # stays in command mode, like Jupyter
 
     def clear_outputs(self, cell=None):
         """Clear outputs of ``cell`` or, with None, of the whole notebook (Notebook › Clear all outputs)."""
@@ -808,6 +855,7 @@ class NotebookPanel(QtWidgets.QWidget):
     styleChanged = QtCore.Signal()            # unused: display settings live in the View tab
     pipelineReplaced = QtCore.Signal(object)
     askRequested = QtCore.Signal()
+    askAboutRequested = QtCore.Signal(str)   # Ask AI about this cell: the text for the chat box
     plotCreated = QtCore.Signal(object)       # a view cell's live plot: the main window links it
     pipRequested = QtCore.Signal(list)        # a notebook's bar asks to pip install its plugins
     switched = QtCore.Signal(object, object)  # notebooks of the tab left and the tab shown (either may be None)
@@ -890,6 +938,7 @@ class NotebookPanel(QtWidgets.QWidget):
         view.changed.connect(self.changed.emit)
         view.pipelineReplaced.connect(self._replaced)
         view.askRequested.connect(self.askRequested.emit)
+        view.askAboutRequested.connect(self.askAboutRequested.emit)
         view.plotCreated.connect(self.plotCreated.emit)
         for w in view.widgets:  # built before the connection
             for p in w.panels():

@@ -216,17 +216,26 @@ def source_to_dict(source, base_dir: str) -> dict:
         from . import plugins
         from .io import remote
 
-        # aiida:1234 (a plugin scheme, not a file) or 'profile:/path' / 'user@host:/path' (no secrets in it)
-        if plugins.scheme_reader(source.path) is not None or remote.is_remote(source.path):
-            path, rel = str(source.path), None
-        else:
-            path = os.path.abspath(source.path)
+        def place(p):
+            # aiida:1234 (a plugin scheme, not a file) or 'profile:/path' / 'user@host:/path' (no secrets in it)
+            if plugins.scheme_reader(p) is not None or remote.is_remote(p):
+                return str(p), None
+            p = os.path.abspath(p)
             try:
-                rel = os.path.relpath(path, base_dir)
+                return p, os.path.relpath(p, base_dir)
             except ValueError:  # other drive on Windows
-                rel = None
+                return p, None
+
+        if isinstance(source.path, list):  # several files, one trajectory
+            placed = [place(p) for p in source.path]
+            path, rel = [p for p, _ in placed], [r for _, r in placed]
+            rel = rel if all(r is not None for r in rel) else None
+        else:
+            path, rel = place(source.path)
         out = {"kind": "file", "path": path, "relative_path": rel, "format": source.format,
                "kwargs": encode(source.kwargs)}
+        if source.join != "timestep":
+            out["join"] = source.join
         if source.thermo_arg != "auto":  # explicit log.lammps/OSZICAR files, or None
             arg = source.thermo_arg
             out["thermo"] = arg if arg is None or isinstance(arg, str) else [str(a) for a in arg] \
@@ -246,6 +255,12 @@ def source_to_dict(source, base_dir: str) -> dict:
     raise TypeError(f"cannot store a {type(source).__name__} source in a session")
 
 
+def _exists(path: str) -> bool:
+    from . import plugins
+
+    return os.path.exists(path) or any(c in path for c in "*?[") or plugins.scheme_reader(path) is not None
+
+
 def source_from_dict(entry: dict, base_dir: str):
     from .io import FileSource, StaticSource
 
@@ -255,18 +270,22 @@ def source_from_dict(entry: dict, base_dir: str):
     path = entry["path"]
     from .io import remote
 
+    options = dict(thermo=entry.get("thermo", "auto"), join=entry.get("join", "timestep"),
+                   **decode(entry.get("kwargs", {})))
+    if isinstance(path, list):  # several files: each next to the session, else where it was
+        rel = entry.get("relative_path") or [None] * len(path)
+        files = [os.path.normpath(os.path.join(base_dir, r)) if r and _exists(os.path.normpath(os.path.join(base_dir, r)))
+                 else p for p, r in zip(path, rel)]
+        return FileSource(files, entry.get("format"), **options)
     if remote.is_remote(path) and not entry.get("relative_path"):
-        return FileSource(path, entry.get("format"), thermo=entry.get("thermo", "auto"),
-                          **decode(entry.get("kwargs", {})))
+        return FileSource(path, entry.get("format"), **options)
     rel = entry.get("relative_path")
     candidates = ([os.path.normpath(os.path.join(base_dir, rel))] if rel else []) + [path]
-    from . import plugins
 
     for cand in candidates:
-        if os.path.exists(cand) or any(c in cand for c in "*?[") or plugins.scheme_reader(cand) is not None:
+        if _exists(cand):
             try:
-                return FileSource(cand, entry.get("format"), thermo=entry.get("thermo", "auto"),
-                                  **decode(entry.get("kwargs", {})))
+                return FileSource(cand, entry.get("format"), **options)
             except FileNotFoundError:
                 continue
     raise FileNotFoundError(f"session input not found: {path}" + (f" (or {candidates[0]})" if rel else ""))

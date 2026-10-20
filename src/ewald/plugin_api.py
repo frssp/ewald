@@ -49,7 +49,7 @@ _NAMES = {
     "visual": "ewald.plugins", "overlay": "ewald.plugins", "colormap": "ewald.plugins",
     "theme": "ewald.plugins", "ui_theme": "ewald.plugins", "ai_tool": "ewald.plugins",
     "claude_tool": "ewald.plugins", "ai_provider": "ewald.plugins",
-    "panel": "ewald.plugins",
+    "panel": "ewald.plugins", "menu_item": "ewald.plugins",
     # settings pages
     "settings_page": "ewald.plugins", "SettingsField": "ewald.plugins", "plugin_settings": "ewald.plugins",
     # workflows (ewald.workflow)

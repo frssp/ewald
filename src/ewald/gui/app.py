@@ -19,7 +19,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from .. import modifiers as mods
 from ..raytrace import RenderCancelled
 from ..render import camera_state, render
-from .busy import busy
+from .busy import busy, finish_orphans
 from .ask_panel import AskPanel, agent_from_settings, code_cells_mode
 from .collapsible import make_collapsible
 from .compute import ComputeRunner, warm_up_jit
@@ -140,6 +140,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.panel.changed.connect(self.recompute)
         self.panel.pipelineReplaced.connect(self.set_pipeline)
         self.panel.askRequested.connect(self.ask_claude)
+        self.panel.askAboutRequested.connect(self.ask_about_cell)
         self.panel.plotCreated.connect(self._connect_plot)
         self.notebook_dock = self._dock(self.panel, "Notebook", QtCore.Qt.LeftDockWidgetArea, 560)
         # the notebook tab row is the panel's title bar: drag its empty part to move the panel
@@ -645,6 +646,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
             return
         self.cancel_render()               # a ray trace still running stops after its current rows
         self.wait_render()
+        finish_orphans()                   # an open or SSH call the user cancelled
         prefs.save_layout(self, self.settings)
         for view in self.panel.views():
             if view.notebook.kernel is not None:
