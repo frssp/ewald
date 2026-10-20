@@ -539,3 +539,41 @@ def test_notebook_tools_run_cell_with_allow_code():
     r = ts.call("run_cell", {"index": -1})
     assert r.is_error and r.content["state"] == "error" and "ZeroDivisionError" in r.content["outputs"][0]["text"]
     assert Toolset(None).call("list_cells").is_error        # no notebook attached: no such tool
+
+
+def test_agent_stops_when_cancelled_and_forgets_the_question(cu_fcc):
+    import threading
+
+    from ewald.llm.agent import Cancelled
+
+    cancel = threading.Event()
+    ts = Toolset(Pipeline(StaticSource(cu_fcc)))
+    ran = []
+    ts.tools["show_pipeline"].function = lambda: ran.append(1) or {}
+
+    class StopAfterFirst(FakeClient):
+        def _create(self, **params):
+            out = super()._create(**params)
+            cancel.set()                         # Stop pressed while this request was on the wire
+            return out
+
+    client = StopAfterFirst([NS(stop_reason="tool_use", content=[_tool_use("t1", "show_pipeline", {})])])
+    agent = Agent(ts, client=client, fallbacks=False)
+    with pytest.raises(Cancelled):
+        agent.ask("loop", cancel=cancel)
+    assert ran == [] and agent.messages == []    # no tool ran; the conversation is as before
+    client.responses.append(NS(stop_reason="end_turn", content=[_text("Hi.")]))
+    assert agent.ask("hello", cancel=threading.Event()) == "Hi." and len(agent.messages) == 2
+
+
+def test_failed_cells_lists_errors():
+    from ewald.llm.notebook_tools import failed_cells
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py("# %%\nx = 1\n\n# %%\n1 / 0\n")
+    nb.run_all()
+    text = failed_cells(nb)
+    assert text.startswith("cell index 1 (1 / 0):") and "ZeroDivisionError" in text
+    nb.cells[1].source = "1 / 1"
+    nb.run_all()
+    assert failed_cells(nb) == ""

@@ -209,6 +209,15 @@ class LinksMixin:
         nb = self.panel.notebook
         return nb.to_py() if nb is not None and nb.cells else None
 
+    def _notebook_errors(self):
+        """The errors of the current notebook's failed cells, for the AI chat (None without any)."""
+        nb = self.panel.notebook
+        if nb is None:
+            return None
+        from ..llm.notebook_tools import failed_cells
+
+        return failed_cells(nb) or None
+
     def _insert_claude_cell(self, code):
         """'Insert as notebook cell' in the AI chat: a code cell after the current one, not run."""
         view = self.panel.view

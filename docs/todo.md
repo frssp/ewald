@@ -44,7 +44,7 @@ GUI
   of two particle properties where a brushed box selects atoms; the `show()` script path draws
   DOS/bands like the GUI (it plots the raw table columns now).
 - AI chat side bar (`gui/ask_panel.py`, activity bar): stream answers as they arrive (now the
-  whole answer at once), a Stop button, keep chats per notebook tab and save them in `.ewd`,
+  whole answer at once), keep chats per notebook tab and save them in `.ewd`,
   show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
   edit or regenerate a sent message. The notebook cell tools (`llm/notebook_tools.py`) could
   highlight the cells the AI changed and show a diff to accept or undo; `ewald ask` and the MCP
