@@ -69,7 +69,10 @@ OPTIONS = (
     Option("general.docs_url", "", "Documentation URL",
            "Where Help opens the manual. Empty = the docs folder on GitHub; or a hosted or built site."),
 
-    Option("viewport.background", "#ECEDE9", "Background", kind="color"),
+    Option("viewport.follow_theme", True, "Background follows the UI theme",
+           "Use the UI theme's viewport color (dark in Graphite, light in Paper). Off: the Background color."),
+    Option("viewport.background", "#ECEDE9", "Background", "Used when the background does not follow the UI theme.",
+           kind="color"),
     Option("viewport.projection", "ortho", "Projection", choices=("ortho", "persp")),
     Option("viewport.initial_view", "iso", "Initial view direction", choices=("iso", "x", "y", "z", "front")),
     Option("viewport.style_preset", "Ball & stick", "Default style",

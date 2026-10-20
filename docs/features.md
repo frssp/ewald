@@ -394,6 +394,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 | Key | Label | Default |
 |---|---|---|
+| `viewport.follow_theme` | Background follows the UI theme | `True` |
 | `viewport.background` | Background | `'#ECEDE9'` |
 | `viewport.projection` | Projection | `'ortho'` |
 | `viewport.initial_view` | Initial view direction | `'iso'` |

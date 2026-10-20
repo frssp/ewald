@@ -51,10 +51,8 @@ GUI
 - Plugins side bar: disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
-- UI themes: let a theme's `viewport` token drive the 3D view background (dark themes still show
-  the light default viewport unless Preferences › Viewport › Background changes); prompts already
-  printed in the Python console keep the colors of the theme they were printed in (new input,
-  syntax colors and the background switch at once).
+- UI themes: prompts already printed in the Python console keep the colors of the theme they
+  were printed in (new input, syntax colors and the background switch at once).
 - Remotes side bar: list folders and connect in a background thread (now the GUI waits, with
   a busy cursor), drag a remote file onto the notebook, mirror a run folder to a local folder
   (rsync-like, for offline analysis), remote data links in the `.ewd` manifest (remote paths are
