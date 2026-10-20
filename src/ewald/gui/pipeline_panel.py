@@ -257,8 +257,9 @@ class DisplayPanel(QtWidgets.QWidget):
         lay.setContentsMargins(6, 6, 6, 6)
 
         # the Display header shows the add-visual menu as an icon (app.py moves it there)
-        self.visual_button = QtWidgets.QToolButton(objectName="headerButton",
+        self.visual_button = QtWidgets.QToolButton(self, objectName="headerButton",
                                                    toolTip="Add a visual element (cell axes, halos, … from plugins)")
+        self.visual_button.hide()  # until the dock header takes it (CollapsibleTitle.add_action)
         self.visual_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         header.set_icon(self.visual_button, "plus")
         self.visual_button.setIconSize(QtCore.QSize(header.ICON, header.ICON))

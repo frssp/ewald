@@ -37,6 +37,16 @@ def pipe(cu_fcc):
     return Pipeline(StaticSource([cu_fcc, cu_fcc]))
 
 
+def _dispose(widget):
+    """Delete a parentless test widget now, in the GUI thread. Left to the garbage collector, its
+    signal-lambda cycles may be collected in a compute thread, and PySide crashes deleting it there."""
+    import gc
+
+    widget.deleteLater()
+    QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+    gc.collect()
+
+
 def test_classic_layout_setting_is_retired(tmp_path, caplog):
     """The OVITO-like classic layout is gone: an old settings file asking for it loads quietly."""
     import json
@@ -62,6 +72,7 @@ def test_display_panel_lists_visual_elements_only(app, pipe):
     panel.modifierRequested.connect(asked.append)
     panel.add_modifier(mods.CoordinationAnalysis(3.0))  # a step goes to the notebook, not into the pipeline
     assert [type(m).__name__ for m in asked] == ["CoordinationAnalysis"] and pipe.modifiers == []
+    _dispose(panel)
 
 
 def test_inspector_source_tab(app, pipe):
@@ -72,6 +83,7 @@ def test_inspector_source_tab(app, pipe):
     ins.set_data(pipe.compute(0))
     text = ins.source.toPlainText()
     assert "Source     StaticSource" in text and "Frames     2" in text and "Position" in text
+    _dispose(ins)
 
 
 def test_bonds_visual_element_and_pairs(app, cu_fcc):
