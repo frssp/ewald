@@ -48,13 +48,10 @@ PAGE_OF_PREFIX = {"general": "General", "viewport": "Viewports", "elements": "El
                   "python": "Python", "llm": "AI"}
 
 OPTIONS = (
-    Option("general.layout", "notebook", "Window layout",
-           "Notebook: Python cells build the pipeline (like Jupyter). Classic: pipeline list and "
-           "properties panel. Takes effect after a restart.", choices=("notebook", "classic")),
     Option("general.ui_theme", "graphite", "UI theme",
            "Graphite: dark. Paper: light. Midnight, Solarized light/dark and High contrast are built in too; "
            "UI theme plugins (@ui_theme) add more.", kind="ui_theme"),
-    Option("general.startup_workspace", "Analyze", "Startup workspace", choices=("Analyze", "Render")),
+    Option("general.startup_workspace", "Notebook", "Startup workspace", choices=("Notebook", "Render")),
     Option("general.toolbar_style", "Icons and text", "Toolbar buttons",
            "Icons and text: text on mode switches and rarely used buttons, icons alone on the tool rail.",
            choices=("Icons and text", "Icons", "Text")),
@@ -319,6 +316,13 @@ def _valid(opt: Option, value):
     return value
 
 
+# Options that no longer exist, dropped quietly from older settings files: the OVITO-like
+# "classic" window layout was removed, so the notebook layout is the only one.
+RETIRED = {"general.layout"}
+# Values renamed since: key -> {old: new}
+RENAMED_VALUES = {"general.startup_workspace": {"Analyze": "Notebook"}}
+
+
 class Settings:
     """Mapping of option key -> value with defaults; ``save()`` writes only changed keys."""
 
@@ -326,6 +330,9 @@ class Settings:
         self.path = Path(path) if path else default_path()
         self._values: dict = {}
         for k, v in (values or {}).items():
+            if k in RETIRED:
+                continue
+            v = RENAMED_VALUES.get(k, {}).get(v, v) if isinstance(v, str) else v
             try:
                 self[k] = v
             except (KeyError, ValueError) as exc:

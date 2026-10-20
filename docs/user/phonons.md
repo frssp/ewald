@@ -81,4 +81,4 @@ first q-point plays at once. The Plots tab draws the band structure with its hig
 labels (or one tick per mode for a Gamma-only OUTCAR) and circles the mode on screen. Click a
 band to switch to the nearest mode and start playback; the status bar shows its q-point and
 frequency. The modifier's parameter form changes amplitude, supercell and arrows. Phonon mode
-animation is also under Add modification → Phonons.
+animation is also under Insert › Step (in the plugin's category).
