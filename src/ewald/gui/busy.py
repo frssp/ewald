@@ -1,5 +1,6 @@
 """Busy indicators: a small spinning arc for buttons and rows whose action runs in the
-background (plugin install, remote connect, ...), and :class:`BusyLabel`, a spinner with a text."""
+background (plugin install, remote connect, ...), :class:`BusyLabel`, a spinner with a text, and
+:func:`wait_for`, which runs a blocking call (opening a file, an SSH request) off the GUI thread."""
 from __future__ import annotations
 
 import contextlib
@@ -21,6 +22,89 @@ def busy(say=None, text: str = ""):
         yield
     finally:
         QtWidgets.QApplication.restoreOverrideCursor()
+
+
+class Cancelled(Exception):
+    """The user pressed Cancel while :func:`wait_for` waited."""
+
+
+DIALOG_DELAY_MS = 400     # wait_for shows its progress dialog only for calls slower than this
+_orphans: set = set()     # cancelled calls still finishing in the background
+
+
+class _Call(QtCore.QThread):
+    def __init__(self, fn, parent=None):
+        super().__init__(parent)
+        self.fn = fn
+        self.result = self.error = None
+
+    def run(self):
+        try:
+            self.result = self.fn()
+        except BaseException as exc:          # handed back to the GUI thread
+            self.error = exc
+
+
+def wait_for(fn, text: str, parent=None, say=None, delay_ms: int | None = None):
+    """Run ``fn()`` (a file read, an SSH call) on a worker thread and return its result, raising what
+    it raised. The window keeps painting; ``say(text)`` goes to the status line, and a call slower
+    than ``delay_ms`` gets a small window-modal dialog with ``text``, a busy bar and Cancel. Cancel
+    raises :class:`Cancelled` at once; the call itself finishes in the background and is dropped
+    (a connect timeout cannot be interrupted)."""
+    delay_ms = DIALOG_DELAY_MS if delay_ms is None else delay_ms
+    if say is not None and text:
+        say(text)
+    call = _Call(fn)
+    cancelled = False
+    dialog = None
+    QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+    try:
+        call.start()
+        # polled with processEvents rather than a nested QEventLoop, which would also run the
+        # deferred deletes of the caller's widgets. First a short wait that ignores clicks and
+        # keys, so a quick call shows no dialog at all
+        clock = QtCore.QElapsedTimer()
+        clock.start()
+        while not call.wait(10) and clock.elapsed() < delay_ms:
+            QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
+        if call.isRunning():
+            dialog = QtWidgets.QProgressDialog(text, "Cancel", 0, 0, parent)
+            dialog.setObjectName("waitDialog")
+            dialog.setWindowTitle("EWALD")
+            dialog.setWindowModality(QtCore.Qt.WindowModal)
+            dialog.setMinimumDuration(0)
+            dialog.setAutoClose(False)
+            dialog.setAutoReset(False)
+            stop = []
+            dialog.canceled.connect(lambda: stop.append(True))
+            dialog.rejected.connect(lambda: stop.append(True))      # Esc
+            dialog.show()
+            QtWidgets.QApplication.restoreOverrideCursor()   # the dialog has a Cancel button to point at
+            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.BusyCursor)
+            while not call.wait(15) and not stop:
+                QtWidgets.QApplication.processEvents()       # the modal dialog keeps clicks off the window
+            cancelled = bool(stop) and call.isRunning()
+    finally:
+        QtWidgets.QApplication.restoreOverrideCursor()
+        if dialog is not None:
+            dialog.close()
+            dialog.deleteLater()
+    if cancelled:
+        _orphans.add(call)
+        call.finished.connect(lambda: _orphans.discard(call))
+        raise Cancelled(text)
+    call.wait()
+    if call.error is not None:
+        raise call.error
+    return call.result
+
+
+def finish_orphans(ms: int = 15000) -> None:
+    """Wait for cancelled :func:`wait_for` calls still running (before the window closes: Qt aborts
+    on a thread destroyed while running)."""
+    for call in list(_orphans):
+        call.wait(ms)
+    _orphans.clear()
 
 
 class Spinner(QtWidgets.QWidget):

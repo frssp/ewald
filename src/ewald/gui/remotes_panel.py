@@ -14,17 +14,10 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from .. import keychain
 from ..io import profiles, remote
 from . import header
+from .busy import Cancelled, wait_for
 from .remote_dialog import _size, add_recent, load_recent
 
 ROLE = QtCore.Qt.UserRole
-
-
-def _busy():
-    QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-
-
-def _idle():
-    QtWidgets.QApplication.restoreOverrideCursor()
 
 
 def keychain_note() -> str:
@@ -180,12 +173,13 @@ class ProfileDialog(QtWidgets.QDialog):
             prof.name = "test-connection"
         s = self.secrets()
         self.status.setText("Connecting…")
-        QtWidgets.QApplication.processEvents()
-        _busy()
         try:
-            ok, msg = profiles.test(prof, password=s["password"] or None, passphrase=s["passphrase"] or None)
-        finally:
-            _idle()
+            ok, msg = wait_for(lambda: profiles.test(prof, password=s["password"] or None,
+                                                     passphrase=s["passphrase"] or None),
+                               f"Connecting to {prof.host or prof.name}…", self)
+        except Cancelled:
+            self.status.setText("Cancelled")
+            return False
         self.status.setText(("✓ " if ok else "✗ ") + msg)
         return ok
 
@@ -368,13 +362,11 @@ class RemotesPanel(QtWidgets.QWidget):
         self.refresh()
 
     def test(self, name):
-        _busy()
-        self.status.setText(f"Testing {name}…")
-        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
         try:
-            ok, msg = profiles.test(name)
-        finally:
-            _idle()
+            ok, msg = wait_for(lambda: profiles.test(name), f"Testing {name}…", self, say=self.status.setText)
+        except Cancelled:
+            self.status.setText("Cancelled")
+            return False
         self.status.setText(("✓ " if ok else "✗ ") + msg)
         return ok
 
@@ -391,21 +383,22 @@ class RemotesPanel(QtWidgets.QWidget):
         if not self.host:
             self.status.setText("Pick a remote computer first.")
             return False
-        _busy()
-        self.status.setText(f"Connecting to {self.host}…")
-        QtWidgets.QApplication.processEvents()
-        try:
+        def listing(path=path):            # on a worker thread: no widgets here
             if not path:
                 p = profiles.get(self.host)
                 path = p.folder if p and p.folder else remote.home(self._loc("."))
             if not path.startswith("/"):
                 path = posixpath.join(self.cwd or remote.home(self._loc(".")), path)
-            rows = remote.listdir(self._loc(path))
+            return path, remote.listdir(self._loc(path))
+
+        try:
+            path, rows = wait_for(listing, f"Connecting to {self.host}…", self, say=self.status.setText)
+        except Cancelled:
+            self.status.setText("Cancelled")
+            return False
         except Exception as exc:
             self.status.setText(f"✗ {type(exc).__name__}: {exc}")
             return False
-        finally:
-            _idle()
         self.cwd = posixpath.normpath(path)
         self.rows = [r for r in rows if not r[0].startswith(".")]
         self.path.setText(self.cwd)
@@ -492,16 +485,15 @@ class RemotesPanel(QtWidgets.QWidget):
             folder = QtWidgets.QFileDialog.getExistingDirectory(self, f"Download {posixpath.basename(url)} to")
             if not folder:
                 return None
-        _busy()
-        self.status.setText(f"Downloading {posixpath.basename(url)}…")
-        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
         try:
-            local = remote.download(url, folder)
+            local = wait_for(lambda: remote.download(url, folder), f"Downloading {posixpath.basename(url)}…",
+                             self, say=self.status.setText)
+        except Cancelled:
+            self.status.setText("Cancelled")
+            return None
         except Exception as exc:
             self.status.setText(f"✗ {type(exc).__name__}: {exc}")
             return None
-        finally:
-            _idle()
         self.status.setText(f"Downloaded to {local}")
         self.message.emit(f"Downloaded {url} to {local}")
         if then_open:

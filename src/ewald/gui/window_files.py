@@ -9,7 +9,7 @@ from .. import examples
 from .. import plugins
 from ..io import import_file
 from ..render import camera_state
-from .busy import busy
+from .busy import Cancelled, busy, wait_for
 from .welcome import add_recent
 
 
@@ -59,9 +59,12 @@ class FilesMixin:
     # ---------------------------------------------------------------- pipeline / data
     def open_file(self, path, **kwargs):
         remote = ":" in str(path) and not os.path.exists(str(path))     # host:/path, ssh://
+        text = f"{'Downloading' if remote else 'Opening'} {os.path.basename(str(path))}…"
         try:
-            with busy(self.message, f"{'Downloading' if remote else 'Opening'} {os.path.basename(str(path))}…"):
-                pipe = import_file(path, **kwargs)
+            pipe = wait_for(lambda: import_file(path, **kwargs), text, self, say=self.message)
+        except Cancelled:
+            self.message(f"Cancelled opening {path}")
+            return None
         except Exception as exc:
             self.message(f"Load failed: {path}: {exc}", error=True)
             QtWidgets.QMessageBox.critical(self, "Load failed", f"{path}\n\n{exc}")
