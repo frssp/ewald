@@ -2988,3 +2988,50 @@ def test_opened_md_run_gets_a_run_check_and_runs_get_a_picker(app, lammps_dir, t
     view.restart()
     assert view.run_bar.isHidden()
     w.close()
+
+
+def test_ai_chat_stop_button_and_failed_cells_in_the_question(app, pipe):
+    import threading
+
+    from PySide6 import QtCore, QtGui
+
+    from ewald.gui.app import MainWindow
+    from ewald.llm.agent import Cancelled
+
+    started, prompts = threading.Event(), []
+
+    class SlowAgent(_FakeAgent):
+        def ask(self, question, cancel=None):
+            prompts.append(question)
+            if question.endswith("slow"):
+                started.set()
+                cancel.wait(10)                       # the request on the wire, until Stop
+                raise Cancelled("stopped")
+            return "fast"
+
+    w = MainWindow(pipe)
+    w.settings["llm.code_cells"] = "button"
+    panel = w.ask_panel
+    panel.agent_factory = lambda p, ev: SlowAgent(p, ev)
+    view = w.panel.view
+    cell = view.add_cell("code", "1 / 0")
+    view.run(cell)
+    view.wait()
+    panel.ask("slow")
+    assert started.wait(5) and panel.busy() and panel.ask_button.toolTip() == "Stop (Esc)"
+    assert "These notebook cells failed" in prompts[0] and "ZeroDivisionError" in prompts[0]
+    esc = QtGui.QKeyEvent(QtCore.QEvent.KeyPress, QtCore.Qt.Key_Escape, QtCore.Qt.NoModifier)
+    app.sendEvent(panel.input, esc)                    # Esc stops, like the Stop button
+    assert not panel.busy() and panel.ask_button.toolTip() == "Send (Enter)"
+    assert panel.messages[-1].text == "*Stopped.*"
+    panel.ask("again")                                 # the chat is free at once
+    _wait(app, panel)
+    assert panel.messages[-1].text == "fast"
+    assert "ZeroDivisionError" in prompts[1]           # the stopped question's context is sent again
+    view.notebook.cells.remove(cell)
+    panel.ask("and now")
+    _wait(app, panel)
+    assert "no longer show errors" in prompts[2]
+    for worker in panel._stopped:
+        worker.wait(5000)
+    w.close()

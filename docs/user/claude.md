@@ -64,6 +64,10 @@ agent.ask("Add a markdown cell that explains the coordination step, then lower i
 nb.save()
 ```
 
+`agent.ask(question, cancel=event)` stops at its next step once the `threading.Event` is set
+(the request already sent still finishes) and raises `ewald.llm.agent.Cancelled`, leaving the
+conversation as it was before the question; the AI chat's Stop button uses it.
+
 Cells the model inserts or edits are not run: they are marked not run (or out of date) until you
 run them. `run_cell` exists only with `allow_code=True` or, in the GUI, Preferences › AI ›
 **Let the AI run cells** (off by default), since a cell is any Python; it never runs a cell of an
