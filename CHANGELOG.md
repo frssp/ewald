@@ -9,6 +9,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- Notebook cells in the app's own Python run on a worker thread: a long cell no longer freezes the
+  window, and **Interrupt** (or `Notebook.interrupt()`) stops it with `CellInterrupted`, as it
+  already did in another kernel. pyplot in cells draws off screen (Agg).
 - Frames the pipeline caches are read-only: a modifier, plugin or script that writes into an array
   in place (`data.positions[0] += 1`) now raises `ValueError: assignment destination is read-only`
   instead of silently changing the cached frame and every later result. Replace the array instead

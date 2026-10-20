@@ -368,3 +368,26 @@ def test_history_undo_redo_follows_the_pipeline(cu_file):
     assert hist.redo() == "Delete cell" and len(pipe.modifiers) == 1
     nb.add_step(mods.ExpressionSelection("Coordination < 12"))
     assert hist.commit("Add step") and not hist.can_redo  # a new edit drops the redo entries
+
+
+def test_interrupt_stops_a_cell_running_on_another_thread():
+    """Notebook.interrupt raises CellInterrupted in the thread running a cell; afterwards a pending
+    interrupt never leaks into later code, and interrupting with nothing running is a no-op."""
+    import threading
+    import time
+
+    nb = Notebook.from_py("# %%\nimport time\nwhile True:\n    time.sleep(0.01)\n\n# %%\nafter = 1\n")
+    assert not nb.interrupt()
+    result = []
+    t = threading.Thread(target=lambda: result.append(nb.run_all()))
+    t.start()
+    for _ in range(500):
+        if nb.__dict__.get("_exec_thread"):
+            break
+        time.sleep(0.01)
+    assert nb.interrupt()
+    t.join(10)
+    assert not t.is_alive() and result == [False]
+    assert nb.cells[0].state == "error" and "CellInterrupted" in nb.cells[0].outputs[-1].data
+    assert "after" not in nb.namespace and not nb.interrupt()
+    assert nb.run_cell(1) and nb.namespace["after"] == 1

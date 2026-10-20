@@ -19,6 +19,7 @@ def app():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     notebook_panel.CONFIRM_UNSAVED = False  # no modal "unsaved changes" questions in tests
     compute.BUDGET = None  # every frame is shown before recompute() returns; background tests set it
+    notebook_panel.CELL_BUDGET = None  # cells finish before run() returns; background tests set it
     yield app
     # Destroy every window (VTK render windows, in-process kernels) while Qt is still alive;
     # leaving them to interpreter shutdown can segfault after all tests have passed.
@@ -1681,6 +1682,9 @@ def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, m
     monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileName", lambda *a, **k: (sys.executable, ""))
     view.kernel_menu.actions()[-1].trigger()                      # Other Python…
     k = view.notebook.kernel
+    import ewald.gui.notebook_panel as npn
+
+    monkeypatch.setattr(npn, "CELL_BUDGET", 0.1)
     try:
         assert k is not None and view.kernel_button.text() == "This Python"
         view.run_all()
@@ -1712,6 +1716,52 @@ def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, m
         monkeypatch.setattr(npn, "CONFIRM_UNSAVED", False)
         w.close()
     assert not k.alive                                             # closing the window stops it
+
+
+def test_in_process_cells_run_off_the_gui_thread_and_interrupt(app, cu_path, tmp_path, monkeypatch):
+    """A long cell in this app's Python runs on a worker thread: the window keeps responding,
+    pyplot draws off screen, and Interrupt stops the cell (Run all stops there too)."""
+    import threading
+    import time
+
+    import ewald.gui.notebook_panel as npn
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\npipe = load({str(cu_path)!r})\n\n"
+                          "# %%\nimport threading, time\nimport matplotlib.pyplot as plt\n"
+                          "where = threading.current_thread().name\nplt.plot([0, 1])\nplt.show()\n"
+                          "while True:\n    time.sleep(0.01)\n\n"
+                          "# %%\nafter = 1\n")
+    nb.save(tmp_path / "long.ipynb")
+    s = settings.Settings()
+    s["python.run_notebooks"] = "never"
+    w = MainWindow(settings=s)
+    monkeypatch.setattr(npn, "CONFIRM_UNSAVED", False)
+    try:
+        view = w.open_notebook(str(tmp_path / "long.ipynb"))
+        assert view.notebook.kernel is None
+        monkeypatch.setattr(npn, "CELL_BUDGET", 0.1)
+        t0 = time.monotonic()
+        view.run_all()
+        assert time.monotonic() - t0 < 5                       # run_all returned while the cell loops
+        assert view.running and not view.interrupt_button.isHidden()
+        assert not view.wait(0.3)                              # still running, events keep flowing
+        view.interrupt()                                       # ■ Interrupt
+        assert view.wait(30)
+        loop, after = view.notebook.cells[1], view.notebook.cells[2]
+        errors = [o.data for o in loop.outputs if o.kind == "error"]
+        assert loop.state == "error" and errors and "CellInterrupted" in errors[0]
+        assert any(o.kind == "image" for o in loop.outputs)    # pyplot drew off screen (Agg)
+        assert after.state != "ok" and "after" not in view.notebook.namespace   # Run all stopped
+        assert view.notebook.namespace["where"] != threading.main_thread().name
+        assert view.interrupt_button.isHidden() and view.run_all_button.isEnabled()
+        assert not view.notebook.interrupt()                   # nothing running now
+        view.run(after)                                        # quick cells still finish in run()
+        assert after.state == "ok" and view.notebook.namespace["after"] == 1
+    finally:
+        w.close()
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
