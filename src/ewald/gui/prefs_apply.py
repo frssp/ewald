@@ -118,6 +118,8 @@ def apply_settings(win, s: Settings, startup: bool = False):
     vp.show_overlay = s["viewport.show_overlay"]
     vp.initial_view = s["viewport.initial_view"]
     vp.set_axes_visible(s["viewport.show_axes"])
+    if hasattr(win, "_render_frame_visibility"):
+        win._render_frame_visibility()
     vp.ortho_button.setChecked(s["viewport.projection"] == "ortho")
 
     page.set_renderer(s["render.renderer"])

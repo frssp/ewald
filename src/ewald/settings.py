@@ -80,6 +80,8 @@ OPTIONS = (
     Option("viewport.rotation_step", 15.0, "Step rotation", "Degrees per click of the rotate buttons (VESTA).",
            minimum=0.5, maximum=90),
     Option("viewport.show_axes", True, "Show axes tripod"),
+    Option("viewport.render_frame", False, "Render frame in the 3D view",
+           "Also outside the Render page: the part of the view the picture shows, outside it dimmed."),
     Option("viewport.show_overlay", True, "Show frame / timestep text"),
     Option("viewport.backend", "auto", "3D view",
            "VTK: the full viewport (OpenGL 3.2+). Legacy GL: OpenGL 1.x display lists like VESTA, which "

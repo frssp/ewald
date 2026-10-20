@@ -99,6 +99,7 @@ Every renderer draws the same overlays, sized relative to the image:
 | `direction` | view vector from the scene to the camera, or `"x"`, `"-y"`, `"z"`, `"iso"`, ... |
 | `orthographic`, `zoom` | projection and zoom factor |
 | `camera` | an exact camera from the GUI (`ewald.render.camera_state`); the Render workspace fills it in |
+| `region=(x, y, height)` | only that part of the view: the Render frame's center offset from the view center and its height, as fractions of the view height (`ewald.framing`); the width follows `size`. Zooming the view and moving the frame both work on it |
 | `bonds=2.8` | draw bonds shorter than 2.8 Å; `bond_pairs=[("Si", "O", 0, 2.0)]` sets VESTA-style pair rules |
 | `radius_scale`, `type_colors`, `type_radii` | atom size and per-type overrides |
 | `radius_preset`, `oxidation_states`, `coordination` | which tabulated radii to use (see below) |
