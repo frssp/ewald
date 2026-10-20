@@ -277,6 +277,19 @@ def test_show_panel_argument_is_kept_for_the_gui(tmp_path):
     assert nb.cells[1].view == {"source": "pipe", "table": "msd", "panel": False}
 
 
+def test_figures_of_an_each_frame_cell_do_not_land_under_another_cell():
+    pytest.importorskip("matplotlib")
+    from ewald import examples
+
+    nb = Notebook.from_py(f"# %%\nimport matplotlib\nmatplotlib.use('Agg')\nimport matplotlib.pyplot as plt\n"
+                          f"from ewald import load\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n\n"
+                          "# %% z histogram [each frame]\nplt.hist(data['Position'][:, 2])\n\n"
+                          "# %%\nn = pipe.compute(2).count\n")
+    assert nb.run_all()
+    assert nb.cells[2].outputs == []                           # the step's figure stays with the step
+    assert nb.pipeline.compute(2).attributes["Figure: z_histogram"].png.startswith(b"\x89PNG")
+
+
 def test_each_frame_and_all_frames_cells_are_steps(tmp_path):
     from ewald import examples
     from ewald.notebook_io import from_ipynb, to_ipynb

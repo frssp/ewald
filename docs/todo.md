@@ -121,6 +121,10 @@ GUI
   (they come back when the cells run, but not where they were dragged); the thumbnail is the image
   of the last run, not the frame on screen; a plot that `in_panel` sends to the panel cannot be
   told "keep under the cell" for a whole notebook at once (only per call with `panel=False`).
+- Figures drawn by Python steps (`pipeline.StepFigure`, `data.attributes["Figure: <step>"]`):
+  drawn in matplotlib's default style, not the notebook's plot style; a PNG per frame, not a
+  live interactive plot (no zoom or linked selection); moving one between the panel and the cell
+  is not saved; steps that run in a notebook kernel do not send their figures back yet.
 - Notebook kernels (`ewald/kernel.py`): step forms for steps a kernel cell adds with code the
   app cannot import (a class only the kernel's Python has stays as code).
 - Notebook kernel on the cluster (plan, owner's pick 2026-10-20; not started): run a notebook

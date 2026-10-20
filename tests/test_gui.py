@@ -561,6 +561,37 @@ def test_linked_plots_open_in_the_plots_panel_others_stay_under_the_cell(app, tm
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_each_frame_figures_follow_the_frame_in_the_plots_panel(app, tmp_path):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    path = tmp_path / "figures.py"
+    path.write_text(
+        "# %%\nimport matplotlib.pyplot as plt\nfrom ewald import load, all_frames\n"
+        f"pipe = load({str(examples.path('Cu_md.extxyz'))!r})\n\n"
+        "# %% z histogram [each frame]\nplt.hist(data['Position'][:, 2], bins=20)\n\n"
+        "# %%\n@all_frames\ndef mean_z(frames, data):\n    plt.plot([d['Position'][:, 2].mean() for d in frames])\n"
+        "pipe.add(mean_z)\n")
+    w = MainWindow(settings=settings.Settings())
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    app.processEvents()
+    each = view.widgets[1]._figure_slots["Figure: z_histogram"]
+    once = view.widgets[2]._figure_slots["Figure: mean_z"]
+    assert each.docked and each.card.isVisibleTo(view.widgets[1]) and each.title == "z_histogram"
+    assert w.docked_plots() == [each.view_id] and w.workbench.widget(each.view_id) is each.panel
+    assert not once.docked and once.panel.isVisibleTo(view.widgets[2])    # all frames: under the cell
+    png, kept = each.panel.png, once.panel.png
+    w.timeline._set(4)
+    app.processEvents()
+    assert each.panel.png is not png and each.card.png is each.panel.png   # the frame on screen
+    assert once.panel.png is kept                                           # drawn once
+    once.placeRequested.emit(True)                                          # right-click › Plots panel
+    assert once.docked and once.view_id in w.docked_plots()
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_cell_runs_once_each_frame_or_all_frames(app, tmp_path):
     from ewald import examples, settings
     from ewald.gui.app import MainWindow
