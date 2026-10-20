@@ -400,7 +400,13 @@ Docs
   MSD; find out why. Candidates found but not added: TiOF2 PDF against experiment (needs an
   X-ray weighted G(r)), the a-Si 216-atom HSE06 models (vldgroup/papers-defect-free-a-si), LGPS
   site maps (hacortesp/CrySF), MoSe2 phonons (Ionizing/adom.202403069); no license stated on the
-  last three. Most other paper data sits on Zenodo or Materials Cloud, unreachable from the cloud
+  last three. Also checked and not added (2026-10-20): VTST NEB runs in
+  drinwater/Nudged-Elastic-Band-Tutorial (14 MB OUTCAR per image) and umichyujl/data_n_type_doping_AlN
+  (HSE NEB of AlN donors, images without OUTCARs), and the LAMMPS NEB logs of shortlab/2016Cr2O3
+  (Cr2O3 vacancy paths, no per-replica dumps); none states a license. Still missing: a clearly
+  licensed LAMMPS dataset with multi-file dumps or a temperature series for `load_runs` +
+  `arrhenius` (the LLZO one is GROMACS XTC), and a real `ssh` NEB folder for the remote example.
+  Most other paper data sits on Zenodo or Materials Cloud, unreachable from the cloud
   container, so `examples.fetch` only knows GitHub-hosted files.
 - Host the manual (the repository is private; CI uploads the built site as the `docs-site`
   artifact).

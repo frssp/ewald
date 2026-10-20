@@ -11,7 +11,6 @@ trajectories instead of the whole dataset, plus the sp3 fraction of the final st
 
     python examples/papers/carbon_coordination.py [outdir]
 """
-# %%
 import sys
 from pathlib import Path
 

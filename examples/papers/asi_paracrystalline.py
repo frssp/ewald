@@ -13,7 +13,6 @@ model, most of the atoms in the polycrystalline one.
 
     python examples/papers/asi_paracrystalline.py [outdir]
 """
-# %%
 import sys
 from pathlib import Path
 
