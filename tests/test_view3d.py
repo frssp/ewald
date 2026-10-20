@@ -281,3 +281,34 @@ def test_view_style_round_trips_the_new_settings(srtio3):
     assert kw["show_atoms"] is False and kw["cell_radius"] == 0.1 and kw["surfaces"] == {"isosurface": {"visible": False}}
     back = View(**st.view_settings(["Sr", "Ti", "O"])).changed()
     assert back["atoms"] is False and back["cell_radius"] == 0.1 and back["surfaces"] == {"isosurface": {"visible": False}}
+
+
+def test_type_transparency_and_selection_highlight(srtio3):
+    from ewald.modifiers import ExpressionSelection
+    from ewald.scene import build
+
+    v = srtio3.view
+    v.transparency = {"O": 0.6, "Sr": 1}
+    assert v.elements["Particles"].type_transparency == {"O": 0.6, "Sr": 1.0}
+    with pytest.raises(ValueError):
+        v.transparency = {"O": 2}
+    data = srtio3.compute(0)
+    kw = v.render_kwargs(data)
+    assert kw["type_transparency"] == {"O": 0.6, "Sr": 1.0} and "selection_color" in kw
+    atoms = build(data, **kw)["atoms"].primitive
+    types = np.asarray(data.types)[atoms.index]
+    assert "Sr" not in types                                          # transparency 1 hides the type
+    assert np.allclose(atoms.alpha[types == "O"], 0.4) and np.allclose(atoms.alpha[types == "Ti"], 1)
+    assert "Transparency" not in data                                 # display only
+
+    v.transparency = None
+    srtio3.add(ExpressionSelection("ParticleType == 'Ti'"))
+    data = srtio3.compute(0)
+    atoms = build(data, **v.render_kwargs(data))["atoms"].primitive
+    ti = np.asarray(data.types)[atoms.index] == "Ti"
+    assert np.allclose(atoms.colors()[ti], [1, 0, 0]) and not np.allclose(atoms.colors()[~ti], [1, 0, 0])
+    v.selection = "lime"
+    atoms = build(data, **v.render_kwargs(data))["atoms"].primitive
+    assert np.allclose(atoms.colors()[ti], [0, 1, 0])
+    v.selection = False
+    assert "selection_color" not in v.render_kwargs(data)

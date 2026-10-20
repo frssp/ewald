@@ -269,7 +269,7 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 coordination: dict | None = None, vectors=None, arrow_resolution: int | None = None,
                 visuals=None, frame: int = 0, boundary=None, boundary_bonds: str = "half",
                 replicate=None, replicate_cell: str = "super", show_atoms: bool = True, surfaces=None,
-                cell_radius=None):
+                cell_radius=None, type_transparency=None, selection_color=None):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter; returns the
     :class:`ewald.scene.Scene` it drew.
 
@@ -296,6 +296,8 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     ``replicate_cell`` 'super', 'unit' or 'all' picks the cell lines, see :mod:`ewald.replicate`).
     ``show_atoms=False`` leaves the atoms out (bonds keep their colors); ``surfaces`` restyles
     ``data.surfaces`` by name (``{name: {"visible", "color", "transparency", "edges"}}``).
+    ``type_transparency`` ``{type: 0..1}`` fades whole types; ``selection_color`` draws the particles of
+    a 'Selection' property in that color (OVITO's red).
     """
     from .scene import SceneContext, build
 
@@ -305,7 +307,8 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                   bonds=bonds, bond_pairs=bond_pairs, bond_radius=bond_radius, vectors=vectors,
                   trajectory_width=trajectory_width, show_cell=show_cell, cell_width=cell_width,
                   boundary=boundary, boundary_bonds=boundary_bonds, replicate=replicate,
-                  replicate_cell=replicate_cell, show_atoms=show_atoms, surfaces=surfaces, cell_radius=cell_radius)
+                  replicate_cell=replicate_cell, show_atoms=show_atoms, surfaces=surfaces, cell_radius=cell_radius,
+                  type_transparency=type_transparency, selection_color=selection_color)
     draw_scene(plotter, scene, atom_style=atom_style, mesh_limit=mesh_limit, sphere_resolution=sphere_resolution,
                arrow_resolution=arrow_resolution or max(6, (sphere_resolution or 16) // 2 + 2), ink=cell_color)
     return scene
@@ -645,7 +648,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     display setting; ``replicate_cell`` 'super', 'unit' or 'all'); the data stays unchanged.
     ``show_atoms=False`` leaves the atoms out (a stick model); ``surfaces={"coordination-polyhedra":
     {"visible": True, "color": "teal", "transparency": 0.5, "edges": False}}`` restyles ``data.surfaces``
-    meshes by name without changing their step.
+    meshes by name without changing their step. ``type_transparency={"O": 0.6}`` fades whole types (1
+    hides them); ``selection_color="red"`` highlights a 'Selection' property, as OVITO does.
 
     ``theme``: a theme name ('VESTA', 'Journal', 'ASE', 'Dark slide', plugins; see :mod:`ewald.themes`)
     that sets element colors, background, cell color and radius preset; explicit arguments win.

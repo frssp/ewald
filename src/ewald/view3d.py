@@ -83,6 +83,11 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        "radius_preset.", type="object", additionalProperties={"type": "number"}),
     _s("radius_preset", "covalent", "atoms", "Radius table for the other types (ewald.radii).",
        ("covalent", "atomic", "atomic (calc.)", "vdW", "vdW (Bondi)", "ionic", "ionic (crystal)")),
+    _s("transparency", {}, "atoms", "Transparency per particle type, 0 (opaque) to 1 (hidden), e.g. {'O': 0.6}; "
+       "a Transparency property (fade, hide steps) wins where it is larger.",
+       type="object", additionalProperties={"type": "number"}),
+    _s("selection", True, "atoms", "Highlight the particles of a 'Selection' property (a selection step) as OVITO "
+       "does: True (red), False, or a color.", type=["boolean", "string", "array"]),
     _s("oxidation_states", {}, "atoms", "Oxidation state per type for the ionic presets, e.g. {'Ti': 4}.",
        type="object", additionalProperties={"type": "number"}),
     # bonds
@@ -157,7 +162,9 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        "{'name', 'params'}.", type="array"),
 ]}
 # keys of render() that are not named like the setting
-_RENDER_NAMES = {"colors": "type_colors", "radii": "type_radii", "cell": "show_cell", "atoms": "show_atoms"}
+_RENDER_NAMES = {"colors": "type_colors", "radii": "type_radii", "cell": "show_cell", "atoms": "show_atoms",
+                 "transparency": "type_transparency"}
+SELECTION_COLOR = "red"   # selection=True
 # settings a style preset implies (index into STYLE_PRESETS values)
 _PRESET_KEYS = {"radius_scale": 0, "bonds": 1, "atom_style": 2}
 GROUPS = ("style", "atoms", "bonds", "cell", "boundary", "elements", "camera", "picture")
@@ -344,7 +351,7 @@ class View:
         bond table and the text label). Settings left at None are left out, so the caller's defaults hold."""
         kw = {}
         for name in SETTINGS:
-            if name in ("style", "frame", "bonds", "bond_pairs", "bond_factor", "text"):
+            if name in ("style", "frame", "bonds", "bond_pairs", "bond_factor", "text", "selection"):
                 continue
             value = getattr(self, name)
             if value is None or (isinstance(value, (dict, list)) and not value) or (name == "atoms" and value):
@@ -352,6 +359,8 @@ class View:
             kw[_RENDER_NAMES.get(name, name)] = _copy(value)
         if "type_colors" in kw:
             kw["type_colors"] = {k: _color(v) for k, v in kw["type_colors"].items()}
+        if self.selection is not False:
+            kw["selection_color"] = SELECTION_COLOR if self.selection is True else _copy(self.selection)
         if kw.get("camera") is not None:
             kw.pop("direction", None)
             kw.pop("zoom", None)
@@ -408,8 +417,9 @@ class View:
 # are the element's constructor arguments (plus 'enabled'), so code, sessions and the GUI use one name.
 ELEMENTS = {
     "Particles": {"enabled": "atoms", "atom_style": "atom_style", "radius_scale": "radius_scale",
-                  "type_colors": "colors", "type_radii": "radii", "radius_preset": "radius_preset",
-                  "oxidation_states": "oxidation_states"},
+                  "type_colors": "colors", "type_radii": "radii", "type_transparency": "transparency",
+                  "radius_preset": "radius_preset", "oxidation_states": "oxidation_states",
+                  "selection": "selection"},
     "Bonds": {"enabled": "bonds", "pairs": "bond_pairs", "factor": "bond_factor", "radius": "bond_radius"},
     "Surfaces": {"styles": "surfaces"},
     "Vectors": {"vectors": "vectors"},
@@ -638,6 +648,16 @@ def _check(name, value):
         if not isinstance(value, dict):
             raise TypeError("colors is {type: color}")
         value = {str(k): _color(v) for k, v in value.items()}
+    elif name == "transparency":
+        if not isinstance(value, dict):
+            raise TypeError("transparency is {type: 0..1}")
+        value = {str(k): float(v) for k, v in value.items()}
+        bad = {k: v for k, v in value.items() if not 0 <= v <= 1}
+        if bad:
+            raise ValueError(f"transparency must be in 0..1, not {bad}")
+    elif name == "selection":
+        if not isinstance(value, bool):
+            value = _color(value)
     elif name in ("radii", "oxidation_states"):
         if not isinstance(value, dict):
             raise TypeError(f"{name} is {{type: number}}")

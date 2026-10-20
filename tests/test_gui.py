@@ -2094,6 +2094,24 @@ def test_notebook_undo_redo_from_the_edit_menu(app, cu_path):
     w.close()
 
 
+def test_plugins_from_file_sends_archives_to_pip_and_py_files_to_the_plugin_folder(app, tmp_path, monkeypatch):
+    from ewald import settings
+    from ewald.gui import plugins_panel
+
+    panel = plugins_panel.PluginsPanel(settings=settings.Settings())
+    panel.wait()
+    (tmp_path / "one.py").write_text("x = 1\n")
+    pip_calls, installs = [], []
+    monkeypatch.setattr(panel, "_run_pip", lambda action, req: pip_calls.append((action, req)))
+    monkeypatch.setattr(panel, "install", lambda entry, update=False: installs.append(entry))
+    for name in ("repo-main.zip", "x-0.1-py3-none-any.whl", "x-0.1.tar.gz", "one.py"):
+        monkeypatch.setattr(plugins_panel.QtWidgets.QFileDialog, "getOpenFileName",
+                            staticmethod(lambda *a, _n=name, **k: (str(tmp_path / _n), "")))
+        panel.install_from_file()
+    assert [r for _, r in pip_calls] == [str(tmp_path / n) for n in ("repo-main.zip", "x-0.1-py3-none-any.whl", "x-0.1.tar.gz")]
+    assert len(installs) == 1 and installs[0].source.endswith("one.py")
+
+
 def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app, tmp_path):
     import json
 

@@ -400,6 +400,9 @@ def remove_file(item: Installed) -> Path:
     return dest
 
 
+ARCHIVE_SUFFIXES = (".zip", ".whl", ".tar.gz")   # a downloaded package that pip installs (a GitHub "Download ZIP" of a plugin repo)
+
+
 def pip_command(action: str, requirement: str | list[str]) -> list[str]:
     """``python -m pip install|uninstall ...`` for the Python ewald runs in; ``"update"``
     installs with ``--upgrade``. ``requirement`` may be a list (several packages at once).
