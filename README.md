@@ -140,7 +140,7 @@ ships with the package (File › Open example, `ewald examples`).
 
 **Notebook GUI.** Notebook tabs, step and view cells, Markdown, matplotlib inline, a Python console
 on the same namespace, a command palette (Ctrl+K) and a minimal mode (Ctrl+Shift+M) that leaves only
-the notebook and the view. A VESTA-like crystal view (view along a, b, c, a*, ..., boundary images,
+the notebook and the view. A VESTA-like crystal view (view along a, b, c, a*, ..., boundary images, replicated cells,
 polyhedra, isosurfaces), hover readout, picking and measuring. [Desktop GUI](docs/user/gui.md)
 
 **Analysis.** About 70 modifiers: OVITO's structure identification (CNA, PTM, CSP, Voronoi,

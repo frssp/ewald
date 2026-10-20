@@ -299,7 +299,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 `size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`.
 
-Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`.
+Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`.
 
 ## Command line
 
@@ -548,6 +548,18 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Right (+x)
 - Isometric
 - Zoom to fit (`Ctrl+0`)
+- Replicate cell
+  - Off (1 × 1 × 1)
+  - 2 × 2 × 2
+  - 3 × 3 × 3
+  - 2 × 2 × 1
+  - 3 × 3 × 1
+  - 4 × 4 × 1
+  - Custom…
+  - Cell lines
+    - Outline of the block
+    - Original cell
+    - Every cell
 - Theme
   - Default
   - VESTA
@@ -742,6 +754,18 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Show
   - Bonds
   - Simulation cell
+- Replicate cell
+  - Off (1 × 1 × 1)
+  - 2 × 2 × 2
+  - 3 × 3 × 3
+  - 2 × 2 × 1
+  - 3 × 3 × 1
+  - 4 × 4 × 1
+  - Custom…
+  - Cell lines
+    - Outline of the block
+    - Original cell
+    - Every cell
 - View along
   - a
   - b

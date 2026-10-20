@@ -37,7 +37,7 @@ print(pipe.view.source())                     # the same as a view(pipe, ...) li
 | atoms | `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `radius_preset`, `oxidation_states` |
 | bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax]], `bond_factor`, `bond_radius` |
 | cell | `cell`, `cell_width`, `cell_color` |
-| boundary | `boundary` (VESTA range), `boundary_bonds` (half, complete, none) |
+| boundary | `boundary` (VESTA range), `boundary_bonds` (half, complete, none), `replicate` [na, nb, nc], `replicate_cell` (super, unit, all) |
 | elements | `visuals` (plugin visual elements), `vectors` (arrows of a vector property), `trajectory_width` |
 | camera | `frame`, `direction`, `zoom`, `orthographic`, `camera` (an exact camera, as the GUI saves it) |
 | picture | `renderer`, `quality`, `size`, `ambient_occlusion`, `shadows`, `transparent_background`, `text`, `legend`, `type_legend`, `scale_bar`, `overlays` |
@@ -202,6 +202,28 @@ It is display only. `pipe.compute()` and every modifier still see the real atoms
 made by the renderers (OpenGL, ray tracer and vector alike), and an image picks, hovers and
 selects as its real atom in the GUI. In the GUI it is the Boundary box of the Simulation cell
 entry in the Display panel; the range is saved with the session.
+
+## Replicated cell
+
+`replicate=(na, nb, nc)` draws that many periodic copies of the cell side by side, the picture
+OVITO makes with a Replicate modifier, but as a display setting: bonds join across the copies,
+coordination polyhedra and isosurfaces are repeated, and the data, every analysis and every export
+keep the original cell (the `Replicate` modifier is the step that really enlarges the data).
+
+```python
+view(pipe, replicate=(3, 3, 1))                          # 3 x 3 x 1 cells, every picture and the GUI
+pipe.render("srtio3_3x3.png", replicate=2, replicate_cell="all")   # one picture, every cell outlined
+view(pipe, replicate=None)                               # back to one cell
+```
+
+`replicate_cell` picks the cell lines: `"super"` (default) outlines the whole block, `"unit"` keeps
+only the original cell, `"all"` draws every copy as a lattice grid. The boundary range applies to
+the replicated block, so `replicate=(2, 2, 2), boundary=(0, 1)` adds VESTA's face, edge and corner
+images around the 2 x 2 x 2 block. Copies pick, hover and select as their real atom in the GUI,
+where the controls are the Replicate cell box of the Simulation cell entry in the Display panel,
+View › Replicate cell (also in Ctrl+K) and the 3D view's right-click menu; they write
+`view(pipe, replicate=...)` into the notebook. VESTA has no single switch for this: it draws a
+boundary range over several cells, which is `boundary=(0, n)` here.
 
 ## Animations
 
