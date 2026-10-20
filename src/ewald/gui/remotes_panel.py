@@ -202,6 +202,7 @@ class RemotesPanel(QtWidgets.QWidget):
     """Saved remote computers on top, a file browser for the selected one below."""
 
     openRequested = QtCore.Signal(str)        # name:/path to open (streamed or cached)
+    nebRequested = QtCore.Signal(str)         # name:/folder of a NEB run (VASP 00..NN or LAMMPS neb)
     downloadedOpen = QtCore.Signal(str)       # a local copy to open
     message = QtCore.Signal(str)
 
@@ -509,6 +510,7 @@ class RemotesPanel(QtWidgets.QWidget):
             clip = QtWidgets.QApplication.clipboard()
             if is_dir:
                 menu.addAction("Open folder", lambda: self.browse(path))
+                menu.addAction("Open as NEB run", lambda: self.nebRequested.emit(url))
                 menu.addAction("Bookmark folder",
                                lambda: (profiles.add_bookmark(self.host, path), self._fill_places()))
             else:
@@ -526,6 +528,7 @@ def install(window) -> QtWidgets.QDockWidget:
     """Add the Remotes side bar to ``window`` (hidden; the activity bar or File › Remote computers shows it)."""
     panel = window.remotes_panel = RemotesPanel()
     panel.openRequested.connect(window._open_asking_types)
+    panel.nebRequested.connect(window.open_neb)
     panel.downloadedOpen.connect(window.open_any)
     panel.message.connect(window.message)
     dock = window._dock(panel, "Remotes", QtCore.Qt.LeftDockWidgetArea, 320)

@@ -38,6 +38,12 @@ def save_filters() -> list[tuple[str, str | None]]:
     return out + [("All files, format from the name (*)", None)]
 
 
+def _is_neb(path) -> bool:
+    from ..io import is_neb
+
+    return is_neb(path)
+
+
 def _has_phonon_modes(pipe) -> bool:
     try:
         return "Phonon Modes" in pipe.source_frame(0).attributes
@@ -82,10 +88,54 @@ class FilesMixin:
             self.load_session(path)
         elif str(path).lower().endswith(NOTEBOOK_EXTENSIONS) and os.path.isfile(path):
             self.open_notebook(path)
+        elif not kwargs and (run := self._neb_run_to_open(path)):
+            self.open_neb(run)
         elif kwargs or not ask_types:
             self.open_file(path, **kwargs)
         else:
             self._open_asking_types(path)
+
+    def _neb_run_to_open(self, path) -> str | None:
+        """The NEB run folder to open instead of ``path`` when it is one image of a NEB
+        (``03/OUTCAR``, ``dump.neb.3``) and the user wants the whole band."""
+        from ..io import neb_run_of
+
+        run = neb_run_of(path) if "://" not in str(path) else None
+        if run is None:
+            return None
+        answer = QtWidgets.QMessageBox.question(
+            self, "NEB run", f"{os.path.basename(str(path))} is one image of the NEB run in\n{run}\n\n"
+            "Open the whole band (one frame per image, with the energy profile)?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.Yes)
+        return run if answer == QtWidgets.QMessageBox.Yes else None
+
+    # ---------------------------------------------------------------- drag and drop
+    def dragEnterEvent(self, event):
+        """Files and folders (a NEB run folder, for one) can be dropped on the window."""
+        if any(u.isLocalFile() for u in event.mimeData().urls()):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dropEvent(self, event):
+        paths = [u.toLocalFile() for u in event.mimeData().urls() if u.isLocalFile()]
+        if not paths:
+            return super().dropEvent(event)
+        event.acceptProposedAction()
+        # open after the drop returns, so the source app is not blocked by dialogs
+        QtCore.QTimer.singleShot(0, self, lambda: self.open_dropped(paths))
+
+    def open_dropped(self, paths):
+        """Open dropped paths: notebooks each in a tab, otherwise the first data file or folder."""
+        notebooks = [p for p in paths if str(p).lower().endswith(NOTEBOOK_EXTENSIONS) and os.path.isfile(p)]
+        for p in notebooks:
+            self.open_notebook(p)
+        rest = [p for p in paths if p not in notebooks]
+        if rest:
+            if os.path.isdir(rest[0]) and _is_neb(rest[0]):
+                self.open_neb(rest[0])
+            else:
+                self.open_any(rest[0])
 
     # ---------------------------------------------------------------- notebooks
     def open_notebook(self, path, run: bool | None = None):
@@ -202,8 +252,14 @@ class FilesMixin:
         """A VASP NEB folder (00 .. NN) or a LAMMPS NEB run folder, one frame per image."""
         path = QtWidgets.QFileDialog.getExistingDirectory(self, "Load NEB folder")
         if path:
-            self.open_file(path)
+            self.open_neb(path)
+
+    def open_neb(self, path):
+        """Open a NEB run folder and show its energy profile in the Plots tab."""
+        pipe = self.open_file(path)
+        if pipe is not None:
             self.workbench.show(self.plots)
+        return pipe
 
     def open_example(self, name):
         """Open one of the shipped example files (File › Open example)."""

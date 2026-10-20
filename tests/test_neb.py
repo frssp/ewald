@@ -191,3 +191,17 @@ def test_overlay_frames_ghosts_moving_atoms(vasp_dir, lammps_dir):
     assert set(hop) == {-1, 1, 2, 3, 4, 5, 6}
     lp.modifiers[-1].min_displacement = 100.0
     assert lp.compute(0).count == lp.source.compute(0).count  # nothing moved that far: no copies
+
+
+def test_neb_run_of_finds_the_run_of_one_image(vasp_dir, lammps_dir, tmp_path):
+    from ewald.io import neb_run_of
+
+    run = str((vasp_dir / "neb").resolve())
+    assert neb_run_of(vasp_dir / "neb" / "02" / "OUTCAR") == run
+    assert neb_run_of(vasp_dir / "neb" / "00" / "POSCAR") == run
+    assert neb_run_of(lammps_dir / "neb" / "dump.neb.3") == str((lammps_dir / "neb").resolve())
+    assert neb_run_of(lammps_dir / "neb" / "log.lammps") is None
+    assert neb_run_of(vasp_dir / "neb") is None  # the folder itself opens as NEB already
+    (tmp_path / "00").mkdir()
+    (tmp_path / "00" / "POSCAR").write_text("x")
+    assert neb_run_of(tmp_path / "00" / "POSCAR") is None  # one numbered folder is not a band
