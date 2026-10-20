@@ -8,6 +8,7 @@ import time
 from PySide6 import QtCore, QtWidgets
 
 from ..io import remote
+from .busy import Cancelled, wait_for
 
 MAX_RECENT = 12
 
@@ -156,20 +157,22 @@ class RemoteFileDialog(QtWidgets.QDialog):
         if not host:
             self.status.setText("Enter a host.")
             return False
-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-        self.status.setText(f"Connecting to {host}…")
-        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
-        try:
+
+        def listing(path=path):            # on a worker thread: no widgets here
             if not path:
-                path = remote.home(self._location("."))
+                path = remote.home(f"{host}:.")
             elif not path.startswith("/"):
-                path = posixpath.join(self.cwd or remote.home(self._location(".")), path)
-            rows = remote.listdir(self._location(path))
+                path = posixpath.join(self.cwd or remote.home(f"{host}:."), path)
+            return path, remote.listdir(f"{host}:{path}")
+
+        try:
+            path, rows = wait_for(listing, f"Connecting to {host}…", self, say=self.status.setText)
+        except Cancelled:
+            self.status.setText("Cancelled")
+            return False
         except Exception as exc:
             self.status.setText(f"{type(exc).__name__}: {exc}")
             return False
-        finally:
-            QtWidgets.QApplication.restoreOverrideCursor()
         self.cwd = posixpath.normpath(path)
         self.path.setText(self.cwd)
         self.list.clear()

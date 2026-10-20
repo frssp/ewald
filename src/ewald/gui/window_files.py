@@ -9,7 +9,7 @@ from .. import examples
 from .. import plugins
 from ..io import import_file
 from ..render import camera_state
-from .busy import busy
+from .busy import Cancelled, busy, wait_for
 from .welcome import add_recent
 
 
@@ -59,9 +59,12 @@ class FilesMixin:
     # ---------------------------------------------------------------- pipeline / data
     def open_file(self, path, **kwargs):
         remote = ":" in str(path) and not os.path.exists(str(path))     # host:/path, ssh://
+        text = f"{'Downloading' if remote else 'Opening'} {os.path.basename(str(path))}…"
         try:
-            with busy(self.message, f"{'Downloading' if remote else 'Opening'} {os.path.basename(str(path))}…"):
-                pipe = import_file(path, **kwargs)
+            pipe = wait_for(lambda: import_file(path, **kwargs), text, self, say=self.message)
+        except Cancelled:
+            self.message(f"Cancelled opening {path}")
+            return None
         except Exception as exc:
             self.message(f"Load failed: {path}: {exc}", error=True)
             QtWidgets.QMessageBox.critical(self, "Load failed", f"{path}\n\n{exc}")
@@ -135,6 +138,8 @@ class FilesMixin:
         if rest:
             if os.path.isdir(rest[0]) and _is_neb(rest[0]):
                 self.open_neb(rest[0])
+            elif os.path.isdir(rest[0]):   # a folder of calculations: one notebook, a load() per step
+                self.open_workflow(rest[0])
             else:
                 self.open_any(rest[0])
 
@@ -258,6 +263,12 @@ class FilesMixin:
         if path:
             self.open_neb(path)
 
+    def open_workflow_dialog(self):
+        """A folder of calculations (relax, NEB, MD restarts, phonopy...) as one notebook."""
+        path = QtWidgets.QFileDialog.getExistingDirectory(self, "Open workflow folder")
+        if path:
+            self.open_workflow(path)
+
     def open_neb(self, path):
         """Open a NEB run folder and show its energy profile in the Plots tab."""
         pipe = self.open_file(path)
@@ -296,8 +307,8 @@ class FilesMixin:
 
     def open_workflow(self, workflow):
         """Open a workflow (a :class:`ewald.workflow.Workflow`, or a path such as
-        ``simagent:1234`` that an installed workflow source describes) as one notebook: a
-        ``load`` cell per step and ``pipe`` on its main result (:func:`ewald.workflow.notebook_text`).
+        ``simagent:1234`` that an installed workflow source describes) as one notebook: one
+        cell loads every step (a variable each) and sets ``pipe`` to its main result (:func:`ewald.workflow.notebook_text`).
         The notebook is ewald's own text, so it runs at once."""
         from .. import workflow as wf_module
         from ..notebook import Notebook
@@ -310,6 +321,10 @@ class FilesMixin:
             self.message(f"Open failed: {workflow}: {exc}", error=True)
             QtWidgets.QMessageBox.critical(self, "Open failed", f"{workflow}\n\n{exc}")
             return None
+        if wf.source == "folders":
+            from ..workflow_folder import add_recent_folder
+
+            add_recent_folder(wf.work_dir or wf.id)
         nb = Notebook.from_py(text, name=wf.label or wf.kind or wf.name or "Workflow")
         panel = self.panel
         blank = panel.view if panel.view is not None and panel._is_blank(panel.view) else None
@@ -376,10 +391,11 @@ class FilesMixin:
                 return
             all_frames = answer == QtWidgets.QMessageBox.Yes
         try:
-            if all_frames:
-                export_file(self.pipeline, path, format=fmt)
-            else:
-                export_file(self.data, path, format=fmt)
+            with busy(self.message, f"Writing {os.path.basename(path)}…"):
+                if all_frames:
+                    export_file(self.pipeline, path, format=fmt)
+                else:
+                    export_file(self.data, path, format=fmt)
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Export failed", f"{path}\n\n{exc}")
             return

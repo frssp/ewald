@@ -10,12 +10,22 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Several files as one trajectory: the GUI Open dialog takes one file (no multi-select into a
+  list yet), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
+  appended to after a restart (`dump_modify append yes`). Restart detection needs a Timestep per
+  frame, which only the LAMMPS dump reader gives cheaply (extxyz `Timestep=` comments, H5MD
+  steps and XTC steps are not used yet).
 - View tab: folded cards are remembered only while the window is open (not in settings or the
   layout file); no Fold all / Unfold all; a card has no per-card reset to defaults.
 
 - Workflows (`ewald.workflow`): a table that compares the scalars of every step of a workflow
   (energies, gaps, forces) and of several workflows side by side, and opening one step's input
   next to its output (INCAR/KPOINTS as text cells).
+- Workflow folders (`ewald/workflow_folder.py`, docs/user/workflows.md): a killed VASP or LAMMPS
+  step shows as running (no mtime or queue check); Quantum ESPRESSO, CP2K, ABINIT folders are not
+  recognized; no "remove from list" in the Workflows side bar; a large tree on an SSH host is
+  listed one folder at a time (no `find` in one round trip); `load_runs` over the steps of a
+  workflow (several MD temperatures as one `Runs`).
 
 Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; numbers from
 `benchmarks/analysis.py`, `benchmarks/large_files.py` and the GUI under `xvfb-run`)
@@ -38,12 +48,9 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 
 GUI
 
-- UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): still open
-  are an empty-state hint in the 3D view with nothing loaded (the notebook area has a welcome
-  page now; the view bar stays enabled), Cancel for a ray trace in progress, opening files (local or remote) and
-  remote connections off the GUI thread (they now say what they wait for, but the window still
-  blocks), the Render settings column scrolling sideways at the default window width, and a
-  short highlight on a plugin row once it is installed.
+- UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): every
+  finding is fixed. Left over: cancelling an open stops waiting but not the read itself (readers
+  have no cancel hook), so a cancelled SSH connect runs out its timeout in the background.
 - Panel layout (phase 1 landed: `gui/workbench.py`, `gui/layout_model.py`; plan in project
   files `design/panel-layout.md`): phase 2 opens a notebook view cell's plot large in the
   editor area ("Open large" or drag the cell header, a Bring back placeholder in the cell, the
@@ -78,7 +85,9 @@ GUI
   they keep the old palette until a restart after a theme switch; move them to QSS object names.
 - Notebook layout: the viewport could follow the current notebook even when it has no
   pipeline yet (now it keeps the last one); image/figure cells; inline Ask AI suggestions
-  as diffs; a snapshot cell that updates when the camera of its view changes (now it is code).
+  as diffs; a snapshot cell that updates when the camera of its view changes (now it is code);
+  more Jupyter command-mode keys (only Y, M, A, B and Enter so far: no DD, X/C/V, Shift+Enter in
+  command mode, raw cells).
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
   view does not have yet (picks as code, the viewport axes widget; measurement labels in the
   legacy OpenGL 1.x viewport, and lines that show through atoms; audit in the project files `ewald-review/view-elements-audit.md`);
@@ -96,10 +105,10 @@ GUI
   camera sideways instead of an off-axis projection (exact at the focal distance only); the
   Overlay elements and text label are not previewed inside the frame; Claude's `set_view` can set
   `region` but no tool tells it the frame on screen.
-- Python steps per frame vs once (`@each_frame` / `@all_frames`, landed): cell markers
-  `# %% [each frame]` / `# %% [all frames]` with a header toggle, where the cell body is the step
-  (`data`, `frames` given), proposed to the owner 2026-10-20 and not decided yet; a GUI badge on
-  cells whose steps are `all_frames`; `all_frames` start/stop/step arguments.
+- Python steps per frame vs once (decorators and `# %% [each frame]` / `[all frames]` cells
+  landed): `all_frames` start/stop/step arguments; Insert menu entries for the two cell kinds; in
+  a kernel notebook, switching a cell back to *Once* takes its step out only when the cell runs
+  again. A view cell's error output overlaps its plot (seen 2026-10-20).
 - Live `show(pipe, ...)` outside a view cell: zooming does not write `xlim=`/`ylim=` back (only a
   cell that is just the call does), and `frame=` is ignored by the live plot (it follows the
   current frame, as view cells do).
@@ -192,8 +201,8 @@ Runs (`ewald/runinfo.py`, `ewald/runs.py`; manual page docs/user/runs.md)
 - `show(runs, ...)` as a live GUI view cell: a view cell binds to `pipe`, so the overlaid runs show as
   the `RunTables` picture under the cell instead of an interactive plot; run comparison in the
   Plots tab.
-- A run folder index: scan a project folder (local or on a cluster) for runs and list them with
-  kind, state and last energy, as the way into `load_runs`.
+- A run folder index as the way into `load_runs`: `ewald.workflow_folder` now scans a project
+  folder (kind, state, last energy); `load_runs(workflow)` taking its MD steps is still open.
 - The GUI's run picker binds `pipe` only for notebooks running in this app's Python, not in a
   kernel.
 
@@ -325,6 +334,13 @@ Visualization plugins (later phases of the Scene IR plan)
 
 Plugins and AI
 
+- AI eval suite (`llm/evals.py`, `llm/eval_tasks.py`): more tasks from the paper datasets (LLZO
+  Arrhenius, a-Si, TiOF2 octahedra), from the GUI side (picks, Ask about selection, view cells the
+  Display panel edits) and multi-turn ones (a follow-up question); reproduction runs in a fresh
+  in-process namespace, not a separate kernel (`ewald.kernel`); explanations are not graded (an
+  LLM judge could score them); plugin tasks (`@eval_task` from plugins such as ewald-phonopy) and
+  a results page that tracks scores over commits.
+
 - AI providers (`llm/providers.py`): the OpenAI-compatible provider never sends images (no
   per-server vision switch yet); Effort reaches only Claude and OpenAI reasoning models; one
   `llm.model` setting for all providers (switching the provider in Preferences clears it); no
@@ -339,11 +355,11 @@ Plugins and AI
   but the plugin module is still imported at start); a `commands` contribution point (commands in
   the palette, as notebook functions and as AI tools). Settings pages (`@settings_page`) and side
   bars (`@panel`) are registered in code, not declared in the manifest.
-- GUI plugins (`@panel`, `gui/window_plugins.py`; `@settings_page` pages in Preferences): a panel's
-  open/closed state and width are not restored with the window layout (its dock is built lazily,
-  after `restoreState`); panels only dock on the left beside the notebook (no tab under the 3D
-  view yet, that waits for the workbench `@view` API); reloading plugins rebuilds every open
-  plugin panel, losing its state; no menu, toolbar or context-menu contributions. A plugin's
+- GUI plugins (`@panel`, `@menu_item`, `gui/window_plugins.py`; `@settings_page` pages in
+  Preferences): reloading plugins rebuilds every open plugin panel, losing its state; no entries
+  in the Data inspector, notebook tab or Display panel menus yet, and a plugin cannot change or
+  remove built-in entries; a bottom tab cannot be placed in the editor area beside the 3D view
+  from the plugin (the user can drag it there). A plugin's
   Preferences page has no changed-dot or per-row Reset, and Edit › Plugin settings and the
   Plugins side bar's Settings still open the separate dialog rather than that page.
 - Plugin manifests, phase 3: the index repository exists (frssp/ewald-plugins: `plugins/*.toml`,
@@ -385,7 +401,13 @@ Docs
   MSD; find out why. Candidates found but not added: TiOF2 PDF against experiment (needs an
   X-ray weighted G(r)), the a-Si 216-atom HSE06 models (vldgroup/papers-defect-free-a-si), LGPS
   site maps (hacortesp/CrySF), MoSe2 phonons (Ionizing/adom.202403069); no license stated on the
-  last three. Most other paper data sits on Zenodo or Materials Cloud, unreachable from the cloud
+  last three. Also checked and not added (2026-10-20): VTST NEB runs in
+  drinwater/Nudged-Elastic-Band-Tutorial (14 MB OUTCAR per image) and umichyujl/data_n_type_doping_AlN
+  (HSE NEB of AlN donors, images without OUTCARs), and the LAMMPS NEB logs of shortlab/2016Cr2O3
+  (Cr2O3 vacancy paths, no per-replica dumps); none states a license. Still missing: a clearly
+  licensed LAMMPS dataset with multi-file dumps or a temperature series for `load_runs` +
+  `arrhenius` (the LLZO one is GROMACS XTC), and a real `ssh` NEB folder for the remote example.
+  Most other paper data sits on Zenodo or Materials Cloud, unreachable from the cloud
   container, so `examples.fetch` only knows GitHub-hosted files.
 - Host the manual (the repository is private; CI uploads the built site as the `docs-site`
   artifact).
@@ -435,6 +457,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - A vaspout.h5 from a real running and a real killed VASP 6 job: which groups exist mid-run,
   whether unwritten steps are zeros, and whether HDF5 can open the file of a killed job (tests
   use h5py-written fixtures, a second process holding the write lock, and a cut file).
+- AI eval suite with real keys (`ewald eval`, docs/user/claude.md): a first baseline per model
+  (Opus 5.5, Sonnet 5.5, Haiku 5.5, a local model) saved as JSON to compare later prompt and tool
+  changes against; check that the tolerances and the `ANSWER:` convention are fair to real answers.
 - AI features with a real API key (Claude; also OpenAI, Gemini and a local Ollama/LM Studio
   server, which are tested only against mocked servers): `ewald ask` (also `--select`), the GUI AI chat side bar
   (notebook code in the prompt, code blocks inserted as cells, the notebook cell tools),
@@ -514,6 +539,13 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
   small arithmetic parser.
 
 ## Infrastructure
+
+- Going public (files prepared 2026-10-20: CITATION.cff, FUNDING.yml, CONTRIBUTING.md,
+  SECURITY.md, issue templates): the owner picks the license (an MIT LICENSE pull request is
+  waiting, unmerged, and drops the `Private :: Do Not Upload` classifier) and switches the
+  repository to public; then enable private vulnerability reporting and GitHub Sponsors, archive
+  a release on Zenodo and add its DOI (and an ORCID) to CITATION.cff, and restore the CI triggers
+  (public repositories get free Actions minutes).
 
 - From the 2026-10-20 systems review (/mnt/project-files/ewald-review/senior-systems-review.md;
   its refactors are merged, #129-#135): a self-hosted runner (xvfb + Mesa) to restore the PR

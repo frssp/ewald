@@ -300,7 +300,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 ### `render()` options
 
-`size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`, `region`, `labels`, `light`.
+`size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`, `region`, `labels`, `light`, `progress`.
 
 Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`, `show_atoms`, `surfaces`, `cell_radius`, `type_transparency`, `selection_color`, `measurements`.
 
@@ -322,6 +322,7 @@ Details: [Command line](user/cli.md).
 | `ewald api` | print the Python API reference for LLMs (llms.txt) | `--with-plugins` |
 | `ewald plugins` | list installed plugins and any that failed to load | `--json` `--enable` `--disable` |
 | `ewald forge [REQUEST...]` | have an AI write a modifier plugin, test it and save it | `--yes` `--draft` `--overwrite` `--rounds` `--model` `--provider` `--profile` `--base-url` |
+| `ewald eval` | score an AI model on tasks with known answers (costs API tokens; see --dry-run) | `--model` `--provider` `--profile` `--base-url` `--effort` `--tasks` `--category` `--list` `--allow-code` `--repeat` `--max-turns` `--out` `--compare` `--dry-run` `--price` `--no-download` |
 | `ewald mcp [INPUT]` | serve the analysis tools over MCP (stdio) | `--allow-code` |
 | `ewald remote [REMOTE_CMD]` | saved SSH profiles: list, add, remove, test, ls, get |  |
 | `ewald inventory` | print or update the feature inventory (docs/features.md) | `-o` `--gui` |
@@ -373,7 +374,7 @@ Tools:
 | `export_file` *cell* | Write frames of the pipeline (after its modifiers) to a file: POSCAR, LAMMPS data/dump, extxyz, CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... as an export_file(...) cell in the notebook, run at once. |
 | `get_script` | The notebook as a standalone Python script (percent format): it reproduces everything the tools did, since they work only through its cells. |
 | `python_api` | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature). |
-| `list_workflows` | Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs) of an installed workflow source, newest first: id, kind, formula, state and the path that opens each. |
+| `list_workflows` | Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs, or folders of VASP/LAMMPS/NEB/phonopy calculations: source 'folders') of a workflow source, newest first: id, kind, formula, state and the path that opens each. |
 | `describe_workflow` | Steps of a workflow (nested; restarts joined), their states, numbers (energies, gaps) and outputs, each with the path load_structure opens. |
 | `list_cells` *notebook* | The cells of the user's notebook: index, id, kind (code, step = one pipe.add(...), view = one show(pipe, ...), markdown), state (new = not run, ok, error, stale = out of date), first line and output kinds. |
 | `read_cell` *notebook* | One notebook cell: its full source and outputs (printed text, errors, values; plots come back as images). |
@@ -387,13 +388,13 @@ Also: `ewald describe` / `ewald narrate` (rule-based descriptors and a trajector
 
 ## Plugins
 
-Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.visuals`, `ewald.overlays`, `ewald.colormaps`, `ewald.themes`, `ewald.tools`, `ewald.ui_themes`, `ewald.ai_providers`, `ewald.panels`, `ewald.settings_pages` and `ewald.workflows`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / `@colormap` / `@theme` / `@ai_tool` (or `@claude_tool`) / `@ui_theme` / `@ai_provider` / `@panel` (an activity-bar side bar) / `@settings_page` (a Preferences page) / `@workflow_source` (workflows a side bar lists and a notebook opens); `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
+Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.visuals`, `ewald.overlays`, `ewald.colormaps`, `ewald.themes`, `ewald.tools`, `ewald.ui_themes`, `ewald.ai_providers`, `ewald.panels`, `ewald.menu_items`, `ewald.settings_pages` and `ewald.workflows`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / `@colormap` / `@theme` / `@ai_tool` (or `@claude_tool`) / `@ui_theme` / `@ai_provider` / `@panel` (an activity-bar side bar or a tab under the 3D view) / `@menu_item` (an entry in a menu or the 3D view's right-click menu) / `@settings_page` (a Preferences page) / `@workflow_source` (workflows a side bar lists and a notebook opens); `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
 
 - `examples/plugins/cell_axes.py`: Example visual element plugins: cell axes and a halo around selected atoms.
 - `examples/plugins/figure_extras.py`: Example figure-style plugins: a color map, a theme and an overlay.
 - `examples/plugins/local_composition.py`: Example modifier plugin: local chemical composition around every particle.
 - `examples/plugins/npz_trajectory.py`: Example reader plugin: trajectories stored as NumPy ``.npz`` archives.
-- `examples/plugins/sim_agent_panel.py`: Example GUI plugin: a "Sim agent" side bar with its own activity-bar button and a page in Preferences.
+- `examples/plugins/sim_agent_panel.py`: Example GUI plugin: a "Sim agent" side bar with its own activity-bar button, an "Agent jobs" tab under the 3D view, menu entries and a page in Preferences.
 - `examples/plugins/ui_themes.py`: Example UI themes for the desktop app: "Nord" (dark, frost-blue accents), "Sepia" (light, warm paper) and "Studio" (dark, compact, square corners, its own fonts and extra style sheet rules).
 
 ## Preferences
@@ -526,6 +527,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Open location… (`Ctrl+L`)
 - Remote computers (SSH profiles)… (`Ctrl+Alt+R`)
 - Load NEB folder…
+- Open workflow folder…
 - Open example
   - POSCAR.SrTiO3 (VASP POSCAR)
   - Si.cif (CIF)
@@ -614,6 +616,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Move cell up (`Ctrl+Shift+Up`)
 - Move cell down (`Ctrl+Shift+Down`)
 - Delete cell
+- Change cell to code (`Ctrl+M, Y`)
+- Change cell to text (`Ctrl+M, M`)
 - Clear cell output (`Ctrl+Shift+Backspace`)
 - Clear all outputs (`Ctrl+Alt+Shift+Backspace`)
 - Show as Python file
@@ -743,6 +747,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - AI chat (`Ctrl+J`)
 - Command palette (`Ctrl+K`)
 - Plugin panels
+  - Workflows
 
 **Help**
 

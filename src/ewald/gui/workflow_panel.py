@@ -63,6 +63,10 @@ class WorkflowPanel(QtWidgets.QWidget):
         self.search.setClearButtonEnabled(True)
         self.search.returnPressed.connect(self.refresh)
         row.addWidget(self.search, 1)
+        self.browse = QtWidgets.QToolButton(text="Open folder…", toolTip="Open a folder of calculations as a workflow")
+        self.browse.clicked.connect(self.open_folder)
+        self.browse.setVisible(bool(getattr(getattr(self.source, "source", None), "browse_folders", False)))
+        row.addWidget(self.browse)
         refresh = QtWidgets.QToolButton(text="Refresh", toolTip="Load the list again")
         refresh.clicked.connect(self.refresh)
         row.addWidget(refresh)
@@ -276,6 +280,16 @@ class WorkflowPanel(QtWidgets.QWidget):
         menu.addAction("Insert load() cell", self.insert_cell)
         menu.addAction("Copy path", self.copy_path)
         menu.exec(self.tree.viewport().mapToGlobal(pos))
+
+    def open_folder(self, path: str | None = None):
+        """Pick a folder of calculations and open it as one notebook (sources with ``browse_folders``)."""
+        if path is None:
+            path = QtWidgets.QFileDialog.getExistingDirectory(self, "Open workflow folder")
+        if not path:
+            return None
+        view = self.context.open_workflow(path)
+        self.refresh()
+        return view
 
     def edit_settings(self):
         source = self.source

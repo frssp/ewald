@@ -12,7 +12,6 @@ orders the anions again.
 
     python examples/papers/argyrodite_disorder.py [outdir]
 """
-# %%
 import sys
 from pathlib import Path
 

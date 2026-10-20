@@ -467,6 +467,35 @@ def test_show_anywhere_in_a_cell_is_a_live_plot(app, tmp_path):
     w.close()
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_cell_runs_once_each_frame_or_all_frames(app, tmp_path):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    path = tmp_path / "frames.py"
+    path.write_text(f"# %%\nfrom ewald import load\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n\n"
+                    "# %% height [each frame]\ndata.attributes['z'] = data['Position'][:, 2].mean()\n\n"
+                    "# %%\ndata.attributes['w'] = 1 / 0\n")
+    w = MainWindow(settings=settings.Settings())
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    app.processEvents()
+    assert view.widgets[1].frames_badge.text() == "Each frame"
+    assert w.data.attributes["z"] == pytest.approx(w.data["Position"][:, 2].mean())
+    view._cell_action(view.notebook.cells[2], "frames:each")      # the cell's menu › Runs › Each frame
+    app.processEvents()
+    assert view.widgets[2].frames_badge.text() == "Each frame"
+    assert [m.name for m in w.pipeline.modifiers] == ["height", "each_frame_cell"]
+    assert [o.kind for o in view.widgets[2].outputs.outputs] == ["error"]   # the step's error at this frame
+    view._cell_action(view.notebook.cells[2], "frames:")          # back to once: the step goes
+    app.processEvents()
+    assert [m.name for m in w.pipeline.modifiers] == ["height"] and not hasattr(view.widgets[2], "frames_badge")
+    view.undo()
+    app.processEvents()
+    assert view.notebook.cells[2].frames == "each"
+    w.close()
+
+
 def test_timeline_frame_selection_playback(app):
     from ewald.gui.timeline import Timeline
 
@@ -742,11 +771,19 @@ def test_main_window_smoke(app, pipe, tmp_path):
     w.render_page.width.setValue(320)
     w.render_page.height.setValue(240)
     w.render_from_page()                    # the ray tracer: on a worker thread, a spinner meanwhile
-    assert w.rendering and not w.render_page.render_button.isEnabled()
-    assert not w.render_page.busy_label.isHidden() and w.render_page.busy_label.text() == "Ray tracing…"
+    button = w.render_page.render_button    # ... and Render turns into Cancel
+    assert w.rendering and button.isEnabled() and button.text() == "Cancel"
+    assert not w.render_page.busy_label.isHidden() and w.render_page.busy_label.text().startswith("Ray tracing…")
     w.wait_render()
-    assert not w.rendering and w.render_page.render_button.isEnabled() and w.render_page.busy_label.isHidden()
+    assert not w.rendering and button.isEnabled() and button.text() == "Render" and w.render_page.busy_label.isHidden()
     assert os.path.getsize(tmp_path / "x.png") > 1000
+    w.render_page.output.setText(str(tmp_path / "cancelled.png"))
+    w.render_from_page()
+    button.click()                          # Cancel: stops after the rows being traced, no file, no error box
+    assert w.render_page.busy_label.text() == "Cancelling…" and not button.isEnabled()
+    w.wait_render()
+    assert not (tmp_path / "cancelled.png").exists() and "cancelled" in w.statusBar().currentMessage()
+    assert button.text() == "Render" and button.isEnabled()
     code = w.render_page.code.toPlainText()
     assert "CoordinationAnalysis(cutoff=3.0" in code and "camera=" in code
     w.close()
@@ -1769,8 +1806,10 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     assert plugins_button.toolTip() == "Show or hide the Plugins side bar"
     tabs = w.panel.tabs
     assert tabs.count() == 0 and w.panel.view is None                    # a new window: the welcome page
+    assert "_empty" in w.viewport.plotter.actors and not w.viewport._viewbar.isEnabled()   # and a hint in the view
     assert tabs.body.currentWidget() is w.panel.welcome
     w.open_any(cu_path, ask_types=False)
+    assert "_empty" not in w.viewport.plotter.actors and w.viewport._viewbar.isEnabled()
     assert tabs.count() == 1 and tabs.tabText(0) == "cu" and w.pipeline is w.panel.pipeline
     w.panel.add_modifier(mods.CoordinationAnalysis(cutoff=3.0))
     w.recompute()
@@ -1818,6 +1857,7 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w.panel.close_tab(0)                                       # the last tab: the welcome page, no new notebook
     assert tabs.count() == 0 and w.panel.view is None and tabs.body.currentWidget() is w.panel.welcome
     assert w.pipeline is None and w.data is None                   # the 3D view, plots and inspector are cleared
+    assert "_empty" in w.viewport.plotter.actors and not w.viewport._rail.isEnabled()
     from ewald.gui import welcome
     assert welcome.load_recent()[0] == str(path)                    # listed under Recent
     w.panel.welcome.refresh()
@@ -2230,6 +2270,8 @@ def test_plugins_side_bar_installs_adds_a_step_and_removes(app, cu_path, tmp_pat
     entry = next(e for e in panel.entries if e.name == "Bar shift")
     panel.install(entry)
     panel.wait()
+    fresh = [r for r in panel.findChildren(plugins_panel.PluginRow) if r.property("fresh")]
+    assert [r.item.path.endswith("bar_shift.py") for r in fresh] == [True]     # scrolled to and marked
     item = next(i for i in panel.items if i.path.endswith("bar_shift.py"))
     panel.show_details(item)
     assert not panel.use_button.isHidden()
@@ -2908,6 +2950,61 @@ def test_notebook_cell_controls_add_bar_and_running_mark(app):
     w.close()
 
 
+def test_cell_type_switches_and_add_bar_like_jupyter(app, pipe):
+    """+ Code, + Text, + Step (with Plugins), + View under the cells; Esc then M / Y turns a cell
+    into text / code, A / B insert; the menu and the cell's ⋯ menu do the same; Ask AI about this cell."""
+    from PySide6 import QtTest
+
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(pipe)
+    w.resize(1400, 900)
+    w.show()
+    app.processEvents()
+    view = w.panel.view
+    texts = [b.text() for b in view.add_bar.findChildren(QtWidgets.QPushButton)]
+    assert texts == ["+ Code", "+ Text", "+ Step", "+ View"]
+    view.step_menu.aboutToShow.emit()
+    plugins = next(a for a in view.step_menu.actions() if a.text() == "Plugins").menu()
+    assert any(a.text() == "Load plugin file…" for a in plugins.actions())
+
+    cell = view.add_cell("code", "# Title")
+    cw = view.widget_for(cell)
+    QtTest.QTest.keyClick(cw.editor, QtCore.Qt.Key_Escape)
+    assert view.current is cell                              # focus moved to the cell (command mode)
+    QtTest.QTest.keyClick(cw, QtCore.Qt.Key_M)
+    assert cell.kind == "markdown" and cell.source == "# Title"
+    cw = view.widget_for(cell)
+    assert not cw.view.isHidden() and cw.editor.isHidden()
+    QtTest.QTest.keyClick(cw, QtCore.Qt.Key_Y)
+    assert cell.kind == "code" and cell.state == "new"
+    n = len(view.notebook.cells)
+    QtTest.QTest.keyClick(view.widget_for(cell), QtCore.Qt.Key_B)
+    i = view.notebook.cells.index(cell)
+    assert len(view.notebook.cells) == n + 1 and view.current is view.notebook.cells[i + 1]
+    view.select(cell)
+    QtTest.QTest.keyClick(view.widget_for(cell), QtCore.Qt.Key_A)
+    assert view.notebook.cells.index(cell) == i + 1 and view.current is view.notebook.cells[i]
+
+    view.select(cell)
+    acts = {a.text(): a for a in w.menuBar().findChildren(QtGui.QAction)}
+    acts["Change cell to &text"].trigger()
+    assert cell.kind == "markdown"
+    acts["Change cell to c&ode"].trigger()
+    assert cell.kind == "code"
+    assert view.history.undo_label == "Change cell type"
+
+    cw = view.widget_for(cell)
+    menu = cw.findChild(QtWidgets.QToolButton, "cellMenu").menu()
+    names = [a.text() for a in menu.actions()]
+    assert "Ask AI about this cell" in names and names.index("Cell type") < names.index("Ask AI about this cell")
+    assert names[-1] == "Delete"
+    next(a for a in menu.actions() if a.text() == "Ask AI about this cell").trigger()
+    app.processEvents()
+    assert w.ask_dock.isVisible() and "# Title" in w.ask_panel.input.toPlainText()
+    w.close()
+
+
 def test_panel_headers_line_up_and_buttons_use_icons(app, pipe):
     """Dock title bars and tab-group heads share one height and inset, and no button is labelled
     with a symbol glyph (their size and baseline depend on the platform's fallback font)."""
@@ -3379,9 +3476,9 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
     plugins.register_panel("broken", broken, title="Broken")
     w = MainWindow(pipe)
     titles = [a.text() for a in w.activity_bar.actions()]
-    assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent"]
+    assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent", "Workflows"]
     assert w.plugin_panels["sim_agent"]["dock"] is None          # nothing built before it opens
-    assert [a.text() for a in w.plugin_panel_menu.actions()] == titles[4:]
+    assert sorted(a.text() for a in w.plugin_panel_menu.actions()) == ["Agent jobs", "Broken", "Sim agent", "Workflows"]
     w.plugin_panels["sim_agent"]["action"].trigger()
     dock = w.plugin_panels["sim_agent"]["dock"]
     assert dock is not None and not dock.isHidden() and w.plugin_panels["sim_agent"]["action"].isChecked()
@@ -3419,8 +3516,143 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
 
     plugins.set_enabled("sim-agent-example", False)
     w.refresh_plugin_panels()
-    assert [a.text() for a in w.activity_bar.actions()][4:] == ["Broken"] and "sim_agent" not in w.plugin_panels
+    assert [a.text() for a in w.activity_bar.actions()][4:] == ["Broken", "Workflows"] and "sim_agent" not in w.plugin_panels
     w.close()
+
+
+def test_plugin_menu_items_bottom_tab_and_layout_restore(app, pipe, monkeypatch, tmp_path):
+    """@menu_item entries land in the menu bar (greyed out until their `when` holds) and the 3D
+    view's right-click menu; a bottom @panel is a closable tab under the 3D view; open plugin
+    side bars and tabs come back with the saved layout."""
+    import shutil
+    from pathlib import Path
+
+    from ewald import plugins, settings
+    from ewald.gui import prefs_apply
+    from ewald.gui.app import MainWindow
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(Path(__file__).parents[1] / "examples" / "plugins" / "sim_agent_panel.py", folder)
+    calls = []
+    plugins.register_menu_item("boom", lambda ctx: 1 / 0, title="Boom", menu="Help")
+    plugins.register_menu_item("count", lambda ctx: calls.append(ctx.data.count), title="Count atoms",
+                               menu="View/Plugin tools", when="data", shortcut="Ctrl+Alt+Shift+C")
+    s = settings.Settings(path=tmp_path / "settings.json")
+    s["general.restore_layout"] = True
+    w = MainWindow(settings=s)
+
+    tools = w._menu_bar_menu("Tools")
+    sub = next(a.menu() for a in tools.actions() if a.menu() is not None and a.text() == "Sim agent")
+    assert [a.text() for a in sub.actions()] == ["Send structure…", "Settings…"]
+    send, _ = sub.actions()
+    tools.aboutToShow.emit()
+    assert not send.isEnabled()                # when="data" and nothing is loaded
+    assert "Agent jobs" not in [a.text() for a in w.activity_bar.actions()]   # a bottom tab has no button
+    menu = w.viewport_menu()
+    assert not any(a.text() == "Send picked atoms to Sim agent" for a in menu.actions())
+    w.set_pipeline(pipe)
+    tools.aboutToShow.emit()
+    assert send.isEnabled()
+    view_sub = next(a.menu() for a in w._menu_bar_menu("View").actions() if a.text() == "Plugin tools")
+    view_sub.actions()[0].trigger()
+    assert calls == [w.data.count]
+    next(a for a in w._menu_bar_menu("Help").actions() if a.text() == "Boom").trigger()   # error is reported
+    assert not any(a.text() == "Send picked atoms to Sim agent" for a in w.viewport_menu().actions())
+    w.viewport.set_picks([0, 2])
+    menu = w.viewport_menu()
+    act = next(a for a in menu.actions() if a.text() == "Send picked atoms to Sim agent")
+    act.trigger()
+    assert "relax atoms 0, 2" in w.panel.view.notebook.cells[-1].source
+    w.viewport.set_picks([])
+
+    # the bottom tab: built on first show, lists the jobs, closable, rebuilt on the next show
+    table = w.show_plugin_panel("agent_jobs")
+    assert isinstance(table, QtWidgets.QTableWidget) and w.workbench.is_shown("plugin:agent_jobs")
+    assert table.rowCount() >= 1 and table.item(table.rowCount() - 1, 0).text() == "relax atoms 0, 2"
+    w.workbench.close_view("plugin:agent_jobs")
+    assert "plugin:agent_jobs" not in w.workbench.specs and w.plugin_panels["agent_jobs"]["widget"] is None
+    w.show_plugin_panel("agent_jobs")
+    dock = w.show_plugin_panel("sim_agent")
+    w.resizeDocks([dock], [410], QtCore.Qt.Horizontal)
+    app.processEvents()
+    width = dock.width()
+    prefs_apply.save_layout(w, s)
+    w.close()
+
+    w2 = MainWindow(settings=s)
+    app.processEvents()
+    entry = w2.plugin_panels["sim_agent"]
+    assert entry["dock"] is not None and not entry["dock"].isHidden() and entry["action"].isChecked()
+    assert abs(entry["dock"].width() - width) <= 20
+    assert w2.plugin_panels["agent_jobs"]["widget"] is not None and "plugin:agent_jobs" in w2.workbench.specs
+    plugins.set_enabled("sim-agent-example", False)
+    w2.refresh_plugin_panels()
+    assert "plugin:agent_jobs" not in w2.workbench.specs
+    assert not any(a.menu() is not None and a.text() == "Sim agent" for a in w2._menu_bar_menu("Tools").actions())
+    w2.close()
+
+
+def test_plugin_items_on_toolbar_cell_and_plot_menus(app, pipe, monkeypatch):
+    """@menu_item(menu="Toolbar" | "Notebook cell" | "Plot"): a toolbar button (or drop-down),
+    entries in a cell's ⋯ menu and in a plot's right-click menu, with context.target."""
+    import shutil
+    from pathlib import Path
+
+    from ewald import plugins
+    from ewald.gui.app import MainWindow
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(Path(__file__).parents[1] / "examples" / "plugins" / "sim_agent_panel.py", folder)
+    seen = []
+    plugins.register_menu_item("a", lambda ctx: seen.append("a"), title="Alpha", menu="Toolbar/Tools+", when="picks")
+    plugins.register_menu_item("b", lambda ctx: seen.append(ctx.target), title="Cell kind",
+                               menu="Notebook cell/More")
+    w = MainWindow(pipe)
+    tb = w.findChild(QtWidgets.QToolBar, "main-toolbar")
+    button = next(a for a in tb.actions() if a.text() == "Sim agent")
+    assert not button.icon().isNull()
+    button.trigger()                                   # shows the side bar
+    assert w.plugin_panels["sim_agent"]["dock"] is not None
+    drop = next(b for b in tb.findChildren(QtWidgets.QToolButton, "pluginToolButton") if b.text() == "Tools+")
+    alpha = drop.menu().actions()[0]
+    assert alpha.text() == "Alpha" and not alpha.isEnabled()     # nothing picked
+    w.viewport.set_picks([1])
+    assert alpha.isEnabled()
+    alpha.trigger()
+    assert seen == ["a"]
+
+    cell_widget = w.panel.view.widgets[0]
+    menu = cell_widget.findChild(QtWidgets.QToolButton, "cellMenu").menu()
+    menu.aboutToShow.emit()
+    titles = [a.text() for a in menu.actions()]
+    assert "Send cell to Sim agent" in titles and "More" in titles
+    menu.aboutToShow.emit()                            # rebuilt, not doubled
+    assert [a.text() for a in menu.actions()].count("Send cell to Sim agent") == 1
+    more = next(a.menu() for a in menu.actions() if a.text() == "More")
+    more.actions()[0].trigger()
+    assert seen[-1] is cell_widget.cell
+    next(a for a in menu.actions() if a.text() == "Send cell to Sim agent").trigger()
+    assert "sim-agent task: run cell:" in w.panel.view.notebook.cells[-1].source
+
+    plot = w.plots
+    target = plot.target()
+    assert isinstance(target, plugins.PlotTarget)
+    pmenu = plot.context_menu()
+    ptitles = [a.text() for a in pmenu.actions()]
+    assert ptitles[:2] == ["Save plot…", "Reset view"] and ptitles[-1] == "Send plotted data to Sim agent"
+    pmenu.actions()[-1].trigger()
+    assert "sim-agent task: analyze" in w.panel.view.notebook.cells[-1].source
+
+    plugins.set_enabled("sim-agent-example", False)
+    w.refresh_plugin_panels()
+    assert not any(a.text() == "Sim agent" for a in tb.actions())
+    w.close()
+
+
 def test_plugin_settings_page_dialog(app, monkeypatch):
     from ewald import plugins, settings
     from ewald.gui.app import MainWindow
@@ -3574,3 +3806,75 @@ def test_workflow_side_bar_lists_expands_and_opens_a_workflow_as_one_notebook(ap
     side.refresh()
     side.wait()
     assert side.tree.topLevelItemCount() == 1 and side.more.isHidden()
+
+
+def test_dropping_a_folder_of_calculations_opens_it_as_a_workflow(app, tmp_path, vasp_dir):
+    """A folder of calculations (here a relax and an MD restarted twice) dropped on the window
+    opens as one notebook, a load() per step; the built-in Workflows side bar lists it after."""
+    import shutil
+
+    from ewald.gui.app import MainWindow
+
+    study = tmp_path / "study"
+    shutil.copytree(vasp_dir / "md", study / "1_relax")
+    for run in ("run1", "run2"):
+        shutil.copytree(vasp_dir / "md", study / "2_md" / run)
+    w = MainWindow()
+    tabs = w.panel.tabs.count()
+    w.open_dropped([str(study)])
+    assert w.panel.tabs.count() == tabs + 1
+    assert w.pipeline.num_frames == 4                       # pipe = md: run1 + run2 joined
+    w.show_plugin_panel("workflows")
+    side = w.plugin_panels["workflows"]["dock"].widget()
+    side.wait()
+    assert not side.browse.isHidden() and side.tree.topLevelItemCount() == 1
+    assert side.tree.topLevelItem(0).data(0, QtCore.Qt.UserRole).path == str(study)
+    w.close()
+
+
+def test_wait_for_runs_off_the_gui_thread_with_cancel(app, pipe, tmp_path):
+    import threading
+
+    from ewald.gui import busy
+    from ewald.gui.app import MainWindow
+
+    said = []
+    assert busy.wait_for(lambda: threading.current_thread() is threading.main_thread(), "Quick…", say=said.append) is False
+    assert said == ["Quick…"]
+    with pytest.raises(ZeroDivisionError):
+        busy.wait_for(lambda: 1 / 0, "Failing…")
+    release = threading.Event()
+    seen = []
+
+    def press_cancel():
+        dialog = QtWidgets.QApplication.activeModalWidget() or next(
+            w for w in QtWidgets.QApplication.topLevelWidgets() if w.objectName() == "waitDialog" and w.isVisible())
+        seen.append(dialog.labelText())
+        dialog.findChild(QtWidgets.QPushButton).click()
+
+    QtCore.QTimer.singleShot(300, press_cancel)
+    with pytest.raises(busy.Cancelled):          # a slow call gets a dialog with Cancel; Cancel returns at once
+        busy.wait_for(lambda: release.wait(10), "Connecting to slow…", delay_ms=50)
+    assert seen == ["Connecting to slow…"]
+    release.set()                                # the abandoned call finishes in the background
+    busy.finish_orphans(5000)
+    assert not busy._orphans
+
+    w = MainWindow()                             # File › Open goes through it
+    path = tmp_path / "x.xyz"
+    path.write_text("1\n\nH 0 0 0\n")
+    assert w.open_file(str(path)).num_frames == 1
+    w.close()
+
+
+def test_notebook_status_drops_parts_instead_of_clipping(app):
+    from ewald.gui.notebook_panel import _ElidedLabel
+
+    label = _ElidedLabel("3 steps · not saved")
+    fm = label.fontMetrics()
+    label.resize(fm.horizontalAdvance("3 steps · not saved") + 4, 20)
+    assert label.shown_text() == "3 steps · not saved"
+    label.resize(fm.horizontalAdvance("3 steps") + 4, 20)
+    assert label.shown_text() == "3 steps"           # not "3 st…ved"
+    label.resize(4, 20)
+    assert label.shown_text() == ""

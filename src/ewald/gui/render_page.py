@@ -30,6 +30,7 @@ OUTPUT_FILTER = ("Images (*.png *.jpg *.tif);;Vector (*.svg *.pdf *.eps);;"
 
 class RenderPage(QtWidgets.QWidget):
     renderRequested = QtCore.Signal()
+    cancelRequested = QtCore.Signal()  # the Render button while a cancellable render runs
     regionWritten = QtCore.Signal()   # the user changed the frame: the window writes it to pipe.view
 
     def __init__(self, window, parent=None):
@@ -110,8 +111,8 @@ class RenderPage(QtWidgets.QWidget):
         form.addRow("Anti-aliasing", self.samples)
         form.addRow("Ambient occl.", self.ao_samples)
         form.addRow(self.shadows)
-        self.ao = QtWidgets.QCheckBox("Ambient occlusion (OpenGL SSAO)")
-        self.aa = QtWidgets.QCheckBox("Supersampling (OpenGL)", checked=True)
+        self.ao = QtWidgets.QCheckBox("Ambient occlusion", toolTip="OpenGL screen-space ambient occlusion (SSAO)")
+        self.aa = QtWidgets.QCheckBox("Supersampling", checked=True, toolTip="OpenGL anti-aliasing")
         form.addRow(self.ao)
         form.addRow(self.aa)
         self.renderer.currentIndexChanged.connect(self._renderer_changed)
@@ -166,7 +167,8 @@ class RenderPage(QtWidgets.QWidget):
         browse.clicked.connect(self._browse)
         out.addWidget(self.output, 1); out.addWidget(browse)
         form.addRow("File", out)
-        self.animation = QtWidgets.QCheckBox("Render animation (all frames, uses timeline fps/stride)")
+        self.animation = QtWidgets.QCheckBox("Render animation",
+                                             toolTip="All frames, at the timeline's fps and stride")
         form.addRow(self.animation)
         self.movie_format = QtWidgets.QComboBox()
         self.movie_format.addItems(list(MOVIE_FORMATS))
@@ -177,7 +179,8 @@ class RenderPage(QtWidgets.QWidget):
         form.addRow("Movie quality", self.movie_quality)
         go = self.render_button = QtWidgets.QPushButton("Render")
         go.setObjectName("primary")
-        go.clicked.connect(self.renderRequested)
+        go.clicked.connect(self._render_clicked)
+        self.cancellable = False
         form.addRow(go)
         form.addRow(QtWidgets.QLabel("Python for this figure", objectName="section"))
         self.code = QtWidgets.QPlainTextEdit(readOnly=True)
@@ -188,7 +191,16 @@ class RenderPage(QtWidgets.QWidget):
         copy = QtWidgets.QPushButton("Copy code")
         copy.clicked.connect(lambda: QtWidgets.QApplication.clipboard().setText(self.code.toPlainText()))
         form.addRow(copy)
+        # narrow column: rows put their label above the field, and combo boxes shrink to a short
+        # elided text, so the form never scrolls sideways (the window's minimum width stays)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapAllRows)
+        for spin, px in ((self.time_per_frame, 100), (self.width, 70), (self.height, 70), (self.scale_length, 70)):
+            spin.setMinimumWidth(px)                   # their wide ranges would ask for much more
+        for combo in side.findChildren(QtWidgets.QComboBox):
+            combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(10)
         scroll = QtWidgets.QScrollArea()
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         scroll.setWidget(side)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
@@ -285,10 +297,16 @@ class RenderPage(QtWidgets.QWidget):
     def _show_frame_label(self):
         self.frame_label.setText(f"{self.width.value()} × {self.height.value()} px")
 
-    def set_busy(self, text: str = ""):
-        """While a picture renders: the Render button greys out and a spinner says what runs."""
-        self.render_button.setEnabled(not text)
-        self.render_button.setText(text or "Render")
+    def _render_clicked(self):
+        (self.cancelRequested if self.cancellable else self.renderRequested).emit()
+
+    def set_busy(self, text: str = "", cancellable: bool = False):
+        """While a picture renders, a spinner beside the picture size says what runs, and the Render
+        button greys out, or turns into Cancel when the render can be stopped (the ray tracer)."""
+        self.cancellable = bool(text) and cancellable
+        self.render_button.setEnabled(not text or self.cancellable)
+        self.render_button.setText("Cancel" if self.cancellable else text or "Render")
+        self.render_button.setToolTip("Stop the ray trace" if self.cancellable else "")
         self.busy_label.setText(text)
         self.busy_label.setVisible(bool(text))
 
@@ -554,6 +572,7 @@ def figure_code(window, page) -> str:
     src = getattr(pipe, "source", None) if pipe else None
     if src is not None and hasattr(src, "path"):
         args = [repr(src.path)] + ([f"format={src.format!r}"] if src.format else []) + \
+               ([f"join={src.join!r}"] if getattr(src, "join", "timestep") != "timestep" else []) + \
                [f"{k}={v!r}" for k, v in src.kwargs.items()]
         lines.append(f"pipe = import_file({', '.join(args)})")
     else:

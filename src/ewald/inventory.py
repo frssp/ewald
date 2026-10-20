@@ -217,11 +217,11 @@ def plugins_section() -> list[str]:
            f"Entry point groups `{plugins.READER_GROUP}`, `{plugins.WRITER_GROUP}`, `{plugins.MODIFIER_GROUP}`, "
            f"`{plugins.VISUAL_GROUP}`, `{plugins.OVERLAY_GROUP}`, `{plugins.COLORMAP_GROUP}`, "
            f"`{plugins.THEME_GROUP}`, `{plugins.TOOL_GROUP}`, `{plugins.UI_THEME_GROUP}`, "
-           f"`{plugins.AI_PROVIDER_GROUP}`, `{plugins.PANEL_GROUP}`, `{plugins.SETTINGS_PAGE_GROUP}` and "
+           f"`{plugins.AI_PROVIDER_GROUP}`, `{plugins.PANEL_GROUP}`, `{plugins.MENU_ITEM_GROUP}`, `{plugins.SETTINGS_PAGE_GROUP}` and "
            f"`{plugins.WORKFLOW_GROUP}`, or a file in "
            "`<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / "
            "`@colormap` / `@theme` / `@ai_tool` (or `@claude_tool`) / `@ui_theme` / `@ai_provider` / `@panel` "
-           "(an activity-bar side bar) / `@settings_page` (a Preferences page) / `@workflow_source` (workflows "
+           "(an activity-bar side bar or a tab under the 3D view) / `@menu_item` (an entry in a menu or the 3D view's right-click menu) / `@settings_page` (a Preferences page) / `@workflow_source` (workflows "
            "a side bar lists and a notebook opens); `ewald plugins` lists "
            "what loaded. "
            "Details: [Plugins](plugins/index.md).", ""]

@@ -73,3 +73,24 @@ def test_papers_cli(capsys):
     main(["examples", "--papers"])
     out = capsys.readouterr().out
     assert all(p.name in out and p.script in out for p in papers.PAPERS)
+
+
+def test_fetch_keeps_sub_folders(tmp_path, monkeypatch):
+    """A NEB folder (00/, 01/, ...) or a series of runs keeps its layout, so load() sees it."""
+    content = b"Fe\n"
+    src = tmp_path / "upstream"
+    src.write_bytes(content)
+    sha = hashlib.sha256(content).hexdigest()
+    files = tuple(papers.RemoteFile(f"{i:02d}/POSCAR", src.as_uri(), sha, len(content)) for i in range(3))
+    monkeypatch.setattr(papers, "PAPERS", [papers.Paper("neb", "t", "c", "doi", "src", "MIT", "d", "r", "s.py", files)])
+    folder = examples.fetch("neb", tmp_path / "cache", quiet=True)
+    assert sorted(p.relative_to(folder).as_posix() for p in folder.rglob("POSCAR")) == ["00/POSCAR", "01/POSCAR", "02/POSCAR"]
+
+
+def test_paper_scripts_open_as_notebooks():
+    """The docstring shares the first cell with the imports, so the app shows no echoed string."""
+    from ewald.notebook import Notebook
+
+    for p in papers.PAPERS:
+        nb = Notebook.load(ROOT / "examples" / "papers" / p.script)
+        assert "import" in nb.cells[0].source, p.script

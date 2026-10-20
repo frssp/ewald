@@ -167,10 +167,25 @@ def source_for(path: str):
     return None
 
 
+def _folder_like(path: str) -> bool:
+    """A local path, or ``host:/path`` on an SSH host, rather than ``scheme:id`` of a source."""
+    import os
+
+    from . import plugins
+    from .io import remote
+
+    if plugins.path_scheme(path) is None or os.path.isdir(os.path.expanduser(path)):
+        return True
+    return remote.is_remote(path) and "/" in path.split(":", 1)[1] and plugins.scheme_reader(path) is None
+
+
 def describe(path: str, source: str | None = None) -> Workflow:
-    """The workflow at ``path`` (a path of an installed source, ``simagent:1234``), with its steps.
+    """The workflow at ``path`` (a path of an installed source, ``simagent:1234``, or a folder of
+    calculations, local or ``host:/path``: :mod:`ewald.workflow_folder`), with its steps.
     ``source`` names the source when ``path`` is a bare id it understands (``"1234"``)."""
     plugin = sources().get(source) if source else source_for(path)
+    if plugin is None and not source and _folder_like(path):
+        plugin = sources().get("folders")
     if plugin is None:
         known = ", ".join(f"{s}:" for p in sources().values() for s in p.schemes) or "none installed"
         raise LookupError(f"no workflow source for {path!r} (sources: {known})")
@@ -201,9 +216,10 @@ _TAKEN = {"pipe", "load", "import_file", "show", "view", "paint", "hide", "isola
 
 
 def variable_name(name: str, taken=()) -> str:
-    """A Python name for a step called ``name`` ("bands/scf" -> ``bands_scf``), not one of
+    """A Python name for a step called ``name`` ("bands/scf" -> ``bands_scf``, "02_neb" -> ``neb``), not one of
     ``taken`` nor a name the notebook imports."""
     base = re.sub(r"\W+", "_", name.strip().lower()).strip("_") or "step"
+    base = re.sub(r"^\d+_+(?=[a-z])", "", base)   # "01_relax" (a folder in step order) -> relax
     if base[0].isdigit():
         base = f"step_{base}"
     if keyword.iskeyword(base):
@@ -221,9 +237,9 @@ def _one_line(value) -> str:
 
 
 def notebook_text(wf: Workflow, pipeline_name: str = "pipe") -> str:
-    """One notebook (percent format) for a whole workflow: a heading with what it is, one
-    ``name = load(path)`` cell per step that has a result and per top-level output structure,
-    and ``pipe`` set to the main result, so the 3D view starts there and any step is one
+    """One notebook (percent format) for a whole workflow: a heading with what it is, and one
+    cell that loads every step with a result and every top-level output structure
+    (``name = load(path)``, a line each) and sets ``pipe`` to the main result, so the 3D view starts there and any step is one
     reassignment (``pipe = relax``) or ``show(scf, ...)`` away. Names, labels and numbers from
     the source only reach comments and markdown, on one line each, and paths only string
     literals, so a workflow cannot put code into the notebook."""
@@ -242,26 +258,29 @@ def notebook_text(wf: Workflow, pipeline_name: str = "pipe") -> str:
     cells = ["# %% [markdown]\n" + "\n".join(head), "# %%\n" + IMPORTS]
     taken: set = set()
     by_path: dict = {}
+    loads = []
     for _, step in wf.walk():
         if step.path and step.path not in by_path:
             name = variable_name(step.name, taken)
             taken.add(name)
             by_path[step.path] = name
-            note = f"  # {line(step.mark())}" if step.mark() else ""
-            cells.append(f"# %% {line(step.name)}\n{name} = load({str(step.path)!r}){note}")
+            loads.append((f"{name} = load({str(step.path)!r})", line(step.mark()) if step.failed else ""))
     for o in wf.outputs:
         if o.path and o.kind in ("structure", "trajectory", "band") and o.path not in by_path:
             name = variable_name(o.name, taken)
             taken.add(name)
             by_path[o.path] = name
-            cells.append(f"# %% {line(o.name)}\n{name} = load({str(o.path)!r})")
+            loads.append((f"{name} = load({str(o.path)!r})", line(o.note)))
     main = by_path.get(wf.path) if wf.path else None
     if main is None and wf.path:
         main = f"load({str(wf.path)!r})"
     if main is None and by_path:
         main = list(by_path.values())[-1]
+    body = [f"{code}  # {note}" if note else code for code, note in loads]
     if main is not None:
-        cells.append(f"# %%\n{pipeline_name} = {main}")
+        body.append(f"{pipeline_name} = {main}")
+    if body:
+        cells.append("# %%\n" + "\n".join(body))
     return "\n\n".join(cells) + "\n"
 
 

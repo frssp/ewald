@@ -5,6 +5,7 @@ import importlib.util
 import os
 import contextlib
 import sys
+import threading
 import time
 
 import numpy as np
@@ -16,8 +17,9 @@ check_qt_binding()  # before PySide6: a clear error when another Qt binding is l
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import modifiers as mods
+from ..raytrace import RenderCancelled
 from ..render import camera_state, render
-from .busy import busy
+from .busy import busy, finish_orphans
 from .ask_panel import AskPanel, agent_from_settings, code_cells_mode
 from .collapsible import make_collapsible
 from .compute import ComputeRunner, warm_up_jit
@@ -49,17 +51,27 @@ RENDER_IN_BACKGROUND = True   # the Render page ray traces on a worker thread (t
 
 
 class _RenderWorker(QtCore.QThread):
-    """Runs one ``render(...)`` call off the GUI thread."""
+    """Runs one ``render(..., progress=...)`` call off the GUI thread; :meth:`cancel` stops it
+    after the batch of rows being traced."""
 
     done = QtCore.Signal(object, object)   # image (None on failure), error (None or the exception)
+    progressed = QtCore.Signal(int)        # percent of rows traced
 
     def __init__(self, call, parent=None):
         super().__init__(parent)
         self.call = call
+        self.cancelled = threading.Event()
+
+    def cancel(self):
+        self.cancelled.set()
+
+    def _progress(self, done, total):
+        self.progressed.emit(int(100 * done / max(total, 1)))
+        return not self.cancelled.is_set()
 
     def run(self):
         try:
-            self.done.emit(self.call(), None)
+            self.done.emit(self.call(self._progress), None)
         except Exception as exc:
             self.done.emit(None, exc)
 
@@ -101,6 +113,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.workbench.register("viewport", self.viewport, "Structure", home="editor", native=True)
         self.render_page = RenderPage(self)
         self.render_page.renderRequested.connect(self.render_from_page)
+        self.render_page.cancelRequested.connect(self.cancel_render)
         self.workspaces = self.workbench.pages
         self.workspaces.addWidget(self.render_page)
         # the Render page shows the 3D view itself, with the picture's frame on it
@@ -128,6 +141,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.panel.changed.connect(self.recompute)
         self.panel.pipelineReplaced.connect(self.set_pipeline)
         self.panel.askRequested.connect(self.ask_claude)
+        self.panel.askAboutRequested.connect(self.ask_about_cell)
         self.panel.plotCreated.connect(self._connect_plot)
         self.notebook_dock = self._dock(self.panel, "Notebook", QtCore.Qt.LeftDockWidgetArea, 560)
         # the notebook tab row is the panel's title bar: drag its empty part to move the panel
@@ -316,6 +330,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.frame = 0
         self.timeline._set(0) if self.timeline.frame != 0 else self.recompute()
         self.live_reload.report_incomplete()
+        self.ask_panel.update_selection()
         self._plugin_event("pipeline", pipeline)
 
     def clear_pipeline(self):
@@ -337,6 +352,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.frame = 0
         self.status.setText("")
         self.setWindowTitle("EWALD")
+        self.ask_panel.update_selection()
         self._push_console()
 
     def set_frame(self, frame):
@@ -520,7 +536,8 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         kw.update(overrides)
         text = self.render_page.label_text(self.frame, self.data)
         data, camera = self.data, camera_state(self.viewport.plotter)
-        return kw, lambda: render(data, filename, camera=camera, text=text or None, **kw)
+        return kw, lambda progress=None: render(data, filename, camera=camera, text=text or None,
+                                                progress=progress, **kw)
 
     def render_image(self, filename=None, return_image=False, **overrides):
         if self.data is None:
@@ -570,9 +587,10 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         kw, call = self._render_call(out, {})
         name = os.path.basename(out)
         if kw.get("renderer") == "raytrace" and RENDER_IN_BACKGROUND:
-            page.set_busy("Ray tracing…")
+            page.set_busy("Ray tracing…", cancellable=True)
             self.message(f"Ray tracing {name}…")
             worker = self._render_worker = workers.detach(_RenderWorker(call))  # the window may close first
+            worker.progressed.connect(lambda pct: self._render_progress(worker, pct))
             worker.done.connect(lambda img, error: self._page_rendered(out, img, error))
             worker.start()
             return
@@ -583,11 +601,24 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
             page.set_busy("")
         self._show_rendered(img)
 
+    def _render_progress(self, worker, pct):
+        if worker is self._render_worker and not worker.cancelled.is_set():
+            self.render_page.set_busy(f"Ray tracing… {pct}%", cancellable=True)
+
+    def cancel_render(self):
+        """Stop the background ray trace (the Render page's Cancel button)."""
+        if self._render_worker is not None:
+            self._render_worker.cancel()
+            self.render_page.set_busy("Cancelling…")
+
     def _page_rendered(self, out, img, error):
         if self._render_worker is not None:
             self._render_worker.wait()
         self._render_worker = None
         self.render_page.set_busy("")
+        if isinstance(error, RenderCancelled):
+            self.message("Ray trace cancelled")
+            return
         if error:
             self._render_failed(error)
             return
@@ -613,7 +644,9 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         if self.isVisible() and not self.panel.confirm_discard(title="Quit"):
             event.ignore()
             return
-        self.wait_render()                 # a ray trace still running finishes first
+        self.cancel_render()               # a ray trace still running stops after its current rows
+        self.wait_render()
+        finish_orphans()                   # an open or SSH call the user cancelled
         prefs.save_layout(self, self.settings)
         for view in self.panel.views():
             if view.notebook.kernel is not None:

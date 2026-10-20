@@ -9,7 +9,6 @@ D* = 1.23(10) x 10^-5 cm^2/s and an MSD of 0.443, 0.707, 0.892 A^2 at 0.1, 0.2, 
 
     python examples/papers/li6ps5cl_diffusion.py [outdir]
 """
-# %%
 import sys
 from pathlib import Path
 

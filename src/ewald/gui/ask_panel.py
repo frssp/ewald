@@ -433,9 +433,12 @@ class AskPanel(QtWidgets.QWidget):
     def update_selection(self):
         """Refresh the 'N atoms selected' line (the main window calls this on every pick)."""
         try:
-            _pipe, _frame, indices = self.context()
+            pipe, _frame, indices = self.context()
         except Exception:
-            indices = []
+            pipe, indices = None, []
+        for b in self.starters[:2]:                 # about the structure: only once there is one
+            b.setEnabled(pipe is not None)
+            b.setToolTip("" if pipe is not None else "Open a structure first")
         n = len(indices)
         self.selection_label.setText(f"{n} atom{'s' if n != 1 else ''} selected" if n
                                      else "Nothing picked: asks about the frame")

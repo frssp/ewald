@@ -228,6 +228,8 @@ class MenusMixin:
             "scheme such as aiida:1234 or simagent:1234")
         f.addAction("Remote &computers (SSH profiles)…", QtGui.QKeySequence("Ctrl+Alt+R"), self.show_remotes)
         f.addAction("Load &NEB folder…", self.open_neb_dialog)
+        f.addAction("Open &workflow folder…", self.open_workflow_dialog).setStatusTip(
+            "A folder of calculations (relax, NEB, MD restarts, phonopy) as one notebook, a load() per step")
         ex = f.addMenu(icon("example"), "Open e&xample")
         for example in examples.EXAMPLES:
             act = ex.addAction(f"{example.file}  ({example.format})", lambda e=example: self.open_example(e.file))
@@ -306,6 +308,10 @@ class MenusMixin:
         n.addAction("Move cell &up", lambda: self._cell_action("up"), "Ctrl+Shift+Up")
         n.addAction("Move cell &down", lambda: self._cell_action("down"), "Ctrl+Shift+Down")
         n.addAction("D&elete cell", lambda: self._cell_action("delete"))
+        n.addAction("Change cell to c&ode", lambda: self._cell_action("kind:code"), "Ctrl+M, Y").setToolTip(
+            "Turn a text cell into a code cell (Esc, then Y, like Jupyter)")
+        n.addAction("Change cell to &text", lambda: self._cell_action("kind:markdown"), "Ctrl+M, M").setToolTip(
+            "Turn a code cell into a Markdown text cell (Esc, then M); its steps leave the pipeline")
         n.addSeparator()
         n.addAction("&Clear cell output", lambda: self._cell_action("clear"), "Ctrl+Shift+Backspace")
         n.addAction("Clear &all outputs", lambda: self._on_view("clear_outputs"),

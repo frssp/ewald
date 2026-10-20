@@ -108,6 +108,26 @@ def build_parser():
     f.add_argument("--rounds", type=int, default=4, help="attempts to fix failing checks (default 4)")
     f.add_argument("--model", default=None)
     _ai_arguments(f)
+    ev = sub.add_parser("eval", help="score an AI model on tasks with known answers (costs API tokens; see --dry-run)")
+    ev.add_argument("--model", default=None)
+    _ai_arguments(ev)
+    ev.add_argument("--effort", default=None, help="effort for providers that have one (default: Preferences > AI)")
+    ev.add_argument("--tasks", default=None, metavar="IDS", help="task ids or globs, comma-separated (e.g. 'sto-*,cu-fmax')")
+    ev.add_argument("--category", default=None,
+                    help="only these categories: answer, step, view, export, code, paper (comma-separated)")
+    ev.add_argument("--list", action="store_true", help="list the tasks and exit")
+    ev.add_argument("--allow-code", action="store_true",
+                    help="let the model run cells it wrote (also runs the 'code' tasks, which are skipped otherwise)")
+    ev.add_argument("--repeat", type=int, default=1, help="run every task N times (spread of the score)")
+    ev.add_argument("--max-turns", type=int, default=30, help="tool rounds per task (default 30)")
+    ev.add_argument("--out", default=None, metavar="FILE.json", help="save the run (answers, notebooks, tokens) as JSON")
+    ev.add_argument("--compare", nargs=2, default=None, metavar=("A.json", "B.json"),
+                    help="compare two saved runs instead of running")
+    ev.add_argument("--dry-run", action="store_true",
+                    help="play the reference solutions instead of a model: checks tasks and graders, no key needed")
+    ev.add_argument("--price", default=None, metavar="IN,OUT[,CACHE_READ,CACHE_WRITE]",
+                    help="USD per million tokens for this model (built in for current Claude models)")
+    ev.add_argument("--no-download", action="store_true", help="skip paper tasks whose data is not downloaded yet")
     m = sub.add_parser("mcp", help="serve the analysis tools over MCP (stdio)")
     m.add_argument("input", nargs="?")
     m.add_argument("--allow-code", action="store_true")
@@ -252,6 +272,8 @@ def _run(args):
         return update(args.output, gui=args.gui)
     if args.cmd == "remote":
         return _remote_cmd(args)
+    if args.cmd == "eval":
+        return _eval(args)
     if args.cmd == "mcp":
         from .llm.mcp_server import serve
 
@@ -450,6 +472,8 @@ def _print_plugins(as_json=False, enable=None, disable=None):
         print(f"ai provider {v['name']:<19} {v['label'][:14]:<14} {v['description'][:60]}  [{v['origin']}]")
     for v in st.get("panels", []):
         print(f"panel {v['name']:<25} {v['title'][:14]:<14} {v['description'][:60]}  [{v['origin']}]")
+    for v in st.get("menu_items", []):
+        print(f"menu item {v['name']:<21} {v['menu'][:14]:<14} {v['description'][:60]}  [{v['origin']}]")
     for v in st.get("settings_pages", []):
         print(f"settings {v['name']:<22} {v['title'][:14]:<14} {v['description'][:60]}  [{v['origin']}]")
     for v in st.get("workflows", []):
@@ -477,6 +501,43 @@ def _ai_options(args, effort: bool = True) -> dict:
     if not effort:
         ai.pop("effort")
     return ai
+
+
+def _eval(args):
+    from .llm import evals
+    from .llm.eval_tasks import TASKS
+
+    if args.compare:
+        print(evals.compare(evals.load(args.compare[0]), evals.load(args.compare[1])))
+        return
+    tasks = evals.select(TASKS, args.tasks, args.category)
+    if not tasks:
+        sys.exit("ewald eval: no task matches; see ewald eval --list")
+    if args.list:
+        for t in tasks:
+            note = " [--allow-code]" if t.allow_code else (" [download]" if t.needs_download else "")
+            print(f"{t.id:<20} {t.category:<7} {t.file:<34} {t.prompt[:70]}{note}")
+        print(f"{len(tasks)} tasks")
+        return
+    options, prices = {}, None
+    if not args.dry_run:
+        options = _ai_options(args)
+        if args.effort:
+            options["effort"] = args.effort
+        if args.price:
+            model = options["model"] or options["provider"].default_model
+            prices = {model: tuple(float(x) for x in args.price.split(","))}
+    try:
+        report = evals.run(tasks, agent_options=options, allow_code=args.allow_code, dry_run=args.dry_run,
+                           repeat=args.repeat, max_turns=args.max_turns, prices=prices,
+                           fetch=not args.no_download, progress=lambda r: print(evals.format_result(r), flush=True))
+    except evals.FatalError as exc:
+        sys.exit(f"ewald eval: {exc}")
+    print()
+    print(evals.format_summary(report))
+    if args.out:
+        print("saved", evals.save(report, args.out))
+    return 0 if report["summary"]["passed"] == report["summary"]["ran"] or not args.dry_run else 1
 
 
 def _forge(args):

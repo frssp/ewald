@@ -47,6 +47,11 @@ from .pipeline import Modifier, Pipeline, PythonModifier
 PIPELINE_NAME = "pipe"
 _DATA_DIRS: contextvars.ContextVar = contextvars.ContextVar("ewald_notebook_data_dirs", default=())
 _MARK = re.compile(r"^# %%(.*)$")
+# A code cell tagged ``# %% [each frame]`` or ``# %% [all frames]`` is a Python step: its body
+# runs at every frame with ``frame`` and ``data``, or once with ``frames`` and ``data``
+# (:func:`ewald.pipeline.each_frame` / :func:`~ewald.pipeline.all_frames`).
+FRAME_TAGS = {"each": "[each frame]", "all": "[all frames]"}
+_FRAME_TAG = re.compile(r"\[(each frame|all frames)\]")
 
 
 @dataclass
@@ -65,7 +70,8 @@ class Output:
 class Cell:
     source: str = ""
     kind: str = "code"                 # 'code' or 'markdown'
-    title: str = ""                    # text after '# %%' (besides [markdown])
+    title: str = ""                    # text after '# %%' (besides [markdown] and the frames tag)
+    frames: str = ""                   # '' (runs once), 'each' or 'all': the cell's body is a step, see FRAME_TAGS
     outputs: list = field(default_factory=list)
     added: list = field(default_factory=list)   # modifiers this cell's last run put into the pipeline
     count: int | None = None           # execution counter, like Jupyter's In [n]
@@ -135,7 +141,9 @@ def _apply_summary(mod, summary: dict):
 def resolve_data_path(path):
     """``path`` itself when it exists (or is not a plain local path); else the same relative
     path, or file name, in the folders of the notebook that is running (its own folder and the
-    data an ``.ewd`` carries)."""
+    data an ``.ewd`` carries). A list of paths is resolved entry by entry."""
+    if isinstance(path, (list, tuple)):
+        return [resolve_data_path(p) for p in path]
     if not isinstance(path, (str, os.PathLike)):
         return path
     text = os.fspath(path)
@@ -220,6 +228,7 @@ def load_code(pipeline: Pipeline, name: str = PIPELINE_NAME) -> str | None:
     if src is None or not hasattr(src, "path"):
         return None
     args = [repr(src.path)] + ([f"format={src.format!r}"] if getattr(src, "format", None) else []) + \
+        ([f"join={src.join!r}"] if getattr(src, "join", "timestep") != "timestep" else []) + \
         [f"{k}={v!r}" for k, v in getattr(src, "kwargs", {}).items()]
     return f"{name} = load({', '.join(args)})"
 
@@ -354,7 +363,7 @@ class Notebook:
 
         self._require_trust()
         cell = self.cells[index]
-        specs = [{"id": c.id, "kind": c.kind, "source": c.source} for c in self.cells]
+        specs = [{"id": c.id, "kind": c.kind, "source": c.source, "frames": c.frames} for c in self.cells]
         try:
             r = self.kernel.run(specs, index, run_below, self.counter, self.pipeline_name, self.path,
                                 self._data_dirs(), plot_style=(self.plot_style, self.plot_tokens))
@@ -496,7 +505,13 @@ class Notebook:
         restore_show = _patch_show()
         try:
             tree = ast.parse(cell.source, filename)
-            last = tree.body.pop() if tree.body and isinstance(tree.body[-1], ast.Expr) else None
+            if cell.kind == "code" and cell.frames in FRAME_TAGS:
+                if self.pipeline is None:
+                    raise NameError(f"a {FRAME_TAGS[cell.frames]} cell adds a step to `{self.pipeline_name}`: "
+                                    "load a file first")
+                tree, last = _frame_step(tree, cell, self.pipeline_name), None
+            else:
+                last = tree.body.pop() if tree.body and isinstance(tree.body[-1], ast.Expr) else None
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out), _interruptible(self):
                 exec(compile(tree, filename, "exec"), self.namespace)
                 value = None if last is None else eval(compile(ast.Expression(last.value), filename, "eval"),
@@ -544,6 +559,48 @@ class Notebook:
                 _remove(pipe.modifiers, m)
         self.dirty = True
         return cell
+
+    def set_frames(self, cell: Cell, frames: str) -> bool:
+        """Make ``cell`` run once (``''``), as a step at each frame (``'each'``) or once over all
+        frames (``'all'``); True if the cell has to run again to add its step. Going back to
+        once takes out the step the cell added and leaves the cell stale (its code alone did
+        not run yet)."""
+        if frames not in ("", *FRAME_TAGS):
+            raise ValueError(f"frames must be '', 'each' or 'all', not {frames!r}")
+        if cell.frames == frames:
+            return False
+        cell.frames = frames
+        self.dirty = True
+        if frames:
+            return True
+        pipe = self.pipeline
+        if pipe is not None and self.kernel is None:
+            for m in cell.added:
+                _remove(pipe.modifiers, m)
+            cell.added = []
+        cell.state = "stale"
+        return False
+
+    def set_kind(self, cell: Cell, kind: str) -> bool:
+        """Turn ``cell`` into a ``'code'`` or ``'markdown'`` cell, keeping its text (Jupyter's Y / M).
+        A code cell that becomes text loses its outputs and the steps it added; a text cell that
+        becomes code is new (not run yet). True if the kind changed."""
+        if kind not in ("code", "markdown"):
+            raise ValueError(f"kind must be 'code' or 'markdown', not {kind!r}")
+        if cell.kind == kind:
+            return False
+        if kind == "markdown":
+            pipe = self.pipeline
+            if pipe is not None and self.kernel is None:
+                for m in cell.added:
+                    _remove(pipe.modifiers, m)
+            cell.added, cell.steps, cell.shadow, cell.frames = [], [], None, ""
+            cell.outputs, cell.count, cell.state = [], None, "ok"
+        else:
+            cell.outputs, cell.count, cell.state = [], None, "new"
+        cell.kind = kind
+        self.dirty = True
+        return True
 
     def move(self, cell, to: int):
         """Move a cell to position ``to``; the pipeline follows the new cell order."""
@@ -679,9 +736,9 @@ class Notebook:
 
     # ------------------------------------------------------------ undo
     def snapshot(self) -> tuple:
-        """The notebook's content as text: (kind, title, source) per cell. Everything else
-        (pipeline, outputs) follows from it by running the cells."""
-        return tuple((c.kind, c.title, c.source) for c in self.cells)
+        """The notebook's content as text: (kind, title, source, frames) per cell. Everything
+        else (pipeline, outputs) follows from it by running the cells."""
+        return tuple((c.kind, c.title, c.source, c.frames) for c in self.cells)
 
     def restore(self, snap: tuple) -> list[Cell]:
         """Make the cells match ``snap`` (undo/redo). Unchanged cells keep their outputs and
@@ -702,15 +759,15 @@ class Notebook:
                 if pipe is not None:
                     for m in c.added:
                         _remove(pipe.modifiers, m)
-            for kind, title, source in snap[j1:j2]:
-                cell = Cell(source, kind=kind, title=title, state="new" if kind == "code" else "ok")
+            for kind, title, source, frames in snap[j1:j2]:
+                cell = Cell(source, kind=kind, title=title, frames=frames, state="new" if kind == "code" else "ok")
                 cells.append(cell)
                 fresh.append(cell)
         self.cells = cells
         for cell in fresh:
             if cell.kind != "code":
                 continue
-            if cell.is_step or cell.is_view:
+            if cell.is_step or cell.is_view or cell.frames:
                 self.run_cell(cell, run_below=False)
             else:
                 cell.state = "stale"
@@ -727,6 +784,8 @@ class Notebook:
         parts = [p for p in parts if p]
         for cell in self.cells:
             head = "# %%" + (f" {cell.title}" if cell.title else "")
+            if cell.kind == "code" and cell.frames in FRAME_TAGS:
+                head += " " + FRAME_TAGS[cell.frames]
             if cell.kind == "markdown":
                 head += " [markdown]"
                 body = "\n".join(("# " + line) if line else "#" for line in cell.source.rstrip("\n").splitlines())
@@ -817,8 +876,10 @@ class Notebook:
                 close()
                 rest = m.group(1).strip()
                 kind = "markdown" if re.search(r"\[(markdown|md)\]", rest) else "code"
-                title = re.sub(r"\[(markdown|md)\]", "", rest).strip()
-                current, lines = Cell(kind=kind, title=title), []
+                tag = _FRAME_TAG.search(rest) if kind == "code" else None
+                frames = "" if tag is None else tag.group(1).split()[0]
+                title = _FRAME_TAG.sub("", re.sub(r"\[(markdown|md)\]", "", rest)).strip()
+                current, lines = Cell(kind=kind, title=title, frames=frames), []
             else:
                 lines.append(line)
         close()
@@ -1023,6 +1084,40 @@ def _format_error(exc: BaseException, filename: str) -> str:
     text = "".join(traceback.format_list(frames)) if frames else ""
     return (("Traceback (most recent call last):\n" + text) if text else "") + \
         "".join(traceback.format_exception_only(type(exc), exc))
+
+
+def _frame_step(tree, cell: Cell, pipeline_name: str):
+    """The code of a ``[each frame]`` / ``[all frames]`` cell: its body as the step function
+    ``f(frame, data)`` / ``f(frames, data)``, added to the pipeline (line numbers kept). The step
+    is named after the cell's title; nothing else is left in the notebook's namespace."""
+    each = cell.frames == "each"
+    name = re.sub(r"\W+", "_", cell.title).strip("_").lower() or ("each_frame" if each else "all_frames") + "_cell"
+    template = ast.parse(
+        f"from ewald.pipeline import {'each_frame' if each else 'all_frames'} as _ewald_mark\n"
+        f"from ewald.notebook import _named as _ewald_named\n"
+        f"@_ewald_mark\ndef _ewald_step({'frame' if each else 'frames'}, data):\n    pass\n"
+        f"{pipeline_name}.add(_ewald_named(_ewald_step, {name!r}))\n"
+        f"del _ewald_step, _ewald_mark, _ewald_named\n")
+    func = template.body[2]
+    body = tree.body or [ast.Pass(lineno=1, col_offset=0, end_lineno=1, end_col_offset=0)]
+    func.body = body
+    first = body[0].lineno
+    for node in template.body:
+        for n in ast.walk(node) if node is not func else [func, *func.decorator_list, func.args]:
+            if hasattr(n, "lineno"):   # the wrapper's lines point at the cell's first line
+                n.lineno = n.end_lineno = first
+    return ast.fix_missing_locations(template)
+
+
+def _named(function, name: str):
+    """``function`` called ``name`` (also in tracebacks)."""
+    function.__name__ = function.__qualname__ = name
+    try:
+        function.__code__ = function.__code__.replace(co_name=name, **(
+            {"co_qualname": name} if hasattr(function.__code__, "co_qualname") else {}))
+    except (TypeError, ValueError):
+        pass
+    return function
 
 
 def _figure_numbers() -> set:

@@ -15,7 +15,6 @@ alpha_R below them, and the higher left-handed alpha_L/C7ax basins at phi > 0.
 
     python examples/papers/alanine_dipeptide_fes.py [outdir]
 """
-# %%
 import sys
 from pathlib import Path
 

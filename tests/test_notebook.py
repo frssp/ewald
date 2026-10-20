@@ -94,6 +94,23 @@ def test_clear_outputs_drops_them_from_the_saved_file(nb, tmp_path):
     assert all(not c.outputs for c in Notebook.load(str(path)).cells)
 
 
+def test_set_kind_turns_code_into_text_and_back_like_jupyter(nb):
+    assert nb.run_all()
+    cell = nb.cells[2]
+    mod = cell.added[0]
+    assert mod in nb.pipeline.modifiers
+    assert nb.set_kind(cell, "markdown") and nb.dirty
+    assert cell.kind == "markdown" and "CoordinationAnalysis" in cell.source
+    assert mod not in nb.pipeline.modifiers and not cell.added and cell.count is None
+    assert "# %% [markdown]" in nb.to_py()
+    assert not nb.set_kind(cell, "markdown")               # already text: nothing to do
+    assert nb.set_kind(cell, "code") and cell.state == "new"
+    nb.run_cell(2)
+    assert any(isinstance(m, mods.CoordinationAnalysis) for m in nb.pipeline.modifiers)
+    with pytest.raises(ValueError):
+        nb.set_kind(cell, "raw")
+
+
 def test_rerunning_a_cell_replaces_its_modifier_in_place(nb):
     nb.run_all()
     first = nb.pipeline.modifiers[0]
@@ -203,6 +220,42 @@ def test_show_of_the_pipeline_is_marked_for_a_live_plot(tmp_path):
     assert other.view is None                       # not the notebook's pipeline: an image
     again = from_ipynb(to_ipynb(nb))                # .ipynb keeps it (Jupyter shows the PNG)
     assert again.cells[1].outputs[1].view == live.view and again.cells[1].outputs[1].data == live.data
+
+
+def test_each_frame_and_all_frames_cells_are_steps(tmp_path):
+    from ewald import examples
+    from ewald.notebook_io import from_ipynb, to_ipynb
+
+    text = (f"# %%\nimport numpy as np\nfrom ewald import load\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n"
+            "height = 'mine'\n\n"
+            "# %% height [each frame]\ndata.attributes['z'] = data['Position'][:, 2].mean()\n\n"
+            "# %% [all frames]\nz = [d['Position'][:, 2].mean() for d in frames]\n"
+            "data.tables['height'] = {'Frame': np.arange(len(z)), 'Mean z': np.array(z)}\n\n"
+            "# %% [each frame]\ndata.attributes['boom'] = 1 / 0\n")
+    nb = Notebook.from_py(text)
+    assert [(c.title, c.frames) for c in nb.cells] == [("", ""), ("height", "each"), ("", "all"), ("", "each")]
+    assert nb.to_py() == text                                    # the tags stay in the file
+    assert nb.run_all()                                          # running a cell only adds its step
+    pipe = nb.pipeline
+    assert [m.name for m in pipe.modifiers] == ["height", "all_frames_cell", "each_frame_cell"]
+    assert nb.namespace["height"] == "mine" and "_ewald_step" not in nb.namespace   # nothing left behind
+    with pytest.raises(ZeroDivisionError) as err:
+        pipe.compute(0)
+    assert "line 1, in each_frame_cell" in "".join(__import__("traceback").format_tb(err.tb))
+    assert not nb.set_frames(nb.cells[3], "")                    # back to once: its step goes
+    assert nb.cells[3].state == "stale" and [m.name for m in pipe.modifiers] == ["height", "all_frames_cell"]
+    d = pipe.compute(4)
+    assert d.attributes["z"] == pytest.approx(d["Position"][:, 2].mean()) and len(d.tables["height"]["Frame"]) == 10
+    assert nb.run_cell(nb.cells[1], run_below=False) and len(pipe.modifiers) == 2   # again: replaced
+    assert nb.set_frames(nb.cells[3], "all") and nb.cells[3].frames == "all"
+    again = from_ipynb(to_ipynb(nb))                              # .ipynb keeps it in the cell metadata
+    assert [c.frames for c in again.cells] == ["", "each", "all", "all"]
+    snap = nb.snapshot()
+    nb.cells[1].frames = ""
+    nb.restore(snap)                                             # undo brings the tag back and runs the cell
+    assert nb.cells[1].frames == "each" and nb.cells[1].state == "ok"
+    bare = Notebook.from_py("# %% [each frame]\ndata\n")
+    assert not bare.run_all() and "load a file first" in bare.cells[0].outputs[0].data
 
 
 def test_from_pipeline_and_save_load_roundtrip(cu_file, tmp_path):

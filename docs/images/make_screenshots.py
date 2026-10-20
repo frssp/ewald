@@ -80,6 +80,10 @@ def shoot(name):
     elif extra == "plugin-panel":
         dock = w.show_plugin_panel("sim_agent")
         w.resizeDocks([dock, w.notebook_dock], [320, 480], QtCore.Qt.Horizontal)
+        for task in ("relax this cell with PBE", "phonons at Gamma"):
+            dock.widget().findChild(QtWidgets.QLineEdit).setText(task)
+            dock.widget().findChild(QtWidgets.QLineEdit).returnPressed.emit()
+        w.show_plugin_panel("agent_jobs")      # the plugin's tab under the 3D view
     target = w
     if extra == "plugin-settings":
         from ewald.gui.preferences import PreferencesDialog

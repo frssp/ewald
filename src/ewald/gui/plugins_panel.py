@@ -433,6 +433,20 @@ class PluginsPanel(QtWidgets.QWidget):
                   f"{' to ' + entry.version if update and entry.version else ''}: {', '.join(names) or 'nothing registered'}")
         self.refresh()
         self.changed.emit()
+        self.highlight(path)
+
+    def highlight(self, path):
+        """Scroll to the installed plugin's row and mark it for a moment (it moved to INSTALLED)."""
+        for row in self.list_widget.findChildren(PluginRow):
+            if str(getattr(row.item, "path", "") or "") == str(path):
+                row.setProperty("fresh", True)
+                row.style().unpolish(row)
+                row.style().polish(row)
+                self.scroll.ensureWidgetVisible(row)
+                QtCore.QTimer.singleShot(2500, row, lambda r=row: (r.setProperty("fresh", False),
+                                                                  r.style().unpolish(r), r.style().polish(r)))
+                return row
+        return None
 
     def remove(self, item):
         if item.package:

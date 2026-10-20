@@ -2,8 +2,6 @@
 
 # EWALD: Extensible Workbench for Atomic Lattices & Dynamics
 
-[![CI](https://github.com/frssp/ewald/actions/workflows/ci.yml/badge.svg)](https://github.com/frssp/ewald/actions/workflows/ci.yml)
-
 EWALD (Python package `ewald`) is a notebook for atomistic structures and trajectories, with Claude
 built in. You open a VASP, LAMMPS, extxyz or any other file and ask for what you want to see, or
 write it yourself: the analysis becomes Python cells next to a 3D view, each step adds a modifier,
@@ -54,6 +52,7 @@ decided yet and comes later, if at all.
 ## Install
 
 ```bash
+git clone https://github.com/frssp/ewald && cd ewald
 pip install -e ".[all]"     # desktop: GUI, MDAnalysis formats, OVITO's DXA
 pip install -e ".[all,gpu]" # + CuPy for device="cuda" (NVIDIA)
 pip install -e .            # scripts only (clusters without a display)
@@ -158,6 +157,11 @@ converged, from which frame the MD is equilibrated, and whether the temperature 
 analysis runs on all of them, plots overlay, and `arrhenius(msd(runs))` gives the activation
 energy. [Runs](docs/user/runs.md)
 
+**Workflows.** A folder of calculations (relaxed end points, a NEB, an MD restarted in `run1/ run2/`,
+phonopy) opens as one notebook with a `load` line per step: File › Open workflow folder…, a folder
+dropped on the window, the Workflows side bar, or `workflow.describe("hpc:/scratch/study")`.
+AiiDA and other databases plug in as workflow sources. [Workflows](docs/user/workflows.md)
+
 **Files.** Native lazy readers for big text trajectories (LAMMPS dump, XDATCAR, extxyz, OUTCAR,
 vasprun.xml), H5MD and vaspout.h5, MDAnalysis for XTC/TRR/DCD and ASE for everything else, with
 matching writers. Files on an SSH host open by path (`cluster:/scratch/run/dump.lammpstrj`); remote
@@ -193,3 +197,11 @@ The [manual](docs/index.md) has the [user manual](docs/user/install.md), the
 the GUI's Help menu opens it. What exists, generated from the code: [feature inventory](docs/features.md).
 Open work: [TODO](docs/todo.md). Milestones: [roadmap](docs/ROADMAP.md). To build it as a site:
 `pip install -r docs/requirements.txt && mkdocs serve`.
+
+## Contributing and citing
+
+Issues and pull requests are welcome; [CONTRIBUTING.md](CONTRIBUTING.md) says how to set up, test
+and where a change belongs (often a plugin), and [SECURITY.md](SECURITY.md) how to report a
+vulnerability. If EWALD helps your research, please cite it with the metadata in
+[CITATION.cff](CITATION.cff) (GitHub's *Cite this repository* button gives BibTeX). You can
+support the project through [GitHub Sponsors](https://github.com/sponsors/frssp).

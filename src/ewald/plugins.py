@@ -79,10 +79,11 @@ from typing import Callable
 
 from .io.base import FrameReader
 from .plugin_kinds import (  # noqa: F401 (part of this module's API)
-    ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, PanelPlugin, ReaderPlugin, SettingsField,
+    ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, MenuItemPlugin, PanelPlugin, PlotTarget, ReaderPlugin, SettingsField,
     SettingsPagePlugin,
-    ThemePlugin, ToolPlugin, UiThemePlugin, VisualPlugin, WorkflowSourcePlugin, WriterPlugin, _builtin_ai_providers, _builtin_overlays, _builtin_readers,
-    _builtin_themes, _builtin_ui_themes, _builtin_visuals, _builtin_writers, path_scheme)
+    ThemePlugin, ToolPlugin, UiThemePlugin, VisualPlugin, WorkflowSourcePlugin, WriterPlugin, _builtin_ai_providers, _builtin_panels, _builtin_workflows, _builtin_overlays, _builtin_readers,
+    _builtin_themes, _builtin_ui_themes, _builtin_visuals, _builtin_writers, path_scheme, MENU_WHEN, MENUS, PANEL_AREAS,
+    TARGET_MENUS)
 from .plugin_manifest import (  # noqa: F401 (part of this module's API)
     Plugin, _read_toml, _version_tuple, ewald_version, file_manifest, version_satisfies)
 
@@ -99,6 +100,7 @@ TOOL_GROUP = "ewald.tools"
 UI_THEME_GROUP = "ewald.ui_themes"
 AI_PROVIDER_GROUP = "ewald.ai_providers"
 PANEL_GROUP = "ewald.panels"
+MENU_ITEM_GROUP = "ewald.menu_items"
 SETTINGS_PAGE_GROUP = "ewald.settings_pages"
 WORKFLOW_GROUP = "ewald.workflows"
 PLUGIN_GROUP = "ewald.plugins"      # names the package that holds ewald-plugin.toml
@@ -117,9 +119,10 @@ class _Registry:
     tools: dict = field(default_factory=dict)
     ui_themes: dict = field(default_factory=_builtin_ui_themes)
     ai_providers: dict = field(default_factory=_builtin_ai_providers)
-    panels: dict = field(default_factory=dict)
+    panels: dict = field(default_factory=_builtin_panels)
+    menu_items: dict = field(default_factory=dict)
     settings_pages: dict = field(default_factory=dict)
-    workflows: dict = field(default_factory=dict)
+    workflows: dict = field(default_factory=_builtin_workflows)
     errors: dict = field(default_factory=dict)      # origin -> message
     plugins: dict = field(default_factory=dict)     # id -> Plugin
     loaded: bool = False
@@ -127,7 +130,7 @@ class _Registry:
 
 _registry = _Registry()
 _REGISTRIES = ("readers", "writers", "modifiers", "visuals", "overlays", "colormaps", "themes", "tools",
-               "ui_themes", "ai_providers", "panels", "settings_pages", "workflows")
+               "ui_themes", "ai_providers", "panels", "menu_items", "settings_pages", "workflows")
 
 
 def plugin_dir() -> Path:
@@ -513,7 +516,7 @@ def _icon_path(icon: str, anchor) -> str:
 
 
 def panel(fn=None, *, name: str | None = None, title: str = "", icon: str = "", tooltip: str = "",
-          shortcut: str = "", width: int | None = None, description: str = ""):
+          shortcut: str = "", width: int | None = None, description: str = "", area: str = ""):
     """Decorator registering ``f(context) -> QWidget`` as a side bar of the desktop app: a button
     on the activity bar (the icon column at the left edge, next to Notebook, Plugins and AI chat)
     shows or hides it, and Window › Plugin panels lists it. The widget is built the first time
@@ -533,22 +536,25 @@ def panel(fn=None, *, name: str | None = None, title: str = "", icon: str = "", 
     ``add_step(modifier)`` and ``on(event, callback)`` for "data", "pipeline" and "settings".
     ``icon`` is a built-in icon name, an SVG/PNG file next to the plugin or SVG markup (``"<svg
     ...>"``, handy in a one-file plugin); an SVG drawn with ``currentColor`` takes the UI theme's
-    colors like the built-in buttons. ``name`` defaults to
+    colors like the built-in buttons. ``area="bottom"`` makes it a tab under the 3D view (next to
+    Python console, View, Data inspector, Plots and Log) instead of a side bar; it then has no
+    activity-bar button. ``name`` defaults to
     the function name, ``title`` to ``name``, ``description`` to the docstring."""
 
     def deco(f):
         register_panel(name or f.__name__, f, title=title, icon=icon, tooltip=tooltip, shortcut=shortcut,
-                       width=width, description=description)
+                       width=width, description=description, area=area)
         return f
 
     return deco(fn) if fn is not None else deco
 
 
 def register_panel(name: str, factory: Callable, title: str = "", icon: str = "", tooltip: str = "",
-                   shortcut: str = "", width: int | None = None, description: str = "",
+                   shortcut: str = "", width: int | None = None, description: str = "", area: str = "",
                    origin: str = "python") -> PanelPlugin:
-    """Register a side bar (see :func:`panel`). Arguments left out are read from attributes of
-    ``factory`` of the same names (``title``, ``icon``, ``tooltip``, ``shortcut``, ``width``),
+    """Register a side bar or bottom tab (see :func:`panel`). Arguments left out are read from
+    attributes of ``factory`` of the same names (``title``, ``icon``, ``tooltip``, ``shortcut``,
+    ``width``, ``area``),
     so an ``ewald.panels`` entry point, which passes only the name, can still set them."""
     if not callable(factory):
         raise TypeError(f"{factory!r} is not callable (a panel is a function or class taking the panel context)")
@@ -557,22 +563,92 @@ def register_panel(name: str, factory: Callable, title: str = "", icon: str = ""
     tooltip = tooltip or getattr(factory, "tooltip", "") or ""
     shortcut = shortcut or getattr(factory, "shortcut", "") or ""
     width = width or getattr(factory, "width", None) or 320
+    area = area or getattr(factory, "area", "") or "side"
+    if area not in PANEL_AREAS:
+        raise ValueError(f"panel {name!r}: area must be one of {', '.join(PANEL_AREAS)}, not {area!r}")
     try:
         anchor = inspect.getfile(factory)
     except TypeError:
         anchor = None
     description = description or " ".join(inspect.cleandoc(factory.__doc__ or "").split("\n\n")[0].split())
     plugin = PanelPlugin(name, factory, title or name, _icon_path(icon, anchor), tooltip, shortcut, int(width),
-                         description, getattr(_loading, "origin", None) or origin)
+                         description, getattr(_loading, "origin", None) or origin, area)
     _registry.panels[name] = plugin
     _contribute("panels", name)
     return plugin
 
 
 def panels() -> dict[str, PanelPlugin]:
-    """Side bars contributed by plugins, by name, in registration order."""
+    """Side bars and bottom tabs contributed by plugins, by name, in registration order."""
     load_plugins()
     return dict(_registry.panels)
+
+
+def menu_item(fn=None, *, name: str | None = None, title: str = "", menu: str = "Tools", shortcut: str = "",
+              icon: str = "", when: str = "", description: str = ""):
+    """Decorator adding ``f(context)`` to a menu of the desktop app::
+
+        from ewald.plugin_api import menu_item
+
+        @menu_item(title="Send to sim agent", menu="3D view", when="picks")
+        def send_picked(context):
+            context.message(f"{len(context.picks)} atoms sent")
+
+    ``menu`` is a menu of the menu bar ("File", "Edit", "View", "Notebook", "Insert", "Tools",
+    "Window", "Help"), "Toolbar" (a button on the main toolbar), or a right-click menu: "3D
+    view", "Notebook cell" (a cell's ⋯ menu) or "Plot" (a plot in the Plots tab or a view cell);
+    optionally with a submenu: ``"Tools/Sim agent"`` (on the toolbar, a drop-down button).
+    ``context`` is the one panels get (``settings``, ``pipeline``, ``data``, ``frame``, ``picks``,
+    ``message``, ``insert_cell``, ``add_step``, ...); in a cell's menu ``context.target`` is that
+    ``ewald.notebook.Cell``, in a plot's a ``PlotTarget`` (``table``, ``values``, ``xlim``,
+    ``ylim``, ``data``). ``when`` is
+    "data" or "picks" for an entry that only makes sense with a structure loaded or atoms
+    picked; ``shortcut`` a key sequence such as ``"Ctrl+Alt+P"``; ``icon`` as for :func:`panel`.
+    ``name`` defaults to the function name, ``title`` to ``name``, ``description`` (the tooltip)
+    to the docstring. Errors in ``f`` go to the status bar and the Log."""
+
+    def deco(f):
+        register_menu_item(name or f.__name__, f, title=title, menu=menu, shortcut=shortcut, icon=icon,
+                           when=when, description=description)
+        return f
+
+    return deco(fn) if fn is not None else deco
+
+
+def register_menu_item(name: str, callback: Callable, title: str = "", menu: str = "", shortcut: str = "",
+                       icon: str = "", when: str = "", description: str = "",
+                       origin: str = "python") -> MenuItemPlugin:
+    """Register a menu entry (see :func:`menu_item`). Arguments left out are read from attributes
+    of ``callback`` of the same names, so an ``ewald.menu_items`` entry point can set them."""
+    if not callable(callback):
+        raise TypeError(f"{callback!r} is not callable (a menu item is a function taking the panel context)")
+    title = title or getattr(callback, "title", "") or name
+    menu = menu or getattr(callback, "menu", "") or "Tools"
+    shortcut = shortcut or getattr(callback, "shortcut", "") or ""
+    icon = icon or getattr(callback, "icon", "") or ""
+    when = when or getattr(callback, "when", "") or ""
+    path = [p.strip() for p in menu.split("/")]
+    if path[0] not in MENUS or not all(path):
+        raise ValueError(f"menu item {name!r}: menu must start with one of {', '.join(MENUS)} "
+                         f"(a submenu after a /), not {menu!r}")
+    if when not in MENU_WHEN:
+        raise ValueError(f"menu item {name!r}: when must be '', 'data' or 'picks', not {when!r}")
+    try:
+        anchor = inspect.getfile(callback)
+    except TypeError:
+        anchor = None
+    description = description or " ".join(inspect.cleandoc(callback.__doc__ or "").split("\n\n")[0].split())
+    plugin = MenuItemPlugin(name, callback, title, "/".join(path), shortcut, _icon_path(icon, anchor) if icon else "",
+                            when, description, getattr(_loading, "origin", None) or origin)
+    _registry.menu_items[name] = plugin
+    _contribute("menu_items", name)
+    return plugin
+
+
+def menu_items() -> dict[str, MenuItemPlugin]:
+    """Menu entries contributed by plugins, by name, in registration order."""
+    load_plugins()
+    return dict(_registry.menu_items)
 def settings_page(name: str | None = None, title: str = "", fields=None, description: str = "",
                   actions: dict | None = None):
     """Decorator giving a plugin its own settings page, so it can be set up without Python
@@ -909,9 +985,12 @@ def load_plugins(force: bool = False):
         _registry.ui_themes = {**_builtin_ui_themes(), **keep}
         keep = {k: v for k, v in _registry.ai_providers.items() if v.origin == "python"}
         _registry.ai_providers = {**_builtin_ai_providers(), **keep}
-        _registry.panels = {k: v for k, v in _registry.panels.items() if v.origin == "python"}
+        _registry.panels = {**_builtin_panels(),
+                            **{k: v for k, v in _registry.panels.items() if v.origin == "python"}}
+        _registry.menu_items = {k: v for k, v in _registry.menu_items.items() if v.origin == "python"}
         _registry.settings_pages = {k: v for k, v in _registry.settings_pages.items() if v.origin == "python"}
-        _registry.workflows = {k: v for k, v in _registry.workflows.items() if v.origin == "python"}
+        _registry.workflows = {**_builtin_workflows(),
+                               **{k: v for k, v in _registry.workflows.items() if v.origin == "python"}}
         _registry.errors.clear()
         _registry.plugins = {}
     off = disabled()
@@ -958,6 +1037,7 @@ def _load_entry_points(off: set = frozenset()):
                             (UI_THEME_GROUP, lambda name, obj: register_ui_theme(name, obj)),
                             (AI_PROVIDER_GROUP, lambda name, obj: register_ai_provider(name, obj)),
                             (PANEL_GROUP, lambda name, obj: register_panel(name, obj)),
+                            (MENU_ITEM_GROUP, lambda name, obj: register_menu_item(name, obj)),
                             (SETTINGS_PAGE_GROUP, lambda name, obj: register_settings_page(name, obj)),
                             (WORKFLOW_GROUP, lambda name, obj: register_workflow_source(name, obj))):
         try:
@@ -1157,6 +1237,8 @@ def status() -> dict:
                              for p in _registry.ai_providers.values()],
             "panels": [{"name": p.name, "title": p.title, "description": p.description, "origin": p.origin}
                        for p in _registry.panels.values()],
+            "menu_items": [{"name": p.name, "title": p.title, "menu": p.menu, "description": p.description,
+                            "origin": p.origin} for p in _registry.menu_items.values()],
             "settings_pages": [{"name": p.name, "title": p.title, "description": p.description, "origin": p.origin}
                                for p in _registry.settings_pages.values()],
             "workflows": [{"name": p.name, "title": p.title, "schemes": list(p.schemes), "description": p.description,
