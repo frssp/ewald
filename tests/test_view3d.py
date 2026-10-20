@@ -31,6 +31,7 @@ def test_settings_follow_the_style_preset_and_record_only_changes(srtio3):
     assert (v.radius_scale, v.bonds) == (0.25, True)
     v.style = "Simple (ASE)"
     assert v.theme == "ASE" and "theme" not in v.changed()             # implied by the preset
+    assert (v.bonds, v.atom_style) == (True, "flat")                   # ASE look keeps its bonds
     v.theme = None
     assert v.changed()["theme"] is None                                 # explicitly no theme
     v.style = None                                                     # back to Ball & stick, drops the implied theme
