@@ -174,7 +174,8 @@ selection*), **Camera** (what the view cell says about the camera and frame, the
 camera*) and **Elements** ([visual element plugins](../plugins/visuals.md), added with *Add
 element*). Every form shares one label column, so fields line up across cards; sub-sections such as
 Replicate cell, Boundary and Light show their rows only while ticked. Click a card's title to fold
-it (it stays folded while the window is open). Every value is a setting of
+it; right-click a card, or View › Fold all View cards / Unfold all View cards, for every card.
+Folded cards stay folded the next time the app starts (with the window layout). Every value is a setting of
 the notebook's `view(pipe, ...)` cell: the rows the cell sets are highlighted, the card says *in
 notebook*, and the tooltip shows the value. A change made here is written back into that cell, and
 a change made in code (the cell, the console, Ask AI) shows up here. When the tab is narrow (dragged
