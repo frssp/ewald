@@ -2249,3 +2249,53 @@ def test_panel_headers_line_up_and_buttons_use_icons(app, pipe):
     next(a for a in view_menu.actions() if a.text().startswith("Minimal mode")).trigger()
     assert not w.minimal and not w.minimal_exit.isVisible() and w.statusBar().isVisible()
     w.close()
+
+
+def test_viewport_tools_pick_and_measure_with_real_clicks(app, pipe):
+    """Pick, Distance and Angle react to real mouse clicks in the VTK view (pyvista hands button
+    release observers the interactor style, which has no event position; the picks must not
+    depend on it) and show their result in the status bar over any status message."""
+    import time
+
+    from PySide6 import QtTest
+
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(pipe)
+    w.resize(1100, 800)
+    w.show()
+    for _ in range(20):
+        app.processEvents()
+        time.sleep(0.01)
+    vp = w.viewport
+    view = vp.plotter.interactor
+    W, H = view.width(), view.height()
+    points = {}
+    for y in range(10, H - 10, 6):
+        for x in range(10, W - 10, 6):
+            i = vp.hover_index(x, y, W, H)
+            if i is not None and i not in points:
+                points[i] = QtCore.QPoint(x, y)
+    atoms = list(points)[:3]
+    assert len(atoms) == 3
+
+    def click(i, modifier=QtCore.Qt.NoModifier):
+        QtTest.QTest.mouseClick(view, QtCore.Qt.LeftButton, modifier, points[i])
+        app.processEvents()
+
+    w.message("a status message that would hide the pick result")
+    vp.set_tool("pick")
+    click(atoms[0])
+    assert vp.picks == [atoms[0]] and f"#{atoms[0]}" in w.pick_label.text()
+    assert w.statusBar().currentMessage() == ""
+    click(atoms[1], QtCore.Qt.ShiftModifier)  # Shift+click adds
+    assert vp.picks == atoms[:2]
+    vp.set_tool("distance")
+    click(atoms[0])
+    click(atoms[1])
+    assert vp.picks == atoms[:2] and "Å" in w.pick_label.text() and "d(" in w.pick_label.text()
+    vp.set_tool("angle")
+    for i in atoms:
+        click(i)
+    assert vp.picks == atoms and "°" in w.pick_label.text()
+    w.close()
