@@ -101,7 +101,14 @@ def test_cli_names_the_extra_for_a_missing_package(monkeypatch, capsys):
         raise ModuleNotFoundError("No module named 'anthropic'", name="anthropic")
 
     monkeypatch.setattr(cli, "_run", boom)
-    with pytest.raises(SystemExit, match=r"pip install 'ewald\[llm\]'"):
+    with pytest.raises(SystemExit, match=r"needs anthropic, which ewald installs; .*pip install anthropic"):
+        cli.main(["mcp"])
+
+    def no_qt(args):
+        raise ModuleNotFoundError("No module named 'PySide6'", name="PySide6")
+
+    monkeypatch.setattr(cli, "_run", no_qt)
+    with pytest.raises(SystemExit, match=r"pip install 'ewald\[gui\]'"):
         cli.main(["mcp"])
 
 

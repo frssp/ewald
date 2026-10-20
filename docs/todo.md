@@ -59,6 +59,12 @@ GUI
   edit or regenerate a sent message. The notebook cell tools (`llm/notebook_tools.py`) could
   highlight the cells the AI changed and show a diff to accept or undo; `ewald ask` and the MCP
   server could take a notebook (`--notebook analysis.py`) and save it back.
+- AI tools only through cells (`llm/tools.py` `CELL_WRITERS`): `@ai_tool` plugin functions can
+  still change `toolset.pipeline` by hand (ewald cannot check them; docs/plugins/tools.md asks
+  them not to); a check after each plugin tool that every modifier belongs to a cell could warn.
+  A failed generated cell leaves two undo entries in the GUI (insert, then removal). After a second
+  `pipe = load(...)` cell, the step cells above it still hold the old pipeline's modifiers, and
+  `Notebook.sync` (the GUI's refresh) deletes them.
 - `PythonScript` step cells: `Modifier.__repr__` uses `name`, which PythonScript sets to its title,
   so `step_source` writes `pipe.add(Python script(...))`, which does not parse.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
@@ -520,8 +526,13 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
   wheels, and an `[Unreleased]` CHANGELOG line from every user-visible pull request.
 
 - CI installs each extra on its own only through the test suite's `importorskip`s; a job that
-  installs every extra in a clean venv and imports its modules would catch broken extras
-  (`tests/test_dependencies.py` only checks that every import is declared).
+  installs `.[all]` (and the plain core) in a clean venv and imports its modules would catch broken
+  extras (`tests/test_dependencies.py` only checks that every import is declared). The frozen apps
+  now carry spglib, h5py, imageio-ffmpeg, anthropic/openai/mcp and ipykernel as core packages:
+  check their size and that PyInstaller bundles them.
+- A step that failed for a missing package retries only when its settings change or the pipeline
+  is invalidated; installing the package while the app runs needs a Run of that cell (a GUI
+  "Retry" action on the failed step is open).
 
 - macOS release: a first run of `macos-release.yml` (manual; macOS minutes bill 10x), then
   Developer ID signing and notarization so the downloaded app opens without the Gatekeeper

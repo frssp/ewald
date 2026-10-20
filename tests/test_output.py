@@ -140,7 +140,7 @@ def test_movie_without_ffmpeg_explains(tmp_path, moving, monkeypatch):
     from ewald import movie
 
     monkeypatch.setattr(movie, "ffmpeg_executable", lambda: None)
-    with pytest.raises(RuntimeError, match="ewald\\[movie\\]"):
+    with pytest.raises(RuntimeError, match="pip install imageio-ffmpeg"):
         movie.MovieWriter(tmp_path / "m.mp4")
     with pytest.raises(ValueError, match="unsupported"):
         movie.MovieWriter(tmp_path / "m.xyz")

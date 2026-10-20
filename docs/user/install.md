@@ -54,23 +54,25 @@ installed version; what changed between versions is in
 
 ## Extras
 
-Optional parts are extras, installed only when you need them:
+The plain install already has every feature that needs no Qt, GPU or OVITO: symmetry (spglib),
+MP4/AVI/MOV export (imageio-ffmpeg), H5MD/vaspout.h5/MDTraj HDF5 (h5py), Ask AI with every
+provider and the MCP server (anthropic, openai, mcp), kernels for notebooks whose cells run in
+another Python (jupyter_client, ipykernel; [Kernels](notebooks.md#kernels)), and files on SSH
+hosts (paramiko, keyring). Only heavy or platform-specific parts are extras:
 
 | Extra | Adds | Install |
 |---|---|---|
-| `gui` | desktop viewer (PySide6, pyvistaqt, qtconsole) | `pip install -e ".[gui]"` |
-| `kernel` | jupyter_client and ipykernel, for a notebook whose cells run in another Python ([Kernels](notebooks.md#kernels)); in that other Python, ewald itself is enough | `pip install -e ".[kernel]"` |
+| `gui` | desktop app (PySide6, pyvistaqt, qtconsole) | `pip install -e ".[gui]"` |
 | `gpu` | `device="cuda"` through CuPy (NVIDIA, CUDA 12) | `pip install -e ".[gpu]"` |
-| `movie` | MP4/AVI/MOV export with the ffmpeg binary from imageio-ffmpeg (GIF and PNG need no extra) | `pip install -e ".[movie]"` |
-| `formats` | H5MD, vaspout.h5, MDTraj HDF5 (h5py) and GROMACS XTC/TRR, DCD, NetCDF (MDAnalysis) | `pip install -e ".[formats]"` |
+| `formats` | GROMACS XTC/TRR, DCD, NetCDF through MDAnalysis | `pip install -e ".[formats]"` |
 | `ovito` | `DislocationAnalysis` (DXA) and `OvitoModifier`; the `ovito` wheel pins its own PySide6, so install it in the same command as `gui` | `pip install -e ".[gui,ovito]"` |
-| `llm` | AI agent (Claude, OpenAI, Gemini, local servers) and MCP server | `pip install -e ".[llm]"` |
-| `symmetry` | spglib, for `SymmetryAnalysis` (space group, Wyckoff positions) | `pip install -e ".[symmetry]"` |
-| `dev` | pytest, spglib | `pip install -e ".[dev]"` |
+| `all` | `gui`, `formats` and `ovito` together (not `gpu`) | `pip install -e ".[all]"` |
+| `dev` | pytest | `pip install -e ".[dev]"` |
 
-Extras combine: `pip install -e ".[gui,gpu,movie]"`. Files on SSH hosts and saved remote
-computers need no extra: paramiko and keyring are part of every install (`[remote]` still
-works in old commands and adds nothing). pymatgen is used when it happens to be
+For a desktop, `pip install -e ".[all]"` is the usual command; add `gpu` on a machine with an
+NVIDIA GPU: `pip install -e ".[all,gpu]"`. On a cluster without a display, the plain
+`pip install -e .` is enough. The old extras `symmetry`, `movie`, `llm`, `kernel` and `remote`
+still work in existing commands and add nothing. pymatgen is used when it happens to be
 installed (bond-valence oxidation states for the Shannon ionic radii) but is not needed.
 
 The GUI uses PySide6 only. PyQt5 or PyQt6 in the same environment is harmless as long as nothing

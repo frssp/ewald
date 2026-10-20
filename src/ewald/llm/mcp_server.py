@@ -4,7 +4,7 @@ Lets Claude Desktop, Claude Code or any MCP client drive ewald directly::
 
     ewald mcp                      # or: python -m ewald.llm.mcp_server
     claude mcp add ewald -- ewald mcp
-    claude mcp add ewald -- ewald mcp --allow-code   # also expose run_python
+    claude mcp add ewald -- ewald mcp --allow-code   # also let it run cells it writes (run_cell)
 
 Needs ``pip install mcp``.
 """
@@ -84,6 +84,6 @@ if __name__ == "__main__":
 
     ap = argparse.ArgumentParser(description="ewald MCP server (stdio)")
     ap.add_argument("path", nargs="?", help="structure/trajectory to load at start")
-    ap.add_argument("--allow-code", action="store_true", help="expose the run_python tool")
+    ap.add_argument("--allow-code", action="store_true", help="offer run_cell: the AI runs notebook cells it wrote")
     a = ap.parse_args()
     serve(a.allow_code, a.path)

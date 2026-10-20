@@ -425,7 +425,9 @@ class Pipeline:
 
     def invalidate(self, first: int = 0):
         """Forget cached source frames from ``first`` on (their file changed), and every
-        cached modifier result."""
+        cached modifier result. Steps that failed for a missing package try again."""
+        for mod in self.modifiers:
+            mod.__dict__.pop("_missing_dependency", None)
         with self._cache_lock:
             for frame in [f for f in self._cache if f >= first]:
                 del self._cache[frame]
@@ -490,6 +492,12 @@ class Pipeline:
                 raise ComputeCancelled
             if not mod.enabled:
                 continue
+            missing = mod.__dict__.get("_missing_dependency")
+            if errors != "raise" and missing is not None and missing[0] == repr(mod):
+                # a package it needs is not installed: retrying every frame repeats the same error;
+                # changing the step's settings or Pipeline.invalidate() tries once more
+                mod.status, failed = missing[1], True
+                continue
             ctx = ComputeContext(frame, self, backend, modifier_index=index, cancel=cancel)
             before = _snapshot(data)
             t0 = time.perf_counter()
@@ -501,10 +509,13 @@ class Pipeline:
                 mod.last_time = time.perf_counter() - t0
                 mod.status = f"{type(exc).__name__}: {exc}"
                 failed = True
+                if isinstance(exc, ImportError):
+                    mod._missing_dependency = (repr(mod), mod.status)
                 if errors == "raise":
                     raise
                 continue
             mod.status = None
+            mod.__dict__.pop("_missing_dependency", None)
             mod.last_time = time.perf_counter() - t0
             if result is not None:
                 data = result

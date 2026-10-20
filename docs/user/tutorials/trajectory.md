@@ -57,7 +57,7 @@ draws an arrow per atom, `scaling` Å per eV/Å. Any vector property works the s
 
 ## 5. A movie
 
-The render workspace writes movies too (MP4 needs ffmpeg, from `pip install "ewald[movie]"`; GIF
+The render workspace writes movies too (MP4 uses the ffmpeg that comes with ewald; GIF
 needs nothing), or from a cell:
 
 ```python
