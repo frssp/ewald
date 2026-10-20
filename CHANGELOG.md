@@ -9,6 +9,8 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- `CITATION.cff` (GitHub's *Cite this repository*), `CONTRIBUTING.md`, `SECURITY.md`, issue
+  templates and `.github/FUNDING.yml`, in preparation for a public repository.
 - `ewald.plugin_api`, the supported import surface for plugins, versioned by `PLUGIN_API` (1). A
   plugin declares `plugin-api` in its manifest and an ewald that does not support that version
   refuses it before importing it. The example plugins, the plugin docs and Modifier Forge use it.
