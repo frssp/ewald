@@ -34,7 +34,7 @@ class MenusMixin:
             act.triggered.connect(lambda on, d=dock: self._show_side_bar(d) if on else d.hide())
             dock.visibilityChanged.connect(lambda _shown, a=act, d=dock: a.setChecked(not d.isHidden()))
             act.setProperty("ewald_icon", icon_name)
-            act.setToolTip("Chat with Claude (Ctrl+J)" if dock is self.ask_dock
+            act.setToolTip("Chat with AI (Ctrl+J)" if dock is self.ask_dock
                            else f"Show or hide the {name} side bar")
             bar.addAction(act)
             self.activity_buttons[name] = act
@@ -369,8 +369,8 @@ class MenusMixin:
         w.addAction("Plots", lambda: self.workbench.show(self.plots))
         w.addAction("New plot view", lambda: self.new_plot_view())
         w.addAction("Log", lambda: self.workbench.show(self.log))
-        w.addAction("AI chat" if nb else "Ask Claude", self.ask_claude, "Ctrl+J").setToolTip(
-            "Chat with Claude about the notebook, the structure or the picked atoms")
+        w.addAction("AI chat" if nb else "Ask AI", self.ask_claude, "Ctrl+J").setToolTip(
+            "Chat with AI about the notebook, the structure or the picked atoms")
         w.addAction("Command palette", self.command_palette, "Ctrl+K")
         h = mb.addMenu("&Help")
         for label, page in manual.PAGES.items():
@@ -483,7 +483,7 @@ class MenusMixin:
         QtWidgets.QMessageBox.about(
             self, "About EWALD",
             f"<b>EWALD {__version__}</b><br>{__title__.split(': ', 1)[1].replace('&', '&amp;')}<p>Atomistic structure and trajectory visualization and analysis "
-            f"in Python notebooks, with Claude and plugins built in.</p><p>{self.hardware_summary()}</p>"
+            f"in Python notebooks, with AI and plugins built in.</p><p>{self.hardware_summary()}</p>"
             f"<p><a href='{self.help_url()}'>Manual</a></p>")
 
     def _gpu_available(self) -> bool:

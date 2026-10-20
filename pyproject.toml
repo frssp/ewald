@@ -31,7 +31,7 @@ symmetry = ["spglib>=2.0"]   # SymmetryAnalysis (space group, Wyckoff positions)
 movie = ["imageio-ffmpeg"]   # bundled ffmpeg binary for MP4/AVI/MOV
 formats = ["h5py", "MDAnalysis>=2.7"]   # H5MD, vaspout.h5, MDTraj HDF5; GROMACS XTC/TRR, DCD, NetCDF
 ovito = ["ovito"]   # DislocationAnalysis (DXA) and OvitoModifier bridge
-llm = ["anthropic>=1.0", "mcp"]
+llm = ["anthropic>=1.0", "openai>=1.40", "mcp"]
 remote = []   # kept so old install commands work: SSH support (paramiko, keyring) is in the core install
 dev = ["pytest", "spglib>=2.0"]
 

@@ -14,7 +14,7 @@ notebook. Linux system libraries and startup errors: [Install](install.md#linux-
 The window has the analysis on the left as a [notebook](notebooks.md): Python cells, steps and
 linked plots, saved as an `.ewd`, `.ipynb` or `.py` file, with one tab per open notebook. The
 [tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline are in the middle. Display settings are on the
-right, the AI chat with Claude opens left of the notebook from the activity bar, and the panel
+right, the AI chat opens left of the notebook from the activity bar, and the panel
 below the viewport holds the Python console, the data inspector, plots and the log. Tabs in the
 middle can be rearranged as in VS Code (see [Panel layout](#panel-layout)).
 
@@ -103,12 +103,12 @@ volumetric grid adds Add isosurface (or Edit isosurface once there is one). A tr
 Play/Pause and Overlay other frames, which draws every other frame as see-through copies behind
 the current one (`OverlayFrames`; on by default for NEB folders), with its transparency (50 to
 95 %) and whether only the atoms that move get copies. Show (bonds, simulation cell), View
-along, Orthographic, Zoom to fit and Ask Claude are always there.
+along, Orthographic, Zoom to fit and Ask AI are always there.
 
-**AI chat (Ask Claude).** The Claude button at the bottom of the activity bar on the far left (also
-Window › AI chat, Ctrl+J, and Ask Claude in the 3D view's right-click menu) opens a chat side bar left of the
-notebook; in the classic layout it is the Ask Claude tab next to the pipeline. It reads like a
-chat app: your messages in bubbles on the right, Claude's answers under its avatar on the left,
+**AI chat (Ask AI).** The AI button at the bottom of the activity bar on the far left (also
+Window › AI chat, Ctrl+J, and Ask AI in the 3D view's right-click menu) opens a chat side bar left of the
+notebook; in the classic layout it is the Ask AI tab next to the pipeline. It reads like a
+chat app: your messages in bubbles on the right, the answers under the assistant's name (Claude, Gemini, ...) on the left,
 the tools it ran as small chips (*Running …*, then *Used …*), and code blocks as framed code with
 *Copy* and *+ Insert as cell*. Enter sends, Shift+Enter starts a new line, and the suggestions
 on an empty chat send a first question. In the notebook layout each question also sends the
@@ -116,10 +116,12 @@ current notebook's code (only when it changed since the last question); *+ Inser
 a Python block as a code cell after the current one, without running it (Shift+Enter runs it).
 The chat answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
 coordination low here?". Without picks it uses the particles a selection modifier selected, and
-with neither the question is about the whole frame. Claude receives the description from
+with neither the question is about the whole frame. The model receives the description from
 [Asking about a selection](claude.md#asking-about-a-selection) and a close-up render, can run the
-usual tools, and modifiers it adds appear in the pipeline. It needs the `llm` extra and an API key
-(Preferences › Claude, or `ANTHROPIC_API_KEY`).
+usual tools, and modifiers it adds appear in the pipeline. Claude answers by default; Preferences › AI
+switches to OpenAI, Gemini or a model on your own machine ([Providers](claude.md#providers)). It needs
+the `llm` extra and, except for a local server, an API key (Preferences › AI, or the provider's
+environment variable such as `ANTHROPIC_API_KEY`).
 
 **Timeline.** Play, step and scrub through frames. Every frame is computed through the whole
 pipeline when you move to it. While a simulation is still writing the file, new frames are
@@ -194,7 +196,7 @@ style is drawn in the Paper or Graphite colors.
   bond length or bond angle plot to select the particles behind it: particles with that
   property value, particles in a pair at that distance (only A-B pairs on a partial `g(r) A-B`
   column), both ends of the bonds with that length, or the vertex atoms of those bond angles.
-  They are picked in the viewport, so Ask Claude about selection uses them, and the range is
+  They are picked in the viewport, so Ask AI about selection uses them, and the range is
   re-applied on every frame. **Keep as selection** turns a property range into an
   `ExpressionSelection` modifier.
 - Drag on a per-frame plot (`Thermo`, `time-series`, `plumed`, `colvar`, MSD) to select the
@@ -250,7 +252,7 @@ bookmarks, and browses their files; passwords and key passphrases go to the OS k
 Edit › Preferences (Ctrl+, ; the application menu on macOS) has seven pages: General, Viewports,
 Elements (per-element color and radius, Jmol or CPK scheme, radius preset, VESTA `elements.ini` import),
 Rendering, Compute (default device, CPU threads, installed components), Python (console
-startup script, extra module paths) and Claude (API key, model and effort for Ask Claude; see
+startup script, extra module paths) and AI (provider, API key, model, server URL and effort for Ask AI; see
 [API key](claude.md#api-key)). Only values that differ from the defaults are saved, as
 JSON in the ewald config folder: `~/.config/ewald` on Linux,
 `~/Library/Application Support/ewald` on macOS, `%APPDATA%\ewald` on Windows, or

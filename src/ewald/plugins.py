@@ -89,6 +89,7 @@ COLORMAP_GROUP = "ewald.colormaps"
 THEME_GROUP = "ewald.themes"
 TOOL_GROUP = "ewald.tools"
 UI_THEME_GROUP = "ewald.ui_themes"
+AI_PROVIDER_GROUP = "ewald.ai_providers"
 PLUGIN_GROUP = "ewald.plugins"      # names the package that holds ewald-plugin.toml
 MANIFEST_NAME = "ewald-plugin.toml"
 
@@ -339,9 +340,15 @@ def _builtin_ui_themes() -> dict:
     return {name: UiThemePlugin(name, {}, name, DESCRIPTIONS.get(name, ""), "built-in", True) for name in PALETTES}
 
 
+def _builtin_ai_providers() -> dict:
+    from .llm.providers import BUILTIN   # no SDK import
+
+    return dict(BUILTIN)
+
+
 @dataclass
 class ToolPlugin:
-    """A Claude tool: ``function(toolset, **arguments)`` returns JSON-ready data (or a
+    """An AI tool: ``function(toolset, **arguments)`` returns JSON-ready data (or a
     ``ewald.llm.tools.ToolResult``); ``schema`` is the JSON schema of the arguments."""
 
     name: str
@@ -362,6 +369,7 @@ class _Registry:
     themes: dict = field(default_factory=_builtin_themes)
     tools: dict = field(default_factory=dict)
     ui_themes: dict = field(default_factory=_builtin_ui_themes)
+    ai_providers: dict = field(default_factory=_builtin_ai_providers)
     errors: dict = field(default_factory=dict)      # origin -> message
     plugins: dict = field(default_factory=dict)     # id -> Plugin
     loaded: bool = False
@@ -369,7 +377,7 @@ class _Registry:
 
 _registry = _Registry()
 _REGISTRIES = ("readers", "writers", "modifiers", "visuals", "overlays", "colormaps", "themes", "tools",
-               "ui_themes")
+               "ui_themes", "ai_providers")
 
 
 def plugin_dir() -> Path:
@@ -648,12 +656,13 @@ def ui_themes() -> dict[str, UiThemePlugin]:
     return dict(_registry.ui_themes)
 
 
-def claude_tool(name: str | None = None, description: str = "", schema: dict | None = None):
-    """Decorator registering ``f(toolset, **arguments)`` as a tool of the Claude agent, the MCP
-    server and the GUI's Ask panel (:class:`ewald.llm.tools.Toolset`). ``toolset.pipeline`` is the
-    loaded pipeline and ``toolset.frame`` the current frame; return JSON-ready data. ``schema``
-    is the JSON schema of the arguments (default: none); ``description`` defaults to the
-    docstring. A tool cannot take the name of a built-in one."""
+def ai_tool(name: str | None = None, description: str = "", schema: dict | None = None):
+    """Decorator registering ``f(toolset, **arguments)`` as a tool of the AI agent (whichever
+    provider answers), the MCP server and the GUI's Ask AI panel (:class:`ewald.llm.tools.Toolset`).
+    ``toolset.pipeline`` is the loaded pipeline and ``toolset.frame`` the current frame; return
+    JSON-ready data. ``schema`` is the JSON schema of the arguments (default: none);
+    ``description`` defaults to the docstring. A tool cannot take the name of a built-in one.
+    ``claude_tool`` is the same decorator under its earlier name."""
 
     def deco(f):
         f.tool_name = name or f.__name__
@@ -663,6 +672,9 @@ def claude_tool(name: str | None = None, description: str = "", schema: dict | N
         return f
 
     return deco
+
+
+claude_tool = ai_tool
 
 
 def register_tool(name: str, function: Callable, description: str = "", schema: dict | None = None,
@@ -679,9 +691,55 @@ def register_tool(name: str, function: Callable, description: str = "", schema: 
 
 
 def tools() -> dict[str, ToolPlugin]:
-    """Claude tools contributed by plugins, by name."""
+    """AI tools contributed by plugins, by name."""
     load_plugins()
     return dict(_registry.tools)
+
+
+def ai_provider(provider=None, *, name: str | None = None):
+    """Register an AI provider (``ewald.llm.providers.Provider``, or a function returning one)
+    for Preferences > AI > Provider, ``ewald ask --provider`` and every AI feature. Most services
+    speak the OpenAI Chat Completions API, so a ``Provider`` with a ``base_url`` is enough; others
+    bring a ``chat_class`` (a subclass of ``ewald.llm.chat.Chat``)::
+
+        from ewald.llm.providers import Provider
+        from ewald.plugins import ai_provider
+
+        @ai_provider
+        def mistral():
+            return Provider("mistral", "Mistral", models={"mistral-large-latest": "Mistral Large"},
+                            base_url="https://api.mistral.ai/v1", key_name="mistral-api-key",
+                            env_var="MISTRAL_API_KEY")
+    """
+
+    def deco(p):
+        register_ai_provider(name, p)
+        return p
+
+    return deco(provider) if provider is not None else deco
+
+
+def register_ai_provider(name: str | None, provider, origin: str = "python"):
+    from .llm.providers import Provider
+
+    made = provider() if callable(provider) and not isinstance(provider, Provider) else provider
+    if not isinstance(made, Provider):
+        raise TypeError(f"{provider!r} is not an ewald.llm.providers.Provider (or a function returning one)")
+    name = name or made.name
+    old = _registry.ai_providers.get(name)
+    if old is not None and old.builtin:
+        raise ValueError(f"AI provider name {name!r} is built in; use another name")
+    made.name = name
+    made.origin = getattr(_loading, "origin", None) or origin
+    _registry.ai_providers[name] = made
+    _contribute("ai_providers", name)
+    return made
+
+
+def ai_providers() -> dict:
+    """AI providers by name: the built-in ones (``ewald.llm.providers.BUILTIN``), then plugins."""
+    load_plugins()
+    return dict(_registry.ai_providers)
 
 
 class _Loading:
@@ -950,6 +1008,8 @@ def load_plugins(force: bool = False):
         _registry.tools = {k: v for k, v in _registry.tools.items() if v.origin == "python"}
         keep = {k: v for k, v in _registry.ui_themes.items() if v.origin == "python" and not v.builtin}
         _registry.ui_themes = {**_builtin_ui_themes(), **keep}
+        keep = {k: v for k, v in _registry.ai_providers.items() if v.origin == "python"}
+        _registry.ai_providers = {**_builtin_ai_providers(), **keep}
         _registry.errors.clear()
         _registry.plugins = {}
     off = disabled()
@@ -993,7 +1053,8 @@ def _load_entry_points(off: set = frozenset()):
                             (COLORMAP_GROUP, lambda name, obj: register_colormap(name, obj)),
                             (THEME_GROUP, lambda name, obj: register_theme(name, obj)),
                             (TOOL_GROUP, lambda name, obj: register_tool(name, obj)),
-                            (UI_THEME_GROUP, lambda name, obj: register_ui_theme(name, obj))):
+                            (UI_THEME_GROUP, lambda name, obj: register_ui_theme(name, obj)),
+                            (AI_PROVIDER_GROUP, lambda name, obj: register_ai_provider(name, obj))):
         try:
             eps = entry_points(group=group)
         except Exception as exc:
@@ -1196,6 +1257,8 @@ def status() -> dict:
                       for p in _registry.tools.values()],
             "ui_themes": [{"name": p.name, "base": p.base, "description": p.description, "origin": p.origin}
                           for p in _registry.ui_themes.values()],
+            "ai_providers": [{"name": p.name, "label": p.label, "description": p.description, "origin": p.origin}
+                             for p in _registry.ai_providers.values()],
             "errors": dict(_registry.errors)}
 
 

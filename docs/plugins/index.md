@@ -16,10 +16,11 @@ against the same API the built-in readers and modifiers use, so everything in th
 | [Overlay](overlays.md) | an `OverlayElement` subclass returning 2D items (text, shapes, images) | `@overlay` in the plugin folder, or an `ewald.overlays` entry point | available |
 | [Color map](styles.md#color-maps) | a function returning colors or a matplotlib `Colormap` | `@colormap` in the plugin folder, or an `ewald.colormaps` entry point | available |
 | [Theme](styles.md#themes) | a function returning a `Theme` (element colors, background, cell color, radius preset) | `@theme` in the plugin folder, or an `ewald.themes` entry point | available |
-| [Claude tool](tools.md) | a function `f(toolset, **arguments)` returning JSON-ready data | `@claude_tool` in the plugin folder, or an `ewald.tools` entry point | available |
+| [AI tool](tools.md) | a function `f(toolset, **arguments)` returning JSON-ready data | `@ai_tool` (or `@claude_tool`) in the plugin folder, or an `ewald.tools` entry point | available |
+| [AI provider](tools.md#ai-providers) | an `ewald.llm.providers.Provider` (another AI service: Mistral, a company gateway, ...) | `@ai_provider` in the plugin folder, or an `ewald.ai_providers` entry point | available |
 | [UI theme](styles.md#ui-themes) | a function returning design tokens (`{"accent": "#7aa2f7", ...}`) on top of Paper or Graphite | `@ui_theme` in the plugin folder, or an `ewald.ui_themes` entry point | available |
 
-[Modifier Forge](forge.md) writes a modifier plugin from a description: Claude writes the
+[Modifier Forge](forge.md) writes a modifier plugin from a description: the AI writes the
 module and its tests, and ewald saves it to the plugin folder once its checks pass.
 
 ewald's own formats (LAMMPS, VASP, extxyz, XSF, H5MD, XTC, cube, ASE) are registered as built-in
@@ -41,7 +42,7 @@ from the Plugins panel or with pip:
 | Plugin | Package | Adds |
 |---|---|---|
 | `phonopy` | `ewald-phonopy` | phonopy band/mesh/qpoints.yaml and force-constant readers, VASP IBRION=5-8 OUTCARs, `PhononMode` ([Phonon modes](../user/phonons.md)) |
-| `plumed` | `ewald-plumed` | `Plumed`, `LoadColvar`, `FreeEnergySurface`, the `ewald_plumed.plumed` library and two Claude tools ([PLUMED](../user/plumed.md)) |
+| `plumed` | `ewald-plumed` | `Plumed`, `LoadColvar`, `FreeEnergySurface`, the `ewald_plumed.plumed` library and two AI tools ([PLUMED](../user/plumed.md)) |
 
 ```bash
 pip install 'git+https://github.com/frssp/ewald-plugins#subdirectory=packages/ewald-phonopy'
@@ -77,12 +78,12 @@ Once registered, a plugin is used everywhere ewald reads files or runs modifiers
 |---|---|---|
 | `import_file` / scripts | picked by `format=`, `sniff` or file-name pattern | `from ewald.modifiers import MyModifier` |
 | GUI | File › Load file filter lists its patterns | Add modification menu and command palette; the parameter form is built from the constructor |
-| Claude tools | `load_structure` lists installed formats | `list_modifiers` / `add_modifier` |
+| AI tools | `load_structure` lists installed formats | `list_modifiers` / `add_modifier` |
 | `ewald plugins` | listed with patterns and origin, next to the built-in formats | listed |
 | `llms.txt` | not listed (it documents core ewald only) | not listed |
 
 `llms.txt` and `ewald api` stay a reference for core ewald, so the same file is valid on every
-installation (`ewald api --with-plugins` appends yours). The Claude tools, which run on your
+installation (`ewald api --with-plugins` appends yours). The AI tools, which run on your
 installation, see your plugins.
 
 ## Rules every plugin follows

@@ -235,6 +235,135 @@ def test_agent_refusal_and_turn_limit(cu_fcc):
     assert "fallbacks" not in client.requests[0]
 
 
+class FakeOpenAI:
+    """Stands in for ``openai.OpenAI``: ``chat.completions.create`` answers from a script."""
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.requests = []
+        self.chat = NS(completions=NS(create=self._create))
+
+    def _create(self, **params):
+        self.requests.append(json.loads(json.dumps(params)))
+        return self.responses.pop(0)
+
+
+def _completion(text=None, calls=(), finish="stop"):
+    tool_calls = [NS(id=i, type="function", function=NS(name=n, arguments=json.dumps(a))) for i, n, a in calls]
+    return NS(choices=[NS(finish_reason="tool_calls" if calls else finish,
+                          message=NS(content=text, tool_calls=tool_calls or None, refusal=None))])
+
+
+def test_agent_tool_loop_with_an_openai_compatible_provider(cu_fcc, fake_render):
+    client = FakeOpenAI([
+        _completion("Let me look.", [("c1", "describe_frame", {"cutoff": 3.0}), ("c2", "render_image", {})]),
+        _completion("Perfect fcc Cu, CN = 12."),
+    ])
+    agent = Agent.from_pipeline(Pipeline(StaticSource(cu_fcc)), client=client, provider="openai")
+    assert agent.ask("What is this structure?") == "Perfect fcc Cu, CN = 12."
+    first = client.requests[0]
+    assert first["model"] == "gpt-5" and first["max_completion_tokens"] == 16000
+    assert first["reasoning_effort"] == "high" and "fallbacks" not in first
+    assert first["messages"][0]["role"] == "system" and "ewald" in first["messages"][0]["content"]
+    names = {t["function"]["name"] for t in first["tools"]}
+    assert {"describe_frame", "render_image", "add_modifier"} <= names
+    second = client.requests[1]["messages"]
+    assert second[2]["role"] == "assistant" and [c["id"] for c in second[2]["tool_calls"]] == ["c1", "c2"]
+    results = [m for m in second if m["role"] == "tool"]
+    assert [m["tool_call_id"] for m in results] == ["c1", "c2"]
+    assert json.loads(results[0]["content"])["coordination"]["mean"] == 12
+    image = second[-1]["content"][1]   # the render follows the tool messages as a user image
+    assert second[-1]["role"] == "user" and image["image_url"]["url"].startswith("data:image/png;base64,")
+
+    # a local model without vision: images become a note, the address and model are the user's
+    local = FakeOpenAI([_completion(None, [("c1", "render_image", {})]), _completion("Done.")])
+    agent = Agent.from_pipeline(Pipeline(StaticSource(cu_fcc)), client=local, provider="openai-compatible",
+                                model="qwen2.5")
+    assert agent.ask("Show it") == "Done."
+    req = local.requests[1]
+    assert req["model"] == "qwen2.5" and "max_tokens" in req and "reasoning_effort" not in req
+    assert "image(s) left out" in req["messages"][-1]["content"]
+    assert all(m["role"] != "user" or isinstance(m["content"], str) for m in req["messages"])
+
+
+def test_openai_sdk_round_trip(cu_fcc, fake_render):
+    """The real openai client against a mocked server: the requests the SDK sends are valid."""
+    openai = pytest.importorskip("openai")
+    import httpx2 as httpx
+
+    answers = iter([
+        {"tool_calls": [{"id": "c1", "type": "function",
+                         "function": {"name": "describe_frame", "arguments": "{\"cutoff\": 3.0}"}}]},
+        {"content": "Cu, fcc."}])
+    seen = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        seen.append((request.url.path, request.headers.get("authorization"), body))
+        msg = {"role": "assistant", "content": None, **next(answers)}
+        return httpx.Response(200, json={"id": "x", "object": "chat.completion", "created": 0, "model": body["model"],
+                                         "choices": [{"index": 0, "message": msg,
+                                                      "finish_reason": "tool_calls" if "tool_calls" in msg else "stop"}]})
+
+    client = openai.OpenAI(api_key="sk-test", base_url="http://localhost:11434/v1",
+                           http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    agent = Agent.from_pipeline(Pipeline(StaticSource(cu_fcc)), client=client, provider="openai-compatible")
+    assert agent.ask("What is it?") == "Cu, fcc."
+    assert seen[0][0] == "/v1/chat/completions" and seen[0][1] == "Bearer sk-test"
+    assert seen[1][2]["messages"][-1]["role"] == "tool"
+
+
+def test_forge_and_narrate_with_another_provider(cu_fcc):
+    from ewald.llm import narrate
+    from ewald.llm.forge import forge
+
+    submit = {"module_name": "m", "class_name": "M", "category": "Analysis", "module_source": "x = 1\n",
+              "test_source": "def test_x(): pass\n", "notes": ""}
+    client = FakeOpenAI([_completion(None, [("c1", "submit_plugin", submit)])])
+    result = forge("anything", client=client, provider="gemini")
+    assert result.module_name == "m" and not result.verified
+    req = client.requests[0]
+    assert req["model"] == "gemini-2.5-pro"
+    assert req["tool_choice"] == {"type": "function", "function": {"name": "submit_plugin"}}
+
+    pipe, _ = _vacancy_hop(cu_fcc)
+    answer = {"summary": "A hop.", "events": [{"frame": 24, "title": "Hop", "description": "d", "confidence": "high"}]}
+    client = FakeOpenAI([_completion("```json\n" + json.dumps(answer) + "\n```")])
+    tl = narrate(pipe, client, provider="openai")
+    assert tl.summary == "A hop." and tl.narrated_by == "gpt-5"
+    assert client.requests[0]["response_format"]["type"] == "json_schema"
+
+
+def test_ai_provider_plugin(monkeypatch):
+    from ewald import plugins
+    from ewald.llm import credentials, providers
+    from ewald.llm.providers import Provider
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    monkeypatch.setattr(plugins._registry, "loaded", True)
+
+    @plugins.ai_provider
+    def mistral():
+        """Mistral through its OpenAI-compatible API."""
+        return Provider("mistral", "Mistral", models={"mistral-large-latest": "Mistral Large"},
+                        base_url="https://api.mistral.ai/v1", key_name="mistral-api-key", env_var="MISTRAL_API_KEY")
+
+    p = providers.get("mistral")
+    assert p.origin == "python" and p.default_model == "mistral-large-latest" and not p.builtin
+    assert "mistral" in providers.providers() and plugins.status()["ai_providers"][-1]["name"] == "mistral"
+    monkeypatch.setenv("MISTRAL_API_KEY", "m-key-from-env")
+    monkeypatch.setattr(credentials, "_keyring", lambda: None)
+    assert credentials.get_api_key("mistral") == ("m-key-from-env", "env")
+    client = FakeOpenAI([_completion("Bonjour.")])
+    from ewald.llm import Agent as A
+
+    assert A(client=client, provider="mistral").ask("hi") == "Bonjour."
+    with pytest.raises(ValueError):
+        plugins.register_ai_provider("openai", Provider("openai", "Fake"))
+    with pytest.raises(TypeError):
+        plugins.register_ai_provider("x", object())
+
+
 def test_mcp_adapter(cu_fcc, fake_render):
     pytest.importorskip("mcp")
     from ewald.llm import mcp_server

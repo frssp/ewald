@@ -289,5 +289,5 @@ says "Calculation finished" when the run has written the rest.
 ## Formats ewald does not read
 
 A [reader plugin](../plugins/readers.md) adds a format without changing ewald: once it is
-installed, `import_file`, the GUI's open dialog and the Claude tools all use it. A
+installed, `import_file`, the GUI's open dialog and the AI tools all use it. A
 [writer plugin](../plugins/writers.md) does the same for `export_file` and File › Export.

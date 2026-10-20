@@ -41,8 +41,8 @@ kept for history.
 - Security: a session, notebook, `.ewd` or text inside a structure file (prompt injection to Claude)
   must not run code unless trusted (`allow_code`, `Notebook.trust()`). Code that evaluates strings,
   imports by name, or writes files for Claude needs the same checks and a case in
-  `tests/test_security.py`. The Claude API key lives in the keychain (`ewald/keychain.py`,
-  `llm/credentials.py`); never put it in `os.environ` or settings.json.
+  `tests/test_security.py`. AI API keys (one per provider) live in the keychain (`ewald/keychain.py`,
+  `llm/credentials.py`); never put them in `os.environ` or settings.json.
 - GUI: PySide6 only (`QT_API=pyside6`). Over `ssh -X` the legacy OpenGL 1.x viewport is chosen
   automatically (`viewport.backend` / `EWALD_VIEWPORT`); this is still unverified on a real ssh -X
   host, as are macOS, real HPC SSH and remote AiiDA. Restyle through QSS object names in
@@ -149,19 +149,23 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   `kernel_bridge.py` is its kernel side (cells run by a Notebook there, frames back as `.npz`).
 - `gui/`: `app.py` main window (frames, recompute, styling; built from mixins: `window_menus.py` toolbar,
   menus, activity bar and minimal mode, `window_files.py` open/export/sessions/notebooks, `viewport_menu.py`
-  right-click menu, `window_links.py` picks, plot links (Plots tab and view cells), Ask Claude and console),
+  right-click menu, `window_links.py` picks, plot links (Plots tab and view cells), Ask AI and console),
   `notebook_panel.py` (cells, steps, view cells with live `PlotsPanel`s), `notebook_tabs.py` (one tab per
   open notebook), `plugins_panel.py` (Plugins side bar), `viewport.py` (VTK; `legacy_viewport.py` + Qt-free
   `legacy_gl.py` are the OpenGL 1.x viewport for `ssh -X`, chosen by `gui.viewport_backend`), `pipeline_panel.py`
   (classic layout; `DisplayPanel` is its visual-elements part in the notebook layout), `params.py`, `render_page.py`,
   `preferences.py` (dialog; `pref_widgets.py`, `element_table.py`, `prefs_apply.py` apply settings to the window),
-  `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
+  `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask AI tab, AI chat), `console.py`,
   `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`, `collapsible.py` (fold buttons in dock
   title bars), `header.py` (one panel header: height, inset, icon buttons; no glyph labels), `macos.py` (menu bar name; Finder file-open
   events go through `app.EwaldApplication`). Frozen apps: `packaging/windows/` and `packaging/macos/` (EWALD.app,
   docs/developer/macos-release.md); the macOS workflow is manual only (10x minutes) and never needs to run for a PR.
-- `llm/`: Claude agent (`agent.py`), tools (`tools.py`), `credentials.py` (API key in the OS keychain via
-  `keyring`, 0600 file fallback, never in settings.json; every Claude client comes from `credentials.client()`), Modifier Forge (`forge.py`: Claude writes a
+- `llm/`: AI agent (`agent.py`) over any provider: `providers.py` (Claude by default, OpenAI, Gemini,
+  OpenAI-compatible servers such as Ollama, an API gateway reading sim-agent's `GATEWAY_*` variables;
+  `@ai_provider` plugins; `llm.*` settings, `from_settings()` and saved connections `llm.profiles`) and `chat.py` (`Chat`: one conversation in a provider's format, `AnthropicChat`/`OpenAIChat`; the agent
+  loop, forge and narrator use only it), tools (`tools.py`), `credentials.py` (API keys in the OS keychain via
+  `keyring`, one entry per provider, 0600 file fallback, never in settings.json or os.environ; every client comes
+  from `credentials.client(provider=...)`), Modifier Forge (`forge.py`: the model writes a
   plugin + tests, verified in a subprocess, saved to the plugin folder), descriptors (`describe.py`, `narrate.py`),
   `selection.py` (descriptor + close-up scene for Ask about selection; GUI side `gui/ask_panel.py`),
   MCP server (`mcp_server.py`), and `reference.py`, the source of `llms.txt`.

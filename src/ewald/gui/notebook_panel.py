@@ -1087,7 +1087,7 @@ class NotebookView(QtWidgets.QWidget):
         self.view_menu = QtWidgets.QMenu(view)
         self.view_menu.aboutToShow.connect(lambda: fill_view_menu(self.view_menu, self.data, self.add_view))
         view.setMenu(self.view_menu)
-        ask = QtWidgets.QPushButton("+ Ask Claude", objectName="addCell", toolTip="Ask Claude to add steps (Ctrl+J)")
+        ask = QtWidgets.QPushButton("+ Ask AI", objectName="addCell", toolTip="Ask AI to add steps (Ctrl+J)")
         ask.clicked.connect(self.askRequested.emit)
         for b in (code, step, view, plugin, text, ask):
             row.addWidget(b)
@@ -1760,14 +1760,14 @@ class NotebookPanel(QtWidgets.QWidget):
             pass
 
     def refresh(self, select=None):
-        """After the pipeline changed outside the cells (console, Claude, viewport tools)."""
+        """After the pipeline changed outside the cells (console, Ask AI, viewport tools)."""
         view = self.view
         if view is None:
             return
         if view.notebook.sync():
             view.rebuild()
             self._retitle(view)
-        view.history.commit("Change pipeline")  # console, Ask Claude, viewport tools
+        view.history.commit("Change pipeline")  # console, Ask AI, viewport tools
         if select is not None:
             mod = select[1] if isinstance(select, tuple) and len(select) == 2 else select
             cell = next((c for c in view.notebook.cells if c.modifier is mod), None)

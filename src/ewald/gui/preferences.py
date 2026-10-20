@@ -14,7 +14,7 @@ from .. import settings as settings_mod
 from ..settings import DEVICES, OPTION, OPTIONS, PAGES, Settings
 from . import header
 from .element_table import ElementTable  # noqa: F401 (imported from here by callers)
-from .pref_widgets import Toggle, _ColorButton, _PathEdit, _chevron, _icon, _restyle
+from .pref_widgets import Toggle, _ColorButton, _PathEdit, _ProfileBox, _chevron, _icon, _restyle
 from .prefs_apply import (apply_element_defaults, apply_settings, layout_path, restore_layout,  # noqa: F401
                           run_startup_script, save_layout)
 from .theme import TOKENS
@@ -64,8 +64,12 @@ LAYOUT = {
         ("Plugins", ["python.plugin_catalogs"]),
         ("Console", ["python.startup_script"]),
         ("Modules", ["python.extra_paths"])]),
-    "Claude": ("API key and model for Ask Claude.", [
-        ("Model", ["llm.model", "llm.effort"])]),
+    "AI": ("The AI service behind Ask AI and the AI chat, its API key, model and connection.", [
+        ("Saved connections", ["llm.profiles"]),
+        ("Provider", ["llm.provider"]),
+        ("Model", ["llm.model", "llm.effort"]),
+        ("Connection", ["llm.base_url", "llm.route_prefix", "llm.user_id", "llm.system_name", "llm.headers",
+                        "llm.timeout"])]),
 }
 
 QSS = """
@@ -216,14 +220,6 @@ class PreferencesDialog(QtWidgets.QDialog):
         col.setSpacing(6)
         col.addWidget(QtWidgets.QLabel(name, objectName="pageTitle"))
         col.addWidget(QtWidgets.QLabel(subtitle, objectName="pageSubtitle"))
-        if name == "Claude":
-            col.addSpacing(16)
-            heading = QtWidgets.QLabel("API KEY", objectName="sectionTitle")
-            col.addWidget(heading)
-            card, rows = self._card()
-            self._api_key_rows(rows)
-            col.addWidget(card)
-            self.api_key_card = (heading, card)
         for title, keys in sections:
             col.addSpacing(16)
             heading = QtWidgets.QLabel(title.upper(), objectName="sectionTitle")
@@ -234,6 +230,14 @@ class PreferencesDialog(QtWidgets.QDialog):
                 self._add_row(rows, OPTION[key], editor)
             col.addWidget(card)
             self.cards.append((heading, card, keys))
+            if keys == ["llm.provider"]:  # the key of the chosen provider comes right after it
+                col.addSpacing(16)
+                heading = QtWidgets.QLabel("API KEY", objectName="sectionTitle")
+                col.addWidget(heading)
+                card, rows = self._card()
+                self._api_key_rows(rows)
+                col.addWidget(card)
+                self.api_key_card = (heading, card)
         if name == "Compute":
             col.addSpacing(16)
             heading = QtWidgets.QLabel("OPTIONAL COMPONENTS", objectName="sectionTitle")
@@ -270,7 +274,7 @@ class PreferencesDialog(QtWidgets.QDialog):
 
     def _add_row(self, rows, opt, editor):
         row = self._row_frame(rows)
-        wide = opt.kind == "table"
+        wide = opt.kind in ("table", "ai_profiles")
         grid = QtWidgets.QGridLayout(row)
         grid.setContentsMargins(16, 12, 16, 12)
         grid.setHorizontalSpacing(16)
@@ -322,6 +326,23 @@ class PreferencesDialog(QtWidgets.QDialog):
         elif opt.kind in ("file", "dir"):
             w = _PathEdit(opt.kind)
             w.edit.textChanged.connect(lambda _, k=opt.key: self._changed(k))
+        elif opt.kind == "ai_provider":
+            from ..llm.providers import providers
+
+            w = QtWidgets.QComboBox()
+            for name, p in providers().items():
+                w.addItem(p.label, name)
+                w.setItemData(w.count() - 1, p.description, QtCore.Qt.ToolTipRole)
+            w.currentIndexChanged.connect(lambda _, k=opt.key: (self._changed(k), self._provider_changed()))
+        elif opt.kind == "ai_profiles":
+            w = _ProfileBox()
+            w.changed.connect(lambda k=opt.key: self._changed(k))
+            w.chosen.connect(self.load_profile)
+            w.save_requested.connect(self.save_profile)
+        elif opt.kind == "ai_model":
+            w = QtWidgets.QComboBox(editable=True)
+            w.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+            w.currentTextChanged.connect(lambda _, k=opt.key: self._changed(k))
         elif opt.choices or opt.kind == "ui_theme":
             w = QtWidgets.QComboBox()
             for c in opt.choices or _ui_theme_names(d):
@@ -422,7 +443,8 @@ class PreferencesDialog(QtWidgets.QDialog):
         grid.setVerticalSpacing(8)
         text = QtWidgets.QVBoxLayout()
         text.setSpacing(2)
-        text.addWidget(QtWidgets.QLabel("Anthropic API key", objectName="rowLabel"))
+        self.key_label = QtWidgets.QLabel("API key", objectName="rowLabel")
+        text.addWidget(self.key_label)
         where = credentials.keyring_name()
         text.addWidget(QtWidgets.QLabel(
             f"Saved in {where}, never in the settings file." if where else
@@ -432,7 +454,7 @@ class PreferencesDialog(QtWidgets.QDialog):
         text.addWidget(self.key_status)
         grid.addLayout(text, 0, 0)
         grid.setColumnStretch(0, 1)
-        self.key_edit = QtWidgets.QLineEdit(objectName="field", placeholderText="sk-ant-…")
+        self.key_edit = QtWidgets.QLineEdit(objectName="field")
         self.key_edit.setEchoMode(QtWidgets.QLineEdit.Password)
         self.key_edit.setFixedWidth(self.EDITOR_WIDTH)
         self.key_edit.textChanged.connect(lambda _: self._key_note(""))
@@ -457,22 +479,109 @@ class PreferencesDialog(QtWidgets.QDialog):
         self.key_result.hide()
         self._key_status()
 
+    def _provider(self):
+        """The provider chosen on the AI page (Anthropic when the setting names an unknown one)."""
+        from ..llm import providers
+
+        try:
+            return providers.get(self.work["llm.provider"])
+        except KeyError:
+            return providers.get()
+
+    def _provider_changed(self, reset_model: bool = True):
+        """Show the chosen provider's key, model suggestions and server address."""
+        p = self._provider()
+        if reset_model and not self._loading:
+            self.key_edit.clear()
+            self._key_removed = False
+            self._key_note("")
+            if "llm.model" in self.editors:
+                self.set_value("llm.model", "")   # a model id of the old provider means nothing to the new one
+        self.key_label.setText(f"{p.label} {p.key_title}" + ("" if p.key_required else " (optional)"))
+        self.key_edit.setPlaceholderText(p.key_hint)
+        self.key_edit.setEnabled(bool(p.key_name))
+        if "llm.model" in self.editors:
+            combo = self.editors["llm.model"][0]
+            loading, self._loading = self._loading, True
+            text = combo.currentText()
+            combo.clear()
+            for model_id, label in p.models.items():
+                combo.addItem(model_id)
+                combo.setItemData(combo.count() - 1, label, QtCore.Qt.ToolTipRole)
+            combo.setEditText(text)
+            combo.lineEdit().setPlaceholderText(f"Default: {p.default_model}" if p.default_model else "Model id")
+            self._loading = loading
+        self._connection_rows(p)
+        self._key_status()
+
+    # rows the chosen provider uses: llm.<field> -> the Provider.options entry it needs
+    _PROVIDER_ROWS = {"llm.route_prefix": "route_prefix", "llm.user_id": "user_id",
+                      "llm.system_name": "system_name"}
+
+    def _row_applies(self, key) -> bool:
+        p = self._provider()
+        if key == "llm.effort":
+            return p.effort
+        return key not in self._PROVIDER_ROWS or self._PROVIDER_ROWS[key] in p.options
+
+    def _connection_rows(self, p):
+        """Placeholders saying what an empty field falls back to; hide rows the provider ignores."""
+        from ..llm.providers import gateway_env
+
+        if "llm.base_url" not in self.editors:
+            return
+        url = p.base_url or (p.model_url(self.work["llm.model"] or p.default_model) if p.model_url else "")
+        self.editors["llm.base_url"][0].setPlaceholderText(
+            url or ("Required: the gateway address" if p.model_url else "The provider's own address"))
+        self.editors["llm.route_prefix"][0].setPlaceholderText(p.model_prefix() or "None")
+        self.editors["llm.user_id"][0].setPlaceholderText(
+            gateway_env("USER_ID") or os.environ.get("USER") or os.environ.get("USERNAME") or "Not set")
+        self.editors["llm.system_name"][0].setPlaceholderText(gateway_env("SYSTEM_NAME", "ewald"))
+        self.editors["llm.headers"][0].setPlaceholderText("Name: value; Other: value")
+        self.editors["llm.timeout"][0].setSpecialValueText("Provider default")
+        if hasattr(self, "search"):
+            self._search(self.search.text())
+
+    def save_profile(self, name: str):
+        """Save the provider, model and connection shown now as ``name`` (Apply/OK keep it)."""
+        from ..llm.providers import profile_from_settings
+
+        box = self.editors["llm.profiles"][0]
+        profiles = {**box.profiles, name: profile_from_settings(self.work)}
+        box.set(profiles, name)
+        self.work["llm.profiles"] = profiles
+        self._mark("llm.profiles")
+
+    def load_profile(self, name: str):
+        """Fill the AI rows from the saved connection ``name``."""
+        from ..llm.providers import PROFILE_FIELDS
+
+        saved = self.work["llm.profiles"].get(name)
+        if not saved:
+            return
+        for field in PROFILE_FIELDS:   # provider first: switching it clears the model
+            key = f"llm.{field}"
+            self.set_value(key, saved.get(field, OPTION[key].default))
+        self.editors["llm.profiles"][0].set(self.work["llm.profiles"], name)
+
     def _key_status(self):
         from ..llm import credentials
 
-        key, source = (None, None) if self._key_removed else credentials.stored_api_key()
-        env = os.environ.get(credentials.ENV_VAR, "").strip()
+        p = self._provider()
+        key, source = (None, None) if self._key_removed else credentials.stored_api_key(p)
+        var, env = next(((v, os.environ[v].strip()) for v in p.env_vars if os.environ.get(v, "").strip()),
+                        (p.env_var, ""))
         if self._key_removed:
             text = "Will be removed when you press Apply."
         elif key:
             text = f"Saved key {credentials.mask(key)}."
             if env:
-                text += f" It is used instead of ${credentials.ENV_VAR}."
+                text += f" It is used instead of ${var}."
         elif env:
-            text = f"Using ${credentials.ENV_VAR} from the environment ({credentials.mask(env)})."
+            text = f"Using ${var} from the environment ({credentials.mask(env)})."
         else:
-            text = "Not set. Get a key at console.anthropic.com, or run ant auth login."
-        self.key_status.setText(text)
+            text = "Not set. " + (p.key_help or (f"Or set ${p.env_var}." if p.env_var else ""))
+        self.key_status.setText(text.strip())
         self.key_remove.setEnabled(bool(key) and not self._key_removed)
 
     def _key_note(self, text, ok=None):
@@ -492,12 +601,18 @@ class PreferencesDialog(QtWidgets.QDialog):
         if self._key_worker is not None and self._key_worker.isRunning():
             return
         key = self.key_edit.text().strip() or None
-        model = self.work["llm.model"]
+        from ..llm.providers import from_settings
+
+        try:
+            p = from_settings(self.work)["provider"]   # with the address, headers and options shown
+        except KeyError:
+            p = self._provider()
+        model = self.work["llm.model"] or None
         self.key_test.setEnabled(False)
         self._key_note("Testing…")
         worker = QtCore.QThread(self)
         result = {}
-        worker.run = lambda: result.update(r=credentials.check(key, model))
+        worker.run = lambda: result.update(r=credentials.check(key, model, provider=p))
 
         def done():
             ok, msg = result.get("r", (False, "no result"))
@@ -515,12 +630,13 @@ class PreferencesDialog(QtWidgets.QDialog):
         from ..llm import credentials
 
         typed = self.key_edit.text().strip()
+        p = self._provider()
         try:
-            if typed:
-                credentials.save_api_key(typed)
+            if typed and p.key_name:
+                credentials.save_api_key(typed, p)
                 self.key_edit.clear()
             elif self._key_removed:
-                credentials.delete_api_key()
+                credentials.delete_api_key(p)
         except OSError as exc:
             QtWidgets.QMessageBox.warning(self, "Preferences", f"Could not save the API key:\n{exc}")
         self._key_removed = False
@@ -533,15 +649,20 @@ class PreferencesDialog(QtWidgets.QDialog):
             self._set_editor(w, OPTION[key], self.work[key])
         self._loading = False
         self._device_note()
+        self._provider_changed(reset_model=False)
         self._mark_all()
 
     def _set_editor(self, w, opt, value):
-        if isinstance(w, ElementTable):
+        if isinstance(w, _ProfileBox):
+            w.set(value)
+        elif isinstance(w, ElementTable):
             w.set_overrides(value, self.work)
         elif isinstance(w, _ColorButton):
             w.set(value)
         elif isinstance(w, _PathEdit):
             w.edit.setText(value)
+        elif isinstance(w, QtWidgets.QComboBox) and w.isEditable():
+            w.setEditText(value)
         elif isinstance(w, QtWidgets.QComboBox):
             w.setCurrentIndex(max(0, w.findData(value)))
         elif isinstance(w, QtWidgets.QCheckBox):
@@ -553,12 +674,16 @@ class PreferencesDialog(QtWidgets.QDialog):
 
     @staticmethod
     def _value(w):
+        if isinstance(w, _ProfileBox):
+            return w.profiles
         if isinstance(w, ElementTable):
             return w.overrides
         if isinstance(w, _ColorButton):
             return w.color
         if isinstance(w, _PathEdit):
             return w.edit.text()
+        if isinstance(w, QtWidgets.QComboBox) and w.isEditable():
+            return w.currentText().strip()
         if isinstance(w, QtWidgets.QComboBox):
             return w.currentData()
         if isinstance(w, QtWidgets.QCheckBox):
@@ -627,7 +752,8 @@ class PreferencesDialog(QtWidgets.QDialog):
             first = True
             for key in keys:
                 opt = OPTION[key]
-                hit = not text or any(text in s.lower() for s in (opt.label, opt.key, opt.help, opt.page))
+                hit = (not text or any(text in s.lower() for s in (opt.label, opt.key, opt.help, opt.page))) \
+                    and self._row_applies(key)
                 row = self.editors[key][2]
                 row.setVisible(hit)
                 if hit:
@@ -638,11 +764,12 @@ class PreferencesDialog(QtWidgets.QDialog):
                     first = False
             heading.setVisible(not first)
             card.setVisible(not first)
-        key_hit = not text or any(text in s for s in ("api key", "anthropic", "claude", "token", "keychain"))
+        key_hit = not text or any(text in s for s in ("api key", "anthropic", "claude", "openai", "gemini",
+                                                      "ollama", "token", "keychain", "gateway", "credential"))
         self.api_key_card[0].setVisible(key_hit)
         self.api_key_card[1].setVisible(key_hit)
         if key_hit:
-            matched_pages.add("Claude")
+            matched_pages.add("AI")
         comp = not text or any(text in s for s in ("component", "install", "package", "ovito", "dxa", "cupy"))
         self.components_card[0].setVisible(comp)
         self.components_card[1].setVisible(comp)
