@@ -62,8 +62,25 @@ def _dark(color: str) -> bool:
 
 
 def colors(tokens: dict | None = None) -> tuple:
-    """The color cycle for a surface: :data:`DARK` on a dark ``tokens['bg']``, else :data:`LIGHT`."""
-    return DARK if tokens and _dark(tokens.get("bg", "#FFFFFF")) else LIGHT
+    """The color cycle for a surface: :data:`DARK` on a dark ``tokens['bg']``, else :data:`LIGHT`.
+    A colorful ``tokens['accent']`` (a UI theme's) leads the cycle in place of the cycle colors
+    close to it in hue (at least the nearest), so the first line of a plot has the theme's accent."""
+    import colorsys
+
+    base = DARK if tokens and _dark(tokens.get("bg", "#FFFFFF")) else LIGHT
+    accent = (tokens or {}).get("accent", "").upper()
+    if not accent or accent in base:
+        return base
+
+    def hls(c):
+        return colorsys.rgb_to_hls(*(int(c[i:i + 2], 16) / 255 for i in (1, 3, 5)))
+
+    h, _, sat = hls(accent)
+    if sat < 0.25:   # a gray accent says nothing about hue
+        return base
+    dist = [min(abs(hls(c)[0] - h), 1 - abs(hls(c)[0] - h)) for c in base]
+    near = {k for k, d in enumerate(dist) if d < 0.07} or {dist.index(min(dist))}
+    return (accent,) + tuple(c for k, c in enumerate(base) if k not in near)
 
 
 def rc(tokens: dict | None = None, font_size: float = FONT_SIZE) -> dict:

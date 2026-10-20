@@ -39,6 +39,11 @@ class PythonHighlighter(QtGui.QSyntaxHighlighter):
 
     def __init__(self, document):
         super().__init__(document)
+        self._theme = None
+
+    def _restyle(self):
+        """Formats in the colors of the active UI theme (rebuilt when the theme changes)."""
+        self._theme = dict(TOKENS)
 
         def fmt(color, bold=False, italic=False):
             f = QtGui.QTextCharFormat()
@@ -60,6 +65,8 @@ class PythonHighlighter(QtGui.QSyntaxHighlighter):
         self.triple = fmt(TOKENS["data"])
 
     def highlightBlock(self, text):
+        if self._theme != TOKENS:
+            self._restyle()
         for regex, f in self.rules:
             it = regex.globalMatch(text)
             while it.hasNext():
