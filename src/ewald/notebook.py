@@ -578,6 +578,27 @@ class Notebook:
         cell.state = "stale"
         return False
 
+    def set_kind(self, cell: Cell, kind: str) -> bool:
+        """Turn ``cell`` into a ``'code'`` or ``'markdown'`` cell, keeping its text (Jupyter's Y / M).
+        A code cell that becomes text loses its outputs and the steps it added; a text cell that
+        becomes code is new (not run yet). True if the kind changed."""
+        if kind not in ("code", "markdown"):
+            raise ValueError(f"kind must be 'code' or 'markdown', not {kind!r}")
+        if cell.kind == kind:
+            return False
+        if kind == "markdown":
+            pipe = self.pipeline
+            if pipe is not None and self.kernel is None:
+                for m in cell.added:
+                    _remove(pipe.modifiers, m)
+            cell.added, cell.steps, cell.shadow, cell.frames = [], [], None, ""
+            cell.outputs, cell.count, cell.state = [], None, "ok"
+        else:
+            cell.outputs, cell.count, cell.state = [], None, "new"
+        cell.kind = kind
+        self.dirty = True
+        return True
+
     def move(self, cell, to: int):
         """Move a cell to position ``to``; the pipeline follows the new cell order."""
         index = cell if isinstance(cell, int) else self.cells.index(cell)

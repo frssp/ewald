@@ -127,6 +127,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.panel.changed.connect(self.recompute)
         self.panel.pipelineReplaced.connect(self.set_pipeline)
         self.panel.askRequested.connect(self.ask_claude)
+        self.panel.askAboutRequested.connect(self.ask_about_cell)
         self.panel.plotCreated.connect(self._connect_plot)
         self.notebook_dock = self._dock(self.panel, "Notebook", QtCore.Qt.LeftDockWidgetArea, 560)
         # the notebook tab row is the panel's title bar: drag its empty part to move the panel

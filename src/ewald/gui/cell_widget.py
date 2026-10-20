@@ -276,7 +276,9 @@ class CellWidget(QtWidgets.QFrame):
     runRequested = QtCore.Signal(object, bool)   # cell, advance
     selected = QtCore.Signal(object)
     edited = QtCore.Signal(object)               # a step's form changed its modifier
-    actionRequested = QtCore.Signal(object, str)  # cell, 'up' | 'down' | 'delete' | 'code' | 'below'
+    # cell, 'up' | 'down' | 'delete' | 'code' | 'below' | 'clear' | 'kind:code' | 'kind:markdown' |
+    # 'above' | 'after' (insert a code cell) | 'ask' | 'frames:...'
+    actionRequested = QtCore.Signal(object, str)
     plotCreated = QtCore.Signal(object)          # a live plot of a show(pipe, ...) output
 
     def __init__(self, notebook: Notebook, cell: Cell, parent=None):
@@ -290,6 +292,7 @@ class CellWidget(QtWidgets.QFrame):
         self.setObjectName("cell")
         self.setProperty("kind", "step" if cell.is_step else "view" if cell.is_view else cell.kind)
         self.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        self.setFocusPolicy(QtCore.Qt.ClickFocus)   # Esc from the editor lands here (command keys)
         outer = QtWidgets.QHBoxLayout(self)
         outer.setContentsMargins(2, 5, 8, 6)
         outer.setSpacing(4)
@@ -381,21 +384,38 @@ class CellWidget(QtWidgets.QFrame):
         b = header.button("more", "Cell actions", name="cellMenu")
         b.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         m = QtWidgets.QMenu(b)
-        if self.cell.kind == "code":
+        m.setToolTipsVisible(True)
+        act = lambda name: (lambda: self.actionRequested.emit(self.cell, name))  # noqa: E731
+        code = self.cell.kind == "code"
+        if code:
             m.addAction("Run", lambda: self.runRequested.emit(self.cell, False))
-            m.addAction("Run this and below", lambda: self.actionRequested.emit(self.cell, "below"))
+            m.addAction("Run this and below", act("below"))
+        else:
+            m.addAction("Edit", self.edit_markdown)
+        m.addSeparator()
+        kind = m.addMenu("Cell type")
+        group = QtGui.QActionGroup(kind)
+        for key, label, keys in (("code", "Code", "Y"), ("markdown", "Text (Markdown)", "M")):
+            a = kind.addAction(f"{label}\t{keys}", act("kind:" + key))
+            a.setCheckable(True)
+            a.setChecked(self.cell.kind == key)
+            group.addAction(a)
         if self.cell.is_step or self.cell.is_view:
-            m.addAction("Show as code cell", lambda: self.actionRequested.emit(self.cell, "code"))
+            m.addAction("Show as code cell", act("code"))
+        if code and not (self.cell.is_step or self.cell.is_view):
+            self._frames_menu(m.addMenu("Runs"))
         if self.cell.is_view:
             m.addAction("Save plot…", lambda: self.plot_panel.save_plot())
-        if self.cell.kind == "code" and not (self.cell.is_step or self.cell.is_view):
-            self._frames_menu(m.addMenu("Runs"))
-        if self.cell.kind != "markdown":
-            m.addAction("Clear output", lambda: self.actionRequested.emit(self.cell, "clear"))
+        if code:
+            m.addAction("Clear output", act("clear"))
+        m.addAction("Ask AI about this cell", act("ask")).setToolTip(
+            "Open the AI chat with this cell's code in the question")
         m.addSeparator()
-        m.addAction("Move up", lambda: self.actionRequested.emit(self.cell, "up"))
-        m.addAction("Move down", lambda: self.actionRequested.emit(self.cell, "down"))
-        m.addAction("Delete", lambda: self.actionRequested.emit(self.cell, "delete"))
+        m.addAction("Insert cell above\tA", act("above"))
+        m.addAction("Insert cell below\tB", act("after"))
+        m.addAction("Move up", act("up"))
+        m.addAction("Move down", act("down"))
+        m.addAction("Delete", act("delete"))
         b.setMenu(m)
         return b
 
@@ -438,6 +458,7 @@ class CellWidget(QtWidgets.QFrame):
             self.body.addLayout(row)
         row = QtWidgets.QHBoxLayout()
         self.editor = CodeEditor(self.cell.source)
+        self.editor.escaped.connect(self.leave_editor)
         self.editor.textChanged.connect(self._source_edited)
         self.editor.runRequested.connect(lambda adv: self.runRequested.emit(self.cell, adv))
         self.editor.focused.connect(lambda: self.selected.emit(self.cell))
@@ -477,6 +498,7 @@ class CellWidget(QtWidgets.QFrame):
         self.view.setText(self.cell.source or "*Empty text cell; double-click to edit*")
         self.view.setToolTip("Double-click to edit; Ctrl+Enter shows the text")
         self.editor = CodeEditor(self.cell.source)
+        self.editor.escaped.connect(self.leave_editor)
         self.editor.highlighter.setDocument(None)
         self.editor.setVisible(False)
         self.editor.textChanged.connect(self._source_edited)
@@ -494,10 +516,36 @@ class CellWidget(QtWidgets.QFrame):
         if self.cell.collapsed:
             self.set_collapsed(False)
         elif self.cell.kind == "markdown":
-            self.view.setVisible(False)
-            self.editor.setVisible(True)
-            self.editor.setFocus()
+            self.edit_markdown()
         super().mouseDoubleClickEvent(event)
+
+    def edit_markdown(self):
+        self.view.setVisible(False)
+        self.editor.setVisible(True)
+        self.editor.setFocus()
+
+    def leave_editor(self):
+        """Esc in the editor: the cell keeps the keyboard (Y, M, A, B, Enter), as in Jupyter."""
+        if self.cell.kind == "markdown":
+            self._render_markdown()
+        self.selected.emit(self.cell)
+        self.setFocus()
+
+    COMMAND_KEYS = {QtCore.Qt.Key_Y: "kind:code", QtCore.Qt.Key_M: "kind:markdown",
+                    QtCore.Qt.Key_A: "above", QtCore.Qt.Key_B: "after"}
+
+    def keyPressEvent(self, event):
+        key, mods = event.key(), event.modifiers()
+        if not mods & ~QtCore.Qt.KeypadModifier and key in self.COMMAND_KEYS:
+            self.actionRequested.emit(self.cell, self.COMMAND_KEYS[key])
+            return
+        if key in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) and not mods and self.editor is not None:
+            if self.cell.kind == "markdown":
+                self.edit_markdown()
+            elif self.editor.isVisible():
+                self.editor.setFocus()
+            return
+        super().keyPressEvent(event)
 
     def _render_markdown(self):
         self.view.setText(self.cell.source or "*Empty text cell; double-click to edit*")
@@ -552,6 +600,7 @@ class CellWidget(QtWidgets.QFrame):
         self.form_page.setVisible(False)
         self.body.addWidget(self.form_page)
         self.editor = CodeEditor(self.cell.source)
+        self.editor.escaped.connect(self.leave_editor)
         self.editor.setVisible(False)
         self.editor.textChanged.connect(self._source_edited)
         self.editor.runRequested.connect(lambda adv: self.runRequested.emit(self.cell, adv))
@@ -581,6 +630,7 @@ class CellWidget(QtWidgets.QFrame):
         head.addWidget(self._menu_button())
         self.body.addLayout(head)
         self.editor = CodeEditor(self.cell.source)
+        self.editor.escaped.connect(self.leave_editor)
         self.editor.setVisible(False)
         self.editor.textChanged.connect(self._source_edited)
         self.editor.runRequested.connect(lambda adv: self.runRequested.emit(self.cell, adv))

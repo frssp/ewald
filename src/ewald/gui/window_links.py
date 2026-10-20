@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 
 import numpy as np
-from PySide6 import QtCore
+from PySide6 import QtCore, QtGui
 
 from .. import modifiers as mods
 from ..io import import_file
@@ -203,6 +203,13 @@ class LinksMixin:
         self._show_side_bar(self.ask_dock)  # the AI chat side bar beside the notebook
         self.ask_panel.update_selection()
         self.ask_panel.input.setFocus()
+
+    def ask_about_cell(self, text):
+        """Cell menu › Ask AI about this cell: the chat side bar with the cell quoted, ready for the question."""
+        self.ask_claude()
+        box = self.ask_panel.input
+        box.setPlainText(text)
+        box.moveCursor(QtGui.QTextCursor.End)
 
     def _notebook_code(self):
         """The current notebook as percent-format Python, for the AI chat (None without one)."""

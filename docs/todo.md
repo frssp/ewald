@@ -76,7 +76,9 @@ GUI
   they keep the old palette until a restart after a theme switch; move them to QSS object names.
 - Notebook layout: the viewport could follow the current notebook even when it has no
   pipeline yet (now it keeps the last one); image/figure cells; inline Ask AI suggestions
-  as diffs; a snapshot cell that updates when the camera of its view changes (now it is code).
+  as diffs; a snapshot cell that updates when the camera of its view changes (now it is code);
+  more Jupyter command-mode keys (only Y, M, A, B and Enter so far: no DD, X/C/V, Shift+Enter in
+  command mode, raw cells).
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
   view does not have yet (picks as code, the viewport axes widget; measurement labels in the
   legacy OpenGL 1.x viewport, and lines that show through atoms; audit in the project files `ewald-review/view-elements-audit.md`);
