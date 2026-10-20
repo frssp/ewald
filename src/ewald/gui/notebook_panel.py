@@ -941,7 +941,7 @@ class NotebookView(QtWidgets.QWidget):
         code.clicked.connect(lambda: self.add_cell("code"))
         step = QtWidgets.QPushButton("+ Step", objectName="addCell", toolTip="Add an analysis or modification step")
         self.step_menu = QtWidgets.QMenu(step)
-        self.step_menu.aboutToShow.connect(lambda: fill_modifier_menu(self.step_menu, self.add_step))
+        self.step_menu.aboutToShow.connect(lambda: fill_modifier_menu(self.step_menu, self.add_step, self._step_context))
         step.setMenu(self.step_menu)
         plugin = QtWidgets.QPushButton("+ Plugin", objectName="addCell", toolTip="Plugin steps, or load a plugin file")
         self.plugin_menu = QtWidgets.QMenu(plugin)
@@ -1091,6 +1091,12 @@ class NotebookView(QtWidgets.QWidget):
 
     def add_cell(self, kind="code", source=""):
         return self._insert(Cell(source, kind=kind))
+
+    def _step_context(self):
+        """(current frame, pipeline) for the + Step menu, when the window shows this notebook."""
+        win, pipe = self.window(), self.notebook.pipeline
+        data = getattr(win, "data", None) if getattr(win, "pipeline", None) is pipe else None
+        return data, pipe
 
     def add_step(self, modifier):
         """A step cell for ``modifier`` after the current cell; the pipeline gets it right away."""
@@ -1425,7 +1431,8 @@ class NotebookPanel(QtWidgets.QWidget):
         self.tabs.currentChanged.connect(self._tab_changed)
         lay.addWidget(self.tabs)
         self.add_menu = QtWidgets.QMenu(self)  # Pipeline menu / palette: same entries as + Step
-        self.add_menu.aboutToShow.connect(lambda: fill_modifier_menu(self.add_menu, self.add_modifier))
+        self.add_menu.aboutToShow.connect(lambda: fill_modifier_menu(
+            self.add_menu, self.add_modifier, self.view._step_context if self.view is not None else None))
         fill_modifier_menu(self.add_menu, self.add_modifier)
         self._switching = False
         self.new_notebook()

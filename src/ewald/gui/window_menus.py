@@ -252,8 +252,9 @@ class MenusMixin:
             f.addAction("Save notebook &as…", lambda: self.save_notebook(ask=True), QtGui.QKeySequence.SaveAs)
             f.addAction("&Close notebook", lambda: self.panel.close_tab(self.panel.tabs.currentIndex()), "Ctrl+W")
             f.addSeparator()
-            f.addAction("Load &session (.ewald)…", self.load_session_dialog, "Ctrl+Shift+O")
-            f.addAction("Save session (.ewald) as…", lambda: self.save_session(ask=True))
+            ses = f.addMenu("Sess&ion (.ewald)")  # the classic layout's file; notebooks and .ewd replace it
+            ses.addAction("&Load session…", self.load_session_dialog, "Ctrl+Shift+O")
+            ses.addAction("&Save session as…", lambda: self.save_session(ask=True))
         else:
             f.addAction("Load &session…", self.load_session_dialog, "Ctrl+Shift+O")
             f.addAction(icon("save"), "&Save session", QtGui.QKeySequence.Save, self.save_session)
@@ -290,23 +291,25 @@ class MenusMixin:
             v.addAction(label, lambda d=d: self.viewport.view_direction(d))
         v.addAction("Zoom to fit", self.viewport.zoom_fit, "Ctrl+0")
         v.addSeparator()
-        for bg in ("Dark background", "White background"):
-            v.addAction(bg, lambda bg=bg: self._set_background(PALETTES["graphite"]["viewport"] if bg.startswith("Dark") else "white"))
         self.theme_menu = v.addMenu("Theme")
         self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
         self._fill_theme_menu()
         lay = v.addMenu("Layout")  # tabs drag between groups; these are the keyboard and menu way
         for act in self.workbench.actions():
             lay.addAction(act)
+        lay.setToolTipsVisible(True)
+        lay.aboutToShow.connect(self.workbench.update_actions)
+        lay.aboutToHide.connect(self.workbench.enable_actions)
         if nb:
             v.addSeparator()
             v.addAction("Focus on the viewport", self.toggle_focus, "Ctrl+\\")
             v.addAction("Minimal mode (menus hidden)", lambda: self.set_minimal(not getattr(self, "minimal", False)), "Ctrl+Shift+M")
             n = mb.addMenu("&Notebook")
-            n.addAction("Run &all", lambda: self.panel.view.run_all(), "Ctrl+Shift+Return")
+            n.addAction("Run &all", lambda: self.panel.view.run_all(), "Ctrl+Shift+Return").setToolTip(
+                "Restart and run every cell from the top")
             n.addAction("Run current cell and &below", lambda: self._cell_action("below"))
             n.addAction("&Restart", lambda: self.panel.view.restart())
-            n.addAction("Restart and run all", lambda: self.panel.view.run_all())
+            n.setToolTipsVisible(True)
             self.kernel_menu = n.addMenu("&Kernel")
             self.kernel_menu.aboutToShow.connect(lambda: self.panel.view.fill_kernel_menu(self.kernel_menu))
             self.trust_action = n.addAction("&Trust notebook…", lambda: self.panel.view.trust())
@@ -324,7 +327,7 @@ class MenusMixin:
             ins.addAction("&Text cell", lambda: self.panel.view.add_cell("markdown"))
             ins.addSeparator()
             m = ins.addMenu("&Step")
-            m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier))
+            m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier, self._step_context))
             fill_modifier_menu(m, self.panel.add_modifier)
             vm = ins.addMenu("&View")
             vm.aboutToShow.connect(lambda: fill_view_menu(vm, self.data, lambda **kw: self.panel.view.add_view(**kw)))
@@ -344,20 +347,15 @@ class MenusMixin:
             self.analysis_menu = am
             plug = ins.addMenu("&Plugin step")
             plug.aboutToShow.connect(lambda: self._fill_plugin_menu(plug))
-            ins.addAction("&Load plugin file…", lambda: self.panel.view._load_plugin_file())
-            ins.addSeparator()
-            ins.addAction("Ask Claude to add steps…", self.ask_claude)
             self.step_menu = m
         else:
             m = mb.addMenu("&Pipeline")
-            m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier))
+            m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier, self._step_context))
             fill_modifier_menu(m, self.panel.add_modifier)
             self.step_menu = m
         t = mb.addMenu("&Tools")
         for key, _icon, tip in Viewport.TOOLS:
             t.addAction(tip.split(":")[0], lambda k=key: self.viewport.set_tool(k))
-        t.addSeparator()
-        t.addAction("Ask Claude about selection…", self.ask_claude, "Ctrl+J")
         w = mb.addMenu("&Window")
         w.addAction("Notebook workspace" if nb else "Analyze workspace", lambda: self.set_workspace(0), "Ctrl+1")
         w.addAction("Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
@@ -371,13 +369,15 @@ class MenusMixin:
         w.addAction("Plots", lambda: self.workbench.show(self.plots))
         w.addAction("New plot view", lambda: self.new_plot_view())
         w.addAction("Log", lambda: self.workbench.show(self.log))
-        w.addAction("AI chat" if nb else "Ask Claude", self.ask_claude)
+        w.addAction("AI chat" if nb else "Ask Claude", self.ask_claude, "Ctrl+J").setToolTip(
+            "Chat with Claude about the notebook, the structure or the picked atoms")
         w.addAction("Command palette", self.command_palette, "Ctrl+K")
         h = mb.addMenu("&Help")
         for label, page in manual.PAGES.items():
             h.addAction(label, lambda page=page: self.open_help(page))
         h.addSeparator()
-        h.addAction("Open plugin folder", self.open_plugin_folder)
+        if not nb:  # the notebook layout has it under Insert › Plugin step
+            h.addAction("Open plugin folder", self.open_plugin_folder)
         about = h.addAction("About EWALD", self.about)
         about.setMenuRole(QtGui.QAction.AboutRole)
 
@@ -438,6 +438,10 @@ class MenusMixin:
         cell = view.add_cell("code", verb_cell(verb, self.data))
         view.run(cell)
         self.notebook_dock.show()
+
+    def _step_context(self):
+        """(current frame, pipeline) for greying out steps in Insert › Step and the Pipeline menu."""
+        return self.data, self.pipeline
 
     def _cell_action(self, action):
         view = self.panel.view
@@ -510,10 +514,14 @@ class MenusMixin:
         return text
 
     def command_palette(self):
+        for menu in self.menuBar().findChildren(QtWidgets.QMenu):
+            menu.aboutToShow.emit()  # fill the menus that fill themselves when opened (Kernel, Insert › View, ...)
         entries = [] if self.layout_mode == "notebook" else [  # notebook: Insert › Step lists them already
             (label, f"Add modification › {group}", lambda f=factory: self.panel.add_modifier(f()))
             for group, items in MODIFIER_MENU.items() for label, factory in items.items()]
         entries += menu_entries(self.menuBar())
+        for menu in self.menuBar().findChildren(QtWidgets.QMenu):
+            menu.aboutToHide.emit()  # View › Layout enables its moves again for their shortcuts
         pal = CommandPalette(entries, self)
         geo = self.geometry()
         pal.move(geo.x() + (geo.width() - 560) // 2, geo.y() + 90)
@@ -531,3 +539,7 @@ class MenusMixin:
             act.setChecked(name == self.style.theme)
             act.setToolTip(p.description)
             group.addAction(act)
+        self.theme_menu.addSeparator()  # the background alone, keeping the element colors
+        for label, color in (("Dark background", PALETTES["graphite"]["viewport"]), ("White background", "white")):
+            act = self.theme_menu.addAction(label, lambda c=color: self._set_background(c))
+            act.setToolTip("Change only the viewport background")

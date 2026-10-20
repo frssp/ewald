@@ -66,7 +66,8 @@ editor area.
 along a, b, c, a*, b*, c* aligns the view with a cell vector or reciprocal vector, as in
 VESTA, and View › Zoom to fit (Ctrl+0) frames the cell. View › Theme applies a theme (Default,
 VESTA, CPK, Journal, ASE, Dark slide, or a [theme plugin](../plugins/styles.md#themes)): element
-colors, background, cell color and radius preset in one step.
+colors, background, cell color and radius preset in one step; its Dark background and White
+background entries change only the background.
 
 **Styles.** The Style box on the view toolbar switches between Ball & stick (the default: small
 balls and bonds found automatically), Space-filling, Simple (ASE) and Points; Preferences ›
@@ -104,8 +105,8 @@ the current one (`OverlayFrames`; on by default for NEB folders), with its trans
 95 %) and whether only the atoms that move get copies. Show (bonds, simulation cell), View
 along, Orthographic, Zoom to fit and Ask Claude are always there.
 
-**AI chat (Ask Claude).** The Claude button at the bottom of the activity bar on the far left (also Tools ›
-Ask Claude about selection, Ctrl+J, and Window › AI chat) opens a chat side bar left of the
+**AI chat (Ask Claude).** The Claude button at the bottom of the activity bar on the far left (also
+Window › AI chat, Ctrl+J, and Ask Claude in the 3D view's right-click menu) opens a chat side bar left of the
 notebook; in the classic layout it is the Ask Claude tab next to the pipeline. It reads like a
 chat app: your messages in bubbles on the right, Claude's answers under its avatar on the left,
 the tools it ran as small chips (*Running …*, then *Used …*), and code blocks as framed code with
