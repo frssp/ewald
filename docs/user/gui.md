@@ -270,9 +270,11 @@ journal size presets (1-column 3.5 in, 2-column 7.2 in, square, 16:9 slide) at a
 background (white, transparent, black, or the viewport's), overlays, and an output file.
 Under Overlays, "+ Overlay" adds an overlay element (Coordinate tripod, Attributes, or an
 [overlay plugin](../plugins/overlays.md)) with a checkbox and a parameter form.
-The ray tracer renders in the background: the window stays usable, *Render* greys out and reads
-"Ray tracing…", and a spinner beside the picture size shows until the picture appears under
-*Last render*. OpenGL and vector output are quick and render right away.
+The ray tracer renders in the background: the window stays usable, a spinner beside the picture
+size reads "Ray tracing… 40%" until the picture appears under *Last render*, and *Render* turns
+into *Cancel*, which stops the trace after the rows being traced (no file is written). In Python,
+`render(..., renderer="raytrace", progress=fn)` calls `fn(done_rows, total_rows)` the same way;
+returning `False` stops it with `RenderCancelled`. OpenGL and vector output are quick and render right away.
 
 The left side is the live 3D view with the picture's frame on it: the part outside the frame
 is dimmed, and the frame keeps the output's aspect ratio and its place on screen, so zooming or
