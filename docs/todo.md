@@ -76,8 +76,7 @@ GUI
 - Spectra, Figure and Forge views from the redesign mock-ups, built as view cells
   rather than separate panels.
 - Quad views (top, front, left, perspective), as in OVITO.
-- Undo/redo: display style changes (colors, radii, camera) and the classic layout (only notebook
-  edits are undone now); a View cell's table or column change is its own entry instead of
+- Undo/redo: display style changes (colors, radii, camera) (only notebook edits are undone now); a View cell's table or column change is its own entry instead of
   joining the next one.
 - Background compute: notebook cells still run on the GUI thread (stdout capture is
   process-wide), so a cell that computes many frames itself blocks the window until the
@@ -91,7 +90,7 @@ GUI
 - App icon outside the running window: a Linux `.desktop` entry and hicolor icons installed
   with the package (the Windows app and installer use `ewald.ico`, the macOS bundle
   `ewald.icns`); the EWALD mark in the main window header (the Notebook redesign) and the docs.
-- Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
+- Icons for the remaining menu bar entries (View, Notebook, Insert, Tools) and the Insert › Step
   categories. Buttons no longer use text glyphs (panel headers, timeline, cells, view bar use
   line icons from `gui/icons.py`).
 - Panel headers (`gui/header.py`): checked under xvfb with Windows-like scale factors (100, 125,
@@ -99,8 +98,8 @@ GUI
   side bar still crowds its form below about 260 px, and the view bar cuts "View along" when the
   3D view is narrow (could fold into a menu).
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
-  Add modification for the loaded data, view-along buttons hidden without a cell, the timeline
-  folded for a single structure, a right-click menu on pipeline items.
+  Insert › Step for the loaded data, view-along buttons hidden without a cell, the timeline
+  folded for a single structure.
 - Shortcuts for the viewport tools (orbit, pick, distance, angle, bond) and view-along axes.
 - Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
   screen edges) and VTK scene lights instead of the fixed head light; bond impostors.
@@ -337,7 +336,7 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   use h5py-written fixtures, a second process holding the write lock, and a cut file).
 - AI features with a real API key (Claude; also OpenAI, Gemini and a local Ollama/LM Studio
   server, which are tested only against mocked servers): `ewald ask` (also `--select`), the GUI AI chat side bar
-  (notebook code in the prompt, Insert as notebook cell), the classic Ask AI tab,
+  (notebook code in the prompt, Insert as notebook cell),
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › AI › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
   KWallet); the container has none, so only the 0600 file fallback runs for real.

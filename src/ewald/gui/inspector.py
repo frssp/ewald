@@ -1,4 +1,4 @@
-"""Data inspector: particle property table and global attributes."""
+"""Data inspector: particle property table, global attributes, tables, cell and data source."""
 from __future__ import annotations
 
 import numpy as np
@@ -75,6 +75,34 @@ class DataInspector(QtWidgets.QTabWidget):
         self.addTab(self.tables, "Tables")
         self.cell = QtWidgets.QPlainTextEdit(readOnly=True)
         self.addTab(self.cell, "Cell")
+        self.source = QtWidgets.QPlainTextEdit(readOnly=True)
+        self.addTab(self.source, "Source")
+        self._pipeline = None
+
+    def set_pipeline(self, pipeline):
+        """The pipeline whose source (file, reader, frames) the Source tab describes."""
+        self._pipeline = pipeline
+        self._show_source()
+
+    def _show_source(self):
+        pipe, data = self._pipeline, self._data
+        lines = []
+        src = getattr(pipe, "source", None)
+        paths = getattr(src, "paths", None) or []
+        if paths:
+            lines.append("File       " + str(paths[0]) + (f"  (+{len(paths) - 1} more)" if len(paths) > 1 else ""))
+            lines += [" " * 11 + str(p) for p in paths[1:]]
+            readers = sorted({type(r).__name__ for r in getattr(src, "readers", ())})
+            if readers:
+                lines.append("Reader     " + ", ".join(readers))
+        elif src is not None:
+            lines.append("Source     " + type(src).__name__)
+        if pipe is not None:
+            lines.append(f"Frames     {pipe.num_frames}, loaded lazily")
+        if data is not None:
+            lines.append(f"Particles  {data.count}")
+            lines.append("Properties " + ", ".join(data.particles))
+        self.source.setPlainText("\n".join(lines) if lines else "no data")
 
     def set_data(self, data):
         self._data = data
@@ -100,6 +128,7 @@ class DataInspector(QtWidgets.QTabWidget):
                                    + cell_summary(data.cell))
         else:
             self.cell.setPlainText("no cell")
+        self._show_source()
 
     def _apply_filter(self):
         from ..modifiers.expression import evaluate
