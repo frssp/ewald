@@ -16,7 +16,6 @@ and agrees with fes.dat to a few hundredths of a kJ/mol.
 
     python examples/papers/ammonia_borane_fes.py [outdir]
 """
-# %%
 import sys
 from pathlib import Path
 

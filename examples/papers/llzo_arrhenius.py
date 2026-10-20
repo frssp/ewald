@@ -12,7 +12,6 @@ kinisi's covariance-weighted fit. The activation energies agree.
 
     python examples/papers/llzo_arrhenius.py [outdir]
 """
-# %%
 import sys
 from pathlib import Path
 
