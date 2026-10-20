@@ -594,6 +594,7 @@ READ_ONLY_TOOLS = {"describe_frame", "describe_selection", "describe_trajectory"
                    "show_pipeline", "set_frame", "evaluate_expression", "compute_rdf", "analyze_symmetry",
                    "compute_diffraction", "compute_msd", "check_run", "render_image", "get_view", "list_visuals",
                    "list_overlays", "list_styles", "get_script", "python_api", "list_cells", "read_cell"}
+WORKFLOW_TOOLS = {"list_workflows", "describe_workflow"}   # read-only; offered with a workflow source (test_workflow.py)
 CELL_WRITING_TOOLS = set(tools_mod.CELL_WRITERS)
 CELL_EDITING_TOOLS = {"insert_cell", "edit_cell", "move_cell", "delete_cell", "run_cell"}
 
@@ -602,7 +603,7 @@ def test_every_tool_is_classified():
     from ewald import plugins
 
     names = set(Toolset(allow_code=True).tools) - set(plugins.tools())
-    assert names == READ_ONLY_TOOLS | CELL_WRITING_TOOLS | CELL_EDITING_TOOLS
+    assert names == READ_ONLY_TOOLS | CELL_WRITING_TOOLS | CELL_EDITING_TOOLS | WORKFLOW_TOOLS
 
 
 def test_tools_do_not_touch_the_pipeline_or_view_directly():
