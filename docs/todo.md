@@ -58,8 +58,8 @@ GUI
   pipeline yet (now it keeps the last one); image/figure cells; inline Ask AI suggestions
   as diffs; a snapshot cell that updates when the camera of its view changes (now it is code).
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
-  view does not have yet (picks and distance/angle measurements as
-  code, the viewport axes widget; audit in the project files `ewald-review/view-elements-audit.md`);
+  view does not have yet (picks as code, the viewport axes widget; measurement labels in the
+  legacy OpenGL 1.x viewport, and lines that show through atoms; audit in the project files `ewald-review/view-elements-audit.md`);
   the Display panel cards (Atoms, Types, Bonds, Cell, Surfaces, Elements) could take the visual
   element names `pipe.view.elements` uses (Particles, Bonds, Simulation cell, ...); label size,
   color and types and the selection color are code only (the cards show on/off and the text); the camera reaches the view cell

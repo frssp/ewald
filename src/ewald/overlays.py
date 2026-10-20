@@ -276,6 +276,41 @@ class AtomLabels(OverlayElement):
         return [Text(float(x[k]), float(y[k]), t, size, self.color, "mm", True, halo) for k, t in zip(order, texts)]
 
 
+class MeasurementLabels(OverlayElement):
+    """The values of the view's ``measurements`` (:mod:`ewald.measure`) next to their lines: a distance in
+    Angstrom at its middle, an angle at its vertex, a dihedral at its middle bond. ``size`` in px (None: the
+    figure's small size); ``color`` None is the measurement line color."""
+
+    name = "Measurements"
+
+    def __init__(self, measurements: list | None = None, size: float | None = None, color=None):
+        self.measurements = measurements or []
+        self.size = size
+        self.color = color
+
+    def applies(self, data):
+        return data is not None and data.count > 0 and bool(self.measurements)
+
+    def layout(self, data, ctx):
+        from . import measure
+        from .scene import MEASUREMENT_COLOR
+
+        if ctx.camera is None:
+            return []
+        items = [m for m in measure.check(self.measurements) if max(m) < data.count]
+        if not items:
+            return []
+        from .vector import _project
+
+        at = np.array([measure.anchor(data, m) for m in items])
+        x, y, depth, _ = _project(at, ctx.camera, ctx.size)
+        halo = (1.0, 1.0, 1.0) if sum(ctx.ink) < 1.5 else (0.0, 0.0, 0.0)
+        color = self.color or MEASUREMENT_COLOR
+        size = self.size or ctx.small
+        return [Text(float(x[k]), float(y[k]) - 0.6 * size, measure.text(data, m), size, color, "mb", True, halo)
+                for k, m in enumerate(items) if depth[k] > 0]
+
+
 def atom_label_mask(data, types=None) -> np.ndarray:
     """Which atoms get a label: visible ones (Transparency < 1) of ``types`` (all when None)."""
     keep = np.ones(data.count, bool)
@@ -324,7 +359,7 @@ def label_params(labels) -> dict | None:
     raise TypeError(f"labels is True, a text like '{{type}}{{index}}' or a dict, not {labels!r}")
 
 
-BUILTIN = (CoordinateTripod, Attributes, AtomLabels)
+BUILTIN = (CoordinateTripod, Attributes, AtomLabels, MeasurementLabels)
 
 
 def coerce_overlays(overlays) -> list[OverlayElement]:

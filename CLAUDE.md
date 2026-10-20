@@ -145,7 +145,8 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `plumed.py`, `phonon.py`: stubs that alias the `ewald-plumed` / `ewald-phonopy` plugin modules
   (frssp/ewald-plugins); the code and its tests live there.
 - Domain modules: `electronic.py` (VASP DOS/bands), `diffraction.py` (XRD, S(q)), `arrows.py`
-  (per-atom vectors), `linking.py` (linked selection between plots and the 3D view), `keychain.py`
+  (per-atom vectors), `measure.py` (distances/angles/dihedrals of the view's `measurements`),
+  `linking.py` (linked selection between plots and the 3D view), `keychain.py`
   (Claude key, SSH secrets); readers `io/volumetric.py` (CHGCAR/cube grids), `io/neb.py`, `io/thermo.py`.
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
 - `notebook.py`: notebooks as percent-format `.py` files (`# %%` cells, one namespace, `pipe` is the

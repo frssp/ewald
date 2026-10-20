@@ -309,7 +309,7 @@ class Viewport(QtWidgets.QWidget):
         self._lod_cloud = None
         stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:", "visual:", "bonds:"))]
         for name in ("atoms", "atoms:glass", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay",
-                     "_labels-labels", *stale):
+                     "_labels-labels", "measurements", "_measurements-labels", *stale):
             p.remove_actor(name, render=False)
         if p.scalar_bars:
             p.remove_scalar_bar()
@@ -358,6 +358,8 @@ class Viewport(QtWidgets.QWidget):
             self._axes = dark
         if labels and not coarse:
             self._draw_labels(labels, dark)
+        if kw.get("measurements") and not coarse:
+            self._draw_measurements(kw["measurements"])
         self._draw_picks()
         self.coarse = coarse
         if coarse:
@@ -825,6 +827,35 @@ class Viewport(QtWidgets.QWidget):
                                       name="_labels",
                                       render=False, pickable=False, justification_horizontal="center",
                                       justification_vertical="center")
+
+    def _draw_measurements(self, measurements):
+        """The values of the view's ``measurements`` at their lines (the lines are the Measurements element)."""
+        from .. import measure
+        from ..scene import MEASUREMENT_COLOR
+
+        try:
+            items = [m for m in measure.check(measurements) if max(m) < self.data.count]
+        except (TypeError, ValueError, IndexError) as exc:
+            self.picked.emit(f"Measurements: {exc}")
+            return
+        if not items:
+            return
+        self.plotter.add_point_labels(np.array([measure.anchor(self.data, m) for m in items]),
+                                      [measure.text(self.data, m) for m in items], font_size=14,
+                                      text_color=MEASUREMENT_COLOR, bold=True, show_points=False,
+                                      shape_color="#14161A", shape_opacity=0.6, always_visible=True,
+                                      name="_measurements", render=False, pickable=False)
+
+    def keep_measurement(self) -> bool:
+        """Add the distance or angle measured with the tool to the view's ``measurements`` (drawn in the
+        viewport and pictures, written to the view cell); False when no measurement is complete."""
+        need = {"distance": 2, "angle": 3}.get(self.tool)
+        if need is None or len(self._picks) != need:
+            return False
+        if self._picks not in self.style.measurements:
+            self.style.measurements = [*self.style.measurements, list(self._picks)]
+        self.styleChanged.emit()   # the window redraws and writes the view cell
+        return True
 
     def _draw_picks(self):
         import pyvista as pv

@@ -81,7 +81,9 @@ Preferences › Elements › *Automatic bonds up to* atoms (100 000) turns bonds
 bond search and the sticks would slow the viewport down; turn them on under Bonds if you want them. The tool rail on the left switches
 between orbit, pick (click an atom to see its id, type, position and every property;
 Shift+click adds atoms to the pick or removes them),
-distance (click two atoms) and angle (click three atoms, vertex in the middle). Double-click
+distance (click two atoms) and angle (click three atoms, vertex in the middle); right-click ›
+*Keep measurement in the view* keeps a finished one in the notebook's view cell (`measurements`),
+so it stays drawn and appears in pictures (*Clear measurements* drops them). Double-click
 empty space or press Esc to clear the picks, measurements and selection (with any tool,
 orbit included). Resting the
 cursor on an atom with any tool shows its element, index (and id), Cartesian position in Å and,

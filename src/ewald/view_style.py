@@ -54,6 +54,7 @@ class ViewStyle:
     type_transparency: dict = field(default_factory=dict)  # type -> 0..1 (1 hides the type)
     selection: object = True                          # highlight 'Selection': True (red), False or a color
     labels: object = None                             # atom labels: True, a template or {text, types, size, color}
+    measurements: list = field(default_factory=list)  # [[i, j], [i, j, k], ...] distances / angles / dihedrals
     light: object = None                              # key light: [x, y, z] (camera frame) or {direction|azimuth/elevation, intensity}
 
     def apply_preset(self, name: str, types=()):
@@ -103,6 +104,8 @@ class ViewStyle:
             kw["selection_color"] = SELECTION_COLOR if self.selection is True else self.selection
         if self.labels:
             kw["labels"] = dict(self.labels) if isinstance(self.labels, dict) else self.labels
+        if self.measurements:
+            kw["measurements"] = [list(m) for m in self.measurements]
         if self.light is not None:
             kw["light"] = dict(self.light) if isinstance(self.light, dict) else list(self.light)
         if self.boundary:
@@ -200,6 +203,7 @@ class ViewStyle:
         self.selection = view.selection
         self.labels = view.labels
         self.light = view.light
+        self.measurements = [list(m) for m in view.measurements]
         self.boundary = list(view.boundary or [])
         self.boundary_bonds = view.boundary_bonds
         self.replicate = list(view.replicate or [])
@@ -254,7 +258,7 @@ class ViewStyle:
                "trajectory_width": self.trajectory_width, "atoms": bool(self.show_atoms),
                "cell_radius": self.cell_radius, "surfaces": {k: dict(v) for k, v in self.surfaces.items()},
                "transparency": dict(self.type_transparency), "selection": self.selection, "labels": self.labels,
-               "light": self.light}
+               "light": self.light, "measurements": [list(m) for m in self.measurements]}
         if theme is None or theme.radius_preset != self.radius_preset:
             out["radius_preset"] = self.radius_preset
         base = theme.background if theme is not None and theme.background is not None else default_background()

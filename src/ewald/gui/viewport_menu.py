@@ -65,6 +65,11 @@ class ViewportMenuMixin:
             menu.addAction(icon("delete"), "Delete picked atoms", lambda: self.select_picked(delete=True))
             menu.addAction(icon("clear"), "Clear picks", self.viewport.clear_picks)
             menu.addSeparator()
+        vp = self.viewport
+        if everything or len(picks) == {"distance": 2, "angle": 3}.get(vp.tool):
+            menu.addAction(icon("distance"), "Keep measurement in the view", vp.keep_measurement)
+        if everything or self.style.measurements:
+            menu.addAction(icon("clear"), "Clear measurements", self.clear_measurements)
 
         tables = d.tables if d is not None else {}
         neb = next((name for name, t in tables.items() if _is_neb(t)), None)
@@ -214,6 +219,11 @@ class ViewportMenuMixin:
         self.settings["viewport.render_frame"] = bool(on)
         self.settings.save()
         self._render_frame_visibility()
+
+    def clear_measurements(self):
+        """Drop the view's ``measurements`` (and the view cell's)."""
+        self.style.measurements = []
+        self._style_changed()
 
     def center_on_picks(self):
         """Rotate and zoom about the picked atoms (their mean position)."""
