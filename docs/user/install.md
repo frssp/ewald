@@ -64,12 +64,13 @@ Optional parts are extras, installed only when you need them:
 | `movie` | MP4/AVI/MOV export with the ffmpeg binary from imageio-ffmpeg (GIF and PNG need no extra) | `pip install -e ".[movie]"` |
 | `formats` | H5MD, vaspout.h5, MDTraj HDF5 (h5py) and GROMACS XTC/TRR, DCD, NetCDF (MDAnalysis) | `pip install -e ".[formats]"` |
 | `ovito` | `DislocationAnalysis` (DXA) and `OvitoModifier`; the `ovito` wheel pins its own PySide6, so install it in the same command as `gui` | `pip install -e ".[gui,ovito]"` |
-| `remote` | files on SSH hosts (`import_file("host:/path")`) through paramiko | `pip install -e ".[remote]"` |
 | `llm` | Claude agent and MCP server | `pip install -e ".[llm]"` |
 | `symmetry` | spglib, for `SymmetryAnalysis` (space group, Wyckoff positions) | `pip install -e ".[symmetry]"` |
-| `dev` | pytest, paramiko, spglib | `pip install -e ".[dev]"` |
+| `dev` | pytest, spglib | `pip install -e ".[dev]"` |
 
-Extras combine: `pip install -e ".[gui,gpu,movie]"`. pymatgen is used when it happens to be
+Extras combine: `pip install -e ".[gui,gpu,movie]"`. Files on SSH hosts and saved remote
+computers need no extra: paramiko and keyring are part of every install (`[remote]` still
+works in old commands and adds nothing). pymatgen is used when it happens to be
 installed (bond-valence oxidation states for the Shannon ionic radii) but is not needed.
 
 The GUI uses PySide6 only. PyQt5 or PyQt6 in the same environment is harmless as long as nothing

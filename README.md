@@ -57,7 +57,7 @@ decided yet and comes later, if at all.
 pip install -e ".[gui]"     # the desktop app (PySide6, VTK); leave out [gui] for scripts only
 pip install -e ".[gpu]"     # + CuPy for device="cuda" (NVIDIA)
 pip install -e ".[llm]"     # + Claude (Ask Claude, ewald ask)
-pip install -e ".[remote]"  # + files on SSH hosts (paramiko)
+# files on SSH hosts and saved remote computers work in every install (paramiko, keyring)
 ```
 
 A C++17 compiler builds the native analyses (PTM, Voronoi, CSP matching, interval CNA); without one

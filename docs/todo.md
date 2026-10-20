@@ -301,6 +301,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - SSH remote files against a real HPC login node (ProxyJump, OTP, large dumps); tests use an
   in-process SFTP server. Saved remote computers with a real OS keychain (macOS Keychain,
   Windows Credential Manager, GNOME Keyring) and a passphrase-protected key from a real agent.
+  The frozen Windows installer and macOS app now carry paramiko and keyring by default: check
+  that PyInstaller bundles the platform keyring backend.
 - Live reload on a real running LAMMPS/VASP job (local and over SSH), where the writer flushes
   in arbitrary pieces; tests grow fixture files byte by byte.
 - A vaspout.h5 from a real running and a real killed VASP 6 job: which groups exist mid-run,

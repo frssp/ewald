@@ -161,7 +161,8 @@ def _require_paramiko():
     try:
         import paramiko  # noqa: F401
     except ImportError:
-        raise ImportError("Reading files over SSH needs paramiko: pip install 'ewald[remote]'") from None
+        raise ImportError("Reading files over SSH needs paramiko, which ewald installs by default; "
+                          "reinstall ewald or run: pip install paramiko") from None
 
 
 class RemoteError(OSError):

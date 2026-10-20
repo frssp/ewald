@@ -160,3 +160,11 @@ def test_missing_native_extension_explains_itself(monkeypatch, cu_fcc):
             Pipeline(StaticSource([cu_fcc]), [mod]).compute(0)
     out = Pipeline(StaticSource([cu_fcc]), [mods.CommonNeighborAnalysis()]).compute(0)
     assert (out["Structure Type"] == 1).all()  # adaptive CNA falls back to Python: all FCC
+
+
+def test_ssh_support_is_in_the_core_install():
+    """Remote files and saved remote computers work without an extra; '[remote]' stays as an empty alias."""
+    tomllib = pytest.importorskip("tomllib")
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    assert {"paramiko", "keyring"} <= _requirement_names(project["dependencies"])
+    assert project["optional-dependencies"]["remote"] == []
