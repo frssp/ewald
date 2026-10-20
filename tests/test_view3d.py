@@ -184,7 +184,7 @@ def test_gui_follows_the_view_and_writes_the_view_cell(tmp_path):
     from ewald.gui import compute, notebook_panel
     from ewald.gui.app import MainWindow
 
-    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])  # noqa: F841
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     notebook_panel.CONFIRM_UNSAVED, compute.BUDGET = False, None
     path = tmp_path / "cu.extxyz"
     write(path, [bulk("Cu", "fcc", a=3.615, cubic=True).repeat(2)] * 3)
@@ -210,7 +210,21 @@ def test_gui_follows_the_view_and_writes_the_view_cell(tmp_path):
     assert "cell=False" in cell.source
     w.write_camera()                                                     # Insert › View settings with the camera
     assert "camera={" in cell.source and "frame=2" in cell.source
+    w.pipeline.view.update(labels="{type}{index}", transparency={"Cu": 0.5})   # code: labels on the viewport
+    w.recompute()
+    assert "_labels-labels" in w.viewport.plotter.actors and w.style.labels == "{type}{index}"
+    w._style_changed()                                                   # and they survive a GUI write-back
+    assert "labels='{type}{index}'" in cell.source and "transparency={'Cu': 0.5}" in cell.source
+    # delete the window now, in the GUI thread: left to the garbage collector it can crash a later GUI test
+    import gc
+
+    from PySide6 import QtCore
+
     w.close()
+    w.deleteLater()
+    app.processEvents()
+    app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+    gc.collect()
 
 
 def test_elements_by_name_map_onto_the_settings(srtio3):
@@ -312,3 +326,34 @@ def test_type_transparency_and_selection_highlight(srtio3):
     assert np.allclose(atoms.colors()[ti], [0, 1, 0])
     v.selection = False
     assert "selection_color" not in v.render_kwargs(data)
+
+
+def test_atom_labels_in_pictures_and_settings(srtio3):
+    from ewald.overlays import AtomLabels, OverlayContext, atom_label_texts, label_params
+    from ewald.render import default_camera
+
+    v = srtio3.view
+    v.labels = "{type}{index}"
+    data = srtio3.compute(0)
+    assert v.render_kwargs(data)["labels"] == "{type}{index}"
+    assert atom_label_texts(data, [0, 1], "{type}{index}") == ["Sr0", "Ti1"]
+    assert atom_label_texts(data, [2], "id") == ["3"]
+    with pytest.raises(ValueError):
+        atom_label_texts(data, [0], "{nothing}")
+    with pytest.raises(KeyError):
+        v.labels = {"txt": "x"}
+    assert label_params(True) == {"text": "{type}"}
+    cam = default_camera(data, (200, 150))
+    items = AtomLabels("{type}", types=["O"]).layout(data, OverlayContext((200, 150), cam))
+    assert sorted(i.text for i in items) == ["O", "O", "O"]
+    assert all(0 <= i.x <= 200 and 0 <= i.y <= 150 for i in items)
+    v.labels = False
+    assert v.labels is None and "labels" not in v.render_kwargs(data)
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="needs an X display with OpenGL")
+def test_atom_labels_render_in_every_renderer(srtio3, tmp_path):
+    for r in ("opengl", "raytrace", "vector"):
+        out = tmp_path / ("x.svg" if r == "vector" else "x.png")
+        srtio3.render(out, renderer=r, size=(160, 120), quality="draft", labels={"text": "{type}", "types": ["Ti"]})
+        assert out.stat().st_size > 0

@@ -308,7 +308,8 @@ class Viewport(QtWidgets.QWidget):
         self._refine_timer.stop()
         self._lod_cloud = None
         stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:", "visual:", "bonds:"))]
-        for name in ("atoms", "atoms:glass", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay", *stale):
+        for name in ("atoms", "atoms:glass", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay",
+                     "_labels-labels", *stale):
             p.remove_actor(name, render=False)
         if p.scalar_bars:
             p.remove_scalar_bar()
@@ -319,6 +320,7 @@ class Viewport(QtWidgets.QWidget):
         dark = _is_dark(self.style.background)
         p.set_background(self.style.background)
         kw = self.style.scene_kwargs()
+        labels = kw.pop("labels", None)
         kw["cell_color"] = self.style.cell_color or ("#AEB4BE" if dark else "black")
         kw["sphere_resolution"] = self.sphere_resolution  # interactive; image export uses full quality
         if kw["atom_style"] == "auto" and self.sphere_drawing == "impostor":
@@ -354,6 +356,8 @@ class Viewport(QtWidgets.QWidget):
         if self.show_axes and getattr(self, "_axes", None) != dark:  # new, or the background flipped
             p.add_axes(color="#E7E9EC" if dark else "black", line_width=2)
             self._axes = dark
+        if labels and not coarse:
+            self._draw_labels(labels, dark)
         self._draw_picks()
         self.coarse = coarse
         if coarse:
@@ -800,6 +804,27 @@ class Viewport(QtWidgets.QWidget):
             ang = np.degrees(np.arccos(np.clip(v1 @ v2 / np.linalg.norm(v1) / np.linalg.norm(v2), -1, 1)))
             return f"∠({label(P[0])}, {label(P[1])}, {label(P[2])}) = {ang:.2f}°"
         return f"{len(P)} atom(s) picked"
+
+    def _draw_labels(self, labels, dark: bool):
+        """Atom labels (the view's ``labels`` setting) anchored at the atoms, drawn over them."""
+        from ..overlays import atom_label_mask, atom_label_texts, label_params
+
+        try:
+            params = label_params(labels)
+            idx = np.flatnonzero(atom_label_mask(self.data, params.get("types")))[: int(params.get("max_labels", 2000))]
+            texts = atom_label_texts(self.data, idx, params.get("text", "{type}"))
+        except (KeyError, TypeError, ValueError) as exc:
+            self.picked.emit(f"Labels: {exc}")
+            return
+        if not len(idx):
+            return
+        color = params.get("color") or ("#E7E9EC" if dark else "black")
+        self.plotter.add_point_labels(np.asarray(self.data.positions, float)[idx], texts,
+                                      font_size=int(params.get("size") or 12), text_color=color, bold=True,
+                                      show_points=False, shape_opacity=0.0, shadow=True, always_visible=True,
+                                      name="_labels",
+                                      render=False, pickable=False, justification_horizontal="center",
+                                      justification_vertical="center")
 
     def _draw_picks(self):
         import pyvista as pv

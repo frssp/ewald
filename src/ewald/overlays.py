@@ -22,7 +22,8 @@ import numpy as np
 @dataclass
 class Text:
     """``text`` at (x, y); ``anchor`` = horizontal l/m/r + vertical t/m/b; ``size`` in px (None: the
-    figure's font size); ``color`` None is the ink color (dark on light backgrounds, light on dark)."""
+    figure's font size); ``color`` None is the ink color (dark on light backgrounds, light on dark).
+    ``halo`` (a color) draws an outline around the letters so the text reads on top of a picture."""
 
     x: float
     y: float
@@ -31,6 +32,7 @@ class Text:
     color: object = None
     anchor: str = "lt"
     bold: bool = False
+    halo: object = None
 
 
 @dataclass
@@ -233,7 +235,96 @@ class Attributes(OverlayElement):
                 for i, line in enumerate(lines)]
 
 
-BUILTIN = (CoordinateTripod, Attributes)
+class AtomLabels(OverlayElement):
+    """A text label on every atom, e.g. its type and index. ``text`` is a format string with ``{type}``,
+    ``{index}`` (0-based), ``{id}`` (the Particle Identifier, else index + 1) and any per-atom property
+    whose name has no spaces (``{Charge:.2f}``); a bare 'type', 'index', 'id' or property name means that
+    field. ``types`` limits the labels to those particle types; ``size`` is the font size in px (None: the
+    figure's small size); ``color`` None is the ink color. Hidden atoms (Transparency 1) get no label, and
+    at most ``max_labels`` atoms are labelled (the nearest to the camera)."""
+
+    name = "Atom labels"
+
+    def __init__(self, text: str = "{type}", types: list | None = None, size: float | None = None, color=None,
+                 max_labels: int = 2000):
+        self.text = text
+        self.types = types
+        self.size = size
+        self.color = color
+        self.max_labels = max_labels
+
+    def applies(self, data):
+        return data is not None and data.count > 0
+
+    def layout(self, data, ctx):
+        if ctx.camera is None:
+            return []
+        keep = atom_label_mask(data, self.types)
+        idx = np.flatnonzero(keep)
+        if not len(idx):
+            return []
+        from .vector import _project
+
+        x, y, depth, _ = _project(np.asarray(data.positions, float)[idx], ctx.camera, ctx.size)
+        w, h = ctx.size
+        inside = (x >= 0) & (x <= w) & (y >= 0) & (y <= h) & (depth > 0)
+        idx, x, y, depth = idx[inside], x[inside], y[inside], depth[inside]
+        order = np.argsort(depth)[: int(self.max_labels)][::-1]   # the nearest ones, far first
+        texts = atom_label_texts(data, idx[order], self.text)
+        size = self.size or ctx.small
+        halo = (1.0, 1.0, 1.0) if sum(ctx.ink) < 1.5 else (0.0, 0.0, 0.0)   # reads on top of the atoms
+        return [Text(float(x[k]), float(y[k]), t, size, self.color, "mm", True, halo) for k, t in zip(order, texts)]
+
+
+def atom_label_mask(data, types=None) -> np.ndarray:
+    """Which atoms get a label: visible ones (Transparency < 1) of ``types`` (all when None)."""
+    keep = np.ones(data.count, bool)
+    if "Transparency" in data:
+        keep &= np.asarray(data["Transparency"], float) < 1
+    if types:
+        keep &= np.isin(np.asarray(data.types).astype(str), [str(t) for t in types])
+    return keep
+
+
+def atom_label_texts(data, indices, template: str = "{type}") -> list[str]:
+    """The label of each atom in ``indices`` (see :class:`AtomLabels`)."""
+    template = str(template)
+    if "{" not in template:
+        template = "{" + template + "}"
+    types = np.asarray(data.types)
+    ids = np.asarray(data["Particle Identifier"]) if "Particle Identifier" in data else None
+    fields = {name: np.asarray(data[name]) for name in data.particles
+              if " " not in name and "{" + name in template and np.asarray(data[name]).ndim == 1}
+    out = []
+    for i in np.asarray(indices, np.int64):
+        values = {k: v[i].item() if hasattr(v[i], "item") else v[i] for k, v in fields.items()}
+        values.update(type=str(types[i]), index=int(i), id=int(ids[i]) if ids is not None else int(i) + 1)
+        try:
+            out.append(template.format(**values))
+        except (KeyError, IndexError, ValueError) as exc:
+            raise ValueError(f"atom label {template!r}: {exc!r}; fields are type, index, id and per-atom "
+                             "properties without spaces") from None
+    return out
+
+
+def label_params(labels) -> dict | None:
+    """:class:`AtomLabels` parameters from the ``labels`` setting: None/False (none), True ('{type}'),
+    a text template, or a dict with ``text``, ``types``, ``size``, ``color``, ``max_labels``."""
+    if labels is None or labels is False:
+        return None
+    if labels is True:
+        return {"text": "{type}"}
+    if isinstance(labels, str):
+        return {"text": labels}
+    if isinstance(labels, dict):
+        unknown = set(labels) - {"text", "types", "size", "color", "max_labels"}
+        if unknown:
+            raise KeyError(f"labels: unknown {sorted(unknown)}; use text, types, size, color, max_labels")
+        return {"text": "{type}", **labels}
+    raise TypeError(f"labels is True, a text like '{{type}}{{index}}' or a dict, not {labels!r}")
+
+
+BUILTIN = (CoordinateTripod, Attributes, AtomLabels)
 
 
 def coerce_overlays(overlays) -> list[OverlayElement]:
@@ -492,7 +583,10 @@ def _draw_items_pil(im, items, ink, font_path, font_size):
             draw = ImageDraw.Draw(im)
         elif isinstance(it, Text):
             anchor = it.anchor[0] + _PIL_ANCHOR.get(it.anchor[1], "t")
-            draw.text((it.x, it.y), it.text, fill=_rgba255(it.color, ink), font=font(it.size, it.bold), anchor=anchor)
+            halo = {} if it.halo is None else {"stroke_width": max(1, round((it.size or font_size) / 8)),
+                                                "stroke_fill": _rgba255(it.halo, ink)}
+            draw.text((it.x, it.y), it.text, fill=_rgba255(it.color, ink), font=font(it.size, it.bold), anchor=anchor,
+                      **halo)
         elif isinstance(it, Rect):
             draw.rectangle([it.x0, it.y0, it.x1, it.y1],
                            fill=None if it.fill is None else _rgba255(it.fill, ink),
@@ -519,6 +613,7 @@ _MPL_VA = {"t": "top", "m": "center", "b": "bottom"}
 
 def draw_items_mpl(ax, items, ink, pt: float, font_size: float):
     """Draw overlay items on a matplotlib axes in pixel coordinates (y down); ``pt`` = points per px."""
+    from matplotlib import patheffects
     from matplotlib.patches import Circle as MCircle
     from matplotlib.patches import Polygon, Rectangle
 
@@ -538,7 +633,9 @@ def draw_items_mpl(ax, items, ink, pt: float, font_size: float):
         elif isinstance(it, Text):
             ax.text(it.x, it.y, it.text, color=col(it.color), fontsize=(it.size or font_size) * pt,
                     ha=_MPL_HA.get(it.anchor[0], "left"), va=_MPL_VA.get(it.anchor[1], "top"),
-                    fontweight="bold" if it.bold else "normal", zorder=4)
+                    fontweight="bold" if it.bold else "normal", zorder=4,
+                    **({} if it.halo is None else {"path_effects": [patheffects.withStroke(
+                        linewidth=(it.size or font_size) * pt / 4, foreground=col(it.halo))]}))
         elif isinstance(it, Rect):
             ax.add_patch(Rectangle((it.x0, it.y0), it.x1 - it.x0, it.y1 - it.y0,
                                    facecolor="none" if it.fill is None else col(it.fill),
