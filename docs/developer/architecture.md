@@ -77,6 +77,12 @@ CI exercises the CUDA path. See [Compute backends](backends.md).
 lazily, inside the functions that need them, and tests skip with `pytest.importorskip`.
 Headless `compute()` and `render()` never read user settings implicitly.
 
+**The core never imports the GUI.** `ewald.gui` sits on top; data both sides need lives in the
+core (`view_style.py` for the view style, `ui_tokens.py` for the theme palettes) and `ewald.gui`
+re-exports it. `tests/test_architecture.py` fails when a core module imports `ewald.gui` or
+PySide6, when headless compute or rendering imports `ewald.settings`, or when importing the core
+loads Qt.
+
 ## Where to start reading
 
 `pipeline.py` and `data.py` are short and define the contracts everything else follows.

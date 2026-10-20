@@ -290,7 +290,7 @@ class Session:
 
         kw = {}
         if self.style:
-            from .gui.style import ViewStyle  # plain dataclass, no Qt import
+            from .view_style import ViewStyle
 
             names = set(ViewStyle.__dataclass_fields__)
             kw.update(ViewStyle(**{k: v for k, v in self.style.items() if k in names}).scene_kwargs())

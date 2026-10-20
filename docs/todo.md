@@ -9,10 +9,10 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 ## In progress
 
 - Architecture cleanup from the 2026-10-20 systems review, one small pull request each: read-only
-  cached frames (done), core never imports `ewald.gui` (contract test), in-process notebook cells
-  off the GUI thread with Interrupt, one trust check for every code-execution path plus sha256 for
-  catalog downloads, a versioned plugin API (`PLUGIN_API`), then splitting `plugins.py` and
-  `gui/notebook_panel.py`.
+  cached frames (done), core never imports `ewald.gui` (done, `tests/test_architecture.py`),
+  in-process notebook cells off the GUI thread with Interrupt, one trust check for every
+  code-execution path plus sha256 for catalog downloads, a versioned plugin API (`PLUGIN_API`),
+  then splitting `plugins.py` and `gui/notebook_panel.py`.
 
 ## Next
 

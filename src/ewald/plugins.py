@@ -309,7 +309,7 @@ class UiThemePlugin:
 
     def palette(self) -> dict:
         """Every design token as ``#rrggbb``: the base palette with this theme's overrides."""
-        from .gui.theme import PALETTES
+        from .ui_tokens import PALETTES
 
         own = self.tokens() if callable(self.tokens) else self.tokens
         if not isinstance(own, dict):
@@ -326,7 +326,7 @@ class UiThemePlugin:
             raise ValueError(f"UI theme {self.name!r}: tokens {', '.join(bad)} must be colors like '#1e1e2e'")
         if not own:
             return dict(base)
-        from .gui.theme import derive
+        from .ui_tokens import derive
 
         return derive({**base, **own}, own)
 
@@ -335,7 +335,7 @@ _HEX = re.compile(r"#[0-9a-fA-F]{6}")
 
 
 def _builtin_ui_themes() -> dict:
-    from .gui.theme import DESCRIPTIONS, PALETTES   # Qt-free
+    from .ui_tokens import DESCRIPTIONS, PALETTES
 
     return {name: UiThemePlugin(name, {}, name, DESCRIPTIONS.get(name, ""), "built-in", True) for name in PALETTES}
 
@@ -621,7 +621,7 @@ def ui_theme(fn=None, *, name: str | None = None, base: str = "paper", descripti
     """Decorator registering a function that returns design tokens (``{"accent": "#cba6f7", ...}``)
     as a color theme of the desktop app, chosen under Preferences > General > UI theme. Tokens
     left out come from ``base`` (a built-in theme: "paper" light, "graphite" dark, ...); the token names are those of
-    ``ewald.gui.theme.PALETTES``. ``name`` defaults to the function name."""
+    ``ewald.ui_tokens.PALETTES``. ``name`` defaults to the function name."""
 
     def deco(f):
         register_ui_theme(name or f.__name__, f, base=base, description=description)
@@ -651,7 +651,7 @@ def register_ui_theme(name: str, tokens, base: str | None = None, description: s
 
 
 def ui_themes() -> dict[str, UiThemePlugin]:
-    """Color themes of the desktop app by name: the built-in ones (``ewald.gui.theme.PALETTES``), then plugins."""
+    """Color themes of the desktop app by name: the built-in ones (``ewald.ui_tokens.PALETTES``), then plugins."""
     load_plugins()
     return dict(_registry.ui_themes)
 

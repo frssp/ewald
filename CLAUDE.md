@@ -128,6 +128,9 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `assets/icon/`: app icon. `ewald.svg` (and `ewald-small.svg` for 16-32 px) are the sources; the PNG
   sizes, `ewald.ico` and `ewald.icns` are rendered by `make_icons.py` (cairosvg), never by hand.
   `gui.icons.app_icon()` loads them.
+- `view_style.py` (`ViewStyle`, the Qt-free view style sessions and the GUI share) and `ui_tokens.py`
+  (theme palettes, `derive`); `gui/style.py` and `gui/theme.py` re-export them. The core never imports
+  `ewald.gui` (`tests/test_architecture.py`).
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
 - `paint.py` (`paint`/`hide`/`isolate`/`fade`/`resize` for Python steps), `views.py` (`show`, the
