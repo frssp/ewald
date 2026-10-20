@@ -2184,7 +2184,7 @@ def test_workbench_drag_plot_over_3d_view(app, pipe):
     w.show()
     settle()
     wb, vp = w.workbench, w.viewport
-    assert wb.titles("editor") == ["3D view"] and wb.titles("panel") == ["Python console", "Data inspector", "Plots", "Log"]
+    assert wb.titles("editor") == ["Structure"] and wb.titles("panel") == ["Python console", "Data inspector", "Plots", "Log"]
     slot = wb.slot("viewport")
     assert vp.parent() is wb and vp.geometry() == QtCore.QRect(slot.mapTo(wb, QtCore.QPoint()), slot.size())
 
@@ -2198,7 +2198,7 @@ def test_workbench_drag_plot_over_3d_view(app, pipe):
     assert wb._drag["target"][1] == "center" and wb.marks.rect_ is not None
     QtTest.QTest.mouseRelease(bar, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, over)
     settle()
-    assert wb.titles("editor") == ["3D view", "Plots"] and wb.is_shown(w.plots) and w.plots.data is not None
+    assert wb.titles("editor") == ["Structure", "Plots"] and wb.is_shown(w.plots) and w.plots.data is not None
     assert vp.parked and not vp.isVisible() and wb.can_close("plot:1")
     built = vp._build_time
     w.set_frame(1)
@@ -2244,7 +2244,7 @@ def test_workbench_drag_plot_over_3d_view(app, pipe):
     w2.workbench.close_view("plot:2")
     assert "plot:2" not in w2.extra_plots and "plot:2" not in w2.workbench.specs
     w2.workbench.reset()
-    assert w2.workbench.titles("editor") == ["3D view"]
+    assert w2.workbench.titles("editor") == ["Structure"]
     assert w2.workbench.titles("panel") == ["Python console", "Data inspector", "Plots", "Log"]
     w2.close()
 
