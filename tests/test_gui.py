@@ -3333,7 +3333,7 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
     plugins.register_panel("broken", broken, title="Broken")
     w = MainWindow(pipe)
     titles = [a.text() for a in w.activity_bar.actions()]
-    assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent"]
+    assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent", "Workflows"]
     assert w.plugin_panels["sim_agent"]["dock"] is None          # nothing built before it opens
     assert [a.text() for a in w.plugin_panel_menu.actions()] == titles[4:]
     w.plugin_panels["sim_agent"]["action"].trigger()
@@ -3373,7 +3373,7 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
 
     plugins.set_enabled("sim-agent-example", False)
     w.refresh_plugin_panels()
-    assert [a.text() for a in w.activity_bar.actions()][4:] == ["Broken"] and "sim_agent" not in w.plugin_panels
+    assert [a.text() for a in w.activity_bar.actions()][4:] == ["Broken", "Workflows"] and "sim_agent" not in w.plugin_panels
     w.close()
 def test_plugin_settings_page_dialog(app, monkeypatch):
     from ewald import plugins, settings
