@@ -782,6 +782,7 @@ class NotebookView(QtWidgets.QWidget):
 
 
 # ---------------------------------------------------------------- tabs
+START_NOTEBOOK = False  # a new window shows the welcome page, not an empty "Notebook 1"
 CONFIRM_UNSAVED = True  # ask before closing notebooks with unsaved changes (tests turn it off)
 
 
@@ -796,8 +797,11 @@ class NotebookPanel(QtWidgets.QWidget):
     plotCreated = QtCore.Signal(object)       # a view cell's live plot: the main window links it
     pipRequested = QtCore.Signal(list)        # a notebook's bar asks to pip install its plugins
     switched = QtCore.Signal(object, object)  # notebooks of the tab left and the tab shown (either may be None)
+    openRequested = QtCore.Signal()           # the welcome page's Open…
+    exampleRequested = QtCore.Signal(str)     # ... Open example (a file name of ewald.examples)
+    recentRequested = QtCore.Signal(str)      # ... a recent file
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, start_notebook: bool = START_NOTEBOOK):
         super().__init__(parent)
         _discover()
         self.data = None
@@ -809,13 +813,22 @@ class NotebookPanel(QtWidgets.QWidget):
         self.tabs.renameRequested.connect(self.rename)
         self.tabs.currentChanged.connect(self._tab_changed)
         lay.addWidget(self.tabs)
+        from .welcome import WelcomePage
+
+        self.welcome = WelcomePage()
+        self.welcome.newRequested.connect(lambda: self.new_notebook())
+        self.welcome.openRequested.connect(self.openRequested.emit)
+        self.welcome.exampleRequested.connect(self.exampleRequested.emit)
+        self.welcome.recentRequested.connect(self.recentRequested.emit)
+        self.tabs.setEmptyWidget(self.welcome)
         self.add_menu = QtWidgets.QMenu(self)  # Pipeline menu / palette: same entries as + Step
         self.add_menu.aboutToShow.connect(lambda: fill_modifier_menu(
             self.add_menu, self.add_modifier, self.view._step_context if self.view is not None else None))
         fill_modifier_menu(self.add_menu, self.add_modifier)
         self._switching = False
         self.plot_style = ("publication", None)   # (style, tokens) of the cells' own matplotlib plots
-        self.new_notebook()
+        if start_notebook:
+            self.new_notebook()
 
     # ----------------------------------------------------------- tabs
     @property
@@ -921,9 +934,7 @@ class NotebookPanel(QtWidgets.QWidget):
         if view.notebook.kernel is not None:
             view.notebook.kernel.shutdown()
         self.tabs.removeTab(index)
-        view.deleteLater()
-        if self.tabs.count() == 0:
-            self.new_notebook()
+        view.deleteLater()      # the last one closed: the welcome page (no notebook is made up)
 
     def _tab_changed(self, index):
         old, self._shown = getattr(self, "_shown", None), self.view
@@ -1006,7 +1017,9 @@ class NotebookPanel(QtWidgets.QWidget):
             self.view.update_results(data)
 
     def add_modifier(self, mod):
-        if self.view is not None and self.view.add_step(mod) is not None:
+        if self.view is None:       # a step picked on the welcome page: it goes into a new notebook
+            self.new_notebook()
+        if self.view.add_step(mod) is not None:
             pass
 
     def refresh(self, select=None):

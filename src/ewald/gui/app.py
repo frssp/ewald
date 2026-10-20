@@ -121,6 +121,9 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.ask_panel.insertRequested.connect(self._insert_claude_cell)
         # --- left: notebook tabs (the pipeline as Python cells); right: display settings
         self.panel = NotebookPanel()
+        self.panel.openRequested.connect(self.open_dialog)
+        self.panel.exampleRequested.connect(self.open_example)
+        self.panel.recentRequested.connect(self.open_any)
         self.panel.changed.connect(self.recompute)
         self.panel.pipelineReplaced.connect(self.set_pipeline)
         self.panel.askRequested.connect(self.ask_claude)
@@ -313,6 +316,27 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.timeline._set(0) if self.timeline.frame != 0 else self.recompute()
         self.live_reload.report_incomplete()
         self._plugin_event("pipeline", pipeline)
+
+    def clear_pipeline(self):
+        """No notebook open (the last tab closed): an empty 3D view, inspector and plots."""
+        if self.pipeline is None:
+            return
+        self.runner.cancel()
+        self.pipeline = self.data = None
+        self.viewport.clear_picks()
+        self.viewport.set_data(None)
+        for p in [self.plots, *self.extra_plots.values()]:
+            p.pipeline = None
+            p.set_data(None)
+        self.display.set_pipeline(None)
+        self.inspector.set_pipeline(None)
+        self.inspector.set_data(None)
+        self.live_reload.set_pipeline(None)
+        self.timeline.set_num_frames(1)
+        self.frame = 0
+        self.status.setText("")
+        self.setWindowTitle("EWALD")
+        self._push_console()
 
     def set_frame(self, frame):
         self.frame = frame
