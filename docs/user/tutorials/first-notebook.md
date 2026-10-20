@@ -98,6 +98,6 @@ itself, since it is small. See [Notebooks](../notebooks.md#notebook-files).
 - Replace the coordination step with `PolyhedralTemplateMatching()` or
   `CommonNeighborAnalysis()` to classify the local structure instead ([Modifiers](../modifiers.md)).
 - View › Minimal mode (Ctrl+Shift+M) leaves only the notebook and the view; Ctrl+K finds any
-  command.
+  command, and Ctrl+Shift+M again (or **Menus** in the bottom left corner) brings the menus back.
 
 Next: [Tutorial 2: a crystal structure figure](structure-figure.md).

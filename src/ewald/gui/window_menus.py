@@ -66,8 +66,10 @@ class MenusMixin:
 
     def set_minimal(self, on: bool | None = None):
         """Hide the menu bar, toolbars and status bar, leaving the notebook, the viewport and the
-        command palette (Ctrl+K); menu shortcuts keep working (View › Minimal mode, Ctrl+Shift+M)."""
-        on = self.menuBar().isVisible() if on is None else on
+        command palette (Ctrl+K); menu shortcuts keep working (View › Minimal mode, Ctrl+Shift+M).
+        Ways back stay visible: a button in the bottom left corner, a tap on Alt shows the menu bar
+        for one pick, and a note over the window says so when the mode starts."""
+        on = not getattr(self, "minimal", False) if on is None else on
         if on:
             for menu in self.menuBar().findChildren(QtWidgets.QMenu):
                 for act in menu.actions():
@@ -79,8 +81,84 @@ class MenusMixin:
         for tb in self.findChildren(QtWidgets.QToolBar):
             if tb.objectName() in ("main-toolbar", "activity-bar"):
                 tb.setVisible(not on)
+        if not hasattr(self, "minimal_exit"):
+            self._build_minimal_exit()
+        self.minimal_exit.setVisible(on)
         if on:
-            self.message("Minimal mode: Ctrl+K for commands, Ctrl+Shift+M to bring the menus back")
+            self._place_minimal_exit()
+            self.minimal_exit.raise_()
+            self.toast("Minimal mode: Ctrl+Shift+M or the Menus button at the bottom left brings the menus back; "
+                       "tap Alt for the menu bar, Ctrl+K for commands")
+        else:
+            self.minimal_note.hide()
+
+    def _build_minimal_exit(self):
+        b = self.minimal_exit = QtWidgets.QToolButton(self, objectName="minimalExit", autoRaise=True,
+                                                      toolTip="Leave minimal mode (Ctrl+Shift+M)")
+        b.setProperty("ewald_icon", "menu")
+        b.setIcon(icon("menu"))
+        b.setIconSize(QtCore.QSize(16, 16))
+        b.setText("Menus")
+        b.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        b.clicked.connect(lambda: self.set_minimal(False))
+        b.hide()
+        self.minimal_note = QtWidgets.QLabel(self, objectName="toast", wordWrap=True)
+        self.minimal_note.hide()
+        self._note_timer = QtCore.QTimer(self, singleShot=True, timeout=self.minimal_note.hide)
+        self.menuBar().triggered.connect(lambda _a: self.minimal and self.menuBar().hide())
+        QtWidgets.QApplication.instance().installEventFilter(self._alt_filter())
+
+    def _alt_filter(self):
+        window = self
+
+        class AltTap(QtCore.QObject):
+            """A tap on Alt alone shows (or hides) the menu bar while minimal mode is on."""
+            armed = False
+
+            def eventFilter(self, obj, e):
+                t = e.type()
+                if t == QtCore.QEvent.KeyPress:
+                    self.armed = e.key() == QtCore.Qt.Key_Alt and not e.isAutoRepeat()
+                elif t == QtCore.QEvent.KeyRelease and e.key() == QtCore.Qt.Key_Alt and self.armed:
+                    self.armed = False
+                    if getattr(window, "minimal", False) and window.isActiveWindow():
+                        bar = window.menuBar()
+                        bar.setVisible(not bar.isVisible())
+                        window._place_minimal_exit()
+                elif t in (QtCore.QEvent.MouseButtonPress, QtCore.QEvent.Wheel):
+                    self.armed = False
+                return False
+
+        self._alt_tap = AltTap(self)
+        return self._alt_tap
+
+    def _place_minimal_exit(self):
+        b = getattr(self, "minimal_exit", None)
+        if b is None:
+            return
+        b.adjustSize()
+        top = self.menuBar().height() if self.menuBar().isVisible() else 0
+        b.move(10, self.height() - b.height() - 10)  # the status bar's place, hidden in minimal mode
+        note = self.minimal_note
+        if note.isVisible():
+            note.setFixedWidth(min(560, self.width() - 40))
+            note.adjustSize()
+            note.move((self.width() - note.width()) // 2, top + 40)
+
+    def toast(self, text: str, ms: int = 6000):
+        """A note over the top of the window (the status bar may be hidden), gone after ``ms``."""
+        if not hasattr(self, "minimal_note"):
+            self._build_minimal_exit()
+        self.minimal_note.setText(text)
+        self.minimal_note.show()
+        self.minimal_note.raise_()
+        self._place_minimal_exit()
+        self._note_timer.start(ms)
+        self.message(text)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._place_minimal_exit()
 
     def _build_toolbar(self):
         tb = self.addToolBar("Main")
@@ -125,7 +203,7 @@ class MenusMixin:
         search.setObjectName("searchBox")
         search.clicked.connect(self.command_palette)
         tb.addWidget(search)
-        spacer = QtWidgets.QWidget()
+        spacer = QtWidgets.QWidget(objectName="toolbarSpacer")
         spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
         tb.addWidget(spacer)
         tb.addWidget(QtWidgets.QLabel("Compute ", objectName="muted"))
@@ -227,7 +305,7 @@ class MenusMixin:
         if nb:
             v.addSeparator()
             v.addAction("Focus on the viewport", self.toggle_focus, "Ctrl+\\")
-            v.addAction("Minimal mode (menus hidden)", lambda: self.set_minimal(self.menuBar().isVisible()), "Ctrl+Shift+M")
+            v.addAction("Minimal mode (menus hidden)", lambda: self.set_minimal(not getattr(self, "minimal", False)), "Ctrl+Shift+M")
             n = mb.addMenu("&Notebook")
             n.addAction("Run &all", lambda: self.panel.view.run_all(), "Ctrl+Shift+Return")
             n.addAction("Run current cell and &below", lambda: self._cell_action("below"))

@@ -157,7 +157,7 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   `preferences.py` (dialog; `pref_widgets.py`, `element_table.py`, `prefs_apply.py` apply settings to the window),
   `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask Claude tab), `console.py`,
   `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`, `collapsible.py` (fold buttons in dock
-  title bars), `macos.py` (menu bar name; Finder file-open
+  title bars), `header.py` (one panel header: height, inset, icon buttons; no glyph labels), `macos.py` (menu bar name; Finder file-open
   events go through `app.EwaldApplication`). Frozen apps: `packaging/windows/` and `packaging/macos/` (EWALD.app,
   docs/developer/macos-release.md); the macOS workflow is manual only (10x minutes) and never needs to run for a PR.
 - `llm/`: Claude agent (`agent.py`), tools (`tools.py`), `credentials.py` (API key in the OS keychain via

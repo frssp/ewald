@@ -2,13 +2,16 @@
 
 A folded side panel (left or right) shrinks to a thin strip with its title written
 vertically; a folded bottom panel keeps only its title bar. Docks shown as tabs fold together.
-Clicking the strip, the ▸ button or double-clicking the title unfolds it at its old size.
+Clicking the strip, the expand chevron or double-clicking the title unfolds it at its old size.
+The bar is a panel header (``header.py``): same height, inset and icon buttons as the tab-group heads.
 """
 from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-STRIP = 26  # width of a folded side panel, height of a folded bottom one
+from . import header
+
+STRIP = 30  # width of a folded side panel, height of a folded bottom one
 _MAX = 16777215  # QWIDGETSIZE_MAX
 
 
@@ -32,24 +35,35 @@ class _VerticalLabel(QtWidgets.QLabel):
 
 
 class DockTitleBar(QtWidgets.QWidget):
-    """Title bar of a collapsible dock: fold button, title and a float button."""
+    """Title bar of a collapsible dock: title, then fold and float buttons on the right (like the
+    workbench's tab-group heads); folded sideways it becomes a strip with the expand button on top."""
 
     def __init__(self, dock: QtWidgets.QDockWidget):
         super().__init__(dock)
         self.dock = dock
-        self.setObjectName("dockTitle")
+        self.setObjectName("panelHeader")
+        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
         self.collapsed = False
         self._size = None
-        self.fold = QtWidgets.QToolButton(text="▾", autoRaise=True, objectName="dockFold",
-                                          toolTip=f"Collapse the {dock.windowTitle()} panel")
+        self.fold = header.button("chevron_down", f"Collapse the {dock.windowTitle()} panel")
         self.fold.clicked.connect(self.toggle)
-        self.title = QtWidgets.QLabel(dock.windowTitle(), objectName="dockTitleText")
-        self.vtitle = _VerticalLabel(dock.windowTitle(), objectName="dockTitleText")
-        self.float_button = QtWidgets.QToolButton(text="⧉", autoRaise=True, objectName="dockFold",
-                                                  toolTip="Float or dock the panel")
+        self.title = QtWidgets.QLabel(dock.windowTitle(), objectName="panelTitle")
+        self.vtitle = _VerticalLabel(dock.windowTitle(), objectName="panelTitle")
+        self.float_button = header.button("float", "Float or dock the panel")
         self.float_button.clicked.connect(lambda: dock.setFloating(not dock.isFloating()))
         dock.windowTitleChanged.connect(lambda t: (self.title.setText(t), self.vtitle.setText(t)))
+        dock.dockLocationChanged.connect(lambda _area: header.set_icon(self.fold, self._fold_icon()))
         self._layout(vertical=False)
+
+    def _fold_icon(self) -> str:
+        """Chevron toward the dock's edge to fold, away from it to unfold; up/down for other docks."""
+        window = self.dock.parentWidget()
+        area = window.dockWidgetArea(self.dock) if isinstance(window, QtWidgets.QMainWindow) else None
+        if area == QtCore.Qt.LeftDockWidgetArea:
+            return "chevron_right" if self.collapsed else "chevron_left"
+        if area == QtCore.Qt.RightDockWidgetArea:
+            return "chevron_left" if self.collapsed else "chevron_right"
+        return "chevron_up" if self.collapsed else "chevron_down"
 
     def _layout(self, vertical: bool):
         old = self.layout()
@@ -57,19 +71,31 @@ class DockTitleBar(QtWidgets.QWidget):
             while old.count():
                 old.takeAt(0)
             QtWidgets.QWidget().setLayout(old)  # reparent so a new layout can be set
-        lay = QtWidgets.QVBoxLayout(self) if vertical else QtWidgets.QHBoxLayout(self)
-        lay.setContentsMargins(2, 2, 2, 2)
-        lay.setSpacing(4)
-        lay.addWidget(self.fold, 0, QtCore.Qt.AlignHCenter if vertical else QtCore.Qt.AlignVCenter)
+        h = header.height()
+        if vertical:
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(16777215)
+            lay = QtWidgets.QVBoxLayout(self)
+            pad = (STRIP - header.BUTTON) // 2
+            lay.setContentsMargins(0, (h - header.BUTTON) // 2, 0, pad)
+            lay.setSpacing(8)
+        else:
+            self.setFixedHeight(h)
+            lay = QtWidgets.QHBoxLayout(self)
+            lay.setContentsMargins(header.INSET, 0, 6, 0)
+            lay.setSpacing(2)
         self.title.setVisible(not vertical)
         self.vtitle.setVisible(vertical)
         self.float_button.setVisible(not vertical)
+        header.set_icon(self.fold, self._fold_icon())
         if vertical:
+            lay.addWidget(self.fold, 0, QtCore.Qt.AlignHCenter)
             lay.addWidget(self.vtitle, 0, QtCore.Qt.AlignHCenter)
             lay.addStretch()
         else:
-            lay.addWidget(self.title, 1)
-            lay.addWidget(self.float_button)
+            lay.addWidget(self.title, 1, QtCore.Qt.AlignVCenter)
+            lay.addWidget(self.fold, 0, QtCore.Qt.AlignVCenter)
+            lay.addWidget(self.float_button, 0, QtCore.Qt.AlignVCenter)
 
     def mouseDoubleClickEvent(self, event):
         self.toggle()
@@ -120,7 +146,6 @@ class DockTitleBar(QtWidgets.QWidget):
             bar = d.titleBarWidget()
             if isinstance(bar, DockTitleBar) and d is not self.dock:
                 bar.collapsed = on
-                bar.fold.setText("▸" if on else "▾")
                 bar._layout(vertical=on and side)
             if on:
                 if d is self.dock:
@@ -146,7 +171,6 @@ class DockTitleBar(QtWidgets.QWidget):
             elif getattr(self, "_tab_position", None) is not None:
                 window.setTabPosition(area, self._tab_position)
         self.collapsed = on
-        self.fold.setText("▸" if on else "▾")
         self.fold.setToolTip(f"{'Expand' if on else 'Collapse'} the {self.dock.windowTitle()} panel")
         self._layout(vertical=on and side)
         if on and isinstance(window, QtWidgets.QMainWindow):  # give the space back once the layout settled

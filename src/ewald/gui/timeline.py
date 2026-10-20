@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from . import header
+from .icons import icon
 from .theme import TOKENS
 
 
@@ -42,20 +44,30 @@ class Timeline(QtWidgets.QWidget):
         super().__init__(parent)
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(6, 2, 6, 2)
-        self.first = QtWidgets.QToolButton(text="⏮", toolTip="First frame (Home)")
-        self.prev = QtWidgets.QToolButton(text="◀", toolTip="Previous frame (Alt+←)")
-        self.play = QtWidgets.QToolButton(text="▶", toolTip="Play / pause (Space)", checkable=True)
-        self.next = QtWidgets.QToolButton(text="▶|", toolTip="Next frame (Alt+→)")
-        self.last = QtWidgets.QToolButton(text="⏭", toolTip="Last frame (End)")
+        lay.setSpacing(4)
+        self.first = header.button("first", "First frame (Home)")
+        self.prev = header.button("prev", "Previous frame (Alt+←)")
+        self.play = header.button("play", "Play / pause (Space)", checkable=True)
+        self.next = header.button("next", "Next frame (Alt+→)")
+        self.last = header.button("last", "Last frame (End)")
         self.slider = _MarkedSlider(QtCore.Qt.Horizontal)
-        self.sel = QtWidgets.QToolButton(text="", toolTip="Frames selected on a plot; playback steps through "
-                                         "them. Click to clear.")
-        self.sel.setStyleSheet(f"color: {TOKENS['pick']};")
+        self.slider.setMinimumWidth(80)
+        self.sel = QtWidgets.QToolButton(toolTip="Frames selected on a plot; playback steps through "
+                                         "them. Click to clear.", objectName="timelineSelection")
+        self.sel.setProperty("ewald_icon", "clear")
+        self.sel.setProperty("ewald_icon_color", "pick")
+        self.sel.setIcon(icon("clear", TOKENS["pick"]))
+        self.sel.setIconSize(QtCore.QSize(header.ICON - 4, header.ICON - 4))
+        self.sel.setLayoutDirection(QtCore.Qt.RightToLeft)  # the clear mark after the count
+        self.sel.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
         self.sel.clicked.connect(lambda: self.set_selection([], emit=True))
-        self.spin = QtWidgets.QSpinBox()
-        self.count = QtWidgets.QLabel("/ 0")
-        self.fps = QtWidgets.QSpinBox(suffix=" fps", minimum=1, maximum=120, value=10)
-        self.stride = QtWidgets.QSpinBox(prefix="every ", minimum=1, maximum=10000, value=1)
+        self.spin = QtWidgets.QSpinBox(toolTip="Current frame")
+        self.count = QtWidgets.QLabel("/ 0", objectName="muted")
+        self.fps = QtWidgets.QSpinBox(suffix=" fps", minimum=1, maximum=120, value=10, toolTip="Playback speed")
+        self.stride = QtWidgets.QSpinBox(prefix="every ", minimum=1, maximum=10000, value=1,
+                                         toolTip="Step this many frames")
+        for box in (self.spin, self.fps, self.stride):  # compact: the slider gets the room
+            box.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Fixed)
         self.loop = QtWidgets.QCheckBox("Loop", checked=True)
         for w in (self.first, self.prev, self.play, self.next, self.last, self.slider, self.spin, self.count,
                   self.sel, self.fps, self.stride, self.loop):
@@ -98,7 +110,7 @@ class Timeline(QtWidgets.QWidget):
         n = self.slider.maximum() + 1
         self.slider.marks = sorted({int(f) for f in frames or () if 0 <= int(f) < n})
         k = len(self.slider.marks)
-        self.sel.setText(f"{k} selected ✕" if k else "")
+        self.sel.setText(f"{k} selected" if k else "")
         self.sel.setVisible(bool(k))
         self.slider.update()
         if emit:
@@ -113,7 +125,7 @@ class Timeline(QtWidgets.QWidget):
         self.frameChanged.emit(value)
 
     def _toggle(self, on):
-        self.play.setText("⏸" if on else "▶")
+        header.set_icon(self.play, "pause" if on else "play")
         if on:
             self.timer.start(int(1000 / self.fps.value()))
         else:

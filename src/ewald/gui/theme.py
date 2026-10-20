@@ -56,6 +56,8 @@ def derive(tokens: dict, own=()) -> dict:
 _IMAGES = {
     "chevron": ("secondary", '<path d="M6 9l6 6 6-6"/>'),
     "chevron_up": ("secondary", '<path d="M6 15l6-6 6 6"/>'),
+    "chevron_right": ("secondary", '<path d="M9 6l6 6-6 6"/>'),
+    "chevron_left": ("secondary", '<path d="M15 6l-6 6 6 6"/>'),
     "check": ("on_accent", '<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
     "close": ("muted", '<path d="M7 7l10 10M17 7 7 17"/>'),
     "close_hover": ("text", '<path d="M7 7l10 10M17 7 7 17"/>'),
@@ -112,6 +114,7 @@ QMenu {{ background: {raised}; border: 1px solid {border}; padding: 4px; }}
 QMenu::separator {{ height: 1px; background: {border}; margin: 4px 8px; }}
 QToolBar {{ background: {bg}; border: none; border-bottom: 1px solid {border}; spacing: 4px; padding: 4px 6px; }}
 QToolBar::separator {{ background: {border}; width: 1px; margin: 6px 6px; }}
+QToolBar QLabel, QWidget#toolbarSpacer {{ background: transparent; }}
 
 /* buttons: flat, no bevels; ghost tool buttons, quiet secondary push buttons, one filled primary */
 QToolButton {{ background: transparent; color: {secondary}; border: none; border-radius: 6px; padding: 5px 8px; }}
@@ -119,14 +122,15 @@ QToolButton:hover {{ background: {hover}; color: {text}; }}
 QToolButton:pressed {{ background: {pressed}; }}
 QToolButton:checked {{ background: {accent_soft}; color: {accent}; }}
 QToolButton:disabled {{ color: {muted}; background: transparent; }}
-QToolButton#groupButton {{ padding: 2px; border-radius: 4px; }}
 QToolButton[popupMode="2"] {{ padding-right: 18px; }}
 QToolButton::menu-indicator {{ image: url("{img_chevron}"); width: 9px; height: 9px;
     subcontrol-origin: padding; subcontrol-position: center right; right: 5px; }}
 QToolButton::menu-indicator:pressed, QToolButton::menu-indicator:open {{ top: 0; left: 0; }}
-QToolButton#cellMenu {{ font-size: 16px; padding: 0 6px; color: {muted}; }}
+QToolButton::menu-arrow {{ image: url("{img_chevron}"); width: 9px; height: 9px; }}
+QToolButton::menu-button {{ border: none; width: 14px; }}
+QMenu::right-arrow {{ image: url("{img_chevron_right}"); width: 10px; height: 10px; }}
+QToolButton#cellMenu {{ padding: 0; }}
 QToolButton#cellMenu::menu-indicator {{ image: none; width: 0; }}
-QToolButton#cellMenu:hover {{ color: {text}; }}
 QPushButton {{ background: {raised}; color: {text}; border: 1px solid {border}; border-radius: 6px; padding: 5px 14px;
     min-height: 16px; }}
 QPushButton:hover {{ background: {hover}; }}
@@ -173,23 +177,37 @@ QTabBar::tab {{ background: transparent; color: {muted}; padding: 6px 12px; bord
                border-bottom: 2px solid transparent; }}
 QTabBar::tab:selected {{ color: {text}; border-bottom-color: {accent}; }}
 QTabBar::tab:hover {{ color: {text}; }}
+QTabBar QToolButton {{ background: {bg}; border-radius: 0; padding: 0; }}
+QTabBar QToolButton::left-arrow {{ image: url("{img_chevron_left}"); width: 12px; height: 12px; }}
+QTabBar QToolButton::right-arrow {{ image: url("{img_chevron_right}"); width: 12px; height: 12px; }}
 QTabBar::close-button {{ image: url("{img_close}"); subcontrol-position: right; border-radius: 4px;
     width: 14px; height: 14px; margin-left: 4px; }}
 QTabBar::close-button:hover {{ image: url("{img_close_hover}"); background: {hover}; }}
 QDockWidget {{ color: {muted}; titlebar-close-icon: none; }}
 QDockWidget::title {{ background: {bg}; padding: 4px 8px; border-bottom: 1px solid {border}; }}
-QWidget#dockTitle {{ background: {bg}; border-bottom: 1px solid {border}; }}
-QLabel#dockTitleText {{ color: {muted}; }}
-QToolButton#dockFold {{ color: {muted}; border: none; padding: 0 3px; }}
-QToolButton#dockFold:hover {{ color: {accent}; }}
+/* panel headers (header.py): dock title bars and tab-group heads share height, inset and buttons */
+QWidget#panelHeader {{ background: {bg}; border: none; border-bottom: 1px solid {border}; }}
+QLabel#panelTitle {{ color: {secondary}; font-weight: 600; background: transparent; padding: 0; }}
+QWidget#panelHeader QTabBar {{ background: transparent; }}
+QWidget#panelHeader QTabBar::tab {{ padding: 0 12px; margin: 0; }}
+QToolButton#headerButton, QToolButton#groupButton {{ padding: 0; border-radius: 4px; }}
+QToolButton#minimalExit {{ background: {raised}; border: 1px solid {border}; padding: 3px 10px; }}
+QToolButton#minimalExit:hover {{ background: {hover}; }}
+QLabel#toast {{ background: {text}; color: {bg}; border-radius: 8px; padding: 8px 14px; }}
+QToolButton#timelineSelection {{ color: {pick}; padding: 2px 6px; }}
 QTreeView, QListView, QTableView, QTableWidget {{ background: {bg}; alternate-background-color: {panel};
     border: 1px solid {border}; gridline-color: {border}; selection-background-color: {raised};
     selection-color: {text}; outline: none; }}
 QTreeView::item {{ padding: 3px 2px; }}
+QTreeView::branch {{ background: transparent; }}
+QTreeView::branch:closed:has-children {{ image: url("{img_chevron_right}"); }}
+QTreeView::branch:open:has-children {{ image: url("{img_chevron}"); }}
 QTreeView::item:hover {{ background: {hover}; }}
 QTreeView::item:selected {{ background: {accent_soft}; color: {text}; }}
 QHeaderView::section {{ background: {panel}; color: {muted}; border: none; border-right: 1px solid {border};
                         border-bottom: 1px solid {border}; padding: 4px 6px; }}
+QHeaderView::down-arrow {{ image: url("{img_chevron}"); width: 10px; height: 10px; }}
+QHeaderView::up-arrow {{ image: url("{img_chevron_up}"); width: 10px; height: 10px; }}
 QGroupBox {{ border: 1px solid {border}; border-radius: 6px; margin-top: 14px; padding-top: 6px; }}
 QGroupBox::title {{ subcontrol-origin: margin; left: 8px; padding: 0 4px; color: {secondary}; }}
 QSlider::groove:horizontal {{ height: 4px; background: {border}; border-radius: 2px; }}
@@ -207,6 +225,7 @@ QLabel#muted {{ color: {muted}; }}
 QLabel#section {{ color: {muted}; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }}
 QFrame#rail {{ background: {bg}; border-right: 1px solid {border}; }}
 QFrame#viewbar {{ background: {bg}; border-bottom: 1px solid {border}; }}
+QFrame#viewbar QToolButton {{ padding: 4px 6px; }}
 QCheckBox {{ color: {text}; spacing: 6px; }}
 QCheckBox::indicator, QTreeView::indicator, QTableView::indicator, QListView::indicator {{ width: 14px; height: 14px;
     border: 1.5px solid {muted}; border-radius: 4px; background: {bg}; }}
@@ -238,16 +257,14 @@ QFrame#cell[current="true"] {{ border: 2px solid {accent}; }}
 QFrame#cell[state="error"] {{ border-color: {error}; }}
 QFrame#cell[state="stale"] {{ background: {panel}; }}
 QFrame#cell QLabel, QFrame#cell QCheckBox {{ background: transparent; }}
-QToolButton#cellRun {{ color: {accent}; padding: 2px 6px; border-radius: 12px; }}
+QToolButton#cellRun {{ padding: 0; border-radius: 12px; }}
 QToolButton#cellRun:hover {{ background: {accent_soft}; color: {accent}; }}
 QLabel#cellCounter {{ color: {muted}; font-size: 11px; }}
 QFrame#restrictedBanner {{ background: {data_soft}; border-bottom: 1px solid {data}; }}
 QFrame#restrictedBanner QLabel {{ color: {text}; background: transparent; }}
-QToolButton#cellFold {{ color: {muted}; padding: 0 4px; border: none; }}
-QToolButton#cellFold:hover {{ color: {accent}; }}
+QToolButton#cellFold {{ padding: 0; border: none; }}
 QLabel#cellFolded {{ color: {secondary}; font-style: italic; padding: 3px 0; }}
-QLabel#cellDrag {{ color: {muted}; font-size: 13px; padding: 0; }}
-QLabel#cellDrag:hover {{ color: {accent}; }}
+QLabel#cellDrag {{ padding: 2px 0; background: transparent; }}
 QFrame#cellDropLine {{ background: {accent}; border-radius: 1px; }}
 QFrame#cell[current="true"] QLabel#cellCounter {{ color: {accent}; }}
 QPlainTextEdit#cellEditor {{ background: {panel}; border: 1px solid {border}; border-radius: 6px; padding: 4px 6px; }}
@@ -268,10 +285,11 @@ QPushButton#addCell {{ background: transparent; border: 1px solid transparent; b
     color: {secondary}; font-weight: normal; }}
 QPushButton#addCell:hover {{ background: {accent_soft}; color: {accent}; }}
 QPushButton#addCell::menu-indicator {{ image: none; width: 0; }}
-QTabWidget#notebookTabs QTabBar::tab {{ font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace; padding: 7px 14px; }}
+QTabWidget#notebookTabs QTabBar::tab {{ font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", monospace;
+    padding: 0 12px; }}
 QTabWidget#notebookTabs QTabBar::tab:selected {{ color: {accent}; border-bottom: 2px solid {accent}; font-weight: 600; }}
-QToolButton#tabNew {{ font-size: 16px; color: {muted}; padding: 0 8px; border-radius: 6px; }}
-QToolButton#tabNew:hover {{ color: {accent}; }}
+QTabWidget#notebookTabs > QTabBar, QWidget#tabCorner {{ background: {bg}; }}
+QTabWidget#notebookTabs::pane {{ border: none; border-top: 1px solid {border}; }}
 QWidget#chatPanel, QWidget#chatPage, QScrollArea#chatScroll, QWidget#chatWelcome {{ background: {bg}; }}
 QLabel#chatContext {{ color: {muted}; background: transparent; font-size: 11px; }}
 QLabel#chatContext[picked="true"] {{ color: {pick}; }}
