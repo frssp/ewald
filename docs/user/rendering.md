@@ -34,11 +34,11 @@ print(pipe.view.source())                     # the same as a view(pipe, ...) li
 | Group | Settings |
 |---|---|
 | style | `style` (Ball & stick, Space-filling, Simple (ASE), Points), `theme`, `atom_style` (auto, mesh, impostor, flat), `background` |
-| atoms | `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `radius_preset`, `oxidation_states` |
+| atoms | `atoms` (False: a stick model), `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `radius_preset`, `oxidation_states` |
 | bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax]], `bond_factor`, `bond_radius` |
-| cell | `cell`, `cell_width`, `cell_color` |
+| cell | `cell`, `cell_width`, `cell_color`, `cell_radius` (ray-traced tube, Angstrom) |
 | boundary | `boundary` (VESTA range), `boundary_bonds` (half, complete, none), `replicate` [na, nb, nc], `replicate_cell` (super, unit, all) |
-| elements | `visuals` (plugin visual elements), `vectors` (arrows of a vector property), `trajectory_width` |
+| elements | `surfaces` (polyhedra, isosurface and slice look by name), `visuals` (plugin visual elements), `vectors` (arrows of a vector property), `trajectory_width` |
 | camera | `frame`, `direction`, `zoom`, `orthographic`, `camera` (an exact camera, as the GUI saves it) |
 | picture | `renderer`, `quality`, `size`, `ambient_occlusion`, `shadows`, `transparent_background`, `text`, `legend`, `type_legend`, `scale_bar`, `overlays` |
 
@@ -47,6 +47,31 @@ and `atom_style` unless you give them too, and Simple (ASE) also the ASE theme. 
 the GUI's: Ball & stick with VESTA-style bonds (off above 100,000 atoms). Per-atom colors, sizes
 and hiding by condition are steps (`paint`, `hide`, `fade`, `resize` in
 [Notebooks](notebooks.md)), and polyhedra, isosurfaces and arrows come from modifiers.
+
+### Visual elements by name
+
+The same settings are also reachable per visual element, under the element's own names:
+`Particles`, `Bonds`, `Surfaces`, `Vectors`, `Trajectory lines`, `Simulation cell` and every
+plugin visual in `visuals`. `pipe.view.elements` lists them with their current values, and
+setting an attribute sets the view setting behind it, so the view cell and the GUI follow.
+
+```python
+pipe.view.elements                                   # Particles(enabled=True, ...) / Bonds(...) / ...
+pipe.view.elements["Bonds"].radius = 0.12            # = pipe.view.bond_radius = 0.12
+pipe.view.elements["Particles"].enabled = False      # = pipe.view.atoms = False (a stick model)
+pipe.view.elements["Simulation cell"].set(color="grey", width=1.5)
+pipe.view.elements["Bonds"].settings                 # {'enabled': 'bonds', 'radius': 'bond_radius', ...}
+```
+
+Polyhedra, isosurfaces and grid slices are `data.surfaces` meshes made by a step
+(`CoordinationPolyhedra` makes `coordination-polyhedra`, `CreateIsosurface` its `identifier` and
+`identifier + "-"`). The view restyles them by that name without editing the step:
+
+```python
+pipe.view.surface("coordination-polyhedra", color="teal", transparency=0.5, edges=False)
+pipe.view.surface("isosurface-", visible=False)      # hide the negative lobe
+pipe.view.surface("coordination-polyhedra")          # back to the step's look
+```
 
 ## Renderers
 

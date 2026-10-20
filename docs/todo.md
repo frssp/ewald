@@ -63,7 +63,11 @@ GUI
   as diffs; a snapshot cell that updates when the camera of its view changes (now it is code).
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
   view does not have yet (per-type transparency, atom labels drawn in the view, light direction
-  and strength, polyhedra color and opacity without a step); the camera reaches the view cell
+  and strength, a highlight of the 'Selection' property, picks and distance/angle measurements as
+  code, the viewport axes widget; audit in the project files `ewald-review/view-elements-audit.md`);
+  the Display panel cards (Atoms, Types, Bonds, Cell, Elements) could take the visual element
+  names `pipe.view.elements` uses (Particles, Bonds, Simulation cell, Surfaces, ...) and gain a
+  Surfaces card for the `surfaces` setting; the camera reaches the view cell
   only through Insert › View settings with the camera (not on every rotation); the Render page
   keeps its own per-notebook state in the `.py` header next to the view cell's picture settings
   (one place for both); in a kernel notebook a viewport edit reaches the kernel's `pipe.view`

@@ -254,7 +254,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 |---|---|
 | `Particles` | Atoms as spheres: the 'Color' and 'Radius' properties, else per-type colors (``type_colors`` first) and radii (``type_radii``, else ``radius_preset``, see :mod:`ewald.radii`), times ``radius_scale``. Particles with Transparency 1 are left out. |
 | `Bonds` | Half-bonds as cylinders in their atoms' colors (or the bonds' 'Color'): ``data.bonds`` when present, else a search by ``cutoff`` or VESTA-style ``pairs`` [(A, B, dmin, dmax)]. |
-| `Surfaces` | Every ``data.surfaces`` mesh (polyhedra, isosurfaces, grid slices). |
+| `Surfaces` | Every ``data.surfaces`` mesh (polyhedra, isosurfaces, grid slices). ``styles`` restyles them by name on top of what their step made: ``{name: {"visible", "color", "transparency", "edges"}}``. |
 | `Vectors` | Per-particle vectors as arrows: ``data.vectors`` (VectorVis) plus ``vectors`` (a property name, a list, or ``{name: {VectorStyle fields}}``, see :class:`ewald.arrows.VectorStyle`). |
 | `Trajectory lines` | ``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle in its atom color; ``width`` in pixels, 0 hides them. |
 | `Simulation cell` | The cell edges as lines, ``width`` pixels wide; ``color`` None uses the renderer's ink (black, or light grey on dark backgrounds). ``radius`` (Angstrom) sizes the ray-traced tubes, None = 0.15 % of the cell diagonal. |
@@ -299,7 +299,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 `size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`, `region`.
 
-Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`.
+Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`, `show_atoms`, `surfaces`, `cell_radius`.
 
 ## Command line
 
@@ -356,8 +356,8 @@ Tools:
 | `compute_diffraction` | Powder X-ray or neutron diffraction peaks of a frame (2-theta, d, hkl, relative intensity; strongest first), or the structure factor S(q) when kind='sq'. |
 | `compute_msd` | Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per type, with a linear-regime fit D = slope/6. |
 | `render_image` | Render a frame of the pipeline to PNG and return the image so you can inspect it. |
-| `get_view` | The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, 'help' what each means. |
-| `set_view` | Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style preset, theme, element colors and radii, bonds on/off, bond table, cell, background, VESTA boundary, plugin visuals, vectors, camera (direction, zoom, rotate), frame, and picture options (renderer, quality, legends, scale bar, text). |
+| `get_view` | The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, 'elements' the same values by visual element (Particles, Bonds, Surfaces, Simulation cell, ...), 'help' what each means. |
+| `set_view` | Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style preset, theme, element colors and radii, atoms on/off, bonds on/off, bond table, cell, background, VESTA boundary, polyhedra/isosurface look by surface name (surfaces), plugin visuals, vectors, camera (direction, zoom, rotate), frame, and picture options (renderer, quality, legends, scale bar, text). |
 | `list_visuals` | Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell; configured through render_image and modifiers) and installed plugins, which add_visual draws on top in every renderer. |
 | `add_visual` | Draw a plugin visual element (see list_visuals) in every later render_image, with optional constructor parameters. |
 | `remove_visual` | Stop drawing the visual element at 'index' of the added list. |

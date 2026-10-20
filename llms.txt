@@ -116,6 +116,9 @@ view(pipe, style="Ball & stick",              # 'Space-filling', 'Simple (ASE)',
      renderer="raytrace", quality="publication", text="t = [Time] ps", type_legend=True, scale_bar=True)
 pipe.view.bonds = False; pipe.view.color("Sr", "green"); pipe.view.look("x").rotate(azimuth=30, elevation=15)
 pipe.render("fig.png")                                    # draws with pipe.view; keywords override it for one call
+pipe.view.elements["Bonds"].radius = 0.12                 # per visual element: Particles, Bonds, Surfaces, Vectors,
+pipe.view.elements["Particles"].enabled = False           #   Trajectory lines, Simulation cell, plugin visuals
+pipe.view.surface("coordination-polyhedra", color="teal", transparency=0.5)   # polyhedra/isosurface look by name
 ```
 
 Per-atom colors, sizes and hiding by condition are steps (`ewald.paint`: `paint`, `hide`, `fade`, `resize`), and

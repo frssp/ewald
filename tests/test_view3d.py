@@ -211,3 +211,73 @@ def test_gui_follows_the_view_and_writes_the_view_cell(tmp_path):
     w.write_camera()                                                     # Insert › View settings with the camera
     assert "camera={" in cell.source and "frame=2" in cell.source
     w.close()
+
+
+def test_elements_by_name_map_onto_the_settings(srtio3):
+    v = srtio3.view
+    els = v.elements
+    assert list(els)[:6] == ["Particles", "Bonds", "Surfaces", "Vectors", "Trajectory lines", "Simulation cell"]
+    els["Bonds"].radius = 0.2
+    els["Simulation cell"].set(enabled=False, radius=0.05)
+    els["Particles"].type_colors = {"O": "red"}
+    assert v.changed() == {"colors": {"O": "red"}, "bond_radius": 0.2, "cell": False, "cell_radius": 0.05}
+    assert els["Bonds"].enabled is True and els["Simulation cell"].enabled is False
+    v.bonds = 2.5
+    els["Bonds"].enabled = True                       # already on: keeps the cutoff
+    assert v.bonds == 2.5
+    els["Bonds"].enabled = False
+    assert v.bonds is False
+    with pytest.raises(AttributeError):
+        els["Bonds"].colour = "red"
+    with pytest.raises(KeyError):
+        els["Halo"]
+    v.visuals = [{"name": "Halo", "params": {"size": 2}, "enabled": True}]
+    assert "Halo" in els and els["Halo"].size == 2
+    els["Halo"].set(enabled=False, size=3)
+    assert v.visuals == [{"name": "Halo", "params": {"size": 3}, "enabled": False}]
+    d = els.describe()
+    assert d["Simulation cell"] == {"enabled": False, "color": None, "width": 2.0, "radius": 0.05}
+    assert "Bonds(" in repr(els)
+
+
+def test_surfaces_atoms_and_cell_radius_settings(srtio3):
+    from ewald.modifiers import CoordinationPolyhedra
+    from ewald.scene import build
+
+    srtio3.add(CoordinationPolyhedra(center_types=["Ti"]))
+    v = srtio3.view
+    v.surface("coordination-polyhedra", color="teal", transparency=0.5, edges=False)
+    assert v.surfaces == {"coordination-polyhedra": {"color": "teal", "transparency": 0.5, "edges": False}}
+    with pytest.raises(KeyError):
+        v.surface("coordination-polyhedra", opacity=1)
+    with pytest.raises(ValueError):
+        v.surface("x", transparency=2)
+    data = srtio3.compute(0)
+    kw = v.render_kwargs(data)
+    assert "show_atoms" not in kw and kw["surfaces"]["coordination-polyhedra"]["color"] == "teal"
+    scene = build(data, **kw)
+    mesh = scene["surface:coordination-polyhedra"].primitive
+    assert mesh.transparency == 0.5 and mesh.edges is None
+    assert np.allclose(mesh.face_properties["Color"], [0, 128 / 255, 128 / 255], atol=1e-3)
+    assert data.surfaces["coordination-polyhedra"].transparency == 0.25    # the step's mesh is unchanged
+    v.surface("coordination-polyhedra", visible=False)
+    v.atoms = False
+    kw = v.render_kwargs(data)
+    assert kw["show_atoms"] is False
+    scene = build(data, **kw)
+    assert "atoms" not in scene and "surface:coordination-polyhedra" not in scene and "bonds" in scene
+    v.surface("coordination-polyhedra")                                   # back to the step's look
+    assert v.surfaces == {}
+    assert v.source() == "view(pipe, atoms=False)"
+
+
+def test_view_style_round_trips_the_new_settings(srtio3):
+    from ewald.view_style import ViewStyle
+
+    v = View(atoms=False, cell_radius=0.1, surfaces={"isosurface": {"visible": False}})
+    st = ViewStyle()
+    st.apply_view(v, ["Sr", "Ti", "O"])
+    kw = st.scene_kwargs()
+    assert kw["show_atoms"] is False and kw["cell_radius"] == 0.1 and kw["surfaces"] == {"isosurface": {"visible": False}}
+    back = View(**st.view_settings(["Sr", "Ti", "O"])).changed()
+    assert back["atoms"] is False and back["cell_radius"] == 0.1 and back["surfaces"] == {"isosurface": {"visible": False}}
