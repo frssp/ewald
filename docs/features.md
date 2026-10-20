@@ -324,7 +324,7 @@ Details: [Command line](user/cli.md).
 
 ## AI integration
 
-The same tools serve Ask AI and the AI chat, `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (MCP server), whichever provider answers. Tools marked *code* exist only with `allow_code=True`. Details: [AI integration](user/claude.md).
+The same tools serve Ask AI and the AI chat, `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (MCP server), whichever provider answers. Tools marked *code* exist only with `allow_code=True`; *notebook* tools act on the cells of an attached notebook (the AI chat's current tab), and `run_cell` needs `allow_code=True` or Preferences > AI > Let the AI run cells. Details: [AI integration](user/claude.md).
 
 Providers (Preferences > AI, `--provider`; `@ai_provider` plugins add more):
 
@@ -369,6 +369,13 @@ Tools:
 | `get_script` | Standalone Python script that reproduces the current pipeline. |
 | `python_api` *code* | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature). |
 | `run_python` *code* | Execute Python in the session (variables persist). |
+| `list_cells` *notebook* | The cells of the user's notebook: index, id, kind (code, step = one pipe.add(...), view = one show(pipe, ...), markdown), state (new = not run, ok, error, stale = out of date), first line and output kinds. |
+| `read_cell` *notebook* | One notebook cell: its full source and outputs (printed text, errors, values; plots come back as images). |
+| `insert_cell` *notebook* | Insert a new cell into the user's notebook (default: at the end; 'index' puts it before the cell at that index). |
+| `edit_cell` *notebook* | Change a notebook cell. |
+| `delete_cell` *notebook* | Delete a notebook cell (and the steps it added to the pipeline). |
+| `move_cell` *notebook* | Move a notebook cell to position 'to' (0-based); the pipeline follows the new order. |
+| `run_cell` *notebook* *code* | Run a notebook cell, like Shift+Enter, and return its outputs. |
 
 Also: `ewald describe` / `ewald narrate` (rule-based descriptors and a trajectory timeline, AI-written when a client is available), Modifier Forge (`ewald forge`) and the `llms.txt` API reference (`ewald api`).
 
@@ -494,6 +501,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `llm.headers` | Extra headers | `''` |
 | `llm.timeout` | Timeout | `0.0` |
 | `llm.effort` | Effort | `'high'` |
+| `llm.run_cells` | Let the AI run cells | `False` |
 
 <!-- gui:start -->
 ## Desktop GUI
