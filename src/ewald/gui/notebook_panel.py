@@ -137,6 +137,8 @@ class NotebookView(QtWidgets.QWidget):
         lay.addWidget(self.banner)
         self.packages_bar = self._make_packages_bar()
         lay.addWidget(self.packages_bar)
+        self.run_bar = self._make_run_bar()
+        lay.addWidget(self.run_bar)
         self.stack = QtWidgets.QStackedWidget()
         self.scroll = _FitWidthScrollArea(objectName="notebookScroll")
         self.scroll.setWidgetResizable(True)
@@ -206,6 +208,57 @@ class NotebookView(QtWidgets.QWidget):
         row.addWidget(self.packages_button)
         self.refresh_packages(w)
         return w
+
+    def _make_run_bar(self):
+        """The run picker over a notebook that loaded several runs (``runs = load_runs(...)``):
+        which run's pipeline ``pipe`` is, so the 3D view and step cells follow it."""
+        w = QtWidgets.QFrame(objectName="runBar")
+        row = QtWidgets.QHBoxLayout(w)
+        row.setContentsMargins(10, 4, 8, 4)
+        self.run_label = QtWidgets.QLabel("Run")
+        self.run_combo = QtWidgets.QComboBox(toolTip="The run the 3D view shows; analyses on runs cover all of them")
+        self.run_combo.activated.connect(self._pick_run)
+        row.addWidget(self.run_label)
+        row.addWidget(self.run_combo, 1)
+        w.setVisible(False)
+        self._runs = None
+        return w
+
+    def _find_runs(self):
+        """The (first) :class:`ewald.runs.Runs` in the namespace, and its variable name."""
+        from ..runs import Runs
+
+        for name, value in list(self.notebook.namespace.items()):
+            if isinstance(value, Runs) and len(value):
+                return name, value
+        return None, None
+
+    def update_run_bar(self):
+        name, runs = self._find_runs()
+        self._runs = runs
+        self.run_bar.setVisible(runs is not None)
+        if runs is None:
+            return
+        self.run_label.setText(f"Run ({name})")
+        self.run_combo.blockSignals(True)
+        self.run_combo.clear()
+        self.run_combo.addItems(runs.labels)
+        pipe = self.notebook.pipeline
+        current = next((k for k, r in enumerate(runs) if r.pipe is pipe), runs.current)
+        self.run_combo.setCurrentIndex(current)
+        self.run_combo.blockSignals(False)
+
+    def _pick_run(self, index: int):
+        """Bind ``pipe`` to run ``index`` and show it."""
+        runs = self._runs
+        if runs is None or not 0 <= index < len(runs) or self.running:
+            return
+        pipe = runs.select(index)
+        if self.notebook.pipeline is pipe:
+            return
+        self.notebook.namespace[self.notebook.pipeline_name] = pipe
+        self.pipelineReplaced.emit(pipe)
+        self.update_results()
 
     def missing_packages(self) -> list[dict]:
         from ..notebook_io import missing_packages
@@ -581,6 +634,7 @@ class NotebookView(QtWidgets.QWidget):
                                                      for w, c in zip(self.widgets, nb.cells)):
             self.rebuild()
         self.history.commit("Run cell")  # what was typed into the cells that ran
+        self.update_run_bar()
         if nb.pipeline is not before and nb.pipeline is not None:
             self.pipelineReplaced.emit(nb.pipeline)
         else:
@@ -672,6 +726,7 @@ class NotebookView(QtWidgets.QWidget):
         if self.running:
             return
         self.notebook.reset()
+        self.update_run_bar()
         self.update_results()
 
     # ------------------------------------------------------------ kernel

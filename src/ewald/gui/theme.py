@@ -250,6 +250,8 @@ QToolButton#cellRun:hover {{ background: {accent_soft}; color: {accent}; }}
 QLabel#cellCounter {{ color: {muted}; font-size: 11px; }}
 QFrame#restrictedBanner {{ background: {data_soft}; border-bottom: 1px solid {data}; }}
 QFrame#restrictedBanner QLabel {{ color: {text}; background: transparent; }}
+QFrame#runBar {{ border-bottom: 1px solid {border}; }}
+QFrame#runBar QLabel {{ color: {secondary}; background: transparent; }}
 QToolButton#cellFold {{ padding: 0; border: none; }}
 QLabel#cellFolded {{ color: {secondary}; font-style: italic; padding: 3px 0; }}
 QLabel#cellDrag {{ padding: 2px 0; background: transparent; }}
