@@ -345,8 +345,8 @@ the OVITO-style pipeline list and properties panel, after a restart. In the note
 display settings (particle radii and colors, bonds, cell and visual plugins) are in the
 **Display** panel on the right; the AI chat with Claude opens left of the notebook from the
 activity bar, and code from its answers can be inserted as cells. View › Focus on the viewport (Ctrl+\\)
-hides the panels, and pressing it again brings them back. The chevron at the right of a panel's title bar (or a
-double-click on the title) folds that panel: the Notebook, Plugins, Display and AI chat
+hides the panels, and pressing it again brings them back. The chevron at the right of a panel's title bar (for the
+Notebook panel, at the right of its tab row; or a double-click on the title) folds that panel: the Notebook, Plugins, Display and AI chat
 panels fold to a thin strip with their name written down it, and the Data panel to its title
 bar. Panels shown as tabs fold together, and their tabs turn sideways; click the strip, its chevron or a
 tab to unfold. The button next to the chevron floats a panel in its own window. Every panel

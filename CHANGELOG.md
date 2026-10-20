@@ -23,8 +23,12 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   a print figure (white background, chosen width, PNG at the image-quality DPI) instead of
   saving the panel; new preferences `plots.size` and `plots.font_size`.
 - UI theme plugins (`@ui_theme`, `ewald.ui_themes` entry points): color themes for the desktop app
-  built on Paper or Graphite, chosen under Preferences › General › UI theme; example
-  `examples/plugins/ui_themes.py` (Midnight, High contrast).
+  built on a built-in theme, chosen under Preferences › General › UI theme; example
+  `examples/plugins/ui_themes.py` (Nord, Sepia).
+- Built-in UI themes Midnight, Solarized light, Solarized dark and High contrast; Graphite (dark)
+  is now the default. The Python console, open plots, notebook code colors and the activity bar
+  follow a theme switch at once, and the plot color cycle starts with the theme's accent.
+  The 3D view background follows the theme too (`viewport.follow_theme`, on by default).
 - Claude tool plugins (`@claude_tool`, `ewald.tools` entry points); built-in formats listed as
   plugins that `ewald plugins --disable` can switch off (#75).
 

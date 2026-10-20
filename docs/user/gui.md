@@ -134,7 +134,7 @@ never goes blank. Selecting a row opens its parameters below the list; the form 
 from the modifier's constructor, so every argument you can pass in Python can be edited here.
 
 **Visual elements.** The top of the list holds what is drawn: Particles, Bonds and Simulation
-cell, plus any [visual element plugins](../plugins/visuals.md) added with the "+ Visual" button.
+cell, plus any [visual element plugins](../plugins/visuals.md) added with the **+** button in the Display header.
 Simulation cell has VESTA's boundary range: tick Boundary and set the fractional range (e.g.
 -0.1 to 1.1) to draw the periodic images of atoms on the faces, edges and corners, with bonds and
 polyhedra completed across the cell; [display only](rendering.md#boundary-vesta).
@@ -281,7 +281,8 @@ detail. Compute › Memory › *Frame cache memory* (2048 MB) caps how much the 
 cache holds; the current frame is always kept. Scripts set the same cap with
 `Pipeline(..., cache_memory=bytes)` or `pipe.cache_memory`.
 `python benchmarks/large_files.py` times opening, frame switching and memory on generated
-multi-million-atom files.
+multi-million-atom files. `python benchmarks/analysis.py` times the analysis modifiers on a
+108k-atom crystal and the ray tracer at each quality preset.
 
 The viewport draws a change once, in the next repaint: several changes made before the
 repaint (a new frame, picks, a camera move) cost one render, a mouse move while rotating costs

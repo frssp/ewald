@@ -7,11 +7,11 @@ import os
 import sys
 
 import numpy as np
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..settings import DEVICES, Settings
 from .pref_widgets import _hex
-from .style import PRESET_THEMES
+from .style import PRESET_THEMES, set_default_background
 
 
 # ---------------------------------------------------------------- applying to the main window
@@ -70,13 +70,30 @@ def apply_settings(win, s: Settings, startup: bool = False):
     if app is not None:
         # one style sheet, set only when it changes: each set re-polishes every widget of every window
         theme.apply(app, s["general.ui_theme"], font_size=s["general.font_size"])
+    from .console import restyle
+
+    restyle(win.console)  # the console draws its own colors (background, syntax, selection)
+    tokens = dict(theme.TOKENS)
+    if getattr(win, "_ui_tokens", tokens) != tokens:  # open figures keep the colors they were drawn in
+        from .plots import PlotsPanel
+
+        for panel in win.findChildren(PlotsPanel):  # Plots tabs and notebook view cells
+            panel.restyle()
+        for highlighter in win.findChildren(QtGui.QSyntaxHighlighter):  # notebook code cells
+            highlighter.rehighlight()
+    win._ui_tokens = tokens
 
     win.set_button_style(s["general.toolbar_style"])
     from .icons import refresh
 
     refresh(win)  # header, timeline and cell icons follow the UI theme
+    if hasattr(win, "activity_buttons"):
+        win.refresh_activity_icons()
+    # a background from the UI theme or Preferences is not written into the notebook's view
+    background = theme.TOKENS["viewport"] if s["viewport.follow_theme"] else s["viewport.background"]
+    set_default_background(background)
     if style.preset not in PRESET_THEMES:  # those presets keep their theme's background
-        style.background = s["viewport.background"]
+        style.background = background
     style.bond_radius = s["bonds.radius"]
     if startup or style.preset != s["viewport.style_preset"]:
         style.apply_preset(s["viewport.style_preset"], win.data.types if win.data is not None else ())

@@ -507,7 +507,7 @@ class Viewport(QtWidgets.QWidget):
             up = np.cross(d, [1.0, 0, 0]) if abs(d[0]) < 0.9 else np.cross(d, [0, 1.0, 0])
         setup_camera(self.plotter, self.data, tuple(d), self.ortho)
         self.plotter.camera.up = tuple(up / np.linalg.norm(up))
-        self.plotter.reset_camera()
+        self.plotter.reset_camera(render=False)
         self.render()
 
     def view_direction(self, direction):
@@ -535,7 +535,7 @@ class Viewport(QtWidgets.QWidget):
             self.render()
 
     def zoom_fit(self):
-        self.plotter.reset_camera()
+        self.plotter.reset_camera(render=False)
         self.render()
 
     def _preset(self, name):

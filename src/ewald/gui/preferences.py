@@ -38,7 +38,7 @@ LAYOUT = {
         ("Running jobs", ["general.live_reload", "general.live_reload_interval"]),
         ("Help", ["general.docs_url"])]),
     "Viewports": ("Defaults for the interactive 3D view.", [
-        ("View", ["viewport.background", "viewport.projection", "viewport.initial_view", "viewport.style_preset"]),
+        ("View", ["viewport.follow_theme", "viewport.background", "viewport.projection", "viewport.initial_view", "viewport.style_preset"]),
         ("Navigation", ["viewport.rotation_step"]),
         ("Overlays", ["viewport.show_axes", "viewport.show_overlay"]),
         ("Hover", ["viewport.hover_info", "viewport.hover_delay"]),
@@ -689,4 +689,6 @@ def _ui_theme_names(default: str) -> list[str]:
     try:
         return list(plugins.ui_themes())
     except Exception:
-        return ["paper", "graphite"]
+        from .theme import PALETTES
+
+        return list(PALETTES)

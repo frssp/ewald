@@ -199,6 +199,12 @@ class PlotsPanel(QtWidgets.QWidget):
         self.column.setEnabled(len(items) > 1)
         self.column.blockSignals(False)
 
+    def restyle(self):
+        """Redraw in the colors of the UI theme now active (after a theme switch)."""
+        self.figure.set_facecolor(TOKENS["bg"])
+        self._drawn = None   # a full redraw, not just a moved marker
+        self.redraw()
+
     @_styled
     def redraw(self, *_):
         self._fill_columns()
@@ -219,6 +225,7 @@ class PlotsPanel(QtWidgets.QWidget):
         self._drawn, self._marker, self._phonon, self._elec = key, None, None, None
         fig = self.figure
         fig.clear()
+        fig.set_facecolor(TOKENS["bg"])
         ax = self._ax = fig.add_subplot(111, facecolor=TOKENS["bg"])
         self._ax2, self._edges, self._overlays, self._rubber = None, None, [], None
         self._bars = False  # integer histogram drawn as bars

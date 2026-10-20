@@ -630,6 +630,7 @@ def test_main_window_applies_settings(app, pipe):
     from ewald.gui.preferences import apply_settings
 
     s = settings.Settings()
+    s["viewport.follow_theme"] = False
     s["viewport.background"] = "#ffffff"
     s["viewport.style_preset"] = "Ball & stick"
     s["viewport.rotation_step"] = 30.0
@@ -1569,7 +1570,7 @@ def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, m
         assert view.interrupt_button.isHidden() and view.run_all_button.isEnabled()
         assert k.alive and [c.state for c in view.notebook.cells] == ["ok", "ok"]
         assert w.pipeline is view.notebook.pipeline and "Coordination" in w.pipeline.compute(0).particles
-        assert "1 steps" in view.status.text()
+        assert "1 step" in view.status.text()
         view.notebook.save(tmp_path / "k2.ipynb")
         (tmp_path / "k3.ipynb").write_bytes((tmp_path / "k2.ipynb").read_bytes())
         reopened = w.open_notebook(str(tmp_path / "k3.ipynb"))      # the kernel choice is kept
@@ -2171,6 +2172,51 @@ def test_plot_export_is_a_print_figure_in_any_theme(app, vasp_dir, tmp_path):
     assert "Reaction coordinate" in svg and "#ffffff" in svg.lower()
 
 
+def test_theme_switch_restyles_console_plots_and_code(app, vasp_dir):
+    from PySide6 import QtGui
+
+    from ewald import import_file, settings
+    from ewald.gui import prefs_apply, theme
+    from ewald.gui.app import MainWindow
+    from ewald.gui.console import pygments_style
+    from ewald.gui.notebook_panel import PythonHighlighter
+
+    assert theme.DEFAULT == "graphite" and settings.Settings()["general.ui_theme"] == "graphite"
+    s = settings.Settings()
+    s["general.ui_theme"] = "paper"
+    w = MainWindow(settings=s)
+    pipe = import_file(vasp_dir / "neb")
+    w.plots.pipeline = pipe
+    w.plots.set_data(pipe.compute(1))
+    doc = QtGui.QTextDocument()
+    hl = PythonHighlighter(doc)
+    doc.setPlainText("import numpy")
+    try:
+        for name in theme.PALETTES:
+            s["general.ui_theme"] = name
+            prefs_apply.apply_settings(w, s)
+            t = theme.PALETTES[name]
+            con = w.console
+            if hasattr(con, "_highlighter"):
+                assert t["bg"] in con.style_sheet and t["accent"] in con.style_sheet   # background, selection
+                style = con._highlighter._style
+                assert style.background_color == t["bg"] and t["data"] in str(style.styles.values())
+            from matplotlib.colors import to_hex
+
+            assert to_hex(w.plots.figure.get_facecolor()).upper() == t["bg"]
+            hl.rehighlight()
+            formats = doc.firstBlock().layout().formats()
+            assert formats[0].format.foreground().color().name().upper() == t["accent"]   # "import" in the accent
+            icon = w.activity_buttons["Notebook"].icon()
+            assert not icon.isNull()
+            assert w.style.background == t["viewport"]               # the 3D view follows the theme
+            assert w.style.view_settings().get("background") is None   # ... without writing it into the view
+    finally:
+        theme.use(theme.DEFAULT)
+        w.close()
+    assert pygments_style(theme.PALETTES["paper"]).background_color == theme.PALETTES["paper"]["bg"]
+
+
 def test_notebook_cells_sit_at_the_top(app):
     from ewald.gui.app import MainWindow
 
@@ -2205,15 +2251,24 @@ def test_panel_headers_line_up_and_buttons_use_icons(app, pipe):
     w.resize(1300, 820)
     w.show()
     app.processEvents()
-    heads = [d.titleBarWidget() for d in w.findChildren(QtWidgets.QDockWidget) if d.isVisible()]
+    bars = [d.titleBarWidget() for d in w.findChildren(QtWidgets.QDockWidget) if d.isVisible()]
+    nb_bar = w.notebook_dock.titleBarWidget()
+    assert nb_bar.height() == 0 and nb_bar.merged  # the notebook tabs carry its fold and float buttons
+    heads = [b for b in bars if b is not nb_bar] + [w.panel.tabs.tabBar()]
     heads += [g.head for g in w.workbench.findChildren(QtWidgets.QWidget) if hasattr(g, "head") and g.isVisible()]
     assert len(heads) >= 3
-    assert {h.height() for h in heads} == {header.height()}
+    assert {h.height() for h in heads} <= {header.height(), header.height() + 1}
     tops = {h.mapTo(w, QtCore.QPoint(0, 0)).y() for h in heads if h.mapTo(w, QtCore.QPoint(0, 0)).y() < 200}
     assert len(tops) == 1  # notebook, 3D view and Display headers start on one line
     for b in w.findChildren(QtWidgets.QAbstractButton):
         symbols = [c for c in b.text() if unicodedata.category(c) == "So" or 0x2190 <= ord(c) <= 0x2BFF]
         assert not symbols, (b.objectName(), b.toolTip(), b.text())
+    nb_bar.merged[0].click()  # fold from the tab row: the strip with the name comes back
+    app.processEvents()
+    assert nb_bar.collapsed and nb_bar.height() > 0 and nb_bar.vtitle.isVisible()
+    nb_bar.toggle()
+    app.processEvents()
+    assert not nb_bar.collapsed and nb_bar.height() == 0
     tl = w.timeline
     tl.play.setChecked(True)
     assert tl.play.property("ewald_icon") == "pause"

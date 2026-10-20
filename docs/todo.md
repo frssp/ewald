@@ -11,6 +11,25 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## Next
 
+Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; numbers from
+`benchmarks/analysis.py`, `benchmarks/large_files.py` and the GUI under `xvfb-run`)
+
+- Pipeline output cache: only source frames are cached, so every `compute(frame)` reruns all
+  modifiers. Opening the Cu void tutorial notebook computes frame 0 four times (the GUI and each
+  view cell), and a 1M-atom CoordinationAnalysis costs about 1 s per call. Cache the last output
+  per frame keyed by the modifiers' parameters and enabled flags (Python steps invalidate it).
+- Native structure identification is single-threaded: PTM (0.6 s of 0.9 s at 108k atoms) and
+  Voronoi run one core; thread the per-atom loops in `_csrc` (OVITO does).
+- Ray tracer: publication preset traces 16 samples x 32 AO rays per pixel (SrTiO3 with
+  polyhedra 29 s at 1600x1200). Options: stratified/blue-noise AO with fewer rays at the same
+  noise, adaptive sampling that stops on converged pixels, a BVH instead of the uniform grid
+  for surfaces, or the GPU (CUDA) path.
+- GUI startup is about 3 s, mostly imports: pyvista/pyvistaqt (~2 s), matplotlib (0.6 s) and
+  the in-process IPython console (0.5 s), which could be built when its tab is first opened.
+- Kernel round trip: a cached 1M-atom frame takes about 1 s from a separate-Python kernel,
+  mostly recomputing modifiers there (see the output cache); the `.npz` itself is 70 ms.
+- UI theme switch takes 0.5-1 s in `QApplication.setStyleSheet` (one app-wide QSS).
+
 GUI
 
 - Panel layout (phase 1 landed: `gui/workbench.py`, `gui/layout_model.py`; plan in project
@@ -51,9 +70,8 @@ GUI
 - Plugins side bar: disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
-- UI themes (`@ui_theme`): switch fully without a restart (now the style sheet changes at once,
-  but notebook syntax colors and open plots keep the old tokens), let a theme's `viewport` token
-  drive the 3D view background.
+- UI themes: prompts already printed in the Python console keep the colors of the theme they
+  were printed in (new input, syntax colors and the background switch at once).
 - Remotes side bar: list folders and connect in a background thread (now the GUI waits, with
   a busy cursor), drag a remote file onto the notebook, mirror a run folder to a local folder
   (rsync-like, for offline analysis), remote data links in the `.ewd` manifest (remote paths are
@@ -79,12 +97,13 @@ GUI
   `ewald.icns`); the EWALD mark in the main window header (the Notebook redesign) and the docs.
 - Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
   categories. Buttons no longer use text glyphs (panel headers, timeline, cells, view bar use
-  line icons from `gui/icons.py`); the activity-bar and toolbar icons still keep the old palette
-  after a theme switch until a restart (`icons.refresh` covers the other buttons).
+  line icons from `gui/icons.py`).
 - Panel headers (`gui/header.py`): checked under xvfb with Windows-like scale factors (100, 125,
   150 %) only; check on a real Windows machine (Segoe UI, per-monitor DPI) and macOS. The Display
   side bar still crowds its form below about 260 px, and the view bar cuts "View along" when the
-  3D view is narrow (could fold into a menu).
+  3D view is narrow (could fold into a menu). The Notebook panel has no title row while docked (its tab row
+  carries fold and float), so it moves to another side only by floating it first; dragging
+  the empty part of the tab row could start the dock drag.
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
   Add modification for the loaded data, view-along buttons hidden without a cell, the timeline
   folded for a single structure, a right-click menu on pipeline items.

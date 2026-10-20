@@ -39,6 +39,11 @@ class PythonHighlighter(QtGui.QSyntaxHighlighter):
 
     def __init__(self, document):
         super().__init__(document)
+        self._theme = None
+
+    def _restyle(self):
+        """Formats in the colors of the active UI theme (rebuilt when the theme changes)."""
+        self._theme = dict(TOKENS)
 
         def fmt(color, bold=False, italic=False):
             f = QtGui.QTextCharFormat()
@@ -60,6 +65,8 @@ class PythonHighlighter(QtGui.QSyntaxHighlighter):
         self.triple = fmt(TOKENS["data"])
 
     def highlightBlock(self, text):
+        if self._theme != TOKENS:
+            self._restyle()
         for regex, f in self.rules:
             it = regex.globalMatch(text)
             while it.hasNext():
@@ -1051,8 +1058,12 @@ class NotebookView(QtWidgets.QWidget):
         nb = self.notebook
         pipe = nb.pipeline
         steps = None if pipe is None else len(pipe.modifiers) + sum(len(c.steps) for c in nb.cells)
-        self.status.setText(("" if pipe is None else f"{steps} steps · ") +
-                            (os.path.basename(nb.path) if nb.path else "not saved") + (" ●" if nb.dirty else ""))
+        # the tab already shows the notebook's name and ●; here only what it does not: steps, unsaved
+        parts = [] if pipe is None else [f"{steps} step{'s' if steps != 1 else ''}"]
+        if not nb.path:
+            parts.append("not saved")
+        self.status.setText(" · ".join(parts))
+        self.status.setToolTip(nb.path or "Not saved yet (Ctrl+S)")
         if self.py_button.isChecked():
             self.file_view.setPlainText(nb.to_py())
 

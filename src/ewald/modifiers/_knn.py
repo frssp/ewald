@@ -86,7 +86,7 @@ class PeriodicKDTree:
             self._build(2.0 * (3.0 * vol * kk / (4.0 * np.pi * n)) ** (1 / 3) + 1e-6)
         while True:
             kq = min(kk, len(self._image_pos))
-            dist, img = self._tree.query(xq, k=kq)
+            dist, img = self._tree.query(xq, k=kq, workers=-1)
             dist = dist.reshape(len(x), kq)
             img = img.reshape(len(x), kq)
             if self._skin == np.inf or (np.isfinite(dist[:, -1]).all() and dist[:, -1].max() <= self._skin
@@ -97,11 +97,16 @@ class PeriodicKDTree:
             pad = kk - kq
             dist = np.concatenate([dist, np.full((len(x), pad), np.inf)], 1)
             img = np.concatenate([img, np.full((len(x), pad), -1)], 1)
+        if exclude_self:
+            img, dist = img[:, 1:], dist[:, 1:]
         valid = img >= 0
+        if valid.all():  # the usual case: plain gathers, no masked temporaries
+            index = self._image_index[img]
+            delta = self._image_pos[img]
+            delta -= xq[:, None, :]
+            return index, delta, dist
         index = np.where(valid, self._image_index[np.where(valid, img, 0)], -1)
         delta = np.where(valid[..., None], self._image_pos[np.where(valid, img, 0)] - xq[:, None, :], 0.0)
-        if exclude_self:
-            index, delta, dist = index[:, 1:], delta[:, 1:], dist[:, 1:]
         return index, delta, dist
 
 

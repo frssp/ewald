@@ -51,15 +51,15 @@ class SteinhardtOrderParameters(Modifier):
         norm = xp.sqrt((delta * delta).sum(1))
         unit = delta / xp.where(norm > 0, norm, 1.0)[:, None]
         for l in degrees:
-            ylm = _spherical_harmonics(xp, l, unit)                       # (pairs, 2l+1), m = -l..l
-            qlm = xp.stack([xp.bincount(i, weights=ylm[:, k].real, minlength=n)
-                            + 1j * xp.bincount(i, weights=ylm[:, k].imag, minlength=n)
-                            for k in range(2 * l + 1)], 1)
-            qlm = qlm / xp.where(nb > 0, nb, 1.0)[:, None]
+            qlm = _qlm(xp, l, unit, i, n) / xp.where(nb > 0, nb, 1.0)[:, None]
             if self.average:
-                summed = xp.stack([xp.bincount(i, weights=qlm[j, k].real, minlength=n)
-                                   + 1j * xp.bincount(i, weights=qlm[j, k].imag, minlength=n)
-                                   for k in range(2 * l + 1)], 1)
+                summed = xp.empty_like(qlm)
+                for m in range(l + 1):  # m < 0 follows from q_l,-m = (-1)^m conj(q_lm)
+                    col = qlm[j, l + m]
+                    summed[:, l + m] = (xp.bincount(i, weights=col.real, minlength=n)
+                                        + 1j * xp.bincount(i, weights=col.imag, minlength=n))
+                    if m:
+                        summed[:, l - m] = (-1) ** m * summed[:, l + m].conj()
                 qlm = (qlm + summed) / (nb + 1.0)[:, None]
             power = (qlm * qlm.conj()).real.sum(1)
             q = xp.sqrt(4 * pi / (2 * l + 1) * power)
@@ -75,33 +75,36 @@ class SteinhardtOrderParameters(Modifier):
                 data.particles[f"Steinhardt W{l}"] = be.to_numpy(w).astype(float)
 
 
-def _spherical_harmonics(xp, l, unit):
-    """Y_l^m(unit vectors) for m = -l..l (Condon-Shortley phase), shape (n, 2l+1), complex."""
-    x, y, z = unit[:, 0], unit[:, 1], unit[:, 2]
-    z = xp.clip(z, -1.0, 1.0)
-    s = xp.sqrt(xp.maximum(1.0 - z * z, 0.0))
-    phi = xp.arctan2(y, x)
-    # Associated Legendre P_l^m(z) for m = 0..l by the standard recurrences.
+def _qlm(xp, l, unit, i, n):
+    """sum over the bonds of each particle of Y_l^m(unit), m = -l..l (Condon-Shortley phase),
+    shape (n, 2l+1), complex.
+
+    Y_l^m = K_lm P_l^m(z) e^{im phi}, and P_l^m carries a factor sin^m(theta), so
+    P_l^m e^{im phi} = Pbar_l^m(z) (x + iy)^m with the sin-free Pbar: no arctan2, exp or
+    division. Only m >= 0 is summed; Y_l^-m = (-1)^m conj(Y_l^m), and so are the sums.
+    """
+    x, y = unit[:, 0], unit[:, 1]
+    z = xp.clip(unit[:, 2], -1.0, 1.0)
+    out = xp.empty((n, 2 * l + 1), dtype=complex)
     pmm = xp.ones_like(z)
-    plm = []
+    cr, ci = xp.ones_like(z), xp.zeros_like(z)  # (x + iy)^m
     for m in range(l + 1):
         if m > 0:
-            pmm = -(2 * m - 1) * s * pmm
+            pmm = -(2 * m - 1) * pmm
+            cr, ci = cr * x - ci * y, cr * y + ci * x
+        # associated Legendre P_l^m / sin^m by the standard upward recurrence in l
         if m == l:
             p = pmm
         else:
             p_prev, p = pmm, z * (2 * m + 1) * pmm
             for ll in range(m + 2, l + 1):
                 p_prev, p = p, ((2 * ll - 1) * z * p - (ll + m - 1) * p_prev) / (ll - m)
-        plm.append(p)
-    cols = [None] * (2 * l + 1)
-    for m in range(l + 1):
-        k = sqrt((2 * l + 1) / (4 * pi) * factorial(l - m) / factorial(l + m))
-        y_m = k * plm[m] * xp.exp(1j * m * phi)
-        cols[l + m] = y_m
+        w = sqrt((2 * l + 1) / (4 * pi) * factorial(l - m) / factorial(l + m)) * p
+        out[:, l + m] = (xp.bincount(i, weights=w * cr, minlength=n)
+                         + 1j * xp.bincount(i, weights=w * ci, minlength=n))
         if m:
-            cols[l - m] = (-1) ** m * y_m.conj()
-    return xp.stack(cols, 1)
+            out[:, l - m] = (-1) ** m * out[:, l + m].conj()
+    return out
 
 
 @lru_cache(maxsize=None)

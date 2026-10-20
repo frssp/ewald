@@ -18,7 +18,7 @@ from .. import modifiers as mods
 from ..render import camera_state, render
 from .ask_panel import AskPanel, agent_from_settings
 from .collapsible import make_collapsible
-from .compute import ComputeRunner
+from .compute import ComputeRunner, warm_up_jit
 from .console import make_console
 from .icons import app_icon
 from .inspector import DataInspector
@@ -56,6 +56,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.frame = 0
         self._frame_pending = False
         self.runner = ComputeRunner(self)  # pipeline evaluation on a worker thread
+        warm_up_jit()  # numba kernels load while the window builds, not on the first file
         self.runner.finished.connect(self._computed)
         self.runner.busyChanged.connect(self._compute_busy)
         self.style = ViewStyle()
@@ -94,6 +95,8 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
             self.panel.askRequested.connect(self.ask_claude)
             self.panel.plotCreated.connect(self._connect_plot)
             self.notebook_dock = self._dock(self.panel, "Notebook", QtCore.Qt.LeftDockWidgetArea, 560)
+            # the notebook tabs name the panel: no separate "Notebook" title row while it is open
+            self.notebook_dock.titleBarWidget().merge_into(self.panel.tabs.corner_layout)
             if not prefs.layout_path(self.settings).exists():  # first start: a wide notebook
                 QtCore.QTimer.singleShot(0, lambda: self.resizeDocks([self.notebook_dock], [640], QtCore.Qt.Horizontal))
             # VS Code-like activity bar: the Plugins side bar opens beside the notebook
@@ -119,6 +122,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
             self.display.styleChanged.connect(self._style_changed)
             self.display.modifierRequested.connect(lambda m: self.panel.add_modifier(m))
             side_dock = self._dock(self.display, "Display", QtCore.Qt.RightDockWidgetArea, 320)
+            side_dock.titleBarWidget().add_action(self.display.visual_button)  # not a row of its own
             self.display.refresh()
         else:
             # --- right: command panel (pipeline list + properties)

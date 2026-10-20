@@ -93,19 +93,21 @@ theme does not know keep their default colors. An installed package registers th
 
 ## UI themes
 
-A UI theme colors the desktop app itself: panels, text, buttons, the notebook, plots and
-the code editor. It is separate from the figure themes above, which color atoms and rendered images.
-ewald ships Paper (light, the default) and Graphite (dark); a `@ui_theme` plugin returns the
-design tokens it changes, and every token it leaves out comes from its `base` palette.
+A UI theme colors the desktop app itself: panels, text, buttons, the notebook, plots, the
+Python console and the code editor. It is separate from the figure themes above, which color atoms
+and rendered images. ewald ships Graphite (dark, the default), Paper (light), Midnight (dark blue),
+Solarized light, Solarized dark and High contrast (white, black text and borders); a `@ui_theme`
+plugin returns the design tokens it changes, and every token it leaves out comes from its `base`
+palette (any built-in theme).
 
 ```python
 from ewald.plugins import ui_theme
 
 
-@ui_theme(name="Midnight", base="graphite")
-def midnight():
-    """Dark blue-gray panels with periwinkle accents."""
-    return {"bg": "#11131C", "panel": "#171A26", "accent": "#7AA2F7", "on_accent": "#0B1020"}
+@ui_theme(name="Nord", base="graphite")
+def nord():
+    """Polar-night panels with frost-blue accents."""
+    return {"bg": "#2E3440", "panel": "#323946", "accent": "#88C0D0", "on_accent": "#2E3440"}
 ```
 
 | Token | Where it shows |
@@ -117,13 +119,13 @@ def midnight():
 | `selection`, `pick` | selected atoms, picked atoms |
 | `error`, `ok` | error and success messages |
 | `hover`, `pressed`, `accent_hover`, `accent_pressed` | button and row shades under the mouse and while pressed; left out, they are mixed from `raised`/`accent` toward `text` |
-| `viewport` | the theme's suggested viewport color (the 3D view itself follows Preferences › Viewport › Background) |
+| `viewport` | the 3D view background (unless Preferences › Viewports › *Background follows the UI theme* is off) |
 
-Values are `#rrggbb` colors. Pick the theme under Preferences › General › *UI theme*; it takes
-full effect after a restart. A theme with an unknown token, a color that is not `#rrggbb` or a
-base other than `paper`/`graphite` is reported in the log and the app falls back to Paper rather
-than failing to open. An installed package registers UI themes under the `ewald.ui_themes` entry
+Values are `#rrggbb` colors. Pick the theme under Preferences › General › *UI theme*; panels,
+the console and open plots switch at once (saved figures keep print colors). A theme with an
+unknown token, a color that is not `#rrggbb` or a base that is not a built-in theme is reported
+in the log and the app falls back to Graphite rather than failing to open. An installed package registers UI themes under the `ewald.ui_themes` entry
 point group (an object that is a dict of tokens, which may name its `"base"`, or a function
 returning one), and a plugin cannot take the name of a built-in theme.
 
-`examples/plugins/ui_themes.py` holds Midnight and a High contrast light theme.
+`examples/plugins/ui_themes.py` holds Nord (dark) and Sepia (light).

@@ -8,6 +8,16 @@ import numpy as np
 from ..view3d import DEFAULT_PRESET, PRESET_THEMES, STYLE_PRESETS  # noqa: F401 (public here too)
 
 DEFAULT_BACKGROUND = "#14161A"
+_background = [DEFAULT_BACKGROUND]
+
+
+def default_background() -> str:
+    """The background of a view that sets none: the UI theme's or Preferences' (the GUI sets it)."""
+    return _background[0]
+
+
+def set_default_background(color: str):
+    _background[0] = color
 _THEMED = ("type_colors", "background", "cell_color", "radius_preset", "theme")
 
 
@@ -123,7 +133,7 @@ class ViewStyle:
         self.preset = view.style
         self.radius_scale, self.atom_style = float(view.radius_scale), view.atom_style
         theme = view.theme
-        self.type_colors, self.cell_color, self.background = {}, None, DEFAULT_BACKGROUND
+        self.type_colors, self.cell_color, self.background = {}, None, default_background()
         self.radius_preset = "covalent"
         if theme:
             self.apply_theme(theme, types)
@@ -203,7 +213,7 @@ class ViewStyle:
                "trajectory_width": self.trajectory_width}
         if theme is None or theme.radius_preset != self.radius_preset:
             out["radius_preset"] = self.radius_preset
-        base = theme.background if theme is not None and theme.background is not None else DEFAULT_BACKGROUND
+        base = theme.background if theme is not None and theme.background is not None else default_background()
         out["background"] = None if self.background == base else self.background
         if self.cell_color is not None and (theme is None or theme.cell_color != self.cell_color):
             out["cell_color"] = self.cell_color

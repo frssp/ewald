@@ -443,7 +443,12 @@ class PipelinePanel(QtWidgets.QWidget):
         old = self.scroll.takeWidget()
         if old is not None:
             old.deleteLater()
-        self.scroll.setWidget(widget)
+        page = QtWidgets.QWidget()  # the editor at its own height on top, not spread over the panel
+        lay = QtWidgets.QVBoxLayout(page)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(widget)
+        lay.addStretch(1)
+        self.scroll.setWidget(page)
 
     def _show_editor(self, item):
         self._form = self._script = None
@@ -586,13 +591,13 @@ class PipelinePanel(QtWidgets.QWidget):
             rad.valueChanged.connect(lambda v, t=t: (self.style.type_radii.__setitem__(t, v), self.styleChanged.emit()))
             table.setCellWidget(r, 2, rad)
             table.setItem(r, 3, QtWidgets.QTableWidgetItem(str(int((self.data.types == t).sum()))))
-        table.setMinimumHeight(min(260, 34 * (len(types) + 1) + 6))
+        table.setFixedHeight(min(260, 34 * (len(types) + 1) + 6))  # no empty rows below the types
         f.addRow(QtWidgets.QLabel("Types", objectName="section"))
         f.addRow(table)
         row = QtWidgets.QHBoxLayout()
-        imp = QtWidgets.QPushButton("Import VESTA elements.ini…")
+        imp = QtWidgets.QPushButton("VESTA…", toolTip="Import colors and radii from a VESTA elements.ini file")
         imp.clicked.connect(self._import_elements_ini)
-        reset = QtWidgets.QPushButton("Reset")
+        reset = QtWidgets.QPushButton("Reset", toolTip="Back to the default colors and radii of every type")
         reset.clicked.connect(lambda: (self.style.type_colors.clear(), self.style.type_radii.clear(),
                                        self.styleChanged.emit(), self.refresh()))
         row.addWidget(imp); row.addWidget(reset)
@@ -775,6 +780,13 @@ class DisplayPanel(PipelinePanel):
         self.add_button.hide()
         for b in self.edit_buttons:
             b.hide()
+        # the Display header shows the add-visual menu as an icon (app.py moves it there)
+        self.visual_button.setText("")
+        header.set_icon(self.visual_button, "plus")
+        self.visual_button.setIconSize(QtCore.QSize(header.ICON, header.ICON))
+        self.visual_button.setFixedSize(header.BUTTON, header.BUTTON)
+        self.visual_button.setObjectName("headerButton")
+        self.visual_button.setToolTip("Add a visual element (cell axes, halos, … from plugins)")
 
     def refresh(self, select=None):
         if select is None:
@@ -783,11 +795,18 @@ class DisplayPanel(PipelinePanel):
         self.tree.clear()
         target = self._visual_items(lambda title: None, select)
         self.tree.blockSignals(False)
+        self._fit_tree()
         self.update_status()
         if target is not None and target is not self.tree.currentItem():
             self.tree.setCurrentItem(target)
         else:
             self._show_editor(self.tree.currentItem())
+
+    def _fit_tree(self):
+        """As tall as its few rows (Particles, Bonds, Cell, plugins), so the editor gets the rest."""
+        rows = self.tree.topLevelItemCount()
+        row = self.tree.sizeHintForRow(0) if rows else 24
+        self.tree.setFixedHeight(max(1, rows) * row + 2 * self.tree.frameWidth() + 4)
 
     def add_modifier(self, mod):
         self.modifierRequested.emit(mod)
@@ -800,7 +819,9 @@ class DisplayPanel(PipelinePanel):
 
 
 def _types(data):
-    return None if data is None else (data.count, tuple(np.unique(data.types)))
+    from ..render import type_groups
+
+    return None if data is None else (data.count, tuple(sorted(map(str, type_groups(data.types)[0]))))
 
 
 def cell_summary(cell) -> str:

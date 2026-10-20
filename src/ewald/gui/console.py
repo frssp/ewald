@@ -29,16 +29,7 @@ def _ipython_console(namespace, on_execute, parent):
     kc = km.client()
     kc.start_channels()
     w = RichJupyterWidget(parent)
-    from .theme import TOKENS
-    w.syntax_style = "monokai"
-    w.style_sheet = f"""
-        QPlainTextEdit, QTextEdit {{ background-color: {TOKENS['bg']}; color: {TOKENS['text']};
-                                     selection-background-color: {TOKENS['raised']}; border: none; }}
-        .error {{ color: {TOKENS['error']}; }}
-        .in-prompt, .in-prompt-number {{ color: {TOKENS['accent']}; }}
-        .out-prompt, .out-prompt-number {{ color: {TOKENS['selection']}; }}
-        .in-prompt-number, .out-prompt-number {{ font-weight: bold; }}
-    """
+    restyle(w)
     w.kernel_manager = km
     w.kernel_client = kc
     w.banner = ("ewald console. Objects: pipeline, data (current frame), viewer, np, mods.\n"
@@ -46,6 +37,63 @@ def _ipython_console(namespace, on_execute, parent):
     w.shell = shell
     w.on_execute = on_execute  # the in-process shell is shared by every window: unregistered on close
     return w
+
+
+def pygments_style(tokens: dict):
+    """A Pygments style in the colors of UI theme ``tokens``: keywords and builtins in the accent,
+    strings and numbers in the data color, comments muted, on the theme background."""
+    from pygments.style import Style
+    from pygments.token import (Comment, Error, Generic, Keyword, Name, Number, Operator, Punctuation,
+                                String, Text, Token)
+
+    t = tokens
+    styles = {
+        Token: t["text"], Text: t["text"], Punctuation: t["secondary"], Operator: t["secondary"],
+        Keyword: f"bold {t['accent']}", Keyword.Constant: t["accent"], Name.Builtin: t["accent"],
+        Name.Function: t["text"], Name.Class: f"bold {t['text']}", Name.Decorator: t["selection"],
+        Name.Exception: t["error"], String: t["data"], String.Doc: f"italic {t['muted']}",
+        Number: t["data"], Comment: f"italic {t['muted']}", Error: t["error"],
+        Generic.Prompt: t["accent"], Generic.Traceback: t["error"], Generic.Error: t["error"],
+    }
+    return type("EwaldConsoleStyle", (Style,), {"background_color": t["bg"], "highlight_color": t["accent_soft"],
+                                                "styles": styles})
+
+
+def restyle(w, tokens: dict | None = None):
+    """Give an IPython console widget the colors of the UI theme (background, text, selection,
+    syntax and ANSI colors); called again when the theme changes."""
+    from .theme import TOKENS
+
+    t = tokens or TOKENS
+    if not hasattr(w, "syntax_style"):   # SimpleConsole follows the application style sheet
+        return
+    w.style_sheet = f"""
+        QPlainTextEdit, QTextEdit {{ background-color: {t['bg']}; color: {t['text']};
+                                     selection-background-color: {t['accent']}; selection-color: {t['on_accent']};
+                                     border: none; }}
+        .error {{ color: {t['error']}; }}
+        .in-prompt, .in-prompt-number {{ color: {t['accent']}; }}
+        .out-prompt, .out-prompt-number {{ color: {t['data']}; }}
+        .in-prompt-number, .out-prompt-number {{ font-weight: bold; }}
+    """
+    hl = getattr(w, "_highlighter", None)
+    if hl is None:
+        return
+    hl.set_style(pygments_style(t))      # syntax_style only takes Pygments style names
+    ap = w._ansi_processor               # ANSI colors (tracebacks) as qtconsole picks them per background
+    ap.default_color_map = ap.darkbg_color_map.copy()
+    if not dark_color(t["bg"]):
+        for i in range(8):
+            ap.default_color_map[i + 8] = ap.default_color_map[i]
+        ap.default_color_map[7] = ap.default_color_map[15] = t["text"]
+    ap.color_map.update(ap.default_color_map)
+    hl.rehighlight()
+
+
+def dark_color(color: str) -> bool:
+    c = color.lstrip("#")
+    r, g, b = (int(c[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.5
 
 
 class SimpleConsole(QtWidgets.QWidget):

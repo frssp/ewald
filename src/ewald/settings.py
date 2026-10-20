@@ -49,9 +49,9 @@ OPTIONS = (
     Option("general.layout", "notebook", "Window layout",
            "Notebook: Python cells build the pipeline (like Jupyter). Classic: pipeline list and "
            "properties panel. Takes effect after a restart.", choices=("notebook", "classic")),
-    Option("general.ui_theme", "paper", "UI theme",
-           "Paper: light, teal accents. Graphite: dark. UI theme plugins (@ui_theme) add more. "
-           "Takes full effect after a restart.", kind="ui_theme"),
+    Option("general.ui_theme", "graphite", "UI theme",
+           "Graphite: dark. Paper: light. Midnight, Solarized light/dark and High contrast are built in too; "
+           "UI theme plugins (@ui_theme) add more.", kind="ui_theme"),
     Option("general.startup_workspace", "Analyze", "Startup workspace", choices=("Analyze", "Render")),
     Option("general.toolbar_style", "Icons and text", "Toolbar buttons",
            "Icons and text: text on mode switches and rarely used buttons, icons alone on the tool rail.",
@@ -69,7 +69,10 @@ OPTIONS = (
     Option("general.docs_url", "", "Documentation URL",
            "Where Help opens the manual. Empty = the docs folder on GitHub; or a hosted or built site."),
 
-    Option("viewport.background", "#ECEDE9", "Background", kind="color"),
+    Option("viewport.follow_theme", True, "Background follows the UI theme",
+           "Use the UI theme's viewport color (dark in Graphite, light in Paper). Off: the Background color."),
+    Option("viewport.background", "#ECEDE9", "Background", "Used when the background does not follow the UI theme.",
+           kind="color"),
     Option("viewport.projection", "ortho", "Projection", choices=("ortho", "persp")),
     Option("viewport.initial_view", "iso", "Initial view direction", choices=("iso", "x", "y", "z", "front")),
     Option("viewport.style_preset", "Ball & stick", "Default style",
