@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from ewald import DataCollection, Pipeline, StaticSource
 from ewald.data import Cell
@@ -105,6 +106,24 @@ def test_raytrace_hits_sphere_center():
     img = raytrace(sc, cam, (21, 21), samples=1, ao_samples=0, shadows=False)
     assert img[10, 10, 0] > 0.5 and img[10, 10, 1] < 0.1      # red sphere in the middle
     assert np.allclose(img[0, 0, :3], 1.0)                    # white background in the corner
+
+
+def test_raytrace_progress_and_cancel():
+    from ewald.raytrace import RenderCancelled, Scene, raytrace
+
+    sc = Scene()
+    sc.add_spheres([[0, 0, 0], [1.2, 0.3, 0]], [1.0, 0.6], [(1.0, 0.0, 0.0), (0.0, 0.4, 1.0)])
+    cam = {"position": (0, 0, 10), "focal_point": (0, 0, 0), "up": (0, 1, 0), "parallel_projection": True,
+           "parallel_scale": 2.0}
+    plain = raytrace(sc, cam, (40, 30), samples=2, ao_samples=4)
+    seen = []
+    batched = raytrace(sc, cam, (40, 30), samples=2, ao_samples=4, progress=lambda d, t: seen.append((d, t)))
+    assert np.array_equal(plain, batched)                  # batches do not change a pixel
+    assert seen[-1] == (30, 30) and len(seen) > 1 and seen == sorted(seen)
+    calls = []
+    with pytest.raises(RenderCancelled):
+        raytrace(sc, cam, (40, 30), samples=2, ao_samples=4, progress=lambda d, t: calls.append(d) or False)
+    assert len(calls) == 1
 
 
 def test_trajectory_lines_render(tmp_path):

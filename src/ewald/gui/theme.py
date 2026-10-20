@@ -288,7 +288,7 @@ QFrame#cell[state="stale"] {{ background: {panel}; }}
 QFrame#cell[state="running"] {{ border-color: {data}; }}
 QFrame#cell[state="running"] QLabel#cellCounter {{ color: {data}; font-weight: 600; }}
 QFrame#cell[state="error"] QLabel#cellCounter {{ color: {error}; }}
-QWidget#cellGutter, QWidget#cellOutput, QLabel#cellImage {{ background: transparent; }}
+QWidget#cellGutter, QWidget#cellTools, QWidget#cellOutput, QLabel#cellImage {{ background: transparent; }}
 QFrame#cell QLabel, QFrame#cell QCheckBox {{ background: transparent; }}
 QToolButton#cellRun {{ padding: 0; border-radius: 12px; }}
 QToolButton#cellRun:hover {{ background: {accent_soft}; color: {accent}; }}

@@ -110,9 +110,11 @@ along, Orthographic, Zoom to fit and Ask AI are always there.
 
 **Plugin side bars.** A plugin can bring its own side bar (a sim-agent panel, a database
 browser, ...): installing it adds a button at the bottom of the activity bar and an entry
-under Window › Plugin panels, and a plugin with settings adds its own page to Preferences.
-Switching the plugin off in the Plugins side bar removes both; its settings are kept for when
-it comes back ([Side bar plugins](../plugins/gui.md)).
+under Window › Plugin panels (or a tab under the 3D view instead), it may add entries to the
+menus and to the 3D view's right-click menu, and a plugin with settings adds its own page to
+Preferences. Plugin side bars and tabs that were open come back at the next start where they
+were. Switching the plugin off in the Plugins side bar removes all of it; its settings are kept
+for when it comes back ([Side bar plugins](../plugins/gui.md)).
 
 **Workflow side bars.** The built-in **Workflows** side bar reads folders of calculations
 (relax, NEB, MD restarts, phonopy; File › Open workflow folder… or dropping a folder does the
@@ -120,8 +122,8 @@ same, see [Workflows](workflows.md)). Plugins that read finished calculations (s
 share its layout: the account, a search box that also takes an id, and the workflows newest
 first. Expanding a workflow lists its steps (restarts of one calculation joined, sub-workflows
 nested) with their files and structures. A double click on a step or output opens it; on a
-workflow it opens the whole workflow as one notebook, with a `load` cell per step
-(`relax = load(...)`, `scf = load(...)`) and `pipe` on the main result. To look at another step
+workflow it opens the whole workflow as one notebook whose load cell names every step, a line
+each (`relax = load(...)`, `scf = load(...)`), and sets `pipe` to the main result. To look at another step
 in the 3D view, run `pipe = scf`; `show(scf, ...)` puts it in a view cell next to the others
 ([Workflow sources](../plugins/workflows.md)).
 
@@ -272,9 +274,11 @@ journal size presets (1-column 3.5 in, 2-column 7.2 in, square, 16:9 slide) at a
 background (white, transparent, black, or the viewport's), overlays, and an output file.
 Under Overlays, "+ Overlay" adds an overlay element (Coordinate tripod, Attributes, or an
 [overlay plugin](../plugins/overlays.md)) with a checkbox and a parameter form.
-The ray tracer renders in the background: the window stays usable, *Render* greys out and reads
-"Ray tracing…", and a spinner beside the picture size shows until the picture appears under
-*Last render*. OpenGL and vector output are quick and render right away.
+The ray tracer renders in the background: the window stays usable, a spinner beside the picture
+size reads "Ray tracing… 40%" until the picture appears under *Last render*, and *Render* turns
+into *Cancel*, which stops the trace after the rows being traced (no file is written). In Python,
+`render(..., renderer="raytrace", progress=fn)` calls `fn(done_rows, total_rows)` the same way;
+returning `False` stops it with `RenderCancelled`. OpenGL and vector output are quick and render right away.
 
 The left side is the live 3D view with the picture's frame on it: the part outside the frame
 is dimmed, and the frame keeps the output's aspect ratio and its place on screen, so zooming or

@@ -64,6 +64,7 @@ class LammpsDumpReader(FrameReader):
                                           f"or stopped)") from None
             self._set_incomplete(f"{len(self._offsets)} frame(s) read, the partial last one skipped")
         self._last = None
+        self._timesteps: dict[int, int] = {}  # frame offset -> ITEM: TIMESTEP, read on demand
         self._units = None  # LAMMPS writes ITEM: UNITS only in the first snapshot
         self._read_units()
 
@@ -97,11 +98,32 @@ class LammpsDumpReader(FrameReader):
         # the old last frame was scanned again: its last line may have been half written
         changed = keep < len(self._offsets) or offsets != self._offsets
         self._offsets, self._end, self._last = offsets, end, None
+        if keep == 0:  # rewritten: the same offsets may hold other frames now
+            self._timesteps = {}
         self._set_incomplete(f"{len(offsets)} frame(s) read, the partial last one skipped" if end is not None
                              else None, warn=False)
         if keep == 0 or (self._units is None and len(offsets) > 1):
             self._read_units()
         return keep if changed else None
+
+    def timestep(self, index: int) -> int | None:
+        """``ITEM: TIMESTEP`` of frame ``index``, from its first lines only (cached)."""
+        index = range(len(self._offsets))[index]
+        cache = self._timesteps
+        offset = self._offsets[index]
+        if offset not in cache:
+            with open_binary(self.path) as fh:
+                fh.seek(offset)
+                for _ in range(4):  # UNITS and TIME may come first
+                    line = fh.readline()
+                    if not line:
+                        return None
+                    if line.startswith(b"ITEM: TIMESTEP"):
+                        cache[offset] = int(fh.readline().split()[0])
+                        break
+                else:
+                    return None
+        return cache[offset]
 
     def read(self, index: int) -> DataCollection:
         index = range(len(self._offsets))[index]

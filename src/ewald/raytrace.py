@@ -18,6 +18,11 @@ SPHERE, CYLINDER, TRIANGLE = 0, 1, 2
 # grid item code: kind << 40 | NO_SHADOW (objects shadow and AO rays pass through) | index
 NO_SHADOW = 1 << 39
 INDEX_MASK = NO_SHADOW - 1
+PROGRESS_STEPS = 20          # row batches when raytrace() reports progress
+
+
+class RenderCancelled(Exception):
+    """Raised by :func:`raytrace` when its ``progress`` callback returns ``False``."""
 
 
 # ----------------------------------------------------------------------------- scene
@@ -515,9 +520,8 @@ def _shade(p, n, d, cr, cg, cb, light, ambient, diffuse, specular, shininess, sh
 def _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, samples, ao_samples, ao_dist,
             light, ambient, diffuse, specular, shininess, shadows, bg,
             lo, size, dims, starts, items, sph_c, sph_r, sph_rgb, cyl_a, cyl_b, cyl_r, cyl_rgb,
-            tri_a, tri_b, tri_c, tri_n, tri_vrgb, tri_alpha, seed, rows):
-    img = np.zeros((height, width, 4))
-    for j in prange(height):
+            tri_a, tri_b, tri_c, tri_n, tri_vrgb, tri_alpha, seed, rows, img):
+    for j in prange(len(rows)):
         py = rows[j]
         state = np.empty(1, np.uint64)
         o = np.empty(3); d = np.empty(3); n = np.empty(3); p = np.empty(3); od = np.empty(3)
@@ -620,11 +624,15 @@ def _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, samples, 
 def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8, ao_samples: int = 16,
              ao_distance: float | None = None, shadows: bool = True, background=(1.0, 1.0, 1.0),
              transparent_background: bool = False, ambient: float = 0.55, diffuse: float = 0.6,
-             specular: float = 0.25, shininess: float = 40.0, light_direction=(-0.4, 0.6, 1.0), seed: int = 1):
+             specular: float = 0.25, shininess: float = 40.0, light_direction=(-0.4, 0.6, 1.0), seed: int = 1,
+             progress=None):
     """Ray-trace ``scene`` seen through ``camera`` (see :func:`ewald.render.camera_state`).
 
     Returns an (H, W, 4) float RGBA image in [0, 1]. ``light_direction`` is given
     in camera space (x right, y up, z toward the viewer).
+
+    ``progress(done, total)`` is called after each batch of rows; when it returns ``False`` the
+    trace stops and :class:`RenderCancelled` is raised. The image does not depend on it.
     """
     from .render import _rgb
 
@@ -657,12 +665,22 @@ def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8,
     if not (len(scene.sph_r) or len(scene.cyl_r) or len(scene.tri_alpha)):
         return np.broadcast_to(bg, (height, width, 4)).copy()
     lo, gsize, dims, starts, items = build_grid(scene)
-    return _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, int(samples), int(ao_samples),
-                   float(ao_distance), light, ambient, diffuse, specular, shininess, bool(shadows), bg,
-                   lo, gsize, dims, starts, items, scene.sph_c, scene.sph_r, scene.sph_rgb,
-                   scene.cyl_a, scene.cyl_b, scene.cyl_r, scene.cyl_rgb,
-                   scene.tri_a, scene.tri_b, scene.tri_c, np.ascontiguousarray(scene.tri_n),
-                   np.ascontiguousarray(scene.tri_vrgb), scene.tri_alpha, int(seed), _row_order(height))
+    img = np.zeros((height, width, 4))
+    rows = _row_order(height)
+    # with a progress callback, trace in batches (each one still spread over every thread)
+    batches = np.array_split(rows, min(PROGRESS_STEPS, height)) if progress is not None else [rows]
+    done = 0
+    for batch in batches:
+        _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, int(samples), int(ao_samples),
+                float(ao_distance), light, ambient, diffuse, specular, shininess, bool(shadows), bg,
+                lo, gsize, dims, starts, items, scene.sph_c, scene.sph_r, scene.sph_rgb,
+                scene.cyl_a, scene.cyl_b, scene.cyl_r, scene.cyl_rgb,
+                scene.tri_a, scene.tri_b, scene.tri_c, np.ascontiguousarray(scene.tri_n),
+                np.ascontiguousarray(scene.tri_vrgb), scene.tri_alpha, int(seed), batch, img)
+        done += len(batch)
+        if progress is not None and progress(done, height) is False:
+            raise RenderCancelled("ray trace cancelled")
+    return img
 
 
 def _row_order(height: int, stride: int = 64):

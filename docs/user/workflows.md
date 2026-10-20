@@ -57,9 +57,9 @@ to `load` are joined in the same order). Hidden folders are skipped. A finished 
 `General timing` at the end of its OUTCAR, a finished LAMMPS one `Total wall time` in its log;
 others show as still running.
 
-Restarted segments are joined as they are: when segments overlap (a restart from an earlier
-dump), the overlapping frames appear twice. Run [check_run](runs.md) on the joined step to see
-the timesteps.
+Restarted segments are joined the way `load` joins several files (`join="timestep"`): LAMMPS
+dumps that overlap after a restart from an earlier step keep the later segment's frames; VASP
+segments, which carry no timestep, are put one after the other.
 
 ## For the AI
 

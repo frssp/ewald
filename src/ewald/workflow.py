@@ -237,9 +237,9 @@ def _one_line(value) -> str:
 
 
 def notebook_text(wf: Workflow, pipeline_name: str = "pipe") -> str:
-    """One notebook (percent format) for a whole workflow: a heading with what it is, one
-    ``name = load(path)`` cell per step that has a result and per top-level output structure,
-    and ``pipe`` set to the main result, so the 3D view starts there and any step is one
+    """One notebook (percent format) for a whole workflow: a heading with what it is, and one
+    cell that loads every step with a result and every top-level output structure
+    (``name = load(path)``, a line each) and sets ``pipe`` to the main result, so the 3D view starts there and any step is one
     reassignment (``pipe = relax``) or ``show(scf, ...)`` away. Names, labels and numbers from
     the source only reach comments and markdown, on one line each, and paths only string
     literals, so a workflow cannot put code into the notebook."""
@@ -258,26 +258,29 @@ def notebook_text(wf: Workflow, pipeline_name: str = "pipe") -> str:
     cells = ["# %% [markdown]\n" + "\n".join(head), "# %%\n" + IMPORTS]
     taken: set = set()
     by_path: dict = {}
+    loads = []
     for _, step in wf.walk():
         if step.path and step.path not in by_path:
             name = variable_name(step.name, taken)
             taken.add(name)
             by_path[step.path] = name
-            note = f"  # {line(step.mark())}" if step.mark() else ""
-            cells.append(f"# %% {line(step.name)}\n{name} = load({str(step.path)!r}){note}")
+            loads.append((f"{name} = load({str(step.path)!r})", line(step.mark()) if step.failed else ""))
     for o in wf.outputs:
         if o.path and o.kind in ("structure", "trajectory", "band") and o.path not in by_path:
             name = variable_name(o.name, taken)
             taken.add(name)
             by_path[o.path] = name
-            cells.append(f"# %% {line(o.name)}\n{name} = load({str(o.path)!r})")
+            loads.append((f"{name} = load({str(o.path)!r})", line(o.note)))
     main = by_path.get(wf.path) if wf.path else None
     if main is None and wf.path:
         main = f"load({str(wf.path)!r})"
     if main is None and by_path:
         main = list(by_path.values())[-1]
+    body = [f"{code}  # {note}" if note else code for code, note in loads]
     if main is not None:
-        cells.append(f"# %%\n{pipeline_name} = {main}")
+        body.append(f"{pipeline_name} = {main}")
+    if body:
+        cells.append("# %%\n" + "\n".join(body))
     return "\n\n".join(cells) + "\n"
 
 

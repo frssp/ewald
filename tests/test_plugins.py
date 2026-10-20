@@ -583,7 +583,9 @@ def test_panel_plugin_and_stored_settings_page(monkeypatch):
     assert panel.title == "Sim agent" and panel.icon.startswith("<svg") and panel.shortcut == "Ctrl+Alt+A"
     assert "Send simulation tasks" in panel.description and panel.width == 320
     assert plugins.installed()["sim-agent-example"].contributions == {"settings_pages": ["sim-agent"],
-                                                                       "panels": ["sim_agent"]}
+                                                                       "panels": ["sim_agent", "agent_jobs"],
+                                                                       "menu_items": ["send_picked", "send_structure",
+                                                                                      "agent_settings"]}
     assert {p["name"]: p["title"] for p in plugins.status()["panels"]}["sim_agent"] == "Sim agent"
     page = plugins.settings_pages()["sim-agent"]
     assert page.description == "The agent behind the Sim agent side bar."
@@ -607,6 +609,26 @@ def test_panel_and_settings_page_checks():
 
     with pytest.raises(TypeError, match="not callable"):
         plugins.register_panel("p", "not a function")
+    with pytest.raises(ValueError, match="area"):
+        plugins.register_panel("p", lambda ctx: None, area="right")
+    assert plugins.register_panel("tab", lambda ctx: None, area="bottom").area == "bottom"
+    with pytest.raises(ValueError, match="menu must start"):
+        plugins.register_menu_item("m", lambda ctx: None, menu="Analysis")
+    with pytest.raises(ValueError, match="menu must start"):
+        plugins.register_menu_item("m", lambda ctx: None, menu="Tools//x")
+    with pytest.raises(ValueError, match="when"):
+        plugins.register_menu_item("m", lambda ctx: None, when="always")
+    with pytest.raises(TypeError, match="not callable"):
+        plugins.register_menu_item("m", 3)
+
+    def act(ctx):
+        """Do it."""
+
+    act.menu, act.when = "3D view/Agent", "picks"      # attributes, as an entry point sets them
+    item = plugins.register_menu_item("act", act)
+    assert (item.title, item.menu, item.when, item.description) == ("act", "3D view/Agent", "picks", "Do it.")
+    assert plugins.menu_items()["act"] is item
+    assert any(m["name"] == "act" and m["menu"] == "3D view/Agent" for m in plugins.status()["menu_items"])
 
     class Half:
         def load(self):

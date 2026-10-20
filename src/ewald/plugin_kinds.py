@@ -323,10 +323,12 @@ class ToolPlugin:
 
 @dataclass
 class PanelPlugin:
-    """A side bar of the desktop app: a button on the activity bar (left edge) shows or hides it,
-    and an entry under Window › Plugin panels. ``factory(context)`` builds its ``QWidget`` the first
-    time it is opened (not at start), with ``context`` an ``ewald.gui.window_plugins.PanelContext``.
-    ``icon`` is the name of a built-in icon or an SVG/PNG file (resolved next to the plugin)."""
+    """A panel of the desktop app: with ``area="side"`` a side bar that a button on the activity
+    bar (left edge) shows or hides, with ``area="bottom"`` a tab under the 3D view (next to
+    Python console, View, Data inspector, Plots and Log); either has an entry under Window ›
+    Plugin panels. ``factory(context)`` builds its ``QWidget`` the first time it is opened (not at
+    start), with ``context`` an ``ewald.gui.window_plugins.PanelContext``. ``icon`` is the name of
+    a built-in icon or an SVG/PNG file (resolved next to the plugin)."""
 
     name: str
     factory: Callable
@@ -335,6 +337,32 @@ class PanelPlugin:
     tooltip: str = ""
     shortcut: str = ""
     width: int = 320
+    description: str = ""
+    origin: str = ""
+    area: str = "side"
+
+
+PANEL_AREAS = ("side", "bottom")
+#: Where a ``@menu_item`` can go: a menu of the menu bar, or the 3D view's right-click menu.
+MENUS = ("File", "Edit", "View", "Notebook", "Insert", "Tools", "Window", "Help", "3D view")
+MENU_WHEN = ("", "data", "picks")
+
+
+@dataclass
+class MenuItemPlugin:
+    """An entry a plugin adds to a menu of the desktop app: ``menu`` is one of :data:`MENUS`,
+    optionally with a submenu path (``"Tools/Sim agent"``); choosing it calls
+    ``callback(context)`` with an ``ewald.gui.window_plugins.PanelContext``. ``when`` is "" (always
+    on), "data" (a structure is loaded) or "picks" (atoms are picked); in the 3D view's menu an
+    entry whose ``when`` does not hold is left out, in the menu bar it is greyed out."""
+
+    name: str
+    callback: Callable
+    title: str
+    menu: str = "Tools"
+    shortcut: str = ""
+    icon: str = ""
+    when: str = ""
     description: str = ""
     origin: str = ""
 
