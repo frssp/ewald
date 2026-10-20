@@ -13,7 +13,7 @@ EXAMPLE = Path(__file__).parents[1] / "examples" / "plugins" / "npz_trajectory.p
 
 
 # plugin packages installed in this environment (e.g. ewald-phonopy) stay out of these tests
-_GROUPS = ("ewald.readers", "ewald.modifiers", "ewald.plugins", "ewald.tools")
+_GROUPS = ("ewald.readers", "ewald.modifiers", "ewald.plugins", "ewald.tools", "ewald.settings_pages")
 _INSTALLED = {(g, ep.name, ep.value) for g in _GROUPS for ep in importlib.metadata.entry_points(group=g)}
 
 
@@ -565,71 +565,119 @@ def test_scheme_reader_takes_uri_paths(tmp_path, monkeypatch):
 SIM_AGENT = Path(__file__).parents[1] / "examples" / "plugins" / "sim_agent_panel.py"
 
 
-def test_panel_and_settings_page_plugin(tmp_path):
-    """A plugin contributes an activity-bar panel and a Preferences page; its settings are
-    stored with ewald's and survive the plugin being switched off."""
+def test_panel_plugin_and_stored_settings_page(monkeypatch):
+    """The example contributes an activity-bar panel and a settings page without load()/save(),
+    whose values ewald keeps (plain ones in a JSON file, the secret in the keychain)."""
     import json
 
-    from ewald import settings
+    from ewald import keychain
 
+    secrets = {}
+    monkeypatch.setattr(keychain, "set_secret", lambda name, value: secrets.__setitem__(name, value) or "file")
+    monkeypatch.setattr(keychain, "get_secret", lambda name: (secrets.get(name), "file" if name in secrets else None))
     folder = plugins.plugin_dir()
     folder.mkdir(parents=True, exist_ok=True)
     shutil.copy(SIM_AGENT, folder)
     panel = plugins.panels()["sim_agent"]
     assert panel.title == "Sim agent" and panel.icon.startswith("<svg") and panel.shortcut == "Ctrl+Alt+A"
-    assert "Send simulation tasks" in panel.description
-    page = plugins.settings_pages()["Sim agent"]
-    assert page.prefix == "simagent" and page.layout()[1][0] == ("Connection", ["simagent.server", "simagent.timeout"])
-    assert plugins.installed()["sim-agent-example"].contributions == {"settings_pages": ["Sim agent"],
+    assert "Send simulation tasks" in panel.description and panel.width == 320
+    assert plugins.installed()["sim-agent-example"].contributions == {"settings_pages": ["sim-agent"],
                                                                        "panels": ["sim_agent"]}
     assert plugins.status()["panels"][0]["title"] == "Sim agent"
-    s = settings.load()
-    assert s["simagent.server"] == "http://localhost:8000" and settings.option("simagent.timeout").page == "Sim agent"
-    s["simagent.timeout"] = 5
-    with pytest.raises(ValueError):
-        s["simagent.timeout"] = 0       # the option's own range
-    with pytest.raises(KeyError):
-        s["simagent.nope"] = 1
-    s.save()
-    assert json.loads(s.path.read_text()) == {"simagent.timeout": 5.0}
+    page = plugins.settings_pages()["sim-agent"]
+    assert page.description == "The agent behind the Sim agent side bar."
+    assert plugins.plugin_settings("sim-agent") == {"server": "http://localhost:8000", "token": None,
+                                                    "model": "default", "insert_cells": True}
+    assert page.values()["token"] is False
+    assert page.save({"server": "http://hpc:9000", "token": "tok", "model": "fast", "insert_cells": False}) == "Saved"
+    stored = json.loads((plugins.plugin_dir().parent / "plugin-settings" / "sim-agent.json").read_text())
+    assert stored == {"server": "http://hpc:9000", "model": "fast", "insert_cells": False}   # no secret in the file
+    assert secrets == {"plugin:sim-agent:token": "tok"} and page.values()["token"] is True
+    page.save({"server": "http://hpc:9000", "token": "", "model": "fast", "insert_cells": False})
+    assert plugins.plugin_settings("sim-agent")["token"] == "tok"        # empty keeps the saved secret
     plugins.set_enabled("sim-agent-example", False)
-    assert "sim_agent" not in plugins.panels() and "Sim agent" not in plugins.settings_pages()
-    off = settings.load()
-    off["general.font_size"] = 13       # saving other settings keeps the plugin's
-    off.save()
-    assert json.loads(off.path.read_text())["simagent.timeout"] == 5.0
-    assert off.copy().changed()["simagent.timeout"] == 5.0
+    assert "sim_agent" not in plugins.panels() and "sim-agent" not in plugins.settings_pages()
     plugins.set_enabled("sim-agent-example", True)
-    assert settings.load()["simagent.timeout"] == 5.0
+    assert plugins.plugin_settings("sim-agent")["server"] == "http://hpc:9000"   # kept while it was off
 
 
-def test_settings_page_checks():
-    from ewald.settings import Option
+def test_panel_and_settings_page_checks():
+    from ewald.plugin_api import SettingsField
 
-    with pytest.raises(ValueError, match="ewald's own"):
-        plugins.settings_page("Mine", [Option("viewport.x", 1, "X")])
-    with pytest.raises(ValueError, match="same prefix"):
-        plugins.settings_page("Mine", [Option("a.x", 1, "X"), Option("b.y", 1, "Y")])
-    with pytest.raises(ValueError, match="built in"):
-        plugins.settings_page("General", [Option("mine.x", 1, "X")])
-    with pytest.raises(ValueError, match="unknown keys"):
-        plugins.settings_page("Mine", [Option("mine.x", 1, "X")], sections=[("S", ["mine.y"])])
-    with pytest.raises(ValueError, match="out of range"):
-        plugins.settings_page("Mine", [Option("mine.x", 0, "X", minimum=1)])
-    plugins.settings_page("Mine", [Option("mine.x", 1, "X")])
-    with pytest.raises(ValueError, match="taken by"):
-        plugins.settings_page("Other", [Option("mine.y", 1, "Y")])
-    with pytest.raises(TypeError):
-        plugins.register_panel("p", "not callable")
+    with pytest.raises(TypeError, match="not callable"):
+        plugins.register_panel("p", "not a function")
+
+    class Half:
+        def load(self):
+            return {}
+
+    with pytest.raises(TypeError, match="no save"):
+        plugins.register_settings_page("half", Half, fields=[SettingsField("x")])
 
 
-def test_plugin_settings_of_a_missing_plugin_are_kept(tmp_path):
-    """A value for a plugin that is not installed (yet) loads and saves unchanged; a bad value
-    for a declared option reads as the default."""
-    from ewald import settings
-    from ewald.settings import Option
+SETTINGS_PLUGIN = '''
+"""A service with a settings page."""
+from ewald.plugin_api import SettingsField, settings_page
 
-    s = settings.Settings({"later.thing": [1, 2], "viewport.nope": 3}, tmp_path / "s.json")
-    assert s.changed() == {"later.thing": [1, 2]}       # unknown core keys are still dropped
-    plugins.settings_page("Later", [Option("later.thing", 4, "Thing")])
-    assert s["later.thing"] == 4
+STORE = {"url": "http://old", "key": None, "verify": True}
+
+
+@settings_page("demo-service", title="Demo service", fields=[
+    SettingsField("url", "Server address", help="Where it runs"),
+    SettingsField("key", "Access key", kind="secret"),
+    SettingsField("verify", kind="bool"),
+    SettingsField("mode", kind="choice", choices=("fast", "safe"))],
+    actions={"Test": "test"})
+class DemoSettings:
+    """Connect to the demo service."""
+
+    def load(self):
+        return {"url": STORE["url"], "key": STORE["key"] is not None, "verify": STORE["verify"]}
+
+    def save(self, values):
+        if not values["url"].startswith("http"):
+            raise ValueError("The server address starts with http")
+        STORE.update(url=values["url"], verify=values["verify"])
+        if values["key"]:
+            STORE["key"] = values["key"]
+        return "Saved"
+
+    def test(self, values):
+        return "reachable" if STORE["key"] else "no key"
+'''
+
+
+def test_settings_page_from_plugin_folder():
+    from ewald import plugin_catalog
+
+    path = _write_plugin("demo_service.py", SETTINGS_PLUGIN)
+    page = plugins.settings_pages()["demo-service"]
+    assert page.title == "Demo service" and page.description == "Connect to the demo service."
+    assert page.values() == {"url": "http://old", "key": False, "verify": True, "mode": "fast"}
+    assert [f.label for f in page.fields] == ["Server address", "Access key", "Verify", "Mode"]
+    with pytest.raises(ValueError, match="starts with http"):
+        page.save({"url": "ftp://x", "key": "", "verify": True, "mode": "fast"})
+    assert page.save({"url": "http://new", "key": "sa_pat_1", "verify": False, "mode": "safe"}) == "Saved"
+    assert page.values()["key"] is True and page.actions["Test"]({}) == "reachable"
+    item = next(i for i in plugin_catalog.installed() if i.id == "demo_service")
+    assert item.provides["settings_page"] == ["demo-service"] and "settings_page" in item.kinds
+    assert plugin_catalog.describe_file(path).kinds == ["settings_page"]
+    assert plugins.status()["settings_pages"][0]["title"] == "Demo service"
+
+
+def test_settings_page_checks_what_it_is_given():
+    from ewald.plugin_api import SettingsField
+
+    class NoSave:
+        def load(self):
+            return {}
+
+    with pytest.raises(TypeError, match="save"):
+        plugins.register_settings_page("x", NoSave, fields=[SettingsField("a")])
+    with pytest.raises(TypeError, match="SettingsField"):
+        plugins.register_settings_page("x", type("P", (), {"load": lambda s: {}, "save": lambda s, v: ""}),
+                                       fields=["a"])
+    with pytest.raises(ValueError, match="kind must be one of"):
+        SettingsField("a", kind="password")
+    with pytest.raises(ValueError, match="needs choices"):
+        SettingsField("a", kind="choice")

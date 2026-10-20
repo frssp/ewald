@@ -1,4 +1,4 @@
-# GUI plugins: side bars and Preferences pages
+# Side bar plugins
 
 A plugin can add to the desktop app itself: a **side bar** with its own button on the activity
 bar (the icon column at the left edge, under Notebook, Plugins, Remotes and AI chat), and a
@@ -7,7 +7,7 @@ it off in the Plugins side bar removes both again.
 
 [`examples/plugins/sim_agent_panel.py`](https://github.com/frssp/ewald/blob/main/examples/plugins/sim_agent_panel.py) is a complete
 one-file example: a "Sim agent" side bar that follows the structure on screen and turns tasks
-into notebook cells, and a "Sim agent" Preferences page with its server, model and timeout.
+into notebook cells, and a "Sim agent" Preferences page with its server, token and model.
 
 ![The Sim agent example: its activity-bar button (bottom) opens the side bar](../images/plugin_panel.png)
 
@@ -50,7 +50,8 @@ side bar, and so does the command palette (Ctrl+K).
 
 | | |
 |---|---|
-| `context.settings` | the user's preferences, including the plugin's own page: `context.settings["simagent.server"]` |
+| `context.settings` | ewald's preferences (`context.settings["viewport.projection"]`) |
+| `context.plugin_settings(name)` | the values of a [settings page](settings.md), e.g. the plugin's own |
 | `context.pipeline` | the pipeline of the notebook on screen (`pipe` in its cells), or None |
 | `context.data` | the computed frame the 3D view shows (a `DataCollection`), or None |
 | `context.frame` | the frame number on the timeline |
@@ -58,58 +59,54 @@ side bar, and so does the command palette (Ctrl+K).
 | `context.open_preferences(page)` | open Preferences at a page, e.g. the plugin's own |
 | `context.insert_cell(code)` | add a code cell after the current one, without running it |
 | `context.add_step(modifier)` | add a step cell and compute it |
-| `context.on(event, callback)` | `"data"` after each computed frame (`callback(data)`), `"pipeline"` when another pipeline is loaded (`callback(pipeline)`), `"settings"` after Preferences are applied (`callback(settings)`) |
+| `context.on(event, callback)` | `"data"` after each computed frame (`callback(data)`), `"pipeline"` when another pipeline is loaded (`callback(pipeline)`), `"settings"` after Preferences are applied, plugin pages included (`callback(settings)`) |
 
 These keep their meaning while `PLUGIN_API` stays the same. `context.window` is the main window
 itself, for anything else; it is internal and may change in any release.
 
-## A Preferences page: `settings_page`
+## Its settings
+
+A side bar's plugin usually needs some setting up (a server, a token). Give it a
+[settings page](settings.md): it becomes a page of Preferences with the side bar's icon, and
+the panel reads it with `context.plugin_settings(name)` (or `plugin_settings(name)` from
+`ewald.plugin_api`), re-reading after `context.on("settings", ...)` fires:
 
 ```python
-from ewald.plugin_api import Option, settings_page
+from ewald.plugin_api import SettingsField, panel, settings_page
 
-settings_page("Sim agent", [
-    Option("simagent.server", "http://localhost:8000", "Server", "Where the agent listens."),
-    Option("simagent.model", "default", "Model", choices=("default", "fast", "accurate")),
-    Option("simagent.timeout", 60.0, "Timeout", "Seconds to wait.", minimum=1, maximum=3600),
-    Option("simagent.insert_cells", True, "Insert tasks as cells"),
-], description="The agent behind the Sim agent side bar.",
-   sections=[("Connection", ["simagent.server", "simagent.timeout"]),
-             ("Tasks", ["simagent.model", "simagent.insert_cells"])])
+
+@settings_page("sim-agent", title="Sim agent", fields=[
+    SettingsField("server", "Server", default="http://localhost:8000"),
+    SettingsField("token", "Access token", kind="secret")])
+class SimAgentSettings:
+    """The agent behind the Sim agent side bar."""     # ewald stores the values
+
+
+@panel(title="Sim agent")
+def sim_agent(context):
+    from PySide6 import QtWidgets
+
+    label = QtWidgets.QLabel()
+    show = lambda *_: label.setText(context.plugin_settings("sim-agent")["server"])
+    context.on("settings", show)
+    show()
+    return label
 ```
 
-![The plugin's page in Preferences](../images/plugin_settings_page.png)
-
-Each `Option` is a row, built from its default like ewald's own: a toggle for `True`/`False`, a
-number field with `minimum`/`maximum`, a combo box for `choices`, a text field otherwise, and
-`kind="color"`, `"file"` or `"dir"` for a color button or a path field. Every key starts with a
-prefix of the plugin's own (`simagent.`); ewald's own prefixes (`general`, `viewport`, `llm`,
-...) and one already taken by another plugin are refused. Without `sections` the page has one
-section named after it; `icon` takes the same values as a panel's.
-
-The values are stored in `settings.json` with ewald's own (only those that differ from the
-default) and get everything the other rows have: the changed dot, Reset, Reset page, search
-and Import/Export. They are kept while the plugin is switched off or uninstalled, so turning it
-back on brings them back. Read them anywhere:
-
-```python
-from ewald import settings
-
-settings.load()["simagent.server"]
-```
-
-Scripts and `compute()` never read settings on their own, so a plugin's analysis code takes its
-values as arguments; the side bar passes them in.
+A Settings… button in the panel can open the page with `context.open_preferences("Sim agent")`.
 
 ## Shipping it
 
 In a one-file plugin both registrations sit at the top level of the file, as in the example. A
-package lists its panel as an entry point and calls `settings_page` when its module is imported
-(for example from the module that defines the panel):
+package lists them as entry points instead; the settings class then carries `title` and
+`fields` as class attributes rather than the decorator ([Settings pages](settings.md)):
 
 ```toml
 [project.entry-points."ewald.panels"]
 sim_agent = "ewald_sim_agent.gui:sim_agent"
+
+[project.entry-points."ewald.settings_pages"]
+sim-agent = "ewald_sim_agent.gui:SimAgentSettings"
 
 [project.entry-points."ewald.plugins"]
 sim-agent = "ewald_sim_agent"

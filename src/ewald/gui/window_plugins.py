@@ -61,8 +61,14 @@ class PanelContext:
 
     @property
     def settings(self):
-        """The user's preferences (``ewald.settings.Settings``), plugin settings pages included."""
+        """ewald's preferences (``ewald.settings.Settings``)."""
         return self.window.settings
+
+    def plugin_settings(self, page: str) -> dict:
+        """The values of a plugin settings page (``ewald.plugins.plugin_settings``)."""
+        from .. import plugins
+
+        return plugins.plugin_settings(page)
 
     @property
     def pipeline(self):
@@ -98,8 +104,8 @@ class PanelContext:
 
     def on(self, event: str, callback):
         """Call ``callback`` on "data" (a frame was computed: ``callback(data)``), "pipeline"
-        (another pipeline: ``callback(pipeline)``) or "settings" (Preferences applied:
-        ``callback(settings)``). Errors are logged, not raised into the window."""
+        (another pipeline: ``callback(pipeline)``) or "settings" (Preferences applied, plugin
+        pages included: ``callback(settings)``). Errors are logged, not raised into the window."""
         if event not in self._callbacks:
             raise ValueError(f"unknown event {event!r}; use one of {', '.join(EVENTS)}")
         self._callbacks[event].append(callback)

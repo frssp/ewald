@@ -112,7 +112,7 @@ along, Orthographic, Zoom to fit and Ask AI are always there.
 browser, ...): installing it adds a button at the bottom of the activity bar and an entry
 under Window › Plugin panels, and a plugin with settings adds its own page to Preferences.
 Switching the plugin off in the Plugins side bar removes both; its settings are kept for when
-it comes back ([GUI plugins](../plugins/gui.md)).
+it comes back ([Side bar plugins](../plugins/gui.md)).
 
 **AI chat (Ask AI).** The AI button at the bottom of the activity bar on the far left (also
 Window › AI chat, Ctrl+J, and Ask AI in the Structure view's right-click menu) opens a chat side bar left of the
@@ -294,13 +294,20 @@ Ctrl+Alt+R) keeps saved remote computers with their login, jump host, start fold
 bookmarks, and browses their files; passwords and key passphrases go to the OS keychain
 ([Saved remote computers](formats.md#saved-remote-computers)).
 
+File › Open location (Ctrl+L) takes a typed path or address, the same text `load()` takes in a
+notebook cell: `host:/path` over SSH, or a scheme a reader plugin serves, such as `aiida:1234`
+or `simagent:1234`; the dialog lists the schemes that are installed. A plugin that needs setting
+up (a server address, an access key) has its own page in Preferences, a Settings button in the
+Plugins side bar and an entry under Edit › Plugin settings, so it can be set up without Python.
+
 ## Preferences
 
 Edit › Preferences (Ctrl+, ; the application menu on macOS) has seven pages: General, Viewports,
 Elements (per-element color and radius, Jmol or CPK scheme, radius preset, VESTA `elements.ini` import),
 Rendering, Compute (device, CPU threads, installed components), Python (console
 startup script, extra module paths) and AI (provider, API key, model, server URL and effort for Ask AI; see
-[API key](claude.md#api-key)). Only values that differ from the defaults are saved, as
+[API key](claude.md#api-key)), followed by a page for each installed plugin that has settings
+(its fields, its buttons such as Test connection; Apply and OK save them through the plugin). Only values that differ from the defaults are saved, as
 JSON in the ewald config folder: `~/.config/ewald` on Linux,
 `~/Library/Application Support/ewald` on macOS, `%APPDATA%\ewald` on Windows, or
 `$EWALD_CONFIG_DIR` when set. Preferences affect the GUI only; scripts that call `compute` or

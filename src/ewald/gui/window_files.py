@@ -265,6 +265,31 @@ class FilesMixin:
         """Open one of the shipped example files (File › Open example)."""
         return self.open_file(str(examples.path(name)))
 
+    def location_schemes(self) -> list[str]:
+        """URI schemes the installed readers serve (``aiida``, ``simagent``, ...), for Open location."""
+        return sorted({s for p in plugins.readers().values() for s in p.schemes})
+
+    def open_location_dialog(self, text: str | None = None):
+        """File › Open location: a path or address typed in, ``host:/path`` over SSH or a plugin
+        scheme such as ``simagent:1234`` (the same strings ``load()`` takes)."""
+        if text is None:
+            schemes = self.location_schemes()
+            hint = ("A file path, host:/path over SSH"
+                    + (", or " + ", ".join(f"{s}:…" for s in schemes) if schemes else "")
+                    + "\n(the same text load() takes in a notebook cell)")
+            text, ok = QtWidgets.QInputDialog.getText(self, "Open location", hint,
+                                                      text=getattr(self, "_last_location", ""))
+            if not ok:
+                return None
+        text = text.strip()
+        if not text:
+            return None
+        self._last_location = text
+        if plugins.path_scheme(text) in self.location_schemes():
+            return self.open_file(text)      # not a file: no type questions, no NEB lookup
+        self.open_any(text)
+        return self.pipeline
+
     def open_remote_dialog(self):
         from .remote_dialog import RemoteFileDialog
 

@@ -50,6 +50,8 @@ _NAMES = {
     "theme": "ewald.plugins", "ui_theme": "ewald.plugins", "ai_tool": "ewald.plugins",
     "claude_tool": "ewald.plugins", "ai_provider": "ewald.plugins",
     "panel": "ewald.plugins",
+    # settings pages
+    "settings_page": "ewald.plugins", "SettingsField": "ewald.plugins", "plugin_settings": "ewald.plugins",
 }
 
 __all__ = ["PLUGIN_API", "SUPPORTED", *_NAMES]

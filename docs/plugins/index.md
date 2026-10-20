@@ -20,7 +20,7 @@ against the same API the built-in readers and modifiers use, so everything in th
 | [AI provider](tools.md#ai-providers) | an `ewald.llm.providers.Provider` (another AI service: Mistral, a company gateway, ...) | `@ai_provider` in the plugin folder, or an `ewald.ai_providers` entry point | available |
 | [UI theme](styles.md#ui-themes) | a function returning design tokens (`{"accent": "#7aa2f7", ...}`) on top of Paper or Graphite | `@ui_theme` in the plugin folder, or an `ewald.ui_themes` entry point | available |
 | [Side bar](gui.md) | a function returning a Qt widget, opened from its own activity-bar button | `@panel` in the plugin folder, or an `ewald.panels` entry point | available |
-| [Preferences page](gui.md#a-preferences-page-settings_page) | a list of `Option`s under the plugin's own key prefix | `settings_page(...)` in the plugin folder or package | available |
+| [Settings page](settings.md) | fields (`SettingsField`), plus `load()` / `save(values)` or nothing (ewald stores them); a page of Preferences and a dialog | `@settings_page(...)` in the plugin folder, or an `ewald.settings_pages` entry point | available |
 
 [Modifier Forge](forge.md) writes a modifier plugin from a description: the AI writes the
 module and its tests, and ewald saves it to the plugin folder once its checks pass.

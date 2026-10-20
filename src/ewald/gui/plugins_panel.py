@@ -51,6 +51,11 @@ class PluginRow(QtWidgets.QFrame):
                 u.setToolTip(f"From {update.catalog}")
                 u.clicked.connect(lambda: self.action.emit(update, "update"))
                 head.addWidget(u)
+            if item.provides.get("settings_page"):
+                c = QtWidgets.QPushButton("Settings", objectName="pluginButton")
+                c.setToolTip("Set up this plugin (" + ", ".join(item.provides["settings_page"]) + ")")
+                c.clicked.connect(lambda: self.action.emit(self.item, "settings"))
+                head.addWidget(c)
             if item.id:
                 on = item.enabled
                 t = QtWidgets.QPushButton("Disable" if on else "Enable", objectName="pluginButton")
@@ -293,6 +298,8 @@ class PluginsPanel(QtWidgets.QWidget):
     def _act(self, item, action):
         if action in ("install", "update"):
             self.install(item, update=action == "update")
+        elif action == "settings":
+            self.edit_settings(item)
         elif action in ("enable", "disable"):
             pc.set_enabled(item, action == "enable")
             self._say(f"{item.name}: {action}d" + (" (restart ewald to unload its package)"
@@ -301,6 +308,18 @@ class PluginsPanel(QtWidgets.QWidget):
             self.changed.emit()
         else:
             self.remove(item)
+
+    def edit_settings(self, item, exec_: bool = True):
+        """Open the settings page(s) of an installed plugin (:func:`ewald.plugins.settings_page`)."""
+        from .plugin_settings import edit
+
+        dlg = None
+        for name in item.provides.get("settings_page", []):
+            if name in plugins.settings_pages():
+                dlg = edit(name, self, exec_=exec_)
+                if exec_ and dlg.message:
+                    self._say(f"{dlg.page.title}: {dlg.message}")
+        return dlg
 
     def install(self, entry, update: bool = False):
         """Install a catalog entry; ``update`` replaces the installed plugin it matches."""

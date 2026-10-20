@@ -79,7 +79,8 @@ from typing import Callable
 
 from .io.base import FrameReader
 from .plugin_kinds import (  # noqa: F401 (part of this module's API)
-    ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, PanelPlugin, ReaderPlugin,
+    ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, PanelPlugin, ReaderPlugin, SettingsField,
+    SettingsPagePlugin,
     ThemePlugin, ToolPlugin, UiThemePlugin, VisualPlugin, WriterPlugin, _builtin_ai_providers, _builtin_overlays, _builtin_readers,
     _builtin_themes, _builtin_ui_themes, _builtin_visuals, _builtin_writers, path_scheme)
 from .plugin_manifest import (  # noqa: F401 (part of this module's API)
@@ -98,6 +99,7 @@ TOOL_GROUP = "ewald.tools"
 UI_THEME_GROUP = "ewald.ui_themes"
 AI_PROVIDER_GROUP = "ewald.ai_providers"
 PANEL_GROUP = "ewald.panels"
+SETTINGS_PAGE_GROUP = "ewald.settings_pages"
 PLUGIN_GROUP = "ewald.plugins"      # names the package that holds ewald-plugin.toml
 MANIFEST_NAME = "ewald-plugin.toml"
 
@@ -115,6 +117,7 @@ class _Registry:
     ui_themes: dict = field(default_factory=_builtin_ui_themes)
     ai_providers: dict = field(default_factory=_builtin_ai_providers)
     panels: dict = field(default_factory=dict)
+    settings_pages: dict = field(default_factory=dict)
     errors: dict = field(default_factory=dict)      # origin -> message
     plugins: dict = field(default_factory=dict)     # id -> Plugin
     loaded: bool = False
@@ -122,7 +125,7 @@ class _Registry:
 
 _registry = _Registry()
 _REGISTRIES = ("readers", "writers", "modifiers", "visuals", "overlays", "colormaps", "themes", "tools",
-               "ui_themes", "ai_providers", "panels")
+               "ui_themes", "ai_providers", "panels", "settings_pages")
 
 
 def plugin_dir() -> Path:
@@ -550,6 +553,138 @@ def panels() -> dict[str, PanelPlugin]:
     """Side bars contributed by plugins, by name, in registration order."""
     load_plugins()
     return dict(_registry.panels)
+def settings_page(name: str | None = None, title: str = "", fields=None, description: str = "",
+                  actions: dict | None = None):
+    """Decorator giving a plugin its own settings page, so it can be set up without Python
+    (a page of Preferences, Plugins side bar › Settings…, Edit › Plugin settings). It decorates a class (made with no
+    arguments) or an object with ``load() -> dict`` and ``save(values) -> str``; ``fields`` is a
+    list of :class:`SettingsField` (or the class's ``fields`` attribute)::
+
+        from ewald.plugin_api import SettingsField, settings_page
+
+        @settings_page("myservice", title="My service", fields=[
+            SettingsField("url", "Server address"),
+            SettingsField("key", "Access key", kind="secret")])
+        class MyServiceSettings:
+            def load(self):
+                return {"url": read_url(), "key": bool(get_secret("myservice"))}
+
+            def save(self, values):
+                if not values["url"].startswith("https://"):
+                    raise ValueError("The server address starts with https://")
+                ...
+                return "Saved"
+
+    Without ``load``/``save``, ewald stores the values itself (a JSON file in the config folder,
+    secrets in the keychain) and the plugin reads them with :func:`plugin_settings`.
+    ``save`` raises ``ValueError`` with what to fix; other exceptions are shown as failures.
+    Secrets belong in :mod:`ewald.keychain`; a secret field is empty unless the user typed one.
+    ``actions`` (or a class attribute of that name) adds buttons: label -> method name or
+    ``f(values) -> message``."""
+
+    def deco(page):
+        register_settings_page(name, page, title=title, fields=fields, description=description, actions=actions)
+        return page
+
+    return deco
+
+
+def register_settings_page(name: str | None, page, title: str = "", fields=None, description: str = "",
+                           actions: dict | None = None, origin: str = "python") -> SettingsPagePlugin:
+    obj = page() if inspect.isclass(page) else page
+    fields = list(fields if fields is not None else getattr(obj, "fields", ()))
+    if not fields or not all(isinstance(f, SettingsField) for f in fields):
+        raise TypeError(f"settings page {page!r}: fields must be a non-empty list of SettingsField")
+    name = name or getattr(obj, "name", None) or type(obj).__name__.lower()
+    has = [callable(getattr(obj, m, None)) for m in ("load", "save")]
+    if not any(has):   # ewald keeps the values: plugin_settings(name) reads them
+        store = _StoredSettings(name, fields)
+        load, save = store.load, store.save
+    elif not all(has):
+        raise TypeError(f"settings page {page!r} has {'load' if has[0] else 'save'}() but no "
+                        f"{'save' if has[0] else 'load'}() method (give both, or neither to let ewald store the values)")
+    else:
+        load, save = obj.load, obj.save
+    doc = inspect.cleandoc(getattr(page, "__doc__", None) or "") if inspect.isclass(page) else ""
+    acts = {}
+    for label, act in dict(actions if actions is not None else getattr(obj, "actions", {}) or {}).items():
+        act = getattr(obj, act) if isinstance(act, str) else act
+        if not callable(act):
+            raise TypeError(f"settings page {name!r}: action {label!r} is not callable")
+        acts[label] = act
+    plugin = SettingsPagePlugin(name, title or getattr(obj, "title", "") or name, fields, load, save,
+                                description or getattr(obj, "description", "") or " ".join(doc.split("\n\n")[0].split()),
+                                acts, getattr(_loading, "origin", None) or origin)
+    _registry.settings_pages[name] = plugin
+    _contribute("settings_pages", name)
+    return plugin
+
+
+def settings_pages() -> dict[str, SettingsPagePlugin]:
+    """Plugins' settings pages by name."""
+    load_plugins()
+    return dict(_registry.settings_pages)
+
+
+class _StoredSettings:
+    """``load``/``save`` for a settings page without its own: the values in
+    ``<config dir>/plugin-settings/<name>.json``, secret fields in the keychain
+    (``plugin:<name>:<field>``, :mod:`ewald.keychain`)."""
+
+    def __init__(self, name: str, fields):
+        self.name, self.fields = name, list(fields)
+
+    def path(self) -> Path:
+        from .settings import config_dir
+
+        return config_dir() / "plugin-settings" / f"{self.name}.json"
+
+    def secret_name(self, field: str) -> str:
+        return f"plugin:{self.name}:{field}"
+
+    def stored(self) -> dict:
+        try:
+            got = json.loads(self.path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            got = {}
+        return got if isinstance(got, dict) else {}
+
+    def load(self) -> dict:
+        from .keychain import get_secret
+
+        got = self.stored()
+        out = {f.name: got[f.name] for f in self.fields if f.kind != "secret" and f.name in got}
+        out.update({f.name: get_secret(self.secret_name(f.name))[0] is not None
+                    for f in self.fields if f.kind == "secret"})
+        return out
+
+    def save(self, values: dict) -> str:
+        from .keychain import set_secret
+
+        plain = {f.name: values[f.name] for f in self.fields if f.kind != "secret" and f.name in values}
+        path = self.path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(plain, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        for f in self.fields:
+            if f.kind == "secret" and values.get(f.name):
+                set_secret(self.secret_name(f.name), values[f.name])
+        return "Saved"
+
+
+def plugin_settings(name: str) -> dict:
+    """The values of the settings page ``name`` by field, for the plugin's own code: what the
+    user saved, else each field's default. Secret fields come back as the secret itself (or
+    None) when ewald stores the page; a page with its own ``load()`` gets what ``load()`` gives."""
+    page = settings_pages()[name]
+    values = page.values()
+    store = getattr(page.load, "__self__", None)
+    if isinstance(store, _StoredSettings):
+        from .keychain import get_secret
+
+        for f in store.fields:
+            if f.kind == "secret":
+                values[f.name] = get_secret(store.secret_name(f.name))[0]
+    return values
 
 
 class _Loading:
@@ -711,6 +846,7 @@ def load_plugins(force: bool = False):
         keep = {k: v for k, v in _registry.ai_providers.items() if v.origin == "python"}
         _registry.ai_providers = {**_builtin_ai_providers(), **keep}
         _registry.panels = {k: v for k, v in _registry.panels.items() if v.origin == "python"}
+        _registry.settings_pages = {k: v for k, v in _registry.settings_pages.items() if v.origin == "python"}
         _registry.errors.clear()
         _registry.plugins = {}
     off = disabled()
@@ -756,7 +892,8 @@ def _load_entry_points(off: set = frozenset()):
                             (TOOL_GROUP, lambda name, obj: register_tool(name, obj)),
                             (UI_THEME_GROUP, lambda name, obj: register_ui_theme(name, obj)),
                             (AI_PROVIDER_GROUP, lambda name, obj: register_ai_provider(name, obj)),
-                            (PANEL_GROUP, lambda name, obj: register_panel(name, obj))):
+                            (PANEL_GROUP, lambda name, obj: register_panel(name, obj)),
+                            (SETTINGS_PAGE_GROUP, lambda name, obj: register_settings_page(name, obj))):
         try:
             eps = entry_points(group=group)
         except Exception as exc:
@@ -954,7 +1091,8 @@ def status() -> dict:
                              for p in _registry.ai_providers.values()],
             "panels": [{"name": p.name, "title": p.title, "description": p.description, "origin": p.origin}
                        for p in _registry.panels.values()],
-
+            "settings_pages": [{"name": p.name, "title": p.title, "description": p.description, "origin": p.origin}
+                               for p in _registry.settings_pages.values()],
             "errors": dict(_registry.errors)}
 
 

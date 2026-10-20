@@ -3112,8 +3112,8 @@ def test_ai_chat_stop_button_and_failed_cells_in_the_question(app, pipe):
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatch):
-    """Installing a plugin with @panel and settings_page adds an activity-bar button that opens
-    its side bar (built on first open) and a Preferences page; switching it off removes both."""
+    """Installing a plugin with @panel and @settings_page adds an activity-bar button that opens
+    its side bar (built on first open) and a page in Preferences; switching it off removes both."""
     import shutil
     from pathlib import Path
 
@@ -3141,7 +3141,7 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
     dock = w.plugin_panels["sim_agent"]["dock"]
     assert dock is not None and not dock.isHidden() and w.plugin_panels["sim_agent"]["action"].isChecked()
     labels = [lab.text() for lab in dock.widget().findChildren(QtWidgets.QLabel)]
-    assert "Server: http://localhost:8000  (default)" in labels and any("atoms, frame 0" in t for t in labels)
+    assert "Server: http://localhost:8000  (default)  no token" in labels and any("atoms, frame 0" in t for t in labels)
     edit = dock.widget().findChild(QtWidgets.QLineEdit)
     edit.setText("relax")
     edit.returnPressed.emit()
@@ -3156,17 +3156,111 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
 
     dlg = prefs.PreferencesDialog(w.settings, w, page="Sim agent")
     assert dlg.page_names[-1] == "Sim agent" and dlg.stack.currentIndex() == len(dlg.page_names) - 1
-    dlg.set_value("simagent.server", "http://hpc:9000")
+    fields = dlg.plugin_pages["Sim agent"]["widgets"]
+    assert fields["server"].text() == "http://localhost:8000" and fields["insert_cells"].isChecked()
+    fields["server"].setText("http://hpc:9000")
+    fields["insert_cells"].setChecked(False)
     dlg.restore_page()
-    assert dlg.work["simagent.server"] == "http://localhost:8000"
-    dlg.set_value("simagent.server", "http://hpc:9000")
-    dlg.apply()
-    assert w.settings["simagent.server"] == "http://hpc:9000"
-    dlg._search("timeout")
+    assert fields["server"].text() == "http://localhost:8000" and fields["insert_cells"].isChecked()
+    fields["server"].setText("http://hpc:9000")
+    dlg.applied.connect(lambda s: w._plugin_event("settings", s))     # as MainWindow.preferences does
+    assert dlg.apply()
+    assert plugins.plugin_settings("sim-agent")["server"] == "http://hpc:9000"
+    assert any("http://hpc:9000" in lab.text() for lab in dock.widget().findChildren(QtWidgets.QLabel))
+    dlg._search("access token")
     assert not dlg.pages.item(dlg.page_names.index("Sim agent")).isHidden()
+    assert dlg.pages.item(0).isHidden()
     dlg.close()
 
     plugins.set_enabled("sim-agent-example", False)
     w.refresh_plugin_panels()
     assert [a.text() for a in w.activity_bar.actions()][4:] == ["Broken"] and "sim_agent" not in w.plugin_panels
     w.close()
+def test_plugin_settings_page_dialog(app, monkeypatch):
+    from ewald import plugins, settings
+    from ewald.gui.app import MainWindow
+    from test_plugins import SETTINGS_PLUGIN
+
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "demo_service.py").write_text(SETTINGS_PLUGIN)
+    plugins.load_plugins(force=True)
+    try:
+        w = MainWindow(settings=settings.Settings())
+        w._fill_plugin_settings_menu()
+        assert [a.text() for a in w.plugin_settings_menu.actions()] == ["Demo service…"]
+        item = next(i for i in w.plugins_panel.items if i.id == "demo_service")
+        dlg = w.plugins_panel.edit_settings(item, exec_=False)
+        assert dlg.widgets["url"].text() == "http://old" and dlg.widgets["verify"].isChecked()
+        assert dlg.widgets["key"].text() == "" and dlg.widgets["key"].placeholderText() == "not set"
+        dlg.widgets["url"].setText("ftp://nope")
+        dlg.buttons.accepted.emit()
+        assert dlg.isVisible() and "starts with http" in dlg.status.text()      # stays open to fix it
+        dlg.widgets["url"].setText("http://new")
+        dlg.widgets["key"].setText("sa_pat_2")
+        dlg.buttons.accepted.emit()
+        assert not dlg.isVisible() and dlg.message == "Saved" and dlg.widgets["key"].text() == ""
+        dlg = w.edit_plugin_settings("demo-service", exec_=False)
+        assert dlg.widgets["url"].text() == "http://new" and dlg.widgets["key"].placeholderText().startswith("saved")
+        test = next(b for b in dlg.buttons.buttons() if b.text() == "Test")
+        test.click()
+        assert dlg.status.text() == "reachable" and dlg.isVisible()
+        dlg.close()
+        w.close()
+    finally:
+        (folder / "demo_service.py").unlink()
+        plugins.load_plugins(force=True)
+
+
+def test_open_location_opens_a_scheme_path(app, cu_fcc, monkeypatch):
+    from ewald import plugins, settings
+    from ewald.gui.app import MainWindow
+
+    seen = []
+
+    def fake(path, **kwargs):
+        seen.append(path)
+        return [cu_fcc]
+
+    plugins.register_reader("fake-scheme", fake, schemes=("fakeloc",), priority=None)
+    try:
+        w = MainWindow(settings=settings.Settings())
+        assert "fakeloc" in w.location_schemes()
+        monkeypatch.setattr(QtWidgets.QInputDialog, "getText", lambda *a, **k: ("fakeloc:1234/scf", True))
+        assert w.open_location_dialog() is not None
+        assert seen == ["fakeloc:1234/scf"] and w.pipeline.num_frames == 1
+        assert w._last_location == "fakeloc:1234/scf"
+        monkeypatch.setattr(QtWidgets.QInputDialog, "getText", lambda *a, **k: ("", False))
+        assert w.open_location_dialog() is None
+        w.close()
+    finally:
+        plugins._registry.readers.pop("fake-scheme", None)
+
+
+def test_plugin_settings_page_in_preferences_refuses_bad_values(app, monkeypatch):
+    """A plugin page's save() raising ValueError keeps Preferences open on that page with the message."""
+    from ewald import plugins, settings
+    from ewald.gui import preferences as prefs
+    from test_plugins import SETTINGS_PLUGIN
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "demo_service.py").write_text(SETTINGS_PLUGIN)
+    dlg = prefs.PreferencesDialog(settings.Settings())
+    entry = dlg.plugin_pages["Demo service"]
+    assert entry["widgets"]["key"].placeholderText() == "not set"
+    assert dlg.apply()                                    # nothing changed: save() is not called
+    entry["widgets"]["url"].setText("ftp://nope")
+    dlg.show_page("General")
+    dlg.accept()
+    assert dlg.result() == 0 and dlg.page_names[dlg.stack.currentIndex()] == "Demo service"
+    assert "starts with http" in entry["status"].text()
+    entry["widgets"]["url"].setText("http://new")
+    entry["widgets"]["key"].setText("sa_pat_3")
+    assert dlg.apply() and entry["status"].text() == "Saved" and entry["widgets"]["key"].text() == ""
+    assert plugins.settings_pages()["demo-service"].values()["key"] is True
+    test = next(b for b in entry["card"].parent().findChildren(QtWidgets.QPushButton) if b.text() == "Test")
+    test.click()
+    assert entry["status"].text() == "reachable"
+    dlg.close()
