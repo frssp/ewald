@@ -2177,7 +2177,7 @@ def test_theme_switch_restyles_console_plots_and_code(app, vasp_dir):
             s["general.ui_theme"] = name
             prefs_apply.apply_settings(w, s)
             t = theme.PALETTES[name]
-            con = w.console
+            con = w.console.widget()
             if hasattr(con, "_highlighter"):
                 assert t["bg"] in con.style_sheet and t["accent"] in con.style_sheet   # background, selection
                 style = con._highlighter._style

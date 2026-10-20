@@ -11,6 +11,7 @@ class _FileModifier(Modifier):
     """Opens ``file`` lazily (any format import_file reads) and keeps it open until a
     parameter changes."""
 
+    cacheable = False  # the file can change on disk under the same name
     file_parameters = ("file",)
     file_filter = "All files (*)"
     file: str = ""

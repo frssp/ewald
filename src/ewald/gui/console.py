@@ -16,6 +16,45 @@ def make_console(namespace: dict, on_execute, parent=None) -> QtWidgets.QWidget:
         return SimpleConsole(namespace, on_execute, parent)
 
 
+class LazyConsole(QtWidgets.QWidget):
+    """Stands in for the console until it is first shown (or :meth:`widget` is called): the
+    in-process IPython kernel and qtconsole cost about half a second, so the window builds
+    them after its first paint, or never if the console tab stays closed. ``namespace`` is a
+    function giving the objects to share; ``on_built`` runs once the console exists (the
+    window pushes its current state)."""
+
+    def __init__(self, namespace, on_execute, parent=None, on_built=None):
+        super().__init__(parent)
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        self._namespace, self._on_execute, self._on_built = namespace, on_execute, on_built
+        self._console = None
+
+    @property
+    def built(self) -> bool:
+        return self._console is not None
+
+    def widget(self) -> QtWidgets.QWidget:
+        """The real console, built now if it was not yet."""
+        if self._console is None:
+            self._console = make_console(self._namespace(), self._on_execute, self)
+            self.layout().addWidget(self._console)
+            self.setFocusProxy(self._console)
+            if self._on_built is not None:
+                self._on_built()
+        return self._console
+
+    def showEvent(self, event):
+        if self._console is None:  # after the window has painted: it appears first, then the console
+            QtCore.QTimer.singleShot(0, self.widget)
+        super().showEvent(event)
+
+    def __getattr__(self, name):  # shell, kernel_manager, execute, ...: the real console's
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self.widget(), name)
+
+
 def _ipython_console(namespace, on_execute, parent):
     from qtconsole.inprocess import QtInProcessKernelManager
     from qtconsole.rich_jupyter_widget import RichJupyterWidget
@@ -65,6 +104,10 @@ def restyle(w, tokens: dict | None = None):
     from .theme import TOKENS
 
     t = tokens or TOKENS
+    if isinstance(w, LazyConsole):
+        if not w.built:
+            return  # it takes the theme's colors when it is built
+        w = w.widget()
     if not hasattr(w, "syntax_style"):   # SimpleConsole follows the application style sheet
         return
     w.style_sheet = f"""

@@ -64,6 +64,9 @@ class Modifier:
     status: str | None = None  # last error message, None when the last evaluation succeeded
     last_time: float | None = None  # seconds spent in the last evaluation
     last_output: dict | None = None  # what the last evaluation changed, see :func:`output_summary`
+    # Whether the pipeline may reuse this modifier's output for the same input and settings
+    # (see :func:`_modifier_key`). None: built-in modifiers yes, plugins and scripts no.
+    cacheable: bool | None = None
 
     def modify(self, data: DataCollection, ctx: ComputeContext):
         raise NotImplementedError
@@ -167,6 +170,59 @@ def output_summary(before: tuple, data: DataCollection, frame: int) -> dict:
             "selected": int(data.selection.sum()) if "Selection" in data.particles else None}
 
 
+_RUN_STATE = ("enabled", "status", "last_time", "last_output")
+_UNKEYABLE = object()
+
+
+def _freeze(value, depth: int = 0):
+    """A hashable stand-in for a modifier setting, or ``_UNKEYABLE`` when its state can't be
+    read off the value (functions, arbitrary objects): such a modifier is always recomputed."""
+    if value is None or isinstance(value, (bool, int, float, complex, str, bytes)):
+        return value
+    if depth > 6:
+        return _UNKEYABLE
+    import enum
+    import os
+
+    import numpy as np
+
+    if isinstance(value, (np.generic, enum.Enum, os.PathLike)):
+        return (type(value).__name__, str(value))
+    if isinstance(value, np.ndarray):
+        import hashlib
+
+        if value.dtype == object:
+            return _freeze(value.tolist(), depth + 1)
+        digest = hashlib.blake2b(np.ascontiguousarray(value).view(np.uint8).ravel(), digest_size=16).digest()
+        return ("ndarray", value.shape, value.dtype.str, digest)
+    if isinstance(value, (list, tuple, set, frozenset, dict)):
+        items = sorted(value.items(), key=lambda kv: repr(kv[0])) if isinstance(value, dict) else \
+            sorted(value, key=repr) if isinstance(value, (set, frozenset)) else value
+        out = []
+        for item in items:
+            f = _freeze(item, depth + 1)
+            if f is _UNKEYABLE:
+                return _UNKEYABLE
+            out.append(f)
+        return (type(value).__name__, tuple(out))
+    return _UNKEYABLE
+
+
+def _modifier_key(m):
+    """What a modifier's output depends on besides its input: its class and every public
+    attribute (constructor arguments and anything set later, e.g. by the GUI), or None when
+    the output must not be reused (scripts, plugins, settings that are objects or functions)."""
+    if not m.enabled:
+        return ("off", id(m))
+    cacheable = m.cacheable
+    if cacheable is None:
+        cacheable = type(m).__module__.startswith("ewald.")
+    if not cacheable:
+        return None
+    state = _freeze({k: v for k, v in vars(m).items() if not k.startswith("_") and k not in _RUN_STATE})
+    return None if state is _UNKEYABLE else (id(m), type(m), state)
+
+
 class Pipeline:
     """A source plus an ordered list of modifiers, evaluated lazily per frame.
 
@@ -191,16 +247,24 @@ class Pipeline:
         self._compute_lock = threading.RLock()
         self._cache_size = cache_size
         self.cache_memory = cache_memory
+        # Results after the leading modifiers whose output can be reused (see _modifier_key),
+        # keyed by source, frame, device and those modifiers' settings: showing the same frame
+        # again (view cells, plots, the GUI, a kernel) skips the analysis.
+        self._outputs: OrderedDict[tuple, DataCollection] = OrderedDict()
+        self.cache_outputs = True
 
     def __getstate__(self):
         state = dict(self.__dict__)
         state.pop("_cache_lock", None)
         state.pop("_compute_lock", None)
+        state["_outputs"] = OrderedDict()
         return state
 
     def __setstate__(self, state):
         self.__dict__.update(state)
         self._cache_lock, self._compute_lock = threading.RLock(), threading.RLock()
+        self.__dict__.setdefault("_outputs", OrderedDict())
+        self.__dict__.setdefault("cache_outputs", True)
 
     def add(self, *modifiers):
         """Append modifiers (``pipe.add(m)`` is ``pipe.modifiers.append(m)``) and return the last
@@ -258,16 +322,25 @@ class Pipeline:
             return self.num_frames - before
 
     def invalidate(self, first: int = 0):
-        """Forget cached source frames from ``first`` on (their file changed)."""
+        """Forget cached source frames from ``first`` on (their file changed), and every
+        cached modifier result."""
         with self._cache_lock:
             for frame in [f for f in self._cache if f >= first]:
                 del self._cache[frame]
+            self._outputs.clear()
 
     def _trim_cache(self):
         while len(self._cache) > max(self._cache_size, 1):
             self._cache.popitem(last=False)
+        while len(self._outputs) > max(self._cache_size, 1):
+            self._outputs.popitem(last=False)
         if self.cache_memory is not None:
-            while len(self._cache) > 1 and sum(d.nbytes for d in self._cache.values()) > self.cache_memory:
+            def total():
+                return sum(d.nbytes for d in self._cache.values()) + sum(d.nbytes for d in self._outputs.values())
+
+            while self._outputs and total() > self.cache_memory:  # results go first: recomputable
+                self._outputs.popitem(last=False)
+            while len(self._cache) > 1 and total() > self.cache_memory:
                 self._cache.popitem(last=False)
 
     def compute(self, frame: int = 0, device: str | None = None, errors: str = "raise",
@@ -286,8 +359,31 @@ class Pipeline:
     def _compute(self, frame, device, errors, upto, cancel) -> DataCollection:
         frame %= self.num_frames
         backend = get_backend(device or self.device)
-        data = self.source_frame(frame)
-        for index, mod in enumerate(list(self.modifiers[:upto])):
+        mods = list(self.modifiers[:upto])
+        keys = []  # settings of the leading modifiers whose output can be reused
+        if self.__dict__.get("cache_outputs", True):
+            for mod in mods:
+                key = _modifier_key(mod)
+                if key is None:
+                    break
+                keys.append(key)
+        base = (id(self.source), frame, backend.name, self.num_frames)
+        start, data = 0, None
+        with self._cache_lock:
+            for n in range(len(keys), 0, -1):  # the longest prefix computed before
+                hit = self._outputs.get(base + (tuple(keys[:n]),))
+                if hit is not None:
+                    self._outputs.move_to_end(base + (tuple(keys[:n]),))
+                    start, data = n, hit.copy()
+                    break
+        if data is None:
+            data = self.source_frame(frame)
+        failed = False
+        for index, mod in enumerate(mods):
+            if index < start:
+                continue
+            if index == len(keys) and keys and not failed and start < len(keys):
+                self._store_output(base + (tuple(keys),), data)
             if cancel is not None and cancel.is_set():
                 raise ComputeCancelled
             if not mod.enabled:
@@ -302,6 +398,7 @@ class Pipeline:
             except Exception as exc:
                 mod.last_time = time.perf_counter() - t0
                 mod.status = f"{type(exc).__name__}: {exc}"
+                failed = True
                 if errors == "raise":
                     raise
                 continue
@@ -310,7 +407,15 @@ class Pipeline:
             if result is not None:
                 data = result
             mod.last_output = output_summary(before, data, frame)
+        if len(keys) == len(mods) and keys and not failed and start < len(keys):
+            self._store_output(base + (tuple(keys),), data)
         return data
+
+    def _store_output(self, key, data):
+        with self._cache_lock:
+            self._outputs[key] = data.copy()  # later steps and callers change their own copy
+            self._outputs.move_to_end(key)
+            self._trim_cache()
 
     def frames(self, start: int = 0, stop: int | None = None, step: int = 1, device=None):
         stop = self.num_frames if stop is None else stop
