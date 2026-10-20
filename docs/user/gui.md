@@ -221,11 +221,12 @@ The `DOS` and `Bands` tables of a VASP run are drawn as a density of states and 
 structure; atoms selected in the viewport show as their projected DOS or as fat bands (see
 [DOS and band structure](electronic.md)).
 
-**Zoom, pan and hover.** Every plot (the Plots tab and view cells) moves the same way. The
+**Zoom, pan and hover.** Every plot (the Plots tab, the plots cells put in the Plots panel and view cells) moves the same way. The
 wheel zooms the x axis around the cursor and Ctrl+wheel the y axis (on a band structure the
 wheel zooms the energy). A right or middle drag pans, and a double-click goes back to the full
-range. A right click without dragging opens the plot's menu (*Save plot…*, *Reset view* and any
-plugin entries). On a plot that selects nothing (DOS, bands, phonon bands, maps) a left drag zooms to the
+range. A right click without dragging opens the plot's menu (*Save plot…*, *Reset view*, for a
+cell's plot *Show in Plots panel* or *Show under the cell*, and any plugin entries; see
+[where a plot appears](notebooks.md)). On a plot that selects nothing (DOS, bands, phonon bands, maps) a left drag zooms to the
 dragged range; elsewhere a left drag still selects. The zoomed range stays while the frame
 changes, and *Save plot…* writes the range you see. The DOS and the band structure share one
 energy window, shown in the **E** boxes, where you can also type it. Hovering shows the values

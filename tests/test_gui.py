@@ -496,6 +496,71 @@ def test_show_anywhere_in_a_cell_is_a_live_plot(app, tmp_path):
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_linked_plots_open_in_the_plots_panel_others_stay_under_the_cell(app, tmp_path):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    path = tmp_path / "placed.py"
+    path.write_text(
+        "# %%\nimport matplotlib.pyplot as plt\nfrom ewald import load\nfrom ewald.modifiers import *\n"
+        f"from ewald.views import show\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n\n"
+        "# %%\npipe.add(CalculateDisplacements(reference_frame=0))\n"
+        "show(pipe, histogram='Displacement Magnitude')\n"
+        "show(pipe, histogram='Displacement Magnitude', panel=False)\n\n"
+        "# %%\nplt.plot([1, 2, 3])\nplt.show()\n\n"
+        "# %%\nshow(pipe, histogram='Displacement Magnitude')\n")
+    w = MainWindow(settings=settings.Settings())
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    app.processEvents()
+    cell, mpl_cell, view_cell = view.widgets[1], view.widgets[2], view.widgets[3]
+    linked, inline = cell.outputs.slots
+    assert linked.docked and not inline.docked                  # per frame: the Plots panel; panel=False: here
+    assert linked.card.isVisibleTo(cell) and not inline.card.isVisibleTo(cell)
+    assert inline.panel.isVisibleTo(cell) and linked.panel.parent() is not linked
+    assert view_cell.plot_slot.docked and view_cell.plot_slot.card.png is not None   # thumbnail of its run
+    assert mpl_cell.outputs.slots == [] and mpl_cell.outputs._images                # any other figure: an image
+    assert sorted(w.docked_plots()) == sorted([linked.view_id, view_cell.plot_slot.view_id])
+    assert w.workbench.widget(linked.view_id) is linked.panel and linked.panel in w.plot_panels()
+    assert w.workbench.group_of(linked.view_id) is w.workbench.group_of("plot:1")   # next to "Plots"
+    w.timeline._set(3)
+    app.processEvents()
+    assert linked.panel.data.attributes["SourceFrame"] == 3      # still follows the frame there
+
+    cell._place_output(0, False)                                 # right-click › Show under the cell
+    assert "show(pipe, histogram='Displacement Magnitude', panel=False)\nshow(pipe, histogram=" in cell.cell.source
+    assert not linked.docked and linked.panel.parent() is linked and linked.view_id not in w.docked_plots()
+    cell._place_output(1, True)                                  # ... › Show in Plots panel
+    assert cell.cell.source.endswith("show(pipe, histogram='Displacement Magnitude', panel=True)")
+    assert inline.docked and inline.view_id in w.docked_plots()
+    view_cell._place_view(False)                                 # a view cell writes it into its call
+    assert view_cell.cell.source.endswith("show(pipe, histogram='Displacement Magnitude', panel=False)")
+    assert not view_cell.plot_slot.docked and view_cell.plot_slot.view_id not in w.docked_plots()
+
+    w.workbench.close_view(inline.view_id)                       # closing the tab keeps the plot
+    assert inline.view_id not in w.docked_plots() and inline.panel.parent() is None and inline.card.isVisibleTo(cell)
+    inline.card.opened.emit()                                    # the thumbnail opens it again
+    assert w.docked_plots() == [inline.view_id] and w.workbench.is_shown(inline.view_id)
+
+    other = w.panel.new_notebook()                               # another notebook: its plots only
+    app.processEvents()
+    assert w.docked_plots() == []
+    w.panel.tabs.setCurrentWidget(view)
+    app.processEvents()
+    assert w.docked_plots() == [inline.view_id]
+    view.run(cell.cell)                                          # run again: the new plot takes the tab
+    app.processEvents()
+    new = view.widgets[1].outputs.slots[1]
+    assert new is not inline and new.view_id == inline.view_id and w.workbench.widget(new.view_id) is new.panel
+    w.panel.close_tab(w.panel.tabs.indexOf(view))
+    for _ in range(3):
+        app.processEvents()
+        app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+    assert w.docked_plots() == [] and w._plot_docks == {} and w.panel.view is other
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_cell_runs_once_each_frame_or_all_frames(app, tmp_path):
     from ewald import examples, settings
     from ewald.gui.app import MainWindow

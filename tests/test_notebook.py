@@ -222,6 +222,61 @@ def test_show_of_the_pipeline_is_marked_for_a_live_plot(tmp_path):
     assert again.cells[1].outputs[1].view == live.view and again.cells[1].outputs[1].data == live.data
 
 
+def test_plots_go_to_the_plots_panel_when_they_change_with_the_frame_or_are_linked():
+    from ewald import examples, load
+    from ewald.data import DataCollection
+    from ewald.modifiers import CoordinationAnalysis
+    from ewald.views import in_panel
+
+    pipe = load(examples.path("POSCAR.SrTiO3"))
+    pipe.add(CoordinationAnalysis(cutoff=3.0))
+    data = pipe.compute(0)
+    assert pipe.num_frames == 1
+    assert in_panel(data, {"table": "coordination-rdf"}, 1)       # g(r): a range selects atoms
+    assert in_panel(data, {"histogram": "Coordination"}, 1)        # histogram: linked to the atoms
+    static = DataCollection()
+    static.tables["diffraction"] = {"2theta": np.linspace(10, 90, 5), "Intensity": np.ones(5)}
+    assert not in_panel(static, {"table": "diffraction"}, 1)       # one frame, nothing to link: inline
+    assert not in_panel(static, {}, 1)                             # (the first table)
+    assert in_panel(static, {"table": "diffraction"}, 10)          # changes with the frame
+    neb = DataCollection()
+    neb.tables["NEB"] = {"Reaction Coordinate": np.arange(3.0), "Energy": np.zeros(3), "Frame": np.arange(3)}
+    assert in_panel(neb, {"table": "NEB"}, 1)                      # a click goes to the image's frame
+    assert not in_panel(data, {"table": "coordination-rdf", "panel": False}, 10)   # panel= decides
+    assert in_panel(static, {"table": "diffraction", "panel": True}, 1)
+    assert not in_panel(None, {"table": "diffraction"}, 10) and in_panel(None, {"panel": True})
+
+
+def test_set_keyword_rewrites_one_show_call_in_place():
+    from ewald.views import set_keyword
+
+    src = "x = 1\nshow(pipe, table='rdf')  # g(r)\nshow(pipe, histogram='Q', panel=False)\n"
+    assert set_keyword(src, "panel", True) == \
+        "x = 1\nshow(pipe, table='rdf', panel=True)  # g(r)\nshow(pipe, histogram='Q', panel=False)\n"
+    assert set_keyword(src, "panel", True, index=1).endswith("show(pipe, histogram='Q', panel=True)\n")
+    assert set_keyword(src, "panel", None, index=1).endswith("show(pipe, histogram='Q')\n")
+    assert set_keyword("show(pipe, panel=True, table='é')", "panel", None) == "show(pipe, table='é')"
+    assert set_keyword("show(pipe)", "panel", False) == "show(pipe, panel=False)"
+    assert set_keyword("show(pipe)", "panel", None) == "show(pipe)"
+    assert set_keyword(src, "panel", True, index=2) is None and set_keyword("show(", "panel", True) is None
+    assert set_keyword("print(pipe)", "panel", True) is None
+
+
+def test_show_panel_argument_is_kept_for_the_gui(tmp_path):
+    pytest.importorskip("matplotlib")
+    from ewald import examples
+
+    nb = Notebook.from_py(f"# %%\nimport matplotlib\nmatplotlib.use('Agg')\nfrom ewald import load\n"
+                          f"from ewald.modifiers import *\nfrom ewald.views import show\n"
+                          f"pipe = load({str(examples.path('Cu_md.extxyz'))!r})\n"
+                          "pipe.add(MeanSquaredDisplacement())\n\n"
+                          "# %%\nshow(pipe, table='msd', panel=False)\n")
+    assert nb.run_all()
+    (live,) = nb.cells[1].outputs
+    assert live.view == {"table": "msd", "bins": 50, "panel": False}
+    assert nb.cells[1].view == {"source": "pipe", "table": "msd", "panel": False}
+
+
 def test_each_frame_and_all_frames_cells_are_steps(tmp_path):
     from ewald import examples
     from ewald.notebook_io import from_ipynb, to_ipynb

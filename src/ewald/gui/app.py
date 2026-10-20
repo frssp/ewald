@@ -155,6 +155,9 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.plugins_panel.changed.connect(self.panel.refresh_packages)
         self.panel.pipRequested.connect(self._install_notebook_packages)
         self.panel.switched.connect(self._notebook_switched)
+        self._plot_docks = {}  # view id -> (PlotSlot, id, PlotsPanel): cells' plots in the Plots panel
+        self._closed_docks = set()  # ... whose tab the user closed (the cell's thumbnail opens it again)
+        self.panel.switched.connect(self._sync_plot_docks)
         self.plugins_panel.createRequested.connect(self._create_plugin)
         self.plugins_dock = self._dock(self.plugins_panel, "Plugins", QtCore.Qt.LeftDockWidgetArea, 300)
         self.splitDockWidget(self.plugins_dock, self.notebook_dock, QtCore.Qt.Horizontal)

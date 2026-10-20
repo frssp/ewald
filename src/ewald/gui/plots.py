@@ -143,6 +143,7 @@ class PlotsPanel(QtWidgets.QWidget):
         self._view_key = None        # (table, column, histogram) the zoom belongs to
         self._energy_window = tuple(ENERGY_WINDOW)  # shared by the DOS and the band structure
         self._pan = None
+        self.extra_menu = None       # () -> [(label, callable)]: a cell's entries (where the plot is shown)
         self._update_controls()
 
     @property
@@ -889,6 +890,8 @@ class PlotsPanel(QtWidgets.QWidget):
         menu = QtWidgets.QMenu(self)
         menu.addAction("Save plot…", self.save_plot)
         menu.addAction("Reset view", self.reset_view)
+        for label, fn in (self.extra_menu() if self.extra_menu else []):
+            menu.addAction(label, fn)
         menu.addSeparator()
         from .window_plugins import plugin_host
 

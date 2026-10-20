@@ -11,6 +11,11 @@ A cell that is a single ``show(...)`` call with literal arguments is a *view cel
 it becomes a live, linked plot (drag a range to select atoms or frames; the DOS and band
 structure follow the atoms picked in the viewport; a phonon band click plays the mode). Run as
 a script, it draws the same data with matplotlib, so the ``.py`` file stays reproducible.
+
+Where the GUI shows such a plot (:func:`in_panel`): under its cell, like Jupyter, unless it
+changes with the frame or is linked to the 3D view (g(r), histograms, time series, the NEB
+profile, DOS and bands, phonon bands). Those open in the Plots panel and leave a thumbnail
+under the cell. ``show(..., panel=True)`` or ``panel=False`` overrides the rule.
 """
 from __future__ import annotations
 
@@ -143,12 +148,15 @@ def _limit(ax, xlim, ylim):
 
 
 def show(source, table: str | None = None, y: str | None = None, histogram: str | None = None,
-         frame: int = 0, bins: int = 50, xlim: tuple | None = None, ylim: tuple | None = None):
+         frame: int = 0, bins: int = 50, xlim: tuple | None = None, ylim: tuple | None = None,
+         panel: bool | None = None):
     """Plot a data table or a particle-property histogram of ``source`` (a Pipeline or a
     DataCollection) at ``frame`` with matplotlib (``plt.show()``), in the publication style;
     ``xlim``/``ylim`` set the range shown. In the GUI, ``show()`` of the notebook's pipeline is a
     live plot linked to the 3D view wherever it is called (the image stays for files and
-    Jupyter); in a cell that is only this call, zooming writes the range back into the arguments."""
+    Jupyter); in a cell that is only this call, zooming writes the range back into the arguments.
+    ``panel``: True opens the GUI's plot in the Plots panel (a thumbnail stays under the cell),
+    False keeps it under the cell; None (default) decides by :func:`in_panel`."""
     import matplotlib.pyplot as plt
 
     from . import plotstyle
@@ -161,9 +169,90 @@ def show(source, table: str | None = None, y: str | None = None, histogram: str 
     # what was asked, for the GUI: a show() of the notebook's pipeline is a live plot there
     args = {"table": table, "y": y, "histogram": histogram, "bins": bins,
             "xlim": None if xlim is None else [float(v) for v in xlim],
-            "ylim": None if ylim is None else [float(v) for v in ylim]}
+            "ylim": None if ylim is None else [float(v) for v in ylim],
+            "panel": None if panel is None else bool(panel)}
     fig._ewald_view = (source, {k: v for k, v in args.items() if v is not None})
     plt.show()
+
+
+DRAW_ARGS = ("table", "y", "histogram", "frame", "bins")   # the arguments of view_data()
+
+
+def in_panel(data, args: dict, num_frames: int | None = None) -> bool:
+    """Whether the GUI shows the plot of ``show(source, **args)`` in the Plots panel (True) or
+    under its cell (False). ``panel=`` in ``args`` decides when given. Otherwise a plot goes to
+    the panel when it changes with the frame (``num_frames`` > 1) or is linked to the 3D view:
+    a range on it selects atoms or frames (histograms, g(r), bond lengths and angles, time
+    series, the NEB profile; :func:`ewald.linking.link_for`), it follows the picked atoms (DOS
+    and bands) or a click plays a phonon mode. ``data`` is the frame shown (None: under the cell)."""
+    if args.get("panel") is not None:
+        return bool(args["panel"])
+    if data is None:
+        return False
+    if num_frames is not None and num_frames > 1:
+        return True
+    from .linking import link_for
+
+    hist = args.get("histogram")
+    table = args.get("table")
+    if not hist and table is None:
+        table = next(iter(data.tables), None)
+    y = args.get("y")
+    try:
+        if link_for(data, table, y, hist, num_frames) is not None:
+            return True
+    except Exception:  # noqa: BLE001 - a table the linking cannot read is just not linked
+        pass
+    if hist:
+        return False
+    if table in ("DOS", "Bands") and hasattr(data.attributes.get("Electronic Structure"), "dos_table"):
+        return True
+    return table == "Phonon Bands" and hasattr(data.attributes.get("Phonon Modes"), "frequencies")
+
+
+def set_keyword(source: str, key: str, value, index: int = 0, function: str = "show") -> str | None:
+    """``source`` with keyword ``key=value`` set in its ``index``-th ``function(<name>, ...)`` call
+    (in reading order; ``value`` None removes the keyword). None when there is no such call or
+    the source does not parse. The rest of the text stays as it was."""
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+    calls = sorted((n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                    and n.func.id == function and n.args and isinstance(n.args[0], ast.Name)),
+                   key=lambda n: (n.lineno, n.col_offset))
+    if not 0 <= index < len(calls):
+        return None
+    call = calls[index]
+    lines = source.splitlines(keepends=True)
+    starts = [0]
+    for line in lines:
+        starts.append(starts[-1] + len(line.encode("utf-8")))
+    raw = source.encode("utf-8")
+
+    def offset(lineno, col):
+        return starts[lineno - 1] + col
+
+    old = next((kw for kw in call.keywords if kw.arg == key), None)
+    if old is not None:
+        if value is None:   # drop ", key=value" with the comma before it
+            others = [a for a in (*call.args, *call.keywords) if a is not old]
+            before = max((a for a in others if (a.lineno, a.col_offset) < (old.lineno, old.col_offset)),
+                         key=lambda a: (a.end_lineno, a.end_col_offset))
+            lo, hi = offset(before.end_lineno, before.end_col_offset), offset(old.end_lineno, old.end_col_offset)
+            new = raw[:lo] + raw[hi:]
+        else:
+            lo, hi = offset(old.value.lineno, old.value.col_offset), offset(old.value.end_lineno, old.value.end_col_offset)
+            new = raw[:lo] + repr(value).encode("utf-8") + raw[hi:]
+    elif value is None:
+        return source
+    else:
+        last = max((*call.args, *call.keywords), key=lambda a: (a.end_lineno, a.end_col_offset))
+        at = offset(last.end_lineno, last.end_col_offset)
+        new = raw[:at] + f", {key}={value!r}".encode("utf-8") + raw[at:]
+    return new.decode("utf-8")
 
 
 class Snapshot:
