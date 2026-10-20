@@ -8,8 +8,8 @@ the rest the same way for every source:
 
 - a side bar with the source's account, a search box and its workflows newest first, where
   expanding a workflow lists its steps (nested, restarts joined) and their outputs;
-- **open as notebook**: a double click on a workflow opens one notebook with a `load` cell per
-  step (`relax = load(...)`, `scf = load(...)`) and `pipe` on the main result, so the 3D view
+- **open as notebook**: a double click on a workflow opens one notebook whose load cell names
+  every step, a line each (`relax = load(...)`, `scf = load(...)`), and sets `pipe` to the main result, so the 3D view
   starts there and every other step is one `pipe = scf` or `show(scf, ...)` away;
 - the AI tools `list_workflows` and `describe_workflow`, offered when a source is installed.
 

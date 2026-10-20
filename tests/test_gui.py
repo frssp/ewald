@@ -771,11 +771,19 @@ def test_main_window_smoke(app, pipe, tmp_path):
     w.render_page.width.setValue(320)
     w.render_page.height.setValue(240)
     w.render_from_page()                    # the ray tracer: on a worker thread, a spinner meanwhile
-    assert w.rendering and not w.render_page.render_button.isEnabled()
-    assert not w.render_page.busy_label.isHidden() and w.render_page.busy_label.text() == "Ray tracing…"
+    button = w.render_page.render_button    # ... and Render turns into Cancel
+    assert w.rendering and button.isEnabled() and button.text() == "Cancel"
+    assert not w.render_page.busy_label.isHidden() and w.render_page.busy_label.text().startswith("Ray tracing…")
     w.wait_render()
-    assert not w.rendering and w.render_page.render_button.isEnabled() and w.render_page.busy_label.isHidden()
+    assert not w.rendering and button.isEnabled() and button.text() == "Render" and w.render_page.busy_label.isHidden()
     assert os.path.getsize(tmp_path / "x.png") > 1000
+    w.render_page.output.setText(str(tmp_path / "cancelled.png"))
+    w.render_from_page()
+    button.click()                          # Cancel: stops after the rows being traced, no file, no error box
+    assert w.render_page.busy_label.text() == "Cancelling…" and not button.isEnabled()
+    w.wait_render()
+    assert not (tmp_path / "cancelled.png").exists() and "cancelled" in w.statusBar().currentMessage()
+    assert button.text() == "Render" and button.isEnabled()
     code = w.render_page.code.toPlainText()
     assert "CoordinationAnalysis(cutoff=3.0" in code and "camera=" in code
     w.close()
@@ -1798,8 +1806,10 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     assert plugins_button.toolTip() == "Show or hide the Plugins side bar"
     tabs = w.panel.tabs
     assert tabs.count() == 0 and w.panel.view is None                    # a new window: the welcome page
+    assert "_empty" in w.viewport.plotter.actors and not w.viewport._viewbar.isEnabled()   # and a hint in the view
     assert tabs.body.currentWidget() is w.panel.welcome
     w.open_any(cu_path, ask_types=False)
+    assert "_empty" not in w.viewport.plotter.actors and w.viewport._viewbar.isEnabled()
     assert tabs.count() == 1 and tabs.tabText(0) == "cu" and w.pipeline is w.panel.pipeline
     w.panel.add_modifier(mods.CoordinationAnalysis(cutoff=3.0))
     w.recompute()
@@ -1847,6 +1857,7 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w.panel.close_tab(0)                                       # the last tab: the welcome page, no new notebook
     assert tabs.count() == 0 and w.panel.view is None and tabs.body.currentWidget() is w.panel.welcome
     assert w.pipeline is None and w.data is None                   # the 3D view, plots and inspector are cleared
+    assert "_empty" in w.viewport.plotter.actors and not w.viewport._rail.isEnabled()
     from ewald.gui import welcome
     assert welcome.load_recent()[0] == str(path)                    # listed under Recent
     w.panel.welcome.refresh()
@@ -2259,6 +2270,8 @@ def test_plugins_side_bar_installs_adds_a_step_and_removes(app, cu_path, tmp_pat
     entry = next(e for e in panel.entries if e.name == "Bar shift")
     panel.install(entry)
     panel.wait()
+    fresh = [r for r in panel.findChildren(plugins_panel.PluginRow) if r.property("fresh")]
+    assert [r.item.path.endswith("bar_shift.py") for r in fresh] == [True]     # scrolled to and marked
     item = next(i for i in panel.items if i.path.endswith("bar_shift.py"))
     panel.show_details(item)
     assert not panel.use_button.isHidden()

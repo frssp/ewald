@@ -308,10 +308,10 @@ class CellWidget(QtWidgets.QFrame):
         self.fold_button = header.button("chevron_down", "Collapse or expand the cell", name="cellFold")
         self.fold_button.clicked.connect(lambda: self.set_collapsed(not self.cell.collapsed))
         self.drag_handle = _DragHandle(cell.id)
-        gutter.addWidget(self.drag_handle, 0, QtCore.Qt.AlignHCenter)
+        # the gutter holds only what is always there, so a one-line cell is one line tall; the
+        # grip and the fold chevron sit with the actions menu at the top right
         gutter.addWidget(self.run_button, 0, QtCore.Qt.AlignHCenter)
         gutter.addWidget(self.counter, 0, QtCore.Qt.AlignHCenter)
-        gutter.addWidget(self.fold_button, 0, QtCore.Qt.AlignHCenter)
         gutter.addStretch()
         for w in (self.drag_handle, self.fold_button):   # shown on hover and on the current cell only
             policy = w.sizePolicy()
@@ -328,6 +328,14 @@ class CellWidget(QtWidgets.QFrame):
         right.addWidget(self.content)
         right.addWidget(self.folded_label)
         outer.addLayout(right, 1)
+        self.tools = QtWidgets.QWidget(objectName="cellTools")
+        tools = QtWidgets.QHBoxLayout(self.tools)
+        tools.setContentsMargins(0, 0, 0, 0)
+        tools.setSpacing(0)
+        tools.addWidget(self.drag_handle, 0, QtCore.Qt.AlignVCenter)
+        tools.addWidget(self.fold_button)
+        tools.addWidget(self._menu_button())
+        outer.addWidget(self.tools, 0, QtCore.Qt.AlignTop)
         if cell.kind == "markdown":
             self.run_button.setVisible(False)
             self.counter.setVisible(False)
@@ -434,7 +442,6 @@ class CellWidget(QtWidgets.QFrame):
                 self.frames_badge = self._frames_badge()
                 row.addWidget(self.frames_badge)
             row.addStretch()
-            row.addWidget(self._menu_button())
             self.body.addLayout(row)
         row = QtWidgets.QHBoxLayout()
         self.editor = CodeEditor(self.cell.source)
@@ -442,8 +449,6 @@ class CellWidget(QtWidgets.QFrame):
         self.editor.runRequested.connect(lambda adv: self.runRequested.emit(self.cell, adv))
         self.editor.focused.connect(lambda: self.selected.emit(self.cell))
         row.addWidget(self.editor, 1)
-        if not (self.cell.title or tagged):
-            row.addWidget(self._menu_button(), 0, QtCore.Qt.AlignTop)
         self.body.addLayout(row)
         self.outputs = OutputArea()
         self.outputs.plotCreated.connect(self.plotCreated.emit)
@@ -486,7 +491,6 @@ class CellWidget(QtWidgets.QFrame):
         col.addWidget(self.view)
         col.addWidget(self.editor)
         row.addLayout(col, 1)
-        row.addWidget(self._menu_button(), 0, QtCore.Qt.AlignTop)
         self.body.addLayout(row)
         self.outputs = None
 
@@ -530,7 +534,6 @@ class CellWidget(QtWidgets.QFrame):
         self.code_button.toggled.connect(lambda on: self._show_page("code" if on else None))
         head.addWidget(self.form_button)
         head.addWidget(self.code_button)
-        head.addWidget(self._menu_button())
         self.body.addLayout(head)
         self.summary = QtWidgets.QLabel(objectName="stepSummary")
         self.summary.setFont(mono_font())
@@ -578,7 +581,6 @@ class CellWidget(QtWidgets.QFrame):
         self.code_button = QtWidgets.QToolButton(text="Python", checkable=True, objectName="segment")
         self.code_button.toggled.connect(lambda on: self.editor.setVisible(on))
         head.addWidget(self.code_button)
-        head.addWidget(self._menu_button())
         self.body.addLayout(head)
         self.editor = CodeEditor(self.cell.source)
         self.editor.setVisible(False)

@@ -272,6 +272,7 @@ QToolBar#activity-bar QToolButton:checked {{ background: {accent_soft}; border-l
     border-top-left-radius: 0; border-bottom-left-radius: 0; }}
 QFrame#pluginRow {{ background: {raised}; border: 1px solid {border}; border-radius: 6px; }}
 QFrame#pluginRow:hover {{ border-color: {accent}; }}
+QFrame#pluginRow[fresh="true"] {{ border: 1px solid {accent}; background: {accent_soft}; }}
 QFrame#pluginRow QLabel {{ background: transparent; }}
 QFrame#pluginRow[incompatible="true"] QLabel {{ color: {muted}; }}
 QLabel#pluginSummary {{ color: {secondary}; }}
@@ -287,7 +288,7 @@ QFrame#cell[state="stale"] {{ background: {panel}; }}
 QFrame#cell[state="running"] {{ border-color: {data}; }}
 QFrame#cell[state="running"] QLabel#cellCounter {{ color: {data}; font-weight: 600; }}
 QFrame#cell[state="error"] QLabel#cellCounter {{ color: {error}; }}
-QWidget#cellGutter, QWidget#cellOutput, QLabel#cellImage {{ background: transparent; }}
+QWidget#cellGutter, QWidget#cellTools, QWidget#cellOutput, QLabel#cellImage {{ background: transparent; }}
 QFrame#cell QLabel, QFrame#cell QCheckBox {{ background: transparent; }}
 QToolButton#cellRun {{ padding: 0; border-radius: 12px; }}
 QToolButton#cellRun:hover {{ background: {accent_soft}; color: {accent}; }}
