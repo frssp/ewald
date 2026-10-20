@@ -110,16 +110,18 @@ along, Orthographic, Zoom to fit and Ask AI are always there.
 
 **Plugin side bars.** A plugin can bring its own side bar (a sim-agent panel, a database
 browser, ...): installing it adds a button at the bottom of the activity bar and an entry
-under Window › Plugin panels, and a plugin with settings adds its own page to Preferences.
-Switching the plugin off in the Plugins side bar removes both; its settings are kept for when
-it comes back ([Side bar plugins](../plugins/gui.md)).
+under Window › Plugin panels (or a tab under the 3D view instead), it may add entries to the
+menus and to the 3D view's right-click menu, and a plugin with settings adds its own page to
+Preferences. Plugin side bars and tabs that were open come back at the next start where they
+were. Switching the plugin off in the Plugins side bar removes all of it; its settings are kept
+for when it comes back ([Side bar plugins](../plugins/gui.md)).
 
 **Workflow side bars.** Plugins that read finished calculations (sim-agent, AiiDA) share one
 side bar layout: the account, a search box that also takes an id, and the workflows newest
 first. Expanding a workflow lists its steps (restarts of one calculation joined, sub-workflows
 nested) with their files and structures. A double click on a step or output opens it; on a
-workflow it opens the whole workflow as one notebook, with a `load` cell per step
-(`relax = load(...)`, `scf = load(...)`) and `pipe` on the main result. To look at another step
+workflow it opens the whole workflow as one notebook whose load cell names every step, a line
+each (`relax = load(...)`, `scf = load(...)`), and sets `pipe` to the main result. To look at another step
 in the 3D view, run `pipe = scf`; `show(scf, ...)` puts it in a view cell next to the others
 ([Workflow sources](../plugins/workflows.md)).
 

@@ -5,11 +5,17 @@ import bz2
 import gzip
 import lzma
 import os
+import re
 
 from ..data import DataCollection
 from . import remote
 
 _OPENERS = {".gz": gzip.open, ".bz2": bz2.open, ".xz": lzma.open}
+
+
+def natural_key(path: str):
+    """Sort key putting numbers in numeric order: ``dump.200`` before ``dump.1000``."""
+    return [(1, int(t), t) if t.isdigit() else (0, 0, t) for t in re.split(r"(\d+)", str(path))]
 
 
 class IncompleteFileWarning(UserWarning):
@@ -51,6 +57,12 @@ class FrameReader:
         may have been re-read, or the first new one), or None when nothing changed.
         Readers that cannot follow a growing file keep the default: None.
         """
+        return None
+
+    def timestep(self, index: int) -> int | None:
+        """The simulation step of frame ``index`` without reading the whole frame, or None when
+        the format has no step that counts across restarts (VASP numbers each run from 1).
+        :class:`~ewald.io.FileSource` joins restart segments with it."""
         return None
 
 
