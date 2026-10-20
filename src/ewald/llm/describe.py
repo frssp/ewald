@@ -171,14 +171,17 @@ def describe_frame(data: DataCollection, cutoff: float | str | None = "auto", rd
             desc["density_g_cm3"] = _round(m.sum() * 1.66053906660 / data.cell.volume)
     warnings = health_check(data)
     if data.count > 1 and not any("NaN" in w for w in warnings):
-        i, j, _, d = find_pairs(data.positions, data.cell, 4.0, half=True)
+        reach = 4.0   # find_pairs refuses more than half the periodic cell width (a small unit cell)
+        if data.cell.is_valid and data.cell.pbc.any():
+            reach = min(reach, 0.499 * float(np.min(data.cell.perpendicular_widths()[data.cell.pbc])))
+        i, j, _, d = find_pairs(data.positions, data.cell, reach, half=True)
         d = np.asarray(d)
         if len(d):
             k = int(np.argmin(d))
             pair = sorted((str(types[int(np.asarray(i)[k])]), str(types[int(np.asarray(j)[k])])))
             desc["min_distance"] = {"value": _round(d[k]), "pair": "-".join(pair)}
         else:
-            desc["min_distance"] = {"value": None, "note": "no pairs within 4 A"}
+            desc["min_distance"] = {"value": None, "note": f"no pairs within {reach:.3g} A"}
         if cutoff == "auto":
             cutoff = suggest_cutoff(data)
             if cutoff is not None:

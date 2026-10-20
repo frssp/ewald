@@ -241,6 +241,42 @@ ewald describe dump.lammpstrj --trajectory --type-map 1=Cu   # JSON summary and 
 ewald narrate dump.lammpstrj --type-map 1=Cu --no-llm        # event timeline, rule-based titles
 ```
 
+## Scoring a model (AI eval suite)
+
+`ewald eval` measures how well a model drives ewald: it asks 45 questions with known answers about
+the shipped example files (and one paper dataset), runs the normal AI loop on a fresh notebook for
+each, and grades the result automatically. The tasks ask for values (lattice constants, counts,
+energies, a diffusion coefficient, graded from the reply's final `ANSWER:` line within a
+tolerance), for analysis steps (coordination coloring, octahedra, CNA, deleting atoms), for view
+changes (background, colors, camera, legends) and for exported files. Every state check is graded
+twice: on the session, and again after the cells that ran are re-run from the top in a fresh
+namespace, so an answer only counts as reproducible when the notebook alone makes it.
+
+```bash
+ewald eval --list                                   # the tasks (id, category, file, question)
+ewald eval --dry-run                                # play the reference solutions: no key, no cost
+ewald eval --out opus.json                          # Preferences > AI's model, every task
+ewald eval --model claude-sonnet-5-5 --effort medium --out sonnet.json
+ewald eval --provider openai --model gpt-5 --price 1.25,10 --out gpt.json
+ewald eval --profile local --category answer,view   # a saved connection, some categories
+ewald eval --tasks 'sto-*,cu-fmax' --repeat 3       # some tasks, three times each
+ewald eval --allow-code                             # also the 'code' tasks (the model runs its cells)
+ewald eval --compare opus.json sonnet.json          # accuracy, cost, tasks that flipped
+```
+
+Each line shows pass or fail, tool calls and failed tool calls, tokens, cost, time and whether the
+notebook reproduces the result, with the reason for every failed check; the summary gives the
+accuracy overall and per category. `--out` saves everything, including each answer and the notebook
+the model left, as JSON. Costs come from list prices for the current Claude models; for any other
+model give `--price IN,OUT` in USD per million tokens (optionally `,CACHE_READ,CACHE_WRITE`). A full
+run makes a few hundred requests; try `--category view` or a few `--tasks` first. The paper task
+downloads its data (0.8 MB) once; `--no-download` skips it.
+
+Run it before and after changing the system prompt, a tool description or a tool, and compare the
+two files. In Python: `ewald.llm.evals.run(tasks, agent_options=...)`, with the tasks in
+`ewald.llm.eval_tasks.TASKS`; a `Task` is a prompt, an example file and a list of checks
+(`Number`, `Matches`, `Step`, `View`, `Data`, `File`, `CellNumber`, `Any`).
+
 ## From Claude Code and other MCP clients
 
 ```bash

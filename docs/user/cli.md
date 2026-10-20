@@ -14,6 +14,7 @@ LAMMPS numeric types wherever a file is read.
 | `ewald describe FILE [--frame N] [--trajectory]` | JSON summary of a frame, or of the run with detected events |
 | `ewald narrate FILE [--no-llm] [--render] [--json]` | event timeline of a trajectory |
 | `ewald ask FILE "question" [--select EXPR \| --ids 1,2] [--frame N] [--allow-code] [--script out.py] [--model ID] [--provider NAME] [--profile NAME] [--base-url URL]` | ask AI (Claude by default, or the provider in Preferences › AI) about a structure, or about the selected particles; `--script` saves the resulting pipeline |
+| `ewald eval [--list] [--dry-run] [--tasks IDS] [--category C] [--allow-code] [--repeat N] [--out run.json] [--compare A.json B.json] [--model ID] [--effort E] [--provider NAME] [--profile NAME] [--price IN,OUT]` | score an AI model on tasks with known answers: accuracy, reproducibility, tool calls, tokens and cost ([AI integration](claude.md#scoring-a-model-ai-eval-suite)) |
 | `ewald mcp [FILE] [--allow-code]` | serve the analysis tools over MCP (stdio) |
 | `ewald remote list\|add\|remove\|test\|ls\|get` | [saved remote computers](formats.md#saved-remote-computers): `add NAME --host H --user U [--key FILE] [--password] [--passphrase] [--jump J] [--folder DIR]` (secrets asked and saved in the OS keychain), `ls NAME[:DIR]`, `get NAME:/file [DEST]` |
 | `ewald api` | print the LLM API reference (`llms.txt`) |
