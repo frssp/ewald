@@ -20,8 +20,11 @@ source frames (`cache_size=8` by default) and hands each evaluation a shallow co
 frame, so copying a frame of a million atoms costs nothing. The price is one rule for all code:
 **replace arrays, never write into them**. `data.positions[0] += 1` would change the cached
 source frame and every later result; `pos = data.positions.copy(); pos[0] += 1;
-data.positions = pos` is correct. Tests for modifiers check that the source frame is unchanged
-after `compute`.
+data.positions = pos` is correct. The pipeline enforces the rule: it freezes the frames and
+reusable results it caches (`DataCollection.freeze()` makes their arrays read-only views), so an
+in-place write raises `ValueError: assignment destination is read-only` instead of silently
+changing the cache. Arrays without numpy's writeable flag (CuPy) are not frozen, so tests for
+modifiers still check that the source frame is unchanged after `compute`.
 
 ## Pipeline evaluation
 

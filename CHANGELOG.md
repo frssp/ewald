@@ -7,6 +7,13 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ## [Unreleased]
 
+### Changed
+
+- Frames the pipeline caches are read-only: a modifier, plugin or script that writes into an array
+  in place (`data.positions[0] += 1`) now raises `ValueError: assignment destination is read-only`
+  instead of silently changing the cached frame and every later result. Replace the array instead
+  (`data.positions = data.positions + d`). `DataCollection.freeze()` does this for any collection.
+
 ### Fixed
 
 - Plugin index and example downloads trust the OS certificate store (`truststore`), so they work behind a

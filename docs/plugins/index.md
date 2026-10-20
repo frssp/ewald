@@ -92,7 +92,8 @@ The built-in code follows these, and plugins that break them give wrong results 
 are hard to trace:
 
 1. **Never write into an array of a `DataCollection` in place.** Arrays are shared with cached
-   frames. Build a new array and assign it (`data["X"] = new`).
+   frames, which the pipeline makes read-only, so `data.positions[0] += 1` raises
+   `ValueError: assignment destination is read-only`. Build a new array and assign it (`data["X"] = new`).
 2. **Use OVITO's names** for properties and attributes ("Position", "Particle Type",
    "Particle Identifier", "Structure Type", "Force"), so built-in modifiers, expressions and
    the renderer understand your output.

@@ -92,7 +92,8 @@ class Modifier:
 class PythonModifier(Modifier):
     """Wrap a user function ``f(frame, data)`` (OVITO-compatible signature).
 
-    The function may modify ``data`` in place or return a new DataCollection.
+    The function may change ``data`` (set or replace its arrays; writing into them raises,
+    since they are shared with the cached frame) or return a new DataCollection.
     A third parameter, if present, receives the ComputeContext.
     """
 
