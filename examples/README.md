@@ -74,5 +74,8 @@ examples.copy("my_examples")
   - `tiof2_octahedra.py`: TiOF2 bond-length table, TiO(6-n)Fn octahedra and partial RDFs (POSCAR, CIF).
   - `ammonia_borane_fes.py` (needs the ewald-plumed plugin): PLUMED-NEST metadynamics FES from 4 walkers against `plumed sum_hills`.
   - `alanine_dipeptide_fes.py` (needs the ewald-plumed plugin): PLUMED-NEST alanine dipeptide phi/psi free energy surface.
+  - `nbo2f_anion_order.py`: 92 VASP relaxations of NbO2F anion orderings as one series (`load_runs`, `check_run`), the chiral P3_121 ground state.
+  - `fe_vacancy_neb.py`: VASP NEB folder of a vacancy hop in fcc Fe, energy profile and the 325 meV barrier.
+  - `mgb2_phonons.py` (needs the ewald-phonopy plugin): MgB2 band structure from VASP forces and the E2g mode animated.
 - `plugins/`: example reader, modifier, visual-element and overlay plugins (see the plugin guide in
   `docs/plugins/`).

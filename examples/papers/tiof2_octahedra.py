@@ -12,7 +12,6 @@ structures 1-4, Ti-F bonds of 1.864-2.171 A with mean 1.984-1.989 A and Ti-O bon
 
     python examples/papers/tiof2_octahedra.py [outdir]
 """
-# %%
 import sys
 from collections import Counter
 from math import comb
