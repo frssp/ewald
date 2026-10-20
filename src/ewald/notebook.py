@@ -37,6 +37,7 @@ import linecache
 import os
 import re
 import sys
+import threading
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -411,6 +412,25 @@ class Notebook:
         positions = [i for i, m in enumerate(pipe.modifiers) if any(m is a for a in above)]
         return max(positions) + 1 if positions else 0 if any(c.added for c in self.cells[index + 1:]) else len(pipe.modifiers)
 
+    def interrupt(self) -> bool:
+        """Stop the running cell, like Jupyter's Interrupt; returns whether one was running.
+
+        In a kernel this is a KeyboardInterrupt there. In-process (a cell running on another
+        thread, as in the desktop app) :class:`CellInterrupted` is raised in that thread at its
+        next Python instruction, so the cell ends with an error and Run all stops; a long call
+        into compiled code (numba, C) finishes first."""
+        if self.kernel is not None:
+            self.kernel.interrupt()
+            return True
+        with _EXEC_LOCK:
+            thread = self.__dict__.get("_exec_thread")
+            if thread is None:
+                return False
+            import ctypes
+
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(thread), ctypes.py_object(CellInterrupted))
+            return True
+
     def trust(self):
         """Allow a restricted notebook (an ``.ewd`` someone sent) to run: its bundled plugins
         are loaded and its cells may run."""
@@ -467,7 +487,7 @@ class Notebook:
         try:
             tree = ast.parse(cell.source, filename)
             last = tree.body.pop() if tree.body and isinstance(tree.body[-1], ast.Expr) else None
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out), _interruptible(self):
                 exec(compile(tree, filename, "exec"), self.namespace)
                 value = None if last is None else eval(compile(ast.Expression(last.value), filename, "eval"),
                                                        self.namespace)
@@ -970,6 +990,30 @@ def _format_error(exc: BaseException, filename: str) -> str:
 def _figure_numbers() -> set:
     plt = sys.modules.get("matplotlib.pyplot")
     return set(plt.get_fignums()) if plt is not None else set()
+
+
+class CellInterrupted(Exception):
+    """Raised in a cell that :meth:`Notebook.interrupt` stopped."""
+
+
+_EXEC_LOCK = threading.Lock()
+
+
+@contextlib.contextmanager
+def _interruptible(notebook):
+    """While a cell's code runs, :meth:`Notebook.interrupt` may raise into this thread; an
+    interrupt that arrives after the code finished is dropped, never raised in later code."""
+    import ctypes
+
+    thread = threading.get_ident()
+    with _EXEC_LOCK:
+        notebook.__dict__["_exec_thread"] = thread
+    try:
+        yield
+    finally:
+        with _EXEC_LOCK:
+            notebook.__dict__["_exec_thread"] = None
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(thread), None)  # a pending one
 
 
 def _patch_show():

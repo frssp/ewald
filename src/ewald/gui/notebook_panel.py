@@ -24,6 +24,9 @@ from .icons import icon
 from .theme import TOKENS
 
 MAX_EDITOR_LINES = 30
+# Seconds the window waits for cells to finish before it goes on and lets them run in the
+# background (Interrupt stops them); None waits for every run (tests that read results right away).
+CELL_BUDGET: float | None = 0.1
 
 
 def mono_font() -> QtGui.QFont:
@@ -850,8 +853,8 @@ class _ElidedLabel(QtWidgets.QLabel):
 
 
 class _CellWorker(QtCore.QThread):
-    """Runs cells that execute in a kernel off the GUI thread (the kernel does the work; this
-    thread only waits for its answers)."""
+    """Runs cells off the GUI thread: in-process cells execute here (Interrupt raises into this
+    thread), kernel cells only wait here for the kernel's answers."""
 
     def __init__(self, fn, parent=None):
         super().__init__(parent)
@@ -864,6 +867,15 @@ class _CellWorker(QtCore.QThread):
             import traceback
 
             traceback.print_exc()
+
+
+def _cells_draw_off_screen():
+    """pyplot in cells draws with Agg: the cells run on a worker thread, where a Qt figure window
+    must not be created (plt.show() only marks figures for the cell's output anyway). The app's own
+    plots use matplotlib's Qt canvas directly, not pyplot, so they are unaffected."""
+    import matplotlib
+
+    matplotlib.use("Agg", force=True)
 
 
 class NotebookView(QtWidgets.QWidget):
@@ -901,7 +913,7 @@ class NotebookView(QtWidgets.QWidget):
                                                               toolTip="Clear the namespace (cells keep their code)")
         restart.clicked.connect(self.restart)
         self.interrupt_button = QtWidgets.QToolButton(text="Interrupt", objectName="interrupt",
-                                                      toolTip="Stop the running cell (Ctrl+C in the kernel)")
+                                                      toolTip="Stop the running cell")
         self.interrupt_button.setProperty("ewald_icon", "stop")
         self.interrupt_button.setIcon(icon("stop"))
         self.interrupt_button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
@@ -1292,27 +1304,25 @@ class NotebookView(QtWidgets.QWidget):
 
     @property
     def running(self) -> bool:
-        """Cells are running in the notebook's kernel (the GUI stays usable meanwhile)."""
+        """Cells are running (on a worker thread or in the kernel; the GUI stays usable meanwhile)."""
         return self._worker is not None
 
     def _execute(self, fn, before, then=None):
-        """Run ``fn`` (cells): here with a wait cursor, or on a thread when the cells run in a
-        kernel, so the window keeps responding and Interrupt can stop them."""
+        """Run ``fn`` (cells) on a worker thread, so the window keeps responding and Interrupt
+        can stop them; a run that ends within :data:`CELL_BUDGET` finishes before this returns."""
         if self.running:
             return
         marked, self._marked = self._marked, []
         if self.notebook.kernel is None:
-            self._show_running(marked)
-            self._busy(fn)
-            self._after_run(before)
-            if then:
-                then()
-            return
+            _cells_draw_off_screen()
         worker = self._worker = _CellWorker(fn, self)
-        self._set_running(True)
         self._show_running(marked)
+        done = []
 
         def finished():
+            if done:   # already handled synchronously, or the queued signal after that
+                return
+            done.append(True)
             self._worker = None
             worker.deleteLater()
             self._set_running(False)
@@ -1322,6 +1332,18 @@ class NotebookView(QtWidgets.QWidget):
 
         worker.finished.connect(finished)
         worker.start()
+        if CELL_BUDGET is None:
+            worker.wait()
+        else:
+            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+            try:
+                worker.wait(int(CELL_BUDGET * 1000))
+            finally:
+                QtWidgets.QApplication.restoreOverrideCursor()
+        if worker.isFinished():
+            finished()
+        else:
+            self._set_running(True)
 
     def _show_running(self, cells):
         """Mark the cells about to run (counter ``*``, like Jupyter) until their results arrive."""
@@ -1335,14 +1357,15 @@ class NotebookView(QtWidgets.QWidget):
             w.setEnabled(not on)
         self.interrupt_button.setVisible(on)
         if on:
-            self.status.setText(f"Running in {self.notebook.kernel.display_name}…")
+            kernel = self.notebook.kernel
+            self.status.setText(f"Running in {kernel.display_name}…" if kernel is not None else "Running…")
         for w in self.widgets:
             w.update_state(self.data)
 
     def interrupt(self):
-        """Stop the cell running in the kernel (KeyboardInterrupt there, like Jupyter's ■)."""
-        if self.notebook.kernel is not None:
-            self.notebook.kernel.interrupt()
+        """Stop the running cell, like Jupyter's ■ (:meth:`ewald.notebook.Notebook.interrupt`)."""
+        if self.running:
+            self.notebook.interrupt()
 
     def wait(self, timeout: float = 120.0) -> bool:
         """Process events until kernel cells finish (scripts and tests); False on timeout."""
@@ -1376,6 +1399,8 @@ class NotebookView(QtWidgets.QWidget):
         return self._step_history(self.history.redo)
 
     def _step_history(self, step):
+        if self.running:   # the cells are changing the notebook right now
+            return None
         before = self.notebook.pipeline
         label = self._busy(step)
         if label is None:
