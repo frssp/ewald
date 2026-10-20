@@ -68,6 +68,10 @@ GUI
   keeps its own per-notebook state in the `.py` header next to the view cell's picture settings
   (one place for both); in a kernel notebook a viewport edit reaches the kernel's `pipe.view`
   only when the view cell runs again.
+- Test suite: the full run under xvfb now and then segfaults inside tests/test_gui.py while a
+  window is built or deleted (seen 2026-10-20 on main too; `test_gui.py` alone and reruns pass).
+  `conftest.py` now deletes windows any test leaves open; the rest is probably a Qt object of an
+  earlier test collected in a worker thread. Rerun before blaming a change.
 - Atom labels (`view(pipe, labels=...)`): not drawn on the OpenGL 1.x viewport (`ssh -X`), not on
   boundary or replicated images, and not hidden behind nearer atoms (they always show, as in VESTA).
 - Render frame (the picture's region on the 3D view, `view(pipe, region=...)`): not drawn on
