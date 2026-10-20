@@ -771,11 +771,19 @@ def test_main_window_smoke(app, pipe, tmp_path):
     w.render_page.width.setValue(320)
     w.render_page.height.setValue(240)
     w.render_from_page()                    # the ray tracer: on a worker thread, a spinner meanwhile
-    assert w.rendering and not w.render_page.render_button.isEnabled()
-    assert not w.render_page.busy_label.isHidden() and w.render_page.busy_label.text() == "Ray tracing…"
+    button = w.render_page.render_button    # ... and Render turns into Cancel
+    assert w.rendering and button.isEnabled() and button.text() == "Cancel"
+    assert not w.render_page.busy_label.isHidden() and w.render_page.busy_label.text().startswith("Ray tracing…")
     w.wait_render()
-    assert not w.rendering and w.render_page.render_button.isEnabled() and w.render_page.busy_label.isHidden()
+    assert not w.rendering and button.isEnabled() and button.text() == "Render" and w.render_page.busy_label.isHidden()
     assert os.path.getsize(tmp_path / "x.png") > 1000
+    w.render_page.output.setText(str(tmp_path / "cancelled.png"))
+    w.render_from_page()
+    button.click()                          # Cancel: stops after the rows being traced, no file, no error box
+    assert w.render_page.busy_label.text() == "Cancelling…" and not button.isEnabled()
+    w.wait_render()
+    assert not (tmp_path / "cancelled.png").exists() and "cancelled" in w.statusBar().currentMessage()
+    assert button.text() == "Render" and button.isEnabled()
     code = w.render_page.code.toPlainText()
     assert "CoordinationAnalysis(cutoff=3.0" in code and "camera=" in code
     w.close()
@@ -1798,8 +1806,10 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     assert plugins_button.toolTip() == "Show or hide the Plugins side bar"
     tabs = w.panel.tabs
     assert tabs.count() == 0 and w.panel.view is None                    # a new window: the welcome page
+    assert "_empty" in w.viewport.plotter.actors and not w.viewport._viewbar.isEnabled()   # and a hint in the view
     assert tabs.body.currentWidget() is w.panel.welcome
     w.open_any(cu_path, ask_types=False)
+    assert "_empty" not in w.viewport.plotter.actors and w.viewport._viewbar.isEnabled()
     assert tabs.count() == 1 and tabs.tabText(0) == "cu" and w.pipeline is w.panel.pipeline
     w.panel.add_modifier(mods.CoordinationAnalysis(cutoff=3.0))
     w.recompute()
@@ -1847,6 +1857,7 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w.panel.close_tab(0)                                       # the last tab: the welcome page, no new notebook
     assert tabs.count() == 0 and w.panel.view is None and tabs.body.currentWidget() is w.panel.welcome
     assert w.pipeline is None and w.data is None                   # the 3D view, plots and inspector are cleared
+    assert "_empty" in w.viewport.plotter.actors and not w.viewport._rail.isEnabled()
     from ewald.gui import welcome
     assert welcome.load_recent()[0] == str(path)                    # listed under Recent
     w.panel.welcome.refresh()
@@ -2259,6 +2270,8 @@ def test_plugins_side_bar_installs_adds_a_step_and_removes(app, cu_path, tmp_pat
     entry = next(e for e in panel.entries if e.name == "Bar shift")
     panel.install(entry)
     panel.wait()
+    fresh = [r for r in panel.findChildren(plugins_panel.PluginRow) if r.property("fresh")]
+    assert [r.item.path.endswith("bar_shift.py") for r in fresh] == [True]     # scrolled to and marked
     item = next(i for i in panel.items if i.path.endswith("bar_shift.py"))
     panel.show_details(item)
     assert not panel.use_button.isHidden()
@@ -3330,7 +3343,7 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
     titles = [a.text() for a in w.activity_bar.actions()]
     assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent"]
     assert w.plugin_panels["sim_agent"]["dock"] is None          # nothing built before it opens
-    assert [a.text() for a in w.plugin_panel_menu.actions()] == titles[4:]
+    assert sorted(a.text() for a in w.plugin_panel_menu.actions()) == ["Agent jobs", "Broken", "Sim agent"]
     w.plugin_panels["sim_agent"]["action"].trigger()
     dock = w.plugin_panels["sim_agent"]["dock"]
     assert dock is not None and not dock.isHidden() and w.plugin_panels["sim_agent"]["action"].isChecked()
@@ -3370,6 +3383,82 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
     w.refresh_plugin_panels()
     assert [a.text() for a in w.activity_bar.actions()][4:] == ["Broken"] and "sim_agent" not in w.plugin_panels
     w.close()
+
+
+def test_plugin_menu_items_bottom_tab_and_layout_restore(app, pipe, monkeypatch, tmp_path):
+    """@menu_item entries land in the menu bar (greyed out until their `when` holds) and the 3D
+    view's right-click menu; a bottom @panel is a closable tab under the 3D view; open plugin
+    side bars and tabs come back with the saved layout."""
+    import shutil
+    from pathlib import Path
+
+    from ewald import plugins, settings
+    from ewald.gui import prefs_apply
+    from ewald.gui.app import MainWindow
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(Path(__file__).parents[1] / "examples" / "plugins" / "sim_agent_panel.py", folder)
+    calls = []
+    plugins.register_menu_item("boom", lambda ctx: 1 / 0, title="Boom", menu="Help")
+    plugins.register_menu_item("count", lambda ctx: calls.append(ctx.data.count), title="Count atoms",
+                               menu="View/Plugin tools", when="data", shortcut="Ctrl+Alt+Shift+C")
+    s = settings.Settings(path=tmp_path / "settings.json")
+    s["general.restore_layout"] = True
+    w = MainWindow(settings=s)
+
+    tools = w._menu_bar_menu("Tools")
+    sub = next(a.menu() for a in tools.actions() if a.menu() is not None and a.text() == "Sim agent")
+    assert [a.text() for a in sub.actions()] == ["Send structure…", "Settings…"]
+    send, _ = sub.actions()
+    tools.aboutToShow.emit()
+    assert not send.isEnabled()                # when="data" and nothing is loaded
+    assert "Agent jobs" not in [a.text() for a in w.activity_bar.actions()]   # a bottom tab has no button
+    menu = w.viewport_menu()
+    assert not any(a.text() == "Send picked atoms to Sim agent" for a in menu.actions())
+    w.set_pipeline(pipe)
+    tools.aboutToShow.emit()
+    assert send.isEnabled()
+    view_sub = next(a.menu() for a in w._menu_bar_menu("View").actions() if a.text() == "Plugin tools")
+    view_sub.actions()[0].trigger()
+    assert calls == [w.data.count]
+    next(a for a in w._menu_bar_menu("Help").actions() if a.text() == "Boom").trigger()   # error is reported
+    assert not any(a.text() == "Send picked atoms to Sim agent" for a in w.viewport_menu().actions())
+    w.viewport.set_picks([0, 2])
+    menu = w.viewport_menu()
+    act = next(a for a in menu.actions() if a.text() == "Send picked atoms to Sim agent")
+    act.trigger()
+    assert "relax atoms 0, 2" in w.panel.view.notebook.cells[-1].source
+    w.viewport.set_picks([])
+
+    # the bottom tab: built on first show, lists the jobs, closable, rebuilt on the next show
+    table = w.show_plugin_panel("agent_jobs")
+    assert isinstance(table, QtWidgets.QTableWidget) and w.workbench.is_shown("plugin:agent_jobs")
+    assert table.rowCount() >= 1 and table.item(table.rowCount() - 1, 0).text() == "relax atoms 0, 2"
+    w.workbench.close_view("plugin:agent_jobs")
+    assert "plugin:agent_jobs" not in w.workbench.specs and w.plugin_panels["agent_jobs"]["widget"] is None
+    w.show_plugin_panel("agent_jobs")
+    dock = w.show_plugin_panel("sim_agent")
+    w.resizeDocks([dock], [410], QtCore.Qt.Horizontal)
+    app.processEvents()
+    width = dock.width()
+    prefs_apply.save_layout(w, s)
+    w.close()
+
+    w2 = MainWindow(settings=s)
+    app.processEvents()
+    entry = w2.plugin_panels["sim_agent"]
+    assert entry["dock"] is not None and not entry["dock"].isHidden() and entry["action"].isChecked()
+    assert abs(entry["dock"].width() - width) <= 20
+    assert w2.plugin_panels["agent_jobs"]["widget"] is not None and "plugin:agent_jobs" in w2.workbench.specs
+    plugins.set_enabled("sim-agent-example", False)
+    w2.refresh_plugin_panels()
+    assert "plugin:agent_jobs" not in w2.workbench.specs
+    assert not any(a.menu() is not None and a.text() == "Sim agent" for a in w2._menu_bar_menu("Tools").actions())
+    w2.close()
+
+
 def test_plugin_settings_page_dialog(app, monkeypatch):
     from ewald import plugins, settings
     from ewald.gui.app import MainWindow

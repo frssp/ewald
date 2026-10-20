@@ -184,7 +184,8 @@ def save_layout(win, s: Settings):
     if s["general.restore_layout"]:
         state = {"geometry": bytes(win.saveGeometry().toBase64()).decode(),
                  "state": bytes(win.saveState().toBase64()).decode(),
-                 "workbench": win.workbench.state()}
+                 "workbench": win.workbench.state(),
+                 "plugin_panels": win.open_plugin_panels()}
         try:
             layout_path(s).parent.mkdir(parents=True, exist_ok=True)
             layout_path(s).write_text(json.dumps(state))
@@ -205,6 +206,11 @@ def restore_layout(win, s: Settings):
         pass
     if isinstance(state, dict) and isinstance(state.get("workbench"), dict):
         win.workbench.restore_state(state["workbench"])  # tab groups; older files keep the default
+    if isinstance(state, dict) and isinstance(state.get("plugin_panels"), list):
+        win._saved_plugin_docks = set(state["plugin_panels"])
+        for name in state["plugin_panels"]:      # plugin side bars that were open, where they were
+            if name in getattr(win, "plugin_panels", {}) and win.plugin_panels[name]["plugin"].area == "side":
+                win.show_plugin_panel(name)
 
 
 def layout_path(s: Settings):
