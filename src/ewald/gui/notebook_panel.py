@@ -18,7 +18,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ..notebook import Cell, History, Notebook, new_notebook
 from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea, FlowLayout, _discover, fill_modifier_menu
 from .notebook_tabs import NotebookTabs
-from . import header
+from . import header, workers
 from .icons import icon
 from .theme import TOKENS
 # re-exported: the cell widgets and the editor moved to their own modules
@@ -564,7 +564,7 @@ class NotebookView(QtWidgets.QWidget):
         marked, self._marked = self._marked, []
         if self.notebook.kernel is None:
             _cells_draw_off_screen()
-        worker = self._worker = _CellWorker(fn, self)
+        worker = self._worker = workers.detach(_CellWorker(fn))  # survives closing the tab
         self._show_running(marked)
         done = []
 
@@ -573,7 +573,8 @@ class NotebookView(QtWidgets.QWidget):
                 return
             done.append(True)
             self._worker = None
-            worker.deleteLater()
+            if not workers.alive(self):   # the tab was closed while its cells ran
+                return
             self._set_running(False)
             self._after_run(before)
             if then:

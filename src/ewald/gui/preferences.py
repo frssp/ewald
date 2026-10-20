@@ -12,7 +12,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import settings as settings_mod
 from ..settings import DEVICES, OPTION, OPTIONS, PAGES, Settings
-from . import header
+from . import header, workers
 from .element_table import ElementTable  # noqa: F401 (imported from here by callers)
 from .pref_widgets import Toggle, _ColorButton, _PathEdit, _ProfileBox, _chevron, _icon, _restyle
 from .prefs_apply import (apply_element_defaults, apply_settings, layout_path, restore_layout,  # noqa: F401
@@ -612,11 +612,13 @@ class PreferencesDialog(QtWidgets.QDialog):
         model = self.work["llm.model"] or None
         self.key_test.setEnabled(False)
         self._key_note("Testing…")
-        worker = QtCore.QThread(self)
+        worker = workers.detach(QtCore.QThread())  # the dialog may close first
         result = {}
         worker.run = lambda: result.update(r=credentials.check(key, model, provider=p))
 
         def done():
+            if not workers.alive(self.key_test):   # the dialog closed meanwhile
+                return
             ok, msg = result.get("r", (False, "no result"))
             self._key_note(msg, ok)
             self.key_test.setEnabled(True)

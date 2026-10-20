@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import plugin_catalog as pc
 from .. import plugins
+from . import workers
 from .theme import TOKENS
 
 
@@ -180,7 +181,7 @@ class PluginsPanel(QtWidgets.QWidget):
         self.items = pc.installed()
         self._fill()
         if self._loader is None or not self._loader.isRunning():
-            self._loader = _CatalogLoader(self.catalog_urls(), self)
+            self._loader = workers.detach(_CatalogLoader(self.catalog_urls()))  # may outlive the panel
             self._loader.loaded.connect(self._catalog_loaded)
             self._loader.start()
 

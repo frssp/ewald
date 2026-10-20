@@ -2172,6 +2172,86 @@ def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app,
     panel.close()
 
 
+_OUTLIVE_SCRIPT = r"""
+import threading, time
+from PySide6 import QtCore, QtWidgets
+app = QtWidgets.QApplication([])
+from ewald import plugin_catalog as pc
+from ewald.gui import live_reload, plugins_panel, workers
+
+def flush():
+    for _ in range(3):
+        app.processEvents()
+        app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+
+# the Plugins panel goes while its catalog loader still reads the indexes
+gate = threading.Event()
+real = pc.catalog
+pc.catalog = lambda urls, *a, **k: (gate.wait(5), real(urls))[1]
+panel = plugins_panel.PluginsPanel()
+panel.close(); panel.deleteLater(); flush()
+gate.set(); panel = None
+
+# a live reload goes while its probe still asks the source for frames
+class Slow:
+    def refresh(self):
+        gate2.wait(5)
+        return 0
+class Pipe:
+    source, num_frames = Slow(), 1
+    def invalidate(self, first): pass
+gate2 = threading.Event()
+got = []
+gone, kept = live_reload.LiveReload(), live_reload.LiveReload()
+gone.set_pipeline(Pipe()); kept.set_pipeline(Pipe())
+kept.grew.connect(lambda first, n: got.append(n))
+gone.poll(); kept.poll()
+gone.deleteLater(); flush()
+gate2.set()
+end = time.monotonic() + 10
+while (workers.running() or not got) and time.monotonic() < end:
+    QtCore.QThreadPool.globalInstance().waitForDone(50)
+    flush()
+assert got == [1], got               # the survivor still hears back, the deleted one is skipped
+assert workers.running() == 0        # the finished loader was released
+print("ok")
+"""
+
+
+def test_worker_threads_outlive_the_widgets_that_started_them(tmp_path):
+    """Closing a panel while its background thread runs must not abort the process (a running
+    QThread destroyed with its parent) or write into the freed object (a pool thread emitting on a
+    deleted LiveReload): both crashed the GUI suite at random (issue #145)."""
+    import subprocess
+    import sys
+
+    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", EWALD_CONFIG_DIR=str(tmp_path), EWALD_PLUGIN_INDEX="")
+    r = subprocess.run([sys.executable, "-c", _OUTLIVE_SCRIPT], env=env, capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0 and r.stdout.strip().endswith("ok"), r.stdout + r.stderr
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="viewport needs an X display with OpenGL (xvfb-run)")
+def test_deleted_viewport_forgets_its_gl_surface(app, pipe):
+    """pyvistaqt keeps a wrapper of the GL widget's surface, which Qt deletes with the widget. A
+    QtInteractor object that outlives its widget must not keep it: PySide hands that stale wrapper
+    out for whatever Qt allocates next at the address, and calls through it corrupt the heap
+    (issue #145: random segfaults in menu building and widget teardown)."""
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    vp = Viewport(ViewStyle())
+    vp.resize(120, 90)
+    vp.show()
+    vp.set_data(pipe.compute(0))
+    app.processEvents()
+    plotter = vp.plotter                         # outlives the widget, like a console reference
+    assert plotter._surface is not None          # realized: pyvistaqt holds the surface
+    plotter.close()                              # what MainWindow.closeEvent does first
+    vp.deleteLater()
+    app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+    assert plotter._surface is None and plotter._ctx is None
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_main_window_follows_a_growing_dump(app, lammps_dir, tmp_path):
     from ewald import import_file

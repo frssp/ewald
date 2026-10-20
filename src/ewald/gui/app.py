@@ -502,6 +502,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.live_reload.timer.stop()
         self.runner.shutdown()
         self.viewport.plotter.close()  # release the VTK/OpenGL context before Qt tears down
+        getattr(self.viewport, "release_gl", lambda: None)()  # and pyvistaqt's wrappers of it
         km = getattr(self.console, "kernel_manager", None) if self.console.built else None
         if km is not None:
             with contextlib.suppress(ValueError):
