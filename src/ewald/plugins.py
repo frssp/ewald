@@ -60,23 +60,30 @@ one without is matched on the file-name ``patterns`` (compression suffix ignored
 an existing name replaces that reader. A plugin that fails to import is recorded in
 :func:`status` (and ``ewald plugins``) instead of breaking ewald. Set ``EWALD_NO_PLUGINS=1``
 to skip loading external plugins.
+
+This module holds the registry and the loading; what each kind of plugin is lives in
+:mod:`ewald.plugin_kinds` and manifests and versions in :mod:`ewald.plugin_manifest`, both
+re-exported here. Plugins themselves import from :mod:`ewald.plugin_api`.
 """
 from __future__ import annotations
 
-import ast
-import fnmatch
 import importlib.util
 import inspect
 import json
 import logging
 import os
-import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from .io.base import FrameReader, strip_compression
+from .io.base import FrameReader
+from .plugin_kinds import (  # noqa: F401 (part of this module's API)
+    ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, ReaderPlugin, ThemePlugin, ToolPlugin,
+    UiThemePlugin, VisualPlugin, WriterPlugin, _builtin_ai_providers, _builtin_overlays, _builtin_readers,
+    _builtin_themes, _builtin_ui_themes, _builtin_visuals, _builtin_writers, path_scheme)
+from .plugin_manifest import (  # noqa: F401 (part of this module's API)
+    Plugin, _read_toml, _version_tuple, ewald_version, file_manifest, version_satisfies)
 
 log = logging.getLogger(__name__)
 
@@ -92,270 +99,6 @@ UI_THEME_GROUP = "ewald.ui_themes"
 AI_PROVIDER_GROUP = "ewald.ai_providers"
 PLUGIN_GROUP = "ewald.plugins"      # names the package that holds ewald-plugin.toml
 MANIFEST_NAME = "ewald-plugin.toml"
-
-
-@dataclass
-class ReaderPlugin:
-    name: str
-    factory: Callable
-    patterns: tuple = ()
-    sniff: Callable | None = None
-    description: str = ""
-    origin: str = ""             # "built-in", entry point, file path, or "python" for runtime registration
-    priority: int | None = 50    # lower is tried first; None = only by explicit format=
-    aliases: tuple = ()
-    takes_format: bool = False   # factory receives the requested format name (the ASE fallback)
-    category: str = "structure"  # "structure" or "volumetric" (groups the GUI open filter)
-    schemes: tuple = ()          # URI schemes it serves: ("aiida",) takes every "aiida:..." path
-
-    def matches(self, path) -> bool:
-        if self.schemes:
-            return path_scheme(path) in self.schemes
-        if self.sniff is not None:
-            try:
-                return bool(self.sniff(str(path)))
-            except Exception as exc:  # a broken sniffer must not block other formats
-                log.debug("sniff of %s failed for %s: %s", self.name, path, exc)
-                return False
-        base = os.path.basename(strip_compression(path))
-        return any(fnmatch.fnmatch(base, p) for p in self.patterns)
-
-    def open(self, path, format: str | None = None, **kwargs):
-        if self.takes_format:
-            kwargs["format"] = format
-        if isinstance(self.factory, type) and issubclass(self.factory, FrameReader):
-            return self.factory(path, **kwargs)
-        result = self.factory(path, **kwargs)
-        return result if isinstance(result, FrameReader) else ListReader(result)
-
-
-@dataclass
-class WriterPlugin:
-    """A file writer, the export-side twin of :class:`ReaderPlugin`.
-
-    ``factory(path, frames, **kwargs)`` gets an iterator of ``DataCollection`` (frames are
-    computed one at a time, so a streaming writer never holds the whole trajectory); with
-    ``multi_frame=False`` it gets one ``DataCollection`` instead: ``factory(path, data, **kwargs)``.
-    Without ``format=``, writers are matched on the output file name ``patterns`` by
-    ``priority``; ASE (100) takes everything else.
-    """
-    name: str
-    factory: Callable
-    patterns: tuple = ()
-    description: str = ""
-    origin: str = ""
-    priority: int | None = 50
-    aliases: tuple = ()
-    takes_format: bool = False   # factory receives the requested format name (the ASE fallback)
-    multi_frame: bool = True     # False: one frame per file (POSCAR, CHGCAR, cube, LAMMPS data)
-    category: str = "structure"
-
-    def matches(self, path) -> bool:
-        base = os.path.basename(strip_compression(path))
-        return any(fnmatch.fnmatch(base, p) or fnmatch.fnmatch(base.lower(), p.lower()) for p in self.patterns)
-
-    def write(self, path, frames, format: str | None = None, **kwargs):
-        """Write ``frames`` (iterable of DataCollection) to ``path``; a ``.gz``/``.bz2``/``.xz``
-        name is written uncompressed next to it first, then compressed."""
-        plain = strip_compression(path)
-        if plain != str(path):
-            import shutil
-            import tempfile
-
-            from .io.base import _OPENERS
-
-            folder, base = os.path.split(plain)
-            fd, tmp = tempfile.mkstemp(prefix=".ewald-", suffix="-" + base, dir=folder or ".")
-            os.close(fd)
-            try:
-                result = self.write(tmp, frames, format=format, **kwargs)
-                opener = _OPENERS[str(path)[len(plain):]]
-                with open(tmp, "rb") as src, opener(str(path), "wb") as dst:
-                    shutil.copyfileobj(src, dst)
-            finally:
-                os.remove(tmp)
-            return result
-        if self.takes_format:
-            kwargs["format"] = format
-        if self.multi_frame:
-            return self.factory(path, iter(frames), **kwargs)
-        it = iter(frames)
-        try:
-            first = next(it)
-        except StopIteration:
-            raise ValueError("nothing to write") from None
-        if next(it, None) is not None:
-            raise ValueError(f"format {self.name!r} holds one frame; pick one, e.g. frames=[-1]")
-        return self.factory(path, first, **kwargs)
-
-
-def _builtin_readers() -> dict:
-    from . import io
-
-    return {p.name: p for p in io.builtin_readers()}
-
-
-def _builtin_writers() -> dict:
-    from . import io
-
-    return {p.name: p for p in io.builtin_writers()}
-
-
-@dataclass
-class ModifierPlugin:
-    name: str
-    cls: type
-    category: str = "Plugins"    # submenu of the GUI's Add modification menu
-    description: str = ""
-    origin: str = ""
-
-
-@dataclass
-class VisualPlugin:
-    name: str
-    cls: type
-    category: str = "Plugins"
-    description: str = ""
-    origin: str = ""
-    builtin: bool = False
-
-
-def _builtin_visuals() -> dict:
-    from . import scene
-
-    out = {}
-    for cls in scene.BUILTIN:
-        doc = inspect.cleandoc(cls.__doc__ or "").split("\n\n")[0]
-        out[cls.name] = VisualPlugin(cls.name, cls, "Built-in", " ".join(doc.split()), "built-in", True)
-    return out
-
-
-@dataclass
-class OverlayPlugin:
-    name: str
-    cls: type
-    category: str = "Plugins"
-    description: str = ""
-    origin: str = ""
-    builtin: bool = False
-
-
-def _builtin_overlays() -> dict:
-    from . import overlays
-
-    out = {}
-    for cls in overlays.BUILTIN:
-        doc = inspect.cleandoc(cls.__doc__ or "").split("\n\n")[0]
-        out[cls.name] = OverlayPlugin(cls.name, cls, "Built-in", " ".join(doc.split()), "built-in", True)
-    return out
-
-
-@dataclass
-class ColormapPlugin:
-    """A named color map; ``factory()`` returns a matplotlib Colormap or a list/array of colors."""
-
-    name: str
-    factory: Callable
-    kind: str = "sequential"
-    description: str = ""
-    origin: str = ""
-    _cmap: object = field(default=None, repr=False)
-
-    def colormap(self):
-        if self._cmap is None:
-            from .colormaps import as_colormap
-
-            value = self.factory() if callable(self.factory) and not hasattr(self.factory, "N") else self.factory
-            self._cmap = as_colormap(self.name, value)
-        return self._cmap
-
-
-@dataclass
-class ThemePlugin:
-    """A named theme; ``factory()`` returns a :class:`ewald.themes.Theme` (or it is one)."""
-
-    name: str
-    factory: object
-    description: str = ""
-    origin: str = ""
-    builtin: bool = False
-
-    def theme(self):
-        from .themes import Theme
-
-        t = self.factory if isinstance(self.factory, Theme) else self.factory()
-        if not isinstance(t, Theme):
-            raise TypeError(f"theme {self.name!r} returned {type(t).__name__}, not a Theme")
-        return t
-
-
-def _builtin_themes() -> dict:
-    from .themes import BUILTIN
-
-    return {k: ThemePlugin(k, t, t.description, "built-in", True) for k, t in BUILTIN.items()}
-
-
-@dataclass
-class UiThemePlugin:
-    """A color theme of the desktop app: ``tokens`` (a dict, or a function returning one) overrides
-    the design tokens of the ``base`` palette (a built-in theme such as "paper" or "graphite")."""
-
-    name: str
-    tokens: object
-    base: str = "paper"
-    description: str = ""
-    origin: str = ""
-    builtin: bool = False
-
-    def palette(self) -> dict:
-        """Every design token as ``#rrggbb``: the base palette with this theme's overrides."""
-        from .ui_tokens import PALETTES
-
-        own = self.tokens() if callable(self.tokens) else self.tokens
-        if not isinstance(own, dict):
-            raise TypeError(f"UI theme {self.name!r} returned {type(own).__name__}, not a dict of tokens")
-        base = PALETTES.get(self.base)
-        if base is None:
-            raise ValueError(f"UI theme {self.name!r}: base must be one of {', '.join(PALETTES)}")
-        unknown = sorted(set(own) - set(base))
-        if unknown:
-            raise ValueError(f"UI theme {self.name!r}: unknown tokens {', '.join(unknown)} "
-                             f"(known: {', '.join(base)})")
-        bad = [k for k, v in own.items() if not (isinstance(v, str) and _HEX.fullmatch(v))]
-        if bad:
-            raise ValueError(f"UI theme {self.name!r}: tokens {', '.join(bad)} must be colors like '#1e1e2e'")
-        if not own:
-            return dict(base)
-        from .ui_tokens import derive
-
-        return derive({**base, **own}, own)
-
-
-_HEX = re.compile(r"#[0-9a-fA-F]{6}")
-
-
-def _builtin_ui_themes() -> dict:
-    from .ui_tokens import DESCRIPTIONS, PALETTES
-
-    return {name: UiThemePlugin(name, {}, name, DESCRIPTIONS.get(name, ""), "built-in", True) for name in PALETTES}
-
-
-def _builtin_ai_providers() -> dict:
-    from .llm.providers import BUILTIN   # no SDK import
-
-    return dict(BUILTIN)
-
-
-@dataclass
-class ToolPlugin:
-    """An AI tool: ``function(toolset, **arguments)`` returns JSON-ready data (or a
-    ``ewald.llm.tools.ToolResult``); ``schema`` is the JSON schema of the arguments."""
-
-    name: str
-    function: Callable
-    description: str = ""
-    schema: dict = field(default_factory=lambda: {"type": "object", "properties": {}})
-    origin: str = ""
 
 
 @dataclass
@@ -469,24 +212,40 @@ def visual(cls=None, *, name: str | None = None, category: str = "Plugins", desc
     return deco(cls) if cls is not None else deco
 
 
+def _register_element(registry: str, plugin_type, base: type, what: str, cls: type, name, category,
+                      description, origin):
+    """Shared by :func:`register_visual` and :func:`register_overlay`: check ``cls`` against
+    ``base``, keep built-in names, default the name and description from the class."""
+    if not (isinstance(cls, type) and issubclass(cls, base)):
+        raise TypeError(f"{cls!r} is not a subclass of {base.__name__}")
+    name = name or cls.__dict__.get("name") or cls.__name__
+    entries = getattr(_registry, registry)
+    old = entries.get(name)
+    if old is not None and old.builtin and old.cls is not cls:
+        raise ValueError(f"{what} name {name!r} is taken by a built-in {what}; use another name")
+    if not cls.__dict__.get("name"):
+        cls.name = name
+    doc = inspect.cleandoc(cls.__doc__ or "").split("\n\n")[0]
+    plugin = plugin_type(name, cls, getattr(cls, "category", None) or category,
+                         description or " ".join(doc.split()), getattr(_loading, "origin", None) or origin)
+    entries[name] = plugin
+    _contribute(registry, name)
+    return plugin
+
+
+def _element_name(registry: str, cls: type) -> str:
+    for name, p in getattr(_registry, registry).items():
+        if p.cls is cls:
+            return name
+    return getattr(cls, "name", "") or cls.__name__
+
+
 def register_visual(cls: type, name: str | None = None, category: str = "Plugins", description: str = "",
                     origin: str = "python") -> VisualPlugin:
     from .scene import VisualElement
 
-    if not (isinstance(cls, type) and issubclass(cls, VisualElement)):
-        raise TypeError(f"{cls!r} is not a VisualElement subclass")
-    name = name or cls.__dict__.get("name") or cls.__name__
-    old = _registry.visuals.get(name)
-    if old is not None and old.builtin and old.cls is not cls:
-        raise ValueError(f"visual element name {name!r} is taken by a built-in element; use another name")
-    if not cls.__dict__.get("name"):
-        cls.name = name
-    doc = inspect.cleandoc(cls.__doc__ or "").split("\n\n")[0]
-    plugin = VisualPlugin(name, cls, getattr(cls, "category", None) or category,
-                          description or " ".join(doc.split()), getattr(_loading, "origin", None) or origin)
-    _registry.visuals[name] = plugin
-    _contribute("visuals", name)
-    return plugin
+    return _register_element("visuals", VisualPlugin, VisualElement, "visual element", cls, name, category,
+                             description, origin)
 
 
 def visuals() -> dict[str, VisualPlugin]:
@@ -497,10 +256,7 @@ def visuals() -> dict[str, VisualPlugin]:
 
 def visual_name(cls: type) -> str:
     """The registered name of a visual element class (its ``name`` when it is not registered)."""
-    for name, p in _registry.visuals.items():
-        if p.cls is cls:
-            return name
-    return getattr(cls, "name", "") or cls.__name__
+    return _element_name("visuals", cls)
 
 
 def overlay(cls=None, *, name: str | None = None, category: str = "Plugins", description: str = ""):
@@ -517,20 +273,8 @@ def register_overlay(cls: type, name: str | None = None, category: str = "Plugin
                      origin: str = "python") -> OverlayPlugin:
     from .overlays import OverlayElement
 
-    if not (isinstance(cls, type) and issubclass(cls, OverlayElement)):
-        raise TypeError(f"{cls!r} is not an OverlayElement subclass")
-    name = name or cls.__dict__.get("name") or cls.__name__
-    old = _registry.overlays.get(name)
-    if old is not None and old.builtin and old.cls is not cls:
-        raise ValueError(f"overlay name {name!r} is taken by a built-in overlay; use another name")
-    if not cls.__dict__.get("name"):
-        cls.name = name
-    doc = inspect.cleandoc(cls.__doc__ or "").split("\n\n")[0]
-    plugin = OverlayPlugin(name, cls, getattr(cls, "category", None) or category,
-                           description or " ".join(doc.split()), getattr(_loading, "origin", None) or origin)
-    _registry.overlays[name] = plugin
-    _contribute("overlays", name)
-    return plugin
+    return _register_element("overlays", OverlayPlugin, OverlayElement, "overlay", cls, name, category,
+                             description, origin)
 
 
 def overlays() -> dict[str, OverlayPlugin]:
@@ -541,10 +285,7 @@ def overlays() -> dict[str, OverlayPlugin]:
 
 def overlay_name(cls: type) -> str:
     """The registered name of an overlay class (its ``name`` when it is not registered)."""
-    for name, p in _registry.overlays.items():
-        if p.cls is cls:
-            return name
-    return getattr(cls, "name", "") or cls.__name__
+    return _element_name("overlays", cls)
 
 
 def colormap(fn=None, *, name: str | None = None, kind: str = "sequential", description: str = ""):
@@ -755,127 +496,6 @@ def _contribute(kind: str, name: str):
     plugin = _loading.plugin
     if plugin is not None and name not in plugin.contributions.setdefault(kind, []):
         plugin.contributions[kind].append(name)
-
-
-@dataclass
-class Plugin:
-    """One installed plugin: a pip distribution with ewald entry points, or a file or folder in
-    :func:`plugin_dir`. Its metadata comes from its manifest (``ewald-plugin.toml`` in a package,
-    ``__ewald__ = {...}`` in a plugin file), read without importing the plugin's code."""
-
-    id: str
-    name: str = ""               # display name
-    version: str = ""
-    description: str = ""
-    publisher: str = ""
-    requires_ewald: str = ""     # e.g. ">=0.2, <1"
-    plugin_api: object = None    # the ewald.plugin_api version it was written for (None: not declared)
-    kind: str = "folder"         # "built-in" (ships with ewald), "package" (pip), "folder" (plugin folder)
-    #                              or "forge" (written by Modifier Forge)
-    origin: str = ""             # distribution name or file path
-    enabled: bool = True
-    compatible: bool = True
-    loaded: bool = False
-    contributions: dict = field(default_factory=dict)   # registry ("readers", "modifiers", ...) -> names
-    errors: list = field(default_factory=list)
-    manifest: dict = field(default_factory=dict, repr=False)
-
-    @property
-    def state(self) -> str:
-        """"disabled", "incompatible", "failed", "loaded" or "not loaded"."""
-        if not self.enabled:
-            return "disabled"
-        if not self.compatible:
-            return "incompatible"
-        if self.errors:
-            return "failed"
-        return "loaded" if self.loaded else "not loaded"
-
-    def apply_manifest(self, manifest: dict):
-        self.manifest = dict(manifest)
-
-        def get(*keys):
-            return next((manifest[k] for k in keys if manifest.get(k) not in (None, "")), "")
-
-        self.id = str(get("id") or self.id)
-        self.name = str(get("display-name", "display_name", "name") or self.name or self.id)
-        self.version = str(get("version") or self.version)
-        self.description = str(get("description") or self.description)
-        self.publisher = str(get("publisher") or self.publisher)
-        self.requires_ewald = str(get("requires-ewald", "requires_ewald") or self.requires_ewald)
-        api = get("plugin-api", "plugin_api")
-        self.plugin_api = api if api != "" else self.plugin_api
-        if manifest.get("source") == "forge":
-            self.kind = "forge"
-
-    def as_dict(self) -> dict:
-        return {"id": self.id, "name": self.name or self.id, "version": self.version,
-                "description": self.description, "publisher": self.publisher,
-                "requires_ewald": self.requires_ewald, "plugin_api": self.plugin_api, "kind": self.kind, "origin": self.origin,
-                "state": self.state, "enabled": self.enabled, "compatible": self.compatible,
-                "contributions": {k: list(v) for k, v in self.contributions.items()},
-                "errors": list(self.errors)}
-
-
-def _read_toml(path: Path) -> dict:
-    try:
-        import tomllib
-    except ModuleNotFoundError:  # Python 3.10
-        import tomli as tomllib
-    return tomllib.loads(path.read_text(encoding="utf-8"))
-
-
-def file_manifest(path) -> dict:
-    """The ``__ewald__ = {...}`` dict at the top level of a plugin file, read with ``ast``
-    (the file is not run); ``{}`` when it has none."""
-    path = Path(path)
-    tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
-    for node in tree.body:
-        targets = node.targets if isinstance(node, ast.Assign) else \
-            [node.target] if isinstance(node, ast.AnnAssign) and node.value is not None else []
-        if any(isinstance(t, ast.Name) and t.id == "__ewald__" for t in targets):
-            value = ast.literal_eval(node.value)
-            if not isinstance(value, dict):
-                raise TypeError(f"__ewald__ in {path.name} must be a dict of literals")
-            return value
-    return {}
-
-
-def _version_tuple(version: str) -> tuple:
-    out = []
-    for part in str(version).split("."):
-        m = re.match(r"\d+", part)
-        if not m:
-            break
-        out.append(int(m.group()))
-    return tuple(out)
-
-
-def version_satisfies(version: str, requirement: str) -> bool:
-    """Whether ``version`` meets ``requirement``: comma-separated clauses such as ``">=0.2, <1"``
-    with ``>= > <= < == != ~=`` on numeric release versions (pre/dev suffixes are ignored)."""
-    v = _version_tuple(version)
-    for clause in str(requirement or "").split(","):
-        clause = clause.strip()
-        if not clause:
-            continue
-        m = re.fullmatch(r"(~=|==|!=|>=|<=|>|<)?\s*(\d+(?:\.\d+)*)", clause)
-        if not m:
-            raise ValueError(f"cannot read the version requirement {clause!r} (use e.g. '>=0.2, <1')")
-        op, t = m.group(1) or "==", _version_tuple(m.group(2))
-        n = max(len(v), len(t))
-        a, b = v + (0,) * (n - len(v)), t + (0,) * (n - len(t))
-        ok = {"==": a == b, "!=": a != b, ">=": a >= b, "<=": a <= b, ">": a > b, "<": a < b,
-              "~=": a >= b and v[:len(t) - 1] == t[:len(t) - 1]}[op]
-        if not ok:
-            return False
-    return True
-
-
-def ewald_version() -> str:
-    from . import __version__
-
-    return __version__
 
 
 # ewald's own formats, grouped like VS Code's built-in extensions: always installed, listed by
@@ -1187,15 +807,6 @@ def readers() -> dict[str, ReaderPlugin]:
     return dict(_registry.readers)
 
 
-_SCHEME = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*):")
-
-
-def path_scheme(path) -> str | None:
-    """The URI scheme of ``path`` (``"aiida"`` for ``aiida:1234``), or None."""
-    m = _SCHEME.match(path) if isinstance(path, str) else None
-    return m.group(1).lower() if m else None
-
-
 def scheme_reader(path) -> ReaderPlugin | None:
     """The reader registered for the scheme of ``path`` (``schemes=``), or None. A path with a
     registered scheme is not a file: it is not looked up locally or over SSH."""
@@ -1340,25 +951,6 @@ def save_patterns(category: str | None = None) -> list[tuple[str, list[str]]]:
         if plugin.patterns and (not category or plugin.category == category):
             out.append((plugin.description, list(plugin.patterns)))
     return out
-
-
-class ListReader(FrameReader):
-    """FrameReader over frames already in memory (what function readers return)."""
-
-    def __init__(self, frames):
-        from .data import DataCollection
-
-        if not isinstance(frames, (list, tuple)):
-            frames = [frames]
-        if not frames:
-            raise ValueError("reader plugin returned no frames")
-        self.frames = [f if isinstance(f, DataCollection) else DataCollection.from_ase(f) for f in frames]
-
-    def __len__(self):
-        return len(self.frames)
-
-    def read(self, index):
-        return self.frames[index].copy()
 
 
 __all__ = ["reader", "register_reader", "load_plugins", "readers", "find_reader", "open_reader", "file_patterns",
