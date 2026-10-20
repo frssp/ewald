@@ -97,6 +97,13 @@ class GLView(QOpenGLWindow):
             self.viewport.click(pos.x(), pos.y(), self.width(), self.height(),
                                 extend=bool(e.modifiers() & QtCore.Qt.ShiftModifier))
 
+    def keyPressEvent(self, e):
+        # key events go to this native window, not to the widgets around it: Esc clears the picks
+        if e.key() == QtCore.Qt.Key_Escape:
+            self.viewport._escape()
+        else:
+            super().keyPressEvent(e)
+
     def leaveEvent(self, e):
         self.viewport.hover_leave()
 
@@ -219,11 +226,8 @@ class LegacyViewport(Viewport):
 
     # ------------------------------------------------------------------ picking
     def click(self, x, y, width, height, extend=False):
-        if self.tool == "orbit" or self.data is None:
-            return
-        idx = self.pick_at(x, y, width, height)
-        if idx is not None:
-            self.add_pick(idx, extend=self.tool == "pick" and extend)
+        if self.data is not None:
+            self._click(x, y, extend, lambda x, y: self.pick_at(x, y, width, height))
 
     def pick_at(self, x, y, width=None, height=None):
         """Particle under window position (x, y from the top-left), by ray casting the spheres."""

@@ -166,16 +166,18 @@ interact, file output follows the quality preset).
 ## Simple (ASE-style) drawing
 
 `atom_style="flat"` draws atoms the way ASE's GUI does: unlit discs in the element color with a
-dark outline, and unshaded bonds with dark edges. Combine it with `theme="ASE"` (Jmol colors and
-covalent radii on white) and `radius_scale=1.1` (ASE's 0.89 × covalent radius):
+dark outline, and unshaded bonds with dark edges. The Simple (ASE) style
+(`view(pipe, style="Simple (ASE)")`) is that plus `theme="ASE"` (Jmol colors and covalent radii on
+white), `radius_scale=0.7` and bonds on, so the sticks show between the discs:
 
 ```python
-render(data, "simple.png", atom_style="flat", theme="ASE", radius_scale=1.1, bonds=2.6)
+render(data, "simple.png", atom_style="flat", theme="ASE", radius_scale=0.7, bonds=2.6)
 ```
 
 It uses impostors, so it is as fast as `"impostor"` at any size, and screen-space ambient
-occlusion is off unless you pass `ambient_occlusion=True`. It applies to the OpenGL renderer; the
-ray tracer and the vector renderer keep their own shading.
+occlusion is off unless you pass `ambient_occlusion=True`. The vector renderer draws it with
+`shading="flat"` (one color plus outline); the ray tracer draws the same atoms and bonds with its
+own shading.
 
 ## Boundary (VESTA)
 

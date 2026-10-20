@@ -1,6 +1,6 @@
 # Quick start
 
-EWALD works the way a Jupyter notebook does, with a 3D view of your structure next to it. You open a
+EWALD works the way a Jupyter notebook does, with a 3D view of your structure (the Structure tab) next to it. You open a
 file, and the analysis grows as a list of cells: steps that add an analysis or change the atoms,
 views that plot what the steps computed, and any Python in between. The notebook is saved as a
 file that also runs as a script, so whatever you do in the window can be rerun without it.
@@ -14,12 +14,12 @@ ewald gui XDATCAR                        # or your own file
 ewald gui dump.lammpstrj --type-map 1=Cu,2=Zr
 ```
 
-Opening a file makes a notebook for it with a `load` cell and the 3D view of the first frame. A
+Opening a file makes a notebook for it with a `load` cell and the Structure view of the first frame. A
 LAMMPS dump stores numbered types, so the GUI asks which element each number is (or pass
 `--type-map`). Files on a cluster open by path, `cluster:/scratch/me/run1/dump.lammpstrj`
 ([Files on another machine](formats.md#files-on-another-machine-ssh)).
 
-![A notebook for the Cu void example: steps and a linked histogram on the left, the 3D view in the middle](../images/notebook.png)
+![A notebook for the Cu void example: steps and a linked histogram on the left, the Structure view in the middle](../images/notebook.png)
 
 ## Add steps and views
 
@@ -41,8 +41,8 @@ show(pipe, histogram="Coordination")
 show(pipe, table="coordination-rdf")
 ```
 
-A view is linked to the 3D view. Drag a range on the histogram and those atoms are selected; pick
-atoms in the 3D view and they are highlighted on the plot. On a per-frame plot, such as an MSD or
+A view is linked to the Structure view. Drag a range on the histogram and those atoms are selected; pick
+atoms in the Structure view and they are highlighted on the plot. On a per-frame plot, such as an MSD or
 the `Thermo` table of a LAMMPS or VASP run, dragging selects frames instead.
 
 Any other Python goes in a code cell, and a function added with `@pipe.add` runs on every frame.

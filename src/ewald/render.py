@@ -674,6 +674,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
 
         if camera is None:
             camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
+        if scene_kwargs.get("atom_style") == "flat":
+            scene_kwargs.setdefault("shading", "flat")  # one color plus outline, as on screen
         for k in ("atom_style", "sphere_resolution", "mesh_limit", "trajectory_width", "arrow_resolution"):
             scene_kwargs.pop(k, None)
         return render_vector(data, filename, camera=camera, size=size, background=background,

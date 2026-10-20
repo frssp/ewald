@@ -88,6 +88,7 @@ class Viewport(QtWidgets.QWidget):
         self.sphere_drawing = "impostor"  # 'auto' styles: GPU impostors, or 'mesh' up to mesh_limit atoms
         self.sphere_resolution = 16
         self.mesh_limit = 150_000
+        self.bond_limit = 100_000  # bonds.auto_limit: a style preset turns bonds on only up to this many atoms
         self.arrow_resolution = 6
         self.show_overlay = True
         self.show_axes = True
@@ -107,6 +108,7 @@ class Viewport(QtWidgets.QWidget):
         self._refine_timer.timeout.connect(self.refine)
         self._picks: list[int] = []
         self._press = None
+        self._empty_at = None             # (time, x, y) of the last click on empty space
         # hover readout (Preferences › Viewports › Hover): ray cast once the cursor rests
         self.hover_info = True
         self.hover_delay = 0.25           # seconds the cursor rests before the readout appears
@@ -127,6 +129,10 @@ class Viewport(QtWidgets.QWidget):
         grid.addWidget(self._create_view(), 1, 1)
         grid.setColumnStretch(1, 1)
         grid.setRowStretch(1, 1)
+        # Esc clears the picks, measurements and selection, like a double click on empty space
+        esc = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Escape), self,
+                              context=QtCore.Qt.WidgetWithChildrenShortcut)
+        esc.activated.connect(self._escape)
 
     def _create_view(self) -> QtWidgets.QWidget:
         """The 3D widget: a VTK QtInteractor (``self.plotter``) wired to the pick and LOD handlers."""
@@ -158,12 +164,15 @@ class Viewport(QtWidgets.QWidget):
         lay = QtWidgets.QHBoxLayout(bar)
         lay.setContentsMargins(6, 2, 6, 2)
         lay.setSpacing(2)
-        lab = QtWidgets.QLabel("View along", objectName="muted")
-        lay.addWidget(lab)
+        axes = QtWidgets.QFrame(objectName="axisGroup")  # one compact segmented group, no label
+        row = QtWidgets.QHBoxLayout(axes)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
         for axis in ("a", "b", "c", "a*", "b*", "c*"):
             b = _button(axis, f"View along {axis}")
             b.clicked.connect(lambda _=False, ax=axis: self.view_along(ax))
-            lay.addWidget(b)
+            row.addWidget(b)
+        lay.addWidget(axes)
         lay.addSpacing(8)
         for name, tip, fn in (("arrow_left", "Rotate one step (Preferences › Viewports) left", lambda: self.rotate("azimuth", -self.rotation_step)),
                               ("arrow_right", "Rotate one step right about the screen vertical", lambda: self.rotate("azimuth", self.rotation_step)),
@@ -540,6 +549,8 @@ class Viewport(QtWidgets.QWidget):
 
     def _preset(self, name):
         self.style.apply_preset(name, self.data.types if self.data is not None else ())
+        if self.style.bonds_enabled and self.data is not None and self.data.count > self.bond_limit:
+            self.style.bonds_enabled = False  # too many atoms for automatic bonds; Bonds turns them on
         if self.style.bonds_enabled and self.data is not None:
             self.style.ensure_bond_pairs(self.data.types)
         self.styleChanged.emit()
@@ -592,16 +603,40 @@ class Viewport(QtWidgets.QWidget):
 
     def _on_release(self, obj, event):
         self._on_drag_end(obj, event)
-        if self.tool == "orbit" or self._press is None or self.data is None:
+        if self._press is None or self.data is None:
             return
         x, y = self._event_position()
         if abs(x - self._press[0]) + abs(y - self._press[1]) > 4:
             return  # it was a drag (rotation), not a click
-        idx = self.pick_at(x, y)
-        if idx is None:
-            return
         shift = bool(self.plotter.iren.interactor.GetShiftKey())
-        self.add_pick(idx, extend=self.tool == "pick" and shift)
+        self._click(x, y, shift, self.pick_at)
+
+    def _click(self, x, y, shift, pick_at):
+        """A left click at window position (x, y): pick with the pick and measure tools; a double
+        click on empty space clears the picks in any tool."""
+        if self.tool == "orbit" and not self._picks:
+            return
+        idx = pick_at(x, y)
+        if idx is None:
+            self._empty_click(x, y)
+        else:
+            self._empty_at = None
+            if self.tool != "orbit":
+                self.add_pick(idx, extend=self.tool == "pick" and shift)
+
+    def _empty_click(self, x, y):
+        """Click on empty space: the second one within the double-click interval clears the picks."""
+        now, last = time.monotonic(), self._empty_at
+        self._empty_at = (now, x, y)
+        interval = QtWidgets.QApplication.doubleClickInterval() / 1000
+        if last and now - last[0] <= interval and abs(x - last[1]) + abs(y - last[2]) <= 6:
+            self._empty_at = None
+            if self._picks:
+                self.clear_picks()
+
+    def _escape(self):
+        if self._picks:
+            self.clear_picks()
 
     def add_pick(self, idx, extend=False):
         """Pick particle ``idx``; ``extend`` (Shift+click with the pick tool) adds it to the picks,
