@@ -811,7 +811,7 @@ class NotebookView(QtWidgets.QWidget):
         bar.setContentsMargins(8, 6, 8, 6)
         self._worker = None
         run_all = self.run_all_button = QtWidgets.QPushButton("Run all", objectName="primary",
-                                                              toolTip="Restart and run every cell")
+                                                              toolTip="Restart and run every cell (Ctrl+Shift+Enter)")
         run_all.setProperty("ewald_icon", "play")
         run_all.setProperty("ewald_icon_color", "on_accent")
         run_all.setIcon(icon("play", TOKENS["on_accent"]))
