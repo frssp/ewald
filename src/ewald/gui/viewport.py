@@ -10,6 +10,7 @@ from . import check_qt_binding
 check_qt_binding()  # before PySide6: a clear error when another Qt binding is loaded
 
 from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from ..render import (
     _RADIUS_KEYS,
@@ -61,6 +62,29 @@ def ray_spheres(origin, direction, centers, radii):
     return int(hit[np.argmin(t_hit)])
 
 
+class _Placeholder(QOpenGLWidget):
+    """Holds the 3D view's place until it is built: its first paint (the window is on screen
+    now) schedules ``build`` for the next turn of the event loop. An OpenGL widget itself, so
+    the window composites OpenGL from its first frame: adding the VTK widget to a window
+    shown without one makes Qt rebuild the window's backing store, which crashes some drivers."""
+
+    def __init__(self, build, background):
+        super().__init__()
+        self.setObjectName("viewportPlaceholder")
+        self._build = build
+        self._background = QtGui.QColor(background)
+        self._scheduled = False
+
+    def paintGL(self):
+        ctx = self.context().functions()
+        c = self._background
+        ctx.glClearColor(c.redF(), c.greenF(), c.blueF(), 1.0)
+        ctx.glClear(0x00004000)  # GL_COLOR_BUFFER_BIT
+        if not self._scheduled:
+            self._scheduled = True
+            QtCore.QTimer.singleShot(0, self._build)
+
+
 class Viewport(QtWidgets.QWidget):
     """QtInteractor wrapped with the view toolbar, tool rail and picking."""
 
@@ -69,6 +93,8 @@ class Viewport(QtWidgets.QWidget):
     styleChanged = QtCore.Signal()
     contextMenuRequested = QtCore.Signal()  # right click without dragging
     hovered = QtCore.Signal(str)         # one-line description of the atom under the cursor, "" for none
+    viewBuilt = QtCore.Signal()          # the 3D widget exists now (see ensure_view)
+    lazy_view = True                     # build the 3D widget after the first paint
 
     TOOLS = (("orbit", "Orbit", "Orbit / pan / zoom (mouse)"),
              ("pick", "Pick", "Pick atom: shows id, type, position and properties; Shift+click picks several"),
@@ -81,6 +107,7 @@ class Viewport(QtWidgets.QWidget):
         self.style = style
         self.data = None
         self.ortho = True
+        self._want_anti_aliasing = True  # applied when the 3D widget is built
         self.tool = "orbit"
         self.overlay_text = ""
         # set from Preferences (ewald.settings)
@@ -127,7 +154,14 @@ class Viewport(QtWidgets.QWidget):
         self._viewbar = self._build_viewbar()
         grid.addWidget(self._viewbar, 0, 0, 1, 2)
         grid.addWidget(self._build_rail(), 1, 0)
-        grid.addWidget(self._create_view(), 1, 1)
+        # the 3D widget (VTK: importing pyvistaqt alone takes about a second) is built after the
+        # window's first paint, or on first use of ``plotter``; a plain frame holds its place
+        self._grid = grid
+        self._plotter = None
+        self._placeholder = None
+        if self.lazy_view:
+            self._placeholder = _Placeholder(self.ensure_view, self.style.background)
+            grid.addWidget(self._placeholder, 1, 1)
         grid.setColumnStretch(1, 1)
         grid.setRowStretch(1, 1)
         # Esc clears the picks, measurements and selection, like a double click on empty space
@@ -136,8 +170,42 @@ class Viewport(QtWidgets.QWidget):
         esc.activated.connect(self._escape)
         if self.data is None:
             self._set_controls(False)
-            if hasattr(self.plotter, "add_text"):     # the legacy GL view shows its caption instead
-                self._show_empty(True)
+        if not self.lazy_view:
+            self.ensure_view()
+
+    @property
+    def plotter(self):
+        """The 3D view (a pyvistaqt ``QtInteractor``, or the legacy GL camera plotter), built on
+        first access."""
+        if self._plotter is None:
+            self.ensure_view()
+        return self._plotter
+
+    @plotter.setter
+    def plotter(self, value):
+        self._plotter = value
+
+    @property
+    def view_built(self) -> bool:
+        return self._plotter is not None
+
+    def ensure_view(self):
+        """Build the 3D widget now if it is not yet (normally right after the first paint)."""
+        if self._plotter is not None or getattr(self, "_building", False):
+            return
+        self._building = True
+        try:
+            widget = self._create_view()
+        finally:
+            self._building = False
+        if self._placeholder is None:
+            self._grid.addWidget(widget, 1, 1)
+        else:
+            self._grid.replaceWidget(self._placeholder, widget)
+            self._placeholder.deleteLater()
+            self._placeholder = None
+        self.redraw()
+        self.viewBuilt.emit()
 
     def _create_view(self) -> QtWidgets.QWidget:
         """The 3D widget: a VTK QtInteractor (``self.plotter``) wired to the pick and LOD handlers."""
@@ -147,9 +215,10 @@ class Viewport(QtWidgets.QWidget):
         # no auto-update timer: it re-rendered the scene 5 times a second even when idle
         self.plotter = QtInteractor(self, off_screen=False, auto_update=False)
         self.plotter.set_background(self.style.background)
-        self.plotter.enable_parallel_projection()
+        if self.ortho:
+            self.plotter.enable_parallel_projection()
         self.anti_aliasing = False
-        self.set_anti_aliasing(True)
+        self.set_anti_aliasing(self._want_anti_aliasing)
         self._paint_driven = self._render_on_paint()
         iren = self.plotter.iren
         iren.add_observer("LeftButtonPressEvent", self._on_press)
@@ -327,6 +396,8 @@ class Viewport(QtWidgets.QWidget):
         return mask if visible is None else mask & visible
 
     def redraw(self, coarse: bool = False):
+        if self._plotter is None:  # drawn when the 3D widget is built
+            return
         p = self.plotter
         self._refine_timer.stop()
         self._lod_cloud = None
@@ -473,7 +544,8 @@ class Viewport(QtWidgets.QWidget):
 
     def set_anti_aliasing(self, on: bool):
         """FXAA on or off (Preferences › Viewports › Smooth edges)."""
-        if on == self.anti_aliasing:
+        self._want_anti_aliasing = on
+        if self._plotter is None or on == self.anti_aliasing:
             return
         if on:
             self.plotter.enable_anti_aliasing("fxaa")
@@ -523,6 +595,8 @@ class Viewport(QtWidgets.QWidget):
 
     def render(self):
         """Show the current scene: schedules one paint (see ``_render_on_paint``)."""
+        if self._plotter is None:  # drawn when the 3D widget is built
+            return
         if self._paint_driven:
             self.plotter.interactor.update()
         else:
@@ -564,6 +638,8 @@ class Viewport(QtWidgets.QWidget):
     def set_ortho(self, on):
         self.ortho = on
         self.ortho_button.setText("Ortho" if on else "Persp")
+        if self._plotter is None:  # applied when the 3D widget is built
+            return
         (self.plotter.enable_parallel_projection if on else self.plotter.disable_parallel_projection)()
         self.render()
 

@@ -29,6 +29,7 @@ class LazyConsole(QtWidgets.QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         self._namespace, self._on_execute, self._on_built = namespace, on_execute, on_built
         self._console = None
+        self._scheduled = False
 
     @property
     def built(self) -> bool:
@@ -44,10 +45,13 @@ class LazyConsole(QtWidgets.QWidget):
                 self._on_built()
         return self._console
 
-    def showEvent(self, event):
-        if self._console is None:  # after the window has painted: it appears first, then the console
+    def paintEvent(self, event):
+        # after the window has painted (a zero timer from showEvent can run before the first
+        # paint): it appears first, then the console
+        super().paintEvent(event)
+        if self._console is None and not self._scheduled:
+            self._scheduled = True
             QtCore.QTimer.singleShot(0, self.widget)
-        super().showEvent(event)
 
     def __getattr__(self, name):  # shell, kernel_manager, execute, ...: the real console's
         if name.startswith("_"):

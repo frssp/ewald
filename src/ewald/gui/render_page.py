@@ -591,8 +591,10 @@ def figure_code(window, page) -> str:
     kw.update(page.render_kwargs(movie=page.is_movie))
     from ..render import camera_state
 
-    kw["camera"] = {k: (tuple(round(x, 4) for x in v) if isinstance(v, tuple) else round(v, 4) if isinstance(v, float) else v)
-                    for k, v in camera_state(window.viewport.plotter).items()}
+    if getattr(window.viewport, "view_built", True):  # no camera yet while the 3D view is being built
+        kw["camera"] = {k: (tuple(round(x, 4) for x in v) if isinstance(v, tuple) else round(v, 4)
+                            if isinstance(v, float) else v)
+                        for k, v in camera_state(window.viewport.plotter).items()}
     out = page.output.text() or "render.png"
     if page.is_movie and pipe is not None:
         lines[2] = "from ewald.render import render_animation"

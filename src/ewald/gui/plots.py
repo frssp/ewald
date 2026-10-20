@@ -70,9 +70,6 @@ class PlotsPanel(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-        from matplotlib.figure import Figure
-
         self.data = None
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
@@ -118,13 +115,10 @@ class PlotsPanel(QtWidgets.QWidget):
         sel.addWidget(self.keep)
         sel.addWidget(self.clear)
         lay.addLayout(sel)
-        self.figure = Figure(figsize=(5, 3), facecolor=TOKENS["bg"])
-        self.canvas = FigureCanvasQTAgg(self.figure)
-        lay.addWidget(self.canvas, 1)
-        self.canvas.mpl_connect("button_press_event", self._on_press)
-        self.canvas.mpl_connect("motion_notify_event", self._on_motion)
-        self.canvas.mpl_connect("button_release_event", self._on_release)
-        self.canvas.mpl_connect("scroll_event", self._on_scroll)
+        # matplotlib (0.3 s to import) and the canvas are made on first use of ``figure``/``canvas``
+        self._figure = self._canvas = None
+        self._canvas_slot = QtWidgets.QWidget()
+        lay.addWidget(self._canvas_slot, 1)
         self._drawn = None   # (table x column, y choice) currently on the canvas
         self._marker = None  # current-frame line on a time-series plot, current mode on a band plot
         self._phonon = None  # (modes, x) while a phonon band structure is on the canvas
@@ -149,6 +143,44 @@ class PlotsPanel(QtWidgets.QWidget):
         self._energy_window = tuple(ENERGY_WINDOW)  # shared by the DOS and the band structure
         self._pan = None
         self._update_controls()
+
+    @property
+    def figure(self):
+        if self._figure is None:
+            self._build_canvas()
+        return self._figure
+
+    @figure.setter
+    def figure(self, figure):  # export() draws into a print figure for a moment
+        self._figure = figure
+
+    @property
+    def canvas(self):
+        if self._canvas is None:
+            self._build_canvas()
+        return self._canvas
+
+    @property
+    def canvas_built(self) -> bool:
+        return self._canvas is not None
+
+    def _build_canvas(self):
+        import matplotlib as mpl
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+        from matplotlib.figure import Figure
+
+        # outside the plot style a redraw may be running in: the screen figure keeps the rc
+        # settings matplotlib started with (its DPI above all)
+        with mpl.rc_context(mpl.rcParamsOrig):
+            self._figure = Figure(figsize=(5, 3), facecolor=TOKENS["bg"])
+            self._canvas = canvas = FigureCanvasQTAgg(self._figure)
+        self.layout().replaceWidget(self._canvas_slot, canvas)
+        self._canvas_slot.deleteLater()
+        self._canvas_slot = None
+        canvas.mpl_connect("button_press_event", self._on_press)
+        canvas.mpl_connect("motion_notify_event", self._on_motion)
+        canvas.mpl_connect("button_release_event", self._on_release)
+        canvas.mpl_connect("scroll_event", self._on_scroll)
 
     def compact(self):
         """Narrow layout for a notebook view cell: shorter labels, Save in the cell's menu."""
