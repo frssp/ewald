@@ -291,36 +291,36 @@ class MenusMixin:
         v.addAction("Focus on the viewport", self.toggle_focus, "Ctrl+\\")
         v.addAction("Minimal mode (menus hidden)", lambda: self.set_minimal(not getattr(self, "minimal", False)), "Ctrl+Shift+M")
         n = mb.addMenu("&Notebook")
-        n.addAction("Run &all", lambda: self.panel.view.run_all(), "Ctrl+Shift+Return").setToolTip(
+        n.addAction("Run &all", lambda: self._on_view("run_all"), "Ctrl+Shift+Return").setToolTip(
             "Restart and run every cell from the top")
         n.addAction("Run current cell and &below", lambda: self._cell_action("below"))
-        n.addAction("&Restart", lambda: self.panel.view.restart())
+        n.addAction("&Restart", lambda: self._on_view("restart"))
         n.setToolTipsVisible(True)
         self.kernel_menu = n.addMenu("&Kernel")
-        self.kernel_menu.aboutToShow.connect(lambda: self.panel.view.fill_kernel_menu(self.kernel_menu))
-        self.trust_action = n.addAction("&Trust notebook…", lambda: self.panel.view.trust())
+        self.notebook_menu = n
+        self.kernel_menu.aboutToShow.connect(lambda: self._on_view("fill_kernel_menu", self.kernel_menu))
+        self.trust_action = n.addAction("&Trust notebook…", lambda: self._on_view("trust"))
         self.trust_action.setToolTip("Allow a notebook received as an .ewd file to run its code and plugins")
-        n.aboutToShow.connect(lambda: self.trust_action.setEnabled(
-            self.panel.view is not None and self.panel.view.notebook.restricted))
+        n.aboutToShow.connect(self._update_notebook_menu)
         n.addSeparator()
         n.addAction("Move cell &up", lambda: self._cell_action("up"), "Ctrl+Shift+Up")
         n.addAction("Move cell &down", lambda: self._cell_action("down"), "Ctrl+Shift+Down")
         n.addAction("D&elete cell", lambda: self._cell_action("delete"))
         n.addSeparator()
         n.addAction("&Clear cell output", lambda: self._cell_action("clear"), "Ctrl+Shift+Backspace")
-        n.addAction("Clear &all outputs", lambda: self.panel.view.clear_outputs(),
+        n.addAction("Clear &all outputs", lambda: self._on_view("clear_outputs"),
                     "Ctrl+Alt+Shift+Backspace").setToolTip("Remove every cell's output; the next save leaves them out")
         n.addSeparator()
-        n.addAction("Show as Python &file", lambda: self.panel.view.py_button.toggle())
+        n.addAction("Show as Python &file", lambda: self.panel.view is not None and self.panel.view.py_button.toggle())
         ins = mb.addMenu("&Insert")
-        ins.addAction("&Code cell", lambda: self.panel.view.add_cell("code"), "Ctrl+Shift+N")
-        ins.addAction("&Text cell", lambda: self.panel.view.add_cell("markdown"))
+        ins.addAction("&Code cell", lambda: self._notebook_view().add_cell("code"), "Ctrl+Shift+N")
+        ins.addAction("&Text cell", lambda: self._notebook_view().add_cell("markdown"))
         ins.addSeparator()
         m = ins.addMenu("&Step")
         m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier, self._step_context))
         fill_modifier_menu(m, self.panel.add_modifier)
         vm = ins.addMenu("&View")
-        vm.aboutToShow.connect(lambda: fill_view_menu(vm, self.data, lambda **kw: self.panel.view.add_view(**kw)))
+        vm.aboutToShow.connect(lambda: fill_view_menu(vm, self.data, lambda **kw: self._notebook_view().add_view(**kw)))
         ins.addAction("3D &snapshot of the view", self._insert_snapshot).setToolTip(
             "A cell with a picture of the viewport as it is now (frame, camera, display style)")
         ins.addAction("View &settings with the camera", self.write_camera).setToolTip(
@@ -363,8 +363,29 @@ class MenusMixin:
         about = h.addAction("About EWALD", self.about)
         about.setMenuRole(QtGui.QAction.AboutRole)
 
+    def _notebook_view(self):
+        """The current notebook's view; a new notebook when none is open (the welcome page)."""
+        return self.panel.view or self.panel.new_notebook()
+
+    def _update_notebook_menu(self):
+        """With no notebook open, Notebook › ... greys out (the welcome page offers New notebook)."""
+        view = self.panel.view
+        for act in self.notebook_menu.actions():
+            act.setEnabled(view is not None)
+        self.trust_action.setEnabled(view is not None and view.notebook.restricted)
+
+    def _on_view(self, method, *args):
+        """Call a method of the current notebook view; nothing when no notebook is open."""
+        view = self.panel.view
+        if view is not None:
+            getattr(view, method)(*args)
+
     def _fill_plugin_menu(self, menu):
         view = self.panel.view
+        if view is None:
+            menu.clear()
+            menu.addAction("Start or open a notebook first").setEnabled(False)
+            return
         view._fill_plugin_menu()
         menu.clear()
         for act in view.plugin_menu.actions():

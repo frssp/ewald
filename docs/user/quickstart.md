@@ -9,7 +9,7 @@ file that also runs as a script, so whatever you do in the window can be rerun w
 
 ```bash
 pip install -e ".[gui]"
-ewald gui                                # an empty notebook; File › Open example lists the examples
+ewald gui                                # the welcome page: New notebook, Open, Open example, recent files
 ewald gui XDATCAR                        # or your own file
 ewald gui dump.lammpstrj --type-map 1=Cu,2=Zr
 ```

@@ -242,8 +242,10 @@ A dot marks unsaved changes. Each notebook has its own namespace and pipeline, a
 a notebook that has a pipeline shows it in the viewport.
 
 Opening a data file (File › Open, or `ewald gui file`) makes a notebook for it: the imports, a
-`load` cell and one step per modifier the file needs. It replaces the empty notebook you
-start with. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. The cells
+`load` cell and one step per modifier the file needs (an untouched empty notebook makes way
+for it). With no notebook open, at start or after closing the last tab, the notebook area shows
+a welcome page: *New notebook* (Ctrl+T), *Open…*, *Open example* and the files opened lately;
+Notebook › ... is greyed out then, and Insert › ... starts a notebook. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. The cells
 only run after you choose to (Notebook › Run all), because a notebook is code. Preferences ›
 Python › *Run notebooks when opened* can change that to always run them or never run them.
 

@@ -33,8 +33,8 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 GUI
 
 - UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): still open
-  are an empty-state hint in the 3D view with nothing loaded (and the view bar and timeline
-  greyed out then), Cancel for a ray trace in progress, opening files (local or remote) and
+  are an empty-state hint in the 3D view with nothing loaded (the notebook area has a welcome
+  page now; the view bar stays enabled), Cancel for a ray trace in progress, opening files (local or remote) and
   remote connections off the GUI thread (they now say what they wait for, but the window still
   blocks), the Render settings column scrolling sideways at the default window width, and a
   short highlight on a plugin row once it is installed.

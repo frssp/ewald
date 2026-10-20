@@ -70,7 +70,7 @@ Linux system libraries, `ssh -X`, headless machines, macOS and Windows: [Install
 ## Five minutes with a notebook
 
 ```bash
-ewald gui                       # opens with an empty notebook; File › Open example › Cu_void.lammpstrj
+ewald gui                       # the welcome page; Open example › Cu_void.lammpstrj
 ewald gui dump.lammpstrj        # or open your own file
 ```
 

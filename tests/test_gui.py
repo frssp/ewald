@@ -1740,8 +1740,9 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w._plugin_updates(0)
     assert plugins_button.toolTip() == "Show or hide the Plugins side bar"
     tabs = w.panel.tabs
-    assert tabs.count() == 1 and tabs.tabText(0) == "Notebook 1"
-    w.open_any(cu_path, ask_types=False)                      # the empty notebook makes way for the file
+    assert tabs.count() == 0 and w.panel.view is None                    # a new window: the welcome page
+    assert tabs.body.currentWidget() is w.panel.welcome
+    w.open_any(cu_path, ask_types=False)
     assert tabs.count() == 1 and tabs.tabText(0) == "cu" and w.pipeline is w.panel.pipeline
     w.panel.add_modifier(mods.CoordinationAnalysis(cutoff=3.0))
     w.recompute()
@@ -1786,8 +1787,19 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w.settings["python.run_notebooks"] = "always"
     w.open_notebook(str(path))                                 # already open: back to its tab
     assert tabs.count() == 1
-    w.panel.close_tab(0)                                       # the last tab leaves an empty notebook
-    assert tabs.count() == 1 and w.panel.notebook.pipeline is None
+    w.panel.close_tab(0)                                       # the last tab: the welcome page, no new notebook
+    assert tabs.count() == 0 and w.panel.view is None and tabs.body.currentWidget() is w.panel.welcome
+    assert w.pipeline is None and w.data is None                   # the 3D view, plots and inspector are cleared
+    from ewald.gui import welcome
+    assert welcome.load_recent()[0] == str(path)                    # listed under Recent
+    w.panel.welcome.refresh()
+    recent = w.panel.welcome.findChildren(QtWidgets.QToolButton, "welcomeRecent")
+    assert recent and recent[0].toolTip() == str(path)
+    w._update_notebook_menu()
+    assert not any(a.isEnabled() for a in w.notebook_menu.actions())     # Notebook › ... greys out
+    w.panel.welcome.newRequested.emit()                               # New notebook on the welcome page
+    assert tabs.count() == 1 and tabs.body.currentWidget() is tabs.stack
+    w.panel.close_tab(0)
     w.open_notebook(str(path))
     assert tabs.tabText(0) == "cu_nb" and [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis"]
     act = next(a for a in w.analysis_menu.actions() if a.text() == "Common neighbor analysis")
@@ -2541,7 +2553,7 @@ def test_panels_and_cells_fold(app, cu_path, tmp_path):
     side.set_collapsed(False)
     assert w.tabPosition(QtCore.Qt.RightDockWidgetArea) == QtWidgets.QTabWidget.South
 
-    view = w.panel.view
+    view = w.panel.new_notebook()
     view.add_cell("code", "print('hi')\nx = 1")
     cw = view.widgets[-1]
     cw.fold_button.click()
@@ -2719,6 +2731,7 @@ def test_notebook_cells_sit_at_the_top(app):
     from ewald.gui.app import MainWindow
 
     w = MainWindow()
+    w.panel.new_notebook()
     w.resize(1400, 900)
     w.show()
     for _ in range(3):
@@ -2746,6 +2759,7 @@ def test_notebook_cell_controls_add_bar_and_running_mark(app):
     from ewald.gui.app import MainWindow
 
     w = MainWindow()
+    w.panel.new_notebook()
     w.resize(1400, 900)
     w.show()
     app.processEvents()
