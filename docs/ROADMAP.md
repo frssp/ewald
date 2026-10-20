@@ -27,6 +27,6 @@ Decisions
 - Private, personal project without a LICENSE file for now; reuse freely, treating MIT compatibility as the bar when it matters.
 - OVITO's public source is "GPLv3 or MIT"; ported code keeps the MIT notice. DXA is not in the public source.
 - Python first, numba/C++ only for measured hot spots.
-- One GUI layout (2026-10-20): the notebook. The OVITO-style "classic" layout (pipeline list and properties panel) was removed; display settings live in the Display panel, data source details in the Data inspector, and an old `general.layout` setting is ignored.
+- One GUI layout (2026-10-20): the notebook. The OVITO-style "classic" layout (pipeline list and properties panel) was removed; display settings live in the View tab below the Structure view (2026-10-20, it replaced the right-hand Display panel), data source details in the Data inspector, and an old `general.layout` setting is ignored.
 - Windows distribution: wheels plus a PyInstaller app with an Inno Setup installer, in CPU and CUDA variants, built by `windows-release.yml` on `v*` tags (docs/developer/windows-release.md).
 - macOS: source install with Apple clang (arm64 and x86_64), Finder file-open events, and a PyInstaller EWALD.app in a .dmg built by `macos-release.yml` (docs/developer/macos-release.md). Analysis computes on the CPU on a Mac; a Metal backend is open (decision 2026-10-19: CPU fallback first, since MLX/MPS lack the NumPy subset the kernels need).

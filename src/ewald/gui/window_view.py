@@ -101,7 +101,7 @@ class ViewSyncMixin:
                 self.timeline._set(min(max(v.frame, 0), self.pipeline.num_frames - 1))
 
     def write_view(self, camera: bool = False, region: bool = False):
-        """After a change in the viewport, the Display panel or a style menu: put the style into
+        """After a change in the viewport, the View tab or a style menu: put the style into
         ``pipe.view`` and the notebook's view cell (``camera``: the current camera, trajectory frame and
         Render frame too; ``region``: the Render frame the user just changed)."""
         if self._writing_view or self.pipeline is None:

@@ -40,8 +40,8 @@ pipe.add(CoordinationPolyhedra(center_types=["Ti"], transparency=0.25))
 ```
 
 `mode="covalent"` would bond every pair shorter than 1.15 times the sum of covalent radii instead,
-as VESTA does. To see whole octahedra on the cell faces, tick *Boundary* on the Simulation cell in
-the Display panel and set the range to -0.05 to 1.05: the periodic images are drawn and the bonds
+as VESTA does. To see whole octahedra on the cell faces, tick *Boundary* on the Cell card of
+the View tab (below the 3D view) and set the range to -0.05 to 1.05: the periodic images are drawn and the bonds
 and polyhedra completed, without changing the data.
 
 ## 3. Bond lengths

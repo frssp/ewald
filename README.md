@@ -11,7 +11,7 @@ each view is a live plot linked to the atoms, and the whole thing is saved as on
 runs as a plain Python script. Plugins add file formats, analyses and drawing without changing
 EWALD itself.
 
-![The EWALD window: a notebook on the left, the Structure view in the middle, display settings on the right](docs/images/notebook.png)
+![The EWALD window: a notebook on the left, the Structure view in the middle, the View tab with display settings below](docs/images/notebook.png)
 
 Under the notebook is an OVITO-style pipeline (`load` → `pipe.add(...)` → `pipe.compute(frame)` →
 `pipe.render(...)`) that runs the same in a script, on the CPU or an NVIDIA GPU, with a built-in

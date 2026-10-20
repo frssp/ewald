@@ -201,8 +201,8 @@ the half at the drawn atom, as without a boundary; `"complete"` adds the partner
 
 It is display only. `pipe.compute()` and every modifier still see the real atoms, the images are
 made by the renderers (OpenGL, ray tracer and vector alike), and an image picks, hovers and
-selects as its real atom in the GUI. In the GUI it is the Boundary box of the Simulation cell
-entry in the Display panel; the range is saved with the session.
+selects as its real atom in the GUI. In the GUI it is the Boundary box of the Cell card in
+the View tab; the range is saved with the session.
 
 ## Replicated cell
 
@@ -221,7 +221,7 @@ view(pipe, replicate=None)                               # back to one cell
 only the original cell, `"all"` draws every copy as a lattice grid. The boundary range applies to
 the replicated block, so `replicate=(2, 2, 2), boundary=(0, 1)` adds VESTA's face, edge and corner
 images around the 2 x 2 x 2 block. Copies pick, hover and select as their real atom in the GUI,
-where the controls are the Replicate cell box of the Simulation cell entry in the Display panel,
+where the controls are the Replicate cell box of the Cell card in the View tab,
 View › Replicate cell (also in Ctrl+K) and the 3D view's right-click menu; they write
 `view(pipe, replicate=...)` into the notebook. VESTA has no single switch for this: it draws a
 boundary range over several cells, which is `boundary=(0, n)` here.

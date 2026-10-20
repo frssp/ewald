@@ -262,14 +262,29 @@ QFrame#viewbar {{ background: {bg}; border-bottom: 1px solid {border}; }}
 QFrame#viewbar QToolButton {{ padding: 4px 6px; }}
 QFrame#axisGroup QToolButton {{ padding: 4px 3px; min-width: 14px; }}
 QCheckBox {{ color: {text}; spacing: 6px; }}
-QCheckBox::indicator, QTreeView::indicator, QTableView::indicator, QListView::indicator {{ width: 14px; height: 14px;
+QCheckBox::indicator, QGroupBox::indicator, QTreeView::indicator, QTableView::indicator, QListView::indicator {{ width: 14px; height: 14px;
     border: 1.5px solid {muted}; border-radius: 4px; background: {bg}; }}
-QCheckBox::indicator:hover, QTreeView::indicator:hover, QTableView::indicator:hover {{ border-color: {accent}; }}
-QCheckBox::indicator:checked, QTreeView::indicator:checked, QTableView::indicator:checked,
+QCheckBox::indicator:hover, QGroupBox::indicator:hover, QTreeView::indicator:hover, QTableView::indicator:hover {{ border-color: {accent}; }}
+QCheckBox::indicator:checked, QGroupBox::indicator:checked, QTreeView::indicator:checked, QTableView::indicator:checked,
 QListView::indicator:checked {{ background: {accent}; border-color: {accent}; image: url("{img_check}"); }}
 QCheckBox::indicator:disabled {{ background: {panel}; border-color: {border}; }}
 QFrame#rail QToolButton {{ font-size: 18px; color: {secondary}; }}
 QFrame#rail QToolButton:checked {{ color: {accent}; background: {raised}; }}
+
+/* View tab: how the structure is drawn, as cards */
+QScrollArea#viewScroll, QScrollArea#viewScroll > QWidget > QWidget, QWidget#viewPage {{ background: {panel}; }}
+QFrame#viewSection {{ background: {raised}; border: 1px solid {border}; border-radius: 8px; }}
+QFrame#viewSection QLabel, QFrame#viewSection QCheckBox, QFrame#viewSection QGroupBox {{ background: transparent; }}
+QWidget#viewBody {{ background: transparent; }}
+QLabel#viewSectionTitle {{ color: {secondary}; font-size: 11px; font-weight: 600; }}
+QLabel#viewSectionMark {{ color: {accent}; font-size: 11px; }}
+QLabel#viewLabel {{ color: {secondary}; }}
+QLabel#viewLabel[set="true"] {{ color: {accent}; font-weight: 600; }}
+QGroupBox[set="true"]::title {{ color: {accent}; }}
+QLabel#viewValue {{ color: {text}; }}
+QLabel#viewError {{ color: {error}; }}
+QLineEdit[invalid="true"] {{ border: 1px solid {error}; }}
+QPushButton#viewAdd::menu-indicator {{ image: none; width: 0; }}
 
 /* notebook */
 QWidget#notebookPage, QScrollArea#notebookScroll, QScrollArea#notebookScroll > QWidget > QWidget {{ background: {panel}; }}
