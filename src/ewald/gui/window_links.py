@@ -1,4 +1,4 @@
-"""Links between the viewport, plots, Ask Claude and the console: picks, selections and bond edits."""
+"""Links between the viewport, plots, Ask AI and the console: picks, selections and bond edits."""
 from __future__ import annotations
 
 import time
@@ -127,9 +127,9 @@ class LinksMixin:
         self.recompute()
         self.message(f"Added Expression selection: {expression}")
 
-    # ---------------------------------------------------------------- Claude
+    # ---------------------------------------------------------------- Ask AI
     def _ask_context(self):
-        """(pipeline, frame, indices) for the Ask Claude panel: the viewport picks, else the
+        """(pipeline, frame, indices) for the Ask AI panel: the viewport picks, else the
         'Selection' property of the current frame."""
         return self.pipeline, self.frame, self._selected_indices()
 
@@ -156,7 +156,7 @@ class LinksMixin:
             view = self.panel.new_notebook()
         view.add_cell("code", code)
         self.notebook_dock.show()
-        self.message("Inserted Claude's code as a notebook cell (Shift+Enter runs it)")
+        self.message("Inserted the AI's code as a notebook cell (Shift+Enter runs it)")
 
     def _install_notebook_packages(self, requirements):
         """A notebook's bar asked for the pip packages its steps need: pip runs in the Plugins side bar."""

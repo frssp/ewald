@@ -33,17 +33,19 @@ class Option:
     choices: tuple = ()          # allowed values (combo box)
     minimum: float | None = None
     maximum: float | None = None
-    kind: str = ""               # editor hint: color, file, dir, table, ui_theme (installed UI themes)
+    kind: str = ""               # editor hint: color, file, dir, table, ui_theme (installed UI themes),
+                                 # ai_provider, ai_model (model ids the chosen provider suggests),
+                                 # ai_profiles (saved AI connections)
 
     @property
     def page(self) -> str:
         return PAGE_OF_PREFIX[self.key.split(".")[0]]
 
 
-PAGES = ("General", "Viewports", "Elements", "Rendering", "Compute", "Python", "Claude")
+PAGES = ("General", "Viewports", "Elements", "Rendering", "Compute", "Python", "AI")
 PAGE_OF_PREFIX = {"general": "General", "viewport": "Viewports", "elements": "Elements", "bonds": "Elements",
                   "render": "Rendering", "plots": "Rendering", "compute": "Compute", "performance": "Compute",
-                  "python": "Python", "llm": "Claude"}
+                  "python": "Python", "llm": "AI"}
 
 OPTIONS = (
     Option("general.layout", "notebook", "Window layout",
@@ -188,9 +190,36 @@ OPTIONS = (
     Option("python.extra_paths", "", "Extra module paths", "Folders added to sys.path, separated by ';'.", kind="dir"),
 
     # the API key itself is not an option: it lives in the OS keychain (ewald.llm.credentials)
-    Option("llm.model", "claude-opus-5-5", "Model", "Used by Ask Claude.",
-           choices=("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1")),
-    Option("llm.effort", "high", "Effort", "How hard Claude thinks before answering; lower is faster and cheaper.",
+    Option("llm.provider", "anthropic", "Provider",
+           "The AI service behind Ask AI, the AI chat and ewald ask: Anthropic (Claude), OpenAI, Google "
+           "Gemini, an OpenAI-compatible server (Ollama, LM Studio, vLLM, OpenRouter), an API gateway "
+           "with a credential ticket, or a plugin's.",
+           kind="ai_provider"),
+    Option("llm.model", "", "Model", "Empty: the provider's default. Any model id the service offers works.",
+           kind="ai_model"),
+    Option("llm.profiles", {}, "Saved connections",
+           "Named sets of provider, model, address and headers; pick one to fill in the fields below. "
+           "ewald ask --profile NAME uses one from the command line. API keys stay in the keychain.",
+           kind="ai_profiles"),
+    Option("llm.base_url", "", "Server URL",
+           "Empty: the provider's own address. For an OpenAI-compatible server, its address, "
+           "e.g. http://localhost:11434/v1 (Ollama) or http://localhost:1234/v1 (LM Studio); "
+           "for a gateway, $GATEWAY_BASE_URL when empty."),
+    Option("llm.route_prefix", "", "Model prefix",
+           "Put in front of the model id in each request, e.g. openai/ for a gpt-oss gateway route. "
+           "Empty: $GATEWAY_ROUTE_PREFIX for a gateway, else none."),
+    Option("llm.user_id", "", "User id",
+           "Sent as the User-Id header to an API gateway. Empty: $GATEWAY_USER_ID, else your login name."),
+    Option("llm.system_name", "", "System name",
+           "Sent as the X-System-Name header to an API gateway. Empty: $GATEWAY_SYSTEM_NAME, else ewald."),
+    Option("llm.headers", "", "Extra headers",
+           "HTTP headers sent with every request, as Name: value pairs separated by ';' (proxies, gateways). "
+           "Put secrets in the API key field, not here."),
+    Option("llm.timeout", 0.0, "Timeout",
+           "Seconds one request may take. 0: the provider's default (a gateway: $GATEWAY_TIMEOUT, else 120).",
+           minimum=0.0, maximum=3600.0),
+    Option("llm.effort", "high", "Effort",
+           "How hard the model thinks before answering (Claude, OpenAI reasoning models); lower is faster and cheaper.",
            choices=("low", "medium", "high", "xhigh", "max")),
 )
 OPTION = {o.key: o for o in OPTIONS}

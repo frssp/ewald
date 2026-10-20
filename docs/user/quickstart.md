@@ -56,7 +56,7 @@ def style(frame, data):
 ```
 
 Run all (Ctrl+Shift+Enter) reruns the notebook from the top. Steps can also come from the Python
-console, Ask Claude and the plugin side bar; they all end up as cells.
+console, Ask AI and the plugin side bar; they all end up as cells.
 
 ## Save and share
 

@@ -62,7 +62,7 @@ distribution function of the frame with matplotlib and places it as an image.
 
 | Member | What it does |
 |---|---|
-| `name` | The name shown in the GUI, sessions, `ewald plugins` and the Claude tools (default: the class name). |
+| `name` | The name shown in the GUI, sessions, `ewald plugins` and the AI tools (default: the class name). |
 | `__init__(...)` | Every argument stored as an attribute of the same name, with a default; the GUI form and sessions are built from the signature. `corner` and `axes` get a drop-down in the GUI. |
 | `applies(data)` | Optional; return False when there is nothing to draw. |
 | `layout(data, ctx)` | Return a list of items. Never modify `data`. |
@@ -101,7 +101,7 @@ entry point in an installed package:
 "Stamp" = "my_package.overlays:Stamp"
 ```
 
-A plugin cannot take the name of a built-in overlay. The Claude tools `list_overlays`,
+A plugin cannot take the name of a built-in overlay. The AI tools `list_overlays`,
 `add_overlay` and `remove_overlay` see every registered overlay.
 
 ## Testing an overlay

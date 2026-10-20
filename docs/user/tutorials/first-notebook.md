@@ -93,8 +93,8 @@ itself, since it is small. See [Notebooks](../notebooks.md#notebook-files).
 
 ## Going further
 
-- Ask Claude (the AI button in the activity bar opens the chat left of the notebook, or Ctrl+J with atoms picked) "what are these atoms?" about the gold
-  ones; its answer can add steps, which appear as cells ([Claude integration](../claude.md)).
+- Ask AI (the AI button in the activity bar opens the chat left of the notebook, or Ctrl+J with atoms picked) "what are these atoms?" about the gold
+  ones; its answer can add steps, which appear as cells ([AI integration](../claude.md)).
 - Replace the coordination step with `PolyhedralTemplateMatching()` or
   `CommonNeighborAnalysis()` to classify the local structure instead ([Modifiers](../modifiers.md)).
 - View › Minimal mode (Ctrl+Shift+M) leaves only the notebook and the view; Ctrl+K finds any

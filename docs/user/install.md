@@ -64,7 +64,7 @@ Optional parts are extras, installed only when you need them:
 | `movie` | MP4/AVI/MOV export with the ffmpeg binary from imageio-ffmpeg (GIF and PNG need no extra) | `pip install -e ".[movie]"` |
 | `formats` | H5MD, vaspout.h5, MDTraj HDF5 (h5py) and GROMACS XTC/TRR, DCD, NetCDF (MDAnalysis) | `pip install -e ".[formats]"` |
 | `ovito` | `DislocationAnalysis` (DXA) and `OvitoModifier`; the `ovito` wheel pins its own PySide6, so install it in the same command as `gui` | `pip install -e ".[gui,ovito]"` |
-| `llm` | Claude agent and MCP server | `pip install -e ".[llm]"` |
+| `llm` | AI agent (Claude, OpenAI, Gemini, local servers) and MCP server | `pip install -e ".[llm]"` |
 | `symmetry` | spglib, for `SymmetryAnalysis` (space group, Wyckoff positions) | `pip install -e ".[symmetry]"` |
 | `dev` | pytest, spglib | `pip install -e ".[dev]"` |
 

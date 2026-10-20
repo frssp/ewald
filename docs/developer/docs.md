@@ -33,7 +33,7 @@ statically, so building the docs does not need the C++ extension.
 ## When to update
 
 - Every pull request that adds or changes a feature (a modifier, reader, writer, renderer
-  option, CLI command, Claude tool, preference or GUI menu entry) regenerates the inventory with
+  option, CLI command, AI tool, preference or GUI menu entry) regenerates the inventory with
   `python -m ewald inventory -o docs/features.md --gui` (under `xvfb-run -a` without a display)
   and updates `docs/todo.md`: remove what it finishes, add what it leaves open.
   `tests/test_docs.py` fails when the non-GUI part is stale, `tests/test_gui.py` when the menus are.

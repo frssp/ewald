@@ -60,7 +60,7 @@ A visual element is a subclass of `ewald.scene.VisualElement`:
 
 | Member | What it does |
 |---|---|
-| `name` | The name shown in the GUI, sessions, `ewald plugins` and the Claude tools (default: the class name). |
+| `name` | The name shown in the GUI, sessions, `ewald plugins` and the AI tools (default: the class name). |
 | `__init__(...)` | Every argument stored as an attribute of the same name, with a default. The GUI parameter form and sessions are built from the signature, as for modifiers. |
 | `applies(data)` | Optional; return False when there is nothing to draw. Keep it cheap. |
 | `build(data, ctx)` | Return one primitive, a list of them, `(name, primitive)` pairs, or `None`. Never modify `data`. |
@@ -94,7 +94,7 @@ The ray tracer and OpenGL ignore cylinder `alpha` (except that the vector render
 | Scripts | `render(..., visuals=[...])`, `ewald.render.build_scene`, `ewald.raytrace.scene_from_data`, `ewald.vector.render_vector` |
 | GUI | Pipeline panel › "+ Visual" adds it under Visual elements, with a checkbox and a parameter form; Del removes it |
 | Sessions | stored in the view style (`style.visuals`) and restored by `load_session(...).render_kwargs()` |
-| Claude tools | `list_visuals`, `add_visual`, `remove_visual`; `render_image` draws the added ones |
+| AI tools | `list_visuals`, `add_visual`, `remove_visual`; `render_image` draws the added ones |
 | `ewald plugins` | listed as `visual <name>` with its category and origin |
 
 ## Registering

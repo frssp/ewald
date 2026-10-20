@@ -20,7 +20,7 @@ _ICONS = {
     "Compute": '<rect x="6" y="6" width="12" height="12" rx="1.5"/><rect x="9.5" y="9.5" width="5" height="5"/>'
                '<path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
     "Python": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/>',
-    "Claude": '<path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6z"/><path d="M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z"/>',
+    "AI": '<path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6z"/><path d="M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z"/>',
 }
 
 
@@ -136,3 +136,63 @@ class _PathEdit(QtWidgets.QWidget):
             path = QtWidgets.QFileDialog.getExistingDirectory(self, "Folder", self.edit.text())
         if path:
             self.edit.setText(path)
+
+
+class _ProfileBox(QtWidgets.QWidget):
+    """Saved AI connections (``llm.profiles``): a picker plus Save as… and Delete. Picking one
+    emits ``chosen(name)``; the dialog copies its fields into the rows below."""
+
+    changed = QtCore.Signal()
+    chosen = QtCore.Signal(str)
+    save_requested = QtCore.Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.profiles: dict = {}
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        self.combo = QtWidgets.QComboBox()
+        self.combo.activated.connect(self._activated)
+        self.save = QtWidgets.QPushButton("Save as…", objectName="secondary",
+                                          toolTip="Save the provider, model and connection below under a name")
+        self.save.clicked.connect(self._ask_name)
+        self.delete = QtWidgets.QPushButton("Delete", objectName="secondary", toolTip="Forget the chosen connection")
+        self.delete.clicked.connect(lambda: self.remove(self.combo.currentData()))
+        lay.addWidget(self.combo, 1)
+        lay.addWidget(self.save)
+        lay.addWidget(self.delete)
+        self.set({})
+
+    def set(self, profiles: dict, current: str | None = None):
+        self.profiles = {k: dict(v) for k, v in (profiles or {}).items()}
+        current = current if current is not None else self.combo.currentData()
+        self.combo.blockSignals(True)
+        self.combo.clear()
+        self.combo.addItem("No saved connections" if not self.profiles else "Choose a saved connection…", None)
+        for name, p in sorted(self.profiles.items()):
+            self.combo.addItem(name, name)
+            self.combo.setItemData(self.combo.count() - 1,
+                                   " · ".join(str(v) for v in (p.get("provider"), p.get("model"), p.get("base_url")) if v),
+                                   QtCore.Qt.ToolTipRole)
+        self.combo.setCurrentIndex(max(0, self.combo.findData(current)) if current else 0)
+        self.combo.blockSignals(False)
+        self.delete.setEnabled(bool(self.combo.currentData()))
+
+    def _activated(self, _index):
+        name = self.combo.currentData()
+        self.delete.setEnabled(bool(name))
+        if name:
+            self.chosen.emit(name)
+
+    def _ask_name(self):
+        name, ok = QtWidgets.QInputDialog.getText(self, "Save connection", "Name:",
+                                                  text=self.combo.currentData() or "")
+        if ok and name.strip():
+            self.save_requested.emit(name.strip())
+
+    def remove(self, name):
+        if name in self.profiles:
+            del self.profiles[name]
+            self.set(self.profiles, "")
+            self.changed.emit()

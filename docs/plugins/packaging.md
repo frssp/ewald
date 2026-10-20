@@ -64,7 +64,7 @@ Modifiers use the group `ewald.modifiers`; the entry-point name becomes the modi
 LocalComposition = "ewald_sro.modifiers:LocalComposition"
 ```
 
-Claude tools use `ewald.tools` ([Claude tool plugins](tools.md)). The first-party packages in
+AI tools use `ewald.tools` ([AI tool plugins](tools.md)). The first-party packages in
 [frssp/ewald-plugins](https://github.com/frssp/ewald-plugins) (`packages/ewald-phonopy`,
 `packages/ewald-plumed`) are complete examples with readers, modifiers, tools, a manifest and
 tests.

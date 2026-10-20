@@ -55,6 +55,6 @@ site (`mkdocs serve`) or use `help()` in Python, or read `llms.txt` for a compac
     options:
       show_root_heading: false
 
-## Claude
+## AI
 
 ::: ewald.llm.Agent

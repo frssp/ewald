@@ -1,7 +1,7 @@
 """Feature inventory: docs/features.md, generated from the code.
 
 ``python -m ewald inventory -o docs/features.md`` rewrites the file from the registries
-(modifiers, readers, writers, renderers, CLI parser, Claude tools, settings). The GUI section
+(modifiers, readers, writers, renderers, CLI parser, AI tools and providers, settings). The GUI section
 needs a live main window, so it is regenerated only with ``--gui`` (PySide6 and a display) and
 otherwise carried over from the existing file. ``tests/test_docs.py`` and ``tests/test_gui.py``
 fail when the file is stale, like ``llms.txt``.
@@ -182,16 +182,24 @@ def claude_section() -> list[str]:
     from .llm.tools import Toolset
 
     ts = Toolset(None, allow_code=True)
-    out = ["## Claude integration", "",
-           "The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (MCP server). "
-           "Tools marked *code* exist only with `allow_code=True`. Details: [Claude integration](user/claude.md).",
-           ""]
+    from .llm.providers import BUILTIN
+
+    out = ["## AI integration", "",
+           "The same tools serve Ask AI and the AI chat, `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` "
+           "(MCP server), whichever provider answers. Tools marked *code* exist only with `allow_code=True`. "
+           "Details: [AI integration](user/claude.md).", "",
+           "Providers (Preferences > AI, `--provider`; `@ai_provider` plugins add more):", ""]
+    out += _table(("Provider", "Name", "Default model", "Key"),
+                  [(p.label, f"`{p.name}`", f"`{p.default_model}`",
+                    (f"`{p.env_var}` or keychain" if p.env_var else "optional") if p.key_name else "none")
+                   for p in BUILTIN.values()])
+    out += ["", "Tools:", ""]
     plain = set(Toolset(None).tools)
     rows = [(f"`{name}`" + ("" if name in plain else " *code*"), first_sentence(t.description))
             for name, t in ts.tools.items()]
     out += _table(("Tool", "What it does"), rows)
     out += ["", "Also: `ewald describe` / `ewald narrate` (rule-based descriptors and a trajectory timeline, "
-            "Claude-written when a client is available), Modifier Forge (`ewald forge`) and the `llms.txt` API "
+            "AI-written when a client is available), Modifier Forge (`ewald forge`) and the `llms.txt` API "
             "reference (`ewald api`).", ""]
     return out
 
@@ -203,9 +211,10 @@ def plugins_section() -> list[str]:
     out = ["## Plugins", "",
            f"Entry point groups `{plugins.READER_GROUP}`, `{plugins.WRITER_GROUP}`, `{plugins.MODIFIER_GROUP}`, "
            f"`{plugins.VISUAL_GROUP}`, `{plugins.OVERLAY_GROUP}`, `{plugins.COLORMAP_GROUP}`, "
-           f"`{plugins.THEME_GROUP}`, `{plugins.TOOL_GROUP}` and `{plugins.UI_THEME_GROUP}`, or a file in "
+           f"`{plugins.THEME_GROUP}`, `{plugins.TOOL_GROUP}`, `{plugins.UI_THEME_GROUP}` and "
+           f"`{plugins.AI_PROVIDER_GROUP}`, or a file in "
            "`<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / "
-           "`@colormap` / `@theme` / `@claude_tool` / `@ui_theme`; `ewald plugins` lists "
+           "`@colormap` / `@theme` / `@ai_tool` (or `@claude_tool`) / `@ui_theme` / `@ai_provider`; `ewald plugins` lists "
            "what loaded. "
            "Details: [Plugins](plugins/index.md).", ""]
     for path in examples:

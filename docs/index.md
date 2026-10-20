@@ -30,7 +30,7 @@ The manual has three parts.
 
 **[User manual](user/install.md)** is for people analysing simulations: installing, the
 tutorials, notebooks, the desktop GUI, which files can be read, every modifier, Python scripting, GPU compute,
-publication rendering, the Claude tools and the command line.
+publication rendering, the AI tools and the command line.
 
 **[Plugins](plugins/index.md)** is for people extending ewald without changing it: reader
 plugins for new file formats, your own modifiers, how to test them, and how to share them as
