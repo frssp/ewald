@@ -281,7 +281,8 @@ detail. Compute › Memory › *Frame cache memory* (2048 MB) caps how much the 
 cache holds; the current frame is always kept. Scripts set the same cap with
 `Pipeline(..., cache_memory=bytes)` or `pipe.cache_memory`.
 `python benchmarks/large_files.py` times opening, frame switching and memory on generated
-multi-million-atom files.
+multi-million-atom files. `python benchmarks/analysis.py` times the analysis modifiers on a
+108k-atom crystal and the ray tracer at each quality preset.
 
 The viewport draws a change once, in the next repaint: several changes made before the
 repaint (a new frame, picks, a camera move) cost one render, a mouse move while rotating costs

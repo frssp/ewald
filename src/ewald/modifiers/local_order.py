@@ -46,13 +46,19 @@ class CentroSymmetry(Modifier):
                 csp = _native().csp_matching(delta, count, 0)
             else:
                 d = xp.asarray(np.where(np.isfinite(dist)[..., None], delta, np.nan))
+                # |r_i + r_j|^2 of every neighbor pair, one pair (row) at a time over contiguous
+                # (k, N) components: gathering an (N, k(k-1)/2, 3) array is ~8x slower
+                comp = [xp.ascontiguousarray(d[..., c].T) for c in range(3)]
                 iu, ju = np.triu_indices(k, 1)
-                s = d[:, iu, :] + d[:, ju, :]
-                pair = xp.nan_to_num((s * s).sum(-1), nan=np.inf)
-                pair = xp.sort(pair, axis=1)
+                pair = xp.empty((len(iu), len(pos)))
+                for p, (a, b) in enumerate(zip(iu, ju)):
+                    sx, sy, sz = (c[a] + c[b] for c in comp)
+                    pair[p] = sx * sx + sy * sy + sz * sz
+                pair[xp.isnan(pair)] = np.inf  # missing neighbors sort last
+                pair = xp.sort(pair, axis=0)
                 ncount = xp.asarray(count)
-                take = xp.arange(pair.shape[1])[None, :] < (ncount // 2)[:, None]
-                csp = be.to_numpy(xp.where(take, pair, 0.0).sum(1))
+                take = xp.arange(pair.shape[0])[:, None] < (ncount // 2)[None, :]
+                csp = be.to_numpy(xp.where(take, pair, 0.0).sum(0))
         out = np.zeros(data.count)
         if subset is None:
             out = csp
