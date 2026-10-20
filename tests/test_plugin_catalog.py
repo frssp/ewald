@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from ewald import plugin_catalog as pc
 from ewald import plugins
 
@@ -185,3 +187,18 @@ def test_pip_command_falls_back_to_uv_without_pip(monkeypatch):
     assert "--upgrade" in pc.pip_command("update", "ewald-x")
     un = pc.pip_command("uninstall", "ewald-x")
     assert un[:3] == ["/usr/bin/uv", "pip", "uninstall"] and "-y" not in un and un[-1] == "ewald-x"
+
+
+def test_install_checks_the_catalog_sha256_before_writing(tmp_path):
+    from ewald.trust import UntrustedCode, sha256
+
+    src = tmp_path / "src" / "hashed_shift.py"
+    src.parent.mkdir()
+    src.write_text(PLUGIN.replace("CatalogShift", "HashedShift"))
+    good = pc.Entry(name="Hashed shift", source=str(src), sha256=sha256(src.read_bytes()).upper())
+    bad = pc.Entry(name="Hashed shift", source=str(src), sha256="0" * 64)
+    with pytest.raises(UntrustedCode, match="sha256"):
+        pc.install_file(bad)
+    assert not (plugins.plugin_dir() / "hashed_shift.py").exists()   # nothing written or imported
+    assert pc.install_file(good) == ["HashedShift"]
+    pc.remove_file(next(i for i in pc.installed() if i.id == "hashed_shift"))

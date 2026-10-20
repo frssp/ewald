@@ -11,8 +11,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - Architecture cleanup from the 2026-10-20 systems review, one small pull request each: read-only
   cached frames (done), core never imports `ewald.gui` (done, `tests/test_architecture.py`),
   in-process notebook cells off the GUI thread with Interrupt (done), one trust check for every
-  code-execution path plus sha256 for catalog downloads, a versioned plugin API (`PLUGIN_API`),
-  then splitting `plugins.py` and `gui/notebook_panel.py`.
+  code-execution path plus sha256 for catalog downloads (done: `trust.py`, `EXEC_SITES`), a
+  versioned plugin API (`PLUGIN_API`), then splitting `plugins.py` and `gui/notebook_panel.py`.
 
 ## Next
 
@@ -410,6 +410,9 @@ mixins and helper modules):
 
 ## Security
 
+- Percent-format `.py` and `.ipynb` notebooks open trusted (only `.ewd` opens restricted), so a
+  notebook someone mailed runs on Run all without a question. Jupyter's answer is a store of
+  notebooks this user saved (path and content hash); others open restricted. Decide with the owner.
 From the 2026-10-19 review (expression sandbox, session classes, Forge consent and environment,
 `export_file` paths, PLUMED `LOAD` and the known_hosts key type are fixed):
 

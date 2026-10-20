@@ -349,9 +349,7 @@ class Notebook:
 
         from .kernel import KernelError, KernelSource, kernel_pipeline
 
-        if self.restricted:
-            raise PermissionError(f"{self.name} came from an .ewd file and is not trusted yet: "
-                                  "call notebook.trust() (Run all in the GUI asks first)")
+        self._require_trust()
         cell = self.cells[index]
         specs = [{"id": c.id, "kind": c.kind, "source": c.source} for c in self.cells]
         try:
@@ -440,10 +438,14 @@ class Notebook:
             load_bundled_plugins(self)
         self.restricted = False
 
+    def _require_trust(self):
+        from .trust import require
+
+        require(not self.restricted, f"{self.name} (from an .ewd file)",
+                "call notebook.trust() (Run all in the GUI asks first)")
+
     def _exec(self, cell: Cell, filename: str) -> bool:
-        if self.restricted:
-            raise PermissionError(f"{self.name} came from an .ewd file and is not trusted yet: "
-                                  "call notebook.trust() (Run all in the GUI asks first)")
+        self._require_trust()
         token = _DATA_DIRS.set(tuple(self._data_dirs()))
         try:
             return self._exec_cell(cell, filename)

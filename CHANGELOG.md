@@ -7,6 +7,12 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ## [Unreleased]
 
+### Added
+
+- Plugin catalogs can give a `.py` entry a `sha256`; *Install* refuses a download that does not
+  match it. `ewald.trust` collects the code-execution checks (`UntrustedCode`, a
+  `PermissionError`, is raised for an untrusted `.ewd` notebook).
+
 ### Changed
 
 - Notebook cells in the app's own Python run on a worker thread: a long cell no longer freezes the

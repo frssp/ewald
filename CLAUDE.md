@@ -41,7 +41,8 @@ kept for history.
 - Security: a session, notebook, `.ewd` or text inside a structure file (prompt injection to Claude)
   must not run code unless trusted (`allow_code`, `Notebook.trust()`). Code that evaluates strings,
   imports by name, or writes files for Claude needs the same checks and a case in
-  `tests/test_security.py`. AI API keys (one per provider) live in the keychain (`ewald/keychain.py`,
+  `tests/test_security.py` (every exec/eval/import-by-name site is listed in its `EXEC_SITES`;
+  `ewald/trust.py` describes the gates). AI API keys (one per provider) live in the keychain (`ewald/keychain.py`,
   `llm/credentials.py`); never put them in `os.environ` or settings.json.
 - GUI: PySide6 only (`QT_API=pyside6`). Over `ssh -X` the legacy OpenGL 1.x viewport is chosen
   automatically (`viewport.backend` / `EWALD_VIEWPORT`); this is still unverified on a real ssh -X

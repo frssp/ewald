@@ -141,7 +141,8 @@ or a project can publish its own list:
 {"format": 1, "plugins": [
   {"id": "local_strain", "name": "Local strain", "summary": "Atomic strain against a reference frame",
    "kinds": ["modifier"], "source": "https://example.org/plugins/local_strain.py",
-   "version": "0.2", "requires_ewald": ">=0.1", "author": "Kim lab", "homepage": "https://example.org"},
+   "version": "0.2", "requires_ewald": ">=0.1", "author": "Kim lab", "homepage": "https://example.org",
+   "sha256": "<hex SHA-256 of local_strain.py>"},
   {"id": "ewald-cp2k", "name": "ewald-cp2k", "summary": "CP2K readers", "kinds": ["reader"],
    "source": "pip:ewald-cp2k"}
 ]}
@@ -149,6 +150,10 @@ or a project can publish its own list:
 
 `source` is a `.py` file (a URL, an absolute path, or a path relative to the index), which
 *Install* copies into the plugin folder, or `pip:<requirement>`, which it installs with pip.
+A `.py` entry with `sha256` is installed only when the downloaded file matches it (nothing is
+written or imported otherwise), so a file that changed on the server after the index was
+published is refused; `python -c "from ewald.trust import sha256; print(sha256(open('f.py','rb').read()))"`
+prints the value. Pin `pip:` sources to a release or a commit instead.
 `id` is the plugin's id once installed (the file stem, or the package's `ewald-plugin.toml`
 name); the side bar matches an entry to an installed plugin by `id`, then by name, so an
 installed plugin is not offered twice. When an entry has a newer `version` than the installed

@@ -77,6 +77,11 @@ CI exercises the CUDA path. See [Compute backends](backends.md).
 lazily, inside the functions that need them, and tests skip with `pytest.importorskip`.
 Headless `compute()` and `render()` never read user settings implicitly.
 
+**One place decides about running code.** `trust.py` describes every gate (restricted `.ewd`
+notebooks, `allow_code` for sessions and AI tools, plugin `sha256`), and
+`tests/test_security.py::EXEC_SITES` lists every `exec`/`eval`/import-by-name with its gate, so a
+new one fails until it is reviewed and listed.
+
 **The core never imports the GUI.** `ewald.gui` sits on top; data both sides need lives in the
 core (`view_style.py` for the view style, `ui_tokens.py` for the theme palettes) and `ewald.gui`
 re-exports it. `tests/test_architecture.py` fails when a core module imports `ewald.gui` or
