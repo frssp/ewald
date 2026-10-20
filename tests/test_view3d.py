@@ -184,7 +184,7 @@ def test_gui_follows_the_view_and_writes_the_view_cell(tmp_path):
     from ewald.gui import compute, notebook_panel
     from ewald.gui.app import MainWindow
 
-    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])  # noqa: F841
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     notebook_panel.CONFIRM_UNSAVED, compute.BUDGET = False, None
     path = tmp_path / "cu.extxyz"
     write(path, [bulk("Cu", "fcc", a=3.615, cubic=True).repeat(2)] * 3)
@@ -215,7 +215,16 @@ def test_gui_follows_the_view_and_writes_the_view_cell(tmp_path):
     assert "_labels-labels" in w.viewport.plotter.actors and w.style.labels == "{type}{index}"
     w._style_changed()                                                   # and they survive a GUI write-back
     assert "labels='{type}{index}'" in cell.source and "transparency={'Cu': 0.5}" in cell.source
+    # delete the window now, in the GUI thread: left to the garbage collector it can crash a later GUI test
+    import gc
+
+    from PySide6 import QtCore
+
     w.close()
+    w.deleteLater()
+    app.processEvents()
+    app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+    gc.collect()
 
 
 def test_elements_by_name_map_onto_the_settings(srtio3):
