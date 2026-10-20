@@ -34,7 +34,7 @@ print(pipe.view.source())                     # the same as a view(pipe, ...) li
 | Group | Settings |
 |---|---|
 | style | `style` (Ball & stick, Space-filling, Simple (ASE), Points), `theme`, `atom_style` (auto, mesh, impostor, flat), `background` |
-| atoms | `atoms` (False: a stick model), `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `radius_preset`, `oxidation_states` |
+| atoms | `atoms` (False: a stick model), `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `transparency` {type: 0..1}, `selection` (True: selected atoms red, False, or a color), `radius_preset`, `oxidation_states` |
 | bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax]], `bond_factor`, `bond_radius` |
 | cell | `cell`, `cell_width`, `cell_color`, `cell_radius` (ray-traced tube, Angstrom) |
 | boundary | `boundary` (VESTA range), `boundary_bonds` (half, complete, none), `replicate` [na, nb, nc], `replicate_cell` (super, unit, all) |
@@ -62,6 +62,12 @@ pipe.view.elements["Particles"].enabled = False      # = pipe.view.atoms = False
 pipe.view.elements["Simulation cell"].set(color="grey", width=1.5)
 pipe.view.elements["Bonds"].settings                 # {'enabled': 'bonds', 'radius': 'bond_radius', ...}
 ```
+
+`transparency={"O": 0.6}` fades whole particle types with their half-bonds (1 hides the type);
+a fade or hide step wins where its value is larger. Particles a selection step selected (a
+`Selection` property) are drawn red, as in OVITO; `selection="orange"` picks another color and
+`selection=False` turns the highlight off. Coloring steps (`AssignColor`) clear the selection,
+so their atoms keep the color they set.
 
 Polyhedra, isosurfaces and grid slices are `data.surfaces` meshes made by a step
 (`CoordinationPolyhedra` makes `coordination-polyhedra`, `CreateIsosurface` its `identifier` and

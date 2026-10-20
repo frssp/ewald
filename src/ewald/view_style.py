@@ -51,6 +51,8 @@ class ViewStyle:
     show_atoms: bool = True                           # the Particles element (False: a stick model)
     cell_radius: float | None = None                  # ray-traced cell tube radius (A); None: automatic
     surfaces: dict = field(default_factory=dict)      # data.surfaces look by name: {visible, color, transparency, edges}
+    type_transparency: dict = field(default_factory=dict)  # type -> 0..1 (1 hides the type)
+    selection: object = True                          # highlight 'Selection': True (red), False or a color
 
     def apply_preset(self, name: str, types=()):
         """Switch to a style preset. 'Simple (ASE)' also applies the ASE theme (white background);
@@ -91,6 +93,12 @@ class ViewStyle:
             kw["cell_radius"] = self.cell_radius
         if self.surfaces:
             kw["surfaces"] = {k: dict(v) for k, v in self.surfaces.items()}
+        if self.type_transparency:
+            kw["type_transparency"] = dict(self.type_transparency)
+        if self.selection is not False:
+            from .view3d import SELECTION_COLOR
+
+            kw["selection_color"] = SELECTION_COLOR if self.selection is True else self.selection
         if self.boundary:
             kw["boundary"] = [list(map(float, p)) for p in self.boundary] if np.ndim(self.boundary) == 2 \
                 else [float(x) for x in self.boundary]
@@ -182,6 +190,8 @@ class ViewStyle:
         self.show_cell, self.cell_width = bool(view.cell), float(view.cell_width)
         self.show_atoms, self.cell_radius = bool(view.atoms), view.cell_radius
         self.surfaces = {k: dict(v) for k, v in view.surfaces.items()}
+        self.type_transparency = dict(view.transparency)
+        self.selection = view.selection
         self.boundary = list(view.boundary or [])
         self.boundary_bonds = view.boundary_bonds
         self.replicate = list(view.replicate or [])
@@ -234,7 +244,8 @@ class ViewStyle:
                else None, "replicate_cell": self.replicate_cell,
                "visuals": [dict(v) for v in self.visuals], "vectors": self.vectors,
                "trajectory_width": self.trajectory_width, "atoms": bool(self.show_atoms),
-               "cell_radius": self.cell_radius, "surfaces": {k: dict(v) for k, v in self.surfaces.items()}}
+               "cell_radius": self.cell_radius, "surfaces": {k: dict(v) for k, v in self.surfaces.items()},
+               "transparency": dict(self.type_transparency), "selection": self.selection}
         if theme is None or theme.radius_preset != self.radius_preset:
             out["radius_preset"] = self.radius_preset
         base = theme.background if theme is not None and theme.background is not None else default_background()
