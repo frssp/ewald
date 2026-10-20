@@ -28,7 +28,8 @@ density, minimum distance, coordination histograms, g(r) peaks, sanity warnings)
 the model can look at. The tools are: `load_structure`, `describe_frame`,
 `describe_trajectory`, `event_details`, `list_modifiers`, `add_modifier`, `remove_modifier`,
 `show_pipeline`, `set_frame`, `evaluate_expression`, `compute_rdf`, `analyze_symmetry`,
-`compute_diffraction`, `compute_msd`,
+`compute_diffraction`, `compute_msd` (time per frame from the run's input files), `check_run` (what the run is and
+whether it converged and equilibrated; see [Runs](runs.md)),
 `describe_selection`,
 `get_view` and `set_view` (every display setting of the Structure view, the same ones as the notebook's
 `view(pipe, ...)` cell: style, colors, radii, bonds, cell, background, boundary, camera, frame and

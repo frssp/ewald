@@ -190,6 +190,10 @@ Show as code cell. Notebook › Clear cell output (Ctrl+Shift+Backspace) and Cle
 pipeline and its results stay, and the next save leaves the outputs out of the `.ipynb` or `.ewd`. Drag a cell by the dotted grip above its run button (it appears on hover) to move it; steps move with it in the
 pipeline. The `.py` button at the top shows the whole file.
 
+A notebook that loads several runs (`runs = load_runs("T*/XDATCAR")`) shows a run picker above its cells;
+picking a run binds `pipe` to it, so the 3D view follows ([Runs](runs.md)). Opening an MD run or a relaxation
+whose input files say so adds a `check_run(pipe)` cell, run at once.
+
 ## Notebook tabs
 
 Each open notebook has a tab at the top of the notebook panel. **+** or

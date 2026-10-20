@@ -456,8 +456,8 @@ class Toolset:
 
         @T("compute_msd",
            "Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per "
-           "type, with a linear-regime fit D = slope/6. Give timestep_fs (time between stored frames) to get D in "
-           "cm^2/s; otherwise D is in A^2 per frame.",
+           "type, with a linear-regime fit D = slope/6. timestep_fs (time between stored frames) defaults to what "
+           "the run's INCAR / log.lammps says (see check_run); with it D is in cm^2/s, else in A^2 per frame.",
            _obj({"start": {"type": "integer"}, "stop": {"type": "integer"}, "step": {"type": "integer"},
                  "timestep_fs": {"type": "number"},
                  "fit_range": {"type": "array", "items": {"type": "number"},
@@ -465,7 +465,10 @@ class Toolset:
                  "unwrapped": {"type": "boolean", "description": "coordinates are already unwrapped"}}))
         def compute_msd(start=0, stop=None, step=1, timestep_fs=None, fit_range=(0.1, 0.5), unwrapped=False):
             from ..kernels import trajectory_msd
+            from ..runinfo import run_info
 
+            if timestep_fs is None and run_info(self._need_pipeline()).time_per_frame:
+                timestep_fs = run_info(self._need_pipeline()).time_per_frame * 1000.0
             table = trajectory_msd(self._need_pipeline(), start, stop, step, unwrapped=unwrapped)
             lag = np.asarray(table["lag"], float)
             lo, hi = (int(f * len(lag)) for f in fit_range)
@@ -484,6 +487,18 @@ class Toolset:
                 fits[k] = entry
             return {"fit_lags": [float(lag[lo]), float(lag[min(hi, len(lag)) - 1])] if len(lag) else [],
                     "fits": fits, "table": downsample(table)}
+
+        @T("check_run",
+           "What the loaded run is and whether it can be trusted, from its input and log files (INCAR, OSZICAR, "
+           "OUTCAR, log.lammps): code, kind (md/relax/static/neb), ensemble, target temperature, MD time step and "
+           "time per stored frame, then findings: SCF steps that hit NELM, relaxation not converged, the first "
+           "equilibrated frame of MD, temperature off target, energy drift, LAMMPS warnings/errors, atoms too close. "
+           "Call it first on a new MD or relaxation output, and cite its findings.",
+           _obj({}))
+        def check_run():
+            from ..runinfo import check_run as _check
+
+            return _check(self._need_pipeline()).to_dict()
 
         @T("render_image",
            "Render a frame of the pipeline to PNG and return the image so you can inspect it. It draws with the "

@@ -10,6 +10,7 @@ LAMMPS numeric types wherever a file is read.
 | `ewald info FILE` | frame count, particle count, properties and cell of frame 0 |
 | `ewald render FILE OUT.png [--frame N] [--size W H] [--direction iso] [--bonds 2.8] [--color-by EXPR] [--cmap NAME] [--ao]` | render one frame |
 | `ewald gui [FILE] [--device cuda]` | open the desktop viewer (also `ewald-gui`) |
+| `ewald check FILE... [--json]` | what each run is (from INCAR / log.lammps) and whether it converged, equilibrated and kept its energy ([Runs](runs.md)); exit status 1 when something is wrong |
 | `ewald describe FILE [--frame N] [--trajectory]` | JSON summary of a frame, or of the run with detected events |
 | `ewald narrate FILE [--no-llm] [--render] [--json]` | event timeline of a trajectory |
 | `ewald ask FILE "question" [--select EXPR \| --ids 1,2] [--frame N] [--allow-code] [--script out.py] [--model ID] [--provider NAME] [--profile NAME] [--base-url URL]` | ask AI (Claude by default, or the provider in Preferences › AI) about a structure, or about the selected particles; `--script` saves the resulting pipeline |

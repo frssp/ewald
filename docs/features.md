@@ -7,7 +7,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Python API
 
-`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `View`, `view`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
+`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `View`, `view`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`, `run_info`, `check_run`, `load_runs`, `arrhenius`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
 
 ## Modifiers
 
@@ -313,6 +313,7 @@ Details: [Command line](user/cli.md).
 | `ewald examples` | list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...) | `--copy` `--papers` `--fetch` |
 | `ewald info INPUT` | print frames and properties | `--type-map` |
 | `ewald describe INPUT` | JSON summary of a frame or, with --trajectory, of the run | `--frame` `--trajectory` `--type-map` |
+| `ewald check [INPUT...]` | what a run is (from INCAR / log.lammps) and whether it converged and equilibrated | `--json` `--type-map` |
 | `ewald ask INPUT [QUESTION...]` | ask AI about a structure (Claude by default; needs the provider's package + key) | `--type-map` `--model` `--provider` `--profile` `--base-url` `--allow-code` `--script` `--select` `--ids` `--frame` |
 | `ewald narrate INPUT` | timeline of events in a trajectory (an AI writes it if available) | `--type-map` `--no-llm` `--render` `--model` `--provider` `--profile` `--base-url` `--json` |
 | `ewald api` | print the Python API reference for LLMs (llms.txt) | `--with-plugins` |
@@ -355,6 +356,7 @@ Tools:
 | `analyze_symmetry` | Space group (Hermann-Mauguin and number), point group, crystal system and the Wyckoff site of every symmetry-unique atom of a frame (spglib). |
 | `compute_diffraction` | Powder X-ray or neutron diffraction peaks of a frame (2-theta, d, hkl, relative intensity; strongest first), or the structure factor S(q) when kind='sq'. |
 | `compute_msd` | Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per type, with a linear-regime fit D = slope/6. |
+| `check_run` | What the loaded run is and whether it can be trusted, from its input and log files (INCAR, OSZICAR, OUTCAR, log.lammps): code, kind (md/relax/static/neb), ensemble, target temperature, MD time step and time per stored frame, then findings: SCF steps that hit NELM, relaxation not converged, the first equilibrated frame of MD, temperature off target, energy drift, LAMMPS warnings/errors, atoms too close. |
 | `render_image` | Render a frame of the pipeline to PNG and return the image so you can inspect it. |
 | `get_view` | The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, 'help' what each means. |
 | `set_view` | Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style preset, theme, element colors and radii, bonds on/off, bond table, cell, background, VESTA boundary, plugin visuals, vectors, camera (direction, zoom, rotate), frame, and picture options (renderer, quality, legends, scale bar, text). |
@@ -688,6 +690,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - 3D snapshot of the view
 - View settings with the camera
 - Analysis
+  - Run check (convergence, equilibration)
   - Radial distribution g(r)
   - Structure factor S(q)
   - Powder diffraction (XRD)

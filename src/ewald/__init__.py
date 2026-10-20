@@ -17,6 +17,8 @@ from .io import StaticSource, export_file, import_file
 from .pipeline import ComputeCancelled, ComputeContext, Modifier, Pipeline, PythonModifier
 from .view3d import View, view
 from .verbs import bond_angles, clusters, cna, msd, ptm, rdf, sq, vacf, voronoi, xrd
+from .runinfo import check_run, run_info
+from .runs import arrhenius, load_runs
 
 
 
@@ -34,4 +36,5 @@ __title__ = "EWALD: Extensible Workbench for Atomic Lattices & Dynamics"
 
 __all__ = ["Cell", "DataCollection", "Pipeline", "Modifier", "PythonModifier", "ComputeContext", "ComputeCancelled",
            "StaticSource", "import_file", "load", "View", "view", "export_file", "get_backend", "gpu_available",
-           "rdf", "msd", "vacf", "sq", "xrd", "bond_angles", "cna", "ptm", "voronoi", "clusters"]
+           "rdf", "msd", "vacf", "sq", "xrd", "bond_angles", "cna", "ptm", "voronoi", "clusters",
+           "run_info", "check_run", "load_runs", "arrhenius"]

@@ -862,10 +862,14 @@ class Notebook:
         self.dirty = False
 
     @classmethod
-    def from_pipeline(cls, pipeline: Pipeline, source_code: str | None = None, **kwargs) -> "Notebook":
+    def from_pipeline(cls, pipeline: Pipeline, source_code: str | None = None, check: bool = True,
+                      **kwargs) -> "Notebook":
         """A notebook for a pipeline that already exists (a file opened from the menu):
         an import cell, a load cell (``source_code``, e.g. ``pipe = import_file(...)``) and one
-        step per modifier. The pipeline object itself is used, nothing is read again."""
+        step per modifier. The pipeline object itself is used, nothing is read again. With
+        ``check``, an MD run or a relaxation whose input files say so (:func:`ewald.run_info`)
+        gets a ``check_run(pipe)`` cell, run at once, that says whether it converged and
+        from which frame it is equilibrated."""
         nb = cls(**kwargs)
         imports = Cell(IMPORTS)
         nb.cells.append(imports)
@@ -876,8 +880,21 @@ class Notebook:
         nb.namespace[nb.pipeline_name] = pipeline
         for m in pipeline.modifiers:
             nb.cells.append(Cell(step_source(m, nb.namespace, nb.pipeline_name), added=[m], state="ok"))
+        if check and _worth_checking(pipeline):
+            nb.cells.append(Cell(f"from ewald import check_run\ncheck = check_run({nb.pipeline_name})\ncheck"))
+            nb.run_cell(len(nb.cells) - 1, run_below=False)
         nb.dirty = False
         return nb
+
+
+def _worth_checking(pipeline) -> bool:
+    """An MD run or relaxation whose input files say so (a bare structure file is not)."""
+    from .runinfo import run_info
+
+    try:
+        return run_info(pipeline).kind in ("md", "relax")
+    except Exception:  # noqa: BLE001 - never stop a file from opening
+        return False
 
 
 IMPORTS = ("from ewald import import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\n"
