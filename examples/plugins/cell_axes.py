@@ -14,8 +14,7 @@ under the GUI's "+ Visual" button and in the Claude ``add_visual`` tool, or draw
 """
 import numpy as np
 
-from ewald.plugins import visual
-from ewald.scene import Spheres, VisualElement, make_arrows
+from ewald.plugin_api import Spheres, VisualElement, make_arrows, visual
 
 
 @visual(category="Annotations")
@@ -64,3 +63,6 @@ class SelectionHalo(VisualElement):
         # never write into data's arrays: they are shared with cached frames
         radii = default_radii(data)[picked] * self.scale
         return Spheres(data.positions[picked], radii, self.color, self.opacity, picked)
+
+
+__ewald__ = {"plugin_api": 1}   # plugin manifest: written for ewald.plugin_api version 1

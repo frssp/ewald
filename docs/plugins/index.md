@@ -70,6 +70,24 @@ A plugin can carry a [manifest](packaging.md#manifest) (`ewald-plugin.toml` in a
 with; ewald reads it without importing the plugin. `ewald plugins --disable ID` switches a
 plugin off without uninstalling it ([details](packaging.md#switching-a-plugin-off)).
 
+## The plugin API
+
+Import what a plugin needs from `ewald.plugin_api`:
+
+```python
+from ewald.plugin_api import DataCollection, Modifier, find_pairs, modifier
+```
+
+It holds the data model (`DataCollection`, `Cell`, `VoxelGrid`, `Bonds`, `SurfaceMesh`, `Table`),
+the pipeline (`Modifier`, `ComputeContext`, `Pipeline`, `StaticSource`, `load`), reader helpers
+(`FrameReader`, `open_binary`, `head_lines`, ...), drawing (`VisualElement`, `Spheres`,
+`OverlayElement`, `Text`, `Theme`, ...), AI tool helpers and every registration decorator.
+These names keep their meaning while `ewald.plugin_api.PLUGIN_API` (now 1) stays the same; a
+change that would break plugins raises it. Declare the version in the manifest
+(`"plugin-api": 1`, see [Manifest](packaging.md#manifest)) so an incompatible ewald refuses the
+plugin with a clear message instead of failing in the middle of a computation. Other
+`ewald.*` modules work as well, but they are internal and can change in any release.
+
 ## Where a plugin shows up
 
 Once registered, a plugin is used everywhere ewald reads files or runs modifiers:

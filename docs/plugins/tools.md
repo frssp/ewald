@@ -8,7 +8,7 @@ file format only your group uses.
 
 ```python
 # <config dir>/plugins/contacts.py
-from ewald.plugins import ai_tool
+from ewald.plugin_api import ai_tool
 
 
 @ai_tool(schema={"type": "object", "properties": {"cutoff": {"type": "number"}}})
@@ -56,8 +56,8 @@ it takes:
 
 ```python
 # <config dir>/plugins/mistral.py
+from ewald.plugin_api import ai_provider
 from ewald.llm.providers import Provider
-from ewald.plugins import ai_provider
 
 
 @ai_provider

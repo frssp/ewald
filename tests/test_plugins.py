@@ -361,6 +361,40 @@ def test_file_manifest_is_read_without_running_the_file(tmp_path):
     assert {p["id"] for p in st["plugins"] if p["kind"] != "built-in"} == {"lab-tools", "future"}
 
 
+def test_plugin_api_version_is_checked_before_import(tmp_path):
+    from ewald import plugin_api
+
+    _write_plugin("api_now.py", f'''
+        from ewald.plugin_api import DataCollection, Modifier, modifier
+
+        @modifier
+        class ApiNow(Modifier):
+            def modify(self, data, ctx):
+                data.attributes["ApiNow.ok"] = isinstance(data, DataCollection)
+
+        __ewald__ = {{"plugin_api": {plugin_api.PLUGIN_API}}}
+    ''')
+    _write_plugin("api_future.py", '''
+        raise RuntimeError("must not be imported")
+        __ewald__ = {"plugin-api": 99}
+    ''')
+    found = plugins.installed()
+    assert found["api_now"].state == "loaded" and found["api_now"].plugin_api == plugin_api.PLUGIN_API
+    future = found["api_future"]
+    assert future.state == "incompatible" and "plugin API 99" in future.errors[0] and "update ewald" in future.errors[0]
+    assert plugin_api.check(None) == "" and "whole number" in plugin_api.check("x")
+
+
+def test_every_plugin_api_name_resolves():
+    """The names promised by ewald.plugin_api exist (a rename elsewhere must keep them working)."""
+    from ewald import plugin_api
+
+    for name in plugin_api.__all__:
+        assert getattr(plugin_api, name) is not None, name
+    with pytest.raises(AttributeError, match="plugin API is"):
+        plugin_api.NotThere  # noqa: B018
+
+
 def test_plugin_without_manifest_gets_its_file_name():
     _write_plugin("plain.py", '''
         from ewald.plugins import colormap

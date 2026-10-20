@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 from ase.build import bulk
 
-from ewald import Pipeline, StaticSource
+from ewald.plugin_api import Pipeline, StaticSource
 from local_composition import LocalComposition
 
 

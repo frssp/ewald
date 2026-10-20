@@ -106,13 +106,18 @@ level; ewald reads it with `ast`. The end of the file is a good place, after a d
 
 ```python
 __ewald__ = {"id": "lab-tools", "display-name": "Lab tools", "version": "1.2.0",
-             "requires-ewald": ">=0.1"}
+             "requires-ewald": ">=0.1", "plugin-api": 1}
 ```
 
 A plugin folder with an `__init__.py` can use either form. Without a manifest the id is the
 file or folder name. Modifier Forge writes `__ewald__` with `"source": "forge"` into the
 plugins it saves, so they are listed as Forge plugins. `requires-ewald` takes comma-separated
 `>=`, `>`, `<=`, `<`, `==`, `!=` and `~=` clauses on release numbers.
+
+`plugin-api` (or `plugin_api`) is the version of [`ewald.plugin_api`](index.md#the-plugin-api)
+the plugin was written for. ewald refuses to load a plugin whose version it does not support,
+before importing it, and the Plugins side bar and `ewald plugins` say whether to update ewald or
+the plugin. Leave it out and the plugin loads on any version, at its own risk.
 
 ## Switching a plugin off
 

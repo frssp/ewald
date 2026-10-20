@@ -13,9 +13,7 @@ Expected arrays (the layout many MLIP/MD scripts dump):
 """
 import numpy as np
 
-from ewald import Cell, DataCollection
-from ewald.io.base import FrameReader
-from ewald.plugins import reader
+from ewald.plugin_api import Cell, DataCollection, FrameReader, reader
 
 _NAMES = {"forces": "Force", "velocities": "Velocity", "charges": "Charge", "energies": "Energy"}
 
@@ -53,3 +51,6 @@ class NpzTrajectoryReader(FrameReader):
 
 def _name(key):
     return _NAMES.get(key, key[:1].upper() + key[1:])
+
+
+__ewald__ = {"plugin_api": 1}   # plugin manifest: written for ewald.plugin_api version 1

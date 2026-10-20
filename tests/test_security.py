@@ -191,6 +191,7 @@ EXEC_SITES = {
     ("notebook.py", "__import__"): "the literal name 'ewald'",
     ("notebook.py", "eval"): "cells (trust: Notebook.restricted) and the step of a cell that ran",
     ("notebook.py", "exec"): "cells (trust: Notebook.restricted) and the imports of a cell that ran",
+    ("plugin_api.py", "import_module"): "module names from its fixed _NAMES table only",
     ("plugins.py", "exec_module"): "the plugin folder and installed packages, trusted like ewald",
     ("session.py", "exec"): "PythonModifier source, only with load_session(allow_code=True)",
     ("session.py", "import_module"): "modifier classes from loaded modules, or any with allow_code",

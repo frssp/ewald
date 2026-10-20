@@ -15,9 +15,7 @@ built-in modifier::
 """
 import numpy as np
 
-from ewald import Modifier
-from ewald.neighbors import find_pairs
-from ewald.plugins import modifier
+from ewald.plugin_api import Modifier, find_pairs, modifier
 
 
 @modifier(category="Analysis")
@@ -39,3 +37,6 @@ class LocalComposition(Modifier):
         fraction = be.to_numpy(xp.where(total > 0, same / xp.maximum(total, 1), 0.0))
         data[f"Local {self.element} Fraction"] = fraction       # a new array, never written in place
         data.attributes["LocalComposition.mean"] = float(np.mean(fraction))
+
+
+__ewald__ = {"plugin_api": 1}   # plugin manifest: written for ewald.plugin_api version 1

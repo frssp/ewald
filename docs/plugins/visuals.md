@@ -15,8 +15,7 @@ are registered the same way, so `ewald plugins` lists them next to yours.
 # <config dir>/plugins/cell_axes.py
 import numpy as np
 
-from ewald.plugins import visual
-from ewald.scene import VisualElement, make_arrows
+from ewald.plugin_api import VisualElement, make_arrows, visual
 
 
 @visual(category="Annotations")

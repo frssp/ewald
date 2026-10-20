@@ -769,6 +769,7 @@ class Plugin:
     description: str = ""
     publisher: str = ""
     requires_ewald: str = ""     # e.g. ">=0.2, <1"
+    plugin_api: object = None    # the ewald.plugin_api version it was written for (None: not declared)
     kind: str = "folder"         # "built-in" (ships with ewald), "package" (pip), "folder" (plugin folder)
     #                              or "forge" (written by Modifier Forge)
     origin: str = ""             # distribution name or file path
@@ -802,13 +803,15 @@ class Plugin:
         self.description = str(get("description") or self.description)
         self.publisher = str(get("publisher") or self.publisher)
         self.requires_ewald = str(get("requires-ewald", "requires_ewald") or self.requires_ewald)
+        api = get("plugin-api", "plugin_api")
+        self.plugin_api = api if api != "" else self.plugin_api
         if manifest.get("source") == "forge":
             self.kind = "forge"
 
     def as_dict(self) -> dict:
         return {"id": self.id, "name": self.name or self.id, "version": self.version,
                 "description": self.description, "publisher": self.publisher,
-                "requires_ewald": self.requires_ewald, "kind": self.kind, "origin": self.origin,
+                "requires_ewald": self.requires_ewald, "plugin_api": self.plugin_api, "kind": self.kind, "origin": self.origin,
                 "state": self.state, "enabled": self.enabled, "compatible": self.compatible,
                 "contributions": {k: list(v) for k, v in self.contributions.items()},
                 "errors": list(self.errors)}
@@ -972,6 +975,14 @@ def _admit(plugin: Plugin, off: set) -> bool:
     _registry.plugins[plugin.id] = plugin
     if plugin.id in off:
         plugin.enabled = False
+        return False
+    from .plugin_api import check
+
+    problem = check(plugin.plugin_api)
+    if problem:
+        plugin.compatible = False
+        plugin.errors.append(problem)
+        _registry.errors[plugin.origin] = problem
         return False
     if plugin.requires_ewald:
         try:
