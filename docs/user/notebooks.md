@@ -149,7 +149,8 @@ change back into this cell (a new one appears at the end when there is none), so
 always says how the picture was made. Insert › View settings with the camera also writes the
 current camera and frame. `pipe.view` is the same thing one setting at a time
 (`pipe.view.bonds = False`, `pipe.view.color("O", "red")`, `pipe.view.look("x").rotate(30, 15)`),
-and Claude's `set_view` tool changes it too.
+or one visual element at a time (`pipe.view.elements["Bonds"].radius = 0.12`,
+`pipe.view.surface("coordination-polyhedra", color="teal")`), and Claude's `set_view` tool changes it too.
 
 **Analysis cells** use a verb: one call adds the analysis step and returns its table.
 

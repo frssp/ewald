@@ -74,6 +74,8 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
     _s("background", None, "style", "Background color (any matplotlib color); None: the theme's, else the "
        "viewport's dark grey on screen and white in rendered images.", type=["string", "array", "null"]),
     # atoms
+    _s("atoms", True, "atoms", "Draw the atoms (the Particles element); False keeps bonds, polyhedra and the "
+       "rest, e.g. a stick model."),
     _s("radius_scale", 0.5, "atoms", "Factor on every atom radius (the style preset sets it)."),
     _s("colors", {}, "atoms", "Color per particle type, e.g. {'O': 'red', 'Ti': '#7f7fff'}; others keep the "
        "element (or theme) color.", type="object", additionalProperties=_COLOR),
@@ -97,6 +99,8 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
     _s("cell_width", 2.0, "cell", "Cell line width in pixels."),
     _s("cell_color", None, "cell", "Cell line color; None: black, or light grey on dark backgrounds.",
        type=["string", "array", "null"]),
+    _s("cell_radius", None, "cell", "Cell tube radius in Angstrom in ray-traced pictures; None: 0.15 % of the "
+       "cell diagonal.", type=["number", "null"]),
     # boundary
     _s("boundary", None, "boundary", "VESTA boundary (fractional), e.g. [-0.1, 1.1] or three pairs: also draws "
        "periodic images inside it and completes bonds and polyhedra cut by the cell. Display only.",
@@ -114,6 +118,12 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        type="array"),
     _s("vectors", None, "elements", "Per-atom vector properties as arrows: a property name ('Force'), a list, "
        "or {name: {VectorStyle fields}} (scaling, width, color, ...).", type=["string", "array", "object", "null"]),
+    _s("surfaces", {}, "elements", "Look of data.surfaces meshes by name ('coordination-polyhedra', "
+       "'isosurface', 'isosurface-', a slice's identifier) on top of what their step made: "
+       "{name: {'visible': bool, 'color': color, 'transparency': 0..1, 'edges': bool}}.",
+       type="object", additionalProperties={"type": "object", "properties": {
+           "visible": {"type": "boolean"}, "color": _COLOR, "transparency": {"type": "number"},
+           "edges": {"type": "boolean"}}}),
     _s("trajectory_width", 2.0, "elements", "Width in pixels of trajectory lines (GenerateTrajectoryLines); 0 hides them."),
     # camera
     _s("frame", 0, "camera", "Trajectory frame shown.", type="integer"),
@@ -147,7 +157,7 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        "{'name', 'params'}.", type="array"),
 ]}
 # keys of render() that are not named like the setting
-_RENDER_NAMES = {"colors": "type_colors", "radii": "type_radii", "cell": "show_cell"}
+_RENDER_NAMES = {"colors": "type_colors", "radii": "type_radii", "cell": "show_cell", "atoms": "show_atoms"}
 # settings a style preset implies (index into STYLE_PRESETS values)
 _PRESET_KEYS = {"radius_scale": 0, "bonds": 1, "atom_style": 2}
 GROUPS = ("style", "atoms", "bonds", "cell", "boundary", "elements", "camera", "picture")
@@ -278,6 +288,25 @@ class View:
                 radii[str(t)] = float(radius)
         return self.update(radii=radii)
 
+    def surface(self, name: str, **style) -> "View":
+        """Restyle the ``data.surfaces`` mesh ``name`` (``visible``, ``color``, ``transparency``, ``edges``)
+        without editing its step; ``surface(name)`` alone gives back the step's look."""
+        surfaces = dict(self.surfaces)
+        merged = {**surfaces.get(name, {}), **style} if style else {}
+        if merged:
+            surfaces[name] = merged
+        else:
+            surfaces.pop(name, None)
+        return self.update(surfaces=surfaces)
+
+    @property
+    def elements(self) -> "Elements":
+        """The visual elements by name (``Particles``, ``Bonds``, ``Simulation cell``, ``Surfaces``,
+        ``Vectors``, ``Trajectory lines`` and the plugin visuals in :attr:`visuals`), each with its
+        settings under the element's own names: ``pipe.view.elements["Bonds"].radius = 0.2`` is
+        ``pipe.view.bond_radius = 0.2``."""
+        return Elements(self)
+
     def look(self, direction="iso", zoom: float | None = None) -> "View":
         """Look along ``direction`` ('x', '-z', 'iso', [1, 1, 0], ...), framing the structure again."""
         kw = {"direction": direction}
@@ -318,7 +347,7 @@ class View:
             if name in ("style", "frame", "bonds", "bond_pairs", "bond_factor", "text"):
                 continue
             value = getattr(self, name)
-            if value is None or (isinstance(value, (dict, list)) and not value):
+            if value is None or (isinstance(value, (dict, list)) and not value) or (name == "atoms" and value):
                 continue
             kw[_RENDER_NAMES.get(name, name)] = _copy(value)
         if "type_colors" in kw:
@@ -373,6 +402,141 @@ class View:
     def source(self, pipeline_name: str = "pipe") -> str:
         """The view cell for this view: ``view(pipe, style=..., ...)``."""
         return view_source(pipeline_name, **self.changed())
+
+
+# The built-in visual elements (ewald.scene, in drawing order): attribute -> view setting. The attributes
+# are the element's constructor arguments (plus 'enabled'), so code, sessions and the GUI use one name.
+ELEMENTS = {
+    "Particles": {"enabled": "atoms", "atom_style": "atom_style", "radius_scale": "radius_scale",
+                  "type_colors": "colors", "type_radii": "radii", "radius_preset": "radius_preset",
+                  "oxidation_states": "oxidation_states"},
+    "Bonds": {"enabled": "bonds", "pairs": "bond_pairs", "factor": "bond_factor", "radius": "bond_radius"},
+    "Surfaces": {"styles": "surfaces"},
+    "Vectors": {"vectors": "vectors"},
+    "Trajectory lines": {"width": "trajectory_width"},
+    "Simulation cell": {"enabled": "cell", "color": "cell_color", "width": "cell_width", "radius": "cell_radius"},
+}
+
+
+class Element:
+    """One visual element of a :class:`View`: read and set its attributes (``enabled``, ``radius``, ...);
+    each is a view setting (:attr:`settings` maps them), so the view cell and the GUI follow."""
+
+    def __init__(self, view: "View", name: str):
+        object.__setattr__(self, "_view", view)
+        object.__setattr__(self, "name", name)
+
+    @property
+    def settings(self) -> dict:
+        """Attribute -> view setting (built-in elements) or -> ``visuals`` parameter (plugins)."""
+        if self.name in ELEMENTS:
+            return dict(ELEMENTS[self.name])
+        entry = self._entry()
+        return {"enabled": "visuals", **{k: "visuals" for k in entry.get("params", {})}}
+
+    def _entry(self) -> dict:
+        for v in self._view.visuals:
+            if (v if isinstance(v, str) else v.get("name")) == self.name:
+                return {"name": v, "params": {}, "enabled": True} if isinstance(v, str) else v
+        raise KeyError(self.name)
+
+    def __getattr__(self, attr):
+        if attr.startswith("_"):
+            raise AttributeError(attr)
+        if self.name in ELEMENTS:
+            setting = ELEMENTS[self.name].get(attr)
+            if setting is None:
+                raise AttributeError(f"{self.name} has no {attr!r}; it has {', '.join(ELEMENTS[self.name])}")
+            value = _copy(getattr(self._view, setting))
+            return bool(value) if attr == "enabled" else value
+        entry = self._entry()
+        if attr == "enabled":
+            return bool(entry.get("enabled", True))
+        params = entry.get("params", {})
+        if attr not in params:
+            raise AttributeError(f"{self.name} has no stored {attr!r}; set it to add it (params: {', '.join(params)})")
+        return _copy(params[attr])
+
+    def __setattr__(self, attr, value):
+        self.set(**{attr: value})
+
+    def set(self, **attrs) -> "Element":
+        """Set several attributes at once; returns the element."""
+        view = self._view
+        if self.name in ELEMENTS:
+            names = ELEMENTS[self.name]
+            unknown = [a for a in attrs if a not in names]
+            if unknown:
+                raise AttributeError(f"{self.name} has no {unknown}; it has {', '.join(names)}")
+            kw = {names[a]: v for a, v in attrs.items()}
+            if self.name == "Bonds" and "enabled" in attrs and attrs["enabled"] and view.bonds:
+                kw.pop("bonds")   # already on (maybe with a cutoff): keep it
+            view.update(**kw)
+            return self
+        visuals = [v if isinstance(v, str) else dict(v) for v in view.visuals]
+        for k, v in enumerate(visuals):
+            if (v if isinstance(v, str) else v.get("name")) == self.name:
+                entry = {"name": v, "params": {}, "enabled": True} if isinstance(v, str) else v
+                params = dict(entry.get("params") or {})
+                for a, x in attrs.items():
+                    if a == "enabled":
+                        entry["enabled"] = bool(x)
+                    else:
+                        params[a] = x
+                visuals[k] = {**entry, "params": params}
+                view.update(visuals=visuals)
+                return self
+        raise KeyError(self.name)
+
+    def values(self) -> dict:
+        """Every attribute with its current value."""
+        if self.name in ELEMENTS:
+            return {a: getattr(self, a) for a in ELEMENTS[self.name]}
+        entry = self._entry()
+        return {"enabled": bool(entry.get("enabled", True)), **_copy(dict(entry.get("params") or {}))}
+
+    def __dir__(self):
+        return list(super().__dir__()) + list(self.settings)
+
+    def __repr__(self):
+        return f"{self.name}(" + ", ".join(f"{k}={v!r}" for k, v in self.values().items()) + ")"
+
+
+class Elements:
+    """``view.elements``: the visual elements of a view by name, in drawing order (a read-only mapping
+    of :class:`Element`)."""
+
+    def __init__(self, view: "View"):
+        self._view = view
+
+    def names(self) -> list[str]:
+        plugins = [v if isinstance(v, str) else v.get("name") for v in self._view.visuals]
+        return list(ELEMENTS) + [n for n in plugins if n not in ELEMENTS]
+
+    def __iter__(self):
+        return iter(self.names())
+
+    def __len__(self):
+        return len(self.names())
+
+    def __contains__(self, name):
+        return name in self.names()
+
+    def __getitem__(self, name) -> Element:
+        if name not in self.names():
+            raise KeyError(f"no visual element {name!r}; elements: {', '.join(self.names())} (plugins are added "
+                           "with view(pipe, visuals=[...]))")
+        return Element(self._view, name)
+
+    def items(self):
+        return [(n, self[n]) for n in self.names()]
+
+    def describe(self) -> dict:
+        """``{element: {attribute: value}}`` (Claude's get_view)."""
+        return {n: el.values() for n, el in self.items()}
+
+    def __repr__(self):
+        return "\n".join(repr(el) for _, el in self.items())
 
 
 def merge(kwargs: dict, overrides: dict) -> dict:
@@ -491,7 +655,15 @@ def _check(name, value):
             raise ValueError(f"{name} must be positive, not {value}")
     elif name == "frame":
         value = int(value)
-    elif name in ("cell", "orthographic", "legend", "type_legend", "transparent_background"):
+    elif name == "cell_radius":
+        value = float(value)
+        if value <= 0:
+            raise ValueError(f"cell_radius must be positive, not {value}")
+    elif name == "surfaces":
+        if not isinstance(value, dict):
+            raise TypeError("surfaces is {name: {'visible', 'color', 'transparency', 'edges'}}")
+        value = {str(k): _surface_style(k, v) for k, v in value.items()}
+    elif name in ("atoms", "cell", "orthographic", "legend", "type_legend", "transparent_background"):
         value = bool(value)
     elif name == "size":
         value = [int(value[0]), int(value[1])]
@@ -517,6 +689,31 @@ def _check(name, value):
     elif name in ("background", "cell_color") and not isinstance(value, str):
         value = _color(value)
     return value
+
+
+SURFACE_KEYS = ("visible", "color", "transparency", "edges")
+
+
+def _surface_style(name, style) -> dict:
+    if not isinstance(style, dict):
+        raise TypeError(f"surfaces[{name!r}] is a dict with {', '.join(SURFACE_KEYS)}")
+    unknown = set(style) - set(SURFACE_KEYS)
+    if unknown:
+        raise KeyError(f"surfaces[{name!r}]: unknown {sorted(unknown)}; use {', '.join(SURFACE_KEYS)}")
+    out = {}
+    for k, v in style.items():
+        if v is None:
+            continue
+        if k == "color":
+            v = _color(v)
+        elif k == "transparency":
+            v = float(v)
+            if not 0 <= v <= 1:
+                raise ValueError(f"surfaces[{name!r}] transparency must be in 0..1, not {v}")
+        else:
+            v = bool(v)
+        out[k] = v
+    return out
 
 
 def _same(a, b) -> bool:
