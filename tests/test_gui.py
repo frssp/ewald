@@ -1056,6 +1056,7 @@ def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
             return "Try this:\n\n```python\npipe.add(CoordinationAnalysis(cutoff=3.0))\n```\n\nand ```x``` inline."
 
     w = MainWindow(pipe)
+    w.settings["llm.code_cells"] = "button"                # Preferences › AI › Code in answers
     w.ask_panel.agent_factory = lambda p, ev: agents.append(NotebookAgent(p, ev)) or agents[-1]
     act = w.activity_buttons["AI chat"]
     assert w.ask_dock.isHidden()
@@ -1088,6 +1089,15 @@ def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
     w.ask_panel.starters[0].click()                        # a starter sends its question
     _wait(app, w.ask_panel)
     assert w.ask_panel.messages[0].text == ask_panel.STARTERS[0]
+
+    w.settings["llm.code_cells"] = "insert"                # the default: code goes into the notebook at once
+    n = len(view.notebook.cells)
+    w.ask_panel.ask("Plot sin(x)")
+    _wait(app, w.ask_panel)
+    assert len(view.notebook.cells) == n + 1 and view.notebook.cells[-1].state == "new"   # inserted, not run
+    assert view.notebook.cells[-1].source.strip() == "pipe.add(CoordinationAnalysis(cutoff=3.0))"
+    assert w.ask_panel.messages[-1].code_blocks[0].insert_button.text() == "✓ Inserted"
+    assert view.undo() == "Insert cell" and len(view.notebook.cells) == n
     w.close()
 
 
@@ -1143,7 +1153,10 @@ def test_ai_chat_tells_claude_about_the_notebook(app, monkeypatch):
     s = settings.Settings()
     ask_panel.agent_from_settings(lambda: s, notebook=True)(None, None)
     ask_panel.agent_from_settings(lambda: s)(None, None)
-    assert "Insert as notebook cell" in made[0]["system"] and "system" not in made[1]
+    assert "added to the notebook as a new cell" in made[0]["system"] and "system" not in made[1]
+    s["llm.code_cells"] = "button"
+    ask_panel.agent_from_settings(lambda: s, notebook=True)(None, None)
+    assert "Insert as notebook cell" in made[2]["system"]
 
 
 def test_viewport_draws_vector_arrows(app):
@@ -2925,6 +2938,23 @@ def test_compute_device_lives_in_preferences(app, pipe):
     s["compute.device"] = "cpu"
     apply_settings(w, s)
     assert w.device == "cpu" and w.pipeline.device == "cuda"
+    w.close()
+
+
+def test_ai_chat_does_not_insert_twice_when_the_model_wrote_cells(app, pipe):
+    from ewald.gui.app import MainWindow
+
+    class ToolAgent(_FakeAgent):
+        def ask(self, question):
+            self.on_event("tool_call", {"name": "insert_cell", "input": {}})
+            return "I added this cell:\n\n```python\nx = 1\n```"
+
+    w = MainWindow(pipe)
+    w.ask_panel.agent_factory = lambda p, ev: ToolAgent(p, ev)
+    n = len(w.panel.view.notebook.cells)
+    w.ask_panel.ask("Add x")
+    _wait(app, w.ask_panel)
+    assert len(w.panel.view.notebook.cells) == n           # the tool call wrote it; the block only shows it
     w.close()
 
 

@@ -238,6 +238,10 @@ OPTIONS = (
     Option("llm.effort", "high", "Effort",
            "How hard the model thinks before answering (Claude, OpenAI reasoning models); lower is faster and cheaper.",
            choices=("low", "medium", "high", "xhigh", "max")),
+    Option("llm.code_cells", "insert", "Code in answers",
+           "insert: each Python block the AI chat writes becomes a new notebook cell right away (not run; "
+           "Ctrl+Z removes it). button: the block gets a + Insert as cell button instead.",
+           choices=("insert", "button")),
     Option("llm.run_cells", False, "Let the AI run cells",
            "The AI chat can read, insert and edit notebook cells; with this on it can also run them (any "
            "Python, like Shift+Enter). Off: cells it writes wait until you run them."),

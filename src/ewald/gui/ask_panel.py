@@ -38,13 +38,21 @@ You are the chat side bar of ewald's notebook window. The user's notebook is a p
 Python file (`# %%` cells, one namespace) where `pipe` is the pipeline: step cells are one \
 `pipe.add(Modifier(...))` (modifiers from `ewald.modifiers`, imported as `mods` or by name), \
 view cells are one `show(pipe, ...)`, and `load(path)` opens a file. When the user's message \
-starts with the notebook's code, that is its current state. Code you put in a ```python block \
-gets an "Insert as notebook cell" button, so write each block as one complete cell that runs \
-in that namespace; prefer `pipe.add(...)` steps over ad-hoc loops. When the user asks you to \
+starts with the notebook's code, that is its current state. {code_cells} Write each ```python \
+block as one complete cell that runs in that namespace; prefer `pipe.add(...)` steps over ad-hoc \
+loops. When the user asks you to \
 change the notebook itself, use the cell tools: list_cells and read_cell (sources and outputs), \
 insert_cell, edit_cell (step parameters through params), move_cell and delete_cell. Cells you \
 write are not run until the user runs them, unless run_cell is offered; add_modifier adds a step \
 cell that takes effect at once. Say which cells you changed."""
+
+#: How the note above describes the ```python blocks of an answer (Preferences › AI › Code in answers).
+CODE_CELLS_NOTE = {
+    "insert": "Every ```python block of your answer is added to the notebook as a new cell (not run), in "
+              "order, so put only code meant for the notebook in ```python blocks (other code, such as "
+              "a one-line illustration, in a ```text block), and do not also insert_cell the same code.",
+    "button": "Every ```python block of your answer gets an \"Insert as notebook cell\" button.",
+}
 
 _MAX_NOTEBOOK = 20000  # characters of notebook code sent with a question
 _CODE_BLOCK = re.compile(r"```(?:python|py|python3)?[ \t]*\n(.*?)```", re.S)
@@ -70,7 +78,8 @@ def agent_from_settings(get_settings: Callable[[], object], notebook: bool = Fal
         if notebook:
             from ..llm.agent import SYSTEM_PROMPT
 
-            kwargs["system"] = SYSTEM_PROMPT + NOTEBOOK_NOTE
+            mode = code_cells_mode(get_settings())
+            kwargs["system"] = SYSTEM_PROMPT + NOTEBOOK_NOTE.format(code_cells=CODE_CELLS_NOTE[mode])
         return _default_agent(pipeline, on_event, **kwargs)
 
     def assistant() -> str:
@@ -83,6 +92,15 @@ def agent_from_settings(get_settings: Callable[[], object], notebook: bool = Fal
 
     factory.assistant = assistant
     return factory
+
+
+def code_cells_mode(settings) -> str:
+    """'insert' (code blocks of answers become cells at once) or 'button' (+ Insert as cell)."""
+    try:
+        mode = settings["llm.code_cells"]
+    except Exception:
+        return "insert"
+    return mode if mode in CODE_CELLS_NOTE else "insert"
 
 
 def code_blocks(text: str) -> list[str]:
@@ -163,6 +181,12 @@ class CodeBlock(QtWidgets.QFrame):
         lay.setSpacing(0)
         lay.addLayout(head)
         lay.addWidget(self.editor)
+
+    def mark_inserted(self):
+        """The block went into the notebook already (Code in answers: insert)."""
+        if self.insert_button is not None:
+            self.insert_button.setText("✓ Inserted")
+            self.insert_button.setToolTip("Added to the notebook as a cell; click to add it again")
 
     def copy(self):
         QtWidgets.QApplication.clipboard().setText(self.code)
@@ -251,19 +275,24 @@ class AskPanel(QtWidgets.QWidget):
     ``notebook()``, when given, returns the current notebook's code (or None): it goes with a
     question whenever it changed, and Python blocks in answers offer Insert as cell
     (``insertRequested(code)``). ``notebook_access`` (a :class:`ewald.llm.notebook_tools.NotebookAccess`)
-    gives the agent's toolset the notebook cell tools.
+    gives the agent's toolset the notebook cell tools. ``auto_insert()``, when it returns True, puts
+    the Python blocks of each answer into the notebook at once (unless the model wrote cells with
+    the cell tools in that answer).
     """
 
     pipelineChanged = QtCore.Signal()
     insertRequested = QtCore.Signal(str)
 
     def __init__(self, context: Callable[[], tuple], agent_factory=_default_agent, parent=None,
-                 notebook: Callable[[], str | None] | None = None, notebook_access=None):
+                 notebook: Callable[[], str | None] | None = None, notebook_access=None,
+                 auto_insert: Callable[[], bool] | None = None):
         super().__init__(parent, objectName="chatPanel")
         self.context = context
         self.agent_factory = agent_factory
         self.notebook = notebook
         self.notebook_access = notebook_access
+        self.auto_insert = auto_insert
+        self._tools_used: list[str] = []
         self.agent = None
         self._agent_pipeline = None
         self._sent_notebook: str | None = None
@@ -476,6 +505,7 @@ class AskPanel(QtWidgets.QWidget):
                 agent.toolset.frame = frame
             agent.toolset.selection = None
             job = lambda: agent.ask(prompt)  # noqa: E731
+        self._tools_used = []
         self._pending = self._add(Message("assistant", insert=self._insert, author=self.assistant()))
         self.worker = _Worker(job, self)
         self.worker.event.connect(self._on_event)
@@ -494,6 +524,7 @@ class AskPanel(QtWidgets.QWidget):
 
     def _on_event(self, kind, payload):
         if kind == "tool_call" and self._pending is not None:
+            self._tools_used.append(payload["name"])
             self._pending.add_step(payload["name"])
 
     def _finish(self):
@@ -506,7 +537,13 @@ class AskPanel(QtWidgets.QWidget):
     def _on_answer(self, text):
         if self._pending is not None:
             self._pending.set_answer(text)
-            self.snippets += [b.code for b in self._pending.code_blocks if b.insert_button is not None]
+            blocks = [b for b in self._pending.code_blocks if b.insert_button is not None]
+            self.snippets += [b.code for b in blocks]
+            wrote_cells = any(t in ("insert_cell", "edit_cell") for t in self._tools_used)
+            if blocks and not wrote_cells and self.auto_insert is not None and self.auto_insert():
+                for b in blocks:
+                    self.insertRequested.emit(b.code)
+                    b.mark_inserted()
         self._finish()
 
     def _on_failed(self, message):

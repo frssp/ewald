@@ -388,7 +388,7 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   use h5py-written fixtures, a second process holding the write lock, and a cut file).
 - AI features with a real API key (Claude; also OpenAI, Gemini and a local Ollama/LM Studio
   server, which are tested only against mocked servers): `ewald ask` (also `--select`), the GUI AI chat side bar
-  (notebook code in the prompt, Insert as notebook cell),
+  (notebook code in the prompt, code blocks inserted as cells, the notebook cell tools),
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › AI › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
   KWallet); the container has none, so only the 0600 file fallback runs for real.
