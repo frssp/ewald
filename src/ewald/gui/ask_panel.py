@@ -24,7 +24,8 @@ from typing import Callable
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .icons import icon
-from .notebook_panel import CodeEditor, _FitWidthScrollArea
+from .code_editor import CodeEditor
+from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea
 from .theme import TOKENS
 
 _SETUP_HINT = ("Choose the AI provider and enter its API key under Edit › Preferences › AI "
