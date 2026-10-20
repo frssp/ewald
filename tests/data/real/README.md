@@ -19,6 +19,16 @@ itself), with gzip-compressed datasets; everything else is as VASP wrote it.
 Sources and licenses:
 
 - pymatgen, https://github.com/materialsproject/pymatgen, commit
-  `52e69c26e45b0205e4f5206e30c94a0619c0d64a`, MIT license.
+  `52e69c26e45b0205e4f5206e30c94a0619c0d64a`, MIT license, whose notice the license asks to keep
+  with copies:
+
+  ```
+  The MIT License (MIT)
+  Copyright (c) 2011-2012 MIT & The Regents of the University of California,
+  through Lawrence Berkeley National Laboratory
+  ```
+
+  The full text is in pymatgen's `LICENSE` at that commit.
 - LAMMPS, https://github.com/lammps/lammps, commit `a0e2bd6efb3d67a29c0c4e4de3b19556ffdb9d5b`,
-  GPL-2.0 license.
+  GPL-2.0 license, "Copyright (2003) Sandia Corporation" (LAMMPS `README`). `log.gauss-diel` is a
+  program output log, not LAMMPS source.

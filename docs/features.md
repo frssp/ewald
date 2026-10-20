@@ -393,7 +393,7 @@ Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.v
 - `examples/plugins/local_composition.py`: Example modifier plugin: local chemical composition around every particle.
 - `examples/plugins/npz_trajectory.py`: Example reader plugin: trajectories stored as NumPy ``.npz`` archives.
 - `examples/plugins/sim_agent_panel.py`: Example GUI plugin: a "Sim agent" side bar with its own activity-bar button and a page in Preferences.
-- `examples/plugins/ui_themes.py`: Example UI color themes for the desktop app: "Nord" (dark, frost-blue accents) and "Sepia" (light, warm paper).
+- `examples/plugins/ui_themes.py`: Example UI themes for the desktop app: "Nord" (dark, frost-blue accents), "Sepia" (light, warm paper) and "Studio" (dark, compact, square corners, its own fonts and extra style sheet rules).
 
 ## Preferences
 

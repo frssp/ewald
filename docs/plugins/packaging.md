@@ -149,7 +149,9 @@ The GUI's Plugins side bar lists plugins to install from catalogs: the default i
 the URLs or paths in Preferences › Python › *Plugin catalogs* (`python.plugin_catalogs`,
 separated by `;`). The environment variable `EWALD_PLUGIN_INDEX` replaces the default index,
 and an empty value turns it off. An index that cannot be found (or, on GitHub, is private and
-there is no token) shows as one muted line. A lab
+there is no token) shows as one muted line. *Install*, *Update* and *Remove* run in the
+background: the row shows a spinner ("Installing…") in place of its buttons, and a line at the
+bottom of the side bar says what is running (with *Cancel* while pip runs) until it is done. A lab
 or a project can publish its own list:
 
 ```json

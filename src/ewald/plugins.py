@@ -367,7 +367,16 @@ def ui_theme(fn=None, *, name: str | None = None, base: str = "paper", descripti
     """Decorator registering a function that returns design tokens (``{"accent": "#cba6f7", ...}``)
     as a color theme of the desktop app, chosen under Preferences > General > UI theme. Tokens
     left out come from ``base`` (a built-in theme: "paper" light, "graphite" dark, ...); the token names are those of
-    ``ewald.ui_tokens.PALETTES``. ``name`` defaults to the function name."""
+    ``ewald.ui_tokens.PALETTES``. ``name`` defaults to the function name.
+
+    The same dict may set more than colors (``ewald.ui_tokens.STYLE_DEFAULTS``)::
+
+        {"accent": "#cba6f7", "font": "Inter", "mono_font": "Fira Code", "font_size": 13,
+         "radius": 2, "density": "compact", "icon_stroke": 1.4,
+         "qss": "QFrame#cell { border-width: 0; background: $panel; }"}
+
+    ``font_size`` applies while Preferences > General > UI font size is left at its default;
+    ``qss`` rules come after ewald's own, with ``$token`` replaced by the theme's colors."""
 
     def deco(f):
         register_ui_theme(name or f.__name__, f, base=base, description=description)

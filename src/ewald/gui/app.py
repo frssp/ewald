@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import contextlib
 import sys
 import time
@@ -16,6 +17,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import modifiers as mods
 from ..render import camera_state, render
+from .busy import busy
 from .ask_panel import AskPanel, agent_from_settings, code_cells_mode
 from .collapsible import make_collapsible
 from .compute import ComputeRunner, warm_up_jit
@@ -42,6 +44,25 @@ from .window_menus import MenusMixin
 from .window_plugins import PluginPanelsMixin
 from .window_view import ViewSyncMixin
 
+RENDER_IN_BACKGROUND = True   # the Render page ray traces on a worker thread (tests may turn it off)
+
+
+class _RenderWorker(QtCore.QThread):
+    """Runs one ``render(...)`` call off the GUI thread."""
+
+    done = QtCore.Signal(object, object)   # image (None on failure), error (None or the exception)
+
+    def __init__(self, call, parent=None):
+        super().__init__(parent)
+        self.call = call
+
+    def run(self):
+        try:
+            self.done.emit(self.call(), None)
+        except Exception as exc:
+            self.done.emit(None, exc)
+
+
 class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSyncMixin, QtWidgets.QMainWindow):
     def __init__(self, pipeline=None, device=None, settings=None):
         super().__init__()
@@ -56,6 +77,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.device = device
         self.frame = 0
         self._frame_pending = False
+        self._render_worker = None
         self.runner = ComputeRunner(self)  # pipeline evaluation on a worker thread
         warm_up_jit()  # numba kernels load while the window builds, not on the first file
         self.runner.finished.connect(self._computed)
@@ -465,6 +487,16 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.display.refresh()  # an edit made in the View tab itself only updates its marks
 
     # ---------------------------------------------------------------- output
+    def _render_call(self, filename, overrides):
+        """``render(...)`` of the current frame as the Render page sets it up, as a call that may
+        run on another thread (camera and data are taken now)."""
+        kw = dict(self.style.scene_kwargs())
+        kw.update(self.render_page.render_kwargs())
+        kw.update(overrides)
+        text = self.render_page.label_text(self.frame, self.data)
+        data, camera = self.data, camera_state(self.viewport.plotter)
+        return kw, lambda: render(data, filename, camera=camera, text=text or None, **kw)
+
     def render_image(self, filename=None, return_image=False, **overrides):
         if self.data is None:
             return None
@@ -473,26 +505,73 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
                 self, "Render image", "render.png", "Images (*.png *.jpg *.tif);;Vector (*.svg *.pdf *.eps)")
             if not filename:
                 return None
-        kw = dict(self.style.scene_kwargs())
-        kw.update(self.render_page.render_kwargs())
-        kw.update(overrides)
-        text = self.render_page.label_text(self.frame, self.data)
+        _kw, call = self._render_call(filename, overrides)
         try:
-            img = render(self.data, filename, camera=camera_state(self.viewport.plotter), text=text or None, **kw)
+            with busy(self.message, f"Rendering {os.path.basename(str(filename))}…"):
+                img = call()
         except Exception as exc:
-            self.message(f"Render failed: {exc}", error=True)
-            QtWidgets.QMessageBox.critical(self, "Render failed", str(exc))
-            return None
+            return self._render_failed(exc)
         self.message(f"Rendered {filename}")
         return img if return_image else filename
 
+    def _render_failed(self, exc):
+        self.message(f"Render failed: {exc}", error=True)
+        QtWidgets.QMessageBox.critical(self, "Render failed", str(exc))
+        return None
+
+    @property
+    def rendering(self) -> bool:
+        """A Render page picture is being ray traced in the background."""
+        return self._render_worker is not None
+
+    def wait_render(self, ms: int = 600000):
+        """Block until a background render is done (tests, scripts)."""
+        if self._render_worker is not None:
+            self._render_worker.wait(ms)
+            QtWidgets.QApplication.processEvents()
+
     def render_from_page(self):
+        """The Render page's Render button. The ray tracer runs on a worker thread (seconds to
+        minutes) while the button shows a spinner; OpenGL and vector output render right here."""
         page = self.render_page
+        if self.rendering:
+            return
         out = page.output.text() or "render.png"
         if page.is_movie:
             self.export_movie(out)
             return
-        img = self.render_image(out, return_image=True)
+        if self.data is None:
+            return
+        kw, call = self._render_call(out, {})
+        name = os.path.basename(out)
+        if kw.get("renderer") == "raytrace" and RENDER_IN_BACKGROUND:
+            page.set_busy("Ray tracing…")
+            self.message(f"Ray tracing {name}…")
+            worker = self._render_worker = _RenderWorker(call, self)
+            worker.done.connect(lambda img, error: self._page_rendered(out, img, error))
+            worker.start()
+            return
+        page.set_busy("Rendering…")
+        try:
+            img = self.render_image(out, return_image=True)
+        finally:
+            page.set_busy("")
+        self._show_rendered(img)
+
+    def _page_rendered(self, out, img, error):
+        if self._render_worker is not None:
+            self._render_worker.wait()
+            self._render_worker.deleteLater()
+        self._render_worker = None
+        self.render_page.set_busy("")
+        if error:
+            self._render_failed(error)
+            return
+        self.message(f"Rendered {out}")
+        self._show_rendered(img)
+
+    def _show_rendered(self, img):
+        page = self.render_page
         if img is not None:
             self.show_preview(img)
             page.show_live(False)
@@ -510,6 +589,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         if self.isVisible() and not self.panel.confirm_discard(title="Quit"):
             event.ignore()
             return
+        self.wait_render()                 # a ray trace still running finishes first
         prefs.save_layout(self, self.settings)
         for view in self.panel.views():
             if view.notebook.kernel is not None:

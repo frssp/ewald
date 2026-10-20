@@ -14,7 +14,9 @@ MAX_EDITOR_LINES = 30
 
 def mono_font() -> QtGui.QFont:
     f = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont)
-    f.setFamilies(["JetBrains Mono", "IBM Plex Mono", f.family()])
+    from .theme import STYLE
+
+    f.setFamilies([*([STYLE["mono_font"]] if STYLE["mono_font"] else []), "JetBrains Mono", "IBM Plex Mono", f.family()])
     f.setPixelSize(12)
     return f
 
