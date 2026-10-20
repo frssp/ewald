@@ -46,7 +46,7 @@ def shoot(name):
     w.show()
     settle()
     w.open_notebook(os.path.join(NOTEBOOKS, notebook), run=True)
-    w.bottom_dock.hide()
+    w.workbench.show(w.display)  # the View tab below the Structure view
     w.resizeDocks([w.notebook_dock], [540], QtCore.Qt.Horizontal)
     settle(60)
     if scroll_to is not None:

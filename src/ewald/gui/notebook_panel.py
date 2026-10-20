@@ -172,6 +172,7 @@ class OutputArea(QtWidgets.QWidget):
         while self.lay.count():
             w = self.lay.takeAt(0).widget()
             if w is not None:
+                w.hide()          # gone now, not at the next event loop pass (no stale copy drawn)
                 w.deleteLater()
         self._images = []
         for out in outputs:

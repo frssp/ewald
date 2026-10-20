@@ -262,10 +262,10 @@ QFrame#viewbar {{ background: {bg}; border-bottom: 1px solid {border}; }}
 QFrame#viewbar QToolButton {{ padding: 4px 6px; }}
 QFrame#axisGroup QToolButton {{ padding: 4px 3px; min-width: 14px; }}
 QCheckBox {{ color: {text}; spacing: 6px; }}
-QCheckBox::indicator, QTreeView::indicator, QTableView::indicator, QListView::indicator {{ width: 14px; height: 14px;
+QCheckBox::indicator, QGroupBox::indicator, QTreeView::indicator, QTableView::indicator, QListView::indicator {{ width: 14px; height: 14px;
     border: 1.5px solid {muted}; border-radius: 4px; background: {bg}; }}
-QCheckBox::indicator:hover, QTreeView::indicator:hover, QTableView::indicator:hover {{ border-color: {accent}; }}
-QCheckBox::indicator:checked, QTreeView::indicator:checked, QTableView::indicator:checked,
+QCheckBox::indicator:hover, QGroupBox::indicator:hover, QTreeView::indicator:hover, QTableView::indicator:hover {{ border-color: {accent}; }}
+QCheckBox::indicator:checked, QGroupBox::indicator:checked, QTreeView::indicator:checked, QTableView::indicator:checked,
 QListView::indicator:checked {{ background: {accent}; border-color: {accent}; image: url("{img_check}"); }}
 QCheckBox::indicator:disabled {{ background: {panel}; border-color: {border}; }}
 QFrame#rail QToolButton {{ font-size: 18px; color: {secondary}; }}
