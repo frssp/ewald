@@ -16,6 +16,7 @@ from PySide6 import QtCore, QtWidgets
 
 from .. import plugins
 from ..workflow import Workflow
+from . import workers
 
 ITEM = QtCore.Qt.UserRole          # the Workflow, WorkflowStep or WorkflowOutput an item shows
 _ID = re.compile(r"^(\d+|[0-9a-fA-F-]{8,36})$")
@@ -104,7 +105,7 @@ class WorkflowPanel(QtWidgets.QWidget):
 
     # ------------------------------------------------------------ requests
     def _run(self, fn, then):
-        job = _Job(fn, self)
+        job = workers.detach(_Job(fn))  # a slow request may outlive the panel
         job.done.connect(then)
         job.finished.connect(lambda: self.jobs.remove(job) if job in self.jobs else None)
         self.jobs.append(job)
