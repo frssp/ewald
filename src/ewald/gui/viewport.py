@@ -88,6 +88,7 @@ class Viewport(QtWidgets.QWidget):
         self.sphere_drawing = "impostor"  # 'auto' styles: GPU impostors, or 'mesh' up to mesh_limit atoms
         self.sphere_resolution = 16
         self.mesh_limit = 150_000
+        self.bond_limit = 100_000  # bonds.auto_limit: a style preset turns bonds on only up to this many atoms
         self.arrow_resolution = 6
         self.show_overlay = True
         self.show_axes = True
@@ -540,6 +541,8 @@ class Viewport(QtWidgets.QWidget):
 
     def _preset(self, name):
         self.style.apply_preset(name, self.data.types if self.data is not None else ())
+        if self.style.bonds_enabled and self.data is not None and self.data.count > self.bond_limit:
+            self.style.bonds_enabled = False  # too many atoms for automatic bonds; Bonds turns them on
         if self.style.bonds_enabled and self.data is not None:
             self.style.ensure_bond_pairs(self.data.types)
         self.styleChanged.emit()

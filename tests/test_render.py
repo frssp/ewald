@@ -41,6 +41,16 @@ def test_flat_style_is_unshaded_with_outlines():
     assert row[inside.max() + 1:inside.max() + 4].sum(-1).min() < 150
 
 
+def test_flat_style_in_vector_output(tmp_path, cu_fcc):
+    """atom_style='flat' reaches the vector renderer as its flat shading (no gradient fills)."""
+    from ewald.render import render
+
+    render(cu_fcc, tmp_path / "flat.svg", renderer="vector", atom_style="flat", bonds=2.6, size=(200, 150))
+    render(cu_fcc, tmp_path / "shaded.svg", renderer="vector", bonds=2.6, size=(200, 150))
+    paths = [(tmp_path / f).read_text().count("<path") for f in ("flat.svg", "shaded.svg")]
+    assert paths[0] < 0.7 * paths[1]  # one disc per atom instead of stacked shading rings
+
+
 def test_impostors_have_sphere_depth():
     """Overlapping impostors take the depth of the sphere surface, as a fine mesh does, in both projections."""
     import pyvista as pv
