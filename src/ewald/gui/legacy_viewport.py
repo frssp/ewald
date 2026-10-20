@@ -15,7 +15,7 @@ from PySide6.QtOpenGL import QOpenGLWindow
 from ..render import default_radii
 from .legacy_gl import CameraPlotter, LegacyRenderer, pick_ray, ray_spheres
 from .theme import TOKENS
-from .viewport import Viewport, _is_dark
+from .viewport import EMPTY_HINT, Viewport, _is_dark
 
 
 class GLView(QOpenGLWindow):
@@ -167,7 +167,8 @@ class LegacyViewport(Viewport):
         if self._first and self.data is not None:
             self._first = False
             self._first_pending = True
-        self.caption.setText(self.overlay_text if self.show_overlay else "")
+        self._set_controls(self.data is not None)
+        self.caption.setText(EMPTY_HINT if self.data is None else self.overlay_text if self.show_overlay else "")
         self.caption.setVisible(bool(self.caption.text()))
         self._draw_picks()
         self.coarse = False

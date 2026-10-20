@@ -376,10 +376,11 @@ class FilesMixin:
                 return
             all_frames = answer == QtWidgets.QMessageBox.Yes
         try:
-            if all_frames:
-                export_file(self.pipeline, path, format=fmt)
-            else:
-                export_file(self.data, path, format=fmt)
+            with busy(self.message, f"Writing {os.path.basename(path)}…"):
+                if all_frames:
+                    export_file(self.pipeline, path, format=fmt)
+                else:
+                    export_file(self.data, path, format=fmt)
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Export failed", f"{path}\n\n{exc}")
             return

@@ -315,6 +315,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.frame = 0
         self.timeline._set(0) if self.timeline.frame != 0 else self.recompute()
         self.live_reload.report_incomplete()
+        self.ask_panel.update_selection()
         self._plugin_event("pipeline", pipeline)
 
     def clear_pipeline(self):
@@ -336,6 +337,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.frame = 0
         self.status.setText("")
         self.setWindowTitle("EWALD")
+        self.ask_panel.update_selection()
         self._push_console()
 
     def set_frame(self, frame):
