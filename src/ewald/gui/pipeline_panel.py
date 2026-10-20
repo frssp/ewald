@@ -323,17 +323,28 @@ class _Card(QtWidgets.QFrame):
 
 # View tab rows -> the pipe.view setting they show (marked when the notebook sets it)
 _SECTION_KEYS = {
-    "Atoms": ("style", "theme", "atom_style", "radius_scale", "radius_preset", "oxidation_states"),
-    "Types": ("colors", "radii"),
+    "Atoms": ("style", "theme", "atom_style", "radius_scale", "radius_preset", "oxidation_states", "atoms",
+              "labels", "selection"),
+    "Types": ("colors", "radii", "transparency"),
     "Bonds": ("bonds", "bond_radius", "bond_pairs", "bond_factor"),
     "Cell": ("cell", "cell_width", "cell_color", "replicate", "replicate_cell", "boundary", "boundary_bonds"),
+    "Surfaces": ("surfaces",),
     "Elements": ("visuals", "vectors", "trajectory_width"),
     "Camera": ("frame", "direction", "zoom", "orthographic", "camera"),
 }
 
 
+def _label_text(labels) -> str:
+    """The Labels field for a ``labels`` setting."""
+    if labels is None or labels is False:
+        return ""
+    if labels is True:
+        return "{type}"
+    return str(labels.get("text", "{type}")) if isinstance(labels, dict) else str(labels)
+
+
 class DisplayPanel(QtWidgets.QWidget):
-    """The View tab: how the structure is drawn, as cards (Atoms, Types, Bonds, Cell, Elements,
+    """The View tab: how the structure is drawn, as cards (Atoms, Types, Bonds, Cell, Surfaces, Elements,
     Camera) that sit in a row below the 3D view and wrap when the tab is narrow. Every value is a
     ``pipe.view`` setting; the ones the notebook's view cell sets are marked, and a change made
     here goes back into that cell. Steps live in notebook cells; this tab only changes the look."""
@@ -401,7 +412,7 @@ class DisplayPanel(QtWidgets.QWidget):
         self.sections = {}
         for title, build, width in (("Atoms", self._particles_editor, 280), ("Types", self._types_editor, 320),
                                     ("Bonds", self._bonds_editor, 340), ("Cell", self._cell_editor, 300),
-                                    ("Elements", self._elements_editor, 280), ("Camera", self._camera_editor, 260)):
+                                    ("Surfaces", self._surfaces_editor, 380), ("Elements", self._elements_editor, 280), ("Camera", self._camera_editor, 260)):
             card = self._section(title, build(), width)
             self.sections[title] = card
             flow.addWidget(card)
@@ -606,7 +617,99 @@ class DisplayPanel(QtWidgets.QWidget):
                          "flat: ASE-GUI look, unshaded discs with outlines")
         shape.currentTextChanged.connect(lambda v: self._set("atom_style", v))
         self._row(f, "Drawn as", shape, "atom_style")
+        show = QtWidgets.QCheckBox("Draw atoms", checked=bool(self.style.show_atoms),
+                                   toolTip="Off: bonds, polyhedra and the rest stay (a stick model)")
+        show.toggled.connect(lambda v: self._set("show_atoms", v))
+        self._row(f, "", show, "atoms")
+        labels = QtWidgets.QLineEdit(placeholderText="off, e.g. {type}{index}")
+        labels.setText(_label_text(self.style.labels))
+        labels.setToolTip("A label on each atom: {type}, {index}, {id} or a per-atom property such as "
+                          "{Charge:.2f}; empty: no labels")
+        labels.editingFinished.connect(lambda e=labels: self._set_labels(e.text()))
+        self._row(f, "Labels", labels, "labels")
+        sel = QtWidgets.QCheckBox("Highlight selection", checked=self.style.selection is not False,
+                                  toolTip="Draw the atoms a selection step selected in red, as OVITO does")
+        sel.toggled.connect(lambda v: self._set("selection", bool(v)))
+        self._row(f, "", sel, "selection")
         return w
+
+    def _set_labels(self, text: str):
+        text = text.strip()
+        value = None if not text else (True if text == "{type}" else text)
+        if value is not None and isinstance(self.style.labels, dict):
+            value = {**self.style.labels, "text": text}   # keep types, size and color set in code
+        if value == self.style.labels:
+            return
+        self._set("labels", value)
+
+    def _surfaces_editor(self):
+        """Polyhedra, isosurfaces and slices (``data.surfaces``) by name: shown, color, transparency,
+        edges; the view's ``surfaces`` setting, so the step that made them stays as it is."""
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        names = [] if self.data is None else [n for n, m in getattr(self.data, "surfaces", {}).items() if m.face_count]
+        if not names:
+            lay.addWidget(QtWidgets.QLabel("Polyhedra, isosurfaces and slices that steps make appear here.",
+                                           objectName="muted", wordWrap=True))
+            return w
+        table = QtWidgets.QTableWidget(len(names), 4, objectName="viewTable")
+        table.setHorizontalHeaderLabels(["Surface", "Color", "Transp.", "Edges"])
+        table.verticalHeader().setVisible(False)
+        head = table.horizontalHeader()
+        head.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        head.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        for r, name in enumerate(names):
+            mesh = self.data.surfaces[name]
+            st = self.style.surfaces.get(name, {})
+            shown = QtWidgets.QCheckBox(name, checked=st.get("visible", True), toolTip=f"Draw {name}")
+            shown.setMinimumWidth(shown.sizeHint().width())
+            shown.toggled.connect(lambda v, n=name: self.set_surface(n, visible=v))
+            table.setCellWidget(r, 0, shown)
+            color = st.get("color")
+            if color is None:
+                fc = mesh.face_colors() if mesh.face_count else np.array([[0.6, 0.6, 0.6]])
+                rgb = np.clip(np.asarray(fc, float).reshape(-1, 3).mean(0), 0, 1)
+            else:
+                from ..render import _rgb
+
+                rgb = np.clip(_rgb(color), 0, 1)
+            btn = QtWidgets.QPushButton(toolTip=f"Color of {name} (Shift+click: the step's colors)")
+            btn.setStyleSheet(f"background: {QtGui.QColor.fromRgbF(*rgb).name()}; border: 1px solid {TOKENS['border']};")
+            btn.clicked.connect(lambda _=False, n=name, b=btn: self._pick_surface_color(n, b))
+            table.setCellWidget(r, 1, btn)
+            tr = QtWidgets.QDoubleSpinBox(minimum=0, maximum=1, singleStep=0.05,
+                                          value=float(st.get("transparency", mesh.transparency)))
+            tr.valueChanged.connect(lambda v, n=name: self.set_surface(n, transparency=round(v, 3)))
+            table.setCellWidget(r, 2, tr)
+            edges = QtWidgets.QCheckBox(checked=st.get("edges", mesh.edges is not None and len(mesh.edges) > 0))
+            edges.setEnabled(mesh.edges is not None and len(mesh.edges) > 0)
+            edges.toggled.connect(lambda v, n=name: self.set_surface(n, edges=v))
+            table.setCellWidget(r, 3, edges)
+        table.setFixedHeight(min(220, 30 * (len(names) + 1) + 6))
+        lay.addWidget(table)
+        reset = QtWidgets.QPushButton("Reset", toolTip="Back to the look the steps gave the surfaces")
+        reset.clicked.connect(lambda: (self.style.surfaces.clear(), self.styleChanged.emit(), self.refresh()))
+        lay.addWidget(reset, 0, QtCore.Qt.AlignLeft)
+        return w
+
+    def set_surface(self, name: str, **style):
+        """Restyle the surface ``name`` (visible, color, transparency, edges) and redraw."""
+        self.style.surfaces = {**self.style.surfaces, name: {**self.style.surfaces.get(name, {}), **style}}
+        self._emit()
+
+    def _pick_surface_color(self, name, button):
+        if QtWidgets.QApplication.keyboardModifiers() & QtCore.Qt.ShiftModifier:
+            st = {k: v for k, v in self.style.surfaces.get(name, {}).items() if k != "color"}
+            self.style.surfaces = {**{k: v for k, v in self.style.surfaces.items() if k != name},
+                                   **({name: st} if st else {})}
+            self._emit()
+            self.refresh()
+            return
+        c = QtWidgets.QColorDialog.getColor(parent=self)
+        if c.isValid():
+            button.setStyleSheet(f"background: {c.name()}; border: 1px solid {TOKENS['border']};")
+            self.set_surface(name, color=c.name())
 
     def _types_editor(self):
         from ..render import type_color, type_radius
@@ -615,8 +718,8 @@ class DisplayPanel(QtWidgets.QWidget):
         lay = QtWidgets.QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
         types = [] if self.data is None else list(dict.fromkeys(self.data.types))
-        table = QtWidgets.QTableWidget(len(types), 4, objectName="viewTable")
-        table.setHorizontalHeaderLabels(["Type", "Color", "Radius", "Count"])
+        table = QtWidgets.QTableWidget(len(types), 5, objectName="viewTable")
+        table.setHorizontalHeaderLabels(["Type", "Color", "Radius", "Transp.", "Count"])
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
         table.horizontalHeader().setMinimumSectionSize(36)
@@ -638,7 +741,12 @@ class DisplayPanel(QtWidgets.QWidget):
                                            value=self.style.type_radii.get(t, type_radius(t, preset=self.style.radius_preset)))
             rad.valueChanged.connect(lambda v, t=t: (self.style.type_radii.__setitem__(t, v), self._emit()))
             table.setCellWidget(r, 2, rad)
-            table.setItem(r, 3, QtWidgets.QTableWidgetItem(str(int((self.data.types == t).sum()))))
+            tr = QtWidgets.QDoubleSpinBox(minimum=0, maximum=1, singleStep=0.1,
+                                          value=float(self.style.type_transparency.get(t, 0.0)),
+                                          toolTip=f"Transparency of {t}: 0 opaque, 1 hidden")
+            tr.valueChanged.connect(lambda v, t=t: self.set_type_transparency(t, v))
+            table.setCellWidget(r, 3, tr)
+            table.setItem(r, 4, QtWidgets.QTableWidgetItem(str(int((self.data.types == t).sum()))))
         table.setFixedHeight(min(220, 30 * (len(types) + 1) + 6))  # no empty rows below the types
         lay.addWidget(table)
         row = QtWidgets.QHBoxLayout()
@@ -646,12 +754,20 @@ class DisplayPanel(QtWidgets.QWidget):
         imp.clicked.connect(self._import_elements_ini)
         reset = QtWidgets.QPushButton("Reset", toolTip="Back to the default colors and radii of every type")
         reset.clicked.connect(lambda: (self.style.type_colors.clear(), self.style.type_radii.clear(),
-                                       self.styleChanged.emit(), self.refresh()))
+                                       self.style.type_transparency.clear(), self.styleChanged.emit(),
+                                       self.refresh()))
         row.addWidget(imp)
         row.addWidget(reset)
         row.addStretch(1)
         lay.addLayout(row)
         return w
+
+    def set_type_transparency(self, t: str, value: float):
+        table = {k: v for k, v in self.style.type_transparency.items() if k != t}
+        if value > 0:
+            table[t] = round(float(value), 3)
+        self.style.type_transparency = table
+        self._emit()
 
     def _set_style_preset(self, name):
         types = self.data.types if self.data is not None else ()

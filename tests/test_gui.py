@@ -76,6 +76,36 @@ def test_classic_layout_setting_is_retired(tmp_path, caplog):
     assert s["general.startup_workspace"] == "Notebook" and s.changed() == {}
 
 
+def test_view_tab_surfaces_labels_transparency(app, pipe):
+    """The View tab's Surfaces card restyles polyhedra by name, and the Atoms and Types cards set atoms
+    on/off, labels, the selection highlight and per-type transparency; all go into the view settings."""
+    from ewald.gui.pipeline_panel import DisplayPanel
+
+    pipe.modifiers.append(mods.CoordinationPolyhedra(center_types=["Cu"]))
+    panel = DisplayPanel()
+    panel.set_pipeline(pipe)
+    panel.set_data(pipe.compute(0))
+    card = panel.sections["Surfaces"]
+    shown = [c for c in card.findChildren(QtWidgets.QCheckBox) if c.text() == "coordination-polyhedra"]
+    assert shown and shown[0].isChecked()
+    shown[0].setChecked(False)
+    card.findChild(QtWidgets.QDoubleSpinBox).setValue(0.6)
+    assert panel.style.surfaces == {"coordination-polyhedra": {"visible": False, "transparency": 0.6}}
+    atoms = panel.sections["Atoms"]
+    [c for c in atoms.findChildren(QtWidgets.QCheckBox) if c.text() == "Draw atoms"][0].setChecked(False)
+    [c for c in atoms.findChildren(QtWidgets.QCheckBox) if c.text() == "Highlight selection"][0].setChecked(False)
+    field = [e for e in atoms.findChildren(QtWidgets.QLineEdit) if "{type}{index}" in e.placeholderText()][0]
+    field.setText("{type}{index}")
+    field.editingFinished.emit()
+    panel.set_type_transparency("Cu", 0.5)
+    st = panel.style
+    assert (st.show_atoms, st.selection, st.labels, st.type_transparency) == (False, False, "{type}{index}", {"Cu": 0.5})
+    settings = st.view_settings(["Cu"])
+    assert settings["atoms"] is False and settings["labels"] == "{type}{index}" and settings["transparency"] == {"Cu": 0.5}
+    assert settings["surfaces"]["coordination-polyhedra"]["visible"] is False
+    _dispose(panel)
+
+
 def test_view_tab_cards_and_notebook_marks(app, pipe):
     """The View tab shows the look as cards, marks what the notebook's view sets, and an edit there
     changes the style without rebuilding the card being edited."""
@@ -85,7 +115,7 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
     panel = DisplayPanel()
     panel.set_pipeline(pipe)
     panel.set_data(pipe.compute(0))
-    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Cell", "Elements", "Camera"]
+    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Cell", "Surfaces", "Elements", "Camera"]
     marked = lambda: {lab.text() if isinstance(lab, QtWidgets.QLabel) else lab.title() for lab, _ in panel._marks if lab.property("set")} - {""}
     assert not marked()
     view(pipe, radius_scale=0.4, boundary=[-0.1, 1.1], direction="z")

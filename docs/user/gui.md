@@ -145,9 +145,12 @@ modifier's constructor, so every argument you can pass in Python can be edited t
 
 **View tab (display settings).** The View tab, next to the Python console below the Structure view
 (Window › View settings), shows how the structure is drawn as cards side by side: **Atoms** (style
-preset, radius scale, radius table, oxidation states, how atoms are drawn), **Types** (color, radius
-and count per type, VESTA elements.ini import), **Bonds** (sticks, the pair table, *As step* for a
-Create bonds step), **Cell** (line width and VESTA's boundary range), **Elements** ([visual element
+preset, radius scale, radius table, oxidation states, how atoms are drawn, *Draw atoms* off for a
+stick model, atom *Labels* such as `{type}{index}`, *Highlight selection*), **Types** (color, radius,
+transparency and count per type, VESTA elements.ini import), **Bonds** (sticks, the pair table, *As
+step* for a Create bonds step), **Cell** (line width and VESTA's boundary range), **Surfaces**
+(polyhedra, isosurfaces and slices that steps made, by name: shown, color, transparency, edges;
+*Reset* gives back the step's look), **Elements** ([visual element
 plugins](../plugins/visuals.md), added with *Add element*) and **Camera**. Every value is a setting of
 the notebook's `view(pipe, ...)` cell: the rows the cell sets are highlighted, the card says *in
 notebook*, and the tooltip shows the value. A change made here is written back into that cell, and
