@@ -3514,6 +3514,65 @@ def test_plugin_menu_items_bottom_tab_and_layout_restore(app, pipe, monkeypatch,
     w2.close()
 
 
+def test_plugin_items_on_toolbar_cell_and_plot_menus(app, pipe, monkeypatch):
+    """@menu_item(menu="Toolbar" | "Notebook cell" | "Plot"): a toolbar button (or drop-down),
+    entries in a cell's ⋯ menu and in a plot's right-click menu, with context.target."""
+    import shutil
+    from pathlib import Path
+
+    from ewald import plugins
+    from ewald.gui.app import MainWindow
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(Path(__file__).parents[1] / "examples" / "plugins" / "sim_agent_panel.py", folder)
+    seen = []
+    plugins.register_menu_item("a", lambda ctx: seen.append("a"), title="Alpha", menu="Toolbar/Tools+", when="picks")
+    plugins.register_menu_item("b", lambda ctx: seen.append(ctx.target), title="Cell kind",
+                               menu="Notebook cell/More")
+    w = MainWindow(pipe)
+    tb = w.findChild(QtWidgets.QToolBar, "main-toolbar")
+    button = next(a for a in tb.actions() if a.text() == "Sim agent")
+    assert not button.icon().isNull()
+    button.trigger()                                   # shows the side bar
+    assert w.plugin_panels["sim_agent"]["dock"] is not None
+    drop = next(b for b in tb.findChildren(QtWidgets.QToolButton, "pluginToolButton") if b.text() == "Tools+")
+    alpha = drop.menu().actions()[0]
+    assert alpha.text() == "Alpha" and not alpha.isEnabled()     # nothing picked
+    w.viewport.set_picks([1])
+    assert alpha.isEnabled()
+    alpha.trigger()
+    assert seen == ["a"]
+
+    cell_widget = w.panel.view.widgets[0]
+    menu = cell_widget.findChild(QtWidgets.QToolButton, "cellMenu").menu()
+    menu.aboutToShow.emit()
+    titles = [a.text() for a in menu.actions()]
+    assert "Send cell to Sim agent" in titles and "More" in titles
+    menu.aboutToShow.emit()                            # rebuilt, not doubled
+    assert [a.text() for a in menu.actions()].count("Send cell to Sim agent") == 1
+    more = next(a.menu() for a in menu.actions() if a.text() == "More")
+    more.actions()[0].trigger()
+    assert seen[-1] is cell_widget.cell
+    next(a for a in menu.actions() if a.text() == "Send cell to Sim agent").trigger()
+    assert "sim-agent task: run cell:" in w.panel.view.notebook.cells[-1].source
+
+    plot = w.plots
+    target = plot.target()
+    assert isinstance(target, plugins.PlotTarget)
+    pmenu = plot.context_menu()
+    ptitles = [a.text() for a in pmenu.actions()]
+    assert ptitles[:2] == ["Save plot…", "Reset view"] and ptitles[-1] == "Send plotted data to Sim agent"
+    pmenu.actions()[-1].trigger()
+    assert "sim-agent task: analyze" in w.panel.view.notebook.cells[-1].source
+
+    plugins.set_enabled("sim-agent-example", False)
+    w.refresh_plugin_panels()
+    assert not any(a.text() == "Sim agent" for a in tb.actions())
+    w.close()
+
+
 def test_plugin_settings_page_dialog(app, monkeypatch):
     from ewald import plugins, settings
     from ewald.gui.app import MainWindow

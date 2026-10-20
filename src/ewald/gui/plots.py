@@ -37,7 +37,7 @@ goes to the nearest frame.
 from __future__ import annotations
 
 import numpy as np
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import linking, plotstyle
 from ..linking import grid_map
@@ -765,8 +765,40 @@ class PlotsPanel(QtWidgets.QWidget):
             self._rubber = self._ax.axvspan(min(x0, x), max(x0, x), color=color, alpha=0.25, lw=0)
         self.canvas.draw_idle()
 
+    def context_menu(self) -> QtWidgets.QMenu:
+        """Right click on the plot: Save plot…, Reset view and the "Plot" entries of
+        ``@menu_item`` plugins (``context.target`` is :meth:`target`)."""
+        menu = QtWidgets.QMenu(self)
+        menu.addAction("Save plot…", self.save_plot)
+        menu.addAction("Reset view", self.reset_view)
+        menu.addSeparator()
+        from .window_plugins import plugin_host
+
+        host = plugin_host(self)
+        if host is not None and host.add_plugin_items(menu, "Plot", target=self.target()):
+            menu.removeAction(menu.actions()[-1])    # no separator at the end
+        return menu
+
+    def target(self):
+        """This plot for plugins (:class:`ewald.plugins.PlotTarget`)."""
+        from ..plugins import PlotTarget
+
+        table = self._table()
+        ax = self._ax
+        return PlotTarget(table=self.hist.currentText() or self.table.currentText(), values=table,
+                          columns=list(self._plotted_columns() or []),
+                          xlim=tuple(ax.get_xlim()) if ax is not None else None,
+                          ylim=tuple(ax.get_ylim()) if ax is not None else None, data=self.data)
+
     def _on_release(self, event):
         press, self._press = self._press, None
+        pan = self._pan
+        if event.button == 3 and (pan is None or event.x is None or abs(event.x - pan[0]) + abs(event.y - pan[1]) < 4):
+            self._pan = None      # a right click, not a pan
+            menu = self.context_menu()
+            menu.exec(QtGui.QCursor.pos())
+            menu.deleteLater()
+            return
         if self._pan is not None:
             pan, self._pan = self._pan, None
             if event.x is not None and abs(event.x - pan[0]) + abs(event.y - pan[1]) >= 4:

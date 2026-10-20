@@ -110,8 +110,8 @@ along, Orthographic, Zoom to fit and Ask AI are always there.
 
 **Plugin side bars.** A plugin can bring its own side bar (a sim-agent panel, a database
 browser, ...): installing it adds a button at the bottom of the activity bar and an entry
-under Window › Plugin panels (or a tab under the 3D view instead), it may add entries to the
-menus and to the 3D view's right-click menu, and a plugin with settings adds its own page to
+under Window › Plugin panels (or a tab under the 3D view instead), it may add toolbar buttons
+and entries to the menus and to the right-click menus of the 3D view, notebook cells and plots, and a plugin with settings adds its own page to
 Preferences. Plugin side bars and tabs that were open come back at the next start where they
 were. Switching the plugin off in the Plugins side bar removes all of it; its settings are kept
 for when it comes back ([Side bar plugins](../plugins/gui.md)).
@@ -223,7 +223,8 @@ structure; atoms selected in the viewport show as their projected DOS or as fat 
 **Zoom, pan and hover.** Every plot (the Plots tab and view cells) moves the same way. The
 wheel zooms the x axis around the cursor and Ctrl+wheel the y axis (on a band structure the
 wheel zooms the energy). A right or middle drag pans, and a double-click goes back to the full
-range. On a plot that selects nothing (DOS, bands, phonon bands, maps) a left drag zooms to the
+range. A right click without dragging opens the plot's menu (*Save plot…*, *Reset view* and any
+plugin entries). On a plot that selects nothing (DOS, bands, phonon bands, maps) a left drag zooms to the
 dragged range; elsewhere a left drag still selects. The zoomed range stays while the frame
 changes, and *Save plot…* writes the range you see. The DOS and the band structure share one
 energy window, shown in the **E** boxes, where you can also type it. Hovering shows the values
