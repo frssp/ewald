@@ -185,6 +185,26 @@ def test_matplotlib_figures_and_images_become_image_outputs():
     assert plt.get_fignums() == []
 
 
+def test_show_of_the_pipeline_is_marked_for_a_live_plot(tmp_path):
+    pytest.importorskip("matplotlib")
+    from ewald import examples
+    from ewald.notebook_io import from_ipynb, to_ipynb
+
+    nb = Notebook.from_py(f"# %%\nimport matplotlib\nmatplotlib.use('Agg')\nfrom ewald import load\n"
+                          f"from ewald.modifiers import *\nfrom ewald.views import show\n"
+                          f"pipe = load({str(examples.path('Cu_md.extxyz'))!r})\n"
+                          "pipe.add(MeanSquaredDisplacement())\n\n"
+                          "# %%\nprint('anywhere in a cell')\nshow(pipe, table='msd', xlim=(0, 2))\n"
+                          "show(pipe.compute(0), table='msd')\n")
+    assert nb.run_all()
+    text, live, other = nb.cells[1].outputs
+    assert text.kind == "text" and live.kind == other.kind == "image"
+    assert live.view == {"table": "msd", "bins": 50, "xlim": [0.0, 2.0]}
+    assert other.view is None                       # not the notebook's pipeline: an image
+    again = from_ipynb(to_ipynb(nb))                # .ipynb keeps it (Jupyter shows the PNG)
+    assert again.cells[1].outputs[1].view == live.view and again.cells[1].outputs[1].data == live.data
+
+
 def test_from_pipeline_and_save_load_roundtrip(cu_file, tmp_path):
     pipe = import_file(cu_file)
     pipe.modifiers.append(mods.CoordinationAnalysis(cutoff=3.0))

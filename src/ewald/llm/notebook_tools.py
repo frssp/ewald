@@ -1,26 +1,34 @@
 """Notebook tools: the AI reads and edits the cells of the user's notebook.
 
-:meth:`Toolset.attach_notebook` adds them; the GUI attaches the notebook of the current tab,
-and Python code can attach any :class:`~ewald.notebook.Notebook`::
+Every :class:`Toolset` has them, on the notebook it works on: the GUI attaches the notebook of
+the current tab, Python code any :class:`~ewald.notebook.Notebook`, and without one the toolset
+uses a session notebook of its own::
 
-    ts = Toolset(nb.pipeline, notebook=nb)
+    ts = Toolset(notebook=nb)
     ts.call("insert_cell", {"source": "pipe.add(CoordinationAnalysis(cutoff=3.0))"})
 
-Inserting or editing a cell never runs it: the cell waits, marked not run or out of date,
-until the user runs it. ``run_cell`` exists only when the access allows it
+Inserting or editing a cell's source never runs it: the cell waits, marked not run or out of
+date, until the user runs it. ``run_cell`` exists only when the access allows it
 (:attr:`NotebookAccess.can_run`; Preferences › AI › "Let the AI run cells" in the GUI),
-since a cell is arbitrary Python. Parameters of a step cell change through ``params``,
-like the step's form, without running code. Cells are addressed by their 0-based ``index``
-in :func:`list_cells` or by their ``id``.
+since a cell the model wrote is arbitrary Python. Parameters of a step cell change through
+``params``: the step's ``pipe.add(Name(...))`` call is rewritten with the new literal values and
+run, so the pipeline changes only by running the cell, and only when the step's arguments are
+all literals (no code of the model's runs). Cells are addressed by their 0-based ``index`` in
+:func:`list_cells` or by their ``id``.
 """
 from __future__ import annotations
 
+import ast
 import base64
+import inspect
 from typing import Callable
 
-from ..notebook import Cell, Notebook, _remove
+from ..notebook import Cell, Notebook, _remove, step_call
 from ..pipeline import PythonModifier
 from .tools import _CODE_MODIFIERS, ToolResult, _jsonable, _obj
+
+#: The tools :func:`register` adds.
+CELL_TOOLS = ("list_cells", "read_cell", "insert_cell", "edit_cell", "delete_cell", "move_cell", "run_cell")
 
 _MAX_SOURCE = 12000   # characters of one cell's source a tool result carries
 _MAX_OUTPUT = 4000    # characters of one text output
@@ -177,7 +185,7 @@ def register(ts, access: NotebookAccess):
        "Insert a new cell into the user's notebook (default: at the end; 'index' puts it before the cell "
        "at that index). The cell is not run: the user runs it (or run_cell, when offered). Write one "
        "complete cell that runs in the notebook's namespace (pipe is the pipeline). For a plain analysis "
-       "step prefer add_modifier, which adds the step cell and computes it right away.",
+       "step prefer add_modifier, which adds the step cell and runs it right away.",
        _obj({"source": {"type": "string"},
              "kind": {"type": "string", "enum": ["code", "markdown"], "description": "default code"},
              "index": {"type": "integer", "description": "insert before this cell (default: append)"}},
@@ -198,9 +206,9 @@ def register(ts, access: NotebookAccess):
 
     @T("edit_cell",
        "Change a notebook cell. Either replace its whole 'source', or replace 'old_text' (which must occur "
-       "exactly once) with 'new_text', or, for a step cell, set the step's 'params' (like its form: the "
-       "pipeline follows at once, no code runs). A changed source is not run: the cell is marked out of "
-       "date until the user runs it (or run_cell, when offered).",
+       "exactly once) with 'new_text', or, for a step cell, set the step's 'params': its pipe.add(Name(...)) "
+       "is rewritten with the new values and run at once (only when its arguments are literals). A changed "
+       "source is not run: the cell is marked out of date until the user runs it (or run_cell, when offered).",
        _obj({**where, "source": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"},
              "params": {"type": "object", "description": "step cells: modifier parameters to change"}}))
     def edit_cell(index=None, id=None, source=None, old_text=None, new_text=None, params=None):
@@ -209,12 +217,13 @@ def register(ts, access: NotebookAccess):
         if old_text is not None and new_text is None:
             raise ValueError("old_text needs new_text")
 
+        if params is not None:
+            return set_params(*access.call(lambda: located(index, id)), params)
+
         def op():
             nb = need()
             k = find(nb, index, id)
             c = nb.cells[k]
-            if params is not None:
-                return set_params(nb, c, k, params)
             if source is not None:
                 new = source
             else:
@@ -241,24 +250,52 @@ def register(ts, access: NotebookAccess):
 
         return access.call(op)
 
+    def located(index, id):
+        nb = need()
+        k = find(nb, index, id)
+        return nb, nb.cells[k], k
+
     def set_params(nb: Notebook, c: Cell, k: int, params: dict) -> dict:
         mod = c.modifier
         if mod is None:
             raise ValueError(f"cell {k} is not a step cell that ran; edit its source instead")
-        if nb.kernel is not None:
-            raise ValueError("this notebook runs in a kernel; edit the step's source instead")
+        if nb.restricted:
+            raise PermissionError("the notebook is not trusted yet (an .ewd file); the user must trust it first")
         if isinstance(mod, PythonModifier) or type(mod).__name__ in _CODE_MODIFIERS:   # parameters are code
             raise PermissionError(f"{mod.name} runs Python; its parameters cannot be set from here")
         known = mod.parameters()
         bad = sorted(set(params) - set(known))
         if bad:
             raise ValueError(f"{mod.name} has no parameter(s) {bad}; it has {sorted(known)}")
-        old = {p: known[p] for p in params}
-        for p, v in params.items():
-            setattr(mod, p, v)
-        nb.update_step(c)
-        access.changed(nb, f"AI: edit {mod.name}", c, pipeline=True)
-        return {"edited": cell_summary(nb, k), "before": _jsonable(old), "source": c.source}
+        old_source = c.source
+        new_source = _with_params(old_source, nb.pipeline_name, type(mod), params)
+        type(mod)(**{**_call_values(old_source, nb.pipeline_name, type(mod)), **params})   # bad values fail here
+        before = {p: known[p] for p in params}
+        label = f"AI: edit {mod.name}"
+
+        def write():
+            c.source = new_source
+            access.changed(nb, label, c)
+
+        access.call(write)
+        ok = access.run(nb, c)
+        error = "\n".join(str(o.data) for o in c.outputs if o.kind == "error").strip()
+        if ok and nb.pipeline is not None and nb.kernel is None:
+            try:   # the new values must also compute
+                nb.pipeline.compute(ts.frame % max(nb.pipeline.num_frames, 1))
+            except Exception as exc:  # noqa: BLE001 - reported to the model below
+                ok, error = False, f"{type(exc).__name__}: {exc}"
+        if not ok:
+
+            def restore():
+                c.source = old_source
+                access.changed(nb, f"{label} (failed)", c)
+
+            access.call(restore)
+            access.run(nb, c)   # the step as it was (literal arguments only), back in the pipeline
+            raise RuntimeError(f"the step failed with the new parameters and was put back:\n{error[-3000:]}")
+        return access.call(lambda: {"edited": cell_summary(nb, nb.cells.index(c)), "before": _jsonable(before),
+                                    "source": c.source})
 
     @T("delete_cell", "Delete a notebook cell (and the steps it added to the pipeline).", _obj(where))
     def delete_cell(index=None, id=None):
@@ -314,3 +351,43 @@ def register(ts, access: NotebookAccess):
         return ToolResult(_jsonable(content), images=images, is_error=not ok)
 
     ts.tools["run_cell"].available = lambda: access.can_run
+
+
+def _literal_call(source: str, name: str) -> ast.Call:
+    """The ``Name(...)`` call of a step cell when every argument is a literal, else ValueError."""
+    arg = step_call(source, name)
+    if not isinstance(arg, ast.Call) or not isinstance(arg.func, (ast.Name, ast.Attribute)):
+        raise ValueError("this step is not a plain pipe.add(Name(...)) call; edit its source instead")
+    try:
+        for node in list(arg.args) + [kw.value for kw in arg.keywords]:
+            ast.literal_eval(node)
+    except ValueError:
+        raise ValueError("this step's arguments are code, not plain values; edit its source instead") from None
+    if any(kw.arg is None for kw in arg.keywords) or any(isinstance(a, ast.Starred) for a in arg.args):
+        raise ValueError("this step passes *args/**kwargs; edit its source instead")
+    return arg
+
+
+def _call_values(source: str, name: str, cls) -> dict:
+    """The arguments of a step cell's literal call, by parameter name."""
+    call = _literal_call(source, name)
+    bound = inspect.signature(cls).bind_partial(*[ast.literal_eval(a) for a in call.args],
+                                                **{kw.arg: ast.literal_eval(kw.value) for kw in call.keywords})
+    return dict(bound.arguments)
+
+
+def _with_params(source: str, name: str, cls, params: dict) -> str:
+    """``source`` with its step call's arguments replaced by the old ones updated with ``params``."""
+    call = _literal_call(source, name)
+    values = {**_call_values(source, name, cls), **params}
+    text = f"{ast.get_source_segment(source, call.func)}({', '.join(f'{k}={v!r}' for k, v in values.items())})"
+    lines = source.splitlines(True)
+    start = sum(len(line) for line in lines[:call.lineno - 1]) + _offset(lines[call.lineno - 1], call.col_offset)
+    end = sum(len(line) for line in lines[:call.end_lineno - 1]) + _offset(lines[call.end_lineno - 1],
+                                                                          call.end_col_offset)
+    return source[:start] + text + source[end:]
+
+
+def _offset(line: str, col: int) -> int:
+    """A character offset in ``line`` from ast's UTF-8 byte offset ``col``."""
+    return len(line.encode()[:col].decode(errors="ignore"))

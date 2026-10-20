@@ -101,7 +101,9 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 ## Notebook verbs
 
 `from ewald import load, rdf, msd, vacf, sq, xrd, bond_angles, cna, ptm, voronoi, clusters, check_run, load_runs`: `pipe = load(path)` is `import_file`;
-`pipe.add(m)` appends a modifier (and works as `@pipe.add` on `def f(frame, data)`). A verb adds its
+`pipe.add(m)` appends a modifier (and works as `@pipe.add` on `def f(frame, data)`); `@all_frames` on
+`def f(frames, data)` makes a step that reads every frame once (`frames[k]`, `len(frames)`, slices) and whose
+result (tables, attributes, properties) is reused at every frame; `@each_frame` marks the per-frame default. A verb adds its
 analysis step and returns its table: `rdf(pipe, cutoff=6, bins=200, partial=False)` (CoordinationAnalysis,
 `coordination-rdf`), `msd(pipe, **kw)` (`msd`), `vacf` (`vacf`), `sq(pipe, q_max=10)` (`structure-factor`),
 `xrd(pipe, **kw)` (`diffraction`), `bond_angles(pipe)` (`bond-angle-distr`), `cna(pipe, mode="adaptive")` and

@@ -61,6 +61,12 @@ GUI
   edit or regenerate a sent message. The notebook cell tools (`llm/notebook_tools.py`) could
   highlight the cells the AI changed and show a diff to accept or undo; `ewald ask` and the MCP
   server could take a notebook (`--notebook analysis.py`) and save it back.
+- AI tools only through cells (`llm/tools.py` `CELL_WRITERS`): `@ai_tool` plugin functions can
+  still change `toolset.pipeline` by hand (ewald cannot check them; docs/plugins/tools.md asks
+  them not to); a check after each plugin tool that every modifier belongs to a cell could warn.
+  A failed generated cell leaves two undo entries in the GUI (insert, then removal). After a second
+  `pipe = load(...)` cell, the step cells above it still hold the old pipeline's modifiers, and
+  `Notebook.sync` (the GUI's refresh) deletes them.
 - `PythonScript` step cells: `Modifier.__repr__` uses `name`, which PythonScript sets to its title,
   so `step_source` writes `pipe.add(Python script(...))`, which does not parse.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
@@ -90,6 +96,13 @@ GUI
   camera sideways instead of an off-axis projection (exact at the focal distance only); the
   Overlay elements and text label are not previewed inside the frame; Claude's `set_view` can set
   `region` but no tool tells it the frame on screen.
+- Python steps per frame vs once (`@each_frame` / `@all_frames`, landed): cell markers
+  `# %% [each frame]` / `# %% [all frames]` with a header toggle, where the cell body is the step
+  (`data`, `frames` given), proposed to the owner 2026-10-20 and not decided yet; a GUI badge on
+  cells whose steps are `all_frames`; `all_frames` start/stop/step arguments.
+- Live `show(pipe, ...)` outside a view cell: zooming does not write `xlim=`/`ylim=` back (only a
+  cell that is just the call does), and `frame=` is ignored by the live plot (it follows the
+  current frame, as view cells do).
 - Notebook kernels (`ewald/kernel.py`): step forms for steps a kernel cell adds with code the
   app cannot import (a class only the kernel's Python has stays as code).
 - Notebook kernel on the cluster (plan, owner's pick 2026-10-20; not started): run a notebook

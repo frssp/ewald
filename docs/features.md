@@ -7,7 +7,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Python API
 
-`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `View`, `view`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`, `run_info`, `check_run`, `load_runs`, `arrhenius`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
+`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `AllFramesModifier`, `Frames`, `each_frame`, `all_frames`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `View`, `view`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`, `run_info`, `check_run`, `load_runs`, `arrhenius`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
 
 ## Modifiers
 
@@ -328,7 +328,7 @@ Details: [Command line](user/cli.md).
 
 ## AI integration
 
-The same tools serve Ask AI and the AI chat, `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (MCP server), whichever provider answers. Tools marked *code* exist only with `allow_code=True`; *notebook* tools act on the cells of an attached notebook (the AI chat's current tab), and `run_cell` needs `allow_code=True` or Preferences > AI > Let the AI run cells. Details: [AI integration](user/claude.md).
+The same tools serve Ask AI and the AI chat, `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (MCP server), whichever provider answers. They work on a notebook (the AI chat's current tab, or a session notebook of their own) and change the structure and every other result only through its cells: tools marked *cell* write a cell and run it (a name and JSON values, no model-written code), *notebook* tools read and edit cells, and `run_cell` (*code*) runs a cell the AI wrote, only with `allow_code=True` or Preferences > AI > Let the AI run cells. The others only read. Details: [AI integration](user/claude.md).
 
 Providers (Preferences > AI, `--provider`; `@ai_provider` plugins add more):
 
@@ -344,16 +344,16 @@ Tools:
 
 | Tool | What it does |
 |---|---|
-| `load_structure` | Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vaspout.h5, LAMMPS dump/data, extxyz, cif, ... ; wildcards allowed) as the session pipeline, replacing any previous one. |
+| `load_structure` *cell* | Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vaspout.h5, LAMMPS dump/data, extxyz, cif, ... ; wildcards allowed) as the pipeline, replacing any previous one: a pipe = load(...) cell at the end of the notebook, run at once. |
 | `describe_frame` | Compact description of one frame after the current modifiers: composition, cell, density, minimum distance, coordination histogram per type, g(r) peaks, property ranges, sanity warnings. |
 | `describe_selection` | Describe particles and their surroundings: per-atom neighbor lists, coordination numbers, structure types (if CNA/PTM ran), property values against the environment and frame averages, the nearest defect, and a close-up render with the particles highlighted. |
 | `describe_trajectory` | Scan the trajectory (source frames, subsampled to max_frames) and return per-frame descriptor statistics (volume, min distance, MSD and max displacement vs the first frame, coordination) and 'events': frames where a descriptor shifts abruptly. |
 | `event_details` | Measure what changes around a frame (e.g. an event from describe_trajectory): which atoms moved and how far (minimum image, by identifier), by type, local vs system-wide, coordination transitions, and the top movers with positions before/after. |
 | `list_modifiers` | Available modifiers with their parameters and defaults. |
-| `add_modifier` | Append (or insert at 'index') a modifier to the pipeline. |
-| `remove_modifier` | Remove the modifier at 'index' (see show_pipeline). |
+| `add_modifier` *cell* | Add a modifier to the pipeline (at the end, or before the one at pipeline 'index') as a step cell pipe.add(Name(...)) in the notebook, run at once. |
+| `remove_modifier` *cell* | Remove the modifier at pipeline 'index' (see show_pipeline) by deleting its step cell from the notebook. |
 | `show_pipeline` | Current source, modifier list and frame. |
-| `set_frame` | Set the current frame used by tools that take no frame argument. |
+| `set_frame` | Set the current frame used by tools that take no frame argument (only what you look at; the view's frame is set_view frame). |
 | `evaluate_expression` | Evaluate an OVITO-style per-particle expression on a frame and return statistics (count of true values for conditions; min/max/mean/percentiles for numbers). |
 | `compute_rdf` | Radial distribution function g(r) of a frame (total, plus partial pairs). |
 | `analyze_symmetry` | Space group (Hermann-Mauguin and number), point group, crystal system and the Wyckoff site of every symmetry-unique atom of a frame (spglib). |
@@ -362,18 +362,17 @@ Tools:
 | `check_run` | What the loaded run is and whether it can be trusted, from its input and log files (INCAR, OSZICAR, OUTCAR, log.lammps): code, kind (md/relax/static/neb), ensemble, target temperature, MD time step and time per stored frame, then findings: SCF steps that hit NELM, relaxation not converged, the first equilibrated frame of MD, temperature off target, energy drift, LAMMPS warnings/errors, atoms too close. |
 | `render_image` | Render a frame of the pipeline to PNG and return the image so you can inspect it. |
 | `get_view` | The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, 'elements' the same values by visual element (Particles, Bonds, Surfaces, Simulation cell, ...), 'measured' the values of its distance/angle measurements, 'help' what each means. |
-| `set_view` | Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style preset, theme, element colors and radii, atoms on/off, bonds on/off, bond table, cell, background, VESTA boundary, polyhedra/isosurface look by surface name (surfaces), distance/angle measurements, key light, atom labels, plugin visuals, vectors, camera (direction, zoom, rotate), frame, and picture options (renderer, quality, legends, scale bar, text). |
-| `list_visuals` | Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell; configured through render_image and modifiers) and installed plugins, which add_visual draws on top in every renderer. |
-| `add_visual` | Draw a plugin visual element (see list_visuals) in every later render_image, with optional constructor parameters. |
-| `remove_visual` | Stop drawing the visual element at 'index' of the added list. |
+| `set_view` *cell* | Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style preset, theme, element colors and radii, atoms on/off, bonds on/off, bond table, cell, background, VESTA boundary, polyhedra/isosurface look by surface name (surfaces), distance/angle measurements, key light, atom labels, plugin visuals, vectors, camera (direction, zoom, rotate), frame, and picture options (renderer, quality, legends, scale bar, text). |
+| `list_visuals` | Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell; configured through set_view and modifiers) and installed plugins, which add_visual draws on top in every renderer. |
+| `add_visual` *cell* | Draw a plugin visual element (see list_visuals) in the view, with optional constructor parameters: the view setting 'visuals', written to the view cell like set_view. |
+| `remove_visual` *cell* | Stop drawing the visual element at 'index' of the added list (the view cell changes). |
 | `list_overlays` | Overlay elements drawn on top of rendered images (built-in: Coordinate tripod, Attributes; plus plugins), with their parameters, and the ones currently added. |
-| `add_overlay` | Draw an overlay element (see list_overlays) on every later render_image, with optional constructor parameters. |
-| `remove_overlay` | Stop drawing the overlay at 'index' of the added list. |
-| `list_styles` | Themes (element colors, background, cell color, radius preset; pass one to render_image) and the color maps usable as 'cmap' in ColorCoding, GridSlice and VectorVis: common matplotlib names and plugins, each marked whether it reads in grayscale. |
-| `export_file` | Write frames of the pipeline (after its modifiers) to a file: POSCAR, LAMMPS data/dump, extxyz, CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... The format follows the file name (POSCAR, *.data, *.extxyz, *.h5md) unless given. |
-| `get_script` | Standalone Python script that reproduces the current pipeline. |
-| `python_api` *code* | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature). |
-| `run_python` *code* | Execute Python in the session (variables persist). |
+| `add_overlay` *cell* | Draw an overlay element (see list_overlays) on the view's pictures, with optional constructor parameters: the view setting 'overlays', written to the view cell like set_view. |
+| `remove_overlay` *cell* | Stop drawing the overlay at 'index' of the added list (the view cell changes). |
+| `list_styles` | Themes (element colors, background, cell color, radius preset; set_view theme, or render_image for one picture) and the color maps usable as 'cmap' in ColorCoding, GridSlice and VectorVis: common matplotlib names and plugins, each marked whether it reads in grayscale. |
+| `export_file` *cell* | Write frames of the pipeline (after its modifiers) to a file: POSCAR, LAMMPS data/dump, extxyz, CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... as an export_file(...) cell in the notebook, run at once. |
+| `get_script` | The notebook as a standalone Python script (percent format): it reproduces everything the tools did, since they work only through its cells. |
+| `python_api` | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature). |
 | `list_cells` *notebook* | The cells of the user's notebook: index, id, kind (code, step = one pipe.add(...), view = one show(pipe, ...), markdown), state (new = not run, ok, error, stale = out of date), first line and output kinds. |
 | `read_cell` *notebook* | One notebook cell: its full source and outputs (printed text, errors, values; plots come back as images). |
 | `insert_cell` *notebook* | Insert a new cell into the user's notebook (default: at the end; 'index' puts it before the cell at that index). |

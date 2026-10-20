@@ -93,7 +93,7 @@ The ray tracer and OpenGL ignore cylinder `alpha` (except that the vector render
 | Scripts | `render(..., visuals=[...])`, `ewald.render.build_scene`, `ewald.raytrace.scene_from_data`, `ewald.vector.render_vector` |
 | GUI | Pipeline panel › "+ Visual" adds it under Visual elements, with a checkbox and a parameter form; Del removes it |
 | Sessions | stored in the view style (`style.visuals`) and restored by `load_session(...).render_kwargs()` |
-| AI tools | `list_visuals`, `add_visual`, `remove_visual`; `render_image` draws the added ones |
+| AI tools | `list_visuals`, `add_visual`, `remove_visual` (through the view cell); `render_image` draws the added ones |
 | `ewald plugins` | listed as `visual <name>` with its category and origin |
 
 ## Registering

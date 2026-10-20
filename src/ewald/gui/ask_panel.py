@@ -45,8 +45,8 @@ block as one complete cell that runs in that namespace; prefer `pipe.add(...)` s
 loops. When the user asks you to \
 change the notebook itself, use the cell tools: list_cells and read_cell (sources and outputs), \
 insert_cell, edit_cell (step parameters through params), move_cell and delete_cell. Cells you \
-write are not run until the user runs them, unless run_cell is offered; add_modifier adds a step \
-cell that takes effect at once. Say which cells you changed."""
+write are not run until the user runs them, unless run_cell is offered; add_modifier, set_view, \
+load_structure and export_file write their own cell and run it. Say which cells you changed."""
 
 #: How the note above describes the ```python blocks of an answer (Preferences › AI › Code in answers).
 CODE_CELLS_NOTE = {
@@ -605,7 +605,11 @@ class AskPanel(QtWidgets.QWidget):
         self._set_stop_button(False)
         self._pending = None
         pipeline = self._agent_pipeline if self.agent else None
-        if pipeline is not None and list(pipeline.modifiers) != self._modifiers_before:
+        now = getattr(getattr(self.agent, "toolset", None), "pipeline", pipeline)
+        if now is not None and now is not pipeline:   # a load cell the AI ran made a new pipe:
+            self._agent_pipeline = now                  # the conversation goes on with it
+            self.pipelineChanged.emit()
+        elif pipeline is not None and list(pipeline.modifiers) != self._modifiers_before:
             self.pipelineChanged.emit()
 
     def _on_answer(self, text):

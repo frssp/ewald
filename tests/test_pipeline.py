@@ -225,6 +225,44 @@ def test_cached_frames_are_read_only(cu_fcc):
     assert cu_fcc.positions.flags.writeable and np.allclose(cu_fcc.positions, original)
 
 
+def test_each_frame_and_all_frames_steps(cu_fcc):
+    from ewald import AllFramesModifier, Pipeline, PythonModifier, StaticSource, all_frames, each_frame
+
+    frames = []
+    for k in range(4):
+        d = cu_fcc.copy()
+        d.particles["Position"] = cu_fcc.positions + 0.1 * k
+        frames.append(d)
+    pipe = Pipeline(StaticSource(frames))
+    calls = []
+
+    @each_frame
+    def shift(frame, data):
+        data.attributes["Shift"] = frame
+
+    @all_frames
+    def height(frames, data):
+        calls.append(len(frames))
+        z = [d["Position"][:, 2].mean() for d in frames]
+        data.tables["height"] = {"Frame": np.arange(len(z)), "Mean z": np.array(z)}
+        data.attributes["Rise"] = z[-1] - z[0]
+        data["Mobile"] = np.ones(data.count)
+        assert len(frames[::2]) == 2 and frames[-1].attributes["Shift"] == 3   # steps above apply
+
+    pipe.add(shift, height)
+    assert type(pipe.modifiers[0]) is PythonModifier and type(pipe.modifiers[1]) is AllFramesModifier
+    out = [pipe.compute(k) for k in range(4)]
+    assert calls == [4]                                      # read every frame once
+    assert [d.attributes["Shift"] for d in out] == [0, 1, 2, 3]
+    for d in out:                                            # the kept result at every frame
+        assert d.attributes["Rise"] == pytest.approx(0.3)
+        np.testing.assert_allclose(d.tables["height"]["Mean z"], out[0].tables["height"]["Mean z"])
+        assert d["Mobile"].sum() == d.count
+    pipe.modifiers.insert(0, PythonModifier(lambda f, d: None))   # a step above changed: computed again
+    pipe.compute(1)
+    assert calls == [4, 4]
+
+
 def test_missing_package_fails_once_not_every_frame(cu_fcc):
     from ewald import Modifier
 
