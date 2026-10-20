@@ -39,7 +39,7 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 GUI
 
 - UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): still open
-  are Cancel for a ray trace in progress, opening files (local or remote) and remote connections
+  are opening files (local or remote) and remote connections
   off the GUI thread (they now say what they wait for, but the window still blocks), and the
   Render settings column scrolling sideways at the default window width.
 - Panel layout (phase 1 landed: `gui/workbench.py`, `gui/layout_model.py`; plan in project

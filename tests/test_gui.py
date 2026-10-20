@@ -771,11 +771,19 @@ def test_main_window_smoke(app, pipe, tmp_path):
     w.render_page.width.setValue(320)
     w.render_page.height.setValue(240)
     w.render_from_page()                    # the ray tracer: on a worker thread, a spinner meanwhile
-    assert w.rendering and not w.render_page.render_button.isEnabled()
-    assert not w.render_page.busy_label.isHidden() and w.render_page.busy_label.text() == "Ray tracing…"
+    button = w.render_page.render_button    # ... and Render turns into Cancel
+    assert w.rendering and button.isEnabled() and button.text() == "Cancel"
+    assert not w.render_page.busy_label.isHidden() and w.render_page.busy_label.text().startswith("Ray tracing…")
     w.wait_render()
-    assert not w.rendering and w.render_page.render_button.isEnabled() and w.render_page.busy_label.isHidden()
+    assert not w.rendering and button.isEnabled() and button.text() == "Render" and w.render_page.busy_label.isHidden()
     assert os.path.getsize(tmp_path / "x.png") > 1000
+    w.render_page.output.setText(str(tmp_path / "cancelled.png"))
+    w.render_from_page()
+    button.click()                          # Cancel: stops after the rows being traced, no file, no error box
+    assert w.render_page.busy_label.text() == "Cancelling…" and not button.isEnabled()
+    w.wait_render()
+    assert not (tmp_path / "cancelled.png").exists() and "cancelled" in w.statusBar().currentMessage()
+    assert button.text() == "Render" and button.isEnabled()
     code = w.render_page.code.toPlainText()
     assert "CoordinationAnalysis(cutoff=3.0" in code and "camera=" in code
     w.close()
