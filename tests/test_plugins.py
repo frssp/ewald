@@ -681,3 +681,14 @@ def test_settings_page_checks_what_it_is_given():
         SettingsField("a", kind="password")
     with pytest.raises(ValueError, match="needs choices"):
         SettingsField("a", kind="choice")
+
+
+def test_panel_entry_point_reads_title_and_icon_from_the_function():
+    def side(context):
+        return None
+
+    side.title, side.icon, side.width = "Side", "<svg/>", 280
+    p = plugins.register_panel("side", side)
+    assert (p.title, p.icon, p.width) == ("Side", "<svg/>", 280)
+    q = plugins.register_panel("plain", lambda c: None)
+    assert (q.title, q.icon, q.width) == ("plain", "plugins", 320)
