@@ -28,9 +28,10 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 - Pipeline output cache: plugin modifiers are never reused (`Modifier.cacheable` is None for
   them); first-party plugins (ewald-phonopy, ewald-plumed) could set `cacheable = True` where
   their output depends only on their settings.
-- Structure identification at 108k atoms spends half its time in the periodic kNN query
-  (scipy cKDTree plus image padding, ~0.4 s): a numba cell-list kNN like `find_pairs` would
-  roughly halve PTM (0.9 s) and Voronoi (0.9 s). The native kernels already use every core.
+- Structure identification at 108k atoms: the periodic kNN is a numba cell list now (0.10-0.22 s
+  for k = 12-33, was 0.32-0.71 s with cKDTree + image padding). PTM (0.93 s) and Steinhardt
+  (0.95 s) are now dominated by their per-atom kernels (PTM's C++ template matching, the Ylm
+  sums), Voronoi (0.72 s) by voro++; those already use every core.
 - Ray tracer: a BVH instead of the uniform grid for large surfaces, adaptive sampling that
   stops on converged pixels, and the CUDA path.
 - GUI startup is about 3 s, mostly imports: pyvista/pyvistaqt (~2 s) and matplotlib (0.6 s,

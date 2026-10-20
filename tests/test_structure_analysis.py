@@ -228,3 +228,43 @@ def test_chill_plus_only_selected_ignores_hydrogens():
     d = run(ChillPlus(only_selected=True), d)
     np.testing.assert_array_equal(d["Structure Type"][: len(pos)], REF["chill/iceh_hot/Structure Type"])
     assert not d["Structure Type"][len(pos):].any()
+
+
+def _brute_knn(pos, cell, k, x):
+    import itertools
+    inv = np.linalg.inv(cell.matrix)
+
+    def wrap(p):
+        f = (p - cell.origin) @ inv
+        f[:, cell.pbc] %= 1.0
+        return f @ cell.matrix + cell.origin
+    r = {1: 20, 2: 8}.get(int(cell.pbc.sum()), 5)
+    shifts = itertools.product(*[range(-r, r + 1) if p else [0] for p in cell.pbc])
+    imgs = np.concatenate([wrap(pos) + np.array(s) @ cell.matrix for s in shifts])
+    d = np.sort(np.linalg.norm(imgs[None] - wrap(x)[:, None], axis=-1), 1)
+    out = np.full((len(x), k), np.inf)
+    out[:, :min(k, d.shape[1])] = d[:, :k]
+    return out
+
+
+@pytest.mark.parametrize("pbc", [(1, 1, 1), (1, 1, 0), (1, 0, 0)])
+@pytest.mark.parametrize("cell_list", [True, False])
+def test_knn_matches_brute_force(pbc, cell_list, monkeypatch):
+    from ewald.modifiers import _knn
+    if not cell_list:
+        monkeypatch.setattr(_knn, "numba", None)  # the cKDTree + image padding fallback
+    rng = np.random.default_rng(3)
+    tri = np.array([[10.0, 0, 0], [3, 9, 0], [-2, 4, 8]])
+    cell = Cell(tri, np.array([1.0, -2, 0.5]), np.array(pbc, bool))
+    pos = rng.random((40, 3)) @ tri * 1.3 - 2  # some atoms outside the cell
+    for k in (1, 7, 30):
+        idx, delta, dist = _knn.nearest_neighbors(pos, cell, k)
+        np.testing.assert_allclose(dist, _brute_knn(pos, cell, k + 1, pos)[:, 1:], atol=1e-9)
+        np.testing.assert_allclose(np.linalg.norm(delta, axis=-1), dist, atol=1e-9)
+    x = rng.random((15, 3)) @ tri * 2 - 5
+    _, _, dist = _knn.PeriodicKDTree(pos, cell).query(x, 5)
+    np.testing.assert_allclose(dist, _brute_knn(pos, cell, 5, x), atol=1e-9)
+    # one atom outside the cell along a non-periodic direction (hung the old image padding)
+    one = np.array([[5.0, 5.0, 12.0]])
+    _, _, dist = _knn.nearest_neighbors(one, cell, 2)
+    np.testing.assert_allclose(dist, _brute_knn(one, cell, 3, one)[:, 1:], atol=1e-9)
