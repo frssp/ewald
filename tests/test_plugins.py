@@ -584,7 +584,7 @@ def test_panel_plugin_and_stored_settings_page(monkeypatch):
     assert "Send simulation tasks" in panel.description and panel.width == 320
     assert plugins.installed()["sim-agent-example"].contributions == {"settings_pages": ["sim-agent"],
                                                                        "panels": ["sim_agent"]}
-    assert plugins.status()["panels"][0]["title"] == "Sim agent"
+    assert {p["name"]: p["title"] for p in plugins.status()["panels"]}["sim_agent"] == "Sim agent"
     page = plugins.settings_pages()["sim-agent"]
     assert page.description == "The agent behind the Sim agent side bar."
     assert plugins.plugin_settings("sim-agent") == {"server": "http://localhost:8000", "token": None,

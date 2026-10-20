@@ -285,6 +285,24 @@ def _builtin_ui_themes() -> dict:
     return {name: UiThemePlugin(name, {}, name, DESCRIPTIONS.get(name, ""), "built-in", True) for name in PALETTES}
 
 
+def _builtin_workflows() -> dict:
+    from .workflow_folder import FolderSource
+
+    src = FolderSource()
+    return {"folders": WorkflowSourcePlugin("folders", src, src.title, (), "", " ".join(src.__doc__.split()),
+                                            "built-in")}
+
+
+def _builtin_panels() -> dict:
+    from .workflow import workflow_panel
+
+    f = workflow_panel("folders", title="Workflows", icon="layers",
+                       tooltip="Workflows: folders of VASP, LAMMPS, NEB and phonopy calculations")
+    return {"workflows": PanelPlugin("workflows", f, f.title, f.icon, f.tooltip, "", 320,
+                                     "Folders of calculations as workflows: their steps, outputs and one notebook",
+                                     "built-in")}
+
+
 def _builtin_ai_providers() -> dict:
     from .llm.providers import BUILTIN   # no SDK import
 

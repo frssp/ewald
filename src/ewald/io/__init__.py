@@ -19,7 +19,7 @@ from .volumetric import (VolumetricReader, is_cube, is_vasp_volumetric, read_cub
 from .mdtraj_h5 import MdtrajH5Reader, is_mdtraj_h5
 from .vasp_h5 import VaspoutReader, VaspwaveReader, is_vaspout, is_vaspwave
 from .mdanalysis_reader import MDAnalysisReader, is_md_trajectory, write_md_trajectory
-from .neb import NebReader, is_neb, neb_run_of, read_lammps_neb_log
+from .neb import NebReader, _natural_key, is_neb, neb_run_of, read_lammps_neb_log
 from .xdatcar import XdatcarReader, is_xdatcar
 from .xsf import XsfReader, is_xsf, write_xsf
 
@@ -42,11 +42,11 @@ class FileSource:
         if plugins.scheme_reader(path) is not None:  # aiida:1234 and other plugin schemes
             paths = [path]
         elif remote.is_remote(path):  # host:/path or ssh://host/path
-            paths = remote.glob(path) if wildcard else [path]
+            paths = sorted(remote.glob(path), key=_natural_key) if wildcard else [path]
             if not any(c in path for c in "*?["):  # a format="neb" wildcard is expanded by its reader
                 remote.stat(path)  # connect (and authenticate) once, up front; raises if missing
         else:
-            paths = sorted(glob.glob(path)) if wildcard else [path]
+            paths = sorted(glob.glob(path), key=_natural_key) if wildcard else [path]
         if not paths:
             raise FileNotFoundError(path)
         self.paths = paths
@@ -103,7 +103,8 @@ class FileSource:
         paths = self.paths
         if any(c in self.path for c in "*?[") and (self.format or "").lower() not in _NEB_FORMATS:
             try:
-                paths = remote.glob(self.path) if remote.is_remote(self.path) else sorted(glob.glob(self.path))
+                paths = sorted(remote.glob(self.path) if remote.is_remote(self.path) else glob.glob(self.path),
+                               key=_natural_key)
             except OSError:
                 paths = self.paths
         first = None
@@ -335,7 +336,9 @@ def builtin_readers():
 
 
 def import_file(path, format: str | None = None, **kwargs):
-    """Create a Pipeline reading ``path`` (wildcards allowed: ``dump.*.lammpstrj``).
+    """Create a Pipeline reading ``path`` (wildcards allowed: ``dump.*.lammpstrj``, the files
+    joined in natural order, so ``run10`` comes after ``run9``; overlapping timesteps of
+    restarted segments are kept as they are).
 
     ``format`` names a built-in format, an ASE format, or a reader plugin (see
     :mod:`ewald.plugins`); without it the format is detected from the file.

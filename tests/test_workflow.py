@@ -83,7 +83,7 @@ def test_source_registry_and_describe_by_scheme():
     assert src.list().workflows == [] and src.list(cursor="1").workflows[0].source == "demo"
     with pytest.raises(TypeError, match="no describe\\(\\) method"):
         plugins.register_workflow_source("bad", type("Bad", (), {"list": lambda self, **k: None}))
-    assert plugins.status()["workflows"][0]["schemes"] == ["demo"]
+    assert {w["name"]: w["schemes"] for w in plugins.status()["workflows"]}["demo"] == ["demo"]
 
 
 def test_notebook_has_a_variable_per_step_and_pipe_on_the_main_result():
@@ -126,7 +126,7 @@ def test_ai_tools_list_and_describe_workflows():
     from ewald.llm.tools import Toolset
 
     ts = Toolset()
-    assert not ts.tools["describe_workflow"].offered()
+    assert ts.tools["describe_workflow"].offered()      # the built-in folders source
     plugins.workflow_source("demo")(Demo)
     assert ts.tools["list_workflows"].offered()
     rows = ts.call("list_workflows", {"search": "Si"}).content

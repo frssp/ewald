@@ -16,6 +16,13 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - Workflows (`ewald.workflow`): a table that compares the scalars of every step of a workflow
   (energies, gaps, forces) and of several workflows side by side, and opening one step's input
   next to its output (INCAR/KPOINTS as text cells).
+- Workflow folders (`ewald/workflow_folder.py`, docs/user/workflows.md): restarted segments are
+  joined with a wildcard but overlapping timesteps are not dropped (a `join="timestep"` option for
+  `load`, which also takes a list of paths, was proposed and is not started); a killed VASP or
+  LAMMPS step shows as running (no mtime or queue check); Quantum ESPRESSO, CP2K, ABINIT folders
+  are not recognized; no "remove from list" in the Workflows side bar; a large tree on an SSH host
+  is listed one folder at a time (no `find` in one round trip); `load_runs` over the steps of a
+  workflow (several MD temperatures as one `Runs`).
 
 Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; numbers from
 `benchmarks/analysis.py`, `benchmarks/large_files.py` and the GUI under `xvfb-run`)
@@ -196,8 +203,8 @@ Runs (`ewald/runinfo.py`, `ewald/runs.py`; manual page docs/user/runs.md)
 - `show(runs, ...)` as a live GUI view cell: a view cell binds to `pipe`, so the overlaid runs show as
   the `RunTables` picture under the cell instead of an interactive plot; run comparison in the
   Plots tab.
-- A run folder index: scan a project folder (local or on a cluster) for runs and list them with
-  kind, state and last energy, as the way into `load_runs`.
+- A run folder index as the way into `load_runs`: `ewald.workflow_folder` now scans a project
+  folder (kind, state, last energy); `load_runs(workflow)` taking its MD steps is still open.
 - The GUI's run picker binds `pipe` only for notebooks running in this app's Python, not in a
   kernel.
 

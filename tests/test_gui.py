@@ -3523,3 +3523,27 @@ def test_workflow_side_bar_lists_expands_and_opens_a_workflow_as_one_notebook(ap
     side.refresh()
     side.wait()
     assert side.tree.topLevelItemCount() == 1 and side.more.isHidden()
+
+
+def test_dropping_a_folder_of_calculations_opens_it_as_a_workflow(app, tmp_path, vasp_dir):
+    """A folder of calculations (here a relax and an MD restarted twice) dropped on the window
+    opens as one notebook, a cell per step; the built-in Workflows side bar lists it after."""
+    import shutil
+
+    from ewald.gui.app import MainWindow
+
+    study = tmp_path / "study"
+    shutil.copytree(vasp_dir / "md", study / "1_relax")
+    for run in ("run1", "run2"):
+        shutil.copytree(vasp_dir / "md", study / "2_md" / run)
+    w = MainWindow()
+    tabs = w.panel.tabs.count()
+    w.open_dropped([str(study)])
+    assert w.panel.tabs.count() == tabs + 1
+    assert w.pipeline.num_frames == 4                       # pipe = md: run1 + run2 joined
+    w.show_plugin_panel("workflows")
+    side = w.plugin_panels["workflows"]["dock"].widget()
+    side.wait()
+    assert not side.browse.isHidden() and side.tree.topLevelItemCount() == 1
+    assert side.tree.topLevelItem(0).data(0, QtCore.Qt.UserRole).path == str(study)
+    w.close()

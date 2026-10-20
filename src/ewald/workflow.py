@@ -167,10 +167,25 @@ def source_for(path: str):
     return None
 
 
+def _folder_like(path: str) -> bool:
+    """A local path, or ``host:/path`` on an SSH host, rather than ``scheme:id`` of a source."""
+    import os
+
+    from . import plugins
+    from .io import remote
+
+    if plugins.path_scheme(path) is None or os.path.isdir(os.path.expanduser(path)):
+        return True
+    return remote.is_remote(path) and "/" in path.split(":", 1)[1] and plugins.scheme_reader(path) is None
+
+
 def describe(path: str, source: str | None = None) -> Workflow:
-    """The workflow at ``path`` (a path of an installed source, ``simagent:1234``), with its steps.
+    """The workflow at ``path`` (a path of an installed source, ``simagent:1234``, or a folder of
+    calculations, local or ``host:/path``: :mod:`ewald.workflow_folder`), with its steps.
     ``source`` names the source when ``path`` is a bare id it understands (``"1234"``)."""
     plugin = sources().get(source) if source else source_for(path)
+    if plugin is None and not source and _folder_like(path):
+        plugin = sources().get("folders")
     if plugin is None:
         known = ", ".join(f"{s}:" for p in sources().values() for s in p.schemes) or "none installed"
         raise LookupError(f"no workflow source for {path!r} (sources: {known})")
@@ -201,9 +216,10 @@ _TAKEN = {"pipe", "load", "import_file", "show", "view", "paint", "hide", "isola
 
 
 def variable_name(name: str, taken=()) -> str:
-    """A Python name for a step called ``name`` ("bands/scf" -> ``bands_scf``), not one of
+    """A Python name for a step called ``name`` ("bands/scf" -> ``bands_scf``, "02_neb" -> ``neb``), not one of
     ``taken`` nor a name the notebook imports."""
     base = re.sub(r"\W+", "_", name.strip().lower()).strip("_") or "step"
+    base = re.sub(r"^\d+_+(?=[a-z])", "", base)   # "01_relax" (a folder in step order) -> relax
     if base[0].isdigit():
         base = f"step_{base}"
     if keyword.iskeyword(base):
