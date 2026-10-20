@@ -2152,6 +2152,49 @@ def test_plot_export_is_a_print_figure_in_any_theme(app, vasp_dir, tmp_path):
     assert "Reaction coordinate" in svg and "#ffffff" in svg.lower()
 
 
+def test_theme_switch_restyles_console_plots_and_code(app, vasp_dir):
+    from PySide6 import QtGui
+
+    from ewald import import_file, settings
+    from ewald.gui import prefs_apply, theme
+    from ewald.gui.app import MainWindow
+    from ewald.gui.console import pygments_style
+    from ewald.gui.notebook_panel import PythonHighlighter
+
+    assert theme.DEFAULT == "graphite" and settings.Settings()["general.ui_theme"] == "graphite"
+    s = settings.Settings()
+    s["general.ui_theme"] = "paper"
+    w = MainWindow(settings=s)
+    pipe = import_file(vasp_dir / "neb")
+    w.plots.pipeline = pipe
+    w.plots.set_data(pipe.compute(1))
+    doc = QtGui.QTextDocument()
+    hl = PythonHighlighter(doc)
+    doc.setPlainText("import numpy")
+    try:
+        for name in theme.PALETTES:
+            s["general.ui_theme"] = name
+            prefs_apply.apply_settings(w, s)
+            t = theme.PALETTES[name]
+            con = w.console
+            if hasattr(con, "_highlighter"):
+                assert t["bg"] in con.style_sheet and t["accent"] in con.style_sheet   # background, selection
+                style = con._highlighter._style
+                assert style.background_color == t["bg"] and t["data"] in str(style.styles.values())
+            from matplotlib.colors import to_hex
+
+            assert to_hex(w.plots.figure.get_facecolor()).upper() == t["bg"]
+            hl.rehighlight()
+            formats = doc.firstBlock().layout().formats()
+            assert formats[0].format.foreground().color().name().upper() == t["accent"]   # "import" in the accent
+            icon = w.activity_buttons["Notebook"].icon()
+            assert not icon.isNull()
+    finally:
+        theme.use(theme.DEFAULT)
+        w.close()
+    assert pygments_style(theme.PALETTES["paper"]).background_color == theme.PALETTES["paper"]["bg"]
+
+
 def test_notebook_cells_sit_at_the_top(app):
     from ewald.gui.app import MainWindow
 

@@ -297,7 +297,7 @@ def _builtin_themes() -> dict:
 @dataclass
 class UiThemePlugin:
     """A color theme of the desktop app: ``tokens`` (a dict, or a function returning one) overrides
-    the design tokens of the ``base`` palette ("paper" light or "graphite" dark)."""
+    the design tokens of the ``base`` palette (a built-in theme such as "paper" or "graphite")."""
 
     name: str
     tokens: object
@@ -334,8 +334,9 @@ _HEX = re.compile(r"#[0-9a-fA-F]{6}")
 
 
 def _builtin_ui_themes() -> dict:
-    return {"paper": UiThemePlugin("paper", {}, "paper", "light, teal accents (default)", "built-in", True),
-            "graphite": UiThemePlugin("graphite", {}, "graphite", "dark", "built-in", True)}
+    from .gui.theme import DESCRIPTIONS, PALETTES   # Qt-free
+
+    return {name: UiThemePlugin(name, {}, name, DESCRIPTIONS.get(name, ""), "built-in", True) for name in PALETTES}
 
 
 @dataclass
@@ -611,7 +612,7 @@ def themes() -> dict[str, ThemePlugin]:
 def ui_theme(fn=None, *, name: str | None = None, base: str = "paper", description: str = ""):
     """Decorator registering a function that returns design tokens (``{"accent": "#cba6f7", ...}``)
     as a color theme of the desktop app, chosen under Preferences > General > UI theme. Tokens
-    left out come from ``base`` ("paper" light or "graphite" dark); the token names are those of
+    left out come from ``base`` (a built-in theme: "paper" light, "graphite" dark, ...); the token names are those of
     ``ewald.gui.theme.PALETTES``. ``name`` defaults to the function name."""
 
     def deco(f):
@@ -642,7 +643,7 @@ def register_ui_theme(name: str, tokens, base: str | None = None, description: s
 
 
 def ui_themes() -> dict[str, UiThemePlugin]:
-    """Color themes of the desktop app by name: built-in "paper" and "graphite", then plugins."""
+    """Color themes of the desktop app by name: the built-in ones (``ewald.gui.theme.PALETTES``), then plugins."""
     load_plugins()
     return dict(_registry.ui_themes)
 

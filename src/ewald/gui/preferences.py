@@ -689,4 +689,6 @@ def _ui_theme_names(default: str) -> list[str]:
     try:
         return list(plugins.ui_themes())
     except Exception:
-        return ["paper", "graphite"]
+        from .theme import PALETTES
+
+        return list(PALETTES)

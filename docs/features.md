@@ -368,7 +368,7 @@ Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.v
 - `examples/plugins/figure_extras.py`: Example figure-style plugins: a color map, a theme and an overlay.
 - `examples/plugins/local_composition.py`: Example modifier plugin: local chemical composition around every particle.
 - `examples/plugins/npz_trajectory.py`: Example reader plugin: trajectories stored as NumPy ``.npz`` archives.
-- `examples/plugins/ui_themes.py`: Example UI color themes for the desktop app: "Midnight" (dark, blue accents) and "High contrast" (light, black text and borders).
+- `examples/plugins/ui_themes.py`: Example UI color themes for the desktop app: "Nord" (dark, frost-blue accents) and "Sepia" (light, warm paper).
 
 ## Preferences
 
@@ -379,7 +379,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | Key | Label | Default |
 |---|---|---|
 | `general.layout` | Window layout | `'notebook'` |
-| `general.ui_theme` | UI theme | `'paper'` |
+| `general.ui_theme` | UI theme | `'graphite'` |
 | `general.startup_workspace` | Startup workspace | `'Analyze'` |
 | `general.toolbar_style` | Toolbar buttons | `'Icons and text'` |
 | `general.font_size` | UI font size | `12` |
