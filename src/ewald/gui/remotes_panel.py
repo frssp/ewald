@@ -228,12 +228,14 @@ class RemotesPanel(QtWidgets.QWidget):
         self.path = QtWidgets.QLineEdit(placeholderText="pick a computer above", objectName="remotePath")
         self.path.returnPressed.connect(lambda: self.browse(self.path.text().strip()))
         nav = QtWidgets.QHBoxLayout()
+        self.nav_buttons = []
         for name, tip, slot in (("folder_up", "Parent folder", self.up), ("home", "Start folder", lambda: self.browse("")),
                                 ("refresh", "Refresh", lambda: self.browse(self.cwd or "")),
                                 ("star", "Bookmark this folder", self.bookmark)):
             b = header.button(name, tip)
             b.clicked.connect(slot)
             nav.addWidget(b)
+            self.nav_buttons.append(b)
 
         self.places = QtWidgets.QComboBox(objectName="remotePlaces")
         self.places.activated.connect(self._place)
@@ -275,6 +277,8 @@ class RemotesPanel(QtWidgets.QWidget):
     # ------------------------------------------------------------ profile list
     def refresh(self):
         """Reload the profile list (keeps the selection)."""
+        for w in (self.path, self.filter, *self.nav_buttons):   # nothing to browse before a computer is picked
+            w.setEnabled(bool(self.host))
         current = self.list.currentItem().data(ROLE) if self.list.currentItem() else None
         self.list.clear()
         connected = {k[0] for k, c in list(remote._connections.items()) if c.is_active()}
