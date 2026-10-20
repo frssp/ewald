@@ -39,7 +39,11 @@ Python file (`# %%` cells, one namespace) where `pipe` is the pipeline: step cel
 view cells are one `show(pipe, ...)`, and `load(path)` opens a file. When the user's message \
 starts with the notebook's code, that is its current state. Code you put in a ```python block \
 gets an "Insert as notebook cell" button, so write each block as one complete cell that runs \
-in that namespace; prefer `pipe.add(...)` steps over ad-hoc loops."""
+in that namespace; prefer `pipe.add(...)` steps over ad-hoc loops. When the user asks you to \
+change the notebook itself, use the cell tools: list_cells and read_cell (sources and outputs), \
+insert_cell, edit_cell (step parameters through params), move_cell and delete_cell. Cells you \
+write are not run until the user runs them, unless run_cell is offered; add_modifier adds a step \
+cell that takes effect at once. Say which cells you changed."""
 
 _MAX_NOTEBOOK = 20000  # characters of notebook code sent with a question
 _CODE_BLOCK = re.compile(r"```(?:python|py|python3)?[ \t]*\n(.*?)```", re.S)
@@ -245,18 +249,20 @@ class AskPanel(QtWidgets.QWidget):
     ``pipelineChanged`` fires after an answer when the model changed the modifiers.
     ``notebook()``, when given, returns the current notebook's code (or None): it goes with a
     question whenever it changed, and Python blocks in answers offer Insert as cell
-    (``insertRequested(code)``).
+    (``insertRequested(code)``). ``notebook_access`` (a :class:`ewald.llm.notebook_tools.NotebookAccess`)
+    gives the agent's toolset the notebook cell tools.
     """
 
     pipelineChanged = QtCore.Signal()
     insertRequested = QtCore.Signal(str)
 
     def __init__(self, context: Callable[[], tuple], agent_factory=_default_agent, parent=None,
-                 notebook: Callable[[], str | None] | None = None):
+                 notebook: Callable[[], str | None] | None = None, notebook_access=None):
         super().__init__(parent, objectName="chatPanel")
         self.context = context
         self.agent_factory = agent_factory
         self.notebook = notebook
+        self.notebook_access = notebook_access
         self.agent = None
         self._agent_pipeline = None
         self._sent_notebook: str | None = None
@@ -451,6 +457,9 @@ class AskPanel(QtWidgets.QWidget):
                 return
             self._agent_pipeline = pipeline
             self._sent_notebook = None
+            toolset = getattr(self.agent, "toolset", None)
+            if self.notebook_access is not None and hasattr(toolset, "attach_notebook"):
+                toolset.attach_notebook(self.notebook_access)
         indices = [int(i) for i in indices]
         what = f"{len(indices)} picked atom{'s' if len(indices) != 1 else ''} · frame {frame}" if indices \
             else f"frame {frame}" if pipeline is not None else "no structure"

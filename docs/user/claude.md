@@ -42,6 +42,32 @@ whether it reads in grayscale) and `get_script`. Plugins add their own tools wit
 `run_python`, which executes model-written code in your Python process, is off unless you pass
 `allow_code=True` (or `--allow-code` on the command line).
 
+## Notebook cells
+
+With a notebook attached, the model also reads and changes its cells: `list_cells` (index, id,
+kind, state, first line), `read_cell` (full source and outputs, plots as images), `insert_cell`,
+`edit_cell` (the whole source, one `old_text` → `new_text` replacement, or a step's `params`, which
+change like the step's form), `move_cell` and `delete_cell`. The AI chat side bar attaches the
+notebook of the current tab; each change redraws the cells and is one undo step ("AI: insert
+cell", Ctrl+Z). In Python:
+
+```python
+from ewald.llm import Agent
+from ewald.notebook import Notebook
+
+nb = Notebook.load("analysis.py")
+nb.run_all()
+agent = Agent.from_pipeline(nb.pipeline, notebook=nb)
+agent.ask("Add a markdown cell that explains the coordination step, then lower its cutoff to 2.9")
+nb.save()
+```
+
+Cells the model inserts or edits are not run: they are marked not run (or out of date) until you
+run them. `run_cell` exists only with `allow_code=True` or, in the GUI, Preferences › AI ›
+**Let the AI run cells** (off by default), since a cell is any Python; it never runs a cell of an
+`.ewd` notebook that is not trusted yet. Parameters of code modifiers (`PythonScript`) cannot be
+set through `params`.
+
 A model may act on text inside the files it reads (a comment line or a type name can carry
 instructions), so the always-on tools are limited to what such text cannot abuse: expressions
 accept only arithmetic, comparisons and NumPy array functions; `export_file` replaces files only

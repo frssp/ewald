@@ -4,9 +4,75 @@ from __future__ import annotations
 import time
 
 import numpy as np
+from PySide6 import QtCore
 
 from .. import modifiers as mods
 from ..io import import_file
+from ..llm.notebook_tools import NotebookAccess
+
+
+class _GuiCall(QtCore.QObject):
+    """Runs a function on the GUI thread and hands back its result (or exception) to the caller's thread."""
+
+    requested = QtCore.Signal(object)
+
+    def __init__(self):
+        super().__init__()
+        self.requested.connect(self._run, QtCore.Qt.BlockingQueuedConnection)
+
+    @QtCore.Slot(object)
+    def _run(self, box):
+        try:
+            box["result"] = box["fn"]()
+        except BaseException as exc:  # noqa: BLE001 - raised again in the caller's thread
+            box["error"] = exc
+
+    def __call__(self, fn):
+        if QtCore.QThread.currentThread() is self.thread():
+            return fn()
+        box = {"fn": fn}
+        self.requested.emit(box)
+        if "error" in box:
+            raise box["error"]
+        return box.get("result")
+
+
+class NotebookBridge(NotebookAccess):
+    """The AI chat's notebook tools on the window's current notebook tab: edits happen on the GUI
+    thread, redraw the cells, count as one undo step each ("AI: insert cell", Ctrl+Z) and recompute
+    when the pipeline changed; run_cell (Preferences › AI › Let the AI run cells) runs like Shift+Enter."""
+
+    def __init__(self, window):
+        super().__init__(lambda: window.panel.notebook,
+                         can_run=lambda: bool(window.settings["llm.run_cells"]))
+        self.window = window
+        self.call = _GuiCall()
+
+    def _view(self, nb):
+        return next((v for v in self.window.panel.views() if v.notebook is nb), None)
+
+    def changed(self, nb, label, cell=None, pipeline=False):
+        view = self._view(nb)
+        if view is None:
+            return
+        if cell is not None and cell in nb.cells:
+            view.current = cell
+        view.rebuild()
+        view.history.commit(label)
+        view.titleChanged.emit()
+        if pipeline:
+            view.changed.emit()
+        self.window.notebook_dock.show()
+        self.window.message(f"{label} (Ctrl+Z undoes it)")
+
+    def run(self, nb, cell) -> bool:
+        view = self.call(lambda: self._view(nb))
+        if view is None:
+            return nb.run_cell(cell)
+        self.call(lambda: view.run(cell))
+        while self.call(lambda: view.running):   # the cell runs on the notebook's own worker thread
+            time.sleep(0.05)
+        return cell.state == "ok"
 
 
 class LinksMixin:

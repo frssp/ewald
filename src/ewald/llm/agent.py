@@ -96,7 +96,8 @@ class Agent:
 
     @classmethod
     def from_pipeline(cls, pipeline, **kwargs) -> "Agent":
-        return cls(Toolset(pipeline, allow_code=kwargs.pop("allow_code", False)), **kwargs)
+        return cls(Toolset(pipeline, allow_code=kwargs.pop("allow_code", False), notebook=kwargs.pop("notebook", None)),
+                   **kwargs)
 
     # ------------------------------------------------------------------ loop
     def _sync(self):
