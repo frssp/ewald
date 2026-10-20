@@ -171,7 +171,10 @@ pipeline. The `.py` button at the top shows the whole file.
 ## Notebook tabs
 
 Each open notebook has a tab at the top of the notebook panel. **+** or
-File › New notebook (Ctrl+T) opens an empty one. Right-click a tab to rename or close it, or double-click it to rename.
+File › New notebook (Ctrl+T), or a double-click on the empty part of the tab row, opens an empty one.
+Right-click a tab to rename or close it, or double-click it to rename. Drag a tab along the row to reorder
+the notebooks; drag the empty part of the row to move the whole Notebook panel to another side of the window,
+as with any panel's title bar.
 A dot marks unsaved changes. Each notebook has its own namespace and pipeline, and switching to
 a notebook that has a pipeline shows it in the viewport.
 

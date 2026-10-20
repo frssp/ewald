@@ -114,9 +114,8 @@ GUI
 - Panel headers (`gui/header.py`): checked under xvfb with Windows-like scale factors (100, 125,
   150 %) only; check on a real Windows machine (Segoe UI, per-monitor DPI) and macOS. The Display
   side bar still crowds its form below about 260 px, and the view bar cuts "View along" when the
-  3D view is narrow (could fold into a menu). The Notebook panel has no title row while docked (its tab row
-  carries fold and float), so it moves to another side only by floating it first; dragging
-  the empty part of the tab row could start the dock drag.
+  3D view is narrow (could fold into a menu). The add-cell row (+ Code ... + Ask Claude) clips its
+  labels when the Notebook panel is at its minimum width.
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
   Add modification for the loaded data, view-along buttons hidden without a cell, the timeline
   folded for a single structure, a right-click menu on pipeline items.
