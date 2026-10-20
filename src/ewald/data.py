@@ -156,6 +156,14 @@ class VoxelGrid:
         return f"<VoxelGrid {'x'.join(map(str, self.shape))} props={self.names()}>"
 
 
+def _readonly(array):
+    """A read-only view of a numpy array (anything else is returned unchanged)."""
+    if isinstance(array, np.ndarray) and array.flags.writeable:
+        array = array.view()
+        array.flags.writeable = False
+    return array
+
+
 def _same_state(a, b) -> bool:
     """True when ase.Atoms ``a`` and ``b`` have exactly the same numbers, positions, cell and pbc."""
     if a is None or len(a) != len(b):
@@ -265,6 +273,19 @@ class DataCollection:
 
     def delete(self, mask) -> "DataCollection":
         return self.take(~np.asarray(mask, dtype=bool))
+
+    def freeze(self) -> "DataCollection":
+        """Make the per-particle and grid arrays read-only views, in place; returns ``self``.
+
+        The pipeline freezes the frames it caches, so a modifier that writes into an array
+        (``data.positions += d``) fails loudly instead of silently changing the cached source
+        frame. Replace arrays instead: ``data.positions = data.positions + d``. Only this
+        collection's containers change; whoever else holds the original arrays can still write
+        them. Arrays without numpy's ``writeable`` flag (CuPy) are left as they are."""
+        self.particles = {k: _readonly(v) for k, v in self.particles.items()}
+        for grid in getattr(self, "grids", {}).values():
+            grid.properties = {k: _readonly(v) for k, v in grid.properties.items()}
+        return self
 
     # ---- interoperability --------------------------------------------------------
     def to_ase(self):

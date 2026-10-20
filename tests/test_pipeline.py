@@ -194,3 +194,23 @@ def test_output_cache_extends_a_cached_prefix_and_skips_scripts(cu_fcc):
     pipe.cache_outputs = False
     pipe.compute(0)
     assert first.last_time != t
+
+
+def test_cached_frames_are_read_only(cu_fcc):
+    """Writing into an array of a computed frame fails instead of changing the cached source frame;
+    replacing the array works, and the user's own arrays stay writable."""
+    original = cu_fcc.positions.copy()
+
+    def nudge_in_place(frame, data):
+        data.positions[0] += 1.0
+
+    def nudge(frame, data):
+        data.positions = data.positions + 1.0
+
+    pipe = Pipeline(StaticSource(cu_fcc), [nudge_in_place])
+    with pytest.raises(ValueError, match="read-only"):
+        pipe.compute(0)
+    pipe.modifiers[:] = [nudge]
+    assert np.allclose(pipe.compute(0).positions, original + 1.0)
+    assert np.allclose(pipe.compute(0).positions, original + 1.0)   # the cached frame is unchanged
+    assert cu_fcc.positions.flags.writeable and np.allclose(cu_fcc.positions, original)
