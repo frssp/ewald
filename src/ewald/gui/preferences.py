@@ -69,7 +69,7 @@ LAYOUT = {
         ("Saved connections", ["llm.profiles"]),
         ("Provider", ["llm.provider"]),
         ("Model", ["llm.model", "llm.effort"]),
-        ("Notebook", ["llm.run_cells"]),
+        ("Notebook", ["llm.code_cells", "llm.run_cells"]),
         ("Connection", ["llm.base_url", "llm.route_prefix", "llm.user_id", "llm.system_name", "llm.headers",
                         "llm.timeout"])]),
 }

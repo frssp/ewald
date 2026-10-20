@@ -1056,6 +1056,7 @@ def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
             return "Try this:\n\n```python\npipe.add(CoordinationAnalysis(cutoff=3.0))\n```\n\nand ```x``` inline."
 
     w = MainWindow(pipe)
+    w.settings["llm.code_cells"] = "button"                # Preferences › AI › Code in answers
     w.ask_panel.agent_factory = lambda p, ev: agents.append(NotebookAgent(p, ev)) or agents[-1]
     act = w.activity_buttons["AI chat"]
     assert w.ask_dock.isHidden()
@@ -1088,6 +1089,15 @@ def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
     w.ask_panel.starters[0].click()                        # a starter sends its question
     _wait(app, w.ask_panel)
     assert w.ask_panel.messages[0].text == ask_panel.STARTERS[0]
+
+    w.settings["llm.code_cells"] = "insert"                # the default: code goes into the notebook at once
+    n = len(view.notebook.cells)
+    w.ask_panel.ask("Plot sin(x)")
+    _wait(app, w.ask_panel)
+    assert len(view.notebook.cells) == n + 1 and view.notebook.cells[-1].state == "new"   # inserted, not run
+    assert view.notebook.cells[-1].source.strip() == "pipe.add(CoordinationAnalysis(cutoff=3.0))"
+    assert w.ask_panel.messages[-1].code_blocks[0].insert_button.text() == "✓ Inserted"
+    assert view.undo() == "Insert cell" and len(view.notebook.cells) == n
     w.close()
 
 
@@ -1143,7 +1153,10 @@ def test_ai_chat_tells_claude_about_the_notebook(app, monkeypatch):
     s = settings.Settings()
     ask_panel.agent_from_settings(lambda: s, notebook=True)(None, None)
     ask_panel.agent_from_settings(lambda: s)(None, None)
-    assert "Insert as notebook cell" in made[0]["system"] and "system" not in made[1]
+    assert "added to the notebook as a new cell" in made[0]["system"] and "system" not in made[1]
+    s["llm.code_cells"] = "button"
+    ask_panel.agent_from_settings(lambda: s, notebook=True)(None, None)
+    assert "Insert as notebook cell" in made[2]["system"]
 
 
 def test_viewport_draws_vector_arrows(app):
@@ -2928,6 +2941,23 @@ def test_compute_device_lives_in_preferences(app, pipe):
     w.close()
 
 
+def test_ai_chat_does_not_insert_twice_when_the_model_wrote_cells(app, pipe):
+    from ewald.gui.app import MainWindow
+
+    class ToolAgent(_FakeAgent):
+        def ask(self, question):
+            self.on_event("tool_call", {"name": "insert_cell", "input": {}})
+            return "I added this cell:\n\n```python\nx = 1\n```"
+
+    w = MainWindow(pipe)
+    w.ask_panel.agent_factory = lambda p, ev: ToolAgent(p, ev)
+    n = len(w.panel.view.notebook.cells)
+    w.ask_panel.ask("Add x")
+    _wait(app, w.ask_panel)
+    assert len(w.panel.view.notebook.cells) == n           # the tool call wrote it; the block only shows it
+    w.close()
+
+
 def test_opened_md_run_gets_a_run_check_and_runs_get_a_picker(app, lammps_dir, tmp_path):
     """Opening an MD run whose log says so adds a run check cell (run at once); a notebook that
     loads several runs shows a run picker that binds pipe, and with it the 3D view, to one run."""
@@ -2957,4 +2987,51 @@ def test_opened_md_run_gets_a_run_check_and_runs_get_a_picker(app, lammps_dir, t
     assert w.pipeline is runs[1].pipe and view.notebook.namespace["pipe"] is runs[1].pipe and runs.current == 1
     view.restart()
     assert view.run_bar.isHidden()
+    w.close()
+
+
+def test_ai_chat_stop_button_and_failed_cells_in_the_question(app, pipe):
+    import threading
+
+    from PySide6 import QtCore, QtGui
+
+    from ewald.gui.app import MainWindow
+    from ewald.llm.agent import Cancelled
+
+    started, prompts = threading.Event(), []
+
+    class SlowAgent(_FakeAgent):
+        def ask(self, question, cancel=None):
+            prompts.append(question)
+            if question.endswith("slow"):
+                started.set()
+                cancel.wait(10)                       # the request on the wire, until Stop
+                raise Cancelled("stopped")
+            return "fast"
+
+    w = MainWindow(pipe)
+    w.settings["llm.code_cells"] = "button"
+    panel = w.ask_panel
+    panel.agent_factory = lambda p, ev: SlowAgent(p, ev)
+    view = w.panel.view
+    cell = view.add_cell("code", "1 / 0")
+    view.run(cell)
+    view.wait()
+    panel.ask("slow")
+    assert started.wait(5) and panel.busy() and panel.ask_button.toolTip() == "Stop (Esc)"
+    assert "These notebook cells failed" in prompts[0] and "ZeroDivisionError" in prompts[0]
+    esc = QtGui.QKeyEvent(QtCore.QEvent.KeyPress, QtCore.Qt.Key_Escape, QtCore.Qt.NoModifier)
+    app.sendEvent(panel.input, esc)                    # Esc stops, like the Stop button
+    assert not panel.busy() and panel.ask_button.toolTip() == "Send (Enter)"
+    assert panel.messages[-1].text == "*Stopped.*"
+    panel.ask("again")                                 # the chat is free at once
+    _wait(app, panel)
+    assert panel.messages[-1].text == "fast"
+    assert "ZeroDivisionError" in prompts[1]           # the stopped question's context is sent again
+    view.notebook.cells.remove(cell)
+    panel.ask("and now")
+    _wait(app, panel)
+    assert "no longer show errors" in prompts[2]
+    for worker in panel._stopped:
+        worker.wait(5000)
     w.close()

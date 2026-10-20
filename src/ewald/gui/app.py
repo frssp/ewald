@@ -16,7 +16,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import modifiers as mods
 from ..render import camera_state, render
-from .ask_panel import AskPanel, agent_from_settings
+from .ask_panel import AskPanel, agent_from_settings, code_cells_mode
 from .collapsible import make_collapsible
 from .compute import ComputeRunner, warm_up_jit
 from .console import LazyConsole
@@ -91,7 +91,9 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.setCentralWidget(self.workbench)
 
         self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings, notebook=True),
-                                  notebook=self._notebook_code, notebook_access=NotebookBridge(self))
+                                  notebook=self._notebook_code, notebook_access=NotebookBridge(self),
+                                  auto_insert=lambda: code_cells_mode(self.settings) == "insert",
+                                  errors=self._notebook_errors)
         self.ask_panel.pipelineChanged.connect(self._after_claude)
         self.ask_panel.insertRequested.connect(self._insert_claude_cell)
         # --- left: notebook tabs (the pipeline as Python cells); right: display settings

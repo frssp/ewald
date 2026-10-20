@@ -18,7 +18,9 @@ Gemini, a local OpenAI-compatible server or a plugin's); it needs that provider'
 """
 from __future__ import annotations
 
+import inspect
 import re
+import threading
 from typing import Callable
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -38,13 +40,21 @@ You are the chat side bar of ewald's notebook window. The user's notebook is a p
 Python file (`# %%` cells, one namespace) where `pipe` is the pipeline: step cells are one \
 `pipe.add(Modifier(...))` (modifiers from `ewald.modifiers`, imported as `mods` or by name), \
 view cells are one `show(pipe, ...)`, and `load(path)` opens a file. When the user's message \
-starts with the notebook's code, that is its current state. Code you put in a ```python block \
-gets an "Insert as notebook cell" button, so write each block as one complete cell that runs \
-in that namespace; prefer `pipe.add(...)` steps over ad-hoc loops. When the user asks you to \
+starts with the notebook's code, that is its current state. {code_cells} Write each ```python \
+block as one complete cell that runs in that namespace; prefer `pipe.add(...)` steps over ad-hoc \
+loops. When the user asks you to \
 change the notebook itself, use the cell tools: list_cells and read_cell (sources and outputs), \
 insert_cell, edit_cell (step parameters through params), move_cell and delete_cell. Cells you \
 write are not run until the user runs them, unless run_cell is offered; add_modifier adds a step \
 cell that takes effect at once. Say which cells you changed."""
+
+#: How the note above describes the ```python blocks of an answer (Preferences › AI › Code in answers).
+CODE_CELLS_NOTE = {
+    "insert": "Every ```python block of your answer is added to the notebook as a new cell (not run), in "
+              "order, so put only code meant for the notebook in ```python blocks (other code, such as "
+              "a one-line illustration, in a ```text block), and do not also insert_cell the same code.",
+    "button": "Every ```python block of your answer gets an \"Insert as notebook cell\" button.",
+}
 
 _MAX_NOTEBOOK = 20000  # characters of notebook code sent with a question
 _CODE_BLOCK = re.compile(r"```(?:python|py|python3)?[ \t]*\n(.*?)```", re.S)
@@ -70,7 +80,8 @@ def agent_from_settings(get_settings: Callable[[], object], notebook: bool = Fal
         if notebook:
             from ..llm.agent import SYSTEM_PROMPT
 
-            kwargs["system"] = SYSTEM_PROMPT + NOTEBOOK_NOTE
+            mode = code_cells_mode(get_settings())
+            kwargs["system"] = SYSTEM_PROMPT + NOTEBOOK_NOTE.format(code_cells=CODE_CELLS_NOTE[mode])
         return _default_agent(pipeline, on_event, **kwargs)
 
     def assistant() -> str:
@@ -83,6 +94,15 @@ def agent_from_settings(get_settings: Callable[[], object], notebook: bool = Fal
 
     factory.assistant = assistant
     return factory
+
+
+def code_cells_mode(settings) -> str:
+    """'insert' (code blocks of answers become cells at once) or 'button' (+ Insert as cell)."""
+    try:
+        mode = settings["llm.code_cells"]
+    except Exception:
+        return "insert"
+    return mode if mode in CODE_CELLS_NOTE else "insert"
 
 
 def code_blocks(text: str) -> list[str]:
@@ -104,12 +124,37 @@ class _Worker(QtCore.QThread):
     def __init__(self, job: Callable[[], str], parent=None):
         super().__init__(parent)
         self.job = job
+        self.cancel = threading.Event()   # Stop: the agent ends the exchange at its next step
 
     def run(self):
+        from ..llm.agent import Cancelled
+
         try:
             self.answered.emit(self.job())
+        except Cancelled:
+            pass
         except Exception as exc:  # shown in the chat, never raised into Qt
             self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
+_STOPPED: set = set()   # stopped chat workers still waiting for their last request
+
+
+def _safe(fn) -> str | None:
+    """``fn()``, or None when there is no ``fn`` or it fails."""
+    try:
+        return fn() if fn is not None else None
+    except Exception:
+        return None
+
+
+def _call(fn, *args, cancel, **kwargs):
+    """``fn(*args, cancel=cancel, **kwargs)``, without ``cancel`` for agents that take none (plugins, tests)."""
+    try:
+        takes = "cancel" in inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        takes = False
+    return fn(*args, cancel=cancel, **kwargs) if takes else fn(*args, **kwargs)
 
 
 def split_answer(text: str) -> list[tuple[str, str, str]]:
@@ -163,6 +208,12 @@ class CodeBlock(QtWidgets.QFrame):
         lay.setSpacing(0)
         lay.addLayout(head)
         lay.addWidget(self.editor)
+
+    def mark_inserted(self):
+        """The block went into the notebook already (Code in answers: insert)."""
+        if self.insert_button is not None:
+            self.insert_button.setText("✓ Inserted")
+            self.insert_button.setToolTip("Added to the notebook as a cell; click to add it again")
 
     def copy(self):
         QtWidgets.QApplication.clipboard().setText(self.code)
@@ -251,19 +302,29 @@ class AskPanel(QtWidgets.QWidget):
     ``notebook()``, when given, returns the current notebook's code (or None): it goes with a
     question whenever it changed, and Python blocks in answers offer Insert as cell
     (``insertRequested(code)``). ``notebook_access`` (a :class:`ewald.llm.notebook_tools.NotebookAccess`)
-    gives the agent's toolset the notebook cell tools.
+    gives the agent's toolset the notebook cell tools. ``auto_insert()``, when it returns True, puts
+    the Python blocks of each answer into the notebook at once (unless the model wrote cells with
+    the cell tools in that answer). ``errors()``, when given, returns the errors of the notebook's
+    failed cells (or None); they go with a question whenever they changed. While an answer is on its
+    way the send button is Stop (also Esc).
     """
 
     pipelineChanged = QtCore.Signal()
     insertRequested = QtCore.Signal(str)
 
     def __init__(self, context: Callable[[], tuple], agent_factory=_default_agent, parent=None,
-                 notebook: Callable[[], str | None] | None = None, notebook_access=None):
+                 notebook: Callable[[], str | None] | None = None, notebook_access=None,
+                 auto_insert: Callable[[], bool] | None = None, errors: Callable[[], str | None] | None = None):
         super().__init__(parent, objectName="chatPanel")
         self.context = context
         self.agent_factory = agent_factory
         self.notebook = notebook
         self.notebook_access = notebook_access
+        self.auto_insert = auto_insert
+        self.errors = errors
+        self._sent_errors: str | None = None
+        self._stopped: list[_Worker] = []   # stopped workers still finishing their last request
+        self._tools_used: list[str] = []
         self.agent = None
         self._agent_pipeline = None
         self._sent_notebook: str | None = None
@@ -310,7 +371,7 @@ class AskPanel(QtWidgets.QWidget):
         self.ask_button.setIcon(icon("send", TOKENS["on_accent"]))
         self.ask_button.setIconSize(QtCore.QSize(16, 16))
         self.ask_button.setFixedSize(30, 30)
-        self.ask_button.clicked.connect(self.ask)
+        self.ask_button.clicked.connect(self._send_or_stop)
         cl = QtWidgets.QHBoxLayout(composer)
         cl.setContentsMargins(10, 6, 6, 6)
         cl.addWidget(self.input, 1)
@@ -355,6 +416,10 @@ class AskPanel(QtWidgets.QWidget):
         return w
 
     def eventFilter(self, obj, event):
+        if obj is self.input and event.type() == QtCore.QEvent.KeyPress \
+                and event.key() == QtCore.Qt.Key_Escape and self.busy():
+            self.stop()
+            return True
         if obj is self.input and event.type() == QtCore.QEvent.KeyPress \
                 and event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) \
                 and not event.modifiers() & (QtCore.Qt.ShiftModifier | QtCore.Qt.ControlModifier):
@@ -408,7 +473,7 @@ class AskPanel(QtWidgets.QWidget):
         if self.busy():
             return
         self.agent = None
-        self._sent_notebook = None
+        self._sent_notebook = self._sent_errors = None
         for m in self.messages:
             m.setParent(None)
             m.deleteLater()
@@ -421,19 +486,21 @@ class AskPanel(QtWidgets.QWidget):
         self.insertRequested.emit(self.snippets[index])
 
     def _notebook_prompt(self, question: str) -> str:
-        """``question``, preceded by the notebook's code when it changed since the last question."""
-        if self.notebook is None:
-            return question
-        try:
-            code = self.notebook()
-        except Exception:
-            code = None
-        if not code or not code.strip() or code == self._sent_notebook:
-            return question
-        self._sent_notebook = code
-        if len(code) > _MAX_NOTEBOOK:
-            code = code[:_MAX_NOTEBOOK] + "\n# … (notebook truncated)\n"
-        return f"The notebook now reads:\n```python\n{code}```\n\n{question}"
+        """``question``, preceded by the notebook's code and the errors of its failed cells, each
+        when it changed since the last question."""
+        parts = []
+        code = _safe(self.notebook)
+        if code and code.strip() and code != self._sent_notebook:
+            self._sent_notebook = code
+            if len(code) > _MAX_NOTEBOOK:
+                code = code[:_MAX_NOTEBOOK] + "\n# … (notebook truncated)\n"
+            parts.append(f"The notebook now reads:\n```python\n{code}```")
+        errors = _safe(self.errors) or ""
+        if errors != (self._sent_errors or ""):
+            self._sent_errors = errors
+            parts.append(f"These notebook cells failed when they last ran:\n```text\n{errors}```" if errors
+                         else "The notebook's cells no longer show errors.")
+        return "\n\n".join(parts + [question])
 
     # ---------------------------------------------------------------- asking
     def ask(self, question: str | None = None):
@@ -457,7 +524,7 @@ class AskPanel(QtWidgets.QWidget):
                              error=True)
                 return
             self._agent_pipeline = pipeline
-            self._sent_notebook = None
+            self._sent_notebook = self._sent_errors = None
             toolset = getattr(self.agent, "toolset", None)
             if self.notebook_access is not None and hasattr(toolset, "attach_notebook"):
                 toolset.attach_notebook(self.notebook_access)
@@ -470,18 +537,20 @@ class AskPanel(QtWidgets.QWidget):
         agent = self.agent
         prompt = self._notebook_prompt(question)
         if indices and pipeline is not None:
-            job = lambda: agent.ask_about_selection(prompt, indices, frame=frame)  # noqa: E731
+            job = lambda: _call(agent.ask_about_selection, prompt, indices, frame=frame,  # noqa: E731
+                                cancel=worker.cancel)
         else:
             if pipeline is not None:
                 agent.toolset.frame = frame
             agent.toolset.selection = None
-            job = lambda: agent.ask(prompt)  # noqa: E731
+            job = lambda: _call(agent.ask, prompt, cancel=worker.cancel)  # noqa: E731
+        self._tools_used = []
         self._pending = self._add(Message("assistant", insert=self._insert, author=self.assistant()))
-        self.worker = _Worker(job, self)
+        worker = self.worker = _Worker(job, self)
         self.worker.event.connect(self._on_event)
         self.worker.answered.connect(self._on_answer)
         self.worker.failed.connect(self._on_failed)
-        self.ask_button.setEnabled(False)
+        self._set_stop_button(True)
         self.worker.start()
 
     def _insert(self, code):
@@ -494,10 +563,45 @@ class AskPanel(QtWidgets.QWidget):
 
     def _on_event(self, kind, payload):
         if kind == "tool_call" and self._pending is not None:
+            self._tools_used.append(payload["name"])
             self._pending.add_step(payload["name"])
 
+    def _send_or_stop(self):
+        if self.busy():
+            self.stop()
+        else:
+            self.ask()
+
+    def _set_stop_button(self, on: bool):
+        """The send button is Stop while an answer is on its way."""
+        name = "stop" if on else "send"
+        self.ask_button.setProperty("ewald_icon", name)
+        self.ask_button.setIcon(icon(name, TOKENS["on_accent"]))
+        self.ask_button.setToolTip("Stop (Esc)" if on else "Send (Enter)")
+
+    def stop(self):
+        """Stop the answer on its way: the chat is free at once, the model's request still on the
+        wire is dropped when it returns, and the conversation forgets the stopped question."""
+        worker = self.worker
+        if worker is None or not worker.isRunning():
+            return
+        worker.cancel.set()
+        for signal in (worker.event, worker.answered, worker.failed):
+            signal.disconnect()
+        # it may outlive the panel (closing the window): keep it alive, unparented, until it ends
+        worker.setParent(None)
+        self._stopped.append(worker)
+        _STOPPED.add(worker)
+        worker.finished.connect(lambda: (_STOPPED.discard(worker),
+                                         self._stopped.remove(worker) if worker in self._stopped else None))
+        self.worker = None
+        self._sent_notebook = self._sent_errors = None   # the stopped question's notebook was forgotten too
+        if self._pending is not None:
+            self._pending.set_answer("*Stopped.*")
+        self._finish()
+
     def _finish(self):
-        self.ask_button.setEnabled(True)
+        self._set_stop_button(False)
         self._pending = None
         pipeline = self._agent_pipeline if self.agent else None
         if pipeline is not None and list(pipeline.modifiers) != self._modifiers_before:
@@ -506,11 +610,17 @@ class AskPanel(QtWidgets.QWidget):
     def _on_answer(self, text):
         if self._pending is not None:
             self._pending.set_answer(text)
-            self.snippets += [b.code for b in self._pending.code_blocks if b.insert_button is not None]
+            blocks = [b for b in self._pending.code_blocks if b.insert_button is not None]
+            self.snippets += [b.code for b in blocks]
+            wrote_cells = any(t in ("insert_cell", "edit_cell") for t in self._tools_used)
+            if blocks and not wrote_cells and self.auto_insert is not None and self.auto_insert():
+                for b in blocks:
+                    self.insertRequested.emit(b.code)
+                    b.mark_inserted()
         self._finish()
 
     def _on_failed(self, message):
-        self._sent_notebook = None  # the notebook may not have reached the model: send it again
+        self._sent_notebook = self._sent_errors = None  # they may not have reached the model: send again
         low = message.lower()
         hint = f" {_SETUP_HINT}" if any(w in low for w in ("anthropic", "openai", "api_key", "api key",
                                                             "authentication", "no ai provider")) else ""

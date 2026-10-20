@@ -15,6 +15,7 @@ server and GUI.
 """
 from __future__ import annotations
 
+import threading
 from typing import Callable
 
 import numpy as np
@@ -43,6 +44,10 @@ reading individual frames. Render frames when the geometry matters and look at \
 the image before describing it. Use Angstrom, fs, eV and g/cm^3; name frames by \
 index. Be concise and specific; say what you checked and what remains uncertain, \
 and suggest the next analysis when one is clearly worth doing."""
+
+
+class Cancelled(Exception):
+    """An :meth:`Agent.ask` was stopped through its ``cancel`` event."""
 
 
 class Agent:
@@ -79,6 +84,7 @@ class Agent:
         self.on_event = on_event or (lambda kind, payload: None)
         self.chat = self.provider.chat(client, self.model, system=system, tools=self.toolset.definitions,
                                        max_tokens=max_tokens, effort=effort, fallbacks=fallbacks)
+        self._lock = threading.Lock()
 
     @property
     def messages(self) -> list:
@@ -108,12 +114,32 @@ class Agent:
             c.effort = self.effort
         c.options["fallbacks"] = self.fallbacks
 
-    def ask(self, prompt: str, images: list[bytes] | None = None) -> str:
-        """Send ``prompt`` (optionally with PNG images), run tools until the model answers, return its text."""
+    def ask(self, prompt: str, images: list[bytes] | None = None, cancel=None) -> str:
+        """Send ``prompt`` (optionally with PNG images), run tools until the model answers, return its text.
+
+        ``cancel`` (a :class:`threading.Event`) stops the exchange when set, from another thread: the
+        request on the wire still finishes, then no further tool runs or request goes out,
+        :class:`Cancelled` is raised and the conversation is as it was before this question.
+        Questions from several threads take turns."""
+        with self._lock:
+            start = len(self.chat.messages)
+            try:
+                return self._ask(prompt, images, cancel)
+            except Cancelled:
+                del self.chat.messages[start:]
+                raise
+
+    def _ask(self, prompt, images, cancel) -> str:
+        def check():
+            if cancel is not None and cancel.is_set():
+                raise Cancelled("stopped")
+
+        check()
         self._sync()
         self.chat.user(prompt, images)
         for _ in range(self.max_turns):
             reply = self.chat.send()
+            check()
             if reply.stop == "refusal":
                 return "[request declined by the model]"
             if reply.stop != "tool_use":
@@ -124,6 +150,7 @@ class Agent:
                 return text
             results = []
             for call in reply.calls:
+                check()
                 self.on_event("tool_call", {"name": call.name, "input": call.input})
                 result = self.toolset.call(call.name, dict(call.input or {}))
                 self.on_event("tool_result", {"name": call.name, "result": result})
@@ -132,9 +159,10 @@ class Agent:
         return f"[stopped after {self.max_turns} tool rounds]"
 
     def ask_about_selection(self, question: str, indices, frame: int | None = None, radius: float = 6.0,
-                            image: bool = True) -> str:
+                            image: bool = True, cancel=None) -> str:
         """Ask about particles the user picked: sends the question with ewald's description of the
-        selection and its surroundings (:mod:`ewald.llm.selection`) and a close-up render."""
+        selection and its surroundings (:mod:`ewald.llm.selection`) and a close-up render.
+        ``cancel`` as in :meth:`ask`."""
         from .selection import describe_selection, selection_prompt
 
         ts = self.toolset
@@ -145,7 +173,7 @@ class Agent:
         data = pipe.compute(ts.frame)
         description = describe_selection(data, ts.selection, radius=radius, frame=ts.frame)
         png = ts.selection_image(data, ts.selection, radius) if image else None
-        return self.ask(selection_prompt(question, description), images=[png] if png else None)
+        return self.ask(selection_prompt(question, description), images=[png] if png else None, cancel=cancel)
 
     def reset(self):
         self.chat.reset()

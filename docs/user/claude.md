@@ -50,7 +50,8 @@ kind, state, first line), `read_cell` (full source and outputs, plots as images)
 `edit_cell` (the whole source, one `old_text` → `new_text` replacement, or a step's `params`, which
 change like the step's form), `move_cell` and `delete_cell`. The AI chat side bar attaches the
 notebook of the current tab; each change redraws the cells and is one undo step ("AI: insert
-cell", Ctrl+Z). In Python:
+cell", Ctrl+Z). There the ```python blocks of an answer also become new cells by default
+(Preferences › AI › Code in answers: `insert`, or `button` for *+ Insert as cell*). In Python:
 
 ```python
 from ewald.llm import Agent
@@ -62,6 +63,10 @@ agent = Agent.from_pipeline(nb.pipeline, notebook=nb)
 agent.ask("Add a markdown cell that explains the coordination step, then lower its cutoff to 2.9")
 nb.save()
 ```
+
+`agent.ask(question, cancel=event)` stops at its next step once the `threading.Event` is set
+(the request already sent still finishes) and raises `ewald.llm.agent.Cancelled`, leaving the
+conversation as it was before the question; the AI chat's Stop button uses it.
 
 Cells the model inserts or edits are not run: they are marked not run (or out of date) until you
 run them. `run_cell` exists only with `allow_code=True` or, in the GUI, Preferences › AI ›

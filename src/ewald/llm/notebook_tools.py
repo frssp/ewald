@@ -79,6 +79,22 @@ def cell_summary(nb: Notebook, index: int) -> dict:
     return out
 
 
+def failed_cells(nb: Notebook, max_lines: int = 25, max_chars: int = 6000) -> str:
+    """The cells whose last run failed, with the end of each error (what the AI chat sends along)."""
+    parts = []
+    for k, c in enumerate(nb.cells):
+        if c.kind != "code" or c.state != "error":
+            continue
+        error = "\n".join(str(o.data) for o in c.outputs if o.kind == "error").strip()
+        lines = error.splitlines()
+        if len(lines) > max_lines:
+            lines = ["…"] + lines[-max_lines:]
+        first = next((line for line in c.source.splitlines() if line.strip()), "")
+        parts.append(f"cell index {k} ({first[:80]}):\n" + "\n".join(lines))
+    text = "\n\n".join(parts)
+    return text if len(text) <= max_chars else "…\n" + text[-max_chars:]
+
+
 def _outputs(cell: Cell) -> tuple[list, list[bytes]]:
     items, images = [], []
     for o in cell.outputs:

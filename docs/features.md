@@ -504,6 +504,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `llm.headers` | Extra headers | `''` |
 | `llm.timeout` | Timeout | `0.0` |
 | `llm.effort` | Effort | `'high'` |
+| `llm.code_cells` | Code in answers | `'insert'` |
 | `llm.run_cells` | Let the AI run cells | `False` |
 
 <!-- gui:start -->
