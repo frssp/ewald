@@ -10,6 +10,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Several files as one trajectory: the GUI Open dialog takes one file (no multi-select into a
+  list yet), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
+  appended to after a restart (`dump_modify append yes`). Restart detection needs a Timestep per
+  frame, which only the LAMMPS dump reader gives cheaply (extxyz `Timestep=` comments, H5MD
+  steps and XTC steps are not used yet).
 - View tab: folded cards are remembered only while the window is open (not in settings or the
   layout file); no Fold all / Unfold all; a card has no per-card reset to defaults.
 

@@ -7,7 +7,7 @@ import os
 from ..data import DataCollection
 from . import remote
 from .ase_reader import AseDbReader, AseReader, AseTrajectoryReader, is_ase_db, is_ase_traj
-from .base import FrameReader, IncompleteFileError, IncompleteFileWarning
+from .base import FrameReader, IncompleteFileError, IncompleteFileWarning, natural_key
 from .extxyz import ExtxyzReader, is_extxyz, write_extxyz
 from .h5md import H5mdReader, is_h5md, write_h5md
 from .lammps_data import LammpsDataReader, is_lammps_data, write_lammps_data
@@ -27,37 +27,91 @@ from .xsf import XsfReader, is_xsf, write_xsf
 class FileSource:
     """Pipeline source backed by one or more files, frames loaded lazily.
 
+    ``path`` is one file, a wildcard (``dump.*.lammpstrj``, expanded in natural order, so
+    ``dump.200`` comes before ``dump.1000``) or a list of files and wildcards, read one after the
+    other in the order given. ``join`` says how the files are put together: ``"timestep"``
+    (default) treats them as segments of one run that was restarted, so where a later file starts
+    at a step an earlier one already reached, the later file wins and the earlier frames from that
+    step on are dropped (LAMMPS dumps; formats whose steps restart in every run, such as XDATCAR
+    and OUTCAR, are simply appended). ``"concat"`` keeps every frame of every file.
+
     ``thermo`` adds per-step results (see :mod:`ewald.io.thermo`): ``"auto"`` (default) picks
     up an OSZICAR next to an XDATCAR and a log.lammps next to a LAMMPS dump, a path or list
     of paths names LAMMPS logs / OSZICARs, ``None`` turns it off. OUTCAR and vasprun.xml
     carry their own. The result is ``self.thermo`` (a :class:`Thermo`, or None).
     """
 
-    def __init__(self, path, format: str | None = None, thermo="auto", **kwargs):
-        path = str(path)
-        # a NEB reader takes the whole wildcard: one file per image, not one trajectory
-        wildcard = any(c in path for c in "*?[") and (format or "").lower() not in _NEB_FORMATS
-        from .. import plugins
-
-        if plugins.scheme_reader(path) is not None:  # aiida:1234 and other plugin schemes
-            paths = [path]
-        elif remote.is_remote(path):  # host:/path or ssh://host/path
-            paths = remote.glob(path) if wildcard else [path]
-            if not any(c in path for c in "*?["):  # a format="neb" wildcard is expanded by its reader
-                remote.stat(path)  # connect (and authenticate) once, up front; raises if missing
-        else:
-            paths = sorted(glob.glob(path)) if wildcard else [path]
-        if not paths:
-            raise FileNotFoundError(path)
-        self.paths = paths
-        self.path = path
+    def __init__(self, path, format: str | None = None, thermo="auto", join: str = "timestep", **kwargs):
+        if join not in _JOINS:
+            raise ValueError(f"join must be one of {', '.join(map(repr, _JOINS))}, not {join!r}")
+        self.path = [os.fspath(p) for p in path] if _is_list(path) else os.fspath(path)
         self.format = format
+        self.join = join
         self.kwargs = kwargs
+        paths = self._expand()
+        if not paths:
+            raise FileNotFoundError(self.path)
+        self.paths = paths
         self.readers: list[FrameReader] = [open_reader(_readable_path(p, format), format, **kwargs)
                                            for p in paths]
-        self._index = [(r, i) for r in self.readers for i in range(len(r))]
+        self._index = self._build_index(warn=True)
         self.thermo_arg = thermo
         self.thermo = self._load_thermo(thermo)
+
+    def _patterns(self) -> list[str]:
+        return list(self.path) if isinstance(self.path, list) else [self.path]
+
+    def _expand(self, check: bool = True) -> list[str]:
+        """The files ``path`` names, in reading order (wildcards in natural order)."""
+        from .. import plugins
+
+        neb = (self.format or "").lower() in _NEB_FORMATS  # a NEB reader takes the whole wildcard
+        paths: list[str] = []
+        seen: set[str] = set()
+        for pattern in self._patterns():
+            wildcard = any(c in pattern for c in "*?[") and not neb
+            if plugins.scheme_reader(pattern) is not None:  # aiida:1234 and other plugin schemes
+                found = [pattern]
+            elif remote.is_remote(pattern):  # host:/path or ssh://host/path
+                found = sorted(remote.glob(pattern), key=natural_key) if wildcard else [pattern]
+                if check and not any(c in pattern for c in "*?["):
+                    remote.stat(pattern)  # connect (and authenticate) once, up front; raises if missing
+            else:
+                found = sorted(glob.glob(pattern), key=natural_key) if wildcard else [pattern]
+            if check and not found and isinstance(self.path, list):
+                raise FileNotFoundError(pattern)
+            paths += [p for p in found if not (p in seen or seen.add(p))]
+        return paths
+
+    def _build_index(self, warn: bool = False) -> list[tuple[FrameReader, int]]:
+        """(reader, frame) of every frame shown. With ``join="timestep"`` each file is cut where
+        a later one starts (a restart from an earlier step), found by bisection on the steps."""
+        keep = [len(r) for r in self.readers]
+        starts = [r.timestep(0) if len(r) and self.join == "timestep" else None for r in self.readers]
+        known = [s for s in starts if s is not None]
+        if len(known) > 1 and len(set(known)) == 1:  # all start at the same step: not one run, append them
+            starts = [None] * len(starts)
+        cutoff = None  # the earliest step a later file starts at
+        for k in range(len(self.readers) - 1, -1, -1):
+            if starts[k] is None:
+                continue
+            if cutoff is not None:
+                keep[k] = _frames_before(self.readers[k], cutoff)
+                if keep[k] == 0 and warn:
+                    import warnings
+
+                    warnings.warn(f"{self.paths[k]}: every frame is at or after Timestep {cutoff}, where a later "
+                                  "file starts, so it is left out (pass join='concat' to keep it)", stacklevel=4)
+            cutoff = starts[k] if cutoff is None else min(cutoff, starts[k])
+        return [(r, i) for r, n in zip(self.readers, keep) for i in range(n)]
+
+    @property
+    def segments(self) -> list[tuple[str, int, int]]:
+        """``(file, frames used, frames in the file)`` for every file, in reading order."""
+        used: dict[int, int] = {}
+        for r, _ in self._index:
+            used[id(r)] = used.get(id(r), 0) + 1
+        return [(p, used.get(id(r), 0), len(r)) for p, r in zip(self.paths, self.readers)]
 
     def _load_thermo(self, thermo) -> Thermo | None:
         tables = [r.thermo for r in self.readers[:1] if len(self.readers) == 1 and isinstance(getattr(r, "thermo", None), dict)]
@@ -100,14 +154,14 @@ class FileSource:
         Use :meth:`ewald.pipeline.Pipeline.refresh`, which also drops stale cached frames.
         """
         readers = dict(zip(self.paths, self.readers))
+        old_index = self._index
         paths = self.paths
-        if any(c in self.path for c in "*?[") and (self.format or "").lower() not in _NEB_FORMATS:
+        if any(c in p for p in self._patterns() for c in "*?[") and (self.format or "").lower() not in _NEB_FORMATS:
             try:
-                paths = remote.glob(self.path) if remote.is_remote(self.path) else sorted(glob.glob(self.path))
+                paths = self._expand(check=False)
             except OSError:
                 paths = self.paths
-        first = None
-        offset = 0
+        changed_at: dict[int, int] = {}  # id(reader) -> its first frame that may have changed
         for k, p in enumerate(paths):
             reader = readers.get(p)
             if reader is None:  # a new file of the series
@@ -122,16 +176,20 @@ class FileSource:
                 changed = 0  # the series was renumbered around it
             else:
                 changed = reader.refresh()
-            if changed is not None and first is None:
-                first = offset + changed
-            offset += len(reader)
-        if first is None and len(paths) == len(self.paths):
+            if changed is not None:
+                changed_at[id(reader)] = changed
+        if not changed_at and list(paths) == self.paths:
             return None
-        if first is None:  # files went away
-            first = sum(len(readers[p]) for p in paths)
         self.paths = list(paths)
         self.readers = [readers[p] for p in paths]
-        self._index = [(r, i) for r in self.readers for i in range(len(r))]
+        self._index = self._build_index()
+        # the first frame shown that is another frame than before, or one whose file changed there
+        first = next((k for k, (r, i) in enumerate(self._index)
+                      if k >= len(old_index) or old_index[k] != (r, i) or i >= changed_at.get(id(r), i + 1)), None)
+        if first is None:
+            if len(self._index) == len(old_index):
+                return None
+            first = len(self._index)  # frames went away
         try:
             self.thermo = self._load_thermo(self.thermo_arg)
         except (OSError, ValueError):
@@ -168,6 +226,25 @@ class StaticSource:
 
 
 _NEB_FORMATS = ("neb", "vasp-neb", "lammps-neb")
+_JOINS = ("timestep", "concat")
+
+
+def _is_list(path) -> bool:
+    return isinstance(path, (list, tuple))
+
+
+def _frames_before(reader: FrameReader, step: int) -> int:
+    """How many leading frames of ``reader`` have a Timestep below ``step`` (steps increase in a file)."""
+    lo, hi = 0, len(reader)
+    if hi == 0 or (reader.timestep(hi - 1) or 0) < step:
+        return hi
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if (reader.timestep(mid) or 0) < step:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
 
 _STREAMING_FORMATS = ("lammps/dump", "lammps-dump", "lammps-dump-text", "vasp-xdatcar", "xdatcar",
                       "lammps/data", "lammps-data", "lammps-data-native", "outcar", "vasp-outcar", "vasprun",
@@ -336,6 +413,12 @@ def builtin_readers():
 
 def import_file(path, format: str | None = None, **kwargs):
     """Create a Pipeline reading ``path`` (wildcards allowed: ``dump.*.lammpstrj``).
+
+    Several files make one trajectory: a wildcard (natural order, ``dump.200`` before
+    ``dump.1000``) or a list such as ``["run1/dump.lammpstrj", "run2/dump.lammpstrj"]`` (read in
+    the order given). ``join="timestep"`` (default) joins the segments of a restarted run: a
+    later file wins from the Timestep it starts at, so the frames an earlier file wrote past the
+    restart point are dropped; ``join="concat"`` keeps every frame (see :class:`FileSource`).
 
     ``format`` names a built-in format, an ASE format, or a reader plugin (see
     :mod:`ewald.plugins`); without it the format is detected from the file.
