@@ -27,7 +27,11 @@ class OutputArea(QtWidgets.QWidget):
         self._images = []    # (label, full-size pixmap): rescaled when the cell's width changes
 
     def set_outputs(self, outputs):
-        self.outputs = list(outputs)
+        outputs = list(outputs)
+        old = getattr(self, "outputs", None)
+        if old is not None and len(old) == len(outputs) and all(a is b for a, b in zip(old, outputs)):
+            return   # the same outputs (every frame of playback): rebuilding them made the cell flicker
+        self.outputs = outputs
         while self.lay.count():
             w = self.lay.takeAt(0).widget()
             if w is not None:
@@ -612,7 +616,7 @@ class CellWidget(QtWidgets.QFrame):
             elif plot:
                 self.plot.set_line(plot[1], plot[2], plot[3])
             self.plot.setVisible(plot is not None)
-            if self.editor is not None and not self.editor.isVisible():
+            if self.editor is not None and not self.editor.isVisible() and self.editor.toPlainText() != c.source:
                 self.editor.blockSignals(True)
                 self.editor.setPlainText(c.source)
                 self.editor.blockSignals(False)
@@ -636,7 +640,12 @@ class CellWidget(QtWidgets.QFrame):
         self._repolish()
 
     def _repolish(self):
-        for w in (self, self.chips if self.cell.is_step else None):
+        chips = self.chips if self.cell.is_step else None
+        key = (self.property("state"), self.property("current"), chips.objectName() if chips is not None else None)
+        if key == getattr(self, "_polished", None):
+            return   # nothing the style sheet reads changed (e.g. a new frame during playback)
+        self._polished = key
+        for w in (self, chips):
             if w is not None:
                 w.style().unpolish(w)
                 w.style().polish(w)

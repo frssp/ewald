@@ -351,6 +351,63 @@ def test_plots_thermo_series_marker_follows_frame(app, lammps_dir):
     assert list(panel._marker.get_xdata()) == [30, 30]
 
 
+def test_plots_keep_a_frame_independent_plot_during_playback(app, cu_fcc):
+    from ewald.gui.plots import PlotsPanel
+
+    msd = {"Time": np.arange(5.0), "MSD": np.arange(5.0) ** 2}
+    panel = PlotsPanel()
+    d0 = cu_fcc.copy()
+    d0.tables["msd"] = msd
+    panel.set_data(d0)
+    ax = panel.figure.axes[0]
+    d1 = cu_fcc.copy()
+    d1.tables["msd"] = dict(msd)          # a trajectory-wide result: the same arrays on every frame
+    panel.set_data(d1)
+    assert panel.figure.axes[0] is ax     # no fig.clear()
+    d2 = cu_fcc.copy()
+    d2.tables["msd"] = {k: v.copy() for k, v in msd.items()}   # recomputed (kernel), same values
+    panel.set_data(d2)
+    assert panel.figure.axes[0] is ax
+    d3 = cu_fcc.copy()
+    d3.tables["msd"] = {"Time": msd["Time"], "MSD": msd["MSD"] + 1}   # per-frame data: redrawn
+    panel.set_data(d3)
+    assert panel.figure.axes[0] is not ax
+    _dispose(panel)
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_playback_leaves_frame_independent_cells_alone(app, monkeypatch):
+    from ewald import settings
+    from ewald.gui import cell_widget
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(settings=settings.Settings())
+    nb = os.path.join(os.path.dirname(__file__), "..", "examples", "notebooks", "cu_md_trajectory.py")
+    view = w.panel.open_notebook(nb, trusted=True)
+    view.run_all()
+    app.processEvents()
+    rebuilt, cleared = [], []
+    fit = cell_widget.OutputArea._fit_images
+    monkeypatch.setattr(cell_widget.OutputArea, "_fit_images", lambda self: (rebuilt.append(self), fit(self)))
+    panels = {p.figure: p for p in w.plot_panels()}
+    import matplotlib.figure
+
+    clear = matplotlib.figure.Figure.clear
+    monkeypatch.setattr(matplotlib.figure.Figure, "clear",
+                        lambda self, *a, **k: (cleared.append(panels.get(self)), clear(self, *a, **k))[1])
+    w.timeline.play.setChecked(True)
+    for f in (1, 2, 3):
+        w.timeline._set(f)
+        app.processEvents()
+    w.timeline.play.setChecked(False)
+    app.processEvents()
+    assert w.frame >= 3                   # (the play timer may have moved on by one)
+    assert rebuilt == []                  # no cell's outputs (the printed "10 frames") rebuilt per frame
+    shown = {p.hist.currentText() or p.table.currentText() for p in cleared if p is not None}
+    assert shown == {"Displacement Magnitude"}   # the per-frame histogram redraws, the MSD plot does not
+    w.close()
+
+
 def test_timeline_frame_selection_playback(app):
     from ewald.gui.timeline import Timeline
 
