@@ -4,12 +4,20 @@ from __future__ import annotations
 import time
 
 import numpy as np
-import shiboken6
 from PySide6 import QtCore, QtGui
 
 from .. import modifiers as mods
 from ..io import import_file
 from ..llm.notebook_tools import NotebookAccess
+
+
+def _alive(obj) -> bool:
+    """Whether the Qt object behind ``obj`` still exists."""
+    try:
+        obj.objectName()
+        return True
+    except RuntimeError:
+        return False
 
 
 class _GuiCall(QtCore.QObject):
@@ -200,18 +208,18 @@ class LinksMixin:
         self._closed_docks.discard(view)
         if view in self.workbench.specs and self.workbench.specs[view].widget is entry[2]:
             self.workbench.unregister(view)
-        elif shiboken6.isValid(entry[2]) and entry[2].parent() is None:
+        elif _alive(entry[2]) and entry[2].parent() is None:
             entry[2].deleteLater()
 
     def _in_shown_notebook(self, slot) -> bool:
         view = self.panel.view
-        return view is not None and shiboken6.isValid(slot) and view.isAncestorOf(slot)
+        return view is not None and _alive(slot) and view.isAncestorOf(slot)
 
     def _sync_plot_docks(self, *_):
         """Another notebook tab is shown: its cells' plots come into the Plots panel, the others'
         leave it (kept by their cells, for when their tab is shown again)."""
         for view, (slot, key, panel) in list(self._plot_docks.items()):
-            if not shiboken6.isValid(slot):
+            if not _alive(slot):
                 self._drop_dock(view, key)
             elif self._in_shown_notebook(slot):
                 if view not in self.workbench.specs and view not in self._closed_docks:
