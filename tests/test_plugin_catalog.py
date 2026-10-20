@@ -143,3 +143,45 @@ def test_github_token_goes_only_to_github_hosts(monkeypatch):
 
 def test_pip_update_upgrades():
     assert pc.pip_command("update", "ewald-x")[-3:] == ["install", "--upgrade", "ewald-x"]
+
+
+def test_downloads_use_a_tls_context(monkeypatch):
+    # company proxies re-sign HTTPS; the OS store (truststore) must be what urlopen is given
+    import ssl
+
+    from ewald._tls import ssl_context
+
+    seen = {}
+
+    class Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b"[]"
+
+    def fake(req, timeout=None, context=None):
+        seen["context"] = context
+        return Resp()
+
+    monkeypatch.setattr(pc.urllib.request, "urlopen", fake)
+    pc._read("https://example.org/index.json", 5)
+    assert isinstance(seen["context"], ssl.SSLContext)
+    assert isinstance(ssl_context(), ssl.SSLContext)
+
+
+def test_pip_command_falls_back_to_uv_without_pip(monkeypatch):
+    # a uv-made environment has no pip; uv needs --system-certs behind a re-signing proxy
+    import sys
+
+    monkeypatch.setattr(pc.importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(pc.shutil, "which", lambda name: "/usr/bin/uv")
+    cmd = pc.pip_command("install", "ewald-x")
+    assert cmd[:3] == ["/usr/bin/uv", "pip", "install"] and "--system-certs" in cmd
+    assert cmd[cmd.index("--python") + 1] == sys.executable and cmd[-1] == "ewald-x"
+    assert "--upgrade" in pc.pip_command("update", "ewald-x")
+    un = pc.pip_command("uninstall", "ewald-x")
+    assert un[:3] == ["/usr/bin/uv", "pip", "uninstall"] and "-y" not in un and un[-1] == "ewald-x"
