@@ -316,6 +316,9 @@ QToolButton#segment {{ background: {panel}; color: {muted}; border: none; border
     font-size: 11px; }}
 QToolButton#segment:hover {{ color: {text}; background: {hover}; }}
 QToolButton#segment:checked {{ background: {accent_soft}; color: {accent}; font-weight: 600; }}
+QToolButton#cellFrames {{ background: {accent_soft}; color: {accent}; border: none; border-radius: 5px;
+    padding: 1px 8px; font-weight: 600; }}
+QToolButton#cellFrames::menu-indicator {{ image: none; width: 0; }}
 QPushButton#addCell {{ background: transparent; border: 1px solid transparent; border-radius: 14px; padding: 4px 12px;
     color: {secondary}; font-weight: normal; }}
 QPushButton#addCell:hover {{ background: {accent_soft}; color: {accent}; }}

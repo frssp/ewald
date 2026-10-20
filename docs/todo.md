@@ -100,10 +100,10 @@ GUI
   camera sideways instead of an off-axis projection (exact at the focal distance only); the
   Overlay elements and text label are not previewed inside the frame; Claude's `set_view` can set
   `region` but no tool tells it the frame on screen.
-- Python steps per frame vs once (`@each_frame` / `@all_frames`, landed): cell markers
-  `# %% [each frame]` / `# %% [all frames]` with a header toggle, where the cell body is the step
-  (`data`, `frames` given), proposed to the owner 2026-10-20 and not decided yet; a GUI badge on
-  cells whose steps are `all_frames`; `all_frames` start/stop/step arguments.
+- Python steps per frame vs once (decorators and `# %% [each frame]` / `[all frames]` cells
+  landed): `all_frames` start/stop/step arguments; Insert menu entries for the two cell kinds; in
+  a kernel notebook, switching a cell back to *Once* takes its step out only when the cell runs
+  again. A view cell's error output overlaps its plot (seen 2026-10-20).
 - Live `show(pipe, ...)` outside a view cell: zooming does not write `xlim=`/`ylim=` back (only a
   cell that is just the call does), and `frame=` is ignored by the live plot (it follows the
   current frame, as view cells do).

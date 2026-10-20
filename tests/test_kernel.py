@@ -158,3 +158,12 @@ def test_plain_pyplot_in_the_kernel_gets_the_notebook_style(kernel):
     nb.set_plot_style("default")
     nb.run_all()
     assert nb.cells[0].outputs[0].data.split() != ["8.0"]
+
+
+def test_each_frame_cells_run_in_the_kernel(kernel, lammps_dir):
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\npipe = load({str(lammps_dir / 'dump.custom.lammpstrj')!r})\n\n"
+                          "# %% [each frame]\ndata.attributes['Twice'] = 2 * frame\n")
+    nb.set_kernel(kernel)
+    assert nb.run_all()
+    assert [s["name"] for s in nb.cells[1].steps] == ["each_frame_cell"]
+    assert nb.pipeline.compute(2).attributes["Twice"] == 4
