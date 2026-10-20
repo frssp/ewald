@@ -72,6 +72,9 @@ def apply_settings(win, s: Settings, startup: bool = False):
         theme.apply(app, s["general.ui_theme"], font_size=s["general.font_size"])
 
     win.set_button_style(s["general.toolbar_style"])
+    from .icons import refresh
+
+    refresh(win)  # header, timeline and cell icons follow the UI theme
     if style.preset not in PRESET_THEMES:  # those presets keep their theme's background
         style.background = s["viewport.background"]
     style.bond_radius = s["bonds.radius"]

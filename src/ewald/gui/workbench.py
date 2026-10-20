@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .icons import icon
+from . import header
 from .layout_model import Group, Layout, Split, zone_at
 from .theme import TOKENS
 
@@ -42,9 +42,15 @@ class TabBar(QtWidgets.QTabBar):
         self.setExpanding(False)
         self.setElideMode(QtCore.Qt.ElideRight)
         self.setUsesScrollButtons(True)
+        self.setDrawBase(False)  # the panel header draws the line under the tabs
         self._press = None
         self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._context_menu)
+
+    def tabSizeHint(self, index):
+        size = super().tabSizeHint(index)
+        size.setHeight(header.height())  # tabs fill the panel header, like the dock title bars
+        return size
 
     def mousePressEvent(self, e):
         if e.button() == QtCore.Qt.LeftButton:
@@ -99,8 +105,11 @@ class TabGroup(QtWidgets.QWidget):
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
-        head = QtWidgets.QHBoxLayout()
-        head.setContentsMargins(0, 0, 4, 0)
+        self.head = QtWidgets.QWidget(objectName="panelHeader")
+        self.head.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.head.setFixedHeight(header.height())
+        head = QtWidgets.QHBoxLayout(self.head)
+        head.setContentsMargins(0, 0, 6, 0)
         head.setSpacing(2)
         self.bar = TabBar(self)
         self.bar.currentChanged.connect(self._tab_changed)
@@ -111,17 +120,14 @@ class TabGroup(QtWidgets.QWidget):
                          ("maximize", "Maximize this group (Ctrl+Alt+M, or double-click a tab)"),
                          ("fold", "Fold or unfold the panel (Ctrl+Alt+J)"),
                          ("more", "Move, split or close the current view")):
-            b = QtWidgets.QToolButton(toolTip=tip, autoRaise=True, objectName="groupButton")
-            b.setIcon(icon(key))
-            b.setIconSize(QtCore.QSize(16, 16))
-            b.setFixedSize(22, 22)
-            head.addWidget(b)
+            b = header.button(key, tip, name="groupButton")
+            head.addWidget(b, 0, QtCore.Qt.AlignVCenter)
             self.buttons[key] = b
         self.buttons["split"].clicked.connect(lambda: self.current_view() and workbench.split(self.current_view(), "right"))
         self.buttons["maximize"].clicked.connect(lambda: workbench.toggle_maximize(self.model))
         self.buttons["fold"].clicked.connect(lambda: workbench.set_panel_collapsed(not workbench.panel_collapsed))
         self.buttons["more"].clicked.connect(self._menu)
-        lay.addLayout(head)
+        lay.addWidget(self.head)
         self.stack = QtWidgets.QStackedWidget()
         self.empty = QtWidgets.QLabel("Drag a tab here", alignment=QtCore.Qt.AlignCenter, objectName="muted")
         self.stack.addWidget(self.empty)

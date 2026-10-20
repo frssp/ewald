@@ -17,8 +17,10 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..notebook import Cell, History, Notebook, new_notebook, step_call
 from .params import ParameterForm
-from .pipeline_panel import _discover, fill_modifier_menu
+from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea, _discover, fill_modifier_menu
 from .notebook_tabs import NotebookTabs
+from . import header
+from .icons import icon
 from .theme import TOKENS
 
 MAX_EDITOR_LINES = 30
@@ -284,15 +286,32 @@ CELL_MIME = "application/x-ewald-cell"
 
 
 class _DragHandle(QtWidgets.QLabel):
-    """The ⠿ grip in a cell's gutter: drag it to move the cell (the notebook view drops it)."""
+    """The dotted grip in a cell's gutter: drag it to move the cell (the notebook view drops it)."""
 
     def __init__(self, cell_id: str, parent=None):
-        super().__init__("⠿", parent, objectName="cellDrag")
+        super().__init__(parent, objectName="cellDrag")
+        self._paint_grip("muted")
         self.cell_id = cell_id
         self.setToolTip("Drag to move the cell")
         self.setCursor(QtCore.Qt.OpenHandCursor)
         self.setAlignment(QtCore.Qt.AlignCenter)
         self._start = None
+
+    def _paint_grip(self, token: str):
+        from .icons import _pixmap
+
+        ratio = self.devicePixelRatioF() or 1.0
+        pix = _pixmap("grip", TOKENS[token], round(header.ICON * ratio))
+        pix.setDevicePixelRatio(ratio)
+        self.setPixmap(pix)
+
+    def enterEvent(self, event):
+        self._paint_grip("accent")
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._paint_grip("muted")
+        super().leaveEvent(event)
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton:
@@ -341,13 +360,14 @@ class CellWidget(QtWidgets.QFrame):
         outer.setSpacing(6)
         gutter = QtWidgets.QVBoxLayout()
         gutter.setSpacing(2)
-        self.run_button = QtWidgets.QToolButton(text="▶", toolTip="Run cell (Ctrl+Enter)", objectName="cellRun")
+        self.run_button = header.button("play", "Run cell (Ctrl+Enter)", name="cellRun")
+        self.run_button.setProperty("ewald_icon_color", "accent")
+        self.run_button.setIcon(icon("play", TOKENS["accent"]))
         self.run_button.clicked.connect(lambda: self.runRequested.emit(self.cell, False))
         self.counter = QtWidgets.QLabel(objectName="cellCounter")
         self.counter.setFont(mono_font())
         self.counter.setAlignment(QtCore.Qt.AlignCenter)
-        self.fold_button = QtWidgets.QToolButton(text="▾", toolTip="Collapse or expand the cell",
-                                                 objectName="cellFold", autoRaise=True)
+        self.fold_button = header.button("chevron_down", "Collapse or expand the cell", name="cellFold")
         self.fold_button.clicked.connect(lambda: self.set_collapsed(not self.cell.collapsed))
         self.drag_handle = _DragHandle(cell.id)
         gutter.addWidget(self.drag_handle, 0, QtCore.Qt.AlignHCenter)
@@ -362,7 +382,7 @@ class CellWidget(QtWidgets.QFrame):
         self.body.setContentsMargins(0, 0, 0, 0)
         self.body.setSpacing(6)
         self.folded_label = QtWidgets.QLabel(objectName="cellFolded")
-        self.folded_label.setToolTip("Collapsed: click ▸ or double-click to expand")
+        self.folded_label.setToolTip("Collapsed: click the chevron or double-click to expand")
         right.addWidget(self.content)
         right.addWidget(self.folded_label)
         outer.addLayout(right, 1)
@@ -384,7 +404,7 @@ class CellWidget(QtWidgets.QFrame):
         self.cell.collapsed = bool(on)
         self.content.setVisible(not on)
         self.folded_label.setVisible(on)
-        self.fold_button.setText("▸" if on else "▾")
+        header.set_icon(self.fold_button, "chevron_right" if on else "chevron_down")
         if on:
             first = next((ln for ln in self.cell.source.splitlines() if ln.strip()), "")
             if self.cell.kind == "markdown":
@@ -395,7 +415,7 @@ class CellWidget(QtWidgets.QFrame):
 
     # ----------------------------------------------------------- bodies
     def _menu_button(self):
-        b = QtWidgets.QToolButton(text="⋯", toolTip="Cell actions", objectName="cellMenu")
+        b = header.button("more", "Cell actions", name="cellMenu")
         b.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         m = QtWidgets.QMenu(b)
         if self.cell.kind == "code":
@@ -727,15 +747,6 @@ def _call_name(source: str) -> str:
     return "Step"
 
 
-class _FitWidthScrollArea(QtWidgets.QScrollArea):
-    """Scrolls vertically only: the page is always as wide as the area, like a document."""
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if self.widget() is not None:
-            self.widget().setFixedWidth(self.viewport().width())
-
-
 def fill_view_menu(menu, data, add):
     """'+ View' entries: every data table and a histogram of every numeric particle property."""
     menu.clear()
@@ -792,14 +803,21 @@ class NotebookView(QtWidgets.QWidget):
         bar = QtWidgets.QHBoxLayout()
         bar.setContentsMargins(8, 6, 8, 6)
         self._worker = None
-        run_all = self.run_all_button = QtWidgets.QPushButton("▶  Run all", objectName="primary",
+        run_all = self.run_all_button = QtWidgets.QPushButton("Run all", objectName="primary",
                                                               toolTip="Restart and run every cell")
+        run_all.setProperty("ewald_icon", "play")
+        run_all.setProperty("ewald_icon_color", "on_accent")
+        run_all.setIcon(icon("play", TOKENS["on_accent"]))
+        run_all.setIconSize(QtCore.QSize(header.ICON, header.ICON))
         run_all.clicked.connect(self.run_all)
         restart = self.restart_button = QtWidgets.QToolButton(text="Restart",
                                                               toolTip="Clear the namespace (cells keep their code)")
         restart.clicked.connect(self.restart)
-        self.interrupt_button = QtWidgets.QToolButton(text="■ Interrupt", objectName="interrupt",
+        self.interrupt_button = QtWidgets.QToolButton(text="Interrupt", objectName="interrupt",
                                                       toolTip="Stop the running cell (Ctrl+C in the kernel)")
+        self.interrupt_button.setProperty("ewald_icon", "stop")
+        self.interrupt_button.setIcon(icon("stop"))
+        self.interrupt_button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
         self.interrupt_button.clicked.connect(self.interrupt)
         self.interrupt_button.setVisible(False)
         self.py_button = QtWidgets.QToolButton(text=".py", checkable=True, toolTip="Show the notebook as its Python file")
@@ -807,6 +825,9 @@ class NotebookView(QtWidgets.QWidget):
         self.kernel_button = QtWidgets.QToolButton(objectName="kernelButton", autoRaise=True,
                                                    popupMode=QtWidgets.QToolButton.InstantPopup,
                                                    toolTip="Where the cells run: this app's Python or another one")
+        self.kernel_button.setProperty("ewald_icon", "settings")
+        self.kernel_button.setIcon(icon("settings"))
+        self.kernel_button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
         self.kernel_menu = QtWidgets.QMenu(self.kernel_button)
         self.kernel_menu.aboutToShow.connect(lambda: self.fill_kernel_menu(self.kernel_menu))
         self.kernel_button.setMenu(self.kernel_menu)
@@ -1315,7 +1336,7 @@ class NotebookView(QtWidgets.QWidget):
     # ------------------------------------------------------------ kernel
     def _update_kernel_button(self):
         k = self.notebook.kernel
-        self.kernel_button.setText(f"⚙ {k.display_name if k else 'This app'}")
+        self.kernel_button.setText(k.display_name if k else "This app")
 
     def fill_kernel_menu(self, menu):
         """Kernel choices: this app's Python, the installed Jupyter kernels, another Python."""

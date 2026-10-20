@@ -22,7 +22,9 @@ from typing import Callable
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .icons import icon
 from .notebook_panel import CodeEditor, _FitWidthScrollArea
+from .theme import TOKENS
 
 _SETUP_HINT = ("Claude needs the `anthropic` package (`pip install ewald[llm]`) and an API key: "
                "Edit › Preferences › Claude, or `ANTHROPIC_API_KEY`.")
@@ -69,6 +71,12 @@ def code_blocks(text: str) -> list[str]:
     """The Python code blocks of a Markdown answer (fenced as python, py or untagged)."""
     return [m.group(1).rstrip() + "\n" for m in _CODE_BLOCK.finditer(text) if m.group(1).strip()]
 
+
+
+def _step_done(chip):
+    """A tool chip from "Running name…" to "✓ Used name"."""
+    if chip.property("tool"):
+        chip.setText(f"✓ Used {chip.property('tool')}")
 
 class _Worker(QtCore.QThread):
     event = QtCore.Signal(str, object)
@@ -192,16 +200,16 @@ class Message(QtWidgets.QWidget):
     def add_step(self, name: str):
         """A tool Claude runs: a chip that turns from running to done."""
         if self.steps.count():
-            last = self.steps.itemAt(self.steps.count() - 1).widget()
-            last.setText(last.text().replace("⋯ Running", "✓ Used"))
-        self.steps.addWidget(QtWidgets.QLabel(f"⋯ Running {name}", objectName="chatStep"), 0, QtCore.Qt.AlignLeft)
+            _step_done(self.steps.itemAt(self.steps.count() - 1).widget())
+        chip = QtWidgets.QLabel(f"Running {name}…", objectName="chatStep")
+        chip.setProperty("tool", name)
+        self.steps.addWidget(chip, 0, QtCore.Qt.AlignLeft)
         self.status.setText("Working…")
 
     def set_answer(self, text: str, error: bool = False):
         self.text = text
         for i in range(self.steps.count()):
-            chip = self.steps.itemAt(i).widget()
-            chip.setText(chip.text().replace("⋯ Running", "✓ Used"))
+            _step_done(self.steps.itemAt(i).widget())
         self.status.hide()
         if error:
             self.body.addWidget(_markdown_label(text, "chatError"))
@@ -275,7 +283,11 @@ class AskPanel(QtWidgets.QWidget):
         self.input.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.input.setFixedHeight(64)
         self.input.installEventFilter(self)
-        self.ask_button = QtWidgets.QToolButton(text="↑", objectName="chatSend", toolTip="Send (Enter)")
+        self.ask_button = QtWidgets.QToolButton(objectName="chatSend", toolTip="Send (Enter)")
+        self.ask_button.setProperty("ewald_icon", "send")
+        self.ask_button.setProperty("ewald_icon_color", "on_accent")
+        self.ask_button.setIcon(icon("send", TOKENS["on_accent"]))
+        self.ask_button.setIconSize(QtCore.QSize(16, 16))
         self.ask_button.setFixedSize(30, 30)
         self.ask_button.clicked.connect(self.ask)
         cl = QtWidgets.QHBoxLayout(composer)

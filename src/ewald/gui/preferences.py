@@ -12,6 +12,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import settings as settings_mod
 from ..settings import DEVICES, OPTION, OPTIONS, PAGES, Settings
+from . import header
 from .element_table import ElementTable  # noqa: F401 (imported from here by callers)
 from .pref_widgets import Toggle, _ColorButton, _PathEdit, _chevron, _icon, _restyle
 from .prefs_apply import (apply_element_defaults, apply_settings, layout_path, restore_layout,  # noqa: F401
@@ -92,8 +93,8 @@ QLabel#rowLabel {{ font-size: 13px; color: {text}; background: transparent; }}
 QLabel#rowLabelChanged {{ font-size: 13px; color: {text}; font-weight: 600; background: transparent; }}
 QLabel#rowHelp {{ font-size: 11px; color: {muted}; background: transparent; }}
 QLabel#dot {{ color: {accent}; font-size: 10px; background: transparent; }}
-QToolButton#rowReset {{ color: {muted}; border: none; background: transparent; padding: 0 4px; font-size: 13px; }}
-QToolButton#rowReset:hover {{ color: {accent}; }}
+QToolButton#rowReset {{ border: none; background: transparent; padding: 0; }}
+QToolButton#rowReset:hover {{ background: {hover}; }}
 QFrame#card QComboBox, QFrame#card QSpinBox, QFrame#card QDoubleSpinBox, QFrame#card QLineEdit#field {{
     background: {bg}; border: 1px solid {border}; border-radius: 6px; padding: 4px 8px; min-height: 18px; }}
 QFrame#card QComboBox:hover, QFrame#card QSpinBox:hover, QFrame#card QDoubleSpinBox:hover,
@@ -281,7 +282,9 @@ class PreferencesDialog(QtWidgets.QDialog):
         dot = QtWidgets.QLabel("●", objectName="dot", toolTip="Changed from the default")
         label = QtWidgets.QLabel(opt.label, objectName="rowLabel")
         label.setToolTip(opt.key)
-        reset = QtWidgets.QToolButton(text="↺", objectName="rowReset", toolTip="Reset to default")
+        reset = header.button("reset", "Reset to default", name="rowReset")
+        reset.setFixedSize(20, 20)
+        reset.setIconSize(QtCore.QSize(14, 14))
         reset.setCursor(QtCore.Qt.PointingHandCursor)
         reset.clicked.connect(lambda _=False, k=opt.key: self.reset_key(k))
         head.addWidget(dot)

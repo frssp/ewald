@@ -78,7 +78,13 @@ GUI
   with the package (the Windows app and installer use `ewald.ico`, the macOS bundle
   `ewald.icns`); the EWALD mark in the main window header (the Notebook redesign) and the docs.
 - Icons for the remaining menu bar entries (View, Pipeline, Tools) and the Add modification
-  categories; the view-bar rotation arrows are still text glyphs.
+  categories. Buttons no longer use text glyphs (panel headers, timeline, cells, view bar use
+  line icons from `gui/icons.py`); the activity-bar and toolbar icons still keep the old palette
+  after a theme switch until a restart (`icons.refresh` covers the other buttons).
+- Panel headers (`gui/header.py`): checked under xvfb with Windows-like scale factors (100, 125,
+  150 %) only; check on a real Windows machine (Segoe UI, per-monitor DPI) and macOS. The Display
+  side bar still crowds its form below about 260 px, and the view bar cuts "View along" when the
+  3D view is narrow (could fold into a menu).
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
   Add modification for the loaded data, view-along buttons hidden without a cell, the timeline
   folded for a single structure, a right-click menu on pipeline items.

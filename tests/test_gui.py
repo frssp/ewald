@@ -264,7 +264,7 @@ def test_timeline_frame_selection_playback(app):
     tl.frameChanged.connect(seen.append)
     tl.selectionChanged.connect(cleared.append)
     tl.set_selection([7, 2, 2, 5, 42])
-    assert tl.selection == [2, 5, 7] and tl.sel.text() == "3 selected ✕"
+    assert tl.selection == [2, 5, 7] and tl.sel.text() == "3 selected"
     tl._set(3)
     tl._advance(); tl._advance(); tl._advance()
     assert seen == [3, 5, 7, 2]  # playback steps through the selected frames, looping
@@ -1535,7 +1535,7 @@ def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, m
     s["python.run_notebooks"] = "never"
     w = MainWindow(settings=s)
     view = w.open_notebook(str(tmp_path / "k.ipynb"))
-    assert view.kernel_button.text() == "⚙ This app"
+    assert view.kernel_button.text() == "This app"
     view.fill_kernel_menu(view.kernel_menu)
     labels = [a.text() for a in view.kernel_menu.actions()]
     assert labels[0] == "This app's Python" and labels[-1] == "Other Python…"
@@ -1543,7 +1543,7 @@ def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, m
     view.kernel_menu.actions()[-1].trigger()                      # Other Python…
     k = view.notebook.kernel
     try:
-        assert k is not None and view.kernel_button.text() == "⚙ This Python"
+        assert k is not None and view.kernel_button.text() == "This Python"
         view.run_all()
         assert view.running and not view.interrupt_button.isHidden()  # on a thread: the window keeps responding
         assert view.wait()
@@ -1555,7 +1555,7 @@ def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, m
         (tmp_path / "k3.ipynb").write_bytes((tmp_path / "k2.ipynb").read_bytes())
         reopened = w.open_notebook(str(tmp_path / "k3.ipynb"))      # the kernel choice is kept
         assert reopened.notebook.kernel is not None and not reopened.notebook.kernel.alive
-        assert reopened.kernel_button.text() == "⚙ This Python"
+        assert reopened.kernel_button.text() == "This Python"
         w.panel.tabs.setCurrentWidget(view)
         view.add_cell("code")
         sleeper = view.notebook.cells[-1]
@@ -2171,4 +2171,38 @@ def test_notebook_cells_sit_at_the_top(app):
     lines = sum(round(ed.blockBoundingRect(b).height() / ed.fontMetrics().lineSpacing())
                 for b in (ed.document().findBlockByNumber(i) for i in range(ed.document().blockCount())))
     assert ed.viewport().height() >= lines * ed.fontMetrics().lineSpacing()   # no clipped last line
+    w.close()
+
+
+def test_panel_headers_line_up_and_buttons_use_icons(app, pipe):
+    """Dock title bars and tab-group heads share one height and inset, and no button is labelled
+    with a symbol glyph (their size and baseline depend on the platform's fallback font)."""
+    import unicodedata
+
+    from ewald.gui import header
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(pipe)
+    w.resize(1300, 820)
+    w.show()
+    app.processEvents()
+    heads = [d.titleBarWidget() for d in w.findChildren(QtWidgets.QDockWidget) if d.isVisible()]
+    heads += [g.head for g in w.workbench.findChildren(QtWidgets.QWidget) if hasattr(g, "head") and g.isVisible()]
+    assert len(heads) >= 3
+    assert {h.height() for h in heads} == {header.height()}
+    tops = {h.mapTo(w, QtCore.QPoint(0, 0)).y() for h in heads if h.mapTo(w, QtCore.QPoint(0, 0)).y() < 200}
+    assert len(tops) == 1  # notebook, 3D view and Display headers start on one line
+    for b in w.findChildren(QtWidgets.QAbstractButton):
+        symbols = [c for c in b.text() if unicodedata.category(c) == "So" or 0x2190 <= ord(c) <= 0x2BFF]
+        assert not symbols, (b.objectName(), b.toolTip(), b.text())
+    tl = w.timeline
+    tl.play.setChecked(True)
+    assert tl.play.property("ewald_icon") == "pause"
+    tl.play.setChecked(False)
+    w.set_minimal(True)
+    assert w.minimal_exit.isVisible() and w.minimal_note.isVisible()
+    w.menuBar().show()  # what a tap on Alt does; the View menu entry must leave minimal mode
+    view_menu = next(a.menu() for a in w.menuBar().actions() if a.text().replace("&", "") == "View")
+    next(a for a in view_menu.actions() if a.text().startswith("Minimal mode")).trigger()
+    assert not w.minimal and not w.minimal_exit.isVisible() and w.statusBar().isVisible()
     w.close()

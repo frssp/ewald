@@ -21,6 +21,7 @@ from ..render import (
     needs_depth_peeling,
     setup_camera,
 )
+from . import header
 from .style import STYLE_PRESETS, ViewStyle
 from .theme import TOKENS
 
@@ -164,12 +165,12 @@ class Viewport(QtWidgets.QWidget):
             b.clicked.connect(lambda _=False, ax=axis: self.view_along(ax))
             lay.addWidget(b)
         lay.addSpacing(8)
-        for text, tip, fn in (("←", "Rotate one step (Preferences › Viewports) left", lambda: self.rotate("azimuth", -self.rotation_step)),
-                              ("→", "Rotate one step right about the screen vertical", lambda: self.rotate("azimuth", self.rotation_step)),
-                              ("↑", "Tilt up one step", lambda: self.rotate("elevation", self.rotation_step)),
-                              ("↓", "Tilt down one step", lambda: self.rotate("elevation", -self.rotation_step)),
-                              ("↻", "Roll one step in the screen plane", lambda: self.rotate("roll", self.rotation_step))):
-            b = _button(text, tip)
+        for name, tip, fn in (("arrow_left", "Rotate one step (Preferences › Viewports) left", lambda: self.rotate("azimuth", -self.rotation_step)),
+                              ("arrow_right", "Rotate one step right about the screen vertical", lambda: self.rotate("azimuth", self.rotation_step)),
+                              ("arrow_up", "Tilt up one step", lambda: self.rotate("elevation", self.rotation_step)),
+                              ("arrow_down", "Tilt down one step", lambda: self.rotate("elevation", -self.rotation_step)),
+                              ("roll", "Roll one step in the screen plane", lambda: self.rotate("roll", self.rotation_step))):
+            b = header.button(name, tip)
             b.clicked.connect(fn)
             lay.addWidget(b)
         lay.addSpacing(8)
@@ -181,6 +182,7 @@ class Viewport(QtWidgets.QWidget):
         lay.addWidget(QtWidgets.QLabel("Style", objectName="muted"))
         self.style_combo = QtWidgets.QComboBox()
         self.style_combo.addItems(list(STYLE_PRESETS))
+        self.style_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
         self.style_combo.setCurrentText(self.style.preset)
         self.style_combo.currentTextChanged.connect(self._preset)
         lay.addWidget(self.style_combo)

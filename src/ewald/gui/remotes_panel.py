@@ -13,6 +13,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import keychain
 from ..io import profiles, remote
+from . import header
 from .remote_dialog import _size, add_recent, load_recent
 
 ROLE = QtCore.Qt.UserRole
@@ -226,10 +227,10 @@ class RemotesPanel(QtWidgets.QWidget):
         self.path = QtWidgets.QLineEdit(placeholderText="pick a computer above", objectName="remotePath")
         self.path.returnPressed.connect(lambda: self.browse(self.path.text().strip()))
         nav = QtWidgets.QHBoxLayout()
-        for text, tip, slot in (("↑", "Parent folder", self.up), ("⌂", "Start folder", lambda: self.browse("")),
-                                ("↻", "Refresh", lambda: self.browse(self.cwd or "")),
-                                ("★", "Bookmark this folder", self.bookmark)):
-            b = QtWidgets.QToolButton(text=text, toolTip=tip)
+        for name, tip, slot in (("folder_up", "Parent folder", self.up), ("home", "Start folder", lambda: self.browse("")),
+                                ("refresh", "Refresh", lambda: self.browse(self.cwd or "")),
+                                ("star", "Bookmark this folder", self.bookmark)):
+            b = header.button(name, tip)
             b.clicked.connect(slot)
             nav.addWidget(b)
 
@@ -242,11 +243,11 @@ class RemotesPanel(QtWidgets.QWidget):
         self.files = QtWidgets.QTreeWidget(objectName="remoteFiles")
         self.files.setHeaderLabels(["Name", "Size", "Modified"])
         self.files.setRootIsDecorated(False)
-        header = self.files.header()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        cols = self.files.header()
+        cols.setStretchLastSection(False)
+        cols.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
         for col in (1, 2):
-            header.setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeToContents)
+            cols.setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeToContents)
         self.files.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.files.customContextMenuRequested.connect(self._file_menu)
         self.files.itemActivated.connect(self._activated)

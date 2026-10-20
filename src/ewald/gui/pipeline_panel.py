@@ -7,6 +7,7 @@ import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import modifiers as mods
+from . import header
 from .params import ParameterForm
 from .theme import TOKENS
 
@@ -156,6 +157,20 @@ BADGES = {"CoordinationAnalysis": "CN", "CalculateDisplacements": "DV", "ColorCo
 KIND = QtCore.Qt.UserRole + 1
 
 
+
+class FitWidthScrollArea(QtWidgets.QScrollArea):
+    """Scrolls vertically only: the page is always as wide as the area, like a document."""
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.widget() is not None:
+            self.widget().setFixedWidth(self.viewport().width())
+
+    def setWidget(self, widget):
+        super().setWidget(widget)
+        if widget is not None:
+            widget.setFixedWidth(self.viewport().width())
+
 class PipelinePanel(QtWidgets.QWidget):
     changed = QtCore.Signal()        # pipeline changed -> recompute
     styleChanged = QtCore.Signal()   # visual elements changed -> redraw only
@@ -172,7 +187,7 @@ class PipelinePanel(QtWidgets.QWidget):
         lay.setContentsMargins(6, 6, 6, 6)
 
         bar = QtWidgets.QHBoxLayout()
-        self.add_button = QtWidgets.QPushButton("Add modification  ▾")
+        self.add_button = QtWidgets.QPushButton("Add modification")
         self.add_button.setObjectName("primary")
         self.add_menu = QtWidgets.QMenu(self)
         # rebuilt on every open, so entries registered later (startup script, plugins) show up
@@ -187,10 +202,10 @@ class PipelinePanel(QtWidgets.QWidget):
         self.visual_button.setMenu(self.visual_menu)
         bar.addWidget(self.visual_button)
         self.edit_buttons = []
-        for text, tip, slot in (("▲", "Move up (later in the pipeline)", lambda: self._move(-1)),
-                                ("▼", "Move down (earlier)", lambda: self._move(1)),
-                                ("✕", "Delete modifier (Del)", self._remove)):
-            b = QtWidgets.QToolButton(text=text, toolTip=tip)
+        for name, tip, slot in (("chevron_up", "Move up (later in the pipeline)", lambda: self._move(-1)),
+                                ("chevron_down", "Move down (earlier)", lambda: self._move(1)),
+                                ("clear", "Delete modifier (Del)", self._remove)):
+            b = header.button(name, tip)
             b.clicked.connect(slot)
             bar.addWidget(b)
             self.edit_buttons.append(b)
@@ -213,7 +228,8 @@ class PipelinePanel(QtWidgets.QWidget):
 
         self.editor_title = QtWidgets.QLabel("Properties", objectName="section")
         lay.addWidget(self.editor_title)
-        self.scroll = QtWidgets.QScrollArea()
+        self.scroll = FitWidthScrollArea()  # editors fit the panel width instead of being cut off
+        self.scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         lay.addWidget(self.scroll, 3)
@@ -555,7 +571,8 @@ class PipelinePanel(QtWidgets.QWidget):
         table = QtWidgets.QTableWidget(len(types), 4)
         table.setHorizontalHeaderLabels(["Type", "Color", "Radius", "Count"])
         table.verticalHeader().setVisible(False)
-        table.horizontalHeader().setStretchLastSection(True)
+        table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        table.horizontalHeader().setMinimumSectionSize(36)
         for r, t in enumerate(types):
             table.setItem(r, 0, QtWidgets.QTableWidgetItem(t))
             color = self.style.type_colors.get(t)

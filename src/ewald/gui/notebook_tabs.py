@@ -4,19 +4,45 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtWidgets
 
+from . import header
+
+
+class _TabBar(QtWidgets.QTabBar):
+    def tabSizeHint(self, index):
+        size = super().tabSizeHint(index)
+        size.setHeight(header.height())  # one row height with the panel headers above and beside it
+        return size
+
+
+
+class _Corner(QtWidgets.QWidget):
+    """Holder of ``+``: as tall as the tabs, since Qt sizes the corner from its size hint."""
+
+    def sizeHint(self):
+        return QtCore.QSize(super().sizeHint().width(), header.height())
+
 
 class NotebookTabs(QtWidgets.QTabWidget):
     newRequested = QtCore.Signal()
     renameRequested = QtCore.Signal(int)
 
     def __init__(self, parent=None):
-        super().__init__(parent, documentMode=True, tabsClosable=True, movable=True)
+        super().__init__(parent)
+        self.setTabBar(_TabBar(self))
+        self.setDocumentMode(True)
+        self.setTabsClosable(True)
+        self.setMovable(True)
+        self.tabBar().setDrawBase(False)
         self.setObjectName("notebookTabs")
         self.setElideMode(QtCore.Qt.ElideRight)
         self.setUsesScrollButtons(True)
-        new = QtWidgets.QToolButton(text="+", toolTip="New notebook (Ctrl+T)", objectName="tabNew")
+        self.new_button = new = header.button("plus", "New notebook (Ctrl+T)")
         new.clicked.connect(self.newRequested.emit)
-        self.setCornerWidget(new, QtCore.Qt.TopRightCorner)
+        corner = _Corner(objectName="tabCorner")
+        lay = QtWidgets.QHBoxLayout(corner)
+        lay.setContentsMargins(0, 0, 6, 0)
+        lay.addWidget(new, 0, QtCore.Qt.AlignVCenter)
+        self.setCornerWidget(corner, QtCore.Qt.TopRightCorner)
         bar = self.tabBar()
         bar.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         bar.customContextMenuRequested.connect(self._menu)

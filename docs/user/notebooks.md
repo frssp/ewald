@@ -38,8 +38,8 @@ the next one. Notebook › Run all (Ctrl+Shift+Enter) restarts the namespace and
 from the top. If a cell fails, its traceback appears under it, and Run all stops there and
 marks the cells below as stale.
 
-The ▾ under a cell's counter folds the cell to one line (its title, step name or first line of
-code); ▸ or a double-click unfolds it. Folded cells stay folded in `.ipynb` and `.ewd` files,
+The chevron under a cell's counter folds the cell to one line (its title, step name or first line of
+code); clicking it again or a double-click unfolds it. Folded cells stay folded in `.ipynb` and `.ewd` files,
 as JupyterLab's hidden input and output, so they open folded in Jupyter too.
 
 Running a cell again replaces the modifiers it added last time, in the same place, so you can
@@ -165,7 +165,7 @@ snapshot(pipe, frame=3, camera={...}, radius_scale=0.5)   # shows the picture; .
 ```
 
 The ⋯ menu of a cell has Run, Run this and below, Move up/down, Delete and, for steps and views,
-Show as code cell. Drag a cell by the ⠿ grip above its ▶ to move it; steps move with it in the
+Show as code cell. Drag a cell by the dotted grip above its run button to move it; steps move with it in the
 pipeline. The `.py` button at the top shows the whole file.
 
 ## Notebook tabs
@@ -241,7 +241,7 @@ way as a `.py`; `pipe.add(...)` cells become steps and its outputs are kept.
 
 ## Kernels
 
-A notebook's cells run in the app's own Python unless you pick another one. **⚙** in the
+A notebook's cells run in the app's own Python unless you pick another one. The kernel button (gear icon) in the
 notebook's bar (or Notebook › Kernel) lists *This app's Python*, the Jupyter kernels installed
 on the computer and *Other Python…*, which takes any interpreter, for example a conda
 environment's `envs/ml/bin/python`. The cells then run in a kernel started from that Python, so
@@ -258,7 +258,7 @@ plots and Display settings work as usual. Step cells keep their form and on/off 
 app builds a local copy of each step from its cell, an edit runs the cell again in the kernel,
 and the status, time and results of the kernel's steps come back with every frame (a failing
 step is skipped and reports its error on its cell, as in the app). The window stays usable
-while a cell runs; **■ Interrupt** in the notebook's bar stops it with a `KeyboardInterrupt`
+while a cell runs; **Interrupt** in the notebook's bar stops it with a `KeyboardInterrupt`
 shown under the cell. From Python:
 
 ```python
@@ -344,14 +344,17 @@ the OVITO-style pipeline list and properties panel, after a restart. In the note
 display settings (particle radii and colors, bonds, cell and visual plugins) are in the
 **Display** panel on the right; the AI chat with Claude opens left of the notebook from the
 activity bar, and code from its answers can be inserted as cells. View › Focus on the viewport (Ctrl+\\)
-hides the panels, and pressing it again brings them back. The ▾ in a panel's title bar (or a
+hides the panels, and pressing it again brings them back. The chevron at the right of a panel's title bar (or a
 double-click on the title) folds that panel: the Notebook, Plugins, Display and AI chat
 panels fold to a thin strip with their name written down it, and the Data panel to its title
-bar. Panels shown as tabs fold together, and their tabs turn sideways; click the strip, ▸ or a
-tab to unfold. ⧉ floats a panel in its own window. View › *Minimal mode* (Ctrl+Shift+M)
-hides the menu bar, toolbars and status bar, leaving the notebook and the viewport. Every
-command stays one search away in the command palette (Ctrl+K), menu shortcuts keep working,
-and Ctrl+Shift+M brings the menus back. *UI theme* picks Paper (light, the
+bar. Panels shown as tabs fold together, and their tabs turn sideways; click the strip, its chevron or a
+tab to unfold. The button next to the chevron floats a panel in its own window. Every panel
+header (Notebook, 3D view, Display, the side bars) has the same height and buttons, so their
+titles line up. View › *Minimal mode* (Ctrl+Shift+M) hides the menu bar, toolbars and status
+bar, leaving the notebook and the viewport. Every command stays one search away in the command
+palette (Ctrl+K) and menu shortcuts keep working. To get the menus back, press Ctrl+Shift+M
+again or click **Menus** in the bottom left corner; a tap on Alt shows the menu bar for one
+pick without leaving minimal mode. *UI theme* picks Paper (light, the
 default), Graphite (dark) or a theme from a plugin ([UI themes](../plugins/styles.md#ui-themes)).
 
 ![Minimal mode: only the notebook, the viewport and the Display panel](../images/minimal-mode.png)
