@@ -4,6 +4,7 @@ from __future__ import annotations
 import time
 
 import numpy as np
+import shiboken6
 from PySide6 import QtCore, QtGui
 
 from .. import modifiers as mods
@@ -153,6 +154,71 @@ class LinksMixin:
     def _plot_view_closed(self, view):
         p = self.extra_plots.pop(view, None)
         self._stale_tabs.discard(p)
+        if view in self._plot_docks:   # a cell's plot: its thumbnail stays and opens it again
+            self._closed_docks.add(view)
+
+    # ---------------------------------------------------------------- cells' plots in the Plots panel
+    def dock_plot(self, slot, show: bool = True):
+        """Put the live plot of a cell (``slot``, a :class:`~ewald.gui.cell_widget.PlotSlot`) into
+        the Plots panel as its own tab next to "Plots" (:func:`ewald.views.in_panel` says which
+        plots go there). A plot of a notebook that is not the shown tab waits for its tab."""
+        view = slot.view_id
+        old = self._plot_docks.get(view)
+        if old is not None and old[0] is not slot:   # the cell ran again: the new plot takes the tab
+            self._drop_dock(view, old[1])
+            old = None
+        if old is None:
+            key = id(slot)
+            slot.destroyed.connect(lambda *_, v=view, k=key: self._drop_dock(v, k))
+            self._plot_docks[view] = (slot, key, slot.panel)
+        self._closed_docks.discard(view)
+        if not self._in_shown_notebook(slot):
+            return
+        if view not in self.workbench.specs:
+            group = self.workbench.group_of("plot:1") if "plot:1" in self.workbench.specs else None
+            self.workbench.register(view, slot.panel, slot.title, closable=True, keep=True, group=group)
+        if show:
+            self.workbench.show(view)
+
+    def undock_plot(self, slot):
+        """Take a cell's plot out of the Plots panel (it goes back under its cell)."""
+        entry = self._plot_docks.pop(slot.view_id, None)
+        self._closed_docks.discard(slot.view_id)
+        if entry is not None and slot.view_id in self.workbench.specs:
+            self.workbench.unregister(slot.view_id, delete=False)
+
+    def docked_plots(self) -> list[str]:
+        """The tabs of cells' plots now in the Plots panel."""
+        return [v for v in self._plot_docks if v in self.workbench.specs]
+
+    def _drop_dock(self, view, key):
+        """The cell of a docked plot is gone (or ran again): its tab and plot go too."""
+        entry = self._plot_docks.get(view)
+        if entry is None or entry[1] != key:
+            return
+        del self._plot_docks[view]
+        self._closed_docks.discard(view)
+        if view in self.workbench.specs and self.workbench.specs[view].widget is entry[2]:
+            self.workbench.unregister(view)
+        elif shiboken6.isValid(entry[2]) and entry[2].parent() is None:
+            entry[2].deleteLater()
+
+    def _in_shown_notebook(self, slot) -> bool:
+        view = self.panel.view
+        return view is not None and shiboken6.isValid(slot) and view.isAncestorOf(slot)
+
+    def _sync_plot_docks(self, *_):
+        """Another notebook tab is shown: its cells' plots come into the Plots panel, the others'
+        leave it (kept by their cells, for when their tab is shown again)."""
+        for view, (slot, key, panel) in list(self._plot_docks.items()):
+            if not shiboken6.isValid(slot):
+                self._drop_dock(view, key)
+            elif self._in_shown_notebook(slot):
+                if view not in self.workbench.specs and view not in self._closed_docks:
+                    group = self.workbench.group_of("plot:1") if "plot:1" in self.workbench.specs else None
+                    self.workbench.register(view, panel, slot.title, closable=True, keep=True, group=group)
+            elif view in self.workbench.specs:
+                self.workbench.unregister(view, delete=False)
 
     def _extra_view_actions(self, view):
         if view.startswith("plot:"):

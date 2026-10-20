@@ -90,6 +90,25 @@ notebook's pipeline (`show(pipe.compute(5), ...)`, another pipeline) and figures
 matplotlib yourself stay images of the moment the cell ran. Saved notebooks keep the image as
 well, so Jupyter and GitHub show the plot.
 
+**Where a plot appears.** By default a plot sits under the cell that made it, as in Jupyter.
+Plots that change with the frame or are linked to the Structure view open in the **Plots
+panel** instead, each as its own tab next to *Plots*: everything on a trajectory, histograms,
+g(r), bond lengths and angles, time series, the NEB energy profile (a click goes to the image),
+DOS and bands (they follow the picked atoms) and phonon bands (a click plays the mode). The
+cell keeps a thumbnail with *Open in Plots panel*, which brings the tab back after you close
+it. A one-frame table that links to nothing, such as the XRD pattern of a single structure,
+stays under the cell. `panel=` overrides the rule:
+
+```python
+show(pipe, table="diffraction", panel=True)     # always in the Plots panel
+show(pipe, table="coordination-rdf", panel=False)   # always under the cell
+```
+
+Right-click the plot or its thumbnail and choose *Show in Plots panel* or *Show under the cell*
+to write the same `panel=` into the cell's `show(...)` call. Each notebook tab brings its own plots
+into the panel, and running the cell again replaces the plot in the same tab. Outside the GUI,
+`panel=` does nothing: Jupyter and scripts draw the image.
+
 **What runs during playback.** Playing a trajectory never runs cells again: code cells run when
 you run them. What runs at each frame is the pipeline, the steps the cells added. A built-in
 step computes the frame (or, for MSD, VACF and other trajectory analyses, reads the trajectory

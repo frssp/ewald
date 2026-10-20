@@ -115,6 +115,12 @@ GUI
 - Live `show(pipe, ...)` outside a view cell: zooming does not write `xlim=`/`ylim=` back (only a
   cell that is just the call does), and `frame=` is ignored by the live plot (it follows the
   current frame, as view cells do).
+- Plots in the Plots panel (`views.in_panel`; linked or per-frame plots of cells get their own tab
+  next to *Plots*, a thumbnail stays under the cell): a tab is titled by its table or histogram
+  only, so two plots of one table look alike; the tabs are not kept in the saved panel layout
+  (they come back when the cells run, but not where they were dragged); the thumbnail is the image
+  of the last run, not the frame on screen; a plot that `in_panel` sends to the panel cannot be
+  told "keep under the cell" for a whole notebook at once (only per call with `panel=False`).
 - Notebook kernels (`ewald/kernel.py`): step forms for steps a kernel cell adds with code the
   app cannot import (a class only the kernel's Python has stays as code).
 - Notebook kernel on the cluster (plan, owner's pick 2026-10-20; not started): run a notebook
