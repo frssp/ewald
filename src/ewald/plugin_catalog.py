@@ -368,6 +368,12 @@ def update_for(item: Installed, entries) -> Entry | None:
 def install_file(entry_or_source, timeout: float = 30.0) -> list[str]:
     """Copy a plugin ``.py`` (path or URL) into the plugin folder and load it; returns the
     names it registered. Replaces a file of the same name (an update)."""
+    return plugins.load_plugin_file(fetch_file(entry_or_source, timeout))
+
+
+def fetch_file(entry_or_source, timeout: float = 30.0) -> Path:
+    """The download-and-copy half of :func:`install_file` (no import), safe to run off the GUI
+    thread; returns the file in the plugin folder."""
     source = entry_or_source.source if isinstance(entry_or_source, Entry) else str(entry_or_source)
     expected = entry_or_source.sha256 if isinstance(entry_or_source, Entry) else ""
     folder = plugins.plugin_dir()
@@ -386,7 +392,7 @@ def install_file(entry_or_source, timeout: float = 30.0) -> list[str]:
             verify_sha256(src.read_bytes(), expected, source)
         if src != target.resolve():
             shutil.copyfile(src, target)
-    return plugins.load_plugin_file(target)
+    return target
 
 
 def remove_file(item: Installed) -> Path:
