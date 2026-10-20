@@ -52,6 +52,9 @@ _NAMES = {
     "panel": "ewald.plugins",
     # settings pages
     "settings_page": "ewald.plugins", "SettingsField": "ewald.plugins", "plugin_settings": "ewald.plugins",
+    # workflows (ewald.workflow)
+    "workflow_source": "ewald.plugins", "Workflow": "ewald.workflow", "WorkflowStep": "ewald.workflow",
+    "WorkflowOutput": "ewald.workflow", "WorkflowPage": "ewald.workflow", "workflow_panel": "ewald.workflow",
 }
 
 __all__ = ["PLUGIN_API", "SUPPORTED", *_NAMES]

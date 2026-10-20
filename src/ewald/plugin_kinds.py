@@ -321,6 +321,39 @@ class PanelPlugin:
     origin: str = ""
 
 
+@dataclass
+class WorkflowSourcePlugin:
+    """A place workflows come from (sim-agent, an AiiDA profile): ``source`` has ``account()``,
+    ``list(query, cursor) -> WorkflowPage`` and ``describe(ref) -> Workflow`` (:mod:`ewald.workflow`);
+    ``schemes`` are the ``load()`` path schemes its workflows use, ``settings_page`` the plugin
+    settings page that sets it up ("" if none)."""
+
+    name: str
+    source: object
+    title: str = ""
+    schemes: tuple = ()
+    settings_page: str = ""
+    description: str = ""
+    origin: str = ""
+
+    def account(self) -> str:
+        fn = getattr(self.source, "account", None)
+        return str(fn() or "") if callable(fn) else "ready"
+
+    def list(self, query: str | None = None, cursor: str | None = None):
+        return self._named(self.source.list(query=query, cursor=cursor))
+
+    def describe(self, ref: str):
+        wf = self.source.describe(ref)
+        wf.source = wf.source or self.name
+        return wf
+
+    def _named(self, page):
+        for wf in page.workflows:
+            wf.source = wf.source or self.name
+        return page
+
+
 class ListReader(FrameReader):
     """FrameReader over frames already in memory (what function readers return)."""
 

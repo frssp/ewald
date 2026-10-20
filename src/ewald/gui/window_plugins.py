@@ -102,6 +102,15 @@ class PanelContext:
         """Add ``modifier`` as a step cell of the notebook on screen (and compute)."""
         self.window.panel.add_modifier(modifier)
 
+    def open(self, path: str):
+        """Open ``path`` (a file, ``host:/path`` or a plugin scheme) as File › Open location does."""
+        return self.window.open_location_dialog(str(path))
+
+    def open_workflow(self, workflow):
+        """Open a :class:`ewald.workflow.Workflow` (or a path a workflow source describes) as one
+        notebook, a variable per step."""
+        return self.window.open_workflow(workflow)
+
     def on(self, event: str, callback):
         """Call ``callback`` on "data" (a frame was computed: ``callback(data)``), "pipeline"
         (another pipeline: ``callback(pipeline)``) or "settings" (Preferences applied, plugin

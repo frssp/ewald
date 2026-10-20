@@ -3356,3 +3356,68 @@ def test_plugin_settings_page_in_preferences_refuses_bad_values(app, monkeypatch
     test.click()
     assert entry["status"].text() == "reachable"
     dlg.close()
+
+
+def test_workflow_side_bar_lists_expands_and_opens_a_workflow_as_one_notebook(app, pipe, monkeypatch):
+    """A workflow source plus workflow_panel(): the side bar follows an empty search page, expands
+    a workflow into its nested steps and outputs, and a double click opens it as one notebook
+    with a variable per step and pipe on the main result."""
+    from ase.build import bulk
+
+    from ewald import plugins, workflow
+    from ewald.data import DataCollection
+    from ewald.gui.app import MainWindow
+    from ewald.workflow import Workflow, WorkflowOutput, WorkflowPage, WorkflowStep
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    monkeypatch.setattr(plugins._registry, "loaded", True)
+
+    def full():
+        return Workflow("relax", id="7", path="demo:7/relax", kind="vasp_relax", formula="Si2", state="finished",
+                        label="Si relax", complete=True,
+                        steps=[WorkflowStep("relax", path="demo:7/relax", state="finished", runs=2,
+                                            outputs=[WorkflowOutput("vasprun.xml", "demo:7/relax/vasprun.xml")]),
+                               WorkflowStep("bands", steps=[WorkflowStep("scf", path="demo:7/bands/scf",
+                                                                         state="finished")])])
+
+    class Demo:
+        schemes = ("demo",)
+
+        def account(self):
+            return "me at demo"
+
+        def list(self, query=None, cursor=None):
+            if cursor is None:
+                return WorkflowPage([], next="1")
+            return WorkflowPage([Workflow("relax", id="7", path="demo:7/relax", kind="vasp_relax",
+                                          state="finished")], next="2" if cursor == "1" and query is None else None)
+
+        def describe(self, ref):
+            return full()
+
+    plugins.register_reader("demo", lambda path, **kw: [DataCollection.from_ase(bulk("Si"))], schemes=("demo",))
+    plugins.register_workflow_source("demo", Demo, title="Demo")
+    plugins.register_panel("demo", workflow.workflow_panel("demo", title="Demo"))
+    w = MainWindow(pipe)
+    w.show_plugin_panel("demo")
+    side = w.plugin_panels["demo"]["dock"].widget()
+    side.wait()
+    assert side.who.text() == "me at demo" and side.login_button.isHidden()
+    top = side.tree.topLevelItem(0)
+    assert side.tree.topLevelItemCount() == 1 and top.text(0) == "vasp_relax  <7>  ✓" and not side.more.isHidden()
+    top.setExpanded(True)
+    side.wait()
+    assert [top.child(i).text(0) for i in range(top.childCount())] == ["relax  (2 runs)  ✓", "bands"]
+    assert top.child(1).child(0).text(0) == "scf  ✓" and top.child(0).child(0).text(0) == "vasprun.xml"
+    side.tree.setCurrentItem(top.child(1).child(0))
+    assert side.path.text() == "demo:7/bands/scf" and side.buttons["Open"].isEnabled()
+    tabs = w.panel.tabs.count()
+    side.tree.setCurrentItem(top)
+    view = side.open(top)
+    assert w.panel.tabs.count() == tabs + 1 and view.notebook.name == "Si relax"
+    ns = view.notebook.namespace
+    assert ns["pipe"] is ns["relax"] and ns["scf"].num_frames == 1 and w.pipeline is ns["relax"]
+    side.search.setText("Si")
+    side.refresh()
+    side.wait()
+    assert side.tree.topLevelItemCount() == 1 and side.more.isHidden()

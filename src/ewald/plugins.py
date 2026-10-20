@@ -81,7 +81,7 @@ from .io.base import FrameReader
 from .plugin_kinds import (  # noqa: F401 (part of this module's API)
     ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, PanelPlugin, ReaderPlugin, SettingsField,
     SettingsPagePlugin,
-    ThemePlugin, ToolPlugin, UiThemePlugin, VisualPlugin, WriterPlugin, _builtin_ai_providers, _builtin_overlays, _builtin_readers,
+    ThemePlugin, ToolPlugin, UiThemePlugin, VisualPlugin, WorkflowSourcePlugin, WriterPlugin, _builtin_ai_providers, _builtin_overlays, _builtin_readers,
     _builtin_themes, _builtin_ui_themes, _builtin_visuals, _builtin_writers, path_scheme)
 from .plugin_manifest import (  # noqa: F401 (part of this module's API)
     Plugin, _read_toml, _version_tuple, ewald_version, file_manifest, version_satisfies)
@@ -100,6 +100,7 @@ UI_THEME_GROUP = "ewald.ui_themes"
 AI_PROVIDER_GROUP = "ewald.ai_providers"
 PANEL_GROUP = "ewald.panels"
 SETTINGS_PAGE_GROUP = "ewald.settings_pages"
+WORKFLOW_GROUP = "ewald.workflows"
 PLUGIN_GROUP = "ewald.plugins"      # names the package that holds ewald-plugin.toml
 MANIFEST_NAME = "ewald-plugin.toml"
 
@@ -118,6 +119,7 @@ class _Registry:
     ai_providers: dict = field(default_factory=_builtin_ai_providers)
     panels: dict = field(default_factory=dict)
     settings_pages: dict = field(default_factory=dict)
+    workflows: dict = field(default_factory=dict)
     errors: dict = field(default_factory=dict)      # origin -> message
     plugins: dict = field(default_factory=dict)     # id -> Plugin
     loaded: bool = False
@@ -125,7 +127,7 @@ class _Registry:
 
 _registry = _Registry()
 _REGISTRIES = ("readers", "writers", "modifiers", "visuals", "overlays", "colormaps", "themes", "tools",
-               "ui_themes", "ai_providers", "panels", "settings_pages")
+               "ui_themes", "ai_providers", "panels", "settings_pages", "workflows")
 
 
 def plugin_dir() -> Path:
@@ -644,6 +646,50 @@ def settings_pages() -> dict[str, SettingsPagePlugin]:
     return dict(_registry.settings_pages)
 
 
+def workflow_source(name: str | None = None, title: str = "", schemes=(), settings_page: str = "",
+                    description: str = ""):
+    """Decorator registering a source of workflows (a class made with no arguments, or an
+    object) with ``list(query=None, cursor=None) -> WorkflowPage`` and ``describe(ref) ->
+    Workflow``, and optionally ``account() -> str`` ("" = not set up yet). ``schemes`` are the
+    path schemes of its workflows (``("simagent",)``), so :func:`ewald.workflow.describe` finds
+    it from a path; ``settings_page`` names the plugin's settings page that sets it up. Pair
+    it with :func:`ewald.workflow.workflow_panel` for a side bar (see :mod:`ewald.workflow`)."""
+
+    def deco(obj):
+        register_workflow_source(name, obj, title=title, schemes=schemes, settings_page=settings_page,
+                                 description=description)
+        return obj
+
+    return deco
+
+
+def register_workflow_source(name: str | None, source, title: str = "", schemes=(), settings_page: str = "",
+                             description: str = "", origin: str = "python") -> WorkflowSourcePlugin:
+    obj = source() if inspect.isclass(source) else source
+    missing = [m for m in ("list", "describe") if not callable(getattr(obj, m, None))]
+    if missing:
+        raise TypeError(f"workflow source {source!r} has no {' or '.join(m + '()' for m in missing)} method")
+    name = name or getattr(obj, "name", None) or type(obj).__name__.lower()
+    if isinstance(schemes, str):
+        schemes = (schemes,)
+    schemes = tuple(s.lower() for s in (schemes or getattr(obj, "schemes", ()) or ()))
+    doc = inspect.cleandoc(getattr(source, "__doc__", None) or "") if inspect.isclass(source) else ""
+    plugin = WorkflowSourcePlugin(
+        name, obj, title or getattr(obj, "title", "") or name, schemes,
+        settings_page or getattr(obj, "settings_page", "") or "",
+        description or getattr(obj, "description", "") or " ".join(doc.split("\n\n")[0].split()),
+        getattr(_loading, "origin", None) or origin)
+    _registry.workflows[name] = plugin
+    _contribute("workflows", name)
+    return plugin
+
+
+def workflow_sources() -> dict[str, WorkflowSourcePlugin]:
+    """Installed workflow sources by name."""
+    load_plugins()
+    return dict(_registry.workflows)
+
+
 class _StoredSettings:
     """``load``/``save`` for a settings page without its own: the values in
     ``<config dir>/plugin-settings/<name>.json``, secret fields in the keychain
@@ -865,6 +911,7 @@ def load_plugins(force: bool = False):
         _registry.ai_providers = {**_builtin_ai_providers(), **keep}
         _registry.panels = {k: v for k, v in _registry.panels.items() if v.origin == "python"}
         _registry.settings_pages = {k: v for k, v in _registry.settings_pages.items() if v.origin == "python"}
+        _registry.workflows = {k: v for k, v in _registry.workflows.items() if v.origin == "python"}
         _registry.errors.clear()
         _registry.plugins = {}
     off = disabled()
@@ -911,7 +958,8 @@ def _load_entry_points(off: set = frozenset()):
                             (UI_THEME_GROUP, lambda name, obj: register_ui_theme(name, obj)),
                             (AI_PROVIDER_GROUP, lambda name, obj: register_ai_provider(name, obj)),
                             (PANEL_GROUP, lambda name, obj: register_panel(name, obj)),
-                            (SETTINGS_PAGE_GROUP, lambda name, obj: register_settings_page(name, obj))):
+                            (SETTINGS_PAGE_GROUP, lambda name, obj: register_settings_page(name, obj)),
+                            (WORKFLOW_GROUP, lambda name, obj: register_workflow_source(name, obj))):
         try:
             eps = entry_points(group=group)
         except Exception as exc:
@@ -1111,6 +1159,8 @@ def status() -> dict:
                        for p in _registry.panels.values()],
             "settings_pages": [{"name": p.name, "title": p.title, "description": p.description, "origin": p.origin}
                                for p in _registry.settings_pages.values()],
+            "workflows": [{"name": p.name, "title": p.title, "schemes": list(p.schemes), "description": p.description,
+                           "origin": p.origin} for p in _registry.workflows.values()],
             "errors": dict(_registry.errors)}
 
 
