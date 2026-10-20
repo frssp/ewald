@@ -13,7 +13,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   in-process notebook cells off the GUI thread with Interrupt (done), one trust check for every
   code-execution path plus sha256 for catalog downloads (done: `trust.py`, `EXEC_SITES`), a
   versioned plugin API (done: `ewald.plugin_api`; the ewald-plugins packages still need
-  `plugin-api = 1` in their manifests), then splitting `plugins.py` and `gui/notebook_panel.py`.
+  `plugin-api = 1` in their manifests), splitting `plugins.py` (done: `plugin_kinds.py`,
+  `plugin_manifest.py`), then splitting `gui/notebook_panel.py`.
 
 ## Next
 
@@ -401,8 +402,7 @@ mixins and helper modules):
   only the overlays one handles `up` parallel to the view direction.
 - One element color lookup: `themes.element_colors`, `Settings.element_color` (Preferences
   offers only Jmol and CPK, not VESTA) and `render.type_color`.
-- `plugins.py`: the visual-element and overlay registries are copies of each other; the
-  renderer-neutral type color/radius tables in `render.py` belong in their own module.
+- The renderer-neutral type color/radius tables in `render.py` belong in their own module.
 - `Viewport._mic` and the bond-angle code in `gui/viewport.py` can use `Cell.minimum_image`
   and share the angle helper with `llm/selection.py`.
 - Names left from the Ask AI rename: `MainWindow.ask_claude` (and the tests calling it) and the

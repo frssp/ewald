@@ -125,8 +125,11 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   priorities) plus plugins from `ewald.readers` / `ewald.modifiers` entry points and
   `<config dir>/plugins/*.py`; `io.open_reader`, the GUI open filter and menu, the Claude tools and
   `ewald.modifiers.__getattr__` read it. Plugin modifiers stay out of `__all__` and `llms.txt`.
-  Examples in `examples/plugins/`. `plugin_api.py` is the supported surface plugins import from,
-  versioned by `PLUGIN_API`: changing a name there incompatibly means raising it.
+  Examples in `examples/plugins/`. The plugin dataclasses and built-in entries are in
+  `plugin_kinds.py`, manifests and version checks in `plugin_manifest.py` (re-exported by
+  `plugins.py`, which keeps the registry state tests monkeypatch). `plugin_api.py` is the
+  supported surface plugins import from, versioned by `PLUGIN_API`: changing a name there
+  incompatibly means raising it.
 - `assets/icon/`: app icon. `ewald.svg` (and `ewald-small.svg` for 16-32 px) are the sources; the PNG
   sizes, `ewald.ico` and `ewald.icns` are rendered by `make_icons.py` (cairosvg), never by hand.
   `gui.icons.app_icon()` loads them.
