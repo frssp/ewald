@@ -621,7 +621,7 @@ def _scf_counts(path) -> list[int]:
                 continue
             if tok[0].endswith(b":") and len(tok) > 1 and tok[1].isdigit():
                 last = int(tok[1])
-            elif tok[0].isdigit() and len(tok) > 1 and tok[1].startswith(b"F=") or (len(tok) > 1 and tok[1] == b"T="):
+            elif tok[0].isdigit() and len(tok) > 1 and tok[1].startswith((b"F=", b"T=")):  # an ionic step
                 counts.append(last)
                 last = 0
     return counts
