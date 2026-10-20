@@ -38,13 +38,16 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   sums), Voronoi (0.72 s) by voro++; those already use every core.
 - Ray tracer: a BVH instead of the uniform grid for large surfaces, adaptive sampling that
   stops on converged pixels, and the CUDA path.
-- GUI startup is about 3 s, mostly imports: pyvista/pyvistaqt (~2 s) and matplotlib (0.6 s,
-  needed by the Plots tab at construction); the IPython console is built after the first paint.
+- GUI startup: the window paints after 1.7 s (was 2.85 s); the 3D view (pyvistaqt import,
+  ~1.2 s), the Plots canvas, the IPython console and the ~/.ssh/config hosts come after the
+  first paint, so the 3D view is ready at about 2.8 s. Left: `import ewald.gui.app` itself
+  (~0.8 s, numba and the modifier modules) and `_style_changed` at construction (0.1 s).
+  Importing pyvistaqt on a background thread did not help (the GIL serializes it).
 - UI theme switch takes 0.5-1 s in `QApplication.setStyleSheet` (one app-wide QSS).
-- Playback: notebook cells and plots whose data does not change between frames are no longer
-  rebuilt (MSD, time series, printed outputs). Plots of per-frame data (a property histogram,
-  a per-frame RDF) still clear and redraw the figure each frame; updating the bar heights or
-  line data in place (or blitting) would make them cheaper at high frame rates.
+- Playback: plots whose data does not change are not redrawn; per-frame histograms and
+  tables update their bars or lines in place (20k-atom histogram 157 -> 65 ms per frame,
+  g(r) 148 -> 47 ms). What is left is mostly matplotlib's Agg draw; blitting would need fixed
+  axes. Contour maps, NEB, phonon and DOS/bands plots still redraw fully.
 
 GUI
 
