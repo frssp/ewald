@@ -10,13 +10,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
-- Several files as one trajectory: the GUI Open dialog takes one file (no multi-select into a
-  list yet), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
+- Several files as one trajectory: File › Open and drops join several data files in natural order
+  only (no dialog to reorder them or pick `join="concat"`), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
   appended to after a restart (`dump_modify append yes`). Restart detection needs a Timestep per
   frame, which only the LAMMPS dump reader gives cheaply (extxyz `Timestep=` comments, H5MD
   steps and XTC steps are not used yet).
-- View tab: folded cards are remembered only while the window is open (not in settings or the
-  layout file); no Fold all / Unfold all; a card has no per-card reset to defaults.
+- View tab: a card has no per-card reset to defaults.
 
 - Workflows (`ewald.workflow`): a table that compares the scalars of every step of a workflow
   (energies, gaps, forces) and of several workflows side by side, and opening one step's input
@@ -33,18 +32,22 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 - Pipeline output cache: plugin modifiers are never reused (`Modifier.cacheable` is None for
   them); first-party plugins (ewald-phonopy, ewald-plumed) could set `cacheable = True` where
   their output depends only on their settings.
-- Structure identification at 108k atoms spends half its time in the periodic kNN query
-  (scipy cKDTree plus image padding, ~0.4 s): a numba cell-list kNN like `find_pairs` would
-  roughly halve PTM (0.9 s) and Voronoi (0.9 s). The native kernels already use every core.
+- Structure identification at 108k atoms: the periodic kNN is a numba cell list now (0.10-0.22 s
+  for k = 12-33, was 0.32-0.71 s with cKDTree + image padding). PTM (0.93 s) and Steinhardt
+  (0.95 s) are now dominated by their per-atom kernels (PTM's C++ template matching, the Ylm
+  sums), Voronoi (0.72 s) by voro++; those already use every core.
 - Ray tracer: a BVH instead of the uniform grid for large surfaces, adaptive sampling that
   stops on converged pixels, and the CUDA path.
-- GUI startup is about 3 s, mostly imports: pyvista/pyvistaqt (~2 s) and matplotlib (0.6 s,
-  needed by the Plots tab at construction); the IPython console is built after the first paint.
+- GUI startup: the window paints after 1.7 s (was 2.85 s); the 3D view (pyvistaqt import,
+  ~1.2 s), the Plots canvas, the IPython console and the ~/.ssh/config hosts come after the
+  first paint, so the 3D view is ready at about 2.8 s. Left: `import ewald.gui.app` itself
+  (~0.8 s, numba and the modifier modules) and `_style_changed` at construction (0.1 s).
+  Importing pyvistaqt on a background thread did not help (the GIL serializes it).
 - UI theme switch takes 0.5-1 s in `QApplication.setStyleSheet` (one app-wide QSS).
-- Playback: notebook cells and plots whose data does not change between frames are no longer
-  rebuilt (MSD, time series, printed outputs). Plots of per-frame data (a property histogram,
-  a per-frame RDF) still clear and redraw the figure each frame; updating the bar heights or
-  line data in place (or blitting) would make them cheaper at high frame rates.
+- Playback: plots whose data does not change are not redrawn; per-frame histograms and
+  tables update their bars or lines in place (20k-atom histogram 157 -> 65 ms per frame,
+  g(r) 148 -> 47 ms). What is left is mostly matplotlib's Agg draw; blitting would need fixed
+  axes. Contour maps, NEB, phonon and DOS/bands plots still redraw fully.
 
 GUI
 
@@ -86,8 +89,8 @@ GUI
 - Notebook layout: the viewport could follow the current notebook even when it has no
   pipeline yet (now it keeps the last one); image/figure cells; inline Ask AI suggestions
   as diffs; a snapshot cell that updates when the camera of its view changes (now it is code);
-  more Jupyter command-mode keys (only Y, M, A, B and Enter so far: no DD, X/C/V, Shift+Enter in
-  command mode, raw cells).
+  raw cells; Jupyter's Shift+Ctrl+- (split a cell at the cursor) and Shift+L (line numbers);
+  selections are a contiguous range (no Ctrl+click to pick separate cells).
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
   view does not have yet (picks as code, the viewport axes widget; measurement labels in the
   legacy OpenGL 1.x viewport, and lines that show through atoms; audit in the project files `ewald-review/view-elements-audit.md`);
@@ -98,10 +101,6 @@ GUI
   keeps its own per-notebook state in the `.py` header next to the view cell's picture settings
   (one place for both); in a kernel notebook a viewport edit reaches the kernel's `pipe.view`
   only when the view cell runs again.
-- Test suite: the full run under xvfb now and then segfaults inside tests/test_gui.py while a
-  window is built or deleted (seen 2026-10-20 on main too; `test_gui.py` alone and reruns pass).
-  `conftest.py` now deletes windows any test leaves open; the rest is probably a Qt object of an
-  earlier test collected in a worker thread. Rerun before blaming a change.
 - Atom labels (`view(pipe, labels=...)`): not drawn on the OpenGL 1.x viewport (`ssh -X`), not on
   boundary or replicated images, and not hidden behind nearer atoms (they always show, as in VESTA).
 - Render frame (the picture's region on the 3D view, `view(pipe, region=...)`): not drawn on
@@ -116,6 +115,16 @@ GUI
 - Live `show(pipe, ...)` outside a view cell: zooming does not write `xlim=`/`ylim=` back (only a
   cell that is just the call does), and `frame=` is ignored by the live plot (it follows the
   current frame, as view cells do).
+- Plots in the Plots panel (`views.in_panel`; linked or per-frame plots of cells get their own tab
+  next to *Plots*, a thumbnail stays under the cell): a tab is titled by its table or histogram
+  only, so two plots of one table look alike; the tabs are not kept in the saved panel layout
+  (they come back when the cells run, but not where they were dragged); the thumbnail is the image
+  of the last run, not the frame on screen; a plot that `in_panel` sends to the panel cannot be
+  told "keep under the cell" for a whole notebook at once (only per call with `panel=False`).
+- Figures drawn by Python steps (`pipeline.StepFigure`, `data.attributes["Figure: <step>"]`):
+  drawn in matplotlib's default style, not the notebook's plot style; a PNG per frame, not a
+  live interactive plot (no zoom or linked selection); moving one between the panel and the cell
+  is not saved; steps that run in a notebook kernel do not send their figures back yet.
 - Notebook kernels (`ewald/kernel.py`): step forms for steps a kernel cell adds with code the
   app cannot import (a class only the kernel's Python has stays as code).
 - Notebook kernel on the cluster (plan, owner's pick 2026-10-20; not started): run a notebook
@@ -360,10 +369,10 @@ Plugins and AI
   the palette, as notebook functions and as AI tools). Settings pages (`@settings_page`) and side
   bars (`@panel`) are registered in code, not declared in the manifest.
 - GUI plugins (`@panel`, `@menu_item`, `gui/window_plugins.py`; `@settings_page` pages in
-  Preferences): reloading plugins rebuilds every open plugin panel, losing its state; no toolbar
-  contributions and no entries in the notebook cell, Plots or Data inspector context menus (only
-  the menu bar and the 3D view's right-click menu); a bottom tab cannot be placed in the editor
-  area beside the 3D view from the plugin (the user can drag it there). A plugin's
+  Preferences): reloading plugins rebuilds every open plugin panel, losing its state; no entries
+  in the Data inspector, notebook tab or Display panel menus yet, and a plugin cannot change or
+  remove built-in entries; a bottom tab cannot be placed in the editor area beside the 3D view
+  from the plugin (the user can drag it there). A plugin's
   Preferences page has no changed-dot or per-row Reset, and Edit › Plugin settings and the
   Plugins side bar's Settings still open the separate dialog rather than that page.
 - Plugin manifests, phase 3: the index repository exists (frssp/ewald-plugins: `plugins/*.toml`,

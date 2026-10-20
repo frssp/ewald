@@ -30,6 +30,7 @@ class ViewSpec:
     home: str = "panel"         # the area it starts in and returns to
     closable: bool = False      # closing removes it (extra plot views); otherwise it goes home
     native: bool = False        # a GL widget: follows a slot instead of being reparented
+    keep: bool = False          # closing a closable view keeps its widget (a cell's plot: it can come back)
 
 
 class TabBar(QtWidgets.QTabBar):
@@ -265,10 +266,10 @@ class Workbench(QtWidgets.QWidget):
 
     # ------------------------------------------------------------------ views
     def register(self, view: str, widget, title: str, home: str = "panel", closable: bool = False,
-                 native: bool = False, group: Group | None = None, index: int | None = None):
+                 native: bool = False, group: Group | None = None, index: int | None = None, keep: bool = False):
         """Add a view; it goes into ``group`` (or the first group of ``home``) unless the layout
         already places it."""
-        self.specs[view] = ViewSpec(view, widget, title, home, closable, native)
+        self.specs[view] = ViewSpec(view, widget, title, home, closable, native, keep)
         if view not in self.order:
             self.order.append(view)
         if native:
@@ -282,7 +283,9 @@ class Workbench(QtWidgets.QWidget):
                 g.current = g.views.index(shown)
         self._rebuild()
 
-    def unregister(self, view: str):
+    def unregister(self, view: str, delete: bool = True):
+        """Remove a view; its widget is deleted, or with ``delete=False`` only taken out (hidden,
+        no parent) for its owner to keep."""
         spec = self.specs.pop(view, None)
         if view in self.order:
             self.order.remove(view)
@@ -290,7 +293,8 @@ class Workbench(QtWidgets.QWidget):
         self.layout.remove(view)
         if spec is not None:
             spec.widget.setParent(None)
-            spec.widget.deleteLater()
+            if delete:
+                spec.widget.deleteLater()
         self._rebuild()
 
     def widget(self, view: str):
@@ -433,7 +437,7 @@ class Workbench(QtWidgets.QWidget):
         if v is None:
             return
         if self.specs[v].closable:
-            self.unregister(v)
+            self.unregister(v, delete=not self.specs[v].keep)
             self.viewClosed.emit(v)
         elif self.can_close(v):
             self.return_home(v)

@@ -102,7 +102,8 @@ class ViewportMenuMixin:
             act.setCheckable(True)
             act.setChecked(bool(getattr(self.style, attr)))
             act.toggled.connect(lambda on, attr=attr: self._toggle_style(attr, on))
-        if getattr(self, "render_frame", None) is not None:
+        # the VTK view has a render frame (made once the view is built); OpenGL 1.x has none
+        if getattr(self, "render_frame", None) is not None or not getattr(self.viewport, "view_built", True):
             act = show.addAction("Render frame")
             act.setToolTip("The part of the view the rendered picture shows")
             act.setCheckable(True)

@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import plugin_catalog as pc
 from .. import plugins
+from . import workers
 from .busy import BusyLabel
 from .theme import TOKENS
 
@@ -225,7 +226,7 @@ class PluginsPanel(QtWidgets.QWidget):
         self.items = pc.installed()
         if self._loader is None or not self._loader.isRunning():
             self._loading = True
-            self._loader = _CatalogLoader(self.catalog_urls(), self)
+            self._loader = workers.detach(_CatalogLoader(self.catalog_urls()))  # may outlive the panel
             self._loader.loaded.connect(self._catalog_loaded)
             self._loader.start()
         self._fill()
@@ -405,7 +406,7 @@ class PluginsPanel(QtWidgets.QWidget):
             self._run_pip("update" if update else "install", entry.source[4:], key=key, busy=f"{verb}…")
             return
         old = pc.match(entry, self.items) if update else None
-        worker = _FetchWorker(entry, self)
+        worker = workers.detach(_FetchWorker(entry))  # may outlive the panel
         worker.fetched.connect(lambda path, error: self._fetched(worker, entry, update, old, path, error))
         self._workers.append(worker)
         self._set_busy(key, f"{verb}…", f"{verb} {entry.name}…")

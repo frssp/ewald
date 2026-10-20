@@ -29,6 +29,7 @@ from .busy import BusyLabel
 from .icons import icon
 from .code_editor import CodeEditor
 from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea
+from . import workers
 from .theme import TOKENS
 
 _SETUP_HINT = "Choose the AI provider and enter its API key under Edit › Preferences › AI."
@@ -550,7 +551,7 @@ class AskPanel(QtWidgets.QWidget):
             job = lambda: _call(agent.ask, prompt, cancel=worker.cancel)  # noqa: E731
         self._tools_used = []
         self._pending = self._add(Message("assistant", insert=self._insert, author=self.assistant()))
-        worker = self.worker = _Worker(job, self)
+        worker = self.worker = workers.detach(_Worker(job))  # may outlive the panel
         self.worker.event.connect(self._on_event)
         self.worker.answered.connect(self._on_answer)
         self.worker.failed.connect(self._on_failed)

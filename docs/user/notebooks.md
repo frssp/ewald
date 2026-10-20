@@ -90,6 +90,25 @@ notebook's pipeline (`show(pipe.compute(5), ...)`, another pipeline) and figures
 matplotlib yourself stay images of the moment the cell ran. Saved notebooks keep the image as
 well, so Jupyter and GitHub show the plot.
 
+**Where a plot appears.** By default a plot sits under the cell that made it, as in Jupyter.
+Plots that change with the frame or are linked to the Structure view open in the **Plots
+panel** instead, each as its own tab next to *Plots*: everything on a trajectory, histograms,
+g(r), bond lengths and angles, time series, the NEB energy profile (a click goes to the image),
+DOS and bands (they follow the picked atoms) and phonon bands (a click plays the mode). The
+cell keeps a thumbnail with *Open in Plots panel*, which brings the tab back after you close
+it. A one-frame table that links to nothing, such as the XRD pattern of a single structure,
+stays under the cell. `panel=` overrides the rule:
+
+```python
+show(pipe, table="diffraction", panel=True)     # always in the Plots panel
+show(pipe, table="coordination-rdf", panel=False)   # always under the cell
+```
+
+Figures that Python steps draw follow the same idea through the cell's frame tag (see *What runs during playback* below). Right-click the plot or its thumbnail and choose *Show in Plots panel* or *Show under the cell*
+to write the same `panel=` into the cell's `show(...)` call. Each notebook tab brings its own plots
+into the panel, and running the cell again replaces the plot in the same tab. Outside the GUI,
+`panel=` does nothing: Jupyter and scripts draw the image.
+
 **What runs during playback.** Playing a trajectory never runs cells again: code cells run when
 you run them. What runs at each frame is the pipeline, the steps the cells added. A built-in
 step computes the frame (or, for MSD, VACF and other trajectory analyses, reads the trajectory
@@ -134,6 +153,14 @@ every frame, until a step above it or the file changes. `@each_frame` is what a 
 step does anyway; it says so in the notebook. Plots whose data did not change between frames
 (an `all_frames` table, MSD) are not redrawn during playback; time series move their frame
 marker.
+
+A step can draw its own figure with matplotlib (`plt.hist(...)`, `plt.plot(...)` in an
+`@each_frame` / `@all_frames` function or a `[each frame]` / `[all frames]` cell). The step
+keeps the figure with the frame as `data.attributes["Figure: <step name>"]` and closes it, so
+it never shows up under some other cell. In the GUI an each-frame step's figure is drawn again
+at every frame and opens in the Plots panel, with a thumbnail under its cell. An all-frames
+step's figure is drawn once and stays under its cell. Right-click either one to move it for
+this session (the cell's tag says when the code runs, so nothing is written into the code).
 
 Every plot ewald draws (view cells, `show`, a verb table's picture, the figures saved into an
 `.ewd`) uses one publication style from `ewald.plotstyle`: a 3.5 in single-column figure,
@@ -238,6 +265,23 @@ command keys. Press Esc to leave the editor (the cell stays selected), then **Y*
 for text, **A** / **B** to insert a cell above / below, Enter to edit again. A step or view cell
 turned into text takes its steps out of the pipeline; turned back into code, it runs again when
 you run it.
+
+**Command keys.** With a cell selected (Esc), the rest of Jupyter's keys work too:
+
+| Key | Does |
+|---|---|
+| Up / Down, K / J | select the cell above / below |
+| Shift+Up / Shift+Down (Shift+K / J), Shift+click | select several cells |
+| D, D | delete the selected cells |
+| Z | bring back the cells deleted last |
+| X / C | cut / copy the selected cells |
+| V / Shift+V | paste them below / above (also into another notebook tab) |
+| Shift+M | merge the selected cells (one cell: with the cell below) |
+| Ctrl+Enter / Shift+Enter | run the selected cells (Shift+Enter then moves on) |
+
+The cell's ⋯ menu and the Notebook menu have the same commands; *Move up* / *Move down* move the
+whole selection. Copied cells also go to the clipboard as Python. Pasted, merged or restored step
+and view cells run at once, as Undo does; other code cells wait until you run them.
 
 **Snapshot cells** keep a picture of the Structure view. Insert › 3D snapshot of the view adds one for
 the viewport as it is (frame, camera, display style) and runs it:

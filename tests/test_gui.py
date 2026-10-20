@@ -175,6 +175,31 @@ def test_view_tab_columns_fold_and_aligned_labels(app, pipe):
     _dispose(panel)
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_view_cards_fold_all_and_stay_folded_after_restart(app, pipe):
+    """View › Fold all View cards (or right-click a card) folds every card; the folded cards
+    come back folded in the next window (layout.json)."""
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.gui.preferences import save_layout
+
+    s = settings.Settings()
+    w = MainWindow(pipe, settings=s)
+    acts = {a.text(): a for a in w.menuBar().findChildren(QtGui.QAction)}
+    acts["Fold all View cards"].trigger()
+    assert all(c.folded for c in w.display.sections.values())
+    acts["Unfold all View cards"].trigger()
+    assert not any(c.folded for c in w.display.sections.values())
+    assert [a.text() for a in w.display.actions()] == ["Fold all cards", "Unfold all cards"]
+    w.display.set_folded("Bonds", True)
+    w.display.set_folded("Camera", True)
+    save_layout(w, s)
+    w.close()
+    w2 = MainWindow(pipe, settings=s)
+    assert {t for t, c in w2.display.sections.items() if c.folded} == {"Bonds", "Camera"}
+    w2.close()
+
+
 def test_inspector_source_tab(app, pipe):
     from ewald.gui.inspector import DataInspector
 
@@ -397,9 +422,9 @@ def test_plots_keep_a_frame_independent_plot_during_playback(app, cu_fcc):
     panel.set_data(d2)
     assert panel.figure.axes[0] is ax
     d3 = cu_fcc.copy()
-    d3.tables["msd"] = {"Time": msd["Time"], "MSD": msd["MSD"] + 1}   # per-frame data: redrawn
+    d3.tables["msd"] = {"Time": msd["Time"], "MSD": msd["MSD"] + 1}   # per-frame data: new line data
     panel.set_data(d3)
-    assert panel.figure.axes[0] is not ax
+    assert panel.figure.axes[0] is ax and list(ax.lines[0].get_ydata()) == list(msd["MSD"] + 1)
     _dispose(panel)
 
 
@@ -431,8 +456,11 @@ def test_playback_leaves_frame_independent_cells_alone(app, monkeypatch):
     app.processEvents()
     assert w.frame >= 3                   # (the play timer may have moved on by one)
     assert rebuilt == []                  # no cell's outputs (the printed "10 frames") rebuilt per frame
-    shown = {p.hist.currentText() or p.table.currentText() for p in cleared if p is not None}
-    assert shown == {"Displacement Magnitude"}   # the per-frame histogram redraws, the MSD plot does not
+    # the MSD plot is left alone, the per-frame histogram updates its bars in place: no figure clears
+    assert [p for p in cleared if p is not None] == []
+    hist = next(p for p in panels.values() if p.hist.currentText() == "Displacement Magnitude")
+    counts, _ = np.histogram(np.asarray(hist.data["Displacement Magnitude"]), bins=len(hist._ax.patches))
+    assert [r.get_height() for r in hist._ax.patches] == list(counts)   # the frame on screen
     w.close()
 
 
@@ -464,6 +492,102 @@ def test_show_anywhere_in_a_cell_is_a_live_plot(app, tmp_path):
     app.processEvents()
     assert hist.data.attributes["SourceFrame"] == 3   # follows the frame
     assert height.figure.axes[0] is ax                 # all_frames result: computed once, not redrawn
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_linked_plots_open_in_the_plots_panel_others_stay_under_the_cell(app, tmp_path):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    path = tmp_path / "placed.py"
+    path.write_text(
+        "# %%\nimport matplotlib.pyplot as plt\nfrom ewald import load\nfrom ewald.modifiers import *\n"
+        f"from ewald.views import show\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n\n"
+        "# %%\npipe.add(CalculateDisplacements(reference_frame=0))\n"
+        "show(pipe, histogram='Displacement Magnitude')\n"
+        "show(pipe, histogram='Displacement Magnitude', panel=False)\n\n"
+        "# %%\nplt.plot([1, 2, 3])\nplt.show()\n\n"
+        "# %%\nshow(pipe, histogram='Displacement Magnitude')\n")
+    w = MainWindow(settings=settings.Settings())
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    app.processEvents()
+    cell, mpl_cell, view_cell = view.widgets[1], view.widgets[2], view.widgets[3]
+    linked, inline = cell.outputs.slots
+    assert linked.docked and not inline.docked                  # per frame: the Plots panel; panel=False: here
+    assert linked.card.isVisibleTo(cell) and not inline.card.isVisibleTo(cell)
+    assert inline.panel.isVisibleTo(cell) and linked.panel.parent() is not linked
+    assert view_cell.plot_slot.docked and view_cell.plot_slot.card.png is not None   # thumbnail of its run
+    assert mpl_cell.outputs.slots == [] and mpl_cell.outputs._images                # any other figure: an image
+    assert sorted(w.docked_plots()) == sorted([linked.view_id, view_cell.plot_slot.view_id])
+    assert w.workbench.widget(linked.view_id) is linked.panel and linked.panel in w.plot_panels()
+    assert w.workbench.group_of(linked.view_id) is w.workbench.group_of("plot:1")   # next to "Plots"
+    w.timeline._set(3)
+    app.processEvents()
+    assert linked.panel.data.attributes["SourceFrame"] == 3      # still follows the frame there
+
+    cell._place_output(0, False)                                 # right-click › Show under the cell
+    assert "show(pipe, histogram='Displacement Magnitude', panel=False)\nshow(pipe, histogram=" in cell.cell.source
+    assert not linked.docked and linked.panel.parent() is linked and linked.view_id not in w.docked_plots()
+    cell._place_output(1, True)                                  # ... › Show in Plots panel
+    assert cell.cell.source.endswith("show(pipe, histogram='Displacement Magnitude', panel=True)")
+    assert inline.docked and inline.view_id in w.docked_plots()
+    view_cell._place_view(False)                                 # a view cell writes it into its call
+    assert view_cell.cell.source.endswith("show(pipe, histogram='Displacement Magnitude', panel=False)")
+    assert not view_cell.plot_slot.docked and view_cell.plot_slot.view_id not in w.docked_plots()
+
+    w.workbench.close_view(inline.view_id)                       # closing the tab keeps the plot
+    assert inline.view_id not in w.docked_plots() and inline.panel.parent() is None and inline.card.isVisibleTo(cell)
+    inline.card.opened.emit()                                    # the thumbnail opens it again
+    assert w.docked_plots() == [inline.view_id] and w.workbench.is_shown(inline.view_id)
+
+    other = w.panel.new_notebook()                               # another notebook: its plots only
+    app.processEvents()
+    assert w.docked_plots() == []
+    w.panel.tabs.setCurrentWidget(view)
+    app.processEvents()
+    assert w.docked_plots() == [inline.view_id]
+    view.run(cell.cell)                                          # run again: the new plot takes the tab
+    app.processEvents()
+    new = view.widgets[1].outputs.slots[1]
+    assert new is not inline and new.view_id == inline.view_id and w.workbench.widget(new.view_id) is new.panel
+    w.panel.close_tab(w.panel.tabs.indexOf(view))
+    for _ in range(3):
+        app.processEvents()
+        app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+    assert w.docked_plots() == [] and w._plot_docks == {} and w.panel.view is other
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_each_frame_figures_follow_the_frame_in_the_plots_panel(app, tmp_path):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    path = tmp_path / "figures.py"
+    path.write_text(
+        "# %%\nimport matplotlib.pyplot as plt\nfrom ewald import load, all_frames\n"
+        f"pipe = load({str(examples.path('Cu_md.extxyz'))!r})\n\n"
+        "# %% z histogram [each frame]\nplt.hist(data['Position'][:, 2], bins=20)\n\n"
+        "# %%\n@all_frames\ndef mean_z(frames, data):\n    plt.plot([d['Position'][:, 2].mean() for d in frames])\n"
+        "pipe.add(mean_z)\n")
+    w = MainWindow(settings=settings.Settings())
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    app.processEvents()
+    each = view.widgets[1]._figure_slots["Figure: z_histogram"]
+    once = view.widgets[2]._figure_slots["Figure: mean_z"]
+    assert each.docked and each.card.isVisibleTo(view.widgets[1]) and each.title == "z_histogram"
+    assert w.docked_plots() == [each.view_id] and w.workbench.widget(each.view_id) is each.panel
+    assert not once.docked and once.panel.isVisibleTo(view.widgets[2])    # all frames: under the cell
+    png, kept = each.panel.png, once.panel.png
+    w.timeline._set(4)
+    app.processEvents()
+    assert each.panel.png is not png and each.card.png is each.panel.png   # the frame on screen
+    assert once.panel.png is kept                                           # drawn once
+    once.placeRequested.emit(True)                                          # right-click › Plots panel
+    assert once.docked and once.view_id in w.docked_plots()
     w.close()
 
 
@@ -689,6 +813,42 @@ def test_dropping_a_neb_folder_opens_the_band(app, vasp_dir):
     assert w.acceptDrops()
     w.open_dropped([str(vasp_dir / "neb")])
     assert w.pipeline.num_frames == 5
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_open_several_files_as_one_trajectory(app, tmp_path, monkeypatch):
+    """File › Open with several data files: one trajectory in natural order, as load([...])."""
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.app import MainWindow
+    from ewald.io import write_lammps_dump
+
+    def frame(step):
+        data = DataCollection(np.random.default_rng(step).random((4, 3)) * 5, cell=Cell(np.eye(3) * 5))
+        data.particles["Particle Identifier"] = np.arange(1, 5)
+        data.particles["Particle Type"] = np.array(["1"] * 4)
+        data.attributes["Timestep"] = step
+        return data
+
+    write_lammps_dump(tmp_path / "dump.200", [frame(200), frame(300)])
+    write_lammps_dump(tmp_path / "dump.1000", [frame(1000), frame(1100)])
+    nb_path = tmp_path / "other.py"
+    nb_path.write_text("# %%\nx = 1\n")
+    chosen = [str(tmp_path / "dump.1000"), str(tmp_path / "dump.200")]
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileNames", lambda *a, **k: (chosen, ""))
+    monkeypatch.setattr(QtWidgets.QInputDialog, "getText", lambda *a, **k: ("", False))
+    w = MainWindow()
+    w.open_dialog()
+    pipe = w.pipeline
+    assert [pipe.compute(i).attributes["Timestep"] for i in range(pipe.num_frames)] == [200, 300, 1000, 1100]
+    assert "dump.200 + 1 more" in w.windowTitle()
+    code = w.panel.notebook.to_py()
+    assert "dump.200" in code and "dump.1000" in code and code.index("dump.200") < code.index("dump.1000")
+
+    monkeypatch.setattr(w, "_ask_trust", lambda path: False)
+    chosen[:] = [str(nb_path), str(tmp_path / "dump.200")]   # a notebook opens in a tab, the data file as usual
+    w.open_dialog()
+    assert any(str(v.notebook.path).endswith("other.py") for v in w.panel.views()) and w.pipeline.num_frames == 2
     w.close()
 
 
@@ -1639,6 +1799,51 @@ def _mouse(panel, kind, x, y, button=1, key=None, step=0, dblclick=False):
     panel.canvas.callbacks.process(kind, ev)
 
 
+def test_plots_update_per_frame_data_in_place(app):
+    from ewald.gui.plots import PlotsPanel
+
+    rng = np.random.default_rng(0)
+
+    def frame(i, ints=False):
+        from ewald import DataCollection
+        from ewald.data import Cell
+
+        d = DataCollection(rng.random((500, 3)) * 10, ["Cu"] * 500, Cell(np.eye(3) * 10))
+        d.particles["E"] = rng.normal(-3 + 0.5 * i, 0.2 + 0.1 * i, 500)
+        d.particles["N"] = rng.integers(10, 13, 500)
+        r = np.linspace(0.05, 8, 100)
+        d.tables["rdf"] = {"r": r, "g(r)": 1 + np.sin(3 * r + i) * np.exp(-r / (2 + i))}
+        return d
+
+    a, b = frame(0), frame(1)
+    for choice in (("hist", "E"), ("hist", "N"), ("table", "rdf")):
+        live, fresh = PlotsPanel(), PlotsPanel()
+        for p in (live, fresh):
+            p.resize(600, 400)
+            p.set_data(a if p is live else b)
+            getattr(p, choice[0]).setCurrentText(choice[1])
+        axes = live._ax
+        live.set_data(b)
+        assert live._ax is axes, choice   # the same axes: updated, not rebuilt
+        for p in (live, fresh):
+            p.canvas.draw()
+        np.testing.assert_allclose(live._ax.get_xlim(), fresh._ax.get_xlim())
+        np.testing.assert_allclose(live._ax.get_ylim(), fresh._ax.get_ylim())
+        if choice[0] == "hist":
+            heights = [[r.get_height() for r in p._ax.patches] for p in (live, fresh)]
+            np.testing.assert_allclose(*heights)
+            np.testing.assert_allclose(live._edges, fresh._edges)
+        else:
+            np.testing.assert_allclose(live._ax.lines[0].get_ydata(), fresh._ax.lines[0].get_ydata())
+    live.table.setCurrentText("")
+    live.hist.setCurrentText("N")
+    c = frame(2)
+    c.particles["N"] = np.full(500, 7)   # other integer values: other bars, a full redraw
+    axes = live._ax
+    live.set_data(c)
+    assert live._ax is not axes and [r.get_x() + 0.5 * r.get_width() for r in live._ax.patches] == [7]
+
+
 def test_plots_zoom_pan_reset_and_hover(app, lammps_dir):
     from ewald import import_file
     from ewald.gui.plots import PlotsPanel
@@ -2449,6 +2654,88 @@ def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app,
     panel.close()
 
 
+_OUTLIVE_SCRIPT = r"""
+import threading, time
+from PySide6 import QtCore, QtWidgets
+app = QtWidgets.QApplication([])
+from ewald import plugin_catalog as pc
+from ewald.gui import live_reload, plugins_panel, workers
+
+def flush():
+    for _ in range(3):
+        app.processEvents()
+        app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+
+# the Plugins panel goes while its catalog loader still reads the indexes
+gate = threading.Event()
+real = pc.catalog
+pc.catalog = lambda urls, *a, **k: (gate.wait(5), real(urls))[1]
+panel = plugins_panel.PluginsPanel()
+panel.close(); panel.deleteLater(); flush()
+gate.set(); panel = None
+
+# a live reload goes while its probe still asks the source for frames
+class Slow:
+    def refresh(self):
+        gate2.wait(5)
+        return 0
+class Pipe:
+    source, num_frames = Slow(), 1
+    def invalidate(self, first): pass
+gate2 = threading.Event()
+got = []
+gone, kept = live_reload.LiveReload(), live_reload.LiveReload()
+gone.set_pipeline(Pipe()); kept.set_pipeline(Pipe())
+kept.grew.connect(lambda first, n: got.append(n))
+gone.poll(); kept.poll()
+gone.deleteLater(); flush()
+gate2.set()
+end = time.monotonic() + 10
+while (workers.running() or not got) and time.monotonic() < end:
+    QtCore.QThreadPool.globalInstance().waitForDone(50)
+    flush()
+assert got == [1], got               # the survivor still hears back, the deleted one is skipped
+assert workers.running() == 0        # the finished loader was released
+print("ok")
+"""
+
+
+def test_worker_threads_outlive_the_widgets_that_started_them(tmp_path):
+    """Closing a panel while its background thread runs must not abort the process (a running
+    QThread destroyed with its parent) or write into the freed object (a pool thread emitting on a
+    deleted LiveReload): both crashed the GUI suite at random (issue #145)."""
+    import subprocess
+    import sys
+
+    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", EWALD_CONFIG_DIR=str(tmp_path), EWALD_PLUGIN_INDEX="")
+    r = subprocess.run([sys.executable, "-c", _OUTLIVE_SCRIPT], env=env, capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0 and r.stdout.strip().endswith("ok"), r.stdout + r.stderr
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="viewport needs an X display with OpenGL (xvfb-run)")
+def test_deleted_viewport_forgets_its_gl_surface(app, pipe):
+    """pyvistaqt keeps a wrapper of the GL widget's surface, which Qt deletes with the widget. A
+    QtInteractor object that outlives its widget must not keep it: PySide hands that stale wrapper
+    out for whatever Qt allocates next at the address, and calls through it corrupt the heap
+    (issue #145: random segfaults in menu building and widget teardown)."""
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    vp = Viewport(ViewStyle())
+    vp.resize(120, 90)
+    vp.show()
+    vp.set_data(pipe.compute(0))
+    app.processEvents()
+    vp.ensure_view()                             # built after the first paint; realized on the next
+    app.processEvents()
+    plotter = vp.plotter                         # outlives the widget, like a console reference
+    assert plotter._surface is not None          # realized: pyvistaqt holds the surface
+    plotter.close()                              # what MainWindow.closeEvent does first
+    vp.deleteLater()
+    app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+    assert plotter._surface is None and plotter._ctx is None
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_main_window_follows_a_growing_dump(app, lammps_dir, tmp_path):
     from ewald import import_file
@@ -2870,6 +3157,77 @@ def test_notebook_cell_controls_add_bar_and_running_mark(app):
     w.close()
 
 
+def test_command_mode_cell_keys_like_jupyter(app, pipe):
+    """Command mode (Esc): Shift+Down selects cells, C / X / V copy, cut and paste them, DD
+    deletes and Z brings back, Shift+M merges, J / K move, Ctrl+Enter runs the selection."""
+    from PySide6 import QtTest
+
+    from ewald.gui import notebook_panel
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(pipe)
+    w.resize(1400, 900)
+    w.show()
+    app.processEvents()
+    view = w.panel.view
+    nb = view.notebook
+    a = view.add_cell("code", "a = 1")
+    b = view.add_cell("code", "b = 2")
+    c = view.add_cell("code", "c = 3")
+    key = lambda cell, k, mods=QtCore.Qt.NoModifier: QtTest.QTest.keyClick(view.widget_for(cell), k, mods)  # noqa: E731
+    sources = lambda: [x.source for x in nb.cells][-3:]  # noqa: E731
+
+    view.select(a)
+    key(a, QtCore.Qt.Key_Down, QtCore.Qt.ShiftModifier)
+    assert view.current is b and view.selected_cells == [a, b]
+    assert view.widget_for(a).property("selected") and not view.widget_for(c).property("selected")
+    key(b, QtCore.Qt.Key_C)
+    assert [e[2] for e in notebook_panel.CELL_CLIPBOARD] == ["a = 1", "b = 2"]
+    assert QtWidgets.QApplication.clipboard().text() == "a = 1\n\nb = 2\n"
+    view.select(c)
+    key(c, QtCore.Qt.Key_V)
+    assert sources() == ["a = 1", "b = 2", "c = 3", "a = 1", "b = 2"][-3:] and len(nb.cells) >= 5
+    assert [x.source for x in view.selected_cells] == ["a = 1", "b = 2"]   # the pasted cells
+    assert view.history.undo_label == "Paste cells"
+
+    view.select(c)
+    key(c, QtCore.Qt.Key_D)
+    key(c, QtCore.Qt.Key_D)                                   # DD
+    assert c not in nb.cells and view.history.undo_label == "Delete cell"
+    n = len(nb.cells)
+    key(view.current, QtCore.Qt.Key_Z)
+    assert len(nb.cells) == n + 1 and view.current.source == "c = 3"
+    c = view.current
+
+    key(c, QtCore.Qt.Key_K)                                   # K: the cell above
+    assert view.current is b and view.anchor is b
+    key(b, QtCore.Qt.Key_X)                                   # X: cut
+    assert b not in nb.cells and notebook_panel.CELL_CLIPBOARD[0][2] == "b = 2"
+    view.select(a)
+    key(a, QtCore.Qt.Key_V, QtCore.Qt.ShiftModifier)          # Shift+V: paste above
+    i = nb.cells.index(a)
+    assert nb.cells[i - 1].source == "b = 2"
+
+    view.select(a)
+    key(a, QtCore.Qt.Key_M, QtCore.Qt.ShiftModifier)          # Shift+M: merge with the cell below
+    assert view.current.source == "a = 1\n\nc = 3" and view.history.undo_label == "Merge cells"
+
+    first = view.current
+    view.select(nb.cells[nb.cells.index(first) - 1])
+    view.select(first, extend=True)                           # two cells selected
+    key(first, QtCore.Qt.Key_Return, QtCore.Qt.ControlModifier)
+    assert all(x.state == "ok" and x.count for x in view.selected_cells)
+    assert nb.namespace["c"] == 3 and nb.namespace["b"] == 2
+
+    view.select(first)                                        # the ⋯ menu's Move up moves the selection
+    view.select(nb.cells[nb.cells.index(first) - 1], extend=True)
+    block = view.selected_cells
+    k = nb.cells.index(block[0])
+    view._cell_action(block[0], "up")
+    assert nb.cells[k - 1:k + 1] == block
+    w.close()
+
+
 def test_cell_type_switches_and_add_bar_like_jupyter(app, pipe):
     """+ Code, + Text, + Step (with Plugins), + View under the cells; Esc then M / Y turns a cell
     into text / code, A / B insert; the menu and the cell's ⋯ menu do the same; Ask AI about this cell."""
@@ -2918,7 +3276,7 @@ def test_cell_type_switches_and_add_bar_like_jupyter(app, pipe):
     menu = cw.findChild(QtWidgets.QToolButton, "cellMenu").menu()
     names = [a.text() for a in menu.actions()]
     assert "Ask AI about this cell" in names and names.index("Cell type") < names.index("Ask AI about this cell")
-    assert names[-1] == "Delete"
+    assert names[-1] == "Delete\tD, D"
     next(a for a in menu.actions() if a.text() == "Ask AI about this cell").trigger()
     app.processEvents()
     assert w.ask_dock.isVisible() and "# Title" in w.ask_panel.input.toPlainText()
@@ -3512,6 +3870,65 @@ def test_plugin_menu_items_bottom_tab_and_layout_restore(app, pipe, monkeypatch,
     assert "plugin:agent_jobs" not in w2.workbench.specs
     assert not any(a.menu() is not None and a.text() == "Sim agent" for a in w2._menu_bar_menu("Tools").actions())
     w2.close()
+
+
+def test_plugin_items_on_toolbar_cell_and_plot_menus(app, pipe, monkeypatch):
+    """@menu_item(menu="Toolbar" | "Notebook cell" | "Plot"): a toolbar button (or drop-down),
+    entries in a cell's ⋯ menu and in a plot's right-click menu, with context.target."""
+    import shutil
+    from pathlib import Path
+
+    from ewald import plugins
+    from ewald.gui.app import MainWindow
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(Path(__file__).parents[1] / "examples" / "plugins" / "sim_agent_panel.py", folder)
+    seen = []
+    plugins.register_menu_item("a", lambda ctx: seen.append("a"), title="Alpha", menu="Toolbar/Tools+", when="picks")
+    plugins.register_menu_item("b", lambda ctx: seen.append(ctx.target), title="Cell kind",
+                               menu="Notebook cell/More")
+    w = MainWindow(pipe)
+    tb = w.findChild(QtWidgets.QToolBar, "main-toolbar")
+    button = next(a for a in tb.actions() if a.text() == "Sim agent")
+    assert not button.icon().isNull()
+    button.trigger()                                   # shows the side bar
+    assert w.plugin_panels["sim_agent"]["dock"] is not None
+    drop = next(b for b in tb.findChildren(QtWidgets.QToolButton, "pluginToolButton") if b.text() == "Tools+")
+    alpha = drop.menu().actions()[0]
+    assert alpha.text() == "Alpha" and not alpha.isEnabled()     # nothing picked
+    w.viewport.set_picks([1])
+    assert alpha.isEnabled()
+    alpha.trigger()
+    assert seen == ["a"]
+
+    cell_widget = w.panel.view.widgets[0]
+    menu = cell_widget.findChild(QtWidgets.QToolButton, "cellMenu").menu()
+    menu.aboutToShow.emit()
+    titles = [a.text() for a in menu.actions()]
+    assert "Send cell to Sim agent" in titles and "More" in titles
+    menu.aboutToShow.emit()                            # rebuilt, not doubled
+    assert [a.text() for a in menu.actions()].count("Send cell to Sim agent") == 1
+    more = next(a.menu() for a in menu.actions() if a.text() == "More")
+    more.actions()[0].trigger()
+    assert seen[-1] is cell_widget.cell
+    next(a for a in menu.actions() if a.text() == "Send cell to Sim agent").trigger()
+    assert "sim-agent task: run cell:" in w.panel.view.notebook.cells[-1].source
+
+    plot = w.plots
+    target = plot.target()
+    assert isinstance(target, plugins.PlotTarget)
+    pmenu = plot.context_menu()
+    ptitles = [a.text() for a in pmenu.actions()]
+    assert ptitles[:2] == ["Save plot…", "Reset view"] and ptitles[-1] == "Send plotted data to Sim agent"
+    pmenu.actions()[-1].trigger()
+    assert "sim-agent task: analyze" in w.panel.view.notebook.cells[-1].source
+
+    plugins.set_enabled("sim-agent-example", False)
+    w.refresh_plugin_panels()
+    assert not any(a.text() == "Sim agent" for a in tb.actions())
+    w.close()
 
 
 def test_plugin_settings_page_dialog(app, monkeypatch):

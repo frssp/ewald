@@ -228,7 +228,7 @@ def _write_figures(nb, z) -> list:
     import io
 
     from . import plotstyle
-    from .views import figure, view_data
+    from .views import DRAW_ARGS, figure, view_data
 
     out, used = [], set()
     for k, cell in enumerate(nb.cells):
@@ -240,8 +240,8 @@ def _write_figures(nb, z) -> list:
             continue
         name = _slug(cell.title or args.get("table") or args.get("histogram") or f"view-{k + 1}", used)
         try:
-            title, columns = view_data(source, **args)
-            fig = figure(source, **args)
+            title, columns = view_data(source, **{k: v for k, v in args.items() if k in DRAW_ARGS})
+            fig = figure(source, **{k: v for k, v in args.items() if k != "panel"})
         except Exception as exc:  # noqa: BLE001 - a view that cannot be drawn now is skipped
             warnings.warn(f"view cell {k + 1}: {exc}", stacklevel=3)
             continue

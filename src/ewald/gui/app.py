@@ -31,6 +31,7 @@ from .notebook_panel import NotebookPanel
 from .pipeline_panel import DisplayPanel
 from .plots import PlotsPanel
 from . import preferences as prefs
+from . import workers
 from .remotes_panel import install as install_remotes
 from .render_page import RenderPage
 from .style import ViewStyle
@@ -118,11 +119,9 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         # the Render page shows the 3D view itself, with the picture's frame on it
         self.workbench.lend("viewport", self.render_page, self.render_page.live_slot)
         self.render_frame = None
-        if hasattr(self.viewport.plotter, "renderer"):  # VTK; the OpenGL 1.x viewport has no frame yet
-            from .render_frame import RenderFrame
-
-            self.render_frame = RenderFrame(self.viewport, self)
-            self.render_page.attach_frame(self.render_frame)
+        self.viewport.viewBuilt.connect(self._view_built)  # the 3D widget comes after the first paint
+        if self.viewport.view_built:
+            self._view_built()
         self.render_page.regionWritten.connect(lambda: self.write_view(region=True))
         self.setCentralWidget(self.workbench)
 
@@ -156,6 +155,9 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.plugins_panel.changed.connect(self.panel.refresh_packages)
         self.panel.pipRequested.connect(self._install_notebook_packages)
         self.panel.switched.connect(self._notebook_switched)
+        self._plot_docks = {}  # view id -> (PlotSlot, id, PlotsPanel): cells' plots in the Plots panel
+        self._closed_docks = set()  # ... whose tab the user closed (the cell's thumbnail opens it again)
+        self.panel.switched.connect(self._sync_plot_docks)
         self.plugins_panel.createRequested.connect(self._create_plugin)
         self.plugins_dock = self._dock(self.plugins_panel, "Plugins", QtCore.Qt.LeftDockWidgetArea, 300)
         self.splitDockWidget(self.plugins_dock, self.notebook_dock, QtCore.Qt.Horizontal)
@@ -239,9 +241,23 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
             self.resizeDocks([d], [width], QtCore.Qt.Horizontal)
         return d
 
+    def _view_built(self):
+        """The 3D widget exists: hang the Render page's picture frame on it."""
+        if self.render_frame is None and hasattr(self.viewport.plotter, "renderer"):  # VTK; not OpenGL 1.x
+            from .render_frame import RenderFrame
+
+            self.render_frame = RenderFrame(self.viewport, self)
+            self.render_page.attach_frame(self.render_frame)
+        self.render_page.update_code()
+        self._check_opengl_once()
+
     def showEvent(self, event):
         super().showEvent(event)
-        if not getattr(self, "_gl_checked", False):  # the GL context exists once the window shows
+        self._check_opengl_once()
+
+    def _check_opengl_once(self):
+        # the GL context exists once the window shows and the 3D view is built
+        if not getattr(self, "_gl_checked", False) and self.isVisible() and self.viewport.view_built:
             self._gl_checked = True
             QtCore.QTimer.singleShot(0, self.check_opengl)
 
@@ -588,7 +604,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         if kw.get("renderer") == "raytrace" and RENDER_IN_BACKGROUND:
             page.set_busy("Ray tracing…", cancellable=True)
             self.message(f"Ray tracing {name}…")
-            worker = self._render_worker = _RenderWorker(call, self)
+            worker = self._render_worker = workers.detach(_RenderWorker(call))  # the window may close first
             worker.progressed.connect(lambda pct: self._render_progress(worker, pct))
             worker.done.connect(lambda img, error: self._page_rendered(out, img, error))
             worker.start()
@@ -613,7 +629,6 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
     def _page_rendered(self, out, img, error):
         if self._render_worker is not None:
             self._render_worker.wait()
-            self._render_worker.deleteLater()
         self._render_worker = None
         self.render_page.set_busy("")
         if isinstance(error, RenderCancelled):
@@ -654,7 +669,9 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.timeline.timer.stop()
         self.live_reload.timer.stop()
         self.runner.shutdown()
-        self.viewport.plotter.close()  # release the VTK/OpenGL context before Qt tears down
+        if self.viewport.view_built:
+            self.viewport.plotter.close()  # release the VTK/OpenGL context before Qt tears down
+            getattr(self.viewport, "release_gl", lambda: None)()  # and pyvistaqt's wrappers of it
         km = getattr(self.console, "kernel_manager", None) if self.console.built else None
         if km is not None:
             with contextlib.suppress(ValueError):

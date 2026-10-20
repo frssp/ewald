@@ -58,8 +58,12 @@ class FilesMixin:
 
     # ---------------------------------------------------------------- pipeline / data
     def open_file(self, path, **kwargs):
-        remote = ":" in str(path) and not os.path.exists(str(path))     # host:/path, ssh://
-        text = f"{'Downloading' if remote else 'Opening'} {os.path.basename(str(path))}…"
+        """Open a data file, or a list of files as one trajectory (``import_file([...])``)."""
+        several = isinstance(path, (list, tuple))
+        first = str(path[0]) if several else str(path)
+        name = os.path.basename(first) + (f" + {len(path) - 1} more" if several and len(path) > 1 else "")
+        remote = ":" in first and not os.path.exists(first)     # host:/path, ssh://
+        text = f"{'Downloading' if remote else 'Opening'} {name}…"
         try:
             pipe = wait_for(lambda: import_file(path, **kwargs), text, self, say=self.message)
         except Cancelled:
@@ -75,15 +79,19 @@ class FilesMixin:
         self._check_bond_limit = True
         self.style.bond_pairs.clear()  # a new structure gets its own VESTA bond table
         self.set_pipeline(pipe)
-        self.setWindowTitle(f"EWALD — {os.path.basename(str(path))}")
-        self.message(f"Loaded {path}: {pipe.num_frames} frame(s)")
-        add_recent(path)
+        self.setWindowTitle(f"EWALD — {name}")
+        self.message(f"Loaded {name if several else path}: {pipe.num_frames} frame(s)")
+        if not several:   # the recent list reopens one path
+            add_recent(path)
         return pipe
 
     def open_dialog(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open", "", file_filter())
-        if path:
-            self.open_any(path)
+        """File › Open: one file, or several (notebooks open in tabs, data files as one trajectory)."""
+        paths, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Open", "", file_filter())
+        if len(paths) == 1:
+            self.open_any(paths[0])
+        elif paths:
+            self.open_dropped(paths)
 
     def open_any(self, path, ask_types: bool = True, **kwargs):
         """A session, a notebook (.ewd, .ipynb, .py) or a data file."""
@@ -130,12 +138,21 @@ class FilesMixin:
         QtCore.QTimer.singleShot(0, self, lambda: self.open_dropped(paths))
 
     def open_dropped(self, paths):
-        """Open dropped paths: notebooks each in a tab, otherwise the first data file or folder."""
+        """Open dropped (or several chosen) paths: notebooks each in a tab; several data files
+        as one trajectory in natural order (``dump.200`` before ``dump.1000``, segments of a
+        restarted run joined on their Timestep, as ``load([...])``); otherwise the first data
+        file or folder."""
+        from ..io.base import natural_key
+        from ..session import is_session_file
+
         notebooks = [p for p in paths if str(p).lower().endswith(NOTEBOOK_EXTENSIONS) and os.path.isfile(p)]
         for p in notebooks:
             self.open_notebook(p)
         rest = [p for p in paths if p not in notebooks]
-        if rest:
+        files = [p for p in rest if os.path.isfile(p) and not is_session_file(p)]
+        if len(files) > 1 and len(files) == len(rest):
+            self._open_asking_types(sorted(files, key=natural_key))
+        elif rest:
             if os.path.isdir(rest[0]) and _is_neb(rest[0]):
                 self.open_neb(rest[0])
             elif os.path.isdir(rest[0]):   # a folder of calculations: one notebook, a load() per step
@@ -356,7 +373,7 @@ class FilesMixin:
         kwargs = {}
         from ..io.lammps_dump import is_lammps_dump
 
-        if is_lammps_dump(path):
+        if is_lammps_dump(path[0] if isinstance(path, list) else path):
             default_map = self.settings["general.lammps_type_map"]
             if self.settings["general.lammps_type_prompt"] == "ask":
                 text, ok = QtWidgets.QInputDialog.getText(

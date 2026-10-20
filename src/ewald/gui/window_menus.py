@@ -289,6 +289,9 @@ class MenusMixin:
         lay.setToolTipsVisible(True)
         lay.aboutToShow.connect(self.workbench.update_actions)
         lay.aboutToHide.connect(self.workbench.enable_actions)
+        v.addAction("Fold all View cards", lambda: self.display.fold_all(True)).setToolTip(
+            "Fold every card of the View tab (right-click a card for the same); kept for the next start")
+        v.addAction("Unfold all View cards", lambda: self.display.fold_all(False))
         v.addSeparator()
         v.addAction("Focus on the viewport", self.toggle_focus, "Ctrl+\\")
         v.addAction("Minimal mode (menus hidden)", lambda: self.set_minimal(not getattr(self, "minimal", False)), "Ctrl+Shift+M")
@@ -307,7 +310,16 @@ class MenusMixin:
         n.addSeparator()
         n.addAction("Move cell &up", lambda: self._cell_action("up"), "Ctrl+Shift+Up")
         n.addAction("Move cell &down", lambda: self._cell_action("down"), "Ctrl+Shift+Down")
-        n.addAction("D&elete cell", lambda: self._cell_action("delete"))
+        n.addAction("D&elete cells", lambda: self._cell_action("delete")).setToolTip(
+            "Delete the selected cells (Esc, then D, D); Z brings them back")
+        n.addAction("Undo cell deletion", lambda: self._cell_action("undelete")).setToolTip(
+            "Bring back the cells deleted last (Esc, then Z)")
+        n.addAction("Cu&t cells", lambda: self._cell_action("cut")).setToolTip("Esc, then X")
+        n.addAction("Co&py cells", lambda: self._cell_action("copy")).setToolTip("Esc, then C")
+        n.addAction("Paste cells &below", lambda: self._cell_action("paste:below")).setToolTip("Esc, then V")
+        n.addAction("Paste cells abo&ve", lambda: self._cell_action("paste:above")).setToolTip("Esc, then Shift+V")
+        n.addAction("&Merge cells", lambda: self._cell_action("merge")).setToolTip(
+            "Join the selected cells, or the cell with the one below (Esc, then Shift+M)")
         n.addAction("Change cell to c&ode", lambda: self._cell_action("kind:code"), "Ctrl+M, Y").setToolTip(
             "Turn a text cell into a code cell (Esc, then Y, like Jupyter)")
         n.addAction("Change cell to &text", lambda: self._cell_action("kind:markdown"), "Ctrl+M, M").setToolTip(

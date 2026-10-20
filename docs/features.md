@@ -603,6 +603,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Maximize group (`Ctrl+Alt+M`)
   - Fold or unfold panel (`Ctrl+Alt+J`)
   - Reset layout
+- Fold all View cards
+- Unfold all View cards
 - Focus on the viewport (`Ctrl+\`)
 - Minimal mode (menus hidden) (`Ctrl+Shift+M`)
 
@@ -615,7 +617,13 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Trust notebook…
 - Move cell up (`Ctrl+Shift+Up`)
 - Move cell down (`Ctrl+Shift+Down`)
-- Delete cell
+- Delete cells
+- Undo cell deletion
+- Cut cells
+- Copy cells
+- Paste cells below
+- Paste cells above
+- Merge cells
 - Change cell to code (`Ctrl+M, Y`)
 - Change cell to text (`Ctrl+M, M`)
 - Clear cell output (`Ctrl+Shift+Backspace`)

@@ -37,7 +37,7 @@ goes to the nearest frame.
 from __future__ import annotations
 
 import numpy as np
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import linking, plotstyle
 from ..linking import grid_map
@@ -70,9 +70,6 @@ class PlotsPanel(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-        from matplotlib.figure import Figure
-
         self.data = None
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
@@ -118,14 +115,12 @@ class PlotsPanel(QtWidgets.QWidget):
         sel.addWidget(self.keep)
         sel.addWidget(self.clear)
         lay.addLayout(sel)
-        self.figure = Figure(figsize=(5, 3), facecolor=TOKENS["bg"])
-        self.canvas = FigureCanvasQTAgg(self.figure)
-        lay.addWidget(self.canvas, 1)
-        self.canvas.mpl_connect("button_press_event", self._on_press)
-        self.canvas.mpl_connect("motion_notify_event", self._on_motion)
-        self.canvas.mpl_connect("button_release_event", self._on_release)
-        self.canvas.mpl_connect("scroll_event", self._on_scroll)
+        # matplotlib (0.3 s to import) and the canvas are made on first use of ``figure``/``canvas``
+        self._figure = self._canvas = None
+        self._canvas_slot = QtWidgets.QWidget()
+        lay.addWidget(self._canvas_slot, 1)
         self._drawn = None   # (table x column, y choice) currently on the canvas
+        self._live = None    # artists a new frame can update in place (see _update_in_place)
         self._marker = None  # current-frame line on a time-series plot, current mode on a band plot
         self._phonon = None  # (modes, x) while a phonon band structure is on the canvas
         self._elec = None    # (ElectronicStructure, "DOS" | "Bands", column) while one is on the canvas
@@ -148,7 +143,46 @@ class PlotsPanel(QtWidgets.QWidget):
         self._view_key = None        # (table, column, histogram) the zoom belongs to
         self._energy_window = tuple(ENERGY_WINDOW)  # shared by the DOS and the band structure
         self._pan = None
+        self.extra_menu = None       # () -> [(label, callable)]: a cell's entries (where the plot is shown)
         self._update_controls()
+
+    @property
+    def figure(self):
+        if self._figure is None:
+            self._build_canvas()
+        return self._figure
+
+    @figure.setter
+    def figure(self, figure):  # export() draws into a print figure for a moment
+        self._figure = figure
+
+    @property
+    def canvas(self):
+        if self._canvas is None:
+            self._build_canvas()
+        return self._canvas
+
+    @property
+    def canvas_built(self) -> bool:
+        return self._canvas is not None
+
+    def _build_canvas(self):
+        import matplotlib as mpl
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+        from matplotlib.figure import Figure
+
+        # outside the plot style a redraw may be running in: the screen figure keeps the rc
+        # settings matplotlib started with (its DPI above all)
+        with mpl.rc_context(mpl.rcParamsOrig):
+            self._figure = Figure(figsize=(5, 3), facecolor=TOKENS["bg"])
+            self._canvas = canvas = FigureCanvasQTAgg(self._figure)
+        self.layout().replaceWidget(self._canvas_slot, canvas)
+        self._canvas_slot.deleteLater()
+        self._canvas_slot = None
+        canvas.mpl_connect("button_press_event", self._on_press)
+        canvas.mpl_connect("motion_notify_event", self._on_motion)
+        canvas.mpl_connect("button_release_event", self._on_release)
+        canvas.mpl_connect("scroll_event", self._on_scroll)
 
     def compact(self):
         """Narrow layout for a notebook view cell: shorter labels, Save in the cell's menu."""
@@ -230,7 +264,15 @@ class PlotsPanel(QtWidgets.QWidget):
             self._draw_overlays()
             self._update_controls()
             return
+        if key is not None and self._update_in_place(key):
+            # the same plot with new numbers (a per-frame histogram or g(r) during playback):
+            # new bar heights or line data on the axes already there, no fig.clear()
+            self._drawn = key
+            self._draw_overlays()
+            self._update_controls()
+            return
         self._drawn, self._marker, self._phonon, self._elec = key, None, None, None
+        self._live = None
         fig = self.figure
         fig.clear()
         fig.set_facecolor(TOKENS["bg"])
@@ -244,14 +286,16 @@ class PlotsPanel(QtWidgets.QWidget):
             v = np.asarray(d[name])
             if v.dtype.kind in "iu" and np.ptp(v) < 60:
                 vals, counts = np.unique(v, return_counts=True)
-                ax.bar(vals, counts, color=TOKENS["accent"], lw=0)
+                bars = ax.bar(vals, counts, color=TOKENS["accent"], lw=0)
+                self._live = ("bars", list(bars), vals)
                 self._edges = np.arange(v.min(), v.max() + 2) - 0.5
                 self._bars = True
                 ax.xaxis.set_major_locator(_integer_locator())
                 ax.set_xlim(vals.min() - 1, vals.max() + 1)
                 plotstyle.no_minor_x(ax)
             else:
-                _, self._edges, _ = ax.hist(v, bins=50, color=TOKENS["accent"], lw=0)
+                _, self._edges, patches = ax.hist(v, bins=50, color=TOKENS["accent"], lw=0)
+                self._live = ("hist", list(patches))
             ax.set_ylim(bottom=0)
             self._xname = name
             ax.set_xlabel(plotstyle.axis_label(name)); ax.set_ylabel("Count")
@@ -278,15 +322,20 @@ class PlotsPanel(QtWidgets.QWidget):
                 keys = [keys[0], "Intensity"]
                 ax.vlines(x, 0, np.asarray(table["Intensity"], float), color=TOKENS["accent"], lw=1.0)
                 ax.set_ylim(bottom=0)
+            lines = []
             for k, label in [] if sticks else zip(keys[1:], plotstyle.legend_labels(keys[1:])):
                 y = np.asarray(table[k], dtype=float)
                 ok = ~np.isnan(y)  # thermo columns a run did not print
                 if k == "Experimental":   # measured pattern under the calculated one
-                    ax.plot(x[ok], y[ok], lw=0, marker=".", ms=2.5, color=TOKENS["muted"], label=label, zorder=1)
+                    line, = ax.plot(x[ok], y[ok], lw=0, marker=".", ms=2.5, color=TOKENS["muted"], label=label,
+                                    zorder=1)
                 elif k.endswith(" fit"):
-                    ax.plot(x[ok], y[ok], ls="--", lw=0.9, label=label, zorder=3)
+                    line, = ax.plot(x[ok], y[ok], ls="--", lw=0.9, label=label, zorder=3)
                 else:
-                    ax.plot(x[ok], y[ok], label=label, zorder=2)
+                    line, = ax.plot(x[ok], y[ok], label=label, zorder=2)
+                lines.append((k, line))
+            if lines:
+                self._live = ("lines", lines, tuple(table))
             self._xname = keys[0]
             ax.set_xlabel(plotstyle.axis_label(keys[0]))
             if not _is_series(table):
@@ -314,6 +363,76 @@ class PlotsPanel(QtWidgets.QWidget):
         fig.tight_layout(pad=0.4)
         self._draw_overlays()
         self._update_controls()
+
+    def _update_in_place(self, key) -> bool:
+        """Put new numbers into the artists of the plot on the canvas when only the data
+        changed (same table, column and histogram choice, same columns, same number of bins
+        or lines). Rebuilding the figure costs about twice as much, so this keeps per-frame
+        plots responsive during playback. False when a full redraw is needed."""
+        live, ax, d = getattr(self, "_live", None), self._ax, self.data
+        if live is None or self._drawn is None or key[0] != self._drawn[0] or ax is None \
+                or ax.figure is not self.figure or d is None:
+            return False
+        kind = live[0]
+        if kind in ("hist", "bars"):
+            name = self.hist.currentText()
+            if not name or name not in d:
+                return False
+            v = np.asarray(d[name])
+            if kind == "hist":
+                if v.dtype.kind in "iu" and np.ptp(v) < 60:
+                    return False  # now drawn as integer bars
+                counts, edges = np.histogram(v, bins=len(live[1]))
+                for rect, c, lo, hi in zip(live[1], counts, edges[:-1], edges[1:]):
+                    rect.set_x(lo)
+                    rect.set_width(hi - lo)
+                    rect.set_height(c)
+                self._edges = edges
+            else:
+                if v.dtype.kind not in "iu":
+                    return False
+                vals, counts = np.unique(v, return_counts=True)
+                if not np.array_equal(vals, live[2]):
+                    return False  # other values: other bars
+                for rect, c in zip(live[1], counts):
+                    rect.set_height(c)
+            ax.set_autoscale_on(True)  # set_xlim/set_ylim of the last draw turned it off
+            ax.relim()
+            ax.autoscale_view()
+            if kind == "bars":
+                ax.set_xlim(vals.min() - 1, vals.max() + 1)
+            ax.set_ylim(bottom=0)
+        elif kind == "lines":
+            table = self._table()
+            if not table or tuple(table) != live[2]:
+                return False
+            keys = list(table)
+            x = np.asarray(table[keys[0]])
+            for k, line in live[1]:
+                y = np.asarray(table[k], dtype=float)
+                ok = ~np.isnan(y)
+                line.set_data(x[ok], y[ok])
+            ax.set_autoscale_on(True)  # set_xlim/set_ylim of the last draw turned it off
+            ax.relim()
+            ax.autoscale_view()
+            names = [k for k, _ in live[1]]
+            if not _is_series(table):
+                plotstyle.start_at_zero(ax, x)
+            if all(k.startswith("Count") for k in names) or \
+                    self.table.currentText() in ("diffraction", "structure-factor"):
+                ax.set_ylim(bottom=0)
+            if self._marker is not None:
+                self._place_marker()
+            if len(x) > 1:
+                mid = 0.5 * (x[1:] + x[:-1])
+                self._edges = np.concatenate([[x[0] - (mid[0] - x[0])], mid, [x[-1] + (x[-1] - mid[-1])]])
+        else:
+            return False
+        energy = self._energy_axis()
+        for axis, lim in self._view.items():
+            if axis != energy:
+                (ax.set_xlim if axis == "x" else ax.set_ylim)(lim)
+        return True
 
     def _content_key(self):
         """What the canvas would show: the choices and the arrays behind them (compared by
@@ -765,8 +884,42 @@ class PlotsPanel(QtWidgets.QWidget):
             self._rubber = self._ax.axvspan(min(x0, x), max(x0, x), color=color, alpha=0.25, lw=0)
         self.canvas.draw_idle()
 
+    def context_menu(self) -> QtWidgets.QMenu:
+        """Right click on the plot: Save plot…, Reset view and the "Plot" entries of
+        ``@menu_item`` plugins (``context.target`` is :meth:`target`)."""
+        menu = QtWidgets.QMenu(self)
+        menu.addAction("Save plot…", self.save_plot)
+        menu.addAction("Reset view", self.reset_view)
+        for label, fn in (self.extra_menu() if self.extra_menu else []):
+            menu.addAction(label, fn)
+        menu.addSeparator()
+        from .window_plugins import plugin_host
+
+        host = plugin_host(self)
+        if host is not None and host.add_plugin_items(menu, "Plot", target=self.target()):
+            menu.removeAction(menu.actions()[-1])    # no separator at the end
+        return menu
+
+    def target(self):
+        """This plot for plugins (:class:`ewald.plugins.PlotTarget`)."""
+        from ..plugins import PlotTarget
+
+        table = self._table()
+        ax = self._ax
+        return PlotTarget(table=self.hist.currentText() or self.table.currentText(), values=table,
+                          columns=list(self._plotted_columns() or []),
+                          xlim=tuple(ax.get_xlim()) if ax is not None else None,
+                          ylim=tuple(ax.get_ylim()) if ax is not None else None, data=self.data)
+
     def _on_release(self, event):
         press, self._press = self._press, None
+        pan = self._pan
+        if event.button == 3 and (pan is None or event.x is None or abs(event.x - pan[0]) + abs(event.y - pan[1]) < 4):
+            self._pan = None      # a right click, not a pan
+            menu = self.context_menu()
+            menu.exec(QtGui.QCursor.pos())
+            menu.deleteLater()
+            return
         if self._pan is not None:
             pan, self._pan = self._pan, None
             if event.x is not None and abs(event.x - pan[0]) + abs(event.y - pan[1]) >= 4:
