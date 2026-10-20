@@ -3612,3 +3612,51 @@ def test_workflow_side_bar_lists_expands_and_opens_a_workflow_as_one_notebook(ap
     side.refresh()
     side.wait()
     assert side.tree.topLevelItemCount() == 1 and side.more.isHidden()
+
+
+def test_wait_for_runs_off_the_gui_thread_with_cancel(app, pipe, tmp_path):
+    import threading
+
+    from ewald.gui import busy
+    from ewald.gui.app import MainWindow
+
+    said = []
+    assert busy.wait_for(lambda: threading.current_thread() is threading.main_thread(), "Quick…", say=said.append) is False
+    assert said == ["Quick…"]
+    with pytest.raises(ZeroDivisionError):
+        busy.wait_for(lambda: 1 / 0, "Failing…")
+    release = threading.Event()
+    seen = []
+
+    def press_cancel():
+        dialog = QtWidgets.QApplication.activeModalWidget() or next(
+            w for w in QtWidgets.QApplication.topLevelWidgets() if w.objectName() == "waitDialog" and w.isVisible())
+        seen.append(dialog.labelText())
+        dialog.findChild(QtWidgets.QPushButton).click()
+
+    QtCore.QTimer.singleShot(300, press_cancel)
+    with pytest.raises(busy.Cancelled):          # a slow call gets a dialog with Cancel; Cancel returns at once
+        busy.wait_for(lambda: release.wait(10), "Connecting to slow…", delay_ms=50)
+    assert seen == ["Connecting to slow…"]
+    release.set()                                # the abandoned call finishes in the background
+    busy.finish_orphans(5000)
+    assert not busy._orphans
+
+    w = MainWindow()                             # File › Open goes through it
+    path = tmp_path / "x.xyz"
+    path.write_text("1\n\nH 0 0 0\n")
+    assert w.open_file(str(path)).num_frames == 1
+    w.close()
+
+
+def test_notebook_status_drops_parts_instead_of_clipping(app):
+    from ewald.gui.notebook_panel import _ElidedLabel
+
+    label = _ElidedLabel("3 steps · not saved")
+    fm = label.fontMetrics()
+    label.resize(fm.horizontalAdvance("3 steps · not saved") + 4, 20)
+    assert label.shown_text() == "3 steps · not saved"
+    label.resize(fm.horizontalAdvance("3 steps") + 4, 20)
+    assert label.shown_text() == "3 steps"           # not "3 st…ved"
+    label.resize(4, 20)
+    assert label.shown_text() == ""

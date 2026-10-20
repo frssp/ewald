@@ -10,6 +10,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Several files as one trajectory: the GUI Open dialog takes one file (no multi-select into a
+  list yet), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
+  appended to after a restart (`dump_modify append yes`). Restart detection needs a Timestep per
+  frame, which only the LAMMPS dump reader gives cheaply (extxyz `Timestep=` comments, H5MD
+  steps and XTC steps are not used yet).
 - View tab: folded cards are remembered only while the window is open (not in settings or the
   layout file); no Fold all / Unfold all; a card has no per-card reset to defaults.
 
@@ -38,10 +43,9 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 
 GUI
 
-- UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): still open
-  are opening files (local or remote) and remote connections
-  off the GUI thread (they now say what they wait for, but the window still blocks), and the
-  Render settings column scrolling sideways at the default window width.
+- UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): every
+  finding is fixed. Left over: cancelling an open stops waiting but not the read itself (readers
+  have no cancel hook), so a cancelled SSH connect runs out its timeout in the background.
 - Panel layout (phase 1 landed: `gui/workbench.py`, `gui/layout_model.py`; plan in project
   files `design/panel-layout.md`): phase 2 opens a notebook view cell's plot large in the
   editor area ("Open large" or drag the cell header, a Bring back placeholder in the cell, the
