@@ -763,7 +763,7 @@ def test_help_menu_and_late_registered_modifier(app, pipe, monkeypatch):
     w = MainWindow(pipe, settings=s)
     menus = {a.text().replace("&", ""): a.menu() for a in w.menuBar().actions()}
     labels = [a.text() for a in menus["Help"].actions()]
-    assert "Writing plugins" in labels and "Open plugin folder" in labels
+    assert "Writing plugins" in labels and "Open plugin folder" not in labels  # in Insert › Plugin step
     assert w.help_url("plugins/index.md") == "https://example.org/ewald/plugins/"
 
     # registered after the window exists (startup script, plugin): appears when the menus open
@@ -2353,7 +2353,8 @@ def test_viewport_tools_pick_and_measure_with_real_clicks(app, pipe):
 
 def test_menu_audit_fixes(app, cu_fcc):
     """Insert › Analysis greys out trajectory analyses for one frame; the palette lists each step
-    once (Insert › Step) and Window › Command palette carries Ctrl+K."""
+    once (Insert › Step), skips greyed-out ones and has the menus filled on opening; Window ›
+    Command palette carries Ctrl+K; one entry each for Ask Claude, Run all and the plugin file."""
     from PySide6 import QtGui
 
     from ewald.gui.app import MainWindow
@@ -2365,6 +2366,60 @@ def test_menu_audit_fixes(app, cu_fcc):
     assert state["msd"] is False and state["vacf"] is False and state["rdf"] is True
     labels = [label for label, path, _ in menu_entries(w.menuBar()) if path.startswith("Insert › Step")]
     assert labels and len(labels) == len(set(labels))
-    pal = next(a for a in w.menuBar().findChildren(QtGui.QAction) if a.text() == "Command palette")
+    acts = [a for a in w.menuBar().findChildren(QtGui.QAction) if a.text()]
+    texts = [a.text().replace("&", "") for a in acts]
+    pal = next(a for a in acts if a.text() == "Command palette")
     assert pal.shortcut() == QtGui.QKeySequence("Ctrl+K")
+    assert texts.count("AI chat") == 1 and "Ask Claude about selection…" not in texts
+    assert next(a for a in acts if a.text() == "AI chat").shortcut() == QtGui.QKeySequence("Ctrl+J")
+    assert "Restart and run all" not in texts and "Load plugin file…" not in texts
+    assert "Dark background" not in [a.text() for a in w.menuBar().actions()[2].menu().actions()]
+    w.step_menu.aboutToShow.emit()                       # one frame of Cu: no trajectory steps
+    steps = {a.text(): a for sub in w.step_menu.actions() if sub.menu() for a in sub.menu().actions()}
+    assert not steps["Mean squared displacement / diffusion"].isEnabled()
+    assert "trajectory" in steps["Mean squared displacement / diffusion"].toolTip()
+    assert not steps["Isosurface"].isEnabled() and steps["Common neighbor analysis"].isEnabled()
+    w.close()
+
+
+def test_steps_follow_the_data(cu_fcc):
+    """Insert › Step: why a step cannot run on the data, and what goes in before it."""
+    from ewald.gui.pipeline_panel import prepare_step, step_unavailable
+
+    pipe = Pipeline(StaticSource([cu_fcc, cu_fcc]))
+    assert step_unavailable(mods.MeanSquaredDisplacement(), cu_fcc, pipe) is None
+    assert "single frame" in step_unavailable(mods.MeanSquaredDisplacement(), cu_fcc, Pipeline(StaticSource(cu_fcc)))
+    assert "grid" in step_unavailable(mods.CreateIsosurface(), cu_fcc, pipe)
+    assert "vector" in step_unavailable(mods.VectorVis(), cu_fcc, pipe)
+    assert "orientations" in step_unavailable(mods.GrainSegmentation(), cu_fcc, pipe)
+    assert "Selection" in step_unavailable(mods.FreezeProperty(), cu_fcc, pipe)
+    added = prepare_step(mods.BondAngleDistribution(), cu_fcc)
+    assert [type(m).__name__ for m in added] == ["CreateBonds", "BondAngleDistribution"]
+    srtio3 = cu_fcc.copy()
+    types = np.array(["Sr"] * srtio3.count, dtype=object)
+    types[: srtio3.count // 2] = "O"
+    types[:4] = "Ti"
+    srtio3.particles["Particle Type"] = types
+    poly = prepare_step(mods.CoordinationPolyhedra(), srtio3)[0]
+    assert poly.center_types == ["Ti"]                   # the smaller cation of the compound
+    assert step_unavailable(mods.CoordinationPolyhedra(), srtio3, pipe) is None
+    assert "center" in step_unavailable(mods.CoordinationPolyhedra(), cu_fcc, pipe)
+
+
+def test_layout_moves_grey_out_when_they_do_nothing(app, pipe):
+    """View › Layout: a view alone in its group cannot split off itself; the menu says so."""
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(pipe)
+    wb = w.workbench
+    wb.active = wb.group_of(w.viewport)
+    wb.update_actions()
+    acts = {a.text(): a for a in wb.actions()}
+    assert not acts["Split right"].isEnabled() and "alone" in acts["Split right"].toolTip()
+    assert acts["Move view down"].isEnabled()           # into the panel
+    wb.enable_actions()
+    assert acts["Split right"].isEnabled()
+    groups = len(wb.layout.groups())
+    acts["Split right"].trigger()                        # the shortcut path checks too: no change
+    assert len(wb.layout.groups()) == groups
     w.close()

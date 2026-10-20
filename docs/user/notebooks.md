@@ -54,7 +54,11 @@ switch it off, the time it took and what it produced (new properties, selected a
 removed atoms). A small histogram or curve of the new property or table sits next to the
 results. *Form* opens the parameter form, and Apply writes the new values back into the cell's
 code. *Python* shows the code. Insert › Step (or **+ Step** under the cells) adds a step with
-default parameters after the current cell.
+default parameters after the current cell. Steps that cannot work on the current frame are
+greyed out, and their tooltip says what is missing (a volumetric grid, a vector property, a
+trajectory, a selection, PTM orientations). Bond analyses (bond angles, bond lengths, rings)
+add `CreateBonds(mode="covalent")` first when the data has no bonds, and Coordination polyhedra
+center on the smallest cation of a compound (Ti in SrTiO3) unless atoms are selected.
 
 **View cells** are a single `show(pipe, ...)` call. Each is a live plot of a data table or a
 particle-property histogram:
@@ -146,7 +150,9 @@ clusters(pipe, cutoff=3.2)       # cluster sizes, largest first; .counts is {id:
 ```
 
 Counting tables (`cna`, `ptm`, `voronoi`, `clusters`) show as bar charts and have `.counts`.
-Insert › Analysis adds any of these as a cell and runs it.
+Insert › Analysis adds any of these as a cell and runs it, with defaults that fit the current
+frame (a g(r) cutoff below half a small cell, bonds created before bond angles); MSD and VACF
+are greyed out for a single frame.
 
 A table is a dict of numpy columns with `.x`, `.columns` and `.plot()`; `pandas.DataFrame(g)`
 turns it into a data frame.

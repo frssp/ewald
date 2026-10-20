@@ -109,15 +109,93 @@ def register_modifier(category: str, label: str, factory):
     MODIFIER_MENU.setdefault(category, {})[label] = factory
 
 
-def fill_modifier_menu(menu, add):
-    """(Re)populate ``menu`` with MODIFIER_MENU; ``add`` receives the new modifier."""
+_ANIONS = {"O", "S", "Se", "Te", "F", "Cl", "Br", "I", "N", "P", "As", "H", "C"}
+_VECTORS = ("Force", "Displacement", "Velocity", "Magnetic Moment", "Dipole Orientation")
+_BOND_STEPS = ("BondAngleDistribution", "BondLengthDistribution", "FindRings")
+_TRAJECTORY_STEPS = ("MeanSquaredDisplacement", "VelocityAutocorrelation", "TimeSeries", "TimeAveraging",
+                     "GenerateTrajectoryLines", "NebEnergyProfile", "OverlayFrames", "IonicConductivity",
+                     "VanHoveCorrelation", "SelfIntermediateScattering", "NonGaussianParameter", "SiteHopping")
+
+
+def step_unavailable(mod, data, pipeline=None) -> str | None:
+    """Why step ``mod`` (as Insert › Step creates it) cannot work on ``data`` (the current frame,
+    after the pipeline), or None. The menus grey such steps out with this reason as tooltip."""
+    if data is None:
+        return None
+    name = type(mod).__name__
+    frames = pipeline.num_frames if pipeline is not None else 1
+    if name in _TRAJECTORY_STEPS and frames < 2:
+        return "Needs a trajectory: the data has a single frame"
+    if name in ("CreateIsosurface", "GridSlice", "GridDifference") and not data.grids:
+        return "Needs a volumetric grid (CHGCAR, LOCPOT, cube)"
+    if name == "VectorVis":
+        prop = getattr(mod, "property", None)
+        wanted = [prop] if prop else list(_VECTORS)
+        if not any(p in data.particles for p in wanted):
+            return f"Needs a vector property ({', '.join(wanted)})"
+    if name in ("GrainSegmentation", "IdentifyFCCPlanarFaults") and "Orientation" not in data.particles:
+        return "Needs Polyhedral template matching with orientations first"
+    if name == "TimeAveraging" and str(getattr(mod, "operate_on", "")).startswith("table:"):
+        table = mod.operate_on.split(":", 1)[1]
+        if table not in data.tables:
+            return f"Needs the {table!r} table first (Coordination analysis / RDF)"
+    if name == "FreezeProperty" and getattr(mod, "source_property", "Selection") not in data.particles:
+        return f"Needs the {getattr(mod, 'source_property', 'Selection')!r} property (select atoms first)"
+    if name == "CoordinationPolyhedra" and _polyhedra_centers(data) is None and "Selection" not in data.particles:
+        return "Needs center atoms: select them first (no anion to build polyhedra around)"
+    return None
+
+
+def _polyhedra_centers(data):
+    """Default polyhedron centers: the smallest non-anion type of a compound with anions (Ti in SrTiO3)."""
+    from ..radii import _table_radius, element_of
+
+    types = [str(t) for t in dict.fromkeys(np.asarray(data.types).astype(str))]
+    elements = {t: element_of(t) for t in types}
+    cations = [t for t in types if elements[t] and elements[t] not in _ANIONS]
+    if not cations or len(cations) == len(types):
+        return None
+    return [min(cations, key=lambda t: _table_radius(elements[t], "covalent") or 9.0)]
+
+
+def prepare_step(mod, data) -> list:
+    """The steps to add for ``mod``: bond analyses get ``CreateBonds`` (covalent, like the view)
+    first when the data has no bonds; Coordination polyhedra get default center types."""
+    if data is None:
+        return [mod]
+    name = type(mod).__name__
+    if name in _BOND_STEPS and data.bonds is None:
+        return [mods.CreateBonds(mode="covalent"), mod]
+    if name == "CoordinationPolyhedra" and mod.center_types is None and "Selection" not in data.particles:
+        mod.center_types = _polyhedra_centers(data)
+    return [mod]
+
+
+def fill_modifier_menu(menu, add, context=None):
+    """(Re)populate ``menu`` with MODIFIER_MENU; ``add`` receives the new modifier. ``context``
+    returns ``(data, pipeline)``: steps that cannot work on that data are greyed out with the
+    reason, and the added steps get what they need first (:func:`prepare_step`)."""
     menu.clear()
     for sub in menu.findChildren(QtWidgets.QMenu, options=QtCore.Qt.FindDirectChildrenOnly):
         sub.deleteLater()
+    data, pipeline = context() if context is not None else (None, None)
+
+    def run(factory):
+        for m in prepare_step(factory(), data):
+            add(m)
+
     for group, items in MODIFIER_MENU.items():
         sub = menu.addMenu(group.replace("&", "&&"))  # a single "&" would be a mnemonic
+        sub.setToolTipsVisible(True)
         for label, factory in items.items():
-            sub.addAction(label, lambda f=factory: add(f()))
+            act = sub.addAction(label, lambda f=factory: run(f))
+            try:
+                reason = step_unavailable(factory(), data, pipeline)
+            except Exception:
+                reason = None
+            if reason:
+                act.setEnabled(False)
+                act.setToolTip(reason)
 
 
 def _discover():
@@ -191,7 +269,8 @@ class PipelinePanel(QtWidgets.QWidget):
         self.add_button.setObjectName("primary")
         self.add_menu = QtWidgets.QMenu(self)
         # rebuilt on every open, so entries registered later (startup script, plugins) show up
-        self.add_menu.aboutToShow.connect(lambda: fill_modifier_menu(self.add_menu, self.add_modifier))
+        self.add_menu.aboutToShow.connect(lambda: fill_modifier_menu(self.add_menu, self.add_modifier,
+                                                                     lambda: (self.data, self.pipeline)))
         fill_modifier_menu(self.add_menu, self.add_modifier)
         self.add_button.setMenu(self.add_menu)
         bar.addWidget(self.add_button, 1)

@@ -380,18 +380,34 @@ class Workbench(QtWidgets.QWidget):
         v = self.view_of(view)
         return self.move(v, self.layout.find(v), side)
 
-    def move_towards(self, view, direction: str) -> Group:
-        """Move ``view`` into the next group towards ``direction``, or split that way when there is none."""
-        v = self.view_of(view)
-        g = self.layout.find(v)
+    def _towards(self, g: Group, direction: str) -> Group | None:
+        """The group a move from ``g`` towards ``direction`` lands in (None: a new split)."""
         nb = self.layout.neighbour(g, direction)
         if nb is None and direction in ("top", "bottom"):  # across the panel boundary
             area = self.layout.area_of(g)
             if (area, direction) in (("editor", "bottom"), ("panel", "top")):
                 nb = self.layout.groups("panel" if area == "editor" else "editor")[0]
+        return nb
+
+    def move_towards(self, view, direction: str) -> Group:
+        """Move ``view`` into the next group towards ``direction``, or split that way when there is none."""
+        v = self.view_of(view)
+        nb = self._towards(self.layout.find(v), direction)
         if nb is not None:
             return self.move(v, nb)
         return self.split(v, direction)
+
+    def can(self, op: str, view=None) -> bool:
+        """Whether a View › Layout move (``split:<side>`` or ``towards:<side>``) changes anything
+        for ``view``: a view alone in its group cannot split off itself."""
+        v = self.view_of(view) if view is not None else self._current_view()
+        g = self.layout.find(v) if v else None
+        if g is None:
+            return False
+        kind, side = op.split(":")
+        if kind == "towards" and self._towards(g, side) is not None:
+            return True
+        return len(g.views) > 1
 
     def return_home(self, view):
         v = self.view_of(view)
@@ -760,28 +776,49 @@ class Workbench(QtWidgets.QWidget):
                 "Return to panel" if self.specs[view].home == "panel" else "Return to editor area"),
                            lambda: self.close_view(view))
 
+    def _current_view(self):
+        """The view the View › Layout moves act on: the front view of the focused (or first) group."""
+        g = self.active if self.active in self.layout.groups() else self.layout.find(self.order[0])
+        return g.current_view if g else None
+
+    def update_actions(self):
+        """Grey out the View › Layout moves that would change nothing (a view alone in its group
+        cannot split off itself), naming the view they act on; call when the menu opens."""
+        v = self._current_view()
+        title = self.specs[v].title if v in self.specs else "the view"
+        for a in self.actions():
+            op = a.data()
+            if op:
+                a.setEnabled(self.can(op))
+                a.setToolTip(f"Acts on {title}" if a.isEnabled() else
+                             f"{title} is alone in its group: click another view's tab first")
+
+    def enable_actions(self):
+        """Every move enabled again (the shortcuts check :meth:`can` themselves)."""
+        for a in self.actions():
+            a.setEnabled(True)
+
     def actions(self) -> list[QtGui.QAction]:
         """Window actions for the View › Layout menu and the command palette."""
         if self._actions is None:
-            def current():
-                g = self.active if self.active in self.layout.groups() else self.layout.find(self.order[0])
-                return g.current_view if g else None
+            current = self._current_view
 
-            def act(text, fn, keys=None):
+            def act(text, fn, keys=None, op=None):
                 a = QtGui.QAction(text, self)
-                a.triggered.connect(lambda: current() and fn(current()))
+                a.triggered.connect(lambda: current() and (op is None or self.can(op)) and fn(current()))
+                a.setData(op)
                 if keys:
                     a.setShortcut(QtGui.QKeySequence(keys))
                     a.setShortcutContext(QtCore.Qt.WindowShortcut)
                 return a
 
             self._actions = [
-                act("Split right", lambda v: self.split(v, "right"), "Ctrl+Alt+\\"),
-                act("Split down", lambda v: self.split(v, "bottom")),
-                act("Move view left", lambda v: self.move_towards(v, "left"), "Ctrl+Alt+Left"),
-                act("Move view right", lambda v: self.move_towards(v, "right"), "Ctrl+Alt+Right"),
-                act("Move view up", lambda v: self.move_towards(v, "top"), "Ctrl+Alt+Up"),
-                act("Move view down", lambda v: self.move_towards(v, "bottom"), "Ctrl+Alt+Down"),
+                act("Split right", lambda v: self.split(v, "right"), "Ctrl+Alt+\\", "split:right"),
+                act("Split down", lambda v: self.split(v, "bottom"), op="split:bottom"),
+                act("Move view left", lambda v: self.move_towards(v, "left"), "Ctrl+Alt+Left", "towards:left"),
+                act("Move view right", lambda v: self.move_towards(v, "right"), "Ctrl+Alt+Right", "towards:right"),
+                act("Move view up", lambda v: self.move_towards(v, "top"), "Ctrl+Alt+Up", "towards:top"),
+                act("Move view down", lambda v: self.move_towards(v, "bottom"), "Ctrl+Alt+Down", "towards:bottom"),
                 act("Move view to editor area", lambda v: self.move(v, "editor")),
                 act("Move view to panel", lambda v: self.move(v, "panel")),
                 act("Return view home", self.close_view, "Ctrl+Alt+W"),

@@ -144,6 +144,7 @@ QMenuBar {{ background: {bg}; color: {secondary}; }}
 QMenuBar::item:selected, QMenu::item:selected {{ background: {raised}; color: {text}; }}
 QMenu {{ background: {raised}; border: 1px solid {border}; padding: 4px; }}
 QMenu::separator {{ height: 1px; background: {border}; margin: 4px 8px; }}
+QMenu::item:disabled {{ color: {muted}; }}
 QToolBar {{ background: {bg}; border: none; border-bottom: 1px solid {border}; spacing: 4px; padding: 4px 6px; }}
 QToolBar::separator {{ background: {border}; width: 1px; margin: 6px 6px; }}
 QToolBar QLabel, QWidget#toolbarSpacer {{ background: transparent; }}

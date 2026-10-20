@@ -71,14 +71,14 @@ def _label(text: str) -> str:
 
 
 def menu_entries(menubar: QtWidgets.QMenuBar):
-    """All triggerable actions under a menu bar as (label, 'File › ...', callable)."""
+    """All enabled actions under a menu bar as (label, 'File › ...', callable)."""
     out = []
 
     def walk(menu, path):
         for act in menu.actions():
             if act.menu():
                 walk(act.menu(), path + [_label(act.text())])
-            elif act.text() and not act.isSeparator():
+            elif act.text() and not act.isSeparator() and act.isEnabled():
                 out.append((_label(act.text()), " › ".join(path), act.trigger))
 
     for act in menubar.actions():

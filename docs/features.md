@@ -500,8 +500,9 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Save notebook (`Ctrl+S`)
 - Save notebook as… (`Ctrl+Shift+S`)
 - Close notebook (`Ctrl+W`)
-- Load session (.ewald)… (`Ctrl+Shift+O`)
-- Save session (.ewald) as…
+- Session (.ewald)
+  - Load session… (`Ctrl+Shift+O`)
+  - Save session as…
 - Render image… (`Ctrl+Shift+R`)
 - Export data… (`Ctrl+E`)
 - Export movie…
@@ -527,8 +528,6 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Right (+x)
 - Isometric
 - Zoom to fit (`Ctrl+0`)
-- Dark background
-- White background
 - Theme
   - Default
   - VESTA
@@ -536,6 +535,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Journal
   - ASE
   - Dark slide
+  - Dark background
+  - White background
 - Layout
   - Split right (`Ctrl+Alt+\`)
   - Split down
@@ -557,7 +558,6 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Run all (`Ctrl+Shift+Return`)
 - Run current cell and below
 - Restart
-- Restart and run all
 - Kernel
 - Trust notebook…
 - Move cell up (`Ctrl+Shift+Up`)
@@ -664,8 +664,6 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Mean squared displacement
   - Velocity autocorrelation
 - Plugin step
-- Load plugin file…
-- Ask Claude to add steps…
 
 **Tools**
 
@@ -674,7 +672,6 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Measure distance
 - Measure angle
 - Edit bonds
-- Ask Claude about selection… (`Ctrl+J`)
 
 **Window**
 
@@ -689,7 +686,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Plots
 - New plot view
 - Log
-- AI chat
+- AI chat (`Ctrl+J`)
 - Command palette (`Ctrl+K`)
 
 **Help**
@@ -700,7 +697,6 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Python scripting
 - Writing plugins
 - Python API reference
-- Open plugin folder
 - About EWALD
 
 **Viewport (right click)**, entries shown only when they apply (picked atoms, phonon modes, NEB band, volumetric grid, trajectory):
