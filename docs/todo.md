@@ -217,7 +217,6 @@ Formats
 Figures
 
 - GPU (CUDA) ray tracer.
-- Ray tracer: shadows of the cell edges show as arcs on atoms.
 - Vector arrows: their own color legend when a `ColorCoding` already owns the legend; arrows in
   the coarse (moving) viewport scene, as lines; in SVG/PDF, hide the part of an arrow inside its
   atom exactly (now the shaft is split at the atom and painted by depth).

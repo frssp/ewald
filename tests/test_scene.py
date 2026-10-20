@@ -206,3 +206,23 @@ def test_elements_do_not_touch_the_data(example_plugin):
 def test_empty_cell_and_no_atoms():
     data = DataCollection(np.zeros((0, 3)), [], Cell(np.zeros((3, 3))))
     assert build(data).layers == []
+
+
+def test_raytrace_cell_casts_no_shadow():
+    """Cell edges are seen by camera rays but skipped by shadow and AO rays."""
+    from ewald.raytrace import Scene as RTScene, raytrace
+
+    sc = RTScene()
+    sc.add_spheres([[0, 0, 0]], 1.0, (0.8, 0.8, 0.8))
+    cam = {"position": (0, 0, 10), "focal_point": (0, 0, 0), "up": (0, 1, 0), "parallel_scale": 1.5}
+    kw = dict(size=(40, 30), samples=1, ao_samples=8, light_direction=(0, 0, 1))
+    clean = raytrace(sc, cam, **kw)
+    # a thin rod between the light and the sphere, off to the side of the camera's view of it
+    rod = RTScene()
+    rod.add_spheres([[0, 0, 0]], 1.0, (0.8, 0.8, 0.8))
+    rod.add_cylinders([[-0.3, -3, 3]], [[-0.3, 3, 3]], 0.05, (0, 0, 0), cast_shadows=False)
+    img = raytrace(rod, cam, **kw)
+    away = np.abs(np.arange(40) - 20 + 0.3 * 40 / 4) > 3  # columns not covered by the rod itself
+    assert np.allclose(img[:, away], clean[:, away])
+    rod.cyl_cast[:] = True
+    assert not np.allclose(raytrace(rod, cam, **kw)[:, away], clean[:, away])

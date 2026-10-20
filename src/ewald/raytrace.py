@@ -15,6 +15,9 @@ import numpy as np
 from numba import njit, prange
 
 SPHERE, CYLINDER, TRIANGLE = 0, 1, 2
+# grid item code: kind << 40 | NO_SHADOW (objects shadow and AO rays pass through) | index
+NO_SHADOW = 1 << 39
+INDEX_MASK = NO_SHADOW - 1
 
 
 # ----------------------------------------------------------------------------- scene
@@ -29,20 +32,24 @@ class Scene:
         self.tri_rgb = np.zeros((0, 3)); self.tri_alpha = np.zeros(0)
         # per-vertex normals and colours (M x 3 x 3), for smooth isosurfaces and colour-mapped slices
         self.tri_n = np.zeros((0, 3, 3)); self.tri_vrgb = np.zeros((0, 3, 3))
+        # False: seen by camera rays but skipped by shadow and AO rays (cell edges)
+        self.sph_cast = np.zeros(0, bool); self.cyl_cast = np.zeros(0, bool); self.tri_cast = np.zeros(0, bool)
 
-    def add_spheres(self, centers, radii, colors):
+    def add_spheres(self, centers, radii, colors, cast_shadows=True):
         self.sph_c = np.vstack([self.sph_c, np.asarray(centers, float).reshape(-1, 3)])
         self.sph_r = np.concatenate([self.sph_r, np.broadcast_to(np.asarray(radii, float), (len(centers),))])
         self.sph_rgb = np.vstack([self.sph_rgb, np.broadcast_to(np.asarray(colors, float), (len(centers), 3))])
+        self.sph_cast = np.concatenate([self.sph_cast, np.full(len(centers), bool(cast_shadows))])
 
-    def add_cylinders(self, a, b, radii, colors):
+    def add_cylinders(self, a, b, radii, colors, cast_shadows=True):
         a = np.asarray(a, float).reshape(-1, 3)
         self.cyl_a = np.vstack([self.cyl_a, a])
         self.cyl_b = np.vstack([self.cyl_b, np.asarray(b, float).reshape(-1, 3)])
         self.cyl_r = np.concatenate([self.cyl_r, np.broadcast_to(np.asarray(radii, float), (len(a),))])
         self.cyl_rgb = np.vstack([self.cyl_rgb, np.broadcast_to(np.asarray(colors, float), (len(a), 3))])
+        self.cyl_cast = np.concatenate([self.cyl_cast, np.full(len(a), bool(cast_shadows))])
 
-    def add_triangles(self, a, b, c, colors, alpha=1.0, normals=None, vertex_colors=None):
+    def add_triangles(self, a, b, c, colors, alpha=1.0, normals=None, vertex_colors=None, cast_shadows=True):
         """Two-sided triangles; ``alpha`` < 1 makes them see-through (no shadows, no AO).
         ``normals``/``vertex_colors`` (M x 3 x 3, one row per corner) are interpolated across
         each triangle; without them it is flat-shaded in its face colour."""
@@ -63,6 +70,7 @@ class Scene:
         self.tri_n = np.concatenate([self.tri_n, np.asarray(normals, float).reshape(-1, 3, 3)])
         self.tri_vrgb = np.concatenate([self.tri_vrgb, np.asarray(vertex_colors, float).reshape(-1, 3, 3)])
         self.tri_alpha = np.concatenate([self.tri_alpha, np.broadcast_to(np.asarray(alpha, float), (len(a),))])
+        self.tri_cast = np.concatenate([self.tri_cast, np.full(len(a), bool(cast_shadows))])
 
     def bounds(self):
         lo = np.full(3, np.inf); hi = np.full(3, -np.inf)
@@ -148,16 +156,17 @@ def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 
             else:
                 strip_of = np.concatenate([np.full(max(len(s) - 1, 0), k) for k, s in enumerate(prim.strips)])
                 seg_rgb = prim.rgb[strip_of]
-            sc.add_cylinders(prim.points[seg[:, 0]], prim.points[seg[:, 1]], prim.radius, seg_rgb)
+            cast = prim.cast_shadows
+            sc.add_cylinders(prim.points[seg[:, 0]], prim.points[seg[:, 1]], prim.radius, seg_rgb, cast)
             # round joints so corners look closed
             joints = np.unique(seg)
             if prim.rgb is None:
-                sc.add_spheres(prim.points[joints], prim.radius, seg_rgb)
+                sc.add_spheres(prim.points[joints], prim.radius, seg_rgb, cast)
             else:
                 rgb = np.empty((len(prim.points), 3))
                 rgb[seg[:, 1]] = seg_rgb
                 rgb[seg[:, 0]] = seg_rgb
-                sc.add_spheres(prim.points[joints], prim.radius, rgb[joints])
+                sc.add_spheres(prim.points[joints], prim.radius, rgb[joints], cast)
     return sc
 
 
@@ -247,10 +256,11 @@ def build_grid(scene: Scene, target_per_cell: float = 2.0):
         kinds.append(np.full(len(scene.tri_alpha), TRIANGLE)); idx.append(np.arange(len(scene.tri_alpha)))
     blo, bhi = np.vstack(boxes_lo), np.vstack(boxes_hi)
     kinds, idx = np.concatenate(kinds), np.concatenate(idx)
+    cast = np.concatenate([scene.sph_cast, scene.cyl_cast, scene.tri_cast])
     size = extent / dims
     c0 = np.clip(((blo - lo) / size).astype(np.int64), 0, dims - 1)
     c1 = np.clip(((bhi - lo) / size).astype(np.int64), 0, dims - 1)
-    starts, items = _fill_grid(c0, c1, dims, kinds * (1 << 40) + idx)
+    starts, items = _fill_grid(c0, c1, dims, kinds * (1 << 40) + np.where(cast, 0, NO_SHADOW) + idx)
     return lo, size, dims, starts, items
 
 
@@ -389,8 +399,10 @@ def _trace(o, d, tmax, lo, size, dims, starts, items, sph_c, sph_r, cyl_a, cyl_b
         c = (cx * dy + cy) * dz + cz
         for s in range(starts[c], starts[c + 1]):
             code = items[s]
+            if any_hit and code & NO_SHADOW:
+                continue
             kind = code >> 40
-            i = code & ((1 << 40) - 1)
+            i = code & INDEX_MASK
             if kind == 0:
                 t = _hit_sphere(o, d, sph_c[i], sph_r[i])
             elif kind == 1:
@@ -533,7 +545,7 @@ def _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, samples, 
                         acc_a += trans * bg[3]
                         break
                     kind = code >> 40
-                    i = code & ((1 << 40) - 1)
+                    i = code & INDEX_MASK
                     for k in range(3):
                         p[k] = o[k] + t * d[k]
                     alpha = 1.0

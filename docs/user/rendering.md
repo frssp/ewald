@@ -56,7 +56,9 @@ for publication figures: spheres and bond cylinders with ambient occlusion (`ao_
 per hit), soft shadows (`shadows`) and anti-aliasing (`samples` rays per pixel). It is
 written in numba and runs on all CPU cores; colors, radii, bonds and the camera match the
 OpenGL view. The AO rays of all samples of a pixel follow a low-discrepancy sequence, so
-16 samples x 8 AO rays (128 per pixel) are as smooth as 512 random rays.
+16 samples x 8 AO rays (128 per pixel) are as smooth as 512 random rays. The simulation cell
+(and any other line drawn as a tube) casts no shadow and no ambient occlusion, so its edges
+never leave dark arcs on the atoms.
 
 `renderer="vector"` writes SVG, PDF or EPS (format from the extension) with real circles for
 atoms, bond sticks, polyhedra, isosurfaces and slices painted far to near, and overlays as
