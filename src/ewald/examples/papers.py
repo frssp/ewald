@@ -20,6 +20,8 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from .._tls import ssl_context
+
 
 @dataclass(frozen=True)
 class RemoteFile:
@@ -296,7 +298,7 @@ def _sha256(path: Path) -> str:
 
 def _download(url: str, dest: Path, timeout: float = 60.0) -> None:
     tmp = dest.with_name(dest.name + ".part")
-    with urllib.request.urlopen(url, timeout=timeout) as resp, open(tmp, "wb") as out:
+    with urllib.request.urlopen(url, timeout=timeout, context=ssl_context()) as resp, open(tmp, "wb") as out:
         while block := resp.read(1 << 20):
             out.write(block)
     os.replace(tmp, dest)
