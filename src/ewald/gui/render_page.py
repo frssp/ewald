@@ -5,6 +5,7 @@ import os
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .busy import BusyLabel
 from .theme import TOKENS
 
 SIZE_PRESETS = {
@@ -66,6 +67,10 @@ class RenderPage(QtWidgets.QWidget):
         hb.addWidget(self.fit_button)
         hb.addWidget(self.reset_frame_button)
         hb.addStretch(1)
+        self.busy_label = BusyLabel("Rendering…")   # beside the picture size, where the eye is
+        self.busy_label.setVisible(False)
+        hb.addWidget(self.busy_label)
+        hb.addSpacing(8)
         self.frame_label = QtWidgets.QLabel(objectName="muted")
         hb.addWidget(self.frame_label)
         lv.addWidget(bar)
@@ -170,7 +175,7 @@ class RenderPage(QtWidgets.QWidget):
         self.movie_quality = QtWidgets.QComboBox()
         self.movie_quality.addItems(["Same as image", "Draft", "Standard", "Publication"])
         form.addRow("Movie quality", self.movie_quality)
-        go = QtWidgets.QPushButton("Render")
+        go = self.render_button = QtWidgets.QPushButton("Render")
         go.setObjectName("primary")
         go.clicked.connect(self.renderRequested)
         form.addRow(go)
@@ -279,6 +284,13 @@ class RenderPage(QtWidgets.QWidget):
 
     def _show_frame_label(self):
         self.frame_label.setText(f"{self.width.value()} × {self.height.value()} px")
+
+    def set_busy(self, text: str = ""):
+        """While a picture renders: the Render button greys out and a spinner says what runs."""
+        self.render_button.setEnabled(not text)
+        self.render_button.setText(text or "Render")
+        self.busy_label.setText(text)
+        self.busy_label.setVisible(bool(text))
 
     def show_live(self, on: bool = True):
         """Show the 3D view with the frame (True) or the last rendered picture."""
