@@ -3,3 +3,4 @@ include tests/data/*.npz
 recursive-include src/ewald/examples/files *
 include CHANGELOG.md
 include CITATION.cff
+include LICENSE

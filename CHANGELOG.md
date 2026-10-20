@@ -9,6 +9,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- MIT license (`LICENSE`); the `Private :: Do Not Upload` classifier is gone.
 - `CITATION.cff` (GitHub's *Cite this repository*), `CONTRIBUTING.md`, `SECURITY.md`, issue
   templates and `.github/FUNDING.yml`, in preparation for a public repository.
 - `ewald.plugin_api`, the supported import surface for plugins, versioned by `PLUGIN_API` (1). A

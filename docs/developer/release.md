@@ -19,9 +19,8 @@ All wheels carry the compiled `ewald._native` (`EWALD_REQUIRE_NATIVE=1` turns a 
 into an error), so wheel users never need a compiler.
 
 All three workflows attach their files to one GitHub Release for the tag, with the notes taken from the
-version's section of `CHANGELOG.md`. ewald is not on PyPI: the repository is private, and the
-`Private :: Do Not Upload` classifier in `pyproject.toml` makes PyPI reject an accidental upload.
-Colleagues install a wheel from the release page, or straight from the repository:
+version's section of `CHANGELOG.md`. ewald is not on PyPI yet (publishing
+it is a separate decision). Users install a wheel from the release page, or straight from the repository:
 
 ```bash
 pip install "ewald[gui] @ git+https://github.com/frssp/ewald@v0.1.0"
