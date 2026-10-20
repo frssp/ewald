@@ -5,6 +5,28 @@ Pass `format=` to force one. Wildcards read a numbered series as one trajectory
 (`import_file("dump.*.lammpstrj")`), and the native readers read `.gz`, `.bz2` and `.xz`
 files directly.
 
+### Several files as one trajectory
+
+A wildcard is expanded in natural order, so `dump.200` comes before `dump.1000` and `run10/`
+after `run2/`. A list reads the files in the order given:
+
+```python
+pipe = load(["run1/dump.lammpstrj", "run2/dump.lammpstrj"])   # a restarted LAMMPS run
+pipe = load("run*/dump.lammpstrj")                            # the same, run1, run2, ..., run10
+pipe.source.segments   # [(file, frames used, frames in the file), ...]
+```
+
+By default (`join="timestep"`) the files are segments of one run: when a later file starts at a
+Timestep an earlier one already reached (LAMMPS restarted from the last restart file), the later
+file wins from that step on and the frames the earlier file wrote after it are dropped, so the
+steps only go up. A file that is covered completely by a later one is left out with a warning.
+Files that all start at the same step (independent runs, NEB replicas) and formats whose steps
+start again in every run (XDATCAR, OUTCAR, vasprun.xml) are appended as they are.
+`join="concat"` always keeps every frame of every file. Thermo tables next to each file
+(log.lammps, OSZICAR) are joined on the step the same way, the later run winning. Lists work for
+remote paths, sessions and live reload too: a restart folder that appears later replaces the
+frames it overlaps.
+
 | Format | Reader | Notes |
 |---|---|---|
 | LAMMPS text dump (`dump atom/custom`) | native, lazy | orthogonal, `xy xz yz` and general (`abc origin`) triclinic boxes; `x`/`xu`/`xs`/`xsu`; `c_x[1] c_x[2]` become one vector property; `dump_modify units/time yes`; a partial last frame is skipped with a warning |

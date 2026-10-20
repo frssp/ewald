@@ -554,6 +554,7 @@ def figure_code(window, page) -> str:
     src = getattr(pipe, "source", None) if pipe else None
     if src is not None and hasattr(src, "path"):
         args = [repr(src.path)] + ([f"format={src.format!r}"] if src.format else []) + \
+               ([f"join={src.join!r}"] if getattr(src, "join", "timestep") != "timestep" else []) + \
                [f"{k}={v!r}" for k, v in src.kwargs.items()]
         lines.append(f"pipe = import_file({', '.join(args)})")
     else:
