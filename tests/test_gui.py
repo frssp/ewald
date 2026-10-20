@@ -456,8 +456,11 @@ def test_playback_leaves_frame_independent_cells_alone(app, monkeypatch):
     app.processEvents()
     assert w.frame >= 3                   # (the play timer may have moved on by one)
     assert rebuilt == []                  # no cell's outputs (the printed "10 frames") rebuilt per frame
-    shown = {p.hist.currentText() or p.table.currentText() for p in cleared if p is not None}
-    assert shown == {"Displacement Magnitude"}   # the per-frame histogram redraws, the MSD plot does not
+    # the MSD plot is left alone, the per-frame histogram updates its bars in place: no figure clears
+    assert [p for p in cleared if p is not None] == []
+    hist = next(p for p in panels.values() if p.hist.currentText() == "Displacement Magnitude")
+    counts, _ = np.histogram(np.asarray(hist.data["Displacement Magnitude"]), bins=len(hist._ax.patches))
+    assert [r.get_height() for r in hist._ax.patches] == list(counts)   # the frame on screen
     w.close()
 
 
