@@ -176,7 +176,7 @@ whole trajectory. A [writer plugin](../plugins/writers.md) adds a format.
 
 ## Files on an SSH host
 
-Any path can be on another machine, written like `scp` or as a URL (needs the `remote` extra):
+Any path can be on another machine, written like `scp` or as a URL (no extra needed):
 `import_file("cluster:/scratch/me/run1/dump.lammpstrj")`, `"me@login.hpc.edu:run1/XDATCAR"`
 (relative to the remote home) or `"ssh://me@login.hpc.edu:2222/scratch/me/dump.*.lammpstrj"`.
 In the GUI, File › Load remote file (SSH)… browses the remote folders.
