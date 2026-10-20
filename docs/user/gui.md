@@ -110,14 +110,16 @@ along, Orthographic, Zoom to fit and Ask AI are always there.
 
 **Plugin side bars.** A plugin can bring its own side bar (a sim-agent panel, a database
 browser, ...): installing it adds a button at the bottom of the activity bar and an entry
-under Window › Plugin panels (or a tab under the 3D view instead), it may add entries to the
-menus and to the 3D view's right-click menu, and a plugin with settings adds its own page to
+under Window › Plugin panels (or a tab under the 3D view instead), it may add toolbar buttons
+and entries to the menus and to the right-click menus of the 3D view, notebook cells and plots, and a plugin with settings adds its own page to
 Preferences. Plugin side bars and tabs that were open come back at the next start where they
 were. Switching the plugin off in the Plugins side bar removes all of it; its settings are kept
 for when it comes back ([Side bar plugins](../plugins/gui.md)).
 
-**Workflow side bars.** Plugins that read finished calculations (sim-agent, AiiDA) share one
-side bar layout: the account, a search box that also takes an id, and the workflows newest
+**Workflow side bars.** The built-in **Workflows** side bar reads folders of calculations
+(relax, NEB, MD restarts, phonopy; File › Open workflow folder… or dropping a folder does the
+same, see [Workflows](workflows.md)). Plugins that read finished calculations (sim-agent, AiiDA)
+share its layout: the account, a search box that also takes an id, and the workflows newest
 first. Expanding a workflow lists its steps (restarts of one calculation joined, sub-workflows
 nested) with their files and structures. A double click on a step or output opens it; on a
 workflow it opens the whole workflow as one notebook whose load cell names every step, a line
@@ -174,7 +176,8 @@ selection*), **Camera** (what the view cell says about the camera and frame, the
 camera*) and **Elements** ([visual element plugins](../plugins/visuals.md), added with *Add
 element*). Every form shares one label column, so fields line up across cards; sub-sections such as
 Replicate cell, Boundary and Light show their rows only while ticked. Click a card's title to fold
-it (it stays folded while the window is open). Every value is a setting of
+it; right-click a card, or View › Fold all View cards / Unfold all View cards, for every card.
+Folded cards stay folded the next time the app starts (with the window layout). Every value is a setting of
 the notebook's `view(pipe, ...)` cell: the rows the cell sets are highlighted, the card says *in
 notebook*, and the tooltip shows the value. A change made here is written back into that cell, and
 a change made in code (the cell, the console, Ask AI) shows up here. When the tab is narrow (dragged
@@ -221,7 +224,8 @@ structure; atoms selected in the viewport show as their projected DOS or as fat 
 **Zoom, pan and hover.** Every plot (the Plots tab and view cells) moves the same way. The
 wheel zooms the x axis around the cursor and Ctrl+wheel the y axis (on a band structure the
 wheel zooms the energy). A right or middle drag pans, and a double-click goes back to the full
-range. On a plot that selects nothing (DOS, bands, phonon bands, maps) a left drag zooms to the
+range. A right click without dragging opens the plot's menu (*Save plot…*, *Reset view* and any
+plugin entries). On a plot that selects nothing (DOS, bands, phonon bands, maps) a left drag zooms to the
 dragged range; elsewhere a left drag still selects. The zoomed range stays while the frame
 changes, and *Save plot…* writes the range you see. The DOS and the band structure share one
 energy window, shown in the **E** boxes, where you can also type it. Hovering shows the values

@@ -308,6 +308,7 @@ QLabel#cellError {{ color: {error}; border-left: 3px solid {error}; padding: 2px
 QLabel#cellValue, QLabel#cellText {{ color: {secondary}; }}
 QLabel#cellMarkdown {{ color: {text}; font-size: 13px; padding: 2px 4px; }}
 QFrame#cell[kind="markdown"] {{ background: transparent; border-color: transparent; }}
+QFrame#cell[selected="true"] {{ background: {accent_soft}; }}
 QLabel#cellTitle, QLabel#stepTitle {{ font-weight: 600; font-size: 14px; }}
 QLabel#stepBadge {{ background: {data_soft}; color: {data}; border-radius: 4px; padding: 1px 6px; font-size: 11px; }}
 QLabel#stepSummary {{ color: {secondary}; }}

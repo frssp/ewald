@@ -511,6 +511,9 @@ class DisplayPanel(QtWidgets.QWidget):
 
         self.visual_menu = QtWidgets.QMenu(self)
         self.visual_menu.aboutToShow.connect(self._fill_visual_menu)
+        self.setContextMenuPolicy(QtCore.Qt.ActionsContextMenu)   # right-click on a card title or between cards
+        self.addAction(QtGui.QAction("Fold all cards", self, triggered=lambda: self.fold_all(True)))
+        self.addAction(QtGui.QAction("Unfold all cards", self, triggered=lambda: self.fold_all(False)))
         self.scroll = FitWidthScrollArea(objectName="viewScroll")
         self.scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.scroll.setWidgetResizable(True)
@@ -609,6 +612,11 @@ class DisplayPanel(QtWidgets.QWidget):
         (self.folded.add if folded else self.folded.discard)(title)
         if title in self.sections:
             self._show_folded(self.sections[title], folded)
+
+    def fold_all(self, folded: bool = True):
+        """Fold (or unfold) every card; the window keeps the folded cards for the next start."""
+        for title in list(self.sections) or list(_SECTION_KEYS):
+            self.set_folded(title, folded)
 
     @staticmethod
     def _show_folded(card, folded):
