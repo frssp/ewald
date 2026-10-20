@@ -44,6 +44,7 @@ def _ipython_console(namespace, on_execute, parent):
     w.banner = ("ewald console. Objects: pipeline, data (current frame), viewer, np, mods.\n"
                 "Changes to the pipeline redraw the view after each command.\n")
     w.shell = shell
+    w.on_execute = on_execute  # the in-process shell is shared by every window: unregistered on close
     return w
 
 
