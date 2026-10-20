@@ -29,7 +29,7 @@ class _Job(QtCore.QThread):
 
     done = QtCore.Signal(object, str)
 
-    def __init__(self, fn, parent):
+    def __init__(self, fn, parent=None):
         super().__init__(parent)
         self.fn = fn
 
