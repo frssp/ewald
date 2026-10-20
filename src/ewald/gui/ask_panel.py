@@ -1,19 +1,20 @@
-"""Ask Claude panel: questions about the picked atoms (or the whole frame), answered in a side chat.
+"""Ask AI panel: questions about the picked atoms (or the whole frame), answered in a side chat.
 
 The conversation reads like a chat app (Chainlit-style): the user's messages in bubbles on the
-right, Claude's answers on the left under its avatar, the tools it ran as small step chips,
+right, the model's answers on the left under its avatar, the tools it ran as small step chips,
 and code blocks as framed, highlighted code with Copy and Insert buttons. In the notebook
-layout this is the AI chat side bar (the Claude button in the activity bar, left of the
+layout this is the AI chat side bar (the AI button in the activity bar, left of the
 notebook): each question also carries the current notebook's code when it changed, and every
 Python block in an answer can be inserted as a notebook cell.
 
 Pick atoms in the viewport (Shift+click with the pick tool adds more), type a question and
 press Ask. The panel sends ewald's description of the picked atoms and their surroundings
-plus a close-up render (:meth:`ewald.llm.Agent.ask_about_selection`); Claude can call the
+plus a close-up render (:meth:`ewald.llm.Agent.ask_about_selection`); the model can call the
 usual tools, and modifiers it adds show up in the pipeline. With nothing picked, the
-question goes about the whole pipeline. Claude runs in a worker thread, so the viewer stays
-responsive. Needs ``pip install ewald[llm]`` and an API key (Preferences › Claude, or
-``ANTHROPIC_API_KEY``).
+question goes about the whole pipeline. The model runs in a worker thread, so the viewer stays
+responsive. Whichever provider Preferences > AI names answers (Claude by default; OpenAI,
+Gemini, a local OpenAI-compatible server or a plugin's); it needs that provider's package
+(``pip install ewald[llm]``) and usually an API key.
 """
 from __future__ import annotations
 
@@ -26,8 +27,8 @@ from .icons import icon
 from .notebook_panel import CodeEditor, _FitWidthScrollArea
 from .theme import TOKENS
 
-_SETUP_HINT = ("Claude needs the `anthropic` package (`pip install ewald[llm]`) and an API key: "
-               "Edit › Preferences › Claude, or `ANTHROPIC_API_KEY`.")
+_SETUP_HINT = ("Choose the AI provider and enter its API key under Edit › Preferences › AI "
+               "(its package comes with `pip install ewald[llm]`).")
 
 
 NOTEBOOK_NOTE = """
@@ -54,16 +55,28 @@ def _default_agent(pipeline, on_event, **kwargs):
 
 
 def agent_from_settings(get_settings: Callable[[], object], notebook: bool = False):
-    """Agent factory using Preferences › Claude (model, effort), read when a chat starts;
-    ``notebook`` tells Claude about the notebook it sits beside."""
+    """Agent factory using Preferences › AI (provider, model, connection, effort), read when a
+    chat starts; ``notebook`` tells the model about the notebook it sits beside. The factory's
+    ``assistant()`` names the provider's assistant for the chat ("Claude", "Gemini", ...)."""
     def factory(pipeline, on_event):
-        s = get_settings()
-        kwargs = {"model": s["llm.model"], "effort": s["llm.effort"]}
+        from ..llm.providers import from_settings
+
+        kwargs = from_settings(get_settings())
         if notebook:
             from ..llm.agent import SYSTEM_PROMPT
 
             kwargs["system"] = SYSTEM_PROMPT + NOTEBOOK_NOTE
         return _default_agent(pipeline, on_event, **kwargs)
+
+    def assistant() -> str:
+        from ..llm import providers
+
+        try:
+            return providers.get(get_settings()["llm.provider"]).assistant
+        except Exception:
+            return "AI"
+
+    factory.assistant = assistant
     return factory
 
 
@@ -156,7 +169,7 @@ class Message(QtWidgets.QWidget):
     """One chat message: ``role`` is "user" (bubble on the right), "assistant" (avatar and
     answer on the left) or "note" (a centered, muted line)."""
 
-    def __init__(self, role: str, text: str = "", meta: str = "", insert=None, parent=None):
+    def __init__(self, role: str, text: str = "", meta: str = "", insert=None, parent=None, author: str = "AI"):
         super().__init__(parent)
         self.role, self.text, self.meta = role, text, meta
         self.code_blocks: list[CodeBlock] = []
@@ -180,13 +193,13 @@ class Message(QtWidgets.QWidget):
             label.setAlignment(QtCore.Qt.AlignCenter)
             row.addWidget(label)
             return
-        avatar = QtWidgets.QLabel("C", objectName="chatAvatar", alignment=QtCore.Qt.AlignCenter)
+        avatar = QtWidgets.QLabel(author[:1].upper() or "A", objectName="chatAvatar", alignment=QtCore.Qt.AlignCenter)
         avatar.setFixedSize(26, 26)
         row.addWidget(avatar, 0, QtCore.Qt.AlignTop)
         self.body = QtWidgets.QVBoxLayout()
         self.body.setContentsMargins(0, 2, 0, 0)
         self.body.setSpacing(6)
-        self.body.addWidget(QtWidgets.QLabel("Claude", objectName="chatAuthor"))
+        self.body.addWidget(QtWidgets.QLabel(author, objectName="chatAuthor"))
         self.steps = QtWidgets.QVBoxLayout()
         self.steps.setSpacing(2)
         self.body.addLayout(self.steps)
@@ -198,7 +211,7 @@ class Message(QtWidgets.QWidget):
             self.set_answer(text)
 
     def add_step(self, name: str):
-        """A tool Claude runs: a chip that turns from running to done."""
+        """A tool the model runs: a chip that turns from running to done."""
         if self.steps.count():
             _step_done(self.steps.itemAt(self.steps.count() - 1).widget())
         chip = QtWidgets.QLabel(f"Running {name}…", objectName="chatStep")
@@ -224,11 +237,12 @@ class Message(QtWidgets.QWidget):
 
 
 class AskPanel(QtWidgets.QWidget):
-    """Chat with Claude about the current selection and notebook.
+    """Chat with the AI model about the current selection and notebook.
 
     ``context()`` returns ``(pipeline, frame, indices)`` for the moment Ask is pressed
     (``indices`` may be empty). ``agent_factory(pipeline, on_event)`` builds the agent; tests
-    pass a fake. ``pipelineChanged`` fires after an answer when Claude changed the modifiers.
+    pass a fake; its ``assistant()``, when it has one, names who answers.
+    ``pipelineChanged`` fires after an answer when the model changed the modifiers.
     ``notebook()``, when given, returns the current notebook's code (or None): it goes with a
     question whenever it changed, and Python blocks in answers offer Insert as cell
     (``insertRequested(code)``).
@@ -279,7 +293,7 @@ class AskPanel(QtWidgets.QWidget):
         # --- composer: a rounded box with the input and a round send button
         composer = QtWidgets.QFrame(objectName="chatComposer")
         self.input = QtWidgets.QPlainTextEdit(objectName="chatInput")
-        self.input.setPlaceholderText("Message Claude…")
+        self.input.setPlaceholderText("Ask AI…")
         self.input.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.input.setFixedHeight(64)
         self.input.installEventFilter(self)
@@ -295,7 +309,7 @@ class AskPanel(QtWidgets.QWidget):
         cl.addWidget(self.input, 1)
         cl.addWidget(self.ask_button, 0, QtCore.Qt.AlignBottom)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self.input, activated=self.ask)
-        hint = QtWidgets.QLabel("Claude can make mistakes; numbers come from ewald's tools.", objectName="chatHint",
+        hint = QtWidgets.QLabel("AI can make mistakes; numbers come from ewald's tools.", objectName="chatHint",
                                 alignment=QtCore.Qt.AlignCenter)
 
         lay = QtWidgets.QVBoxLayout(self)
@@ -316,13 +330,13 @@ class AskPanel(QtWidgets.QWidget):
         lay = QtWidgets.QVBoxLayout(w)
         lay.setContentsMargins(0, 24, 0, 0)
         lay.setSpacing(8)
-        avatar = QtWidgets.QLabel("C", objectName="chatAvatarLarge", alignment=QtCore.Qt.AlignCenter)
+        avatar = QtWidgets.QLabel("AI", objectName="chatAvatarLarge", alignment=QtCore.Qt.AlignCenter)
         avatar.setFixedSize(44, 44)
         lay.addWidget(avatar, 0, QtCore.Qt.AlignHCenter)
-        title = "Ask Claude about this notebook" if self.notebook is not None else "Ask Claude about this structure"
+        title = "Ask AI about this notebook" if self.notebook is not None else "Ask AI about this structure"
         lay.addWidget(QtWidgets.QLabel(title, objectName="chatWelcomeTitle", alignment=QtCore.Qt.AlignCenter))
         sub = QtWidgets.QLabel("Pick atoms in the viewport (Shift+click adds more) to ask about them; "
-                               "steps Claude adds show up in the pipeline.", objectName="chatHint",
+                               "steps the AI adds show up in the pipeline.", objectName="chatHint",
                                alignment=QtCore.Qt.AlignCenter, wordWrap=True)
         lay.addWidget(sub)
         self.starters = []
@@ -355,11 +369,19 @@ class AskPanel(QtWidgets.QWidget):
         self.selection_label.style().unpolish(self.selection_label)
         self.selection_label.style().polish(self.selection_label)
 
+    def assistant(self) -> str:
+        """Who answers, as the chat names it: the provider's assistant ("Claude", "Gemini", ...)."""
+        name = getattr(self.agent_factory, "assistant", None)
+        try:
+            return name() if callable(name) else "AI"
+        except Exception:
+            return "AI"
+
     def busy(self) -> bool:
         return self.worker is not None and self.worker.isRunning()
 
     def text(self) -> str:
-        """The conversation as plain text (user, Claude and notes, code included)."""
+        """The conversation as plain text (user, assistant and notes, code included)."""
         return "\n\n".join(f"{m.role}: {m.text}" + (f" ({m.meta})" if m.meta else "") for m in self.messages)
 
     def _add(self, message: Message) -> Message:
@@ -423,8 +445,8 @@ class AskPanel(QtWidgets.QWidget):
                 self.agent = self.agent_factory(pipeline, self._on_event_threadsafe)
             except Exception as exc:
                 self._add(Message("user", question))
-                m = self._add(Message("assistant"))
-                m.set_answer(f"**Claude is not available.** {_SETUP_HINT}\n\n`{type(exc).__name__}: {exc}`",
+                m = self._add(Message("assistant", author=self.assistant()))
+                m.set_answer(f"**The AI is not available.** {_SETUP_HINT}\n\n`{type(exc).__name__}: {exc}`",
                              error=True)
                 return
             self._agent_pipeline = pipeline
@@ -444,7 +466,7 @@ class AskPanel(QtWidgets.QWidget):
                 agent.toolset.frame = frame
             agent.toolset.selection = None
             job = lambda: agent.ask(prompt)  # noqa: E731
-        self._pending = self._add(Message("assistant", insert=self._insert))
+        self._pending = self._add(Message("assistant", insert=self._insert, author=self.assistant()))
         self.worker = _Worker(job, self)
         self.worker.event.connect(self._on_event)
         self.worker.answered.connect(self._on_answer)
@@ -478,9 +500,10 @@ class AskPanel(QtWidgets.QWidget):
         self._finish()
 
     def _on_failed(self, message):
-        self._sent_notebook = None  # the notebook may not have reached Claude: send it again
+        self._sent_notebook = None  # the notebook may not have reached the model: send it again
         low = message.lower()
-        hint = f" {_SETUP_HINT}" if any(w in low for w in ("anthropic", "api_key", "authentication")) else ""
+        hint = f" {_SETUP_HINT}" if any(w in low for w in ("anthropic", "openai", "api_key", "api key",
+                                                            "authentication", "no ai provider")) else ""
         if self._pending is not None:
             self._pending.set_answer(f"**Error.** `{message}`{hint}", error=True)
         self._finish()

@@ -131,7 +131,7 @@ pipe.render("fig.png")                                    # draws with pipe.view
 
 Per-atom colors, sizes and hiding by condition are steps (`ewald.paint`: `paint`, `hide`, `fade`, `resize`), and
 polyhedra, isosurfaces and vector arrows come from modifiers (`CoordinationPolyhedra`, `VectorVis`, ...).
-Claude's `set_view` / `get_view` tools take the same settings.
+The AI's `set_view` / `get_view` tools take the same settings.
 
 ## Other entry points
 
@@ -166,7 +166,7 @@ Claude's `set_view` / `get_view` tools take the same settings.
   structure); `ewald.radii.resolve(data, "ionic").summary()` shows what was used. A "Radius" property or
   `type_radii` wins.
 - `ewald.llm.describe_frame(data)` / `describe_trajectory(pipe)`: compact JSON summaries and detected events.
-- `ewald.llm.narrate(pipe)`: event timeline; `ewald.llm.Agent.from_file(path).ask("...")`: Claude over these tools.
+- `ewald.llm.narrate(pipe)`: event timeline; `ewald.llm.Agent.from_file(path, provider="anthropic").ask("...")`: an AI model (Claude, OpenAI, Gemini, a local server) over these tools.
 '''
 
 

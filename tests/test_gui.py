@@ -484,7 +484,7 @@ def test_viewport_context_menu_follows_data_and_picks(app, cu_fcc, tmp_path):
     w.set_pipeline(Pipeline(StaticSource([cu_fcc])))
     menu = entries(w.viewport_menu())
     assert "Load file…" not in menu and "Play" not in menu and "Clear picks" not in menu  # one frame, no picks
-    assert "View along" in menu and "Ask Claude about this structure…" in menu
+    assert "View along" in menu and "Ask AI about this structure…" in menu
     w.viewport.set_tool("pick")
     w.viewport.add_pick(3)
     w.viewport.add_pick(5, extend=True)
@@ -526,7 +526,7 @@ def test_main_window_smoke(app, pipe, tmp_path):
     w.close()
 
 
-def test_preferences_claude_page_saves_key_outside_settings(app, monkeypatch):
+def test_preferences_ai_page_saves_key_outside_settings(app, monkeypatch):
     from ewald import settings
     from ewald.gui.preferences import PreferencesDialog
     from ewald.llm import credentials
@@ -534,7 +534,8 @@ def test_preferences_claude_page_saves_key_outside_settings(app, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr(credentials, "_keyring", lambda: None)   # file fallback, like a headless box
     checked = []
-    monkeypatch.setattr(credentials, "check", lambda key, model: checked.append((key, model)) or (True, "Connected"))
+    monkeypatch.setattr(credentials, "check",
+                        lambda key, model, **kw: checked.append((key, model, kw["provider"].name)) or (True, "Connected"))
     s = settings.load()
     dlg = PreferencesDialog(s)
     assert "Not set" in dlg.key_status.text()
@@ -542,7 +543,7 @@ def test_preferences_claude_page_saves_key_outside_settings(app, monkeypatch):
     dlg.key_edit.setText("sk-ant-gui-key-0123456789")
     dlg.set_value("llm.model", "claude-sonnet-5-5")
     dlg.test_api_key(wait=True)
-    assert checked == [("sk-ant-gui-key-0123456789", "claude-sonnet-5-5")]
+    assert checked == [("sk-ant-gui-key-0123456789", "claude-sonnet-5-5", "anthropic")]
     assert dlg.key_result.text() == "Connected"
     assert credentials.get_api_key() == (None, None)          # nothing saved before Apply
     dlg.apply()
@@ -551,16 +552,68 @@ def test_preferences_claude_page_saves_key_outside_settings(app, monkeypatch):
     assert "sk-ant" not in s.path.read_text() and settings.load()["llm.model"] == "claude-sonnet-5-5"
     dlg._search("api key")
     visible = {dlg.pages.item(i).text() for i in range(dlg.pages.count()) if not dlg.pages.item(i).isHidden()}
-    assert visible == {"Claude"}
+    assert visible == {"AI"}
     dlg._search("")
     dlg.remove_api_key()
     assert credentials.get_api_key()[0] is not None            # removal waits for Apply too
     dlg.apply()
     assert credentials.get_api_key() == (None, None)
+    # another provider: its own key field, model suggestions and server address
+    model = dlg.editors["llm.model"][0]
+    assert "Anthropic" in dlg.key_label.text() and model.itemText(0) == "claude-opus-5-5"
+    dlg.set_value("llm.provider", "openai-compatible")
+    assert dlg.work["llm.provider"] == "openai-compatible" and dlg.work["llm.model"] == ""
+    assert "OpenAI-compatible" in dlg.key_label.text() and "optional" in dlg.key_label.text()
+    assert model.itemText(0) == "llama3.1" and "llama3.1" in model.lineEdit().placeholderText()
+    assert "11434" in dlg.editors["llm.base_url"][0].placeholderText()
+    dlg.set_value("llm.model", "qwen3:8b")                     # any id the server knows
+    dlg.apply()
+    saved = settings.load()
+    assert saved["llm.provider"] == "openai-compatible" and saved["llm.model"] == "qwen3:8b"
     dlg.close()
 
 
-def test_ask_panel_agent_uses_claude_preferences(app, monkeypatch):
+def test_preferences_ai_gateway_rows_and_saved_connections(app, monkeypatch):
+    from ewald import settings
+    from ewald.gui.preferences import PreferencesDialog
+    from ewald.llm import credentials
+
+    monkeypatch.setattr(credentials, "_keyring", lambda: None)
+    monkeypatch.setenv("GATEWAY_BASE_URL", "http://gw.example/v1")
+    monkeypatch.setenv("GATEWAY_CREDENTIAL", "credential:T-12345678")
+    monkeypatch.setenv("GATEWAY_USER_ID", "user1")
+    s = settings.load()
+    dlg = PreferencesDialog(s)
+    rows = {k: dlg.editors[k][2] for k in ("llm.route_prefix", "llm.user_id", "llm.system_name", "llm.effort")}
+    assert rows["llm.user_id"].isHidden() and not rows["llm.effort"].isHidden()   # Claude: no gateway rows
+    dlg.set_value("llm.provider", "gateway")
+    assert not rows["llm.user_id"].isHidden() and not rows["llm.route_prefix"].isHidden()
+    assert rows["llm.effort"].isHidden()
+    assert dlg.editors["llm.base_url"][0].placeholderText() == "http://gw.example/v1"
+    assert dlg.editors["llm.user_id"][0].placeholderText() == "user1"
+    assert "GATEWAY_CREDENTIAL" in dlg.key_status.text() and "credential" in dlg.key_label.text().lower()
+    dlg.set_value("llm.model", "model-a")
+    dlg.set_value("llm.route_prefix", "openai/")
+    dlg.set_value("llm.system_name", "my-lab")
+    dlg.save_profile("hub")
+    dlg.set_value("llm.provider", "openai-compatible")
+    dlg.set_value("llm.model", "qwen3:8b")
+    dlg.save_profile("local")
+    assert rows["llm.user_id"].isHidden() and not rows["llm.route_prefix"].isHidden()
+    dlg.load_profile("hub")
+    assert (dlg.work["llm.provider"], dlg.work["llm.model"], dlg.work["llm.system_name"]) == ("gateway", "model-a",
+                                                                                              "my-lab")
+    dlg.apply()
+    saved = settings.load()
+    assert set(saved["llm.profiles"]) == {"hub", "local"} and saved["llm.provider"] == "gateway"
+    assert "TICKET" not in s.path.read_text()
+    box = dlg.editors["llm.profiles"][0]
+    box.remove("local")
+    assert set(dlg.work["llm.profiles"]) == {"hub"}
+    dlg.close()
+
+
+def test_ask_panel_agent_uses_ai_preferences(app, monkeypatch):
     from ewald import settings
     from ewald.gui import ask_panel
 
@@ -569,7 +622,19 @@ def test_ask_panel_agent_uses_claude_preferences(app, monkeypatch):
     s = settings.load()
     s["llm.model"], s["llm.effort"] = "claude-haiku-5-5", "low"
     ask_panel.agent_from_settings(lambda: s)(None, None)
-    assert made == [{"model": "claude-haiku-5-5", "effort": "low"}]
+    kw = made[-1]
+    assert (kw["provider"].name, kw["model"], kw["effort"]) == ("anthropic", "claude-haiku-5-5", "low")
+    s["llm.provider"], s["llm.model"], s["llm.base_url"] = "openai-compatible", "", "http://localhost:1234/v1"
+    s["llm.headers"] = "X-Team: md"
+    factory = ask_panel.agent_from_settings(lambda: s)
+    factory(None, None)
+    kw = made[-1]
+    assert (kw["provider"].name, kw["model"], kw["provider"].base_url) == ("openai-compatible", None,
+                                                                          "http://localhost:1234/v1")
+    assert kw["provider"].client_options["default_headers"] == {"X-Team": "md"}
+    assert factory.assistant() == "AI"
+    s["llm.provider"] = "gemini"
+    assert factory.assistant() == "Gemini"
 
 
 def test_preferences_dialog_edit_search_restore(app, tmp_path):
@@ -2394,7 +2459,7 @@ def test_menu_audit_fixes(app, cu_fcc):
     texts = [a.text().replace("&", "") for a in acts]
     pal = next(a for a in acts if a.text() == "Command palette")
     assert pal.shortcut() == QtGui.QKeySequence("Ctrl+K")
-    assert texts.count("AI chat") == 1 and "Ask Claude about selection…" not in texts
+    assert texts.count("AI chat") == 1 and "Ask AI about selection…" not in texts
     assert next(a for a in acts if a.text() == "AI chat").shortcut() == QtGui.QKeySequence("Ctrl+J")
     assert "Restart and run all" not in texts and "Load plugin file…" not in texts
     assert "Dark background" not in [a.text() for a in w.menuBar().actions()[2].menu().actions()]

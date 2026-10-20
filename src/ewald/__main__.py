@@ -70,22 +70,25 @@ def build_parser():
     d.add_argument("--frame", type=int, default=0)
     d.add_argument("--trajectory", action="store_true", help="scan frames and report events")
     d.add_argument("--type-map", default=None)
-    q = sub.add_parser("ask", help="ask Claude about a structure (needs anthropic + credentials)")
+    q = sub.add_parser("ask", help="ask AI about a structure (Claude by default; needs the provider's package + key)")
     q.add_argument("input")
     q.add_argument("question", nargs="+")
     q.add_argument("--type-map", default=None)
     q.add_argument("--model", default=None)
-    q.add_argument("--allow-code", action="store_true", help="let Claude run Python in this process")
+    _ai_arguments(q)
+    q.add_argument("--allow-code", action="store_true", help="let the AI run Python in this process")
     q.add_argument("--script", default=None, help="write the resulting pipeline as a Python script")
     q.add_argument("--select", default=None, metavar="EXPR",
                    help="ask about these particles, e.g. 'ParticleIdentifier == 17' or 'Position.Z > 20'")
     q.add_argument("--ids", default=None, help="ask about these Particle Identifiers (comma-separated)")
     q.add_argument("--frame", type=int, default=0, help="frame for --select/--ids (default 0)")
-    n = sub.add_parser("narrate", help="timeline of events in a trajectory (Claude writes it if available)")
+    n = sub.add_parser("narrate", help="timeline of events in a trajectory (an AI writes it if available)")
     n.add_argument("input")
     n.add_argument("--type-map", default=None)
     n.add_argument("--no-llm", action="store_true", help="rule-based titles only")
-    n.add_argument("--render", action="store_true", help="show Claude renders of the frames around events")
+    n.add_argument("--render", action="store_true", help="show the AI renders of the frames around events")
+    n.add_argument("--model", default=None)
+    _ai_arguments(n)
     n.add_argument("--json", action="store_true", help="print JSON instead of Markdown")
     a = sub.add_parser("api", help="print the Python API reference for LLMs (llms.txt)")
     a.add_argument("--with-plugins", action="store_true", help="append the modifier plugins installed here")
@@ -93,13 +96,14 @@ def build_parser():
     pl.add_argument("--json", action="store_true")
     pl.add_argument("--enable", metavar="ID", help="switch a disabled plugin back on")
     pl.add_argument("--disable", metavar="ID", help="switch a plugin off (it stays installed; its code is not imported)")
-    f = sub.add_parser("forge", help="have Claude write a modifier plugin, test it and save it")
+    f = sub.add_parser("forge", help="have an AI write a modifier plugin, test it and save it")
     f.add_argument("request", nargs="+", help="the analysis, in words")
     f.add_argument("--yes", action="store_true", help="run and save the generated code without asking")
-    f.add_argument("--draft", action="store_true", help="print Claude's first draft; run and save nothing")
+    f.add_argument("--draft", action="store_true", help="print the AI's first draft; run and save nothing")
     f.add_argument("--overwrite", action="store_true", help="replace a plugin file of the same name")
     f.add_argument("--rounds", type=int, default=4, help="attempts to fix failing checks (default 4)")
     f.add_argument("--model", default=None)
+    _ai_arguments(f)
     m = sub.add_parser("mcp", help="serve the analysis tools over MCP (stdio)")
     m.add_argument("input", nargs="?")
     m.add_argument("--allow-code", action="store_true")
@@ -135,7 +139,7 @@ def build_parser():
 
 
 # optional package -> the extra that installs it (for "ewald CMD" without that extra)
-EXTRAS = {"PySide6": "gui", "pyvistaqt": "gui", "qtconsole": "gui", "anthropic": "llm", "mcp": "llm",
+EXTRAS = {"PySide6": "gui", "pyvistaqt": "gui", "qtconsole": "gui", "anthropic": "llm", "openai": "llm", "mcp": "llm",
           "anyio": "llm", "h5py": "formats", "MDAnalysis": "formats",
           "cupy": "gpu", "imageio_ffmpeg": "movie"}
 
@@ -265,15 +269,13 @@ def _run(args):
 
         from .llm.narrate import narrate
 
-        client = None
+        client, ai = None, _ai_options(args, effort=False)
         if not args.no_llm:
             try:
-                from .llm.credentials import client as make_client
-
-                client = make_client()
+                client = ai["provider"].client(model=ai["model"])
             except Exception as exc:  # no SDK or no credentials: fall back to rule-based titles
-                print(f"(no Claude client: {exc}; using rule-based titles)")
-        tl = narrate(pipe, client, render=args.render)
+                print(f"(no AI client: {exc}; using rule-based titles)")
+        tl = narrate(pipe, client, render=args.render, provider=ai["provider"], model=ai["model"])
         print(json.dumps(tl.to_dict(), indent=1, default=float) if args.json else tl.to_markdown())
         return
     if args.cmd == "ask":
@@ -281,7 +283,7 @@ def _run(args):
 
         ts = Toolset(pipe, allow_code=args.allow_code)
         ts._source_call = {"path": args.input, "kwargs": kw}
-        agent = Agent(ts, **({"model": args.model} if args.model else {}),
+        agent = Agent(ts, **_ai_options(args),
                       on_event=lambda kind, p: print(f"  -> {p['name']}({p['input']})")
                       if kind == "tool_call" else None)
         question = " ".join(args.question)
@@ -424,17 +426,39 @@ def _print_plugins(as_json=False, enable=None, disable=None):
         print(f"theme {v['name']:<25} {'':<14} {v['description'][:60]}  [{v['origin']}]")
     for v in st.get("ui_themes", []):
         print(f"ui theme {v['name']:<22} {v['base']:<14} {v['description'][:60]}  [{v['origin']}]")
+    for v in st.get("ai_providers", []):
+        print(f"ai provider {v['name']:<19} {v['label'][:14]:<14} {v['description'][:60]}  [{v['origin']}]")
     for origin, err in st["errors"].items():
         print(f"FAILED {origin}: {err}")
     return 1 if st["errors"] else None
 
 
+def _ai_arguments(parser):
+    parser.add_argument("--provider", default=None,
+                        help="AI provider: anthropic, openai, gemini, openai-compatible, gateway or a plugin's "
+                             "(default: Preferences > AI)")
+    parser.add_argument("--profile", default=None, metavar="NAME",
+                        help="a connection saved in Preferences > AI (provider, model, address, headers)")
+    parser.add_argument("--base-url", default=None, help="server address (OpenAI-compatible server, gateway)")
+
+
+def _ai_options(args, effort: bool = True) -> dict:
+    """provider (connected), model and effort for an AI command: the flags, else the saved
+    connection ``--profile``, else Preferences > AI."""
+    from .llm.providers import from_settings
+
+    ai = from_settings(profile=args.profile, provider=args.provider, model=args.model, base_url=args.base_url)
+    if not effort:
+        ai.pop("effort")
+    return ai
+
+
 def _forge(args):
-    from .llm.forge import DEFAULT_MODEL, forge
+    from .llm.forge import forge
 
     request = " ".join(args.request)
     if not (args.draft or args.yes):
-        answer = input("Claude's code will run on this machine (a subprocess with a time limit, "
+        answer = input("The AI's code will run on this machine (a subprocess with a time limit, "
                        "not a sandbox) to test it. Continue? [y/N] ")
         if answer.strip().lower() not in ("y", "yes"):
             print("cancelled; use --draft to only see the code")
@@ -455,7 +479,7 @@ def _forge(args):
         answer = input("Tests passed. Save this plugin? It is loaded every time ewald starts. [y/N] ")
         return answer.strip().lower() in ("y", "yes")
 
-    result = forge(request, model=args.model or DEFAULT_MODEL, run_code=not args.draft, max_rounds=args.rounds,
+    result = forge(request, **_ai_options(args, effort=False), run_code=not args.draft, max_rounds=args.rounds,
                    overwrite=args.overwrite, on_event=show, confirm=confirm)
     if args.draft:
         print(result.module_source)
@@ -464,7 +488,7 @@ def _forge(args):
         return
     print(result.summary())
     if result.ok and result.path:
-        print(f"use it: from ewald.modifiers import {result.class_name}  (also in the GUI and Claude's tools)")
+        print(f"use it: from ewald.modifiers import {result.class_name}  (also in the GUI and the AI tools)")
     elif result.ok:
         print("not saved")
     return None if result.ok else 1

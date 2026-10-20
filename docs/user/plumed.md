@@ -140,7 +140,7 @@ pipeline.
 
 ## With Claude
 
-The Claude tools `compute_plumed_cvs` (runs an input on the loaded trajectory and keeps the
+The AI tools `compute_plumed_cvs` (runs an input on the loaded trajectory and keeps the
 `Plumed` modifier in the pipeline, so `get_script` reproduces it) and `read_plumed_output`
 (COLVAR statistics, or the FES of a HILLS file with its minimum and a plot) let you ask, for
 example, "compute the O-H coordination of the first water and tell me when it changes".

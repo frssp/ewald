@@ -56,7 +56,7 @@ decided yet and comes later, if at all.
 ```bash
 pip install -e ".[gui]"     # the desktop app (PySide6, VTK); leave out [gui] for scripts only
 pip install -e ".[gpu]"     # + CuPy for device="cuda" (NVIDIA)
-pip install -e ".[llm]"     # + Claude (Ask Claude, ewald ask)
+pip install -e ".[llm]"     # + AI: Claude, OpenAI, Gemini, local models (Ask AI, ewald ask)
 # files on SSH hosts and saved remote computers work in every install (paramiko, keyring)
 ```
 
@@ -161,15 +161,15 @@ timeline. [File formats](docs/user/formats.md)
 journal size presets, overlays (legends, color bars, scale bars, text) and movies.
 [Rendering figures](docs/user/rendering.md)
 
-**Claude.** Ask Claude about the atoms you picked, or ask for an analysis in words: Claude works
-through the same tools and its steps land in the notebook as ordinary code. `ewald ask`, `ewald
+**AI.** Ask AI about the atoms you picked, or ask for an analysis in words: Claude (the default),
+OpenAI, Gemini or a model on your own machine (Ollama, LM Studio) works through the same tools and its steps land in the notebook as ordinary code. `ewald ask`, `ewald
 describe` and an MCP server (`ewald mcp`) do the same from a shell or Claude Code, and `llms.txt`
-is an API reference for agents that write EWALD code. [Claude integration](docs/user/claude.md)
+is an API reference for agents that write EWALD code. [AI integration](docs/user/claude.md)
 
-**Plugins.** Readers, writers, modifiers, visual elements, overlays, color maps, themes and Claude
-tools are all plugins, built-in ones included (`ewald plugins --disable vasp` switches a core
+**Plugins.** Readers, writers, modifiers, visual elements, overlays, color maps, themes, AI
+tools and AI providers are all plugins, built-in ones included (`ewald plugins --disable vasp` switches a core
 format off). The Plugins side bar (Ctrl+Shift+X) installs them from catalogs, and Modifier Forge has
-Claude write and test a new one. PLUMED and phonon modes (phonopy, VASP IBRION=5-8) are the
+the AI write and test a new one. PLUMED and phonon modes (phonopy, VASP IBRION=5-8) are the
 first-party `ewald-plumed` and `ewald-phonopy` plugins in
 [frssp/ewald-plugins](https://github.com/frssp/ewald-plugins).
 [Plugins](docs/plugins/index.md)

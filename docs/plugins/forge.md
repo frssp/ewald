@@ -1,6 +1,6 @@
 # Modifier Forge
 
-Modifier Forge has Claude write a [modifier plugin](modifiers.md) from a description. ewald
+Modifier Forge has an AI model (Claude by default) write a [modifier plugin](modifiers.md) from a description. ewald
 then tests the plugin and saves it only once every check passes:
 
 ```bash
@@ -32,7 +32,7 @@ no other plugins loaded, and checks:
 Every failure goes back to Claude with its traceback, and Claude fixes the code or the test.
 This repeats up to four times (`--rounds`, `max_rounds=`). A version that passes is written to
 `<config dir>/plugins/<module>.py`, with its tests in `<config dir>/plugins/_forge_tests/`.
-From then on it appears in the GUI menu, in the Claude tools and as
+From then on it appears in the GUI menu, in the AI tools and as
 `from ewald.modifiers import <Class>`. A failing version is never saved.
 
 ## Running generated code
@@ -57,7 +57,8 @@ ewald starts (`--yes` saves without asking; from Python, `forge(..., confirm=fn)
 | `--draft` | `run_code=False` | print the first draft only |
 | `--overwrite` | `overwrite=True` | replace a plugin file of the same name |
 | `--rounds N` | `max_rounds=N` | attempts to fix failing checks |
-| `--model` | `model=` | the Claude model (needs `pip install ewald[llm]` and an API key) |
+| `--model` | `model=` | the model (needs `pip install ewald[llm]` and an API key) |
+| `--provider`, `--base-url` | `provider=`, `base_url=` | the AI provider and its address (default: Preferences › AI) |
 
 `forge` also takes `client=`, any object with `messages.create` (the tests use a scripted
 fake), `save=False` to verify without saving, and `on_event(kind, result)`, called with

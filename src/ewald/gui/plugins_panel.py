@@ -119,7 +119,7 @@ class PluginsPanel(QtWidgets.QWidget):
 
     changed = QtCore.Signal()               # plugins were loaded or removed
     stepRequested = QtCore.Signal(object)   # a modifier instance to add to the notebook
-    createRequested = QtCore.Signal(str)    # a prompt for Ask Claude to write a new plugin
+    createRequested = QtCore.Signal(str)    # a prompt for the AI to write a new plugin
     updatesChanged = QtCore.Signal(int)     # how many installed plugins a catalog has a newer version of
 
     def __init__(self, settings=None, parent=None):
@@ -161,7 +161,7 @@ class PluginsPanel(QtWidgets.QWidget):
         row = QtWidgets.QHBoxLayout()
         for text, slot, tip in (("From file…", self.install_from_file, "Install a plugin .py file"),
                                 ("pip…", self.install_with_pip, "Install a plugin package with pip"),
-                                ("Create…", self.create_with_claude, "Ask Claude to write a new plugin"),
+                                ("Create…", self.create_with_claude, "Ask AI to write a new plugin"),
                                 ("Folder", self.open_folder, "Open the plugin folder"),
                                 ("Refresh", self.refresh, "Reload the installed plugins and the catalogs")):
             b = QtWidgets.QToolButton(text=text, toolTip=tip)
@@ -345,7 +345,7 @@ class PluginsPanel(QtWidgets.QWidget):
             self._run_pip("install", req.strip())
 
     def create_with_claude(self):
-        what, ok = QtWidgets.QInputDialog.getText(self, "Create a plugin with Claude",
+        what, ok = QtWidgets.QInputDialog.getText(self, "Create a plugin with AI",
                                                   "What should the new step compute?")
         if ok and what.strip():
             self.createRequested.emit(

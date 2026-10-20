@@ -284,7 +284,7 @@ nb.set_kernel(None)                                              # back to this 
 Edit › Undo (Ctrl+Z) and Redo (Ctrl+Shift+Z) step through the notebook's edits, one entry per
 action: inserting, deleting or moving a cell, running cells (with what you typed into them), a
 step form (dragging one slider counts once) and pipeline changes made from elsewhere (console,
-Ask Claude, viewport tools). The menu names the entry it would undo. While the cursor is in a
+Ask AI, viewport tools). The menu names the entry it would undo. While the cursor is in a
 cell, Ctrl+Z undoes typing in that cell instead.
 
 Undo restores the cells' text. Step and view cells that come back or change run again, so the
@@ -310,7 +310,7 @@ newer version (the Plugins icon on the activity bar then carries the number of u
 ([Switching a plugin off](../plugins/packaging.md#switching-a-plugin-off)); disabled,
 incompatible and failed plugins say so in their row. *Remove* moves a file to the plugin
 folder's `.removed` folder (its steps stay available until ewald restarts). Selecting a modifier plugin shows its documentation
-and *Add as a step in the notebook*. *Create…* asks Claude to write a new plugin.
+and *Add as a step in the notebook*. *Create…* asks the AI to write a new plugin.
 
 Plugin modifiers ([Writing plugins](../plugins/index.md)) are steps like the built-in ones.
 Insert › Plugin step (or **+ Plugin**) lists the installed ones and writes the import line for
@@ -323,7 +323,7 @@ load_plugin_file("~/plugins/local_strain.py")
 ```
 
 Modifiers added outside the cells become step cells in the right place. That covers the Python
-console, Ask Claude, a plot's *Keep as selection*, the bond tool and the phonon band plot. Steps
+console, Ask AI, a plot's *Keep as selection*, the bond tool and the phonon band plot. Steps
 whose modifier was removed disappear. The console sees the notebook's variables, and `notebook`
 is the notebook object itself.
 
@@ -351,7 +351,8 @@ sent.run_all()
 
 The notebook layout is the only one (the OVITO-style "classic" layout was removed). Display
 settings (particle radii and colors, bonds, cell and visual plugins) are in the **Display** panel
-on the right; the AI chat with Claude opens left of the notebook from the activity bar, and code from its answers can be inserted as cells. View › Focus on the viewport (Ctrl+\\)
+on the right; the AI chat opens left of the notebook from the activity bar, and code from its
+answers can be inserted as cells. View › Focus on the viewport (Ctrl+\\)
 hides the panels, and pressing it again brings them back. The chevron at the right of a panel's title bar (for the
 Notebook panel, at the right of its tab row; or a double-click on the title) folds that panel: the Notebook, Plugins, Display and AI chat
 panels fold to a thin strip with their name written down it, and the Data panel to its title

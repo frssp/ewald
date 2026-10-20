@@ -11,7 +11,7 @@ file ──reader──▶ source ──▶ Pipeline ──modifiers──▶ Da
 `import_file` picks a reader and wraps it in a `FileSource`. A `Pipeline` holds the source and
 a list of modifiers; `pipe.compute(frame, device=...)` reads (or takes from the cache) the
 source frame, runs each enabled modifier on a `ComputeContext` that carries the array backend,
-and returns a `DataCollection`. Renderers, the GUI and the Claude tools only consume that
+and returns a `DataCollection`. Renderers, the GUI and the AI tools only consume that
 result, which is why a figure made in the GUI can be printed as a script and an analysis asked
 for in words ends up as an ordinary pipeline.
 
@@ -37,7 +37,7 @@ for in words ends up as an ordinary pipeline.
 | `render.py`, `raytrace.py`, `vector.py` | draw a scene: VTK/PyVista (impostors above 150k atoms), the numba ray tracer, SVG/PDF via matplotlib; each draws every primitive kind |
 | `settings.py` | user preferences as a registry of `Option`s, stored as JSON with only non-default values |
 | `gui/` | PySide6 main window, viewport, notebook panel, Display panel, generated parameter forms, render page, preferences, console, inspector, plots |
-| `llm/` | Claude agent, tools, descriptors, narration, MCP server, and `reference.py`, the source of `llms.txt` |
+| `llm/` | AI agent and providers (`providers.py`, `chat.py`), tools, descriptors, narration, MCP server, and `reference.py`, the source of `llms.txt` |
 
 ### One feature, three layers
 
@@ -60,7 +60,7 @@ than a core module.
 
 ## Principles
 
-**One API.** The GUI, the CLI and the Claude tools are clients of the Python API; none of them
+**One API.** The GUI, the CLI and the AI tools are clients of the Python API; none of them
 has analysis code of its own. A feature lands in the API first.
 
 **Follow OVITO.** Property names, attribute names, structure type ids, colors and modifier names
