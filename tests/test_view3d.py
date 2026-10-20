@@ -357,3 +357,37 @@ def test_atom_labels_render_in_every_renderer(srtio3, tmp_path):
         out = tmp_path / ("x.svg" if r == "vector" else "x.png")
         srtio3.render(out, renderer=r, size=(160, 120), quality="draft", labels={"text": "{type}", "types": ["Ti"]})
         assert out.stat().st_size > 0
+
+
+def test_light_setting_validates_and_round_trips(srtio3):
+    from ewald.render import DEFAULT_LIGHT, light_params
+    from ewald.view_style import ViewStyle
+
+    d, k = light_params(None)
+    assert np.allclose(d, np.array(DEFAULT_LIGHT) / np.linalg.norm(DEFAULT_LIGHT)) and k == 1
+    d, k = light_params({"azimuth": 90, "elevation": 0, "intensity": 2})
+    assert np.allclose(d, [1, 0, 0]) and k == 2
+    assert np.allclose(light_params({"elevation": 90})[0], [0, 1, 0])
+    for bad in ({"spot": 1}, {"direction": [0, 0, 0]}, {"intensity": -1}, {"direction": [0, 0, 1], "azimuth": 3}):
+        with pytest.raises((KeyError, ValueError)):
+            View(light=bad)
+    v = View(light=(0, 1, 1))
+    assert v.light == [0.0, 1.0, 1.0] and v.render_kwargs()["light"] == [0.0, 1.0, 1.0]
+    assert "light=[0.0, 1.0, 1.0]" in v.source()
+    st = ViewStyle()
+    st.apply_view(View(light={"azimuth": -30, "intensity": 0.8}), ["Sr"])
+    assert st.scene_kwargs()["light"] == {"azimuth": -30.0, "intensity": 0.8}
+    assert View(**st.view_settings(["Sr"])).changed()["light"] == {"azimuth": -30.0, "intensity": 0.8}
+
+
+def test_light_moves_the_highlight_in_every_renderer(srtio3):
+    renderers = ["raytrace", "vector"] + (["opengl"] if os.environ.get("DISPLAY") else [])
+    for r in renderers:
+        for style in (["auto", "impostor"] if r == "opengl" else ["auto"]):
+            kw = dict(renderer=r, size=(120, 120), quality="draft", direction="z", bonds=False, atom_style=style)
+            left = srtio3.view.render(light={"azimuth": -80, "elevation": 0}, **kw)[..., :3].astype(float)
+            right = srtio3.view.render(light={"azimuth": 80, "elevation": 0}, **kw)[..., :3].astype(float)
+            assert np.abs(left - right).mean() > 1, (r, style)
+            # mirrored lights: the left half is brighter when lit from the left
+            h = left.shape[1] // 2
+            assert left[:, :h].sum() - right[:, :h].sum() > right[:, h:].sum() - left[:, h:].sum() - 1e-6, (r, style)

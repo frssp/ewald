@@ -58,8 +58,7 @@ GUI
   pipeline yet (now it keeps the last one); image/figure cells; inline Ask AI suggestions
   as diffs; a snapshot cell that updates when the camera of its view changes (now it is code).
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
-  view does not have yet (light direction
-  and strength, picks and distance/angle measurements as
+  view does not have yet (picks and distance/angle measurements as
   code, the viewport axes widget; audit in the project files `ewald-review/view-elements-audit.md`);
   the Display panel cards (Atoms, Types, Bonds, Cell, Surfaces, Elements) could take the visual
   element names `pipe.view.elements` uses (Particles, Bonds, Simulation cell, ...); label size,
@@ -134,7 +133,8 @@ GUI
   folded for a single structure.
 - Shortcuts for the viewport tools (orbit, pick, distance, angle, bond) and view-along axes.
 - Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
-  screen edges) and VTK scene lights instead of the fixed head light; bond impostors.
+  screen edges); bond impostors. The `light` setting moves the key light; a fill/rim light and
+  shadows in the OpenGL view are not settable.
 - Flat (ASE) style in the ray tracer (now OpenGL and vector only), and a
   per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.

@@ -330,7 +330,7 @@ _SECTION_KEYS = {
     "Cell": ("cell", "cell_width", "cell_color", "replicate", "replicate_cell", "boundary", "boundary_bonds"),
     "Surfaces": ("surfaces",),
     "Elements": ("visuals", "vectors", "trajectory_width"),
-    "Camera": ("frame", "direction", "zoom", "orthographic", "camera"),
+    "Camera": ("frame", "direction", "zoom", "orthographic", "camera", "light"),
 }
 
 
@@ -1001,11 +1001,46 @@ class DisplayPanel(QtWidgets.QWidget):
         self._row(f, "Projection", QtWidgets.QLabel("orthographic" if ortho else "perspective",
                                                     objectName="viewValue"), "orthographic")
         self._row(f, "Frame", QtWidgets.QLabel(shown("frame", "the timeline's"), objectName="viewValue"), "frame")
+        box = self._light_editor()
+        self._marks.append((box, ("light",)))
+        f.addRow(box)
         save = QtWidgets.QPushButton("Save camera", toolTip="Write the current camera and frame into the "
                                                             "notebook's view(pipe, ...) cell")
         save.clicked.connect(self.cameraRequested.emit)
         f.addRow(save)
         return w
+
+    def _light_editor(self):
+        """The key light (the view's ``light``) as azimuth/elevation from the viewer and intensity; unchecked,
+        each renderer lights the scene its own default way."""
+        import math
+
+        from ..render import light_params
+
+        d, k = light_params(self.style.light)
+        box = QtWidgets.QGroupBox("Light", checkable=True, checked=self.style.light is not None)
+        box.setToolTip("Key light for the viewport and every renderer, relative to the viewer: azimuth turns it "
+                       "right, elevation up. Unchecked: the default light (upper left).")
+        az = QtWidgets.QDoubleSpinBox(minimum=-180, maximum=180, singleStep=15, decimals=0, suffix="°",
+                                      value=round(math.degrees(math.atan2(d[0], d[2]))))
+        el = QtWidgets.QDoubleSpinBox(minimum=-90, maximum=90, singleStep=15, decimals=0, suffix="°",
+                                      value=round(math.degrees(math.asin(max(-1.0, min(1.0, d[1]))))))
+        strength = QtWidgets.QDoubleSpinBox(minimum=0, maximum=3, singleStep=0.1, decimals=2, value=k)
+        self.light_widgets = {"box": box, "azimuth": az, "elevation": el, "intensity": strength}
+
+        def apply(*_):
+            self.style.light = {"azimuth": az.value(), "elevation": el.value(), "intensity": strength.value()} \
+                if box.isChecked() else None
+            self._emit()
+
+        box.toggled.connect(apply)
+        for spin in (az, el, strength):
+            spin.valueChanged.connect(apply)
+        g = QtWidgets.QFormLayout(box)
+        g.addRow("Azimuth", az)
+        g.addRow("Elevation", el)
+        g.addRow("Intensity", strength)
+        return box
 
 
 def _short(value) -> str:

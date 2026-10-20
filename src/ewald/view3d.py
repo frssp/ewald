@@ -73,6 +73,10 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        "'mesh', 'impostor' (fast GPU spheres) or 'flat' (outlined discs, like ASE).", ATOM_STYLES),
     _s("background", None, "style", "Background color (any matplotlib color); None: the theme's, else the "
        "viewport's dark grey on screen and white in rendered images.", type=["string", "array", "null"]),
+    _s("light", None, "style", "Key light, the same in the viewport and every renderer: a direction [x, y, z] in the "
+       "camera frame (x right, y up, z towards the viewer) or {'direction' or 'azimuth'/'elevation' (degrees, "
+       "right of and above the viewer), 'intensity' (1 = default)}; None: the default (upper left).",
+       type=["array", "object", "null"]),
     # atoms
     _s("atoms", True, "atoms", "Draw the atoms (the Particles element); False keeps bonds, polyhedra and the "
        "rest, e.g. a stick model."),
@@ -666,6 +670,12 @@ def _check(name, value):
             value = {k: (_color(v) if k == "color" and v is not None else v) for k, v in value.items()}
         elif value is False:
             value = None
+    elif name == "light":
+        from .render import light_params
+
+        light_params(value)   # fails on a bad value
+        value = {k: ([float(x) for x in v] if k == "direction" else float(v)) for k, v in value.items()} \
+            if isinstance(value, dict) else [float(x) for x in value]
     elif name == "selection":
         if not isinstance(value, bool):
             value = _color(value)

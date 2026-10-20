@@ -111,27 +111,38 @@ def _arrow_prims(data, vectors, camera, size, pt, shading, sides=16, arrow_sets=
     return prims
 
 
-def scene_prims(scene, camera, size, pt, shading="gradient", ink="black"):
+def scene_prims(scene, camera, size, pt, shading="gradient", ink="black", light=None):
     """Every layer of an :class:`ewald.scene.Scene` as depth-tagged matplotlib patches
-    ``(depth, patches, facecolors, edgecolors, linewidths)``, to be painted far to near."""
+    ``(depth, patches, facecolors, edgecolors, linewidths)``, to be painted far to near; ``light`` moves
+    the highlights (see :func:`ewald.render.light_params`)."""
     prims = []
     for layer in scene.layers:
         prim = layer.primitive
         if layer.kind == "spheres":
-            prims += _sphere_prims(prim, camera, size, pt, shading)
+            prims += _sphere_prims(prim, camera, size, pt, shading, light)
         elif layer.kind == "cylinders":
-            prims += _cylinder_prims(prim, camera, size, pt, shading)
+            prims += _cylinder_prims(prim, camera, size, pt, shading, light)
         elif layer.kind == "arrows":
             prims += _arrow_prims(None, None, camera, size, pt, shading, arrow_sets=[prim])
         elif layer.kind == "mesh":
-            prims += _mesh_prims(prim, camera, size, pt)
+            prims += _mesh_prims(prim, camera, size, pt, light)
         elif layer.kind == "lines":
             prims += _line_prims(prim, camera, size, ink)
     return prims
 
 
-def _sphere_prims(sph, camera, size, pt, shading):
-    """Shaded discs (or flat discs with an outline)."""
+def _highlight(light):
+    """Screen offset (x right, y down) of the highlight towards the key light, (-1, -1) by default."""
+    if light is None:
+        return -1.0, -1.0
+    from .render import light_params
+
+    d, _ = light_params(light)
+    return 1.6 * d[0], -1.6 * d[1]
+
+
+def _sphere_prims(sph, camera, size, pt, shading, light=None):
+    """Shaded discs (or flat discs with an outline), lit from ``light`` (see :func:`ewald.render.light_params`)."""
     from matplotlib.patches import Circle
 
     prims = []
@@ -140,6 +151,7 @@ def _sphere_prims(sph, camera, size, pt, shading):
     colors, radii, alpha = sph.colors(), sph.sizes(), sph.alpha
     keep = np.flatnonzero(alpha > 0)
     sx, sy, z, s = _project(sph.centers[keep], camera, size)
+    hx, hy = _highlight(light)
     for k, i in enumerate(keep):
         if z[k] <= 0 and not camera.get("parallel_projection", True):
             continue
@@ -149,15 +161,15 @@ def _sphere_prims(sph, camera, size, pt, shading):
         if shading == "flat":
             prims.append((z[k], [Circle((x, y), r)], [(*c, a)], [edge], [max(0.4, 0.06 * r) * pt]))
         else:
-            prims.append((z[k], [Circle((x, y), r), Circle((x - 0.06 * r, y - 0.06 * r), 0.86 * r),
-                                 Circle((x - 0.2 * r, y - 0.2 * r), 0.52 * r),
-                                 Circle((x - 0.3 * r, y - 0.3 * r), 0.2 * r)],
+            prims.append((z[k], [Circle((x, y), r), Circle((x + 0.06 * hx * r, y + 0.06 * hy * r), 0.86 * r),
+                                 Circle((x + 0.2 * hx * r, y + 0.2 * hy * r), 0.52 * r),
+                                 Circle((x + 0.3 * hx * r, y + 0.3 * hy * r), 0.2 * r)],
                           [(*(c * 0.62), a), (*c, a), (*_mix(c, 0.3), a), (*_mix(c, 0.7), a)],
                           [edge, "none", "none", "none"], [max(0.3, 0.03 * r) * pt, 0, 0, 0]))
     return prims
 
 
-def _cylinder_prims(cyl, camera, size, pt, shading):
+def _cylinder_prims(cyl, camera, size, pt, shading, light=None):
     """Projected sticks with a highlight stripe, each painted just before its start (a half-bond's
     own atom hides the stick's root)."""
     from matplotlib.patches import Polygon
@@ -168,6 +180,7 @@ def _cylinder_prims(cyl, camera, size, pt, shading):
         return prims
     ax0, ay0, z0, s0 = _project(cyl.start[keep], camera, size)
     ax1, ay1, z1, s1 = _project(cyl.end[keep], camera, size)
+    hx, hy = _highlight(light)
     for k, i in enumerate(keep):
         dx, dy = ax1[k] - ax0[k], ay1[k] - ay0[k]
         length = math.hypot(dx, dy)
@@ -180,8 +193,8 @@ def _cylinder_prims(cyl, camera, size, pt, shading):
                 (ax1[k] - nx * r1, ay1[k] - ny * r1), (ax0[k] - nx * r0, ay0[k] - ny * r0)]
         patches, fc, ec, lw = [Polygon(quad, closed=True)], [(*(c * 0.85), a)], [(*(c * 0.45), a)], \
             [max(0.3, 0.06 * r0) * pt]
-        if shading != "flat":  # highlight stripe toward the light (upper left)
-            side = 1.0 if nx + ny < 0 else -1.0
+        if shading != "flat":  # highlight stripe toward the light (upper left by default)
+            side = 1.0 if nx * hx + ny * hy > 0 else -1.0
             o0, o1 = 0.35 * r0 * side, 0.35 * r1 * side
             hw0, hw1 = 0.25 * r0, 0.25 * r1
             patches.append(Polygon([(ax0[k] + nx * (o0 + hw0), ay0[k] + ny * (o0 + hw0)),
@@ -193,11 +206,11 @@ def _cylinder_prims(cyl, camera, size, pt, shading):
     return prims
 
 
-def _mesh_prims(mesh, camera, size, pt):
+def _mesh_prims(mesh, camera, size, pt, light=None):
     """Lit triangles (two-sided, like the OpenGL faces) and edge strips just in front of them."""
     from matplotlib.patches import Polygon
 
-    from .render import _rgb
+    from .render import _rgb, light_params
 
     prims = []
     if not mesh.face_count:
@@ -205,13 +218,14 @@ def _mesh_prims(mesh, camera, size, pt):
     v, f = mesh.vertices, mesh.faces
     vx, vy, vz, vs = _project(v, camera, size)
     _, right, up, fwd = _basis(camera)
-    light = np.array([-0.4, 0.6, 1.0]) @ np.array([right, up, -fwd])  # same key light as the ray tracer
+    d, strength = light_params(light)  # the ray tracer's key light
+    light = d @ np.array([right, up, -fwd])
     light /= np.linalg.norm(light)
     vn, vc = mesh.vertex_properties.get("Normal"), mesh.vertex_properties.get("Color")
     n = np.cross(v[f[:, 1]] - v[f[:, 0]], v[f[:, 2]] - v[f[:, 0]]) if vn is None \
         else np.asarray(vn, float)[f].mean(1)  # smooth isosurface normals when given
     n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
-    lit = 0.55 + 0.45 * np.abs(n @ light)
+    lit = np.minimum(1.0, 0.55 + 0.45 * strength * np.abs(n @ light))
     if vc is not None:  # color-mapped slices keep their exact colormap (unlit)
         fcol = np.clip(np.asarray(vc, float), 0, 1)[f].mean(1)
     else:
@@ -273,12 +287,13 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                   scale_bar=None, dpi=None, radius_preset="covalent", oxidation_states=None, coordination=None,
                   vectors=None, trajectory_width=2.0, visuals=None, frame=0, overlays=None, boundary=None,
                   boundary_bonds="half", replicate=None, replicate_cell="super", show_atoms=True, surfaces=None,
-                  type_transparency=None, selection_color=None, **_ignored):
+                  type_transparency=None, selection_color=None, light=None, **_ignored):
     """Draw ``data`` as a vector figure and save it (format from the extension).
 
     ``shading``: 'gradient' (shaded discs) or 'flat' (one color plus outline, VESTA's
     flat style). ``dpi`` sets the physical page size (``size / dpi`` inches; 100 when
-    not given). ``visuals``: extra visual elements (plugins), see :mod:`ewald.scene`;
+    not given). ``light``: the key light (see :func:`ewald.render.light_params`) that places the highlights.
+    ``visuals``: extra visual elements (plugins), see :mod:`ewald.scene`;
     ``overlays``: overlay elements, see :mod:`ewald.overlays`.
     Returns the rasterized image as an RGB(A) uint8 array.
     """
@@ -311,7 +326,7 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                      replicate=replicate, replicate_cell=replicate_cell, show_atoms=show_atoms,
                      surfaces=surfaces, type_transparency=type_transparency, selection_color=selection_color)
     ink = cell_line_color(bg, transparent_background)
-    prims = scene_prims(scene, camera, (w, h), pt, shading, ink)
+    prims = scene_prims(scene, camera, (w, h), pt, shading, ink, light)
     prims.sort(key=lambda p: -p[0])  # far first
     patches, fc, ec, lw = [], [], [], []
     for _, p, f, e, l in prims:

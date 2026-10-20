@@ -149,19 +149,21 @@ class LegacyViewport(Viewport):
         from ..scene import SceneContext, build
 
         t0 = time.perf_counter()
+        light = None
         if self.data is None:
             from ..scene import Scene
 
             scene = Scene()
         else:
             kw = dict(self.style.scene_kwargs())
+            light = kw.pop("light", None)
             scene = build(self.data, ctx=SceneContext(), visuals=kw.pop("visuals", None), **kw)
         dark = _is_dark(self.style.background)
         from matplotlib.colors import to_rgb
 
         ink = to_rgb(self.style.cell_color or ("#AEB4BE" if dark else "black"))
         self.view.pending = (scene, {"sphere_resolution": min(self.sphere_resolution, 12),
-                                     "background": to_rgb(self.style.background), "ink": ink})
+                                     "background": to_rgb(self.style.background), "ink": ink, "light": light})
         if self._first and self.data is not None:
             self._first = False
             self._first_pending = True
