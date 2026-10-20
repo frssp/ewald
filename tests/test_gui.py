@@ -75,13 +75,31 @@ def test_classic_layout_setting_is_retired(tmp_path, caplog):
     assert s["general.startup_workspace"] == "Notebook" and s.changed() == {}
 
 
-def test_display_panel_lists_visual_elements_only(app, pipe):
+def test_view_tab_cards_and_notebook_marks(app, pipe):
+    """The View tab shows the look as cards, marks what the notebook's view sets, and an edit there
+    changes the style without rebuilding the card being edited."""
+    from ewald import view
     from ewald.gui.pipeline_panel import DisplayPanel
 
     panel = DisplayPanel()
     panel.set_pipeline(pipe)
-    rows = [panel.tree.topLevelItem(k).text(1) for k in range(panel.tree.topLevelItemCount())]
-    assert rows == ["Particles", "Bonds", "Simulation cell"]
+    panel.set_data(pipe.compute(0))
+    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Cell", "Elements", "Camera"]
+    marked = lambda: {lab.text() if isinstance(lab, QtWidgets.QLabel) else lab.title() for lab, _ in panel._marks if lab.property("set")} - {""}
+    assert not marked()
+    view(pipe, radius_scale=0.4, boundary=[-0.1, 1.1], direction="z")
+    panel.set_data(pipe.compute(0), refresh=True)
+    assert {"Radius scale", "Boundary (VESTA)", "Direction", "in notebook"} <= marked()
+    card = panel.sections["Atoms"]
+    edited = []
+    panel.styleChanged.connect(lambda: (edited.append(1), panel.refresh()))   # as the window does
+    card.findChild(QtWidgets.QDoubleSpinBox).setValue(0.7)
+    assert panel.style.radius_scale == 0.7 and edited and panel.sections["Atoms"] is card
+    page = panel.scroll.widget()
+    page.resize(260, page.height())                         # narrow: the cards stack
+    page.layout().setGeometry(QtCore.QRect(0, 0, 260, page.layout().heightForWidth(260)))
+    xs = {c.x() for c in panel.sections.values()}
+    assert len(xs) == 1 and all(c.width() <= 260 for c in panel.sections.values())
     asked = []
     panel.modifierRequested.connect(asked.append)
     panel.add_modifier(mods.CoordinationAnalysis(3.0))  # a step goes to the notebook, not into the pipeline
@@ -1014,10 +1032,10 @@ def test_main_window_ask_uses_picks_and_selection(app, pipe):
     w.show()
     app.processEvents()
     shown = lambda wid: not wid.visibleRegion().isEmpty()  # noqa: E731
-    assert shown(w.display) and not shown(w.ask_dock)    # the AI chat side bar starts hidden
+    assert shown(w.panel) and not shown(w.ask_dock)      # the AI chat side bar starts hidden
     w.ask_claude()
     app.processEvents()
-    assert shown(w.ask_dock) and shown(w.display)         # left of the notebook, not over Display
+    assert shown(w.ask_dock) and shown(w.panel)           # left of the notebook, not over it
     assert w.dockWidgetArea(w.ask_dock) == QtCore.Qt.LeftDockWidgetArea
     app.processEvents()
     a, n = w.ask_dock.geometry(), w.notebook_dock.geometry()
@@ -1229,21 +1247,19 @@ def test_plugin_visual_element_in_panel_and_viewport(app, monkeypatch):
     panel.styleChanged.connect(lambda: redraws.append(1))
     panel.add_visual("Cell axes")
     assert style.visuals == [{"name": "Cell axes", "params": {"length": 2.0, "width": 0.25}, "enabled": True}]
-    form = panel._form  # the new element is selected and its form is open
+    form = panel._form  # the new element's form is open in the Elements card
     form.editors["length"][0].setValue(3.0)
-    panel.scroll.widget().findChild(QtWidgets.QPushButton).click()
+    [b for b in panel.sections["Elements"].findChildren(QtWidgets.QPushButton) if b.text().startswith("Apply")][0].click()
     assert style.visuals[0]["params"]["length"] == 3.0 and redraws
     v = Viewport(style)
     v.set_data(data)
     assert "visual:cell-axes" in v.plotter.actors
-    item = [panel.tree.topLevelItem(k) for k in range(panel.tree.topLevelItemCount())
-            if panel.tree.topLevelItem(k).text(1) == "Cell axes"][0]
-    item.setCheckState(0, QtCore.Qt.Unchecked)
+    switch = [c for c in panel.sections["Elements"].findChildren(QtWidgets.QCheckBox) if c.text() == "Cell axes"][0]
+    switch.setChecked(False)
     assert style.visuals[0]["enabled"] is False
     v.redraw()
     assert "visual:cell-axes" not in v.plotter.actors
-    panel.tree.setCurrentItem(item)
-    panel._remove()
+    panel.remove_visual(0)
     assert style.visuals == []
     v.close()
 
@@ -2142,10 +2158,13 @@ def test_panels_and_cells_fold(app, cu_path, tmp_path):
     app.processEvents()
     assert w.workbench.panel_host.maximumHeight() < 60 and not w.console.isVisible()
     w.workbench.set_panel_collapsed(False)
+    w.addDockWidget(QtCore.Qt.RightDockWidgetArea, w.plugins_dock)
+    w.addDockWidget(QtCore.Qt.RightDockWidgetArea, w.remotes_dock)
+    w.plugins_dock.show()
     w.remotes_dock.show()
-    w.tabifyDockWidget(w.display.parent(), w.remotes_dock)
+    w.tabifyDockWidget(w.plugins_dock, w.remotes_dock)
     app.processEvents()
-    side = w.remotes_dock.titleBarWidget()                  # tabbed with Display: they fold together
+    side = w.remotes_dock.titleBarWidget()                  # tabbed with Plugins: they fold together
     side.set_collapsed(True)
     assert all(d.maximumWidth() == STRIP for d in [w.remotes_dock] + w.tabifiedDockWidgets(w.remotes_dock))
     assert w.tabPosition(QtCore.Qt.RightDockWidgetArea) == QtWidgets.QTabWidget.East   # tabs turn sideways
@@ -2188,12 +2207,12 @@ def test_workbench_drag_plot_over_3d_view(app, pipe):
     w.show()
     settle()
     wb, vp = w.workbench, w.viewport
-    assert wb.titles("editor") == ["Structure"] and wb.titles("panel") == ["Python console", "Data inspector", "Plots", "Log"]
+    assert wb.titles("editor") == ["Structure"] and wb.titles("panel") == ["Python console", "View", "Data inspector", "Plots", "Log"]
     slot = wb.slot("viewport")
     assert vp.parent() is wb and vp.geometry() == QtCore.QRect(slot.mapTo(wb, QtCore.QPoint()), slot.size())
 
     bar = wb.tab_group(wb.group_of(w.plots)).bar          # a real mouse drag of the Plots tab
-    start = bar.tabRect(2).center()
+    start = bar.tabRect(3).center()
     QtTest.QTest.mousePress(bar, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, start)
     QtTest.QTest.mouseMove(bar, start + QtCore.QPoint(40, 0))
     assert wb._drag is not None and not vp.isVisible()    # a snapshot stands in for the GL widget
@@ -2249,7 +2268,7 @@ def test_workbench_drag_plot_over_3d_view(app, pipe):
     assert "plot:2" not in w2.extra_plots and "plot:2" not in w2.workbench.specs
     w2.workbench.reset()
     assert w2.workbench.titles("editor") == ["Structure"]
-    assert w2.workbench.titles("panel") == ["Python console", "Data inspector", "Plots", "Log"]
+    assert w2.workbench.titles("panel") == ["Python console", "View", "Data inspector", "Plots", "Log"]
     w2.close()
 
 

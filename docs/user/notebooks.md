@@ -144,7 +144,7 @@ cell, the background, the VESTA boundary, plugin visual elements and vector arro
 (direction, zoom, projection or an exact camera) and the frame, and the picture settings
 (renderer, quality, size, text, legends, scale bar). See [Rendering › The view of a
 pipeline](rendering.md#the-view-of-a-pipeline) for the list. Running the cell redraws the
-viewport. Changing the style in the viewport, the Display panel or the View menu writes the
+viewport. Changing the style in the viewport, the View tab or the View menu writes the
 change back into this cell (a new one appears at the end when there is none), so the notebook
 always says how the picture was made. Insert › View settings with the camera also writes the
 current camera and frame. `pipe.view` is the same thing one setting at a time
@@ -384,4 +384,4 @@ again or click **Menus** in the bottom left corner; a tap on Alt shows the menu 
 pick without leaving minimal mode. *UI theme* picks Paper (light, the
 default), Graphite (dark) or a theme from a plugin ([UI themes](../plugins/styles.md#ui-themes)).
 
-![Minimal mode: only the notebook, the viewport and the Display panel](../images/minimal-mode.png)
+![Minimal mode: only the notebook, the viewport and the panel below it](../images/minimal-mode.png)

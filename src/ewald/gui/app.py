@@ -115,11 +115,11 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.splitDockWidget(self.ask_dock, self.notebook_dock, QtCore.Qt.Horizontal)
         self.ask_dock.hide()
         self._build_activity_bar()
+        # the View tab (below the 3D view, beside the console): how the structure is drawn
         self.display = DisplayPanel(self.style)
         self.display.styleChanged.connect(self._style_changed)
         self.display.modifierRequested.connect(lambda m: self.panel.add_modifier(m))
-        side_dock = self._dock(self.display, "Display", QtCore.Qt.RightDockWidgetArea, 320)
-        side_dock.titleBarWidget().add_action(self.display.visual_button)  # not a row of its own
+        self.display.cameraRequested.connect(self.write_camera)
         self.display.refresh()
 
         # --- panel (below the 3D view): console / inspector / plots / log
@@ -130,7 +130,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.extra_plots = {}  # view id -> PlotsPanel made with "New plot view"
         self._plot_picking = False
         self.log = QtWidgets.QPlainTextEdit(readOnly=True)
-        for view, widget, title in (("console", self.console, "Python console"),
+        for view, widget, title in (("console", self.console, "Python console"), ("view", self.display, "View"),
                                     ("inspector", self.inspector, "Data inspector"),
                                     ("plot:1", self.plots, "Plots"), ("log", self.log, "Log")):
             self.workbench.register(view, widget, title)
@@ -326,7 +326,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
             self.message(f"Error: {job.error}", error=True)
             return
         self.data, dt, interactive = job.data, job.seconds, job.interactive
-        self.follow_view(self.data)  # a view cell, Claude or the console changed pipe.view
+        view_changed = self.follow_view(self.data)  # a view cell, Claude or the console changed pipe.view
         n = self.pipeline.num_frames  # LoadTrajectory changes the frame count
         if self.timeline.slider.maximum() != max(0, n - 1):
             self.timeline.set_num_frames(n)
@@ -348,8 +348,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
             self.style.ensure_bond_pairs(self.data.types)
         self._apply_element_defaults()
         self.panel.set_data(self.data)
-        if self.display is not self.panel:
-            self.display.set_data(self.data)
+        self.display.set_data(self.data, refresh=view_changed)
         ts = self.data.attributes.get("Timestep", job.frame)
         self.viewport.overlay_text = f"Frame {job.frame}   timestep {ts}"
         self.viewport.set_data(self.data, interactive=interactive)
@@ -429,10 +428,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.viewport.style_combo.setCurrentText(self.style.preset)
         self.viewport.style_combo.blockSignals(False)
         self.viewport.redraw()
-        if self.display._current() and self.display._current()[0] == "visual":
-            pass  # editor already reflects the change
-        else:
-            self.display.refresh()
+        self.display.refresh()  # an edit made in the View tab itself only updates its marks
 
     # ---------------------------------------------------------------- output
     def render_image(self, filename=None, return_image=False, **overrides):

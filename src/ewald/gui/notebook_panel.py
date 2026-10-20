@@ -17,7 +17,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..notebook import Cell, History, Notebook, new_notebook, step_call
 from .params import ParameterForm
-from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea, _discover, fill_modifier_menu
+from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea, FlowLayout, _discover, fill_modifier_menu
 from .notebook_tabs import NotebookTabs
 from . import header
 from .icons import icon
@@ -833,64 +833,6 @@ def fill_view_menu(menu, data, add):
 
 
 # ---------------------------------------------------------------- one notebook
-class _FlowLayout(QtWidgets.QLayout):
-    """Lays its items out in rows that wrap at the available width (the add-cell bar)."""
-
-    def __init__(self, parent=None, spacing=6):
-        super().__init__(parent)
-        self._items = []
-        self._gap = spacing
-
-    def addItem(self, item):
-        self._items.append(item)
-
-    def count(self):
-        return len(self._items)
-
-    def itemAt(self, i):
-        return self._items[i] if 0 <= i < len(self._items) else None
-
-    def takeAt(self, i):
-        return self._items.pop(i) if 0 <= i < len(self._items) else None
-
-    def expandingDirections(self):
-        return QtCore.Qt.Orientations()
-
-    def hasHeightForWidth(self):
-        return True
-
-    def heightForWidth(self, width):
-        return self._place(QtCore.QRect(0, 0, width, 0), move=False)
-
-    def setGeometry(self, rect):
-        super().setGeometry(rect)
-        self._place(rect, move=True)
-
-    def sizeHint(self):
-        return self.minimumSize()
-
-    def minimumSize(self):
-        size = QtCore.QSize()
-        for item in self._items:
-            size = size.expandedTo(item.minimumSize())
-        m = self.contentsMargins()
-        return size + QtCore.QSize(m.left() + m.right(), m.top() + m.bottom())
-
-    def _place(self, rect, move):
-        m = self.contentsMargins()
-        r = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
-        x, y, row_h = r.x(), r.y(), 0
-        for item in self._items:
-            hint = item.sizeHint()
-            if x + hint.width() > r.right() + 1 and row_h:
-                x, y, row_h = r.x(), y + row_h + self._gap, 0
-            if move:
-                item.setGeometry(QtCore.QRect(QtCore.QPoint(x, y), hint))
-            x += hint.width() + self._gap
-            row_h = max(row_h, hint.height())
-        return y + row_h - rect.y() + m.bottom()
-
-
 class _ElidedLabel(QtWidgets.QLabel):
     """A one-line label that shrinks with an ellipsis instead of pushing its neighbours."""
 
@@ -1070,7 +1012,7 @@ class NotebookView(QtWidgets.QWidget):
 
     def _make_add_bar(self):
         w = QtWidgets.QWidget(objectName="addBar")
-        row = _FlowLayout(w, spacing=4)
+        row = FlowLayout(w, spacing=4)
         row.setContentsMargins(GUTTER_WIDTH + 2, 2, 0, 0)  # lined up with the cell bodies
         code = QtWidgets.QPushButton("+ Code", objectName="addCell", toolTip="Python cell (Ctrl+Shift+N)")
         code.clicked.connect(lambda: self.add_cell("code"))
@@ -1569,7 +1511,7 @@ class NotebookPanel(QtWidgets.QWidget):
     (``set_pipeline``, ``set_data``, ``add_modifier``, ``refresh``, ``changed``)."""
 
     changed = QtCore.Signal()
-    styleChanged = QtCore.Signal()            # unused: display settings live in the Display panel
+    styleChanged = QtCore.Signal()            # unused: display settings live in the View tab
     pipelineReplaced = QtCore.Signal(object)
     askRequested = QtCore.Signal()
     plotCreated = QtCore.Signal(object)       # a view cell's live plot: the main window links it

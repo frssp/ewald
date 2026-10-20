@@ -13,9 +13,8 @@ notebook. Linux system libraries and startup errors: [Install](install.md#linux-
 
 The window has the analysis on the left as a [notebook](notebooks.md): Python cells, steps and
 linked plots, saved as an `.ewd`, `.ipynb` or `.py` file, with one tab per open notebook. The
-[tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline are in the middle. Display settings are on the
-right, the AI chat opens left of the notebook from the activity bar, and the panel
-below the viewport holds the Python console, the data inspector, plots and the log. Tabs in the
+[tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline take the rest of the width, the AI chat opens left of the notebook from the activity bar, and the panel
+below the viewport holds the Python console, the View tab (display settings), the data inspector, plots and the log. Tabs in the
 middle can be rearranged as in VS Code (see [Panel layout](#panel-layout)).
 
 ![The notebook layout](../images/notebook.png)
@@ -138,14 +137,23 @@ is skipped so the view never goes blank. The step's parameter form is generated 
 modifier's constructor, so every argument you can pass in Python can be edited there. See
 [Notebooks](notebooks.md).
 
-**Display panel (visual elements).** The Display panel on the right holds what is drawn: Particles, Bonds and Simulation
-cell, plus any [visual element plugins](../plugins/visuals.md) added with the **+** button in the Display header.
-Simulation cell has VESTA's boundary range: tick Boundary and set the fractional range (e.g.
--0.1 to 1.1) to draw the periodic images of atoms on the faces, edges and corners, with bonds and
-polyhedra completed across the cell; [display only](rendering.md#boundary-vesta).
-A plugin element has a checkbox to hide it, a parameter form generated from its constructor
-(Apply or Ctrl+Enter redraws), and Del removes it. Plugin elements are saved with the session
-and drawn in rendered images too.
+**View tab (display settings).** The View tab, next to the Python console below the Structure view
+(Window › View settings), shows how the structure is drawn as cards side by side: **Atoms** (style
+preset, radius scale, radius table, oxidation states, how atoms are drawn), **Types** (color, radius
+and count per type, VESTA elements.ini import), **Bonds** (sticks, the pair table, *As step* for a
+Create bonds step), **Cell** (line width and VESTA's boundary range), **Elements** ([visual element
+plugins](../plugins/visuals.md), added with *Add element*) and **Camera**. Every value is a setting of
+the notebook's `view(pipe, ...)` cell: the rows the cell sets are highlighted, the card says *in
+notebook*, and the tooltip shows the value. A change made here is written back into that cell, and
+a change made in code (the cell, the console, Ask AI) shows up here. When the tab is narrow (dragged
+beside the 3D view), the cards stack.
+
+The boundary range: tick Boundary and set the fractional range (e.g. -0.1 to 1.1) to draw the
+periodic images of atoms on the faces, edges and corners, with bonds and polyhedra completed across
+the cell; [display only](rendering.md#boundary-vesta). A plugin element has a checkbox to hide it, a
+parameter form generated from its constructor (Apply or Ctrl+Enter redraws) and a remove button.
+Plugin elements are saved with the session and drawn in rendered images too. *Save camera* writes
+the current camera and frame into the view cell.
 
 **Python steps.** A code cell can define a function and add it with `pipe.add(fn)`; it runs on
 every frame like any other modifier. Insert › Step › Python › Python script adds the
@@ -263,8 +271,8 @@ JSON in the ewald config folder: `~/.config/ewald` on Linux,
 `render` are not changed by them.
 
 The radius preset (covalent, atomic, van der Waals or Shannon ionic radii; see
-[Atom radii](rendering.md#atom-radii)) is the one new sessions start with. The Particles visual
-element in the Display panel switches it for the current session and takes oxidation states
+[Atom radii](rendering.md#atom-radii)) is the one new sessions start with. The Atoms card of the
+View tab switches it for the current session and takes oxidation states
 for the ionic presets (`Sr=2, Ti=4, O=-2`; types left out are guessed). The log says which
 types fell back to covalent radii.
 

@@ -701,8 +701,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Render workspace (`Ctrl+2`)
 - Notebook
 - Plugins (`Ctrl+Shift+X`)
-- Display settings
 - Structure
+- View settings
 - Python console
 - Data inspector
 - Plots
@@ -760,9 +760,9 @@ Open, Save, Notebook, Render, Search commands, steps, cells… Ctrl K, Compute d
 ### Panels
 
 - Workspaces: Notebook, Render
-- Docks: AI chat, Display, Notebook, Plugins, Remotes
+- Docks: AI chat, Notebook, Plugins, Remotes
 - Editor area tabs: Structure
-- Panel tabs: Python console, Data inspector, Plots, Log (tabs drag between groups: centre = tab, edge = split; View › Layout)
+- Panel tabs: Python console, View, Data inspector, Plots, Log (tabs drag between groups: centre = tab, edge = split; View › Layout)
 - Viewport tools: Orbit / pan / zoom (mouse); Pick atom: shows id, type, position and properties; Shift+click picks several; Measure distance: click two atoms; Measure angle: click three atoms (vertex in the middle); Edit bonds: click two atoms to add or delete the bond between them
 
 <!-- gui:end -->

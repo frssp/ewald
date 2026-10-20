@@ -1,5 +1,5 @@
-"""Step menus (Insert › Step, the step context checks) and the Display panel: visual elements
-(Particles, Bonds, Simulation cell, plugin elements) with their editors."""
+"""Step menus (Insert › Step, the step context checks) and the View tab (:class:`DisplayPanel`): how
+the structure is drawn (atoms, types, bonds, cell and boundary, plugin elements, camera) as cards."""
 from __future__ import annotations
 
 import numpy as np
@@ -221,10 +221,6 @@ def _discover():
         register_modifier(plugin.category, name, plugin.cls)
 
 
-KIND = QtCore.Qt.UserRole + 1
-
-
-
 class FitWidthScrollArea(QtWidgets.QScrollArea):
     """Scrolls vertically only: the page is always as wide as the area, like a document."""
 
@@ -238,12 +234,113 @@ class FitWidthScrollArea(QtWidgets.QScrollArea):
         if widget is not None:
             widget.setFixedWidth(self.viewport().width())
 
+
+class FlowLayout(QtWidgets.QLayout):
+    """Lays its items out in rows that wrap at the available width (the add-cell bar, the View
+    tab's cards). An item wider than the row is narrowed to it."""
+
+    def __init__(self, parent=None, spacing=6):
+        super().__init__(parent)
+        self._items = []
+        self._gap = spacing
+
+    def addItem(self, item):
+        self._items.append(item)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, i):
+        return self._items[i] if 0 <= i < len(self._items) else None
+
+    def takeAt(self, i):
+        return self._items.pop(i) if 0 <= i < len(self._items) else None
+
+    def expandingDirections(self):
+        return QtCore.Qt.Orientations()
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self._place(QtCore.QRect(0, 0, width, 0), move=False)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._place(rect, move=True)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QtCore.QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        m = self.contentsMargins()
+        return size + QtCore.QSize(m.left() + m.right(), m.top() + m.bottom())
+
+    def _place(self, rect, move):
+        m = self.contentsMargins()
+        r = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
+        x, y, row_h = r.x(), r.y(), 0
+        for item in self._items:
+            if item.isEmpty():
+                continue
+            hint = item.sizeHint()
+            w = max(1, min(hint.width(), r.width()))
+            h = item.heightForWidth(w) if item.hasHeightForWidth() else hint.height()
+            if x + w > r.right() + 1 and row_h:
+                x, y, row_h = r.x(), y + row_h + self._gap, 0
+            if move:
+                item.setGeometry(QtCore.QRect(x, y, w, h))
+            x += w + self._gap
+            row_h = max(row_h, h)
+        return y + row_h - rect.y() + m.bottom()
+
+
+class _FlowPage(QtWidgets.QWidget):
+    """The page of a :class:`FitWidthScrollArea` whose layout wraps: as tall as its rows."""
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        h = self.layout().heightForWidth(self.width())
+        if h != self.minimumHeight():
+            self.setMinimumHeight(h)
+
+
+class _Card(QtWidgets.QFrame):
+    """A View tab card: ``width`` wide in a row, narrower when the tab is narrower."""
+
+    def __init__(self, width):
+        super().__init__(objectName="viewSection")
+        self._width = width
+        self.setMinimumWidth(160)
+        self.setMaximumWidth(width)
+
+    def sizeHint(self):
+        return QtCore.QSize(self._width, super().sizeHint().height())
+
+
+# View tab rows -> the pipe.view setting they show (marked when the notebook sets it)
+_SECTION_KEYS = {
+    "Atoms": ("style", "theme", "atom_style", "radius_scale", "radius_preset", "oxidation_states"),
+    "Types": ("colors", "radii"),
+    "Bonds": ("bonds", "bond_radius", "bond_pairs", "bond_factor"),
+    "Cell": ("cell", "cell_width", "cell_color", "replicate", "boundary", "boundary_bonds"),
+    "Elements": ("visuals", "vectors", "trajectory_width"),
+    "Camera": ("frame", "direction", "zoom", "orthographic", "camera"),
+}
+
+
 class DisplayPanel(QtWidgets.QWidget):
-    """Visual elements (Particles, Bonds, Simulation cell, plugin elements) with their editors.
-    Steps live in notebook cells; this panel only changes how the data is drawn."""
+    """The View tab: how the structure is drawn, as cards (Atoms, Types, Bonds, Cell, Elements,
+    Camera) that sit in a row below the 3D view and wrap when the tab is narrow. Every value is a
+    ``pipe.view`` setting; the ones the notebook's view cell sets are marked, and a change made
+    here goes back into that cell. Steps live in notebook cells; this tab only changes the look."""
 
     styleChanged = QtCore.Signal()               # visual elements changed -> redraw only
     modifierRequested = QtCore.Signal(object)    # e.g. "Use as Create bonds modifier": a notebook step
+    cameraRequested = QtCore.Signal()            # Camera › Save camera: write it into the view cell
 
     def __init__(self, style=None, parent=None):
         super().__init__(parent)
@@ -253,116 +350,130 @@ class DisplayPanel(QtWidgets.QWidget):
         self.pipeline = None
         self.style = style or ViewStyle()
         self.data = None
+        self._emitting = False
+        self._marks = []          # (label, keys): marked when the notebook's view sets one of keys
+        self._forms = {}          # plugin visual index -> its ParameterForm
+        self._form = None         # the last plugin visual form built (tests)
         lay = QtWidgets.QVBoxLayout(self)
-        lay.setContentsMargins(6, 6, 6, 6)
+        lay.setContentsMargins(0, 0, 0, 0)
 
-        # the Display header shows the add-visual menu as an icon (app.py moves it there)
-        self.visual_button = QtWidgets.QToolButton(self, objectName="headerButton",
-                                                   toolTip="Add a visual element (cell axes, halos, … from plugins)")
-        self.visual_button.hide()  # until the dock header takes it (CollapsibleTitle.add_action)
-        self.visual_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
-        header.set_icon(self.visual_button, "plus")
-        self.visual_button.setIconSize(QtCore.QSize(header.ICON, header.ICON))
-        self.visual_button.setFixedSize(header.BUTTON, header.BUTTON)
         self.visual_menu = QtWidgets.QMenu(self)
         self.visual_menu.aboutToShow.connect(self._fill_visual_menu)
-        self.visual_button.setMenu(self.visual_menu)
-
-        self.tree = QtWidgets.QTreeWidget()
-        self.tree.setHeaderHidden(True)
-        self.tree.setColumnCount(3)
-        self.tree.setRootIsDecorated(False)
-        self.tree.setIndentation(8)
-        self.tree.header().setStretchLastSection(False)
-        self.tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
-        self.tree.header().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
-        self.tree.header().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
-        self.tree.setColumnWidth(0, 52)
-        self.tree.itemChanged.connect(self._item_toggled)
-        self.tree.currentItemChanged.connect(lambda cur, prev: self._show_editor(cur))
-        QtGui.QShortcut(QtGui.QKeySequence.Delete, self.tree, activated=self._remove)
-        lay.addWidget(self.tree)
-
-        self.editor_title = QtWidgets.QLabel("Properties", objectName="section")
-        lay.addWidget(self.editor_title)
-        self.scroll = FitWidthScrollArea()  # editors fit the panel width instead of being cut off
+        self.scroll = FitWidthScrollArea(objectName="viewScroll")
         self.scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         lay.addWidget(self.scroll, 1)
-        self._form = None
+        self.sections = {}
 
     # ------------------------------------------------------------------ model
     def set_pipeline(self, pipeline):
         self.pipeline = pipeline
         self.refresh()
 
-    def set_data(self, data):
+    def set_data(self, data, refresh: bool = False):
         old = _types(self.data)
         self.data = data
-        self.update_status()
-        if _types(data) != old:  # another file or notebook: the type table and counts change
-            self._show_editor(self.tree.currentItem())
+        if refresh or _types(data) != old:  # another file, or code changed pipe.view: rebuild
+            self.refresh()
+        else:
+            self.update_status()
 
-    def _current(self):
-        item = self.tree.currentItem()
-        return None if item is None else item.data(0, KIND)
+    def _emit(self):
+        """A change made here: redraw and write it into the view cell, without rebuilding the
+        cards (the widget being edited stays), then mark what the notebook now sets."""
+        self._emitting = True
+        try:
+            self.styleChanged.emit()
+        finally:
+            self._emitting = False
+        self.update_marks()
 
     def refresh(self, select=None):
-        """Rebuild the rows; keeps the selection unless ``select`` (a row kind) is given."""
-        if select is None:
-            select = self._current() or ("visual", "particles")
-        self.tree.blockSignals(True)
-        self.tree.clear()
-        target = self._visual_items(select)
-        self.tree.blockSignals(False)
-        self._fit_tree()
+        """Rebuild the cards from the style (``select`` is accepted for older callers)."""
+        if self._emitting:
+            self.update_marks()
+            return
+        self._marks, self._forms = [], {}
+        page = _FlowPage(objectName="viewPage")
+        flow = FlowLayout(page, spacing=8)
+        flow.setContentsMargins(8, 8, 8, 8)
+        self.sections = {}
+        for title, build, width in (("Atoms", self._particles_editor, 280), ("Types", self._types_editor, 320),
+                                    ("Bonds", self._bonds_editor, 340), ("Cell", self._cell_editor, 300),
+                                    ("Elements", self._elements_editor, 280), ("Camera", self._camera_editor, 260)):
+            card = self._section(title, build(), width)
+            self.sections[title] = card
+            flow.addWidget(card)
+        old = self.scroll.takeWidget()
+        if old is not None:
+            old.deleteLater()
+        self.scroll.setWidget(page)
         self.update_status()
-        if target is not None and target is not self.tree.currentItem():
-            self.tree.setCurrentItem(target)
-        else:
-            self._show_editor(self.tree.currentItem())
+        self.update_marks()
 
-    def _fit_tree(self):
-        """As tall as its few rows (Particles, Bonds, Cell, plugins), so the editor gets the rest."""
-        rows = self.tree.topLevelItemCount()
-        row = self.tree.sizeHintForRow(0) if rows else 24
-        self.tree.setFixedHeight(max(1, rows) * row + 2 * self.tree.frameWidth() + 4)
+    def _section(self, title, body, width):
+        card = _Card(width)
+        lay = QtWidgets.QVBoxLayout(card)
+        lay.setContentsMargins(10, 8, 10, 10)
+        lay.setSpacing(6)
+        head = QtWidgets.QHBoxLayout()
+        name = QtWidgets.QLabel(title.upper(), objectName="viewSectionTitle")
+        mark = QtWidgets.QLabel("", objectName="viewSectionMark")
+        head.addWidget(name)
+        head.addStretch(1)
+        head.addWidget(mark)
+        lay.addLayout(head)
+        body.setObjectName("viewBody")
+        lay.addWidget(body)
+        card.status = QtWidgets.QLabel("", objectName="muted", wordWrap=True)
+        card.status.hide()
+        lay.addWidget(card.status)
+        self._marks.append((mark, _SECTION_KEYS[title]))
+        return card
 
-    def _visual_items(self, select):
-        """Visual element rows (Particles, Bonds, Cell, plugin elements); returns the row to select."""
-        target = None
-        for key, label, on in (("particles", "Particles", True), ("bonds", "Bonds", self.style.bonds_enabled),
-                               ("cell", "Simulation cell", self.style.show_cell)):
-            it = QtWidgets.QTreeWidgetItem(self.tree, ["", label, ""])
-            it.setData(0, KIND, ("visual", key))
-            if key != "particles":
-                it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
-                it.setCheckState(0, QtCore.Qt.Checked if on else QtCore.Qt.Unchecked)
-            if select == ("visual", key):
-                target = it
-        for k, entry in enumerate(self.style.visuals):
-            it = QtWidgets.QTreeWidgetItem(self.tree, ["", entry["name"], ""])
-            it.setData(0, KIND, ("plugin-visual", k))
-            it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
-            it.setCheckState(0, QtCore.Qt.Checked if entry.get("enabled", True) else QtCore.Qt.Unchecked)
-            if select == ("plugin-visual", k):
-                target = it
-        return target
+    def _row(self, form, label, widget, *keys):
+        """A form row whose label is marked when the notebook's view sets one of ``keys``."""
+        lab = QtWidgets.QLabel(label, objectName="viewLabel")
+        form.addRow(lab, widget)
+        if keys:
+            self._marks.append((lab, keys))
+        return lab
+
+    def _set_keys(self) -> dict:
+        view = getattr(self.pipeline, "view", None) if self.pipeline is not None else None
+        try:
+            return view.changed() if view is not None else {}
+        except Exception:  # noqa: BLE001 - a view a plugin replaced
+            return {}
+
+    def update_marks(self):
+        """Mark rows and cards whose settings the notebook's view cell sets (tooltip: the values)."""
+        values = self._set_keys()
+        for lab, keys in self._marks:
+            try:
+                set_here = [k for k in keys if k in values]
+            except RuntimeError:  # a card deleted by a rebuild
+                continue
+            if lab.objectName() == "viewSectionMark":
+                lab.setText("in notebook" if set_here else "")
+            lab.setProperty("set", bool(set_here))
+            lab.setToolTip("Set in the notebook's view cell:\n" + "\n".join(
+                f"{k}={_short(values[k])}" for k in set_here) if set_here else "Default (not in the notebook)")
+            lab.style().unpolish(lab)
+            lab.style().polish(lab)
 
     def update_status(self):
-        """Right column: particle count and periodicity of the current frame (no editor rebuild)."""
-        if self.data is None:
+        """Counts and periodicity of the current frame under the cards (no rebuild)."""
+        if self.data is None or not self.sections:
             return
-        self.tree.blockSignals(True)
-        for k in range(self.tree.topLevelItemCount()):
-            it = self.tree.topLevelItem(k)
-            kind = it.data(0, KIND)
-            if kind == ("visual", "particles"):
-                it.setText(2, f"{self.data.count}")
-            elif kind == ("visual", "cell") and self.data.cell.is_valid:
-                it.setText(2, "PBC " + "".join("xyz"[i] for i in range(3) if self.data.cell.pbc[i]))
-        self.tree.blockSignals(False)
+        types = self.sections["Types"].status
+        types.setText(f"{self.data.count:,} atoms")
+        types.show()
+        cell = self.sections["Cell"].status
+        if self.data.cell.is_valid:
+            cell.setText(cell_summary(self.data.cell))
+            cell.show()
 
     # ------------------------------------------------------------------ editing
     def add_modifier(self, mod):
@@ -389,153 +500,166 @@ class DisplayPanel(QtWidgets.QWidget):
 
         (el,) = coerce_visuals([name])
         self.style.visuals.append(visual_to_dict(el))
-        self.refresh(select=("plugin-visual", len(self.style.visuals) - 1))
         self.styleChanged.emit()
+        self.refresh()
+        self._form = self._forms.get(len(self.style.visuals) - 1)
 
-    def _remove(self):
-        cur = self._current()
-        if cur and cur[0] == "plugin-visual":
-            del self.style.visuals[cur[1]]
-            self.refresh(select=("visual", "particles"))
-            self.styleChanged.emit()
+    def remove_visual(self, k: int):
+        del self.style.visuals[k]
+        self.styleChanged.emit()
+        self.refresh()
 
-    def _item_toggled(self, item, column):
-        kind = item.data(0, KIND)
-        if not kind or column != 0:
-            return
-        on = item.checkState(0) == QtCore.Qt.Checked
-        if kind[0] == "visual":
-            if kind[1] == "bonds":
-                self.style.bonds_enabled = on
-                if on and self.data is not None:
-                    self.style.ensure_bond_pairs(self.data.types)
-            elif kind[1] == "cell":
-                self.style.show_cell = on
-            self.styleChanged.emit()
-        elif kind[0] == "plugin-visual":
-            self.style.visuals[kind[1]]["enabled"] = on
-            self.styleChanged.emit()
+    def set_visual_enabled(self, k: int, on: bool):
+        self.style.visuals[k]["enabled"] = on
+        self._emit()
 
-    # ------------------------------------------------------------------ properties
-    def _set_editor(self, title, widget):
-        self.editor_title.setText(title.upper())
-        old = self.scroll.takeWidget()
-        if old is not None:
-            old.deleteLater()
-        page = QtWidgets.QWidget()  # the editor at its own height on top, not spread over the panel
-        lay = QtWidgets.QVBoxLayout(page)
+    def _set(self, name, value):
+        setattr(self.style, name, value)
+        self._emit()
+
+    # ------------------------------------------------------------------ cards
+    def _elements_editor(self):
+        """Plugin visual elements (cell axes, halos, ...): a switch, their parameters and Remove."""
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(widget)
-        lay.addStretch(1)
-        self.scroll.setWidget(page)
+        for k, entry in enumerate(self.style.visuals):
+            lay.addWidget(self._plugin_visual_editor(k, entry))
+        if not self.style.visuals:
+            lay.addWidget(QtWidgets.QLabel("Cell axes, halos and other drawn extras from plugins.",
+                                           objectName="muted", wordWrap=True))
+        add = QtWidgets.QPushButton("Add element", objectName="viewAdd",
+                                    toolTip="Add a visual element (cell axes, halos, … from plugins)")
+        add.setMenu(self.visual_menu)
+        self.visual_button = add
+        lay.addWidget(add, 0, QtCore.Qt.AlignLeft)
+        return w
 
-    def _show_editor(self, item):
-        self._form = None
-        kind = None if item is None else item.data(0, KIND)
-        if not kind:
-            self._set_editor("Properties", QtWidgets.QWidget())
-            return
-        if kind[0] == "visual":
-            build = {"particles": self._particles_editor, "bonds": self._bonds_editor, "cell": self._cell_editor}
-            self._set_editor(item.text(1), build[kind[1]]())
-        elif kind[0] == "plugin-visual":
-            self._set_editor(item.text(1), self._plugin_visual_editor(kind[1]))
-
-    def _plugin_visual_editor(self, k):
+    def _plugin_visual_editor(self, k, entry):
         """Parameter form of a plugin visual element, built from its constructor like a modifier's."""
         from ..scene import coerce_visuals, visual_to_dict
 
         w = QtWidgets.QWidget()
         lay = QtWidgets.QVBoxLayout(w)
-        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setContentsMargins(0, 0, 0, 4)
+        head = QtWidgets.QHBoxLayout()
+        on = QtWidgets.QCheckBox(entry["name"], checked=entry.get("enabled", True))
+        on.toggled.connect(lambda v, k=k: self.set_visual_enabled(k, v))
+        head.addWidget(on, 1)
+        rm = header.button("delete", f"Remove {entry['name']}", name="headerButton")
+        rm.clicked.connect(lambda _=False, k=k: self.remove_visual(k))
+        head.addWidget(rm)
+        lay.addLayout(head)
         try:
-            (el,) = coerce_visuals([self.style.visuals[k]])
+            (el,) = coerce_visuals([entry])
         except Exception as exc:  # plugin no longer installed, or its parameters changed
-            err = QtWidgets.QLabel(f"{type(exc).__name__}: {exc}", wordWrap=True)
-            err.setStyleSheet(f"color:{TOKENS['error']}")
-            lay.addWidget(err)
-            lay.addStretch()
+            lay.addWidget(QtWidgets.QLabel(f"{type(exc).__name__}: {exc}", wordWrap=True, objectName="viewError"))
             return w
-        doc = (type(el).__doc__ or "").strip().split("\n\n")[0]
-        if doc:
-            lay.addWidget(QtWidgets.QLabel(" ".join(doc.replace("``", "").split()), wordWrap=True, objectName="muted"))
-        self._form = ParameterForm(el)
-        lay.addWidget(self._form)
+        form = self._forms[k] = self._form = ParameterForm(el)
+        lay.addWidget(form)
 
         def apply():
-            self._form.apply()
+            form.apply()
             self.style.visuals[k] = {**visual_to_dict(el), "enabled": self.style.visuals[k].get("enabled", True)}
-            self.styleChanged.emit()
+            self._emit()
 
         button = QtWidgets.QPushButton("Apply  (Ctrl+Enter)")
         button.setObjectName("primary")
         button.clicked.connect(apply)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), w, activated=apply)
-        lay.addWidget(button)
-        lay.addStretch()
+        lay.addWidget(button, 0, QtCore.Qt.AlignLeft)
         return w
 
     def _particles_editor(self):
         from ..radii import IONIC, PRESETS, format_oxidation_states
-        from ..render import type_color, type_radius
+        from ..view3d import STYLE_PRESETS
 
         w = QtWidgets.QWidget()
         f = QtWidgets.QFormLayout(w)
+        f.setContentsMargins(0, 0, 0, 0)
+        style = QtWidgets.QComboBox()
+        style.addItems(list(STYLE_PRESETS))
+        style.setCurrentText(self.style.preset)
+        style.currentTextChanged.connect(self._set_style_preset)
+        self._row(f, "Style", style, "style", "theme")
         scale = QtWidgets.QDoubleSpinBox(minimum=0.05, maximum=5, singleStep=0.05, value=self.style.radius_scale)
-        scale.valueChanged.connect(lambda v: (setattr(self.style, "radius_scale", v), self.styleChanged.emit()))
-        f.addRow("Radius scale", scale)
+        scale.valueChanged.connect(lambda v: self._set("radius_scale", v))
+        self._row(f, "Radius scale", scale, "radius_scale")
         preset = QtWidgets.QComboBox()
         preset.addItems(list(PRESETS))
         for k, cite in enumerate(PRESETS.values()):
             preset.setItemData(k, cite, QtCore.Qt.ToolTipRole)
         preset.setCurrentText(self.style.radius_preset)
         preset.currentTextChanged.connect(self._set_radius_preset)
-        f.addRow("Radius preset", preset)
+        self._row(f, "Radii", preset, "radius_preset")
         oxi = QtWidgets.QLineEdit(placeholderText="auto, e.g. Sr=2, Ti=4, O=-2")
         oxi.setText(format_oxidation_states(self.style.oxidation_states))
         oxi.setToolTip("Oxidation state per type for the ionic presets; empty types are guessed "
                        "(type name, charges, bond valence, charge balance)")
         oxi.editingFinished.connect(lambda e=oxi: self._set_oxidation_states(e))
         oxi.setEnabled(self.style.radius_preset in IONIC)
-        f.addRow("Oxidation states", oxi)
+        self._row(f, "Oxidation", oxi, "oxidation_states")
         shape = QtWidgets.QComboBox()
         shape.addItems(["auto", "mesh", "impostor", "flat"])
         shape.setCurrentText(self.style.atom_style)
         shape.setToolTip("mesh: best shading for figures; impostor: GPU sprites for millions of atoms; "
                          "flat: ASE-GUI look, unshaded discs with outlines")
-        shape.currentTextChanged.connect(lambda v: (setattr(self.style, "atom_style", v), self.styleChanged.emit()))
-        f.addRow("Rendering", shape)
+        shape.currentTextChanged.connect(lambda v: self._set("atom_style", v))
+        self._row(f, "Drawn as", shape, "atom_style")
+        return w
+
+    def _types_editor(self):
+        from ..render import type_color, type_radius
+
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
         types = [] if self.data is None else list(dict.fromkeys(self.data.types))
-        table = QtWidgets.QTableWidget(len(types), 4)
+        table = QtWidgets.QTableWidget(len(types), 4, objectName="viewTable")
         table.setHorizontalHeaderLabels(["Type", "Color", "Radius", "Count"])
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
         table.horizontalHeader().setMinimumSectionSize(36)
         for r, t in enumerate(types):
-            table.setItem(r, 0, QtWidgets.QTableWidgetItem(t))
+            item = QtWidgets.QTableWidgetItem(t)
+            if t in self.style.type_colors or t in self.style.type_radii:
+                item.setToolTip("Color or radius set in the notebook")
+                f = item.font()
+                f.setBold(True)
+                item.setFont(f)
+            table.setItem(r, 0, item)
             color = self.style.type_colors.get(t)
             rgb = type_color(t, r) if color is None else np.asarray(QtGui.QColor(color).getRgbF()[:3] if isinstance(color, str) else color)
-            btn = QtWidgets.QPushButton()
+            btn = QtWidgets.QPushButton(toolTip=f"Color of {t}")
             btn.setStyleSheet(f"background: {QtGui.QColor.fromRgbF(*rgb).name()}; border: 1px solid {TOKENS['border']};")
             btn.clicked.connect(lambda _=False, t=t, b=btn: self._pick_color(t, b))
             table.setCellWidget(r, 1, btn)
             rad = QtWidgets.QDoubleSpinBox(minimum=0.05, maximum=5, singleStep=0.05,
                                            value=self.style.type_radii.get(t, type_radius(t, preset=self.style.radius_preset)))
-            rad.valueChanged.connect(lambda v, t=t: (self.style.type_radii.__setitem__(t, v), self.styleChanged.emit()))
+            rad.valueChanged.connect(lambda v, t=t: (self.style.type_radii.__setitem__(t, v), self._emit()))
             table.setCellWidget(r, 2, rad)
             table.setItem(r, 3, QtWidgets.QTableWidgetItem(str(int((self.data.types == t).sum()))))
-        table.setFixedHeight(min(260, 34 * (len(types) + 1) + 6))  # no empty rows below the types
-        f.addRow(QtWidgets.QLabel("Types", objectName="section"))
-        f.addRow(table)
+        table.setFixedHeight(min(220, 30 * (len(types) + 1) + 6))  # no empty rows below the types
+        lay.addWidget(table)
         row = QtWidgets.QHBoxLayout()
         imp = QtWidgets.QPushButton("VESTA…", toolTip="Import colors and radii from a VESTA elements.ini file")
         imp.clicked.connect(self._import_elements_ini)
         reset = QtWidgets.QPushButton("Reset", toolTip="Back to the default colors and radii of every type")
         reset.clicked.connect(lambda: (self.style.type_colors.clear(), self.style.type_radii.clear(),
                                        self.styleChanged.emit(), self.refresh()))
-        row.addWidget(imp); row.addWidget(reset)
-        f.addRow(row)
+        row.addWidget(imp)
+        row.addWidget(reset)
+        row.addStretch(1)
+        lay.addLayout(row)
         return w
+
+    def _set_style_preset(self, name):
+        types = self.data.types if self.data is not None else ()
+        self.style.apply_preset(name, types)
+        if self.style.bonds_enabled and self.data is not None:
+            self.style.ensure_bond_pairs(types)
+        self.styleChanged.emit()
+        QtCore.QTimer.singleShot(0, self.refresh)  # radius, bonds and drawing follow the preset
 
     def _set_radius_preset(self, name):
         self.style.radius_preset = name
@@ -549,9 +673,11 @@ class DisplayPanel(QtWidgets.QWidget):
             states = parse_oxidation_states(edit.text())
         except ValueError as exc:
             edit.setToolTip(str(exc))
-            edit.setStyleSheet(f"border: 1px solid {TOKENS['error']};")
+            edit.setProperty("invalid", True)
+            edit.style().polish(edit)
             return
-        edit.setStyleSheet("")
+        edit.setProperty("invalid", False)
+        edit.style().polish(edit)
         if states != self.style.oxidation_states:
             self.style.oxidation_states = states
             self.styleChanged.emit()
@@ -562,7 +688,7 @@ class DisplayPanel(QtWidgets.QWidget):
         if c.isValid():
             self.style.type_colors[t] = (c.redF(), c.greenF(), c.blueF())
             button.setStyleSheet(f"background: {c.name()}; border: 1px solid {TOKENS['border']};")
-            self.styleChanged.emit()
+            self._emit()
 
     def _import_elements_ini(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "VESTA elements.ini", "", "elements.ini (*.ini);;All (*)")
@@ -576,22 +702,28 @@ class DisplayPanel(QtWidgets.QWidget):
     def _bonds_editor(self):
         w = QtWidgets.QWidget()
         f = QtWidgets.QFormLayout(w)
+        f.setContentsMargins(0, 0, 0, 0)
         on = QtWidgets.QCheckBox("Show bonds", checked=self.style.bonds_enabled)
         rad = QtWidgets.QDoubleSpinBox(minimum=0.01, maximum=2, singleStep=0.02, value=self.style.bond_radius, suffix=" Å")
-        rad.valueChanged.connect(lambda v: (setattr(self.style, "bond_radius", v), self.styleChanged.emit()))
-        f.addRow(on)
-        f.addRow("Bond radius", rad)
-        f.addRow(QtWidgets.QLabel("Bond search (pairwise cutoffs, * = any)", objectName="section"))
-        if self.data is not None:
-            self.style.ensure_bond_pairs(self.data.types)
-        table = QtWidgets.QTableWidget(len(self.style.bond_pairs), 4)
+        rad.valueChanged.connect(lambda v: self._set("bond_radius", v))
+        self._row(f, "Bonds", on, "bonds")
+        self._row(f, "Radius", rad, "bond_radius")
+        pairs = self.style.bond_pairs
+        if not pairs and self.data is not None:   # what the automatic table would be; stored once edited
+            from .style import ViewStyle
+
+            auto = ViewStyle(bond_factor=self.style.bond_factor)
+            auto.ensure_bond_pairs(self.data.types)
+            pairs = auto.bond_pairs
+        table = QtWidgets.QTableWidget(len(pairs), 4, objectName="viewTable")
         table.setHorizontalHeaderLabels(["A", "B", "min Å", "max Å"])
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
-        for r, (a, b, lo, hi) in enumerate(self.style.bond_pairs):
+        for r, (a, b, lo, hi) in enumerate(pairs):
             for c, v in enumerate((a, b, f"{lo:.2f}", f"{hi:.2f}")):
                 table.setItem(r, c, QtWidgets.QTableWidgetItem(str(v)))
-        table.setMinimumHeight(min(240, 32 * (len(self.style.bond_pairs) + 1) + 6))
+        table.setFixedHeight(min(200, 30 * (len(pairs) + 1) + 6))
+        table.setToolTip("Bond search: pairwise cutoffs, * = any type")
 
         def commit():
             rows = []
@@ -602,33 +734,45 @@ class DisplayPanel(QtWidgets.QWidget):
                 except (AttributeError, ValueError):
                     continue
             self.style.bond_pairs = rows
-            self.styleChanged.emit()
+            self._emit()
 
         table.itemChanged.connect(lambda *_: commit())
-        on.toggled.connect(lambda v: (setattr(self.style, "bonds_enabled", v), self.styleChanged.emit(), self.refresh()))
+        on.toggled.connect(lambda v: (setattr(self.style, "bonds_enabled", v), self.styleChanged.emit(),
+                                      QtCore.QTimer.singleShot(0, self.refresh)))
+        pairs_label = QtWidgets.QLabel("Pairs", objectName="viewLabel")
+        self._marks.append((pairs_label, ("bond_pairs",)))
+        f.addRow(pairs_label)
         f.addRow(table)
         row = QtWidgets.QHBoxLayout()
         add = QtWidgets.QPushButton("Add pair")
-        add.clicked.connect(lambda: (self.style.bond_pairs.append(["*", "*", 0.0, 2.5]), self.styleChanged.emit(), self.refresh()))
+        def edit(change):
+            if not self.style.bond_pairs:
+                self.style.bond_pairs = [list(p) for p in pairs]
+            change(self.style.bond_pairs)
+            self.styleChanged.emit()
+            self.refresh()
+
+        add.clicked.connect(lambda: edit(lambda rows: rows.append(["*", "*", 0.0, 2.5])))
         rm = QtWidgets.QPushButton("Remove")
-        rm.clicked.connect(lambda: (table.currentRow() >= 0 and self.style.bond_pairs.pop(table.currentRow()),
-                                    self.styleChanged.emit(), self.refresh()))
-        row.addWidget(add); row.addWidget(rm)
-        f.addRow(row)
-        to_mod = QtWidgets.QPushButton("Use as Create bonds modifier")
-        to_mod.setToolTip("Add a CreateBonds modifier with this table, so bonds can be edited and used "
-                          "by Coordination polyhedra")
+        rm.clicked.connect(lambda: edit(lambda rows: table.currentRow() >= 0 and rows.pop(table.currentRow())))
+        to_mod = QtWidgets.QPushButton("As step")
+        to_mod.setToolTip("Add a Create bonds step with this table to the notebook, so bonds can be edited and "
+                          "used by Coordination polyhedra")
         to_mod.clicked.connect(lambda: self.add_modifier(
-            mods.CreateBonds(mode="pairwise", pairs=[tuple(p) for p in self.style.bond_pairs])))
-        f.addRow(to_mod)
+            mods.CreateBonds(mode="pairwise", pairs=[tuple(p) for p in pairs])))
+        for b in (add, rm, to_mod):
+            row.addWidget(b)
+        row.addStretch(1)
+        f.addRow(row)
         if self.data is not None and self.data.bonds is not None:
-            f.addRow("Pipeline bonds", QtWidgets.QLabel(f"{self.data.bonds.count} (drawn instead of the table)"))
+            f.addRow(QtWidgets.QLabel(f"{self.data.bonds.count} bonds from a step (drawn instead of the table)",
+                                      objectName="muted", wordWrap=True))
         elif self.data is not None and self.style.bonds_enabled:
             from ..render import bond_list
 
             try:
-                n = len(bond_list(self.data, pairs=self.style.bond_pairs)[0]) // 2
-                f.addRow("Bonds", QtWidgets.QLabel(str(n)))
+                n = len(bond_list(self.data, pairs=pairs)[0]) // 2
+                f.addRow(QtWidgets.QLabel(f"{n:,} bonds", objectName="muted"))
             except ValueError as exc:
                 f.addRow(QtWidgets.QLabel(str(exc), wordWrap=True))
         return w
@@ -636,15 +780,16 @@ class DisplayPanel(QtWidgets.QWidget):
     def _cell_editor(self):
         w = QtWidgets.QWidget()
         f = QtWidgets.QFormLayout(w)
-        show = QtWidgets.QCheckBox("Render cell", checked=self.style.show_cell)
-        show.toggled.connect(lambda v: (setattr(self.style, "show_cell", v), self.styleChanged.emit(), self.refresh()))
+        f.setContentsMargins(0, 0, 0, 0)
+        show = QtWidgets.QCheckBox("Draw the cell", checked=self.style.show_cell)
+        show.toggled.connect(lambda v: self._set("show_cell", v))
         width = QtWidgets.QDoubleSpinBox(minimum=0.5, maximum=10, singleStep=0.5, value=self.style.cell_width)
-        width.valueChanged.connect(lambda v: (setattr(self.style, "cell_width", v), self.styleChanged.emit()))
-        f.addRow(show)
-        f.addRow("Line width", width)
-        f.addRow(self._boundary_editor())
-        if self.data is not None and self.data.cell.is_valid:
-            f.addRow(QtWidgets.QLabel(cell_summary(self.data.cell), objectName="muted"))
+        width.valueChanged.connect(lambda v: self._set("cell_width", v))
+        self._row(f, "Cell", show, "cell")
+        self._row(f, "Line width", width, "cell_width")
+        box = self._boundary_editor()
+        self._marks.append((box, ("boundary", "boundary_bonds")))
+        f.addRow(box)
         return w
 
     def _boundary_editor(self):
@@ -667,7 +812,7 @@ class DisplayPanel(QtWidgets.QWidget):
         def apply(*_):
             self.style.boundary = [lo.value(), max(hi.value(), lo.value())] if box.isChecked() else []
             self.style.boundary_bonds = mode.currentText()
-            self.styleChanged.emit()
+            self._emit()
 
         box.toggled.connect(apply)
         lo.valueChanged.connect(apply)
@@ -679,8 +824,47 @@ class DisplayPanel(QtWidgets.QWidget):
         row.addWidget(QtWidgets.QLabel("to"))
         row.addWidget(hi)
         g.addRow("Range", row)
-        g.addRow("Bonds leaving it", mode)
+        g.addRow("Bonds out", mode)
         return box
+
+    def _camera_editor(self):
+        """What the notebook's view says about the camera and frame; Save writes the current one."""
+        w = QtWidgets.QWidget()
+        f = QtWidgets.QFormLayout(w)
+        f.setContentsMargins(0, 0, 0, 0)
+        view = getattr(self.pipeline, "view", None) if self.pipeline is not None else None
+        values = self._set_keys()
+
+        def shown(key, default):
+            return _short(values[key]) if key in values else default
+
+        if view is not None and "camera" in values:
+            self._row(f, "Camera", QtWidgets.QLabel("saved exactly", objectName="viewValue"), "camera")
+        else:
+            self._row(f, "Direction", QtWidgets.QLabel(shown("direction", "iso"), objectName="viewValue"), "direction")
+            self._row(f, "Zoom", QtWidgets.QLabel(shown("zoom", "1.0"), objectName="viewValue"), "zoom")
+        ortho = values.get("orthographic", True)
+        self._row(f, "Projection", QtWidgets.QLabel("orthographic" if ortho else "perspective",
+                                                    objectName="viewValue"), "orthographic")
+        self._row(f, "Frame", QtWidgets.QLabel(shown("frame", "the timeline's"), objectName="viewValue"), "frame")
+        save = QtWidgets.QPushButton("Save camera", toolTip="Write the current camera and frame into the "
+                                                            "notebook's view(pipe, ...) cell")
+        save.clicked.connect(self.cameraRequested.emit)
+        f.addRow(save)
+        return w
+
+
+def _short(value) -> str:
+    """A setting value for a tooltip or a camera row: floats rounded, long values cut."""
+    if isinstance(value, str):
+        text = value
+    elif isinstance(value, float):
+        text = f"{value:.4g}"
+    elif isinstance(value, (list, tuple)) and all(isinstance(x, (int, float)) for x in value):
+        text = "[" + ", ".join(f"{x:.4g}" for x in value) + "]"
+    else:
+        text = repr(value)
+    return text if len(text) <= 60 else text[:57] + "…"
 
 
 def _types(data):

@@ -200,8 +200,8 @@ the half at the drawn atom, as without a boundary; `"complete"` adds the partner
 
 It is display only. `pipe.compute()` and every modifier still see the real atoms, the images are
 made by the renderers (OpenGL, ray tracer and vector alike), and an image picks, hovers and
-selects as its real atom in the GUI. In the GUI it is the Boundary box of the Simulation cell
-entry in the Display panel; the range is saved with the session.
+selects as its real atom in the GUI. In the GUI it is the Boundary box of the Cell card in
+the View tab; the range is saved with the session.
 
 ## Animations
 
