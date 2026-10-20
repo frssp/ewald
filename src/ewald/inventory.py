@@ -216,10 +216,11 @@ def plugins_section() -> list[str]:
     out = ["## Plugins", "",
            f"Entry point groups `{plugins.READER_GROUP}`, `{plugins.WRITER_GROUP}`, `{plugins.MODIFIER_GROUP}`, "
            f"`{plugins.VISUAL_GROUP}`, `{plugins.OVERLAY_GROUP}`, `{plugins.COLORMAP_GROUP}`, "
-           f"`{plugins.THEME_GROUP}`, `{plugins.TOOL_GROUP}`, `{plugins.UI_THEME_GROUP}` and "
-           f"`{plugins.AI_PROVIDER_GROUP}`, or a file in "
+           f"`{plugins.THEME_GROUP}`, `{plugins.TOOL_GROUP}`, `{plugins.UI_THEME_GROUP}`, "
+           f"`{plugins.AI_PROVIDER_GROUP}` and `{plugins.SETTINGS_PAGE_GROUP}`, or a file in "
            "`<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / "
-           "`@colormap` / `@theme` / `@ai_tool` (or `@claude_tool`) / `@ui_theme` / `@ai_provider`; `ewald plugins` lists "
+           "`@colormap` / `@theme` / `@ai_tool` (or `@claude_tool`) / `@ui_theme` / `@ai_provider` / `@settings_page`; "
+           "`ewald plugins` lists "
            "what loaded. "
            "Details: [Plugins](plugins/index.md).", ""]
     for path in examples:

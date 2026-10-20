@@ -120,7 +120,7 @@ it is: it is not looked up next to the notebook, globbed, or opened over SSH (ot
 `aiida:1234` would read as the SSH host `aiida`), and sessions and notebooks store the string
 unchanged. Database, archive and web sources (AiiDA, Materials Project, OPTIMADE) fit here; the
 [ewald-aiida](https://github.com/frssp/ewald-plugins/tree/main/packages/ewald-aiida) plugin is
-the reference.
+the reference. In the GUI such a path opens with File › Open location.
 
 Use `sniff` when the file name says little (`OUTPUT`, `traj.dat`):
 

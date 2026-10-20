@@ -1,5 +1,5 @@
 """What each kind of plugin is: one dataclass per registry (readers, writers, modifiers, visual
-elements, overlays, color maps, themes, UI themes, AI tools), the built-in entries and
+elements, overlays, color maps, themes, UI themes, AI tools, settings pages), the built-in entries and
 :class:`ListReader`. Stateless; the registry itself and the loading live in :mod:`ewald.plugins`,
 which re-exports everything here."""
 from __future__ import annotations
@@ -306,3 +306,63 @@ class ListReader(FrameReader):
 
     def read(self, index):
         return self.frames[index].copy()
+
+
+#: Kinds of :class:`SettingsField`: a line of text, a password-style secret, a check box, a
+#: choice from ``choices``, several lines of text, a whole number.
+FIELD_KINDS = ("text", "secret", "bool", "choice", "multiline", "int")
+
+
+@dataclass
+class SettingsField:
+    """One entry of a plugin's settings page; the dialog is generated from these.
+
+    ``secret`` fields never show what is stored: ``load()`` returns a true value when a secret
+    is saved (the field then says so) and ``save()`` gets ``""`` when the user left it empty,
+    meaning "keep the saved one". Keep secrets in :mod:`ewald.keychain`, never in a file."""
+
+    name: str
+    label: str = ""
+    kind: str = "text"
+    help: str = ""
+    choices: tuple = ()
+    default: object = None
+    placeholder: str = ""
+
+    def __post_init__(self):
+        if self.kind not in FIELD_KINDS:
+            raise ValueError(f"settings field {self.name!r}: kind must be one of {', '.join(FIELD_KINDS)}, "
+                             f"not {self.kind!r}")
+        if self.kind == "choice" and not self.choices:
+            raise ValueError(f"settings field {self.name!r}: a choice needs choices")
+        self.label = self.label or self.name.replace("_", " ").capitalize()
+        self.choices = tuple(self.choices)
+
+    def empty(self):
+        """The value of this field when ``load()`` says nothing about it."""
+        if self.default is not None:
+            return self.default
+        return {"bool": False, "int": 0, "choice": self.choices[0] if self.choices else ""}.get(self.kind, "")
+
+
+@dataclass
+class SettingsPagePlugin:
+    """A plugin's own page of settings (Plugins side bar › Settings…, Edit › Plugin settings).
+
+    ``load()`` returns the current values by field name; ``save(values)`` checks and stores them
+    and returns a short message for the user, or raises ``ValueError`` with what to fix.
+    ``actions`` are extra buttons, label -> ``f(values)`` returning a message (``Test``, ``Log out``)."""
+
+    name: str
+    title: str
+    fields: list
+    load: Callable
+    save: Callable
+    description: str = ""
+    actions: dict = field(default_factory=dict)
+    origin: str = ""
+
+    def values(self) -> dict:
+        """``load()`` with every field present (missing ones get their empty value)."""
+        got = dict(self.load() or {})
+        return {f.name: got.get(f.name, f.empty()) for f in self.fields}

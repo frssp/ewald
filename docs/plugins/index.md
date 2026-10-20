@@ -19,6 +19,7 @@ against the same API the built-in readers and modifiers use, so everything in th
 | [AI tool](tools.md) | a function `f(toolset, **arguments)` returning JSON-ready data | `@ai_tool` (or `@claude_tool`) in the plugin folder, or an `ewald.tools` entry point | available |
 | [AI provider](tools.md#ai-providers) | an `ewald.llm.providers.Provider` (another AI service: Mistral, a company gateway, ...) | `@ai_provider` in the plugin folder, or an `ewald.ai_providers` entry point | available |
 | [UI theme](styles.md#ui-themes) | a function returning design tokens (`{"accent": "#7aa2f7", ...}`) on top of Paper or Graphite | `@ui_theme` in the plugin folder, or an `ewald.ui_themes` entry point | available |
+| [Settings page](settings.md) | fields (`SettingsField`) plus `load()` / `save(values)` | `@settings_page(...)` in the plugin folder, or an `ewald.settings_pages` entry point | available |
 
 [Modifier Forge](forge.md) writes a modifier plugin from a description: the AI writes the
 module and its tests, and ewald saves it to the plugin folder once its checks pass.

@@ -79,8 +79,8 @@ from typing import Callable
 
 from .io.base import FrameReader
 from .plugin_kinds import (  # noqa: F401 (part of this module's API)
-    ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, ReaderPlugin, ThemePlugin, ToolPlugin,
-    UiThemePlugin, VisualPlugin, WriterPlugin, _builtin_ai_providers, _builtin_overlays, _builtin_readers,
+    ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, ReaderPlugin, SettingsField, SettingsPagePlugin,
+    ThemePlugin, ToolPlugin, UiThemePlugin, VisualPlugin, WriterPlugin, _builtin_ai_providers, _builtin_overlays, _builtin_readers,
     _builtin_themes, _builtin_ui_themes, _builtin_visuals, _builtin_writers, path_scheme)
 from .plugin_manifest import (  # noqa: F401 (part of this module's API)
     Plugin, _read_toml, _version_tuple, ewald_version, file_manifest, version_satisfies)
@@ -97,6 +97,7 @@ THEME_GROUP = "ewald.themes"
 TOOL_GROUP = "ewald.tools"
 UI_THEME_GROUP = "ewald.ui_themes"
 AI_PROVIDER_GROUP = "ewald.ai_providers"
+SETTINGS_PAGE_GROUP = "ewald.settings_pages"
 PLUGIN_GROUP = "ewald.plugins"      # names the package that holds ewald-plugin.toml
 MANIFEST_NAME = "ewald-plugin.toml"
 
@@ -113,6 +114,7 @@ class _Registry:
     tools: dict = field(default_factory=dict)
     ui_themes: dict = field(default_factory=_builtin_ui_themes)
     ai_providers: dict = field(default_factory=_builtin_ai_providers)
+    settings_pages: dict = field(default_factory=dict)
     errors: dict = field(default_factory=dict)      # origin -> message
     plugins: dict = field(default_factory=dict)     # id -> Plugin
     loaded: bool = False
@@ -120,7 +122,7 @@ class _Registry:
 
 _registry = _Registry()
 _REGISTRIES = ("readers", "writers", "modifiers", "visuals", "overlays", "colormaps", "themes", "tools",
-               "ui_themes", "ai_providers")
+               "ui_themes", "ai_providers", "settings_pages")
 
 
 def plugin_dir() -> Path:
@@ -483,6 +485,71 @@ def ai_providers() -> dict:
     return dict(_registry.ai_providers)
 
 
+def settings_page(name: str | None = None, title: str = "", fields=None, description: str = "",
+                  actions: dict | None = None):
+    """Decorator giving a plugin its own settings page, so it can be set up without Python
+    (Plugins side bar › Settings…, Edit › Plugin settings). It decorates a class (made with no
+    arguments) or an object with ``load() -> dict`` and ``save(values) -> str``; ``fields`` is a
+    list of :class:`SettingsField` (or the class's ``fields`` attribute)::
+
+        from ewald.plugin_api import SettingsField, settings_page
+
+        @settings_page("myservice", title="My service", fields=[
+            SettingsField("url", "Server address"),
+            SettingsField("key", "Access key", kind="secret")])
+        class MyServiceSettings:
+            def load(self):
+                return {"url": read_url(), "key": bool(get_secret("myservice"))}
+
+            def save(self, values):
+                if not values["url"].startswith("https://"):
+                    raise ValueError("The server address starts with https://")
+                ...
+                return "Saved"
+
+    ``save`` raises ``ValueError`` with what to fix; other exceptions are shown as failures.
+    Secrets belong in :mod:`ewald.keychain`; a secret field is empty unless the user typed one.
+    ``actions`` (or a class attribute of that name) adds buttons: label -> method name or
+    ``f(values) -> message``."""
+
+    def deco(page):
+        register_settings_page(name, page, title=title, fields=fields, description=description, actions=actions)
+        return page
+
+    return deco
+
+
+def register_settings_page(name: str | None, page, title: str = "", fields=None, description: str = "",
+                           actions: dict | None = None, origin: str = "python") -> SettingsPagePlugin:
+    obj = page() if inspect.isclass(page) else page
+    for method in ("load", "save"):
+        if not callable(getattr(obj, method, None)):
+            raise TypeError(f"settings page {page!r} has no {method}() method")
+    fields = list(fields if fields is not None else getattr(obj, "fields", ()))
+    if not fields or not all(isinstance(f, SettingsField) for f in fields):
+        raise TypeError(f"settings page {page!r}: fields must be a non-empty list of SettingsField")
+    name = name or getattr(obj, "name", None) or type(obj).__name__.lower()
+    doc = inspect.cleandoc(getattr(page, "__doc__", None) or "") if inspect.isclass(page) else ""
+    acts = {}
+    for label, act in dict(actions if actions is not None else getattr(obj, "actions", {}) or {}).items():
+        act = getattr(obj, act) if isinstance(act, str) else act
+        if not callable(act):
+            raise TypeError(f"settings page {name!r}: action {label!r} is not callable")
+        acts[label] = act
+    plugin = SettingsPagePlugin(name, title or getattr(obj, "title", "") or name, fields, obj.load, obj.save,
+                                description or getattr(obj, "description", "") or " ".join(doc.split("\n\n")[0].split()),
+                                acts, getattr(_loading, "origin", None) or origin)
+    _registry.settings_pages[name] = plugin
+    _contribute("settings_pages", name)
+    return plugin
+
+
+def settings_pages() -> dict[str, SettingsPagePlugin]:
+    """Plugins' settings pages by name."""
+    load_plugins()
+    return dict(_registry.settings_pages)
+
+
 class _Loading:
     origin: str | None = None
     plugin: "Plugin | None" = None
@@ -641,6 +708,7 @@ def load_plugins(force: bool = False):
         _registry.ui_themes = {**_builtin_ui_themes(), **keep}
         keep = {k: v for k, v in _registry.ai_providers.items() if v.origin == "python"}
         _registry.ai_providers = {**_builtin_ai_providers(), **keep}
+        _registry.settings_pages = {k: v for k, v in _registry.settings_pages.items() if v.origin == "python"}
         _registry.errors.clear()
         _registry.plugins = {}
     off = disabled()
@@ -685,7 +753,8 @@ def _load_entry_points(off: set = frozenset()):
                             (THEME_GROUP, lambda name, obj: register_theme(name, obj)),
                             (TOOL_GROUP, lambda name, obj: register_tool(name, obj)),
                             (UI_THEME_GROUP, lambda name, obj: register_ui_theme(name, obj)),
-                            (AI_PROVIDER_GROUP, lambda name, obj: register_ai_provider(name, obj))):
+                            (AI_PROVIDER_GROUP, lambda name, obj: register_ai_provider(name, obj)),
+                            (SETTINGS_PAGE_GROUP, lambda name, obj: register_settings_page(name, obj))):
         try:
             eps = entry_points(group=group)
         except Exception as exc:
@@ -881,6 +950,8 @@ def status() -> dict:
                           for p in _registry.ui_themes.values()],
             "ai_providers": [{"name": p.name, "label": p.label, "description": p.description, "origin": p.origin}
                              for p in _registry.ai_providers.values()],
+            "settings_pages": [{"name": p.name, "title": p.title, "description": p.description, "origin": p.origin}
+                               for p in _registry.settings_pages.values()],
             "errors": dict(_registry.errors)}
 
 
