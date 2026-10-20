@@ -1,7 +1,7 @@
 """UI themes from the design tokens (project design files, redesign canvas).
 
 Graphite (dark, the default), Paper (light), Midnight, Solarized light/dark and High contrast;
-``@ui_theme`` plugins add more (:func:`palette`). ``accent`` (teal) marks what you can act on,
+``@ui_theme`` plugins add more (:func:`palette`). ``accent`` (blue in Paper and Graphite) marks what you can act on,
 ``data`` (orange) marks results computed from the data. ``TOKENS`` is the active palette; it is
 updated in place by :func:`use`, so ``from .theme import TOKENS`` sees the change.
 """
@@ -14,19 +14,19 @@ log = logging.getLogger(__name__)
 PALETTES = {
     "paper": {
         "bg": "#FBFBF9", "panel": "#F3F4F1", "raised": "#FFFFFF", "border": "#D5D8D1",
-        "text": "#15181C", "secondary": "#3D434A", "muted": "#5C636B", "accent": "#0B7A6F",
-        "on_accent": "#FFFFFF", "accent_soft": "#E0EFEC", "data": "#C8551F", "data_soft": "#F7E4D9",
+        "text": "#15181C", "secondary": "#3D434A", "muted": "#5C636B", "accent": "#1A66CC",
+        "on_accent": "#FFFFFF", "accent_soft": "#E1EBF8", "data": "#C8551F", "data_soft": "#F7E4D9",
         "selection": "#C99A06", "pick": "#C8551F", "error": "#C62828", "ok": "#2E7D32",
-        "viewport": "#ECEDE9", "hover": "#E9EBE6", "pressed": "#DFE2DC", "accent_hover": "#0A6B61",
-        "accent_pressed": "#085C53",
+        "viewport": "#ECEDE9", "hover": "#E9EBE6", "pressed": "#DFE2DC", "accent_hover": "#195AB2",
+        "accent_pressed": "#19509B",
     },
     "graphite": {
         "bg": "#14161A", "panel": "#1B1E23", "raised": "#23272E", "border": "#30353D",
-        "text": "#E7E9EC", "secondary": "#AEB4BE", "muted": "#8C939E", "accent": "#3FB8A6",
-        "on_accent": "#0B1220", "accent_soft": "#1E3A36", "data": "#F08A4B", "data_soft": "#3A2A20",
+        "text": "#E7E9EC", "secondary": "#AEB4BE", "muted": "#8C939E", "accent": "#5CA0F2",
+        "on_accent": "#0B1220", "accent_soft": "#25374E", "data": "#F08A4B", "data_soft": "#3A2A20",
         "selection": "#E8C547", "pick": "#FFD84D", "error": "#FF6B6B", "ok": "#5BD08A",
-        "viewport": "#14161A", "hover": "#2A2F37", "pressed": "#333943", "accent_hover": "#55C6B5",
-        "accent_pressed": "#33A493",
+        "viewport": "#14161A", "hover": "#2A2F37", "pressed": "#333943", "accent_hover": "#74AEF4",
+        "accent_pressed": "#4F87CB",
     },
     "midnight": {
         "bg": "#11131C", "panel": "#171A26", "raised": "#1F2333", "border": "#2E3449", "text": "#E6E9F2",
