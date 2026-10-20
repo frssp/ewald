@@ -13,6 +13,10 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - View tab: folded cards are remembered only while the window is open (not in settings or the
   layout file); no Fold all / Unfold all; a card has no per-card reset to defaults.
 
+- Workflows (`ewald.workflow`): a table that compares the scalars of every step of a workflow
+  (energies, gaps, forces) and of several workflows side by side, and opening one step's input
+  next to its output (INCAR/KPOINTS as text cells).
+
 Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; numbers from
 `benchmarks/analysis.py`, `benchmarks/large_files.py` and the GUI under `xvfb-run`)
 

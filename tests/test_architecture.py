@@ -18,6 +18,7 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "ewald"
 GUI_IMPORT_ALLOWED = {
     "__main__.py",   # `ewald gui` starts the desktop app
     "inventory.py",  # `ewald inventory --gui` lists the GUI menus for docs/features.md
+    "workflow.py",   # workflow_panel(): a plugin's side bar factory builds the Qt panel when it opens
 }
 
 # Headless compute and rendering take every option as an argument (CLAUDE.md, Conventions).

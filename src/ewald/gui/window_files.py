@@ -294,6 +294,36 @@ class FilesMixin:
         self.open_any(text)
         return self.pipeline
 
+    def open_workflow(self, workflow):
+        """Open a workflow (a :class:`ewald.workflow.Workflow`, or a path such as
+        ``simagent:1234`` that an installed workflow source describes) as one notebook: a
+        ``load`` cell per step and ``pipe`` on its main result (:func:`ewald.workflow.notebook_text`).
+        The notebook is ewald's own text, so it runs at once."""
+        from .. import workflow as wf_module
+        from ..notebook import Notebook
+
+        try:
+            with busy(self.message, "Reading the workflow…"):
+                wf = workflow if isinstance(workflow, wf_module.Workflow) else wf_module.describe(str(workflow))
+                text = wf_module.notebook_text(wf)
+        except Exception as exc:
+            self.message(f"Open failed: {workflow}: {exc}", error=True)
+            QtWidgets.QMessageBox.critical(self, "Open failed", f"{workflow}\n\n{exc}")
+            return None
+        nb = Notebook.from_py(text, name=wf.label or wf.kind or wf.name or "Workflow")
+        panel = self.panel
+        blank = panel.view if panel.view is not None and panel._is_blank(panel.view) else None
+        view = panel.add_notebook(nb)
+        if blank is not None:       # an untouched empty tab gives way, as when a file opens
+            panel.tabs.removeTab(panel.tabs.indexOf(blank))
+            blank.deleteLater()
+        view.trust(ask=False)
+        with busy(self.message, f"Loading {sum(1 for c in nb.cells if 'load(' in c.source)} result(s)…"):
+            view.run_all()
+        self.notebook_dock.show()
+        self.message(f"Opened {wf.title} as a notebook")
+        return view
+
     def open_remote_dialog(self):
         from .remote_dialog import RemoteFileDialog
 

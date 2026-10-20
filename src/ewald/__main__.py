@@ -452,6 +452,8 @@ def _print_plugins(as_json=False, enable=None, disable=None):
         print(f"panel {v['name']:<25} {v['title'][:14]:<14} {v['description'][:60]}  [{v['origin']}]")
     for v in st.get("settings_pages", []):
         print(f"settings {v['name']:<22} {v['title'][:14]:<14} {v['description'][:60]}  [{v['origin']}]")
+    for v in st.get("workflows", []):
+        print(f"workflows {v['name']:<21} {v['title'][:14]:<14} {v['description'][:60]}  [{v['origin']}]")
     for origin, err in st["errors"].items():
         print(f"FAILED {origin}: {err}")
     return 1 if st["errors"] else None
