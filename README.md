@@ -141,8 +141,7 @@ ships with the package (File › Open example, `ewald examples`).
 **Notebook GUI.** Notebook tabs, step and view cells, Markdown, matplotlib inline, a Python console
 on the same namespace, a command palette (Ctrl+K) and a minimal mode (Ctrl+Shift+M) that leaves only
 the notebook and the view. A VESTA-like crystal view (view along a, b, c, a*, ..., boundary images,
-polyhedra, isosurfaces), hover readout, picking and measuring, and an OVITO-style classic layout as
-an option. [Desktop GUI](docs/user/gui.md)
+polyhedra, isosurfaces), hover readout, picking and measuring. [Desktop GUI](docs/user/gui.md)
 
 **Analysis.** About 70 modifiers: OVITO's structure identification (CNA, PTM, CSP, Voronoi,
 Wigner-Seitz, DXA through the `ovito` package), clusters, rings, Steinhardt order, statistics and
