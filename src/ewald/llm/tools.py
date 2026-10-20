@@ -582,17 +582,22 @@ class Toolset:
            "The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the "
            "GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, "
            "'elements' the same values by visual element (Particles, Bonds, Surfaces, Simulation cell, ...), "
+           "'measured' the values of its distance/angle measurements, "
            f"'help' what each means. Groups: {groups}.",
            _obj({}))
         def get_view():
             v = self._need_pipeline().view
-            return {"changed": v.changed(), "settings": v.settings(), "elements": v.elements.describe(),
-                    "help": {k: st.doc for k, st in SETTINGS.items()}, "code": v.source(self.pipeline_name)}
+            out = {"changed": v.changed(), "settings": v.settings(), "elements": v.elements.describe(),
+                   "help": {k: st.doc for k, st in SETTINGS.items()}, "code": v.source(self.pipeline_name)}
+            if v.measurements:
+                out["measured"] = v.measured()   # their values on the view's frame
+            return out
 
         @T("set_view",
            "Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style "
            "preset, theme, element colors and radii, atoms on/off, bonds on/off, bond table, cell, background, VESTA "
-           "boundary, polyhedra/isosurface look by surface name (surfaces), plugin visuals, vectors, camera "
+           "boundary, polyhedra/isosurface look by surface name (surfaces), distance/angle measurements, key light, "
+           "atom labels, plugin visuals, vectors, camera "
            "(direction, zoom, rotate), frame, and picture options (renderer, "
            "quality, legends, scale bar, text). Only the settings given change; null resets one to its default. "
            "'rotate' turns the current view by [azimuth, elevation] degrees; 'reset' (true or a list of names) "

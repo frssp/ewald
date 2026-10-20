@@ -145,6 +145,7 @@ pipe.view.surface("coordination-polyhedra", color="teal", transparency=0.5)   # 
 view(pipe, transparency={"O": 0.6}, selection=True)       # fade types; selected atoms red (False: off, or a color)
 view(pipe, labels="{type}{index}")                        # atom labels: True, a template ({id}, {Charge:.2f}) or a dict
 view(pipe, light={"azimuth": 60, "elevation": 20, "intensity": 1.2})   # key light relative to the viewer
+pipe.view.measure(0, 5); pipe.view.measure(4, 0, 7)       # distance / angle drawn with its value; returns it
 ```
 
 Per-atom colors, sizes and hiding by condition are steps (`ewald.paint`: `paint`, `hide`, `fade`, `resize`), and

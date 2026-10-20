@@ -334,7 +334,7 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 coordination: dict | None = None, vectors=None, arrow_resolution: int | None = None,
                 visuals=None, frame: int = 0, boundary=None, boundary_bonds: str = "half",
                 replicate=None, replicate_cell: str = "super", show_atoms: bool = True, surfaces=None,
-                cell_radius=None, type_transparency=None, selection_color=None, light=None):
+                cell_radius=None, type_transparency=None, selection_color=None, light=None, measurements=None):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter; returns the
     :class:`ewald.scene.Scene` it drew.
 
@@ -363,7 +363,8 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     ``data.surfaces`` by name (``{name: {"visible", "color", "transparency", "edges"}}``).
     ``type_transparency`` ``{type: 0..1}`` fades whole types; ``selection_color`` draws the particles of
     a 'Selection' property in that color (OVITO's red). ``light`` sets the plotter's key light (see
-    :func:`apply_light`); None keeps VTK's light kit.
+    :func:`apply_light`); None keeps VTK's light kit. ``measurements`` draws the lines of distances, angles
+    and dihedrals (:mod:`ewald.measure`; the values are an overlay).
     """
     from .scene import SceneContext, build
 
@@ -374,7 +375,7 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                   trajectory_width=trajectory_width, show_cell=show_cell, cell_width=cell_width,
                   boundary=boundary, boundary_bonds=boundary_bonds, replicate=replicate,
                   replicate_cell=replicate_cell, show_atoms=show_atoms, surfaces=surfaces, cell_radius=cell_radius,
-                  type_transparency=type_transparency, selection_color=selection_color)
+                  type_transparency=type_transparency, selection_color=selection_color, measurements=measurements)
     draw_scene(plotter, scene, atom_style=atom_style, mesh_limit=mesh_limit, sphere_resolution=sphere_resolution,
                arrow_resolution=arrow_resolution or max(6, (sphere_resolution or 16) // 2 + 2), ink=cell_color)
     apply_light(plotter, light)
@@ -709,7 +710,9 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     in Angstrom; exact in orthographic views), and ``overlays``: overlay elements
     (Coordinate tripod, Attributes, Atom labels, plugins; see :mod:`ewald.overlays`). ``labels`` puts a
     label on each atom: True (its type), a template such as ``"{type}{index}"`` or ``"{Charge:.2f}"``, or a
-    dict with ``text``, ``types``, ``size``, ``color`` (:class:`ewald.overlays.AtomLabels`). ``dpi`` is stored
+    dict with ``text``, ``types``, ``size``, ``color`` (:class:`ewald.overlays.AtomLabels`). ``measurements``
+    ``[[i, j], [i, j, k], [i, j, k, l]]`` draws distances, angles and dihedrals with their values
+    (:mod:`ewald.measure`). ``dpi`` is stored
     in PNG/TIFF files and sets the page size of vector output.
 
     ``boundary``: VESTA-style boundary range, e.g. ``(-0.1, 1.1)`` (fractional; or three pairs): also
@@ -738,6 +741,9 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
         from .overlays import label_params
 
         overlays = [*_overlay_list(overlays), {"name": "Atom labels", "params": label_params(labels)}]
+    if scene_kwargs.get("measurements"):
+        overlays = [*_overlay_list(overlays), {"name": "Measurements",
+                                               "params": {"measurements": scene_kwargs["measurements"]}}]
     if theme is not None:
         from .themes import apply_theme
 

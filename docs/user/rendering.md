@@ -38,7 +38,7 @@ print(pipe.view.source())                     # the same as a view(pipe, ...) li
 | bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax]], `bond_factor`, `bond_radius` |
 | cell | `cell`, `cell_width`, `cell_color`, `cell_radius` (ray-traced tube, Angstrom) |
 | boundary | `boundary` (VESTA range), `boundary_bonds` (half, complete, none), `replicate` [na, nb, nc], `replicate_cell` (super, unit, all) |
-| elements | `surfaces` (polyhedra, isosurface and slice look by name), `visuals` (plugin visual elements), `vectors` (arrows of a vector property), `trajectory_width` |
+| elements | `surfaces` (polyhedra, isosurface and slice look by name), `visuals` (plugin visual elements), `vectors` (arrows of a vector property), `measurements` (distances, angles, dihedrals), `trajectory_width` |
 | camera | `frame`, `direction`, `zoom`, `orthographic`, `camera` (an exact camera, as the GUI saves it) |
 | picture | `renderer`, `quality`, `size`, `ambient_occlusion`, `shadows`, `transparent_background`, `text`, `legend`, `type_legend`, `scale_bar`, `overlays` |
 
@@ -79,6 +79,18 @@ pictures). Boundary and replicated images are not labelled.
 view(pipe, labels="{type}{index}")                                # Sr0, Ti1, O2, ...
 view(pipe, labels={"text": "{Charge:+.2f}", "types": ["O"], "size": 14, "color": "navy"})
 pipe.render("fig.png", labels="id")                               # one picture only
+```
+
+`measurements` draws distances (2 atoms), angles (3, at the middle atom) and dihedrals (4) with
+their values, in the viewport and every picture, using the nearest periodic image of each next
+atom. `pipe.view.measure(...)` adds one and returns its value; `ewald.measure.measure(data,
+[i, j])` only computes it.
+
+```python
+pipe.view.measure(0, 5)                  # 2.761 (Angstrom), and drawn from now on
+pipe.view.measure(4, 0, 7)               # 90.0 (degrees, at atom 0)
+pipe.view.measured()                     # [{'atoms': [0, 5], 'kind': 'distance', 'value': 2.761}, ...]
+view(pipe, measurements=[[0, 5], [4, 0, 7]])
 ```
 
 `light` sets the key light for the viewport and every renderer (OpenGL, ray tracer, SVG/PDF

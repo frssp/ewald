@@ -258,6 +258,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 | `Vectors` | Per-particle vectors as arrows: ``data.vectors`` (VectorVis) plus ``vectors`` (a property name, a list, or ``{name: {VectorStyle fields}}``, see :class:`ewald.arrows.VectorStyle`). |
 | `Trajectory lines` | ``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle in its atom color; ``width`` in pixels, 0 hides them. |
 | `Simulation cell` | The cell edges as lines, ``width`` pixels wide; ``color`` None uses the renderer's ink (black, or light grey on dark backgrounds). ``radius`` (Angstrom) sizes the ray-traced tubes, None = 0.15 % of the cell diagonal. |
+| `Measurements` | The view's ``measurements`` (:mod:`ewald.measure`): lines through 2, 3 or 4 atoms (nearest periodic images), ``width`` pixels wide in ``color``; the values are the Measurements overlay (:class:`ewald.overlays.MeasurementLabels`). Indices are those of the real atoms, also in a boundary or replicated view. |
 
 ### Overlays
 
@@ -268,6 +269,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 | `Coordinate tripod` | Axis directions as arrows in a corner that turn with the camera: Cartesian x, y, z or the cell vectors a, b, c. |
 | `Attributes` | Global attributes (temperature, energy, timestep, ...) as "name = value" lines in a corner. |
 | `Atom labels` | A text label on every atom, e.g. its type and index. ``text`` is a format string with ``{type}``, ``{index}`` (0-based), ``{id}`` (the Particle Identifier, else index + 1) and any per-atom property whose name has no spaces (``{Charge:.2f}``); a bare 'type', 'index', 'id' or property name means that field. ``types`` limits the labels to those particle types; ``size`` is the font size in px (None: the figure's small size); ``color`` None is the ink color. Hidden atoms (Transparency 1) get no label, and at most ``max_labels`` atoms are labelled (the nearest to the camera). |
+| `Measurements` | The values of the view's ``measurements`` (:mod:`ewald.measure`) next to their lines: a distance in Angstrom at its middle, an angle at its vertex, a dihedral at its middle bond. ``size`` in px (None: the figure's small size); ``color`` None is the measurement line color. |
 
 ### Themes and color maps
 
@@ -300,7 +302,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 `size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`, `region`, `labels`, `light`.
 
-Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`, `show_atoms`, `surfaces`, `cell_radius`, `type_transparency`, `selection_color`.
+Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`, `show_atoms`, `surfaces`, `cell_radius`, `type_transparency`, `selection_color`, `measurements`.
 
 ## Command line
 
@@ -359,8 +361,8 @@ Tools:
 | `compute_msd` | Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per type, with a linear-regime fit D = slope/6. |
 | `check_run` | What the loaded run is and whether it can be trusted, from its input and log files (INCAR, OSZICAR, OUTCAR, log.lammps): code, kind (md/relax/static/neb), ensemble, target temperature, MD time step and time per stored frame, then findings: SCF steps that hit NELM, relaxation not converged, the first equilibrated frame of MD, temperature off target, energy drift, LAMMPS warnings/errors, atoms too close. |
 | `render_image` | Render a frame of the pipeline to PNG and return the image so you can inspect it. |
-| `get_view` | The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, 'elements' the same values by visual element (Particles, Bonds, Surfaces, Simulation cell, ...), 'help' what each means. |
-| `set_view` | Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style preset, theme, element colors and radii, atoms on/off, bonds on/off, bond table, cell, background, VESTA boundary, polyhedra/isosurface look by surface name (surfaces), plugin visuals, vectors, camera (direction, zoom, rotate), frame, and picture options (renderer, quality, legends, scale bar, text). |
+| `get_view` | The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, 'elements' the same values by visual element (Particles, Bonds, Surfaces, Simulation cell, ...), 'measured' the values of its distance/angle measurements, 'help' what each means. |
+| `set_view` | Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style preset, theme, element colors and radii, atoms on/off, bonds on/off, bond table, cell, background, VESTA boundary, polyhedra/isosurface look by surface name (surfaces), distance/angle measurements, key light, atom labels, plugin visuals, vectors, camera (direction, zoom, rotate), frame, and picture options (renderer, quality, legends, scale bar, text). |
 | `list_visuals` | Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell; configured through render_image and modifiers) and installed plugins, which add_visual draws on top in every renderer. |
 | `add_visual` | Draw a plugin visual element (see list_visuals) in every later render_image, with optional constructor parameters. |
 | `remove_visual` | Stop drawing the visual element at 'index' of the added list. |
@@ -754,6 +756,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Select picked atoms
 - Delete picked atoms
 - Clear picks
+- Keep measurement in the view
+- Clear measurements
 - Phonon band structure
 - NEB energy profile
 - Add isosurface

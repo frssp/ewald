@@ -471,13 +471,48 @@ class SimulationCellVis(VisualElement):
         return [("cell", Lines(corners, edges, rgb, self.width, radius))]
 
 
-BUILTIN = (ParticlesVis, BondsVis, SurfacesVis, VectorsVis, TrajectoryLinesVis, SimulationCellVis)
+MEASUREMENT_COLOR = "#E0701F"
+
+
+class MeasurementsVis(VisualElement):
+    """The view's ``measurements`` (:mod:`ewald.measure`): lines through 2, 3 or 4 atoms (nearest periodic
+    images), ``width`` pixels wide in ``color``; the values are the Measurements overlay
+    (:class:`ewald.overlays.MeasurementLabels`). Indices are those of the real atoms, also in a
+    boundary or replicated view."""
+
+    name = "Measurements"
+
+    def __init__(self, measurements=None, color=MEASUREMENT_COLOR, width: float = 3.0):
+        self.measurements = measurements or []
+        self.color = color
+        self.width = width
+
+    def applies(self, data) -> bool:
+        return bool(self.measurements) and self.width > 0
+
+    def build(self, data, ctx):
+        from . import measure
+        from .render import _rgb
+
+        real = ctx.extras.get("source_data", data)
+        items = [m for m in measure.check(self.measurements) if max(m) < real.count]
+        if not items:
+            return None
+        pts, strips = [], []
+        for idx in items:
+            strips.append(np.arange(len(idx)) + sum(len(s) for s in strips))
+            pts.append(measure.points(real, idx))
+        radius = 0.04 * float(np.median(np.linalg.norm(np.diff(np.vstack(pts), axis=0), axis=1)) or 1.0)
+        return [("measurements", Lines(np.vstack(pts), strips, _rgb(self.color), self.width, radius))]
+
+
+BUILTIN = (ParticlesVis, BondsVis, SurfacesVis, VectorsVis, TrajectoryLinesVis, SimulationCellVis, MeasurementsVis)
 
 
 def builtin_elements(*, radius_scale=1.0, type_colors=None, type_radii=None, radius_preset="covalent",
                      oxidation_states=None, coordination=None, bonds=None, bond_pairs=None, bond_radius=0.15,
                      vectors=None, trajectory_width=2.0, show_cell=True, cell_color=None, cell_width=2.0,
-                     cell_radius=None, show_atoms=True, surfaces=None, selection_color=None,
+                     cell_radius=None, show_atoms=True, surfaces=None, selection_color=None, measurements=None,
                      **_ignored) -> list[VisualElement]:
     """The built-in elements configured from ``render()`` keyword arguments, in drawing order."""
     particles = ParticlesVis(radius_scale, type_colors, type_radii, radius_preset, oxidation_states, coordination,
@@ -487,6 +522,8 @@ def builtin_elements(*, radius_scale=1.0, type_colors=None, type_radii=None, rad
            TrajectoryLinesVis(trajectory_width)]
     if show_cell:
         out.append(SimulationCellVis(cell_color, cell_width, cell_radius))
+    if measurements:
+        out.append(MeasurementsVis(measurements))
     return out
 
 
@@ -543,6 +580,7 @@ def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None,
     ``type_transparency`` ``{type: 0..1}`` makes whole particle types see-through (1 hides them, with
     their half-bonds), on top of a 'Transparency' property (the larger value wins)."""
     ctx = ctx or SceneContext()
+    ctx.extras["source_data"] = data   # the real atoms, before boundary ghosts and replicas (measurements)
     if type_transparency:
         data = _with_type_transparency(data, type_transparency)
     elements = list(builtin_elements(**render_kwargs) if elements is None else elements) + coerce_visuals(visuals)
