@@ -159,7 +159,7 @@ class PluginsPanel(QtWidgets.QWidget):
         self.log.setVisible(False)
         lay.addWidget(self.log)
         row = QtWidgets.QHBoxLayout()
-        for text, slot, tip in (("From file…", self.install_from_file, "Install a plugin .py file"),
+        for text, slot, tip in (("From file…", self.install_from_file, "Install a plugin .py file, or a downloaded .zip/.whl/.tar.gz package"),
                                 ("pip…", self.install_with_pip, "Install a plugin package with pip"),
                                 ("Create…", self.create_with_claude, "Ask AI to write a new plugin"),
                                 ("Folder", self.open_folder, "Open the plugin folder"),
@@ -335,8 +335,13 @@ class PluginsPanel(QtWidgets.QWidget):
         self.changed.emit()
 
     def install_from_file(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Install plugin file", "", "Python (*.py)")
-        if path:
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Install plugin", "", "Plugin (*.py *.zip *.whl *.tar.gz);;Python (*.py);;Package archive (*.zip *.whl *.tar.gz)")
+        if not path:
+            return
+        if path.lower().endswith(pc.ARCHIVE_SUFFIXES):     # a package: pip builds it (and asks first)
+            self._run_pip("install", path)
+        else:
             self.install(pc.describe_file(path))
 
     def install_with_pip(self):
