@@ -110,9 +110,11 @@ along, Orthographic, Zoom to fit and Ask AI are always there.
 
 **Plugin side bars.** A plugin can bring its own side bar (a sim-agent panel, a database
 browser, ...): installing it adds a button at the bottom of the activity bar and an entry
-under Window › Plugin panels, and a plugin with settings adds its own page to Preferences.
-Switching the plugin off in the Plugins side bar removes both; its settings are kept for when
-it comes back ([Side bar plugins](../plugins/gui.md)).
+under Window › Plugin panels (or a tab under the 3D view instead), it may add entries to the
+menus and to the 3D view's right-click menu, and a plugin with settings adds its own page to
+Preferences. Plugin side bars and tabs that were open come back at the next start where they
+were. Switching the plugin off in the Plugins side bar removes all of it; its settings are kept
+for when it comes back ([Side bar plugins](../plugins/gui.md)).
 
 **Workflow side bars.** Plugins that read finished calculations (sim-agent, AiiDA) share one
 side bar layout: the account, a search box that also takes an id, and the workflows newest
