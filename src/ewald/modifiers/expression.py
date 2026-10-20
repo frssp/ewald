@@ -96,8 +96,21 @@ def _numpy_import(name, *args, **kw):
 _BUILTINS = {"__import__": _numpy_import}
 
 
+_SPACED_NAME = re.compile(r"[A-Za-z][\w.]*( +[\w.]+)+")
+
+
 def evaluate(expr: str, data, frame=None):
     ns = namespace(data, frame)
+    if _SPACED_NAME.fullmatch(expr.strip()):
+        try:
+            ast.parse(expr.strip(), "<expression>", "eval")
+        except SyntaxError:
+            # a property written as it is named ("Particle Identifier"); expressions drop the spaces
+            key = expr.strip().replace(" ", "")
+            if key in ns:
+                return ns[key]
+            raise NameError(f"no property {expr.strip()!r} in this frame. "
+                            f"Available: {', '.join(sorted(ns))}") from None
     dotted = sorted((k for k in ns if "." in k), key=len, reverse=True)
     env = {"np": np, "abs": np.abs, "sqrt": np.sqrt, "exp": np.exp, "log": np.log,
            "sin": np.sin, "cos": np.cos, "min": np.minimum, "max": np.maximum, "pi": np.pi}

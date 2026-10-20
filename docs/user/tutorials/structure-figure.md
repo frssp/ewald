@@ -10,7 +10,9 @@ the bond-length distribution, and a figure for a paper. The finished notebook is
 
 File › Open example › `POSCAR.SrTiO3` (a 2x2x2 supercell, 40 atoms). The toolbar above the view
 has VESTA's directions: *a*, *b*, *c* look along the cell vectors, *a\**, *b\**, *c\** along the
-reciprocal ones, and the arrows rotate in 90° steps. Then add a step:
+reciprocal ones, and the arrows rotate in 90° steps. Then add a step (`SymmetryAnalysis` uses
+spglib, which the `[gui]` install leaves out: `pip install "ewald[symmetry]"` first, or
+`pip install spglib`):
 
 ```python
 pipe.add(SymmetryAnalysis(symprec=0.01))

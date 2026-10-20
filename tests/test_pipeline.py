@@ -58,6 +58,15 @@ def test_expression_error_hint(cu_fcc):
         pipe.compute(0)
 
 
+def test_expression_takes_property_names_with_spaces(cu_fcc):
+    data = cu_fcc.copy()
+    data.particles["Particle Identifier"] = np.arange(cu_fcc.count)
+    d = Pipeline(StaticSource(data), [ExpressionSelection("Particle Identifier")]).compute(0)
+    assert d["Selection"].sum() == cu_fcc.count - 1
+    with pytest.raises(NameError, match="no property 'Charge Density'.*Available"):
+        Pipeline(StaticSource(cu_fcc), [ColorCoding("Charge Density")]).compute(0)
+
+
 def test_displacement_across_pbc(cu_fcc):
     moved = cu_fcc.copy()
     pos = cu_fcc.positions.copy()

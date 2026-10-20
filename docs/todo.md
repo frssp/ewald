@@ -25,6 +25,10 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 - GUI startup is about 3 s, mostly imports: pyvista/pyvistaqt (~2 s) and matplotlib (0.6 s,
   needed by the Plots tab at construction); the IPython console is built after the first paint.
 - UI theme switch takes 0.5-1 s in `QApplication.setStyleSheet` (one app-wide QSS).
+- Playback: notebook cells and plots whose data does not change between frames are no longer
+  rebuilt (MSD, time series, printed outputs). Plots of per-frame data (a property histogram,
+  a per-frame RDF) still clear and redraw the figure each frame; updating the bar heights or
+  line data in place (or blitting) would make them cheaper at high frame rates.
 
 GUI
 
@@ -354,6 +358,12 @@ Docs
 
 - Example files: list the examples (and the downloadable paper datasets) on an empty viewport at
   first start; a GUI entry for `examples.fetch` (File › Open example › From a paper).
+- Examples run (2026-10-20, /mnt/project-files/ewald-review/examples-test.md): Tutorial 2 and
+  `llzo_arrhenius.py` need the `symmetry` / `formats` extras that the README's `[gui]` install
+  leaves out (both say so now); decide with the extras work whether spglib joins the core install.
+  Plugin example files (`ewald_phonopy.EXAMPLES`, Cu3Au_band.yaml) are not under File › Open
+  example. The Plugins side bar's default catalog (raw.githubusercontent.com of the private
+  frssp/ewald-plugins) answers 404 without a GitHub token, so first-party plugins install only by pip.
 - Paper reproductions: StructureFactor `method="rdf"` holds every pair inside the cutoff at once,
   so 100,000 atoms with a 30 A cutoff run out of memory (the a-Si script uses 20 A); histogram in
   chunks. kinisi's covariance-weighted D for the LLZO runs is 0.6x a straight-line fit of the same
