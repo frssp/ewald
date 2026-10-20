@@ -1,4 +1,5 @@
 import shutil
+import sys
 
 import numpy as np
 import pytest
@@ -45,6 +46,32 @@ def _isolated_settings(tmp_path, monkeypatch):
     """Never read or write the developer's real ~/.config/ewald during tests."""
     monkeypatch.setenv("EWALD_CONFIG_DIR", str(tmp_path / "config"))
     monkeypatch.setenv("EWALD_PLUGIN_INDEX", "")    # no network: tests name their own indexes
+
+
+def _qt_app():
+    widgets = sys.modules.get("PySide6.QtWidgets")
+    return None if widgets is None else widgets.QApplication.instance()
+
+
+@pytest.fixture(autouse=True)
+def _delete_new_windows():
+    """Delete the top-level widgets a test leaves behind, now and in the GUI thread, in every test file
+    (tests/test_gui.py has its own copy). Left to the garbage collector, a window can be collected
+    while a later test builds another one or in a compute thread, and PySide then crashes the run."""
+    app = _qt_app()
+    before = set(app.topLevelWidgets()) if app is not None else set()
+    yield
+    app = _qt_app()
+    if app is None:
+        return
+    from PySide6 import QtCore
+
+    for w in app.topLevelWidgets():
+        if w not in before:
+            w.close()
+            w.deleteLater()
+    app.processEvents()
+    app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
 
 
 # --- SSH/SFTP: an in-process server (tests/helpers/sftp_server.py) and an isolated ~/.ssh/config

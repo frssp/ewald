@@ -58,7 +58,7 @@ GUI
   pipeline yet (now it keeps the last one); image/figure cells; inline Ask AI suggestions
   as diffs; a snapshot cell that updates when the camera of its view changes (now it is code).
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
-  view does not have yet (atom labels drawn in the view, light direction
+  view does not have yet (light direction
   and strength, picks and distance/angle measurements as
   code, the viewport axes widget; audit in the project files `ewald-review/view-elements-audit.md`);
   the Display panel cards (Atoms, Types, Bonds, Cell, Elements) could take the visual element
@@ -68,6 +68,12 @@ GUI
   keeps its own per-notebook state in the `.py` header next to the view cell's picture settings
   (one place for both); in a kernel notebook a viewport edit reaches the kernel's `pipe.view`
   only when the view cell runs again.
+- Test suite: the full run under xvfb now and then segfaults inside tests/test_gui.py while a
+  window is built or deleted (seen 2026-10-20 on main too; `test_gui.py` alone and reruns pass).
+  `conftest.py` now deletes windows any test leaves open; the rest is probably a Qt object of an
+  earlier test collected in a worker thread. Rerun before blaming a change.
+- Atom labels (`view(pipe, labels=...)`): not drawn on the OpenGL 1.x viewport (`ssh -X`), not on
+  boundary or replicated images, and not hidden behind nearer atoms (they always show, as in VESTA).
 - Render frame (the picture's region on the 3D view, `view(pipe, region=...)`): not drawn on
   the OpenGL 1.x viewport (`ssh -X`); in perspective, a frame off the view center moves the
   camera sideways instead of an off-axis projection (exact at the focal distance only); the

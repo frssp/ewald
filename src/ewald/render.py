@@ -616,7 +616,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
            camera: dict | None = None, renderer: str = "opengl", samples: int | None = None,
            ao_samples: int | None = None, shadows: bool | None = None, type_legend: bool = False,
            scale_bar: bool | float | None = None, dpi: float | None = None, quality: str = "publication",
-           scale: float | None = None, theme=None, overlays=None, region=None, **scene_kwargs):
+           scale: float | None = None, theme=None, overlays=None, region=None, labels=None, **scene_kwargs):
     """Render one DataCollection to ``filename`` or return an RGB array.
 
     ``direction`` is a view vector *from* the scene to the camera, or one of
@@ -638,7 +638,9 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     Overlays: ``text`` label, ``legend`` (ColorCoding color bar), ``type_legend``
     (one swatch per particle type), ``scale_bar`` (True = round length, or a length
     in Angstrom; exact in orthographic views), and ``overlays``: overlay elements
-    (Coordinate tripod, Attributes, plugins; see :mod:`ewald.overlays`). ``dpi`` is stored
+    (Coordinate tripod, Attributes, Atom labels, plugins; see :mod:`ewald.overlays`). ``labels`` puts a
+    label on each atom: True (its type), a template such as ``"{type}{index}"`` or ``"{Charge:.2f}"``, or a
+    dict with ``text``, ``types``, ``size``, ``color`` (:class:`ewald.overlays.AtomLabels`). ``dpi`` is stored
     in PNG/TIFF files and sets the page size of vector output.
 
     ``boundary``: VESTA-style boundary range, e.g. ``(-0.1, 1.1)`` (fractional; or three pairs): also
@@ -659,6 +661,10 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
 
     if renderer not in RENDERERS:
         raise ValueError(f"unknown renderer {renderer!r}; use 'opengl', 'raytrace' or 'vector'")
+    if labels is not None and labels is not False:
+        from .overlays import label_params
+
+        overlays = [*_overlay_list(overlays), {"name": "Atom labels", "params": label_params(labels)}]
     if theme is not None:
         from .themes import apply_theme
 
@@ -732,6 +738,12 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     cam = camera_state(p)
     p.close()
     return _finish(img, data, filename, cam, overlays, background, transparent_background, dpi)
+
+
+def _overlay_list(overlays) -> list:
+    if not overlays:
+        return []
+    return [overlays] if isinstance(overlays, (str, dict)) or not isinstance(overlays, (list, tuple)) else list(overlays)
 
 
 # scene keywords that change what the default camera frames (boundary ghosts and their bond partners)
