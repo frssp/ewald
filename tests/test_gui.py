@@ -2430,6 +2430,77 @@ def test_viewport_tools_pick_and_measure_with_real_clicks(app, pipe):
     w.close()
 
 
+@pytest.mark.parametrize("backend", ["vtk", "legacy-gl"])
+def test_double_click_on_empty_space_or_esc_clears_picks(app, pipe, monkeypatch, backend):
+    """After picking or measuring, a real double click on empty space (any tool, orbit included)
+    or Esc clears the picks and the pick readout, in the VTK view and in the legacy GL view;
+    a double click on an atom keeps them."""
+    import time
+
+    from PySide6 import QtTest
+
+    from ewald.gui.app import MainWindow
+
+    if backend == "legacy-gl":
+        monkeypatch.setenv("EWALD_VIEWPORT", "legacy-gl")
+    w = MainWindow(pipe)
+    w.resize(1100, 800)
+    w.show()
+    for _ in range(20):
+        app.processEvents()
+        time.sleep(0.01)
+    vp = w.viewport
+    assert getattr(vp, "backend", "vtk") == backend
+    view = vp.view if backend == "legacy-gl" else vp.plotter.interactor
+    W, H = view.width(), view.height()
+    points, empty = {}, None
+    for y in range(10, H - 10, 6):
+        for x in range(10, W - 10, 6):
+            i = vp.pick_at(x, y) if backend == "legacy-gl" else vp.hover_index(x, y, W, H)
+            if i is None:
+                empty = empty or QtCore.QPoint(x, y)
+            elif i not in points:
+                points[i] = QtCore.QPoint(x, y)
+    atoms = list(points)[:2]
+    assert len(atoms) == 2 and empty is not None
+
+    def click(point, double=False):
+        # a real double click: press, release, double-click press, release
+        QtTest.QTest.mouseClick(view, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, point)
+        if double:
+            QtTest.QTest.mouseDClick(view, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, point)
+            QtTest.QTest.mouseRelease(view, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, point)
+        app.processEvents()
+
+    vp.set_tool("distance")
+    click(points[atoms[0]])
+    click(points[atoms[1]])
+    assert vp.picks == atoms and "d(" in w.pick_label.text()
+    click(empty)                                   # one click on empty space keeps them
+    assert vp.picks == atoms
+    time.sleep(QtWidgets.QApplication.doubleClickInterval() / 1000 + 0.05)
+    click(points[atoms[1]], double=True)           # a double click on an atom keeps them
+    assert atoms[1] in vp.picks
+    vp.set_picks(atoms)
+    click(empty, double=True)
+    assert vp.picks == [] and w.pick_label.text() == ""
+    vp.set_tool("orbit")                           # also while rotating, e.g. after a plot selection
+    vp.set_picks(atoms)
+    click(empty, double=True)
+    assert vp.picks == []
+    vp.set_picks(atoms)
+    if backend == "legacy-gl":
+        view.requestActivate()
+    else:
+        w.activateWindow()
+        view.setFocus()
+    app.processEvents()
+    QtTest.QTest.keyClick(view, QtCore.Qt.Key_Escape)
+    app.processEvents()
+    assert vp.picks == []
+    w.close()
+
+
 def test_menu_audit_fixes(app, cu_fcc):
     """Insert › Analysis greys out trajectory analyses for one frame; the palette lists each step
     once (Insert › Step), skips greyed-out ones and has the menus filled on opening; Window ›
