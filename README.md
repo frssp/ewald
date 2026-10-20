@@ -200,3 +200,9 @@ and where a change belongs (often a plugin), and [SECURITY.md](SECURITY.md) how 
 vulnerability. If EWALD helps your research, please cite it with the metadata in
 [CITATION.cff](CITATION.cff) (GitHub's *Cite this repository* button gives BibTeX). You can
 support the project through [GitHub Sponsors](https://github.com/sponsors/frssp).
+
+## License
+
+EWALD is MIT licensed ([LICENSE](LICENSE)). Analyses ported from OVITO are used under the MIT
+option of its GPLv3-or-MIT license, and the vendored PTM, voro++ and mwm_csp sources keep their
+own licenses; [src/ewald/_csrc/README.md](src/ewald/_csrc/README.md) lists each origin.

@@ -205,7 +205,7 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   jupyter_client/ipykernel) are core dependencies, and old extra names stay as empty aliases. Heavy or
   optional packages are still imported lazily; tests use `pytest.importorskip` for extras. Headless `render()`/`compute()` never read `settings` implicitly.
 - Python first; numba or C++ only for measured hot spots. Ported OVITO code is used under its MIT
-  option and keeps the notice. No LICENSE file (private project).
+  option and keeps the notice. EWALD itself is MIT (`LICENSE`).
 
 ## When you change the API
 

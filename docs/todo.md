@@ -540,9 +540,7 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 ## Infrastructure
 
 - Going public (files prepared 2026-10-20: CITATION.cff, FUNDING.yml, CONTRIBUTING.md,
-  SECURITY.md, issue templates): the owner picks the license (an MIT LICENSE pull request is
-  waiting, unmerged, and drops the `Private :: Do Not Upload` classifier) and switches the
-  repository to public; then enable private vulnerability reporting and GitHub Sponsors, archive
+  SECURITY.md, issue templates): the owner switches the repository to public; then enable private vulnerability reporting and GitHub Sponsors, archive
   a release on Zenodo and add its DOI (and an ORCID) to CITATION.cff, and restore the CI triggers
   (public repositories get free Actions minutes).
 
