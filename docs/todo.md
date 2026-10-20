@@ -61,9 +61,9 @@ GUI
   view does not have yet (light direction
   and strength, picks and distance/angle measurements as
   code, the viewport axes widget; audit in the project files `ewald-review/view-elements-audit.md`);
-  the Display panel cards (Atoms, Types, Bonds, Cell, Elements) could take the visual element
-  names `pipe.view.elements` uses (Particles, Bonds, Simulation cell, Surfaces, ...) and gain a
-  Surfaces card for the `surfaces` setting; the camera reaches the view cell
+  the Display panel cards (Atoms, Types, Bonds, Cell, Surfaces, Elements) could take the visual
+  element names `pipe.view.elements` uses (Particles, Bonds, Simulation cell, ...); label size,
+  color and types and the selection color are code only (the cards show on/off and the text); the camera reaches the view cell
   only through Insert › View settings with the camera (not on every rotation); the Render page
   keeps its own per-notebook state in the `.py` header next to the view cell's picture settings
   (one place for both); in a kernel notebook a viewport edit reaches the kernel's `pipe.view`
