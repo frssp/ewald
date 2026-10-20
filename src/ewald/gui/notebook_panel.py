@@ -403,7 +403,9 @@ class NotebookView(QtWidgets.QWidget):
         self.status.setText(" · ".join(parts))
         self.status.setToolTip(nb.path or "Not saved yet (Ctrl+S)")
         if self.py_button.isChecked():
-            self.file_view.setPlainText(nb.to_py())
+            text = nb.to_py()
+            if text != self.file_view.toPlainText():   # keeps the scroll position while frames play
+                self.file_view.setPlainText(text)
 
     def _show_file(self, on):
         if on:
