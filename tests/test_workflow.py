@@ -93,8 +93,8 @@ def test_notebook_has_a_variable_per_step_and_pipe_on_the_main_result():
     sources = [c.source for c in nb.cells]
     assert sources[0].startswith("# Si relax") and "| energy | -10.8 |" in sources[0]
     assert len(nb.cells) == 3                       # heading, imports, and one cell that loads everything
-    assert sources[2].splitlines() == ["relax = load('demo:7/relax')                        # ✓",
-                                       "scf = load('demo:7/bands/scf')                      # ✗ exit 400",
+    assert sources[2].splitlines() == ["relax = load('demo:7/relax')",       # a failed step says so
+                                       "scf = load('demo:7/bands/scf')  # ✗ exit 400",
                                        "output_structure = load('demo:7/output_structure')",
                                        "pipe = relax"]
     assert nb.run_all()

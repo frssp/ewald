@@ -248,7 +248,7 @@ def notebook_text(wf: Workflow, pipeline_name: str = "pipe") -> str:
             name = variable_name(step.name, taken)
             taken.add(name)
             by_path[step.path] = name
-            loads.append((f"{name} = load({str(step.path)!r})", line(step.mark())))
+            loads.append((f"{name} = load({str(step.path)!r})", line(step.mark()) if step.failed else ""))
     for o in wf.outputs:
         if o.path and o.kind in ("structure", "trajectory", "band") and o.path not in by_path:
             name = variable_name(o.name, taken)
@@ -260,8 +260,7 @@ def notebook_text(wf: Workflow, pipeline_name: str = "pipe") -> str:
         main = f"load({str(wf.path)!r})"
     if main is None and by_path:
         main = list(by_path.values())[-1]
-    width = max((len(code) for code, _ in loads), default=0)
-    body = [f"{code:<{width}}  # {note}" if note else code for code, note in loads]
+    body = [f"{code}  # {note}" if note else code for code, note in loads]
     if main is not None:
         body.append(f"{pipeline_name} = {main}")
     if body:
