@@ -118,8 +118,8 @@ it comes back ([Side bar plugins](../plugins/gui.md)).
 side bar layout: the account, a search box that also takes an id, and the workflows newest
 first. Expanding a workflow lists its steps (restarts of one calculation joined, sub-workflows
 nested) with their files and structures. A double click on a step or output opens it; on a
-workflow it opens the whole workflow as one notebook, with a `load` cell per step
-(`relax = load(...)`, `scf = load(...)`) and `pipe` on the main result. To look at another step
+workflow it opens the whole workflow as one notebook whose load cell names every step, a line
+each (`relax = load(...)`, `scf = load(...)`), and sets `pipe` to the main result. To look at another step
 in the 3D view, run `pipe = scf`; `show(scf, ...)` puts it in a view cell next to the others
 ([Workflow sources](../plugins/workflows.md)).
 
