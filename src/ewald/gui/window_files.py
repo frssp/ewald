@@ -10,6 +10,7 @@ from .. import plugins
 from ..io import import_file
 from ..render import camera_state
 from .busy import busy
+from .welcome import add_recent
 
 
 def file_filter() -> str:
@@ -73,6 +74,7 @@ class FilesMixin:
         self.set_pipeline(pipe)
         self.setWindowTitle(f"EWALD — {os.path.basename(str(path))}")
         self.message(f"Loaded {path}: {pipe.num_frames} frame(s)")
+        add_recent(path)
         return pipe
 
     def open_dialog(self):
@@ -83,7 +85,6 @@ class FilesMixin:
     def open_any(self, path, ask_types: bool = True, **kwargs):
         """A session, a notebook (.ewd, .ipynb, .py) or a data file."""
         from ..session import is_session_file
-
         if is_session_file(path):
             self.load_session(path)
         elif str(path).lower().endswith(NOTEBOOK_EXTENSIONS) and os.path.isfile(path):
@@ -165,6 +166,7 @@ class FilesMixin:
         note = "" if run else (" (restricted: shows saved results; Run all asks to trust it)" if nb.restricted
                                else " (not run: Notebook › Run all)")
         self.message(f"Opened notebook {path}{note}")
+        add_recent(path)
         return view
 
     def _ask_trust(self, path) -> bool:
@@ -216,6 +218,8 @@ class FilesMixin:
             old.state["render"] = self.render_page.state()
         if new is not None and new.state.get("render"):
             self.render_page.set_state(new.state["render"])
+        if new is None and not self.panel.views():
+            self.clear_pipeline()
 
     def save_notebook(self, ask: bool = False):
         """Save the current notebook (asks for a name the first time). The extension picks the

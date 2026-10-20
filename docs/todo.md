@@ -10,6 +10,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- View tab: folded cards are remembered only while the window is open (not in settings or the
+  layout file); no Fold all / Unfold all; a card has no per-card reset to defaults.
 
 - Workflows (`ewald.workflow`): a table that compares the scalars of every step of a workflow
   (energies, gaps, forces) and of several workflows side by side, and opening one step's input
@@ -37,8 +39,8 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 GUI
 
 - UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): still open
-  are an empty-state hint in the 3D view with nothing loaded (and the view bar and timeline
-  greyed out then), Cancel for a ray trace in progress, opening files (local or remote) and
+  are an empty-state hint in the 3D view with nothing loaded (the notebook area has a welcome
+  page now; the view bar stays enabled), Cancel for a ray trace in progress, opening files (local or remote) and
   remote connections off the GUI thread (they now say what they wait for, but the window still
   blocks), the Render settings column scrolling sideways at the default window width, and a
   short highlight on a plugin row once it is installed.
@@ -80,7 +82,7 @@ GUI
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
   view does not have yet (picks as code, the viewport axes widget; measurement labels in the
   legacy OpenGL 1.x viewport, and lines that show through atoms; audit in the project files `ewald-review/view-elements-audit.md`);
-  the Display panel cards (Atoms, Types, Bonds, Cell, Surfaces, Elements) could take the visual
+  the View tab cards (Atoms, Types, Bonds, Surfaces, Cell, Labels, Camera, Elements) could take the visual
   element names `pipe.view.elements` uses (Particles, Bonds, Simulation cell, ...); label size,
   color and types and the selection color are code only (the cards show on/off and the text); the camera reaches the view cell
   only through Insert › View settings with the camera (not on every rotation); the Render page
@@ -98,6 +100,13 @@ GUI
   camera sideways instead of an off-axis projection (exact at the focal distance only); the
   Overlay elements and text label are not previewed inside the frame; Claude's `set_view` can set
   `region` but no tool tells it the frame on screen.
+- Python steps per frame vs once (`@each_frame` / `@all_frames`, landed): cell markers
+  `# %% [each frame]` / `# %% [all frames]` with a header toggle, where the cell body is the step
+  (`data`, `frames` given), proposed to the owner 2026-10-20 and not decided yet; a GUI badge on
+  cells whose steps are `all_frames`; `all_frames` start/stop/step arguments.
+- Live `show(pipe, ...)` outside a view cell: zooming does not write `xlim=`/`ylim=` back (only a
+  cell that is just the call does), and `frame=` is ignored by the live plot (it follows the
+  current frame, as view cells do).
 - Notebook kernels (`ewald/kernel.py`): step forms for steps a kernel cell adds with code the
   app cannot import (a class only the kernel's Python has stays as code).
 - Notebook kernel on the cluster (plan, owner's pick 2026-10-20; not started): run a notebook

@@ -93,8 +93,9 @@ def test_view_tab_surfaces_labels_transparency(app, pipe):
     assert panel.style.surfaces == {"coordination-polyhedra": {"visible": False, "transparency": 0.6}}
     atoms = panel.sections["Atoms"]
     [c for c in atoms.findChildren(QtWidgets.QCheckBox) if c.text() == "Draw atoms"][0].setChecked(False)
-    [c for c in atoms.findChildren(QtWidgets.QCheckBox) if c.text() == "Highlight selection"][0].setChecked(False)
-    field = [e for e in atoms.findChildren(QtWidgets.QLineEdit) if "{type}{index}" in e.placeholderText()][0]
+    labels = panel.sections["Labels"]
+    [c for c in labels.findChildren(QtWidgets.QCheckBox) if c.text() == "Highlight selection"][0].setChecked(False)
+    field = [e for e in labels.findChildren(QtWidgets.QLineEdit) if "{type}{index}" in e.placeholderText()][0]
     field.setText("{type}{index}")
     field.editingFinished.emit()
     panel.set_type_transparency("Cu", 0.5)
@@ -124,7 +125,7 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
     panel = DisplayPanel()
     panel.set_pipeline(pipe)
     panel.set_data(pipe.compute(0))
-    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Cell", "Surfaces", "Elements", "Camera"]
+    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Surfaces", "Cell", "Labels", "Camera", "Elements"]
     marked = lambda: {lab.text() if isinstance(lab, QtWidgets.QLabel) else lab.title() for lab, _ in panel._marks if lab.property("set")} - {""}
     assert not marked()
     view(pipe, radius_scale=0.4, boundary=[-0.1, 1.1], direction="z")
@@ -144,6 +145,33 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
     panel.modifierRequested.connect(asked.append)
     panel.add_modifier(mods.CoordinationAnalysis(3.0))  # a step goes to the notebook, not into the pipeline
     assert [type(m).__name__ for m in asked] == ["CoordinationAnalysis"] and pipe.modifiers == []
+    _dispose(panel)
+
+
+def test_view_tab_columns_fold_and_aligned_labels(app, pipe):
+    """The View tab lays its cards out in equal-width columns, every form label has one width (fields
+    line up across cards), and a folded card stays folded across rebuilds."""
+    from ewald.gui.pipeline_panel import DisplayPanel
+
+    panel = DisplayPanel()
+    panel.set_pipeline(pipe)
+    panel.set_data(pipe.compute(0))
+    page = panel.scroll.widget()
+    lay = page.layout()
+    width = 3 * lay._column + 2 * lay._gap + 20 + 40
+    page.resize(width, page.height())
+    lay.setGeometry(QtCore.QRect(0, 0, width, lay.heightForWidth(width)))
+    cards = list(panel.sections.values())
+    assert lay.columns(width) == 3 and len({c.x() for c in cards}) == 3 and len({c.width() for c in cards}) == 1
+    labels = [lab for lab, _ in panel._marks if isinstance(lab, QtWidgets.QLabel) and lab.objectName() == "viewLabel"
+              and lab.text() != "Pairs (cutoffs, * = any type)"]
+    assert len({lab.width() if lab.isVisible() else lab.maximumWidth() for lab in labels}) == 1
+    panel.set_folded("Bonds", True)
+    assert not panel.sections["Bonds"].content.isVisibleTo(panel.sections["Bonds"])
+    panel.refresh()
+    assert panel.sections["Bonds"].folded and not panel.sections["Bonds"].content.isVisibleTo(panel.sections["Bonds"])
+    panel.set_folded("Bonds", False)
+    assert panel.sections["Bonds"].content.isVisibleTo(panel.sections["Bonds"])
     _dispose(panel)
 
 
@@ -405,6 +433,37 @@ def test_playback_leaves_frame_independent_cells_alone(app, monkeypatch):
     assert rebuilt == []                  # no cell's outputs (the printed "10 frames") rebuilt per frame
     shown = {p.hist.currentText() or p.table.currentText() for p in cleared if p is not None}
     assert shown == {"Displacement Magnitude"}   # the per-frame histogram redraws, the MSD plot does not
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_show_anywhere_in_a_cell_is_a_live_plot(app, tmp_path):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    path = tmp_path / "live.py"
+    path.write_text(
+        "# %%\nimport numpy as np\nfrom ewald import all_frames, load\nfrom ewald.modifiers import *\n"
+        f"from ewald.views import show\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n\n"
+        "# %%\n@all_frames\ndef height(frames, data):\n"
+        "    z = [d['Position'][:, 2].mean() for d in frames]\n"
+        "    data.tables['height'] = {'Frame': np.arange(len(z)), 'Mean z': np.array(z)}\n"
+        "pipe.add(height)\n\n"
+        "# %%\npipe.add(CalculateDisplacements(reference_frame=0))\nprint('two plots')\n"
+        "show(pipe, table='height')\nshow(pipe, histogram='Displacement Magnitude')\n")
+    w = MainWindow(settings=settings.Settings())
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    app.processEvents()
+    cell = view.widgets[2]
+    height, hist = cell.panels()                       # live plots, not PNGs, though the cell does more
+    assert height.table.currentText() == "height" and hist.hist.currentText() == "Displacement Magnitude"
+    assert height in w.plot_panels() and hist in w.plot_panels()   # linked like the Plots tab
+    ax = height.figure.axes[0]
+    w.timeline._set(3)
+    app.processEvents()
+    assert hist.data.attributes["SourceFrame"] == 3   # follows the frame
+    assert height.figure.axes[0] is ax                 # all_frames result: computed once, not redrawn
     w.close()
 
 
@@ -1709,8 +1768,9 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w._plugin_updates(0)
     assert plugins_button.toolTip() == "Show or hide the Plugins side bar"
     tabs = w.panel.tabs
-    assert tabs.count() == 1 and tabs.tabText(0) == "Notebook 1"
-    w.open_any(cu_path, ask_types=False)                      # the empty notebook makes way for the file
+    assert tabs.count() == 0 and w.panel.view is None                    # a new window: the welcome page
+    assert tabs.body.currentWidget() is w.panel.welcome
+    w.open_any(cu_path, ask_types=False)
     assert tabs.count() == 1 and tabs.tabText(0) == "cu" and w.pipeline is w.panel.pipeline
     w.panel.add_modifier(mods.CoordinationAnalysis(cutoff=3.0))
     w.recompute()
@@ -1755,8 +1815,19 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w.settings["python.run_notebooks"] = "always"
     w.open_notebook(str(path))                                 # already open: back to its tab
     assert tabs.count() == 1
-    w.panel.close_tab(0)                                       # the last tab leaves an empty notebook
-    assert tabs.count() == 1 and w.panel.notebook.pipeline is None
+    w.panel.close_tab(0)                                       # the last tab: the welcome page, no new notebook
+    assert tabs.count() == 0 and w.panel.view is None and tabs.body.currentWidget() is w.panel.welcome
+    assert w.pipeline is None and w.data is None                   # the 3D view, plots and inspector are cleared
+    from ewald.gui import welcome
+    assert welcome.load_recent()[0] == str(path)                    # listed under Recent
+    w.panel.welcome.refresh()
+    recent = w.panel.welcome.findChildren(QtWidgets.QToolButton, "welcomeRecent")
+    assert recent and recent[0].toolTip() == str(path)
+    w._update_notebook_menu()
+    assert not any(a.isEnabled() for a in w.notebook_menu.actions())     # Notebook › ... greys out
+    w.panel.welcome.newRequested.emit()                               # New notebook on the welcome page
+    assert tabs.count() == 1 and tabs.body.currentWidget() is tabs.stack
+    w.panel.close_tab(0)
     w.open_notebook(str(path))
     assert tabs.tabText(0) == "cu_nb" and [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis"]
     act = next(a for a in w.analysis_menu.actions() if a.text() == "Common neighbor analysis")
@@ -2510,7 +2581,7 @@ def test_panels_and_cells_fold(app, cu_path, tmp_path):
     side.set_collapsed(False)
     assert w.tabPosition(QtCore.Qt.RightDockWidgetArea) == QtWidgets.QTabWidget.South
 
-    view = w.panel.view
+    view = w.panel.new_notebook()
     view.add_cell("code", "print('hi')\nx = 1")
     cw = view.widgets[-1]
     cw.fold_button.click()
@@ -2688,6 +2759,7 @@ def test_notebook_cells_sit_at_the_top(app):
     from ewald.gui.app import MainWindow
 
     w = MainWindow()
+    w.panel.new_notebook()
     w.resize(1400, 900)
     w.show()
     for _ in range(3):
@@ -2715,6 +2787,7 @@ def test_notebook_cell_controls_add_bar_and_running_mark(app):
     from ewald.gui.app import MainWindow
 
     w = MainWindow()
+    w.panel.new_notebook()
     w.resize(1400, 900)
     w.show()
     app.processEvents()

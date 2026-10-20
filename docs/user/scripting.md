@@ -63,6 +63,12 @@ pipe.modifiers.append(displacement_from_first)
 above it applied. Keyword arguments become parameters:
 `pipe.modifiers.append(PythonModifier(f, threshold=2.5))` calls `f(frame, data, threshold=2.5)`.
 
+A function marked `@all_frames` reads the whole trajectory once instead, `f(frames, data)`:
+`frames` (a `Frames`) gives every frame as it enters the step, and what the function sets on
+`data` is kept and reused at every frame until an upstream step, the source or its parameters
+change (an `AllFramesModifier`). `@each_frame` marks the default, a function run at every frame.
+See [Notebooks › What runs during playback](notebooks.md#cells).
+
 ## Looping over a trajectory
 
 ```python

@@ -82,6 +82,42 @@ rewrites the cell, and so does zooming: the wheel, a drag on a DOS or band plot,
 writes `xlim=`/`ylim=`, and a double-click removes them. Run as a script, `show` draws the same plot with matplotlib. Add one with
 **+ View** or Insert › View, which list the tables and properties of the current frame.
 
+`show(pipe, ...)` anywhere else in a code cell (after other code, several in one cell, with
+arguments from variables) is a live plot too, under the cell where it was called: it follows
+the frame and is linked to the Structure view the same way. Only a cell that is nothing but the
+`show` call writes zooming back into its arguments. A `show` of something other than the
+notebook's pipeline (`show(pipe.compute(5), ...)`, another pipeline) and figures you draw with
+matplotlib yourself stay images of the moment the cell ran. Saved notebooks keep the image as
+well, so Jupyter and GitHub show the plot.
+
+**What runs during playback.** Playing a trajectory never runs cells again: code cells run when
+you run them. What runs at each frame is the pipeline, the steps the cells added. A built-in
+step computes the frame (or, for MSD, VACF and other trajectory analyses, reads the trajectory
+once and keeps the result). A Python step says which it is:
+
+```python
+from ewald import all_frames, each_frame
+
+@each_frame                       # every frame: the function gets that frame
+def height(frame, data):
+    data.attributes["Mean z"] = data["Position"][:, 2].mean()
+pipe.add(height)
+
+@all_frames                       # once: the function gets every frame
+def height_series(frames, data):
+    z = [d["Position"][:, 2].mean() for d in frames]
+    data.tables["height"] = {"Frame": np.arange(len(z)), "Mean z": np.array(z)}
+pipe.add(height_series)
+```
+
+`frames` holds the data of every frame as it enters the step (all the steps above applied),
+read one at a time: `len(frames)`, `frames[k]`, `frames[::10]`, `for d in frames`. What the
+function sets on `data` (tables, attributes, per-particle properties) is kept and given to
+every frame, until a step above it or the file changes. `@each_frame` is what a plain function
+step does anyway; it says so in the notebook. Plots whose data did not change between frames
+(an `all_frames` table, MSD) are not redrawn during playback; time series move their frame
+marker.
+
 Every plot ewald draws (view cells, `show`, a verb table's picture, the figures saved into an
 `.ewd`) uses one publication style from `ewald.plotstyle`: a 3.5 in single-column figure,
 8 pt sans-serif text, inward ticks with minor ticks, axis labels with units and a
@@ -206,8 +242,10 @@ A dot marks unsaved changes. Each notebook has its own namespace and pipeline, a
 a notebook that has a pipeline shows it in the viewport.
 
 Opening a data file (File › Open, or `ewald gui file`) makes a notebook for it: the imports, a
-`load` cell and one step per modifier the file needs. It replaces the empty notebook you
-start with. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. The cells
+`load` cell and one step per modifier the file needs (an untouched empty notebook makes way
+for it). With no notebook open, at start or after closing the last tab, the notebook area shows
+a welcome page: *New notebook* (Ctrl+T), *Open…*, *Open example* and the files opened lately;
+Notebook › ... is greyed out then, and Insert › ... starts a notebook. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. The cells
 only run after you choose to (Notebook › Run all), because a notebook is code. Preferences ›
 Python › *Run notebooks when opened* can change that to always run them or never run them.
 
