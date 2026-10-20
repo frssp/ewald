@@ -3414,7 +3414,7 @@ def test_workflow_side_bar_lists_expands_and_opens_a_workflow_as_one_notebook(ap
     tabs = w.panel.tabs.count()
     side.tree.setCurrentItem(top)
     view = side.open(top)
-    assert w.panel.tabs.count() == tabs + 1 and view.notebook.name == "Si relax"
+    assert w.panel.tabs.count() == tabs + 1 and view.notebook.name == "Si relax"   # the pipe's notebook stays
     ns = view.notebook.namespace
     assert ns["pipe"] is ns["relax"] and ns["scf"].num_frames == 1 and w.pipeline is ns["relax"]
     side.search.setText("Si")

@@ -307,7 +307,12 @@ class FilesMixin:
             QtWidgets.QMessageBox.critical(self, "Open failed", f"{workflow}\n\n{exc}")
             return None
         nb = Notebook.from_py(text, name=wf.label or wf.kind or wf.name or "Workflow")
-        view = self.panel.add_notebook(nb)
+        panel = self.panel
+        blank = panel.view if panel.view is not None and panel._is_blank(panel.view) else None
+        view = panel.add_notebook(nb)
+        if blank is not None:       # an untouched empty tab gives way, as when a file opens
+            panel.tabs.removeTab(panel.tabs.indexOf(blank))
+            blank.deleteLater()
         view.trust(ask=False)
         with busy(self.message, f"Loading {sum(1 for c in nb.cells if 'load(' in c.source)} result(s)…"):
             view.run_all()
