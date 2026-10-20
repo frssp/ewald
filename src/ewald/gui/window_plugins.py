@@ -50,6 +50,15 @@ def plugin_icon(spec: str) -> QtGui.QIcon:
     return ic
 
 
+def plugin_host(widget):
+    """The main window ``widget`` sits in (through floating docks too), or None outside one."""
+    while widget is not None:
+        if hasattr(widget, "add_plugin_items"):
+            return widget
+        widget = widget.parentWidget()
+    return None
+
+
 class PanelContext:
     """What a plugin panel's ``factory(context)`` gets: the window's state and a few actions.
 
@@ -59,6 +68,9 @@ class PanelContext:
     def __init__(self, window, name: str):
         self.window = window
         self.name = name
+        #: What a menu entry was opened on: the ``ewald.notebook.Cell`` of a cell's menu, the
+        #: ``ewald.plugins.PlotTarget`` of a plot's; None elsewhere and for panels.
+        self.target = None
         self._callbacks = {e: [] for e in EVENTS}
 
     @property
@@ -94,6 +106,12 @@ class PanelContext:
     def message(self, text: str, error: bool = False):
         """A line in the status bar and the Log."""
         self.window.message(f"{self.name}: {text}", error=error)
+
+    def show_panel(self, name: str, on: bool = True):
+        """Show (or with ``on=False`` hide) a ``@panel`` by its name, e.g. from a toolbar button."""
+        if name not in self.window.plugin_panels:
+            raise KeyError(f"no plugin panel {name!r}")
+        return self.window.show_plugin_panel(name, on)
 
     def open_preferences(self, page: str | None = None):
         """Open Preferences, at ``page`` (e.g. the plugin's own settings page)."""
@@ -144,6 +162,7 @@ class PluginPanelsMixin:
         self._menu_contexts = {}     # menu item name -> PanelContext
         self.plugin_panel_menu = self.window_menu.addMenu("Plugin panels")
         self.workbench.viewClosed.connect(self._plugin_tab_closed)
+        self.viewport.picked.connect(self._update_plugin_menu_items)   # when="picks" on the toolbar
         self.refresh_plugin_panels()
 
     def refresh_plugin_panels(self):
@@ -275,12 +294,12 @@ class PluginPanelsMixin:
         return None
 
     def refresh_plugin_menu_items(self):
-        """Put the entries of ``@menu_item`` plugins into the menu bar (3D view entries are added
-        each time its right-click menu opens)."""
+        """Put the entries of ``@menu_item`` plugins into the menu bar and the toolbar (right-click
+        menus get theirs each time they open, :meth:`add_plugin_items`)."""
         from .. import plugins
 
-        for menu, act in self.plugin_menu_entries:
-            menu.removeAction(act)
+        for holder, act in self.plugin_menu_entries:
+            holder.removeAction(act)
             act.deleteLater()
         self.plugin_menu_entries = []
         try:
@@ -290,15 +309,35 @@ class PluginPanelsMixin:
             found = {}
         self._menu_contexts = {n: c for n, c in self._menu_contexts.items() if n in found}
         separated = set()
+        toolbar = self.findChild(QtWidgets.QToolBar, "main-toolbar")
+        tool_menus = {}
         for name, item in found.items():
             top, *subs = item.menu.split("/")
-            menu = self._menu_bar_menu(top)
-            if menu is None:      # "3D view", or a menu this window does not have
-                continue
-            if top not in separated:
-                separated.add(top)
-                self.plugin_menu_entries.append((menu, menu.addSeparator()))
-                menu.aboutToShow.connect(self._update_plugin_menu_items)
+            if top == "Toolbar":
+                if toolbar is None:
+                    continue
+                if not subs:
+                    act = self._plugin_menu_action(name, item, toolbar)
+                    toolbar.addAction(act)
+                    self.plugin_menu_entries.append((toolbar, act))
+                    continue
+                menu = tool_menus.get(subs[0])
+                if menu is None:       # a drop-down button named after the first part of the path
+                    menu = tool_menus[subs[0]] = QtWidgets.QMenu(subs[0], toolbar)
+                    button = QtWidgets.QToolButton(text=subs[0], toolTip=subs[0], objectName="pluginToolButton")
+                    button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+                    button.setMenu(menu)
+                    menu.aboutToShow.connect(self._update_plugin_menu_items)
+                    self.plugin_menu_entries.append((toolbar, toolbar.addWidget(button)))
+                subs = subs[1:]
+            else:
+                menu = self._menu_bar_menu(top)
+                if menu is None:      # a right-click menu, or a menu this window does not have
+                    continue
+                if top not in separated:
+                    separated.add(top)
+                    self.plugin_menu_entries.append((menu, menu.addSeparator()))
+                    menu.aboutToShow.connect(self._update_plugin_menu_items)
             for title in subs:
                 found_sub = next((a.menu() for a in menu.actions()
                                   if a.menu() is not None and a.text() == title), None)
@@ -309,18 +348,19 @@ class PluginPanelsMixin:
             act = self._plugin_menu_action(name, item, menu)
             menu.addAction(act)
             self.plugin_menu_entries.append((menu, act))
+        self._update_plugin_menu_items()
 
-    def _plugin_menu_action(self, name, item, parent):
+    def _plugin_menu_action(self, name, item, parent, target=None):
         act = QtGui.QAction(item.title, parent)
         if item.icon:
             act.setIcon(plugin_icon(item.icon))
-        if item.description:
-            act.setToolTip(item.description)
-            act.setStatusTip(item.description)
+        tip = item.description or item.title
+        act.setToolTip(tip)
+        act.setStatusTip(item.description)
         if item.shortcut:
             act.setShortcut(QtGui.QKeySequence(item.shortcut))
         act.setProperty("ewald_menu_item", name)
-        act.triggered.connect(lambda _=False, n=name: self.run_plugin_menu_item(n))
+        act.triggered.connect(lambda _=False, n=name, t=target: self.run_plugin_menu_item(n, t))
         return act
 
     def _plugin_item_ready(self, item) -> bool:
@@ -330,39 +370,53 @@ class PluginPanelsMixin:
             return bool(self.viewport.picks)
         return True
 
-    def _update_plugin_menu_items(self):
+    def _update_plugin_menu_items(self, *_):
+        """Grey out the menu-bar and toolbar entries whose ``when`` does not hold now."""
         from .. import plugins
 
-        items = plugins.menu_items()
-        for _menu, act in self.plugin_menu_entries:
+        items = plugins.menu_items() if self.plugin_menu_entries else {}
+        for _holder, act in self.plugin_menu_entries:
             item = items.get(act.property("ewald_menu_item"))
             if item is not None:
                 act.setEnabled(self._plugin_item_ready(item))
 
-    def add_plugin_viewport_items(self, menu: QtWidgets.QMenu, everything: bool = False):
-        """The "3D view" entries of ``@menu_item`` plugins, for the viewport's right-click menu."""
+    def add_plugin_items(self, menu: QtWidgets.QMenu, where: str, target=None, everything: bool = False) -> list:
+        """Append the ``@menu_item`` entries for the right-click menu ``where`` ("3D view",
+        "Notebook cell", "Plot") to ``menu``, those whose ``when`` holds (all with ``everything``),
+        then a separator; ``target`` becomes ``context.target``. Returns the actions added."""
         from .. import plugins
 
         try:
-            items = [(n, i) for n, i in plugins.menu_items().items() if i.menu.split("/")[0] == "3D view"]
+            items = [(n, i) for n, i in plugins.menu_items().items() if i.menu.split("/")[0] == where]
         except Exception:
-            return
+            return []
         items = [(n, i) for n, i in items if everything or self._plugin_item_ready(i)]
         if not items:
-            return
-        subs = {}
+            return []
+        added, subs = [], {}
         for name, item in items:
-            target = menu
+            target_menu = menu
             for title in item.menu.split("/")[1:]:
-                key = (id(target), title)
+                key = (id(target_menu), title)
                 if key not in subs:
-                    subs[key] = target.addMenu(title)
-                target = subs[key]
-            target.addAction(self._plugin_menu_action(name, item, target))
-        menu.addSeparator()
+                    subs[key] = target_menu.addMenu(title)
+                    if target_menu is menu:
+                        added.append(subs[key].menuAction())
+                target_menu = subs[key]
+            act = self._plugin_menu_action(name, item, target_menu, target)
+            target_menu.addAction(act)
+            if target_menu is menu:
+                added.append(act)
+        added.append(menu.addSeparator())
+        return added
 
-    def run_plugin_menu_item(self, name: str):
-        """Call a ``@menu_item`` plugin's function; errors go to the status bar and the Log."""
+    def add_plugin_viewport_items(self, menu: QtWidgets.QMenu, everything: bool = False):
+        """The "3D view" entries of ``@menu_item`` plugins, for the viewport's right-click menu."""
+        return self.add_plugin_items(menu, "3D view", everything=everything)
+
+    def run_plugin_menu_item(self, name: str, target=None):
+        """Call a ``@menu_item`` plugin's function (``context.target`` = ``target``); errors go to
+        the status bar and the Log."""
         from .. import plugins
 
         item = plugins.menu_items().get(name)
@@ -371,15 +425,20 @@ class PluginPanelsMixin:
         ctx = self._menu_contexts.get(name)
         if ctx is None:
             ctx = self._menu_contexts[name] = PanelContext(self, item.title)
+        ctx.target = target
         try:
             return item.callback(ctx)
         except Exception as exc:
             self.message(f"{item.title} failed: {type(exc).__name__}: {exc}", error=True)
             log.debug("menu item %s", name, exc_info=True)
             return None
+        finally:
+            ctx.target = None
 
     def _plugin_event(self, event: str, value):
         """Tell every built plugin panel (and menu item context) about ``event`` (see :meth:`PanelContext.on`)."""
+        if event == "data" and getattr(self, "plugin_menu_entries", None):
+            self._update_plugin_menu_items()
         contexts = [e["context"] for e in getattr(self, "plugin_panels", {}).values()]
         for ctx in contexts + list(getattr(self, "_menu_contexts", {}).values()):
             if ctx is not None:
@@ -389,3 +448,11 @@ class PluginPanelsMixin:
         for entry in getattr(self, "plugin_panels", {}).values():
             if entry["action"] is not None:
                 entry["action"].setIcon(plugin_icon(entry["plugin"].icon))
+        if getattr(self, "plugin_menu_entries", None):   # toolbar and menu entries take the new theme too
+            from .. import plugins
+
+            items = plugins.menu_items()
+            for _holder, act in self.plugin_menu_entries:
+                item = items.get(act.property("ewald_menu_item"))
+                if item is not None and item.icon:
+                    act.setIcon(plugin_icon(item.icon))

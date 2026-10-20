@@ -79,10 +79,11 @@ from typing import Callable
 
 from .io.base import FrameReader
 from .plugin_kinds import (  # noqa: F401 (part of this module's API)
-    ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, MenuItemPlugin, PanelPlugin, ReaderPlugin, SettingsField,
+    ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, MenuItemPlugin, PanelPlugin, PlotTarget, ReaderPlugin, SettingsField,
     SettingsPagePlugin,
-    ThemePlugin, ToolPlugin, UiThemePlugin, VisualPlugin, WorkflowSourcePlugin, WriterPlugin, _builtin_ai_providers, _builtin_overlays, _builtin_readers,
-    _builtin_themes, _builtin_ui_themes, _builtin_visuals, _builtin_writers, path_scheme, MENU_WHEN, MENUS, PANEL_AREAS)
+    ThemePlugin, ToolPlugin, UiThemePlugin, VisualPlugin, WorkflowSourcePlugin, WriterPlugin, _builtin_ai_providers, _builtin_panels, _builtin_workflows, _builtin_overlays, _builtin_readers,
+    _builtin_themes, _builtin_ui_themes, _builtin_visuals, _builtin_writers, path_scheme, MENU_WHEN, MENUS, PANEL_AREAS,
+    TARGET_MENUS)
 from .plugin_manifest import (  # noqa: F401 (part of this module's API)
     Plugin, _read_toml, _version_tuple, ewald_version, file_manifest, version_satisfies)
 
@@ -118,10 +119,10 @@ class _Registry:
     tools: dict = field(default_factory=dict)
     ui_themes: dict = field(default_factory=_builtin_ui_themes)
     ai_providers: dict = field(default_factory=_builtin_ai_providers)
-    panels: dict = field(default_factory=dict)
+    panels: dict = field(default_factory=_builtin_panels)
     menu_items: dict = field(default_factory=dict)
     settings_pages: dict = field(default_factory=dict)
-    workflows: dict = field(default_factory=dict)
+    workflows: dict = field(default_factory=_builtin_workflows)
     errors: dict = field(default_factory=dict)      # origin -> message
     plugins: dict = field(default_factory=dict)     # id -> Plugin
     loaded: bool = False
@@ -594,9 +595,13 @@ def menu_item(fn=None, *, name: str | None = None, title: str = "", menu: str = 
             context.message(f"{len(context.picks)} atoms sent")
 
     ``menu`` is a menu of the menu bar ("File", "Edit", "View", "Notebook", "Insert", "Tools",
-    "Window", "Help") or "3D view" (the right-click menu of the 3D view), optionally with a
-    submenu: ``"Tools/Sim agent"``. ``context`` is the one panels get (``settings``, ``pipeline``,
-    ``data``, ``frame``, ``picks``, ``message``, ``insert_cell``, ``add_step``, ...). ``when`` is
+    "Window", "Help"), "Toolbar" (a button on the main toolbar), or a right-click menu: "3D
+    view", "Notebook cell" (a cell's ⋯ menu) or "Plot" (a plot in the Plots tab or a view cell);
+    optionally with a submenu: ``"Tools/Sim agent"`` (on the toolbar, a drop-down button).
+    ``context`` is the one panels get (``settings``, ``pipeline``, ``data``, ``frame``, ``picks``,
+    ``message``, ``insert_cell``, ``add_step``, ...); in a cell's menu ``context.target`` is that
+    ``ewald.notebook.Cell``, in a plot's a ``PlotTarget`` (``table``, ``values``, ``xlim``,
+    ``ylim``, ``data``). ``when`` is
     "data" or "picks" for an entry that only makes sense with a structure loaded or atoms
     picked; ``shortcut`` a key sequence such as ``"Ctrl+Alt+P"``; ``icon`` as for :func:`panel`.
     ``name`` defaults to the function name, ``title`` to ``name``, ``description`` (the tooltip)
@@ -980,10 +985,12 @@ def load_plugins(force: bool = False):
         _registry.ui_themes = {**_builtin_ui_themes(), **keep}
         keep = {k: v for k, v in _registry.ai_providers.items() if v.origin == "python"}
         _registry.ai_providers = {**_builtin_ai_providers(), **keep}
-        _registry.panels = {k: v for k, v in _registry.panels.items() if v.origin == "python"}
+        _registry.panels = {**_builtin_panels(),
+                            **{k: v for k, v in _registry.panels.items() if v.origin == "python"}}
         _registry.menu_items = {k: v for k, v in _registry.menu_items.items() if v.origin == "python"}
         _registry.settings_pages = {k: v for k, v in _registry.settings_pages.items() if v.origin == "python"}
-        _registry.workflows = {k: v for k, v in _registry.workflows.items() if v.origin == "python"}
+        _registry.workflows = {**_builtin_workflows(),
+                               **{k: v for k, v in _registry.workflows.items() if v.origin == "python"}}
         _registry.errors.clear()
         _registry.plugins = {}
     off = disabled()

@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use EWALD in your research, please cite it as below."
+title: "EWALD: Extensible Workbench for Atomic Lattices & Dynamics"
+abstract: >-
+  A notebook for atomistic structures and trajectories (VASP, LAMMPS and other formats) with
+  a Python pipeline API, OVITO-compatible analysis modifiers, CPU/GPU compute, a ray tracer and
+  vector output for publication figures, an AI assistant and plugins.
+type: software
+authors:
+  - family-names: Kim
+    given-names: Sunghyun
+    alias: frssp
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+repository-code: "https://github.com/frssp/ewald"
+url: "https://github.com/frssp/ewald"
+version: 0.1.0
+date-released: "2026-10-20"
+# doi: 10.5281/zenodo.XXXXXXX   (archive a release on Zenodo, then fill this in)
+keywords:
+  - atomistic simulation
+  - molecular dynamics
+  - visualization
+  - VASP
+  - LAMMPS
+  - materials science

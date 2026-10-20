@@ -3528,9 +3528,9 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
     plugins.register_panel("broken", broken, title="Broken")
     w = MainWindow(pipe)
     titles = [a.text() for a in w.activity_bar.actions()]
-    assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent"]
+    assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent", "Workflows"]
     assert w.plugin_panels["sim_agent"]["dock"] is None          # nothing built before it opens
-    assert sorted(a.text() for a in w.plugin_panel_menu.actions()) == ["Agent jobs", "Broken", "Sim agent"]
+    assert sorted(a.text() for a in w.plugin_panel_menu.actions()) == ["Agent jobs", "Broken", "Sim agent", "Workflows"]
     w.plugin_panels["sim_agent"]["action"].trigger()
     dock = w.plugin_panels["sim_agent"]["dock"]
     assert dock is not None and not dock.isHidden() and w.plugin_panels["sim_agent"]["action"].isChecked()
@@ -3568,7 +3568,7 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
 
     plugins.set_enabled("sim-agent-example", False)
     w.refresh_plugin_panels()
-    assert [a.text() for a in w.activity_bar.actions()][4:] == ["Broken"] and "sim_agent" not in w.plugin_panels
+    assert [a.text() for a in w.activity_bar.actions()][4:] == ["Broken", "Workflows"] and "sim_agent" not in w.plugin_panels
     w.close()
 
 
@@ -3644,6 +3644,65 @@ def test_plugin_menu_items_bottom_tab_and_layout_restore(app, pipe, monkeypatch,
     assert "plugin:agent_jobs" not in w2.workbench.specs
     assert not any(a.menu() is not None and a.text() == "Sim agent" for a in w2._menu_bar_menu("Tools").actions())
     w2.close()
+
+
+def test_plugin_items_on_toolbar_cell_and_plot_menus(app, pipe, monkeypatch):
+    """@menu_item(menu="Toolbar" | "Notebook cell" | "Plot"): a toolbar button (or drop-down),
+    entries in a cell's ⋯ menu and in a plot's right-click menu, with context.target."""
+    import shutil
+    from pathlib import Path
+
+    from ewald import plugins
+    from ewald.gui.app import MainWindow
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(Path(__file__).parents[1] / "examples" / "plugins" / "sim_agent_panel.py", folder)
+    seen = []
+    plugins.register_menu_item("a", lambda ctx: seen.append("a"), title="Alpha", menu="Toolbar/Tools+", when="picks")
+    plugins.register_menu_item("b", lambda ctx: seen.append(ctx.target), title="Cell kind",
+                               menu="Notebook cell/More")
+    w = MainWindow(pipe)
+    tb = w.findChild(QtWidgets.QToolBar, "main-toolbar")
+    button = next(a for a in tb.actions() if a.text() == "Sim agent")
+    assert not button.icon().isNull()
+    button.trigger()                                   # shows the side bar
+    assert w.plugin_panels["sim_agent"]["dock"] is not None
+    drop = next(b for b in tb.findChildren(QtWidgets.QToolButton, "pluginToolButton") if b.text() == "Tools+")
+    alpha = drop.menu().actions()[0]
+    assert alpha.text() == "Alpha" and not alpha.isEnabled()     # nothing picked
+    w.viewport.set_picks([1])
+    assert alpha.isEnabled()
+    alpha.trigger()
+    assert seen == ["a"]
+
+    cell_widget = w.panel.view.widgets[0]
+    menu = cell_widget.findChild(QtWidgets.QToolButton, "cellMenu").menu()
+    menu.aboutToShow.emit()
+    titles = [a.text() for a in menu.actions()]
+    assert "Send cell to Sim agent" in titles and "More" in titles
+    menu.aboutToShow.emit()                            # rebuilt, not doubled
+    assert [a.text() for a in menu.actions()].count("Send cell to Sim agent") == 1
+    more = next(a.menu() for a in menu.actions() if a.text() == "More")
+    more.actions()[0].trigger()
+    assert seen[-1] is cell_widget.cell
+    next(a for a in menu.actions() if a.text() == "Send cell to Sim agent").trigger()
+    assert "sim-agent task: run cell:" in w.panel.view.notebook.cells[-1].source
+
+    plot = w.plots
+    target = plot.target()
+    assert isinstance(target, plugins.PlotTarget)
+    pmenu = plot.context_menu()
+    ptitles = [a.text() for a in pmenu.actions()]
+    assert ptitles[:2] == ["Save plot…", "Reset view"] and ptitles[-1] == "Send plotted data to Sim agent"
+    pmenu.actions()[-1].trigger()
+    assert "sim-agent task: analyze" in w.panel.view.notebook.cells[-1].source
+
+    plugins.set_enabled("sim-agent-example", False)
+    w.refresh_plugin_panels()
+    assert not any(a.text() == "Sim agent" for a in tb.actions())
+    w.close()
 
 
 def test_plugin_settings_page_dialog(app, monkeypatch):
@@ -3799,6 +3858,30 @@ def test_workflow_side_bar_lists_expands_and_opens_a_workflow_as_one_notebook(ap
     side.refresh()
     side.wait()
     assert side.tree.topLevelItemCount() == 1 and side.more.isHidden()
+
+
+def test_dropping_a_folder_of_calculations_opens_it_as_a_workflow(app, tmp_path, vasp_dir):
+    """A folder of calculations (here a relax and an MD restarted twice) dropped on the window
+    opens as one notebook, a load() per step; the built-in Workflows side bar lists it after."""
+    import shutil
+
+    from ewald.gui.app import MainWindow
+
+    study = tmp_path / "study"
+    shutil.copytree(vasp_dir / "md", study / "1_relax")
+    for run in ("run1", "run2"):
+        shutil.copytree(vasp_dir / "md", study / "2_md" / run)
+    w = MainWindow()
+    tabs = w.panel.tabs.count()
+    w.open_dropped([str(study)])
+    assert w.panel.tabs.count() == tabs + 1
+    assert w.pipeline.num_frames == 4                       # pipe = md: run1 + run2 joined
+    w.show_plugin_panel("workflows")
+    side = w.plugin_panels["workflows"]["dock"].widget()
+    side.wait()
+    assert not side.browse.isHidden() and side.tree.topLevelItemCount() == 1
+    assert side.tree.topLevelItem(0).data(0, QtCore.Qt.UserRole).path == str(study)
+    w.close()
 
 
 def test_wait_for_runs_off_the_gui_thread_with_cancel(app, pipe, tmp_path):

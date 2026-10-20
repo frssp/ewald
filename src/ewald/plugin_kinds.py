@@ -285,6 +285,24 @@ def _builtin_ui_themes() -> dict:
     return {name: UiThemePlugin(name, {}, name, DESCRIPTIONS.get(name, ""), "built-in", True) for name in PALETTES}
 
 
+def _builtin_workflows() -> dict:
+    from .workflow_folder import FolderSource
+
+    src = FolderSource()
+    return {"folders": WorkflowSourcePlugin("folders", src, src.title, (), "", " ".join(src.__doc__.split()),
+                                            "built-in")}
+
+
+def _builtin_panels() -> dict:
+    from .workflow import workflow_panel
+
+    f = workflow_panel("folders", title="Workflows", icon="layers",
+                       tooltip="Workflows: folders of VASP, LAMMPS, NEB and phonopy calculations")
+    return {"workflows": PanelPlugin("workflows", f, f.title, f.icon, f.tooltip, "", 320,
+                                     "Folders of calculations as workflows: their steps, outputs and one notebook",
+                                     "built-in")}
+
+
 def _builtin_ai_providers() -> dict:
     from .llm.providers import BUILTIN   # no SDK import
 
@@ -325,18 +343,38 @@ class PanelPlugin:
 
 
 PANEL_AREAS = ("side", "bottom")
-#: Where a ``@menu_item`` can go: a menu of the menu bar, or the 3D view's right-click menu.
-MENUS = ("File", "Edit", "View", "Notebook", "Insert", "Tools", "Window", "Help", "3D view")
+#: Where a ``@menu_item`` can go: a menu of the menu bar, the main toolbar, or the right-click
+#: menu of the 3D view, of a notebook cell (its ⋯ button) or of a plot.
+MENUS = ("File", "Edit", "View", "Notebook", "Insert", "Tools", "Window", "Help", "Toolbar", "3D view",
+         "Notebook cell", "Plot")
+#: The menus whose entries get ``context.target`` (the cell, the plot).
+TARGET_MENUS = ("Notebook cell", "Plot")
 MENU_WHEN = ("", "data", "picks")
 
 
 @dataclass
+class PlotTarget:
+    """What a ``@menu_item(menu="Plot")`` entry gets as ``context.target``: the plot it was opened
+    on. ``table`` is the name of the table (or the histogrammed property) on it, ``values`` that
+    ``Table`` (None for a histogram or an electronic-structure plot), ``columns`` the plotted
+    columns, ``xlim``/``ylim`` the axis ranges on screen and ``data`` the frame it shows."""
+
+    table: str = ""
+    values: object = None
+    columns: list = field(default_factory=list)
+    xlim: tuple | None = None
+    ylim: tuple | None = None
+    data: object = None
+
+
+@dataclass
 class MenuItemPlugin:
-    """An entry a plugin adds to a menu of the desktop app: ``menu`` is one of :data:`MENUS`,
-    optionally with a submenu path (``"Tools/Sim agent"``); choosing it calls
-    ``callback(context)`` with an ``ewald.gui.window_plugins.PanelContext``. ``when`` is "" (always
-    on), "data" (a structure is loaded) or "picks" (atoms are picked); in the 3D view's menu an
-    entry whose ``when`` does not hold is left out, in the menu bar it is greyed out."""
+    """An entry a plugin adds to the desktop app: ``menu`` is one of :data:`MENUS`, optionally
+    with a submenu path (``"Tools/Sim agent"``; on the toolbar a drop-down button); choosing it
+    calls ``callback(context)`` with an ``ewald.gui.window_plugins.PanelContext``, whose
+    ``target`` is the notebook cell or plot it was opened on. ``when`` is "" (always on), "data"
+    (a structure is loaded) or "picks" (atoms are picked); in a right-click menu an entry whose
+    ``when`` does not hold is left out, in the menu bar and the toolbar it is greyed out."""
 
     name: str
     callback: Callable
