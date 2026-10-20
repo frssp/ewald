@@ -57,7 +57,7 @@ ewald starts (`--yes` saves without asking; from Python, `forge(..., confirm=fn)
 | `--draft` | `run_code=False` | print the first draft only |
 | `--overwrite` | `overwrite=True` | replace a plugin file of the same name |
 | `--rounds N` | `max_rounds=N` | attempts to fix failing checks |
-| `--model` | `model=` | the model (needs `pip install ewald[llm]` and an API key) |
+| `--model` | `model=` | the model (needs an API key) |
 | `--provider`, `--base-url` | `provider=`, `base_url=` | the AI provider and its address (default: Preferences › AI) |
 
 `forge` also takes `client=`, any object with `messages.create` (the tests use a scripted

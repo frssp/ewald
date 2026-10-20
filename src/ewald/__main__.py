@@ -143,9 +143,10 @@ def build_parser():
 
 
 # optional package -> the extra that installs it (for "ewald CMD" without that extra)
-EXTRAS = {"PySide6": "gui", "pyvistaqt": "gui", "qtconsole": "gui", "anthropic": "llm", "openai": "llm", "mcp": "llm",
-          "anyio": "llm", "h5py": "formats", "MDAnalysis": "formats",
-          "cupy": "gpu", "imageio_ffmpeg": "movie"}
+EXTRAS = {"PySide6": "gui", "pyvistaqt": "gui", "qtconsole": "gui", "MDAnalysis": "formats", "cupy": "gpu"}
+# core packages missing anyway (an install that skipped dependencies): name the package itself
+CORE = {"anthropic": "anthropic", "openai": "openai", "mcp": "mcp", "anyio": "mcp", "h5py": "h5py",
+        "imageio_ffmpeg": "imageio-ffmpeg", "spglib": "spglib"}
 
 
 def main(argv=None):
@@ -156,6 +157,8 @@ def main(argv=None):
         top = (getattr(exc, "name", None) or "").split(".")[0]
         if top in EXTRAS:
             sys.exit(f"ewald {args.cmd}: needs {top}: pip install 'ewald[{EXTRAS[top]}]'")
+        if top in CORE:
+            sys.exit(f"ewald {args.cmd}: needs {top}, which ewald installs; reinstall ewald or pip install {CORE[top]}")
         if "pip install" in str(exc):
             sys.exit(f"ewald {args.cmd}: {exc}")
         raise

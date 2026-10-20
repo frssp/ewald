@@ -279,7 +279,7 @@ COMPONENTS = (
      "install a C++ compiler, then reinstall ewald (docs/user/install.md)"),
     ("cupy", "GPU compute (CUDA)", "pip install 'ewald[gpu]'"),
     ("ovito", "Dislocation analysis (DXA)", "pip install 'ewald[gui,ovito]'"),
-    ("imageio_ffmpeg", "Movie export (.mp4)", "pip install 'ewald[movie]'"),
+    ("imageio_ffmpeg", "Movie export (.mp4)", "pip install imageio-ffmpeg (part of the ewald install)"),
     ("qtconsole", "IPython console in the GUI", "pip install 'ewald[gui]'"),
 )
 

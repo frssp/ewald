@@ -513,8 +513,13 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
   wheels, and an `[Unreleased]` CHANGELOG line from every user-visible pull request.
 
 - CI installs each extra on its own only through the test suite's `importorskip`s; a job that
-  installs every extra in a clean venv and imports its modules would catch broken extras
-  (`tests/test_dependencies.py` only checks that every import is declared).
+  installs `.[all]` (and the plain core) in a clean venv and imports its modules would catch broken
+  extras (`tests/test_dependencies.py` only checks that every import is declared). The frozen apps
+  now carry spglib, h5py, imageio-ffmpeg, anthropic/openai/mcp and ipykernel as core packages:
+  check their size and that PyInstaller bundles them.
+- A step that failed for a missing package retries only when its settings change or the pipeline
+  is invalidated; installing the package while the app runs needs a Run of that cell (a GUI
+  "Retry" action on the failed step is open).
 
 - macOS release: a first run of `macos-release.yml` (manual; macOS minutes bill 10x), then
   Developer ID signing and notarization so the downloaded app opens without the Gatekeeper
