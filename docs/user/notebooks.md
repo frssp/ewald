@@ -273,8 +273,10 @@ restart it, and closing the tab or the window stops it.
 The rules are the same as in the app: re-running a cell replaces the steps it added, and a new
 `pipe` re-runs the cells below. `pipe` in the app is a pipeline over the kernel's one: the
 kernel computes each frame and sends back its particles, cell, bonds, tables, attributes,
-surfaces (polyhedra, isosurfaces), voxel grids and vector styles, so the viewport, view cells,
-plots and Display settings work as usual. Step cells keep their form and on/off checkbox: the
+surfaces (polyhedra, isosurfaces), voxel grids, vector styles and the electronic structure
+(and phonon modes) behind DOS and band plots, so the viewport, view cells, plots and Display
+settings look and work as in the app. Plots the cells draw themselves get the notebook's plot
+style there too. Step cells keep their form and on/off checkbox: the
 app builds a local copy of each step from its cell, an edit runs the cell again in the kernel,
 and the status, time and results of the kernel's steps come back with every frame (a failing
 step is skipped and reports its error on its cell, as in the app). The window stays usable

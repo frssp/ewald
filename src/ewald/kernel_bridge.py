@@ -136,7 +136,8 @@ def set_enabled(pipe, step_id: int, on: bool):
 
 
 def save_frame(data, path: str, steps: list | None = None):
-    """Write a DataCollection's particles, cell, tables, bonds and simple attributes to ``.npz``."""
+    """Write a DataCollection's particles, cell, tables, bonds, simple attributes and the attribute
+    objects in :data:`OBJECTS` to ``.npz``."""
     arrays = {"cell": data.cell.matrix, "origin": data.cell.origin, "pbc": np.asarray(data.cell.pbc)}
     for name, a in data.particles.items():
         a = np.asarray(a)
@@ -147,7 +148,7 @@ def save_frame(data, path: str, steps: list | None = None):
     if data.bonds is not None:
         for name, a in data.bonds.properties.items():
             arrays[f"b/{name}"] = np.asarray(a)
-    meta = {"surfaces": [], "grids": [], "vectors": {}}
+    meta = {"surfaces": [], "grids": [], "vectors": {}, "objects": []}
     for i, (name, m) in enumerate(data.surfaces.items()):
         meta["surfaces"].append({"name": name, "transparency": m.transparency, "edge_width": m.edge_width,
                                  "edge_color": [float(c) for c in m.edge_color] if not isinstance(m.edge_color, str)
@@ -168,12 +169,71 @@ def save_frame(data, path: str, steps: list | None = None):
     for prop, style in data.vectors.items():
         if hasattr(style, "to_dict") and _plain(style.to_dict()):
             meta["vectors"][prop] = style.to_dict()
+    attrs = {}
+    for k, v in data.attributes.items():
+        if _plain(v):
+            attrs[k] = v
+        else:
+            _save_object(k, v, arrays, meta)
     arrays["meta"] = np.asarray(json.dumps(meta))
-    attrs = {k: v for k, v in data.attributes.items() if _plain(v)}
     arrays["attributes"] = np.asarray(json.dumps(attrs))
     if steps is not None:
         arrays["steps"] = np.asarray(json.dumps(steps))
     np.savez(path, **arrays)
+
+
+# Attribute objects that travel with a frame (the Plots tab draws DOS/bands and phonon bands from
+# them, so without them a kernel's frame plots differently): class name -> module. Only these are
+# rebuilt on load; nothing is imported by a name that came from the file.
+OBJECTS = {"ElectronicStructure": "ewald.electronic", "PhononModes": "ewald.phonon"}
+
+
+def _save_object(name: str, value, arrays: dict, meta: dict):
+    """Store a dataclass attribute of a class in :data:`OBJECTS`: arrays as ``x<i>/<field>``,
+    the rest as JSON. Lazy loaders are resolved first (ElectronicStructure projections)."""
+    import dataclasses
+
+    cls = type(value).__name__
+    if cls not in OBJECTS or not dataclasses.is_dataclass(value):
+        return
+    i, fields = len(meta["objects"]), {}
+    for f in dataclasses.fields(value):
+        v = getattr(value, f.name)
+        if f.name == "_projections" and v is None:
+            v = getattr(value, "projections", None)
+        if callable(v) or v is None:
+            continue
+        if isinstance(v, np.ndarray):
+            arrays[f"x{i}/{f.name}"] = v.astype(str) if v.dtype == object else v
+        elif _plain(v):
+            fields[f.name] = v
+    meta["objects"].append({"attribute": name, "class": cls, "fields": fields})
+
+
+def _load_objects(d, z, meta: dict):
+    import dataclasses
+    import importlib
+
+    for i, info in enumerate(meta.get("objects", [])):
+        module = OBJECTS.get(info.get("class"))
+        try:
+            cls = getattr(importlib.import_module(module), info["class"]) if module else None
+        except ImportError:   # e.g. PhononModes without the ewald-phonopy plugin here
+            cls = None
+        if cls is None or not dataclasses.is_dataclass(cls):
+            continue
+        values = dict(info.get("fields", {}))
+        pre = f"x{i}/"
+        values.update({key[len(pre):]: z[key] for key in z.files if key.startswith(pre)})
+        names = {f.name for f in dataclasses.fields(cls) if f.init}
+        try:
+            obj = cls(**{k: v for k, v in values.items() if k in names})
+        except TypeError:
+            continue
+        for k, v in values.items():
+            if k not in names:
+                setattr(obj, k, v)
+        d.attributes[info["attribute"]] = obj
 
 
 def _plain(value) -> bool:
@@ -237,6 +297,7 @@ def _load_extras(d, z, meta: dict):
             if key.startswith(pre + "p/"):
                 g[key[len(pre) + 2:]] = z[key]
         d.grids[name] = g
+    _load_objects(d, z, meta)
     for prop, style in meta.get("vectors", {}).items():
         try:
             d.vectors[prop] = VectorStyle(**style)

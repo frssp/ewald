@@ -15,6 +15,12 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   sessions work once the plugin is installed; without it they raise an `ImportError` with the
   install command. The `plumed` extra is gone (#75).
 
+### Fixed
+
+- DOS, band structure and phonon band plots looked different when a notebook ran in another
+  Python kernel: frames from a kernel now carry the `Electronic Structure` (and `Phonon Modes`)
+  attribute, so the Plots tab and view cells draw them exactly as in-process.
+
 ### Added
 
 - Plain matplotlib plots in notebook cells, notebook kernels and the GUI console use the
