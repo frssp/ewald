@@ -2956,3 +2956,35 @@ def test_ai_chat_does_not_insert_twice_when_the_model_wrote_cells(app, pipe):
     _wait(app, w.ask_panel)
     assert len(w.panel.view.notebook.cells) == n           # the tool call wrote it; the block only shows it
     w.close()
+
+
+def test_opened_md_run_gets_a_run_check_and_runs_get_a_picker(app, lammps_dir, tmp_path):
+    """Opening an MD run whose log says so adds a run check cell (run at once); a notebook that
+    loads several runs shows a run picker that binds pipe, and with it the 3D view, to one run."""
+    from ewald import import_file
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(import_file(lammps_dir / "thermo" / "dump.lammpstrj"))
+    view = w.panel.view
+    check = view.notebook.cells[-1]
+    assert check.source.endswith("check = check_run(pipe)\ncheck") and check.state == "ok"
+    assert "Run check: LAMMPS md NVE" in check.outputs[-1].data
+    assert not view.run_bar.isVisible() and view._runs is None
+    labels = [a.text() for a in w.analysis_menu.actions()]
+    assert labels[0] == "Run check (convergence, equilibration)"
+    for k in (1, 2):
+        d = tmp_path / f"run{k}"
+        d.mkdir()
+        (d / "dump.lammpstrj").write_text((lammps_dir / "thermo" / "dump.lammpstrj").read_text())
+    cell = view.add_cell("code", f"from ewald import load_runs\nruns = load_runs({str(tmp_path / 'run*' / 'dump.lammpstrj')!r})\n"
+                                 "pipe = runs.pipe")
+    view.run(cell)
+    view.wait()
+    assert not view.run_bar.isHidden() and view.run_combo.count() == 2
+    runs = view.notebook.namespace["runs"]
+    assert w.pipeline is runs[0].pipe and view.run_combo.currentText() == "run1"
+    view._pick_run(1)
+    assert w.pipeline is runs[1].pipe and view.notebook.namespace["pipe"] is runs[1].pipe and runs.current == 1
+    view.restart()
+    assert view.run_bar.isHidden()
+    w.close()

@@ -150,6 +150,13 @@ ion transport (van Hove, conductivity, site hops), NEB profiles, isosurfaces and
 DOS and band structures from VASP. Ported analyses are tested against OVITO and freud.
 [Modifiers](docs/user/modifiers.md)
 
+**Runs.** EWALD reads INCAR, KPOINTS and log.lammps next to a trajectory, so it knows the run's
+ensemble, temperature and time per frame; `check_run(pipe)` says whether the SCF and the relaxation
+converged, from which frame the MD is equilibrated, and whether the temperature and energy behave.
+`runs = load_runs("T*/XDATCAR")` puts a temperature or composition series in one notebook: every
+analysis runs on all of them, plots overlay, and `arrhenius(msd(runs))` gives the activation
+energy. [Runs](docs/user/runs.md)
+
 **Files.** Native lazy readers for big text trajectories (LAMMPS dump, XDATCAR, extxyz, OUTCAR,
 vasprun.xml), H5MD and vaspout.h5, MDAnalysis for XTC/TRR/DCD and ASE for everything else, with
 matching writers. Files on an SSH host open by path (`cluster:/scratch/run/dump.lammpstrj`); remote

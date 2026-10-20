@@ -57,6 +57,7 @@ nav:
       - "Tutorial 3: a trajectory": user/tutorials/trajectory.md
       - Reproducing papers: user/papers.md
       - Notebooks: user/notebooks.md
+      - "Runs: check and compare": user/runs.md
       - Desktop GUI: user/gui.md
       - File formats: user/formats.md
       - Modifiers: user/modifiers.md

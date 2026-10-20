@@ -70,6 +70,10 @@ def build_parser():
     d.add_argument("--frame", type=int, default=0)
     d.add_argument("--trajectory", action="store_true", help="scan frames and report events")
     d.add_argument("--type-map", default=None)
+    c = sub.add_parser("check", help="what a run is (from INCAR / log.lammps) and whether it converged and equilibrated")
+    c.add_argument("input", nargs="+", help="trajectory or output files (several: one check each)")
+    c.add_argument("--json", action="store_true", help="print the findings as JSON")
+    c.add_argument("--type-map", default=None)
     q = sub.add_parser("ask", help="ask AI about a structure (Claude by default; needs the provider's package + key)")
     q.add_argument("input")
     q.add_argument("question", nargs="+")
@@ -255,6 +259,20 @@ def _run(args):
         kw["type_map"] = dict(item.split("=") for item in args.type_map.split(","))
     if args.cmd in ("render", "movie"):
         return _render_cmd(args, kw)
+    if args.cmd == "check":
+        import json
+
+        from .runinfo import check_run
+
+        checks = {}
+        for path in args.input:
+            check = check_run(import_file(path, **kw))
+            checks[path] = check
+            if not args.json:
+                print(f"{path}\n{check}\n")
+        if args.json:
+            print(json.dumps({p: c.to_dict() for p, c in checks.items()}, indent=1, default=float))
+        return 0 if all(c.ok for c in checks.values()) else 1
     pipe = import_file(args.input, **kw)
     if args.cmd == "describe":
         import json
@@ -495,4 +513,4 @@ def _forge(args):
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

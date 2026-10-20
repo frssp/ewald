@@ -100,7 +100,7 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 
 ## Notebook verbs
 
-`from ewald import load, rdf, msd, vacf, sq, xrd, bond_angles, cna, ptm, voronoi, clusters`: `pipe = load(path)` is `import_file`;
+`from ewald import load, rdf, msd, vacf, sq, xrd, bond_angles, cna, ptm, voronoi, clusters, check_run, load_runs`: `pipe = load(path)` is `import_file`;
 `pipe.add(m)` appends a modifier (and works as `@pipe.add` on `def f(frame, data)`). A verb adds its
 analysis step and returns its table: `rdf(pipe, cutoff=6, bins=200, partial=False)` (CoordinationAnalysis,
 `coordination-rdf`), `msd(pipe, **kw)` (`msd`), `vacf` (`vacf`), `sq(pipe, q_max=10)` (`structure-factor`),
@@ -110,6 +110,17 @@ largest first). The `Table` is a dict of columns (`pandas.DataFrame(table)` work
 counting tables, `.counts` (`cna(pipe).counts == {"OTHER": 0, "FCC": 500, ...}`); calling the verb again replaces its step.
 In Jupyter a Pipeline, DataCollection or Table as a cell's last line shows a picture (ray-traced frame 0, or the
 curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] = False` turns it off.
+
+## Runs: input files, health check, series
+
+`run_info(pipe)` reads the run's INCAR (else the OUTCAR/vasprun echo), KPOINTS or log.lammps: `.code`, `.kind`
+(md/relax/static/neb/phonon), `.ensemble`, `.temperature` (start, end), `.timestep` (fs), `.time_per_frame` (ps),
+`.notes` (what was assumed). `msd(pipe)`/`vacf(pipe)` use that `time_per_frame` unless given. `check_run(pipe)` lists
+findings (SCF hitting NELM, relaxation not converged, `.equilibrated` first equilibrated frame, temperature vs target,
+energy drift, LAMMPS warnings/errors, close contacts); `.ok`, `.to_dict()`. Several runs:
+`runs = load_runs("T*/XDATCAR", label=r"T(\\d+)")` (sorted by the label's number); `runs.pipe`, `runs["600"].pipe`,
+`runs.add(m)` (a copy per run); every verb takes `runs` and returns `RunTables` `{label: Table}` (`.plot()`,
+`.attribute(name)`); `arrhenius(msd(runs))` fits Ea (eV) to D(T) with T from each run's thermostat.
 
 ## The 3D view (`pipe.view`)
 

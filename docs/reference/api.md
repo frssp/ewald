@@ -27,6 +27,12 @@ site (`mkdocs serve`) or use `help()` in Python, or read `llms.txt` for a compac
 
 ::: ewald.backend.get_backend
 
+## Runs
+
+::: ewald.runinfo
+
+::: ewald.runs
+
 ## Rendering
 
 ::: ewald.render.render
