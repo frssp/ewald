@@ -114,10 +114,54 @@ def test_check_reports_each_failure():
     assert "Could not reach" in credentials.check(_client=raising(offline))[1]
 
 
-def test_model_choices_match():
-    assert settings.OPTION["llm.model"].choices == tuple(credentials.MODELS)
-    assert settings.OPTION["llm.model"].default == credentials.DEFAULT_MODEL
-    assert settings.OPTION["llm.model"].page == "Claude"
+def test_ai_settings_and_providers():
+    from ewald.llm import providers
+
+    assert settings.OPTION["llm.provider"].default == "anthropic" and settings.OPTION["llm.model"].default == ""
+    assert {settings.OPTION[k].page for k in ("llm.provider", "llm.model", "llm.base_url", "llm.effort")} == {"AI"}
+    assert providers.get().models == credentials.MODELS and providers.get().default_model == credentials.DEFAULT_MODEL
+    assert {"anthropic", "openai", "gemini", "openai-compatible"} <= set(providers.providers())
+    with pytest.raises(KeyError):
+        providers.get("no-such-ai")
+
+
+def test_each_provider_keeps_its_own_key(keychain, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    credentials.save_api_key("sk-ant-anthropic-1111111111")
+    assert credentials.save_api_key("sk-openai-2222222222222", provider="openai") == "keychain"
+    assert keychain.store[("ewald", "openai-api-key")] == "sk-openai-2222222222222"
+    assert credentials.get_api_key()[0] == "sk-ant-anthropic-1111111111"
+    assert credentials.get_api_key("openai") == ("sk-openai-2222222222222", "keychain")
+    assert credentials.get_api_key("gemini") == (None, None)
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-from-env-333333")
+    assert credentials.get_api_key("gemini") == ("AIza-from-env-333333", "env")
+    credentials.delete_api_key("openai")
+    assert credentials.get_api_key("openai") == (None, None) and credentials.get_api_key()[0]
+
+
+def test_openai_client_gets_the_key_and_address(keychain, monkeypatch):
+    pytest.importorskip("openai")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    credentials.save_api_key("sk-openai-saved-44444444", provider="openai")
+    c = credentials.client(provider="openai")
+    assert c.api_key == "sk-openai-saved-44444444" and "OPENAI_API_KEY" not in os.environ
+    local = credentials.client(provider="openai-compatible", base_url="http://localhost:1234/v1")
+    assert str(local.base_url).startswith("http://localhost:1234/v1") and local.api_key == "not-needed"
+    gemini = credentials.client("AIza-explicit", provider="gemini")
+    assert "generativelanguage.googleapis.com" in str(gemini.base_url) and gemini.api_key == "AIza-explicit"
+
+
+def test_check_with_an_openai_compatible_server():
+    openai = pytest.importorskip("openai")
+    import httpx2 as httpx
+
+    ok = NS(models=NS(retrieve=lambda model: NS(id=model)))
+    assert credentials.check(model="llama3.1", _client=ok, provider="openai-compatible") == (True, "Connected: llama3.1")
+    req = httpx.Request("GET", "http://localhost:11434/v1/models/x")
+    offline = openai.APIConnectionError(request=req)
+    failing = NS(models=NS(retrieve=lambda model: (_ for _ in ()).throw(offline)))
+    msg = credentials.check(_client=failing, provider="openai-compatible")[1]
+    assert "Could not reach http://localhost:11434/v1" in msg
 
 
 def test_forge_subprocess_cannot_use_keyring():

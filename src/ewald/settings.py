@@ -33,17 +33,18 @@ class Option:
     choices: tuple = ()          # allowed values (combo box)
     minimum: float | None = None
     maximum: float | None = None
-    kind: str = ""               # editor hint: color, file, dir, table, ui_theme (installed UI themes)
+    kind: str = ""               # editor hint: color, file, dir, table, ui_theme (installed UI themes),
+                                 # ai_provider, ai_model (model ids the chosen provider suggests)
 
     @property
     def page(self) -> str:
         return PAGE_OF_PREFIX[self.key.split(".")[0]]
 
 
-PAGES = ("General", "Viewports", "Elements", "Rendering", "Compute", "Python", "Claude")
+PAGES = ("General", "Viewports", "Elements", "Rendering", "Compute", "Python", "AI")
 PAGE_OF_PREFIX = {"general": "General", "viewport": "Viewports", "elements": "Elements", "bonds": "Elements",
                   "render": "Rendering", "plots": "Rendering", "compute": "Compute", "performance": "Compute",
-                  "python": "Python", "llm": "Claude"}
+                  "python": "Python", "llm": "AI"}
 
 OPTIONS = (
     Option("general.layout", "notebook", "Window layout",
@@ -188,9 +189,17 @@ OPTIONS = (
     Option("python.extra_paths", "", "Extra module paths", "Folders added to sys.path, separated by ';'.", kind="dir"),
 
     # the API key itself is not an option: it lives in the OS keychain (ewald.llm.credentials)
-    Option("llm.model", "claude-opus-5-5", "Model", "Used by Ask Claude.",
-           choices=("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1")),
-    Option("llm.effort", "high", "Effort", "How hard Claude thinks before answering; lower is faster and cheaper.",
+    Option("llm.provider", "anthropic", "Provider",
+           "The AI service behind Ask AI, the AI chat and ewald ask: Anthropic (Claude), OpenAI, Google "
+           "Gemini, an OpenAI-compatible server (Ollama, LM Studio, vLLM, OpenRouter) or a plugin's.",
+           kind="ai_provider"),
+    Option("llm.model", "", "Model", "Empty: the provider's default. Any model id the service offers works.",
+           kind="ai_model"),
+    Option("llm.base_url", "", "Server URL",
+           "Empty: the provider's own address. For an OpenAI-compatible server, its address, "
+           "e.g. http://localhost:11434/v1 (Ollama) or http://localhost:1234/v1 (LM Studio)."),
+    Option("llm.effort", "high", "Effort",
+           "How hard the model thinks before answering (Claude, OpenAI reasoning models); lower is faster and cheaper.",
            choices=("low", "medium", "high", "xhigh", "max")),
 )
 OPTION = {o.key: o for o in OPTIONS}

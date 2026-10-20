@@ -41,7 +41,7 @@ def write_pwi(path, data, pseudopotentials=None):
 ```
 
 Exporting several frames to such a writer raises an error that asks for `frames=[i]`; the GUI
-and the Claude tool write the current frame.
+and the AI tool write the current frame.
 
 ## How the writer is chosen
 

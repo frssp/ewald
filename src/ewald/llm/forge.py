@@ -1,10 +1,10 @@
-"""Modifier Forge: Claude writes a modifier plugin and ewald verifies it before saving it.
+"""Modifier Forge: an AI model (Claude by default) writes a modifier plugin and ewald verifies it before saving it.
 
 >>> from ewald.llm.forge import forge
 >>> result = forge("Fraction of O neighbours within 2.5 A around each Li atom", run_code=True)
 >>> result.ok, result.path            # saved into the plugin folder, now in the GUI menu and tools
 
-Claude returns two files through one tool call: the plugin module (a ``Modifier`` subclass
+The model returns two files through one tool call: the plugin module (a ``Modifier`` subclass
 registered with ``@modifier``) and a test module whose ``test_*`` functions build structures
 with a known answer and assert it. ewald then runs, in a separate Python process with a time
 limit and a temporary config folder,
@@ -13,9 +13,9 @@ limit and a temporary config folder,
   under its own name),
 - a no-mutation check (the input frame's arrays are unchanged after ``compute``),
 - the GPU code path with a NumPy-backed fake CUDA backend, compared with the NumPy result,
-- Claude's own tests,
+- the model's own tests,
 
-and sends any failure back to Claude to fix, up to ``max_rounds`` times. Only a version that
+and sends any failure back to the model to fix, up to ``max_rounds`` times. Only a version that
 passes everything is written to the plugin folder, with its tests next to it in ``_forge_tests/``.
 
 The generated code runs on this machine (in a subprocess, not a security sandbox), so nothing
@@ -255,7 +255,7 @@ def _valid_identifier(name: str) -> bool:
 
 
 # environment variables the test subprocess keeps; everything else (API keys, tokens, the SSH
-# agent socket, cloud credentials) stays out of reach of the code Claude wrote
+# agent socket, cloud credentials) stays out of reach of the code the model wrote
 _ENV_KEEP = ("PATH", "LANG", "LANGUAGE", "TZ", "TMPDIR", "TEMP", "TMP", "SYSTEMROOT", "WINDIR", "COMSPEC",
              "PATHEXT", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH", "CUDA_PATH",
              "CUDA_HOME", "CUDA_VISIBLE_DEVICES", "OMP_NUM_THREADS", "NUMBA_NUM_THREADS", "VIRTUAL_ENV",
@@ -307,36 +307,37 @@ def _system() -> str:
     return SYSTEM_PROMPT.format(contract=CONTRACT, reference=api_reference())
 
 
-def forge(request: str, *, client=None, model: str = DEFAULT_MODEL, run_code: bool = False,
-          max_rounds: int = 4, save: bool = True, overwrite: bool = False, timeout: float = 120,
-          max_tokens: int = 16000, on_event=None, confirm=None) -> ForgeResult:
-    """Have Claude write a modifier plugin for ``request``; verify and save it (see module docs).
+def forge(request: str, *, client=None, model: str | None = None, provider=None, base_url: str | None = None,
+          run_code: bool = False, max_rounds: int = 4, save: bool = True, overwrite: bool = False,
+          timeout: float = 120, max_tokens: int = 16000, on_event=None, confirm=None) -> ForgeResult:
+    """Have an AI model write a modifier plugin for ``request``; verify and save it (see module docs).
 
-    ``client`` defaults to ``credentials.client()`` (the saved key); any object with ``messages.create`` works
-    (tests pass a fake). With ``run_code=False`` the first draft is returned unverified and
+    ``provider`` is an AI provider (:mod:`ewald.llm.providers`; default Anthropic) and ``model``
+    defaults to its first model. ``client`` defaults to the provider's client with the saved
+    key; any object with the same ``messages.create`` (Claude) or ``chat.completions.create``
+    works (tests pass a fake). With ``run_code=False`` the first draft is returned unverified and
     nothing is run or saved. ``confirm(result) -> bool`` is asked before a verified plugin is
     saved, since a saved plugin is imported on every start; False keeps it unsaved.
     """
     from .. import plugins
+    from .providers import get
 
+    p = get(provider)
     if client is None:
-        from .credentials import client as make_client
-
-        client = make_client()
+        client = p.client(base_url=base_url)
     emit = on_event or (lambda kind, payload: None)
-    system = [{"type": "text", "text": _system(), "cache_control": {"type": "ephemeral"}}]
-    messages: list[dict] = [{"role": "user", "content": request}]
+    chat = p.chat(client, model or (DEFAULT_MODEL if p.name == "anthropic" else p.default_model), system=_system(),
+                  tools=[SUBMIT_TOOL], max_tokens=max_tokens, beta=False)
+    chat.user(request)
     result = ForgeResult(request)
     for round_ in range(1, max_rounds + 1):
-        response = client.messages.create(model=model, max_tokens=max_tokens, system=system, messages=messages,
-                                          tools=[SUBMIT_TOOL], tool_choice={"type": "tool", "name": "submit_plugin"})
-        messages.append({"role": "assistant", "content": response.content})
-        call = next((b for b in response.content if getattr(b, "type", None) == "tool_use"), None)
+        reply = chat.send(tool_choice="submit_plugin")
+        call = next((c for c in reply.calls if c.name == "submit_plugin"), None)
         if call is None:
-            if response.stop_reason == "refusal":
+            if reply.stop == "refusal":
                 result.notes = "request declined by the model"
                 return result
-            messages.append({"role": "user", "content": "Submit the plugin with the submit_plugin tool."})
+            chat.user("Submit the plugin with the submit_plugin tool.")
             continue
         args = dict(call.input or {})
         result.rounds = round_
@@ -356,10 +357,8 @@ def forge(request: str, *, client=None, model: str = DEFAULT_MODEL, run_code: bo
         emit("report", result)
         if result.ok:
             break
-        messages.append({"role": "user", "content": [{
-            "type": "tool_result", "tool_use_id": call.id, "is_error": True,
-            "content": "Checks or tests failed; fix the code (or a test that is wrong) and submit again.\n"
-                       + json.dumps(result.report, indent=1)}]})
+        chat.tool_results([(call, "Checks or tests failed; fix the code (or a test that is wrong) and submit "
+                                  "again.\n" + json.dumps(result.report, indent=1), True)])
     if result.ok and save and (confirm is None or confirm(result)):
         result.path = save_plugin(result, overwrite=overwrite)
         plugins.load_plugins(force=True)

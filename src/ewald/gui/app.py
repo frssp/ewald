@@ -88,7 +88,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.ask_panel.pipelineChanged.connect(self._after_claude)
         self.ask_panel.insertRequested.connect(self._insert_claude_cell)
         if self.layout_mode == "notebook":
-            # --- left: notebook tabs (the pipeline as Python cells); right: display settings, Ask Claude
+            # --- left: notebook tabs (the pipeline as Python cells); right: display settings, Ask AI
             self.panel = NotebookPanel()
             self.panel.changed.connect(self.recompute)
             self.panel.pipelineReplaced.connect(self.set_pipeline)
@@ -131,7 +131,8 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
             self.panel.styleChanged.connect(self._style_changed)
             side_dock = self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
             self.remotes_dock = install_remotes(self)
-            self.ask_dock = self._dock(self.ask_panel, "Ask Claude", QtCore.Qt.RightDockWidgetArea, None)
+            self.ask_dock = self._dock(self.ask_panel, "Ask AI", QtCore.Qt.RightDockWidgetArea, None)
+            self.ask_dock.setObjectName("Ask Claude")  # the name saved layouts know it by
             self.tabifyDockWidget(side_dock, self.ask_dock)
             side_dock.raise_()
 

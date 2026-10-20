@@ -41,7 +41,7 @@ code that colors things itself should call it instead of `matplotlib.colormaps[.
 along the map (on each side of the middle for diverging maps), which is what keeps a figure
 readable in grayscale print and for most color-blind readers; `lightness(name)` returns the L*
 curve. The GUI's color map drop-down shows a preview strip and this verdict as a tooltip, and the
-Claude tool `list_styles` reports it as `grayscale_safe`.
+AI tool `list_styles` reports it as `grayscale_safe`.
 
 ## Themes
 

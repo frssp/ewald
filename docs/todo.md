@@ -32,7 +32,7 @@ GUI
   files `design/panel-layout.md`): phase 2 opens a notebook view cell's plot large in the
   editor area ("Open large" or drag the cell header, a Bring back placeholder in the cell, the
   layout saved in the notebook metadata) and makes the Render workspace a tab there; phase 3
-  makes the Notebook, Display, Ask Claude, Plugins and Remotes side bars views too, adds Move
+  makes the Notebook, Display, Ask AI, Plugins and Remotes side bars views too, adds Move
   to new window (multi-monitor), named layouts, drop bands along an area's outer edge for
   full-length splits, a second 3D view (another camera) and a `@view` plugin API. Not yet tried
   on a real `ssh -X` display.
@@ -52,7 +52,7 @@ GUI
   still set inline colors (render preview, pick labels, color swatches, field error borders), so
   they keep the old palette until a restart after a theme switch; move them to QSS object names.
 - Notebook layout: the viewport could follow the current notebook even when it has no
-  pipeline yet (now it keeps the last one); image/figure cells; inline Ask Claude suggestions
+  pipeline yet (now it keeps the last one); image/figure cells; inline Ask AI suggestions
   as diffs; a snapshot cell that updates when the camera of its view changes (now it is code).
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
   view does not have yet (per-type transparency, atom labels drawn in the view, light direction
@@ -65,7 +65,7 @@ GUI
   cell adds with code the app cannot import (a class only the kernel's Python has stays as code).
 - Plugins side bar: disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
-  view instead of the Ask Claude prompt; uninstalling a pip plugin still needs a restart.
+  view instead of the Ask AI prompt; uninstalling a pip plugin still needs a restart.
 - UI themes: prompts already printed in the Python console keep the colors of the theme they
   were printed in (new input, syntax colors and the background switch at once).
 - Remotes side bar: list folders and connect in a background thread (now the GUI waits, with
@@ -97,7 +97,7 @@ GUI
 - Panel headers (`gui/header.py`): checked under xvfb with Windows-like scale factors (100, 125,
   150 %) only; check on a real Windows machine (Segoe UI, per-monitor DPI) and macOS. The Display
   side bar still crowds its form below about 260 px, and the view bar cuts "View along" when the
-  3D view is narrow (could fold into a menu). The add-cell row (+ Code ... + Ask Claude) clips its
+  3D view is narrow (could fold into a menu). The add-cell row (+ Code ... + Ask AI) clips its
   labels when the Notebook panel is at its minimum width.
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
   Add modification for the loaded data, view-along buttons hidden without a cell, the timeline
@@ -238,13 +238,18 @@ Visualization plugins (later phases of the Scene IR plan)
 - Phase 3 and later: glTF/HTML export from the IR, animated visuals, Claude-written visual
   elements (a Visual Forge, like Modifier Forge).
 
-Plugins and Claude
+Plugins and AI
 
+- AI providers (`llm/providers.py`): the OpenAI-compatible provider never sends images (no
+  per-server vision switch yet); Effort reaches only Claude and OpenAI reasoning models; one
+  `llm.model` setting for all providers (switching the provider in Preferences clears it); no
+  streaming for any provider; a native Gemini or Bedrock/Vertex client would need a `Chat`
+  subclass (today Gemini goes through its OpenAI-compatible endpoint).
 - Plugin manifests, phase 2 (from the VS Code comparison): contributions declared in
   `ewald-plugin.toml` (`[[readers]]`, `[[modifiers]]`, ... with `python = "module:object"`)
   registered lazily and imported on first use; `settings` and `commands` contribution points
   (plugin `Option`s on a generated Preferences page; commands in the palette, as notebook
-  functions and as Claude tools).
+  functions and as AI tools).
 - Plugin manifests, phase 3: the index repository exists (frssp/ewald-plugins: `plugins/*.toml`,
   `index.json`, first-party `packages/ewald-phonopy` and `packages/ewald-plumed` pinned to tags).
   Left: install and update with `pip` from the Plugins panel into the running interpreter,
@@ -258,7 +263,7 @@ Plugins and Claude
 
 - AiiDA (ewald-aiida in frssp/ewald-plugins: local profiles, and remote ones over SSH with
   `aiida://user@host/1234`): an AiiDA side bar (profiles and hosts, recent workflows, outputs;
-  copy `load("aiida:...")`), a Claude tool to find and open workflows, PDOS/projected bands
+  copy `load("aiida:...")`), a AI tool to find and open workflows, PDOS/projected bands
   from aiida-quantumespresso, NEB and aiida-lammps outputs, streaming very long remote
   trajectories frame by frame instead of one bundle, export of analysis results back as new
   nodes (opt-in, never default). Not yet tried against a real remote AiiDA host.
@@ -283,7 +288,7 @@ Docs
 - Host the manual (the repository is private; CI uploads the built site as the `docs-site`
   artifact).
 - More tutorials in the notebook style (examples/notebooks, tested by tests/test_tutorials.py):
-  Ask Claude and Modifier Forge on a real question, a plugin from the Plugins side bar, a volumetric
+  Ask AI and Modifier Forge on a real question, a plugin from the Plugins side bar, a volumetric
   file (CHGCAR isosurface), opening a run on a cluster over SSH, and PLUMED/phonopy once they are
   plugins. The remaining manual pages (Python scripting, Rendering figures, Modifiers) still show
   `pipe.modifiers.append` and `import_file`; switch their examples to `load`/`pipe.add` when they
@@ -328,9 +333,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - A vaspout.h5 from a real running and a real killed VASP 6 job: which groups exist mid-run,
   whether unwritten steps are zeros, and whether HDF5 can open the file of a killed job (tests
   use h5py-written fixtures, a second process holding the write lock, and a cut file).
-- Claude features with a real API key: `ewald ask` (also `--select`), the GUI AI chat side bar
-  (notebook code in the prompt, Insert as notebook cell), the classic Ask Claude tab,
-  `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › Claude › Test connection.
+- AI features with a real API key (Claude; also OpenAI, Gemini and a local Ollama/LM Studio
+  server, which are tested only against mocked servers): `ewald ask` (also `--select`), the GUI AI chat side bar
+  (notebook code in the prompt, Insert as notebook cell), the classic Ask AI tab,
+  `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › AI › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
   KWallet); the container has none, so only the 0600 file fallback runs for real.
 - The release workflows (`release.yml`: sdist and Linux wheels; `windows-release.yml` and

@@ -1,11 +1,13 @@
-# Claude integration
+# AI integration
 
-`ewald.llm` exposes the pipeline to Claude as tools, so an analysis can be asked for in words
-and still ends up as an ordinary, reproducible pipeline.
+`ewald.llm` exposes the pipeline to an AI model as tools, so an analysis can be asked for in
+words and still ends up as an ordinary, reproducible pipeline. Claude is the default; OpenAI,
+Google Gemini, a model on your own machine (Ollama, LM Studio) or any other OpenAI-compatible
+server work the same way (see [Providers](#providers)).
 
 ```bash
 pip install -e ".[llm]"
-export ANTHROPIC_API_KEY=...          # or: ant auth login, or Preferences › Claude in the GUI
+export ANTHROPIC_API_KEY=...          # or: ant auth login, or Preferences › AI in the GUI
 ```
 
 ```python
@@ -14,6 +16,10 @@ from ewald.llm import Agent
 agent = Agent.from_file("XDATCAR")
 print(agent.ask("What happens in this run? Render the frame where it changes."))
 print(agent.toolset.to_script())      # the analysis as a standalone Python script
+
+agent = Agent.from_file("XDATCAR", provider="openai")                       # OPENAI_API_KEY
+agent = Agent.from_file("XDATCAR", provider="openai-compatible", model="qwen2.5",
+                        base_url="http://localhost:11434/v1")              # Ollama, no key
 ```
 
 The model never reads raw coordinates. The tools return compact descriptors (composition, cell,
@@ -30,39 +36,70 @@ picture options; in the GUI the viewport follows them), `render_image` (drawn wi
 element plugins drawn by later renders), `list_overlays`, `add_overlay`, `remove_overlay`
 (overlays such as the coordinate tripod), `list_styles` (themes and color maps, each marked
 whether it reads in grayscale) and `get_script`. Plugins add their own tools with
-`@claude_tool` ([Claude tool plugins](../plugins/tools.md)); the ewald-plumed plugin adds
+`@ai_tool` (also spelled `@claude_tool`; [AI tool plugins](../plugins/tools.md)); the ewald-plumed plugin adds
 `compute_plumed_cvs` and `read_plumed_output` ([PLUMED](plumed.md)).
 
 `run_python`, which executes model-written code in your Python process, is off unless you pass
 `allow_code=True` (or `--allow-code` on the command line).
 
-Claude may act on text inside the files it reads (a comment line or a type name can carry
+A model may act on text inside the files it reads (a comment line or a type name can carry
 instructions), so the always-on tools are limited to what such text cannot abuse: expressions
 accept only arithmetic, comparisons and NumPy array functions; `export_file` replaces files only
 inside its work dir and never writes into hidden folders such as `~/.ssh`; and the plugin tool
 `compute_plumed_cvs` refuses `LOAD` (native code) and absolute or `..` file paths.
 
+## Providers
+
+Edit › Preferences › AI › Provider (the `llm.provider` setting, `--provider` on the command line,
+`provider=` in Python) picks who answers Ask AI, the AI chat side bar, `ewald ask`,
+`ewald narrate` and `ewald forge`:
+
+| Provider | `provider=` | Default model | Key |
+| --- | --- | --- | --- |
+| Anthropic (Claude) | `anthropic` | `claude-opus-5-5` | `ANTHROPIC_API_KEY` or the keychain |
+| OpenAI | `openai` | `gpt-5` | `OPENAI_API_KEY` or the keychain |
+| Google Gemini | `gemini` | `gemini-2.5-pro` | `GEMINI_API_KEY` or the keychain |
+| OpenAI-compatible server | `openai-compatible` | `llama3.1` | only if the server asks for one |
+
+The Model field suggests a few ids per provider and takes any other id the service offers;
+left empty, the provider's default is used. Server URL changes the address: for the
+OpenAI-compatible provider that is your server, such as `http://localhost:11434/v1` (Ollama),
+`http://localhost:1234/v1` (LM Studio), a vLLM server or `https://openrouter.ai/api/v1`. That
+provider sends no images (most local models read text only); the others get the renders and
+close-ups too. Effort applies to Claude and to OpenAI's reasoning models.
+
+Everything else is the same whichever provider answers: the same tools, the same chat, and an
+analysis that ends up as notebook cells. Tool use is required, so pick a model that supports
+function calling (for local models, for example Llama 3.1 or Qwen 2.5 and later). Another
+service becomes a provider through a plugin (`@ai_provider`, see
+[AI tool plugins](../plugins/tools.md)).
+
+The anthropic and openai packages come with `pip install ewald[llm]`; OpenAI, Gemini and the
+OpenAI-compatible servers all go through the `openai` package.
+
 ## API key
 
-In the GUI, Edit › Preferences › Claude takes the key in a masked field. *Test connection*
-asks the Models API whether the key and the chosen model work, which costs no tokens; Apply
-saves the key. It goes to the system keychain (macOS Keychain, Windows Credential Manager,
-GNOME Keyring or KWallet through `keyring`). Where no keychain works, such as a headless Linux
-machine or an ssh session without a desktop, it goes to `credentials.json` in the config
-folder, readable only by you. The key is never written to `settings.json`, session files or
-logs. The same page picks the model (Opus 5.5 by default; Sonnet 5.5 and Haiku 5.5 are faster
-and cheaper) and the effort for Ask Claude and the AI chat side bar.
+In the GUI, Edit › Preferences › AI takes the key of the chosen provider in a masked field.
+*Test connection* asks the provider's models endpoint whether the key and the chosen model work,
+which costs no tokens; Apply saves the key. Each provider has its own entry in the system
+keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring or KWallet through
+`keyring`). Where no keychain works, such as a headless Linux machine or an ssh session without
+a desktop, keys go to `credentials.json` in the config folder, readable only by you. A key is
+never written to `settings.json`, session files or logs. For Claude the same page picks the
+model (Opus 5.5 by default; Sonnet 5.5 and Haiku 5.5 are faster and cheaper) and the effort.
 
-Every Claude feature (`Agent`, `ewald ask`, `ewald narrate`, `ewald forge`, the GUI) uses the
-saved key first, then `ANTHROPIC_API_KEY`, then the SDK's own lookup (`ANTHROPIC_AUTH_TOKEN`,
-`ant auth login`). From Python:
+Every AI feature (`Agent`, `ewald ask`, `ewald narrate`, `ewald forge`, the GUI) uses the
+saved key first, then the provider's environment variable, then the SDK's own lookup (for
+Claude `ANTHROPIC_AUTH_TOKEN`, `ant auth login`). From Python:
 
 ```python
 from ewald.llm import credentials
 
-credentials.save_api_key("sk-ant-...")   # keychain, or the private file
-credentials.check()                      # (True, "Connected: Claude Opus 5.5")
-credentials.delete_api_key()
+credentials.save_api_key("sk-ant-...")                    # keychain, or the private file
+credentials.save_api_key("sk-...", provider="openai")
+credentials.check()                                       # (True, "Connected: Claude Opus 5.5")
+credentials.check(provider="openai-compatible", base_url="http://localhost:11434/v1", model="qwen2.5")
+credentials.delete_api_key(provider="openai")
 ```
 
 The key is handed to the client object, never put into the environment, so the code that the
@@ -92,7 +129,7 @@ frame, the distances and angle between up to six selected atoms, and the nearest
 structure type differs from the bulk. Structure types are included only when a CNA or PTM
 modifier ran upstream; otherwise the description suggests one. A close-up render
 (`selection_scene`) shows the region unwrapped across periodic boundaries, with the selected
-atoms in yellow. Claude can call `describe_selection` again with another radius or cutoff,
+atoms in yellow. The model can call `describe_selection` again with another radius or cutoff,
 or add a modifier that tests its reading.
 
 ## Without an LLM

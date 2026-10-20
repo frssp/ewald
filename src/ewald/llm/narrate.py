@@ -17,7 +17,6 @@ Three steps, only the last needs an LLM:
 """
 from __future__ import annotations
 
-import base64
 import json
 from collections import Counter
 from dataclasses import dataclass, field
@@ -180,16 +179,18 @@ def _rule_title(event: dict, ev: dict) -> str:
 
 def narrate(pipeline, client=None, *, model: str | None = None, effort: str = "medium",
             render: bool = False, max_events: int = 8, window: int | None = None,
-            fallbacks: bool = True, **describe_kwargs) -> Timeline:
+            fallbacks: bool = True, provider=None, **describe_kwargs) -> Timeline:
     """Detect, measure and (with ``client``) describe the events of a trajectory.
 
-    ``client`` is an ``anthropic.Anthropic()`` (or a stand-in with the same
-    ``beta.messages.create``); without one the titles are rule-based. With
+    ``client`` is a client of ``provider`` (:mod:`ewald.llm.providers`; default Anthropic, so
+    ``anthropic.Anthropic()`` or a stand-in with the same ``beta.messages.create``); without
+    one the titles are rule-based. With
     ``render=True`` the frames before/after the first events are rendered and
     shown to the model. Frame numbers in the model's answer are checked
     against the detected events; anything else is dropped.
     """
     from .agent import DEFAULT_MODEL
+    from .providers import get
 
     traj = describe_trajectory(pipeline, **describe_kwargs)
     events = traj["events"][:max_events]
@@ -206,23 +207,24 @@ def narrate(pipeline, client=None, *, model: str | None = None, effort: str = "m
     if client is None or not events:
         return timeline
 
-    content: list[dict] = []
-    if render:
-        content += _render_blocks(pipeline, narrated[:3])
+    images = _render_images(pipeline, narrated[:3]) if render else []
     payload = {"trajectory": {k: traj[k] for k in ("num_frames", "frame_step", "coordination_cutoff",
                                                    "series", "first_frame_warnings")},
                "events": [{"frame": e["frame"], "descriptor_changes": e["changes"], "evidence": details[e["frame"]]}
                           for e in events]}
-    content.append({"type": "text", "text": json.dumps(payload)})
-    params = {"model": model or DEFAULT_MODEL, "max_tokens": 16000, "system": NARRATOR_PROMPT,
-              "messages": [{"role": "user", "content": content}],
-              "output_config": {"effort": effort, "format": {"type": "json_schema", "schema": _SCHEMA}}}
-    if fallbacks:
-        params.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
-    response = client.beta.messages.create(**params)
-    if response.stop_reason == "refusal":
+    p = get(provider)
+    model = model or (DEFAULT_MODEL if p.name == "anthropic" else p.default_model)
+    chat = p.chat(client, model, system=NARRATOR_PROMPT, max_tokens=16000, effort=effort, schema=_SCHEMA,
+                  fallbacks=fallbacks, cache=False)
+    if images:  # what each attached image shows, in order
+        payload["images"] = [label for label, _png in images]
+    chat.user(json.dumps(payload), [png for _label, png in images])
+    reply = chat.send()
+    if reply.stop == "refusal":
         return timeline
-    text = next((b.text for b in response.content if b.type == "text"), "")
+    text = reply.text.strip()
+    if text.startswith("```"):  # some models fence JSON even when asked not to
+        text = text.strip("`").removeprefix("json").strip()
     try:
         answer = json.loads(text)
     except json.JSONDecodeError:
@@ -237,17 +239,18 @@ def narrate(pipeline, client=None, *, model: str | None = None, effort: str = "m
         e.confidence = item.get("confidence", "low")
     if answer.get("summary"):
         timeline.summary = answer["summary"]
-    timeline.narrated_by = params["model"]
+    timeline.narrated_by = model
     return timeline
 
 
-def _render_blocks(pipeline, events) -> list[dict]:
+def _render_images(pipeline, events) -> list[tuple[str, bytes]]:
+    """(label, PNG) of the frames before and after each event."""
     import os
     import tempfile
 
     from . import tools
 
-    blocks = []
+    images = []
     with tempfile.TemporaryDirectory() as tmp:
         for e in events:
             for label, f in zip(("before", "after"), e.evidence.get("frames", [])):
@@ -255,9 +258,8 @@ def _render_blocks(pipeline, events) -> list[dict]:
                 try:
                     tools.render_png(pipeline.compute(f), path, size=(800, 600), direction="iso")
                     with open(path, "rb") as fh:
-                        data = base64.standard_b64encode(fh.read()).decode()
+                        images.append((f"event at frame {e.frame}, {label}: frame {f}",
+                                       fh.read()))
                 except Exception:
                     continue
-                blocks += [{"type": "text", "text": f"Event at frame {e.frame}, {label}: frame {f}"},
-                           {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": data}}]
-    return blocks
+    return images

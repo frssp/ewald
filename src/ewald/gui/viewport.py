@@ -605,7 +605,7 @@ class Viewport(QtWidgets.QWidget):
 
     def add_pick(self, idx, extend=False):
         """Pick particle ``idx``; ``extend`` (Shift+click with the pick tool) adds it to the picks,
-        or removes it when already picked, for Ask Claude about selection."""
+        or removes it when already picked, for Ask AI about selection."""
         if extend:
             self._picks = [p for p in self._picks if p != idx] if idx in self._picks else self._picks + [idx]
             self._draw_picks()

@@ -313,18 +313,29 @@ Details: [Command line](user/cli.md).
 | `ewald examples` | list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...) | `--copy` `--papers` `--fetch` |
 | `ewald info INPUT` | print frames and properties | `--type-map` |
 | `ewald describe INPUT` | JSON summary of a frame or, with --trajectory, of the run | `--frame` `--trajectory` `--type-map` |
-| `ewald ask INPUT [QUESTION...]` | ask Claude about a structure (needs anthropic + credentials) | `--type-map` `--model` `--allow-code` `--script` `--select` `--ids` `--frame` |
-| `ewald narrate INPUT` | timeline of events in a trajectory (Claude writes it if available) | `--type-map` `--no-llm` `--render` `--json` |
+| `ewald ask INPUT [QUESTION...]` | ask AI about a structure (Claude by default; needs the provider's package + key) | `--type-map` `--model` `--provider` `--base-url` `--allow-code` `--script` `--select` `--ids` `--frame` |
+| `ewald narrate INPUT` | timeline of events in a trajectory (an AI writes it if available) | `--type-map` `--no-llm` `--render` `--model` `--provider` `--base-url` `--json` |
 | `ewald api` | print the Python API reference for LLMs (llms.txt) | `--with-plugins` |
 | `ewald plugins` | list installed plugins and any that failed to load | `--json` `--enable` `--disable` |
-| `ewald forge [REQUEST...]` | have Claude write a modifier plugin, test it and save it | `--yes` `--draft` `--overwrite` `--rounds` `--model` |
+| `ewald forge [REQUEST...]` | have an AI write a modifier plugin, test it and save it | `--yes` `--draft` `--overwrite` `--rounds` `--model` `--provider` `--base-url` |
 | `ewald mcp [INPUT]` | serve the analysis tools over MCP (stdio) | `--allow-code` |
 | `ewald remote [REMOTE_CMD]` | saved SSH profiles: list, add, remove, test, ls, get |  |
 | `ewald inventory` | print or update the feature inventory (docs/features.md) | `-o` `--gui` |
 
-## Claude integration
+## AI integration
 
-The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (MCP server). Tools marked *code* exist only with `allow_code=True`. Details: [Claude integration](user/claude.md).
+The same tools serve Ask AI and the AI chat, `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (MCP server), whichever provider answers. Tools marked *code* exist only with `allow_code=True`. Details: [AI integration](user/claude.md).
+
+Providers (Preferences > AI, `--provider`; `@ai_provider` plugins add more):
+
+| Provider | Name | Default model | Key |
+|---|---|---|---|
+| Anthropic (Claude) | `anthropic` | `claude-opus-5-5` | `ANTHROPIC_API_KEY` or keychain |
+| OpenAI | `openai` | `gpt-5` | `OPENAI_API_KEY` or keychain |
+| Google Gemini | `gemini` | `gemini-2.5-pro` | `GEMINI_API_KEY` or keychain |
+| OpenAI-compatible server | `openai-compatible` | `llama3.1` | optional |
+
+Tools:
 
 | Tool | What it does |
 |---|---|
@@ -358,11 +369,11 @@ The same tools serve `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` (
 | `python_api` *code* | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature). |
 | `run_python` *code* | Execute Python in the session (variables persist). |
 
-Also: `ewald describe` / `ewald narrate` (rule-based descriptors and a trajectory timeline, Claude-written when a client is available), Modifier Forge (`ewald forge`) and the `llms.txt` API reference (`ewald api`).
+Also: `ewald describe` / `ewald narrate` (rule-based descriptors and a trajectory timeline, AI-written when a client is available), Modifier Forge (`ewald forge`) and the `llms.txt` API reference (`ewald api`).
 
 ## Plugins
 
-Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.visuals`, `ewald.overlays`, `ewald.colormaps`, `ewald.themes`, `ewald.tools` and `ewald.ui_themes`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / `@colormap` / `@theme` / `@claude_tool` / `@ui_theme`; `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
+Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.visuals`, `ewald.overlays`, `ewald.colormaps`, `ewald.themes`, `ewald.tools`, `ewald.ui_themes` and `ewald.ai_providers`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / `@colormap` / `@theme` / `@ai_tool` (or `@claude_tool`) / `@ui_theme` / `@ai_provider`; `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
 
 - `examples/plugins/cell_axes.py`: Example visual element plugins: cell axes and a halo around selected atoms.
 - `examples/plugins/figure_extras.py`: Example figure-style plugins: a color map, a theme and an overlay.
@@ -467,11 +478,13 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `python.startup_script` | Console startup script | `''` |
 | `python.extra_paths` | Extra module paths | `''` |
 
-### Claude
+### AI
 
 | Key | Label | Default |
 |---|---|---|
-| `llm.model` | Model | `'claude-opus-5-5'` |
+| `llm.provider` | Provider | `'anthropic'` |
+| `llm.model` | Model | `''` |
+| `llm.base_url` | Server URL | `''` |
 | `llm.effort` | Effort | `'high'` |
 
 <!-- gui:start -->
@@ -729,7 +742,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - c*
 - Orthographic
 - Zoom to fit
-- Ask Claude about selection…
+- Ask AI about selection…
 
 ### Toolbar
 
