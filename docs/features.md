@@ -313,11 +313,11 @@ Details: [Command line](user/cli.md).
 | `ewald examples` | list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...) | `--copy` `--papers` `--fetch` |
 | `ewald info INPUT` | print frames and properties | `--type-map` |
 | `ewald describe INPUT` | JSON summary of a frame or, with --trajectory, of the run | `--frame` `--trajectory` `--type-map` |
-| `ewald ask INPUT [QUESTION...]` | ask AI about a structure (Claude by default; needs the provider's package + key) | `--type-map` `--model` `--provider` `--base-url` `--allow-code` `--script` `--select` `--ids` `--frame` |
-| `ewald narrate INPUT` | timeline of events in a trajectory (an AI writes it if available) | `--type-map` `--no-llm` `--render` `--model` `--provider` `--base-url` `--json` |
+| `ewald ask INPUT [QUESTION...]` | ask AI about a structure (Claude by default; needs the provider's package + key) | `--type-map` `--model` `--provider` `--profile` `--base-url` `--allow-code` `--script` `--select` `--ids` `--frame` |
+| `ewald narrate INPUT` | timeline of events in a trajectory (an AI writes it if available) | `--type-map` `--no-llm` `--render` `--model` `--provider` `--profile` `--base-url` `--json` |
 | `ewald api` | print the Python API reference for LLMs (llms.txt) | `--with-plugins` |
 | `ewald plugins` | list installed plugins and any that failed to load | `--json` `--enable` `--disable` |
-| `ewald forge [REQUEST...]` | have an AI write a modifier plugin, test it and save it | `--yes` `--draft` `--overwrite` `--rounds` `--model` `--provider` `--base-url` |
+| `ewald forge [REQUEST...]` | have an AI write a modifier plugin, test it and save it | `--yes` `--draft` `--overwrite` `--rounds` `--model` `--provider` `--profile` `--base-url` |
 | `ewald mcp [INPUT]` | serve the analysis tools over MCP (stdio) | `--allow-code` |
 | `ewald remote [REMOTE_CMD]` | saved SSH profiles: list, add, remove, test, ls, get |  |
 | `ewald inventory` | print or update the feature inventory (docs/features.md) | `-o` `--gui` |
@@ -334,6 +334,7 @@ Providers (Preferences > AI, `--provider`; `@ai_provider` plugins add more):
 | OpenAI | `openai` | `gpt-5` | `OPENAI_API_KEY` or keychain |
 | Google Gemini | `gemini` | `gemini-2.5-pro` | `GEMINI_API_KEY` or keychain |
 | OpenAI-compatible server | `openai-compatible` | `llama3.1` | optional |
+| API gateway | `gateway` | `` | `GATEWAY_CREDENTIAL` or keychain |
 
 Tools:
 
@@ -484,7 +485,13 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 |---|---|---|
 | `llm.provider` | Provider | `'anthropic'` |
 | `llm.model` | Model | `''` |
+| `llm.profiles` | Saved connections | `{}` |
 | `llm.base_url` | Server URL | `''` |
+| `llm.route_prefix` | Model prefix | `''` |
+| `llm.user_id` | User id | `''` |
+| `llm.system_name` | System name | `''` |
+| `llm.headers` | Extra headers | `''` |
+| `llm.timeout` | Timeout | `0.0` |
 | `llm.effort` | Effort | `'high'` |
 
 <!-- gui:start -->

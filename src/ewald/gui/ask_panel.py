@@ -55,13 +55,13 @@ def _default_agent(pipeline, on_event, **kwargs):
 
 
 def agent_from_settings(get_settings: Callable[[], object], notebook: bool = False):
-    """Agent factory using Preferences › AI (provider, model, server URL, effort), read when a
+    """Agent factory using Preferences › AI (provider, model, connection, effort), read when a
     chat starts; ``notebook`` tells the model about the notebook it sits beside. The factory's
     ``assistant()`` names the provider's assistant for the chat ("Claude", "Gemini", ...)."""
     def factory(pipeline, on_event):
-        s = get_settings()
-        kwargs = {"provider": s["llm.provider"], "model": s["llm.model"] or None,
-                  "base_url": s["llm.base_url"] or None, "effort": s["llm.effort"]}
+        from ..llm.providers import from_settings
+
+        kwargs = from_settings(get_settings())
         if notebook:
             from ..llm.agent import SYSTEM_PROMPT
 

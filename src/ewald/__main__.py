@@ -75,9 +75,7 @@ def build_parser():
     q.add_argument("question", nargs="+")
     q.add_argument("--type-map", default=None)
     q.add_argument("--model", default=None)
-    q.add_argument("--provider", default=None,
-                   help="AI provider: anthropic, openai, gemini, openai-compatible or a plugin's (default: Preferences > AI)")
-    q.add_argument("--base-url", default=None, help="server address for an OpenAI-compatible provider")
+    _ai_arguments(q)
     q.add_argument("--allow-code", action="store_true", help="let the AI run Python in this process")
     q.add_argument("--script", default=None, help="write the resulting pipeline as a Python script")
     q.add_argument("--select", default=None, metavar="EXPR",
@@ -90,9 +88,7 @@ def build_parser():
     n.add_argument("--no-llm", action="store_true", help="rule-based titles only")
     n.add_argument("--render", action="store_true", help="show the AI renders of the frames around events")
     n.add_argument("--model", default=None)
-    n.add_argument("--provider", default=None,
-                   help="AI provider: anthropic, openai, gemini, openai-compatible or a plugin's (default: Preferences > AI)")
-    n.add_argument("--base-url", default=None, help="server address for an OpenAI-compatible provider")
+    _ai_arguments(n)
     n.add_argument("--json", action="store_true", help="print JSON instead of Markdown")
     a = sub.add_parser("api", help="print the Python API reference for LLMs (llms.txt)")
     a.add_argument("--with-plugins", action="store_true", help="append the modifier plugins installed here")
@@ -107,9 +103,7 @@ def build_parser():
     f.add_argument("--overwrite", action="store_true", help="replace a plugin file of the same name")
     f.add_argument("--rounds", type=int, default=4, help="attempts to fix failing checks (default 4)")
     f.add_argument("--model", default=None)
-    f.add_argument("--provider", default=None,
-                   help="AI provider: anthropic, openai, gemini, openai-compatible or a plugin's (default: Preferences > AI)")
-    f.add_argument("--base-url", default=None, help="server address for an OpenAI-compatible provider")
+    _ai_arguments(f)
     m = sub.add_parser("mcp", help="serve the analysis tools over MCP (stdio)")
     m.add_argument("input", nargs="?")
     m.add_argument("--allow-code", action="store_true")
@@ -275,12 +269,10 @@ def _run(args):
 
         from .llm.narrate import narrate
 
-        client, ai = None, _ai_options(args)
+        client, ai = None, _ai_options(args, effort=False)
         if not args.no_llm:
             try:
-                from .llm.providers import get
-
-                client = get(ai["provider"]).client(base_url=ai["base_url"])
+                client = ai["provider"].client(model=ai["model"])
             except Exception as exc:  # no SDK or no credentials: fall back to rule-based titles
                 print(f"(no AI client: {exc}; using rule-based titles)")
         tl = narrate(pipe, client, render=args.render, provider=ai["provider"], model=ai["model"])
@@ -441,15 +433,24 @@ def _print_plugins(as_json=False, enable=None, disable=None):
     return 1 if st["errors"] else None
 
 
-def _ai_options(args) -> dict:
-    """provider, model and base_url for an AI command: the flags, else Preferences > AI."""
-    from .settings import load
+def _ai_arguments(parser):
+    parser.add_argument("--provider", default=None,
+                        help="AI provider: anthropic, openai, gemini, openai-compatible, gateway or a plugin's "
+                             "(default: Preferences > AI)")
+    parser.add_argument("--profile", default=None, metavar="NAME",
+                        help="a connection saved in Preferences > AI (provider, model, address, headers)")
+    parser.add_argument("--base-url", default=None, help="server address (OpenAI-compatible server, gateway)")
 
-    s = load()
-    provider = args.provider or s["llm.provider"]
-    same = provider == s["llm.provider"]  # the saved model and address belong to the saved provider
-    return {"provider": provider, "model": args.model or (s["llm.model"] if same else "") or None,
-            "base_url": args.base_url or (s["llm.base_url"] if same else "") or None}
+
+def _ai_options(args, effort: bool = True) -> dict:
+    """provider (connected), model and effort for an AI command: the flags, else the saved
+    connection ``--profile``, else Preferences > AI."""
+    from .llm.providers import from_settings
+
+    ai = from_settings(profile=args.profile, provider=args.provider, model=args.model, base_url=args.base_url)
+    if not effort:
+        ai.pop("effort")
+    return ai
 
 
 def _forge(args):
@@ -478,7 +479,7 @@ def _forge(args):
         answer = input("Tests passed. Save this plugin? It is loaded every time ewald starts. [y/N] ")
         return answer.strip().lower() in ("y", "yes")
 
-    result = forge(request, **_ai_options(args), run_code=not args.draft, max_rounds=args.rounds,
+    result = forge(request, **_ai_options(args, effort=False), run_code=not args.draft, max_rounds=args.rounds,
                    overwrite=args.overwrite, on_event=show, confirm=confirm)
     if args.draft:
         print(result.module_source)

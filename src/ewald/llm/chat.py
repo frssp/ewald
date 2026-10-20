@@ -164,7 +164,8 @@ class OpenAIChat(Chat):
     object with the same ``chat.completions.create``). Images go as data URLs; tool results
     are ``tool`` messages, and images they carry follow in one user message. Options:
     ``max_tokens_param`` ("max_completion_tokens" for OpenAI, "max_tokens" for most others),
-    ``reasoning`` (send ``reasoning_effort`` for models that think)."""
+    ``reasoning`` (send ``reasoning_effort`` for models that think), ``model_prefix`` (put in front
+    of the model id on the wire, e.g. "openai/" for a gateway route)."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -189,7 +190,7 @@ class OpenAIChat(Chat):
         self.messages[:] = [m for m in self.messages[:1] if m.get("role") == "system"]
 
     def request(self, tool_choice=None) -> dict:
-        params = {"model": self.model, "messages": self.messages,
+        params = {"model": f"{self.options.get('model_prefix') or ''}{self.model}", "messages": self.messages,
                   self.options.get("max_tokens_param", "max_tokens"): self.max_tokens}
         tools = [{"type": "function", "function": {"name": t["name"], "description": t.get("description", ""),
                                                    "parameters": t.get("input_schema") or {"type": "object", "properties": {}}}}

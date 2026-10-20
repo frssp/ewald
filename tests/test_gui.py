@@ -549,6 +549,46 @@ def test_preferences_ai_page_saves_key_outside_settings(app, monkeypatch):
     dlg.close()
 
 
+def test_preferences_ai_gateway_rows_and_saved_connections(app, monkeypatch):
+    from ewald import settings
+    from ewald.gui.preferences import PreferencesDialog
+    from ewald.llm import credentials
+
+    monkeypatch.setattr(credentials, "_keyring", lambda: None)
+    monkeypatch.setenv("GATEWAY_BASE_URL", "http://gw.example/v1")
+    monkeypatch.setenv("GATEWAY_CREDENTIAL", "credential:T-12345678")
+    monkeypatch.setenv("GATEWAY_USER_ID", "user1")
+    s = settings.load()
+    dlg = PreferencesDialog(s)
+    rows = {k: dlg.editors[k][2] for k in ("llm.route_prefix", "llm.user_id", "llm.system_name", "llm.effort")}
+    assert rows["llm.user_id"].isHidden() and not rows["llm.effort"].isHidden()   # Claude: no gateway rows
+    dlg.set_value("llm.provider", "gateway")
+    assert not rows["llm.user_id"].isHidden() and not rows["llm.route_prefix"].isHidden()
+    assert rows["llm.effort"].isHidden()
+    assert dlg.editors["llm.base_url"][0].placeholderText() == "http://gw.example/v1"
+    assert dlg.editors["llm.user_id"][0].placeholderText() == "user1"
+    assert "GATEWAY_CREDENTIAL" in dlg.key_status.text() and "credential" in dlg.key_label.text().lower()
+    dlg.set_value("llm.model", "model-a")
+    dlg.set_value("llm.route_prefix", "openai/")
+    dlg.set_value("llm.system_name", "my-lab")
+    dlg.save_profile("hub")
+    dlg.set_value("llm.provider", "openai-compatible")
+    dlg.set_value("llm.model", "qwen3:8b")
+    dlg.save_profile("local")
+    assert rows["llm.user_id"].isHidden() and not rows["llm.route_prefix"].isHidden()
+    dlg.load_profile("hub")
+    assert (dlg.work["llm.provider"], dlg.work["llm.model"], dlg.work["llm.system_name"]) == ("gateway", "model-a",
+                                                                                              "my-lab")
+    dlg.apply()
+    saved = settings.load()
+    assert set(saved["llm.profiles"]) == {"hub", "local"} and saved["llm.provider"] == "gateway"
+    assert "TICKET" not in s.path.read_text()
+    box = dlg.editors["llm.profiles"][0]
+    box.remove("local")
+    assert set(dlg.work["llm.profiles"]) == {"hub"}
+    dlg.close()
+
+
 def test_ask_panel_agent_uses_ai_preferences(app, monkeypatch):
     from ewald import settings
     from ewald.gui import ask_panel
@@ -558,12 +598,16 @@ def test_ask_panel_agent_uses_ai_preferences(app, monkeypatch):
     s = settings.load()
     s["llm.model"], s["llm.effort"] = "claude-haiku-5-5", "low"
     ask_panel.agent_from_settings(lambda: s)(None, None)
-    assert made == [{"provider": "anthropic", "model": "claude-haiku-5-5", "base_url": None, "effort": "low"}]
+    kw = made[-1]
+    assert (kw["provider"].name, kw["model"], kw["effort"]) == ("anthropic", "claude-haiku-5-5", "low")
     s["llm.provider"], s["llm.model"], s["llm.base_url"] = "openai-compatible", "", "http://localhost:1234/v1"
+    s["llm.headers"] = "X-Team: md"
     factory = ask_panel.agent_from_settings(lambda: s)
     factory(None, None)
-    assert made[-1] == {"provider": "openai-compatible", "model": None, "base_url": "http://localhost:1234/v1",
-                        "effort": "low"}
+    kw = made[-1]
+    assert (kw["provider"].name, kw["model"], kw["provider"].base_url) == ("openai-compatible", None,
+                                                                          "http://localhost:1234/v1")
+    assert kw["provider"].client_options["default_headers"] == {"X-Team": "md"}
     assert factory.assistant() == "AI"
     s["llm.provider"] = "gemini"
     assert factory.assistant() == "Gemini"

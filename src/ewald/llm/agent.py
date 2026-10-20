@@ -64,10 +64,10 @@ class Agent:
 
         self.toolset = toolset or Toolset()
         self.provider = get(provider)
-        if client is None:
-            client = self.provider.client(base_url=base_url)
-        self.client = client
         self.model = model or self.provider.default_model
+        if client is None:
+            client = self.provider.client(base_url=base_url, model=self.model)
+        self.client = client
         self.effort = effort
         self.max_tokens = max_tokens
         self.max_turns = max_turns

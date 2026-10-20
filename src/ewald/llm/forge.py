@@ -323,10 +323,11 @@ def forge(request: str, *, client=None, model: str | None = None, provider=None,
     from .providers import get
 
     p = get(provider)
+    model = model or (DEFAULT_MODEL if p.name == "anthropic" else p.default_model)
     if client is None:
-        client = p.client(base_url=base_url)
+        client = p.client(base_url=base_url, model=model)
     emit = on_event or (lambda kind, payload: None)
-    chat = p.chat(client, model or (DEFAULT_MODEL if p.name == "anthropic" else p.default_model), system=_system(),
+    chat = p.chat(client, model, system=_system(),
                   tools=[SUBMIT_TOOL], max_tokens=max_tokens, beta=False)
     chat.user(request)
     result = ForgeResult(request)

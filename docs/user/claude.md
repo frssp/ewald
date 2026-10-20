@@ -60,6 +60,7 @@ Edit › Preferences › AI › Provider (the `llm.provider` setting, `--provide
 | OpenAI | `openai` | `gpt-5` | `OPENAI_API_KEY` or the keychain |
 | Google Gemini | `gemini` | `gemini-2.5-pro` | `GEMINI_API_KEY` or the keychain |
 | OpenAI-compatible server | `openai-compatible` | `llama3.1` | only if the server asks for one |
+| API gateway | `gateway` | `$GATEWAY_MODEL` or `$GATEWAY_DEFAULT_MODEL` | credential ticket: `GATEWAY_CREDENTIAL` or the keychain |
 
 The Model field suggests a few ids per provider and takes any other id the service offers;
 left empty, the provider's default is used. Server URL changes the address: for the
@@ -76,6 +77,50 @@ service becomes a provider through a plugin (`@ai_provider`, see
 
 The anthropic and openai packages come with `pip install ewald[llm]`; OpenAI, Gemini and the
 OpenAI-compatible servers all go through the `openai` package.
+
+### API gateway
+
+The `gateway` provider is for an OpenAI-compatible API hub that authenticates with a credential
+ticket instead of a bearer key (custom header style). Every request carries the headers
+`x-ticket` (the credential), `X-System-Name`, `User-Id`, `X-X-User-Type: USER` and fresh
+`X-Prompt-Id` / `X-Completion-Id` ids. Preferences › AI shows its extra rows (Model prefix,
+User id, System name) only when this provider is chosen. A field left empty falls back to the
+same environment variables sim-agent reads, so a machine already set up for sim-agent works
+without any Preferences:
+
+| Field | Setting | Environment (`LEGACY_GATEWAY_*` legacy names are read too) |
+| --- | --- | --- |
+| Credential | keychain entry `gateway-credential` | `GATEWAY_CREDENTIAL` |
+| Server URL | `llm.base_url` | the model's own URL in `GATEWAY_MODEL`, else `GATEWAY_BASE_URL` |
+| Model | `llm.model` | `GATEWAY_DEFAULT_MODEL`, else the first entry of `GATEWAY_MODEL` (`model` or `model=url`, comma separated) |
+| Model prefix | `llm.route_prefix` | `GATEWAY_ROUTE_PREFIX` (`openai/` for a gpt-oss route); `openai/` on a legacy `LEGACY_GATEWAY_BASE_URL` host |
+| User id | `llm.user_id` | `GATEWAY_USER_ID`, else your login name |
+| System name | `llm.system_name` | `GATEWAY_SYSTEM_NAME`, else `ewald` |
+| Timeout | `llm.timeout` | `GATEWAY_TIMEOUT` (default 120 s); retries `GATEWAY_MAX_RETRIES` (default 1) |
+
+*Test connection* sends one tiny chat request for this provider, since gateways often have no
+models endpoint. The gateway gets no images.
+
+### Connection fields and saved connections
+
+Besides Server URL, every provider takes *Extra headers* (`Name: value` pairs separated by `;`,
+for a proxy or a gateway that wants more) and a *Timeout*; the OpenAI-compatible provider also
+takes a *Model prefix*. Put secrets in the API key field, not in the headers, which are stored
+in `settings.json`.
+
+*Saved connections* at the top of the AI page keep several of these setups under a name: fill in
+the provider, model and connection, press *Save as…*, and pick a name later to fill the fields
+back in (Apply makes it the one Ask AI uses). On the command line `--profile NAME` uses a saved
+connection for `ewald ask`, `ewald narrate` and `ewald forge`, and in Python
+`ewald.llm.providers.from_settings(profile="NAME")` returns the arguments for `Agent`:
+
+```python
+from ewald.llm import Agent, providers
+
+agent = Agent.from_file("XDATCAR", **providers.from_settings(profile="hub"))
+```
+
+API keys stay one per provider in the keychain; a saved connection never holds one.
 
 ## API key
 
