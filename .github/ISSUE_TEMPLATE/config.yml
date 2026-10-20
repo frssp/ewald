@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Manual
+    url: https://github.com/frssp/ewald/blob/main/docs/index.md
+    about: Install, tutorials, modifiers, plugins and the developer guide.
+  - name: Plugins (phonopy, PLUMED, AiiDA)
+    url: https://github.com/frssp/ewald-plugins/issues
+    about: Issues with the first-party plugins go to frssp/ewald-plugins.
