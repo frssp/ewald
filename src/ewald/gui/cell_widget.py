@@ -325,17 +325,18 @@ class PlotSlot(QtWidgets.QWidget):
 
     placeRequested = QtCore.Signal(bool)   # True: to the Plots panel, False: under the cell
 
-    def __init__(self, args: dict, png: bytes | None = None, view_id: str = "", parent=None):
+    def __init__(self, args: dict, png: bytes | None = None, view_id: str = "", parent=None,
+                 panel=None, title: str | None = None):
         super().__init__(parent, objectName="plotSlot")
         self.args = dict(args or {})
         self.view_id = "plot:cell-" + (view_id or f"{id(self):x}")
-        self.title = self.args.get("histogram") or self.args.get("table") or "Plot"
+        self.title = title or self.args.get("histogram") or self.args.get("table") or "Plot"
         self.docked = None             # None until placed: True = in the Plots panel
         self.host = None               # the main window holding it there
         self._pending = False          # belongs in the Plots panel, but no window yet: placed again later
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        self.panel = live_plot()
+        self.panel = live_plot() if panel is None else panel   # a FigureView for a step's figure
         self.panel.extra_menu = self._menu_entries
         self.panel.hide()
         lay.addWidget(self.panel)
@@ -412,6 +413,66 @@ class PlotSlot(QtWidgets.QWidget):
             self.host.undock_plot(self)
             self.host = None
             self.panel.deleteLater()
+
+
+class FigureView(QtWidgets.QLabel):
+    """A figure a Python step drew (:class:`ewald.pipeline.StepFigure`), scaled to fit: the
+    current frame's image of an each-frame step, or the one image of an all-frames step."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent, objectName="cellImage")
+        self.setAlignment(QtCore.Qt.AlignCenter)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
+        self.setMinimumSize(120, 90)
+        self.png = None
+        self._pix = None
+        self.extra_menu = None   # () -> [(label, callable)]: where the figure is shown
+
+    def set_png(self, png: bytes | None):
+        if png is self.png:
+            return   # the same frame's figure (or an all-frames step's one figure): nothing to redraw
+        self.png = png
+        pix = QtGui.QPixmap()
+        self._pix = pix if png and pix.loadFromData(png, "PNG") and not pix.isNull() else None
+        self._fit()
+
+    def _fit(self):
+        if self._pix is None:
+            self.clear()
+            return
+        scale = min(1.5, self.width() / self._pix.width(), self.height() / self._pix.height())
+        self.setPixmap(self._pix.scaled(max(1, int(self._pix.width() * scale)), max(1, int(self._pix.height() * scale)),
+                                        QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit()
+
+    def contextMenuEvent(self, event):
+        entries = self.extra_menu() if self.extra_menu else []
+        if entries:
+            m = QtWidgets.QMenu(self)
+            for label, fn in entries:
+                m.addAction(label, fn)
+            m.exec(event.globalPos())
+
+
+def step_figures(cell: Cell, data) -> dict:
+    """``{attribute key: (StepFigure, each frame?)}`` of the figures the Python steps ``cell``
+    added drew at this frame (``data.attributes["Figure: <step>"]``)."""
+    from ..pipeline import AllFramesModifier, PythonModifier
+
+    if data is None:
+        return {}
+    found = {}
+    for m in cell.added:
+        if not isinstance(m, PythonModifier):
+            continue
+        prefix = f"Figure: {m.name}"
+        for k, v in data.attributes.items():
+            if (k == prefix or k.startswith(prefix + " (")) and hasattr(v, "png"):
+                found[k] = (v, not isinstance(m, AllFramesModifier))
+    return found
 
 
 def apply_view_args(p, args: dict, data, pipeline=None, applied=None):
@@ -676,6 +737,7 @@ class CellWidget(QtWidgets.QFrame):
     def set_live_data(self, data, pipeline=None, force: bool = False):
         """The current frame for the live plots of ``show(pipe, ...)`` outputs (``force``: a new
         frame; else only plots that have none yet)."""
+        self._update_figures(data)
         if not isinstance(self.outputs, OutputArea):
             return
         for slot in self.outputs.slots:
@@ -683,6 +745,32 @@ class CellWidget(QtWidgets.QFrame):
         for p, args in self.outputs.panels:
             if force or p.data is None:
                 p._applied = apply_view_args(p, args, data, pipeline, getattr(p, "_applied", None))
+
+    def _update_figures(self, data):
+        """The figures this cell's Python steps drew at this frame: an each-frame step's in the
+        Plots panel (a thumbnail here), following the frame; an all-frames step's under the cell."""
+        found = step_figures(self.cell, data) if self.cell.kind == "code" else {}
+        slots = self.__dict__.setdefault("_figure_slots", {})
+        if not found and not slots:
+            return
+        for key in [k for k in slots if k not in found]:
+            slot = slots.pop(key)
+            slot.release()
+            slot.deleteLater()
+        for key, (fig, each) in found.items():
+            slot = slots.get(key)
+            if slot is None:
+                view_id = f"{self.cell.id}-" + "".join(c if c.isalnum() else "-" for c in key)
+                slot = PlotSlot({}, fig.png, view_id, panel=FigureView(), title=key[len("Figure: "):])
+                slot.placeRequested.connect(slot.place)   # the code says when it runs, not where: kept here
+                self.body.addWidget(slot)
+                slots[key] = slot
+                slot.place(each)
+            elif slot._pending:
+                slot.place(each)
+            slot.panel.set_png(fig.png)
+            if slot.docked:
+                slot.card.set_png(fig.png)
 
     def _source_edited(self):
         text = self.editor.toPlainText()

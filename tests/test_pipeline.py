@@ -271,6 +271,42 @@ def test_each_frame_and_all_frames_steps(cu_fcc):
     assert calls == [4, 4]
 
 
+def test_figures_a_step_draws_are_kept_with_the_frame_and_closed(cu_fcc):
+    plt = pytest.importorskip("matplotlib.pyplot")
+    from ewald import Pipeline, StaticSource, all_frames, each_frame
+    from ewald.pipeline import StepFigure
+
+    frames = []
+    for k in range(3):
+        d = cu_fcc.copy()
+        d.particles["Position"] = cu_fcc.positions + 0.1 * k
+        frames.append(d)
+    pipe = Pipeline(StaticSource(frames))
+    calls = []
+
+    @each_frame
+    def zhist(frame, data):
+        plt.hist(data["Position"][:, 2])
+        plt.figure()
+        plt.plot([frame, 1])
+
+    @all_frames
+    def trend(frames, data):
+        calls.append(1)
+        plt.plot([d["Position"][:, 2].mean() for d in frames])
+
+    pipe.add(zhist, trend)
+    open_before = plt.get_fignums()
+    out = [pipe.compute(k) for k in range(3)]
+    assert plt.get_fignums() == open_before                    # nothing left open for a cell to pick up
+    first, second = out[0].attributes["Figure: zhist"], out[0].attributes["Figure: zhist (2)"]
+    assert isinstance(first, StepFigure) and first.png.startswith(b"\x89PNG") and second.png != first.png
+    assert out[1].attributes["Figure: zhist"].png != first.png   # drawn again at every frame
+    assert calls == [1] and len({id(d.attributes["Figure: trend"]) for d in out}) == 1   # once, kept
+    assert first._repr_png_() is first.png and "zhist" in repr(first)
+    assert "Figure" not in out[0].summary()                    # not printed as an attribute
+
+
 def test_missing_package_fails_once_not_every_frame(cu_fcc):
     from ewald import Modifier
 

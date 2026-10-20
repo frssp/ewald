@@ -104,7 +104,7 @@ show(pipe, table="diffraction", panel=True)     # always in the Plots panel
 show(pipe, table="coordination-rdf", panel=False)   # always under the cell
 ```
 
-Right-click the plot or its thumbnail and choose *Show in Plots panel* or *Show under the cell*
+Figures that Python steps draw follow the same idea through the cell's frame tag (see *What runs during playback* below). Right-click the plot or its thumbnail and choose *Show in Plots panel* or *Show under the cell*
 to write the same `panel=` into the cell's `show(...)` call. Each notebook tab brings its own plots
 into the panel, and running the cell again replaces the plot in the same tab. Outside the GUI,
 `panel=` does nothing: Jupyter and scripts draw the image.
@@ -153,6 +153,14 @@ every frame, until a step above it or the file changes. `@each_frame` is what a 
 step does anyway; it says so in the notebook. Plots whose data did not change between frames
 (an `all_frames` table, MSD) are not redrawn during playback; time series move their frame
 marker.
+
+A step can draw its own figure with matplotlib (`plt.hist(...)`, `plt.plot(...)` in an
+`@each_frame` / `@all_frames` function or a `[each frame]` / `[all frames]` cell). The step
+keeps the figure with the frame as `data.attributes["Figure: <step name>"]` and closes it, so
+it never shows up under some other cell. In the GUI an each-frame step's figure is drawn again
+at every frame and opens in the Plots panel, with a thumbnail under its cell. An all-frames
+step's figure is drawn once and stays under its cell. Right-click either one to move it for
+this session (the cell's tag says when the code runs, so nothing is written into the code).
 
 Every plot ewald draws (view cells, `show`, a verb table's picture, the figures saved into an
 `.ewd`) uses one publication style from `ewald.plotstyle`: a 3.5 in single-column figure,
