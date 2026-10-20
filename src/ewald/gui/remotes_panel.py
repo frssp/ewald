@@ -365,6 +365,8 @@ class RemotesPanel(QtWidgets.QWidget):
 
     def test(self, name):
         _busy()
+        self.status.setText(f"Testing {name}…")
+        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
         try:
             ok, msg = profiles.test(name)
         finally:
@@ -487,6 +489,8 @@ class RemotesPanel(QtWidgets.QWidget):
             if not folder:
                 return None
         _busy()
+        self.status.setText(f"Downloading {posixpath.basename(url)}…")
+        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
         try:
             local = remote.download(url, folder)
         except Exception as exc:
