@@ -18,7 +18,7 @@ from .. import modifiers as mods
 from ..render import camera_state, render
 from .ask_panel import AskPanel, agent_from_settings
 from .collapsible import make_collapsible
-from .compute import ComputeRunner
+from .compute import ComputeRunner, warm_up_jit
 from .console import make_console
 from .icons import app_icon
 from .inspector import DataInspector
@@ -56,6 +56,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.frame = 0
         self._frame_pending = False
         self.runner = ComputeRunner(self)  # pipeline evaluation on a worker thread
+        warm_up_jit()  # numba kernels load while the window builds, not on the first file
         self.runner.finished.connect(self._computed)
         self.runner.busyChanged.connect(self._compute_busy)
         self.style = ViewStyle()

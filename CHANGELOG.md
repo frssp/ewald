@@ -28,6 +28,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 - Built-in UI themes Midnight, Solarized light, Solarized dark and High contrast; Graphite (dark)
   is now the default. The Python console, open plots, notebook code colors and the activity bar
   follow a theme switch at once, and the plot color cycle starts with the theme's accent.
+  The 3D view background follows the theme too (`viewport.follow_theme`, on by default).
 - Claude tool plugins (`@claude_tool`, `ewald.tools` entry points); built-in formats listed as
   plugins that `ewald plugins --disable` can switch off (#75).
 

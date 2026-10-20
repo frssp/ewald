@@ -345,11 +345,25 @@ def _hit_triangle(o, d, a, b, c):
     return t if t > 1e-6 else -1.0
 
 
+@njit(cache=True, inline="always")
+def _dda_axis(o, d, lo, size, dim, t0):
+    """Start cell, step, first boundary crossing and crossing interval of one axis."""
+    c = int((o + d * (t0 + 1e-9) - lo) / size)
+    c = min(max(c, 0), dim - 1)
+    if d > 0:
+        return c, 1, (lo + (c + 1) * size - o) / d, size / d
+    if d < 0:
+        return c, -1, (lo + c * size - o) / d, -size / d
+    return c, 0, 1e300, 1e300
+
+
 @njit(cache=True)
 def _trace(o, d, tmax, lo, size, dims, starts, items, sph_c, sph_r, cyl_a, cyl_b, cyl_r,
            tri_a, tri_b, tri_c, tri_alpha, any_hit):
     """3D-DDA through the grid. Returns (t, code) of the nearest hit (code -1: miss).
-    Shadow/AO rays (``any_hit``) pass through see-through triangles."""
+    Shadow/AO rays (``any_hit``) pass through see-through triangles.
+    The walk state lives in scalars: this runs for every primary, shadow and AO ray, and
+    small per-call arrays cost a heap allocation each."""
     # clip ray to grid box
     t0, t1 = 0.0, tmax
     for k in range(3):
@@ -366,29 +380,13 @@ def _trace(o, d, tmax, lo, size, dims, starts, items, sph_c, sph_r, cyl_a, cyl_b
             t1 = min(t1, tb)
     if t0 > t1:
         return -1.0, -1
-    cell = np.empty(3, np.int64)
-    step = np.empty(3, np.int64)
-    tnext = np.empty(3)
-    tdelta = np.empty(3)
-    for k in range(3):
-        p = o[k] + d[k] * (t0 + 1e-9)
-        c = int((p - lo[k]) / size[k])
-        cell[k] = min(max(c, 0), dims[k] - 1)
-        if d[k] > 0:
-            step[k] = 1
-            tnext[k] = (lo[k] + (cell[k] + 1) * size[k] - o[k]) / d[k]
-            tdelta[k] = size[k] / d[k]
-        elif d[k] < 0:
-            step[k] = -1
-            tnext[k] = (lo[k] + cell[k] * size[k] - o[k]) / d[k]
-            tdelta[k] = -size[k] / d[k]
-        else:
-            step[k] = 0
-            tnext[k] = 1e300
-            tdelta[k] = 1e300
+    dx, dy, dz = dims[0], dims[1], dims[2]
+    cx, sx, nx, ex = _dda_axis(o[0], d[0], lo[0], size[0], dx, t0)
+    cy, sy, ny, ey = _dda_axis(o[1], d[1], lo[1], size[1], dy, t0)
+    cz, sz, nz, ez = _dda_axis(o[2], d[2], lo[2], size[2], dz, t0)
     best_t, best = 1e300, -1
     while True:
-        c = (cell[0] * dims[1] + cell[1]) * dims[2] + cell[2]
+        c = (cx * dy + cy) * dz + cz
         for s in range(starts[c], starts[c + 1]):
             code = items[s]
             kind = code >> 40
@@ -405,20 +403,26 @@ def _trace(o, d, tmax, lo, size, dims, starts, items, sph_c, sph_r, cyl_a, cyl_b
                 best_t, best = t, code
                 if any_hit:
                     return best_t, best
-        tcell = min(tnext[0], min(tnext[1], tnext[2]))
+        tcell = min(nx, min(ny, nz))
         if best >= 0 and best_t <= tcell:
             return best_t, best
         if tcell > t1:
             return (best_t, best) if best >= 0 else (-1.0, -1)
-        k = 0
-        if tnext[1] < tnext[k]:
-            k = 1
-        if tnext[2] < tnext[k]:
-            k = 2
-        cell[k] += step[k]
-        if cell[k] < 0 or cell[k] >= dims[k]:
-            return (best_t, best) if best >= 0 else (-1.0, -1)
-        tnext[k] += tdelta[k]
+        if ny < nx and ny <= nz:  # the axis whose boundary comes first (ties: x, then y)
+            cy += sy
+            if cy < 0 or cy >= dy:
+                return (best_t, best) if best >= 0 else (-1.0, -1)
+            ny += ey
+        elif nz < nx and nz < ny:
+            cz += sz
+            if cz < 0 or cz >= dz:
+                return (best_t, best) if best >= 0 else (-1.0, -1)
+            nz += ez
+        else:
+            cx += sx
+            if cx < 0 or cx >= dx:
+                return (best_t, best) if best >= 0 else (-1.0, -1)
+            nx += ex
 
 
 @njit(cache=True, inline="always")
@@ -487,9 +491,10 @@ def _shade(p, n, d, cr, cg, cb, light, ambient, diffuse, specular, shininess, sh
 def _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, samples, ao_samples, ao_dist,
             light, ambient, diffuse, specular, shininess, shadows, bg,
             lo, size, dims, starts, items, sph_c, sph_r, sph_rgb, cyl_a, cyl_b, cyl_r, cyl_rgb,
-            tri_a, tri_b, tri_c, tri_n, tri_vrgb, tri_alpha, seed):
+            tri_a, tri_b, tri_c, tri_n, tri_vrgb, tri_alpha, seed, rows):
     img = np.zeros((height, width, 4))
-    for py in prange(height):
+    for j in prange(height):
+        py = rows[j]
         state = np.empty(1, np.uint64)
         o = np.empty(3); d = np.empty(3); n = np.empty(3); p = np.empty(3); od = np.empty(3)
         for px in range(width):
@@ -631,4 +636,11 @@ def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8,
                    lo, gsize, dims, starts, items, scene.sph_c, scene.sph_r, scene.sph_rgb,
                    scene.cyl_a, scene.cyl_b, scene.cyl_r, scene.cyl_rgb,
                    scene.tri_a, scene.tri_b, scene.tri_c, np.ascontiguousarray(scene.tri_n),
-                   np.ascontiguousarray(scene.tri_vrgb), scene.tri_alpha, int(seed))
+                   np.ascontiguousarray(scene.tri_vrgb), scene.tri_alpha, int(seed), _row_order(height))
+
+
+def _row_order(height: int, stride: int = 64):
+    """Rows interleaved (0, 64, 128, ..., 1, 65, ...): prange hands each thread one contiguous
+    block of the loop, and with plain row order the threads that get the empty margins finish
+    long before the ones with the structure. Pixels do not depend on the order."""
+    return np.concatenate([np.arange(k, height, stride) for k in range(min(stride, height))]).astype(np.int64)

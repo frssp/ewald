@@ -630,6 +630,7 @@ def test_main_window_applies_settings(app, pipe):
     from ewald.gui.preferences import apply_settings
 
     s = settings.Settings()
+    s["viewport.follow_theme"] = False
     s["viewport.background"] = "#ffffff"
     s["viewport.style_preset"] = "Ball & stick"
     s["viewport.rotation_step"] = 30.0
@@ -2189,6 +2190,8 @@ def test_theme_switch_restyles_console_plots_and_code(app, vasp_dir):
             assert formats[0].format.foreground().color().name().upper() == t["accent"]   # "import" in the accent
             icon = w.activity_buttons["Notebook"].icon()
             assert not icon.isNull()
+            assert w.style.background == t["viewport"]               # the 3D view follows the theme
+            assert w.style.view_settings().get("background") is None   # ... without writing it into the view
     finally:
         theme.use(theme.DEFAULT)
         w.close()

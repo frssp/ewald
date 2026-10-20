@@ -139,3 +139,33 @@ class ComputeRunner(QtCore.QObject):
         if busy != self._busy:
             self._busy = busy
             self.busyChanged.emit(busy)
+
+
+_warmed = False
+
+
+def warm_up_jit():
+    """Load the numba kernels every file open needs (the text-table parser, the neighbor list)
+    on a background thread, once per process: loading them from numba's cache costs about half a
+    second on first use, and compiling them on a fresh install several seconds, which would
+    otherwise land on the first file the user opens."""
+    global _warmed
+    if _warmed:
+        return
+    _warmed = True
+
+    def run():
+        try:
+            import numpy as np
+
+            from ..data import Cell
+            from ..io._textparse import parse_table
+            from ..neighbors import find_pairs
+
+            parse_table(b"1 1 0.0 0.0 0.0\n", 1, 5, [0, 1, 2, 3, 4])
+            pos = np.random.default_rng(0).random((64, 3)) * 8.0
+            find_pairs(pos, Cell(np.eye(3) * 8.0), 2.5, method="numba")
+        except Exception:  # noqa: BLE001 - only a head start; the real call reports errors
+            pass
+
+    threading.Thread(target=run, name="ewald-jit-warmup", daemon=True).start()
