@@ -123,6 +123,7 @@ view(pipe, style="Ball & stick",              # 'Space-filling', 'Simple (ASE)',
      theme="VESTA", colors={"O": "red"}, radii={"Ti": 0.6}, radius_preset="ionic", oxidation_states={"Ti": 4},
      bonds=True, bond_pairs=[["Ti", "O", 0, 2.3]], bond_radius=0.12,   # bonds=False, or a cutoff (A)
      cell=False, background="white", boundary=[-0.1, 1.1],             # VESTA boundary: periodic images
+     replicate=[2, 2, 2], replicate_cell="super",                      # draw 2x2x2 cells (display only)
      direction="z", zoom=1.3, orthographic=True, frame=5,              # or camera={...} (exact, from the GUI)
      renderer="raytrace", quality="publication", text="t = [Time] ps", type_legend=True, scale_bar=True)
 pipe.view.bonds = False; pipe.view.color("Sr", "green"); pipe.view.look("x").rotate(azimuth=30, elevation=15)

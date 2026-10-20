@@ -107,6 +107,8 @@ GUI
 - Flat (ASE) style in the ray tracer and the vector renderer (now OpenGL only), and a
   per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.
+- Replicated cell display: a quick replicate control in the 3D view toolbar or the redesigned
+  View tab (now Display panel, View menu, right-click menu and Ctrl+K).
 - Boundary (VESTA): repeat isosurfaces and grid slices over the boundary range too (now only
   atoms, bonds and coordination polyhedra are repeated), VESTA's recursive "search molecules"
   mode, and keep the images while the coarse viewport level of detail is shown (they disappear
@@ -434,3 +436,6 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 ## Deferred until the user asks
 
 - Structure editing: supercells, slabs, defects. Do not start it without an explicit request.
+  The display side exists (`view(pipe, replicate=...)`, 2026-10-20); the user said a real
+  supercell step (a general 3x3 matrix like VESTA's lattice transformation, with bonds, grids
+  and polyhedra following, analysis and export on the enlarged cell) is "not now".

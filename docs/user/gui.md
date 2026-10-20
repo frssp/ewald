@@ -141,6 +141,9 @@ cell, plus any [visual element plugins](../plugins/visuals.md) added with the **
 Simulation cell has VESTA's boundary range: tick Boundary and set the fractional range (e.g.
 -0.1 to 1.1) to draw the periodic images of atoms on the faces, edges and corners, with bonds and
 polyhedra completed across the cell; [display only](rendering.md#boundary-vesta).
+Its Replicate cell box draws a na x nb x nc block of cells (OVITO's Replicate as a display
+setting; also under View › Replicate cell and the 3D view's right-click menu); the data and
+analysis keep the original cell, see [Replicated cell](rendering.md#replicated-cell).
 A plugin element has a checkbox to hide it, a parameter form generated from its constructor
 (Apply or Ctrl+Enter redraws), and Del removes it. Plugin elements are saved with the session
 and drawn in rendered images too.
