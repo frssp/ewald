@@ -116,8 +116,10 @@ Preferences. Plugin side bars and tabs that were open come back at the next star
 were. Switching the plugin off in the Plugins side bar removes all of it; its settings are kept
 for when it comes back ([Side bar plugins](../plugins/gui.md)).
 
-**Workflow side bars.** Plugins that read finished calculations (sim-agent, AiiDA) share one
-side bar layout: the account, a search box that also takes an id, and the workflows newest
+**Workflow side bars.** The built-in **Workflows** side bar reads folders of calculations
+(relax, NEB, MD restarts, phonopy; File › Open workflow folder… or dropping a folder does the
+same, see [Workflows](workflows.md)). Plugins that read finished calculations (sim-agent, AiiDA)
+share its layout: the account, a search box that also takes an id, and the workflows newest
 first. Expanding a workflow lists its steps (restarts of one calculation joined, sub-workflows
 nested) with their files and structures. A double click on a step or output opens it; on a
 workflow it opens the whole workflow as one notebook whose load cell names every step, a line

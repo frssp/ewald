@@ -3396,9 +3396,9 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
     plugins.register_panel("broken", broken, title="Broken")
     w = MainWindow(pipe)
     titles = [a.text() for a in w.activity_bar.actions()]
-    assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent"]
+    assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent", "Workflows"]
     assert w.plugin_panels["sim_agent"]["dock"] is None          # nothing built before it opens
-    assert sorted(a.text() for a in w.plugin_panel_menu.actions()) == ["Agent jobs", "Broken", "Sim agent"]
+    assert sorted(a.text() for a in w.plugin_panel_menu.actions()) == ["Agent jobs", "Broken", "Sim agent", "Workflows"]
     w.plugin_panels["sim_agent"]["action"].trigger()
     dock = w.plugin_panels["sim_agent"]["dock"]
     assert dock is not None and not dock.isHidden() and w.plugin_panels["sim_agent"]["action"].isChecked()
@@ -3436,7 +3436,7 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
 
     plugins.set_enabled("sim-agent-example", False)
     w.refresh_plugin_panels()
-    assert [a.text() for a in w.activity_bar.actions()][4:] == ["Broken"] and "sim_agent" not in w.plugin_panels
+    assert [a.text() for a in w.activity_bar.actions()][4:] == ["Broken", "Workflows"] and "sim_agent" not in w.plugin_panels
     w.close()
 
 
@@ -3726,6 +3726,30 @@ def test_workflow_side_bar_lists_expands_and_opens_a_workflow_as_one_notebook(ap
     side.refresh()
     side.wait()
     assert side.tree.topLevelItemCount() == 1 and side.more.isHidden()
+
+
+def test_dropping_a_folder_of_calculations_opens_it_as_a_workflow(app, tmp_path, vasp_dir):
+    """A folder of calculations (here a relax and an MD restarted twice) dropped on the window
+    opens as one notebook, a load() per step; the built-in Workflows side bar lists it after."""
+    import shutil
+
+    from ewald.gui.app import MainWindow
+
+    study = tmp_path / "study"
+    shutil.copytree(vasp_dir / "md", study / "1_relax")
+    for run in ("run1", "run2"):
+        shutil.copytree(vasp_dir / "md", study / "2_md" / run)
+    w = MainWindow()
+    tabs = w.panel.tabs.count()
+    w.open_dropped([str(study)])
+    assert w.panel.tabs.count() == tabs + 1
+    assert w.pipeline.num_frames == 4                       # pipe = md: run1 + run2 joined
+    w.show_plugin_panel("workflows")
+    side = w.plugin_panels["workflows"]["dock"].widget()
+    side.wait()
+    assert not side.browse.isHidden() and side.tree.topLevelItemCount() == 1
+    assert side.tree.topLevelItem(0).data(0, QtCore.Qt.UserRole).path == str(study)
+    w.close()
 
 
 def test_wait_for_runs_off_the_gui_thread_with_cancel(app, pipe, tmp_path):
