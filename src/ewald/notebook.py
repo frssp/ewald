@@ -467,6 +467,16 @@ class Notebook:
         self.dirty = True
         return cell
 
+    def clear_outputs(self, cell: Cell | None = None):
+        """Drop the outputs and run count of ``cell`` (default: every cell), like Jupyter's Clear
+        outputs; the next save writes the cells without them. Results and steps stay as they are."""
+        for c in self.cells if cell is None else [cell]:
+            c.outputs = []
+            c.count = None
+            if c.state == "error":
+                c.state = "new"
+        self.dirty = True
+
     def delete(self, cell):
         """Remove a cell and the modifiers it added."""
         index = cell if isinstance(cell, int) else self.cells.index(cell)

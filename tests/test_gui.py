@@ -2356,6 +2356,16 @@ def test_notebook_cell_controls_add_bar_and_running_mark(app):
     view.run(cell)
     cw = view.widget_for(cell)                               # a run may rebuild the cell widgets
     assert cw.counter.text() == str(cell.count) and cw.property("state") == "ok"
+
+    printed = view.add_cell("code", "print('hi')")
+    view.run(printed)
+    assert not view.widget_for(printed).outputs.isHidden()
+    view.select(printed)
+    next(a for a in w.menuBar().findChildren(QtGui.QAction) if a.text() == "&Clear cell output").trigger()
+    assert not printed.outputs and printed.count is None and view.widget_for(printed).counter.text() == ""
+    assert view.widget_for(printed).outputs.isHidden() and cell.count is not None
+    next(a for a in w.menuBar().findChildren(QtGui.QAction) if a.text() == "Clear &all outputs").trigger()
+    assert all(not c.outputs and c.count is None for c in view.notebook.cells)
     w.close()
 
 

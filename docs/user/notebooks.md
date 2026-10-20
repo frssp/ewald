@@ -174,8 +174,10 @@ from ewald.views import snapshot
 snapshot(pipe, frame=3, camera={...}, radius_scale=0.5)   # shows the picture; .save("fig.png") writes it
 ```
 
-The ⋯ menu of a cell has Run, Run this and below, Move up/down, Delete and, for steps and views,
-Show as code cell. Drag a cell by the dotted grip above its run button (it appears on hover) to move it; steps move with it in the
+The ⋯ menu of a cell has Run, Run this and below, Clear output, Move up/down, Delete and, for steps and views,
+Show as code cell. Notebook › Clear cell output (Ctrl+Shift+Backspace) and Clear all outputs
+(Ctrl+Alt+Shift+Backspace) remove printed text, values, figures and run counts, as Jupyter's Clear outputs; the
+pipeline and its results stay, and the next save leaves the outputs out of the `.ipynb` or `.ewd`. Drag a cell by the dotted grip above its run button (it appears on hover) to move it; steps move with it in the
 pipeline. The `.py` button at the top shows the whole file.
 
 ## Notebook tabs

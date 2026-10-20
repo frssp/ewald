@@ -482,6 +482,8 @@ class CellWidget(QtWidgets.QFrame):
             m.addAction("Show as code cell", lambda: self.actionRequested.emit(self.cell, "code"))
         if self.cell.is_view:
             m.addAction("Save plot…", lambda: self.plot_panel.save_plot())
+        if self.cell.kind != "markdown":
+            m.addAction("Clear output", lambda: self.actionRequested.emit(self.cell, "clear"))
         m.addSeparator()
         m.addAction("Move up", lambda: self.actionRequested.emit(self.cell, "up"))
         m.addAction("Move down", lambda: self.actionRequested.emit(self.cell, "down"))
@@ -1274,7 +1276,19 @@ class NotebookView(QtWidgets.QWidget):
             w.code_button.setChecked(True)
         elif action == "below":
             self.run(cell, below=True)
+        elif action == "clear":
+            self.clear_outputs(cell)
+            return
         self.history.commit({"delete": "Delete cell", "up": "Move cell", "down": "Move cell"}.get(action, "Edit cell"))
+        self.titleChanged.emit()
+
+    def clear_outputs(self, cell=None):
+        """Clear outputs of ``cell`` or, with None, of the whole notebook (Notebook › Clear all outputs)."""
+        self.notebook.clear_outputs(cell)
+        for w in self.widgets if cell is None else [self.widget_for(cell)]:
+            if w is not None:
+                w.update_state(self.data)
+        self.changed.emit()
         self.titleChanged.emit()
 
     def move_cell(self, cell, before: int):

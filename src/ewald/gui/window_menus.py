@@ -321,6 +321,10 @@ class MenusMixin:
             n.addAction("Move cell &down", lambda: self._cell_action("down"), "Ctrl+Shift+Down")
             n.addAction("D&elete cell", lambda: self._cell_action("delete"))
             n.addSeparator()
+            n.addAction("&Clear cell output", lambda: self._cell_action("clear"), "Ctrl+Shift+Backspace")
+            n.addAction("Clear &all outputs", lambda: self.panel.view.clear_outputs(),
+                        "Ctrl+Alt+Shift+Backspace").setToolTip("Remove every cell's output; the next save leaves them out")
+            n.addSeparator()
             n.addAction("Show as Python &file", lambda: self.panel.view.py_button.toggle())
             ins = mb.addMenu("&Insert")
             ins.addAction("&Code cell", lambda: self.panel.view.add_cell("code"), "Ctrl+Shift+N")
