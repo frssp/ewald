@@ -10,7 +10,7 @@ from .icons import icon
 from .palette import CommandPalette, menu_entries
 from .pipeline_panel import MODIFIER_MENU, fill_modifier_menu
 from .notebook_panel import fill_view_menu
-from .theme import PALETTES, TOKENS
+from .theme import PALETTES
 from .viewport import Viewport
 
 
@@ -179,13 +179,7 @@ class MenusMixin:
         if nb:
             button("Open", "open", self.open_dialog, "Open a data file, notebook (.py) or session (Ctrl+O)")
             button("Save", "save", lambda: self.save_notebook(), "Save the notebook (Ctrl+S)", False)
-            run = QtWidgets.QPushButton("Run all", toolTip="Restart and run every cell of the notebook (Ctrl+Shift+Enter)")
-            run.setObjectName("primary")
-            run.setProperty("ewald_icon", "play")
-            run.setProperty("ewald_icon_color", TOKENS["on_accent"])
-            run.clicked.connect(lambda: self.panel.view.run_all())
-            tb.addWidget(run)
-            self.styled_buttons.append((run, True))
+            # Run all, Restart and Interrupt live in the notebook's own bar (and Notebook › Run all, Ctrl+Shift+Enter)
         else:
             button("Open", "open", self.open_dialog, "Load file (Ctrl+O)")
             button("Open remote", "remote", self.open_remote_dialog, "Load remote file over SSH (Ctrl+Alt+O)", False)
@@ -216,13 +210,6 @@ class MenusMixin:
         self.device_combo.setCurrentText({"cuda": "CUDA", "auto": "auto"}.get((self.device or "cpu").lower(), "CPU"))
         self.device_combo.currentTextChanged.connect(self._set_device)
         tb.addWidget(self.device_combo)
-        render_btn = QtWidgets.QPushButton("Render", toolTip="Render workspace: image, movie and figure code")
-        render_btn.setObjectName("primary")
-        render_btn.setProperty("ewald_icon", "render")
-        render_btn.setProperty("ewald_icon_color", TOKENS["on_accent"])
-        render_btn.clicked.connect(lambda: self.set_workspace(1))
-        tb.addWidget(render_btn)
-        self.styled_buttons.append((render_btn, True))
 
     def set_button_style(self, style: str):
         """Toolbar and tool rail buttons as icons with text, icons or text
