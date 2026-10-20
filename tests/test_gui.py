@@ -439,6 +439,35 @@ def test_show_anywhere_in_a_cell_is_a_live_plot(app, tmp_path):
     w.close()
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_cell_runs_once_each_frame_or_all_frames(app, tmp_path):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    path = tmp_path / "frames.py"
+    path.write_text(f"# %%\nfrom ewald import load\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n\n"
+                    "# %% height [each frame]\ndata.attributes['z'] = data['Position'][:, 2].mean()\n\n"
+                    "# %%\ndata.attributes['w'] = 1 / 0\n")
+    w = MainWindow(settings=settings.Settings())
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    app.processEvents()
+    assert view.widgets[1].frames_badge.text() == "Each frame"
+    assert w.data.attributes["z"] == pytest.approx(w.data["Position"][:, 2].mean())
+    view._cell_action(view.notebook.cells[2], "frames:each")      # the cell's menu › Runs › Each frame
+    app.processEvents()
+    assert view.widgets[2].frames_badge.text() == "Each frame"
+    assert [m.name for m in w.pipeline.modifiers] == ["height", "each_frame_cell"]
+    assert [o.kind for o in view.widgets[2].outputs.outputs] == ["error"]   # the step's error at this frame
+    view._cell_action(view.notebook.cells[2], "frames:")          # back to once: the step goes
+    app.processEvents()
+    assert [m.name for m in w.pipeline.modifiers] == ["height"] and not hasattr(view.widgets[2], "frames_badge")
+    view.undo()
+    app.processEvents()
+    assert view.notebook.cells[2].frames == "each"
+    w.close()
+
+
 def test_timeline_frame_selection_playback(app):
     from ewald.gui.timeline import Timeline
 

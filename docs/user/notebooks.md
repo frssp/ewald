@@ -93,7 +93,24 @@ well, so Jupyter and GitHub show the plot.
 **What runs during playback.** Playing a trajectory never runs cells again: code cells run when
 you run them. What runs at each frame is the pipeline, the steps the cells added. A built-in
 step computes the frame (or, for MSD, VACF and other trajectory analyses, reads the trajectory
-once and keeps the result). A Python step says which it is:
+once and keeps the result). A code cell can be such a step itself: choose *Runs › Each frame*
+or *Runs › All frames* in the cell's menu (or write the tag after `# %%`), and the cell's code
+becomes the step's body, with `frame` and `data`, or `frames` and `data`, given:
+
+```python
+# %% height [each frame]
+data.attributes["Mean z"] = data["Position"][:, 2].mean()
+
+# %% [all frames]
+z = [d["Position"][:, 2].mean() for d in frames]
+data.tables["height"] = {"Frame": np.arange(len(z)), "Mean z": np.array(z)}
+```
+
+The tag shows as a badge in the cell's header (click it to change it back to *Once*, which takes
+the step out). Running the cell only adds its step, under the cell's title (`height`) or
+`each_frame_cell` / `all_frames_cell`; errors of the step at the current frame appear under the
+cell. One cell is one step, so to mix kinds in one cell, or to write the same thing as plain
+Python (Jupyter runs a tagged cell once, as ordinary code), use the decorators:
 
 ```python
 from ewald import all_frames, each_frame

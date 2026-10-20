@@ -487,6 +487,18 @@ class NotebookView(QtWidgets.QWidget):
         elif action == "clear":
             self.clear_outputs(cell)
             return
+        elif action.startswith("frames:"):   # once / each frame / all frames: the cell runs as such
+            if cell.frames == action[7:]:
+                return
+            run = nb.set_frames(cell, action[7:])
+            self.rebuild()
+            if run:
+                self.run(cell)
+            else:
+                self.changed.emit()   # its step is gone: the view recomputes
+            self.history.commit("Change when the cell runs")
+            self.titleChanged.emit()
+            return
         self.history.commit({"delete": "Delete cell", "up": "Move cell", "down": "Move cell"}.get(action, "Edit cell"))
         self.titleChanged.emit()
 

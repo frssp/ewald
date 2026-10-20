@@ -35,7 +35,7 @@ def notebook():
 
 
 def _sync(nb, cells: list):
-    """Make the kernel notebook's cells match the GUI's ``cells`` ({id, kind, source}), keeping
+    """Make the kernel notebook's cells match the GUI's ``cells`` ({id, kind, source, frames}), keeping
     what each unchanged cell added to the pipeline."""
     from .notebook import Cell
 
@@ -43,7 +43,7 @@ def _sync(nb, cells: list):
     out = []
     for spec in cells:
         cell = old.get(spec["id"]) or Cell(id=spec["id"])
-        cell.kind, cell.source = spec.get("kind", "code"), spec.get("source", "")
+        cell.kind, cell.source, cell.frames = spec.get("kind", "code"), spec.get("source", ""), spec.get("frames", "")
         out.append(cell)
     pipe = nb.pipeline
     for gone in set(old) - {c["id"] for c in cells}:  # deleted cells take their steps along

@@ -388,6 +388,8 @@ class CellWidget(QtWidgets.QFrame):
             m.addAction("Show as code cell", lambda: self.actionRequested.emit(self.cell, "code"))
         if self.cell.is_view:
             m.addAction("Save plot…", lambda: self.plot_panel.save_plot())
+        if self.cell.kind == "code" and not (self.cell.is_step or self.cell.is_view):
+            self._frames_menu(m.addMenu("Runs"))
         if self.cell.kind != "markdown":
             m.addAction("Clear output", lambda: self.actionRequested.emit(self.cell, "clear"))
         m.addSeparator()
@@ -397,10 +399,40 @@ class CellWidget(QtWidgets.QFrame):
         b.setMenu(m)
         return b
 
+    FRAMES = {"": ("Once", "Runs when you run the cell"),
+              "each": ("Each frame", "The cell's code is a step: it runs at every frame with `frame` and `data`"),
+              "all": ("All frames", "The cell's code is a step: it runs once with `frames` (every frame) and "
+                                    "`data`, and its result is kept for every frame")}
+
+    def _frames_menu(self, menu):
+        """When the cell's code runs: once, or as a step at each frame or once over all frames."""
+        group = QtGui.QActionGroup(menu)
+        for key, (label, tip) in self.FRAMES.items():
+            a = menu.addAction(label, lambda k=key: self.actionRequested.emit(self.cell, "frames:" + k))
+            a.setCheckable(True)
+            a.setChecked(self.cell.frames == key)
+            a.setToolTip(tip)
+            group.addAction(a)
+        menu.setToolTipsVisible(True)
+        return menu
+
+    def _frames_badge(self):
+        """The cell's ``[each frame]`` / ``[all frames]`` tag; a click changes it."""
+        label, tip = self.FRAMES[self.cell.frames]
+        b = QtWidgets.QToolButton(text=label, objectName="cellFrames", toolTip=tip)
+        b.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        b.setMenu(self._frames_menu(QtWidgets.QMenu(b)))
+        return b
+
     def _build_code(self):
-        if self.cell.title:
+        tagged = self.cell.frames in ("each", "all")
+        if self.cell.title or tagged:
             row = QtWidgets.QHBoxLayout()
-            row.addWidget(QtWidgets.QLabel(self.cell.title, objectName="cellTitle"))
+            if self.cell.title:
+                row.addWidget(QtWidgets.QLabel(self.cell.title, objectName="cellTitle"))
+            if tagged:
+                self.frames_badge = self._frames_badge()
+                row.addWidget(self.frames_badge)
             row.addStretch()
             row.addWidget(self._menu_button())
             self.body.addLayout(row)
@@ -410,7 +442,7 @@ class CellWidget(QtWidgets.QFrame):
         self.editor.runRequested.connect(lambda adv: self.runRequested.emit(self.cell, adv))
         self.editor.focused.connect(lambda: self.selected.emit(self.cell))
         row.addWidget(self.editor, 1)
-        if not self.cell.title:
+        if not (self.cell.title or tagged):
             row.addWidget(self._menu_button(), 0, QtCore.Qt.AlignTop)
         self.body.addLayout(row)
         self.outputs = OutputArea()
@@ -630,7 +662,7 @@ class CellWidget(QtWidgets.QFrame):
             self._repolish()
             return
         if not c.is_step:
-            self.outputs.set_outputs(c.outputs)
+            self.outputs.set_outputs(c.outputs + self._step_errors())
             self._repolish()
             return
         mod = c.modifier
@@ -663,6 +695,22 @@ class CellWidget(QtWidgets.QFrame):
         self.outputs.set_outputs([o for o in c.outputs if o.kind == "error"])
         self._repolish()
 
+    def _step_errors(self) -> list:
+        """The error of the step an ``[each frame]`` / ``[all frames]`` cell added, at this frame
+        (the same Output object while the message stays, so the output is not rebuilt per frame)."""
+        c = self.cell
+        if not c.frames:
+            return []
+        status = next((m.status for m in c.added if getattr(m, "status", None)), None) or \
+            next((s.get("status") for s in c.steps if s.get("status")), None)
+        if not status:
+            return []
+        if getattr(self, "_status_output", None) is None or self._status_output.data != status:
+            from ..notebook import Output
+
+            self._status_output = Output("error", status)
+        return [self._status_output]
+
     def set_running(self):
         self.counter.setText("*")
         self.counter.setToolTip("Running")
@@ -693,7 +741,7 @@ class CellWidget(QtWidgets.QFrame):
 
 def _shape(cell: Cell):
     """What a CellWidget was built for: a change means it has to be rebuilt."""
-    return cell, cell.modifier, (cell.kind, cell.is_step, cell.is_view)
+    return cell, cell.modifier, (cell.kind, cell.is_step, cell.is_view, cell.frames)
 
 
 def _same_shape(a, b) -> bool:
