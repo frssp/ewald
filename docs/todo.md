@@ -38,9 +38,9 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 
 GUI
 
-- UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): still open
-  is the Render settings column scrolling sideways at the default window width. Cancelling an open stops waiting
-  but not the read itself (readers have no cancel hook).
+- UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): every
+  finding is fixed. Left over: cancelling an open stops waiting but not the read itself (readers
+  have no cancel hook), so a cancelled SSH connect runs out its timeout in the background.
 - Panel layout (phase 1 landed: `gui/workbench.py`, `gui/layout_model.py`; plan in project
   files `design/panel-layout.md`): phase 2 opens a notebook view cell's plot large in the
   editor area ("Open large" or drag the cell header, a Bring back placeholder in the cell, the
