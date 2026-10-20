@@ -91,7 +91,8 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
                     bond_radius=0.15, show_cell=True, cell_color=(0.0, 0.0, 0.0), cell_radius=None,
                     radius_preset="covalent", oxidation_states=None, coordination=None, vectors=None,
                     arrow_resolution=24, view_direction=None, trajectory_width=2.0, visuals=None, frame=0,
-                    boundary=None, boundary_bonds="half", replicate=None, replicate_cell="super", **_ignored):
+                    boundary=None, boundary_bonds="half", replicate=None, replicate_cell="super",
+                    show_atoms=True, surfaces=None, **_ignored):
     """Build a Scene with the same colors/radii/bonds/arrows as :func:`ewald.render.build_scene`.
 
     ``view_direction`` (scene -> camera) lets 'flat' arrows face the viewer evenly lit.
@@ -105,7 +106,7 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
                      bonds=bonds, bond_pairs=bond_pairs, bond_radius=bond_radius, vectors=vectors,
                      trajectory_width=trajectory_width, show_cell=show_cell, cell_radius=cell_radius,
                      boundary=boundary, boundary_bonds=boundary_bonds, replicate=replicate,
-                     replicate_cell=replicate_cell)
+                     replicate_cell=replicate_cell, show_atoms=show_atoms, surfaces=surfaces)
     return scene_from_ir(scene, arrow_resolution=arrow_resolution, view_direction=view_direction, ink=cell_color)
 
 

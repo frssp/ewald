@@ -342,15 +342,39 @@ class BondsVis(VisualElement):
 
 
 class SurfacesVis(VisualElement):
-    """Every ``data.surfaces`` mesh (polyhedra, isosurfaces, grid slices)."""
+    """Every ``data.surfaces`` mesh (polyhedra, isosurfaces, grid slices). ``styles`` restyles them by
+    name on top of what their step made: ``{name: {"visible", "color", "transparency", "edges"}}``."""
 
     name = "Surfaces"
+
+    def __init__(self, styles: dict | None = None):
+        self.styles = styles
 
     def applies(self, data) -> bool:
         return bool(getattr(data, "surfaces", None))
 
     def build(self, data, ctx):
-        return [(f"surface:{name}", mesh) for name, mesh in data.surfaces.items() if mesh.face_count]
+        styles = self.styles or {}
+        return [(f"surface:{name}", _styled_mesh(mesh, styles[name]) if name in styles else mesh)
+                for name, mesh in data.surfaces.items()
+                if mesh.face_count and styles.get(name, {}).get("visible", True)]
+
+
+def _styled_mesh(mesh, style):
+    """A shallow copy of ``mesh`` with ``style``'s color, transparency and edges (data stays unchanged)."""
+    import copy
+
+    from .render import _rgb
+
+    out = copy.copy(mesh)
+    if style.get("color") is not None:
+        out.face_properties = {**mesh.face_properties, "Color": np.tile(_rgb(style["color"]), (mesh.face_count, 1))}
+        out.vertex_properties = {k: v for k, v in mesh.vertex_properties.items() if k != "Color"}
+    if style.get("transparency") is not None:
+        out.transparency = float(style["transparency"])
+    if style.get("edges") is False:
+        out.edges = None
+    return out
 
 
 class VectorsVis(VisualElement):
@@ -443,10 +467,11 @@ BUILTIN = (ParticlesVis, BondsVis, SurfacesVis, VectorsVis, TrajectoryLinesVis, 
 def builtin_elements(*, radius_scale=1.0, type_colors=None, type_radii=None, radius_preset="covalent",
                      oxidation_states=None, coordination=None, bonds=None, bond_pairs=None, bond_radius=0.15,
                      vectors=None, trajectory_width=2.0, show_cell=True, cell_color=None, cell_width=2.0,
-                     cell_radius=None, **_ignored) -> list[VisualElement]:
+                     cell_radius=None, show_atoms=True, surfaces=None, **_ignored) -> list[VisualElement]:
     """The built-in elements configured from ``render()`` keyword arguments, in drawing order."""
-    out = [ParticlesVis(radius_scale, type_colors, type_radii, radius_preset, oxidation_states, coordination),
-           BondsVis(bonds, bond_pairs, bond_radius), SurfacesVis(), VectorsVis(vectors),
+    particles = ParticlesVis(radius_scale, type_colors, type_radii, radius_preset, oxidation_states, coordination)
+    particles.enabled = bool(show_atoms)
+    out = [particles, BondsVis(bonds, bond_pairs, bond_radius), SurfacesVis(surfaces or None), VectorsVis(vectors),
            TrajectoryLinesVis(trajectory_width)]
     if show_cell:
         out.append(SimulationCellVis(cell_color, cell_width, cell_radius))
@@ -513,6 +538,8 @@ def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None,
     scene = Scene()
     for el in elements:
         if not getattr(el, "enabled", True) or not el.applies(data):
+            if isinstance(el, ParticlesVis) and el.applies(data):
+                el.build(data, ctx)   # hidden atoms still give their bonds their colors
             continue
         out = el.build(data, ctx)
         if out is None:
