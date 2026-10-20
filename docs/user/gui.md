@@ -288,6 +288,12 @@ Ctrl+Alt+R) keeps saved remote computers with their login, jump host, start fold
 bookmarks, and browses their files; passwords and key passphrases go to the OS keychain
 ([Saved remote computers](formats.md#saved-remote-computers)).
 
+File › Open location (Ctrl+L) takes a typed path or address, the same text `load()` takes in a
+notebook cell: `host:/path` over SSH, or a scheme a reader plugin serves, such as `aiida:1234`
+or `simagent:1234`; the dialog lists the schemes that are installed. A plugin that needs setting
+up (a server address, an access key) has a Settings button in the Plugins side bar and an entry
+under Edit › Plugin settings, so it can be set up without Python.
+
 ## Preferences
 
 Edit › Preferences (Ctrl+, ; the application menu on macOS) has seven pages: General, Viewports,

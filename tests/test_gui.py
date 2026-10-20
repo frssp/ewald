@@ -3108,3 +3108,64 @@ def test_ai_chat_stop_button_and_failed_cells_in_the_question(app, pipe):
     for worker in panel._stopped:
         worker.wait(5000)
     w.close()
+
+
+def test_plugin_settings_page_dialog(app, monkeypatch):
+    from ewald import plugins, settings
+    from ewald.gui.app import MainWindow
+    from test_plugins import SETTINGS_PLUGIN
+
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "demo_service.py").write_text(SETTINGS_PLUGIN)
+    plugins.load_plugins(force=True)
+    try:
+        w = MainWindow(settings=settings.Settings())
+        w._fill_plugin_settings_menu()
+        assert [a.text() for a in w.plugin_settings_menu.actions()] == ["Demo service…"]
+        item = next(i for i in w.plugins_panel.items if i.id == "demo_service")
+        dlg = w.plugins_panel.edit_settings(item, exec_=False)
+        assert dlg.widgets["url"].text() == "http://old" and dlg.widgets["verify"].isChecked()
+        assert dlg.widgets["key"].text() == "" and dlg.widgets["key"].placeholderText() == "not set"
+        dlg.widgets["url"].setText("ftp://nope")
+        dlg.buttons.accepted.emit()
+        assert dlg.isVisible() and "starts with http" in dlg.status.text()      # stays open to fix it
+        dlg.widgets["url"].setText("http://new")
+        dlg.widgets["key"].setText("sa_pat_2")
+        dlg.buttons.accepted.emit()
+        assert not dlg.isVisible() and dlg.message == "Saved" and dlg.widgets["key"].text() == ""
+        dlg = w.edit_plugin_settings("demo-service", exec_=False)
+        assert dlg.widgets["url"].text() == "http://new" and dlg.widgets["key"].placeholderText().startswith("saved")
+        test = next(b for b in dlg.buttons.buttons() if b.text() == "Test")
+        test.click()
+        assert dlg.status.text() == "reachable" and dlg.isVisible()
+        dlg.close()
+        w.close()
+    finally:
+        (folder / "demo_service.py").unlink()
+        plugins.load_plugins(force=True)
+
+
+def test_open_location_opens_a_scheme_path(app, cu_fcc, monkeypatch):
+    from ewald import plugins, settings
+    from ewald.gui.app import MainWindow
+
+    seen = []
+
+    def fake(path, **kwargs):
+        seen.append(path)
+        return [cu_fcc]
+
+    plugins.register_reader("fake-scheme", fake, schemes=("fakeloc",), priority=None)
+    try:
+        w = MainWindow(settings=settings.Settings())
+        assert "fakeloc" in w.location_schemes()
+        monkeypatch.setattr(QtWidgets.QInputDialog, "getText", lambda *a, **k: ("fakeloc:1234/scf", True))
+        assert w.open_location_dialog() is not None
+        assert seen == ["fakeloc:1234/scf"] and w.pipeline.num_frames == 1
+        assert w._last_location == "fakeloc:1234/scf"
+        monkeypatch.setattr(QtWidgets.QInputDialog, "getText", lambda *a, **k: ("", False))
+        assert w.open_location_dialog() is None
+        w.close()
+    finally:
+        plugins._registry.readers.pop("fake-scheme", None)

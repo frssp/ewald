@@ -13,7 +13,7 @@ EXAMPLE = Path(__file__).parents[1] / "examples" / "plugins" / "npz_trajectory.p
 
 
 # plugin packages installed in this environment (e.g. ewald-phonopy) stay out of these tests
-_GROUPS = ("ewald.readers", "ewald.modifiers", "ewald.plugins", "ewald.tools")
+_GROUPS = ("ewald.readers", "ewald.modifiers", "ewald.plugins", "ewald.tools", "ewald.settings_pages")
 _INSTALLED = {(g, ep.name, ep.value) for g in _GROUPS for ep in importlib.metadata.entry_points(group=g)}
 
 
@@ -560,3 +560,71 @@ def test_scheme_reader_takes_uri_paths(tmp_path, monkeypatch):
     again = load_session(tmp_path / "s.ewald").pipeline
     assert again.source.path == "demo:3" and again.compute(0).count == 3
     assert seen == ["demo:3", "demo:3"]
+
+
+SETTINGS_PLUGIN = '''
+"""A service with a settings page."""
+from ewald.plugin_api import SettingsField, settings_page
+
+STORE = {"url": "http://old", "key": None, "verify": True}
+
+
+@settings_page("demo-service", title="Demo service", fields=[
+    SettingsField("url", "Server address", help="Where it runs"),
+    SettingsField("key", "Access key", kind="secret"),
+    SettingsField("verify", kind="bool"),
+    SettingsField("mode", kind="choice", choices=("fast", "safe"))],
+    actions={"Test": "test"})
+class DemoSettings:
+    """Connect to the demo service."""
+
+    def load(self):
+        return {"url": STORE["url"], "key": STORE["key"] is not None, "verify": STORE["verify"]}
+
+    def save(self, values):
+        if not values["url"].startswith("http"):
+            raise ValueError("The server address starts with http")
+        STORE.update(url=values["url"], verify=values["verify"])
+        if values["key"]:
+            STORE["key"] = values["key"]
+        return "Saved"
+
+    def test(self, values):
+        return "reachable" if STORE["key"] else "no key"
+'''
+
+
+def test_settings_page_from_plugin_folder():
+    from ewald import plugin_catalog
+
+    path = _write_plugin("demo_service.py", SETTINGS_PLUGIN)
+    page = plugins.settings_pages()["demo-service"]
+    assert page.title == "Demo service" and page.description == "Connect to the demo service."
+    assert page.values() == {"url": "http://old", "key": False, "verify": True, "mode": "fast"}
+    assert [f.label for f in page.fields] == ["Server address", "Access key", "Verify", "Mode"]
+    with pytest.raises(ValueError, match="starts with http"):
+        page.save({"url": "ftp://x", "key": "", "verify": True, "mode": "fast"})
+    assert page.save({"url": "http://new", "key": "sa_pat_1", "verify": False, "mode": "safe"}) == "Saved"
+    assert page.values()["key"] is True and page.actions["Test"]({}) == "reachable"
+    item = next(i for i in plugin_catalog.installed() if i.id == "demo_service")
+    assert item.provides["settings_page"] == ["demo-service"] and "settings_page" in item.kinds
+    assert plugin_catalog.describe_file(path).kinds == ["settings_page"]
+    assert plugins.status()["settings_pages"][0]["title"] == "Demo service"
+
+
+def test_settings_page_checks_what_it_is_given():
+    from ewald.plugin_api import SettingsField
+
+    class NoSave:
+        def load(self):
+            return {}
+
+    with pytest.raises(TypeError, match="save"):
+        plugins.register_settings_page("x", NoSave, fields=[SettingsField("a")])
+    with pytest.raises(TypeError, match="SettingsField"):
+        plugins.register_settings_page("x", type("P", (), {"load": lambda s: {}, "save": lambda s, v: ""}),
+                                       fields=["a"])
+    with pytest.raises(ValueError, match="kind must be one of"):
+        SettingsField("a", kind="password")
+    with pytest.raises(ValueError, match="needs choices"):
+        SettingsField("a", kind="choice")

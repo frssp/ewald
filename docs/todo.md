@@ -307,9 +307,10 @@ Plugins and AI
   `GATEWAY_NO_POOL` (sim-agent has both).
 - Plugin manifests, phase 2 (from the VS Code comparison): contributions declared in
   `ewald-plugin.toml` (`[[readers]]`, `[[modifiers]]`, ... with `python = "module:object"`)
-  registered lazily and imported on first use; `settings` and `commands` contribution points
-  (plugin `Option`s on a generated Preferences page; commands in the palette, as notebook
-  functions and as AI tools).
+  registered lazily and imported on first use; a `commands` contribution point (commands in the
+  palette, as notebook functions and as AI tools). Settings pages exist (`@settings_page`, a
+  generated dialog from the Plugins side bar and Edit › Plugin settings) but are registered in
+  code, not declared in the manifest, and are not pages of the Preferences dialog itself.
 - Plugin manifests, phase 3: the index repository exists (frssp/ewald-plugins: `plugins/*.toml`,
   `index.json`, first-party `packages/ewald-phonopy` and `packages/ewald-plumed` pinned to tags).
   Left: install and update with `pip` from the Plugins panel into the running interpreter,

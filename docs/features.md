@@ -386,7 +386,7 @@ Also: `ewald describe` / `ewald narrate` (rule-based descriptors and a trajector
 
 ## Plugins
 
-Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.visuals`, `ewald.overlays`, `ewald.colormaps`, `ewald.themes`, `ewald.tools`, `ewald.ui_themes` and `ewald.ai_providers`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / `@colormap` / `@theme` / `@ai_tool` (or `@claude_tool`) / `@ui_theme` / `@ai_provider`; `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
+Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.visuals`, `ewald.overlays`, `ewald.colormaps`, `ewald.themes`, `ewald.tools`, `ewald.ui_themes`, `ewald.ai_providers` and `ewald.settings_pages`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / `@colormap` / `@theme` / `@ai_tool` (or `@claude_tool`) / `@ui_theme` / `@ai_provider` / `@settings_page`; `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
 
 - `examples/plugins/cell_axes.py`: Example visual element plugins: cell axes and a halo around selected atoms.
 - `examples/plugins/figure_extras.py`: Example figure-style plugins: a color map, a theme and an overlay.
@@ -521,6 +521,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - New notebook (`Ctrl+T`)
 - Open… (`Ctrl+O`)
 - Load remote file (SSH)… (`Ctrl+Alt+O`)
+- Open location… (`Ctrl+L`)
 - Remote computers (SSH profiles)… (`Ctrl+Alt+R`)
 - Load NEB folder…
 - Open example
@@ -548,6 +549,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 - Undo (`Ctrl+Z`)
 - Redo (`Ctrl+Shift+Z`)
+- Plugin settings
 - Preferences… (`Ctrl+,`)
 
 **View**

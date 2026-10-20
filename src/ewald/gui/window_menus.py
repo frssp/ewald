@@ -219,6 +219,9 @@ class MenusMixin:
         f.addAction("&New notebook", lambda: self.panel.new_notebook(), "Ctrl+T")
         f.addAction(icon("open"), "&Open…", QtGui.QKeySequence.Open, self.open_dialog)
         f.addAction(icon("remote"), "Load &remote file (SSH)…", QtGui.QKeySequence("Ctrl+Alt+O"), self.open_remote_dialog)
+        f.addAction("Open &location…", QtGui.QKeySequence("Ctrl+L"), self.open_location_dialog).setStatusTip(
+            "Open a path or address a reader understands: host:/path over SSH, or a plugin's "
+            "scheme such as aiida:1234 or simagent:1234")
         f.addAction("Remote &computers (SSH profiles)…", QtGui.QKeySequence("Ctrl+Alt+R"), self.show_remotes)
         f.addAction("Load &NEB folder…", self.open_neb_dialog)
         ex = f.addMenu(icon("example"), "Open e&xample")
@@ -254,6 +257,8 @@ class MenusMixin:
         self.redo_action = e.addAction("&Redo", self.redo, QtGui.QKeySequence.Redo)
         e.aboutToShow.connect(self._update_undo_actions)
         e.addSeparator()
+        self.plugin_settings_menu = e.addMenu("Plugin &settings")
+        self.plugin_settings_menu.aboutToShow.connect(self._fill_plugin_settings_menu)   # filled when opened
         act = e.addAction("&Preferences…", self.preferences, QtGui.QKeySequence.Preferences)
         act.setMenuRole(QtGui.QAction.PreferencesRole)  # app menu on macOS, like OVITO/VESTA
         if act.shortcut().isEmpty():
@@ -505,3 +510,23 @@ class MenusMixin:
         for label, color in (("Dark background", PALETTES["graphite"]["viewport"]), ("White background", "white")):
             act = self.theme_menu.addAction(label, lambda c=color: self._set_background(c))
             act.setToolTip("Change only the viewport background")
+
+    def _fill_plugin_settings_menu(self):
+        """Edit › Plugin settings: one entry per plugin settings page (:func:`ewald.plugins.settings_page`)."""
+        from .. import plugins
+
+        self.plugin_settings_menu.clear()
+        pages = plugins.settings_pages()
+        for name, page in pages.items():
+            act = self.plugin_settings_menu.addAction(f"{page.title}…", lambda n=name: self.edit_plugin_settings(n))
+            act.setStatusTip(page.description)
+        if not pages:
+            self.plugin_settings_menu.addAction("No plugin has settings").setEnabled(False)
+
+    def edit_plugin_settings(self, name: str, exec_: bool = True):
+        from .plugin_settings import edit
+
+        dlg = edit(name, self, exec_=exec_)
+        if exec_ and dlg.message:
+            self.message(f"{dlg.page.title}: {dlg.message}")
+        return dlg
