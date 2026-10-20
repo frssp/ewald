@@ -1042,6 +1042,8 @@ class NotebookView(QtWidgets.QWidget):
         if data is not None:
             self.data = data
         self.notebook.refresh_kernel_steps()  # what the kernel's steps did at this frame
+        if self.banner.isVisibleTo(self) != self.notebook.restricted:   # trusted elsewhere (console, open)
+            self._update_banner()
         for w in self.widgets:
             w.update_state(self.data)
             if w.plot_panel is not None and (data is not None or w.plot_panel.data is None):
@@ -1545,7 +1547,7 @@ class NotebookPanel(QtWidgets.QWidget):
             self.tabs.removeTab(self.tabs.indexOf(blank))
             blank.deleteLater()
         if run:
-            nb.trust()
+            view.trust(ask=False)   # the open already asked; also hides the restricted bar
             view.run_all()
         else:
             view.update_results()

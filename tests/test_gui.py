@@ -1493,6 +1493,25 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert [m.name for m in w2.pipeline.modifiers] == ["CoordinationAnalysis"]
     w2.close()
 
+    w3 = MainWindow(settings=settings.Settings())             # Yes when opening: trusted, the bar goes away
+    view = w3.open_notebook(str(path))
+    assert not view.notebook.restricted and view.banner.isHidden()
+    assert view.notebook.cells[0].state == "ok" and [m.name for m in w3.pipeline.modifiers] == ["CoordinationAnalysis"]
+    w3.close()
+
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.No)
+    w4 = MainWindow(settings=settings.Settings())             # No when opening, then the bar's Trust button
+    view = w4.open_notebook(str(path))
+    w4.show()
+    app.processEvents()
+    assert view.notebook.restricted and view.banner.isVisible()
+    buttons = {b.text(): b for b in view.banner.findChildren(QtWidgets.QPushButton)}
+    buttons["Trust and run all"].click()
+    app.processEvents()
+    assert not view.notebook.restricted and not view.banner.isVisible()
+    assert view.notebook.cells[0].state == "ok" and [m.name for m in w4.pipeline.modifiers] == ["CoordinationAnalysis"]
+    w4.close()
+
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_ewd_offers_to_install_the_pip_packages_it_needs(app, cu_path, tmp_path, monkeypatch):
