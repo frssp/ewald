@@ -107,13 +107,15 @@ class Lines:
     """Polylines: ``points`` (P x 3) and ``strips``, one array of point indices per line, with one
     ``rgb`` per strip (S x 3) or ``None`` for the renderer's ink color (black on light backgrounds).
     ``width`` is in pixels of a 1600-pixel-high image; ``radius`` (Angstrom), when given, lets
-    renderers that have no lines draw them as tubes with round joints."""
+    renderers that have no lines draw them as tubes with round joints. Lines are guides, so those
+    tubes cast no shadows and no ambient occlusion unless ``cast_shadows`` is True."""
 
     points: np.ndarray
     strips: list
     rgb: np.ndarray | None = None
     width: float = 2.0
     radius: float | None = None
+    cast_shadows: bool = False
 
     def __post_init__(self):
         self.points = np.asarray(self.points, float).reshape(-1, 3)

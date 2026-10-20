@@ -15,8 +15,19 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   sessions work once the plugin is installed; without it they raise an `ImportError` with the
   install command. The `plumed` extra is gone (#75).
 
+### Fixed
+
+- DOS, band structure and phonon band plots looked different when a notebook ran in another
+  Python kernel: frames from a kernel now carry the `Electronic Structure` (and `Phonon Modes`)
+  attribute, so the Plots tab and view cells draw them exactly as in-process.
+
 ### Added
 
+- Plain matplotlib plots in notebook cells, notebook kernels and the GUI console use the
+  publication style by default (`ewald.plotstyle.Session`: per-notebook rcParams swapped in around
+  each cell, so rcParams a cell sets are kept and ewald's renderers are untouched). Preference
+  `python.plot_style` (Publication, Publication in UI theme colors, Matplotlib default);
+  `plotstyle.use("default")` opts a notebook out.
 - Publication style for every plot (`ewald.plotstyle`): journal column sizes, 8 pt sans-serif
   type, inward ticks with minor ticks, axis labels with units, a colorblind-safe color cycle in
   Paper and Graphite variants, and editable text in PDF/SVG. *Save plot…* now redraws the plot as

@@ -96,8 +96,7 @@ GUI
 - Panel headers (`gui/header.py`): checked under xvfb with Windows-like scale factors (100, 125,
   150 %) only; check on a real Windows machine (Segoe UI, per-monitor DPI) and macOS. The Display
   side bar still crowds its form below about 260 px, and the view bar cuts "View along" when the
-  3D view is narrow (could fold into a menu). The add-cell row (+ Code ... + Ask AI) clips its
-  labels when the Notebook panel is at its minimum width.
+  3D view is narrow (could fold into a menu).
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
   Insert › Step for the loaded data, view-along buttons hidden without a cell, the timeline
   folded for a single structure.
@@ -176,6 +175,9 @@ Electronic structure
 - DOSCAR, EIGENVAL and PROCAR readers (VASP 5 runs without vasprun.xml), and Quantum ESPRESSO /
   other codes' DOS and bands.
 - vasprun.xml: the KPOINTS_OPT sections (`<eigenvalues_kpoints_opt>`); vaspout.h5 reads them.
+- Plot style for plain `ewald` use in Jupyter (outside the GUI notebook): an opt-in
+  `%load_ext ewald` or `ewald.plotstyle.use()` hint in the manual is all there is now; the GUI
+  console's interactive figure windows read a few draw-time rcParams outside the swapped style.
 - Plot style (`ewald/plotstyle.py`): per-plot overrides in view cells (`show(..., size=,
   labels=)`; `xlim=`/`ylim=` exist), time units on MSD/VACF axes when `time_per_frame` is set (the unit is not
   stored now, so the axis says "Time"), multi-panel figures (DOS beside bands sharing the energy
@@ -220,7 +222,6 @@ Formats
 Figures
 
 - GPU (CUDA) ray tracer.
-- Ray tracer: shadows of the cell edges show as arcs on atoms.
 - Vector arrows: their own color legend when a `ColorCoding` already owns the legend; arrows in
   the coarse (moving) viewport scene, as lines; in SVG/PDF, hide the part of an arrow inside its
   atom exactly (now the shaft is split at the atom and painted by depth).

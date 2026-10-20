@@ -290,9 +290,13 @@ QPushButton#pluginInstall {{ background: {accent}; color: {on_accent}; border: n
 QPushButton#pluginInstall:hover {{ background: {accent_hover}; }}
 QPushButton#pluginInstall:disabled {{ background: {border}; color: {muted}; }}
 QPushButton#pluginButton {{ border-radius: 6px; padding: 3px 12px; }}
-QFrame#cell[current="true"] {{ border: 2px solid {accent}; }}
+QFrame#cell[current="true"] {{ border-color: {accent}; }}
 QFrame#cell[state="error"] {{ border-color: {error}; }}
 QFrame#cell[state="stale"] {{ background: {panel}; }}
+QFrame#cell[state="running"] {{ border-color: {data}; }}
+QFrame#cell[state="running"] QLabel#cellCounter {{ color: {data}; font-weight: 600; }}
+QFrame#cell[state="error"] QLabel#cellCounter {{ color: {error}; }}
+QWidget#cellGutter, QWidget#cellOutput, QLabel#cellImage {{ background: transparent; }}
 QFrame#cell QLabel, QFrame#cell QCheckBox {{ background: transparent; }}
 QToolButton#cellRun {{ padding: 0; border-radius: 12px; }}
 QToolButton#cellRun:hover {{ background: {accent_soft}; color: {accent}; }}
@@ -304,8 +308,9 @@ QLabel#cellFolded {{ color: {secondary}; font-style: italic; padding: 3px 0; }}
 QLabel#cellDrag {{ padding: 2px 0; background: transparent; }}
 QFrame#cellDropLine {{ background: {accent}; border-radius: 1px; }}
 QFrame#cell[current="true"] QLabel#cellCounter {{ color: {accent}; }}
-QPlainTextEdit#cellEditor {{ background: {panel}; border: 1px solid {border}; border-radius: 6px; padding: 4px 6px; }}
-QLabel#cellError {{ color: {error}; }}
+QPlainTextEdit#cellEditor {{ background: {panel}; border: none; border-radius: 6px; padding: 4px 6px; }}
+QFrame#cell[state="stale"] QPlainTextEdit#cellEditor {{ background: {raised}; }}
+QLabel#cellError {{ color: {error}; border-left: 3px solid {error}; padding: 2px 8px; }}
 QLabel#cellValue, QLabel#cellText {{ color: {secondary}; }}
 QLabel#cellMarkdown {{ color: {text}; font-size: 13px; padding: 2px 4px; }}
 QFrame#cell[kind="markdown"] {{ background: transparent; border-color: transparent; }}

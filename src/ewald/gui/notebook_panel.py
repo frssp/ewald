@@ -157,11 +157,15 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
 class OutputArea(QtWidgets.QWidget):
     """Printed text, values, errors and images under a code cell."""
 
+    MAX_IMAGE_HEIGHT = 360   # a figure or snapshot never takes the whole panel
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("cellOutput")
         self.lay = QtWidgets.QVBoxLayout(self)
-        self.lay.setContentsMargins(0, 2, 0, 0)
+        self.lay.setContentsMargins(2, 2, 0, 0)
         self.lay.setSpacing(4)
+        self._images = []    # (label, full-size pixmap): rescaled when the cell's width changes
 
     def set_outputs(self, outputs):
         self.outputs = list(outputs)
@@ -169,14 +173,14 @@ class OutputArea(QtWidgets.QWidget):
             w = self.lay.takeAt(0).widget()
             if w is not None:
                 w.deleteLater()
+        self._images = []
         for out in outputs:
             if out.kind == "image":
                 pix = QtGui.QPixmap()
                 pix.loadFromData(out.data, "PNG")
-                if pix.width() > 560:
-                    pix = pix.scaledToWidth(560, QtCore.Qt.SmoothTransformation)
-                w = QtWidgets.QLabel()
-                w.setPixmap(pix)
+                w = QtWidgets.QLabel(objectName="cellImage")
+                w.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
+                self._images.append((w, pix))
             else:
                 w = QtWidgets.QLabel(str(out.data).rstrip("\n"))
                 w.setFont(mono_font())
@@ -184,7 +188,24 @@ class OutputArea(QtWidgets.QWidget):
                 w.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
                 w.setObjectName({"error": "cellError", "value": "cellValue"}.get(out.kind, "cellText"))
             self.lay.addWidget(w)
+        self._fit_images()
         self.setVisible(bool(outputs))
+
+    def _fit_images(self):
+        width = max(120, self.width() - 4)
+        for label, pix in self._images:
+            if pix.isNull():
+                continue
+            scale = min(1.0, width / pix.width(), self.MAX_IMAGE_HEIGHT / pix.height())
+            shown = pix if scale >= 1.0 else pix.scaled(int(pix.width() * scale), int(pix.height() * scale),
+                                                       QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+            label.setPixmap(shown)
+            label.setFixedHeight(shown.height())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._images and event.oldSize().width() != event.size().width():
+            self._fit_images()
 
 
 class MiniPlot(QtWidgets.QWidget):
@@ -290,6 +311,7 @@ def result_plot(out: dict | None, data):
 
 # ---------------------------------------------------------------- cells
 CELL_MIME = "application/x-ewald-cell"
+GUTTER_WIDTH = 26   # run button, counter, grip and fold chevron
 
 
 class _DragHandle(QtWidgets.QLabel):
@@ -360,13 +382,16 @@ class CellWidget(QtWidgets.QFrame):
         self.plot_panel = None
         self.built_for = _shape(cell)
         self.setObjectName("cell")
-        self.setProperty("kind", cell.kind)
+        self.setProperty("kind", "step" if cell.is_step else "view" if cell.is_view else cell.kind)
         self.setFrameShape(QtWidgets.QFrame.StyledPanel)
         outer = QtWidgets.QHBoxLayout(self)
-        outer.setContentsMargins(4, 6, 8, 6)
-        outer.setSpacing(6)
-        gutter = QtWidgets.QVBoxLayout()
-        gutter.setSpacing(2)
+        outer.setContentsMargins(2, 5, 8, 6)
+        outer.setSpacing(4)
+        self.gutter = QtWidgets.QWidget(objectName="cellGutter")
+        self.gutter.setFixedWidth(GUTTER_WIDTH)
+        gutter = QtWidgets.QVBoxLayout(self.gutter)
+        gutter.setContentsMargins(0, 0, 0, 0)
+        gutter.setSpacing(1)
         self.run_button = header.button("play", "Run cell (Ctrl+Enter)", name="cellRun")
         self.run_button.setProperty("ewald_icon_color", "accent")
         self.run_button.setIcon(icon("play", TOKENS["accent"]))
@@ -382,12 +407,16 @@ class CellWidget(QtWidgets.QFrame):
         gutter.addWidget(self.counter, 0, QtCore.Qt.AlignHCenter)
         gutter.addWidget(self.fold_button, 0, QtCore.Qt.AlignHCenter)
         gutter.addStretch()
-        outer.addLayout(gutter)
+        for w in (self.drag_handle, self.fold_button):   # shown on hover and on the current cell only
+            policy = w.sizePolicy()
+            policy.setRetainSizeWhenHidden(True)
+            w.setSizePolicy(policy)
+        outer.addWidget(self.gutter)
         right = QtWidgets.QVBoxLayout()
         self.content = QtWidgets.QWidget()
         self.body = QtWidgets.QVBoxLayout(self.content)
         self.body.setContentsMargins(0, 0, 0, 0)
-        self.body.setSpacing(6)
+        self.body.setSpacing(4)
         self.folded_label = QtWidgets.QLabel(objectName="cellFolded")
         self.folded_label.setToolTip("Collapsed: click the chevron or double-click to expand")
         right.addWidget(self.content)
@@ -405,12 +434,33 @@ class CellWidget(QtWidgets.QFrame):
             self._build_code()
         self.update_state()
         self.set_collapsed(cell.collapsed)
+        self._hovered = False
+        self._show_controls()
+
+    def _show_controls(self):
+        """Drag grip and fold chevron appear on hover and on the current cell, like VS Code's
+        cell toolbar; the run button and the counter stay."""
+        on = self._hovered or bool(self.property("current"))
+        self.drag_handle.setVisible(on)
+        self.fold_button.setVisible(on or self.cell.collapsed)
+
+    def enterEvent(self, event):
+        self._hovered = True
+        self._show_controls()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hovered = False
+        self._show_controls()
+        super().leaveEvent(event)
 
     def set_collapsed(self, on: bool):
         """Fold the cell to one line (its title, step name or first line of code), or unfold it."""
         self.cell.collapsed = bool(on)
         self.content.setVisible(not on)
         self.folded_label.setVisible(on)
+        if hasattr(self, "_hovered"):
+            self._show_controls()
         header.set_icon(self.fold_button, "chevron_right" if on else "chevron_down")
         if on:
             first = next((ln for ln in self.cell.source.splitlines() if ln.strip()), "")
@@ -432,6 +482,8 @@ class CellWidget(QtWidgets.QFrame):
             m.addAction("Show as code cell", lambda: self.actionRequested.emit(self.cell, "code"))
         if self.cell.is_view:
             m.addAction("Save plot…", lambda: self.plot_panel.save_plot())
+        if self.cell.kind != "markdown":
+            m.addAction("Clear output", lambda: self.actionRequested.emit(self.cell, "clear"))
         m.addSeparator()
         m.addAction("Move up", lambda: self.actionRequested.emit(self.cell, "up"))
         m.addAction("Move down", lambda: self.actionRequested.emit(self.cell, "down"))
@@ -584,7 +636,8 @@ class CellWidget(QtWidgets.QFrame):
         self.editor.focused.connect(lambda: self.selected.emit(self.cell))
         self.body.addWidget(self.editor)
         self.plot_panel = PlotsPanel()
-        self.plot_panel.setMinimumHeight(300)
+        self.plot_panel.setMinimumHeight(220)
+        self.plot_panel.setMaximumHeight(320)
         self.plot_panel.compact()
         for combo in (self.plot_panel.table, self.plot_panel.column, self.plot_panel.hist):
             combo.currentTextChanged.connect(self._view_changed)
@@ -666,7 +719,9 @@ class CellWidget(QtWidgets.QFrame):
     # ----------------------------------------------------------- state
     def update_state(self, data=None):
         c = self.cell
-        self.counter.setText({"new": "[ ]", "stale": "[·]"}.get(c.state, f"[{c.count}]" if c.count else "[ ]"))
+        self.counter.setText({"new": "", "stale": "·"}.get(c.state, str(c.count) if c.count else ""))
+        self.counter.setToolTip({"new": "Not run yet", "stale": "Out of date: an earlier cell changed",
+                                 "error": "Failed"}.get(c.state, f"Run {c.count}" if c.count else ""))
         self.setProperty("state", c.state)
         if c.kind == "markdown":
             return
@@ -708,8 +763,16 @@ class CellWidget(QtWidgets.QFrame):
         self.outputs.set_outputs([o for o in c.outputs if o.kind == "error"])
         self._repolish()
 
+    def set_running(self):
+        self.counter.setText("*")
+        self.counter.setToolTip("Running")
+        self.setProperty("state", "running")
+        self._repolish()
+        self.counter.repaint()
+
     def set_current(self, on: bool):
         self.setProperty("current", on)
+        self._show_controls()
         self._repolish()
 
     def _repolish(self):
@@ -770,6 +833,79 @@ def fill_view_menu(menu, data, add):
 
 
 # ---------------------------------------------------------------- one notebook
+class _FlowLayout(QtWidgets.QLayout):
+    """Lays its items out in rows that wrap at the available width (the add-cell bar)."""
+
+    def __init__(self, parent=None, spacing=6):
+        super().__init__(parent)
+        self._items = []
+        self._gap = spacing
+
+    def addItem(self, item):
+        self._items.append(item)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, i):
+        return self._items[i] if 0 <= i < len(self._items) else None
+
+    def takeAt(self, i):
+        return self._items.pop(i) if 0 <= i < len(self._items) else None
+
+    def expandingDirections(self):
+        return QtCore.Qt.Orientations()
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self._place(QtCore.QRect(0, 0, width, 0), move=False)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._place(rect, move=True)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QtCore.QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        m = self.contentsMargins()
+        return size + QtCore.QSize(m.left() + m.right(), m.top() + m.bottom())
+
+    def _place(self, rect, move):
+        m = self.contentsMargins()
+        r = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
+        x, y, row_h = r.x(), r.y(), 0
+        for item in self._items:
+            hint = item.sizeHint()
+            if x + hint.width() > r.right() + 1 and row_h:
+                x, y, row_h = r.x(), y + row_h + self._gap, 0
+            if move:
+                item.setGeometry(QtCore.QRect(QtCore.QPoint(x, y), hint))
+            x += hint.width() + self._gap
+            row_h = max(row_h, hint.height())
+        return y + row_h - rect.y() + m.bottom()
+
+
+class _ElidedLabel(QtWidgets.QLabel):
+    """A one-line label that shrinks with an ellipsis instead of pushing its neighbours."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
+        self.setMinimumWidth(0)
+
+    def paintEvent(self, event):
+        p = QtGui.QPainter(self)
+        text = self.fontMetrics().elidedText(self.text(), QtCore.Qt.ElideMiddle, self.contentsRect().width())
+        p.setPen(self.palette().color(QtGui.QPalette.WindowText))
+        p.drawText(self.contentsRect(), QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight, text)
+
+
 class _CellWorker(QtCore.QThread):
     """Runs cells that execute in a kernel off the GUI thread (the kernel does the work; this
     thread only waits for its answers)."""
@@ -810,6 +946,7 @@ class NotebookView(QtWidgets.QWidget):
         bar = QtWidgets.QHBoxLayout()
         bar.setContentsMargins(8, 6, 8, 6)
         self._worker = None
+        self._marked = []
         run_all = self.run_all_button = QtWidgets.QPushButton("Run all", objectName="primary",
                                                               toolTip="Restart and run every cell (Ctrl+Shift+Enter)")
         run_all.setProperty("ewald_icon", "play")
@@ -842,9 +979,8 @@ class NotebookView(QtWidgets.QWidget):
         bar.addWidget(restart)
         bar.addWidget(self.interrupt_button)
         bar.addWidget(self.kernel_button)
-        bar.addStretch()
-        self.status = QtWidgets.QLabel(objectName="muted")
-        bar.addWidget(self.status)
+        self.status = _ElidedLabel(objectName="muted")
+        bar.addWidget(self.status, 1)
         bar.addWidget(self.py_button)
         lay.addLayout(bar)
         self.banner = self._make_banner()
@@ -858,8 +994,8 @@ class NotebookView(QtWidgets.QWidget):
         self.scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)  # cells follow the width
         self.container = QtWidgets.QWidget(objectName="notebookPage")
         self.cells_layout = QtWidgets.QVBoxLayout(self.container)
-        self.cells_layout.setContentsMargins(8, 4, 8, 12)
-        self.cells_layout.setSpacing(8)
+        self.cells_layout.setContentsMargins(6, 6, 10, 16)
+        self.cells_layout.setSpacing(6)
         self.scroll.setWidget(self.container)
         self.container.setAcceptDrops(True)       # cells dragged by their ⠿ grip
         self.container.installEventFilter(self)
@@ -934,9 +1070,8 @@ class NotebookView(QtWidgets.QWidget):
 
     def _make_add_bar(self):
         w = QtWidgets.QWidget(objectName="addBar")
-        row = QtWidgets.QHBoxLayout(w)
-        row.setContentsMargins(0, 4, 0, 0)
-        row.setSpacing(6)
+        row = _FlowLayout(w, spacing=4)
+        row.setContentsMargins(GUTTER_WIDTH + 2, 2, 0, 0)  # lined up with the cell bodies
         code = QtWidgets.QPushButton("+ Code", objectName="addCell", toolTip="Python cell (Ctrl+Shift+N)")
         code.clicked.connect(lambda: self.add_cell("code"))
         step = QtWidgets.QPushButton("+ Step", objectName="addCell", toolTip="Add an analysis or modification step")
@@ -958,7 +1093,6 @@ class NotebookView(QtWidgets.QWidget):
         ask.clicked.connect(self.askRequested.emit)
         for b in (code, step, view, plugin, text, ask):
             row.addWidget(b)
-        row.addStretch()
         return w
 
     def add_view(self, **kwargs) -> Cell:
@@ -1142,7 +1276,19 @@ class NotebookView(QtWidgets.QWidget):
             w.code_button.setChecked(True)
         elif action == "below":
             self.run(cell, below=True)
+        elif action == "clear":
+            self.clear_outputs(cell)
+            return
         self.history.commit({"delete": "Delete cell", "up": "Move cell", "down": "Move cell"}.get(action, "Edit cell"))
+        self.titleChanged.emit()
+
+    def clear_outputs(self, cell=None):
+        """Clear outputs of ``cell`` or, with None, of the whole notebook (Notebook › Clear all outputs)."""
+        self.notebook.clear_outputs(cell)
+        for w in self.widgets if cell is None else [self.widget_for(cell)]:
+            if w is not None:
+                w.update_state(self.data)
+        self.changed.emit()
         self.titleChanged.emit()
 
     def move_cell(self, cell, before: int):
@@ -1211,7 +1357,9 @@ class NotebookView(QtWidgets.QWidget):
         kernel, so the window keeps responding and Interrupt can stop them."""
         if self.running:
             return
+        marked, self._marked = self._marked, []
         if self.notebook.kernel is None:
+            self._show_running(marked)
             self._busy(fn)
             self._after_run(before)
             if then:
@@ -1219,6 +1367,7 @@ class NotebookView(QtWidgets.QWidget):
             return
         worker = self._worker = _CellWorker(fn, self)
         self._set_running(True)
+        self._show_running(marked)
 
         def finished():
             self._worker = None
@@ -1230,6 +1379,13 @@ class NotebookView(QtWidgets.QWidget):
 
         worker.finished.connect(finished)
         worker.start()
+
+    def _show_running(self, cells):
+        """Mark the cells about to run (counter ``*``, like Jupyter) until their results arrive."""
+        for c in cells:
+            w = self.widget_for(c)
+            if w is not None and c.kind != "markdown":
+                w.set_running()
 
     def _set_running(self, on: bool):
         for w in (self.run_all_button, self.restart_button, self.kernel_button):
@@ -1297,6 +1453,7 @@ class NotebookView(QtWidgets.QWidget):
         go = None
         if cell in nb.cells and not nb.cells[nb.cells.index(cell)].kind == "markdown":
             start = nb.cells.index(cell)
+            self._marked = nb.cells[start:] if below else [cell]
             if below:
                 def go():
                     for k in range(start, len(nb.cells)):
@@ -1323,6 +1480,7 @@ class NotebookView(QtWidgets.QWidget):
         if not self._trusted():
             return
         before = self.notebook.pipeline
+        self._marked = list(self.notebook.cells)
         self._execute(self.notebook.run_all, before)
 
     def _trusted(self) -> bool:
@@ -1435,6 +1593,7 @@ class NotebookPanel(QtWidgets.QWidget):
             self.add_menu, self.add_modifier, self.view._step_context if self.view is not None else None))
         fill_modifier_menu(self.add_menu, self.add_modifier)
         self._switching = False
+        self.plot_style = ("publication", None)   # (style, tokens) of the cells' own matplotlib plots
         self.new_notebook()
 
     # ----------------------------------------------------------- tabs
@@ -1465,7 +1624,15 @@ class NotebookPanel(QtWidgets.QWidget):
             k += 1
         return f"Notebook {k}"
 
+    def set_plot_style(self, style: str = "publication", tokens: dict | None = None):
+        """Style of the plots cells draw themselves, in every open notebook and new ones
+        (``python.plot_style``; see :meth:`ewald.notebook.Notebook.set_plot_style`)."""
+        self.plot_style = (style, tokens)
+        for v in self.views():
+            v.notebook.set_plot_style(style, tokens)
+
     def add_notebook(self, nb: Notebook) -> NotebookView:
+        nb.set_plot_style(*self.plot_style)
         spec = (nb.metadata.get("ewald") or {}).get("kernel")
         if spec and nb.kernel is None:  # saved with a kernel: it starts when a cell runs
             from ..kernel import Kernel
