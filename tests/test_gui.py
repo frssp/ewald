@@ -93,8 +93,9 @@ def test_view_tab_surfaces_labels_transparency(app, pipe):
     assert panel.style.surfaces == {"coordination-polyhedra": {"visible": False, "transparency": 0.6}}
     atoms = panel.sections["Atoms"]
     [c for c in atoms.findChildren(QtWidgets.QCheckBox) if c.text() == "Draw atoms"][0].setChecked(False)
-    [c for c in atoms.findChildren(QtWidgets.QCheckBox) if c.text() == "Highlight selection"][0].setChecked(False)
-    field = [e for e in atoms.findChildren(QtWidgets.QLineEdit) if "{type}{index}" in e.placeholderText()][0]
+    labels = panel.sections["Labels"]
+    [c for c in labels.findChildren(QtWidgets.QCheckBox) if c.text() == "Highlight selection"][0].setChecked(False)
+    field = [e for e in labels.findChildren(QtWidgets.QLineEdit) if "{type}{index}" in e.placeholderText()][0]
     field.setText("{type}{index}")
     field.editingFinished.emit()
     panel.set_type_transparency("Cu", 0.5)
@@ -124,7 +125,7 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
     panel = DisplayPanel()
     panel.set_pipeline(pipe)
     panel.set_data(pipe.compute(0))
-    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Cell", "Surfaces", "Elements", "Camera"]
+    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Surfaces", "Cell", "Labels", "Camera", "Elements"]
     marked = lambda: {lab.text() if isinstance(lab, QtWidgets.QLabel) else lab.title() for lab, _ in panel._marks if lab.property("set")} - {""}
     assert not marked()
     view(pipe, radius_scale=0.4, boundary=[-0.1, 1.1], direction="z")
@@ -144,6 +145,33 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
     panel.modifierRequested.connect(asked.append)
     panel.add_modifier(mods.CoordinationAnalysis(3.0))  # a step goes to the notebook, not into the pipeline
     assert [type(m).__name__ for m in asked] == ["CoordinationAnalysis"] and pipe.modifiers == []
+    _dispose(panel)
+
+
+def test_view_tab_columns_fold_and_aligned_labels(app, pipe):
+    """The View tab lays its cards out in equal-width columns, every form label has one width (fields
+    line up across cards), and a folded card stays folded across rebuilds."""
+    from ewald.gui.pipeline_panel import DisplayPanel
+
+    panel = DisplayPanel()
+    panel.set_pipeline(pipe)
+    panel.set_data(pipe.compute(0))
+    page = panel.scroll.widget()
+    lay = page.layout()
+    width = 3 * lay._column + 2 * lay._gap + 20 + 40
+    page.resize(width, page.height())
+    lay.setGeometry(QtCore.QRect(0, 0, width, lay.heightForWidth(width)))
+    cards = list(panel.sections.values())
+    assert lay.columns(width) == 3 and len({c.x() for c in cards}) == 3 and len({c.width() for c in cards}) == 1
+    labels = [lab for lab, _ in panel._marks if isinstance(lab, QtWidgets.QLabel) and lab.objectName() == "viewLabel"
+              and lab.text() != "Pairs (cutoffs, * = any type)"]
+    assert len({lab.width() if lab.isVisible() else lab.maximumWidth() for lab in labels}) == 1
+    panel.set_folded("Bonds", True)
+    assert not panel.sections["Bonds"].content.isVisibleTo(panel.sections["Bonds"])
+    panel.refresh()
+    assert panel.sections["Bonds"].folded and not panel.sections["Bonds"].content.isVisibleTo(panel.sections["Bonds"])
+    panel.set_folded("Bonds", False)
+    assert panel.sections["Bonds"].content.isVisibleTo(panel.sections["Bonds"])
     _dispose(panel)
 
 
@@ -3430,3 +3458,68 @@ def test_plugin_settings_page_in_preferences_refuses_bad_values(app, monkeypatch
     test.click()
     assert entry["status"].text() == "reachable"
     dlg.close()
+
+
+def test_workflow_side_bar_lists_expands_and_opens_a_workflow_as_one_notebook(app, pipe, monkeypatch):
+    """A workflow source plus workflow_panel(): the side bar follows an empty search page, expands
+    a workflow into its nested steps and outputs, and a double click opens it as one notebook
+    with a variable per step and pipe on the main result."""
+    from ase.build import bulk
+
+    from ewald import plugins, workflow
+    from ewald.data import DataCollection
+    from ewald.gui.app import MainWindow
+    from ewald.workflow import Workflow, WorkflowOutput, WorkflowPage, WorkflowStep
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    monkeypatch.setattr(plugins._registry, "loaded", True)
+
+    def full():
+        return Workflow("relax", id="7", path="demo:7/relax", kind="vasp_relax", formula="Si2", state="finished",
+                        label="Si relax", complete=True,
+                        steps=[WorkflowStep("relax", path="demo:7/relax", state="finished", runs=2,
+                                            outputs=[WorkflowOutput("vasprun.xml", "demo:7/relax/vasprun.xml")]),
+                               WorkflowStep("bands", steps=[WorkflowStep("scf", path="demo:7/bands/scf",
+                                                                         state="finished")])])
+
+    class Demo:
+        schemes = ("demo",)
+
+        def account(self):
+            return "me at demo"
+
+        def list(self, query=None, cursor=None):
+            if cursor is None:
+                return WorkflowPage([], next="1")
+            return WorkflowPage([Workflow("relax", id="7", path="demo:7/relax", kind="vasp_relax",
+                                          state="finished")], next="2" if cursor == "1" and query is None else None)
+
+        def describe(self, ref):
+            return full()
+
+    plugins.register_reader("demo", lambda path, **kw: [DataCollection.from_ase(bulk("Si"))], schemes=("demo",))
+    plugins.register_workflow_source("demo", Demo, title="Demo")
+    plugins.register_panel("demo", workflow.workflow_panel("demo", title="Demo"))
+    w = MainWindow(pipe)
+    w.show_plugin_panel("demo")
+    side = w.plugin_panels["demo"]["dock"].widget()
+    side.wait()
+    assert side.who.text() == "me at demo" and side.login_button.isHidden()
+    top = side.tree.topLevelItem(0)
+    assert side.tree.topLevelItemCount() == 1 and top.text(0) == "vasp_relax  <7>  ✓" and not side.more.isHidden()
+    top.setExpanded(True)
+    side.wait()
+    assert [top.child(i).text(0) for i in range(top.childCount())] == ["relax  (2 runs)  ✓", "bands"]
+    assert top.child(1).child(0).text(0) == "scf  ✓" and top.child(0).child(0).text(0) == "vasprun.xml"
+    side.tree.setCurrentItem(top.child(1).child(0))
+    assert side.path.text() == "demo:7/bands/scf" and side.buttons["Open"].isEnabled()
+    tabs = w.panel.tabs.count()
+    side.tree.setCurrentItem(top)
+    view = side.open(top)
+    assert w.panel.tabs.count() == tabs + 1 and view.notebook.name == "Si relax"   # the pipe's notebook stays
+    ns = view.notebook.namespace
+    assert ns["pipe"] is ns["relax"] and ns["scf"].num_frames == 1 and w.pipeline is ns["relax"]
+    side.search.setText("Si")
+    side.refresh()
+    side.wait()
+    assert side.tree.topLevelItemCount() == 1 and side.more.isHidden()

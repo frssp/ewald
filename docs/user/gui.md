@@ -114,6 +114,15 @@ under Window › Plugin panels, and a plugin with settings adds its own page to 
 Switching the plugin off in the Plugins side bar removes both; its settings are kept for when
 it comes back ([Side bar plugins](../plugins/gui.md)).
 
+**Workflow side bars.** Plugins that read finished calculations (sim-agent, AiiDA) share one
+side bar layout: the account, a search box that also takes an id, and the workflows newest
+first. Expanding a workflow lists its steps (restarts of one calculation joined, sub-workflows
+nested) with their files and structures. A double click on a step or output opens it; on a
+workflow it opens the whole workflow as one notebook, with a `load` cell per step
+(`relax = load(...)`, `scf = load(...)`) and `pipe` on the main result. To look at another step
+in the 3D view, run `pipe = scf`; `show(scf, ...)` puts it in a view cell next to the others
+([Workflow sources](../plugins/workflows.md)).
+
 **AI chat (Ask AI).** The AI button at the bottom of the activity bar on the far left (also
 Window › AI chat, Ctrl+J, and Ask AI in the Structure view's right-click menu) opens a chat side bar left of the
 notebook. It reads like a
@@ -152,18 +161,22 @@ modifier's constructor, so every argument you can pass in Python can be edited t
 [Notebooks](notebooks.md).
 
 **View tab (display settings).** The View tab, next to the Python console below the Structure view
-(Window › View settings), shows how the structure is drawn as cards side by side: **Atoms** (style
-preset, radius scale, radius table, oxidation states, how atoms are drawn, *Draw atoms* off for a
-stick model, atom *Labels* such as `{type}{index}`, *Highlight selection*), **Types** (color, radius,
-transparency and count per type, VESTA elements.ini import), **Bonds** (sticks, the pair table, *As
-step* for a Create bonds step), **Cell** (line width and VESTA's boundary range), **Surfaces**
-(polyhedra, isosurfaces and slices that steps made, by name: shown, color, transparency, edges;
-*Reset* gives back the step's look), **Elements** ([visual element
-plugins](../plugins/visuals.md), added with *Add element*) and **Camera**. Every value is a setting of
+(Window › View settings), shows how the structure is drawn as cards in equal-width columns:
+**Atoms** (style preset, radius table, radius scale, oxidation states, how atoms are drawn, *Draw
+atoms* off for a stick model), **Types** (color, radius, transparency and count per type, VESTA
+elements.ini import), **Bonds** (sticks, the pair table, *As step* for a Create bonds step),
+**Surfaces** (polyhedra, isosurfaces and slices that steps made, by name: shown, color,
+transparency, edges; *Reset* gives back the step's look), **Cell** (line width, *Replicate cell* and
+VESTA's *Boundary* range), **Labels** (text on each atom such as `{type}{index}`, *Highlight
+selection*), **Camera** (what the view cell says about the camera and frame, the key *Light*, *Save
+camera*) and **Elements** ([visual element plugins](../plugins/visuals.md), added with *Add
+element*). Every form shares one label column, so fields line up across cards; sub-sections such as
+Replicate cell, Boundary and Light show their rows only while ticked. Click a card's title to fold
+it (it stays folded while the window is open). Every value is a setting of
 the notebook's `view(pipe, ...)` cell: the rows the cell sets are highlighted, the card says *in
 notebook*, and the tooltip shows the value. A change made here is written back into that cell, and
 a change made in code (the cell, the console, Ask AI) shows up here. When the tab is narrow (dragged
-beside the 3D view), the cards stack.
+beside the 3D view), the cards stack in one column.
 
 The boundary range: tick Boundary and set the fractional range (e.g. -0.1 to 1.1) to draw the
 periodic images of atoms on the faces, edges and corners, with bonds and polyhedra completed across

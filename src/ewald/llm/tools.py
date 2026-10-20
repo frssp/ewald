@@ -918,6 +918,37 @@ class Toolset:
 
             return api_reference()
 
+        @T("list_workflows",
+           "Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs) of an installed workflow "
+           "source, newest first: id, kind, formula, state and the path that opens each. 'search' filters by "
+           "words. Then describe_workflow(path) lists its steps and outputs.",
+           _obj({"source": {"type": "string", "description": "source name (default: the only one installed)"},
+                 "search": {"type": "string"}}))
+        def list_workflows(source=None, search=None):
+            sources = plugins.workflow_sources()
+            if source is None and len(sources) == 1:
+                source = next(iter(sources))
+            if source not in sources:
+                raise ValueError(f"name a source: one of {sorted(sources)}")
+            page = sources[source].list(query=search or None)
+            return {"source": source, "workflows": [
+                {k: v for k, v in (("id", w.id), ("kind", w.kind), ("formula", w.formula), ("state", w.mark()),
+                                   ("label", w.label), ("ctime", w.ctime), ("path", w.path)) if v}
+                for w in page.workflows[:50]], "more": bool(page.next)}
+
+        @T("describe_workflow",
+           "Steps of a workflow (nested; restarts joined), their states, numbers (energies, gaps) and outputs, "
+           "each with the path load_structure opens. 'path' is a workflow path such as simagent:1234 or "
+           "aiida:1234.",
+           _obj({"path": {"type": "string"}}, ["path"]))
+        def describe_workflow(path):
+            from .. import workflow
+
+            return workflow.describe(str(path)).as_dict()
+
+        for name in ("list_workflows", "describe_workflow"):
+            self.tools[name].available = lambda: bool(plugins.workflow_sources())
+
         for plugin in plugins.tools().values():  # @claude_tool plugins; built-in names win
             if plugin.name not in self.tools:
                 self.tools[plugin.name] = Tool(plugin.name, plugin.description, plugin.schema,

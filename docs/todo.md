@@ -10,6 +10,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- View tab: folded cards are remembered only while the window is open (not in settings or the
+  layout file); no Fold all / Unfold all; a card has no per-card reset to defaults.
+
+- Workflows (`ewald.workflow`): a table that compares the scalars of every step of a workflow
+  (energies, gaps, forces) and of several workflows side by side, and opening one step's input
+  next to its output (INCAR/KPOINTS as text cells).
 
 Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; numbers from
 `benchmarks/analysis.py`, `benchmarks/large_files.py` and the GUI under `xvfb-run`)
@@ -76,7 +82,7 @@ GUI
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
   view does not have yet (picks as code, the viewport axes widget; measurement labels in the
   legacy OpenGL 1.x viewport, and lines that show through atoms; audit in the project files `ewald-review/view-elements-audit.md`);
-  the Display panel cards (Atoms, Types, Bonds, Cell, Surfaces, Elements) could take the visual
+  the View tab cards (Atoms, Types, Bonds, Surfaces, Cell, Labels, Camera, Elements) could take the visual
   element names `pipe.view.elements` uses (Particles, Bonds, Simulation cell, ...); label size,
   color and types and the selection color are code only (the cards show on/off and the text); the camera reaches the view cell
   only through Insert › View settings with the camera (not on every rotation); the Render page
