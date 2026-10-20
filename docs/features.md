@@ -690,7 +690,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - New plot view
 - Log
 - AI chat
-- Command palette
+- Command palette (`Ctrl+K`)
 
 **Help**
 

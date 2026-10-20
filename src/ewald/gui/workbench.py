@@ -220,6 +220,7 @@ class Workbench(QtWidgets.QWidget):
         self.layout = Layout()
         self.panel_collapsed = False
         self.maximized: int | None = None
+        self._max_hid_panel = False    # a maximized editor group hid the panel (shown again on restore)
         self.active: Group | None = None
         self._groups: dict[int, TabGroup] = {}
         self._splitters: list[tuple[QtWidgets.QSplitter, Split]] = []
@@ -429,6 +430,7 @@ class Workbench(QtWidgets.QWidget):
     def reset(self):
         self.layout = self.default_layout()
         self.maximized = None
+        self._max_hid_panel = False
         self.panel_collapsed = False
         self.panel_host.show()
         self._rebuild()
@@ -523,6 +525,13 @@ class Workbench(QtWidgets.QWidget):
                     self._groups[g.id].hide()
         for g in self.layout.groups("panel"):
             self._groups[g.id].setVisible(not hidden_editor or g is maxi)
+        editor_max = maxi is not None and not hidden_editor  # the panel goes too, as in "maximize"
+        if editor_max and not self._max_hid_panel:
+            self._max_hid_panel = not self.panel_host.isHidden()
+            self.panel_host.hide()
+        elif not editor_max and self._max_hid_panel:
+            self._max_hid_panel = False
+            self.panel_host.show()
         if self.panel_collapsed:
             h = max(self._groups[g.id].bar.sizeHint().height() for g in self.layout.groups("panel")) + 2
             self.panel_host.setMaximumHeight(max(h, 24))

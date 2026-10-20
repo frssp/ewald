@@ -6,7 +6,7 @@ import pytest
 pytest.importorskip("PySide6")
 # the main-window test needs a real X server (OpenGL widgets); everything else runs offscreen
 os.environ.setdefault("QT_QPA_PLATFORM", "xcb" if os.environ.get("DISPLAY") else "offscreen")
-from PySide6 import QtCore, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 from ewald import Pipeline, StaticSource  # noqa: E402
 from ewald import modifiers as mods  # noqa: E402
@@ -1494,6 +1494,25 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert [m.name for m in w2.pipeline.modifiers] == ["CoordinationAnalysis"]
     w2.close()
 
+    w3 = MainWindow(settings=settings.Settings())             # Yes when opening: trusted, the bar goes away
+    view = w3.open_notebook(str(path))
+    assert not view.notebook.restricted and view.banner.isHidden()
+    assert view.notebook.cells[0].state == "ok" and [m.name for m in w3.pipeline.modifiers] == ["CoordinationAnalysis"]
+    w3.close()
+
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.No)
+    w4 = MainWindow(settings=settings.Settings())             # No when opening, then the bar's Trust button
+    view = w4.open_notebook(str(path))
+    w4.show()
+    app.processEvents()
+    assert view.notebook.restricted and view.banner.isVisible()
+    buttons = {b.text(): b for b in view.banner.findChildren(QtWidgets.QPushButton)}
+    buttons["Trust and run all"].click()
+    app.processEvents()
+    assert not view.notebook.restricted and not view.banner.isVisible()
+    assert view.notebook.cells[0].state == "ok" and [m.name for m in w4.pipeline.modifiers] == ["CoordinationAnalysis"]
+    w4.close()
+
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_ewd_offers_to_install_the_pip_packages_it_needs(app, cu_path, tmp_path, monkeypatch):
@@ -2108,7 +2127,9 @@ def test_workbench_drag_plot_over_3d_view(app, pipe):
     acts["Maximize group"].trigger()
     settle()
     assert wb.is_shown(p2) and not wb.is_shown(vp) and vp.parked
+    assert not wb.panel_host.isVisible()                   # the panel makes room too
     acts["Maximize group"].trigger()
+    assert wb.panel_host.isVisible()
     acts["Move view down"].trigger()                       # from the editor area into the panel
     settle()
     assert wb.layout.area_of(wb.group_of(p2)) == "panel" and not vp.parked
@@ -2206,6 +2227,9 @@ def test_notebook_cells_sit_at_the_top(app):
     w.show()
     for _ in range(3):
         app.processEvents()
+    QtCore.QThread.msleep(100)  # let wrapped editors settle their height for the final width
+    for _ in range(5):
+        app.processEvents()
     view = w.panel.view
     for cell in view.widgets:                               # spare height goes below the cells
         assert cell.height() <= cell.sizeHint().height() + 2
@@ -2234,8 +2258,9 @@ def test_panel_headers_line_up_and_buttons_use_icons(app, pipe):
     app.processEvents()
     bars = [d.titleBarWidget() for d in w.findChildren(QtWidgets.QDockWidget) if d.isVisible()]
     nb_bar = w.notebook_dock.titleBarWidget()
-    assert nb_bar.height() == 0 and nb_bar.merged  # the notebook tabs carry its fold and float buttons
-    heads = [b for b in bars if b is not nb_bar] + [w.panel.tabs.tabBar()]
+    tabs = w.panel.tabs
+    assert tabs.row.parent() is nb_bar and not nb_bar.title.isVisible()  # the tab row is the title bar
+    heads = bars + [tabs.tabBar()]
     heads += [g.head for g in w.workbench.findChildren(QtWidgets.QWidget) if hasattr(g, "head") and g.isVisible()]
     assert len(heads) >= 3
     assert {h.height() for h in heads} <= {header.height(), header.height() + 1}
@@ -2244,12 +2269,25 @@ def test_panel_headers_line_up_and_buttons_use_icons(app, pipe):
     for b in w.findChildren(QtWidgets.QAbstractButton):
         symbols = [c for c in b.text() if unicodedata.category(c) == "So" or 0x2190 <= ord(c) <= 0x2BFF]
         assert not symbols, (b.objectName(), b.toolTip(), b.text())
-    nb_bar.merged[0].click()  # fold from the tab row: the strip with the name comes back
+    bar = tabs.tabBar()
+    empty = QtCore.QPointF(bar.width() - 5, bar.height() / 2)  # right of the last tab
+    assert bar.tabAt(empty.toPoint()) < 0
+    press = QtGui.QMouseEvent(QtCore.QEvent.MouseButtonPress, empty, bar.mapToGlobal(empty),
+                              QtCore.Qt.LeftButton, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier)
+    bar.mousePressEvent(press)
+    assert not press.isAccepted()  # left to the dock title bar, which starts the panel drag
+    w.panel.new_notebook()
+    first, second = tabs.widget(0), tabs.widget(1)
+    bar.moveTab(1, 0)  # reordering tabs reorders the pages with them
+    assert tabs.widget(0) is second and tabs.currentWidget() is tabs.widget(bar.currentIndex())
+    tabs.setCurrentWidget(first)
+    assert tabs.currentWidget() is first and tabs.indexOf(first) == 1
+    nb_bar.fold.click()  # folding leaves the strip with the name
     app.processEvents()
-    assert nb_bar.collapsed and nb_bar.height() > 0 and nb_bar.vtitle.isVisible()
+    assert nb_bar.collapsed and nb_bar.vtitle.isVisible() and not tabs.row.isVisible()
     nb_bar.toggle()
     app.processEvents()
-    assert not nb_bar.collapsed and nb_bar.height() == 0
+    assert not nb_bar.collapsed and tabs.row.isVisible() and not nb_bar.vtitle.isVisible()
     tl = w.timeline
     tl.play.setChecked(True)
     assert tl.play.property("ewald_icon") == "pause"
@@ -2310,4 +2348,23 @@ def test_viewport_tools_pick_and_measure_with_real_clicks(app, pipe):
     for i in atoms:
         click(i)
     assert vp.picks == atoms and "°" in w.pick_label.text()
+    w.close()
+
+
+def test_menu_audit_fixes(app, cu_fcc):
+    """Insert › Analysis greys out trajectory analyses for one frame; the palette lists each step
+    once (Insert › Step) and Window › Command palette carries Ctrl+K."""
+    from PySide6 import QtGui
+
+    from ewald.gui.app import MainWindow
+    from ewald.gui.palette import menu_entries
+
+    w = MainWindow(Pipeline(StaticSource([cu_fcc])))
+    w.analysis_menu.aboutToShow.emit()
+    state = {a.data(): a.isEnabled() for a in w.analysis_menu.actions()}
+    assert state["msd"] is False and state["vacf"] is False and state["rdf"] is True
+    labels = [label for label, path, _ in menu_entries(w.menuBar()) if path.startswith("Insert › Step")]
+    assert labels and len(labels) == len(set(labels))
+    pal = next(a for a in w.menuBar().findChildren(QtGui.QAction) if a.text() == "Command palette")
+    assert pal.shortcut() == QtGui.QKeySequence("Ctrl+K")
     w.close()

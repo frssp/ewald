@@ -95,8 +95,8 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
             self.panel.askRequested.connect(self.ask_claude)
             self.panel.plotCreated.connect(self._connect_plot)
             self.notebook_dock = self._dock(self.panel, "Notebook", QtCore.Qt.LeftDockWidgetArea, 560)
-            # the notebook tabs name the panel: no separate "Notebook" title row while it is open
-            self.notebook_dock.titleBarWidget().merge_into(self.panel.tabs.corner_layout)
+            # the notebook tab row is the panel's title bar: drag its empty part to move the panel
+            self.notebook_dock.titleBarWidget().embed(self.panel.tabs.row)
             if not prefs.layout_path(self.settings).exists():  # first start: a wide notebook
                 QtCore.QTimer.singleShot(0, lambda: self.resizeDocks([self.notebook_dock], [640], QtCore.Qt.Horizontal))
             # VS Code-like activity bar: the Plugins side bar opens beside the notebook
@@ -170,7 +170,6 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.statusBar().addPermanentWidget(self.hover_label)
         self.statusBar().addPermanentWidget(self.status)
         QtGui.QShortcut(QtGui.QKeySequence("Space"), self.viewport, activated=self.timeline.play.toggle)
-        QtGui.QShortcut(QtGui.QKeySequence("Ctrl+K"), self, activated=self.command_palette)
         QtGui.QShortcut(QtGui.QKeySequence("Alt+Right"), self, activated=self.timeline.next.click)
         QtGui.QShortcut(QtGui.QKeySequence("Alt+Left"), self, activated=self.timeline.prev.click)
         prefs.apply_settings(self, self.settings, startup=True)

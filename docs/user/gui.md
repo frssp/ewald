@@ -50,7 +50,7 @@ finds them too:
 | --- | --- |
 | Split the current view to the right | Ctrl+Alt+\ |
 | Move the current view to the next group (or split that way) | Ctrl+Alt+arrow |
-| Maximize or restore the group | Ctrl+Alt+M |
+| Maximize or restore the group (an editor group also hides the panel below) | Ctrl+Alt+M |
 | Return the view to its home area, or close an extra plot view | Ctrl+Alt+W |
 | Fold or unfold the panel | Ctrl+Alt+J |
 | Back to the default layout | View › Layout › Reset layout |

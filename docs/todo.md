@@ -28,6 +28,19 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 
 GUI
 
+- Menu cleanup (audit 2026-10-20, waiting for the owner's choice): merge the three menu-bar Ask
+  Claude entries (Tools › Ask Claude about selection, Window › AI chat, Insert › Ask Claude to add
+  steps) into one; drop Notebook › Restart and run all (Run all already restarts); keep one Load
+  plugin file and one Open plugin folder (now in Insert, Insert › Plugin step and Help); fold View ›
+  Dark/White background into View › Theme or the Display panel; move File › Load/Save session
+  (.ewald) under an Import/Export submenu in the notebook layout; grey out Insert › Step entries
+  whose input is missing (Volume steps without a grid, vector arrows without a vector property,
+  bond analyses without bonds, trajectory steps for one frame, Load trajectory and Combine
+  datasets without a file) with the reason as tooltip; let bond analyses use the view's bonds or
+  add `CreateBonds` themselves; give Coordination polyhedra a default center type; View ›
+  Layout moves do nothing when the 3D view is alone in the editor area (say so, or act on the
+  focused panel view); the command palette misses entries that menus fill when opened (Insert ›
+  View, Kernel, Plugin step).
 - Panel layout (phase 1 landed: `gui/workbench.py`, `gui/layout_model.py`; plan in project
   files `design/panel-layout.md`): phase 2 opens a notebook view cell's plot large in the
   editor area ("Open large" or drag the cell header, a Bring back placeholder in the cell, the
@@ -97,9 +110,8 @@ GUI
 - Panel headers (`gui/header.py`): checked under xvfb with Windows-like scale factors (100, 125,
   150 %) only; check on a real Windows machine (Segoe UI, per-monitor DPI) and macOS. The Display
   side bar still crowds its form below about 260 px, and the view bar cuts "View along" when the
-  3D view is narrow (could fold into a menu). The Notebook panel has no title row while docked (its tab row
-  carries fold and float), so it moves to another side only by floating it first; dragging
-  the empty part of the tab row could start the dock drag.
+  3D view is narrow (could fold into a menu). The add-cell row (+ Code ... + Ask Claude) clips its
+  labels when the Notebook panel is at its minimum width.
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
   Add modification for the loaded data, view-along buttons hidden without a cell, the timeline
   folded for a single structure, a right-click menu on pipeline items.

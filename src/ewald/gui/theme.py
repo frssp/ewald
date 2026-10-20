@@ -320,11 +320,10 @@ QPushButton#addCell {{ background: transparent; border: 1px solid transparent; b
     color: {secondary}; font-weight: normal; }}
 QPushButton#addCell:hover {{ background: {accent_soft}; color: {accent}; }}
 QPushButton#addCell::menu-indicator {{ image: none; width: 0; }}
-QTabWidget#notebookTabs QTabBar::tab {{ font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", monospace;
+QTabBar#notebookTabBar::tab {{ font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", monospace;
     padding: 0 12px; }}
-QTabWidget#notebookTabs QTabBar::tab:selected {{ color: {accent}; border-bottom: 2px solid {accent}; font-weight: 600; }}
-QTabWidget#notebookTabs > QTabBar, QWidget#tabCorner {{ background: {bg}; }}
-QTabWidget#notebookTabs::pane {{ border: none; border-top: 1px solid {border}; }}
+QTabBar#notebookTabBar::tab:selected {{ color: {accent}; border-bottom: 2px solid {accent}; font-weight: 600; }}
+QWidget#notebookTabRow, QTabBar#notebookTabBar {{ background: transparent; }}
 QWidget#chatPanel, QWidget#chatPage, QScrollArea#chatScroll, QWidget#chatWelcome {{ background: {bg}; }}
 QLabel#chatContext {{ color: {muted}; background: transparent; font-size: 11px; }}
 QLabel#chatContext[picked="true"] {{ color: {pick}; }}

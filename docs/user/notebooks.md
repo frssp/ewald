@@ -171,7 +171,10 @@ pipeline. The `.py` button at the top shows the whole file.
 ## Notebook tabs
 
 Each open notebook has a tab at the top of the notebook panel. **+** or
-File › New notebook (Ctrl+T) opens an empty one. Right-click a tab to rename or close it, or double-click it to rename.
+File › New notebook (Ctrl+T), or a double-click on the empty part of the tab row, opens an empty one.
+Right-click a tab to rename or close it, or double-click it to rename. Drag a tab along the row to reorder
+the notebooks; drag the empty part of the row to move the whole Notebook panel to another side of the window,
+as with any panel's title bar.
 A dot marks unsaved changes. Each notebook has its own namespace and pipeline, and switching to
 a notebook that has a pipeline shows it in the viewport.
 
@@ -232,7 +235,8 @@ An `.ewd` from someone else opens **restricted**. You see its code, outputs and 
 cell runs and its plugins are not imported until you agree: opening asks (unless *Run notebooks
 when opened* is *never*), and so do Run all and running a single cell. A bar over the cells
 says the notebook is restricted, with *Trust* and *Trust and run all*; Notebook › *Trust
-notebook…* does the same. A plugin you already have installed under the
+notebook…* does the same. Answering *Yes* when the file opens trusts it too and hides the bar. Trust lasts while
+the notebook is open; opening the file again asks again. A plugin you already have installed under the
 same id is used instead of the copy in the file. Plugins that came from a pip package are not
 in the file, only their package and version: when you don't have one, a second bar names it with
 the steps that need it, and *Install…* runs pip for them in the Plugins side bar after you
