@@ -33,7 +33,9 @@ CELL_BUDGET: float | None = 0.1
 
 
 class _ElidedLabel(QtWidgets.QLabel):
-    """A one-line label that shrinks with an ellipsis instead of pushing its neighbours."""
+    """A one-line label that shrinks instead of pushing its neighbours: a "a · b · c" text drops
+    whole parts from the end ("a · b", then "a") before anything is elided, so a narrow column
+    never shows a clipped "n…d" (the tooltip keeps the details)."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -42,9 +44,19 @@ class _ElidedLabel(QtWidgets.QLabel):
 
     def paintEvent(self, event):
         p = QtGui.QPainter(self)
-        text = self.fontMetrics().elidedText(self.text(), QtCore.Qt.ElideMiddle, self.contentsRect().width())
+        text = self.shown_text()
         p.setPen(self.palette().color(QtGui.QPalette.WindowText))
         p.drawText(self.contentsRect(), QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight, text)
+
+    def shown_text(self) -> str:
+        """The text as it fits the current width."""
+        fm, width = self.fontMetrics(), self.contentsRect().width()
+        parts = self.text().split(" · ")
+        for k in range(len(parts), 0, -1):
+            text = " · ".join(parts[:k])
+            if fm.horizontalAdvance(text) <= width:
+                return text
+        return ""
 
 
 class _CellWorker(QtCore.QThread):

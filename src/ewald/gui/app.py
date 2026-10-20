@@ -19,7 +19,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from .. import modifiers as mods
 from ..raytrace import RenderCancelled
 from ..render import camera_state, render
-from .busy import busy
+from .busy import busy, finish_orphans
 from .ask_panel import AskPanel, agent_from_settings, code_cells_mode
 from .collapsible import make_collapsible
 from .compute import ComputeRunner, warm_up_jit
@@ -645,6 +645,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
             return
         self.cancel_render()               # a ray trace still running stops after its current rows
         self.wait_render()
+        finish_orphans()                   # an open or SSH call the user cancelled
         prefs.save_layout(self, self.settings)
         for view in self.panel.views():
             if view.notebook.kernel is not None:

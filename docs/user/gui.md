@@ -308,6 +308,12 @@ current frame or the whole trajectory through `export_file`, and File › Export
 MP4 or GIF (needs the `movie` extra). File › Live reload turns following a growing trajectory
 on or off for the session; the default and the interval are in Preferences › General.
 
+Opening a file, connecting to a remote computer, listing its folders and downloading run off the
+window's thread: the status line says what is being waited for, and anything slower than a
+moment brings up a small dialog with a busy bar and *Cancel* (or Esc), which gives the window
+back at once. A cancelled SSH connect still runs out its timeout in the background, and its
+result is dropped.
+
 File › Load remote file (SSH) browses a folder on another machine once. For machines you use
 often, the Remotes side bar (the monitor icon in the activity bar, or File › Remote computers,
 Ctrl+Alt+R) keeps saved remote computers with their login, jump host, start folder and
