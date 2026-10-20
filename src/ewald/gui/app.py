@@ -29,6 +29,7 @@ from .notebook_panel import NotebookPanel
 from .pipeline_panel import DisplayPanel
 from .plots import PlotsPanel
 from . import preferences as prefs
+from . import workers
 from .remotes_panel import install as install_remotes
 from .render_page import RenderPage
 from .style import ViewStyle
@@ -571,7 +572,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         if kw.get("renderer") == "raytrace" and RENDER_IN_BACKGROUND:
             page.set_busy("Ray tracing…")
             self.message(f"Ray tracing {name}…")
-            worker = self._render_worker = _RenderWorker(call, self)
+            worker = self._render_worker = workers.detach(_RenderWorker(call))  # the window may close first
             worker.done.connect(lambda img, error: self._page_rendered(out, img, error))
             worker.start()
             return
@@ -585,7 +586,6 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
     def _page_rendered(self, out, img, error):
         if self._render_worker is not None:
             self._render_worker.wait()
-            self._render_worker.deleteLater()
         self._render_worker = None
         self.render_page.set_busy("")
         if error:

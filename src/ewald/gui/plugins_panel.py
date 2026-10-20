@@ -406,7 +406,7 @@ class PluginsPanel(QtWidgets.QWidget):
             self._run_pip("update" if update else "install", entry.source[4:], key=key, busy=f"{verb}…")
             return
         old = pc.match(entry, self.items) if update else None
-        worker = _FetchWorker(entry, self)
+        worker = workers.detach(_FetchWorker(entry))  # may outlive the panel
         worker.fetched.connect(lambda path, error: self._fetched(worker, entry, update, old, path, error))
         self._workers.append(worker)
         self._set_busy(key, f"{verb}…", f"{verb} {entry.name}…")
