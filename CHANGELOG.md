@@ -7,6 +7,12 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ## [Unreleased]
 
+### Fixed
+
+- Plugin index and example downloads trust the OS certificate store (`truststore`), so they work behind a
+  company proxy that re-signs HTTPS ("certificate verify failed"). In a uv environment without pip, the
+  Plugins panel installs with `uv pip ... --system-certs`.
+
 ### Changed
 
 - Phonon support (phonopy and VASP IBRION=5-8 readers, `PhononMode`) and PLUMED support (`Plumed`,

@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import ast
 import base64
+import importlib.util
 import json
 import os
 import shutil
@@ -46,6 +47,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import plugins
+from ._tls import ssl_context
 
 KINDS = ("modifier", "reader", "writer", "visual", "overlay", "colormap", "theme", "tool", "ui_theme", "ai_provider")
 _DECORATORS = {k: k for k in KINDS} | {f"register_{k}": k for k in KINDS} | {"claude_tool": "tool", "ai_tool": "tool"}
@@ -293,7 +295,7 @@ def _request(url: str) -> urllib.request.Request:
 
 def _read(source: str, timeout: float) -> str:
     if "://" in source:
-        with urllib.request.urlopen(_request(source), timeout=timeout) as r:  # noqa: S310 (user-configured URL)
+        with urllib.request.urlopen(_request(source), timeout=timeout, context=ssl_context()) as r:  # noqa: S310 (user-configured URL)
             return r.read().decode("utf-8")
     return Path(source).expanduser().read_text(encoding="utf-8")
 
@@ -391,13 +393,18 @@ def remove_file(item: Installed) -> Path:
 
 def pip_command(action: str, requirement: str | list[str]) -> list[str]:
     """``python -m pip install|uninstall ...`` for the Python ewald runs in; ``"update"``
-    installs with ``--upgrade``. ``requirement`` may be a list (several packages at once)."""
+    installs with ``--upgrade``. ``requirement`` may be a list (several packages at once).
+    An environment made by uv has no pip: then ``uv pip ... --python <this python>`` is used, with
+    ``--system-certs`` so a company proxy's root certificate (in the OS store) is trusted."""
     reqs = [requirement] if isinstance(requirement, str) else list(requirement)
-    if action == "install":
-        return [sys.executable, "-m", "pip", "install", *reqs]
-    if action == "update":
-        return [sys.executable, "-m", "pip", "install", "--upgrade", *reqs]
-    return [sys.executable, "-m", "pip", "uninstall", "-y", *reqs]
+    flags = {"install": ["install"], "update": ["install", "--upgrade"], "uninstall": ["uninstall", "-y"]}
+    verb, *rest = flags[action if action in flags else "uninstall"]
+    if importlib.util.find_spec("pip") is None and (uv := shutil.which("uv")):
+        extra = [] if verb == "uninstall" else ["--system-certs"]
+        if verb == "uninstall":
+            rest = []                                    # uv pip uninstall has no -y
+        return [uv, "pip", verb, "--python", sys.executable, *extra, *rest, *reqs]
+    return [sys.executable, "-m", "pip", verb, *rest, *reqs]
 
 
 def pip_env(requirement: str | list[str]) -> dict:
