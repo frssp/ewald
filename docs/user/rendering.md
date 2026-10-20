@@ -34,7 +34,7 @@ print(pipe.view.source())                     # the same as a view(pipe, ...) li
 | Group | Settings |
 |---|---|
 | style | `style` (Ball & stick, Space-filling, Simple (ASE), Points), `theme`, `atom_style` (auto, mesh, impostor, flat), `background` |
-| atoms | `atoms` (False: a stick model), `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `transparency` {type: 0..1}, `selection` (True: selected atoms red, False, or a color), `radius_preset`, `oxidation_states` |
+| atoms | `atoms` (False: a stick model), `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `transparency` {type: 0..1}, `selection` (True: selected atoms red, False, or a color), `labels` (atom labels), `radius_preset`, `oxidation_states` |
 | bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax]], `bond_factor`, `bond_radius` |
 | cell | `cell`, `cell_width`, `cell_color`, `cell_radius` (ray-traced tube, Angstrom) |
 | boundary | `boundary` (VESTA range), `boundary_bonds` (half, complete, none), `replicate` [na, nb, nc], `replicate_cell` (super, unit, all) |
@@ -68,6 +68,18 @@ a fade or hide step wins where its value is larger. Particles a selection step s
 `Selection` property) are drawn red, as in OVITO; `selection="orange"` picks another color and
 `selection=False` turns the highlight off. Coloring steps (`AssignColor`) clear the selection,
 so their atoms keep the color they set.
+
+`labels` puts a label on each atom, in the GUI viewport and in every picture (OpenGL, ray
+tracer, SVG/PDF). `True` shows the type; a template uses `{type}`, `{index}` (0-based), `{id}`
+(the Particle Identifier) and per-atom properties without spaces; a dict also limits the types
+and sets the font size and color. At most 2,000 atoms get a label (the nearest to the camera in
+pictures). Boundary and replicated images are not labelled.
+
+```python
+view(pipe, labels="{type}{index}")                                # Sr0, Ti1, O2, ...
+view(pipe, labels={"text": "{Charge:+.2f}", "types": ["O"], "size": 14, "color": "navy"})
+pipe.render("fig.png", labels="id")                               # one picture only
+```
 
 Polyhedra, isosurfaces and grid slices are `data.surfaces` meshes made by a step
 (`CoordinationPolyhedra` makes `coordination-polyhedra`, `CreateIsosurface` its `identifier` and

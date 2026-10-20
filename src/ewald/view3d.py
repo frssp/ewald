@@ -88,6 +88,9 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        type="object", additionalProperties={"type": "number"}),
     _s("selection", True, "atoms", "Highlight the particles of a 'Selection' property (a selection step) as OVITO "
        "does: True (red), False, or a color.", type=["boolean", "string", "array"]),
+    _s("labels", None, "atoms", "A label on each atom in the view and in pictures: True (its type), a template "
+       "('{type}{index}', '{id}', '{Charge:.2f}': type, index, id and per-atom properties) or "
+       "{'text', 'types', 'size', 'color'}; None: no labels.", type=["boolean", "string", "object", "null"]),
     _s("oxidation_states", {}, "atoms", "Oxidation state per type for the ionic presets, e.g. {'Ti': 4}.",
        type="object", additionalProperties={"type": "number"}),
     # bonds
@@ -655,6 +658,14 @@ def _check(name, value):
         bad = {k: v for k, v in value.items() if not 0 <= v <= 1}
         if bad:
             raise ValueError(f"transparency must be in 0..1, not {bad}")
+    elif name == "labels":
+        from .overlays import label_params
+
+        label_params(value)   # fails on a bad value
+        if isinstance(value, dict):
+            value = {k: (_color(v) if k == "color" and v is not None else v) for k, v in value.items()}
+        elif value is False:
+            value = None
     elif name == "selection":
         if not isinstance(value, bool):
             value = _color(value)

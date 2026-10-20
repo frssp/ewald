@@ -267,6 +267,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 |---|---|
 | `Coordinate tripod` | Axis directions as arrows in a corner that turn with the camera: Cartesian x, y, z or the cell vectors a, b, c. |
 | `Attributes` | Global attributes (temperature, energy, timestep, ...) as "name = value" lines in a corner. |
+| `Atom labels` | A text label on every atom, e.g. its type and index. ``text`` is a format string with ``{type}``, ``{index}`` (0-based), ``{id}`` (the Particle Identifier, else index + 1) and any per-atom property whose name has no spaces (``{Charge:.2f}``); a bare 'type', 'index', 'id' or property name means that field. ``types`` limits the labels to those particle types; ``size`` is the font size in px (None: the figure's small size); ``color`` None is the ink color. Hidden atoms (Transparency 1) get no label, and at most ``max_labels`` atoms are labelled (the nearest to the camera). |
 
 ### Themes and color maps
 
@@ -297,7 +298,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 ### `render()` options
 
-`size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`, `region`.
+`size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`, `region`, `labels`.
 
 Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`, `show_atoms`, `surfaces`, `cell_radius`, `type_transparency`, `selection_color`.
 

@@ -132,6 +132,7 @@ pipe.view.elements["Bonds"].radius = 0.12                 # per visual element: 
 pipe.view.elements["Particles"].enabled = False           #   Trajectory lines, Simulation cell, plugin visuals
 pipe.view.surface("coordination-polyhedra", color="teal", transparency=0.5)   # polyhedra/isosurface look by name
 view(pipe, transparency={"O": 0.6}, selection=True)       # fade types; selected atoms red (False: off, or a color)
+view(pipe, labels="{type}{index}")                        # atom labels: True, a template ({id}, {Charge:.2f}) or a dict
 ```
 
 Per-atom colors, sizes and hiding by condition are steps (`ewald.paint`: `paint`, `hide`, `fade`, `resize`), and
