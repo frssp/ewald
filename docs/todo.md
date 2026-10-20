@@ -96,8 +96,7 @@ GUI
 - Panel headers (`gui/header.py`): checked under xvfb with Windows-like scale factors (100, 125,
   150 %) only; check on a real Windows machine (Segoe UI, per-monitor DPI) and macOS. The Display
   side bar still crowds its form below about 260 px, and the view bar cuts "View along" when the
-  3D view is narrow (could fold into a menu). The add-cell row (+ Code ... + Ask AI) clips its
-  labels when the Notebook panel is at its minimum width.
+  3D view is narrow (could fold into a menu).
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
   Insert › Step for the loaded data, view-along buttons hidden without a cell, the timeline
   folded for a single structure.

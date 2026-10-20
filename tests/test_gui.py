@@ -2351,6 +2351,52 @@ def test_notebook_cells_sit_at_the_top(app):
     w.close()
 
 
+def test_notebook_cell_controls_add_bar_and_running_mark(app):
+    """Grip and fold show on hover or on the current cell, the add-cell buttons wrap instead of
+    clipping at a narrow width, and a cell shows ``*`` while it runs."""
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    w.resize(1400, 900)
+    w.show()
+    app.processEvents()
+    view = w.panel.view
+    cell = view.add_cell("code", "x = 1")
+    cw = view.widget_for(cell)
+    other = next(c for c in view.widgets if c is not cw and c.cell.kind == "code")
+    other.set_current(False)
+    assert other.drag_handle.isHidden() and other.fold_button.isHidden()
+    app.sendEvent(other, QtGui.QEnterEvent(QtCore.QPointF(5, 5), QtCore.QPointF(5, 5), QtCore.QPointF(5, 5)))
+    assert not other.drag_handle.isHidden() and not other.fold_button.isHidden()
+    app.sendEvent(other, QtCore.QEvent(QtCore.QEvent.Leave))
+    assert other.drag_handle.isHidden()
+
+    bar = view.add_bar
+    buttons = bar.findChildren(QtWidgets.QPushButton)
+    for width in (900, 240):
+        bar.resize(width, bar.layout().heightForWidth(width))
+        bar.layout().setGeometry(QtCore.QRect(0, 0, width, bar.height()))
+        assert all(b.geometry().right() <= width and b.width() >= b.sizeHint().width() for b in buttons)
+    assert len({b.y() for b in buttons}) > 1                 # wrapped onto a second row
+
+    cw.set_running()
+    assert cw.counter.text() == "*" and cw.property("state") == "running"
+    view.run(cell)
+    cw = view.widget_for(cell)                               # a run may rebuild the cell widgets
+    assert cw.counter.text() == str(cell.count) and cw.property("state") == "ok"
+
+    printed = view.add_cell("code", "print('hi')")
+    view.run(printed)
+    assert not view.widget_for(printed).outputs.isHidden()
+    view.select(printed)
+    next(a for a in w.menuBar().findChildren(QtGui.QAction) if a.text() == "&Clear cell output").trigger()
+    assert not printed.outputs and printed.count is None and view.widget_for(printed).counter.text() == ""
+    assert view.widget_for(printed).outputs.isHidden() and cell.count is not None
+    next(a for a in w.menuBar().findChildren(QtGui.QAction) if a.text() == "Clear &all outputs").trigger()
+    assert all(not c.outputs and c.count is None for c in view.notebook.cells)
+    w.close()
+
+
 def test_panel_headers_line_up_and_buttons_use_icons(app, pipe):
     """Dock title bars and tab-group heads share one height and inset, and no button is labelled
     with a symbol glyph (their size and baseline depend on the platform's fallback font)."""

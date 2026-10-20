@@ -582,6 +582,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Move cell up (`Ctrl+Shift+Up`)
 - Move cell down (`Ctrl+Shift+Down`)
 - Delete cell
+- Clear cell output (`Ctrl+Shift+Backspace`)
+- Clear all outputs (`Ctrl+Alt+Shift+Backspace`)
 - Show as Python file
 
 **Insert**
