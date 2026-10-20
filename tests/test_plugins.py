@@ -20,15 +20,13 @@ _INSTALLED = {(g, ep.name, ep.value) for g in _GROUPS for ep in importlib.metada
 
 @pytest.fixture(autouse=True)
 def fresh_registry(monkeypatch):
-    real = importlib.metadata.entry_points
+    real = plugins._entry_point_scan
 
-    def entry_points(**kw):
-        eps = real(**kw)
-        if "group" not in kw:
-            return eps
-        return [ep for ep in eps if (kw["group"], ep.name, ep.value) not in _INSTALLED]
+    def scan():
+        eps = real()
+        return lambda group: [ep for ep in eps(group) if (group, ep.name, ep.value) not in _INSTALLED]
 
-    monkeypatch.setattr(importlib.metadata, "entry_points", entry_points)
+    monkeypatch.setattr(plugins, "_entry_point_scan", scan)
     monkeypatch.setattr(plugins, "_registry", plugins._Registry())
     yield
     monkeypatch.setattr(plugins, "_registry", plugins._Registry())
@@ -145,7 +143,6 @@ def test_broken_plugin_is_reported_not_raised(tmp_path, capsys):
 
 
 def test_entry_point_readers(monkeypatch, tmp_path):
-    import importlib.metadata as md
 
     class EP:
         name, value = "ep-format", "fake_pkg:reader"
@@ -157,8 +154,9 @@ def test_entry_point_readers(monkeypatch, tmp_path):
             read.patterns = ("*.epf",)
             return read
 
-    real = md.entry_points
-    monkeypatch.setattr(md, "entry_points", lambda **kw: [EP()] if kw.get("group") == "ewald.readers" else real(**kw))
+    real = plugins._entry_point_scan
+    monkeypatch.setattr(plugins, "_entry_point_scan",
+                        lambda: (lambda group, eps=real(): [EP()] if group == "ewald.readers" else eps(group)))
     f = tmp_path / "a.epf"
     f.write_text("")
     assert import_file(f).compute(0).count == 2
@@ -274,7 +272,6 @@ def test_modifier_name_clash_and_type_checks(capsys):
 
 
 def test_modifier_entry_point_and_cli(monkeypatch, capsys):
-    import importlib.metadata as md
 
     from ewald import Modifier
 
@@ -295,8 +292,9 @@ def test_modifier_entry_point_and_cli(monkeypatch, capsys):
         def load(self):
             return Shift
 
-    real = md.entry_points
-    monkeypatch.setattr(md, "entry_points", lambda **kw: [EP()] if kw.get("group") == "ewald.modifiers" else real(**kw))
+    real = plugins._entry_point_scan
+    monkeypatch.setattr(plugins, "_entry_point_scan",
+                        lambda: (lambda group, eps=real(): [EP()] if group == "ewald.modifiers" else eps(group)))
     import ewald.modifiers as mods
 
     assert mods.ShiftZ is Shift and mods.ShiftZModifier is Shift   # OVITO-style suffix too

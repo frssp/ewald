@@ -1022,9 +1022,17 @@ def _package_manifest(value: str) -> dict:
     return _read_toml(path) if path.is_file() else {}
 
 
-def _load_entry_points(off: set = frozenset()):
+def _entry_point_scan():
+    """``entry_points(group=...)`` over one scan of the installed distributions: scanning once
+    per group (15 groups) cost about 0.1 s at every start."""
     from importlib.metadata import entry_points
 
+    everything = entry_points()
+    return lambda group: everything.select(group=group)
+
+
+def _load_entry_points(off: set = frozenset()):
+    entry_points = _entry_point_scan()
     found = {}    # distribution -> [(register, entry point)]
     for group, register in ((READER_GROUP, lambda name, obj: register_reader(name, obj)),
                             (MODIFIER_GROUP, lambda name, obj: register_modifier(obj, name=name)),

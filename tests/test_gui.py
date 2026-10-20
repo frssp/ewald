@@ -422,9 +422,9 @@ def test_plots_keep_a_frame_independent_plot_during_playback(app, cu_fcc):
     panel.set_data(d2)
     assert panel.figure.axes[0] is ax
     d3 = cu_fcc.copy()
-    d3.tables["msd"] = {"Time": msd["Time"], "MSD": msd["MSD"] + 1}   # per-frame data: redrawn
+    d3.tables["msd"] = {"Time": msd["Time"], "MSD": msd["MSD"] + 1}   # per-frame data: new line data
     panel.set_data(d3)
-    assert panel.figure.axes[0] is not ax
+    assert panel.figure.axes[0] is ax and list(ax.lines[0].get_ydata()) == list(msd["MSD"] + 1)
     _dispose(panel)
 
 
@@ -456,8 +456,11 @@ def test_playback_leaves_frame_independent_cells_alone(app, monkeypatch):
     app.processEvents()
     assert w.frame >= 3                   # (the play timer may have moved on by one)
     assert rebuilt == []                  # no cell's outputs (the printed "10 frames") rebuilt per frame
-    shown = {p.hist.currentText() or p.table.currentText() for p in cleared if p is not None}
-    assert shown == {"Displacement Magnitude"}   # the per-frame histogram redraws, the MSD plot does not
+    # the MSD plot is left alone, the per-frame histogram updates its bars in place: no figure clears
+    assert [p for p in cleared if p is not None] == []
+    hist = next(p for p in panels.values() if p.hist.currentText() == "Displacement Magnitude")
+    counts, _ = np.histogram(np.asarray(hist.data["Displacement Magnitude"]), bins=len(hist._ax.patches))
+    assert [r.get_height() for r in hist._ax.patches] == list(counts)   # the frame on screen
     w.close()
 
 
@@ -1700,6 +1703,51 @@ def _mouse(panel, kind, x, y, button=1, key=None, step=0, dblclick=False):
     panel.canvas.callbacks.process(kind, ev)
 
 
+def test_plots_update_per_frame_data_in_place(app):
+    from ewald.gui.plots import PlotsPanel
+
+    rng = np.random.default_rng(0)
+
+    def frame(i, ints=False):
+        from ewald import DataCollection
+        from ewald.data import Cell
+
+        d = DataCollection(rng.random((500, 3)) * 10, ["Cu"] * 500, Cell(np.eye(3) * 10))
+        d.particles["E"] = rng.normal(-3 + 0.5 * i, 0.2 + 0.1 * i, 500)
+        d.particles["N"] = rng.integers(10, 13, 500)
+        r = np.linspace(0.05, 8, 100)
+        d.tables["rdf"] = {"r": r, "g(r)": 1 + np.sin(3 * r + i) * np.exp(-r / (2 + i))}
+        return d
+
+    a, b = frame(0), frame(1)
+    for choice in (("hist", "E"), ("hist", "N"), ("table", "rdf")):
+        live, fresh = PlotsPanel(), PlotsPanel()
+        for p in (live, fresh):
+            p.resize(600, 400)
+            p.set_data(a if p is live else b)
+            getattr(p, choice[0]).setCurrentText(choice[1])
+        axes = live._ax
+        live.set_data(b)
+        assert live._ax is axes, choice   # the same axes: updated, not rebuilt
+        for p in (live, fresh):
+            p.canvas.draw()
+        np.testing.assert_allclose(live._ax.get_xlim(), fresh._ax.get_xlim())
+        np.testing.assert_allclose(live._ax.get_ylim(), fresh._ax.get_ylim())
+        if choice[0] == "hist":
+            heights = [[r.get_height() for r in p._ax.patches] for p in (live, fresh)]
+            np.testing.assert_allclose(*heights)
+            np.testing.assert_allclose(live._edges, fresh._edges)
+        else:
+            np.testing.assert_allclose(live._ax.lines[0].get_ydata(), fresh._ax.lines[0].get_ydata())
+    live.table.setCurrentText("")
+    live.hist.setCurrentText("N")
+    c = frame(2)
+    c.particles["N"] = np.full(500, 7)   # other integer values: other bars, a full redraw
+    axes = live._ax
+    live.set_data(c)
+    assert live._ax is not axes and [r.get_x() + 0.5 * r.get_width() for r in live._ax.patches] == [7]
+
+
 def test_plots_zoom_pan_reset_and_hover(app, lammps_dir):
     from ewald import import_file
     from ewald.gui.plots import PlotsPanel
@@ -2581,6 +2629,8 @@ def test_deleted_viewport_forgets_its_gl_surface(app, pipe):
     vp.resize(120, 90)
     vp.show()
     vp.set_data(pipe.compute(0))
+    app.processEvents()
+    vp.ensure_view()                             # built after the first paint; realized on the next
     app.processEvents()
     plotter = vp.plotter                         # outlives the widget, like a console reference
     assert plotter._surface is not None          # realized: pyvistaqt holds the surface

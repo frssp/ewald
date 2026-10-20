@@ -266,11 +266,20 @@ class RemotesPanel(QtWidgets.QWidget):
         lay.addLayout(head)
         lay.addWidget(split, 1)
         lay.addWidget(self.status)
-        self.refresh()
+        # ~/.ssh/config hosts need paramiko (0.2 s to import): listed once the side bar shows
+        self._config_pending = True
+        self.refresh(config=False)
+
+    def showEvent(self, event):
+        if self._config_pending:
+            self.refresh()
+        super().showEvent(event)
 
     # ------------------------------------------------------------ profile list
-    def refresh(self):
-        """Reload the profile list (keeps the selection)."""
+    def refresh(self, config: bool = True):
+        """Reload the profile list (keeps the selection); ``config``: with the ~/.ssh/config hosts."""
+        if config:
+            self._config_pending = False
         for w in (self.path, self.filter, *self.nav_buttons):   # nothing to browse before a computer is picked
             w.setEnabled(bool(self.host))
         current = self.list.currentItem().data(ROLE) if self.list.currentItem() else None
@@ -287,7 +296,7 @@ class RemotesPanel(QtWidgets.QWidget):
             f.setBold(True)
             item.setFont(f)
             self.list.addItem(item)
-        for h in profiles.unsaved_config_hosts():
+        for h in (profiles.unsaved_config_hosts() if config else ()):
             item = QtWidgets.QListWidgetItem(f"○  {h}\n      ~/.ssh/config")
             item.setData(ROLE, ("config", h))
             item.setForeground(QtGui.QBrush(self.palette().color(QtGui.QPalette.PlaceholderText)))
