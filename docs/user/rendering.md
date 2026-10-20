@@ -33,7 +33,7 @@ print(pipe.view.source())                     # the same as a view(pipe, ...) li
 
 | Group | Settings |
 |---|---|
-| style | `style` (Ball & stick, Space-filling, Simple (ASE), Points), `theme`, `atom_style` (auto, mesh, impostor, flat), `background` |
+| style | `style` (Ball & stick, Space-filling, Simple (ASE), Points), `theme`, `atom_style` (auto, mesh, impostor, flat), `background`, `light` (key light) |
 | atoms | `atoms` (False: a stick model), `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `transparency` {type: 0..1}, `selection` (True: selected atoms red, False, or a color), `labels` (atom labels), `radius_preset`, `oxidation_states` |
 | bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax]], `bond_factor`, `bond_radius` |
 | cell | `cell`, `cell_width`, `cell_color`, `cell_radius` (ray-traced tube, Angstrom) |
@@ -79,6 +79,18 @@ pictures). Boundary and replicated images are not labelled.
 view(pipe, labels="{type}{index}")                                # Sr0, Ti1, O2, ...
 view(pipe, labels={"text": "{Charge:+.2f}", "types": ["O"], "size": 14, "color": "navy"})
 pipe.render("fig.png", labels="id")                               # one picture only
+```
+
+`light` sets the key light for the viewport and every renderer (OpenGL, ray tracer, SVG/PDF
+highlights): a direction `[x, y, z]` relative to the viewer (x right, y up, z towards you) or a
+dict with `azimuth` and `elevation` in degrees (azimuth turns it right, elevation up) and
+`intensity` (1 is the default strength). Left at None, each renderer uses its default light
+from the upper left.
+
+```python
+view(pipe, light={"azimuth": 60, "elevation": 20})                # from the right
+view(pipe, light={"elevation": -45, "intensity": 0.6})            # dim, from below
+pipe.render("fig.png", renderer="raytrace", light=[0, 0, 1])     # head-on, one picture only
 ```
 
 Polyhedra, isosurfaces and grid slices are `data.surfaces` meshes made by a step

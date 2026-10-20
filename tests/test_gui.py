@@ -103,6 +103,15 @@ def test_view_tab_surfaces_labels_transparency(app, pipe):
     settings = st.view_settings(["Cu"])
     assert settings["atoms"] is False and settings["labels"] == "{type}{index}" and settings["transparency"] == {"Cu": 0.5}
     assert settings["surfaces"]["coordination-polyhedra"]["visible"] is False
+    lw = panel.light_widgets
+    assert not lw["box"].isChecked()
+    lw["box"].setChecked(True)
+    lw["azimuth"].setValue(60)
+    lw["intensity"].setValue(1.5)
+    assert st.light == {"azimuth": 60.0, "elevation": 29.0, "intensity": 1.5}   # default light: 29° up
+    assert st.view_settings(["Cu"])["light"] == st.light and st.scene_kwargs()["light"] == st.light
+    lw["box"].setChecked(False)
+    assert st.light is None and "light" not in st.scene_kwargs()
     _dispose(panel)
 
 

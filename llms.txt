@@ -132,6 +132,7 @@ pipe.view.elements["Particles"].enabled = False           #   Trajectory lines, 
 pipe.view.surface("coordination-polyhedra", color="teal", transparency=0.5)   # polyhedra/isosurface look by name
 view(pipe, transparency={"O": 0.6}, selection=True)       # fade types; selected atoms red (False: off, or a color)
 view(pipe, labels="{type}{index}")                        # atom labels: True, a template ({id}, {Charge:.2f}) or a dict
+view(pipe, light={"azimuth": 60, "elevation": 20, "intensity": 1.2})   # key light relative to the viewer
 ```
 
 Per-atom colors, sizes and hiding by condition are steps (`ewald.paint`: `paint`, `hide`, `fade`, `resize`), and

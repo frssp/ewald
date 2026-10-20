@@ -244,6 +244,7 @@ class LegacyRenderer:
         self.background = (1.0, 1.0, 1.0)
         self.ink = (0.0, 0.0, 0.0)
         self.sphere_resolution = 16
+        self.light = None                # key light (ewald.render.light_params); None: the head light
         self._lists: list[int] = []      # opaque display lists
         self._glass: list[int] = []      # transparent display lists, drawn last
         self._overlay: list[int] = []    # picks / measurements, drawn without depth test
@@ -314,8 +315,10 @@ class LegacyRenderer:
         return self._unit_list(("cone" if cone else "cylinder", res), lambda: unit_cylinder(res, cone))
 
     # ---------------------------------------------------------------- compile
-    def compile(self, scene, *, sphere_resolution=None, background=None, ink=None):
-        """Replace the drawn geometry with ``scene`` (needs a current context)."""
+    def compile(self, scene, *, sphere_resolution=None, background=None, ink=None, light=None):
+        """Replace the drawn geometry with ``scene`` (needs a current context); ``light`` is the view's key
+        light (None: a head light)."""
+        self.light = light
         if background is not None:
             self.background = tuple(background)
         if ink is not None:
@@ -541,8 +544,17 @@ class LegacyRenderer:
         gl.glLoadMatrixd(_ptr(proj))
         gl.glMatrixMode(GL_MODELVIEW)
         gl.glLoadIdentity()
-        headlight = (ctypes.c_float * 4)(0.3, 0.4, 1.0, 0.0)   # directional, from the viewer, eye space
-        gl.glLightfv(GL_LIGHT0, GL_POSITION, headlight)
+        if self.light is None:
+            d, k = (0.3, 0.4, 1.0), 1.0   # directional, from the viewer, eye space
+        else:
+            from ..render import light_params
+
+            d, k = light_params(self.light)
+        f4 = ctypes.c_float * 4
+        self._light_now = [f4(*d, 0.0), f4(0.85 * k, 0.85 * k, 0.85 * k, 1), f4(0.45 * k, 0.45 * k, 0.45 * k, 1)]
+        gl.glLightfv(GL_LIGHT0, GL_POSITION, self._light_now[0])
+        gl.glLightfv(GL_LIGHT0, GL_DIFFUSE, self._light_now[1])
+        gl.glLightfv(GL_LIGHT0, GL_SPECULAR, self._light_now[2])
         gl.glLoadMatrixd(_ptr(view))
         gl.glEnable(GL_DEPTH_TEST)
         for n in self._lists:

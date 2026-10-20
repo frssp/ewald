@@ -165,7 +165,9 @@ right-click menu); the data and analysis keep the original cell, see
 [Replicated cell](rendering.md#replicated-cell). A plugin element has a checkbox to hide it, a
 parameter form generated from its constructor (Apply or Ctrl+Enter redraws) and a remove button.
 Plugin elements are saved with the session and drawn in rendered images too. *Save camera* writes
-the current camera and frame into the view cell.
+the current camera and frame into the view cell. The Camera card's Light box sets the key light
+(azimuth and elevation from the viewer, intensity) for the viewport and every renderer; unchecked,
+the default light is used.
 
 **Python steps.** A code cell can define a function and add it with `pipe.add(fn)`; it runs on
 every frame like any other modifier. Insert › Step › Python › Python script adds the
