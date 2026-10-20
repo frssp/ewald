@@ -13,7 +13,8 @@ EXAMPLE = Path(__file__).parents[1] / "examples" / "plugins" / "npz_trajectory.p
 
 
 # plugin packages installed in this environment (e.g. ewald-phonopy) stay out of these tests
-_GROUPS = ("ewald.readers", "ewald.modifiers", "ewald.plugins", "ewald.tools", "ewald.settings_pages")
+_GROUPS = ("ewald.readers", "ewald.modifiers", "ewald.plugins", "ewald.tools", "ewald.settings_pages", "ewald.panels",
+           "ewald.workflows")
 _INSTALLED = {(g, ep.name, ep.value) for g in _GROUPS for ep in importlib.metadata.entry_points(group=g)}
 
 

@@ -323,3 +323,20 @@ def test_ai_cannot_set_code_parameters_of_a_step():
     assert nb.run_cell(0) and isinstance(nb.cells[0].modifier, PythonScript)
     r = Toolset(pipe, notebook=nb).call("edit_cell", {"index": 0, "params": {"source": "import os"}})
     assert r.is_error and "runs Python" in r.content and "os" not in pipe.modifiers[0].source
+
+
+def test_workflow_notebook_keeps_server_text_out_of_code():
+    """A workflow opens as a notebook that runs at once (gui window_files.open_workflow); its
+    names and labels come from a server, so they only reach comments and string literals."""
+    from ewald import workflow
+    from ewald.notebook import Notebook
+    from ewald.workflow import Workflow, WorkflowStep
+
+    evil = "x\n# %%\nimport os; os.system('touch pwned')"
+    wf = Workflow(evil, id="1", path="demo:1", label=evil, description=evil, scalars={evil: evil},
+                  steps=[WorkflowStep(evil, path="demo:1/a'); import os #")])
+    nb = Notebook.from_py(workflow.notebook_text(wf))
+    code = [c.source for c in nb.cells if c.kind == "code"]
+    assert not any("os.system" in line and not line.lstrip().startswith("#")
+                   for src in code for line in src.splitlines() if "load(" not in line)
+    assert any(src.startswith("x_import_os_os_system_touch_pwned = load(\"demo:1/a'); import os #\")") for src in code)

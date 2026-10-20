@@ -114,6 +114,15 @@ under Window › Plugin panels, and a plugin with settings adds its own page to 
 Switching the plugin off in the Plugins side bar removes both; its settings are kept for when
 it comes back ([Side bar plugins](../plugins/gui.md)).
 
+**Workflow side bars.** Plugins that read finished calculations (sim-agent, AiiDA) share one
+side bar layout: the account, a search box that also takes an id, and the workflows newest
+first. Expanding a workflow lists its steps (restarts of one calculation joined, sub-workflows
+nested) with their files and structures. A double click on a step or output opens it; on a
+workflow it opens the whole workflow as one notebook, with a `load` cell per step
+(`relax = load(...)`, `scf = load(...)`) and `pipe` on the main result. To look at another step
+in the 3D view, run `pipe = scf`; `show(scf, ...)` puts it in a view cell next to the others
+([Workflow sources](../plugins/workflows.md)).
+
 **AI chat (Ask AI).** The AI button at the bottom of the activity bar on the far left (also
 Window › AI chat, Ctrl+J, and Ask AI in the Structure view's right-click menu) opens a chat side bar left of the
 notebook. It reads like a
