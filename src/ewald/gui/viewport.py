@@ -332,8 +332,8 @@ class Viewport(QtWidgets.QWidget):
                 scene = scene.copy()
                 scene.bonds, scene.vectors = None, {}
         drawn = build_scene(p, scene, mesh_limit=self.mesh_limit, **kw)
-        # boundary images are hovered through the drawn spheres (each knows its real atom)
-        atoms = drawn["atoms"].primitive if "boundary" in kw and not coarse and "atoms" in drawn else None
+        # boundary and replicated images are hovered through the drawn spheres (each knows its real atom)
+        atoms = drawn["atoms"].primitive if ("boundary" in kw or "replicate" in kw) and not coarse and "atoms" in drawn else None
         self._boundary_atoms = None if atoms is None else (atoms.centers, atoms.index, atoms.sizes())
         if (any(s.transparency > 0 for s in self.data.surfaces.values()) or needs_depth_peeling(drawn)) \
                 and not getattr(self, "_peeling", False):
@@ -679,7 +679,7 @@ class Viewport(QtWidgets.QWidget):
         if not len(pos):
             return None
         diff = pos - world
-        if self.style.boundary and self.data.cell.is_valid:  # a boundary ghost picks its real atom
+        if (self.style.boundary or self.style.replicate) and self.data.cell.is_valid:  # an image picks its real atom
             cell = self.data.cell
             f = diff @ np.linalg.inv(cell.matrix)
             diff = (f - np.rint(f) * cell.pbc) @ cell.matrix
@@ -741,7 +741,7 @@ class Viewport(QtWidgets.QWidget):
             return None
         origin, direction = camera_ray(self.plotter.camera, x, y, width, height)
         ghosts = getattr(self, "_boundary_atoms", None)
-        if ghosts is not None and self.style.boundary:
+        if ghosts is not None and (self.style.boundary or self.style.replicate):
             idx = ray_spheres(origin, direction, ghosts[0], ghosts[2])
             return None if idx is None else int(ghosts[1][idx])
         idx = ray_spheres(origin, direction, d.positions, self._hover_radii_for(d))

@@ -2097,6 +2097,44 @@ def test_cell_panel_boundary_range(app):
     assert "boundary" not in style.scene_kwargs()
 
 
+def test_cell_panel_replicate(app):
+    from ewald.gui.pipeline_panel import DisplayPanel
+    from ewald.gui.style import ViewStyle
+
+    style = ViewStyle()
+    panel = DisplayPanel(style)
+    box = panel._replicate_editor()
+    assert not box.isChecked() and "replicate" not in style.scene_kwargs()
+    box.setChecked(True)
+    assert style.replicate == [2, 2, 2] and style.scene_kwargs()["replicate"] == [2, 2, 2]
+    box.findChildren(QtWidgets.QSpinBox)[2].setValue(1)
+    box.findChild(QtWidgets.QComboBox).setCurrentText("all")
+    kw = style.scene_kwargs()
+    assert kw["replicate"] == [2, 2, 1] and kw["replicate_cell"] == "all"
+    assert style.view_settings()["replicate"] == [2, 2, 1]
+    box.setChecked(False)
+    assert "replicate" not in style.scene_kwargs() and style.view_settings()["replicate"] is None
+
+
+def test_replicate_menu_writes_view_and_keeps_data(app, srtio3_pipe):
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(srtio3_pipe)
+    n = w.data.count
+    menu = w.fill_replicate_menu(QtWidgets.QMenu())
+    labels = [a.text() for a in menu.actions()]
+    assert "2 × 2 × 2" in labels and "Custom…" in labels
+    next(a for a in menu.actions() if a.text() == "3 × 3 × 1").trigger()
+    assert w.style.replicate == [3, 3, 1] and srtio3_pipe.view.replicate == [3, 3, 1]
+    assert w.data.count == n                                  # display only
+    assert w.viewport._boundary_atoms[0].shape[0] == 9 * n    # every copy hovers as its real atom
+    assert w.viewport._boundary_atoms[1].max() == n - 1
+    w.set_replicate(1)
+    assert w.style.replicate == [] and srtio3_pipe.view.replicate is None
+    assert any(a.text() == "Replicate cell" for a in w.viewport_menu().actions())
+    w.close()
+
+
 def test_viewport_boundary_images_hover_as_real_atom(app):
     from ewald.data import Cell, DataCollection
     from ewald.gui.style import ViewStyle
@@ -2348,6 +2386,52 @@ def test_notebook_cells_sit_at_the_top(app):
     lines = sum(round(ed.blockBoundingRect(b).height() / ed.fontMetrics().lineSpacing())
                 for b in (ed.document().findBlockByNumber(i) for i in range(ed.document().blockCount())))
     assert ed.viewport().height() >= lines * ed.fontMetrics().lineSpacing()   # no clipped last line
+    w.close()
+
+
+def test_notebook_cell_controls_add_bar_and_running_mark(app):
+    """Grip and fold show on hover or on the current cell, the add-cell buttons wrap instead of
+    clipping at a narrow width, and a cell shows ``*`` while it runs."""
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    w.resize(1400, 900)
+    w.show()
+    app.processEvents()
+    view = w.panel.view
+    cell = view.add_cell("code", "x = 1")
+    cw = view.widget_for(cell)
+    other = next(c for c in view.widgets if c is not cw and c.cell.kind == "code")
+    other.set_current(False)
+    assert other.drag_handle.isHidden() and other.fold_button.isHidden()
+    app.sendEvent(other, QtGui.QEnterEvent(QtCore.QPointF(5, 5), QtCore.QPointF(5, 5), QtCore.QPointF(5, 5)))
+    assert not other.drag_handle.isHidden() and not other.fold_button.isHidden()
+    app.sendEvent(other, QtCore.QEvent(QtCore.QEvent.Leave))
+    assert other.drag_handle.isHidden()
+
+    bar = view.add_bar
+    buttons = bar.findChildren(QtWidgets.QPushButton)
+    for width in (900, 240):
+        bar.resize(width, bar.layout().heightForWidth(width))
+        bar.layout().setGeometry(QtCore.QRect(0, 0, width, bar.height()))
+        assert all(b.geometry().right() <= width and b.width() >= b.sizeHint().width() for b in buttons)
+    assert len({b.y() for b in buttons}) > 1                 # wrapped onto a second row
+
+    cw.set_running()
+    assert cw.counter.text() == "*" and cw.property("state") == "running"
+    view.run(cell)
+    cw = view.widget_for(cell)                               # a run may rebuild the cell widgets
+    assert cw.counter.text() == str(cell.count) and cw.property("state") == "ok"
+
+    printed = view.add_cell("code", "print('hi')")
+    view.run(printed)
+    assert not view.widget_for(printed).outputs.isHidden()
+    view.select(printed)
+    next(a for a in w.menuBar().findChildren(QtGui.QAction) if a.text() == "&Clear cell output").trigger()
+    assert not printed.outputs and printed.count is None and view.widget_for(printed).counter.text() == ""
+    assert view.widget_for(printed).outputs.isHidden() and cell.count is not None
+    next(a for a in w.menuBar().findChildren(QtGui.QAction) if a.text() == "Clear &all outputs").trigger()
+    assert all(not c.outputs and c.count is None for c in view.notebook.cells)
     w.close()
 
 

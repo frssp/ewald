@@ -103,6 +103,12 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        type=["array", "null"]),
     _s("boundary_bonds", "half", "boundary", "Bonds leaving the boundary: half, complete or none.",
        ("half", "complete", "none")),
+    _s("replicate", None, "boundary", "Draw [na, nb, nc] periodic copies of the cell side by side (OVITO's "
+       "Replicate as a display setting), with bonds and polyhedra across them; the boundary then applies "
+       "to the whole block. Display only: analysis and export keep the original cell.",
+       type=["array", "null"], items={"type": "integer", "minimum": 1}),
+    _s("replicate_cell", "super", "boundary", "Cell lines of a replicated view: super (outline of the "
+       "block), unit (original cell) or all (every copy).", ("super", "unit", "all")),
     # elements
     _s("visuals", [], "elements", "Plugin visual elements drawn on top: names or {'name', 'params', 'enabled'}.",
        type="array"),
@@ -493,6 +499,11 @@ def _check(name, value):
         from .framing import as_region
 
         value = list(as_region(value))
+    elif name == "replicate":
+        from .replicate import normalize_replicate
+
+        n = normalize_replicate(value)
+        value = None if n is None else list(n)
     elif name == "boundary":
         value = [list(map(float, p)) for p in value] if np.ndim(value) == 2 else [float(x) for x in np.ravel(value)]
     elif name == "camera":

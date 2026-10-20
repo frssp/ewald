@@ -38,7 +38,11 @@ the next one. Notebook › Run all (Ctrl+Shift+Enter) restarts the namespace and
 from the top. If a cell fails, its traceback appears under it, and Run all stops there and
 marks the cells below as stale.
 
-The chevron under a cell's counter folds the cell to one line (its title, step name or first line of
+The number beside a cell's run button is its run count, as in Jupyter. It shows `*` while the cell runs,
+`·` when an earlier cell changed and the cell is out of date (its card turns flat), and the cell gets a red
+border with the traceback in a red-barred box when it fails.
+
+The chevron under a cell's counter (shown when you hover over a cell or select it) folds the cell to one line (its title, step name or first line of
 code); clicking it again or a double-click unfolds it. Folded cells stay folded in `.ipynb` and `.ewd` files,
 as JupyterLab's hidden input and output, so they open folded in Jupyter too.
 
@@ -92,6 +96,16 @@ plotstyle.save(fig, "gr.pdf")                # editable text, tight box; PNG at 
 with plotstyle.context():                    # the style for your own matplotlib code
     plt.plot(r, g); plt.xlabel(plotstyle.axis_label("r"))
 ```
+
+Plots your cells draw themselves with plain matplotlib (`plt.plot(x, np.sin(x))`, in notebook
+cells, in a notebook's kernel and in the Python console) get the same style by default, with no
+import. Each notebook keeps its own rcParams: whatever a cell sets (`plt.rcParams[...] = ...`,
+`plt.style.use(...)`) stays for the next cells of that notebook and is never overridden, and
+ewald's own renderers are not affected. `plotstyle.use("default")` in a cell goes back to
+matplotlib's defaults for that notebook, and `plotstyle.use()` to the publication style.
+Preferences › Python › *Style of your own plots* chooses the default: *Publication* (print
+colors, so `plt.savefig` writes what you see), *Publication in UI theme colors*, or
+*Matplotlib default*. Restarting the notebook resets its rcParams.
 
 Spectra, diffraction patterns and time series are not separate panels. They are views in the
 notebook, next to the steps that compute them.
@@ -170,8 +184,10 @@ from ewald.views import snapshot
 snapshot(pipe, frame=3, camera={...}, radius_scale=0.5)   # shows the picture; .save("fig.png") writes it
 ```
 
-The ⋯ menu of a cell has Run, Run this and below, Move up/down, Delete and, for steps and views,
-Show as code cell. Drag a cell by the dotted grip above its run button to move it; steps move with it in the
+The ⋯ menu of a cell has Run, Run this and below, Clear output, Move up/down, Delete and, for steps and views,
+Show as code cell. Notebook › Clear cell output (Ctrl+Shift+Backspace) and Clear all outputs
+(Ctrl+Alt+Shift+Backspace) remove printed text, values, figures and run counts, as Jupyter's Clear outputs; the
+pipeline and its results stay, and the next save leaves the outputs out of the `.ipynb` or `.ewd`. Drag a cell by the dotted grip above its run button (it appears on hover) to move it; steps move with it in the
 pipeline. The `.py` button at the top shows the whole file.
 
 ## Notebook tabs
@@ -263,8 +279,10 @@ restart it, and closing the tab or the window stops it.
 The rules are the same as in the app: re-running a cell replaces the steps it added, and a new
 `pipe` re-runs the cells below. `pipe` in the app is a pipeline over the kernel's one: the
 kernel computes each frame and sends back its particles, cell, bonds, tables, attributes,
-surfaces (polyhedra, isosurfaces), voxel grids and vector styles, so the viewport, view cells,
-plots and Display settings work as usual. Step cells keep their form and on/off checkbox: the
+surfaces (polyhedra, isosurfaces), voxel grids, vector styles and the electronic structure
+(and phonon modes) behind DOS and band plots, so the viewport, view cells, plots and Display
+settings look and work as in the app. Plots the cells draw themselves get the notebook's plot
+style there too. Step cells keep their form and on/off checkbox: the
 app builds a local copy of each step from its cell, an edit runs the cell again in the kernel,
 and the status, time and results of the kernel's steps come back with every frame (a failing
 step is skipped and reports its error on its cell, as in the app). The window stays usable

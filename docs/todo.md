@@ -101,8 +101,7 @@ GUI
 - Panel headers (`gui/header.py`): checked under xvfb with Windows-like scale factors (100, 125,
   150 %) only; check on a real Windows machine (Segoe UI, per-monitor DPI) and macOS. The Display
   side bar still crowds its form below about 260 px, and the view bar cuts "View along" when the
-  3D view is narrow (could fold into a menu). The add-cell row (+ Code ... + Ask AI) clips its
-  labels when the Notebook panel is at its minimum width.
+  3D view is narrow (could fold into a menu).
 - Context-dependent menus beyond the viewport right click: a "Suggested" group at the top of
   Insert › Step for the loaded data, view-along buttons hidden without a cell, the timeline
   folded for a single structure.
@@ -112,6 +111,8 @@ GUI
 - Flat (ASE) style in the ray tracer (now OpenGL and vector only), and a
   per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.
+- Replicated cell display: a quick replicate control in the 3D view toolbar or the redesigned
+  View tab (now Display panel, View menu, right-click menu and Ctrl+K).
 - Boundary (VESTA): repeat isosurfaces and grid slices over the boundary range too (now only
   atoms, bonds and coordination polyhedra are repeated), VESTA's recursive "search molecules"
   mode, and keep the images while the coarse viewport level of detail is shown (they disappear
@@ -179,6 +180,9 @@ Electronic structure
 - DOSCAR, EIGENVAL and PROCAR readers (VASP 5 runs without vasprun.xml), and Quantum ESPRESSO /
   other codes' DOS and bands.
 - vasprun.xml: the KPOINTS_OPT sections (`<eigenvalues_kpoints_opt>`); vaspout.h5 reads them.
+- Plot style for plain `ewald` use in Jupyter (outside the GUI notebook): an opt-in
+  `%load_ext ewald` or `ewald.plotstyle.use()` hint in the manual is all there is now; the GUI
+  console's interactive figure windows read a few draw-time rcParams outside the swapped style.
 - Plot style (`ewald/plotstyle.py`): per-plot overrides in view cells (`show(..., size=,
   labels=)`; `xlim=`/`ylim=` exist), time units on MSD/VACF axes when `time_per_frame` is set (the unit is not
   stored now, so the axis says "Time"), multi-panel figures (DOS beside bands sharing the energy
@@ -223,7 +227,6 @@ Formats
 Figures
 
 - GPU (CUDA) ray tracer.
-- Ray tracer: shadows of the cell edges show as arcs on atoms.
 - Vector arrows: their own color legend when a `ColorCoding` already owns the legend; arrows in
   the coarse (moving) viewport scene, as lines; in SVG/PDF, hide the part of an arrow inside its
   atom exactly (now the shaft is split at the atom and painted by depth).
@@ -439,3 +442,6 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 ## Deferred until the user asks
 
 - Structure editing: supercells, slabs, defects. Do not start it without an explicit request.
+  The display side exists (`view(pipe, replicate=...)`, 2026-10-20); the user said a real
+  supercell step (a general 3x3 matrix like VESTA's lattice transformation, with bonds, grids
+  and polyhedra following, analysis and export on the enlarged cell) is "not now".

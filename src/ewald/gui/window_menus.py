@@ -275,6 +275,9 @@ class MenusMixin:
         for label, d in (("Top (+z)", "z"), ("Front (-y)", "front"), ("Right (+x)", "x"), ("Isometric", "iso")):
             v.addAction(label, lambda d=d: self.viewport.view_direction(d))
         v.addAction("Zoom to fit", self.viewport.zoom_fit, "Ctrl+0")
+        rep = v.addMenu("Replicate cell")  # display only: n x n x m copies (view(pipe, replicate=...))
+        rep.aboutToShow.connect(lambda: self.fill_replicate_menu(rep))
+        self.fill_replicate_menu(rep)
         v.addSeparator()
         self.theme_menu = v.addMenu("Theme")
         self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
@@ -304,6 +307,10 @@ class MenusMixin:
         n.addAction("Move cell &up", lambda: self._cell_action("up"), "Ctrl+Shift+Up")
         n.addAction("Move cell &down", lambda: self._cell_action("down"), "Ctrl+Shift+Down")
         n.addAction("D&elete cell", lambda: self._cell_action("delete"))
+        n.addSeparator()
+        n.addAction("&Clear cell output", lambda: self._cell_action("clear"), "Ctrl+Shift+Backspace")
+        n.addAction("Clear &all outputs", lambda: self.panel.view.clear_outputs(),
+                    "Ctrl+Alt+Shift+Backspace").setToolTip("Remove every cell's output; the next save leaves them out")
         n.addSeparator()
         n.addAction("Show as Python &file", lambda: self.panel.view.py_button.toggle())
         ins = mb.addMenu("&Insert")

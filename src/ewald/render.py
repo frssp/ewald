@@ -267,7 +267,8 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 bond_pairs: list | None = None, trajectory_width: float = 2.0,
                 radius_preset: str = "covalent", oxidation_states: dict | None = None,
                 coordination: dict | None = None, vectors=None, arrow_resolution: int | None = None,
-                visuals=None, frame: int = 0, boundary=None, boundary_bonds: str = "half"):
+                visuals=None, frame: int = 0, boundary=None, boundary_bonds: str = "half",
+                replicate=None, replicate_cell: str = "super"):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter; returns the
     :class:`ewald.scene.Scene` it drew.
 
@@ -290,6 +291,8 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     ``boundary``: VESTA-style boundary range in fractional coordinates, e.g. ``(-0.1, 1.1)``: also
     draws the periodic images inside it, with cut bonds and polyhedra completed (display only;
     ``boundary_bonds`` 'half', 'complete' or 'none', see :mod:`ewald.boundary`).
+    ``replicate``: ``(na, nb, nc)`` periodic copies of the cell drawn side by side (display only;
+    ``replicate_cell`` 'super', 'unit' or 'all' picks the cell lines, see :mod:`ewald.replicate`).
     """
     from .scene import SceneContext, build
 
@@ -298,7 +301,8 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                   radius_preset=radius_preset, oxidation_states=oxidation_states, coordination=coordination,
                   bonds=bonds, bond_pairs=bond_pairs, bond_radius=bond_radius, vectors=vectors,
                   trajectory_width=trajectory_width, show_cell=show_cell, cell_width=cell_width,
-                  boundary=boundary, boundary_bonds=boundary_bonds)
+                  boundary=boundary, boundary_bonds=boundary_bonds, replicate=replicate,
+                  replicate_cell=replicate_cell)
     draw_scene(plotter, scene, atom_style=atom_style, mesh_limit=mesh_limit, sphere_resolution=sphere_resolution,
                arrow_resolution=arrow_resolution or max(6, (sphere_resolution or 16) // 2 + 2), ink=cell_color)
     return scene
@@ -634,6 +638,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     ``boundary``: VESTA-style boundary range, e.g. ``(-0.1, 1.1)`` (fractional; or three pairs): also
     draws the periodic images of atoms inside it and completes bonds and polyhedra cut by the cell;
     display only (``boundary_bonds``: 'half', 'complete' or 'none'; see :mod:`ewald.boundary`).
+    ``replicate=(2, 2, 2)`` draws that many periodic copies of the cell (OVITO's Replicate as a
+    display setting; ``replicate_cell`` 'super', 'unit' or 'all'); the data stays unchanged.
 
     ``theme``: a theme name ('VESTA', 'Journal', 'ASE', 'Dark slide', plugins; see :mod:`ewald.themes`)
     that sets element colors, background, cell color and radius preset; explicit arguments win.
@@ -719,7 +725,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
 
 
 # scene keywords that change what the default camera frames (boundary ghosts and their bond partners)
-_CAMERA_KEYS = _RADIUS_KEYS + ("type_colors", "vectors", "visuals", "boundary", "boundary_bonds", "bond_pairs")
+_CAMERA_KEYS = _RADIUS_KEYS + ("type_colors", "vectors", "visuals", "boundary", "boundary_bonds", "bond_pairs",
+                                 "replicate", "replicate_cell")
 
 
 def default_camera(data, size=(1600, 1200), direction="iso", orthographic=True, zoom=1.0, radius_scale=1.0,

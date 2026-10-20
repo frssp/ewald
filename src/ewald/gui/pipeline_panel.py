@@ -642,10 +642,48 @@ class DisplayPanel(QtWidgets.QWidget):
         width.valueChanged.connect(lambda v: (setattr(self.style, "cell_width", v), self.styleChanged.emit()))
         f.addRow(show)
         f.addRow("Line width", width)
+        f.addRow(self._replicate_editor())
         f.addRow(self._boundary_editor())
         if self.data is not None and self.data.cell.is_valid:
             f.addRow(QtWidgets.QLabel(cell_summary(self.data.cell), objectName="muted"))
         return w
+
+    def _replicate_editor(self):
+        """OVITO's Replicate as a display setting: na x nb x nc copies of the cell are drawn."""
+        from ..replicate import CELL_MODES
+
+        n = list(self.style.replicate or (1, 1, 1))
+        box = QtWidgets.QGroupBox("Replicate cell", checkable=True, checked=bool(self.style.replicate))
+        box.setToolTip("Draw copies of the cell side by side, with bonds and polyhedra across them. "
+                       "Display only: analysis and export keep the original cell.")
+        spins = []
+        for k, axis in enumerate("abc"):
+            s = QtWidgets.QSpinBox(minimum=1, maximum=20, value=int(n[k]) if box.isChecked() else 2)
+            s.setPrefix(f"{axis} ")
+            spins.append(s)
+        lines = QtWidgets.QComboBox()
+        lines.addItems(list(CELL_MODES))
+        lines.setCurrentText(self.style.replicate_cell)
+        for k, tip in enumerate(CELL_MODES.values()):
+            lines.setItemData(k, tip, QtCore.Qt.ToolTipRole)
+
+        def apply(*_):
+            reps = [s.value() for s in spins]
+            self.style.replicate = reps if box.isChecked() and reps != [1, 1, 1] else []
+            self.style.replicate_cell = lines.currentText()
+            self.styleChanged.emit()
+
+        box.toggled.connect(apply)
+        for s in spins:
+            s.valueChanged.connect(apply)
+        lines.currentTextChanged.connect(apply)
+        g = QtWidgets.QFormLayout(box)
+        row = QtWidgets.QHBoxLayout()
+        for s in spins:
+            row.addWidget(s)
+        g.addRow("Copies", row)
+        g.addRow("Cell lines", lines)
+        return box
 
     def _boundary_editor(self):
         """VESTA's boundary range: periodic images inside lo..hi (fractional) are drawn too."""

@@ -42,6 +42,8 @@ class ViewStyle:
     cell_color: str | None = None                     # None: picked from the background
     boundary: list = field(default_factory=list)      # VESTA boundary [lo, hi] (fractional); empty = off
     boundary_bonds: str = "half"                      # bonds leaving it: half / complete / none
+    replicate: list = field(default_factory=list)     # [na, nb, nc] periodic copies drawn; empty = off
+    replicate_cell: str = "super"                     # cell lines of a replicated view: super / unit / all
     vectors: object = None                            # per-atom vector properties drawn as arrows (render's vectors=)
     trajectory_width: float = 2.0                     # trajectory lines (pixels)
 
@@ -83,6 +85,10 @@ class ViewStyle:
                 else [float(x) for x in self.boundary]
             if self.boundary_bonds != "half":
                 kw["boundary_bonds"] = self.boundary_bonds
+        if self.replicate and tuple(self.replicate) != (1, 1, 1):
+            kw["replicate"] = [int(x) for x in self.replicate]
+            if self.replicate_cell != "super":
+                kw["replicate_cell"] = self.replicate_cell
         return kw
 
     def apply_theme(self, name: str, types=()):
@@ -165,6 +171,8 @@ class ViewStyle:
         self.show_cell, self.cell_width = bool(view.cell), float(view.cell_width)
         self.boundary = list(view.boundary or [])
         self.boundary_bonds = view.boundary_bonds
+        self.replicate = list(view.replicate or [])
+        self.replicate_cell = view.replicate_cell
         self.visuals = [{"name": v, "params": {}, "enabled": True} if isinstance(v, str) else dict(v)
                         for v in view.visuals]
         self.vectors = view.vectors
@@ -209,6 +217,8 @@ class ViewStyle:
                "bonds": bool(self.bonds_enabled), "bond_factor": self.bond_factor, "bond_radius": self.bond_radius,
                "cell": bool(self.show_cell), "cell_width": self.cell_width,
                "boundary": list(self.boundary) or None, "boundary_bonds": self.boundary_bonds,
+               "replicate": [int(x) for x in self.replicate] if self.replicate and tuple(self.replicate) != (1, 1, 1)
+               else None, "replicate_cell": self.replicate_cell,
                "visuals": [dict(v) for v in self.visuals], "vectors": self.vectors,
                "trajectory_width": self.trajectory_width}
         if theme is None or theme.radius_preset != self.radius_preset:

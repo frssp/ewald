@@ -42,6 +42,18 @@ class Option:
         return PAGE_OF_PREFIX[self.key.split(".")[0]]
 
 
+# python.plot_style choices -> (ewald.plotstyle style, colors from the UI theme?)
+PLOT_STYLES = ("Publication", "Publication in UI theme colors", "Matplotlib default")
+
+
+def plot_style(choice: str, tokens: dict | None = None) -> tuple:
+    """``(style, tokens)`` for :meth:`ewald.notebook.Notebook.set_plot_style` from a
+    ``python.plot_style`` value and the active UI theme's ``tokens``."""
+    if choice == "Matplotlib default":
+        return "default", None
+    return "publication", (dict(tokens) if tokens and "theme" in choice else None)
+
+
 PAGES = ("General", "Viewports", "Elements", "Rendering", "Compute", "Python", "AI")
 PAGE_OF_PREFIX = {"general": "General", "viewport": "Viewports", "elements": "Elements", "bonds": "Elements",
                   "render": "Rendering", "plots": "Rendering", "compute": "Compute", "performance": "Compute",
@@ -176,6 +188,10 @@ OPTIONS = (
            "Opening a notebook runs its cells only after you agree, since they are Python code. An .ewd "
            "file always asks (it can carry plugins) unless this is 'never'.",
            choices=("ask", "always", "never")),
+    Option("python.plot_style", "Publication", "Style of your own plots",
+           "matplotlib figures that notebook cells and the console draw (plt.plot ...): the publication "
+           "style of saved plots, in print colors or the UI theme's, or matplotlib's defaults. rcParams a "
+           "cell sets always win.", choices=PLOT_STYLES),
     Option("python.save_figures", True, "Save figures with notebooks",
            "An .ewd notebook keeps every view cell as SVG and PNG, with the plotted data as CSV."),
     Option("python.bundle_data_mb", 50.0, "Copy data files up to (MB)",

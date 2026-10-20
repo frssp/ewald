@@ -104,6 +104,7 @@ class ViewportMenuMixin:
             act.setChecked(bool(self.settings["viewport.render_frame"]))
             act.toggled.connect(self._toggle_render_frame)
         if (d is not None and d.cell.is_valid) or everything:
+            self.fill_replicate_menu(menu.addMenu(icon("layers"), "Replicate cell"))
             views = menu.addMenu("View along")
             for ax in ("a", "b", "c", "a*", "b*", "c*"):
                 views.addAction(ax, lambda ax=ax: self.viewport.view_along(ax))
@@ -141,6 +142,67 @@ class ViewportMenuMixin:
         moving.setEnabled(on)
         moving.setChecked(on and mod.min_displacement > 0)
         moving.toggled.connect(lambda checked: self.set_overlay(True, min_displacement=0.1 if checked else 0.0))
+
+    # ---------------------------------------------------------------- replicated cell (display only)
+    REPLICATE_CHOICES = ((1, 1, 1), (2, 2, 2), (3, 3, 3), (2, 2, 1), (3, 3, 1), (4, 4, 1))
+
+    def set_replicate(self, n=(2, 2, 2), cell: str | None = None):
+        """Draw ``n = (na, nb, nc)`` periodic copies of the cell (``view(pipe, replicate=n)``; (1, 1, 1)
+        turns it off) and frame them. ``cell`` picks the cell lines: 'super', 'unit' or 'all'.
+        Display only: the data, analysis and export keep the original cell."""
+        from ..replicate import CELL_MODES, normalize_replicate
+
+        n = normalize_replicate(n)
+        self.style.replicate = list(n) if n else []
+        if cell is not None:
+            if cell not in CELL_MODES:
+                raise ValueError(f"cell must be one of {', '.join(CELL_MODES)}")
+            self.style.replicate_cell = cell
+        self._style_changed()
+        self.viewport.zoom_fit()
+
+    def fill_replicate_menu(self, menu: QtWidgets.QMenu):
+        """Replicate cell: off, common n x n x m blocks, a custom one, and which cell lines to draw."""
+        from ..replicate import CELL_MODES
+
+        menu.clear()
+        now = tuple(self.style.replicate or (1, 1, 1))
+        group = QtGui.QActionGroup(menu)
+        for n in self.REPLICATE_CHOICES:
+            act = menu.addAction("Off (1 × 1 × 1)" if n == (1, 1, 1) else " × ".join(map(str, n)))
+            act.setCheckable(True)
+            act.setChecked(now == n)
+            group.addAction(act)
+            act.triggered.connect(lambda _=False, n=n: self.set_replicate(n))
+        custom = menu.addAction("Custom…", self._custom_replicate)
+        custom.setCheckable(True)
+        custom.setChecked(now not in self.REPLICATE_CHOICES)
+        group.addAction(custom)
+        menu.addSeparator()
+        lines = menu.addMenu("Cell lines")
+        lines.setEnabled(now != (1, 1, 1))
+        labels = {"super": "Outline of the block", "unit": "Original cell", "all": "Every cell"}
+        cells = QtGui.QActionGroup(lines)
+        for mode, tip in CELL_MODES.items():
+            act = lines.addAction(labels[mode])
+            act.setToolTip(tip)
+            act.setCheckable(True)
+            act.setChecked(self.style.replicate_cell == mode)
+            cells.addAction(act)
+            act.triggered.connect(lambda _=False, m=mode: self.set_replicate(now, cell=m))
+        menu.setToolTipsVisible(True)
+        return menu
+
+    def _custom_replicate(self):
+        now = " ".join(map(str, self.style.replicate or (2, 2, 2)))
+        text, ok = QtWidgets.QInputDialog.getText(self, "Replicate cell", "Copies along a, b, c (e.g. 3 3 2):", text=now)
+        if not ok:
+            return
+        try:
+            n = [int(x) for x in text.replace(",", " ").replace("x", " ").replace("×", " ").split()]
+            self.set_replicate(n[0] if len(n) == 1 else n)
+        except (ValueError, IndexError) as exc:
+            QtWidgets.QMessageBox.warning(self, "Replicate cell", str(exc))
 
     def _toggle_style(self, attr, on):
         setattr(self.style, attr, on)

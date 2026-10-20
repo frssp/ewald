@@ -82,6 +82,18 @@ def test_run_all_builds_the_pipeline_and_shows_outputs(nb):
     assert all(c.state == "ok" for c in nb.cells[1:])
 
 
+def test_clear_outputs_drops_them_from_the_saved_file(nb, tmp_path):
+    assert nb.run_all()
+    last = nb.cells[-1]
+    nb.clear_outputs(last)
+    assert last.outputs == [] and last.count is None and nb.cells[-2].count is not None
+    nb.clear_outputs()
+    assert all(not c.outputs and c.count is None for c in nb.cells) and nb.pipeline is not None
+    path = tmp_path / "cleared.ipynb"
+    nb.save(str(path))
+    assert all(not c.outputs for c in Notebook.load(str(path)).cells)
+
+
 def test_rerunning_a_cell_replaces_its_modifier_in_place(nb):
     nb.run_all()
     first = nb.pipeline.modifiers[0]

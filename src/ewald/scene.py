@@ -107,13 +107,15 @@ class Lines:
     """Polylines: ``points`` (P x 3) and ``strips``, one array of point indices per line, with one
     ``rgb`` per strip (S x 3) or ``None`` for the renderer's ink color (black on light backgrounds).
     ``width`` is in pixels of a 1600-pixel-high image; ``radius`` (Angstrom), when given, lets
-    renderers that have no lines draw them as tubes with round joints."""
+    renderers that have no lines draw them as tubes with round joints. Lines are guides, so those
+    tubes cast no shadows and no ambient occlusion unless ``cast_shadows`` is True."""
 
     points: np.ndarray
     strips: list
     rgb: np.ndarray | None = None
     width: float = 2.0
     radius: float | None = None
+    cast_shadows: bool = False
 
     def __post_init__(self):
         self.points = np.asarray(self.points, float).reshape(-1, 3)
@@ -425,9 +427,14 @@ class SimulationCellVis(VisualElement):
 
         o, (a, b, c) = data.cell.origin, data.cell.matrix
         corners = np.array([o, o + a, o + b, o + c, o + a + b, o + a + c, o + b + c, o + a + b + c])
+        edges = [list(e) for e in _CELL_EDGES]
+        if "replicate_cell" in ctx.extras:  # a replicated view: the block, the unit cell or every copy
+            from .replicate import cell_edges
+
+            corners, edges = cell_edges(*ctx.extras["replicate_cell"])
         rgb = None if self.color is None else _rgb(self.color)
         radius = self.radius or 0.0015 * float(np.linalg.norm(a + b + c))
-        return [("cell", Lines(corners, [list(e) for e in _CELL_EDGES], rgb, self.width, radius))]
+        return [("cell", Lines(corners, edges, rgb, self.width, radius))]
 
 
 BUILTIN = (ParticlesVis, BondsVis, SurfacesVis, VectorsVis, TrajectoryLinesVis, SimulationCellVis)
@@ -479,7 +486,7 @@ def visual_to_dict(el: VisualElement) -> dict:
 
 
 def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None, boundary=None,
-          boundary_bonds: str = "half", **render_kwargs) -> Scene:
+          boundary_bonds: str = "half", replicate=None, replicate_cell: str = "super", **render_kwargs) -> Scene:
     """Run ``elements`` (default: :func:`builtin_elements` from ``render_kwargs``) and then ``visuals``
     on ``data``; returns the :class:`Scene` every renderer draws.
 
@@ -487,12 +494,22 @@ def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None,
     also draws the periodic images inside that range, with bonds and coordination polyhedra
     completed across the cell; ``boundary_bonds`` says what happens to bonds that leave it
     ('half', 'complete', 'none'; see :mod:`ewald.boundary`). The elements then see those ghost
-    atoms as particles, but each primitive's particle ``index``/``owner`` is the real atom."""
+    atoms as particles, but each primitive's particle ``index``/``owner`` is the real atom.
+
+    ``replicate`` ``(na, nb, nc)`` (or ``n``) draws that many periodic copies of the cell, with bonds
+    joined across them and polyhedra and isosurfaces repeated (OVITO's Replicate, as a display
+    setting; see :mod:`ewald.replicate`); ``replicate_cell`` draws the outline of the whole block
+    ('super'), the original cell ('unit') or every copy ('all'). The boundary range then applies to
+    the replicated block. Both are display only: the data and every analysis stay unchanged."""
     ctx = ctx or SceneContext()
     elements = list(builtin_elements(**render_kwargs) if elements is None else elements) + coerce_visuals(visuals)
     source = None
+    if replicate is not None and replicate is not False:
+        data, source = _with_replicate(data, elements, ctx, replicate, replicate_cell)
     if boundary is not None and boundary is not False:
-        data, source = _with_boundary(data, elements, ctx, boundary, boundary_bonds)
+        data, ghosts = _with_boundary(data, elements, ctx, boundary, boundary_bonds)
+        if ghosts is not None:
+            source = ghosts if source is None else source[ghosts]
     scene = Scene()
     for el in elements:
         if not getattr(el, "enabled", True) or not el.applies(data):
@@ -518,27 +535,52 @@ def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None,
     return scene
 
 
+def _element_bonds(data, elements):
+    """The bonds the Bonds element would draw on ``data`` (found on the real atoms)."""
+    from .render import scene_bonds
+
+    for el in elements:
+        if isinstance(el, BondsVis) and getattr(el, "enabled", True) and el.applies(data):
+            return scene_bonds(data, el.cutoff, el.pairs)
+    return data.bonds
+
+
+def _with_replicate(data, elements, ctx, replicate, cell_mode):
+    """The data tiled ``replicate`` times (see :func:`ewald.replicate.tile`) and the real atom of each."""
+    from .replicate import CELL_MODES, normalize_replicate, tile
+
+    if cell_mode not in CELL_MODES:
+        raise ValueError(f"unknown replicate_cell {cell_mode!r}; use one of {', '.join(CELL_MODES)}")
+    n = normalize_replicate(replicate)
+    if n is None or not data.cell.is_valid or not data.count:
+        return data, None
+    disp, source = tile(data, n, _element_bonds(data, elements))
+    if disp.bonds is None and any(isinstance(el, BondsVis) for el in elements):
+        from .bonds import Bonds
+
+        disp.bonds = Bonds()  # bonds were searched on the real atoms (none found)
+    ctx.extras["real_data"] = data
+    ctx.extras["replicate_cell"] = (data.cell, n, cell_mode)
+    if ctx.only_visible is not None:
+        ctx.only_visible = np.asarray(ctx.only_visible, bool)[source]
+    return disp, source
+
+
 def _with_boundary(data, elements, ctx, boundary, bond_mode):
     """The data with boundary ghosts (see :func:`ewald.boundary.expand`) and the real atom of each.
     Bonds are found on the real atoms first, so ghosts never bond through the periodic cell."""
     from .boundary import expand
-    from .render import scene_bonds
 
     if not data.cell.is_valid or not data.count:
         return data, None
-    bonds = data.bonds
-    for el in elements:
-        if isinstance(el, BondsVis) and getattr(el, "enabled", True) and el.applies(data):
-            bonds = scene_bonds(data, el.cutoff, el.pairs)
-            break
-    disp, source = expand(data, boundary, bonds, bond_mode=bond_mode)
+    disp, source = expand(data, boundary, _element_bonds(data, elements), bond_mode=bond_mode)
     if source is None:
         return data, None
     if disp.bonds is None and any(isinstance(el, BondsVis) for el in elements):
         from .bonds import Bonds
 
         disp.bonds = Bonds()  # never let BondsVis search the ghosts through the periodic cell
-    ctx.extras["real_data"] = data
+    ctx.extras.setdefault("real_data", data)
     if ctx.only_visible is not None:
         ctx.only_visible = np.asarray(ctx.only_visible, bool)[source]
     return disp, source

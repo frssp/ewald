@@ -21,6 +21,8 @@ always written with :data:`PRINT` colors (white background, near-black ink).
 """
 from __future__ import annotations
 
+import contextlib
+
 # Categorical cycles, in a fixed order. LIGHT is for white/Paper surfaces, DARK for Graphite.
 LIGHT = ("#008C7E", "#D55E00", "#3A64C8", "#A0348C", "#B08600", "#2C8DD6")
 DARK = ("#1FA090", "#DD6F2A", "#5B82E0", "#C055B0", "#B88E1A", "#3A9BE0")
@@ -132,11 +134,88 @@ def context(tokens: dict | None = None, font_size: float = FONT_SIZE):
     return mpl.rc_context(rc(tokens, font_size))
 
 
-def use(tokens: dict | None = None, font_size: float = FONT_SIZE):
-    """Make the style the matplotlib default for this process (ewald itself never calls this)."""
+STYLES = ("publication", "default")   # the user-plot styles of :class:`Session` and :func:`use`
+_SKIP = ("backend", "backend_fallback", "interactive")   # never swapped around a cell
+
+
+def _style_rc(style: str = "publication", tokens: dict | None = None, font_size: float = FONT_SIZE) -> dict:
+    """What ``style`` sets on top of the process defaults: the publication rc plus a 1-column
+    figure size and constrained layout for plain pyplot figures; nothing for 'default'."""
+    if style == "default":
+        return {}
+    if style != "publication":
+        raise ValueError(f"unknown plot style {style!r}; use one of {', '.join(STYLES)}")
+    out = rc(tokens, font_size)
+    out.update({"figure.figsize": SIZES[DEFAULT_SIZE], "figure.constrained_layout.use": True,
+                "savefig.bbox": "tight"})
+    return out
+
+
+def use(style: str | dict | None = "publication", tokens: dict | None = None, font_size: float = FONT_SIZE):
+    """Set matplotlib's rcParams for your own figures: ``use()`` the publication style (in
+    ``tokens`` colors), ``use("default")`` matplotlib's own defaults. In an ewald notebook or
+    the GUI console the change lasts for that notebook only (see :class:`Session`)."""
     import matplotlib as mpl
 
-    mpl.rcParams.update(rc(tokens, font_size))
+    if isinstance(style, dict) or style is None:   # use(tokens) of the first version
+        style, tokens = "publication", style
+    if style == "default":
+        dict.update(mpl.rcParams, {k: v for k, v in mpl.rcParamsDefault.items() if k not in _SKIP})
+    else:
+        mpl.rcParams.update(_style_rc(style, tokens, font_size))
+
+
+class Session:
+    """The matplotlib rcParams of one notebook or console, swapped in around each cell::
+
+        session = Session()                # publication style
+        with session.active():
+            exec(cell)                     # plt.plot(...) here is drawn in the style
+
+    What a cell changes (``plt.rcParams[...] = ...``, ``plt.style.use(...)``, :func:`use`) is
+    kept for the next cells of that notebook, and :meth:`configure` (another style, or a UI theme
+    change) leaves those keys alone. Outside :meth:`active` the process rcParams are untouched,
+    so other notebooks and ewald's own renderers never see a notebook's style."""
+
+    def __init__(self, style: str = "publication", tokens: dict | None = None):
+        self.style, self.tokens = "default", None
+        self._state = None   # this session's rcParams (all keys but _SKIP), made on first use
+        self._applied = {}   # what the style set last, to tell user changes from ours
+        self.configure(style, tokens)
+
+    def _base(self) -> dict:
+        import matplotlib as mpl
+
+        return {k: v for k, v in mpl.rcParams.items() if k not in _SKIP}
+
+    def configure(self, style: str = "publication", tokens: dict | None = None):
+        """Switch the style or its colors; keys a cell set itself keep their values."""
+        import matplotlib as mpl
+
+        style = (style or "publication").lower()
+        new = dict(mpl.RcParams(_style_rc(style, tokens)))   # validated, as rcParams holds them
+        if self._state is not None:
+            defaults = self._base()
+            for k in set(self._applied) | set(new):
+                ours = self._applied.get(k, defaults.get(k))
+                if k in self._state and self._state[k] == ours:   # untouched by the user
+                    self._state[k] = new.get(k, defaults.get(k))
+        self.style, self.tokens, self._applied = style, tokens, new
+
+    @contextlib.contextmanager
+    def active(self):
+        """Inside: this session's rcParams; after: the process's again, the session keeps changes."""
+        import matplotlib as mpl
+
+        saved = self._base()
+        if self._state is None:
+            self._state = dict(saved, **self._applied)
+        dict.update(mpl.rcParams, self._state)
+        try:
+            yield self
+        finally:
+            self._state = self._base()
+            dict.update(mpl.rcParams, saved)
 
 
 def figsize(size: str | tuple | None = None) -> tuple:

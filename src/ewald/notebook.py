@@ -245,12 +245,16 @@ class Notebook:
         self.kernel = None            # an ewald.kernel.Kernel: cells run in another Python
         self.links: list = []         # data files a .py header links (path, size, fingerprint)
         self.py_header: list = []     # other lines of a .py file's jupytext header, kept on save
+        self.plot_style = "publication"   # matplotlib style of the cells' own plots ('default': none)
+        self.plot_tokens = None           # its colors (a UI theme's tokens); None = print colors
+        self._plots = None                # ewald.plotstyle.Session: the cells' rcParams
         self.reset()
 
     # ------------------------------------------------------------ namespace
     def reset(self):
         """Fresh namespace (like restarting a Jupyter kernel); cells keep their source."""
         self.namespace = {"__name__": "__main__", "__file__": self.path or "<notebook>"}
+        self._plots = None   # rcParams a cell set are forgotten too, as on a kernel restart
         if self.kernel is not None:
             self.kernel.reset()
         for c in self.cells:
@@ -351,7 +355,7 @@ class Notebook:
         specs = [{"id": c.id, "kind": c.kind, "source": c.source} for c in self.cells]
         try:
             r = self.kernel.run(specs, index, run_below, self.counter, self.pipeline_name, self.path,
-                                self._data_dirs())
+                                self._data_dirs(), plot_style=(self.plot_style, self.plot_tokens))
         except KernelError as exc:
             self.counter += 1
             cell.count, cell.state, cell.outputs = self.counter, "error", [Output("error", str(exc))]
@@ -430,7 +434,30 @@ class Notebook:
         dirs = [os.path.dirname(self.path)] if self.path else []
         return dirs + [d for d in self.data_dirs if d not in dirs]
 
+    def set_plot_style(self, style: str = "publication", tokens: dict | None = None):
+        """The matplotlib style of plots the cells draw themselves (``plt.plot`` ...):
+        'publication' (:mod:`ewald.plotstyle`, in ``tokens`` colors or print colors) or 'default'
+        (matplotlib's own). rcParams a cell set stay as the cell set them."""
+        self.plot_style, self.plot_tokens = style, tokens
+        if self._plots is not None:
+            self._plots.configure(style, tokens)
+
+    def _plot_session(self):
+        """The cells' rcParams (:class:`ewald.plotstyle.Session`), or a no-op without matplotlib."""
+        if self._plots is None:
+            try:
+                from .plotstyle import Session
+
+                self._plots = Session(self.plot_style, self.plot_tokens)
+            except ImportError:
+                return contextlib.nullcontext()
+        return self._plots.active()
+
     def _exec_cell(self, cell: Cell, filename: str) -> bool:
+        with self._plot_session():
+            return self._exec_cell_styled(cell, filename)
+
+    def _exec_cell_styled(self, cell: Cell, filename: str) -> bool:
         cell.outputs = []
         lines = cell.source.splitlines(True)
         linecache.cache[filename] = (len(cell.source), None, lines, filename)
@@ -466,6 +493,16 @@ class Notebook:
         self.cells.insert(index, cell)
         self.dirty = True
         return cell
+
+    def clear_outputs(self, cell: Cell | None = None):
+        """Drop the outputs and run count of ``cell`` (default: every cell), like Jupyter's Clear
+        outputs; the next save writes the cells without them. Results and steps stay as they are."""
+        for c in self.cells if cell is None else [cell]:
+            c.outputs = []
+            c.count = None
+            if c.state == "error":
+                c.state = "new"
+        self.dirty = True
 
     def delete(self, cell):
         """Remove a cell and the modifiers it added."""
@@ -959,7 +996,7 @@ def _new_figures(before: set) -> list:
             continue
         fig = plt.figure(num)
         buf = io.BytesIO()
-        fig.savefig(buf, format="png", dpi=100, bbox_inches="tight")
+        fig.savefig(buf, format="png", dpi="figure", bbox_inches="tight")
         plt.close(fig)
         out.append(buf.getvalue())
     return out
