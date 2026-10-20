@@ -35,9 +35,9 @@ from menus).
 The viewport and the panel below it are tab groups. Drag a tab onto another group to move it:
 the middle of the group adds it as a tab, an edge splits the group in that direction, and a
 tab bar inserts it at that place. Esc cancels the drag. To look at the pair correlation
-function large, for example, drag the Plots tab onto the 3D view: the plot fills the main area
-and the 3D view waits behind its tab, without redrawing, until you click it again. Drop it on
-the right edge of the 3D view instead to see structure and plot side by side; both follow the
+function large, for example, drag the Plots tab onto the Structure tab: the plot fills the main area
+and the Structure view waits behind its tab, without redrawing, until you click it again. Drop it on
+the right edge of the Structure view instead to see structure and plot side by side; both follow the
 timeline and linked selections.
 
 Right click a tab (or use the group's menu button) for the same moves without dragging: Split
@@ -56,7 +56,7 @@ finds them too:
 | Back to the default layout | View › Layout › Reset layout |
 
 The layout is saved with the window when Preferences › General › *Restore window layout* is
-on (the default), extra plot views included. The 3D view itself never moves between windows:
+on (the default), extra plot views included. The Structure view itself never moves between windows:
 it can be placed anywhere in the middle but not closed, and the timeline stays under the
 editor area.
 
@@ -72,8 +72,8 @@ background entries change only the background.
 **Styles.** The Style box on the view toolbar switches between Ball & stick (the default: small
 balls and bonds found automatically), Space-filling, Simple (ASE) and Points; Preferences ›
 Viewports › *Default style* picks the one a new window starts with. Simple (ASE) looks like ASE's
-GUI: flat discs in the element color with a dark outline, unshaded bonds with outlined edges, and
-the ASE theme (white background). It is drawn with impostors, so it stays fast for any number of
+GUI: flat discs in the element color with a dark outline, bonds (on, like Ball & stick) as unshaded
+sticks with outlined edges, and the ASE theme (white background). It is drawn with impostors, so it stays fast for any number of
 atoms; leaving it restores the colors and background you had. Particles › Rendering = flat gives
 the same look with any radius. Automatic bonds come from a VESTA-style table (Bonds), one row per
 pair of types up to 1.15 × the sum of covalent radii; in compounds metal-metal pairs are left
@@ -82,7 +82,9 @@ Preferences › Elements › *Automatic bonds up to* atoms (100 000) turns bonds
 bond search and the sticks would slow the viewport down; turn them on under Bonds if you want them. The tool rail on the left switches
 between orbit, pick (click an atom to see its id, type, position and every property;
 Shift+click adds atoms to the pick or removes them),
-distance (click two atoms) and angle (click three atoms, vertex in the middle). Resting the
+distance (click two atoms) and angle (click three atoms, vertex in the middle). Double-click
+empty space or press Esc to clear the picks, measurements and selection (with any tool,
+orbit included). Resting the
 cursor on an atom with any tool shows its element, index (and id), Cartesian position in Å and,
 when there is a cell, fractional coordinates, in a tooltip and on the right of the status bar.
 The ray cast runs once, after the cursor rests (Viewports › Hover › *Hover delay*, 0.25 s), and
@@ -106,7 +108,7 @@ the current one (`OverlayFrames`; on by default for NEB folders), with its trans
 along, Orthographic, Zoom to fit and Ask AI are always there.
 
 **AI chat (Ask AI).** The AI button at the bottom of the activity bar on the far left (also
-Window › AI chat, Ctrl+J, and Ask AI in the 3D view's right-click menu) opens a chat side bar left of the
+Window › AI chat, Ctrl+J, and Ask AI in the Structure view's right-click menu) opens a chat side bar left of the
 notebook. It reads like a
 chat app: your messages in bubbles on the right, the answers under the assistant's name (Claude, Gemini, ...) on the left,
 the tools it ran as small chips (*Running …*, then *Used …*), and code blocks as framed code with
@@ -291,11 +293,11 @@ multi-million-atom files. `python benchmarks/analysis.py` times the analysis mod
 The viewport draws a change once, in the next repaint: several changes made before the
 repaint (a new frame, picks, a camera move) cost one render, a mouse move while rotating costs
 one render rather than two, and nothing is redrawn while the window is idle or the viewport is
-hidden, which includes a 3D view sitting behind another tab (it draws the last frame when you
+hidden, which includes the Structure view sitting behind another tab (it draws the last frame when you
 return to it). The Data inspector and plot views follow the current frame only while they are
 on screen; a plot range linked to the viewport keeps following it either way.
 
-*3D view* picks the viewport itself. Auto uses VTK, except on an SSH-forwarded display
+*Viewport renderer* picks the viewport itself. Auto uses VTK, except on an SSH-forwarded display
 (`ssh -X`), where it uses Legacy GL: OpenGL 1.x display lists drawn like VESTA, with the frame text
 above the view instead of on it, mesh spheres (points above 400,000 atoms) and no smooth edges or
 color bar. See [Troubleshooting the GUI](install.md#troubleshooting-the-gui). It takes effect at
