@@ -10,13 +10,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
-- Several files as one trajectory: the GUI Open dialog takes one file (no multi-select into a
-  list yet), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
+- Several files as one trajectory: File › Open and drops join several data files in natural order
+  only (no dialog to reorder them or pick `join="concat"`), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
   appended to after a restart (`dump_modify append yes`). Restart detection needs a Timestep per
   frame, which only the LAMMPS dump reader gives cheaply (extxyz `Timestep=` comments, H5MD
   steps and XTC steps are not used yet).
-- View tab: folded cards are remembered only while the window is open (not in settings or the
-  layout file); no Fold all / Unfold all; a card has no per-card reset to defaults.
+- View tab: a card has no per-card reset to defaults.
 
 - Workflows (`ewald.workflow`): a table that compares the scalars of every step of a workflow
   (energies, gaps, forces) and of several workflows side by side, and opening one step's input
@@ -86,8 +85,8 @@ GUI
 - Notebook layout: the viewport could follow the current notebook even when it has no
   pipeline yet (now it keeps the last one); image/figure cells; inline Ask AI suggestions
   as diffs; a snapshot cell that updates when the camera of its view changes (now it is code);
-  more Jupyter command-mode keys (only Y, M, A, B and Enter so far: no DD, X/C/V, Shift+Enter in
-  command mode, raw cells).
+  raw cells; Jupyter's Shift+Ctrl+- (split a cell at the cursor) and Shift+L (line numbers);
+  selections are a contiguous range (no Ctrl+click to pick separate cells).
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
   view does not have yet (picks as code, the viewport axes widget; measurement labels in the
   legacy OpenGL 1.x viewport, and lines that show through atoms; audit in the project files `ewald-review/view-elements-audit.md`);

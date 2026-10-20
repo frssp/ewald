@@ -185,7 +185,8 @@ def save_layout(win, s: Settings):
         state = {"geometry": bytes(win.saveGeometry().toBase64()).decode(),
                  "state": bytes(win.saveState().toBase64()).decode(),
                  "workbench": win.workbench.state(),
-                 "plugin_panels": win.open_plugin_panels()}
+                 "plugin_panels": win.open_plugin_panels(),
+                 "view_folded": sorted(win.display.folded)}
         try:
             layout_path(s).parent.mkdir(parents=True, exist_ok=True)
             layout_path(s).write_text(json.dumps(state))
@@ -206,6 +207,10 @@ def restore_layout(win, s: Settings):
         pass
     if isinstance(state, dict) and isinstance(state.get("workbench"), dict):
         win.workbench.restore_state(state["workbench"])  # tab groups; older files keep the default
+    if isinstance(state, dict) and isinstance(state.get("view_folded"), list):
+        for title in state["view_folded"]:       # View tab cards folded when the window closed
+            if isinstance(title, str):
+                win.display.set_folded(title, True)
     if isinstance(state, dict) and isinstance(state.get("plugin_panels"), list):
         win._saved_plugin_docks = set(state["plugin_panels"])
         for name in state["plugin_panels"]:      # plugin side bars that were open, where they were
