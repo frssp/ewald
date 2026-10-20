@@ -307,10 +307,17 @@ Plugins and AI
   `GATEWAY_NO_POOL` (sim-agent has both).
 - Plugin manifests, phase 2 (from the VS Code comparison): contributions declared in
   `ewald-plugin.toml` (`[[readers]]`, `[[modifiers]]`, ... with `python = "module:object"`)
-  registered lazily and imported on first use; a `commands` contribution point (commands in the
-  palette, as notebook functions and as AI tools). Settings pages exist (`@settings_page`, a
-  generated dialog from the Plugins side bar and Edit › Plugin settings) but are registered in
-  code, not declared in the manifest, and are not pages of the Preferences dialog itself.
+  registered lazily and imported on first use (`@panel` widgets are already built on first open,
+  but the plugin module is still imported at start); a `commands` contribution point (commands in
+  the palette, as notebook functions and as AI tools). Settings pages (`@settings_page`) and side
+  bars (`@panel`) are registered in code, not declared in the manifest.
+- GUI plugins (`@panel`, `gui/window_plugins.py`; `@settings_page` pages in Preferences): a panel's
+  open/closed state and width are not restored with the window layout (its dock is built lazily,
+  after `restoreState`); panels only dock on the left beside the notebook (no tab under the 3D
+  view yet, that waits for the workbench `@view` API); reloading plugins rebuilds every open
+  plugin panel, losing its state; no menu, toolbar or context-menu contributions. A plugin's
+  Preferences page has no changed-dot or per-row Reset, and Edit › Plugin settings and the
+  Plugins side bar's Settings still open the separate dialog rather than that page.
 - Plugin manifests, phase 3: the index repository exists (frssp/ewald-plugins: `plugins/*.toml`,
   `index.json`, first-party `packages/ewald-phonopy` and `packages/ewald-plumed` pinned to tags).
   Left: install and update with `pip` from the Plugins panel into the running interpreter,

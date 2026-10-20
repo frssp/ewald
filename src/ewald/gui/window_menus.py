@@ -47,10 +47,13 @@ class MenusMixin:
     def refresh_activity_icons(self):
         """Redraw the activity bar icons in the colors of the UI theme now active."""
         for name, act in self.activity_buttons.items():
+            if name.startswith("plugin:"):
+                continue  # PluginPanelsMixin.refresh_plugin_icons
             if name == "Plugins":
                 self._plugin_updates(act.property("updates") or 0)
             else:
                 act.setIcon(icon(act.property("ewald_icon")))
+        self.refresh_plugin_icons()
 
     def _plugin_updates(self, count):
         """A count badge on the Plugins icon while installed plugins have newer catalog versions."""
@@ -63,15 +66,16 @@ class MenusMixin:
         act.setProperty("updates", count)
 
     def _show_side_bar(self, dock):
-        """Show an activity-bar side bar (Plugins, Remotes, AI chat) in a column of its own left of
-        the notebook (Qt would otherwise stack a re-shown dock above it)."""
+        """Show an activity-bar side bar (Plugins, Remotes, AI chat, a plugin's panel) in a column of
+        its own left of the notebook (Qt would otherwise stack a re-shown dock above it)."""
         placed = dock.isHidden() and not dock.isFloating() and self.notebook_dock.isVisible()
         if placed:
             self.splitDockWidget(dock, self.notebook_dock, QtCore.Qt.Horizontal)
         dock.show()
         dock.raise_()
         if placed:
-            self.resizeDocks([dock], [380 if dock is self.ask_dock else 320], QtCore.Qt.Horizontal)
+            width = dock.property("ewald_width") or (380 if dock is self.ask_dock else 320)
+            self.resizeDocks([dock], [int(width)], QtCore.Qt.Horizontal)
 
     def set_minimal(self, on: bool | None = None):
         """Hide the menu bar, toolbars and status bar, leaving the notebook, the viewport and the
@@ -337,7 +341,7 @@ class MenusMixin:
         t = mb.addMenu("&Tools")
         for key, _icon, tip in Viewport.TOOLS:
             t.addAction(tip.split(":")[0], lambda k=key: self.viewport.set_tool(k))
-        w = mb.addMenu("&Window")
+        w = self.window_menu = mb.addMenu("&Window")
         w.addAction("Notebook workspace", lambda: self.set_workspace(0), "Ctrl+1")
         w.addAction("Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
         w.addAction("Notebook", lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))

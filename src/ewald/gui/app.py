@@ -39,9 +39,10 @@ from .workbench import Workbench
 from .window_files import SESSION_FILTER, FilesMixin, file_filter, save_filters  # noqa: F401 (public)
 from .window_links import LinksMixin, NotebookBridge
 from .window_menus import MenusMixin
+from .window_plugins import PluginPanelsMixin
 from .window_view import ViewSyncMixin
 
-class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSyncMixin, QtWidgets.QMainWindow):
+class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSyncMixin, QtWidgets.QMainWindow):
     def __init__(self, pipeline=None, device=None, settings=None):
         super().__init__()
         from .. import settings as settings_mod
@@ -160,6 +161,8 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
 
         self._build_menus()
         self._build_toolbar()
+        self._build_plugin_panels()  # activity-bar buttons of @panel plugins, after the built-in ones
+        self.plugins_panel.changed.connect(self.refresh_plugin_panels)
         self.setAcceptDrops(True)  # files and folders dropped on the window (FilesMixin.dropEvent)
         self.status = QtWidgets.QLabel()
         self.pick_label = QtWidgets.QLabel()
@@ -233,9 +236,11 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.live_reload.configure(on, self.settings["general.live_reload_interval"])
         self.message(f"Live reload {'on' if on else 'off'}")
 
-    def preferences(self):
-        dlg = prefs.PreferencesDialog(self.settings, self)
+    def preferences(self, page: str | None = None):
+        """Edit › Preferences, at ``page`` (a page title such as "Viewports" or a plugin's page)."""
+        dlg = prefs.PreferencesDialog(self.settings, self, page=page)
         dlg.applied.connect(lambda s: prefs.apply_settings(self, s))
+        dlg.applied.connect(lambda s: self._plugin_event("settings", s))
         dlg.exec()
         return dlg
 
@@ -285,6 +290,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.frame = 0
         self.timeline._set(0) if self.timeline.frame != 0 else self.recompute()
         self.live_reload.report_incomplete()
+        self._plugin_event("pipeline", pipeline)
 
     def set_frame(self, frame):
         self.frame = frame
@@ -384,6 +390,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
                             f"pipeline {dt * 1000:.0f} ms   {dev}")
         if self.workspaces.currentIndex() == 1:
             self.render_page.update_code()
+        self._plugin_event("data", self.data)
 
     def _update_bottom_tab(self, *_):
         """Fill the inspector or a plot view with the current frame, only while it is on screen
