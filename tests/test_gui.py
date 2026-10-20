@@ -2079,6 +2079,7 @@ def test_plugins_side_bar_installs_adds_a_step_and_removes(app, cu_path, tmp_pat
     panel.wait()
     entry = next(e for e in panel.entries if e.name == "Bar shift")
     panel.install(entry)
+    panel.wait()
     item = next(i for i in panel.items if i.path.endswith("bar_shift.py"))
     panel.show_details(item)
     assert not panel.use_button.isHidden()
@@ -2237,7 +2238,14 @@ def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app,
     texts = [w.text() for w in panel.findChildren(plugins_panel.QtWidgets.QLabel)]
     assert any("needs ewald >=99" in t for t in texts)
     assert any(t.startswith("No plugin index at") and "not-yet.json" in t for t in texts)   # muted, not an error
-    buttons["Update to 0.3"].click()
+    buttons["Update to 0.3"].click()                                     # runs in the background
+    app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)
+    spinning = [r for r in panel.findChildren(plugins_panel.PluginRow) if r.busy is not None]
+    assert [(r.item.id, r.busy.text()) for r in spinning] == [("up_shift", "Updating…")]    # a spinner, no buttons
+    assert not any(b.text().startswith("Update") for r in spinning for b in r.findChildren(plugins_panel.QtWidgets.QPushButton))
+    assert not panel.busy_bar.isHidden() and "Updating Up shift" in panel.busy_label.text()
+    panel.wait()
+    assert not panel.busy and panel.busy_bar.isHidden()
     assert next(i for i in panel.items if i.id == "up_shift").version == "0.3"
     app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)    # the old rows go
     assert not any(b.text().startswith("Update") for b in panel.findChildren(plugins_panel.QtWidgets.QPushButton))
