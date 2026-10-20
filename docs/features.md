@@ -252,7 +252,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 | Element | What it draws |
 |---|---|
-| `Particles` | Atoms as spheres: the 'Color' and 'Radius' properties, else per-type colors (``type_colors`` first) and radii (``type_radii``, else ``radius_preset``, see :mod:`ewald.radii`), times ``radius_scale``. Particles with Transparency 1 are left out. |
+| `Particles` | Atoms as spheres: the 'Color' and 'Radius' properties, else per-type colors (``type_colors`` first) and radii (``type_radii``, else ``radius_preset``, see :mod:`ewald.radii`), times ``radius_scale``. Particles with Transparency 1 are left out. ``selection_color`` (e.g. red, as in OVITO) draws the particles of a 'Selection' property in that color; None leaves them as they are. |
 | `Bonds` | Half-bonds as cylinders in their atoms' colors (or the bonds' 'Color'): ``data.bonds`` when present, else a search by ``cutoff`` or VESTA-style ``pairs`` [(A, B, dmin, dmax)]. |
 | `Surfaces` | Every ``data.surfaces`` mesh (polyhedra, isosurfaces, grid slices). ``styles`` restyles them by name on top of what their step made: ``{name: {"visible", "color", "transparency", "edges"}}``. |
 | `Vectors` | Per-particle vectors as arrows: ``data.vectors`` (VectorVis) plus ``vectors`` (a property name, a list, or ``{name: {VectorStyle fields}}``, see :class:`ewald.arrows.VectorStyle`). |
@@ -299,7 +299,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 `size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`, `region`.
 
-Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`, `show_atoms`, `surfaces`, `cell_radius`.
+Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`, `show_atoms`, `surfaces`, `cell_radius`, `type_transparency`, `selection_color`.
 
 ## Command line
 

@@ -254,19 +254,21 @@ class VisualElement:
 class ParticlesVis(VisualElement):
     """Atoms as spheres: the 'Color' and 'Radius' properties, else per-type colors (``type_colors``
     first) and radii (``type_radii``, else ``radius_preset``, see :mod:`ewald.radii`), times
-    ``radius_scale``. Particles with Transparency 1 are left out."""
+    ``radius_scale``. Particles with Transparency 1 are left out. ``selection_color`` (e.g. red, as in
+    OVITO) draws the particles of a 'Selection' property in that color; None leaves them as they are."""
 
     name = "Particles"
 
     def __init__(self, radius_scale: float = 1.0, type_colors: dict | None = None, type_radii: dict | None = None,
                  radius_preset: str = "covalent", oxidation_states: dict | None = None,
-                 coordination: dict | None = None):
+                 coordination: dict | None = None, selection_color=None):
         self.radius_scale = radius_scale
         self.type_colors = type_colors
         self.type_radii = type_radii
         self.radius_preset = radius_preset
         self.oxidation_states = oxidation_states
         self.coordination = coordination
+        self.selection_color = selection_color
 
     def applies(self, data) -> bool:
         return data.count > 0
@@ -290,6 +292,14 @@ class ParticlesVis(VisualElement):
             rgb = colors[sel]
         else:
             palette = np.clip(_color_table(groups[0], self.type_colors), 0, 1)
+        if self.selection_color is not None and "Selection" in data:
+            chosen = np.asarray(data["Selection"]) != 0
+            if chosen.any():
+                from .render import _rgb
+
+                colors = colors.copy() if colors is not None else palette[groups[1]]
+                colors[chosen] = _rgb(self.selection_color)
+                rgb, palette = colors[sel], None
         if "Radius" in data:
             radii = np.asarray(data["Radius"], float)[sel] * self.radius_scale
         else:
@@ -467,9 +477,11 @@ BUILTIN = (ParticlesVis, BondsVis, SurfacesVis, VectorsVis, TrajectoryLinesVis, 
 def builtin_elements(*, radius_scale=1.0, type_colors=None, type_radii=None, radius_preset="covalent",
                      oxidation_states=None, coordination=None, bonds=None, bond_pairs=None, bond_radius=0.15,
                      vectors=None, trajectory_width=2.0, show_cell=True, cell_color=None, cell_width=2.0,
-                     cell_radius=None, show_atoms=True, surfaces=None, **_ignored) -> list[VisualElement]:
+                     cell_radius=None, show_atoms=True, surfaces=None, selection_color=None,
+                     **_ignored) -> list[VisualElement]:
     """The built-in elements configured from ``render()`` keyword arguments, in drawing order."""
-    particles = ParticlesVis(radius_scale, type_colors, type_radii, radius_preset, oxidation_states, coordination)
+    particles = ParticlesVis(radius_scale, type_colors, type_radii, radius_preset, oxidation_states, coordination,
+                             selection_color)
     particles.enabled = bool(show_atoms)
     out = [particles, BondsVis(bonds, bond_pairs, bond_radius), SurfacesVis(surfaces or None), VectorsVis(vectors),
            TrajectoryLinesVis(trajectory_width)]
@@ -511,7 +523,8 @@ def visual_to_dict(el: VisualElement) -> dict:
 
 
 def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None, boundary=None,
-          boundary_bonds: str = "half", replicate=None, replicate_cell: str = "super", **render_kwargs) -> Scene:
+          boundary_bonds: str = "half", replicate=None, replicate_cell: str = "super", type_transparency=None,
+          **render_kwargs) -> Scene:
     """Run ``elements`` (default: :func:`builtin_elements` from ``render_kwargs``) and then ``visuals``
     on ``data``; returns the :class:`Scene` every renderer draws.
 
@@ -525,8 +538,13 @@ def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None,
     joined across them and polyhedra and isosurfaces repeated (OVITO's Replicate, as a display
     setting; see :mod:`ewald.replicate`); ``replicate_cell`` draws the outline of the whole block
     ('super'), the original cell ('unit') or every copy ('all'). The boundary range then applies to
-    the replicated block. Both are display only: the data and every analysis stay unchanged."""
+    the replicated block. Both are display only: the data and every analysis stay unchanged.
+
+    ``type_transparency`` ``{type: 0..1}`` makes whole particle types see-through (1 hides them, with
+    their half-bonds), on top of a 'Transparency' property (the larger value wins)."""
     ctx = ctx or SceneContext()
+    if type_transparency:
+        data = _with_type_transparency(data, type_transparency)
     elements = list(builtin_elements(**render_kwargs) if elements is None else elements) + coerce_visuals(visuals)
     source = None
     if replicate is not None and replicate is not False:
@@ -560,6 +578,22 @@ def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None,
             elif isinstance(prim, Cylinders) and prim.owner is not None and len(prim.owner):
                 prim.owner = source[np.asarray(prim.owner, np.int64)]
     return scene
+
+
+def _with_type_transparency(data, table):
+    """A display copy of ``data`` whose 'Transparency' includes the per-type values of ``table``."""
+    from .render import type_groups
+
+    names, inverse = type_groups(data.types)
+    per_type = np.array([float(table.get(str(n), 0.0)) for n in names])
+    if not data.count or not per_type.any():
+        return data
+    t = np.clip(per_type, 0, 1)[inverse]
+    if "Transparency" in data:
+        t = np.maximum(t, np.asarray(data["Transparency"], float))
+    out = data.copy()
+    out["Transparency"] = t
+    return out
 
 
 def _element_bonds(data, elements):
