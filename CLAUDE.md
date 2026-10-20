@@ -159,7 +159,8 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `gui/`: `app.py` main window (frames, recompute, styling; built from mixins: `window_menus.py` toolbar,
   menus, activity bar and minimal mode, `window_files.py` open/export/sessions/notebooks, `viewport_menu.py`
   right-click menu, `window_links.py` picks, plot links (Plots tab and view cells), Ask AI and console),
-  `notebook_panel.py` (cells, steps, view cells with live `PlotsPanel`s), `notebook_tabs.py` (one tab per
+  `notebook_panel.py` (`NotebookView`/`NotebookPanel`: running, undo, tabs; `cell_widget.py` one cell with its
+  step form, outputs and view cells with live `PlotsPanel`s; `code_editor.py` the editor and highlighter), `notebook_tabs.py` (one tab per
   open notebook), `plugins_panel.py` (Plugins side bar), `viewport.py` (VTK; `legacy_viewport.py` + Qt-free
   `legacy_gl.py` are the OpenGL 1.x viewport for `ssh -X`, chosen by `gui.viewport_backend`), `pipeline_panel.py`
   (step menus and `DisplayPanel`, the visual elements side bar), `params.py`, `render_page.py`,

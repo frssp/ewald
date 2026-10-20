@@ -14,7 +14,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   code-execution path plus sha256 for catalog downloads (done: `trust.py`, `EXEC_SITES`), a
   versioned plugin API (done: `ewald.plugin_api`; the ewald-plugins packages still need
   `plugin-api = 1` in their manifests), splitting `plugins.py` (done: `plugin_kinds.py`,
-  `plugin_manifest.py`), then splitting `gui/notebook_panel.py`.
+  `plugin_manifest.py`) and `gui/notebook_panel.py` (done: `cell_widget.py`, `code_editor.py`).
 
 ## Next
 

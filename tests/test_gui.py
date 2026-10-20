@@ -2395,7 +2395,7 @@ def test_theme_switch_restyles_console_plots_and_code(app, vasp_dir):
     from ewald.gui import prefs_apply, theme
     from ewald.gui.app import MainWindow
     from ewald.gui.console import pygments_style
-    from ewald.gui.notebook_panel import PythonHighlighter
+    from ewald.gui.code_editor import PythonHighlighter
 
     assert theme.DEFAULT == "graphite" and settings.Settings()["general.ui_theme"] == "graphite"
     s = settings.Settings()
