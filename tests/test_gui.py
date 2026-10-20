@@ -1550,7 +1550,7 @@ def test_notebook_tab_runs_its_cells_in_another_kernel(app, cu_path, tmp_path, m
         assert view.interrupt_button.isHidden() and view.run_all_button.isEnabled()
         assert k.alive and [c.state for c in view.notebook.cells] == ["ok", "ok"]
         assert w.pipeline is view.notebook.pipeline and "Coordination" in w.pipeline.compute(0).particles
-        assert "1 steps" in view.status.text()
+        assert "1 step" in view.status.text()
         view.notebook.save(tmp_path / "k2.ipynb")
         (tmp_path / "k3.ipynb").write_bytes((tmp_path / "k2.ipynb").read_bytes())
         reopened = w.open_notebook(str(tmp_path / "k3.ipynb"))      # the kernel choice is kept
@@ -2186,15 +2186,24 @@ def test_panel_headers_line_up_and_buttons_use_icons(app, pipe):
     w.resize(1300, 820)
     w.show()
     app.processEvents()
-    heads = [d.titleBarWidget() for d in w.findChildren(QtWidgets.QDockWidget) if d.isVisible()]
+    bars = [d.titleBarWidget() for d in w.findChildren(QtWidgets.QDockWidget) if d.isVisible()]
+    nb_bar = w.notebook_dock.titleBarWidget()
+    assert nb_bar.height() == 0 and nb_bar.merged  # the notebook tabs carry its fold and float buttons
+    heads = [b for b in bars if b is not nb_bar] + [w.panel.tabs.tabBar()]
     heads += [g.head for g in w.workbench.findChildren(QtWidgets.QWidget) if hasattr(g, "head") and g.isVisible()]
     assert len(heads) >= 3
-    assert {h.height() for h in heads} == {header.height()}
+    assert {h.height() for h in heads} <= {header.height(), header.height() + 1}
     tops = {h.mapTo(w, QtCore.QPoint(0, 0)).y() for h in heads if h.mapTo(w, QtCore.QPoint(0, 0)).y() < 200}
     assert len(tops) == 1  # notebook, 3D view and Display headers start on one line
     for b in w.findChildren(QtWidgets.QAbstractButton):
         symbols = [c for c in b.text() if unicodedata.category(c) == "So" or 0x2190 <= ord(c) <= 0x2BFF]
         assert not symbols, (b.objectName(), b.toolTip(), b.text())
+    nb_bar.merged[0].click()  # fold from the tab row: the strip with the name comes back
+    app.processEvents()
+    assert nb_bar.collapsed and nb_bar.height() > 0 and nb_bar.vtitle.isVisible()
+    nb_bar.toggle()
+    app.processEvents()
+    assert not nb_bar.collapsed and nb_bar.height() == 0
     tl = w.timeline
     tl.play.setChecked(True)
     assert tl.play.property("ewald_icon") == "pause"

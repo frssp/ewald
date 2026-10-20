@@ -39,8 +39,9 @@ class NotebookTabs(QtWidgets.QTabWidget):
         self.new_button = new = header.button("plus", "New notebook (Ctrl+T)")
         new.clicked.connect(self.newRequested.emit)
         corner = _Corner(objectName="tabCorner")
-        lay = QtWidgets.QHBoxLayout(corner)
+        lay = self.corner_layout = QtWidgets.QHBoxLayout(corner)  # the panel's fold/float buttons join it
         lay.setContentsMargins(0, 0, 6, 0)
+        lay.setSpacing(2)
         lay.addWidget(new, 0, QtCore.Qt.AlignVCenter)
         self.setCornerWidget(corner, QtCore.Qt.TopRightCorner)
         bar = self.tabBar()

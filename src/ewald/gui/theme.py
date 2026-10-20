@@ -191,6 +191,7 @@ QLabel#panelTitle {{ color: {secondary}; font-weight: 600; background: transpare
 QWidget#panelHeader QTabBar {{ background: transparent; }}
 QWidget#panelHeader QTabBar::tab {{ padding: 0 12px; margin: 0; }}
 QToolButton#headerButton, QToolButton#groupButton {{ padding: 0; border-radius: 4px; }}
+QToolButton#headerButton::menu-indicator {{ image: none; width: 0; }}
 QToolButton#minimalExit {{ background: {raised}; border: 1px solid {border}; padding: 3px 10px; }}
 QToolButton#minimalExit:hover {{ background: {hover}; }}
 QLabel#toast {{ background: {text}; color: {bg}; border-radius: 8px; padding: 8px 14px; }}

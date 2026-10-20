@@ -134,7 +134,7 @@ never goes blank. Selecting a row opens its parameters below the list; the form 
 from the modifier's constructor, so every argument you can pass in Python can be edited here.
 
 **Visual elements.** The top of the list holds what is drawn: Particles, Bonds and Simulation
-cell, plus any [visual element plugins](../plugins/visuals.md) added with the "+ Visual" button.
+cell, plus any [visual element plugins](../plugins/visuals.md) added with the **+** button in the Display header.
 Simulation cell has VESTA's boundary range: tick Boundary and set the fractional range (e.g.
 -0.1 to 1.1) to draw the periodic images of atoms on the faces, edges and corners, with bonds and
 polyhedra completed across the cell; [display only](rendering.md#boundary-vesta).
