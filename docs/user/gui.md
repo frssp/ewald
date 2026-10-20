@@ -278,7 +278,7 @@ bookmarks, and browses their files; passwords and key passphrases go to the OS k
 
 Edit › Preferences (Ctrl+, ; the application menu on macOS) has seven pages: General, Viewports,
 Elements (per-element color and radius, Jmol or CPK scheme, radius preset, VESTA `elements.ini` import),
-Rendering, Compute (default device, CPU threads, installed components), Python (console
+Rendering, Compute (device, CPU threads, installed components), Python (console
 startup script, extra module paths) and AI (provider, API key, model, server URL and effort for Ask AI; see
 [API key](claude.md#api-key)). Only values that differ from the defaults are saved, as
 JSON in the ewald config folder: `~/.config/ewald` on Linux,
@@ -327,9 +327,10 @@ above the view instead of on it, mesh spheres (points above 400,000 atoms) and n
 color bar. See [Troubleshooting the GUI](install.md#troubleshooting-the-gui). It takes effect at
 the next start; `EWALD_VIEWPORT=vtk|legacy-gl` overrides it.
 
-The Compute switch in the toolbar changes the device for the current session only; the
-preference sets the device the GUI starts with: Auto by default, which uses the CUDA GPU when
-CuPy finds one (the status bar then reads `AUTO (CUDA)`) and the CPU otherwise.
+*Device* is where analysis runs, for the window and for the notebook's `pipe` alike. It is the
+CPU by default, the safe choice; CUDA uses the NVIDIA GPU through CuPy, and Auto uses the GPU
+when CuPy finds one (the status bar then reads `AUTO (CUDA)`) and the CPU otherwise. A change
+applies at once.
 
 ## Help
 

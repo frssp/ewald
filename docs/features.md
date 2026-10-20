@@ -463,7 +463,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 | Key | Label | Default |
 |---|---|---|
-| `compute.device` | Default device | `'auto'` |
+| `compute.device` | Device | `'cpu'` |
 | `performance.cache_memory` | Frame cache memory | `2048` |
 | `performance.background_compute` | Compute in the background | `True` |
 | `compute.threads` | CPU threads | `0` |

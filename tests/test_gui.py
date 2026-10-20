@@ -677,13 +677,13 @@ def test_preferences_dialog_edit_search_restore(app, tmp_path):
     dlg = PreferencesDialog(s)
     assert [dlg.pages.item(i).text() for i in range(dlg.pages.count())] == list(settings.PAGES)
     dlg.set_value("viewport.rotation_step", 45.0)
-    dlg.set_value("compute.device", "cpu")
+    dlg.set_value("compute.device", "auto")
     assert s.is_default("viewport.rotation_step")           # untouched until Apply
     applied = []
     dlg.applied.connect(applied.append)
     dlg.apply()
     assert applied and s["viewport.rotation_step"] == 45.0
-    assert settings.load()["compute.device"] == "cpu"        # saved to disk
+    assert settings.load()["compute.device"] == "auto"        # saved to disk
     dlg._search("radius")
     visible = {dlg.pages.item(i).text() for i in range(dlg.pages.count()) if not dlg.pages.item(i).isHidden()}
     assert visible == {"Elements"}
@@ -758,7 +758,7 @@ def test_main_window_applies_settings(app, pipe):
     s["render.renderer"] = "opengl"
     s["elements.overrides"] = {"Cu": {"color": "#c8794a"}}
     w = MainWindow(pipe, settings=s)
-    assert w.device == "auto" and w.style.background == "#ffffff" and w.style.bonds_enabled
+    assert w.device == "cpu" and w.style.background == "#ffffff" and w.style.bonds_enabled
     assert w.viewport.rotation_step == 30.0 and not w.render_page.raytrace
     assert w.style.type_colors["Cu"] == "#c8794a"
     assert any(a.text() == "&Preferences…" for a in w.menuBar().actions()[1].menu().actions())
@@ -2781,4 +2781,24 @@ def test_render_page_frame_on_the_3d_view(app, pipe, tmp_path):
     w.settings["viewport.render_frame"] = True
     w._render_frame_visibility()
     assert frame.visible
+    w.close()
+
+
+def test_compute_device_lives_in_preferences(app, pipe):
+    """No toolbar device switch: Preferences › Compute › Device (CPU by default) sets the window's
+    device and the notebook pipe's, unless the pipe chose one itself."""
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.gui.preferences import apply_settings
+
+    s = settings.Settings()
+    w = MainWindow(pipe, settings=s)
+    assert not hasattr(w, "device_combo") and w.device == "cpu" and w.pipeline.device == "cpu"
+    s["compute.device"] = "auto"
+    apply_settings(w, s)
+    assert w.device == "auto" and w.pipeline.device == "auto"
+    w.pipeline.device = "cuda"                      # chosen in a cell: kept
+    s["compute.device"] = "cpu"
+    apply_settings(w, s)
+    assert w.device == "cpu" and w.pipeline.device == "cuda"
     w.close()

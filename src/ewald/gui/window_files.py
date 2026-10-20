@@ -375,9 +375,6 @@ class FilesMixin:
                     setattr(self.style, k, list(map(list, v)) if k == "bond_pairs" else v)
         if s.device:
             self.device = s.device
-            self.device_combo.blockSignals(True)
-            self.device_combo.setCurrentText({"cuda": "CUDA", "auto": "auto"}.get(s.device, "CPU"))
-            self.device_combo.blockSignals(False)
         self.set_pipeline(s.pipeline)
         if s.frame:
             self.timeline._set(min(s.frame, s.pipeline.num_frames - 1))
