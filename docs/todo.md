@@ -46,8 +46,11 @@ GUI
 - AI chat side bar (`gui/ask_panel.py`, activity bar): stream answers as they arrive (now the
   whole answer at once), a Stop button, keep chats per notebook tab and save them in `.ewd`,
   show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
-  replace or diff against an existing cell instead of always inserting a new one, edit or
-  regenerate a sent message.
+  edit or regenerate a sent message. The notebook cell tools (`llm/notebook_tools.py`) could
+  highlight the cells the AI changed and show a diff to accept or undo; `ewald ask` and the MCP
+  server could take a notebook (`--notebook analysis.py`) and save it back.
+- `PythonScript` step cells: `Modifier.__repr__` uses `name`, which PythonScript sets to its title,
+  so `step_source` writes `pipe.add(Python script(...))`, which does not parse.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
   still set inline colors (render preview, pick labels, color swatches, field error borders), so
   they keep the old palette until a restart after a theme switch; move them to QSS object names.

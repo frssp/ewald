@@ -238,6 +238,9 @@ OPTIONS = (
     Option("llm.effort", "high", "Effort",
            "How hard the model thinks before answering (Claude, OpenAI reasoning models); lower is faster and cheaper.",
            choices=("low", "medium", "high", "xhigh", "max")),
+    Option("llm.run_cells", False, "Let the AI run cells",
+           "The AI chat can read, insert and edit notebook cells; with this on it can also run them (any "
+           "Python, like Shift+Enter). Off: cells it writes wait until you run them."),
 )
 OPTION = {o.key: o for o in OPTIONS}
 

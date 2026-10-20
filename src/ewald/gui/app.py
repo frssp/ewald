@@ -37,7 +37,7 @@ from .viewport import Viewport
 from .viewport_menu import ViewportMenuMixin
 from .workbench import Workbench
 from .window_files import SESSION_FILTER, FilesMixin, file_filter, save_filters  # noqa: F401 (public)
-from .window_links import LinksMixin
+from .window_links import LinksMixin, NotebookBridge
 from .window_menus import MenusMixin
 from .window_view import ViewSyncMixin
 
@@ -91,7 +91,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.setCentralWidget(self.workbench)
 
         self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings, notebook=True),
-                                  notebook=self._notebook_code)
+                                  notebook=self._notebook_code, notebook_access=NotebookBridge(self))
         self.ask_panel.pipelineChanged.connect(self._after_claude)
         self.ask_panel.insertRequested.connect(self._insert_claude_cell)
         # --- left: notebook tabs (the pipeline as Python cells); right: display settings

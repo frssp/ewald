@@ -291,3 +291,36 @@ def test_untrusted_notebook_raises_untrusted_code(tmp_path):
     assert issubclass(UntrustedCode, PermissionError) and "x" not in nb.namespace
     nb.trust()
     assert nb.run_all() and nb.namespace["x"] == 1
+
+
+def test_ai_notebook_tools_never_run_code_unless_allowed():
+    from ewald.llm import Toolset
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py("# %%\nx = 1\n")
+    ts = Toolset(None, notebook=nb)                      # the default: no allow_code, no "run cells"
+    assert "run_cell" not in [d["name"] for d in ts.definitions()]
+    r = ts.call("run_cell", {"index": 0})
+    assert r.is_error and "not offered" in r.content and "x" not in nb.namespace
+    ts.call("insert_cell", {"source": "import os\nmarker = 1"})
+    ts.call("edit_cell", {"index": 0, "source": "marker = 2"})
+    assert "marker" not in nb.namespace                  # written, never run
+
+    nb.restricted = True                                 # an .ewd that is not trusted yet
+    r = Toolset(None, notebook=nb, allow_code=True).call("run_cell", {"index": 0})
+    assert r.is_error and "not trusted" in r.content and "marker" not in nb.namespace
+
+
+def test_ai_cannot_set_code_parameters_of_a_step():
+    from ewald import DataCollection, Pipeline, StaticSource
+    from ewald.llm import Toolset
+    from ewald.modifiers import PythonScript
+    from ewald.notebook import Notebook
+
+    pipe = Pipeline(StaticSource([DataCollection.from_ase(__import__("ase").Atoms("Cu", cell=[3, 3, 3], pbc=True))]))
+    nb = Notebook.from_py("# %%\nfrom ewald.modifiers import PythonScript\n"
+                          "pipe.add(PythonScript('def modify(frame, data):\\n    pass\\n'))\n")
+    nb.namespace["pipe"] = pipe
+    assert nb.run_cell(0) and isinstance(nb.cells[0].modifier, PythonScript)
+    r = Toolset(pipe, notebook=nb).call("edit_cell", {"index": 0, "params": {"source": "import os"}})
+    assert r.is_error and "runs Python" in r.content and "os" not in pipe.modifiers[0].source
