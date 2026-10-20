@@ -94,7 +94,7 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 | visual elements (`data.particles.vis`) | `ewald.scene` primitives; plugin elements with `@visual`, drawn by every renderer via `render(..., visuals=["Cell axes", MyElement(...)])` |
 | `CoordinateTripodOverlay`, `PythonViewportOverlay` | `render(..., overlays=["Coordinate tripod", "Attributes"])`; custom ones subclass `ewald.overlays.OverlayElement` (`@overlay`) and return 2D items |
 | element color presets | `render(..., theme="VESTA")` (`"CPK"`, `"Journal"`, `"ASE"`, `"Dark slide"`, `@theme` plugins) |
-| ASE-GUI look (flat outlined discs) | `render(..., atom_style="flat", theme="ASE", radius_scale=1.1)` |
+| ASE-GUI look (flat outlined discs) | `view(pipe, style="Simple (ASE)")` or `render(..., atom_style="flat", theme="ASE", radius_scale=0.7)` |
 | session state (`.ovito`) | `ewald.session.save_session(path, pipe, camera=..., render=...)`, `load_session(path).pipeline` |
 | `export_file(pipeline, file, format, columns=[...])` | `export_file(pipe, file, format=None, frames=None)`: writer from the file name (`POSCAR`, `*.data`, `*.extxyz`, `*.xsf`, `*.h5md`, `*.xtc`, `*.cif`, ...) or `format=`; one-frame formats need `frames=[i]` |
 

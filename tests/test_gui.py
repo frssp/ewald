@@ -1713,7 +1713,11 @@ def test_open_turns_bonds_off_above_limit(app):
     assert w.data.count <= 50 and w.style.bonds_enabled
     assert {tuple(sorted(r[:2])) for r in w.style.bond_pairs} == {("O", "O"), ("O", "Sr"), ("O", "Ti")}
     w.viewport.style_combo.setCurrentText("Simple (ASE)")
-    assert w.style.atom_style == "flat" and "bonds" not in w.viewport.plotter.actors
+    assert w.style.atom_style == "flat" and w.style.bonds_enabled and "bonds" in w.viewport.plotter.actors
+    w.open_file(str(examples.path("Pt_nanoparticle.xyz")))  # a style picked for a big system keeps bonds off
+    w.viewport.style_combo.setCurrentText("Ball & stick")
+    w.viewport.style_combo.setCurrentText("Simple (ASE)")
+    assert w.style.atom_style == "flat" and not w.style.bonds_enabled
     w.close()
     w.deleteLater()
 
@@ -2222,7 +2226,7 @@ def test_workbench_drag_plot_over_3d_view(app, pipe):
     w.show()
     settle()
     wb, vp = w.workbench, w.viewport
-    assert wb.titles("editor") == ["3D view"] and wb.titles("panel") == ["Python console", "Data inspector", "Plots", "Log"]
+    assert wb.titles("editor") == ["Structure"] and wb.titles("panel") == ["Python console", "Data inspector", "Plots", "Log"]
     slot = wb.slot("viewport")
     assert vp.parent() is wb and vp.geometry() == QtCore.QRect(slot.mapTo(wb, QtCore.QPoint()), slot.size())
 
@@ -2236,7 +2240,7 @@ def test_workbench_drag_plot_over_3d_view(app, pipe):
     assert wb._drag["target"][1] == "center" and wb.marks.rect_ is not None
     QtTest.QTest.mouseRelease(bar, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, over)
     settle()
-    assert wb.titles("editor") == ["3D view", "Plots"] and wb.is_shown(w.plots) and w.plots.data is not None
+    assert wb.titles("editor") == ["Structure", "Plots"] and wb.is_shown(w.plots) and w.plots.data is not None
     assert vp.parked and not vp.isVisible() and wb.can_close("plot:1")
     built = vp._build_time
     w.set_frame(1)
@@ -2282,7 +2286,7 @@ def test_workbench_drag_plot_over_3d_view(app, pipe):
     w2.workbench.close_view("plot:2")
     assert "plot:2" not in w2.extra_plots and "plot:2" not in w2.workbench.specs
     w2.workbench.reset()
-    assert w2.workbench.titles("editor") == ["3D view"]
+    assert w2.workbench.titles("editor") == ["Structure"]
     assert w2.workbench.titles("panel") == ["Python console", "Data inspector", "Plots", "Log"]
     w2.close()
 
@@ -2489,6 +2493,77 @@ def test_viewport_tools_pick_and_measure_with_real_clicks(app, pipe):
     for i in atoms:
         click(i)
     assert vp.picks == atoms and "°" in w.pick_label.text()
+    w.close()
+
+
+@pytest.mark.parametrize("backend", ["vtk", "legacy-gl"])
+def test_double_click_on_empty_space_or_esc_clears_picks(app, pipe, monkeypatch, backend):
+    """After picking or measuring, a real double click on empty space (any tool, orbit included)
+    or Esc clears the picks and the pick readout, in the VTK view and in the legacy GL view;
+    a double click on an atom keeps them."""
+    import time
+
+    from PySide6 import QtTest
+
+    from ewald.gui.app import MainWindow
+
+    if backend == "legacy-gl":
+        monkeypatch.setenv("EWALD_VIEWPORT", "legacy-gl")
+    w = MainWindow(pipe)
+    w.resize(1100, 800)
+    w.show()
+    for _ in range(20):
+        app.processEvents()
+        time.sleep(0.01)
+    vp = w.viewport
+    assert getattr(vp, "backend", "vtk") == backend
+    view = vp.view if backend == "legacy-gl" else vp.plotter.interactor
+    W, H = view.width(), view.height()
+    points, empty = {}, None
+    for y in range(10, H - 10, 6):
+        for x in range(10, W - 10, 6):
+            i = vp.pick_at(x, y) if backend == "legacy-gl" else vp.hover_index(x, y, W, H)
+            if i is None:
+                empty = empty or QtCore.QPoint(x, y)
+            elif i not in points:
+                points[i] = QtCore.QPoint(x, y)
+    atoms = list(points)[:2]
+    assert len(atoms) == 2 and empty is not None
+
+    def click(point, double=False):
+        # a real double click: press, release, double-click press, release
+        QtTest.QTest.mouseClick(view, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, point)
+        if double:
+            QtTest.QTest.mouseDClick(view, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, point)
+            QtTest.QTest.mouseRelease(view, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, point)
+        app.processEvents()
+
+    vp.set_tool("distance")
+    click(points[atoms[0]])
+    click(points[atoms[1]])
+    assert vp.picks == atoms and "d(" in w.pick_label.text()
+    click(empty)                                   # one click on empty space keeps them
+    assert vp.picks == atoms
+    time.sleep(QtWidgets.QApplication.doubleClickInterval() / 1000 + 0.05)
+    click(points[atoms[1]], double=True)           # a double click on an atom keeps them
+    assert atoms[1] in vp.picks
+    vp.set_picks(atoms)
+    click(empty, double=True)
+    assert vp.picks == [] and w.pick_label.text() == ""
+    vp.set_tool("orbit")                           # also while rotating, e.g. after a plot selection
+    vp.set_picks(atoms)
+    click(empty, double=True)
+    assert vp.picks == []
+    vp.set_picks(atoms)
+    if backend == "legacy-gl":
+        view.requestActivate()
+    else:
+        w.activateWindow()
+        view.setFocus()
+    app.processEvents()
+    QtTest.QTest.keyClick(view, QtCore.Qt.Key_Escape)
+    app.processEvents()
+    assert vp.picks == []
     w.close()
 
 

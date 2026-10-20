@@ -30,7 +30,7 @@ STYLE_PRESETS = {
     # name: (radius_scale, bonds, atom_style)
     "Ball & stick": (0.5, True, "auto"),
     "Space-filling": (1.0, False, "auto"),
-    "Simple (ASE)": (1.1, False, "flat"),  # ASE GUI: covalent x 0.89, flat outlined discs
+    "Simple (ASE)": (0.7, True, "flat"),  # ASE GUI look: flat outlined discs, outlined sticks
     "Points": (0.25, False, "impostor"),
 }
 # Presets that also apply an ewald.themes theme when picked (ASE's white background).

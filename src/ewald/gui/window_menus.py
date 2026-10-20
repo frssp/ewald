@@ -344,7 +344,7 @@ class MenusMixin:
         w.addAction("Notebook", lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))
         w.addAction("Plugins", lambda: self._show_side_bar(self.plugins_dock), "Ctrl+Shift+X")
         w.addAction("Display settings", lambda: (self.display.parent().show(), self.display.parent().raise_()))
-        w.addAction("3D view", lambda: self.workbench.show(self.viewport))
+        w.addAction("Structure", lambda: self.workbench.show(self.viewport))
         w.addAction("Python console", lambda: self.workbench.show(self.console))
         w.addAction("Data inspector", lambda: self.workbench.show(self.inspector))
         w.addAction("Plots", lambda: self.workbench.show(self.plots))
