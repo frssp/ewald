@@ -157,6 +157,11 @@ converged, from which frame the MD is equilibrated, and whether the temperature 
 analysis runs on all of them, plots overlay, and `arrhenius(msd(runs))` gives the activation
 energy. [Runs](docs/user/runs.md)
 
+**Workflows.** A folder of calculations (relaxed end points, a NEB, an MD restarted in `run1/ run2/`,
+phonopy) opens as one notebook with a `load` line per step: File › Open workflow folder…, a folder
+dropped on the window, the Workflows side bar, or `workflow.describe("hpc:/scratch/study")`.
+AiiDA and other databases plug in as workflow sources. [Workflows](docs/user/workflows.md)
+
 **Files.** Native lazy readers for big text trajectories (LAMMPS dump, XDATCAR, extxyz, OUTCAR,
 vasprun.xml), H5MD and vaspout.h5, MDAnalysis for XTC/TRR/DCD and ASE for everything else, with
 matching writers. Files on an SSH host open by path (`cluster:/scratch/run/dump.lammpstrj`); remote

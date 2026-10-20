@@ -2,8 +2,9 @@
 
 A workflow is a calculation that ran in steps: an AiiDA WorkGraph or WorkChain and the
 calculations it called, a relaxation that was restarted after a walltime, an NEB that relaxed
-its end points first. A plugin that knows where such workflows live (a sim-agent server, an
-AiiDA profile) describes them with four small dataclasses from `ewald.workflow`, and ewald does
+its end points first. ewald's own source, `folders` (`ewald.workflow_folder`), reads plain
+folders of VASP, LAMMPS, NEB and phonopy calculations ([Workflows](../user/workflows.md)); a
+plugin that knows where other workflows live (a sim-agent server, an AiiDA profile) describes them with four small dataclasses from `ewald.workflow`, and ewald does
 the rest the same way for every source:
 
 - a side bar with the source's account, a search box and its workflows newest first, where
