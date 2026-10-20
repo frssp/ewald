@@ -31,6 +31,8 @@ class LinksMixin:
 
     def _on_pick(self, text):
         self.pick_label.setText(text)
+        if text:
+            self.statusBar().clearMessage()  # a status message hides the pick label until it times out
         if not self._plot_picking:
             self._each_plot(lambda p: p.forget_selection(frames=False))  # a click in the view replaces a plot range
         self._each_plot(lambda p: p.set_highlight(self._selected_indices()))

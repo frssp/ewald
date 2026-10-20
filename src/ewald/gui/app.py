@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import contextlib
 import sys
 import time
 
@@ -502,6 +503,8 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.viewport.plotter.close()  # release the VTK/OpenGL context before Qt tears down
         km = getattr(self.console, "kernel_manager", None)
         if km is not None:
+            with contextlib.suppress(ValueError):
+                self.console.shell.events.unregister("post_execute", self.console.on_execute)
             self.console.kernel_client.stop_channels()
             km.shutdown_kernel()
         super().closeEvent(event)
