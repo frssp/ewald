@@ -12,7 +12,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   cached frames (done), core never imports `ewald.gui` (done, `tests/test_architecture.py`),
   in-process notebook cells off the GUI thread with Interrupt (done), one trust check for every
   code-execution path plus sha256 for catalog downloads (done: `trust.py`, `EXEC_SITES`), a
-  versioned plugin API (`PLUGIN_API`), then splitting `plugins.py` and `gui/notebook_panel.py`.
+  versioned plugin API (done: `ewald.plugin_api`; the ewald-plugins packages still need
+  `plugin-api = 1` in their manifests), then splitting `plugins.py` and `gui/notebook_panel.py`.
 
 ## Next
 

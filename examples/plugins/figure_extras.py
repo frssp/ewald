@@ -15,9 +15,7 @@ Copy this file into ewald's plugin folder (``ewald plugins`` prints where it is)
 """
 import numpy as np
 
-from ewald.overlays import Image, OverlayElement, Rect
-from ewald.plugins import colormap, overlay, theme
-from ewald.themes import Theme
+from ewald.plugin_api import Image, OverlayElement, Rect, Theme, colormap, overlay, theme
 
 
 @colormap(kind="diverging", description="blue-white-red for charge or density differences")
@@ -74,3 +72,6 @@ class InsetRDF(OverlayElement):
         rgba = np.asarray(canvas.buffer_rgba()).copy()
         x, y = ctx.corner(self.corner, w, h)
         return [Image(x, y, rgba, w, h), Rect(x, y, x + w, y + h, outline="ink", width=1)]
+
+
+__ewald__ = {"plugin_api": 1}   # plugin manifest: written for ewald.plugin_api version 1

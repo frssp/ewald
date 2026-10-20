@@ -33,8 +33,7 @@ off, the form below edits its parameters, and the session keeps the list.
 
 ```python
 # <config dir>/plugins/stamp.py
-from ewald.overlays import OverlayElement, Rect, Text
-from ewald.plugins import overlay
+from ewald.plugin_api import OverlayElement, Rect, Text, overlay
 
 
 @overlay(category="Annotations")
@@ -109,7 +108,7 @@ A plugin cannot take the name of a built-in overlay. The AI tools `list_overlays
 `layout` needs no renderer, so items can be checked directly:
 
 ```python
-from ewald.overlays import OverlayContext, Text
+from ewald.plugin_api import OverlayContext, Text
 
 items = Stamp("TEST").layout(data, OverlayContext((400, 300), font_size=12))
 assert [it.text for it in items if isinstance(it, Text)] == ["TEST"]

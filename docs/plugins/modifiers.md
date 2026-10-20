@@ -14,8 +14,7 @@ the AI tools and as `from ewald.modifiers import LocalComposition`.
 
 ```python
 import numpy as np
-from ewald import Modifier
-from ewald.neighbors import find_pairs
+from ewald.plugin_api import Modifier, find_pairs
 
 
 class LocalComposition(Modifier):
@@ -139,7 +138,7 @@ share it.
 ## Registering it
 
 ```python
-from ewald.plugins import modifier
+from ewald.plugin_api import modifier
 
 
 @modifier(category="Analysis")          # bare @modifier puts it under "Plugins"

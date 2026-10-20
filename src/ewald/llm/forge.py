@@ -38,7 +38,7 @@ DEFAULT_MODEL = "claude-opus-5-5"
 
 CONTRACT = """\
 Plugin contract (ewald modifiers):
-- Subclass `ewald.Modifier`, decorate the class with `@modifier(category="...")` from `ewald.plugins`.
+- Import from `ewald.plugin_api` (the supported plugin surface): subclass `Modifier`, decorate the class with `@modifier(category="...")`.
 - Store every constructor argument as an attribute of the same name; give every argument a default.
   The GUI form, repr(), caching and generated scripts are built from these attributes.
 - `modify(self, data, ctx)`: `data` is a shallow copy of the frame. NEVER write into an existing
@@ -381,8 +381,10 @@ def save_plugin(result: ForgeResult, overwrite: bool = False) -> Path:
               + "# Verified: contract checks and the tests in _forge_tests/"
               + f"test_{result.module_name}.py passed.\n")
     # the manifest goes last: a module may open with a docstring or ``from __future__`` imports
+    from ..plugin_api import PLUGIN_API
+
     manifest = {"id": result.module_name, "description": result.request[:200], "source": "forge",
-                "created": datetime.date.today().isoformat()}
+                "created": datetime.date.today().isoformat(), "plugin_api": PLUGIN_API}
     target.write_text(header + result.module_source.lstrip("\n").rstrip("\n")
                       + f"\n\n\n__ewald__ = {manifest!r}   # plugin manifest (ewald plugins)\n")
     (tests / f"test_{result.module_name}.py").write_text(result.test_source)

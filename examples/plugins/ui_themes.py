@@ -10,7 +10,7 @@ theme under Preferences > General > UI theme, or from Python::
     s["general.ui_theme"] = "Nord"
     s.save()
 """
-from ewald.plugins import ui_theme
+from ewald.plugin_api import ui_theme
 
 
 @ui_theme(name="Nord", base="graphite")
@@ -32,3 +32,6 @@ def sepia():
         "text": "#2B2118", "secondary": "#4E4033", "muted": "#6B5B4B", "accent": "#9C3B2E",
         "accent_soft": "#F1DDD5", "data": "#2F6B8A", "data_soft": "#DCE8EE", "viewport": "#F3EBDC",
     }
+
+
+__ewald__ = {"plugin_api": 1}   # plugin manifest: written for ewald.plugin_api version 1

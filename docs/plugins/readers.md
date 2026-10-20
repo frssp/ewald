@@ -10,8 +10,7 @@ A function that takes the path and returns the frames is enough:
 ```python
 # <config dir>/plugins/cp2k_xyz.py        ("ewald plugins" prints the folder)
 import numpy as np
-from ewald import Cell, DataCollection
-from ewald.plugins import reader
+from ewald.plugin_api import Cell, DataCollection, reader
 
 
 @reader("cp2k-xyz", patterns=("*-pos-*.xyz",), description="CP2K position trajectory")
@@ -47,9 +46,7 @@ in `read(i)`. Only the frames that are looked at are read, and the pipeline keep
 in its cache.
 
 ```python
-from ewald import DataCollection
-from ewald.io.base import FrameReader, open_binary
-from ewald.plugins import reader
+from ewald.plugin_api import DataCollection, FrameReader, open_binary, reader
 
 
 @reader("myformat", patterns=("*.myf", "*.myf.gz"), description="MyCode trajectory")
@@ -128,7 +125,7 @@ the reference.
 Use `sniff` when the file name says little (`OUTPUT`, `traj.dat`):
 
 ```python
-from ewald.io.base import head_lines
+from ewald.plugin_api import head_lines
 
 def looks_like_myformat(path):
     lines = head_lines(path, 2)

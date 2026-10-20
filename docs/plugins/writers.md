@@ -8,7 +8,7 @@ plugin folder, the same kind of entry point, the same registry, and `ewald plugi
 
 ```python
 # <config dir>/plugins/positions_csv.py
-from ewald.plugins import writer
+from ewald.plugin_api import writer
 
 
 @writer("positions-csv", patterns=("*.pcsv",), description="positions as CSV")

@@ -12,7 +12,7 @@ Every place ewald maps numbers to colors takes a color map name: `ColorCoding(cm
 
 ```python
 # <config dir>/plugins/maps.py
-from ewald.plugins import colormap
+from ewald.plugin_api import colormap
 
 
 @colormap(kind="diverging", description="blue-white-red for charge differences")
@@ -68,8 +68,7 @@ values into the view style, so a session keeps them even where the theme plugin 
 A theme plugin returns a `Theme`:
 
 ```python
-from ewald.plugins import theme
-from ewald.themes import Theme
+from ewald.plugin_api import Theme, theme
 
 
 @theme(name="Group style")
@@ -101,7 +100,7 @@ plugin returns the design tokens it changes, and every token it leaves out comes
 palette (any built-in theme).
 
 ```python
-from ewald.plugins import ui_theme
+from ewald.plugin_api import ui_theme
 
 
 @ui_theme(name="Nord", base="graphite")
