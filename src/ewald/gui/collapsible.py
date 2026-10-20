@@ -52,8 +52,35 @@ class DockTitleBar(QtWidgets.QWidget):
         self.float_button = header.button("float", "Float or dock the panel")
         self.float_button.clicked.connect(lambda: dock.setFloating(not dock.isFloating()))
         dock.windowTitleChanged.connect(lambda t: (self.title.setText(t), self.vtitle.setText(t)))
-        dock.dockLocationChanged.connect(lambda _area: header.set_icon(self.fold, self._fold_icon()))
+        dock.dockLocationChanged.connect(lambda _area: self._sync_icons())
+        dock.topLevelChanged.connect(lambda _floating: self._layout(vertical=self.collapsed and self._side()))
+        self.merged = None  # (fold, float) buttons in the panel's own header row, see merge_into
+        self.extra = []  # panel actions shown before the fold button, see add_action
         self._layout(vertical=False)
+
+    def add_action(self, button: QtWidgets.QAbstractButton):
+        """Show a panel action (e.g. Display's add-visual menu) in the header, left of the fold button."""
+        self.extra.append(button)
+        self._layout(vertical=self.collapsed and self._side())
+
+    def merge_into(self, layout: QtWidgets.QBoxLayout):
+        """Put the fold and float buttons into ``layout`` (a row the panel already shows at its top,
+        such as the notebook tabs) and hide this title bar while the panel is open and docked.
+        Folded, it is still the strip with the name; floating, it is the bar that moves the window."""
+        fold = header.button(self._fold_icon(), self.fold.toolTip())
+        fold.clicked.connect(self.toggle)
+        float_button = header.button("float", self.float_button.toolTip())
+        float_button.clicked.connect(self.float_button.click)
+        for b in (fold, float_button):
+            layout.addWidget(b, 0, QtCore.Qt.AlignVCenter)
+        self.merged = (fold, float_button)
+        self._layout(vertical=self.collapsed and self._side())
+
+    def _sync_icons(self):
+        header.set_icon(self.fold, self._fold_icon())
+        if self.merged:
+            header.set_icon(self.merged[0], self._fold_icon())
+            self.merged[0].setToolTip(self.fold.toolTip())
 
     def _fold_icon(self) -> str:
         """Chevron toward the dock's edge to fold, away from it to unfold; up/down for other docks."""
@@ -72,6 +99,15 @@ class DockTitleBar(QtWidgets.QWidget):
                 old.takeAt(0)
             QtWidgets.QWidget().setLayout(old)  # reparent so a new layout can be set
         h = header.height()
+        hide = bool(self.merged) and not vertical and not self.dock.isFloating()
+        if hide:  # the panel's own header row carries the buttons
+            for w in (self.title, self.vtitle, self.fold, self.float_button, *self.extra):
+                w.hide()
+            self.setFixedHeight(0)
+            QtWidgets.QHBoxLayout(self).setContentsMargins(0, 0, 0, 0)
+            self._sync_icons()
+            return
+        self.fold.show()
         if vertical:
             self.setMinimumHeight(0)
             self.setMaximumHeight(16777215)
@@ -87,13 +123,17 @@ class DockTitleBar(QtWidgets.QWidget):
         self.title.setVisible(not vertical)
         self.vtitle.setVisible(vertical)
         self.float_button.setVisible(not vertical)
-        header.set_icon(self.fold, self._fold_icon())
+        for b in self.extra:
+            b.setVisible(not vertical)
+        self._sync_icons()
         if vertical:
             lay.addWidget(self.fold, 0, QtCore.Qt.AlignHCenter)
             lay.addWidget(self.vtitle, 0, QtCore.Qt.AlignHCenter)
             lay.addStretch()
         else:
             lay.addWidget(self.title, 1, QtCore.Qt.AlignVCenter)
+            for b in self.extra:
+                lay.addWidget(b, 0, QtCore.Qt.AlignVCenter)
             lay.addWidget(self.fold, 0, QtCore.Qt.AlignVCenter)
             lay.addWidget(self.float_button, 0, QtCore.Qt.AlignVCenter)
 

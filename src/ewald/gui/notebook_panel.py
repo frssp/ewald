@@ -1049,8 +1049,12 @@ class NotebookView(QtWidgets.QWidget):
         nb = self.notebook
         pipe = nb.pipeline
         steps = None if pipe is None else len(pipe.modifiers) + sum(len(c.steps) for c in nb.cells)
-        self.status.setText(("" if pipe is None else f"{steps} steps · ") +
-                            (os.path.basename(nb.path) if nb.path else "not saved") + (" ●" if nb.dirty else ""))
+        # the tab already shows the notebook's name and ●; here only what it does not: steps, unsaved
+        parts = [] if pipe is None else [f"{steps} step{'s' if steps != 1 else ''}"]
+        if not nb.path:
+            parts.append("not saved")
+        self.status.setText(" · ".join(parts))
+        self.status.setToolTip(nb.path or "Not saved yet (Ctrl+S)")
         if self.py_button.isChecked():
             self.file_view.setPlainText(nb.to_py())
 
