@@ -390,9 +390,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 | Key | Label | Default |
 |---|---|---|
-| `general.layout` | Window layout | `'notebook'` |
 | `general.ui_theme` | UI theme | `'graphite'` |
-| `general.startup_workspace` | Startup workspace | `'Analyze'` |
+| `general.startup_workspace` | Startup workspace | `'Notebook'` |
 | `general.toolbar_style` | Toolbar buttons | `'Icons and text'` |
 | `general.font_size` | UI font size | `12` |
 | `general.restore_layout` | Restore window layout | `True` |
@@ -414,7 +413,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `viewport.rotation_step` | Step rotation | `15.0` |
 | `viewport.show_axes` | Show axes tripod | `True` |
 | `viewport.show_overlay` | Show frame / timestep text | `True` |
-| `viewport.backend` | 3D view | `'auto'` |
+| `viewport.backend` | Viewport renderer | `'auto'` |
 | `viewport.hover_info` | Atom info on hover | `True` |
 | `viewport.hover_delay` | Hover delay | `0.25` |
 | `viewport.sphere_drawing` | Sphere drawing | `'impostor'` |
@@ -701,7 +700,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Notebook
 - Plugins (`Ctrl+Shift+X`)
 - Display settings
-- 3D view
+- Structure
 - Python console
 - Data inspector
 - Plots
@@ -760,7 +759,7 @@ Open, Save, Notebook, Render, Search commands, steps, cells… Ctrl K, Compute d
 
 - Workspaces: Notebook, Render
 - Docks: AI chat, Display, Notebook, Plugins, Remotes
-- Editor area tabs: 3D view
+- Editor area tabs: Structure
 - Panel tabs: Python console, Data inspector, Plots, Log (tabs drag between groups: centre = tab, edge = split; View › Layout)
 - Viewport tools: Orbit / pan / zoom (mouse); Pick atom: shows id, type, position and properties; Shift+click picks several; Measure distance: click two atoms; Measure angle: click three atoms (vertex in the middle); Edit bonds: click two atoms to add or delete the bond between them
 

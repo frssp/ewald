@@ -44,10 +44,9 @@ class ViewSyncMixin:
         self._writing_view = True
         try:
             self.style.apply_view(v, data.types if data is not None else ())
-            if self.layout_mode == "notebook":
-                self.viewport.style_combo.blockSignals(True)
-                self.viewport.style_combo.setCurrentText(self.style.preset)
-                self.viewport.style_combo.blockSignals(False)
+            self.viewport.style_combo.blockSignals(True)
+            self.viewport.style_combo.setCurrentText(self.style.preset)
+            self.viewport.style_combo.blockSignals(False)
             self._follow_picture(v)
         finally:
             self._writing_view = False
@@ -120,8 +119,6 @@ class ViewSyncMixin:
                 self._view_camera = tuple(repr(getattr(v, k)) for k in _CAMERA)
                 self._view_frame = v.frame
         self._view_seen = (id(v), v.version)
-        if self.layout_mode != "notebook":
-            return
         view = self.panel.view
         if view is None or view.notebook.pipeline is not self.pipeline:
             return

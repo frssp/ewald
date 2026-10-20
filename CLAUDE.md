@@ -142,7 +142,8 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
 - `notebook.py`: notebooks as percent-format `.py` files (`# %%` cells, one namespace, `pipe` is the
   pipeline; step cells = one `pipe.add(...)`, view cells = one `show(pipe, ...)` from
-  `views.py`). The GUI's default layout is built on it (`general.layout`: notebook | classic).
+  `views.py`). The GUI is built on it; the OVITO-style classic layout (pipeline list + properties
+  panel) was removed on 2026-10-20 and must not come back.
   `notebook_io.py` reads and writes `.ipynb` and `.ewd` (zip: notebook.ipynb, manifest.json,
   figures/, data/, plugins/); an `.ewd` opens restricted until `Notebook.trust()`. `kernel.py`
   (`Kernel` via jupyter_client, `KernelSource`) runs a notebook's cells in another Python;
@@ -153,9 +154,9 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   `notebook_panel.py` (cells, steps, view cells with live `PlotsPanel`s), `notebook_tabs.py` (one tab per
   open notebook), `plugins_panel.py` (Plugins side bar), `viewport.py` (VTK; `legacy_viewport.py` + Qt-free
   `legacy_gl.py` are the OpenGL 1.x viewport for `ssh -X`, chosen by `gui.viewport_backend`), `pipeline_panel.py`
-  (classic layout; `DisplayPanel` is its visual-elements part in the notebook layout), `params.py`, `render_page.py`,
+  (step menus and `DisplayPanel`, the visual elements side bar), `params.py`, `render_page.py`,
   `preferences.py` (dialog; `pref_widgets.py`, `element_table.py`, `prefs_apply.py` apply settings to the window),
-  `remote_dialog.py` (SSH browser), `ask_panel.py` (Ask AI tab, AI chat), `console.py`,
+  `remote_dialog.py` (SSH browser), `ask_panel.py` (AI chat side bar), `console.py`,
   `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`, `collapsible.py` (fold buttons in dock
   title bars), `header.py` (one panel header: height, inset, icon buttons; no glyph labels), `macos.py` (menu bar name; Finder file-open
   events go through `app.EwaldApplication`). Frozen apps: `packaging/windows/` and `packaging/macos/` (EWALD.app,
