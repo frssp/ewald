@@ -60,7 +60,8 @@ LAYOUT = {
         ("Device", ["compute.device", "compute.threads", "performance.background_compute"]),
         ("Memory", ["performance.cache_memory"])]),
     "Python": ("Notebooks, console and module search path.", [
-        ("Notebooks", ["python.run_notebooks", "python.save_figures", "python.bundle_data_mb"]),
+        ("Notebooks", ["python.run_notebooks", "python.plot_style", "python.save_figures",
+                        "python.bundle_data_mb"]),
         ("Plugins", ["python.plugin_catalogs"]),
         ("Console", ["python.startup_script"]),
         ("Modules", ["python.extra_paths"])]),

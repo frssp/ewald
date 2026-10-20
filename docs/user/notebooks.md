@@ -93,6 +93,16 @@ with plotstyle.context():                    # the style for your own matplotlib
     plt.plot(r, g); plt.xlabel(plotstyle.axis_label("r"))
 ```
 
+Plots your cells draw themselves with plain matplotlib (`plt.plot(x, np.sin(x))`, in notebook
+cells, in a notebook's kernel and in the Python console) get the same style by default, with no
+import. Each notebook keeps its own rcParams: whatever a cell sets (`plt.rcParams[...] = ...`,
+`plt.style.use(...)`) stays for the next cells of that notebook and is never overridden, and
+ewald's own renderers are not affected. `plotstyle.use("default")` in a cell goes back to
+matplotlib's defaults for that notebook, and `plotstyle.use()` to the publication style.
+Preferences › Python › *Style of your own plots* chooses the default: *Publication* (print
+colors, so `plt.savefig` writes what you see), *Publication in UI theme colors*, or
+*Matplotlib default*. Restarting the notebook resets its rcParams.
+
 Spectra, diffraction patterns and time series are not separate panels. They are views in the
 notebook, next to the steps that compute them.
 

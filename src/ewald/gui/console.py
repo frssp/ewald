@@ -65,6 +65,7 @@ def _ipython_console(namespace, on_execute, parent):
     shell = km.kernel.shell
     shell.push(namespace)
     shell.events.register("post_execute", on_execute)
+    _style_shell(shell)
     kc = km.client()
     kc.start_channels()
     w = RichJupyterWidget(parent)
@@ -139,11 +140,60 @@ def dark_color(color: str) -> bool:
     return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.5
 
 
+PLOT_STYLE = ["publication", None]   # (style, tokens) of plots drawn in the console (python.plot_style)
+
+
+def _plot_session():
+    from ..plotstyle import Session
+
+    return Session(*PLOT_STYLE)
+
+
+def _style_shell(shell):
+    """Draw the console's matplotlib figures in :data:`PLOT_STYLE`: its rcParams are swapped in
+    around each command (an ewald.plotstyle.Session), so ewald's own renderers in this process
+    keep matplotlib's defaults. The in-process shell is shared by every window: hooked once."""
+    if getattr(shell, "_ewald_plots", None) is not None:
+        return
+    try:
+        shell._ewald_plots = _plot_session()
+    except ImportError:
+        return
+    active = []
+
+    def pre(*_):
+        cm = shell._ewald_plots.active()
+        cm.__enter__()
+        active.append(cm)
+
+    def post(*_):
+        while active:
+            active.pop().__exit__(None, None, None)
+
+    shell.events.register("pre_run_cell", pre)
+    shell.events.register("post_run_cell", post)
+
+
+def set_plot_style(console, style: str = "publication", tokens: dict | None = None):
+    """Change the style of the console's plots (rcParams a command set stay)."""
+    PLOT_STYLE[:] = [style, tokens]
+    if not getattr(console, "built", True):   # a LazyConsole not built yet reads PLOT_STYLE then
+        return
+    w = console.widget() if hasattr(console, "widget") else console
+    plots = getattr(getattr(w, "shell", None), "_ewald_plots", None) or getattr(w, "plots", None)
+    if plots is not None:
+        plots.configure(style, tokens)
+
+
 class SimpleConsole(QtWidgets.QWidget):
     def __init__(self, namespace, on_execute, parent=None):
         super().__init__(parent)
         self.shell = code.InteractiveConsole(namespace)
         self.on_execute = on_execute
+        try:
+            self.plots = _plot_session()
+        except ImportError:
+            self.plots = None
         self.output = QtWidgets.QPlainTextEdit(readOnly=True)
         self.output.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont))
         self.input = QtWidgets.QLineEdit()
@@ -160,7 +210,8 @@ class SimpleConsole(QtWidgets.QWidget):
         self.input.clear()
         self.output.appendPlainText(">>> " + line)
         buf = io.StringIO()
-        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        style = self.plots.active() if self.plots is not None else contextlib.nullcontext()
+        with style, contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
             self.shell.push(line)
         if buf.getvalue():
             self.output.appendPlainText(buf.getvalue().rstrip())
