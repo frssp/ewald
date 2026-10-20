@@ -146,6 +146,8 @@ class LinksMixin:
         if view.startswith("plot:") and view[5:].isdigit() and view != "plot:1":
             self.new_plot_view(view=view)
             return True
+        if view.startswith("plugin:"):     # a plugin's tab under the 3D view
+            return self._build_plugin_tab(view[len("plugin:"):])
         return False
 
     def _plot_view_closed(self, view):

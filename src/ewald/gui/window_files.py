@@ -296,8 +296,8 @@ class FilesMixin:
 
     def open_workflow(self, workflow):
         """Open a workflow (a :class:`ewald.workflow.Workflow`, or a path such as
-        ``simagent:1234`` that an installed workflow source describes) as one notebook: a
-        ``load`` cell per step and ``pipe`` on its main result (:func:`ewald.workflow.notebook_text`).
+        ``simagent:1234`` that an installed workflow source describes) as one notebook: one
+        cell loads every step (a variable each) and sets ``pipe`` to its main result (:func:`ewald.workflow.notebook_text`).
         The notebook is ewald's own text, so it runs at once."""
         from .. import workflow as wf_module
         from ..notebook import Notebook

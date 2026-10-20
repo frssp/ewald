@@ -39,7 +39,7 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 GUI
 
 - UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): still open
-  are Cancel for a ray trace in progress, opening files (local or remote) and remote connections
+  are opening files (local or remote) and remote connections
   off the GUI thread (they now say what they wait for, but the window still blocks), and the
   Render settings column scrolling sideways at the default window width.
 - Panel layout (phase 1 landed: `gui/workbench.py`, `gui/layout_model.py`; plan in project
@@ -343,11 +343,11 @@ Plugins and AI
   but the plugin module is still imported at start); a `commands` contribution point (commands in
   the palette, as notebook functions and as AI tools). Settings pages (`@settings_page`) and side
   bars (`@panel`) are registered in code, not declared in the manifest.
-- GUI plugins (`@panel`, `gui/window_plugins.py`; `@settings_page` pages in Preferences): a panel's
-  open/closed state and width are not restored with the window layout (its dock is built lazily,
-  after `restoreState`); panels only dock on the left beside the notebook (no tab under the 3D
-  view yet, that waits for the workbench `@view` API); reloading plugins rebuilds every open
-  plugin panel, losing its state; no menu, toolbar or context-menu contributions. A plugin's
+- GUI plugins (`@panel`, `@menu_item`, `gui/window_plugins.py`; `@settings_page` pages in
+  Preferences): reloading plugins rebuilds every open plugin panel, losing its state; no toolbar
+  contributions and no entries in the notebook cell, Plots or Data inspector context menus (only
+  the menu bar and the 3D view's right-click menu); a bottom tab cannot be placed in the editor
+  area beside the 3D view from the plugin (the user can drag it there). A plugin's
   Preferences page has no changed-dot or per-row Reset, and Edit › Plugin settings and the
   Plugins side bar's Settings still open the separate dialog rather than that page.
 - Plugin manifests, phase 3: the index repository exists (frssp/ewald-plugins: `plugins/*.toml`,
