@@ -103,6 +103,12 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        type=["array", "null"]),
     _s("boundary_bonds", "half", "boundary", "Bonds leaving the boundary: half, complete or none.",
        ("half", "complete", "none")),
+    _s("replicate", None, "boundary", "Draw [na, nb, nc] periodic copies of the cell side by side (OVITO's "
+       "Replicate as a display setting), with bonds and polyhedra across them; the boundary then applies "
+       "to the whole block. Display only: analysis and export keep the original cell.",
+       type=["array", "null"], items={"type": "integer", "minimum": 1}),
+    _s("replicate_cell", "super", "boundary", "Cell lines of a replicated view: super (outline of the "
+       "block), unit (original cell) or all (every copy).", ("super", "unit", "all")),
     # elements
     _s("visuals", [], "elements", "Plugin visual elements drawn on top: names or {'name', 'params', 'enabled'}.",
        type="array"),
@@ -117,6 +123,9 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
     _s("orthographic", True, "camera", "Parallel projection (True) or perspective."),
     _s("camera", None, "camera", "An exact camera (position, focal_point, up, parallel_projection, "
        "parallel_scale, view_angle) as the GUI saves it; wins over direction and zoom.", type=["object", "null"]),
+    _s("region", None, "camera", "Part of the view a picture shows (the Render frame): [x, y, height], the "
+       "frame's center offset from the view center and its height, as fractions of the view height; its width "
+       "follows the picture size. None: the whole view height, centered.", type=["array", "null"]),
     # picture
     _s("renderer", None, "picture", "Renderer for pictures: 'opengl', 'raytrace' or 'vector'; None: the "
        "caller's default.", ("opengl", "raytrace", "vector", None)),
@@ -486,6 +495,15 @@ def _check(name, value):
         value = bool(value)
     elif name == "size":
         value = [int(value[0]), int(value[1])]
+    elif name == "region":
+        from .framing import as_region
+
+        value = list(as_region(value))
+    elif name == "replicate":
+        from .replicate import normalize_replicate
+
+        n = normalize_replicate(value)
+        value = None if n is None else list(n)
     elif name == "boundary":
         value = [list(map(float, p)) for p in value] if np.ndim(value) == 2 else [float(x) for x in np.ravel(value)]
     elif name == "camera":

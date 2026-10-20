@@ -283,3 +283,21 @@ def test_boundary_in_every_renderer(tmp_path):
         on = pipe.render(tmp_path / name, renderer=renderer, boundary=(-0.1, 1.1), **kw)
         assert on.shape == off.shape
         assert np.abs(on.astype(int) - off.astype(int)).sum(-1).astype(bool).mean() > 0.05, renderer
+
+
+def test_render_region_is_that_part_of_the_full_picture(cu_fcc):
+    """render(region=...) shows exactly the frame's part of the view (the GUI Render frame)."""
+    from ewald.framing import frame_rect
+    from ewald.render import default_camera, render
+
+    kw = dict(show_cell=True, background="white", antialiasing=False, ambient_occlusion=False,
+              atom_style="mesh", quality="standard")
+    cam = default_camera(cu_fcc, (400, 300))
+    full = render(cu_fcc, size=(400, 300), camera=cam, **kw).astype(int)
+    region = (0.25, 0.1, 0.5)
+    left, top, w, h = (round(v) for v in frame_rect(region, (400, 300), 4 / 3))
+    part = render(cu_fcc, size=(w, h), camera=cam, region=region, **kw).astype(int)
+    crop = full[top:top + h, left:left + w]
+    assert part.shape == crop.shape
+    assert np.abs(part - crop).mean() < 4          # same picture up to edge pixels
+    assert np.abs(part - full[:h, :w]).mean() > 10  # and not just any corner of it

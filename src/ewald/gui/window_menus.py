@@ -275,6 +275,9 @@ class MenusMixin:
         for label, d in (("Top (+z)", "z"), ("Front (-y)", "front"), ("Right (+x)", "x"), ("Isometric", "iso")):
             v.addAction(label, lambda d=d: self.viewport.view_direction(d))
         v.addAction("Zoom to fit", self.viewport.zoom_fit, "Ctrl+0")
+        rep = v.addMenu("Replicate cell")  # display only: n x n x m copies (view(pipe, replicate=...))
+        rep.aboutToShow.connect(lambda: self.fill_replicate_menu(rep))
+        self.fill_replicate_menu(rep)
         v.addSeparator()
         self.theme_menu = v.addMenu("Theme")
         self.theme_menu.aboutToShow.connect(self._fill_theme_menu)

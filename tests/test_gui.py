@@ -2113,6 +2113,44 @@ def test_cell_panel_boundary_range(app):
     assert "boundary" not in style.scene_kwargs()
 
 
+def test_cell_panel_replicate(app):
+    from ewald.gui.pipeline_panel import DisplayPanel
+    from ewald.gui.style import ViewStyle
+
+    style = ViewStyle()
+    panel = DisplayPanel(style)
+    box = panel._replicate_editor()
+    assert not box.isChecked() and "replicate" not in style.scene_kwargs()
+    box.setChecked(True)
+    assert style.replicate == [2, 2, 2] and style.scene_kwargs()["replicate"] == [2, 2, 2]
+    box.findChildren(QtWidgets.QSpinBox)[2].setValue(1)
+    box.findChild(QtWidgets.QComboBox).setCurrentText("all")
+    kw = style.scene_kwargs()
+    assert kw["replicate"] == [2, 2, 1] and kw["replicate_cell"] == "all"
+    assert style.view_settings()["replicate"] == [2, 2, 1]
+    box.setChecked(False)
+    assert "replicate" not in style.scene_kwargs() and style.view_settings()["replicate"] is None
+
+
+def test_replicate_menu_writes_view_and_keeps_data(app, srtio3_pipe):
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(srtio3_pipe)
+    n = w.data.count
+    menu = w.fill_replicate_menu(QtWidgets.QMenu())
+    labels = [a.text() for a in menu.actions()]
+    assert "2 × 2 × 2" in labels and "Custom…" in labels
+    next(a for a in menu.actions() if a.text() == "3 × 3 × 1").trigger()
+    assert w.style.replicate == [3, 3, 1] and srtio3_pipe.view.replicate == [3, 3, 1]
+    assert w.data.count == n                                  # display only
+    assert w.viewport._boundary_atoms[0].shape[0] == 9 * n    # every copy hovers as its real atom
+    assert w.viewport._boundary_atoms[1].max() == n - 1
+    w.set_replicate(1)
+    assert w.style.replicate == [] and srtio3_pipe.view.replicate is None
+    assert any(a.text() == "Replicate cell" for a in w.viewport_menu().actions())
+    w.close()
+
+
 def test_viewport_boundary_images_hover_as_real_atom(app):
     from ewald.data import Cell, DataCollection
     from ewald.gui.style import ViewStyle
@@ -2665,4 +2703,82 @@ def test_layout_moves_grey_out_when_they_do_nothing(app, pipe):
     groups = len(wb.layout.groups())
     acts["Split right"].trigger()                        # the shortcut path checks too: no change
     assert len(wb.layout.groups()) == groups
+    w.close()
+
+
+def test_render_page_frame_on_the_3d_view(app, pipe, tmp_path):
+    """The Render page shows the live 3D view with the picture's frame; dragging the frame sets the
+    region (written to pipe.view), a side changes the picture size, Fit zooms the view into the frame."""
+    from ewald.framing import frame_rect
+    from ewald.gui.app import MainWindow
+    from ewald.gui.render_frame import drag_rect, hit_test, keep_inside
+
+    w = MainWindow(pipe)
+    w.resize(1200, 800)
+    w.show()
+    app.processEvents()
+    page, frame = w.render_page, w.render_frame
+    assert frame is not None and not frame.visible
+    w.set_workspace(1)
+    app.processEvents()
+    assert frame.visible and w.viewport.isVisible()
+    assert w.viewport.geometry().size() == page.live_slot.size()      # the viewport sits in the page
+    assert frame.aspect == pytest.approx(page.aspect)
+    rect = frame.rect()
+    assert hit_test(rect, rect[0], rect[1]) == "nw" and hit_test(rect, rect[0] + rect[2] / 2, rect[1]) == "n"
+    assert hit_test(rect, rect[0] + rect[2] / 4, rect[1] + rect[3]) == "move"
+    assert hit_test(rect, rect[0] + rect[2] / 2, rect[1] + rect[3] / 2) is None  # inside: turns the view
+
+    def drag(part_pos, delta):
+        widget = frame.widget
+        x0, y0 = part_pos
+        for kind, x, y, buttons in ((QtCore.QEvent.MouseButtonPress, x0, y0, QtCore.Qt.LeftButton),
+                                    (QtCore.QEvent.MouseMove, x0 + delta[0], y0 + delta[1], QtCore.Qt.LeftButton),
+                                    (QtCore.QEvent.MouseButtonRelease, x0 + delta[0], y0 + delta[1], QtCore.Qt.NoButton)):
+            e = QtGui.QMouseEvent(kind, QtCore.QPointF(x, y), QtCore.QPointF(x, y), QtCore.Qt.LeftButton, buttons,
+                                  QtCore.Qt.NoModifier)
+            assert frame.eventFilter(widget, e)
+
+    camera = tuple(w.viewport.plotter.camera.position)
+    drag((rect[0] + rect[2], rect[1] + rect[3]), (-40, -10))        # se corner: smaller, same aspect
+    assert tuple(w.viewport.plotter.camera.position) == camera      # the view did not turn
+    assert frame.region is not None and frame.region[2] < 0.92
+    assert frame.aspect == pytest.approx(page.aspect)
+    assert w.pipeline.view.region == pytest.approx(list(frame.region), abs=1e-3)   # into the notebook view
+    kw = page.render_kwargs()
+    assert kw["region"] == pytest.approx(frame.region, abs=1e-3)
+    width = page.width.value()
+    rect = frame.rect()
+    drag((rect[0] + rect[2], rect[1] + rect[3] / 2), (30, 0))      # east side: a wider picture
+    assert page.preset.currentText() == "Custom (px)" and page.width.value() > width
+    assert frame.aspect == pytest.approx(page.aspect, rel=0.02)
+    assert keep_inside((-50, 10, 100, 80), (400, 300), "move")[0] == 0
+    assert drag_rect((0, 0, 100, 50), "se", 20, 0, 2.0)[0][2:] == pytest.approx((120, 60))
+
+    before = w.viewport.plotter.camera.parallel_scale
+    page.fit_frame()
+    assert w.viewport.plotter.camera.parallel_scale != before
+    page.output.setText(str(tmp_path / "f.png"))
+    page.quality.setCurrentText("Draft")
+    page.set_renderer("opengl")
+    w.render_from_page()
+    assert os.path.getsize(tmp_path / "f.png") > 1000 and page.left_stack.currentIndex() == 1
+    assert not frame.visible                                         # the picture is shown, not the view
+    assert "region=" in page.code.toPlainText()
+    page.show_live(True)
+    assert frame.visible
+    state = page.state()
+    page.set_region(None, write=True)
+    assert frame.region is None and "region" not in w.pipeline.view.changed()
+    page.set_state(state)
+    assert frame.region == pytest.approx(state["region"])
+    w.pipeline.view.update(region=(0.0, 0.0, 0.5))                   # a view cell sets the frame
+    w.recompute()
+    app.processEvents()
+    assert frame.region == pytest.approx((0.0, 0.0, 0.5))
+    w.set_workspace(0)
+    assert not frame.visible
+    w.settings["viewport.render_frame"] = True
+    w._render_frame_visibility()
+    assert frame.visible
     w.close()

@@ -29,16 +29,58 @@ OUTPUT_FILTER = ("Images (*.png *.jpg *.tif);;Vector (*.svg *.pdf *.eps);;"
 
 class RenderPage(QtWidgets.QWidget):
     renderRequested = QtCore.Signal()
+    regionWritten = QtCore.Signal()   # the user changed the frame: the window writes it to pipe.view
 
     def __init__(self, window, parent=None):
         super().__init__(parent)
         self.window = window
         outer = QtWidgets.QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        # left: the live 3D view with the picture's frame (the workbench lends it the viewport), or
+        # the last rendered picture
+        left = QtWidgets.QWidget()
+        lv = QtWidgets.QVBoxLayout(left)
+        lv.setContentsMargins(0, 0, 0, 0)
+        lv.setSpacing(0)
+        bar = QtWidgets.QFrame(objectName="viewbar")
+        hb = QtWidgets.QHBoxLayout(bar)
+        hb.setContentsMargins(6, 2, 6, 2)
+        hb.setSpacing(4)
+        self.live_button = QtWidgets.QToolButton(text="3D view", checkable=True, checked=True, autoRaise=True)
+        self.live_button.setToolTip("The 3D view with the picture's frame: zoom and turn the view, drag the "
+                                    "frame's corners, sides or edge to resize, reshape or move it")
+        self.result_button = QtWidgets.QToolButton(text="Last render", checkable=True, autoRaise=True)
+        group = QtWidgets.QButtonGroup(self)
+        group.setExclusive(True)
+        for b in (self.live_button, self.result_button):
+            group.addButton(b)
+            hb.addWidget(b)
+        self.live_button.toggled.connect(lambda on: self.show_live(on))
+        hb.addSpacing(12)
+        self.fit_button = QtWidgets.QToolButton(text="Fit to structure", autoRaise=True)
+        self.fit_button.setToolTip("Zoom and center the view so the structure fills the frame")
+        self.fit_button.clicked.connect(self.fit_frame)
+        self.reset_frame_button = QtWidgets.QToolButton(text="Reset frame", autoRaise=True)
+        self.reset_frame_button.setToolTip("The largest centered frame that fits the view")
+        self.reset_frame_button.clicked.connect(lambda: self.set_region(None, write=True))
+        hb.addWidget(self.fit_button)
+        hb.addWidget(self.reset_frame_button)
+        hb.addStretch(1)
+        self.frame_label = QtWidgets.QLabel(objectName="muted")
+        hb.addWidget(self.frame_label)
+        lv.addWidget(bar)
+        self.left_stack = QtWidgets.QStackedWidget()
+        self.live_slot = QtWidgets.QWidget(objectName="nativeSlot")
+        self.live_slot.setMinimumSize(400, 300)
         self.preview = QtWidgets.QLabel("Press Render to preview the final image", alignment=QtCore.Qt.AlignCenter)
         self.preview.setMinimumSize(400, 300)
         self.preview.setStyleSheet(f"background: {TOKENS['bg']}; color: {TOKENS['muted']};")
-        outer.addWidget(self.preview, 3)
+        self.left_stack.addWidget(self.live_slot)
+        self.left_stack.addWidget(self.preview)
+        lv.addWidget(self.left_stack, 1)
+        outer.addWidget(left, 3)
+        self.frame = None        # RenderFrame on the viewport, set by attach_frame()
+        self._region = None      # the frame's region before a viewport is attached
 
         side = QtWidgets.QWidget()
         side.setMaximumWidth(460)
@@ -148,6 +190,8 @@ class RenderPage(QtWidgets.QWidget):
         scroll.setMaximumWidth(480)
         outer.addWidget(scroll, 2)
 
+        for w in (self.width, self.height):
+            w.valueChanged.connect(self._size_changed)
         self.preset.currentTextChanged.connect(self._apply_preset)
         self.dpi.valueChanged.connect(lambda _: self._apply_preset(self.preset.currentText()))
         for w in (self.ao, self.aa, self.legend, self.animation, self.shadows, self.type_legend, self.scale_bar):
@@ -171,6 +215,83 @@ class RenderPage(QtWidgets.QWidget):
         self.movie_quality.currentTextChanged.connect(self.update_code)
         self.quality.setCurrentText("Publication")
         self._quality_changed("Publication")
+
+    # ---------------------------------------------------------------- frame on the 3D view
+    def attach_frame(self, frame):
+        """Use ``frame`` (a :class:`~ewald.gui.render_frame.RenderFrame` on the viewport)."""
+        self.frame = frame
+        frame.set_aspect(self.aspect)
+        frame.set_region(self._region)
+        frame.regionChanged.connect(self._frame_dragged)
+        frame.aspectChanged.connect(self._frame_reshaped)
+        self._show_frame_label()
+
+    @property
+    def aspect(self) -> float:
+        return self.width.value() / max(self.height.value(), 1)
+
+    @property
+    def region(self):
+        """The frame's (x, y, height) as set, or None for the largest frame that fits."""
+        return self.frame.region if self.frame is not None else self._region
+
+    def effective_region(self):
+        if self.frame is not None:
+            return self.frame.effective_region()
+        from ..framing import as_region
+
+        return as_region(self._region) if self._region is not None else None
+
+    def set_region(self, region, write: bool = False):
+        from ..framing import as_region
+
+        self._region = None if region is None else as_region(region)
+        if self.frame is not None:
+            self.frame.set_region(self._region)
+        self.update_code()
+        if write:
+            self.regionWritten.emit()
+
+    def _frame_dragged(self, region):
+        self._region = region
+        self.update_code()
+        self.regionWritten.emit()
+
+    def _frame_reshaped(self, aspect, side):
+        """Dragging a side of the frame: the picture gets that aspect (Custom size, the other side kept)."""
+        w, h = self.width.value(), self.height.value()
+        if self.preset.currentText() != "Custom (px)":
+            self.preset.setCurrentText("Custom (px)")
+        self._reshaping = True
+        try:
+            if side in ("e", "w"):
+                self.width.setValue(max(64, round(h * aspect)))
+            else:
+                self.height.setValue(max(64, round(w / aspect)))
+        finally:
+            self._reshaping = False
+        self._show_frame_label()
+
+    def _size_changed(self, *_):
+        if self.frame is not None and not getattr(self, "_reshaping", False):
+            self.frame.set_aspect(self.aspect)
+        self._show_frame_label()
+
+    def _show_frame_label(self):
+        self.frame_label.setText(f"{self.width.value()} × {self.height.value()} px")
+
+    def show_live(self, on: bool = True):
+        """Show the 3D view with the frame (True) or the last rendered picture."""
+        (self.live_button if on else self.result_button).setChecked(True)
+        self.left_stack.setCurrentIndex(0 if on else 1)
+        for b in (self.fit_button, self.reset_frame_button):
+            b.setEnabled(on)
+        if self.window is not None and hasattr(self.window, "_render_frame_visibility"):
+            self.window._render_frame_visibility()
+
+    def fit_frame(self):
+        if self.frame is not None:
+            self.frame.fit(getattr(self.window, "data", None))
 
     @property
     def raytrace(self) -> bool:
@@ -338,6 +459,9 @@ class RenderPage(QtWidgets.QWidget):
     def render_kwargs(self, movie: bool = False) -> dict:
         bg = self.background.currentText()
         kw = {"size": (self.width.value(), self.height.value()), "legend": self.legend.isChecked()}
+        region = self.effective_region()
+        if region is not None and tuple(region) != (0.0, 0.0, 1.0):
+            kw["region"] = tuple(round(v, 4) for v in region)
         if self.type_legend.isChecked():
             kw["type_legend"] = True
         if self.scale_bar.isChecked():
@@ -373,7 +497,8 @@ class RenderPage(QtWidgets.QWidget):
                 "legend": self.legend.isChecked(), "type_legend": self.type_legend.isChecked(),
                 "scale_bar_on": self.scale_bar.isChecked(), "scale_bar_length": self.scale_length.value(),
                 "output": self.output.text(), "animation": self.animation.isChecked(),
-                "overlays": [dict(o) for o in self.overlays]}
+                "overlays": [dict(o) for o in self.overlays],
+                "region": None if self.region is None else list(self.region)}
 
     def set_state(self, st: dict):
         if "renderer_name" in st:
@@ -402,6 +527,8 @@ class RenderPage(QtWidgets.QWidget):
         if "overlays" in st:
             self.overlays = [dict(o) for o in st["overlays"] or []]
             self._refresh_overlays()
+        if "region" in st:
+            self.set_region(st["region"])
         if st.get("quality") in QUALITIES:  # last: a preset overwrites the fields, Custom keeps them
             self.quality.setCurrentText(st["quality"])
             self._quality_changed(st["quality"])

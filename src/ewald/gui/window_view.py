@@ -68,6 +68,8 @@ class ViewSyncMixin:
                 st["scale_bar_length"] = float(v.scale_bar)
         if v.transparent_background:
             st["background_choice"] = "transparent"
+        if "region" in v._values:
+            st["region"] = v.region
         if v.overlays:
             st["overlays"] = [{"name": o, "params": {}, "enabled": True} if isinstance(o, str) else dict(o)
                               for o in v.overlays]
@@ -98,9 +100,10 @@ class ViewSyncMixin:
             if "frame" in v._values and v.frame != self.frame and self.pipeline is not None:
                 self.timeline._set(min(max(v.frame, 0), self.pipeline.num_frames - 1))
 
-    def write_view(self, camera: bool = False):
+    def write_view(self, camera: bool = False, region: bool = False):
         """After a change in the viewport, the View tab or a style menu: put the style into
-        ``pipe.view`` and the notebook's view cell (``camera``: the current camera and frame too)."""
+        ``pipe.view`` and the notebook's view cell (``camera``: the current camera, trajectory frame and
+        Render frame too; ``region``: the Render frame the user just changed)."""
         if self._writing_view or self.pipeline is None:
             return
         v = self.pipeline.view
@@ -112,6 +115,13 @@ class ViewSyncMixin:
             keep.pop("direction", None)
             keep.pop("zoom", None)
             keep["frame"] = int(self.frame)
+        page = getattr(self, "render_page", None)
+        if page is not None and (camera or region):
+            r = page.effective_region() if camera else page.region
+            if r is None or tuple(r) == (0.0, 0.0, 1.0):
+                keep.pop("region", None)
+            else:
+                keep["region"] = [round(float(x), 4) for x in r]
         wanted = View(**{k: x for k, x in self.style.view_settings(types).items()}, **keep).changed()
         if wanted != v.changed():
             v.reset().update(**wanted)

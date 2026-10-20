@@ -150,7 +150,10 @@ beside the 3D view), the cards stack.
 
 The boundary range: tick Boundary and set the fractional range (e.g. -0.1 to 1.1) to draw the
 periodic images of atoms on the faces, edges and corners, with bonds and polyhedra completed across
-the cell; [display only](rendering.md#boundary-vesta). A plugin element has a checkbox to hide it, a
+the cell; [display only](rendering.md#boundary-vesta). Replicate cell draws a na x nb x nc block of
+cells (OVITO's Replicate as a display setting; also under View › Replicate cell and the 3D view's
+right-click menu); the data and analysis keep the original cell, see
+[Replicated cell](rendering.md#replicated-cell). A plugin element has a checkbox to hide it, a
 parameter form generated from its constructor (Apply or Ctrl+Enter redraws) and a remove button.
 Plugin elements are saved with the session and drawn in rendered images too. *Save camera* writes
 the current camera and frame into the view cell.
@@ -234,8 +237,21 @@ Window › Render workspace (Ctrl+2), or the Render button, opens the figure set
 journal size presets (1-column 3.5 in, 2-column 7.2 in, square, 16:9 slide) at a chosen dpi,
 background (white, transparent, black, or the viewport's), overlays, and an output file.
 Under Overlays, "+ Overlay" adds an overlay element (Coordinate tripod, Attributes, or an
-[overlay plugin](../plugins/overlays.md)) with a checkbox and a parameter form. The preview
-shows the final aspect ratio. The "Python for this figure" panel shows the script that
+[overlay plugin](../plugins/overlays.md)) with a checkbox and a parameter form.
+
+The left side is the live 3D view with the picture's frame on it: the part outside the frame
+is dimmed, and the frame keeps the output's aspect ratio and its place on screen, so zooming or
+turning the view changes what is inside it and the picture is exactly what the frame covers.
+Drag a corner to resize the frame, a side's middle handle to change the picture's aspect (the
+pixel size becomes Custom), or the frame's edge to move it; inside the frame the mouse turns and
+zooms the view as usual. *Fit to structure* zooms and centers the view so the structure fills
+the frame, *Reset frame* goes back to the largest centered frame. After Render, *Last render*
+shows the picture; *3D view* goes back. The frame is the `region` of the notebook's view
+(`view(pipe, region=[x, y, height])`, see [Rendering](rendering.md#options)), so it round-trips
+with the notebook, and View › Write view to notebook stores it with the camera. Preferences ›
+Viewports › Render frame in the 3D view, or right-click › Show › Render frame, shows the frame
+outside the Render page too. The frame is not drawn yet on the OpenGL 1.x viewport used over
+`ssh -X`. The "Python for this figure" panel shows the script that
 produces the same image with `pipe.render(...)`, updated as you change settings, so a figure
 made in the GUI can be reproduced in a batch script. See [Rendering figures](rendering.md).
 

@@ -61,6 +61,11 @@ GUI
   keeps its own per-notebook state in the `.py` header next to the view cell's picture settings
   (one place for both); in a kernel notebook a viewport edit reaches the kernel's `pipe.view`
   only when the view cell runs again.
+- Render frame (the picture's region on the 3D view, `view(pipe, region=...)`): not drawn on
+  the OpenGL 1.x viewport (`ssh -X`); in perspective, a frame off the view center moves the
+  camera sideways instead of an off-axis projection (exact at the focal distance only); the
+  Overlay elements and text label are not previewed inside the frame; Claude's `set_view` can set
+  `region` but no tool tells it the frame on screen.
 - Notebook kernels (`ewald/kernel.py`): kernels on SSH hosts; step forms for steps a kernel
   cell adds with code the app cannot import (a class only the kernel's Python has stays as code).
 - Plugins side bar: disable per notebook,
@@ -105,6 +110,8 @@ GUI
 - Flat (ASE) style in the ray tracer (now OpenGL and vector only), and a
   per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.
+- Replicated cell display: a quick replicate control in the 3D view toolbar or the redesigned
+  View tab (now Display panel, View menu, right-click menu and Ctrl+K).
 - Boundary (VESTA): repeat isosurfaces and grid slices over the boundary range too (now only
   atoms, bonds and coordination polyhedra are repeated), VESTA's recursive "search molecules"
   mode, and keep the images while the coarse viewport level of detail is shown (they disappear
@@ -434,3 +441,6 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 ## Deferred until the user asks
 
 - Structure editing: supercells, slabs, defects. Do not start it without an explicit request.
+  The display side exists (`view(pipe, replicate=...)`, 2026-10-20); the user said a real
+  supercell step (a general 3x3 matrix like VESTA's lattice transformation, with bonds, grids
+  and polyhedra following, analysis and export on the enlarged cell) is "not now".

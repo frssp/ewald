@@ -225,6 +225,7 @@ class Workbench(QtWidgets.QWidget):
         self._groups: dict[int, TabGroup] = {}
         self._splitters: list[tuple[QtWidgets.QSplitter, Split]] = []
         self._slots: dict[str, QtWidgets.QWidget] = {}
+        self._page_slots: dict[str, tuple[QtWidgets.QWidget, QtWidgets.QWidget]] = {}  # view -> (page, slot)
         self._watched: list[QtWidgets.QWidget] = []
         self._drag = None
         self._panel_size = 280
@@ -306,6 +307,19 @@ class Workbench(QtWidgets.QWidget):
             s.setObjectName("nativeSlot")
             self._slots[view] = s
         return self._slots[view]
+
+    def lend(self, view: str, page: QtWidgets.QWidget, slot: QtWidgets.QWidget):
+        """Show the GL ``view`` over ``slot`` while the workspace ``page`` is the current page
+        (the Render page's live 3D view); it goes back to its own tab on the editor page."""
+        self._page_slots[view] = (page, slot)
+        self._watch()
+        self._schedule_sync()
+
+    def _current_slot(self, view: str):
+        page, slot = self._page_slots.get(view, (None, None))
+        if page is not None and self.pages.currentWidget() is page:
+            return slot
+        return self._slots.get(view)
 
     def titles(self, area: str) -> list[str]:
         return [self.specs[v].title for g in self.layout.groups(area) for v in g.views]
@@ -585,7 +599,7 @@ class Workbench(QtWidgets.QWidget):
             except RuntimeError:
                 pass
         self._watched = []
-        for slot in self._slots.values():
+        for slot in [*self._slots.values(), *(s for _, s in self._page_slots.values())]:
             w = slot
             while w is not None and w is not self:
                 w.installEventFilter(self)
@@ -621,13 +635,15 @@ class Workbench(QtWidgets.QWidget):
         """Put each GL widget over its slot, or hide (park) it when its slot is not on screen."""
         if self._drag is not None:
             return
-        for v, slot in self._slots.items():
+        for v in self._slots.keys() | self._page_slots.keys():
             spec = self.specs.get(v)
             if spec is None:
                 continue
             w = spec.widget
-            on = (self.layout.find(v) is not None and self.isAncestorOf(slot) and slot.isVisibleTo(self)
-                  and slot.width() > 0)
+            slot = self._current_slot(v)
+            lent = slot is not self._slots.get(v)
+            on = (slot is not None and (lent or self.layout.find(v) is not None) and self.isAncestorOf(slot)
+                  and slot.isVisibleTo(self) and slot.width() > 0)
             if on:
                 w.setGeometry(QtCore.QRect(slot.mapTo(self, QtCore.QPoint(0, 0)), slot.size()))
                 w.show()
