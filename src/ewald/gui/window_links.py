@@ -117,9 +117,9 @@ class LinksMixin:
         self.timeline.selectionChanged.connect(p.set_frame_selection)
 
     def plot_panels(self) -> list:
-        """The Plots tab and the live plots of the current notebook's view cells."""
+        """The Plots tab and the live plots of the current notebook (view cells, ``show()`` outputs)."""
         view = self.panel.view
-        return [self.plots, *self.extra_plots.values()] + ([w.plot_panel for w in view.widgets if w.plot_panel is not None] if view else [])
+        return [self.plots, *self.extra_plots.values()] + ([p for w in view.widgets for p in w.panels()] if view else [])
 
     def new_plot_view(self, beside: str = "plot:1", view: str | None = None):
         """Another Plots view (a second table or histogram side by side), as a tab next to ``beside``."""

@@ -146,17 +146,23 @@ def show(source, table: str | None = None, y: str | None = None, histogram: str 
          frame: int = 0, bins: int = 50, xlim: tuple | None = None, ylim: tuple | None = None):
     """Plot a data table or a particle-property histogram of ``source`` (a Pipeline or a
     DataCollection) at ``frame`` with matplotlib (``plt.show()``), in the publication style;
-    ``xlim``/``ylim`` set the range shown. In the GUI a view cell is the live, linked plot,
-    and zooming it writes the range back into these arguments."""
+    ``xlim``/``ylim`` set the range shown. In the GUI, ``show()`` of the notebook's pipeline is a
+    live plot linked to the 3D view wherever it is called (the image stays for files and
+    Jupyter); in a cell that is only this call, zooming writes the range back into the arguments."""
     import matplotlib.pyplot as plt
 
     from . import plotstyle
 
     title, columns = view_data(source, table, y, histogram, frame, bins)
     with plotstyle.context():
-        _fig, ax = plt.subplots(figsize=plotstyle.figsize(), layout="constrained")
+        fig, ax = plt.subplots(figsize=plotstyle.figsize(), layout="constrained")
         _draw(ax, title, columns, histogram)
         _limit(ax, xlim, ylim)
+    # what was asked, for the GUI: a show() of the notebook's pipeline is a live plot there
+    args = {"table": table, "y": y, "histogram": histogram, "bins": bins,
+            "xlim": None if xlim is None else [float(v) for v in xlim],
+            "ylim": None if ylim is None else [float(v) for v in ylim]}
+    fig._ewald_view = (source, {k: v for k, v in args.items() if v is not None})
     plt.show()
 
 

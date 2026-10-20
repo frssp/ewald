@@ -408,6 +408,37 @@ def test_playback_leaves_frame_independent_cells_alone(app, monkeypatch):
     w.close()
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_show_anywhere_in_a_cell_is_a_live_plot(app, tmp_path):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    path = tmp_path / "live.py"
+    path.write_text(
+        "# %%\nimport numpy as np\nfrom ewald import all_frames, load\nfrom ewald.modifiers import *\n"
+        f"from ewald.views import show\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n\n"
+        "# %%\n@all_frames\ndef height(frames, data):\n"
+        "    z = [d['Position'][:, 2].mean() for d in frames]\n"
+        "    data.tables['height'] = {'Frame': np.arange(len(z)), 'Mean z': np.array(z)}\n"
+        "pipe.add(height)\n\n"
+        "# %%\npipe.add(CalculateDisplacements(reference_frame=0))\nprint('two plots')\n"
+        "show(pipe, table='height')\nshow(pipe, histogram='Displacement Magnitude')\n")
+    w = MainWindow(settings=settings.Settings())
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    app.processEvents()
+    cell = view.widgets[2]
+    height, hist = cell.panels()                       # live plots, not PNGs, though the cell does more
+    assert height.table.currentText() == "height" and hist.hist.currentText() == "Displacement Magnitude"
+    assert height in w.plot_panels() and hist in w.plot_panels()   # linked like the Plots tab
+    ax = height.figure.axes[0]
+    w.timeline._set(3)
+    app.processEvents()
+    assert hist.data.attributes["SourceFrame"] == 3   # follows the frame
+    assert height.figure.axes[0] is ax                 # all_frames result: computed once, not redrawn
+    w.close()
+
+
 def test_timeline_frame_selection_playback(app):
     from ewald.gui.timeline import Timeline
 

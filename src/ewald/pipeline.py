@@ -106,6 +106,9 @@ class PythonModifier(Modifier):
         return getattr(self.function, "__name__", "PythonModifier")
 
     def modify(self, data, ctx):
+        return self._call(ctx.frame, data, ctx)
+
+    def _call(self, first, data, ctx):
         import inspect
 
         try:  # positional slots not filled by keyword parameters decide whether ctx is passed
@@ -115,8 +118,105 @@ class PythonModifier(Modifier):
                     for p in params)
         except (TypeError, ValueError):
             nargs = 2
-        args = (ctx.frame, data, ctx)[: max(2, min(nargs, 3))]
+        args = (first, data, ctx)[: max(2, min(nargs, 3))]
         return self.function(*args, **self.params)
+
+
+class Frames:
+    """The frames an :func:`all_frames` step reads: ``len(frames)``, ``frames[k]`` (the data at
+    frame ``k`` as it enters the step, every step above applied), iteration and slices
+    (``frames[::10]``). Frames are computed one at a time when read, so lazy readers stay lazy."""
+
+    def __init__(self, ctx: ComputeContext, indices: range | None = None):
+        self._ctx = ctx
+        self.indices = range(ctx.pipeline.num_frames) if indices is None else indices
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, k):
+        if isinstance(k, slice):
+            return Frames(self._ctx, self.indices[k])
+        return self._ctx.input_frame(self.indices[k])
+
+    def __iter__(self):
+        return (self._ctx.input_frame(k) for k in self.indices)
+
+    def __repr__(self):
+        return f"Frames({len(self)} frames)"
+
+
+class AllFramesModifier(PythonModifier):
+    """A Python step that reads every frame once: ``f(frames, data)`` (see :func:`all_frames`).
+
+    The first evaluation runs ``f`` with :class:`Frames` and the data of the current frame and
+    keeps what it set (tables, attributes, per-particle properties); every later frame gets the
+    kept result without running ``f`` again, until a step above it, the source or its
+    parameters change. Plots of the result then only move their frame marker during playback."""
+
+    def modify(self, data, ctx):
+        key = (ctx.upstream_key(), id(self.function), repr(self.params))
+        cache = self.__dict__.get("_result")
+        if cache is None or cache[0] != key:
+            before = _contents(data)
+            out = self._call(Frames(ctx), data, ctx)
+            result = out if isinstance(out, DataCollection) else data
+            cache = (key, _changes(before, result))
+            self._result = cache
+            if out is not None:
+                return out
+            return None
+        tables, attributes, particles = cache[1]
+        for k, v in tables.items():
+            data.tables[k] = dict(v)
+        data.attributes.update(attributes)
+        for k, v in particles.items():
+            if len(v) != data.count:
+                raise ValueError(f"{self.name}: per-particle result '{k}' has {len(v)} values, but frame "
+                                 f"{ctx.frame} has {data.count} particles")
+            data.particles[k] = v
+        return None
+
+
+def _contents(data) -> tuple:
+    return ({k: _table_id(v) for k, v in data.tables.items()}, {k: id(v) for k, v in data.attributes.items()},
+            {k: id(v) for k, v in data.particles.items()})
+
+
+def _changes(before: tuple, data) -> tuple:
+    """Tables, attributes and particle properties of ``data`` that are new or replaced since ``before``."""
+    tables, attributes, particles = before
+    return ({k: dict(v) for k, v in data.tables.items() if tables.get(k) != _table_id(v)},
+            {k: v for k, v in data.attributes.items() if attributes.get(k) != id(v)},
+            {k: v for k, v in data.particles.items() if particles.get(k) != id(v)})
+
+
+def each_frame(function: Callable) -> Callable:
+    """Mark a Python step that runs at every frame, ``f(frame, data)`` (the default for a
+    function added with ``pipe.add``; the decorator says so in the notebook)::
+
+        @each_frame
+        def coordination(frame, data): ...
+        pipe.add(coordination)
+    """
+    function._ewald_frames = "each"
+    return function
+
+
+def all_frames(function: Callable) -> Callable:
+    """Mark a Python step that reads the whole trajectory once, ``f(frames, data)``:
+    ``frames`` is a :class:`Frames` (the data of every frame as it enters the step) and
+    ``data`` the current frame, on which ``f`` sets its result (a table, attributes, a
+    per-particle property). The result is computed once and reused at every frame::
+
+        @all_frames
+        def mean_height(frames, data):
+            z = [d["Position"][:, 2].mean() for d in frames]
+            data.tables["height"] = {"Frame": np.arange(len(z)), "Mean z": np.array(z)}
+        pipe.add(mean_height)
+    """
+    function._ewald_frames = "all"
+    return function
 
 
 class ModifierList(list):
@@ -127,7 +227,7 @@ class ModifierList(list):
         if isinstance(m, Modifier):
             return m
         if callable(m):
-            return PythonModifier(m)
+            return AllFramesModifier(m) if getattr(m, "_ewald_frames", None) == "all" else PythonModifier(m)
         raise TypeError(f"{m!r} is not a Modifier or callable")
 
     def append(self, m):
