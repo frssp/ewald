@@ -110,6 +110,16 @@ class _Interface(paramiko.ServerInterface):
         return True
 
 
+_HOST_KEY = None
+
+
+def _host_key():
+    global _HOST_KEY
+    if _HOST_KEY is None:
+        _HOST_KEY = paramiko.RSAKey.generate(2048)  # slow, so every server in a run shares one
+    return _HOST_KEY
+
+
 class SFTPTestServer:
     def __init__(self, root, client_key=None, password=None, user="alice", allow_exec=True, allow_forward=False):
         self.root = str(root)
@@ -118,7 +128,7 @@ class SFTPTestServer:
         self.user = user
         self.allow_exec = allow_exec
         self.allow_forward = allow_forward
-        self.host_key = paramiko.RSAKey.generate(2048)
+        self.host_key = _host_key()
         self.opens, self.commands, self.forwards = [], [], []
         self._sock = socket.socket()
         self._sock.bind(("127.0.0.1", 0))

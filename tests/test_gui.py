@@ -32,6 +32,20 @@ def app():
     gc.collect()
 
 
+@pytest.fixture(autouse=True)
+def _close_new_windows(app):
+    """Destroy the windows a test leaves open. Every live widget is restyled on a theme switch
+    and repolished on show, so leftovers from earlier tests made later GUI tests minutes slower."""
+    before = set(app.topLevelWidgets())
+    yield
+    for w in app.topLevelWidgets():
+        if w not in before:
+            w.close()
+            w.deleteLater()
+    app.processEvents()
+    app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+
+
 @pytest.fixture
 def pipe(cu_fcc):
     return Pipeline(StaticSource([cu_fcc, cu_fcc]))
