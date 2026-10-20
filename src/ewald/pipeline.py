@@ -294,6 +294,7 @@ class Pipeline:
                 self._cache.move_to_end(frame)
                 return data.copy()
         data = self.source.compute(frame)  # outside the lock: reading a frame can take seconds
+        data = data.copy().freeze()  # modifiers that write in place fail instead of changing the cache
         with self._cache_lock:
             self._cache[frame] = data
             self._cache.move_to_end(frame)
@@ -413,7 +414,9 @@ class Pipeline:
 
     def _store_output(self, key, data):
         with self._cache_lock:
-            self._outputs[key] = data.copy()  # later steps and callers change their own copy
+            # ``data`` goes on to later steps and callers: freezing it keeps them from writing
+            # into the cached arrays it shares; they change their own copy
+            self._outputs[key] = data.freeze().copy()
             self._outputs.move_to_end(key)
             self._trim_cache()
 
