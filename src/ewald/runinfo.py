@@ -268,7 +268,8 @@ def run_info(source, refresh: bool = False) -> RunInfo:
         except (OSError, ValueError, UnicodeError) as exc:
             info.notes.append(f"could not read the run's input files: {exc}")
         if hasattr(source, "compute"):
-            _frame_timing(info, source, path)
+            with _compute_lock(source):  # reading frames runs numba's parallel parser
+                _frame_timing(info, source, path)
     if hasattr(source, "compute"):
         try:
             source._run_info = info
@@ -546,6 +547,18 @@ def check_run(pipe, close_contact: float = 0.5) -> RunCheck:
     the thermostat target, energy drift where energy is conserved, LAMMPS warnings and errors, and
     atoms closer than ``close_contact`` times the sum of their covalent radii in the first and last
     frame. Reads files and frames only; changes nothing."""
+    with _compute_lock(pipe):  # the numba kernels below must not run beside the GUI's compute thread
+        return _check_run(pipe, close_contact)
+
+
+def _compute_lock(pipe):
+    import contextlib
+
+    lock = getattr(pipe, "_compute_lock", None)
+    return lock if lock is not None else contextlib.nullcontext()
+
+
+def _check_run(pipe, close_contact: float) -> RunCheck:
     info = run_info(pipe)
     check = RunCheck(info)
     add = check.findings.append
