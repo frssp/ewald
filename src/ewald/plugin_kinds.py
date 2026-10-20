@@ -1,5 +1,6 @@
 """What each kind of plugin is: one dataclass per registry (readers, writers, modifiers, visual
-elements, overlays, color maps, themes, UI themes, AI tools, settings pages), the built-in entries and
+elements, overlays, color maps, themes, UI themes, AI tools, GUI panels, settings pages), the
+built-in entries and
 :class:`ListReader`. Stateless; the registry itself and the loading live in :mod:`ewald.plugins`,
 which re-exports everything here."""
 from __future__ import annotations
@@ -286,6 +287,24 @@ class ToolPlugin:
     function: Callable
     description: str = ""
     schema: dict = field(default_factory=lambda: {"type": "object", "properties": {}})
+    origin: str = ""
+
+
+@dataclass
+class PanelPlugin:
+    """A side bar of the desktop app: a button on the activity bar (left edge) shows or hides it,
+    and an entry under Window › Plugin panels. ``factory(context)`` builds its ``QWidget`` the first
+    time it is opened (not at start), with ``context`` an ``ewald.gui.window_plugins.PanelContext``.
+    ``icon`` is the name of a built-in icon or an SVG/PNG file (resolved next to the plugin)."""
+
+    name: str
+    factory: Callable
+    title: str = ""
+    icon: str = "plugins"
+    tooltip: str = ""
+    shortcut: str = ""
+    width: int = 320
+    description: str = ""
     origin: str = ""
 
 

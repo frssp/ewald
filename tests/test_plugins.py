@@ -562,6 +562,59 @@ def test_scheme_reader_takes_uri_paths(tmp_path, monkeypatch):
     assert seen == ["demo:3", "demo:3"]
 
 
+SIM_AGENT = Path(__file__).parents[1] / "examples" / "plugins" / "sim_agent_panel.py"
+
+
+def test_panel_plugin_and_stored_settings_page(monkeypatch):
+    """The example contributes an activity-bar panel and a settings page without load()/save(),
+    whose values ewald keeps (plain ones in a JSON file, the secret in the keychain)."""
+    import json
+
+    from ewald import keychain
+
+    secrets = {}
+    monkeypatch.setattr(keychain, "set_secret", lambda name, value: secrets.__setitem__(name, value) or "file")
+    monkeypatch.setattr(keychain, "get_secret", lambda name: (secrets.get(name), "file" if name in secrets else None))
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(SIM_AGENT, folder)
+    panel = plugins.panels()["sim_agent"]
+    assert panel.title == "Sim agent" and panel.icon.startswith("<svg") and panel.shortcut == "Ctrl+Alt+A"
+    assert "Send simulation tasks" in panel.description and panel.width == 320
+    assert plugins.installed()["sim-agent-example"].contributions == {"settings_pages": ["sim-agent"],
+                                                                       "panels": ["sim_agent"]}
+    assert plugins.status()["panels"][0]["title"] == "Sim agent"
+    page = plugins.settings_pages()["sim-agent"]
+    assert page.description == "The agent behind the Sim agent side bar."
+    assert plugins.plugin_settings("sim-agent") == {"server": "http://localhost:8000", "token": None,
+                                                    "model": "default", "insert_cells": True}
+    assert page.values()["token"] is False
+    assert page.save({"server": "http://hpc:9000", "token": "tok", "model": "fast", "insert_cells": False}) == "Saved"
+    stored = json.loads((plugins.plugin_dir().parent / "plugin-settings" / "sim-agent.json").read_text())
+    assert stored == {"server": "http://hpc:9000", "model": "fast", "insert_cells": False}   # no secret in the file
+    assert secrets == {"plugin:sim-agent:token": "tok"} and page.values()["token"] is True
+    page.save({"server": "http://hpc:9000", "token": "", "model": "fast", "insert_cells": False})
+    assert plugins.plugin_settings("sim-agent")["token"] == "tok"        # empty keeps the saved secret
+    plugins.set_enabled("sim-agent-example", False)
+    assert "sim_agent" not in plugins.panels() and "sim-agent" not in plugins.settings_pages()
+    plugins.set_enabled("sim-agent-example", True)
+    assert plugins.plugin_settings("sim-agent")["server"] == "http://hpc:9000"   # kept while it was off
+
+
+def test_panel_and_settings_page_checks():
+    from ewald.plugin_api import SettingsField
+
+    with pytest.raises(TypeError, match="not callable"):
+        plugins.register_panel("p", "not a function")
+
+    class Half:
+        def load(self):
+            return {}
+
+    with pytest.raises(TypeError, match="no save"):
+        plugins.register_settings_page("half", Half, fields=[SettingsField("x")])
+
+
 SETTINGS_PLUGIN = '''
 """A service with a settings page."""
 from ewald.plugin_api import SettingsField, settings_page

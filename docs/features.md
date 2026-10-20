@@ -386,12 +386,13 @@ Also: `ewald describe` / `ewald narrate` (rule-based descriptors and a trajector
 
 ## Plugins
 
-Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.visuals`, `ewald.overlays`, `ewald.colormaps`, `ewald.themes`, `ewald.tools`, `ewald.ui_themes`, `ewald.ai_providers` and `ewald.settings_pages`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / `@colormap` / `@theme` / `@ai_tool` (or `@claude_tool`) / `@ui_theme` / `@ai_provider` / `@settings_page`; `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
+Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.visuals`, `ewald.overlays`, `ewald.colormaps`, `ewald.themes`, `ewald.tools`, `ewald.ui_themes`, `ewald.ai_providers`, `ewald.panels` and `ewald.settings_pages`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / `@colormap` / `@theme` / `@ai_tool` (or `@claude_tool`) / `@ui_theme` / `@ai_provider` / `@panel` (an activity-bar side bar) / `@settings_page` (a Preferences page); `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
 
 - `examples/plugins/cell_axes.py`: Example visual element plugins: cell axes and a halo around selected atoms.
 - `examples/plugins/figure_extras.py`: Example figure-style plugins: a color map, a theme and an overlay.
 - `examples/plugins/local_composition.py`: Example modifier plugin: local chemical composition around every particle.
 - `examples/plugins/npz_trajectory.py`: Example reader plugin: trajectories stored as NumPy ``.npz`` archives.
+- `examples/plugins/sim_agent_panel.py`: Example GUI plugin: a "Sim agent" side bar with its own activity-bar button and a page in Preferences.
 - `examples/plugins/ui_themes.py`: Example UI color themes for the desktop app: "Nord" (dark, frost-blue accents) and "Sepia" (light, warm paper).
 
 ## Preferences
@@ -740,6 +741,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Log
 - AI chat (`Ctrl+J`)
 - Command palette (`Ctrl+K`)
+- Plugin panels
 
 **Help**
 
