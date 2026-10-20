@@ -272,6 +272,7 @@ QToolBar#activity-bar QToolButton:checked {{ background: {accent_soft}; border-l
     border-top-left-radius: 0; border-bottom-left-radius: 0; }}
 QFrame#pluginRow {{ background: {raised}; border: 1px solid {border}; border-radius: 6px; }}
 QFrame#pluginRow:hover {{ border-color: {accent}; }}
+QFrame#pluginRow[fresh="true"] {{ border: 1px solid {accent}; background: {accent_soft}; }}
 QFrame#pluginRow QLabel {{ background: transparent; }}
 QFrame#pluginRow[incompatible="true"] QLabel {{ color: {muted}; }}
 QLabel#pluginSummary {{ color: {secondary}; }}
