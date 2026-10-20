@@ -347,8 +347,8 @@ class MenusMixin:
         w.addAction("Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
         w.addAction("Notebook", lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))
         w.addAction("Plugins", lambda: self._show_side_bar(self.plugins_dock), "Ctrl+Shift+X")
-        w.addAction("Display settings", lambda: (self.display.parent().show(), self.display.parent().raise_()))
         w.addAction("Structure", lambda: self.workbench.show(self.viewport))
+        w.addAction("View settings", lambda: self.workbench.show(self.display))
         w.addAction("Python console", lambda: self.workbench.show(self.console))
         w.addAction("Data inspector", lambda: self.workbench.show(self.inspector))
         w.addAction("Plots", lambda: self.workbench.show(self.plots))
@@ -433,7 +433,7 @@ class MenusMixin:
 
     def toggle_focus(self):
         """Hide or show the notebook and side panels, leaving the viewport (Ctrl+\\)."""
-        docks = [self.notebook_dock, self.plugins_dock, self.display.parent(), self.ask_dock]
+        docks = [self.notebook_dock, self.plugins_dock, self.ask_dock, self.remotes_dock]
         hide = self.notebook_dock.isVisible()
         if hide:
             self._focus_restore = [d for d in docks if d.isVisible()]
