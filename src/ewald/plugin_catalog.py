@@ -52,15 +52,13 @@ from . import plugins
 from ._tls import ssl_context
 from .trust import verify_sha256
 
-KINDS = ("modifier", "reader", "writer", "visual", "overlay", "colormap", "theme", "tool", "ui_theme", "ai_provider",
-         "panel", "settings_page")
+KINDS = ("modifier", "reader", "writer", "visual", "overlay", "colormap", "theme", "tool", "ui_theme", "ai_provider")
 _DECORATORS = {k: k for k in KINDS} | {f"register_{k}": k for k in KINDS} | {"claude_tool": "tool", "ai_tool": "tool"}
 DEFAULT_CATALOG = "https://raw.githubusercontent.com/frssp/ewald-plugins/main/index.json"
 TOKEN_HOSTS = ("raw.githubusercontent.com", "api.github.com")
 _STATUS_KEYS = {"modifiers": "modifier", "readers": "reader", "writers": "writer", "visuals": "visual",
                 "overlays": "overlay", "colormaps": "colormap", "themes": "theme", "tools": "tool",
-                "ui_themes": "ui_theme", "ai_providers": "ai_provider",
-                "panels": "panel", "settings_pages": "settings_page"}
+                "ui_themes": "ui_theme", "ai_providers": "ai_provider"}
 
 
 @dataclass
@@ -205,7 +203,7 @@ def describe_file(path) -> Entry:
                     kinds.append(kind)
         elif isinstance(node, ast.Call):
             name = getattr(node.func, "id", getattr(node.func, "attr", ""))
-            kind = _DECORATORS.get(name) if name.startswith("register_") or name == "settings_page" else None
+            kind = _DECORATORS.get(name) if name.startswith("register_") else None
             if kind and kind not in kinds:
                 kinds.append(kind)
     first = " ".join(doc.split("\n\n")[0].split())

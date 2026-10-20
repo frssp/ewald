@@ -11,7 +11,7 @@ import os
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import settings as settings_mod
-from ..settings import DEVICES, OPTION, OPTIONS, PAGES, Settings, option
+from ..settings import DEVICES, OPTION, OPTIONS, PAGES, Settings
 from . import header
 from .element_table import ElementTable  # noqa: F401 (imported from here by callers)
 from .pref_widgets import Toggle, _ColorButton, _PathEdit, _ProfileBox, _chevron, _icon, _restyle
@@ -139,7 +139,7 @@ class PreferencesDialog(QtWidgets.QDialog):
     applied = QtCore.Signal(object)
     EDITOR_WIDTH = 240
 
-    def __init__(self, settings: Settings, parent=None, page: str | None = None):
+    def __init__(self, settings: Settings, parent=None):
         super().__init__(parent)
         self.setObjectName("prefs")
         self.setWindowTitle("Preferences")
@@ -178,17 +178,10 @@ class PreferencesDialog(QtWidgets.QDialog):
 
         self.stack = QtWidgets.QStackedWidget()
         body.addWidget(self.stack, 1)
-        # ewald's pages, then one per plugin settings page (ewald.plugins.settings_page)
-        self.layouts = dict(LAYOUT)
-        self.page_icons = {}
-        for name, plugin_page in _plugin_pages().items():
-            self.layouts[name] = plugin_page.layout()
-            self.page_icons[name] = plugin_page.icon
-        self.page_names = list(self.layouts)
-        for name in self.page_names:
+        for name in PAGES:
             self._build_page(name)
         self.pages.currentRowChanged.connect(self.stack.setCurrentIndex)
-        self.pages.setCurrentRow(self.page_names.index(page) if page in self.page_names else 0)
+        self.pages.setCurrentRow(0)
         outer.addWidget(self._footer())
         self._load()
 
@@ -221,12 +214,8 @@ class PreferencesDialog(QtWidgets.QDialog):
             lay.addWidget(b)
         return bar
 
-    def show_page(self, name: str):
-        """Turn to the page ``name`` (a plugin's page, or General, Viewports, ...)."""
-        self.pages.setCurrentRow(self.page_names.index(name))
-
     def _build_page(self, name):
-        subtitle, sections = self.layouts[name]
+        subtitle, sections = LAYOUT[name]
         inner = QtWidgets.QWidget(objectName="contentInner")
         col = QtWidgets.QVBoxLayout(inner)
         col.setContentsMargins(32, 24, 32, 32)
@@ -239,8 +228,8 @@ class PreferencesDialog(QtWidgets.QDialog):
             col.addWidget(heading)
             card, rows = self._card()
             for key in keys:
-                editor = self._device_combo() if key == "compute.device" else self._editor(option(key))
-                self._add_row(rows, option(key), editor)
+                editor = self._device_combo() if key == "compute.device" else self._editor(OPTION[key])
+                self._add_row(rows, OPTION[key], editor)
             col.addWidget(card)
             self.cards.append((heading, card, keys))
             if keys == ["llm.provider"]:  # the key of the chosen provider comes right after it
@@ -266,14 +255,9 @@ class PreferencesDialog(QtWidgets.QDialog):
         scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.stack.addWidget(scroll)
         item = QtWidgets.QListWidgetItem(name)
-        if name in LAYOUT:
-            icon = QtGui.QIcon()
-            icon.addPixmap(_icon(name, TOKENS["secondary"]), QtGui.QIcon.Normal)
-            icon.addPixmap(_icon(name, TOKENS["accent"]), QtGui.QIcon.Selected)
-        else:
-            from .window_plugins import plugin_icon
-
-            icon = plugin_icon(self.page_icons.get(name) or "plugins")
+        icon = QtGui.QIcon()
+        icon.addPixmap(_icon(name, TOKENS["secondary"]), QtGui.QIcon.Normal)
+        icon.addPixmap(_icon(name, TOKENS["accent"]), QtGui.QIcon.Selected)
         item.setIcon(icon)
         self.pages.addItem(item)
 
@@ -664,7 +648,7 @@ class PreferencesDialog(QtWidgets.QDialog):
     def _load(self):
         self._loading = True
         for key, (w, _l, _r) in self.editors.items():
-            self._set_editor(w, option(key), self.work[key])
+            self._set_editor(w, OPTION[key], self.work[key])
         self._loading = False
         self._device_note()
         self._provider_changed(reset_model=False)
@@ -743,14 +727,14 @@ class PreferencesDialog(QtWidgets.QDialog):
 
     def set_value(self, key, value):
         """Programmatic edit (tests, command palette): updates the editor and the working copy."""
-        self._set_editor(self.editors[key][0], option(key), value)
+        self._set_editor(self.editors[key][0], OPTION[key], value)
         self.work[key] = value
         self._mark(key)
 
     def reset_key(self, key):
         self.work.reset([key])
         self._loading = True
-        self._set_editor(self.editors[key][0], option(key), self.work[key])
+        self._set_editor(self.editors[key][0], OPTION[key], self.work[key])
         self._loading = False
         if key.startswith("elements."):
             self._refresh_table()
@@ -759,10 +743,8 @@ class PreferencesDialog(QtWidgets.QDialog):
         self._mark(key)
 
     def restore_page(self):
-        page = self.page_names[self.stack.currentIndex()]
-        keys = [o.key for o in OPTIONS if o.page == page] if page in PAGES else \
-            [k for _t, ks in self.layouts[page][1] for k in ks]
-        self.work.reset(keys)
+        page = PAGES[self.stack.currentIndex()]
+        self.work.reset([o.key for o in OPTIONS if o.page == page])
         self._load()
 
     def _search(self, text):
@@ -771,7 +753,7 @@ class PreferencesDialog(QtWidgets.QDialog):
         for heading, card, keys in self.cards:
             first = True
             for key in keys:
-                opt = option(key)
+                opt = OPTION[key]
                 hit = (not text or any(text in s.lower() for s in (opt.label, opt.key, opt.help, opt.page))) \
                     and self._row_applies(key)
                 row = self.editors[key][2]
@@ -796,7 +778,7 @@ class PreferencesDialog(QtWidgets.QDialog):
         if comp:
             matched_pages.add("Compute")
         first_page = None
-        for i, name in enumerate(self.page_names):
+        for i, name in enumerate(PAGES):
             hidden = name not in matched_pages
             self.pages.item(i).setHidden(hidden)
             if not hidden and first_page is None:
@@ -827,16 +809,6 @@ class PreferencesDialog(QtWidgets.QDialog):
     def accept(self):
         self.apply()
         super().accept()
-
-
-def _plugin_pages() -> dict:
-    """Plugin settings pages (none when plugins fail to load: the dialog must still open)."""
-    from .. import plugins
-
-    try:
-        return plugins.settings_pages()
-    except Exception:
-        return {}
 
 
 def _ui_theme_names(default: str) -> list[str]:

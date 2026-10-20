@@ -1,6 +1,6 @@
 """What each kind of plugin is: one dataclass per registry (readers, writers, modifiers, visual
-elements, overlays, color maps, themes, UI themes, AI tools, GUI panels and settings pages), the
-built-in entries and
+elements, overlays, color maps, themes, UI themes, AI tools, GUI panels), the built-in
+entries and
 :class:`ListReader`. Stateless; the registry itself and the loading live in :mod:`ewald.plugins`,
 which re-exports everything here."""
 from __future__ import annotations
@@ -306,29 +306,6 @@ class PanelPlugin:
     width: int = 320
     description: str = ""
     origin: str = ""
-
-
-@dataclass
-class SettingsPagePlugin:
-    """A page of Preferences: ``options`` are ``ewald.settings.Option`` under one key prefix of
-    the plugin's own (``simagent.server``, ``simagent.timeout``, ...), stored in settings.json
-    with the core settings; ``sections`` groups their keys (default: one section, ``name``)."""
-
-    name: str
-    options: tuple
-    description: str = ""
-    sections: tuple = ()          # ((title, (key, ...)), ...)
-    icon: str = ""
-    origin: str = ""
-
-    @property
-    def prefix(self) -> str:
-        return self.options[0].key.split(".")[0]
-
-    def layout(self) -> tuple:
-        """``(description, [(section, [keys])])`` like ``ewald.gui.preferences.LAYOUT``."""
-        sections = [(t, list(keys)) for t, keys in self.sections] or [(self.name, [o.key for o in self.options])]
-        return self.description, sections
 
 
 class ListReader(FrameReader):
