@@ -52,6 +52,11 @@ regenerates the LAMMPS ones.
 - Optional dependencies are skipped with `pytest.importorskip("cupy")`, `("PySide6")`,
   `("ovito")`, `("anthropic")`.
 - Tests that touch settings or plugins set `EWALD_CONFIG_DIR` to a temporary folder.
+- `test_gui.py` destroys the windows each test leaves open (`_close_new_windows`). Leftover
+  windows are restyled on every theme switch and repolished on every show, so without it later
+  GUI tests ran minutes slower (the full suite took about 8 minutes, now about 3).
+- Core dependencies (paramiko, keyring) are imported directly, not skipped: a missing core
+  dependency should fail the run. SSH tests share one RSA client key and one host key per run.
 - Analyses ported from OVITO compare against the stored OVITO reference; see
   [Native code](native.md).
 - GPU code is tested through the NumPy backend and the g++ shim; see

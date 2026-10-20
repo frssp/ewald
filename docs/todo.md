@@ -392,6 +392,9 @@ mixins and helper modules):
   renderer-neutral type color/radius tables in `render.py` belong in their own module.
 - `Viewport._mic` and the bond-angle code in `gui/viewport.py` can use `Cell.minimum_image`
   and share the angle helper with `llm/selection.py`.
+- Names left from the Ask AI rename: `MainWindow.ask_claude` (and the tests calling it) and the
+  `"Ask Claude"` dock object name, kept so saved layouts still restore; rename them with the
+  internal renames (step 3 of the layout review), keeping the old dock name readable.
 
 ## Security
 
