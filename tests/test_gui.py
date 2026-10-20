@@ -2630,6 +2630,8 @@ def test_deleted_viewport_forgets_its_gl_surface(app, pipe):
     vp.show()
     vp.set_data(pipe.compute(0))
     app.processEvents()
+    vp.ensure_view()                             # built after the first paint; realized on the next
+    app.processEvents()
     plotter = vp.plotter                         # outlives the widget, like a console reference
     assert plotter._surface is not None          # realized: pyvistaqt holds the surface
     plotter.close()                              # what MainWindow.closeEvent does first
