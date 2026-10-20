@@ -324,3 +324,41 @@ def test_ui_theme_plugins(tmp_path):
     s = settings.Settings(path=tmp_path / "settings.json")
     s["general.ui_theme"] = "Nord"
     assert s["general.ui_theme"] == "Nord"
+
+
+def test_ui_theme_style_keys():
+    """A UI theme can set fonts, sizes, corner radius, spacing, icon stroke and extra QSS."""
+    from ewald.gui import icons
+    from ewald.gui import theme as ui
+    from ewald.ui_tokens import STYLE_DEFAULTS, check_style
+
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(UI_THEMES, folder)
+    plugins.load_plugins(force=True)
+    studio = plugins.ui_themes()["Studio"]
+    st = studio.style()
+    assert st["radius"] == 2 and st["density"] == "compact" and st["font"] == "Inter"
+    assert set(studio.palette()) == set(ui.PALETTES["graphite"])    # style keys are not tokens
+    assert ui.style("graphite") == STYLE_DEFAULTS and ui.style("Nord") == STYLE_DEFAULTS
+
+    try:
+        plain = ui.stylesheet()
+        ui.use("Studio")
+        css = ui.stylesheet()
+        assert '"Inter", "IBM Plex Sans"' in css and '"Fira Code", "JetBrains Mono",' in css
+        assert "border-radius: 6px" in plain and "border-radius: 6px" not in css
+        assert "border-radius: 2px" in css
+        assert "padding: 3px 10px" in plain and "padding: 2px 6px" in css     # compact: x0.6
+        assert css.rstrip().endswith("QWidget#panelHeader { border-bottom: 2px solid #E0A040; }")
+        assert 'stroke-width="1.4"' in icons.svg("chart", "#ffffff")
+    finally:
+        ui.use("paper")
+    assert 'stroke-width="1.7"' in icons.svg("chart", "#ffffff")
+
+    for bad in ({"radius": 40}, {"density": "tiny"}, {"font": 3}, {"icon_stroke": 9}, {"font_size": -1}):
+        with pytest.raises(ValueError):
+            check_style("bad", bad)
+    plugins.register_ui_theme("Broken style", {"accent": "#123456", "radius": "round"})
+    assert ui.style("Broken style") == STYLE_DEFAULTS     # logged, defaults used
+    assert ui.palette("Broken style")["accent"] == "#123456"

@@ -100,6 +100,9 @@ GUI
   view instead of the Ask AI prompt; uninstalling a pip plugin still needs a restart.
 - UI themes: prompts already printed in the Python console keep the colors of the theme they
   were printed in (new input, syntax colors and the background switch at once).
+- UI theme style keys (`font`, `mono_font`, `radius`, `density`, `icon_stroke`, `qss`): open code
+  editors and the console keep their mono font until reopened; `density` scales QSS padding only,
+  not layout margins set in code; `qss` object names are not a stable plugin API yet.
 - Remotes side bar: list folders and connect in a background thread (now the GUI waits, with
   a busy cursor), drag a remote file onto the notebook, mirror a run folder to a local folder
   (rsync-like, for offline analysis), remote data links in the `.ewd` manifest (remote paths are

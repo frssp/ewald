@@ -68,6 +68,34 @@ def _mix(a: str, b: str, t: float) -> str:
     return "#" + "".join(f"{round(x + (y - x) * t):02X}" for x, y in zip(ca, cb))
 
 
+# What a UI theme can set besides colors (``@ui_theme`` returns them in the same dict as its
+# tokens): typefaces, the base font size, the corner radius of controls (px; 6 by default,
+# other radii follow in proportion), spacing ("compact", "normal", "comfortable"), the line
+# width of the icons, and extra Qt style sheet rules ($token names are filled in).
+STYLE_DEFAULTS = {"font": "", "mono_font": "", "font_size": 0, "radius": 6, "density": "normal",
+                  "icon_stroke": 1.7, "qss": ""}
+DENSITY = {"compact": 0.6, "normal": 1.0, "comfortable": 1.35}
+
+
+def check_style(name: str, style: dict) -> dict:
+    """The style keys of UI theme ``name`` with every default filled in; ValueError names a bad one."""
+    out = dict(STYLE_DEFAULTS)
+    for key, value in style.items():
+        default = STYLE_DEFAULTS[key]
+        if isinstance(default, str):
+            ok = isinstance(value, str) and (key != "density" or value in DENSITY)
+        else:
+            ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+            ok = ok and {"font_size": 0 <= value <= 30, "radius": 0 <= value <= 16,
+                         "icon_stroke": 0.8 <= value <= 3.0}[key]
+        if not ok:
+            hint = {"density": f"one of {', '.join(DENSITY)}", "font_size": "pixels, 9-30",
+                    "radius": "pixels, 0-16", "icon_stroke": "a line width, 0.8-3"}.get(key, "a string")
+            raise ValueError(f"UI theme {name!r}: {key} must be {hint}, not {value!r}")
+        out[key] = value
+    return out
+
+
 def derive(tokens: dict, own=()) -> dict:
     """``tokens`` with the interaction shades not in ``own`` mixed from its base colors."""
     out = dict(tokens)
