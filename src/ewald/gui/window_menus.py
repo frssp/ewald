@@ -202,16 +202,6 @@ class MenusMixin:
         spacer = QtWidgets.QWidget(objectName="toolbarSpacer")
         spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
         tb.addWidget(spacer)
-        tb.addWidget(QtWidgets.QLabel("Compute ", objectName="muted"))
-        self.device_combo = QtWidgets.QComboBox()
-        self.device_combo.addItems(["CPU", "CUDA", "auto"])
-        if sys.platform == "darwin":  # no CUDA on macOS; Apple GPUs are not used for compute yet
-            cuda = self.device_combo.model().item(1)
-            cuda.setEnabled(False)
-            cuda.setToolTip("No CUDA on macOS: analysis runs on the CPU")
-        self.device_combo.setCurrentText({"cuda": "CUDA", "auto": "auto"}.get((self.device or "cpu").lower(), "CPU"))
-        self.device_combo.currentTextChanged.connect(self._set_device)
-        tb.addWidget(self.device_combo)
 
     def set_button_style(self, style: str):
         """Toolbar and tool rail buttons as icons with text, icons or text

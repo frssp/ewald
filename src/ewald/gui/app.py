@@ -236,21 +236,16 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         dlg.exec()
         return dlg
 
-    def _set_device(self, text):
-        dev = {"CPU": "cpu", "CUDA": "cuda", "auto": "auto"}[text]
-        if dev == "cuda":
-            from ..backend import get_backend
-
-            try:
-                get_backend("cuda")
-            except RuntimeError as exc:
-                self.message(str(exc), error=True)
-                self.device_combo.blockSignals(True)
-                self.device_combo.setCurrentText("CPU")
-                self.device_combo.blockSignals(False)
-                return
+    def set_device(self, dev: str):
+        """Compute on ``dev`` ("cpu", "cuda", "auto"; Preferences › Compute › Device). The
+        notebook's ``pipe`` follows unless its code chose a device itself, so a cell's
+        ``pipe.compute()`` runs where the window computes."""
+        old = self.device
         self.device = dev
-        self.recompute()
+        if self.pipeline is not None and self.pipeline.device in (None, old):
+            self.pipeline.device = dev
+        if old is not None and dev != old:
+            self.recompute()
 
     def _set_background(self, color):
         self.style.background = color
@@ -270,6 +265,8 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
 
     def set_pipeline(self, pipeline):
         self.pipeline = pipeline
+        if pipeline.device is None:  # cell code computing on pipe uses the window's device
+            pipeline.device = self.device
         pipeline.cache_memory = self.settings["performance.cache_memory"] * 2**20
         self.viewport.reset_view()
         self.viewport.clear_picks()

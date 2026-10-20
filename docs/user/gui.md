@@ -319,9 +319,10 @@ above the view instead of on it, mesh spheres (points above 400,000 atoms) and n
 color bar. See [Troubleshooting the GUI](install.md#troubleshooting-the-gui). It takes effect at
 the next start; `EWALD_VIEWPORT=vtk|legacy-gl` overrides it.
 
-The Compute switch in the toolbar changes the device for the current session only; the
-preference sets the device the GUI starts with: Auto by default, which uses the CUDA GPU when
-CuPy finds one (the status bar then reads `AUTO (CUDA)`) and the CPU otherwise.
+*Device* is where analysis runs, for the window and for the notebook's `pipe` alike. It is the
+CPU by default, the safe choice; CUDA uses the NVIDIA GPU through CuPy, and Auto uses the GPU
+when CuPy finds one (the status bar then reads `AUTO (CUDA)`) and the CPU otherwise. A change
+applies at once.
 
 ## Help
 

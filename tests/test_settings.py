@@ -11,7 +11,7 @@ def test_defaults_roundtrip_and_only_changes_saved(tmp_path):
     assert s["viewport.rotation_step"] == 15.0 and s.is_default("viewport.rotation_step")
     s["viewport.background"] = "white"
     s["viewport.rotation_step"] = 30   # int coerced to float
-    s["compute.device"] = "auto"       # equal to default -> not stored
+    s["compute.device"] = "cpu"        # equal to default -> not stored
     s.save()
     stored = json.loads(s.path.read_text())
     assert stored == {"viewport.background": "white", "viewport.rotation_step": 30.0}
@@ -32,7 +32,7 @@ def test_validation_and_bad_files(tmp_path):
     p = tmp_path / "bad.json"
     p.write_text(json.dumps({"compute.device": "tpu", "unknown": 3, "render.dpi": 300}))
     loaded = settings.load(p)
-    assert loaded["compute.device"] == "auto" and loaded["render.dpi"] == 300
+    assert loaded["compute.device"] == "cpu" and loaded["render.dpi"] == 300
     p.write_text("{not json")
     assert settings.load(p).changed() == {}
 

@@ -155,17 +155,14 @@ def apply_settings(win, s: Settings, startup: bool = False):
             numba.set_num_threads(min(s["compute.threads"], numba.config.NUMBA_NUM_THREADS))
         except Exception as exc:
             win.message(f"Could not set CPU threads: {exc}", error=True)
-    if startup and win.device is None:
-        win.device = s["compute.device"]
-        probe = dict((k, p) for k, _label, p in DEVICES).get(win.device)
+    if not (startup and win.device is not None):  # a device given on the command line wins at startup
+        dev = s["compute.device"]
+        probe = dict((k, p) for k, _label, p in DEVICES).get(dev)
         ok, detail = probe() if probe else (False, "unknown device")
         if not ok:
-            win.message(f"Default device {win.device!r} unavailable ({detail}); using CPU", error=True)
-            win.device = "cpu"
-        label = {"cpu": "CPU", "cuda": "CUDA", "auto": "auto"}.get(win.device, "CPU")
-        win.device_combo.blockSignals(True)
-        win.device_combo.setCurrentText(label)
-        win.device_combo.blockSignals(False)
+            win.message(f"Device {dev!r} unavailable ({detail}); using CPU", error=True)
+            dev = "cpu"
+        win.set_device(dev)
     for p in filter(None, (x.strip() for x in s["python.extra_paths"].split(";"))):
         if p not in sys.path:
             sys.path.append(p)
