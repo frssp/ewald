@@ -12,7 +12,8 @@ code run in this session. Available plugins come from catalogs:
     {"format": 1, "plugins": [
       {"id": "local_strain", "name": "Local strain", "summary": "Atomic strain against a reference frame",
        "kinds": ["modifier"], "source": "https://example.org/plugins/local_strain.py",
-       "version": "0.2", "requires_ewald": ">=0.1", "author": "Kim lab", "homepage": "https://example.org"},
+       "version": "0.2", "requires_ewald": ">=0.1", "author": "Kim lab", "homepage": "https://example.org",
+       "sha256": "9f2c..."},
       {"id": "ewald-cp2k", "name": "ewald-cp2k", "summary": "CP2K readers", "kinds": ["reader"],
        "source": "pip:ewald-cp2k"}
     ]}
@@ -26,7 +27,8 @@ token when there is one, from ``GITHUB_TOKEN`` or ``gh auth token``, so a privat
 The token is sent to those hosts only and is never stored; for a ``pip:git+https://github.com/...``
 source it goes to the pip process through git's environment, not its command line.
 
-A ``source`` is a ``.py`` file (path or http(s) URL), copied into the plugin folder, or
+A ``source`` is a ``.py`` file (path or http(s) URL), copied into the plugin folder after its
+``sha256`` (when the entry has one) matches, or
 ``pip:<requirement>``, installed with pip into the Python ewald runs in. Removing a file
 plugin moves it to ``<plugin folder>/.removed`` (put it back to restore it); a package is
 removed with pip.
@@ -48,6 +50,7 @@ from pathlib import Path
 
 from . import plugins
 from ._tls import ssl_context
+from .trust import verify_sha256
 
 KINDS = ("modifier", "reader", "writer", "visual", "overlay", "colormap", "theme", "tool", "ui_theme", "ai_provider")
 _DECORATORS = {k: k for k in KINDS} | {f"register_{k}": k for k in KINDS} | {"claude_tool": "tool", "ai_tool": "tool"}
@@ -72,6 +75,7 @@ class Entry:
     author: str = ""
     homepage: str = ""
     description: str = ""
+    sha256: str = ""                 # hex SHA-256 of a .py source; checked before it is installed
     catalog: str = ""                # where the entry came from
 
     @property
@@ -363,6 +367,7 @@ def install_file(entry_or_source, timeout: float = 30.0) -> list[str]:
     """Copy a plugin ``.py`` (path or URL) into the plugin folder and load it; returns the
     names it registered. Replaces a file of the same name (an update)."""
     source = entry_or_source.source if isinstance(entry_or_source, Entry) else str(entry_or_source)
+    expected = entry_or_source.sha256 if isinstance(entry_or_source, Entry) else ""
     folder = plugins.plugin_dir()
     folder.mkdir(parents=True, exist_ok=True)
     name = source.rstrip("/").rsplit("/", 1)[-1]
@@ -370,9 +375,13 @@ def install_file(entry_or_source, timeout: float = 30.0) -> list[str]:
         raise ValueError(f"not a plugin file: {source} (a .py file or pip:<package>)")
     target = folder / name
     if "://" in source:
-        target.write_text(_read(source, timeout), encoding="utf-8")
+        text = _read(source, timeout)
+        verify_sha256(text, expected, source)   # before anything is written or imported
+        target.write_text(text, encoding="utf-8")
     else:
         src = Path(source).expanduser().resolve()
+        if expected:
+            verify_sha256(src.read_bytes(), expected, source)
         if src != target.resolve():
             shutil.copyfile(src, target)
     return plugins.load_plugin_file(target)

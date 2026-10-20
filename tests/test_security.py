@@ -175,3 +175,66 @@ def test_ewd_with_unsafe_paths_is_refused(tmp_path, name):
     with pytest.raises(ValueError, match="unsafe path"):
         Notebook.load(path)
     assert not (tmp_path.parent / "outside.txt").exists()
+
+
+# Every exec/eval/import-by-name in src/ewald, with the gate that keeps untrusted input out of it
+# (ewald/trust.py says how the gates fit together). A new site fails this test until it is listed
+# here with its gate, so each one gets a security review.
+EXEC_SITES = {
+    ("gui/prefs_apply.py", "exec"): "the console startup script the user chose in Preferences",
+    ("kernel_bridge.py", "import_module"): "module names from the fixed OBJECTS table only",
+    ("llm/providers.py", "import_module"): "SDK names of built-in or installed @ai_provider plugins",
+    ("llm/tools.py", "exec"): "run_python, only with Toolset(allow_code=True)",
+    ("modifiers/expression.py", "__import__"): "numpy only, for array methods inside expressions",
+    ("modifiers/expression.py", "eval"): "parsed and checked expressions without builtins",
+    ("modifiers/script.py", "exec"): "PythonScript; sessions keep it disabled unless allow_code",
+    ("notebook.py", "__import__"): "the literal name 'ewald'",
+    ("notebook.py", "eval"): "cells (trust: Notebook.restricted) and the step of a cell that ran",
+    ("notebook.py", "exec"): "cells (trust: Notebook.restricted) and the imports of a cell that ran",
+    ("plugins.py", "exec_module"): "the plugin folder and installed packages, trusted like ewald",
+    ("session.py", "exec"): "PythonModifier source, only with load_session(allow_code=True)",
+    ("session.py", "import_module"): "modifier classes from loaded modules, or any with allow_code",
+}
+
+
+def _exec_sites():
+    import ast
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1] / "src" / "ewald"
+    found = set()
+    for path in sorted(src.rglob("*.py")):
+        rel = path.relative_to(src).as_posix()
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call):
+                continue
+            f = node.func
+            if isinstance(f, ast.Name) and f.id in ("exec", "eval", "__import__"):
+                found.add((rel, f.id))
+            elif isinstance(f, ast.Attribute) and f.attr == "exec_module":
+                found.add((rel, f.attr))
+            elif (isinstance(f, ast.Attribute) and f.attr == "import_module" and node.args
+                  and not isinstance(node.args[0], ast.Constant)):
+                found.add((rel, f.attr))
+    return found
+
+
+def test_every_code_execution_site_is_listed_with_its_gate():
+    found = _exec_sites()
+    new = sorted(found - set(EXEC_SITES))
+    gone = sorted(set(EXEC_SITES) - found)
+    assert not new, f"new exec/eval/import-by-name sites; review their trust gate and list them in EXEC_SITES: {new}"
+    assert not gone, f"EXEC_SITES lists sites that no longer exist: {gone}"
+
+
+def test_untrusted_notebook_raises_untrusted_code(tmp_path):
+    from ewald.notebook import Notebook
+    from ewald.trust import UntrustedCode
+
+    nb = Notebook.from_py("# %%\nx = 1\n")
+    nb.restricted = True
+    with pytest.raises(UntrustedCode, match="not trusted yet"):
+        nb.run_all()
+    assert issubclass(UntrustedCode, PermissionError) and "x" not in nb.namespace
+    nb.trust()
+    assert nb.run_all() and nb.namespace["x"] == 1
