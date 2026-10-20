@@ -166,7 +166,7 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   `legacy_gl.py` are the OpenGL 1.x viewport for `ssh -X`, chosen by `gui.viewport_backend`), `pipeline_panel.py`
   (step menus and `DisplayPanel`, the visual elements side bar), `params.py`, `render_page.py`,
   `preferences.py` (dialog; `pref_widgets.py`, `element_table.py`, `prefs_apply.py` apply settings to the window),
-  `remote_dialog.py` (SSH browser), `ask_panel.py` (AI chat side bar), `console.py`,
+  `remote_dialog.py` (SSH browser), `workers.py` (`detach` for QThreads that may outlive their widget, `relay` for pool threads), `ask_panel.py` (AI chat side bar), `console.py`,
   `inspector.py`, `plots.py`, `timeline.py`, `palette.py`, `theme.py`, `collapsible.py` (fold buttons in dock
   title bars), `header.py` (one panel header: height, inset, icon buttons; no glyph labels), `macos.py` (menu bar name; Finder file-open
   events go through `app.EwaldApplication`). Frozen apps: `packaging/windows/` and `packaging/macos/` (EWALD.app,

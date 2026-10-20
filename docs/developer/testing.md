@@ -55,6 +55,11 @@ regenerates the LAMMPS ones.
 - `test_gui.py` destroys the windows each test leaves open (`_close_new_windows`). Leftover
   windows are restyled on every theme switch and repolished on every show, so without it later
   GUI tests ran minutes slower (the full suite took about 8 minutes, now about 3).
+- A segfault or "malloc(): ..." abort that moves between GUI tests is memory corruption from an
+  earlier test, not the test it lands in. `MALLOC_PERTURB_=165` (glibc fills freed memory) with
+  three or four parallel `xvfb-run -a python -m pytest -v tests/test_gui.py` runs makes it frequent;
+  that is how issue #145 was found (pyvistaqt's stale GL surface wrapper, threads that outlived
+  their widget). GUI threads go through `gui/workers.py` (`detach`, `relay`).
 - Core dependencies (paramiko, keyring) are imported directly, not skipped: a missing core
   dependency should fail the run. SSH tests share one RSA client key and one host key per run.
 - Analyses ported from OVITO compare against the stored OVITO reference; see

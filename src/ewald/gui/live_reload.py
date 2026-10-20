@@ -6,20 +6,30 @@ appended the timeline grows; if it sat on the last frame it moves on to the newe
 """
 from __future__ import annotations
 
+import itertools
+
 from PySide6 import QtCore
+
+from . import workers
+
+_tokens = itertools.count()
 
 
 class _Probe(QtCore.QRunnable):
-    def __init__(self, source, done):
+    """Asks the source for new frames on a pool thread. It reports through the application's
+    :func:`~ewald.gui.workers.relay`, not the LiveReload, which may be deleted (window closed)
+    before a slow look returns."""
+
+    def __init__(self, source, token):
         super().__init__()
-        self.source, self.done = source, done
+        self.source, self.token = source, token
 
     def run(self):
         try:
             first, error = self.source.refresh(), None
         except Exception as exc:  # network down, file replaced by a directory, ...
             first, error = None, f"{type(exc).__name__}: {exc}"
-        self.done.emit(self.source, first, error)
+        workers.relay().done.emit(self.token, (self.source, first, error))
 
 
 class LiveReload(QtCore.QObject):
@@ -27,7 +37,6 @@ class LiveReload(QtCore.QObject):
 
     grew = QtCore.Signal(int, int)  # first changed frame, new number of frames
     failed = QtCore.Signal(str)
-    _done = QtCore.Signal(object, object, object)
 
     def __init__(self, parent=None, interval: float = 2.0, enabled: bool = True):
         super().__init__(parent)
@@ -39,7 +48,8 @@ class LiveReload(QtCore.QObject):
         self.timer = QtCore.QTimer(self)
         self.timer.setInterval(int(interval * 1000))
         self.timer.timeout.connect(self.poll)
-        self._done.connect(self._finished)
+        self._token = ("live-reload", next(_tokens))
+        workers.relay().done.connect(self._relayed)   # disconnected by Qt when this object goes
 
     @classmethod
     def attach(cls, win) -> "LiveReload":
@@ -89,12 +99,16 @@ class LiveReload(QtCore.QObject):
         if self._busy or self.pipeline is None or not hasattr(self.pipeline.source, "refresh"):
             return
         self._busy = True
-        probe = _Probe(self.pipeline.source, self._done)
+        probe = _Probe(self.pipeline.source, self._token)
         if wait:
             probe.run()
             QtCore.QCoreApplication.processEvents()
         else:
             QtCore.QThreadPool.globalInstance().start(probe)
+
+    def _relayed(self, token, payload):
+        if token == self._token:
+            self._finished(*payload)
 
     def _finished(self, source, first, error):
         self._busy = False

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+import weakref
 
 import numpy as np
 
@@ -83,6 +84,25 @@ class _Placeholder(QOpenGLWidget):
         if not self._scheduled:
             self._scheduled = True
             QtCore.QTimer.singleShot(0, self._build)
+
+
+def release_gl(widget) -> None:
+    """Drop pyvistaqt's Python wrappers of a QOpenGLWidget's context and surface.
+
+    pyvistaqt keeps ``context().surface()``, the widget's internal QOffscreenSurface, which Qt
+    owns and deletes with the widget. PySide does not notice, so while the QtInteractor object
+    lives on (a closed window still referenced from the console, a closure, a test), the stale
+    wrapper stays registered for that address. A later Qt object allocated at the same address
+    then comes back to Python as that wrapper (a QHeaderView as a "QOffscreenSurface"), and
+    calls through it write into the wrong object: random heap corruption (issue #145).
+    """
+    forget = getattr(widget, "_forget_context", None)   # pyvistaqt >= 0.12
+    if forget is not None:
+        forget()
+    elif widget is not None:
+        for name in ("_surface", "_ctx"):
+            if hasattr(widget, name):
+                setattr(widget, name, None)
 
 
 class Viewport(QtWidgets.QWidget):
@@ -214,6 +234,8 @@ class Viewport(QtWidgets.QWidget):
         # always interactive, even when PYVISTA_OFF_SCREEN is set for headless rendering
         # no auto-update timer: it re-rendered the scene 5 times a second even when idle
         self.plotter = QtInteractor(self, off_screen=False, auto_update=False)
+        # drop its wrapper of the GL surface as soon as the widget goes (see release_gl)
+        self.plotter.destroyed.connect(lambda *_, ref=weakref.ref(self.plotter): release_gl(ref()))
         self.plotter.set_background(self.style.background)
         if self.ortho:
             self.plotter.enable_parallel_projection()
@@ -367,6 +389,10 @@ class Viewport(QtWidgets.QWidget):
 
     def _gl_widget(self) -> QtWidgets.QWidget:
         return self.plotter  # the QtInteractor is the GL widget
+
+    def release_gl(self):
+        """Forget the GL context and surface (after ``plotter.close()``, before Qt deletes them)."""
+        release_gl(self.plotter)
 
     def _gl_image(self) -> QtGui.QImage:
         arr = np.ascontiguousarray(self.plotter.screenshot(None, return_img=True)[..., :3])
