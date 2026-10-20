@@ -262,6 +262,7 @@ def test_each_frame_and_all_frames_steps(cu_fcc):
     pipe.compute(1)
     assert calls == [4, 4]
 
+
 def test_missing_package_fails_once_not_every_frame(cu_fcc):
     from ewald import Modifier
 
