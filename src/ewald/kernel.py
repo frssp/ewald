@@ -169,11 +169,13 @@ class Kernel:
             return "".join(printed)
 
     def run(self, cells: list, index: int, run_below: bool = True, counter: int = 0, pipeline_name: str = "pipe",
-            path: str | None = None, data_dirs=()) -> dict:
-        """Run cell ``index`` of ``cells`` (``[{id, kind, source}]``) in the kernel; the bridge's result."""
+            path: str | None = None, data_dirs=(), plot_style=("publication", None)) -> dict:
+        """Run cell ``index`` of ``cells`` (``[{id, kind, source}]``) in the kernel; the bridge's result.
+        ``plot_style`` is the notebook's ``(style, tokens)`` for the cells' own matplotlib plots."""
         self.start()
         out = os.path.join(self._dir, "result.json")
-        args = [cells, index, bool(run_below), int(counter), out, pipeline_name, path, list(data_dirs)]
+        args = [cells, index, bool(run_below), int(counter), out, pipeline_name, path, list(data_dirs),
+                list(plot_style)]
         self._call(f"_ewald_bridge.run(*__import__('json').loads({json.dumps(json.dumps(args))}))")
         with open(out, encoding="utf-8") as f:
             return json.load(f)

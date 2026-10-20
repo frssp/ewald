@@ -1593,6 +1593,7 @@ class NotebookPanel(QtWidgets.QWidget):
             self.add_menu, self.add_modifier, self.view._step_context if self.view is not None else None))
         fill_modifier_menu(self.add_menu, self.add_modifier)
         self._switching = False
+        self.plot_style = ("publication", None)   # (style, tokens) of the cells' own matplotlib plots
         self.new_notebook()
 
     # ----------------------------------------------------------- tabs
@@ -1623,7 +1624,15 @@ class NotebookPanel(QtWidgets.QWidget):
             k += 1
         return f"Notebook {k}"
 
+    def set_plot_style(self, style: str = "publication", tokens: dict | None = None):
+        """Style of the plots cells draw themselves, in every open notebook and new ones
+        (``python.plot_style``; see :meth:`ewald.notebook.Notebook.set_plot_style`)."""
+        self.plot_style = (style, tokens)
+        for v in self.views():
+            v.notebook.set_plot_style(style, tokens)
+
     def add_notebook(self, nb: Notebook) -> NotebookView:
+        nb.set_plot_style(*self.plot_style)
         spec = (nb.metadata.get("ewald") or {}).get("kernel")
         if spec and nb.kernel is None:  # saved with a kernel: it starts when a cell runs
             from ..kernel import Kernel

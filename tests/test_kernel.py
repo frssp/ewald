@@ -129,3 +129,32 @@ def test_kernel_steps_get_a_local_copy_with_their_results(kernel, lammps_dir):
     nb.pipeline.compute(0)
     nb.refresh_kernel_steps()
     assert not nb.cells[1].modifier.enabled and "Coordination" in nb.cells[2].modifier.status   # skipped, reported
+
+
+def test_frames_carry_the_electronic_structure(tmp_path, vasp_dir):
+    """DOS and band plots draw from the 'Electronic Structure' object, so a kernel's frame must
+    bring it back, or the Plots tab falls back to plain table lines."""
+    from ewald import import_file
+
+    data = import_file(vasp_dir / "electronic" / "vasprun.xml").compute(0)
+    path = tmp_path / "f.npz"
+    kernel_bridge.save_frame(data, str(path))
+    back = kernel_bridge.load_frame(str(path))
+    a, b = data.attributes["Electronic Structure"], back.attributes["Electronic Structure"]
+    assert type(b) is type(a) and b.efermi == a.efermi and b.num_spins == a.num_spins
+    np.testing.assert_allclose(b.eigenvalues, a.eigenvalues)
+    np.testing.assert_allclose(b.pdos, a.pdos)
+    assert [tuple(t) for t in b.ticks] == [tuple(t) for t in a.ticks] and list(b.breaks) == list(a.breaks)
+    assert b.has_projections == a.has_projections
+    if a.has_projections:
+        np.testing.assert_allclose(b.band_weights([0], None), a.band_weights([0], None))
+
+
+def test_plain_pyplot_in_the_kernel_gets_the_notebook_style(kernel):
+    nb = Notebook.from_py("# %%\nimport matplotlib.pyplot as plt\nprint(plt.rcParams['font.size'])\n")
+    nb.set_kernel(kernel)
+    nb.run_all()
+    assert nb.cells[0].outputs[0].data.split() == ["8.0"]
+    nb.set_plot_style("default")
+    nb.run_all()
+    assert nb.cells[0].outputs[0].data.split() != ["8.0"]

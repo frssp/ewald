@@ -173,6 +173,9 @@ Electronic structure
 - DOSCAR, EIGENVAL and PROCAR readers (VASP 5 runs without vasprun.xml), and Quantum ESPRESSO /
   other codes' DOS and bands.
 - vasprun.xml: the KPOINTS_OPT sections (`<eigenvalues_kpoints_opt>`); vaspout.h5 reads them.
+- Plot style for plain `ewald` use in Jupyter (outside the GUI notebook): an opt-in
+  `%load_ext ewald` or `ewald.plotstyle.use()` hint in the manual is all there is now; the GUI
+  console's interactive figure windows read a few draw-time rcParams outside the swapped style.
 - Plot style (`ewald/plotstyle.py`): per-plot overrides in view cells (`show(..., size=,
   labels=)`; `xlim=`/`ylim=` exist), time units on MSD/VACF axes when `time_per_frame` is set (the unit is not
   stored now, so the axis says "Time"), multi-panel figures (DOS beside bands sharing the energy

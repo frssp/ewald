@@ -82,6 +82,13 @@ def apply_settings(win, s: Settings, startup: bool = False):
         for highlighter in win.findChildren(QtGui.QSyntaxHighlighter):  # notebook code cells
             highlighter.rehighlight()
     win._ui_tokens = tokens
+    from ..settings import plot_style
+    from .console import set_plot_style
+
+    user_plots = plot_style(s["python.plot_style"], tokens)   # plots that cells and the console draw
+    set_plot_style(win.console, *user_plots)
+    if getattr(win, "panel", None) is not None and hasattr(win.panel, "set_plot_style"):
+        win.panel.set_plot_style(*user_plots)
 
     win.set_button_style(s["general.toolbar_style"])
     from .icons import refresh
