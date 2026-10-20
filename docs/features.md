@@ -736,7 +736,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 ### Toolbar
 
-Open, Save, Run all, Notebook, Render, Search commands, steps, cells… Ctrl K, Compute device switch (CPU / CUDA / auto).
+Open, Save, Notebook, Render, Search commands, steps, cells… Ctrl K, Compute device switch (CPU / CUDA / auto).
 
 ### Panels
 
