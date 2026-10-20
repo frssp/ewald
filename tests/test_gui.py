@@ -93,8 +93,9 @@ def test_view_tab_surfaces_labels_transparency(app, pipe):
     assert panel.style.surfaces == {"coordination-polyhedra": {"visible": False, "transparency": 0.6}}
     atoms = panel.sections["Atoms"]
     [c for c in atoms.findChildren(QtWidgets.QCheckBox) if c.text() == "Draw atoms"][0].setChecked(False)
-    [c for c in atoms.findChildren(QtWidgets.QCheckBox) if c.text() == "Highlight selection"][0].setChecked(False)
-    field = [e for e in atoms.findChildren(QtWidgets.QLineEdit) if "{type}{index}" in e.placeholderText()][0]
+    labels = panel.sections["Labels"]
+    [c for c in labels.findChildren(QtWidgets.QCheckBox) if c.text() == "Highlight selection"][0].setChecked(False)
+    field = [e for e in labels.findChildren(QtWidgets.QLineEdit) if "{type}{index}" in e.placeholderText()][0]
     field.setText("{type}{index}")
     field.editingFinished.emit()
     panel.set_type_transparency("Cu", 0.5)
@@ -124,7 +125,7 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
     panel = DisplayPanel()
     panel.set_pipeline(pipe)
     panel.set_data(pipe.compute(0))
-    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Cell", "Surfaces", "Elements", "Camera"]
+    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Surfaces", "Cell", "Labels", "Camera", "Elements"]
     marked = lambda: {lab.text() if isinstance(lab, QtWidgets.QLabel) else lab.title() for lab, _ in panel._marks if lab.property("set")} - {""}
     assert not marked()
     view(pipe, radius_scale=0.4, boundary=[-0.1, 1.1], direction="z")
@@ -144,6 +145,33 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
     panel.modifierRequested.connect(asked.append)
     panel.add_modifier(mods.CoordinationAnalysis(3.0))  # a step goes to the notebook, not into the pipeline
     assert [type(m).__name__ for m in asked] == ["CoordinationAnalysis"] and pipe.modifiers == []
+    _dispose(panel)
+
+
+def test_view_tab_columns_fold_and_aligned_labels(app, pipe):
+    """The View tab lays its cards out in equal-width columns, every form label has one width (fields
+    line up across cards), and a folded card stays folded across rebuilds."""
+    from ewald.gui.pipeline_panel import DisplayPanel
+
+    panel = DisplayPanel()
+    panel.set_pipeline(pipe)
+    panel.set_data(pipe.compute(0))
+    page = panel.scroll.widget()
+    lay = page.layout()
+    width = 3 * lay._column + 2 * lay._gap + 20 + 40
+    page.resize(width, page.height())
+    lay.setGeometry(QtCore.QRect(0, 0, width, lay.heightForWidth(width)))
+    cards = list(panel.sections.values())
+    assert lay.columns(width) == 3 and len({c.x() for c in cards}) == 3 and len({c.width() for c in cards}) == 1
+    labels = [lab for lab, _ in panel._marks if isinstance(lab, QtWidgets.QLabel) and lab.objectName() == "viewLabel"
+              and lab.text() != "Pairs (cutoffs, * = any type)"]
+    assert len({lab.width() if lab.isVisible() else lab.maximumWidth() for lab in labels}) == 1
+    panel.set_folded("Bonds", True)
+    assert not panel.sections["Bonds"].content.isVisibleTo(panel.sections["Bonds"])
+    panel.refresh()
+    assert panel.sections["Bonds"].folded and not panel.sections["Bonds"].content.isVisibleTo(panel.sections["Bonds"])
+    panel.set_folded("Bonds", False)
+    assert panel.sections["Bonds"].content.isVisibleTo(panel.sections["Bonds"])
     _dispose(panel)
 
 

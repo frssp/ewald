@@ -235,7 +235,24 @@ QScrollArea#viewScroll, QScrollArea#viewScroll > QWidget > QWidget, QWidget#view
 QFrame#viewSection {{ background: {raised}; border: 1px solid {border}; border-radius: 8px; }}
 QFrame#viewSection QLabel, QFrame#viewSection QCheckBox, QFrame#viewSection QGroupBox {{ background: transparent; }}
 QWidget#viewBody {{ background: transparent; }}
-QLabel#viewSectionTitle {{ color: {secondary}; font-size: 11px; font-weight: 600; }}
+QLabel#viewSectionTitle {{ color: {secondary}; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }}
+QWidget#viewSectionHead {{ background: transparent; min-height: 26px; }}
+QToolButton#viewFold {{ padding: 0; border-radius: 4px; background: transparent; }}
+QToolButton#viewFold:hover {{ background: {hover}; }}
+QLabel#viewStatus {{ color: {muted}; }}
+QWidget#viewGroup {{ background: transparent; }}
+QFrame#viewRule {{ background: {border}; border: none; }}
+QCheckBox#viewGroupTitle {{ color: {secondary}; font-weight: 600; }}
+QCheckBox#viewGroupTitle[set="true"] {{ color: {accent}; }}
+QTableWidget#viewTable {{ border: 1px solid {border}; border-radius: 6px; background: {bg}; }}
+QTableWidget#viewTable::item {{ padding: 0 6px; border-bottom: 1px solid {border}; }}
+QTableWidget#viewTable QHeaderView::section {{ background: {raised}; border: none; border-bottom: 1px solid {border};
+    padding: 4px 6px; font-size: 11px; }}
+QTableWidget#viewTable QAbstractSpinBox {{ border: none; border-radius: 0; background: transparent; padding: 0 6px 0 0; }}
+QTableWidget#viewTable QAbstractSpinBox::up-button, QTableWidget#viewTable QAbstractSpinBox::down-button {{ width: 0; }}
+QTableWidget#viewTable QAbstractSpinBox::up-arrow, QTableWidget#viewTable QAbstractSpinBox::down-arrow {{ image: none;
+    width: 0; height: 0; }}
+QWidget#viewCell {{ background: transparent; }}
 QLabel#viewSectionMark {{ color: {accent}; font-size: 11px; }}
 QLabel#viewLabel {{ color: {secondary}; }}
 QLabel#viewLabel[set="true"] {{ color: {accent}; font-weight: 600; }}
