@@ -136,7 +136,7 @@ OPTIONS = (
     Option("render.renderer", "raytrace", "Default renderer", "Vector writes SVG/PDF/EPS with editable text.",
            choices=("raytrace", "opengl", "vector")),
     Option("render.quality", "Publication", "Image quality",
-           "Draft = half size, no AO/shadows; Publication = 16 rays/pixel, 32 AO rays, shadows. "
+           "Draft = half size, no AO/shadows; Publication = 16 rays/pixel, 8 AO rays per hit, shadows. "
            "Custom uses the three values below.", choices=("Draft", "Standard", "Publication", "Custom")),
     Option("render.movie_quality", "Same as image", "Movie quality", "Lower it to export long movies faster.",
            choices=("Same as image", "Draft", "Standard", "Publication")),

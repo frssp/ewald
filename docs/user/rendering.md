@@ -55,7 +55,8 @@ screen-space occlusion. `renderer="raytrace"` is ewald's built-in ray tracer, th
 for publication figures: spheres and bond cylinders with ambient occlusion (`ao_samples` rays
 per hit), soft shadows (`shadows`) and anti-aliasing (`samples` rays per pixel). It is
 written in numba and runs on all CPU cores; colors, radii, bonds and the camera match the
-OpenGL view.
+OpenGL view. The AO rays of all samples of a pixel follow a low-discrepancy sequence, so
+16 samples x 8 AO rays (128 per pixel) are as smooth as 512 random rays.
 
 `renderer="vector"` writes SVG, PDF or EPS (format from the extension) with real circles for
 atoms, bond sticks, polyhedra, isosurfaces and slices painted far to near, and overlays as
@@ -71,8 +72,8 @@ not pass yourself:
 | `quality` | Ray tracer | OpenGL | Size |
 |---|---|---|---|
 | `"draft"` | 1 ray/pixel, no AO, no shadows | no SSAA/SSAO, coarse spheres | half |
-| `"standard"` | 4 rays/pixel, 8 AO rays, shadows | SSAA, medium spheres | full |
-| `"publication"` (default) | 16 rays/pixel, 32 AO rays, shadows | SSAA + SSAO, fine spheres | full |
+| `"standard"` | 4 rays/pixel, 4 AO rays per hit, shadows | SSAA, medium spheres | full |
+| `"publication"` (default) | 16 rays/pixel, 8 AO rays per hit, shadows | SSAA + SSAO, fine spheres | full |
 
 Explicit `samples=`, `ao_samples=`, `shadows=`, `antialiasing=`, `ambient_occlusion=` and
 `scale=` (a factor on `size`) always win. The interactive viewport keeps its own speed settings.
