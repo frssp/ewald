@@ -358,6 +358,12 @@ Docs
 
 - Example files: list the examples (and the downloadable paper datasets) on an empty viewport at
   first start; a GUI entry for `examples.fetch` (File › Open example › From a paper).
+- Examples run (2026-10-20, /mnt/project-files/ewald-review/examples-test.md): Tutorial 2 and
+  `llzo_arrhenius.py` need the `symmetry` / `formats` extras that the README's `[gui]` install
+  leaves out (both say so now); decide with the extras work whether spglib joins the core install.
+  Plugin example files (`ewald_phonopy.EXAMPLES`, Cu3Au_band.yaml) are not under File › Open
+  example. The Plugins side bar's default catalog (raw.githubusercontent.com of the private
+  frssp/ewald-plugins) answers 404 without a GitHub token, so first-party plugins install only by pip.
 - Paper reproductions: StructureFactor `method="rdf"` holds every pair inside the cutoff at once,
   so 100,000 atoms with a 30 A cutoff run out of memory (the a-Si script uses 20 A); histogram in
   chunks. kinisi's covariance-weighted D for the LLZO runs is 0.6x a straight-line fit of the same
