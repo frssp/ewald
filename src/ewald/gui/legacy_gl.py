@@ -165,7 +165,7 @@ class CameraPlotter:
     def disable_parallel_projection(self):
         self.camera.parallel_projection = False
 
-    def reset_camera(self):
+    def reset_camera(self, render=False):
         """Like ``vtkRenderer::ResetCamera``: look at the bounds' center from the current direction."""
         b = self.bounds
         center = np.array([(b[0] + b[1]) / 2, (b[2] + b[3]) / 2, (b[4] + b[5]) / 2])

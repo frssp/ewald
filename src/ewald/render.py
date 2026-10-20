@@ -48,13 +48,28 @@ def type_radius(t: str, scale: float = 0.8, preset: str = "covalent") -> float:
     return float(r * scale) if r is not None else 0.5
 
 
+_last_groups: tuple = (None, None)  # (types array, result): one scene build asks several times
+
+
 def type_groups(types, max_scan: int = 32):
     """Distinct types in order of first appearance and each particle's index into them.
 
     One vectorized comparison per type: ~20x faster than ``dict.fromkeys`` or
     ``np.unique`` on millions of string labels; many types fall back to ``np.unique``.
+    The last result is kept for the same array object (arrays of a DataCollection are never
+    changed in place), since radii, colors and the scene all group the same frame's types.
     """
-    types = np.asarray(types)
+    global _last_groups
+    if isinstance(types, np.ndarray) and _last_groups[0] is types and max_scan == 32:
+        names, inverse = _last_groups[1]
+        return list(names), inverse
+    out = _type_groups(np.asarray(types), max_scan)
+    if isinstance(types, np.ndarray) and max_scan == 32:
+        _last_groups = (types, (list(out[0]), out[1]))
+    return out
+
+
+def _type_groups(types, max_scan):
     inverse = np.zeros(len(types), dtype=np.int32)
     names: list = []
     left = np.ones(len(types), bool)
@@ -523,7 +538,7 @@ def _setup_camera(plotter, data, direction, orthographic, zoom):
     plotter.camera.up = up
     if orthographic:
         plotter.enable_parallel_projection()
-    plotter.reset_camera()
+    plotter.reset_camera(render=False)
     plotter.camera.zoom(zoom)
 
 

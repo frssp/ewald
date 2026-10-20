@@ -800,7 +800,9 @@ class DisplayPanel(PipelinePanel):
 
 
 def _types(data):
-    return None if data is None else (data.count, tuple(np.unique(data.types)))
+    from ..render import type_groups
+
+    return None if data is None else (data.count, tuple(sorted(map(str, type_groups(data.types)[0]))))
 
 
 def cell_summary(cell) -> str:
