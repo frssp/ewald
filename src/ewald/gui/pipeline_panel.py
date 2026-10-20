@@ -1,7 +1,6 @@
-"""Command panel: pipeline tree (visual elements / modifications / source) + properties editor."""
+"""Step menus (Insert › Step, the step context checks) and the Display panel: visual elements
+(Particles, Bonds, Simulation cell, plugin elements) with their editors."""
 from __future__ import annotations
-
-import os
 
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -222,16 +221,6 @@ def _discover():
         register_modifier(plugin.category, name, plugin.cls)
 
 
-BADGES = {"CoordinationAnalysis": "CN", "CalculateDisplacements": "DV", "ColorCoding": "CC", "AssignColor": "AC",
-          "Slice": "SL", "Replicate": "RP", "WrapAtoms": "WR", "AffineTransformation": "AT", "ComputeProperty": "CP",
-          "DeleteSelected": "DS", "ExpressionSelection": "ES", "SelectType": "ST", "InvertSelection": "IS",
-          "ClearSelection": "CS", "PythonScript": "Py", "PythonModifier": "Py",
-          "MeanSquaredDisplacement": "MS", "VelocityAutocorrelation": "VA", "TimeAveraging": "TA",
-          "TimeSeries": "TS", "GenerateTrajectoryLines": "TL", "CreateBonds": "CB", "EditBonds": "EB",
-          "CoordinationPolyhedra": "PH", "IonicConductivity": "IC", "VanHoveCorrelation": "VH",
-          "SelfIntermediateScattering": "Fs", "NonGaussianParameter": "NG", "SiteHopping": "HP",
-          "CreateIsosurface": "SF", "GridSlice": "GS", "GridDifference": "GD"}
-
 KIND = QtCore.Qt.UserRole + 1
 
 
@@ -249,9 +238,12 @@ class FitWidthScrollArea(QtWidgets.QScrollArea):
         if widget is not None:
             widget.setFixedWidth(self.viewport().width())
 
-class PipelinePanel(QtWidgets.QWidget):
-    changed = QtCore.Signal()        # pipeline changed -> recompute
-    styleChanged = QtCore.Signal()   # visual elements changed -> redraw only
+class DisplayPanel(QtWidgets.QWidget):
+    """Visual elements (Particles, Bonds, Simulation cell, plugin elements) with their editors.
+    Steps live in notebook cells; this panel only changes how the data is drawn."""
+
+    styleChanged = QtCore.Signal()               # visual elements changed -> redraw only
+    modifierRequested = QtCore.Signal(object)    # e.g. "Use as Create bonds modifier": a notebook step
 
     def __init__(self, style=None, parent=None):
         super().__init__(parent)
@@ -264,31 +256,17 @@ class PipelinePanel(QtWidgets.QWidget):
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(6, 6, 6, 6)
 
-        bar = QtWidgets.QHBoxLayout()
-        self.add_button = QtWidgets.QPushButton("Add modification")
-        self.add_button.setObjectName("primary")
-        self.add_menu = QtWidgets.QMenu(self)
-        # rebuilt on every open, so entries registered later (startup script, plugins) show up
-        self.add_menu.aboutToShow.connect(lambda: fill_modifier_menu(self.add_menu, self.add_modifier,
-                                                                     lambda: (self.data, self.pipeline)))
-        fill_modifier_menu(self.add_menu, self.add_modifier)
-        self.add_button.setMenu(self.add_menu)
-        bar.addWidget(self.add_button, 1)
-        self.visual_button = QtWidgets.QToolButton(text="+ Visual", toolTip="Add a visual element plugin")
+        # the Display header shows the add-visual menu as an icon (app.py moves it there)
+        self.visual_button = QtWidgets.QToolButton(self, objectName="headerButton",
+                                                   toolTip="Add a visual element (cell axes, halos, … from plugins)")
+        self.visual_button.hide()  # until the dock header takes it (CollapsibleTitle.add_action)
         self.visual_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        header.set_icon(self.visual_button, "plus")
+        self.visual_button.setIconSize(QtCore.QSize(header.ICON, header.ICON))
+        self.visual_button.setFixedSize(header.BUTTON, header.BUTTON)
         self.visual_menu = QtWidgets.QMenu(self)
         self.visual_menu.aboutToShow.connect(self._fill_visual_menu)
         self.visual_button.setMenu(self.visual_menu)
-        bar.addWidget(self.visual_button)
-        self.edit_buttons = []
-        for name, tip, slot in (("chevron_up", "Move up (later in the pipeline)", lambda: self._move(-1)),
-                                ("chevron_down", "Move down (earlier)", lambda: self._move(1)),
-                                ("clear", "Delete modifier (Del)", self._remove)):
-            b = header.button(name, tip)
-            b.clicked.connect(slot)
-            bar.addWidget(b)
-            self.edit_buttons.append(b)
-        lay.addLayout(bar)
 
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setHeaderHidden(True)
@@ -303,7 +281,7 @@ class PipelinePanel(QtWidgets.QWidget):
         self.tree.itemChanged.connect(self._item_toggled)
         self.tree.currentItemChanged.connect(lambda cur, prev: self._show_editor(cur))
         QtGui.QShortcut(QtGui.QKeySequence.Delete, self.tree, activated=self._remove)
-        lay.addWidget(self.tree, 2)
+        lay.addWidget(self.tree)
 
         self.editor_title = QtWidgets.QLabel("Properties", objectName="section")
         lay.addWidget(self.editor_title)
@@ -311,9 +289,8 @@ class PipelinePanel(QtWidgets.QWidget):
         self.scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
-        lay.addWidget(self.scroll, 3)
+        lay.addWidget(self.scroll, 1)
         self._form = None
-        self._script = None
 
     # ------------------------------------------------------------------ model
     def set_pipeline(self, pipeline):
@@ -321,61 +298,40 @@ class PipelinePanel(QtWidgets.QWidget):
         self.refresh()
 
     def set_data(self, data):
+        old = _types(self.data)
         self.data = data
         self.update_status()
+        if _types(data) != old:  # another file or notebook: the type table and counts change
+            self._show_editor(self.tree.currentItem())
 
     def _current(self):
         item = self.tree.currentItem()
         return None if item is None else item.data(0, KIND)
 
     def refresh(self, select=None):
-        """Rebuild the tree; keeps the selection unless ``select`` (a modifier) is given."""
+        """Rebuild the rows; keeps the selection unless ``select`` (a row kind) is given."""
         if select is None:
-            select = self._current()
+            select = self._current() or ("visual", "particles")
         self.tree.blockSignals(True)
         self.tree.clear()
-        bold = QtGui.QFont(self.font()); bold.setBold(True)
-
-        def section(title):
-            it = QtWidgets.QTreeWidgetItem(self.tree, ["", title.upper(), ""])
-            it.setFlags(QtCore.Qt.ItemIsEnabled)
-            it.setForeground(1, QtGui.QBrush(QtGui.QColor(TOKENS["muted"])))
-            f = QtGui.QFont(self.font()); f.setPixelSize(10); f.setLetterSpacing(QtGui.QFont.AbsoluteSpacing, 1); it.setFont(1, f)
-            return it
-
-        target = self._visual_items(section, select)
-        section("Modifications")
-        if self.pipeline is not None:
-            for mod in reversed(self.pipeline.modifiers):
-                badge = BADGES.get(type(mod).__name__, type(mod).__name__[:2])
-                it = QtWidgets.QTreeWidgetItem(self.tree, [badge, mod.name, ""])
-                it.setData(0, KIND, ("mod", mod))
-                it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
-                it.setCheckState(0, QtCore.Qt.Checked if mod.enabled else QtCore.Qt.Unchecked)
-                it.setForeground(0, QtGui.QBrush(QtGui.QColor(TOKENS["accent"])))
-                if select == ("mod", mod) or select is mod:
-                    target = it
-        section("Data source")
-        if self.pipeline is not None:
-            it = QtWidgets.QTreeWidgetItem(self.tree, ["", _source_label(self.pipeline.source), ""])
-            it.setData(0, KIND, ("source", None))
-            it.setFont(1, bold)
-            if select == ("source", None):
-                target = it
+        target = self._visual_items(select)
         self.tree.blockSignals(False)
+        self._fit_tree()
         self.update_status()
-        if target is not None:
-            if target is self.tree.currentItem():
-                self._show_editor(target)
-            else:
-                self.tree.setCurrentItem(target)
+        if target is not None and target is not self.tree.currentItem():
+            self.tree.setCurrentItem(target)
         else:
             self._show_editor(self.tree.currentItem())
 
-    def _visual_items(self, section, select):
+    def _fit_tree(self):
+        """As tall as its few rows (Particles, Bonds, Cell, plugins), so the editor gets the rest."""
+        rows = self.tree.topLevelItemCount()
+        row = self.tree.sizeHintForRow(0) if rows else 24
+        self.tree.setFixedHeight(max(1, rows) * row + 2 * self.tree.frameWidth() + 4)
+
+    def _visual_items(self, select):
         """Visual element rows (Particles, Bonds, Cell, plugin elements); returns the row to select."""
         target = None
-        section("Visual elements")
         for key, label, on in (("particles", "Particles", True), ("bonds", "Bonds", self.style.bonds_enabled),
                                ("cell", "Simulation cell", self.style.show_cell)):
             it = QtWidgets.QTreeWidgetItem(self.tree, ["", label, ""])
@@ -394,56 +350,24 @@ class PipelinePanel(QtWidgets.QWidget):
                 target = it
         return target
 
-    def modifier_items(self):
-        out = []
-        for k in range(self.tree.topLevelItemCount()):
-            it = self.tree.topLevelItem(k)
-            kind = it.data(0, KIND)
-            if kind and kind[0] == "mod":
-                out.append(it)
-        return out
-
     def update_status(self):
-        """Status column: time / counts / errors after a compute (no editor rebuild)."""
+        """Right column: particle count and periodicity of the current frame (no editor rebuild)."""
+        if self.data is None:
+            return
         self.tree.blockSignals(True)
-        for it in self.modifier_items():
-            mod = it.data(0, KIND)[1]
-            if mod.status:
-                it.setText(2, "error")
-                it.setForeground(2, QtGui.QBrush(QtGui.QColor(TOKENS["error"])))
-                it.setForeground(1, QtGui.QBrush(QtGui.QColor(TOKENS["error"])))
-                it.setToolTip(1, mod.status)
-            else:
-                t = mod.last_time
-                it.setText(2, "" if (t is None or not mod.enabled) else (f"{t * 1000:.0f} ms" if t >= 0.001 else "<1 ms"))
-                it.setForeground(2, QtGui.QBrush(QtGui.QColor(TOKENS["muted"])))
-                it.setForeground(1, QtGui.QBrush(QtGui.QColor(TOKENS["text"] if mod.enabled else TOKENS["muted"])))
-                it.setToolTip(1, "")
         for k in range(self.tree.topLevelItemCount()):
             it = self.tree.topLevelItem(k)
             kind = it.data(0, KIND)
-            if kind and kind[0] == "visual" and self.data is not None:
-                if kind[1] == "particles":
-                    it.setText(2, f"{self.data.count}")
-                elif kind[1] == "cell" and self.data.cell.is_valid:
-                    it.setText(2, "PBC " + "".join("xyz"[i] for i in range(3) if self.data.cell.pbc[i]))
-            if kind and kind[0] == "source" and self.pipeline is not None:
-                it.setText(2, f"{self.pipeline.num_frames} fr")
-                it.setForeground(2, QtGui.QBrush(QtGui.QColor(TOKENS["muted"])))
+            if kind == ("visual", "particles"):
+                it.setText(2, f"{self.data.count}")
+            elif kind == ("visual", "cell") and self.data.cell.is_valid:
+                it.setText(2, "PBC " + "".join("xyz"[i] for i in range(3) if self.data.cell.pbc[i]))
         self.tree.blockSignals(False)
 
     # ------------------------------------------------------------------ editing
     def add_modifier(self, mod):
-        if self.pipeline is None:
-            return
-        cur = self._current()
-        if cur and cur[0] == "mod" and cur[1] in self.pipeline.modifiers:
-            pos = self.pipeline.modifiers.index(cur[1]) + 1  # insert above the selection
-        else:
-            pos = len(self.pipeline.modifiers)
-        self.pipeline.modifiers.insert(pos, mod)
-        self.refresh(select=("mod", self.pipeline.modifiers[pos]))
-        self.changed.emit()
+        """Buttons here that make a step (Use as Create bonds modifier) ask the notebook for it."""
+        self.modifierRequested.emit(mod)
 
     def _fill_visual_menu(self):
         from .. import plugins
@@ -474,37 +398,13 @@ class PipelinePanel(QtWidgets.QWidget):
             del self.style.visuals[cur[1]]
             self.refresh(select=("visual", "particles"))
             self.styleChanged.emit()
-            return
-        if not cur or cur[0] != "mod":
-            return
-        idx = self.pipeline.modifiers.index(cur[1])
-        del self.pipeline.modifiers[idx]
-        rest = self.pipeline.modifiers
-        self.refresh(select=("mod", rest[min(idx, len(rest) - 1)]) if rest else ("source", None))
-        self.changed.emit()
-
-    def _move(self, direction):
-        cur = self._current()
-        if not cur or cur[0] != "mod":
-            return
-        m = self.pipeline.modifiers
-        idx = m.index(cur[1])
-        new = idx - direction  # "up" in the list = later in the pipeline
-        if not 0 <= new < len(m):
-            return
-        m[idx], m[new] = m[new], m[idx]
-        self.refresh(select=("mod", cur[1]))
-        self.changed.emit()
 
     def _item_toggled(self, item, column):
         kind = item.data(0, KIND)
         if not kind or column != 0:
             return
         on = item.checkState(0) == QtCore.Qt.Checked
-        if kind[0] == "mod":
-            kind[1].enabled = on
-            self.changed.emit()
-        elif kind[0] == "visual":
+        if kind[0] == "visual":
             if kind[1] == "bonds":
                 self.style.bonds_enabled = on
                 if on and self.data is not None:
@@ -530,62 +430,16 @@ class PipelinePanel(QtWidgets.QWidget):
         self.scroll.setWidget(page)
 
     def _show_editor(self, item):
-        self._form = self._script = None
+        self._form = None
         kind = None if item is None else item.data(0, KIND)
         if not kind:
             self._set_editor("Properties", QtWidgets.QWidget())
             return
-        if kind[0] == "mod":
-            self._set_editor(kind[1].name, self._modifier_editor(kind[1]))
-        elif kind[0] == "visual":
+        if kind[0] == "visual":
             build = {"particles": self._particles_editor, "bonds": self._bonds_editor, "cell": self._cell_editor}
             self._set_editor(item.text(1), build[kind[1]]())
         elif kind[0] == "plugin-visual":
             self._set_editor(item.text(1), self._plugin_visual_editor(kind[1]))
-        else:
-            self._set_editor("Data source", self._source_editor())
-
-    def _modifier_editor(self, mod):
-        w = QtWidgets.QWidget()
-        lay = QtWidgets.QVBoxLayout(w)
-        lay.setContentsMargins(0, 0, 0, 0)
-        if mod.status:
-            err = QtWidgets.QLabel(mod.status, wordWrap=True)
-            err.setStyleSheet(f"color:{TOKENS['error']}")
-            lay.addWidget(err)
-        doc = (type(mod).__doc__ or "").strip().split("\n\n")[0]
-        if doc:
-            d = QtWidgets.QLabel(" ".join(doc.replace("``", "").split()), wordWrap=True, objectName="muted")
-            lay.addWidget(d)
-        self._form = ParameterForm(mod)
-        lay.addWidget(self._form)
-        if isinstance(mod, mods.PythonScript):
-            self._script = QtWidgets.QPlainTextEdit(mod.source)
-            self._script.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont))
-            self._script.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
-            self._script.setTabStopDistance(4 * self._script.fontMetrics().horizontalAdvance(" "))
-            self._script.setMinimumHeight(260)
-            lay.addWidget(self._script, 1)
-            ok = QtWidgets.QLabel(objectName="muted")
-            ok.setText("OK" if not mod.status else "")
-            lay.addWidget(ok)
-        elif hasattr(mod, "function"):
-            lay.addWidget(QtWidgets.QLabel("Python function modifier (edit it in the console)", objectName="muted"))
-        apply = QtWidgets.QPushButton("Run  (Ctrl+Enter)" if isinstance(mod, mods.PythonScript) else "Apply  (Ctrl+Enter)")
-        apply.setObjectName("primary")
-        apply.clicked.connect(lambda: self._apply(mod))
-        QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), w, activated=lambda: self._apply(mod))
-        lay.addWidget(apply)
-        lay.addStretch()
-        return w
-
-    def _apply(self, mod):
-        if self._form is not None:
-            self._form.apply()
-        if self._script is not None:
-            mod.source = self._script.toPlainText()
-        self.changed.emit()
-        self.refresh(select=("mod", mod))
 
     def _plugin_visual_editor(self, k):
         """Parameter form of a plugin visual element, built from its constructor like a modifier's."""
@@ -828,74 +682,6 @@ class PipelinePanel(QtWidgets.QWidget):
         g.addRow("Bonds leaving it", mode)
         return box
 
-    def _source_editor(self):
-        w = QtWidgets.QWidget()
-        f = QtWidgets.QFormLayout(w)
-        src = self.pipeline.source if self.pipeline else None
-        paths = getattr(src, "paths", None)
-        if paths:
-            f.addRow("File", QtWidgets.QLabel(os.path.basename(paths[0]) + (f" (+{len(paths) - 1})" if len(paths) > 1 else "")))
-            readers = {type(r).__name__ for r in src.readers}
-            f.addRow("Reader", QtWidgets.QLabel(", ".join(sorted(readers))))
-        if self.pipeline:
-            f.addRow("Frames", QtWidgets.QLabel(f"{self.pipeline.num_frames}, loaded lazily"))
-        if self.data is not None:
-            f.addRow("Particles", QtWidgets.QLabel(str(self.data.count)))
-            if self.data.cell.is_valid:
-                f.addRow(QtWidgets.QLabel(cell_summary(self.data.cell), objectName="muted"))
-            props = QtWidgets.QLabel(", ".join(self.data.particles), wordWrap=True, objectName="muted")
-            f.addRow("Properties", props)
-        return w
-
-
-class DisplayPanel(PipelinePanel):
-    """Visual elements only (Particles, Bonds, Simulation cell, plugin elements) with their
-    editors. The notebook layout keeps modifiers in notebook cells and the display here."""
-
-    modifierRequested = QtCore.Signal(object)  # e.g. "Use as Create bonds modifier"
-
-    def __init__(self, style=None, parent=None):
-        super().__init__(style, parent)
-        self.add_button.hide()
-        for b in self.edit_buttons:
-            b.hide()
-        # the Display header shows the add-visual menu as an icon (app.py moves it there)
-        self.visual_button.setText("")
-        header.set_icon(self.visual_button, "plus")
-        self.visual_button.setIconSize(QtCore.QSize(header.ICON, header.ICON))
-        self.visual_button.setFixedSize(header.BUTTON, header.BUTTON)
-        self.visual_button.setObjectName("headerButton")
-        self.visual_button.setToolTip("Add a visual element (cell axes, halos, … from plugins)")
-
-    def refresh(self, select=None):
-        if select is None:
-            select = self._current() or ("visual", "particles")
-        self.tree.blockSignals(True)
-        self.tree.clear()
-        target = self._visual_items(lambda title: None, select)
-        self.tree.blockSignals(False)
-        self._fit_tree()
-        self.update_status()
-        if target is not None and target is not self.tree.currentItem():
-            self.tree.setCurrentItem(target)
-        else:
-            self._show_editor(self.tree.currentItem())
-
-    def _fit_tree(self):
-        """As tall as its few rows (Particles, Bonds, Cell, plugins), so the editor gets the rest."""
-        rows = self.tree.topLevelItemCount()
-        row = self.tree.sizeHintForRow(0) if rows else 24
-        self.tree.setFixedHeight(max(1, rows) * row + 2 * self.tree.frameWidth() + 4)
-
-    def add_modifier(self, mod):
-        self.modifierRequested.emit(mod)
-
-    def set_data(self, data):
-        old = _types(self.data)
-        super().set_data(data)
-        if _types(data) != old:  # another file or notebook: the type table and counts change
-            self._show_editor(self.tree.currentItem())
-
 
 def _types(data):
     from ..render import type_groups
@@ -923,10 +709,3 @@ def read_vesta_elements(path):
                 radii[sym] = float(parts[2])
                 colors[sym] = tuple(float(x) for x in parts[5:8])
     return colors, radii
-
-
-def _source_label(source):
-    paths = getattr(source, "paths", None)
-    if paths:
-        return os.path.basename(paths[0]) + (f" (+{len(paths) - 1})" if len(paths) > 1 else "")
-    return type(source).__name__

@@ -19,14 +19,14 @@ below the viewport holds the Python console, the data inspector, plots and the l
 middle can be rearranged as in VS Code (see [Panel layout](#panel-layout)).
 
 ![The notebook layout](../images/notebook.png)
- The notebook
-replaces the pipeline panel, but the sections below apply to both. Preferences › General ›
-*Window layout* = `classic` brings back the OVITO 3 style layout, with the pipeline and the
-selected item's parameters on the right. VESTA's crystal-viewing controls are in both.
+
+The notebook is the pipeline: each step cell is one `pipe.add(...)`, so there is no separate
+pipeline list. (Earlier versions had an OVITO-style "classic" layout with a pipeline panel; it
+was removed, and a saved *Window layout* setting is ignored.)
 
 Buttons use one line-icon set. By default mode switches and less frequent buttons (Open,
-Analyze, Render) show an icon with text, and the tool rail and frequent buttons (Open remote,
-Save, Fit) show the icon alone, with the name and shortcut in the tooltip. Preferences ›
+Notebook, Render) show an icon with text, and the tool rail and frequent buttons (Save, Fit)
+show the icon alone, with the name and shortcut in the tooltip. Preferences ›
 General › Toolbar buttons switches to icons only or to text only (which also drops the icons
 from menus).
 
@@ -60,7 +60,7 @@ on (the default), extra plot views included. The Structure view itself never mov
 it can be placed anywhere in the middle but not closed, and the timeline stays under the
 editor area.
 
-## Analyze workspace
+## Notebook workspace
 
 **Viewport.** Drag to orbit and scroll to zoom (VTK's standard mouse controls). View › View
 along a, b, c, a*, b*, c* aligns the view with a cell vector or reciprocal vector, as in
@@ -107,18 +107,18 @@ along, Orthographic, Zoom to fit and Ask AI are always there.
 
 **AI chat (Ask AI).** The AI button at the bottom of the activity bar on the far left (also
 Window › AI chat, Ctrl+J, and Ask AI in the Structure view's right-click menu) opens a chat side bar left of the
-notebook; in the classic layout it is the Ask AI tab next to the pipeline. It reads like a
+notebook. It reads like a
 chat app: your messages in bubbles on the right, the answers under the assistant's name (Claude, Gemini, ...) on the left,
 the tools it ran as small chips (*Running …*, then *Used …*), and code blocks as framed code with
 *Copy* and *+ Insert as cell*. Enter sends, Shift+Enter starts a new line, and the suggestions
-on an empty chat send a first question. In the notebook layout each question also sends the
+on an empty chat send a first question. Each question also sends the
 current notebook's code (only when it changed since the last question); *+ Insert as cell* adds
 a Python block as a code cell after the current one, without running it (Shift+Enter runs it).
 The chat answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
 coordination low here?". Without picks it uses the particles a selection modifier selected, and
 with neither the question is about the whole frame. The model receives the description from
 [Asking about a selection](claude.md#asking-about-a-selection) and a close-up render, can run the
-usual tools, and modifiers it adds appear in the pipeline. Claude answers by default; Preferences › AI
+usual tools, and steps it adds appear in the notebook. Claude answers by default; Preferences › AI
 switches to OpenAI, Gemini or a model on your own machine ([Providers](claude.md#providers)). It needs
 the `llm` extra and, except for a local server, an API key (Preferences › AI, or the provider's
 environment variable such as `ANTHROPIC_API_KEY`).
@@ -129,14 +129,14 @@ added to the timeline as they appear ([live reload](formats.md#runs-that-are-sti
 calculation that has not finished (VASP still running or killed) opens with what is complete,
 and the status bar says what is missing ([details](formats.md#calculations-that-have-not-finished)).
 
-**Pipeline panel.** The list shows the data source at the bottom and modifiers above it, the
-last-applied modifier on top, as in OVITO. "Add modification" (or the Pipeline menu) inserts a
-modifier; the eye toggle disables one without removing it; the arrow buttons move it up or down. Each row shows the
-time the modifier took and, if it failed, its error. A failing modifier is skipped so the view
-never goes blank. Selecting a row opens its parameters below the list; the form is generated
-from the modifier's constructor, so every argument you can pass in Python can be edited here.
+**Steps.** Insert › Step (or the notebook's **+ Step** button and the command palette) adds a
+modifier as a step cell. The cell's checkbox disables it without removing it, Move cell up/down
+reorders it, and its header shows the time it took and, if it failed, its error. A failing step
+is skipped so the view never goes blank. The step's parameter form is generated from the
+modifier's constructor, so every argument you can pass in Python can be edited there. See
+[Notebooks](notebooks.md).
 
-**Visual elements.** The top of the list holds what is drawn: Particles, Bonds and Simulation
+**Display panel (visual elements).** The Display panel on the right holds what is drawn: Particles, Bonds and Simulation
 cell, plus any [visual element plugins](../plugins/visuals.md) added with the **+** button in the Display header.
 Simulation cell has VESTA's boundary range: tick Boundary and set the fractional range (e.g.
 -0.1 to 1.1) to draw the periodic images of atoms on the faces, edges and corners, with bonds and
@@ -145,17 +145,18 @@ A plugin element has a checkbox to hide it, a parameter form generated from its 
 (Apply or Ctrl+Enter redraws), and Del removes it. Plugin elements are saved with the session
 and drawn in rendered images too.
 
-**Python script modifier.** Pipeline › Python › Python script adds a modifier whose code is
-edited in place. The code defines `modify(frame, data)` and runs on every frame like any other
-modifier. See [Python scripting](scripting.md).
+**Python steps.** A code cell can define a function and add it with `pipe.add(fn)`; it runs on
+every frame like any other modifier. Insert › Step › Python › Python script adds the
+`PythonScript` modifier as a step. See [Python scripting](scripting.md).
 
 **Python console.** An IPython console where `pipeline` (also `pipe`), `data` (the current
 frame), `viewer` (the window), `vp` (the viewport), `mods` (`ewald.modifiers`) and `np` are
 defined. Changes made in the console, such as `pipe.modifiers.append(...)`, update the
-pipeline panel and redraw the view.
+notebook and redraw the view.
 
 **Data inspector.** The particle table with a filter expression (the same syntax as
-`ExpressionSelection`), plus global attributes and tables.
+`ExpressionSelection`), plus global attributes, tables, the cell and the data source (file,
+reader, number of frames, particle properties).
 
 **Plots.** Any table in the current frame (g(r), MSD, histograms, time series) can be plotted
 and saved. The `Thermo` table (log.lammps, OSZICAR, OUTCAR, vasprun.xml; see
@@ -231,7 +232,7 @@ made in the GUI can be reproduced in a batch script. See [Rendering figures](ren
 ## Files
 
 File › Open example opens one of the [example files](quickstart.md#example-files) shipped
-with ewald. File › Open (File › Load file in the classic layout) opens any format ewald can read ([File formats](formats.md)), including
+with ewald. File › Open opens any format ewald can read ([File formats](formats.md)), including
 formats added by [reader plugins](../plugins/readers.md). LAMMPS dumps ask for a
 type-to-element map unless you set a default in Preferences. File › Load NEB folder opens a
 VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image
@@ -261,7 +262,7 @@ JSON in the ewald config folder: `~/.config/ewald` on Linux,
 
 The radius preset (covalent, atomic, van der Waals or Shannon ionic radii; see
 [Atom radii](rendering.md#atom-radii)) is the one new sessions start with. The Particles visual
-element in the pipeline panel switches it for the current session and takes oxidation states
+element in the Display panel switches it for the current session and takes oxidation states
 for the ionic presets (`Sr=2, Ti=4, O=-2`; types left out are guessed). The log says which
 types fell back to covalent radii.
 

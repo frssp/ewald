@@ -48,10 +48,16 @@ def _isolated_settings(tmp_path, monkeypatch):
 
 
 # --- SSH/SFTP: an in-process server (tests/helpers/sftp_server.py) and an isolated ~/.ssh/config
+@pytest.fixture(scope="session")
+def _rsa_key():
+    import paramiko  # a core dependency since SSH support moved out of the [remote] extra
+
+    return paramiko.RSAKey.generate(2048)  # slow: one key for the whole run
+
+
 @pytest.fixture
-def client_key(tmp_path):
-    paramiko = pytest.importorskip("paramiko")
-    rsa = paramiko.RSAKey.generate(2048)
+def client_key(tmp_path, _rsa_key):
+    rsa = _rsa_key
     path = tmp_path / "id_test"
     rsa.write_private_key_file(str(path))
     return rsa, path
@@ -60,7 +66,6 @@ def client_key(tmp_path):
 @pytest.fixture
 def ssh_env(tmp_path, monkeypatch):
     """Isolated ~/.ssh/config, known_hosts and cache; returns a function writing config entries."""
-    pytest.importorskip("paramiko")
     from ewald.io import remote
 
     monkeypatch.setenv("EWALD_CACHE_DIR", str(tmp_path / "cache"))

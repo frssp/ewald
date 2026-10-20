@@ -3,9 +3,8 @@ import os
 import shutil
 
 import numpy as np
+import paramiko
 import pytest
-
-paramiko = pytest.importorskip("paramiko")
 
 from ewald import import_file  # noqa: E402
 from ewald.io import remote  # noqa: E402
