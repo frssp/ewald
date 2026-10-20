@@ -585,7 +585,8 @@ def test_panel_plugin_and_stored_settings_page(monkeypatch):
     assert plugins.installed()["sim-agent-example"].contributions == {"settings_pages": ["sim-agent"],
                                                                        "panels": ["sim_agent", "agent_jobs"],
                                                                        "menu_items": ["send_picked", "send_structure",
-                                                                                      "agent_settings"]}
+                                                                                      "agent_settings", "toolbar_button",
+                                                                                      "send_cell", "send_plot"]}
     assert plugins.status()["panels"][0]["title"] == "Sim agent"
     page = plugins.settings_pages()["sim-agent"]
     assert page.description == "The agent behind the Sim agent side bar."
@@ -612,6 +613,8 @@ def test_panel_and_settings_page_checks():
     with pytest.raises(ValueError, match="area"):
         plugins.register_panel("p", lambda ctx: None, area="right")
     assert plugins.register_panel("tab", lambda ctx: None, area="bottom").area == "bottom"
+    for where in ("Toolbar", "Toolbar/Agent", "Notebook cell", "Plot/More"):
+        assert plugins.register_menu_item(f"m {where}", lambda ctx: None, menu=where).menu == where
     with pytest.raises(ValueError, match="menu must start"):
         plugins.register_menu_item("m", lambda ctx: None, menu="Analysis")
     with pytest.raises(ValueError, match="menu must start"):

@@ -2,15 +2,16 @@
 
 A plugin can add to the desktop app itself: a **side bar** with its own button on the activity
 bar (the icon column at the left edge, under Notebook, Plugins, Remotes and AI chat), a **tab
-under the 3D view**, **menu entries** (in the menu bar or the 3D view's right-click menu) and a
+under the 3D view**, **menu entries** (in the menu bar, on the toolbar, and in the right-click
+menus of the 3D view, notebook cells and plots) and a
 **page in Preferences** for its settings. Installing the plugin is all a user does; switching
 it off in the Plugins side bar removes all of them again.
 
 [`examples/plugins/sim_agent_panel.py`](https://github.com/frssp/ewald/blob/main/examples/plugins/sim_agent_panel.py) is a complete
 one-file example: a "Sim agent" side bar that follows the structure on screen and turns tasks
-into notebook cells, an "Agent jobs" tab listing the tasks sent, Tools › Sim agent and a
-"Send picked atoms to Sim agent" entry in the 3D view's right-click menu, and a "Sim agent"
-Preferences page with its server, token and model.
+into notebook cells, an "Agent jobs" tab listing the tasks sent, a toolbar button, Tools › Sim
+agent, "Send … to Sim agent" entries in the right-click menus of the 3D view, of notebook cells
+and of plots, and a "Sim agent" Preferences page with its server, token and model.
 
 ![The Sim agent example: its activity-bar button (bottom) opens the side bar](../images/plugin_panel.png)
 
@@ -80,6 +81,8 @@ def agent_jobs(context):
 | `context.picks` | indices of the atoms picked in the 3D view (an empty list when none are) |
 | `context.message(text, error=False)` | a line in the status bar and the Log |
 | `context.open_preferences(page)` | open Preferences at a page, e.g. the plugin's own |
+| `context.show_panel(name, on=True)` | show or hide a `@panel` by its name |
+| `context.target` | in a [menu entry](#menu-entries-menu_item) of a cell's or a plot's menu, what it was opened on; otherwise None |
 | `context.insert_cell(code)` | add a code cell after the current one, without running it |
 | `context.add_step(modifier)` | add a step cell and compute it |
 | `context.on(event, callback)` | `"data"` after each computed frame (`callback(data)`), `"pipeline"` when another pipeline is loaded (`callback(pipeline)`), `"settings"` after Preferences are applied, plugin pages included (`callback(settings)`) |
@@ -110,14 +113,35 @@ exception goes to the status bar and the Log.
 | Argument | Meaning |
 |---|---|
 | `title` | the entry's text (default: the function name) |
-| `menu` | `"File"`, `"Edit"`, `"View"`, `"Notebook"`, `"Insert"`, `"Tools"` (default), `"Window"`, `"Help"`, or `"3D view"` for the right-click menu of the 3D view; a `/` adds a submenu, as in `"Tools/Sim agent"` |
-| `when` | `""` (always), `"data"` (a structure is loaded) or `"picks"` (atoms are picked). In the menu bar the entry is greyed out until then; in the 3D view's menu it is left out |
+| `menu` | where the entry goes (table below); a `/` adds a submenu, as in `"Tools/Sim agent"` |
+| `when` | `""` (always), `"data"` (a structure is loaded) or `"picks"` (atoms are picked). In the menu bar and on the toolbar the entry is greyed out until then; in a right-click menu it is left out |
 | `shortcut` | a key sequence such as `"Ctrl+Alt+P"` |
 | `icon` | as for `@panel` |
 | `description` | the tooltip (default: the docstring's first paragraph) |
 
-Plugin entries come after a separator at the end of their menu, in the order the plugins
-registered them; in the 3D view's menu they sit above *Ask AI about selection…*.
+| `menu` | Where | `context.target` |
+|---|---|---|
+| `"File"`, `"Edit"`, `"View"`, `"Notebook"`, `"Insert"`, `"Tools"`, `"Window"`, `"Help"` | that menu of the menu bar | None |
+| `"Toolbar"` | a button at the right end of the main toolbar (its icon, or the title without one); `"Toolbar/Agent"` puts the entry in a drop-down button named Agent | None |
+| `"3D view"` | the right-click menu of the 3D view, above *Ask AI about selection…* | None |
+| `"Notebook cell"` | a cell's ⋯ menu | the `ewald.notebook.Cell` (`source`, `kind`, `title`, ...) |
+| `"Plot"` | the right-click menu of a plot (Plots tab, plot views, view cells), after *Save plot…* and *Reset view* | a `PlotTarget`: `table` (the table or histogrammed property), `values` (that `Table`, or None for a histogram or a DOS/band plot), `columns`, `xlim`, `ylim` (the ranges on screen), `data` (the frame) |
+
+```python
+@menu_item(title="Send cell to Sim agent", menu="Notebook cell")
+def send_cell(context):
+    context.message(context.target.source.splitlines()[0])
+
+
+@menu_item(title="Send plotted data", menu="Plot")
+def send_plot(context):
+    plot = context.target
+    context.message(f"{plot.table}: {plot.columns} over {plot.xlim}")
+```
+
+`context.target` is only set while the function runs. Plugin entries come after a separator
+at the end of their menu, in the order the plugins registered them. A right click on a plot
+that does not drag opens its menu; dragging with the right button still pans.
 
 ## Its settings
 

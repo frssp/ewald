@@ -3,9 +3,9 @@ tab under the 3D view, menu entries and a page in Preferences. See docs/plugins/
 
 Copy this file into ewald's plugin folder (``ewald plugins`` prints where it is) and restart, or
 install it from the Plugins side bar: a new button appears at the bottom of the activity bar
-(the icon column at the left edge, under AI chat), Tools gets a "Sim agent" submenu, the 3D
-view's right-click menu gets "Send picked atoms to Sim agent" while atoms are picked, and
-Preferences gets a "Sim agent" page.
+(the icon column at the left edge, under AI chat) and on the toolbar, Tools gets a "Sim agent"
+submenu, the right-click menus of the 3D view (while atoms are picked), of notebook cells and of
+plots get a "Send … to Sim agent" entry, and Preferences gets a "Sim agent" page.
 
 The side bar shows the structure on screen and turns a task into a notebook cell; the jobs tab
 lists every task sent this session. A real agent plugin would send the task to its server.
@@ -142,3 +142,25 @@ def send_structure(context):
 def agent_settings(context):
     """Open the Sim agent page of Preferences."""
     context.open_preferences("Sim agent")
+
+
+@menu_item(title="Sim agent", menu="Toolbar", icon=ICON)
+def toolbar_button(context):
+    """Show the Sim agent side bar."""
+    context.show_panel("sim_agent")
+
+
+@menu_item(title="Send cell to Sim agent", menu="Notebook cell", icon="send")
+def send_cell(context):
+    """Send this cell's code as a task."""
+    cell = context.target                      # the ewald.notebook.Cell the menu was opened on
+    first = next((line for line in cell.source.splitlines() if line.strip()), "(empty cell)")
+    send_task(context, f"run cell: {first[:60]}")
+
+
+@menu_item(title="Send plotted data to Sim agent", menu="Plot", icon="send")
+def send_plot(context):
+    """Send the table on this plot and the range on screen as a task."""
+    plot = context.target                      # an ewald.plugins.PlotTarget
+    x = f" x {plot.xlim[0]:.3g}..{plot.xlim[1]:.3g}" if plot.xlim else ""
+    send_task(context, f"analyze {plot.table} {', '.join(plot.columns)}{x}")

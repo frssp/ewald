@@ -424,8 +424,27 @@ class CellWidget(QtWidgets.QFrame):
         m.addAction("Move up", act("up"))
         m.addAction("Move down", act("down"))
         m.addAction("Delete", act("delete"))
+        self._plugin_actions = []
+        m.aboutToShow.connect(lambda: self._plugin_menu_items(m))
         b.setMenu(m)
         return b
+
+    def _plugin_menu_items(self, menu):
+        """The "Notebook cell" entries of @menu_item plugins, fresh each time the menu opens."""
+        for a in self._plugin_actions:
+            menu.removeAction(a)
+            a.deleteLater()
+        from .window_plugins import plugin_host
+
+        host = plugin_host(self)
+        sep = menu.addSeparator()
+        added = host.add_plugin_items(menu, "Notebook cell", target=self.cell) if host else []
+        if added:
+            menu.removeAction(added.pop())     # its closing separator: these end the menu
+            self._plugin_actions = [sep, *added]
+        else:
+            menu.removeAction(sep)
+            self._plugin_actions = []
 
     FRAMES = {"": ("Once", "Runs when you run the cell"),
               "each": ("Each frame", "The cell's code is a step: it runs at every frame with `frame` and `data`"),
