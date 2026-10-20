@@ -111,8 +111,8 @@ class RenderPage(QtWidgets.QWidget):
         form.addRow("Anti-aliasing", self.samples)
         form.addRow("Ambient occl.", self.ao_samples)
         form.addRow(self.shadows)
-        self.ao = QtWidgets.QCheckBox("Ambient occlusion (OpenGL SSAO)")
-        self.aa = QtWidgets.QCheckBox("Supersampling (OpenGL)", checked=True)
+        self.ao = QtWidgets.QCheckBox("Ambient occlusion", toolTip="OpenGL screen-space ambient occlusion (SSAO)")
+        self.aa = QtWidgets.QCheckBox("Supersampling", checked=True, toolTip="OpenGL anti-aliasing")
         form.addRow(self.ao)
         form.addRow(self.aa)
         self.renderer.currentIndexChanged.connect(self._renderer_changed)
@@ -167,7 +167,8 @@ class RenderPage(QtWidgets.QWidget):
         browse.clicked.connect(self._browse)
         out.addWidget(self.output, 1); out.addWidget(browse)
         form.addRow("File", out)
-        self.animation = QtWidgets.QCheckBox("Render animation (all frames, uses timeline fps/stride)")
+        self.animation = QtWidgets.QCheckBox("Render animation",
+                                             toolTip="All frames, at the timeline's fps and stride")
         form.addRow(self.animation)
         self.movie_format = QtWidgets.QComboBox()
         self.movie_format.addItems(list(MOVIE_FORMATS))
@@ -190,7 +191,16 @@ class RenderPage(QtWidgets.QWidget):
         copy = QtWidgets.QPushButton("Copy code")
         copy.clicked.connect(lambda: QtWidgets.QApplication.clipboard().setText(self.code.toPlainText()))
         form.addRow(copy)
+        # narrow column: rows put their label above the field, and combo boxes shrink to a short
+        # elided text, so the form never scrolls sideways (the window's minimum width stays)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapAllRows)
+        for spin, px in ((self.time_per_frame, 100), (self.width, 70), (self.height, 70), (self.scale_length, 70)):
+            spin.setMinimumWidth(px)                   # their wide ranges would ask for much more
+        for combo in side.findChildren(QtWidgets.QComboBox):
+            combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(10)
         scroll = QtWidgets.QScrollArea()
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         scroll.setWidget(side)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
