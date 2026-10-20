@@ -9,6 +9,8 @@ from .. import examples
 from .. import plugins
 from ..io import import_file
 from ..render import camera_state
+from .busy import busy
+from .welcome import add_recent
 
 
 def file_filter() -> str:
@@ -38,6 +40,12 @@ def save_filters() -> list[tuple[str, str | None]]:
     return out + [("All files, format from the name (*)", None)]
 
 
+def _is_neb(path) -> bool:
+    from ..io import is_neb
+
+    return is_neb(path)
+
+
 def _has_phonon_modes(pipe) -> bool:
     try:
         return "Phonon Modes" in pipe.source_frame(0).attributes
@@ -50,15 +58,14 @@ class FilesMixin:
 
     # ---------------------------------------------------------------- pipeline / data
     def open_file(self, path, **kwargs):
-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        remote = ":" in str(path) and not os.path.exists(str(path))     # host:/path, ssh://
         try:
-            pipe = import_file(path, **kwargs)
+            with busy(self.message, f"{'Downloading' if remote else 'Opening'} {os.path.basename(str(path))}…"):
+                pipe = import_file(path, **kwargs)
         except Exception as exc:
-            QtWidgets.QApplication.restoreOverrideCursor()
             self.message(f"Load failed: {path}: {exc}", error=True)
             QtWidgets.QMessageBox.critical(self, "Load failed", f"{path}\n\n{exc}")
             return None
-        QtWidgets.QApplication.restoreOverrideCursor()
         phonon = plugins.modifiers().get("PhononMode")   # the ewald-phonopy plugin
         if phonon is not None and _has_phonon_modes(pipe) and not any(isinstance(m, phonon.cls) for m in pipe.modifiers):
             pipe.modifiers.append(phonon.cls())  # a phonon file opens playing a mode
@@ -67,6 +74,7 @@ class FilesMixin:
         self.set_pipeline(pipe)
         self.setWindowTitle(f"EWALD — {os.path.basename(str(path))}")
         self.message(f"Loaded {path}: {pipe.num_frames} frame(s)")
+        add_recent(path)
         return pipe
 
     def open_dialog(self):
@@ -77,15 +85,58 @@ class FilesMixin:
     def open_any(self, path, ask_types: bool = True, **kwargs):
         """A session, a notebook (.ewd, .ipynb, .py) or a data file."""
         from ..session import is_session_file
-
         if is_session_file(path):
             self.load_session(path)
         elif str(path).lower().endswith(NOTEBOOK_EXTENSIONS) and os.path.isfile(path):
             self.open_notebook(path)
+        elif not kwargs and (run := self._neb_run_to_open(path)):
+            self.open_neb(run)
         elif kwargs or not ask_types:
             self.open_file(path, **kwargs)
         else:
             self._open_asking_types(path)
+
+    def _neb_run_to_open(self, path) -> str | None:
+        """The NEB run folder to open instead of ``path`` when it is one image of a NEB
+        (``03/OUTCAR``, ``dump.neb.3``) and the user wants the whole band."""
+        from ..io import neb_run_of
+
+        run = neb_run_of(path) if "://" not in str(path) else None
+        if run is None:
+            return None
+        answer = QtWidgets.QMessageBox.question(
+            self, "NEB run", f"{os.path.basename(str(path))} is one image of the NEB run in\n{run}\n\n"
+            "Open the whole band (one frame per image, with the energy profile)?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.Yes)
+        return run if answer == QtWidgets.QMessageBox.Yes else None
+
+    # ---------------------------------------------------------------- drag and drop
+    def dragEnterEvent(self, event):
+        """Files and folders (a NEB run folder, for one) can be dropped on the window."""
+        if any(u.isLocalFile() for u in event.mimeData().urls()):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dropEvent(self, event):
+        paths = [u.toLocalFile() for u in event.mimeData().urls() if u.isLocalFile()]
+        if not paths:
+            return super().dropEvent(event)
+        event.acceptProposedAction()
+        # open after the drop returns, so the source app is not blocked by dialogs
+        QtCore.QTimer.singleShot(0, self, lambda: self.open_dropped(paths))
+
+    def open_dropped(self, paths):
+        """Open dropped paths: notebooks each in a tab, otherwise the first data file or folder."""
+        notebooks = [p for p in paths if str(p).lower().endswith(NOTEBOOK_EXTENSIONS) and os.path.isfile(p)]
+        for p in notebooks:
+            self.open_notebook(p)
+        rest = [p for p in paths if p not in notebooks]
+        if rest:
+            if os.path.isdir(rest[0]) and _is_neb(rest[0]):
+                self.open_neb(rest[0])
+            else:
+                self.open_any(rest[0])
 
     # ---------------------------------------------------------------- notebooks
     def open_notebook(self, path, run: bool | None = None):
@@ -115,6 +166,7 @@ class FilesMixin:
         note = "" if run else (" (restricted: shows saved results; Run all asks to trust it)" if nb.restricted
                                else " (not run: Notebook › Run all)")
         self.message(f"Opened notebook {path}{note}")
+        add_recent(path)
         return view
 
     def _ask_trust(self, path) -> bool:
@@ -166,6 +218,8 @@ class FilesMixin:
             old.state["render"] = self.render_page.state()
         if new is not None and new.state.get("render"):
             self.render_page.set_state(new.state["render"])
+        if new is None and not self.panel.views():
+            self.clear_pipeline()
 
     def save_notebook(self, ask: bool = False):
         """Save the current notebook (asks for a name the first time). The extension picks the
@@ -202,12 +256,43 @@ class FilesMixin:
         """A VASP NEB folder (00 .. NN) or a LAMMPS NEB run folder, one frame per image."""
         path = QtWidgets.QFileDialog.getExistingDirectory(self, "Load NEB folder")
         if path:
-            self.open_file(path)
+            self.open_neb(path)
+
+    def open_neb(self, path):
+        """Open a NEB run folder and show its energy profile in the Plots tab."""
+        pipe = self.open_file(path)
+        if pipe is not None:
             self.workbench.show(self.plots)
+        return pipe
 
     def open_example(self, name):
         """Open one of the shipped example files (File › Open example)."""
         return self.open_file(str(examples.path(name)))
+
+    def location_schemes(self) -> list[str]:
+        """URI schemes the installed readers serve (``aiida``, ``simagent``, ...), for Open location."""
+        return sorted({s for p in plugins.readers().values() for s in p.schemes})
+
+    def open_location_dialog(self, text: str | None = None):
+        """File › Open location: a path or address typed in, ``host:/path`` over SSH or a plugin
+        scheme such as ``simagent:1234`` (the same strings ``load()`` takes)."""
+        if text is None:
+            schemes = self.location_schemes()
+            hint = ("A file path, host:/path over SSH"
+                    + (", or " + ", ".join(f"{s}:…" for s in schemes) if schemes else "")
+                    + "\n(the same text load() takes in a notebook cell)")
+            text, ok = QtWidgets.QInputDialog.getText(self, "Open location", hint,
+                                                      text=getattr(self, "_last_location", ""))
+            if not ok:
+                return None
+        text = text.strip()
+        if not text:
+            return None
+        self._last_location = text
+        if plugins.path_scheme(text) in self.location_schemes():
+            return self.open_file(text)      # not a file: no type questions, no NEB lookup
+        self.open_any(text)
+        return self.pipeline
 
     def open_remote_dialog(self):
         from .remote_dialog import RemoteFileDialog

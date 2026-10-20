@@ -18,6 +18,15 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- Fewer extras: spglib, imageio-ffmpeg, h5py, anthropic, openai, mcp, jupyter_client and ipykernel
+  are core dependencies, so symmetry, MP4 export, HDF5 formats, Ask AI with every provider and
+  kernels work in a plain install. Extras are `gui`, `gpu`, `formats` (MDAnalysis), `ovito` and
+  the new `all` (gui, formats and ovito); `symmetry`, `movie`, `llm`, `kernel` and `remote` remain
+  as empty aliases so old commands work.
+- A step that fails because a package is missing reports it once instead of on every frame: the
+  pipeline stops retrying it (with `errors="skip"`) until its settings change or
+  `Pipeline.invalidate()`, and the GUI logs a step's error once until it changes.
+
 - Notebook trust works as in Jupyter: the app opens any `.py`, `.ipynb` or `.ewd` notebook you did
   not save or trust yourself restricted (before, only `.ewd`), and asks before it runs. Saved and
   trusted files are remembered by content hash (`ewald.trust.is_trusted_file`/`remember_file`), so

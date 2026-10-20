@@ -1,5 +1,5 @@
-"""Space group, Wyckoff positions and symmetry-equivalent atoms through spglib (optional extra
-``symmetry``: ``pip install 'ewald[symmetry]'``)."""
+"""Space group, Wyckoff positions and symmetry-equivalent atoms through spglib (installed with
+ewald)."""
 from __future__ import annotations
 
 import numpy as np
@@ -22,7 +22,7 @@ def _spglib():
     try:
         import spglib
     except ImportError as exc:
-        raise ImportError("SymmetryAnalysis needs spglib: pip install 'ewald[symmetry]' (or pip install spglib)") from exc
+        raise ImportError("SymmetryAnalysis needs spglib, which ewald installs; reinstall ewald or pip install spglib") from exc
     return spglib
 
 

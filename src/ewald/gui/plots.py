@@ -170,6 +170,8 @@ class PlotsPanel(QtWidgets.QWidget):
         for combo, items, cur in ((self.table, [""] + list(data.tables) if data else [""], cur_t),
                                   (self.hist, [""] + [k for k, v in data.particles.items()
                                                       if v.ndim == 1 and v.dtype.kind in "biuf"] if data else [""], cur_h)):
+            if [combo.itemText(i) for i in range(combo.count())] == items:
+                continue   # the same tables and properties as the last frame
             combo.blockSignals(True)
             combo.clear()
             combo.addItems(items)
@@ -192,6 +194,10 @@ class PlotsPanel(QtWidgets.QWidget):
         cur = self.column.currentText()
         items = (["Energy"] if _is_neb(table) else keys if _is_series(table)
                  else ["(all)"] + keys if len(keys) > 1 else keys)
+        if [self.column.itemText(i) for i in range(self.column.count())] == items and \
+                (cur in items or not items):
+            self.column.setEnabled(len(items) > 1)
+            return
         self.column.blockSignals(True)
         self.column.clear()
         self.column.addItems(items)
@@ -208,8 +214,7 @@ class PlotsPanel(QtWidgets.QWidget):
     @_styled
     def redraw(self, *_):
         self._fill_columns()
-        table = self._table()
-        key = (id(next(iter(table.values()))), self.column.currentText()) if table else None
+        key = self._content_key()
         link = None if self._phonon_modes() is not None or self._electronic() is not None else self._make_link()
         if link != self.link:
             self._range = self._box = None
@@ -217,8 +222,11 @@ class PlotsPanel(QtWidgets.QWidget):
         vkey = (self.table.currentText(), self.column.currentText(), self.hist.currentText())
         if vkey != self._view_key:
             self._view_key, self._view = vkey, {}
-        if key is not None and key == self._drawn and self._marker is not None:
-            self._place_marker()  # same series, new frame: move the marker only
+        if key is not None and _same_content(key, self._drawn):
+            # same data as on the canvas (a frame-independent or trajectory-wide result during
+            # playback): move the current-frame marker only, no fig.clear()
+            if self._marker is not None:
+                self._place_marker()
             self._draw_overlays()
             self._update_controls()
             return
@@ -306,6 +314,31 @@ class PlotsPanel(QtWidgets.QWidget):
         fig.tight_layout(pad=0.4)
         self._draw_overlays()
         self._update_controls()
+
+    def _content_key(self):
+        """What the canvas would show: the choices and the arrays behind them (compared by
+        identity, or by value for a recomputed copy), None when it cannot be told."""
+        d = self.data
+        if d is None:
+            return None
+        labels = (self.table.currentText(), self.column.currentText(), self.hist.currentText(),
+                  tuple(self._energy_window), self._exporting)
+        name = self.hist.currentText()
+        if name:
+            return labels, (d.particles.get(name),)
+        modes = self._phonon_modes()
+        if modes is not None:
+            return labels, (modes,)
+        elec = self._electronic()
+        if elec is not None:
+            return labels, (elec[0],)
+        table = self._table()
+        if not table:
+            return None
+        objs = tuple(table.values())
+        if _is_neb(table):
+            objs += tuple((d.tables.get("NEB spline") or {}).values())
+        return labels, objs
 
     # ------------------------------------------------------------ linked selection
     def _make_link(self):
@@ -1038,6 +1071,21 @@ def _spinless(column: str) -> str:
 
 def _is_neb(table) -> bool:
     return bool(table) and next(iter(table)) == "Reaction Coordinate" and "Frame" in table and "Energy" in table
+
+
+def _same_content(a, b) -> bool:
+    """Whether two :meth:`PlotsPanel._content_key` values show the same plot."""
+    if a is None or b is None or a[0] != b[0] or len(a[1]) != len(b[1]):
+        return False
+    for x, y in zip(a[1], b[1]):
+        if x is y:
+            continue
+        if not (isinstance(x, np.ndarray) and isinstance(y, np.ndarray)) or x.shape != y.shape \
+                or x.dtype != y.dtype or x.size > 200_000:
+            return False
+        if not np.array_equal(x, y, equal_nan=x.dtype.kind in "fc"):
+            return False
+    return True
 
 
 def _is_series(table) -> bool:

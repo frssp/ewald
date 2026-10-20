@@ -519,13 +519,13 @@ class RemoteFile(io.RawIOBase):
     def __init__(self, conn: Connection, path: str, block_size: int = 1 << 18, cache_blocks: int = 128):
         super().__init__()
         self._conn = conn
+        self._cache: OrderedDict[int, bytes] = OrderedDict()  # before open, so close() works if it fails
         with conn.lock:
             self._fh = conn.sftp.open(path, "rb")
         self.name = path
         self.size = self._fh.stat().st_size
         self._pos = 0
         self._bs = block_size
-        self._cache: OrderedDict[int, bytes] = OrderedDict()
         self._max = cache_blocks
         self._last_block = -2
 
@@ -579,7 +579,7 @@ class RemoteFile(io.RawIOBase):
         if not self.closed:
             try:
                 self._fh.close()
-            except Exception:
+            except Exception:  # never opened, or the connection is gone
                 pass
             self._cache.clear()
         super().close()

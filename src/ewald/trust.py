@@ -6,10 +6,12 @@ ewald runs Python from several places, and each has a gate:
   yourself opens restricted in the app until :meth:`Notebook.trust`, as in Jupyter. Notebooks you
   save or trust are remembered by content hash (:func:`remember_file`, :func:`is_trusted_file`);
 - sessions: ``PythonScript``/``PythonModifier`` code runs only with ``load_session(allow_code=True)``;
-- Ask AI and the MCP server: ``run_python`` exists only with ``allow_code=True``;
-- the AI's notebook tools (:mod:`ewald.llm.notebook_tools`) insert and edit cells without running
-  them; ``run_cell`` is offered only with ``allow_code`` or Preferences › AI › Let the AI run cells,
-  and step parameters of code modifiers (``PythonScript``) cannot be set through them;
+- Ask AI and the MCP server: the AI changes results only by running notebook cells. Its own code
+  goes into cells it inserts or edits, which run only through ``run_cell``, offered only with
+  ``allow_code`` or Preferences › AI › Let the AI run cells. The cells ewald writes for a tool
+  (a ``pipe.add(Name(...))`` step, the view cell, ``pipe = load(...)``, ``export_file(...)``) hold
+  a validated name and JSON literals only, so they run without that, but never in a restricted
+  notebook; step parameters of code modifiers (``PythonScript``) cannot be set through them;
 - plugins: files in the plugin folder and installed packages are trusted like ewald itself;
   a catalog download is checked against the entry's ``sha256`` when it has one
   (:func:`verify_sha256`);

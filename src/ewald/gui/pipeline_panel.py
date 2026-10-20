@@ -298,43 +298,193 @@ class FlowLayout(QtWidgets.QLayout):
         return y + row_h - rect.y() + m.bottom()
 
 
+class MasonryLayout(QtWidgets.QLayout):
+    """The View tab's cards in equal-width columns: as many columns of at least ``column`` px as fit,
+    stretched to the full width, each card going into the shortest column so the columns end
+    close together. Cards keep their order within a column."""
+
+    def __init__(self, parent=None, spacing=10, column=300):
+        super().__init__(parent)
+        self._items = []
+        self._gap = spacing
+        self._column = column
+
+    def addItem(self, item):
+        self._items.append(item)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, i):
+        return self._items[i] if 0 <= i < len(self._items) else None
+
+    def takeAt(self, i):
+        return self._items.pop(i) if 0 <= i < len(self._items) else None
+
+    def expandingDirections(self):
+        return QtCore.Qt.Orientations()
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self._place(QtCore.QRect(0, 0, width, 0), move=False)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._place(rect, move=True)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        m = self.contentsMargins()
+        w = min(self._column, max((i.minimumSize().width() for i in self._items), default=0))
+        return QtCore.QSize(w + m.left() + m.right(), m.top() + m.bottom())
+
+    def columns(self, width: int) -> int:
+        m = self.contentsMargins()
+        inner = width - m.left() - m.right()
+        shown = sum(not i.isEmpty() for i in self._items)
+        return max(1, min(shown, (inner + self._gap) // (self._column + self._gap)))
+
+    def _place(self, rect, move):
+        m = self.contentsMargins()
+        r = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
+        n = self.columns(rect.width())
+        w = max(1, (r.width() - (n - 1) * self._gap) // n)
+        tops = [r.y()] * n
+        for item in self._items:
+            if item.isEmpty():
+                continue
+            h = item.heightForWidth(w) if item.hasHeightForWidth() else item.sizeHint().height()
+            k = tops.index(min(tops))
+            if move:
+                item.setGeometry(QtCore.QRect(r.x() + k * (w + self._gap), tops[k], w, h))
+            tops[k] += h + self._gap
+        return max(tops) - self._gap - rect.y() + m.bottom()
+
+
 class _FlowPage(QtWidgets.QWidget):
     """The page of a :class:`FitWidthScrollArea` whose layout wraps: as tall as its rows."""
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
+    def _fit(self):
         h = self.layout().heightForWidth(self.width())
         if h != self.minimumHeight():
             self.setMinimumHeight(h)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit()
+
+    def event(self, event):
+        done = super().event(event)
+        if event.type() == QtCore.QEvent.LayoutRequest and self.layout() is not None:
+            self._fit()        # a card folded or grew
+        return done
+
+
+class _CardHead(QtWidgets.QWidget):
+    """A card's title row; a click anywhere on it folds the card."""
+
+    clicked = QtCore.Signal()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+
+class _Group(QtWidgets.QWidget):
+    """A switchable sub-section of a View tab card (Replicate cell, Boundary, Light): a rule, a check box
+    title, and rows that show only while it is checked. Answers like a checkable QGroupBox."""
+
+    toggled = QtCore.Signal(bool)
+
+    def __init__(self, title, checked, tip):
+        super().__init__(objectName="viewGroup", toolTip=tip)
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 4, 0, 0)
+        lay.setSpacing(8)
+        rule = QtWidgets.QFrame(objectName="viewRule")
+        rule.setFixedHeight(1)
+        lay.addWidget(rule)
+        self.check = QtWidgets.QCheckBox(title, checked=checked, objectName="viewGroupTitle")
+        lay.addWidget(self.check)
+        self.rows = QtWidgets.QWidget(objectName="viewBody")
+        self.rows.setVisible(checked)
+        lay.addWidget(self.rows)
+        self.check.toggled.connect(self.rows.setVisible)
+        self.check.toggled.connect(self.toggled)
+
+    def title(self):
+        return self.check.text()
+
+    def isChecked(self):
+        return self.check.isChecked()
+
+    def setChecked(self, on):
+        self.check.setChecked(on)
+
+    def event(self, event):
+        if event.type() == QtCore.QEvent.DynamicPropertyChange:   # marked "set": restyle the title
+            self.check.setProperty("set", self.property("set"))
+            self.check.style().unpolish(self.check)
+            self.check.style().polish(self.check)
+        return super().event(event)
+
+
+class _ElidedCheckBox(QtWidgets.QCheckBox):
+    """A check box whose label is shortened with … in the middle when the cell is too narrow."""
+
+    def minimumSizeHint(self):
+        return QtCore.QSize(40, super().minimumSizeHint().height())
+
+    def paintEvent(self, event):
+        opt = QtWidgets.QStyleOptionButton()
+        self.initStyleOption(opt)
+        label = self.style().subElementRect(QtWidgets.QStyle.SE_CheckBoxContents, opt, self)
+        opt.text = self.fontMetrics().elidedText(self.text(), QtCore.Qt.ElideMiddle, max(0, label.width()))
+        QtWidgets.QStylePainter(self).drawControl(QtWidgets.QStyle.CE_CheckBox, opt)
+
 
 class _Card(QtWidgets.QFrame):
-    """A View tab card: ``width`` wide in a row, narrower when the tab is narrower."""
+    """A View tab card: a foldable title row over its settings, as wide as its column."""
 
-    def __init__(self, width):
+    def __init__(self):
         super().__init__(objectName="viewSection")
-        self._width = width
-        self.setMinimumWidth(160)
-        self.setMaximumWidth(width)
-
-    def sizeHint(self):
-        return QtCore.QSize(self._width, super().sizeHint().height())
+        self.setMinimumWidth(200)
+        self.folded = False
 
 
-# View tab rows -> the pipe.view setting they show (marked when the notebook sets it)
+# View tab cards, in order -> the pipe.view settings they show (marked when the notebook sets one)
 _SECTION_KEYS = {
-    "Atoms": ("style", "theme", "atom_style", "radius_scale", "radius_preset", "oxidation_states"),
-    "Types": ("colors", "radii"),
+    "Atoms": ("style", "theme", "atom_style", "radius_scale", "radius_preset", "oxidation_states", "atoms"),
+    "Types": ("colors", "radii", "transparency"),
     "Bonds": ("bonds", "bond_radius", "bond_pairs", "bond_factor"),
+    "Surfaces": ("surfaces",),
     "Cell": ("cell", "cell_width", "cell_color", "replicate", "replicate_cell", "boundary", "boundary_bonds"),
+    "Labels": ("labels", "selection"),
+    "Camera": ("frame", "direction", "zoom", "orthographic", "camera", "light"),
     "Elements": ("visuals", "vectors", "trajectory_width"),
-    "Camera": ("frame", "direction", "zoom", "orthographic", "camera"),
 }
+# widest form label of the View tab: every card's label column is this wide, so fields line up
+_LABEL_WIDEST = "Radius scale"
+
+
+def _label_text(labels) -> str:
+    """The Labels field for a ``labels`` setting."""
+    if labels is None or labels is False:
+        return ""
+    if labels is True:
+        return "{type}"
+    return str(labels.get("text", "{type}")) if isinstance(labels, dict) else str(labels)
 
 
 class DisplayPanel(QtWidgets.QWidget):
-    """The View tab: how the structure is drawn, as cards (Atoms, Types, Bonds, Cell, Elements,
-    Camera) that sit in a row below the 3D view and wrap when the tab is narrow. Every value is a
+    """The View tab: how the structure is drawn, as foldable cards (Atoms, Types, Bonds, Surfaces, Cell,
+    Labels, Camera, Elements) in equal-width columns below the 3D view, one column when the tab is
+    narrow. Every form shares one label column width so fields line up across cards. Every value is a
     ``pipe.view`` setting; the ones the notebook's view cell sets are marked, and a change made
     here goes back into that cell. Steps live in notebook cells; this tab only changes the look."""
 
@@ -354,6 +504,8 @@ class DisplayPanel(QtWidgets.QWidget):
         self._marks = []          # (label, keys): marked when the notebook's view sets one of keys
         self._forms = {}          # plugin visual index -> its ParameterForm
         self._form = None         # the last plugin visual form built (tests)
+        self.folded = set()       # titles of folded cards; kept across rebuilds
+        self._label_w = self.fontMetrics().horizontalAdvance(_LABEL_WIDEST) + 8
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
 
@@ -395,14 +547,17 @@ class DisplayPanel(QtWidgets.QWidget):
             self.update_marks()
             return
         self._marks, self._forms = [], {}
+        fm = self.fontMetrics()
+        self._label_w = fm.horizontalAdvance(_LABEL_WIDEST) + 8
         page = _FlowPage(objectName="viewPage")
-        flow = FlowLayout(page, spacing=8)
-        flow.setContentsMargins(8, 8, 8, 8)
+        flow = MasonryLayout(page, spacing=10, column=max(280, fm.averageCharWidth() * 40))
+        flow.setContentsMargins(10, 10, 10, 10)
         self.sections = {}
-        for title, build, width in (("Atoms", self._particles_editor, 280), ("Types", self._types_editor, 320),
-                                    ("Bonds", self._bonds_editor, 340), ("Cell", self._cell_editor, 300),
-                                    ("Elements", self._elements_editor, 280), ("Camera", self._camera_editor, 260)):
-            card = self._section(title, build(), width)
+        builders = {"Atoms": self._particles_editor, "Types": self._types_editor, "Bonds": self._bonds_editor,
+                    "Surfaces": self._surfaces_editor, "Cell": self._cell_editor, "Labels": self._labels_editor,
+                    "Camera": self._camera_editor, "Elements": self._elements_editor}
+        for title in _SECTION_KEYS:
+            card = self._section(title, builders[title]())
             self.sections[title] = card
             flow.addWidget(card)
         old = self.scroll.takeWidget()
@@ -412,29 +567,127 @@ class DisplayPanel(QtWidgets.QWidget):
         self.update_status()
         self.update_marks()
 
-    def _section(self, title, body, width):
-        card = _Card(width)
+    def _section(self, title, body):
+        card = _Card()
         lay = QtWidgets.QVBoxLayout(card)
-        lay.setContentsMargins(10, 8, 10, 10)
-        lay.setSpacing(6)
-        head = QtWidgets.QHBoxLayout()
+        lay.setContentsMargins(12, 6, 12, 12)
+        lay.setSpacing(8)
+        head = _CardHead(objectName="viewSectionHead", toolTip=f"Fold or unfold {title}")
+        head.setCursor(QtCore.Qt.PointingHandCursor)
+        row = QtWidgets.QHBoxLayout(head)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        fold = header.button("chevron_down", f"Fold {title}", name="viewFold")
+        fold.setFixedSize(20, 20)
+        fold.setIconSize(QtCore.QSize(14, 14))
         name = QtWidgets.QLabel(title.upper(), objectName="viewSectionTitle")
         mark = QtWidgets.QLabel("", objectName="viewSectionMark")
-        head.addWidget(name)
-        head.addStretch(1)
-        head.addWidget(mark)
-        lay.addLayout(head)
+        row.addWidget(fold)
+        row.addWidget(name)
+        row.addStretch(1)
+        row.addWidget(mark)
+        lay.addWidget(head)
+        content = QtWidgets.QWidget(objectName="viewBody")
+        inner = QtWidgets.QVBoxLayout(content)
+        inner.setContentsMargins(0, 0, 0, 0)
+        inner.setSpacing(8)
         body.setObjectName("viewBody")
-        lay.addWidget(body)
-        card.status = QtWidgets.QLabel("", objectName="muted", wordWrap=True)
+        inner.addWidget(body)
+        card.status = QtWidgets.QLabel("", objectName="viewStatus", wordWrap=True)
         card.status.hide()
-        lay.addWidget(card.status)
+        inner.addWidget(card.status)
+        lay.addWidget(content)
+        card.content, card.fold = content, fold
+        head.clicked.connect(lambda t=title: self.set_folded(t, t not in self.folded))
+        fold.clicked.connect(lambda _=False, t=title: self.set_folded(t, t not in self.folded))
+        self._show_folded(card, title in self.folded)
         self._marks.append((mark, _SECTION_KEYS[title]))
         return card
+
+    def set_folded(self, title: str, folded: bool):
+        """Fold (only the title row shows) or unfold the card ``title``; stays so across rebuilds."""
+        (self.folded.add if folded else self.folded.discard)(title)
+        if title in self.sections:
+            self._show_folded(self.sections[title], folded)
+
+    @staticmethod
+    def _show_folded(card, folded):
+        card.folded = folded
+        card.content.setVisible(not folded)
+        header.set_icon(card.fold, "chevron_right" if folded else "chevron_down")
+        card.fold.setToolTip(("Unfold " if folded else "Fold ") + card.fold.toolTip().split(" ", 1)[1])
+
+    def _form_layout(self, parent=None, top=0):
+        """A form whose label column is as wide as every other card's."""
+        f = QtWidgets.QFormLayout(parent)
+        f.setContentsMargins(0, top, 0, 0)
+        f.setHorizontalSpacing(10)
+        f.setVerticalSpacing(6)
+        f.setLabelAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        f.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
+        f.setRowWrapPolicy(QtWidgets.QFormLayout.DontWrapRows)
+        return f
+
+    def _group(self, title, checked, tip):
+        """A switchable sub-section of a card (Replicate cell, Boundary, Light): a title with a check box
+        over a rule, its rows in the card's own label and field columns."""
+        box = _Group(title, checked, tip)
+        return box, self._form_layout(box.rows)
+
+    def _buttons(self, *buttons):
+        """A row of card actions, left-aligned."""
+        row = QtWidgets.QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        for b in buttons:
+            row.addWidget(b)
+        row.addStretch(1)
+        return row
+
+    @staticmethod
+    def _fit_table(table, rows=8):
+        """A table exactly as tall as its header and up to ``rows`` rows: no empty band below the rows."""
+        table.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+        table.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        table.setShowGrid(False)
+        table.setAlternatingRowColors(False)
+        table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        table.setFocusPolicy(QtCore.Qt.ClickFocus)
+        vh = table.verticalHeader()
+        vh.setDefaultSectionSize(max(26, table.fontMetrics().height() + 12))
+        n = min(rows, table.rowCount())
+        h = table.horizontalHeader().sizeHint().height() + n * vh.defaultSectionSize() + 2 * table.frameWidth()
+        table.setFixedHeight(h)
+
+    @staticmethod
+    def _cell_spin(spin):
+        """A number edited inside a table cell, right-aligned; theme.py hides its arrows (wheel and keys
+        still step). Not ``NoButtons``: with a style sheet that leaves the editor 1 px wide."""
+        spin.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        return spin
+
+    @staticmethod
+    def _numeric_headers(table, *columns):
+        for c in columns:
+            table.horizontalHeaderItem(c).setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+
+    @staticmethod
+    def _swatch(rgb, tip):
+        """A color chip for a table cell; returns (cell widget, button)."""
+        cell = QtWidgets.QWidget(objectName="viewCell")
+        lay = QtWidgets.QHBoxLayout(cell)
+        lay.setContentsMargins(6, 4, 6, 4)
+        btn = QtWidgets.QPushButton(toolTip=tip, objectName="viewSwatch")
+        btn.setFixedHeight(16)
+        btn.setMinimumWidth(24)
+        _paint_swatch(btn, QtGui.QColor.fromRgbF(*np.clip(rgb, 0, 1)).name())
+        lay.addWidget(btn)
+        return cell, btn
 
     def _row(self, form, label, widget, *keys):
         """A form row whose label is marked when the notebook's view sets one of ``keys``."""
         lab = QtWidgets.QLabel(label, objectName="viewLabel")
+        lab.setFixedWidth(self._label_w)
         form.addRow(lab, widget)
         if keys:
             self._marks.append((lab, keys))
@@ -532,7 +785,7 @@ class DisplayPanel(QtWidgets.QWidget):
                                     toolTip="Add a visual element (cell axes, halos, … from plugins)")
         add.setMenu(self.visual_menu)
         self.visual_button = add
-        lay.addWidget(add, 0, QtCore.Qt.AlignLeft)
+        lay.addLayout(self._buttons(add))
         return w
 
     def _plugin_visual_editor(self, k, entry):
@@ -575,8 +828,7 @@ class DisplayPanel(QtWidgets.QWidget):
         from ..view3d import STYLE_PRESETS
 
         w = QtWidgets.QWidget()
-        f = QtWidgets.QFormLayout(w)
-        f.setContentsMargins(0, 0, 0, 0)
+        f = self._form_layout(w)
         style = QtWidgets.QComboBox()
         style.addItems(list(STYLE_PRESETS))
         style.setCurrentText(self.style.preset)
@@ -606,7 +858,105 @@ class DisplayPanel(QtWidgets.QWidget):
                          "flat: ASE-GUI look, unshaded discs with outlines")
         shape.currentTextChanged.connect(lambda v: self._set("atom_style", v))
         self._row(f, "Drawn as", shape, "atom_style")
+        show = QtWidgets.QCheckBox("Draw atoms", checked=bool(self.style.show_atoms),
+                                   toolTip="Off: bonds, polyhedra and the rest stay (a stick model)")
+        show.toggled.connect(lambda v: self._set("show_atoms", v))
+        self._row(f, "", show, "atoms")
         return w
+
+    def _labels_editor(self):
+        """Text on each atom and the selection highlight."""
+        w = QtWidgets.QWidget()
+        f = self._form_layout(w)
+        labels = QtWidgets.QLineEdit(placeholderText="off, e.g. {type}{index}", clearButtonEnabled=True)
+        labels.setText(_label_text(self.style.labels))
+        labels.setToolTip("A label on each atom: {type}, {index}, {id} or a per-atom property such as "
+                          "{Charge:.2f}; empty: no labels")
+        labels.editingFinished.connect(lambda e=labels: self._set_labels(e.text()))
+        self._row(f, "Text", labels, "labels")
+        sel = QtWidgets.QCheckBox("Highlight selection", checked=self.style.selection is not False,
+                                  toolTip="Draw the atoms a selection step selected in red, as OVITO does")
+        sel.toggled.connect(lambda v: self._set("selection", bool(v)))
+        self._row(f, "Selection", sel, "selection")
+        return w
+
+    def _set_labels(self, text: str):
+        text = text.strip()
+        value = None if not text else (True if text == "{type}" else text)
+        if value is not None and isinstance(self.style.labels, dict):
+            value = {**self.style.labels, "text": text}   # keep types, size and color set in code
+        if value == self.style.labels:
+            return
+        self._set("labels", value)
+
+    def _surfaces_editor(self):
+        """Polyhedra, isosurfaces and slices (``data.surfaces``) by name: shown, color, transparency,
+        edges; the view's ``surfaces`` setting, so the step that made them stays as it is."""
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        names = [] if self.data is None else [n for n, m in getattr(self.data, "surfaces", {}).items() if m.face_count]
+        if not names:
+            lay.addWidget(QtWidgets.QLabel("Polyhedra, isosurfaces and slices that steps make appear here.",
+                                           objectName="muted", wordWrap=True))
+            return w
+        table = QtWidgets.QTableWidget(len(names), 4, objectName="viewTable")
+        table.setHorizontalHeaderLabels(["Surface", "Color", "Transp.", "Edges"])
+        table.verticalHeader().setVisible(False)
+        head = table.horizontalHeader()
+        head.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        head.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        head.setDefaultAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        for r, name in enumerate(names):
+            mesh = self.data.surfaces[name]
+            st = self.style.surfaces.get(name, {})
+            shown = _ElidedCheckBox(name, checked=st.get("visible", True), toolTip=f"Draw {name}")
+            shown.toggled.connect(lambda v, n=name: self.set_surface(n, visible=v))
+            table.setCellWidget(r, 0, shown)
+            color = st.get("color")
+            if color is None:
+                fc = mesh.face_colors() if mesh.face_count else np.array([[0.6, 0.6, 0.6]])
+                rgb = np.clip(np.asarray(fc, float).reshape(-1, 3).mean(0), 0, 1)
+            else:
+                from ..render import _rgb
+
+                rgb = np.clip(_rgb(color), 0, 1)
+            cell, btn = self._swatch(rgb, f"Color of {name} (Shift+click: the step's colors)")
+            btn.clicked.connect(lambda _=False, n=name, b=btn: self._pick_surface_color(n, b))
+            table.setCellWidget(r, 1, cell)
+            tr = QtWidgets.QDoubleSpinBox(minimum=0, maximum=1, singleStep=0.05,
+                                          value=float(st.get("transparency", mesh.transparency)))
+            tr.valueChanged.connect(lambda v, n=name: self.set_surface(n, transparency=round(v, 3)))
+            table.setCellWidget(r, 2, self._cell_spin(tr))
+            edges = QtWidgets.QCheckBox(checked=st.get("edges", mesh.edges is not None and len(mesh.edges) > 0))
+            edges.setEnabled(mesh.edges is not None and len(mesh.edges) > 0)
+            edges.toggled.connect(lambda v, n=name: self.set_surface(n, edges=v))
+            table.setCellWidget(r, 3, _centered(edges))
+        self._numeric_headers(table, 2)
+        self._fit_table(table)
+        lay.addWidget(table)
+        reset = QtWidgets.QPushButton("Reset", toolTip="Back to the look the steps gave the surfaces")
+        reset.clicked.connect(lambda: (self.style.surfaces.clear(), self.styleChanged.emit(), self.refresh()))
+        lay.addLayout(self._buttons(reset))
+        return w
+
+    def set_surface(self, name: str, **style):
+        """Restyle the surface ``name`` (visible, color, transparency, edges) and redraw."""
+        self.style.surfaces = {**self.style.surfaces, name: {**self.style.surfaces.get(name, {}), **style}}
+        self._emit()
+
+    def _pick_surface_color(self, name, button):
+        if QtWidgets.QApplication.keyboardModifiers() & QtCore.Qt.ShiftModifier:
+            st = {k: v for k, v in self.style.surfaces.get(name, {}).items() if k != "color"}
+            self.style.surfaces = {**{k: v for k, v in self.style.surfaces.items() if k != name},
+                                   **({name: st} if st else {})}
+            self._emit()
+            self.refresh()
+            return
+        c = QtWidgets.QColorDialog.getColor(parent=self)
+        if c.isValid():
+            _paint_swatch(button, c.name())
+            self.set_surface(name, color=c.name())
 
     def _types_editor(self):
         from ..render import type_color, type_radius
@@ -615,11 +965,15 @@ class DisplayPanel(QtWidgets.QWidget):
         lay = QtWidgets.QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
         types = [] if self.data is None else list(dict.fromkeys(self.data.types))
-        table = QtWidgets.QTableWidget(len(types), 4, objectName="viewTable")
-        table.setHorizontalHeaderLabels(["Type", "Color", "Radius", "Count"])
+        table = QtWidgets.QTableWidget(len(types), 5, objectName="viewTable")
+        table.setHorizontalHeaderLabels(["Type", "Color", "Radius", "Transp.", "Count"])
         table.verticalHeader().setVisible(False)
-        table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
-        table.horizontalHeader().setMinimumSectionSize(36)
+        head = table.horizontalHeader()
+        head.setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        for c in (0, 1, 4):
+            head.setSectionResizeMode(c, QtWidgets.QHeaderView.ResizeToContents)
+        head.setMinimumSectionSize(44)
+        head.setDefaultAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
         for r, t in enumerate(types):
             item = QtWidgets.QTableWidgetItem(t)
             if t in self.style.type_colors or t in self.style.type_radii:
@@ -630,28 +984,39 @@ class DisplayPanel(QtWidgets.QWidget):
             table.setItem(r, 0, item)
             color = self.style.type_colors.get(t)
             rgb = type_color(t, r) if color is None else np.asarray(QtGui.QColor(color).getRgbF()[:3] if isinstance(color, str) else color)
-            btn = QtWidgets.QPushButton(toolTip=f"Color of {t}")
-            btn.setStyleSheet(f"background: {QtGui.QColor.fromRgbF(*rgb).name()}; border: 1px solid {TOKENS['border']};")
+            cell, btn = self._swatch(rgb, f"Color of {t}")
             btn.clicked.connect(lambda _=False, t=t, b=btn: self._pick_color(t, b))
-            table.setCellWidget(r, 1, btn)
+            table.setCellWidget(r, 1, cell)
             rad = QtWidgets.QDoubleSpinBox(minimum=0.05, maximum=5, singleStep=0.05,
                                            value=self.style.type_radii.get(t, type_radius(t, preset=self.style.radius_preset)))
             rad.valueChanged.connect(lambda v, t=t: (self.style.type_radii.__setitem__(t, v), self._emit()))
-            table.setCellWidget(r, 2, rad)
-            table.setItem(r, 3, QtWidgets.QTableWidgetItem(str(int((self.data.types == t).sum()))))
-        table.setFixedHeight(min(220, 30 * (len(types) + 1) + 6))  # no empty rows below the types
+            table.setCellWidget(r, 2, self._cell_spin(rad))
+            tr = QtWidgets.QDoubleSpinBox(minimum=0, maximum=1, singleStep=0.1,
+                                          value=float(self.style.type_transparency.get(t, 0.0)),
+                                          toolTip=f"Transparency of {t}: 0 opaque, 1 hidden")
+            tr.valueChanged.connect(lambda v, t=t: self.set_type_transparency(t, v))
+            table.setCellWidget(r, 3, self._cell_spin(tr))
+            count = QtWidgets.QTableWidgetItem(f"{int((self.data.types == t).sum()):,}")
+            count.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+            table.setItem(r, 4, count)
+        self._numeric_headers(table, 2, 3, 4)
+        self._fit_table(table)
         lay.addWidget(table)
-        row = QtWidgets.QHBoxLayout()
         imp = QtWidgets.QPushButton("VESTA…", toolTip="Import colors and radii from a VESTA elements.ini file")
         imp.clicked.connect(self._import_elements_ini)
         reset = QtWidgets.QPushButton("Reset", toolTip="Back to the default colors and radii of every type")
         reset.clicked.connect(lambda: (self.style.type_colors.clear(), self.style.type_radii.clear(),
-                                       self.styleChanged.emit(), self.refresh()))
-        row.addWidget(imp)
-        row.addWidget(reset)
-        row.addStretch(1)
-        lay.addLayout(row)
+                                       self.style.type_transparency.clear(), self.styleChanged.emit(),
+                                       self.refresh()))
+        lay.addLayout(self._buttons(imp, reset))
         return w
+
+    def set_type_transparency(self, t: str, value: float):
+        table = {k: v for k, v in self.style.type_transparency.items() if k != t}
+        if value > 0:
+            table[t] = round(float(value), 3)
+        self.style.type_transparency = table
+        self._emit()
 
     def _set_style_preset(self, name):
         types = self.data.types if self.data is not None else ()
@@ -687,7 +1052,7 @@ class DisplayPanel(QtWidgets.QWidget):
         c = QtWidgets.QColorDialog.getColor(parent=self, title=f"Color of {t}")
         if c.isValid():
             self.style.type_colors[t] = (c.redF(), c.greenF(), c.blueF())
-            button.setStyleSheet(f"background: {c.name()}; border: 1px solid {TOKENS['border']};")
+            _paint_swatch(button, c.name())
             self._emit()
 
     def _import_elements_ini(self):
@@ -701,12 +1066,11 @@ class DisplayPanel(QtWidgets.QWidget):
 
     def _bonds_editor(self):
         w = QtWidgets.QWidget()
-        f = QtWidgets.QFormLayout(w)
-        f.setContentsMargins(0, 0, 0, 0)
+        f = self._form_layout(w)
         on = QtWidgets.QCheckBox("Show bonds", checked=self.style.bonds_enabled)
         rad = QtWidgets.QDoubleSpinBox(minimum=0.01, maximum=2, singleStep=0.02, value=self.style.bond_radius, suffix=" Å")
         rad.valueChanged.connect(lambda v: self._set("bond_radius", v))
-        self._row(f, "Bonds", on, "bonds")
+        self._row(f, "", on, "bonds")
         self._row(f, "Radius", rad, "bond_radius")
         pairs = self.style.bond_pairs
         if not pairs and self.data is not None:   # what the automatic table would be; stored once edited
@@ -719,10 +1083,16 @@ class DisplayPanel(QtWidgets.QWidget):
         table.setHorizontalHeaderLabels(["A", "B", "min Å", "max Å"])
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        table.horizontalHeader().setDefaultAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
         for r, (a, b, lo, hi) in enumerate(pairs):
             for c, v in enumerate((a, b, f"{lo:.2f}", f"{hi:.2f}")):
-                table.setItem(r, c, QtWidgets.QTableWidgetItem(str(v)))
-        table.setFixedHeight(min(200, 30 * (len(pairs) + 1) + 6))
+                item = QtWidgets.QTableWidgetItem(str(v))
+                if c >= 2:
+                    item.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+                table.setItem(r, c, item)
+        self._numeric_headers(table, 2, 3)
+        self._fit_table(table, rows=6)
+        table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)   # cells are edited in place
         table.setToolTip("Bond search: pairwise cutoffs, * = any type")
 
         def commit():
@@ -739,11 +1109,10 @@ class DisplayPanel(QtWidgets.QWidget):
         table.itemChanged.connect(lambda *_: commit())
         on.toggled.connect(lambda v: (setattr(self.style, "bonds_enabled", v), self.styleChanged.emit(),
                                       QtCore.QTimer.singleShot(0, self.refresh)))
-        pairs_label = QtWidgets.QLabel("Pairs", objectName="viewLabel")
+        pairs_label = QtWidgets.QLabel("Pairs (cutoffs, * = any type)", objectName="viewLabel")
         self._marks.append((pairs_label, ("bond_pairs",)))
         f.addRow(pairs_label)
         f.addRow(table)
-        row = QtWidgets.QHBoxLayout()
         add = QtWidgets.QPushButton("Add pair")
         def edit(change):
             if not self.style.bond_pairs:
@@ -760,32 +1129,28 @@ class DisplayPanel(QtWidgets.QWidget):
                           "used by Coordination polyhedra")
         to_mod.clicked.connect(lambda: self.add_modifier(
             mods.CreateBonds(mode="pairwise", pairs=[tuple(p) for p in pairs])))
-        for b in (add, rm, to_mod):
-            row.addWidget(b)
-        row.addStretch(1)
-        f.addRow(row)
+        f.addRow(self._buttons(add, rm, to_mod))
         if self.data is not None and self.data.bonds is not None:
-            f.addRow(QtWidgets.QLabel(f"{self.data.bonds.count} bonds from a step (drawn instead of the table)",
-                                      objectName="muted", wordWrap=True))
+            f.addRow(QtWidgets.QLabel(f"{self.data.bonds.count:,} bonds from a step (drawn instead of the table)",
+                                      objectName="viewStatus", wordWrap=True))
         elif self.data is not None and self.style.bonds_enabled:
             from ..render import bond_list
 
             try:
                 n = len(bond_list(self.data, pairs=pairs)[0]) // 2
-                f.addRow(QtWidgets.QLabel(f"{n:,} bonds", objectName="muted"))
+                f.addRow(QtWidgets.QLabel(f"{n:,} bonds", objectName="viewStatus"))
             except ValueError as exc:
-                f.addRow(QtWidgets.QLabel(str(exc), wordWrap=True))
+                f.addRow(QtWidgets.QLabel(str(exc), wordWrap=True, objectName="viewError"))
         return w
 
     def _cell_editor(self):
         w = QtWidgets.QWidget()
-        f = QtWidgets.QFormLayout(w)
-        f.setContentsMargins(0, 0, 0, 0)
+        f = self._form_layout(w)
         show = QtWidgets.QCheckBox("Draw the cell", checked=self.style.show_cell)
         show.toggled.connect(lambda v: self._set("show_cell", v))
         width = QtWidgets.QDoubleSpinBox(minimum=0.5, maximum=10, singleStep=0.5, value=self.style.cell_width)
         width.valueChanged.connect(lambda v: self._set("cell_width", v))
-        self._row(f, "Cell", show, "cell")
+        self._row(f, "", show, "cell")
         self._row(f, "Line width", width, "cell_width")
         for box, keys in ((self._replicate_editor(), ("replicate", "replicate_cell")),
                           (self._boundary_editor(), ("boundary", "boundary_bonds"))):
@@ -798,13 +1163,15 @@ class DisplayPanel(QtWidgets.QWidget):
         from ..replicate import CELL_MODES
 
         n = list(self.style.replicate or (1, 1, 1))
-        box = QtWidgets.QGroupBox("Replicate cell", checkable=True, checked=bool(self.style.replicate))
-        box.setToolTip("Draw copies of the cell side by side, with bonds and polyhedra across them. "
-                       "Display only: analysis and export keep the original cell.")
+        box, g = self._group("Replicate cell", bool(self.style.replicate),
+                             "Draw copies of the cell side by side, with bonds and polyhedra across them. "
+                             "Display only: analysis and export keep the original cell.")
         spins = []
         for k, axis in enumerate("abc"):
-            s = QtWidgets.QSpinBox(minimum=1, maximum=20, value=int(n[k]) if box.isChecked() else 2)
-            s.setPrefix(f"{axis} ")
+            s = QtWidgets.QSpinBox(minimum=1, maximum=20, value=int(n[k]) if box.isChecked() else 2,
+                                   toolTip=f"Copies along {axis}")
+            s.setPrefix(f"{axis}  ")
+            s.setMinimumWidth(44)
             spins.append(s)
         lines = QtWidgets.QComboBox()
         lines.addItems(list(CELL_MODES))
@@ -822,21 +1189,21 @@ class DisplayPanel(QtWidgets.QWidget):
         for s in spins:
             s.valueChanged.connect(apply)
         lines.currentTextChanged.connect(apply)
-        g = QtWidgets.QFormLayout(box)
         row = QtWidgets.QHBoxLayout()
+        row.setSpacing(6)
         for s in spins:
-            row.addWidget(s)
-        g.addRow("Copies", row)
-        g.addRow("Cell lines", lines)
+            row.addWidget(s, 1)
+        self._row(g, "Copies", _wrap(row))
+        self._row(g, "Cell lines", lines)
         return box
 
     def _boundary_editor(self):
         """VESTA's boundary range: periodic images inside lo..hi (fractional) are drawn too."""
         from ..boundary import BOND_MODES
 
-        box = QtWidgets.QGroupBox("Boundary (VESTA)", checkable=True, checked=bool(self.style.boundary))
-        box.setToolTip("Also draw the periodic images of atoms inside this fractional range, and complete "
-                       "bonds and polyhedra cut by the cell. Display only: analysis keeps the real atoms.")
+        box, g = self._group("Boundary (VESTA)", bool(self.style.boundary),
+                             "Also draw the periodic images of atoms inside this fractional range, and complete "
+                             "bonds and polyhedra cut by the cell. Display only: analysis keeps the real atoms.")
         lo_hi = (self.style.boundary if np.ndim(self.style.boundary) == 1 else self.style.boundary[0]) \
             if self.style.boundary else (0.0, 1.0)
         lo = QtWidgets.QDoubleSpinBox(minimum=-5, maximum=1, singleStep=0.05, decimals=3, value=float(lo_hi[0]))
@@ -856,20 +1223,19 @@ class DisplayPanel(QtWidgets.QWidget):
         lo.valueChanged.connect(apply)
         hi.valueChanged.connect(apply)
         mode.currentTextChanged.connect(apply)
-        g = QtWidgets.QFormLayout(box)
         row = QtWidgets.QHBoxLayout()
-        row.addWidget(lo)
-        row.addWidget(QtWidgets.QLabel("to"))
-        row.addWidget(hi)
-        g.addRow("Range", row)
-        g.addRow("Bonds out", mode)
+        row.setSpacing(6)
+        row.addWidget(lo, 1)
+        row.addWidget(QtWidgets.QLabel("to", objectName="viewLabel"))
+        row.addWidget(hi, 1)
+        self._row(g, "Range", _wrap(row))
+        self._row(g, "Bonds out", mode)
         return box
 
     def _camera_editor(self):
         """What the notebook's view says about the camera and frame; Save writes the current one."""
         w = QtWidgets.QWidget()
-        f = QtWidgets.QFormLayout(w)
-        f.setContentsMargins(0, 0, 0, 0)
+        f = self._form_layout(w)
         view = getattr(self.pipeline, "view", None) if self.pipeline is not None else None
         values = self._set_keys()
 
@@ -885,11 +1251,68 @@ class DisplayPanel(QtWidgets.QWidget):
         self._row(f, "Projection", QtWidgets.QLabel("orthographic" if ortho else "perspective",
                                                     objectName="viewValue"), "orthographic")
         self._row(f, "Frame", QtWidgets.QLabel(shown("frame", "the timeline's"), objectName="viewValue"), "frame")
+        box = self._light_editor()
+        self._marks.append((box, ("light",)))
+        f.addRow(box)
         save = QtWidgets.QPushButton("Save camera", toolTip="Write the current camera and frame into the "
                                                             "notebook's view(pipe, ...) cell")
         save.clicked.connect(self.cameraRequested.emit)
-        f.addRow(save)
+        f.addRow(self._buttons(save))
         return w
+
+    def _light_editor(self):
+        """The key light (the view's ``light``) as azimuth/elevation from the viewer and intensity; unchecked,
+        each renderer lights the scene its own default way."""
+        import math
+
+        from ..render import light_params
+
+        d, k = light_params(self.style.light)
+        box, g = self._group("Light", self.style.light is not None,
+                             "Key light for the viewport and every renderer, relative to the viewer: azimuth turns "
+                             "it right, elevation up. Unchecked: the default light (upper left).")
+        az = QtWidgets.QDoubleSpinBox(minimum=-180, maximum=180, singleStep=15, decimals=0, suffix="°",
+                                      value=round(math.degrees(math.atan2(d[0], d[2]))))
+        el = QtWidgets.QDoubleSpinBox(minimum=-90, maximum=90, singleStep=15, decimals=0, suffix="°",
+                                      value=round(math.degrees(math.asin(max(-1.0, min(1.0, d[1]))))))
+        strength = QtWidgets.QDoubleSpinBox(minimum=0, maximum=3, singleStep=0.1, decimals=2, value=k)
+        self.light_widgets = {"box": box, "azimuth": az, "elevation": el, "intensity": strength}
+
+        def apply(*_):
+            self.style.light = {"azimuth": az.value(), "elevation": el.value(), "intensity": strength.value()} \
+                if box.isChecked() else None
+            self._emit()
+
+        box.toggled.connect(apply)
+        for spin in (az, el, strength):
+            spin.valueChanged.connect(apply)
+        self._row(g, "Azimuth", az)
+        self._row(g, "Elevation", el)
+        self._row(g, "Intensity", strength)
+        return box
+
+
+def _paint_swatch(button, color: str):
+    """Fill a color chip (the color is data, so this one style is set inline)."""
+    button.setStyleSheet(f"QPushButton {{ background: {color}; border: 1px solid {TOKENS['border']}; "
+                         f"border-radius: 3px; padding: 0; min-height: 0; }}")
+
+
+def _centered(widget):
+    """``widget`` centered in a table cell."""
+    cell = QtWidgets.QWidget(objectName="viewCell")
+    lay = QtWidgets.QHBoxLayout(cell)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.addWidget(widget, 0, QtCore.Qt.AlignCenter)
+    return cell
+
+
+def _wrap(layout):
+    """A layout as a form field."""
+    w = QtWidgets.QWidget()
+    layout.setContentsMargins(0, 0, 0, 0)
+    w.setLayout(layout)
+    return w
 
 
 def _short(value) -> str:

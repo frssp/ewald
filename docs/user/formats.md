@@ -29,9 +29,9 @@ files directly.
 | CIF | ASE | every data block is a frame |
 | others | ASE | anything `ase.io.read` understands, with `format=` set to the ASE name |
 
-`ewald plugins` prints every reader and writer with its file-name patterns. The H5MD and
-MDAnalysis formats need the `formats` extra: `pip install "ewald[formats]"` (h5py and
-MDAnalysis).
+`ewald plugins` prints every reader and writer with its file-name patterns. The HDF5 formats
+(h5py) work in every install; the MDAnalysis formats need the `formats` extra:
+`pip install "ewald[formats]"`.
 
 ### HDF5 files
 
@@ -110,8 +110,12 @@ data.tables["NEB"]                                     # Reaction Coordinate, En
 pipe = import_file("neb", energies=[-120.31, None, None, None, -120.12])  # endpoint energies by hand (None: from file)
 ```
 
-In the GUI, File › Load NEB folder opens either folder layout and shows the profile in the
-Plots tab. Remote (SSH) NEB folders are not read yet.
+In a notebook, `pipe = load("neb")` does the same. In the GUI, File › Load NEB folder opens
+either folder layout and shows the profile in the Plots tab; dropping the folder on the window
+does too. Opening one image on its own (`03/OUTCAR`, `dump.neb.3`) asks whether to open the
+whole band instead. Remote NEB folders open the same way (`load("hpc:/scratch/neb")`, or
+Open as NEB run on a folder in the Remotes side bar): OUTCARs and dumps are read in place over
+SFTP, POSCAR/CONTCAR are downloaded to the cache.
 
 ## Reader options
 
@@ -209,7 +213,8 @@ the profiles and the `~/.ssh/config` hosts not saved yet (right-click › Save a
 folder of the picked computer: double-click opens a file in place (streamed or cached, as
 below), the ★ button bookmarks a folder, the drop-down holds bookmarks and recent files, and a
 file's right-click menu offers Download and open local copy, Download to…, Copy path and Copy
-Python (`pipe = load("nurion:/…")`) for a notebook cell. The same works from a terminal:
+Python (`pipe = load("nurion:/…")`) for a notebook cell; a folder's right-click menu has Open as
+NEB run ([NEB runs](#neb-runs)). The same works from a terminal:
 
 ```bash
 ewald remote add nurion --host nurion.ksc.re.kr --user me --key ~/.ssh/id_ed25519 --passphrase

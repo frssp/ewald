@@ -10,6 +10,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from .. import plugin_catalog as pc
 from .. import plugins
 from . import workers
+from .busy import BusyLabel
 from .theme import TOKENS
 
 
@@ -27,15 +28,37 @@ class _CatalogLoader(QtCore.QThread):
         self.loaded.emit(entries, errors)
 
 
+class _FetchWorker(QtCore.QThread):
+    """Downloads or copies a plugin file into the plugin folder off the GUI thread
+    (:func:`ewald.plugin_catalog.fetch_file`); the import happens back on the GUI thread."""
+
+    fetched = QtCore.Signal(object, str)    # path (None on failure), error
+
+    def __init__(self, entry, parent=None):
+        super().__init__(parent)
+        self.entry = entry
+
+    def run(self):
+        try:
+            self.fetched.emit(pc.fetch_file(self.entry), "")
+        except Exception as exc:
+            self.fetched.emit(None, str(exc) or type(exc).__name__)
+
+
+def _key(item) -> str:
+    return pc._norm(item.name)
+
+
 class PluginRow(QtWidgets.QFrame):
     """One plugin: name, summary, kinds and its Install, Update, Disable or Remove buttons."""
 
     clicked = QtCore.Signal(object)
     action = QtCore.Signal(object, str)   # item (an Entry for "install"/"update"), action name
 
-    def __init__(self, item, installed: bool, parent=None, update=None):
+    def __init__(self, item, installed: bool, parent=None, update=None, busy: str = ""):
         super().__init__(parent)
         self.item = item
+        self.busy = None
         self.setObjectName("pluginRow")
         self.setCursor(QtCore.Qt.PointingHandCursor)
         lay = QtWidgets.QVBoxLayout(self)
@@ -46,12 +69,20 @@ class PluginRow(QtWidgets.QFrame):
                                  (f" <span style='color:{TOKENS['muted']}'>{html.escape(item.version)}</span>"
                                   if getattr(item, "version", "") else ""))
         head.addWidget(title, 1)
-        if installed and isinstance(item, pc.Installed):
+        if busy:                                    # installing, updating or removing: a spinner, no buttons
+            self.busy = BusyLabel(busy)
+            head.addWidget(self.busy)
+        elif installed and isinstance(item, pc.Installed):
             if update is not None:
                 u = QtWidgets.QPushButton(f"Update to {update.version}", objectName="pluginInstall")
                 u.setToolTip(f"From {update.catalog}")
                 u.clicked.connect(lambda: self.action.emit(update, "update"))
                 head.addWidget(u)
+            if item.provides.get("settings_page"):
+                c = QtWidgets.QPushButton("Settings", objectName="pluginButton")
+                c.setToolTip("Set up this plugin (" + ", ".join(item.provides["settings_page"]) + ")")
+                c.clicked.connect(lambda: self.action.emit(self.item, "settings"))
+                head.addWidget(c)
             if item.id:
                 on = item.enabled
                 t = QtWidgets.QPushButton("Disable" if on else "Enable", objectName="pluginButton")
@@ -131,7 +162,11 @@ class PluginsPanel(QtWidgets.QWidget):
         self.items: list = []
         self.current = None
         self._loader = None
+        self._loading = False
         self._process = None
+        self._pip_key = None
+        self._workers: list = []
+        self._busy: dict[str, str] = {}      # plugin key -> "Installing…" while its action runs
         self._updates = 0
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
@@ -159,6 +194,16 @@ class PluginsPanel(QtWidgets.QWidget):
         self.log.setMaximumHeight(120)
         self.log.setVisible(False)
         lay.addWidget(self.log)
+        self.busy_bar = QtWidgets.QWidget(objectName="pluginBusy")
+        bar = QtWidgets.QHBoxLayout(self.busy_bar)
+        bar.setContentsMargins(2, 0, 0, 0)
+        self.busy_label = BusyLabel()
+        bar.addWidget(self.busy_label, 1)
+        self.cancel_button = QtWidgets.QToolButton(text="Cancel", toolTip="Stop pip")
+        self.cancel_button.clicked.connect(self.cancel)
+        bar.addWidget(self.cancel_button)
+        self.busy_bar.setVisible(False)
+        lay.addWidget(self.busy_bar)
         row = QtWidgets.QHBoxLayout()
         for text, slot, tip in (("From file…", self.install_from_file, "Install a plugin .py file, or a downloaded .zip/.whl/.tar.gz package"),
                                 ("pip…", self.install_with_pip, "Install a plugin package with pip"),
@@ -179,20 +224,50 @@ class PluginsPanel(QtWidgets.QWidget):
 
     def refresh(self):
         self.items = pc.installed()
-        self._fill()
         if self._loader is None or not self._loader.isRunning():
+            self._loading = True
             self._loader = workers.detach(_CatalogLoader(self.catalog_urls()))  # may outlive the panel
             self._loader.loaded.connect(self._catalog_loaded)
             self._loader.start()
+        self._fill()
 
     def wait(self, ms: int = 10000):
-        """Block until the catalogs are read (tests, scripts)."""
+        """Block until the catalogs are read and running installs are done (tests, scripts)."""
         if self._loader is not None:
             self._loader.wait(ms)
-            QtWidgets.QApplication.processEvents()
+        for worker in list(self._workers):
+            worker.wait(ms)
+        if self._process is not None:
+            self._process.waitForFinished(ms)
+        QtWidgets.QApplication.processEvents()
+
+    @property
+    def busy(self) -> dict:
+        """``{plugin key: "Installing…"}`` for the actions still running."""
+        return dict(self._busy)
+
+    def _set_busy(self, key, text=None, status=""):
+        if text:
+            self._busy[key] = text
+        else:
+            self._busy.pop(key, None)
+        running = self._process is not None or bool(self._busy)
+        if status:
+            self.busy_label.setText(status)
+        elif not running:
+            self.busy_label.setText("")
+        self.busy_bar.setVisible(running)
+        self.cancel_button.setVisible(self._process is not None)
+        self._fill()
+
+    @property
+    def loading(self) -> bool:
+        """The catalogs are being read."""
+        return self._loading
 
     def _catalog_loaded(self, entries, errors):
         self.entries, self.catalog_errors = entries, errors
+        self._loading = False
         self._fill()
 
     def updates(self) -> list:
@@ -233,6 +308,8 @@ class PluginsPanel(QtWidgets.QWidget):
         if not installed:
             self.list_layout.addWidget(QtWidgets.QLabel("No plugins installed yet.", objectName="muted"))
         self._section(f"AVAILABLE  {len(available)}")
+        if self.loading:                          # the catalogs are still being read (URLs)
+            self.list_layout.addWidget(BusyLabel("Loading plugin catalogs…"))
         for e in available:
             self._row(e, False)
         for url, err in self.catalog_errors.items():
@@ -243,7 +320,7 @@ class PluginsPanel(QtWidgets.QWidget):
                                                    if private else "."), objectName="muted", wordWrap=True))
             else:
                 self.list_layout.addWidget(QtWidgets.QLabel(f"{url}: {err}", objectName="cellError", wordWrap=True))
-        if not available and not any(not pc.is_missing(e) for e in self.catalog_errors.values()):
+        if not available and not self.loading and not any(not pc.is_missing(e) for e in self.catalog_errors.values()):
             self.list_layout.addWidget(QtWidgets.QLabel(
                 "Nothing more to install here. Add plugin catalogs in Preferences › Python.",
                 objectName="muted", wordWrap=True))
@@ -253,7 +330,8 @@ class PluginsPanel(QtWidgets.QWidget):
         self.list_layout.addWidget(QtWidgets.QLabel(title, objectName="section"))
 
     def _row(self, item, installed, update=None):
-        row = PluginRow(item, installed, update=update)
+        busy = self._busy.get(_key(item)) or (update is not None and self._busy.get(_key(update))) or ""
+        row = PluginRow(item, installed, update=update, busy=busy)
         row.clicked.connect(self.show_details)
         row.action.connect(self._act)
         self.list_layout.addWidget(row)
@@ -294,6 +372,8 @@ class PluginsPanel(QtWidgets.QWidget):
     def _act(self, item, action):
         if action in ("install", "update"):
             self.install(item, update=action == "update")
+        elif action == "settings":
+            self.edit_settings(item)
         elif action in ("enable", "disable"):
             pc.set_enabled(item, action == "enable")
             self._say(f"{item.name}: {action}d" + (" (restart ewald to unload its package)"
@@ -303,19 +383,51 @@ class PluginsPanel(QtWidgets.QWidget):
         else:
             self.remove(item)
 
+    def edit_settings(self, item, exec_: bool = True):
+        """Open the settings page(s) of an installed plugin (:func:`ewald.plugins.settings_page`)."""
+        from .plugin_settings import edit
+
+        dlg = None
+        for name in item.provides.get("settings_page", []):
+            if name in plugins.settings_pages():
+                dlg = edit(name, self, exec_=exec_)
+                if exec_ and dlg.message:
+                    self._say(f"{dlg.page.title}: {dlg.message}")
+        return dlg
+
     def install(self, entry, update: bool = False):
-        """Install a catalog entry; ``update`` replaces the installed plugin it matches."""
+        """Install a catalog entry; ``update`` replaces the installed plugin it matches. The
+        download (or pip) runs in the background while the row shows a spinner."""
+        key = _key(entry)
+        if key in self._busy:
+            return
+        verb = "Updating" if update else "Installing"
         if entry.is_pip:
-            self._run_pip("update" if update else "install", entry.source[4:])
+            self._run_pip("update" if update else "install", entry.source[4:], key=key, busy=f"{verb}…")
             return
         old = pc.match(entry, self.items) if update else None
-        try:
-            if old is not None and old.path and Path(old.path).name != entry.file_name:
-                pc.remove_file(old)             # the new version comes under another file name
-            names = pc.install_file(entry)
-        except Exception as exc:
-            self._say(f"Install failed: {exc}")
-            QtWidgets.QMessageBox.warning(self, "Install plugin", str(exc))
+        worker = _FetchWorker(entry, self)
+        worker.fetched.connect(lambda path, error: self._fetched(worker, entry, update, old, path, error))
+        self._workers.append(worker)
+        self._set_busy(key, f"{verb}…", f"{verb} {entry.name}…")
+        worker.start()
+
+    def _fetched(self, worker, entry, update, old, path, error):
+        worker.wait()
+        if worker in self._workers:
+            self._workers.remove(worker)
+        names = []
+        if not error:
+            try:
+                if old is not None and old.path and Path(old.path).name != Path(path).name:
+                    pc.remove_file(old)             # the new version came under another file name
+                names = plugins.load_plugin_file(path)
+            except Exception as exc:
+                error = str(exc) or type(exc).__name__
+        self._set_busy(_key(entry))
+        if error:
+            self._say(f"Install failed: {error}")
+            QtWidgets.QMessageBox.warning(self, "Install plugin", error)
             return
         self._say(f"{'Updated' if update else 'Installed'} {entry.name}"
                   f"{' to ' + entry.version if update and entry.version else ''}: {', '.join(names) or 'nothing registered'}")
@@ -324,7 +436,7 @@ class PluginsPanel(QtWidgets.QWidget):
 
     def remove(self, item):
         if item.package:
-            self._run_pip("uninstall", item.package)
+            self._run_pip("uninstall", item.package, key=_key(item), busy="Removing…")
             return
         if QtWidgets.QMessageBox.question(
                 self, "Remove plugin", f"Remove {item.name}? The file moves to the plugin folder's .removed "
@@ -358,7 +470,10 @@ class PluginsPanel(QtWidgets.QWidget):
                 f"Write an ewald modifier plugin that {what.strip()}. Save it in the plugin folder, "
                 "load it with ewald.plugins.load_plugin_file and add it as a step.")
 
-    def _run_pip(self, action, requirement):
+    def _run_pip(self, action, requirement, key=None, busy=""):
+        if self._process is not None:
+            self._say("pip is still running; wait for it to finish or press Cancel.")
+            return
         cmd = pc.pip_command(action, requirement)
         if QtWidgets.QMessageBox.question(
                 self, "pip", "Run this in the Python ewald runs in?\n\n" + " ".join(cmd)) != QtWidgets.QMessageBox.Yes:
@@ -375,8 +490,20 @@ class PluginsPanel(QtWidgets.QWidget):
             p.setProcessEnvironment(env)
         p.readyReadStandardOutput.connect(lambda: self.log.appendPlainText(
             bytes(p.readAllStandardOutput()).decode(errors="replace").rstrip()))
-        p.finished.connect(lambda code, _status: self._pip_done(action, requirement, code))
+        p.finished.connect(lambda code, status: self._pip_done(
+            action, requirement, -1 if status == QtCore.QProcess.CrashExit else code))
+        p.errorOccurred.connect(lambda err: err == QtCore.QProcess.FailedToStart and self._pip_done(action, requirement, -1))
+        self._pip_key = key
+        reqs = requirement if isinstance(requirement, str) else " ".join(requirement)
+        verb = {"install": "Installing", "update": "Updating", "uninstall": "Removing"}.get(action, "Running pip for")
+        self._set_busy(key or "", busy or "", f"{verb} {reqs} with pip…")
         p.start(cmd[0], cmd[1:])
+
+    def cancel(self):
+        """Stop a running pip."""
+        if self._process is not None:
+            self._say("Cancelling pip…")
+            self._process.kill()
 
     def install_requirements(self, requirements: list[str]):
         """pip install the packages a notebook needs (one confirmation, one pip run)."""
@@ -384,6 +511,11 @@ class PluginsPanel(QtWidgets.QWidget):
             self._run_pip("install", list(requirements))
 
     def _pip_done(self, action, requirement, code):
+        if self._process is None:            # FailedToStart and finished both report
+            return
+        self._process.deleteLater()
+        self._process, key, self._pip_key = None, self._pip_key, None
+        self._set_busy(key or "")
         if not isinstance(requirement, str):
             requirement = " ".join(requirement)
         self._say(f"pip {action} {requirement}: {'done' if code == 0 else f'failed (exit {code})'}")

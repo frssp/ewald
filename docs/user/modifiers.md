@@ -189,7 +189,7 @@ pipe.modifiers.append(SteinhardtOrderParameters((4, 6), average=True))
 
 - `SymmetryAnalysis(symprec, angle_tolerance, select_unique)`: space group (Hermann-Mauguin
   symbol and number), Hall symbol, point group and crystal system through spglib
-  (`pip install "ewald[symmetry]"`), as `SymmetryAnalysis.*` attributes in the Attributes tab,
+  (installed with ewald), as `SymmetryAnalysis.*` attributes in the Attributes tab,
   and per atom the 'Wyckoff Position' ('4a'), 'Site Symmetry' and 'Equivalent Atom'.
   `select_unique=True` selects one atom per orbit (the asymmetric unit). `symprec` is in
   Angstrom; 0.01 finds the symmetry of relaxed DFT cells.

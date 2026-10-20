@@ -67,7 +67,10 @@ class NotebookTabs(QtWidgets.QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
         lay.addWidget(self.row)  # until the dock takes the row as its title bar
-        lay.addWidget(self.stack, 1)
+        self.body = QtWidgets.QStackedWidget(objectName="notebookBody")   # the pages, or the empty state
+        self.body.addWidget(self.stack)
+        self.empty = None
+        lay.addWidget(self.body, 1)
         bar.currentChanged.connect(self._current_changed)
         bar.tabCloseRequested.connect(self.tabCloseRequested.emit)
         bar.tabMoved.connect(self._moved)
@@ -80,9 +83,21 @@ class NotebookTabs(QtWidgets.QWidget):
     def tabBar(self) -> QtWidgets.QTabBar:
         return self.bar
 
+    def setEmptyWidget(self, widget):
+        """What shows while there are no tabs (the welcome page)."""
+        self.empty = widget
+        self.body.addWidget(widget)
+        self._sync_empty()
+
+    def _sync_empty(self):
+        if self.empty is not None:
+            self.body.setCurrentWidget(self.stack if self.count() else self.empty)
+
     def addTab(self, widget, text: str) -> int:
         self.stack.addWidget(widget)  # first, so the bar's currentChanged finds the page
-        return self.bar.addTab(text)
+        i = self.bar.addTab(text)
+        self._sync_empty()
+        return i
 
     def removeTab(self, index: int):
         widget = self.stack.widget(index)
@@ -91,6 +106,7 @@ class NotebookTabs(QtWidgets.QWidget):
         self.stack.removeWidget(widget)
         self.bar.removeTab(index)
         self.stack.setCurrentIndex(self.bar.currentIndex())
+        self._sync_empty()
 
     def count(self) -> int:
         return self.bar.count()

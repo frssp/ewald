@@ -18,9 +18,10 @@ the plugin (`ewald_phonopy.EXAMPLES`).
 ```python
 from ewald import import_file
 from ewald.modifiers import PhononMode
+from ewald_phonopy import EXAMPLES
 
-pipe = import_file("band.yaml", frames=24)          # 24 frames = one period
-pipe.modifiers.append(PhononMode(qpoint=50, band=3, amplitude=0.3))
+pipe = import_file(EXAMPLES / "Cu3Au_band.yaml", frames=24)   # or your band.yaml; 24 frames = one period
+pipe.modifiers.append(PhononMode(qpoint=10, band=3, amplitude=0.3))
 data = pipe.compute(0)
 print(data.attributes["Phonon.Frequency"], "THz", data.attributes["Phonon.Supercell"])
 

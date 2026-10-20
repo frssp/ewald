@@ -19,6 +19,18 @@ available right after `pip install` without cloning the repository. In the repos
 Trajectories, forces and the CHGCAR density are synthetic; they are meant for trying the viewer and
 the modifiers, not as physical data.
 
+## Where the data comes from
+
+- The example files above are made by ewald's own generator; no outside data is in them.
+- The tutorial notebooks in `notebooks/` use only those example files.
+- The paper scripts in `papers/` download the authors' files on first use; ewald does not
+  redistribute them. Each script's docstring names the repository, its license and the paper, and
+  `docs/user/papers.md` lists every dataset with its citation, DOI and license
+  (`ewald examples --papers` prints the same). Cite the original paper when you use its data.
+- The only third-party files committed to the repository are the reader fixtures in
+  `tests/data/real/` (pymatgen test files, MIT; one LAMMPS example log, GPL-2.0); their README
+  gives the source commit and license notice of each.
+
 ## Opening them
 
 In the GUI: **File › Open example**.

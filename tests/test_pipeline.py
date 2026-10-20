@@ -58,6 +58,15 @@ def test_expression_error_hint(cu_fcc):
         pipe.compute(0)
 
 
+def test_expression_takes_property_names_with_spaces(cu_fcc):
+    data = cu_fcc.copy()
+    data.particles["Particle Identifier"] = np.arange(cu_fcc.count)
+    d = Pipeline(StaticSource(data), [ExpressionSelection("Particle Identifier")]).compute(0)
+    assert d["Selection"].sum() == cu_fcc.count - 1
+    with pytest.raises(NameError, match="no property 'Charge Density'.*Available"):
+        Pipeline(StaticSource(cu_fcc), [ColorCoding("Charge Density")]).compute(0)
+
+
 def test_displacement_across_pbc(cu_fcc):
     moved = cu_fcc.copy()
     pos = cu_fcc.positions.copy()
@@ -214,3 +223,69 @@ def test_cached_frames_are_read_only(cu_fcc):
     assert np.allclose(pipe.compute(0).positions, original + 1.0)
     assert np.allclose(pipe.compute(0).positions, original + 1.0)   # the cached frame is unchanged
     assert cu_fcc.positions.flags.writeable and np.allclose(cu_fcc.positions, original)
+
+
+def test_each_frame_and_all_frames_steps(cu_fcc):
+    from ewald import AllFramesModifier, Pipeline, PythonModifier, StaticSource, all_frames, each_frame
+
+    frames = []
+    for k in range(4):
+        d = cu_fcc.copy()
+        d.particles["Position"] = cu_fcc.positions + 0.1 * k
+        frames.append(d)
+    pipe = Pipeline(StaticSource(frames))
+    calls = []
+
+    @each_frame
+    def shift(frame, data):
+        data.attributes["Shift"] = frame
+
+    @all_frames
+    def height(frames, data):
+        calls.append(len(frames))
+        z = [d["Position"][:, 2].mean() for d in frames]
+        data.tables["height"] = {"Frame": np.arange(len(z)), "Mean z": np.array(z)}
+        data.attributes["Rise"] = z[-1] - z[0]
+        data["Mobile"] = np.ones(data.count)
+        assert len(frames[::2]) == 2 and frames[-1].attributes["Shift"] == 3   # steps above apply
+
+    pipe.add(shift, height)
+    assert type(pipe.modifiers[0]) is PythonModifier and type(pipe.modifiers[1]) is AllFramesModifier
+    out = [pipe.compute(k) for k in range(4)]
+    assert calls == [4]                                      # read every frame once
+    assert [d.attributes["Shift"] for d in out] == [0, 1, 2, 3]
+    for d in out:                                            # the kept result at every frame
+        assert d.attributes["Rise"] == pytest.approx(0.3)
+        np.testing.assert_allclose(d.tables["height"]["Mean z"], out[0].tables["height"]["Mean z"])
+        assert d["Mobile"].sum() == d.count
+    pipe.modifiers.insert(0, PythonModifier(lambda f, d: None))   # a step above changed: computed again
+    pipe.compute(1)
+    assert calls == [4, 4]
+
+
+def test_missing_package_fails_once_not_every_frame(cu_fcc):
+    from ewald import Modifier
+
+    calls = []
+
+    class NeedsPackage(Modifier):
+        def __init__(self, level=1):
+            self.level = level
+
+        def modify(self, data, ctx):
+            calls.append(ctx.frame)
+            raise ImportError("NeedsPackage needs spglib")
+
+    pipe = Pipeline(StaticSource([cu_fcc] * 4), [NeedsPackage()])
+    for f in range(4):
+        pipe.compute(f, errors="skip")
+    assert calls == [0]  # later frames report the same error without trying again
+    assert pipe.modifiers[0].status == "ImportError: NeedsPackage needs spglib"
+    pipe.modifiers[0].level = 2  # new settings: one more try
+    pipe.compute(1, errors="skip")
+    pipe.invalidate()  # e.g. after installing the package
+    pipe.compute(2, errors="skip")
+    assert calls == [0, 1, 2]
+    with pytest.raises(ImportError):  # scripts always get the real exception
+        pipe.compute(3)
+    assert calls == [0, 1, 2, 3]

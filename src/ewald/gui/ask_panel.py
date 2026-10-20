@@ -13,8 +13,8 @@ plus a close-up render (:meth:`ewald.llm.Agent.ask_about_selection`); the model 
 usual tools, and modifiers it adds show up in the pipeline. With nothing picked, the
 question goes about the whole pipeline. The model runs in a worker thread, so the viewer stays
 responsive. Whichever provider Preferences > AI names answers (Claude by default; OpenAI,
-Gemini, a local OpenAI-compatible server or a plugin's); it needs that provider's package
-(``pip install ewald[llm]``) and usually an API key.
+Gemini, a local OpenAI-compatible server or a plugin's); the provider packages (anthropic, openai)
+come with ewald; it usually needs an API key.
 """
 from __future__ import annotations
 
@@ -25,14 +25,14 @@ from typing import Callable
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .busy import BusyLabel
 from .icons import icon
 from .code_editor import CodeEditor
 from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea
 from . import workers
 from .theme import TOKENS
 
-_SETUP_HINT = ("Choose the AI provider and enter its API key under Edit › Preferences › AI "
-               "(its package comes with `pip install ewald[llm]`).")
+_SETUP_HINT = "Choose the AI provider and enter its API key under Edit › Preferences › AI."
 
 
 NOTEBOOK_NOTE = """
@@ -46,8 +46,8 @@ block as one complete cell that runs in that namespace; prefer `pipe.add(...)` s
 loops. When the user asks you to \
 change the notebook itself, use the cell tools: list_cells and read_cell (sources and outputs), \
 insert_cell, edit_cell (step parameters through params), move_cell and delete_cell. Cells you \
-write are not run until the user runs them, unless run_cell is offered; add_modifier adds a step \
-cell that takes effect at once. Say which cells you changed."""
+write are not run until the user runs them, unless run_cell is offered; add_modifier, set_view, \
+load_structure and export_file write their own cell and run it. Say which cells you changed."""
 
 #: How the note above describes the ```python blocks of an answer (Preferences › AI › Code in answers).
 CODE_CELLS_NOTE = {
@@ -260,7 +260,8 @@ class Message(QtWidgets.QWidget):
         self.steps = QtWidgets.QVBoxLayout()
         self.steps.setSpacing(2)
         self.body.addLayout(self.steps)
-        self.status = QtWidgets.QLabel("Thinking…", objectName="chatThinking")
+        self.status = BusyLabel("Thinking…", 14)
+        self.status.label.setObjectName("chatThinking")
         self.body.addWidget(self.status)
         row.addLayout(self.body, 1)
         self.insert = insert
@@ -605,7 +606,11 @@ class AskPanel(QtWidgets.QWidget):
         self._set_stop_button(False)
         self._pending = None
         pipeline = self._agent_pipeline if self.agent else None
-        if pipeline is not None and list(pipeline.modifiers) != self._modifiers_before:
+        now = getattr(getattr(self.agent, "toolset", None), "pipeline", pipeline)
+        if now is not None and now is not pipeline:   # a load cell the AI ran made a new pipe:
+            self._agent_pipeline = now                  # the conversation goes on with it
+            self.pipelineChanged.emit()
+        elif pipeline is not None and list(pipeline.modifiers) != self._modifiers_before:
             self.pipelineChanged.emit()
 
     def _on_answer(self, text):

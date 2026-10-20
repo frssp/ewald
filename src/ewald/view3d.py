@@ -73,6 +73,10 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        "'mesh', 'impostor' (fast GPU spheres) or 'flat' (outlined discs, like ASE).", ATOM_STYLES),
     _s("background", None, "style", "Background color (any matplotlib color); None: the theme's, else the "
        "viewport's dark grey on screen and white in rendered images.", type=["string", "array", "null"]),
+    _s("light", None, "style", "Key light, the same in the viewport and every renderer: a direction [x, y, z] in the "
+       "camera frame (x right, y up, z towards the viewer) or {'direction' or 'azimuth'/'elevation' (degrees, "
+       "right of and above the viewer), 'intensity' (1 = default)}; None: the default (upper left).",
+       type=["array", "object", "null"]),
     # atoms
     _s("atoms", True, "atoms", "Draw the atoms (the Particles element); False keeps bonds, polyhedra and the "
        "rest, e.g. a stick model."),
@@ -132,6 +136,10 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        type="object", additionalProperties={"type": "object", "properties": {
            "visible": {"type": "boolean"}, "color": _COLOR, "transparency": {"type": "number"},
            "edges": {"type": "boolean"}}}),
+    _s("measurements", [], "elements", "Distances, angles and dihedrals drawn with their values: atom index lists "
+       "[[i, j], [i, j, k], [i, j, k, l]] (nearest periodic images; an angle is at the middle atom). "
+       "view.measure(i, j, ...) adds one and returns its value.", type="array",
+       items={"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 4}),
     _s("trajectory_width", 2.0, "elements", "Width in pixels of trajectory lines (GenerateTrajectoryLines); 0 hides them."),
     # camera
     _s("frame", 0, "camera", "Trajectory frame shown.", type="integer"),
@@ -309,10 +317,27 @@ class View:
             surfaces.pop(name, None)
         return self.update(surfaces=surfaces)
 
+    def measure(self, *atoms, frame: int | None = None) -> float:
+        """Add a distance (2 atom indices), angle (3, at the middle one) or dihedral (4) to
+        :attr:`measurements` and return its value in Angstrom or degrees, on ``frame`` (default: the view's)."""
+        from .measure import check, measure
+
+        (idx,) = check([atoms[0] if len(atoms) == 1 else atoms])
+        value = measure(self._data(frame), idx) if self.pipeline is not None else None
+        if idx not in self.measurements:
+            self.update(measurements=[*self.measurements, idx])
+        return value
+
+    def measured(self, frame: int | None = None) -> list[dict]:
+        """``[{atoms, kind, value}]`` of :attr:`measurements` on ``frame`` (default: the view's)."""
+        from .measure import table
+
+        return table(self._data(frame), self.measurements) if self.measurements else []
+
     @property
     def elements(self) -> "Elements":
-        """The visual elements by name (``Particles``, ``Bonds``, ``Simulation cell``, ``Surfaces``,
-        ``Vectors``, ``Trajectory lines`` and the plugin visuals in :attr:`visuals`), each with its
+        """The visual elements by name (``Particles``, ``Bonds``, ``Surfaces``, ``Vectors``, ``Trajectory
+        lines``, ``Simulation cell``, ``Measurements`` and the plugin visuals in :attr:`visuals`), each with its
         settings under the element's own names: ``pipe.view.elements["Bonds"].radius = 0.2`` is
         ``pipe.view.bond_radius = 0.2``."""
         return Elements(self)
@@ -428,6 +453,7 @@ ELEMENTS = {
     "Vectors": {"vectors": "vectors"},
     "Trajectory lines": {"width": "trajectory_width"},
     "Simulation cell": {"enabled": "cell", "color": "cell_color", "width": "cell_width", "radius": "cell_radius"},
+    "Measurements": {"measurements": "measurements"},
 }
 
 
@@ -666,6 +692,12 @@ def _check(name, value):
             value = {k: (_color(v) if k == "color" and v is not None else v) for k, v in value.items()}
         elif value is False:
             value = None
+    elif name == "light":
+        from .render import light_params
+
+        light_params(value)   # fails on a bad value
+        value = {k: ([float(x) for x in v] if k == "direction" else float(v)) for k, v in value.items()} \
+            if isinstance(value, dict) else [float(x) for x in value]
     elif name == "selection":
         if not isinstance(value, bool):
             value = _color(value)
@@ -715,6 +747,10 @@ def _check(name, value):
             raise ValueError(f"camera needs {sorted(missing)}")
         value = {k: (tuple(float(x) for x in v) if isinstance(v, (list, tuple, np.ndarray)) else v)
                  for k, v in value.items()}
+    elif name == "measurements":
+        from .measure import check
+
+        value = check(value)
     elif name in ("visuals", "overlays"):
         value = [v if isinstance(v, str) else dict(v) for v in ([value] if isinstance(value, (str, dict)) else value)]
     elif name in ("background", "cell_color") and not isinstance(value, str):

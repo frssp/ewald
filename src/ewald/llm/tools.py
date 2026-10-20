@@ -3,11 +3,23 @@
 A :class:`Toolset` is a small stateful session: the loaded pipeline, its
 modifier list, rendered figures and a provenance log. Each tool takes a JSON
 object and returns a JSON-ready result (plus optional PNG images), so the same
-toolset backs the Python :class:`~ewald.llm.Agent`, the MCP server and, later,
-the GUI chat panel.
+toolset backs the Python :class:`~ewald.llm.Agent`, the MCP server and the GUI
+chat panel.
 
 Numbers are always computed by tools; the model only chooses what to compute
 and interprets it. Arrays are summarized, never dumped.
+
+The AI changes the structure and every other result only by running notebook
+cells. Each Toolset works on a notebook (the GUI's current tab, one passed in,
+or a session notebook of its own), and every tool that changes something writes
+a cell and runs it: ``add_modifier`` a step cell, ``set_view`` (and
+``add_visual``/``add_overlay``) the view cell, ``load_structure`` a
+``pipe = load(...)`` cell, ``export_file`` an ``export_file(...)`` cell.
+ewald writes those cells from a validated name and JSON literals, so they hold
+no model-written code and run without ``allow_code``. ``remove_modifier``
+deletes the step cell. The other tools only read; ``set_frame`` only picks the
+frame later tools look at. So the notebook alone reproduces what the AI did
+(:meth:`Toolset.to_script`).
 
 >>> ts = Toolset()
 >>> ts.call("load_structure", {"path": "XDATCAR"})
@@ -30,6 +42,7 @@ from typing import Callable
 import numpy as np
 
 from .. import modifiers as _modifiers
+from ..notebook import Cell, Notebook
 from ..pipeline import Modifier, Pipeline, PythonModifier
 from . import describe as _describe
 
@@ -86,6 +99,10 @@ def downsample(table: dict, max_rows: int = 60) -> dict:
     return {k: [float(f"{v:.4g}") for v in np.asarray(col)[idx]] for k, col in table.items()}
 
 
+#: Tools that change something, each by writing a notebook cell and running it (module docstring).
+CELL_WRITERS = frozenset({"load_structure", "add_modifier", "remove_modifier", "set_view", "add_visual",
+                          "remove_visual", "add_overlay", "remove_overlay", "export_file"})
+
 #: Modifiers that run code or take Python objects: only PythonScript, and only with allow_code.
 _CODE_MODIFIERS = {"PythonScript"}
 _OBJECT_MODIFIERS = {"OvitoModifier"}
@@ -121,40 +138,52 @@ def _first_paragraph(doc: str | None) -> str:
 
 
 class Toolset:
-    """Tools over one pipeline session.
-
-    ``allow_code=True`` adds ``run_python``, which executes model-written Python
-    in this process (with ``pipe``, ``np`` and ``ewald`` in scope). Leave it off
-    unless you trust the model's output as you would your own scripts.
+    """Tools over one notebook session (see the module docstring: the AI changes results only
+    through cells).
 
     ``notebook`` (a :class:`~ewald.notebook.Notebook`, a function returning the current one, or a
-    :class:`~ewald.llm.notebook_tools.NotebookAccess`) adds the notebook cell tools
-    (:mod:`ewald.llm.notebook_tools`); ``run_cell`` among them only with ``allow_code`` or an
-    access that allows running.
+    :class:`~ewald.llm.notebook_tools.NotebookAccess`) is the notebook the tools work on; without
+    one the toolset makes its own, around ``pipeline`` when given. :attr:`pipeline` is always
+    that notebook's ``pipe``. The cell tools (:mod:`ewald.llm.notebook_tools`) are always there;
+    ``run_cell``, which runs a cell the model wrote, only with ``allow_code=True`` or an access
+    that allows running. ``allow_code`` also lets ``add_modifier`` add ``PythonScript`` steps.
+    Leave it off unless you trust the model's output as you would your own scripts.
     """
 
     def __init__(self, pipeline: Pipeline | None = None, *, allow_code: bool = False,
                  workdir: str | None = None, render_size=(1200, 900), notebook=None):
-        self.pipeline = pipeline
         self.allow_code = allow_code
         self.workdir = workdir or tempfile.mkdtemp(prefix="ewald-llm-")
         self.render_size = tuple(render_size)
         self.frame = 0
-        self.pipeline_name = "pipe"   # what the user's notebook calls the pipeline (code in set_view results)
         #: Particle indices the user picked (set by the GUI); describe_selection's default.
         self.selection: list[int] | None = None
         self.figures: list[str] = []
-        self._source_call: dict | None = None
-        self._code_blocks: list[str] = []
-        self._namespace: dict = {}
-        self.visuals: list[dict] = []  # plugin visual elements drawn by render_image: {name, params, enabled}
-        self.overlays: list[dict] = []  # overlay elements drawn by render_image: {name, params, enabled}
-        self.theme: str | None = None   # theme render_image uses (ewald.themes)
         self.tools: dict[str, Tool] = {}
         self.notebook_access = None
         self._register()
-        if notebook is not None:
-            self.attach_notebook(notebook)
+        self.attach_notebook(notebook if notebook is not None else session_notebook(pipeline))
+
+    @property
+    def notebook(self) -> Notebook | None:
+        """The notebook the tools work on (None when the GUI has no notebook open)."""
+        return self.notebook_access.notebook() if self.notebook_access is not None else None
+
+    @property
+    def pipeline(self) -> Pipeline | None:
+        """The notebook's pipeline (``pipe``)."""
+        nb = self.notebook
+        return nb.pipeline if nb is not None else None
+
+    @pipeline.setter
+    def pipeline(self, pipeline: Pipeline | None):
+        """Start over on a session notebook of this toolset's own around ``pipeline``."""
+        self.attach_notebook(session_notebook(pipeline))
+
+    @property
+    def pipeline_name(self) -> str:
+        nb = self.notebook
+        return nb.pipeline_name if nb is not None else "pipe"
 
     # ------------------------------------------------------------- public API
     def definitions(self) -> list[dict]:
@@ -186,35 +215,128 @@ class Toolset:
         return out if isinstance(out, ToolResult) else ToolResult(_jsonable(out))
 
     def to_script(self) -> str:
-        """Standalone Python script reproducing the current pipeline."""
-        lines = ["from ewald import import_file", ""]
-        mods = [m for m in (self.pipeline.modifiers if self.pipeline else [])]
-        builtin = sorted({type(m).__name__ for m in mods if not isinstance(m, PythonModifier)})
-        if builtin:
-            lines.insert(1, f"from ewald.modifiers import {', '.join(builtin)}")
-        if self._source_call:
-            args = [repr(self._source_call["path"])]
-            args += [f"{k}={v!r}" for k, v in self._source_call.get("kwargs", {}).items()]
-            lines.append(f"pipe = import_file({', '.join(args)})")
-        else:
-            lines.append("pipe = ...  # pipeline was passed in from Python")
-        for block in self._code_blocks:
-            lines += ["", block.rstrip()]
-        for m in mods:
-            if isinstance(m, PythonModifier):
-                lines.append(f"pipe.modifiers.append({m.name})")
-            else:
-                lines.append(f"pipe.modifiers.append({m!r})")
-        if self.pipeline is not None and self.pipeline.view.changed():
-            lines.insert(1, "from ewald import view")
-            lines += ["", self.pipeline.view.source("pipe")]
-        lines += ["", f"data = pipe.compute({self.frame})"]
-        figure = {k: v for k, v in (("visuals", self.visuals), ("overlays", self.overlays), ("theme", self.theme)) if v}
-        if figure:
-            lines += [f"{k} = {v!r}" for k, v in figure.items()]
-            args = ", ".join(f"{k}={k}" for k in figure)
-            lines.append(f"# from ewald.render import render; render(data, 'figure.png', {args})")
-        return "\n".join(lines) + "\n"
+        """The notebook as a standalone percent-format Python script (it reproduces everything
+        the tools did, since they act only through its cells), ending with the current frame."""
+        nb = self.notebook
+        text = nb.to_py() if nb is not None else ""
+        if self.pipeline is not None:
+            text = text.rstrip("\n") + f"\n\n# %%\ndata = {self.pipeline_name}.compute({self.frame})\n"
+        return text
+
+    # ---------------------------------------------------------- notebook cells
+    def _need_notebook(self) -> Notebook:
+        nb = self.notebook
+        if nb is None:
+            raise RuntimeError("no notebook is open")
+        return nb
+
+    def _code(self, nb: Notebook, body: str, *names) -> str:
+        """``body`` after the import lines of ``names`` ((module, name, object)) the notebook's
+        namespace does not have yet."""
+        heads = [f"from {module} import {name}" for module, name, obj in names if nb.namespace.get(name) is not obj]
+        return "\n".join(heads + [body])
+
+    def _run_new_cell(self, source: str, label: str, index: int | None = None) -> tuple[Notebook, Cell]:
+        """Insert a cell ewald wrote (from validated names and JSON literals, never model-written
+        code) at ``index`` (default: the end) and run it. A cell that fails is removed again and
+        its error raised."""
+        access = self.notebook_access
+
+        def insert():
+            nb = self._need_notebook()
+            if nb.restricted:
+                raise PermissionError("the notebook is not trusted yet (an .ewd file); the user must trust it first")
+            n = len(nb.cells)
+            at = n if index is None else max(0, min(index, n))
+            cell = nb.insert(at, Cell(source))
+            access.changed(nb, label, cell)
+            return nb, cell
+
+        nb, cell = access.call(insert)
+        if not access.run(nb, cell):
+            error = _cell_error(cell)
+
+            def remove():
+                if cell in nb.cells:
+                    nb.delete(cell)
+                    access.changed(nb, f"{label} (failed)", None, pipeline=True)
+
+            access.call(remove)
+            raise RuntimeError(f"the cell failed and was removed again:\n{source}\n{error}")
+        return nb, cell
+
+    def _delete_cell(self, nb: Notebook, cell: Cell, label: str):
+        def op():
+            if cell in nb.cells:
+                nb.delete(cell)
+                access.changed(nb, label, None, pipeline=True)
+
+        access = self.notebook_access
+        access.call(op)
+
+    def _cell_index(self, nb: Notebook, cell: Cell) -> int | None:
+        return self.notebook_access.call(lambda: nb.cells.index(cell) if cell in nb.cells else None)
+
+    def _apply_view(self, settings: dict, reset=None, rotate=None) -> dict:
+        """Change view settings by writing the notebook's view cell and running it."""
+        from ..view3d import View, view_source
+
+        pipe = self._need_pipeline()
+        old = pipe.view.changed()
+        new = pipe.view.copy()   # checked here first, so the cell does not fail on a bad value
+        if reset is True:
+            new.reset()
+        elif reset:
+            new.reset(*reset)
+        new.update(**settings)
+        if rotate is not None:
+            new.rotate(*rotate)
+        target = new.changed()
+        # what the cell runs: the new settings, and None for each one going back to its default
+        # (view() keeps the settings it is not given); the cell then keeps only the new settings
+        run = {**target, **{k: None for k in old if k not in target}}
+        access = self.notebook_access
+
+        def write():
+            nb = self._need_notebook()
+            if nb.restricted:
+                raise PermissionError("the notebook is not trusted yet (an .ewd file); the user must trust it first")
+            cell = nb.view_cell()
+            before = None if cell is None else cell.source
+            if cell is not None and nb.cells.index(cell) < _last_binding(nb):
+                nb.move(cell, len(nb.cells))   # after the cell that made this pipe, so the notebook reproduces it
+            cell = nb.set_view_cell(run)
+            if cell is not None:
+                access.changed(nb, "AI: change view", cell)
+            return nb, cell, before
+
+        nb, cell, before = access.call(write)
+        if cell is None:
+            return {"changed": target, "code": View(**target).source(self.pipeline_name)}
+        if not access.run(nb, cell):
+            error = _cell_error(cell)
+
+            def restore():
+                if before is None:
+                    if cell in nb.cells:
+                        nb.delete(cell)
+                else:
+                    cell.source, cell.state = before, "ok"
+                access.changed(nb, "AI: change view (failed)", None)
+
+            access.call(restore)
+            raise RuntimeError(f"the view cell failed:\n{error}")
+
+        def tidy():
+            nb.set_view_cell(pipe.view.changed())
+            access.changed(nb, "AI: change view", cell)
+            return nb.cells.index(cell) if cell in nb.cells else None
+
+        k = access.call(tidy)
+        out = {"changed": pipe.view.changed(), "code": view_source(self.pipeline_name, **pipe.view.changed())}
+        if k is not None:
+            out["cell"] = k
+        return out
 
     # ----------------------------------------------------------- registration
     def tool(self, name: str, description: str, schema: dict):
@@ -275,26 +397,34 @@ class Toolset:
 
         @T("load_structure",
            "Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vaspout.h5, LAMMPS dump/data, "
-           "extxyz, cif, ... ; wildcards allowed) as the session pipeline, replacing any previous one. "
+           "extxyz, cif, ... ; wildcards allowed) as the pipeline, replacing any previous one: a "
+           "pipe = load(...) cell at the end of the notebook, run at once. "
            "Returns frame count and a description of the first frame.",
            _obj({"path": {"type": "string"},
                  "format": {"type": "string", "description": format_help},
                  "type_map": {"type": "object", "description": "LAMMPS numeric type -> element, e.g. {\"1\": \"Cu\"}",
                               "additionalProperties": {"type": "string"}}}, ["path"]))
         def load_structure(path, format=None, type_map=None):
-            from ..io import import_file
+            import ewald
 
-            kwargs = {}
+            args = [repr(os.path.expanduser(str(path)))]
             if format:
-                kwargs["format"] = format
+                args.append(f"format={str(format)!r}")
             if type_map:
-                kwargs["type_map"] = {int(k) if str(k).isdigit() else k: v for k, v in type_map.items()}
-            self.pipeline = import_file(os.path.expanduser(path), **kwargs)
-            self._source_call = {"path": path, "kwargs": kwargs}
-            self._code_blocks.clear()
+                tm = {int(k) if str(k).isdigit() else str(k): str(v) for k, v in type_map.items()}
+                args.append(f"type_map={tm!r}")
+            nb = self._need_notebook()
+            name = self.pipeline_name
+            nb, cell = self._run_new_cell(self._code(nb, f"{name} = load({', '.join(args)})",
+                                                     ("ewald", "load", ewald.load)), "AI: load structure")
             self.frame = 0
-            return {"num_frames": self.pipeline.num_frames,
-                    "first_frame": _describe.describe_frame(self.pipeline.compute(0), rdf_peaks_=False, frame=0)}
+            pipe = self._need_pipeline()
+            out = {"num_frames": pipe.num_frames, "cell": self._cell_index(nb, cell)}
+            try:
+                out["first_frame"] = _describe.describe_frame(pipe.compute(0), rdf_peaks_=False, frame=0)
+            except Exception as exc:  # loaded all the same; describe_frame tells more
+                out["first_frame_error"] = f"{type(exc).__name__}: {exc}"
+            return out
 
         @T("describe_frame",
            "Compact description of one frame after the current modifiers: composition, cell, density, "
@@ -364,42 +494,69 @@ class Toolset:
                     for name, cls in _modifier_classes(self.allow_code).items()}
 
         @T("add_modifier",
-           "Append (or insert at 'index') a modifier to the pipeline. Property expressions use OVITO syntax, "
+           "Add a modifier to the pipeline (at the end, or before the one at pipeline 'index') as a step cell "
+           "pipe.add(Name(...)) in the notebook, run at once. Property expressions use OVITO syntax, "
            "e.g. ExpressionSelection {\"expression\": \"(Coordination < 12) & (ParticleType == 'Cu')\"}. "
-           "Returns the new pipeline and what the modifier changed on the current frame.",
+           "Returns the new pipeline, the cell and what the modifier changed on the current frame.",
            _obj({"name": {"type": "string"}, "params": {"type": "object"}, "index": {"type": "integer"}}, ["name"]))
         def add_modifier(name, params=None, index=None):
             pipe = self._need_pipeline()
             classes = _modifier_classes(self.allow_code)
             if name not in classes:
                 raise ValueError(f"unknown modifier {name!r}; available: {', '.join(classes)}")
-            mod = classes[name](**(params or {}))
+            cls, params = classes[name], dict(params or {})
+            if not all(isinstance(k, str) and k.isidentifier() for k in params):
+                raise ValueError(f"parameter names must be identifiers: {sorted(params)}")
+            cls(**params)   # a bad parameter fails here, before a cell is written
             before = pipe.compute(self.frame)
-            if index is None:
-                pipe.modifiers.append(mod)
-            else:
-                pipe.modifiers.insert(index, mod)
+            nb = self._need_notebook()
+            at = self.notebook_access.call(lambda: _cell_before(nb, index))
+            call = f"{name}({', '.join(f'{k}={v!r}' for k, v in params.items())})"
+            module = "ewald.modifiers" if getattr(_modifiers, name, None) is cls else cls.__module__
+            source = self._code(nb, f"{self.pipeline_name}.add({call})", (module, name, cls))
+            nb, cell = self._run_new_cell(source, f"AI: add {name}", at)
             try:
-                after = pipe.compute(self.frame)
+                after = self._need_pipeline().compute(self.frame)
             except Exception:
-                pipe.modifiers.remove(mod)
+                self._delete_cell(nb, cell, f"AI: add {name} (failed)")
                 raise
-            return {"pipeline": self._pipeline_list(), "effect": _diff(before, after)}
+            return {"pipeline": self._pipeline_list(), "cell": self._cell_index(nb, cell),
+                    "effect": _diff(before, after)}
 
-        @T("remove_modifier", "Remove the modifier at 'index' (see show_pipeline).",
+        @T("remove_modifier",
+           "Remove the modifier at pipeline 'index' (see show_pipeline) by deleting its step cell from the "
+           "notebook. A modifier added by a cell that does more is not removed: edit that cell instead.",
            _obj({"index": {"type": "integer"}}, ["index"]))
         def remove_modifier(index):
-            pipe = self._need_pipeline()
-            removed = pipe.modifiers.pop(index)
-            return {"removed": repr(removed), "pipeline": self._pipeline_list()}
+            self._need_pipeline()
+            access = self.notebook_access
+
+            def op():
+                nb = self._need_notebook()
+                target = nb.pipeline.modifiers[int(index)]
+                k = _owner(nb, target)
+                if k is None:
+                    raise ValueError(f"{target.name} was not added by a notebook cell, so it cannot be removed here")
+                cell = nb.cells[k]
+                if not cell.is_step or len(cell.added) != 1:
+                    raise ValueError(f"{target.name} comes from notebook cell {k}, which does more than add it; "
+                                     "change that cell with edit_cell instead")
+                nb.delete(k)
+                access.changed(nb, f"AI: remove {target.name}", None, pipeline=True)
+                return {"removed": repr(target), "deleted_cell": k}
+
+            return {**access.call(op), "pipeline": self._pipeline_list()}
 
         @T("show_pipeline", "Current source, modifier list and frame.", _obj({}))
         def show_pipeline():
-            pipe = self._need_pipeline()
-            return {"source": self._source_call, "num_frames": pipe.num_frames, "frame": self.frame,
-                    "modifiers": self._pipeline_list()}
+            from ..notebook import load_code
 
-        @T("set_frame", "Set the current frame used by tools that take no frame argument.",
+            pipe = self._need_pipeline()
+            return {"source": load_code(pipe, self.pipeline_name) or repr(pipe.source), "num_frames": pipe.num_frames,
+                    "frame": self.frame, "modifiers": self._pipeline_list()}
+
+        @T("set_frame", "Set the current frame used by tools that take no frame argument (only what you look "
+           "at; the view's frame is set_view frame).",
            _obj({"frame": {"type": "integer"}}, ["frame"]))
         def set_frame(frame):
             self.frame = self._frame(frame)
@@ -527,13 +684,14 @@ class Toolset:
 
         @T("render_image",
            "Render a frame of the pipeline to PNG and return the image so you can inspect it. It draws with the "
-           "pipeline's view settings (set_view: style, colors, radii, bonds, cell, camera, ...); the arguments "
-           "here override them for this picture only. direction: 'x','y','z','-x',...,'iso' or a view vector [x,y,z].",
+           "pipeline's view settings (set_view: style, theme, colors, radii, bonds, cell, camera, visuals, "
+           "overlays, ...); the arguments here override them for this picture only and change nothing else. "
+           "direction: 'x','y','z','-x',...,'iso' or a view vector [x,y,z].",
            _obj({"frame": frame_p, "direction": {"type": ["string", "array"]},
                  "bonds": {"type": ["number", "null"], "description": "draw bonds shorter than this (A)"},
                  "zoom": {"type": "number"}, "width": {"type": "integer"}, "height": {"type": "integer"},
                  "theme": {"type": ["string", "null"],
-                           "description": "theme for this and later renders (see list_styles); null keeps it"},
+                           "description": "theme for this picture (see list_styles); set_view theme keeps one"},
                  "filename": {"type": "string", "description": "also save under this name in the work dir"}}))
         def render_image(frame=None, direction=None, bonds=None, zoom=None, width=None, height=None, filename=None,
                          theme=None):
@@ -546,8 +704,6 @@ class Toolset:
                 from ..themes import get_theme
 
                 get_theme(theme)  # unknown names fail here, before rendering
-                self.theme = theme
-                pipe.view.theme = theme
             data = pipe.compute(f)
             kw = pipe.view.render_kwargs(data, f)
             for key in ("size", "renderer", "quality"):
@@ -561,12 +717,8 @@ class Toolset:
             if bonds is not None:
                 kw.pop("bond_pairs", None)
                 kw["bonds"] = bonds
-            if self.visuals:
-                kw["visuals"] = list(kw.get("visuals", [])) + list(self.visuals)
-            if self.overlays:
-                kw["overlays"] = list(kw.get("overlays", [])) + list(self.overlays)
-            if self.theme and "theme" not in kw:
-                kw["theme"] = self.theme
+            if theme is not None:
+                kw["theme"] = theme
             render_png(data, path, size=size, **kw)
             self.figures.append(path)
             with open(path, "rb") as fh:
@@ -582,53 +734,53 @@ class Toolset:
            "The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the "
            "GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, "
            "'elements' the same values by visual element (Particles, Bonds, Surfaces, Simulation cell, ...), "
+           "'measured' the values of its distance/angle measurements, "
            f"'help' what each means. Groups: {groups}.",
            _obj({}))
         def get_view():
             v = self._need_pipeline().view
-            return {"changed": v.changed(), "settings": v.settings(), "elements": v.elements.describe(),
-                    "help": {k: st.doc for k, st in SETTINGS.items()}, "code": v.source(self.pipeline_name)}
+            out = {"changed": v.changed(), "settings": v.settings(), "elements": v.elements.describe(),
+                   "help": {k: st.doc for k, st in SETTINGS.items()}, "code": v.source(self.pipeline_name)}
+            if v.measurements:
+                out["measured"] = v.measured()   # their values on the view's frame
+            return out
 
         @T("set_view",
            "Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style "
            "preset, theme, element colors and radii, atoms on/off, bonds on/off, bond table, cell, background, VESTA "
-           "boundary, polyhedra/isosurface look by surface name (surfaces), plugin visuals, vectors, camera "
+           "boundary, polyhedra/isosurface look by surface name (surfaces), distance/angle measurements, key light, "
+           "atom labels, plugin visuals, vectors, camera "
            "(direction, zoom, rotate), frame, and picture options (renderer, "
            "quality, legends, scale bar, text). Only the settings given change; null resets one to its default. "
            "'rotate' turns the current view by [azimuth, elevation] degrees; 'reset' (true or a list of names) "
            "goes back to defaults first. Per-atom colors by condition are steps instead (add_modifier "
-           "ColorCoding / expression selection). Returns the changed settings and the notebook code for them.",
+           "ColorCoding / expression selection). The settings go into the notebook's view cell "
+           "(view(pipe, ...)), which runs at once. Returns the changed settings and that code.",
            _obj({**view_props,
                  "rotate": {"type": "array", "items": {"type": "number"},
                             "description": "[azimuth, elevation] in degrees, applied after the other settings"},
                  "reset": {"type": ["boolean", "array"], "items": {"type": "string"},
                            "description": "true: every setting back to its default first; or a list of names"}}))
         def set_view(rotate=None, reset=None, **settings):
-            v = self._need_pipeline().view
-            if reset is True:
-                v.reset()
-            elif reset:
-                v.reset(*reset)
-            v.update(**settings)
-            if rotate is not None:
-                v.rotate(*rotate)
+            out = self._apply_view(settings, reset, rotate)
             if "frame" in settings:
-                self.frame = self._frame(v.frame)
-            return {"changed": v.changed(), "code": v.source(self.pipeline_name)}
+                self.frame = self._frame(self._need_pipeline().view.frame)
+            return out
 
         @T("list_visuals",
            "Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation "
-           "cell; configured through render_image and modifiers) and installed plugins, which add_visual draws "
+           "cell; configured through set_view and modifiers) and installed plugins, which add_visual draws "
            "on top in every renderer. Lists each with its parameters, plus the ones currently added.",
            _obj({}))
         def list_visuals():
             out = {p.name: {"builtin": p.builtin, "category": p.category, "doc": p.description,
                             "params": _signature(p.cls)} for p in plugins.visuals().values()}
-            return {"available": out, "added": list(self.visuals)}
+            return {"available": out, "added": self._view_list("visuals")}
 
         @T("add_visual",
-           "Draw a plugin visual element (see list_visuals) in every later render_image, with optional "
-           "constructor parameters. Returns the visuals now added.",
+           "Draw a plugin visual element (see list_visuals) in the view, with optional constructor "
+           "parameters: the view setting 'visuals', written to the view cell like set_view. Returns the "
+           "visuals now added.",
            _obj({"name": {"type": "string"}, "params": {"type": "object"}}, ["name"]))
         def add_visual(name, params=None):
             from ..scene import coerce_visuals, visual_to_dict
@@ -637,17 +789,20 @@ class Toolset:
             if name not in reg:
                 raise ValueError(f"unknown visual element {name!r}; available: {', '.join(reg)}")
             if reg[name].builtin:
-                raise ValueError(f"{name!r} is built in and always drawn; set it up through render_image or "
+                raise ValueError(f"{name!r} is built in and always drawn; set it up through set_view or "
                                  "a modifier (CreateBonds, VectorVis, ...)")
             (el,) = coerce_visuals([{"name": name, "params": params or {}}])
-            self.visuals.append(visual_to_dict(el))
-            return {"visuals": list(self.visuals)}
+            added = self._view_list("visuals") + [visual_to_dict(el)]
+            self._apply_view({"visuals": added})
+            return {"visuals": self._view_list("visuals")}
 
-        @T("remove_visual", "Stop drawing the visual element at 'index' of the added list.",
+        @T("remove_visual", "Stop drawing the visual element at 'index' of the added list (the view cell changes).",
            _obj({"index": {"type": "integer"}}, ["index"]))
         def remove_visual(index):
-            removed = self.visuals.pop(index)
-            return {"removed": removed, "visuals": list(self.visuals)}
+            added = self._view_list("visuals")
+            removed = added.pop(index)
+            self._apply_view({"visuals": added or None})
+            return {"removed": removed, "visuals": self._view_list("visuals")}
 
         @T("list_overlays",
            "Overlay elements drawn on top of rendered images (built-in: Coordinate tripod, Attributes; plus "
@@ -657,27 +812,32 @@ class Toolset:
         def list_overlays():
             out = {p.name: {"builtin": p.builtin, "category": p.category, "doc": p.description,
                             "params": _signature(p.cls)} for p in plugins.overlays().values()}
-            return {"available": out, "added": list(self.overlays)}
+            return {"available": out, "added": self._view_list("overlays")}
 
         @T("add_overlay",
-           "Draw an overlay element (see list_overlays) on every later render_image, with optional "
-           "constructor parameters. Returns the overlays now added.",
+           "Draw an overlay element (see list_overlays) on the view's pictures, with optional constructor "
+           "parameters: the view setting 'overlays', written to the view cell like set_view. Returns the "
+           "overlays now added.",
            _obj({"name": {"type": "string"}, "params": {"type": "object"}}, ["name"]))
         def add_overlay(name, params=None):
             from ..overlays import coerce_overlays, overlay_to_dict
 
             (el,) = coerce_overlays([{"name": name, "params": params or {}}])
-            self.overlays.append(overlay_to_dict(el))
-            return {"overlays": list(self.overlays)}
+            added = self._view_list("overlays") + [overlay_to_dict(el)]
+            self._apply_view({"overlays": added})
+            return {"overlays": self._view_list("overlays")}
 
-        @T("remove_overlay", "Stop drawing the overlay at 'index' of the added list.",
+        @T("remove_overlay", "Stop drawing the overlay at 'index' of the added list (the view cell changes).",
            _obj({"index": {"type": "integer"}}, ["index"]))
         def remove_overlay(index):
-            removed = self.overlays.pop(index)
-            return {"removed": removed, "overlays": list(self.overlays)}
+            added = self._view_list("overlays")
+            removed = added.pop(index)
+            self._apply_view({"overlays": added or None})
+            return {"removed": removed, "overlays": self._view_list("overlays")}
 
         @T("list_styles",
-           "Themes (element colors, background, cell color, radius preset; pass one to render_image) and the "
+           "Themes (element colors, background, cell color, radius preset; set_view theme, or render_image "
+           "for one picture) and the "
            "color maps usable as 'cmap' in ColorCoding, GridSlice and VectorVis: common matplotlib names and "
            "plugins, each marked whether it reads in grayscale.",
            _obj({}))
@@ -689,14 +849,15 @@ class Toolset:
             for n in names():
                 maps[n] = {"kind": kinds.get(n, "matplotlib"), "plugin": n in kinds,
                            "grayscale_safe": is_perceptual(n, kinds.get(n))}
-            return {"themes": {k: p.description for k, p in plugins.themes().items()}, "current_theme": self.theme,
+            return {"themes": {k: p.description for k, p in plugins.themes().items()}, "current_theme": self.pipeline.view.theme if self.pipeline is not None else None,
                     "colormaps": maps, "note": "any other matplotlib colormap name also works"}
 
         writer_names = ", ".join(sorted(plugins.writers()))
 
         @T("export_file",
            "Write frames of the pipeline (after its modifiers) to a file: POSCAR, LAMMPS data/dump, extxyz, "
-           "CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... The format follows the file name (POSCAR, *.data, "
+           "CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... as an export_file(...) cell in the notebook, run at "
+           "once. The format follows the file name (POSCAR, *.data, "
            "*.extxyz, *.h5md) unless given. One-frame formats (POSCAR, LAMMPS data, CHGCAR, cube) write the "
            "frame they are given (default: the current one). Relative paths go to the work dir; an existing "
            "file is only replaced with overwrite=true, and only inside the work dir. Outside it, only new "
@@ -736,50 +897,26 @@ class Toolset:
             elif frames in (None, "current"):
                 idx = [self.frame]
             else:
-                idx = [int(i) for i in frames]
-            _export(pipe, target, format=format, frames=idx)
-            return {"path": target, "writer": writer.name, "frames": len(idx)}
+                idx = [int(i) % pipe.num_frames for i in frames]
+            args = [self.pipeline_name, repr(target)] + ([f"format={str(format)!r}"] if format else [])
+            frames_arg = "None" if frames == "all" else repr(idx)
+            nb = self._need_notebook()
+            nb, cell = self._run_new_cell(self._code(nb, f"export_file({', '.join(args)}, frames={frames_arg})",
+                                                     ("ewald.io", "export_file", _export)), "AI: export file")
+            return {"path": target, "writer": writer.name, "frames": len(idx), "cell": self._cell_index(nb, cell)}
 
-        @T("get_script", "Standalone Python script that reproduces the current pipeline.", _obj({}))
+        @T("get_script", "The notebook as a standalone Python script (percent format): it reproduces everything "
+           "the tools did, since they work only through its cells.", _obj({}))
         def get_script():
             return {"script": self.to_script()}
 
-        if self.allow_code:
-            @T("python_api",
-               "Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every "
-               "modifier signature). Read it before writing code for run_python.", _obj({}))
-            def python_api():
-                from .reference import api_reference
+        @T("python_api",
+           "Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every "
+           "modifier signature). Read it before writing notebook cells (insert_cell, edit_cell).", _obj({}))
+        def python_api():
+            from .reference import api_reference
 
-                return api_reference()
-
-            @T("run_python",
-               "Execute Python in the session (variables persist). In scope: pipe (Pipeline), np, ewald, "
-               "data (current frame). Define f(frame, data) and set add_as_modifier to append it as a modifier. "
-               "Print what you want to see; stdout is returned (truncated).",
-               _obj({"code": {"type": "string"}, "add_as_modifier": {"type": "string",
-                                                                     "description": "name of a function to append"}},
-                    ["code"]))
-            def run_python(code, add_as_modifier=None):
-                import contextlib
-                import io
-
-                import ewald
-
-                ns = self._namespace
-                ns.update({"np": np, "ewald": ewald, "pipe": self.pipeline})
-                if self.pipeline is not None:
-                    ns["data"] = self.pipeline.compute(self.frame)
-                buf = io.StringIO()
-                try:
-                    with contextlib.redirect_stdout(buf):
-                        exec(compile(code, "<run_python>", "exec"), ns)
-                except Exception:
-                    return ToolResult(buf.getvalue()[-4000:] + traceback.format_exc(limit=3), is_error=True)
-                self._code_blocks.append(code)
-                if add_as_modifier:
-                    self._need_pipeline().modifiers.append(ns[add_as_modifier])
-                return {"stdout": buf.getvalue()[-4000:], "pipeline": self._pipeline_list() if self.pipeline else []}
+            return api_reference()
 
         for plugin in plugins.tools().values():  # @claude_tool plugins; built-in names win
             if plugin.name not in self.tools:
@@ -787,6 +924,9 @@ class Toolset:
                                                functools.partial(plugin.function, self))
 
     # -------------------------------------------------------------- helpers
+    def _view_list(self, name: str) -> list:
+        return [dict(x) if isinstance(x, dict) else {"name": x} for x in getattr(self._need_pipeline().view, name)]
+
     def _frame(self, frame) -> int:
         n = self._need_pipeline().num_frames
         return self.frame if frame is None else int(frame) % n
@@ -794,6 +934,60 @@ class Toolset:
     def _pipeline_list(self) -> list[str]:
         return [f"{i}: {m!r}" + ("" if m.enabled else " (disabled)")
                 for i, m in enumerate(self._need_pipeline().modifiers)]
+
+
+def session_notebook(pipeline: Pipeline | None = None) -> Notebook:
+    """The notebook a Toolset makes when it is given none: the usual imports (run), then
+    ``pipeline`` as in :meth:`Notebook.from_pipeline` when one is given."""
+    from ..notebook import IMPORTS
+
+    if pipeline is not None:
+        return Notebook.from_pipeline(pipeline, check=False, name="AI session")
+    nb = Notebook([Cell(IMPORTS)], name="AI session")
+    nb.run_cell(0)
+    nb.dirty = False
+    return nb
+
+
+def _cell_error(cell: Cell) -> str:
+    text = "\n".join(str(o.data) for o in cell.outputs if o.kind == "error").strip()
+    return text[-3000:]
+
+
+def _binds(source: str, name: str) -> bool:
+    """Whether a cell assigns ``name`` at its top level (``pipe = load(...)``)."""
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    return any(isinstance(t, ast.Name) and t.id == name
+               for s in tree.body if isinstance(s, (ast.Assign, ast.AnnAssign))
+               for t in (s.targets if isinstance(s, ast.Assign) else [s.target]))
+
+
+def _last_binding(nb: Notebook) -> int:
+    """Index of the last code cell that assigns the pipeline (-1 when none does)."""
+    return max((k for k, c in enumerate(nb.cells) if c.kind == "code" and _binds(c.source, nb.pipeline_name)),
+               default=-1)
+
+
+def _owner(nb: Notebook, modifier) -> int | None:
+    """Index of the cell whose last run added ``modifier`` (the last one, after a reload of ``pipe``)."""
+    return max((k for k, c in enumerate(nb.cells) if any(m is modifier for m in c.added)), default=None)
+
+
+def _cell_before(nb: Notebook, index) -> int | None:
+    """Where a step cell goes so its modifier lands at pipeline position ``index``: before the cell
+    of the modifier now there (None: at the end of the notebook)."""
+    if index is None:
+        return None
+    mods = nb.pipeline.modifiers if nb.pipeline is not None else []
+    i = int(index)
+    if i < 0:
+        i = max(0, len(mods) + i)
+    return _owner(nb, mods[i]) if i < len(mods) else None
 
 
 def _diff(before, after) -> dict:

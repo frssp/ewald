@@ -80,7 +80,7 @@ def build_parser():
     q.add_argument("--type-map", default=None)
     q.add_argument("--model", default=None)
     _ai_arguments(q)
-    q.add_argument("--allow-code", action="store_true", help="let the AI run Python in this process")
+    q.add_argument("--allow-code", action="store_true", help="let the AI run notebook cells it wrote (run_cell)")
     q.add_argument("--script", default=None, help="write the resulting pipeline as a Python script")
     q.add_argument("--select", default=None, metavar="EXPR",
                    help="ask about these particles, e.g. 'ParticleIdentifier == 17' or 'Position.Z > 20'")
@@ -143,9 +143,10 @@ def build_parser():
 
 
 # optional package -> the extra that installs it (for "ewald CMD" without that extra)
-EXTRAS = {"PySide6": "gui", "pyvistaqt": "gui", "qtconsole": "gui", "anthropic": "llm", "openai": "llm", "mcp": "llm",
-          "anyio": "llm", "h5py": "formats", "MDAnalysis": "formats",
-          "cupy": "gpu", "imageio_ffmpeg": "movie"}
+EXTRAS = {"PySide6": "gui", "pyvistaqt": "gui", "qtconsole": "gui", "MDAnalysis": "formats", "cupy": "gpu"}
+# core packages missing anyway (an install that skipped dependencies): name the package itself
+CORE = {"anthropic": "anthropic", "openai": "openai", "mcp": "mcp", "anyio": "mcp", "h5py": "h5py",
+        "imageio_ffmpeg": "imageio-ffmpeg", "spglib": "spglib"}
 
 
 def main(argv=None):
@@ -156,6 +157,8 @@ def main(argv=None):
         top = (getattr(exc, "name", None) or "").split(".")[0]
         if top in EXTRAS:
             sys.exit(f"ewald {args.cmd}: needs {top}: pip install 'ewald[{EXTRAS[top]}]'")
+        if top in CORE:
+            sys.exit(f"ewald {args.cmd}: needs {top}, which ewald installs; reinstall ewald or pip install {CORE[top]}")
         if "pip install" in str(exc):
             sys.exit(f"ewald {args.cmd}: {exc}")
         raise
@@ -300,7 +303,6 @@ def _run(args):
         from .llm import Agent, Toolset
 
         ts = Toolset(pipe, allow_code=args.allow_code)
-        ts._source_call = {"path": args.input, "kwargs": kw}
         agent = Agent(ts, **_ai_options(args),
                       on_event=lambda kind, p: print(f"  -> {p['name']}({p['input']})")
                       if kind == "tool_call" else None)
@@ -446,6 +448,10 @@ def _print_plugins(as_json=False, enable=None, disable=None):
         print(f"ui theme {v['name']:<22} {v['base']:<14} {v['description'][:60]}  [{v['origin']}]")
     for v in st.get("ai_providers", []):
         print(f"ai provider {v['name']:<19} {v['label'][:14]:<14} {v['description'][:60]}  [{v['origin']}]")
+    for v in st.get("panels", []):
+        print(f"panel {v['name']:<25} {v['title'][:14]:<14} {v['description'][:60]}  [{v['origin']}]")
+    for v in st.get("settings_pages", []):
+        print(f"settings {v['name']:<22} {v['title'][:14]:<14} {v['description'][:60]}  [{v['origin']}]")
     for origin, err in st["errors"].items():
         print(f"FAILED {origin}: {err}")
     return 1 if st["errors"] else None

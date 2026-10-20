@@ -69,7 +69,8 @@ def apply_settings(win, s: Settings, startup: bool = False):
     app = QtWidgets.QApplication.instance()
     if app is not None:
         # one style sheet, set only when it changes: each set re-polishes every widget of every window
-        theme.apply(app, s["general.ui_theme"], font_size=s["general.font_size"])
+        theme.apply(app, s["general.ui_theme"],
+                    font_size=None if s.is_default("general.font_size") else s["general.font_size"])
     from .console import restyle
 
     restyle(win.console)  # the console draws its own colors (background, syntax, selection)

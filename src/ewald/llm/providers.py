@@ -3,9 +3,9 @@ and the Modifier Forge.
 
 Built in (Preferences > AI > Provider, setting ``llm.provider``):
 
-* ``anthropic`` - Claude (the default), ``pip install anthropic``.
-* ``openai`` - OpenAI, ``pip install openai``.
-* ``gemini`` - Google Gemini through its OpenAI-compatible endpoint, ``pip install openai``.
+* ``anthropic`` - Claude (the default).
+* ``openai`` - OpenAI.
+* ``gemini`` - Google Gemini through its OpenAI-compatible endpoint.
 * ``openai-compatible`` - any server speaking the OpenAI Chat Completions API: Ollama and
   LM Studio on your machine, vLLM, OpenRouter, ... Set its address as ``llm.base_url``.
 * ``gateway`` - an OpenAI-compatible API gateway that takes a credential ticket in the
@@ -250,7 +250,8 @@ class Provider:
         try:
             sdk = importlib.import_module(self.sdk)
         except ImportError:
-            return False, f"The {self.package} package is not installed: pip install {self.package}"
+            return False, (f"The {self.package} package is not installed; ewald installs it, so reinstall ewald "
+                           f"or pip install {self.package}")
         errors = {n: getattr(sdk, n, None) for n in ("AuthenticationError", "PermissionDeniedError",
                                                      "NotFoundError", "APIConnectionError", "APIStatusError")}
 

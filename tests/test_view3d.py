@@ -215,6 +215,19 @@ def test_gui_follows_the_view_and_writes_the_view_cell(tmp_path):
     assert "_labels-labels" in w.viewport.plotter.actors and w.style.labels == "{type}{index}"
     w._style_changed()                                                   # and they survive a GUI write-back
     assert "labels='{type}{index}'" in cell.source and "transparency={'Cu': 0.5}" in cell.source
+    vp = w.viewport
+    vp.set_tool("distance")
+    vp._picks = [0, 1]                                                   # as two clicks of the tool leave them
+    assert vp.keep_measurement()                                         # the distance tool's result, kept
+    assert "measurements=[[0, 1]]" in cell.source and "_measurements-labels" in vp.plotter.actors
+    assert "measurements" in vp.plotter.actors
+    menu = [a.text() for a in w.viewport_menu().actions()]
+    assert "Keep measurement in the view" in menu and "Clear measurements" in menu
+    w.clear_measurements()
+    assert "measurements" not in cell.source and "_measurements-labels" not in vp.plotter.actors
+    w.pipeline.view.light = {"azimuth": 45}                              # code: the light reaches the viewport
+    w.recompute()
+    assert vp.plotter.renderer._ewald_light is not None and len(vp.plotter.renderer.lights) == 2
     # delete the window now, in the GUI thread: left to the garbage collector it can crash a later GUI test
     import gc
 
@@ -357,3 +370,88 @@ def test_atom_labels_render_in_every_renderer(srtio3, tmp_path):
         out = tmp_path / ("x.svg" if r == "vector" else "x.png")
         srtio3.render(out, renderer=r, size=(160, 120), quality="draft", labels={"text": "{type}", "types": ["Ti"]})
         assert out.stat().st_size > 0
+
+
+def test_light_setting_validates_and_round_trips(srtio3):
+    from ewald.render import DEFAULT_LIGHT, light_params
+    from ewald.view_style import ViewStyle
+
+    d, k = light_params(None)
+    assert np.allclose(d, np.array(DEFAULT_LIGHT) / np.linalg.norm(DEFAULT_LIGHT)) and k == 1
+    d, k = light_params({"azimuth": 90, "elevation": 0, "intensity": 2})
+    assert np.allclose(d, [1, 0, 0]) and k == 2
+    assert np.allclose(light_params({"elevation": 90})[0], [0, 1, 0])
+    for bad in ({"spot": 1}, {"direction": [0, 0, 0]}, {"intensity": -1}, {"direction": [0, 0, 1], "azimuth": 3}):
+        with pytest.raises((KeyError, ValueError)):
+            View(light=bad)
+    v = View(light=(0, 1, 1))
+    assert v.light == [0.0, 1.0, 1.0] and v.render_kwargs()["light"] == [0.0, 1.0, 1.0]
+    assert "light=[0.0, 1.0, 1.0]" in v.source()
+    st = ViewStyle()
+    st.apply_view(View(light={"azimuth": -30, "intensity": 0.8}), ["Sr"])
+    assert st.scene_kwargs()["light"] == {"azimuth": -30.0, "intensity": 0.8}
+    assert View(**st.view_settings(["Sr"])).changed()["light"] == {"azimuth": -30.0, "intensity": 0.8}
+
+
+def test_light_moves_the_highlight_in_every_renderer(srtio3):
+    renderers = ["raytrace", "vector"] + (["opengl"] if os.environ.get("DISPLAY") else [])
+    for r in renderers:
+        for style in (["auto", "impostor"] if r == "opengl" else ["auto"]):
+            kw = dict(renderer=r, size=(120, 120), quality="draft", direction="z", bonds=False, atom_style=style)
+            left = srtio3.view.render(light={"azimuth": -80, "elevation": 0}, **kw)[..., :3].astype(float)
+            right = srtio3.view.render(light={"azimuth": 80, "elevation": 0}, **kw)[..., :3].astype(float)
+            assert np.abs(left - right).mean() > 1, (r, style)
+            # mirrored lights: the left half is brighter when lit from the left
+            h = left.shape[1] // 2
+            assert left[:, :h].sum() - right[:, :h].sum() > right[:, h:].sum() - left[:, h:].sum() - 1e-6, (r, style)
+
+
+def test_measurements_values_and_setting(srtio3):
+    from ewald import measure
+
+    data = srtio3.compute(0)
+    a = 3.905
+    assert measure.measure(data, [0, 1]) == pytest.approx(a * 3 ** 0.5 / 2)
+    assert measure.measure(data, [0, 2]) == pytest.approx(a / 2 ** 0.5)
+    assert measure.measure(data, [2, 1, 3]) == pytest.approx(90)
+    assert -180 <= measure.measure(data, [2, 1, 3, 4]) <= 180
+    shifted = data.copy()
+    pos = np.array(data.positions, float)
+    pos[0] += [a, 0, 0]                                   # a periodic image: the same distance
+    shifted.positions = pos
+    assert measure.measure(shifted, [0, 1]) == pytest.approx(a * 3 ** 0.5 / 2)
+    assert measure.text(data, [2, 1, 3]) == "90.0°" and measure.text(data, [0, 2]).endswith(" Å")
+    for bad in ([0], [0, 0], [0, 1, 2, 3, 4], [[0, 1, 2, 3, 4, 5]]):
+        with pytest.raises(ValueError):
+            View(measurements=bad)
+    v = srtio3.view
+    assert v.measure(0, 2) == pytest.approx(a / 2 ** 0.5)
+    assert v.measure([2, 1, 3]) == pytest.approx(90)
+    v.measure(0, 2)                                       # already there: not added twice
+    assert v.measurements == [[0, 2], [2, 1, 3]] and v.changed()["measurements"] == [[0, 2], [2, 1, 3]]
+    assert [m["kind"] for m in v.measured()] == ["distance", "angle"]
+    assert v.elements["Measurements"].measurements == [[0, 2], [2, 1, 3]]
+    assert View(measurements=[0, 1]).measurements == [[0, 1]]   # one item given bare
+
+
+def test_measurements_draw_in_every_renderer_and_view(srtio3):
+    from ewald import scene as ir
+    from ewald.view_style import ViewStyle
+
+    data = srtio3.compute(0)
+    s = ir.build(data, measurements=[[0, 1], [2, 1, 3]])
+    lines = s["measurements"].primitive
+    assert len(lines.strips) == 2 and lines.points.shape == (5, 3)
+    for kw in ({"boundary": [-0.1, 1.1]}, {"replicate": [2, 1, 1]}):   # real atom indices, also with ghosts
+        assert ir.build(data, measurements=[[0, 1]], **kw)["measurements"].primitive.points.shape == (2, 3)
+    st = ViewStyle()
+    st.apply_view(View(measurements=[[0, 1]]), ["Sr"])
+    assert st.scene_kwargs()["measurements"] == [[0, 1]] and st.view_settings(["Sr"])["measurements"] == [[0, 1]]
+    renderers = ["raytrace", "vector"] + (["opengl"] if os.environ.get("DISPLAY") else [])
+    for r in renderers:
+        kw = dict(renderer=r, size=(160, 120), quality="draft", direction="z", bonds=False, show_atoms=False)
+        plain = srtio3.view.render(**kw)[..., :3].astype(float)
+        srtio3.view.measurements = [[0, 2]]
+        drawn = srtio3.view.render(**kw)[..., :3].astype(float)
+        srtio3.view.measurements = None
+        assert np.abs(drawn - plain).mean() > 0.2, r

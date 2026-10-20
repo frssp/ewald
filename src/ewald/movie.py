@@ -1,7 +1,7 @@
 """Animation export: GIF, MP4, AVI, MOV, WebM and numbered PNG/JPG/TIFF sequences.
 
 GIF and image sequences use Pillow (always installed). Video containers pipe raw
-frames into ffmpeg: the binary from ``imageio-ffmpeg`` (``pip install 'ewald[movie]'``)
+frames into ffmpeg: the binary from ``imageio-ffmpeg`` (installed with ewald)
 when installed, else ``ffmpeg`` on PATH.
 """
 from __future__ import annotations
@@ -61,7 +61,7 @@ class MovieWriter:
         self._gif = []
         self._proc = None
         if self.ext in VIDEO_CODECS and ffmpeg_executable() is None:
-            raise RuntimeError(f"{self.ext} export needs ffmpeg: pip install 'ewald[movie]' "
+            raise RuntimeError(f"{self.ext} export needs ffmpeg: pip install imageio-ffmpeg "
                                "(or install ffmpeg), or write a .gif or PNG sequence instead")
 
     def _flatten(self, img):

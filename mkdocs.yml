@@ -78,6 +78,8 @@ nav:
       - Overlay plugins: plugins/overlays.md
       - Color maps and themes: plugins/styles.md
       - Claude tool plugins: plugins/tools.md
+      - Side bar plugins: plugins/gui.md
+      - Settings pages: plugins/settings.md
       - Modifier Forge: plugins/forge.md
       - Testing a plugin: plugins/testing.md
       - Packaging and sharing: plugins/packaging.md

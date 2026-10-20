@@ -139,7 +139,7 @@ class PreferencesDialog(QtWidgets.QDialog):
     applied = QtCore.Signal(object)
     EDITOR_WIDTH = 240
 
-    def __init__(self, settings: Settings, parent=None):
+    def __init__(self, settings: Settings, parent=None, page: str | None = None):
         super().__init__(parent)
         self.setObjectName("prefs")
         self.setWindowTitle("Preferences")
@@ -180,8 +180,14 @@ class PreferencesDialog(QtWidgets.QDialog):
         body.addWidget(self.stack, 1)
         for name in PAGES:
             self._build_page(name)
+        # one page per plugin settings page (ewald.plugins.settings_page), after ewald's own
+        self.page_names = list(PAGES)
+        self.plugin_pages: dict[str, dict] = {}   # page title -> {"page", "widgets", "loaded", "status", ...}
+        for plugin_page in _plugin_pages().values():
+            if plugin_page.title not in self.page_names:
+                self._build_plugin_page(plugin_page)
         self.pages.currentRowChanged.connect(self.stack.setCurrentIndex)
-        self.pages.setCurrentRow(0)
+        self.pages.setCurrentRow(self.page_names.index(page) if page in self.page_names else 0)
         outer.addWidget(self._footer())
         self._load()
 
@@ -260,6 +266,132 @@ class PreferencesDialog(QtWidgets.QDialog):
         icon.addPixmap(_icon(name, TOKENS["accent"]), QtGui.QIcon.Selected)
         item.setIcon(icon)
         self.pages.addItem(item)
+
+    def show_page(self, name: str):
+        """Turn to the page ``name`` (General, ..., or a plugin page's title)."""
+        self.pages.setCurrentRow(self.page_names.index(name))
+
+    def _build_plugin_page(self, page):
+        """A plugin's settings page: its fields as rows, its actions as buttons and a status line;
+        Apply and OK call its ``save(values)`` when a field changed."""
+        from .plugin_settings import field_widget
+
+        inner = QtWidgets.QWidget(objectName="contentInner")
+        col = QtWidgets.QVBoxLayout(inner)
+        col.setContentsMargins(32, 24, 32, 32)
+        col.setSpacing(6)
+        col.addWidget(QtWidgets.QLabel(page.title, objectName="pageTitle"))
+        col.addWidget(QtWidgets.QLabel(page.description or f"Settings of the {page.origin} plugin.",
+                                       objectName="pageSubtitle", wordWrap=True))
+        try:
+            values, problem = page.values(), ""
+        except Exception as exc:   # a broken plugin must not keep Preferences from opening
+            values, problem = {f.name: f.empty() for f in page.fields}, f"Could not read the settings: {exc}"
+        col.addSpacing(16)
+        card, rows = self._card()
+        widgets, row_frames = {}, {}
+        for f in page.fields:
+            row = self._row_frame(rows)
+            grid = QtWidgets.QGridLayout(row)
+            grid.setContentsMargins(16, 12, 16, 12)
+            grid.setHorizontalSpacing(16)
+            text = QtWidgets.QVBoxLayout()
+            text.setSpacing(2)
+            text.addWidget(QtWidgets.QLabel(f.label, objectName="rowLabel", toolTip=f"{page.name}.{f.name}"))
+            if f.help:
+                text.addWidget(QtWidgets.QLabel(f.help, objectName="rowHelp", wordWrap=True))
+            grid.addLayout(text, 0, 0)
+            w = field_widget(f, values.get(f.name), toggle=Toggle)
+            if isinstance(w, QtWidgets.QLineEdit):
+                w.setObjectName("field")
+            if f.kind == "multiline":
+                grid.addWidget(w, 1, 0, 1, 2)
+            else:
+                if not isinstance(w, Toggle):
+                    w.setFixedWidth(140 if f.kind == "int" else self.EDITOR_WIDTH)
+                grid.addWidget(w, 0, 1, QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+            grid.setColumnStretch(0, 1)
+            widgets[f.name], row_frames[f.name] = w, row
+        col.addWidget(card)
+        status = QtWidgets.QLabel(problem, wordWrap=True, objectName="cellError" if problem else "rowHelp")
+        status.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        status.setVisible(bool(problem))
+        entry = {"page": page, "widgets": widgets, "rows": row_frames, "loaded": None, "status": status,
+                 "card": card}
+        if page.actions:
+            bar = QtWidgets.QHBoxLayout()
+            for label, act in page.actions.items():
+                b = QtWidgets.QPushButton(label, objectName="footerButton")
+                b.clicked.connect(lambda _=False, a=act, lab=label, e=entry: self._plugin_action(e, a, lab))
+                bar.addWidget(b)
+            bar.addStretch()
+            col.addSpacing(10)
+            col.addLayout(bar)
+        col.addSpacing(6)
+        col.addWidget(status)
+        col.addStretch()
+        scroll = QtWidgets.QScrollArea(objectName="content")
+        scroll.setWidget(inner)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.stack.addWidget(scroll)
+        from .window_plugins import plugin_icon
+
+        item = QtWidgets.QListWidgetItem(page.title)
+        themed, ic = plugin_icon(_plugin_page_icon(page)), QtGui.QIcon()
+        ic.addPixmap(themed.pixmap(36, 36, QtGui.QIcon.Normal, QtGui.QIcon.Off), QtGui.QIcon.Normal)
+        ic.addPixmap(themed.pixmap(36, 36, QtGui.QIcon.Normal, QtGui.QIcon.On), QtGui.QIcon.Selected)  # accent
+        item.setIcon(ic)
+        self.pages.addItem(item)
+        self.page_names.append(page.title)
+        entry["loaded"] = self._plugin_values(entry)
+        self.plugin_pages[page.title] = entry
+
+    @staticmethod
+    def _plugin_values(entry) -> dict:
+        from .plugin_settings import field_value
+
+        return {f.name: field_value(f, entry["widgets"][f.name]) for f in entry["page"].fields}
+
+    def _plugin_say(self, entry, message, error=False):
+        status = entry["status"]
+        status.setText(str(message))
+        _restyle(status, "cellError" if error else "rowHelp")
+        status.setVisible(bool(message))
+
+    def _plugin_action(self, entry, function, label, save=False) -> bool:
+        """Run a page's action or ``save`` on the values shown; a ValueError is the user's to fix."""
+        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        try:
+            message, ok = function(self._plugin_values(entry)) or "", True
+        except ValueError as exc:
+            message, ok = str(exc), False
+        except Exception as exc:
+            message, ok = f"{label} failed: {exc}", False
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+        self._plugin_say(entry, message, error=not ok)
+        if ok and save:
+            for f in entry["page"].fields:   # a saved secret is not shown again
+                w = entry["widgets"][f.name]
+                if f.kind == "secret" and w.text():
+                    w.clear()
+                    w.setPlaceholderText("saved; type to replace")
+            entry["loaded"] = self._plugin_values(entry)
+        return ok
+
+    def _save_plugin_pages(self) -> bool:
+        """``save(values)`` of every plugin page whose fields changed; False (and that page shown)
+        when one refused its values."""
+        ok = True
+        for title, entry in self.plugin_pages.items():
+            if self._plugin_values(entry) == entry["loaded"]:
+                continue
+            if not self._plugin_action(entry, entry["page"].save, "Save", save=True):
+                if ok:
+                    self.show_page(title)
+                ok = False
+        return ok
 
     @staticmethod
     def _card():
@@ -745,7 +877,14 @@ class PreferencesDialog(QtWidgets.QDialog):
         self._mark(key)
 
     def restore_page(self):
-        page = PAGES[self.stack.currentIndex()]
+        page = self.page_names[self.stack.currentIndex()]
+        if page in self.plugin_pages:
+            from .plugin_settings import set_field
+
+            entry = self.plugin_pages[page]
+            for f in entry["page"].fields:
+                set_field(f, entry["widgets"][f.name], f.empty())
+            return
         self.work.reset([o.key for o in OPTIONS if o.page == page])
         self._load()
 
@@ -779,8 +918,16 @@ class PreferencesDialog(QtWidgets.QDialog):
         self.components_card[1].setVisible(comp)
         if comp:
             matched_pages.add("Compute")
+        for title, entry in self.plugin_pages.items():
+            shown = False
+            for f in entry["page"].fields:
+                hit = not text or any(text in t.lower() for t in (f.label, f.name, f.help, title))
+                entry["rows"][f.name].setVisible(hit)
+                shown = shown or hit
+            if shown:
+                matched_pages.add(title)
         first_page = None
-        for i, name in enumerate(PAGES):
+        for i, name in enumerate(self.page_names):
             hidden = name not in matched_pages
             self.pages.item(i).setHidden(hidden)
             if not hidden and first_page is None:
@@ -799,7 +946,9 @@ class PreferencesDialog(QtWidgets.QDialog):
         if path:
             self.work.save(path)
 
-    def apply(self):
+    def apply(self) -> bool:
+        """Save everything; False when a plugin page refused its values (the dialog stays open on it)."""
+        ok = self._save_plugin_pages()
         self._apply_api_key()
         self.settings.update(self.work)
         try:
@@ -807,10 +956,31 @@ class PreferencesDialog(QtWidgets.QDialog):
         except OSError as exc:
             QtWidgets.QMessageBox.warning(self, "Preferences", f"Could not save {self.settings.path}:\n{exc}")
         self.applied.emit(self.settings)
+        return ok
 
     def accept(self):
-        self.apply()
-        super().accept()
+        if self.apply():
+            super().accept()
+
+
+def _plugin_pages() -> dict:
+    """Plugin settings pages (none when plugins fail to load: Preferences must still open)."""
+    from .. import plugins
+
+    try:
+        return plugins.settings_pages()
+    except Exception:
+        return {}
+
+
+def _plugin_page_icon(page) -> str:
+    """The icon of a plugin page: the icon of a side bar (``@panel``) of the same plugin, if any."""
+    from .. import plugins
+
+    for panel in plugins.panels().values():
+        if panel.origin == page.origin:
+            return panel.icon
+    return "plugins"
 
 
 def _ui_theme_names(default: str) -> list[str]:

@@ -52,7 +52,7 @@ def _output_to_json(out) -> dict:
         name, _, value = first.partition(": ")
         return {"output_type": "error", "ename": name or "Error", "evalue": value, "traceback": text.splitlines()}
     if out.kind == "image":
-        return {"output_type": "display_data", "metadata": {},
+        return {"output_type": "display_data", "metadata": {"ewald": {"view": out.view}} if out.view else {},
                 "data": {"image/png": base64.b64encode(out.data).decode("ascii"), "text/plain": ["<Figure>"]}}
     return {"output_type": "execute_result", "execution_count": None, "metadata": {},
             "data": {"text/plain": _lines(str(out.data))}}
@@ -71,7 +71,8 @@ def _output_from_json(raw: dict):
         return Output("error", "\n".join(raw.get("traceback") or [f"{raw.get('ename')}: {raw.get('evalue')}"]))
     data = raw.get("data") or {}
     if "image/png" in data:
-        return Output("image", base64.b64decode(text(data["image/png"])))
+        view = ((raw.get("metadata") or {}).get("ewald") or {}).get("view")
+        return Output("image", base64.b64decode(text(data["image/png"])), view if isinstance(view, dict) else None)
     if "text/plain" in data:
         return Output("value", text(data["text/plain"]))
     return None

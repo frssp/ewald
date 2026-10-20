@@ -47,10 +47,13 @@ class MenusMixin:
     def refresh_activity_icons(self):
         """Redraw the activity bar icons in the colors of the UI theme now active."""
         for name, act in self.activity_buttons.items():
+            if name.startswith("plugin:"):
+                continue  # PluginPanelsMixin.refresh_plugin_icons
             if name == "Plugins":
                 self._plugin_updates(act.property("updates") or 0)
             else:
                 act.setIcon(icon(act.property("ewald_icon")))
+        self.refresh_plugin_icons()
 
     def _plugin_updates(self, count):
         """A count badge on the Plugins icon while installed plugins have newer catalog versions."""
@@ -63,15 +66,16 @@ class MenusMixin:
         act.setProperty("updates", count)
 
     def _show_side_bar(self, dock):
-        """Show an activity-bar side bar (Plugins, Remotes, AI chat) in a column of its own left of
-        the notebook (Qt would otherwise stack a re-shown dock above it)."""
+        """Show an activity-bar side bar (Plugins, Remotes, AI chat, a plugin's panel) in a column of
+        its own left of the notebook (Qt would otherwise stack a re-shown dock above it)."""
         placed = dock.isHidden() and not dock.isFloating() and self.notebook_dock.isVisible()
         if placed:
             self.splitDockWidget(dock, self.notebook_dock, QtCore.Qt.Horizontal)
         dock.show()
         dock.raise_()
         if placed:
-            self.resizeDocks([dock], [380 if dock is self.ask_dock else 320], QtCore.Qt.Horizontal)
+            width = dock.property("ewald_width") or (380 if dock is self.ask_dock else 320)
+            self.resizeDocks([dock], [int(width)], QtCore.Qt.Horizontal)
 
     def set_minimal(self, on: bool | None = None):
         """Hide the menu bar, toolbars and status bar, leaving the notebook, the viewport and the
@@ -219,6 +223,9 @@ class MenusMixin:
         f.addAction("&New notebook", lambda: self.panel.new_notebook(), "Ctrl+T")
         f.addAction(icon("open"), "&Open…", QtGui.QKeySequence.Open, self.open_dialog)
         f.addAction(icon("remote"), "Load &remote file (SSH)…", QtGui.QKeySequence("Ctrl+Alt+O"), self.open_remote_dialog)
+        f.addAction("Open &location…", QtGui.QKeySequence("Ctrl+L"), self.open_location_dialog).setStatusTip(
+            "Open a path or address a reader understands: host:/path over SSH, or a plugin's "
+            "scheme such as aiida:1234 or simagent:1234")
         f.addAction("Remote &computers (SSH profiles)…", QtGui.QKeySequence("Ctrl+Alt+R"), self.show_remotes)
         f.addAction("Load &NEB folder…", self.open_neb_dialog)
         ex = f.addMenu(icon("example"), "Open e&xample")
@@ -254,6 +261,8 @@ class MenusMixin:
         self.redo_action = e.addAction("&Redo", self.redo, QtGui.QKeySequence.Redo)
         e.aboutToShow.connect(self._update_undo_actions)
         e.addSeparator()
+        self.plugin_settings_menu = e.addMenu("Plugin &settings")
+        self.plugin_settings_menu.aboutToShow.connect(self._fill_plugin_settings_menu)   # filled when opened
         act = e.addAction("&Preferences…", self.preferences, QtGui.QKeySequence.Preferences)
         act.setMenuRole(QtGui.QAction.PreferencesRole)  # app menu on macOS, like OVITO/VESTA
         if act.shortcut().isEmpty():
@@ -282,36 +291,36 @@ class MenusMixin:
         v.addAction("Focus on the viewport", self.toggle_focus, "Ctrl+\\")
         v.addAction("Minimal mode (menus hidden)", lambda: self.set_minimal(not getattr(self, "minimal", False)), "Ctrl+Shift+M")
         n = mb.addMenu("&Notebook")
-        n.addAction("Run &all", lambda: self.panel.view.run_all(), "Ctrl+Shift+Return").setToolTip(
+        n.addAction("Run &all", lambda: self._on_view("run_all"), "Ctrl+Shift+Return").setToolTip(
             "Restart and run every cell from the top")
         n.addAction("Run current cell and &below", lambda: self._cell_action("below"))
-        n.addAction("&Restart", lambda: self.panel.view.restart())
+        n.addAction("&Restart", lambda: self._on_view("restart"))
         n.setToolTipsVisible(True)
         self.kernel_menu = n.addMenu("&Kernel")
-        self.kernel_menu.aboutToShow.connect(lambda: self.panel.view.fill_kernel_menu(self.kernel_menu))
-        self.trust_action = n.addAction("&Trust notebook…", lambda: self.panel.view.trust())
+        self.notebook_menu = n
+        self.kernel_menu.aboutToShow.connect(lambda: self._on_view("fill_kernel_menu", self.kernel_menu))
+        self.trust_action = n.addAction("&Trust notebook…", lambda: self._on_view("trust"))
         self.trust_action.setToolTip("Allow a notebook received as an .ewd file to run its code and plugins")
-        n.aboutToShow.connect(lambda: self.trust_action.setEnabled(
-            self.panel.view is not None and self.panel.view.notebook.restricted))
+        n.aboutToShow.connect(self._update_notebook_menu)
         n.addSeparator()
         n.addAction("Move cell &up", lambda: self._cell_action("up"), "Ctrl+Shift+Up")
         n.addAction("Move cell &down", lambda: self._cell_action("down"), "Ctrl+Shift+Down")
         n.addAction("D&elete cell", lambda: self._cell_action("delete"))
         n.addSeparator()
         n.addAction("&Clear cell output", lambda: self._cell_action("clear"), "Ctrl+Shift+Backspace")
-        n.addAction("Clear &all outputs", lambda: self.panel.view.clear_outputs(),
+        n.addAction("Clear &all outputs", lambda: self._on_view("clear_outputs"),
                     "Ctrl+Alt+Shift+Backspace").setToolTip("Remove every cell's output; the next save leaves them out")
         n.addSeparator()
-        n.addAction("Show as Python &file", lambda: self.panel.view.py_button.toggle())
+        n.addAction("Show as Python &file", lambda: self.panel.view is not None and self.panel.view.py_button.toggle())
         ins = mb.addMenu("&Insert")
-        ins.addAction("&Code cell", lambda: self.panel.view.add_cell("code"), "Ctrl+Shift+N")
-        ins.addAction("&Text cell", lambda: self.panel.view.add_cell("markdown"))
+        ins.addAction("&Code cell", lambda: self._notebook_view().add_cell("code"), "Ctrl+Shift+N")
+        ins.addAction("&Text cell", lambda: self._notebook_view().add_cell("markdown"))
         ins.addSeparator()
         m = ins.addMenu("&Step")
         m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier, self._step_context))
         fill_modifier_menu(m, self.panel.add_modifier)
         vm = ins.addMenu("&View")
-        vm.aboutToShow.connect(lambda: fill_view_menu(vm, self.data, lambda **kw: self.panel.view.add_view(**kw)))
+        vm.aboutToShow.connect(lambda: fill_view_menu(vm, self.data, lambda **kw: self._notebook_view().add_view(**kw)))
         ins.addAction("3D &snapshot of the view", self._insert_snapshot).setToolTip(
             "A cell with a picture of the viewport as it is now (frame, camera, display style)")
         ins.addAction("View &settings with the camera", self.write_camera).setToolTip(
@@ -332,7 +341,7 @@ class MenusMixin:
         t = mb.addMenu("&Tools")
         for key, _icon, tip in Viewport.TOOLS:
             t.addAction(tip.split(":")[0], lambda k=key: self.viewport.set_tool(k))
-        w = mb.addMenu("&Window")
+        w = self.window_menu = mb.addMenu("&Window")
         w.addAction("Notebook workspace", lambda: self.set_workspace(0), "Ctrl+1")
         w.addAction("Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
         w.addAction("Notebook", lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))
@@ -354,8 +363,29 @@ class MenusMixin:
         about = h.addAction("About EWALD", self.about)
         about.setMenuRole(QtGui.QAction.AboutRole)
 
+    def _notebook_view(self):
+        """The current notebook's view; a new notebook when none is open (the welcome page)."""
+        return self.panel.view or self.panel.new_notebook()
+
+    def _update_notebook_menu(self):
+        """With no notebook open, Notebook › ... greys out (the welcome page offers New notebook)."""
+        view = self.panel.view
+        for act in self.notebook_menu.actions():
+            act.setEnabled(view is not None)
+        self.trust_action.setEnabled(view is not None and view.notebook.restricted)
+
+    def _on_view(self, method, *args):
+        """Call a method of the current notebook view; nothing when no notebook is open."""
+        view = self.panel.view
+        if view is not None:
+            getattr(view, method)(*args)
+
     def _fill_plugin_menu(self, menu):
         view = self.panel.view
+        if view is None:
+            menu.clear()
+            menu.addAction("Start or open a notebook first").setEnabled(False)
+            return
         view._fill_plugin_menu()
         menu.clear()
         for act in view.plugin_menu.actions():
@@ -505,3 +535,23 @@ class MenusMixin:
         for label, color in (("Dark background", PALETTES["graphite"]["viewport"]), ("White background", "white")):
             act = self.theme_menu.addAction(label, lambda c=color: self._set_background(c))
             act.setToolTip("Change only the viewport background")
+
+    def _fill_plugin_settings_menu(self):
+        """Edit › Plugin settings: one entry per plugin settings page (:func:`ewald.plugins.settings_page`)."""
+        from .. import plugins
+
+        self.plugin_settings_menu.clear()
+        pages = plugins.settings_pages()
+        for name, page in pages.items():
+            act = self.plugin_settings_menu.addAction(f"{page.title}…", lambda n=name: self.edit_plugin_settings(n))
+            act.setStatusTip(page.description)
+        if not pages:
+            self.plugin_settings_menu.addAction("No plugin has settings").setEnabled(False)
+
+    def edit_plugin_settings(self, name: str, exec_: bool = True):
+        from .plugin_settings import edit
+
+        dlg = edit(name, self, exec_=exec_)
+        if exec_ and dlg.message:
+            self.message(f"{dlg.page.title}: {dlg.message}")
+        return dlg

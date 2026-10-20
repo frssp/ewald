@@ -145,7 +145,8 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
 - `plumed.py`, `phonon.py`: stubs that alias the `ewald-plumed` / `ewald-phonopy` plugin modules
   (frssp/ewald-plugins); the code and its tests live there.
 - Domain modules: `electronic.py` (VASP DOS/bands), `diffraction.py` (XRD, S(q)), `arrows.py`
-  (per-atom vectors), `linking.py` (linked selection between plots and the 3D view), `keychain.py`
+  (per-atom vectors), `measure.py` (distances/angles/dihedrals of the view's `measurements`),
+  `linking.py` (linked selection between plots and the 3D view), `keychain.py`
   (Claude key, SSH secrets); readers `io/volumetric.py` (CHGCAR/cube grids), `io/neb.py`, `io/thermo.py`.
 - `manual.py`: Help-menu links into docs/ (GitHub by default, or `general.docs_url`).
 - `notebook.py`: notebooks as percent-format `.py` files (`# %%` cells, one namespace, `pipe` is the
@@ -197,8 +198,10 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   (`gui/params.py`) is generated from it, so store every constructor argument as an attribute of the
   same name. New modifiers that construct with no arguments appear in the GUI menu automatically;
   otherwise add an entry with a sensible default to `MODIFIER_MENU` in `gui/pipeline_panel.py`.
-- Optional dependencies (`gui`, `gpu`, `ovito`, `llm`, `movie`, `formats`) are imported lazily; tests use
-  `pytest.importorskip` for them. Headless `render()`/`compute()` never read `settings` implicitly.
+- Extras are only for heavy or platform-specific packages (`gui`, `gpu`, `ovito`, `formats` = MDAnalysis;
+  `all` = gui+formats+ovito); small pure wheels (spglib, h5py, imageio-ffmpeg, anthropic/openai/mcp,
+  jupyter_client/ipykernel) are core dependencies, and old extra names stay as empty aliases. Heavy or
+  optional packages are still imported lazily; tests use `pytest.importorskip` for extras. Headless `render()`/`compute()` never read `settings` implicitly.
 - Python first; numba or C++ only for measured hot spots. Ported OVITO code is used under its MIT
   option and keeps the notice. No LICENSE file (private project).
 

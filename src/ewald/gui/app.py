@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import contextlib
 import sys
 import time
@@ -16,6 +17,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import modifiers as mods
 from ..render import camera_state, render
+from .busy import busy
 from .ask_panel import AskPanel, agent_from_settings, code_cells_mode
 from .collapsible import make_collapsible
 from .compute import ComputeRunner, warm_up_jit
@@ -39,9 +41,29 @@ from .workbench import Workbench
 from .window_files import SESSION_FILTER, FilesMixin, file_filter, save_filters  # noqa: F401 (public)
 from .window_links import LinksMixin, NotebookBridge
 from .window_menus import MenusMixin
+from .window_plugins import PluginPanelsMixin
 from .window_view import ViewSyncMixin
 
-class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSyncMixin, QtWidgets.QMainWindow):
+RENDER_IN_BACKGROUND = True   # the Render page ray traces on a worker thread (tests may turn it off)
+
+
+class _RenderWorker(QtCore.QThread):
+    """Runs one ``render(...)`` call off the GUI thread."""
+
+    done = QtCore.Signal(object, object)   # image (None on failure), error (None or the exception)
+
+    def __init__(self, call, parent=None):
+        super().__init__(parent)
+        self.call = call
+
+    def run(self):
+        try:
+            self.done.emit(self.call(), None)
+        except Exception as exc:
+            self.done.emit(None, exc)
+
+
+class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSyncMixin, QtWidgets.QMainWindow):
     def __init__(self, pipeline=None, device=None, settings=None):
         super().__init__()
         from .. import settings as settings_mod
@@ -55,6 +77,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.device = device
         self.frame = 0
         self._frame_pending = False
+        self._render_worker = None
         self.runner = ComputeRunner(self)  # pipeline evaluation on a worker thread
         warm_up_jit()  # numba kernels load while the window builds, not on the first file
         self.runner.finished.connect(self._computed)
@@ -98,6 +121,9 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.ask_panel.insertRequested.connect(self._insert_claude_cell)
         # --- left: notebook tabs (the pipeline as Python cells); right: display settings
         self.panel = NotebookPanel()
+        self.panel.openRequested.connect(self.open_dialog)
+        self.panel.exampleRequested.connect(self.open_example)
+        self.panel.recentRequested.connect(self.open_any)
         self.panel.changed.connect(self.recompute)
         self.panel.pipelineReplaced.connect(self.set_pipeline)
         self.panel.askRequested.connect(self.ask_claude)
@@ -160,6 +186,9 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
 
         self._build_menus()
         self._build_toolbar()
+        self._build_plugin_panels()  # activity-bar buttons of @panel plugins, after the built-in ones
+        self.plugins_panel.changed.connect(self.refresh_plugin_panels)
+        self.setAcceptDrops(True)  # files and folders dropped on the window (FilesMixin.dropEvent)
         self.status = QtWidgets.QLabel()
         self.pick_label = QtWidgets.QLabel()
         self.pick_label.setStyleSheet(f"color: {TOKENS['pick']};")
@@ -232,9 +261,11 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.live_reload.configure(on, self.settings["general.live_reload_interval"])
         self.message(f"Live reload {'on' if on else 'off'}")
 
-    def preferences(self):
-        dlg = prefs.PreferencesDialog(self.settings, self)
+    def preferences(self, page: str | None = None):
+        """Edit › Preferences, at ``page`` (a page title such as "Viewports" or a plugin's page)."""
+        dlg = prefs.PreferencesDialog(self.settings, self, page=page)
         dlg.applied.connect(lambda s: prefs.apply_settings(self, s))
+        dlg.applied.connect(lambda s: self._plugin_event("settings", s))
         dlg.exec()
         return dlg
 
@@ -284,6 +315,28 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.frame = 0
         self.timeline._set(0) if self.timeline.frame != 0 else self.recompute()
         self.live_reload.report_incomplete()
+        self._plugin_event("pipeline", pipeline)
+
+    def clear_pipeline(self):
+        """No notebook open (the last tab closed): an empty 3D view, inspector and plots."""
+        if self.pipeline is None:
+            return
+        self.runner.cancel()
+        self.pipeline = self.data = None
+        self.viewport.clear_picks()
+        self.viewport.set_data(None)
+        for p in [self.plots, *self.extra_plots.values()]:
+            p.pipeline = None
+            p.set_data(None)
+        self.display.set_pipeline(None)
+        self.inspector.set_pipeline(None)
+        self.inspector.set_data(None)
+        self.live_reload.set_pipeline(None)
+        self.timeline.set_num_frames(1)
+        self.frame = 0
+        self.status.setText("")
+        self.setWindowTitle("EWALD")
+        self._push_console()
 
     def set_frame(self, frame):
         self.frame = frame
@@ -341,16 +394,24 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         if job.pipeline is not self.pipeline:
             return  # a pipeline that was replaced meanwhile
         if job.error is not None:
-            self.message(f"Error: {job.error}", error=True)
+            if str(job.error) != self.__dict__.get("_last_job_error"):  # the same error on every frame: say it once
+                self._last_job_error = str(job.error)
+                self.message(f"Error: {job.error}", error=True)
             return
+        self._last_job_error = None
         self.data, dt, interactive = job.data, job.seconds, job.interactive
         view_changed = self.follow_view(self.data)  # a view cell, Claude or the console changed pipe.view
         n = self.pipeline.num_frames  # LoadTrajectory changes the frame count
         if self.timeline.slider.maximum() != max(0, n - 1):
             self.timeline.set_num_frames(n)
+        reported = self.__dict__.setdefault("_reported_errors", {})
         for m in self.pipeline.modifiers:
             if m.enabled and m.status:
-                self.message(f"{m.name}: {m.status}", error=True)
+                if reported.get(id(m)) != m.status:  # once per step and error, not on every frame
+                    reported[id(m)] = m.status
+                    self.message(f"{m.name}: {m.status}", error=True)
+            else:
+                reported.pop(id(m), None)
         if getattr(self, "_check_bond_limit", False):
             self._check_bond_limit = False
             limit = self.settings["bonds.auto_limit"]
@@ -383,6 +444,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
                             f"pipeline {dt * 1000:.0f} ms   {dev}")
         if self.workspaces.currentIndex() == 1:
             self.render_page.update_code()
+        self._plugin_event("data", self.data)
 
     def _update_bottom_tab(self, *_):
         """Fill the inspector or a plot view with the current frame, only while it is on screen
@@ -449,6 +511,16 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.display.refresh()  # an edit made in the View tab itself only updates its marks
 
     # ---------------------------------------------------------------- output
+    def _render_call(self, filename, overrides):
+        """``render(...)`` of the current frame as the Render page sets it up, as a call that may
+        run on another thread (camera and data are taken now)."""
+        kw = dict(self.style.scene_kwargs())
+        kw.update(self.render_page.render_kwargs())
+        kw.update(overrides)
+        text = self.render_page.label_text(self.frame, self.data)
+        data, camera = self.data, camera_state(self.viewport.plotter)
+        return kw, lambda: render(data, filename, camera=camera, text=text or None, **kw)
+
     def render_image(self, filename=None, return_image=False, **overrides):
         if self.data is None:
             return None
@@ -457,26 +529,73 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
                 self, "Render image", "render.png", "Images (*.png *.jpg *.tif);;Vector (*.svg *.pdf *.eps)")
             if not filename:
                 return None
-        kw = dict(self.style.scene_kwargs())
-        kw.update(self.render_page.render_kwargs())
-        kw.update(overrides)
-        text = self.render_page.label_text(self.frame, self.data)
+        _kw, call = self._render_call(filename, overrides)
         try:
-            img = render(self.data, filename, camera=camera_state(self.viewport.plotter), text=text or None, **kw)
+            with busy(self.message, f"Rendering {os.path.basename(str(filename))}…"):
+                img = call()
         except Exception as exc:
-            self.message(f"Render failed: {exc}", error=True)
-            QtWidgets.QMessageBox.critical(self, "Render failed", str(exc))
-            return None
+            return self._render_failed(exc)
         self.message(f"Rendered {filename}")
         return img if return_image else filename
 
+    def _render_failed(self, exc):
+        self.message(f"Render failed: {exc}", error=True)
+        QtWidgets.QMessageBox.critical(self, "Render failed", str(exc))
+        return None
+
+    @property
+    def rendering(self) -> bool:
+        """A Render page picture is being ray traced in the background."""
+        return self._render_worker is not None
+
+    def wait_render(self, ms: int = 600000):
+        """Block until a background render is done (tests, scripts)."""
+        if self._render_worker is not None:
+            self._render_worker.wait(ms)
+            QtWidgets.QApplication.processEvents()
+
     def render_from_page(self):
+        """The Render page's Render button. The ray tracer runs on a worker thread (seconds to
+        minutes) while the button shows a spinner; OpenGL and vector output render right here."""
         page = self.render_page
+        if self.rendering:
+            return
         out = page.output.text() or "render.png"
         if page.is_movie:
             self.export_movie(out)
             return
-        img = self.render_image(out, return_image=True)
+        if self.data is None:
+            return
+        kw, call = self._render_call(out, {})
+        name = os.path.basename(out)
+        if kw.get("renderer") == "raytrace" and RENDER_IN_BACKGROUND:
+            page.set_busy("Ray tracing…")
+            self.message(f"Ray tracing {name}…")
+            worker = self._render_worker = _RenderWorker(call, self)
+            worker.done.connect(lambda img, error: self._page_rendered(out, img, error))
+            worker.start()
+            return
+        page.set_busy("Rendering…")
+        try:
+            img = self.render_image(out, return_image=True)
+        finally:
+            page.set_busy("")
+        self._show_rendered(img)
+
+    def _page_rendered(self, out, img, error):
+        if self._render_worker is not None:
+            self._render_worker.wait()
+            self._render_worker.deleteLater()
+        self._render_worker = None
+        self.render_page.set_busy("")
+        if error:
+            self._render_failed(error)
+            return
+        self.message(f"Rendered {out}")
+        self._show_rendered(img)
+
+    def _show_rendered(self, img):
+        page = self.render_page
         if img is not None:
             self.show_preview(img)
             page.show_live(False)
@@ -494,6 +613,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         if self.isVisible() and not self.panel.confirm_discard(title="Quit"):
             event.ignore()
             return
+        self.wait_render()                 # a ray trace still running finishes first
         prefs.save_layout(self, self.settings)
         for view in self.panel.views():
             if view.notebook.kernel is not None:

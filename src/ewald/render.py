@@ -31,6 +31,66 @@ def _element(t: str):
 
 _RADIUS_KEYS = ("type_radii", "radius_preset", "oxidation_states", "coordination")
 
+# The key light of every renderer, in the camera frame (x right, y up, z towards the viewer): upper left,
+# in front. The ray tracer and vector output use it as is; OpenGL keeps VTK's light kit unless a ``light``
+# is given (the impostor shader has its own head light, IMPOSTOR_LIGHT).
+DEFAULT_LIGHT = (-0.4, 0.6, 1.0)
+IMPOSTOR_LIGHT = (-0.25, 0.35, 1.0, 1.0)
+LIGHT_KEYS = ("direction", "azimuth", "elevation", "intensity")
+
+
+def light_params(light) -> tuple[np.ndarray, float]:
+    """``(direction, intensity)`` of a ``light`` setting: None (the default key light), a direction
+    ``[x, y, z]`` in the camera frame (x right, y up, z towards the viewer) or a dict with ``direction`` or
+    ``azimuth``/``elevation`` (degrees; azimuth turns the light right of the viewer, elevation up) and
+    ``intensity`` (1 = default; scales diffuse and specular light, not the ambient part)."""
+    import math
+
+    if light is None:
+        light = {}
+    elif not isinstance(light, dict):
+        light = {"direction": light}
+    unknown = set(light) - set(LIGHT_KEYS)
+    if unknown:
+        raise KeyError(f"light: unknown {sorted(unknown)}; use {', '.join(LIGHT_KEYS)}")
+    if "direction" in light and ("azimuth" in light or "elevation" in light):
+        raise ValueError("light: give direction or azimuth/elevation, not both")
+    if "azimuth" in light or "elevation" in light:
+        d0 = np.asarray(DEFAULT_LIGHT, float)
+        az = math.radians(float(light.get("azimuth", math.degrees(math.atan2(d0[0], d0[2])))))
+        el = math.radians(float(light.get("elevation", math.degrees(math.asin(d0[1] / np.linalg.norm(d0))))))
+        d = np.array([math.sin(az) * math.cos(el), math.sin(el), math.cos(az) * math.cos(el)])
+    else:
+        d = np.asarray(light.get("direction", DEFAULT_LIGHT), float)
+    n = np.linalg.norm(d) if d.shape == (3,) else 0.0
+    if not n or not np.isfinite(n):
+        raise ValueError(f"light direction must be a nonzero [x, y, z], not {light.get('direction')!r}")
+    k = float(light.get("intensity", 1.0))
+    if not k >= 0:
+        raise ValueError(f"light intensity must be >= 0, not {k}")
+    return d / n, k
+
+
+def apply_light(plotter, light=None):
+    """Light a PyVista plotter: ``light`` (see :func:`light_params`) replaces its lights with a camera key
+    light plus a weak head light (fill), and sets the impostor shader's light; None puts VTK's light kit
+    back if a light was set before."""
+    import pyvista as pv
+
+    ren = plotter.renderer
+    if light is None:
+        if getattr(ren, "_ewald_light", None) is not None:
+            plotter.remove_all_lights()
+            plotter.enable_lightkit()
+            ren._ewald_light = None
+        return
+    d, k = light_params(light)
+    plotter.remove_all_lights()
+    plotter.add_light(pv.Light(position=tuple(d), focal_point=(0, 0, 0), light_type="camera light", intensity=k))
+    plotter.add_light(pv.Light(position=(0, 0, 1), focal_point=(0, 0, 0), light_type="camera light",
+                               intensity=0.3 * k))
+    ren._ewald_light = (*d, k)
+
 
 def type_color(t: str, index: int = 0) -> np.ndarray:
     """Default color of a particle type: Jmol for elements, a palette otherwise."""
@@ -250,13 +310,18 @@ def _impostor_camera(renderer, *_):
     width = renderer.GetSize()[0]
     proj = [m.GetElement(0, 0) * width / 2, m.GetElement(2, 2), m.GetElement(2, 3),
             0.0 if cam.GetParallelProjection() else 1.0]
+    light = list(getattr(renderer, "_ewald_light", None) or IMPOSTOR_LIGHT)
     actors = renderer.GetActors()
     actors.InitTraversal()
     for _ in range(actors.GetNumberOfItems()):
         actor = actors.GetNextActor()
         mapper = actor.GetMapper()
-        if hasattr(mapper, "GetSplatShaderCode") and mapper.GetSplatShaderCode() in (_IMPOSTOR_SHADER, _FLAT_SHADER):
-            actor.GetShaderProperty().GetFragmentCustomUniforms().SetUniform4f("impostorProj", proj)
+        code = mapper.GetSplatShaderCode() if hasattr(mapper, "GetSplatShaderCode") else None
+        if code in (_IMPOSTOR_SHADER, _FLAT_SHADER):
+            uniforms = actor.GetShaderProperty().GetFragmentCustomUniforms()
+            uniforms.SetUniform4f("impostorProj", proj)
+            if code == _IMPOSTOR_SHADER:
+                uniforms.SetUniform4f("impostorLight", light)
 
 
 def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, show_cell: bool = True,
@@ -269,7 +334,7 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 coordination: dict | None = None, vectors=None, arrow_resolution: int | None = None,
                 visuals=None, frame: int = 0, boundary=None, boundary_bonds: str = "half",
                 replicate=None, replicate_cell: str = "super", show_atoms: bool = True, surfaces=None,
-                cell_radius=None, type_transparency=None, selection_color=None):
+                cell_radius=None, type_transparency=None, selection_color=None, light=None, measurements=None):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter; returns the
     :class:`ewald.scene.Scene` it drew.
 
@@ -297,7 +362,9 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     ``show_atoms=False`` leaves the atoms out (bonds keep their colors); ``surfaces`` restyles
     ``data.surfaces`` by name (``{name: {"visible", "color", "transparency", "edges"}}``).
     ``type_transparency`` ``{type: 0..1}`` fades whole types; ``selection_color`` draws the particles of
-    a 'Selection' property in that color (OVITO's red).
+    a 'Selection' property in that color (OVITO's red). ``light`` sets the plotter's key light (see
+    :func:`apply_light`); None keeps VTK's light kit. ``measurements`` draws the lines of distances, angles
+    and dihedrals (:mod:`ewald.measure`; the values are an overlay).
     """
     from .scene import SceneContext, build
 
@@ -308,9 +375,10 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                   trajectory_width=trajectory_width, show_cell=show_cell, cell_width=cell_width,
                   boundary=boundary, boundary_bonds=boundary_bonds, replicate=replicate,
                   replicate_cell=replicate_cell, show_atoms=show_atoms, surfaces=surfaces, cell_radius=cell_radius,
-                  type_transparency=type_transparency, selection_color=selection_color)
+                  type_transparency=type_transparency, selection_color=selection_color, measurements=measurements)
     draw_scene(plotter, scene, atom_style=atom_style, mesh_limit=mesh_limit, sphere_resolution=sphere_resolution,
                arrow_resolution=arrow_resolution or max(6, (sphere_resolution or 16) // 2 + 2), ink=cell_color)
+    apply_light(plotter, light)
     return scene
 
 
@@ -337,7 +405,8 @@ def draw_scene(plotter, scene, *, atom_style: str = "auto", mesh_limit: int = 15
 
 
 # Fragment code for sphere impostors: discard outside the disc, then Blinn-Phong with a
-# fixed head light plus ambient, matching the mesh material (ambient 0.25, diffuse 0.8).
+# key light ``impostorLight`` (camera frame direction, intensity; IMPOSTOR_LIGHT or the plotter's light)
+# plus ambient, matching the mesh material (ambient 0.25, diffuse 0.8).
 # The sprite sits at the sphere center; moving each fragment's depth to the sphere surface makes
 # overlapping spheres intersect and bonds enter them like real meshes. The world radius comes from
 # the sprite's size in pixels (screen derivative of the offset) and ``impostorProj`` =
@@ -348,10 +417,10 @@ float r2 = dot(offsetVCVSOutput.xy, offsetVCVSOutput.xy);
 if (r2 > 1.0) { discard; }
 float nz = sqrt(1.0 - r2);
 vec3 n = vec3(offsetVCVSOutput.xy, nz);
-vec3 l = normalize(vec3(-0.25, 0.35, 1.0));
+vec3 l = normalize(impostorLight.xyz);
 float diff = max(dot(n, l), 0.0);
 float spec = pow(max(dot(n, normalize(l + vec3(0.0, 0.0, 1.0))), 0.0), 40.0);
-diffuseColor = diffuseColor * (0.3 + 0.75 * diff) + vec3(0.3 * spec);
+diffuseColor = diffuseColor * (0.3 + 0.75 * impostorLight.w * diff) + vec3(0.3 * impostorLight.w * spec);
 ambientColor = vec3(0.0);
 float rpix = 1.0 / max(length(vec2(dFdx(offsetVCVSOutput.x), dFdy(offsetVCVSOutput.x))), 1e-6);
 float zn = 2.0 * gl_FragCoord.z - 1.0;
@@ -364,10 +433,10 @@ gl_FragDepth = 0.5 * zn + 0.5;
 
 # The 'flat' style (ASE GUI): the atom's own color, unlit, inside a dark outline (1 pixel or 5% of
 # the radius, antialiased), with the same sphere-surface depth as _IMPOSTOR_SHADER.
-_FLAT_SHADER = _IMPOSTOR_SHADER.replace("""vec3 l = normalize(vec3(-0.25, 0.35, 1.0));
+_FLAT_SHADER = _IMPOSTOR_SHADER.replace("""vec3 l = normalize(impostorLight.xyz);
 float diff = max(dot(n, l), 0.0);
 float spec = pow(max(dot(n, normalize(l + vec3(0.0, 0.0, 1.0))), 0.0), 40.0);
-diffuseColor = diffuseColor * (0.3 + 0.75 * diff) + vec3(0.3 * spec);
+diffuseColor = diffuseColor * (0.3 + 0.75 * impostorLight.w * diff) + vec3(0.3 * impostorLight.w * spec);
 ambientColor = vec3(0.0);
 float rpix = 1.0 / max(length(vec2(dFdx(offsetVCVSOutput.x), dFdy(offsetVCVSOutput.x))), 1e-6);
 """, """float rpix = 1.0 / max(length(vec2(dFdx(offsetVCVSOutput.x), dFdy(offsetVCVSOutput.x))), 1e-6);
@@ -616,7 +685,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
            camera: dict | None = None, renderer: str = "opengl", samples: int | None = None,
            ao_samples: int | None = None, shadows: bool | None = None, type_legend: bool = False,
            scale_bar: bool | float | None = None, dpi: float | None = None, quality: str = "publication",
-           scale: float | None = None, theme=None, overlays=None, region=None, labels=None, **scene_kwargs):
+           scale: float | None = None, theme=None, overlays=None, region=None, labels=None, light=None,
+           **scene_kwargs):
     """Render one DataCollection to ``filename`` or return an RGB array.
 
     ``direction`` is a view vector *from* the scene to the camera, or one of
@@ -640,7 +710,9 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     in Angstrom; exact in orthographic views), and ``overlays``: overlay elements
     (Coordinate tripod, Attributes, Atom labels, plugins; see :mod:`ewald.overlays`). ``labels`` puts a
     label on each atom: True (its type), a template such as ``"{type}{index}"`` or ``"{Charge:.2f}"``, or a
-    dict with ``text``, ``types``, ``size``, ``color`` (:class:`ewald.overlays.AtomLabels`). ``dpi`` is stored
+    dict with ``text``, ``types``, ``size``, ``color`` (:class:`ewald.overlays.AtomLabels`). ``measurements``
+    ``[[i, j], [i, j, k], [i, j, k, l]]`` draws distances, angles and dihedrals with their values
+    (:mod:`ewald.measure`). ``dpi`` is stored
     in PNG/TIFF files and sets the page size of vector output.
 
     ``boundary``: VESTA-style boundary range, e.g. ``(-0.1, 1.1)`` (fractional; or three pairs): also
@@ -652,6 +724,10 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     {"visible": True, "color": "teal", "transparency": 0.5, "edges": False}}`` restyles ``data.surfaces``
     meshes by name without changing their step. ``type_transparency={"O": 0.6}`` fades whole types (1
     hides them); ``selection_color="red"`` highlights a 'Selection' property, as OVITO does.
+
+    ``light``: the key light, the same in every renderer: a direction ``[x, y, z]`` in the camera frame
+    (x right, y up, z towards the viewer) or ``{"direction" or "azimuth"/"elevation" (degrees), "intensity"}``
+    (see :func:`light_params`); None: each renderer's default lighting.
 
     ``theme``: a theme name ('VESTA', 'Journal', 'ASE', 'Dark slide', plugins; see :mod:`ewald.themes`)
     that sets element colors, background, cell color and radius preset; explicit arguments win.
@@ -665,6 +741,9 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
         from .overlays import label_params
 
         overlays = [*_overlay_list(overlays), {"name": "Atom labels", "params": label_params(labels)}]
+    if scene_kwargs.get("measurements"):
+        overlays = [*_overlay_list(overlays), {"name": "Measurements",
+                                               "params": {"measurements": scene_kwargs["measurements"]}}]
     if theme is not None:
         from .themes import apply_theme
 
@@ -702,7 +781,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
             scene_kwargs.pop(k, None)
         return render_vector(data, filename, camera=camera, size=size, background=background,
                              transparent_background=transparent_background, radius_scale=radius_scale,
-                             bonds=bonds, show_cell=show_cell, dpi=dpi,
+                             bonds=bonds, show_cell=show_cell, dpi=dpi, light=light,
                              **{k: v for k, v in overlays.items() if k not in ("type_colors", "frame")},
                              **scene_kwargs)
     if renderer == "raytrace":
@@ -710,13 +789,13 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
                                  zoom=zoom, background=background, transparent_background=transparent_background,
                                  show_cell=show_cell, bonds=bonds, radius_scale=radius_scale, camera=camera,
                                  samples=samples, ao_samples=ao_samples, shadows=shadows, overlays=overlays,
-                                 dpi=dpi, **scene_kwargs)
+                                 dpi=dpi, light=light, **scene_kwargs)
 
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     p.set_background(background)
     res = q["sphere_resolution"] if data.count <= 20_000 else min(q["sphere_resolution"], 16)
     scene = build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, bonds=bonds,
-                        sphere_resolution=res, **scene_kwargs)
+                        sphere_resolution=res, light=light, **scene_kwargs)
     if any(s.transparency > 0 for s in data.surfaces.values()) or needs_depth_peeling(scene):
         p.enable_depth_peeling()
     if camera is not None:
@@ -799,7 +878,7 @@ def save_image(rgba, filename, *, transparent=False, dpi=None):
 
 def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, background, transparent_background,
                       show_cell, bonds, radius_scale, camera, samples, ao_samples, shadows, overlays, dpi,
-                      **scene_kwargs):
+                      light=None, **scene_kwargs):
     from .overlays import cell_line_color
     from .raytrace import raytrace, scene_from_data
 
@@ -813,8 +892,12 @@ def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, ba
     scene = scene_from_data(data, radius_scale=radius_scale, bonds=bonds, show_cell=show_cell,
                             cell_color=scene_kwargs.pop("cell_color", cell_color), view_direction=view,
                             **scene_kwargs)
+    lit = {}
+    if light is not None:
+        d, k = light_params(light)
+        lit = {"light_direction": tuple(d), "diffuse": 0.6 * k, "specular": 0.25 * k}
     img = raytrace(scene, camera, size, samples=samples, ao_samples=ao_samples, shadows=shadows,
-                   background=background, transparent_background=transparent_background)
+                   background=background, transparent_background=transparent_background, **lit)
     rgba = (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)
     return _finish(rgba, data, filename, camera, overlays, background, transparent_background, dpi)
 

@@ -277,9 +277,11 @@ def test_llm_tools(extras, monkeypatch):
     res = ts.call("render_image", {"theme": "VESTA"})
     assert not res.is_error, res.text()
     assert seen["theme"] == "VESTA" and seen["overlays"][0]["name"] == "Coordinate tripod"
-    script = ts.to_script()
-    assert "theme = 'VESTA'" in script and "overlays = [{'name': 'Coordinate tripod'" in script
-    assert not ts.call("remove_overlay", {"index": 0}).is_error and ts.overlays == []
+    assert ts.pipeline.view.theme is None                    # render_image's theme is for that picture only
+    script = ts.to_script()   # the overlay went into the notebook's view cell
+    assert "overlays=[{'name': 'Coordinate tripod'" in script and "theme" not in script
+    assert not ts.call("remove_overlay", {"index": 0}).is_error and ts.pipeline.view.overlays == []
+    assert "overlays" not in ts.to_script()
 
 
 UI_THEMES = Path(__file__).parents[1] / "examples" / "plugins" / "ui_themes.py"
@@ -324,3 +326,41 @@ def test_ui_theme_plugins(tmp_path):
     s = settings.Settings(path=tmp_path / "settings.json")
     s["general.ui_theme"] = "Nord"
     assert s["general.ui_theme"] == "Nord"
+
+
+def test_ui_theme_style_keys():
+    """A UI theme can set fonts, sizes, corner radius, spacing, icon stroke and extra QSS."""
+    from ewald.gui import icons
+    from ewald.gui import theme as ui
+    from ewald.ui_tokens import STYLE_DEFAULTS, check_style
+
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(UI_THEMES, folder)
+    plugins.load_plugins(force=True)
+    studio = plugins.ui_themes()["Studio"]
+    st = studio.style()
+    assert st["radius"] == 2 and st["density"] == "compact" and st["font"] == "Inter"
+    assert set(studio.palette()) == set(ui.PALETTES["graphite"])    # style keys are not tokens
+    assert ui.style("graphite") == STYLE_DEFAULTS and ui.style("Nord") == STYLE_DEFAULTS
+
+    try:
+        plain = ui.stylesheet()
+        ui.use("Studio")
+        css = ui.stylesheet()
+        assert '"Inter", "IBM Plex Sans"' in css and '"Fira Code", "JetBrains Mono",' in css
+        assert "border-radius: 6px" in plain and "border-radius: 6px" not in css
+        assert "border-radius: 2px" in css
+        assert "padding: 3px 10px" in plain and "padding: 2px 6px" in css     # compact: x0.6
+        assert css.rstrip().endswith("QWidget#panelHeader { border-bottom: 2px solid #E0A040; }")
+        assert 'stroke-width="1.4"' in icons.svg("chart", "#ffffff")
+    finally:
+        ui.use("paper")
+    assert 'stroke-width="1.7"' in icons.svg("chart", "#ffffff")
+
+    for bad in ({"radius": 40}, {"density": "tiny"}, {"font": 3}, {"icon_stroke": 9}, {"font_size": -1}):
+        with pytest.raises(ValueError):
+            check_style("bad", bad)
+    plugins.register_ui_theme("Broken style", {"accent": "#123456", "radius": "round"})
+    assert ui.style("Broken style") == STYLE_DEFAULTS     # logged, defaults used
+    assert ui.palette("Broken style")["accent"] == "#123456"

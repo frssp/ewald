@@ -1,6 +1,6 @@
 """VASP 6 HDF5 output: ``vaspout.h5`` (structures, forces, energies, ...) and ``vaspwave.h5`` (grids).
 
-Needs ``h5py`` (``pip install ewald[formats]``). The layout is the one py4vasp reads
+Needs ``h5py`` (installed with ewald). The layout is the one py4vasp reads
 (``py4vasp/_raw/definition.py``); HDF5 stores VASP's Fortran arrays with the axes
 reversed, so a grid dataset is ``(component, z, y, x)``.
 

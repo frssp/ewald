@@ -4,7 +4,9 @@
 
 Each shot runs in its own process (a fresh window and config folder), opens a notebook from
 examples/notebooks/, runs it, and saves a 256-color PNG here. Names: notebook, structure,
-trajectory, minimal, plugins (default: all).
+trajectory, minimal, plugins, plugin-panel, plugin-settings, ui-theme (default: all); the
+plugin- shots install examples/plugins/sim_agent_panel.py first, ui-theme installs
+examples/plugins/ui_themes.py and uses its Studio theme.
 """
 import os
 import subprocess
@@ -21,7 +23,12 @@ SHOTS = {
     "trajectory": ("tutorial-trajectory.png", "cu_md_trajectory.py", 7, "frame"),
     "minimal": ("minimal-mode.png", "cu_void.py", None, "minimal"),
     "plugins": ("plugins.png", "cu_void.py", None, "plugins"),
+    "plugin-panel": ("plugin_panel.png", "cu_void.py", None, "plugin-panel"),
+    "plugin-settings": ("plugin_settings_page.png", "cu_void.py", None, "plugin-settings"),
+    "ui-theme": ("ui_theme_studio.png", "cu_void.py", 4, "ui-theme"),
 }
+EXAMPLE_PLUGIN = os.path.join(HERE, "..", "..", "examples", "plugins", "sim_agent_panel.py")
+THEME_PLUGIN = os.path.join(HERE, "..", "..", "examples", "plugins", "ui_themes.py")
 
 
 def shoot(name):
@@ -35,13 +42,23 @@ def shoot(name):
 
     notebook_panel.CONFIRM_UNSAVED = False
     out, notebook, scroll_to, extra = SHOTS[name]
+    if extra and (extra.startswith("plugin-") or extra == "ui-theme"):
+        import shutil
+
+        from ewald import plugins
+
+        plugins.plugin_dir().mkdir(parents=True, exist_ok=True)
+        shutil.copy(THEME_PLUGIN if extra == "ui-theme" else EXAMPLE_PLUGIN, plugins.plugin_dir())
 
     def settle(n=30):
         for _ in range(n):
             app.processEvents()
             QtCore.QThread.msleep(40)
 
-    w = MainWindow(settings=settings.Settings())
+    s = settings.Settings()
+    if extra == "ui-theme":
+        s["general.ui_theme"] = "Studio"
+    w = MainWindow(settings=s)
     w.resize(1600, 980)
     w.show()
     settle()
@@ -60,11 +77,20 @@ def shoot(name):
         w.plugins_dock.show()
         w.plugins_dock.raise_()
         w.resizeDocks([w.plugins_dock, w.notebook_dock], [330, 460], QtCore.Qt.Horizontal)
+    elif extra == "plugin-panel":
+        dock = w.show_plugin_panel("sim_agent")
+        w.resizeDocks([dock, w.notebook_dock], [320, 480], QtCore.Qt.Horizontal)
+    target = w
+    if extra == "plugin-settings":
+        from ewald.gui.preferences import PreferencesDialog
+
+        target = PreferencesDialog(w.settings, w, page="Sim agent")
+        target.show()
     settle()
     w.statusBar().clearMessage()
     settle(5)
     raw = os.path.join(tempfile.mkdtemp(), out)
-    w.grab().save(raw)
+    target.grab().save(raw)
     image = Image.open(raw).convert("RGB")
     image.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(
         os.path.join(HERE, out), optimize=True)

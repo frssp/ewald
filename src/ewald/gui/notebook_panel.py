@@ -81,7 +81,7 @@ class NotebookView(QtWidgets.QWidget):
     askRequested = QtCore.Signal()
     titleChanged = QtCore.Signal()
     pipRequested = QtCore.Signal(list)        # pip requirements of plugins the notebook needs
-    plotCreated = QtCore.Signal(object)       # the live PlotsPanel of a new view cell
+    plotCreated = QtCore.Signal(object)       # a new live PlotsPanel (view cell or show() output)
 
     def __init__(self, notebook: Notebook, parent=None):
         super().__init__(parent)
@@ -360,10 +360,11 @@ class NotebookView(QtWidgets.QWidget):
             w.selected.connect(self.select)
             w.edited.connect(self._step_edited)
             w.actionRequested.connect(self._cell_action)
+            w.plotCreated.connect(self.plotCreated.emit)
             self.widgets.append(w)
             self.cells_layout.addWidget(w)
-            if w.plot_panel is not None:
-                self.plotCreated.emit(w.plot_panel)
+            for p in w.panels():
+                self.plotCreated.emit(p)
         self.cells_layout.addWidget(self.add_bar)
         # the spare height goes below the cells, not into them: a cell's gutter stretch makes it
         # count as vertically expanding, so a plain addStretch() would share the space with it
@@ -393,6 +394,7 @@ class NotebookView(QtWidgets.QWidget):
             w.update_state(self.data)
             if w.plot_panel is not None and (data is not None or w.plot_panel.data is None):
                 w.set_view_data(self.data, self.notebook.pipeline)
+            w.set_live_data(self.data, self.notebook.pipeline, force=data is not None)
         nb = self.notebook
         pipe = nb.pipeline
         steps = None if pipe is None else len(pipe.modifiers) + sum(len(c.steps) for c in nb.cells)
@@ -403,7 +405,9 @@ class NotebookView(QtWidgets.QWidget):
         self.status.setText(" · ".join(parts))
         self.status.setToolTip(nb.path or "Not saved yet (Ctrl+S)")
         if self.py_button.isChecked():
-            self.file_view.setPlainText(nb.to_py())
+            text = nb.to_py()
+            if text != self.file_view.toPlainText():   # keeps the scroll position while frames play
+                self.file_view.setPlainText(text)
 
     def _show_file(self, on):
         if on:
@@ -781,6 +785,7 @@ class NotebookView(QtWidgets.QWidget):
 
 
 # ---------------------------------------------------------------- tabs
+START_NOTEBOOK = False  # a new window shows the welcome page, not an empty "Notebook 1"
 CONFIRM_UNSAVED = True  # ask before closing notebooks with unsaved changes (tests turn it off)
 
 
@@ -795,8 +800,11 @@ class NotebookPanel(QtWidgets.QWidget):
     plotCreated = QtCore.Signal(object)       # a view cell's live plot: the main window links it
     pipRequested = QtCore.Signal(list)        # a notebook's bar asks to pip install its plugins
     switched = QtCore.Signal(object, object)  # notebooks of the tab left and the tab shown (either may be None)
+    openRequested = QtCore.Signal()           # the welcome page's Open…
+    exampleRequested = QtCore.Signal(str)     # ... Open example (a file name of ewald.examples)
+    recentRequested = QtCore.Signal(str)      # ... a recent file
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, start_notebook: bool = START_NOTEBOOK):
         super().__init__(parent)
         _discover()
         self.data = None
@@ -808,13 +816,22 @@ class NotebookPanel(QtWidgets.QWidget):
         self.tabs.renameRequested.connect(self.rename)
         self.tabs.currentChanged.connect(self._tab_changed)
         lay.addWidget(self.tabs)
+        from .welcome import WelcomePage
+
+        self.welcome = WelcomePage()
+        self.welcome.newRequested.connect(lambda: self.new_notebook())
+        self.welcome.openRequested.connect(self.openRequested.emit)
+        self.welcome.exampleRequested.connect(self.exampleRequested.emit)
+        self.welcome.recentRequested.connect(self.recentRequested.emit)
+        self.tabs.setEmptyWidget(self.welcome)
         self.add_menu = QtWidgets.QMenu(self)  # Pipeline menu / palette: same entries as + Step
         self.add_menu.aboutToShow.connect(lambda: fill_modifier_menu(
             self.add_menu, self.add_modifier, self.view._step_context if self.view is not None else None))
         fill_modifier_menu(self.add_menu, self.add_modifier)
         self._switching = False
         self.plot_style = ("publication", None)   # (style, tokens) of the cells' own matplotlib plots
-        self.new_notebook()
+        if start_notebook:
+            self.new_notebook()
 
     # ----------------------------------------------------------- tabs
     @property
@@ -864,8 +881,8 @@ class NotebookPanel(QtWidgets.QWidget):
         view.askRequested.connect(self.askRequested.emit)
         view.plotCreated.connect(self.plotCreated.emit)
         for w in view.widgets:  # built before the connection
-            if w.plot_panel is not None:
-                self.plotCreated.emit(w.plot_panel)
+            for p in w.panels():
+                self.plotCreated.emit(p)
         view.titleChanged.connect(lambda v=view: self._retitle(v))
         view.pipRequested.connect(self.pipRequested.emit)
         self._switching = True
@@ -920,9 +937,7 @@ class NotebookPanel(QtWidgets.QWidget):
         if view.notebook.kernel is not None:
             view.notebook.kernel.shutdown()
         self.tabs.removeTab(index)
-        view.deleteLater()
-        if self.tabs.count() == 0:
-            self.new_notebook()
+        view.deleteLater()      # the last one closed: the welcome page (no notebook is made up)
 
     def _tab_changed(self, index):
         old, self._shown = getattr(self, "_shown", None), self.view
@@ -1005,7 +1020,9 @@ class NotebookPanel(QtWidgets.QWidget):
             self.view.update_results(data)
 
     def add_modifier(self, mod):
-        if self.view is not None and self.view.add_step(mod) is not None:
+        if self.view is None:       # a step picked on the welcome page: it goes into a new notebook
+            self.new_notebook()
+        if self.view.add_step(mod) is not None:
             pass
 
     def refresh(self, select=None):

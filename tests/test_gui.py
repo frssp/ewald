@@ -76,6 +76,46 @@ def test_classic_layout_setting_is_retired(tmp_path, caplog):
     assert s["general.startup_workspace"] == "Notebook" and s.changed() == {}
 
 
+def test_view_tab_surfaces_labels_transparency(app, pipe):
+    """The View tab's Surfaces card restyles polyhedra by name, and the Atoms and Types cards set atoms
+    on/off, labels, the selection highlight and per-type transparency; all go into the view settings."""
+    from ewald.gui.pipeline_panel import DisplayPanel
+
+    pipe.modifiers.append(mods.CoordinationPolyhedra(center_types=["Cu"]))
+    panel = DisplayPanel()
+    panel.set_pipeline(pipe)
+    panel.set_data(pipe.compute(0))
+    card = panel.sections["Surfaces"]
+    shown = [c for c in card.findChildren(QtWidgets.QCheckBox) if c.text() == "coordination-polyhedra"]
+    assert shown and shown[0].isChecked()
+    shown[0].setChecked(False)
+    card.findChild(QtWidgets.QDoubleSpinBox).setValue(0.6)
+    assert panel.style.surfaces == {"coordination-polyhedra": {"visible": False, "transparency": 0.6}}
+    atoms = panel.sections["Atoms"]
+    [c for c in atoms.findChildren(QtWidgets.QCheckBox) if c.text() == "Draw atoms"][0].setChecked(False)
+    labels = panel.sections["Labels"]
+    [c for c in labels.findChildren(QtWidgets.QCheckBox) if c.text() == "Highlight selection"][0].setChecked(False)
+    field = [e for e in labels.findChildren(QtWidgets.QLineEdit) if "{type}{index}" in e.placeholderText()][0]
+    field.setText("{type}{index}")
+    field.editingFinished.emit()
+    panel.set_type_transparency("Cu", 0.5)
+    st = panel.style
+    assert (st.show_atoms, st.selection, st.labels, st.type_transparency) == (False, False, "{type}{index}", {"Cu": 0.5})
+    settings = st.view_settings(["Cu"])
+    assert settings["atoms"] is False and settings["labels"] == "{type}{index}" and settings["transparency"] == {"Cu": 0.5}
+    assert settings["surfaces"]["coordination-polyhedra"]["visible"] is False
+    lw = panel.light_widgets
+    assert not lw["box"].isChecked()
+    lw["box"].setChecked(True)
+    lw["azimuth"].setValue(60)
+    lw["intensity"].setValue(1.5)
+    assert st.light == {"azimuth": 60.0, "elevation": 29.0, "intensity": 1.5}   # default light: 29° up
+    assert st.view_settings(["Cu"])["light"] == st.light and st.scene_kwargs()["light"] == st.light
+    lw["box"].setChecked(False)
+    assert st.light is None and "light" not in st.scene_kwargs()
+    _dispose(panel)
+
+
 def test_view_tab_cards_and_notebook_marks(app, pipe):
     """The View tab shows the look as cards, marks what the notebook's view sets, and an edit there
     changes the style without rebuilding the card being edited."""
@@ -85,7 +125,7 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
     panel = DisplayPanel()
     panel.set_pipeline(pipe)
     panel.set_data(pipe.compute(0))
-    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Cell", "Elements", "Camera"]
+    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Surfaces", "Cell", "Labels", "Camera", "Elements"]
     marked = lambda: {lab.text() if isinstance(lab, QtWidgets.QLabel) else lab.title() for lab, _ in panel._marks if lab.property("set")} - {""}
     assert not marked()
     view(pipe, radius_scale=0.4, boundary=[-0.1, 1.1], direction="z")
@@ -105,6 +145,33 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
     panel.modifierRequested.connect(asked.append)
     panel.add_modifier(mods.CoordinationAnalysis(3.0))  # a step goes to the notebook, not into the pipeline
     assert [type(m).__name__ for m in asked] == ["CoordinationAnalysis"] and pipe.modifiers == []
+    _dispose(panel)
+
+
+def test_view_tab_columns_fold_and_aligned_labels(app, pipe):
+    """The View tab lays its cards out in equal-width columns, every form label has one width (fields
+    line up across cards), and a folded card stays folded across rebuilds."""
+    from ewald.gui.pipeline_panel import DisplayPanel
+
+    panel = DisplayPanel()
+    panel.set_pipeline(pipe)
+    panel.set_data(pipe.compute(0))
+    page = panel.scroll.widget()
+    lay = page.layout()
+    width = 3 * lay._column + 2 * lay._gap + 20 + 40
+    page.resize(width, page.height())
+    lay.setGeometry(QtCore.QRect(0, 0, width, lay.heightForWidth(width)))
+    cards = list(panel.sections.values())
+    assert lay.columns(width) == 3 and len({c.x() for c in cards}) == 3 and len({c.width() for c in cards}) == 1
+    labels = [lab for lab, _ in panel._marks if isinstance(lab, QtWidgets.QLabel) and lab.objectName() == "viewLabel"
+              and lab.text() != "Pairs (cutoffs, * = any type)"]
+    assert len({lab.width() if lab.isVisible() else lab.maximumWidth() for lab in labels}) == 1
+    panel.set_folded("Bonds", True)
+    assert not panel.sections["Bonds"].content.isVisibleTo(panel.sections["Bonds"])
+    panel.refresh()
+    assert panel.sections["Bonds"].folded and not panel.sections["Bonds"].content.isVisibleTo(panel.sections["Bonds"])
+    panel.set_folded("Bonds", False)
+    assert panel.sections["Bonds"].content.isVisibleTo(panel.sections["Bonds"])
     _dispose(panel)
 
 
@@ -312,6 +379,94 @@ def test_plots_thermo_series_marker_follows_frame(app, lammps_dir):
     assert list(panel._marker.get_xdata()) == [30, 30]
 
 
+def test_plots_keep_a_frame_independent_plot_during_playback(app, cu_fcc):
+    from ewald.gui.plots import PlotsPanel
+
+    msd = {"Time": np.arange(5.0), "MSD": np.arange(5.0) ** 2}
+    panel = PlotsPanel()
+    d0 = cu_fcc.copy()
+    d0.tables["msd"] = msd
+    panel.set_data(d0)
+    ax = panel.figure.axes[0]
+    d1 = cu_fcc.copy()
+    d1.tables["msd"] = dict(msd)          # a trajectory-wide result: the same arrays on every frame
+    panel.set_data(d1)
+    assert panel.figure.axes[0] is ax     # no fig.clear()
+    d2 = cu_fcc.copy()
+    d2.tables["msd"] = {k: v.copy() for k, v in msd.items()}   # recomputed (kernel), same values
+    panel.set_data(d2)
+    assert panel.figure.axes[0] is ax
+    d3 = cu_fcc.copy()
+    d3.tables["msd"] = {"Time": msd["Time"], "MSD": msd["MSD"] + 1}   # per-frame data: redrawn
+    panel.set_data(d3)
+    assert panel.figure.axes[0] is not ax
+    _dispose(panel)
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_playback_leaves_frame_independent_cells_alone(app, monkeypatch):
+    from ewald import settings
+    from ewald.gui import cell_widget
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(settings=settings.Settings())
+    nb = os.path.join(os.path.dirname(__file__), "..", "examples", "notebooks", "cu_md_trajectory.py")
+    view = w.panel.open_notebook(nb, trusted=True)
+    view.run_all()
+    app.processEvents()
+    rebuilt, cleared = [], []
+    fit = cell_widget.OutputArea._fit_images
+    monkeypatch.setattr(cell_widget.OutputArea, "_fit_images", lambda self: (rebuilt.append(self), fit(self)))
+    panels = {p.figure: p for p in w.plot_panels()}
+    import matplotlib.figure
+
+    clear = matplotlib.figure.Figure.clear
+    monkeypatch.setattr(matplotlib.figure.Figure, "clear",
+                        lambda self, *a, **k: (cleared.append(panels.get(self)), clear(self, *a, **k))[1])
+    w.timeline.play.setChecked(True)
+    for f in (1, 2, 3):
+        w.timeline._set(f)
+        app.processEvents()
+    w.timeline.play.setChecked(False)
+    app.processEvents()
+    assert w.frame >= 3                   # (the play timer may have moved on by one)
+    assert rebuilt == []                  # no cell's outputs (the printed "10 frames") rebuilt per frame
+    shown = {p.hist.currentText() or p.table.currentText() for p in cleared if p is not None}
+    assert shown == {"Displacement Magnitude"}   # the per-frame histogram redraws, the MSD plot does not
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_show_anywhere_in_a_cell_is_a_live_plot(app, tmp_path):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    path = tmp_path / "live.py"
+    path.write_text(
+        "# %%\nimport numpy as np\nfrom ewald import all_frames, load\nfrom ewald.modifiers import *\n"
+        f"from ewald.views import show\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n\n"
+        "# %%\n@all_frames\ndef height(frames, data):\n"
+        "    z = [d['Position'][:, 2].mean() for d in frames]\n"
+        "    data.tables['height'] = {'Frame': np.arange(len(z)), 'Mean z': np.array(z)}\n"
+        "pipe.add(height)\n\n"
+        "# %%\npipe.add(CalculateDisplacements(reference_frame=0))\nprint('two plots')\n"
+        "show(pipe, table='height')\nshow(pipe, histogram='Displacement Magnitude')\n")
+    w = MainWindow(settings=settings.Settings())
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    app.processEvents()
+    cell = view.widgets[2]
+    height, hist = cell.panels()                       # live plots, not PNGs, though the cell does more
+    assert height.table.currentText() == "height" and hist.hist.currentText() == "Displacement Magnitude"
+    assert height in w.plot_panels() and hist in w.plot_panels()   # linked like the Plots tab
+    ax = height.figure.axes[0]
+    w.timeline._set(3)
+    app.processEvents()
+    assert hist.data.attributes["SourceFrame"] == 3   # follows the frame
+    assert height.figure.axes[0] is ax                 # all_frames result: computed once, not redrawn
+    w.close()
+
+
 def test_timeline_frame_selection_playback(app):
     from ewald.gui.timeline import Timeline
 
@@ -475,6 +630,40 @@ def test_plots_neb_profile_marks_image_and_jumps(app, vasp_dir):
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_opening_one_neb_image_offers_the_whole_band(app, vasp_dir, monkeypatch):
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    asked = []
+
+    def answer(reply):
+        def question(*args, **kwargs):
+            asked.append(args[2])
+            return reply
+        monkeypatch.setattr(QtWidgets.QMessageBox, "question", question)
+
+    answer(QtWidgets.QMessageBox.No)
+    w.open_any(str(vasp_dir / "neb" / "02" / "OUTCAR"))
+    assert asked[0].startswith("OUTCAR is one image of the NEB run")
+    assert w.pipeline.num_frames == 1  # just that image
+    answer(QtWidgets.QMessageBox.Yes)
+    w.open_any(str(vasp_dir / "neb" / "02" / "OUTCAR"))
+    assert w.pipeline.num_frames == 5 and any(type(m).__name__ == "NebEnergyProfile" for m in w.pipeline.modifiers)
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_dropping_a_neb_folder_opens_the_band(app, vasp_dir):
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    assert w.acceptDrops()
+    w.open_dropped([str(vasp_dir / "neb")])
+    assert w.pipeline.num_frames == 5
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_viewport_context_menu_toggles_frame_overlay(app, vasp_dir):
     from ewald import import_file
     from ewald.gui.app import MainWindow
@@ -552,7 +741,11 @@ def test_main_window_smoke(app, pipe, tmp_path):
     w.render_page.preset.setCurrentText("Custom (px)")
     w.render_page.width.setValue(320)
     w.render_page.height.setValue(240)
-    w.render_from_page()
+    w.render_from_page()                    # the ray tracer: on a worker thread, a spinner meanwhile
+    assert w.rendering and not w.render_page.render_button.isEnabled()
+    assert not w.render_page.busy_label.isHidden() and w.render_page.busy_label.text() == "Ray tracing…"
+    w.wait_render()
+    assert not w.rendering and w.render_page.render_button.isEnabled() and w.render_page.busy_label.isHidden()
     assert os.path.getsize(tmp_path / "x.png") > 1000
     code = w.render_page.code.toPlainText()
     assert "CoordinationAnalysis(cutoff=3.0" in code and "camera=" in code
@@ -827,6 +1020,7 @@ def test_session_save_load_and_publication_output(app, pipe, tmp_path):
     page.text.setText("frame [Frame]")
     page.output.setText(str(tmp_path / "fig.svg"))
     w.render_from_page()
+    w.wait_render()
     assert "frame 0" in (tmp_path / "fig.svg").read_text()
     assert not page.preview.pixmap().isNull()
     page.movie_format.setCurrentText("GIF")
@@ -1011,8 +1205,24 @@ def test_ask_panel_without_claude(app, pipe):
 
     panel = AskPanel(lambda: (pipe, 0, []), agent_factory=missing)
     panel.ask("hello")
-    assert "not available" in panel.text() and "pip install ewald[llm]" in panel.text()
+    assert "not available" in panel.text() and "Preferences › AI" in panel.text()
     assert not panel.busy()
+
+
+def test_step_error_is_logged_once_not_every_frame(app, pipe):
+    from ewald import Modifier
+    from ewald.gui.app import MainWindow
+
+    class NeedsPackage(Modifier):
+        def modify(self, data, ctx):
+            raise ImportError("NeedsPackage needs spglib")
+
+    pipe.modifiers.append(NeedsPackage())
+    w = MainWindow(pipe)
+    for frame in (0, 1, 0, 1):
+        w.frame = frame
+        w.recompute(wait=True)
+    assert w.log.toPlainText().count("NeedsPackage needs spglib") == 1
 
 
 def test_main_window_ask_uses_picks_and_selection(app, pipe):
@@ -1355,6 +1565,7 @@ def test_theme_menu_and_render_page_overlays(app, pipe, tmp_path):
     page.height.setValue(150)
     page.output.setText(str(tmp_path / "fig.svg"))
     w.render_from_page()
+    w.wait_render()
     svg = (tmp_path / "fig.svg").read_text()
     assert all(f"<!-- {c} -->" in svg for c in "abc")             # tripod labels drawn as text
     path = w.save_session(str(tmp_path / "s.ewald"))
@@ -1557,8 +1768,9 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w._plugin_updates(0)
     assert plugins_button.toolTip() == "Show or hide the Plugins side bar"
     tabs = w.panel.tabs
-    assert tabs.count() == 1 and tabs.tabText(0) == "Notebook 1"
-    w.open_any(cu_path, ask_types=False)                      # the empty notebook makes way for the file
+    assert tabs.count() == 0 and w.panel.view is None                    # a new window: the welcome page
+    assert tabs.body.currentWidget() is w.panel.welcome
+    w.open_any(cu_path, ask_types=False)
     assert tabs.count() == 1 and tabs.tabText(0) == "cu" and w.pipeline is w.panel.pipeline
     w.panel.add_modifier(mods.CoordinationAnalysis(cutoff=3.0))
     w.recompute()
@@ -1603,8 +1815,19 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w.settings["python.run_notebooks"] = "always"
     w.open_notebook(str(path))                                 # already open: back to its tab
     assert tabs.count() == 1
-    w.panel.close_tab(0)                                       # the last tab leaves an empty notebook
-    assert tabs.count() == 1 and w.panel.notebook.pipeline is None
+    w.panel.close_tab(0)                                       # the last tab: the welcome page, no new notebook
+    assert tabs.count() == 0 and w.panel.view is None and tabs.body.currentWidget() is w.panel.welcome
+    assert w.pipeline is None and w.data is None                   # the 3D view, plots and inspector are cleared
+    from ewald.gui import welcome
+    assert welcome.load_recent()[0] == str(path)                    # listed under Recent
+    w.panel.welcome.refresh()
+    recent = w.panel.welcome.findChildren(QtWidgets.QToolButton, "welcomeRecent")
+    assert recent and recent[0].toolTip() == str(path)
+    w._update_notebook_menu()
+    assert not any(a.isEnabled() for a in w.notebook_menu.actions())     # Notebook › ... greys out
+    w.panel.welcome.newRequested.emit()                               # New notebook on the welcome page
+    assert tabs.count() == 1 and tabs.body.currentWidget() is tabs.stack
+    w.panel.close_tab(0)
     w.open_notebook(str(path))
     assert tabs.tabText(0) == "cu_nb" and [m.name for m in w.panel.pipeline.modifiers] == ["CoordinationAnalysis"]
     act = next(a for a in w.analysis_menu.actions() if a.text() == "Common neighbor analysis")
@@ -2006,6 +2229,7 @@ def test_plugins_side_bar_installs_adds_a_step_and_removes(app, cu_path, tmp_pat
     panel.wait()
     entry = next(e for e in panel.entries if e.name == "Bar shift")
     panel.install(entry)
+    panel.wait()
     item = next(i for i in panel.items if i.path.endswith("bar_shift.py"))
     panel.show_details(item)
     assert not panel.use_button.isHidden()
@@ -2150,7 +2374,11 @@ def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app,
     panel = plugins_panel.PluginsPanel(settings=s)
     counts = []
     panel.updatesChanged.connect(counts.append)
+    assert panel.loading                                                 # a spinner, not "Nothing more to install"
+    labels = [b.text() for b in panel.list_widget.findChildren(plugins_panel.BusyLabel)]
+    assert labels == ["Loading plugin catalogs…"]
     panel.wait()
+    assert not panel.loading
     assert counts == [1] and [(i.id, e.version) for i, e in panel.updates()] == [("up_shift", "0.3")]
     panel.search.setText("@updates")                                     # only what has an update
     app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)
@@ -2164,7 +2392,14 @@ def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app,
     texts = [w.text() for w in panel.findChildren(plugins_panel.QtWidgets.QLabel)]
     assert any("needs ewald >=99" in t for t in texts)
     assert any(t.startswith("No plugin index at") and "not-yet.json" in t for t in texts)   # muted, not an error
-    buttons["Update to 0.3"].click()
+    buttons["Update to 0.3"].click()                                     # runs in the background
+    app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)
+    spinning = [r for r in panel.findChildren(plugins_panel.PluginRow) if r.busy is not None]
+    assert [(r.item.id, r.busy.text()) for r in spinning] == [("up_shift", "Updating…")]    # a spinner, no buttons
+    assert not any(b.text().startswith("Update") for r in spinning for b in r.findChildren(plugins_panel.QtWidgets.QPushButton))
+    assert not panel.busy_bar.isHidden() and "Updating Up shift" in panel.busy_label.text()
+    panel.wait()
+    assert not panel.busy and panel.busy_bar.isHidden()
     assert next(i for i in panel.items if i.id == "up_shift").version == "0.3"
     app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)    # the old rows go
     assert not any(b.text().startswith("Update") for b in panel.findChildren(plugins_panel.QtWidgets.QPushButton))
@@ -2426,7 +2661,7 @@ def test_panels_and_cells_fold(app, cu_path, tmp_path):
     side.set_collapsed(False)
     assert w.tabPosition(QtCore.Qt.RightDockWidgetArea) == QtWidgets.QTabWidget.South
 
-    view = w.panel.view
+    view = w.panel.new_notebook()
     view.add_cell("code", "print('hi')\nx = 1")
     cw = view.widgets[-1]
     cw.fold_button.click()
@@ -2604,6 +2839,7 @@ def test_notebook_cells_sit_at_the_top(app):
     from ewald.gui.app import MainWindow
 
     w = MainWindow()
+    w.panel.new_notebook()
     w.resize(1400, 900)
     w.show()
     for _ in range(3):
@@ -2631,6 +2867,7 @@ def test_notebook_cell_controls_add_bar_and_running_mark(app):
     from ewald.gui.app import MainWindow
 
     w = MainWindow()
+    w.panel.new_notebook()
     w.resize(1400, 900)
     w.show()
     app.processEvents()
@@ -2979,6 +3216,7 @@ def test_render_page_frame_on_the_3d_view(app, pipe, tmp_path):
     page.quality.setCurrentText("Draft")
     page.set_renderer("opengl")
     w.render_from_page()
+    w.wait_render()
     assert os.path.getsize(tmp_path / "f.png") > 1000 and page.left_stack.currentIndex() == 1
     assert not frame.visible                                         # the picture is shown, not the view
     assert "region=" in page.code.toPlainText()
@@ -3115,3 +3353,159 @@ def test_ai_chat_stop_button_and_failed_cells_in_the_question(app, pipe):
     for worker in panel._stopped:
         worker.wait(5000)
     w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatch):
+    """Installing a plugin with @panel and @settings_page adds an activity-bar button that opens
+    its side bar (built on first open) and a page in Preferences; switching it off removes both."""
+    import shutil
+    from pathlib import Path
+
+    from ewald import plugins
+    from ewald.gui import preferences as prefs
+    from ewald.gui.app import MainWindow
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(Path(__file__).parents[1] / "examples" / "plugins" / "sim_agent_panel.py", folder)
+    built = []
+
+    def broken(context):
+        built.append(context)
+        raise RuntimeError("no server")
+
+    plugins.register_panel("broken", broken, title="Broken")
+    w = MainWindow(pipe)
+    titles = [a.text() for a in w.activity_bar.actions()]
+    assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent"]
+    assert w.plugin_panels["sim_agent"]["dock"] is None          # nothing built before it opens
+    assert [a.text() for a in w.plugin_panel_menu.actions()] == titles[4:]
+    w.plugin_panels["sim_agent"]["action"].trigger()
+    dock = w.plugin_panels["sim_agent"]["dock"]
+    assert dock is not None and not dock.isHidden() and w.plugin_panels["sim_agent"]["action"].isChecked()
+    labels = [lab.text() for lab in dock.widget().findChildren(QtWidgets.QLabel)]
+    assert "Server: http://localhost:8000  (default)  no token" in labels and any("atoms, frame 0" in t for t in labels)
+    edit = dock.widget().findChild(QtWidgets.QLineEdit)
+    edit.setText("relax")
+    edit.returnPressed.emit()
+    assert "sim-agent task: relax" in w.panel.view.notebook.cells[-1].source
+    w.set_frame(1)
+    assert any("frame 1" in lab.text() for lab in dock.widget().findChildren(QtWidgets.QLabel))
+    w.show_plugin_panel("sim_agent", False)
+    assert dock.isHidden()
+    w.show_plugin_panel("broken")
+    assert built and isinstance(w.plugin_panels["broken"]["dock"].widget(), QtWidgets.QPlainTextEdit)
+    assert "no server" in w.plugin_panels["broken"]["dock"].widget().toPlainText()
+
+    dlg = prefs.PreferencesDialog(w.settings, w, page="Sim agent")
+    assert dlg.page_names[-1] == "Sim agent" and dlg.stack.currentIndex() == len(dlg.page_names) - 1
+    fields = dlg.plugin_pages["Sim agent"]["widgets"]
+    assert fields["server"].text() == "http://localhost:8000" and fields["insert_cells"].isChecked()
+    fields["server"].setText("http://hpc:9000")
+    fields["insert_cells"].setChecked(False)
+    dlg.restore_page()
+    assert fields["server"].text() == "http://localhost:8000" and fields["insert_cells"].isChecked()
+    fields["server"].setText("http://hpc:9000")
+    dlg.applied.connect(lambda s: w._plugin_event("settings", s))     # as MainWindow.preferences does
+    assert dlg.apply()
+    assert plugins.plugin_settings("sim-agent")["server"] == "http://hpc:9000"
+    assert any("http://hpc:9000" in lab.text() for lab in dock.widget().findChildren(QtWidgets.QLabel))
+    dlg._search("access token")
+    assert not dlg.pages.item(dlg.page_names.index("Sim agent")).isHidden()
+    assert dlg.pages.item(0).isHidden()
+    dlg.close()
+
+    plugins.set_enabled("sim-agent-example", False)
+    w.refresh_plugin_panels()
+    assert [a.text() for a in w.activity_bar.actions()][4:] == ["Broken"] and "sim_agent" not in w.plugin_panels
+    w.close()
+def test_plugin_settings_page_dialog(app, monkeypatch):
+    from ewald import plugins, settings
+    from ewald.gui.app import MainWindow
+    from test_plugins import SETTINGS_PLUGIN
+
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "demo_service.py").write_text(SETTINGS_PLUGIN)
+    plugins.load_plugins(force=True)
+    try:
+        w = MainWindow(settings=settings.Settings())
+        w._fill_plugin_settings_menu()
+        assert [a.text() for a in w.plugin_settings_menu.actions()] == ["Demo service…"]
+        item = next(i for i in w.plugins_panel.items if i.id == "demo_service")
+        dlg = w.plugins_panel.edit_settings(item, exec_=False)
+        assert dlg.widgets["url"].text() == "http://old" and dlg.widgets["verify"].isChecked()
+        assert dlg.widgets["key"].text() == "" and dlg.widgets["key"].placeholderText() == "not set"
+        dlg.widgets["url"].setText("ftp://nope")
+        dlg.buttons.accepted.emit()
+        assert dlg.isVisible() and "starts with http" in dlg.status.text()      # stays open to fix it
+        dlg.widgets["url"].setText("http://new")
+        dlg.widgets["key"].setText("sa_pat_2")
+        dlg.buttons.accepted.emit()
+        assert not dlg.isVisible() and dlg.message == "Saved" and dlg.widgets["key"].text() == ""
+        dlg = w.edit_plugin_settings("demo-service", exec_=False)
+        assert dlg.widgets["url"].text() == "http://new" and dlg.widgets["key"].placeholderText().startswith("saved")
+        test = next(b for b in dlg.buttons.buttons() if b.text() == "Test")
+        test.click()
+        assert dlg.status.text() == "reachable" and dlg.isVisible()
+        dlg.close()
+        w.close()
+    finally:
+        (folder / "demo_service.py").unlink()
+        plugins.load_plugins(force=True)
+
+
+def test_open_location_opens_a_scheme_path(app, cu_fcc, monkeypatch):
+    from ewald import plugins, settings
+    from ewald.gui.app import MainWindow
+
+    seen = []
+
+    def fake(path, **kwargs):
+        seen.append(path)
+        return [cu_fcc]
+
+    plugins.register_reader("fake-scheme", fake, schemes=("fakeloc",), priority=None)
+    try:
+        w = MainWindow(settings=settings.Settings())
+        assert "fakeloc" in w.location_schemes()
+        monkeypatch.setattr(QtWidgets.QInputDialog, "getText", lambda *a, **k: ("fakeloc:1234/scf", True))
+        assert w.open_location_dialog() is not None
+        assert seen == ["fakeloc:1234/scf"] and w.pipeline.num_frames == 1
+        assert w._last_location == "fakeloc:1234/scf"
+        monkeypatch.setattr(QtWidgets.QInputDialog, "getText", lambda *a, **k: ("", False))
+        assert w.open_location_dialog() is None
+        w.close()
+    finally:
+        plugins._registry.readers.pop("fake-scheme", None)
+
+
+def test_plugin_settings_page_in_preferences_refuses_bad_values(app, monkeypatch):
+    """A plugin page's save() raising ValueError keeps Preferences open on that page with the message."""
+    from ewald import plugins, settings
+    from ewald.gui import preferences as prefs
+    from test_plugins import SETTINGS_PLUGIN
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    folder = plugins.plugin_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "demo_service.py").write_text(SETTINGS_PLUGIN)
+    dlg = prefs.PreferencesDialog(settings.Settings())
+    entry = dlg.plugin_pages["Demo service"]
+    assert entry["widgets"]["key"].placeholderText() == "not set"
+    assert dlg.apply()                                    # nothing changed: save() is not called
+    entry["widgets"]["url"].setText("ftp://nope")
+    dlg.show_page("General")
+    dlg.accept()
+    assert dlg.result() == 0 and dlg.page_names[dlg.stack.currentIndex()] == "Demo service"
+    assert "starts with http" in entry["status"].text()
+    entry["widgets"]["url"].setText("http://new")
+    entry["widgets"]["key"].setText("sa_pat_3")
+    assert dlg.apply() and entry["status"].text() == "Saved" and entry["widgets"]["key"].text() == ""
+    assert plugins.settings_pages()["demo-service"].values()["key"] is True
+    test = next(b for b in entry["card"].parent().findChildren(QtWidgets.QPushButton) if b.text() == "Test")
+    test.click()
+    assert entry["status"].text() == "reachable"
+    dlg.close()

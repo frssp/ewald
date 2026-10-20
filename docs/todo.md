@@ -10,6 +10,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- View tab: folded cards are remembered only while the window is open (not in settings or the
+  layout file); no Fold all / Unfold all; a card has no per-card reset to defaults.
 
 Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; numbers from
 `benchmarks/analysis.py`, `benchmarks/large_files.py` and the GUI under `xvfb-run`)
@@ -25,9 +27,19 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 - GUI startup is about 3 s, mostly imports: pyvista/pyvistaqt (~2 s) and matplotlib (0.6 s,
   needed by the Plots tab at construction); the IPython console is built after the first paint.
 - UI theme switch takes 0.5-1 s in `QApplication.setStyleSheet` (one app-wide QSS).
+- Playback: notebook cells and plots whose data does not change between frames are no longer
+  rebuilt (MSD, time series, printed outputs). Plots of per-frame data (a property histogram,
+  a per-frame RDF) still clear and redraw the figure each frame; updating the bar heights or
+  line data in place (or blitting) would make them cheaper at high frame rates.
 
 GUI
 
+- UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): still open
+  are an empty-state hint in the 3D view with nothing loaded (the notebook area has a welcome
+  page now; the view bar stays enabled), Cancel for a ray trace in progress, opening files (local or remote) and
+  remote connections off the GUI thread (they now say what they wait for, but the window still
+  blocks), the Render settings column scrolling sideways at the default window width, and a
+  short highlight on a plugin row once it is installed.
 - Panel layout (phase 1 landed: `gui/workbench.py`, `gui/layout_model.py`; plan in project
   files `design/panel-layout.md`): phase 2 opens a notebook view cell's plot large in the
   editor area ("Open large" or drag the cell header, a Bring back placeholder in the cell, the
@@ -49,6 +61,12 @@ GUI
   edit or regenerate a sent message. The notebook cell tools (`llm/notebook_tools.py`) could
   highlight the cells the AI changed and show a diff to accept or undo; `ewald ask` and the MCP
   server could take a notebook (`--notebook analysis.py`) and save it back.
+- AI tools only through cells (`llm/tools.py` `CELL_WRITERS`): `@ai_tool` plugin functions can
+  still change `toolset.pipeline` by hand (ewald cannot check them; docs/plugins/tools.md asks
+  them not to); a check after each plugin tool that every modifier belongs to a cell could warn.
+  A failed generated cell leaves two undo entries in the GUI (insert, then removal). After a second
+  `pipe = load(...)` cell, the step cells above it still hold the old pipeline's modifiers, and
+  `Notebook.sync` (the GUI's refresh) deletes them.
 - `PythonScript` step cells: `Modifier.__repr__` uses `name`, which PythonScript sets to its title,
   so `step_source` writes `pipe.add(Python script(...))`, which does not parse.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
@@ -58,12 +76,11 @@ GUI
   pipeline yet (now it keeps the last one); image/figure cells; inline Ask AI suggestions
   as diffs; a snapshot cell that updates when the camera of its view changes (now it is code).
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
-  view does not have yet (light direction
-  and strength, picks and distance/angle measurements as
-  code, the viewport axes widget; audit in the project files `ewald-review/view-elements-audit.md`);
-  the Display panel cards (Atoms, Types, Bonds, Cell, Elements) could take the visual element
-  names `pipe.view.elements` uses (Particles, Bonds, Simulation cell, Surfaces, ...) and gain a
-  Surfaces card for the `surfaces` setting; the camera reaches the view cell
+  view does not have yet (picks as code, the viewport axes widget; measurement labels in the
+  legacy OpenGL 1.x viewport, and lines that show through atoms; audit in the project files `ewald-review/view-elements-audit.md`);
+  the View tab cards (Atoms, Types, Bonds, Surfaces, Cell, Labels, Camera, Elements) could take the visual
+  element names `pipe.view.elements` uses (Particles, Bonds, Simulation cell, ...); label size,
+  color and types and the selection color are code only (the cards show on/off and the text); the camera reaches the view cell
   only through Insert › View settings with the camera (not on every rotation); the Render page
   keeps its own per-notebook state in the `.py` header next to the view cell's picture settings
   (one place for both); in a kernel notebook a viewport edit reaches the kernel's `pipe.view`
@@ -75,6 +92,13 @@ GUI
   camera sideways instead of an off-axis projection (exact at the focal distance only); the
   Overlay elements and text label are not previewed inside the frame; Claude's `set_view` can set
   `region` but no tool tells it the frame on screen.
+- Python steps per frame vs once (`@each_frame` / `@all_frames`, landed): cell markers
+  `# %% [each frame]` / `# %% [all frames]` with a header toggle, where the cell body is the step
+  (`data`, `frames` given), proposed to the owner 2026-10-20 and not decided yet; a GUI badge on
+  cells whose steps are `all_frames`; `all_frames` start/stop/step arguments.
+- Live `show(pipe, ...)` outside a view cell: zooming does not write `xlim=`/`ylim=` back (only a
+  cell that is just the call does), and `frame=` is ignored by the live plot (it follows the
+  current frame, as view cells do).
 - Notebook kernels (`ewald/kernel.py`): step forms for steps a kernel cell adds with code the
   app cannot import (a class only the kernel's Python has stays as code).
 - Notebook kernel on the cluster (plan, owner's pick 2026-10-20; not started): run a notebook
@@ -97,6 +121,9 @@ GUI
   view instead of the Ask AI prompt; uninstalling a pip plugin still needs a restart.
 - UI themes: prompts already printed in the Python console keep the colors of the theme they
   were printed in (new input, syntax colors and the background switch at once).
+- UI theme style keys (`font`, `mono_font`, `radius`, `density`, `icon_stroke`, `qss`): open code
+  editors and the console keep their mono font until reopened; `density` scales QSS padding only,
+  not layout margins set in code; `qss` object names are not a stable plugin API yet.
 - Remotes side bar: list folders and connect in a background thread (now the GUI waits, with
   a busy cursor), drag a remote file onto the notebook, mirror a run folder to a local folder
   (rsync-like, for offline analysis), remote data links in the `.ewd` manifest (remote paths are
@@ -130,7 +157,8 @@ GUI
   folded for a single structure.
 - Shortcuts for the viewport tools (orbit, pick, distance, angle, bond) and view-along axes.
 - Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
-  screen edges) and VTK scene lights instead of the fixed head light; bond impostors.
+  screen edges); bond impostors. The `light` setting moves the key light; a fill/rim light and
+  shadows in the OpenGL view are not settable.
 - Flat (ASE) style in the ray tracer (now OpenGL and vector only), and a
   per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.
@@ -248,9 +276,10 @@ Volumetric data
 Formats
 
 - NEB: VTST's `neb.dat`/`spline.dat` and the `NEB: projections` lines of VTST OUTCARs (the
-  profile is computed from positions, energies and forces now); NEB folders over SSH; an
+  profile is computed from positions, energies and forces now); an
   `images=` option on the reader for ASE NEB trajectories, so the band history needs no
-  modifier parameter; dimer and string-method outputs.
+  modifier parameter; dimer and string-method outputs. A NEB folder opened from File › Open
+  (a directory picker there) instead of File › Load NEB folder or a drop.
 - NEB: interpolate between images for a smoother movie; `OverlayFrames` copies are extra
   particles, so picking one in the viewport selects a copy, not the real atom.
 - Ray tracer: see-through spheres are tessellated glass (`OverlayFrames` copies, Transparency);
@@ -302,9 +331,17 @@ Plugins and AI
   `GATEWAY_NO_POOL` (sim-agent has both).
 - Plugin manifests, phase 2 (from the VS Code comparison): contributions declared in
   `ewald-plugin.toml` (`[[readers]]`, `[[modifiers]]`, ... with `python = "module:object"`)
-  registered lazily and imported on first use; `settings` and `commands` contribution points
-  (plugin `Option`s on a generated Preferences page; commands in the palette, as notebook
-  functions and as AI tools).
+  registered lazily and imported on first use (`@panel` widgets are already built on first open,
+  but the plugin module is still imported at start); a `commands` contribution point (commands in
+  the palette, as notebook functions and as AI tools). Settings pages (`@settings_page`) and side
+  bars (`@panel`) are registered in code, not declared in the manifest.
+- GUI plugins (`@panel`, `gui/window_plugins.py`; `@settings_page` pages in Preferences): a panel's
+  open/closed state and width are not restored with the window layout (its dock is built lazily,
+  after `restoreState`); panels only dock on the left beside the notebook (no tab under the 3D
+  view yet, that waits for the workbench `@view` API); reloading plugins rebuilds every open
+  plugin panel, losing its state; no menu, toolbar or context-menu contributions. A plugin's
+  Preferences page has no changed-dot or per-row Reset, and Edit › Plugin settings and the
+  Plugins side bar's Settings still open the separate dialog rather than that page.
 - Plugin manifests, phase 3: the index repository exists (frssp/ewald-plugins: `plugins/*.toml`,
   `index.json`, first-party `packages/ewald-phonopy` and `packages/ewald-plumed` pinned to tags).
   Left: install and update with `pip` from the Plugins panel into the running interpreter,
@@ -332,6 +369,12 @@ Docs
 
 - Example files: list the examples (and the downloadable paper datasets) on an empty viewport at
   first start; a GUI entry for `examples.fetch` (File › Open example › From a paper).
+- Examples run (2026-10-20, /mnt/project-files/ewald-review/examples-test.md): Tutorial 2 and
+  `llzo_arrhenius.py` need the `symmetry` / `formats` extras that the README's `[gui]` install
+  leaves out (both say so now); decide with the extras work whether spglib joins the core install.
+  Plugin example files (`ewald_phonopy.EXAMPLES`, Cu3Au_band.yaml) are not under File › Open
+  example. The Plugins side bar's default catalog (raw.githubusercontent.com of the private
+  frssp/ewald-plugins) answers 404 without a GitHub token, so first-party plugins install only by pip.
 - Paper reproductions: StructureFactor `method="rdf"` holds every pair inside the cutoff at once,
   so 100,000 atoms with a 30 A cutoff run out of memory (the a-Si script uses 20 A); histogram in
   chunks. kinisi's covariance-weighted D for the LLZO runs is 0.6x a straight-line fit of the same
@@ -481,8 +524,13 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
   wheels, and an `[Unreleased]` CHANGELOG line from every user-visible pull request.
 
 - CI installs each extra on its own only through the test suite's `importorskip`s; a job that
-  installs every extra in a clean venv and imports its modules would catch broken extras
-  (`tests/test_dependencies.py` only checks that every import is declared).
+  installs `.[all]` (and the plain core) in a clean venv and imports its modules would catch broken
+  extras (`tests/test_dependencies.py` only checks that every import is declared). The frozen apps
+  now carry spglib, h5py, imageio-ffmpeg, anthropic/openai/mcp and ipykernel as core packages:
+  check their size and that PyInstaller bundles them.
+- A step that failed for a missing package retries only when its settings change or the pipeline
+  is invalidated; installing the package while the app runs needs a Run of that cell (a GUI
+  "Retry" action on the failed step is open).
 
 - macOS release: a first run of `macos-release.yml` (manual; macOS minutes bill 10x), then
   Developer ID signing and notarization so the downloaded app opens without the Gatekeeper

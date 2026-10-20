@@ -3,6 +3,7 @@
 #
 # Tutorial 2 of the EWALD manual (docs/user/tutorials/structure-figure.md). The space group of a
 # perovskite, its TiO6 octahedra, and a publication figure rendered from the notebook.
+# SymmetryAnalysis needs spglib: pip install "ewald[symmetry]" (or pip install spglib).
 
 # %%
 from ewald import examples, load

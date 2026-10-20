@@ -81,7 +81,9 @@ Preferences › Elements › *Automatic bonds up to* atoms (100 000) turns bonds
 bond search and the sticks would slow the viewport down; turn them on under Bonds if you want them. The tool rail on the left switches
 between orbit, pick (click an atom to see its id, type, position and every property;
 Shift+click adds atoms to the pick or removes them),
-distance (click two atoms) and angle (click three atoms, vertex in the middle). Double-click
+distance (click two atoms) and angle (click three atoms, vertex in the middle); right-click ›
+*Keep measurement in the view* keeps a finished one in the notebook's view cell (`measurements`),
+so it stays drawn and appears in pictures (*Clear measurements* drops them). Double-click
 empty space or press Esc to clear the picks, measurements and selection (with any tool,
 orbit included). Resting the
 cursor on an atom with any tool shows its element, index (and id), Cartesian position in Å and,
@@ -105,6 +107,12 @@ Play/Pause and Overlay other frames, which draws every other frame as see-throug
 the current one (`OverlayFrames`; on by default for NEB folders), with its transparency (50 to
 95 %) and whether only the atoms that move get copies. Show (bonds, simulation cell), View
 along, Orthographic, Zoom to fit and Ask AI are always there.
+
+**Plugin side bars.** A plugin can bring its own side bar (a sim-agent panel, a database
+browser, ...): installing it adds a button at the bottom of the activity bar and an entry
+under Window › Plugin panels, and a plugin with settings adds its own page to Preferences.
+Switching the plugin off in the Plugins side bar removes both; its settings are kept for when
+it comes back ([Side bar plugins](../plugins/gui.md)).
 
 **AI chat (Ask AI).** The AI button at the bottom of the activity bar on the far left (also
 Window › AI chat, Ctrl+J, and Ask AI in the Structure view's right-click menu) opens a chat side bar left of the
@@ -144,15 +152,22 @@ modifier's constructor, so every argument you can pass in Python can be edited t
 [Notebooks](notebooks.md).
 
 **View tab (display settings).** The View tab, next to the Python console below the Structure view
-(Window › View settings), shows how the structure is drawn as cards side by side: **Atoms** (style
-preset, radius scale, radius table, oxidation states, how atoms are drawn), **Types** (color, radius
-and count per type, VESTA elements.ini import), **Bonds** (sticks, the pair table, *As step* for a
-Create bonds step), **Cell** (line width and VESTA's boundary range), **Elements** ([visual element
-plugins](../plugins/visuals.md), added with *Add element*) and **Camera**. Every value is a setting of
+(Window › View settings), shows how the structure is drawn as cards in equal-width columns:
+**Atoms** (style preset, radius table, radius scale, oxidation states, how atoms are drawn, *Draw
+atoms* off for a stick model), **Types** (color, radius, transparency and count per type, VESTA
+elements.ini import), **Bonds** (sticks, the pair table, *As step* for a Create bonds step),
+**Surfaces** (polyhedra, isosurfaces and slices that steps made, by name: shown, color,
+transparency, edges; *Reset* gives back the step's look), **Cell** (line width, *Replicate cell* and
+VESTA's *Boundary* range), **Labels** (text on each atom such as `{type}{index}`, *Highlight
+selection*), **Camera** (what the view cell says about the camera and frame, the key *Light*, *Save
+camera*) and **Elements** ([visual element plugins](../plugins/visuals.md), added with *Add
+element*). Every form shares one label column, so fields line up across cards; sub-sections such as
+Replicate cell, Boundary and Light show their rows only while ticked. Click a card's title to fold
+it (it stays folded while the window is open). Every value is a setting of
 the notebook's `view(pipe, ...)` cell: the rows the cell sets are highlighted, the card says *in
 notebook*, and the tooltip shows the value. A change made here is written back into that cell, and
 a change made in code (the cell, the console, Ask AI) shows up here. When the tab is narrow (dragged
-beside the 3D view), the cards stack.
+beside the 3D view), the cards stack in one column.
 
 The boundary range: tick Boundary and set the fractional range (e.g. -0.1 to 1.1) to draw the
 periodic images of atoms on the faces, edges and corners, with bonds and polyhedra completed across
@@ -162,7 +177,9 @@ right-click menu); the data and analysis keep the original cell, see
 [Replicated cell](rendering.md#replicated-cell). A plugin element has a checkbox to hide it, a
 parameter form generated from its constructor (Apply or Ctrl+Enter redraws) and a remove button.
 Plugin elements are saved with the session and drawn in rendered images too. *Save camera* writes
-the current camera and frame into the view cell.
+the current camera and frame into the view cell. The Camera card's Light box sets the key light
+(azimuth and elevation from the viewer, intensity) for the viewport and every renderer; unchecked,
+the default light is used.
 
 **Python steps.** A code cell can define a function and add it with `pipe.add(fn)`; it runs on
 every frame like any other modifier. Insert › Step › Python › Python script adds the
@@ -244,6 +261,9 @@ journal size presets (1-column 3.5 in, 2-column 7.2 in, square, 16:9 slide) at a
 background (white, transparent, black, or the viewport's), overlays, and an output file.
 Under Overlays, "+ Overlay" adds an overlay element (Coordinate tripod, Attributes, or an
 [overlay plugin](../plugins/overlays.md)) with a checkbox and a parameter form.
+The ray tracer renders in the background: the window stays usable, *Render* greys out and reads
+"Ray tracing…", and a spinner beside the picture size shows until the picture appears under
+*Last render*. OpenGL and vector output are quick and render right away.
 
 The left side is the live 3D view with the picture's frame on it: the part outside the frame
 is dimmed, and the frame keeps the output's aspect ratio and its place on screen, so zooming or
@@ -268,7 +288,8 @@ with ewald. File › Open opens any format ewald can read ([File formats](format
 formats added by [reader plugins](../plugins/readers.md). LAMMPS dumps ask for a
 type-to-element map unless you set a default in Preferences. File › Load NEB folder opens a
 VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image
-([NEB runs](formats.md#neb-runs)). In the notebook layout, File › Open also opens `.py`
+([NEB runs](formats.md#neb-runs)); opening a single image file of such a run asks whether to
+open the whole band. Files, notebooks and NEB folders can also be dropped on the window. In the notebook layout, File › Open also opens `.py`
 notebooks, and File › Save notebook writes one ([Notebooks](notebooks.md)). File › Export data writes the
 current frame or the whole trajectory through `export_file`, and File › Export movie writes an
 MP4 or GIF (needs the `movie` extra). File › Live reload turns following a growing trajectory
@@ -280,13 +301,20 @@ Ctrl+Alt+R) keeps saved remote computers with their login, jump host, start fold
 bookmarks, and browses their files; passwords and key passphrases go to the OS keychain
 ([Saved remote computers](formats.md#saved-remote-computers)).
 
+File › Open location (Ctrl+L) takes a typed path or address, the same text `load()` takes in a
+notebook cell: `host:/path` over SSH, or a scheme a reader plugin serves, such as `aiida:1234`
+or `simagent:1234`; the dialog lists the schemes that are installed. A plugin that needs setting
+up (a server address, an access key) has its own page in Preferences, a Settings button in the
+Plugins side bar and an entry under Edit › Plugin settings, so it can be set up without Python.
+
 ## Preferences
 
 Edit › Preferences (Ctrl+, ; the application menu on macOS) has seven pages: General, Viewports,
 Elements (per-element color and radius, Jmol or CPK scheme, radius preset, VESTA `elements.ini` import),
 Rendering, Compute (device, CPU threads, installed components), Python (console
 startup script, extra module paths) and AI (provider, API key, model, server URL and effort for Ask AI; see
-[API key](claude.md#api-key)). Only values that differ from the defaults are saved, as
+[API key](claude.md#api-key)), followed by a page for each installed plugin that has settings
+(its fields, its buttons such as Test connection; Apply and OK save them through the plugin). Only values that differ from the defaults are saved, as
 JSON in the ewald config folder: `~/.config/ewald` on Linux,
 `~/Library/Application Support/ewald` on macOS, `%APPDATA%\ewald` on Windows, or
 `$EWALD_CONFIG_DIR` when set. Preferences affect the GUI only; scripts that call `compute` or

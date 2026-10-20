@@ -222,3 +222,19 @@ def test_known_host_with_another_key_type_is_refused(tmp_path, ssh_env, client_k
         assert not asked and srv.host_key.get_base64() not in known.read_text()  # neither asked nor added
     finally:
         srv.close()
+
+
+def test_neb_folders_over_ssh(server, vasp_dir, lammps_dir, tmp_path):
+    data = tmp_path / "remote_fs" / "data"
+    shutil.copytree(vasp_dir / "neb", data / "vneb")
+    shutil.copytree(lammps_dir / "neb", data / "lneb")
+    for name, local in (("vneb", vasp_dir / "neb"), ("lneb", lammps_dir / "neb")):
+        pipe, ref = import_file(f"hpc:/data/{name}"), import_file(local)
+        assert pipe.num_frames == ref.num_frames >= 5
+        for i in (0, 2, pipe.num_frames - 1):
+            a, b = pipe.compute(i), ref.compute(i)
+            np.testing.assert_allclose(a.positions, b.positions)
+            assert a.attributes.get("Energy") == b.attributes.get("Energy")
+        assert a.attributes["NEB.Barrier"] == pytest.approx(b.attributes["NEB.Barrier"])
+    pipe = import_file("hpc:/data/lneb/dump.neb.*", format="neb")  # wildcard, log.lammps found next to it
+    assert pipe.num_frames == 7 and pipe.compute(3).attributes["Energy"] == ref.compute(3).attributes["Energy"]

@@ -19,7 +19,7 @@ from .volumetric import (VolumetricReader, is_cube, is_vasp_volumetric, read_cub
 from .mdtraj_h5 import MdtrajH5Reader, is_mdtraj_h5
 from .vasp_h5 import VaspoutReader, VaspwaveReader, is_vaspout, is_vaspwave
 from .mdanalysis_reader import MDAnalysisReader, is_md_trajectory, write_md_trajectory
-from .neb import NebReader, is_neb, read_lammps_neb_log
+from .neb import NebReader, is_neb, neb_run_of, read_lammps_neb_log
 from .xdatcar import XdatcarReader, is_xdatcar
 from .xsf import XsfReader, is_xsf, write_xsf
 
@@ -43,7 +43,7 @@ class FileSource:
             paths = [path]
         elif remote.is_remote(path):  # host:/path or ssh://host/path
             paths = remote.glob(path) if wildcard else [path]
-            if not wildcard:
+            if not any(c in path for c in "*?["):  # a format="neb" wildcard is expanded by its reader
                 remote.stat(path)  # connect (and authenticate) once, up front; raises if missing
         else:
             paths = sorted(glob.glob(path)) if wildcard else [path]
@@ -182,11 +182,22 @@ def _readable_path(path: str, format: str | None) -> str:
     if not remote.is_remote(path) or plugins.scheme_reader(path) is not None:
         return path
     fmt = (format or "").lower()
+    if fmt in _NEB_FORMATS or (not fmt and _is_remote_dir(path)):
+        return path  # a NEB folder: its image files are read (or fetched) one by one
     if fmt in _STREAMING_FORMATS or (not fmt and (is_lammps_dump(path) or is_xdatcar(path)
                                                   or is_lammps_data(path) or is_outcar(path)
                                                   or is_vasprun(path))):
         return path
     return remote.fetch(path)
+
+
+def _is_remote_dir(path: str) -> bool:
+    import stat
+
+    try:
+        return stat.S_ISDIR(remote.stat(path).st_mode or 0)
+    except OSError:
+        return False
 
 
 def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:

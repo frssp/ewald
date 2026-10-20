@@ -1,5 +1,6 @@
 """What each kind of plugin is: one dataclass per registry (readers, writers, modifiers, visual
-elements, overlays, color maps, themes, UI themes, AI tools), the built-in entries and
+elements, overlays, color maps, themes, UI themes, AI tools, GUI panels, settings pages), the
+built-in entries and
 :class:`ListReader`. Stateless; the registry itself and the loading live in :mod:`ewald.plugins`,
 which re-exports everything here."""
 from __future__ import annotations
@@ -228,8 +229,10 @@ def _builtin_themes() -> dict:
 
 @dataclass
 class UiThemePlugin:
-    """A color theme of the desktop app: ``tokens`` (a dict, or a function returning one) overrides
-    the design tokens of the ``base`` palette (a built-in theme such as "paper" or "graphite")."""
+    """A theme of the desktop app: ``tokens`` (a dict, or a function returning one) overrides
+    the design tokens of the ``base`` palette (a built-in theme such as "paper" or "graphite"),
+    and may also set fonts, sizes, corner radius, spacing, icon line width and extra style
+    sheet rules (:meth:`style`)."""
 
     name: str
     tokens: object
@@ -238,13 +241,24 @@ class UiThemePlugin:
     origin: str = ""
     builtin: bool = False
 
-    def palette(self) -> dict:
-        """Every design token as ``#rrggbb``: the base palette with this theme's overrides."""
-        from .ui_tokens import PALETTES
-
+    def _own(self) -> dict:
         own = self.tokens() if callable(self.tokens) else self.tokens
         if not isinstance(own, dict):
             raise TypeError(f"UI theme {self.name!r} returned {type(own).__name__}, not a dict of tokens")
+        return own
+
+    def style(self) -> dict:
+        """Everything but colors (``ewald.ui_tokens.STYLE_DEFAULTS``: font, mono_font, font_size,
+        radius, density, icon_stroke, qss), defaults filled in."""
+        from .ui_tokens import STYLE_DEFAULTS, check_style
+
+        return check_style(self.name, {k: v for k, v in self._own().items() if k in STYLE_DEFAULTS})
+
+    def palette(self) -> dict:
+        """Every design token as ``#rrggbb``: the base palette with this theme's overrides."""
+        from .ui_tokens import PALETTES, STYLE_DEFAULTS
+
+        own = {k: v for k, v in self._own().items() if k not in STYLE_DEFAULTS}
         base = PALETTES.get(self.base)
         if base is None:
             raise ValueError(f"UI theme {self.name!r}: base must be one of {', '.join(PALETTES)}")
@@ -289,6 +303,24 @@ class ToolPlugin:
     origin: str = ""
 
 
+@dataclass
+class PanelPlugin:
+    """A side bar of the desktop app: a button on the activity bar (left edge) shows or hides it,
+    and an entry under Window › Plugin panels. ``factory(context)`` builds its ``QWidget`` the first
+    time it is opened (not at start), with ``context`` an ``ewald.gui.window_plugins.PanelContext``.
+    ``icon`` is the name of a built-in icon or an SVG/PNG file (resolved next to the plugin)."""
+
+    name: str
+    factory: Callable
+    title: str = ""
+    icon: str = "plugins"
+    tooltip: str = ""
+    shortcut: str = ""
+    width: int = 320
+    description: str = ""
+    origin: str = ""
+
+
 class ListReader(FrameReader):
     """FrameReader over frames already in memory (what function readers return)."""
 
@@ -306,3 +338,63 @@ class ListReader(FrameReader):
 
     def read(self, index):
         return self.frames[index].copy()
+
+
+#: Kinds of :class:`SettingsField`: a line of text, a password-style secret, a check box, a
+#: choice from ``choices``, several lines of text, a whole number.
+FIELD_KINDS = ("text", "secret", "bool", "choice", "multiline", "int")
+
+
+@dataclass
+class SettingsField:
+    """One entry of a plugin's settings page; the dialog is generated from these.
+
+    ``secret`` fields never show what is stored: ``load()`` returns a true value when a secret
+    is saved (the field then says so) and ``save()`` gets ``""`` when the user left it empty,
+    meaning "keep the saved one". Keep secrets in :mod:`ewald.keychain`, never in a file."""
+
+    name: str
+    label: str = ""
+    kind: str = "text"
+    help: str = ""
+    choices: tuple = ()
+    default: object = None
+    placeholder: str = ""
+
+    def __post_init__(self):
+        if self.kind not in FIELD_KINDS:
+            raise ValueError(f"settings field {self.name!r}: kind must be one of {', '.join(FIELD_KINDS)}, "
+                             f"not {self.kind!r}")
+        if self.kind == "choice" and not self.choices:
+            raise ValueError(f"settings field {self.name!r}: a choice needs choices")
+        self.label = self.label or self.name.replace("_", " ").capitalize()
+        self.choices = tuple(self.choices)
+
+    def empty(self):
+        """The value of this field when ``load()`` says nothing about it."""
+        if self.default is not None:
+            return self.default
+        return {"bool": False, "int": 0, "choice": self.choices[0] if self.choices else ""}.get(self.kind, "")
+
+
+@dataclass
+class SettingsPagePlugin:
+    """A plugin's own page of settings (Plugins side bar › Settings…, Edit › Plugin settings).
+
+    ``load()`` returns the current values by field name; ``save(values)`` checks and stores them
+    and returns a short message for the user, or raises ``ValueError`` with what to fix.
+    ``actions`` are extra buttons, label -> ``f(values)`` returning a message (``Test``, ``Log out``)."""
+
+    name: str
+    title: str
+    fields: list
+    load: Callable
+    save: Callable
+    description: str = ""
+    actions: dict = field(default_factory=dict)
+    origin: str = ""
+
+    def values(self) -> dict:
+        """``load()`` with every field present (missing ones get their empty value)."""
+        got = dict(self.load() or {})
+        return {f.name: got.get(f.name, f.empty()) for f in self.fields}

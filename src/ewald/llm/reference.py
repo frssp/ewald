@@ -101,7 +101,9 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 ## Notebook verbs
 
 `from ewald import load, rdf, msd, vacf, sq, xrd, bond_angles, cna, ptm, voronoi, clusters, check_run, load_runs`: `pipe = load(path)` is `import_file`;
-`pipe.add(m)` appends a modifier (and works as `@pipe.add` on `def f(frame, data)`). A verb adds its
+`pipe.add(m)` appends a modifier (and works as `@pipe.add` on `def f(frame, data)`); `@all_frames` on
+`def f(frames, data)` makes a step that reads every frame once (`frames[k]`, `len(frames)`, slices) and whose
+result (tables, attributes, properties) is reused at every frame; `@each_frame` marks the per-frame default. A verb adds its
 analysis step and returns its table: `rdf(pipe, cutoff=6, bins=200, partial=False)` (CoordinationAnalysis,
 `coordination-rdf`), `msd(pipe, **kw)` (`msd`), `vacf` (`vacf`), `sq(pipe, q_max=10)` (`structure-factor`),
 `xrd(pipe, **kw)` (`diffraction`), `bond_angles(pipe)` (`bond-angle-distr`), `cna(pipe, mode="adaptive")` and
@@ -144,6 +146,8 @@ pipe.view.elements["Particles"].enabled = False           #   Trajectory lines, 
 pipe.view.surface("coordination-polyhedra", color="teal", transparency=0.5)   # polyhedra/isosurface look by name
 view(pipe, transparency={"O": 0.6}, selection=True)       # fade types; selected atoms red (False: off, or a color)
 view(pipe, labels="{type}{index}")                        # atom labels: True, a template ({id}, {Charge:.2f}) or a dict
+view(pipe, light={"azimuth": 60, "elevation": 20, "intensity": 1.2})   # key light relative to the viewer
+pipe.view.measure(0, 5); pipe.view.measure(4, 0, 7)       # distance / angle drawn with its value; returns it
 ```
 
 Per-atom colors, sizes and hiding by condition are steps (`ewald.paint`: `paint`, `hide`, `fade`, `resize`), and
