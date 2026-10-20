@@ -20,6 +20,17 @@ def test_style_is_journal_like():
         plotstyle.figsize("poster")
 
 
+def test_cycle_starts_with_the_ui_accent():
+    from ewald.gui.theme import PALETTES
+
+    for name, tokens in PALETTES.items():
+        cycle = plotstyle.colors(tokens)
+        assert cycle[0] == tokens["accent"] and len(set(cycle)) == len(cycle) >= 5, name
+    blue = plotstyle.colors({"bg": "#FFFFFF", "accent": "#1A66CC"})
+    assert "#3A64C8" not in blue and "#2C8DD6" not in blue    # no second blue next to it
+    assert plotstyle.colors({"bg": "#FFFFFF", "accent": "#22272E"}) == plotstyle.LIGHT   # gray accent
+
+
 def test_labels_carry_units_and_legends_drop_the_shared_quantity():
     assert plotstyle.axis_label("r") == "$r$ (Å)"
     assert plotstyle.axis_label("g(r) Cu-Zr") == "$g(r)$"
