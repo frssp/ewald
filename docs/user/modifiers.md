@@ -25,7 +25,7 @@ evaluated with NumPy. Property names lose their spaces (`ParticleType`,
 `ParticleIdentifier`; `ParticleIndex` is the 0-based row), vector components get a suffix (`Position.Z`, `Velocity.X`,
 `Color.R`), and the globals `N`, `Frame`, `CellSize.X`, `CellOrigin.X` and every scalar
 attribute are available. Combine conditions with `&`, `|`, `~` and parentheses, not
-`and`/`or`/`not`:
+`and`/`or`/`not`; `^` is a power as in OVITO (`Force.X^2`, the same as `Force.X**2`):
 
 ```python
 ExpressionSelection('(Position.Z > 10) & (ParticleType == "Cu")')

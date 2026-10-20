@@ -228,7 +228,16 @@ Running the cell (or calling the verb) again replaces the step it added, so chan
 `cutoff=` never stacks duplicates. `show(pipe, table="coordination-rdf")` puts the same table
 in a live view cell.
 
-**Text cells** are Markdown. Double-click one to edit it.
+**Text cells** are Markdown. Double-click one (or select it and press Enter) to edit it; Esc
+shows it rendered again. Under the cells, **+ Code**, **+ Text**, **+ Step** and **+ View** add a
+cell after the current one, in Jupyter's order.
+
+**Cell type.** A cell turns between code and text like in Jupyter, keeping its text: the ⋯ menu's
+*Cell type*, Notebook › Change cell to code / Change cell to text (Ctrl+M Y / Ctrl+M M), or the
+command keys. Press Esc to leave the editor (the cell stays selected), then **Y** for code, **M**
+for text, **A** / **B** to insert a cell above / below, Enter to edit again. A step or view cell
+turned into text takes its steps out of the pipeline; turned back into code, it runs again when
+you run it.
 
 **Snapshot cells** keep a picture of the Structure view. Insert › 3D snapshot of the view adds one for
 the viewport as it is (frame, camera, display style) and runs it:
@@ -238,8 +247,9 @@ from ewald.views import snapshot
 snapshot(pipe, frame=3, camera={...}, radius_scale=0.5)   # shows the picture; .save("fig.png") writes it
 ```
 
-The ⋯ menu of a cell has Run, Run this and below, Clear output, Move up/down, Delete and, for steps and views,
-Show as code cell. Notebook › Clear cell output (Ctrl+Shift+Backspace) and Clear all outputs
+The ⋯ menu of a cell has Run and Run this and below (Edit for text), Cell type, Show as code cell (steps and
+views), Runs, Clear output, *Ask AI about this cell* (opens the AI chat with the cell quoted), then Insert cell
+above/below, Move up/down and Delete. Notebook › Clear cell output (Ctrl+Shift+Backspace) and Clear all outputs
 (Ctrl+Alt+Shift+Backspace) remove printed text, values, figures and run counts, as Jupyter's Clear outputs; the
 pipeline and its results stay, and the next save leaves the outputs out of the `.ipynb` or `.ewd`. Drag a cell by the dotted grip above its run button (it appears on hover) to move it; steps move with it in the
 pipeline. The `.py` button at the top shows the whole file.
@@ -402,7 +412,7 @@ folder's `.removed` folder (its steps stay available until ewald restarts). Sele
 and *Add as a step in the notebook*. *Create…* asks the AI to write a new plugin.
 
 Plugin modifiers ([Writing plugins](../plugins/index.md)) are steps like the built-in ones.
-Insert › Plugin step (or **+ Plugin**) lists the installed ones and writes the import line for
+Insert › Plugin step (or **+ Step** › Plugins) lists the installed ones and writes the import line for
 you, for example `from ewald.modifiers import ShiftZ`. *Load plugin file…* adds a cell that
 registers the modifiers of a `.py` file:
 

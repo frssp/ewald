@@ -59,6 +59,14 @@ def _jump_trajectory(base, n=40, jump_at=20, rng=None):
     return Pipeline(StaticSource(frames))
 
 
+def test_describe_frame_small_cell():
+    # a unit cell narrower than 8 A: the shortest-distance search stays within half its width
+    from ewald import examples
+
+    d = describe_frame(examples.load("Si.cif").compute(0))
+    assert d["num_particles"] == 8 and abs(d["min_distance"]["value"] - 2.352) < 0.01
+
+
 def test_describe_trajectory_finds_event(cu_fcc):
     out = describe_trajectory(_jump_trajectory(cu_fcc))
     assert [e["frame"] for e in out["events"]] == [20]

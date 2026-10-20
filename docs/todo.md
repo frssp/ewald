@@ -48,10 +48,9 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 
 GUI
 
-- UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): still open
-  are opening files (local or remote) and remote connections
-  off the GUI thread (they now say what they wait for, but the window still blocks), and the
-  Render settings column scrolling sideways at the default window width.
+- UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): every
+  finding is fixed. Left over: cancelling an open stops waiting but not the read itself (readers
+  have no cancel hook), so a cancelled SSH connect runs out its timeout in the background.
 - Panel layout (phase 1 landed: `gui/workbench.py`, `gui/layout_model.py`; plan in project
   files `design/panel-layout.md`): phase 2 opens a notebook view cell's plot large in the
   editor area ("Open large" or drag the cell header, a Bring back placeholder in the cell, the
@@ -86,7 +85,9 @@ GUI
   they keep the old palette until a restart after a theme switch; move them to QSS object names.
 - Notebook layout: the viewport could follow the current notebook even when it has no
   pipeline yet (now it keeps the last one); image/figure cells; inline Ask AI suggestions
-  as diffs; a snapshot cell that updates when the camera of its view changes (now it is code).
+  as diffs; a snapshot cell that updates when the camera of its view changes (now it is code);
+  more Jupyter command-mode keys (only Y, M, A, B and Enter so far: no DD, X/C/V, Shift+Enter in
+  command mode, raw cells).
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
   view does not have yet (picks as code, the viewport axes widget; measurement labels in the
   legacy OpenGL 1.x viewport, and lines that show through atoms; audit in the project files `ewald-review/view-elements-audit.md`);
@@ -337,6 +338,13 @@ Visualization plugins (later phases of the Scene IR plan)
 
 Plugins and AI
 
+- AI eval suite (`llm/evals.py`, `llm/eval_tasks.py`): more tasks from the paper datasets (LLZO
+  Arrhenius, a-Si, TiOF2 octahedra), from the GUI side (picks, Ask about selection, view cells the
+  Display panel edits) and multi-turn ones (a follow-up question); reproduction runs in a fresh
+  in-process namespace, not a separate kernel (`ewald.kernel`); explanations are not graded (an
+  LLM judge could score them); plugin tasks (`@eval_task` from plugins such as ewald-phonopy) and
+  a results page that tracks scores over commits.
+
 - AI providers (`llm/providers.py`): the OpenAI-compatible provider never sends images (no
   per-server vision switch yet); Effort reaches only Claude and OpenAI reasoning models; one
   `llm.model` setting for all providers (switching the provider in Preferences clears it); no
@@ -397,7 +405,13 @@ Docs
   MSD; find out why. Candidates found but not added: TiOF2 PDF against experiment (needs an
   X-ray weighted G(r)), the a-Si 216-atom HSE06 models (vldgroup/papers-defect-free-a-si), LGPS
   site maps (hacortesp/CrySF), MoSe2 phonons (Ionizing/adom.202403069); no license stated on the
-  last three. Most other paper data sits on Zenodo or Materials Cloud, unreachable from the cloud
+  last three. Also checked and not added (2026-10-20): VTST NEB runs in
+  drinwater/Nudged-Elastic-Band-Tutorial (14 MB OUTCAR per image) and umichyujl/data_n_type_doping_AlN
+  (HSE NEB of AlN donors, images without OUTCARs), and the LAMMPS NEB logs of shortlab/2016Cr2O3
+  (Cr2O3 vacancy paths, no per-replica dumps); none states a license. Still missing: a clearly
+  licensed LAMMPS dataset with multi-file dumps or a temperature series for `load_runs` +
+  `arrhenius` (the LLZO one is GROMACS XTC), and a real `ssh` NEB folder for the remote example.
+  Most other paper data sits on Zenodo or Materials Cloud, unreachable from the cloud
   container, so `examples.fetch` only knows GitHub-hosted files.
 - Host the manual (the repository is private; CI uploads the built site as the `docs-site`
   artifact).
@@ -447,6 +461,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - A vaspout.h5 from a real running and a real killed VASP 6 job: which groups exist mid-run,
   whether unwritten steps are zeros, and whether HDF5 can open the file of a killed job (tests
   use h5py-written fixtures, a second process holding the write lock, and a cut file).
+- AI eval suite with real keys (`ewald eval`, docs/user/claude.md): a first baseline per model
+  (Opus 5.5, Sonnet 5.5, Haiku 5.5, a local model) saved as JSON to compare later prompt and tool
+  changes against; check that the tolerances and the `ANSWER:` convention are fair to real answers.
 - AI features with a real API key (Claude; also OpenAI, Gemini and a local Ollama/LM Studio
   server, which are tested only against mocked servers): `ewald ask` (also `--select`), the GUI AI chat side bar
   (notebook code in the prompt, code blocks inserted as cells, the notebook cell tools),

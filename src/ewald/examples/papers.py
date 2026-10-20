@@ -61,6 +61,9 @@ _ARGY = ("bjmorgan/data_argyrodite_disorder", "70060fcba4422a22c37989ea8b0649fb5
 _TIOF2 = ("bjmorgan/data_TiOF2", "4bda9656882b876ceaf644caccf133772c720512")
 _AB = ("gilgalad33/Ammonia-Borane-Dehydrogenation", "3dfe5cc0ae8995c71210388c8bf90cf24a28fb46")
 _ALA = ("spiwokv/metadynminerdata", "977e11c8e7b80137d636a002c001e67166dab449")
+_NBO2F = ("bjmorgan/data_nbo2f_chirality", "2781ddde04020d618eecdb0616b409c24545ec5b")
+_PMG = ("materialsproject/pymatgen", "c6507866179a6c37ee7d0df6cbb79896a2ebba52")
+_PHONOPY = ("phonopy/phonopy", "c145fccf0d440bef14e6e3544218a7d2b31a37ae")
 
 _ARGYRODITE = {   # <system>_<disorder>_run<n>: (sha256, size); consecutive segments of one run each
     "Li6PS5Cl_0p_run1": ("b0c8270fb4028ffe010357438d2480269a6b93812bdc2d1723b926ceb3b405d4", 841423),
@@ -131,6 +134,113 @@ _CARBON_FILES = {   # density in g/cm3: (sha256, size), anneal temperature 3000 
     "2.5": ("a624d61da1d6d2972c61e58046025496af020c61d6abee545ebd1cf740e7d7d4", 5194288),
     "3.0": ("65f9b5bec2b75c869fc4cf7607c00d7c253aa58c7207caf67513793946b68720", 5194288),
     "3.5": ("adf5dd861b648c21adf6d9b14efa128c7a52f345b0419b2025230524ba2cd2b7", 5194288),
+}
+
+_NBO2F_OUTCAR = {   # 3x3x3 config number: (sha256, size)
+    0: ("51f1db8a2a89bf911ead9f4fa49765ea588eaf69eb789eda3e463d7c0cc15e83", 209104),
+    1: ("5f84c60deb9d8ee72d080c34240b193c4ec7f684af80bfafd19d2be70f8483c2", 209104),
+    2: ("c2358f70f3c1327ae14acd970679836a63d6d329493ec81c7106ab0df68d01fe", 209104),
+    3: ("c2ca6792eca1351f76b3fc1eac544f2770a82c28f4a5294fc697e2bd3e416017", 209104),
+    4: ("52f421c3370c5e138f714f44aa14b221a8e668f5448769412365c931600ad68f", 209104),
+    5: ("cfb9d24f2be7ffc5e90c6c3a8c3bffa7272fffbc67369499be114789af0da4bd", 209104),
+    6: ("699630668ed4df4dec6b265dec09bea2aaa306fcf5f9a20ba355545c01264a75", 211072),
+    7: ("cba9bd1115b374385411b3ebbcfb36bb25b24d39821c065262b5d73d76e7e0c2", 209104),
+    8: ("508d72345e7c91f103f9b86c8b70b2eb5dae21f572f71249461478e4aff380f4", 209104),
+    9: ("06b95b410b3823cea1620595a2d5455e18220a9765dc250d63a2bcab1f1d06e9", 209104),
+    10: ("b6e38752367411b8616250d23ffe2755e7fa0d73b8b7c601914cfd97731ce303", 213048),
+    11: ("dcdf918e0547377069d8da18da3b27852c5f3a21700ed965bbbd16e9c8af3539", 209104),
+    12: ("938065c00bdbd9e53f85034f1dda9f25772bafcd828174820749fc6ca785e4df", 209104),
+    13: ("4e8a5d268b2e919f1966d5518217daac946a7875092ed7c71e8971c56a6c5fb9", 209104),
+    14: ("acbe17e8ee52c954f415d705ffa843a619bccb598d51e63d17731dff7a42af4b", 209104),
+    15: ("6b96df859c381e0b3999dde34a65da0c89537f5773a821176d2c55474d92b218", 209104),
+    16: ("2407ac416a8f99768f7704f4bbc98aa060f65603742439d585548e0287653833", 209104),
+    17: ("b093a7888f43366a4040a94c02a9b0e273fd6db44ba1633949328db825600f42", 209104),
+    18: ("da4fe0bce14a9ca8ab716db3ca1c0447279b42e2caaade36b6e512b925da653f", 209104),
+    19: ("1dfa485a3bcb805042db95bf598c8e9c6d6a3213a797d3cea0d211f51818ddc7", 209104),
+    20: ("5ec68191e4680a99e308cea2bad3c68fa9670a0fc2a34c494e8d7dd3cef15db6", 209104),
+    21: ("2e2f42968fbbaa8cab838521784a1b5791ca5b56f69fe22688cab6a2d2b4f2f6", 209104),
+    22: ("7e6f559529f3126c898c41581b737df5f29c41670c10456c4ef5485ad24e830e", 209104),
+    23: ("8e1f32404261485b2cae65d20446a3b950991cfb0f9b0422b7e720dcb130e9fb", 209104),
+    24: ("3fd9cd7fc5ea4c5d3dcbb248dcbe61dcac0af867ab3e0b25a921642de351d12c", 211072),
+    25: ("e2982bd212fa15cf50710db8d6fc4cb6384ff5e459fa41460936ff599219fba9", 209104),
+    26: ("7f97155af42312843aec1d832bccc47c1b7e388aa82ae2b8b4e3202802b4e8ed", 209104),
+    27: ("ea356481f3cb2853a2ae02d232327db21816a81c69006289d46e1bae0dc917bd", 209104),
+    28: ("6216ce2432300fa0394a64204c10d96db99bd9b837a12265a3554959f8dbdc33", 209104),
+    29: ("be19c80d08cc55e52bdee00d6e7c67ecacda7a203d60590bf12a376ca843fac6", 209104),
+    30: ("0375b58b12600fbe12b8e7be0a09184756b49d2af0038559abf246c367e28005", 209104),
+    31: ("18a1135eaafa587230e64f328459b61a31813e95f095038a1ed2d37c01970156", 209104),
+    32: ("aa4834277bb127d4124037306c6d2c02e4af0fe86012a8043d16945f0382e442", 211072),
+    33: ("e85e6486d1e5b7a60de977ab3aea7cbf3f1dc5be94978e154784b7e70e20ddba", 209104),
+    34: ("2738e546e7b6c1faacb05f67290c0331544ed985a46fdf7731ea02b7fc0b6a83", 209104),
+    35: ("4752b911ce5882cc0896ac4da57b5bdf0f3fc79d75c7c0edb39376f50df0f7d2", 209104),
+    36: ("051a32b4fe77ddca36f89d1918bfc036f78ab8c31e165b3757832973a5503e1c", 209104),
+    37: ("63463838a0e7f1d509f368318188671dbfb8c1fea376ce4cfdd3e964a506f7a4", 211072),
+    38: ("18cc05dfd0689e36c53d2dc00a7a149a8af8498a2cfd22f9d36615e65b0d145e", 209104),
+    39: ("bf10b98185e76030b7688cb8d1274e541559f6e32a5fc3dadaf4dc5647e26a97", 209104),
+    40: ("1e938adf29ea1d35d391eaa45f4ed61f644893d844388a2f136c7fe22763ed3b", 209104),
+    41: ("448413dba2feb03ccc13fe5155d76e828fdfd4481a272c1e1f26551bd89e1821", 209104),
+    42: ("e5e111e6441b5916e869b0f45f179a7624231e557ee22a7a21c29cfec6eeaaa6", 209104),
+    43: ("2d22e395e1b210cfbd7a2a307b8df56cf2d72b83cd58d9b525e7aa57c5ac7f83", 213048),
+    44: ("3801aa00e8ccba169905c2cb329758ad42d8c0cac0dc583df822b11de8858959", 209104),
+    45: ("d0502333928670b3cba900b5213541952045a5fde1c788b3ffd3f5aac5b2a8c2", 209104),
+    46: ("7cb4bb5f39fa1e10a5521abff6ccd2007b065713ef73ab4fc7618aae787218e1", 209104),
+    47: ("35c28143a2f3c48b58b9c13a2c8472d0c0eb8b551ef4f6549d6939b064a1adc9", 209104),
+    48: ("a970955e29468bd45d6c6fa76078d14f82cfa809f755d91727f4f44c621cdffc", 209104),
+    49: ("df9cfa1b7db95a49d878f6166577c1f38928729cd5b2ff12228dbb626cb00c98", 209104),
+    50: ("31879f08c3055ef70fdf95c95067995a2c4393ccadbe7500379ddb5ae3a0935b", 209104),
+    51: ("29d4e57461e5dd902888653e895dcc622dc4cf62a3133a224a3052f8166e3bb5", 209104),
+    52: ("341a2927bea31166428e74d8aa2fbbf7ef9ab65ef6f8cd70079d78e903c10247", 209104),
+    53: ("27e0817094bcd809fbdd4b678a17c9c1e91d9ae121a95e3830675a93f3cf8cef", 211072),
+    54: ("7c0f81e6b43ea0f003ff21c4d8b4b31e411d2b874b1884a1a70e003ac6638cb3", 209104),
+    55: ("1d177c6c43af2d488ff53ae963811b3f84136b3250cb7aa5c04e9b85e4bc8e3f", 209104),
+    56: ("0b9e7eed2d6a304c0884909e6e19110795f5f0bc5110dc0096ea22fa0f63a5d4", 209104),
+    57: ("8d77440062fe5b67f403651ceedff9f13af199d6a03b917e2d0d8eaddcd717b9", 211072),
+    58: ("3e57952e4225b7ea0d026979767526aad2347db06e8ef240d70bb9297908a528", 209104),
+    59: ("c9145996d1fbb7e7de06b2100b6250356f46f380f2807541d0edc96995aa4fe8", 209104),
+    60: ("c66824f95b49e96a0ef03a3a6ea9d0940368e1ecac9c5423e0ced36c9b2bb417", 209104),
+    61: ("4ca4981a95e69c43038a2a075f1158a7d5a4b7d93fe95e8425244306fe9fe6ba", 209104),
+    62: ("3fdf852d512ead59db0a5986dd1a88379e65acacd98bb5d68ca30c313eba0942", 209104),
+    63: ("05120f9d0ff8a9b36c919e0d43ee366331a67d318c42462fd781c83e6cc9e370", 207144),
+    64: ("2327410e1345b4109e7fd8174d7e49f8522718f7c31d59a8d24f85df3bc8944e", 207144),
+    65: ("8d8fee500f29142596a780370638d8dfb62dbc15bcdabd948b07266b61b2566e", 207144),
+    66: ("2e5bdca7d8cabdf6c2cd300e65ad7b033fa9c108efb92701aaccf359977ef322", 207144),
+    67: ("8f8f2a643fe88ce6af1593d596b28aa678e8b1dbc5e68e00033027169e2e5436", 207144),
+    68: ("34c1372ee4276688bc0c66b121776d9304c19f6ecbc9c6ee8939fb6a30a9e345", 207144),
+    69: ("b21ab5138d7464d23a2a094fd74d10485b1e9d07df0e964e71ae588e5248429e", 207144),
+    70: ("59089f48636b0f31906ce037971b848d08d7597077b5df552bd34f7388c9543a", 207144),
+    71: ("66781b0863df99a97a2241086528b9bb87a77a63c57dacb1fcf399c19245c1b0", 207144),
+    72: ("d879a6d5c3238b7ccde5d4b0fe61706531172ad8e91a549f83ac60cd4741cdc1", 207144),
+    73: ("4767e73bb87a072673622cf91bae00b2915879ee3a93ee3fe5fdcf8cee4eb9e9", 207144),
+    74: ("8406882c8f47326c696422b013bef385f79f29a93e872254e132ad5ff082a32f", 209104),
+    75: ("237c1b157e9ed66e0565e968363408a3413c44ddabf487777a326a909e04c753", 209104),
+    76: ("005de78f2d4216f69d84199cf068334289209440a89bd14c3790c4a2ef16c1e9", 209104),
+    77: ("6d58a7c15612ee272494b630e0cd0864018dbbfd7a72801b31bc7fa7fa4ca1e9", 209104),
+    78: ("fd7042a882e025b27959dc7fd72bcc5fe8b318e0d86f2dd869c2afca1bcc5972", 209104),
+    79: ("c8fb489d10306369b7c66a8166ace75e398ef46f2f8e893c572a845e650387c1", 209104),
+    80: ("093b9fdccf80436cbfcdcfa1f7529f009ae7cbde266d9e6f025cecb62b511262", 223048),
+    81: ("a0844af1e0a0abb12b62f3c1dea84b9d74601fbac5ea4f2607c614a2b2ec9f1c", 207144),
+    82: ("c7c917897b27b1fc83ae1ea2820da6ebde76351d773a9e9bf07f1dde0949e6cf", 209104),
+    83: ("22a8e119ee78618dcb9a8bb94ca098eef483856280c08318b33c253626853017", 207144),
+    84: ("cdb2184e0a5a411cccf693700d3353f411f50580a97c7db29f3e0d0cae22e197", 207144),
+    85: ("0ac4986547231f7173318bd3e5b7b662a23894d23887c757526c6ccbd49bda77", 209104),
+    86: ("5d6ef98bb589d77ca15d78f859119e485c869d7d69cc9bdf26d5dc5c24562f83", 209104),
+    87: ("152e6b8af7adbfb859431bfdb0239356517e6d1db87fdf001c0b8cfd7b26dfa9", 207144),
+    88: ("50ccc571222177c767a54af9523fed0f56275d5072a66c74013305689a34fbaf", 207144),
+    89: ("d211942589555136923b8161499bf6cc56efdd0d2fb7f60e7171ee2ceb11df3e", 166238),
+    90: ("e6826e794ae774c4d80cdd9f95371fc713539be5701d390a60a914b619af42db", 166238),
+    91: ("fd985cf028eb164e4be74e3489b2740da717d94f7865e35de099cd7bb4d4b9a6", 166238),
+}
+_FE_NEB = {   # image folder/file: (sha256, size); VTST layout, endpoints with OUTCAR and POSCAR
+    "00/OUTCAR": ("6eb7b35b42f3699866312ff566b0acd8558d470e45b84a98c6a395d03d5551ee", 3955168),
+    "00/POSCAR": ("0bdd5e6f9c682ece62efabbd292500121084291200d3ba76ee59e93d43593650", 1038),
+    "01/CONTCAR": ("880d4284aa880f005d54bf0ee63f8b1c5f68585677a738adc554ce39f495fdcb", 3660),
+    "01/OUTCAR": ("1cf7e47231d14b91515a70a046426199ca092608e3702f57183fbff848dede83", 8684066),
+    "02/CONTCAR": ("52691be1853f7ebbb4efe3381f8d614ca91168b768992f98a5ac9a17fa5bb2b1", 3660),
+    "02/OUTCAR": ("0dab8255e3932d102aaaa6f35f0664d6d7019f25a8c2c58f5dbc0ec8d9188d9c", 8610614),
+    "03/CONTCAR": ("d3ca866806d1bfaec947c630a271ba611cf761f134148be77f60a8186ca45213", 3660),
+    "03/OUTCAR": ("bdf04813f3ea4180f25882d4e008295d7bca11e7e29f35fc64e9b59079983a1a", 8684064),
+    "04/OUTCAR": ("a221b302065d5e2b09dc350e18dd0de90785dc4f7b41f377c47f46965ba2534b", 3951218),
+    "04/POSCAR": ("5c576e766d3f453d2ca44779ece03d95a2ed50dc637883de3d470502e55315e8", 1872),
 }
 
 PAPERS = [
@@ -271,6 +381,55 @@ PAPERS = [
                RemoteFile("plumed.dat", _github(*_ALA, "2D/plumed.dat"),
                           "dcdc7b977820770ff166576671cf04722c87f91c25ed50227f930c654a041bdc", 206)),
     ),
+    Paper(
+        name="nbo2f-anion-order",
+        title="NbO2F anion orderings: 92 VASP relaxations of a 3x3x3 supercell",
+        citation="B. J. Morgan, \"Structural Chirality from Short-Range Order in Heteroanionic Materials\", "
+                 "arXiv:2608.04841 (2026)",
+        doi="10.48550/arXiv.2608.04841",
+        source="https://github.com/bjmorgan/data_nbo2f_chirality",
+        license="CC BY 4.0 (data), MIT (code)",
+        description="92 VASP OUTCARs (PBEsol, full relaxation, ISIF=3) of Nb27 O54 F27 with random, "
+                    "period-three and the twelve enumerated cis + period-three anion orderings",
+        reproduces="the DFT ground state: the enantiomer pair P3_121 / P3_221 (orbit 11), degenerate and "
+                   "lowest of all 92 (load_runs, check_run, SymmetryAnalysis), and cis-NbO4F2 octahedra",
+        script="nbo2f_anion_order.py",
+        files=tuple(RemoteFile(f"config_{n:03d}/OUTCAR", _github(*_NBO2F, f"data/dft/3x3x3/config_{n:03d}/OUTCAR"),
+                               sha, size) for n, (sha, size) in _NBO2F_OUTCAR.items()),
+    ),
+    Paper(
+        name="fe-vacancy-neb",
+        title="Vacancy migration in fcc Fe: a VASP climbing-image NEB (pymatgen test data)",
+        citation="S. P. Ong et al., Comput. Mater. Sci. 68, 314 (2013) (pymatgen; NEBAnalysis test data)",
+        doi="10.1016/j.commatsci.2012.10.028",
+        source="https://github.com/materialsproject/pymatgen",
+        license="MIT",
+        description="VTST NEB folder 00-04: Fe31 (32-site fcc cell with one vacancy), three images with OUTCAR "
+                    "and CONTCAR, endpoints with OUTCAR and POSCAR",
+        reproduces="the 325 meV barrier and the saddle at half the path that pymatgen's NEBAnalysis gets "
+                   "(NebEnergyProfile on the folder, OverlayFrames)",
+        script="fe_vacancy_neb.py",
+        files=tuple(RemoteFile(name, _github(*_PMG, f"test-files/io/vasp/fixtures/neb_analysis/neb1/neb/{name}"),
+                               sha, size) for name, (sha, size) in _FE_NEB.items()),
+    ),
+    Paper(
+        name="mgb2-phonons",
+        title="MgB2 phonons from VASP finite displacements (phonopy example)",
+        citation="A. Togo, J. Phys. Soc. Jpn. 92, 012001 (2023); band path of K.-P. Bohnen, R. Heid, "
+                 "B. Renker, Phys. Rev. Lett. 86, 5771 (2001)",
+        doi="10.7566/JPSJ.92.012001",
+        source="https://github.com/phonopy/phonopy",
+        license="BSD-3-Clause",
+        description="phonopy_disp.yaml and FORCE_SETS of a 3x3x2 MgB2 supercell (VASP, 500 eV, 18x18x18 k-points "
+                    "for the unit cell)",
+        reproduces="the band structure along Bohnen's path and the Gamma modes E1u, A2u, E2g, B1g, with the "
+                   "E2g boron bond-stretching mode animated (PhononMode of the ewald-phonopy plugin)",
+        script="mgb2_phonons.py",
+        files=(RemoteFile("phonopy_disp.yaml", _github(*_PHONOPY, "example/MgB2/phonopy_disp.yaml"),
+                          "780fb6c8455096960eae4f8ab436c30e5d554743fdaf54b3472533fcfa878ce8", 9982),
+               RemoteFile("FORCE_SETS", _github(*_PHONOPY, "example/MgB2/FORCE_SETS"),
+                          "5400dd39e2079e078ce4f7728bcfb3689c70e272fdbf1e9936e68cad7ecaf6df", 5322)),
+    ),
 ]
 
 
@@ -314,7 +473,8 @@ def fetch(name: str, dest=None, quiet: bool = False) -> Path:
     folder = Path(dest) if dest is not None else data_dir() / paper.name
     folder.mkdir(parents=True, exist_ok=True)
     for f in paper.files:
-        path = folder / f.name
+        path = folder / f.name                 # a name may hold a sub folder (NEB images 00/, 01/, ...)
+        path.parent.mkdir(parents=True, exist_ok=True)
         if path.is_file() and path.stat().st_size == f.size and _sha256(path) == f.sha256:
             continue
         if not quiet:

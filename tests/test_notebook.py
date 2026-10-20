@@ -94,6 +94,23 @@ def test_clear_outputs_drops_them_from_the_saved_file(nb, tmp_path):
     assert all(not c.outputs for c in Notebook.load(str(path)).cells)
 
 
+def test_set_kind_turns_code_into_text_and_back_like_jupyter(nb):
+    assert nb.run_all()
+    cell = nb.cells[2]
+    mod = cell.added[0]
+    assert mod in nb.pipeline.modifiers
+    assert nb.set_kind(cell, "markdown") and nb.dirty
+    assert cell.kind == "markdown" and "CoordinationAnalysis" in cell.source
+    assert mod not in nb.pipeline.modifiers and not cell.added and cell.count is None
+    assert "# %% [markdown]" in nb.to_py()
+    assert not nb.set_kind(cell, "markdown")               # already text: nothing to do
+    assert nb.set_kind(cell, "code") and cell.state == "new"
+    nb.run_cell(2)
+    assert any(isinstance(m, mods.CoordinationAnalysis) for m in nb.pipeline.modifiers)
+    with pytest.raises(ValueError):
+        nb.set_kind(cell, "raw")
+
+
 def test_rerunning_a_cell_replaces_its_modifier_in_place(nb):
     nb.run_all()
     first = nb.pipeline.modifiers[0]

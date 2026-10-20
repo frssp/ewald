@@ -3,7 +3,8 @@
 Property names are used as in OVITO: ``Position.Z``, ``ParticleType``,
 ``ParticleIdentifier``, ``ParticleIndex`` (0-based row), ``Velocity.X``, ``Coordination``; globals ``N``,
 ``Frame``, ``Timestep``, ``CellSize.X``. Combine conditions with numpy
-operators: ``(Position.Z > 10) & (ParticleType == "Cu")``; numpy is ``np``.
+operators: ``(Position.Z > 10) & (ParticleType == "Cu")``; ``^`` is a power, as in OVITO
+(``Force.X^2``); numpy is ``np``.
 """
 from __future__ import annotations
 
@@ -114,7 +115,7 @@ def evaluate(expr: str, data, frame=None):
     dotted = sorted((k for k in ns if "." in k), key=len, reverse=True)
     env = {"np": np, "abs": np.abs, "sqrt": np.sqrt, "exp": np.exp, "log": np.log,
            "sin": np.sin, "cos": np.cos, "min": np.minimum, "max": np.maximum, "pi": np.pi}
-    code = expr
+    code = expr.replace("^", "**")   # OVITO's power operator ('Force.X^2'); never XOR here
     for i, k in enumerate(dotted):
         code = re.sub(r"(?<![\w.])" + re.escape(k) + r"(?![\w])", f"__v{i}", code)
         env[f"__v{i}"] = ns[k]

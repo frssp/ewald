@@ -2870,6 +2870,61 @@ def test_notebook_cell_controls_add_bar_and_running_mark(app):
     w.close()
 
 
+def test_cell_type_switches_and_add_bar_like_jupyter(app, pipe):
+    """+ Code, + Text, + Step (with Plugins), + View under the cells; Esc then M / Y turns a cell
+    into text / code, A / B insert; the menu and the cell's ⋯ menu do the same; Ask AI about this cell."""
+    from PySide6 import QtTest
+
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(pipe)
+    w.resize(1400, 900)
+    w.show()
+    app.processEvents()
+    view = w.panel.view
+    texts = [b.text() for b in view.add_bar.findChildren(QtWidgets.QPushButton)]
+    assert texts == ["+ Code", "+ Text", "+ Step", "+ View"]
+    view.step_menu.aboutToShow.emit()
+    plugins = next(a for a in view.step_menu.actions() if a.text() == "Plugins").menu()
+    assert any(a.text() == "Load plugin file…" for a in plugins.actions())
+
+    cell = view.add_cell("code", "# Title")
+    cw = view.widget_for(cell)
+    QtTest.QTest.keyClick(cw.editor, QtCore.Qt.Key_Escape)
+    assert view.current is cell                              # focus moved to the cell (command mode)
+    QtTest.QTest.keyClick(cw, QtCore.Qt.Key_M)
+    assert cell.kind == "markdown" and cell.source == "# Title"
+    cw = view.widget_for(cell)
+    assert not cw.view.isHidden() and cw.editor.isHidden()
+    QtTest.QTest.keyClick(cw, QtCore.Qt.Key_Y)
+    assert cell.kind == "code" and cell.state == "new"
+    n = len(view.notebook.cells)
+    QtTest.QTest.keyClick(view.widget_for(cell), QtCore.Qt.Key_B)
+    i = view.notebook.cells.index(cell)
+    assert len(view.notebook.cells) == n + 1 and view.current is view.notebook.cells[i + 1]
+    view.select(cell)
+    QtTest.QTest.keyClick(view.widget_for(cell), QtCore.Qt.Key_A)
+    assert view.notebook.cells.index(cell) == i + 1 and view.current is view.notebook.cells[i]
+
+    view.select(cell)
+    acts = {a.text(): a for a in w.menuBar().findChildren(QtGui.QAction)}
+    acts["Change cell to &text"].trigger()
+    assert cell.kind == "markdown"
+    acts["Change cell to c&ode"].trigger()
+    assert cell.kind == "code"
+    assert view.history.undo_label == "Change cell type"
+
+    cw = view.widget_for(cell)
+    menu = cw.findChild(QtWidgets.QToolButton, "cellMenu").menu()
+    names = [a.text() for a in menu.actions()]
+    assert "Ask AI about this cell" in names and names.index("Cell type") < names.index("Ask AI about this cell")
+    assert names[-1] == "Delete"
+    next(a for a in menu.actions() if a.text() == "Ask AI about this cell").trigger()
+    app.processEvents()
+    assert w.ask_dock.isVisible() and "# Title" in w.ask_panel.input.toPlainText()
+    w.close()
+
+
 def test_panel_headers_line_up_and_buttons_use_icons(app, pipe):
     """Dock title bars and tab-group heads share one height and inset, and no button is labelled
     with a symbol glyph (their size and baseline depend on the platform's fallback font)."""
@@ -3636,3 +3691,51 @@ def test_dropping_a_folder_of_calculations_opens_it_as_a_workflow(app, tmp_path,
     assert not side.browse.isHidden() and side.tree.topLevelItemCount() == 1
     assert side.tree.topLevelItem(0).data(0, QtCore.Qt.UserRole).path == str(study)
     w.close()
+
+
+def test_wait_for_runs_off_the_gui_thread_with_cancel(app, pipe, tmp_path):
+    import threading
+
+    from ewald.gui import busy
+    from ewald.gui.app import MainWindow
+
+    said = []
+    assert busy.wait_for(lambda: threading.current_thread() is threading.main_thread(), "Quick…", say=said.append) is False
+    assert said == ["Quick…"]
+    with pytest.raises(ZeroDivisionError):
+        busy.wait_for(lambda: 1 / 0, "Failing…")
+    release = threading.Event()
+    seen = []
+
+    def press_cancel():
+        dialog = QtWidgets.QApplication.activeModalWidget() or next(
+            w for w in QtWidgets.QApplication.topLevelWidgets() if w.objectName() == "waitDialog" and w.isVisible())
+        seen.append(dialog.labelText())
+        dialog.findChild(QtWidgets.QPushButton).click()
+
+    QtCore.QTimer.singleShot(300, press_cancel)
+    with pytest.raises(busy.Cancelled):          # a slow call gets a dialog with Cancel; Cancel returns at once
+        busy.wait_for(lambda: release.wait(10), "Connecting to slow…", delay_ms=50)
+    assert seen == ["Connecting to slow…"]
+    release.set()                                # the abandoned call finishes in the background
+    busy.finish_orphans(5000)
+    assert not busy._orphans
+
+    w = MainWindow()                             # File › Open goes through it
+    path = tmp_path / "x.xyz"
+    path.write_text("1\n\nH 0 0 0\n")
+    assert w.open_file(str(path)).num_frames == 1
+    w.close()
+
+
+def test_notebook_status_drops_parts_instead_of_clipping(app):
+    from ewald.gui.notebook_panel import _ElidedLabel
+
+    label = _ElidedLabel("3 steps · not saved")
+    fm = label.fontMetrics()
+    label.resize(fm.horizontalAdvance("3 steps · not saved") + 4, 20)
+    assert label.shown_text() == "3 steps · not saved"
+    label.resize(fm.horizontalAdvance("3 steps") + 4, 20)
+    assert label.shown_text() == "3 steps"           # not "3 st…ved"
+    label.resize(4, 20)
+    assert label.shown_text() == ""

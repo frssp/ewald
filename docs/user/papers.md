@@ -13,6 +13,9 @@ ewald examples --fetch li6ps5cl-aimd    # download one (printed folder)
 python examples/papers/li6ps5cl_diffusion.py out/   # download if needed, analyze, write out/*.png
 ```
 
+The scripts are also notebooks (`# %%` cells): open one with **File › Open** in the app and run
+its cells to see the structures in the 3D view while the numbers come out under the cells.
+
 ```python
 from ewald import examples, import_file
 
@@ -37,6 +40,9 @@ whose checksum differs is deleted and raises `ValueError`.
 | `tiof2` | Morgan et al., *J. Am. Chem. Soc.* (2024), doi:10.1021/jacs.4c06304 | four CP2K-relaxed 4x4x4 cells (CIF) and the 6x6x6 GA anion arrangement (POSCAR), 0.1 MB, [bjmorgan/data_TiOF2](https://github.com/bjmorgan/data_TiOF2) (CC BY 4.0) | the Ti-F/Ti-O bond-length table and the TiO(6-n)Fn octahedra counts with `CreateBonds`, partial RDFs with `CoordinationAnalysis`: [`tiof2_octahedra.py`](https://github.com/frssp/ewald/blob/main/examples/papers/tiof2_octahedra.py) |
 | `ammonia-borane-metad` | Rizzi, Polino, Sicilia, Russo, Parrinello, *Angew. Chem. Int. Ed.* (2019); PLUMED-NEST 19.082 | HILLS of 4 metadynamics walkers and the authors' `sum_hills` fes.dat, 4.6 MB, [gilgalad33/Ammonia-Borane-Dehydrogenation](https://github.com/gilgalad33/Ammonia-Borane-Dehydrogenation) (no license stated) | the AB -> AaDB free energy surface with `fes_from_hills` of the ewald-plumed plugin, point by point against fes.dat: [`ammonia_borane_fes.py`](https://github.com/frssp/ewald/blob/main/examples/papers/ammonia_borane_fes.py) |
 | `alanine-dipeptide-metad` | Trapl, Spiwok, *The R Journal* 14(3) (2022); PLUMED-NEST 20.023 | phi/psi HILLS (30,000 hills) and plumed.dat, 4.9 MB, [spiwokv/metadynminerdata](https://github.com/spiwokv/metadynminerdata) (no license stated) | the Ramachandran free energy surface and its basins with `fes_from_hills` (ewald-plumed plugin): [`alanine_dipeptide_fes.py`](https://github.com/frssp/ewald/blob/main/examples/papers/alanine_dipeptide_fes.py) |
+| `nbo2f-anion-order` | Morgan, arXiv:2608.04841 (2026) | 92 VASP OUTCARs of NbO2F anion orderings in a 3x3x3 supercell (108 atoms, full relaxations), 19 MB, [bjmorgan/data_nbo2f_chirality](https://github.com/bjmorgan/data_nbo2f_chirality) (data CC BY 4.0) | the DFT ground state as the P3_121 / P3_221 enantiomer pair with `load_runs`, `check_run` and `SymmetryAnalysis`, and cis-NbO4F2 octahedra from the F-Nb-F angles: [`nbo2f_anion_order.py`](https://github.com/frssp/ewald/blob/main/examples/papers/nbo2f_anion_order.py) |
+| `fe-vacancy-neb` | Ong et al., *Comput. Mater. Sci.* 68, 314 (2013) (pymatgen) | a VASP climbing-image NEB folder `00`-`04` of a vacancy hop in fcc Fe (Fe31), 34 MB, from pymatgen's NEBAnalysis tests, [materialsproject/pymatgen](https://github.com/materialsproject/pymatgen) (MIT) | the 325 meV barrier pymatgen's test asserts, with `load` on the folder (`NebEnergyProfile`, `OverlayFrames`) and `CommonNeighborAnalysis`: [`fe_vacancy_neb.py`](https://github.com/frssp/ewald/blob/main/examples/papers/fe_vacancy_neb.py) |
+| `mgb2-phonons` | Togo, *J. Phys. Soc. Jpn.* 92, 012001 (2023); band path of Bohnen, Heid, Renker, *PRL* 86, 5771 (2001) | phonopy_disp.yaml and FORCE_SETS of a 3x3x2 MgB2 supercell (VASP forces), 15 kB, [phonopy/phonopy](https://github.com/phonopy/phonopy) (BSD-3-Clause); needs the ewald-phonopy plugin | the band structure along Bohnen's path, the Gamma modes named from their eigenvectors and the E2g mode played with `PhononMode`: [`mgb2_phonons.py`](https://github.com/frssp/ewald/blob/main/examples/papers/mgb2_phonons.py) |
 
 ## What the scripts find
 
@@ -63,6 +69,15 @@ whose checksum differs is deleted and raises `ValueError`.
   max 0.18 kJ/mol over 201 x 201 points, without PLUMED installed.
 - **Alanine dipeptide**: C7eq/PII is the global minimum, beta/C5 1.6, alpha_R 2.7 and alpha_L
   5.3 kJ/mol above it.
+- **NbO2F**: all 92 relaxations reached EDIFFG (`check_run`). The two lowest, 9 ueV/atom apart,
+  are P3_221 and P3_121 (the enantiomer pair the paper calls orbit 11); the next orderings lie
+  0.5-3 meV/atom higher and are also cis everywhere, period-three orderings with mixed cis/trans
+  octahedra 5-20 meV/atom and random ones 20-270 meV/atom above.
+- **Fe vacancy NEB**: barrier 325.2 meV (spline maximum 325.2 meV), saddle at image 2 at 0.497 of
+  the 3.00 A path, as pymatgen's NEBAnalysis test asserts (325.2 meV at 0.500). Atom 7 hops
+  2.45 A into the vacancy; CNA finds 19 FCC atoms of 31, the other 12 being the vacancy's neighbours.
+- **MgB2**: E1u 332, A2u 399, E2g 576 and B1g 686 cm^-1 at Gamma, the frequencies phonopy itself
+  gives for these force constants; the E2g branch stays between 540 and 580 cm^-1 along Gamma-A.
 
 ## Adding a dataset
 
@@ -70,4 +85,6 @@ Add a `Paper` to `PAPERS` in `src/ewald/examples/papers.py` with each file's raw
 commit (`https://raw.githubusercontent.com/<owner>/<repo>/<40-hex sha>/<path>`), its size and
 SHA-256, the license as the repository states it, and a script in `examples/papers/`; list it in
 the table above and in `examples/README.md` (`tests/test_papers.py` checks all of this). Prefer
-permissively licensed data under ~30 MB per dataset, or a subset of a larger one.
+permissively licensed data under ~30 MB per dataset, or a subset of a larger one. A file name
+may include folders (`00/OUTCAR`, `config_000/OUTCAR`) when the data is a NEB folder or a series
+of runs that `load` and `load_runs` should see as such.
