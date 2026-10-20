@@ -135,7 +135,7 @@ class FilesMixin:
         if rest:
             if os.path.isdir(rest[0]) and _is_neb(rest[0]):
                 self.open_neb(rest[0])
-            elif os.path.isdir(rest[0]):   # a folder of calculations: one notebook, a cell per step
+            elif os.path.isdir(rest[0]):   # a folder of calculations: one notebook, a load() per step
                 self.open_workflow(rest[0])
             else:
                 self.open_any(rest[0])

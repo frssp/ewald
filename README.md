@@ -159,7 +159,7 @@ analysis runs on all of them, plots overlay, and `arrhenius(msd(runs))` gives th
 energy. [Runs](docs/user/runs.md)
 
 **Workflows.** A folder of calculations (relaxed end points, a NEB, an MD restarted in `run1/ run2/`,
-phonopy) opens as one notebook with a `load` cell per step: File › Open workflow folder…, a folder
+phonopy) opens as one notebook with a `load` line per step: File › Open workflow folder…, a folder
 dropped on the window, the Workflows side bar, or `workflow.describe("hpc:/scratch/study")`.
 AiiDA and other databases plug in as workflow sources. [Workflows](docs/user/workflows.md)
 

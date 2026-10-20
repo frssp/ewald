@@ -3343,7 +3343,7 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
     titles = [a.text() for a in w.activity_bar.actions()]
     assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent", "Workflows"]
     assert w.plugin_panels["sim_agent"]["dock"] is None          # nothing built before it opens
-    assert sorted(a.text() for a in w.plugin_panel_menu.actions()) == ["Agent jobs", "Broken", "Sim agent"]
+    assert sorted(a.text() for a in w.plugin_panel_menu.actions()) == ["Agent jobs", "Broken", "Sim agent", "Workflows"]
     w.plugin_panels["sim_agent"]["action"].trigger()
     dock = w.plugin_panels["sim_agent"]["dock"]
     assert dock is not None and not dock.isHidden() and w.plugin_panels["sim_agent"]["action"].isChecked()
@@ -3616,7 +3616,7 @@ def test_workflow_side_bar_lists_expands_and_opens_a_workflow_as_one_notebook(ap
 
 def test_dropping_a_folder_of_calculations_opens_it_as_a_workflow(app, tmp_path, vasp_dir):
     """A folder of calculations (here a relax and an MD restarted twice) dropped on the window
-    opens as one notebook, a cell per step; the built-in Workflows side bar lists it after."""
+    opens as one notebook, a load() per step; the built-in Workflows side bar lists it after."""
     import shutil
 
     from ewald.gui.app import MainWindow

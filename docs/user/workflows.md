@@ -3,7 +3,7 @@
 A study usually lives in one folder: the end points relaxed in `01_relax_IS/` and `01_relax_FS/`,
 the band in `02_neb/` (`00 .. NN`), an MD restarted in `03_md/run1`, `run2`, phonons in
 `04_phonon/`. EWALD reads such a folder as one **workflow** and opens it as one notebook, with a
-`load` cell per step and `pipe` on the last result. Nothing needs to be set up and nothing in
+`load` line per step and `pipe` on the last result. Nothing needs to be set up and nothing in
 the folder is run; files are only listed and their heads or tails read.
 
 ## Opening one
@@ -29,12 +29,12 @@ print(workflow.text(wf))
 print(workflow.notebook_text(wf))                   # the notebook it opens as
 ```
 
-The notebook it opens holds:
+The notebook it opens holds one cell that loads every step:
 
 ```python
-relax = load(".../01_relax/vasprun.xml")  # ✓
-neb = load(".../02_neb")  # ✓
-md = load(".../03_md/run*/XDATCAR")  # ✓
+relax = load(".../01_relax/vasprun.xml")
+neb = load(".../02_neb")
+md = load(".../03_md/run*/XDATCAR")
 pipe = md
 ```
 

@@ -229,7 +229,7 @@ class MenusMixin:
         f.addAction("Remote &computers (SSH profiles)…", QtGui.QKeySequence("Ctrl+Alt+R"), self.show_remotes)
         f.addAction("Load &NEB folder…", self.open_neb_dialog)
         f.addAction("Open &workflow folder…", self.open_workflow_dialog).setStatusTip(
-            "A folder of calculations (relax, NEB, MD restarts, phonopy) as one notebook, a cell per step")
+            "A folder of calculations (relax, NEB, MD restarts, phonopy) as one notebook, a load() per step")
         ex = f.addMenu(icon("example"), "Open e&xample")
         for example in examples.EXAMPLES:
             act = ex.addAction(f"{example.file}  ({example.format})", lambda e=example: self.open_example(e.file))
