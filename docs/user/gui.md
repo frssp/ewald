@@ -270,7 +270,7 @@ bookmarks, and browses their files; passwords and key passphrases go to the OS k
 
 Edit › Preferences (Ctrl+, ; the application menu on macOS) has seven pages: General, Viewports,
 Elements (per-element color and radius, Jmol or CPK scheme, radius preset, VESTA `elements.ini` import),
-Rendering, Compute (default device, CPU threads, installed components), Python (console
+Rendering, Compute (device, CPU threads, installed components), Python (console
 startup script, extra module paths) and AI (provider, API key, model, server URL and effort for Ask AI; see
 [API key](claude.md#api-key)). Only values that differ from the defaults are saved, as
 JSON in the ewald config folder: `~/.config/ewald` on Linux,
