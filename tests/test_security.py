@@ -236,7 +236,6 @@ EXEC_SITES = {
     ("gui/prefs_apply.py", "exec"): "the console startup script the user chose in Preferences",
     ("kernel_bridge.py", "import_module"): "module names from the fixed OBJECTS table only",
     ("llm/providers.py", "import_module"): "SDK names of built-in or installed @ai_provider plugins",
-    ("llm/tools.py", "exec"): "run_python, only with Toolset(allow_code=True)",
     ("modifiers/expression.py", "__import__"): "numpy only, for array methods inside expressions",
     ("modifiers/expression.py", "eval"): "parsed and checked expressions without builtins",
     ("modifiers/script.py", "exec"): "PythonScript; sessions keep it disabled unless allow_code",

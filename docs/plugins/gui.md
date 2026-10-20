@@ -98,8 +98,10 @@ A Settings… button in the panel can open the page with `context.open_preferenc
 ## Shipping it
 
 In a one-file plugin both registrations sit at the top level of the file, as in the example. A
-package lists them as entry points instead; the settings class then carries `title` and
-`fields` as class attributes rather than the decorator ([Settings pages](settings.md)):
+package lists them as entry points instead. An entry point gives only a name, so the panel
+function carries `title`, `icon`, `tooltip`, `shortcut` and `width` as attributes
+(`sim_agent.title = "Sim agent"`), and the settings class carries `title` and `fields` as class
+attributes rather than the decorator ([Settings pages](settings.md)):
 
 ```toml
 [project.entry-points."ewald.panels"]

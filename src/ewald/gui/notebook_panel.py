@@ -81,7 +81,7 @@ class NotebookView(QtWidgets.QWidget):
     askRequested = QtCore.Signal()
     titleChanged = QtCore.Signal()
     pipRequested = QtCore.Signal(list)        # pip requirements of plugins the notebook needs
-    plotCreated = QtCore.Signal(object)       # the live PlotsPanel of a new view cell
+    plotCreated = QtCore.Signal(object)       # a new live PlotsPanel (view cell or show() output)
 
     def __init__(self, notebook: Notebook, parent=None):
         super().__init__(parent)
@@ -360,10 +360,11 @@ class NotebookView(QtWidgets.QWidget):
             w.selected.connect(self.select)
             w.edited.connect(self._step_edited)
             w.actionRequested.connect(self._cell_action)
+            w.plotCreated.connect(self.plotCreated.emit)
             self.widgets.append(w)
             self.cells_layout.addWidget(w)
-            if w.plot_panel is not None:
-                self.plotCreated.emit(w.plot_panel)
+            for p in w.panels():
+                self.plotCreated.emit(p)
         self.cells_layout.addWidget(self.add_bar)
         # the spare height goes below the cells, not into them: a cell's gutter stretch makes it
         # count as vertically expanding, so a plain addStretch() would share the space with it
@@ -393,6 +394,7 @@ class NotebookView(QtWidgets.QWidget):
             w.update_state(self.data)
             if w.plot_panel is not None and (data is not None or w.plot_panel.data is None):
                 w.set_view_data(self.data, self.notebook.pipeline)
+            w.set_live_data(self.data, self.notebook.pipeline, force=data is not None)
         nb = self.notebook
         pipe = nb.pipeline
         steps = None if pipe is None else len(pipe.modifiers) + sum(len(c.steps) for c in nb.cells)
@@ -878,8 +880,8 @@ class NotebookPanel(QtWidgets.QWidget):
         view.askRequested.connect(self.askRequested.emit)
         view.plotCreated.connect(self.plotCreated.emit)
         for w in view.widgets:  # built before the connection
-            if w.plot_panel is not None:
-                self.plotCreated.emit(w.plot_panel)
+            for p in w.panels():
+                self.plotCreated.emit(p)
         view.titleChanged.connect(lambda v=view: self._retitle(v))
         view.pipRequested.connect(self.pipRequested.emit)
         self._switching = True

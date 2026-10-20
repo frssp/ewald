@@ -54,10 +54,11 @@ decided yet and comes later, if at all.
 ## Install
 
 ```bash
-pip install -e ".[gui]"     # the desktop app (PySide6, VTK); leave out [gui] for scripts only
-pip install -e ".[gpu]"     # + CuPy for device="cuda" (NVIDIA)
-pip install -e ".[llm]"     # + AI: Claude, OpenAI, Gemini, local models (Ask AI, ewald ask)
-# files on SSH hosts and saved remote computers work in every install (paramiko, keyring)
+pip install -e ".[all]"     # desktop: GUI, MDAnalysis formats, OVITO's DXA
+pip install -e ".[all,gpu]" # + CuPy for device="cuda" (NVIDIA)
+pip install -e .            # scripts only (clusters without a display)
+# every install has symmetry, MP4 export, HDF5 formats, Ask AI (Claude, OpenAI, Gemini, local
+# models), kernels and SSH files; extras: gui, gpu, formats (MDAnalysis), ovito (docs/user/install.md)
 ```
 
 A C++17 compiler builds the native analyses (PTM, Voronoi, CSP matching, interval CNA); without one

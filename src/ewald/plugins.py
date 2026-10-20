@@ -510,8 +510,8 @@ def _icon_path(icon: str, anchor) -> str:
     return str(path)
 
 
-def panel(fn=None, *, name: str | None = None, title: str = "", icon: str = "plugins", tooltip: str = "",
-          shortcut: str = "", width: int = 320, description: str = ""):
+def panel(fn=None, *, name: str | None = None, title: str = "", icon: str = "", tooltip: str = "",
+          shortcut: str = "", width: int | None = None, description: str = ""):
     """Decorator registering ``f(context) -> QWidget`` as a side bar of the desktop app: a button
     on the activity bar (the icon column at the left edge, next to Notebook, Plugins and AI chat)
     shows or hides it, and Window › Plugin panels lists it. The widget is built the first time
@@ -542,10 +542,19 @@ def panel(fn=None, *, name: str | None = None, title: str = "", icon: str = "plu
     return deco(fn) if fn is not None else deco
 
 
-def register_panel(name: str, factory: Callable, title: str = "", icon: str = "plugins", tooltip: str = "",
-                   shortcut: str = "", width: int = 320, description: str = "", origin: str = "python") -> PanelPlugin:
+def register_panel(name: str, factory: Callable, title: str = "", icon: str = "", tooltip: str = "",
+                   shortcut: str = "", width: int | None = None, description: str = "",
+                   origin: str = "python") -> PanelPlugin:
+    """Register a side bar (see :func:`panel`). Arguments left out are read from attributes of
+    ``factory`` of the same names (``title``, ``icon``, ``tooltip``, ``shortcut``, ``width``),
+    so an ``ewald.panels`` entry point, which passes only the name, can still set them."""
     if not callable(factory):
         raise TypeError(f"{factory!r} is not callable (a panel is a function or class taking the panel context)")
+    title = title or getattr(factory, "title", "") or ""
+    icon = icon or getattr(factory, "icon", "") or "plugins"
+    tooltip = tooltip or getattr(factory, "tooltip", "") or ""
+    shortcut = shortcut or getattr(factory, "shortcut", "") or ""
+    width = width or getattr(factory, "width", None) or 320
     try:
         anchor = inspect.getfile(factory)
     except TypeError:

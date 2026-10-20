@@ -57,7 +57,10 @@ def _sync(nb, cells: list):
 def _output(o) -> dict:
     data = o.data
     if isinstance(data, bytes):
-        return {"kind": o.kind, "png": base64.b64encode(data).decode("ascii")}
+        out = {"kind": o.kind, "png": base64.b64encode(data).decode("ascii")}
+        if getattr(o, "view", None) is not None:
+            out["view"] = o.view
+        return out
     return {"kind": o.kind, "text": str(data)}
 
 

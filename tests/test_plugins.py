@@ -179,7 +179,7 @@ def test_llm_tool_sees_plugin_formats(tmp_path):
     assert "npz-trajectory" in load["input_schema"]["properties"]["format"]["description"]
     res = ts.call("load_structure", {"path": str(_npz(tmp_path / "md.npz"))})
     assert not res.is_error and '"num_frames": 4' in res.text()
-    assert "import_file(" in ts.to_script()
+    assert "pipe = load(" in ts.to_script()
 
 
 def test_gui_open_dialog_lists_plugin_patterns():
@@ -681,3 +681,14 @@ def test_settings_page_checks_what_it_is_given():
         SettingsField("a", kind="password")
     with pytest.raises(ValueError, match="needs choices"):
         SettingsField("a", kind="choice")
+
+
+def test_panel_entry_point_reads_title_and_icon_from_the_function():
+    def side(context):
+        return None
+
+    side.title, side.icon, side.width = "Side", "<svg/>", 280
+    p = plugins.register_panel("side", side)
+    assert (p.title, p.icon, p.width) == ("Side", "<svg/>", 280)
+    q = plugins.register_panel("plain", lambda c: None)
+    assert (q.title, q.icon, q.width) == ("plain", "plugins", 320)
