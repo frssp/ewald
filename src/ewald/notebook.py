@@ -141,7 +141,9 @@ def _apply_summary(mod, summary: dict):
 def resolve_data_path(path):
     """``path`` itself when it exists (or is not a plain local path); else the same relative
     path, or file name, in the folders of the notebook that is running (its own folder and the
-    data an ``.ewd`` carries)."""
+    data an ``.ewd`` carries). A list of paths is resolved entry by entry."""
+    if isinstance(path, (list, tuple)):
+        return [resolve_data_path(p) for p in path]
     if not isinstance(path, (str, os.PathLike)):
         return path
     text = os.fspath(path)
@@ -226,6 +228,7 @@ def load_code(pipeline: Pipeline, name: str = PIPELINE_NAME) -> str | None:
     if src is None or not hasattr(src, "path"):
         return None
     args = [repr(src.path)] + ([f"format={src.format!r}"] if getattr(src, "format", None) else []) + \
+        ([f"join={src.join!r}"] if getattr(src, "join", "timestep") != "timestep" else []) + \
         [f"{k}={v!r}" for k, v in getattr(src, "kwargs", {}).items()]
     return f"{name} = load({', '.join(args)})"
 

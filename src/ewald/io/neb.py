@@ -29,11 +29,7 @@ import numpy as np
 
 from ..data import DataCollection
 from . import remote
-from .base import FrameReader, IncompleteFileError, open_binary
-
-
-def _natural_key(path: str):
-    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", path)]
+from .base import FrameReader, IncompleteFileError, natural_key as _natural_key, open_binary
 
 
 # NEB folders may be local or remote (host:/path, read over SFTP); these helpers do both
