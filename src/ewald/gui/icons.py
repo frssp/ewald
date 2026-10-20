@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .theme import TOKENS
+from .theme import STYLE, TOKENS
 
 PATHS = {
     "open": '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
@@ -83,9 +83,10 @@ APP_ICON_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 STYLES = ("Icons and text", "Icons", "Text")
 
 
-def svg(name: str, color: str) -> str:
+def svg(name: str, color: str, stroke: float | None = None) -> str:
+    stroke = stroke or STYLE["icon_stroke"]   # the UI theme's line width
     return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
-            f'stroke="{color}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+            f'stroke="{color}" stroke-width="{stroke:g}" stroke-linecap="round" stroke-linejoin="round">'
             f'{PATHS[name].replace("currentColor", color)}</svg>')
 
 
@@ -104,7 +105,8 @@ def _pixmap(name: str, color: str, size: int) -> QtGui.QPixmap:
 def icon(name: str, color: str | None = None) -> QtGui.QIcon:
     """Icon ``name`` in the secondary text color, accent when checked, text color on hover;
     ``color`` fixes one color (e.g. on the accent-filled primary button). Cached per UI theme."""
-    return _icon(name, color, TOKENS["secondary"], TOKENS["text"], TOKENS["accent"], TOKENS["muted"])
+    return _icon(name, color, TOKENS["secondary"], TOKENS["text"], TOKENS["accent"], TOKENS["muted"],
+                 STYLE["icon_stroke"])
 
 
 @lru_cache(maxsize=None)

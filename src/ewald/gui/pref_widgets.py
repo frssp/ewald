@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .theme import TOKENS
+from .theme import STYLE, TOKENS
 
 
 # 24x24 line icons (stroke = currentColor), drawn in the Lucide style
@@ -28,7 +28,7 @@ def _icon(name, color, size=18) -> QtGui.QPixmap:
     from PySide6 import QtSvg
 
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{color}" '
-           f'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">{_ICONS[name]}</svg>')
+           f'stroke-width="{STYLE["icon_stroke"]:g}" stroke-linecap="round" stroke-linejoin="round">{_ICONS[name]}</svg>')
     ratio = 2
     pix = QtGui.QPixmap(size * ratio, size * ratio)
     pix.fill(QtCore.Qt.transparent)

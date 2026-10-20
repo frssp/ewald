@@ -1,5 +1,6 @@
-"""Example UI color themes for the desktop app: "Nord" (dark, frost-blue accents) and "Sepia"
-(light, warm paper). See docs/plugins/styles.md#ui-themes.
+"""Example UI themes for the desktop app: "Nord" (dark, frost-blue accents), "Sepia" (light, warm
+paper) and "Studio" (dark, compact, square corners, its own fonts and extra style sheet rules).
+See docs/plugins/styles.md#ui-themes.
 
 Copy this file into ewald's plugin folder (``ewald plugins`` prints where it is), then pick the
 theme under Preferences > General > UI theme, or from Python::
@@ -31,6 +32,19 @@ def sepia():
         "bg": "#FBF5EA", "panel": "#F3EBDC", "raised": "#FFFAF1", "border": "#D9CCB4",
         "text": "#2B2118", "secondary": "#4E4033", "muted": "#6B5B4B", "accent": "#9C3B2E",
         "accent_soft": "#F1DDD5", "data": "#2F6B8A", "data_soft": "#DCE8EE", "viewport": "#F3EBDC",
+    }
+
+
+@ui_theme(name="Studio", base="graphite")
+def studio():
+    """Compact and square: tighter spacing, thin icons, Inter/Fira Code, accent-edged panel headers."""
+    return {
+        "accent": "#E0A040", "on_accent": "#1A1A1A", "accent_soft": "#4A3C26",
+        # beyond colors: fonts fall back to ewald's when not installed
+        "font": "Inter", "mono_font": "Fira Code", "font_size": 12,
+        "radius": 2, "density": "compact", "icon_stroke": 1.4,
+        # extra Qt style sheet rules, applied last; $token is a color of this theme
+        "qss": "QWidget#panelHeader { border-bottom: 2px solid $accent; }",
     }
 
 

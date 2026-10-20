@@ -8,12 +8,18 @@ updated in place by :func:`use`, so ``from .theme import TOKENS`` sees the chang
 from __future__ import annotations
 
 import logging
+import re
+from string import Template
 
-from ..ui_tokens import DEFAULT, DERIVED, DESCRIPTIONS, PALETTES, _mix, derive  # noqa: F401 (public here too)
+from ..ui_tokens import (DEFAULT, DENSITY, DERIVED, DESCRIPTIONS, PALETTES, STYLE_DEFAULTS, _mix,  # noqa: F401
+                         derive)
 
 log = logging.getLogger(__name__)
 
 TOKENS = dict(PALETTES[DEFAULT])
+#: What the active UI theme sets besides colors (fonts, radius, density, icon stroke, extra QSS);
+#: updated in place by :func:`use` like :data:`TOKENS`.
+STYLE = dict(STYLE_DEFAULTS)
 
 
 # Small line images the style sheet needs as files (QSS has no inline images), in palette colors.
@@ -62,10 +68,28 @@ def palette(name: str) -> dict:
     return dict(PALETTES[DEFAULT])
 
 
+def style(name: str) -> dict:
+    """The non-color settings of UI theme ``name`` (:data:`ewald.ui_tokens.STYLE_DEFAULTS` for
+    the built-in themes and for a plugin whose style keys are broken)."""
+    if name in PALETTES or not name:
+        return dict(STYLE_DEFAULTS)
+    from .. import plugins
+
+    found = plugins.ui_themes().get(name)
+    if found is not None:
+        try:
+            return found.style()
+        except Exception as exc:
+            log.warning("UI theme %r: %s; using the default fonts and sizes", name, exc)
+    return dict(STYLE_DEFAULTS)
+
+
 def use(name: str) -> dict:
-    """Make ``name`` the active palette (unknown names fall back to the default)."""
+    """Make ``name`` the active palette and style (unknown names fall back to the default)."""
     TOKENS.clear()
     TOKENS.update(palette(name))
+    STYLE.clear()
+    STYLE.update(style(name))
     return TOKENS
 
 QSS = """
@@ -316,9 +340,34 @@ QPushButton#chatStarter:hover {{ border-color: {accent}; color: {accent}; }}
 """
 
 
+_RADIUS = re.compile(r"(border(?:-\w+)*-radius: )(\d+)px")
+_PADDING = re.compile(r"(padding(?:-\w+)?: )([^;}]+)")
+
+
+def _restyle(css: str, st: dict) -> str:
+    """``css`` with the theme's fonts, corner radius and spacing (:data:`STYLE`) in place of ewald's."""
+    if st["font"]:
+        css = css.replace('font-family: "IBM Plex Sans"', f'font-family: "{st["font"]}", "IBM Plex Sans"')
+    if st["mono_font"]:
+        css = css.replace('"JetBrains Mono",', f'"{st["mono_font"]}", "JetBrains Mono",')
+    if st["radius"] != STYLE_DEFAULTS["radius"]:
+        scale = st["radius"] / STYLE_DEFAULTS["radius"]
+        # pills and round avatars (radius above 8 px) keep their shape
+        css = _RADIUS.sub(lambda m: m.group(0) if int(m.group(2)) > 8
+                          else f"{m.group(1)}{round(int(m.group(2)) * scale)}px", css)
+    factor = DENSITY[st["density"]]
+    if factor != 1:
+        css = _PADDING.sub(lambda m: m.group(1) + re.sub(
+            r"(\d+)px", lambda n: f"{max(0, round(int(n.group(1)) * factor))}px", m.group(2)), css)
+    return css
+
+
 def stylesheet(font_size: int = 12) -> str:
     images = {f"img_{name}": image(name) for name in _IMAGES}
-    return QSS.format(**TOKENS, **images).replace("font-size: 12px", f"font-size: {font_size}px")
+    css = _restyle(QSS.format(**TOKENS, **images), STYLE).replace("font-size: 12px", f"font-size: {font_size}px")
+    if STYLE["qss"]:   # the theme's own rules last, so they win
+        css += "\n/* UI theme */\n" + Template(STYLE["qss"]).safe_substitute(TOKENS) + "\n"
+    return css
 
 
 def current_font_size(app) -> int:
@@ -346,6 +395,7 @@ def apply(app, name: str | None = None, font_size: int | None = None):
         pal.setColor(role, QtGui.QColor(TOKENS[key]))
     if pal != app.palette():
         app.setPalette(pal)
-    css = stylesheet(font_size or current_font_size(app))
+    # the theme's font size applies while the user's (Preferences > General) is the default
+    css = stylesheet(font_size or (STYLE["font_size"] if name is not None else 0) or current_font_size(app))
     if app.styleSheet() != css:  # re-polishing every widget of every window is slow; skip when unchanged
         app.setStyleSheet(css)
