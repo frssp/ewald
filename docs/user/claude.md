@@ -49,7 +49,8 @@ kind, state, first line), `read_cell` (full source and outputs, plots as images)
 `edit_cell` (the whole source, one `old_text` → `new_text` replacement, or a step's `params`, which
 change like the step's form), `move_cell` and `delete_cell`. The AI chat side bar attaches the
 notebook of the current tab; each change redraws the cells and is one undo step ("AI: insert
-cell", Ctrl+Z). In Python:
+cell", Ctrl+Z). There the ```python blocks of an answer also become new cells by default
+(Preferences › AI › Code in answers: `insert`, or `button` for *+ Insert as cell*). In Python:
 
 ```python
 from ewald.llm import Agent

@@ -113,8 +113,12 @@ chat app: your messages in bubbles on the right, the answers under the assistant
 the tools it ran as small chips (*Running …*, then *Used …*), and code blocks as framed code with
 *Copy* and *+ Insert as cell*. Enter sends, Shift+Enter starts a new line, and the suggestions
 on an empty chat send a first question. Each question also sends the
-current notebook's code (only when it changed since the last question); *+ Insert as cell* adds
-a Python block as a code cell after the current one, without running it (Shift+Enter runs it).
+current notebook's code (only when it changed since the last question). Python blocks of an
+answer go into the notebook at once as new code cells after the current one, without running
+them (Shift+Enter runs a cell, Ctrl+Z takes one out again), and their button then reads
+*✓ Inserted*. With Preferences › AI › **Code in answers** set to `button`, nothing is inserted
+until you press *+ Insert as cell*. The AI can also read and edit cells itself
+([Notebook cells](claude.md#notebook-cells)).
 The chat answers questions about the picked atoms, such as "What are these atoms?" or "Why is the
 coordination low here?". Without picks it uses the particles a selection modifier selected, and
 with neither the question is about the whole frame. The model receives the description from
