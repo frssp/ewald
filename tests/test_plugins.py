@@ -179,7 +179,7 @@ def test_llm_tool_sees_plugin_formats(tmp_path):
     assert "npz-trajectory" in load["input_schema"]["properties"]["format"]["description"]
     res = ts.call("load_structure", {"path": str(_npz(tmp_path / "md.npz"))})
     assert not res.is_error and '"num_frames": 4' in res.text()
-    assert "import_file(" in ts.to_script()
+    assert "pipe = load(" in ts.to_script()
 
 
 def test_gui_open_dialog_lists_plugin_patterns():

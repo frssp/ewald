@@ -120,8 +120,8 @@ def test_toolset_end_to_end(cu_file, fake_render):
     r = ts.call("compute_rdf", {"cutoff": 5.0})
     assert r.content["peaks"]["g(r)"][0]["r"] == pytest.approx(2.556, abs=0.05)
 
-    script = ts.to_script()
-    assert "CoordinationAnalysis(cutoff=3.0" in script and "Slice(" in script
+    script = ts.to_script()   # the session notebook: every change above is one of its cells
+    assert "pipe = load(" in script and "pipe.add(CoordinationAnalysis(cutoff=3.0))" in script and "Slice(" in script
     ns = {}
     exec(script, ns)  # the exported script runs and reproduces the result
     assert ns["data"].count == ts.pipeline.compute(0).count
@@ -135,7 +135,8 @@ def test_toolset_errors_are_results(cu_file):
     assert r.is_error and "available" in r.content
     r = ts.call("add_modifier", {"name": "ExpressionSelection", "params": {"expression": "Bogus > 1"}})
     assert r.is_error and ts.pipeline.modifiers == []  # failed modifier rolled back
-    assert "run_python" not in ts.tools
+    assert [c.source for c in ts.notebook.cells if "ExpressionSelection" in c.source] == []   # and its cell
+    assert "run_python" not in ts.tools and "run_python" not in Toolset(allow_code=True).tools
 
 
 def test_msd_diffusion(cu_fcc):
@@ -154,13 +155,14 @@ def test_msd_diffusion(cu_fcc):
     assert fit["D_cm2_per_s"] == pytest.approx(0.00125e-1, rel=0.2)
 
 
-def test_run_python_opt_in(cu_fcc):
+def test_model_code_runs_only_as_notebook_cells(cu_fcc):
+    """No run_python: with allow_code the model's own code is a cell it inserts and runs."""
     ts = Toolset(Pipeline(StaticSource(cu_fcc)), allow_code=True)
-    code = "def tag_top(frame, data):\n    data['Top'] = data.positions[:, 2] > 7\nprint(len(data))"
-    r = ts.call("run_python", {"code": code, "add_as_modifier": "tag_top"})
-    assert r.content["stdout"].strip() == "256"
-    assert "Top" in ts.pipeline.compute(0)
-    assert "def tag_top" in ts.to_script() and "pipe.modifiers.append(tag_top)" in ts.to_script()
+    code = "@pipe.add\ndef tag_top(frame, data):\n    data['Top'] = data.positions[:, 2] > 7\nprint(pipe.compute(0).count)"
+    k = ts.call("insert_cell", {"source": code}).content["inserted"]["index"]
+    r = ts.call("run_cell", {"index": k})
+    assert not r.is_error and r.content["outputs"] == [{"kind": "text", "text": "256\n"}]
+    assert "Top" in ts.pipeline.compute(0) and "def tag_top" in ts.to_script()
 
 
 # ------------------------------------------------------------------ agent loop
@@ -475,10 +477,10 @@ def test_code_modifiers_need_allow_code(cu_fcc):
     closed = Toolset(pipe)
     assert "PythonScript" not in closed.call("list_modifiers").content
     assert closed.call("add_modifier", {"name": "PythonScript", "params": {"source": "x"}}).is_error
-    assert "OvitoModifier" not in closed.call("list_modifiers").content and "python_api" not in closed.tools
+    assert "OvitoModifier" not in closed.call("list_modifiers").content
     opened = Toolset(pipe, allow_code=True)
     assert "PythonScript" in opened.call("list_modifiers").content
-    ref = opened.call("python_api").content
+    ref = closed.call("python_api").content   # a reference for writing cells: offered to every session
     assert "Differences from OVITO" in ref and "`CommonNeighborAnalysis(" in ref
 
 
@@ -493,7 +495,7 @@ def test_notebook_tools_read_insert_edit_move_delete(tmp_path):
     ts = Toolset(nb.pipeline, notebook=nb)
     names = [d["name"] for d in ts.definitions()]
     assert {"list_cells", "read_cell", "insert_cell", "edit_cell", "move_cell", "delete_cell"} <= set(names)
-    assert "run_cell" not in names and "run_cell" not in Toolset(None).tools
+    assert "run_cell" not in names and "run_cell" not in [d["name"] for d in Toolset(None).definitions()]
 
     cells = ts.call("list_cells").content["cells"]
     assert [c["kind"] for c in cells] == ["code", "step", "code"] and cells[1]["modifier"] == "CoordinationAnalysis"
@@ -501,10 +503,15 @@ def test_notebook_tools_read_insert_edit_move_delete(tmp_path):
     assert read["source"] == "print('hi')" and read["outputs"] == [{"kind": "text", "text": "hi\n"}]
     assert ts.call("read_cell", {"index": 1}).content["params"]["cutoff"] == 3.0
 
-    # step parameters change like the form does: the pipeline follows, no code runs
+    # step parameters: the step's call is rewritten with the new literal values and the cell runs
+    old = nb.pipeline.modifiers[0]
     r = ts.call("edit_cell", {"index": 1, "params": {"cutoff": 2.8}})
-    assert not r.is_error and nb.pipeline.modifiers[0].cutoff == 2.8 and "cutoff=2.8" in nb.cells[1].source
+    assert not r.is_error and nb.cells[1].source == "pipe.add(CoordinationAnalysis(cutoff=2.8))"
+    assert nb.pipeline.modifiers[0] is not old and nb.pipeline.modifiers[0].cutoff == 2.8   # the cell ran
+    assert nb.cells[1].added == nb.pipeline.modifiers and nb.cells[1].state == "ok"
     assert ts.call("edit_cell", {"index": 1, "params": {"nope": 1}}).is_error
+    assert ts.call("edit_cell", {"index": 1, "params": {"cutoff": "far"}}).is_error
+    assert nb.cells[1].source.endswith("cutoff=2.8))") and nb.pipeline.modifiers[0].cutoff == 2.8
 
     # inserted and edited cells are not run
     new = ts.call("insert_cell", {"source": "y = 2", "index": 2}).content["inserted"]
@@ -538,7 +545,7 @@ def test_notebook_tools_run_cell_with_allow_code():
     ts.call("insert_cell", {"source": "1 / 0"})
     r = ts.call("run_cell", {"index": -1})
     assert r.is_error and r.content["state"] == "error" and "ZeroDivisionError" in r.content["outputs"][0]["text"]
-    assert Toolset(None).call("list_cells").is_error        # no notebook attached: no such tool
+    assert "run_cell" not in [d["name"] for d in Toolset(None).definitions()]   # not without allow_code
 
 
 def test_agent_stops_when_cancelled_and_forgets_the_question(cu_fcc):
@@ -577,3 +584,96 @@ def test_failed_cells_lists_errors():
     nb.cells[1].source = "1 / 1"
     nb.run_all()
     assert failed_cells(nb) == ""
+
+
+# ------------------------------------------------------------------ the AI changes results only through cells
+
+#: Every built-in tool, by what it may change. A new tool fails test_every_tool_is_classified until it
+#: is listed here; one that changes the pipeline, the view or files must do it by writing and running a cell.
+READ_ONLY_TOOLS = {"describe_frame", "describe_selection", "describe_trajectory", "event_details", "list_modifiers",
+                   "show_pipeline", "set_frame", "evaluate_expression", "compute_rdf", "analyze_symmetry",
+                   "compute_diffraction", "compute_msd", "check_run", "render_image", "get_view", "list_visuals",
+                   "list_overlays", "list_styles", "get_script", "python_api", "list_cells", "read_cell"}
+CELL_WRITING_TOOLS = set(tools_mod.CELL_WRITERS)
+CELL_EDITING_TOOLS = {"insert_cell", "edit_cell", "move_cell", "delete_cell", "run_cell"}
+
+
+def test_every_tool_is_classified():
+    from ewald import plugins
+
+    names = set(Toolset(allow_code=True).tools) - set(plugins.tools())
+    assert names == READ_ONLY_TOOLS | CELL_WRITING_TOOLS | CELL_EDITING_TOOLS
+
+
+def test_tools_do_not_touch_the_pipeline_or_view_directly():
+    """tools.py changes modifiers and view settings only by running cells, never by hand."""
+    import inspect
+    import re
+
+    src = inspect.getsource(tools_mod)
+    hits = re.findall(r"\.modifiers\.(?:append|insert|pop|remove|extend|clear)\(|\.modifiers\[[^\]]*\]\s*=(?!=)"
+                      r"|\.view\.(?:update|reset|rotate|look|color|radius|surface|zoom_by)\(|\.view\.\w+\s*=(?!=)", src)
+    assert hits == []
+
+
+def _state(nb):
+    pipe = nb.pipeline
+    return [repr(m) for m in pipe.modifiers], pipe.view.changed(), nb.snapshot()
+
+
+def test_read_only_tools_change_nothing(cu_file, fake_render):
+    ts = Toolset()
+    ts.call("load_structure", {"path": str(cu_file)})
+    ts.call("add_modifier", {"name": "CoordinationAnalysis", "params": {"cutoff": 3.0}})
+    nb = ts.notebook
+    before = _state(nb)
+    calls = {"describe_selection": {"indices": [0], "image": False}, "event_details": {"frame": 1},
+             "evaluate_expression": {"expression": "Coordination > 0"}, "compute_rdf": {"cutoff": 4.0},
+             "set_frame": {"frame": 2}, "render_image": {"theme": "VESTA", "direction": "x"},
+             "read_cell": {"index": 0}}
+    for name in sorted(READ_ONLY_TOOLS):
+        r = ts.call(name, calls.get(name, {}))
+        assert not r.is_error, (name, r.content)
+        assert _state(nb) == before, name
+
+
+def test_the_notebook_alone_reproduces_what_the_tools_did(cu_file, fake_render, tmp_path):
+    from ewald.notebook import Notebook, _owned
+
+    ts = Toolset(workdir=str(tmp_path))
+    steps = [("load_structure", {"path": str(cu_file)}),
+             ("add_modifier", {"name": "CoordinationAnalysis", "params": {"cutoff": 3.0}}),
+             ("add_modifier", {"name": "ExpressionSelection", "params": {"expression": "Coordination == 12"}}),
+             ("add_modifier", {"name": "Slice", "params": {"distance": 5.0, "width": 4.0, "select": True}, "index": 0}),
+             ("remove_modifier", {"index": 2}),
+             ("set_view", {"bonds": False, "colors": {"Cu": "gold"}, "direction": "z"}),
+             ("add_overlay", {"name": "Coordinate tripod"}),
+             ("set_view", {"reset": ["colors"], "background": "white", "rotate": [10, 0]}),
+             ("remove_overlay", {"index": 0}),
+             ("export_file", {"path": "out.extxyz", "frames": "all"})]
+    for name, args in steps:
+        r = ts.call(name, args)
+        assert not r.is_error, (name, r.content)
+        nb, pipe = ts.notebook, ts.pipeline
+        assert [id(m) for m in pipe.modifiers] == [id(m) for m in _owned(nb.cells)], name   # every step is a cell's
+        assert all(c.state == "ok" for c in nb.cells if c.kind == "code"), name           # and every cell ran
+    assert [type(m).__name__ for m in ts.pipeline.modifiers] == ["Slice", "CoordinationAnalysis"]
+    assert ts.pipeline.view.changed()["background"] == "white" and "colors" not in ts.pipeline.view.changed()
+    assert (tmp_path / "out.extxyz").exists()
+
+    again = Notebook.from_py(ts.notebook.to_py())    # a fresh run of the cells alone
+    (tmp_path / "out.extxyz").unlink()
+    assert again.run_all()
+    assert _state(again)[:2] == _state(ts.notebook)[:2] and (tmp_path / "out.extxyz").exists()
+
+
+def test_cell_writing_tools_refuse_a_restricted_notebook(cu_file):
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\npipe = load({str(cu_file)!r})\n")
+    assert nb.run_all()
+    nb.restricted = True                              # an .ewd file not trusted yet
+    ts = Toolset(notebook=nb)
+    r = ts.call("add_modifier", {"name": "CoordinationAnalysis"})
+    assert r.is_error and "trust" in r.content and nb.pipeline.modifiers == [] and len(nb.cells) == 1
+    assert ts.call("set_view", {"bonds": False}).is_error and nb.pipeline.view.changed() == {}

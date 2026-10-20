@@ -21,7 +21,7 @@ def count_short_contacts(toolset, cutoff=2.0):
     return {"pairs": int(len(i)), "frame": toolset.frame}
 ```
 
-The function receives the `Toolset` first: `toolset.pipeline` is the loaded pipeline (or None),
+The function receives the `Toolset` first: `toolset.pipeline` is the notebook's pipeline (or None),
 `toolset.frame` the current frame, `toolset.workdir` a folder for files and `toolset.figures`
 the images made so far. `toolset._need_pipeline()` raises the usual "no structure loaded" error.
 Return JSON-ready data (numbers, strings, lists, dicts; NumPy values are converted), or a
@@ -37,6 +37,12 @@ shortens a column table to 60 rows for the model.
 Tools run in your Python process with your permissions, so treat inputs as you would any text
 in a file the model reads: check paths and refuse anything that loads code (the ewald-plumed plugin's
 `compute_plumed_cvs` refuses PLUMED `LOAD`).
+
+The AI changes results only through the notebook, and ewald cannot check a plugin's code for
+that, so keep to it yourself: read `toolset.pipeline` but do not change its modifiers or view by
+hand. To add a step, call the built-in tool, which writes the step cell and runs it
+(`toolset.call("add_modifier", {"name": "Plumed", "params": {...}})`, as `compute_plumed_cvs`
+does), and compute a look-only variant on a copy (`Pipeline(pipe.source, [*pipe.modifiers, m])`).
 
 In a package, register the function under the `ewald.tools` entry point group:
 

@@ -80,7 +80,7 @@ def build_parser():
     q.add_argument("--type-map", default=None)
     q.add_argument("--model", default=None)
     _ai_arguments(q)
-    q.add_argument("--allow-code", action="store_true", help="let the AI run Python in this process")
+    q.add_argument("--allow-code", action="store_true", help="let the AI run notebook cells it wrote (run_cell)")
     q.add_argument("--script", default=None, help="write the resulting pipeline as a Python script")
     q.add_argument("--select", default=None, metavar="EXPR",
                    help="ask about these particles, e.g. 'ParticleIdentifier == 17' or 'Position.Z > 20'")
@@ -300,7 +300,6 @@ def _run(args):
         from .llm import Agent, Toolset
 
         ts = Toolset(pipe, allow_code=args.allow_code)
-        ts._source_call = {"path": args.input, "kwargs": kw}
         agent = Agent(ts, **_ai_options(args),
                       on_event=lambda kind, p: print(f"  -> {p['name']}({p['input']})")
                       if kind == "tool_call" else None)
