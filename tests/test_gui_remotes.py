@@ -4,7 +4,6 @@ import os
 import pytest
 
 pytest.importorskip("PySide6")
-pytest.importorskip("paramiko")
 
 from PySide6 import QtCore, QtWidgets  # noqa: E402
 
