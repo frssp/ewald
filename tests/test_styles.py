@@ -277,9 +277,11 @@ def test_llm_tools(extras, monkeypatch):
     res = ts.call("render_image", {"theme": "VESTA"})
     assert not res.is_error, res.text()
     assert seen["theme"] == "VESTA" and seen["overlays"][0]["name"] == "Coordinate tripod"
-    script = ts.to_script()
-    assert "theme = 'VESTA'" in script and "overlays = [{'name': 'Coordinate tripod'" in script
-    assert not ts.call("remove_overlay", {"index": 0}).is_error and ts.overlays == []
+    assert ts.pipeline.view.theme is None                    # render_image's theme is for that picture only
+    script = ts.to_script()   # the overlay went into the notebook's view cell
+    assert "overlays=[{'name': 'Coordinate tripod'" in script and "theme" not in script
+    assert not ts.call("remove_overlay", {"index": 0}).is_error and ts.pipeline.view.overlays == []
+    assert "overlays" not in ts.to_script()
 
 
 UI_THEMES = Path(__file__).parents[1] / "examples" / "plugins" / "ui_themes.py"

@@ -15,7 +15,7 @@ from ewald.llm import Agent
 
 agent = Agent.from_file("XDATCAR")
 print(agent.ask("What happens in this run? Render the frame where it changes."))
-print(agent.toolset.to_script())      # the analysis as a standalone Python script
+print(agent.toolset.to_script())      # the session notebook as a standalone Python script
 
 agent = Agent.from_file("XDATCAR", provider="openai")                       # OPENAI_API_KEY
 agent = Agent.from_file("XDATCAR", provider="openai-compatible", model="qwen2.5",
@@ -33,22 +33,45 @@ whether it converged and equilibrated; see [Runs](runs.md)),
 `describe_selection`,
 `get_view` and `set_view` (every display setting of the Structure view, the same ones as the notebook's
 `view(pipe, ...)` cell: style, colors, radii, bonds, cell, background, boundary, camera, frame and
-picture options; in the GUI the viewport follows them), `render_image` (drawn with those settings, with an optional `theme`), `list_visuals`, `add_visual`, `remove_visual` (visual
-element plugins drawn by later renders), `list_overlays`, `add_overlay`, `remove_overlay`
+picture options; in the GUI the viewport follows them), `render_image` (drawn with those settings;
+its own arguments, `theme` among them, are for that one picture), `list_visuals`, `add_visual`,
+`remove_visual` (visual element plugins in the view), `list_overlays`, `add_overlay`, `remove_overlay`
 (overlays such as the coordinate tripod), `list_styles` (themes and color maps, each marked
-whether it reads in grayscale) and `get_script`. Plugins add their own tools with
+whether it reads in grayscale), `export_file`, `get_script` and `python_api` (the API reference
+for writing cells). Plugins add their own tools with
 `@ai_tool` (also spelled `@claude_tool`; [AI tool plugins](../plugins/tools.md)); the ewald-plumed plugin adds
 `compute_plumed_cvs` and `read_plumed_output` ([PLUMED](plumed.md)).
 
-`run_python`, which executes model-written code in your Python process, is off unless you pass
-`allow_code=True` (or `--allow-code` on the command line).
+## Only through the notebook
+
+The AI changes the structure, the view and every other result only by running notebook cells,
+so the notebook alone always reproduces what it did. The tools work on a notebook: in the GUI
+the current tab, in Python the one you pass (`notebook=`), otherwise a session notebook of the
+toolset's own (`agent.toolset.notebook`). Each tool that changes something writes a cell and
+runs it:
+
+| Tool | Cell |
+| --- | --- |
+| `load_structure` | `pipe = load('XDATCAR')` at the end |
+| `add_modifier` | a step cell `pipe.add(CoordinationAnalysis(cutoff=3.0))`, at the end or before the step at `index` |
+| `remove_modifier` | deletes that step cell |
+| `set_view`, `add_visual`, `remove_visual`, `add_overlay`, `remove_overlay` | the view cell `view(pipe, ...)` |
+| `export_file` | `export_file(pipe, 'out.extxyz', frames=[0])` |
+| `edit_cell` with `params` | the step's call with the new values |
+
+ewald writes these cells itself from a modifier or setting name and JSON values, never from code
+the model wrote, so they run without `allow_code`; a cell that fails is taken out again and its
+error goes back to the model. All other tools only read (`set_frame` only picks the frame the
+next tools look at). There is no tool that runs Python directly: code the model writes goes into
+a cell with `insert_cell` or `edit_cell` and runs only through `run_cell` (below).
 
 ## Notebook cells
 
-With a notebook attached, the model also reads and changes its cells: `list_cells` (index, id,
+The model also reads and changes the notebook's cells: `list_cells` (index, id,
 kind, state, first line), `read_cell` (full source and outputs, plots as images), `insert_cell`,
-`edit_cell` (the whole source, one `old_text` → `new_text` replacement, or a step's `params`, which
-change like the step's form), `move_cell` and `delete_cell`. The AI chat side bar attaches the
+`edit_cell` (the whole source, one `old_text` → `new_text` replacement, or a step's `params`:
+its `pipe.add(Name(...))` call is rewritten with the new values and run, when its arguments are
+plain values), `move_cell` and `delete_cell`. The AI chat side bar attaches the
 notebook of the current tab; each change redraws the cells and is one undo step ("AI: insert
 cell", Ctrl+Z). There the ```python blocks of an answer also become new cells by default
 (Preferences › AI › Code in answers: `insert`, or `button` for *+ Insert as cell*). In Python:
@@ -59,7 +82,7 @@ from ewald.notebook import Notebook
 
 nb = Notebook.load("analysis.py")
 nb.run_all()
-agent = Agent.from_pipeline(nb.pipeline, notebook=nb)
+agent = Agent.from_pipeline(nb.pipeline, notebook=nb)    # the tools write into this notebook
 agent.ask("Add a markdown cell that explains the coordination step, then lower its cutoff to 2.9")
 nb.save()
 ```
@@ -69,10 +92,10 @@ nb.save()
 conversation as it was before the question; the AI chat's Stop button uses it.
 
 Cells the model inserts or edits are not run: they are marked not run (or out of date) until you
-run them. `run_cell` exists only with `allow_code=True` or, in the GUI, Preferences › AI ›
-**Let the AI run cells** (off by default), since a cell is any Python; it never runs a cell of an
-`.ewd` notebook that is not trusted yet. Parameters of code modifiers (`PythonScript`) cannot be
-set through `params`.
+run them. `run_cell` exists only with `allow_code=True` (`--allow-code` on the command line) or,
+in the GUI, Preferences › AI › **Let the AI run cells** (off by default), since a cell is any
+Python. No tool writes or runs a cell of an `.ewd` notebook that is not trusted yet. Parameters
+of code modifiers (`PythonScript`) cannot be set through `params`.
 
 A model may act on text inside the files it reads (a comment line or a type name can carry
 instructions), so the always-on tools are limited to what such text cannot abuse: expressions

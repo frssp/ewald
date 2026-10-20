@@ -180,16 +180,18 @@ def cli_section() -> list[str]:
 
 def claude_section() -> list[str]:
     from .llm.providers import BUILTIN
-    from .llm.tools import Toolset
-    from .notebook import Notebook
+    from .llm.notebook_tools import CELL_TOOLS
+    from .llm.tools import CELL_WRITERS, Toolset
 
-    ts = Toolset(None, allow_code=True, notebook=Notebook())
+    ts = Toolset(None, allow_code=True)
 
     out = ["## AI integration", "",
            "The same tools serve Ask AI and the AI chat, `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` "
-           "(MCP server), whichever provider answers. Tools marked *code* exist only with `allow_code=True`; "
-           "*notebook* tools act on the cells of an attached notebook (the AI chat's current tab), and "
-           "`run_cell` needs `allow_code=True` or Preferences > AI > Let the AI run cells. "
+           "(MCP server), whichever provider answers. They work on a notebook (the AI chat's current tab, or "
+           "a session notebook of their own) and change the structure and every other result only through "
+           "its cells: tools marked *cell* write a cell and run it (a name and JSON values, no model-written "
+           "code), *notebook* tools read and edit cells, and `run_cell` (*code*) runs a cell the AI wrote, "
+           "only with `allow_code=True` or Preferences > AI > Let the AI run cells. The others only read. "
            "Details: [AI integration](user/claude.md).", "",
            "Providers (Preferences > AI, `--provider`; `@ai_provider` plugins add more):", ""]
     out += _table(("Provider", "Name", "Default model", "Key"),
@@ -197,9 +199,7 @@ def claude_section() -> list[str]:
                     (f"`{p.env_var}` or keychain" if p.env_var else "optional") if p.key_name else "none")
                    for p in BUILTIN.values()])
     out += ["", "Tools:", ""]
-    plain = set(Toolset(None).tools)
-    cells = set(Toolset(None, notebook=Notebook()).tools) - plain
-    rows = [(f"`{name}`" + (" *notebook*" if name in cells else "" if name in plain else " *code*")
+    rows = [(f"`{name}`" + (" *cell*" if name in CELL_WRITERS else " *notebook*" if name in CELL_TOOLS else "")
              + (" *code*" if name == "run_cell" else ""), first_sentence(t.description))
             for name, t in ts.tools.items()]
     out += _table(("Tool", "What it does"), rows)

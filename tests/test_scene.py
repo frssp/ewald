@@ -181,9 +181,10 @@ def test_llm_tools_list_and_add_visuals(example_plugin):
     assert ts.call("add_visual", {"name": "Particles"}).is_error
     res = ts.call("add_visual", {"name": "Cell axes", "params": {"length": 1.5}})
     assert not res.is_error, res.text()
-    assert ts.visuals == [{"name": "Cell axes", "params": {"length": 1.5, "width": 0.25}, "enabled": True}]
-    assert "visuals = [{'name': 'Cell axes'" in ts.to_script()
-    assert not ts.call("remove_visual", {"index": 0}).is_error and ts.visuals == []
+    added = [{"name": "Cell axes", "params": {"length": 1.5, "width": 0.25}, "enabled": True}]
+    assert ts.pipeline.view.visuals == added                    # through the view cell, which ran
+    assert "visuals=[{'name': 'Cell axes'" in ts.to_script()
+    assert not ts.call("remove_visual", {"index": 0}).is_error and ts.pipeline.view.visuals == []
 
 
 def test_cli_lists_visual_elements(example_plugin, capsys):
