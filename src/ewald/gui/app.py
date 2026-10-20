@@ -79,6 +79,15 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.render_page.renderRequested.connect(self.render_from_page)
         self.workspaces = self.workbench.pages
         self.workspaces.addWidget(self.render_page)
+        # the Render page shows the 3D view itself, with the picture's frame on it
+        self.workbench.lend("viewport", self.render_page, self.render_page.live_slot)
+        self.render_frame = None
+        if hasattr(self.viewport.plotter, "renderer"):  # VTK; the OpenGL 1.x viewport has no frame yet
+            from .render_frame import RenderFrame
+
+            self.render_frame = RenderFrame(self.viewport, self)
+            self.render_page.attach_frame(self.render_frame)
+        self.render_page.regionWritten.connect(lambda: self.write_view(region=True))
         self.setCentralWidget(self.workbench)
 
         self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings, notebook=True),
@@ -205,6 +214,16 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
             b.setChecked(i == index)
         if index == 1:
             self.render_page.update_code()
+        self._render_frame_visibility()
+
+    def _render_frame_visibility(self):
+        """The frame shows on the Render page's 3D view, and everywhere with Preferences' render frame."""
+        if self.render_frame is None:
+            return
+        page = self.render_page
+        on = (self.workspaces.currentIndex() == 1 and page.left_stack.currentIndex() == 0) \
+            or bool(self.settings["viewport.render_frame"])
+        self.render_frame.set_visible(on)
 
     def _toggle_live_reload(self, on):
         """File › Live reload: on or off for this session (the default is in Preferences › General)."""
@@ -465,6 +484,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         img = self.render_image(out, return_image=True)
         if img is not None:
             self.show_preview(img)
+            page.show_live(False)
         page.update_code()
 
     def show_preview(self, img):

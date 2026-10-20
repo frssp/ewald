@@ -123,6 +123,9 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
     _s("orthographic", True, "camera", "Parallel projection (True) or perspective."),
     _s("camera", None, "camera", "An exact camera (position, focal_point, up, parallel_projection, "
        "parallel_scale, view_angle) as the GUI saves it; wins over direction and zoom.", type=["object", "null"]),
+    _s("region", None, "camera", "Part of the view a picture shows (the Render frame): [x, y, height], the "
+       "frame's center offset from the view center and its height, as fractions of the view height; its width "
+       "follows the picture size. None: the whole view height, centered.", type=["array", "null"]),
     # picture
     _s("renderer", None, "picture", "Renderer for pictures: 'opengl', 'raytrace' or 'vector'; None: the "
        "caller's default.", ("opengl", "raytrace", "vector", None)),
@@ -492,6 +495,10 @@ def _check(name, value):
         value = bool(value)
     elif name == "size":
         value = [int(value[0]), int(value[1])]
+    elif name == "region":
+        from .framing import as_region
+
+        value = list(as_region(value))
     elif name == "replicate":
         from .replicate import normalize_replicate
 

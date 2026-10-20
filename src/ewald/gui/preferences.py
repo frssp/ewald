@@ -40,7 +40,7 @@ LAYOUT = {
     "Viewports": ("Defaults for the interactive 3D view.", [
         ("View", ["viewport.follow_theme", "viewport.background", "viewport.projection", "viewport.initial_view", "viewport.style_preset"]),
         ("Navigation", ["viewport.rotation_step"]),
-        ("Overlays", ["viewport.show_axes", "viewport.show_overlay"]),
+        ("Overlays", ["viewport.show_axes", "viewport.show_overlay", "viewport.render_frame"]),
         ("Hover", ["viewport.hover_info", "viewport.hover_delay"]),
         ("Performance", ["viewport.backend", "viewport.interactive_detail", "viewport.target_fps", "viewport.interactive_atoms",
                          "viewport.refine_delay", "viewport.sphere_drawing", "viewport.anti_aliasing",

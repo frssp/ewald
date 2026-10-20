@@ -97,6 +97,12 @@ class ViewportMenuMixin:
             act.setCheckable(True)
             act.setChecked(bool(getattr(self.style, attr)))
             act.toggled.connect(lambda on, attr=attr: self._toggle_style(attr, on))
+        if getattr(self, "render_frame", None) is not None:
+            act = show.addAction("Render frame")
+            act.setToolTip("The part of the view the rendered picture shows")
+            act.setCheckable(True)
+            act.setChecked(bool(self.settings["viewport.render_frame"]))
+            act.toggled.connect(self._toggle_render_frame)
         if (d is not None and d.cell.is_valid) or everything:
             self.fill_replicate_menu(menu.addMenu(icon("layers"), "Replicate cell"))
             views = menu.addMenu("View along")
@@ -203,6 +209,11 @@ class ViewportMenuMixin:
         if attr == "bonds_enabled" and on and self.data is not None:
             self.style.ensure_bond_pairs(self.data.types)
         self._style_changed()
+
+    def _toggle_render_frame(self, on):
+        self.settings["viewport.render_frame"] = bool(on)
+        self.settings.save()
+        self._render_frame_visibility()
 
     def center_on_picks(self):
         """Rotate and zoom about the picked atoms (their mean position)."""
