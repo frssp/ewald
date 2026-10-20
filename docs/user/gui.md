@@ -268,7 +268,8 @@ with ewald. File › Open opens any format ewald can read ([File formats](format
 formats added by [reader plugins](../plugins/readers.md). LAMMPS dumps ask for a
 type-to-element map unless you set a default in Preferences. File › Load NEB folder opens a
 VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image
-([NEB runs](formats.md#neb-runs)). In the notebook layout, File › Open also opens `.py`
+([NEB runs](formats.md#neb-runs)); opening a single image file of such a run asks whether to
+open the whole band. Files, notebooks and NEB folders can also be dropped on the window. In the notebook layout, File › Open also opens `.py`
 notebooks, and File › Save notebook writes one ([Notebooks](notebooks.md)). File › Export data writes the
 current frame or the whole trajectory through `export_file`, and File › Export movie writes an
 MP4 or GIF (needs the `movie` extra). File › Live reload turns following a growing trajectory

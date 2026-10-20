@@ -19,7 +19,7 @@ from .volumetric import (VolumetricReader, is_cube, is_vasp_volumetric, read_cub
 from .mdtraj_h5 import MdtrajH5Reader, is_mdtraj_h5
 from .vasp_h5 import VaspoutReader, VaspwaveReader, is_vaspout, is_vaspwave
 from .mdanalysis_reader import MDAnalysisReader, is_md_trajectory, write_md_trajectory
-from .neb import NebReader, is_neb, read_lammps_neb_log
+from .neb import NebReader, is_neb, neb_run_of, read_lammps_neb_log
 from .xdatcar import XdatcarReader, is_xdatcar
 from .xsf import XsfReader, is_xsf, write_xsf
 

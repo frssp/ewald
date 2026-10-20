@@ -475,6 +475,40 @@ def test_plots_neb_profile_marks_image_and_jumps(app, vasp_dir):
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_opening_one_neb_image_offers_the_whole_band(app, vasp_dir, monkeypatch):
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    asked = []
+
+    def answer(reply):
+        def question(*args, **kwargs):
+            asked.append(args[2])
+            return reply
+        monkeypatch.setattr(QtWidgets.QMessageBox, "question", question)
+
+    answer(QtWidgets.QMessageBox.No)
+    w.open_any(str(vasp_dir / "neb" / "02" / "OUTCAR"))
+    assert asked[0].startswith("OUTCAR is one image of the NEB run")
+    assert w.pipeline.num_frames == 1  # just that image
+    answer(QtWidgets.QMessageBox.Yes)
+    w.open_any(str(vasp_dir / "neb" / "02" / "OUTCAR"))
+    assert w.pipeline.num_frames == 5 and any(type(m).__name__ == "NebEnergyProfile" for m in w.pipeline.modifiers)
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_dropping_a_neb_folder_opens_the_band(app, vasp_dir):
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    assert w.acceptDrops()
+    w.open_dropped([str(vasp_dir / "neb")])
+    assert w.pipeline.num_frames == 5
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_viewport_context_menu_toggles_frame_overlay(app, vasp_dir):
     from ewald import import_file
     from ewald.gui.app import MainWindow

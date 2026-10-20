@@ -110,8 +110,10 @@ data.tables["NEB"]                                     # Reaction Coordinate, En
 pipe = import_file("neb", energies=[-120.31, None, None, None, -120.12])  # endpoint energies by hand (None: from file)
 ```
 
-In the GUI, File › Load NEB folder opens either folder layout and shows the profile in the
-Plots tab. Remote (SSH) NEB folders are not read yet.
+In a notebook, `pipe = load("neb")` does the same. In the GUI, File › Load NEB folder opens
+either folder layout and shows the profile in the Plots tab; dropping the folder on the window
+does too. Opening one image on its own (`03/OUTCAR`, `dump.neb.3`) asks whether to open the
+whole band instead. Remote (SSH) NEB folders are not read yet.
 
 ## Reader options
 

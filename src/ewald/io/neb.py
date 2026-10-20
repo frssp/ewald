@@ -87,6 +87,24 @@ def is_neb(path) -> bool:
     return bool(vasp_neb_images(path)) or bool(lammps_neb_images(path)[0])
 
 
+def neb_run_of(path) -> str | None:
+    """The NEB run folder a single file belongs to, or None: an image file of a VASP NEB
+    (``03/OUTCAR``, ``00/POSCAR``) or one replica dump of a LAMMPS NEB run (``dump.neb.3``).
+    The GUI offers to open the whole band when such a file is opened on its own."""
+    path = os.path.abspath(str(path))
+    if not os.path.isfile(path):
+        return None
+    folder = os.path.dirname(path)
+    if os.path.basename(folder).isdigit():
+        run = os.path.dirname(folder)
+        if folder in vasp_neb_images(run):
+            return run
+    files, _ = lammps_neb_images(folder)
+    if path in files:
+        return folder
+    return None
+
+
 def read_lammps_neb_log(path) -> dict:
     """Last row of the NEB table in a LAMMPS master log (``neb`` run on partitions):
     ``{"Reaction Coordinate": RD1..RDN (normalized), "Energy": PE1..PEN, "Step": step}``."""
