@@ -132,6 +132,16 @@ at once; a package that was already imported stays in memory until restart.
 readers, modifiers, writers, visuals, overlays, color maps and themes it registered).
 `ewald plugins --json` prints the same under `"plugins"`.
 
+## Installing from a file
+
+*From file…* in the Plugins side bar takes a single plugin `.py` (copied into the plugin folder) or a
+downloaded package: a `.whl`, a `.tar.gz`, or the `.zip` of GitHub's *Code › Download ZIP* for a plugin
+repository. A package is installed with pip into the Python ewald runs in, after showing the command and asking;
+pip runs the package's build step, so only install archives you trust. The archive must have its
+`pyproject.toml` at the top (one folder deep for GitHub zips); a plugin that sits in a subfolder of a larger
+repository (such as `packages/ewald-aiida` in ewald-plugins) is installed from the *pip…* button with
+`git+https://...#subdirectory=...` instead.
+
 ## Plugin catalogs
 
 The GUI's Plugins side bar lists plugins to install from catalogs: the default index
