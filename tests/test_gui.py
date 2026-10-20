@@ -3571,3 +3571,16 @@ def test_wait_for_runs_off_the_gui_thread_with_cancel(app, pipe, tmp_path):
     path.write_text("1\n\nH 0 0 0\n")
     assert w.open_file(str(path)).num_frames == 1
     w.close()
+
+
+def test_notebook_status_drops_parts_instead_of_clipping(app):
+    from ewald.gui.notebook_panel import _ElidedLabel
+
+    label = _ElidedLabel("3 steps · not saved")
+    fm = label.fontMetrics()
+    label.resize(fm.horizontalAdvance("3 steps · not saved") + 4, 20)
+    assert label.shown_text() == "3 steps · not saved"
+    label.resize(fm.horizontalAdvance("3 steps") + 4, 20)
+    assert label.shown_text() == "3 steps"           # not "3 st…ved"
+    label.resize(4, 20)
+    assert label.shown_text() == ""
