@@ -1713,7 +1713,11 @@ def test_open_turns_bonds_off_above_limit(app):
     assert w.data.count <= 50 and w.style.bonds_enabled
     assert {tuple(sorted(r[:2])) for r in w.style.bond_pairs} == {("O", "O"), ("O", "Sr"), ("O", "Ti")}
     w.viewport.style_combo.setCurrentText("Simple (ASE)")
-    assert w.style.atom_style == "flat" and "bonds" not in w.viewport.plotter.actors
+    assert w.style.atom_style == "flat" and w.style.bonds_enabled and "bonds" in w.viewport.plotter.actors
+    w.open_file(str(examples.path("Pt_nanoparticle.xyz")))  # a style picked for a big system keeps bonds off
+    w.viewport.style_combo.setCurrentText("Ball & stick")
+    w.viewport.style_combo.setCurrentText("Simple (ASE)")
+    assert w.style.atom_style == "flat" and not w.style.bonds_enabled
     w.close()
     w.deleteLater()
 

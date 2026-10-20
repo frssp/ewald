@@ -72,8 +72,8 @@ background entries change only the background.
 **Styles.** The Style box on the view toolbar switches between Ball & stick (the default: small
 balls and bonds found automatically), Space-filling, Simple (ASE) and Points; Preferences ›
 Viewports › *Default style* picks the one a new window starts with. Simple (ASE) looks like ASE's
-GUI: flat discs in the element color with a dark outline, unshaded bonds with outlined edges, and
-the ASE theme (white background). It is drawn with impostors, so it stays fast for any number of
+GUI: flat discs in the element color with a dark outline, bonds (on, like Ball & stick) as unshaded
+sticks with outlined edges, and the ASE theme (white background). It is drawn with impostors, so it stays fast for any number of
 atoms; leaving it restores the colors and background you had. Particles › Rendering = flat gives
 the same look with any radius. Automatic bonds come from a VESTA-style table (Bonds), one row per
 pair of types up to 1.15 × the sum of covalent radii; in compounds metal-metal pairs are left

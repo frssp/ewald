@@ -103,7 +103,7 @@ GUI
 - Shortcuts for the viewport tools (orbit, pick, distance, angle, bond) and view-along axes.
 - Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
   screen edges) and VTK scene lights instead of the fixed head light; bond impostors.
-- Flat (ASE) style in the ray tracer and the vector renderer (now OpenGL only), and a
+- Flat (ASE) style in the ray tracer (now OpenGL and vector only), and a
   per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.
 - Boundary (VESTA): repeat isosurfaces and grid slices over the boundary range too (now only
