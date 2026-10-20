@@ -36,7 +36,7 @@ for in words ends up as an ordinary pipeline.
 | `colormaps.py`, `themes.py` | color maps by name (matplotlib plus `@colormap` plugins, with a grayscale check) and themes (element colors, background, cell color, radius preset; VESTA colors in `tables/colors.json`) |
 | `render.py`, `raytrace.py`, `vector.py` | draw a scene: VTK/PyVista (impostors above 150k atoms), the numba ray tracer, SVG/PDF via matplotlib; each draws every primitive kind |
 | `settings.py` | user preferences as a registry of `Option`s, stored as JSON with only non-default values |
-| `gui/` | PySide6 main window, viewport, pipeline panel, generated parameter forms, render page, preferences, console, inspector, plots |
+| `gui/` | PySide6 main window, viewport, notebook panel, Display panel, generated parameter forms, render page, preferences, console, inspector, plots |
 | `llm/` | Claude agent, tools, descriptors, narration, MCP server, and `reference.py`, the source of `llms.txt` |
 
 ### One feature, three layers

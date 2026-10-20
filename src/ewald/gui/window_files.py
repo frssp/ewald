@@ -70,18 +70,17 @@ class FilesMixin:
         return pipe
 
     def open_dialog(self):
-        nb = self.layout_mode == "notebook"
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open" if nb else "Load file", "", file_filter())
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open", "", file_filter())
         if path:
             self.open_any(path)
 
     def open_any(self, path, ask_types: bool = True, **kwargs):
-        """A session, a notebook (.py, notebook layout) or a data file."""
+        """A session, a notebook (.ewd, .ipynb, .py) or a data file."""
         from ..session import is_session_file
 
         if is_session_file(path):
             self.load_session(path)
-        elif self.layout_mode == "notebook" and str(path).lower().endswith(NOTEBOOK_EXTENSIONS) and os.path.isfile(path):
+        elif str(path).lower().endswith(NOTEBOOK_EXTENSIONS) and os.path.isfile(path):
             self.open_notebook(path)
         elif kwargs or not ask_types:
             self.open_file(path, **kwargs)
@@ -220,11 +219,7 @@ class FilesMixin:
 
     def show_remotes(self):
         """Show the Remotes side bar (saved SSH computers and their files)."""
-        if self.layout_mode == "notebook":
-            self._show_side_bar(self.remotes_dock)
-        else:
-            self.remotes_dock.show()
-            self.remotes_dock.raise_()
+        self._show_side_bar(self.remotes_dock)
         self.remotes_panel.list.setFocus()
 
     def _open_asking_types(self, path):

@@ -1407,7 +1407,7 @@ CONFIRM_UNSAVED = True  # ask before closing notebooks with unsaved changes (tes
 
 
 class NotebookPanel(QtWidgets.QWidget):
-    """Notebook tabs. Speaks the PipelinePanel interface the main window uses
+    """Notebook tabs. Speaks the panel interface the main window uses
     (``set_pipeline``, ``set_data``, ``add_modifier``, ``refresh``, ``changed``)."""
 
     changed = QtCore.Signal()
@@ -1581,7 +1581,7 @@ class NotebookPanel(QtWidgets.QWidget):
         self.view.update_results()
         return nb.path
 
-    # ----------------------------------------------------------- PipelinePanel interface
+    # ----------------------------------------------------------- main window interface
     def set_pipeline(self, pipeline, source_code: str | None = None, name: str | None = None):
         """Show ``pipeline``: its tab if a notebook owns it, else a new notebook for it
         (replacing an untouched empty tab)."""

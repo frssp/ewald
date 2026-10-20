@@ -24,7 +24,7 @@ from .icons import app_icon
 from .inspector import DataInspector
 from .macos import set_app_name, strip_psn
 from .notebook_panel import NotebookPanel
-from .pipeline_panel import DisplayPanel, PipelinePanel
+from .pipeline_panel import DisplayPanel
 from .plots import PlotsPanel
 from . import preferences as prefs
 from .remotes_panel import install as install_remotes
@@ -81,59 +81,46 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.workspaces.addWidget(self.render_page)
         self.setCentralWidget(self.workbench)
 
-        self.layout_mode = self.settings["general.layout"]
-        nb_layout = self.layout_mode == "notebook"
-        self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings, notebook=nb_layout),
-                                  notebook=self._notebook_code if nb_layout else None)
+        self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings, notebook=True),
+                                  notebook=self._notebook_code)
         self.ask_panel.pipelineChanged.connect(self._after_claude)
         self.ask_panel.insertRequested.connect(self._insert_claude_cell)
-        if self.layout_mode == "notebook":
-            # --- left: notebook tabs (the pipeline as Python cells); right: display settings, Ask Claude
-            self.panel = NotebookPanel()
-            self.panel.changed.connect(self.recompute)
-            self.panel.pipelineReplaced.connect(self.set_pipeline)
-            self.panel.askRequested.connect(self.ask_claude)
-            self.panel.plotCreated.connect(self._connect_plot)
-            self.notebook_dock = self._dock(self.panel, "Notebook", QtCore.Qt.LeftDockWidgetArea, 560)
-            # the notebook tab row is the panel's title bar: drag its empty part to move the panel
-            self.notebook_dock.titleBarWidget().embed(self.panel.tabs.row)
-            if not prefs.layout_path(self.settings).exists():  # first start: a wide notebook
-                QtCore.QTimer.singleShot(0, lambda: self.resizeDocks([self.notebook_dock], [640], QtCore.Qt.Horizontal))
-            # VS Code-like activity bar: the Plugins side bar opens beside the notebook
-            from .plugins_panel import PluginsPanel
+        # --- left: notebook tabs (the pipeline as Python cells); right: display settings
+        self.panel = NotebookPanel()
+        self.panel.changed.connect(self.recompute)
+        self.panel.pipelineReplaced.connect(self.set_pipeline)
+        self.panel.askRequested.connect(self.ask_claude)
+        self.panel.plotCreated.connect(self._connect_plot)
+        self.notebook_dock = self._dock(self.panel, "Notebook", QtCore.Qt.LeftDockWidgetArea, 560)
+        # the notebook tab row is the panel's title bar: drag its empty part to move the panel
+        self.notebook_dock.titleBarWidget().embed(self.panel.tabs.row)
+        if not prefs.layout_path(self.settings).exists():  # first start: a wide notebook
+            QtCore.QTimer.singleShot(0, lambda: self.resizeDocks([self.notebook_dock], [640], QtCore.Qt.Horizontal))
+        # VS Code-like activity bar: the Plugins side bar opens beside the notebook
+        from .plugins_panel import PluginsPanel
 
-            self.plugins_panel = PluginsPanel(self.settings)
-            self.plugins_panel.stepRequested.connect(lambda m: self.panel.add_modifier(m))
-            self.plugins_panel.changed.connect(lambda: self.message("Plugins changed"))
-            self.plugins_panel.changed.connect(self.panel.refresh_packages)
-            self.panel.pipRequested.connect(self._install_notebook_packages)
-            self.panel.switched.connect(self._notebook_switched)
-            self.plugins_panel.createRequested.connect(self._create_plugin)
-            self.plugins_dock = self._dock(self.plugins_panel, "Plugins", QtCore.Qt.LeftDockWidgetArea, 300)
-            self.splitDockWidget(self.plugins_dock, self.notebook_dock, QtCore.Qt.Horizontal)
-            self.plugins_dock.hide()
-            self.remotes_dock = install_remotes(self)
-            # the AI chat side bar opens left of the notebook, like the other side bars
-            self.ask_dock = self._dock(self.ask_panel, "AI chat", QtCore.Qt.LeftDockWidgetArea, None)
-            self.splitDockWidget(self.ask_dock, self.notebook_dock, QtCore.Qt.Horizontal)
-            self.ask_dock.hide()
-            self._build_activity_bar()
-            self.display = DisplayPanel(self.style)
-            self.display.styleChanged.connect(self._style_changed)
-            self.display.modifierRequested.connect(lambda m: self.panel.add_modifier(m))
-            side_dock = self._dock(self.display, "Display", QtCore.Qt.RightDockWidgetArea, 320)
-            side_dock.titleBarWidget().add_action(self.display.visual_button)  # not a row of its own
-            self.display.refresh()
-        else:
-            # --- right: command panel (pipeline list + properties)
-            self.panel = self.display = PipelinePanel(self.style)
-            self.panel.changed.connect(self.recompute)
-            self.panel.styleChanged.connect(self._style_changed)
-            side_dock = self._dock(self.panel, "Pipeline", QtCore.Qt.RightDockWidgetArea, 400)
-            self.remotes_dock = install_remotes(self)
-            self.ask_dock = self._dock(self.ask_panel, "Ask Claude", QtCore.Qt.RightDockWidgetArea, None)
-            self.tabifyDockWidget(side_dock, self.ask_dock)
-            side_dock.raise_()
+        self.plugins_panel = PluginsPanel(self.settings)
+        self.plugins_panel.stepRequested.connect(lambda m: self.panel.add_modifier(m))
+        self.plugins_panel.changed.connect(lambda: self.message("Plugins changed"))
+        self.plugins_panel.changed.connect(self.panel.refresh_packages)
+        self.panel.pipRequested.connect(self._install_notebook_packages)
+        self.panel.switched.connect(self._notebook_switched)
+        self.plugins_panel.createRequested.connect(self._create_plugin)
+        self.plugins_dock = self._dock(self.plugins_panel, "Plugins", QtCore.Qt.LeftDockWidgetArea, 300)
+        self.splitDockWidget(self.plugins_dock, self.notebook_dock, QtCore.Qt.Horizontal)
+        self.plugins_dock.hide()
+        self.remotes_dock = install_remotes(self)
+        # the AI chat side bar opens left of the notebook, like the other side bars
+        self.ask_dock = self._dock(self.ask_panel, "AI chat", QtCore.Qt.LeftDockWidgetArea, None)
+        self.splitDockWidget(self.ask_dock, self.notebook_dock, QtCore.Qt.Horizontal)
+        self.ask_dock.hide()
+        self._build_activity_bar()
+        self.display = DisplayPanel(self.style)
+        self.display.styleChanged.connect(self._style_changed)
+        self.display.modifierRequested.connect(lambda m: self.panel.add_modifier(m))
+        side_dock = self._dock(self.display, "Display", QtCore.Qt.RightDockWidgetArea, 320)
+        side_dock.titleBarWidget().add_action(self.display.visual_button)  # not a row of its own
+        self.display.refresh()
 
         # --- panel (below the 3D view): console / inspector / plots / log
         self.inspector = DataInspector()
@@ -156,9 +143,9 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.workbench.factory = self._make_view
         self.workbench.extra_view_actions = self._extra_view_actions
         self._stale_tabs = set()  # panel tabs not yet showing the current frame
-        if self.layout_mode == "notebook":  # notebook and side panels run the full height
-            self.setCorner(QtCore.Qt.BottomLeftCorner, QtCore.Qt.LeftDockWidgetArea)
-            self.setCorner(QtCore.Qt.BottomRightCorner, QtCore.Qt.RightDockWidgetArea)
+        # notebook and side panels run the full height
+        self.setCorner(QtCore.Qt.BottomLeftCorner, QtCore.Qt.LeftDockWidgetArea)
+        self.setCorner(QtCore.Qt.BottomRightCorner, QtCore.Qt.RightDockWidgetArea)
 
         self._build_menus()
         self._build_toolbar()
@@ -271,8 +258,8 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
             p.pipeline = pipeline
             p.forget_selection()
         self.panel.set_pipeline(pipeline)
-        if self.display is not self.panel:
-            self.display.set_pipeline(pipeline)
+        self.display.set_pipeline(pipeline)
+        self.inspector.set_pipeline(pipeline)
         self.timeline.set_num_frames(pipeline.num_frames)
         self.live_reload.set_pipeline(pipeline)
         self._push_console()
@@ -489,14 +476,13 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
             page.preview.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
 
     def closeEvent(self, event):
-        if self.layout_mode == "notebook" and self.isVisible() and not self.panel.confirm_discard(title="Quit"):
+        if self.isVisible() and not self.panel.confirm_discard(title="Quit"):
             event.ignore()
             return
         prefs.save_layout(self, self.settings)
-        if self.layout_mode == "notebook":
-            for view in self.panel.views():
-                if view.notebook.kernel is not None:
-                    view.notebook.kernel.shutdown()
+        for view in self.panel.views():
+            if view.notebook.kernel is not None:
+                view.notebook.kernel.shutdown()
         self.timeline.timer.stop()
         self.live_reload.timer.stop()
         self.runner.shutdown()

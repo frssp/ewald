@@ -52,7 +52,7 @@ class LinksMixin:
 
     def plot_panels(self) -> list:
         """The Plots tab and the live plots of the current notebook's view cells."""
-        view = self.panel.view if self.layout_mode == "notebook" else None
+        view = self.panel.view
         return [self.plots, *self.extra_plots.values()] + ([w.plot_panel for w in view.widgets if w.plot_panel is not None] if view else [])
 
     def new_plot_view(self, beside: str = "plot:1", view: str | None = None):
@@ -134,11 +134,7 @@ class LinksMixin:
         return self.pipeline, self.frame, self._selected_indices()
 
     def ask_claude(self):
-        if self.layout_mode == "notebook":
-            self._show_side_bar(self.ask_dock)  # the AI chat side bar beside the notebook
-        else:
-            self.ask_dock.show()
-            self.ask_dock.raise_()
+        self._show_side_bar(self.ask_dock)  # the AI chat side bar beside the notebook
         self.ask_panel.update_selection()
         self.ask_panel.input.setFocus()
 
@@ -149,10 +145,8 @@ class LinksMixin:
 
     def _insert_claude_cell(self, code):
         """'Insert as notebook cell' in the AI chat: a code cell after the current one, not run."""
-        view = getattr(self.panel, "view", None)
+        view = self.panel.view
         if view is None:
-            if not hasattr(self.panel, "new_notebook"):
-                return
             view = self.panel.new_notebook()
         view.add_cell("code", code)
         self.notebook_dock.show()
@@ -181,7 +175,7 @@ class LinksMixin:
             return  # the console gets the current objects when it is built
         shell = getattr(self.console, "shell", None)
         ns = {"pipeline": self.pipeline, "pipe": self.pipeline, "data": self.data}
-        if self.layout_mode == "notebook" and self.panel.notebook is not None:
+        if self.panel.notebook is not None:
             # the console sees the notebook's variables, so cells and console work on the same objects
             ns = {k: v for k, v in self.panel.notebook.namespace.items() if not k.startswith("__")} | ns
             ns["notebook"] = self.panel.notebook
