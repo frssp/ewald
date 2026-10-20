@@ -74,7 +74,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.timeline.frameChanged.connect(self.set_frame)
         self.live_reload = LiveReload.attach(self)
         self.workbench = Workbench(self.timeline)
-        self.workbench.register("viewport", self.viewport, "3D view", home="editor", native=True)
+        self.workbench.register("viewport", self.viewport, "Structure", home="editor", native=True)
         self.render_page = RenderPage(self)
         self.render_page.renderRequested.connect(self.render_from_page)
         self.workspaces = self.workbench.pages

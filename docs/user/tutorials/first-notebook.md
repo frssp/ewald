@@ -23,7 +23,7 @@ from ewald.views import show
 pipe = load(examples.path("Cu_void.lammpstrj"))
 ```
 
-`pipe` is the notebook's pipeline, and the 3D view in the middle always shows it. The timeline
+`pipe` is the notebook's pipeline, and the Structure view in the middle always shows it. The timeline
 under the view has the run's 5 frames. Drag in the view to rotate it, scroll to zoom, and rest the
 mouse on an atom to see its index and position. Your own file works the same way: File › Open, or
 `ewald gui dump.lammpstrj`.
@@ -71,7 +71,7 @@ show(pipe, table="coordination-rdf")
 ```
 
 Views are live. Drag over the bars from 8 to 11 on the histogram and those atoms are selected in
-the 3D view; *Keep as selection* turns that range into a step (`ExpressionSelection`) so the
+the Structure view; *Keep as selection* turns that range into a step (`ExpressionSelection`) so the
 selection is part of the notebook. Shift+click atoms in the view and they show up on the plot.
 
 Last, a code cell for a number to quote:

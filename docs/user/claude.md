@@ -30,7 +30,7 @@ the model can look at. The tools are: `load_structure`, `describe_frame`,
 `show_pipeline`, `set_frame`, `evaluate_expression`, `compute_rdf`, `analyze_symmetry`,
 `compute_diffraction`, `compute_msd`,
 `describe_selection`,
-`get_view` and `set_view` (every display setting of the 3D view, the same ones as the notebook's
+`get_view` and `set_view` (every display setting of the Structure view, the same ones as the notebook's
 `view(pipe, ...)` cell: style, colors, radii, bonds, cell, background, boundary, camera, frame and
 picture options; in the GUI the viewport follows them), `render_image` (drawn with those settings, with an optional `theme`), `list_visuals`, `add_visual`, `remove_visual` (visual
 element plugins drawn by later renders), `list_overlays`, `add_overlay`, `remove_overlay`

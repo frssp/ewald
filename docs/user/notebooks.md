@@ -74,7 +74,7 @@ show(pipe, histogram="Coordination")         # histogram of a particle property
 show(pipe, table="DOS", xlim=(-3, 2))        # the range shown (DOS energy window)
 ```
 
-In the GUI the plot is linked to the 3D view, like the Plots tab. Dragging an x range selects
+In the GUI the plot is linked to the Structure view, like the Plots tab. Dragging an x range selects
 those atoms, or those frames on a per-frame plot. The atoms you pick appear on the plot. The DOS
 and the band structure follow the picked atoms as projected DOS or fat bands, and clicking a
 phonon band plays that mode. Choosing another table, column or histogram in the plot's bar
@@ -121,7 +121,7 @@ def style(frame, data):
 and Radius properties, which every renderer draws. Import them with
 `from ewald.paint import paint, hide, isolate, fade, resize` (new notebooks already do).
 
-**The view cell** holds the 3D view's display settings: one `view(pipe, ...)` call.
+**The view cell** holds the Structure view's display settings: one `view(pipe, ...)` call.
 
 ```python
 view(pipe, style="Ball & stick", theme="VESTA", colors={"O": "red"}, radii={"Ti": 0.6},
@@ -166,7 +166,7 @@ in a live view cell.
 
 **Text cells** are Markdown. Double-click one to edit it.
 
-**Snapshot cells** keep a picture of the 3D view. Insert › 3D snapshot of the view adds one for
+**Snapshot cells** keep a picture of the Structure view. Insert › 3D snapshot of the view adds one for
 the viewport as it is (frame, camera, display style) and runs it:
 
 ```python
@@ -364,7 +364,7 @@ Notebook panel, at the right of its tab row; or a double-click on the title) fol
 panels fold to a thin strip with their name written down it, and the Data panel to its title
 bar. Panels shown as tabs fold together, and their tabs turn sideways; click the strip, its chevron or a
 tab to unfold. The button next to the chevron floats a panel in its own window. Every panel
-header (Notebook, 3D view, Display, the side bars) has the same height and buttons, so their
+header (Notebook, Structure, Display, the side bars) has the same height and buttons, so their
 titles line up. View › *Minimal mode* (Ctrl+Shift+M) hides the menu bar, toolbars and status
 bar, leaving the notebook and the viewport. Every command stays one search away in the command
 palette (Ctrl+K) and menu shortcuts keep working. To get the menus back, press Ctrl+Shift+M
