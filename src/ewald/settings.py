@@ -84,7 +84,7 @@ OPTIONS = (
            minimum=0.5, maximum=90),
     Option("viewport.show_axes", True, "Show axes tripod"),
     Option("viewport.show_overlay", True, "Show frame / timestep text"),
-    Option("viewport.backend", "auto", "3D view",
+    Option("viewport.backend", "auto", "Viewport renderer",
            "VTK: the full viewport (OpenGL 3.2+). Legacy GL: OpenGL 1.x display lists like VESTA, which "
            "work over SSH X11 forwarding (ssh -X) but have no impostors, smoothing or 3D text. Auto uses "
            "Legacy GL on an ssh -X display. EWALD_VIEWPORT overrides this. Takes effect at the next start.",

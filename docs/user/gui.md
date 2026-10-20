@@ -35,9 +35,9 @@ from menus).
 The viewport and the panel below it are tab groups. Drag a tab onto another group to move it:
 the middle of the group adds it as a tab, an edge splits the group in that direction, and a
 tab bar inserts it at that place. Esc cancels the drag. To look at the pair correlation
-function large, for example, drag the Plots tab onto the 3D view: the plot fills the main area
-and the 3D view waits behind its tab, without redrawing, until you click it again. Drop it on
-the right edge of the 3D view instead to see structure and plot side by side; both follow the
+function large, for example, drag the Plots tab onto the Structure tab: the plot fills the main area
+and the Structure view waits behind its tab, without redrawing, until you click it again. Drop it on
+the right edge of the Structure view instead to see structure and plot side by side; both follow the
 timeline and linked selections.
 
 Right click a tab (or use the group's menu button) for the same moves without dragging: Split
@@ -56,7 +56,7 @@ finds them too:
 | Back to the default layout | View › Layout › Reset layout |
 
 The layout is saved with the window when Preferences › General › *Restore window layout* is
-on (the default), extra plot views included. The 3D view itself never moves between windows:
+on (the default), extra plot views included. The Structure view itself never moves between windows:
 it can be placed anywhere in the middle but not closed, and the timeline stays under the
 editor area.
 
@@ -106,7 +106,7 @@ the current one (`OverlayFrames`; on by default for NEB folders), with its trans
 along, Orthographic, Zoom to fit and Ask AI are always there.
 
 **AI chat (Ask AI).** The AI button at the bottom of the activity bar on the far left (also
-Window › AI chat, Ctrl+J, and Ask AI in the 3D view's right-click menu) opens a chat side bar left of the
+Window › AI chat, Ctrl+J, and Ask AI in the Structure view's right-click menu) opens a chat side bar left of the
 notebook; in the classic layout it is the Ask AI tab next to the pipeline. It reads like a
 chat app: your messages in bubbles on the right, the answers under the assistant's name (Claude, Gemini, ...) on the left,
 the tools it ran as small chips (*Running …*, then *Used …*), and code blocks as framed code with
@@ -290,11 +290,11 @@ multi-million-atom files. `python benchmarks/analysis.py` times the analysis mod
 The viewport draws a change once, in the next repaint: several changes made before the
 repaint (a new frame, picks, a camera move) cost one render, a mouse move while rotating costs
 one render rather than two, and nothing is redrawn while the window is idle or the viewport is
-hidden, which includes a 3D view sitting behind another tab (it draws the last frame when you
+hidden, which includes the Structure view sitting behind another tab (it draws the last frame when you
 return to it). The Data inspector and plot views follow the current frame only while they are
 on screen; a plot range linked to the viewport keeps following it either way.
 
-*3D view* picks the viewport itself. Auto uses VTK, except on an SSH-forwarded display
+*Viewport renderer* picks the viewport itself. Auto uses VTK, except on an SSH-forwarded display
 (`ssh -X`), where it uses Legacy GL: OpenGL 1.x display lists drawn like VESTA, with the frame text
 above the view instead of on it, mesh spheres (points above 400,000 atoms) and no smooth edges or
 color bar. See [Troubleshooting the GUI](install.md#troubleshooting-the-gui). It takes effect at

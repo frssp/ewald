@@ -158,12 +158,15 @@ class Viewport(QtWidgets.QWidget):
         lay = QtWidgets.QHBoxLayout(bar)
         lay.setContentsMargins(6, 2, 6, 2)
         lay.setSpacing(2)
-        lab = QtWidgets.QLabel("View along", objectName="muted")
-        lay.addWidget(lab)
+        axes = QtWidgets.QFrame(objectName="axisGroup")  # one compact segmented group, no label
+        row = QtWidgets.QHBoxLayout(axes)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
         for axis in ("a", "b", "c", "a*", "b*", "c*"):
             b = _button(axis, f"View along {axis}")
             b.clicked.connect(lambda _=False, ax=axis: self.view_along(ax))
-            lay.addWidget(b)
+            row.addWidget(b)
+        lay.addWidget(axes)
         lay.addSpacing(8)
         for name, tip, fn in (("arrow_left", "Rotate one step (Preferences › Viewports) left", lambda: self.rotate("azimuth", -self.rotation_step)),
                               ("arrow_right", "Rotate one step right about the screen vertical", lambda: self.rotate("azimuth", self.rotation_step)),

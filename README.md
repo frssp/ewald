@@ -11,7 +11,7 @@ each view is a live plot linked to the atoms, and the whole thing is saved as on
 runs as a plain Python script. Plugins add file formats, analyses and drawing without changing
 EWALD itself.
 
-![The EWALD window: a notebook on the left, the 3D view in the middle, display settings on the right](docs/images/notebook.png)
+![The EWALD window: a notebook on the left, the Structure view in the middle, display settings on the right](docs/images/notebook.png)
 
 Under the notebook is an OVITO-style pipeline (`load` → `pipe.add(...)` → `pipe.compute(frame)` →
 `pipe.render(...)`) that runs the same in a script, on the CPU or an NVIDIA GPU, with a built-in
@@ -28,7 +28,7 @@ file.
 
 - **AI first, one API.** The GUI, a script and Claude all drive the same notebook API (`load`,
   `pipe.add`, `pipe.compute`, `show`, `pipe.render`). Claude reads the structure, adds steps and
-  changes the 3D view by writing ordinary cells you can read and edit; a click in the GUI is
+  changes the Structure view by writing ordinary cells you can read and edit; a click in the GUI is
   recorded the same way.
 - **Quality for files, speed for the screen.** Rendered images, vector figures and movies put
   quality first (Draft, Standard and Publication presets; Publication by default). The interactive
@@ -100,9 +100,9 @@ show(pipe, histogram="Coordination")
 ```
 
 In the GUI the `pipe.add` cell is a step with a parameter form and the time it took, `show(...)` is a
-live histogram (drag a range to select those atoms in the 3D view), and the style follows every
+live histogram (drag a range to select those atoms in the Structure view), and the style follows every
 frame of the trajectory. `python cu_void.py` runs the same file without the GUI and draws the plots
-with matplotlib. Every display setting of the 3D view (style, colors, radii, bonds, cell, background,
+with matplotlib. Every display setting of the Structure view (style, colors, radii, bonds, cell, background,
 camera, frame) is code as well, one `view(pipe, style="Ball & stick", colors={"O": "red"}, direction="z")`
 cell that the viewport rewrites when you change it there and that Claude's chat sets through the same
 API. File › Save notebook writes it as a `.py`, a Jupyter `.ipynb`, or an `.ewd` that
