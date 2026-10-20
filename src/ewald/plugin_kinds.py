@@ -229,8 +229,10 @@ def _builtin_themes() -> dict:
 
 @dataclass
 class UiThemePlugin:
-    """A color theme of the desktop app: ``tokens`` (a dict, or a function returning one) overrides
-    the design tokens of the ``base`` palette (a built-in theme such as "paper" or "graphite")."""
+    """A theme of the desktop app: ``tokens`` (a dict, or a function returning one) overrides
+    the design tokens of the ``base`` palette (a built-in theme such as "paper" or "graphite"),
+    and may also set fonts, sizes, corner radius, spacing, icon line width and extra style
+    sheet rules (:meth:`style`)."""
 
     name: str
     tokens: object
@@ -239,13 +241,24 @@ class UiThemePlugin:
     origin: str = ""
     builtin: bool = False
 
-    def palette(self) -> dict:
-        """Every design token as ``#rrggbb``: the base palette with this theme's overrides."""
-        from .ui_tokens import PALETTES
-
+    def _own(self) -> dict:
         own = self.tokens() if callable(self.tokens) else self.tokens
         if not isinstance(own, dict):
             raise TypeError(f"UI theme {self.name!r} returned {type(own).__name__}, not a dict of tokens")
+        return own
+
+    def style(self) -> dict:
+        """Everything but colors (``ewald.ui_tokens.STYLE_DEFAULTS``: font, mono_font, font_size,
+        radius, density, icon_stroke, qss), defaults filled in."""
+        from .ui_tokens import STYLE_DEFAULTS, check_style
+
+        return check_style(self.name, {k: v for k, v in self._own().items() if k in STYLE_DEFAULTS})
+
+    def palette(self) -> dict:
+        """Every design token as ``#rrggbb``: the base palette with this theme's overrides."""
+        from .ui_tokens import PALETTES, STYLE_DEFAULTS
+
+        own = {k: v for k, v in self._own().items() if k not in STYLE_DEFAULTS}
         base = PALETTES.get(self.base)
         if base is None:
             raise ValueError(f"UI theme {self.name!r}: base must be one of {', '.join(PALETTES)}")

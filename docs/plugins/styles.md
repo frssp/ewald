@@ -127,4 +127,38 @@ in the log and the app falls back to Graphite rather than failing to open. An in
 point group (an object that is a dict of tokens, which may name its `"base"`, or a function
 returning one), and a plugin cannot take the name of a built-in theme.
 
-`examples/plugins/ui_themes.py` holds Nord (dark) and Sepia (light).
+### Beyond colors
+
+Next to its color tokens a UI theme may set how the app is drawn. Every key is optional:
+
+```python
+@ui_theme(name="Studio", base="graphite")
+def studio():
+    """Compact and square."""
+    return {
+        "accent": "#E0A040",
+        "font": "Inter", "mono_font": "Fira Code", "font_size": 12,
+        "radius": 2, "density": "compact", "icon_stroke": 1.4,
+        "qss": "QWidget#panelHeader { border-bottom: 2px solid $accent; }",
+    }
+```
+
+| Key | Effect | Default |
+|---|---|---|
+| `font` | the UI font, tried before ewald's (IBM Plex Sans, then the system font) | `""` |
+| `mono_font` | the font of the code editor, console and paths | `""` |
+| `font_size` | UI text size in px (1-30); applies while Preferences › General › *Font size* is left at its default | `0` (ewald's) |
+| `radius` | corner radius of buttons, inputs and cards in px (0-16); rounder shapes such as pills keep theirs | `6` |
+| `density` | spacing inside widgets: `"compact"`, `"normal"` or `"comfortable"` | `"normal"` |
+| `icon_stroke` | line width of the built-in icons (0.8-3.0, on their 24 px grid) | `1.7` |
+| `qss` | extra [Qt style sheet](https://doc.qt.io/qt-6/stylesheet-reference.html) rules, added after ewald's so they win; `$accent`, `$panel`, ... are this theme's colors | `""` |
+
+A font that is not installed falls back to ewald's. Style rules address widgets by the object
+names in `ewald/gui/theme.py` (`panelHeader`, `headerButton`, `chatStarter`, ...); those names
+are not part of `PLUGIN_API` and may change between releases. A key with a bad value is reported
+in the log and that theme then uses the default fonts and sizes, keeping its colors. Code editors
+that are already open keep their font until they are reopened.
+
+![The Studio example theme: compact spacing, square corners, thin icons, accent-edged headers](../images/ui_theme_studio.png)
+
+`examples/plugins/ui_themes.py` holds Nord (dark), Sepia (light) and Studio (compact, square).
