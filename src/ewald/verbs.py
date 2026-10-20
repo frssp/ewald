@@ -29,9 +29,22 @@ VERB_CELLS = [
 ]
 
 
-def verb_cell(verb: str) -> str:
-    """The code cell Insert › Analysis adds for ``verb`` (with its import)."""
+#: verbs that need a trajectory (Insert › Analysis greys them out for a single frame)
+TRAJECTORY_VERBS = ("msd", "vacf")
+
+
+def verb_cell(verb: str, data=None) -> str:
+    """The code cell Insert › Analysis adds for ``verb`` (with its import). With the current frame
+    ``data`` the defaults fit it: the g(r) cutoff stays below half the periodic cell width, and
+    bond angles first create bonds (covalent radii, like the default view) when there are none."""
     code = next(c for v, _label, c in VERB_CELLS if v == verb)
+    if data is not None and verb == "rdf" and data.cell.is_valid and data.cell.pbc.any():
+        half = float(np.min(data.cell.perpendicular_widths()[data.cell.pbc])) / 2
+        if half <= 6.0:
+            code = code.replace("cutoff=6.0", f"cutoff={np.floor(half * 0.99 * 10) / 10:.1f}")
+    if data is not None and verb == "bond_angles" and data.bonds is None:
+        return ("from ewald import bond_angles\nfrom ewald.modifiers import CreateBonds\n"
+                f"pipe.add(CreateBonds(mode=\"covalent\"))\n{code}")
     return f"from ewald import {verb}\n{code}"
 
 

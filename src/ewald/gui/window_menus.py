@@ -336,7 +336,11 @@ class MenusMixin:
             from ..verbs import VERB_CELLS
 
             for verb, label, _code in VERB_CELLS:
-                am.addAction(label, lambda v=verb: self._insert_verb(v)).setToolTip(f"A {verb}(pipe) cell, run at once")
+                act = am.addAction(label, lambda v=verb: self._insert_verb(v))
+                act.setToolTip(f"A {verb}(pipe) cell, run at once")
+                act.setData(verb)
+            am.setToolTipsVisible(True)
+            am.aboutToShow.connect(self._update_analysis_menu)
             self.analysis_menu = am
             plug = ins.addMenu("&Plugin step")
             plug.aboutToShow.connect(lambda: self._fill_plugin_menu(plug))
@@ -368,7 +372,7 @@ class MenusMixin:
         w.addAction("New plot view", lambda: self.new_plot_view())
         w.addAction("Log", lambda: self.workbench.show(self.log))
         w.addAction("AI chat" if nb else "Ask Claude", self.ask_claude)
-        w.addAction("Command palette", self.command_palette)
+        w.addAction("Command palette", self.command_palette, "Ctrl+K")
         h = mb.addMenu("&Help")
         for label, page in manual.PAGES.items():
             h.addAction(label, lambda page=page: self.open_help(page))
@@ -409,6 +413,17 @@ class MenusMixin:
         view.run(cell)
         self.notebook_dock.show()
 
+    def _update_analysis_menu(self):
+        """Grey out the trajectory analyses (MSD, VACF) while the data has a single frame."""
+        from ..verbs import TRAJECTORY_VERBS
+
+        frames = self.pipeline.num_frames if self.pipeline is not None else 0
+        for act in self.analysis_menu.actions():
+            if act.data() in TRAJECTORY_VERBS:
+                act.setEnabled(frames > 1)
+                act.setToolTip(f"A {act.data()}(pipe) cell, run at once" if frames > 1
+                               else "Needs a trajectory: the data has a single frame")
+
     def _insert_verb(self, verb):
         """Insert › Analysis: a ``verb(pipe)`` cell after the current one, run at once (its table shows below)."""
         from ..verbs import verb_cell
@@ -420,7 +435,7 @@ class MenusMixin:
             QtWidgets.QMessageBox.information(self, "No pipeline yet",
                                               "Open a file first, or run a cell that sets pipe = import_file(...).")
             return
-        cell = view.add_cell("code", verb_cell(verb))
+        cell = view.add_cell("code", verb_cell(verb, self.data))
         view.run(cell)
         self.notebook_dock.show()
 
@@ -464,7 +479,7 @@ class MenusMixin:
         QtWidgets.QMessageBox.about(
             self, "About EWALD",
             f"<b>EWALD {__version__}</b><br>{__title__.split(': ', 1)[1].replace('&', '&amp;')}<p>Atomistic structure and trajectory visualization and analysis "
-            f"with an OVITO-style Python pipeline.</p><p>{self.hardware_summary()}</p>"
+            f"in Python notebooks, with Claude and plugins built in.</p><p>{self.hardware_summary()}</p>"
             f"<p><a href='{self.help_url()}'>Manual</a></p>")
 
     def _gpu_available(self) -> bool:
@@ -495,8 +510,9 @@ class MenusMixin:
         return text
 
     def command_palette(self):
-        entries = [(label, f"Add modification › {group}", lambda f=factory: self.panel.add_modifier(f()))
-                   for group, items in MODIFIER_MENU.items() for label, factory in items.items()]
+        entries = [] if self.layout_mode == "notebook" else [  # notebook: Insert › Step lists them already
+            (label, f"Add modification › {group}", lambda f=factory: self.panel.add_modifier(f()))
+            for group, items in MODIFIER_MENU.items() for label, factory in items.items()]
         entries += menu_entries(self.menuBar())
         pal = CommandPalette(entries, self)
         geo = self.geometry()

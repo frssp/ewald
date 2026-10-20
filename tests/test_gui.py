@@ -2127,7 +2127,9 @@ def test_workbench_drag_plot_over_3d_view(app, pipe):
     acts["Maximize group"].trigger()
     settle()
     assert wb.is_shown(p2) and not wb.is_shown(vp) and vp.parked
+    assert not wb.panel_host.isVisible()                   # the panel makes room too
     acts["Maximize group"].trigger()
+    assert wb.panel_host.isVisible()
     acts["Move view down"].trigger()                       # from the editor area into the panel
     settle()
     assert wb.layout.area_of(wb.group_of(p2)) == "panel" and not vp.parked
@@ -2329,4 +2331,23 @@ def test_viewport_tools_pick_and_measure_with_real_clicks(app, pipe):
     for i in atoms:
         click(i)
     assert vp.picks == atoms and "°" in w.pick_label.text()
+    w.close()
+
+
+def test_menu_audit_fixes(app, cu_fcc):
+    """Insert › Analysis greys out trajectory analyses for one frame; the palette lists each step
+    once (Insert › Step) and Window › Command palette carries Ctrl+K."""
+    from PySide6 import QtGui
+
+    from ewald.gui.app import MainWindow
+    from ewald.gui.palette import menu_entries
+
+    w = MainWindow(Pipeline(StaticSource([cu_fcc])))
+    w.analysis_menu.aboutToShow.emit()
+    state = {a.data(): a.isEnabled() for a in w.analysis_menu.actions()}
+    assert state["msd"] is False and state["vacf"] is False and state["rdf"] is True
+    labels = [label for label, path, _ in menu_entries(w.menuBar()) if path.startswith("Insert › Step")]
+    assert labels and len(labels) == len(set(labels))
+    pal = next(a for a in w.menuBar().findChildren(QtGui.QAction) if a.text() == "Command palette")
+    assert pal.shortcut() == QtGui.QKeySequence("Ctrl+K")
     w.close()

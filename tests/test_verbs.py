@@ -79,3 +79,24 @@ def test_voronoi_and_clusters_verbs(cu_fcc):
     assert ewald.clusters(pipe, cutoff=3.0).counts == {1: d.count} and len(pipe.modifiers) == 2
     assert verb_cell("cna") == "from ewald import cna\nstructures = cna(pipe)\nstructures"
     assert all(callable(getattr(ewald, verb)) for verb, _, _ in VERB_CELLS)
+
+
+def test_verb_cells_fit_the_data():
+    """Insert › Analysis: the g(r) cutoff stays below half a small cell; bond angles create bonds first."""
+    from ase.build import bulk
+
+    from ewald.data import DataCollection
+    from ewald.verbs import verb_cell
+
+    small = DataCollection.from_ase(bulk("Cu", "fcc", a=3.615, cubic=True).repeat((2, 2, 2)))  # 7.23 A wide
+    code = verb_cell("rdf", small)
+    assert "cutoff=3.5" in code
+    pipe = Pipeline(StaticSource(small))
+    ns = {"pipe": pipe}
+    exec(code, ns)                                            # runs: no "exceeds half the cell" error
+    assert len(ns["g"].x) > 0
+    code = verb_cell("bond_angles", small)
+    assert 'CreateBonds(mode="covalent")' in code
+    exec(code, ns)
+    assert len(ns["angles"].x) > 0
+    assert verb_cell("rdf") == "from ewald import rdf\ng = rdf(pipe, cutoff=6.0)\ng"
