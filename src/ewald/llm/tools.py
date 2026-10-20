@@ -919,15 +919,18 @@ class Toolset:
             return api_reference()
 
         @T("list_workflows",
-           "Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs) of an installed workflow "
-           "source, newest first: id, kind, formula, state and the path that opens each. 'search' filters by "
-           "words. Then describe_workflow(path) lists its steps and outputs.",
-           _obj({"source": {"type": "string", "description": "source name (default: the only one installed)"},
+           "Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs, or folders of VASP/LAMMPS/"
+           "NEB/phonopy calculations: source 'folders') of a workflow source, newest first: id, kind, formula, "
+           "state and the path that opens each. 'search' filters by words. Then describe_workflow(path) lists "
+           "its steps and outputs.",
+           _obj({"source": {"type": "string", "description": "source name (default: the only one a plugin "
+                                                           "installed, else 'folders')"},
                  "search": {"type": "string"}}))
         def list_workflows(source=None, search=None):
             sources = plugins.workflow_sources()
-            if source is None and len(sources) == 1:
-                source = next(iter(sources))
+            if source is None:
+                added = [n for n, p in sources.items() if p.origin != "built-in"]
+                source = added[0] if len(added) == 1 else "folders" if not added else None
             if source not in sources:
                 raise ValueError(f"name a source: one of {sorted(sources)}")
             page = sources[source].list(query=search or None)
@@ -939,7 +942,7 @@ class Toolset:
         @T("describe_workflow",
            "Steps of a workflow (nested; restarts joined), their states, numbers (energies, gaps) and outputs, "
            "each with the path load_structure opens. 'path' is a workflow path such as simagent:1234 or "
-           "aiida:1234.",
+           "aiida:1234, or a folder of calculations (local or host:/path).",
            _obj({"path": {"type": "string"}}, ["path"]))
         def describe_workflow(path):
             from .. import workflow
