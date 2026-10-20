@@ -26,6 +26,8 @@ start again in every run (XDATCAR, OUTCAR, vasprun.xml) are appended as they are
 (log.lammps, OSZICAR) are joined on the step the same way, the later run winning. Lists work for
 remote paths, sessions and live reload too: a restart folder that appears later replaces the
 frames it overlaps.
+In the app, choose several data files in File › Open (or drop them on the window): they open as
+one trajectory in natural order, the same as `load([...])`.
 
 | Format | Reader | Notes |
 |---|---|---|

@@ -423,7 +423,12 @@ class CellWidget(QtWidgets.QFrame):
         m.addAction("Insert cell below\tB", act("after"))
         m.addAction("Move up", act("up"))
         m.addAction("Move down", act("down"))
-        m.addAction("Delete", act("delete"))
+        m.addSeparator()
+        m.addAction("Cut\tX", act("cut"))
+        m.addAction("Copy\tC", act("copy"))
+        m.addAction("Paste below\tV", act("paste:below"))
+        m.addAction("Merge with the cell below\tShift+M", act("merge"))
+        m.addAction("Delete\tD, D", act("delete"))
         self._plugin_actions = []
         m.aboutToShow.connect(lambda: self._plugin_menu_items(m))
         b.setMenu(m)
@@ -548,19 +553,32 @@ class CellWidget(QtWidgets.QFrame):
         self.editor.setFocus()
 
     def leave_editor(self):
-        """Esc in the editor: the cell keeps the keyboard (Y, M, A, B, Enter), as in Jupyter."""
+        """Esc in the editor: the cell keeps the keyboard (command mode: Y, M, A, B, DD, X, C, V,
+        Z, Shift+arrows, Enter), as in Jupyter."""
         if self.cell.kind == "markdown":
             self._render_markdown()
         self.selected.emit(self.cell)
         self.setFocus()
 
+    # Jupyter's command mode (the cell has the keyboard, not its editor): key -> NotebookView action
     COMMAND_KEYS = {QtCore.Qt.Key_Y: "kind:code", QtCore.Qt.Key_M: "kind:markdown",
-                    QtCore.Qt.Key_A: "above", QtCore.Qt.Key_B: "after"}
+                    QtCore.Qt.Key_A: "above", QtCore.Qt.Key_B: "after", QtCore.Qt.Key_D: "d",
+                    QtCore.Qt.Key_X: "cut", QtCore.Qt.Key_C: "copy", QtCore.Qt.Key_V: "paste:below",
+                    QtCore.Qt.Key_Z: "undelete", QtCore.Qt.Key_Up: "prev", QtCore.Qt.Key_K: "prev",
+                    QtCore.Qt.Key_Down: "next", QtCore.Qt.Key_J: "next"}
+    SHIFT_KEYS = {QtCore.Qt.Key_Up: "extend:up", QtCore.Qt.Key_K: "extend:up",
+                  QtCore.Qt.Key_Down: "extend:down", QtCore.Qt.Key_J: "extend:down",
+                  QtCore.Qt.Key_V: "paste:above", QtCore.Qt.Key_M: "merge",
+                  QtCore.Qt.Key_Return: "run:advance", QtCore.Qt.Key_Enter: "run:advance"}
 
     def keyPressEvent(self, event):
-        key, mods = event.key(), event.modifiers()
-        if not mods & ~QtCore.Qt.KeypadModifier and key in self.COMMAND_KEYS:
-            self.actionRequested.emit(self.cell, self.COMMAND_KEYS[key])
+        key, mods = event.key(), event.modifiers() & ~QtCore.Qt.KeypadModifier
+        table = {QtCore.Qt.NoModifier: self.COMMAND_KEYS, QtCore.Qt.ShiftModifier: self.SHIFT_KEYS}.get(mods)
+        if table is not None and key in table:
+            self.actionRequested.emit(self.cell, table[key])
+            return
+        if key in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) and mods == QtCore.Qt.ControlModifier:
+            self.actionRequested.emit(self.cell, "run")   # runs the selected cells
             return
         if key in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) and not mods and self.editor is not None:
             if self.cell.kind == "markdown":
@@ -796,7 +814,7 @@ class CellWidget(QtWidgets.QFrame):
 
     def _repolish(self):
         chips = self.chips if self.cell.is_step else None
-        key = (self.property("state"), self.property("current"), chips.objectName() if chips is not None else None)
+        key = (self.property("state"), self.property("current"), self.property("selected"), chips.objectName() if chips is not None else None)
         if key == getattr(self, "_polished", None):
             return   # nothing the style sheet reads changed (e.g. a new frame during playback)
         self._polished = key
@@ -805,8 +823,18 @@ class CellWidget(QtWidgets.QFrame):
                 w.style().unpolish(w)
                 w.style().polish(w)
 
+    def set_selected(self, on: bool):
+        """Part of a multi-cell selection (Shift+Up/Down, Shift+click)."""
+        if bool(self.property("selected")) != on:
+            self.setProperty("selected", on)
+            self._repolish()
+
     def mousePressEvent(self, event):
-        self.selected.emit(self.cell)
+        if event.modifiers() & QtCore.Qt.ShiftModifier:
+            self.actionRequested.emit(self.cell, "extend:to")
+            self.setFocus()
+        else:
+            self.selected.emit(self.cell)
         super().mousePressEvent(event)
 
 

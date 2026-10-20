@@ -239,6 +239,23 @@ for text, **A** / **B** to insert a cell above / below, Enter to edit again. A s
 turned into text takes its steps out of the pipeline; turned back into code, it runs again when
 you run it.
 
+**Command keys.** With a cell selected (Esc), the rest of Jupyter's keys work too:
+
+| Key | Does |
+|---|---|
+| Up / Down, K / J | select the cell above / below |
+| Shift+Up / Shift+Down (Shift+K / J), Shift+click | select several cells |
+| D, D | delete the selected cells |
+| Z | bring back the cells deleted last |
+| X / C | cut / copy the selected cells |
+| V / Shift+V | paste them below / above (also into another notebook tab) |
+| Shift+M | merge the selected cells (one cell: with the cell below) |
+| Ctrl+Enter / Shift+Enter | run the selected cells (Shift+Enter then moves on) |
+
+The cell's ⋯ menu and the Notebook menu have the same commands; *Move up* / *Move down* move the
+whole selection. Copied cells also go to the clipboard as Python. Pasted, merged or restored step
+and view cells run at once, as Undo does; other code cells wait until you run them.
+
 **Snapshot cells** keep a picture of the Structure view. Insert › 3D snapshot of the view adds one for
 the viewport as it is (frame, camera, display style) and runs it:
 

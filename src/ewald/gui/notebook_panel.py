@@ -101,7 +101,10 @@ class NotebookView(QtWidgets.QWidget):
         self.notebook = notebook
         self.history = History(notebook)  # Edit › Undo/Redo, one entry per action below
         self.widgets: list[CellWidget] = []
-        self.current = None
+        self.current = None      # also sets the anchor: with Shift+Up/Down or Shift+click, the cells
+                                 # from the anchor to the current cell are selected
+        self._deleted = []       # (index, snapshot entries) of deleted cells, for Z
+        self._last_d = 0.0       # time of the first D of DD
         self.data = None
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -357,9 +360,17 @@ class NotebookView(QtWidgets.QWidget):
             self.run(cell)
 
     # ----------------------------------------------------------- building
+    @property
+    def current(self):
+        return self._current
+
+    @current.setter
+    def current(self, cell):
+        self._current = self.anchor = cell   # a new current cell drops a multi-cell selection
+
     def rebuild(self):
         """Recreate every cell widget (after cells were added, removed or moved)."""
-        keep = self.current
+        keep, anchor = self.current, self.anchor
         for w in self.widgets:
             w.setParent(None)
             w.deleteLater()
@@ -384,19 +395,46 @@ class NotebookView(QtWidgets.QWidget):
         # count as vertically expanding, so a plain addStretch() would share the space with it
         self.cells_layout.addStretch(1)
         self.current = keep if keep in self.notebook.cells else (self.notebook.cells[-1] if self.notebook.cells else None)
+        if anchor in self.notebook.cells and keep is self.current:
+            self.anchor = anchor
         self._mark_current()
         self.update_results()
 
     def widget_for(self, cell):
         return next((w for w in self.widgets if w.cell is cell), None)
 
-    def select(self, cell):
+    def select(self, cell, extend: bool = False):
+        """Make ``cell`` the current cell; with ``extend`` the selection grows from the anchor to it."""
+        anchor = self.anchor
         self.current = cell
+        if extend and anchor in self.notebook.cells:
+            self.anchor = anchor
         self._mark_current()
 
+    @property
+    def selected_cells(self) -> list:
+        """The selected cells in notebook order: the current cell, or the range from the anchor
+        to it (command-mode keys, run, delete and move act on all of them)."""
+        cells = self.notebook.cells
+        if self.current not in cells:
+            return []
+        if self.anchor not in cells:
+            return [self.current]
+        i, j = sorted((cells.index(self.anchor), cells.index(self.current)))
+        return cells[i:j + 1]
+
     def _mark_current(self):
+        sel = self.selected_cells
         for w in self.widgets:
             w.set_current(w.cell is self.current)
+            w.set_selected(len(sel) > 1 and w.cell in sel)
+
+    def _focus_cell(self, cell):
+        """Give ``cell`` the keyboard in command mode and scroll to it."""
+        w = self.widget_for(cell)
+        if w is not None:
+            w.setFocus()
+            QtCore.QTimer.singleShot(0, w, lambda: self.scroll.ensureWidgetVisible(w))
 
     def update_results(self, data=None):
         if data is not None:
@@ -481,19 +519,24 @@ class NotebookView(QtWidgets.QWidget):
         self.changed.emit()
         self.titleChanged.emit()
 
+    def _group(self, cell) -> list:
+        """The selected cells when ``cell`` is one of them, else ``cell`` alone."""
+        sel = self.selected_cells
+        return sel if cell in sel else [cell]
+
     def _cell_action(self, cell, action):
         nb = self.notebook
         i = nb.cells.index(cell)
+        if action in COMMAND_ACTIONS:
+            COMMAND_ACTIONS[action](self, cell)
+            return
         if action == "delete":
-            nb.delete(cell)
-            self.current = nb.cells[min(i, len(nb.cells) - 1)] if nb.cells else None
-            self.rebuild()
-            self.changed.emit()
-        elif action in ("up", "down"):
-            nb.move(cell, i + (-1 if action == "up" else 1))
-            self.rebuild()
-            self.changed.emit()
-        elif action == "code":
+            self.delete_cells(self._group(cell))
+            return
+        if action in ("up", "down"):
+            self.move_cells(self._group(cell), -1 if action == "up" else 1)
+            return
+        if action == "code":
             w = self.widget_for(cell)
             w.code_button.setChecked(True)
         elif action == "below":
@@ -531,8 +574,158 @@ class NotebookView(QtWidgets.QWidget):
             self.history.commit("Change when the cell runs")
             self.titleChanged.emit()
             return
-        self.history.commit({"delete": "Delete cell", "up": "Move cell", "down": "Move cell"}.get(action, "Edit cell"))
+        self.history.commit("Edit cell")
         self.titleChanged.emit()
+
+    # ------------------------------------------------- command mode (Jupyter keys)
+    def _key_d(self, cell):
+        """DD: the second D within the double-click interval deletes the selected cells."""
+        import time
+
+        now = time.monotonic()
+        if now - self._last_d <= QtWidgets.QApplication.doubleClickInterval() / 1000:
+            self._last_d = 0.0
+            self.delete_cells(self._group(cell))
+        else:
+            self._last_d = now
+
+    def _step(self, cell, delta: int, extend: bool = False):
+        cells = self.notebook.cells
+        k = cells.index(cell) + delta
+        if 0 <= k < len(cells):
+            self.select(cells[k], extend=extend)
+            self._focus_cell(cells[k])
+
+    def delete_cells(self, cells):
+        """Delete ``cells`` (DD, Notebook › Delete cells); Z brings them back."""
+        nb = self.notebook
+        cells = [c for c in nb.cells if c in cells]
+        if not cells:
+            return
+        i = nb.cells.index(cells[0])
+        snap = nb.snapshot()
+        self._deleted.append((i, tuple(snap[nb.cells.index(c)] for c in cells)))
+        del self._deleted[:-50]
+        for c in cells:
+            nb.delete(c)
+        self.current = nb.cells[min(i, len(nb.cells) - 1)] if nb.cells else None
+        self.rebuild()
+        self.changed.emit()
+        self.history.commit("Delete cells" if len(cells) > 1 else "Delete cell")
+        self.titleChanged.emit()
+        if self.current is not None:
+            self._focus_cell(self.current)
+
+    def move_cells(self, cells, delta: int):
+        """Move a run of neighboring cells one place up (-1) or down (+1)."""
+        nb = self.notebook
+        idx = sorted(nb.cells.index(c) for c in cells if c in nb.cells)
+        if not idx or idx[-1] - idx[0] + 1 != len(idx):
+            return   # only a contiguous block moves (the selection always is one)
+        first, last = idx[0], idx[-1]
+        if delta < 0 and first > 0:
+            nb.move(first - 1, last)        # the cell above the block goes below it
+        elif delta > 0 and last + 1 < len(nb.cells):
+            nb.move(last + 1, first)        # the cell below goes above it
+        else:
+            return
+        self.rebuild()
+        self.changed.emit()
+        self.history.commit("Move cells" if len(idx) > 1 else "Move cell")
+        self.titleChanged.emit()
+
+    def copy_cells(self, cells=None, cut: bool = False):
+        """C / X: the cells go to the cell clipboard (shared by every notebook tab); their
+        Python also goes to the system clipboard."""
+        nb = self.notebook
+        cells = self.selected_cells if cells is None else [c for c in nb.cells if c in cells]
+        if not cells:
+            return
+        snap = nb.snapshot()
+        CELL_CLIPBOARD[:] = [snap[nb.cells.index(c)] for c in cells]
+        QtWidgets.QApplication.clipboard().setText(
+            "\n\n".join(c.source.rstrip("\n") for c in cells) + "\n")
+        if cut:
+            self.delete_cells(cells)
+
+    def _splice(self, snap: tuple, label: str, first: int, count: int):
+        """Make the notebook ``snap`` (step and view cells that are new run, like undo), then
+        select its cells ``first .. first + count - 1``."""
+        if self.running:
+            return
+        nb = self.notebook
+        before = nb.pipeline
+        self._busy(lambda: nb.restore(snap))
+        cells = nb.cells[first:first + count]
+        if cells:
+            self.current, self.anchor = cells[-1], cells[0]
+        self.rebuild()
+        if nb.pipeline is not before and nb.pipeline is not None:
+            self.pipelineReplaced.emit(nb.pipeline)
+        else:
+            self.changed.emit()
+        self.history.commit(label)
+        self.titleChanged.emit()
+        if cells:
+            self._focus_cell(cells[-1])
+
+    def paste_cells(self, above: bool = False):
+        """V / Shift+V: paste the copied cells below (above) the selection."""
+        if not CELL_CLIPBOARD or not self._trusted():
+            return
+        nb = self.notebook
+        sel = self.selected_cells
+        k = len(nb.cells) if not sel else nb.cells.index(sel[0] if above else sel[-1]) + (0 if above else 1)
+        snap = nb.snapshot()
+        self._splice(snap[:k] + tuple(CELL_CLIPBOARD) + snap[k:], "Paste cells", k, len(CELL_CLIPBOARD))
+
+    def undelete(self):
+        """Z: bring back the cells deleted last."""
+        if not self._deleted or not self._trusted():
+            return
+        i, entries = self._deleted.pop()
+        snap = self.notebook.snapshot()
+        i = min(i, len(snap))
+        self._splice(snap[:i] + entries + snap[i:], "Undo delete", i, len(entries))
+
+    def merge_cells(self, cells=None):
+        """Shift+M: join the selected cells into the first one (one cell selected: with the cell
+        below), like Jupyter."""
+        nb = self.notebook
+        cells = self.selected_cells if cells is None else [c for c in nb.cells if c in cells]
+        if len(cells) == 1:
+            k = nb.cells.index(cells[0])
+            if k + 1 >= len(nb.cells):
+                return
+            cells = nb.cells[k:k + 2]
+        if len(cells) < 2 or not self._trusted():
+            return
+        i, j = nb.cells.index(cells[0]), nb.cells.index(cells[-1])
+        snap = nb.snapshot()
+        kind, title, _, frames = snap[i]
+        source = "\n\n".join(e[2].rstrip("\n") for e in snap[i:j + 1])
+        self._splice(snap[:i] + ((kind, title, source, frames),) + snap[j + 1:], "Merge cells", i, 1)
+
+    def run_cells(self, cells, advance: bool = False):
+        """Run ``cells`` in order (Ctrl+Enter / Shift+Enter on a selection), stopping at an error."""
+        nb = self.notebook
+        cells = [c for c in nb.cells if c in cells]
+        if len(cells) <= 1:
+            if cells:
+                self.run(cells[0], advance=advance)
+            return
+        if not self._trusted():
+            return
+        before = nb.pipeline
+        code = [c for c in cells if c.kind != "markdown"]
+        self._marked = code
+
+        def go():
+            for c in code:
+                if c in nb.cells and not nb.run_cell(c):
+                    break
+        last = cells[-1]
+        self._execute(go, before, (lambda: self._advance(last)) if advance else None)
 
     def set_kind(self, cell, kind: str):
         """Turn ``cell`` into a code or text cell (Notebook › Change cell to code/text, Esc then Y / M)."""
@@ -846,6 +1039,27 @@ class NotebookView(QtWidgets.QWidget):
 # ---------------------------------------------------------------- tabs
 START_NOTEBOOK = False  # a new window shows the welcome page, not an empty "Notebook 1"
 CONFIRM_UNSAVED = True  # ask before closing notebooks with unsaved changes (tests turn it off)
+
+
+CELL_CLIPBOARD: list = []   # copied cells as snapshot entries (kind, title, source, frames), for V in any tab
+
+# command-mode actions a CellWidget asks for (CellWidget.COMMAND_KEYS / SHIFT_KEYS)
+COMMAND_ACTIONS = {
+    "d": NotebookView._key_d,
+    "prev": lambda v, c: v._step(c, -1),
+    "next": lambda v, c: v._step(c, 1),
+    "extend:up": lambda v, c: v._step(c, -1, extend=True),
+    "extend:down": lambda v, c: v._step(c, 1, extend=True),
+    "extend:to": lambda v, c: v.select(c, extend=True),
+    "cut": lambda v, c: v.copy_cells(v._group(c), cut=True),
+    "copy": lambda v, c: v.copy_cells(v._group(c)),
+    "paste:below": lambda v, c: v.paste_cells(),
+    "paste:above": lambda v, c: v.paste_cells(above=True),
+    "undelete": lambda v, c: v.undelete(),
+    "merge": lambda v, c: v.merge_cells(v._group(c)),
+    "run": lambda v, c: v.run_cells(v._group(c)),
+    "run:advance": lambda v, c: v.run_cells(v._group(c), advance=True),
+}
 
 
 class NotebookPanel(QtWidgets.QWidget):

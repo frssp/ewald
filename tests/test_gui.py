@@ -175,6 +175,31 @@ def test_view_tab_columns_fold_and_aligned_labels(app, pipe):
     _dispose(panel)
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_view_cards_fold_all_and_stay_folded_after_restart(app, pipe):
+    """View › Fold all View cards (or right-click a card) folds every card; the folded cards
+    come back folded in the next window (layout.json)."""
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.gui.preferences import save_layout
+
+    s = settings.Settings()
+    w = MainWindow(pipe, settings=s)
+    acts = {a.text(): a for a in w.menuBar().findChildren(QtGui.QAction)}
+    acts["Fold all View cards"].trigger()
+    assert all(c.folded for c in w.display.sections.values())
+    acts["Unfold all View cards"].trigger()
+    assert not any(c.folded for c in w.display.sections.values())
+    assert [a.text() for a in w.display.actions()] == ["Fold all cards", "Unfold all cards"]
+    w.display.set_folded("Bonds", True)
+    w.display.set_folded("Camera", True)
+    save_layout(w, s)
+    w.close()
+    w2 = MainWindow(pipe, settings=s)
+    assert {t for t, c in w2.display.sections.items() if c.folded} == {"Bonds", "Camera"}
+    w2.close()
+
+
 def test_inspector_source_tab(app, pipe):
     from ewald.gui.inspector import DataInspector
 
@@ -689,6 +714,42 @@ def test_dropping_a_neb_folder_opens_the_band(app, vasp_dir):
     assert w.acceptDrops()
     w.open_dropped([str(vasp_dir / "neb")])
     assert w.pipeline.num_frames == 5
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_open_several_files_as_one_trajectory(app, tmp_path, monkeypatch):
+    """File › Open with several data files: one trajectory in natural order, as load([...])."""
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.app import MainWindow
+    from ewald.io import write_lammps_dump
+
+    def frame(step):
+        data = DataCollection(np.random.default_rng(step).random((4, 3)) * 5, cell=Cell(np.eye(3) * 5))
+        data.particles["Particle Identifier"] = np.arange(1, 5)
+        data.particles["Particle Type"] = np.array(["1"] * 4)
+        data.attributes["Timestep"] = step
+        return data
+
+    write_lammps_dump(tmp_path / "dump.200", [frame(200), frame(300)])
+    write_lammps_dump(tmp_path / "dump.1000", [frame(1000), frame(1100)])
+    nb_path = tmp_path / "other.py"
+    nb_path.write_text("# %%\nx = 1\n")
+    chosen = [str(tmp_path / "dump.1000"), str(tmp_path / "dump.200")]
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileNames", lambda *a, **k: (chosen, ""))
+    monkeypatch.setattr(QtWidgets.QInputDialog, "getText", lambda *a, **k: ("", False))
+    w = MainWindow()
+    w.open_dialog()
+    pipe = w.pipeline
+    assert [pipe.compute(i).attributes["Timestep"] for i in range(pipe.num_frames)] == [200, 300, 1000, 1100]
+    assert "dump.200 + 1 more" in w.windowTitle()
+    code = w.panel.notebook.to_py()
+    assert "dump.200" in code and "dump.1000" in code and code.index("dump.200") < code.index("dump.1000")
+
+    monkeypatch.setattr(w, "_ask_trust", lambda path: False)
+    chosen[:] = [str(nb_path), str(tmp_path / "dump.200")]   # a notebook opens in a tab, the data file as usual
+    w.open_dialog()
+    assert any(str(v.notebook.path).endswith("other.py") for v in w.panel.views()) and w.pipeline.num_frames == 2
     w.close()
 
 
@@ -2950,6 +3011,77 @@ def test_notebook_cell_controls_add_bar_and_running_mark(app):
     w.close()
 
 
+def test_command_mode_cell_keys_like_jupyter(app, pipe):
+    """Command mode (Esc): Shift+Down selects cells, C / X / V copy, cut and paste them, DD
+    deletes and Z brings back, Shift+M merges, J / K move, Ctrl+Enter runs the selection."""
+    from PySide6 import QtTest
+
+    from ewald.gui import notebook_panel
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(pipe)
+    w.resize(1400, 900)
+    w.show()
+    app.processEvents()
+    view = w.panel.view
+    nb = view.notebook
+    a = view.add_cell("code", "a = 1")
+    b = view.add_cell("code", "b = 2")
+    c = view.add_cell("code", "c = 3")
+    key = lambda cell, k, mods=QtCore.Qt.NoModifier: QtTest.QTest.keyClick(view.widget_for(cell), k, mods)  # noqa: E731
+    sources = lambda: [x.source for x in nb.cells][-3:]  # noqa: E731
+
+    view.select(a)
+    key(a, QtCore.Qt.Key_Down, QtCore.Qt.ShiftModifier)
+    assert view.current is b and view.selected_cells == [a, b]
+    assert view.widget_for(a).property("selected") and not view.widget_for(c).property("selected")
+    key(b, QtCore.Qt.Key_C)
+    assert [e[2] for e in notebook_panel.CELL_CLIPBOARD] == ["a = 1", "b = 2"]
+    assert QtWidgets.QApplication.clipboard().text() == "a = 1\n\nb = 2\n"
+    view.select(c)
+    key(c, QtCore.Qt.Key_V)
+    assert sources() == ["a = 1", "b = 2", "c = 3", "a = 1", "b = 2"][-3:] and len(nb.cells) >= 5
+    assert [x.source for x in view.selected_cells] == ["a = 1", "b = 2"]   # the pasted cells
+    assert view.history.undo_label == "Paste cells"
+
+    view.select(c)
+    key(c, QtCore.Qt.Key_D)
+    key(c, QtCore.Qt.Key_D)                                   # DD
+    assert c not in nb.cells and view.history.undo_label == "Delete cell"
+    n = len(nb.cells)
+    key(view.current, QtCore.Qt.Key_Z)
+    assert len(nb.cells) == n + 1 and view.current.source == "c = 3"
+    c = view.current
+
+    key(c, QtCore.Qt.Key_K)                                   # K: the cell above
+    assert view.current is b and view.anchor is b
+    key(b, QtCore.Qt.Key_X)                                   # X: cut
+    assert b not in nb.cells and notebook_panel.CELL_CLIPBOARD[0][2] == "b = 2"
+    view.select(a)
+    key(a, QtCore.Qt.Key_V, QtCore.Qt.ShiftModifier)          # Shift+V: paste above
+    i = nb.cells.index(a)
+    assert nb.cells[i - 1].source == "b = 2"
+
+    view.select(a)
+    key(a, QtCore.Qt.Key_M, QtCore.Qt.ShiftModifier)          # Shift+M: merge with the cell below
+    assert view.current.source == "a = 1\n\nc = 3" and view.history.undo_label == "Merge cells"
+
+    first = view.current
+    view.select(nb.cells[nb.cells.index(first) - 1])
+    view.select(first, extend=True)                           # two cells selected
+    key(first, QtCore.Qt.Key_Return, QtCore.Qt.ControlModifier)
+    assert all(x.state == "ok" and x.count for x in view.selected_cells)
+    assert nb.namespace["c"] == 3 and nb.namespace["b"] == 2
+
+    view.select(first)                                        # the ⋯ menu's Move up moves the selection
+    view.select(nb.cells[nb.cells.index(first) - 1], extend=True)
+    block = view.selected_cells
+    k = nb.cells.index(block[0])
+    view._cell_action(block[0], "up")
+    assert nb.cells[k - 1:k + 1] == block
+    w.close()
+
+
 def test_cell_type_switches_and_add_bar_like_jupyter(app, pipe):
     """+ Code, + Text, + Step (with Plugins), + View under the cells; Esc then M / Y turns a cell
     into text / code, A / B insert; the menu and the cell's ⋯ menu do the same; Ask AI about this cell."""
@@ -2998,7 +3130,7 @@ def test_cell_type_switches_and_add_bar_like_jupyter(app, pipe):
     menu = cw.findChild(QtWidgets.QToolButton, "cellMenu").menu()
     names = [a.text() for a in menu.actions()]
     assert "Ask AI about this cell" in names and names.index("Cell type") < names.index("Ask AI about this cell")
-    assert names[-1] == "Delete"
+    assert names[-1] == "Delete\tD, D"
     next(a for a in menu.actions() if a.text() == "Ask AI about this cell").trigger()
     app.processEvents()
     assert w.ask_dock.isVisible() and "# Title" in w.ask_panel.input.toPlainText()
