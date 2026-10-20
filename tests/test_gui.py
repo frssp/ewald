@@ -6,7 +6,7 @@ import pytest
 pytest.importorskip("PySide6")
 # the main-window test needs a real X server (OpenGL widgets); everything else runs offscreen
 os.environ.setdefault("QT_QPA_PLATFORM", "xcb" if os.environ.get("DISPLAY") else "offscreen")
-from PySide6 import QtCore, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 from ewald import Pipeline, StaticSource  # noqa: E402
 from ewald import modifiers as mods  # noqa: E402
@@ -2203,6 +2203,9 @@ def test_notebook_cells_sit_at_the_top(app):
     w.show()
     for _ in range(3):
         app.processEvents()
+    QtCore.QThread.msleep(100)  # let wrapped editors settle their height for the final width
+    for _ in range(5):
+        app.processEvents()
     view = w.panel.view
     for cell in view.widgets:                               # spare height goes below the cells
         assert cell.height() <= cell.sizeHint().height() + 2
@@ -2231,8 +2234,9 @@ def test_panel_headers_line_up_and_buttons_use_icons(app, pipe):
     app.processEvents()
     bars = [d.titleBarWidget() for d in w.findChildren(QtWidgets.QDockWidget) if d.isVisible()]
     nb_bar = w.notebook_dock.titleBarWidget()
-    assert nb_bar.height() == 0 and nb_bar.merged  # the notebook tabs carry its fold and float buttons
-    heads = [b for b in bars if b is not nb_bar] + [w.panel.tabs.tabBar()]
+    tabs = w.panel.tabs
+    assert tabs.row.parent() is nb_bar and not nb_bar.title.isVisible()  # the tab row is the title bar
+    heads = bars + [tabs.tabBar()]
     heads += [g.head for g in w.workbench.findChildren(QtWidgets.QWidget) if hasattr(g, "head") and g.isVisible()]
     assert len(heads) >= 3
     assert {h.height() for h in heads} <= {header.height(), header.height() + 1}
@@ -2241,12 +2245,25 @@ def test_panel_headers_line_up_and_buttons_use_icons(app, pipe):
     for b in w.findChildren(QtWidgets.QAbstractButton):
         symbols = [c for c in b.text() if unicodedata.category(c) == "So" or 0x2190 <= ord(c) <= 0x2BFF]
         assert not symbols, (b.objectName(), b.toolTip(), b.text())
-    nb_bar.merged[0].click()  # fold from the tab row: the strip with the name comes back
+    bar = tabs.tabBar()
+    empty = QtCore.QPointF(bar.width() - 5, bar.height() / 2)  # right of the last tab
+    assert bar.tabAt(empty.toPoint()) < 0
+    press = QtGui.QMouseEvent(QtCore.QEvent.MouseButtonPress, empty, bar.mapToGlobal(empty),
+                              QtCore.Qt.LeftButton, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier)
+    bar.mousePressEvent(press)
+    assert not press.isAccepted()  # left to the dock title bar, which starts the panel drag
+    w.panel.new_notebook()
+    first, second = tabs.widget(0), tabs.widget(1)
+    bar.moveTab(1, 0)  # reordering tabs reorders the pages with them
+    assert tabs.widget(0) is second and tabs.currentWidget() is tabs.widget(bar.currentIndex())
+    tabs.setCurrentWidget(first)
+    assert tabs.currentWidget() is first and tabs.indexOf(first) == 1
+    nb_bar.fold.click()  # folding leaves the strip with the name
     app.processEvents()
-    assert nb_bar.collapsed and nb_bar.height() > 0 and nb_bar.vtitle.isVisible()
+    assert nb_bar.collapsed and nb_bar.vtitle.isVisible() and not tabs.row.isVisible()
     nb_bar.toggle()
     app.processEvents()
-    assert not nb_bar.collapsed and nb_bar.height() == 0
+    assert not nb_bar.collapsed and tabs.row.isVisible() and not nb_bar.vtitle.isVisible()
     tl = w.timeline
     tl.play.setChecked(True)
     assert tl.play.property("ewald_icon") == "pause"
