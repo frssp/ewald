@@ -14,17 +14,21 @@ from .code_editor import CodeEditor, mono_font
 
 
 class OutputArea(QtWidgets.QWidget):
-    """Printed text, values, errors and images under a code cell."""
+    """Printed text, values, errors and images under a code cell. An image ``show(pipe, ...)``
+    drew is a live plot here (``live``): it follows the frame and is linked to the 3D view."""
 
     MAX_IMAGE_HEIGHT = 360   # a figure or snapshot never takes the whole panel
+    plotCreated = QtCore.Signal(object)   # a live PlotsPanel: the main window links it
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, live: bool = True):
         super().__init__(parent)
         self.setObjectName("cellOutput")
         self.lay = QtWidgets.QVBoxLayout(self)
         self.lay.setContentsMargins(2, 2, 0, 0)
         self.lay.setSpacing(4)
+        self.live = live
         self._images = []    # (label, full-size pixmap): rescaled when the cell's width changes
+        self.panels = []     # (PlotsPanel, show() arguments) of the live plots
 
     def set_outputs(self, outputs):
         outputs = list(outputs)
@@ -37,9 +41,13 @@ class OutputArea(QtWidgets.QWidget):
             if w is not None:
                 w.hide()          # gone now, not at the next event loop pass (no stale copy drawn)
                 w.deleteLater()
-        self._images = []
+        self._images, self.panels = [], []
         for out in outputs:
-            if out.kind == "image":
+            if out.kind == "image" and out.view is not None and self.live:
+                w = live_plot()
+                self.panels.append((w, out.view))
+                self.plotCreated.emit(w)
+            elif out.kind == "image":
                 pix = QtGui.QPixmap()
                 pix.loadFromData(out.data, "PNG")
                 w = QtWidgets.QLabel(objectName="cellImage")
@@ -229,6 +237,39 @@ class _DragHandle(QtWidgets.QLabel):
         drag.exec(QtCore.Qt.MoveAction)
 
 
+def live_plot():
+    """The live plot of a view cell or a ``show(pipe, ...)`` output."""
+    from .plots import PlotsPanel
+
+    p = PlotsPanel()
+    p.setMinimumHeight(220)
+    p.setMaximumHeight(320)
+    p.compact()
+    return p
+
+
+def apply_view_args(p, args: dict, data, pipeline=None, applied=None):
+    """Give plot ``p`` the current frame and select what ``show(...)``'s ``args`` name; the
+    range (``xlim``/``ylim``) only when it differs from ``applied``, the range applied last.
+    Returns the range applied."""
+    p.pipeline = pipeline
+    p.set_data(data)
+    if args.get("histogram"):
+        p.hist.setCurrentText(args["histogram"])
+    elif args.get("table"):
+        p.hist.setCurrentText("")
+        p.table.setCurrentText(args["table"])
+    if args.get("y"):
+        p.column.setCurrentText(args["y"])
+    view = tuple(None if args.get(k) is None else tuple(args[k]) for k in ("xlim", "ylim"))
+    if view != p.view_limits() and view != applied:
+        if view == (None, None):
+            p.reset_view(emit=False)
+        else:
+            p.set_view(*view, emit=False)
+    return view
+
+
 class CellWidget(QtWidgets.QFrame):
     """One cell: gutter (run button, counter) and the code, markdown or step body."""
 
@@ -236,6 +277,7 @@ class CellWidget(QtWidgets.QFrame):
     selected = QtCore.Signal(object)
     edited = QtCore.Signal(object)               # a step's form changed its modifier
     actionRequested = QtCore.Signal(object, str)  # cell, 'up' | 'down' | 'delete' | 'code' | 'below'
+    plotCreated = QtCore.Signal(object)          # a live plot of a show(pipe, ...) output
 
     def __init__(self, notebook: Notebook, cell: Cell, parent=None):
         super().__init__(parent)
@@ -372,8 +414,23 @@ class CellWidget(QtWidgets.QFrame):
             row.addWidget(self._menu_button(), 0, QtCore.Qt.AlignTop)
         self.body.addLayout(row)
         self.outputs = OutputArea()
+        self.outputs.plotCreated.connect(self.plotCreated.emit)
         self.body.addWidget(self.outputs)
         self.outputs.set_outputs(self.cell.outputs)
+
+    def panels(self) -> list:
+        """The live plots in this cell: a view cell's, and those of its ``show(pipe, ...)`` outputs."""
+        live = [p for p, _ in self.outputs.panels] if isinstance(self.outputs, OutputArea) else []
+        return ([self.plot_panel] if self.plot_panel is not None else []) + live
+
+    def set_live_data(self, data, pipeline=None, force: bool = False):
+        """The current frame for the live plots of ``show(pipe, ...)`` outputs (``force``: a new
+        frame; else only plots that have none yet)."""
+        if not isinstance(self.outputs, OutputArea):
+            return
+        for p, args in self.outputs.panels:
+            if force or p.data is None:
+                p._applied = apply_view_args(p, args, data, pipeline, getattr(p, "_applied", None))
 
     def _source_edited(self):
         text = self.editor.toPlainText()
@@ -482,8 +539,6 @@ class CellWidget(QtWidgets.QFrame):
             self.code_button.setChecked(True)
 
     def _build_view(self):
-        from .plots import PlotsPanel
-
         head = QtWidgets.QHBoxLayout()
         head.addWidget(QtWidgets.QLabel("View", objectName="stepTitle"))
         head.addWidget(QtWidgets.QLabel("linked to the 3D view", objectName="muted"))
@@ -499,40 +554,21 @@ class CellWidget(QtWidgets.QFrame):
         self.editor.runRequested.connect(lambda adv: self.runRequested.emit(self.cell, adv))
         self.editor.focused.connect(lambda: self.selected.emit(self.cell))
         self.body.addWidget(self.editor)
-        self.plot_panel = PlotsPanel()
-        self.plot_panel.setMinimumHeight(220)
-        self.plot_panel.setMaximumHeight(320)
-        self.plot_panel.compact()
+        self.plot_panel = live_plot()
         for combo in (self.plot_panel.table, self.plot_panel.column, self.plot_panel.hist):
             combo.currentTextChanged.connect(self._view_changed)
         self.plot_panel.viewChanged.connect(self._view_changed)
         self.body.addWidget(self.plot_panel)
-        self.outputs = OutputArea()  # errors only: the plot replaces the image show() draws
+        self.outputs = OutputArea(live=False)  # errors (and a saved image until run): the plot replaces it
         self.body.addWidget(self.outputs)
         self._applying = False
 
     def set_view_data(self, data, pipeline=None):
         """Give a view cell's plot the current frame and select what its ``show(...)`` names."""
-        p = self.plot_panel
-        p.pipeline = pipeline
-        args = self.cell.view or {}
         self._applying = True
         try:
-            p.set_data(data)
-            if args.get("histogram"):
-                p.hist.setCurrentText(args["histogram"])
-            elif args.get("table"):
-                p.hist.setCurrentText("")
-                p.table.setCurrentText(args["table"])
-            if args.get("y"):
-                p.column.setCurrentText(args["y"])
-            view = (args.get("xlim"), args.get("ylim"))
-            if view != p.view_limits() and view != getattr(self, "_applied_view", None):
-                if view == (None, None):
-                    p.reset_view(emit=False)
-                else:
-                    p.set_view(*view, emit=False)
-            self._applied_view = view
+            self._applied_view = apply_view_args(self.plot_panel, self.cell.view or {}, data, pipeline,
+                                                 getattr(self, "_applied_view", None))
         finally:
             self._applying = False
 

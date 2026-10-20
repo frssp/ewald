@@ -52,10 +52,13 @@ _MARK = re.compile(r"^# %%(.*)$")
 @dataclass
 class Output:
     """One result shown under a cell: ``kind`` is 'text' (stdout), 'error', 'value'
-    (repr of the last expression) or 'image' (PNG bytes: a matplotlib figure or a rendered image)."""
+    (repr of the last expression) or 'image' (PNG bytes: a matplotlib figure or a rendered image).
+    ``show(pipe, ...)`` of the notebook's pipeline makes an image with ``view`` set: the GUI shows
+    it as a live plot that follows the frame, everything else (files, Jupyter) as the image."""
 
     kind: str
     data: object
+    view: dict | None = None   # an image drawn by ``show(pipe, ...)``: its arguments, for a live plot
 
 
 @dataclass
@@ -369,7 +372,7 @@ class Notebook:
             c.shadow = _shadow_step(c) if c.is_step and c.state == "ok" and len(c.steps) == 1 else None
             if c.shadow is not None:
                 _apply_summary(c.shadow, c.steps[0])
-            c.outputs = [Output(o["kind"], base64.b64decode(o["png"]) if "png" in o else o["text"])
+            c.outputs = [Output(o["kind"], base64.b64decode(o["png"]) if "png" in o else o["text"], o.get("view"))
                          for o in rc["outputs"]]
         for cid, state in r["states"].items():
             if cid in by_id:
@@ -510,7 +513,7 @@ class Notebook:
             cell.outputs.append(Output("text", out.getvalue()))
         if not ok:
             cell.outputs.append(Output("error", error))
-        cell.outputs.extend(Output("image", png) for png in _new_figures(figures_before))
+        cell.outputs.extend(Output("image", png, view) for png, view in _new_figures(figures_before, self.pipeline))
         if ok and value is not None:
             cell.outputs.append(_display(value))
         return ok
@@ -1065,7 +1068,9 @@ def _patch_show():
     return restore
 
 
-def _new_figures(before: set) -> list:
+def _new_figures(before: set, pipeline=None) -> list:
+    """``(png, view)`` of each figure a cell made; ``view`` is the arguments of a ``show()`` of
+    ``pipeline`` (the notebook's), None for any other figure."""
     plt = sys.modules.get("matplotlib.pyplot")
     if plt is None:
         return []
@@ -1077,7 +1082,8 @@ def _new_figures(before: set) -> list:
         buf = io.BytesIO()
         fig.savefig(buf, format="png", dpi="figure", bbox_inches="tight")
         plt.close(fig)
-        out.append(buf.getvalue())
+        source, args = getattr(fig, "_ewald_view", (None, None))
+        out.append((buf.getvalue(), args if pipeline is not None and source is pipeline else None))
     return out
 
 

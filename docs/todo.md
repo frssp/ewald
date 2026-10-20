@@ -94,6 +94,13 @@ GUI
   camera sideways instead of an off-axis projection (exact at the focal distance only); the
   Overlay elements and text label are not previewed inside the frame; Claude's `set_view` can set
   `region` but no tool tells it the frame on screen.
+- Python steps per frame vs once (`@each_frame` / `@all_frames`, landed): cell markers
+  `# %% [each frame]` / `# %% [all frames]` with a header toggle, where the cell body is the step
+  (`data`, `frames` given), proposed to the owner 2026-10-20 and not decided yet; a GUI badge on
+  cells whose steps are `all_frames`; `all_frames` start/stop/step arguments.
+- Live `show(pipe, ...)` outside a view cell: zooming does not write `xlim=`/`ylim=` back (only a
+  cell that is just the call does), and `frame=` is ignored by the live plot (it follows the
+  current frame, as view cells do).
 - Notebook kernels (`ewald/kernel.py`): step forms for steps a kernel cell adds with code the
   app cannot import (a class only the kernel's Python has stays as code).
 - Notebook kernel on the cluster (plan, owner's pick 2026-10-20; not started): run a notebook
