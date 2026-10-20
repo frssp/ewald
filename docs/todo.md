@@ -246,7 +246,7 @@ Volumetric data
 Formats
 
 - NEB: VTST's `neb.dat`/`spline.dat` and the `NEB: projections` lines of VTST OUTCARs (the
-  profile is computed from positions, energies and forces now); NEB folders over SSH; an
+  profile is computed from positions, energies and forces now); an
   `images=` option on the reader for ASE NEB trajectories, so the band history needs no
   modifier parameter; dimer and string-method outputs. A NEB folder opened from File › Open
   (a directory picker there) instead of File › Load NEB folder or a drop.

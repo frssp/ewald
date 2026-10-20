@@ -28,6 +28,7 @@ import re
 import numpy as np
 
 from ..data import DataCollection
+from . import remote
 from .base import FrameReader, IncompleteFileError, open_binary
 
 
@@ -35,26 +36,45 @@ def _natural_key(path: str):
     return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", path)]
 
 
+# NEB folders may be local or remote (host:/path, read over SFTP); these helpers do both
+def _entries(folder: str) -> dict[str, tuple[bool, int]]:
+    """``{name: (is_dir, size)}`` of a local or remote folder (empty if it is not one)."""
+    try:
+        if remote.is_remote(folder):
+            return {name: (is_dir, size) for name, is_dir, size, _ in remote.listdir(folder)}
+        with os.scandir(folder) as it:
+            return {e.name: (e.is_dir(), 0 if e.is_dir() else e.stat().st_size) for e in it}
+    except OSError:
+        return {}
+
+
+def _join(folder: str, name: str) -> str:
+    return folder.rstrip("/") + "/" + name if remote.is_remote(folder) else os.path.join(folder, name)
+
+
+def _dirname(path: str) -> str:
+    return path.rsplit("/", 1)[0] if remote.is_remote(path) else os.path.dirname(path)
+
+
 def vasp_neb_images(folder) -> list[str]:
     """Image folders ``00 .. NN`` of a VASP NEB run (empty if ``folder`` is not one)."""
     folder = str(folder)
-    if not os.path.isdir(folder):
-        return []
-    names = sorted(n for n in os.listdir(folder) if n.isdigit() and os.path.isdir(os.path.join(folder, n)))
+    names = sorted(n for n, (is_dir, _) in _entries(folder).items() if n.isdigit() and is_dir)
     if len(names) < 3 or [int(n) for n in names] != list(range(len(names))):
         return []
-    dirs = [os.path.join(folder, n) for n in names]
+    dirs = [_join(folder, n) for n in names]
     if not all(_image_file(d) for d in dirs):
         return []
     return dirs
 
 
-def _image_file(folder: str) -> str | None:
-    for name in ("OUTCAR", "CONTCAR", "POSCAR"):
+def _image_file(folder: str, names=("OUTCAR", "CONTCAR", "POSCAR")) -> str | None:
+    entries = _entries(folder)
+    for name in names:
         for cand in (name, name + ".gz", name + ".xz", name + ".bz2"):
-            p = os.path.join(folder, cand)
-            if os.path.isfile(p) and os.path.getsize(p) > 0:
-                return p
+            is_dir, size = entries.get(cand, (True, 0))
+            if not is_dir and size > 0:
+                return _join(folder, cand)
     return None
 
 
@@ -63,15 +83,16 @@ def lammps_neb_images(folder) -> tuple[list[str], str | None]:
     NEB table and one file per replica named with the replica number (``dump.neb.1`` ..
     ``dump.neb.N``, any prefix/suffix), as many as the table has images."""
     folder = str(folder)
-    log = os.path.join(folder, "log.lammps")
-    if not os.path.isdir(folder) or not os.path.isfile(log) or not _is_lammps_neb_log(log):
+    entries = _entries(folder)
+    log = _join(folder, "log.lammps")
+    if entries.get("log.lammps", (True,))[0] or not _is_lammps_neb_log(log):
         return [], None
     n = len(read_lammps_neb_log(log)["Energy"])
     groups: dict[tuple[str, str], dict[int, str]] = {}
-    for name in os.listdir(folder):
+    for name, (is_dir, _) in entries.items():
         m = re.fullmatch(r"(.*?)(\d+)((?:\.[A-Za-z]\w*)*)", name)
-        if m and not name.startswith(("log.lammps", "screen")) and os.path.isfile(os.path.join(folder, name)):
-            groups.setdefault((m.group(1), m.group(3)), {})[int(m.group(2))] = os.path.join(folder, name)
+        if m and not name.startswith(("log.lammps", "screen")) and not is_dir:
+            groups.setdefault((m.group(1), m.group(3)), {})[int(m.group(2))] = _join(folder, name)
     from .lammps_dump import is_lammps_dump
 
     for files in groups.values():
@@ -137,6 +158,13 @@ def _is_lammps_neb_log(path) -> bool:
         return False
 
 
+def _open(path: str, **kwargs) -> FrameReader:
+    """Reader of one image file; a remote OUTCAR or dump is read in place, others are fetched."""
+    from . import _readable_path, open_reader
+
+    return open_reader(_readable_path(path, None), **kwargs)
+
+
 class NebReader(FrameReader):
     """One frame per NEB image; see the module docstring. ``frame`` picks the frame of
     each image file (default: the last one), ``energies`` overrides the image energies
@@ -153,14 +181,15 @@ class NebReader(FrameReader):
         if dirs:
             self.files = [_image_file(d) for d in dirs]
             for i in (0, len(dirs) - 1):
-                poscar = os.path.join(dirs[i], "POSCAR")
-                if os.path.basename(self.files[i]).startswith("OUTCAR") and os.path.isfile(poscar):
+                poscar = _image_file(dirs[i], ("POSCAR",))
+                if self.files[i].rsplit("/", 1)[-1].startswith("OUTCAR") and poscar:
                     self._endpoint_poscars[i] = poscar
         elif lammps:
             self.files, log = lammps, log or found_log
         else:
-            self.files = sorted(glob.glob(self.path), key=_natural_key)
-            if os.path.isdir(self.path):
+            found = remote.glob(self.path) if remote.is_remote(self.path) else glob.glob(self.path)
+            self.files = sorted(found, key=_natural_key)
+            if _entries(self.path):
                 raise ValueError(f"{path}: not a NEB folder (needs image folders 00, 01, ... with "
                                  f"OUTCAR, CONTCAR or POSCAR, or a LAMMPS NEB log.lammps with one dump "
                                  f"per replica)")
@@ -173,14 +202,16 @@ class NebReader(FrameReader):
             self.energies = np.asarray(energies, dtype=float)
         elif not dirs:
             if log is None:
-                cand = os.path.join(os.path.dirname(os.path.abspath(self.files[0])), "log.lammps")
-                log = cand if os.path.isfile(cand) and _is_lammps_neb_log(cand) else None
+                first = self.files[0] if remote.is_remote(self.files[0]) else os.path.abspath(self.files[0])
+                cand = _join(_dirname(first), "log.lammps")
+                log = cand if _is_lammps_neb_log(cand) else None
             if log is not None:
                 self.log = log
                 self.energies = read_lammps_neb_log(log)["Energy"]
         if self.energies is not None and len(self.energies) != len(self.files):
             raise ValueError(f"{len(self.energies)} energies for {len(self.files)} NEB images")
         self._readers: dict[int, FrameReader] = {}
+        self._fallback: set[int] = set()  # images shown from CONTCAR/POSCAR until the OUTCAR has a step
 
     def __len__(self):
         return len(self.files)
@@ -188,21 +219,17 @@ class NebReader(FrameReader):
     def _reader(self, i: int) -> FrameReader:
         r = self._readers.get(i)
         if r is None:
-            from . import open_reader
-
             try:
-                r = open_reader(self.files[i], **self.kwargs)
+                r = _open(self.files[i], **self.kwargs)
             except IncompleteFileError:
                 # an image whose OUTCAR has no finished ionic step yet: its CONTCAR or POSCAR
-                folder = os.path.dirname(self.files[i])
-                start = next((os.path.join(folder, n) for n in ("CONTCAR", "POSCAR")
-                              if os.path.isfile(os.path.join(folder, n)) and os.path.getsize(os.path.join(folder, n))),
-                             None)
+                start = _image_file(_dirname(self.files[i]), ("CONTCAR", "POSCAR"))
                 if start is None:
                     raise
-                r = open_reader(start)
-                r.incomplete = f"{os.path.basename(self.files[i])} has no finished ionic step yet, " \
-                               f"{os.path.basename(start)} shown"
+                r = _open(start)
+                r.incomplete = f"{self.files[i].rsplit('/', 1)[-1]} has no finished ionic step yet, " \
+                               f"{start.rsplit('/', 1)[-1]} shown"
+                self._fallback.add(i)
             self._readers[i] = r
         return r
 
@@ -217,13 +244,12 @@ class NebReader(FrameReader):
         """A running NEB: images whose files grew (or that can now be read) are read again."""
         changed = []
         for i, r in list(self._readers.items()):
-            if os.path.abspath(self.files[i]) != os.path.abspath(getattr(r, "path", self.files[i])):
-                from . import open_reader
-
+            if i in self._fallback:
                 try:  # shown from CONTCAR/POSCAR: has the OUTCAR finished a step now?
-                    self._readers[i] = open_reader(self.files[i], **self.kwargs)
+                    self._readers[i] = _open(self.files[i], **self.kwargs)
                 except (OSError, ValueError):
                     continue
+                self._fallback.discard(i)
                 changed.append(i)
             elif r.refresh() is not None:
                 changed.append(i)
@@ -232,9 +258,7 @@ class NebReader(FrameReader):
     def _endpoint(self, index: int, outcar: DataCollection) -> DataCollection:
         """The POSCAR of endpoint ``index`` with the energies of its OUTCAR, and the OUTCAR's
         forces too when its atoms are the POSCAR's."""
-        from . import open_reader
-
-        data = open_reader(self._endpoint_poscars[index]).read(0)
+        data = _open(self._endpoint_poscars[index]).read(0)
         if data.count == outcar.count:
             frac = data.cell.to_fractional(np.asarray(outcar.positions)) - data.cell.to_fractional(np.asarray(data.positions))
             if "Force" in outcar and np.abs((frac - np.round(frac)) @ data.cell.matrix).max() < 1e-3:
