@@ -157,6 +157,8 @@ class RemoteFileDialog(QtWidgets.QDialog):
             self.status.setText("Enter a host.")
             return False
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        self.status.setText(f"Connecting to {host}…")
+        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
         try:
             if not path:
                 path = remote.home(self._location("."))

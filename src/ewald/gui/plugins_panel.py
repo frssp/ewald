@@ -161,6 +161,7 @@ class PluginsPanel(QtWidgets.QWidget):
         self.items: list = []
         self.current = None
         self._loader = None
+        self._loading = False
         self._process = None
         self._pip_key = None
         self._workers: list = []
@@ -222,11 +223,12 @@ class PluginsPanel(QtWidgets.QWidget):
 
     def refresh(self):
         self.items = pc.installed()
-        self._fill()
         if self._loader is None or not self._loader.isRunning():
+            self._loading = True
             self._loader = _CatalogLoader(self.catalog_urls(), self)
             self._loader.loaded.connect(self._catalog_loaded)
             self._loader.start()
+        self._fill()
 
     def wait(self, ms: int = 10000):
         """Block until the catalogs are read and running installs are done (tests, scripts)."""
@@ -257,8 +259,14 @@ class PluginsPanel(QtWidgets.QWidget):
         self.cancel_button.setVisible(self._process is not None)
         self._fill()
 
+    @property
+    def loading(self) -> bool:
+        """The catalogs are being read."""
+        return self._loading
+
     def _catalog_loaded(self, entries, errors):
         self.entries, self.catalog_errors = entries, errors
+        self._loading = False
         self._fill()
 
     def updates(self) -> list:
@@ -299,6 +307,8 @@ class PluginsPanel(QtWidgets.QWidget):
         if not installed:
             self.list_layout.addWidget(QtWidgets.QLabel("No plugins installed yet.", objectName="muted"))
         self._section(f"AVAILABLE  {len(available)}")
+        if self.loading:                          # the catalogs are still being read (URLs)
+            self.list_layout.addWidget(BusyLabel("Loading plugin catalogs…"))
         for e in available:
             self._row(e, False)
         for url, err in self.catalog_errors.items():
@@ -309,7 +319,7 @@ class PluginsPanel(QtWidgets.QWidget):
                                                    if private else "."), objectName="muted", wordWrap=True))
             else:
                 self.list_layout.addWidget(QtWidgets.QLabel(f"{url}: {err}", objectName="cellError", wordWrap=True))
-        if not available and not any(not pc.is_missing(e) for e in self.catalog_errors.values()):
+        if not available and not self.loading and not any(not pc.is_missing(e) for e in self.catalog_errors.values()):
             self.list_layout.addWidget(QtWidgets.QLabel(
                 "Nothing more to install here. Add plugin catalogs in Preferences › Python.",
                 objectName="muted", wordWrap=True))

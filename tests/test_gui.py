@@ -625,7 +625,11 @@ def test_main_window_smoke(app, pipe, tmp_path):
     w.render_page.preset.setCurrentText("Custom (px)")
     w.render_page.width.setValue(320)
     w.render_page.height.setValue(240)
-    w.render_from_page()
+    w.render_from_page()                    # the ray tracer: on a worker thread, a spinner meanwhile
+    assert w.rendering and not w.render_page.render_button.isEnabled()
+    assert not w.render_page.busy_label.isHidden() and w.render_page.busy_label.text() == "Ray tracing…"
+    w.wait_render()
+    assert not w.rendering and w.render_page.render_button.isEnabled() and w.render_page.busy_label.isHidden()
     assert os.path.getsize(tmp_path / "x.png") > 1000
     code = w.render_page.code.toPlainText()
     assert "CoordinationAnalysis(cutoff=3.0" in code and "camera=" in code
@@ -900,6 +904,7 @@ def test_session_save_load_and_publication_output(app, pipe, tmp_path):
     page.text.setText("frame [Frame]")
     page.output.setText(str(tmp_path / "fig.svg"))
     w.render_from_page()
+    w.wait_render()
     assert "frame 0" in (tmp_path / "fig.svg").read_text()
     assert not page.preview.pixmap().isNull()
     page.movie_format.setCurrentText("GIF")
@@ -1428,6 +1433,7 @@ def test_theme_menu_and_render_page_overlays(app, pipe, tmp_path):
     page.height.setValue(150)
     page.output.setText(str(tmp_path / "fig.svg"))
     w.render_from_page()
+    w.wait_render()
     svg = (tmp_path / "fig.svg").read_text()
     assert all(f"<!-- {c} -->" in svg for c in "abc")             # tripod labels drawn as text
     path = w.save_session(str(tmp_path / "s.ewald"))
@@ -2224,7 +2230,11 @@ def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app,
     panel = plugins_panel.PluginsPanel(settings=s)
     counts = []
     panel.updatesChanged.connect(counts.append)
+    assert panel.loading                                                 # a spinner, not "Nothing more to install"
+    labels = [b.text() for b in panel.list_widget.findChildren(plugins_panel.BusyLabel)]
+    assert labels == ["Loading plugin catalogs…"]
     panel.wait()
+    assert not panel.loading
     assert counts == [1] and [(i.id, e.version) for i, e in panel.updates()] == [("up_shift", "0.3")]
     panel.search.setText("@updates")                                     # only what has an update
     app.sendPostedEvents(None, plugins_panel.QtCore.QEvent.DeferredDelete)
@@ -2980,6 +2990,7 @@ def test_render_page_frame_on_the_3d_view(app, pipe, tmp_path):
     page.quality.setCurrentText("Draft")
     page.set_renderer("opengl")
     w.render_from_page()
+    w.wait_render()
     assert os.path.getsize(tmp_path / "f.png") > 1000 and page.left_stack.currentIndex() == 1
     assert not frame.visible                                         # the picture is shown, not the view
     assert "region=" in page.code.toPlainText()

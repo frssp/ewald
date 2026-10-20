@@ -25,6 +25,7 @@ from typing import Callable
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .busy import BusyLabel
 from .icons import icon
 from .code_editor import CodeEditor
 from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea
@@ -259,7 +260,8 @@ class Message(QtWidgets.QWidget):
         self.steps = QtWidgets.QVBoxLayout()
         self.steps.setSpacing(2)
         self.body.addLayout(self.steps)
-        self.status = QtWidgets.QLabel("Thinking…", objectName="chatThinking")
+        self.status = BusyLabel("Thinking…", 14)
+        self.status.label.setObjectName("chatThinking")
         self.body.addWidget(self.status)
         row.addLayout(self.body, 1)
         self.insert = insert
