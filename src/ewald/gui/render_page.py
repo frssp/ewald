@@ -54,7 +54,7 @@ class RenderPage(QtWidgets.QWidget):
         self.quality = QtWidgets.QComboBox()
         self.quality.addItems(QUALITIES)
         self.quality.setToolTip("Draft: half size, no AO or shadows (fast previews). Standard: balanced. "
-                                "Publication: 16 rays/pixel, 32 AO rays, shadows, SSAO, fine spheres. "
+                                "Publication: 16 rays/pixel, 8 AO rays per hit, shadows, SSAO, fine spheres. "
                                 "Custom: the values below.")
         form.addRow("Quality", self.quality)
         self.samples = QtWidgets.QSpinBox(minimum=1, maximum=256, value=8, suffix=" rays/pixel")

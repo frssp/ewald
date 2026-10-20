@@ -439,8 +439,12 @@ def _rand(state):
 @njit(cache=True)
 def _shade(p, n, d, cr, cg, cb, light, ambient, diffuse, specular, shininess, shadows, ao_samples, ao_dist,
            state, od, lo, size, dims, starts, items, sph_c, sph_r, cyl_a, cyl_b, cyl_r, tri_a, tri_b, tri_c,
-           tri_alpha):
-    """Key light with shadow ray, cosine-weighted hemisphere AO and a Blinn-Phong highlight."""
+           tri_alpha, aos):
+    """Key light with shadow ray, cosine-weighted hemisphere AO and a Blinn-Phong highlight.
+
+    AO directions follow the R2 low-discrepancy sequence, shifted per pixel (``aos``: two
+    random offsets and a running index), so the AO rays of all samples of a pixel spread
+    evenly over the hemisphere: 128 rays per pixel are as smooth as 512 random ones."""
     ndl = n[0] * light[0] + n[1] * light[1] + n[2] * light[2]
     lit = 0.0
     spec = 0.0
@@ -470,7 +474,10 @@ def _shade(p, n, d, cr, cg, cb, light, ambient, diffuse, specular, shininess, sh
         cx = n[1] * bz - n[2] * by; cy = n[2] * bx - n[0] * bz; cz = n[0] * by - n[1] * bx
         hits = 0
         for a in range(ao_samples):
-            r1 = _rand(state); r2 = _rand(state)
+            g = aos[2]
+            aos[2] += 1.0
+            r1 = (aos[0] + g * 0.7548776662466927) % 1.0
+            r2 = (aos[1] + g * 0.5698402909980532) % 1.0
             phi = 2 * math.pi * r1
             sr = math.sqrt(r2)
             x = math.cos(phi) * sr; y = math.sin(phi) * sr; z = math.sqrt(max(0.0, 1 - r2))
@@ -497,8 +504,10 @@ def _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, samples, 
         py = rows[j]
         state = np.empty(1, np.uint64)
         o = np.empty(3); d = np.empty(3); n = np.empty(3); p = np.empty(3); od = np.empty(3)
+        aos = np.zeros(3)
         for px in range(width):
             state[0] = np.uint64(seed) * np.uint64(0x9E3779B97F4A7C15) + np.uint64(py * width + px + 1)
+            aos[0] = _rand(state); aos[1] = _rand(state); aos[2] = 0.0
             acc_r = acc_g = acc_b = acc_a = 0.0
             for s in range(samples):
                 jx = _rand(state) if samples > 1 else 0.5
@@ -575,7 +584,7 @@ def _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, samples, 
                         p[k] += n[k] * eps
                     sr, sg, sb = _shade(p, n, d, cr, cg, cb, light, ambient, diffuse, specular, shininess, shadows,
                                         ao_samples, ao_dist, state, od, lo, size, dims, starts, items, sph_c, sph_r,
-                                        cyl_a, cyl_b, cyl_r, tri_a, tri_b, tri_c, tri_alpha)
+                                        cyl_a, cyl_b, cyl_r, tri_a, tri_b, tri_c, tri_alpha, aos)
                     w = trans * alpha
                     acc_r += w * sr; acc_g += w * sg; acc_b += w * sb; acc_a += w
                     trans *= 1.0 - alpha

@@ -68,6 +68,13 @@ changes.
 | `ctx.pipeline` | the pipeline, e.g. `ctx.pipeline.num_frames` |
 | `ctx.check_cancel()` | raises `ComputeCancelled` when the GUI no longer needs this result; call it in long loops (`source_frame`/`input_frame` call it for you) |
 
+**Reusing results.** The pipeline keeps the output of its leading built-in modifiers per
+frame and skips them when the same frame is computed again with the same settings (every
+public attribute is part of the key). Plugin modifiers are recomputed every time unless the
+class sets `cacheable = True`; do that when the output depends only on the input and the
+modifier's attributes (not on files, the clock or random numbers). Function modifiers and
+`PythonScript` are never reused. `pipe.cache_outputs = False` turns this off.
+
 **Errors.** Raise an exception with a message a user can act on (`ValueError("cutoff must be
 below half the cell width")`). The pipeline stores it in `modifier.status`, the GUI shows it on
 the modifier's row and keeps the rest of the pipeline running.

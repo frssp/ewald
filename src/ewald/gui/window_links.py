@@ -177,6 +177,8 @@ class LinksMixin:
                 "pipe": self.pipeline, "data": self.data, "import_file": import_file, "style": self.style}
 
     def _push_console(self):
+        if not getattr(self.console, "built", True):
+            return  # the console gets the current objects when it is built
         shell = getattr(self.console, "shell", None)
         ns = {"pipeline": self.pipeline, "pipe": self.pipeline, "data": self.data}
         if self.layout_mode == "notebook" and self.panel.notebook is not None:
@@ -189,6 +191,8 @@ class LinksMixin:
             shell.locals.update(ns)
 
     def _after_console(self, *args):
+        if not getattr(self.console, "built", True):
+            return
         shell = getattr(self.console, "shell", None)
         ns = getattr(shell, "user_ns", None) or getattr(shell, "locals", {})
         for key in ("pipe", "pipeline"):

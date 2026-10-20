@@ -22,6 +22,8 @@ class PythonScript(Modifier):
     reused with different settings.
     """
 
+    cacheable = False  # arbitrary code: may read files, globals or the clock
+
     def __init__(self, source: str = TEMPLATE, title: str = "Python script", **params):
         self.source = source
         self.title = title

@@ -19,7 +19,7 @@ from ..render import camera_state, render
 from .ask_panel import AskPanel, agent_from_settings
 from .collapsible import make_collapsible
 from .compute import ComputeRunner, warm_up_jit
-from .console import make_console
+from .console import LazyConsole
 from .icons import app_icon
 from .inspector import DataInspector
 from .macos import set_app_name, strip_psn
@@ -137,7 +137,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
 
         # --- panel (below the 3D view): console / inspector / plots / log
         self.inspector = DataInspector()
-        self.console = make_console(self._console_namespace(), self._after_console, self)
+        self.console = LazyConsole(self._console_namespace, self._after_console, self, on_built=self._push_console)
         self.plots = PlotsPanel()
         self._connect_plot(self.plots)
         self.extra_plots = {}  # view id -> PlotsPanel made with "New plot view"
@@ -501,7 +501,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
         self.live_reload.timer.stop()
         self.runner.shutdown()
         self.viewport.plotter.close()  # release the VTK/OpenGL context before Qt tears down
-        km = getattr(self.console, "kernel_manager", None)
+        km = getattr(self.console, "kernel_manager", None) if self.console.built else None
         if km is not None:
             with contextlib.suppress(ValueError):
                 self.console.shell.events.unregister("post_execute", self.console.on_execute)

@@ -108,13 +108,21 @@ class AcklandJones(StructureIdentificationModifier):
         in1 = valid_n & (d2 < 1.55 * r0_sq[:, None])
         n1 = n0 + xp.cumprod(in1 | (xp.arange(14)[None, :] < n0[:, None]), axis=1).sum(1) - n0
         norm = xp.where(valid_n, dist, 1.0)
-        unit = xp.where(valid_n[..., None], delta, 0.0) / norm[..., None]
+        # unit vectors as contiguous (14, M) components; then the bond-angle histogram one
+        # neighbor pair at a time: (M, 91, 3) gathers and searchsorted cost several times more
+        comp = [xp.ascontiguousarray((xp.where(valid_n, delta[..., c], 0.0) / norm).T) for c in range(3)]
         iu, ju = np.triu_indices(14, 1)
-        cos = (unit[:, iu, :] * unit[:, ju, :]).sum(-1)
-        use = (xp.asarray(ju)[None, :] < n0[:, None])           # both j and k within the first n0
-        edges = xp.asarray([-np.inf, -0.945, -0.915, -0.755, -0.195, 0.195, 0.245, 0.795, np.inf])
-        bins = xp.searchsorted(edges, cos, side="right") - 1
-        chi = xp.stack([((bins == b) & use).sum(1) for b in range(8)], 1).astype(float)
+        inner = (-0.945, -0.915, -0.755, -0.195, 0.195, 0.245, 0.795)  # bin edges between -1 and 1
+        atoms = xp.arange(m)
+        codes = xp.empty((len(iu), m), dtype=xp.int64)  # bin * M + atom; bin 8 = pair not used
+        for p, (a, b) in enumerate(zip(iu, ju)):
+            cos = comp[0][a] * comp[0][b] + comp[1][a] * comp[1][b] + comp[2][a] * comp[2][b]
+            k = xp.zeros(m, dtype=xp.int64)
+            for e in inner:
+                k += cos >= e
+            k[b >= n0] = 8  # both j and k must be within the first n0
+            codes[p] = k * m + atoms
+        chi = xp.bincount(codes.ravel(), minlength=9 * m)[:8 * m].reshape(8, m).T.astype(float)
         with np.errstate(divide="ignore", invalid="ignore"):
             delta_bcc = 0.35 * chi[:, 4] / (chi[:, 5] + chi[:, 6] - chi[:, 4])
         delta_cp = xp.abs(1 - chi[:, 6] / 24)

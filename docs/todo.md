@@ -14,20 +14,16 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; numbers from
 `benchmarks/analysis.py`, `benchmarks/large_files.py` and the GUI under `xvfb-run`)
 
-- Pipeline output cache: only source frames are cached, so every `compute(frame)` reruns all
-  modifiers. Opening the Cu void tutorial notebook computes frame 0 four times (the GUI and each
-  view cell), and a 1M-atom CoordinationAnalysis costs about 1 s per call. Cache the last output
-  per frame keyed by the modifiers' parameters and enabled flags (Python steps invalidate it).
-- Native structure identification is single-threaded: PTM (0.6 s of 0.9 s at 108k atoms) and
-  Voronoi run one core; thread the per-atom loops in `_csrc` (OVITO does).
-- Ray tracer: publication preset traces 16 samples x 32 AO rays per pixel (SrTiO3 with
-  polyhedra 29 s at 1600x1200). Options: stratified/blue-noise AO with fewer rays at the same
-  noise, adaptive sampling that stops on converged pixels, a BVH instead of the uniform grid
-  for surfaces, or the GPU (CUDA) path.
-- GUI startup is about 3 s, mostly imports: pyvista/pyvistaqt (~2 s), matplotlib (0.6 s) and
-  the in-process IPython console (0.5 s), which could be built when its tab is first opened.
-- Kernel round trip: a cached 1M-atom frame takes about 1 s from a separate-Python kernel,
-  mostly recomputing modifiers there (see the output cache); the `.npz` itself is 70 ms.
+- Pipeline output cache: plugin modifiers are never reused (`Modifier.cacheable` is None for
+  them); first-party plugins (ewald-phonopy, ewald-plumed) could set `cacheable = True` where
+  their output depends only on their settings.
+- Structure identification at 108k atoms spends half its time in the periodic kNN query
+  (scipy cKDTree plus image padding, ~0.4 s): a numba cell-list kNN like `find_pairs` would
+  roughly halve PTM (0.9 s) and Voronoi (0.9 s). The native kernels already use every core.
+- Ray tracer: a BVH instead of the uniform grid for large surfaces, adaptive sampling that
+  stops on converged pixels, and the CUDA path.
+- GUI startup is about 3 s, mostly imports: pyvista/pyvistaqt (~2 s) and matplotlib (0.6 s,
+  needed by the Plots tab at construction); the IPython console is built after the first paint.
 - UI theme switch takes 0.5-1 s in `QApplication.setStyleSheet` (one app-wide QSS).
 
 GUI

@@ -581,9 +581,9 @@ RENDERERS = {
 QUALITY_PRESETS = {
     "draft": {"samples": 1, "ao_samples": 0, "shadows": False, "antialiasing": False,
               "ambient_occlusion": False, "sphere_resolution": 8, "scale": 0.5},
-    "standard": {"samples": 4, "ao_samples": 8, "shadows": True, "antialiasing": True,
+    "standard": {"samples": 4, "ao_samples": 4, "shadows": True, "antialiasing": True,
                  "ambient_occlusion": False, "sphere_resolution": 16, "scale": 1.0},
-    "publication": {"samples": 16, "ao_samples": 32, "shadows": True, "antialiasing": True,
+    "publication": {"samples": 16, "ao_samples": 8, "shadows": True, "antialiasing": True,
                     "ambient_occlusion": True, "sphere_resolution": 28, "scale": 1.0},
 }
 

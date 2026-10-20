@@ -40,6 +40,10 @@ data.positions = pos
 data["Height"] = data.positions[:, 2] - data.cell.origin[2]   # new property: plain assignment
 ```
 
+Computing a frame again (a second `pipe.compute(i)`, a view cell, the GUI) reuses the result of
+the built-in modifiers as long as their settings did not change, and runs only the function
+modifiers and scripts after them; `pipe.cache_outputs = False` turns this off.
+
 ## Function modifiers
 
 Any function with OVITO's signature `f(frame, data)` is a modifier. It can change `data` in

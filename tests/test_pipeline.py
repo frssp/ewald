@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from ewald import Pipeline, StaticSource
+from ewald import modifiers as mods
 from ewald.backend import Backend, get_backend
 from ewald.modifiers import (AssignColor, CalculateDisplacements, ColorCoding, ComputeProperty,
                              CoordinationAnalysis, DeleteSelected, ExpressionSelection, Replicate,
@@ -139,3 +140,57 @@ def test_source_frame_cache_is_thread_safe(cu_fcc):
     with ThreadPoolExecutor(4) as pool:
         out = list(pool.map(lambda f: pipe.compute(f % 20).count, range(400)))
     assert set(out) == {cu_fcc.count} and len(pipe._cache) <= 3
+
+
+def test_output_cache_reuses_results_until_settings_change(cu_fcc):
+    calls = []
+
+    class Counting(mods.CoordinationAnalysis):
+        cacheable = True
+
+        def modify(self, data, ctx):
+            calls.append(ctx.frame)
+            return super().modify(data, ctx)
+
+    seen = []
+
+    def script(frame, data):  # never cached: runs on top of the cached result every time
+        seen.append(frame)
+        data.particles["Marked"] = np.ones(data.count)
+
+    pipe = Pipeline(StaticSource([cu_fcc, cu_fcc]), [Counting(3.0), script])
+    a = pipe.compute(0)
+    b = pipe.compute(0)
+    assert calls == [0] and seen == [0, 0]
+    np.testing.assert_array_equal(a["Coordination"], b["Coordination"])
+    b.particles["Coordination"] = np.zeros(b.count)  # a caller's copy, not the cache
+    assert (pipe.compute(0)["Coordination"] == 12).all()
+    pipe.compute(1)
+    assert calls == [0, 1]
+    pipe.modifiers[0].cutoff = 2.0  # a GUI form or a script changed a setting
+    assert (pipe.compute(0)["Coordination"] == 0).all() and calls == [0, 1, 0]
+    pipe.modifiers[0].enabled = False
+    assert "Coordination" not in pipe.compute(0) and calls == [0, 1, 0]
+    pipe.modifiers[0].enabled = True
+    pipe.compute(0)
+    assert calls == [0, 1, 0]  # that setting was computed before
+    pipe.invalidate()
+    pipe.compute(0)
+    assert calls == [0, 1, 0, 0]
+
+
+def test_output_cache_extends_a_cached_prefix_and_skips_scripts(cu_fcc):
+    from ewald.pipeline import _modifier_key
+
+    pipe = Pipeline(StaticSource([cu_fcc]), [mods.CoordinationAnalysis(3.0)])
+    pipe.compute(0)
+    first = pipe.modifiers[0]
+    pipe.add(mods.ExpressionSelection("Coordination < 12"))
+    t = first.last_time
+    pipe.compute(0)
+    assert first.last_time == t  # the new step started from the cached coordination
+    assert _modifier_key(mods.PythonModifier(lambda f, d: None)) is None
+    assert _modifier_key(mods.PythonScript("data.attributes['x'] = 1")) is None
+    pipe.cache_outputs = False
+    pipe.compute(0)
+    assert first.last_time != t

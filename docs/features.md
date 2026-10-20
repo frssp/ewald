@@ -292,8 +292,8 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 | `quality=` | `samples` | `ao_samples` | `shadows` | `antialiasing` | `ambient_occlusion` | `sphere_resolution` | `scale` |
 |---|---|---|---|---|---|---|---|
 | `draft` | 1 | 0 | False | False | False | 8 | 0.5 |
-| `standard` | 4 | 8 | True | True | False | 16 | 1.0 |
-| `publication` | 16 | 32 | True | True | True | 28 | 1.0 |
+| `standard` | 4 | 4 | True | True | False | 16 | 1.0 |
+| `publication` | 16 | 8 | True | True | True | 28 | 1.0 |
 
 ### `render()` options
 
