@@ -51,29 +51,53 @@ def pipe(cu_fcc):
     return Pipeline(StaticSource([cu_fcc, cu_fcc]))
 
 
-def test_pipeline_panel_add_toggle_reorder(app, pipe):
-    from PySide6 import QtCore
+def _dispose(widget):
+    """Delete a parentless test widget now, in the GUI thread. Left to the garbage collector, its
+    signal-lambda cycles may be collected in a compute thread, and PySide crashes deleting it there."""
+    import gc
 
-    from ewald.gui.pipeline_panel import PipelinePanel
+    widget.deleteLater()
+    QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+    gc.collect()
 
-    panel = PipelinePanel()
+
+def test_classic_layout_setting_is_retired(tmp_path, caplog):
+    """The OVITO-like classic layout is gone: an old settings file asking for it loads quietly."""
+    import json
+
+    from ewald import settings
+
+    p = tmp_path / "settings.json"
+    p.write_text(json.dumps({"general.layout": "classic", "general.startup_workspace": "Analyze"}))
+    with caplog.at_level("WARNING"):
+        s = settings.load(p)
+    assert not caplog.records and "general.layout" not in settings.OPTION
+    assert s["general.startup_workspace"] == "Notebook" and s.changed() == {}
+
+
+def test_display_panel_lists_visual_elements_only(app, pipe):
+    from ewald.gui.pipeline_panel import DisplayPanel
+
+    panel = DisplayPanel()
     panel.set_pipeline(pipe)
-    changes = []
-    panel.changed.connect(lambda: changes.append(1))
-    panel.add_modifier(mods.CoordinationAnalysis(3.0))
-    panel.add_modifier(mods.ColorCoding("Coordination"))
-    assert [m.name for m in pipe.modifiers] == ["CoordinationAnalysis", "ColorCoding"]
-    items = panel.modifier_items()
-    assert [it.text(1) for it in items] == ["ColorCoding", "CoordinationAnalysis"]  # newest on top, like OVITO
-    panel.tree.setCurrentItem(items[0])
-    panel._move(1)
-    assert [m.name for m in pipe.modifiers] == ["ColorCoding", "CoordinationAnalysis"]
-    panel.modifier_items()[1].setCheckState(0, QtCore.Qt.Unchecked)
-    assert pipe.modifiers[0].enabled is False
-    pipe.compute(0, errors="skip")
-    panel.update_status()
-    assert panel.modifier_items()[0].text(2).endswith("ms")
-    assert len(changes) >= 3
+    rows = [panel.tree.topLevelItem(k).text(1) for k in range(panel.tree.topLevelItemCount())]
+    assert rows == ["Particles", "Bonds", "Simulation cell"]
+    asked = []
+    panel.modifierRequested.connect(asked.append)
+    panel.add_modifier(mods.CoordinationAnalysis(3.0))  # a step goes to the notebook, not into the pipeline
+    assert [type(m).__name__ for m in asked] == ["CoordinationAnalysis"] and pipe.modifiers == []
+    _dispose(panel)
+
+
+def test_inspector_source_tab(app, pipe):
+    from ewald.gui.inspector import DataInspector
+
+    ins = DataInspector()
+    ins.set_pipeline(pipe)
+    ins.set_data(pipe.compute(0))
+    text = ins.source.toPlainText()
+    assert "Source     StaticSource" in text and "Frames     2" in text and "Position" in text
+    _dispose(ins)
 
 
 def test_bonds_visual_element_and_pairs(app, cu_fcc):
@@ -1187,7 +1211,7 @@ def test_plugin_visual_element_in_panel_and_viewport(app, monkeypatch):
 
     from ewald import plugins
     from ewald.data import Cell, DataCollection
-    from ewald.gui.pipeline_panel import PipelinePanel
+    from ewald.gui.pipeline_panel import DisplayPanel
     from ewald.gui.style import ViewStyle
     from ewald.gui.viewport import Viewport
 
@@ -1197,7 +1221,7 @@ def test_plugin_visual_element_in_panel_and_viewport(app, monkeypatch):
     shutil.copy(Path(__file__).parents[1] / "examples" / "plugins" / "cell_axes.py", folder)
     data = DataCollection([[1, 1, 1], [3, 3, 3]], ["Fe", "Fe"], Cell(np.eye(3) * 4))
     style = ViewStyle()
-    panel = PipelinePanel(style)
+    panel = DisplayPanel(style)
     panel.set_pipeline(Pipeline(StaticSource(data)))
     panel._fill_visual_menu()
     assert [a.text() for a in panel.visual_menu.actions()] == ["Cell axes", "Selection halo"]
@@ -2048,11 +2072,11 @@ def test_main_window_reports_an_unfinished_calculation(app, vasp_dir, tmp_path):
 
 
 def test_cell_panel_boundary_range(app):
-    from ewald.gui.pipeline_panel import PipelinePanel
+    from ewald.gui.pipeline_panel import DisplayPanel
     from ewald.gui.style import ViewStyle
 
     style = ViewStyle()
-    panel = PipelinePanel(style)
+    panel = DisplayPanel(style)
     seen = []
     panel.styleChanged.connect(lambda: seen.append(1))
     box = panel._boundary_editor()

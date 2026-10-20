@@ -188,8 +188,6 @@ def test_gui_follows_the_view_and_writes_the_view_cell(tmp_path):
     path = tmp_path / "cu.extxyz"
     write(path, [bulk("Cu", "fcc", a=3.615, cubic=True).repeat(2)] * 3)
     w = MainWindow(settings=settings.Settings())
-    if w.layout_mode != "notebook":
-        pytest.skip("notebook layout only")
     w.open_any(str(path), ask_types=False)
     view_nb = w.panel.view
     nb = view_nb.notebook
