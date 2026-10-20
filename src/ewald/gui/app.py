@@ -160,6 +160,7 @@ class MainWindow(MenusMixin, FilesMixin, ViewportMenuMixin, LinksMixin, ViewSync
 
         self._build_menus()
         self._build_toolbar()
+        self.setAcceptDrops(True)  # files and folders dropped on the window (FilesMixin.dropEvent)
         self.status = QtWidgets.QLabel()
         self.pick_label = QtWidgets.QLabel()
         self.pick_label.setStyleSheet(f"color: {TOKENS['pick']};")

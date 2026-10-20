@@ -115,7 +115,7 @@ def test_profile_dialog_saves_secret_in_keychain(app, server, kr):
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
-def test_main_window_has_remotes_side_bar(app, server, kr, monkeypatch):
+def test_main_window_has_remotes_side_bar(app, server, kr, monkeypatch, vasp_dir):
     from ewald.gui import notebook_panel
     from ewald.gui.app import MainWindow
 
@@ -129,6 +129,11 @@ def test_main_window_has_remotes_side_bar(app, server, kr, monkeypatch):
         w.remotes_panel.connect_to("work")
         w.remotes_panel.open("work:/data/POSCAR")
         assert w.pipeline is not None and w.pipeline.source.path == "work:/data/POSCAR"
+        import shutil
+
+        shutil.copytree(vasp_dir / "neb", os.path.join(server.root, "data", "neb"))
+        w.remotes_panel.nebRequested.emit("work:/data/neb")  # folder menu › Open as NEB run
+        assert w.pipeline.source.path == "work:/data/neb" and w.pipeline.num_frames == 5
     finally:
         w.close()
         remote.disconnect_all()
