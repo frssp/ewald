@@ -22,19 +22,28 @@ classifiers = [
 dependencies = ["numpy>=1.24", "scipy", "ase>=3.23", "matplotlib", "pillow", "pyvista>=0.44", "vtk>=9.3", "numba>=0.59",
                 "tomli>=1.1; python_version < '3.11'",   # tomli: plugin manifests on Python 3.10
                 "paramiko>=3.2", "keyring>=24",   # files on SSH hosts and saved remote computers; secrets in the OS keychain
-                "truststore>=0.9"]   # downloads trust the OS certificate store (company proxies that re-sign HTTPS)
+                "truststore>=0.9",   # downloads trust the OS certificate store (company proxies that re-sign HTTPS)
+                # small wheels that used to be extras: one install has every feature that needs no GPU, Qt or OVITO
+                "spglib>=2.0",   # SymmetryAnalysis (space group, Wyckoff positions)
+                "imageio-ffmpeg",   # bundled ffmpeg binary for MP4/AVI/MOV
+                "h5py",   # H5MD, vaspout.h5, MDTraj HDF5
+                "anthropic>=1.0", "openai>=1.40", "mcp",   # Ask AI (Claude, OpenAI-compatible providers), MCP server
+                "jupyter_client>=7", "ipykernel"]   # notebooks whose cells run in another Python (ewald.kernel)
 
 [project.optional-dependencies]
-gui = ["PySide6>=6.5", "pyvistaqt>=0.11", "qtconsole>=5.5", "pygments", "ipykernel", "jupyter_client>=7"]   # PySide6 only: no PyQt5/PyQt6 (see ewald/gui/__init__.py)
-kernel = ["jupyter_client>=7", "ipykernel"]   # notebooks whose cells run in another Python (ewald.kernel)
+# Only what is heavy, platform-specific or pins other packages stays optional.
+gui = ["PySide6>=6.5", "pyvistaqt>=0.11", "qtconsole>=5.5", "pygments"]   # PySide6 only: no PyQt5/PyQt6 (see ewald/gui/__init__.py)
 gpu = ["cupy-cuda12x; sys_platform != 'darwin'"]   # no CUDA on macOS: the extra installs nothing there
-symmetry = ["spglib>=2.0"]   # SymmetryAnalysis (space group, Wyckoff positions)
-movie = ["imageio-ffmpeg"]   # bundled ffmpeg binary for MP4/AVI/MOV
-formats = ["h5py", "MDAnalysis>=2.7"]   # H5MD, vaspout.h5, MDTraj HDF5; GROMACS XTC/TRR, DCD, NetCDF
-ovito = ["ovito"]   # DislocationAnalysis (DXA) and OvitoModifier bridge
-llm = ["anthropic>=1.0", "openai>=1.40", "mcp"]
-remote = []   # kept so old install commands work: SSH support (paramiko, keyring) is in the core install
-dev = ["pytest", "spglib>=2.0"]
+formats = ["MDAnalysis>=2.7"]   # GROMACS XTC/TRR, DCD, NetCDF
+ovito = ["ovito"]   # DislocationAnalysis (DXA) and OvitoModifier bridge; pins its PySide6, so install with gui
+all = ["ewald[gui,formats,ovito]"]   # everything but gpu (needs an NVIDIA GPU with CUDA 12)
+dev = ["pytest"]
+# kept so old install commands work: these packages are in the core install now
+kernel = []
+symmetry = []
+movie = []
+llm = []
+remote = []
 
 [project.scripts]
 ewald = "ewald.__main__:main"

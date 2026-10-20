@@ -305,8 +305,8 @@ render_animation(pipe, "run.mp4", frames=range(0, pipe.num_frames, 5), fps=20, s
 The extension picks the format: `.gif`, `.mp4` (H.264), `.avi` (Motion JPEG, plays in
 PowerPoint), `.mov`, `.webm`, or `.png`/`.jpg`/`.tif` for a numbered image sequence
 (`frames.png` writes `frames_0000.png`, ...; `frame_%03d.png` also works). GIF and image
-sequences need nothing extra; video formats use ffmpeg from the `movie` extra
-(`pip install 'ewald[movie]'`) or from your PATH. `progress=lambda i, n: ...` is called after
+sequences need nothing extra; video formats use the ffmpeg binary that
+imageio-ffmpeg (installed with ewald) brings, or one on your PATH. `progress=lambda i, n: ...` is called after
 each frame and stops early when it returns `False`. From the shell:
 
 ```bash

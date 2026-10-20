@@ -1084,8 +1084,27 @@ def test_ask_panel_without_claude(app, pipe):
 
     panel = AskPanel(lambda: (pipe, 0, []), agent_factory=missing)
     panel.ask("hello")
-    assert "not available" in panel.text() and "pip install ewald[llm]" in panel.text()
+    assert "not available" in panel.text() and "Preferences › AI" in panel.text()
     assert not panel.busy()
+
+
+def test_step_error_is_logged_once_not_every_frame(app, pipe):
+    from ewald import Modifier
+    from ewald.gui.app import MainWindow
+
+    class NeedsPackage(Modifier):
+        def modify(self, data, ctx):
+            raise ImportError("NeedsPackage needs spglib")
+
+    pipe.modifiers.append(NeedsPackage())
+    w = MainWindow(pipe)
+    try:
+        for frame in (0, 1, 0, 1):
+            w.frame = frame
+            w.recompute(wait=True)
+        assert w.log.toPlainText().count("NeedsPackage needs spglib") == 1
+    finally:
+        _dispose(w)
 
 
 def test_main_window_ask_uses_picks_and_selection(app, pipe):

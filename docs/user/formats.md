@@ -29,9 +29,9 @@ files directly.
 | CIF | ASE | every data block is a frame |
 | others | ASE | anything `ase.io.read` understands, with `format=` set to the ASE name |
 
-`ewald plugins` prints every reader and writer with its file-name patterns. The H5MD and
-MDAnalysis formats need the `formats` extra: `pip install "ewald[formats]"` (h5py and
-MDAnalysis).
+`ewald plugins` prints every reader and writer with its file-name patterns. The HDF5 formats
+(h5py) work in every install; the MDAnalysis formats need the `formats` extra:
+`pip install "ewald[formats]"`.
 
 ### HDF5 files
 

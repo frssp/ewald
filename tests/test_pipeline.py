@@ -214,3 +214,31 @@ def test_cached_frames_are_read_only(cu_fcc):
     assert np.allclose(pipe.compute(0).positions, original + 1.0)
     assert np.allclose(pipe.compute(0).positions, original + 1.0)   # the cached frame is unchanged
     assert cu_fcc.positions.flags.writeable and np.allclose(cu_fcc.positions, original)
+
+
+def test_missing_package_fails_once_not_every_frame(cu_fcc):
+    from ewald import Modifier
+
+    calls = []
+
+    class NeedsPackage(Modifier):
+        def __init__(self, level=1):
+            self.level = level
+
+        def modify(self, data, ctx):
+            calls.append(ctx.frame)
+            raise ImportError("NeedsPackage needs spglib")
+
+    pipe = Pipeline(StaticSource([cu_fcc] * 4), [NeedsPackage()])
+    for f in range(4):
+        pipe.compute(f, errors="skip")
+    assert calls == [0]  # later frames report the same error without trying again
+    assert pipe.modifiers[0].status == "ImportError: NeedsPackage needs spglib"
+    pipe.modifiers[0].level = 2  # new settings: one more try
+    pipe.compute(1, errors="skip")
+    pipe.invalidate()  # e.g. after installing the package
+    pipe.compute(2, errors="skip")
+    assert calls == [0, 1, 2]
+    with pytest.raises(ImportError):  # scripts always get the real exception
+        pipe.compute(3)
+    assert calls == [0, 1, 2, 3]

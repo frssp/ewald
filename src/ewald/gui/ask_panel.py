@@ -13,8 +13,8 @@ plus a close-up render (:meth:`ewald.llm.Agent.ask_about_selection`); the model 
 usual tools, and modifiers it adds show up in the pipeline. With nothing picked, the
 question goes about the whole pipeline. The model runs in a worker thread, so the viewer stays
 responsive. Whichever provider Preferences > AI names answers (Claude by default; OpenAI,
-Gemini, a local OpenAI-compatible server or a plugin's); it needs that provider's package
-(``pip install ewald[llm]``) and usually an API key.
+Gemini, a local OpenAI-compatible server or a plugin's); the provider packages (anthropic, openai)
+come with ewald; it usually needs an API key.
 """
 from __future__ import annotations
 
@@ -30,8 +30,7 @@ from .code_editor import CodeEditor
 from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea
 from .theme import TOKENS
 
-_SETUP_HINT = ("Choose the AI provider and enter its API key under Edit › Preferences › AI "
-               "(its package comes with `pip install ewald[llm]`).")
+_SETUP_HINT = "Choose the AI provider and enter its API key under Edit › Preferences › AI."
 
 
 NOTEBOOK_NOTE = """

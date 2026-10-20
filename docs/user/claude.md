@@ -107,7 +107,7 @@ function calling (for local models, for example Llama 3.1 or Qwen 2.5 and later)
 service becomes a provider through a plugin (`@ai_provider`, see
 [AI tool plugins](../plugins/tools.md)).
 
-The anthropic and openai packages come with `pip install ewald[llm]`; OpenAI, Gemini and the
+The anthropic and openai packages are part of every ewald install; OpenAI, Gemini and the
 OpenAI-compatible servers all go through the `openai` package.
 
 ### API gateway

@@ -348,16 +348,24 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         if job.pipeline is not self.pipeline:
             return  # a pipeline that was replaced meanwhile
         if job.error is not None:
-            self.message(f"Error: {job.error}", error=True)
+            if str(job.error) != self.__dict__.get("_last_job_error"):  # the same error on every frame: say it once
+                self._last_job_error = str(job.error)
+                self.message(f"Error: {job.error}", error=True)
             return
+        self._last_job_error = None
         self.data, dt, interactive = job.data, job.seconds, job.interactive
         view_changed = self.follow_view(self.data)  # a view cell, Claude or the console changed pipe.view
         n = self.pipeline.num_frames  # LoadTrajectory changes the frame count
         if self.timeline.slider.maximum() != max(0, n - 1):
             self.timeline.set_num_frames(n)
+        reported = self.__dict__.setdefault("_reported_errors", {})
         for m in self.pipeline.modifiers:
             if m.enabled and m.status:
-                self.message(f"{m.name}: {m.status}", error=True)
+                if reported.get(id(m)) != m.status:  # once per step and error, not on every frame
+                    reported[id(m)] = m.status
+                    self.message(f"{m.name}: {m.status}", error=True)
+            else:
+                reported.pop(id(m), None)
         if getattr(self, "_check_bond_limit", False):
             self._check_bond_limit = False
             limit = self.settings["bonds.auto_limit"]
