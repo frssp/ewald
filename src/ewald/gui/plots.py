@@ -120,6 +120,7 @@ class PlotsPanel(QtWidgets.QWidget):
         self._canvas_slot = QtWidgets.QWidget()
         lay.addWidget(self._canvas_slot, 1)
         self._drawn = None   # (table x column, y choice) currently on the canvas
+        self._live = None    # artists a new frame can update in place (see _update_in_place)
         self._marker = None  # current-frame line on a time-series plot, current mode on a band plot
         self._phonon = None  # (modes, x) while a phonon band structure is on the canvas
         self._elec = None    # (ElectronicStructure, "DOS" | "Bands", column) while one is on the canvas
@@ -262,7 +263,15 @@ class PlotsPanel(QtWidgets.QWidget):
             self._draw_overlays()
             self._update_controls()
             return
+        if key is not None and self._update_in_place(key):
+            # the same plot with new numbers (a per-frame histogram or g(r) during playback):
+            # new bar heights or line data on the axes already there, no fig.clear()
+            self._drawn = key
+            self._draw_overlays()
+            self._update_controls()
+            return
         self._drawn, self._marker, self._phonon, self._elec = key, None, None, None
+        self._live = None
         fig = self.figure
         fig.clear()
         fig.set_facecolor(TOKENS["bg"])
@@ -276,14 +285,16 @@ class PlotsPanel(QtWidgets.QWidget):
             v = np.asarray(d[name])
             if v.dtype.kind in "iu" and np.ptp(v) < 60:
                 vals, counts = np.unique(v, return_counts=True)
-                ax.bar(vals, counts, color=TOKENS["accent"], lw=0)
+                bars = ax.bar(vals, counts, color=TOKENS["accent"], lw=0)
+                self._live = ("bars", list(bars), vals)
                 self._edges = np.arange(v.min(), v.max() + 2) - 0.5
                 self._bars = True
                 ax.xaxis.set_major_locator(_integer_locator())
                 ax.set_xlim(vals.min() - 1, vals.max() + 1)
                 plotstyle.no_minor_x(ax)
             else:
-                _, self._edges, _ = ax.hist(v, bins=50, color=TOKENS["accent"], lw=0)
+                _, self._edges, patches = ax.hist(v, bins=50, color=TOKENS["accent"], lw=0)
+                self._live = ("hist", list(patches))
             ax.set_ylim(bottom=0)
             self._xname = name
             ax.set_xlabel(plotstyle.axis_label(name)); ax.set_ylabel("Count")
@@ -310,15 +321,20 @@ class PlotsPanel(QtWidgets.QWidget):
                 keys = [keys[0], "Intensity"]
                 ax.vlines(x, 0, np.asarray(table["Intensity"], float), color=TOKENS["accent"], lw=1.0)
                 ax.set_ylim(bottom=0)
+            lines = []
             for k, label in [] if sticks else zip(keys[1:], plotstyle.legend_labels(keys[1:])):
                 y = np.asarray(table[k], dtype=float)
                 ok = ~np.isnan(y)  # thermo columns a run did not print
                 if k == "Experimental":   # measured pattern under the calculated one
-                    ax.plot(x[ok], y[ok], lw=0, marker=".", ms=2.5, color=TOKENS["muted"], label=label, zorder=1)
+                    line, = ax.plot(x[ok], y[ok], lw=0, marker=".", ms=2.5, color=TOKENS["muted"], label=label,
+                                    zorder=1)
                 elif k.endswith(" fit"):
-                    ax.plot(x[ok], y[ok], ls="--", lw=0.9, label=label, zorder=3)
+                    line, = ax.plot(x[ok], y[ok], ls="--", lw=0.9, label=label, zorder=3)
                 else:
-                    ax.plot(x[ok], y[ok], label=label, zorder=2)
+                    line, = ax.plot(x[ok], y[ok], label=label, zorder=2)
+                lines.append((k, line))
+            if lines:
+                self._live = ("lines", lines, tuple(table))
             self._xname = keys[0]
             ax.set_xlabel(plotstyle.axis_label(keys[0]))
             if not _is_series(table):
@@ -346,6 +362,76 @@ class PlotsPanel(QtWidgets.QWidget):
         fig.tight_layout(pad=0.4)
         self._draw_overlays()
         self._update_controls()
+
+    def _update_in_place(self, key) -> bool:
+        """Put new numbers into the artists of the plot on the canvas when only the data
+        changed (same table, column and histogram choice, same columns, same number of bins
+        or lines). Rebuilding the figure costs about twice as much, so this keeps per-frame
+        plots responsive during playback. False when a full redraw is needed."""
+        live, ax, d = getattr(self, "_live", None), self._ax, self.data
+        if live is None or self._drawn is None or key[0] != self._drawn[0] or ax is None \
+                or ax.figure is not self.figure or d is None:
+            return False
+        kind = live[0]
+        if kind in ("hist", "bars"):
+            name = self.hist.currentText()
+            if not name or name not in d:
+                return False
+            v = np.asarray(d[name])
+            if kind == "hist":
+                if v.dtype.kind in "iu" and np.ptp(v) < 60:
+                    return False  # now drawn as integer bars
+                counts, edges = np.histogram(v, bins=len(live[1]))
+                for rect, c, lo, hi in zip(live[1], counts, edges[:-1], edges[1:]):
+                    rect.set_x(lo)
+                    rect.set_width(hi - lo)
+                    rect.set_height(c)
+                self._edges = edges
+            else:
+                if v.dtype.kind not in "iu":
+                    return False
+                vals, counts = np.unique(v, return_counts=True)
+                if not np.array_equal(vals, live[2]):
+                    return False  # other values: other bars
+                for rect, c in zip(live[1], counts):
+                    rect.set_height(c)
+            ax.set_autoscale_on(True)  # set_xlim/set_ylim of the last draw turned it off
+            ax.relim()
+            ax.autoscale_view()
+            if kind == "bars":
+                ax.set_xlim(vals.min() - 1, vals.max() + 1)
+            ax.set_ylim(bottom=0)
+        elif kind == "lines":
+            table = self._table()
+            if not table or tuple(table) != live[2]:
+                return False
+            keys = list(table)
+            x = np.asarray(table[keys[0]])
+            for k, line in live[1]:
+                y = np.asarray(table[k], dtype=float)
+                ok = ~np.isnan(y)
+                line.set_data(x[ok], y[ok])
+            ax.set_autoscale_on(True)  # set_xlim/set_ylim of the last draw turned it off
+            ax.relim()
+            ax.autoscale_view()
+            names = [k for k, _ in live[1]]
+            if not _is_series(table):
+                plotstyle.start_at_zero(ax, x)
+            if all(k.startswith("Count") for k in names) or \
+                    self.table.currentText() in ("diffraction", "structure-factor"):
+                ax.set_ylim(bottom=0)
+            if self._marker is not None:
+                self._place_marker()
+            if len(x) > 1:
+                mid = 0.5 * (x[1:] + x[:-1])
+                self._edges = np.concatenate([[x[0] - (mid[0] - x[0])], mid, [x[-1] + (x[-1] - mid[-1])]])
+        else:
+            return False
+        energy = self._energy_axis()
+        for axis, lim in self._view.items():
+            if axis != energy:
+                (ax.set_xlim if axis == "x" else ax.set_ylim)(lim)
+        return True
 
     def _content_key(self):
         """What the canvas would show: the choices and the arrays behind them (compared by
