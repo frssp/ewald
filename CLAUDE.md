@@ -179,7 +179,9 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   from `credentials.client(provider=...)`), Modifier Forge (`forge.py`: the model writes a
   plugin + tests, verified in a subprocess, saved to the plugin folder), descriptors (`describe.py`, `narrate.py`),
   `selection.py` (descriptor + close-up scene for Ask about selection; GUI side `gui/ask_panel.py`),
-  MCP server (`mcp_server.py`), and `reference.py`, the source of `llms.txt`.
+  MCP server (`mcp_server.py`), `reference.py`, the source of `llms.txt`, and the AI eval suite
+  (`evals.py` harness and graders, `eval_tasks.py` tasks; `ewald eval`, never in the default
+  pytest run since it costs tokens; `tests/test_evals.py` plays each task's reference solution).
 
 ## Conventions
 

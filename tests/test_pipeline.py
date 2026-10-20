@@ -67,6 +67,14 @@ def test_expression_takes_property_names_with_spaces(cu_fcc):
         Pipeline(StaticSource(cu_fcc), [ColorCoding("Charge Density")]).compute(0)
 
 
+def test_expression_power_as_in_ovito(cu_fcc):
+    from ewald.modifiers.expression import evaluate
+
+    assert np.allclose(evaluate("Position.X^2", cu_fcc), cu_fcc.positions[:, 0] ** 2)
+    assert np.allclose(evaluate("sqrt(Position.X^2 + Position.Y**2)", cu_fcc),
+                       np.hypot(cu_fcc.positions[:, 0], cu_fcc.positions[:, 1]))
+
+
 def test_displacement_across_pbc(cu_fcc):
     moved = cu_fcc.copy()
     pos = cu_fcc.positions.copy()

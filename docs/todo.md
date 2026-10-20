@@ -333,6 +333,13 @@ Visualization plugins (later phases of the Scene IR plan)
 
 Plugins and AI
 
+- AI eval suite (`llm/evals.py`, `llm/eval_tasks.py`): more tasks from the paper datasets (LLZO
+  Arrhenius, a-Si, TiOF2 octahedra), from the GUI side (picks, Ask about selection, view cells the
+  Display panel edits) and multi-turn ones (a follow-up question); reproduction runs in a fresh
+  in-process namespace, not a separate kernel (`ewald.kernel`); explanations are not graded (an
+  LLM judge could score them); plugin tasks (`@eval_task` from plugins such as ewald-phonopy) and
+  a results page that tracks scores over commits.
+
 - AI providers (`llm/providers.py`): the OpenAI-compatible provider never sends images (no
   per-server vision switch yet); Effort reaches only Claude and OpenAI reasoning models; one
   `llm.model` setting for all providers (switching the provider in Preferences clears it); no
@@ -449,6 +456,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - A vaspout.h5 from a real running and a real killed VASP 6 job: which groups exist mid-run,
   whether unwritten steps are zeros, and whether HDF5 can open the file of a killed job (tests
   use h5py-written fixtures, a second process holding the write lock, and a cut file).
+- AI eval suite with real keys (`ewald eval`, docs/user/claude.md): a first baseline per model
+  (Opus 5.5, Sonnet 5.5, Haiku 5.5, a local model) saved as JSON to compare later prompt and tool
+  changes against; check that the tolerances and the `ANSWER:` convention are fair to real answers.
 - AI features with a real API key (Claude; also OpenAI, Gemini and a local Ollama/LM Studio
   server, which are tested only against mocked servers): `ewald ask` (also `--select`), the GUI AI chat side bar
   (notebook code in the prompt, code blocks inserted as cells, the notebook cell tools),

@@ -322,6 +322,7 @@ Details: [Command line](user/cli.md).
 | `ewald api` | print the Python API reference for LLMs (llms.txt) | `--with-plugins` |
 | `ewald plugins` | list installed plugins and any that failed to load | `--json` `--enable` `--disable` |
 | `ewald forge [REQUEST...]` | have an AI write a modifier plugin, test it and save it | `--yes` `--draft` `--overwrite` `--rounds` `--model` `--provider` `--profile` `--base-url` |
+| `ewald eval` | score an AI model on tasks with known answers (costs API tokens; see --dry-run) | `--model` `--provider` `--profile` `--base-url` `--effort` `--tasks` `--category` `--list` `--allow-code` `--repeat` `--max-turns` `--out` `--compare` `--dry-run` `--price` `--no-download` |
 | `ewald mcp [INPUT]` | serve the analysis tools over MCP (stdio) | `--allow-code` |
 | `ewald remote [REMOTE_CMD]` | saved SSH profiles: list, add, remove, test, ls, get |  |
 | `ewald inventory` | print or update the feature inventory (docs/features.md) | `-o` `--gui` |
