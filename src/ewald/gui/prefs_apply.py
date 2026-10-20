@@ -113,6 +113,7 @@ def apply_settings(win, s: Settings, startup: bool = False):
     vp.sphere_resolution = s["viewport.sphere_resolution"]
     vp.set_anti_aliasing(s["viewport.anti_aliasing"])
     vp.mesh_limit = s["viewport.mesh_limit"]
+    vp.bond_limit = s["bonds.auto_limit"]
     vp.arrow_resolution = s["viewport.arrow_resolution"]
     vp.detail_mode = s["viewport.interactive_detail"]
     vp.target_fps = s["viewport.target_fps"]
