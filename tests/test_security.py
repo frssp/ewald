@@ -167,6 +167,58 @@ def test_ewd_opens_without_running_code_or_importing_plugins(tmp_path):
     assert "evil_plugin" not in plugins.installed()
 
 
+@pytest.mark.parametrize("ext", [".py", ".ipynb"])
+def test_received_notebook_opens_restricted_until_trusted_as_in_jupyter(tmp_path, ext):
+    from ewald.notebook import Notebook
+    from ewald.trust import UntrustedCode, is_trusted_file
+
+    marker = tmp_path / "pwned"
+    code = f"open({str(marker)!r}, 'w').close()"
+    path = tmp_path / f"sent{ext}"
+    Notebook.from_py(f"# %%\n{code}\n").save(tmp_path / f"mine{ext}")
+    assert is_trusted_file(tmp_path / f"mine{ext}")               # saved here: opens trusted
+    text = (tmp_path / f"mine{ext}").read_text(encoding="utf-8")
+    path.write_text(text.replace("pwned", "pwned2"), encoding="utf-8")   # someone else's file
+    marker = tmp_path / "pwned2"
+    assert not is_trusted_file(path)
+    nb = Notebook.load(path, trusted=is_trusted_file(path))      # what the app does
+    assert nb.restricted
+    with pytest.raises(UntrustedCode):
+        nb.run_all()
+    other = Notebook.load(path, trusted=False)
+    other.cells[0].source += "\nx = 1"
+    other.save(tmp_path / f"edited{ext}")                        # saving does not trust it
+    assert not is_trusted_file(tmp_path / f"edited{ext}")
+    assert not marker.exists()
+    nb.trust()
+    assert is_trusted_file(path) and nb.run_all() and marker.exists()
+    path.write_text(path.read_text(encoding="utf-8") + "\n# %%\nx = 1\n", encoding="utf-8")
+    assert not is_trusted_file(path)                             # changed since: asks again
+
+
+def test_own_ewd_reopens_trusted(tmp_path, cu):
+    from ewald.notebook import Notebook
+
+    Notebook.from_py("# %%\nx = 1\n").save(tmp_path / "mine.ewd")
+    assert not Notebook.load(tmp_path / "mine.ewd").restricted
+    assert Notebook.load(tmp_path / "mine.ewd", trusted=False).restricted
+
+
+def test_trust_store_keeps_the_newest_entries(tmp_path, monkeypatch):
+    from ewald import trust
+
+    monkeypatch.setattr(trust, "TRUST_LIMIT", 3)
+    files = []
+    for k in range(5):
+        f = tmp_path / f"n{k}.py"
+        f.write_text(f"x = {k}\n")
+        trust.remember_file(f)
+        files.append(f)
+    assert [trust.is_trusted_file(f) for f in files] == [False, False, True, True, True]
+    trust._trust_store().write_text("not json")
+    assert not trust.is_trusted_file(files[-1]) and trust.remember_file(files[-1])
+
+
 @pytest.mark.parametrize("name", ["../outside.txt", "/abs.txt", "data/../../outside.txt", "C:/x.txt"])
 def test_ewd_with_unsafe_paths_is_refused(tmp_path, name):
     from ewald.notebook import Notebook

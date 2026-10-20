@@ -191,7 +191,8 @@ class NotebookView(QtWidgets.QWidget):
         self.banner_text.setText(
             "<b>Restricted:</b> saved results only. Cells run once you trust this notebook" +
             (f" and its plugins ({', '.join(plugins)})" if plugins else "") + ".")
-        banner.setToolTip("It came from an .ewd file. Its cells are Python code, so they run only after you agree.")
+        banner.setToolTip("You have not saved or trusted this file before. Its cells are Python code, "
+                          "so they run only after you agree.")
         banner.setVisible(nb.restricted)
 
     def _make_packages_bar(self):
@@ -701,7 +702,7 @@ class NotebookView(QtWidgets.QWidget):
         self._execute(self.notebook.run_all, before)
 
     def _trusted(self) -> bool:
-        """A restricted notebook (an .ewd someone sent) runs only after you agree."""
+        """A restricted notebook (a file someone sent) runs only after you agree."""
         return not self.notebook.restricted or self.trust(ask=True)
 
     def trust(self, ask: bool = True) -> bool:
@@ -711,7 +712,7 @@ class NotebookView(QtWidgets.QWidget):
             return True
         if ask:
             plugins = [p.get("name") or p.get("id") for p in nb.manifest.get("plugins", []) if p.get("file")]
-            text = (f"{nb.name} came from an .ewd file. Its cells are Python code" +
+            text = (f"You have not saved or trusted {nb.name} before. Its cells are Python code" +
                     (f" and it carries plugins ({', '.join(plugins)})" if plugins else "") +
                     ". Trust it and run?")
             if QtWidgets.QMessageBox.question(self, "Trust notebook", text) != QtWidgets.QMessageBox.Yes:
@@ -938,8 +939,14 @@ class NotebookPanel(QtWidgets.QWidget):
             self.pipelineReplaced.emit(pipeline)
 
     # ----------------------------------------------------------- files
-    def open_notebook(self, path, run: bool = False) -> NotebookView:
-        nb = Notebook.load(path)
+    def open_notebook(self, path, run: bool = False, trusted: bool | None = None) -> NotebookView:
+        """Open ``path`` in a tab (or show its tab); ``trusted`` None: whether this user saved or
+        trusted that file (:func:`ewald.trust.is_trusted_file`), otherwise it opens restricted."""
+        if trusted is None:
+            from ..trust import is_trusted_file
+
+            trusted = is_trusted_file(path)
+        nb = Notebook.load(path, trusted=trusted)
         for view in self.views():
             if view.notebook.path == nb.path:
                 self.tabs.setCurrentWidget(view)

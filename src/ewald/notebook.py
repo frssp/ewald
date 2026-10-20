@@ -240,7 +240,7 @@ class Notebook:
         self.state: dict = {}         # viewer state saved in .ewd files: style, camera, frame
         self.data_dirs: list = []     # more folders where load() looks (an .ewd's bundled data)
         self.bundle_dir: str | None = None   # where an .ewd file was unpacked
-        self.restricted = False       # an .ewd that was not trusted yet: cells do not run
+        self.restricted = False       # a file not trusted yet (see trust()): cells do not run
         self.manifest: dict = {}      # an .ewd file's manifest
         self.warnings: list = []      # data files that moved or changed (from the manifest)
         self.kernel = None            # an ewald.kernel.Kernel: cells run in another Python
@@ -430,18 +430,23 @@ class Notebook:
             return True
 
     def trust(self):
-        """Allow a restricted notebook (an ``.ewd`` someone sent) to run: its bundled plugins
-        are loaded and its cells may run."""
+        """Allow a restricted notebook (a file someone sent) to run: an ``.ewd``'s bundled
+        plugins are loaded and its cells may run. The file is remembered as trusted
+        (:func:`ewald.trust.remember_file`), so it opens trusted next time while it is unchanged."""
         if self.restricted and self.bundle_dir:
             from .notebook_io import load_bundled_plugins
 
             load_bundled_plugins(self)
+        if self.restricted and self.path and os.path.isfile(self.path):
+            from .trust import remember_file
+
+            remember_file(self.path)
         self.restricted = False
 
     def _require_trust(self):
         from .trust import require
 
-        require(not self.restricted, f"{self.name} (from an .ewd file)",
+        require(not self.restricted, f"{self.name} (a notebook file you have not trusted)",
                 "call notebook.trust() (Run all in the GUI asks first)")
 
     def _exec(self, cell: Cell, filename: str) -> bool:
@@ -820,22 +825,29 @@ class Notebook:
         return nb
 
     @classmethod
-    def load(cls, path, **kwargs) -> "Notebook":
-        """Read a ``.py`` (percent format), ``.ipynb`` or ``.ewd`` notebook. An ``.ewd`` opens
-        restricted (see :func:`ewald.notebook_io.load_ewd`); call :meth:`trust` to run it."""
+    def load(cls, path, trusted: bool | None = None, **kwargs) -> "Notebook":
+        """Read a ``.py`` (percent format), ``.ipynb`` or ``.ewd`` notebook.
+
+        ``trusted=False`` opens it restricted (nothing runs until :meth:`trust`), ``True`` lets
+        it run, and None (the default) trusts a ``.py``/``.ipynb`` (a script that loads a
+        notebook runs what it chose, as ``exec`` would) but an ``.ewd`` only when this user saved
+        or trusted that exact file (:func:`ewald.trust.is_trusted_file`). The desktop app passes
+        ``is_trusted_file`` for every format, as Jupyter does."""
         from . import notebook_io
 
         kwargs.setdefault("name", os.path.splitext(os.path.basename(path))[0])
         ext = os.path.splitext(str(path))[1].lower()
         if ext == ".ewd":
-            return notebook_io.load_ewd(path, cls=cls, **kwargs)
+            return notebook_io.load_ewd(path, cls=cls, trusted=trusted, **kwargs)
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
         if ext == ".ipynb":
-            return notebook_io.from_ipynb(text, cls=cls, path=os.path.abspath(path), **kwargs)
-        nb = cls.from_py(text, path=os.path.abspath(path), **kwargs)
-        if nb.links:
-            nb.warnings = notebook_io.check_data({"data": nb.links}, os.path.dirname(nb.path), Path())
+            nb = notebook_io.from_ipynb(text, cls=cls, path=os.path.abspath(path), **kwargs)
+        else:
+            nb = cls.from_py(text, path=os.path.abspath(path), **kwargs)
+            if nb.links:
+                nb.warnings = notebook_io.check_data({"data": nb.links}, os.path.dirname(nb.path), Path())
+        nb.restricted = trusted is False
         return nb
 
     def save(self, path=None, **options):
@@ -860,6 +872,10 @@ class Notebook:
         self.path = os.path.abspath(path)
         self.namespace["__file__"] = self.path
         self.dirty = False
+        if not self.restricted:   # your own notebook opens trusted; a saved restricted one stays so
+            from .trust import remember_file
+
+            remember_file(self.path)
 
     @classmethod
     def from_pipeline(cls, pipeline: Pipeline, source_code: str | None = None, check: bool = True,
