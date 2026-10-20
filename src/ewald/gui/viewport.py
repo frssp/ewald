@@ -124,7 +124,8 @@ class Viewport(QtWidgets.QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(0)
         self.styled_buttons = []  # (button, text in the default style); MainWindow.set_button_style
-        grid.addWidget(self._build_viewbar(), 0, 0, 1, 2)
+        self._viewbar = self._build_viewbar()
+        grid.addWidget(self._viewbar, 0, 0, 1, 2)
         grid.addWidget(self._build_rail(), 1, 0)
         grid.addWidget(self._create_view(), 1, 1)
         grid.setColumnStretch(1, 1)
@@ -133,6 +134,10 @@ class Viewport(QtWidgets.QWidget):
         esc = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Escape), self,
                               context=QtCore.Qt.WidgetWithChildrenShortcut)
         esc.activated.connect(self._escape)
+        if self.data is None:
+            self._set_controls(False)
+            if hasattr(self.plotter, "add_text"):     # the legacy GL view shows its caption instead
+                self._show_empty(True)
 
     def _create_view(self) -> QtWidgets.QWidget:
         """The 3D widget: a VTK QtInteractor (``self.plotter``) wired to the pick and LOD handlers."""
@@ -229,6 +234,24 @@ class Viewport(QtWidgets.QWidget):
         self._rail = rail
         return rail
 
+    def _set_controls(self, on: bool):
+        """The view bar and tool rail act on the structure: greyed out while there is none."""
+        self._viewbar.setEnabled(on)
+        self._rail.setEnabled(on)
+
+    def _show_empty(self, empty: bool):
+        """With nothing loaded: a centered hint in the view, and the view controls greyed out."""
+        self._set_controls(not empty)
+        p = self.plotter
+        p.remove_actor("_empty", render=False)
+        if empty:
+            dark = _is_dark(self.style.background)
+            actor = p.add_text(EMPTY_HINT, position=(0.5, 0.5), viewport=True, font_size=8,
+                               color="#8B919A" if dark else "#6B7079", name="_empty")
+            prop = actor.GetTextProperty()
+            prop.SetJustificationToCentered()
+            prop.SetVerticalJustificationToCentered()
+
     def set_button_style(self, style: str):
         """Size the tool rail for icons (36 px squares) or text labels (see ``icons.button_style``)."""
         text = style == "Text"
@@ -313,6 +336,7 @@ class Viewport(QtWidgets.QWidget):
             p.remove_actor(name, render=False)
         if p.scalar_bars:
             p.remove_scalar_bar()
+        self._show_empty(self.data is None)
         if self.data is None:
             self.render()
             return
@@ -886,6 +910,10 @@ class Viewport(QtWidgets.QWidget):
             mid = pos.mean(0) if self.tool == "distance" else pos[1]
             p.add_point_labels([mid], [text], font_size=14, text_color=TOKENS["pick"], shape_color="#14161A",
                                shape_opacity=0.7, name="_measure_label", render=False, always_visible=True)
+
+
+EMPTY_HINT = ("Open a structure, trajectory or notebook\n"
+              "File › Open (Ctrl+O), File › Open example, or drop a file here")
 
 
 def _is_dark(color: str) -> bool:

@@ -262,7 +262,8 @@ Opening a data file (File › Open, or `ewald gui file`) makes a notebook for it
 `load` cell and one step per modifier the file needs (an untouched empty notebook makes way
 for it). With no notebook open, at start or after closing the last tab, the notebook area shows
 a welcome page: *New notebook* (Ctrl+T), *Open…*, *Open example* and the files opened lately;
-Notebook › ... is greyed out then, and Insert › ... starts a notebook. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. The cells
+Notebook › ... is greyed out then, and Insert › ... starts a notebook. The 3D view says how to
+open something and greys out its view bar and tools until there is a structure. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. The cells
 only run after you choose to (Notebook › Run all), because a notebook is code. Preferences ›
 Python › *Run notebooks when opened* can change that to always run them or never run them.
 

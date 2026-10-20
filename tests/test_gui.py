@@ -1798,8 +1798,10 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     assert plugins_button.toolTip() == "Show or hide the Plugins side bar"
     tabs = w.panel.tabs
     assert tabs.count() == 0 and w.panel.view is None                    # a new window: the welcome page
+    assert "_empty" in w.viewport.plotter.actors and not w.viewport._viewbar.isEnabled()   # and a hint in the view
     assert tabs.body.currentWidget() is w.panel.welcome
     w.open_any(cu_path, ask_types=False)
+    assert "_empty" not in w.viewport.plotter.actors and w.viewport._viewbar.isEnabled()
     assert tabs.count() == 1 and tabs.tabText(0) == "cu" and w.pipeline is w.panel.pipeline
     w.panel.add_modifier(mods.CoordinationAnalysis(cutoff=3.0))
     w.recompute()
@@ -1847,6 +1849,7 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w.panel.close_tab(0)                                       # the last tab: the welcome page, no new notebook
     assert tabs.count() == 0 and w.panel.view is None and tabs.body.currentWidget() is w.panel.welcome
     assert w.pipeline is None and w.data is None                   # the 3D view, plots and inspector are cleared
+    assert "_empty" in w.viewport.plotter.actors and not w.viewport._rail.isEnabled()
     from ewald.gui import welcome
     assert welcome.load_recent()[0] == str(path)                    # listed under Recent
     w.panel.welcome.refresh()
@@ -2259,6 +2262,8 @@ def test_plugins_side_bar_installs_adds_a_step_and_removes(app, cu_path, tmp_pat
     entry = next(e for e in panel.entries if e.name == "Bar shift")
     panel.install(entry)
     panel.wait()
+    fresh = [r for r in panel.findChildren(plugins_panel.PluginRow) if r.property("fresh")]
+    assert [r.item.path.endswith("bar_shift.py") for r in fresh] == [True]     # scrolled to and marked
     item = next(i for i in panel.items if i.path.endswith("bar_shift.py"))
     panel.show_details(item)
     assert not panel.use_button.isHidden()
