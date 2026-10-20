@@ -152,18 +152,22 @@ modifier's constructor, so every argument you can pass in Python can be edited t
 [Notebooks](notebooks.md).
 
 **View tab (display settings).** The View tab, next to the Python console below the Structure view
-(Window › View settings), shows how the structure is drawn as cards side by side: **Atoms** (style
-preset, radius scale, radius table, oxidation states, how atoms are drawn, *Draw atoms* off for a
-stick model, atom *Labels* such as `{type}{index}`, *Highlight selection*), **Types** (color, radius,
-transparency and count per type, VESTA elements.ini import), **Bonds** (sticks, the pair table, *As
-step* for a Create bonds step), **Cell** (line width and VESTA's boundary range), **Surfaces**
-(polyhedra, isosurfaces and slices that steps made, by name: shown, color, transparency, edges;
-*Reset* gives back the step's look), **Elements** ([visual element
-plugins](../plugins/visuals.md), added with *Add element*) and **Camera**. Every value is a setting of
+(Window › View settings), shows how the structure is drawn as cards in equal-width columns:
+**Atoms** (style preset, radius table, radius scale, oxidation states, how atoms are drawn, *Draw
+atoms* off for a stick model), **Types** (color, radius, transparency and count per type, VESTA
+elements.ini import), **Bonds** (sticks, the pair table, *As step* for a Create bonds step),
+**Surfaces** (polyhedra, isosurfaces and slices that steps made, by name: shown, color,
+transparency, edges; *Reset* gives back the step's look), **Cell** (line width, *Replicate cell* and
+VESTA's *Boundary* range), **Labels** (text on each atom such as `{type}{index}`, *Highlight
+selection*), **Camera** (what the view cell says about the camera and frame, the key *Light*, *Save
+camera*) and **Elements** ([visual element plugins](../plugins/visuals.md), added with *Add
+element*). Every form shares one label column, so fields line up across cards; sub-sections such as
+Replicate cell, Boundary and Light show their rows only while ticked. Click a card's title to fold
+it (it stays folded while the window is open). Every value is a setting of
 the notebook's `view(pipe, ...)` cell: the rows the cell sets are highlighted, the card says *in
 notebook*, and the tooltip shows the value. A change made here is written back into that cell, and
 a change made in code (the cell, the console, Ask AI) shows up here. When the tab is narrow (dragged
-beside the 3D view), the cards stack.
+beside the 3D view), the cards stack in one column.
 
 The boundary range: tick Boundary and set the fractional range (e.g. -0.1 to 1.1) to draw the
 periodic images of atoms on the faces, edges and corners, with bonds and polyhedra completed across
