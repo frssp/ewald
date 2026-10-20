@@ -46,8 +46,11 @@ GUI
 - AI chat side bar (`gui/ask_panel.py`, activity bar): stream answers as they arrive (now the
   whole answer at once), a Stop button, keep chats per notebook tab and save them in `.ewd`,
   show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
-  replace or diff against an existing cell instead of always inserting a new one, edit or
-  regenerate a sent message.
+  edit or regenerate a sent message. The notebook cell tools (`llm/notebook_tools.py`) could
+  highlight the cells the AI changed and show a diff to accept or undo; `ewald ask` and the MCP
+  server could take a notebook (`--notebook analysis.py`) and save it back.
+- `PythonScript` step cells: `Modifier.__repr__` uses `name`, which PythonScript sets to its title,
+  so `step_source` writes `pipe.add(Python script(...))`, which does not parse.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
   still set inline colors (render preview, pick labels, color swatches, field error borders), so
   they keep the old palette until a restart after a theme switch; move them to QSS object names.
@@ -270,8 +273,8 @@ Plugins and AI
   ewald-plugins that runs each package's tests against ewald main (run them by hand until then).
 - More first-party plugins where core support is tied to one outside code (candidates: the
   `ovito` bridge, MDAnalysis formats); built-in format groups stay in core.
-- Plugin manifests, phase 4: notebook/session trust (Restricted mode for files from others),
-  index curation rules, signatures if the index opens to outside publishers.
+- Plugin manifests, phase 4: `.ewald` session trust through the same trusted-file store as
+  notebooks (`ewald.trust`), index curation rules, signatures if the index opens to outside publishers.
 - Per-notebook plugin enable/disable; `plugins.json` holds only the global switch.
 
 - AiiDA (ewald-aiida in frssp/ewald-plugins: local profiles, and remote ones over SSH with
@@ -408,9 +411,6 @@ mixins and helper modules):
 
 ## Security
 
-- Percent-format `.py` and `.ipynb` notebooks open trusted (only `.ewd` opens restricted), so a
-  notebook someone mailed runs on Run all without a question. Jupyter's answer is a store of
-  notebooks this user saved (path and content hash); others open restricted. Decide with the owner.
 From the 2026-10-19 review (expression sandbox, session classes, Forge consent and environment,
 `export_file` paths, PLUMED `LOAD` and the known_hosts key type are fixed):
 

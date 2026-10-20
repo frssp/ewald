@@ -254,12 +254,17 @@ changed or is missing. `load("traj.dump")` in a cell looks in the same places, s
 you send with its data, or one that carries it, runs on another computer. Preferences › Python
 sets the size limit (*Copy data files up to*, 0 for links only) and whether figures are saved.
 
-An `.ewd` from someone else opens **restricted**. You see its code, outputs and figures, but no
-cell runs and its plugins are not imported until you agree: opening asks (unless *Run notebooks
-when opened* is *never*), and so do Run all and running a single cell. A bar over the cells
-says the notebook is restricted, with *Trust* and *Trust and run all*; Notebook › *Trust
-notebook…* does the same. Answering *Yes* when the file opens trusts it too and hides the bar. Trust lasts while
-the notebook is open; opening the file again asks again. A plugin you already have installed under the
+Trust works as in Jupyter. A notebook you saved yourself, or trusted before, opens trusted and
+runs when opened (unless *Run notebooks when opened* is *never*). Any other notebook file
+(`.py`, `.ipynb` or `.ewd` someone sent, or one of yours edited elsewhere) opens **restricted**.
+You see its code, outputs and figures, but no cell runs and an `.ewd`'s plugins are not imported
+until you agree: opening asks (unless the setting is *never*), and so do Run all and running a
+single cell. A bar over the cells says the notebook is restricted, with *Trust* and *Trust and
+run all*; Notebook › *Trust notebook…* does the same. Answering *Yes* when the file opens trusts
+it too and hides the bar. ewald remembers each file you save or trust by the SHA-256 of its
+bytes (in `trusted_notebooks.json` in the config folder), so it opens trusted next time wherever
+it is, and asks again once its content changes; saving a restricted notebook does not trust it.
+A plugin you already have installed under the
 same id is used instead of the copy in the file. Plugins that came from a pip package are not
 in the file, only their package and version: when you don't have one, a second bar names it with
 the steps that need it, and *Install…* runs pip for them in the Plugins side bar after you
@@ -363,11 +368,15 @@ nb.add_view(histogram="Coordination")
 nb.save()
 nb.save("analysis.ewd")           # or .ipynb; save_ewd options: figures=, data_limit_mb=, plugins=
 
-sent = Notebook.load("from_a_colleague.ewd")
+sent = Notebook.load("from_a_colleague.ewd")   # restricted unless you saved or trusted this file
 print(sent.warnings)              # data files that moved or changed
-sent.trust()                      # load its plugins and allow it to run
+sent.trust()                      # load its plugins, allow it to run, remember the file
 sent.run_all()
 ```
+
+A `.py` or `.ipynb` loaded from a script runs, since the script chose it (as `exec` would);
+`Notebook.load(path, trusted=is_trusted_file(path))` (from `ewald.trust`) applies the app's rule,
+and `trusted=False` opens any file restricted.
 
 `Notebook.from_pipeline(pipe)` makes a notebook from a pipeline built in a script.
 

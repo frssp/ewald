@@ -101,7 +101,8 @@ def test_ewd_bundles_figures_data_and_opens_restricted(nb, cu_file, tmp_path):
     assert manifest["data"][0]["path"] == "data/cu.extxyz" and manifest["data"][0]["bundled"]
     assert manifest["figures"][0]["cell"] == 3 and manifest["state"] == {"frame": 0}
 
-    opened = Notebook.load(str(path))
+    assert not Notebook.load(str(path)).restricted           # saved here: opens trusted
+    opened = Notebook.load(str(path), trusted=False)         # as a received file opens
     assert opened.restricted and opened.warnings == [] and opened.name == "cu"
     assert any(o.kind == "image" for o in opened.cells[3].outputs)          # readable without running
     with pytest.raises(PermissionError):

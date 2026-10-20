@@ -185,8 +185,10 @@ OPTIONS = (
            minimum=0, maximum=1024),
 
     Option("python.run_notebooks", "ask", "Run notebooks when opened",
-           "Opening a notebook runs its cells only after you agree, since they are Python code. An .ewd "
-           "file always asks (it can carry plugins) unless this is 'never'.",
+           "As in Jupyter, a notebook you saved or trusted before (the same file, unchanged) runs when "
+           "opened; any other file is Python code you have not seen, so it asks first (an .ewd's "
+           "plugins load only if you agree). 'never' runs nothing when opening and opens unknown files "
+           "restricted. 'always' is the same as 'ask': a file you have not trusted always asks.",
            choices=("ask", "always", "never")),
     Option("python.plot_style", "Publication", "Style of your own plots",
            "matplotlib figures that notebook cells and the console draw (plt.plot ...): the publication "
@@ -236,6 +238,9 @@ OPTIONS = (
     Option("llm.effort", "high", "Effort",
            "How hard the model thinks before answering (Claude, OpenAI reasoning models); lower is faster and cheaper.",
            choices=("low", "medium", "high", "xhigh", "max")),
+    Option("llm.run_cells", False, "Let the AI run cells",
+           "The AI chat can read, insert and edit notebook cells; with this on it can also run them (any "
+           "Python, like Shift+Enter). Off: cells it writes wait until you run them."),
 )
 OPTION = {o.key: o for o in OPTIONS}
 

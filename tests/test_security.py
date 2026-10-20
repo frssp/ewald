@@ -167,6 +167,58 @@ def test_ewd_opens_without_running_code_or_importing_plugins(tmp_path):
     assert "evil_plugin" not in plugins.installed()
 
 
+@pytest.mark.parametrize("ext", [".py", ".ipynb"])
+def test_received_notebook_opens_restricted_until_trusted_as_in_jupyter(tmp_path, ext):
+    from ewald.notebook import Notebook
+    from ewald.trust import UntrustedCode, is_trusted_file
+
+    marker = tmp_path / "pwned"
+    code = f"open({str(marker)!r}, 'w').close()"
+    path = tmp_path / f"sent{ext}"
+    Notebook.from_py(f"# %%\n{code}\n").save(tmp_path / f"mine{ext}")
+    assert is_trusted_file(tmp_path / f"mine{ext}")               # saved here: opens trusted
+    text = (tmp_path / f"mine{ext}").read_text(encoding="utf-8")
+    path.write_text(text.replace("pwned", "pwned2"), encoding="utf-8")   # someone else's file
+    marker = tmp_path / "pwned2"
+    assert not is_trusted_file(path)
+    nb = Notebook.load(path, trusted=is_trusted_file(path))      # what the app does
+    assert nb.restricted
+    with pytest.raises(UntrustedCode):
+        nb.run_all()
+    other = Notebook.load(path, trusted=False)
+    other.cells[0].source += "\nx = 1"
+    other.save(tmp_path / f"edited{ext}")                        # saving does not trust it
+    assert not is_trusted_file(tmp_path / f"edited{ext}")
+    assert not marker.exists()
+    nb.trust()
+    assert is_trusted_file(path) and nb.run_all() and marker.exists()
+    path.write_text(path.read_text(encoding="utf-8") + "\n# %%\nx = 1\n", encoding="utf-8")
+    assert not is_trusted_file(path)                             # changed since: asks again
+
+
+def test_own_ewd_reopens_trusted(tmp_path, cu):
+    from ewald.notebook import Notebook
+
+    Notebook.from_py("# %%\nx = 1\n").save(tmp_path / "mine.ewd")
+    assert not Notebook.load(tmp_path / "mine.ewd").restricted
+    assert Notebook.load(tmp_path / "mine.ewd", trusted=False).restricted
+
+
+def test_trust_store_keeps_the_newest_entries(tmp_path, monkeypatch):
+    from ewald import trust
+
+    monkeypatch.setattr(trust, "TRUST_LIMIT", 3)
+    files = []
+    for k in range(5):
+        f = tmp_path / f"n{k}.py"
+        f.write_text(f"x = {k}\n")
+        trust.remember_file(f)
+        files.append(f)
+    assert [trust.is_trusted_file(f) for f in files] == [False, False, True, True, True]
+    trust._trust_store().write_text("not json")
+    assert not trust.is_trusted_file(files[-1]) and trust.remember_file(files[-1])
+
+
 @pytest.mark.parametrize("name", ["../outside.txt", "/abs.txt", "data/../../outside.txt", "C:/x.txt"])
 def test_ewd_with_unsafe_paths_is_refused(tmp_path, name):
     from ewald.notebook import Notebook
@@ -239,3 +291,36 @@ def test_untrusted_notebook_raises_untrusted_code(tmp_path):
     assert issubclass(UntrustedCode, PermissionError) and "x" not in nb.namespace
     nb.trust()
     assert nb.run_all() and nb.namespace["x"] == 1
+
+
+def test_ai_notebook_tools_never_run_code_unless_allowed():
+    from ewald.llm import Toolset
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py("# %%\nx = 1\n")
+    ts = Toolset(None, notebook=nb)                      # the default: no allow_code, no "run cells"
+    assert "run_cell" not in [d["name"] for d in ts.definitions()]
+    r = ts.call("run_cell", {"index": 0})
+    assert r.is_error and "not offered" in r.content and "x" not in nb.namespace
+    ts.call("insert_cell", {"source": "import os\nmarker = 1"})
+    ts.call("edit_cell", {"index": 0, "source": "marker = 2"})
+    assert "marker" not in nb.namespace                  # written, never run
+
+    nb.restricted = True                                 # an .ewd that is not trusted yet
+    r = Toolset(None, notebook=nb, allow_code=True).call("run_cell", {"index": 0})
+    assert r.is_error and "not trusted" in r.content and "marker" not in nb.namespace
+
+
+def test_ai_cannot_set_code_parameters_of_a_step():
+    from ewald import DataCollection, Pipeline, StaticSource
+    from ewald.llm import Toolset
+    from ewald.modifiers import PythonScript
+    from ewald.notebook import Notebook
+
+    pipe = Pipeline(StaticSource([DataCollection.from_ase(__import__("ase").Atoms("Cu", cell=[3, 3, 3], pbc=True))]))
+    nb = Notebook.from_py("# %%\nfrom ewald.modifiers import PythonScript\n"
+                          "pipe.add(PythonScript('def modify(frame, data):\\n    pass\\n'))\n")
+    nb.namespace["pipe"] = pipe
+    assert nb.run_cell(0) and isinstance(nb.cells[0].modifier, PythonScript)
+    r = Toolset(pipe, notebook=nb).call("edit_cell", {"index": 0, "params": {"source": "import os"}})
+    assert r.is_error and "runs Python" in r.content and "os" not in pipe.modifiers[0].source

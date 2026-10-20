@@ -18,6 +18,11 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- Notebook trust works as in Jupyter: the app opens any `.py`, `.ipynb` or `.ewd` notebook you did
+  not save or trust yourself restricted (before, only `.ewd`), and asks before it runs. Saved and
+  trusted files are remembered by content hash (`ewald.trust.is_trusted_file`/`remember_file`), so
+  your own notebooks open and run without the question, and a saved `.ewd` reopens trusted in a
+  script too. *Run notebooks when opened* = *always* now means the same as *ask*.
 - Notebook cells in the app's own Python run on a worker thread: a long cell no longer freezes the
   window, and **Interrupt** (or `Notebook.interrupt()`) stops it with `CellInterrupted`, as it
   already did in another kernel. pyplot in cells draws off screen (Agg).
