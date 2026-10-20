@@ -1594,6 +1594,10 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
                                                                                    "EWALD notebook with results and data (*.ewd)"))
     assert w.save_notebook() == str(path)                     # .ewd is the default format
     w.close()
+    from ewald.trust import _trust_store, is_trusted_file
+
+    assert is_trusted_file(path)                              # saved here: it would open trusted
+    _trust_store().unlink()                                   # as if someone else had sent it
 
     asked = []
     monkeypatch.setattr(QtWidgets.QMessageBox, "question",
@@ -1614,11 +1618,20 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert [m.name for m in w2.pipeline.modifiers] == ["CoordinationAnalysis"]
     w2.close()
 
+    assert is_trusted_file(path)                              # trusting it remembers it
+    _trust_store().unlink()
     w3 = MainWindow(settings=settings.Settings())             # Yes when opening: trusted, the bar goes away
     view = w3.open_notebook(str(path))
     assert not view.notebook.restricted and view.banner.isHidden()
     assert view.notebook.cells[0].state == "ok" and [m.name for m in w3.pipeline.modifiers] == ["CoordinationAnalysis"]
     w3.close()
+    asked.clear()
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: asked.append(a[2]))
+    w3b = MainWindow(settings=settings.Settings())            # trusted at w3's open: runs without asking
+    view = w3b.open_notebook(str(path))
+    assert not asked and not view.notebook.restricted and view.notebook.cells[0].state == "ok"
+    w3b.close()
+    _trust_store().unlink()
 
     monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.No)
     w4 = MainWindow(settings=settings.Settings())             # No when opening, then the bar's Trust button

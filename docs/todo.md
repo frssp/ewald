@@ -266,8 +266,8 @@ Plugins and AI
   ewald-plugins that runs each package's tests against ewald main (run them by hand until then).
 - More first-party plugins where core support is tied to one outside code (candidates: the
   `ovito` bridge, MDAnalysis formats); built-in format groups stay in core.
-- Plugin manifests, phase 4: notebook/session trust (Restricted mode for files from others),
-  index curation rules, signatures if the index opens to outside publishers.
+- Plugin manifests, phase 4: `.ewald` session trust through the same trusted-file store as
+  notebooks (`ewald.trust`), index curation rules, signatures if the index opens to outside publishers.
 - Per-notebook plugin enable/disable; `plugins.json` holds only the global switch.
 
 - AiiDA (ewald-aiida in frssp/ewald-plugins: local profiles, and remote ones over SSH with
@@ -404,9 +404,6 @@ mixins and helper modules):
 
 ## Security
 
-- Percent-format `.py` and `.ipynb` notebooks open trusted (only `.ewd` opens restricted), so a
-  notebook someone mailed runs on Run all without a question. Jupyter's answer is a store of
-  notebooks this user saved (path and content hash); others open restricted. Decide with the owner.
 From the 2026-10-19 review (expression sandbox, session classes, Forge consent and environment,
 `export_file` paths, PLUMED `LOAD` and the known_hosts key type are fixed):
 
