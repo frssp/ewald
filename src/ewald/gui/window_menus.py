@@ -9,7 +9,7 @@ from .. import examples, manual
 from .icons import icon
 from .palette import CommandPalette, menu_entries
 from .pipeline_panel import fill_modifier_menu
-from .notebook_panel import fill_view_menu
+from .cell_widget import fill_view_menu
 from .theme import PALETTES
 from .viewport import Viewport
 

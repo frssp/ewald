@@ -8,13 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Architecture cleanup from the 2026-10-20 systems review, one small pull request each: read-only
-  cached frames (done), core never imports `ewald.gui` (done, `tests/test_architecture.py`),
-  in-process notebook cells off the GUI thread with Interrupt (done), one trust check for every
-  code-execution path plus sha256 for catalog downloads (done: `trust.py`, `EXEC_SITES`), a
-  versioned plugin API (done: `ewald.plugin_api`; the ewald-plugins packages still need
-  `plugin-api = 1` in their manifests), splitting `plugins.py` (done: `plugin_kinds.py`,
-  `plugin_manifest.py`), then splitting `gui/notebook_panel.py`.
 
 ## Next
 
@@ -436,6 +429,11 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 
 ## Infrastructure
 
+- From the 2026-10-20 systems review (/mnt/project-files/ewald-review/senior-systems-review.md;
+  its refactors are merged, #129-#135): a self-hosted runner (xvfb + Mesa) to restore the PR
+  gate without Actions minutes; render/VTK tests in a subprocess so a VTK abort fails one test,
+  not the suite; a lighter core install (`vtk`/`pyvista` and `paramiko`/`keyring` as extras or
+  lazy imports) and manylinux wheels so PTM/Voronoi/CSP are not missing without a compiler.
 - GitHub Actions minutes ran out on 2026-10-19, so every workflow now runs only on manual
   dispatch and pull requests are verified locally (`xvfb-run -a python -m pytest -q`,
   `mkdocs build --strict`). Restore the `push`/`pull_request`/tag triggers once minutes are
