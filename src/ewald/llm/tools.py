@@ -52,6 +52,10 @@ class Tool:
     description: str
     input_schema: dict
     function: Callable
+    available: Callable[[], bool] | None = None   # None: always offered; else asked on every send
+
+    def offered(self) -> bool:
+        return self.available is None or bool(self.available())
 
     def definition(self) -> dict:
         return {"name": self.name, "description": self.description, "input_schema": self.input_schema}
@@ -122,10 +126,15 @@ class Toolset:
     ``allow_code=True`` adds ``run_python``, which executes model-written Python
     in this process (with ``pipe``, ``np`` and ``ewald`` in scope). Leave it off
     unless you trust the model's output as you would your own scripts.
+
+    ``notebook`` (a :class:`~ewald.notebook.Notebook`, a function returning the current one, or a
+    :class:`~ewald.llm.notebook_tools.NotebookAccess`) adds the notebook cell tools
+    (:mod:`ewald.llm.notebook_tools`); ``run_cell`` among them only with ``allow_code`` or an
+    access that allows running.
     """
 
     def __init__(self, pipeline: Pipeline | None = None, *, allow_code: bool = False,
-                 workdir: str | None = None, render_size=(1200, 900)):
+                 workdir: str | None = None, render_size=(1200, 900), notebook=None):
         self.pipeline = pipeline
         self.allow_code = allow_code
         self.workdir = workdir or tempfile.mkdtemp(prefix="ewald-llm-")
@@ -142,18 +151,34 @@ class Toolset:
         self.overlays: list[dict] = []  # overlay elements drawn by render_image: {name, params, enabled}
         self.theme: str | None = None   # theme render_image uses (ewald.themes)
         self.tools: dict[str, Tool] = {}
+        self.notebook_access = None
         self._register()
+        if notebook is not None:
+            self.attach_notebook(notebook)
 
     # ------------------------------------------------------------- public API
     def definitions(self) -> list[dict]:
         """Tool definitions in Anthropic Messages API format."""
-        return [t.definition() for t in self.tools.values()]
+        return [t.definition() for t in self.tools.values() if t.offered()]
+
+    def attach_notebook(self, notebook):
+        """Add the notebook cell tools over ``notebook`` (see the class docstring); returns the access."""
+        from .notebook_tools import NotebookAccess, register
+
+        if not isinstance(notebook, NotebookAccess):
+            notebook = NotebookAccess(notebook, can_run=lambda: self.allow_code)
+        self.notebook_access = notebook
+        register(self, notebook)   # replaces plugin tools of the same name: built-in names win
+        return notebook
 
     def call(self, name: str, arguments: dict | None = None) -> ToolResult:
         """Run tool ``name``; errors come back as ``is_error`` results, never raise."""
         tool = self.tools.get(name)
+        if tool is not None and not tool.offered():
+            return ToolResult(f"{name} is not offered in this session (the user has not allowed it)", is_error=True)
         if tool is None:
-            return ToolResult(f"unknown tool {name!r}; available: {', '.join(self.tools)}", is_error=True)
+            offered = ", ".join(n for n, t in self.tools.items() if t.offered())
+            return ToolResult(f"unknown tool {name!r}; available: {offered}", is_error=True)
         try:
             out = tool.function(**(arguments or {}))
         except Exception as exc:  # the model reads the error and corrects itself

@@ -480,3 +480,62 @@ def test_code_modifiers_need_allow_code(cu_fcc):
     assert "PythonScript" in opened.call("list_modifiers").content
     ref = opened.call("python_api").content
     assert "Differences from OVITO" in ref and "`CommonNeighborAnalysis(" in ref
+
+
+def test_notebook_tools_read_insert_edit_move_delete(tmp_path):
+    from ewald.notebook import Notebook
+
+    path = tmp_path / "cu.vasp"
+    write(path, bulk("Cu", "fcc", a=3.615, cubic=True).repeat(2), format="vasp")
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\nfrom ewald.modifiers import *\npipe = load({str(path)!r})\n\n"
+                          "# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n\n# %%\nprint('hi')\n")
+    assert nb.run_all()
+    ts = Toolset(nb.pipeline, notebook=nb)
+    names = [d["name"] for d in ts.definitions()]
+    assert {"list_cells", "read_cell", "insert_cell", "edit_cell", "move_cell", "delete_cell"} <= set(names)
+    assert "run_cell" not in names and "run_cell" not in Toolset(None).tools
+
+    cells = ts.call("list_cells").content["cells"]
+    assert [c["kind"] for c in cells] == ["code", "step", "code"] and cells[1]["modifier"] == "CoordinationAnalysis"
+    read = ts.call("read_cell", {"index": 2}).content
+    assert read["source"] == "print('hi')" and read["outputs"] == [{"kind": "text", "text": "hi\n"}]
+    assert ts.call("read_cell", {"index": 1}).content["params"]["cutoff"] == 3.0
+
+    # step parameters change like the form does: the pipeline follows, no code runs
+    r = ts.call("edit_cell", {"index": 1, "params": {"cutoff": 2.8}})
+    assert not r.is_error and nb.pipeline.modifiers[0].cutoff == 2.8 and "cutoff=2.8" in nb.cells[1].source
+    assert ts.call("edit_cell", {"index": 1, "params": {"nope": 1}}).is_error
+
+    # inserted and edited cells are not run
+    new = ts.call("insert_cell", {"source": "y = 2", "index": 2}).content["inserted"]
+    assert new["index"] == 2 and nb.cells[2].state == "new" and "y" not in nb.namespace
+    assert ts.call("edit_cell", {"id": new["id"], "old_text": "2", "new_text": "3"}).content["edited"]["first_line"] == "y = 3"
+    assert ts.call("edit_cell", {"index": 2, "old_text": "zzz", "new_text": "1"}).is_error
+    assert ts.call("edit_cell", {"index": 2}).is_error                     # nothing to change
+    assert "y" not in nb.namespace
+
+    # a step cell's new source takes its old step out of the pipeline until the cell runs again
+    r = ts.call("edit_cell", {"index": 1, "source": "pipe.add(CoordinationAnalysis(cutoff=3.5))"}).content
+    assert "note" in r and nb.pipeline.modifiers == [] and nb.cells[1].state == "stale"
+
+    ts.call("move_cell", {"index": 3, "to": 1})
+    assert nb.cells[1].source == "print('hi')"
+    ts.call("delete_cell", {"index": 1})
+    assert len(nb.cells) == 3 and ts.call("read_cell", {"index": 9}).is_error
+    ts.call("insert_cell", {"source": "# Notes", "kind": "markdown"})
+    assert nb.cells[-1].kind == "markdown" and nb.cells[-1].state == "ok"
+
+
+def test_notebook_tools_run_cell_with_allow_code():
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py("# %%\nx = 6\n\n# %%\nprint(x * 7)\n")
+    ts = Toolset(None, notebook=nb, allow_code=True)
+    assert "run_cell" in [d["name"] for d in ts.definitions()]
+    assert ts.call("run_cell", {"index": 0}).content["ok"]
+    r = ts.call("run_cell", {"index": 1})
+    assert not r.is_error and r.content["outputs"] == [{"kind": "text", "text": "42\n"}]
+    ts.call("insert_cell", {"source": "1 / 0"})
+    r = ts.call("run_cell", {"index": -1})
+    assert r.is_error and r.content["state"] == "error" and "ZeroDivisionError" in r.content["outputs"][0]["text"]
+    assert Toolset(None).call("list_cells").is_error        # no notebook attached: no such tool

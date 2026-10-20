@@ -179,14 +179,17 @@ def cli_section() -> list[str]:
 
 
 def claude_section() -> list[str]:
-    from .llm.tools import Toolset
-
-    ts = Toolset(None, allow_code=True)
     from .llm.providers import BUILTIN
+    from .llm.tools import Toolset
+    from .notebook import Notebook
+
+    ts = Toolset(None, allow_code=True, notebook=Notebook())
 
     out = ["## AI integration", "",
            "The same tools serve Ask AI and the AI chat, `ewald ask`, the Python `ewald.llm.Agent` and `ewald mcp` "
-           "(MCP server), whichever provider answers. Tools marked *code* exist only with `allow_code=True`. "
+           "(MCP server), whichever provider answers. Tools marked *code* exist only with `allow_code=True`; "
+           "*notebook* tools act on the cells of an attached notebook (the AI chat's current tab), and "
+           "`run_cell` needs `allow_code=True` or Preferences > AI > Let the AI run cells. "
            "Details: [AI integration](user/claude.md).", "",
            "Providers (Preferences > AI, `--provider`; `@ai_provider` plugins add more):", ""]
     out += _table(("Provider", "Name", "Default model", "Key"),
@@ -195,7 +198,9 @@ def claude_section() -> list[str]:
                    for p in BUILTIN.values()])
     out += ["", "Tools:", ""]
     plain = set(Toolset(None).tools)
-    rows = [(f"`{name}`" + ("" if name in plain else " *code*"), first_sentence(t.description))
+    cells = set(Toolset(None, notebook=Notebook()).tools) - plain
+    rows = [(f"`{name}`" + (" *notebook*" if name in cells else "" if name in plain else " *code*")
+             + (" *code*" if name == "run_cell" else ""), first_sentence(t.description))
             for name, t in ts.tools.items()]
     out += _table(("Tool", "What it does"), rows)
     out += ["", "Also: `ewald describe` / `ewald narrate` (rule-based descriptors and a trajectory timeline, "

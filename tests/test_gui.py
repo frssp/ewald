@@ -1091,6 +1091,49 @@ def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
     w.close()
 
 
+def test_ai_chat_edits_notebook_cells_from_its_thread(app, pipe):
+    from ewald.gui.app import MainWindow
+    from ewald.llm import Toolset
+
+    results = {}
+
+    class CellAgent:
+        def __init__(self, pipeline, on_event):
+            self.toolset = Toolset(pipeline)
+            self.on_event = on_event
+
+        def ask(self, question):   # runs on the chat's worker thread, like the real agent loop
+            for name, args in self.script:
+                results.setdefault(name, []).append(self.toolset.call(name, args))
+            return "done"
+
+    w = MainWindow(pipe)
+    view = w.panel.view
+    agent = CellAgent(pipe, None)
+    w.ask_panel.agent_factory = lambda p, ev: agent
+    agent.script = [("insert_cell", {"source": "x = 41 + 1"}), ("list_cells", {}), ("run_cell", {"index": -1})]
+    w.ask_panel.ask("Add a cell")
+    _wait(app, w.ask_panel)
+    cell = view.notebook.cells[-1]
+    assert cell.source == "x = 41 + 1" and cell.state == "new" and view.widget_for(cell) is not None
+    assert not results["insert_cell"][0].is_error
+    assert [c["first_line"] for c in results["list_cells"][0].content["cells"]][-1] == "x = 41 + 1"
+    assert results["run_cell"][0].is_error and "not offered" in results["run_cell"][0].content
+    assert "run_cell" not in [d["name"] for d in agent.toolset.definitions()]
+    assert view.history.undo_label == "AI: insert cell"
+
+    w.settings["llm.run_cells"] = True                    # Preferences › AI › Let the AI run cells
+    agent.script = [("edit_cell", {"index": -1, "old_text": "41", "new_text": "40"}), ("run_cell", {"index": -1})]
+    w.ask_panel.ask("Fix and run it")
+    _wait(app, w.ask_panel)
+    run = results["run_cell"][-1]
+    assert not run.is_error and run.content["state"] == "ok" and view.notebook.namespace["x"] == 41
+    assert view.notebook.cells[-1].source == "x = 40 + 1"
+    assert view.undo() == "AI: edit cell"                   # each AI edit is one undo step (Ctrl+Z)
+    assert view.notebook.cells[-1].source == "x = 41 + 1"
+    w.close()
+
+
 def test_ai_chat_tells_claude_about_the_notebook(app, monkeypatch):
     from ewald import settings
     from ewald.gui import ask_panel
