@@ -39,8 +39,7 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 GUI
 
 - UI feedback audit (2026-10-20, project files `ewald-review/ui-feedback-audit.md`): still open
-  are the Render settings column scrolling sideways at the default window width and the
-  notebook header's "not saved" eliding in a narrow column. Cancelling an open stops waiting
+  is the Render settings column scrolling sideways at the default window width. Cancelling an open stops waiting
   but not the read itself (readers have no cancel hook).
 - Panel layout (phase 1 landed: `gui/workbench.py`, `gui/layout_model.py`; plan in project
   files `design/panel-layout.md`): phase 2 opens a notebook view cell's plot large in the
