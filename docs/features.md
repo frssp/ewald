@@ -208,7 +208,7 @@ Tried in this order when no `format=` is given; reader plugins slot in at priori
 | `vasprun` | `vasprun*.xml` | VASP vasprun.xml: ionic steps with cell, forces, stress, energies, DOS/PDOS and bands, lazy | `vasp-vasprun` |
 | `extxyz` | `*.xyz` `*.extxyz` | XYZ / extended XYZ (Lattice=, Properties=), lazy | `xyz`, `ext-xyz` |
 | `cif` | `*.cif` | Crystallographic Information File via ASE |  |
-| `ase` | `POSCAR*` `CONTCAR*` `OUTCAR*` `vasprun*.xml` `*.xyz` `*.extxyz` `*.cif` `*.vasp` | anything ase.io.read understands (POSCAR, OUTCAR, vasprun.xml, extxyz, cif, ...); other format= names are passed to ASE |  |
+| `ase` | `*POSCAR*` `*CONTCAR*` `*.vasp` `*.poscar` `OUTCAR*` `vasprun*.xml` `*.xyz` `*.extxyz` `*.cif` `*.pdb` `*.gro` `*.gen` `*.res` `*.cell` `*.castep` `*.pwi` `*.pwo` `geometry.in` | anything ase.io.read understands (POSCAR, OUTCAR, vasprun.xml, extxyz, cif, ...); other format= names are passed to ASE |  |
 | `lammps-data-ase` | (by `format=` only) | LAMMPS data file via ASE |  |
 
 Remote paths (`host:/path`, `ssh://...`) work with every reader; LAMMPS dumps and XDATCARs are streamed, other formats are downloaded to a local cache.

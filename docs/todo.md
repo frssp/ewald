@@ -10,6 +10,9 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Open dialog filters: Qt matches patterns case-sensitively on Linux, so `*.CIF` or `poscar` files
+  show only under All files; `log.lammps` and `OSZICAR` are read only as companions of a trajectory, not
+  opened on their own.
 - Several files as one trajectory: File › Open and drops join several data files in natural order
   only (no dialog to reorder them or pick `join="concat"`), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
   appended to after a restart (`dump_modify append yes`). Restart detection needs a Timestep per

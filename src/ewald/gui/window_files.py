@@ -13,13 +13,42 @@ from .busy import Cancelled, busy, wait_for
 from .welcome import add_recent
 
 
-def file_filter() -> str:
-    """Open-dialog filter from the reader registry (built-in formats and plugins)."""
+def _format_label(plugin) -> str:
+    """Short name of a reader for its open-dialog filter: the description up to its details."""
+    if plugin.name == "ase":
+        return "POSCAR/CONTCAR and other formats via ASE"
+    text = plugin.description or plugin.name
+    for stop in (":", ";", " (", ", lazy", ", needs", ", one row", ", fixed"):
+        text = text.split(stop)[0]
+    return text.strip() or plugin.name
+
+
+def open_filters() -> list[str]:
+    """Open-dialog filters from the reader registry (built-in formats and plugins): first every
+    supported file at once (extensionless VASP names such as POSCAR or XDATCAR included), then
+    the groups, one filter per format, and all files."""
     from .. import plugins
 
-    return (f"Simulation files ({' '.join(plugins.file_patterns('structure'))});;"
-            f"Volumetric data ({' '.join(plugins.file_patterns('volumetric'))});;"
-            "Notebooks (*.ewd *.ipynb *.py);;Sessions (*.ewald);;All files (*)")
+    notebooks = ["*.ewd", "*.ipynb", "*.py", "*.ewald"]
+    data = plugins.file_patterns()
+    out = [f"All supported files ({' '.join(data + [p for p in notebooks if p not in data])})"]
+    for label, category in (("Simulation files", "structure"), ("Volumetric data", "volumetric")):
+        if patterns := plugins.file_patterns(category):
+            out.append(f"{label} ({' '.join(patterns)})")
+    out += ["Notebooks (*.ewd *.ipynb *.py)", "Sessions (*.ewald)"]
+    per_format = {}
+    for plugin in sorted(plugins.readers().values(), key=lambda p: (p.priority is None, p.priority or 0)):
+        if plugin.patterns and not plugin.schemes:
+            patterns = per_format.setdefault(_format_label(plugin), [])
+            patterns += [p for p in plugin.patterns if p not in patterns]
+    out += [f"{label} ({' '.join(patterns)})" for label, patterns in
+            sorted(per_format.items(), key=lambda item: (item[0].startswith("POSCAR"), item[0].lower()))]
+    return out + ["All files (*)"]
+
+
+def file_filter() -> str:
+    """The open-dialog filter string; "All supported files" comes first and is the default."""
+    return ";;".join(open_filters())
 
 
 SESSION_FILTER = "ewald session (*.ewald)"

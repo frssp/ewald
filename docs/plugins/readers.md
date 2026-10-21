@@ -161,7 +161,9 @@ the same as `@reader` and can be called from a script or the GUI console. In an 
 package, an entry point registers the reader without any code running at import time; see
 [Packaging and sharing](packaging.md). An entry-point class can carry `patterns`, `sniff`, `description`,
 `priority`, `aliases`, `schemes` and `category` (`"structure"` or `"volumetric"`, which groups
-the GUI file filter) as class attributes.
+the GUI file filter) as class attributes. The reader's `patterns` join the open dialog's All
+supported files filter, and it gets a filter of its own named after its `description` (the text before
+the first `:`, `;` or ` (`).
 
 ## Example
 
