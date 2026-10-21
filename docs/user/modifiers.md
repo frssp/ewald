@@ -322,6 +322,7 @@ recomputes them.
   atoms that moved more than `min_displacement` Å from where they are now (all NEB images
   behind the one on the timeline, a diffusion hop over an MD window). The copies are appended
   as extra particles with `Transparency` and `Overlay Frame`, so put it last in the pipeline.
+  The display bonds are searched on the real atoms only, so the copies are drawn without bonds.
 - `UnwrapTrajectories()`: undoes the wrapping at periodic boundaries so paths are continuous
   (OVITO's UnwrapTrajectoriesModifier, same positions). LAMMPS `ix iy iz` image flags are used
   when present; otherwise crossings are followed from frame 0, with checkpoints so a jump to a
@@ -409,7 +410,8 @@ data.attributes["SiteHopping.mean_residence_time"]    # ps
   barrier of a NEB band whose images are the frames (a NEB folder, an ASE NEB trajectory, an
   extxyz of images). `images=7` takes the last 7 frames, the final band of an optimizer
   history. The reaction coordinate is the summed 3N-dimensional distance between images
-  (minimum image), as in VTST's nebbarrier.pl; with `Force` on the frames the profile is
+  (minimum image between neighbouring images), as in VTST's nebbarrier.pl and ASE's
+  NEBTools, so atoms wrapped differently in each image do not lengthen the path; with `Force` on the frames the profile is
   VTST's cubic spline through the energies with slopes from the force along the improved
   tangent, without forces a natural cubic spline. Writes `tables["NEB"]`,
   `tables["NEB spline"]`, `NEB.Barrier`, `NEB.Reverse Barrier`, `NEB.Reaction Energy`,

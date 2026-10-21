@@ -436,16 +436,18 @@ def import_file(path, format: str | None = None, **kwargs):
     VASP file-name guess and ``pbc=True`` marks a cube file periodic.
     A NEB run (a VASP folder with image folders ``00 .. NN``, or ``format="neb"`` with a
     wildcard naming one file per image) is read with one frame per image, and the pipeline
-    starts with ``NebEnergyProfile`` and ``OverlayFrames`` (every image see-through behind the
-    current one; see :mod:`ewald.io.neb`).
+    starts with ``UnwrapTrajectories`` (images are written wrapped into the cell, each file its
+    own way, so atoms on a cell face would jump across it from image to image),
+    ``NebEnergyProfile`` and ``OverlayFrames`` (every image see-through behind the current one;
+    see :mod:`ewald.io.neb`).
     """
     from ..pipeline import Pipeline
 
     pipe = Pipeline(FileSource(path, format, **kwargs))
     if any(isinstance(r, NebReader) for r in pipe.source.readers):
-        from ..modifiers import NebEnergyProfile, OverlayFrames
+        from ..modifiers import NebEnergyProfile, OverlayFrames, UnwrapTrajectories
 
-        pipe.modifiers += [NebEnergyProfile(), OverlayFrames()]
+        pipe.modifiers += [UnwrapTrajectories(), NebEnergyProfile(), OverlayFrames()]
     return pipe
 
 

@@ -407,7 +407,7 @@ PAPERS = [
         description="VTST NEB folder 00-04: Fe31 (32-site fcc cell with one vacancy), three images with OUTCAR "
                     "and CONTCAR, endpoints with OUTCAR and POSCAR",
         reproduces="the 325 meV barrier and the saddle at half the path that pymatgen's NEBAnalysis gets "
-                   "(NebEnergyProfile on the folder, OverlayFrames)",
+                   "(UnwrapTrajectories, NebEnergyProfile on the folder, OverlayFrames)",
         script="fe_vacancy_neb.py",
         files=tuple(RemoteFile(name, _github(*_PMG, f"test-files/io/vasp/fixtures/neb_analysis/neb1/neb/{name}"),
                                sha, size) for name, (sha, size) in _FE_NEB.items()),

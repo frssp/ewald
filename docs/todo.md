@@ -312,6 +312,9 @@ Formats
   `images=` option on the reader for ASE NEB trajectories, so the band history needs no
   modifier parameter; dimer and string-method outputs. A NEB folder opened from File › Open
   (a directory picker there) instead of File › Load NEB folder or a drop.
+- NEB: warn when an endpoint OUTCAR lists the atoms in another order than the band (the Fe
+  vacancy example's 04/OUTCAR does; the reader takes POSCAR atoms, so only other tools are hit),
+  and match atoms by position when images carry no identifiers.
 - NEB: interpolate between images for a smoother movie; `OverlayFrames` copies are extra
   particles, so picking one in the viewport selects a copy, not the real atom.
 - Ray tracer: see-through spheres are tessellated glass (`OverlayFrames` copies, Transparency);

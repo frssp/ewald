@@ -348,6 +348,7 @@ class OverlayFrames(_TrajectoryModifier):
     They are appended after the real particles with the current frame's properties (type,
     color, radius), 'Transparency', 'Overlay Frame' (the frame each copy comes from; -1 for
     the real particles), no selection and zero vector properties, so put this modifier last.
+    The display bonds are searched on the real particles only, so copies are drawn without bonds.
     """
 
     def __init__(self, transparency: float = 0.7, min_displacement: float = 0.1, start: int = 0,
