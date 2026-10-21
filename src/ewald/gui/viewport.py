@@ -431,7 +431,7 @@ class Viewport(QtWidgets.QWidget):
         for name in ("atoms", "atoms:glass", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay",
                      "_labels-labels", "measurements", "_measurements-labels", *stale):
             p.remove_actor(name, render=False)
-        for title in list(p.scalar_bars or ()):
+        for title in list(p.scalar_bars.keys()):
             p.remove_scalar_bar(title, render=False)
         self._show_empty(self.data is None)
         if self.data is None:

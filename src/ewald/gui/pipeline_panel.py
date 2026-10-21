@@ -808,7 +808,7 @@ class DisplayPanel(QtWidgets.QWidget):
         w = QtWidgets.QWidget()
         f = self._form_layout(w)
         width = QtWidgets.QDoubleSpinBox(minimum=0, maximum=20, singleStep=0.5, value=st.trajectory_width,
-                                         toolTip="Line width in pixels; 0 hides the trajectory lines")
+                                         suffix=" px", toolTip="Line width in pixels; 0 hides the trajectory lines")
         width.valueChanged.connect(lambda v: self._set("trajectory_width", float(v)))
         self._row(f, "Trajectories", width, "trajectory_width")
         box, g = self._group("Color map", st.trajectory_color_by is not None,
