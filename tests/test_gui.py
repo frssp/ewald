@@ -4281,3 +4281,38 @@ def test_notebook_status_drops_parts_instead_of_clipping(app):
     assert label.shown_text() == "3 steps"           # not "3 st…ved"
     label.resize(4, 20)
     assert label.shown_text() == ""
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_next_notebook_does_not_inherit_the_previous_ones_bond_table(app, tmp_path):
+    """MgB2 opened first, TiO2 next: the Display panel shows Ti-O bonds, not Mg-B (the window's style
+    seeds an untouched view, but only with settings for the new structure's elements)."""
+    from ase import Atoms
+    from ase.io import write
+
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+
+    mgb2 = Atoms("MgB2", scaled_positions=[(0, 0, 0), (1 / 3, 2 / 3, 0.5), (2 / 3, 1 / 3, 0.5)],
+                 cell=[[3.08, 0, 0], [-1.54, 2.667, 0], [0, 0, 3.52]], pbc=True)
+    write(tmp_path / "POSCAR.MgB2", mgb2, format="vasp")
+    u = 0.305   # rutile
+    tio2 = Atoms("Ti2O4", scaled_positions=[(0, 0, 0), (.5, .5, .5), (u, u, 0), (1 - u, 1 - u, 0),
+                                            (.5 + u, .5 - u, .5), (.5 - u, .5 + u, .5)], cell=[4.59, 4.59, 2.96], pbc=True)
+    write(tmp_path / "POSCAR.TiO2", tio2, format="vasp")
+    (tmp_path / "mgb2.py").write_text(f"# %%\nfrom ewald import load, view\npipe = load({str(tmp_path / 'POSCAR.MgB2')!r})\n"
+                                      '\n# %%\nview(pipe, colors={"Mg": "#f2a33a", "B": "#3a6fd9"}, bonds=True)\n')
+    (tmp_path / "tio2.py").write_text(f"# %%\nfrom ewald import load\npipe = load({str(tmp_path / 'POSCAR.TiO2')!r})\n")
+    w = MainWindow(settings=settings.Settings())
+    first = w.panel.open_notebook(str(tmp_path / "mgb2.py"), trusted=True)
+    first.run_all()
+    app.processEvents()
+    assert any({a, b} == {"Mg", "B"} for a, b, *_ in w.style.bond_pairs)
+    second = w.panel.open_notebook(str(tmp_path / "tio2.py"), trusted=True)
+    second.run_all()
+    app.processEvents()
+    names = {s for a, b, *_ in w.style.bond_pairs for s in (a, b)}
+    assert names and names <= {"Ti", "O"}, w.style.bond_pairs
+    pipe = second.notebook.pipeline
+    assert not {"Mg", "B"} & set(pipe.view.colors) and not pipe.view.bond_pairs
+    w.close()
