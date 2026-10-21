@@ -404,8 +404,9 @@ def builtin_readers():
                      ("vasp-vasprun",)),
         ReaderPlugin("lammps-data-ase", _open_ase_lammps_data, (), None,
                      "LAMMPS data file via ASE", B, None),
-        ReaderPlugin("ase", _open_ase, ("POSCAR*", "CONTCAR*", "OUTCAR*", "vasprun*.xml", "*.xyz", "*.extxyz",
-                                        "*.cif", "*.vasp"), lambda path: True,
+        ReaderPlugin("ase", _open_ase, ("*POSCAR*", "*CONTCAR*", "*.vasp", "*.poscar", "OUTCAR*", "vasprun*.xml",
+                                        "*.xyz", "*.extxyz", "*.cif", "*.pdb", "*.gro", "*.gen", "*.res",
+                                        "*.cell", "*.castep", "*.pwi", "*.pwo", "geometry.in"), lambda path: True,
                      "anything ase.io.read understands (POSCAR, OUTCAR, vasprun.xml, extxyz, cif, ...); "
                      "other format= names are passed to ASE", B, 100, takes_format=True),
     ]

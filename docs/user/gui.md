@@ -303,7 +303,10 @@ made in the GUI can be reproduced in a batch script. See [Rendering figures](ren
 
 File › Open example opens one of the [example files](quickstart.md#example-files) shipped
 with ewald. File › Open opens any format ewald can read ([File formats](formats.md)), including
-formats added by [reader plugins](../plugins/readers.md). LAMMPS dumps ask for a
+formats added by [reader plugins](../plugins/readers.md). Its file filter starts at All supported files,
+which lists every format at once, extensionless VASP names (`POSCAR`, `CONTCAR`, `XDATCAR`, `OUTCAR`,
+`CHGCAR`, ...) and notebooks and sessions included; the groups, one filter per format and All files
+follow it. LAMMPS dumps ask for a
 type-to-element map unless you set a default in Preferences. File › Load NEB folder opens a
 VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image
 ([NEB runs](formats.md#neb-runs)); opening a single image file of such a run asks whether to
