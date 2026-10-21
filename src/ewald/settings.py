@@ -306,6 +306,18 @@ def component_status():
 
 
 # ---------------------------------------------------------------- storage
+def read_text_any(path) -> str:
+    """A text file EWALD wrote: UTF-8, or the locale's encoding for files older versions wrote
+    on Windows (cp949, cp1252, ...) before every file was UTF-8."""
+    raw = Path(path).read_bytes()
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        import locale
+
+        return raw.decode(locale.getpreferredencoding(False), errors="replace")
+
+
 def config_dir() -> Path:
     if os.environ.get("EWALD_CONFIG_DIR"):
         return Path(os.environ["EWALD_CONFIG_DIR"])
@@ -405,7 +417,8 @@ class Settings:
     def save(self, path=None):
         p = Path(path) if path else self.path
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(self.changed(), indent=2, sort_keys=True, ensure_ascii=False) + "\n")
+        p.write_text(json.dumps(self.changed(), indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+                     encoding="utf-8", newline="\n")
         return p
 
     def __repr__(self):
@@ -462,7 +475,7 @@ def load(path=None) -> Settings:
     values = {}
     if p.exists():
         try:
-            values = json.loads(p.read_text())
+            values = json.loads(read_text_any(p))
         except (OSError, ValueError) as exc:
             log.warning("could not read %s: %s; using defaults", p, exc)
     return Settings(values if isinstance(values, dict) else {}, p)

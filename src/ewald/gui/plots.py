@@ -1164,8 +1164,12 @@ class PlotsPanel(QtWidgets.QWidget):
             self._marker.set_xdata([ts, ts])
 
     def _save(self):
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save plot", "plot.pdf", "PDF (*.pdf);;PNG (*.png);;SVG (*.svg)")
+        path, chosen = QtWidgets.QFileDialog.getSaveFileName(self, "Save plot", "plot.pdf",
+                                                             "PDF (*.pdf);;PNG (*.png);;SVG (*.svg)")
         if path:
+            from .file_dialogs import suffixed
+
+            path = suffixed(path, chosen)
             from .. import settings as settings_mod
 
             s = settings_mod.load()

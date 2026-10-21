@@ -159,7 +159,7 @@ def probe_opengl(extra_env: dict, timeout: float = 60) -> tuple[bool, str]:
 
     try:
         out = subprocess.run([sys.executable, "-c", GL_PROBE], env={**os.environ, **extra_env},
-                             capture_output=True, text=True, timeout=timeout)
+                             capture_output=True, text=True, timeout=timeout, encoding="utf-8", errors="replace")
     except subprocess.TimeoutExpired:
         return False, "timed out"
     return out.returncode == 0, (out.stdout + out.stderr).strip()

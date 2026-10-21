@@ -189,7 +189,7 @@ def save_layout(win, s: Settings):
                  "view_folded": sorted(win.display.folded)}
         try:
             layout_path(s).parent.mkdir(parents=True, exist_ok=True)
-            layout_path(s).write_text(json.dumps(state))
+            layout_path(s).write_text(json.dumps(state), encoding="utf-8", newline="\n")
         except OSError:
             pass
 
@@ -200,7 +200,7 @@ def restore_layout(win, s: Settings):
         return
     state = None
     try:
-        state = json.loads(p.read_text())
+        state = json.loads(p.read_text(encoding="utf-8"))
         win.restoreGeometry(QtCore.QByteArray(base64.b64decode(state["geometry"])))
         win.restoreState(QtCore.QByteArray(base64.b64decode(state["state"])))
     except Exception:
@@ -228,7 +228,7 @@ def run_startup_script(win, s: Settings):
         return
     shell = getattr(win.console, "shell", None)
     try:
-        src = open(path).read()
+        src = open(path, encoding="utf-8").read()
     except OSError as exc:
         win.message(f"Startup script {path}: {exc}", error=True)
         return

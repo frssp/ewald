@@ -944,6 +944,9 @@ class PreferencesDialog(QtWidgets.QDialog):
     def _export(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export settings", "ewald-settings.json", "JSON (*.json)")
         if path:
+            from .file_dialogs import suffixed
+
+            path = suffixed(path, "JSON (*.json)")
             self.work.save(path)
 
     def apply(self) -> bool:

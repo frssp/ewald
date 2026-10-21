@@ -1451,7 +1451,7 @@ def cell_summary(cell) -> str:
 def read_vesta_elements(path):
     """VESTA elements.ini rows: index symbol radius vdw ionic R G B."""
     colors, radii = {}, {}
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             parts = line.split()
             if len(parts) >= 8 and parts[0].isdigit():

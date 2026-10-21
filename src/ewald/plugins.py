@@ -804,7 +804,7 @@ class _StoredSettings:
         plain = {f.name: values[f.name] for f in self.fields if f.kind != "secret" and f.name in values}
         path = self.path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(plain, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        path.write_text(json.dumps(plain, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
         for f in self.fields:
             if f.kind == "secret" and values.get(f.name):
                 set_secret(self.secret_name(f.name), values[f.name])
@@ -916,7 +916,7 @@ def set_enabled(plugin_id: str, enabled: bool = True, reload: bool = True):
         off.add(plugin_id)
     state["disabled"] = sorted(off)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(state, indent=1) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(state, indent=1) + "\n", encoding="utf-8", newline="\n")
     if reload:
         load_plugins(force=True)
 

@@ -30,7 +30,7 @@ import re
 import shutil
 import warnings
 import zipfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 FORMAT = 1
 NOTEBOOK_NAME = "notebook.ipynb"
@@ -185,6 +185,15 @@ def _relative(path: str, base: str) -> str:
         return path
 
 
+def _bundle_name(path: str) -> str:
+    """The zip member for a data file: ``data/`` + its relative path with ``/`` separators and
+    no drive, root or ``..`` parts, so a file on another Windows drive (kept absolute,
+    ``D:\\runs\\XDATCAR``) gets a valid name too. The same on every platform."""
+    pure = PureWindowsPath(path)   # splits on / and on backslashes
+    keep = [part for part in pure.parts if part not in (pure.anchor, ".", "..")]
+    return "data/" + "/".join(keep)
+
+
 # ---------------------------------------------------------------- .ewd
 def _slug(text: str, used: set) -> str:
     base = re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-").lower() or "view"
@@ -212,7 +221,7 @@ def save_ewd(nb, path, *, figures: bool = True, data_limit_mb: float = 50.0, plu
             size = os.path.getsize(f)
             entry = {"path": _relative(f, base), "size": size, "fingerprint": fingerprint(f), "bundled": None}
             if size <= data_limit_mb * 1e6:
-                entry["bundled"] = "data/" + entry["path"].lstrip("/").replace("../", "")
+                entry["bundled"] = _bundle_name(entry["path"])
                 z.write(f, entry["bundled"])
             manifest["data"].append(entry)
         if figures and nb.pipeline is not None:

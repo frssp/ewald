@@ -558,10 +558,13 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         if self.data is None:
             return None
         if not filename:
-            filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+            filename, chosen = QtWidgets.QFileDialog.getSaveFileName(
                 self, "Render image", "render.png", "Images (*.png *.jpg *.tif);;Vector (*.svg *.pdf *.eps)")
             if not filename:
                 return None
+            from .file_dialogs import suffixed
+
+            filename = suffixed(filename, chosen)
         _kw, call = self._render_call(filename, overrides)
         try:
             with busy(self.message, f"Rendering {os.path.basename(str(filename))}…"):

@@ -451,26 +451,40 @@ def import_file(path, format: str | None = None, **kwargs):
     return pipe
 
 
-def _write_poscar(path, data, sort: bool = True, direct: bool = True, **kwargs):
+def _ase_write(path, images, format, **kwargs):
+    """``ase.io.write`` with LF line ends and UTF-8 on every platform: ASE opens text files in
+    the platform's text mode, so on Windows a POSCAR would get CRLF ends that some codes on the
+    cluster do not read. Text formats that take a file object get one opened here."""
     import ase.io
+    from ase.io.formats import filetype, ioformats
 
+    path = os.fspath(path)
+    try:
+        fmt = ioformats.get(format or filetype(path, read=False))
+    except Exception:  # unknown name: let ase.io.write report it
+        fmt = None
+    if fmt is None or fmt.isbinary or not fmt.acceptsfd:
+        return ase.io.write(path, images, format=format, **kwargs)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        return ase.io.write(fh, images, format=fmt.name, **kwargs)
+
+
+def _write_poscar(path, data, sort: bool = True, direct: bool = True, **kwargs):
     from .extxyz import _to_atoms
 
     atoms = _to_atoms(data)
     if sort:  # one species block per element, in order of first appearance (stable)
         first = {s: i for i, s in reversed(list(enumerate(atoms.get_chemical_symbols())))}
         atoms = atoms[sorted(range(len(atoms)), key=lambda i: first[atoms[i].symbol])]
-    ase.io.write(os.fspath(path), atoms, format="vasp", direct=direct, **kwargs)
+    _ase_write(path, atoms, "vasp", direct=direct, **kwargs)
 
 
 def _write_with_ase(format):
     def write(path, frames, **kwargs):
-        import ase.io
-
         from .extxyz import _to_atoms
 
         images = [_to_atoms(d) for d in frames]
-        ase.io.write(os.fspath(path), images if len(images) > 1 else images[0], format=format, **kwargs)
+        _ase_write(path, images if len(images) > 1 else images[0], format, **kwargs)
 
     return write
 

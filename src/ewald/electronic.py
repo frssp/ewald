@@ -296,7 +296,7 @@ def _coord_label(k) -> str:
 def kpoints_file_labels(path) -> tuple[int, list[str]] | None:
     """``(points per line, [label of every line end])`` from a line-mode KPOINTS file, else None."""
     try:
-        with open(path, errors="replace") as fh:
+        with open(path, errors="replace", encoding="utf-8") as fh:
             lines = fh.read().splitlines()
     except OSError:
         return None

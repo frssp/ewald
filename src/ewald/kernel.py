@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -86,7 +87,7 @@ class Kernel:
             else:
                 km = KernelManager(kernel_name="ewald-python", kernel_spec_manager=_Specs(self.python))
             try:
-                km.start_kernel(stderr=open(os.devnull, "w"))  # noqa: SIM115 - the kernel owns it
+                km.start_kernel(stderr=subprocess.DEVNULL)
                 kc = km.blocking_client()
                 kc.start_channels()
                 kc.wait_for_ready(timeout=STARTUP_TIMEOUT)

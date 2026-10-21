@@ -572,7 +572,7 @@ def select(tasks: list[Task], patterns=None, category=None) -> list[Task]:
     whose category is ``category``."""
     if isinstance(patterns, str):
         patterns = [p.strip() for p in patterns.split(",") if p.strip()]
-    out = [t for t in tasks if not patterns or any(fnmatch.fnmatch(t.id, p) for p in patterns)]
+    out = [t for t in tasks if not patterns or any(fnmatch.fnmatchcase(t.id, p) for p in patterns)]
     if category:
         cats = {c.strip() for c in str(category).split(",")}
         out = [t for t in out if t.category in cats]
@@ -748,7 +748,7 @@ def _commit() -> str | None:
 
     try:
         out = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=Path(__file__).parent,
-                             capture_output=True, text=True, timeout=5)
+                             capture_output=True, text=True, timeout=5, encoding="utf-8", errors="replace")
         return out.stdout.strip() or None
     except Exception:
         return None
@@ -784,7 +784,7 @@ def summarize(results: list[dict]) -> dict:
 
 def save(report: dict, path) -> Path:
     path = Path(path)
-    path.write_text(json.dumps(report, indent=1, default=str), encoding="utf-8")
+    path.write_text(json.dumps(report, indent=1, default=str), encoding="utf-8", newline="\n")
     return path
 
 

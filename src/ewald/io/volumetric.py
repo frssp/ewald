@@ -242,7 +242,7 @@ def write_vasp_volumetric(path, data: DataCollection, property: str | None = Non
     species = list(dict.fromkeys(types))
     order = np.concatenate([np.flatnonzero(types == s) for s in species]) if data.count else np.zeros(0, int)
     frac = g.domain.to_fractional(data.positions[order]) if data.count else np.zeros((0, 3))
-    with open(os.fspath(path), "w") as fh:
+    with open(os.fspath(path), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(f"{prop} written by ewald\n   1.00000000000000\n")
         for v in g.domain.matrix:
             fh.write(" ".join(f"{x:12.6f}" for x in v) + "\n")
@@ -268,7 +268,7 @@ def write_cube(path, data: DataCollection, property: str | None = None, grid: st
     if values.ndim != 3:
         raise ValueError(f"{prop!r} has components; write one, e.g. '{prop}.Z'")
     step = g.domain.matrix / np.array(g.shape)[:, None] / BOHR
-    with open(os.fspath(path), "w") as fh:
+    with open(os.fspath(path), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(f"{prop} written by ewald\nOUTER LOOP: X, MIDDLE LOOP: Y, INNER LOOP: Z\n")
         fh.write(f"{data.count:5d} " + " ".join(f"{x:12.6f}" for x in g.domain.origin / BOHR) + "\n")
         for n, v in zip(g.shape, step):

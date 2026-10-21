@@ -49,7 +49,7 @@ def main(argv=None):
                                   for cn, spins in cns.items()} for oxi, cns in row["Shannon radii"].items()}
     # icsd_bv.yaml is a two-level mapping; parse the 'occurrence' block without needing PyYAML
     occurrence, block = {}, None
-    for line in (core / "icsd_bv.yaml").read_text().splitlines():
+    for line in (core / "icsd_bv.yaml").read_text(encoding="utf-8").splitlines():
         if line and not line.startswith(" "):
             block = line.rstrip(":")
         elif block == "occurrence" and (m := re.match(r"\s+([A-Z][a-z]?)(\d*)([+-]):\s*(\d+)", line)):
@@ -60,7 +60,7 @@ def main(argv=None):
     out = {"_sources": SOURCES, "atomic": atomic, "atomic_calculated": calculated, "shannon": shannon,
            "oxidation_occurrence": occurrence}
     path = Path(__file__).with_name("radii.json")
-    path.write_text(json.dumps(out, separators=(",", ":"), sort_keys=True) + "\n")
+    path.write_text(json.dumps(out, separators=(",", ":"), sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     print(f"wrote {path}: {len(atomic)} atomic, {len(calculated)} calculated, {len(shannon)} Shannon elements, "
           f"{len(occurrence)} with ICSD oxidation states")
 

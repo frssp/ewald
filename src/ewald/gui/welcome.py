@@ -19,7 +19,7 @@ def recent_path():
 def load_recent() -> list[str]:
     """Files and notebooks opened lately, newest first (paths or ``host:/path`` locations)."""
     try:
-        return [str(p) for p in json.loads(recent_path().read_text())][:MAX_RECENT]
+        return [str(p) for p in json.loads(recent_path().read_text(encoding="utf-8"))][:MAX_RECENT]
     except (OSError, ValueError, TypeError):
         return []
 
@@ -31,7 +31,7 @@ def add_recent(path) -> None:
     items = [path] + [p for p in load_recent() if p != path]
     try:
         recent_path().parent.mkdir(parents=True, exist_ok=True)
-        recent_path().write_text(json.dumps(items[:MAX_RECENT]))
+        recent_path().write_text(json.dumps(items[:MAX_RECENT]), encoding="utf-8", newline="\n")
     except OSError:
         pass
 

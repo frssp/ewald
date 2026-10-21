@@ -214,7 +214,7 @@ def write_extxyz(path, frames, columns=None, **kwargs):
     """
     from ase.io.extxyz import write_xyz
 
-    with open(os.fspath(path), "w") as fh:
+    with open(os.fspath(path), "w", encoding="utf-8", newline="\n") as fh:
         for data in frames:
             atoms = _to_atoms(data, columns)
             write_xyz(fh, [atoms], **kwargs)

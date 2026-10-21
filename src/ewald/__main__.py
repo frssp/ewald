@@ -169,7 +169,19 @@ CORE = {"anthropic": "anthropic", "openai": "openai", "mcp": "mcp", "anyio": "mc
         "imageio_ffmpeg": "imageio-ffmpeg", "spglib": "spglib"}
 
 
+def _utf8_output():
+    """Redirected output (``ewald api > llms.txt``, pipes) is UTF-8 on every platform; Windows
+    would use the ANSI code page (cp949, cp1252) and fail on Å, Γ or ×. Consoles are left alone."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if not stream.isatty() and (stream.encoding or "").lower().replace("-", "") != "utf8":
+                stream.reconfigure(encoding="utf-8")
+        except (AttributeError, OSError, ValueError):   # replaced streams (pytest, IDEs)
+            pass
+
+
 def main(argv=None):
+    _utf8_output()
     args = build_parser().parse_args(argv)
     try:
         return _run(args)
@@ -340,7 +352,7 @@ def _run(args):
         else:
             print(agent.ask(question))
         if args.script:
-            with open(args.script, "w") as fh:
+            with open(args.script, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(ts.to_script())
             print("wrote", args.script)
         return
