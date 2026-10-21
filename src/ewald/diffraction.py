@@ -46,7 +46,7 @@ _SCALED_INTENSITY_TOL = 1e-3   # peaks below this fraction of 100 are systematic
 
 @lru_cache(maxsize=1)
 def _tables() -> dict:
-    return json.loads(Path(__file__).with_name("tables").joinpath("scattering.json").read_text())
+    return json.loads(Path(__file__).with_name("tables").joinpath("scattering.json").read_text(encoding="utf-8"))
 
 
 def wavelength_of(value) -> float:

@@ -34,13 +34,13 @@ def _folder(arg: str | None) -> Path:
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     folder = _folder(argv[0] if argv else None)
-    xray = json.loads((folder / "atomic_scattering_params.json").read_text())
-    neutron = json.loads((folder / "neutron_scattering_length.json").read_text())
+    xray = json.loads((folder / "atomic_scattering_params.json").read_text(encoding="utf-8"))
+    neutron = json.loads((folder / "neutron_scattering_length.json").read_text(encoding="utf-8"))
     out = {"_sources": SOURCES,
            "xray": {k: xray[k] for k in sorted(xray)},
            "neutron": {k: float(neutron[k]) for k in sorted(neutron)}}
     path = Path(__file__).with_name("scattering.json")
-    path.write_text(json.dumps(out, indent=None, separators=(",", ":")) + "\n")
+    path.write_text(json.dumps(out, indent=None, separators=(",", ":")) + "\n", encoding="utf-8", newline="\n")
     print(f"wrote {path} ({len(out['xray'])} X-ray, {len(out['neutron'])} neutron entries)")
 
 

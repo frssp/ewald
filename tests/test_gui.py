@@ -116,6 +116,41 @@ def test_view_tab_surfaces_labels_transparency(app, pipe):
     _dispose(panel)
 
 
+def test_view_tab_trajectory_color_map(app, pipe):
+    """The Elements card colors trajectory lines with a color map over a Time window or a trail; the values
+    go into the style (and so the view cell) and the viewport draws them with a color bar."""
+    from ewald.gui.pipeline_panel import DisplayPanel
+    from ewald.render import build_scene
+
+    pipe.modifiers.append(mods.GenerateTrajectoryLines(only_selected=False))
+    panel = DisplayPanel()
+    panel.set_pipeline(pipe)
+    data = pipe.compute(1)
+    panel.set_data(data)
+    tw = panel.trajectory_widgets
+    assert not tw["group"].isChecked() and tw["color_by"].findText("Path Length") >= 0
+    tw["group"].setChecked(True)
+    tw["colormap"].setCurrentText("magma")
+    tw["window"][0].setText("0")
+    tw["window"][0].editingFinished.emit()
+    tw["trail"].setText("all")
+    tw["trail"].editingFinished.emit()
+    st = panel.style
+    assert (st.trajectory_color_by, st.trajectory_colormap, st.trajectory_time_range, st.trajectory_trail) == \
+        ("Time", "magma", [0.0, None], True)
+    settings = st.view_settings(["Cu"])
+    assert settings["trajectory_color_by"] == "Time" and settings["trajectory_trail"] is True
+    import pyvista as pv
+
+    p = pv.Plotter(off_screen=True, window_size=(100, 80))
+    scene = build_scene(p, data, **st.scene_kwargs())
+    assert scene.legends[0]["cmap"] == "magma" and scene["trajectories"].primitive.point_rgb is not None
+    p.close()
+    tw["group"].setChecked(False)
+    assert st.trajectory_color_by is None and "trajectory_color_by" not in st.scene_kwargs()
+    _dispose(panel)
+
+
 def test_view_tab_cards_and_notebook_marks(app, pipe):
     """The View tab shows the look as cards, marks what the notebook's view sets, and an edit there
     changes the style without rebuilding the card being edited."""
@@ -125,7 +160,7 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
     panel = DisplayPanel()
     panel.set_pipeline(pipe)
     panel.set_data(pipe.compute(0))
-    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Surfaces", "Cell", "Labels", "Camera", "Elements"]
+    assert list(panel.sections) == ["Atoms", "Colors", "Types", "Bonds", "Surfaces", "Cell", "Labels", "Camera", "Elements"]
     marked = lambda: {lab.text() if isinstance(lab, QtWidgets.QLabel) else lab.title() for lab, _ in panel._marks if lab.property("set")} - {""}
     assert not marked()
     view(pipe, radius_scale=0.4, boundary=[-0.1, 1.1], direction="z")
@@ -492,6 +527,102 @@ def test_show_anywhere_in_a_cell_is_a_live_plot(app, tmp_path):
     app.processEvents()
     assert hist.data.attributes["SourceFrame"] == 3   # follows the frame
     assert height.figure.axes[0] is ax                 # all_frames result: computed once, not redrawn
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_linked_plots_open_in_the_plots_panel_others_stay_under_the_cell(app, tmp_path):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    path = tmp_path / "placed.py"
+    path.write_text(
+        "# %%\nimport matplotlib.pyplot as plt\nfrom ewald import load\nfrom ewald.modifiers import *\n"
+        f"from ewald.views import show\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n\n"
+        "# %%\npipe.add(CalculateDisplacements(reference_frame=0))\n"
+        "show(pipe, histogram='Displacement Magnitude')\n"
+        "show(pipe, histogram='Displacement Magnitude', panel=False)\n\n"
+        "# %%\nplt.plot([1, 2, 3])\nplt.show()\n\n"
+        "# %%\nshow(pipe, histogram='Displacement Magnitude')\n")
+    w = MainWindow(settings=settings.Settings())
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    app.processEvents()
+    cell, mpl_cell, view_cell = view.widgets[1], view.widgets[2], view.widgets[3]
+    linked, inline = cell.outputs.slots
+    assert linked.docked and not inline.docked                  # per frame: the Plots panel; panel=False: here
+    assert linked.card.isVisibleTo(cell) and not inline.card.isVisibleTo(cell)
+    assert inline.panel.isVisibleTo(cell) and linked.panel.parent() is not linked
+    assert view_cell.plot_slot.docked and view_cell.plot_slot.card.png is not None   # thumbnail of its run
+    assert mpl_cell.outputs.slots == [] and mpl_cell.outputs._images                # any other figure: an image
+    assert sorted(w.docked_plots()) == sorted([linked.view_id, view_cell.plot_slot.view_id])
+    assert w.workbench.widget(linked.view_id) is linked.panel and linked.panel in w.plot_panels()
+    assert w.workbench.group_of(linked.view_id) is w.workbench.group_of("plot:1")   # next to "Plots"
+    w.timeline._set(3)
+    app.processEvents()
+    assert linked.panel.data.attributes["SourceFrame"] == 3      # still follows the frame there
+
+    cell._place_output(0, False)                                 # right-click › Show under the cell
+    assert "show(pipe, histogram='Displacement Magnitude', panel=False)\nshow(pipe, histogram=" in cell.cell.source
+    assert not linked.docked and linked.panel.parent() is linked and linked.view_id not in w.docked_plots()
+    cell._place_output(1, True)                                  # ... › Show in Plots panel
+    assert cell.cell.source.endswith("show(pipe, histogram='Displacement Magnitude', panel=True)")
+    assert inline.docked and inline.view_id in w.docked_plots()
+    view_cell._place_view(False)                                 # a view cell writes it into its call
+    assert view_cell.cell.source.endswith("show(pipe, histogram='Displacement Magnitude', panel=False)")
+    assert not view_cell.plot_slot.docked and view_cell.plot_slot.view_id not in w.docked_plots()
+
+    w.workbench.close_view(inline.view_id)                       # closing the tab keeps the plot
+    assert inline.view_id not in w.docked_plots() and inline.panel.parent() is None and inline.card.isVisibleTo(cell)
+    inline.card.opened.emit()                                    # the thumbnail opens it again
+    assert w.docked_plots() == [inline.view_id] and w.workbench.is_shown(inline.view_id)
+
+    other = w.panel.new_notebook()                               # another notebook: its plots only
+    app.processEvents()
+    assert w.docked_plots() == []
+    w.panel.tabs.setCurrentWidget(view)
+    app.processEvents()
+    assert w.docked_plots() == [inline.view_id]
+    view.run(cell.cell)                                          # run again: the new plot takes the tab
+    app.processEvents()
+    new = view.widgets[1].outputs.slots[1]
+    assert new is not inline and new.view_id == inline.view_id and w.workbench.widget(new.view_id) is new.panel
+    w.panel.close_tab(w.panel.tabs.indexOf(view))
+    for _ in range(3):
+        app.processEvents()
+        app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+    assert w.docked_plots() == [] and w._plot_docks == {} and w.panel.view is other
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_each_frame_figures_follow_the_frame_in_the_plots_panel(app, tmp_path):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    path = tmp_path / "figures.py"
+    path.write_text(
+        "# %%\nimport matplotlib.pyplot as plt\nfrom ewald import load, all_frames\n"
+        f"pipe = load({str(examples.path('Cu_md.extxyz'))!r})\n\n"
+        "# %% z histogram [each frame]\nplt.hist(data['Position'][:, 2], bins=20)\n\n"
+        "# %%\n@all_frames\ndef mean_z(frames, data):\n    plt.plot([d['Position'][:, 2].mean() for d in frames])\n"
+        "pipe.add(mean_z)\n")
+    w = MainWindow(settings=settings.Settings())
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    app.processEvents()
+    each = view.widgets[1]._figure_slots["Figure: z_histogram"]
+    once = view.widgets[2]._figure_slots["Figure: mean_z"]
+    assert each.docked and each.card.isVisibleTo(view.widgets[1]) and each.title == "z_histogram"
+    assert w.docked_plots() == [each.view_id] and w.workbench.widget(each.view_id) is each.panel
+    assert not once.docked and once.panel.isVisibleTo(view.widgets[2])    # all frames: under the cell
+    png, kept = each.panel.png, once.panel.png
+    w.timeline._set(4)
+    app.processEvents()
+    assert each.panel.png is not png and each.card.png is each.panel.png   # the frame on screen
+    assert once.panel.png is kept                                           # drawn once
+    once.placeRequested.emit(True)                                          # right-click › Plots panel
+    assert once.docked and once.view_id in w.docked_plots()
     w.close()
 
 
@@ -1298,6 +1429,50 @@ def test_ask_panel_selection_and_frame(app, pipe):
     assert panel.text() == "" and not panel.welcome.isHidden()
 
 
+def test_ask_panel_sends_the_color_rule(app, pipe):
+    """What the 3D view shows (how the atoms are colored) goes with a question when it changed."""
+    from ewald.gui.ask_panel import AskPanel
+
+    shown = {"text": "Atoms are colored by 'Structure Type' (from the CNA step): 1 FCC = #66ff66."}
+    panel = AskPanel(lambda: (pipe, 0, []), agent_factory=lambda p, ev: _FakeAgent(p, ev),
+                     view=lambda: shown["text"])
+    first = panel._notebook_prompt("What do the colors mean?")
+    assert first.startswith("The 3D view now shows: Atoms are colored by 'Structure Type'")
+    assert panel._notebook_prompt("again") == "again"            # unchanged: not sent twice
+    shown["text"] = "Atoms have their particle type colors: Cu #c88033."
+    assert "particle type colors" in panel._notebook_prompt("and now?")
+
+
+def test_display_panel_colors_card(app, pipe):
+    """The View tab's Colors card: the rule drawn (one row per category) and color_by / map / range."""
+    from ewald.gui.pipeline_panel import DisplayPanel
+    from ewald.gui.style import ViewStyle
+
+    pipe.add(mods.CommonNeighborAnalysis())
+    style = ViewStyle()
+    panel = DisplayPanel(style)
+    panel.set_pipeline(pipe)
+    panel.set_data(pipe.compute(0), refresh=True)
+    w = panel.color_widgets
+    assert "Structure Type" in w["rule"].text() and "CommonNeighborAnalysis" in w["rule"].text()
+    rows = [w["legend"].item(i, 1).text() for i in range(w["legend"].rowCount())]
+    assert rows == ["FCC"] and w["legend"].item(0, 2).text() == f"{pipe.compute(0).count:,}"
+    assert not w["colormap"].isEnabled()
+    seen = []
+    panel.styleChanged.connect(lambda: seen.append(1))
+    w["color_by"].setCurrentText("Particle type")
+    assert style.color_by == "type" and seen and "Particle type colors" in w["rule"].text()
+    w["color_by"].setCurrentText("Position.Z")
+    assert style.color_by == "Position.Z" and w["colormap"].isEnabled()
+    w["colormap"].setCurrentText("magma")
+    w["range"][1].setText("4")
+    w["range"][1].editingFinished.emit()
+    assert style.scene_kwargs()["color_range"] == [None, 4.0] and "magma from" in w["rule"].text()
+    w["color_by"].setCurrentText("Steps")
+    assert style.color_by is None and "color_by" not in style.scene_kwargs()
+    _dispose(panel)
+
+
 def test_ask_panel_without_claude(app, pipe):
     from ewald.gui.ask_panel import AskPanel
 
@@ -2027,10 +2202,15 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert is_trusted_file(path)                              # saved here: it would open trusted
     _trust_store().unlink()                                   # as if someone else had sent it
 
+    def always():
+        s = settings.Settings()
+        s["python.run_notebooks"] = "always"                  # trusted files run; others ask
+        return s
+
     asked = []
     monkeypatch.setattr(QtWidgets.QMessageBox, "question",
                         lambda *a, **k: asked.append(a[2]) or QtWidgets.QMessageBox.No)
-    w2 = MainWindow(settings=settings.Settings())
+    w2 = MainWindow(settings=always())
     view = w2.open_notebook(str(path))                        # asks, the answer is No: restricted
     assert asked and view.notebook.restricted and w2.style.radius_scale == 0.8
     hist = next(wd for wd in view.widgets if wd.cell.is_view)
@@ -2041,28 +2221,29 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert view.notebook.restricted and len(asked) == 3 and view.notebook.cells[0].state != "error"
     monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.Yes)
     w2.trust_action.trigger()                                 # Notebook › Trust notebook…
-    assert not view.notebook.restricted and view.banner.isHidden()
+    assert not view.notebook.restricted and "Not run yet" in view.banner_text.text()
     view.run_all()
+    assert view.banner.isHidden()
     assert [m.name for m in w2.pipeline.modifiers] == ["CoordinationAnalysis"]
     w2.close()
 
     assert is_trusted_file(path)                              # trusting it remembers it
     _trust_store().unlink()
-    w3 = MainWindow(settings=settings.Settings())             # Yes when opening: trusted, the bar goes away
+    w3 = MainWindow(settings=always())             # Yes when opening: trusted, the bar goes away
     view = w3.open_notebook(str(path))
     assert not view.notebook.restricted and view.banner.isHidden()
     assert view.notebook.cells[0].state == "ok" and [m.name for m in w3.pipeline.modifiers] == ["CoordinationAnalysis"]
     w3.close()
     asked.clear()
     monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: asked.append(a[2]))
-    w3b = MainWindow(settings=settings.Settings())            # trusted at w3's open: runs without asking
+    w3b = MainWindow(settings=always())            # trusted at w3's open: runs without asking
     view = w3b.open_notebook(str(path))
     assert not asked and not view.notebook.restricted and view.notebook.cells[0].state == "ok"
     w3b.close()
     _trust_store().unlink()
 
     monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.No)
-    w4 = MainWindow(settings=settings.Settings())             # No when opening, then the bar's Trust button
+    w4 = MainWindow(settings=always())             # No when opening, then the bar's Trust button
     view = w4.open_notebook(str(path))
     w4.show()
     app.processEvents()
@@ -2073,6 +2254,46 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert not view.notebook.restricted and not view.banner.isVisible()
     assert view.notebook.cells[0].state == "ok" and [m.name for m in w4.pipeline.modifiers] == ["CoordinationAnalysis"]
     w4.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_opening_a_notebook_does_not_run_it_by_default(app, cu_path, tmp_path, monkeypatch):
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+    from ewald.trust import is_trusted_file
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\nfrom ewald.modifiers import *\npipe = load({str(cu_path)!r})\n\n"
+                          "# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n")
+    path = tmp_path / "mine.ipynb"
+    nb.save(path)
+    assert is_trusted_file(path)                              # saved here: trusted
+    asked = []
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question",
+                        lambda *a, **k: asked.append(a[2]) or QtWidgets.QMessageBox.No)
+    s = settings.Settings()
+    assert s["python.run_notebooks"] == "never"
+    w = MainWindow(settings=s)
+    w.show()
+    view = w.open_notebook(str(path))                         # nothing asked, nothing run
+    app.processEvents()
+    assert not asked and not view.notebook.restricted and view.awaiting_run
+    assert all(c.state == "new" for c in view.notebook.cells) and w.pipeline is None
+    assert view.banner.isVisible() and "Not run yet" in view.banner_text.text()
+    buttons = {b.text(): b for b in view.banner.findChildren(QtWidgets.QPushButton)}
+    assert buttons["Trust"].isHidden()
+    buttons["Run all"].click()                                # the bar's Run all
+    assert view.wait()
+    app.processEvents()
+    assert not view.awaiting_run and not view.banner.isVisible()
+    assert [m.name for m in w.pipeline.modifiers] == ["CoordinationAnalysis"]
+    w.close()
+
+    s["python.run_notebooks"] = "ask"                         # asks even for a trusted file
+    w = MainWindow(settings=s)
+    view = w.open_notebook(str(path))
+    assert asked and "Run the cells" in asked[-1] and view.awaiting_run and not view.notebook.restricted
+    w.close()
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
@@ -4083,4 +4304,39 @@ def test_restart_keeps_outputs_and_restart_and_clear_drops_them(app):
     assert cell.outputs == [] and not view.widget_for(cell).outputs.outputs
     labels = [a.text() for a in w.notebook_menu.actions()]
     assert labels[labels.index("&Restart") + 1] == "Restart && clear outputs"
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_next_notebook_does_not_inherit_the_previous_ones_bond_table(app, tmp_path):
+    """MgB2 opened first, TiO2 next: the Display panel shows Ti-O bonds, not Mg-B (the window's style
+    seeds an untouched view, but only with settings for the new structure's elements)."""
+    from ase import Atoms
+    from ase.io import write
+
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+
+    mgb2 = Atoms("MgB2", scaled_positions=[(0, 0, 0), (1 / 3, 2 / 3, 0.5), (2 / 3, 1 / 3, 0.5)],
+                 cell=[[3.08, 0, 0], [-1.54, 2.667, 0], [0, 0, 3.52]], pbc=True)
+    write(tmp_path / "POSCAR.MgB2", mgb2, format="vasp")
+    u = 0.305   # rutile
+    tio2 = Atoms("Ti2O4", scaled_positions=[(0, 0, 0), (.5, .5, .5), (u, u, 0), (1 - u, 1 - u, 0),
+                                            (.5 + u, .5 - u, .5), (.5 - u, .5 + u, .5)], cell=[4.59, 4.59, 2.96], pbc=True)
+    write(tmp_path / "POSCAR.TiO2", tio2, format="vasp")
+    (tmp_path / "mgb2.py").write_text(f"# %%\nfrom ewald import load, view\npipe = load({str(tmp_path / 'POSCAR.MgB2')!r})\n"
+                                      '\n# %%\nview(pipe, colors={"Mg": "#f2a33a", "B": "#3a6fd9"}, bonds=True)\n')
+    (tmp_path / "tio2.py").write_text(f"# %%\nfrom ewald import load\npipe = load({str(tmp_path / 'POSCAR.TiO2')!r})\n")
+    w = MainWindow(settings=settings.Settings())
+    first = w.panel.open_notebook(str(tmp_path / "mgb2.py"), trusted=True)
+    first.run_all()
+    app.processEvents()
+    assert any({a, b} == {"Mg", "B"} for a, b, *_ in w.style.bond_pairs)
+    second = w.panel.open_notebook(str(tmp_path / "tio2.py"), trusted=True)
+    second.run_all()
+    app.processEvents()
+    names = {s for a, b, *_ in w.style.bond_pairs for s in (a, b)}
+    assert names and names <= {"Ti", "O"}, w.style.bond_pairs
+    pipe = second.notebook.pipeline
+    assert not {"Mg", "B"} & set(pipe.view.colors) and not pipe.view.bond_pairs
     w.close()

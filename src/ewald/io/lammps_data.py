@@ -288,7 +288,7 @@ def write_lammps_data(path, data, atom_style: str | None = None, masses: bool = 
     charge = np.asarray(data.particles.get("Charge", np.zeros(data.count)), float)
     mol = np.asarray(data.particles.get("Molecule Identifier", np.zeros(data.count)), int)
     mass_prop = data.particles.get("Mass")
-    with open(os.fspath(path), "w") as fh:
+    with open(os.fspath(path), "w", encoding="utf-8", newline="\n") as fh:
         fh.write("LAMMPS data file written by ewald\n\n")
         fh.write(f"{data.count} atoms\n{max(type_id.values(), default=0)} atom types\n\n")
         for k, axis in enumerate("xyz"):

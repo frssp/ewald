@@ -18,12 +18,21 @@ class AssignColor(Modifier):
         self.keep_selection = keep_selection
 
     def modify(self, data, ctx):
+        from .. import color_rule
         from ..render import default_colors
 
+        base = color_rule.rule(data)
         colors = np.array(data.particles.get("Color", default_colors(data)), float)
-        sel = data.selection if "Selection" in data else np.ones(data.count, bool)
+        selected = "Selection" in data
+        sel = data.selection if selected else np.ones(data.count, bool)
         colors[sel] = _to_rgb(self.color)
         data.particles["Color"] = colors
+        if selected:
+            color_rule.record(data, color_rule.painted(base, "the AssignColor step", "selected",
+                                                       self.color, np.count_nonzero(sel)))
+        else:
+            color_rule.record(data, {"kind": "custom", "source": "the AssignColor step (every particle)",
+                                     "colors": [{"color": color_rule._hex(_to_rgb(self.color)), "count": data.count}]})
         if not self.keep_selection:
             data.particles.pop("Selection", None)
 
@@ -45,28 +54,35 @@ class ColorCoding(Modifier):
         self.only_selected = only_selected
 
     def modify(self, data, ctx):
-        from ..colormaps import get_colormap
+        color_code(data, self.property, self.cmap, self.start, self.end, ctx.frame, self.only_selected)
 
-        from ..render import default_colors
 
-        if self.property in data.particles:
-            values = np.asarray(data.particles[self.property], float)
-        else:
-            values = np.broadcast_to(np.asarray(evaluate(self.property, data, ctx.frame), float),
-                                     (data.count,))
-        if values.ndim == 2:
-            values = np.linalg.norm(values, axis=1)
-        auto = values if values.size else np.zeros(1)
-        lo = np.nanmin(auto) if self.start is None else self.start
-        hi = np.nanmax(auto) if self.end is None else self.end
-        t = np.clip((values - lo) / (hi - lo if hi != lo else 1.0), 0, 1)
-        rgb = get_colormap(self.cmap)(t)[:, :3]
-        if self.only_selected:
-            colors = np.array(data.particles.get("Color", default_colors(data)), float)
-            sel = data.selection
-            colors[sel] = rgb[sel]
-            rgb = colors
-        data.particles["Color"] = rgb
-        data.attributes["ColorCoding.property"] = self.property
-        data.attributes["ColorCoding.cmap"] = self.cmap
-        data.attributes["ColorCoding.range"] = (float(lo), float(hi))
+def color_code(data, property: str, cmap: str = "viridis", start=None, end=None, frame: int = 0,
+               only_selected: bool = False, source: str = "the ColorCoding step") -> None:
+    """Write 'Color' from ``property`` (or an expression) through ``cmap`` over ``start``..``end``
+    (None: the frame's min/max), with the ColorCoding attributes and the color rule."""
+    from .. import color_rule
+    from ..colormaps import get_colormap
+    from ..render import default_colors
+
+    if property in data.particles:
+        values = np.asarray(data.particles[property], float)
+    else:
+        values = np.broadcast_to(np.asarray(evaluate(property, data, frame), float), (data.count,))
+    if values.ndim == 2:
+        values = np.linalg.norm(values, axis=1)
+    auto = values if values.size else np.zeros(1)
+    lo = np.nanmin(auto) if start is None else start
+    hi = np.nanmax(auto) if end is None else end
+    t = np.clip((values - lo) / (hi - lo if hi != lo else 1.0), 0, 1)
+    rgb = get_colormap(cmap)(t)[:, :3]
+    if only_selected:
+        colors = np.array(data.particles.get("Color", default_colors(data)), float)
+        sel = data.selection
+        colors[sel] = rgb[sel]
+        rgb = colors
+    data.particles["Color"] = rgb
+    data.attributes["ColorCoding.property"] = property
+    data.attributes["ColorCoding.cmap"] = cmap
+    data.attributes["ColorCoding.range"] = (float(lo), float(hi))
+    color_rule.record(data, color_rule.continuous(source, property, cmap, lo, hi, only_selected))

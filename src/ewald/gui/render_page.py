@@ -406,9 +406,12 @@ class RenderPage(QtWidgets.QWidget):
         self.update_code()
 
     def _browse(self):
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Output", self.output.text(),
-                                                        OUTPUT_FILTER)
+        path, chosen = QtWidgets.QFileDialog.getSaveFileName(self, "Output", self.output.text(),
+                                                             OUTPUT_FILTER)
         if path:
+            from .file_dialogs import suffixed
+
+            path = suffixed(path, chosen)
             self.output.setText(path)
 
     # ---------------------------------------------------------------- overlay elements

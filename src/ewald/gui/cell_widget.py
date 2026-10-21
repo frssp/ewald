@@ -15,10 +15,12 @@ from .code_editor import CodeEditor, mono_font
 
 class OutputArea(QtWidgets.QWidget):
     """Printed text, values, errors and images under a code cell. An image ``show(pipe, ...)``
-    drew is a live plot here (``live``): it follows the frame and is linked to the 3D view."""
+    drew is a live plot here (``live``): it follows the frame and is linked to the 3D view, under
+    the cell or in the Plots panel (a :class:`PlotSlot`)."""
 
     MAX_IMAGE_HEIGHT = 360   # a figure or snapshot never takes the whole panel
     plotCreated = QtCore.Signal(object)   # a live PlotsPanel: the main window links it
+    placeRequested = QtCore.Signal(int, bool)   # the k-th live plot moved: True = Plots panel
 
     def __init__(self, parent=None, live: bool = True):
         super().__init__(parent)
@@ -27,8 +29,10 @@ class OutputArea(QtWidgets.QWidget):
         self.lay.setContentsMargins(2, 2, 0, 0)
         self.lay.setSpacing(4)
         self.live = live
+        self.key = ""        # the cell's id: names the Plots panel tabs of its plots
         self._images = []    # (label, full-size pixmap): rescaled when the cell's width changes
         self.panels = []     # (PlotsPanel, show() arguments) of the live plots
+        self.slots = []      # PlotSlot of each live plot
 
     def set_outputs(self, outputs):
         outputs = list(outputs)
@@ -36,17 +40,22 @@ class OutputArea(QtWidgets.QWidget):
         if old is not None and len(old) == len(outputs) and all(a is b for a, b in zip(old, outputs)):
             return   # the same outputs (every frame of playback): rebuilding them made the cell flicker
         self.outputs = outputs
+        for slot in self.slots:
+            slot.release()
         while self.lay.count():
             w = self.lay.takeAt(0).widget()
             if w is not None:
                 w.hide()          # gone now, not at the next event loop pass (no stale copy drawn)
                 w.deleteLater()
-        self._images, self.panels = [], []
+        self._images, self.panels, self.slots = [], [], []
         for out in outputs:
             if out.kind == "image" and out.view is not None and self.live:
-                w = live_plot()
-                self.panels.append((w, out.view))
-                self.plotCreated.emit(w)
+                k = len(self.slots)
+                w = PlotSlot(out.view, out.data, f"{self.key}-{k}")
+                w.placeRequested.connect(lambda on, k=k: self.placeRequested.emit(k, on))
+                self.slots.append(w)
+                self.panels.append((w.panel, out.view))
+                self.plotCreated.emit(w.panel)
             elif out.kind == "image":
                 pix = QtGui.QPixmap()
                 pix.loadFromData(out.data, "PNG")
@@ -237,15 +246,233 @@ class _DragHandle(QtWidgets.QLabel):
         drag.exec(QtCore.Qt.MoveAction)
 
 
+LIVE_PLOT_HEIGHT = (220, 320)   # px of a live plot under a cell
+
+
 def live_plot():
     """The live plot of a view cell or a ``show(pipe, ...)`` output."""
     from .plots import PlotsPanel
 
     p = PlotsPanel()
-    p.setMinimumHeight(220)
-    p.setMaximumHeight(320)
+    p.setMinimumHeight(LIVE_PLOT_HEIGHT[0])
+    p.setMaximumHeight(LIVE_PLOT_HEIGHT[1])
     p.compact()
     return p
+
+
+def _num_frames(pipeline):
+    try:
+        return int(pipeline.num_frames) if pipeline is not None else None
+    except Exception:  # noqa: BLE001 - a source that cannot tell: one frame
+        return None
+
+
+class PlotCard(QtWidgets.QFrame):
+    """What stays under a cell when its plot is in the Plots panel: a thumbnail of the plot and
+    a link that brings the panel's tab to the front."""
+
+    opened = QtCore.Signal()
+    THUMB_HEIGHT = 72
+
+    def __init__(self, title: str, png: bytes | None = None, parent=None):
+        super().__init__(parent, objectName="plotCard")
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.setToolTip("Shown in the Plots panel (it changes with the frame or is linked to the 3D view). "
+                        "Click to open it there; right-click to show it under the cell")
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(6, 4, 6, 4)
+        lay.setSpacing(10)
+        self.thumb = QtWidgets.QLabel(objectName="cellImage")
+        self.png = None
+        self.set_png(png)
+        lay.addWidget(self.thumb)
+        col = QtWidgets.QVBoxLayout()
+        col.setSpacing(2)
+        col.addStretch()
+        col.addWidget(QtWidgets.QLabel(title, objectName="plotCardTitle"))
+        self.link = QtWidgets.QPushButton("Open in Plots panel", objectName="plotCardLink", flat=True)
+        self.link.setCursor(QtCore.Qt.PointingHandCursor)
+        self.link.clicked.connect(self.opened.emit)
+        col.addWidget(self.link, 0, QtCore.Qt.AlignLeft)
+        col.addStretch()
+        lay.addLayout(col)
+        lay.addStretch()
+
+    def set_png(self, png: bytes | None):
+        """The thumbnail: the image the plot's ``show()`` drew when the cell ran (none: no thumbnail)."""
+        if png is self.png:
+            return
+        self.png = png
+        pix = QtGui.QPixmap()
+        if png and pix.loadFromData(png, "PNG") and not pix.isNull():
+            self.thumb.setPixmap(pix.scaledToHeight(self.THUMB_HEIGHT, QtCore.Qt.SmoothTransformation))
+            self.thumb.show()
+        else:
+            self.thumb.hide()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            self.opened.emit()
+        super().mouseReleaseEvent(event)
+
+
+class PlotSlot(QtWidgets.QWidget):
+    """The place of one live plot in a cell (a view cell's or a ``show(pipe, ...)`` output's).
+    The plot sits here, under the cell, or in the Plots panel (:func:`ewald.views.in_panel`:
+    plots that change with the frame or are linked to the 3D view, or ``panel=True``), and then
+    a :class:`PlotCard` takes its place. :meth:`place` decides once data is there; the right-click
+    menu of either asks the cell to move it (``placeRequested``, written into the code)."""
+
+    placeRequested = QtCore.Signal(bool)   # True: to the Plots panel, False: under the cell
+
+    def __init__(self, args: dict, png: bytes | None = None, view_id: str = "", parent=None,
+                 panel=None, title: str | None = None):
+        super().__init__(parent, objectName="plotSlot")
+        self.args = dict(args or {})
+        self.view_id = "plot:cell-" + (view_id or f"{id(self):x}")
+        self.title = title or self.args.get("histogram") or self.args.get("table") or "Plot"
+        self.docked = None             # None until placed: True = in the Plots panel
+        self.host = None               # the main window holding it there
+        self._pending = False          # belongs in the Plots panel, but no window yet: placed again later
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        self.panel = live_plot() if panel is None else panel   # a FigureView for a step's figure
+        self.panel.extra_menu = self._menu_entries
+        self.panel.hide()
+        lay.addWidget(self.panel)
+        self.card = PlotCard(self.title, png)
+        self.card.opened.connect(self.open)
+        self.card.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.card.customContextMenuRequested.connect(self._card_menu)
+        self.card.hide()
+        lay.addWidget(self.card)
+
+    def _menu_entries(self):
+        if self.docked:
+            return [("Show under the cell", lambda: self.placeRequested.emit(False))]
+        return [("Show in Plots panel", lambda: self.placeRequested.emit(True))]
+
+    def _card_menu(self, pos):
+        m = QtWidgets.QMenu(self.card)
+        m.addAction("Open in Plots panel", self.open)
+        m.addAction("Show under the cell", lambda: self.placeRequested.emit(False))
+        m.exec(self.card.mapToGlobal(pos))
+
+    def decide(self, data, pipeline=None, force: bool = False):
+        """Place the plot by :func:`ewald.views.in_panel` (once; ``force``: again)."""
+        if self.docked is not None and not force and not self._pending:
+            return
+        if data is None and self.args.get("panel") is None:
+            return   # no frame yet (it comes next): placed then, so the plot does not jump
+        from ..views import in_panel
+
+        try:
+            docked = in_panel(data, self.args, _num_frames(pipeline))
+        except Exception:  # noqa: BLE001 - a plot that cannot be judged stays under the cell
+            docked = False
+        self.place(docked, show=self.docked is None or self._pending or force)
+
+    def place(self, docked: bool, show: bool = True):
+        """Show the plot under the cell (False) or in the Plots panel (True; ``show`` brings its tab
+        to the front). Without a main window it stays under the cell."""
+        from .window_plugins import plugin_host
+
+        host = plugin_host(self)
+        host = host if host is not None and hasattr(host, "dock_plot") else None
+        self._pending = docked and host is None
+        if self._pending:
+            docked = False
+        if docked == self.docked:
+            return
+        self.docked = docked
+        if docked:
+            self.layout().removeWidget(self.panel)
+            self.panel.setMinimumHeight(0)          # a tab of the panel: as tall as the panel
+            self.panel.setMaximumHeight(16777215)   # QWIDGETSIZE_MAX
+            self.host = host
+            host.dock_plot(self, show=show)
+            self.card.show()
+        else:
+            if self.host is not None:
+                self.host.undock_plot(self)
+                self.host = None
+            self.panel.setMinimumHeight(LIVE_PLOT_HEIGHT[0])
+            self.panel.setMaximumHeight(LIVE_PLOT_HEIGHT[1])
+            self.layout().insertWidget(0, self.panel)
+            self.panel.show()
+            self.card.hide()
+
+    def open(self):
+        """Bring the plot's tab in the Plots panel to the front (again, after it was closed)."""
+        if self.docked and self.host is not None:
+            self.host.dock_plot(self, show=True)
+
+    def release(self):
+        """The cell drops this plot (it ran again or is gone): out of the Plots panel too."""
+        if self.docked and self.host is not None:
+            self.host.undock_plot(self)
+            self.host = None
+            self.panel.deleteLater()
+
+
+class FigureView(QtWidgets.QLabel):
+    """A figure a Python step drew (:class:`ewald.pipeline.StepFigure`), scaled to fit: the
+    current frame's image of an each-frame step, or the one image of an all-frames step."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent, objectName="cellImage")
+        self.setAlignment(QtCore.Qt.AlignCenter)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
+        self.setMinimumSize(120, 90)
+        self.png = None
+        self._pix = None
+        self.extra_menu = None   # () -> [(label, callable)]: where the figure is shown
+
+    def set_png(self, png: bytes | None):
+        if png is self.png:
+            return   # the same frame's figure (or an all-frames step's one figure): nothing to redraw
+        self.png = png
+        pix = QtGui.QPixmap()
+        self._pix = pix if png and pix.loadFromData(png, "PNG") and not pix.isNull() else None
+        self._fit()
+
+    def _fit(self):
+        if self._pix is None:
+            self.clear()
+            return
+        scale = min(1.5, self.width() / self._pix.width(), self.height() / self._pix.height())
+        self.setPixmap(self._pix.scaled(max(1, int(self._pix.width() * scale)), max(1, int(self._pix.height() * scale)),
+                                        QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit()
+
+    def contextMenuEvent(self, event):
+        entries = self.extra_menu() if self.extra_menu else []
+        if entries:
+            m = QtWidgets.QMenu(self)
+            for label, fn in entries:
+                m.addAction(label, fn)
+            m.exec(event.globalPos())
+
+
+def step_figures(cell: Cell, data) -> dict:
+    """``{attribute key: (StepFigure, each frame?)}`` of the figures the Python steps ``cell``
+    added drew at this frame (``data.attributes["Figure: <step>"]``)."""
+    from ..pipeline import AllFramesModifier, PythonModifier
+
+    if data is None:
+        return {}
+    found = {}
+    for m in cell.added:
+        if not isinstance(m, PythonModifier):
+            continue
+        prefix = f"Figure: {m.name}"
+        for k, v in data.attributes.items():
+            if (k == prefix or k.startswith(prefix + " (")) and hasattr(v, "png"):
+                found[k] = (v, not isinstance(m, AllFramesModifier))
+    return found
 
 
 def apply_view_args(p, args: dict, data, pipeline=None, applied=None):
@@ -496,7 +723,9 @@ class CellWidget(QtWidgets.QFrame):
         row.addWidget(self.editor, 1)
         self.body.addLayout(row)
         self.outputs = OutputArea()
+        self.outputs.key = self.cell.id
         self.outputs.plotCreated.connect(self.plotCreated.emit)
+        self.outputs.placeRequested.connect(self._place_output)
         self.body.addWidget(self.outputs)
         self.outputs.set_outputs(self.cell.outputs)
 
@@ -508,11 +737,40 @@ class CellWidget(QtWidgets.QFrame):
     def set_live_data(self, data, pipeline=None, force: bool = False):
         """The current frame for the live plots of ``show(pipe, ...)`` outputs (``force``: a new
         frame; else only plots that have none yet)."""
+        self._update_figures(data)
         if not isinstance(self.outputs, OutputArea):
             return
+        for slot in self.outputs.slots:
+            slot.decide(data, pipeline)
         for p, args in self.outputs.panels:
             if force or p.data is None:
                 p._applied = apply_view_args(p, args, data, pipeline, getattr(p, "_applied", None))
+
+    def _update_figures(self, data):
+        """The figures this cell's Python steps drew at this frame: an each-frame step's in the
+        Plots panel (a thumbnail here), following the frame; an all-frames step's under the cell."""
+        found = step_figures(self.cell, data) if self.cell.kind == "code" else {}
+        slots = self.__dict__.setdefault("_figure_slots", {})
+        if not found and not slots:
+            return
+        for key in [k for k in slots if k not in found]:
+            slot = slots.pop(key)
+            slot.release()
+            slot.deleteLater()
+        for key, (fig, each) in found.items():
+            slot = slots.get(key)
+            if slot is None:
+                view_id = f"{self.cell.id}-" + "".join(c if c.isalnum() else "-" for c in key)
+                slot = PlotSlot({}, fig.png, view_id, panel=FigureView(), title=key[len("Figure: "):])
+                slot.placeRequested.connect(slot.place)   # the code says when it runs, not where: kept here
+                self.body.addWidget(slot)
+                slots[key] = slot
+                slot.place(each)
+            elif slot._pending:
+                slot.place(each)
+            slot.panel.set_png(fig.png)
+            if slot.docked:
+                slot.card.set_png(fig.png)
 
     def _source_edited(self):
         text = self.editor.toPlainText()
@@ -675,17 +933,26 @@ class CellWidget(QtWidgets.QFrame):
         self.editor.runRequested.connect(lambda adv: self.runRequested.emit(self.cell, adv))
         self.editor.focused.connect(lambda: self.selected.emit(self.cell))
         self.body.addWidget(self.editor)
-        self.plot_panel = live_plot()
+        png = next((o.data for o in self.cell.outputs if o.kind == "image" and o.view is not None), None)
+        self.plot_slot = PlotSlot(self.cell.view or {}, png, self.cell.id)
+        self.plot_slot.placeRequested.connect(self._place_view)
+        self.plot_panel = self.plot_slot.panel
         for combo in (self.plot_panel.table, self.plot_panel.column, self.plot_panel.hist):
             combo.currentTextChanged.connect(self._view_changed)
         self.plot_panel.viewChanged.connect(self._view_changed)
-        self.body.addWidget(self.plot_panel)
+        self.body.addWidget(self.plot_slot)
         self.outputs = OutputArea(live=False)  # errors (and a saved image until run): the plot replaces it
         self.body.addWidget(self.outputs)
         self._applying = False
 
     def set_view_data(self, data, pipeline=None):
         """Give a view cell's plot the current frame and select what its ``show(...)`` names."""
+        args = dict(self.cell.view or {})
+        if args.get("panel") != self.plot_slot.args.get("panel"):   # panel= edited in the code
+            self.plot_slot.args = args
+            self.plot_slot.decide(data, pipeline, force=True)
+        else:
+            self.plot_slot.decide(data, pipeline)
         self._applying = True
         try:
             self._applied_view = apply_view_args(self.plot_panel, self.cell.view or {}, data, pipeline,
@@ -711,6 +978,38 @@ class CellWidget(QtWidgets.QFrame):
             self.editor.setPlainText(self.cell.source)
             self.editor.blockSignals(False)
             self.edited.emit(self.cell)
+
+    def _place_view(self, docked: bool):
+        """The view cell's plot moves (its menu): ``panel=`` goes into its ``show(...)`` call."""
+        self.notebook.update_view(self.cell, panel=docked)
+        self.plot_slot.args = dict(self.cell.view or {})
+        self._source_rewritten()
+        self.plot_slot.place(docked)
+
+    def _place_output(self, k: int, docked: bool):
+        """The k-th live plot under a code cell moves: ``panel=`` goes into the k-th ``show(...)``
+        call when the cell's calls and plots match one to one (else only this run's plot moves)."""
+        from ..views import set_keyword
+
+        slot = self.outputs.slots[k]
+        slot.args["panel"] = docked
+        live = [o for o in self.cell.outputs if o.kind == "image" and o.view is not None]
+        if k < len(live):
+            live[k].view["panel"] = docked     # kept with the outputs (.ipynb, .ewd)
+        calls = _show_calls(self.cell.source)
+        new = set_keyword(self.cell.source, "panel", docked, index=k) if calls == len(live) else None
+        if new is not None and new != self.cell.source:
+            self.cell.source = new
+            self.notebook.dirty = True
+            self._source_rewritten()
+        slot.place(docked)
+
+    def _source_rewritten(self):
+        if self.editor is not None and self.editor.toPlainText() != self.cell.source:
+            self.editor.blockSignals(True)
+            self.editor.setPlainText(self.cell.source)
+            self.editor.blockSignals(False)
+        self.edited.emit(self.cell)
 
     def _show_page(self, page):
         for b, name in ((self.form_button, "form"), (self.code_button, "code")):
@@ -747,6 +1046,7 @@ class CellWidget(QtWidgets.QFrame):
         if c.kind == "markdown":
             return
         if c.is_view:  # the plot replaces show()'s image, except for results saved in the file
+            self.plot_slot.card.set_png(next((o.data for o in c.outputs if o.kind == "image" and o.view is not None), None))
             self.outputs.set_outputs(c.outputs if c.state == "new" else [o for o in c.outputs if o.kind == "error"])
             self._repolish()
             return
@@ -841,6 +1141,18 @@ class CellWidget(QtWidgets.QFrame):
 def _shape(cell: Cell):
     """What a CellWidget was built for: a change means it has to be rebuilt."""
     return cell, cell.modifier, (cell.kind, cell.is_step, cell.is_view, cell.frames)
+
+
+def _show_calls(source: str) -> int:
+    """How many ``show(<name>, ...)`` calls ``source`` has (0 when it does not parse)."""
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return 0
+    return sum(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "show"
+               and bool(n.args) and isinstance(n.args[0], ast.Name) for n in ast.walk(tree))
 
 
 def _same_shape(a, b) -> bool:

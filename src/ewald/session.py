@@ -316,7 +316,9 @@ class Session:
         allowed = set(inspect.signature(render).parameters) | {
             "type_colors", "type_radii", "bond_pairs", "bond_radius", "atom_style", "cell_width", "cell_color",
             "shading", "trajectory_width", "radius_preset", "oxidation_states", "coordination", "vectors",
-            "arrow_resolution", "visuals", "boundary", "boundary_bonds", "replicate", "replicate_cell"}
+            "arrow_resolution", "visuals", "boundary", "boundary_bonds", "replicate", "replicate_cell",
+            "trajectory_color_by", "trajectory_colormap", "trajectory_color_range", "trajectory_time_range",
+            "trajectory_trail", "trajectory_radius"}
         kw.update({k: v for k, v in self.render.items()
                    if k in allowed and k not in ("data", "filename", "text", "camera")})
         r = self.render  # keys written by the GUI's Render page
@@ -362,7 +364,7 @@ def save_session(path, pipeline, *, frame: int = 0, camera: dict | None = None, 
            "frame": int(frame), "camera": encode(camera) if camera else None, "style": encode(style or {}),
            "render": encode(render or {}), "device": device}
     tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(doc, fh, indent=1)
     os.replace(tmp, path)
     return path

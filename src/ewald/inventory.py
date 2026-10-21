@@ -234,7 +234,7 @@ def _module_doc(path: Path):
     import ast
 
     class _Doc:
-        __doc__ = ast.get_docstring(ast.parse(path.read_text()))
+        __doc__ = ast.get_docstring(ast.parse(path.read_text(encoding="utf-8")))
 
     return _Doc
 
@@ -348,12 +348,12 @@ def live_gui_lines() -> list[str]:
 def update(output: str | None = None, gui: bool = False):
     """``ewald inventory``: print the inventory, or rewrite ``output`` (keeping its GUI section unless ``gui``)."""
     path = Path(output) if output else None
-    old = path.read_text() if path is not None and path.exists() else ""
+    old = path.read_text(encoding="utf-8") if path is not None and path.exists() else ""
     text = inventory(live_gui_lines() if gui else saved_gui_lines(old))
     if path is None:
         print(text, end="")
     elif text != old:
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8", newline="\n")
         print("wrote", path)
     else:
         print(path, "is up to date")

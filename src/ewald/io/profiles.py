@@ -95,7 +95,7 @@ def _from_dict(d: dict) -> Profile | None:
 def profiles() -> list[Profile]:
     """Saved profiles, in the order the user arranged them."""
     try:
-        data = json.loads(_path().read_text())
+        data = json.loads(_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
     rows = data.get("profiles", []) if isinstance(data, dict) else []
@@ -115,7 +115,7 @@ def _write(items: list[Profile]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = [{k: v for k, v in asdict(p).items() if v not in ("", None, [])} | {"name": p.name} for p in items]
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"version": 1, "profiles": rows}, indent=1))
+    tmp.write_text(json.dumps({"version": 1, "profiles": rows}, indent=1), encoding="utf-8", newline="\n")
     tmp.replace(path)
 
 

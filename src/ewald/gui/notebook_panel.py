@@ -153,6 +153,7 @@ class NotebookView(QtWidgets.QWidget):
         bar.addWidget(self.status, 1)
         bar.addWidget(self.py_button)
         lay.addLayout(bar)
+        self.awaiting_run = False     # opened without running: the bar offers Run all
         self.banner = self._make_banner()
         lay.addWidget(self.banner)
         self.packages_bar = self._make_packages_bar()
@@ -189,31 +190,43 @@ class NotebookView(QtWidgets.QWidget):
         self.rebuild()
 
     def _make_banner(self):
-        """The bar over a restricted notebook: saved results only, until you trust it."""
+        """The bar over a notebook that has not run: restricted (saved results only, until you
+        trust it) or opened without running (``python.run_notebooks``), with a Run all button."""
         w = QtWidgets.QFrame(objectName="restrictedBanner")
         row = QtWidgets.QHBoxLayout(w)
         row.setContentsMargins(10, 6, 8, 6)
         self.banner_text = QtWidgets.QLabel(wordWrap=True)
         row.addWidget(self.banner_text, 1)
-        trust = QtWidgets.QPushButton("Trust", toolTip="Allow this notebook's code and plugins to run")
+        trust = self.banner_trust = QtWidgets.QPushButton("Trust", toolTip="Allow this notebook's code and plugins to run")
         trust.clicked.connect(lambda: self.trust(ask=False))
-        trust_run = QtWidgets.QPushButton("Trust and run all", objectName="primary")
+        trust_run = self.banner_run = QtWidgets.QPushButton("Trust and run all", objectName="primary")
         trust_run.clicked.connect(lambda: self.trust(ask=False) and self.run_all())
         row.addWidget(trust)
         row.addWidget(trust_run)
         self._update_banner(w)
         return w
 
+    def _banner_wanted(self) -> bool:
+        return self.notebook.restricted or self.awaiting_run
+
     def _update_banner(self, banner=None):
         banner = banner or self.banner
         nb = self.notebook
-        plugins = [p.get("name") or p.get("id") for p in nb.manifest.get("plugins", []) if p.get("file")]
-        self.banner_text.setText(
-            "<b>Restricted:</b> saved results only. Cells run once you trust this notebook" +
-            (f" and its plugins ({', '.join(plugins)})" if plugins else "") + ".")
-        banner.setToolTip("You have not saved or trusted this file before. Its cells are Python code, "
-                          "so they run only after you agree.")
-        banner.setVisible(nb.restricted)
+        if nb.restricted:
+            plugins = [p.get("name") or p.get("id") for p in nb.manifest.get("plugins", []) if p.get("file")]
+            self.banner_text.setText(
+                "<b>Restricted:</b> saved results only. Cells run once you trust this notebook" +
+                (f" and its plugins ({', '.join(plugins)})" if plugins else "") + ".")
+            banner.setToolTip("You have not saved or trusted this file before. Its cells are Python code, "
+                              "so they run only after you agree.")
+            self.banner_run.setText("Trust and run all")
+        else:
+            self.banner_text.setText("<b>Not run yet:</b> showing the results saved in the file.")
+            banner.setToolTip("Opened without running its cells (Preferences › Python › "
+                              "Run notebooks when opened).")
+            self.banner_run.setText("Run all")
+        self.banner_trust.setVisible(nb.restricted)
+        banner.setVisible(self._banner_wanted())
 
     def _make_packages_bar(self):
         """The bar over a notebook whose steps come from pip packages this Python lacks."""
@@ -444,7 +457,7 @@ class NotebookView(QtWidgets.QWidget):
         if data is not None:
             self.data = data
         self.notebook.refresh_kernel_steps()  # what the kernel's steps did at this frame
-        if self.banner.isVisibleTo(self) != self.notebook.restricted:   # trusted elsewhere (console, open)
+        if self.banner.isVisibleTo(self) != self._banner_wanted():   # trusted elsewhere (console, open)
             self._update_banner()
         for w in self.widgets:
             w.update_state(self.data)
@@ -822,6 +835,9 @@ class NotebookView(QtWidgets.QWidget):
         if self.running:
             return
         marked, self._marked = self._marked, []
+        if self.awaiting_run:
+            self.awaiting_run = False
+            self._update_banner()
         if self.notebook.kernel is None:
             _cells_draw_off_screen()
         worker = self._worker = workers.detach(_CellWorker(fn))  # survives closing the tab
@@ -1258,6 +1274,8 @@ class NotebookPanel(QtWidgets.QWidget):
             view.trust(ask=False)   # the open already asked; also hides the restricted bar
             view.run_all()
         else:
+            view.awaiting_run = any(c.kind == "code" and c.source.strip() for c in nb.cells)
+            view._update_banner()
             view.update_results()
         return view
 

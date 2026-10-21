@@ -8,8 +8,12 @@ doi:10.1016/j.commatsci.2012.10.028.
 
 pymatgen's test (tests/analysis/test_transition_state.py) asserts a barrier of 325.2 meV with the
 spline maximum at 0.500 of the path. ``load`` reads the folder as a band (one frame per image) and
-adds ``NebEnergyProfile`` and ``OverlayFrames``; the same line opens the folder on a cluster
-(``load("cluster:/scratch/neb")``, see the remote files page of the manual).
+adds ``UnwrapTrajectories`` (the CONTCARs wrap atoms on the cell faces differently, so they would
+jump across the cell from image to image), ``NebEnergyProfile`` and ``OverlayFrames``; the same
+line opens the folder on a cluster (``load("cluster:/scratch/neb")``, see the remote files page of
+the manual). The endpoints take their atoms from the POSCARs: 04/OUTCAR lists atoms 0-7 in another
+order than the band (a separate relaxation), so a tool that reads it (ASE's NEBTools on every
+OUTCAR) gets a 13 A last step and a 15.4 A path instead of 0.75 A and 3.00 A.
 
     python examples/papers/fe_vacancy_neb.py [outdir]
 """

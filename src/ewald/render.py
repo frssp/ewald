@@ -329,8 +329,9 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 bond_radius: float = 0.15, only_visible=None, atom_style: str = "auto",
                 mesh_limit: int = 150_000, sphere_resolution: int | None = None,
                 type_colors: dict | None = None, type_radii: dict | None = None,
-                bond_pairs: list | None = None, trajectory_width: float = 2.0,
-                radius_preset: str = "covalent", oxidation_states: dict | None = None,
+                bond_pairs: list | None = None, trajectory_width: float = 2.0, trajectory_color_by=None,
+                trajectory_colormap: str = "viridis", trajectory_color_range=None, trajectory_time_range=None,
+                trajectory_trail=None, trajectory_radius=None, radius_preset: str = "covalent", oxidation_states: dict | None = None,
                 coordination: dict | None = None, vectors=None, arrow_resolution: int | None = None,
                 visuals=None, frame: int = 0, boundary=None, boundary_bonds: str = "half",
                 replicate=None, replicate_cell: str = "super", show_atoms: bool = True, surfaces=None,
@@ -349,6 +350,10 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     Bonds in ``data.bonds`` (CreateBonds, EditBonds) are drawn whenever present and take
     precedence over ``bonds``/``bond_pairs``; ``data.surfaces`` meshes (polyhedra) are drawn too.
     ``trajectory_width``: line width of ``tables['trajectory-lines']`` (GenerateTrajectoryLines); 0 hides them.
+    ``trajectory_color_by`` ('Time', 'Frame', 'Step Length', a table column or a particle property) colors
+    them with ``trajectory_colormap`` over ``trajectory_color_range``; ``trajectory_time_range`` ``(t0, t1)``
+    and ``trajectory_trail`` (True: up to the current frame, a number: that much Time before it) cut them;
+    ``trajectory_radius`` sizes ray-traced tubes (see :class:`ewald.scene.TrajectoryLinesVis`).
     ``vectors``: particle properties to draw as arrows on top of ``data.vectors`` (VectorVis), e.g.
     ``"Force"``, ``["Force", "Velocity"]`` or ``{"Force": {"scaling": 2, "color": "red"}}`` (see
     :class:`ewald.arrows.VectorStyle`). ``arrow_resolution``: sides per arrow (default from the
@@ -372,7 +377,10 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                   radius_scale=radius_scale, type_colors=type_colors, type_radii=type_radii,
                   radius_preset=radius_preset, oxidation_states=oxidation_states, coordination=coordination,
                   bonds=bonds, bond_pairs=bond_pairs, bond_radius=bond_radius, vectors=vectors,
-                  trajectory_width=trajectory_width, show_cell=show_cell, cell_width=cell_width,
+                  trajectory_width=trajectory_width, trajectory_color_by=trajectory_color_by,
+                  trajectory_colormap=trajectory_colormap, trajectory_color_range=trajectory_color_range,
+                  trajectory_time_range=trajectory_time_range, trajectory_trail=trajectory_trail,
+                  trajectory_radius=trajectory_radius, show_cell=show_cell, cell_width=cell_width,
                   boundary=boundary, boundary_bonds=boundary_bonds, replicate=replicate,
                   replicate_cell=replicate_cell, show_atoms=show_atoms, surfaces=surfaces, cell_radius=cell_radius,
                   type_transparency=type_transparency, selection_color=selection_color, measurements=measurements)
@@ -461,11 +469,18 @@ def bond_list(data, cutoff=None, pairs=None):
 
 
 def scene_bonds(data, cutoff=None, pairs=None):
-    """The bonds a renderer draws: ``data.bonds`` if present, else a search by ``cutoff``/``pairs``."""
-    from .bonds import find_bonds
+    """The bonds a renderer draws: ``data.bonds`` if present, else a search by ``cutoff``/``pairs``.
+    The see-through copies of ``OverlayFrames`` ('Overlay Frame' >= 0) get no bonds: they sit a
+    fraction of a bond length from their atoms and would bond to every neighbour of it."""
+    from .bonds import Bonds, find_bonds
 
     if data.bonds is not None:
         return data.bonds
+    if "Overlay Frame" in data:
+        real = np.flatnonzero(np.asarray(data["Overlay Frame"]) < 0)
+        if len(real) < data.count:
+            b = find_bonds(data.take(real), cutoff, pairs)
+            return Bonds(real[b.topology], b.pbc_images) if b.count else b
     return find_bonds(data, cutoff, pairs)
 
 
@@ -594,6 +609,10 @@ def _add_lines(plotter, lines, name, ink):
         return
     cells = np.concatenate([np.r_[len(s), s] for s in lines.strips])
     poly = pv.PolyData(lines.points, lines=cells)
+    if lines.point_rgb is not None:   # a color map along the lines, blended along each piece
+        poly.point_data["rgb"] = (np.clip(lines.point_rgb, 0, 1) * 255).astype(np.uint8)
+        plotter.add_mesh(poly, scalars="rgb", rgb=True, line_width=lines.width, name=name, render=False)
+        return
     if lines.rgb is None:
         plotter.add_mesh(poly, color=ink, line_width=lines.width, name=name, render=False)
         return
@@ -705,7 +724,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     ``ambient_occlusion``, sphere mesh detail and ``scale``, a factor on ``size``);
     see ``QUALITY_PRESETS``. Explicit arguments always win.
 
-    Overlays: ``text`` label, ``legend`` (ColorCoding color bar), ``type_legend``
+    Overlays: ``text`` label, ``legend`` (the atoms' color bar or category swatches), ``type_legend``
     (one swatch per particle type), ``scale_bar`` (True = round length, or a length
     in Angstrom; exact in orthographic views), and ``overlays``: overlay elements
     (Coordinate tripod, Attributes, Atom labels, plugins; see :mod:`ewald.overlays`). ``labels`` puts a
@@ -724,6 +743,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     {"visible": True, "color": "teal", "transparency": 0.5, "edges": False}}`` restyles ``data.surfaces``
     meshes by name without changing their step. ``type_transparency={"O": 0.6}`` fades whole types (1
     hides them); ``selection_color="red"`` highlights a 'Selection' property, as OVITO does.
+    ``color_by`` recolors the atoms for the picture only: 'type' (type colors, whatever the steps wrote) or a
+    property/expression mapped through ``colormap`` over ``color_range`` (see :func:`ewald.color_rule.apply`).
 
     ``light``: the key light, the same in every renderer: a direction ``[x, y, z]`` in the camera frame
     (x right, y up, z towards the viewer) or ``{"direction" or "azimuth"/"elevation" (degrees), "intensity"}``
@@ -740,6 +761,9 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
 
     if renderer not in RENDERERS:
         raise ValueError(f"unknown renderer {renderer!r}; use 'opengl', 'raytrace' or 'vector'")
+    from .color_rule import take
+
+    data = take(data, scene_kwargs, scene_kwargs.get("frame", 0))
     if labels is not None and labels is not False:
         from .overlays import label_params
 
@@ -780,7 +804,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
             camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
         if scene_kwargs.get("atom_style") == "flat":
             scene_kwargs.setdefault("shading", "flat")  # one color plus outline, as on screen
-        for k in ("atom_style", "sphere_resolution", "mesh_limit", "trajectory_width", "arrow_resolution"):
+        for k in ("atom_style", "sphere_resolution", "mesh_limit", "arrow_resolution"):
             scene_kwargs.pop(k, None)
         return render_vector(data, filename, camera=camera, size=size, background=background,
                              transparent_background=transparent_background, radius_scale=radius_scale,
@@ -819,6 +843,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     img = p.screenshot(None, transparent_background=transparent_background, return_img=True)
     cam = camera_state(p)
     p.close()
+    overlays["colorbars"] = scene.legends
     return _finish(img, data, filename, cam, overlays, background, transparent_background, dpi)
 
 
@@ -902,24 +927,34 @@ def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, ba
     img = raytrace(scene, camera, size, samples=samples, ao_samples=ao_samples, shadows=shadows,
                    background=background, transparent_background=transparent_background, progress=progress, **lit)
     rgba = (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)
+    overlays = {**overlays, "colorbars": scene.legends}
     return _finish(rgba, data, filename, camera, overlays, background, transparent_background, dpi)
 
 
-def _add_colorbar(plotter, data, font_size=None):
+def _add_colorbar(plotter, data, font_size=None, legends=()):
+    """VTK scalar bars for :func:`color_legends`, side by side from the right edge. Returns the bars."""
     import pyvista as pv
 
     from .colormaps import get_colormap
+    from .overlays import color_legends
 
-    lo, hi = data.attributes["ColorCoding.range"]
-    dummy = pv.PolyData(np.zeros((2, 3)))
-    dummy["v"] = np.array([lo, hi])
-    actor = plotter.add_mesh(dummy, scalars="v", cmap=get_colormap(data.attributes.get("ColorCoding.cmap", "viridis")),
-                             clim=(lo, hi), opacity=0.0, show_scalar_bar=False, name="_legend")
-    actor.VisibilityOff()
-    plotter.add_scalar_bar(title=str(data.attributes.get("ColorCoding.property", "")), mapper=actor.mapper,
-                           vertical=True, position_x=0.86, position_y=0.1, height=0.8, width=0.06,
-                           color="black", fmt="%.3g",
-                           **({"title_font_size": font_size + 2, "label_font_size": font_size} if font_size else {}))
+    bars = color_legends(data, legends)
+    titles = set()
+    for k, bar in enumerate(bars):
+        lo, hi = bar["range"]
+        dummy = pv.PolyData(np.zeros((2, 3)))
+        dummy["v"] = np.array([lo, hi])
+        actor = plotter.add_mesh(dummy, scalars="v", cmap=get_colormap(bar["cmap"]), clim=(lo, hi), opacity=0.0,
+                                 show_scalar_bar=False, name="_legend" if k == 0 else f"_legend{k}")
+        actor.VisibilityOff()
+        title = str(bar["title"])
+        while title in titles:   # pyvista keys scalar bars by title
+            title += " "
+        titles.add(title)
+        plotter.add_scalar_bar(title=title, mapper=actor.mapper, vertical=True, position_x=0.86 - 0.13 * k,
+                               position_y=0.1, height=0.8, width=0.06, color="black", fmt="%.4g",
+                               **({"title_font_size": font_size + 2, "label_font_size": font_size} if font_size else {}))
+    return bars
 
 
 def render_animation(pipeline, filename, *, frames=None, fps: float = 10, device=None, text=None,

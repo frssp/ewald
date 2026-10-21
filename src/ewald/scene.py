@@ -106,6 +106,8 @@ class Cylinders:
 class Lines:
     """Polylines: ``points`` (P x 3) and ``strips``, one array of point indices per line, with one
     ``rgb`` per strip (S x 3) or ``None`` for the renderer's ink color (black on light backgrounds).
+    ``point_rgb`` (P x 3), when given, colors every point instead (a color map along the line):
+    renderers blend it along each piece where they can, else give a piece the mean of its ends.
     ``width`` is in pixels of a 1600-pixel-high image; ``radius`` (Angstrom), when given, lets
     renderers that have no lines draw them as tubes with round joints. Lines are guides, so those
     tubes cast no shadows and no ambient occlusion unless ``cast_shadows`` is True."""
@@ -116,12 +118,15 @@ class Lines:
     width: float = 2.0
     radius: float | None = None
     cast_shadows: bool = False
+    point_rgb: np.ndarray | None = None
 
     def __post_init__(self):
         self.points = np.asarray(self.points, float).reshape(-1, 3)
         self.strips = [np.asarray(s, np.int64) for s in self.strips]
         if self.rgb is not None:
             self.rgb = np.broadcast_to(np.asarray(self.rgb, float), (len(self.strips), 3))
+        if self.point_rgb is not None:
+            self.point_rgb = np.broadcast_to(np.asarray(self.point_rgb, float), (len(self.points), 3))
 
     @property
     def count(self) -> int:
@@ -131,6 +136,30 @@ class Lines:
         """Every line piece as a pair of point indices (K x 2), and the strip of each."""
         pairs = [np.column_stack([s[:-1], s[1:]]) for s in self.strips if len(s) > 1]
         return np.vstack(pairs) if pairs else np.zeros((0, 2), np.int64)
+
+    def vertex_colors(self, ink=None) -> np.ndarray | None:
+        """One RGB per point (P x 3): ``point_rgb``, else each strip's ``rgb`` on its points, else
+        ``ink`` (None when there is neither color nor ink)."""
+        if self.point_rgb is not None:
+            return np.asarray(self.point_rgb, float)
+        if self.rgb is None:
+            return None if ink is None else np.broadcast_to(np.asarray(ink, float), (len(self.points), 3))
+        out = np.zeros((len(self.points), 3))
+        for k, s in enumerate(self.strips):
+            out[s] = self.rgb[k]
+        return out
+
+    def segment_colors(self, ink=(0.0, 0.0, 0.0)) -> np.ndarray:
+        """One RGB per piece of :meth:`segments` (K x 3): its strip's color, the mean of its two
+        ``point_rgb`` ends, or ``ink``."""
+        seg = self.segments()
+        if self.point_rgb is not None:
+            pr = np.asarray(self.point_rgb, float)
+            return 0.5 * (pr[seg[:, 0]] + pr[seg[:, 1]])
+        if self.rgb is None:
+            return np.tile(np.asarray(ink, float), (len(seg), 1))
+        return self.rgb[np.concatenate([np.full(max(len(s) - 1, 0), k) for k, s in enumerate(self.strips)]
+                                       or [np.zeros(0, np.int64)])]
 
 
 def make_arrows(base, tip, width: float = 0.2, rgb=(0.85, 0.2, 0.2), alpha: float = 1.0,
@@ -168,9 +197,11 @@ class Layer:
 
 @dataclass
 class Scene:
-    """Everything one image shows, in drawing order."""
+    """Everything one image shows, in drawing order, and the color bars its elements ask for
+    (``legends``: ``{"title", "cmap", "range"}`` dicts, drawn next to a ColorCoding bar)."""
 
     layers: list = field(default_factory=list)
+    legends: list = field(default_factory=list)
 
     def add(self, name: str, primitive, element: str = "") -> Layer:
         if type(primitive) not in KINDS:
@@ -236,6 +267,11 @@ class VisualElement:
 
     def build(self, data, ctx: SceneContext):
         raise NotImplementedError
+
+    def legend(self, data, ctx: SceneContext) -> dict | None:
+        """A color bar for what :meth:`build` drew, ``{"title", "cmap", "range": (lo, hi)}``, or None
+        (default). Called after ``build``; every renderer draws it with the overlays."""
+        return None
 
     def parameters(self) -> dict:
         sig = inspect.signature(type(self).__init__)
@@ -405,14 +441,39 @@ class VectorsVis(VisualElement):
         return [(f"vectors:{a.name}", a) for a in scene_arrows(data, self.vectors, ctx.frame)]
 
 
+TRAJECTORY_COLOR_BY = ("Time", "Frame", "Step Length")
+
+
 class TrajectoryLinesVis(VisualElement):
-    """``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle in its
-    atom color; ``width`` in pixels, 0 hides them."""
+    """``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle, in its atom
+    color or a color map by Time, Frame, step length or a property, over a Time window or a trail.
+
+    ``width`` in pixels, 0 hides them; ``radius`` (Angstrom) sizes the ray-traced tubes (None: 0.04 x width).
+
+    ``color_by`` None draws each line in its atom's color. Otherwise the lines follow the color map
+    ``colormap`` point by point: 'Time' (the table's Time, the timestep), 'Frame', 'Step Length' (the
+    distance moved since the previous point), another table column, or a particle property of the
+    current frame ('Path Length', 'Net Displacement', ...) that colors a whole line. ``color_range``
+    ``(lo, hi)`` fixes the ends of the map (values outside take the end colors); None spans what is drawn.
+
+    ``time_range`` ``(t0, t1)`` draws only the part of the paths inside that Time window (either end
+    may be None). ``trail`` follows the current frame: True draws the paths up to it, a number only
+    the last ``trail`` Time units before it (a comet tail). ``colorbar`` adds the map's color bar.
+    """
 
     name = "Trajectory lines"
 
-    def __init__(self, width: float = 2.0):
+    def __init__(self, width: float = 2.0, color_by: str | None = None, colormap: str = "viridis",
+                 color_range=None, time_range=None, trail=None, radius: float | None = None,
+                 colorbar: bool = True):
         self.width = width
+        self.color_by = color_by
+        self.colormap = colormap
+        self.color_range = color_range
+        self.time_range = time_range
+        self.trail = trail
+        self.radius = radius
+        self.colorbar = colorbar
 
     def applies(self, data) -> bool:
         return self.width > 0 and "trajectory-lines" in data.tables
@@ -420,6 +481,7 @@ class TrajectoryLinesVis(VisualElement):
     def build(self, data, ctx):
         from .render import default_colors
 
+        self._bar = None
         table = data.tables["trajectory-lines"]
         pts = np.asarray(table["Position"], dtype=float)
         ids = np.asarray(table["Particle Identifier"])
@@ -427,15 +489,115 @@ class TrajectoryLinesVis(VisualElement):
             return None
         starts = np.flatnonzero(np.r_[True, ids[1:] != ids[:-1]])
         sizes = np.diff(np.r_[starts, len(ids)])
+        line_of = np.repeat(np.arange(len(starts)), sizes)
+        time = np.asarray(table["Time"], float) if "Time" in table else \
+            np.concatenate([np.arange(m, dtype=float) for m in sizes])
+        keep = self._window(table, time, data, ctx)
+        values = None if self.color_by is None else self._values(table, data, ids, starts, sizes, line_of)
         colors = np.tile([0.3, 0.3, 0.3], (len(starts), 1))
-        if data.count:
+        if values is None and data.count:
             here = np.asarray(data["Particle Identifier"]) if "Particle Identifier" in data else np.arange(data.count)
             order = np.argsort(here)
             pos = np.clip(np.searchsorted(here[order], ids[starts]), 0, data.count - 1)
             hit = here[order][pos] == ids[starts]
             colors[hit] = np.clip(default_colors(data), 0, 1)[order][pos[hit]]
-        strips = [np.arange(s, s + m) for s, m in zip(starts, sizes)]
-        return [("trajectories", Lines(pts, strips, colors, self.width))]
+        # a strip per run of kept points of one line, at least two points long
+        strips, owner = [], []
+        for k, (s, m) in enumerate(zip(starts, sizes)):
+            idx = np.arange(s, s + m)
+            if keep is not None:
+                idx = idx[keep[s:s + m]]
+            if len(idx) < 2:
+                continue
+            for run in np.split(idx, np.flatnonzero(np.diff(idx) > 1) + 1):
+                if len(run) > 1:
+                    strips.append(run)
+                    owner.append(k)
+        if not strips:
+            return None
+        radius = self.radius if self.radius else 0.04 * float(self.width)
+        if values is None:
+            return [("trajectories", Lines(pts, strips, colors[owner], self.width, radius))]
+        from .colormaps import get_colormap
+
+        shown = np.concatenate(strips)
+        lo, hi = self._limits(values[shown])
+        span = hi - lo if hi > lo else 1.0
+        rgb = np.asarray(get_colormap(self.colormap)(np.clip((values - lo) / span, 0, 1)), float)[:, :3]
+        rgb[~np.isfinite(values)] = 0.5
+        if self.colorbar:
+            self._bar = {"title": str(self.color_by), "cmap": self.colormap, "range": (float(lo), float(hi))}
+        return [("trajectories", Lines(pts, strips, None, self.width, radius, point_rgb=rgb))]
+
+    def legend(self, data, ctx):
+        return getattr(self, "_bar", None)
+
+    def _limits(self, shown):
+        finite = shown[np.isfinite(shown)]
+        auto = (float(finite.min()), float(finite.max())) if len(finite) else (0.0, 1.0)
+        rng = self.color_range
+        if rng is None:
+            return auto
+        lo, hi = rng
+        return (auto[0] if lo is None else float(lo)), (auto[1] if hi is None else float(hi))
+
+    def _window(self, table, time, data, ctx):
+        """Which points to draw (None: all): ``time_range`` and ``trail``."""
+        keep = None
+        if self.time_range is not None:
+            t0, t1 = self.time_range
+            keep = np.ones(len(time), bool)
+            if t0 is not None:
+                keep &= time >= float(t0)
+            if t1 is not None:
+                keep &= time <= float(t1)
+        if self.trail is not None and self.trail is not False:
+            now = self._current_time(table, time, data, ctx)
+            tail = time <= now + 1e-9 * max(1.0, abs(now))
+            if self.trail is not True:
+                tail &= time >= now - float(self.trail)
+            keep = tail if keep is None else keep & tail
+        return keep
+
+    @staticmethod
+    def _current_time(table, time, data, ctx) -> float:
+        """The Time of the frame shown (the data's SourceFrame, else ``ctx.frame``): interpolated from the
+        table's Frame column, else the data's Timestep."""
+        frame = int(data.attributes.get("SourceFrame", ctx.frame))
+        if "Frame" in table:
+            frames = np.asarray(table["Frame"], float)
+            first = np.flatnonzero(np.r_[True, np.diff(frames) <= 0])   # one particle's rows
+            n = first[1] if len(first) > 1 else len(frames)
+            return float(np.interp(frame, frames[:n], time[:n]))
+        return float(data.attributes.get("Timestep", frame))
+
+    def _values(self, table, data, ids, starts, sizes, line_of):
+        """The value of ``color_by`` at every point of the table."""
+        name = self.color_by
+        if name == "Step Length":
+            pts = np.asarray(table["Position"], float)
+            step = np.r_[0.0, np.linalg.norm(np.diff(pts, axis=0), axis=1)]
+            step[starts] = step[np.minimum(starts + 1, len(step) - 1)]   # a line's first point: its first step
+            return step
+        if name in table and name not in ("Position", "Particle Identifier"):
+            col = np.asarray(table[name])
+            if col.ndim == 1 and np.issubdtype(col.dtype, np.number):
+                return col.astype(float)
+        if name == "Frame" and "Frame" not in table:
+            return np.concatenate([np.arange(m, dtype=float) for m in sizes])
+        if name in data.particles:
+            prop = np.asarray(data[name])
+            if prop.ndim == 1 and np.issubdtype(prop.dtype, np.number):
+                here = np.asarray(data["Particle Identifier"]) if "Particle Identifier" in data else np.arange(data.count)
+                order = np.argsort(here)
+                pos = np.clip(np.searchsorted(here[order], ids[starts]), 0, max(data.count - 1, 0))
+                hit = here[order][pos] == ids[starts]
+                per_line = np.where(hit, prop.astype(float)[order][pos], np.nan)
+                return per_line[line_of]
+        options = [*TRAJECTORY_COLOR_BY, *(c for c in table if c not in ("Position", "Particle Identifier")
+                                           and c not in TRAJECTORY_COLOR_BY)]
+        raise KeyError(f"trajectory lines cannot be colored by {name!r}; use one of {', '.join(options)} "
+                       f"or a numeric particle property")
 
 
 _CELL_EDGES = [(0, 1), (0, 2), (0, 3), (1, 4), (1, 5), (2, 4), (2, 6), (3, 5), (3, 6), (4, 7), (5, 7), (6, 7)]
@@ -511,7 +673,9 @@ BUILTIN = (ParticlesVis, BondsVis, SurfacesVis, VectorsVis, TrajectoryLinesVis, 
 
 def builtin_elements(*, radius_scale=1.0, type_colors=None, type_radii=None, radius_preset="covalent",
                      oxidation_states=None, coordination=None, bonds=None, bond_pairs=None, bond_radius=0.15,
-                     vectors=None, trajectory_width=2.0, show_cell=True, cell_color=None, cell_width=2.0,
+                     vectors=None, trajectory_width=2.0, trajectory_color_by=None, trajectory_colormap="viridis",
+                     trajectory_color_range=None, trajectory_time_range=None, trajectory_trail=None,
+                     trajectory_radius=None, show_cell=True, cell_color=None, cell_width=2.0,
                      cell_radius=None, show_atoms=True, surfaces=None, selection_color=None, measurements=None,
                      **_ignored) -> list[VisualElement]:
     """The built-in elements configured from ``render()`` keyword arguments, in drawing order."""
@@ -519,7 +683,8 @@ def builtin_elements(*, radius_scale=1.0, type_colors=None, type_radii=None, rad
                              selection_color)
     particles.enabled = bool(show_atoms)
     out = [particles, BondsVis(bonds, bond_pairs, bond_radius), SurfacesVis(surfaces or None), VectorsVis(vectors),
-           TrajectoryLinesVis(trajectory_width)]
+           TrajectoryLinesVis(trajectory_width, trajectory_color_by, trajectory_colormap, trajectory_color_range,
+                              trajectory_time_range, trajectory_trail, trajectory_radius)]
     if show_cell:
         out.append(SimulationCellVis(cell_color, cell_width, cell_radius))
     if measurements:
@@ -598,6 +763,9 @@ def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None,
                 el.build(data, ctx)   # hidden atoms still give their bonds their colors
             continue
         out = el.build(data, ctx)
+        bar = el.legend(data, ctx) if out is not None else None
+        if bar:
+            scene.legends.append(dict(bar))
         if out is None:
             continue
         if not isinstance(out, (list, tuple)) or (len(out) == 2 and isinstance(out[0], str)):

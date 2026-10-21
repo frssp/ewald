@@ -17,13 +17,21 @@ from .io.base import FrameReader, strip_compression
 
 log = logging.getLogger("ewald.plugins")
 
-_SCHEME = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*):")
+_SCHEME = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]+):")   # 2+ characters: "C:" is a Windows drive
 
 
 def path_scheme(path) -> str | None:
-    """The URI scheme of ``path`` (``"aiida"`` for ``aiida:1234``), or None."""
+    """The URI scheme of ``path`` (``"aiida"`` for ``aiida:1234``), or None. A single letter is
+    a Windows drive (``C:\\data``), never a scheme, on every platform."""
     m = _SCHEME.match(path) if isinstance(path, str) else None
     return m.group(1).lower() if m else None
+
+
+def _matches(name: str, patterns) -> bool:
+    """File-name patterns ignore case on every platform (``fnmatch.fnmatch`` ignores it only
+    on Windows): ``POSCAR*`` matches ``poscar`` everywhere."""
+    low = name.lower()
+    return any(fnmatch.fnmatchcase(low, p.lower()) for p in patterns)
 
 
 @dataclass
@@ -50,7 +58,7 @@ class ReaderPlugin:
                 log.debug("sniff of %s failed for %s: %s", self.name, path, exc)
                 return False
         base = os.path.basename(strip_compression(path))
-        return any(fnmatch.fnmatch(base, p) for p in self.patterns)
+        return _matches(base, self.patterns)
 
     def open(self, path, format: str | None = None, **kwargs):
         if self.takes_format:
@@ -84,7 +92,7 @@ class WriterPlugin:
 
     def matches(self, path) -> bool:
         base = os.path.basename(strip_compression(path))
-        return any(fnmatch.fnmatch(base, p) or fnmatch.fnmatch(base.lower(), p.lower()) for p in self.patterns)
+        return _matches(base, self.patterns)
 
     def write(self, path, frames, format: str | None = None, **kwargs):
         """Write ``frames`` (iterable of DataCollection) to ``path``; a ``.gz``/``.bz2``/``.xz``

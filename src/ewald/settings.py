@@ -184,12 +184,13 @@ OPTIONS = (
     Option("compute.threads", 0, "CPU threads", "Numba threads for CPU kernels; 0 = all cores.",
            minimum=0, maximum=1024),
 
-    Option("python.run_notebooks", "ask", "Run notebooks when opened",
-           "As in Jupyter, a notebook you saved or trusted before (the same file, unchanged) runs when "
-           "opened; any other file is Python code you have not seen, so it asks first (an .ewd's "
-           "plugins load only if you agree). 'never' runs nothing when opening and opens unknown files "
-           "restricted. 'always' is the same as 'ask': a file you have not trusted always asks.",
-           choices=("ask", "always", "never")),
+    Option("python.run_notebooks", "never", "Run notebooks when opened",
+           "'never': opening a notebook runs nothing; it shows the cells and the results saved in the "
+           "file, and Run all (or the bar over the cells) runs it. 'ask': asks every time. 'always': a "
+           "notebook you saved or trusted before (the same file, unchanged) runs at once, as in Jupyter. "
+           "A file you have not trusted is Python code you have not seen: it never runs without asking "
+           "and otherwise opens restricted (an .ewd's plugins load only once you trust it).",
+           choices=("never", "ask", "always")),
     Option("python.plot_style", "Publication", "Style of your own plots",
            "matplotlib figures that notebook cells and the console draw (plt.plot ...): the publication "
            "style of saved plots, in print colors or the UI theme's, or matplotlib's defaults. rcParams a "
@@ -306,6 +307,18 @@ def component_status():
 
 
 # ---------------------------------------------------------------- storage
+def read_text_any(path) -> str:
+    """A text file EWALD wrote: UTF-8, or the locale's encoding for files older versions wrote
+    on Windows (cp949, cp1252, ...) before every file was UTF-8."""
+    raw = Path(path).read_bytes()
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        import locale
+
+        return raw.decode(locale.getpreferredencoding(False), errors="replace")
+
+
 def config_dir() -> Path:
     if os.environ.get("EWALD_CONFIG_DIR"):
         return Path(os.environ["EWALD_CONFIG_DIR"])
@@ -405,7 +418,8 @@ class Settings:
     def save(self, path=None):
         p = Path(path) if path else self.path
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(self.changed(), indent=2, sort_keys=True, ensure_ascii=False) + "\n")
+        p.write_text(json.dumps(self.changed(), indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+                     encoding="utf-8", newline="\n")
         return p
 
     def __repr__(self):
@@ -462,7 +476,7 @@ def load(path=None) -> Settings:
     values = {}
     if p.exists():
         try:
-            values = json.loads(p.read_text())
+            values = json.loads(read_text_any(p))
         except (OSError, ValueError) as exc:
             log.warning("could not read %s: %s; using defaults", p, exc)
     return Settings(values if isinstance(values, dict) else {}, p)

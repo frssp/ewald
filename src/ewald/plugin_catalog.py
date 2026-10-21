@@ -40,13 +40,14 @@ import base64
 import importlib.util
 import json
 import os
+import posixpath
 import shutil
 import subprocess
 import sys
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from . import plugins
 from ._tls import ssl_context
@@ -86,7 +87,7 @@ class Entry:
 
     @property
     def file_name(self) -> str:
-        return self.source.rstrip("/").rsplit("/", 1)[-1] if not self.is_pip else ""
+        return "" if self.is_pip else source_name(self.source)
 
     @property
     def package(self) -> str:
@@ -264,6 +265,14 @@ def catalog(urls=(), timeout: float = 10.0) -> tuple[list[Entry], dict]:
     return entries, errors
 
 
+def source_name(source: str) -> str:
+    """The file name of a plugin source: the last part of a URL's path, or of a local path
+    with either separator (``C:\\plugins\\x.py`` gives ``x.py`` on every platform)."""
+    if "://" in source:
+        return posixpath.basename(urllib.parse.urlsplit(source).path.rstrip("/"))
+    return PureWindowsPath(source.rstrip("/\\")).name   # splits on / and on backslashes
+
+
 def _join(base: str, rel: str) -> str:
     if "://" in base:
         return base.rsplit("/", 1)[0] + "/" + rel
@@ -280,7 +289,8 @@ def github_token() -> str:
     if gh is None:
         return ""
     try:
-        out = subprocess.run([gh, "auth", "token"], capture_output=True, text=True, timeout=5)
+        out = subprocess.run([gh, "auth", "token"], capture_output=True, timeout=5,
+                             encoding="utf-8", errors="replace")
     except (OSError, subprocess.SubprocessError):
         return ""
     return out.stdout.strip() if out.returncode == 0 else ""
@@ -378,14 +388,14 @@ def fetch_file(entry_or_source, timeout: float = 30.0) -> Path:
     expected = entry_or_source.sha256 if isinstance(entry_or_source, Entry) else ""
     folder = plugins.plugin_dir()
     folder.mkdir(parents=True, exist_ok=True)
-    name = source.rstrip("/").rsplit("/", 1)[-1]
+    name = source_name(source)
     if not name.endswith(".py"):
         raise ValueError(f"not a plugin file: {source} (a .py file or pip:<package>)")
     target = folder / name
     if "://" in source:
         text = _read(source, timeout)
         verify_sha256(text, expected, source)   # before anything is written or imported
-        target.write_text(text, encoding="utf-8")
+        target.write_text(text, encoding="utf-8", newline="\n")
     else:
         src = Path(source).expanduser().resolve()
         if expected:

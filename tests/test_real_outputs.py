@@ -126,3 +126,19 @@ def test_neb_endpoint_structure_from_poscar(vasp_dir, tmp_path):
     assert d.attributes["Energy"] == ref.attributes["Energy"] and "Force" not in d.particles
     unchanged = import_file(vasp_dir / "neb").source.compute(0)  # same atoms: the OUTCAR's forces stay
     np.testing.assert_allclose(unchanged["Force"], ref["Force"])
+
+
+def test_neb_endpoint_poscar_rule_with_windows_paths(vasp_dir, monkeypatch):
+    # on Windows the image files are C:\...\00\OUTCAR; the rule above once split them on "/"
+    # only, missed the OUTCAR and took a reordered endpoint OUTCAR's atoms (a 13 A last step
+    # in the Fe vacancy example)
+    import ntpath
+
+    from ewald.io import neb
+
+    image_file = neb._image_file
+    monkeypatch.setattr(neb, "_image_file", lambda d, *a: (p := image_file(d, *a)) and p.replace("/", "\\"))
+    with monkeypatch.context() as m:
+        m.setattr(neb.os.path, "basename", ntpath.basename)
+        reader = neb.NebReader(vasp_dir / "neb")
+    assert reader.files[0].endswith("00\\OUTCAR") and 0 in reader._endpoint_poscars
