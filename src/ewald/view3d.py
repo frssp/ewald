@@ -141,6 +141,23 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        "view.measure(i, j, ...) adds one and returns its value.", type="array",
        items={"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 4}),
     _s("trajectory_width", 2.0, "elements", "Width in pixels of trajectory lines (GenerateTrajectoryLines); 0 hides them."),
+    _s("trajectory_color_by", None, "elements", "Color trajectory lines with a color map by 'Time' (the timestep), "
+       "'Frame', 'Step Length' (distance moved per step), another column of tables['trajectory-lines'] or a "
+       "numeric particle property ('Path Length', ...: one color per line); None: each line in its atom's color.",
+       type=["string", "null"]),
+    _s("trajectory_colormap", "viridis", "elements", "Color map of trajectory_color_by (any matplotlib or "
+       "plugin color map name).", type="string"),
+    _s("trajectory_color_range", None, "elements", "[lo, hi] values at the ends of the trajectory color map "
+       "(either may be null); None: the range of what is drawn.", type=["array", "null"],
+       items={"type": ["number", "null"]}),
+    _s("trajectory_time_range", None, "elements", "[t0, t1]: draw only the part of the trajectory lines inside "
+       "this Time window (timesteps; either end may be null); None: the whole paths.", type=["array", "null"],
+       items={"type": ["number", "null"]}),
+    _s("trajectory_trail", None, "elements", "Trajectory lines that follow the current frame: true draws the "
+       "paths up to it, a number only that much Time before it (a tail); None: the whole paths.",
+       type=["boolean", "number", "null"]),
+    _s("trajectory_radius", None, "elements", "Tube radius in Angstrom of trajectory lines in ray-traced pictures; "
+       "None: 0.04 x trajectory_width.", type=["number", "null"]),
     # camera
     _s("frame", 0, "camera", "Trajectory frame shown.", type="integer"),
     _s("direction", "iso", "camera", "View direction, from the structure towards the camera: 'x', '-y', 'z', "
@@ -165,7 +182,7 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
     _s("transparent_background", False, "picture", "Transparent PNG background."),
     _s("text", None, "picture", "Text label; [Frame], [Timestep], [Time] and [attribute] are filled in.",
        type=["string", "null"]),
-    _s("legend", True, "picture", "Color bar of a ColorCoding step."),
+    _s("legend", True, "picture", "Color bars: a ColorCoding step's and color-mapped elements' (trajectory lines)."),
     _s("type_legend", False, "picture", "One swatch per particle type."),
     _s("scale_bar", None, "picture", "Scale bar: True (a round length) or a length in Angstrom.",
        type=["boolean", "number", "null"]),
@@ -402,6 +419,7 @@ class View:
                 kw["bond_pairs"] = covalent_pairs(np.unique(np.asarray(data.types)), self.bond_factor)
         elif bonds not in (False, None, 0):
             kw["bonds"] = float(bonds)
+        kw["frame"] = self.frame if frame is None else int(frame)   # elements that follow the frame (trails)
         if self.text:
             from .overlays import format_label
 
@@ -451,7 +469,10 @@ ELEMENTS = {
     "Bonds": {"enabled": "bonds", "pairs": "bond_pairs", "factor": "bond_factor", "radius": "bond_radius"},
     "Surfaces": {"styles": "surfaces"},
     "Vectors": {"vectors": "vectors"},
-    "Trajectory lines": {"width": "trajectory_width"},
+    "Trajectory lines": {"width": "trajectory_width", "color_by": "trajectory_color_by",
+                         "colormap": "trajectory_colormap", "color_range": "trajectory_color_range",
+                         "time_range": "trajectory_time_range", "trail": "trajectory_trail",
+                         "radius": "trajectory_radius"},
     "Simulation cell": {"enabled": "cell", "color": "cell_color", "width": "cell_width", "radius": "cell_radius"},
     "Measurements": {"measurements": "measurements"},
 }
@@ -718,6 +739,30 @@ def _check(name, value):
             raise ValueError(f"{name} must be positive, not {value}")
     elif name == "frame":
         value = int(value)
+    elif name == "trajectory_colormap":
+        from .colormaps import get_colormap
+
+        get_colormap(value)   # unknown names fail here
+    elif name in ("trajectory_color_range", "trajectory_time_range"):
+        pair = list(value)
+        if len(pair) != 2:
+            raise ValueError(f"{name} is [lo, hi] (either may be None), not {value!r}")
+        value = [None if v is None else float(v) for v in pair]
+        if None not in value and value[0] > value[1]:
+            raise ValueError(f"{name} must have lo <= hi, not {value}")
+    elif name == "trajectory_trail":
+        if value is not True and value is not False:
+            value = float(value)
+            if value <= 0:
+                raise ValueError(f"trajectory_trail must be True or a positive Time span, not {value}")
+        elif value is False:
+            value = None
+    elif name == "trajectory_color_by":
+        value = str(value)
+    elif name == "trajectory_radius":
+        value = float(value)
+        if value <= 0:
+            raise ValueError(f"trajectory_radius must be positive, not {value}")
     elif name == "cell_radius":
         value = float(value)
         if value <= 0:

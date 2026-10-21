@@ -142,6 +142,31 @@ def test_trajectory_lines_render(tmp_path):
     assert np.abs(with_lines.astype(int) - without.astype(int)).sum() > 0
 
 
+
+@pytest.mark.parametrize("renderer", ["opengl", "raytrace", "vector"])
+def test_trajectory_color_map_and_color_bar_in_every_renderer(tmp_path, renderer):
+    """Lines colored by Time draw the color map and its color bar in every renderer."""
+    from ewald.modifiers import GenerateTrajectoryLines
+
+    frames = []
+    for k, s in enumerate(np.linspace(0, 1, 12)):
+        d = DataCollection(np.array([[2.0 + 6 * s, 5.0, 5.0]]), np.array(["Cu"]), Cell(np.diag([10.0] * 3)))
+        d.attributes["Timestep"] = 10 * k
+        frames.append(d)
+    pipe = Pipeline(StaticSource(frames), [GenerateTrajectoryLines()])
+    kw = dict(frame=0, size=(200, 150), direction="z", show_cell=False, renderer=renderer, quality="draft",
+              trajectory_width=6, trajectory_colormap="plasma")
+    plain = pipe.render(None, **kw)
+    mapped = pipe.render(None, trajectory_color_by="Time", **kw)
+    h, w = mapped.shape[:2]
+    bar = mapped[int(0.3 * h):int(0.7 * h), int(0.885 * w):int(0.905 * w), :3].astype(int)
+    assert np.ptp(bar.reshape(-1, 3), axis=0).max() > 100           # a color bar on the right
+    assert np.ptp(plain[int(0.3 * h):int(0.7 * h), int(0.885 * w):int(0.905 * w), :3].astype(int)) == 0
+    row = mapped[h // 2, int(0.2 * w):int(0.7 * w), :3].astype(int)
+    colored = row[np.abs(row - 255).sum(1) > 60]
+    assert len(colored) and np.ptp(colored, axis=0).max() > 80        # the line changes color along x
+
+
 def _perovskite():
     from ase.spacegroup import crystal
 

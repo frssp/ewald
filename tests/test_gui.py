@@ -116,6 +116,41 @@ def test_view_tab_surfaces_labels_transparency(app, pipe):
     _dispose(panel)
 
 
+def test_view_tab_trajectory_color_map(app, pipe):
+    """The Elements card colors trajectory lines with a color map over a Time window or a trail; the values
+    go into the style (and so the view cell) and the viewport draws them with a color bar."""
+    from ewald.gui.pipeline_panel import DisplayPanel
+    from ewald.render import build_scene
+
+    pipe.modifiers.append(mods.GenerateTrajectoryLines(only_selected=False))
+    panel = DisplayPanel()
+    panel.set_pipeline(pipe)
+    data = pipe.compute(1)
+    panel.set_data(data)
+    tw = panel.trajectory_widgets
+    assert not tw["group"].isChecked() and tw["color_by"].findText("Path Length") >= 0
+    tw["group"].setChecked(True)
+    tw["colormap"].setCurrentText("magma")
+    tw["window"][0].setText("0")
+    tw["window"][0].editingFinished.emit()
+    tw["trail"].setText("all")
+    tw["trail"].editingFinished.emit()
+    st = panel.style
+    assert (st.trajectory_color_by, st.trajectory_colormap, st.trajectory_time_range, st.trajectory_trail) == \
+        ("Time", "magma", [0.0, None], True)
+    settings = st.view_settings(["Cu"])
+    assert settings["trajectory_color_by"] == "Time" and settings["trajectory_trail"] is True
+    import pyvista as pv
+
+    p = pv.Plotter(off_screen=True, window_size=(100, 80))
+    scene = build_scene(p, data, **st.scene_kwargs())
+    assert scene.legends[0]["cmap"] == "magma" and scene["trajectories"].primitive.point_rgb is not None
+    p.close()
+    tw["group"].setChecked(False)
+    assert st.trajectory_color_by is None and "trajectory_color_by" not in st.scene_kwargs()
+    _dispose(panel)
+
+
 def test_view_tab_cards_and_notebook_marks(app, pipe):
     """The View tab shows the look as cards, marks what the notebook's view sets, and an edit there
     changes the style without rebuilding the card being edited."""

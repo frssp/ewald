@@ -39,6 +39,7 @@ class Scene:
         self.tri_n = np.zeros((0, 3, 3)); self.tri_vrgb = np.zeros((0, 3, 3))
         # False: seen by camera rays but skipped by shadow and AO rays (cell edges)
         self.sph_cast = np.zeros(0, bool); self.cyl_cast = np.zeros(0, bool); self.tri_cast = np.zeros(0, bool)
+        self.legends = []   # color bars of the elements (ewald.scene.Scene.legends), drawn as overlays
 
     def add_spheres(self, centers, radii, colors, cast_shadows=True):
         self.sph_c = np.vstack([self.sph_c, np.asarray(centers, float).reshape(-1, 3)])
@@ -95,8 +96,9 @@ class Scene:
 def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None, bonds=None, bond_pairs=None,
                     bond_radius=0.15, show_cell=True, cell_color=(0.0, 0.0, 0.0), cell_radius=None,
                     radius_preset="covalent", oxidation_states=None, coordination=None, vectors=None,
-                    arrow_resolution=24, view_direction=None, trajectory_width=2.0, visuals=None, frame=0,
-                    boundary=None, boundary_bonds="half", replicate=None, replicate_cell="super",
+                    arrow_resolution=24, view_direction=None, trajectory_width=2.0, trajectory_color_by=None,
+                    trajectory_colormap="viridis", trajectory_color_range=None, trajectory_time_range=None,
+                    trajectory_trail=None, trajectory_radius=None, visuals=None, frame=0, boundary=None, boundary_bonds="half", replicate=None, replicate_cell="super",
                     show_atoms=True, surfaces=None, type_transparency=None, selection_color=None, measurements=None,
                     **_ignored):
     """Build a Scene with the same colors/radii/bonds/arrows as :func:`ewald.render.build_scene`.
@@ -110,7 +112,10 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
                      radius_scale=radius_scale, type_colors=type_colors, type_radii=type_radii,
                      radius_preset=radius_preset, oxidation_states=oxidation_states, coordination=coordination,
                      bonds=bonds, bond_pairs=bond_pairs, bond_radius=bond_radius, vectors=vectors,
-                     trajectory_width=trajectory_width, show_cell=show_cell, cell_radius=cell_radius,
+                     trajectory_width=trajectory_width, trajectory_color_by=trajectory_color_by,
+                     trajectory_colormap=trajectory_colormap, trajectory_color_range=trajectory_color_range,
+                     trajectory_time_range=trajectory_time_range, trajectory_trail=trajectory_trail,
+                     trajectory_radius=trajectory_radius, show_cell=show_cell, cell_radius=cell_radius,
                      boundary=boundary, boundary_bonds=boundary_bonds, replicate=replicate,
                      replicate_cell=replicate_cell, show_atoms=show_atoms, surfaces=surfaces,
                      type_transparency=type_transparency, selection_color=selection_color,
@@ -121,10 +126,11 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
 def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 0.0, 0.0)) -> Scene:
     """Ray-tracer primitives for every layer of an :class:`ewald.scene.Scene`. The ray tracer is
     opaque except for triangles: sphere and cylinder ``alpha`` is ignored. Lines without a
-    ``radius`` (screen-space only, such as trajectory lines) are not drawn."""
+    ``radius`` (screen-space only) are not drawn."""
     from .render import _rgb
 
     sc = Scene()
+    sc.legends = list(getattr(scene, "legends", []))
     for layer in scene.layers:
         prim = layer.primitive
         if layer.kind == "spheres":
@@ -161,17 +167,18 @@ def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 
             seg = prim.segments()
             if not len(seg):
                 continue
-            if prim.rgb is None:
+            if prim.rgb is None and prim.point_rgb is None:
                 seg_rgb = _rgb(ink)
             else:
-                strip_of = np.concatenate([np.full(max(len(s) - 1, 0), k) for k, s in enumerate(prim.strips)])
-                seg_rgb = prim.rgb[strip_of]
+                seg_rgb = prim.segment_colors()
             cast = prim.cast_shadows
             sc.add_cylinders(prim.points[seg[:, 0]], prim.points[seg[:, 1]], prim.radius, seg_rgb, cast)
             # round joints so corners look closed
             joints = np.unique(seg)
-            if prim.rgb is None:
+            if prim.rgb is None and prim.point_rgb is None:
                 sc.add_spheres(prim.points[joints], prim.radius, seg_rgb, cast)
+            elif prim.point_rgb is not None:
+                sc.add_spheres(prim.points[joints], prim.radius, np.asarray(prim.point_rgb, float)[joints], cast)
             else:
                 rgb = np.empty((len(prim.points), 3))
                 rgb[seg[:, 1]] = seg_rgb

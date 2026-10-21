@@ -210,3 +210,119 @@ def test_trajectory_modifiers_on_lazy_readers(lammps_dir, vasp_dir):
     assert abs(data.tables["msd"]["MSD"][0]) < 1e-10 and data.tables["msd"]["MSD"][1] > 0
     assert len(data.tables["vacf"]["VACF"]) == pipe.num_frames - 1  # differentiated positions
     assert data.tables["trajectory-lines"]["Position"].shape == (pipe.num_frames * data.count, 3)
+
+
+def _traced(rng, **lines):
+    pipe, true = _walk_pipeline(rng, T=12, n=8, sigma=0.4)
+    pipe.modifiers.append(GenerateTrajectoryLines(only_selected=False, **lines))
+    return pipe, true
+
+
+def _lines(data, frame=0, **kw):
+    from ewald import scene as ir
+
+    s = ir.build(data, [ir.TrajectoryLinesVis(**kw)], ir.SceneContext(frame=frame))
+    return s, (s["trajectories"].primitive if "trajectories" in s else None)
+
+
+def test_trajectory_lines_color_by_time_window_and_trail(rng):
+    """Trajectory lines follow a color map by Time over a chosen Time window or a trail that ends at the
+    current frame, with a color bar that spans the map."""
+    pipe, _ = _traced(rng, start=2)
+    data = pipe.compute(7)
+    table = data.tables["trajectory-lines"]
+    np.testing.assert_array_equal(table["Frame"][:10], np.arange(2, 12))
+    scene, lines = _lines(data, color_by="Time")
+    assert lines.rgb is None and lines.point_rgb.shape == (80, 3) and len(lines.strips) == 8
+    assert scene.legends == [{"title": "Time", "cmap": "viridis", "range": (200.0, 1100.0)}]
+    from ewald.colormaps import get_colormap
+
+    np.testing.assert_allclose(lines.point_rgb[0], get_colormap("viridis")(0.0)[:3])
+    np.testing.assert_allclose(lines.point_rgb[9], get_colormap("viridis")(1.0)[:3])
+    scene, lines = _lines(data, color_by="Time", time_range=(400, 800), color_range=(0, None))
+    drawn = np.concatenate(lines.strips)
+    assert set(table["Time"][drawn]) == {400, 500, 600, 700, 800}
+    assert scene.legends[0]["range"] == (0.0, 800.0)   # lo fixed, hi from what is drawn
+    # trail: the frame shown (the data's SourceFrame) is 7, Time 700; 'True' draws up to it, a number only that much before it
+    _, lines = _lines(data, 7, trail=True)
+    assert set(table["Time"][np.concatenate(lines.strips)]) == set(range(200, 701, 100))
+    _, lines = _lines(data, 7, trail=250)
+    assert set(table["Time"][np.concatenate(lines.strips)]) == {500, 600, 700}
+    assert lines.point_rgb is None and lines.rgb.shape == (8, 3)   # atom colors without color_by
+    _, lines = _lines(pipe.compute(1), 1, trail=True)
+    assert lines is None                                            # frame 1 is before the traced range
+    scene, _ = _lines(data, color_by="Time", colorbar=False)
+    assert scene.legends == []
+
+
+def test_trajectory_lines_color_by_step_length_and_property(rng):
+    pipe, true = _traced(rng)
+    data = pipe.compute(0)
+    table = data.tables["trajectory-lines"]
+    el_scene, lines = _lines(data, color_by="Step Length", colormap="plasma")
+    first = table["Particle Identifier"] == 1
+    steps = np.linalg.norm(np.diff(true[:, 0], axis=0), axis=1)
+    lo, hi = el_scene.legends[0]["range"]
+    from ewald.colormaps import get_colormap
+
+    np.testing.assert_allclose(lines.point_rgb[np.flatnonzero(first)[3]],
+                               get_colormap("plasma")((steps[2] - lo) / (hi - lo))[:3], atol=1e-9)
+    assert hi == pytest.approx(np.linalg.norm(np.diff(true, axis=0), axis=2).max())
+    _, lines = _lines(data, color_by="Path Length")      # a particle property: one color per line
+    for s in lines.strips:
+        assert np.ptp(lines.point_rgb[s], axis=0).max() == 0
+    with pytest.raises(KeyError, match="Step Length"):
+        _lines(data, color_by="Nope")
+
+
+def test_lines_vertex_and_segment_colors():
+    from ewald.scene import Lines
+
+    pts = np.zeros((4, 3))
+    plain = Lines(pts, [[0, 1, 2], [2, 3]], [(1, 0, 0), (0, 0, 1)])
+    np.testing.assert_allclose(plain.segment_colors(), [(1, 0, 0), (1, 0, 0), (0, 0, 1)])
+    np.testing.assert_allclose(plain.vertex_colors()[[0, 3]], [(1, 0, 0), (0, 0, 1)])
+    mapped = Lines(pts, [[0, 1, 2, 3]], point_rgb=[(0, 0, 0), (1, 1, 1), (1, 0, 0), (0, 0, 0)])
+    np.testing.assert_allclose(mapped.segment_colors()[0], (0.5, 0.5, 0.5))
+    assert Lines(pts, [[0, 1]]).vertex_colors() is None
+    np.testing.assert_allclose(Lines(pts, [[0, 1]]).segment_colors((0.2, 0.2, 0.2)), [(0.2, 0.2, 0.2)])
+
+
+def test_trajectory_view_settings_and_elements(rng):
+    """The color map is a pipe.view setting, also as view.elements['Trajectory lines'], and the GUI style
+    round-trips it."""
+    from ewald.view_style import ViewStyle
+
+    pipe, _ = _traced(rng)
+    el = pipe.view.elements["Trajectory lines"]
+    el.set(color_by="Time", colormap="magma", time_range=(100, None), trail=True)
+    assert pipe.view.trajectory_time_range == [100.0, None] and pipe.view.trajectory_trail is True
+    kw = pipe.view.render_kwargs(pipe.compute(5), 5)
+    assert kw["trajectory_color_by"] == "Time" and kw["trajectory_colormap"] == "magma" and kw["frame"] == 5
+    assert "trajectory_color_by='Time'" in pipe.view.source()
+    with pytest.raises(ValueError):
+        pipe.view.trajectory_color_range = [5, 1]
+    with pytest.raises(ValueError):
+        pipe.view.trajectory_trail = -3
+    with pytest.raises(KeyError):
+        pipe.view.trajectory_colormap = "no-such-map"
+    style = ViewStyle()
+    style.apply_view(pipe.view)
+    assert style.scene_kwargs()["trajectory_time_range"] == [100.0, None]
+    settings = style.view_settings()
+    assert settings["trajectory_colormap"] == "magma" and settings["trajectory_trail"] is True
+    pipe.view.update(**settings)
+    assert pipe.view.trajectory_color_by == "Time"
+
+
+def test_overlay_layout_stacks_color_bars():
+    from ewald.overlays import overlay_layout
+
+    d = DataCollection(np.zeros((1, 3)), np.array(["A"]), Cell(np.diag([BOX] * 3)))
+    d.attributes.update({"ColorCoding.range": (0.0, 1.0), "ColorCoding.property": "Charge"})
+    lay = overlay_layout(d, (800, 600), colorbars=[{"title": "Time", "cmap": "magma", "range": (0, 5000)}])
+    bars = lay["colorbars"]
+    assert [b["title"] for b in bars] == ["Charge", "Time"] and lay["colorbar"] is bars[0]
+    assert bars[1]["box"][2] < bars[0]["box"][0]                  # side by side, the second to the left
+    assert [t for _, t in bars[1]["ticks"]] == ["0", "1250", "2500", "3750", "5000"]
+    assert "colorbars" not in overlay_layout(d, (800, 600), legend=False, colorbars=bars)

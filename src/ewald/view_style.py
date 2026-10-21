@@ -21,6 +21,9 @@ def default_background() -> str:
 def set_default_background(color: str):
     _background[0] = color
 _THEMED = ("type_colors", "background", "cell_color", "radius_preset", "theme")
+# trajectory-line color map settings: the same names in ViewStyle, pipe.view and render()
+TRAJECTORY_KEYS = ("trajectory_color_by", "trajectory_colormap", "trajectory_color_range", "trajectory_time_range",
+                   "trajectory_trail", "trajectory_radius")
 
 
 @dataclass
@@ -48,6 +51,12 @@ class ViewStyle:
     replicate_cell: str = "super"                     # cell lines of a replicated view: super / unit / all
     vectors: object = None                            # per-atom vector properties drawn as arrows (render's vectors=)
     trajectory_width: float = 2.0                     # trajectory lines (pixels)
+    trajectory_color_by: str | None = None            # color map by 'Time', 'Frame', 'Step Length', ...; None: atom colors
+    trajectory_colormap: str = "viridis"
+    trajectory_color_range: list | None = None        # [lo, hi] of the color map (either may be None)
+    trajectory_time_range: list | None = None         # [t0, t1] Time window drawn
+    trajectory_trail: object = None                   # True: up to the current frame; a number: that much Time before it
+    trajectory_radius: float | None = None            # ray-traced tube radius (A); None: from the width
     show_atoms: bool = True                           # the Particles element (False: a stick model)
     cell_radius: float | None = None                  # ray-traced cell tube radius (A); None: automatic
     surfaces: dict = field(default_factory=dict)      # data.surfaces look by name: {visible, color, transparency, edges}
@@ -90,6 +99,10 @@ class ViewStyle:
             kw["vectors"] = self.vectors
         if self.trajectory_width != 2.0:
             kw["trajectory_width"] = self.trajectory_width
+        for k in TRAJECTORY_KEYS:
+            v = getattr(self, k)
+            if v is not None and v != "viridis":
+                kw[k] = list(v) if isinstance(v, (list, tuple)) else v
         if not self.show_atoms:
             kw["show_atoms"] = False
         if self.cell_radius:
@@ -212,6 +225,9 @@ class ViewStyle:
                         for v in view.visuals]
         self.vectors = view.vectors
         self.trajectory_width = float(view.trajectory_width)
+        for k in TRAJECTORY_KEYS:
+            v = getattr(view, k)
+            setattr(self, k, list(v) if isinstance(v, (list, tuple)) else v)
 
     def view_settings(self, types=()) -> dict:
         """The display settings of this style as :class:`ewald.view3d.View` settings (what the notebook's
@@ -256,6 +272,8 @@ class ViewStyle:
                else None, "replicate_cell": self.replicate_cell,
                "visuals": [dict(v) for v in self.visuals], "vectors": self.vectors,
                "trajectory_width": self.trajectory_width, "atoms": bool(self.show_atoms),
+               **{k: (list(getattr(self, k)) if isinstance(getattr(self, k), (list, tuple)) else getattr(self, k))
+                  for k in TRAJECTORY_KEYS},
                "cell_radius": self.cell_radius, "surfaces": {k: dict(v) for k, v in self.surfaces.items()},
                "transparency": dict(self.type_transparency), "selection": self.selection, "labels": self.labels,
                "light": self.light, "measurements": [list(m) for m in self.measurements]}

@@ -256,7 +256,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 | `Bonds` | Half-bonds as cylinders in their atoms' colors (or the bonds' 'Color'): ``data.bonds`` when present, else a search by ``cutoff`` or VESTA-style ``pairs`` [(A, B, dmin, dmax)]. |
 | `Surfaces` | Every ``data.surfaces`` mesh (polyhedra, isosurfaces, grid slices). ``styles`` restyles them by name on top of what their step made: ``{name: {"visible", "color", "transparency", "edges"}}``. |
 | `Vectors` | Per-particle vectors as arrows: ``data.vectors`` (VectorVis) plus ``vectors`` (a property name, a list, or ``{name: {VectorStyle fields}}``, see :class:`ewald.arrows.VectorStyle`). |
-| `Trajectory lines` | ``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle in its atom color; ``width`` in pixels, 0 hides them. |
+| `Trajectory lines` | ``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle, in its atom color or a color map by Time, Frame, step length or a property, over a Time window or a trail. |
 | `Simulation cell` | The cell edges as lines, ``width`` pixels wide; ``color`` None uses the renderer's ink (black, or light grey on dark backgrounds). ``radius`` (Angstrom) sizes the ray-traced tubes, None = 0.15 % of the cell diagonal. |
 | `Measurements` | The view's ``measurements`` (:mod:`ewald.measure`): lines through 2, 3 or 4 atoms (nearest periodic images), ``width`` pixels wide in ``color``; the values are the Measurements overlay (:class:`ewald.overlays.MeasurementLabels`). Indices are those of the real atoms, also in a boundary or replicated view. |
 
@@ -302,7 +302,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 `size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`, `region`, `labels`, `light`, `progress`.
 
-Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`, `show_atoms`, `surfaces`, `cell_radius`, `type_transparency`, `selection_color`, `measurements`.
+Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `trajectory_color_by`, `trajectory_colormap`, `trajectory_color_range`, `trajectory_time_range`, `trajectory_trail`, `trajectory_radius`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`, `show_atoms`, `surfaces`, `cell_radius`, `type_transparency`, `selection_color`, `measurements`.
 
 ## Command line
 

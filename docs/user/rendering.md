@@ -38,7 +38,7 @@ print(pipe.view.source())                     # the same as a view(pipe, ...) li
 | bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax]], `bond_factor`, `bond_radius` |
 | cell | `cell`, `cell_width`, `cell_color`, `cell_radius` (ray-traced tube, Angstrom) |
 | boundary | `boundary` (VESTA range), `boundary_bonds` (half, complete, none), `replicate` [na, nb, nc], `replicate_cell` (super, unit, all) |
-| elements | `surfaces` (polyhedra, isosurface and slice look by name), `visuals` (plugin visual elements), `vectors` (arrows of a vector property), `measurements` (distances, angles, dihedrals), `trajectory_width` |
+| elements | `surfaces` (polyhedra, isosurface and slice look by name), `visuals` (plugin visual elements), `vectors` (arrows of a vector property), `measurements` (distances, angles, dihedrals), `trajectory_width`, `trajectory_color_by`, `trajectory_colormap`, `trajectory_color_range`, `trajectory_time_range`, `trajectory_trail`, `trajectory_radius` (trajectory lines, below) |
 | camera | `frame`, `direction`, `zoom`, `orthographic`, `camera` (an exact camera, as the GUI saves it) |
 | picture | `renderer`, `quality`, `size`, `ambient_occlusion`, `shadows`, `transparent_background`, `text`, `legend`, `type_legend`, `scale_bar`, `overlays` |
 
@@ -62,6 +62,30 @@ pipe.view.elements["Particles"].enabled = False      # = pipe.view.atoms = False
 pipe.view.elements["Simulation cell"].set(color="grey", width=1.5)
 pipe.view.elements["Bonds"].settings                 # {'enabled': 'bonds', 'radius': 'bond_radius', ...}
 ```
+
+### Trajectory lines with a color map
+
+A `GenerateTrajectoryLines` step traces the selected particles (all of them when nothing is
+selected) over its frame range; the condition of a selection step is evaluated at the range's
+first frame. The view then colors the lines point by point with a color map and draws its color
+bar in the viewport and in every picture (OpenGL, ray tracer, SVG/PDF):
+
+```python
+pipe.add(ExpressionSelection("ParticleType == 'Li'"))          # or "ParticleIdentifier == 17", "Position.Z > 8"
+pipe.add(GenerateTrajectoryLines(start=200, stop=600))          # the frames traced
+view(pipe, trajectory_color_by="Time",                          # 'Time' (timestep), 'Frame', 'Step Length',
+     trajectory_colormap="viridis",                             #   a table column or a particle property
+     trajectory_time_range=[20000, 40000],                      # draw only this Time window
+     trajectory_color_range=[20000, 40000])                     # ends of the map (None: what is drawn)
+pipe.view.elements["Trajectory lines"].set(trail=5000)          # follow the frame: the last 5000 steps
+pipe.view.elements["Trajectory lines"].trail = True             # ... or everything up to the frame
+```
+
+`trajectory_color_by="Step Length"` shows how far a particle moved per traced step (hops stand
+out); a particle property such as `"Path Length"` or `"Net Displacement"` gives each line one
+color. `trajectory_radius` sets the tube radius of ray-traced lines (default 0.04 x the width).
+In the GUI the View tab's Elements card has the same settings (Trajectories, Color map, Time
+window, Trail). Several color bars (a `ColorCoding` step and the trajectory map) stand side by side.
 
 `transparency={"O": 0.6}` fades whole particle types with their half-bonds (1 hides the type);
 a fade or hide step wins where its value is larger. Particles a selection step selected (a
@@ -153,7 +177,8 @@ Every renderer draws the same overlays, sized relative to the image:
 
 - `text="t = [Time] ps"`: a label; `[Frame]`, `[Timestep]`, `[Time]` and any attribute name in
   brackets are filled in (in animations, per frame);
-- `legend=True`: the color bar of a `ColorCoding` (or grid slice) modifier;
+- `legend=True`: the color bars of a `ColorCoding` (or grid slice) modifier and of color-mapped
+  trajectory lines, side by side;
 - `type_legend=True`: one color swatch per particle type;
 - `scale_bar=True`: a round length (Å, or nm from 10 Å); `scale_bar=20` for 20 Å. Exact in
   orthographic views, at the focal plane in perspective.

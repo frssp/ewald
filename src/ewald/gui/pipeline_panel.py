@@ -466,7 +466,8 @@ _SECTION_KEYS = {
     "Cell": ("cell", "cell_width", "cell_color", "replicate", "replicate_cell", "boundary", "boundary_bonds"),
     "Labels": ("labels", "selection"),
     "Camera": ("frame", "direction", "zoom", "orthographic", "camera", "light"),
-    "Elements": ("visuals", "vectors", "trajectory_width"),
+    "Elements": ("visuals", "vectors", "trajectory_width", "trajectory_color_by", "trajectory_colormap",
+                 "trajectory_color_range", "trajectory_time_range", "trajectory_trail"),
 }
 # widest form label of the View tab: every card's label column is this wide, so fields line up
 _LABEL_WIDEST = "Radius scale"
@@ -784,6 +785,7 @@ class DisplayPanel(QtWidgets.QWidget):
         w = QtWidgets.QWidget()
         lay = QtWidgets.QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self._trajectory_editor())
         for k, entry in enumerate(self.style.visuals):
             lay.addWidget(self._plugin_visual_editor(k, entry))
         if not self.style.visuals:
@@ -794,6 +796,101 @@ class DisplayPanel(QtWidgets.QWidget):
         add.setMenu(self.visual_menu)
         self.visual_button = add
         lay.addLayout(self._buttons(add))
+        return w
+
+    def _trajectory_editor(self):
+        """Trajectory lines (a GenerateTrajectoryLines step): width, and a color map by Time, Frame, step
+        length or a property, over a Time window or a trail that follows the current frame."""
+        from ..colormaps import names as colormap_names
+        from ..scene import TRAJECTORY_COLOR_BY
+
+        st = self.style
+        w = QtWidgets.QWidget()
+        f = self._form_layout(w)
+        width = QtWidgets.QDoubleSpinBox(minimum=0, maximum=20, singleStep=0.5, value=st.trajectory_width,
+                                         toolTip="Line width in pixels; 0 hides the trajectory lines")
+        width.valueChanged.connect(lambda v: self._set("trajectory_width", float(v)))
+        self._row(f, "Trajectories", width, "trajectory_width")
+        box, g = self._group("Color map", st.trajectory_color_by is not None,
+                             "Color the trajectory lines along their path by Time, Frame, step length or a "
+                             "particle property, with a color bar")
+        by = QtWidgets.QComboBox(editable=True, toolTip="Time (timestep), Frame, Step Length (distance per step), "
+                                 "a column of the trajectory-lines table or a numeric particle property")
+        extra = []
+        if self.data is not None:
+            table = self.data.tables.get("trajectory-lines", {})
+            extra = [c for c in table if c not in ("Position", "Particle Identifier", *TRAJECTORY_COLOR_BY)]
+            extra += [n for n, v in self.data.particles.items()
+                      if np.ndim(v) == 1 and np.issubdtype(np.asarray(v).dtype, np.number) and n not in extra]
+        by.addItems([*TRAJECTORY_COLOR_BY, *extra])
+        by.setCurrentText(st.trajectory_color_by or "Time")
+        cmap = QtWidgets.QComboBox()
+        cmap.addItems(colormap_names())
+        if st.trajectory_colormap not in colormap_names():
+            cmap.addItem(st.trajectory_colormap)
+        cmap.setCurrentText(st.trajectory_colormap)
+
+        def pair(value, tips):
+            row, edits = QtWidgets.QHBoxLayout(), []
+            row.setSpacing(6)
+            for k, tip in enumerate(tips):
+                e = QtWidgets.QLineEdit(placeholderText="auto", toolTip=tip)
+                if value is not None and value[k] is not None:
+                    e.setText(f"{value[k]:g}")
+                row.addWidget(e, 1)
+                edits.append(e)
+            return _wrap(row), edits
+
+        rng_row, rng = pair(st.trajectory_color_range, ("Value at the low end of the map; empty: automatic",
+                                                         "Value at the high end of the map; empty: automatic"))
+        win_row, win = pair(st.trajectory_time_range, ("Draw from this Time (timestep); empty: the start",
+                                                       "Draw up to this Time (timestep); empty: the end"))
+        trail = QtWidgets.QLineEdit(placeholderText="whole path", clearButtonEnabled=True,
+                                    toolTip="Follow the current frame: 'all' draws the paths up to it, a number only "
+                                            "that much Time before it (a tail); empty: the whole paths")
+        if st.trajectory_trail is True:
+            trail.setText("all")
+        elif st.trajectory_trail:
+            trail.setText(f"{st.trajectory_trail:g}")
+
+        def number(edit):
+            try:
+                return float(edit.text()) if edit.text().strip() else None
+            except ValueError:
+                return None
+
+        def both(edits):
+            lo, hi = (number(e) for e in edits)
+            if lo is not None and hi is not None and lo > hi:
+                lo, hi = hi, lo
+            return None if lo is None and hi is None else [lo, hi]
+
+        def apply(*_):
+            text = trail.text().strip().lower()
+            tail = True if text in ("all", "true", "yes") else number(trail)
+            values = {"trajectory_color_by": by.currentText().strip() or None if box.isChecked() else None,
+                      "trajectory_colormap": cmap.currentText(), "trajectory_color_range": both(rng),
+                      "trajectory_time_range": both(win), "trajectory_trail": tail if tail else None}
+            if all(getattr(st, k) == v for k, v in values.items()):
+                return
+            for k, v in values.items():
+                setattr(st, k, v)
+            self._emit()
+
+        box.toggled.connect(apply)
+        by.currentTextChanged.connect(apply)
+        cmap.currentTextChanged.connect(apply)
+        for e in (*rng, *win, trail):
+            e.editingFinished.connect(apply)
+        self._row(g, "Color by", by, "trajectory_color_by")
+        self._row(g, "Color map", cmap, "trajectory_colormap")
+        self._row(g, "Range", rng_row, "trajectory_color_range")
+        self._marks.append((box, ("trajectory_color_by",)))
+        f.addRow(box)
+        self._row(f, "Time window", win_row, "trajectory_time_range")
+        self._row(f, "Trail", trail, "trajectory_trail")
+        self.trajectory_widgets = {"width": width, "group": box, "color_by": by, "colormap": cmap, "range": rng,
+                                   "window": win, "trail": trail}
         return w
 
     def _plugin_visual_editor(self, k, entry):

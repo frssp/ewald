@@ -314,7 +314,9 @@ recomputes them.
   example the time-averaged g(r) with `"table:coordination-rdf"`.
 - `TimeSeries(operate_on)`: attributes as a function of time.
 - `GenerateTrajectoryLines(...)`: particle paths drawn as lines, plus path length, net and
-  maximum displacement.
+  maximum displacement. It traces the particles selected at its first frame; the view colors
+  the lines by Time, Frame, step length or a property over a Time window or a trail
+  ([Rendering](rendering.md#trajectory-lines-with-a-color-map)).
 - `OverlayFrames(transparency=0.7, min_displacement=0.1, start, stop, step)`: every frame of
   the range drawn at once, the current one opaque and the others as see-through copies of the
   atoms that moved more than `min_displacement` Å from where they are now (all NEB images
