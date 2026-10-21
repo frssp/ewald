@@ -336,7 +336,11 @@ Visualization plugins (later phases of the Scene IR plan)
 - GUI: the built-in elements (Particles, Bonds, Cell, ...) as rows with forms generated from
   their `VisualElement` parameters, replacing the hand-written style controls.
 - OpenGL and the ray tracer ignore `Cylinders.alpha`; see-through bonds need it.
-- Ray tracer: trajectory lines and other `Lines` without a `radius` are not drawn.
+- Ray tracer: `Lines` without a `radius` are not drawn (trajectory lines now have one).
+- Trajectory lines: the legacy OpenGL 1.x viewport (ssh -X) draws the color map but no color bar;
+  a trail ends at the last traced frame before the current one, not at the atom's current
+  position between traced frames (step > 1); color by a per-frame particle property along the
+  path (e.g. coordination at each frame) needs that property in the trajectory-lines table.
 - Material presets (`@material`: roughness, metallic, glass, outline/toon) mapped onto each
   renderer (VTK PBR, ray tracer shading, vector flat/gradient/outline), the rest of phase 1.
 - Overlay elements show in rendered images and the Render page preview, not in the interactive

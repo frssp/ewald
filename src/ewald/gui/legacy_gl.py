@@ -437,9 +437,7 @@ class LegacyRenderer:
         seg = lines.segments()
         if not len(seg):
             return
-        strip_of = np.concatenate([np.full(max(len(s) - 1, 0), k) for k, s in enumerate(lines.strips)])
-        rgb = np.broadcast_to(np.asarray(self.ink, float), (len(lines.strips), 3)) if lines.rgb is None else lines.rgb
-        colors = np.repeat(rgb[strip_of], 2, axis=0)
+        colors = lines.vertex_colors(self.ink)[seg.ravel()]   # per point: color maps blend along a piece
         self._new_list(self._lists)
         gl.glDisable(GL_LIGHTING)
         gl.glLineWidth(max(float(lines.width) * 0.75, 1.0))

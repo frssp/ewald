@@ -427,12 +427,12 @@ class Viewport(QtWidgets.QWidget):
         p = self.plotter
         self._refine_timer.stop()
         self._lod_cloud = None
-        stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:", "visual:", "bonds:"))]
+        stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:", "visual:", "bonds:", "_legend"))]
         for name in ("atoms", "atoms:glass", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay",
                      "_labels-labels", "measurements", "_measurements-labels", *stale):
             p.remove_actor(name, render=False)
-        if p.scalar_bars:
-            p.remove_scalar_bar()
+        for title in list(p.scalar_bars.keys()):
+            p.remove_scalar_bar(title, render=False)
         self._show_empty(self.data is None)
         if self.data is None:
             self.render()
@@ -462,10 +462,9 @@ class Viewport(QtWidgets.QWidget):
                 and not getattr(self, "_peeling", False):
             p.enable_depth_peeling()
             self._peeling = True
-        if "ColorCoding.range" in self.data.attributes:
-            _add_colorbar(p, self.data, font_size=12)
-            sb = p.scalar_bar
-            if sb is not None and dark:
+        if "ColorCoding.range" in self.data.attributes or drawn.legends:
+            _add_colorbar(p, self.data, font_size=12, legends=drawn.legends)
+            for sb in (p.scalar_bars.values() if dark else ()):
                 for prop in (sb.GetTitleTextProperty(), sb.GetLabelTextProperty()):
                     prop.SetColor(0.9, 0.91, 0.93)
         if self.overlay_text and self.show_overlay:

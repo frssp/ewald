@@ -63,6 +63,7 @@ A visual element is a subclass of `ewald.scene.VisualElement`:
 | `__init__(...)` | Every argument stored as an attribute of the same name, with a default. The GUI parameter form and sessions are built from the signature, as for modifiers. |
 | `applies(data)` | Optional; return False when there is nothing to draw. Keep it cheap. |
 | `build(data, ctx)` | Return one primitive, a list of them, `(name, primitive)` pairs, or `None`. Never modify `data`. |
+| `legend(data, ctx)` | Optional; a color bar for what `build` drew, `{"title", "cmap", "range": (lo, hi)}`, or None. Every renderer draws it next to a ColorCoding bar. |
 
 `ctx` is a `SceneContext`: `ctx.frame`, `ctx.view_direction` (toward the camera, may be None)
 and `ctx.particle_colors`, the per-atom colors the Particles element chose, so markers can
@@ -79,7 +80,7 @@ All positions are world coordinates in Angstrom; primitives know nothing about t
 |---|---|---|---|---|
 | `Spheres` | `centers`, `radii`, `rgb`, `alpha`, `index` | sphere meshes or GPU impostors; `alpha` < 1 is see-through | spheres; `alpha` < 1 becomes a see-through triangle sphere | shaded discs with opacity |
 | `Cylinders` | `start`, `end`, `radius`, `rgb`, `alpha`, `owner`, `cap_end` | tubes | cylinders (+ a sphere cap at `end`) | sticks with a highlight, painted just behind `owner`'s atom; `alpha` 0 hides one |
-| `Lines` | `points`, `strips`, `rgb` (or None for the ink color), `width` (px at 1600 px height), `radius` | polylines | tubes with round joints when `radius` is set, else not drawn | strips scaled with the image height |
+| `Lines` | `points`, `strips`, `rgb` (or None for the ink color), `point_rgb` (a color per point, for color maps), `width` (px at 1600 px height), `radius` | polylines, `point_rgb` blended along each piece | tubes with round joints when `radius` is set, else not drawn | strips scaled with the image height |
 | `SurfaceMesh` | `vertices`, `faces`, colors, normals, `transparency`, `edges` | lit faces + edges | triangles + edge cylinders | lit polygons + edge strips |
 | `Arrows` | from `make_arrows(base, tip, width, rgb, alpha, shading)` | cylinder + cone meshes | cylinders + cones | true silhouettes |
 

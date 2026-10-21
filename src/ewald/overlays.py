@@ -478,9 +478,32 @@ def cell_line_color(background, transparent: bool = False) -> str:
     return "#AEB4BE" if is_dark(background, transparent) else "black"
 
 
+def _tick(v: float) -> str:
+    """A color bar label: 3 significant digits, but whole numbers up to 99999 in full (timesteps)."""
+    if v == int(v) and abs(v) < 1e5:
+        return str(int(v))
+    return f"{v:.3g}"
+
+
+def color_legends(data, legends=()) -> list[dict]:
+    """Every color bar of a picture: the ColorCoding one of ``data`` first, then ``legends`` (the
+    elements' :attr:`ewald.scene.Scene.legends`); ``{"title", "cmap", "range"}`` each."""
+    out = []
+    if data is not None and "ColorCoding.range" in data.attributes:
+        out.append({"title": str(data.attributes.get("ColorCoding.property", "")),
+                    "cmap": data.attributes.get("ColorCoding.cmap", "viridis"),
+                    "range": tuple(data.attributes["ColorCoding.range"])})
+    return out + [dict(b) for b in legends or ()]
+
+
 def overlay_layout(data, size, *, text=None, legend=True, type_legend=False, scale_bar=None, camera=None,
-                   type_colors=None, overlays=None, frame=0, background="white", transparent=False) -> dict:
+                   type_colors=None, overlays=None, frame=0, background="white", transparent=False,
+                   colorbars=None) -> dict:
     """Positions (pixels, origin top-left) and contents of the requested overlays.
+
+    ``legend`` draws the color bars: the ColorCoding one of ``data`` and ``colorbars``, the visual
+    elements' (:attr:`ewald.scene.Scene.legends`), side by side from the right edge (``"colorbars"``;
+    ``"colorbar"`` is the first).
 
     ``scale_bar``: True picks a round length (about a fifth of the width), a number
     gives the length in Angstrom; needs ``camera``. ``overlays``: overlay elements (see
@@ -500,15 +523,20 @@ def overlay_layout(data, size, *, text=None, legend=True, type_legend=False, sca
             y += int(1.35 * fs)
         if rows:
             out["types"] = rows
-    if legend and data is not None and "ColorCoding.range" in data.attributes:
-        lo, hi = data.attributes["ColorCoding.range"]
-        x0, x1, y0, y1 = int(0.88 * w), int(0.91 * w), int(0.15 * h), int(0.85 * h)
-        ticks = [(int(y1 - 1 - f * (y1 - y0 - 1)), f"{lo + f * (hi - lo):.3g}") for f in (0, 0.25, 0.5, 0.75, 1)]
-        title = str(data.attributes.get("ColorCoding.property", ""))
-        title_x = int(min(x0, w * 0.985 - 0.62 * int(fs * 0.8) * len(title)))  # keep long titles inside
-        out["colorbar"] = {"box": (x0, y0, x1, y1), "cmap": data.attributes.get("ColorCoding.cmap", "viridis"),
-                           "title": title, "title_x": title_x, "ticks": ticks,
-                           "tick_len": int(0.006 * w) + 1, "label_x": x1 + int(0.01 * w)}
+    if legend:
+        bars = []
+        for k, bar in enumerate(color_legends(data, colorbars)):
+            lo, hi = (float(v) for v in bar["range"])
+            right = w * (0.985 - 0.13 * k)    # each further bar sits left of the one before
+            x0, x1, y0, y1 = int(right - 0.105 * w), int(right - 0.075 * w), int(0.15 * h), int(0.85 * h)
+            ticks = [(int(y1 - 1 - f * (y1 - y0 - 1)), _tick(lo + f * (hi - lo))) for f in (0, 0.25, 0.5, 0.75, 1)]
+            title = str(bar["title"])
+            title_x = int(min(x0, right - 0.62 * int(fs * 0.8) * len(title)))  # keep long titles inside
+            bars.append({"box": (x0, y0, x1, y1), "cmap": bar["cmap"], "title": title, "title_x": title_x,
+                         "ticks": ticks, "tick_len": int(0.006 * w) + 1, "label_x": x1 + int(0.01 * w),
+                         "right": right})
+        if bars:
+            out["colorbar"], out["colorbars"] = bars[0], bars
     if scale_bar and camera is not None:
         ppa = pixels_per_angstrom(camera, size)
         length = nice_length(0.2 * w / ppa) if scale_bar is True else float(scale_bar)
@@ -527,11 +555,11 @@ def overlay_layout(data, size, *, text=None, legend=True, type_legend=False, sca
 
 def draw_overlays(rgba: np.ndarray, data, *, text=None, legend=True, type_legend=False, scale_bar=None,
                   camera=None, type_colors=None, background="white", transparent=False, overlays=None,
-                  frame=0) -> np.ndarray:
+                  frame=0, colorbars=None) -> np.ndarray:
     """Draw the overlays onto an (H, W, 3|4) uint8 image with PIL; returns a new RGBA array."""
     lay = overlay_layout(data, (rgba.shape[1], rgba.shape[0]), text=text, legend=legend, type_legend=type_legend,
                          scale_bar=scale_bar, camera=camera, type_colors=type_colors, overlays=overlays,
-                         frame=frame, background=background, transparent=transparent)
+                         frame=frame, background=background, transparent=transparent, colorbars=colorbars)
     if len(lay) <= 2:
         return rgba if rgba.shape[-1] == 4 else np.dstack([rgba, np.full(rgba.shape[:2], 255, np.uint8)])
     from PIL import Image, ImageDraw, ImageFont
@@ -555,15 +583,14 @@ def draw_overlays(rgba: np.ndarray, data, *, text=None, legend=True, type_legend
         fill = tuple(int(255 * v) for v in row["rgb"]) + (255,)
         draw.ellipse([x, y, x + d, y + d], fill=fill, outline=ink, width=max(1, d // 14))
         draw.text((x + int(1.5 * d), y + d // 2), row["name"], fill=ink, font=font, anchor="lm")
-    if "colorbar" in lay:
-        cb = lay["colorbar"]
+    for cb in lay.get("colorbars", []):
         x0, y0, x1, y1 = cb["box"]
         cmap = get_colormap(cb["cmap"])
         for y in range(y0, y1):
             c = cmap(1 - (y - y0) / max(1, y1 - y0 - 1))
             draw.line([(x0, y), (x1, y)], fill=tuple(int(255 * v) for v in c[:3]) + (255,))
         draw.rectangle([x0, y0, x1, y1 - 1], outline=ink)
-        tx = min(cb["title_x"], int(rgba.shape[1] * 0.985 - draw.textlength(cb["title"], font=small)))
+        tx = min(cb["title_x"], int(cb["right"] - draw.textlength(cb["title"], font=small)))
         draw.text((tx, y0 - int(1.4 * fs)), cb["title"], fill=ink, font=small)
         for y, label in cb["ticks"]:
             draw.line([(x1, y), (x1 + cb["tick_len"], y)], fill=ink)
