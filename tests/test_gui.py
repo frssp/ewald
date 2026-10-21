@@ -160,7 +160,7 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
     panel = DisplayPanel()
     panel.set_pipeline(pipe)
     panel.set_data(pipe.compute(0))
-    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Surfaces", "Cell", "Labels", "Camera", "Elements"]
+    assert list(panel.sections) == ["Atoms", "Colors", "Types", "Bonds", "Surfaces", "Cell", "Labels", "Camera", "Elements"]
     marked = lambda: {lab.text() if isinstance(lab, QtWidgets.QLabel) else lab.title() for lab, _ in panel._marks if lab.property("set")} - {""}
     assert not marked()
     view(pipe, radius_scale=0.4, boundary=[-0.1, 1.1], direction="z")
@@ -1427,6 +1427,50 @@ def test_ask_panel_selection_and_frame(app, pipe):
     assert agents[0].calls[-1] == ("frame", "And the frame?") and len(agents) == 1   # same conversation
     panel.reset()
     assert panel.text() == "" and not panel.welcome.isHidden()
+
+
+def test_ask_panel_sends_the_color_rule(app, pipe):
+    """What the 3D view shows (how the atoms are colored) goes with a question when it changed."""
+    from ewald.gui.ask_panel import AskPanel
+
+    shown = {"text": "Atoms are colored by 'Structure Type' (from the CNA step): 1 FCC = #66ff66."}
+    panel = AskPanel(lambda: (pipe, 0, []), agent_factory=lambda p, ev: _FakeAgent(p, ev),
+                     view=lambda: shown["text"])
+    first = panel._notebook_prompt("What do the colors mean?")
+    assert first.startswith("The 3D view now shows: Atoms are colored by 'Structure Type'")
+    assert panel._notebook_prompt("again") == "again"            # unchanged: not sent twice
+    shown["text"] = "Atoms have their particle type colors: Cu #c88033."
+    assert "particle type colors" in panel._notebook_prompt("and now?")
+
+
+def test_display_panel_colors_card(app, pipe):
+    """The View tab's Colors card: the rule drawn (one row per category) and color_by / map / range."""
+    from ewald.gui.pipeline_panel import DisplayPanel
+    from ewald.gui.style import ViewStyle
+
+    pipe.add(mods.CommonNeighborAnalysis())
+    style = ViewStyle()
+    panel = DisplayPanel(style)
+    panel.set_pipeline(pipe)
+    panel.set_data(pipe.compute(0), refresh=True)
+    w = panel.color_widgets
+    assert "Structure Type" in w["rule"].text() and "CommonNeighborAnalysis" in w["rule"].text()
+    rows = [w["legend"].item(i, 1).text() for i in range(w["legend"].rowCount())]
+    assert rows == ["FCC"] and w["legend"].item(0, 2).text() == f"{pipe.compute(0).count:,}"
+    assert not w["colormap"].isEnabled()
+    seen = []
+    panel.styleChanged.connect(lambda: seen.append(1))
+    w["color_by"].setCurrentText("Particle type")
+    assert style.color_by == "type" and seen and "Particle type colors" in w["rule"].text()
+    w["color_by"].setCurrentText("Position.Z")
+    assert style.color_by == "Position.Z" and w["colormap"].isEnabled()
+    w["colormap"].setCurrentText("magma")
+    w["range"][1].setText("4")
+    w["range"][1].editingFinished.emit()
+    assert style.scene_kwargs()["color_range"] == [None, 4.0] and "magma from" in w["rule"].text()
+    w["color_by"].setCurrentText("Steps")
+    assert style.color_by is None and "color_by" not in style.scene_kwargs()
+    _dispose(panel)
 
 
 def test_ask_panel_without_claude(app, pipe):

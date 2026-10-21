@@ -496,6 +496,36 @@ def color_legends(data, legends=()) -> list[dict]:
     return out + [dict(b) for b in legends or ()]
 
 
+def color_rule_items(data, type_colors, lay: dict, size, right: bool = True, y: int = 0) -> list:
+    """Swatches of the atoms' categorical color rule (structure types, painted conditions; see
+    :mod:`ewald.color_rule`) as 2D items: top right, or top left under the text when a color bar
+    takes the right edge. Empty when the atoms have type colors or a plain color map."""
+    from .color_rule import legend_entries, legend_title, rule
+
+    if data is None or not data.count:
+        return []
+    r = rule(data, type_colors)
+    rows = legend_entries(r)
+    if not rows:
+        return []
+    w, h = size
+    fs = lay["small"]
+    d, step = fs, int(1.35 * fs)
+    lines = ([legend_title(r)] if r.get("kind") == "categorical" else []) + [name for name, _ in rows]
+    width = d + 0.4 * fs + 0.66 * fs * max(map(len, lines))
+    x = w - 0.02 * h - width if right else 0.02 * w
+    y = (0.02 * h if right else y)
+    items = []
+    if r.get("kind") == "categorical":
+        items.append(Text(x, y, lines[0], fs, None, "lt", True))
+        y += step
+    for name, rgb in rows:
+        items.append(Rect(x, y, x + d, y + d, fill=tuple(float(c) for c in rgb), outline="ink", width=0.5))
+        items.append(Text(x + d + 0.4 * fs, y + d / 2, str(name), fs, None, "lm"))
+        y += step
+    return items
+
+
 def overlay_layout(data, size, *, text=None, legend=True, type_legend=False, scale_bar=None, camera=None,
                    type_colors=None, overlays=None, frame=0, background="white", transparent=False,
                    colorbars=None) -> dict:
@@ -537,6 +567,9 @@ def overlay_layout(data, size, *, text=None, legend=True, type_legend=False, sca
                          "right": right})
         if bars:
             out["colorbar"], out["colorbars"] = bars[0], bars
+        swatches = color_rule_items(data, type_colors, out, (w, h), right=not bars, y=y)
+        if swatches:
+            out["items"] = swatches
     if scale_bar and camera is not None:
         ppa = pixels_per_angstrom(camera, size)
         length = nice_length(0.2 * w / ppa) if scale_bar is True else float(scale_bar)
@@ -549,7 +582,7 @@ def overlay_layout(data, size, *, text=None, legend=True, type_legend=False, sca
         ctx = OverlayContext((w, h), camera, frame, fs, out["small"], ink_color(background, transparent), background)
         items = overlay_items(data, ctx, overlays)
         if items:
-            out["items"] = items
+            out["items"] = out.get("items", []) + items
     return out
 
 

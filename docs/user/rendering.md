@@ -34,7 +34,7 @@ print(pipe.view.source())                     # the same as a view(pipe, ...) li
 | Group | Settings |
 |---|---|
 | style | `style` (Ball & stick, Space-filling, Simple (ASE), Points), `theme`, `atom_style` (auto, mesh, impostor, flat), `background`, `light` (key light) |
-| atoms | `atoms` (False: a stick model), `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `transparency` {type: 0..1}, `selection` (True: selected atoms red, False, or a color), `labels` (atom labels), `radius_preset`, `oxidation_states` |
+| atoms | `atoms` (False: a stick model), `color_by`, `colormap`, `color_range` (what colors the atoms, below), `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `transparency` {type: 0..1}, `selection` (True: selected atoms red, False, or a color), `labels` (atom labels), `radius_preset`, `oxidation_states` |
 | bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax]], `bond_factor`, `bond_radius` |
 | cell | `cell`, `cell_width`, `cell_color`, `cell_radius` (ray-traced tube, Angstrom) |
 | boundary | `boundary` (VESTA range), `boundary_bonds` (half, complete, none), `replicate` [na, nb, nc], `replicate_cell` (super, unit, all) |
@@ -86,6 +86,37 @@ out); a particle property such as `"Path Length"` or `"Net Displacement"` gives 
 color. `trajectory_radius` sets the tube radius of ray-traced lines (default 0.04 x the width).
 In the GUI the View tab's Elements card has the same settings (Trajectories, Color map, Time
 window, Trail). Several color bars (a `ColorCoding` step and the trajectory map) stand side by side.
+
+### What colors the atoms
+
+Atoms take their particle type colors (`colors`, the theme) unless a step wrote a `Color`
+property: structure identification (`CommonNeighborAnalysis`, `PolyhedralTemplateMatching`,
+`IdentifyDiamond`, `AcklandJones`, ... with `color_by_type=True`, the default) gives each structure
+type OVITO's color, `ColorCoding` maps a property through a color map, `paint` and `AssignColor`
+color where a condition holds, and `ClusterAnalysis`/`GrainSegmentation` give each cluster or
+grain a color. Each of them records its rule, which `ewald.color_rule` reads back:
+
+```python
+from ewald import color_rule
+print(color_rule.describe(pipe.compute()))
+# Atoms are colored by 'Structure Type' (from the IdentifyDiamond step (color_by_type=True)):
+# 0 OTHER = #f2f2f2 (88213 atoms); 1 CUBIC_DIAMOND = #13a0fe (5117 atoms); ...
+```
+
+Pictures draw it with `legend=True` (the default): category swatches for structure types and
+painted conditions, a color bar for a color map. The view's `color_by` recolors the atoms for
+display only, whatever the steps wrote:
+
+```python
+view(pipe, color_by="type")                                   # the type colors
+view(pipe, color_by="Coordination", colormap="plasma", color_range=[2, 5])   # a property or expression
+view(pipe, color_by=None)                                     # back to the steps' colors
+```
+
+In the GUI the View tab's **Colors** card has the same settings (Color by, Color map, Range) and
+lists the rule that is drawn, one row per category with its count; the AI chat gets the same
+description with each question and from its `describe_frame`/`get_view` tools, so it can say what
+each color means.
 
 `transparency={"O": 0.6}` fades whole particle types with their half-bonds (1 hides the type);
 a fade or hide step wins where its value is larger. Particles a selection step selected (a
@@ -177,8 +208,9 @@ Every renderer draws the same overlays, sized relative to the image:
 
 - `text="t = [Time] ps"`: a label; `[Frame]`, `[Timestep]`, `[Time]` and any attribute name in
   brackets are filled in (in animations, per frame);
-- `legend=True`: the color bars of a `ColorCoding` (or grid slice) modifier and of color-mapped
-  trajectory lines, side by side;
+- `legend=True`: the atoms' color legend (category swatches of structure types and painted
+  conditions, or the color bar of `ColorCoding`/`color_by`), the color bars of grid slices and of
+  color-mapped trajectory lines, side by side;
 - `type_legend=True`: one color swatch per particle type;
 - `scale_bar=True`: a round length (Å, or nm from 10 Å); `scale_bar=20` for 20 Å. Exact in
   orthographic views, at the focal plane in perspective.

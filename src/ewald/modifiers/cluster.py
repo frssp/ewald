@@ -85,4 +85,9 @@ class ClusterAnalysis(Modifier):
                             1 - 0.3 * rng.random(ncl + 1)], 1)
             colors = np.array([colorsys.hsv_to_rgb(*c) for c in hsv])
             colors[0] = 0.8
+            from .. import color_rule
+
             data.particles["Color"] = colors[out]
+            color_rule.record(data, {"kind": "categorical", "source": "the ClusterAnalysis step (cluster_coloring=True)",
+                                     "property": "Cluster", "note": "one random color per cluster; "
+                                     "gray #cccccc = no cluster (Cluster 0)"})

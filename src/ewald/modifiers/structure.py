@@ -64,7 +64,12 @@ class StructureIdentificationModifier(Modifier):
         data.tables["structures"] = {"Structure Type": np.arange(self._num_types),
                                      "Count": counts[: self._num_types]}
         if self.color_by_type:
+            from .. import color_rule
+
             data.particles["Color"] = self._colors[structure]
+            color_rule.record(data, color_rule.categorical(
+                f"the {type(self).__name__} step (color_by_type=True)", "Structure Type",
+                self._names[: self._num_types], self._colors[: self._num_types]))
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +361,9 @@ class IdentifyDiamond(StructureIdentificationModifier):
     neighbors).  Also labels the first and second neighbors of diamond atoms,
     which mark surfaces and defects.  Structure type ids follow OVITO: 0 OTHER,
     1-3 cubic diamond (atom, 1st neighbor, 2nd neighbor), 4-6 hexagonal diamond.
+    ``color_by_type`` (default) also writes OVITO's 'Color' per type: OTHER white, cubic
+    diamond blue / cyan / green, hexagonal diamond orange / yellow / lime (the view's legend
+    and ``ewald.color_rule.describe(data)`` list them).
     """
 
     _prefix = "IdentifyDiamond"

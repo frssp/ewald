@@ -81,6 +81,15 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
     _s("atoms", True, "atoms", "Draw the atoms (the Particles element); False keeps bonds, polyhedra and the "
        "rest, e.g. a stick model."),
     _s("radius_scale", 0.5, "atoms", "Factor on every atom radius (the style preset sets it)."),
+    _s("color_by", None, "atoms", "What colors the atoms: None keeps the colors the steps wrote (a structure "
+       "identification's type colors, ColorCoding, paint), else the particle type colors; 'type' uses the type "
+       "colors even when a step wrote colors; a particle property or expression ('Coordination', 'Position.Z', "
+       "'abs(Charge)') maps it through colormap over color_range (display only, the data keeps its colors). "
+       "get_view's 'atom_colors' says which rule is drawn.", type=["string", "null"]),
+    _s("colormap", "viridis", "atoms", "Color map of color_by (any matplotlib or plugin color map name).",
+       type="string"),
+    _s("color_range", None, "atoms", "[lo, hi] values at the ends of the color_by color map (either may be "
+       "null: the frame's min/max).", type=["array", "null"], items={"type": ["number", "null"]}),
     _s("colors", {}, "atoms", "Color per particle type, e.g. {'O': 'red', 'Ti': '#7f7fff'}; others keep the "
        "element (or theme) color.", type="object", additionalProperties=_COLOR),
     _s("radii", {}, "atoms", "Radius per particle type in Angstrom (before radius_scale); wins over "
@@ -182,7 +191,8 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
     _s("transparent_background", False, "picture", "Transparent PNG background."),
     _s("text", None, "picture", "Text label; [Frame], [Timestep], [Time] and [attribute] are filled in.",
        type=["string", "null"]),
-    _s("legend", True, "picture", "Color bars: a ColorCoding step's and color-mapped elements' (trajectory lines)."),
+    _s("legend", True, "picture", "Color legends: the atoms' color bar (ColorCoding, color_by) or category "
+       "swatches (structure types, painted conditions), and color-mapped elements' bars (trajectory lines)."),
     _s("type_legend", False, "picture", "One swatch per particle type."),
     _s("scale_bar", None, "picture", "Scale bar: True (a round length) or a length in Angstrom.",
        type=["boolean", "number", "null"]),
@@ -400,6 +410,8 @@ class View:
                 continue
             value = getattr(self, name)
             if value is None or (isinstance(value, (dict, list)) and not value) or (name == "atoms" and value):
+                continue
+            if name in ("colormap", "color_range") and self.color_by is None:
                 continue
             kw[_RENDER_NAMES.get(name, name)] = _copy(value)
         if "type_colors" in kw:
@@ -739,11 +751,11 @@ def _check(name, value):
             raise ValueError(f"{name} must be positive, not {value}")
     elif name == "frame":
         value = int(value)
-    elif name == "trajectory_colormap":
+    elif name in ("trajectory_colormap", "colormap"):
         from .colormaps import get_colormap
 
         get_colormap(value)   # unknown names fail here
-    elif name in ("trajectory_color_range", "trajectory_time_range"):
+    elif name in ("trajectory_color_range", "trajectory_time_range", "color_range"):
         pair = list(value)
         if len(pair) != 2:
             raise ValueError(f"{name} is [lo, hi] (either may be None), not {value!r}")
@@ -757,7 +769,7 @@ def _check(name, value):
                 raise ValueError(f"trajectory_trail must be True or a positive Time span, not {value}")
         elif value is False:
             value = None
-    elif name == "trajectory_color_by":
+    elif name in ("trajectory_color_by", "color_by"):
         value = str(value)
     elif name == "trajectory_radius":
         value = float(value)
