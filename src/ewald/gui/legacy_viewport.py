@@ -116,6 +116,7 @@ class LegacyViewport(Viewport):
     """:class:`Viewport` drawing with OpenGL 1.x display lists (``Preferences › Viewports``)."""
 
     backend = "legacy-gl"
+    uses_vtk = False   # its GLView asks for its own OpenGL 1.x format
     lazy_view = False  # cheap to build, and its GL window and caption are used right away
 
     def _create_view(self) -> QtWidgets.QWidget:

@@ -751,6 +751,9 @@ def _app():
         check_qt_platform()
         if viewport_backend(settings_mod.load()["viewport.backend"]) == "vtk":
             check_remote_display()
+            from .viewport import use_vtk_surface_format
+
+            use_vtk_surface_format()  # Qt wants it before the QApplication on macOS
         _set_windows_app_id()
         set_app_name()
         app = EwaldApplication(strip_psn(sys.argv))
