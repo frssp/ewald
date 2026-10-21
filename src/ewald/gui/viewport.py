@@ -362,7 +362,27 @@ class Viewport(QtWidgets.QWidget):
         if self.parked:
             self._parked_stale = True
             return
-        self.redraw(coarse=interactive and self.needs_coarse(scrub=True))
+        coarse = interactive and self.needs_coarse(scrub=True)
+        if interactive and self.playing:
+            # one level of detail for the whole playback: a frame time near the budget made
+            # some frames full and others coarse, so bonds flickered (see set_playing)
+            if self._play_coarse is None:
+                self._play_coarse = coarse
+            coarse = self._play_coarse
+        self.redraw(coarse=coarse)
+
+    playing = False
+    _play_coarse = None
+
+    def set_playing(self, playing: bool):
+        """The timeline plays: frames keep the level of detail the first one got and are not
+        refined in between (a refine between two frames switched bonds on and off). Stopping
+        refines the last frame."""
+        self.playing, self._play_coarse = playing, None
+        if playing:
+            self._refine_timer.stop()
+        elif self.coarse:
+            self._refine_timer.start(int(self.refine_delay * 1000))
 
     parked = False
     _parked_stale = False
@@ -409,13 +429,17 @@ class Viewport(QtWidgets.QWidget):
         budget = 1.0 / max(self.target_fps, 1e-3)
         return (self._build_time if scrub else self._render_time) > budget
 
+    def _coarse_step(self) -> int:
+        """A coarse scene draws every k-th atom; k > 1 only above ``interactive_atoms``."""
+        return -(-self.data.count // max(int(self.interactive_atoms), 1))
+
     def _coarse_mask(self):
         """Every k-th atom, so a coarse scene holds at most ``interactive_atoms``."""
         n = self.data.count
         visible = None
         if "Transparency" in self.data:
             visible = np.asarray(self.data["Transparency"]) < 1
-        step = -(-n // max(int(self.interactive_atoms), 1))
+        step = self._coarse_step()
         if step <= 1:
             return visible
         mask = np.zeros(n, bool)
@@ -451,12 +475,16 @@ class Viewport(QtWidgets.QWidget):
         from ..color_rule import take
 
         scene = shown = take(self.data, kw)   # the view's color_by (display only)
-        if coarse:  # impostors only, no bonds: cheap to build and to draw
+        if coarse:  # impostors: cheap to build and to draw
             kw.update(atom_style="flat" if kw["atom_style"] == "flat" else "impostor",
-                      only_visible=self._coarse_mask(), bond_pairs=None)
-            if scene.bonds is not None or scene.vectors:
-                scene = scene.copy()
-                scene.bonds, scene.vectors = None, {}
+                      only_visible=self._coarse_mask())
+            if self._coarse_step() > 1:
+                # subsampled atoms would leave bonds and arrows dangling: drop them. Otherwise
+                # they stay, so a coarse frame shows what a full one does (bonds no longer flicker)
+                kw["bond_pairs"] = None
+                if scene.bonds is not None or scene.vectors:
+                    scene = scene.copy()
+                    scene.bonds, scene.vectors = None, {}
         drawn = build_scene(p, scene, mesh_limit=self.mesh_limit, **kw)
         # boundary and replicated images are hovered through the drawn spheres (each knows its real atom)
         atoms = drawn["atoms"].primitive if ("boundary" in kw or "replicate" in kw) and not coarse and "atoms" in drawn else None
@@ -487,7 +515,7 @@ class Viewport(QtWidgets.QWidget):
             self._draw_measurements(kw["measurements"])
         self._draw_picks()
         self.coarse = coarse
-        if coarse:
+        if coarse and not self.playing:
             self._refine_timer.start(int(self.refine_delay * 1000))
         if self._paint_driven:
             self._pending_build = None if coarse else time.perf_counter() - t0
@@ -516,7 +544,8 @@ class Viewport(QtWidgets.QWidget):
         self.render()
 
     def _go_coarse_for_motion(self):
-        """Swap the full atoms (and bonds) for subsampled impostors while the camera moves."""
+        """Swap the full atoms for (subsampled) impostors while the camera moves; bonds go only when
+        the atoms are subsampled."""
         p = self.plotter
         if self.coarse or self.data is None or not self.data.count or not self.needs_coarse():
             return
@@ -530,7 +559,8 @@ class Viewport(QtWidgets.QWidget):
                                             only_visible=self._coarse_mask(), **extra)
         add_atoms(p, self._lod_cloud, atom_style="flat" if self.style.atom_style == "flat" else "impostor",
                   name="atoms_lod")
-        for name in ("atoms", "atoms:glass", "bonds", "bonds:outline"):
+        hide = ("atoms", "atoms:glass") + (("bonds", "bonds:outline") if self._coarse_step() > 1 else ())
+        for name in hide:  # bonds stay unless the atoms are subsampled
             if name in p.actors:
                 p.actors[name].SetVisibility(False)
         self.coarse = True

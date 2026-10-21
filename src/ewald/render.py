@@ -484,6 +484,38 @@ def scene_bonds(data, cutoff=None, pairs=None):
     return find_bonds(data, cutoff, pairs)
 
 
+TUBE_SIDES = 12
+
+
+def tube_mesh(start, end, radius: float, sides: int = TUBE_SIDES):
+    """Open cylinders from ``start`` to ``end`` as triangles: ``(verts, faces, normals)``, ``sides``
+    vertices around each end (segment ``i`` owns vertices ``2*sides*i ...``). Vectorized numpy, about
+    ten times faster than ``vtkTubeFilter``, which made bonds most of a frame's build time."""
+    start, end = np.asarray(start, float), np.asarray(end, float)
+    k = len(start)
+    axis = end - start
+    length = np.linalg.norm(axis, axis=1, keepdims=True)
+    t = np.divide(axis, length, out=np.tile([0.0, 0.0, 1.0], (k, 1)), where=length > 0)
+    ref = np.zeros_like(t)
+    ref[np.arange(k), np.argmin(np.abs(t), axis=1)] = 1.0  # the axis least parallel to t
+    u = np.cross(t, ref)
+    u /= np.linalg.norm(u, axis=1, keepdims=True)
+    v = np.cross(t, u)
+    ang = 2 * np.pi * np.arange(sides) / sides
+    normals = np.empty((k, 2, sides, 3))
+    np.multiply(np.cos(ang)[:, None], u[:, None], out=normals[:, 0])
+    normals[:, 0] += np.sin(ang)[:, None] * v[:, None]
+    normals[:, 1] = normals[:, 0]
+    verts = radius * normals
+    verts[:, 0] += start[:, None]
+    verts[:, 1] += end[:, None]
+    a = np.arange(sides)
+    b = (a + 1) % sides
+    quad = np.concatenate([np.column_stack([a, b, a + sides]), np.column_stack([b, b + sides, a + sides])])
+    faces = (quad[None] + (2 * sides * np.arange(k))[:, None, None]).reshape(-1, 3)
+    return verts.reshape(-1, 3), faces, normals.reshape(-1, 3)
+
+
 def _add_cylinders(plotter, cyl, name, flat: bool = False):
     """Cylinders as tubes (half-bonds: one per atom, in its color); ``flat``: unshaded (ASE-GUI look)."""
     import pyvista as pv
@@ -493,14 +525,12 @@ def _add_cylinders(plotter, cyl, name, flat: bool = False):
     radii = np.unique(cyl.radius)
     for r in radii:  # one tube actor per radius (bonds have one)
         pick = np.flatnonzero(cyl.radius == r) if len(radii) > 1 else np.arange(cyl.count)
-        k = len(pick)
-        pts = np.empty((2 * k, 3))
-        pts[0::2] = cyl.start[pick]
-        pts[1::2] = cyl.end[pick]
-        lines = np.column_stack([np.full(k, 2), np.arange(0, 2 * k, 2), np.arange(1, 2 * k, 2)]).ravel()
-        poly = pv.PolyData(pts, lines=lines)
-        poly.cell_data["rgb"] = (np.clip(cyl.rgb[pick], 0, 1) * 255).astype(np.uint8)
-        tubes = poly.tube(radius=float(r), n_sides=12, capping=False)
+        verts, faces, normals = tube_mesh(cyl.start[pick], cyl.end[pick], float(r))
+        tubes = pv.PolyData.from_regular_faces(verts, faces)
+        tubes.point_data["Normals"] = normals
+        tubes.point_data.active_normals_name = "Normals"
+        rgb = (np.clip(cyl.rgb[pick], 0, 1) * 255).astype(np.uint8)
+        tubes.point_data["rgb"] = np.repeat(rgb, 2 * TUBE_SIDES, axis=0)
         light = dict(ambient=1.0, diffuse=0.0, specular=0.0) if flat else \
             dict(ambient=0.25, diffuse=0.8, specular=0.2, specular_power=30)
         actor_name = name if len(radii) == 1 else f"{name}:{r:g}"

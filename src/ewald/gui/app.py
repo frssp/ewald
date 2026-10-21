@@ -108,6 +108,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.viewport.contextMenuRequested.connect(self._show_viewport_menu)
         self.timeline = Timeline()
         self.timeline.frameChanged.connect(self.set_frame)
+        self.timeline.play.toggled.connect(lambda on: self.viewport.set_playing(on))
         self.live_reload = LiveReload.attach(self)
         self.workbench = Workbench(self.timeline)
         self.workbench.register("viewport", self.viewport, "Structure", home="editor", native=True)

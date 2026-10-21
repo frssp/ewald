@@ -119,9 +119,10 @@ OPTIONS = (
     Option("viewport.arrow_resolution", 6, "Arrow resolution",
            "Sides per vector arrow while interacting; exports use full quality.", minimum=3, maximum=32),
     Option("viewport.interactive_detail", "auto", "Detail while moving",
-           "While rotating, zooming, scrubbing or playing, draw a coarse scene (impostors, no bonds, "
-           "at most 'Atoms while moving') and refine when idle. Auto does this only when a full "
-           "frame misses the target frame rate. Exports always use full quality.",
+           "While rotating, zooming, scrubbing or playing, draw a coarse scene (impostors; above "
+           "'Atoms while moving' every k-th atom and no bonds) and refine when idle; playback keeps "
+           "one level until it stops. Auto does this only when a full frame misses the target frame "
+           "rate. Exports always use full quality.",
            choices=("auto", "coarse", "full")),
     Option("viewport.target_fps", 30, "Target frame rate", "Auto detail switches to the coarse scene "
            "when a full-detail frame takes longer than 1/fps.", minimum=1, maximum=240),
