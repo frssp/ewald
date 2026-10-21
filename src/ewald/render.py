@@ -400,7 +400,10 @@ def draw_scene(plotter, scene, *, atom_style: str = "auto", mesh_limit: int = 15
             if prim.count:
                 # see-through spheres get their own actor: RGBA on the opaque ones too spoils their shading
                 for part, suffix in _split_by_alpha(spheres_cloud(prim)):
-                    add_atoms(plotter, part, atom_style=atom_style, mesh_limit=mesh_limit,
+                    style = atom_style
+                    if style == "impostor" and part["rgb"].shape[1] == 4 and part.n_points <= mesh_limit:
+                        style = "mesh"  # see-through impostors vanish under depth peeling on macOS
+                    add_atoms(plotter, part, atom_style=style, mesh_limit=mesh_limit,
                               sphere_resolution=sphere_resolution, name=name + suffix)
         elif layer.kind == "cylinders":
             _add_cylinders(plotter, prim, name, flat=atom_style == "flat")

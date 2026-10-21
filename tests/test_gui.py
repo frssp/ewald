@@ -4402,3 +4402,21 @@ def test_viewport_sets_vtk_surface_format_before_any_gl_widget(app):
         assert Viewport.uses_vtk and not LegacyViewport.uses_vtk  # GLView asks for OpenGL 1.x itself
     finally:
         QtGui.QSurfaceFormat.setDefaultFormat(vtk_surface_format())
+
+
+def test_viewport_has_no_msaa_so_depth_peeling_keeps_see_through_atoms(app):
+    """With Smooth edges off the VTK view kept pyvista's 4x MSAA, and depth peeling into those
+    framebuffers dropped every see-through layer: NEB overlays and Transparency vanished."""
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    v = Viewport(ViewStyle())
+    v._want_anti_aliasing = False
+    v.ensure_view()
+    try:
+        assert v.plotter.render_window.GetMultiSamples() == 0
+        v.set_anti_aliasing(True)
+        v.set_anti_aliasing(False)
+        assert v.plotter.render_window.GetMultiSamples() == 0
+    finally:
+        _dispose(v)

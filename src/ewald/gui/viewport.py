@@ -271,6 +271,9 @@ class Viewport(QtWidgets.QWidget):
         # drop its wrapper of the GL surface as soon as the widget goes (see release_gl)
         self.plotter.destroyed.connect(lambda *_, ref=weakref.ref(self.plotter): release_gl(ref()))
         self.plotter.set_background(self.style.background)
+        # no MSAA (FXAA is the view's anti-aliasing): depth peeling into pyvistaqt's multisampled
+        # framebuffers drops every see-through layer (NEB overlays, Transparency), on Mesa and macOS
+        self.plotter.render_window.SetMultiSamples(0)
         if self.ortho:
             self.plotter.enable_parallel_projection()
         self.anti_aliasing = False

@@ -25,6 +25,24 @@ def test_impostor_shading_has_no_black_rims(tmp_path, cu_fcc):
     assert np.percentile(img[..., :3].astype(int).sum(-1)[atoms], 1) > 60  # rims stay lit
 
 
+def test_see_through_impostors_are_drawn_as_meshes(cu_fcc):
+    """Depth peeling drops see-through impostors on macOS (Apple M2: NEB overlays vanished), so the
+    see-through part of an impostor layer is drawn as sphere meshes; opaque atoms stay impostors."""
+    import pyvista as pv
+
+    from ewald.render import build_scene
+
+    data = cu_fcc.copy()
+    t = np.zeros(data.count)
+    t[:10] = 0.7
+    data["Transparency"] = t
+    p = pv.Plotter(off_screen=True, window_size=(100, 100))
+    build_scene(p, data, atom_style="impostor")
+    styles = {name: actor.GetMapper().GetClassName() for name, actor in p.actors.items() if name.startswith("atoms")}
+    assert "PointGaussian" in styles["atoms"] and "PointGaussian" not in styles["atoms:glass"]
+    p.close()
+
+
 def test_flat_style_is_unshaded_with_outlines():
     """atom_style='flat' (ASE GUI look): one color inside each disc, a dark outline, outlined bonds."""
     from ewald.render import render
