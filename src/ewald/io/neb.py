@@ -54,6 +54,11 @@ def _dirname(path: str) -> str:
     return path.rsplit("/", 1)[0] if remote.is_remote(path) else os.path.dirname(path)
 
 
+def _basename(path: str) -> str:
+    """File name of a local or remote path (local ones use the OS separator: ``\\`` on Windows)."""
+    return path.rsplit("/", 1)[-1] if remote.is_remote(path) else os.path.basename(path)
+
+
 def vasp_neb_images(folder) -> list[str]:
     """Image folders ``00 .. NN`` of a VASP NEB run (empty if ``folder`` is not one)."""
     folder = str(folder)
@@ -180,7 +185,7 @@ class NebReader(FrameReader):
             self.files = [_image_file(d) for d in dirs]
             for i in (0, len(dirs) - 1):
                 poscar = _image_file(dirs[i], ("POSCAR",))
-                if self.files[i].rsplit("/", 1)[-1].startswith("OUTCAR") and poscar:
+                if _basename(self.files[i]).startswith("OUTCAR") and poscar:
                     self._endpoint_poscars[i] = poscar
         elif lammps:
             self.files, log = lammps, log or found_log
@@ -225,8 +230,8 @@ class NebReader(FrameReader):
                 if start is None:
                     raise
                 r = _open(start)
-                r.incomplete = f"{self.files[i].rsplit('/', 1)[-1]} has no finished ionic step yet, " \
-                               f"{start.rsplit('/', 1)[-1]} shown"
+                r.incomplete = f"{_basename(self.files[i])} has no finished ionic step yet, " \
+                               f"{_basename(start)} shown"
                 self._fallback.add(i)
             self._readers[i] = r
         return r
