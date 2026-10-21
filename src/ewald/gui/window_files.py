@@ -191,17 +191,19 @@ class FilesMixin:
 
     # ---------------------------------------------------------------- notebooks
     def open_notebook(self, path, run: bool | None = None):
-        """Open a notebook (``.ewd``, ``.ipynb`` or ``.py``) in a new tab, as Jupyter does: a
-        notebook you saved or trusted before (the same bytes, :func:`ewald.trust.is_trusted_file`)
-        opens trusted and runs unless ``python.run_notebooks`` is "never"; any other file asks
-        first (unless "never") and otherwise opens restricted, showing the results saved in it.
-        An ``.ewd``'s plugins load only once it is trusted."""
+        """Open a notebook (``.ewd``, ``.ipynb`` or ``.py``) in a new tab. By default nothing runs
+        (``python.run_notebooks`` "never"): the tab shows the cells and the results saved in the
+        file, with a Run all bar. "ask" asks every time; "always" runs a notebook you saved or
+        trusted before (the same bytes, :func:`ewald.trust.is_trusted_file`) at once. A file you
+        have not trusted never runs without asking, and otherwise opens restricted; an ``.ewd``'s
+        plugins load only once it is trusted."""
         from ..trust import is_trusted_file
 
         trusted = is_trusted_file(path)
         if run is None:
             policy = self.settings["python.run_notebooks"]
-            run = False if policy == "never" else True if trusted else self._ask_trust(path)
+            run = (False if policy == "never" else True if trusted and policy == "always"
+                   else self._ask_trust(path, trusted))
         try:
             view = self.panel.open_notebook(path, run=run, trusted=trusted)
         except Exception as exc:
@@ -220,8 +222,12 @@ class FilesMixin:
         add_recent(path)
         return view
 
-    def _ask_trust(self, path) -> bool:
+    def _ask_trust(self, path, trusted: bool = False) -> bool:
         """Ask before running a notebook; for an ``.ewd`` also name the plugins it carries."""
+        if trusted:
+            return QtWidgets.QMessageBox.question(
+                self, "Run notebook", f"Run the cells of {os.path.basename(str(path))} now?\n\n"
+                "No shows the results saved in the file; Run all runs it later.") == QtWidgets.QMessageBox.Yes
         extra = ""
         if str(path).lower().endswith(".ewd"):
             from ..notebook_io import read_manifest

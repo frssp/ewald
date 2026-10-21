@@ -487,7 +487,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 | Key | Label | Default |
 |---|---|---|
-| `python.run_notebooks` | Run notebooks when opened | `'ask'` |
+| `python.run_notebooks` | Run notebooks when opened | `'never'` |
 | `python.plot_style` | Style of your own plots | `'Publication'` |
 | `python.save_figures` | Save figures with notebooks | `True` |
 | `python.bundle_data_mb` | Copy data files up to (MB) | `50.0` |

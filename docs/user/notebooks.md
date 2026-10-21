@@ -317,9 +317,11 @@ Opening a data file (File › Open, or `ewald gui file`) makes a notebook for it
 for it). With no notebook open, at start or after closing the last tab, the notebook area shows
 a welcome page: *New notebook* (Ctrl+T), *Open…*, *Open example* and the files opened lately;
 Notebook › ... is greyed out then, and Insert › ... starts a notebook. The 3D view says how to
-open something and greys out its view bar and tools until there is a structure. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. The cells
-only run after you choose to (Notebook › Run all), because a notebook is code. Preferences ›
-Python › *Run notebooks when opened* can change that to always run them or never run them.
+open something and greys out its view bar and tools until there is a structure. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. Opening
+runs nothing: you see the cells and the results saved in the file, and a bar over the cells says
+*Not run yet* with a *Run all* button (or Notebook › Run all). Preferences › Python › *Run
+notebooks when opened* changes that: *never* (the default), *ask* (asks every time) or *always*
+(a notebook you saved or trusted before runs at once, as in Jupyter).
 
 File › Save notebook (Ctrl+S) writes the notebook file; the first time it asks for a name and a
 format, `.ewd` unless you pick another. Sessions (`.ewald`) still load and save from the File
@@ -368,11 +370,11 @@ changed or is missing. `load("traj.dump")` in a cell looks in the same places, s
 you send with its data, or one that carries it, runs on another computer. Preferences › Python
 sets the size limit (*Copy data files up to*, 0 for links only) and whether figures are saved.
 
-Trust works as in Jupyter. A notebook you saved yourself, or trusted before, opens trusted and
-runs when opened (unless *Run notebooks when opened* is *never*). Any other notebook file
+Trust works as in Jupyter. A notebook you saved yourself, or trusted before, opens trusted (it
+runs when opened only if *Run notebooks when opened* is *always*, or you answer *Yes* with *ask*). Any other notebook file
 (`.py`, `.ipynb` or `.ewd` someone sent, or one of yours edited elsewhere) opens **restricted**.
 You see its code, outputs and figures, but no cell runs and an `.ewd`'s plugins are not imported
-until you agree: opening asks (unless the setting is *never*), and so do Run all and running a
+until you agree: opening asks when the setting is *ask* or *always*, and so do Run all and running a
 single cell. A bar over the cells says the notebook is restricted, with *Trust* and *Trust and
 run all*; Notebook › *Trust notebook…* does the same. Answering *Yes* when the file opens trusts
 it too and hides the bar. ewald remembers each file you save or trust by the SHA-256 of its
