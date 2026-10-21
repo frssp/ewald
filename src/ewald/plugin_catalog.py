@@ -421,28 +421,46 @@ def remove_file(item: Installed) -> Path:
 ARCHIVE_SUFFIXES = (".zip", ".whl", ".tar.gz")   # a downloaded package that pip installs (a GitHub "Download ZIP" of a plugin repo)
 
 
+def _uv() -> str | None:
+    """The uv executable when this Python has no pip (an environment made by uv), else None."""
+    return shutil.which("uv") if importlib.util.find_spec("pip") is None else None
+
+
+# uv reads the OS certificate store (a company proxy's root certificate) when one of these is
+# set. Older uv knows only UV_NATIVE_TLS, newer uv also UV_SYSTEM_CERTS; each ignores the other.
+# The command-line flags differ the same way (--native-tls vs --system-certs) and an unknown flag
+# is an error, so the environment is the form that works with every uv version.
+UV_TLS_ENV = {"UV_NATIVE_TLS": "1", "UV_SYSTEM_CERTS": "1"}
+
+
 def pip_command(action: str, requirement: str | list[str]) -> list[str]:
     """``python -m pip install|uninstall ...`` for the Python ewald runs in; ``"update"``
     installs with ``--upgrade``. ``requirement`` may be a list (several packages at once).
-    An environment made by uv has no pip: then ``uv pip ... --python <this python>`` is used, with
-    ``--system-certs`` so a company proxy's root certificate (in the OS store) is trusted."""
+    An environment made by uv has no pip: then ``uv pip ... --python <this python>`` is used
+    (with :data:`UV_TLS_ENV` from :func:`pip_env`, so a company proxy's root certificate in the
+    OS store is trusted)."""
     reqs = [requirement] if isinstance(requirement, str) else list(requirement)
     flags = {"install": ["install"], "update": ["install", "--upgrade"], "uninstall": ["uninstall", "-y"]}
     verb, *rest = flags[action if action in flags else "uninstall"]
-    if importlib.util.find_spec("pip") is None and (uv := shutil.which("uv")):
-        extra = [] if verb == "uninstall" else ["--system-certs"]
+    if uv := _uv():
         if verb == "uninstall":
             rest = []                                    # uv pip uninstall has no -y
-        return [uv, "pip", verb, "--python", sys.executable, *extra, *rest, *reqs]
+        return [uv, "pip", verb, "--python", sys.executable, *rest, *reqs]
     return [sys.executable, "-m", "pip", verb, *rest, *reqs]
 
 
 def pip_env(requirement: str | list[str]) -> dict:
-    """Environment variables for the pip process: for a ``git+https://github.com/...``
-    requirement and a GitHub token, a git config entry that sends the token to github.com, so
-    it never appears in the command or in pip's output."""
+    """Environment variables for the :func:`pip_command` process: :data:`UV_TLS_ENV` when it
+    is uv, and for a ``git+https://github.com/...`` requirement and a GitHub token, a git config
+    entry that sends the token to github.com, so it never appears in the command or in pip's
+    output."""
+    env = dict(UV_TLS_ENV) if _uv() else {}
+    return env | _github_env(requirement)
+
+
+def _github_env(requirement: str | list[str]) -> dict:
     if not isinstance(requirement, str):
-        return next((env for r in requirement if (env := pip_env(r))), {})
+        return next((env for r in requirement if (env := _github_env(r))), {})
     url = requirement.split("@", 1)[-1].strip() if " @ " in requirement else requirement
     url = url.removeprefix("git+")
     if not url.startswith("https://github.com/"):
