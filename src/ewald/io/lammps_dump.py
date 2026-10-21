@@ -431,7 +431,7 @@ def _cell_from_bounds(bounds, triclinic, pbc) -> Cell:
 
 def write_lammps_dump(path, frames, columns=("id", "type", "x", "y", "z")):
     """Write orthogonal or triclinic frames as a text dump (mostly for tests/export)."""
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
         for step, data in enumerate(frames):
             m, o = data.cell.matrix, data.cell.origin
             xy, xz, yz = m[1, 0], m[2, 0], m[2, 1]

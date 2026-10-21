@@ -930,7 +930,7 @@ class Notebook:
             self.path = os.path.abspath(path)   # data links are relative to the new file
             text = notebook_io.to_ipynb_text(self) if ext == ".ipynb" else self.to_py(header=True)
             tmp = str(path) + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as fh:
+            with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(text)
             os.replace(tmp, path)
         self.path = os.path.abspath(path)

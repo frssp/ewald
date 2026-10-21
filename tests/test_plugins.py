@@ -202,8 +202,9 @@ def test_gui_open_dialog_defaults_to_all_supported_files():
     for pattern in ("*.pts", "*POSCAR*", "*CONTCAR*", "XDATCAR*", "OUTCAR*", "CHGCAR*", "vasprun*.xml",
                     "*.lammpstrj", "*.data", "*.cube", "*.ewd", "*.ipynb", "*.ewald"):
         assert pattern in first.split("(", 1)[1]
-    assert "Point cloud (*.pts)" in filters          # one filter per format, named from its description
-    assert "VASP XDATCAR (XDATCAR*)" in filters
+    assert "Point cloud (*.pts *.PTS)" in filters          # one filter per format, named from its description
+    assert "VASP XDATCAR (XDATCAR* xdatcar*)" in filters   # both cases: Qt matches case on Linux only
+    assert "*.CUBE" in first and "poscar*" in first.lower()
 
 
 def test_builtin_formats_live_in_the_registry(vasp_dir, lammps_dir):

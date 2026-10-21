@@ -22,7 +22,7 @@ def recent_path():
 def load_recent() -> list[str]:
     """Recently opened remote files (locations only; credentials are never stored)."""
     try:
-        return [str(u) for u in json.loads(recent_path().read_text())][:MAX_RECENT]
+        return [str(u) for u in json.loads(recent_path().read_text(encoding="utf-8"))][:MAX_RECENT]
     except (OSError, ValueError, TypeError):
         return []
 
@@ -31,7 +31,7 @@ def add_recent(url: str) -> None:
     items = [url] + [u for u in load_recent() if u != url]
     try:
         recent_path().parent.mkdir(parents=True, exist_ok=True)
-        recent_path().write_text(json.dumps(items[:MAX_RECENT]))
+        recent_path().write_text(json.dumps(items[:MAX_RECENT]), encoding="utf-8", newline="\n")
     except OSError:
         pass
 

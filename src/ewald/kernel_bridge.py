@@ -114,7 +114,7 @@ def run(cells: list, index: int, run_below: bool, counter: int, result_path: str
                                                "view": _plain_view(pipe.view),
                                                "view_version": [id(pipe.view), pipe.view.version]},
     }
-    with open(result_path, "w", encoding="utf-8") as f:
+    with open(result_path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(result, f)
 
 

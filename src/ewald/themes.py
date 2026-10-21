@@ -34,7 +34,7 @@ def element_colors(scheme: str) -> dict:
         table = jmol_colors if scheme == "Jmol" else cpk_colors
         return {s: tuple(float(v) for v in table[z]) for z, s in enumerate(chemical_symbols) if 0 < z < len(table)}
     if scheme == "VESTA":
-        data = json.loads((Path(__file__).parent / "tables" / "colors.json").read_text())
+        data = json.loads((Path(__file__).parent / "tables" / "colors.json").read_text(encoding="utf-8"))
         return {k: tuple(v) for k, v in data["VESTA"].items()}
     raise KeyError(f"unknown color scheme {scheme!r}; use one of {', '.join(SCHEMES)}")
 

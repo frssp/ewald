@@ -50,6 +50,26 @@ kept for history.
   `gui/theme.py`, not inline `setStyleSheet`. New window menu, file or pick code goes into the
   matching `window_*.py` mixin, not `app.py`.
 
+## Windows, macOS and Linux (owner's rule, 2026-10-21)
+
+EWALD must behave nearly identically on all three; the owner runs it on Windows, the container
+and CI are Linux. `docs/developer/portability.md` has the rules and the open items;
+`tests/test_portability.py` enforces what it can:
+
+- Local paths only through `os.path`/`pathlib` (remote ones through `posixpath`/`RemotePath`),
+  never `split("/")`, `"/".join` or `+ "/" +`; reviewed non-path sites go into `SEP_SITES`.
+  Paths that may come from another OS are read with `PureWindowsPath`; `C:` is a drive, never a
+  scheme or SSH host; `relpath` raises across Windows drives.
+- Text I/O names `encoding="utf-8"`, text writes also `newline="\n"` (ASE writes via
+  `io._ase_write`), text subprocesses an `encoding`. Readers must read CRLF files like LF.
+- Name matching ignores case on every platform (`fnmatchcase` on lower-cased names, never
+  `fnmatch.fnmatch`); names from elsewhere pass `remote.local_name` before they are created.
+- No fork, `shell=True`, `multiprocessing`, POSIX-only modules; frozen apps have no Python at
+  `sys.executable`. Close files before replacing or deleting them (Windows locks open files).
+- Tests simulate the other platform where they can (`ntpath`/`PureWindowsPath`, CRLF copies,
+  the `windows_text_mode` fixture, a patched locale). What needs a real Windows or Mac goes into
+  "Verify outside the cloud container" in docs/todo.md.
+
 ## Commands
 
 ```bash

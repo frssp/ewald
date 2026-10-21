@@ -13,8 +13,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - Opening without running (`python.run_notebooks`, default "never"): covers notebook files only. A
   folder or workflow (`simagent:`, AiiDA, calculation folders) still runs its generated `load(...)`
   notebook at once, since it is ewald's own code; no per-notebook "always run this one" choice yet.
-- Open dialog filters: Qt matches patterns case-sensitively on Linux, so `*.CIF` or `poscar` files
-  show only under All files; `log.lammps` and `OSZICAR` are read only as companions of a trajectory, not
+- Open dialog: `log.lammps` and `OSZICAR` are read only as companions of a trajectory, not
   opened on their own.
 - Several files as one trajectory: File › Open and drops join several data files in natural order
   only (no dialog to reorder them or pick `join="concat"`), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
@@ -477,6 +476,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Windows parity after the portability audit ([Windows, macOS and Linux](developer/portability.md)):
+  open and export a POSCAR, XDATCAR, LAMMPS dump and an `.ewd` with data on another drive (D:);
+  check exported files have LF ends; the open dialog lists lower-case `poscar`/`*.CIF`; a save
+  dialog with a name typed without extension; settings with non-ASCII text on Korean Windows;
+  per-monitor DPI at 125/150 %; Windows Credential Manager; `ewald api > llms.txt` in cmd and
+  PowerShell. The same list on a real Mac.
 - CUDA paths on a real NVIDIA GPU: CuPy kernels, neighbor lists, cluster analysis, the
   `--device cuda` GUI switch. CI and the cloud container have no GPU.
 - SSH remote files against a real HPC login node (ProxyJump, OTP, large dumps); tests use an
@@ -536,6 +541,19 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `SUM` and per-atom vectors, fail).
 
 ## Code health
+
+Portability ([Windows, macOS and Linux](developer/portability.md), audit of 2026-10-21):
+
+- Frozen apps have no Python at `sys.executable` (it is `ewald.exe` / the app binary): the Forge
+  check subprocess, plugin `pip install` and the default notebook kernel need a bundled
+  interpreter entry (`ewald.exe python -I ...`) or a clear "not in the app" message.
+- No OpenGL probe or software fallback on Windows (VMs, Remote Desktop, GDI OpenGL 1.1) like the
+  Linux `ssh -X` one; PySide6 ships `opengl32sw.dll` that could serve as the fallback.
+- UI fonts (IBM Plex Sans, JetBrains Mono) are not bundled, so the look differs per system;
+  bundle the OFL fonts or settle on per-OS defaults.
+- `os.replace` of settings, notebooks and sessions fails on Windows while another program has
+  the target open: retry briefly and say which program holds it.
+- The credentials fallback file relies on 0600, which means nothing on Windows (no ACL set).
 
 Left from the 2026-10-19 review (minimum image, element masses, color parsing and the
 dark-background test are shared now; `gui/app.py` and `gui/preferences.py` are split into

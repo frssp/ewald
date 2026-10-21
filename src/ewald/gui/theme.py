@@ -43,7 +43,7 @@ def image(name: str, tokens: dict | None = None) -> str:
     color = (tokens or TOKENS)[key]
     path = os.path.join(tempfile.gettempdir(), f"ewald-ui-{name}-{color.lstrip('#')}.svg")
     if not os.path.exists(path):
-        with open(path, "w") as fh:
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
             fh.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
                      f'stroke="{color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'
                      f'{path_d}</svg>')

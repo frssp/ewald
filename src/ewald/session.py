@@ -364,7 +364,7 @@ def save_session(path, pipeline, *, frame: int = 0, camera: dict | None = None, 
            "frame": int(frame), "camera": encode(camera) if camera else None, "style": encode(style or {}),
            "render": encode(render or {}), "device": device}
     tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(doc, fh, indent=1)
     os.replace(tmp, path)
     return path

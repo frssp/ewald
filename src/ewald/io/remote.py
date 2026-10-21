@@ -143,7 +143,7 @@ def _ssh_config():
     cfg = paramiko.SSHConfig()
     path = ssh_config_path()
     if path.is_file():
-        with open(path) as fh:
+        with open(path, encoding="utf-8") as fh:
             cfg.parse(fh)
     return cfg
 
@@ -467,7 +467,7 @@ def _fingerprint(key) -> str:
 def _append_known_host(path, name, key):
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "a") as fh:
+        with open(path, "a", encoding="utf-8", newline="\n") as fh:
             fh.write(f"{name} {key.get_name()} {key.get_base64()}\n")
     except OSError:
         pass  # accepted for this session only
@@ -712,6 +712,20 @@ def clear_cache() -> None:
     shutil.rmtree(cache_dir(), ignore_errors=True)
 
 
+_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+
+
+def local_name(name: str) -> str:
+    """A remote file name as a valid local name on every platform: characters Windows refuses
+    (``<>:"/\\|?*``, control characters) become ``_``, trailing dots and spaces go, and device
+    names (``CON``, ``NUL.txt``, ...) get a ``_`` prefix. Names the readers recognise (POSCAR,
+    XDATCAR, ``*.lammpstrj``) are unchanged. Applied on every platform, so a cache looks the same."""
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).rstrip(". ")
+    if name.split(".")[0].upper() in _RESERVED:
+        name = "_" + name
+    return name or "file"
+
+
 def fetch(path) -> str:
     """Local copy of a remote file, downloaded once and reused while size and mtime match."""
     rp = parse_remote(path)
@@ -720,11 +734,11 @@ def fetch(path) -> str:
     st = conn.stat(full)
     key = hashlib.sha1(f"{conn.user}@{conn.hostname}:{conn.port}{full}".encode()).hexdigest()[:16]
     folder = cache_dir() / re.sub(r"[^\w.-]", "_", conn.hostname) / key
-    local = folder / (posixpath.basename(full) or "file")
+    local = folder / local_name(posixpath.basename(full))
     meta_path = folder / "meta.json"
     meta = {"source": f"{conn.user}@{conn.hostname}:{full}", "size": st.st_size, "mtime": st.st_mtime}
     try:
-        if local.is_file() and json.loads(meta_path.read_text()) == meta:
+        if local.is_file() and json.loads(meta_path.read_text(encoding="utf-8")) == meta:
             return str(local)
     except (OSError, ValueError):
         pass
@@ -735,7 +749,7 @@ def fetch(path) -> str:
     with conn.lock:
         conn.sftp.get(full, str(tmp), callback=callback)
     os.replace(tmp, local)
-    meta_path.write_text(json.dumps(meta))
+    meta_path.write_text(json.dumps(meta), encoding="utf-8", newline="\n")
     return str(local)
 
 
@@ -745,7 +759,7 @@ def download(path, dest) -> str:
     conn = _conn(rp)
     dest = Path(os.path.expanduser(str(dest)))
     if dest.is_dir():
-        dest = dest / (posixpath.basename(rp.path.rstrip("/")) or "file")
+        dest = dest / local_name(posixpath.basename(rp.path.rstrip("/")))
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".part")
     label = f"{rp.host}:{rp.path}"

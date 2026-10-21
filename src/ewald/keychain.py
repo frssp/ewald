@@ -57,7 +57,7 @@ def secrets_file() -> Path:
 
 def file_get(name: str) -> str | None:
     try:
-        return json.loads(secrets_file().read_text()).get(name) or None
+        return json.loads(secrets_file().read_text(encoding="utf-8")).get(name) or None
     except (OSError, ValueError, AttributeError):
         return None
 
@@ -66,7 +66,7 @@ def file_set(name: str, value: str | None) -> None:
     """Set or (``None``) remove one entry; the file is removed with its last entry."""
     path = secrets_file()
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         data = data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         data = {}
@@ -81,7 +81,7 @@ def file_set(name: str, value: str | None) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
         json.dump(data, f)
     os.chmod(path, 0o600)  # an existing file keeps its old mode through O_CREAT
 
