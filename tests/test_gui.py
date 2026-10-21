@@ -2158,10 +2158,15 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert is_trusted_file(path)                              # saved here: it would open trusted
     _trust_store().unlink()                                   # as if someone else had sent it
 
+    def always():
+        s = settings.Settings()
+        s["python.run_notebooks"] = "always"                  # trusted files run; others ask
+        return s
+
     asked = []
     monkeypatch.setattr(QtWidgets.QMessageBox, "question",
                         lambda *a, **k: asked.append(a[2]) or QtWidgets.QMessageBox.No)
-    w2 = MainWindow(settings=settings.Settings())
+    w2 = MainWindow(settings=always())
     view = w2.open_notebook(str(path))                        # asks, the answer is No: restricted
     assert asked and view.notebook.restricted and w2.style.radius_scale == 0.8
     hist = next(wd for wd in view.widgets if wd.cell.is_view)
@@ -2172,28 +2177,29 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert view.notebook.restricted and len(asked) == 3 and view.notebook.cells[0].state != "error"
     monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.Yes)
     w2.trust_action.trigger()                                 # Notebook › Trust notebook…
-    assert not view.notebook.restricted and view.banner.isHidden()
+    assert not view.notebook.restricted and "Not run yet" in view.banner_text.text()
     view.run_all()
+    assert view.banner.isHidden()
     assert [m.name for m in w2.pipeline.modifiers] == ["CoordinationAnalysis"]
     w2.close()
 
     assert is_trusted_file(path)                              # trusting it remembers it
     _trust_store().unlink()
-    w3 = MainWindow(settings=settings.Settings())             # Yes when opening: trusted, the bar goes away
+    w3 = MainWindow(settings=always())             # Yes when opening: trusted, the bar goes away
     view = w3.open_notebook(str(path))
     assert not view.notebook.restricted and view.banner.isHidden()
     assert view.notebook.cells[0].state == "ok" and [m.name for m in w3.pipeline.modifiers] == ["CoordinationAnalysis"]
     w3.close()
     asked.clear()
     monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: asked.append(a[2]))
-    w3b = MainWindow(settings=settings.Settings())            # trusted at w3's open: runs without asking
+    w3b = MainWindow(settings=always())            # trusted at w3's open: runs without asking
     view = w3b.open_notebook(str(path))
     assert not asked and not view.notebook.restricted and view.notebook.cells[0].state == "ok"
     w3b.close()
     _trust_store().unlink()
 
     monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.No)
-    w4 = MainWindow(settings=settings.Settings())             # No when opening, then the bar's Trust button
+    w4 = MainWindow(settings=always())             # No when opening, then the bar's Trust button
     view = w4.open_notebook(str(path))
     w4.show()
     app.processEvents()
@@ -2204,6 +2210,46 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert not view.notebook.restricted and not view.banner.isVisible()
     assert view.notebook.cells[0].state == "ok" and [m.name for m in w4.pipeline.modifiers] == ["CoordinationAnalysis"]
     w4.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_opening_a_notebook_does_not_run_it_by_default(app, cu_path, tmp_path, monkeypatch):
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+    from ewald.trust import is_trusted_file
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\nfrom ewald.modifiers import *\npipe = load({str(cu_path)!r})\n\n"
+                          "# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n")
+    path = tmp_path / "mine.ipynb"
+    nb.save(path)
+    assert is_trusted_file(path)                              # saved here: trusted
+    asked = []
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question",
+                        lambda *a, **k: asked.append(a[2]) or QtWidgets.QMessageBox.No)
+    s = settings.Settings()
+    assert s["python.run_notebooks"] == "never"
+    w = MainWindow(settings=s)
+    w.show()
+    view = w.open_notebook(str(path))                         # nothing asked, nothing run
+    app.processEvents()
+    assert not asked and not view.notebook.restricted and view.awaiting_run
+    assert all(c.state == "new" for c in view.notebook.cells) and w.pipeline is None
+    assert view.banner.isVisible() and "Not run yet" in view.banner_text.text()
+    buttons = {b.text(): b for b in view.banner.findChildren(QtWidgets.QPushButton)}
+    assert buttons["Trust"].isHidden()
+    buttons["Run all"].click()                                # the bar's Run all
+    assert view.wait()
+    app.processEvents()
+    assert not view.awaiting_run and not view.banner.isVisible()
+    assert [m.name for m in w.pipeline.modifiers] == ["CoordinationAnalysis"]
+    w.close()
+
+    s["python.run_notebooks"] = "ask"                         # asks even for a trusted file
+    w = MainWindow(settings=s)
+    view = w.open_notebook(str(path))
+    assert asked and "Run the cells" in asked[-1] and view.awaiting_run and not view.notebook.restricted
+    w.close()
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
