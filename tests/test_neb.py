@@ -24,7 +24,7 @@ def test_vasp_neb_folder(vasp_dir):
     folder = vasp_dir / "neb"
     assert is_neb(folder) and not is_neb(vasp_dir)
     pipe = import_file(folder)
-    assert pipe.num_frames == 5 and type(pipe.modifiers[0]) is mods.NebEnergyProfile
+    assert pipe.num_frames == 5 and type(pipe.modifiers[1]) is mods.NebEnergyProfile
     reader = pipe.source.readers[0]
     assert isinstance(reader, NebReader)
     assert [p.split("/")[-2:] for p in reader.files] == [["00", "OUTCAR"], ["01", "OUTCAR"], ["02", "OUTCAR"],
@@ -164,8 +164,9 @@ def test_profile_without_forces_or_energies():
 
 def test_overlay_frames_ghosts_moving_atoms(vasp_dir, lammps_dir):
     pipe = import_file(vasp_dir / "neb")
-    assert [type(m) for m in pipe.modifiers] == [mods.NebEnergyProfile, mods.OverlayFrames]
-    plain = pipe.source.compute(2)
+    assert [type(m) for m in pipe.modifiers] == [mods.UnwrapTrajectories, mods.NebEnergyProfile,
+                                                 mods.OverlayFrames]
+    plain = Pipeline(pipe.source, pipe.modifiers[:2]).compute(2)
     d = pipe.compute(2)
     n = plain.count
     frame = d["Overlay Frame"]
@@ -191,6 +192,57 @@ def test_overlay_frames_ghosts_moving_atoms(vasp_dir, lammps_dir):
     assert set(hop) == {-1, 1, 2, 3, 4, 5, 6}
     lp.modifiers[-1].min_displacement = 100.0
     assert lp.compute(0).count == lp.source.compute(0).count  # nothing moved that far: no copies
+
+
+def _wrapped_band(n=5, hop=2.0):
+    """A band whose files wrap atoms into the cell differently, as VASP CONTCARs do: atom 0
+    sits on the x = 0 face (at 1e-3 in some images, at L - 1e-3 in others), atom 1 hops."""
+    cell = np.diag([6.0, 6.0, 6.0])
+    frames = []
+    for i in range(n):
+        x0 = 1e-3 if i % 2 else 6.0 - 1e-3
+        x1 = 3.0 + hop * i / (n - 1)
+        d = DataCollection(np.array([[x0, 1, 1], [x1, 3, 3], [1, 4, 4]]), np.array(["Fe"] * 3))
+        d.cell.matrix = cell
+        d.cell.pbc = np.array([True] * 3)
+        d.attributes["Energy"] = float(np.sin(np.pi * i / (n - 1)))
+        frames.append(d)
+    return frames
+
+
+def test_reaction_coordinate_uses_minimum_image_like_ase():
+    from ase.utils.forcecurve import fit_raw  # ASE NEBTools' path: find_mic between neighbouring images
+
+    frames = _wrapped_band()
+    d = Pipeline(StaticSource(frames), [mods.NebEnergyProfile()]).compute(0)
+    s = d.tables["NEB"]["Reaction Coordinate"]
+    np.testing.assert_allclose(np.diff(s), np.hypot(0.5, 2e-3), rtol=1e-9)  # not the 6 A wrap jump
+    pos = [f.positions for f in frames]
+    path = fit_raw([f.attributes["Energy"] for f in frames], [np.zeros((3, 3))] * len(frames), pos,
+                   cell=frames[0].cell.matrix, pbc=[True] * 3).path
+    np.testing.assert_allclose(s, path, atol=1e-12)
+
+
+def test_neb_band_is_unwrapped_for_display(tmp_path):
+    import ase.io
+
+    from ewald.render import scene_bonds
+
+    frames = _wrapped_band()
+    for i, f in enumerate(frames):
+        (tmp_path / f"{i:02d}").mkdir()
+        ase.io.write(tmp_path / f"{i:02d}" / "POSCAR", f.to_ase(), format="vasp")
+    pipe = import_file(tmp_path, energies=[f.attributes["Energy"] for f in frames])
+    assert type(pipe.modifiers[0]) is mods.UnwrapTrajectories
+    pipe.modifiers[-1].enabled = False
+    x = np.array([pipe.compute(i).positions[0, 0] for i in range(5)])
+    np.testing.assert_allclose(x, [5.999, 6.001, 5.999, 6.001, 5.999], atol=1e-6)  # no 6 A jumps across the face
+    pipe.modifiers[-1].enabled = True
+    d = pipe.compute(2)
+    ghosts = np.flatnonzero(d["Overlay Frame"] >= 0)
+    assert len(ghosts) == 4  # only the hopping atom moved: one copy per other image, none for atom 0
+    b = scene_bonds(d, cutoff=3.5)
+    assert b.count and (b.topology < 3).all()  # the see-through copies get no bonds
 
 
 def test_neb_run_of_finds_the_run_of_one_image(vasp_dir, lammps_dir, tmp_path):
