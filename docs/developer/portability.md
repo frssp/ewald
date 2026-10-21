@@ -69,6 +69,9 @@ OpenGL widgets of one window share with its compositing context, made from the d
 when the first one appears: `gui/viewport.use_vtk_surface_format()` sets VTK's 3.2 core format
 before that (`_app()` and `Viewport`). Linux and Windows drivers share across profiles, macOS
 does not, and the VTK view composited black there while the rest of the window worked.
+See-through atoms are sphere meshes, not impostors (`render.draw_scene`): the impostor shader under
+depth peeling draws nothing on macOS. The VTK view has no MSAA: depth peeling into multisampled
+framebuffers drops every see-through layer, on Mesa too.
 
 **Tests.** A change that touches paths, files, processes or the GUI adds a test that simulates
 the other platforms where that is possible: Windows paths through `ntpath` or

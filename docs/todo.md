@@ -521,7 +521,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   here with `CXX=/bin/false` on Linux). pip shows the "not built" warning only with `-v`.
 - macOS on a real Mac (Apple Silicon and Intel): the source install and the full test suite, the
   3D view drawing atoms at all (it was black before the 3.2 core default format; if it still is,
-  `EWALD_VIEWPORT=legacy ewald gui` is the fallback), the GUI on Retina (the VTK view filling the whole widget, picking and hover at the right atom),
+  `EWALD_VIEWPORT=legacy ewald gui` is the fallback), NEB overlays and other see-through atoms
+  (sphere meshes since the impostor shader draws nothing under depth peeling there; still impostors,
+  so likely invisible, are see-through atoms beyond `mesh_limit`, the 'flat' style and the coarse
+  drag scene), the GUI on Retina (the VTK view filling the whole widget, picking and hover at the right atom),
   trackpad orbit/zoom, the EWALD menu bar name, and EWALD.app from `macos-release.yml` with
   Finder Open With and Dock drops. The list is in docs/developer/macos-release.md; the container
   checks clang, the spec and the dependency wheels only.
