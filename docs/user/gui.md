@@ -167,7 +167,10 @@ modifier's constructor, so every argument you can pass in Python can be edited t
 **View tab (display settings).** The View tab, next to the Python console below the Structure view
 (Window › View settings), shows how the structure is drawn as cards in equal-width columns:
 **Atoms** (style preset, radius table, radius scale, oxidation states, how atoms are drawn, *Draw
-atoms* off for a stick model), **Types** (color, radius, transparency and count per type, VESTA
+atoms* off for a stick model), **Colors** (what colors the atoms: the steps' colors, the type colors
+or a property through a color map with its range, and the rule drawn now, one row per structure type
+or painted condition with its count; see [What colors the atoms](rendering.md#what-colors-the-atoms)),
+**Types** (color, radius, transparency and count per type, VESTA
 elements.ini import), **Bonds** (sticks, the pair table, *As step* for a Create bonds step),
 **Surfaces** (polyhedra, isosurfaces and slices that steps made, by name: shown, color,
 transparency, edges; *Reset* gives back the step's look), **Cell** (line width, *Replicate cell* and

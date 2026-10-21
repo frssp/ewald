@@ -160,7 +160,7 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
     panel = DisplayPanel()
     panel.set_pipeline(pipe)
     panel.set_data(pipe.compute(0))
-    assert list(panel.sections) == ["Atoms", "Types", "Bonds", "Surfaces", "Cell", "Labels", "Camera", "Elements"]
+    assert list(panel.sections) == ["Atoms", "Colors", "Types", "Bonds", "Surfaces", "Cell", "Labels", "Camera", "Elements"]
     marked = lambda: {lab.text() if isinstance(lab, QtWidgets.QLabel) else lab.title() for lab, _ in panel._marks if lab.property("set")} - {""}
     assert not marked()
     view(pipe, radius_scale=0.4, boundary=[-0.1, 1.1], direction="z")
@@ -1429,6 +1429,50 @@ def test_ask_panel_selection_and_frame(app, pipe):
     assert panel.text() == "" and not panel.welcome.isHidden()
 
 
+def test_ask_panel_sends_the_color_rule(app, pipe):
+    """What the 3D view shows (how the atoms are colored) goes with a question when it changed."""
+    from ewald.gui.ask_panel import AskPanel
+
+    shown = {"text": "Atoms are colored by 'Structure Type' (from the CNA step): 1 FCC = #66ff66."}
+    panel = AskPanel(lambda: (pipe, 0, []), agent_factory=lambda p, ev: _FakeAgent(p, ev),
+                     view=lambda: shown["text"])
+    first = panel._notebook_prompt("What do the colors mean?")
+    assert first.startswith("The 3D view now shows: Atoms are colored by 'Structure Type'")
+    assert panel._notebook_prompt("again") == "again"            # unchanged: not sent twice
+    shown["text"] = "Atoms have their particle type colors: Cu #c88033."
+    assert "particle type colors" in panel._notebook_prompt("and now?")
+
+
+def test_display_panel_colors_card(app, pipe):
+    """The View tab's Colors card: the rule drawn (one row per category) and color_by / map / range."""
+    from ewald.gui.pipeline_panel import DisplayPanel
+    from ewald.gui.style import ViewStyle
+
+    pipe.add(mods.CommonNeighborAnalysis())
+    style = ViewStyle()
+    panel = DisplayPanel(style)
+    panel.set_pipeline(pipe)
+    panel.set_data(pipe.compute(0), refresh=True)
+    w = panel.color_widgets
+    assert "Structure Type" in w["rule"].text() and "CommonNeighborAnalysis" in w["rule"].text()
+    rows = [w["legend"].item(i, 1).text() for i in range(w["legend"].rowCount())]
+    assert rows == ["FCC"] and w["legend"].item(0, 2).text() == f"{pipe.compute(0).count:,}"
+    assert not w["colormap"].isEnabled()
+    seen = []
+    panel.styleChanged.connect(lambda: seen.append(1))
+    w["color_by"].setCurrentText("Particle type")
+    assert style.color_by == "type" and seen and "Particle type colors" in w["rule"].text()
+    w["color_by"].setCurrentText("Position.Z")
+    assert style.color_by == "Position.Z" and w["colormap"].isEnabled()
+    w["colormap"].setCurrentText("magma")
+    w["range"][1].setText("4")
+    w["range"][1].editingFinished.emit()
+    assert style.scene_kwargs()["color_range"] == [None, 4.0] and "magma from" in w["rule"].text()
+    w["color_by"].setCurrentText("Steps")
+    assert style.color_by is None and "color_by" not in style.scene_kwargs()
+    _dispose(panel)
+
+
 def test_ask_panel_without_claude(app, pipe):
     from ewald.gui.ask_panel import AskPanel
 
@@ -2158,10 +2202,15 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert is_trusted_file(path)                              # saved here: it would open trusted
     _trust_store().unlink()                                   # as if someone else had sent it
 
+    def always():
+        s = settings.Settings()
+        s["python.run_notebooks"] = "always"                  # trusted files run; others ask
+        return s
+
     asked = []
     monkeypatch.setattr(QtWidgets.QMessageBox, "question",
                         lambda *a, **k: asked.append(a[2]) or QtWidgets.QMessageBox.No)
-    w2 = MainWindow(settings=settings.Settings())
+    w2 = MainWindow(settings=always())
     view = w2.open_notebook(str(path))                        # asks, the answer is No: restricted
     assert asked and view.notebook.restricted and w2.style.radius_scale == 0.8
     hist = next(wd for wd in view.widgets if wd.cell.is_view)
@@ -2172,28 +2221,29 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert view.notebook.restricted and len(asked) == 3 and view.notebook.cells[0].state != "error"
     monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.Yes)
     w2.trust_action.trigger()                                 # Notebook › Trust notebook…
-    assert not view.notebook.restricted and view.banner.isHidden()
+    assert not view.notebook.restricted and "Not run yet" in view.banner_text.text()
     view.run_all()
+    assert view.banner.isHidden()
     assert [m.name for m in w2.pipeline.modifiers] == ["CoordinationAnalysis"]
     w2.close()
 
     assert is_trusted_file(path)                              # trusting it remembers it
     _trust_store().unlink()
-    w3 = MainWindow(settings=settings.Settings())             # Yes when opening: trusted, the bar goes away
+    w3 = MainWindow(settings=always())             # Yes when opening: trusted, the bar goes away
     view = w3.open_notebook(str(path))
     assert not view.notebook.restricted and view.banner.isHidden()
     assert view.notebook.cells[0].state == "ok" and [m.name for m in w3.pipeline.modifiers] == ["CoordinationAnalysis"]
     w3.close()
     asked.clear()
     monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: asked.append(a[2]))
-    w3b = MainWindow(settings=settings.Settings())            # trusted at w3's open: runs without asking
+    w3b = MainWindow(settings=always())            # trusted at w3's open: runs without asking
     view = w3b.open_notebook(str(path))
     assert not asked and not view.notebook.restricted and view.notebook.cells[0].state == "ok"
     w3b.close()
     _trust_store().unlink()
 
     monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.No)
-    w4 = MainWindow(settings=settings.Settings())             # No when opening, then the bar's Trust button
+    w4 = MainWindow(settings=always())             # No when opening, then the bar's Trust button
     view = w4.open_notebook(str(path))
     w4.show()
     app.processEvents()
@@ -2204,6 +2254,46 @@ def test_ewd_notebook_saves_state_and_opens_restricted(app, cu_path, tmp_path, m
     assert not view.notebook.restricted and not view.banner.isVisible()
     assert view.notebook.cells[0].state == "ok" and [m.name for m in w4.pipeline.modifiers] == ["CoordinationAnalysis"]
     w4.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_opening_a_notebook_does_not_run_it_by_default(app, cu_path, tmp_path, monkeypatch):
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+    from ewald.trust import is_trusted_file
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\nfrom ewald.modifiers import *\npipe = load({str(cu_path)!r})\n\n"
+                          "# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n")
+    path = tmp_path / "mine.ipynb"
+    nb.save(path)
+    assert is_trusted_file(path)                              # saved here: trusted
+    asked = []
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question",
+                        lambda *a, **k: asked.append(a[2]) or QtWidgets.QMessageBox.No)
+    s = settings.Settings()
+    assert s["python.run_notebooks"] == "never"
+    w = MainWindow(settings=s)
+    w.show()
+    view = w.open_notebook(str(path))                         # nothing asked, nothing run
+    app.processEvents()
+    assert not asked and not view.notebook.restricted and view.awaiting_run
+    assert all(c.state == "new" for c in view.notebook.cells) and w.pipeline is None
+    assert view.banner.isVisible() and "Not run yet" in view.banner_text.text()
+    buttons = {b.text(): b for b in view.banner.findChildren(QtWidgets.QPushButton)}
+    assert buttons["Trust"].isHidden()
+    buttons["Run all"].click()                                # the bar's Run all
+    assert view.wait()
+    app.processEvents()
+    assert not view.awaiting_run and not view.banner.isVisible()
+    assert [m.name for m in w.pipeline.modifiers] == ["CoordinationAnalysis"]
+    w.close()
+
+    s["python.run_notebooks"] = "ask"                         # asks even for a trusted file
+    w = MainWindow(settings=s)
+    view = w.open_notebook(str(path))
+    assert asked and "Run the cells" in asked[-1] and view.awaiting_run and not view.notebook.restricted
+    w.close()
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")

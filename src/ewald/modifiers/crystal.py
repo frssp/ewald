@@ -223,7 +223,12 @@ class GrainSegmentation(Modifier):
         colors = res["grain_color"].astype(float)
         if self.color_particles:
             palette = np.vstack([[0.8, 0.8, 0.8], colors]) if len(colors) else np.array([[0.8, 0.8, 0.8]])
+            from .. import color_rule
+
             data.particles["Color"] = palette[grain]
+            color_rule.record(data, {"kind": "categorical", "source": "the GrainSegmentation step (color_particles=True)",
+                                     "property": "Grain", "note": "one color per grain (tables['grains'] 'Color'); "
+                                     "gray #cccccc = no grain (Grain 0)"})
         ng = len(res["grain_size"])
         data.tables["grains"] = {"Grain Identifier": np.arange(1, ng + 1), "Grain Size": res["grain_size"],
                                  "Color": colors, "Structure Type": res["grain_structure"],
@@ -360,13 +365,18 @@ class IdentifyFCCPlanarFaults(Modifier):
                 raise ValueError("an hcp atom has fewer than 12 neighbors")
             kind[hcp] = _classify_planar_faults(hcp.astype(np.int64), sub, structure == HCP, structure == FCC, layer)
         data.particles["Planar Fault Type"] = kind
+        from .. import color_rule
         from ..render import default_colors
 
+        rule = color_rule.rule(data)
         color = np.array(default_colors(data), float)
-        for t, c in ((FAULT_OTHER, self.color_other), (ISF, self.color_isf), (TWIN, self.color_twin),
-                     (MULTI, self.color_multi)):
+        for t, c, name in ((FAULT_OTHER, self.color_other, "other HCP"), (ISF, self.color_isf, "intrinsic stacking fault"),
+                           (TWIN, self.color_twin, "twin boundary"), (MULTI, self.color_multi, "multilayer fault")):
             color[kind == t] = c
+            rule = color_rule.painted(rule, "the IdentifyFCCPlanarFaults step", f"Planar Fault Type == {t} ({name})",
+                                      c, np.count_nonzero(kind == t))
         data.particles["Color"] = color
+        color_rule.record(data, rule)
         counts = np.bincount(kind, minlength=5)[:5]
         counts[NONHCP] = 0
         table = {"Planar Fault Type": np.arange(5), "Atom Count": counts,
