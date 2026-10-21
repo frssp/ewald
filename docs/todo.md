@@ -10,6 +10,9 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Opening without running (`python.run_notebooks`, default "never"): covers notebook files only. A
+  folder or workflow (`simagent:`, AiiDA, calculation folders) still runs its generated `load(...)`
+  notebook at once, since it is ewald's own code; no per-notebook "always run this one" choice yet.
 - Open dialog filters: Qt matches patterns case-sensitively on Linux, so `*.CIF` or `poscar` files
   show only under All files; `log.lammps` and `OSZICAR` are read only as companions of a trajectory, not
   opened on their own.
