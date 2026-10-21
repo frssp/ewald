@@ -724,7 +724,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     ``ambient_occlusion``, sphere mesh detail and ``scale``, a factor on ``size``);
     see ``QUALITY_PRESETS``. Explicit arguments always win.
 
-    Overlays: ``text`` label, ``legend`` (ColorCoding color bar), ``type_legend``
+    Overlays: ``text`` label, ``legend`` (the atoms' color bar or category swatches), ``type_legend``
     (one swatch per particle type), ``scale_bar`` (True = round length, or a length
     in Angstrom; exact in orthographic views), and ``overlays``: overlay elements
     (Coordinate tripod, Attributes, Atom labels, plugins; see :mod:`ewald.overlays`). ``labels`` puts a
@@ -743,6 +743,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     {"visible": True, "color": "teal", "transparency": 0.5, "edges": False}}`` restyles ``data.surfaces``
     meshes by name without changing their step. ``type_transparency={"O": 0.6}`` fades whole types (1
     hides them); ``selection_color="red"`` highlights a 'Selection' property, as OVITO does.
+    ``color_by`` recolors the atoms for the picture only: 'type' (type colors, whatever the steps wrote) or a
+    property/expression mapped through ``colormap`` over ``color_range`` (see :func:`ewald.color_rule.apply`).
 
     ``light``: the key light, the same in every renderer: a direction ``[x, y, z]`` in the camera frame
     (x right, y up, z towards the viewer) or ``{"direction" or "azimuth"/"elevation" (degrees), "intensity"}``
@@ -759,6 +761,9 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
 
     if renderer not in RENDERERS:
         raise ValueError(f"unknown renderer {renderer!r}; use 'opengl', 'raytrace' or 'vector'")
+    from .color_rule import take
+
+    data = take(data, scene_kwargs, scene_kwargs.get("frame", 0))
     if labels is not None and labels is not False:
         from .overlays import label_params
 

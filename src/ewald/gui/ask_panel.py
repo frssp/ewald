@@ -307,8 +307,9 @@ class AskPanel(QtWidgets.QWidget):
     gives the agent's toolset the notebook cell tools. ``auto_insert()``, when it returns True, puts
     the Python blocks of each answer into the notebook at once (unless the model wrote cells with
     the cell tools in that answer). ``errors()``, when given, returns the errors of the notebook's
-    failed cells (or None); they go with a question whenever they changed. While an answer is on its
-    way the send button is Stop (also Esc).
+    failed cells (or None); they go with a question whenever they changed. ``view()``, when given,
+    describes what the 3D view shows now (how the atoms are colored); it goes with a question whenever
+    it changed. While an answer is on its way the send button is Stop (also Esc).
     """
 
     pipelineChanged = QtCore.Signal()
@@ -316,7 +317,8 @@ class AskPanel(QtWidgets.QWidget):
 
     def __init__(self, context: Callable[[], tuple], agent_factory=_default_agent, parent=None,
                  notebook: Callable[[], str | None] | None = None, notebook_access=None,
-                 auto_insert: Callable[[], bool] | None = None, errors: Callable[[], str | None] | None = None):
+                 auto_insert: Callable[[], bool] | None = None, errors: Callable[[], str | None] | None = None,
+                 view: Callable[[], str | None] | None = None):
         super().__init__(parent, objectName="chatPanel")
         self.context = context
         self.agent_factory = agent_factory
@@ -324,7 +326,9 @@ class AskPanel(QtWidgets.QWidget):
         self.notebook_access = notebook_access
         self.auto_insert = auto_insert
         self.errors = errors
+        self.view = view
         self._sent_errors: str | None = None
+        self._sent_view: str | None = None
         self._stopped: list[_Worker] = []   # stopped workers still finishing their last request
         self._tools_used: list[str] = []
         self.agent = None
@@ -478,7 +482,7 @@ class AskPanel(QtWidgets.QWidget):
         if self.busy():
             return
         self.agent = None
-        self._sent_notebook = self._sent_errors = None
+        self._sent_notebook = self._sent_errors = self._sent_view = None
         for m in self.messages:
             m.setParent(None)
             m.deleteLater()
@@ -491,8 +495,8 @@ class AskPanel(QtWidgets.QWidget):
         self.insertRequested.emit(self.snippets[index])
 
     def _notebook_prompt(self, question: str) -> str:
-        """``question``, preceded by the notebook's code and the errors of its failed cells, each
-        when it changed since the last question."""
+        """``question``, preceded by the notebook's code, the errors of its failed cells and what the 3D
+        view shows (how atoms are colored), each when it changed since the last question."""
         parts = []
         code = _safe(self.notebook)
         if code and code.strip() and code != self._sent_notebook:
@@ -505,6 +509,10 @@ class AskPanel(QtWidgets.QWidget):
             self._sent_errors = errors
             parts.append(f"These notebook cells failed when they last ran:\n```text\n{errors}```" if errors
                          else "The notebook's cells no longer show errors.")
+        view = _safe(self.view) if self.view is not None else None
+        if view and view != self._sent_view:
+            self._sent_view = view
+            parts.append(f"The 3D view now shows: {view}")
         return "\n\n".join(parts + [question])
 
     # ---------------------------------------------------------------- asking
@@ -529,7 +537,7 @@ class AskPanel(QtWidgets.QWidget):
                              error=True)
                 return
             self._agent_pipeline = pipeline
-            self._sent_notebook = self._sent_errors = None
+            self._sent_notebook = self._sent_errors = self._sent_view = None
             toolset = getattr(self.agent, "toolset", None)
             if self.notebook_access is not None and hasattr(toolset, "attach_notebook"):
                 toolset.attach_notebook(self.notebook_access)

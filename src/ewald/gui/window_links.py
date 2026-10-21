@@ -292,6 +292,16 @@ class LinksMixin:
         nb = self.panel.notebook
         return nb.to_py() if nb is not None and nb.cells else None
 
+    def _view_summary(self):
+        """How the 3D view colors the atoms of the current frame (:mod:`ewald.color_rule`), for the AI
+        chat; None without data."""
+        if self.data is None:
+            return None
+        from ..color_rule import describe, rule, take
+
+        kw = self.style.scene_kwargs()
+        return describe(rule(take(self.data, kw, self.frame), self.style.type_colors))
+
     def _notebook_errors(self):
         """The errors of the current notebook's failed cells, for the AI chat (None without any)."""
         nb = self.panel.notebook

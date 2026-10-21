@@ -152,7 +152,13 @@ view(pipe, transparency={"O": 0.6}, selection=True)       # fade types; selected
 view(pipe, labels="{type}{index}")                        # atom labels: True, a template ({id}, {Charge:.2f}) or a dict
 view(pipe, light={"azimuth": 60, "elevation": 20, "intensity": 1.2})   # key light relative to the viewer
 pipe.view.measure(0, 5); pipe.view.measure(4, 0, 7)       # distance / angle drawn with its value; returns it
+view(pipe, color_by="Coordination", colormap="plasma", color_range=[2, 5])   # display-only color map; 'type': type colors
 ```
+
+What colors the atoms: structure identification steps (`CommonNeighborAnalysis`, `PolyhedralTemplateMatching`,
+`IdentifyDiamond`, ...) write a "Color" per structure type unless `color_by_type=False`, `ColorCoding` maps a
+property, `paint` colors a condition; each records its rule, which `ewald.color_rule.describe(data)` (and the
+`describe_frame`/`get_view` tools' `atom_colors`) spells out with every color. Pictures draw it as a legend.
 
 Per-atom colors, sizes and hiding by condition are steps (`ewald.paint`: `paint`, `hide`, `fade`, `resize`), and
 polyhedra, isosurfaces and vector arrows come from modifiers (`CoordinationPolyhedra`, `VectorVis`, ...).
