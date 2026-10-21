@@ -4060,3 +4060,27 @@ def test_notebook_status_drops_parts_instead_of_clipping(app):
     assert label.shown_text() == "3 steps"           # not "3 st…ved"
     label.resize(4, 20)
     assert label.shown_text() == ""
+
+
+def test_restart_keeps_outputs_and_restart_and_clear_drops_them(app):
+    """Restart clears the namespace but keeps the outputs, as in Jupyter; the Restart button's
+    menu and Notebook › Restart & clear outputs also remove them."""
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    w.panel.new_notebook()
+    view = w.panel.view
+    cell = view.add_cell("code", "x = 41\nprint('hello')\nx + 1")
+    view.run(cell)
+    view.wait()
+    assert [o.kind for o in cell.outputs] == ["text", "value"] and cell.state == "ok"
+    view.restart()
+    assert "x" not in view.notebook.namespace and cell.state == "stale"
+    assert [o.kind for o in cell.outputs] == ["text", "value"]
+    assert view.widget_for(cell).outputs.outputs == cell.outputs
+    assert [a.text() for a in view.restart_button.menu().actions()] == ["Restart && clear outputs"]
+    view.restart_button.menu().actions()[0].trigger()
+    assert cell.outputs == [] and not view.widget_for(cell).outputs.outputs
+    labels = [a.text() for a in w.notebook_menu.actions()]
+    assert labels[labels.index("&Restart") + 1] == "Restart && clear outputs"
+    w.close()
