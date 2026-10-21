@@ -65,6 +65,10 @@ uses fixed-width types (`int64_t`, `size_t`), never `long` (32-bit on Windows).
 family; scale pixel sizes by `devicePixelRatioF()`; save dialogs pass their result through
 `gui/file_dialogs.suffixed` (Windows adds the filter's extension, Qt's own dialog does not);
 shortcuts use `QKeySequence` standard keys or Ctrl, which Qt maps to Cmd on macOS.
+OpenGL widgets of one window share with its compositing context, made from the default format
+when the first one appears: `gui/viewport.use_vtk_surface_format()` sets VTK's 3.2 core format
+before that (`_app()` and `Viewport`). Linux and Windows drivers share across profiles, macOS
+does not, and the VTK view composited black there while the rest of the window worked.
 
 **Tests.** A change that touches paths, files, processes or the GUI adds a test that simulates
 the other platforms where that is possible: Windows paths through `ntpath` or

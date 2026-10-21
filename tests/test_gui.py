@@ -4383,3 +4383,22 @@ def test_next_notebook_does_not_inherit_the_previous_ones_bond_table(app, tmp_pa
     pipe = second.notebook.pipeline
     assert not {"Mg", "B"} & set(pipe.view.colors) and not pipe.view.bond_pairs
     w.close()
+
+
+def test_viewport_sets_vtk_surface_format_before_any_gl_widget(app):
+    """The placeholder (the window's first OpenGL widget) already gets VTK's 3.2 core format, so
+    the window's compositing context can share with the VTK view's on macOS (black view otherwise)."""
+    from ewald.gui.legacy_viewport import LegacyViewport
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport, vtk_surface_format
+
+    QtGui.QSurfaceFormat.setDefaultFormat(QtGui.QSurfaceFormat())  # Qt's default: legacy profile
+    try:
+        v = Viewport(ViewStyle())
+        assert QtGui.QSurfaceFormat.defaultFormat() == vtk_surface_format()
+        assert v._placeholder.format().profile() == QtGui.QSurfaceFormat.CoreProfile
+        assert v._placeholder.format().version() == (3, 2)
+        _dispose(v)
+        assert Viewport.uses_vtk and not LegacyViewport.uses_vtk  # GLView asks for OpenGL 1.x itself
+    finally:
+        QtGui.QSurfaceFormat.setDefaultFormat(vtk_surface_format())

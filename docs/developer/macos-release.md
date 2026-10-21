@@ -82,7 +82,8 @@ The cloud container is Linux, so this was checked there:
    which need a display; OpenGL visual references skip on non-Mesa drivers).
 3. `ewald gui tests/data/vasp/XDATCAR`: the menu bar says EWALD, Preferences is under EWALD › Settings
    (Cmd+,), Cmd+K opens the palette.
-4. Retina: the structure fills the whole viewport (not one quarter), picking and the hover
+4. The 3D view draws the atoms at all (black before the OpenGL 3.2 core default format; if it is
+   black again, compare with `EWALD_VIEWPORT=legacy ewald gui`). Retina: the structure fills the whole viewport (not one quarter), picking and the hover
    readout hit the atom under the cursor, and screenshots are at full resolution.
 5. Trackpad: two-finger scroll zooms, a click-drag orbits, and the right-click menu opens with a
    two-finger click.
