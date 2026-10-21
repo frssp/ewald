@@ -1748,6 +1748,49 @@ def test_interactive_detail_coarse_then_refine(app, pipe):
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_playback_keeps_bonds_and_one_level_of_detail(app, pipe):
+    """MD playback in Ball & stick flickered: frames near the frame-time budget went coarse (no bonds)
+    and were refined (bonds) between frames. Now a coarse frame keeps its bonds unless the atoms are
+    subsampled, playback keeps the detail its first frame got and refines only when it stops."""
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+
+    s = settings.Settings()
+    w = MainWindow(pipe, settings=s)
+    vp = w.viewport
+    assert vp.style.bonds_enabled and "bonds" in vp.plotter.actors
+    vp.detail_mode, vp._build_time = "auto", 1.0           # a full frame misses the budget: coarse
+    w.timeline.play.setChecked(True)
+    assert vp.playing
+    w.timeline.timer.stop()                                  # step by hand
+    w.timeline._set(1)
+    app.processEvents()
+    assert w.frame == 1 and vp.coarse and "bonds" in vp.plotter.actors   # coarse, bonds kept
+    assert not vp._refine_timer.isActive()                   # no refine between frames
+    vp._build_time = 0.0                                     # would be full now, but playback keeps coarse
+    w.timeline._set(0)
+    app.processEvents()
+    assert w.frame == 0 and vp.coarse and "bonds" in vp.plotter.actors
+    w.timeline.play.setChecked(False)
+    assert not vp.playing and vp._refine_timer.isActive()   # stopping refines the last frame
+    vp.refine()
+    assert not vp.coarse and "bonds" in vp.plotter.actors
+    # rotating keeps bonds too while the atoms are not subsampled
+    vp._render_time = 1.0
+    vp._go_coarse_for_motion()
+    assert vp.coarse and vp.plotter.actors["bonds"].GetVisibility()
+    vp.refine()
+    # subsampled atoms drop their bonds (half of them would dangle)
+    vp.interactive_atoms = 100
+    vp.redraw(coarse=True)
+    assert "bonds" not in vp.plotter.actors
+    vp.refine()
+    assert "bonds" in vp.plotter.actors
+    w.close()
+    w.deleteLater()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_feature_inventory_gui_section_is_current(tmp_path):
     # in a fresh process: other tests register plugin modifiers in the (global) Pipeline menu
     import subprocess

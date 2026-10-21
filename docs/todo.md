@@ -486,6 +486,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   dialog with a name typed without extension; settings with non-ASCII text on Korean Windows;
   per-monitor DPI at 125/150 %; Windows Credential Manager; `ewald api > llms.txt` in cmd and
   PowerShell. The same list on a real Mac.
+- MD playback in Ball & stick on Windows with a real GPU: bonds stay on through playback and
+  scrubbing (no coarse/full switching between frames), and the numpy bond tubes look like the
+  old `vtkTubeFilter` ones. Bonds whose length sits at the cutoff still appear and vanish
+  between frames, as in OVITO; a cutoff hysteresis was left out because a frame would then
+  depend on the frames played before it.
 - CUDA paths on a real NVIDIA GPU: CuPy kernels, neighbor lists, cluster analysis, the
   `--device cuda` GUI switch. CI and the cloud container have no GPU.
 - SSH remote files against a real HPC login node (ProxyJump, OTP, large dumps); tests use an

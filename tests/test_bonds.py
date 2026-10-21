@@ -164,3 +164,28 @@ def test_lammps_data_bonds(tmp_path):
     ids = d["Particle Identifier"][d.bonds.topology]
     np.testing.assert_array_equal(ids, [[1, 2], [1, 3]])
     np.testing.assert_allclose(d.bonds.lengths(d), [np.hypot(1, 1), 0.5])   # bond 1-2 crosses x boundary
+
+
+def test_tube_mesh_is_an_open_cylinder_per_segment():
+    """Bond sticks are built in numpy (vtkTubeFilter was most of a frame's build time during playback)."""
+    from ewald.render import TUBE_SIDES, tube_mesh
+
+    rng = np.random.default_rng(1)
+    start = rng.normal(size=(50, 3))
+    end = start + rng.normal(size=(50, 3))
+    end[0] = start[0] + [0, 0, 2.0]       # along an axis
+    end[1] = start[1]                     # zero length: still a valid (degenerate) ring
+    verts, faces, normals = tube_mesh(start, end, 0.2)
+    k, n = len(start), TUBE_SIDES
+    assert verts.shape == normals.shape == (2 * n * k, 3) and faces.shape == (2 * n * k, 3)
+    assert faces.min() == 0 and faces.max() == 2 * n * k - 1 and np.isfinite(verts).all()
+    assert np.allclose(np.linalg.norm(normals, axis=1), 1)
+    seg = np.repeat(np.arange(k), 2 * n)
+    axis = end - start
+    t = axis / np.maximum(np.linalg.norm(axis, axis=1, keepdims=True), 1e-12)
+    ok = np.linalg.norm(axis, axis=1)[seg] > 0
+    assert np.allclose(np.einsum("ij,ij->i", normals, t[seg])[ok], 0, atol=1e-12)   # normals point outward
+    ring = verts.reshape(k, 2, n, 3)
+    assert np.allclose(ring[:, 0] - 0.2 * normals.reshape(k, 2, n, 3)[:, 0], start[:, None])
+    assert np.allclose(ring[:, 1] - 0.2 * normals.reshape(k, 2, n, 3)[:, 1], end[:, None])
+    assert (faces // (2 * n) == np.repeat(np.arange(k), 2 * n)[:, None]).all()   # no face spans two bonds

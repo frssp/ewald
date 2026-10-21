@@ -362,8 +362,10 @@ Interaction comes first in the viewport, and quality comes first in rendered out
 Viewports › Performance, *Detail while moving* (Auto by default) controls what happens while
 you rotate, zoom, drag the timeline slider or play. Auto switches to a coarse scene only when a
 full-detail frame takes longer than 1/*Target frame rate* (30 fps). The coarse scene uses
-impostors, leaves out bonds and draws every k-th atom, so at most *Atoms while moving*
-(1,000,000) remain. Full detail returns after *Refine after* (0.3 s) of idle. *Always coarse*
+impostors and leaves out labels and measurements; above *Atoms while moving* (1,000,000) it
+draws every k-th atom and then leaves out bonds and arrows too. Full detail returns after
+*Refine after* (0.3 s) of idle. Playback keeps the level of detail its first frame got and
+refines only when it stops, so bonds do not blink between frames. *Always coarse*
 and *Always full* fix the choice. When frames are requested faster than they can be computed,
 the queued requests collapse into the latest one. The pipeline runs on a worker thread, so the
 window stays responsive while a long analysis computes: the view keeps the previous result and
