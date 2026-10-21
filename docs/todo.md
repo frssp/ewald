@@ -191,6 +191,10 @@ GUI
 - Flat (ASE) style in the ray tracer (now OpenGL and vector only), and a
   per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.
+- One display style per notebook tab: the window keeps a single `ViewStyle`, and a notebook whose
+  view nothing set yet is seeded from it (the previous tab's style). Settings for elements the new
+  structure lacks are dropped now (MgB2's Mg-B bonds no longer reach TiOF2), but theme, radius scale
+  and the rest still carry over between tabs.
 - Replicated cell display: a quick replicate control in the 3D view toolbar or the redesigned
   View tab (now Display panel, View menu, right-click menu and Ctrl+K).
 - Boundary (VESTA): repeat isosurfaces and grid slices over the boundary range too (now only
