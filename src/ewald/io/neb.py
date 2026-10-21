@@ -17,7 +17,9 @@ Three layouts are recognized:
 
 Every frame gets ``Timestep`` = image number and, when known, the image energy as the
 ``Energy`` attribute (eV). The :class:`~ewald.modifiers.NebEnergyProfile` modifier turns the
-band into the energy profile and barrier; :func:`ewald.import_file` adds it for these sources.
+band into the energy profile and barrier; :func:`ewald.import_file` adds it for these sources,
+after ``UnwrapTrajectories`` (each image file wraps atoms into the cell its own way) and before
+``OverlayFrames``.
 """
 from __future__ import annotations
 

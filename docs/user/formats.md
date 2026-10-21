@@ -116,9 +116,13 @@ still use ASE's readers.
 ## NEB runs
 
 A nudged elastic band run opens as a trajectory with one frame per image (`Timestep` = image
-number), and the pipeline starts with `NebEnergyProfile`, which gives the energy profile and
-barrier ([Modifiers](modifiers.md#nudged-elastic-band)), and `OverlayFrames`, which draws every
-other image see-through behind the current one, so the moving atoms show their whole path.
+number), and the pipeline starts with `UnwrapTrajectories`, `NebEnergyProfile`, which gives the
+energy profile and barrier ([Modifiers](modifiers.md#nudged-elastic-band)), and `OverlayFrames`,
+which draws every other image see-through behind the current one, so the moving atoms show their
+whole path. VASP writes each image wrapped into the cell on its own, so an atom on a cell face
+sits at x = 0 in one CONTCAR and at x = L in the next; `UnwrapTrajectories` follows every atom
+from image 00 by the minimum image, and the band plays without atoms jumping across the cell.
+The reaction coordinate uses the minimum image either way.
 
 | Layout | Open with | Each image | Energies |
 |---|---|---|---|
