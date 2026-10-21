@@ -167,12 +167,20 @@ class ViewStyle:
     def ensure_bond_pairs(self, types):
         """Seed an empty bond table like VESTA: one row per type pair, max = bond_factor * sum of covalent
         radii. In compounds metal-metal pairs are left out (SrTiO3 gets Ti-O and Sr-O, not Sr-Ti)."""
+        present = {str(t) for t in np.unique(np.asarray(types))}
         if self.bond_pairs:
-            return
+            if not present or self.bond_pairs != self._auto_pairs or present == self._auto_types:
+                return
+            # the table was seeded for another structure (the previous file or notebook): seed it again
         from .bonds import covalent_pairs
 
-        for a, b, lo, hi in covalent_pairs(np.unique(np.asarray(types)), self.bond_factor):
-            self.bond_pairs.append([a, b, lo, round(float(hi), 2)])
+        self.bond_pairs = [[a, b, lo, round(float(hi), 2)]
+                           for a, b, lo, hi in covalent_pairs(np.unique(np.asarray(types)), self.bond_factor)]
+        self._auto_pairs = [list(p) for p in self.bond_pairs]
+        self._auto_types = present
+
+    _auto_pairs = None   # the bond table ensure_bond_pairs seeded last, and for which types
+    _auto_types = frozenset()
 
     # ------------------------------------------------------------ notebook code (ewald.view3d.View)
     def apply_view(self, view, types=()):
@@ -271,9 +279,17 @@ class ViewStyle:
             colors[t] = tuple(round(float(x), 4) for x in c) if not isinstance(c, str) else c
         radii = {t: float(r) for t, r in self.type_radii.items()
                  if not (t in filled and filled[t][1] is not None and filled[t][1] == r)}
+        # per-type settings of elements this structure does not have (the previous file's, carried in
+        # the window's style) stay out of the notebook's view
+        present = {str(t) for t in np.unique(np.asarray(types))} if len(types) else None
+
+        def own(d):
+            return d if present is None else {t: v for t, v in d.items() if str(t) in present}
+
+        colors, radii = own(colors), own(radii)
         out = {"style": self.preset if self.preset in presets else DEFAULT_PRESET,
                "theme": self.theme or None, "atom_style": self.atom_style, "radius_scale": self.radius_scale,
-               "colors": colors, "radii": radii, "oxidation_states": dict(self.oxidation_states),
+               "colors": colors, "radii": radii, "oxidation_states": own(dict(self.oxidation_states)),
                "bonds": bool(self.bonds_enabled), "bond_factor": self.bond_factor, "bond_radius": self.bond_radius,
                "cell": bool(self.show_cell), "cell_width": self.cell_width,
                "boundary": list(self.boundary) or None, "boundary_bonds": self.boundary_bonds,
@@ -284,7 +300,7 @@ class ViewStyle:
                **{k: (list(getattr(self, k)) if isinstance(getattr(self, k), (list, tuple)) else getattr(self, k))
                   for k in TRAJECTORY_KEYS},
                "cell_radius": self.cell_radius, "surfaces": {k: dict(v) for k, v in self.surfaces.items()},
-               "transparency": dict(self.type_transparency), "selection": self.selection, "labels": self.labels,
+               "transparency": own(dict(self.type_transparency)), "selection": self.selection, "labels": self.labels,
                "light": self.light, "measurements": [list(m) for m in self.measurements],
                "color_by": self.color_by, "colormap": self.colormap,
                "color_range": None if self.color_range is None else list(self.color_range)}
@@ -299,6 +315,7 @@ class ViewStyle:
 
             auto = [[a, b, lo, round(float(hi), 2)] for a, b, lo, hi in
                     covalent_pairs(np.unique(np.asarray(types)), self.bond_factor)]
-            if [list(p) for p in self.bond_pairs] != auto:
-                out["bond_pairs"] = [list(p) for p in self.bond_pairs]
+            rows = [list(p) for p in self.bond_pairs if {str(p[0]), str(p[1])} <= present | {"*"}]
+            if rows and rows != auto:
+                out["bond_pairs"] = rows
         return out

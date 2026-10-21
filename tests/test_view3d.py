@@ -310,6 +310,26 @@ def test_view_style_round_trips_the_new_settings(srtio3):
     assert back["atoms"] is False and back["cell_radius"] == 0.1 and back["surfaces"] == {"isosurface": {"visible": False}}
 
 
+def test_view_style_drops_the_previous_structures_elements():
+    """The window's style seeds a new notebook's view: MgB2's bond table and colors stay out of TiOF2's."""
+    from ewald.view_style import ViewStyle
+
+    st = ViewStyle()
+    st.apply_view(View(colors={"Mg": "#f2a33a", "B": "#3a6fd9"}, bonds=True), ["Mg", "B", "B"])
+    assert frozenset(("Mg", "B")) in {frozenset((a, b)) for a, b, *_ in st.bond_pairs}
+    tiof2 = ["Ti", "O", "O", "F"]
+    seeded = View(**st.view_settings(tiof2)).changed()
+    assert "bond_pairs" not in seeded and "colors" not in seeded
+    st.ensure_bond_pairs(tiof2)                          # the auto table follows the new structure
+    names = {s for a, b, *_ in st.bond_pairs for s in (a, b)}
+    assert names <= set(tiof2) and {"Ti", "O", "F"} <= names
+    st.bond_pairs = [["Ti", "O", 0.0, 2.2]]               # a table the user wrote is kept
+    st.ensure_bond_pairs(["Ti", "O", "F", "Nb"])
+    assert st.bond_pairs == [["Ti", "O", 0.0, 2.2]]
+    st.bond_pairs.append(["Mg", "B", 0.0, 2.0])
+    assert View(**st.view_settings(tiof2)).changed()["bond_pairs"] == [["Ti", "O", 0.0, 2.2]]
+
+
 def test_type_transparency_and_selection_highlight(srtio3):
     from ewald.modifiers import ExpressionSelection
     from ewald.scene import build
