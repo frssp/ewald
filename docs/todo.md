@@ -10,6 +10,9 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Opening without running (`python.run_notebooks`, default "never"): covers notebook files only. A
+  folder or workflow (`simagent:`, AiiDA, calculation folders) still runs its generated `load(...)`
+  notebook at once, since it is ewald's own code; no per-notebook "always run this one" choice yet.
 - Open dialog: `log.lammps` and `OSZICAR` are read only as companions of a trajectory, not
   opened on their own.
 - Several files as one trajectory: File › Open and drops join several data files in natural order
@@ -18,6 +21,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   frame, which only the LAMMPS dump reader gives cheaply (extxyz `Timestep=` comments, H5MD
   steps and XTC steps are not used yet).
 - View tab: a card has no per-card reset to defaults.
+- Atom color rules (`ewald.color_rule`): a step's category colors (structure types) can only be changed
+  through the step (`color_by_type=False` plus `paint`), not per category in the Colors card as OVITO's
+  type list does; `color_by` an integer property uses a continuous color map, not one color per value;
+  the legacy OpenGL (ssh -X) viewport draws no category legend, and the GUI viewport's legend has no
+  on/off switch (`Viewport.show_legend`). Plugin modifiers that write "Color" show as "custom" until
+  they call `color_rule.record` (not yet in `plugin_api`).
 
 - Workflows (`ewald.workflow`): a table that compares the scalars of every step of a workflow
   (energies, gaps, forces) and of several workflows side by side, and opening one step's input
@@ -96,7 +105,7 @@ GUI
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
   view does not have yet (picks as code, the viewport axes widget; measurement labels in the
   legacy OpenGL 1.x viewport, and lines that show through atoms; audit in the project files `ewald-review/view-elements-audit.md`);
-  the View tab cards (Atoms, Types, Bonds, Surfaces, Cell, Labels, Camera, Elements) could take the visual
+  the View tab cards (Atoms, Colors, Types, Bonds, Surfaces, Cell, Labels, Camera, Elements) could take the visual
   element names `pipe.view.elements` uses (Particles, Bonds, Simulation cell, ...); label size,
   color and types and the selection color are code only (the cards show on/off and the text); the camera reaches the view cell
   only through Insert › View settings with the camera (not on every rotation); the Render page

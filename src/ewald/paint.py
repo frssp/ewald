@@ -35,11 +35,16 @@ def _mask(data, where) -> np.ndarray:
 
 def paint(data, where, color) -> None:
     """Set the color of the particles ``where`` is true (the others keep theirs)."""
+    from . import color_rule
     from .render import _rgb, default_colors
 
+    base = color_rule.rule(data)
     colors = np.array(default_colors(data), float)
-    colors[_mask(data, where)] = _rgb(color)
+    mask = _mask(data, where)
+    colors[mask] = _rgb(color)
     data["Color"] = colors
+    what = where if isinstance(where, str) else "a mask in code"
+    color_rule.record(data, color_rule.painted(base, "paint()", what, _rgb(color), np.count_nonzero(mask)))
 
 
 def hide(data, where) -> None:

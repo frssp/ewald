@@ -156,9 +156,11 @@ class LegacyViewport(Viewport):
 
             scene = Scene()
         else:
+            from ..color_rule import take
+
             kw = dict(self.style.scene_kwargs())
             light = kw.pop("light", None)
-            scene = build(self.data, ctx=SceneContext(), visuals=kw.pop("visuals", None), **kw)
+            scene = build(take(self.data, kw), ctx=SceneContext(), visuals=kw.pop("visuals", None), **kw)
         dark = _is_dark(self.style.background)
         from matplotlib.colors import to_rgb
 
