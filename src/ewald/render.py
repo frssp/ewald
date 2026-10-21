@@ -940,7 +940,7 @@ def _add_colorbar(plotter, data, font_size=None, legends=()):
             title += " "
         titles.add(title)
         plotter.add_scalar_bar(title=title, mapper=actor.mapper, vertical=True, position_x=0.86 - 0.13 * k,
-                               position_y=0.1, height=0.8, width=0.06, color="black", fmt="%.3g",
+                               position_y=0.1, height=0.8, width=0.06, color="black", fmt="%.4g",
                                **({"title_font_size": font_size + 2, "label_font_size": font_size} if font_size else {}))
     return bars
 
