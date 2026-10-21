@@ -1,4 +1,6 @@
 import json
+import shutil
+import sys
 
 import pytest
 
@@ -176,17 +178,42 @@ def test_downloads_use_a_tls_context(monkeypatch):
 
 
 def test_pip_command_falls_back_to_uv_without_pip(monkeypatch):
-    # a uv-made environment has no pip; uv needs --system-certs behind a re-signing proxy
+    # a uv-made environment has no pip; uv needs the OS certificate store behind a re-signing
+    # proxy, asked for through the environment: --system-certs only exists in newer uv and
+    # --native-tls only in older uv, and either flag is an error on the other (user, Windows)
     import sys
 
     monkeypatch.setattr(pc.importlib.util, "find_spec", lambda name: None)
     monkeypatch.setattr(pc.shutil, "which", lambda name: "/usr/bin/uv")
     cmd = pc.pip_command("install", "ewald-x")
-    assert cmd[:3] == ["/usr/bin/uv", "pip", "install"] and "--system-certs" in cmd
+    assert cmd[:3] == ["/usr/bin/uv", "pip", "install"]
+    assert not any(a in cmd for a in ("--system-certs", "--native-tls"))
+    assert pc.pip_env("ewald-x") == {"UV_NATIVE_TLS": "1", "UV_SYSTEM_CERTS": "1"}
     assert cmd[cmd.index("--python") + 1] == sys.executable and cmd[-1] == "ewald-x"
     assert "--upgrade" in pc.pip_command("update", "ewald-x")
     un = pc.pip_command("uninstall", "ewald-x")
     assert un[:3] == ["/usr/bin/uv", "pip", "uninstall"] and "-y" not in un and un[-1] == "ewald-x"
+
+
+def test_uv_env_keeps_the_github_token(monkeypatch):
+    monkeypatch.setattr(pc.importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(pc.shutil, "which", lambda name: "C:\\Users\\me\\.local\\bin\\uv.exe")
+    monkeypatch.setattr(pc, "github_token", lambda: "tok")
+    env = pc.pip_env("git+https://github.com/frssp/ewald-plugins@abc#subdirectory=packages/ewald-plumed")
+    assert env["UV_NATIVE_TLS"] == env["UV_SYSTEM_CERTS"] == "1"
+    assert any(v.startswith("AUTHORIZATION: basic ") for v in env.values())
+    assert pc.pip_command("install", "x")[0].endswith("uv.exe")
+
+
+@pytest.mark.skipif(shutil.which("uv") is None, reason="needs uv")
+def test_real_uv_accepts_the_command(tmp_path):
+    # the installed uv parses the command and the environment (a dry run, nothing downloaded)
+    import os
+    import subprocess
+
+    cmd = [shutil.which("uv"), "pip", "install", "--python", sys.executable, "--dry-run", "--offline", "--no-deps", "ewald"]
+    r = subprocess.run(cmd, env=os.environ | pc.UV_TLS_ENV, capture_output=True, encoding="utf-8")
+    assert "unexpected argument" not in r.stderr, r.stderr
 
 
 def test_install_checks_the_catalog_sha256_before_writing(tmp_path):
