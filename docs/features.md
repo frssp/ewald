@@ -613,6 +613,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Run all (`Ctrl+Shift+Return`)
 - Run current cell and below
 - Restart
+- Restart & clear outputs
 - Kernel
 - Trust notebook…
 - Move cell up (`Ctrl+Shift+Up`)

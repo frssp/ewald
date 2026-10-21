@@ -121,8 +121,12 @@ class NotebookView(QtWidgets.QWidget):
         run_all.setIconSize(QtCore.QSize(header.ICON, header.ICON))
         run_all.clicked.connect(self.run_all)
         restart = self.restart_button = QtWidgets.QToolButton(text="Restart",
-                                                              toolTip="Clear the namespace (cells keep their code)")
+                                                              toolTip="Clear the namespace (cells keep their code and outputs)")
         restart.clicked.connect(self.restart)
+        restart.setPopupMode(QtWidgets.QToolButton.MenuButtonPopup)
+        restart_menu = QtWidgets.QMenu(restart)
+        restart_menu.addAction("Restart && clear outputs", lambda: self.restart(clear_outputs=True))
+        restart.setMenu(restart_menu)
         self.interrupt_button = QtWidgets.QToolButton(text="Interrupt", objectName="interrupt",
                                                       toolTip="Stop the running cell")
         self.interrupt_button.setProperty("ewald_icon", "stop")
@@ -995,10 +999,13 @@ class NotebookView(QtWidgets.QWidget):
         self.titleChanged.emit()
         return True
 
-    def restart(self):
+    def restart(self, clear_outputs: bool = False):
+        """Clear the namespace; the outputs stay (as in Jupyter) unless ``clear_outputs``."""
         if self.running:
             return
         self.notebook.reset()
+        if clear_outputs:
+            self.clear_outputs()
         self.update_run_bar()
         self.update_results()
 
