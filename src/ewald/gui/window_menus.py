@@ -299,7 +299,9 @@ class MenusMixin:
         n.addAction("Run &all", lambda: self._on_view("run_all"), "Ctrl+Shift+Return").setToolTip(
             "Restart and run every cell from the top")
         n.addAction("Run current cell and &below", lambda: self._cell_action("below"))
-        n.addAction("&Restart", lambda: self._on_view("restart"))
+        n.addAction("&Restart", lambda: self._on_view("restart")).setToolTip(
+            "Clear the namespace; cells keep their code and outputs")
+        n.addAction("Restart && clear outputs", lambda: self._on_view("restart", True))
         n.setToolTipsVisible(True)
         self.kernel_menu = n.addMenu("&Kernel")
         self.notebook_menu = n

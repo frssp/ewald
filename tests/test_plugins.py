@@ -190,6 +190,23 @@ def test_gui_open_dialog_lists_plugin_patterns():
     assert "*.pts" in file_filter() and "XDATCAR*" in file_filter()
 
 
+def test_gui_open_dialog_defaults_to_all_supported_files():
+    pytest.importorskip("PySide6")
+    pytest.importorskip("pyvistaqt")
+    from ewald.gui.window_files import open_filters
+
+    plugins.register_reader("pts", lambda p: [], patterns=("*.pts",), description="Point cloud: x y z")
+    filters = open_filters()
+    first = filters[0]
+    assert first.startswith("All supported files (") and filters[-1] == "All files (*)"
+    for pattern in ("*.pts", "*POSCAR*", "*CONTCAR*", "XDATCAR*", "OUTCAR*", "CHGCAR*", "vasprun*.xml",
+                    "*.lammpstrj", "*.data", "*.cube", "*.ewd", "*.ipynb", "*.ewald"):
+        assert pattern in first.split("(", 1)[1]
+    assert "Point cloud (*.pts *.PTS)" in filters          # one filter per format, named from its description
+    assert "VASP XDATCAR (XDATCAR* xdatcar*)" in filters   # both cases: Qt matches case on Linux only
+    assert "*.CUBE" in first and "poscar*" in first.lower()
+
+
 def test_builtin_formats_live_in_the_registry(vasp_dir, lammps_dir):
     st = {r["name"]: r for r in plugins.status()["readers"]}
     assert {"lammps-dump", "xdatcar", "lammps-data", "ase"} <= set(st)
@@ -202,7 +219,7 @@ def test_builtin_formats_live_in_the_registry(vasp_dir, lammps_dir):
     assert plugins.find_reader("x", "espresso-in").name == "ase"           # unknown names go to ASE
     assert import_file(vasp_dir / "POSCAR", format="vasp").compute(0).count > 0
     structure = plugins.file_patterns("structure")
-    assert structure.index("*.lammpstrj") < structure.index("POSCAR*")   # priority order
+    assert structure.index("*.lammpstrj") < structure.index("*POSCAR*")   # priority order
 
 
 def test_plugin_can_replace_a_builtin(vasp_dir):

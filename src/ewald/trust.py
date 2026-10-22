@@ -106,7 +106,7 @@ def remember_file(path) -> bool:
     try:
         store.parent.mkdir(parents=True, exist_ok=True)
         tmp = store.with_name(store.name + ".tmp")
-        tmp.write_text(json.dumps({"format": 1, "sha256": entries}, indent=0), encoding="utf-8")
+        tmp.write_text(json.dumps({"format": 1, "sha256": entries}, indent=0), encoding="utf-8", newline="\n")
         os.replace(tmp, store)
     except OSError:
         return False

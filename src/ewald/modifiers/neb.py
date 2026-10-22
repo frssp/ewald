@@ -16,7 +16,8 @@ class NebEnergyProfile(Modifier):
     energies come from the attribute ``energy`` (eV; ``Energy`` from OUTCAR/vasprun or the
     LAMMPS NEB log, else ``energy``/``PotEng``/... when present). The reaction coordinate is
     the summed distance between neighbouring images in 3N-dimensional space (Angstrom,
-    minimum image), as VTST's nebbarrier.pl computes it. When the frames carry ``Force``,
+    minimum image between neighbouring images), as VTST's nebbarrier.pl and ASE's NEBTools
+    compute it, so wrapping at the cell faces does not lengthen the path. When the frames carry ``Force``,
     the force along the improved tangent (Henkelman & Jonsson 2000) gives the slope at each
     image and the profile is VTST's cubic spline (nebspline.pl); without forces it is a
     natural cubic spline through the energies.

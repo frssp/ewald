@@ -184,7 +184,7 @@ def write_xsf(path, frames, property=None, grid=None):
     animated = len(frames) > 1
     first = frames[0]
     periodic = first.cell.is_valid and first.cell.pbc.any()
-    with open(os.fspath(path), "w") as fh:
+    with open(os.fspath(path), "w", encoding="utf-8", newline="\n") as fh:
         fh.write("# written by ewald\n")
         if animated:
             fh.write(f"ANIMSTEPS {len(frames)}\n")

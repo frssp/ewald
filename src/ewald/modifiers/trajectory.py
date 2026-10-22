@@ -296,8 +296,8 @@ class GenerateTrajectoryLines(_TrajectoryModifier):
 
     Traces the particles selected at frame ``start`` (all of them when nothing is selected or
     ``only_selected`` is False). Writes ``tables['trajectory-lines']`` with one row per particle
-    and frame (``Position``, ``Particle Identifier``, ``Time``), and the particle properties
-    'Path Length' (summed step lengths), 'Net Displacement' and 'Max Displacement' (from the
+    and frame (``Position``, ``Particle Identifier``, ``Time`` (the timestep), ``Frame``), and the
+    particle properties 'Path Length' (summed step lengths), 'Net Displacement' and 'Max Displacement' (from the
     position at ``start``); untraced particles get 0. ``unwrap_trajectories`` keeps paths
     continuous across periodic boundaries.
     """
@@ -329,7 +329,8 @@ class GenerateTrajectoryLines(_TrajectoryModifier):
         frames = np.asarray(list(self._frames(ctx)))
         lines = {"Position": shown.transpose(1, 0, 2).reshape(-1, 3),
                  "Particle Identifier": np.repeat(line_ids, T),
-                 "Time": np.tile(traj["Timestep"] if len(traj["Timestep"]) == T else frames, n)}
+                 "Time": np.tile(traj["Timestep"] if len(traj["Timestep"]) == T else frames, n),
+                 "Frame": np.tile(frames if len(frames) == T else np.arange(T), n)}
         stats = {"Path Length": path, "Net Displacement": net, "Max Displacement": peak}
         index = {k: traj[k] for k in ("Particle Identifier", "Index")}
         return lines, index, stats
@@ -347,6 +348,7 @@ class OverlayFrames(_TrajectoryModifier):
     They are appended after the real particles with the current frame's properties (type,
     color, radius), 'Transparency', 'Overlay Frame' (the frame each copy comes from; -1 for
     the real particles), no selection and zero vector properties, so put this modifier last.
+    The display bonds are searched on the real particles only, so copies are drawn without bonds.
     """
 
     def __init__(self, transparency: float = 0.7, min_displacement: float = 0.1, start: int = 0,

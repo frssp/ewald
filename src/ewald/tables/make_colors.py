@@ -29,13 +29,13 @@ def main(argv=None):
     import yaml
 
     argv = sys.argv[1:] if argv is None else argv
-    schemes = yaml.safe_load(_yaml_path(argv[0] if argv else None).read_text())
+    schemes = yaml.safe_load(_yaml_path(argv[0] if argv else None).read_text(encoding="utf-8"))
     out = {"sources": SOURCES,
            "VESTA": {el: [round(c / 255, 4) for c in rgb] for el, rgb in sorted(schemes["VESTA"].items())}}
     target = Path(__file__).with_name("colors.json")
     rows = ",\n".join(f"  {json.dumps(el)}: {json.dumps(rgb)}" for el, rgb in out["VESTA"].items())
     text = '{\n "sources": ' + json.dumps(SOURCES, indent=2).replace("\n", "\n ") + ',\n "VESTA": {\n' + rows + "\n }\n}\n"
-    target.write_text(text)
+    target.write_text(text, encoding="utf-8", newline="\n")
     print(f"wrote {target} ({len(out['VESTA'])} elements)")
 
 

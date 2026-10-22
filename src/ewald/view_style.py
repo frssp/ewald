@@ -21,6 +21,9 @@ def default_background() -> str:
 def set_default_background(color: str):
     _background[0] = color
 _THEMED = ("type_colors", "background", "cell_color", "radius_preset", "theme")
+# trajectory-line color map settings: the same names in ViewStyle, pipe.view and render()
+TRAJECTORY_KEYS = ("trajectory_color_by", "trajectory_colormap", "trajectory_color_range", "trajectory_time_range",
+                   "trajectory_trail", "trajectory_radius")
 
 
 @dataclass
@@ -48,6 +51,12 @@ class ViewStyle:
     replicate_cell: str = "super"                     # cell lines of a replicated view: super / unit / all
     vectors: object = None                            # per-atom vector properties drawn as arrows (render's vectors=)
     trajectory_width: float = 2.0                     # trajectory lines (pixels)
+    trajectory_color_by: str | None = None            # color map by 'Time', 'Frame', 'Step Length', ...; None: atom colors
+    trajectory_colormap: str = "viridis"
+    trajectory_color_range: list | None = None        # [lo, hi] of the color map (either may be None)
+    trajectory_time_range: list | None = None         # [t0, t1] Time window drawn
+    trajectory_trail: object = None                   # True: up to the current frame; a number: that much Time before it
+    trajectory_radius: float | None = None            # ray-traced tube radius (A); None: from the width
     show_atoms: bool = True                           # the Particles element (False: a stick model)
     cell_radius: float | None = None                  # ray-traced cell tube radius (A); None: automatic
     surfaces: dict = field(default_factory=dict)      # data.surfaces look by name: {visible, color, transparency, edges}
@@ -55,6 +64,9 @@ class ViewStyle:
     selection: object = True                          # highlight 'Selection': True (red), False or a color
     labels: object = None                             # atom labels: True, a template or {text, types, size, color}
     measurements: list = field(default_factory=list)  # [[i, j], [i, j, k], ...] distances / angles / dihedrals
+    color_by: str | None = None                       # None: the steps' colors; 'type'; or a property via colormap
+    colormap: str = "viridis"
+    color_range: list | None = None                   # [lo, hi] of the color_by color map (either may be None)
     light: object = None                              # key light: [x, y, z] (camera frame) or {direction|azimuth/elevation, intensity}
 
     def apply_preset(self, name: str, types=()):
@@ -90,6 +102,10 @@ class ViewStyle:
             kw["vectors"] = self.vectors
         if self.trajectory_width != 2.0:
             kw["trajectory_width"] = self.trajectory_width
+        for k in TRAJECTORY_KEYS:
+            v = getattr(self, k)
+            if v is not None and v != "viridis":
+                kw[k] = list(v) if isinstance(v, (list, tuple)) else v
         if not self.show_atoms:
             kw["show_atoms"] = False
         if self.cell_radius:
@@ -108,6 +124,10 @@ class ViewStyle:
             kw["measurements"] = [list(m) for m in self.measurements]
         if self.light is not None:
             kw["light"] = dict(self.light) if isinstance(self.light, dict) else list(self.light)
+        if self.color_by is not None:
+            kw["color_by"], kw["colormap"] = self.color_by, self.colormap
+            if self.color_range is not None:
+                kw["color_range"] = list(self.color_range)
         if self.boundary:
             kw["boundary"] = [list(map(float, p)) for p in self.boundary] if np.ndim(self.boundary) == 2 \
                 else [float(x) for x in self.boundary]
@@ -147,12 +167,20 @@ class ViewStyle:
     def ensure_bond_pairs(self, types):
         """Seed an empty bond table like VESTA: one row per type pair, max = bond_factor * sum of covalent
         radii. In compounds metal-metal pairs are left out (SrTiO3 gets Ti-O and Sr-O, not Sr-Ti)."""
+        present = {str(t) for t in np.unique(np.asarray(types))}
         if self.bond_pairs:
-            return
+            if not present or self.bond_pairs != self._auto_pairs or present == self._auto_types:
+                return
+            # the table was seeded for another structure (the previous file or notebook): seed it again
         from .bonds import covalent_pairs
 
-        for a, b, lo, hi in covalent_pairs(np.unique(np.asarray(types)), self.bond_factor):
-            self.bond_pairs.append([a, b, lo, round(float(hi), 2)])
+        self.bond_pairs = [[a, b, lo, round(float(hi), 2)]
+                           for a, b, lo, hi in covalent_pairs(np.unique(np.asarray(types)), self.bond_factor)]
+        self._auto_pairs = [list(p) for p in self.bond_pairs]
+        self._auto_types = present
+
+    _auto_pairs = None   # the bond table ensure_bond_pairs seeded last, and for which types
+    _auto_types = frozenset()
 
     # ------------------------------------------------------------ notebook code (ewald.view3d.View)
     def apply_view(self, view, types=()):
@@ -203,6 +231,8 @@ class ViewStyle:
         self.selection = view.selection
         self.labels = view.labels
         self.light = view.light
+        self.color_by, self.colormap = view.color_by, view.colormap
+        self.color_range = None if view.color_range is None else list(view.color_range)
         self.measurements = [list(m) for m in view.measurements]
         self.boundary = list(view.boundary or [])
         self.boundary_bonds = view.boundary_bonds
@@ -212,6 +242,9 @@ class ViewStyle:
                         for v in view.visuals]
         self.vectors = view.vectors
         self.trajectory_width = float(view.trajectory_width)
+        for k in TRAJECTORY_KEYS:
+            v = getattr(view, k)
+            setattr(self, k, list(v) if isinstance(v, (list, tuple)) else v)
 
     def view_settings(self, types=()) -> dict:
         """The display settings of this style as :class:`ewald.view3d.View` settings (what the notebook's
@@ -246,9 +279,17 @@ class ViewStyle:
             colors[t] = tuple(round(float(x), 4) for x in c) if not isinstance(c, str) else c
         radii = {t: float(r) for t, r in self.type_radii.items()
                  if not (t in filled and filled[t][1] is not None and filled[t][1] == r)}
+        # per-type settings of elements this structure does not have (the previous file's, carried in
+        # the window's style) stay out of the notebook's view
+        present = {str(t) for t in np.unique(np.asarray(types))} if len(types) else None
+
+        def own(d):
+            return d if present is None else {t: v for t, v in d.items() if str(t) in present}
+
+        colors, radii = own(colors), own(radii)
         out = {"style": self.preset if self.preset in presets else DEFAULT_PRESET,
                "theme": self.theme or None, "atom_style": self.atom_style, "radius_scale": self.radius_scale,
-               "colors": colors, "radii": radii, "oxidation_states": dict(self.oxidation_states),
+               "colors": colors, "radii": radii, "oxidation_states": own(dict(self.oxidation_states)),
                "bonds": bool(self.bonds_enabled), "bond_factor": self.bond_factor, "bond_radius": self.bond_radius,
                "cell": bool(self.show_cell), "cell_width": self.cell_width,
                "boundary": list(self.boundary) or None, "boundary_bonds": self.boundary_bonds,
@@ -256,9 +297,13 @@ class ViewStyle:
                else None, "replicate_cell": self.replicate_cell,
                "visuals": [dict(v) for v in self.visuals], "vectors": self.vectors,
                "trajectory_width": self.trajectory_width, "atoms": bool(self.show_atoms),
+               **{k: (list(getattr(self, k)) if isinstance(getattr(self, k), (list, tuple)) else getattr(self, k))
+                  for k in TRAJECTORY_KEYS},
                "cell_radius": self.cell_radius, "surfaces": {k: dict(v) for k, v in self.surfaces.items()},
-               "transparency": dict(self.type_transparency), "selection": self.selection, "labels": self.labels,
-               "light": self.light, "measurements": [list(m) for m in self.measurements]}
+               "transparency": own(dict(self.type_transparency)), "selection": self.selection, "labels": self.labels,
+               "light": self.light, "measurements": [list(m) for m in self.measurements],
+               "color_by": self.color_by, "colormap": self.colormap,
+               "color_range": None if self.color_range is None else list(self.color_range)}
         if theme is None or theme.radius_preset != self.radius_preset:
             out["radius_preset"] = self.radius_preset
         base = theme.background if theme is not None and theme.background is not None else default_background()
@@ -270,6 +315,7 @@ class ViewStyle:
 
             auto = [[a, b, lo, round(float(hi), 2)] for a, b, lo, hi in
                     covalent_pairs(np.unique(np.asarray(types)), self.bond_factor)]
-            if [list(p) for p in self.bond_pairs] != auto:
-                out["bond_pairs"] = [list(p) for p in self.bond_pairs]
+            rows = [list(p) for p in self.bond_pairs if {str(p[0]), str(p[1])} <= present | {"*"}]
+            if rows and rows != auto:
+                out["bond_pairs"] = rows
         return out

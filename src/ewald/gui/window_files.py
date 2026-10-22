@@ -8,18 +8,55 @@ from PySide6 import QtCore, QtWidgets
 from .. import examples
 from .. import plugins
 from ..io import import_file
+from ..io.remote import is_remote
 from ..render import camera_state
 from .busy import Cancelled, busy, wait_for
+from .file_dialogs import suffixed
 from .welcome import add_recent
 
 
-def file_filter() -> str:
-    """Open-dialog filter from the reader registry (built-in formats and plugins)."""
+def _format_label(plugin) -> str:
+    """Short name of a reader for its open-dialog filter: the description up to its details."""
+    if plugin.name == "ase":
+        return "POSCAR/CONTCAR and other formats via ASE"
+    text = plugin.description or plugin.name
+    for stop in (":", ";", " (", ", lazy", ", needs", ", one row", ", fixed"):
+        text = text.split(stop)[0]
+    return text.strip() or plugin.name
+
+
+def _any_case(patterns) -> list[str]:
+    """Each pattern as written plus lower- and upper-case copies: Qt's dialog matches case on
+    Linux but not on Windows or macOS, so ``*.cif`` alone would hide ``X.CIF`` on Linux only."""
+    return list(dict.fromkeys(v for p in patterns for v in (p, p.lower(), p.upper())))
+
+
+def open_filters() -> list[str]:
+    """Open-dialog filters from the reader registry (built-in formats and plugins): first every
+    supported file at once (extensionless VASP names such as POSCAR or XDATCAR included), then
+    the groups, one filter per format, and all files."""
     from .. import plugins
 
-    return (f"Simulation files ({' '.join(plugins.file_patterns('structure'))});;"
-            f"Volumetric data ({' '.join(plugins.file_patterns('volumetric'))});;"
-            "Notebooks (*.ewd *.ipynb *.py);;Sessions (*.ewald);;All files (*)")
+    notebooks = ["*.ewd", "*.ipynb", "*.py", "*.ewald"]
+    data = _any_case(plugins.file_patterns())
+    out = [f"All supported files ({' '.join(data + [p for p in notebooks if p not in data])})"]
+    for label, category in (("Simulation files", "structure"), ("Volumetric data", "volumetric")):
+        if patterns := plugins.file_patterns(category):
+            out.append(f"{label} ({' '.join(_any_case(patterns))})")
+    out += ["Notebooks (*.ewd *.ipynb *.py)", "Sessions (*.ewald)"]
+    per_format = {}
+    for plugin in sorted(plugins.readers().values(), key=lambda p: (p.priority is None, p.priority or 0)):
+        if plugin.patterns and not plugin.schemes:
+            patterns = per_format.setdefault(_format_label(plugin), [])
+            patterns += [p for p in plugin.patterns if p not in patterns]
+    out += [f"{label} ({' '.join(_any_case(patterns))})" for label, patterns in
+            sorted(per_format.items(), key=lambda item: (item[0].startswith("POSCAR"), item[0].lower()))]
+    return out + ["All files (*)"]
+
+
+def file_filter() -> str:
+    """The open-dialog filter string; "All supported files" comes first and is the default."""
+    return ";;".join(open_filters())
 
 
 SESSION_FILTER = "ewald session (*.ewald)"
@@ -62,7 +99,7 @@ class FilesMixin:
         several = isinstance(path, (list, tuple))
         first = str(path[0]) if several else str(path)
         name = os.path.basename(first) + (f" + {len(path) - 1} more" if several and len(path) > 1 else "")
-        remote = ":" in first and not os.path.exists(first)     # host:/path, ssh://
+        remote = is_remote(first)     # host:/path, ssh:// (never a C:\ drive)
         text = f"{'Downloading' if remote else 'Opening'} {name}…"
         try:
             pipe = wait_for(lambda: import_file(path, **kwargs), text, self, say=self.message)
@@ -162,17 +199,19 @@ class FilesMixin:
 
     # ---------------------------------------------------------------- notebooks
     def open_notebook(self, path, run: bool | None = None):
-        """Open a notebook (``.ewd``, ``.ipynb`` or ``.py``) in a new tab, as Jupyter does: a
-        notebook you saved or trusted before (the same bytes, :func:`ewald.trust.is_trusted_file`)
-        opens trusted and runs unless ``python.run_notebooks`` is "never"; any other file asks
-        first (unless "never") and otherwise opens restricted, showing the results saved in it.
-        An ``.ewd``'s plugins load only once it is trusted."""
+        """Open a notebook (``.ewd``, ``.ipynb`` or ``.py``) in a new tab. By default nothing runs
+        (``python.run_notebooks`` "never"): the tab shows the cells and the results saved in the
+        file, with a Run all bar. "ask" asks every time; "always" runs a notebook you saved or
+        trusted before (the same bytes, :func:`ewald.trust.is_trusted_file`) at once. A file you
+        have not trusted never runs without asking, and otherwise opens restricted; an ``.ewd``'s
+        plugins load only once it is trusted."""
         from ..trust import is_trusted_file
 
         trusted = is_trusted_file(path)
         if run is None:
             policy = self.settings["python.run_notebooks"]
-            run = False if policy == "never" else True if trusted else self._ask_trust(path)
+            run = (False if policy == "never" else True if trusted and policy == "always"
+                   else self._ask_trust(path, trusted))
         try:
             view = self.panel.open_notebook(path, run=run, trusted=trusted)
         except Exception as exc:
@@ -191,8 +230,12 @@ class FilesMixin:
         add_recent(path)
         return view
 
-    def _ask_trust(self, path) -> bool:
+    def _ask_trust(self, path, trusted: bool = False) -> bool:
         """Ask before running a notebook; for an ``.ewd`` also name the plugins it carries."""
+        if trusted:
+            return QtWidgets.QMessageBox.question(
+                self, "Run notebook", f"Run the cells of {os.path.basename(str(path))} now?\n\n"
+                "No shows the results saved in the file; Run all runs it later.") == QtWidgets.QMessageBox.Yes
         extra = ""
         if str(path).lower().endswith(".ewd"):
             from ..notebook_io import read_manifest
@@ -395,6 +438,7 @@ class FilesMixin:
             self, "Export data", "export.extxyz", ";;".join(f for f, _ in filters))
         if not path:
             return
+        path = suffixed(path, chosen)
         fmt = dict(filters).get(chosen)
         writer = plugins.find_writer(path, fmt)
         all_frames = False
@@ -425,10 +469,11 @@ class FilesMixin:
             from .render_page import MOVIE_FORMATS
 
             ext = MOVIE_FORMATS.get(self.render_page.movie_format.currentText(), ".mp4")
-            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            path, chosen = QtWidgets.QFileDialog.getSaveFileName(
                 self, "Export movie", "movie" + ext, "Movies (*.mp4 *.gif *.avi *.mov);;PNG sequence (*.png)")
             if not path:
                 return
+            path = suffixed(path, chosen)
         from ..render import render_animation
 
         page = self.render_page
@@ -469,6 +514,7 @@ class FilesMixin:
             path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save session", "session.ewald", SESSION_FILTER)
             if not path:
                 return None
+            path = suffixed(path, SESSION_FILTER)
         from ..session import save_session
 
         try:

@@ -119,7 +119,64 @@ class PythonModifier(Modifier):
         except (TypeError, ValueError):
             nargs = 2
         args = (first, data, ctx)[: max(2, min(nargs, 3))]
-        return self.function(*args, **self.params)
+        before = _figure_numbers()
+        try:
+            out = self.function(*args, **self.params)
+        finally:
+            figures = _take_figures(before)
+        target = out if isinstance(out, DataCollection) else data
+        for k, png in enumerate(figures):
+            name = f"Figure: {self.name}" + (f" ({k + 1})" if k else "")
+            target.attributes[name] = StepFigure(png, self.name)
+        return out
+
+
+class StepFigure:
+    """A matplotlib figure a Python step drew (``plt.plot(...)`` in an ``@each_frame`` /
+    ``@all_frames`` function or a ``[each frame]`` / ``[all frames]`` cell), as PNG bytes. The
+    step keeps it in ``data.attributes["Figure: <step name>"]`` (``"... (2)"`` for a second one):
+    the figure itself is closed, so steps never leave figures open or put them under another
+    cell. In the GUI an each-frame step's figure follows the frame in the Plots panel and an
+    all-frames step's figure stays under its cell; in Jupyter it shows as the image."""
+
+    def __init__(self, png: bytes, step: str = ""):
+        self.png = png
+        self.step = step
+
+    def _repr_png_(self):
+        return self.png
+
+    def __repr__(self):
+        return f"<figure of step {self.step!r}>"
+
+
+def _figure_numbers() -> set:
+    import sys
+
+    plt = sys.modules.get("matplotlib.pyplot")
+    return set(plt.get_fignums()) if plt is not None else set()
+
+
+def _take_figures(before: set) -> list:
+    """PNG bytes of the pyplot figures opened since ``before``; they are closed."""
+    import io
+    import sys
+
+    plt = sys.modules.get("matplotlib.pyplot")
+    if plt is None:
+        return []
+    out = []
+    for num in plt.get_fignums():
+        if num in before:
+            continue
+        fig = plt.figure(num)
+        try:
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", dpi="figure", bbox_inches="tight")
+            out.append(buf.getvalue())
+        finally:
+            plt.close(fig)
+    return out
 
 
 class Frames:

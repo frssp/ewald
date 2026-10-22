@@ -63,6 +63,36 @@ def ray_spheres(origin, direction, centers, radii):
     return int(hit[np.argmin(t_hit)])
 
 
+def vtk_surface_format() -> QtGui.QSurfaceFormat:
+    """The OpenGL format of the VTK view: desktop OpenGL 3.2 core, as pyvistaqt's ``QtInteractor``
+    requests (``pyvistaqt.rwi._default_format``; MSAA happens in VTK's own framebuffers)."""
+    fmt = QtGui.QSurfaceFormat()
+    fmt.setRenderableType(QtGui.QSurfaceFormat.OpenGL)
+    fmt.setProfile(QtGui.QSurfaceFormat.CoreProfile)
+    fmt.setVersion(3, 2)
+    fmt.setSwapBehavior(QtGui.QSurfaceFormat.DoubleBuffer)
+    for size in ("Red", "Green", "Blue", "Alpha"):
+        getattr(fmt, f"set{size}BufferSize")(8)
+    fmt.setDepthBufferSize(8)
+    fmt.setStencilBufferSize(0)
+    fmt.setSamples(0)
+    return fmt
+
+
+def use_vtk_surface_format() -> None:
+    """Make the VTK view's format the process default, before any window has an OpenGL context.
+
+    Every QOpenGLWidget of a window shares OpenGL objects with the window's compositing context,
+    which Qt creates from the default format when the first one (the placeholder) appears.
+    pyvistaqt installs its 3.2 core default only when the VTK widget is built, after the window
+    is on screen. Linux and Windows drivers share between the two profiles anyway; macOS cannot
+    share a legacy 2.1 context with a 4.1 core one, so the VTK view composites black there.
+    """
+    want = vtk_surface_format()
+    if QtGui.QSurfaceFormat.defaultFormat() != want:
+        QtGui.QSurfaceFormat.setDefaultFormat(want)
+
+
 class _Placeholder(QOpenGLWidget):
     """Holds the 3D view's place until it is built: its first paint (the window is on screen
     now) schedules ``build`` for the next turn of the event loop. An OpenGL widget itself, so
@@ -115,6 +145,7 @@ class Viewport(QtWidgets.QWidget):
     hovered = QtCore.Signal(str)         # one-line description of the atom under the cursor, "" for none
     viewBuilt = QtCore.Signal()          # the 3D widget exists now (see ensure_view)
     lazy_view = True                     # build the 3D widget after the first paint
+    uses_vtk = True                      # a pyvistaqt QtInteractor (needs vtk_surface_format)
 
     TOOLS = (("orbit", "Orbit", "Orbit / pan / zoom (mouse)"),
              ("pick", "Pick", "Pick atom: shows id, type, position and properties; Shift+click picks several"),
@@ -138,6 +169,7 @@ class Viewport(QtWidgets.QWidget):
         self.bond_limit = 100_000  # bonds.auto_limit: a style preset turns bonds on only up to this many atoms
         self.arrow_resolution = 6
         self.show_overlay = True
+        self.show_legend = True           # the atoms' color bar or category swatches
         self.show_axes = True
         self.initial_view = "iso"
         # interactive level of detail (Preferences › Viewports › Performance)
@@ -179,6 +211,8 @@ class Viewport(QtWidgets.QWidget):
         self._grid = grid
         self._plotter = None
         self._placeholder = None
+        if self.uses_vtk:
+            use_vtk_surface_format()  # before the placeholder: see use_vtk_surface_format
         if self.lazy_view:
             self._placeholder = _Placeholder(self.ensure_view, self.style.background)
             grid.addWidget(self._placeholder, 1, 1)
@@ -237,6 +271,9 @@ class Viewport(QtWidgets.QWidget):
         # drop its wrapper of the GL surface as soon as the widget goes (see release_gl)
         self.plotter.destroyed.connect(lambda *_, ref=weakref.ref(self.plotter): release_gl(ref()))
         self.plotter.set_background(self.style.background)
+        # no MSAA (FXAA is the view's anti-aliasing): depth peeling into pyvistaqt's multisampled
+        # framebuffers drops every see-through layer (NEB overlays, Transparency), on Mesa and macOS
+        self.plotter.render_window.SetMultiSamples(0)
         if self.ortho:
             self.plotter.enable_parallel_projection()
         self.anti_aliasing = False
@@ -361,7 +398,27 @@ class Viewport(QtWidgets.QWidget):
         if self.parked:
             self._parked_stale = True
             return
-        self.redraw(coarse=interactive and self.needs_coarse(scrub=True))
+        coarse = interactive and self.needs_coarse(scrub=True)
+        if interactive and self.playing:
+            # one level of detail for the whole playback: a frame time near the budget made
+            # some frames full and others coarse, so bonds flickered (see set_playing)
+            if self._play_coarse is None:
+                self._play_coarse = coarse
+            coarse = self._play_coarse
+        self.redraw(coarse=coarse)
+
+    playing = False
+    _play_coarse = None
+
+    def set_playing(self, playing: bool):
+        """The timeline plays: frames keep the level of detail the first one got and are not
+        refined in between (a refine between two frames switched bonds on and off). Stopping
+        refines the last frame."""
+        self.playing, self._play_coarse = playing, None
+        if playing:
+            self._refine_timer.stop()
+        elif self.coarse:
+            self._refine_timer.start(int(self.refine_delay * 1000))
 
     parked = False
     _parked_stale = False
@@ -408,13 +465,17 @@ class Viewport(QtWidgets.QWidget):
         budget = 1.0 / max(self.target_fps, 1e-3)
         return (self._build_time if scrub else self._render_time) > budget
 
+    def _coarse_step(self) -> int:
+        """A coarse scene draws every k-th atom; k > 1 only above ``interactive_atoms``."""
+        return -(-self.data.count // max(int(self.interactive_atoms), 1))
+
     def _coarse_mask(self):
         """Every k-th atom, so a coarse scene holds at most ``interactive_atoms``."""
         n = self.data.count
         visible = None
         if "Transparency" in self.data:
             visible = np.asarray(self.data["Transparency"]) < 1
-        step = -(-n // max(int(self.interactive_atoms), 1))
+        step = self._coarse_step()
         if step <= 1:
             return visible
         mask = np.zeros(n, bool)
@@ -427,12 +488,12 @@ class Viewport(QtWidgets.QWidget):
         p = self.plotter
         self._refine_timer.stop()
         self._lod_cloud = None
-        stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:", "visual:", "bonds:"))]
+        stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:", "visual:", "bonds:", "_legend"))]
         for name in ("atoms", "atoms:glass", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay",
                      "_labels-labels", "measurements", "_measurements-labels", *stale):
             p.remove_actor(name, render=False)
-        if p.scalar_bars:
-            p.remove_scalar_bar()
+        for title in list(p.scalar_bars.keys()):
+            p.remove_scalar_bar(title, render=False)
         self._show_empty(self.data is None)
         if self.data is None:
             self.render()
@@ -447,13 +508,19 @@ class Viewport(QtWidgets.QWidget):
         if kw["atom_style"] == "auto" and self.sphere_drawing == "impostor":
             kw["atom_style"] = "impostor"
         kw["arrow_resolution"] = self.arrow_resolution
-        scene = self.data
-        if coarse:  # impostors only, no bonds: cheap to build and to draw
+        from ..color_rule import take
+
+        scene = shown = take(self.data, kw)   # the view's color_by (display only)
+        if coarse:  # impostors: cheap to build and to draw
             kw.update(atom_style="flat" if kw["atom_style"] == "flat" else "impostor",
-                      only_visible=self._coarse_mask(), bond_pairs=None)
-            if scene.bonds is not None or scene.vectors:
-                scene = scene.copy()
-                scene.bonds, scene.vectors = None, {}
+                      only_visible=self._coarse_mask())
+            if self._coarse_step() > 1:
+                # subsampled atoms would leave bonds and arrows dangling: drop them. Otherwise
+                # they stay, so a coarse frame shows what a full one does (bonds no longer flicker)
+                kw["bond_pairs"] = None
+                if scene.bonds is not None or scene.vectors:
+                    scene = scene.copy()
+                    scene.bonds, scene.vectors = None, {}
         drawn = build_scene(p, scene, mesh_limit=self.mesh_limit, **kw)
         # boundary and replicated images are hovered through the drawn spheres (each knows its real atom)
         atoms = drawn["atoms"].primitive if ("boundary" in kw or "replicate" in kw) and not coarse and "atoms" in drawn else None
@@ -462,12 +529,13 @@ class Viewport(QtWidgets.QWidget):
                 and not getattr(self, "_peeling", False):
             p.enable_depth_peeling()
             self._peeling = True
-        if "ColorCoding.range" in self.data.attributes:
-            _add_colorbar(p, self.data, font_size=12)
-            sb = p.scalar_bar
-            if sb is not None and dark:
+        if self.show_legend and ("ColorCoding.range" in shown.attributes or drawn.legends):
+            _add_colorbar(p, shown, font_size=12, legends=drawn.legends)
+            for sb in (p.scalar_bars.values() if dark else ()):
                 for prop in (sb.GetTitleTextProperty(), sb.GetLabelTextProperty()):
                     prop.SetColor(0.9, 0.91, 0.93)
+        if self.show_legend:
+            self._draw_color_legend(shown, dark)
         if self.overlay_text and self.show_overlay:
             p.add_text(self.overlay_text, position="upper_left", font_size=7, name="_overlay",
                        color="#E7E9EC" if dark else "black", render=False)
@@ -483,7 +551,7 @@ class Viewport(QtWidgets.QWidget):
             self._draw_measurements(kw["measurements"])
         self._draw_picks()
         self.coarse = coarse
-        if coarse:
+        if coarse and not self.playing:
             self._refine_timer.start(int(self.refine_delay * 1000))
         if self._paint_driven:
             self._pending_build = None if coarse else time.perf_counter() - t0
@@ -512,18 +580,23 @@ class Viewport(QtWidgets.QWidget):
         self.render()
 
     def _go_coarse_for_motion(self):
-        """Swap the full atoms (and bonds) for subsampled impostors while the camera moves."""
+        """Swap the full atoms for (subsampled) impostors while the camera moves; bonds go only when
+        the atoms are subsampled."""
         p = self.plotter
         if self.coarse or self.data is None or not self.data.count or not self.needs_coarse():
             return
         if self._lod_cloud is None:
+            from ..color_rule import take
+
             kw = self.style.scene_kwargs()
+            shown = take(self.data, kw)
             extra = {k: kw[k] for k in (*_RADIUS_KEYS, "type_colors") if k in kw}
-            self._lod_cloud, _ = atom_cloud(self.data, radius_scale=kw["radius_scale"],
+            self._lod_cloud, _ = atom_cloud(shown, radius_scale=kw["radius_scale"],
                                             only_visible=self._coarse_mask(), **extra)
         add_atoms(p, self._lod_cloud, atom_style="flat" if self.style.atom_style == "flat" else "impostor",
                   name="atoms_lod")
-        for name in ("atoms", "atoms:glass", "bonds", "bonds:outline"):
+        hide = ("atoms", "atoms:glass") + (("bonds", "bonds:outline") if self._coarse_step() > 1 else ())
+        for name in hide:  # bonds stay unless the atoms are subsampled
             if name in p.actors:
                 p.actors[name].SetVisibility(False)
         self.coarse = True
@@ -932,6 +1005,57 @@ class Viewport(QtWidgets.QWidget):
             ang = np.degrees(np.arccos(np.clip(v1 @ v2 / np.linalg.norm(v1) / np.linalg.norm(v2), -1, 1)))
             return f"∠({label(P[0])}, {label(P[1])}, {label(P[2])}) = {ang:.2f}°"
         return f"{len(P)} atom(s) picked"
+
+    def _draw_color_legend(self, data, dark: bool):
+        """Swatches of the atoms' color rule (structure types, painted conditions; :mod:`ewald.color_rule`):
+        top right, or top left under the caption when a color bar takes the right edge. Text actors placed in
+        pixels from a corner, so they keep their size and place when the view is resized."""
+        from vtkmodules.vtkRenderingCore import vtkCoordinate, vtkTextActor
+
+        from ..color_rule import legend_entries, legend_title, rule
+
+        r = rule(data, self.style.type_colors)
+        rows = legend_entries(r)
+        if not rows:
+            return
+        right = not self.plotter.scalar_bars
+        ink = (0.9, 0.91, 0.93) if dark else (0.1, 0.1, 0.1)
+        size, step = 12, 18
+        x0, y = (-14, -14) if right else (12, -40)
+        lines = ([(legend_title(r), None)] if r.get("kind") == "categorical" else []) + list(rows)
+
+        def actor(text, dx, dy, bold=False, fill=None):
+            a = vtkTextActor()
+            a.SetInput(text)
+            tp = a.GetTextProperty()
+            tp.SetFontSize(size)
+            tp.SetBold(bold)
+            tp.SetColor(*ink)
+            tp.SetJustificationToRight() if right and fill is None else tp.SetJustificationToLeft()
+            tp.SetVerticalJustificationToTop()
+            if fill is not None:
+                tp.SetBackgroundColor(*fill)
+                tp.SetBackgroundOpacity(1.0)
+                tp.SetFrame(True)
+                tp.SetFrameColor(*ink)
+            ref = vtkCoordinate()
+            ref.SetCoordinateSystemToNormalizedViewport()
+            ref.SetValue(1.0 if right else 0.0, 1.0)
+            c = a.GetPositionCoordinate()
+            c.SetCoordinateSystemToDisplay()
+            c.SetReferenceCoordinate(ref)
+            c.SetValue(dx, dy)
+            return a
+
+        for i, (text, rgb) in enumerate(lines):
+            if rgb is None:
+                acts = [actor(str(text), x0, y, bold=True)]
+            else:
+                swatch = actor("   ", x0 - 16 if right else x0, y, fill=tuple(float(c) for c in rgb[:3]))
+                acts = [swatch, actor(str(text), x0 - 22 if right else x0 + 24, y)]
+            for k, a in enumerate(acts):
+                self.plotter.add_actor(a, name=f"_legend-colors-{i}-{k}", reset_camera=False, render=False)
+            y -= step
 
     def _draw_labels(self, labels, dark: bool):
         """Atom labels (the view's ``labels`` setting) anchored at the atoms, drawn over them."""

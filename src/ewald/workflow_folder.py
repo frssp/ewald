@@ -319,7 +319,7 @@ def _segments_path(folder: str, segments) -> str:
     prefixes = {_SEGMENT_PREFIX.match(s.name).group(1) for s in segments}
     if len(names) != 1 or len(prefixes) != 1 or not all(s.path for s in segments):
         return last
-    pattern = _join(folder, f"{prefixes.pop()}*") + "/" + names.pop()
+    pattern = _join(_join(folder, f"{prefixes.pop()}*"), names.pop())
     if remote.is_remote(folder):
         try:
             found = remote.glob(pattern)
@@ -328,7 +328,6 @@ def _segments_path(folder: str, segments) -> str:
     else:
         import glob
 
-        pattern = os.path.join(folder, os.path.relpath(pattern, folder))
         found = glob.glob(pattern)
     if sorted(found) != sorted(s.path for s in segments):
         return last
@@ -438,7 +437,7 @@ def add_recent_folder(path) -> None:
     items = [folder] + [p for p in recent_folders() if p != folder]
     try:
         _recent_path().parent.mkdir(parents=True, exist_ok=True)
-        _recent_path().write_text(json.dumps(items[:MAX_RECENT]), encoding="utf-8")
+        _recent_path().write_text(json.dumps(items[:MAX_RECENT]), encoding="utf-8", newline="\n")
     except OSError:
         pass
 

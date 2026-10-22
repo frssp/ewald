@@ -167,7 +167,10 @@ modifier's constructor, so every argument you can pass in Python can be edited t
 **View tab (display settings).** The View tab, next to the Python console below the Structure view
 (Window › View settings), shows how the structure is drawn as cards in equal-width columns:
 **Atoms** (style preset, radius table, radius scale, oxidation states, how atoms are drawn, *Draw
-atoms* off for a stick model), **Types** (color, radius, transparency and count per type, VESTA
+atoms* off for a stick model), **Colors** (what colors the atoms: the steps' colors, the type colors
+or a property through a color map with its range, and the rule drawn now, one row per structure type
+or painted condition with its count; see [What colors the atoms](rendering.md#what-colors-the-atoms)),
+**Types** (color, radius, transparency and count per type, VESTA
 elements.ini import), **Bonds** (sticks, the pair table, *As step* for a Create bonds step),
 **Surfaces** (polyhedra, isosurfaces and slices that steps made, by name: shown, color,
 transparency, edges; *Reset* gives back the step's look), **Cell** (line width, *Replicate cell* and
@@ -221,11 +224,12 @@ The `DOS` and `Bands` tables of a VASP run are drawn as a density of states and 
 structure; atoms selected in the viewport show as their projected DOS or as fat bands (see
 [DOS and band structure](electronic.md)).
 
-**Zoom, pan and hover.** Every plot (the Plots tab and view cells) moves the same way. The
+**Zoom, pan and hover.** Every plot (the Plots tab, the plots cells put in the Plots panel and view cells) moves the same way. The
 wheel zooms the x axis around the cursor and Ctrl+wheel the y axis (on a band structure the
 wheel zooms the energy). A right or middle drag pans, and a double-click goes back to the full
-range. A right click without dragging opens the plot's menu (*Save plot…*, *Reset view* and any
-plugin entries). On a plot that selects nothing (DOS, bands, phonon bands, maps) a left drag zooms to the
+range. A right click without dragging opens the plot's menu (*Save plot…*, *Reset view*, for a
+cell's plot *Show in Plots panel* or *Show under the cell*, and any plugin entries; see
+[where a plot appears](notebooks.md)). On a plot that selects nothing (DOS, bands, phonon bands, maps) a left drag zooms to the
 dragged range; elsewhere a left drag still selects. The zoomed range stays while the frame
 changes, and *Save plot…* writes the range you see. The DOS and the band structure share one
 energy window, shown in the **E** boxes, where you can also type it. Hovering shows the values
@@ -302,7 +306,10 @@ made in the GUI can be reproduced in a batch script. See [Rendering figures](ren
 
 File › Open example opens one of the [example files](quickstart.md#example-files) shipped
 with ewald. File › Open opens any format ewald can read ([File formats](formats.md)), including
-formats added by [reader plugins](../plugins/readers.md). LAMMPS dumps ask for a
+formats added by [reader plugins](../plugins/readers.md). Its file filter starts at All supported files,
+which lists every format at once, extensionless VASP names (`POSCAR`, `CONTCAR`, `XDATCAR`, `OUTCAR`,
+`CHGCAR`, ...) and notebooks and sessions included; the groups, one filter per format and All files
+follow it. LAMMPS dumps ask for a
 type-to-element map unless you set a default in Preferences. File › Load NEB folder opens a
 VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image
 ([NEB runs](formats.md#neb-runs)); opening a single image file of such a run asks whether to
@@ -355,8 +362,10 @@ Interaction comes first in the viewport, and quality comes first in rendered out
 Viewports › Performance, *Detail while moving* (Auto by default) controls what happens while
 you rotate, zoom, drag the timeline slider or play. Auto switches to a coarse scene only when a
 full-detail frame takes longer than 1/*Target frame rate* (30 fps). The coarse scene uses
-impostors, leaves out bonds and draws every k-th atom, so at most *Atoms while moving*
-(1,000,000) remain. Full detail returns after *Refine after* (0.3 s) of idle. *Always coarse*
+impostors and leaves out labels and measurements; above *Atoms while moving* (1,000,000) it
+draws every k-th atom and then leaves out bonds and arrows too. Full detail returns after
+*Refine after* (0.3 s) of idle. Playback keeps the level of detail its first frame got and
+refines only when it stops, so bonds do not blink between frames. *Always coarse*
 and *Always full* fix the choice. When frames are requested faster than they can be computed,
 the queued requests collapse into the latest one. The pipeline runs on a worker thread, so the
 window stays responsive while a long analysis computes: the view keeps the previous result and

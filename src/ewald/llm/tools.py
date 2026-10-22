@@ -428,7 +428,9 @@ class Toolset:
 
         @T("describe_frame",
            "Compact description of one frame after the current modifiers: composition, cell, density, "
-           "minimum distance, coordination histogram per type, g(r) peaks, property ranges, sanity warnings. "
+           "minimum distance, coordination histogram per type, g(r) peaks, property ranges, sanity warnings, "
+           "and how the 3D view colors the atoms ('atom_colors': which step or view setting, which property, "
+           "and the color of each category or the color map and range). "
            "Use this instead of asking for raw coordinates.",
            _obj({"frame": frame_p,
                  "cutoff": {"type": ["number", "string", "null"],
@@ -436,7 +438,10 @@ class Toolset:
         def describe_frame(frame=None, cutoff="auto"):
             pipe = self._need_pipeline()
             f = self._frame(frame)
-            return _describe.describe_frame(pipe.compute(f), cutoff=cutoff, frame=f)
+            data = pipe.compute(f)
+            out = _describe.describe_frame(data, cutoff=cutoff, frame=f)
+            out["atom_colors"] = atom_colors(pipe.view, data, f)["text"]
+            return out
 
         @T("describe_selection",
            "Describe particles and their surroundings: per-atom neighbor lists, coordination numbers, structure "
@@ -734,6 +739,8 @@ class Toolset:
            "The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the "
            "GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, "
            "'elements' the same values by visual element (Particles, Bonds, Surfaces, Simulation cell, ...), "
+           "'atom_colors' what colors the atoms now (a step's structure-type colors, a color map, paint "
+           "conditions or the type colors, with each color), "
            "'measured' the values of its distance/angle measurements, "
            f"'help' what each means. Groups: {groups}.",
            _obj({}))
@@ -741,6 +748,10 @@ class Toolset:
             v = self._need_pipeline().view
             out = {"changed": v.changed(), "settings": v.settings(), "elements": v.elements.describe(),
                    "help": {k: st.doc for k, st in SETTINGS.items()}, "code": v.source(self.pipeline_name)}
+            try:
+                out["atom_colors"] = atom_colors(v, v.pipeline.compute(v.frame), v.frame)
+            except Exception as exc:  # noqa: BLE001 - the view settings are still worth returning
+                out["atom_colors"] = {"text": f"unknown ({type(exc).__name__}: {exc})"}
             if v.measurements:
                 out["measured"] = v.measured()   # their values on the view's frame
             return out
@@ -753,7 +764,8 @@ class Toolset:
            "(direction, zoom, rotate), frame, and picture options (renderer, "
            "quality, legends, scale bar, text). Only the settings given change; null resets one to its default. "
            "'rotate' turns the current view by [azimuth, elevation] degrees; 'reset' (true or a list of names) "
-           "goes back to defaults first. Per-atom colors by condition are steps instead (add_modifier "
+           "goes back to defaults first. color_by recolors the atoms for display ('type', or a property through "
+           "colormap/color_range); per-atom colors by condition are steps instead (add_modifier "
            "ColorCoding / expression selection). The settings go into the notebook's view cell "
            "(view(pipe, ...)), which runs at once. Returns the changed settings and that code.",
            _obj({**view_props,
@@ -968,6 +980,15 @@ class Toolset:
     def _pipeline_list(self) -> list[str]:
         return [f"{i}: {m!r}" + ("" if m.enabled else " (disabled)")
                 for i, m in enumerate(self._need_pipeline().modifiers)]
+
+
+def atom_colors(view, data, frame: int = 0) -> dict:
+    """How ``view`` colors the atoms of ``data`` (:mod:`ewald.color_rule`): ``{"text", "rule"}``."""
+    from .. import color_rule
+
+    shown = color_rule.apply(data, view.color_by, view.colormap, view.color_range, frame)
+    r = color_rule.rule(shown, view.colors or None)
+    return {"text": color_rule.describe(r), "rule": r}
 
 
 def session_notebook(pipeline: Pipeline | None = None) -> Notebook:

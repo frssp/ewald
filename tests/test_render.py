@@ -25,6 +25,24 @@ def test_impostor_shading_has_no_black_rims(tmp_path, cu_fcc):
     assert np.percentile(img[..., :3].astype(int).sum(-1)[atoms], 1) > 60  # rims stay lit
 
 
+def test_see_through_impostors_are_drawn_as_meshes(cu_fcc):
+    """Depth peeling drops see-through impostors on macOS (Apple M2: NEB overlays vanished), so the
+    see-through part of an impostor layer is drawn as sphere meshes; opaque atoms stay impostors."""
+    import pyvista as pv
+
+    from ewald.render import build_scene
+
+    data = cu_fcc.copy()
+    t = np.zeros(data.count)
+    t[:10] = 0.7
+    data["Transparency"] = t
+    p = pv.Plotter(off_screen=True, window_size=(100, 100))
+    build_scene(p, data, atom_style="impostor")
+    styles = {name: actor.GetMapper().GetClassName() for name, actor in p.actors.items() if name.startswith("atoms")}
+    assert "PointGaussian" in styles["atoms"] and "PointGaussian" not in styles["atoms:glass"]
+    p.close()
+
+
 def test_flat_style_is_unshaded_with_outlines():
     """atom_style='flat' (ASE GUI look): one color inside each disc, a dark outline, outlined bonds."""
     from ewald.render import render
@@ -140,6 +158,31 @@ def test_trajectory_lines_render(tmp_path):
     without = pipe.render(tmp_path / "b.png", frame=0, size=(160, 120), direction="z", show_cell=False,
                           trajectory_width=0)
     assert np.abs(with_lines.astype(int) - without.astype(int)).sum() > 0
+
+
+
+@pytest.mark.parametrize("renderer", ["opengl", "raytrace", "vector"])
+def test_trajectory_color_map_and_color_bar_in_every_renderer(tmp_path, renderer):
+    """Lines colored by Time draw the color map and its color bar in every renderer."""
+    from ewald.modifiers import GenerateTrajectoryLines
+
+    frames = []
+    for k, s in enumerate(np.linspace(0, 1, 12)):
+        d = DataCollection(np.array([[2.0 + 6 * s, 5.0, 5.0]]), np.array(["Cu"]), Cell(np.diag([10.0] * 3)))
+        d.attributes["Timestep"] = 10 * k
+        frames.append(d)
+    pipe = Pipeline(StaticSource(frames), [GenerateTrajectoryLines()])
+    kw = dict(frame=0, size=(200, 150), direction="z", show_cell=False, renderer=renderer, quality="draft",
+              trajectory_width=6, trajectory_colormap="plasma")
+    plain = pipe.render(None, **kw)
+    mapped = pipe.render(None, trajectory_color_by="Time", **kw)
+    h, w = mapped.shape[:2]
+    bar = mapped[int(0.3 * h):int(0.7 * h), int(0.885 * w):int(0.905 * w), :3].astype(int)
+    assert np.ptp(bar.reshape(-1, 3), axis=0).max() > 100           # a color bar on the right
+    assert np.ptp(plain[int(0.3 * h):int(0.7 * h), int(0.885 * w):int(0.905 * w), :3].astype(int)) == 0
+    row = mapped[h // 2, int(0.2 * w):int(0.7 * w), :3].astype(int)
+    colored = row[np.abs(row - 255).sum(1) > 60]
+    assert len(colored) and np.ptp(colored, axis=0).max() > 80        # the line changes color along x
 
 
 def _perovskite():

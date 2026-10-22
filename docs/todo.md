@@ -10,12 +10,23 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Opening without running (`python.run_notebooks`, default "never"): covers notebook files only. A
+  folder or workflow (`simagent:`, AiiDA, calculation folders) still runs its generated `load(...)`
+  notebook at once, since it is ewald's own code; no per-notebook "always run this one" choice yet.
+- Open dialog: `log.lammps` and `OSZICAR` are read only as companions of a trajectory, not
+  opened on their own.
 - Several files as one trajectory: File › Open and drops join several data files in natural order
   only (no dialog to reorder them or pick `join="concat"`), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
   appended to after a restart (`dump_modify append yes`). Restart detection needs a Timestep per
   frame, which only the LAMMPS dump reader gives cheaply (extxyz `Timestep=` comments, H5MD
   steps and XTC steps are not used yet).
 - View tab: a card has no per-card reset to defaults.
+- Atom color rules (`ewald.color_rule`): a step's category colors (structure types) can only be changed
+  through the step (`color_by_type=False` plus `paint`), not per category in the Colors card as OVITO's
+  type list does; `color_by` an integer property uses a continuous color map, not one color per value;
+  the legacy OpenGL (ssh -X) viewport draws no category legend, and the GUI viewport's legend has no
+  on/off switch (`Viewport.show_legend`). Plugin modifiers that write "Color" show as "custom" until
+  they call `color_rule.record` (not yet in `plugin_api`).
 
 - Workflows (`ewald.workflow`): a table that compares the scalars of every step of a workflow
   (energies, gaps, forces) and of several workflows side by side, and opening one step's input
@@ -94,7 +105,7 @@ GUI
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
   view does not have yet (picks as code, the viewport axes widget; measurement labels in the
   legacy OpenGL 1.x viewport, and lines that show through atoms; audit in the project files `ewald-review/view-elements-audit.md`);
-  the View tab cards (Atoms, Types, Bonds, Surfaces, Cell, Labels, Camera, Elements) could take the visual
+  the View tab cards (Atoms, Colors, Types, Bonds, Surfaces, Cell, Labels, Camera, Elements) could take the visual
   element names `pipe.view.elements` uses (Particles, Bonds, Simulation cell, ...); label size,
   color and types and the selection color are code only (the cards show on/off and the text); the camera reaches the view cell
   only through Insert › View settings with the camera (not on every rotation); the Render page
@@ -115,6 +126,16 @@ GUI
 - Live `show(pipe, ...)` outside a view cell: zooming does not write `xlim=`/`ylim=` back (only a
   cell that is just the call does), and `frame=` is ignored by the live plot (it follows the
   current frame, as view cells do).
+- Plots in the Plots panel (`views.in_panel`; linked or per-frame plots of cells get their own tab
+  next to *Plots*, a thumbnail stays under the cell): a tab is titled by its table or histogram
+  only, so two plots of one table look alike; the tabs are not kept in the saved panel layout
+  (they come back when the cells run, but not where they were dragged); the thumbnail is the image
+  of the last run, not the frame on screen; a plot that `in_panel` sends to the panel cannot be
+  told "keep under the cell" for a whole notebook at once (only per call with `panel=False`).
+- Figures drawn by Python steps (`pipeline.StepFigure`, `data.attributes["Figure: <step>"]`):
+  drawn in matplotlib's default style, not the notebook's plot style; a PNG per frame, not a
+  live interactive plot (no zoom or linked selection); moving one between the panel and the cell
+  is not saved; steps that run in a notebook kernel do not send their figures back yet.
 - Notebook kernels (`ewald/kernel.py`): step forms for steps a kernel cell adds with code the
   app cannot import (a class only the kernel's Python has stays as code). Outputs of a kernel
   cell (text, progress bars) arrive when the cell ends; in-process cells show them while they
@@ -184,6 +205,10 @@ GUI
 - Flat (ASE) style in the ray tracer (now OpenGL and vector only), and a
   per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.
+- One display style per notebook tab: the window keeps a single `ViewStyle`, and a notebook whose
+  view nothing set yet is seeded from it (the previous tab's style). Settings for elements the new
+  structure lacks are dropped now (MgB2's Mg-B bonds no longer reach TiOF2), but theme, radius scale
+  and the rest still carry over between tabs.
 - Replicated cell display: a quick replicate control in the 3D view toolbar or the redesigned
   View tab (now Display panel, View menu, right-click menu and Ctrl+K).
 - Boundary (VESTA): repeat isosurfaces and grid slices over the boundary range too (now only
@@ -302,6 +327,9 @@ Formats
   `images=` option on the reader for ASE NEB trajectories, so the band history needs no
   modifier parameter; dimer and string-method outputs. A NEB folder opened from File › Open
   (a directory picker there) instead of File › Load NEB folder or a drop.
+- NEB: warn when an endpoint OUTCAR lists the atoms in another order than the band (the Fe
+  vacancy example's 04/OUTCAR does; the reader takes POSCAR atoms, so only other tools are hit),
+  and match atoms by position when images carry no identifiers.
 - NEB: interpolate between images for a smoother movie; `OverlayFrames` copies are extra
   particles, so picking one in the viewport selects a copy, not the real atom.
 - Ray tracer: see-through spheres are tessellated glass (`OverlayFrames` copies, Transparency);
@@ -332,7 +360,11 @@ Visualization plugins (later phases of the Scene IR plan)
 - GUI: the built-in elements (Particles, Bonds, Cell, ...) as rows with forms generated from
   their `VisualElement` parameters, replacing the hand-written style controls.
 - OpenGL and the ray tracer ignore `Cylinders.alpha`; see-through bonds need it.
-- Ray tracer: trajectory lines and other `Lines` without a `radius` are not drawn.
+- Ray tracer: `Lines` without a `radius` are not drawn (trajectory lines now have one).
+- Trajectory lines: the legacy OpenGL 1.x viewport (ssh -X) draws the color map but no color bar;
+  a trail ends at the last traced frame before the current one, not at the atom's current
+  position between traced frames (step > 1); color by a per-frame particle property along the
+  path (e.g. coordination at each frame) needs that property in the trajectory-lines table.
 - Material presets (`@material`: roughness, metallic, glass, outline/toon) mapped onto each
   renderer (VTK PBR, ray tracer shading, vector flat/gradient/outline), the rest of phase 1.
 - Overlay elements show in rendered images and the Render page preview, not in the interactive
@@ -458,6 +490,17 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   cmd.exe on Windows, a pty on macOS/Linux), `%time`, progress bars while a cell runs, and the
   console sharing the notebook's namespace; in the frozen Windows app and EWALD.app too, where
   `!pip` has no Python at `sys.executable`.
+- Windows parity after the portability audit ([Windows, macOS and Linux](developer/portability.md)):
+  open and export a POSCAR, XDATCAR, LAMMPS dump and an `.ewd` with data on another drive (D:);
+  check exported files have LF ends; the open dialog lists lower-case `poscar`/`*.CIF`; a save
+  dialog with a name typed without extension; settings with non-ASCII text on Korean Windows;
+  per-monitor DPI at 125/150 %; Windows Credential Manager; `ewald api > llms.txt` in cmd and
+  PowerShell. The same list on a real Mac.
+- MD playback in Ball & stick on Windows with a real GPU: bonds stay on through playback and
+  scrubbing (no coarse/full switching between frames), and the numpy bond tubes look like the
+  old `vtkTubeFilter` ones. Bonds whose length sits at the cutoff still appear and vanish
+  between frames, as in OVITO; a cutoff hysteresis was left out because a frame would then
+  depend on the frames played before it.
 - CUDA paths on a real NVIDIA GPU: CuPy kernels, neighbor lists, cluster analysis, the
   `--device cuda` GUI switch. CI and the cloud container have no GPU.
 - SSH remote files against a real HPC login node (ProxyJump, OTP, large dumps); tests use an
@@ -487,7 +530,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - Installing without a compiler on real Windows (MSVC missing raises in `build_ext.run`; tested
   here with `CXX=/bin/false` on Linux). pip shows the "not built" warning only with `-v`.
 - macOS on a real Mac (Apple Silicon and Intel): the source install and the full test suite, the
-  GUI on Retina (the VTK view filling the whole widget, picking and hover at the right atom),
+  3D view drawing atoms at all (it was black before the 3.2 core default format; if it still is,
+  `EWALD_VIEWPORT=legacy ewald gui` is the fallback), NEB overlays and other see-through atoms
+  (sphere meshes since the impostor shader draws nothing under depth peeling there; still impostors,
+  so likely invisible, are see-through atoms beyond `mesh_limit`, the 'flat' style and the coarse
+  drag scene), the GUI on Retina (the VTK view filling the whole widget, picking and hover at the right atom),
   trackpad orbit/zoom, the EWALD menu bar name, and EWALD.app from `macos-release.yml` with
   Finder Open With and Dock drops. The list is in docs/developer/macos-release.md; the container
   checks clang, the spec and the dependency wheels only.
@@ -517,6 +564,19 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `SUM` and per-atom vectors, fail).
 
 ## Code health
+
+Portability ([Windows, macOS and Linux](developer/portability.md), audit of 2026-10-21):
+
+- Frozen apps have no Python at `sys.executable` (it is `ewald.exe` / the app binary): the Forge
+  check subprocess, plugin `pip install` and the default notebook kernel need a bundled
+  interpreter entry (`ewald.exe python -I ...`) or a clear "not in the app" message.
+- No OpenGL probe or software fallback on Windows (VMs, Remote Desktop, GDI OpenGL 1.1) like the
+  Linux `ssh -X` one; PySide6 ships `opengl32sw.dll` that could serve as the fallback.
+- UI fonts (IBM Plex Sans, JetBrains Mono) are not bundled, so the look differs per system;
+  bundle the OFL fonts or settle on per-OS defaults.
+- `os.replace` of settings, notebooks and sessions fails on Windows while another program has
+  the target open: retry briefly and say which program holds it.
+- The credentials fallback file relies on 0600, which means nothing on Windows (no ACL set).
 
 Left from the 2026-10-19 review (minimum image, element masses, color parsing and the
 dark-background test are shared now; `gui/app.py` and `gui/preferences.py` are split into
@@ -554,11 +614,15 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 ## Infrastructure
 
 - Going public (files prepared 2026-10-20: CITATION.cff, FUNDING.yml, CONTRIBUTING.md,
-  SECURITY.md, issue templates): the owner picks the license (an MIT LICENSE pull request is
-  waiting, unmerged, and drops the `Private :: Do Not Upload` classifier) and switches the
-  repository to public; then enable private vulnerability reporting and GitHub Sponsors, archive
+  SECURITY.md, issue templates): the owner switches the repository to public; then enable private vulnerability reporting and GitHub Sponsors, archive
   a release on Zenodo and add its DOI (and an ORCID) to CITATION.cff, and restore the CI triggers
   (public repositories get free Actions minutes).
+- JOSS paper (draft in `paper/`, checked by `tests/test_paper.py`): JOSS (2026 rules) wants at least
+  six months of public history with releases, issues and pull requests, so the earliest submission
+  is six months after the repository goes public. Before then: fill in the author list, ORCIDs,
+  affiliations, funding and conflict-of-interest statement (TODOs in `paper/paper.md`), tag
+  releases, collect research use (papers, groups, courses) for the research impact statement, and
+  archive the submitted version on Zenodo.
 
 - From the 2026-10-20 systems review (/mnt/project-files/ewald-review/senior-systems-review.md;
   its refactors are merged, #129-#135): a self-hosted runner (xvfb + Mesa) to restore the PR

@@ -460,13 +460,15 @@ class _Card(QtWidgets.QFrame):
 # View tab cards, in order -> the pipe.view settings they show (marked when the notebook sets one)
 _SECTION_KEYS = {
     "Atoms": ("style", "theme", "atom_style", "radius_scale", "radius_preset", "oxidation_states", "atoms"),
+    "Colors": ("color_by", "colormap", "color_range"),
     "Types": ("colors", "radii", "transparency"),
     "Bonds": ("bonds", "bond_radius", "bond_pairs", "bond_factor"),
     "Surfaces": ("surfaces",),
     "Cell": ("cell", "cell_width", "cell_color", "replicate", "replicate_cell", "boundary", "boundary_bonds"),
     "Labels": ("labels", "selection"),
     "Camera": ("frame", "direction", "zoom", "orthographic", "camera", "light"),
-    "Elements": ("visuals", "vectors", "trajectory_width"),
+    "Elements": ("visuals", "vectors", "trajectory_width", "trajectory_color_by", "trajectory_colormap",
+                 "trajectory_color_range", "trajectory_time_range", "trajectory_trail"),
 }
 # widest form label of the View tab: every card's label column is this wide, so fields line up
 _LABEL_WIDEST = "Radius scale"
@@ -556,7 +558,7 @@ class DisplayPanel(QtWidgets.QWidget):
         flow = MasonryLayout(page, spacing=10, column=max(280, fm.averageCharWidth() * 40))
         flow.setContentsMargins(10, 10, 10, 10)
         self.sections = {}
-        builders = {"Atoms": self._particles_editor, "Types": self._types_editor, "Bonds": self._bonds_editor,
+        builders = {"Atoms": self._particles_editor, "Colors": self._colors_editor, "Types": self._types_editor, "Bonds": self._bonds_editor,
                     "Surfaces": self._surfaces_editor, "Cell": self._cell_editor, "Labels": self._labels_editor,
                     "Camera": self._camera_editor, "Elements": self._elements_editor}
         for title in _SECTION_KEYS:
@@ -726,6 +728,7 @@ class DisplayPanel(QtWidgets.QWidget):
 
     def update_status(self):
         """Counts and periodicity of the current frame under the cards (no rebuild)."""
+        self._fill_color_legend()
         if self.data is None or not self.sections:
             return
         types = self.sections["Types"].status
@@ -784,6 +787,7 @@ class DisplayPanel(QtWidgets.QWidget):
         w = QtWidgets.QWidget()
         lay = QtWidgets.QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self._trajectory_editor())
         for k, entry in enumerate(self.style.visuals):
             lay.addWidget(self._plugin_visual_editor(k, entry))
         if not self.style.visuals:
@@ -794,6 +798,101 @@ class DisplayPanel(QtWidgets.QWidget):
         add.setMenu(self.visual_menu)
         self.visual_button = add
         lay.addLayout(self._buttons(add))
+        return w
+
+    def _trajectory_editor(self):
+        """Trajectory lines (a GenerateTrajectoryLines step): width, and a color map by Time, Frame, step
+        length or a property, over a Time window or a trail that follows the current frame."""
+        from ..colormaps import names as colormap_names
+        from ..scene import TRAJECTORY_COLOR_BY
+
+        st = self.style
+        w = QtWidgets.QWidget()
+        f = self._form_layout(w)
+        width = QtWidgets.QDoubleSpinBox(minimum=0, maximum=20, singleStep=0.5, value=st.trajectory_width,
+                                         suffix=" px", toolTip="Line width in pixels; 0 hides the trajectory lines")
+        width.valueChanged.connect(lambda v: self._set("trajectory_width", float(v)))
+        self._row(f, "Trajectories", width, "trajectory_width")
+        box, g = self._group("Color map", st.trajectory_color_by is not None,
+                             "Color the trajectory lines along their path by Time, Frame, step length or a "
+                             "particle property, with a color bar")
+        by = QtWidgets.QComboBox(editable=True, toolTip="Time (timestep), Frame, Step Length (distance per step), "
+                                 "a column of the trajectory-lines table or a numeric particle property")
+        extra = []
+        if self.data is not None:
+            table = self.data.tables.get("trajectory-lines", {})
+            extra = [c for c in table if c not in ("Position", "Particle Identifier", *TRAJECTORY_COLOR_BY)]
+            extra += [n for n, v in self.data.particles.items()
+                      if np.ndim(v) == 1 and np.issubdtype(np.asarray(v).dtype, np.number) and n not in extra]
+        by.addItems([*TRAJECTORY_COLOR_BY, *extra])
+        by.setCurrentText(st.trajectory_color_by or "Time")
+        cmap = QtWidgets.QComboBox()
+        cmap.addItems(colormap_names())
+        if st.trajectory_colormap not in colormap_names():
+            cmap.addItem(st.trajectory_colormap)
+        cmap.setCurrentText(st.trajectory_colormap)
+
+        def pair(value, tips):
+            row, edits = QtWidgets.QHBoxLayout(), []
+            row.setSpacing(6)
+            for k, tip in enumerate(tips):
+                e = QtWidgets.QLineEdit(placeholderText="auto", toolTip=tip)
+                if value is not None and value[k] is not None:
+                    e.setText(f"{value[k]:g}")
+                row.addWidget(e, 1)
+                edits.append(e)
+            return _wrap(row), edits
+
+        rng_row, rng = pair(st.trajectory_color_range, ("Value at the low end of the map; empty: automatic",
+                                                         "Value at the high end of the map; empty: automatic"))
+        win_row, win = pair(st.trajectory_time_range, ("Draw from this Time (timestep); empty: the start",
+                                                       "Draw up to this Time (timestep); empty: the end"))
+        trail = QtWidgets.QLineEdit(placeholderText="whole path", clearButtonEnabled=True,
+                                    toolTip="Follow the current frame: 'all' draws the paths up to it, a number only "
+                                            "that much Time before it (a tail); empty: the whole paths")
+        if st.trajectory_trail is True:
+            trail.setText("all")
+        elif st.trajectory_trail:
+            trail.setText(f"{st.trajectory_trail:g}")
+
+        def number(edit):
+            try:
+                return float(edit.text()) if edit.text().strip() else None
+            except ValueError:
+                return None
+
+        def both(edits):
+            lo, hi = (number(e) for e in edits)
+            if lo is not None and hi is not None and lo > hi:
+                lo, hi = hi, lo
+            return None if lo is None and hi is None else [lo, hi]
+
+        def apply(*_):
+            text = trail.text().strip().lower()
+            tail = True if text in ("all", "true", "yes") else number(trail)
+            values = {"trajectory_color_by": by.currentText().strip() or None if box.isChecked() else None,
+                      "trajectory_colormap": cmap.currentText(), "trajectory_color_range": both(rng),
+                      "trajectory_time_range": both(win), "trajectory_trail": tail if tail else None}
+            if all(getattr(st, k) == v for k, v in values.items()):
+                return
+            for k, v in values.items():
+                setattr(st, k, v)
+            self._emit()
+
+        box.toggled.connect(apply)
+        by.currentTextChanged.connect(apply)
+        cmap.currentTextChanged.connect(apply)
+        for e in (*rng, *win, trail):
+            e.editingFinished.connect(apply)
+        self._row(g, "Color by", by, "trajectory_color_by")
+        self._row(g, "Color map", cmap, "trajectory_colormap")
+        self._row(g, "Range", rng_row, "trajectory_color_range")
+        self._marks.append((box, ("trajectory_color_by",)))
+        f.addRow(box)
+        self._row(f, "Time window", win_row, "trajectory_time_range")
+        self._row(f, "Trail", trail, "trajectory_trail")
+        self.trajectory_widgets = {"width": width, "group": box, "color_by": by, "colormap": cmap, "range": rng,
+                                   "window": win, "trail": trail}
         return w
 
     def _plugin_visual_editor(self, k, entry):
@@ -965,6 +1064,165 @@ class DisplayPanel(QtWidgets.QWidget):
         if c.isValid():
             _paint_swatch(button, c.name())
             self.set_surface(name, color=c.name())
+
+    _COLOR_BY = {"Steps": None, "Particle type": "type"}   # Colors › Color by: label -> view color_by
+
+    def _colors_editor(self):
+        """What colors the atoms (the view's color_by, :mod:`ewald.color_rule`): the steps' colors (structure
+        types, ColorCoding, paint), the type colors, or a property through a color map; under it the rule
+        that is drawn, one row per category or the color map and its range."""
+        from ..colormaps import names as colormap_names
+
+        st = self.style
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        f = self._form_layout()
+        by = QtWidgets.QComboBox(editable=True, objectName="colorBy",
+                                 toolTip="Steps: the colors the notebook's steps wrote (structure types, ColorCoding, "
+                                         "paint), else the type colors. Particle type: the Types colors. A property "
+                                         "or expression: a color map over it (display only)")
+        by.addItems(list(self._COLOR_BY))
+        if self.data is not None:
+            for n, v in self.data.particles.items():
+                a = np.asarray(v)
+                if n in ("Color", "Position") or not np.issubdtype(a.dtype, np.number):
+                    continue
+                if a.ndim == 1:
+                    by.addItem(n)
+                elif a.ndim == 2 and a.shape[1] == 3 and n in ("Velocity", "Force", "Displacement"):
+                    by.addItem(n)
+            by.addItems(["Position.X", "Position.Y", "Position.Z"])
+        current = next((k for k, v in self._COLOR_BY.items() if v == st.color_by), st.color_by)
+        if by.findText(current) < 0:
+            by.addItem(current)
+        by.setCurrentText(current)
+        cmap = QtWidgets.QComboBox(objectName="colorMap")
+        cmap.addItems(colormap_names())
+        if st.colormap not in colormap_names():
+            cmap.addItem(st.colormap)
+        cmap.setCurrentText(st.colormap)
+        rng_row, rng = QtWidgets.QHBoxLayout(), []
+        rng_row.setSpacing(6)
+        for k, tip in enumerate(("Value at the low end of the map; empty: the frame's minimum",
+                                 "Value at the high end of the map; empty: the frame's maximum")):
+            e = QtWidgets.QLineEdit(placeholderText="auto", toolTip=tip)
+            if st.color_range is not None and st.color_range[k] is not None:
+                e.setText(f"{st.color_range[k]:g}")
+            rng_row.addWidget(e, 1)
+            rng.append(e)
+
+        def number(edit):
+            try:
+                return float(edit.text()) if edit.text().strip() else None
+            except ValueError:
+                return None
+
+        def mapped():
+            text = by.currentText().strip()
+            return self._COLOR_BY.get(text, text or None)
+
+        def enable():
+            on = mapped() not in (None, "type")
+            cmap.setEnabled(on)
+            for e in rng:
+                e.setEnabled(on)
+
+        def apply(*_):
+            lo, hi = (number(e) for e in rng)
+            if lo is not None and hi is not None and lo > hi:
+                lo, hi = hi, lo
+            values = {"color_by": mapped(), "colormap": cmap.currentText(),
+                      "color_range": None if lo is None and hi is None else [lo, hi]}
+            enable()
+            if all(getattr(st, k) == v for k, v in values.items()):
+                return
+            for k, v in values.items():
+                setattr(st, k, v)
+            self._emit()
+            self._fill_color_legend()
+
+        by.currentTextChanged.connect(apply)
+        cmap.currentTextChanged.connect(apply)
+        for e in rng:
+            e.editingFinished.connect(apply)
+        enable()
+        self._row(f, "Color by", by, "color_by")
+        self._row(f, "Color map", cmap, "colormap")
+        self._row(f, "Range", _wrap(rng_row), "color_range")
+        lay.addLayout(f)
+        rule = QtWidgets.QLabel("", objectName="viewStatus", wordWrap=True)
+        table = QtWidgets.QTableWidget(0, 3, objectName="viewTable")
+        table.setHorizontalHeaderLabels(["Color", "Category", "Count"])
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        head = table.horizontalHeader()
+        head.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        head.setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        head.setDefaultAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        self._numeric_headers(table, 2)
+        lay.addWidget(rule)
+        lay.addWidget(table)
+        self.color_widgets = {"color_by": by, "colormap": cmap, "range": rng, "rule": rule, "legend": table}
+        return w
+
+    def color_rule(self) -> dict | None:
+        """The color rule the view draws for the current frame (see :mod:`ewald.color_rule`)."""
+        if self.data is None:
+            return None
+        from ..color_rule import rule, take
+
+        kw = {k: getattr(self.style, k) for k in ("color_by", "colormap", "color_range")}
+        return rule(take(self.data, kw), self.style.type_colors)
+
+    def _fill_color_legend(self):
+        """The Colors card's rule line and rows (one per category, painted condition or type)."""
+        widgets = getattr(self, "color_widgets", None)
+        if not widgets:
+            return
+        from ..color_rule import describe, label
+
+        try:
+            r = self.color_rule()
+            label_w, table = widgets["rule"], widgets["legend"]
+            label_w.objectName()
+        except RuntimeError:   # a card deleted by a rebuild
+            return
+        if r is None:
+            label_w.setText("")
+            table.setRowCount(0)
+            table.hide()
+            return
+        kind = r.get("kind")
+        if kind == "categorical":
+            text = f"By {r['property']}, from {r['source']}."
+        elif kind == "continuous":
+            lo, hi = r["range"]
+            text = f"{r['property']}: {r['cmap']} from {lo:.4g} to {hi:.4g}, from {r['source']}."
+        elif kind == "type":
+            text = "Particle type colors (Types below)."
+        else:
+            text = f"Custom: {r['source']}."
+        label_w.setText(text)
+        label_w.setToolTip(describe(r))
+        rows = []
+        if kind in ("categorical", "type"):
+            rows = [(e["color"], label(e["name"]), e.get("count")) for e in r.get("entries") or []
+                    if kind == "type" or e.get("count", 1)]
+        elif kind == "custom":
+            rows = [(c["color"], "", c["count"]) for c in r.get("colors", [])]
+        rows += [(p["color"], p["where"], p["count"]) for p in r.get("painted", ())]
+        table.setRowCount(len(rows))
+        for i, (color, name, count) in enumerate(rows):
+            cell, btn = self._swatch(np.asarray(QtGui.QColor(color).getRgbF()[:3]), f"{name} {color}")
+            btn.setEnabled(False)
+            table.setCellWidget(i, 0, cell)
+            table.setItem(i, 1, QtWidgets.QTableWidgetItem(name))
+            item = QtWidgets.QTableWidgetItem("" if count is None else f"{int(count):,}")
+            item.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+            table.setItem(i, 2, item)
+        table.setVisible(bool(rows))
+        self._fit_table(table)
 
     def _types_editor(self):
         from ..render import type_color, type_radius
@@ -1354,7 +1612,7 @@ def cell_summary(cell) -> str:
 def read_vesta_elements(path):
     """VESTA elements.ini rows: index symbol radius vdw ionic R G B."""
     colors, radii = {}, {}
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             parts = line.split()
             if len(parts) >= 8 and parts[0].isdigit():

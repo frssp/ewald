@@ -40,13 +40,14 @@ import base64
 import importlib.util
 import json
 import os
+import posixpath
 import shutil
 import subprocess
 import sys
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from . import plugins
 from ._tls import ssl_context
@@ -86,7 +87,7 @@ class Entry:
 
     @property
     def file_name(self) -> str:
-        return self.source.rstrip("/").rsplit("/", 1)[-1] if not self.is_pip else ""
+        return "" if self.is_pip else source_name(self.source)
 
     @property
     def package(self) -> str:
@@ -264,6 +265,14 @@ def catalog(urls=(), timeout: float = 10.0) -> tuple[list[Entry], dict]:
     return entries, errors
 
 
+def source_name(source: str) -> str:
+    """The file name of a plugin source: the last part of a URL's path, or of a local path
+    with either separator (``C:\\plugins\\x.py`` gives ``x.py`` on every platform)."""
+    if "://" in source:
+        return posixpath.basename(urllib.parse.urlsplit(source).path.rstrip("/"))
+    return PureWindowsPath(source.rstrip("/\\")).name   # splits on / and on backslashes
+
+
 def _join(base: str, rel: str) -> str:
     if "://" in base:
         return base.rsplit("/", 1)[0] + "/" + rel
@@ -280,7 +289,8 @@ def github_token() -> str:
     if gh is None:
         return ""
     try:
-        out = subprocess.run([gh, "auth", "token"], capture_output=True, text=True, timeout=5)
+        out = subprocess.run([gh, "auth", "token"], capture_output=True, timeout=5,
+                             encoding="utf-8", errors="replace")
     except (OSError, subprocess.SubprocessError):
         return ""
     return out.stdout.strip() if out.returncode == 0 else ""
@@ -378,14 +388,14 @@ def fetch_file(entry_or_source, timeout: float = 30.0) -> Path:
     expected = entry_or_source.sha256 if isinstance(entry_or_source, Entry) else ""
     folder = plugins.plugin_dir()
     folder.mkdir(parents=True, exist_ok=True)
-    name = source.rstrip("/").rsplit("/", 1)[-1]
+    name = source_name(source)
     if not name.endswith(".py"):
         raise ValueError(f"not a plugin file: {source} (a .py file or pip:<package>)")
     target = folder / name
     if "://" in source:
         text = _read(source, timeout)
         verify_sha256(text, expected, source)   # before anything is written or imported
-        target.write_text(text, encoding="utf-8")
+        target.write_text(text, encoding="utf-8", newline="\n")
     else:
         src = Path(source).expanduser().resolve()
         if expected:
@@ -411,28 +421,46 @@ def remove_file(item: Installed) -> Path:
 ARCHIVE_SUFFIXES = (".zip", ".whl", ".tar.gz")   # a downloaded package that pip installs (a GitHub "Download ZIP" of a plugin repo)
 
 
+def _uv() -> str | None:
+    """The uv executable when this Python has no pip (an environment made by uv), else None."""
+    return shutil.which("uv") if importlib.util.find_spec("pip") is None else None
+
+
+# uv reads the OS certificate store (a company proxy's root certificate) when one of these is
+# set. Older uv knows only UV_NATIVE_TLS, newer uv also UV_SYSTEM_CERTS; each ignores the other.
+# The command-line flags differ the same way (--native-tls vs --system-certs) and an unknown flag
+# is an error, so the environment is the form that works with every uv version.
+UV_TLS_ENV = {"UV_NATIVE_TLS": "1", "UV_SYSTEM_CERTS": "1"}
+
+
 def pip_command(action: str, requirement: str | list[str]) -> list[str]:
     """``python -m pip install|uninstall ...`` for the Python ewald runs in; ``"update"``
     installs with ``--upgrade``. ``requirement`` may be a list (several packages at once).
-    An environment made by uv has no pip: then ``uv pip ... --python <this python>`` is used, with
-    ``--system-certs`` so a company proxy's root certificate (in the OS store) is trusted."""
+    An environment made by uv has no pip: then ``uv pip ... --python <this python>`` is used
+    (with :data:`UV_TLS_ENV` from :func:`pip_env`, so a company proxy's root certificate in the
+    OS store is trusted)."""
     reqs = [requirement] if isinstance(requirement, str) else list(requirement)
     flags = {"install": ["install"], "update": ["install", "--upgrade"], "uninstall": ["uninstall", "-y"]}
     verb, *rest = flags[action if action in flags else "uninstall"]
-    if importlib.util.find_spec("pip") is None and (uv := shutil.which("uv")):
-        extra = [] if verb == "uninstall" else ["--system-certs"]
+    if uv := _uv():
         if verb == "uninstall":
             rest = []                                    # uv pip uninstall has no -y
-        return [uv, "pip", verb, "--python", sys.executable, *extra, *rest, *reqs]
+        return [uv, "pip", verb, "--python", sys.executable, *rest, *reqs]
     return [sys.executable, "-m", "pip", verb, *rest, *reqs]
 
 
 def pip_env(requirement: str | list[str]) -> dict:
-    """Environment variables for the pip process: for a ``git+https://github.com/...``
-    requirement and a GitHub token, a git config entry that sends the token to github.com, so
-    it never appears in the command or in pip's output."""
+    """Environment variables for the :func:`pip_command` process: :data:`UV_TLS_ENV` when it
+    is uv, and for a ``git+https://github.com/...`` requirement and a GitHub token, a git config
+    entry that sends the token to github.com, so it never appears in the command or in pip's
+    output."""
+    env = dict(UV_TLS_ENV) if _uv() else {}
+    return env | _github_env(requirement)
+
+
+def _github_env(requirement: str | list[str]) -> dict:
     if not isinstance(requirement, str):
-        return next((env for r in requirement if (env := pip_env(r))), {})
+        return next((env for r in requirement if (env := _github_env(r))), {})
     url = requirement.split("@", 1)[-1].strip() if " @ " in requirement else requirement
     url = url.removeprefix("git+")
     if not url.startswith("https://github.com/"):

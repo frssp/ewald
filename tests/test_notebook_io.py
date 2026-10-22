@@ -20,7 +20,7 @@ pipe = load({path!r})
 pipe.add(CoordinationAnalysis(cutoff=3.0))
 
 # %% CN histogram
-show(pipe, histogram="Coordination")
+show(pipe, histogram="Coordination", xlim=(0, 14), panel=True)
 
 # %%
 print("atoms", pipe.compute(0).count)

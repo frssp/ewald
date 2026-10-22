@@ -21,7 +21,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ewald import examples, import_file
+from ewald import color_rule, examples, import_file, view
 from ewald.modifiers import CoordinationAnalysis, IdentifyDiamond, StructureFactor
 
 out = Path(sys.argv[1] if len(sys.argv) > 1 else "papers_out")
@@ -37,9 +37,13 @@ for model, ax in zip(("para", "poly"), axes):
     pipe.modifiers.extend([
         StructureFactor(method="rdf", q_min=1.0, q_max=12.0, number_of_bins=220, cutoff=20.0),
         CoordinationAnalysis(cutoff=2.85),                        # first shell, Si-Si ~2.35 A
-        IdentifyDiamond(),
+        # Structure Type per atom, and (color_by_type) the atom colors of the 3D view, OVITO's:
+        # white OTHER (amorphous), blue cubic diamond, cyan/green its 1st/2nd neighbors,
+        # orange/yellow/lime hexagonal diamond and its 1st/2nd neighbors
+        IdentifyDiamond(color_by_type=True),
     ])
     data = pipe.compute(0)
+    print(model, color_rule.describe(data))                     # the color rule, with each color and count
     sq = data.tables["structure-factor"]
     pipe.modifiers.append(CoordinationAnalysis(cutoff=8.0, number_of_bins=200))   # g(r) to 8 A
     gr = pipe.compute(0).tables["coordination-rdf"]
@@ -67,3 +71,7 @@ axes[2].legend(frameon=False)
 fig.tight_layout()
 fig.savefig(out / "asi_paracrystalline.png", dpi=150)
 print("wrote", out / "asi_paracrystalline.png")
+
+# %% The 3D view of the last model: colors from IdentifyDiamond (the steps' colors), with their legend.
+# color_by="Coordination" (colormap, color_range) or "type" would recolor it for display only.
+view(pipe, color_by=None, legend=True)

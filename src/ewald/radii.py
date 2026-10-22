@@ -78,7 +78,7 @@ def preset_name(name: str | None) -> str:
 
 @lru_cache(maxsize=1)
 def _tables() -> dict:
-    return json.loads(Path(__file__).with_name("tables").joinpath("radii.json").read_text())
+    return json.loads(Path(__file__).with_name("tables").joinpath("radii.json").read_text(encoding="utf-8"))
 
 
 def element_of(type_name) -> str | None:

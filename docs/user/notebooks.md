@@ -36,7 +36,9 @@ All cells run in one Python namespace. The variable `pipe` is the notebook's pip
 viewport shows it. Run a cell with ▶ or Ctrl+Enter, or with Shift+Enter to run it and move to
 the next one. Notebook › Run all (Ctrl+Shift+Enter) restarts the namespace and runs every cell
 from the top. If a cell fails, its traceback appears under it, and Run all stops there and
-marks the cells below as stale.
+marks the cells below as stale. Notebook › Restart (or the Restart button) clears the namespace
+but keeps every cell's output, as in Jupyter; the cells are marked stale (`·`) until they run
+again. Restart & clear outputs (the Restart button's arrow, or the Notebook menu) also removes them.
 
 The number beside a cell's run button is its run count, as in Jupyter. It shows `*` while the cell runs,
 `·` when an earlier cell changed and the cell is out of date (its card turns flat), and the cell gets a red
@@ -90,6 +92,25 @@ notebook's pipeline (`show(pipe.compute(5), ...)`, another pipeline) and figures
 matplotlib yourself stay images of the moment the cell ran. Saved notebooks keep the image as
 well, so Jupyter and GitHub show the plot.
 
+**Where a plot appears.** By default a plot sits under the cell that made it, as in Jupyter.
+Plots that change with the frame or are linked to the Structure view open in the **Plots
+panel** instead, each as its own tab next to *Plots*: everything on a trajectory, histograms,
+g(r), bond lengths and angles, time series, the NEB energy profile (a click goes to the image),
+DOS and bands (they follow the picked atoms) and phonon bands (a click plays the mode). The
+cell keeps a thumbnail with *Open in Plots panel*, which brings the tab back after you close
+it. A one-frame table that links to nothing, such as the XRD pattern of a single structure,
+stays under the cell. `panel=` overrides the rule:
+
+```python
+show(pipe, table="diffraction", panel=True)     # always in the Plots panel
+show(pipe, table="coordination-rdf", panel=False)   # always under the cell
+```
+
+Figures that Python steps draw follow the same idea through the cell's frame tag (see *What runs during playback* below). Right-click the plot or its thumbnail and choose *Show in Plots panel* or *Show under the cell*
+to write the same `panel=` into the cell's `show(...)` call. Each notebook tab brings its own plots
+into the panel, and running the cell again replaces the plot in the same tab. Outside the GUI,
+`panel=` does nothing: Jupyter and scripts draw the image.
+
 **What runs during playback.** Playing a trajectory never runs cells again: code cells run when
 you run them. What runs at each frame is the pipeline, the steps the cells added. A built-in
 step computes the frame (or, for MSD, VACF and other trajectory analyses, reads the trajectory
@@ -134,6 +155,14 @@ every frame, until a step above it or the file changes. `@each_frame` is what a 
 step does anyway; it says so in the notebook. Plots whose data did not change between frames
 (an `all_frames` table, MSD) are not redrawn during playback; time series move their frame
 marker.
+
+A step can draw its own figure with matplotlib (`plt.hist(...)`, `plt.plot(...)` in an
+`@each_frame` / `@all_frames` function or a `[each frame]` / `[all frames]` cell). The step
+keeps the figure with the frame as `data.attributes["Figure: <step name>"]` and closes it, so
+it never shows up under some other cell. In the GUI an each-frame step's figure is drawn again
+at every frame and opens in the Plots panel, with a thumbnail under its cell. An all-frames
+step's figure is drawn once and stays under its cell. Right-click either one to move it for
+this session (the cell's tag says when the code runs, so nothing is written into the code).
 
 Every plot ewald draws (view cells, `show`, a verb table's picture, the figures saved into an
 `.ewd`) uses one publication style from `ewald.plotstyle`: a 3.5 in single-column figure,
@@ -313,9 +342,11 @@ Opening a data file (File › Open, or `ewald gui file`) makes a notebook for it
 for it). With no notebook open, at start or after closing the last tab, the notebook area shows
 a welcome page: *New notebook* (Ctrl+T), *Open…*, *Open example* and the files opened lately;
 Notebook › ... is greyed out then, and Insert › ... starts a notebook. The 3D view says how to
-open something and greys out its view bar and tools until there is a structure. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. The cells
-only run after you choose to (Notebook › Run all), because a notebook is code. Preferences ›
-Python › *Run notebooks when opened* can change that to always run them or never run them.
+open something and greys out its view bar and tools until there is a structure. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. Opening
+runs nothing: you see the cells and the results saved in the file, and a bar over the cells says
+*Not run yet* with a *Run all* button (or Notebook › Run all). Preferences › Python › *Run
+notebooks when opened* changes that: *never* (the default), *ask* (asks every time) or *always*
+(a notebook you saved or trusted before runs at once, as in Jupyter).
 
 File › Save notebook (Ctrl+S) writes the notebook file; the first time it asks for a name and a
 format, `.ewd` unless you pick another. Sessions (`.ewald`) still load and save from the File
@@ -364,11 +395,11 @@ changed or is missing. `load("traj.dump")` in a cell looks in the same places, s
 you send with its data, or one that carries it, runs on another computer. Preferences › Python
 sets the size limit (*Copy data files up to*, 0 for links only) and whether figures are saved.
 
-Trust works as in Jupyter. A notebook you saved yourself, or trusted before, opens trusted and
-runs when opened (unless *Run notebooks when opened* is *never*). Any other notebook file
+Trust works as in Jupyter. A notebook you saved yourself, or trusted before, opens trusted (it
+runs when opened only if *Run notebooks when opened* is *always*, or you answer *Yes* with *ask*). Any other notebook file
 (`.py`, `.ipynb` or `.ewd` someone sent, or one of yours edited elsewhere) opens **restricted**.
 You see its code, outputs and figures, but no cell runs and an `.ewd`'s plugins are not imported
-until you agree: opening asks (unless the setting is *never*), and so do Run all and running a
+until you agree: opening asks when the setting is *ask* or *always*, and so do Run all and running a
 single cell. A bar over the cells says the notebook is restricted, with *Trust* and *Trust and
 run all*; Notebook › *Trust notebook…* does the same. Answering *Yes* when the file opens trusts
 it too and hides the bar. ewald remembers each file you save or trust by the SHA-256 of its

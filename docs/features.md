@@ -208,7 +208,7 @@ Tried in this order when no `format=` is given; reader plugins slot in at priori
 | `vasprun` | `vasprun*.xml` | VASP vasprun.xml: ionic steps with cell, forces, stress, energies, DOS/PDOS and bands, lazy | `vasp-vasprun` |
 | `extxyz` | `*.xyz` `*.extxyz` | XYZ / extended XYZ (Lattice=, Properties=), lazy | `xyz`, `ext-xyz` |
 | `cif` | `*.cif` | Crystallographic Information File via ASE |  |
-| `ase` | `POSCAR*` `CONTCAR*` `OUTCAR*` `vasprun*.xml` `*.xyz` `*.extxyz` `*.cif` `*.vasp` | anything ase.io.read understands (POSCAR, OUTCAR, vasprun.xml, extxyz, cif, ...); other format= names are passed to ASE |  |
+| `ase` | `*POSCAR*` `*CONTCAR*` `*.vasp` `*.poscar` `OUTCAR*` `vasprun*.xml` `*.xyz` `*.extxyz` `*.cif` `*.pdb` `*.gro` `*.gen` `*.res` `*.cell` `*.castep` `*.pwi` `*.pwo` `geometry.in` | anything ase.io.read understands (POSCAR, OUTCAR, vasprun.xml, extxyz, cif, ...); other format= names are passed to ASE |  |
 | `lammps-data-ase` | (by `format=` only) | LAMMPS data file via ASE |  |
 
 Remote paths (`host:/path`, `ssh://...`) work with every reader; LAMMPS dumps and XDATCARs are streamed, other formats are downloaded to a local cache.
@@ -256,7 +256,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 | `Bonds` | Half-bonds as cylinders in their atoms' colors (or the bonds' 'Color'): ``data.bonds`` when present, else a search by ``cutoff`` or VESTA-style ``pairs`` [(A, B, dmin, dmax)]. |
 | `Surfaces` | Every ``data.surfaces`` mesh (polyhedra, isosurfaces, grid slices). ``styles`` restyles them by name on top of what their step made: ``{name: {"visible", "color", "transparency", "edges"}}``. |
 | `Vectors` | Per-particle vectors as arrows: ``data.vectors`` (VectorVis) plus ``vectors`` (a property name, a list, or ``{name: {VectorStyle fields}}``, see :class:`ewald.arrows.VectorStyle`). |
-| `Trajectory lines` | ``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle in its atom color; ``width`` in pixels, 0 hides them. |
+| `Trajectory lines` | ``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle, in its atom color or a color map by Time, Frame, step length or a property, over a Time window or a trail. |
 | `Simulation cell` | The cell edges as lines, ``width`` pixels wide; ``color`` None uses the renderer's ink (black, or light grey on dark backgrounds). ``radius`` (Angstrom) sizes the ray-traced tubes, None = 0.15 % of the cell diagonal. |
 | `Measurements` | The view's ``measurements`` (:mod:`ewald.measure`): lines through 2, 3 or 4 atoms (nearest periodic images), ``width`` pixels wide in ``color``; the values are the Measurements overlay (:class:`ewald.overlays.MeasurementLabels`). Indices are those of the real atoms, also in a boundary or replicated view. |
 
@@ -302,7 +302,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 `size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`, `region`, `labels`, `light`, `progress`.
 
-Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`, `show_atoms`, `surfaces`, `cell_radius`, `type_transparency`, `selection_color`, `measurements`.
+Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `trajectory_color_by`, `trajectory_colormap`, `trajectory_color_range`, `trajectory_time_range`, `trajectory_trail`, `trajectory_radius`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`, `show_atoms`, `surfaces`, `cell_radius`, `type_transparency`, `selection_color`, `measurements`.
 
 ## Command line
 
@@ -346,7 +346,7 @@ Tools:
 | Tool | What it does |
 |---|---|
 | `load_structure` *cell* | Load a structure or trajectory file (VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vaspout.h5, LAMMPS dump/data, extxyz, cif, ... ; wildcards allowed) as the pipeline, replacing any previous one: a pipe = load(...) cell at the end of the notebook, run at once. |
-| `describe_frame` | Compact description of one frame after the current modifiers: composition, cell, density, minimum distance, coordination histogram per type, g(r) peaks, property ranges, sanity warnings. |
+| `describe_frame` | Compact description of one frame after the current modifiers: composition, cell, density, minimum distance, coordination histogram per type, g(r) peaks, property ranges, sanity warnings, and how the 3D view colors the atoms ('atom_colors': which step or view setting, which property, and the color of each category or the color map and range). |
 | `describe_selection` | Describe particles and their surroundings: per-atom neighbor lists, coordination numbers, structure types (if CNA/PTM ran), property values against the environment and frame averages, the nearest defect, and a close-up render with the particles highlighted. |
 | `describe_trajectory` | Scan the trajectory (source frames, subsampled to max_frames) and return per-frame descriptor statistics (volume, min distance, MSD and max displacement vs the first frame, coordination) and 'events': frames where a descriptor shifts abruptly. |
 | `event_details` | Measure what changes around a frame (e.g. an event from describe_trajectory): which atoms moved and how far (minimum image, by identifier), by type, local vs system-wide, coordination transitions, and the top movers with positions before/after. |
@@ -362,7 +362,7 @@ Tools:
 | `compute_msd` | Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per type, with a linear-regime fit D = slope/6. |
 | `check_run` | What the loaded run is and whether it can be trusted, from its input and log files (INCAR, OSZICAR, OUTCAR, log.lammps): code, kind (md/relax/static/neb), ensemble, target temperature, MD time step and time per stored frame, then findings: SCF steps that hit NELM, relaxation not converged, the first equilibrated frame of MD, temperature off target, energy drift, LAMMPS warnings/errors, atoms too close. |
 | `render_image` | Render a frame of the pipeline to PNG and return the image so you can inspect it. |
-| `get_view` | The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, 'elements' the same values by visual element (Particles, Bonds, Surfaces, Simulation cell, ...), 'measured' the values of its distance/angle measurements, 'help' what each means. |
+| `get_view` | The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, 'elements' the same values by visual element (Particles, Bonds, Surfaces, Simulation cell, ...), 'atom_colors' what colors the atoms now (a step's structure-type colors, a color map, paint conditions or the type colors, with each color), 'measured' the values of its distance/angle measurements, 'help' what each means. |
 | `set_view` *cell* | Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style preset, theme, element colors and radii, atoms on/off, bonds on/off, bond table, cell, background, VESTA boundary, polyhedra/isosurface look by surface name (surfaces), distance/angle measurements, key light, atom labels, plugin visuals, vectors, camera (direction, zoom, rotate), frame, and picture options (renderer, quality, legends, scale bar, text). |
 | `list_visuals` | Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell; configured through set_view and modifiers) and installed plugins, which add_visual draws on top in every renderer. |
 | `add_visual` *cell* | Draw a plugin visual element (see list_visuals) in the view, with optional constructor parameters: the view setting 'visuals', written to the view cell like set_view. |
@@ -487,7 +487,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 | Key | Label | Default |
 |---|---|---|
-| `python.run_notebooks` | Run notebooks when opened | `'ask'` |
+| `python.run_notebooks` | Run notebooks when opened | `'never'` |
 | `python.plot_style` | Style of your own plots | `'Publication'` |
 | `python.save_figures` | Save figures with notebooks | `True` |
 | `python.bundle_data_mb` | Copy data files up to (MB) | `50.0` |
@@ -613,6 +613,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Run all (`Ctrl+Shift+Return`)
 - Run current cell and below
 - Restart
+- Restart & clear outputs
 - Kernel
 - Trust notebook…
 - Move cell up (`Ctrl+Shift+Up`)

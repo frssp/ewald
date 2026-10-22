@@ -43,7 +43,7 @@ def image(name: str, tokens: dict | None = None) -> str:
     color = (tokens or TOKENS)[key]
     path = os.path.join(tempfile.gettempdir(), f"ewald-ui-{name}-{color.lstrip('#')}.svg")
     if not os.path.exists(path):
-        with open(path, "w") as fh:
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
             fh.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
                      f'stroke="{color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'
                      f'{path_d}</svg>')
@@ -290,6 +290,11 @@ QFrame#cell[state="running"] QLabel#cellCounter {{ color: {data}; font-weight: 6
 QFrame#cell[state="error"] QLabel#cellCounter {{ color: {error}; }}
 QWidget#cellGutter, QWidget#cellTools, QWidget#cellOutput, QLabel#cellImage {{ background: transparent; }}
 QFrame#cell QLabel, QFrame#cell QCheckBox {{ background: transparent; }}
+QFrame#plotCard {{ background: {panel}; border: 1px solid {border}; border-radius: 6px; }}
+QFrame#plotCard:hover {{ border-color: {accent}; }}
+QLabel#plotCardTitle {{ color: {text}; font-weight: 600; }}
+QPushButton#plotCardLink {{ color: {accent}; background: transparent; border: none; padding: 0; text-align: left; }}
+QPushButton#plotCardLink:hover {{ text-decoration: underline; }}
 QToolButton#cellRun {{ padding: 0; border-radius: 12px; }}
 QToolButton#cellRun:hover {{ background: {accent_soft}; color: {accent}; }}
 QLabel#cellCounter {{ color: {muted}; font-size: 11px; }}

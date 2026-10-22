@@ -9,6 +9,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- MIT license (`LICENSE`); the `Private :: Do Not Upload` classifier is gone.
 - `CITATION.cff` (GitHub's *Cite this repository*), `CONTRIBUTING.md`, `SECURITY.md`, issue
   templates and `.github/FUNDING.yml`, in preparation for a public repository.
 - `ewald.plugin_api`, the supported import surface for plugins, versioned by `PLUGIN_API` (1). A
@@ -47,7 +48,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 - Plugins side bar *From file…* also takes a downloaded `.zip`, `.whl` or `.tar.gz` package and installs it with pip.
 - Plugin index and example downloads trust the OS certificate store (`truststore`), so they work behind a
   company proxy that re-signs HTTPS ("certificate verify failed"). In a uv environment without pip, the
-  Plugins panel installs with `uv pip ... --system-certs`.
+  Plugins panel installs with `uv pip ...`, asking uv for the OS store through
+  `UV_NATIVE_TLS`/`UV_SYSTEM_CERTS` instead of a flag, so it works with every uv version
+  (`error: unexpected argument '--system-certs'` on older uv).
 
 ### Changed
 

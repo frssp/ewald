@@ -116,6 +116,7 @@ class LegacyViewport(Viewport):
     """:class:`Viewport` drawing with OpenGL 1.x display lists (``Preferences › Viewports``)."""
 
     backend = "legacy-gl"
+    uses_vtk = False   # its GLView asks for its own OpenGL 1.x format
     lazy_view = False  # cheap to build, and its GL window and caption are used right away
 
     def _create_view(self) -> QtWidgets.QWidget:
@@ -156,9 +157,11 @@ class LegacyViewport(Viewport):
 
             scene = Scene()
         else:
+            from ..color_rule import take
+
             kw = dict(self.style.scene_kwargs())
             light = kw.pop("light", None)
-            scene = build(self.data, ctx=SceneContext(), visuals=kw.pop("visuals", None), **kw)
+            scene = build(take(self.data, kw), ctx=SceneContext(), visuals=kw.pop("visuals", None), **kw)
         dark = _is_dark(self.style.background)
         from matplotlib.colors import to_rgb
 

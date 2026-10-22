@@ -263,10 +263,7 @@ def _line_prims(lines, camera, size, ink):
         return prims
     cx, cy, cz, _ = _project(lines.points, camera, size)
     half = max(0.5, lines.width * size[1] / 1600)
-    if lines.rgb is None:
-        seg_rgb = np.tile(_rgb(ink), (len(seg), 1))
-    else:
-        seg_rgb = lines.rgb[np.concatenate([np.full(max(len(s) - 1, 0), k) for k, s in enumerate(lines.strips)])]
+    seg_rgb = lines.segment_colors(_rgb(ink))
     for (i, j), cc in zip(seg, seg_rgb):
         dx, dy = cx[j] - cx[i], cy[j] - cy[i]
         length = math.hypot(dx, dy)
@@ -285,7 +282,9 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                   bonds=None, bond_pairs=None, bond_radius=0.15, show_cell=True, cell_color=None,
                   cell_width=2.0, shading="gradient", text=None, legend=True, type_legend=False,
                   scale_bar=None, dpi=None, radius_preset="covalent", oxidation_states=None, coordination=None,
-                  vectors=None, trajectory_width=2.0, visuals=None, frame=0, overlays=None, boundary=None,
+                  vectors=None, trajectory_width=2.0, trajectory_color_by=None, trajectory_colormap="viridis",
+                  trajectory_color_range=None, trajectory_time_range=None, trajectory_trail=None,
+                  trajectory_radius=None, visuals=None, frame=0, overlays=None, boundary=None,
                   boundary_bonds="half", replicate=None, replicate_cell="super", show_atoms=True, surfaces=None,
                   type_transparency=None, selection_color=None, light=None, measurements=None, **_ignored):
     """Draw ``data`` as a vector figure and save it (format from the extension).
@@ -321,7 +320,10 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                      type_colors=type_colors, type_radii=type_radii, radius_preset=radius_preset,
                      oxidation_states=oxidation_states, coordination=coordination, bonds=bonds,
                      bond_pairs=bond_pairs, bond_radius=bond_radius, vectors=vectors,
-                     trajectory_width=trajectory_width, show_cell=show_cell, cell_color=cell_color,
+                     trajectory_width=trajectory_width, trajectory_color_by=trajectory_color_by,
+                     trajectory_colormap=trajectory_colormap, trajectory_color_range=trajectory_color_range,
+                     trajectory_time_range=trajectory_time_range, trajectory_trail=trajectory_trail,
+                     trajectory_radius=trajectory_radius, show_cell=show_cell, cell_color=cell_color,
                      cell_width=cell_width, boundary=boundary, boundary_bonds=boundary_bonds,
                      replicate=replicate, replicate_cell=replicate_cell, show_atoms=show_atoms,
                      surfaces=surfaces, type_transparency=type_transparency, selection_color=selection_color,
@@ -338,7 +340,7 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
 
     lay = overlay_layout(data, (w, h), text=text, legend=legend, type_legend=type_legend, scale_bar=scale_bar,
                          camera=camera, type_colors=type_colors, overlays=overlays, frame=frame,
-                         background=background, transparent=transparent_background)
+                         background=background, transparent=transparent_background, colorbars=scene.legends)
     ink = ink_color(background, transparent_background)
     fs, small = lay["font_size"] * pt, lay["small"] * pt
     if "text" in lay:
@@ -349,10 +351,9 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
         ax.add_patch(Circle((row["x"] + d / 2, row["y"] + d / 2), d / 2, facecolor=row["rgb"], edgecolor=ink,
                             linewidth=max(1, d // 14) * pt))
         ax.text(row["x"] + 1.5 * d, row["y"] + d / 2, row["name"], color=ink, fontsize=fs, va="center", ha="left")
-    if "colorbar" in lay:
-        from .colormaps import get_colormap
+    from .colormaps import get_colormap
 
-        cb = lay["colorbar"]
+    for cb in lay.get("colorbars", []):
         x0, y0, x1, y1 = cb["box"]
         cmap = get_colormap(cb["cmap"])
         n = 64

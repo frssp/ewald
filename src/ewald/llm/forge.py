@@ -277,15 +277,16 @@ def verify(module_name: str, class_name: str, module_source: str, test_source: s
                                       "must be Python identifiers"}], "tests": []}
     test_name = f"test_{module_name}"
     with tempfile.TemporaryDirectory(prefix="ewald-forge-") as tmp:
-        Path(tmp, f"{module_name}.py").write_text(module_source)
-        Path(tmp, f"{test_name}.py").write_text(test_source)
+        Path(tmp, f"{module_name}.py").write_text(module_source, encoding="utf-8", newline="\n")
+        Path(tmp, f"{test_name}.py").write_text(test_source, encoding="utf-8", newline="\n")
         runner = Path(tmp, "_forge_runner.py")
-        runner.write_text(_RUNNER)
+        runner.write_text(_RUNNER, encoding="utf-8", newline="\n")
         env = {**_subprocess_env(tmp), "EWALD_CONFIG_DIR": str(Path(tmp, "config")), "EWALD_NO_PLUGINS": "1",
-               "MPLBACKEND": "Agg"}
+               "MPLBACKEND": "Agg", "PYTHONUTF8": "1"}
         try:
             proc = subprocess.run([sys.executable, "-I", str(runner), tmp, module_name, class_name, test_name],
-                                  cwd=tmp, env=env, capture_output=True, text=True, timeout=timeout)
+                                  cwd=tmp, env=env, capture_output=True, timeout=timeout,
+                                  encoding="utf-8", errors="replace")
         except subprocess.TimeoutExpired:
             return {"checks": [{"name": "time limit", "ok": False,
                                 "detail": f"the checks and tests did not finish within {timeout:.0f} s"}], "tests": []}
@@ -386,8 +387,9 @@ def save_plugin(result: ForgeResult, overwrite: bool = False) -> Path:
     manifest = {"id": result.module_name, "description": result.request[:200], "source": "forge",
                 "created": datetime.date.today().isoformat(), "plugin_api": PLUGIN_API}
     target.write_text(header + result.module_source.lstrip("\n").rstrip("\n")
-                      + f"\n\n\n__ewald__ = {manifest!r}   # plugin manifest (ewald plugins)\n")
-    (tests / f"test_{result.module_name}.py").write_text(result.test_source)
+                      + f"\n\n\n__ewald__ = {manifest!r}   # plugin manifest (ewald plugins)\n",
+                      encoding="utf-8", newline="\n")
+    (tests / f"test_{result.module_name}.py").write_text(result.test_source, encoding="utf-8", newline="\n")
     return target
 
 

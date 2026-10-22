@@ -108,6 +108,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.viewport.contextMenuRequested.connect(self._show_viewport_menu)
         self.timeline = Timeline()
         self.timeline.frameChanged.connect(self.set_frame)
+        self.timeline.play.toggled.connect(lambda on: self.viewport.set_playing(on))
         self.live_reload = LiveReload.attach(self)
         self.workbench = Workbench(self.timeline)
         self.workbench.register("viewport", self.viewport, "Structure", home="editor", native=True)
@@ -128,7 +129,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings, notebook=True),
                                   notebook=self._notebook_code, notebook_access=NotebookBridge(self),
                                   auto_insert=lambda: code_cells_mode(self.settings) == "insert",
-                                  errors=self._notebook_errors)
+                                  errors=self._notebook_errors, view=self._view_summary)
         self.ask_panel.pipelineChanged.connect(self._after_claude)
         self.ask_panel.insertRequested.connect(self._insert_claude_cell)
         # --- left: notebook tabs (the pipeline as Python cells); right: display settings
@@ -155,6 +156,9 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.plugins_panel.changed.connect(self.panel.refresh_packages)
         self.panel.pipRequested.connect(self._install_notebook_packages)
         self.panel.switched.connect(self._notebook_switched)
+        self._plot_docks = {}  # view id -> (PlotSlot, id, PlotsPanel): cells' plots in the Plots panel
+        self._closed_docks = set()  # ... whose tab the user closed (the cell's thumbnail opens it again)
+        self.panel.switched.connect(self._sync_plot_docks)
         self.plugins_panel.createRequested.connect(self._create_plugin)
         self.plugins_dock = self._dock(self.plugins_panel, "Plugins", QtCore.Qt.LeftDockWidgetArea, 300)
         self.splitDockWidget(self.plugins_dock, self.notebook_dock, QtCore.Qt.Horizontal)
@@ -555,10 +559,13 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         if self.data is None:
             return None
         if not filename:
-            filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+            filename, chosen = QtWidgets.QFileDialog.getSaveFileName(
                 self, "Render image", "render.png", "Images (*.png *.jpg *.tif);;Vector (*.svg *.pdf *.eps)")
             if not filename:
                 return None
+            from .file_dialogs import suffixed
+
+            filename = suffixed(filename, chosen)
         _kw, call = self._render_call(filename, overrides)
         try:
             with busy(self.message, f"Rendering {os.path.basename(str(filename))}…"):
@@ -744,6 +751,9 @@ def _app():
         check_qt_platform()
         if viewport_backend(settings_mod.load()["viewport.backend"]) == "vtk":
             check_remote_display()
+            from .viewport import use_vtk_surface_format
+
+            use_vtk_surface_format()  # Qt wants it before the QApplication on macOS
         _set_windows_app_id()
         set_app_name()
         app = EwaldApplication(strip_psn(sys.argv))

@@ -111,3 +111,20 @@ def test_file_open_event_reaches_main_window():
     app.set_file_open_target(closed)
     app.event(QtGui.QFileOpenEvent("/data/XDATCAR"))
     assert app._file_open_target is None and app._pending_files == ["/data/XDATCAR"]  # kept for the next window
+
+
+def test_vtk_surface_format_matches_pyvistaqt():
+    """The window's OpenGL default must be the format pyvistaqt's QtInteractor asks for: macOS cannot
+    share a legacy 2.1 context with a 4.1 core one, and the VTK view composites black (the 3D view
+    stayed black on a Mac while everything else worked)."""
+    pytest.importorskip("PySide6")
+    rwi = pytest.importorskip("pyvistaqt.rwi")
+    if not hasattr(rwi, "_default_format"):
+        pytest.skip("pyvistaqt without the QOpenGLWidget interactor")
+    from PySide6 import QtGui
+
+    from ewald.gui.viewport import vtk_surface_format
+
+    ours, theirs = vtk_surface_format(), rwi._default_format()
+    assert ours == theirs
+    assert ours.profile() == QtGui.QSurfaceFormat.CoreProfile and ours.version() == (3, 2)

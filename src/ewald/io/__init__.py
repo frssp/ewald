@@ -404,8 +404,9 @@ def builtin_readers():
                      ("vasp-vasprun",)),
         ReaderPlugin("lammps-data-ase", _open_ase_lammps_data, (), None,
                      "LAMMPS data file via ASE", B, None),
-        ReaderPlugin("ase", _open_ase, ("POSCAR*", "CONTCAR*", "OUTCAR*", "vasprun*.xml", "*.xyz", "*.extxyz",
-                                        "*.cif", "*.vasp"), lambda path: True,
+        ReaderPlugin("ase", _open_ase, ("*POSCAR*", "*CONTCAR*", "*.vasp", "*.poscar", "OUTCAR*", "vasprun*.xml",
+                                        "*.xyz", "*.extxyz", "*.cif", "*.pdb", "*.gro", "*.gen", "*.res",
+                                        "*.cell", "*.castep", "*.pwi", "*.pwo", "geometry.in"), lambda path: True,
                      "anything ase.io.read understands (POSCAR, OUTCAR, vasprun.xml, extxyz, cif, ...); "
                      "other format= names are passed to ASE", B, 100, takes_format=True),
     ]
@@ -435,39 +436,55 @@ def import_file(path, format: str | None = None, **kwargs):
     VASP file-name guess and ``pbc=True`` marks a cube file periodic.
     A NEB run (a VASP folder with image folders ``00 .. NN``, or ``format="neb"`` with a
     wildcard naming one file per image) is read with one frame per image, and the pipeline
-    starts with ``NebEnergyProfile`` and ``OverlayFrames`` (every image see-through behind the
-    current one; see :mod:`ewald.io.neb`).
+    starts with ``UnwrapTrajectories`` (images are written wrapped into the cell, each file its
+    own way, so atoms on a cell face would jump across it from image to image),
+    ``NebEnergyProfile`` and ``OverlayFrames`` (every image see-through behind the current one;
+    see :mod:`ewald.io.neb`).
     """
     from ..pipeline import Pipeline
 
     pipe = Pipeline(FileSource(path, format, **kwargs))
     if any(isinstance(r, NebReader) for r in pipe.source.readers):
-        from ..modifiers import NebEnergyProfile, OverlayFrames
+        from ..modifiers import NebEnergyProfile, OverlayFrames, UnwrapTrajectories
 
-        pipe.modifiers += [NebEnergyProfile(), OverlayFrames()]
+        pipe.modifiers += [UnwrapTrajectories(), NebEnergyProfile(), OverlayFrames()]
     return pipe
 
 
-def _write_poscar(path, data, sort: bool = True, direct: bool = True, **kwargs):
+def _ase_write(path, images, format, **kwargs):
+    """``ase.io.write`` with LF line ends and UTF-8 on every platform: ASE opens text files in
+    the platform's text mode, so on Windows a POSCAR would get CRLF ends that some codes on the
+    cluster do not read. Text formats that take a file object get one opened here."""
     import ase.io
+    from ase.io.formats import filetype, ioformats
 
+    path = os.fspath(path)
+    try:
+        fmt = ioformats.get(format or filetype(path, read=False))
+    except Exception:  # unknown name: let ase.io.write report it
+        fmt = None
+    if fmt is None or fmt.isbinary or not fmt.acceptsfd:
+        return ase.io.write(path, images, format=format, **kwargs)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        return ase.io.write(fh, images, format=fmt.name, **kwargs)
+
+
+def _write_poscar(path, data, sort: bool = True, direct: bool = True, **kwargs):
     from .extxyz import _to_atoms
 
     atoms = _to_atoms(data)
     if sort:  # one species block per element, in order of first appearance (stable)
         first = {s: i for i, s in reversed(list(enumerate(atoms.get_chemical_symbols())))}
         atoms = atoms[sorted(range(len(atoms)), key=lambda i: first[atoms[i].symbol])]
-    ase.io.write(os.fspath(path), atoms, format="vasp", direct=direct, **kwargs)
+    _ase_write(path, atoms, "vasp", direct=direct, **kwargs)
 
 
 def _write_with_ase(format):
     def write(path, frames, **kwargs):
-        import ase.io
-
         from .extxyz import _to_atoms
 
         images = [_to_atoms(d) for d in frames]
-        ase.io.write(os.fspath(path), images if len(images) > 1 else images[0], format=format, **kwargs)
+        _ase_write(path, images if len(images) > 1 else images[0], format, **kwargs)
 
     return write
 
