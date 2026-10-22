@@ -4,7 +4,7 @@ A :class:`Thermo` is a table with a ``Step`` column. A pipeline source holding o
 copies the row whose ``Step`` equals a frame's ``Timestep`` into that frame's
 attributes (``Temp``, ``PotEng``, ``Press``, ... for LAMMPS, as the log names them;
 ``Energy``, ``Free Energy``, ``Temperature``, ... for VASP) and puts the whole table
-into ``data.tables["Thermo"]``, which the GUI's Plots tab draws with a marker at the
+into ``data.tables["Steps"]``, which the GUI's Plots tab draws with a marker at the
 current frame. Frames without a matching step get the table but no attributes.
 """
 from __future__ import annotations
@@ -159,7 +159,7 @@ class Thermo:
     def annotate(self, data) -> None:
         for k, v in self.row(data.attributes.get("Timestep")).items():
             data.attributes.setdefault(k, v)
-        data.tables["Thermo"] = self.table
+        data.tables["Steps"] = self.table
 
     def __repr__(self):
         return f"<Thermo {len(self)} steps, columns {self.columns}>"

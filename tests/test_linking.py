@@ -63,13 +63,13 @@ def test_values_of_selection_fill_the_plot(cu_data):
 def test_thermo_rows_follow_frame_timesteps(lammps_dir):
     pipe = import_file(lammps_dir / "thermo" / "dump.lammpstrj")
     d = pipe.compute(0)
-    L = linking.link_for(d, "Thermo", "Temp", num_frames=pipe.num_frames)
+    L = linking.link_for(d, "Steps", "Temp", num_frames=pipe.num_frames)
     assert L.kind == "frames"
     np.testing.assert_array_equal(linking.frame_timesteps(pipe), [0, 10, 20, 30, 40])
-    np.testing.assert_array_equal(linking.frame_rows(pipe, d, "Thermo"), [0, 2, 4, 6, 8])
+    np.testing.assert_array_equal(linking.frame_rows(pipe, d, "Steps"), [0, 2, 4, 6, 8])
     assert linking.frames_in_box(pipe, d, L, 15, 32) == [2, 3]
     assert linking.frame_at(pipe, d, L, 26) == 3
-    temp = np.asarray(d.tables["Thermo"]["Temp"])
+    temp = np.asarray(d.tables["Steps"]["Temp"])
     hot = [k for k, r in enumerate([0, 2, 4, 6, 8]) if temp[r] > 200]
     assert linking.frames_in_box(pipe, d, L, -1, 100, 200, 1e9) == hot  # Shift+drag: by value
     x, _ = linking.frame_points(pipe, d, L, [1, 4])

@@ -7,6 +7,13 @@ with their outputs. A double click on a workflow opens it as one notebook with a
 step; on a step or an output it opens that path, as File › Open location would. The buttons
 insert a ``load(...)`` cell instead or copy the path. Requests run off the GUI thread, so a slow
 server never freezes the window.
+
+When the notebook on screen is one such workflow notebook, every step it loads gets a mark in the
+right column: ● is the step ``pipe`` is now (the 3D view and the main Plots tab), ○ another one;
+a click on ○ (or a double click on the step) makes it ``pipe`` by rewriting the notebook's
+``pipe = ...`` cell and running it. Under such a step its tables are listed ("Plot Bands",
+"Plot Steps", ...); a click opens one as its own Plots tab through a view cell
+``show(bands, table="Bands", panel=True)``. Both only edit cells, so the notebook stays the record.
 """
 from __future__ import annotations
 
@@ -15,10 +22,14 @@ import re
 from PySide6 import QtCore, QtWidgets
 
 from .. import plugins
-from ..workflow import Workflow
+from ..pipeline import Pipeline
+from ..workflow import Workflow, step_variables
 from . import workers
 
 ITEM = QtCore.Qt.UserRole          # the Workflow, WorkflowStep or WorkflowOutput an item shows
+VAR = QtCore.Qt.UserRole + 1       # the variable a workflow notebook loads that step or output into
+TABLE = QtCore.Qt.UserRole + 2     # on a "Plot ..." row: the table it opens
+ACTIVE, OTHER = "\u25cf", "\u25cb"  # marks of the step that is pipe, and of the other steps loaded
 _ID = re.compile(r"^(\d+|[0-9a-fA-F-]{8,36})$")
 #: pages a search follows while they come back empty (a source reads a bounded number per page)
 EMPTY_PAGES = 10
@@ -71,10 +82,16 @@ class WorkflowPanel(QtWidgets.QWidget):
         refresh.clicked.connect(self.refresh)
         row.addWidget(refresh)
         lay.addLayout(row)
-        self.tree = QtWidgets.QTreeWidget(headerHidden=True, objectName="workflowTree")
+        self.tree = QtWidgets.QTreeWidget(headerHidden=True, objectName="workflowTree", columnCount=2)
         self.tree.setUniformRowHeights(True)
+        head_view = self.tree.header()
+        head_view.setStretchLastSection(False)
+        head_view.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        head_view.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
+        head_view.resizeSection(1, 24)
         self.tree.itemExpanded.connect(self._expand)
-        self.tree.itemDoubleClicked.connect(lambda item, _col: self.open(item))
+        self.tree.itemClicked.connect(self._clicked)
+        self.tree.itemDoubleClicked.connect(self._double_clicked)
         self.tree.currentItemChanged.connect(self._selected)
         self.tree.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._menu)
@@ -101,6 +118,10 @@ class WorkflowPanel(QtWidgets.QWidget):
         self.note.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         lay.addWidget(self.note)
         context.on("settings", lambda _s: self.refresh())
+        context.on("pipeline", lambda _p: self.refresh_marks())
+        tabs = getattr(getattr(context.window, "panel", None), "tabs", None)
+        if tabs is not None:
+            tabs.currentChanged.connect(lambda *_: self.refresh_marks())
         self.refresh()
 
     @property
@@ -175,13 +196,14 @@ class WorkflowPanel(QtWidgets.QWidget):
             item.setToolTip(0, "\n".join(x for x in (wf.label, wf.description, wf.ctime, wf.path) if x))
             item.setData(0, ITEM, wf)
             if wf.complete:
-                self._fill(item, wf)
+                self._fill_workflow(item, wf)
             else:
                 item.addChild(QtWidgets.QTreeWidgetItem(["…"]))     # filled when expanded
             self.tree.addTopLevelItem(item)
         self.next_page = next_page
         self.more.setVisible(bool(next_page))
         self._say("" if self.tree.topLevelItemCount() else "No workflows found.")
+        self.refresh_marks()
 
     # ------------------------------------------------------------ one workflow
     def _expand(self, item):
@@ -202,24 +224,156 @@ class WorkflowPanel(QtWidgets.QWidget):
             return
         item.setData(0, ITEM, wf)
         item.setText(0, wf.title)
-        self._fill(item, wf)
+        self._fill_workflow(item, wf)
         item.setExpanded(True)
+        self.refresh_marks()
 
-    def _fill(self, item, step):
-        """``step``'s steps (nested) and outputs under ``item``."""
+    def _fill_workflow(self, item, wf):
+        names = step_variables(wf)
+        steps = {s.path for _, s in wf.walk() if s.path}
+        # the workflow's own result gets a mark too, unless it is one of its steps
+        item.setData(0, VAR, names.get(wf.path) if wf.path and wf.path not in steps else None)
+        self._fill(item, wf, names)
+
+    def _fill(self, item, step, names: dict):
+        """``step``'s steps (nested) and outputs under ``item``; ``names`` are the variables a
+        notebook of the whole workflow loads them into (:func:`ewald.workflow.step_variables`)."""
         item.takeChildren()
         for s in step.steps:
             label = s.name + (f"  ({s.runs} runs)" if s.runs > 1 else "")
             child = QtWidgets.QTreeWidgetItem([f"{label}  {s.mark()}".rstrip()])
             child.setToolTip(0, s.work_dir or s.path or "")
             child.setData(0, ITEM, s)
-            self._fill(child, s)
+            child.setData(0, VAR, names.get(s.path) if s.path else None)
+            self._fill(child, s, names)
             item.addChild(child)
         for o in step.outputs:
             child = QtWidgets.QTreeWidgetItem([f"{o.name}  ({o.note})" if o.note else o.name])
             child.setToolTip(0, o.path)
             child.setData(0, ITEM, o)
+            child.setData(0, VAR, names.get(o.path) if o.path else None)
             item.addChild(child)
+
+    # ------------------------------------------------------------ the notebook on screen
+    def _view(self):
+        """The notebook view on screen, or None."""
+        return getattr(getattr(self.context.window, "panel", None), "view", None)
+
+    def _items(self) -> list:
+        out, stack = [], [self.tree.topLevelItem(i) for i in range(self.tree.topLevelItemCount())]
+        while stack:
+            it = stack.pop()
+            out.append(it)
+            stack.extend(it.child(i) for i in range(it.childCount()))
+        return out
+
+    def refresh_marks(self):
+        """Mark the steps the notebook on screen loads (● the one that is ``pipe``, ○ the others)
+        and list their tables under them; nothing when that notebook is not this workflow's."""
+        view = self._view()
+        nb = view.notebook if view is not None else None
+        lines = set()
+        if nb is not None:
+            for cell in nb.cells:
+                if cell.kind == "code":
+                    lines.update(line.split("#", 1)[0].strip() for line in cell.source.splitlines())
+        pipe = nb.pipeline if nb is not None else None
+        for item in self._items():
+            var, obj = item.data(0, VAR), item.data(0, ITEM)
+            if not var:
+                continue
+            loaded = f"{var} = load({str(obj.path)!r})" in lines
+            value = nb.namespace.get(var) if loaded else None
+            active = loaded and pipe is not None and value is pipe
+            item.setText(1, (ACTIVE if active else OTHER) if loaded else "")
+            item.setToolTip(1, f"{nb.pipeline_name} = {var}: shown in the 3D view and the Plots tab" if active
+                            else f"Click to make {var} the shown step ({nb.pipeline_name} = {var})" if loaded else "")
+            self._list_tables(item, value if isinstance(value, Pipeline) else None, view, active)
+
+    def _list_tables(self, item, pipeline, view, active: bool):
+        """"Plot <table>" rows under ``item`` for the tables of ``pipeline`` (computed off the GUI
+        thread, at its first frame; the frame on screen when it is ``pipe``)."""
+        key = id(pipeline) if pipeline is not None else None
+        if getattr(item, "_tables_of", None) == key:
+            return
+        item._tables_of = key
+        if pipeline is None:
+            self._show_tables(item, key, [])
+            return
+        data = self.context.data if active else None
+        if data is not None:
+            self._show_tables(item, key, list(data.tables))
+        elif not getattr(view, "running", False):     # cells still running: the next refresh lists them
+            self._run(lambda: list(pipeline.compute(0).tables),
+                      lambda names, _err: self._show_tables(item, key, names or []))
+        else:
+            item._tables_of = None
+
+    def _show_tables(self, item, key, names):
+        if getattr(item, "_tables_of", None) != key or item.treeWidget() is not self.tree:
+            return                                    # the notebook changed meanwhile
+        for i in reversed(range(item.childCount())):
+            if item.child(i).data(0, TABLE):
+                item.takeChild(i)
+        var = item.data(0, VAR)
+        for k, name in enumerate(names):
+            row = QtWidgets.QTreeWidgetItem([f"Plot {name}"])
+            row.setData(0, TABLE, name)
+            row.setToolTip(0, f"Open show({var}, table={name!r}) as a Plots tab")
+            item.insertChild(k, row)
+
+    def _clicked(self, item, column):
+        if item.data(0, TABLE):
+            self.plot_table(item)
+        elif column == 1 and item.text(1) == OTHER:
+            self.activate(item)
+
+    def _double_clicked(self, item, _column):
+        if item.data(0, TABLE):
+            return                                    # the click already opened it
+        if item.text(1):
+            self.activate(item)
+        else:
+            self.open(item)
+
+    def activate(self, item):
+        """Make the step of ``item`` the notebook's ``pipe``: its ``pipe = ...`` line is rewritten
+        (or a cell added) and that cell runs, so the 3D view and the Plots tab follow."""
+        from ..notebook import Cell
+
+        view, var = self._view(), item.data(0, VAR)
+        if view is None or not var or not var.isidentifier():
+            return None
+        nb = view.notebook
+        name = nb.pipeline_name
+        pattern = re.compile(rf"^{re.escape(name)}\s*=\s*[A-Za-z_]\w*\s*(#.*)?$")
+        target = next((c for c in reversed(nb.cells) if c.kind == "code"
+                       and any(pattern.match(line.strip()) for line in c.source.splitlines())), None)
+        new = f"{name} = {var}"
+        if target is None:
+            target = nb.insert(len(nb.cells), Cell(new))
+        else:
+            target.source = "\n".join(new if pattern.match(line.strip()) else line
+                                       for line in target.source.splitlines())
+        nb.dirty = True
+        view.rebuild()
+        view.history.commit(f"Show {var}")
+        view.run(target)
+        return target
+
+    def plot_table(self, row):
+        """Open the table of a "Plot ..." row as its own Plots tab: a view cell
+        ``show(<step>, table=..., panel=True)``, added once and run again when it is there."""
+        view, var, table = self._view(), row.parent().data(0, VAR), row.data(0, TABLE)
+        if view is None or not var:
+            return None
+        for cell in view.notebook.cells:
+            args = cell.view or {}
+            if args.get("source") == var and args.get("table") == table and not args.get("histogram"):
+                view.select(cell)
+                view.run(cell)
+                return cell
+        return view.add_view(source=var, table=table, panel=True)
 
     # ------------------------------------------------------------ actions
     def _selected(self, item, _previous=None):
@@ -275,6 +429,8 @@ class WorkflowPanel(QtWidgets.QWidget):
             return
         self.tree.setCurrentItem(item)
         menu = QtWidgets.QMenu(self)
+        if item.text(1) == OTHER:
+            menu.addAction(f"Show this step ({item.data(0, VAR)})", lambda: self.activate(item))
         menu.addAction("Open as notebook" if isinstance(self._object(item), Workflow) else "Open",
                        lambda: self.open(item))
         menu.addAction("Insert load() cell", self.insert_cell)

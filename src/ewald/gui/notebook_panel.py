@@ -16,6 +16,7 @@ import os
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..notebook import Cell, History, Notebook, new_notebook
+from ..pipeline import Pipeline
 from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea, FlowLayout, _discover, fill_modifier_menu
 from .notebook_tabs import NotebookTabs
 from . import header, workers
@@ -334,7 +335,8 @@ class NotebookView(QtWidgets.QWidget):
         self._fill_plugin_menu()
 
     def add_view(self, **kwargs) -> Cell:
-        """Add a view cell (``show(pipe, **kwargs)``) after the current cell."""
+        """Add a view cell (``show(pipe, **kwargs)``; ``source=`` another pipeline variable) after
+        the current cell."""
         cell = self.notebook.add_view(self._index_after_current(), **kwargs)
         self.current = cell
         self.run(cell)  # rebuilds: the new cell gets its plot
@@ -462,7 +464,7 @@ class NotebookView(QtWidgets.QWidget):
         for w in self.widgets:
             w.update_state(self.data)
             if w.plot_panel is not None and (data is not None or w.plot_panel.data is None):
-                w.set_view_data(self.data, self.notebook.pipeline)
+                w.set_view_data(*self.view_source(w.cell))
             w.set_live_data(self.data, self.notebook.pipeline, force=data is not None)
         nb = self.notebook
         pipe = nb.pipeline
@@ -477,6 +479,21 @@ class NotebookView(QtWidgets.QWidget):
             text = nb.to_py()
             if text != self.file_view.toPlainText():   # keeps the scroll position while frames play
                 self.file_view.setPlainText(text)
+
+    def view_source(self, cell) -> tuple:
+        """``(data, pipeline)`` a view cell plots: the frame shown of ``pipe``, or for
+        ``show(<other>, ...)`` that pipeline of the namespace at the same frame (its last one
+        when it has fewer, e.g. a band structure next to a relaxation)."""
+        nb = self.notebook
+        name = (cell.view or {}).get("source", nb.pipeline_name)
+        other = nb.namespace.get(name)
+        if name == nb.pipeline_name or not isinstance(other, Pipeline) or other is nb.pipeline:
+            return self.data, nb.pipeline
+        frame = getattr(self.window(), "frame", 0) or 0
+        try:
+            return other.compute(max(0, min(frame, other.num_frames - 1))), other
+        except Exception:  # noqa: BLE001 - a pipeline that cannot compute shows an empty plot
+            return None, other
 
     def _show_file(self, on):
         if on:

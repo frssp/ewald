@@ -123,9 +123,15 @@ share its layout: the account, a search box that also takes an id, and the workf
 first. Expanding a workflow lists its steps (restarts of one calculation joined, sub-workflows
 nested) with their files and structures. A double click on a step or output opens it; on a
 workflow it opens the whole workflow as one notebook whose load cell names every step, a line
-each (`relax = load(...)`, `scf = load(...)`), and sets `pipe` to the main result. To look at another step
-in the 3D view, run `pipe = scf`; `show(scf, ...)` puts it in a view cell next to the others
-([Workflow sources](../plugins/workflows.md)).
+each (`relax = load(...)`, `scf = load(...)`), and a last cell that sets `pipe` to the main result
+(`result` when the workflow's own result is none of its steps). While that notebook is on screen,
+the side bar marks every step it loads: ● is the one `pipe` is now (the 3D view and the main
+Plots tab), ○ the others. A click on ○, or a double click on the step, makes it `pipe` by
+rewriting that last cell and running it. Under each loaded step its tables are listed
+(**Plot Bands**, **Plot Steps**, ...); a click adds a view cell such as
+`show(bands, table="Bands", panel=True)`, which opens that step's table as its own Plots tab
+whichever step `pipe` is, so the bands stay in view while you switch the 3D view between relax and
+scf ([Workflow sources](../plugins/workflows.md)).
 
 **AI chat (Ask AI).** The AI button at the bottom of the activity bar on the far left (also
 Window › AI chat, Ctrl+J, and Ask AI in the Structure view's right-click menu) opens a chat side bar left of the
@@ -212,7 +218,7 @@ notebook and redraw the view.
 reader, number of frames, particle properties).
 
 **Plots.** Any table in the current frame (g(r), MSD, histograms, time series) can be plotted
-and saved. The `Thermo` table (log.lammps, OSZICAR, OUTCAR, vasprun.xml; see
+and saved. The `Steps` table (log.lammps, OSZICAR, OUTCAR, vasprun.xml; see
 [File formats](formats.md#simulation-results)) is drawn one column at a time, picked under
 "y", with a dashed line at the current frame's step that follows the timeline. The `NEB`
 table (a NEB folder, or `NebEnergyProfile`) is drawn as the energy profile: the spline, the
@@ -255,7 +261,7 @@ style is drawn in the Paper or Graphite colors.
   They are picked in the viewport, so Ask AI about selection uses them, and the range is
   re-applied on every frame. **Keep as selection** turns a property range into an
   `ExpressionSelection` modifier.
-- Drag on a per-frame plot (`Thermo`, `time-series`, `plumed`, `colvar`, MSD) to select the
+- Drag on a per-frame plot (`Steps`, `time-series`, `plumed`, `colvar`, MSD) to select the
   frames in that x range; Shift+drag a box to select by value as well (for example the frames
   where a CV lies in a window). Drag a box on a 2D free energy surface to select the frames whose
   CV pair (from `LoadColvar` or `Plumed`) falls in it. The frames are marked on the timeline,

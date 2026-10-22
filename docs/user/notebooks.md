@@ -70,7 +70,7 @@ center on the smallest cation of a compound (Ti in SrTiO3) unless atoms are sele
 particle-property histogram:
 
 ```python
-show(pipe, table="coordination-rdf")         # g(r), XRD, S(q), DOS, Bands, Thermo, NEB, ...
+show(pipe, table="coordination-rdf")         # g(r), XRD, S(q), DOS, Bands, Steps, NEB, ...
 show(pipe, table="DOS", y="Ga d")            # one column
 show(pipe, histogram="Coordination")         # histogram of a particle property
 show(pipe, table="DOS", xlim=(-3, 2))        # the range shown (DOS energy window)

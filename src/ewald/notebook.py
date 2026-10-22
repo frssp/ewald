@@ -634,11 +634,15 @@ class Notebook:
             cell.state = "ok"
         return cell
 
-    def add_view(self, index: int | None = None, **kwargs) -> Cell:
-        """Insert a view cell (``show(pipe, **kwargs)``) at ``index`` (default: the end)."""
+    def add_view(self, index: int | None = None, source: str | None = None, **kwargs) -> Cell:
+        """Insert a view cell (``show(pipe, **kwargs)``) at ``index`` (default: the end);
+        ``source`` names another pipeline of the namespace to plot (``show(bands, ...)``)."""
         from .views import view_source
 
-        source = view_source(self.pipeline_name, **kwargs)
+        name = source or self.pipeline_name
+        if not name.isidentifier():
+            raise ValueError(f"not a variable name: {name!r}")
+        source = view_source(name, **kwargs)
         if "show" not in self.namespace:
             source = "from ewald.views import show\n" + source
         cell = Cell(source)

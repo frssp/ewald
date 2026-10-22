@@ -30,7 +30,9 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 - Workflows (`ewald.workflow`): a table that compares the scalars of every step of a workflow
   (energies, gaps, forces) and of several workflows side by side, and opening one step's input
-  next to its output (INCAR/KPOINTS as text cells).
+  next to its output (INCAR/KPOINTS as text cells). The side bar's step switch (●/○) and
+  "Plot <table>" rows exist; a step picker on top of the Plots panel itself does not, and the
+  rows list the tables of a step's first frame only.
 - Workflow folders (`ewald/workflow_folder.py`, docs/user/workflows.md): a killed VASP or LAMMPS
   step shows as running (no mtime or queue check); Quantum ESPRESSO, CP2K, ABINIT folders are not
   recognized; no "remove from list" in the Workflows side bar; a large tree on an SSH host is
