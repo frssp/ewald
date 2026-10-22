@@ -156,6 +156,9 @@ GUI
 - Plugins side bar: disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask AI prompt; uninstalling a pip plugin still needs a restart.
+  Updates compare versions only: an index entry that pins a new commit of a `pip:git+...`
+  package without raising its version is not offered as an update (the installed commit is in
+  the distribution's `direct_url.json` if that is ever wanted).
 - UI themes: prompts already printed in the Python console keep the colors of the theme they
   were printed in (new input, syntax colors and the background switch at once).
 - UI theme style keys (`font`, `mono_font`, `radius`, `density`, `icon_stroke`, `qss`): open code
@@ -486,6 +489,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   dialog with a name typed without extension; settings with non-ASCII text on Korean Windows;
   per-monitor DPI at 125/150 %; Windows Credential Manager; `ewald api > llms.txt` in cmd and
   PowerShell. The same list on a real Mac.
+- Plugins side bar on Windows and macOS: install ewald-phonopy from the default index (uv and
+  pip), check the side bar keeps its width while pip runs and can be narrowed again, and that
+  no *Update to …* button is left on default-index plugins afterwards.
 - MD playback in Ball & stick on Windows with a real GPU: bonds stay on through playback and
   scrubbing (no coarse/full switching between frames), and the numpy bond tubes look like the
   old `vtkTubeFilter` ones. Bonds whose length sits at the cutoff still appear and vanish

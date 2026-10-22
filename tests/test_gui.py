@@ -2764,6 +2764,37 @@ def test_plugins_from_file_sends_archives_to_pip_and_py_files_to_the_plugin_fold
     assert len(installs) == 1 and installs[0].source.endswith("one.py")
 
 
+def test_plugins_side_bar_stays_narrow_while_pip_runs(app, tmp_path):
+    """A long pip requirement in the busy line, or a long plugin name, must not widen the side bar."""
+    import json
+
+    from ewald import settings
+    from ewald.gui import plugins_panel
+
+    index = tmp_path / "index.json"
+    index.write_text(json.dumps({"format": 1, "plugins": [
+        {"id": "long", "name": "A plugin with a very long name that goes on and on " * 3, "version": "1.0",
+         "kinds": ["reader", "modifier", "visual", "overlay", "colormap", "theme", "tool"],
+         "source": "pip:git+https://github.com/frssp/ewald-plugins@" + "0" * 40 + "#subdirectory=packages/ewald-long"}]}))
+    s = settings.Settings()
+    s["python.plugin_catalogs"] = str(index)
+    panel = plugins_panel.PluginsPanel(settings=s)
+    panel.wait()
+    panel.resize(300, 600)
+    panel.show()
+    app.processEvents()
+    narrow = panel.minimumSizeHint().width()
+    assert narrow < 400
+    req = "git+https://github.com/frssp/ewald-plugins@" + "0" * 40 + "#subdirectory=packages/ewald-long"
+    panel._set_busy("long", "Installing…", f"Installing {req} with pip…")
+    app.processEvents()
+    assert panel.minimumSizeHint().width() <= narrow
+    assert panel.busy_label.text().startswith("Installing git+") and req in panel.busy_label.label.toolTip()
+    assert "…" in plugins_panel.QtWidgets.QLabel.text(panel.busy_label.label)    # what is drawn is shortened
+    panel._set_busy("long")
+    panel.close()
+
+
 def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app, tmp_path):
     import json
 
