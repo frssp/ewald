@@ -4420,3 +4420,54 @@ def test_viewport_has_no_msaa_so_depth_peeling_keeps_see_through_atoms(app):
         assert v.plotter.render_window.GetMultiSamples() == 0
     finally:
         _dispose(v)
+
+
+def test_resize_handles_are_visible_in_every_theme(app):
+    """Dock separators and split handles show a rule and a dotted grip in a 7 px hit area (the
+    owner could only find the notebook/structure boundary by hovering), in every UI theme."""
+    from PySide6 import QtGui
+
+    from ewald.gui import theme
+
+    saved = dict(theme.TOKENS), dict(theme.STYLE)
+    try:
+        for name in theme.PALETTES:
+            t = theme.use(name)
+            for img in ("grip_v", "grip_h", "grip_v_hover", "grip_h_hover"):
+                path = theme.image(img)      # PNG (Qt squares SVG style-sheet images) with a @2x copy
+                small, large = QtGui.QImage(path), QtGui.QImage(path.replace(".png", "@2x.png"))
+                assert sorted((small.width(), small.height())) == [7, 25] and large.width() == 2 * small.width()
+            w = QtWidgets.QMainWindow()
+            w.setStyleSheet(theme.stylesheet())
+            w.resize(400, 300)
+            split = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+            split.addWidget(QtWidgets.QLabel("a"))
+            split.addWidget(QtWidgets.QLabel("b"))
+            w.setCentralWidget(split)
+            dock = QtWidgets.QDockWidget("notebook")
+            dock.setWidget(QtWidgets.QLabel("cells"))
+            w.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
+            w.show()
+            app.processEvents()
+            im = w.grab().toImage()
+            left, right = dock.geometry().right() + 1, w.centralWidget().geometry().left()
+            assert right - left == 7, name                         # the separator's hit area
+            row = [im.pixelColor(x, 20).name().upper() for x in range(left, right)]
+            assert row == [t["panel"]] * 3 + [t["border"]] + [t["panel"]] * 3, (name, row)
+            mid = dock.geometry().center().y()
+            grip = [im.pixelColor(left + 3, y).name().upper() for y in range(mid - 14, mid + 14)]
+            assert grip.count(t["muted"]) >= 3, (name, grip)       # three dots on the rule
+            handle = split.handle(1)
+            assert handle.height() == 7, name
+            corner = handle.mapTo(w, QtCore.QPoint(0, 0))
+            col = [im.pixelColor(corner.x() + 20, y).name().upper() for y in range(corner.y(), corner.y() + 7)]
+            assert col == [t["panel"]] * 3 + [t["border"]] + [t["panel"]] * 3, (name, col)
+            w.close()
+            _dispose(w)
+    finally:
+        theme.TOKENS.clear()
+        theme.TOKENS.update(saved[0])
+        theme.STYLE.clear()
+        theme.STYLE.update(saved[1])
+    css = theme.stylesheet()     # hover: a 3 px accent rule and an accent grip
+    assert "QSplitter::handle:horizontal:hover" in css and "grip_v_hover" in css

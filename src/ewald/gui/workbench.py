@@ -585,7 +585,7 @@ class Workbench(QtWidgets.QWidget):
             return tg
         sp = QtWidgets.QSplitter(QtCore.Qt.Horizontal if node.orient == "h" else QtCore.Qt.Vertical)
         sp.setChildrenCollapsible(False)
-        sp.setHandleWidth(1)
+        sp.setHandleWidth(7)  # theme.py draws a 1 px rule and a grip in it
         for c in node.children:
             w = self._build(c)
             w.setMinimumSize(160, 90)
