@@ -2,7 +2,7 @@
 
 One function for every kind of data view, so a notebook needs no fixed panels::
 
-    show(pipe, table="coordination-rdf")          # any data table: g(r), XRD, DOS, Bands, Thermo, NEB
+    show(pipe, table="coordination-rdf")          # any data table: g(r), XRD, DOS, Bands, Steps, NEB
     show(pipe, table="DOS", y="Ga d")             # one column of it
     show(pipe, histogram="Coordination")          # histogram of a particle property
     snapshot(pipe, frame=3, camera={...})         # a picture of the 3D view (Insert › 3D snapshot)

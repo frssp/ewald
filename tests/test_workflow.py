@@ -92,13 +92,15 @@ def test_notebook_has_a_variable_per_step_and_pipe_on_the_main_result():
     nb = Notebook.from_py(text, name="Si relax")
     sources = [c.source for c in nb.cells]
     assert sources[0].startswith("# Si relax") and "| energy | -10.8 |" in sources[0]
-    assert len(nb.cells) == 3                       # heading, imports, and one cell that loads everything
+    assert len(nb.cells) == 4             # heading, imports, a cell that loads everything, pipe = ...
     assert sources[2].splitlines() == ["relax = load('demo:7/relax')",       # a failed step says so
                                        "scf = load('demo:7/bands/scf')  # ✗ exit 400",
-                                       "output_structure = load('demo:7/output_structure')",
-                                       "pipe = relax"]
+                                       "output_structure = load('demo:7/output_structure')"]
+    assert sources[3] == "pipe = relax"   # its own cell: the side bar's step switch rewrites only it
     assert nb.run_all()
     assert nb.pipeline is nb.namespace["relax"] and nb.namespace["scf"].num_frames == 1
+    assert workflow.step_variables(demo_workflow()) == {
+        "demo:7/relax": "relax", "demo:7/bands/scf": "scf", "demo:7/output_structure": "output_structure"}
 
 
 def test_variable_names():

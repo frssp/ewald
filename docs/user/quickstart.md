@@ -43,7 +43,7 @@ show(pipe, table="coordination-rdf")
 
 A view is linked to the Structure view. Drag a range on the histogram and those atoms are selected; pick
 atoms in the Structure view and they are highlighted on the plot. On a per-frame plot, such as an MSD or
-the `Thermo` table of a LAMMPS or VASP run, dragging selects frames instead.
+the `Steps` table of a LAMMPS or VASP run, dragging selects frames instead.
 
 Any other Python goes in a code cell, and a function added with `@pipe.add` runs on every frame.
 `paint`, `hide`, `isolate`, `fade` and `resize` style atoms by any condition:
