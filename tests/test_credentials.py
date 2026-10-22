@@ -301,7 +301,7 @@ def test_saved_connections_and_from_settings(monkeypatch):
         providers.from_settings(s, profile="nope")
     assert set(providers.profile_from_settings(s)) == set(providers.PROFILE_FIELDS)
     assert providers.parse_headers("A: 1; B:2;junk") == {"A": "1", "B": "2"}
-    # settings of the gateway provider that moved to a plugin are dropped quietly
+    # settings of the removed gateway provider are dropped quietly
     assert "llm.user_id" not in settings.Settings({"llm.user_id": "me", "llm.system_name": "x"})._values
 
 

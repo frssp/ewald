@@ -357,7 +357,7 @@ def _valid(opt: Option, value):
 
 # Options that no longer exist, dropped quietly from older settings files: the OVITO-like
 # "classic" window layout was removed, so the notebook layout is the only one.
-RETIRED = {"general.layout", "llm.user_id", "llm.system_name"}   # the last two moved to a gateway plugin
+RETIRED = {"general.layout", "llm.user_id", "llm.system_name"}   # the last two: gateway headers, now llm.headers
 # Values renamed since: key -> {old: new}
 RENAMED_VALUES = {"general.startup_workspace": {"Analyze": "Notebook"}}
 
