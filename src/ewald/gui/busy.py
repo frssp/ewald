@@ -161,12 +161,50 @@ class BusyLabel(QtWidgets.QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(6)
         self.spinner = Spinner(size, self)
-        self.label = QtWidgets.QLabel(text, objectName="muted")
+        self.label = ElidedLabel(text, objectName="muted")
         lay.addWidget(self.spinner)
-        lay.addWidget(self.label)
+        lay.addWidget(self.label, 1)
 
     def text(self) -> str:
         return self.label.text()
 
     def setText(self, text: str):
         self.label.setText(text)
+
+
+class ElidedLabel(QtWidgets.QLabel):
+    """A one-line label that shortens its text with "…" to the width it is given (the whole text
+    in the tooltip), so a long text such as a pip requirement never widens the panel it is in."""
+
+    MIN_CHARS = 8
+
+    def __init__(self, text: str = "", parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
+        self._full = ""
+        self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
+        self.setText(text)
+
+    def text(self) -> str:
+        return self._full
+
+    def setText(self, text: str):
+        self._full = text or ""
+        self.setToolTip(self._full if len(self._full) > self.MIN_CHARS else "")
+        self._elide()
+        self.updateGeometry()
+
+    def sizeHint(self):
+        fm = self.fontMetrics()
+        return QtCore.QSize(fm.horizontalAdvance(self._full) + 2, super().sizeHint().height())
+
+    def minimumSizeHint(self):
+        fm = self.fontMetrics()
+        return QtCore.QSize(fm.horizontalAdvance("x" * self.MIN_CHARS), super().minimumSizeHint().height())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._elide()
+
+    def _elide(self):
+        shown = self.fontMetrics().elidedText(self._full, QtCore.Qt.ElideMiddle, max(self.width(), 1))
+        super().setText(shown if self.width() > 1 else self._full)
