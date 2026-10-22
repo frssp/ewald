@@ -497,11 +497,11 @@ def _print_plugins(as_json=False, enable=None, disable=None):
 
 def _ai_arguments(parser):
     parser.add_argument("--provider", default=None,
-                        help="AI provider: anthropic, openai, gemini, openai-compatible, gateway or a plugin's "
+                        help="AI provider: anthropic, openai, gemini, openai-compatible or a plugin's "
                              "(default: Preferences > AI)")
     parser.add_argument("--profile", default=None, metavar="NAME",
                         help="a connection saved in Preferences > AI (provider, model, address, headers)")
-    parser.add_argument("--base-url", default=None, help="server address (OpenAI-compatible server, gateway)")
+    parser.add_argument("--base-url", default=None, help="server address (OpenAI-compatible server)")
 
 
 def _ai_options(args, effort: bool = True) -> dict:

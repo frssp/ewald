@@ -70,7 +70,7 @@ LAYOUT = {
         ("Provider", ["llm.provider"]),
         ("Model", ["llm.model", "llm.effort"]),
         ("Notebook", ["llm.code_cells", "llm.run_cells"]),
-        ("Connection", ["llm.base_url", "llm.route_prefix", "llm.user_id", "llm.system_name", "llm.headers",
+        ("Connection", ["llm.base_url", "llm.route_prefix", "llm.key_header", "llm.headers",
                         "llm.timeout"])]),
 }
 
@@ -649,8 +649,7 @@ class PreferencesDialog(QtWidgets.QDialog):
         self._key_status()
 
     # rows the chosen provider uses: llm.<field> -> the Provider.options entry it needs
-    _PROVIDER_ROWS = {"llm.route_prefix": "route_prefix", "llm.user_id": "user_id",
-                      "llm.system_name": "system_name"}
+    _PROVIDER_ROWS = {"llm.route_prefix": "route_prefix", "llm.key_header": "key_header"}
 
     def _row_applies(self, key) -> bool:
         p = self._provider()
@@ -660,18 +659,14 @@ class PreferencesDialog(QtWidgets.QDialog):
 
     def _connection_rows(self, p):
         """Placeholders saying what an empty field falls back to; hide rows the provider ignores."""
-        from ..llm.providers import gateway_env
-
         if "llm.base_url" not in self.editors:
             return
         url = p.base_url or (p.model_url(self.work["llm.model"] or p.default_model) if p.model_url else "")
         self.editors["llm.base_url"][0].setPlaceholderText(
-            url or ("Required: the gateway address" if p.model_url else "The provider's own address"))
+            url or ("Required: the server address" if p.model_url else "The provider's own address"))
         self.editors["llm.route_prefix"][0].setPlaceholderText(p.model_prefix() or "None")
-        self.editors["llm.user_id"][0].setPlaceholderText(
-            gateway_env("USER_ID") or os.environ.get("USER") or os.environ.get("USERNAME") or "Not set")
-        self.editors["llm.system_name"][0].setPlaceholderText(gateway_env("SYSTEM_NAME", "ewald"))
-        self.editors["llm.headers"][0].setPlaceholderText("Name: value; Other: value")
+        self.editors["llm.key_header"][0].setPlaceholderText("Authorization: Bearer")
+        self.editors["llm.headers"][0].setPlaceholderText("Name: value; Request-Id: {uuid}")
         self.editors["llm.timeout"][0].setSpecialValueText("Provider default")
         if hasattr(self, "search"):
             self._search(self.search.text())
