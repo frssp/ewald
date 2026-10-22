@@ -1031,40 +1031,38 @@ def test_preferences_ai_page_saves_key_outside_settings(app, monkeypatch):
     dlg.close()
 
 
-def test_preferences_ai_gateway_rows_and_saved_connections(app, monkeypatch):
+def test_preferences_ai_connection_rows_and_saved_connections(app, monkeypatch):
     from ewald import settings
     from ewald.gui.preferences import PreferencesDialog
     from ewald.llm import credentials
 
     monkeypatch.setattr(credentials, "_keyring", lambda: None)
-    monkeypatch.setenv("GATEWAY_BASE_URL", "http://gw.example/v1")
-    monkeypatch.setenv("GATEWAY_CREDENTIAL", "credential:T-12345678")
-    monkeypatch.setenv("GATEWAY_USER_ID", "user1")
     s = settings.load()
     dlg = PreferencesDialog(s)
-    rows = {k: dlg.editors[k][2] for k in ("llm.route_prefix", "llm.user_id", "llm.system_name", "llm.effort")}
-    assert rows["llm.user_id"].isHidden() and not rows["llm.effort"].isHidden()   # Claude: no gateway rows
-    dlg.set_value("llm.provider", "gateway")
-    assert not rows["llm.user_id"].isHidden() and not rows["llm.route_prefix"].isHidden()
-    assert rows["llm.effort"].isHidden()
-    assert dlg.editors["llm.base_url"][0].placeholderText() == "http://gw.example/v1"
-    assert dlg.editors["llm.user_id"][0].placeholderText() == "user1"
-    assert "GATEWAY_CREDENTIAL" in dlg.key_status.text() and "credential" in dlg.key_label.text().lower()
-    dlg.set_value("llm.model", "model-a")
-    dlg.set_value("llm.route_prefix", "openai/")
-    dlg.set_value("llm.system_name", "my-lab")
-    dlg.save_profile("hub")
+    rows = {k: dlg.editors[k][2] for k in ("llm.route_prefix", "llm.key_header", "llm.headers", "llm.effort")}
+    assert rows["llm.route_prefix"].isHidden() and rows["llm.key_header"].isHidden()   # Claude: neither row
+    assert not rows["llm.effort"].isHidden()
+    assert "llm.user_id" not in dlg.editors and "llm.system_name" not in dlg.editors
     dlg.set_value("llm.provider", "openai-compatible")
+    assert not rows["llm.route_prefix"].isHidden() and not rows["llm.headers"].isHidden()
+    assert not rows["llm.key_header"].isHidden() and rows["llm.effort"].isHidden()
+    dlg.set_value("llm.model", "gpt-oss-120b")
+    dlg.set_value("llm.key_header", "x-ticket")
+    dlg.set_value("llm.base_url", "http://gw.example/v1")
+    dlg.set_value("llm.route_prefix", "openai/")
+    dlg.set_value("llm.headers", "X-Team: md")
+    dlg.save_profile("hub")
+    dlg.set_value("llm.base_url", "")
     dlg.set_value("llm.model", "qwen3:8b")
+    dlg.set_value("llm.route_prefix", "")
     dlg.save_profile("local")
-    assert rows["llm.user_id"].isHidden() and not rows["llm.route_prefix"].isHidden()
     dlg.load_profile("hub")
-    assert (dlg.work["llm.provider"], dlg.work["llm.model"], dlg.work["llm.system_name"]) == ("gateway", "model-a",
-                                                                                              "my-lab")
+    assert (dlg.work["llm.provider"], dlg.work["llm.model"], dlg.work["llm.headers"]) == ("openai-compatible",
+                                                                                          "gpt-oss-120b", "X-Team: md")
     dlg.apply()
     saved = settings.load()
-    assert set(saved["llm.profiles"]) == {"hub", "local"} and saved["llm.provider"] == "gateway"
-    assert "TICKET" not in s.path.read_text()
+    assert set(saved["llm.profiles"]) == {"hub", "local"} and saved["llm.provider"] == "openai-compatible"
+    assert saved["llm.profiles"]["hub"]["key_header"] == "x-ticket"
     box = dlg.editors["llm.profiles"][0]
     box.remove("local")
     assert set(dlg.work["llm.profiles"]) == {"hub"}

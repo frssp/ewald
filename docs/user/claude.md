@@ -115,7 +115,6 @@ Edit › Preferences › AI › Provider (the `llm.provider` setting, `--provide
 | OpenAI | `openai` | `gpt-5` | `OPENAI_API_KEY` or the keychain |
 | Google Gemini | `gemini` | `gemini-2.5-pro` | `GEMINI_API_KEY` or the keychain |
 | OpenAI-compatible server | `openai-compatible` | `llama3.1` | only if the server asks for one |
-| API gateway | `gateway` | `$GATEWAY_MODEL` or `$GATEWAY_DEFAULT_MODEL` | credential ticket: `GATEWAY_CREDENTIAL` or the keychain |
 
 The Model field suggests a few ids per provider and takes any other id the service offers;
 left empty, the provider's default is used. Server URL changes the address: for the
@@ -133,34 +132,29 @@ service becomes a provider through a plugin (`@ai_provider`, see
 The anthropic and openai packages are part of every ewald install; OpenAI, Gemini and the
 OpenAI-compatible servers all go through the `openai` package.
 
-### API gateway
+### API gateways and Azure OpenAI
 
-The `gateway` provider is for an OpenAI-compatible API hub that authenticates with a credential
-ticket instead of a bearer key (custom header style). Every request carries the headers
-`x-ticket` (the credential), `X-System-Name`, `User-Id`, `X-X-User-Type: USER` and fresh
-`X-Prompt-Id` / `X-Completion-Id` ids. Preferences › AI shows its extra rows (Model prefix,
-User id, System name) only when this provider is chosen. A field left empty falls back to the
-same environment variables sim-agent reads, so a machine already set up for sim-agent works
-without any Preferences:
+Most institutional API gateways and Azure OpenAI speak the Chat Completions API but want the key
+in a header of their own and a few extra headers. Pick *OpenAI-compatible server* and fill in:
 
-| Field | Setting | Environment (`LEGACY_GATEWAY_*` legacy names are read too) |
+| Field | Example | What it does |
 | --- | --- | --- |
-| Credential | keychain entry `gateway-credential` | `GATEWAY_CREDENTIAL` |
-| Server URL | `llm.base_url` | the model's own URL in `GATEWAY_MODEL`, else `GATEWAY_BASE_URL` |
-| Model | `llm.model` | `GATEWAY_DEFAULT_MODEL`, else the first entry of `GATEWAY_MODEL` (`model` or `model=url`, comma separated) |
-| Model prefix | `llm.route_prefix` | `GATEWAY_ROUTE_PREFIX` (`openai/` for a gpt-oss route); `openai/` on a legacy `LEGACY_GATEWAY_BASE_URL` host |
-| User id | `llm.user_id` | `GATEWAY_USER_ID`, else your login name |
-| System name | `llm.system_name` | `GATEWAY_SYSTEM_NAME`, else `ewald` |
-| Timeout | `llm.timeout` | `GATEWAY_TIMEOUT` (default 120 s); retries `GATEWAY_MAX_RETRIES` (default 1) |
+| Server URL | `https://gateway.example.org/v1` | the gateway's address |
+| API key | your key or ticket | kept in the keychain, never in `settings.json` |
+| API key header | `api-key` (Azure), `x-ticket` | sends the key in this header instead of `Authorization: Bearer` |
+| Extra headers | `X-System: ewald; X-Request-Id: {uuid}` | sent with every request; `{uuid}` becomes a new id each time |
+| Model prefix | `openai/` | put in front of the model id, for gateways with vendor-qualified routes |
 
-*Test connection* sends one tiny chat request for this provider, since gateways often have no
-models endpoint. The gateway gets no images.
+*Test connection* asks the models endpoint and, when the server has none, sends one tiny chat
+request instead. Save the fields as a named connection so you can switch back with one click.
+A service with authentication these fields cannot express comes as an `@ai_provider` plugin with
+its own `make_client` (see [AI providers](../plugins/tools.md#ai-providers)).
 
 ### Connection fields and saved connections
 
 Besides Server URL, every provider takes *Extra headers* (`Name: value` pairs separated by `;`,
-for a proxy or a gateway that wants more) and a *Timeout*; the OpenAI-compatible provider also
-takes a *Model prefix*. Put secrets in the API key field, not in the headers, which are stored
+for a proxy or a server that wants more; `{uuid}` in a value becomes a new id per request) and a
+*Timeout*; the OpenAI-compatible provider also takes a *Model prefix* and an *API key header*. Put secrets in the API key field, not in the headers, which are stored
 in `settings.json`.
 
 *Saved connections* at the top of the AI page keep several of these setups under a name: fill in

@@ -165,7 +165,8 @@ class OpenAIChat(Chat):
     are ``tool`` messages, and images they carry follow in one user message. Options:
     ``max_tokens_param`` ("max_completion_tokens" for OpenAI, "max_tokens" for most others),
     ``reasoning`` (send ``reasoning_effort`` for models that think), ``model_prefix`` (put in front
-    of the model id on the wire, e.g. "openai/" for a gateway route)."""
+    of the model id on the wire, e.g. "openai/" for a vendor-qualified route), ``header_templates``
+    (HTTP headers sent with every request, ``{uuid}`` in a value replaced by a new id each time)."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -204,6 +205,10 @@ class OpenAIChat(Chat):
                                          "json_schema": {"name": "answer", "schema": self.schema}}
         if self.effort and self.options.get("reasoning"):
             params["reasoning_effort"] = {"xhigh": "high", "max": "high"}.get(self.effort, self.effort)
+        if self.options.get("header_templates"):
+            from .providers import fill_headers
+
+            params["extra_headers"] = fill_headers(self.options["header_templates"])
         return params
 
     def send(self, tool_choice=None):

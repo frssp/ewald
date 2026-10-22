@@ -8,13 +8,6 @@ Built in (Preferences > AI > Provider, setting ``llm.provider``):
 * ``gemini`` - Google Gemini through its OpenAI-compatible endpoint.
 * ``openai-compatible`` - any server speaking the OpenAI Chat Completions API: Ollama and
   LM Studio on your machine, vLLM, OpenRouter, ... Set its address as ``llm.base_url``.
-* ``gateway`` - an OpenAI-compatible API gateway that takes a credential ticket in the
-  ``x-ticket`` header plus ``X-System-Name`` / ``User-Id`` headers (custom header style).
-  Reads the same environment variables as sim-agent when nothing is set in Preferences:
-  ``GATEWAY_BASE_URL``, ``GATEWAY_CREDENTIAL``, ``GATEWAY_MODEL`` (``model`` or
-  ``model=url``, comma separated), ``GATEWAY_ROUTE_PREFIX``, ``GATEWAY_SYSTEM_NAME``,
-  ``GATEWAY_USER_ID``, ``GATEWAY_TIMEOUT``, ``GATEWAY_MAX_RETRIES`` (the legacy ``LEGACY_GATEWAY_*``
-  names too) and ``GATEWAY_DEFAULT_MODEL``.
 
 A *connection* is a provider plus the address, model and headers to use with it
 (:meth:`Provider.connect`, :func:`from_settings`); Preferences > AI saves several as named
@@ -22,7 +15,9 @@ connections (``llm.profiles``) and ``ewald ask --profile NAME`` picks one.
 
 Plugins add more with :func:`ewald.plugins.ai_provider` (a :class:`Provider`, usually with
 ``chat_class=OpenAIChat`` and a ``base_url``, or a :class:`~ewald.llm.chat.Chat` subclass of
-their own). Every provider makes a client (:meth:`Provider.client`) and a chat
+their own). A plugin can also bring its own client (``make_client``) for a gateway with its own
+authentication headers, models configured in the environment (``env_models``, ``model_url``)
+and a model prefix (``env_prefix``). Every provider makes a client (:meth:`Provider.client`) and a chat
 (:meth:`Provider.chat`); the agent loop, tools, images and history work the same with each.
 
 API keys: one keychain entry per provider (:mod:`ewald.llm.credentials`), then the provider's
@@ -32,7 +27,6 @@ settings.json.
 from __future__ import annotations
 
 import importlib
-import os
 import uuid
 from dataclasses import dataclass, field, replace
 from typing import Callable
@@ -50,13 +44,22 @@ def _anthropic_client(api_key=None, base_url=None, **kwargs):
     return anthropic.Anthropic(api_key=api_key, **kwargs) if api_key else anthropic.Anthropic(**kwargs)
 
 
-def _openai_client(api_key=None, base_url=None, **kwargs):
+def _openai_client(api_key=None, base_url=None, *, key_header=None, **kwargs):
     import openai
 
     if base_url:
         kwargs["base_url"] = base_url
+    if key_header:
+        # the key goes in a header of its own (Azure's api-key, gateways' ticket headers)
+        kwargs["default_headers"] = {**kwargs.get("default_headers", {}), key_header: api_key or ""}
+        api_key = None
     # a local server needs no key, but the SDK insists on one
     return openai.OpenAI(api_key=api_key or "not-needed", **kwargs)
+
+
+def fill_headers(templates: dict) -> dict:
+    """Header values with ``{uuid}`` replaced by a new random id (one per call)."""
+    return {k: str(v).replace("{uuid}", str(uuid.uuid4())) for k, v in (templates or {}).items()}
 
 
 def parse_headers(headers) -> dict[str, str]:
@@ -69,79 +72,6 @@ def parse_headers(headers) -> dict[str, str]:
         if sep and name.strip():
             out[name.strip()] = value.strip()
     return out
-
-
-# ---------------------------------------------------------------- API gateway (gateway variables)
-GATEWAY_ENV_PREFIXES = ("GATEWAY", "LEGACY_GATEWAY")  # LEGACY_GATEWAY_* is the legacy spelling
-
-
-def gateway_env(suffix: str, default: str | None = None) -> str | None:
-    """``GATEWAY_<suffix>``, then the legacy ``LEGACY_GATEWAY_<suffix>``."""
-    for prefix in GATEWAY_ENV_PREFIXES:
-        value = os.environ.get(f"{prefix}_{suffix}", "").strip()
-        if value:
-            return value
-    return default
-
-
-def gateway_models() -> dict[str, str]:
-    """``GATEWAY_MODEL`` (``model`` or ``model=url`` entries, comma separated) as model -> URL
-    ("" when the entry uses ``GATEWAY_BASE_URL``); ``GATEWAY_DEFAULT_MODEL`` comes first when set."""
-    out = {}
-    first = os.environ.get("GATEWAY_DEFAULT_MODEL", "").strip()
-    for item in (gateway_env("MODEL") or "").split(","):
-        model, _, url = item.strip().partition("=")
-        if model.strip():
-            out[model.strip()] = url.strip()
-    if first:
-        out = {first: out.get(first, ""), **out}
-    return out
-
-
-def _gateway_number(suffix, default, kind):
-    try:
-        return kind((gateway_env(suffix) or "").strip() or default)
-    except ValueError:
-        return default
-
-
-def _gateway_client(api_key=None, base_url=None, *, user_id=None, system_name=None, default_headers=None,
-                    **kwargs):
-    import openai
-
-    if not base_url:
-        raise ValueError("No gateway address: set Server URL in Preferences › AI or GATEWAY_BASE_URL.")
-    if not api_key:
-        raise ValueError("No gateway credential: enter it in Preferences › AI or set GATEWAY_CREDENTIAL.")
-    headers = {
-        "x-ticket": api_key,
-        "X-System-Name": system_name or gateway_env("SYSTEM_NAME", "ewald"),
-        "User-Id": user_id or gateway_env("USER_ID") or os.environ.get("USER") or os.environ.get("USERNAME")
-        or "unknown",
-        "X-X-User-Type": "USER",
-        "X-Prompt-Id": str(uuid.uuid4()),
-        "X-Completion-Id": str(uuid.uuid4()),
-        **(default_headers or {}),
-    }
-    timeout = kwargs.pop("timeout", None) or _gateway_number("TIMEOUT", 120.0, float) or None
-    kwargs.setdefault("max_retries", max(0, _gateway_number("MAX_RETRIES", 1, int)))
-    # the credential travels in x-ticket; the SDK insists on an api_key all the same
-    return openai.OpenAI(api_key="dummy", base_url=base_url, default_headers=headers, timeout=timeout, **kwargs)
-
-
-def _gateway_prefix() -> str:
-    """``GATEWAY_ROUTE_PREFIX``; "openai/" for a host still on the legacy ``LEGACY_GATEWAY_BASE_URL``
-    (sim-agent sends the vendor-qualified gpt-oss id there)."""
-    explicit = gateway_env("ROUTE_PREFIX")
-    if explicit:
-        return explicit
-    legacy = os.environ.get("LEGACY_GATEWAY_BASE_URL", "").strip() and not os.environ.get("GATEWAY_BASE_URL", "").strip()
-    return "openai/" if legacy else ""
-
-
-def _gateway_url(model: str) -> str:
-    """Endpoint of ``model``: its own ``GATEWAY_MODEL`` URL, else ``GATEWAY_BASE_URL``."""
-    return gateway_models().get(model) or gateway_env("BASE_URL") or ""
 
 
 @dataclass
@@ -162,18 +92,20 @@ class Provider:
     key_name: str = ""
     env_var: str = ""
     key_required: bool = True
-    key_title: str = "API key"          # what the key is called ("credential" for a gateway)
+    key_title: str = "API key"          # what the key is called (e.g. "credential")
     key_hint: str = "API key"           # placeholder of the key field
     key_help: str = ""                  # where to get a key
     env_fallbacks: tuple = ()           # more variables for the key, read after env_var
     vision: bool = True                 # takes images (renders, close-ups)
     effort: bool = False                # honors llm.effort
     options: tuple = ()                 # connection fields it uses besides base_url, headers and
-                                        # timeout: "route_prefix", "user_id", "system_name"
+                                        # timeout: "route_prefix", "key_header" and keywords its
+                                        # make_client takes
     env_models: Callable | None = None  # () -> {model: url} configured in the environment
     model_url: Callable | None = None   # model -> endpoint when no base_url is set
     env_prefix: Callable | None = None  # () -> model prefix when none is set
-    check_with: str = "models"          # "models": the models endpoint; "chat": a tiny request
+    check_with: str = "models"          # "models": the models endpoint; "chat": a tiny request;
+                                        # "auto": the models endpoint, else a tiny request
     client_options: dict = field(default_factory=dict)  # passed to make_client (Provider.connect)
     description: str = ""
     origin: str = "built-in"
@@ -197,17 +129,25 @@ class Provider:
         return tuple(v for v in (self.env_var, *self.env_fallbacks) if v)
 
     def connect(self, *, base_url: str | None = None, route_prefix: str | None = None, headers=None,
-                timeout: float | None = None, **options) -> "Provider":
+                timeout: float | None = None, key_header: str | None = None, **options) -> "Provider":
         """This provider with an address, model prefix, extra HTTP headers, a timeout (seconds;
-        0 or None keeps the SDK's) and the provider's own ``options`` (a gateway's ``user_id``,
-        ``system_name``); empty values keep the defaults, options it does not use are ignored."""
+        0 or None keeps the SDK's) and the provider's own ``options`` (keywords its ``make_client``
+        takes); empty values keep the defaults, options it does not use are ignored. A header value
+        with ``{uuid}`` gets a new id in every request; ``key_header`` sends the API key in that
+        header instead of ``Authorization: Bearer``."""
         client_options = dict(self.client_options)
-        if extra := parse_headers(headers):
-            client_options["default_headers"] = {**client_options.get("default_headers", {}), **extra}
+        chat_options = dict(self.chat_options)
+        extra = parse_headers(headers)
+        fresh = {k: v for k, v in extra.items() if "{uuid}" in v}
+        if static := {k: v for k, v in extra.items() if k not in fresh}:
+            client_options["default_headers"] = {**client_options.get("default_headers", {}), **static}
+        if fresh:
+            chat_options["header_templates"] = {**chat_options.get("header_templates", {}), **fresh}
+        if key_header and "key_header" in self.options:
+            client_options["key_header"] = key_header.strip()
         if timeout:
             client_options["timeout"] = float(timeout)
         client_options.update({k: v for k, v in options.items() if v and k in self.options})
-        chat_options = dict(self.chat_options)
         if route_prefix and "route_prefix" in self.options:
             chat_options["model_prefix"] = route_prefix
         return replace(self, base_url=base_url or self.base_url, client_options=client_options,
@@ -258,13 +198,24 @@ class Provider:
         def caught(exc, name):
             return errors[name] is not None and isinstance(exc, errors[name])
 
+        def ping():
+            c.chat.completions.create(model=f"{self.model_prefix()}{model}", max_tokens=16,
+                                      messages=[{"role": "user", "content": "ping"}],
+                                      extra_headers=fill_headers(self.chat_options.get("header_templates")))
+            return True, f"Connected: {model}"
+
         try:
             c = _client or self.client(api_key, base_url, model, timeout=15.0, max_retries=0)
             if self.check_with == "chat":  # gateways often have no models endpoint
-                c.chat.completions.create(model=f"{self.model_prefix()}{model}", max_tokens=16,
-                                          messages=[{"role": "user", "content": "ping"}])
-                return True, f"Connected: {model}"
-            info = c.models.retrieve(model)
+                return ping()
+            try:
+                info = c.models.retrieve(model)
+            except Exception as exc:
+                # no models endpoint (or not this model listed): a tiny chat request decides
+                if self.check_with != "auto" or not (caught(exc, "NotFoundError") or caught(exc, "APIStatusError")) \
+                        or caught(exc, "AuthenticationError") or caught(exc, "PermissionDeniedError"):
+                    raise
+                return ping()
         except Exception as exc:
             if caught(exc, "AuthenticationError"):
                 return False, "The key was rejected (invalid or revoked)."
@@ -315,19 +266,11 @@ BUILTIN = {
         models={"llama3.1": "Llama 3.1", "qwen2.5": "Qwen 2.5"},
         base_url="http://localhost:11434/v1", key_name="openai-compatible-api-key", key_required=False,
         key_hint="Only if the server needs one", key_help="Local servers (Ollama, LM Studio) need no key.",
-        vision=False, options=("route_prefix",),
+        vision=False, options=("route_prefix", "key_header"), check_with="auto",
         description="Any server with the OpenAI Chat Completions API: Ollama (http://localhost:11434/v1), "
-                    "LM Studio (http://localhost:1234/v1), vLLM, OpenRouter (https://openrouter.ai/api/v1). "
+                    "LM Studio (http://localhost:1234/v1), vLLM, OpenRouter (https://openrouter.ai/api/v1), "
+                    "Azure OpenAI or an API gateway (API key header, extra headers). "
                     "Set its address in Server URL and the model it serves."),
-    "gateway": Provider(
-        "gateway", "API gateway", assistant="AI", make_client=_gateway_client, key_title="credential",
-        key_name="gateway-credential", env_var="GATEWAY_CREDENTIAL", env_fallbacks=("LEGACY_GATEWAY_CREDENTIAL",),
-        key_hint="credential:T-…", key_help="Get a credential from your API hub.",
-        vision=False, options=("route_prefix", "user_id", "system_name"), env_models=gateway_models,
-        model_url=_gateway_url, env_prefix=_gateway_prefix, check_with="chat",
-        description="An OpenAI-compatible gateway that takes a credential ticket in the x-ticket header "
-                    "with X-System-Name and User-Id (custom header style). Uses sim-agent's GATEWAY_* "
-                    "variables when Preferences leave a field empty."),
 }
 
 
@@ -349,7 +292,7 @@ def get(name: "str | Provider | None" = None) -> Provider:
     return found
 
 
-CONNECTION_FIELDS = ("base_url", "route_prefix", "user_id", "system_name", "headers", "timeout")
+CONNECTION_FIELDS = ("base_url", "route_prefix", "key_header", "headers", "timeout")
 PROFILE_FIELDS = ("provider", "model", "effort") + CONNECTION_FIELDS
 
 
@@ -384,4 +327,4 @@ def from_settings(settings=None, profile: str | None = None, **overrides) -> dic
 
 
 __all__ = ["Provider", "BUILTIN", "DEFAULT", "CONNECTION_FIELDS", "PROFILE_FIELDS", "providers", "get",
-           "from_settings", "profile_from_settings", "parse_headers", "gateway_env", "gateway_models"]
+           "from_settings", "profile_from_settings", "parse_headers", "fill_headers"]
