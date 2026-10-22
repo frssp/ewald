@@ -120,7 +120,9 @@ or courses using EWALD once available.
 Generative AI was used extensively. Most of the source code, tests and documentation were written
 by Claude Code (Anthropic, Claude Opus models) working from the author's design decisions and
 reviews; the author defined the scope, architecture, user interface concept, conventions and
-acceptance criteria, reviewed the changes and tested the application on Windows and Linux. The
+acceptance criteria, reviewed the changes and tested the application on Windows and Linux; these
+design decisions, with their dates and reasons, are recorded in the repository
+(`docs/developer/decisions.md`). The
 correctness of AI-written analysis code was checked against independent implementations
 (OVITO, freud, kinisi and published values) stored as reference data, rendering against reference
 images, and the user interface by automated tests and manual use. This paper was drafted with the
