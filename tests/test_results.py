@@ -55,7 +55,7 @@ def test_outcar_md_spin_attributes_and_table(md_dir):
     assert (a["Temperature"], a["Kinetic Energy"], a["Total Energy"]) == (233.29, 0.06031, -16.21969)
     assert a["Magnetization"] == 4.429  # converged SCF step, not an earlier one
     assert a["Pressure"] == 11.25  # external pressure (Pulay stress removed)
-    table = d.tables["Thermo"]
+    table = d.tables["Steps"]
     np.testing.assert_array_equal(table["Step"], [1, 2])
     np.testing.assert_allclose(table["Temperature"], [300.0, 233.29])
 
@@ -72,7 +72,7 @@ def test_xdatcar_picks_up_oszicar(md_dir):
     outcar = import_file(md_dir / "OUTCAR").compute(0).attributes
     for k in ("Energy", "Free Energy", "Total Energy", "Kinetic Energy", "Magnetization"):
         assert d.attributes[k] == pytest.approx(outcar[k]), k
-    assert "Thermo" in d.tables
+    assert "Steps" in d.tables
     assert import_file(md_dir / "XDATCAR", thermo=None).source.thermo is None
 
 
@@ -107,7 +107,7 @@ def test_dump_aligned_with_log(thermo_dir):
     assert d.attributes["Temp"] == pytest.approx(144.84182)
     assert "Volume" not in d.attributes  # run 1 does not print it
     assert pipe.compute(4).attributes["Volume"] == pytest.approx(377.93307)
-    assert len(d.tables["Thermo"]["Step"]) == 9
+    assert len(d.tables["Steps"]["Step"]) == 9
 
 
 def test_log_with_warnings_truncated_line_and_unmatched_frames(thermo_dir, tmp_path):

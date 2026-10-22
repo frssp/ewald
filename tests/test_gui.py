@@ -427,7 +427,7 @@ def test_plots_thermo_series_marker_follows_frame(app, lammps_dir):
     pipe = import_file(lammps_dir / "thermo" / "dump.lammpstrj")
     panel = PlotsPanel()
     panel.set_data(pipe.compute(0))
-    assert panel.table.currentText() == "Thermo"
+    assert panel.table.currentText() == "Steps"
     assert panel.column.currentText() == "Temp"  # one column at a time for a time series
     ax = panel.figure.axes[0]
     assert ax.get_xlabel() == "Step" and len(ax.lines) == 2  # Temp + frame marker
@@ -4252,6 +4252,86 @@ def test_workflow_side_bar_lists_expands_and_opens_a_workflow_as_one_notebook(ap
     side.refresh()
     side.wait()
     assert side.tree.topLevelItemCount() == 1 and side.more.isHidden()
+
+
+def test_workflow_side_bar_switches_the_shown_step_and_plots_a_step_table(app, pipe, monkeypatch):
+    """In a workflow notebook the side bar marks the step that is pipe (●) and the other loaded
+    ones (○); a click on ○ rewrites the pipe = ... cell, and a "Plot Bands" row adds a view cell
+    show(bands, table="Bands", panel=True) that plots the bands step, not pipe."""
+    from ase.build import bulk
+
+    from ewald import plugins, workflow
+    from ewald.data import DataCollection
+    from ewald.gui import workflow_panel as wp
+    from ewald.gui.app import MainWindow
+    from ewald.workflow import Workflow, WorkflowStep
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    monkeypatch.setattr(plugins._registry, "loaded", True)
+
+    def read(path, **kw):
+        d = DataCollection.from_ase(bulk("Si"))
+        if path.endswith("bands"):
+            d.tables["Bands"] = {"k": np.arange(3.0), "E": np.array([1.0, 2.0, 3.0])}
+        else:
+            d.tables["Steps"] = {"Step": np.arange(2.0), "Energy": np.array([-5.0, -5.4])}
+        return [d]
+
+    wf = Workflow("bands", id="8", path="demo:8", kind="vasp_bands", state="finished", complete=True,
+                  steps=[WorkflowStep("relax", path="demo:8/relax", state="finished"),
+                         WorkflowStep("bands", path="demo:8/bands", state="finished")])
+
+    class Demo:
+        schemes = ("demo",)
+
+        def account(self):
+            return "me"
+
+        def list(self, query=None, cursor=None):
+            return workflow.WorkflowPage([wf])
+
+        def describe(self, ref):
+            return wf
+
+    plugins.register_reader("demo", read, schemes=("demo",))
+    plugins.register_workflow_source("demo", Demo, title="Demo")
+    plugins.register_panel("demo", workflow.workflow_panel("demo", title="Demo"))
+    w = MainWindow(pipe)
+    w.show_plugin_panel("demo")
+    side = w.plugin_panels["demo"]["dock"].widget()
+    side.wait()
+    top = side.tree.topLevelItem(0)
+    assert top.child(0).text(1) == ""                     # no workflow notebook on screen yet
+    view = side.open(top)
+    side.refresh_marks()
+    side.wait()
+    steps = [top.child(i) for i in range(top.childCount()) if not top.child(i).data(0, wp.TABLE)]
+    relax, bands = steps
+    assert [x.data(0, wp.VAR) for x in (top, relax, bands)] == ["result", "relax", "bands"]
+    assert [x.text(1) for x in (top, relax, bands)] == [wp.ACTIVE, wp.OTHER, wp.OTHER]  # pipe = result
+    rows = lambda item: [item.child(i).text(0) for i in range(item.childCount()) if item.child(i).data(0, wp.TABLE)]
+    assert rows(relax) == ["Plot Steps"] and rows(bands) == ["Plot Bands"]
+
+    cell = side.activate(bands)                            # ○ -> pipe = bands
+    side.wait()
+    assert cell.source == "pipe = bands" and view.notebook.pipeline is view.notebook.namespace["bands"]
+    assert sum("pipe = " in c.source for c in view.notebook.cells) == 1
+    assert [x.text(1) for x in (top, relax, bands)] == [wp.OTHER, wp.OTHER, wp.ACTIVE]
+    side.activate(top)                                     # back to the workflow's own result
+    side.wait()
+    assert view.notebook.pipeline is view.notebook.namespace["result"] and top.text(1) == wp.ACTIVE
+
+    row = next(bands.child(i) for i in range(bands.childCount()) if bands.child(i).data(0, wp.TABLE) == "Bands")
+    cells = len(view.notebook.cells)
+    vc = side.plot_table(row)
+    assert vc.source == "show(bands, table='Bands', panel=True)" and len(view.notebook.cells) == cells + 1
+    widget = next(x for x in view.widgets if x.cell is vc)
+    assert widget.plot_panel.data is not None and "Bands" in widget.plot_panel.data.tables  # bands, not pipe
+    assert side.plot_table(row) is vc and len(view.notebook.cells) == cells + 1           # once
+    # a table name is a string literal in the cell, never code
+    vc2 = view.notebook.add_view(source="bands", table="x')\nimport os\n#", panel=True)
+    import ast
+    assert [type(n).__name__ for n in ast.parse(vc2.source).body] == ["Expr"]
 
 
 def test_dropping_a_folder_of_calculations_opens_it_as_a_workflow(app, tmp_path, vasp_dir):

@@ -11,7 +11,7 @@ the viewport can be drawn back on the plot:
 - ``bond-length-distr``: the two particles of every bond with that length;
 - ``bond-angle-distr``: the vertex particle of every bond angle in the range;
 - tables with one row per frame or timestep (``time-series``, ``plumed``, ``colvar``, the
-  ``Thermo`` table of log files, MSD/VACF): the frames whose points lie in the dragged box;
+  ``Steps`` table of log files, MSD/VACF): the frames whose points lie in the dragged box;
 - 2D free energy surfaces (``fes``): the frames whose CV pair (from ``colvar`` or ``plumed``)
   lies in the box.
 

@@ -56,10 +56,10 @@ def test_folder_of_calculations_is_one_workflow(study):
 def test_a_workflow_folder_opens_as_a_notebook_that_runs(study):
     shutil.rmtree(study / "10_phonon")            # its reader is the phonopy plugin
     nb = Notebook.from_py(workflow.notebook_text(workflow.describe(str(study))))
-    loads = nb.cells[-1].source.splitlines()
+    loads = nb.cells[-2].source.splitlines()
     assert f"relax = load({str(study / '01_relax' / 'OUTCAR')!r})" in loads
     assert f"md = load({str(study / '03_md' / 'run*' / 'XDATCAR')!r})" in loads
-    assert loads[-1] == "pipe = lmp_neb"
+    assert nb.cells[-1].source == "pipe = lmp_neb"
     nb.trust()
     assert nb.run_all()
     ns = nb.namespace
