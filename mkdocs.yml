@@ -87,6 +87,7 @@ nav:
       - Packaging and sharing: plugins/packaging.md
   - Developer guide:
       - Architecture: developer/architecture.md
+      - Design decisions: developer/decisions.md
       - Data model and pipeline: developer/data-model.md
       - Compute backends: developer/backends.md
       - Native code: developer/native.md
