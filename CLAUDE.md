@@ -16,6 +16,11 @@ kept for history.
 
 - The owner (Sunghyun) writes Korean with English technical terms; answer the same way. Ask the
   few real decisions up front, then work autonomously. Code, commits, PRs and docs stay in English.
+- Record the owner's design decisions in docs/developer/decisions.md, in the PR that implements
+  them: whenever the owner picks between alternatives, sets a rule or rejects an approach, add
+  an entry (date, decision, the owner's reason quoted where possible, alternatives, PR). Never
+  invent a reason. This log is the public evidence of human design work that JOSS asks for
+  (paper/, docs/todo.md "JOSS paper"), so also put the owner's choice and reason in the PR body.
 - Merging: a thread merges its own PR once it has merged the latest `main` and the relevant local
   tests pass (full suite under `xvfb-run` when GUI or rendering is touched, `tests/test_visual.py`
   for renderer files). No need to wait for an explicit "merge". When PRs must land in order, the

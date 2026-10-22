@@ -22,10 +22,10 @@ what exists is in the [feature inventory](features.md).
 | Scale | Multi-million-atom LAMMPS dumps and long XDATCARs: `benchmarks/large_files.py` measures open, frame switch and memory; dump indexing reads in chunks (2M atoms x 4 frames: open 13 s → 0.8 s, frame switch 3.0 s → 1.5 s); frame-cache memory budget (`cache_memory`, Preferences › Compute); interactive level of detail in the viewport (coarse while moving or scrubbing, refined when idle; detail mode, target fps, atom budget, refine delay in Preferences › Viewports); per-type color/radius tables (2M-atom scene build 0.9 s → 0.16 s); parallel numba atom-table parser, bit-identical to `np.loadtxt` (2M-atom frame switch 1.5 s → 0.66 s); ray tracer 7.7x faster (SrTiO3 polyhedra at Publication 65 s → 8.5 s: scalar grid walk, balanced threads, low-discrepancy AO with 128 instead of 512 AO rays per pixel at the same noise); structure identification, centrosymmetry, Ackland-Jones and Steinhardt 1.5–3x faster (108k atoms: Steinhardt 4.1 s → 1.3 s); pipeline output cache (a frame shown again skips its modifiers); numba kernels load while the window opens (108k-atom first open 2.0 s → 0.7 s); `benchmarks/analysis.py` | in progress |
 | Docs | Manual in `docs/` (user manual, plugin author guide, developer guide, API reference), MkDocs build in CI, GUI Help menu | in progress |
 
-Decisions
+Decisions (the full record with reasons and alternatives is [Design decisions](developer/decisions.md))
 
 - NVIDIA CUDA is the GPU target (CuPy); every kernel also runs on NumPy, so tests cover the GPU code path without a GPU.
-- Private, personal project without a LICENSE file for now; reuse freely, treating MIT compatibility as the bar when it matters.
+- MIT license (2026-10-20), copyright Sunghyun Kim and the EWALD contributors.
 - OVITO's public source is "GPLv3 or MIT"; ported code keeps the MIT notice. DXA is not in the public source.
 - Python first, numba/C++ only for measured hot spots.
 - One GUI layout (2026-10-20): the notebook. The OVITO-style "classic" layout (pipeline list and properties panel) was removed; display settings live in the View tab below the Structure view (2026-10-20, it replaced the right-hand Display panel), data source details in the Data inspector, and an old `general.layout` setting is ignored.

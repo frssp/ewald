@@ -27,7 +27,7 @@ the pull request what you ran.
 
 ## Conventions
 
-The [developer guide](docs/developer/architecture.md) explains how the code is laid out, and
+The [design decisions](docs/developer/decisions.md) say what EWALD is and is not, and why. The [developer guide](docs/developer/architecture.md) explains how the code is laid out, and
 [CLAUDE.md](CLAUDE.md) is the same in short form (it is written for coding agents but is a good
 checklist for people too). The rules that tests enforce:
 
