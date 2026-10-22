@@ -284,7 +284,7 @@ def _shell_classes():
 
         def init_builtins(self):
             super().init_builtins()
-            self.builtin_trap = _NoBuiltinTrap(shell=self)
+            self.builtin_trap = _NoBuiltinTrap(self)   # its shell
 
         def init_displayhook(self):
             super().init_displayhook()
