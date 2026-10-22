@@ -197,7 +197,7 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   events go through `app.EwaldApplication`). Frozen apps: `packaging/windows/` and `packaging/macos/` (EWALD.app,
   docs/developer/macos-release.md); the macOS workflow is manual only (10x minutes) and never needs to run for a PR.
 - `llm/`: AI agent (`agent.py`) over any provider: `providers.py` (Claude by default, OpenAI, Gemini,
-  OpenAI-compatible servers such as Ollama, an API gateway reading sim-agent's `GATEWAY_*` variables;
+  OpenAI-compatible servers such as Ollama; gateways with their own auth come as plugins;
   `@ai_provider` plugins; `llm.*` settings, `from_settings()` and saved connections `llm.profiles`) and `chat.py` (`Chat`: one conversation in a provider's format, `AnthropicChat`/`OpenAIChat`; the agent
   loop, forge and narrator use only it), tools (`tools.py`), `credentials.py` (API keys in the OS keychain via
   `keyring`, one entry per provider, 0600 file fallback, never in settings.json or os.environ; every client comes

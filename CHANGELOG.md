@@ -9,6 +9,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- Ask AI, OpenAI-compatible provider: *API key header* (send the key as `api-key` for Azure
+  OpenAI or a gateway's own header), `{uuid}` in *Extra headers* for a new id per request, and
+  *Test connection* falls back to a chat request on servers without a models endpoint.
 - MIT license (`LICENSE`); the `Private :: Do Not Upload` classifier is gone.
 - `CITATION.cff` (GitHub's *Cite this repository*), `CONTRIBUTING.md`, `SECURITY.md`, issue
   templates and `.github/FUNDING.yml`, in preparation for a public repository.
@@ -21,6 +24,8 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- The separate `gateway` AI provider and its *User id* / *System name* settings are gone; a
+  gateway is set up as an OpenAI-compatible server with an API key header and extra headers.
 - Fewer extras: spglib, imageio-ffmpeg, h5py, anthropic, openai, mcp, jupyter_client and ipykernel
   are core dependencies, so symmetry, MP4 export, HDF5 formats, Ask AI with every provider and
   kernels work in a plain install. Extras are `gui`, `gpu`, `formats` (MDAnalysis), `ovito` and

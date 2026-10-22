@@ -55,9 +55,10 @@ the end.
 ### D5. Any AI provider, named "Ask AI" (2026-10-20)
 
 - **Decision:** not Claude-only: Anthropic by default, OpenAI, Gemini, OpenAI-compatible local
-  servers and an institutional API gateway; keys in the OS keychain, never in settings or the
-  environment.
-- **Why:** the owner's own simulation agent reaches models through an institutional API gateway.
+  servers, and plugin providers for API gateways; keys in the OS keychain, never in settings or
+  the environment.
+- **Why:** the owner needed to reach models through an institutional API gateway, not only
+  public services.
 - **Landed:** PR #116.
 
 ### D6. Structure editing is deferred (2026-10-19)

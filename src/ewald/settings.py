@@ -211,8 +211,8 @@ OPTIONS = (
     # the API key itself is not an option: it lives in the OS keychain (ewald.llm.credentials)
     Option("llm.provider", "anthropic", "Provider",
            "The AI service behind Ask AI, the AI chat and ewald ask: Anthropic (Claude), OpenAI, Google "
-           "Gemini, an OpenAI-compatible server (Ollama, LM Studio, vLLM, OpenRouter), an API gateway "
-           "with a credential ticket, or a plugin's.",
+           "Gemini, an OpenAI-compatible server (Ollama, LM Studio, vLLM, OpenRouter) "
+           "or a plugin's (an API gateway, for example).",
            kind="ai_provider"),
     Option("llm.model", "", "Model", "Empty: the provider's default. Any model id the service offers works.",
            kind="ai_model"),
@@ -222,20 +222,18 @@ OPTIONS = (
            kind="ai_profiles"),
     Option("llm.base_url", "", "Server URL",
            "Empty: the provider's own address. For an OpenAI-compatible server, its address, "
-           "e.g. http://localhost:11434/v1 (Ollama) or http://localhost:1234/v1 (LM Studio); "
-           "for a gateway, $GATEWAY_BASE_URL when empty."),
+           "e.g. http://localhost:11434/v1 (Ollama) or http://localhost:1234/v1 (LM Studio)."),
     Option("llm.route_prefix", "", "Model prefix",
-           "Put in front of the model id in each request, e.g. openai/ for a gpt-oss gateway route. "
-           "Empty: $GATEWAY_ROUTE_PREFIX for a gateway, else none."),
-    Option("llm.user_id", "", "User id",
-           "Sent as the User-Id header to an API gateway. Empty: $GATEWAY_USER_ID, else your login name."),
-    Option("llm.system_name", "", "System name",
-           "Sent as the X-System-Name header to an API gateway. Empty: $GATEWAY_SYSTEM_NAME, else ewald."),
+           "Put in front of the model id in each request, e.g. openai/ for a vendor-qualified route. "
+           "Empty: the provider's default, usually none."),
+    Option("llm.key_header", "", "API key header",
+           "Send the API key in this HTTP header instead of Authorization: Bearer, e.g. api-key (Azure OpenAI) "
+           "or a gateway's ticket header. Empty: Authorization: Bearer."),
     Option("llm.headers", "", "Extra headers",
-           "HTTP headers sent with every request, as Name: value pairs separated by ';' (proxies, gateways). "
-           "Put secrets in the API key field, not here."),
+           "HTTP headers sent with every request, as Name: value pairs separated by ';' (proxies, gateways); "
+           "{uuid} in a value becomes a new id in each request. Put secrets in the API key field, not here."),
     Option("llm.timeout", 0.0, "Timeout",
-           "Seconds one request may take. 0: the provider's default (a gateway: $GATEWAY_TIMEOUT, else 120).",
+           "Seconds one request may take. 0: the provider's default.",
            minimum=0.0, maximum=3600.0),
     Option("llm.effort", "high", "Effort",
            "How hard the model thinks before answering (Claude, OpenAI reasoning models); lower is faster and cheaper.",
@@ -359,7 +357,7 @@ def _valid(opt: Option, value):
 
 # Options that no longer exist, dropped quietly from older settings files: the OVITO-like
 # "classic" window layout was removed, so the notebook layout is the only one.
-RETIRED = {"general.layout"}
+RETIRED = {"general.layout", "llm.user_id", "llm.system_name"}   # the last two moved to a gateway plugin
 # Values renamed since: key -> {old: new}
 RENAMED_VALUES = {"general.startup_workspace": {"Analyze": "Notebook"}}
 

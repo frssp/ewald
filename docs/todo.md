@@ -380,10 +380,9 @@ Plugins and AI
   per-server vision switch yet); Effort reaches only Claude and OpenAI reasoning models; one
   `llm.model` setting for all providers (switching the provider in Preferences clears it); no
   streaming for any provider; a native Gemini or Bedrock/Vertex client would need a `Chat`
-  subclass (today Gemini goes through its OpenAI-compatible endpoint). API gateway provider:
-  untested against a real an API hub; keys are per provider, so two gateway connections with
-  different credentials share one keychain entry; no `GATEWAY_<N>_*` multi-gateway blocks or
-  `GATEWAY_NO_POOL` (sim-agent has both).
+  subclass (today Gemini goes through its OpenAI-compatible endpoint). Keys are per provider, so two
+  saved connections of one provider with different keys share one keychain entry. Preferences › AI › Extra headers is a
+  one-line field, so a long header list is hard to read.
 - Plugin manifests, phase 2 (from the VS Code comparison): contributions declared in
   `ewald-plugin.toml` (`[[readers]]`, `[[modifiers]]`, ... with `python = "module:object"`)
   registered lazily and imported on first use (`@panel` widgets are already built on first open,

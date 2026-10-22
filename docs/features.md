@@ -339,7 +339,6 @@ Providers (Preferences > AI, `--provider`; `@ai_provider` plugins add more):
 | OpenAI | `openai` | `gpt-5` | `OPENAI_API_KEY` or keychain |
 | Google Gemini | `gemini` | `gemini-2.5-pro` | `GEMINI_API_KEY` or keychain |
 | OpenAI-compatible server | `openai-compatible` | `llama3.1` | optional |
-| API gateway | `gateway` | `` | `GATEWAY_CREDENTIAL` or keychain |
 
 Tools:
 
@@ -504,8 +503,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `llm.profiles` | Saved connections | `{}` |
 | `llm.base_url` | Server URL | `''` |
 | `llm.route_prefix` | Model prefix | `''` |
-| `llm.user_id` | User id | `''` |
-| `llm.system_name` | System name | `''` |
+| `llm.key_header` | API key header | `''` |
 | `llm.headers` | Extra headers | `''` |
 | `llm.timeout` | Timeout | `0.0` |
 | `llm.effort` | Effort | `'high'` |

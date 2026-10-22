@@ -8,7 +8,7 @@
 >>> credentials.check()                                     # (True, "Connected: Claude Opus 5.5")
 
 Lookup order: the saved key, then the provider's environment variable (``ANTHROPIC_API_KEY``,
-``OPENAI_API_KEY``, ``GEMINI_API_KEY``, ``GATEWAY_CREDENTIAL`` for a gateway). With neither, the client falls back to its SDK's own
+``OPENAI_API_KEY``, ``GEMINI_API_KEY``). With neither, the client falls back to its SDK's own
 lookup (for Anthropic ``ANTHROPIC_AUTH_TOKEN`` or an ``ant auth login`` profile). Where no
 keychain backend works (a headless Linux box, ssh without a desktop session), keys go to
 ``<config dir>/credentials.json`` readable by the owner only. Providers are in
