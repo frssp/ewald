@@ -121,6 +121,22 @@ the end.
   injection) cannot run code or steer the AI into running code until the user trusts it.
 - **Landed:** PR #46 and later; `src/ewald/trust.py`, `tests/test_security.py`.
 
+### D17. Cells run in IPython, not a hand-written engine (2026-10-22)
+
+- **Decision:** notebook cells run through IPython's shell (one per notebook), so magics,
+  `!commands`, `display()` and rich outputs (HTML, Markdown, LaTeX, SVG) work as in Jupyter, and
+  the console shares the notebook's namespace; the percent-format `.py` reader and writer stay
+  ewald's own (jupytext-compatible, tested against jupytext) and cells keep running in the app's
+  Python by default. A running cell shows its output while it runs, and long work (downloads of
+  example data) shows a progress bar under the cell (tqdm-based `ewald.progress`).
+- **Why:** "주피터를 의존성으로 안가지면 바퀴 재발명 아니야?" (isn't it reinventing the wheel
+  without Jupyter as a dependency?); for downloads, "언제 끝날지 몰라 멈춘 것 처럼 보여" (you
+  can't tell when it ends, so it looks frozen).
+- **Considered:** adding only rich outputs on the existing engine; leaving it as it was. Running
+  every notebook in a separate Jupyter kernel process by default was not proposed, since the 3D
+  view shares the pipeline's arrays with the cells.
+- **Landed:** PR #PRNUM (`src/ewald/shell.py`, `src/ewald/progress.py`).
+
 ## Project
 
 ### D15. Name, license and openness (2026-10-19, 2026-10-20)
