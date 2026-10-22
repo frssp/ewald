@@ -427,7 +427,7 @@ def test_plots_thermo_series_marker_follows_frame(app, lammps_dir):
     pipe = import_file(lammps_dir / "thermo" / "dump.lammpstrj")
     panel = PlotsPanel()
     panel.set_data(pipe.compute(0))
-    assert panel.table.currentText() == "Thermo"
+    assert panel.table.currentText() == "Steps"
     assert panel.column.currentText() == "Temp"  # one column at a time for a time series
     ax = panel.figure.axes[0]
     assert ax.get_xlabel() == "Step" and len(ax.lines) == 2  # Temp + frame marker
@@ -2764,6 +2764,37 @@ def test_plugins_from_file_sends_archives_to_pip_and_py_files_to_the_plugin_fold
     assert len(installs) == 1 and installs[0].source.endswith("one.py")
 
 
+def test_plugins_side_bar_stays_narrow_while_pip_runs(app, tmp_path):
+    """A long pip requirement in the busy line, or a long plugin name, must not widen the side bar."""
+    import json
+
+    from ewald import settings
+    from ewald.gui import plugins_panel
+
+    index = tmp_path / "index.json"
+    index.write_text(json.dumps({"format": 1, "plugins": [
+        {"id": "long", "name": "A plugin with a very long name that goes on and on " * 3, "version": "1.0",
+         "kinds": ["reader", "modifier", "visual", "overlay", "colormap", "theme", "tool"],
+         "source": "pip:git+https://github.com/frssp/ewald-plugins@" + "0" * 40 + "#subdirectory=packages/ewald-long"}]}))
+    s = settings.Settings()
+    s["python.plugin_catalogs"] = str(index)
+    panel = plugins_panel.PluginsPanel(settings=s)
+    panel.wait()
+    panel.resize(300, 600)
+    panel.show()
+    app.processEvents()
+    narrow = panel.minimumSizeHint().width()
+    assert narrow < 400
+    req = "git+https://github.com/frssp/ewald-plugins@" + "0" * 40 + "#subdirectory=packages/ewald-long"
+    panel._set_busy("long", "Installing…", f"Installing {req} with pip…")
+    app.processEvents()
+    assert panel.minimumSizeHint().width() <= narrow
+    assert panel.busy_label.text().startswith("Installing git+") and req in panel.busy_label.label.toolTip()
+    assert "…" in plugins_panel.QtWidgets.QLabel.text(panel.busy_label.label)    # what is drawn is shortened
+    panel._set_busy("long")
+    panel.close()
+
+
 def test_plugins_side_bar_offers_updates_and_greys_out_incompatible_plugins(app, tmp_path):
     import json
 
@@ -4254,6 +4285,86 @@ def test_workflow_side_bar_lists_expands_and_opens_a_workflow_as_one_notebook(ap
     assert side.tree.topLevelItemCount() == 1 and side.more.isHidden()
 
 
+def test_workflow_side_bar_switches_the_shown_step_and_plots_a_step_table(app, pipe, monkeypatch):
+    """In a workflow notebook the side bar marks the step that is pipe (●) and the other loaded
+    ones (○); a click on ○ rewrites the pipe = ... cell, and a "Plot Bands" row adds a view cell
+    show(bands, table="Bands", panel=True) that plots the bands step, not pipe."""
+    from ase.build import bulk
+
+    from ewald import plugins, workflow
+    from ewald.data import DataCollection
+    from ewald.gui import workflow_panel as wp
+    from ewald.gui.app import MainWindow
+    from ewald.workflow import Workflow, WorkflowStep
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    monkeypatch.setattr(plugins._registry, "loaded", True)
+
+    def read(path, **kw):
+        d = DataCollection.from_ase(bulk("Si"))
+        if path.endswith("bands"):
+            d.tables["Bands"] = {"k": np.arange(3.0), "E": np.array([1.0, 2.0, 3.0])}
+        else:
+            d.tables["Steps"] = {"Step": np.arange(2.0), "Energy": np.array([-5.0, -5.4])}
+        return [d]
+
+    wf = Workflow("bands", id="8", path="demo:8", kind="vasp_bands", state="finished", complete=True,
+                  steps=[WorkflowStep("relax", path="demo:8/relax", state="finished"),
+                         WorkflowStep("bands", path="demo:8/bands", state="finished")])
+
+    class Demo:
+        schemes = ("demo",)
+
+        def account(self):
+            return "me"
+
+        def list(self, query=None, cursor=None):
+            return workflow.WorkflowPage([wf])
+
+        def describe(self, ref):
+            return wf
+
+    plugins.register_reader("demo", read, schemes=("demo",))
+    plugins.register_workflow_source("demo", Demo, title="Demo")
+    plugins.register_panel("demo", workflow.workflow_panel("demo", title="Demo"))
+    w = MainWindow(pipe)
+    w.show_plugin_panel("demo")
+    side = w.plugin_panels["demo"]["dock"].widget()
+    side.wait()
+    top = side.tree.topLevelItem(0)
+    assert top.child(0).text(1) == ""                     # no workflow notebook on screen yet
+    view = side.open(top)
+    side.refresh_marks()
+    side.wait()
+    steps = [top.child(i) for i in range(top.childCount()) if not top.child(i).data(0, wp.TABLE)]
+    relax, bands = steps
+    assert [x.data(0, wp.VAR) for x in (top, relax, bands)] == ["result", "relax", "bands"]
+    assert [x.text(1) for x in (top, relax, bands)] == [wp.ACTIVE, wp.OTHER, wp.OTHER]  # pipe = result
+    rows = lambda item: [item.child(i).text(0) for i in range(item.childCount()) if item.child(i).data(0, wp.TABLE)]
+    assert rows(relax) == ["Plot Steps"] and rows(bands) == ["Plot Bands"]
+
+    cell = side.activate(bands)                            # ○ -> pipe = bands
+    side.wait()
+    assert cell.source == "pipe = bands" and view.notebook.pipeline is view.notebook.namespace["bands"]
+    assert sum("pipe = " in c.source for c in view.notebook.cells) == 1
+    assert [x.text(1) for x in (top, relax, bands)] == [wp.OTHER, wp.OTHER, wp.ACTIVE]
+    side.activate(top)                                     # back to the workflow's own result
+    side.wait()
+    assert view.notebook.pipeline is view.notebook.namespace["result"] and top.text(1) == wp.ACTIVE
+
+    row = next(bands.child(i) for i in range(bands.childCount()) if bands.child(i).data(0, wp.TABLE) == "Bands")
+    cells = len(view.notebook.cells)
+    vc = side.plot_table(row)
+    assert vc.source == "show(bands, table='Bands', panel=True)" and len(view.notebook.cells) == cells + 1
+    widget = next(x for x in view.widgets if x.cell is vc)
+    assert widget.plot_panel.data is not None and "Bands" in widget.plot_panel.data.tables  # bands, not pipe
+    assert side.plot_table(row) is vc and len(view.notebook.cells) == cells + 1           # once
+    # a table name is a string literal in the cell, never code
+    vc2 = view.notebook.add_view(source="bands", table="x')\nimport os\n#", panel=True)
+    import ast
+    assert [type(n).__name__ for n in ast.parse(vc2.source).body] == ["Expr"]
+
+
 def test_dropping_a_folder_of_calculations_opens_it_as_a_workflow(app, tmp_path, vasp_dir):
     """A folder of calculations (here a relax and an MD restarted twice) dropped on the window
     opens as one notebook, a load() per step; the built-in Workflows side bar lists it after."""
@@ -4510,3 +4621,54 @@ def test_viewport_has_no_msaa_so_depth_peeling_keeps_see_through_atoms(app):
         assert v.plotter.render_window.GetMultiSamples() == 0
     finally:
         _dispose(v)
+
+
+def test_resize_handles_are_visible_in_every_theme(app):
+    """Dock separators and split handles show a rule and a dotted grip in a 7 px hit area (the
+    owner could only find the notebook/structure boundary by hovering), in every UI theme."""
+    from PySide6 import QtGui
+
+    from ewald.gui import theme
+
+    saved = dict(theme.TOKENS), dict(theme.STYLE)
+    try:
+        for name in theme.PALETTES:
+            t = theme.use(name)
+            for img in ("grip_v", "grip_h", "grip_v_hover", "grip_h_hover"):
+                path = theme.image(img)      # PNG (Qt squares SVG style-sheet images) with a @2x copy
+                small, large = QtGui.QImage(path), QtGui.QImage(path.replace(".png", "@2x.png"))
+                assert sorted((small.width(), small.height())) == [7, 25] and large.width() == 2 * small.width()
+            w = QtWidgets.QMainWindow()
+            w.setStyleSheet(theme.stylesheet())
+            w.resize(400, 300)
+            split = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+            split.addWidget(QtWidgets.QLabel("a"))
+            split.addWidget(QtWidgets.QLabel("b"))
+            w.setCentralWidget(split)
+            dock = QtWidgets.QDockWidget("notebook")
+            dock.setWidget(QtWidgets.QLabel("cells"))
+            w.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
+            w.show()
+            app.processEvents()
+            im = w.grab().toImage()
+            left, right = dock.geometry().right() + 1, w.centralWidget().geometry().left()
+            assert right - left == 7, name                         # the separator's hit area
+            row = [im.pixelColor(x, 20).name().upper() for x in range(left, right)]
+            assert row == [t["panel"]] * 3 + [t["border"]] + [t["panel"]] * 3, (name, row)
+            mid = dock.geometry().center().y()
+            grip = [im.pixelColor(left + 3, y).name().upper() for y in range(mid - 14, mid + 14)]
+            assert grip.count(t["muted"]) >= 3, (name, grip)       # three dots on the rule
+            handle = split.handle(1)
+            assert handle.height() == 7, name
+            corner = handle.mapTo(w, QtCore.QPoint(0, 0))
+            col = [im.pixelColor(corner.x() + 20, y).name().upper() for y in range(corner.y(), corner.y() + 7)]
+            assert col == [t["panel"]] * 3 + [t["border"]] + [t["panel"]] * 3, (name, col)
+            w.close()
+            _dispose(w)
+    finally:
+        theme.TOKENS.clear()
+        theme.TOKENS.update(saved[0])
+        theme.STYLE.clear()
+        theme.STYLE.update(saved[1])
+    css = theme.stylesheet()     # hover: a 3 px accent rule and an accent grip
+    assert "QSplitter::handle:horizontal:hover" in css and "grip_v_hover" in css

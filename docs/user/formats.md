@@ -22,7 +22,7 @@ file wins from that step on and the frames the earlier file wrote after it are d
 steps only go up. A file that is covered completely by a later one is left out with a warning.
 Files that all start at the same step (independent runs, NEB replicas) and formats whose steps
 start again in every run (XDATCAR, OUTCAR, vasprun.xml) are appended as they are.
-`join="concat"` always keeps every frame of every file. Thermo tables next to each file
+`join="concat"` always keeps every frame of every file. Per-step tables (`Steps`) next to each file
 (log.lammps, OSZICAR) are joined on the step the same way, the later run winning. Lists work for
 remote paths, sessions and live reload too: a restart folder that appears later replaces the
 frames it overlaps.
@@ -82,7 +82,7 @@ multi-gigabyte trajectory opens immediately and uses memory for the frames in th
 
 Energies, temperature, pressure and the other per-step numbers a code writes become frame
 attributes, matched to frames by `Timestep` = step, and the whole series is the table
-`data.tables["Thermo"]`, which the GUI's Plots tab draws with a marker at the current frame.
+`data.tables["Steps"]`, which the GUI's Plots tab draws with a marker at the current frame.
 
 | Source | Found how | Attributes |
 |---|---|---|
@@ -271,7 +271,7 @@ opened (or last refreshed), reads only the new bytes (on an SSH host `tail -c | 
 there), drops cached frames that may have changed and returns how many frames were added.
 A half-written last frame is left out until it is complete, a file that shrank (a new run
 overwrote it) is indexed again, and a wildcard such as `dump.*.lammpstrj` also picks up files
-that appeared. Thermo tables next to the trajectory (log.lammps, OSZICAR) are read again too.
+that appeared. Per-step tables (`Steps`) next to the trajectory (log.lammps, OSZICAR) are read again too.
 Compressed files are not followed. A vasprun.xml is indexed again from the start when it grew
 (its structure has no cheap resume point), so the DOS and bands appear on every frame once
 VASP writes them at the end of the run.

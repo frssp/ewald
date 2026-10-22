@@ -1,6 +1,6 @@
 """Plots tab: draw any data table (g(r), histograms, user tables) with matplotlib.
 
-Tables whose first column is ``Step``/``Timestep`` (the ``Thermo`` table from log.lammps,
+Tables whose first column is ``Step``/``Timestep`` (the ``Steps`` table from log.lammps,
 OSZICAR, OUTCAR, vasprun.xml) are time series: a column is picked under "y" and a marker
 follows the current frame. Changing frames only moves that marker. Tables named ``*-peaks``
 (``PowderDiffraction``) draw as sticks, and an ``Experimental`` column as points under the rest.

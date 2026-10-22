@@ -67,8 +67,8 @@ class PluginRow(QtWidgets.QFrame):
         head = QtWidgets.QHBoxLayout()
         title = QtWidgets.QLabel(f"<b>{html.escape(item.name)}</b>" +
                                  (f" <span style='color:{TOKENS['muted']}'>{html.escape(item.version)}</span>"
-                                  if getattr(item, "version", "") else ""))
-        head.addWidget(title, 1)
+                                  if getattr(item, "version", "") else ""), wordWrap=True)
+        head.addWidget(title, 1)          # wraps, like every label here, so the row never widens the side bar
         if busy:                                    # installing, updating or removing: a spinner, no buttons
             self.busy = BusyLabel(busy)
             head.addWidget(self.busy)
@@ -110,7 +110,7 @@ class PluginRow(QtWidgets.QFrame):
         badges = item.kinds + [_origin_badge(item)]
         if not installed and not item.compatible:
             badges.append(f"· needs ewald {item.requires_ewald}")
-        kinds = QtWidgets.QLabel("  ".join(badges).strip(), objectName="pluginKinds")
+        kinds = QtWidgets.QLabel("  ".join(badges).strip(), objectName="pluginKinds", wordWrap=True)
         lay.addWidget(kinds)
         if getattr(item, "error", ""):
             lay.addWidget(QtWidgets.QLabel(item.error, objectName="cellError", wordWrap=True))

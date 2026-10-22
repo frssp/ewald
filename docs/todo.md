@@ -30,7 +30,9 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 - Workflows (`ewald.workflow`): a table that compares the scalars of every step of a workflow
   (energies, gaps, forces) and of several workflows side by side, and opening one step's input
-  next to its output (INCAR/KPOINTS as text cells).
+  next to its output (INCAR/KPOINTS as text cells). The side bar's step switch (●/○) and
+  "Plot <table>" rows exist; a step picker on top of the Plots panel itself does not, and the
+  rows list the tables of a step's first frame only.
 - Workflow folders (`ewald/workflow_folder.py`, docs/user/workflows.md): a killed VASP or LAMMPS
   step shows as running (no mtime or queue check); Quantum ESPRESSO, CP2K, ABINIT folders are not
   recognized; no "remove from list" in the Workflows side bar; a large tree on an SSH host is
@@ -162,6 +164,9 @@ GUI
 - Plugins side bar: disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
   view instead of the Ask AI prompt; uninstalling a pip plugin still needs a restart.
+  Updates compare versions only: an index entry that pins a new commit of a `pip:git+...`
+  package without raising its version is not offered as an update (the installed commit is in
+  the distribution's `direct_url.json` if that is ever wanted).
 - UI themes: prompts already printed in the Python console keep the colors of the theme they
   were printed in (new input, syntax colors and the background switch at once).
 - UI theme style keys (`font`, `mono_font`, `radius`, `density`, `icon_stroke`, `qss`): open code
@@ -496,6 +501,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   dialog with a name typed without extension; settings with non-ASCII text on Korean Windows;
   per-monitor DPI at 125/150 %; Windows Credential Manager; `ewald api > llms.txt` in cmd and
   PowerShell. The same list on a real Mac.
+- Resize handles between panels (dotted grip on a 1 px rule, accent on hover, 7 px hit area)
+  on Windows at 125/150 % and on a Retina Mac: the grip uses the `@2x` PNG and stays sharp, and
+  the split cursor shows over the whole handle.
+- Plugins side bar on Windows and macOS: install ewald-phonopy from the default index (uv and
+  pip), check the side bar keeps its width while pip runs and can be narrowed again, and that
+  no *Update to …* button is left on default-index plugins afterwards.
 - MD playback in Ball & stick on Windows with a real GPU: bonds stay on through playback and
   scrubbing (no coarse/full switching between frames), and the numpy bond tubes look like the
   old `vtkTubeFilter` ones. Bonds whose length sits at the cutoff still appear and vanish
