@@ -229,3 +229,35 @@ def test_install_checks_the_catalog_sha256_before_writing(tmp_path):
     assert not (plugins.plugin_dir() / "hashed_shift.py").exists()   # nothing written or imported
     assert pc.install_file(good) == ["HashedShift"]
     pc.remove_file(next(i for i in pc.installed() if i.id == "hashed_shift"))
+
+
+def test_catalog_file_without_a_version_is_not_offered_its_own_update(tmp_path):
+    from ewald.trust import sha256
+
+    src = tmp_path / "src" / "unversioned_shift.py"           # no __ewald__ version in the file
+    src.parent.mkdir()
+    text = PLUGIN.replace("CatalogShift", "UnversionedShift")
+    src.write_bytes(text.replace("\n", "\r\n").encode())      # a Windows checkout of the index repo
+    digest = sha256(src.read_bytes())
+    entry = pc.Entry(name="Unversioned shift", id="unversioned_shift", version="0.1.0", source=str(src), sha256=digest)
+    pc.install_file(entry)
+    item = next(i for i in pc.installed() if i.id == "unversioned_shift")
+    assert item.version == "0.1.0"                            # remembered from the entry it came from
+    assert pc.update_for(item, [entry]) is None
+    newer = pc.Entry(name="Unversioned shift", id="unversioned_shift", version="0.2.0", source=str(src), sha256="ab" * 32)
+    assert pc.update_for(item, [entry, newer]) is newer
+
+    # a copy dropped into the plugin folder by hand: no record, but the same bytes as the entry
+    pc._sources_path().unlink()
+    item = next(i for i in pc.installed() if i.id == "unversioned_shift")
+    assert item.version == "" and pc.update_for(item, [entry]) is None
+    assert pc.update_for(item, [newer]) is newer              # different content, so it is an update
+    assert pc.update_for(item, [pc.Entry(name="x", id="unversioned_shift", version="0.3")]) is None   # nothing to compare
+
+    pc.install_file(entry)
+    target = plugins.plugin_dir() / src.name
+    target.write_text(target.read_text(encoding="utf-8") + "# edited\n", encoding="utf-8")
+    assert pc.installed_version(target) == ""                 # edited since: not that version any more
+    pc.install_file(entry)
+    pc.remove_file(next(i for i in pc.installed() if i.id == "unversioned_shift"))
+    assert src.name.lower() not in pc._sources()

@@ -70,7 +70,7 @@ center on the smallest cation of a compound (Ti in SrTiO3) unless atoms are sele
 particle-property histogram:
 
 ```python
-show(pipe, table="coordination-rdf")         # g(r), XRD, S(q), DOS, Bands, Thermo, NEB, ...
+show(pipe, table="coordination-rdf")         # g(r), XRD, S(q), DOS, Bands, Steps, NEB, ...
 show(pipe, table="DOS", y="Ga d")            # one column
 show(pipe, histogram="Coordination")         # histogram of a particle property
 show(pipe, table="DOS", xlim=(-3, 2))        # the range shown (DOS energy window)
@@ -452,7 +452,8 @@ ewald's example plugins, the default plugin index and every catalog in Preferenc
 `@installed`, `@updates`, `@available` or a kind such as `@modifier`. *Install* copies a plugin file into the
 plugin folder and loads it at once; a `pip:` entry runs pip in the Python ewald runs in, after
 you confirm the command. *Update to …* appears on an installed plugin when a catalog has a
-newer version (the Plugins icon on the activity bar then carries the number of updates, and
+newer version (a plugin file without a version of its own counts as the catalog version it was
+installed as, or as the entry whose `sha256` it matches; the Plugins icon on the activity bar then carries the number of updates, and
 `@updates` lists them), and entries that need a newer ewald are greyed out. *Disable* switches a plugin off without removing it
 ([Switching a plugin off](../plugins/packaging.md#switching-a-plugin-off)); disabled,
 incompatible and failed plugins say so in their row. *Remove* moves a file to the plugin

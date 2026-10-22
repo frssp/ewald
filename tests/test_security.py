@@ -343,7 +343,7 @@ def test_workflow_notebook_keeps_server_text_out_of_code():
     assert any(src.startswith("x_import_os_os_system_touch_pwned = load(\"demo:1/a'); import os #\")") for src in code)
     import ast
 
-    loads = ast.parse(code[-1]).body             # only name = load('...') and pipe = name
+    loads = ast.parse(code[-2] + "\n" + code[-1]).body   # only name = load('...'), then pipe = name
     assert all(isinstance(st, ast.Assign) for st in loads)
     assert all(isinstance(st.value, ast.Name) or (st.value.func.id == "load" and isinstance(st.value.args[0], ast.Constant))
                for st in loads)

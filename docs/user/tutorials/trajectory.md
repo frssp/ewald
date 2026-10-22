@@ -43,7 +43,7 @@ papers.
 
 The MSD view is a per-frame plot. Dragging over a time range selects those frames: they are marked
 on the timeline and playback steps through them only. Clicking a point jumps to that frame. The
-same works on the `Thermo` table of a LAMMPS or VASP run, so you can, for example, select the
+same works on the `Steps` table of a LAMMPS or VASP run, so you can, for example, select the
 frames where the temperature is above some value (Shift+drag a box).
 
 ## 4. Force arrows

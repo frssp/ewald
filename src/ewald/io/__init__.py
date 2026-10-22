@@ -150,7 +150,7 @@ class FileSource:
         files that appeared.
 
         Returns the first frame whose data may have changed (see :meth:`FrameReader.refresh`),
-        or None when nothing changed. Thermo tables (log.lammps, OSZICAR) are read again.
+        or None when nothing changed. Steps tables (log.lammps, OSZICAR) are read again.
         Use :meth:`ewald.pipeline.Pipeline.refresh`, which also drops stale cached frames.
         """
         readers = dict(zip(self.paths, self.readers))

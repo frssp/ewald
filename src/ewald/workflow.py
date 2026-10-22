@@ -236,10 +236,40 @@ def _one_line(value) -> str:
     return " ".join(str(value).split())
 
 
+def _loads(wf: Workflow) -> list:
+    """``(variable, path, note)`` for every step with a result, then every top-level structure,
+    trajectory or band output, then the workflow's own path as ``result`` (when it is none of
+    those), in the order :func:`notebook_text` loads them."""
+    taken: set = set()
+    seen: set = set()
+    out = []
+    for _, step in wf.walk():
+        if step.path and step.path not in seen:
+            name = variable_name(step.name, taken)
+            taken.add(name)
+            seen.add(step.path)
+            out.append((name, step.path, step.mark() if step.failed else ""))
+    for o in wf.outputs:
+        if o.path and o.kind in ("structure", "trajectory", "band") and o.path not in seen:
+            name = variable_name(o.name, taken)
+            taken.add(name)
+            seen.add(o.path)
+            out.append((name, o.path, o.note))
+    if out and wf.path and wf.path not in seen:   # the workflow's own result, so pipe can switch back to it
+        out.append((variable_name("result", taken), wf.path, ""))
+    return out
+
+
+def step_variables(wf: Workflow) -> dict:
+    """``{path: variable}``: the name :func:`notebook_text` gives each step and output it loads."""
+    return {path: name for name, path, _ in _loads(wf)}
+
+
 def notebook_text(wf: Workflow, pipeline_name: str = "pipe") -> str:
     """One notebook (percent format) for a whole workflow: a heading with what it is, and one
     cell that loads every step with a result and every top-level output structure
-    (``name = load(path)``, a line each) and sets ``pipe`` to the main result, so the 3D view starts there and any step is one
+    (``name = load(path)``, a line each, named by :func:`step_variables`), and a last cell that
+    sets ``pipe`` to the main result, so the 3D view starts there and any step is one
     reassignment (``pipe = relax``) or ``show(scf, ...)`` away. Names, labels and numbers from
     the source only reach comments and markdown, on one line each, and paths only string
     literals, so a workflow cannot put code into the notebook."""
@@ -256,31 +286,18 @@ def notebook_text(wf: Workflow, pipeline_name: str = "pipe") -> str:
     if numbers:
         head += ["#", "# | Quantity | Value |", "# |---|---|"] + [f"# | {line(k)} | {line(v)} |" for k, v in numbers]
     cells = ["# %% [markdown]\n" + "\n".join(head), "# %%\n" + IMPORTS]
-    taken: set = set()
-    by_path: dict = {}
-    loads = []
-    for _, step in wf.walk():
-        if step.path and step.path not in by_path:
-            name = variable_name(step.name, taken)
-            taken.add(name)
-            by_path[step.path] = name
-            loads.append((f"{name} = load({str(step.path)!r})", line(step.mark()) if step.failed else ""))
-    for o in wf.outputs:
-        if o.path and o.kind in ("structure", "trajectory", "band") and o.path not in by_path:
-            name = variable_name(o.name, taken)
-            taken.add(name)
-            by_path[o.path] = name
-            loads.append((f"{name} = load({str(o.path)!r})", line(o.note)))
+    loads = _loads(wf)
+    by_path = {path: name for name, path, _ in loads}
     main = by_path.get(wf.path) if wf.path else None
     if main is None and wf.path:
         main = f"load({str(wf.path)!r})"
     if main is None and by_path:
         main = list(by_path.values())[-1]
-    body = [f"{code}  # {note}" if note else code for code, note in loads]
-    if main is not None:
-        body.append(f"{pipeline_name} = {main}")
+    body = [f"{name} = load({str(path)!r})" + (f"  # {line(note)}" if note else "") for name, path, note in loads]
     if body:
         cells.append("# %%\n" + "\n".join(body))
+    if main is not None:            # a cell of its own: the side bar's step switch rewrites only it
+        cells.append(f"# %%\n{pipeline_name} = {main}")
     return "\n\n".join(cells) + "\n"
 
 

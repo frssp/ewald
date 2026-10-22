@@ -20,7 +20,10 @@ code run in this session. Available plugins come from catalogs:
 
 An entry matches an installed plugin by ``id`` (the plugin's id: its file stem or package
 name), then by name. A newer ``version`` offers an update; an entry whose ``requires_ewald``
-this ewald does not meet is listed but cannot be installed.
+this ewald does not meet is listed but cannot be installed. A file plugin without an
+``__ewald__`` version has the version of the entry it was installed from (remembered in
+``<config dir>/plugin-sources.json`` with the file's SHA-256), and a file whose content is the
+entry's ``sha256`` is up to date whatever its version says.
 
 Indexes and files on GitHub (``raw.githubusercontent.com``, ``api.github.com``) are read with a
 token when there is one, from ``GITHUB_TOKEN`` or ``gh auth token``, so a private index works.
@@ -51,7 +54,7 @@ from pathlib import Path, PureWindowsPath
 
 from . import plugins
 from ._tls import ssl_context
-from .trust import verify_sha256
+from .trust import sha256, verify_sha256
 
 KINDS = ("modifier", "reader", "writer", "visual", "overlay", "colormap", "theme", "tool", "ui_theme", "ai_provider",
          "settings_page", "panel", "menu_item", "workflow_source")
@@ -147,14 +150,16 @@ def installed() -> list[Installed]:
     for pid, p in plugins.installed().items():
         if "@" in pid:                        # a duplicate id, already reported on the first one
             continue
-        path = ""
+        path, version = "", p.version
         if p.kind != "package":
             src = Path(p.origin)
             if not src.exists():              # removed: its classes stay registered until restart
                 continue
             path = str(src) if src.resolve().parent == folder else ""
+            if path and not version:          # a catalog file without __ewald__: the version it was installed as
+                version = installed_version(path)
         items.append(Installed(
-            name=p.name or pid, origin=p.origin, id=pid, version=p.version, summary=p.description,
+            name=p.name or pid, origin=p.origin, id=pid, version=version, summary=p.description,
             publisher=p.publisher, state=p.state, error="; ".join(p.errors),
             package=p.origin if p.kind == "package" else "", path=path,
             provides={k.rstrip("s"): list(v) for k, v in p.contributions.items() if v}))
@@ -364,15 +369,67 @@ def is_installed(entry: Entry, items=None) -> bool:
 
 
 def update_for(item: Installed, entries) -> Entry | None:
-    """A compatible catalog entry with a newer version of ``item``, if any."""
+    """A compatible catalog entry with a newer version of ``item``, if any. A plugin-folder file
+    whose content is the entry's (same ``sha256``) is up to date; one with no version at all is
+    offered an entry only when its content differs from the entry's ``sha256``."""
     best = None
+    current = _file_sha256(item.path) if item.path and Path(item.path).is_file() else ""
     for e in entries:
         if not e.version or not e.compatible or match(e, [item]) is None:
             continue
+        if current and e.sha256 and current == e.sha256.lower():
+            continue                          # this very file is installed
+        if not item.version and not (current and e.sha256):
+            continue                          # nothing to compare with: do not offer it forever
         if not item.version or plugins._version_tuple(e.version) > plugins._version_tuple(item.version):
             if best is None or plugins._version_tuple(e.version) > plugins._version_tuple(best.version):
                 best = e
     return best
+
+
+def _file_sha256(path) -> str:
+    try:
+        return sha256(Path(path).read_bytes())
+    except OSError:
+        return ""
+
+
+def _sources_path() -> Path:
+    from .settings import config_dir
+
+    return config_dir() / "plugin-sources.json"
+
+
+def _sources() -> dict:
+    try:
+        data = json.loads(_sources_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _record_source(path: Path, entry: Entry | None):
+    """Remember which catalog entry a plugin-folder file came from (``<config dir>/plugin-sources.json``,
+    keyed by the lower-cased file name), or forget it (``entry`` None)."""
+    data = _sources()
+    key = path.name.lower()
+    if entry is None:
+        if data.pop(key, None) is None:
+            return
+    else:
+        data[key] = {"version": entry.version, "source": entry.source, "sha256": _file_sha256(path)}
+    target = _sources_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8", newline="\n")
+
+
+def installed_version(path) -> str:
+    """The catalog version a plugin-folder file was installed as ("" when it was not installed
+    from a catalog, or has been edited since)."""
+    rec = _sources().get(Path(path).name.lower(), {})
+    if rec.get("version") and rec.get("sha256") == _file_sha256(path):
+        return str(rec["version"])
+    return ""
 
 
 def install_file(entry_or_source, timeout: float = 30.0) -> list[str]:
@@ -402,6 +459,7 @@ def fetch_file(entry_or_source, timeout: float = 30.0) -> Path:
             verify_sha256(src.read_bytes(), expected, source)
         if src != target.resolve():
             shutil.copyfile(src, target)
+    _record_source(target, entry_or_source if isinstance(entry_or_source, Entry) and entry_or_source.version else None)
     return target
 
 
@@ -415,6 +473,7 @@ def remove_file(item: Installed) -> Path:
     if dest.exists():
         shutil.rmtree(dest) if dest.is_dir() else dest.unlink()
     shutil.move(str(src), dest)
+    _record_source(src, None)
     return dest
 
 
