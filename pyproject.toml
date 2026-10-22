@@ -30,6 +30,8 @@ dependencies = ["numpy>=2.0", "scipy", "ase>=3.23", "matplotlib", "pillow", "pyv
                 "imageio-ffmpeg",   # bundled ffmpeg binary for MP4/AVI/MOV
                 "h5py",   # H5MD, vaspout.h5, MDTraj HDF5
                 "anthropic>=1.0", "openai>=1.40", "mcp",   # Ask AI (Claude, OpenAI-compatible providers), MCP server
+                "ipython>=8.12", "traitlets",   # notebook cells run in IPython shells (ewald.shell): magics, display(), rich outputs
+                "tqdm",   # progress bars (ewald.progress): downloads and long loops, drawn live under the cell
                 "jupyter_client>=7", "ipykernel"]   # notebooks whose cells run in another Python (ewald.kernel)
 
 [project.optional-dependencies]
@@ -39,7 +41,7 @@ gpu = ["cupy-cuda12x; sys_platform != 'darwin'"]   # no CUDA on macOS: the extra
 formats = ["MDAnalysis>=2.7"]   # GROMACS XTC/TRR, DCD, NetCDF
 ovito = ["ovito"]   # DislocationAnalysis (DXA) and OvitoModifier bridge; pins its PySide6, so install with gui
 all = ["ewald[gui,formats,ovito]"]   # everything but gpu (needs an NVIDIA GPU with CUDA 12)
-dev = ["pytest"]
+dev = ["pytest", "nbformat", "jupytext"]   # nbformat/jupytext: round-trip tests of .ipynb and percent .py notebooks
 # kept so old install commands work: these packages are in the core install now
 kernel = []
 symmetry = []

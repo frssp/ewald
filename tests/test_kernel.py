@@ -167,3 +167,17 @@ def test_each_frame_cells_run_in_the_kernel(kernel, lammps_dir):
     assert nb.run_all()
     assert [s["name"] for s in nb.cells[1].steps] == ["each_frame_cell"]
     assert nb.pipeline.compute(2).attributes["Twice"] == 4
+
+
+def test_rich_outputs_and_magics_come_back_from_the_kernel(kernel):
+    """A kernel cell is an IPython cell too: its HTML, progress bars and magics arrive as they do here."""
+    from ewald.shell import PROGRESS_MIME
+
+    nb = Notebook.from_py("# %%\nfrom IPython.display import HTML\nfrom ewald.progress import progress\n"
+                          "for _ in progress(range(3), desc='k'):\n    pass\n%time y = 2\nHTML('<b>x</b>')\n")
+    nb.set_kernel(kernel)
+    assert nb.run_all(), nb.cells[0].outputs
+    kinds = [o.kind for o in nb.cells[0].outputs]
+    assert kinds == ["rich", "text", "rich"]
+    bar, text, html = nb.cells[0].outputs
+    assert bar.mime[PROGRESS_MIME]["n"] == 3 and "Wall time" in text.data and html.mime["text/html"] == "<b>x</b>"

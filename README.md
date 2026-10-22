@@ -105,7 +105,8 @@ frame of the trajectory. `python cu_void.py` runs the same file without the GUI 
 with matplotlib. Every display setting of the Structure view (style, colors, radii, bonds, cell, background,
 camera, frame) is code as well, one `view(pipe, style="Ball & stick", colors={"O": "red"}, direction="z")`
 cell that the viewport rewrites when you change it there and that Claude's chat sets through the same
-API. File › Save notebook writes it as a `.py`, a Jupyter `.ipynb`, or an `.ewd` that
+API. Cells are IPython cells (magics, `display()`, HTML/LaTeX/Markdown outputs, live output and
+progress bars while a cell runs). File › Save notebook writes it as a `.py`, a Jupyter `.ipynb`, or an `.ewd` that
 also carries the outputs, figures, small data files and the plugins it uses, so a colleague can open
 it with everything in place ([Notebooks](docs/user/notebooks.md)).
 

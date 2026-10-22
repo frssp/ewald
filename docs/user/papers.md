@@ -4,7 +4,9 @@ Some computational papers publish their trajectories and structures on GitHub. e
 few of them: `examples.fetch(name)` downloads one dataset into the cache, checks every file
 against its SHA-256 and returns the folder, and a script in
 [`examples/papers/`](https://github.com/frssp/ewald/blob/main/examples/papers/) reruns the paper's analysis with ewald modifiers and
-compares the numbers. The data is not shipped with ewald; each file is pinned to a commit of the
+compares the numbers. A download shows a progress bar with its size, speed and time left (under
+the cell in the app, on stderr in a terminal), and Interrupt stops it without leaving a partial
+file. The data is not shipped with ewald; each file is pinned to a commit of the
 authors' repository, so a script always sees the bytes it was written for.
 
 ```bash

@@ -532,3 +532,99 @@ def test_interrupt_stops_a_cell_running_on_another_thread():
     assert nb.cells[0].state == "error" and "CellInterrupted" in nb.cells[0].outputs[-1].data
     assert "after" not in nb.namespace and not nb.interrupt()
     assert nb.run_cell(1) and nb.namespace["after"] == 1
+
+
+# ---------------------------------------------------------------- IPython cells (ewald.shell)
+def test_cells_run_in_ipython(capsys):
+    """Cells are IPython cells: magics, display(), rich reprs, _ / Out[n], ';' and IPython's
+    tracebacks, without touching __main__, the builtins or sys.stdout of this process."""
+    import builtins
+    import sys
+
+    main, stdout, hook = sys.modules["__main__"], sys.stdout, sys.displayhook
+
+    nb = Notebook([Cell("%time x = 6 * 7\nx"), Cell("display({'a': 1})\nx;"), Cell("_ + 1"),
+                   Cell("Out[1] * 2"),
+                   Cell("class Table:\n    def _repr_html_(self):\n        return '<table><tr><td>1</td></tr></table>'\nTable()"),
+                   Cell("def f():\n    return 1 / 0\nf()")])
+    nb.run_all(stop_on_error=False)
+    time, display_, last, out1, table, err = nb.cells
+    assert "Wall time" in time.outputs[0].data and time.outputs[-1].data == "42"
+    assert [o.data for o in display_.outputs] == ["{'a': 1}"]           # ';' hides the value
+    assert last.outputs[-1].data == "43" and out1.outputs[-1].data == "84"
+    assert table.outputs[0].kind == "rich" and "<table>" in table.outputs[0].mime["text/html"]
+    assert err.state == "error" and "ZeroDivisionError" in err.outputs[0].data and "<cell 6>" in err.outputs[0].data
+    assert "return 1 / 0" in err.outputs[0].data                          # the failing line is shown
+    assert sys.modules["__main__"] is main and sys.stdout is stdout and sys.displayhook is hook
+    assert not hasattr(builtins, "get_ipython") and "x" not in vars(main)
+    assert capsys.readouterr().out == ""                                 # nothing leaked to the terminal
+
+
+def test_update_display_replaces_its_output():
+    nb = Notebook([Cell("h = display('one', display_id=True)\nprint('between')\nh.update('two')")])
+    assert nb.run_all()
+    assert [(o.kind, o.data) for o in nb.cells[0].outputs] == [("value", "'two'"), ("text", "between\n")]
+
+
+def test_output_streams_like_a_terminal():
+    """Carriage returns redraw the line (tqdm and other text progress bars), CRLF from Windows
+    programs is a newline, and a line split over two writes stays one line."""
+    from ewald.notebook import _CellSink
+
+    cell = Cell("")
+    sink = _CellSink(Notebook(), cell)
+    for chunk in ("a\r\n", "10%\r", "\r50%", "\r100%\n", "half ", "line\r", "\nnext"):
+        sink.stream("stdout", chunk)
+    assert [o.kind for o in cell.outputs] == ["text"]
+    assert cell.outputs[0].data == "a\n100%\nhalf line\nnext"
+    sink.stream("stderr", "\rab")
+    assert cell.outputs[0].data.endswith("\nabxt")                      # overwritten in place, as a terminal does
+
+
+def test_two_notebooks_print_on_two_threads_at_once():
+    """Two tabs (or a tab and the console) running at the same time each get their own output."""
+    import threading
+
+    code = "import time\nfor i in range(20):\n    print('{0}', i)\n    time.sleep(0.005)\n'{0}'"
+    a, b = Notebook([Cell(code.format("A"))]), Notebook([Cell(code.format("B"))])
+    threads = [threading.Thread(target=nb.run_all) for nb in (a, b)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30)
+    for nb, name in ((a, "A"), (b, "B")):
+        text, value = nb.cells[0].outputs
+        assert text.data.split() == [x for i in range(20) for x in (name, str(i))]
+        assert value.data == repr(name)
+
+
+def test_live_outputs_reach_the_listener_while_the_cell_runs():
+    import ewald.notebook as nbmod
+
+    seen = []
+    nb = Notebook([Cell("import time\nfor i in range(3):\n    print(i)\n    time.sleep(0.15)")])
+    nb.on_output = lambda cell: seen.append(cell.outputs[-1].data if cell.outputs else "")
+    assert nb.run_all()
+    assert seen[0].startswith("0") and seen[-1] == "0\n1\n2\n" and len(seen) >= 3
+    assert nbmod.OUTPUT_THROTTLE <= 0.2
+
+
+def test_restart_forgets_ipython_history():
+    nb = Notebook([Cell("y = 5\ny")])
+    nb.run_all()
+    assert nb.namespace["Out"][1] == 5
+    nb.reset()
+    assert "y" not in nb.namespace and nb.shell.user_ns is nb.namespace and not nb.namespace["Out"]
+
+
+def test_percent_py_round_trips_through_jupytext(tmp_path):
+    """Our percent .py files are jupytext's: titles, Markdown and the [each frame] tag survive both ways."""
+    jupytext = pytest.importorskip("jupytext")
+    nb = Notebook.from_py("# %% [markdown]\n# # Title\n#\n# text\n\n# %% setup\nx = 1\n\n"
+                          "# %% speed [each frame]\ndata.attributes['v'] = frame\n")
+    doc = jupytext.reads(nb.to_py(), fmt="py:percent")
+    assert [c.cell_type for c in doc.cells] == ["markdown", "code", "code"]
+    assert [c.source for c in doc.cells] == ["# Title\n\ntext", "x = 1", "data.attributes['v'] = frame"]
+    back = Notebook.from_py(jupytext.writes(doc, fmt="py:percent"))
+    assert [(c.kind, c.title, c.frames, c.source) for c in back.cells] == \
+        [(c.kind, c.title, c.frames, c.source) for c in nb.cells]

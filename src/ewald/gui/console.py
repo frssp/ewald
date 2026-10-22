@@ -63,12 +63,21 @@ def _ipython_console(namespace, on_execute, parent):
     from qtconsole.inprocess import QtInProcessKernelManager
     from qtconsole.rich_jupyter_widget import RichJupyterWidget
 
+    from .. import shell as ipython
+
+    ipython.release_host()   # notebook cells made a private global shell: this kernel's shell takes its place
     km = QtInProcessKernelManager()
     km.start_kernel(show_banner=False)
     km.kernel.gui = "qt"
     shell = km.kernel.shell
     shell.push(namespace)
-    shell.events.register("post_execute", on_execute)
+    from . import workers
+
+    def after(*args):   # the in-process shell outlives windows: one that is gone stops listening
+        if parent is None or workers.alive(parent):
+            return on_execute(*args)
+        shell.events.unregister("post_execute", after)
+    shell.events.register("post_execute", after)
     _style_shell(shell)
     kc = km.client()
     kc.start_channels()
@@ -79,7 +88,7 @@ def _ipython_console(namespace, on_execute, parent):
     w.banner = ("ewald console. Objects: pipeline, data (current frame), viewer, np, mods.\n"
                 "Changes to the pipeline redraw the view after each command.\n")
     w.shell = shell
-    w.on_execute = on_execute  # the in-process shell is shared by every window: unregistered on close
+    w.on_execute = after  # the in-process shell is shared by every window: unregistered on close
     return w
 
 

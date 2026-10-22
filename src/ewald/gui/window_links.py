@@ -342,11 +342,26 @@ class LinksMixin:
         if not getattr(self.console, "built", True):
             return  # the console gets the current objects when it is built
         shell = getattr(self.console, "shell", None)
+        nb = self.panel.notebook
         ns = {"pipeline": self.pipeline, "pipe": self.pipeline, "data": self.data}
-        if self.panel.notebook is not None:
-            # the console sees the notebook's variables, so cells and console work on the same objects
-            ns = {k: v for k, v in self.panel.notebook.namespace.items() if not k.startswith("__")} | ns
-            ns["notebook"] = self.panel.notebook
+        if nb is not None and nb.kernel is None and hasattr(shell, "init_create_namespaces"):
+            # the console runs in the notebook's namespace (one IPython namespace, as a Jupyter
+            # console attached to a kernel): cells and console work on the same objects
+            from .. import shell as ipython
+
+            ipython.bind(shell, nb.namespace)
+            extras = {**self._console_namespace(), "data": self.data, "notebook": nb}
+            if nb.pipeline is not None:
+                extras["pipe"] = extras["pipeline"] = nb.pipeline
+            # console helpers stay out of %who and never hide a notebook variable of the same name
+            hidden, ns_ = shell.user_ns_hidden, nb.namespace
+            shell.push({k: v for k, v in extras.items()
+                        if k not in ns_ or (k in hidden and hidden[k] is ns_[k])},   # unset, or ours from last time
+                       interactive=False)
+            return
+        if nb is not None:   # cells in another Python: the console sees copies of what is here
+            ns = {k: v for k, v in nb.namespace.items() if not k.startswith("__")} | ns
+            ns["notebook"] = nb
         if hasattr(shell, "push") and hasattr(shell, "user_ns"):
             shell.push(ns)
         elif shell is not None and hasattr(shell, "locals"):

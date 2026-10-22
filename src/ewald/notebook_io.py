@@ -43,6 +43,31 @@ def _lines(text: str) -> list[str]:
     return text.splitlines(True)
 
 
+_BINARY = ("image/png", "image/jpeg", "image/gif")
+
+
+def _bundle_to_json(bundle: dict) -> dict:
+    out = {}
+    for mime, value in bundle.items():
+        if isinstance(value, bytes):
+            value = base64.b64encode(value).decode("ascii")
+        elif isinstance(value, str) and mime not in _BINARY:
+            value = _lines(value)
+        out[mime] = value
+    return out
+
+
+def _bundle_from_json(data: dict) -> dict:
+    out = {}
+    for mime, value in data.items():
+        if isinstance(value, list):
+            value = "".join(value)
+        if mime in _BINARY and isinstance(value, str):
+            value = base64.b64decode(value)
+        out[mime] = value
+    return out
+
+
 def _output_to_json(out) -> dict:
     if out.kind == "text":
         return {"output_type": "stream", "name": "stdout", "text": _lines(out.data)}
@@ -51,15 +76,20 @@ def _output_to_json(out) -> dict:
         first = text.strip().splitlines()[-1] if text.strip() else "Error"
         name, _, value = first.partition(": ")
         return {"output_type": "error", "ename": name or "Error", "evalue": value, "traceback": text.splitlines()}
-    if out.kind == "image":
+    if out.kind in ("image", "rich"):
+        bundle = dict(out.mime or {})
+        if out.kind == "image":
+            bundle.setdefault("text/plain", "<Figure>")
+            bundle["image/png"] = out.data
+        bundle.setdefault("text/plain", str(out.data))
         return {"output_type": "display_data", "metadata": {"ewald": {"view": out.view}} if out.view else {},
-                "data": {"image/png": base64.b64encode(out.data).decode("ascii"), "text/plain": ["<Figure>"]}}
+                "data": _bundle_to_json(bundle)}
     return {"output_type": "execute_result", "execution_count": None, "metadata": {},
             "data": {"text/plain": _lines(str(out.data))}}
 
 
 def _output_from_json(raw: dict):
-    from .notebook import Output
+    from .notebook import Output, output_from_bundle
 
     kind = raw.get("output_type")
 
@@ -70,12 +100,9 @@ def _output_from_json(raw: dict):
     if kind == "error":
         return Output("error", "\n".join(raw.get("traceback") or [f"{raw.get('ename')}: {raw.get('evalue')}"]))
     data = raw.get("data") or {}
-    if "image/png" in data:
-        view = ((raw.get("metadata") or {}).get("ewald") or {}).get("view")
-        return Output("image", base64.b64decode(text(data["image/png"])), view if isinstance(view, dict) else None)
-    if "text/plain" in data:
-        return Output("value", text(data["text/plain"]))
-    return None
+    if not data:
+        return None
+    return output_from_bundle(_bundle_from_json(data), raw.get("metadata") or {})
 
 
 def to_ipynb(nb, outputs: bool = True) -> dict:

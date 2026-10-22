@@ -33,7 +33,6 @@ import contextlib
 import contextvars
 import io
 import json
-import linecache
 import os
 import re
 import sys
@@ -56,14 +55,18 @@ _FRAME_TAG = re.compile(r"\[(each frame|all frames)\]")
 
 @dataclass
 class Output:
-    """One result shown under a cell: ``kind`` is 'text' (stdout), 'error', 'value'
-    (repr of the last expression) or 'image' (PNG bytes: a matplotlib figure or a rendered image).
+    """One result shown under a cell: ``kind`` is 'text' (stdout and stderr), 'error', 'value'
+    (the text of the last line's value or of a ``display()``), 'image' (PNG bytes: a matplotlib
+    figure, a rendered image or an object's ``_repr_png_``) or 'rich' (HTML, SVG, Markdown, LaTeX,
+    JSON or a progress bar; ``data`` is the plain-text version, ``mime`` the whole bundle).
     ``show(pipe, ...)`` of the notebook's pipeline makes an image with ``view`` set: the GUI shows
     it as a live plot that follows the frame, everything else (files, Jupyter) as the image."""
 
     kind: str
     data: object
     view: dict | None = None   # an image drawn by ``show(pipe, ...)``: its arguments, for a live plot
+    mime: dict | None = None   # the MIME bundle it came from (IPython's display formatter), if any
+    display_id: str | None = None   # ``display(..., display_id=True)``: later updates replace it
 
 
 @dataclass
@@ -261,12 +264,14 @@ class Notebook:
         self.plot_style = "publication"   # matplotlib style of the cells' own plots ('default': none)
         self.plot_tokens = None           # its colors (a UI theme's tokens); None = print colors
         self._plots = None                # ewald.plotstyle.Session: the cells' rcParams
+        self.on_output = None             # on_output(cell): a running cell's outputs changed (any thread)
         self.reset()
 
     # ------------------------------------------------------------ namespace
     def reset(self):
         """Fresh namespace (like restarting a Jupyter kernel); cells keep their source."""
         self.namespace = {"__name__": "__main__", "__file__": self.path or "<notebook>"}
+        self.__dict__.pop("_shell", None)   # Out[n], _ and the magics' state start over too
         self._plots = None   # rcParams a cell set are forgotten too, as on a kernel restart
         if self.kernel is not None:
             self.kernel.reset()
@@ -357,9 +362,8 @@ class Notebook:
     def _run_in_kernel(self, index: int, run_below: bool) -> bool:
         """Run a cell in the notebook's kernel (the same rules apply there, see
         :mod:`ewald.kernel_bridge`); ``pipe`` here becomes a pipeline over the kernel's one."""
-        import base64
-
         from .kernel import KernelError, KernelSource, kernel_pipeline
+        from .notebook_io import _output_from_json
 
         self._require_trust()
         cell = self.cells[index]
@@ -381,8 +385,7 @@ class Notebook:
             c.shadow = _shadow_step(c) if c.is_step and c.state == "ok" and len(c.steps) == 1 else None
             if c.shadow is not None:
                 _apply_summary(c.shadow, c.steps[0])
-            c.outputs = [Output(o["kind"], base64.b64decode(o["png"]) if "png" in o else o["text"], o.get("view"))
-                         for o in rc["outputs"]]
+            c.outputs = [o for o in map(_output_from_json, rc["outputs"]) if o is not None]
         for cid, state in r["states"].items():
             if cid in by_id:
                 by_id[cid].state = state
@@ -497,41 +500,45 @@ class Notebook:
             return self._exec_cell_styled(cell, filename)
 
     def _exec_cell_styled(self, cell: Cell, filename: str) -> bool:
+        from . import shell as ipython
+
         cell.outputs = []
-        lines = cell.source.splitlines(True)
-        linecache.cache[filename] = (len(cell.source), None, lines, filename)
-        out = io.StringIO()
+        sink = _CellSink(self, cell)
         figures_before = _figure_numbers()
         restore_show = _patch_show()
+        transform = None
         try:
-            tree = ast.parse(cell.source, filename)
             if cell.kind == "code" and cell.frames in FRAME_TAGS:
                 if self.pipeline is None:
                     raise NameError(f"a {FRAME_TAGS[cell.frames]} cell adds a step to `{self.pipeline_name}`: "
                                     "load a file first")
-                tree, last = _frame_step(tree, cell, self.pipeline_name), None
-            else:
-                last = tree.body.pop() if tree.body and isinstance(tree.body[-1], ast.Expr) else None
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out), _interruptible(self):
-                exec(compile(tree, filename, "exec"), self.namespace)
-                value = None if last is None else eval(compile(ast.Expression(last.value), filename, "eval"),
-                                                       self.namespace)
-            ok = True
+                transform = lambda tree: _frame_step(tree, cell, self.pipeline_name)   # noqa: E731
+            with _interruptible(self):
+                ok = ipython.run(self.shell, cell.source, filename, cell.count or 0, sink, transform)
         except BaseException as exc:  # noqa: BLE001 - shown in the cell, like Jupyter
             if isinstance(exc, KeyboardInterrupt):
                 raise
-            value, ok = None, False
-            error = _format_error(exc, filename)
+            ok = False
+            cell.outputs.append(Output("error", _format_error(exc, filename)))
         finally:
             restore_show()
-        if out.getvalue():
-            cell.outputs.append(Output("text", out.getvalue()))
-        if not ok:
-            cell.outputs.append(Output("error", error))
-        cell.outputs.extend(Output("image", png, view) for png, view in _new_figures(figures_before, self.pipeline))
-        if ok and value is not None:
-            cell.outputs.append(_display(value))
+        figures = [Output("image", png, view) for png, view in _new_figures(figures_before, self.pipeline)]
+        at = sink.result_index if sink.result_index is not None else len(cell.outputs)
+        cell.outputs[at:at] = figures   # figures above the last line's value, as before
+        sink.notify(force=True)
         return ok
+
+    @property
+    def shell(self):
+        """The IPython shell (:class:`ewald.shell.NotebookShell`) the cells run in, over :attr:`namespace`."""
+        from . import shell as ipython
+
+        sh = self.__dict__.get("_shell")
+        if sh is None:
+            sh = self.__dict__["_shell"] = ipython.new_shell(self.namespace)
+        else:
+            sh.bind(self.namespace)
+        return sh
 
     # ------------------------------------------------------------ editing
     def insert(self, index: int, cell: Cell) -> Cell:
@@ -1186,28 +1193,137 @@ def _new_figures(before: set, pipeline=None) -> list:
     return out
 
 
-def _display(value) -> Output:
-    import numpy as np
+TEXT_LIMIT = 4000   # characters of a value's text kept in a cell's output
+RICH_MIMES = ("text/html", "text/markdown", "text/latex", "image/svg+xml", "image/jpeg", "application/json")
+OUTPUT_THROTTLE = 0.1   # seconds between live updates of a running cell's outputs
 
-    if isinstance(value, np.ndarray) and value.dtype == np.uint8 and value.ndim == 3 and value.shape[2] in (3, 4):
-        from PIL import Image
 
-        buf = io.BytesIO()
-        Image.fromarray(value).save(buf, format="PNG")
-        return Output("image", buf.getvalue())
-    if type(value).__name__ == "View":   # a view cell: the viewport shows it, the cell says what it set
-        return Output("value", repr(value))
-    summary = getattr(value, "summary", None)
-    if callable(summary) and type(value).__name__ == "DataCollection":  # the summary says more here
-        text = summary()
-        return Output("value", text if len(text) < 4000 else text[:4000] + " …")
-    png = getattr(value, "_repr_png_", None)
-    if callable(png):
-        try:
-            data = png()
-            if data:
-                return Output("image", data)
-        except Exception:  # noqa: BLE001 - fall back to text
-            pass
-    text = repr(value)
-    return Output("value", text if len(text) < 4000 else text[:4000] + " …")
+def _cut(text: str) -> str:
+    return text if len(text) < TEXT_LIMIT else text[:TEXT_LIMIT] + " …"
+
+
+def output_from_bundle(data: dict, metadata: dict | None = None, display_id: str | None = None) -> Output:
+    """The Output for a MIME bundle from IPython's display formatter (a value or a ``display()``):
+    a picture for PNG only, 'rich' when there is HTML, SVG, Markdown, LaTeX, JSON or a progress
+    bar, else the text."""
+    import base64
+
+    from .shell import PROGRESS_MIME
+
+    data = dict(data)
+    for key in ("image/png", "image/jpeg"):
+        if isinstance(data.get(key), str):
+            data[key] = base64.b64decode(data[key])
+    text = str(data.get("text/plain", ""))
+    view = ((metadata or {}).get("ewald") or {}).get("view")
+    if PROGRESS_MIME in data or any(k in data for k in RICH_MIMES):
+        return Output("rich", _cut(text), mime=data, display_id=display_id)
+    if isinstance(data.get("image/png"), bytes):
+        return Output("image", data["image/png"], view if isinstance(view, dict) else None,
+                      mime=data, display_id=display_id)
+    return Output("value", _cut(text), display_id=display_id)
+
+
+def display_output(value) -> Output:
+    """How ``value`` shows as a cell's last line (what IPython's display formatter makes of it)."""
+    global _formatter
+    if _formatter is None:
+        from .shell import new_shell
+
+        _formatter = new_shell({}).display_formatter
+    return output_from_bundle(*_formatter.format(value))
+
+
+_formatter = None
+
+
+def _overlay(line: str) -> str:
+    """A line with carriage returns as a terminal shows it (``\r`` goes back to its start)."""
+    shown = ""
+    for part in line.split("\r"):
+        shown = part + shown[len(part):]
+    return shown
+
+
+class _CellSink:
+    """A running cell's outputs (:class:`ewald.shell.Sink`): printed text is merged as it comes
+    (``\r`` overwrites the line, as tqdm and progress bars need; ``\r\n`` is a newline),
+    ``display()`` outputs with a ``display_id`` are replaced by their updates, and
+    ``notebook.on_output(cell)`` hears of each change, at most every :data:`OUTPUT_THROTTLE` s."""
+
+    def __init__(self, notebook, cell):
+        self.notebook, self.cell = notebook, cell
+        self.result_index = None
+        self._done, self._pending = "", ""   # finished lines of the last text output, and its last line raw
+        self._text = None                     # that output
+        self._last = 0.0
+        self._clear_next = False
+
+    def _append(self, out):
+        if self._clear_next:
+            self.cell.outputs.clear()
+            self._clear_next, self.result_index = False, None
+        self._text = None
+        self.cell.outputs.append(out)
+        self.notify()
+
+    def stream(self, name, text):
+        if not text:
+            return
+        outs = self.cell.outputs
+        if self._text is None or not outs or outs[-1] is not self._text:
+            if self._clear_next:
+                outs.clear()
+                self._clear_next, self.result_index = False, None
+            self._done, self._pending = "", ""
+            self._text = Output("text", "")
+            outs.append(self._text)
+        raw = (self._pending + text).replace("\r\n", "\n")
+        *lines, self._pending = raw.split("\n")
+        if lines:
+            self._done += "".join(_overlay(line) + "\n" for line in lines)
+        shown = self._done + _overlay(self._pending)
+        new = Output("text", shown)   # a new object: the GUI redraws only outputs that changed
+        outs[-1] = self._text = new
+        self.notify()
+
+    def display(self, data, metadata=None, display_id=None, update=False):
+        out = output_from_bundle(data, metadata, display_id)
+        if update:
+            if display_id is None:
+                return
+            for k, old in enumerate(self.cell.outputs):
+                if old.display_id == display_id:
+                    self.cell.outputs[k] = out
+            self.notify()
+            return
+        self._append(out)
+
+    def clear(self, wait=False):
+        if wait:
+            self._clear_next = True
+            return
+        self.cell.outputs.clear()
+        self._text, self.result_index = None, None
+        self.notify(force=True)
+
+    def result(self, data, metadata=None):
+        self.result_index = len(self.cell.outputs) if not self._clear_next else 0
+        self._append(output_from_bundle(data, metadata))
+
+    def error(self, ename, evalue, text):
+        self._append(Output("error", text))
+
+    def notify(self, force: bool = False):
+        callback = self.notebook.on_output
+        if callback is None:
+            return
+        import time
+
+        now = time.monotonic()
+        if force or now - self._last >= OUTPUT_THROTTLE:
+            self._last = now
+            try:
+                callback(self.cell)
+            except RuntimeError:   # the GUI tab was closed while the cell ran
+                self.notebook.on_output = None

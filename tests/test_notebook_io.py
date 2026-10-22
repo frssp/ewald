@@ -201,3 +201,25 @@ def test_folded_cells_round_trip_as_jupyter_hidden_cells():
     assert "jupyter" not in doc["cells"][0]["metadata"]
     back = notebook_io.from_ipynb(doc)
     assert [c.collapsed for c in back.cells] == [False, True]
+
+
+def test_rich_outputs_round_trip_through_ipynb(tmp_path):
+    """HTML, LaTeX, SVG, JSON and progress bars are saved as nbformat display_data, so Jupyter
+    shows them, and they come back as the same outputs."""
+    nbformat = pytest.importorskip("nbformat")
+    from ewald.notebook import Cell, Notebook
+    from ewald.shell import PROGRESS_MIME
+
+    nb = Notebook([Cell("from IPython.display import HTML, Math, SVG, JSON, display\n"
+                        "from ewald.progress import progress\n"
+                        "display(HTML('<i>h</i>'), Math('x^2'), JSON({'a': [1, 2]}))\n"
+                        "display(SVG('<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"2\" height=\"2\"/>'))\n"
+                        "for _ in progress(range(2)):\n    pass\n")])
+    assert nb.run_all(), nb.cells[0].outputs
+    path = tmp_path / "rich.ipynb"
+    nb.save(str(path))
+    nbformat.validate(nbformat.reads(path.read_text(encoding="utf-8"), as_version=4))
+    back = Notebook.load(str(path)).cells[0].outputs
+    assert [o.kind for o in back] == ["rich"] * 5
+    assert [sorted(o.mime) for o in back] == [sorted(o.mime) for o in nb.cells[0].outputs]
+    assert back[2].mime["application/json"] == {"a": [1, 2]} and back[4].mime[PROGRESS_MIME]["n"] == 2

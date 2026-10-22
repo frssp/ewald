@@ -344,6 +344,9 @@ QPlainTextEdit#cellEditor {{ background: {panel}; border: none; border-radius: 6
 QFrame#cell[state="stale"] QPlainTextEdit#cellEditor {{ background: {raised}; }}
 QLabel#cellError {{ color: {error}; border-left: 3px solid {error}; padding: 2px 8px; }}
 QLabel#cellValue, QLabel#cellText {{ color: {secondary}; }}
+QLabel#cellRich {{ color: {text}; }}
+QProgressBar#cellProgress {{ border: none; border-radius: 3px; background: {raised}; max-height: 6px; }}
+QProgressBar#cellProgress::chunk {{ background: {accent}; border-radius: 3px; }}
 QLabel#cellMarkdown {{ color: {text}; font-size: 13px; padding: 2px 4px; }}
 QFrame#cell[kind="markdown"] {{ background: transparent; border-color: transparent; }}
 QFrame#cell[selected="true"] {{ background: {accent_soft}; }}

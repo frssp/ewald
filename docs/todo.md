@@ -139,7 +139,13 @@ GUI
   live interactive plot (no zoom or linked selection); moving one between the panel and the cell
   is not saved; steps that run in a notebook kernel do not send their figures back yet.
 - Notebook kernels (`ewald/kernel.py`): step forms for steps a kernel cell adds with code the
-  app cannot import (a class only the kernel's Python has stays as code).
+  app cannot import (a class only the kernel's Python has stays as code). Outputs of a kernel
+  cell (text, progress bars) arrive when the cell ends; in-process cells show them while they
+  run. Stream them from the kernel's iopub messages instead of the bridge's final JSON.
+- IPython cells (`ewald/shell.py`): HTML outputs use Qt's rich text, so JavaScript outputs
+  (ipywidgets, plotly, bokeh) show their text; a QtWebEngine view (or an image fallback from
+  `_repr_png_`) would draw them. `%matplotlib qt` / `%gui qt` inside a cell (cells run on a
+  worker thread) is not guarded yet. `input()` in a cell has no prompt in the app.
 - Notebook kernel on the cluster (plan, owner's pick 2026-10-20; not started): run a notebook
   where its data is, so a 50 GB dump is analysed on the cluster and only the shown frame and the
   tables come back. Steps: (1) `Kernel.ssh(profile, python=...)` starts `python -m ewald.kernel_bridge`
@@ -484,6 +490,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- IPython cells on a real Windows and Mac: `!dir` / `!ls` (IPython runs `!commands` with
+  cmd.exe on Windows, a pty on macOS/Linux), `%time`, progress bars while a cell runs, and the
+  console sharing the notebook's namespace; in the frozen Windows app and EWALD.app too, where
+  `!pip` has no Python at `sys.executable`.
 - Windows parity after the portability audit ([Windows, macOS and Linux](developer/portability.md)):
   open and export a POSCAR, XDATCAR, LAMMPS dump and an `.ewd` with data on another drive (D:);
   check exported files have LF ends; the open dialog lists lower-case `poscar`/`*.CIF`; a save

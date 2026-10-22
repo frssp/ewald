@@ -45,7 +45,7 @@ def test_fetch_downloads_once_and_verifies(tmp_path, monkeypatch):
     monkeypatch.setattr(papers, "PAPERS", [paper])
     calls = []
     real = papers._download
-    monkeypatch.setattr(papers, "_download", lambda url, dest: (calls.append(url), real(url, dest)))
+    monkeypatch.setattr(papers, "_download", lambda url, dest, **kw: (calls.append(url), real(url, dest, **kw)))
     folder = examples.fetch("local", tmp_path / "cache", quiet=True)
     assert (folder / "data.xyz").read_bytes() == b"frame 1\nframe 2\n"
     examples.fetch("local", tmp_path / "cache", quiet=True)
@@ -94,3 +94,42 @@ def test_paper_scripts_open_as_notebooks():
     for p in papers.PAPERS:
         nb = Notebook.load(ROOT / "examples" / "papers" / p.script)
         assert "import" in nb.cells[0].source, p.script
+
+
+def test_fetch_in_a_cell_shows_a_progress_bar(tmp_path, monkeypatch):
+    """A download in a notebook cell is a progress bar under the cell that fills while it runs
+    (the cell used to look frozen until the file was there)."""
+    from ewald.notebook import Cell, Notebook
+    from ewald.shell import PROGRESS_MIME
+
+    content = bytes(range(256)) * 4096   # 1 MiB: several blocks
+    paper = _local_paper(tmp_path, content)
+    monkeypatch.setattr(papers, "PAPERS", [paper])
+    nb = Notebook([Cell(f"from ewald import examples\nfolder = examples.fetch('local', {str(tmp_path / 'cache')!r})")])
+    seen = []
+    nb.on_output = lambda cell: seen.extend(o.mime[PROGRESS_MIME]["n"] for o in cell.outputs
+                                            if o.kind == "rich" and PROGRESS_MIME in o.mime)
+    assert nb.run_all(), nb.cells[0].outputs
+    bars = [o for o in nb.cells[0].outputs if o.kind == "rich"]
+    assert len(bars) == 1                                    # one bar, updated in place
+    final = bars[0].mime[PROGRESS_MIME]
+    assert final["n"] == final["total"] == len(content) and final["closed"]
+    assert seen and seen[-1] == len(content)                 # the GUI heard of it while it ran
+    assert "<progress" in bars[0].mime["text/html"]          # a saved .ipynb shows a bar in Jupyter too
+
+
+def test_interrupted_download_leaves_no_partial_file(tmp_path, monkeypatch):
+    paper = _local_paper(tmp_path, b"x" * (3 << 18))
+    monkeypatch.setattr(papers, "PAPERS", [paper])
+
+    class Stop(Exception):
+        pass
+
+    from ewald import progress as progress_mod
+
+    def update(self, n=1):
+        raise Stop
+    monkeypatch.setattr(progress_mod.Progress, "update", update)
+    with pytest.raises(Stop):
+        examples.fetch("local", tmp_path / "cache", quiet=True)
+    assert list((tmp_path / "cache").iterdir()) == []

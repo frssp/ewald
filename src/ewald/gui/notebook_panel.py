@@ -96,10 +96,14 @@ class NotebookView(QtWidgets.QWidget):
     titleChanged = QtCore.Signal()
     pipRequested = QtCore.Signal(list)        # pip requirements of plugins the notebook needs
     plotCreated = QtCore.Signal(object)       # a new live PlotsPanel (view cell or show() output)
+    _liveOutput = QtCore.Signal(object)       # a running cell's outputs changed (sent from the cell's thread)
 
     def __init__(self, notebook: Notebook, parent=None):
         super().__init__(parent)
         self.notebook = notebook
+        # what a running cell prints or shows appears while it runs (progress bars, downloads)
+        self._liveOutput.connect(self._show_live_output, QtCore.Qt.QueuedConnection)
+        notebook.on_output = self._liveOutput.emit
         self.history = History(notebook)  # Edit › Undo/Redo, one entry per action below
         self.widgets: list[CellWidget] = []
         self.current = None      # also sets the anchor: with Shift+Up/Down or Shift+click, the cells
@@ -421,6 +425,11 @@ class NotebookView(QtWidgets.QWidget):
 
     def widget_for(self, cell):
         return next((w for w in self.widgets if w.cell is cell), None)
+
+    def _show_live_output(self, cell):
+        w = self.widget_for(cell)
+        if w is not None and self._worker is not None:   # after the run, update_state shows the final outputs
+            w.show_live_outputs()
 
     def select(self, cell, extend: bool = False):
         """Make ``cell`` the current cell; with ``extend`` the selection grows from the anchor to it."""

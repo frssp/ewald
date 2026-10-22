@@ -22,6 +22,7 @@ always written with :data:`PRINT` colors (white background, near-black ink).
 from __future__ import annotations
 
 import contextlib
+import threading
 
 # Categorical cycles, in a fixed order. LIGHT is for white/Paper surfaces, DARK for Graphite.
 LIGHT = ("#008C7E", "#D55E00", "#3A64C8", "#A0348C", "#B08600", "#2C8DD6")
@@ -165,6 +166,10 @@ def use(style: str | dict | None = "publication", tokens: dict | None = None, fo
         mpl.rcParams.update(_style_rc(style, tokens, font_size))
 
 
+_ACTIVE_LOCK = threading.RLock()
+_ACTIVE = [0, None]   # sessions active now (cells of several notebooks on threads), process rcParams
+
+
 class Session:
     """The matplotlib rcParams of one notebook or console, swapped in around each cell::
 
@@ -207,15 +212,22 @@ class Session:
         """Inside: this session's rcParams; after: the process's again, the session keeps changes."""
         import matplotlib as mpl
 
-        saved = self._base()
-        if self._state is None:
-            self._state = dict(saved, **self._applied)
-        dict.update(mpl.rcParams, self._state)
+        with _ACTIVE_LOCK:
+            if not _ACTIVE[0]:   # the process's own rcParams, restored when the last session ends
+                _ACTIVE[1] = self._base()
+            _ACTIVE[0] += 1
+            saved = _ACTIVE[1]
+            if self._state is None:
+                self._state = dict(saved, **self._applied)
+            dict.update(mpl.rcParams, self._state)
         try:
             yield self
         finally:
-            self._state = self._base()
-            dict.update(mpl.rcParams, saved)
+            with _ACTIVE_LOCK:
+                self._state = self._base()
+                _ACTIVE[0] -= 1
+                if not _ACTIVE[0]:   # while another notebook's cell runs on another thread, its rcParams stay
+                    dict.update(mpl.rcParams, saved)
 
 
 def figsize(size: str | tuple | None = None) -> tuple:
