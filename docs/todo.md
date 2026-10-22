@@ -613,6 +613,12 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
   SECURITY.md, issue templates): the owner switches the repository to public; then enable private vulnerability reporting and GitHub Sponsors, archive
   a release on Zenodo and add its DOI (and an ORCID) to CITATION.cff, and restore the CI triggers
   (public repositories get free Actions minutes).
+- JOSS paper (draft in `paper/`, checked by `tests/test_paper.py`): JOSS (2026 rules) wants at least
+  six months of public history with releases, issues and pull requests, so the earliest submission
+  is six months after the repository goes public. Before then: fill in the author list, ORCIDs,
+  affiliations, funding and conflict-of-interest statement (TODOs in `paper/paper.md`), tag
+  releases, collect research use (papers, groups, courses) for the research impact statement, and
+  archive the submitted version on Zenodo.
 
 - From the 2026-10-20 systems review (/mnt/project-files/ewald-review/senior-systems-review.md;
   its refactors are merged, #129-#135): a self-hosted runner (xvfb + Mesa) to restore the PR
