@@ -13,6 +13,7 @@ ewald (their licenses and sizes differ); they land in ``<cache dir>/papers/<name
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import sys
@@ -455,12 +456,25 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def _download(url: str, dest: Path, timeout: float = 60.0) -> None:
+def _download(url: str, dest: Path, timeout: float = 60.0, size: int | None = None, quiet: bool = False) -> None:
+    """``url`` into ``dest`` through ``dest.part``, with a progress bar (under the cell in a
+    notebook, on stderr in a terminal) unless ``quiet``. A download that fails or is interrupted
+    leaves no partial file."""
+    from ..progress import progress
+
     tmp = dest.with_name(dest.name + ".part")
-    with urllib.request.urlopen(url, timeout=timeout, context=ssl_context()) as resp, open(tmp, "wb") as out:
-        while block := resp.read(1 << 20):
-            out.write(block)
-    os.replace(tmp, dest)
+    try:
+        with urllib.request.urlopen(url, timeout=timeout, context=ssl_context()) as resp, open(tmp, "wb") as out, \
+                progress(total=int(resp.headers.get("Content-Length") or 0) or size, unit="B", unit_scale=True,
+                         unit_divisor=1024, desc=dest.name, disable=quiet, mininterval=0.2) as bar:
+            while block := resp.read(1 << 18):
+                out.write(block)
+                bar.update(len(block))
+        os.replace(tmp, dest)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp.unlink()   # closed above (Windows cannot delete an open file)
+        raise
 
 
 def fetch(name: str, dest=None, quiet: bool = False) -> Path:
@@ -479,7 +493,7 @@ def fetch(name: str, dest=None, quiet: bool = False) -> Path:
             continue
         if not quiet:
             print(f"downloading {f.name} ({f.size / 1e6:.1f} MB) from {paper.source}", file=sys.stderr)
-        _download(f.url, path)
+        _download(f.url, path, size=f.size, quiet=quiet)
         if _sha256(path) != f.sha256:
             path.unlink()
             raise ValueError(f"{f.url}: checksum mismatch (the file changed upstream?)")

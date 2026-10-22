@@ -29,39 +29,87 @@ class OutputArea(QtWidgets.QWidget):
         self.live = live
         self._images = []    # (label, full-size pixmap): rescaled when the cell's width changes
         self.panels = []     # (PlotsPanel, show() arguments) of the live plots
+        self._widgets = []   # one per output, so a running cell's outputs update in place
 
     def set_outputs(self, outputs):
         outputs = list(outputs)
         old = getattr(self, "outputs", None)
         if old is not None and len(old) == len(outputs) and all(a is b for a, b in zip(old, outputs)):
             return   # the same outputs (every frame of playback): rebuilding them made the cell flicker
+        if old is not None and len(self._widgets) == len(old) and len(old) <= len(outputs) and \
+                all(a is b or _same_widget(a, b) for a, b in zip(old, outputs)):
+            # a running cell's text grew, a progress bar moved or an output was added: only those change
+            for k, (a, b) in enumerate(zip(old, outputs)):
+                if a is not b:
+                    _update_widget(self._widgets[k], b)
+            for out in outputs[len(old):]:
+                self._add(out)
+            self.outputs = outputs
+            self._fit_images()
+            self.setVisible(bool(outputs))
+            return
         self.outputs = outputs
         while self.lay.count():
             w = self.lay.takeAt(0).widget()
             if w is not None:
                 w.hide()          # gone now, not at the next event loop pass (no stale copy drawn)
                 w.deleteLater()
-        self._images, self.panels = [], []
+        self._images, self.panels, self._widgets = [], [], []
         for out in outputs:
-            if out.kind == "image" and out.view is not None and self.live:
-                w = live_plot()
-                self.panels.append((w, out.view))
-                self.plotCreated.emit(w)
-            elif out.kind == "image":
-                pix = QtGui.QPixmap()
-                pix.loadFromData(out.data, "PNG")
-                w = QtWidgets.QLabel(objectName="cellImage")
-                w.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
-                self._images.append((w, pix))
-            else:
-                w = QtWidgets.QLabel(str(out.data).rstrip("\n"))
-                w.setFont(mono_font())
-                w.setWordWrap(True)
-                w.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-                w.setObjectName({"error": "cellError", "value": "cellValue"}.get(out.kind, "cellText"))
-            self.lay.addWidget(w)
+            self._add(out)
         self._fit_images()
         self.setVisible(bool(outputs))
+
+    def _add(self, out):
+        if out.kind == "image" and out.view is not None and self.live:
+            w = live_plot()
+            self.panels.append((w, out.view))
+            self.plotCreated.emit(w)
+        elif out.kind == "image":
+            w = self._picture(out.data)
+        elif out.kind == "rich":
+            w = self._rich(out)
+        else:
+            w = _text_label(out)
+        self._widgets.append(w)
+        self.lay.addWidget(w)
+
+    def _picture(self, data: bytes, fmt=None):
+        pix = QtGui.QPixmap()
+        pix.loadFromData(data, fmt)
+        w = QtWidgets.QLabel(objectName="cellImage")
+        w.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
+        self._images.append((w, pix))
+        return w
+
+    def _rich(self, out):
+        """The richest representation Qt can show: a progress bar, HTML, Markdown, LaTeX (drawn by
+        matplotlib's mathtext), SVG, JPEG or JSON; the plain text if that fails."""
+        from ..shell import PROGRESS_MIME
+
+        mime = out.mime or {}
+        if PROGRESS_MIME in mime:
+            return ProgressOutput(mime[PROGRESS_MIME])
+        html = mime.get("text/html")
+        if isinstance(html, str) and "<script" not in html.lower():
+            return _rich_label(html, QtCore.Qt.RichText)
+        if isinstance(mime.get("text/markdown"), str):
+            return _rich_label(mime["text/markdown"], QtCore.Qt.MarkdownText)
+        if isinstance(mime.get("text/latex"), str):
+            png = latex_png(mime["text/latex"], TOKENS["text"])
+            if png:
+                return self._picture(png, "PNG")
+        if isinstance(mime.get("image/svg+xml"), str):
+            png = svg_png(mime["image/svg+xml"])
+            if png:
+                return self._picture(png, "PNG")
+        if isinstance(mime.get("image/jpeg"), bytes):
+            return self._picture(mime["image/jpeg"], "JPG")
+        if "application/json" in mime and "text/plain" not in mime:
+            import json
+
+            return _text_label(type(out)("value", json.dumps(mime["application/json"], indent=1, default=str)))
+        return _text_label(out)
 
     def _fit_images(self):
         width = max(120, self.width() - 4)
@@ -78,6 +126,140 @@ class OutputArea(QtWidgets.QWidget):
         super().resizeEvent(event)
         if self._images and event.oldSize().width() != event.size().width():
             self._fit_images()
+
+
+def _text_label(out):
+    w = QtWidgets.QLabel(str(out.data).rstrip("\n"))
+    w.setFont(mono_font())
+    w.setWordWrap(True)
+    w.setTextFormat(QtCore.Qt.PlainText)
+    w.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+    w.setObjectName({"error": "cellError", "value": "cellValue"}.get(out.kind, "cellText"))
+    w.setProperty("ewald_kind", out.kind)
+    return w
+
+
+def _rich_label(text: str, fmt):
+    w = QtWidgets.QLabel(objectName="cellRich")
+    w.setTextFormat(fmt)
+    w.setText(text)
+    w.setWordWrap(True)
+    w.setOpenExternalLinks(True)
+    w.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+    return w
+
+
+def _same_widget(a, b) -> bool:
+    """Whether output ``b`` can be shown by updating the widget of ``a`` (text, values, a progress bar)."""
+    from ..shell import PROGRESS_MIME
+
+    if a.kind in ("text", "value", "error") and b.kind == a.kind:
+        return True
+    return a.kind == b.kind == "rich" and PROGRESS_MIME in (a.mime or {}) and PROGRESS_MIME in (b.mime or {})
+
+
+def _update_widget(w, out):
+    from ..shell import PROGRESS_MIME
+
+    if isinstance(w, ProgressOutput):
+        w.set_state(out.mime[PROGRESS_MIME])
+    else:
+        w.setText(str(out.data).rstrip("\n"))
+
+
+class ProgressOutput(QtWidgets.QWidget):
+    """A progress bar under a cell (:mod:`ewald.progress`): the bar, then what, how far and how fast."""
+
+    STEPS = 1000
+
+    def __init__(self, state: dict, parent=None):
+        super().__init__(parent)
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 2, 0, 2)
+        lay.setSpacing(2)
+        self.bar = QtWidgets.QProgressBar(objectName="cellProgress", textVisible=False)
+        self.label = QtWidgets.QLabel(objectName="cellText")
+        self.label.setFont(mono_font())
+        lay.addWidget(self.bar)
+        lay.addWidget(self.label)
+        self.set_state(state)
+
+    def set_state(self, state: dict):
+        total, n = state.get("total"), state.get("n") or 0
+        if total:
+            self.bar.setRange(0, self.STEPS)
+            self.bar.setValue(int(self.STEPS * min(1.0, n / total)))
+        else:
+            self.bar.setRange(0, 0 if not state.get("closed") else 1)   # unknown length: busy
+        self.label.setText(progress_label(state))
+        self.state = state
+
+
+def progress_label(state: dict) -> str:
+    """``XDATCAR  45%  120/260 MB  [00:27 left, 5.1 MB/s]`` from a progress bar's values."""
+    from tqdm.std import tqdm
+
+    total, n, unit = state.get("total"), state.get("n") or 0, state.get("unit") or "it"
+    scale = unit == "B"
+    fmt = (lambda v: tqdm.format_sizeof(v, "B", 1024)) if scale else (lambda v: f"{v:g}")
+    parts = [str(state.get("desc") or "").rstrip(": ")]
+    rate, elapsed = state.get("rate"), state.get("elapsed") or 0
+    if total:
+        parts.append(f"{100 * n / total:3.0f}%")
+        parts.append(f"{fmt(n)}/{fmt(total)}" + ("" if scale else f" {unit}"))
+    else:
+        parts.append(fmt(n) + ("" if scale else f" {unit}"))
+    if state.get("closed"):
+        parts.append(f"[{tqdm.format_interval(elapsed)}]")
+    elif rate:
+        left = f"{tqdm.format_interval((total - n) / rate)} left, " if total and n <= total else ""
+        speed = tqdm.format_sizeof(rate, "B/s", 1024) if scale else f"{rate:.3g} {unit}/s"
+        parts.append(f"[{left}{speed}]")
+    return "  ".join(p for p in parts if p)
+
+
+def latex_png(text: str, color: str = "black") -> bytes | None:
+    """``$...$`` LaTeX drawn by matplotlib's mathtext (no TeX install needed), or None."""
+    import io
+
+    body = text.strip()
+    for a, b in (("$$", "$$"), ("\\[", "\\]"), ("$", "$")):
+        if body.startswith(a) and body.endswith(b) and len(body) > len(a) + len(b):
+            body = body[len(a):-len(b)].strip()
+            break
+    body = body.replace("\\displaystyle", "").strip()   # IPython's Math(); mathtext has no display style
+    try:
+        from matplotlib import mathtext
+
+        buf = io.BytesIO()
+        mathtext.math_to_image(f"${body}$", buf, dpi=110, format="png", color=color)
+        return buf.getvalue()
+    except Exception:  # noqa: BLE001 - not mathtext (a whole LaTeX document): the text is shown
+        return None
+
+
+def svg_png(svg: str, max_width: int = 900) -> bytes | None:
+    """An SVG output as PNG bytes (Qt's SVG renderer), or None."""
+    try:
+        from PySide6 import QtSvg
+    except ImportError:
+        return None
+    r = QtSvg.QSvgRenderer(QtCore.QByteArray(svg.encode("utf-8")))
+    if not r.isValid():
+        return None
+    size = r.defaultSize()
+    if size.width() <= 0 or size.height() <= 0:
+        return None
+    scale = min(2.0, max_width / size.width())
+    img = QtGui.QImage(int(size.width() * scale), int(size.height() * scale), QtGui.QImage.Format_ARGB32)
+    img.fill(QtCore.Qt.transparent)
+    p = QtGui.QPainter(img)
+    r.render(p)
+    p.end()
+    buf = QtCore.QBuffer()
+    buf.open(QtCore.QIODevice.WriteOnly)
+    img.save(buf, "PNG")
+    return bytes(buf.data())
 
 
 class MiniPlot(QtWidgets.QWidget):
@@ -799,6 +981,15 @@ class CellWidget(QtWidgets.QFrame):
 
             self._status_output = Output("error", status)
         return [self._status_output]
+
+    def show_live_outputs(self):
+        """The outputs of this cell while it runs: everything for a code cell; for a step or a
+        view cell what it printed, its errors and progress bars (its form or plot is the rest)."""
+        c = self.cell
+        outs = list(c.outputs)
+        if c.is_step or c.is_view:
+            outs = [o for o in outs if o.kind in ("text", "error") or (o.kind == "rich" and o.display_id)]
+        self.outputs.set_outputs(outs)
 
     def set_running(self):
         self.counter.setText("*")

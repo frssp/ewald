@@ -168,6 +168,29 @@ last line (as in Jupyter). Matplotlib figures are shown as images, without `plt.
 opening a window, and so are a pipeline (`pipe` as the last line draws frame 0) and a verb
 table (its curve); a frame (`pipe.compute(0)`) shows its summary.
 
+Cells are IPython cells, as in Jupyter: magics (`%time`, `%%timeit`, `%env`, `%who`),
+`!commands` (`!pip list`), `display(...)` and `display(..., display_id=True).update(...)`,
+`_` and `Out[n]`, and IPython's tracebacks all work, and an object's `_repr_html_`,
+`_repr_markdown_`, `_repr_latex_`, `_repr_svg_` or `_repr_png_` decides how it looks (a pandas
+DataFrame is a table, a SymPy expression a formula). The app draws HTML with Qt's rich text
+(tables, lists, styles; no JavaScript, so ipywidgets and interactive HTML plots show their text
+instead), Markdown, LaTeX through matplotlib's mathtext, SVG and pictures. What a cell prints
+appears while it runs, and a carriage return redraws the line, so text progress bars (`tqdm`)
+work. `ewald.progress.progress` is tqdm drawn as a progress bar under the cell, with the rate
+and the time left; downloads of example data use it:
+
+```python
+from ewald.progress import progress
+
+for frame in progress(range(pipe.num_frames), desc="frames"):
+    ...
+```
+
+In a script or a terminal the same bar is printed on stderr, and in a saved `.ipynb` it is an
+HTML `<progress>` that Jupyter shows. The Python console under the 3D view runs in the current
+notebook's namespace: a cell's variables are there, and what you define in the console the next
+cell sees (for a notebook running in another kernel the console gets copies).
+
 **Styling cells** color, resize or hide atoms by any property. A Python step runs on every
 frame, so the style follows the trajectory:
 

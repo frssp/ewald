@@ -4060,3 +4060,93 @@ def test_notebook_status_drops_parts_instead_of_clipping(app):
     assert label.shown_text() == "3 steps"           # not "3 st…ved"
     label.resize(4, 20)
     assert label.shown_text() == ""
+
+
+def test_running_cell_shows_its_output_and_progress_bar_live(app, tmp_path, monkeypatch):
+    """What a cell prints and its progress bars appear while it runs (a long download used to
+    look frozen until it finished); afterwards the bar is full and the text is complete."""
+    import ewald.gui.notebook_panel as npn
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.gui.cell_widget import ProgressOutput
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py("# %%\nimport time\nfrom ewald.progress import progress\nprint('start')\n"
+                          "for i in progress(range(10), desc='steps', mininterval=0):\n    time.sleep(0.15)\n"
+                          "print('end')\n")
+    nb.save(tmp_path / "live.ipynb")
+    s = settings.Settings()
+    s["python.run_notebooks"] = "never"
+    w = MainWindow(settings=s)
+    monkeypatch.setattr(npn, "CONFIRM_UNSAVED", False)
+    monkeypatch.setattr(npn, "CELL_BUDGET", 0.05)
+    try:
+        view = w.open_notebook(str(tmp_path / "live.ipynb"))
+        view.run(view.notebook.cells[0])
+        assert view.running
+        assert not view.wait(0.8)                                      # still running ...
+        area = view.widget_for(view.notebook.cells[0]).outputs
+        bars = [x for x in area._widgets if isinstance(x, ProgressOutput)]
+        assert bars and 0 < bars[0].bar.value() < bars[0].bar.maximum()   # ... and the bar is moving
+        assert any(getattr(x, "text", lambda: "")() == "start" for x in area._widgets)
+        assert view.wait(30)
+        bars = [x for x in area._widgets if isinstance(x, ProgressOutput)]
+        assert len(bars) == 1 and bars[0].bar.value() == bars[0].bar.maximum()
+        assert "steps" in bars[0].label.text() and "10/10" in bars[0].label.text()
+        assert [o.kind for o in view.notebook.cells[0].outputs] == ["text", "rich", "text"]
+    finally:
+        w.close()
+
+
+def test_rich_outputs_render_in_cells(app):
+    """HTML (a pandas-style table), Markdown, LaTeX and SVG outputs are drawn, not shown as text."""
+    from PySide6 import QtCore
+
+    from ewald.gui.cell_widget import OutputArea
+    from ewald.notebook import Cell, Notebook
+
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="red"/></svg>'
+    nb = Notebook([Cell("from IPython.display import HTML, Markdown, Math, SVG, display\n"
+                        "display(HTML('<table><tr><td>Cu</td><td>4</td></tr></table>'))\n"
+                        "display(Markdown('**bold**'))\ndisplay(Math(r'\\alpha^2'))\n"
+                        f"display(SVG({svg!r}))\n")])
+    assert nb.run_all(), nb.cells[0].outputs
+    assert [o.kind for o in nb.cells[0].outputs] == ["rich"] * 4
+    area = OutputArea(live=False)
+    area.resize(400, 300)
+    area.set_outputs(nb.cells[0].outputs)
+    html, md, latex, picture = area._widgets
+    assert html.textFormat() == QtCore.Qt.RichText and "<table>" in html.text()
+    assert md.textFormat() == QtCore.Qt.MarkdownText
+    assert latex.objectName() == picture.objectName() == "cellImage"       # mathtext and SVG as pictures
+    assert len(area._images) == 2 and all(not pix.isNull() for _, pix in area._images)
+
+
+def test_console_shares_the_notebook_namespace(app, tmp_path, monkeypatch):
+    """The Python console runs in the notebook's IPython namespace: a cell's variables are there
+    and what the console defines is seen by the next cell, without copying."""
+    import ewald.gui.notebook_panel as npn
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+
+    pytest.importorskip("qtconsole")
+    nb = Notebook.from_py("# %%\nfrom_cell = 41\n\n# %%\nboth = from_cell + from_console\n")
+    nb.save(tmp_path / "ns.ipynb")
+    s = settings.Settings()
+    s["python.run_notebooks"] = "never"
+    w = MainWindow(settings=s)
+    monkeypatch.setattr(npn, "CONFIRM_UNSAVED", False)
+    monkeypatch.setattr(npn, "CELL_BUDGET", None)
+    try:
+        view = w.open_notebook(str(tmp_path / "ns.ipynb"))
+        view.run(view.notebook.cells[0])
+        con = w.console.widget()
+        w._push_console()
+        shell = con.shell
+        assert shell.user_ns is view.notebook.namespace and shell.user_ns["from_cell"] == 41
+        shell.run_cell("from_console = 1")
+        assert view.notebook.run_cell(1) and view.notebook.namespace["both"] == 42
+        assert "viewer" in shell.user_ns_hidden                     # console helpers stay out of %who
+    finally:
+        w.close()

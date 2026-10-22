@@ -234,17 +234,19 @@ def test_ewd_with_unsafe_paths_is_refused(tmp_path, name):
 # here with its gate, so each one gets a security review.
 EXEC_SITES = {
     ("gui/prefs_apply.py", "exec"): "the console startup script the user chose in Preferences",
+    ("gui/prefs_apply.py", "run_cell"): "the console startup script the user chose in Preferences",
     ("kernel_bridge.py", "import_module"): "module names from the fixed OBJECTS table only",
     ("llm/providers.py", "import_module"): "SDK names of built-in or installed @ai_provider plugins",
     ("modifiers/expression.py", "__import__"): "numpy only, for array methods inside expressions",
     ("modifiers/expression.py", "eval"): "parsed and checked expressions without builtins",
     ("modifiers/script.py", "exec"): "PythonScript; sessions keep it disabled unless allow_code",
     ("notebook.py", "__import__"): "the literal name 'ewald'",
-    ("notebook.py", "eval"): "cells (trust: Notebook.restricted) and the step of a cell that ran",
-    ("notebook.py", "exec"): "cells (trust: Notebook.restricted) and the imports of a cell that ran",
+    ("notebook.py", "eval"): "the step call of a cell that ran (its local copy for a kernel notebook)",
+    ("notebook.py", "exec"): "the import lines of a cell that ran (its local copy for a kernel notebook)",
     ("plugin_api.py", "import_module"): "module names from its fixed _NAMES table only",
     ("plugins.py", "exec_module"): "the plugin folder and installed packages, trusted like ewald",
     ("session.py", "exec"): "PythonModifier source, only with load_session(allow_code=True)",
+    ("shell.py", "run_cell"): "notebook cells, incl. magics and !commands (trust: Notebook.restricted in Notebook._exec)",
     ("session.py", "import_module"): "modifier classes from loaded modules, or any with allow_code",
 }
 
@@ -265,10 +267,26 @@ def _exec_sites():
                 found.add((rel, f.id))
             elif isinstance(f, ast.Attribute) and f.attr == "exec_module":
                 found.add((rel, f.attr))
+            elif (isinstance(f, ast.Attribute) and f.attr in ("run_cell", "run_line_magic", "run_cell_magic", "system")
+                  and isinstance(f.value, ast.Name) and "shell" in f.value.id):   # IPython runs code (and commands)
+                found.add((rel, f.attr))
             elif (isinstance(f, ast.Attribute) and f.attr == "import_module" and node.args
                   and not isinstance(node.args[0], ast.Constant)):
                 found.add((rel, f.attr))
     return found
+
+
+def test_restricted_notebook_runs_no_magics_or_commands(tmp_path):
+    """IPython cells can run shell commands (``!``) and magics: an untrusted notebook runs none."""
+    from ewald.notebook import Cell, Notebook
+    from ewald.trust import UntrustedCode
+
+    marker = tmp_path / "ran"
+    nb = Notebook([Cell(f"!python -c \"open({str(marker)!r}, 'w').close()\""), Cell("%env EWALD_X=1")])
+    nb.restricted = True
+    with pytest.raises(UntrustedCode):
+        nb.run_all()
+    assert not marker.exists() and "EWALD_X" not in __import__("os").environ
 
 
 def test_every_code_execution_site_is_listed_with_its_gate():

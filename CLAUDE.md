@@ -157,6 +157,10 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   figures/, data/, plugins/); an `.ewd` opens restricted until `Notebook.trust()`. `kernel.py`
   (`Kernel` via jupyter_client, `KernelSource`) runs a notebook's cells in another Python;
   `kernel_bridge.py` is its kernel side (cells run by a Notebook there, frames back as `.npz`).
+  `shell.py`: cells run through IPython (`NotebookShell`, one per notebook; magics, `display()`,
+  MIME-bundle outputs); stdout/stderr, `sys.displayhook` and the global display publisher are
+  per-thread routers, so never swap them for a cell. `progress.py` is tqdm drawn under the cell.
+  Use them instead of hand-written exec/capture code.
 - `gui/`: `app.py` main window (frames, recompute, styling; built from mixins: `window_menus.py` toolbar,
   menus, activity bar and minimal mode, `window_files.py` open/export/sessions/notebooks, `viewport_menu.py`
   right-click menu, `window_links.py` picks, plot links (Plots tab and view cells), Ask AI and console),

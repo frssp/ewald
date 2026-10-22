@@ -4,7 +4,7 @@ import pytest
 
 import ewald
 from ewald import Pipeline, StaticSource, display
-from ewald.notebook import _display
+from ewald.notebook import display_output as _display
 
 PNG = b"\x89PNG"
 

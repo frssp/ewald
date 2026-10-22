@@ -116,7 +116,13 @@ GUI
   cell that is just the call does), and `frame=` is ignored by the live plot (it follows the
   current frame, as view cells do).
 - Notebook kernels (`ewald/kernel.py`): step forms for steps a kernel cell adds with code the
-  app cannot import (a class only the kernel's Python has stays as code).
+  app cannot import (a class only the kernel's Python has stays as code). Outputs of a kernel
+  cell (text, progress bars) arrive when the cell ends; in-process cells show them while they
+  run. Stream them from the kernel's iopub messages instead of the bridge's final JSON.
+- IPython cells (`ewald/shell.py`): HTML outputs use Qt's rich text, so JavaScript outputs
+  (ipywidgets, plotly, bokeh) show their text; a QtWebEngine view (or an image fallback from
+  `_repr_png_`) would draw them. `%matplotlib qt` / `%gui qt` inside a cell (cells run on a
+  worker thread) is not guarded yet. `input()` in a cell has no prompt in the app.
 - Notebook kernel on the cluster (plan, owner's pick 2026-10-20; not started): run a notebook
   where its data is, so a 50 GB dump is analysed on the cluster and only the shown frame and the
   tables come back. Steps: (1) `Kernel.ssh(profile, python=...)` starts `python -m ewald.kernel_bridge`
@@ -448,6 +454,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- IPython cells on a real Windows and Mac: `!dir` / `!ls` (IPython runs `!commands` with
+  cmd.exe on Windows, a pty on macOS/Linux), `%time`, progress bars while a cell runs, and the
+  console sharing the notebook's namespace; in the frozen Windows app and EWALD.app too, where
+  `!pip` has no Python at `sys.executable`.
 - CUDA paths on a real NVIDIA GPU: CuPy kernels, neighbor lists, cluster analysis, the
   `--device cuda` GUI switch. CI and the cloud container have no GPU.
 - SSH remote files against a real HPC login node (ProxyJump, OTP, large dumps); tests use an

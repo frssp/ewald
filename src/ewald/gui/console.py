@@ -63,6 +63,9 @@ def _ipython_console(namespace, on_execute, parent):
     from qtconsole.inprocess import QtInProcessKernelManager
     from qtconsole.rich_jupyter_widget import RichJupyterWidget
 
+    from .. import shell as ipython
+
+    ipython.release_host()   # notebook cells made a private global shell: this kernel's shell takes its place
     km = QtInProcessKernelManager()
     km.start_kernel(show_banner=False)
     km.kernel.gui = "qt"
