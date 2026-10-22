@@ -26,7 +26,9 @@ statically, so building the docs does not need the C++ extension.
   never edited by hand. Rerun it when the window changes visibly. The notebooks themselves are
   tested by `tests/test_tutorials.py`, which also checks the numbers the tutorials quote.
 - `docs/todo.md`: the one list of open work.
-- `docs/ROADMAP.md`: milestones and decisions.
+- `docs/ROADMAP.md`: milestones.
+- `docs/developer/decisions.md`: the owner's design decisions with dates, reasons and
+  alternatives; a PR that implements a new decision adds its entry.
 - `docs/design/`, `docs/research/`: design notes and research, kept for history and not in the
   site navigation.
 
