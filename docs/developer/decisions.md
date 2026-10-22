@@ -136,7 +136,7 @@ the end.
 - **Considered:** adding only rich outputs on the existing engine; leaving it as it was. Running
   every notebook in a separate Jupyter kernel process by default was not proposed, since the 3D
   view shares the pipeline's arrays with the cells.
-- **Landed:** PR #PRNUM (`src/ewald/shell.py`, `src/ewald/progress.py`).
+- **Landed:** PR #205 (`src/ewald/shell.py`, `src/ewald/progress.py`).
 
 ## Project
 
