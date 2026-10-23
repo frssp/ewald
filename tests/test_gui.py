@@ -116,6 +116,42 @@ def test_view_tab_surfaces_labels_transparency(app, pipe):
     _dispose(panel)
 
 
+def test_view_tab_opens_no_window_and_keeps_its_cards_over_neb_frames(app, vasp_dir):
+    """A NEB band with trajectory lines played on Windows flashed a window at every frame: the View tab
+    was rebuilt (the OverlayFrames copies change the atom count) and a checked group showed its rows
+    before they had a parent. Neither happens now."""
+    from ewald import import_file
+    from ewald.gui.pipeline_panel import DisplayPanel
+
+    pipe = import_file(vasp_dir / "neb")
+    pipe.add(mods.GenerateTrajectoryLines())
+    shown = []
+
+    class Spy(QtCore.QObject):
+        def eventFilter(self, obj, ev):
+            if ev.type() == QtCore.QEvent.Show and isinstance(obj, QtWidgets.QWidget) and obj.isWindow():
+                shown.append(obj.objectName())
+            return False
+
+    panel = DisplayPanel()
+    panel.style.trajectory_color_by = "Time"
+    panel.set_pipeline(pipe)
+    spy = Spy()
+    app.installEventFilter(spy)
+    try:
+        panel.set_data(pipe.compute(0))
+        page = panel.scroll.widget()
+        for k in (1, 2, 3, 4):
+            panel.set_data(pipe.compute(k))
+        assert panel.scroll.widget() is page                 # frames of one band keep the cards
+        panel.refresh()                                      # a rebuild with checked groups
+        app.processEvents()
+    finally:
+        app.removeEventFilter(spy)
+    assert shown == [], shown
+    _dispose(panel)
+
+
 def test_view_tab_trajectory_color_map(app, pipe):
     """The Elements card colors trajectory lines with a color map over a Time window or a trail; the values
     go into the style (and so the view cell) and the viewport draws them with a color bar."""
