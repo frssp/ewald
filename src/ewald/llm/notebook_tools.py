@@ -7,10 +7,11 @@ uses a session notebook of its own::
     ts = Toolset(notebook=nb)
     ts.call("insert_cell", {"source": "pipe.add(CoordinationAnalysis(cutoff=3.0))"})
 
-Inserting or editing a cell's source never runs it: the cell waits, marked not run or out of
-date, until the user runs it. ``run_cell`` exists only when the access allows it
-(:attr:`NotebookAccess.can_run`; Preferences › AI › "Let the AI run cells" in the GUI),
-since a cell the model wrote is arbitrary Python. Parameters of a step cell change through
+A cell the model wrote is arbitrary Python, so it runs only when the access allows it
+(:attr:`NotebookAccess.can_run`; Preferences › AI › "Let the AI run cells" in the GUI). Then
+``insert_cell`` and ``edit_cell`` run the code cell they wrote at once (``run=false`` only writes
+it) and return its outputs, and ``run_cell`` runs any cell. Otherwise the cell waits, marked not
+run or out of date, until the user runs it, and ``run_cell`` is not offered. Parameters of a step cell change through
 ``params``: the step's ``pipe.add(Name(...))`` call is rewritten with the new literal values and
 run, so the pipeline changes only by running the cell, and only when the step's arguments are
 all literals (no code of the model's runs). Cells are addressed by their 0-based ``index`` in
@@ -125,6 +126,10 @@ def register(ts, access: NotebookAccess):
     where = {"index": {"type": "integer", "description": "0-based cell index from list_cells"},
              "id": {"type": "string", "description": "cell id from list_cells (instead of index)"}}
 
+    execute, then_run = _runner(access)
+    run_arg = {"type": "boolean", "description": "run the cell after writing it, when the user lets the AI "
+                                                 "run cells (default true)"}
+
     def need() -> Notebook:
         nb = access.notebook()
         if nb is None:
@@ -183,14 +188,16 @@ def register(ts, access: NotebookAccess):
 
     @T("insert_cell",
        "Insert a new cell into the user's notebook (default: at the end; 'index' puts it before the cell "
-       "at that index). The cell is not run: the user runs it (or run_cell, when offered). Write one "
+       "at that index). When the user lets the AI run cells (run_cell is offered), a code cell runs at "
+       "once and its outputs come back under 'run'; otherwise it waits until the user runs it. Write one "
        "complete cell that runs in the notebook's namespace (pipe is the pipeline). For a plain analysis "
        "step prefer add_modifier, which adds the step cell and runs it right away.",
        _obj({"source": {"type": "string"},
              "kind": {"type": "string", "enum": ["code", "markdown"], "description": "default code"},
-             "index": {"type": "integer", "description": "insert before this cell (default: append)"}},
+             "index": {"type": "integer", "description": "insert before this cell (default: append)"},
+             "run": run_arg},
             ["source"]))
-    def insert_cell(source, kind="code", index=None):
+    def insert_cell(source, kind="code", index=None, run=True):
         if kind not in ("code", "markdown"):
             raise ValueError("kind is 'code' or 'markdown'")
 
@@ -200,18 +207,20 @@ def register(ts, access: NotebookAccess):
             at = n if index is None else max(0, min(int(index) if int(index) >= 0 else n + int(index), n))
             cell = nb.insert(at, Cell(source, kind=kind, state="new" if kind == "code" else "ok"))
             access.changed(nb, "AI: insert cell", cell)
-            return {"inserted": cell_summary(nb, at), "cells": len(nb.cells)}
+            return {"inserted": cell_summary(nb, at), "cells": len(nb.cells)}, nb, cell
 
-        return access.call(op)
+        return then_run(*access.call(op), run)
 
     @T("edit_cell",
        "Change a notebook cell. Either replace its whole 'source', or replace 'old_text' (which must occur "
        "exactly once) with 'new_text', or, for a step cell, set the step's 'params': its pipe.add(Name(...)) "
        "is rewritten with the new values and run at once (only when its arguments are literals). A changed "
-       "source is not run: the cell is marked out of date until the user runs it (or run_cell, when offered).",
+       "source runs at once when the user lets the AI run cells (run_cell is offered; outputs under 'run'); "
+       "otherwise the cell is marked out of date until the user runs it.",
        _obj({**where, "source": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"},
-             "params": {"type": "object", "description": "step cells: modifier parameters to change"}}))
-    def edit_cell(index=None, id=None, source=None, old_text=None, new_text=None, params=None):
+             "params": {"type": "object", "description": "step cells: modifier parameters to change"},
+             "run": run_arg}))
+    def edit_cell(index=None, id=None, source=None, old_text=None, new_text=None, params=None, run=True):
         if sum(x is not None for x in (source, old_text, params)) != 1:
             raise ValueError("pass exactly one of source, old_text (+ new_text) or params")
         if old_text is not None and new_text is None:
@@ -232,7 +241,7 @@ def register(ts, access: NotebookAccess):
                     raise ValueError(f"old_text occurs {hits} times in cell {k}; it must occur exactly once")
                 new = c.source.replace(old_text, new_text)
             if new == c.source:
-                return {"unchanged": cell_summary(nb, k)}
+                return {"unchanged": cell_summary(nb, k)}, nb, None
             pipe, removed = nb.pipeline, bool(c.added)
             if pipe is not None:  # the old code's steps leave with it, as when the cell is cleared
                 for m in c.added:
@@ -246,9 +255,9 @@ def register(ts, access: NotebookAccess):
             out = {"edited": cell_summary(nb, k)}
             if removed:
                 out["note"] = "the steps this cell added are out of the pipeline until the cell runs again"
-            return out
+            return out, nb, c
 
-        return access.call(op)
+        return then_run(*access.call(op), run)
 
     def located(index, id):
         nb = need()
@@ -333,7 +342,15 @@ def register(ts, access: NotebookAccess):
                 raise PermissionError("the notebook is not trusted yet (an .ewd file); the user must trust it first")
             return nb, nb.cells[find(nb, index, id)]
 
-        nb, cell = access.call(find_cell)
+        content, images, ok = execute(*access.call(find_cell))
+        return ToolResult(_jsonable(content), images=images, is_error=not ok)
+
+    ts.tools["run_cell"].available = lambda: access.can_run
+
+
+def _runner(access: NotebookAccess):
+    """``(execute, then_run)``: run a cell and report its outputs; run the cell insert/edit_cell wrote."""
+    def execute(nb: Notebook, cell: Cell):
         ok = access.run(nb, cell)
 
         def result():
@@ -348,9 +365,24 @@ def register(ts, access: NotebookAccess):
             return out, images
 
         content, images = access.call(result)
-        return ToolResult(_jsonable(content), images=images, is_error=not ok)
+        return content, images, ok
 
-    ts.tools["run_cell"].available = lambda: access.can_run
+    def then_run(out: dict, nb: Notebook, cell: Cell | None, run) -> dict | ToolResult:
+        if cell is None or cell.kind != "code" or not run:
+            return out
+        if not access.can_run:
+            out["note"] = (out.get("note", "") + "; " if "note" in out else "") + \
+                "not run: the user has not let the AI run cells, so the user runs it"
+            return out
+        if nb.restricted:
+            out["note"] = "not run: the notebook is not trusted yet (an .ewd file)"
+            return out
+        content, images, ok = execute(nb, cell)
+        content.pop("index", None)
+        out["run"] = content
+        return ToolResult(_jsonable(out), images=images, is_error=not ok)
+
+    return execute, then_run
 
 
 def _literal_call(source: str, name: str) -> ast.Call:
