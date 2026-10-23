@@ -509,6 +509,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `llm.effort` | Effort | `'high'` |
 | `llm.code_cells` | Code in answers | `'insert'` |
 | `llm.run_cells` | Let the AI run cells | `False` |
+| `llm.read_folders` | Folders the AI may read | `''` |
+| `llm.confirm_hosts` | Ask before the AI connects to a host | `True` |
 
 <!-- gui:start -->
 ## Desktop GUI

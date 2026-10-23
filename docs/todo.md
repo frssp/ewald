@@ -499,6 +499,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   cmd.exe on Windows, a pty on macOS/Linux), `%time`, progress bars while a cell runs, and the
   console sharing the notebook's namespace; in the frozen Windows app and EWALD.app too, where
   `!pip` has no Python at `sys.executable`.
+- Windows checks of 2026-10-23: the OpenGL check in a VM and a Remote Desktop session without
+  GPU (the Legacy GL viewport with `opengl32sw.dll` should come up, with the note on stderr);
+  saving a notebook open in Notepad++ or synced by OneDrive (the message names the program); the
+  `icacls` ACL on `credentials.json` (only your account listed); the bundled fonts in the UI.
 - Windows parity after the portability audit ([Windows, macOS and Linux](developer/portability.md)):
   open and export a POSCAR, XDATCAR, LAMMPS dump and an `.ewd` with data on another drive (D:);
   check exported files have LF ends; the open dialog lists lower-case `poscar`/`*.CIF`; a save
@@ -585,13 +589,11 @@ Portability ([Windows, macOS and Linux](developer/portability.md), audit of 2026
 - Frozen apps have no Python at `sys.executable` (it is `ewald.exe` / the app binary): the Forge
   check subprocess, plugin `pip install` and the default notebook kernel need a bundled
   interpreter entry (`ewald.exe python -I ...`) or a clear "not in the app" message.
-- No OpenGL probe or software fallback on Windows (VMs, Remote Desktop, GDI OpenGL 1.1) like the
-  Linux `ssh -X` one; PySide6 ships `opengl32sw.dll` that could serve as the fallback.
-- UI fonts (IBM Plex Sans, JetBrains Mono) are not bundled, so the look differs per system;
-  bundle the OFL fonts or settle on per-OS defaults.
-- `os.replace` of settings, notebooks and sessions fails on Windows while another program has
-  the target open: retry briefly and say which program holds it.
-- The credentials fallback file relies on 0600, which means nothing on Windows (no ACL set).
+- Windows without OpenGL 3.2 gets the Legacy GL viewport with Qt's software OpenGL, but VTK's
+  offscreen pictures (OpenGL renderer, `snapshot`, the notebook's frame pictures when they use
+  OpenGL) still go to the system OpenGL 1.1 there; fall back to the ray tracer in that case.
+- `plugin_catalog` installs move folders with `shutil.move`, not `fileops.replace`, so a plugin
+  folder held open on Windows fails without naming the program.
 
 Left from the 2026-10-19 review (minimum image, element masses, color parsing and the
 dark-background test are shared now; `gui/app.py` and `gui/preferences.py` are split into
@@ -613,9 +615,9 @@ mixins and helper modules):
 From the 2026-10-19 review (expression sandbox, session classes, Forge consent and environment,
 `export_file` paths, PLUMED `LOAD` and the known_hosts key type are fixed):
 
-- Claude's read tools (`load_structure`, `read_plumed_output`) open any local path and any
-  `host:/path` in known_hosts; add an optional folder allow-list and a GUI confirmation before
-  connecting to a host the model chose.
+- What the AI may read (`ewald.llm.access`, Preferences › AI › Folders the AI may read, Ask before
+  the AI connects to a host): `ewald ask` and the MCP server have no flag for the folders and never
+  ask about hosts; the allowed hosts are forgotten with each new chat.
 - The GUI's "Python code in session" question covers only top-level PythonScript and
   PythonModifier entries; nested `__modifier__` code and a disabled `Plumed` load silently
   disabled, with only a log message.

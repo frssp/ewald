@@ -53,9 +53,22 @@ The same function runs on every platform so caches look alike.
 `sys.executable` (see the open items).
 
 **Files in use.** Windows refuses to replace or delete a file another process has open. Close
-files before `os.replace` or `os.remove`, read readers' files per access (no long-lived
-handles or memory maps), and expect `PermissionError` from `os.replace` when another program
-holds the target.
+files before replacing or removing them, and read readers' files per access (no long-lived
+handles or memory maps). Replace files only through `ewald.fileops.replace` (or `write_text`,
+which writes a temporary file first): on Windows it retries for about 1.5 s, since virus scanners
+and sync clients let go quickly, and then raises `FileInUseError` (a `PermissionError`) naming the
+programs that hold the file, from the Windows Restart Manager. `test_portability.py` rejects a
+bare `os.replace`.
+
+**Secrets.** The fallback secrets file (`keychain.file_set`, when no OS keychain works) is mode
+0600 on Linux and macOS and gets an owner-only ACL on Windows (`icacls /inheritance:r /grant:r`),
+set before the secrets are written.
+
+**OpenGL and fonts.** On Windows `viewport.backend = auto` reads the driver's OpenGL version from
+a hidden WGL window (`gui.windows_opengl`); below 3.2 it uses the Legacy GL viewport with Qt's
+software OpenGL. The UI fonts (IBM Plex Sans and Mono, JetBrains Mono) ship in
+`ewald/assets/fonts` and are registered at start (`gui.fonts.load_fonts`), so the UI uses the
+same fonts everywhere.
 
 **Numbers.** numpy 2 is the minimum, so the default integer is int64 on Windows as well
 (numpy 1 used int32 there, and pair keys like `i * n + j` overflowed past 46k atoms). C++ code
@@ -102,19 +115,15 @@ Open, needing a real Windows (or macOS) machine or a larger change; tracked in
 1. Frozen apps (`packaging/windows`, `packaging/macos`): `sys.executable` is `ewald.exe`, so the
    Modifier Forge check subprocess, plugin `pip install` and the default notebook kernel cannot
    start a Python there.
-2. OpenGL on Windows: no GL probe or software fallback like the Linux `ssh -X` one, so a VM, a
-   Remote Desktop session or an old driver (OpenGL 1.1 GDI) may fail at the first viewport.
-3. Fonts: IBM Plex Sans and JetBrains Mono are not bundled, so the UI falls back to Segoe UI /
-   Helvetica / DejaVu and looks a little different on each system; plots use metric-compatible
-   Arial / Liberation Sans, so figures match.
-4. `os.replace` of the settings, a notebook or a session fails with `PermissionError` on
-   Windows while another program (an editor, a second EWALD) has the target open; no retry yet.
-5. The 0600 credentials fallback file (`keychain.py`) has no ACL on Windows (it is in the
-   user's `%APPDATA%`); Windows Credential Manager limits a secret to 2560 bytes.
-6. Native extension: without MSVC Build Tools Windows installs lack `ewald._native` (PTM,
+2. OpenGL on Windows without 3.2 now gets the Legacy GL viewport with Qt's software OpenGL,
+   but VTK's offscreen pictures (OpenGL renderer, `snapshot`) still use the system OpenGL there;
+   the ray tracer and vector output need none. The WGL check is untested on a real VM or
+   Remote Desktop session.
+3. Windows Credential Manager limits a secret to 2560 bytes.
+4. Native extension: without MSVC Build Tools Windows installs lack `ewald._native` (PTM,
    Voronoi, ...) until Windows wheels are published (Actions minutes).
-7. Glob and `os.path.exists` follow the file system's case rules (`run*/XDATCAR` also matches
+5. Glob and `os.path.exists` follow the file system's case rules (`run*/XDATCAR` also matches
    `Run1/xdatcar` on Windows); kept as is, since the file system decides what can be opened.
-8. Not yet seen on real hardware: the Windows look (Segoe UI, per-monitor DPI at 125/150 %),
+6. Not yet seen on real hardware: the Windows look (bundled IBM Plex Sans, per-monitor DPI at 125/150 %),
    native file dialogs, Windows Credential Manager, ffmpeg from imageio-ffmpeg, a Windows
    OpenSSH config and agent, CUDA on Windows, and everything on a real Mac.
