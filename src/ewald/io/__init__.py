@@ -36,8 +36,11 @@ class FileSource:
     and OUTCAR, are simply appended). A LAMMPS dump that a restarted run appended to
     (``dump_modify append yes``: the steps go back inside the file) is joined the same way, also
     when it is the only file (see :attr:`restarts`); a step counter reset inside a file
-    (``reset_timestep 0``) starts a new count instead, so nothing is cut there. ``"concat"``
-    keeps every frame of every file.
+    (``reset_timestep 0``: back to or below the first step of the run before it) starts a new
+    count instead, so nothing is cut there. Three other values change that: ``"restart"`` counts
+    every step going back inside a file as a restart (also a rerun from step 0), ``"files"``
+    joins on Timestep only where one file ends and the next begins and never splits a file, and
+    ``"concat"`` keeps every frame of every file.
 
     ``thermo`` adds per-step results (see :mod:`ewald.io.thermo`): ``"auto"`` (default) picks
     up an OSZICAR next to an XDATCAR and a log.lammps next to a LAMMPS dump, a path or list
@@ -88,23 +91,25 @@ class FileSource:
         return paths
 
     def _build_index(self, warn: bool = False) -> list[tuple[FrameReader, int]]:
-        """(reader, frame) of every frame shown. With ``join="timestep"`` the files, and the runs
+        """(reader, frame) of every frame shown. With ``join="timestep"`` (or ``"restart"``) the files, and the runs
         appended to one LAMMPS dump (:meth:`FrameReader.run_starts`), are pieces of one run: each
         piece is cut where a later one starts (a restart from an earlier step), found by
         bisection on the steps. Inside one file, a piece that goes back to or below the first
         step of the piece before it (``reset_timestep 0`` after a minimization) starts a new
-        count instead: nothing before it is cut."""
-        by_step = self.join == "timestep"
+        count instead: nothing before it is cut (not with ``"restart"``). ``"files"`` makes
+        every file one piece."""
+        by_step = self.join != "concat"
+        split = self.join in ("timestep", "restart")  # look for runs inside a file too
         pieces = []  # (reader, first frame, end frame)
         for r in self.readers:
-            bounds = [0, *(r.run_starts() if by_step else []), len(r)]
+            bounds = [0, *(r.run_starts() if split else []), len(r)]
             pieces += [(r, a, b) for a, b in zip(bounds, bounds[1:]) if b > a] or [(r, 0, 0)]
         starts = [r.timestep(a) if b > a and by_step else None for r, a, b in pieces]
-        known = [s for s in starts if s is not None]
-        if len(known) > 1 and len(set(known)) == 1:  # all start at the same step: not one run, append them
+        known = [s for s, (_, a, _) in zip(starts, pieces) if s is not None and a == 0]
+        if len(known) > 1 and len(set(known)) == 1:  # all files start at one step: not one run, append them
             starts = [None] * len(starts)
-        reset = [k > 0 and a > 0 and None not in (starts[k], starts[k - 1]) and starts[k] <= starts[k - 1]
-                 for k, (_, a, _) in enumerate(pieces)]
+        reset = [self.join == "timestep" and k > 0 and a > 0 and None not in (starts[k], starts[k - 1])
+                 and starts[k] <= starts[k - 1] for k, (_, a, _) in enumerate(pieces)]
         self._restarts = [(self.paths[self.readers.index(r)], a, starts[k]) for k, (r, a, _) in enumerate(pieces)
                           if a > 0 and starts[k] is not None and not reset[k]]
         stops = [b for _, _, b in pieces]
@@ -130,7 +135,7 @@ class FileSource:
     def restarts(self) -> list[tuple[str, int, int]]:
         """``(file, frame, Timestep)`` where a restarted run went on writing into the same file
         (LAMMPS ``dump_modify append yes``); with ``join="timestep"`` the frames of the earlier
-        run from that step on are left out. Empty with ``join="concat"``."""
+        run from that step on are left out. Empty with ``join="files"`` and ``"concat"``."""
         return list(self._restarts)
 
     @property
@@ -254,7 +259,7 @@ class StaticSource:
 
 
 _NEB_FORMATS = ("neb", "vasp-neb", "lammps-neb")
-_JOINS = ("timestep", "concat")
+_JOINS = ("timestep", "restart", "files", "concat")
 
 
 def _is_list(path) -> bool:
@@ -448,7 +453,8 @@ def import_file(path, format: str | None = None, **kwargs):
     ``dump.1000``) or a list such as ``["run1/dump.lammpstrj", "run2/dump.lammpstrj"]`` (read in
     the order given). ``join="timestep"`` (default) joins the segments of a restarted run: a
     later file wins from the Timestep it starts at, so the frames an earlier file wrote past the
-    restart point are dropped; ``join="concat"`` keeps every frame (see :class:`FileSource`).
+    restart point are dropped, also inside one dump a restarted run appended to;
+    ``"restart"``, ``"files"`` and ``"concat"`` change how much is joined (see :class:`FileSource`).
 
     ``format`` names a built-in format, an ASE format, or a reader plugin (see
     :mod:`ewald.plugins`); without it the format is detected from the file.

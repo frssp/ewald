@@ -869,14 +869,14 @@ class Viewport(QtWidgets.QWidget):
         """Atom under window position (x, y from the top-left): the front-most atom sphere on the
         camera ray (as for hover), else the atom nearest to the surface VTK picks there (a bond,
         a polyhedron, an isosurface)."""
-        import vtk
+        from vtkmodules.vtkRenderingCore import vtkPropPicker  # not ``import vtk``: that loads every VTK module
 
         w = self.plotter.interactor
         idx = self.hover_index(x, y, w.width(), w.height())
         if idx is not None:
             return idx
         ratio = w.devicePixelRatioF() or 1.0
-        picker = vtk.vtkPropPicker()
+        picker = vtkPropPicker()
         if not picker.Pick(x * ratio, (w.height() - y) * ratio, 0, self.plotter.renderer):
             return None
         world = np.array(picker.GetPickPosition())

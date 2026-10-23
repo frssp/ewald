@@ -157,6 +157,32 @@ the end.
 - **Landed:** this PR (`src/ewald/potential.py`, `ewald.workflow.Analysis`, `add_analysis`), with
   the recipe in frssp/ewald-simagent.
 
+### D19. Restarts inside one dump: a default rule the user can change (2026-10-23)
+
+- **Decision:** when several files or one appended LAMMPS dump are joined on Timestep, a step
+  that goes back inside a file is a restart (the later run wins) unless it goes back to or below
+  the first step of the run before it, which counts as `reset_timestep` and cuts nothing. That
+  rule stays the default, and the user can change it: `join="restart"` (every step going back is
+  a restart), `join="files"` (join only between files) or `join="concat"`, in `load(...)` and in
+  the dialog that opens several files.
+- **Why:** "기본 동작은 이대로 하고 사용자가 조절할 수 있게 하면 되지 않을까?" (keep this as the
+  default and let the user adjust it).
+- **Considered:** one fixed rule with no option.
+- **Landed:** PR #212 (default rule, join dialog), PR #218 (the `join` options).
+
+### D20. Plugin settings dialogs stay short (2026-10-23)
+
+- **Decision:** in the plugin settings dialog a field's help is its tooltip, not a line under it,
+  and fields a plugin marks `advanced` (CA file, host aliases, connection name) fold under
+  **Advanced**, which says how many of them are set. Preferences pages keep their help lines
+  and fold the same advanced fields.
+- **Why:** "메뉴가 너무 긴데, 좀 위아래로 줄이는 레이아웃 구성 가능해?" (the menu is too long;
+  can the layout be shorter top to bottom?), on the sim-agent settings dialog with a diagnosis
+  report under it.
+- **Considered:** two columns of fields (wide, and the help still needs room); a dialog that
+  scrolls (as long, only hidden).
+- **Landed:** PR #222 (`gui/plugin_settings.py`, `gui/preferences.py`, `SettingsField.advanced`).
+
 ## Project
 
 ### D15. Name, license and openness (2026-10-19, 2026-10-20)

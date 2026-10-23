@@ -29,14 +29,32 @@ class PluginSettingsDialog(QtWidgets.QDialog):
             problem = ""
         except Exception as exc:          # a broken plugin must not keep the dialog from opening
             values, problem = {f.name: f.empty() for f in page.fields}, f"Could not read the settings: {exc}"
+        # help goes into tooltips (and the placeholder) so the dialog stays short; rarely changed
+        # fields fold under Advanced, which says how many of them hold a value
+        advanced = [f for f in page.fields if getattr(f, "advanced", False)]
+        self.advanced = QtWidgets.QWidget()
+        adv_form = QtWidgets.QFormLayout(self.advanced)
+        adv_form.setContentsMargins(0, 0, 0, 0)
         for f in page.fields:
             w = self._widget(f, values.get(f.name))
+            label = QtWidgets.QLabel(f.label)
             if f.help:
                 w.setToolTip(f.help)
+                label.setToolTip(f.help)
             self.widgets[f.name] = w
-            form.addRow(f.label, w)
-            if f.help:
-                form.addRow("", QtWidgets.QLabel(f.help, objectName="muted", wordWrap=True))
+            (adv_form if f in advanced else form).addRow(label, w)
+        self.advanced_button = None
+        if advanced:
+            b = QtWidgets.QToolButton(text="Advanced", checkable=True, autoRaise=True)
+            b.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+            b.toggled.connect(self._show_advanced)
+            lay.addWidget(b)
+            lay.addWidget(self.advanced)
+            self.advanced_button = b
+            used = sum(values.get(f.name) not in (None, "", False, f.empty()) for f in advanced)
+            if used:
+                b.setText(f"Advanced ({used} set)")
+            self._show_advanced(False)
         self.status = QtWidgets.QLabel(problem, wordWrap=True, objectName="cellError" if problem else "muted")
         self.status.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         self.status.setVisible(bool(problem))
@@ -51,7 +69,17 @@ class PluginSettingsDialog(QtWidgets.QDialog):
         self.message = ""
 
     def _widget(self, f, value):
-        return field_widget(f, value)
+        w = field_widget(f, value)
+        if f.kind == "multiline":
+            w.setFixedHeight(56)
+        return w
+
+    def _show_advanced(self, shown: bool):
+        from .icons import icon
+
+        self.advanced.setVisible(shown)
+        self.advanced_button.setIcon(icon("chevron_down" if shown else "chevron_right"))
+        self.adjustSize()
 
     def values(self) -> dict:
         """What the fields hold now (secrets as typed; "" when left empty)."""

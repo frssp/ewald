@@ -291,9 +291,10 @@ class PreferencesDialog(QtWidgets.QDialog):
             values, problem = {f.name: f.empty() for f in page.fields}, f"Could not read the settings: {exc}"
         col.addSpacing(16)
         card, rows = self._card()
+        adv_card, adv_rows = self._card()      # rarely changed fields, folded under Advanced
         widgets, row_frames = {}, {}
         for f in page.fields:
-            row = self._row_frame(rows)
+            row = self._row_frame(adv_rows if getattr(f, "advanced", False) else rows)
             grid = QtWidgets.QGridLayout(row)
             grid.setContentsMargins(16, 12, 16, 12)
             grid.setHorizontalSpacing(16)
@@ -315,6 +316,27 @@ class PreferencesDialog(QtWidgets.QDialog):
             grid.setColumnStretch(0, 1)
             widgets[f.name], row_frames[f.name] = w, row
         col.addWidget(card)
+        if adv_rows.count():
+            from .icons import icon
+
+            fold = QtWidgets.QToolButton(text="Advanced", checkable=True, autoRaise=True)
+            fold.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+
+            def show_advanced(shown, fold=fold, adv_card=adv_card):
+                adv_card.setVisible(shown)
+                fold.setIcon(icon("chevron_down" if shown else "chevron_right"))
+
+            fold.toggled.connect(show_advanced)
+            used = sum(values.get(f.name) not in (None, "", False, f.empty())
+                       for f in page.fields if getattr(f, "advanced", False))
+            if used:
+                fold.setText(f"Advanced ({used} set)")
+            show_advanced(False)
+            col.addSpacing(6)
+            col.addWidget(fold)
+            col.addWidget(adv_card)
+        else:
+            adv_card.deleteLater()
         status = QtWidgets.QLabel(problem, wordWrap=True, objectName="cellError" if problem else "rowHelp")
         status.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         status.setVisible(bool(problem))
