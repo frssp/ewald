@@ -25,6 +25,8 @@ DATA = Path(__file__).resolve().parent / "data"
 # Key: (file under src/ewald, enclosing function). New sites use os.path / pathlib / posixpath
 # (remote paths) instead, or are listed here with the reason.
 SEP_SITES = {
+    ("llm/tools.py", "open_workflow"): "step names down a workflow tree ('bands/scf'), not files",
+    ("workflow.py", "target"): "step names down a workflow tree ('bands/scf'), not files",
     ("gui/window_plugins.py", "refresh_plugin_menu_items"): "menu paths ('Tools/Sub/Item'), not files",
     ("gui/window_plugins.py", "add_plugin_items"): "menu paths ('Tools/Sub/Item'), not files",
     ("io/neb.py", "_join"): "remote (POSIX) branch; local paths use os.path.join",

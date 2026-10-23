@@ -52,6 +52,7 @@ the model.
 | Tool | Cell it writes |
 | --- | --- |
 | `load_structure` | `pipe = load('XDATCAR')` |
+| `open_workflow` | `pipe = load('simagent:lab/3f9c2e1a/bands')`: a workflow, a step or an output of it, by name; offered only with a workflow source |
 | `add_modifier` | a step cell `pipe.add(CoordinationAnalysis(cutoff=3.0))` |
 | `remove_modifier` | deletes that step cell |
 | `set_view`, `add_visual`, `remove_visual`, `add_overlay`, `remove_overlay` | the view cell `view(pipe, ...)` |
@@ -110,7 +111,7 @@ its work dir, and `compute_plumed_cvs` refuses `LOAD` (native code) and absolute
 
 ## Files and hosts the AI may open
 
-The files the model opens itself (`load_structure`, `describe_workflow`, `add_analysis`, plugin tools such as
+The files the model opens itself (`load_structure`, `describe_workflow`, `open_workflow`, `add_analysis`, plugin tools such as
 `read_plumed_output`) pass `ReadAccess` (`llm/access.py`):
 
 | Setting | Default | Effect |
