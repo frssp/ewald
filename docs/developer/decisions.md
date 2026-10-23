@@ -170,6 +170,19 @@ the end.
 - **Considered:** one fixed rule with no option.
 - **Landed:** PR #212 (default rule, join dialog), PR #218 (the `join` options).
 
+### D20. Plugin settings dialogs stay short (2026-10-23)
+
+- **Decision:** in the plugin settings dialog a field's help is its tooltip, not a line under it,
+  and fields a plugin marks `advanced` (CA file, host aliases, connection name) fold under
+  **Advanced**, which says how many of them are set. Preferences pages keep their help lines
+  and fold the same advanced fields.
+- **Why:** "메뉴가 너무 긴데, 좀 위아래로 줄이는 레이아웃 구성 가능해?" (the menu is too long;
+  can the layout be shorter top to bottom?), on the sim-agent settings dialog with a diagnosis
+  report under it.
+- **Considered:** two columns of fields (wide, and the help still needs room); a dialog that
+  scrolls (as long, only hidden).
+- **Landed:** PR #222 (`gui/plugin_settings.py`, `gui/preferences.py`, `SettingsField.advanced`).
+
 ## Project
 
 ### D15. Name, license and openness (2026-10-19, 2026-10-20)

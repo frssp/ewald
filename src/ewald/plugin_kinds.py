@@ -467,7 +467,10 @@ class SettingsField:
 
     ``secret`` fields never show what is stored: ``load()`` returns a true value when a secret
     is saved (the field then says so) and ``save()`` gets ``""`` when the user left it empty,
-    meaning "keep the saved one". Keep secrets in :mod:`ewald.keychain`, never in a file."""
+    meaning "keep the saved one". Keep secrets in :mod:`ewald.keychain`, never in a file.
+
+    ``advanced`` fields (rarely changed: a CA file, host aliases) start folded under
+    **Advanced**, which says how many of them hold a value. ``help`` is the field's tooltip."""
 
     name: str
     label: str = ""
@@ -476,6 +479,7 @@ class SettingsField:
     choices: tuple = ()
     default: object = None
     placeholder: str = ""
+    advanced: bool = False
 
     def __post_init__(self):
         if self.kind not in FIELD_KINDS:
