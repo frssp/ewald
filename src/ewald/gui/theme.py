@@ -365,6 +365,7 @@ QProgressBar#cellProgress::chunk {{ background: {accent}; border-radius: 3px; }}
 QLabel#cellMarkdown {{ color: {text}; font-size: 13px; padding: 2px 4px; }}
 QFrame#cell[kind="markdown"] {{ background: transparent; border-color: transparent; }}
 QFrame#cell[selected="true"] {{ background: {accent_soft}; }}
+QFrame#cell[flash="true"] {{ background: {accent_soft}; border-color: {accent}; }}
 QLabel#cellTitle, QLabel#stepTitle {{ font-weight: 600; font-size: 14px; }}
 QLabel#stepBadge {{ background: {data_soft}; color: {data}; border-radius: 4px; padding: 1px 6px; font-size: 11px; }}
 QLabel#stepSummary {{ color: {secondary}; }}
@@ -404,6 +405,11 @@ QLabel#chatNote {{ color: {muted}; background: transparent; font-size: 11px; }}
 QLabel#chatThinking {{ color: {muted}; background: transparent; font-style: italic; }}
 QLabel#chatStep {{ background: {panel}; color: {secondary}; border: 1px solid {border}; border-radius: 10px;
     padding: 2px 9px; font-size: 11px; }}
+QToolButton#chatCellLink {{ background: {accent_soft}; color: {accent}; border: 1px solid transparent;
+    border-radius: 10px; padding: 1px 8px 1px 6px; font-size: 11px; font-weight: 600; }}
+QToolButton#chatCellLink:hover {{ border-color: {accent}; }}
+QToolButton#chatCellLink:disabled {{ background: transparent; color: {muted}; font-weight: 400;
+    text-decoration: line-through; }}
 QFrame#chatCode {{ background: {panel}; border: 1px solid {border}; border-radius: 8px; }}
 QLabel#chatCodeLang {{ color: {muted}; font-size: 11px; background: transparent; }}
 QToolButton#chatCodeButton {{ color: {secondary}; border-radius: 5px; padding: 2px 8px; font-size: 11px; }}

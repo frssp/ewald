@@ -136,6 +136,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
                                   run_inserted=lambda: run_cells(self.settings))
         self.ask_panel.pipelineChanged.connect(self._after_claude)
         self.ask_panel.insertRequested.connect(self._insert_claude_cell)
+        self.ask_panel.cellRequested.connect(self._show_ai_cell)
         self.ask_panel.runRequested.connect(lambda code: self._insert_claude_cell(code, run=True))
         # --- left: notebook tabs (the pipeline as Python cells); right: display settings
         self.panel = NotebookPanel()

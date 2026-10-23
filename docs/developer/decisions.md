@@ -61,6 +61,15 @@ the end.
   public services.
 - **Landed:** PR #116.
 
+### D19. AI answers link the cells they changed (2026-10-23)
+
+- **Decision:** when the AI writes, edits or runs a cell, its answer in the chat links to that
+  cell (a click shows the notebook tab and lights the cell up). The links come from the tools'
+  results, not from the model's wording, and cells are named as the user counts them (from 1).
+- **Why:** the owner saw an answer saying it changed "the view cell (index 5)" and noted
+  "어느 셀을 수정했는지 링크가 없다" (there is no link to which cell was changed).
+- **Landed:** this PR (`notebook_tools.touched_cells`, the chat's cell links).
+
 ### D6. Structure editing is deferred (2026-10-19)
 
 - **Decision:** no supercell, slab or defect builder until the owner asks.

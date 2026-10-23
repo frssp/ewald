@@ -95,8 +95,10 @@ GUI
   loses it; a saved chat reaches a new model as a text transcript (no tool results or images);
   a streamed answer is drawn as Markdown a few times a second, so an unclosed code fence shows as
   text until it closes; `ewald ask` and the MCP server do not stream; show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
-  edit or regenerate a sent message. The notebook cell tools (`llm/notebook_tools.py`) could
-  highlight the cells the AI changed and show a diff to accept or undo; `ewald ask` and the MCP
+  edit or regenerate a sent message. Cells the AI changed are linked from
+  its answer (a click scrolls to and lights up the cell); the cells could also stay marked in
+  the notebook and show a diff to accept or undo, and a cell number the model writes in its text
+  ("cell 3") is not a link (only the tools' results are); `ewald ask` and the MCP
   server could take a notebook (`--notebook analysis.py`) and save it back.
 - AI tools only through cells (`llm/tools.py` `CELL_WRITERS`): `@ai_tool` plugin functions can
   still change `toolset.pipeline` by hand (ewald cannot check them; docs/plugins/tools.md asks

@@ -886,3 +886,33 @@ def test_cell_writing_tools_refuse_a_restricted_notebook(cu_file):
     r = ts.call("add_modifier", {"name": "CoordinationAnalysis"})
     assert r.is_error and "trust" in r.content and nb.pipeline.modifiers == [] and len(nb.cells) == 1
     assert ts.call("set_view", {"bonds": False}).is_error and nb.pipeline.view.changed() == {}
+
+
+def test_touched_cells_names_the_cells_the_tools_wrote(cu_file):
+    """Every tool that writes, runs or deletes a cell says which one (index and id), so the AI chat
+    can link to it ("Edited cell 2") instead of relying on the model's text."""
+    from ewald.llm.notebook_tools import NotebookAccess, touched_cells
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\npipe = load({str(cu_file)!r})\n")
+    assert nb.run_all()
+    ts = Toolset(None, notebook=NotebookAccess(nb, can_run=True))
+
+    def refs(name, args):
+        return touched_cells(name, ts.call(name, args))
+
+    step = refs("add_modifier", {"name": "CoordinationAnalysis", "params": {"cutoff": 3.0}})
+    assert step == [{"id": nb.cells[1].id, "index": 1, "verb": "Added step in"}]
+    view = refs("set_view", {"bonds": False})
+    cell = nb.view_cell()
+    assert view == [{"id": cell.id, "index": nb.cells.index(cell), "verb": "Changed view in"}]
+    new = refs("insert_cell", {"source": "x = 1"})
+    assert new == [{"id": nb.cells[-1].id, "index": len(nb.cells) - 1, "verb": "Inserted and ran"}]
+    assert refs("insert_cell", {"source": "y = 1", "run": False})[0]["verb"] == "Inserted"
+    assert refs("edit_cell", {"index": 1, "params": {"cutoff": 3.2}}) == [
+        {"id": nb.cells[1].id, "index": 1, "verb": "Edited"}]
+    assert refs("edit_cell", {"index": -1, "source": "y = 2"})[0]["verb"] == "Edited and ran"
+    assert refs("run_cell", {"index": 0}) == [{"id": nb.cells[0].id, "index": 0, "verb": "Ran"}]
+    k = len(nb.cells) - 1
+    assert refs("delete_cell", {"index": -1}) == [{"id": None, "index": k, "verb": "Deleted"}]
+    assert refs("list_cells", {}) == [] and touched_cells("x", "an error") == []

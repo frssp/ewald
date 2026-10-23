@@ -71,6 +71,12 @@ at once and return its outputs (`run=false` only writes it).
 and runs it like a cell writer, and refuses code steps (`PythonScript`, Python steps). In the GUI
 each edit is one undo step ("AI: insert cell", Ctrl+Z).
 
+Every tool that writes, runs or deletes a cell (the cell writers above and the cell editors)
+returns that cell's position and id (`cell` and `cell_id`, or the `id` in `inserted`/`edited`/
+`run_cell`'s result), so the AI chat links each answer to the cells it changed
+(`notebook_tools.touched_cells`); the model is also told to name cells as you count them
+("cell 3", from 1), not by their 0-based index.
+
 **`run_cell`** runs any cell, so it is offered only when you allow it: in the GUI with
 Preferences › AI › **Let the AI run cells** (`llm.run_cells`, off by default; read again before
 every question), in Python and on the command line with `allow_code=True` / `--allow-code`.
