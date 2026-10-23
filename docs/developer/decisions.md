@@ -312,7 +312,7 @@ the end.
   (OpenAI, Gemini, local models) where it matters.
 - **Why:** the owner asked to replace "with Claude built in" in the README introduction: "claude
   built in 아니고 ai native? 이정도로" (not "Claude built in", something like "AI-native").
-- **Landed:** PR #PRNUM.
+- **Landed:** PR #240.
 
 ## Adding an entry
 
