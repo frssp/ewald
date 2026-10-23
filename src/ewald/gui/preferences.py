@@ -12,7 +12,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import settings as settings_mod
 from ..settings import DEVICES, OPTION, OPTIONS, PAGE_ALIASES, PAGES, Settings
-from . import header, workers
+from . import fonts, header, workers
 from .element_table import ElementTable  # noqa: F401 (imported from here by callers)
 from .pref_widgets import Toggle, _ColorButton, _PathEdit, _ProfileBox, _chevron, _icon, _restyle
 from .prefs_apply import (apply_element_defaults, apply_settings, layout_path, restore_layout,  # noqa: F401
@@ -149,7 +149,7 @@ class PreferencesDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.setObjectName("prefs")
         self.setWindowTitle("Preferences")
-        self.setStyleSheet(QSS.format(chevron=_chevron(), **TOKENS))
+        self.setStyleSheet(fonts.css(QSS.format(chevron=_chevron(), **TOKENS)))
         self.resize(940, 680)
         self.setMinimumSize(760, 520)
         self.settings = settings
