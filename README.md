@@ -9,18 +9,17 @@ modifier, each view is a live plot linked to the atoms, and the whole thing is s
 that also runs as a plain Python script. Ask AI works with Claude, OpenAI, Gemini or a local model.
 Plugins add file formats, analyses and drawing without changing EWALD itself.
 
-![The EWALD window: a notebook on the left, the Structure view in the middle, the View tab with display settings below](docs/images/notebook.png)
+![Ask AI in the EWALD window, three runs: the AI writes and runs notebook cells that draw the paths of the most mobile Li ions in a Li6PS5Cl AIMD run and fit D*, color sp, sp2 and sp3 carbon through a melt-quench MD run and plot their fractions, and find the barrier and the hopping atom of a Fe vacancy NEB; the recording zooms in on the chat and the cells and plays each run](docs/images/ai-demo.gif)
+
+*Ask AI changes results only through notebook cells: every step it took above is a cell you can
+read, edit and rerun. The model's answers in this recording are scripted (no API key in the
+recording environment); the window, tools, cells and the numbers they compute are real. The runs
+are published datasets (`ewald.examples.fetch`: kinisi's Li6PS5Cl AIMD, C-SYNTH-23 carbon,
+pymatgen's Fe NEB). Made by [docs/images/make_ai_demo.py](docs/images/make_ai_demo.py).*
 
 Under the notebook is an OVITO-style pipeline (`load` → `pipe.add(...)` → `pipe.compute(frame)` →
 `pipe.render(...)`) that runs the same in a script, on the CPU or an NVIDIA GPU, with a built-in
 ray tracer and vector output for publication figures.
-
-![Ask AI in the EWALD window: asked to find the vertex, edge and facet atoms of a Pt nanoparticle, the AI adds a coordination step, writes and runs a cell that paints each site type, then edits that cell to cut the particle open and adds a histogram; the recording zooms in on the chat and on each cell the AI writes](docs/images/ai-demo.gif)
-
-*Ask AI changes results only through notebook cells: every step it took above is a cell you can
-read, edit and rerun. The model's answers in this recording are scripted (no API key in the
-recording environment); the window, tools and cells are real. Made by
-[docs/images/make_ai_demo.py](docs/images/make_ai_demo.py).*
 
 ## The idea
 
