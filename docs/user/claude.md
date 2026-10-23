@@ -3,7 +3,8 @@
 `ewald.llm` exposes the pipeline to an AI model as tools, so an analysis can be asked for in
 words and still ends up as an ordinary, reproducible pipeline. Claude is the default; OpenAI,
 Google Gemini, a model on your own machine (Ollama, LM Studio) or any other OpenAI-compatible
-server work the same way (see [Providers](#providers)).
+server work the same way (see [Providers](#providers)). Every tool, what it may change and everything
+that is sent to the provider are listed in [What the AI may do and what it sees](ai-permissions.md).
 
 ```bash
 pip install -e ".[llm]"
@@ -64,7 +65,7 @@ ewald writes these cells itself from a modifier or setting name and JSON values,
 the model wrote, so they run without `allow_code`; a cell that fails is taken out again and its
 error goes back to the model. All other tools only read (`set_frame` only picks the frame the
 next tools look at). There is no tool that runs Python directly: code the model writes goes into
-a cell with `insert_cell` or `edit_cell` and runs only through `run_cell` (below).
+a cell with `insert_cell` or `edit_cell` and runs only when you allow it (below).
 
 ## Notebook cells
 
@@ -95,10 +96,13 @@ conversation as it was before the question; the AI chat's Stop button uses it.
 events while it arrives (Claude and every Chat Completions server; a server that refuses
 streaming gets the request again in one piece), and a Stop then ends the request at once.
 
-Cells the model inserts or edits are not run: they are marked not run (or out of date) until you
-run them. `run_cell` exists only with `allow_code=True` (`--allow-code` on the command line) or,
-in the GUI, Preferences › AI › **Let the AI run cells** (off by default), since a cell is any
-Python. No tool writes or runs a cell of an `.ewd` notebook that is not trusted yet. Parameters
+By default cells the model inserts or edits are not run: they are marked not run (or out of
+date) until you run them. With `allow_code=True` (`--allow-code` on the command line) or, in the
+GUI, Preferences › AI › **Let the AI run cells** (off by default, since a cell is any Python),
+`insert_cell` and `edit_cell` run the code cell they wrote at once and give the model its outputs
+(`run=false` only writes it), `run_cell` runs any cell, the system prompt tells the model it may
+run cells, and the ```python blocks of an answer that go into the notebook run as well. The
+setting is read again before every question, so it applies to a chat already open. No tool writes or runs a cell of an `.ewd` notebook that is not trusted yet. Parameters
 of code modifiers (`PythonScript`) cannot be set through `params`.
 
 A model may act on text inside the files it reads (a comment line or a type name can carry

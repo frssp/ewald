@@ -10,6 +10,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): the Plots panel draws a lineup
+  table as curves only; the `levels` (VBM, CBM, E_F) and plateau `regions` in its attributes are
+  not drawn yet (needs a GUI mockup first), and the side bar has no "Analysis" row. Only the
+  sim-agent band-offset lineup exists; work function, EOS, formation energy and polycrystalline
+  work function recipes are next. Not yet checked against sim-agent's own finalize result on a
+  real workflow.
 - Opening without running (`python.run_notebooks`, default "never"): covers notebook files only. A
   folder or workflow (`simagent:`, AiiDA, calculation folders) still runs its generated `load(...)`
   notebook at once, since it is ewald's own code; no per-notebook "always run this one" choice yet.
@@ -350,8 +356,6 @@ Formats
 - NEB: warn when an endpoint OUTCAR lists the atoms in another order than the band (the Fe
   vacancy example's 04/OUTCAR does; the reader takes POSCAR atoms, so only other tools are hit),
   and match atoms by position when images carry no identifiers.
-- `style='Points'` in a view cell reportedly left the bonds of an NEB view on the owner's
-  Windows GUI (2026-10-23); not reproduced in the container (bonds go off there), needs a screenshot.
 - NEB: interpolate between images for a smoother movie; `OverlayFrames` copies are extra
   particles, so picking one in the viewport selects a copy, not the real atom.
 - Ray tracer: see-through spheres are tessellated glass (`OverlayFrames` copies, Transparency);
@@ -531,7 +535,7 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   dialog with a name typed without extension; settings with non-ASCII text on Korean Windows;
   per-monitor DPI at 125/150 %; Windows Credential Manager; `ewald api > llms.txt` in cmd and
   PowerShell. The same list on a real Mac.
-- Resize handles between panels (dotted grip on a 1 px rule, accent on hover, 7 px hit area)
+- Resize handles between panels (a 1 px rule thickening into a pill grip, accent on hover, 7 px hit area)
   on Windows at 125/150 % and on a Retina Mac: the grip uses the `@2x` PNG and stays sharp, and
   the split cursor shows over the whole handle.
 - Plugins side bar on Windows and macOS: install ewald-phonopy from the default index (uv and
@@ -559,7 +563,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   changes against; check that the tolerances and the `ANSWER:` convention are fair to real answers.
 - AI features with a real API key (Claude; also OpenAI, Gemini and a local Ollama/LM Studio
   server, which are tested only against mocked servers): `ewald ask` (also `--select`), the GUI AI chat side bar
-  (notebook code in the prompt, code blocks inserted as cells, the notebook cell tools),
+  (notebook code in the prompt, code blocks inserted as cells, the notebook cell tools; with
+  Let the AI run cells on, that the model runs and fixes its cells, also over an OpenAI-compatible gateway),
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › AI › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
   KWallet); the container has none, so only the 0600 file fallback runs for real.

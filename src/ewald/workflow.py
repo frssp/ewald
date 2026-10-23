@@ -21,6 +21,12 @@ and fills these dataclasses; ewald does the rest, the same way for every source:
 
 Every ``path`` is a string ``load()`` opens (the source's reader serves its scheme), so whatever
 the side bar or the AI does with a workflow is something a notebook cell can repeat.
+
+A source that knows how to analyse a kind of workflow (sim-agent's ``vasp_band_offset`` ->
+the potential lineup) also has ``analyses(wf) -> [Analysis]``: notebook cells, written by the
+plugin from :mod:`ewald.potential` and the like, that load what they need and compute the
+result in the open. :func:`notebook_text` appends them and the AI adds one with
+``add_analysis``; neither writes analysis code itself.
 :func:`notebook_text` turns a workflow into one notebook with a variable per step; the
 generic side bar is :func:`workflow_panel`, which a plugin registers as its ``@panel``.
 """
@@ -108,6 +114,31 @@ class WorkflowStep:
 
 
 @dataclass
+class Analysis:
+    """An analysis a source offers for a workflow: ``cells`` are notebook code cells (each one
+    self-contained after the ones before it: they ``load()`` the paths they need), ``result`` the
+    variable the last cell leaves a :class:`ewald.verbs.Table` in. ``reason`` says why it
+    cannot run on this workflow ("" when it can), e.g. a step it needs is missing. Paths and
+    other text from the source go into the cells only as string literals."""
+
+    name: str
+    title: str = ""
+    cells: list = field(default_factory=list)
+    result: str = ""
+    reason: str = ""
+
+    @property
+    def available(self) -> bool:
+        return not self.reason and bool(self.cells)
+
+    def as_dict(self) -> dict:
+        out = {"name": self.name, "title": self.title or self.name, "available": self.available}
+        if self.reason:
+            out["reason"] = self.reason
+        return out
+
+
+@dataclass
 class Workflow(WorkflowStep):
     """A whole workflow: the top step, and what a list of them shows.
 
@@ -123,6 +154,7 @@ class Workflow(WorkflowStep):
     ctime: str = ""
     source: str = ""
     complete: bool = False
+    analyses: list = field(default_factory=list)
 
     @property
     def title(self) -> str:
@@ -135,7 +167,17 @@ class Workflow(WorkflowStep):
         for key in ("label", "description", "kind", "formula", "ctime", "source"):
             if getattr(self, key):
                 out[key] = getattr(self, key)
+        if self.analyses:
+            out["analyses"] = [a.as_dict() for a in self.analyses]
         return out
+
+    def analysis(self, name: str) -> Analysis:
+        """The analysis called ``name``; LookupError (naming the ones there are) if none."""
+        for a in self.analyses:
+            if a.name == name:
+                return a
+        raise LookupError(f"no analysis {name!r} for this workflow; it has: "
+                          f"{', '.join(a.name for a in self.analyses) or 'none'}")
 
 
 @dataclass
@@ -334,7 +376,18 @@ def notebook_text(wf: Workflow, pipeline_name: str = "pipe") -> str:
         cells.append("# %%\n" + "\n".join(body))
     if main is not None:            # a cell of its own: the side bar's step switch rewrites only it
         cells.append(f"# %%\n{pipeline_name} = {main}")
+    for a in wf.analyses:
+        cells += analysis_cells(a)
     return "\n\n".join(cells) + "\n"
+
+
+def analysis_cells(a: Analysis) -> list[str]:
+    """Percent-format cells for analysis ``a``: a heading, then its code cells; only the heading,
+    with the reason, when it cannot run."""
+    title = _one_line(a.title or a.name)
+    if not a.available:
+        return [f"# %% [markdown]\n# ## {title}\n#\n# Not available: {_one_line(a.reason or 'no cells')}"]
+    return [f"# %% [markdown]\n# ## {title}"] + [f"# %%\n{c.strip()}" for c in a.cells]
 
 
 # ----------------------------------------------------------------------- the side bar
