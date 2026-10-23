@@ -257,3 +257,23 @@ def test_neb_run_of_finds_the_run_of_one_image(vasp_dir, lammps_dir, tmp_path):
     (tmp_path / "00").mkdir()
     (tmp_path / "00" / "POSCAR").write_text("x")
     assert neb_run_of(tmp_path / "00" / "POSCAR") is None  # one numbered folder is not a band
+
+
+def test_trajectory_lines_along_a_neb_band(vasp_dir):
+    """GenerateTrajectoryLines after the NEB steps traces the real atoms image by image: it skips the
+    OverlayFrames copies, and the POSCAR endpoint gets the OUTCAR images' identifiers. A trail follows the
+    image shown."""
+    from ewald import scene as ir
+
+    pipe = import_file(vasp_dir / "neb")
+    assert type(pipe.modifiers[-1]) is mods.OverlayFrames
+    assert all("Particle Identifier" in pipe.source.compute(i) for i in range(5))
+    pipe.add(mods.GenerateTrajectoryLines())
+    d = pipe.compute(2)
+    n = int((d["Overlay Frame"] < 0).sum())
+    table = d.tables["trajectory-lines"]
+    assert len(table["Position"]) == 5 * n and set(table["Time"]) == set(range(5))
+    assert d["Path Length"].max() > 0.5   # the hopping atom
+    s = ir.build(d, [ir.TrajectoryLinesVis(trail=True)], ir.SceneContext(frame=2))
+    drawn = np.concatenate(s["trajectories"].primitive.strips)
+    assert set(table["Time"][drawn]) == {0, 1, 2}

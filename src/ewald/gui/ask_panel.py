@@ -39,8 +39,9 @@ NOTEBOOK_NOTE = """
 
 You are the chat side bar of ewald's notebook window. The user's notebook is a percent-format \
 Python file (`# %%` cells, one namespace) where `pipe` is the pipeline: step cells are one \
-`pipe.add(Modifier(...))` (modifiers from `ewald.modifiers`, imported as `mods` or by name), \
-view cells are one `show(pipe, ...)`, and `load(path)` opens a file. When the user's message \
+`pipe.add(Modifier(...))` (every modifier of `ewald.modifiers` is imported by name), \
+view cells are one `show(pipe, ...)` (a plot) or one `view(pipe, ...)` (the 3D view), and `pipe = load(path)` \
+opens a file; python_api describes these cells, show, view and paint. When the user's message \
 starts with the notebook's code, that is its current state. {code_cells} Write each ```python \
 block as one complete cell that runs in that namespace; prefer `pipe.add(...)` steps over ad-hoc \
 loops. When the user asks you to \
@@ -70,10 +71,13 @@ def _default_agent(pipeline, on_event, **kwargs):
     return Agent.from_pipeline(pipeline, on_event=on_event, **kwargs)
 
 
-def agent_from_settings(get_settings: Callable[[], object], notebook: bool = False):
-    """Agent factory using Preferences › AI (provider, model, connection, effort), read when a
-    chat starts; ``notebook`` tells the model about the notebook it sits beside. The factory's
-    ``assistant()`` names the provider's assistant for the chat ("Claude", "Gemini", ...)."""
+def agent_from_settings(get_settings: Callable[[], object], notebook: bool = False,
+                        confirm_host: Callable[[str], bool] | None = None):
+    """Agent factory using Preferences › AI (provider, model, connection, effort, the folders and
+    hosts the AI may read), read when a chat starts; ``notebook`` tells the model about the
+    notebook it sits beside, ``confirm_host(host)`` asks the user before an SSH host the model
+    named (:mod:`ewald.llm.access`). The factory's ``assistant()`` names the provider's assistant
+    for the chat ("Claude", "Gemini", ...)."""
     def factory(pipeline, on_event):
         from ..llm.providers import from_settings
 
@@ -83,7 +87,13 @@ def agent_from_settings(get_settings: Callable[[], object], notebook: bool = Fal
 
             mode = code_cells_mode(get_settings())
             kwargs["system"] = SYSTEM_PROMPT + NOTEBOOK_NOTE.format(code_cells=CODE_CELLS_NOTE[mode])
-        return _default_agent(pipeline, on_event, **kwargs)
+        agent = _default_agent(pipeline, on_event, **kwargs)
+        toolset = getattr(agent, "toolset", None)
+        if toolset is not None:
+            from ..llm.access import ReadAccess
+
+            toolset.read_access = ReadAccess.from_settings(get_settings(), confirm_host)
+        return agent
 
     def assistant() -> str:
         from ..llm import providers

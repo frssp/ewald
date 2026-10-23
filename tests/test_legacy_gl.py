@@ -82,3 +82,50 @@ def test_viewport_backend_choice(monkeypatch):
     monkeypatch.setenv("EWALD_VIEWPORT", "metal")
     with pytest.raises(QtStartupError):
         viewport_backend()
+
+
+@pytest.mark.parametrize("found, backend", [
+    (((4, 6), "NVIDIA GeForce RTX 4070/PCIe/SSE2"), "vtk"),
+    (((3, 2), "Intel(R) HD Graphics"), "vtk"),
+    (((1, 1), "GDI Generic"), "legacy-gl"),                    # Windows' own OpenGL: VMs, Remote Desktop
+    (((3, 1), "Intel(R) HD Graphics 3000"), "legacy-gl"),
+    ((None, "OSError: [WinError 126] opengl32.dll"), "legacy-gl"),
+])
+def test_windows_without_opengl_3_2_uses_the_software_legacy_viewport(monkeypatch, found, backend):
+    import ewald.gui as gui
+
+    for k in ("EWALD_VIEWPORT", "SSH_CONNECTION", "SSH_CLIENT", "EWALD_SKIP_GL_PROBE"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(gui, "_windows", lambda: True)
+    monkeypatch.setattr(gui, "_windows_gl_cache", [])
+    probes = []
+    monkeypatch.setattr(gui, "_wgl_probe", lambda: probes.append(1) or found)
+    assert gui.viewport_backend("auto") == backend
+    assert gui.viewport_backend("vtk") == "vtk"                 # an explicit choice is kept
+    gui.viewport_backend("auto")
+    assert probes == [1]                                        # asked once per process
+
+    attrs = []
+    monkeypatch.setattr("PySide6.QtCore.QCoreApplication.setAttribute", lambda a, on=True: attrs.append(a))
+    note = gui.use_software_gl_if_needed(backend)
+    if backend == "vtk":
+        assert note is None and not attrs
+    else:
+        from PySide6 import QtCore
+
+        assert attrs == [QtCore.Qt.AA_UseSoftwareOpenGL] and "software rendering" in note
+        assert (found[1] if found[0] is None else "GDI Generic" if found[0] == (1, 1) else "3.1") in note
+
+
+def test_opengl_check_is_windows_only(monkeypatch):
+    import ewald.gui as gui
+
+    monkeypatch.setattr(gui, "_windows", lambda: False)
+    monkeypatch.setattr(gui, "_wgl_probe", lambda: pytest.fail("probed off Windows"))
+    assert not gui.windows_needs_software_gl()
+    assert gui.parse_gl_version("4.6.0 NVIDIA 551.23") == (4, 6) and gui.parse_gl_version("1.1.0") == (1, 1)
+    assert gui.parse_gl_version("garbage") is None
+    monkeypatch.setattr(gui, "_windows", lambda: True)
+    monkeypatch.setattr(gui, "_windows_gl_cache", [])
+    monkeypatch.setenv("EWALD_SKIP_GL_PROBE", "1")
+    assert not gui.windows_needs_software_gl()

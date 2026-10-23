@@ -141,7 +141,8 @@ def viewport_backend(choice: str | None = None) -> str:
     """The 3D view to use: ``"vtk"`` or ``"legacy-gl"`` (OpenGL 1.x display lists, VESTA-style).
 
     ``EWALD_VIEWPORT`` wins over ``choice`` (the ``viewport.backend`` preference); ``"auto"`` picks
-    legacy-gl on an SSH-forwarded display, where GLX is indirect and VTK can't draw.
+    legacy-gl on an SSH-forwarded display, where GLX is indirect and VTK can't draw, and on
+    Windows without OpenGL 3.2 (:func:`windows_needs_software_gl`).
     """
     choice = (os.environ.get("EWALD_VIEWPORT") or choice or "auto").strip().lower()
     if choice in ("legacy", "gl1", "opengl1"):
@@ -149,8 +150,130 @@ def viewport_backend(choice: str | None = None) -> str:
     if choice not in VIEWPORT_BACKENDS:
         raise QtStartupError(f"unknown viewport {choice!r}; use one of {', '.join(VIEWPORT_BACKENDS)}")
     if choice == "auto":
-        return "legacy-gl" if ssh_forwarded_display() else "vtk"
+        return "legacy-gl" if ssh_forwarded_display() or windows_needs_software_gl() else "vtk"
     return choice
+
+
+# ----------------------------------------------------------------------- OpenGL on Windows
+#: The OpenGL version VTK's viewport needs.
+VTK_MIN_GL = (3, 2)
+
+
+def _windows() -> bool:
+    return sys.platform == "win32"
+
+
+def parse_gl_version(text: str) -> tuple[int, int] | None:
+    """``"4.6.0 NVIDIA 551.23"`` -> (4, 6); ``"1.1.0"`` -> (1, 1); None when unreadable."""
+    import re
+
+    m = re.match(r"\s*(?:OpenGL ES\s+)?(\d+)\.(\d+)", text or "")
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+_windows_gl_cache: list = []
+
+
+def windows_opengl() -> tuple[tuple[int, int] | None, str]:
+    """(version, renderer) of the OpenGL the Windows display driver gives a plain window (WGL),
+    asked once per process; (None, reason) when it gives none. ``EWALD_SKIP_GL_PROBE=1`` skips
+    the check (reported as OpenGL 4.6)."""
+    if not _windows_gl_cache:
+        if os.environ.get("EWALD_SKIP_GL_PROBE"):
+            _windows_gl_cache.append(((4, 6), "not checked (EWALD_SKIP_GL_PROBE)"))
+        else:
+            try:
+                _windows_gl_cache.append(_wgl_probe())
+            except Exception as exc:   # no opengl32.dll, a locked-down session, ...
+                _windows_gl_cache.append((None, f"{type(exc).__name__}: {exc}"))
+    return _windows_gl_cache[0]
+
+
+def windows_needs_software_gl() -> bool:
+    """True on Windows when the driver offers less than OpenGL 3.2: a virtual machine, Remote
+    Desktop without GPU acceleration, or Windows' own OpenGL 1.1 ("GDI Generic"). Then the
+    viewport is the OpenGL 1.x one, drawn by Qt's software OpenGL (``opengl32sw.dll``, Mesa
+    llvmpipe, shipped with PySide6) when the PySide6 wheel has it."""
+    if not _windows():
+        return False
+    version, _ = windows_opengl()
+    return version is None or version < VTK_MIN_GL
+
+
+def use_software_gl_if_needed(backend: str) -> str | None:
+    """Before the QApplication exists: on Windows without OpenGL 3.2, make Qt draw the legacy
+    viewport with its software OpenGL and return a note for the user (else None)."""
+    if backend != "legacy-gl" or not windows_needs_software_gl():
+        return None
+    from PySide6 import QtCore
+
+    QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_UseSoftwareOpenGL)
+    version, renderer = windows_opengl()
+    found = f"OpenGL {version[0]}.{version[1]} ({renderer})" if version else f"no OpenGL ({renderer})"
+    note = (f"ewald-gui: the display driver offers {found}, and the 3D view needs OpenGL "
+            f"{VTK_MIN_GL[0]}.{VTK_MIN_GL[1]}; using the OpenGL 1.x viewport with software rendering. "
+            "A GPU driver from the vendor (or Remote Desktop with GPU acceleration) gives the full view.")
+    print(note, file=sys.stderr)
+    return note
+
+
+def _wgl_probe() -> tuple[tuple[int, int] | None, str]:  # pragma: no cover - Windows only
+    """Create a hidden window with a legacy WGL context and read GL_VERSION / GL_RENDERER."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32, gdi32, gl = ctypes.WinDLL("user32"), ctypes.WinDLL("gdi32"), ctypes.WinDLL("opengl32")
+    user32.CreateWindowExW.restype = wintypes.HWND
+    user32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+                                       ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.HWND,
+                                       wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID]
+    user32.GetDC.restype, user32.GetDC.argtypes = wintypes.HDC, [wintypes.HWND]
+    user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+    user32.DestroyWindow.argtypes = [wintypes.HWND]
+
+    class PIXELFORMATDESCRIPTOR(ctypes.Structure):
+        _fields_ = [("nSize", wintypes.WORD), ("nVersion", wintypes.WORD), ("dwFlags", wintypes.DWORD)]
+        _fields_ += [(n, ctypes.c_ubyte) for n in (
+            "iPixelType", "cColorBits", "cRedBits", "cRedShift", "cGreenBits", "cGreenShift", "cBlueBits",
+            "cBlueShift", "cAlphaBits", "cAlphaShift", "cAccumBits", "cAccumRedBits", "cAccumGreenBits",
+            "cAccumBlueBits", "cAccumAlphaBits", "cDepthBits", "cStencilBits", "cAuxBuffers", "iLayerType",
+            "bReserved")]
+        _fields_ += [("dwLayerMask", wintypes.DWORD), ("dwVisibleMask", wintypes.DWORD),
+                     ("dwDamageMask", wintypes.DWORD)]
+
+    pfd_p = ctypes.POINTER(PIXELFORMATDESCRIPTOR)
+    gdi32.ChoosePixelFormat.argtypes = [wintypes.HDC, pfd_p]
+    gdi32.SetPixelFormat.argtypes = [wintypes.HDC, ctypes.c_int, pfd_p]
+    gl.wglCreateContext.restype, gl.wglCreateContext.argtypes = ctypes.c_void_p, [wintypes.HDC]
+    gl.wglMakeCurrent.argtypes = [wintypes.HDC, ctypes.c_void_p]
+    gl.wglDeleteContext.argtypes = [ctypes.c_void_p]
+    gl.glGetString.restype, gl.glGetString.argtypes = ctypes.c_char_p, [ctypes.c_uint]
+
+    hwnd = user32.CreateWindowExW(0, "STATIC", "ewald OpenGL check", 0, 0, 0, 16, 16, None, None, None, None)
+    if not hwnd:
+        return None, "could not create a window"
+    hdc = user32.GetDC(hwnd)
+    ctx = None
+    try:
+        pfd = PIXELFORMATDESCRIPTOR()
+        pfd.nSize, pfd.nVersion = ctypes.sizeof(pfd), 1
+        pfd.dwFlags = 0x4 | 0x20 | 0x1          # PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER
+        pfd.cColorBits, pfd.cDepthBits = 32, 24
+        fmt = gdi32.ChoosePixelFormat(hdc, ctypes.byref(pfd))
+        if not fmt or not gdi32.SetPixelFormat(hdc, fmt, ctypes.byref(pfd)):
+            return None, "no OpenGL pixel format"
+        ctx = gl.wglCreateContext(hdc)
+        if not ctx or not gl.wglMakeCurrent(hdc, ctx):
+            return None, "no OpenGL context"
+        version = (gl.glGetString(0x1F02) or b"").decode("ascii", "replace")    # GL_VERSION
+        renderer = (gl.glGetString(0x1F01) or b"").decode("ascii", "replace")   # GL_RENDERER
+        return parse_gl_version(version), renderer or "unknown renderer"
+    finally:
+        if ctx:
+            gl.wglMakeCurrent(None, None)
+            gl.wglDeleteContext(ctx)
+        user32.ReleaseDC(hwnd, hdc)
+        user32.DestroyWindow(hwnd)
 
 
 def probe_opengl(extra_env: dict, timeout: float = 60) -> tuple[bool, str]:

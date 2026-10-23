@@ -492,6 +492,41 @@ def test_code_modifiers_need_allow_code(cu_fcc):
     assert "Differences from OVITO" in ref and "`CommonNeighborAnalysis(" in ref
 
 
+def test_python_api_cells_run_as_documented(tmp_path, monkeypatch):
+    """The notebook section of the API reference the AI reads: its cell kinds run on the default
+    imports and the GUI recognizes them (step and view cells)."""
+    import matplotlib
+
+    from ewald import plugins
+    from ewald.llm.reference import GUIDE
+    from ewald.notebook import IMPORTS, Notebook
+    from ewald.pipeline import Modifier
+
+    matplotlib.use("Agg")
+    for name in ("show(pipe, table=None", "paint(data, where, color)", "isolate(data, where)", "[each frame]",
+                 'data.tables["DOS"]', "view(pipe, ...)"):
+        assert name in GUIDE, name
+    path = tmp_path / "cu.vasp"
+    write(path, bulk("Cu", "fcc", a=3.615, cubic=True).repeat(2), format="vasp")
+    nb = Notebook.from_py(f"# %%\nimport numpy as np\n{IMPORTS}\n\n# %%\npipe = load({str(path)!r})\n\n"
+                          "# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n\n"
+                          "# %% surface [each frame]\npaint(data, 'Coordination >= 12', 'gold')\n"
+                          "fade(data, data['Position'][:, 2] > 3, 0.5)\n\n"
+                          "# %%\nshow(pipe, table='coordination-rdf', xlim=(0, 3))\n\n"
+                          "# %%\nview(pipe, style='Ball & stick', direction='z')\n")
+    assert nb.run_all()
+    assert [c.is_step for c in nb.cells] == [False, False, True, False, False, False]
+    data = nb.namespace["pipe"].compute(0)
+    assert np.allclose(data["Color"][0], matplotlib.colors.to_rgb("gold"))
+    assert nb.namespace["pipe"].view.direction == "z"
+
+    # python_api lists the modifier plugins installed here, which the model can add too
+    tracker = type("GrainTracker", (Modifier,), {"__doc__": "Track grains."})
+    monkeypatch.setattr(plugins, "modifiers",
+                        lambda: {"GrainTracker": plugins.ModifierPlugin("GrainTracker", tracker, "Plugins", "", "python")})
+    assert "`GrainTracker()`: Track grains." in Toolset().call("python_api").content
+
+
 def test_notebook_tools_read_insert_edit_move_delete(tmp_path):
     from ewald.notebook import Notebook
 

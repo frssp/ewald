@@ -185,6 +185,14 @@ in order are:
 
 `EWALD_SKIP_GL_PROBE=1` skips the test window (for example when it misjudges a working setup).
 
+**Windows: a virtual machine, Remote Desktop or an old driver.** The 3D view needs OpenGL 3.2.
+Without a GPU driver Windows offers only its own OpenGL 1.1 ("GDI Generic"), as in many virtual
+machines and Remote Desktop sessions without GPU acceleration. `ewald gui` checks the driver's
+OpenGL version at start; below 3.2 it uses the Legacy GL viewport (above) drawn with Qt's software
+OpenGL (`opengl32sw.dll`, which comes with PySide6) and says so. Installing the GPU vendor's driver,
+or enabling GPU acceleration for Remote Desktop, gives the full view again.
+`EWALD_VIEWPORT=vtk` forces the VTK view; `EWALD_SKIP_GL_PROBE=1` skips the check.
+
 **No window on a server.** Without `DISPLAY` there is nothing to open a window on: use
 `ssh -X`, a remote desktop, or `xvfb-run -a ewald gui` for screenshots and tests.
 

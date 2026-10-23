@@ -462,6 +462,7 @@ class TrajectoryLinesVis(VisualElement):
     """
 
     name = "Trajectory lines"
+    type_colors = None   # the view's per-type colors, for lines in their atom's color (set by builtin_elements)
 
     def __init__(self, width: float = 2.0, color_by: str | None = None, colormap: str = "viridis",
                  color_range=None, time_range=None, trail=None, radius: float | None = None,
@@ -500,7 +501,7 @@ class TrajectoryLinesVis(VisualElement):
             order = np.argsort(here)
             pos = np.clip(np.searchsorted(here[order], ids[starts]), 0, data.count - 1)
             hit = here[order][pos] == ids[starts]
-            colors[hit] = np.clip(default_colors(data), 0, 1)[order][pos[hit]]
+            colors[hit] = np.clip(default_colors(data, self.type_colors), 0, 1)[order][pos[hit]]
         # a strip per run of kept points of one line, at least two points long
         strips, owner = [], []
         for k, (s, m) in enumerate(zip(starts, sizes)):
@@ -682,9 +683,11 @@ def builtin_elements(*, radius_scale=1.0, type_colors=None, type_radii=None, rad
     particles = ParticlesVis(radius_scale, type_colors, type_radii, radius_preset, oxidation_states, coordination,
                              selection_color)
     particles.enabled = bool(show_atoms)
+    lines = TrajectoryLinesVis(trajectory_width, trajectory_color_by, trajectory_colormap, trajectory_color_range,
+                               trajectory_time_range, trajectory_trail, trajectory_radius)
+    lines.type_colors = type_colors
     out = [particles, BondsVis(bonds, bond_pairs, bond_radius), SurfacesVis(surfaces or None), VectorsVis(vectors),
-           TrajectoryLinesVis(trajectory_width, trajectory_color_by, trajectory_colormap, trajectory_color_range,
-                              trajectory_time_range, trajectory_trail, trajectory_radius)]
+           lines]
     if show_cell:
         out.append(SimulationCellVis(cell_color, cell_width, cell_radius))
     if measurements:

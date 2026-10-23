@@ -362,7 +362,7 @@ Tools:
 | `check_run` | What the loaded run is and whether it can be trusted, from its input and log files (INCAR, OSZICAR, OUTCAR, log.lammps): code, kind (md/relax/static/neb), ensemble, target temperature, MD time step and time per stored frame, then findings: SCF steps that hit NELM, relaxation not converged, the first equilibrated frame of MD, temperature off target, energy drift, LAMMPS warnings/errors, atoms too close. |
 | `render_image` | Render a frame of the pipeline to PNG and return the image so you can inspect it. |
 | `get_view` | The 3D structure view's settings (the same ones the user's notebook sets with view(pipe, ...) and the GUI viewport shows): 'changed' lists what differs from the defaults, 'settings' every current value, 'elements' the same values by visual element (Particles, Bonds, Surfaces, Simulation cell, ...), 'atom_colors' what colors the atoms now (a step's structure-type colors, a color map, paint conditions or the type colors, with each color), 'measured' the values of its distance/angle measurements, 'help' what each means. |
-| `set_view` *cell* | Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style preset, theme, element colors and radii, atoms on/off, bonds on/off, bond table, cell, background, VESTA boundary, polyhedra/isosurface look by surface name (surfaces), distance/angle measurements, key light, atom labels, plugin visuals, vectors, camera (direction, zoom, rotate), frame, and picture options (renderer, quality, legends, scale bar, text). |
+| `set_view` *cell* | Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style preset, theme, element colors and radii, atoms on/off, bonds on/off, bond table, cell, background, VESTA boundary, polyhedra/isosurface look by surface name (surfaces), distance/angle measurements, key light, atom labels, plugin visuals, vectors, the look of trajectory lines (trajectory_*: the lines themselves come from a GenerateTrajectoryLines step, so add_modifier it first), camera (direction, zoom, rotate), frame, and picture options (renderer, quality, legends, scale bar, text). |
 | `list_visuals` | Visual elements: the built-in ones (Particles, Bonds, Surfaces, Vectors, Trajectory lines, Simulation cell; configured through set_view and modifiers) and installed plugins, which add_visual draws on top in every renderer. |
 | `add_visual` *cell* | Draw a plugin visual element (see list_visuals) in the view, with optional constructor parameters: the view setting 'visuals', written to the view cell like set_view. |
 | `remove_visual` *cell* | Stop drawing the visual element at 'index' of the added list (the view cell changes). |
@@ -372,7 +372,7 @@ Tools:
 | `list_styles` | Themes (element colors, background, cell color, radius preset; set_view theme, or render_image for one picture) and the color maps usable as 'cmap' in ColorCoding, GridSlice and VectorVis: common matplotlib names and plugins, each marked whether it reads in grayscale. |
 | `export_file` *cell* | Write frames of the pipeline (after its modifiers) to a file: POSCAR, LAMMPS data/dump, extxyz, CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... as an export_file(...) cell in the notebook, run at once. |
 | `get_script` | The notebook as a standalone Python script (percent format): it reproduces everything the tools did, since they work only through its cells. |
-| `python_api` | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature). |
+| `python_api` | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature, the notebook's cell kinds, show/view/paint, and the modifier plugins installed here). |
 | `list_workflows` | Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs, or folders of VASP/LAMMPS/NEB/phonopy calculations: source 'folders') of a workflow source, newest first: id, kind, formula, state and the path that opens each. |
 | `describe_workflow` | Steps of a workflow (nested; restarts joined), their states, numbers (energies, gaps) and outputs, each with the path load_structure opens. |
 | `list_cells` *notebook* | The cells of the user's notebook: index, id, kind (code, step = one pipe.add(...), view = one show(pipe, ...), markdown), state (new = not run, ok, error, stale = out of date), first line and output kinds. |
@@ -509,6 +509,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `llm.effort` | Effort | `'high'` |
 | `llm.code_cells` | Code in answers | `'insert'` |
 | `llm.run_cells` | Let the AI run cells | `False` |
+| `llm.read_folders` | Folders the AI may read | `''` |
+| `llm.confirm_hosts` | Ask before the AI connects to a host | `True` |
 
 <!-- gui:start -->
 ## Desktop GUI
