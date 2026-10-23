@@ -61,6 +61,15 @@ the end.
   public services.
 - **Landed:** PR #116.
 
+### D21. AI answers link the cells they changed (2026-10-23)
+
+- **Decision:** when the AI writes, edits or runs a cell, its answer in the chat links to that
+  cell (a click shows the notebook tab and lights the cell up). The links come from the tools'
+  results, not from the model's wording, and cells are named as the user counts them (from 1).
+- **Why:** the owner saw an answer saying it changed "the view cell (index 5)" and noted
+  "어느 셀을 수정했는지 링크가 없다" (there is no link to which cell was changed).
+- **Landed:** this PR (`notebook_tools.touched_cells`, the chat's cell links).
+
 ### D6. Structure editing is deferred (2026-10-19)
 
 - **Decision:** no supercell, slab or defect builder until the owner asks.
@@ -205,6 +214,22 @@ the end.
 - **Considered:** two columns of fields (wide, and the help still needs room); a dialog that
   scrolls (as long, only hidden).
 - **Landed:** PR #222 (`gui/plugin_settings.py`, `gui/preferences.py`, `SettingsField.advanced`).
+
+### D21. Computed properties as plugins, with their knowledge as data (2026-10-23)
+
+- **Decision:** material properties beyond the shared primitives become plugins of their own
+  kind, each with a manifest (inputs, outputs and units, method, limits, references, checks, a
+  reference case) that the AI reads to list and explain them; the knowledge part is a milestone
+  for a general plugin about computed properties that other tools can read. Band structure and
+  DOS level stays in core.
+- **Why:** "band정도면 코어에 넣겠는데 좀 더 복잡한 물성이면 나중에 밖에서 유저가 추가해도 좋겠다"
+  (band-level goes into core, more complex properties users may add from outside later), with
+  "ai와 함께쓴다는 걸 고려해서"; the knowledge sharing "일반적인 계산 물성에 대한 지식 플러그인으로
+  마일스톤에 두자" (as a milestone: a knowledge plugin for computed properties in general).
+- **Considered:** keeping per-source recipes with the kernels in core; knowledge as data with the
+  AI writing the code each time; sharing the computing code with other tools (only the knowledge
+  is shared).
+- **Landed:** milestone in docs/ROADMAP.md (Properties).
 
 ## Project
 

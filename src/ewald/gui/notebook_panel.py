@@ -460,6 +460,19 @@ class NotebookView(QtWidgets.QWidget):
             w.set_current(w.cell is self.current)
             w.set_selected(len(sel) > 1 and w.cell in sel)
 
+    def reveal(self, cell) -> bool:
+        """Make ``cell`` current, scroll to it and light it up (a cell link in the AI chat);
+        False when it is not in this notebook."""
+        w = self.widget_for(cell)
+        if w is None:
+            return False
+        if cell.collapsed:
+            w.set_collapsed(False)
+        self.select(cell)
+        self._focus_cell(cell)
+        w.flash()
+        return True
+
     def _focus_cell(self, cell):
         """Give ``cell`` the keyboard in command mode and scroll to it."""
         w = self.widget_for(cell)
