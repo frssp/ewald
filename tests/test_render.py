@@ -60,6 +60,25 @@ def test_flat_style_is_unshaded_with_outlines():
     assert row[inside.max() + 1:inside.max() + 4].sum(-1).min() < 150
 
 
+def test_flat_stick_outline_is_static_geometry(cu_fcc):
+    """The flat bond outline is a static inverted hull drawn by the GPU, not a camera-driven CPU filter
+    (vtkPolyDataSilhouette re-ran on every camera move: about 100 ms per frame at 4000 atoms)."""
+    import pyvista as pv
+
+    from ewald.render import build_scene
+
+    p = pv.Plotter(off_screen=True, window_size=(100, 100))
+    build_scene(p, cu_fcc, atom_style="flat", bonds=2.8)
+    actor = p.actors["bonds:outline"]
+    alg = actor.GetMapper().GetInputAlgorithm()
+    assert alg is None or alg.GetClassName() != "vtkPolyDataSilhouette"
+    assert actor.GetProperty().GetFrontfaceCulling()
+    hull = actor.GetMapper().GetInput().GetBounds()
+    sticks = p.actors["bonds"].GetMapper().GetInput().GetBounds()
+    assert hull[1] - hull[0] > sticks[1] - sticks[0]  # wider than the sticks: a rim shows around them
+    p.close()
+
+
 def test_flat_style_in_vector_output(tmp_path, cu_fcc):
     """atom_style='flat' reaches the vector renderer as its flat shading (no gradient fills)."""
     from ewald.render import render
