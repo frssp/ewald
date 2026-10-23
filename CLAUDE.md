@@ -91,6 +91,7 @@ python benchmarks/readers.py     # native readers vs ASE/OVITO/MDAnalysis/chemfi
 python examples/demo.py          # sample trajectories + figures into demo_out/
 mkdocs build --strict            # the manual (pip install -r docs/requirements.txt); CI runs it
 xvfb-run -a -s "-screen 0 1920x1200x24" python docs/images/make_screenshots.py   # manual screenshots from examples/notebooks
+xvfb-run -a -s "-screen 0 1920x1200x24" python docs/images/make_ai_demo.py      # README Ask AI GIF (scripted model)
 ```
 
 Without a display, VTK rendering aborts the whole pytest process (fatal error, not a test failure),

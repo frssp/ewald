@@ -512,7 +512,13 @@ Docs
   are next edited.
 - GUI screenshots in docs/images are made by docs/images/make_screenshots.py; Help › About and the
   Render workspace have none yet, and a GIF of linked selection (drag on a histogram) would show
-  what a still cannot.
+  what a still cannot. docs/images/ai-demo.gif (Ask AI on a Pt nanoparticle) is recorded by
+  docs/images/make_ai_demo.py with a scripted model; re-record it with a live model once one is
+  available in the recording environment, and when the chat side bar changes visibly.
+- Cell links in the AI chat count cells by position ("cell 3", markdown cells included), while a
+  cell's gutter shows its run count as in Jupyter; after the AI edits and reruns a cell the two
+  numbers differ (seen in the ai-demo.gif recording). Consider showing positions in the gutter or
+  wording the links differently.
 
 ## Ideas backlog
 
