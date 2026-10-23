@@ -545,6 +545,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Structure view right-click menu on a real Mac (two-finger click, Control+click) and Windows:
+  after closing the menu, moving the mouse must not zoom (fixed for the VTK and OpenGL 1.x views,
+  tested with simulated events under xvfb only).
 - Notebook scroll while the AI chat writes cells, on Windows and macOS: with the keyboard on a
   notebook cell, an AI edit must not scroll the notebook (the fix moves the focus out of the cell
   widgets before they are rebuilt; xvfb has no window manager, so focus there is not the real

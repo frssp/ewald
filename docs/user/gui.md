@@ -96,7 +96,8 @@ sphere surface, so spheres stay round at any zoom, overlapping spheres and bonds
 with meshes, and 100 000 atoms rotate smoothly. 3D view › Performance › *Sphere drawing* =
 Mesh brings back triangle spheres (*Sphere resolution*, up to the *Impostor threshold*), and
 *Smooth edges* (on) applies FXAA to outlines.
-A right click (without dragging, which zooms) opens the viewport menu, whose entries follow
+A right click (without dragging, which zooms; on a Mac also a two-finger click or Control+click)
+opens the viewport menu, whose entries follow
 what is loaded and picked. With nothing loaded it offers Open file, Open remote file and the
 examples. With picked atoms it starts with their count and Center view on picked, Select picked
 atoms (an `ExpressionSelection` on their identifiers, so the same atoms stay selected on every

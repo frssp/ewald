@@ -2724,6 +2724,92 @@ def test_viewport_hover_shows_atom_type_index_and_coordinates(app):
     v.close()
 
 
+def test_right_click_menu_and_right_drag_leave_the_view_out_of_zoom(app, monkeypatch):
+    """After a right-click menu (or a right-drag zoom) every mouse move kept zooming: pyvista
+    observes right releases on the interactor style, so VTK skipped the style's own EndDolly."""
+    import sys
+
+    from PySide6 import QtTest
+
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    v = Viewport(ViewStyle())
+    v.resize(400, 300)
+    v.show()
+    v.ensure_view()
+    v.set_data(DataCollection([[2.0, 2.0, 2.0], [6.0, 6.0, 6.0]], ["O", "Ti"], Cell(np.diag([8.0] * 3))))
+    app.processEvents()
+    menus = []
+    v.contextMenuRequested.connect(lambda: menus.append(1))
+    w, style, p = v.plotter.interactor, v.plotter.iren.style, QtCore.QPoint(200, 150)
+    try:
+        QtTest.QTest.mousePress(w, QtCore.Qt.RightButton, QtCore.Qt.NoModifier, p)
+        assert style.GetState() == 4  # VTKIS_DOLLY while the button is down
+        QtTest.QTest.mouseRelease(w, QtCore.Qt.RightButton, QtCore.Qt.NoModifier, p)
+        assert menus == [1] and style.GetState() == 0  # menu shown, zoom over
+        QtTest.QTest.mousePress(w, QtCore.Qt.RightButton, QtCore.Qt.NoModifier, p)
+        QtGui.QCursor.setPos(w.mapToGlobal(p + QtCore.QPoint(0, 40)))  # the click test reads the cursor
+        QtTest.QTest.mouseMove(w, p + QtCore.QPoint(0, 40))
+        QtTest.QTest.mouseRelease(w, QtCore.Qt.RightButton, QtCore.Qt.NoModifier, p + QtCore.QPoint(0, 40))
+        assert menus == [1] and style.GetState() == 0  # a zoom drag, no menu
+        QtGui.QCursor.setPos(w.mapToGlobal(p))
+        # macOS: Control+click (Qt's MetaModifier there) opens the menu instead of picking
+        monkeypatch.setattr(sys, "platform", "darwin")
+        monkeypatch.setattr(QtWidgets.QApplication, "keyboardModifiers",
+                            staticmethod(lambda: QtCore.Qt.MetaModifier))
+        QtTest.QTest.mouseClick(w, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p)
+        assert menus == [1, 1] and style.GetState() == 0 and not v.picks
+    finally:
+        _dispose(v)
+
+
+def test_control_click_is_the_context_click_only_on_macos():
+    from ewald.gui.viewport import control_click
+
+    meta, ctrl = QtCore.Qt.MetaModifier, QtCore.Qt.ControlModifier
+    assert control_click(meta, "darwin") and not control_click(ctrl, "darwin")
+    assert not control_click(meta, "win32") and not control_click(ctrl, "win32")
+    assert not control_click(meta, "linux") and not control_click(QtCore.Qt.NoModifier, "darwin")
+
+
+def test_legacy_gl_view_right_click_and_macos_control_click_open_the_menu(monkeypatch):
+    """The OpenGL 1.x view: a right click (or Control+click on macOS) asks for the menu, a right
+    drag only zooms."""
+    import sys
+    from types import SimpleNamespace
+
+    from ewald.gui.legacy_viewport import GLView
+
+    menus, zooms = [], []
+    viewport = SimpleNamespace(
+        contextMenuRequested=SimpleNamespace(emit=lambda: menus.append(1)), hover_leave=lambda: None,
+        zoom=zooms.append, click=lambda *a, **k: menus.append("pick"),
+        plotter=SimpleNamespace(camera=None))
+    view = SimpleNamespace(viewport=viewport, width=lambda: 400, height=lambda: 300, update=lambda: None)
+
+    def event(kind, button, pos, mods=QtCore.Qt.NoModifier):
+        return QtGui.QMouseEvent(kind, QtCore.QPointF(*pos), QtCore.QPointF(*pos), button, button, mods)
+
+    def click(button, mods=QtCore.Qt.NoModifier, end=(10, 10)):
+        GLView.mousePressEvent(view, event(QtCore.QEvent.MouseButtonPress, button, (10, 10), mods))
+        if end != (10, 10):
+            GLView.mouseMoveEvent(view, event(QtCore.QEvent.MouseMove, button, end, mods))
+        GLView.mouseReleaseEvent(view, event(QtCore.QEvent.MouseButtonRelease, button, end, mods))
+
+    click(QtCore.Qt.RightButton)
+    assert menus == [1] and view._press is None
+    click(QtCore.Qt.RightButton, end=(10, 60))  # a zoom drag, no menu
+    assert menus == [1] and zooms
+    monkeypatch.setattr(sys, "platform", "darwin")
+    click(QtCore.Qt.LeftButton, QtCore.Qt.MetaModifier)
+    assert menus == [1, 1]
+    monkeypatch.setattr(sys, "platform", "win32")
+    click(QtCore.Qt.LeftButton, QtCore.Qt.MetaModifier)
+    assert menus == [1, 1, "pick"]
+
+
 def test_main_window_legacy_gl_viewport(app, pipe, tmp_path, monkeypatch):
     """The OpenGL 1.x viewport (for ssh -X) draws, picks, measures and keeps the camera in sessions."""
     import time
