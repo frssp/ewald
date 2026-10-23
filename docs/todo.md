@@ -10,6 +10,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): the Plots panel draws a lineup
+  table as curves only; the `levels` (VBM, CBM, E_F) and plateau `regions` in its attributes are
+  not drawn yet (needs a GUI mockup first), and the side bar has no "Analysis" row. Only the
+  sim-agent band-offset lineup exists; work function, EOS, formation energy and polycrystalline
+  work function recipes are next. Not yet checked against sim-agent's own finalize result on a
+  real workflow.
 - Opening without running (`python.run_notebooks`, default "never"): covers notebook files only. A
   folder or workflow (`simagent:`, AiiDA, calculation folders) still runs its generated `load(...)`
   notebook at once, since it is ewald's own code; no per-notebook "always run this one" choice yet.
@@ -18,8 +24,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - Several files as one trajectory: restart detection (on Timestep, between files and inside one
   appended dump) works for LAMMPS dumps only; extxyz `Timestep=` comments, H5MD steps and XTC
   steps are not used yet. The join dialog shows file names only, not each file's frames and steps
-  before opening (that needs a scan of every file). A run restarted from step 0 into the same dump
-  counts as a `reset_timestep`, so both copies are kept.
+  before opening (that needs a scan of every file).
 - View tab: a card has no per-card reset to defaults.
 - Atom color rules (`ewald.color_rule`): a step's category colors (structure types) can only be changed
   through the step (`color_by_type=False` plus `paint`), not per category in the Colors card as OVITO's
@@ -51,13 +56,25 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   for k = 12-33, was 0.32-0.71 s with cKDTree + image padding). PTM (0.93 s) and Steinhardt
   (0.95 s) are now dominated by their per-atom kernels (PTM's C++ template matching, the Ylm
   sums), Voronoi (0.72 s) by voro++; those already use every core.
-- Ray tracer: a BVH instead of the uniform grid for large surfaces, adaptive sampling that
-  stops on converged pixels, and the CUDA path.
-- GUI startup: the window paints after 1.7 s (was 2.85 s); the 3D view (pyvistaqt import,
-  ~1.2 s), the Plots canvas, the IPython console and the ~/.ssh/config hosts come after the
-  first paint, so the 3D view is ready at about 2.8 s. Left: `import ewald.gui.app` itself
-  (~0.8 s, numba and the modifier modules) and `_style_changed` at construction (0.1 s).
-  Importing pyvistaqt on a background thread did not help (the GIL serializes it).
+- Ray tracer: the CUDA path. Fine surface meshes now go through a BVH (isosurfaces 1.4-2.2x
+  faster) while atoms, bonds, arrows, glass spheres and polyhedra stay in the uniform grid, where
+  a BVH measured 1.2-2x slower; the binned-SAH build is single-threaded (0.23 s for 271k
+  triangles). Adaptive sampling (`noise_threshold`, Publication 0.01) saves only 1.0-1.5x at 16
+  rays/pixel: its error estimate (variance / n) treats the low-discrepancy AO as random, so it
+  overestimates the noise of shaded pixels; an estimate that knows the R2 sequence (or comparing
+  two half-sample images) would let more pixels stop.
+- GUI startup (2026-10-23, `python benchmarks/startup.py [--cold-jit]`): `MainWindow()` returns
+  after 1.2 s, the 3D view is built at 2.2 s and the console at 2.65 s (was 1.65 / 2.7 / 3.15 s).
+  The numba warm-up thread now starts 1.5 s after the window shows: started in `MainWindow()`
+  it held the GIL while the window built, and with a cold numba cache (fresh install, or after
+  an update touched the kernels) that pushed the usable window from 2.9 s to 6 s. The View tab's
+  cards are built once instead of twice, and picking and the render frame import single VTK
+  modules instead of `import vtk` (0.3 s and ~150 MB on the first click). Left: the pyvistaqt
+  import (~0.9 s, blocks the window right after its first paint; on a thread it does not help,
+  the GIL serializes it), `import ewald.gui.app` (~0.6 s: numba, scipy, the modifier modules),
+  the in-process IPython console (~0.4 s, built when its tab first paints) and peak memory
+  (~700 MB with VTK, Qt, numba and IPython). Not yet measured on Windows, where cold imports
+  are usually slower (run `python benchmarks/startup.py --cold-jit` there).
 - UI theme switch takes 0.5-1 s in `QApplication.setStyleSheet` (one app-wide QSS).
 - Playback: plots whose data does not change are not redrawn; per-frame histograms and
   tables update their bars or lines in place (20k-atom histogram 157 -> 65 ms per frame,
@@ -343,8 +360,6 @@ Formats
 - NEB: warn when an endpoint OUTCAR lists the atoms in another order than the band (the Fe
   vacancy example's 04/OUTCAR does; the reader takes POSCAR atoms, so only other tools are hit),
   and match atoms by position when images carry no identifiers.
-- `style='Points'` in a view cell reportedly left the bonds of an NEB view on the owner's
-  Windows GUI (2026-10-23); not reproduced in the container (bonds go off there), needs a screenshot.
 - NEB: interpolate between images for a smoother movie; `OverlayFrames` copies are extra
   particles, so picking one in the viewport selects a copy, not the real atom.
 - Ray tracer: see-through spheres are tessellated glass (`OverlayFrames` copies, Transparency);
@@ -506,6 +521,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   calculation that finished yesterday" should call `list_workflows` with `formula`, `status` and
   `since`/`until`, then `open_workflow`; days are the PC's local days against sim-agent's
   creation time.
+- GUI startup on the owner's Windows machine: `python benchmarks/startup.py --cold-jit` prints
+  where the seconds go (import, window, 3D view, console, busy stretches, peak memory); compare
+  with the container numbers under Performance. Windows Defender scanning freshly installed
+  packages can make the first start after an update much slower than later ones.
 - Simple (ASE) style on a real GPU (the owner's Windows machine): rotating a few thousand bonded
   atoms should now be as fluid as Ball & stick. The bond outline became a static inverted hull
   (front faces culled) instead of `vtkPolyDataSilhouette`, which re-ran on the CPU on every camera
@@ -552,7 +571,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   changes against; check that the tolerances and the `ANSWER:` convention are fair to real answers.
 - AI features with a real API key (Claude; also OpenAI, Gemini and a local Ollama/LM Studio
   server, which are tested only against mocked servers): `ewald ask` (also `--select`), the GUI AI chat side bar
-  (notebook code in the prompt, code blocks inserted as cells, the notebook cell tools),
+  (notebook code in the prompt, code blocks inserted as cells, the notebook cell tools; with
+  Let the AI run cells on, that the model runs and fixes its cells, also over an OpenAI-compatible gateway),
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › AI › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
   KWallet); the container has none, so only the 0600 file fallback runs for real.

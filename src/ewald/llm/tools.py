@@ -103,7 +103,8 @@ def downsample(table: dict, max_rows: int = 60) -> dict:
 
 #: Tools that change something, each by writing a notebook cell and running it (module docstring).
 CELL_WRITERS = frozenset({"load_structure", "open_workflow", "add_modifier", "remove_modifier", "set_view",
-                          "add_visual", "remove_visual", "add_overlay", "remove_overlay", "export_file"})
+                          "add_visual", "remove_visual", "add_overlay", "remove_overlay", "export_file",
+                          "add_analysis"})
 
 #: Modifiers that run code or take Python objects: only PythonScript, and only with allow_code.
 _CODE_MODIFIERS = {"PythonScript"}
@@ -1006,14 +1007,41 @@ class Toolset:
 
         @T("describe_workflow",
            "Steps of a workflow (nested; restarts joined), their states, numbers (energies, gaps) and outputs, "
-           "each with the path load_structure opens. 'path' is a workflow path such as simagent:1234 or "
-           "aiida:1234, or a folder of calculations (local or host:/path).",
+           "each with the path load_structure opens, and the analyses its plugin offers (add_analysis). 'path' "
+           "is a workflow path such as simagent:1234 or aiida:1234, or a folder of calculations (local or "
+           "host:/path).",
            _obj({"path": {"type": "string"}}, ["path"]))
         def describe_workflow(path):
             self.check_read(path)
             return workflow.describe(str(path)).as_dict()
 
-        for name in ("list_workflows", "describe_workflow", "open_workflow"):
+        @T("add_analysis",
+           "Add one of a workflow's analyses (listed under 'analyses' by describe_workflow, e.g. the potential "
+           "lineup of a band-offset workflow: potential, VBM, CBM and Fermi level on one axis) to the notebook "
+           "and run it. The cells are written by the workflow's plugin, not by you; quote the numbers this "
+           "returns instead of computing or aligning energies yourself.",
+           _obj({"path": {"type": "string", "description": "workflow path, e.g. simagent:1234"},
+                 "name": {"type": "string", "description": "analysis name from describe_workflow"}},
+                ["path", "name"]))
+        def add_analysis(path, name):
+            from .. import workflow
+
+            self.check_read(path)
+            a = workflow.describe(str(path)).analysis(str(name))
+            if not a.available:
+                raise ValueError(f"{a.title or a.name} cannot run on {path}: {a.reason}")
+            nb, cell = None, None
+            for k, source in enumerate(a.cells):
+                nb, cell = self._run_new_cell(source.strip(), f"AI: {a.title or a.name} ({k + 1}/{len(a.cells)})")
+            out = {"analysis": a.name, "cells": len(a.cells), "cell": self._cell_index(nb, cell)}
+            table = nb.namespace.get(a.result) if a.result else None
+            if table is not None:
+                attrs = getattr(table, "attributes", {}) or {}
+                out.update({"table": getattr(table, "name", a.result), "variable": a.result,
+                            **{k: attrs[k] for k in ("energy_axis", "result", "levels") if k in attrs}})
+            return out
+
+        for name in ("list_workflows", "describe_workflow", "open_workflow", "add_analysis"):
             self.tools[name].available = lambda: bool(plugins.workflow_sources())
 
         for plugin in plugins.tools().values():  # @claude_tool plugins; built-in names win

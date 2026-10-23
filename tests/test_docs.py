@@ -38,6 +38,19 @@ def test_every_modifier_is_in_the_user_manual():
     assert not missing, f"add these to docs/user/modifiers.md: {missing}"
 
 
+
+def test_every_ai_tool_and_setting_is_on_the_permissions_page():
+    """docs/user/ai-permissions.md says what the AI may do: every built-in tool (with run_cell and
+    the workflow tools, which are offered only sometimes) and every llm.* setting is on it."""
+    from ewald import plugins, settings
+    from ewald.llm import Toolset
+
+    text = (DOCS / "user" / "ai-permissions.md").read_text(encoding="utf-8")
+    tools = set(Toolset(allow_code=True).tools) - set(plugins.tools())
+    options = {name for name in settings.OPTION if name.startswith("llm.")}
+    missing = sorted(n for n in tools | options if f"`{n}`" not in text)
+    assert not missing, f"add these to docs/user/ai-permissions.md: {missing}"
+
 def test_relative_links_resolve():
     broken = []
     for page in manual_pages():
