@@ -45,6 +45,7 @@ from .. import modifiers as _modifiers
 from ..notebook import Cell, Notebook
 from ..pipeline import Modifier, Pipeline, PythonModifier
 from . import describe as _describe
+from .access import ReadAccess
 
 
 @dataclass
@@ -161,8 +162,15 @@ class Toolset:
         self.figures: list[str] = []
         self.tools: dict[str, Tool] = {}
         self.notebook_access = None
+        #: Which local folders and SSH hosts the read tools may open (:mod:`ewald.llm.access`).
+        self.read_access = ReadAccess()
         self._register()
         self.attach_notebook(notebook if notebook is not None else session_notebook(pipeline))
+
+    def check_read(self, path) -> None:
+        """Raise ``PermissionError`` unless the tools may read ``path`` (``read_access``); plugin
+        tools that open a path the model chose call it first."""
+        self.read_access.check(path)
 
     @property
     def notebook(self) -> Notebook | None:
@@ -410,6 +418,7 @@ class Toolset:
         def load_structure(path, format=None, type_map=None):
             import ewald
 
+            self.check_read(path)
             args = [repr(os.path.expanduser(str(path)))]
             if format:
                 args.append(f"format={str(format)!r}")
@@ -964,6 +973,7 @@ class Toolset:
         def describe_workflow(path):
             from .. import workflow
 
+            self.check_read(path)
             return workflow.describe(str(path)).as_dict()
 
         for name in ("list_workflows", "describe_workflow"):
