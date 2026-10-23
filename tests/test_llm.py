@@ -671,6 +671,63 @@ def test_python_api_cells_run_as_documented(tmp_path, monkeypatch):
     assert "`GrainTracker()`: Track grains." in Toolset().call("python_api").content
 
 
+#: the files the reference's examples load, mapped to shipped example data
+_REFERENCE_FILES = {"POSCAR": ("examples", "POSCAR.SrTiO3"), "XDATCAR": ("examples", "XDATCAR.Si"),
+                    "dump.lammpstrj": ("examples", "Cu_void.lammpstrj"), "CHGCAR": ("examples", "CHGCAR.Si"),
+                    "neb/": ("tests", "vasp/neb")}
+
+
+def _reference_path(name):
+    from pathlib import Path
+
+    from ewald import examples
+
+    where, rel = _REFERENCE_FILES[name]
+    return examples.path(rel) if where == "examples" else Path(__file__).parent / "data" / Path(rel)
+
+
+@pytest.mark.parametrize("index", range(6))
+def test_reference_examples_run(index):
+    """The notebook examples of the API reference the AI reads (the opening one and every recipe) run as
+    written on real files, every cell succeeds and its step and view cells are what the GUI recognizes."""
+    import re
+
+    import matplotlib
+
+    from ewald.llm import reference
+    from ewald.notebook import IMPORTS, Notebook
+
+    matplotlib.use("Agg")
+    if index == 0:
+        cells, name = re.search(r"```python\n(# %%.*?)```", reference.GUIDE, re.S).group(1), "XDATCAR"
+    else:
+        _, name, cells = reference.RECIPES[index - 1]
+    assert f'load("{name}")' in cells
+    cells = cells.replace(f'load("{name}")', f"load({str(_reference_path(name))!r})")
+    nb = Notebook.from_py(f"# %%\nimport numpy as np\n{IMPORTS}\n\n" + cells)
+    assert nb.run_all(), [(c.source, c.outputs) for c in nb.cells if c.state == "error"]
+    for cell in nb.cells:
+        if cell.source.startswith("pipe.add("):
+            assert cell.is_step, cell.source
+
+
+def test_reference_lists_outputs_signatures_and_moved_modifiers():
+    """What a model needs to chain steps: each modifier's outputs and units, grouped by family, exact
+    function signatures read from the code, and where the modifiers that moved to plugins went."""
+    import re
+
+    from ewald.llm.reference import api_reference
+    from ewald.modifiers import MOVED
+
+    ref = api_reference()
+    assert "### Structure identification and local order" in ref and "### Other" not in ref
+    assert "`MeanSquaredDisplacement.diffusion_coefficient`" in ref       # outputs beyond the first paragraph
+    assert "tables['NEB']" in ref and not re.search(r"(?<!`)``(?!`)|:class:|:func:", ref)   # Markdown, not reST
+    assert "- `show(source, table: str | None = None" in ref and "- `paint(data, where, color) -> None`" in ref
+    assert all(f"`{name}`" in ref for name in MOVED) and "ewald-plumed" in ref
+    assert ref.index("## Recipes") < ref.index("## Functions") < ref.index("## Modifiers")
+
+
 def test_notebook_tools_read_insert_edit_move_delete(tmp_path):
     from ewald.notebook import Notebook
 
