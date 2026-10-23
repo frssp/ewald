@@ -393,7 +393,8 @@ Plugins and AI
   streaming for any provider; a native Gemini or Bedrock/Vertex client would need a `Chat`
   subclass (today Gemini goes through its OpenAI-compatible endpoint). Keys are per provider, so two
   saved connections of one provider with different keys share one keychain entry. Preferences › AI › Extra headers is a
-  one-line field, so a long header list is hard to read.
+  one-line field, so a long header list is hard to read and easy to cut short (it happened with a
+  real gateway, 2026-10-23); a multi-line editor would help.
 - Plugin manifests, phase 2 (from the VS Code comparison): contributions declared in
   `ewald-plugin.toml` (`[[readers]]`, `[[modifiers]]`, ... with `python = "module:object"`)
   registered lazily and imported on first use (`@panel` widgets are already built on first open,

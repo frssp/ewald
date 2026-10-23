@@ -9,6 +9,8 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- Ask AI › Test connection shows the server's reason for an API error (a 422's missing header,
+  for example), not only the status code.
 - Ask AI, OpenAI-compatible provider: *API key header* (send the key as `api-key` for Azure
   OpenAI or a gateway's own header), `{uuid}` in *Extra headers* for a new id per request, and
   *Test connection* falls back to a chat request on servers without a models endpoint.
