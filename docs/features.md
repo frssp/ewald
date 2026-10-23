@@ -372,7 +372,7 @@ Tools:
 | `list_styles` | Themes (element colors, background, cell color, radius preset; set_view theme, or render_image for one picture) and the color maps usable as 'cmap' in ColorCoding, GridSlice and VectorVis: common matplotlib names and plugins, each marked whether it reads in grayscale. |
 | `export_file` *cell* | Write frames of the pipeline (after its modifiers) to a file: POSCAR, LAMMPS data/dump, extxyz, CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... as an export_file(...) cell in the notebook, run at once. |
 | `get_script` | The notebook as a standalone Python script (percent format): it reproduces everything the tools did, since they work only through its cells. |
-| `python_api` | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature). |
+| `python_api` | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature, the notebook's cell kinds, show/view/paint, and the modifier plugins installed here). |
 | `list_workflows` | Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs, or folders of VASP/LAMMPS/NEB/phonopy calculations: source 'folders') of a workflow source, newest first: id, kind, formula, state and the path that opens each. |
 | `describe_workflow` | Steps of a workflow (nested; restarts joined), their states, numbers (energies, gaps) and outputs, each with the path load_structure opens. |
 | `list_cells` *notebook* | The cells of the user's notebook: index, id, kind (code, step = one pipe.add(...), view = one show(pipe, ...), markdown), state (new = not run, ok, error, stale = out of date), first line and output kinds. |
