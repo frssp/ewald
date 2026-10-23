@@ -160,6 +160,7 @@ def test_phonons_are_a_built_in_group_that_can_be_switched_off(tmp_path, monkeyp
     from ewald import plugins
 
     monkeypatch.setenv("EWALD_CONFIG_DIR", str(tmp_path))
+    plugins.load_plugins(force=True)                  # whatever registry an earlier test left
     assert plugins.installed()["phonons"].kind == "built-in"
     assert plugins.find_reader(DATA / "band.yaml").name == "phonopy-yaml"
     assert plugins.find_reader(DATA / "band.yaml", format="phonopy").name == "phonopy-yaml"     # the old plugin's format name
