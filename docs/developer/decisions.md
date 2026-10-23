@@ -194,7 +194,7 @@ the end.
   it costs nothing: "성능에 영향없으면 B가 좋아" (if it does not affect performance, B is good).
 - **Considered:** a slim bar without a card at the right edge (recommended), a horizontal bar in
   the bottom right corner, a framed matplotlib-style bar.
-- **Landed:** PR (this one; `colorbars.py`, `overlays.ColorRamp`, `gui/viewport.py`).
+- **Landed:** PR #231 (`colorbars.py`, `overlays.ColorRamp`, `gui/viewport.py`).
 
 ## Project
 
