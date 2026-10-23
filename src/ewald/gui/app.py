@@ -92,7 +92,6 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self._frame_pending = False
         self._render_worker = None
         self.runner = ComputeRunner(self)  # pipeline evaluation on a worker thread
-        warm_up_jit()  # numba kernels load while the window builds, not on the first file
         self.runner.finished.connect(self._computed)
         self.runner.busyChanged.connect(self._compute_busy)
         self.style = ViewStyle()
@@ -180,7 +179,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.display.styleChanged.connect(self._style_changed)
         self.display.modifierRequested.connect(lambda m: self.panel.add_modifier(m))
         self.display.cameraRequested.connect(self.write_camera)
-        self.display.refresh()
+        # its cards are built once, by apply_settings below (each build takes about 0.1 s)
 
         # --- panel (below the 3D view): console / inspector / plots / log
         self.inspector = DataInspector()
@@ -261,6 +260,12 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
     def showEvent(self, event):
         super().showEvent(event)
         self._check_opengl_once()
+        if not getattr(self, "_jit_scheduled", False):
+            # numba kernels load before the first file, but only once the window, the 3D view
+            # and the console are up: the warm-up thread holds the GIL for most of its run
+            # (seconds when numba's cache is cold) and would hold back the window's first paint
+            self._jit_scheduled = True
+            QtCore.QTimer.singleShot(1500, warm_up_jit)
 
     def _check_opengl_once(self):
         # the GL context exists once the window shows and the 3D view is built

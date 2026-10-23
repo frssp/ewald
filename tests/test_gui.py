@@ -4472,6 +4472,10 @@ def test_plugin_settings_page_dialog(app, monkeypatch):
         dlg = w.plugins_panel.edit_settings(item, exec_=False)
         assert dlg.widgets["url"].text() == "http://old" and dlg.widgets["verify"].isChecked()
         assert dlg.widgets["key"].text() == "" and dlg.widgets["key"].placeholderText() == "not set"
+        assert dlg.widgets["url"].toolTip() == "Where it runs"          # help as a tooltip, not a row
+        assert dlg.advanced.isHidden()                  # "mode" is advanced and at its default: folded
+        dlg.advanced_button.click()
+        assert not dlg.advanced.isHidden() and dlg.advanced.isAncestorOf(dlg.widgets["mode"])
         dlg.widgets["url"].setText("ftp://nope")
         dlg.buttons.accepted.emit()
         assert dlg.isVisible() and "starts with http" in dlg.status.text()      # stays open to fix it
@@ -4529,6 +4533,10 @@ def test_plugin_settings_page_in_preferences_refuses_bad_values(app, monkeypatch
     dlg = prefs.PreferencesDialog(settings.Settings())
     entry = dlg.plugin_pages["Demo service"]
     assert entry["widgets"]["key"].placeholderText() == "not set"
+    fold = next(b for b in entry["card"].parent().findChildren(QtWidgets.QToolButton) if b.text().startswith("Advanced"))
+    assert entry["rows"]["mode"].parent().isHidden()        # the advanced card starts folded
+    fold.click()
+    assert not entry["rows"]["mode"].parent().isHidden()
     assert dlg.apply()                                    # nothing changed: save() is not called
     entry["widgets"]["url"].setText("ftp://nope")
     dlg.show_page("General")
