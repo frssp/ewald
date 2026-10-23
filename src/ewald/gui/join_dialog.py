@@ -6,10 +6,16 @@ import os
 from PySide6 import QtCore, QtGui, QtWidgets
 
 JOINS = {
-    "timestep": ("Segments of one restarted run: join on Timestep",
+    "timestep": ("Segments of one restarted run: join on Timestep (recommended)",
                  "Where a later file starts at a step an earlier one already reached, the later file "
                  "wins and the earlier frames from that step on are left out (LAMMPS dumps; VASP runs "
-                 "are appended). A dump a restarted run appended to is joined the same way."),
+                 "are appended). A dump a restarted run appended to is joined the same way; a step that "
+                 "goes back to the start inside a file (reset_timestep 0) starts a new count, nothing cut."),
+    "restart": ("Join on Timestep, every step going back is a restart",
+                "As above, but inside a file every step going back counts as a restart, also back to "
+                "step 0 (a run restarted from its beginning into the same dump)."),
+    "files": ("Join on Timestep only between files",
+              "Later files win from the step they start at, but each file is kept whole inside."),
     "concat": ("Keep every frame of every file",
                "The files are read one after the other with nothing left out."),
 }

@@ -909,6 +909,9 @@ def test_join_files_dialog_orders_files_and_picks_join(app):
     d.join_buttons["concat"].setChecked(True)
     assert d.join() == "concat" and "nothing left out" in d.hint.text()
     assert JoinFilesDialog(paths, join="concat").join() == "concat"
+    assert list(d.join_buttons) == ["timestep", "restart", "files", "concat"]
+    d.join_buttons["restart"].setChecked(True)
+    assert d.join() == "restart" and "step 0" in d.hint.text()
     d.close()
 
 

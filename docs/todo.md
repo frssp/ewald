@@ -24,8 +24,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - Several files as one trajectory: restart detection (on Timestep, between files and inside one
   appended dump) works for LAMMPS dumps only; extxyz `Timestep=` comments, H5MD steps and XTC
   steps are not used yet. The join dialog shows file names only, not each file's frames and steps
-  before opening (that needs a scan of every file). A run restarted from step 0 into the same dump
-  counts as a `reset_timestep`, so both copies are kept.
+  before opening (that needs a scan of every file).
 - View tab: a card has no per-card reset to defaults.
 - Atom color rules (`ewald.color_rule`): a step's category colors (structure types) can only be changed
   through the step (`color_by_type=False` plus `paint`), not per category in the Colors card as OVITO's

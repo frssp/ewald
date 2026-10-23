@@ -242,3 +242,17 @@ def test_remote_restart_inside_one_dump(server):
         pipe = load(f"hpc:/data/{name}")
         assert steps(pipe) == [0, 10, 20, 30, 40], name
         assert pipe.source.restarts == [(f"hpc:/data/{name}", 4, 20)]
+
+
+def test_join_modes_for_steps_going_back_inside_a_file(tmp_path):
+    # a run restarted from step 0 into the same dump looks like reset_timestep: kept by default
+    path = appended(tmp_path / "dump.lammpstrj", [0, 10, 20], [0, 10, 20, 30])
+    assert steps(load(path)) == [0, 10, 20, 0, 10, 20, 30]
+    with pytest.warns(UserWarning, match="left out"):   # every step going back is a restart
+        pipe = load(path, join="restart")
+    assert steps(pipe) == [0, 10, 20, 30] and pipe.source.restarts == [(path, 3, 0)]
+    restarted = appended(tmp_path / "restarted.lammpstrj", [0, 10, 20, 30], [20, 30, 40])
+    b = dump(tmp_path / "next.lammpstrj", [40, 50])
+    pipe = load([restarted, b], join="files")   # only between files: the inside stays whole
+    assert steps(pipe) == [0, 10, 20, 30, 20, 30, 40, 50] and pipe.source.restarts == []
+    assert steps(load([restarted, b])) == [0, 10, 20, 30, 40, 50]
