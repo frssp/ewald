@@ -591,6 +591,27 @@ def test_notebook_tools_run_cell_with_allow_code():
     assert "run_cell" not in [d["name"] for d in Toolset(None).definitions()]   # not without allow_code
 
 
+def test_notebook_tools_run_the_cells_they_write_when_allowed():
+    from ewald.llm.notebook_tools import NotebookAccess
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py("# %%\nx = 6\n")
+    allowed = [True]
+    ts = Toolset(None, notebook=NotebookAccess(nb, can_run=lambda: allowed[0]))
+    r = ts.call("insert_cell", {"source": "print(x * 7)"})       # x = 6 has not run: NameError
+    assert r.is_error and r.content["run"]["state"] == "error" and nb.cells[-1].state == "error"
+    ts.call("run_cell", {"index": 0})
+    r = ts.call("edit_cell", {"index": -1, "old_text": "7", "new_text": "7 + 0"})
+    assert not r.is_error and r.content["run"]["outputs"] == [{"kind": "text", "text": "42\n"}]
+    r = ts.call("insert_cell", {"source": "y = 1", "run": False})
+    assert "run" not in r and nb.cells[-1].state == "new"
+    ts.call("insert_cell", {"source": "# Notes", "kind": "markdown"})   # markdown never runs
+    allowed[0] = False                                             # the user unticks the preference
+    r = ts.call("insert_cell", {"source": "z = 2"})
+    assert "run" not in r and "not run" in r["note"] and nb.cells[-1].state == "new"
+    assert "z" not in nb.namespace
+
+
 def test_agent_stops_when_cancelled_and_forgets_the_question(cu_fcc):
     import threading
 

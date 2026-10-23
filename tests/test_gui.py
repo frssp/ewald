@@ -1582,6 +1582,15 @@ def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
     assert view.notebook.cells[-1].source.strip() == "pipe.add(CoordinationAnalysis(cutoff=3.0))"
     assert w.ask_panel.messages[-1].code_blocks[0].insert_button.text() == "✓ Inserted"
     assert view.undo() == "Insert cell" and len(view.notebook.cells) == n
+    w.settings["llm.run_cells"] = True                     # Let the AI run cells: the inserted code runs too
+    w.ask_panel.ask("Plot sin(x)")
+    _wait(app, w.ask_panel)
+    for _ in range(400):
+        app.processEvents()
+        if view.notebook.cells[-1].state not in ("new", "running") and not view.running:
+            break
+        time.sleep(0.01)
+    assert len(view.notebook.cells) == n + 1 and view.notebook.cells[-1].state == "ok"
     w.close()
 
 
@@ -1641,6 +1650,14 @@ def test_ai_chat_tells_claude_about_the_notebook(app, monkeypatch):
     s["llm.code_cells"] = "button"
     ask_panel.agent_from_settings(lambda: s, notebook=True)(None, None)
     assert "Insert as notebook cell" in made[2]["system"]
+    assert ask_panel.RUN_CELLS_NOTE[False] in made[0]["system"] and "(not run)" in made[0]["system"]
+    s["llm.code_cells"] = "insert"
+    s["llm.run_cells"] = True                              # Preferences › AI › Let the AI run cells
+    factory = ask_panel.agent_from_settings(lambda: s, notebook=True)
+    factory(None, None)
+    assert ask_panel.RUN_CELLS_NOTE[True] in made[3]["system"] and "(and run)" in made[3]["system"]
+    s["llm.run_cells"] = False                             # read again before every question
+    assert ask_panel.RUN_CELLS_NOTE[False] in factory.system()
 
 
 def test_viewport_draws_vector_arrows(app):

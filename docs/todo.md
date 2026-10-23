@@ -533,7 +533,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   changes against; check that the tolerances and the `ANSWER:` convention are fair to real answers.
 - AI features with a real API key (Claude; also OpenAI, Gemini and a local Ollama/LM Studio
   server, which are tested only against mocked servers): `ewald ask` (also `--select`), the GUI AI chat side bar
-  (notebook code in the prompt, code blocks inserted as cells, the notebook cell tools),
+  (notebook code in the prompt, code blocks inserted as cells, the notebook cell tools; with
+  Let the AI run cells on, that the model runs and fixes its cells, also over an OpenAI-compatible gateway),
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › AI › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
   KWallet); the container has none, so only the 0600 file fallback runs for real.

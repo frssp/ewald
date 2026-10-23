@@ -46,13 +46,22 @@ starts with the notebook's code, that is its current state. {code_cells} Write e
 block as one complete cell that runs in that namespace; prefer `pipe.add(...)` steps over ad-hoc \
 loops. When the user asks you to \
 change the notebook itself, use the cell tools: list_cells and read_cell (sources and outputs), \
-insert_cell, edit_cell (step parameters through params), move_cell and delete_cell. Cells you \
-write are not run until the user runs them, unless run_cell is offered; add_modifier, set_view, \
-load_structure and export_file write their own cell and run it. Say which cells you changed."""
+insert_cell, edit_cell (step parameters through params), move_cell and delete_cell. {run_cells} \
+add_modifier, set_view, load_structure and export_file write their own cell and run it. Say which \
+cells you changed."""
+
+#: What the note above says about running cells (Preferences › AI › Let the AI run cells).
+RUN_CELLS_NOTE = {
+    True: "The user lets you run cells: insert_cell and edit_cell run the code cell they write at once "
+          "and return its outputs, and run_cell runs any cell, so run the cells you write, read their "
+          "outputs and fix errors yourself instead of asking the user to run them.",
+    False: "The user has not let you run cells: cells you write wait, marked not run, until the user "
+           "runs them, so tell the user which cells to run.",
+}
 
 #: How the note above describes the ```python blocks of an answer (Preferences › AI › Code in answers).
 CODE_CELLS_NOTE = {
-    "insert": "Every ```python block of your answer is added to the notebook as a new cell (not run), in "
+    "insert": "Every ```python block of your answer is added to the notebook as a new cell ({run}), in "
               "order, so put only code meant for the notebook in ```python blocks (other code, such as "
               "a one-line illustration, in a ```text block), and do not also insert_cell the same code.",
     "button": "Every ```python block of your answer gets an \"Insert as notebook cell\" button.",
@@ -82,9 +91,17 @@ def agent_from_settings(get_settings: Callable[[], object], notebook: bool = Fal
         if notebook:
             from ..llm.agent import SYSTEM_PROMPT
 
-            mode = code_cells_mode(get_settings())
-            kwargs["system"] = SYSTEM_PROMPT + NOTEBOOK_NOTE.format(code_cells=CODE_CELLS_NOTE[mode])
+            kwargs["system"] = system()
         return _default_agent(pipeline, on_event, **kwargs)
+
+    def system() -> str:
+        """The system prompt for the settings now (asked again before every question)."""
+        from ..llm.agent import SYSTEM_PROMPT
+
+        settings = get_settings()
+        run = run_cells(settings)
+        code = CODE_CELLS_NOTE[code_cells_mode(settings)].format(run="and run" if run else "not run")
+        return SYSTEM_PROMPT + NOTEBOOK_NOTE.format(code_cells=code, run_cells=RUN_CELLS_NOTE[run])
 
     def assistant() -> str:
         from ..llm import providers
@@ -95,7 +112,17 @@ def agent_from_settings(get_settings: Callable[[], object], notebook: bool = Fal
             return "AI"
 
     factory.assistant = assistant
+    if notebook:
+        factory.system = system
     return factory
+
+
+def run_cells(settings) -> bool:
+    """Preferences › AI › Let the AI run cells."""
+    try:
+        return bool(settings["llm.run_cells"])
+    except Exception:
+        return False
 
 
 def code_cells_mode(settings) -> str:
@@ -307,7 +334,8 @@ class AskPanel(QtWidgets.QWidget):
     (``insertRequested(code)``). ``notebook_access`` (a :class:`ewald.llm.notebook_tools.NotebookAccess`)
     gives the agent's toolset the notebook cell tools. ``auto_insert()``, when it returns True, puts
     the Python blocks of each answer into the notebook at once (unless the model wrote cells with
-    the cell tools in that answer). ``errors()``, when given, returns the errors of the notebook's
+    the cell tools in that answer); when ``run_inserted()`` also returns True they are run as well
+    (``runRequested(code)``: insert and run). ``errors()``, when given, returns the errors of the notebook's
     failed cells (or None); they go with a question whenever they changed. ``view()``, when given,
     describes what the 3D view shows now (how the atoms are colored); it goes with a question whenever
     it changed. While an answer is on its way the send button is Stop (also Esc).
@@ -315,17 +343,19 @@ class AskPanel(QtWidgets.QWidget):
 
     pipelineChanged = QtCore.Signal()
     insertRequested = QtCore.Signal(str)
+    runRequested = QtCore.Signal(str)
 
     def __init__(self, context: Callable[[], tuple], agent_factory=_default_agent, parent=None,
                  notebook: Callable[[], str | None] | None = None, notebook_access=None,
                  auto_insert: Callable[[], bool] | None = None, errors: Callable[[], str | None] | None = None,
-                 view: Callable[[], str | None] | None = None):
+                 view: Callable[[], str | None] | None = None, run_inserted: Callable[[], bool] | None = None):
         super().__init__(parent, objectName="chatPanel")
         self.context = context
         self.agent_factory = agent_factory
         self.notebook = notebook
         self.notebook_access = notebook_access
         self.auto_insert = auto_insert
+        self.run_inserted = run_inserted
         self.errors = errors
         self.view = view
         self._sent_errors: str | None = None
@@ -542,6 +572,9 @@ class AskPanel(QtWidgets.QWidget):
             toolset = getattr(self.agent, "toolset", None)
             if self.notebook_access is not None and hasattr(toolset, "attach_notebook"):
                 toolset.attach_notebook(self.notebook_access)
+        system = getattr(self.agent_factory, "system", None)
+        if system is not None and hasattr(self.agent, "system"):
+            self.agent.system = system()   # Preferences › AI may have changed since the chat started
         indices = [int(i) for i in indices]
         what = f"{len(indices)} picked atom{'s' if len(indices) != 1 else ''} · frame {frame}" if indices \
             else f"frame {frame}" if pipeline is not None else "no structure"
@@ -632,8 +665,9 @@ class AskPanel(QtWidgets.QWidget):
             self.snippets += [b.code for b in blocks]
             wrote_cells = any(t in ("insert_cell", "edit_cell") for t in self._tools_used)
             if blocks and not wrote_cells and self.auto_insert is not None and self.auto_insert():
+                run = self.run_inserted is not None and self.run_inserted()
                 for b in blocks:
-                    self.insertRequested.emit(b.code)
+                    (self.runRequested if run else self.insertRequested).emit(b.code)
                     b.mark_inserted()
         self._finish()
 

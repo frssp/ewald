@@ -523,6 +523,7 @@ class NotebookView(QtWidgets.QWidget):
             w.editor.setFocus()
             QtCore.QTimer.singleShot(0, w, lambda: self.scroll.ensureWidgetVisible(w))
         self.history.commit("Insert cell")
+        return cell
         self.titleChanged.emit()
         return cell
 
