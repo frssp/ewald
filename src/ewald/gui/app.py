@@ -129,9 +129,10 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         bridge = NotebookBridge(self)
         self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings, notebook=True,
                                                                          confirm_host=bridge.confirm_host),
-                                  notebook=self._notebook_code, notebook_access=bridge,
+                                  notebook=self._notebook_code, notebook_access=lambda nb: NotebookBridge(self, nb),
                                   auto_insert=lambda: code_cells_mode(self.settings) == "insert",
-                                  errors=self._notebook_errors, view=self._view_summary)
+                                  errors=self._notebook_errors, view=self._view_summary,
+                                  current=lambda: getattr(getattr(self, "panel", None), "notebook", None))
         self.ask_panel.pipelineChanged.connect(self._after_claude)
         self.ask_panel.insertRequested.connect(self._insert_claude_cell)
         # --- left: notebook tabs (the pipeline as Python cells); right: display settings

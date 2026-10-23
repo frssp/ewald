@@ -276,7 +276,10 @@ class FilesMixin:
         return state
 
     def _notebook_switched(self, old, new):
-        """Each notebook tab keeps its own render settings: the page follows the current tab."""
+        """Each notebook tab keeps its own render settings and AI chat: the page and the chat side bar
+        follow the current tab."""
+        if getattr(self, "ask_panel", None) is not None:
+            self.ask_panel.sync(alive=[v.notebook for v in self.panel.views()])
         if getattr(self, "render_page", None) is None:
             return
         if old is not None:

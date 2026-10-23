@@ -139,8 +139,16 @@ notebook. It reads like a
 chat app: your messages in bubbles on the right, the answers under the assistant's name (Claude, Gemini, ...) on the left,
 the tools it ran as small chips (*Running …*, then *Used …*), and code blocks as framed code with
 *Copy* and *+ Insert as cell*. Enter sends, Shift+Enter starts a new line, and the suggestions
-on an empty chat send a first question. While an answer is on its way the send button turns
-into Stop (also Esc): the chat is free again at once and the stopped question is forgotten.
+on an empty chat send a first question. Answers appear while they arrive; text the model wrote
+before running a tool stays, muted, above that tool's chip (Preferences › AI › **Stream answers**
+off shows each answer once it is complete, for a server that cannot stream). While an answer is on
+its way the send button turns into Stop (also Esc): the chat is free again at once, what arrived so
+far stays readable, and the stopped question is forgotten.
+Each notebook tab has its own chat: switching tabs switches the chat, an answer still on its way
+finishes in its own tab's chat (and its cell tools act on that notebook), and *New chat* starts
+over in the current tab only. Saving the notebook as `.ewd` saves its chat; opening the file shows
+it again, and the next question sends it to the model as an earlier conversation (for a restricted
+notebook, only after you trust it).
 Each question also sends the current notebook's code and the errors of cells that failed when
 they last ran (each only when it changed since the last question). Python blocks of an
 answer go into the notebook at once as new code cells after the current one, without running

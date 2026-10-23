@@ -300,6 +300,9 @@ def _shell_classes():
         def _showtraceback(self, etype, evalue, stb):
             sink = current()
             text = self.InteractiveTB.stb2text(stb)
+            hint = _tool_hint(evalue)
+            if hint:
+                text, evalue = f"{text}\n{hint}", f"{evalue}. {hint}"
             if sink is None:
                 print(text)
                 return
@@ -434,3 +437,17 @@ def _figure_png(fig):
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi="figure", bbox_inches="tight")
     return buf.getvalue()
+
+
+# AI chat tools whose names models sometimes write into cells as if they were functions: the cell code
+AI_TOOL_CODE = {"set_view": "view(pipe, ...)", "get_view": "pipe.view", "add_modifier": "pipe.add(Modifier(...))",
+                "load_structure": "pipe = load(path)", "render_image": "pipe.render(...)",
+                "list_modifiers": "pipe.modifiers"}
+
+
+def _tool_hint(exc) -> str | None:
+    """For ``NameError: name 'set_view' is not defined``: what to write in a cell instead."""
+    name = getattr(exc, "name", None)
+    if not isinstance(exc, NameError) or name not in AI_TOOL_CODE:
+        return None
+    return f"{name} is a tool of the AI chat, not a Python function; in a notebook cell write {AI_TOOL_CODE[name]}"
