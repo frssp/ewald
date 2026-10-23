@@ -9,6 +9,7 @@ each cell, readable in Jupyter, VS Code and on GitHub. ewald keeps what Jupyter 
     analysis.ewd
     ├── notebook.ipynb   code, outputs and metadata (opens in Jupyter once unzipped)
     ├── manifest.json    ewald version, data files (path, size, fingerprint), plugins, viewer state
+    ├── chat.json        the AI chat beside the notebook (its messages as text; when there is one)
     ├── figures/         every view cell as SVG and PNG, with the plotted data as CSV
     ├── data/            data files up to ``data_limit_mb`` (larger ones stay links)
     └── plugins/         plugin files the notebook uses, from the plugin folder
@@ -37,6 +38,8 @@ from . import fileops
 FORMAT = 1
 NOTEBOOK_NAME = "notebook.ipynb"
 MANIFEST_NAME = "manifest.json"
+CHAT_NAME = "chat.json"
+CHAT_ROLES = ("user", "assistant", "note")
 _KERNEL = {"display_name": "Python 3", "language": "python", "name": "python3"}
 
 
@@ -257,6 +260,8 @@ def save_ewd(nb, path, *, figures: bool = True, data_limit_mb: float = 50.0, plu
             manifest["figures"] = _write_figures(nb, z)
         if plugins:
             manifest["plugins"] = _write_plugins(nb, z, plugin_registry)
+        if getattr(nb, "chat", None):
+            z.writestr(CHAT_NAME, json.dumps({"messages": chat_messages(nb.chat)}, indent=1, ensure_ascii=False))
         z.writestr(MANIFEST_NAME, json.dumps(manifest, indent=1, ensure_ascii=False))
     fileops.replace(tmp, path)
     return manifest
@@ -366,6 +371,12 @@ def load_ewd(path, cls=None, trusted: bool | None = None, **kwargs):
         if int(manifest.get("ewald_notebook", 0)) > FORMAT:
             raise ValueError(f"{path} was written by a newer ewald (notebook format {manifest['ewald_notebook']})")
         nb = from_ipynb(z.read(NOTEBOOK_NAME).decode("utf-8"), cls=cls, path=path, **kwargs)
+        chat_warning = []
+        if CHAT_NAME in names:
+            try:
+                nb.chat = chat_messages(json.loads(z.read(CHAT_NAME).decode("utf-8")).get("messages"))
+            except (ValueError, AttributeError):
+                chat_warning = ["the saved AI chat could not be read"]
         bundle = bundle_dir_for(path)
         if not bundle.exists():
             tmp = bundle.with_name(bundle.name + ".part")
@@ -380,7 +391,7 @@ def load_ewd(path, cls=None, trusted: bool | None = None, **kwargs):
     nb.bundle_dir = str(bundle)
     nb.manifest = manifest
     nb.state = dict(manifest.get("state") or nb.state)
-    nb.warnings = check_data(manifest, os.path.dirname(path), bundle)
+    nb.warnings = check_data(manifest, os.path.dirname(path), bundle) + chat_warning
     nb.warnings += [f"needs the pip package {e['requirement']} for {', '.join(e.get('modifiers', [])) or e['id']} "
                     f"(pip install {e['requirement']})" for e in missing_packages(manifest)]
     nb.data_dirs = [str(bundle / "data")]
@@ -388,6 +399,27 @@ def load_ewd(path, cls=None, trusted: bool | None = None, **kwargs):
     if trusted:
         load_bundled_plugins(nb)
     return nb
+
+
+def chat_messages(raw) -> list[dict]:
+    """The messages of a saved AI chat, checked: ``role`` (user, assistant or note), ``text`` and the
+    optional ``meta``, ``author``, ``tools`` (names of the tools the answer used) and ``error``.
+    Anything else in a file someone sent is dropped; the chat is text the AI side bar shows, never code."""
+    out = []
+    for m in raw if isinstance(raw, list) else []:
+        if not isinstance(m, dict) or m.get("role") not in CHAT_ROLES or not isinstance(m.get("text"), str):
+            continue
+        entry = {"role": m["role"], "text": m["text"]}
+        for key in ("meta", "author"):
+            if isinstance(m.get(key), str) and m[key]:
+                entry[key] = m[key]
+        tools = [t for t in m.get("tools") or [] if isinstance(t, str)] if isinstance(m.get("tools"), list) else []
+        if tools:
+            entry["tools"] = tools
+        if m.get("error") is True:
+            entry["error"] = True
+        out.append(entry)
+    return out
 
 
 def check_data(manifest: dict, base: str, bundle: Path) -> list[str]:

@@ -1124,7 +1124,7 @@ def test_window_asks_before_the_ai_connects_to_a_host(app, monkeypatch):
     try:
         answers = iter([QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No])
         monkeypatch.setattr(QtWidgets.QMessageBox, "exec", lambda self: next(answers))
-        bridge = w.ask_panel.notebook_access
+        bridge = w.ask_panel.notebook_access(w.panel.notebook)   # each tab's chat has its own bridge
         assert bridge.confirm_host("cluster") is True
         assert bridge.confirm_host("other") is False
     finally:
@@ -3962,6 +3962,123 @@ def test_ai_chat_stop_button_and_failed_cells_in_the_question(app, pipe):
     assert "no longer show errors" in prompts[2]
     for worker in panel._stopped:
         worker.wait(5000)
+    w.close()
+
+
+def test_ai_chat_streams_the_answer(app, pipe):
+    """A streaming agent's text shows while it arrives; the text of a round that went on with a tool
+    stays above the tool's chip, and the final answer replaces the streamed one."""
+    import threading
+    import time
+
+    from PySide6 import QtWidgets
+
+    from ewald.gui.ask_panel import AskPanel
+
+    go = threading.Event()
+
+    class StreamingAgent(_FakeAgent):
+        def ask(self, question):
+            for piece in ("Let me ", "look."):
+                self.on_event("text", piece)
+            self.on_event("tool_call", {"name": "describe_frame", "input": {}})
+            self.on_event("text", "It is ")
+            go.wait(5)                                 # the rest of the answer is still on its way
+            self.on_event("text", "fcc.")
+            return "It is fcc."
+
+    panel = AskPanel(lambda: (pipe, 0, []), agent_factory=lambda p, ev: StreamingAgent(p, ev))
+    panel.ask("What is it?")
+    answer = panel.messages[-1]
+    t = time.time()
+    while (answer.live is None or answer.live.text() != "It is ") and time.time() - t < 5:
+        app.processEvents()
+    assert answer.live.text() == "It is " and panel.busy()   # streamed so far, drawn as it came
+    narration = answer.findChildren(QtWidgets.QLabel, "chatNarration")
+    assert [n.text() for n in narration] == ["Let me look."]
+    go.set()
+    _wait(app, panel)
+    assert answer.live is None and answer.text == "It is fcc." and answer.tools == ["describe_frame"]
+    texts = [lb.text() for lb in answer.findChildren(QtWidgets.QLabel, "chatText")]
+    assert texts == ["It is fcc."] and answer.to_dict()["tools"] == ["describe_frame"]
+
+
+def test_ai_chat_per_notebook_tab(app, pipe):
+    """Each notebook tab has its own chat: switching tabs shows that tab's messages, an answer still
+    on its way lands in its own tab's chat, the messages are kept on the notebook (saved in .ewd), and
+    a notebook opened with a saved chat shows it and sends it with the next question, unless the
+    notebook is not trusted."""
+    import threading
+    import time
+
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+
+    release, asked = threading.Event(), []
+
+    class TabAgent(_FakeAgent):
+        def ask(self, question):
+            asked.append(question)
+            if question.endswith("slow"):
+                release.wait(5)
+            return f"answer to {question.splitlines()[-1]}"
+
+    w = MainWindow(pipe)
+    w.settings["llm.code_cells"] = "button"
+    panel = w.ask_panel
+    panel.agent_factory = lambda p, ev: TabAgent(p, ev)
+    first = w.panel.view
+    panel.ask("about the first")
+    _wait(app, panel)
+    assert [m.text for m in panel.messages] == ["about the first", "answer to about the first"]
+    assert [m["role"] for m in first.notebook.chat] == ["user", "assistant"]
+
+    second = w.panel.new_notebook()
+    app.processEvents()
+    assert panel.conversation.key is second.notebook and panel.messages == [] and not panel.welcome.isHidden()
+    panel.ask("slow")
+    assert panel.busy()
+    w.panel.tabs.setCurrentWidget(first)               # the answer keeps coming in the background
+    app.processEvents()
+    assert [m.text for m in panel.messages][-1] == "answer to about the first" and not panel.busy()
+    assert panel.ask_button.toolTip() == "Send (Enter)"
+    release.set()
+    t = time.time()
+    while second.notebook.chat[-1:] != [{"role": "assistant", "text": "answer to slow", "author": "AI"}] \
+            and time.time() - t < 5:
+        app.processEvents()
+    assert second.notebook.chat[-1]["text"] == "answer to slow" and len(first.notebook.chat) == 2
+    w.panel.tabs.setCurrentWidget(second)
+    app.processEvents()
+    assert [m.text for m in panel.messages] == ["slow", "answer to slow"]
+    panel.reset()                                      # New chat empties this tab's chat only
+    assert second.notebook.chat == [] and len(first.notebook.chat) == 2
+
+    saved = [{"role": "user", "text": "What is the CN?"},
+             {"role": "assistant", "text": "**12** for all atoms.", "author": "Claude", "tools": ["describe_frame"]}]
+    for restricted in (True, False):
+        nb = Notebook.from_py("# %%\nx = 1\n", name=f"saved {restricted}")
+        nb.chat, nb.restricted = [dict(m) for m in saved], restricted
+        view = w.panel.add_notebook(nb)
+        w.panel.tabs.setCurrentWidget(view)
+        app.processEvents()
+        msgs = panel.messages
+        assert [m.text for m in msgs[:2]] == ["What is the CN?", "**12** for all atoms."]
+        assert msgs[1].tools == ["describe_frame"] and msgs[2].role == "note"
+        assert ("once the notebook is trusted" in msgs[2].text) == restricted
+        panel.ask("And the bonds?")
+        _wait(app, panel)
+        assert ("<earlier_chat>" in asked[-1]) == (not restricted)
+        if not restricted:
+            assert "User: What is the CN?" in asked[-1] and "You (after running describe_frame): **12**" in asked[-1]
+            panel.ask("More")                          # the agent has it now: not sent twice
+            _wait(app, panel)
+            assert "<earlier_chat>" not in asked[-1]
+        assert nb.chat[:2] == saved and nb.chat[-1]["role"] == "assistant"
+    n = len(panel._conversations)
+    w.panel.close_tab(w.panel.tabs.indexOf(view))     # a closed tab's chat is forgotten
+    app.processEvents()
+    assert len(panel._conversations) == n - 1 and panel.conversation.key is not nb
     w.close()
 
 

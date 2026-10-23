@@ -11,6 +11,10 @@ given in Anthropic's shape (``name``, ``description``, ``input_schema``; what
 * :class:`OpenAIChat` - the Chat Completions API of OpenAI and every server that copies it
   (Google Gemini's OpenAI endpoint, Ollama, LM Studio, vLLM, OpenRouter, ...).
 
+``send(on_text=...)`` streams: the answer's text reaches ``on_text`` piece by piece as it arrives
+(the AI chat side bar shows it growing), and the :class:`Reply` is the same as without streaming.
+A client without streaming (a test fake, a server that refuses ``stream``) answers in one piece.
+
 A provider plugin (``@ai_provider``) brings its own subclass when neither fits.
 """
 from __future__ import annotations
@@ -77,9 +81,14 @@ class Chat:
     def user(self, text: str, images: list[bytes] | None = None):
         raise NotImplementedError
 
-    def send(self, tool_choice: str | None = None) -> Reply:
-        """Send the conversation; ``tool_choice`` forces a call to that tool."""
+    def send(self, tool_choice: str | None = None, on_text: Callable[[str], None] | None = None) -> Reply:
+        """Send the conversation; ``tool_choice`` forces a call to that tool. ``on_text`` gets the
+        answer's text as it streams in (an exception it raises, such as a Stop, ends the request);
+        ``options["stream"] = False`` sends it in one piece."""
         raise NotImplementedError
+
+    def streams(self, on_text) -> bool:
+        return on_text is not None and self.options.get("stream", True) is not False
 
     def tool_results(self, results: list[tuple[ToolCall, object]]):
         """Answer the calls of the last reply: ``(call, ToolResult or str)`` pairs, or
@@ -127,10 +136,18 @@ class AnthropicChat(Chat):
             params.update(betas=[self.FALLBACK_BETA], fallbacks="default")
         return params
 
-    def send(self, tool_choice=None):
+    def send(self, tool_choice=None, on_text=None):
         params = self.request(tool_choice)
         api = self.client.beta.messages if self.options.get("beta", True) else self.client.messages
-        response = api.create(**params)
+        if self.streams(on_text) and hasattr(api, "stream"):
+            with api.stream(**params) as stream:
+                for piece in stream.text_stream:
+                    on_text(piece)
+                response = stream.get_final_message()
+        else:
+            response = api.create(**params)
+            if on_text is not None:
+                on_text("".join(b.text for b in response.content if getattr(b, "type", None) == "text"))
         # keep the full content (thinking blocks included) unchanged
         self.messages.append({"role": "assistant", "content": response.content})
         calls = [ToolCall(b.id, b.name, dict(b.input or {})) for b in response.content
@@ -211,26 +228,82 @@ class OpenAIChat(Chat):
             params["extra_headers"] = fill_headers(self.options["header_templates"])
         return params
 
-    def send(self, tool_choice=None):
-        response = self.client.chat.completions.create(**self.request(tool_choice))
+    #: HTTP statuses of a server that does not take ``stream``: the request goes again unstreamed
+    NO_STREAM = (400, 404, 405, 415, 422, 501)
+
+    def send(self, tool_choice=None, on_text=None):
+        params = self.request(tool_choice)
+        create = self.client.chat.completions.create
+        if self.streams(on_text):
+            try:
+                chunks = create(**params, stream=True)
+            except Exception as exc:
+                if getattr(exc, "status_code", None) not in self.NO_STREAM:
+                    raise
+                chunks = None
+            if chunks is not None and not hasattr(chunks, "choices"):
+                try:
+                    return self._reply(*self._collect(chunks, on_text))
+                finally:
+                    getattr(chunks, "close", lambda: None)()
+            if chunks is None:
+                self.options["stream"] = False   # this server answers in one piece from now on
+                params = self.request(tool_choice)   # (new {uuid} headers for the new request)
+        else:
+            chunks = None
+        response = chunks if chunks is not None else create(**params)   # (a client that ignores stream)
         choice = response.choices[0]
         msg = choice.message
-        text = msg.content or ""
+        calls = [(tc.id, tc.function.name, tc.function.arguments) for tc in getattr(msg, "tool_calls", None) or []]
+        if on_text is not None and msg.content:
+            on_text(msg.content)
+        return self._reply(msg.content or "", calls, choice.finish_reason, getattr(msg, "refusal", None))
+
+    @staticmethod
+    def _collect(chunks, on_text):
+        """(text, calls, finish_reason, refusal) of a streamed answer; tool calls come in pieces
+        (``index``, then the id and name once, the arguments in parts)."""
+        text, refusal, slots, finish = [], [], {}, None
+        for chunk in chunks:
+            if not getattr(chunk, "choices", None):
+                continue   # e.g. a closing usage chunk
+            choice = chunk.choices[0]
+            delta = choice.delta
+            if getattr(delta, "content", None):
+                text.append(delta.content)
+                on_text(delta.content)
+            if getattr(delta, "refusal", None):
+                refusal.append(delta.refusal)
+            for tc in getattr(delta, "tool_calls", None) or []:
+                index = tc.index if getattr(tc, "index", None) is not None else len(slots)
+                slot = slots.setdefault(index, ["", "", ""])
+                slot[0] = slot[0] or (tc.id or "")
+                fn = getattr(tc, "function", None)
+                if fn is not None:
+                    slot[1] = slot[1] or (fn.name or "")
+                    slot[2] += fn.arguments or ""
+            finish = choice.finish_reason or finish
+        calls = [tuple(slots[i]) for i in sorted(slots)]
+        return "".join(text), calls, finish, "".join(refusal) or None
+
+    def _reply(self, text, raw_calls, finish, refusal) -> Reply:
+        """Record the assistant's turn and make its :class:`Reply`; ``raw_calls`` are ``(id, name,
+        arguments JSON)``."""
         calls = []
-        for tc in getattr(msg, "tool_calls", None) or []:
+        for i, (cid, name, arguments) in enumerate(raw_calls):
             try:
-                args = json.loads(tc.function.arguments or "{}")
+                args = json.loads(arguments or "{}")
             except (TypeError, json.JSONDecodeError):
                 args = {}
-            calls.append(ToolCall(tc.id, tc.function.name, args if isinstance(args, dict) else {}))
+            calls.append(ToolCall(cid or f"call_{i}", name, args if isinstance(args, dict) else {}))
         entry = {"role": "assistant", "content": text or None}
         if calls:
             entry["tool_calls"] = [{"id": c.id, "type": "function",
                                     "function": {"name": c.name, "arguments": json.dumps(c.input)}} for c in calls]
         self.messages.append(entry)
-        if getattr(msg, "refusal", None) or choice.finish_reason == "content_filter":
-            return Reply(text or getattr(msg, "refusal", "") or "", [], "refusal")
-        stop = "tool_use" if calls else {"length": "max_tokens"}.get(choice.finish_reason, "end")
+        if refusal or finish == "content_filter":
+            return Reply(text or refusal or "", [], "refusal")
+        stop = "tool_use" if calls else {"length": "max_tokens"}.get(finish, "end")
         return Reply(text, calls, stop)
 
     def tool_results(self, results):
