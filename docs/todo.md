@@ -7,6 +7,10 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 "In progress" when it merges.
 
 ## In progress
+- Menu UX review (2026-10-23): small fixes in this PR; the larger reorganization (menu bar
+  regrouping, File › Open recent, "View"/"Theme" naming, Insert › Analysis vs Step › Analysis,
+  Preferences pages, mnemonics and native shortcut text in tooltips) waits for the owner's pick
+  from the review report.
 
 
 ## Next

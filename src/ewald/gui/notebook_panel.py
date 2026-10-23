@@ -322,6 +322,9 @@ class NotebookView(QtWidgets.QWidget):
                                      toolTip="Add an analysis or modification step (plugin steps under Plugins)")
         self.step_menu = QtWidgets.QMenu(step)
         self.step_menu.aboutToShow.connect(self._fill_step_menu)
+        # + Step › Plugins, rebuilt each time + Step opens; Insert › Plugin step and the command
+        # palette fill it too, also before + Step was ever opened
+        self.plugin_menu = QtWidgets.QMenu("Plugins", self)
         step.setMenu(self.step_menu)
         view = QtWidgets.QPushButton("+ View", objectName="addCell",
                                      toolTip="A plot of a data table (g(r), XRD, DOS, bands, thermo) or a histogram")
