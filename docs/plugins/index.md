@@ -44,16 +44,17 @@ from the Plugins panel or with pip:
 
 | Plugin | Package | Adds |
 |---|---|---|
-| `phonopy` | `ewald-phonopy` | phonopy band/mesh/qpoints.yaml and force-constant readers, VASP IBRION=5-8 OUTCARs, `PhononMode` ([Phonon modes](../user/phonons.md)) |
+| `phonopy` | `ewald-phonopy` | phonopy's input with forces or force constants (`phonopy-fc`), `from_phonopy` for `phonopy.Phonopy` objects; band.yaml, VASP IBRION=5-8 OUTCARs and `PhononMode` are built in ([Phonon modes](../user/phonons.md)) |
 | `plumed` | `ewald-plumed` | `Plumed`, `LoadColvar`, `FreeEnergySurface`, the `ewald_plumed.plumed` library and two AI tools ([PLUMED](../user/plumed.md)) |
 
 ```bash
 pip install 'git+https://github.com/frssp/ewald-plugins#subdirectory=packages/ewald-phonopy'
 ```
 
-They were part of ewald before; scripts and sessions written then keep working once the plugin
-is installed (`from ewald.modifiers import PhononMode`, `import ewald.plumed`), and without it
-the import fails with an `ImportError` that says how to install it.
+PLUMED support was part of ewald before; scripts and sessions written then keep working once the
+plugin is installed (`from ewald.modifiers import Plumed`, `import ewald.plumed`), and without it
+the import fails with an `ImportError` that says how to install it. Phonon modes went the other
+way: they moved back into ewald on 2026-10-23, and the plugin keeps only what needs phonopy.
 
 ## Two ways to ship a plugin
 

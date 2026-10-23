@@ -2,8 +2,8 @@
 
 The structures are textbook crystals built with ASE; the trajectories, forces and the charge
 density are synthetic (seeded random displacements, harmonic forces, Gaussians on atoms and
-bond centres), so the files stay small and need no simulation code. Phonon examples ship with the
-ewald-phonopy plugin (``ewald_phonopy.EXAMPLES``).
+bond centres), so the files stay small and need no simulation code. A phonon example (Cu3Au
+band.yaml) ships with the ewald-phonopy plugin (``ewald_phonopy.EXAMPLES``).
 """
 from __future__ import annotations
 

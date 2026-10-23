@@ -11,8 +11,7 @@ the bond-length distribution, and a figure for a paper. The finished notebook is
 File › Open example › `POSCAR.SrTiO3` (a 2x2x2 supercell, 40 atoms). The toolbar above the view
 has VESTA's directions: *a*, *b*, *c* look along the cell vectors, *a\**, *b\**, *c\** along the
 reciprocal ones, and the arrows rotate in 90° steps. Then add a step (`SymmetryAnalysis` uses
-spglib, which the `[gui]` install leaves out: `pip install "ewald[symmetry]"` first, or
-`pip install spglib`):
+spglib, which ewald installs):
 
 ```python
 pipe.add(SymmetryAnalysis(symprec=0.01))
@@ -42,9 +41,20 @@ pipe.add(CoordinationPolyhedra(center_types=["Ti"], transparency=0.25))
 ```
 
 `mode="covalent"` would bond every pair shorter than 1.15 times the sum of covalent radii instead,
-as VESTA does. To see whole octahedra on the cell faces, tick *Boundary* on the Cell card of
-the View tab (below the 3D view) and set the range to -0.05 to 1.05: the periodic images are drawn and the bonds
-and polyhedra completed, without changing the data.
+as VESTA does.
+
+How the structure is drawn is a view cell. To see whole octahedra on the cell faces, tick *Boundary*
+on the Cell card of the View tab (below the 3D view) and set the range to -0.05 to 1.05: the periodic
+images are drawn and the bonds and polyhedra completed, without changing the data. The GUI writes
+what you change in the View tab into the notebook, here together with VESTA's colors, the viewing
+direction and an element legend:
+
+```python
+view(pipe, theme="VESTA", boundary=(-0.05, 1.05), direction=(3, 1.4, 1), type_legend=True)
+```
+
+Every display setting works this way (`View.help()` lists them: style, colors, radii, bonds,
+replicas, camera, labels, ...), so the notebook alone reproduces the picture.
 
 ## 3. Bond lengths
 
@@ -60,13 +70,15 @@ peak selects the atoms of those bonds.
 ## 4. The figure
 
 The **Render** button opens the render workspace: renderer, size presets for journal columns,
-resolution, background and overlays, with a preview. Its *Python for this figure* panel shows the
-call that makes the same image, so the figure can live in the notebook:
+resolution, background and overlays, with a preview. Its *Python for this figure* panel shows a
+script that makes the same image. In the notebook the look is already in the view cell, so the figure
+only needs the output settings:
 
 ```python
-pipe.render("srtio3.png", size=(1200, 900), direction=(3, 1.4, 1), theme="VESTA", radius_scale=0.5,
-            boundary=(-0.05, 1.05), type_legend=True, renderer="raytrace", quality="draft")
+pipe.render("srtio3.png", size=(1200, 900), renderer="raytrace", quality="draft")
 ```
+
+Keywords given to `render` override the view for that one picture (`theme="CPK"`, `direction="z"`).
 
 `quality="draft"` renders quickly while you adjust things; leave it out for the final figure
 (`"publication"`, the default: 16 rays per pixel, ambient occlusion and shadows). `renderer="vector"`

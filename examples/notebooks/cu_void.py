@@ -19,10 +19,9 @@ pipe.add(CoordinationAnalysis(cutoff=3.0))
 # %% style: surface atoms, every frame
 @pipe.add
 def style(frame, data):
-    cn = data["Coordination"]
-    paint(data, cn < 12, "#C8551F")           # surface atoms
-    paint(data, cn < 9, "gold")               # edges and corners of the void
-    hide(data, data["Position"][:, 0] > 8)    # cut the block open
+    paint(data, "Coordination < 12", "#C8551F")   # surface atoms
+    paint(data, "Coordination < 9", "gold")       # void edges and corners
+    hide(data, "Position.X > 8")                  # cut the block open
 
 # %%
 show(pipe, histogram="Coordination")

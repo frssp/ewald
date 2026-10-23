@@ -511,15 +511,9 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         """Show phonon mode (qpoint, band), e.g. clicked in the band plot, and start playback."""
         if self.pipeline is None:
             return
-        from .. import plugins
-
-        found = plugins.modifiers().get("PhononMode")   # the ewald-phonopy plugin
-        if found is None:
-            self.message(mods.moved_hint("PhononMode"), error=True)
-            return
-        mod = next((m for m in self.pipeline.modifiers if isinstance(m, found.cls)), None)
+        mod = next((m for m in self.pipeline.modifiers if isinstance(m, mods.PhononMode)), None)
         if mod is None:
-            mod = found.cls()
+            mod = mods.PhononMode()
             self.pipeline.modifiers.append(mod)
         mod.enabled = True
         mod.qpoint, mod.band = int(qpoint), int(band)
