@@ -111,7 +111,7 @@ the end.
   for a restart).
 - **Why:** "플러그인 중 재시작이 필요한 것이 있으면 재시작을 추천해줘" (if a plugin needs a
   restart, recommend restarting).
-- **Landed:** PR (Plugins side bar restart bar, `plugin_catalog.restart_reason`).
+- **Landed:** PR #229 (Plugins side bar restart bar, `plugin_catalog.restart_reason`).
 
 ### D12. Reuse before writing (2026-10-18)
 
