@@ -48,7 +48,10 @@ loops. When the user asks you to \
 change the notebook itself, use the cell tools: list_cells and read_cell (sources and outputs), \
 insert_cell, edit_cell (step parameters through params), move_cell and delete_cell. Cells you \
 write are not run until the user runs them, unless run_cell is offered; add_modifier, set_view, \
-load_structure and export_file write their own cell and run it. Say which cells you changed."""
+load_structure and export_file write their own cell and run it. Tool names are not Python: never \
+put set_view(...), add_modifier(...) or another tool call in a ```python block or a cell; call the tool, \
+or write the cell's own code (view(pipe, ...), pipe.add(Modifier(...)), pipe = load(path)). Say which \
+cells you changed, and when something is already drawn, say which cell does it."""
 
 #: How the note above describes the ```python blocks of an answer (Preferences › AI › Code in answers).
 CODE_CELLS_NOTE = {
