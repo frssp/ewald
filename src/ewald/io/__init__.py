@@ -33,7 +33,11 @@ class FileSource:
     (default) treats them as segments of one run that was restarted, so where a later file starts
     at a step an earlier one already reached, the later file wins and the earlier frames from that
     step on are dropped (LAMMPS dumps; formats whose steps restart in every run, such as XDATCAR
-    and OUTCAR, are simply appended). ``"concat"`` keeps every frame of every file.
+    and OUTCAR, are simply appended). A LAMMPS dump that a restarted run appended to
+    (``dump_modify append yes``: the steps go back inside the file) is joined the same way, also
+    when it is the only file (see :attr:`restarts`); a step counter reset inside a file
+    (``reset_timestep 0``) starts a new count instead, so nothing is cut there. ``"concat"``
+    keeps every frame of every file.
 
     ``thermo`` adds per-step results (see :mod:`ewald.io.thermo`): ``"auto"`` (default) picks
     up an OSZICAR next to an XDATCAR and a log.lammps next to a LAMMPS dump, a path or list
@@ -84,26 +88,50 @@ class FileSource:
         return paths
 
     def _build_index(self, warn: bool = False) -> list[tuple[FrameReader, int]]:
-        """(reader, frame) of every frame shown. With ``join="timestep"`` each file is cut where
-        a later one starts (a restart from an earlier step), found by bisection on the steps."""
-        keep = [len(r) for r in self.readers]
-        starts = [r.timestep(0) if len(r) and self.join == "timestep" else None for r in self.readers]
+        """(reader, frame) of every frame shown. With ``join="timestep"`` the files, and the runs
+        appended to one LAMMPS dump (:meth:`FrameReader.run_starts`), are pieces of one run: each
+        piece is cut where a later one starts (a restart from an earlier step), found by
+        bisection on the steps. Inside one file, a piece that goes back to or below the first
+        step of the piece before it (``reset_timestep 0`` after a minimization) starts a new
+        count instead: nothing before it is cut."""
+        by_step = self.join == "timestep"
+        pieces = []  # (reader, first frame, end frame)
+        for r in self.readers:
+            bounds = [0, *(r.run_starts() if by_step else []), len(r)]
+            pieces += [(r, a, b) for a, b in zip(bounds, bounds[1:]) if b > a] or [(r, 0, 0)]
+        starts = [r.timestep(a) if b > a and by_step else None for r, a, b in pieces]
         known = [s for s in starts if s is not None]
         if len(known) > 1 and len(set(known)) == 1:  # all start at the same step: not one run, append them
             starts = [None] * len(starts)
-        cutoff = None  # the earliest step a later file starts at
-        for k in range(len(self.readers) - 1, -1, -1):
+        reset = [k > 0 and a > 0 and None not in (starts[k], starts[k - 1]) and starts[k] <= starts[k - 1]
+                 for k, (_, a, _) in enumerate(pieces)]
+        self._restarts = [(self.paths[self.readers.index(r)], a, starts[k]) for k, (r, a, _) in enumerate(pieces)
+                          if a > 0 and starts[k] is not None and not reset[k]]
+        stops = [b for _, _, b in pieces]
+        cutoff = None  # the earliest step a later piece starts at
+        for k in range(len(pieces) - 1, -1, -1):
             if starts[k] is None:
                 continue
+            r, a, b = pieces[k]
             if cutoff is not None:
-                keep[k] = _frames_before(self.readers[k], cutoff)
-                if keep[k] == 0 and warn:
+                stops[k] = _frames_before(r, cutoff, a, b)
+                if stops[k] == a and warn:
                     import warnings
 
-                    warnings.warn(f"{self.paths[k]}: every frame is at or after Timestep {cutoff}, where a later "
-                                  "file starts, so it is left out (pass join='concat' to keep it)", stacklevel=4)
-            cutoff = starts[k] if cutoff is None else min(cutoff, starts[k])
-        return [(r, i) for r, n in zip(self.readers, keep) for i in range(n)]
+                    where = self.paths[self.readers.index(r)]
+                    if (a, b) != (0, len(r)):
+                        where += f" (frames {a}-{b - 1})"
+                    warnings.warn(f"{where}: every frame is at or after Timestep {cutoff}, where a later "
+                                  "run starts, so it is left out (pass join='concat' to keep it)", stacklevel=4)
+            cutoff = None if reset[k] else starts[k] if cutoff is None else min(cutoff, starts[k])
+        return [(r, i) for (r, a, _), stop in zip(pieces, stops) for i in range(a, stop)]
+
+    @property
+    def restarts(self) -> list[tuple[str, int, int]]:
+        """``(file, frame, Timestep)`` where a restarted run went on writing into the same file
+        (LAMMPS ``dump_modify append yes``); with ``join="timestep"`` the frames of the earlier
+        run from that step on are left out. Empty with ``join="concat"``."""
+        return list(self._restarts)
 
     @property
     def segments(self) -> list[tuple[str, int, int]]:
@@ -233,10 +261,11 @@ def _is_list(path) -> bool:
     return isinstance(path, (list, tuple))
 
 
-def _frames_before(reader: FrameReader, step: int) -> int:
-    """How many leading frames of ``reader`` have a Timestep below ``step`` (steps increase in a file)."""
-    lo, hi = 0, len(reader)
-    if hi == 0 or (reader.timestep(hi - 1) or 0) < step:
+def _frames_before(reader: FrameReader, step: int, lo: int = 0, hi: int | None = None) -> int:
+    """The end of the leading frames in ``lo:hi`` of ``reader`` whose Timestep is below ``step``
+    (steps increase within one run)."""
+    hi = len(reader) if hi is None else hi
+    if hi == lo or (reader.timestep(hi - 1) or 0) < step:
         return hi
     while lo < hi:
         mid = (lo + hi) // 2

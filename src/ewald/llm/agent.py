@@ -65,14 +65,16 @@ class Agent:
     (``beta.messages.create`` for Claude, ``chat.completions.create`` for the others) to test
     without network access. ``fallbacks=True`` enables Claude's server-side refusal fallback
     (another model continues if the request is declined). ``effort`` applies where the provider
-    has such a setting.
+    has such a setting. ``stream=True`` streams the answers: their text reaches ``on_event`` as
+    ``("text", piece)`` events while it arrives (a ``"tool_call"`` event ends the text of a round
+    that goes on with tools), and a Stop ends the request on the wire at once.
     """
 
     def __init__(self, toolset: Toolset | None = None, *, client=None, model: str | None = None,
                  provider=None, base_url: str | None = None,
                  effort: str = "high", max_tokens: int = 16000, max_turns: int = 30,
                  system: str = SYSTEM_PROMPT, fallbacks: bool = True,
-                 on_event: Callable[[str, object], None] | None = None):
+                 on_event: Callable[[str, object], None] | None = None, stream: bool = False):
         from .providers import get
 
         self.toolset = toolset or Toolset()
@@ -87,6 +89,7 @@ class Agent:
         self.system = system
         self.fallbacks = fallbacks
         self.on_event = on_event or (lambda kind, payload: None)
+        self.stream = stream
         self.chat = self.provider.chat(client, self.model, system=system, tools=self.toolset.definitions,
                                        max_tokens=max_tokens, effort=effort, fallbacks=fallbacks)
         self._lock = threading.Lock()
@@ -123,7 +126,8 @@ class Agent:
         """Send ``prompt`` (optionally with PNG images), run tools until the model answers, return its text.
 
         ``cancel`` (a :class:`threading.Event`) stops the exchange when set, from another thread: the
-        request on the wire still finishes, then no further tool runs or request goes out,
+        request on the wire still finishes (a streamed one ends at its next piece), then no further
+        tool runs or request goes out,
         :class:`Cancelled` is raised and the conversation is as it was before this question.
         Questions from several threads take turns."""
         with self._lock:
@@ -139,11 +143,16 @@ class Agent:
             if cancel is not None and cancel.is_set():
                 raise Cancelled("stopped")
 
+        def text(piece):
+            check()
+            if piece:
+                self.on_event("text", piece)
+
         check()
         self._sync()
         self.chat.user(prompt, images)
         for _ in range(self.max_turns):
-            reply = self.chat.send()
+            reply = self.chat.send(on_text=text) if self.stream else self.chat.send()
             check()
             if reply.stop == "refusal":
                 return "[request declined by the model]"

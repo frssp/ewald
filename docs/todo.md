@@ -15,11 +15,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   notebook at once, since it is ewald's own code; no per-notebook "always run this one" choice yet.
 - Open dialog: `log.lammps` and `OSZICAR` are read only as companions of a trajectory, not
   opened on their own.
-- Several files as one trajectory: File › Open and drops join several data files in natural order
-  only (no dialog to reorder them or pick `join="concat"`), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
-  appended to after a restart (`dump_modify append yes`). Restart detection needs a Timestep per
-  frame, which only the LAMMPS dump reader gives cheaply (extxyz `Timestep=` comments, H5MD
-  steps and XTC steps are not used yet).
+- Several files as one trajectory: restart detection (on Timestep, between files and inside one
+  appended dump) works for LAMMPS dumps only; extxyz `Timestep=` comments, H5MD steps and XTC
+  steps are not used yet. The join dialog shows file names only, not each file's frames and steps
+  before opening (that needs a scan of every file). A run restarted from step 0 into the same dump
+  counts as a `reset_timestep`, so both copies are kept.
 - View tab: a card has no per-card reset to defaults.
 - Atom color rules (`ewald.color_rule`): a step's category colors (structure types) can only be changed
   through the step (`color_by_type=False` plus `paint`), not per category in the Colors card as OVITO's
@@ -84,9 +84,11 @@ GUI
   sharing the energy axis, once the panel layout can place plots side by side); a scatter view
   of two particle properties where a brushed box selects atoms; the `show()` script path draws
   DOS/bands like the GUI (it plots the raw table columns now).
-- AI chat side bar (`gui/ask_panel.py`, activity bar): stream answers as they arrive (now the
-  whole answer at once), keep chats per notebook tab and save them in `.ewd`,
-  show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
+- AI chat side bar (`gui/ask_panel.py`, activity bar): chats are per notebook tab and saved only in
+  `.ewd` (not `.py`/`.ipynb`), and a chat changes no "unsaved" mark, so closing without saving
+  loses it; a saved chat reaches a new model as a text transcript (no tool results or images);
+  a streamed answer is drawn as Markdown a few times a second, so an unclosed code fence shows as
+  text until it closes; `ewald ask` and the MCP server do not stream; show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
   edit or regenerate a sent message. The notebook cell tools (`llm/notebook_tools.py`) could
   highlight the cells the AI changed and show a diff to accept or undo; `ewald ask` and the MCP
   server could take a notebook (`--notebook analysis.py`) and save it back.
@@ -397,8 +399,9 @@ Plugins and AI
 
 - AI providers (`llm/providers.py`): the OpenAI-compatible provider never sends images (no
   per-server vision switch yet); Effort reaches only Claude and OpenAI reasoning models; one
-  `llm.model` setting for all providers (switching the provider in Preferences clears it); no
-  streaming for any provider; a native Gemini or Bedrock/Vertex client would need a `Chat`
+  `llm.model` setting for all providers (switching the provider in Preferences clears it);
+  streaming falls back by itself only for Chat Completions servers (a Claude gateway that cannot
+  stream needs Preferences › AI › Stream answers off); a native Gemini or Bedrock/Vertex client would need a `Chat`
   subclass (today Gemini goes through its OpenAI-compatible endpoint). Keys are per provider, so two
   saved connections of one provider with different keys share one keychain entry. Preferences › AI › Extra headers is a
   one-line field, so a long header list is hard to read and easy to cut short (it happened with a
@@ -517,7 +520,7 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   dialog with a name typed without extension; settings with non-ASCII text on Korean Windows;
   per-monitor DPI at 125/150 %; Windows Credential Manager; `ewald api > llms.txt` in cmd and
   PowerShell. The same list on a real Mac.
-- Resize handles between panels (dotted grip on a 1 px rule, accent on hover, 7 px hit area)
+- Resize handles between panels (a 1 px rule thickening into a pill grip, accent on hover, 7 px hit area)
   on Windows at 125/150 % and on a Retina Mac: the grip uses the `@2x` PNG and stays sharp, and
   the split cursor shows over the whole handle.
 - Plugins side bar on Windows and macOS: install ewald-phonopy from the default index (uv and

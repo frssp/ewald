@@ -887,6 +887,45 @@ def test_dropping_a_neb_folder_opens_the_band(app, vasp_dir):
     w.close()
 
 
+def test_join_files_dialog_orders_files_and_picks_join(app):
+    from ewald.gui.join_dialog import JoinFilesDialog
+
+    paths = [os.path.join("data", "run2", "dump.lammpstrj"), os.path.join("data", "run10", "dump.lammpstrj"),
+             os.path.join("data", "run1", "dump.lammpstrj")]
+    d = JoinFilesDialog(paths)
+    assert [d.list.item(i).text() for i in range(3)] == [os.path.join(f"run{n}", "dump.lammpstrj") for n in (2, 10, 1)]
+    assert d.list.item(0).toolTip() == paths[0] and d.join() == "timestep"
+    d.sort_natural()
+    assert d.paths() == [paths[2], paths[0], paths[1]]
+    d.list.setCurrentRow(2)
+    d.move(-1)
+    assert d.paths() == [paths[2], paths[1], paths[0]] and d.list.currentRow() == 1
+    d.move(5)   # past the end: nothing moves
+    d.list.setCurrentRow(0)
+    d.move(-1)
+    assert d.paths() == [paths[2], paths[1], paths[0]]
+    d.reverse()
+    assert d.paths() == [paths[0], paths[1], paths[2]]
+    d.join_buttons["concat"].setChecked(True)
+    assert d.join() == "concat" and "nothing left out" in d.hint.text()
+    assert JoinFilesDialog(paths, join="concat").join() == "concat"
+    d.close()
+
+
+def test_join_dialog_names_files_from_any_platform():
+    import ntpath
+    import posixpath
+
+    from ewald.gui.join_dialog import display_names
+
+    assert display_names(["/a/run1/dump", "/a/run2/dump"], posixpath) == ["run1/dump", "run2/dump"]
+    assert display_names(["C:\\md\\run1\\XDATCAR", "c:\\md\\run2\\XDATCAR"], ntpath) == \
+        ["run1\\XDATCAR", "run2\\XDATCAR"]
+    across = ["C:\\md\\XDATCAR", "D:\\md\\XDATCAR"]   # no common folder across drives
+    assert display_names(across, ntpath) == across
+    assert display_names(["/x/dump.200", "/x/dump.1000"], posixpath) == ["dump.200", "dump.1000"]
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_open_several_files_as_one_trajectory(app, tmp_path, monkeypatch):
     """File › Open with several data files: one trajectory in natural order, as load([...])."""
@@ -908,13 +947,33 @@ def test_open_several_files_as_one_trajectory(app, tmp_path, monkeypatch):
     chosen = [str(tmp_path / "dump.1000"), str(tmp_path / "dump.200")]
     monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileNames", lambda *a, **k: (chosen, ""))
     monkeypatch.setattr(QtWidgets.QInputDialog, "getText", lambda *a, **k: ("", False))
+    asked = []
+
+    def ask_join(parent, paths, join="timestep"):   # the dialog, accepted as shown
+        asked.append(list(paths))
+        return list(paths), join
+
+    monkeypatch.setattr("ewald.gui.join_dialog.ask_join", ask_join)
     w = MainWindow()
     w.open_dialog()
+    assert asked == [[str(tmp_path / "dump.200"), str(tmp_path / "dump.1000")]]   # shown in natural order
     pipe = w.pipeline
     assert [pipe.compute(i).attributes["Timestep"] for i in range(pipe.num_frames)] == [200, 300, 1000, 1100]
     assert "dump.200 + 1 more" in w.windowTitle()
     code = w.panel.notebook.to_py()
     assert "dump.200" in code and "dump.1000" in code and code.index("dump.200") < code.index("dump.1000")
+    assert "join=" not in code
+
+    # reordered in the dialog with every frame kept: load([...], join='concat') in that order
+    monkeypatch.setattr("ewald.gui.join_dialog.ask_join", lambda parent, paths, join="timestep": (paths[::-1], "concat"))
+    w.open_dialog()
+    pipe = w.pipeline
+    assert [pipe.compute(i).attributes["Timestep"] for i in range(pipe.num_frames)] == [1000, 1100, 200, 300]
+    code = w.panel.notebook.to_py()
+    assert "join='concat'" in code and code.index("dump.1000") < code.index("dump.200")
+    monkeypatch.setattr("ewald.gui.join_dialog.ask_join", lambda *a, **k: None)   # cancelled: nothing opens
+    w.open_dialog()
+    assert w.pipeline is pipe
 
     monkeypatch.setattr(w, "_ask_trust", lambda path: False)
     chosen[:] = [str(nb_path), str(tmp_path / "dump.200")]   # a notebook opens in a tab, the data file as usual
@@ -1160,7 +1219,7 @@ def test_window_asks_before_the_ai_connects_to_a_host(app, monkeypatch):
     try:
         answers = iter([QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No])
         monkeypatch.setattr(QtWidgets.QMessageBox, "exec", lambda self: next(answers))
-        bridge = w.ask_panel.notebook_access
+        bridge = w.ask_panel.notebook_access(w.panel.notebook)   # each tab's chat has its own bridge
         assert bridge.confirm_host("cluster") is True
         assert bridge.confirm_host("other") is False
     finally:
@@ -3030,7 +3089,10 @@ def test_main_window_follows_a_growing_dump(app, lammps_dir, tmp_path):
     assert w.timeline.selection == [0, 1]  # kept while the file grows
     assert f"frame {n - 1}/{n - 1}" in w.status.text()
     w.timeline._set(0)  # looking at an early frame: stay there
-    path.write_bytes(blob + blob[offsets[-1]:])
+    last = blob[offsets[-1]:]   # one more frame, at a later step (the same step again is a restart)
+    head, _, rest = last.partition(b"ITEM: TIMESTEP\n")
+    step, _, rest = rest.partition(b"\n")
+    path.write_bytes(blob + head + b"ITEM: TIMESTEP\n" + str(int(step) + 1000).encode() + b"\n" + rest)
     w.live_reload.poll(wait=True)
     assert w.timeline.slider.maximum() == n and w.frame == 0
     w.live_reload.timer.start()
@@ -4001,6 +4063,123 @@ def test_ai_chat_stop_button_and_failed_cells_in_the_question(app, pipe):
     w.close()
 
 
+def test_ai_chat_streams_the_answer(app, pipe):
+    """A streaming agent's text shows while it arrives; the text of a round that went on with a tool
+    stays above the tool's chip, and the final answer replaces the streamed one."""
+    import threading
+    import time
+
+    from PySide6 import QtWidgets
+
+    from ewald.gui.ask_panel import AskPanel
+
+    go = threading.Event()
+
+    class StreamingAgent(_FakeAgent):
+        def ask(self, question):
+            for piece in ("Let me ", "look."):
+                self.on_event("text", piece)
+            self.on_event("tool_call", {"name": "describe_frame", "input": {}})
+            self.on_event("text", "It is ")
+            go.wait(5)                                 # the rest of the answer is still on its way
+            self.on_event("text", "fcc.")
+            return "It is fcc."
+
+    panel = AskPanel(lambda: (pipe, 0, []), agent_factory=lambda p, ev: StreamingAgent(p, ev))
+    panel.ask("What is it?")
+    answer = panel.messages[-1]
+    t = time.time()
+    while (answer.live is None or answer.live.text() != "It is ") and time.time() - t < 5:
+        app.processEvents()
+    assert answer.live.text() == "It is " and panel.busy()   # streamed so far, drawn as it came
+    narration = answer.findChildren(QtWidgets.QLabel, "chatNarration")
+    assert [n.text() for n in narration] == ["Let me look."]
+    go.set()
+    _wait(app, panel)
+    assert answer.live is None and answer.text == "It is fcc." and answer.tools == ["describe_frame"]
+    texts = [lb.text() for lb in answer.findChildren(QtWidgets.QLabel, "chatText")]
+    assert texts == ["It is fcc."] and answer.to_dict()["tools"] == ["describe_frame"]
+
+
+def test_ai_chat_per_notebook_tab(app, pipe):
+    """Each notebook tab has its own chat: switching tabs shows that tab's messages, an answer still
+    on its way lands in its own tab's chat, the messages are kept on the notebook (saved in .ewd), and
+    a notebook opened with a saved chat shows it and sends it with the next question, unless the
+    notebook is not trusted."""
+    import threading
+    import time
+
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+
+    release, asked = threading.Event(), []
+
+    class TabAgent(_FakeAgent):
+        def ask(self, question):
+            asked.append(question)
+            if question.endswith("slow"):
+                release.wait(5)
+            return f"answer to {question.splitlines()[-1]}"
+
+    w = MainWindow(pipe)
+    w.settings["llm.code_cells"] = "button"
+    panel = w.ask_panel
+    panel.agent_factory = lambda p, ev: TabAgent(p, ev)
+    first = w.panel.view
+    panel.ask("about the first")
+    _wait(app, panel)
+    assert [m.text for m in panel.messages] == ["about the first", "answer to about the first"]
+    assert [m["role"] for m in first.notebook.chat] == ["user", "assistant"]
+
+    second = w.panel.new_notebook()
+    app.processEvents()
+    assert panel.conversation.key is second.notebook and panel.messages == [] and not panel.welcome.isHidden()
+    panel.ask("slow")
+    assert panel.busy()
+    w.panel.tabs.setCurrentWidget(first)               # the answer keeps coming in the background
+    app.processEvents()
+    assert [m.text for m in panel.messages][-1] == "answer to about the first" and not panel.busy()
+    assert panel.ask_button.toolTip() == "Send (Enter)"
+    release.set()
+    t = time.time()
+    while second.notebook.chat[-1:] != [{"role": "assistant", "text": "answer to slow", "author": "AI"}] \
+            and time.time() - t < 5:
+        app.processEvents()
+    assert second.notebook.chat[-1]["text"] == "answer to slow" and len(first.notebook.chat) == 2
+    w.panel.tabs.setCurrentWidget(second)
+    app.processEvents()
+    assert [m.text for m in panel.messages] == ["slow", "answer to slow"]
+    panel.reset()                                      # New chat empties this tab's chat only
+    assert second.notebook.chat == [] and len(first.notebook.chat) == 2
+
+    saved = [{"role": "user", "text": "What is the CN?"},
+             {"role": "assistant", "text": "**12** for all atoms.", "author": "Claude", "tools": ["describe_frame"]}]
+    for restricted in (True, False):
+        nb = Notebook.from_py("# %%\nx = 1\n", name=f"saved {restricted}")
+        nb.chat, nb.restricted = [dict(m) for m in saved], restricted
+        view = w.panel.add_notebook(nb)
+        w.panel.tabs.setCurrentWidget(view)
+        app.processEvents()
+        msgs = panel.messages
+        assert [m.text for m in msgs[:2]] == ["What is the CN?", "**12** for all atoms."]
+        assert msgs[1].tools == ["describe_frame"] and msgs[2].role == "note"
+        assert ("once the notebook is trusted" in msgs[2].text) == restricted
+        panel.ask("And the bonds?")
+        _wait(app, panel)
+        assert ("<earlier_chat>" in asked[-1]) == (not restricted)
+        if not restricted:
+            assert "User: What is the CN?" in asked[-1] and "You (after running describe_frame): **12**" in asked[-1]
+            panel.ask("More")                          # the agent has it now: not sent twice
+            _wait(app, panel)
+            assert "<earlier_chat>" not in asked[-1]
+        assert nb.chat[:2] == saved and nb.chat[-1]["role"] == "assistant"
+    n = len(panel._conversations)
+    w.panel.close_tab(w.panel.tabs.indexOf(view))     # a closed tab's chat is forgotten
+    app.processEvents()
+    assert len(panel._conversations) == n - 1 and panel.conversation.key is not nb
+    w.close()
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatch):
     """Installing a plugin with @panel and @settings_page adds an activity-bar button that opens
@@ -4733,8 +4912,9 @@ def test_viewport_has_no_msaa_so_depth_peeling_keeps_see_through_atoms(app):
 
 
 def test_resize_handles_are_visible_in_every_theme(app):
-    """Dock separators and split handles show a rule and a dotted grip in a 7 px hit area (the
-    owner could only find the notebook/structure boundary by hovering), in every UI theme."""
+    """Dock separators and split handles show a rule that thickens into a pill grip, in a 7 px hit
+    area (the owner could only find the notebook/structure boundary by hovering, then found the
+    plain border rule too faint under the grip), in every UI theme."""
     from PySide6 import QtGui
 
     from ewald.gui import theme
@@ -4746,7 +4926,8 @@ def test_resize_handles_are_visible_in_every_theme(app):
             for img in ("grip_v", "grip_h", "grip_v_hover", "grip_h_hover"):
                 path = theme.image(img)      # PNG (Qt squares SVG style-sheet images) with a @2x copy
                 small, large = QtGui.QImage(path), QtGui.QImage(path.replace(".png", "@2x.png"))
-                assert sorted((small.width(), small.height())) == [7, 25] and large.width() == 2 * small.width()
+                assert sorted((small.width(), small.height())) == [7, 32] and large.width() == 2 * small.width()
+            rule = theme._mix(t["border"], t["muted"], theme.RULE)
             w = QtWidgets.QMainWindow()
             w.setStyleSheet(theme.stylesheet())
             w.resize(400, 300)
@@ -4763,15 +4944,17 @@ def test_resize_handles_are_visible_in_every_theme(app):
             left, right = dock.geometry().right() + 1, w.centralWidget().geometry().left()
             assert right - left == 7, name                         # the separator's hit area
             row = [im.pixelColor(x, 20).name().upper() for x in range(left, right)]
-            assert row == [t["panel"]] * 3 + [t["border"]] + [t["panel"]] * 3, (name, row)
+            assert row == [t["panel"]] * 3 + [rule] + [t["panel"]] * 3, (name, row)
             mid = dock.geometry().center().y()
-            grip = [im.pixelColor(left + 3, y).name().upper() for y in range(mid - 14, mid + 14)]
-            assert grip.count(t["muted"]) >= 3, (name, grip)       # three dots on the rule
+            grip = [im.pixelColor(x, mid).name().upper() for x in range(left, right)]
+            assert grip[2:5] == [t["muted"]] * 3, (name, grip)     # the pill sits on the rule
+            pill = [im.pixelColor(left + 3, y).name().upper() for y in range(mid - 20, mid + 20)]
+            assert 18 <= pill.count(t["muted"]) <= 26, (name, pill)
             handle = split.handle(1)
             assert handle.height() == 7, name
             corner = handle.mapTo(w, QtCore.QPoint(0, 0))
             col = [im.pixelColor(corner.x() + 20, y).name().upper() for y in range(corner.y(), corner.y() + 7)]
-            assert col == [t["panel"]] * 3 + [t["border"]] + [t["panel"]] * 3, (name, col)
+            assert col == [t["panel"]] * 3 + [rule] + [t["panel"]] * 3, (name, col)
             w.close()
             _dispose(w)
     finally:
@@ -4779,7 +4962,7 @@ def test_resize_handles_are_visible_in_every_theme(app):
         theme.TOKENS.update(saved[0])
         theme.STYLE.clear()
         theme.STYLE.update(saved[1])
-    css = theme.stylesheet()     # hover: a 3 px accent rule and an accent grip
+    css = theme.stylesheet()     # hover: an accent rule and a wider accent grip
     assert "QSplitter::handle:horizontal:hover" in css and "grip_v_hover" in css
 
 
