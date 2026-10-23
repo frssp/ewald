@@ -138,6 +138,18 @@ the end.
   view shares the pipeline's arrays with the cells.
 - **Landed:** PR #205 (`src/ewald/shell.py`, `src/ewald/progress.py`).
 
+### D19. Generic AI tools in the core, source-specific ones in plugins (2026-10-23)
+
+- **Decision:** AI tools that work on any file, pipeline or workflow source belong to the core;
+  a plugin adds only what is specific to its source. Searching workflows by formula, status
+  and day and opening a step of one became core tools (`list_workflows` filters,
+  `open_workflow`) instead of sim-agent plugin tools.
+- **Why:** "ewald측에서 일반적인 파일이나 파이프라인 (sim-agent특화 아님) 툴 정도는 갖춰도 좋아"
+  (the EWALD side may well have general file or pipeline tools, not specific to sim-agent).
+- **Considered:** `simagent_find` / `simagent_open` inside ewald-simagent, which would have
+  left local folders and AiiDA without them.
+- **Landed:** this PR (`src/ewald/workflow.py` `find`/`target`, `src/ewald/llm/tools.py`).
+
 ## Project
 
 ### D15. Name, license and openness (2026-10-19, 2026-10-20)

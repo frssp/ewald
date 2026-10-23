@@ -42,6 +42,7 @@ from typing import Callable
 import numpy as np
 
 from .. import modifiers as _modifiers
+from .. import workflow
 from ..notebook import Cell, Notebook
 from ..pipeline import Modifier, Pipeline, PythonModifier
 from . import describe as _describe
@@ -101,8 +102,8 @@ def downsample(table: dict, max_rows: int = 60) -> dict:
 
 
 #: Tools that change something, each by writing a notebook cell and running it (module docstring).
-CELL_WRITERS = frozenset({"load_structure", "add_modifier", "remove_modifier", "set_view", "add_visual",
-                          "remove_visual", "add_overlay", "remove_overlay", "export_file"})
+CELL_WRITERS = frozenset({"load_structure", "open_workflow", "add_modifier", "remove_modifier", "set_view",
+                          "add_visual", "remove_visual", "add_overlay", "remove_overlay", "export_file"})
 
 #: Modifiers that run code or take Python objects: only PythonScript, and only with allow_code.
 _CODE_MODIFIERS = {"PythonScript"}
@@ -947,23 +948,61 @@ class Toolset:
         @T("list_workflows",
            "Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs, or folders of VASP/LAMMPS/"
            "NEB/phonopy calculations: source 'folders') of a workflow source, newest first: id, kind, formula, "
-           "state and the path that opens each. 'search' filters by words. Then describe_workflow(path) lists "
-           "its steps and outputs.",
+           "state and the path that opens each, and today's date. The filters are decided in code, so use them "
+           "instead of guessing from rows: 'formula' matches exactly those elements in any ratio (TiN finds "
+           "N4Ti4, a TiN slab or a defect cell); 'elements' all of these among others; 'kind' the template "
+           "(vasp_relax, vasp_bands, ...); 'status' succeeded/failed/running; 'since'/'until' days, both "
+           "inclusive: 'today', 'yesterday', '3d' (3 days ago) or 2026-10-22, the day it was created (no "
+           "finish time is recorded): 'finished yesterday' is status='succeeded', since=until='yesterday'. "
+           "'search' is the source's own text search (labels). Then open_workflow(path) loads one, "
+           "describe_workflow(path) lists its steps and outputs.",
            _obj({"source": {"type": "string", "description": "source name (default: the only one a plugin "
                                                            "installed, else 'folders')"},
-                 "search": {"type": "string"}}))
-        def list_workflows(source=None, search=None):
+                 "formula": {"type": "string", "description": "e.g. TiN, SrTiO3: exactly these elements"},
+                 "elements": {"type": "array", "items": {"type": "string"},
+                              "description": "element symbols it must contain, e.g. [\"Ti\"]"},
+                 "kind": {"type": "string", "description": "template or kind, e.g. vasp_bands"},
+                 "status": {"type": "string", "enum": list(workflow.STATUSES), "description": "default any"},
+                 "since": {"type": "string", "description": "first day: today, yesterday, 3d or YYYY-MM-DD"},
+                 "until": {"type": "string", "description": "last day, same forms"},
+                 "search": {"type": "string"},
+                 "limit": {"type": "integer", "description": "workflows to return, 1-50 (default 20)"}}))
+        def list_workflows(source=None, search=None, formula=None, elements=None, kind=None, status="any",
+                           since=None, until=None, limit=20):
             sources = plugins.workflow_sources()
             if source is None:
                 added = [n for n, p in sources.items() if p.origin != "built-in"]
                 source = added[0] if len(added) == 1 else "folders" if not added else None
             if source not in sources:
                 raise ValueError(f"name a source: one of {sorted(sources)}")
-            page = sources[source].list(query=search or None)
-            return {"source": source, "workflows": [
-                {k: v for k, v in (("id", w.id), ("kind", w.kind), ("formula", w.formula), ("state", w.mark()),
-                                   ("label", w.label), ("ctime", w.ctime), ("path", w.path)) if v}
-                for w in page.workflows[:50]], "more": bool(page.next)}
+            found = workflow.find(source, formula=formula, elements_=elements, kind=kind,
+                                  status_=status or "any", since=since, until=until, search=search,
+                                  limit=max(1, min(int(limit or 20), 50)))
+            rows = [{k: v for k, v in (("id", w.id), ("kind", w.kind), ("formula", w.formula),
+                                       ("status", workflow.status(w)), ("state", w.mark()), ("label", w.label),
+                                       ("ctime", w.ctime), ("path", w.path)) if v} for w in found["workflows"]]
+            return {"source": source, "today": found["today"], "workflows": rows, "more": found["more"],
+                    **({"note": found["note"]} if "note" in found else {})}
+
+        @T("open_workflow",
+           "Open a workflow, one of its steps or one of its outputs as the pipeline (like load_structure: a "
+           "pipe = load(...) cell at the end of the notebook, run at once). 'path' as list_workflows gives it "
+           "(simagent:..., aiida:1234, a folder). Without 'step' it opens the workflow's main result; 'step' "
+           "names a step (relax, scf, bands; bands/scf down the tree); 'output' a file or structure of that "
+           "step (CHGCAR, OUTCAR), or of the workflow without a step (relaxed_structure). A name that is not "
+           "there is refused with the ones that are. Returns what load_structure returns, the path and the "
+           "workflow's steps.",
+           _obj({"path": {"type": "string"}, "step": {"type": "string"}, "output": {"type": "string"}}, ["path"]))
+        def open_workflow(path, step=None, output=None):
+            self.check_read(path)
+            wf = workflow.describe(str(path))
+            target = workflow.target(wf, step, output)
+            loaded = self.call("load_structure", {"path": target})
+            if loaded.is_error:
+                raise RuntimeError(loaded.content)
+            return {"path": target, "workflow": f"{wf.title}  {wf.label}".strip(), "status": workflow.status(wf),
+                    "steps": ["/".join(workflow._chain(wf, s)) for _, s in wf.walk()],
+                    "loaded": loaded.content}
 
         @T("describe_workflow",
            "Steps of a workflow (nested; restarts joined), their states, numbers (energies, gaps) and outputs, "
@@ -971,12 +1010,10 @@ class Toolset:
            "aiida:1234, or a folder of calculations (local or host:/path).",
            _obj({"path": {"type": "string"}}, ["path"]))
         def describe_workflow(path):
-            from .. import workflow
-
             self.check_read(path)
             return workflow.describe(str(path)).as_dict()
 
-        for name in ("list_workflows", "describe_workflow"):
+        for name in ("list_workflows", "describe_workflow", "open_workflow"):
             self.tools[name].available = lambda: bool(plugins.workflow_sources())
 
         for plugin in plugins.tools().values():  # @claude_tool plugins; built-in names win

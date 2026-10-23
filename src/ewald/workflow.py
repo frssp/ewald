@@ -200,6 +200,164 @@ def reference(wf: Workflow) -> str:
     return wf.path or wf.id
 
 
+# ----------------------------------------------------------------------- search and open
+#: what :func:`find` filters a workflow's state to
+STATUSES = ("succeeded", "failed", "running", "any")
+#: rows one :func:`find` reads at most, so a search never walks a whole database
+FIND_ROWS = 4000
+_ELEMENT = re.compile(r"([A-Z][a-z]?)(\d*\.?\d*)")
+
+
+def status(step: WorkflowStep) -> str:
+    """``succeeded`` (finished, exit 0), ``failed`` (an error exit, excepted, killed), ``running``
+    (created, waiting, running) or "" when the source records no state (a folder)."""
+    if step.failed:
+        return "failed"
+    if step.state == "finished":
+        return "succeeded"
+    return "running" if step.state in STATE_MARKS else ""
+
+
+def elements(formula: str | None) -> set:
+    """The element symbols of a formula: ``TiN``, Hill ``N4Ti4``, ``Ti0.5N`` -> {"Ti", "N"}."""
+    return {sym for sym, _ in _ELEMENT.findall(formula or "")}
+
+
+def day(text: str, now):
+    """Local midnight starting the day ``text`` names: ``today``, ``yesterday``, ``3d`` (three days
+    ago) or ``YYYY-MM-DD``; ``now`` is an aware datetime."""
+    from datetime import datetime, time, timedelta
+
+    t = str(text).strip().lower()
+    if t == "today":
+        d = now.date()
+    elif t == "yesterday":
+        d = now.date() - timedelta(days=1)
+    elif re.fullmatch(r"\d+\s*d(ays?)?(\s*ago)?", t):
+        d = now.date() - timedelta(days=int(re.match(r"\d+", t).group()))
+    else:
+        try:
+            d = datetime.fromisoformat(t[:10]).date()
+        except ValueError:
+            raise ValueError(f"{text!r} is not a day: use 'today', 'yesterday', '3d' (3 days ago) "
+                             "or a date such as 2026-10-22") from None
+    return datetime.combine(d, time(), tzinfo=now.tzinfo)
+
+
+def _when(ctime: str):
+    from datetime import datetime, timezone
+
+    try:
+        value = datetime.fromisoformat(str(ctime).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def find(source: str, *, formula: str | None = None, elements_: list | None = None, kind: str | None = None,
+         status_: str = "any", since: str | None = None, until: str | None = None, search: str | None = None,
+         limit: int = 20, now=None) -> dict:
+    """Workflows of ``source`` (newest first) that match every filter given, decided here rather
+    than by the source's text search: ``formula`` the same elements in any ratio (``TiN`` finds
+    Hill ``N4Ti4``, a slab or a defect cell), ``elements_`` all of these among others, ``kind`` a
+    substring of the kind (template), ``status_`` one of :data:`STATUSES`, ``since``/``until``
+    days (both inclusive, see :func:`day`; the day the workflow was created), ``search`` the
+    source's own text search. Pages are read until ``limit`` matches, a row older than ``since``
+    or :data:`FIND_ROWS` rows. Returns ``{"today", "workflows", "more"}`` (and ``note`` when
+    the search stopped early)."""
+    from datetime import datetime, timedelta
+
+    now = now or datetime.now().astimezone()
+    if status_ not in STATUSES:
+        raise ValueError(f"status is one of {', '.join(STATUSES)}, not {status_!r}")
+    exact, wanted = elements(formula), set(elements_ or ())
+    if formula and not exact:
+        raise ValueError(f"{formula!r} is not a formula; write it like TiN or SrTiO3")
+    bad = [e for e in wanted if not re.fullmatch(r"[A-Z][a-z]?", str(e))]
+    if bad:
+        raise ValueError(f"elements are symbols such as Ti or N, not {bad}")
+    start = day(since, now) if since else None
+    end = day(until, now) + timedelta(days=1) if until else None
+    dated = start is not None or end is not None
+    plugin = sources().get(source)
+    if plugin is None:
+        raise ValueError(f"name a source: one of {sorted(sources())}")
+    matches, rows, cursor = [], 0, None
+    answer = {"today": now.strftime("%Y-%m-%d (%A)"), "workflows": matches, "more": False}
+    while True:
+        page = plugin.list(query=search or None, cursor=cursor)
+        for wf in page.workflows:
+            rows += 1
+            created = _when(wf.ctime) if wf.ctime else None
+            if start and created and created < start:      # newest first: nothing older matches
+                return answer
+            if dated and created is None or end and created >= end:
+                continue
+            have = elements(wf.formula)
+            if exact and have != exact or wanted and not wanted <= have:
+                continue
+            if kind and kind.lower() not in (wf.kind or "").lower():
+                continue
+            if status_ != "any" and status(wf) != status_:
+                continue
+            if len(matches) == limit:
+                answer["more"] = True
+                return answer
+            matches.append(wf)
+        cursor = page.next
+        if not cursor:
+            return answer
+        if rows >= FIND_ROWS:
+            answer["more"] = True
+            answer["note"] = (f"stopped after the newest {rows} workflows; give 'since' or a narrower filter "
+                              "to search older ones")
+            return answer
+
+
+def target(wf: Workflow, step: str | None = None, output: str | None = None) -> str:
+    """The path that opens ``step`` of ``wf`` (its name, or names joined by ``/`` down the tree:
+    ``bands/scf``), or its ``output`` (a file or structure listed under that step, or under the
+    workflow without a step); the workflow's own path without either. Names that are not
+    there raise with the ones that are, so nothing is guessed."""
+    node = wf
+    if step:
+        names = [n for n in str(step).split("/") if n]
+        found = [s for _, s in wf.walk() if s.name == names[-1]]
+        if len(names) > 1:
+            found = [s for s in found if _chain(wf, s)[-len(names):] == names]
+        if len(found) != 1:
+            every = sorted({"/".join(_chain(wf, s)) for _, s in wf.walk()})
+            outs = [o.name for o in wf.outputs]
+            why = "is not a step" if not found else "names several steps"
+            raise LookupError(f"{step!r} {why} of {wf.kind or wf.name} {wf.id}; steps: {', '.join(every) or 'none'}"
+                              + (f"; outputs: {', '.join(outs)}" if outs else ""))
+        node = found[0]
+    if output:
+        hit = [o for o in node.outputs if o.name == output and o.path]
+        if not hit:
+            names = [o.name for o in node.outputs if o.path]
+            where = f"step {step!r}" if step else f"{wf.kind or wf.name} {wf.id}"
+            raise LookupError(f"{output!r} is not an output of {where}; outputs: {', '.join(names) or 'none'}"
+                              + ("" if step else " (name a step for its files)"))
+        return hit[0].path
+    if not node.path:
+        names = [o.name for o in node.outputs if o.path]
+        raise LookupError(f"step {step!r} has no result of its own to open; name an output: "
+                          f"{', '.join(names) or 'none'}" if step else f"{wf.id} has no path to open")
+    return node.path
+
+
+def _chain(wf: WorkflowStep, step: WorkflowStep) -> list:
+    """The names from ``wf`` down to ``step``."""
+    for s in wf.steps:
+        if s is step:
+            return [s.name]
+        below = _chain(s, step)
+        if below:
+            return [s.name, *below]
+    return []
+
+
 # ----------------------------------------------------------------------- as text
 def text(wf: Workflow) -> str:
     """The workflow as an indented tree, one line per step and output, with the paths."""

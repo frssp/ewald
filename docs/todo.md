@@ -432,7 +432,7 @@ Plugins and AI
 
 - AiiDA (ewald-aiida in frssp/ewald-plugins: local profiles, and remote ones over SSH with
   `aiida://user@host/1234`): an AiiDA side bar (profiles and hosts, recent workflows, outputs;
-  copy `load("aiida:...")`), a AI tool to find and open workflows, PDOS/projected bands
+  copy `load("aiida:...")`), PDOS/projected bands
   from aiida-quantumespresso, NEB and aiida-lammps outputs, streaming very long remote
   trajectories frame by frame instead of one bundle, export of analysis results back as new
   nodes (opt-in, never default). Not yet tried against a real remote AiiDA host.
@@ -502,6 +502,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- AI workflow search on a real sim-agent server with the site's model: "open the TiN
+  calculation that finished yesterday" should call `list_workflows` with `formula`, `status` and
+  `since`/`until`, then `open_workflow`; days are the PC's local days against sim-agent's
+  creation time.
 - Simple (ASE) style on a real GPU (the owner's Windows machine): rotating a few thousand bonded
   atoms should now be as fluid as Ball & stick. The bond outline became a static inverted hull
   (front faces culled) instead of `vtkPolyDataSilhouette`, which re-ran on the CPU on every camera
