@@ -545,6 +545,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Structure view right-click menu on a real Mac (two-finger click, Control+click) and Windows:
+  after closing the menu, moving the mouse must not zoom (fixed for the VTK and OpenGL 1.x views,
+  tested with simulated events under xvfb only).
 - AI workflow search on a real sim-agent server with the site's model: "open the TiN
   calculation that finished yesterday" should call `list_workflows` with `formula`, `status` and
   `since`/`until`, then `open_workflow`; days are the PC's local days against sim-agent's

@@ -15,7 +15,7 @@ from PySide6.QtOpenGL import QOpenGLWindow
 from ..render import default_radii
 from .legacy_gl import CameraPlotter, LegacyRenderer, pick_ray, ray_spheres
 from .theme import TOKENS
-from .viewport import EMPTY_HINT, Viewport, _is_dark
+from .viewport import EMPTY_HINT, Viewport, _is_dark, control_click
 
 
 class GLView(QOpenGLWindow):
@@ -91,7 +91,8 @@ class GLView(QOpenGLWindow):
             return
         pos = e.position()
         click = abs(pos.x() - press.x()) + abs(pos.y() - press.y()) <= 4
-        if click and button == QtCore.Qt.RightButton:
+        if click and (button == QtCore.Qt.RightButton
+                      or button == QtCore.Qt.LeftButton and control_click(e.modifiers())):
             self.viewport.contextMenuRequested.emit()
         elif click and button == QtCore.Qt.LeftButton:
             self.viewport.click(pos.x(), pos.y(), self.width(), self.height(),
