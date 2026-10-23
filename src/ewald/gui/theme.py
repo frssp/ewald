@@ -120,7 +120,7 @@ def use(name: str) -> dict:
     return TOKENS
 
 QSS = """
-* {{ font-family: "IBM Plex Sans", "Inter", "Segoe UI", "Helvetica Neue", sans-serif; font-size: 12px; }}
+* {{ font-family: "IBM Plex Sans", "Segoe UI", "Helvetica Neue", sans-serif; font-size: 12px; }}
 QMainWindow, QWidget {{ background: {panel}; color: {text}; }}
 /* resize handles between docks and split panels: a 7 px hit area (the split cursor shows over all
    of it) with a 1 px rule that thickens into a pill-shaped grip in the middle; on hover both turn
@@ -493,5 +493,8 @@ def apply(app, name: str | None = None, font_size: int | None = None):
         app.setPalette(pal)
     # the theme's font size applies while the user's (Preferences > General) is the default
     css = stylesheet(font_size or (STYLE["font_size"] if name is not None else 0) or current_font_size(app))
+    from . import fonts
+
+    css = fonts.css(css)   # only families this system has: a missing one costs Qt ~200 ms on macOS
     if app.styleSheet() != css:  # re-polishing every widget of every window is slow; skip when unchanged
         app.setStyleSheet(css)
