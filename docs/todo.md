@@ -491,6 +491,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Simple (ASE) style on a real GPU (the owner's Windows machine): rotating a few thousand bonded
+  atoms should now be as fluid as Ball & stick. The bond outline became a static inverted hull
+  (front faces culled) instead of `vtkPolyDataSilhouette`, which re-ran on the CPU on every camera
+  move (about 100 ms per frame at 4000 atoms); the container only has llvmpipe.
 - IPython cells on a real Windows and Mac: `!dir` / `!ls` (IPython runs `!commands` with
   cmd.exe on Windows, a pty on macOS/Linux), `%time`, progress bars while a cell runs, and the
   console sharing the notebook's namespace; in the frozen Windows app and EWALD.app too, where
