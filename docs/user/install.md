@@ -209,6 +209,14 @@ display with `xvfb-run -a python script.py`. The built-in ray tracer
 rebuilt automatically, so skipping the reinstall after an update that touched the C++ code
 gives import errors or old results.
 
+The first start of `ewald gui` after an install or update is much slower than later ones:
+Python compiles its bytecode, numba compiles the analysis kernels into its
+cache, and macOS (Gatekeeper) or Windows Defender checks each new native library of Qt, VTK and
+numba before it loads. EWALD shows a "Preparing EWALD" notice during that start. It compares the
+versions of EWALD, Python and the big libraries (and EWALD's source files, for an editable
+install) with those of the last start, stored in `startup.json` in the settings folder, so the
+notice comes back after the next update.
+
 ## Checking the install
 
 ```bash

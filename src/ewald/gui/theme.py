@@ -120,7 +120,7 @@ def use(name: str) -> dict:
     return TOKENS
 
 QSS = """
-* {{ font-family: "IBM Plex Sans", "Inter", "Segoe UI", "Helvetica Neue", sans-serif; font-size: 12px; }}
+* {{ font-family: "IBM Plex Sans", "Segoe UI", "Helvetica Neue", sans-serif; font-size: 12px; }}
 QMainWindow, QWidget {{ background: {panel}; color: {text}; }}
 /* resize handles between docks and split panels: a 7 px hit area (the split cursor shows over all
    of it) with a 1 px rule that thickens into a pill-shaped grip in the middle; on hover both turn
@@ -347,6 +347,10 @@ QPushButton#plotCardLink:hover {{ text-decoration: underline; }}
 QToolButton#cellRun {{ padding: 0; border-radius: 12px; }}
 QToolButton#cellRun:hover {{ background: {accent_soft}; color: {accent}; }}
 QLabel#cellCounter {{ color: {muted}; font-size: 11px; }}
+QFrame#firstRunNotice {{ background: {raised}; border: 1px solid {border}; }}
+QFrame#firstRunNotice QLabel {{ background: transparent; }}
+QLabel#firstRunTitle {{ color: {text}; font-size: 15px; font-weight: 600; }}
+QLabel#firstRunBody {{ color: {secondary}; }}
 QFrame#restrictedBanner {{ background: {data_soft}; border-bottom: 1px solid {data}; }}
 QFrame#restrictedBanner QLabel {{ color: {text}; background: transparent; }}
 QFrame#runBar {{ border-bottom: 1px solid {border}; }}
@@ -496,5 +500,8 @@ def apply(app, name: str | None = None, font_size: int | None = None):
         app.setPalette(pal)
     # the theme's font size applies while the user's (Preferences > General) is the default
     css = stylesheet(font_size or (STYLE["font_size"] if name is not None else 0) or current_font_size(app))
+    from . import fonts
+
+    css = fonts.css(css)   # only families this system has: a missing one costs Qt ~200 ms on macOS
     if app.styleSheet() != css:  # re-polishing every widget of every window is slow; skip when unchanged
         app.setStyleSheet(css)

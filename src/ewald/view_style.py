@@ -114,10 +114,11 @@ class ViewStyle:
             kw["surfaces"] = {k: dict(v) for k, v in self.surfaces.items()}
         if self.type_transparency:
             kw["type_transparency"] = dict(self.type_transparency)
-        if self.selection is not False:
-            from .view3d import SELECTION_COLOR
+        from .view3d import selection_color
 
-            kw["selection_color"] = SELECTION_COLOR if self.selection is True else self.selection
+        color = selection_color(self.selection)   # sessions and notebook state set it unchecked
+        if color is not None:
+            kw["selection_color"] = color
         if self.labels:
             kw["labels"] = dict(self.labels) if isinstance(self.labels, dict) else self.labels
         if self.measurements:
