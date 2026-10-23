@@ -561,6 +561,8 @@ class AskPanel(QtWidgets.QWidget):
 
     pipelineChanged = QtCore.Signal()
     cellRequested = QtCore.Signal(object, str)   # notebook (None: no notebook), cell id: show that cell
+    answerStarted = QtCore.Signal(object)        # notebook of the chat (None: no notebook): an answer is on its way
+    answerFinished = QtCore.Signal(object)       # ... it arrived, failed or was stopped
     insertRequested = QtCore.Signal(str)
     runRequested = QtCore.Signal(str)
 
@@ -907,6 +909,7 @@ class AskPanel(QtWidgets.QWidget):
         worker.answered.connect(lambda text, c=conv: self._on_answer(c, text))
         worker.failed.connect(lambda message, c=conv: self._on_failed(c, message))
         self._set_stop_button(True)
+        self.answerStarted.emit(conv.key)
         worker.start()
 
     def _insert(self, code):
@@ -977,6 +980,7 @@ class AskPanel(QtWidgets.QWidget):
             self._set_stop_button(False)
         conv.pending = None
         conv.save()
+        self.answerFinished.emit(conv.key)
         pipeline = conv.agent_pipeline if conv.agent else None
         now = getattr(getattr(conv.agent, "toolset", None), "pipeline", pipeline)
         changed = False

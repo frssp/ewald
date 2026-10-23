@@ -24,6 +24,7 @@ from .ask_panel import AskPanel, agent_from_settings, code_cells_mode, run_cells
 from .collapsible import make_collapsible
 from .compute import ComputeRunner, warm_up_jit
 from .console import LazyConsole
+from .application import EwaldApplication, _app, _set_windows_app_id  # noqa: F401  (re-exported)
 from .icons import app_icon
 from .inspector import DataInspector
 from .macos import set_app_name, strip_psn
@@ -136,6 +137,8 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.ask_panel.pipelineChanged.connect(self._after_claude)
         self.ask_panel.insertRequested.connect(self._insert_claude_cell)
         self.ask_panel.cellRequested.connect(self._show_ai_cell)
+        self.ask_panel.answerStarted.connect(lambda nb: self._ai_answer(nb, True))
+        self.ask_panel.answerFinished.connect(lambda nb: self._ai_answer(nb, False))
         self.ask_panel.runRequested.connect(lambda code: self._insert_claude_cell(code, run=True))
         # --- left: notebook tabs (the pipeline as Python cells); right: display settings
         self.panel = NotebookPanel()
@@ -702,84 +705,6 @@ def make_viewport(style, choice: str | None = None) -> Viewport:
     return Viewport(style)
 
 
-def _set_windows_app_id():
-    """Own taskbar entry and icon on Windows instead of python.exe's."""
-    if sys.platform == "win32":
-        try:
-            import ctypes
-
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("ewald.gui")
-        except (AttributeError, OSError):
-            pass
-
-
-class EwaldApplication(QtWidgets.QApplication):
-    """QApplication that hands macOS file-open events to the newest main window.
-
-    Finder sends a QFileOpenEvent, not argv, when a file is opened with the .app (double-click,
-    Open With, a drop on the Dock icon). It can arrive before the main window exists, so paths
-    wait until a window registers itself with :meth:`set_file_open_target`.
-    """
-
-    def __init__(self, argv):
-        super().__init__(argv)
-        self._pending_files: list[str] = []
-        self._file_open_target = None
-
-    def set_file_open_target(self, open_path):
-        self._file_open_target = open_path
-        while self._pending_files:
-            try:
-                open_path(self._pending_files[0])
-            except RuntimeError:  # that window was closed and deleted: wait for the next one
-                self._file_open_target = None
-                return
-            self._pending_files.pop(0)
-
-    def event(self, event):
-        if event.type() == QtCore.QEvent.FileOpen:
-            path = event.file() or event.url().toLocalFile()
-            if path:
-                self._pending_files.append(path)
-                if self._file_open_target is not None:
-                    self.set_file_open_target(self._file_open_target)
-            return True
-        return super().event(event)
-
-
-def _app():
-    from . import theme
-
-    app = QtWidgets.QApplication.instance()
-    if app is None:
-        from . import check_qt_platform, check_remote_display, use_software_gl_if_needed, viewport_backend
-        from .. import settings as settings_mod
-
-        check_qt_platform()
-        backend = viewport_backend(settings_mod.load()["viewport.backend"])
-        use_software_gl_if_needed(backend)
-        if backend == "vtk":
-            check_remote_display()
-            from .viewport import use_vtk_surface_format
-
-            use_vtk_surface_format()  # Qt wants it before the QApplication on macOS
-        _set_windows_app_id()
-        set_app_name()
-        app = EwaldApplication(strip_psn(sys.argv))
-        app.setApplicationName("ewald")
-        app.setDesktopFileName("ewald")
-        app.setWindowIcon(app_icon())
-        from .fonts import load_fonts
-
-        load_fonts()   # before the theme, whose QSS names IBM Plex Sans and JetBrains Mono
-        try:
-            name = settings_mod.load()["general.ui_theme"]
-        except Exception:  # a broken settings file must not stop the GUI
-            name = None
-        theme.apply(app, name)
-    return app
-
-
 def show(pipeline=None, device=None, block: bool = True):
     """Open the viewer on an existing Pipeline (from a script or Jupyter with %gui qt)."""
     app = _app()
@@ -812,6 +737,9 @@ def main(argv=None):
     for path in args.file:
         win.open_any(path, ask_types=False, **kw)
     win.show()
+    from . import first_run
+
+    first_run.finish(win)
     return app.exec()
 
 

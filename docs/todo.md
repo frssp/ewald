@@ -554,6 +554,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Notebook scroll while the AI chat writes cells, on Windows and macOS: with the keyboard on a
+  notebook cell, an AI edit must not scroll the notebook (the fix moves the focus out of the cell
+  widgets before they are rebuilt; xvfb has no window manager, so focus there is not the real
+  thing), and Follow the AI's cells (follow, end, never) and the "AI is on cell N" pill should
+  behave as on Linux.
 - AI workflow search on a real sim-agent server with the site's model: "open the TiN
   calculation that finished yesterday" should call `list_workflows` with `formula`, `status` and
   `since`/`until`, then `open_workflow`; days are the PC's local days against sim-agent's
@@ -561,7 +566,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - GUI startup on the owner's Windows machine: `python benchmarks/startup.py --cold-jit` prints
   where the seconds go (import, window, 3D view, console, busy stretches, peak memory); compare
   with the container numbers under Performance. Windows Defender scanning freshly installed
-  packages can make the first start after an update much slower than later ones.
+  packages can make the first start after an update much slower than later ones (the
+  "Preparing EWALD" first-run notice, `gui/first_run.py`, shows during that start).
+- First-run notice on a real Mac and Windows machine: after `uv pip install -e .` the next
+  `ewald gui` should show "Preparing EWALD" within about a second (it needs only PySide6), keep
+  it on screen until the main window appears, and not show it on the start after.
 - Simple (ASE) style on a real GPU (the owner's Windows machine): rotating a few thousand bonded
   atoms should now be as fluid as Ball & stick. The bond outline became a static inverted hull
   (front faces culled) instead of `vtkPolyDataSilhouette`, which re-ran on the CPU on every camera
@@ -574,6 +583,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   GPU (the Legacy GL viewport with `opengl32sw.dll` should come up, with the note on stderr);
   saving a notebook open in Notepad++ or synced by OneDrive (the message names the program); the
   `icacls` ACL on `credentials.json` (only your account listed); the bundled fonts in the UI.
+- macOS start-up log (2026-10-23): no "Populating font family aliases" (Qt) or "findfont ...
+  Apple Chancery" (matplotlib) lines when the GUI opens a notebook with plots. The
+  `TSMSendMessageToUIServer ... com.apple.tsm.uiserver` lines are AppKit's input-method client
+  logging from the Python process and are harmless; they are not silenced.
 - Windows parity after the portability audit ([Windows, macOS and Linux](developer/portability.md)):
   open and export a POSCAR, XDATCAR, LAMMPS dump and an `.ewd` with data on another drive (D:);
   check exported files have LF ends; the open dialog lists lower-case `poscar`/`*.CIF`; a save

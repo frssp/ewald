@@ -23,6 +23,7 @@ from ..render import (
     setup_camera,
 )
 from . import header
+from .application import use_vtk_surface_format, vtk_surface_format  # noqa: F401  (moved there)
 from .palette import native_text
 from .style import STYLE_PRESETS, ViewStyle
 from .theme import TOKENS
@@ -61,36 +62,6 @@ def ray_spheres(origin, direction, centers, radii):
         return None
     t_hit = t[hit] - np.sqrt(np.maximum(r2[hit] - d2[hit], 0))
     return int(hit[np.argmin(t_hit)])
-
-
-def vtk_surface_format() -> QtGui.QSurfaceFormat:
-    """The OpenGL format of the VTK view: desktop OpenGL 3.2 core, as pyvistaqt's ``QtInteractor``
-    requests (``pyvistaqt.rwi._default_format``; MSAA happens in VTK's own framebuffers)."""
-    fmt = QtGui.QSurfaceFormat()
-    fmt.setRenderableType(QtGui.QSurfaceFormat.OpenGL)
-    fmt.setProfile(QtGui.QSurfaceFormat.CoreProfile)
-    fmt.setVersion(3, 2)
-    fmt.setSwapBehavior(QtGui.QSurfaceFormat.DoubleBuffer)
-    for size in ("Red", "Green", "Blue", "Alpha"):
-        getattr(fmt, f"set{size}BufferSize")(8)
-    fmt.setDepthBufferSize(8)
-    fmt.setStencilBufferSize(0)
-    fmt.setSamples(0)
-    return fmt
-
-
-def use_vtk_surface_format() -> None:
-    """Make the VTK view's format the process default, before any window has an OpenGL context.
-
-    Every QOpenGLWidget of a window shares OpenGL objects with the window's compositing context,
-    which Qt creates from the default format when the first one (the placeholder) appears.
-    pyvistaqt installs its 3.2 core default only when the VTK widget is built, after the window
-    is on screen. Linux and Windows drivers share between the two profiles anyway; macOS cannot
-    share a legacy 2.1 context with a 4.1 core one, so the VTK view composites black there.
-    """
-    want = vtk_surface_format()
-    if QtGui.QSurfaceFormat.defaultFormat() != want:
-        QtGui.QSurfaceFormat.setDefaultFormat(want)
 
 
 class _Placeholder(QOpenGLWidget):

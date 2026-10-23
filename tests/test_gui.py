@@ -5266,6 +5266,38 @@ def test_bundled_ui_fonts_are_registered(app):
         assert QtGui.QFontInfo(QtGui.QFont(family)).family().startswith(family)
 
 
+def test_style_sheets_name_only_installed_font_families(app):
+    """A family Qt cannot find (as the first choice or as a glyph fallback) makes it build its
+    alias table: ~200 ms on macOS and a "Replace uses of missing font family" warning. The
+    fallback lists name fonts of every platform; what reaches Qt is cut to what is installed."""
+    import re
+
+    from PySide6 import QtGui
+
+    from ewald.gui import fonts, theme
+
+    sans = fonts._system("GeneralFont")
+    mac = {"ibm plex sans", "helvetica neue", "menlo"}        # no Segoe UI, Consolas or Inter
+    windows = {"ibm plex sans", "segoe ui", "consolas"}
+    rule = 'font-family: "IBM Plex Sans", "Inter", "Segoe UI", "Helvetica Neue", sans-serif;'
+    assert fonts.css(rule, mac) == f'font-family: "IBM Plex Sans", "Helvetica Neue", "{sans}";'
+    assert fonts.css(rule, windows) == f'font-family: "IBM Plex Sans", "Segoe UI", "{sans}";'
+    mono = 'font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace; }'
+    fixed = fonts._system("FixedFont")
+    assert fonts.css(mono, mac) == f'font-family: "Menlo", "{fixed}"; }}'
+    assert fonts.installed(["Inter", "Fira Code"], set()) == [sans]   # never empty
+    assert fonts.installed(["Menlo", "menlo", "MENLO"], mac) == ["Menlo"]
+
+    known = {re.sub(r"\s*\[.*\]$", "", f).lower() for f in QtGui.QFontDatabase.families()}
+    theme.apply(app, "graphite")
+    lists = re.findall(r"font-family:\s*([^;}]+)", app.styleSheet())
+    assert lists
+    for names in lists:
+        for name in names.split(","):
+            assert name.strip().strip('"').lower() in known, name
+    assert "Inter" not in theme.QSS
+
+
 def test_plugins_side_bar_recommends_a_restart_when_pip_replaced_loaded_code(app):
     from ewald import settings
     from ewald.gui import plugins_panel
@@ -5375,3 +5407,108 @@ def test_main_window_plays_phonon_mode(app):
     menu = {a.text(): a for a in w.viewport_menu().actions()}
     assert "Phonon band structure" in menu and "Play" in menu
     w.close()
+
+
+def test_notebook_follows_the_ai_cells_without_jumping(app, pipe):
+    """While the AI chat works on cells the notebook does not hop: reading never scrolls, a
+    rewritten cell keeps the focus where it was (it used to pass from cell to cell, scrolling to
+    each), a written cell off screen is scrolled to until you scroll yourself, then a pill points
+    at it; Preferences › AI › Follow the AI's cells: end scrolls once at the end, never not at all."""
+    from PySide6 import QtWidgets
+
+    from ewald.gui.app import MainWindow
+    from ewald.llm.tools import Toolset
+
+    def settle():
+        for _ in range(5):
+            app.processEvents()
+
+    w = MainWindow(pipe)
+    w.resize(1200, 700)
+    w.show()
+    view = w.panel.view
+    for i in range(25):
+        view.add_cell("code", f"x{i} = {i}")
+    settle()
+    nb, bar, follow = view.notebook, view.scroll.verticalScrollBar(), view.ai_follow
+    assert bar.maximum() > 0
+    ts = Toolset(None, notebook=w.ask_panel.notebook_access(nb))
+    first = nb.cells[1]
+    w.activateWindow()
+    view.reveal(first)                                     # the keyboard is on a cell
+    bar.setValue(0)
+    settle()
+    moves = []
+    bar.valueChanged.connect(moves.append)
+
+    def edit(k):
+        moves.append("edit")    # every edit writes new source
+        ts.call("edit_cell", {"index": k, "source": f"y = {len(moves)}", "run": False})
+        settle()
+        return nb.cells[k]
+
+    w._ai_answer(nb, True)
+    ts.call("list_cells", {})
+    ts.call("read_cell", {"index": len(nb.cells) - 1})
+    edit(2)                                                # on screen: nothing moves
+    assert moves == ["edit"] and not follow.pill.isVisible()
+    focused = QtWidgets.QApplication.focusWidget()
+    if focused is not None:                                # the window has the keyboard (an X server)
+        assert view.widget_for(first) in (focused, focused.parentWidget())
+    far = edit(len(nb.cells) - 3)                          # off screen: shown
+    assert bar.value() > 0 and follow.visible(far) and not follow.pill.isVisible()
+    bar.triggerAction(QtWidgets.QAbstractSlider.SliderToMinimum)   # you scroll back up
+    settle()
+    last = edit(len(nb.cells) - 2)
+    assert bar.value() == 0 and follow.pill.isVisible()
+    assert follow.pill.text() == f"AI is on cell {len(nb.cells) - 1}"
+    w._ai_answer(nb, False)
+    assert follow.pill.text() == f"AI edited cell {len(nb.cells) - 1}"
+    follow.pill.click()
+    settle()
+    assert follow.visible(last) and not follow.pill.isVisible() and view.current is last
+
+    w.settings["llm.follow_cells"] = "end"
+    bar.setValue(0)
+    w._ai_answer(nb, True)
+    cell = edit(len(nb.cells) - 1)
+    assert bar.value() == 0
+    w._ai_answer(nb, False)
+    settle()
+    assert follow.visible(cell) and bar.value() > 0
+
+    w.settings["llm.follow_cells"] = "never"
+    bar.setValue(0)
+    w._ai_answer(nb, True)
+    edit(len(nb.cells) - 1)
+    w._ai_answer(nb, False)
+    settle()
+    assert bar.value() == 0 and follow.pill.isVisible()
+    w.close()
+
+
+def test_first_run_notice_stays_until_the_window_is_up(app):
+    """The first start after an install or update shows a notice before gui.app is imported and
+    closes it once the main window is on screen; the saved stamp keeps it away next time."""
+    from ewald.gui import first_run
+
+    assert first_run.is_first_run()
+    notice = first_run.start([])
+    assert notice is not None and notice.isVisible() and notice.objectName() == "firstRunNotice"
+    assert "first start" in notice.findChild(QtWidgets.QLabel, "firstRunBody").text()
+    first_run.finish()
+    assert not notice.isVisible()
+    assert not first_run.is_first_run()
+    assert first_run.start([]) is None
+
+
+def test_notice_comes_before_the_heavy_imports():
+    """The notice needs only the QApplication: VTK, pyvista and matplotlib load after it is up."""
+    import subprocess
+    import sys
+
+    code = ("import sys, ewald.gui.first_run, ewald.gui.application\n"
+            "print([m for m in ('vtkmodules', 'pyvista', 'pyvistaqt', 'matplotlib', 'ewald.gui.app')"
+            " if m in sys.modules])")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, encoding="utf-8", check=True)
+    assert out.stdout.strip() == "[]"

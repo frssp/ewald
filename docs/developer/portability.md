@@ -68,7 +68,13 @@ set before the secrets are written.
 a hidden WGL window (`gui.windows_opengl`); below 3.2 it uses the Legacy GL viewport with Qt's
 software OpenGL. The UI fonts (IBM Plex Sans and Mono, JetBrains Mono) ship in
 `ewald/assets/fonts` and are registered at start (`gui.fonts.load_fonts`), so the UI uses the
-same fonts everywhere.
+same fonts everywhere. Style sheets pass through `gui.fonts.css` (fonts set in code through
+`gui.fonts.installed`), which drops the families the system lacks: a missing family, even late
+in a fallback list, makes Qt build its alias table (about 200 ms on macOS, logged as
+"Populating font family aliases ... missing font family"). matplotlib figures from
+`plotstyle.figure()` and the Plots canvas are bound to the style (`plotstyle.bind`), so text
+drawn outside `plotstyle.context()` (a canvas paint event) never falls back to matplotlib's
+default math families (`mathtext.cal` = cursive, Apple Chancery on macOS).
 
 **Numbers.** numpy 2 is the minimum, so the default integer is int64 on Windows as well
 (numpy 1 used int32 there, and pair keys like `i * n + j` overflowed past 46k atoms). C++ code
