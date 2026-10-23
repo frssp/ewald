@@ -292,15 +292,15 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 ### Quality presets
 
-| `quality=` | `samples` | `ao_samples` | `shadows` | `antialiasing` | `ambient_occlusion` | `sphere_resolution` | `scale` |
-|---|---|---|---|---|---|---|---|
-| `draft` | 1 | 0 | False | False | False | 8 | 0.5 |
-| `standard` | 4 | 4 | True | True | False | 16 | 1.0 |
-| `publication` | 16 | 8 | True | True | True | 28 | 1.0 |
+| `quality=` | `samples` | `ao_samples` | `noise_threshold` | `shadows` | `antialiasing` | `ambient_occlusion` | `sphere_resolution` | `scale` |
+|---|---|---|---|---|---|---|---|---|
+| `draft` | 1 | 0 | 0.0 | False | False | False | 8 | 0.5 |
+| `standard` | 4 | 4 | 0.0 | True | True | False | 16 | 1.0 |
+| `publication` | 16 | 8 | 0.01 | True | True | True | 28 | 1.0 |
 
 ### `render()` options
 
-`size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`, `region`, `labels`, `light`, `progress`.
+`size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `noise_threshold`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`, `region`, `labels`, `light`, `progress`.
 
 Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `trajectory_color_by`, `trajectory_colormap`, `trajectory_color_range`, `trajectory_time_range`, `trajectory_trail`, `trajectory_radius`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`, `show_atoms`, `surfaces`, `cell_radius`, `type_transparency`, `selection_color`, `measurements`.
 
@@ -462,6 +462,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `render.movie_quality` | Movie quality | `'Same as image'` |
 | `render.samples` | Anti-aliasing rays/pixel | `16` |
 | `render.ao_samples` | Ambient occlusion rays | `32` |
+| `render.noise_threshold` | Noise threshold | `0.01` |
 | `render.shadows` | Shadows | `True` |
 | `render.size_preset` | Size preset | `'1-column (3.5 in, 4:3)'` |
 | `render.dpi` | Resolution | `600` |

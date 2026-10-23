@@ -325,7 +325,7 @@ class Session:
         if str(r.get("quality", "")).lower() == "custom":
             kw.pop("quality", None)
         elif r.get("quality"):  # a preset decides the sampling; the stored field values are only for Custom
-            for k in ("samples", "ao_samples", "shadows", "antialiasing", "ambient_occlusion"):
+            for k in ("samples", "ao_samples", "noise_threshold", "shadows", "antialiasing", "ambient_occlusion"):
                 kw.pop(k, None)
             kw["quality"] = str(r["quality"]).lower()
         if r.get("renderer_name"):

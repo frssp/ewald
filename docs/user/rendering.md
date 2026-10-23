@@ -182,6 +182,14 @@ OpenGL view. The AO rays of all samples of a pixel follow a low-discrepancy sequ
 (and any other line drawn as a tube) casts no shadow and no ambient occlusion, so its edges
 never leave dark arcs on the atoms.
 
+Atoms, bonds, arrows and polyhedra are found through a uniform grid; large, fine surface
+meshes (isosurfaces, grid slices) through a bounding volume hierarchy, which traces a
+270k-triangle isosurface about twice as fast as the grid did. With `noise_threshold` above 0
+(adaptive sampling) every pixel first takes `max(8, samples // 4)` rays, and only pixels whose
+estimated error is still above the threshold, and their neighbours, go on to `samples`: the
+background and evenly lit surfaces stop early, while edges, shadows and occlusion keep the full
+count. `noise_threshold=0` gives every pixel all `samples` rays.
+
 `renderer="vector"` writes SVG, PDF or EPS (format from the extension) with real circles for
 atoms, bond sticks, polyhedra, isosurfaces and slices painted far to near, and overlays as
 editable text, so a figure can be finished in Illustrator or Inkscape. It needs no OpenGL.
@@ -197,9 +205,9 @@ not pass yourself:
 |---|---|---|---|
 | `"draft"` | 1 ray/pixel, no AO, no shadows | no SSAA/SSAO, coarse spheres | half |
 | `"standard"` | 4 rays/pixel, 4 AO rays per hit, shadows | SSAA, medium spheres | full |
-| `"publication"` (default) | 16 rays/pixel, 8 AO rays per hit, shadows | SSAA + SSAO, fine spheres | full |
+| `"publication"` (default) | up to 16 rays/pixel (adaptive, `noise_threshold=0.01`), 8 AO rays per hit, shadows | SSAA + SSAO, fine spheres | full |
 
-Explicit `samples=`, `ao_samples=`, `shadows=`, `antialiasing=`, `ambient_occlusion=` and
+Explicit `samples=`, `ao_samples=`, `noise_threshold=`, `shadows=`, `antialiasing=`, `ambient_occlusion=` and
 `scale=` (a factor on `size`) always win. The interactive viewport keeps its own speed settings.
 
 ## Overlays
