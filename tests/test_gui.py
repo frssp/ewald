@@ -2281,7 +2281,7 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w._plugin_updates(2)                                       # a count badge while plugins have updates
     assert plugins_button.property("updates") == 2 and "2 updates available" in plugins_button.toolTip()
     w._plugin_updates(0)
-    assert plugins_button.toolTip() == "Show or hide the Plugins side bar"
+    assert plugins_button.toolTip() == "Plugins (Ctrl+Shift+X)"
     tabs = w.panel.tabs
     assert tabs.count() == 0 and w.panel.view is None                    # a new window: the welcome page
     assert "_empty" in w.viewport.plotter.actors and not w.viewport._viewbar.isEnabled()   # and a hint in the view
@@ -3929,7 +3929,7 @@ def test_menu_reorganization(app, cu_fcc, tmp_path, monkeypatch):
     assert "View" not in insert and "Analysis" not in insert and "Plugin step" not in insert
     assert "Command palette" in labels(menus["Tools"]) and "Command palette" not in labels(menus["Window"])
     window = labels(menus["Window"])
-    assert window.index("Notebook") < window.index("Remotes") < window.index("Plugins") < window.index("AI chat")
+    assert window.index("Notebook") < window.index("AI chat") < window.index("Remotes") < window.index("Plugins")
     remotes = w.remotes_action
     assert remotes.shortcut() == QtGui.QKeySequence("Ctrl+Alt+R")
     remotes.trigger()
