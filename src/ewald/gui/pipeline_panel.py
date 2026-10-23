@@ -412,8 +412,8 @@ class _Group(QtWidgets.QWidget):
         self.check = QtWidgets.QCheckBox(title, checked=checked, objectName="viewGroupTitle")
         lay.addWidget(self.check)
         self.rows = QtWidgets.QWidget(objectName="viewBody")
+        lay.addWidget(self.rows)   # parent first: shown without one, it would flash up as a window of its own
         self.rows.setVisible(checked)
-        lay.addWidget(self.rows)
         self.check.toggled.connect(self.rows.setVisible)
         self.check.toggled.connect(self.toggled)
 
@@ -1597,7 +1597,10 @@ def _short(value) -> str:
 def _types(data):
     from ..render import type_groups
 
-    return None if data is None else (data.count, tuple(sorted(map(str, type_groups(data.types)[0]))))
+    if data is None:
+        return None
+    real = data.count - int(data.attributes.get("OverlayFrames.count", 0))   # NEB ghosts vary per frame
+    return real, tuple(sorted(map(str, type_groups(data.types)[0])))
 
 
 def cell_summary(cell) -> str:
