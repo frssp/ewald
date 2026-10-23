@@ -319,6 +319,8 @@ QFrame#pluginRow:hover {{ border-color: {accent}; }}
 QFrame#pluginRow[fresh="true"] {{ border: 1px solid {accent}; background: {accent_soft}; }}
 QFrame#pluginRow QLabel {{ background: transparent; }}
 QFrame#pluginRow[incompatible="true"] QLabel {{ color: {muted}; }}
+QFrame#restartBar {{ background: {accent_soft}; border: 1px solid {accent}; border-radius: 6px; }}
+QFrame#restartBar QLabel {{ background: transparent; color: {text}; }}
 QLabel#pluginSummary {{ color: {secondary}; }}
 QLabel#pluginKinds {{ color: {data}; font-size: 11px; }}
 QPushButton#pluginInstall {{ background: {accent}; color: {on_accent}; border: none; border-radius: 6px; padding: 3px 12px;

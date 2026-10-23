@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import ast
 import base64
+import importlib.metadata
 import importlib.util
 import json
 import os
@@ -531,3 +532,70 @@ def _github_env(requirement: str | list[str]) -> dict:
     n = int(os.environ.get("GIT_CONFIG_COUNT", "0") or 0)
     return {"GIT_CONFIG_COUNT": str(n + 1), f"GIT_CONFIG_KEY_{n}": "http.https://github.com/.extraheader",
             f"GIT_CONFIG_VALUE_{n}": f"AUTHORIZATION: basic {basic}"}
+
+
+# ---------------------------------------------------------------- restart
+def _module_distributions() -> dict[str, list[str]]:
+    """Top-level module name -> the distributions that install it (read fresh from disk)."""
+    importlib.invalidate_caches()
+    return importlib.metadata.packages_distributions()
+
+
+def _version(dist: str) -> str:
+    try:
+        return importlib.metadata.version(dist)
+    except importlib.metadata.PackageNotFoundError:
+        return ""
+
+
+def loaded_versions() -> dict[str, str]:
+    """``{distribution: version}`` of the installed packages that have a module imported in
+    this process. Take it before pip runs and pass it to :func:`restart_reason` afterwards."""
+    top = {name.partition(".")[0] for name in list(sys.modules)}
+    dists = {d for name, ds in _module_distributions().items() if name in top for d in ds}
+    return {d: _version(d) for d in sorted(dists)}
+
+
+def _imported(package: str) -> bool:
+    """Whether a module of the installed distribution ``package`` is imported in this process."""
+    want = _norm(package)
+    top = {name.partition(".")[0] for name in list(sys.modules)}
+    return any(_norm(d) == want for name, ds in _module_distributions().items() if name in top for d in ds)
+
+
+def restart_reason(action: str, item: Installed | None = None, before: dict | None = None) -> str:
+    """Why ewald should restart after ``action`` ("install", "update", "uninstall", "enable",
+    "disable", "remove") on ``item``, or "" when the change already took effect.
+
+    Python keeps a module it has imported, so a restart is needed when pip changed or removed a
+    package whose code is already loaded (``before`` = :func:`loaded_versions` from before pip
+    ran; a numpy upgrade a plugin pulled in counts too), when a package plugin that was imported
+    earlier is switched back on (its module is not run again), and when a plugin folder (not a
+    single file) is updated. Installing something new, and every change to a single-file
+    plugin, takes effect at once."""
+    if before is not None and action in ("install", "update", "uninstall"):
+        changed = []
+        for dist, old in before.items():
+            new = _version(dist)
+            if new != old:
+                changed.append(f"{dist} {old} -> {new}" if new else f"{dist} {old} (removed)")
+        if changed:
+            return ("pip changed packages that are already loaded, and the running ewald keeps "
+                    "their old code: " + ", ".join(changed))
+    if item is None:
+        return ""
+    if action == "enable" and item.package and _imported(item.package):
+        return f"{item.package} was loaded before it was switched off; its contributions come back after a restart"
+    if action == "update" and item.path and Path(item.path).is_dir():
+        return f"{item.name} is a folder plugin whose modules are already loaded"
+    return ""
+
+
+def restart_command(paths=()) -> list[str]:
+    """The command line that starts ewald's desktop app again, opening ``paths``. A frozen app
+    (Windows installer, EWALD.app) is its own executable; otherwise this Python runs
+    ``-m ewald gui`` (the same interpreter, so the same environment)."""
+    paths = [os.fspath(p) for p in paths]
+    if getattr(sys, "frozen", False):
+        return [sys.executable, *paths]
+    return [sys.executable, "-m", "ewald", "gui", *paths]
