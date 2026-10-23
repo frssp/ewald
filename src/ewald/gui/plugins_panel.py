@@ -153,6 +153,8 @@ class PluginsPanel(QtWidgets.QWidget):
     stepRequested = QtCore.Signal(object)   # a modifier instance to add to the notebook
     createRequested = QtCore.Signal(str)    # a prompt for the AI to write a new plugin
     updatesChanged = QtCore.Signal(int)     # how many installed plugins a catalog has a newer version of
+    restartRequested = QtCore.Signal()      # "Restart now" on the restart bar
+    themeRequested = QtCore.Signal(str)     # "Use theme": make this UI theme the app's
 
     def __init__(self, settings=None, parent=None):
         super().__init__(parent)
@@ -168,6 +170,8 @@ class PluginsPanel(QtWidgets.QWidget):
         self._workers: list = []
         self._busy: dict[str, str] = {}      # plugin key -> "Installing…" while its action runs
         self._updates = 0
+        self._before = None                  # pc.loaded_versions() while pip runs
+        self.restart_reasons: list[str] = []  # why ewald should restart, shown on the restart bar
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(6)
@@ -190,6 +194,10 @@ class PluginsPanel(QtWidgets.QWidget):
         self.use_button.clicked.connect(self._use)
         self.use_button.setVisible(False)
         lay.addWidget(self.use_button)
+        self.theme_button = QtWidgets.QPushButton(objectName="primary")
+        self.theme_button.clicked.connect(lambda: self.themeRequested.emit(self.theme_button.property("theme")))
+        self.theme_button.setVisible(False)
+        lay.addWidget(self.theme_button)
         self.log = QtWidgets.QPlainTextEdit(readOnly=True, objectName="pluginLog")
         self.log.setMaximumHeight(120)
         self.log.setVisible(False)
@@ -204,6 +212,22 @@ class PluginsPanel(QtWidgets.QWidget):
         bar.addWidget(self.cancel_button)
         self.busy_bar.setVisible(False)
         lay.addWidget(self.busy_bar)
+        # a change that only takes effect after a restart (pip replaced code that is loaded)
+        self.restart_bar = QtWidgets.QFrame(objectName="restartBar")
+        rb = QtWidgets.QGridLayout(self.restart_bar)
+        rb.setContentsMargins(8, 6, 6, 6)
+        self.restart_label = QtWidgets.QLabel(wordWrap=True)
+        rb.addWidget(self.restart_label, 0, 0, 1, 3)
+        later = QtWidgets.QToolButton(text="Later", toolTip="Keep working; the change takes effect at the next start")
+        later.clicked.connect(lambda: self.restart_bar.setVisible(False))
+        now = QtWidgets.QPushButton("Restart now", objectName="primary",
+                                    toolTip="Close ewald (asking to save notebooks) and start it again with them open")
+        now.clicked.connect(self.restartRequested.emit)
+        rb.setColumnStretch(0, 1)
+        rb.addWidget(later, 1, 1)
+        rb.addWidget(now, 1, 2)
+        self.restart_bar.setVisible(False)
+        lay.addWidget(self.restart_bar)
         row = QtWidgets.QHBoxLayout()
         for text, slot, tip in (("From file…", self.install_from_file, "Install a plugin .py file, or a downloaded .zip/.whl/.tar.gz package"),
                                 ("pip…", self.install_with_pip, "Install a plugin package with pip"),
@@ -355,6 +379,26 @@ class PluginsPanel(QtWidgets.QWidget):
         self.details.setHtml("".join(parts))
         self.details.setVisible(True)
         self.use_button.setVisible(bool(self._modifier_names(item)))
+        themes = self._theme_names(item)
+        self.theme_button.setVisible(bool(themes))
+        if themes:
+            self.theme_button.setProperty("theme", themes[0])
+            self.theme_button.setText(f"Use theme {themes[0]}")
+            self.theme_button.setToolTip("Make it the UI theme (Preferences › General › UI theme)")
+
+    def _theme_names(self, item) -> list[str]:
+        names = getattr(item, "provides", {}).get("ui_theme", [])
+        return [n for n in names if n in plugins.ui_themes()] if getattr(item, "state", "loaded") == "loaded" else []
+
+    def recommend_restart(self, reason: str):
+        """Show the restart bar: ``reason`` says why the change needs a restart to take effect."""
+        if not reason:
+            return
+        if reason not in self.restart_reasons:
+            self.restart_reasons.append(reason)
+        self._say(f"Restart ewald to finish: {reason}")
+        self.restart_label.setText("Restart ewald to finish: " + "; ".join(self.restart_reasons))
+        self.restart_bar.setVisible(True)
 
     def _modifier_names(self, item) -> list[str]:
         names = getattr(item, "provides", {}).get("modifier", [])
@@ -376,8 +420,8 @@ class PluginsPanel(QtWidgets.QWidget):
             self.edit_settings(item)
         elif action in ("enable", "disable"):
             pc.set_enabled(item, action == "enable")
-            self._say(f"{item.name}: {action}d" + (" (restart ewald to unload its package)"
-                                                    if action == "disable" and item.package else ""))
+            self._say(f"{item.name}: {action}d")
+            self.recommend_restart(pc.restart_reason(action, item))
             self.refresh()
             self.changed.emit()
         else:
@@ -431,9 +475,17 @@ class PluginsPanel(QtWidgets.QWidget):
             return
         self._say(f"{'Updated' if update else 'Installed'} {entry.name}"
                   f"{' to ' + entry.version if update and entry.version else ''}: {', '.join(names) or 'nothing registered'}")
+        self.recommend_restart(pc.restart_reason("update" if update else "install", old))
         self.refresh()
         self.changed.emit()
         self.highlight(path)
+        if self.current is not None and str(getattr(self.current, "path", "")) == str(path):
+            self.show_details(self.current)
+        else:
+            for item in self.items:     # show the new plugin, with its Use theme button
+                if str(getattr(item, "path", "") or "") == str(path):
+                    self.show_details(item)
+                    break
 
     def highlight(self, path):
         """Scroll to the installed plugin's row and mark it for a moment (it moved to INSTALLED)."""
@@ -454,9 +506,10 @@ class PluginsPanel(QtWidgets.QWidget):
             return
         if QtWidgets.QMessageBox.question(
                 self, "Remove plugin", f"Remove {item.name}? The file moves to the plugin folder's .removed "
-                "folder, and its steps stay available until ewald restarts.") != QtWidgets.QMessageBox.Yes:
+                "folder (put it back to restore it).") != QtWidgets.QMessageBox.Yes:
             return
         dest = pc.remove_file(item)
+        plugins.load_plugins(force=True)        # its steps, readers, themes... leave the registries now
         self._say(f"Removed {item.name} (moved to {dest})")
         self.refresh()
         self.changed.emit()
@@ -508,6 +561,7 @@ class PluginsPanel(QtWidgets.QWidget):
             action, requirement, -1 if status == QtCore.QProcess.CrashExit else code))
         p.errorOccurred.connect(lambda err: err == QtCore.QProcess.FailedToStart and self._pip_done(action, requirement, -1))
         self._pip_key = key
+        self._before = pc.loaded_versions()   # pip may replace code that is already loaded
         reqs = requirement if isinstance(requirement, str) else " ".join(requirement)
         verb = {"install": "Installing", "update": "Updating", "uninstall": "Removing"}.get(action, "Running pip for")
         self._set_busy(key or "", busy or "", f"{verb} {reqs} with pip…")
@@ -533,10 +587,10 @@ class PluginsPanel(QtWidgets.QWidget):
         if not isinstance(requirement, str):
             requirement = " ".join(requirement)
         self._say(f"pip {action} {requirement}: {'done' if code == 0 else f'failed (exit {code})'}")
+        before, self._before = self._before, None
         if code == 0:
             plugins.load_plugins(force=True)
-            if action == "uninstall":
-                self._say("Restart ewald to unload the removed package's classes.")
+            self.recommend_restart(pc.restart_reason(action, before=before))
             self.refresh()
             self.changed.emit()
 

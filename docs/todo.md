@@ -192,10 +192,17 @@ GUI
   (`pipe.show()`, Ideas backlog P1) for groups that use JupyterHub on the cluster.
 - Plugins side bar: disable per notebook,
   "Recommended" plugins required by the open notebook, a Contributions tab and a full Forge
-  view instead of the Ask AI prompt; uninstalling a pip plugin still needs a restart.
+  view instead of the Ask AI prompt. Updating or uninstalling a pip plugin whose code is
+  loaded still needs a restart (the side bar now says so and offers Restart now); a VS
+  Code-style "reload window" without a new process is not possible for imported modules.
+  Restart now reopens saved notebooks only: untitled ones, the layout of plot tabs and the
+  current frame are not carried over.
   Updates compare versions only: an index entry that pins a new commit of a `pip:git+...`
   package without raising its version is not offered as an update (the installed commit is in
   the distribution's `direct_url.json` if that is ever wanted).
+- UI themes, VS Code/Obsidian-like switching: no Color theme picker with live preview in the
+  Ctrl+K palette, no preview images of themes in the Plugins side bar, no light/dark variants in
+  one theme that follow the OS, no icon themes (the side bar's *Use theme* button is there).
 - UI themes: prompts already printed in the Python console keep the colors of the theme they
   were printed in (new input, syntax colors and the background switch at once).
 - UI theme style keys (`font`, `mono_font`, `radius`, `density`, `icon_stroke`, `qss`): open code

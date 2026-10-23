@@ -103,6 +103,16 @@ the end.
   plugins declare themselves in a manifest (`ewald-plugin.toml`), as in VS Code.
 - **Landed:** PRs #14, #22 and later; plugin index in frssp/ewald-plugins.
 
+### D18. Recommend a restart when a plugin change needs one (2026-10-23)
+
+- **Decision:** when installing, updating, switching on or removing a plugin only takes effect
+  after a restart, ewald says so and offers *Restart now* (which reopens the saved notebooks);
+  everything that can take effect at once does (removing a single-file plugin no longer waits
+  for a restart).
+- **Why:** "플러그인 중 재시작이 필요한 것이 있으면 재시작을 추천해줘" (if a plugin needs a
+  restart, recommend restarting).
+- **Landed:** PR #229 (Plugins side bar restart bar, `plugin_catalog.restart_reason`).
+
 ### D12. Reuse before writing (2026-10-18)
 
 - **Decision:** port verified analyses (CNA, PTM, Voronoi, Wigner-Seitz, grain segmentation) from

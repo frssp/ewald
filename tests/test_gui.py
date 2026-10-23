@@ -5047,3 +5047,70 @@ def test_bundled_ui_fonts_are_registered(app):
     assert load_fonts() == families                      # once per process
     for family in ("JetBrains Mono", "IBM Plex Sans"):   # Qt adds "[foundry]" when the system has it too
         assert QtGui.QFontInfo(QtGui.QFont(family)).family().startswith(family)
+
+
+def test_plugins_side_bar_recommends_a_restart_when_pip_replaced_loaded_code(app):
+    from ewald import settings
+    from ewald.gui import plugins_panel
+
+    panel = plugins_panel.PluginsPanel(settings=settings.Settings())
+    panel.wait()
+    asked = []
+    panel.restartRequested.connect(lambda: asked.append(True))
+    panel.recommend_restart("")                               # nothing to finish
+    assert panel.restart_bar.isHidden()
+
+    class Done:
+        def deleteLater(self):
+            pass
+
+    panel._process, panel._before = Done(), {"numpy": "0.0.1"}   # pip upgraded numpy, which is loaded
+    panel._pip_done("install", "ewald-something", 0)
+    assert not panel.restart_bar.isHidden() and "numpy 0.0.1 -> " in panel.restart_label.text()
+    restart = next(b for b in panel.restart_bar.findChildren(plugins_panel.QtWidgets.QPushButton)
+                   if b.text() == "Restart now")
+    restart.click()
+    assert asked == [True]
+    later = next(b for b in panel.restart_bar.findChildren(plugins_panel.QtWidgets.QToolButton) if b.text() == "Later")
+    later.click()
+    assert panel.restart_bar.isHidden()
+    panel.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_plugins_side_bar_uses_an_installed_ui_theme_and_the_window_restarts(app, tmp_path, monkeypatch):
+    import sys
+
+    from ewald import plugin_catalog as pc
+    from ewald import settings
+    from ewald.gui import app as app_mod
+    from ewald.gui.app import MainWindow
+
+    src = tmp_path / "glow_theme.py"
+    src.write_text('from ewald.plugin_api import ui_theme\n\n\n@ui_theme(name="Glow", base="graphite")\n'
+                   'def glow():\n    """Green."""\n    return {"accent": "#33FF66", "font": "JetBrains Mono"}\n',
+                   encoding="utf-8")
+    w = MainWindow(settings=settings.Settings())
+    panel = w.plugins_panel
+    panel.install(pc.describe_file(src))
+    panel.wait()
+    assert not panel.theme_button.isHidden() and panel.theme_button.text() == "Use theme Glow"
+    assert panel.restart_bar.isHidden()                       # a new file plugin works at once
+    panel.theme_button.click()
+    assert w.settings["general.ui_theme"] == "Glow" and settings.load()["general.ui_theme"] == "Glow"
+    from ewald.gui import theme
+
+    assert theme.TOKENS["accent"] == "#33FF66" and theme.STYLE["font"] == "JetBrains Mono"
+
+    nb = tmp_path / "saved.py"
+    nb.write_text("# %%\nx = 1\n", encoding="utf-8")
+    w.panel.open_notebook(str(nb), trusted=True)
+    started, quit_ = [], []
+    monkeypatch.setattr(app_mod.QtCore.QProcess, "startDetached",
+                        staticmethod(lambda prog, args, cwd: started.append([prog, *args]) or True))
+    monkeypatch.setattr(app_mod.QtWidgets.QApplication, "quit", staticmethod(lambda: quit_.append(True)))
+    panel.recommend_restart("test")
+    panel.restartRequested.emit()
+    assert quit_ == [True] and not w.isVisible()
+    assert started and started[0][:4] == [sys.executable, "-m", "ewald", "gui"] and str(nb) in started[0]
+    theme.use("graphite")

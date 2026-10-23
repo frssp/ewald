@@ -158,6 +158,8 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.plugins_panel.stepRequested.connect(lambda m: self.panel.add_modifier(m))
         self.plugins_panel.changed.connect(lambda: self.message("Plugins changed"))
         self.plugins_panel.changed.connect(self.panel.refresh_packages)
+        self.plugins_panel.themeRequested.connect(self.use_ui_theme)
+        self.plugins_panel.restartRequested.connect(self.restart_app)
         self.panel.pipRequested.connect(self._install_notebook_packages)
         self.panel.switched.connect(self._notebook_switched)
         self._plot_docks = {}  # view id -> (PlotSlot, id, PlotsPanel): cells' plots in the Plots panel
@@ -805,15 +807,15 @@ def main(argv=None):
     import argparse
 
     ap = argparse.ArgumentParser(prog="ewald-gui", description="EWALD desktop GUI (Extensible Workbench for Atomic Lattices & Dynamics)")
-    ap.add_argument("file", nargs="?")
+    ap.add_argument("file", nargs="*", help="files, notebooks or sessions to open")
     ap.add_argument("--type-map", default=None, help="LAMMPS types, e.g. 1=Cu,2=Zr")
     ap.add_argument("--device", default=None, help="cpu, cuda or auto")
     args = ap.parse_args(strip_psn(sys.argv[1:] if argv is None else argv))
     app = _app()
     win = MainWindow(device=args.device)
-    if args.file:
-        kw = {"type_map": dict(p.split("=") for p in args.type_map.split(","))} if args.type_map else {}
-        win.open_any(args.file, ask_types=False, **kw)
+    kw = {"type_map": dict(p.split("=") for p in args.type_map.split(","))} if args.type_map else {}
+    for path in args.file:
+        win.open_any(path, ask_types=False, **kw)
     win.show()
     return app.exec()
 
