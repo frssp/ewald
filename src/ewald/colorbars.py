@@ -110,19 +110,23 @@ def _surface(background, transparent: bool) -> tuple:
 def colorbar_items(bars, size, *, unit: float, ink=(0.08, 0.08, 0.08), background="white",
                    transparent: bool = False) -> list:
     """Overlay items of the color ``bars`` in an image of ``size`` (w, h) px, ``unit`` being the label font
-    size in px: each bar on its own translucent card in the top right corner, further bars to the left."""
+    size in px: each bar on its own translucent card in the top right corner, further bars to the left (a
+    card is as wide as its title, so titles never overlap), in a new row below when the width runs out."""
     bars = [dict(b) for b in bars or ()]
     W, H = float(size[0]), float(size[1])
     u = float(unit)
     ink = tuple(float(c) for c in ink[:3])
     margin = max(0.8 * u, 0.02 * H)
     out = []
-    x = W - margin
+    x, y, row_h = W - margin, margin, 0.0
     for bar in bars:
-        w, _, items = _card(bar, u, H, ink, _surface(background, transparent))
+        w, h, items = _card(bar, u, H, ink, _surface(background, transparent))
+        if x - w < margin and row_h:      # no room left of the previous card: start a row below
+            x, y, row_h = W - margin, y + row_h + 0.6 * u, 0.0
         x -= w
-        out += _shift(items, round(x), round(margin))
+        out += _shift(items, round(x), round(y))
         x -= 0.6 * u
+        row_h = max(row_h, h)
     return out
 
 

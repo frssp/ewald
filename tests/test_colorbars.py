@@ -78,3 +78,14 @@ def test_vector_items_draw_on_matplotlib():
     draw_items_mpl(ax, colorbar_items(BARS, (800, 600), unit=12), (0, 0, 0), 0.75, 12)
     assert not ax.images and len(ax.collections) == 2 and len(ax.patches) >= 4   # vector, no raster
     plt.close(fig)
+
+
+def test_long_titles_and_many_bars_never_overlap():
+    bars = [{"title": "Trajectory time (fs) " * (k == 0) + f"Property {k}", "cmap": "viridis", "range": (0, k + 1)}
+            for k in range(6)]
+    cards = [it for it in colorbar_items(bars, (400, 600), unit=12) if isinstance(it, Rect) and it.fill is not None]
+    assert len(cards) == 6 and min(c.x0 for c in cards) >= 0
+    for i, a in enumerate(cards):
+        for b in cards[i + 1:]:
+            assert a.x1 <= b.x0 or b.x1 <= a.x0 or a.y1 <= b.y0 or b.y1 <= a.y0
+    assert len({c.y0 for c in cards}) > 1                  # wrapped into a second row
