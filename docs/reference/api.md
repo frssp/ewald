@@ -33,6 +33,12 @@ site (`mkdocs serve`) or use `help()` in Python, or read `llms.txt` for a compac
 
 ::: ewald.runs
 
+## Workflows
+
+::: ewald.workflow
+
+::: ewald.workflow_table
+
 ## Rendering
 
 ::: ewald.render.render
