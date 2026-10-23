@@ -21,6 +21,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from .. import fileops
 from .._tls import ssl_context
 
 
@@ -470,7 +471,7 @@ def _download(url: str, dest: Path, timeout: float = 60.0, size: int | None = No
             while block := resp.read(1 << 18):
                 out.write(block)
                 bar.update(len(block))
-        os.replace(tmp, dest)
+        fileops.replace(tmp, dest)
     except BaseException:
         with contextlib.suppress(OSError):
             tmp.unlink()   # closed above (Windows cannot delete an open file)

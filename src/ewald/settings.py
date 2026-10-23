@@ -21,6 +21,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import fileops
+
 log = logging.getLogger(__name__)
 
 
@@ -417,8 +419,7 @@ class Settings:
     def save(self, path=None):
         p = Path(path) if path else self.path
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(self.changed(), indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-                     encoding="utf-8", newline="\n")
+        fileops.write_text(p, json.dumps(self.changed(), indent=2, sort_keys=True, ensure_ascii=False) + "\n")
         return p
 
     def __repr__(self):
