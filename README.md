@@ -92,8 +92,8 @@ pipe.add(CoordinationAnalysis(cutoff=3.0))
 # %% style: surface atoms, every frame
 @pipe.add
 def style(frame, data):
-    paint(data, data["Coordination"] < 12, "#C8551F")
-    hide(data, data["Position"][:, 0] > 8)           # cut the block open
+    paint(data, "Coordination < 12", "#C8551F")      # the legend names the condition
+    hide(data, "Position.X > 8")                     # cut the block open
 
 # %%
 show(pipe, histogram="Coordination")
