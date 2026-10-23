@@ -230,7 +230,7 @@ the end.
   AI writing the code each time; sharing the computing code with other tools (only the knowledge
   is shared).
 - **Landed:** milestone in docs/ROADMAP.md (Properties).
-### D22. Color bars on translucent cards, drawn once for screen and file (2026-10-23)
+### D23. Color bars on translucent cards, drawn once for screen and file (2026-10-23)
 
 - **Decision:** a color bar (ColorCoding, `color_by`, trajectory maps, grid slices) is a thin
   rounded ramp with round-number ticks on a small translucent card in the top right corner;
