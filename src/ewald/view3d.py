@@ -163,7 +163,8 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        "this Time window (timesteps; either end may be null); None: the whole paths.", type=["array", "null"],
        items={"type": ["number", "null"]}),
     _s("trajectory_trail", None, "elements", "Trajectory lines that follow the current frame: true draws the "
-       "paths up to it, a number only that much Time before it (a tail); None: the whole paths.",
+       "paths up to it, a number only that much Time before it (a tail); None: the whole paths. Like every "
+       "trajectory_* setting it only styles the lines of a GenerateTrajectoryLines step, which must be added first.",
        type=["boolean", "number", "null"]),
     _s("trajectory_radius", None, "elements", "Tube radius in Angstrom of trajectory lines in ray-traced pictures; "
        "None: 0.04 x trajectory_width.", type=["number", "null"]),
@@ -629,7 +630,36 @@ def view(pipe, **settings) -> View:
     ``pipe.view``; as the last line of a cell it shows the picture. Settings not named keep their
     value. ``view(pipe)`` alone just shows it."""
     v = pipe.view if hasattr(pipe, "view") else View()
-    return v.update(**settings)
+    v.update(**settings)
+    if settings:
+        import warnings
+
+        for note in view_notes(v, getattr(pipe, "modifiers", None)):
+            warnings.warn(note, UserWarning, stacklevel=2)
+    return v
+
+
+# view settings that only style what a step makes: setting -> (step class names, the step to add)
+_NEEDS_STEP = {name: (("GenerateTrajectoryLines",), "GenerateTrajectoryLines()")
+               for name in ("trajectory_color_by", "trajectory_time_range", "trajectory_trail",
+                            "trajectory_color_range", "trajectory_radius")}
+
+
+def view_notes(v: View, modifiers=None) -> list[str]:
+    """Why some settings of ``v`` draw nothing for a pipeline with these ``modifiers``: the trajectory
+    line settings style the lines a ``GenerateTrajectoryLines`` step makes, and without one there are none."""
+    if modifiers is None:
+        return []
+    have = {type(m).__name__ for m in modifiers if getattr(m, "enabled", True)}
+    missing = {}
+    for name in v._values:
+        need = _NEEDS_STEP.get(name)
+        if need is not None and not have & set(need[0]):
+            missing.setdefault(need[1], []).append(name)
+    return [f"{', '.join(names)} only style{'s' if len(names) == 1 else ''} lines that a {step.split('(')[0]} step "
+            f"makes, and this pipeline has none, so nothing is drawn: add pipe.add({step}) (all atoms, or the "
+            f"ones selected at its start frame) above this view cell"
+            for step, names in missing.items()]
 
 
 def view_source(pipeline_name: str = "pipe", **settings) -> str:

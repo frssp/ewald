@@ -349,3 +349,118 @@ def test_settings_written_by_older_windows_versions_still_load(tmp_path, monkeyp
     assert settings.load(p)["general.docs_url"] == "C:\\문서"
     p.write_text('{"x": "Å"}', encoding="utf-8")
     assert settings.read_text_any(p) == '{"x": "Å"}'
+
+
+# ----------------------------------------------------------------------- replacing open files
+def test_files_are_replaced_only_through_fileops():
+    """Windows refuses to replace a file another program holds open; ewald.fileops.replace
+    retries and names that program, so every replace goes through it."""
+    bad = []
+    for rel, tree in _sources():
+        if rel == "fileops.py":
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("replace", "rename"):
+                f = node.func
+                if (isinstance(f.value, ast.Name) and f.value.id == "os") or (len(node.args) == 1 and not node.keywords):
+                    bad.append(f"{rel}:{node.lineno} {ast.unparse(node)}: use ewald.fileops.replace")
+    assert not bad, "\n".join(bad)
+
+
+def test_replace_retries_while_windows_holds_the_file(tmp_path, monkeypatch):
+    from ewald import fileops
+
+    monkeypatch.setattr(fileops, "_windows", lambda: True)
+    real, calls = os.replace, []
+
+    def locked_twice(src, dst):
+        calls.append(dst)
+        if len(calls) <= 2:
+            raise PermissionError(13, "The process cannot access the file because it is being used by another process")
+        real(src, dst)
+
+    monkeypatch.setattr(os, "replace", locked_twice)
+    fileops.write_text(tmp_path / "settings.json", "{}\n", delays=(0, 0, 0))
+    assert len(calls) == 3 and (tmp_path / "settings.json").read_bytes() == b"{}\n"
+    assert not (tmp_path / "settings.json.tmp").exists()
+
+    def always_locked(src, dst):
+        raise PermissionError(13, "being used by another process")
+
+    monkeypatch.setattr(os, "replace", always_locked)
+    monkeypatch.setattr(fileops, "holders", lambda path: ["Notepad", "OneDrive"])
+    with pytest.raises(fileops.FileInUseError, match="open in Notepad, OneDrive; close it there") as info:
+        fileops.write_text(tmp_path / "notebook.py", "x = 1\n", delays=(0,))
+    assert isinstance(info.value, PermissionError) and info.value.programs == ["Notepad", "OneDrive"]
+    assert not (tmp_path / "notebook.py.tmp").exists()     # the temporary file is cleaned up
+
+
+def test_replace_does_not_retry_off_windows(tmp_path, monkeypatch):
+    from ewald import fileops
+
+    monkeypatch.setattr(fileops, "_windows", lambda: False)
+    calls = []
+
+    def denied(src, dst):
+        calls.append(dst)
+        raise PermissionError(13, "read-only folder")
+
+    monkeypatch.setattr(os, "replace", denied)
+    with pytest.raises(PermissionError) as info:
+        fileops.replace(tmp_path / "a", tmp_path / "b")
+    assert len(calls) == 1 and not isinstance(info.value, fileops.FileInUseError)
+    assert fileops.holders(tmp_path / "b") == []
+
+
+def test_settings_save_names_the_program_holding_the_file(tmp_path, monkeypatch):
+    from ewald import fileops
+    from ewald.settings import Settings
+
+    monkeypatch.setattr(fileops, "_windows", lambda: True)
+    monkeypatch.setattr(fileops, "RETRY_DELAYS", (0,))
+    monkeypatch.setattr(fileops, "holders", lambda path: ["Code.exe"])
+    monkeypatch.setattr(os, "replace", lambda src, dst: (_ for _ in ()).throw(PermissionError(13, "in use")))
+    with pytest.raises(PermissionError, match="settings.json is open in Code.exe"):
+        Settings(path=tmp_path / "settings.json").save()
+
+
+def test_secrets_file_gets_an_owner_only_acl_on_windows(tmp_path, monkeypatch, caplog):
+    """0600 means nothing on Windows; the fallback secrets file gets an ACL for the user alone,
+    set before the secret is written."""
+    import subprocess
+
+    from ewald import keychain
+
+    monkeypatch.setenv("EWALD_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(keychain, "sys", types.SimpleNamespace(platform="win32"))
+    monkeypatch.setenv("USERDOMAIN", "LAB")
+    monkeypatch.setattr("getpass.getuser", lambda: "kim")
+    calls = []
+
+    def icacls(args, **kw):
+        calls.append((args, os.path.getsize(args[1]), kw))
+        return subprocess.CompletedProcess(args, 0, "processed 1 file", "")
+
+    monkeypatch.setattr(subprocess, "run", icacls)
+    keychain.file_set("ssh-password:cluster", "hunter2")
+    (args, size, kw), = calls
+    assert args == ["icacls", str(tmp_path / "credentials.json"), "/inheritance:r", "/grant:r", "LAB\\kim:F"]
+    assert size == 0 and "shell" not in kw and kw["encoding"] == "utf-8"
+    assert keychain.file_get("ssh-password:cluster") == "hunter2"
+
+    monkeypatch.setattr(subprocess, "run", lambda args, **kw: subprocess.CompletedProcess(args, 5, "", "Access is denied."))
+    with caplog.at_level("WARNING", logger="ewald.keychain"):
+        assert not keychain.owner_only(tmp_path / "credentials.json")
+    assert "Access is denied" in caplog.text
+
+
+def test_secrets_file_is_0600_elsewhere(tmp_path, monkeypatch):
+    from ewald import keychain
+
+    if os.name == "nt":
+        pytest.skip("POSIX modes")
+    monkeypatch.setenv("EWALD_CONFIG_DIR", str(tmp_path))
+    (tmp_path / "credentials.json").write_text("{}", encoding="utf-8", newline="\n")
+    os.chmod(tmp_path / "credentials.json", 0o644)
+    keychain.file_set("k", "v")
+    assert (tmp_path / "credentials.json").stat().st_mode & 0o777 == 0o600

@@ -22,7 +22,7 @@ import json
 import re
 from dataclasses import asdict, dataclass, field, fields, replace
 
-from .. import keychain
+from .. import fileops, keychain
 
 AUTH = {"auto": "SSH agent / keys from ~/.ssh/config",
         "key": "Key file",
@@ -116,7 +116,7 @@ def _write(items: list[Profile]) -> None:
     rows = [{k: v for k, v in asdict(p).items() if v not in ("", None, [])} | {"name": p.name} for p in items]
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps({"version": 1, "profiles": rows}, indent=1), encoding="utf-8", newline="\n")
-    tmp.replace(path)
+    fileops.replace(tmp, path)
 
 
 def validate(profile: Profile) -> None:

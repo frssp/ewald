@@ -28,6 +28,8 @@ import json
 import os
 import time
 
+from . import fileops
+
 #: How many trusted notebook files are remembered (the oldest are forgotten first).
 TRUST_LIMIT = 5000
 
@@ -107,7 +109,7 @@ def remember_file(path) -> bool:
         store.parent.mkdir(parents=True, exist_ok=True)
         tmp = store.with_name(store.name + ".tmp")
         tmp.write_text(json.dumps({"format": 1, "sha256": entries}, indent=0), encoding="utf-8", newline="\n")
-        os.replace(tmp, store)
+        fileops.replace(tmp, store)
     except OSError:
         return False
     return True

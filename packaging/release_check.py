@@ -29,7 +29,8 @@ SEMVER = re.compile(r"^\d+\.\d+\.\d+((a|b|rc)\d+)?$")
 # files the wheel must carry (package data that is easy to drop from pyproject.toml by accident)
 WHEEL_MUST_HAVE = ["ewald/tables/radii.json", "ewald/tables/colors.json", "ewald/assets/icon/ewald.svg",
                    "ewald/assets/icon/ewald.ico", "ewald/assets/icon/ewald.icns", "ewald/assets/icon/ewald-256.png",
-                   "ewald/examples/files/POSCAR.SrTiO3", "ewald/_csrc/README.md"]
+                   "ewald/examples/files/POSCAR.SrTiO3", "ewald/_csrc/README.md",
+                   "ewald/assets/fonts/IBMPlexSans-Regular.ttf", "ewald/assets/fonts/IBM-Plex-LICENSE.txt"]
 
 SMOKE = r"""
 import sys, ewald

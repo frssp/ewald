@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from . import fileops
+
 FORMAT_VERSION = 1
 CODE_MODIFIERS = ("PythonScript", "PythonModifier")
 
@@ -366,7 +368,7 @@ def save_session(path, pipeline, *, frame: int = 0, camera: dict | None = None, 
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(doc, fh, indent=1)
-    os.replace(tmp, path)
+    fileops.replace(tmp, path)
     return path
 
 
