@@ -924,11 +924,12 @@ class Toolset:
 
         @T("python_api",
            "Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every "
-           "modifier signature). Read it before writing notebook cells (insert_cell, edit_cell).", _obj({}))
+           "modifier signature, the notebook's cell kinds, show/view/paint, and the modifier plugins installed here). "
+           "Read it before writing notebook cells (insert_cell, edit_cell, or code blocks in answers).", _obj({}))
         def python_api():
             from .reference import api_reference
 
-            return api_reference()
+            return api_reference(with_plugins=True)
 
         @T("list_workflows",
            "Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs, or folders of VASP/LAMMPS/"
