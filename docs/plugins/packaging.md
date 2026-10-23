@@ -151,8 +151,27 @@ separated by `;`). The environment variable `EWALD_PLUGIN_INDEX` replaces the de
 and an empty value turns it off. An index that cannot be found (or, on GitHub, is private and
 there is no token) shows as one muted line. *Install*, *Update* and *Remove* run in the
 background: the row shows a spinner ("Installing…") in place of its buttons, and a line at the
-bottom of the side bar says what is running (with *Cancel* while pip runs) until it is done. A lab
-or a project can publish its own list:
+bottom of the side bar says what is running (with *Cancel* while pip runs) until it is done.
+Selecting a plugin that brings a [UI theme](styles.md#ui-themes) shows *Use theme …*, which makes
+it the app's theme at once (the same as Preferences › General › *UI theme*).
+
+### When ewald needs a restart
+
+Most changes take effect at once: installing a plugin, and installing, updating, switching off
+or removing a single-file plugin. Python does not load a module again once it has imported it,
+so a few changes only take effect after a restart, and the side bar then shows *Restart ewald
+to finish: …* with **Restart now** and *Later*:
+
+- pip updated or removed a package whose code is already loaded, including a dependency pip
+  upgraded on the way (installing a plugin that pulls in a newer numpy, say);
+- a package plugin that was loaded earlier in the session is switched back on;
+- a plugin folder (not a single file) in the plugin folder was updated.
+
+*Restart now* closes the window as File › Quit does (asking to save changed notebooks) and starts
+ewald again with the saved notebooks open, in the same Python environment (or the same app, for
+the installed Windows and macOS apps). `ewald gui` takes several files for this.
+
+A lab or a project can publish its own list:
 
 ```json
 {"format": 1, "plugins": [

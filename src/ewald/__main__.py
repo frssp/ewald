@@ -55,7 +55,7 @@ def build_parser():
                             help="overlay element, e.g. 'Coordinate tripod' or Attributes (repeatable)")
     r.add_argument("--dpi", type=float, default=None, help="stored in PNG/TIFF; page size of vector output")
     g = sub.add_parser("gui", help="open the desktop viewer")
-    g.add_argument("input", nargs="?", help="structure/trajectory file or .ewald session")
+    g.add_argument("input", nargs="*", help="structure/trajectory files, notebooks or .ewald sessions")
     g.add_argument("--type-map", default=None)
     g.add_argument("--device", default=None)
     ex = sub.add_parser("examples", help="list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...)")
@@ -265,7 +265,7 @@ def _run(args):
     if args.cmd == "gui":
         from .gui import main as gui_main
 
-        extra = ([args.input] if args.input else []) + (["--type-map", args.type_map] if args.type_map else [])
+        extra = list(args.input) + (["--type-map", args.type_map] if args.type_map else [])
         return gui_main(extra + (["--device", args.device] if args.device else []))
     if args.cmd == "api":
         from .llm.reference import api_reference

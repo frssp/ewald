@@ -1319,7 +1319,8 @@ class CellWidget(QtWidgets.QFrame):
 
     def _repolish(self):
         chips = self.chips if self.cell.is_step else None
-        key = (self.property("state"), self.property("current"), self.property("selected"), chips.objectName() if chips is not None else None)
+        key = (self.property("state"), self.property("current"), self.property("selected"), self.property("flash"),
+               chips.objectName() if chips is not None else None)
         if key == getattr(self, "_polished", None):
             return   # nothing the style sheet reads changed (e.g. a new frame during playback)
         self._polished = key
@@ -1327,6 +1328,18 @@ class CellWidget(QtWidgets.QFrame):
             if w is not None:
                 w.style().unpolish(w)
                 w.style().polish(w)
+
+    FLASH_MS = 1200
+
+    def flash(self):
+        """Light the cell up for a moment (a link in the AI chat led here)."""
+        self.setProperty("flash", True)
+        self._repolish()
+
+        def off():
+            self.setProperty("flash", False)
+            self._repolish()
+        QtCore.QTimer.singleShot(self.FLASH_MS, self, off)
 
     def set_selected(self, on: bool):
         """Part of a multi-cell selection (Shift+Up/Down, Shift+click)."""

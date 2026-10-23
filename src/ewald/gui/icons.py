@@ -68,6 +68,7 @@ PATHS = {
     "arrow_right": '<path d="M5 12h14M13 6l6 6-6 6"/>',
     "arrow_up": '<path d="M12 19V5M6 11l6-6 6 6"/>',
     "arrow_down": '<path d="M12 5v14M6 13l6 6 6-6"/>',
+    "arrow_up_right": '<path d="M7 17L17 7M8 7h9v9"/>',
     "roll": '<path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M20 4v5h-5"/>',
     "reset": '<path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 4v5h5"/>',
     "refresh": '<path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M20 4v5h-5"/>',

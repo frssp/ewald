@@ -327,6 +327,18 @@ class LinksMixin:
 
         return failed_cells(nb) or None
 
+    def _show_ai_cell(self, notebook, cell_id):
+        """A cell link in the AI chat: show that notebook's tab and the cell, lit up for a moment."""
+        view = next((v for v in self.panel.views() if notebook is None or v.notebook is notebook), None)
+        cell = None if view is None else next((c for c in view.notebook.cells if c.id == cell_id), None)
+        if cell is None:
+            self.message("That cell is no longer in the notebook")
+            return
+        self.panel.tabs.setCurrentWidget(view)
+        self.notebook_dock.show()
+        self.notebook_dock.raise_()
+        view.reveal(cell)
+
     def _insert_claude_cell(self, code, run=False):
         """'Insert as notebook cell' in the AI chat: a code cell after the current one, not run
         unless ``run`` (an answer's code block while Preferences › AI › Let the AI run cells is on)."""

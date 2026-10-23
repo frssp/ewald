@@ -5,6 +5,7 @@ context both get."""
 from __future__ import annotations
 
 import logging
+import os
 import traceback
 from pathlib import Path
 
@@ -165,6 +166,31 @@ class PluginPanelsMixin:
         self.workbench.viewClosed.connect(self._plugin_tab_closed)
         self.viewport.picked.connect(self._update_plugin_menu_items)   # when="picks" on the toolbar
         self.refresh_plugin_panels()
+
+    def use_ui_theme(self, name: str):
+        """Make ``name`` the UI theme (the Plugins side bar's Use theme), saved like Preferences does."""
+        from . import preferences as prefs
+
+        self.settings["general.ui_theme"] = name
+        self.settings.save()
+        prefs.apply_settings(self, self.settings)
+        self.message(f"UI theme: {name}")
+
+    def restart_app(self) -> bool:
+        """Close the window (asking to save notebooks, as Quit does) and start ewald again with
+        the saved notebooks open (Plugins side bar › Restart now). False when the close was
+        cancelled."""
+        from .. import plugin_catalog as pc
+
+        if not self.close():
+            return False
+        paths = [v.notebook.path for v in self.panel.views() if v.notebook.path]
+        cmd = pc.restart_command(dict.fromkeys(paths))
+        started = QtCore.QProcess.startDetached(cmd[0], cmd[1:], os.getcwd())
+        if not (started[0] if isinstance(started, tuple) else started):   # (ok, pid) in some PySide6
+            log.warning("could not start %s", cmd)
+        QtWidgets.QApplication.quit()
+        return True
 
     def refresh_plugin_panels(self):
         """Match the window to the installed plugins: activity-bar buttons and bottom tabs for new

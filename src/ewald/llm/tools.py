@@ -285,6 +285,10 @@ class Toolset:
     def _cell_index(self, nb: Notebook, cell: Cell) -> int | None:
         return self.notebook_access.call(lambda: nb.cells.index(cell) if cell in nb.cells else None)
 
+    def _cell_ref(self, nb: Notebook, cell: Cell) -> dict:
+        """``{"cell": index, "cell_id": id}`` of the cell a tool wrote (the chat links to it by id)."""
+        return {"cell": self._cell_index(nb, cell), "cell_id": cell.id}
+
     def _apply_view(self, settings: dict, reset=None, rotate=None) -> dict:
         """Change view settings by writing the notebook's view cell and running it."""
         from ..view3d import View, view_notes, view_source
@@ -343,7 +347,7 @@ class Toolset:
         k = access.call(tidy)
         out = {"changed": pipe.view.changed(), "code": view_source(self.pipeline_name, **pipe.view.changed())}
         if k is not None:
-            out["cell"] = k
+            out["cell"], out["cell_id"] = k, cell.id
         notes = view_notes(pipe.view, pipe.modifiers)
         if notes:
             out["notes"] = notes
@@ -431,7 +435,7 @@ class Toolset:
                                                      ("ewald", "load", ewald.load)), "AI: load structure")
             self.frame = 0
             pipe = self._need_pipeline()
-            out = {"num_frames": pipe.num_frames, "cell": self._cell_index(nb, cell)}
+            out = {"num_frames": pipe.num_frames, **self._cell_ref(nb, cell)}
             try:
                 out["first_frame"] = _describe.describe_frame(pipe.compute(0), rdf_peaks_=False, frame=0)
             except Exception as exc:  # loaded all the same; describe_frame tells more
@@ -537,7 +541,7 @@ class Toolset:
             except Exception:
                 self._delete_cell(nb, cell, f"AI: add {name} (failed)")
                 raise
-            return {"pipeline": self._pipeline_list(), "cell": self._cell_index(nb, cell),
+            return {"pipeline": self._pipeline_list(), **self._cell_ref(nb, cell),
                     "effect": _diff(before, after)}
 
         @T("remove_modifier",
@@ -928,7 +932,7 @@ class Toolset:
             nb = self._need_notebook()
             nb, cell = self._run_new_cell(self._code(nb, f"export_file({', '.join(args)}, frames={frames_arg})",
                                                      ("ewald.io", "export_file", _export)), "AI: export file")
-            return {"path": target, "writer": writer.name, "frames": len(idx), "cell": self._cell_index(nb, cell)}
+            return {"path": target, "writer": writer.name, "frames": len(idx), **self._cell_ref(nb, cell)}
 
         @T("get_script", "The notebook as a standalone Python script (percent format): it reproduces everything "
            "the tools did, since they work only through its cells.", _obj({}))
@@ -995,7 +999,7 @@ class Toolset:
             nb, cell = None, None
             for k, source in enumerate(a.cells):
                 nb, cell = self._run_new_cell(source.strip(), f"AI: {a.title or a.name} ({k + 1}/{len(a.cells)})")
-            out = {"analysis": a.name, "cells": len(a.cells), "cell": self._cell_index(nb, cell)}
+            out = {"analysis": a.name, "cells": len(a.cells), **self._cell_ref(nb, cell)}
             table = nb.namespace.get(a.result) if a.result else None
             if table is not None:
                 attrs = getattr(table, "attributes", {}) or {}
