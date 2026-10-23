@@ -1,9 +1,10 @@
 # EWALD: Extensible Workbench for Atomic Lattices & Dynamics
 
-EWALD (Python package `ewald`) is a notebook for atomistic structures and trajectories. A file
-opens as a notebook next to a 3D view: steps add analyses, views plot their results linked to the
-atoms, and the notebook is saved as a file that also runs as a plain Python script. Claude can read
-the structure and add steps, and plugins add formats, analyses and drawing.
+EWALD (Python package `ewald`) is an AI-native notebook for atomistic structures and trajectories.
+A file opens as a notebook next to a 3D view: steps add analyses, views plot their results linked to
+the atoms, and the notebook is saved as a file that also runs as a plain Python script. Ask AI
+(Claude, OpenAI, Gemini or a local model) reads the structure and adds steps as cells, and plugins
+add formats, analyses and drawing.
 
 ![The EWALD window](images/notebook.png)
 
