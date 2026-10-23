@@ -13,6 +13,7 @@ from .wigner_seitz import WignerSeitzAnalysis
 from .local_order import AcklandJones, AtomicStrain, CentroSymmetry, ChillPlus
 from .ovito_bridge import DislocationAnalysis, OvitoModifier
 from .neb import NebEnergyProfile
+from .phonon import PhononMode
 from .selection import (ClearSelection, DeleteSelected, ExpandSelection, ExpressionSelection, InvertSelection,
                         SelectType, Slice)
 from .script import PythonScript
@@ -38,7 +39,7 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
            "GenerateTrajectoryLines", "CreateBonds", "EditBonds", "CoordinationPolyhedra",
            "CreateIsosurface", "GridSlice", "GridDifference", "Histogram", "SpatialBinning", "ReduceProperty",
            "SteinhardtOrderParameters", "BondAngleDistribution", "BondLengthDistribution", "FindRings", "VectorVis",
-           "NebEnergyProfile", "OverlayFrames",
+           "NebEnergyProfile", "OverlayFrames", "PhononMode",
            "SymmetryAnalysis", "PowderDiffraction", "StructureFactor", "ElasticStrain", "GrainSegmentation",
            "IdentifyFCCPlanarFaults", "FreezeProperty", "UnwrapTrajectories", "ExpandSelection", "LoadTrajectory",
            "CombineDatasets", "IonicConductivity", "VanHoveCorrelation", "SelfIntermediateScattering",
@@ -49,7 +50,7 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
 _OVITO_NAMES = {"WrapPeriodicImagesModifier": "WrapAtoms", "PythonScriptModifier": "PythonScript"}
 
 # modifiers that moved out of ewald into first-party plugins (frssp/ewald-plugins): name -> plugin
-MOVED = {"PhononMode": "phonopy", "Plumed": "plumed", "LoadColvar": "plumed", "FreeEnergySurface": "plumed"}
+MOVED = {"Plumed": "plumed", "LoadColvar": "plumed", "FreeEnergySurface": "plumed"}
 PLUGIN_PACKAGES = {"phonopy": "ewald-phonopy", "plumed": "ewald-plumed"}
 
 

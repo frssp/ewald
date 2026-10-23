@@ -113,6 +113,19 @@ the end.
   restart, recommend restarting).
 - **Landed:** PR #229 (Plugins side bar restart bar, `plugin_catalog.restart_reason`).
 
+### D19. VASP phonons back in the core (2026-10-23)
+
+- **Decision:** the part of phonon support that needs no phonopy (VASP OUTCAR of IBRION=5-8,
+  phonopy band.yaml/mesh.yaml/qpoints.yaml, the `PhononMode` animation) moves back into the
+  core as the built-in plugin group "Phonons"; the ewald-phonopy plugin keeps what needs the
+  phonopy package (phonopy.yaml with forces or force constants, `from_phonopy`). This partly
+  reverses D11 for phonons.
+- **Why:** the owner picked "VASP 부분만 core로" (only the VASP part into the core) from a
+  review of the plugins; the recommendation it answered: VASP is a core format, and this part is
+  about 500 lines with no dependency beyond numpy, so VASP users should not need a plugin for it.
+- **Considered:** keeping all phonon support in the plugin (as decided on 2026-10-19).
+- **Landed:** this PR; ewald-phonopy 0.3.0 in frssp/ewald-plugins.
+
 ### D12. Reuse before writing (2026-10-18)
 
 - **Decision:** port verified analyses (CNA, PTM, Voronoi, Wigner-Seitz, grain segmentation) from

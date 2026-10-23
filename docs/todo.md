@@ -325,7 +325,8 @@ Symmetry and diffraction
 - Show the symmetry summary (space group, Wyckoff sites) in the inspector header rather than only
   as attributes.
 
-Phonons (ewald-phonopy plugin, frssp/ewald-plugins `packages/ewald-phonopy`)
+Phonons (built in: `phonon.py`, `io/phonon.py`, `modifiers/phonon.py`; phonopy force constants in the
+ewald-phonopy plugin, frssp/ewald-plugins `packages/ewald-phonopy`)
 
 - Phonon DOS / projected DOS from phonopy `total_dos.dat`/`projected_dos.dat` in the Plots tab.
 - Non-diagonal supercells for a mode (`supercell` as a 3x3 matrix), and several modes

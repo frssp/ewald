@@ -42,8 +42,7 @@ for in words ends up as an ordinary pipeline.
 ### One feature, three layers
 
 A feature that has science code, a file format and a pipeline step keeps the same module name in
-each layer (the phonon support kept `phonon.py`, `io/phonon.py` and `modifiers/phonon.py` before it
-became the ewald-phonopy plugin, which keeps the same split):
+each layer (the phonon support: `phonon.py`, `io/phonon.py` and `modifiers/phonon.py`):
 
 | Layer | Holds | Examples |
 |---|---|---|
