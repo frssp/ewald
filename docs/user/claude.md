@@ -3,7 +3,8 @@
 `ewald.llm` exposes the pipeline to an AI model as tools, so an analysis can be asked for in
 words and still ends up as an ordinary, reproducible pipeline. Claude is the default; OpenAI,
 Google Gemini, a model on your own machine (Ollama, LM Studio) or any other OpenAI-compatible
-server work the same way (see [Providers](#providers)).
+server work the same way (see [Providers](#providers)). Every tool, what it may change and everything
+that is sent to the provider are listed in [What the AI may do and what it sees](ai-permissions.md).
 
 ```bash
 pip install -e ".[llm]"
