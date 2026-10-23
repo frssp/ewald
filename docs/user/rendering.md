@@ -81,6 +81,12 @@ pipe.view.elements["Trajectory lines"].set(trail=5000)          # follow the fra
 pipe.view.elements["Trajectory lines"].trail = True             # ... or everything up to the frame
 ```
 
+The `trajectory_*` settings only style the lines a `GenerateTrajectoryLines` step made; without
+the step there is nothing to draw, and `view(...)` (and the AI's `set_view`) warns about it. A NEB
+band works the same way: its images are frames, so after `load("neb/")` add
+`GenerateTrajectoryLines()` and `trajectory_trail=True` grows the paths image by image (the
+`OverlayFrames` copies of the other images are skipped).
+
 `trajectory_color_by="Step Length"` shows how far a particle moved per traced step (hops stand
 out); a particle property such as `"Path Length"` or `"Net Displacement"` gives each line one
 color. `trajectory_radius` sets the tube radius of ray-traced lines (default 0.04 x the width).

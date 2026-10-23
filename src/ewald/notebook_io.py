@@ -33,6 +33,8 @@ import warnings
 import zipfile
 from pathlib import Path, PureWindowsPath
 
+from . import fileops
+
 FORMAT = 1
 NOTEBOOK_NAME = "notebook.ipynb"
 MANIFEST_NAME = "manifest.json"
@@ -261,7 +263,7 @@ def save_ewd(nb, path, *, figures: bool = True, data_limit_mb: float = 50.0, plu
         if getattr(nb, "chat", None):
             z.writestr(CHAT_NAME, json.dumps({"messages": chat_messages(nb.chat)}, indent=1, ensure_ascii=False))
         z.writestr(MANIFEST_NAME, json.dumps(manifest, indent=1, ensure_ascii=False))
-    os.replace(tmp, path)
+    fileops.replace(tmp, path)
     return manifest
 
 
@@ -385,7 +387,7 @@ def load_ewd(path, cls=None, trusted: bool | None = None, **kwargs):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(z.read(name))
             tmp.mkdir(parents=True, exist_ok=True)
-            os.replace(tmp, bundle)
+            fileops.replace(tmp, bundle)
     nb.bundle_dir = str(bundle)
     nb.manifest = manifest
     nb.state = dict(manifest.get("state") or nb.state)

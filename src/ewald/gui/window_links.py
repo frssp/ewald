@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 
 import numpy as np
-from PySide6 import QtCore, QtGui
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import modifiers as mods
 from ..io import import_file
@@ -75,6 +75,19 @@ class NotebookBridge(NotebookAccess):
             view.changed.emit()
         self.window.notebook_dock.show()
         self.window.message(f"{label} (Ctrl+Z undoes it)")
+
+    def confirm_host(self, host: str) -> bool:
+        """Ask the user (on the GUI thread) whether the AI may open files on SSH host ``host``."""
+        def ask():
+            box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Question, "Ask AI",
+                                        f"The AI wants to open a file on {host} over SSH.",
+                                        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, self.window)
+            box.setInformativeText("Allow it to connect to this host for the rest of this chat? "
+                                   "(Preferences › AI › Ask before the AI connects to a host)")
+            box.setDefaultButton(QtWidgets.QMessageBox.No)
+            return box.exec() == QtWidgets.QMessageBox.Yes
+
+        return bool(self.call(ask))
 
     def run(self, nb, cell) -> bool:
         view = self.call(lambda: self._view(nb))

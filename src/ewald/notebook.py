@@ -41,6 +41,7 @@ import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import fileops
 from .pipeline import Modifier, Pipeline, PythonModifier
 
 PIPELINE_NAME = "pipe"
@@ -944,7 +945,7 @@ class Notebook:
             tmp = str(path) + ".tmp"
             with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(text)
-            os.replace(tmp, path)
+            fileops.replace(tmp, path)
         self.path = os.path.abspath(path)
         self.namespace["__file__"] = self.path
         self.dirty = False

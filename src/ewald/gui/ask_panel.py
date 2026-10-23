@@ -72,10 +72,13 @@ def _default_agent(pipeline, on_event, **kwargs):
     return Agent.from_pipeline(pipeline, on_event=on_event, **kwargs)
 
 
-def agent_from_settings(get_settings: Callable[[], object], notebook: bool = False):
-    """Agent factory using Preferences › AI (provider, model, connection, effort, streaming), read when a
-    chat starts; ``notebook`` tells the model about the notebook it sits beside. The factory's
-    ``assistant()`` names the provider's assistant for the chat ("Claude", "Gemini", ...)."""
+def agent_from_settings(get_settings: Callable[[], object], notebook: bool = False,
+                        confirm_host: Callable[[str], bool] | None = None):
+    """Agent factory using Preferences › AI (provider, model, connection, effort, streaming, the
+    folders and hosts the AI may read), read when a chat starts; ``notebook`` tells the model about the
+    notebook it sits beside, ``confirm_host(host)`` asks the user before an SSH host the model
+    named (:mod:`ewald.llm.access`). The factory's ``assistant()`` names the provider's assistant
+    for the chat ("Claude", "Gemini", ...)."""
     def factory(pipeline, on_event):
         from ..llm.providers import from_settings
 
@@ -90,7 +93,13 @@ def agent_from_settings(get_settings: Callable[[], object], notebook: bool = Fal
 
             mode = code_cells_mode(get_settings())
             kwargs["system"] = SYSTEM_PROMPT + NOTEBOOK_NOTE.format(code_cells=CODE_CELLS_NOTE[mode])
-        return _default_agent(pipeline, on_event, **kwargs)
+        agent = _default_agent(pipeline, on_event, **kwargs)
+        toolset = getattr(agent, "toolset", None)
+        if toolset is not None:
+            from ..llm.access import ReadAccess
+
+            toolset.read_access = ReadAccess.from_settings(get_settings(), confirm_host)
+        return agent
 
     def assistant() -> str:
         from ..llm import providers
