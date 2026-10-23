@@ -5346,3 +5346,30 @@ def test_main_window_plays_phonon_mode(app):
     menu = {a.text(): a for a in w.viewport_menu().actions()}
     assert "Phonon band structure" in menu and "Play" in menu
     w.close()
+
+
+def test_first_run_notice_stays_until_the_window_is_up(app):
+    """The first start after an install or update shows a notice before gui.app is imported and
+    closes it once the main window is on screen; the saved stamp keeps it away next time."""
+    from ewald.gui import first_run
+
+    assert first_run.is_first_run()
+    notice = first_run.start([])
+    assert notice is not None and notice.isVisible() and notice.objectName() == "firstRunNotice"
+    assert "first start" in notice.findChild(QtWidgets.QLabel, "firstRunBody").text()
+    first_run.finish()
+    assert not notice.isVisible()
+    assert not first_run.is_first_run()
+    assert first_run.start([]) is None
+
+
+def test_notice_comes_before_the_heavy_imports():
+    """The notice needs only the QApplication: VTK, pyvista and matplotlib load after it is up."""
+    import subprocess
+    import sys
+
+    code = ("import sys, ewald.gui.first_run, ewald.gui.application\n"
+            "print([m for m in ('vtkmodules', 'pyvista', 'pyvistaqt', 'matplotlib', 'ewald.gui.app')"
+            " if m in sys.modules])")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, encoding="utf-8", check=True)
+    assert out.stdout.strip() == "[]"

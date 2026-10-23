@@ -347,6 +347,10 @@ QPushButton#plotCardLink:hover {{ text-decoration: underline; }}
 QToolButton#cellRun {{ padding: 0; border-radius: 12px; }}
 QToolButton#cellRun:hover {{ background: {accent_soft}; color: {accent}; }}
 QLabel#cellCounter {{ color: {muted}; font-size: 11px; }}
+QFrame#firstRunNotice {{ background: {raised}; border: 1px solid {border}; }}
+QFrame#firstRunNotice QLabel {{ background: transparent; }}
+QLabel#firstRunTitle {{ color: {text}; font-size: 15px; font-weight: 600; }}
+QLabel#firstRunBody {{ color: {secondary}; }}
 QFrame#restrictedBanner {{ background: {data_soft}; border-bottom: 1px solid {data}; }}
 QFrame#restrictedBanner QLabel {{ color: {text}; background: transparent; }}
 QFrame#runBar {{ border-bottom: 1px solid {border}; }}

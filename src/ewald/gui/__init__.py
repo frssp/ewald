@@ -330,6 +330,9 @@ def show(pipeline=None, device=None, block: bool = True):
 def main(argv=None):
     """``ewald-gui``: a failure to load or start Qt is one explanatory message, not a traceback."""
     try:
+        from . import first_run
+
+        first_run.start(argv)  # on screen while gui.app imports, the slow part of a first start
         from .app import main as _main
 
         return _main(argv)

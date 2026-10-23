@@ -382,6 +382,17 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   pattern, lattice planes and a 3D Ewald sphere (drafts in the project files `ewald-icons-*`).
 - **Landed:** PR (this one).
 
+### D34. The first start after an install or update shows a notice (2026-10-23)
+
+- **Decision:** `ewald gui` shows a small "Preparing EWALD" notice on the first start after
+  EWALD, Python or one of its big libraries was installed or updated, from right after PySide6
+  loads until the main window is on screen. Later starts show nothing.
+- **Why:** on the owner's Mac the first start after an update was very slow and the next was
+  fast ("아니다 지금 다시 여니 빠른데?!"); the owner asked "첫 실행은 느리다고 뭔가 노티스를
+  띄울 수 있어?".
+- **Considered:** leaving the first start silent; a splash screen on every start.
+- **Landed:** PR (this one).
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
