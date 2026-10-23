@@ -90,6 +90,18 @@ def _has_phonon_modes(pipe) -> bool:
         return False
 
 
+def _join_note(source) -> str:
+    """What joining on Timestep left out, for the status bar: restarts inside a dump and frames
+    of earlier runs that a later file or run replaced."""
+    restarts = getattr(source, "restarts", None) or []
+    dropped = sum(total - used for _, used, total in getattr(source, "segments", None) or [])
+    if not dropped:
+        return ""
+    where = f", {len(restarts)} restart(s) inside a file" if restarts else ""
+    return (f" (joined on Timestep{where}: {dropped} frame(s) of earlier runs replaced by later ones; "
+            "join='concat' keeps them)")
+
+
 class FilesMixin:
     """Part of :class:`ewald.gui.app.MainWindow`."""
 
@@ -117,7 +129,7 @@ class FilesMixin:
         self.style.bond_pairs.clear()  # a new structure gets its own VESTA bond table
         self.set_pipeline(pipe)
         self.setWindowTitle(f"EWALD — {name}")
-        self.message(f"Loaded {name if several else path}: {pipe.num_frames} frame(s)")
+        self.message(f"Loaded {name if several else path}: {pipe.num_frames} frame(s){_join_note(pipe.source)}")
         if not several:   # the recent list reopens one path
             add_recent(path)
         return pipe
@@ -176,9 +188,10 @@ class FilesMixin:
 
     def open_dropped(self, paths):
         """Open dropped (or several chosen) paths: notebooks each in a tab; several data files
-        as one trajectory in natural order (``dump.200`` before ``dump.1000``, segments of a
-        restarted run joined on their Timestep, as ``load([...])``); otherwise the first data
-        file or folder."""
+        as one trajectory (``load([...], join=...)``), after a dialog that shows them in natural
+        order (``dump.200`` before ``dump.1000``) to reorder and asks how to join them
+        (segments of a restarted run on their Timestep, or every frame); otherwise the first
+        data file or folder."""
         from ..io.base import natural_key
         from ..session import is_session_file
 
@@ -188,7 +201,11 @@ class FilesMixin:
         rest = [p for p in paths if p not in notebooks]
         files = [p for p in rest if os.path.isfile(p) and not is_session_file(p)]
         if len(files) > 1 and len(files) == len(rest):
-            self._open_asking_types(sorted(files, key=natural_key))
+            from .join_dialog import ask_join
+
+            chosen = ask_join(self, sorted(files, key=natural_key))
+            if chosen is not None:
+                self._open_asking_types(chosen[0], join=chosen[1])
         elif rest:
             if os.path.isdir(rest[0]) and _is_neb(rest[0]):
                 self.open_neb(rest[0])
@@ -412,8 +429,7 @@ class FilesMixin:
         self._show_side_bar(self.remotes_dock)
         self.remotes_panel.list.setFocus()
 
-    def _open_asking_types(self, path):
-        kwargs = {}
+    def _open_asking_types(self, path, **kwargs):
         from ..io.lammps_dump import is_lammps_dump
 
         if is_lammps_dump(path[0] if isinstance(path, list) else path):
