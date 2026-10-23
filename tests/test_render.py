@@ -196,9 +196,16 @@ def test_trajectory_color_map_and_color_bar_in_every_renderer(tmp_path, renderer
     plain = pipe.render(None, **kw)
     mapped = pipe.render(None, trajectory_color_by="Time", **kw)
     h, w = mapped.shape[:2]
-    bar = mapped[int(0.3 * h):int(0.7 * h), int(0.885 * w):int(0.905 * w), :3].astype(int)
-    assert np.ptp(bar.reshape(-1, 3), axis=0).max() > 100           # a color bar on the right
-    assert np.ptp(plain[int(0.3 * h):int(0.7 * h), int(0.885 * w):int(0.905 * w), :3].astype(int)) == 0
+    from ewald.overlays import ColorRamp, overlay_layout
+
+    lay = overlay_layout(None, (w, h), colorbars=[{"title": "Time", "cmap": "plasma", "range": (0, 110)}])
+    ramp = next(it for it in lay["items"] if isinstance(it, ColorRamp))
+    rows, col = slice(int(ramp.y0) + 3, int(ramp.y1) - 3), int((ramp.x0 + ramp.x1) / 2)
+    bar = mapped[rows, col, :3].astype(int)
+    assert np.ptp(bar, axis=0).max() > 100                           # a color bar in the top right corner
+    top, bottom = bar[:3].mean(axis=0), bar[-3:].mean(axis=0)
+    assert top[1] > 150 and bottom[1] < 60 and bottom[2] > 100      # plasma: yellow at the top, blue below
+    assert np.abs(plain[rows, col, :3].astype(int) - bar).max() > 100   # no bar without a color map
     row = mapped[h // 2, int(0.2 * w):int(0.7 * w), :3].astype(int)
     colored = row[np.abs(row - 255).sum(1) > 60]
     assert len(colored) and np.ptp(colored, axis=0).max() > 80        # the line changes color along x

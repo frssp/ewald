@@ -183,6 +183,19 @@ the end.
   scrolls (as long, only hidden).
 - **Landed:** PR #222 (`gui/plugin_settings.py`, `gui/preferences.py`, `SettingsField.advanced`).
 
+### D21. Color bars on translucent cards, drawn once for screen and file (2026-10-23)
+
+- **Decision:** a color bar (ColorCoding, `color_by`, trajectory maps, grid slices) is a thin
+  rounded ramp with round-number ticks on a small translucent card in the top right corner;
+  several bars stand side by side. The 3D view draws the same overlay items as the pictures
+  (`ewald.colorbars`), no longer VTK's scalar bar.
+- **Why:** on the old viewport bar, "안 예쁘다. 디자인 다시해라" (it is not pretty, redesign it).
+  From four options rendered on the Fe vacancy NEB the owner picked the card once it was clear
+  it costs nothing: "성능에 영향없으면 B가 좋아" (if it does not affect performance, B is good).
+- **Considered:** a slim bar without a card at the right edge (recommended), a horizontal bar in
+  the bottom right corner, a framed matplotlib-style bar.
+- **Landed:** PR (this one; `colorbars.py`, `overlays.ColorRamp`, `gui/viewport.py`).
+
 ## Project
 
 ### D15. Name, license and openness (2026-10-19, 2026-10-20)
