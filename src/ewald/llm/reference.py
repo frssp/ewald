@@ -102,7 +102,8 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 
 `from ewald import load, rdf, msd, vacf, sq, xrd, bond_angles, cna, ptm, voronoi, clusters, check_run, load_runs`: `pipe = load(path)` is `import_file`
 (a list of files or a wildcard is one trajectory: restart segments are joined on Timestep, the later file winning,
-also inside one LAMMPS dump a restarted run appended to (`pipe.source.restarts`); `join="concat"` keeps every frame);
+also inside one LAMMPS dump a restarted run appended to (`pipe.source.restarts`); `join="restart"` treats every step going
+back as a restart, `join="files"` joins only between files, `join="concat"` keeps every frame);
 `pipe.add(m)` appends a modifier (and works as `@pipe.add` on `def f(frame, data)`); `@all_frames` on
 `def f(frames, data)` makes a step that reads every frame once (`frames[k]`, `len(frames)`, slices) and whose
 result (tables, attributes, properties) is reused at every frame; `@each_frame` marks the per-frame default. In a
