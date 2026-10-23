@@ -255,6 +255,27 @@ def test_trajectory_lines_color_by_time_window_and_trail(rng):
     assert scene.legends == []
 
 
+def test_collect_trajectory_matches_by_index_when_the_first_frame_has_no_ids(cu_fcc):
+    """A band whose first frame has no identifiers (a POSCAR) and later ones do (OUTCARs) is matched by index."""
+    a = cu_fcc.copy()
+    b = cu_fcc.copy()
+    b.particles["Particle Identifier"] = np.arange(1, b.count + 1)[::-1]
+    traj = collect_trajectory([a, b])
+    assert traj["Particle Identifier"] is None
+    np.testing.assert_array_equal(traj["Position"][1], b.positions)
+
+
+def test_trajectory_lines_take_the_views_type_colors(rng):
+    from ewald import scene as ir
+
+    pipe, _ = _traced(rng)
+    data = pipe.compute(3)
+    green = {name: "#008000" for name in set(np.asarray(data.types))}
+    lines = next(e for e in ir.builtin_elements(type_colors=green) if isinstance(e, ir.TrajectoryLinesVis))
+    s = ir.build(data, [lines], ir.SceneContext(frame=3))
+    np.testing.assert_allclose(s["trajectories"].primitive.rgb, np.tile([0, 128 / 255, 0], (8, 1)), atol=1e-6)
+
+
 def test_trajectory_lines_color_by_step_length_and_property(rng):
     pipe, true = _traced(rng)
     data = pipe.compute(0)

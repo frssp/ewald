@@ -42,19 +42,27 @@ class _TrajectoryModifier(Modifier):
         """Stacked trajectory of the frame range; ``only_selected`` keeps the particles
         selected in the first frame of the range (all of them if nothing is selected)."""
         frames = self._frames(ctx)
-        first = ctx.input_frame(frames[0])
+        first = _real(ctx.input_frame(frames[0]))
         ids = idx = None
         if only_selected and "Selection" in first:
             idx = np.nonzero(np.asarray(first["Selection"]) != 0)[0]
             if "Particle Identifier" in first:
                 ids, idx = np.asarray(first["Particle Identifier"])[idx], None
-        rest = (ctx.input_frame(k) for k in frames[1:])
+        rest = (_real(ctx.input_frame(k)) for k in frames[1:])
         return collect_trajectory(chain([first], rest), properties, particle_ids=ids, indices=idx)
 
     def _dt(self):
         """Time between analyzed frames, and whether it is a real time (else frames)."""
         tpf = getattr(self, "time_per_frame", 0.0) or 0.0
         return (tpf * self.step, True) if tpf > 0 else (float(self.step), False)
+
+
+def _real(data):
+    """``data`` without the see-through copies an :class:`OverlayFrames` step above appended."""
+    if "Overlay Frame" not in data:
+        return data
+    copy = np.asarray(data["Overlay Frame"]) >= 0
+    return data.delete(copy) if copy.any() else data
 
 
 def _scatter_to_frame(data, traj, values, fill=0.0):
@@ -234,7 +242,7 @@ class TimeAveraging(_TrajectoryModifier):
 
         def frames():
             for k in self._frames(ctx):
-                d = ctx.input_frame(k)
+                d = _real(ctx.input_frame(k))
                 for name in tables:
                     if name not in d.tables:
                         raise KeyError(f"frame {k} has no table {name!r}; tables: {list(d.tables)}")

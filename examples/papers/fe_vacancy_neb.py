@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from ewald import examples, load
-from ewald.modifiers import CommonNeighborAnalysis
+from ewald.modifiers import CommonNeighborAnalysis, GenerateTrajectoryLines
 from ewald.views import view
 
 out = Path(sys.argv[1] if len(sys.argv) > 1 else "papers_out")
@@ -57,9 +57,11 @@ structures = np.bincount(np.asarray(first["Structure Type"]), minlength=3)
 print(f"atom {hop} hops {np.linalg.norm(step[hop]):.2f} A (nearest-neighbour distance {nn:.2f} A); "
       f"CNA at image 00: {structures[1]} FCC of {first.count}, the rest next to the vacancy")
 
-# %% The saddle image, with the hopping atom's trail from the other images
+# %% The saddle image, with the hopping atom's trail from the other images (OverlayFrames) and its path as a
+# line that grows image by image (GenerateTrajectoryLines; the trajectory_* view settings only style its lines)
+pipe.add(GenerateTrajectoryLines())
 view(pipe, frame=int(a["NEB.Saddle Image"]), direction=[1, 1, 0], colors={"Fe": "#b07a4f"}, bonds=False,
-     text="image [NEB.Image]: [NEB.Relative Energy] eV")
+     trajectory_trail=True, trajectory_width=3, text="image [NEB.Image]: [NEB.Relative Energy] eV")
 
 # %% Energy profile
 neb, spline = pipe.compute(0).tables["NEB"], pipe.compute(0).tables["NEB spline"]

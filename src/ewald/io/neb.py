@@ -274,6 +274,8 @@ class NebReader(FrameReader):
         data = r.read(self.frame % len(r))
         if index in self._endpoint_poscars:
             data = self._endpoint(index, data)
+        if "Particle Identifier" not in data:   # POSCAR/CONTCAR images: the same ids as the OUTCAR ones,
+            data.particles["Particle Identifier"] = np.arange(1, data.count + 1)   # so trajectory steps match them
         data.attributes["Timestep"] = index
         data.attributes["NEB.Source"] = self.files[index]
         if self.energies is not None:
