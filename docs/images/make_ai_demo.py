@@ -12,10 +12,10 @@ are what those cells compute. Only the model is scripted (each scene's ``script`
 this recording), so it needs no API key and comes out the same every time. After the answer the
 trajectory plays in the structure view.
 
-Like a screen recording, the picture zooms in so the text reads, but calmly (few, slow moves):
-while the AI works it shows the chat and the notebook side by side and only pans up and down to
-the typed question, the answer or the cell being written; then it zooms out to the whole window
-and over to the structure view while the run plays. Each scene runs in its own process and grabs
+Like a screen recording, the picture zooms in so the text reads, but calmly: three slow moves a
+scene. It zooms in on the chat input while the question is typed, then holds the chat and the
+notebook side by side, still, while the AI answers and writes cells, then moves over to the
+structure view while the run plays. Each scene runs in its own process and grabs
 the full window; ``FOCUS`` names the region each moment, ``frame_crops`` eases between them, a
 title card goes before each scene.
 Needs Pillow; gifsicle, when installed, shrinks the GIF (frame differences, --lossy).
@@ -32,9 +32,9 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "ai-demo.gif")
 SIZE = (1440, 860)      # window size; the GIF is scaled to WIDTH
-WIDTH = 760
+WIDTH = 800
 FPS = 6
-ZOOM = {"type": 1.5, "chat": 1.5, "cell": 1.5, "view": 1.5, "full": 1.0}   # how far each region is zoomed in
+ZOOM = {"type": 1.5, "work": 1.25, "view": 1.5, "full": 1.0}   # how far each region is zoomed in
 EASE = 0.9              # seconds: how fast the picture follows a new region (slow: calm)
 TITLE_SECONDS = 2.2
 SPEED = 1.7             # the GIF plays this much faster than the recording (grabs slow the window)
@@ -142,10 +142,11 @@ first, last = band.compute(0), band.compute(band.num_frames - 1)
 step = first.cell.minimum_image(last.positions - first.positions)
 hop = int(np.argmax(np.linalg.norm(step, axis=1)))
 print(f"atom {hop} moves {np.linalg.norm(step[hop]):.2f} Å")'''})]),
-            ("And its path through the band, seen along [110]:",
+            ("And its path through the band, colored by image (viridis), seen along [110]:",
              [("add_modifier", {"name": "GenerateTrajectoryLines", "params": {}}),
               ("set_view", {"frame": 2, "direction": [1, 1, 0], "bonds": False, "trajectory_trail": True,
-                            "trajectory_width": 4})]),
+                            "trajectory_width": 5, "trajectory_color_by": "Time",
+                            "trajectory_colormap": "viridis", "radius_scale": 0.3})]),
             ("The barrier is **325 meV**, with the saddle at image 2, halfway along a 3.00 Å path; the "
              "reverse barrier is 326 meV, so both ends are equivalent sites. **Atom 7** jumps 2.45 Å into "
              "the vacancy, one nearest-neighbor distance (2.51 Å).", []),
@@ -154,9 +155,8 @@ print(f"atom {hop} moves {np.linalg.norm(step[hop]):.2f} Å")'''})]),
     ),
 }
 
-# where the picture looks now: ("type",) the chat input, ("chat",) the newest chat message,
-# ("cell", index; -1 = last), ("view",) the structure view or ("full",). The scripted model sets it from its thread, the
-# recording loop reads it at every grab.
+# where the picture looks now: ("type",) the chat input, ("work",) chat and notebook together,
+# ("view",) the structure view or ("full",); the recording loop reads it at every grab.
 FOCUS = [("full",)]
 
 
@@ -174,15 +174,13 @@ def scripted_provider(script):
 
         def send(self, tool_choice=None, on_text=None):
             text, calls = replies.pop(0)
-            FOCUS[0] = ("chat",)
             time.sleep(0.7)              # "thinking"
             for i, word in enumerate(text.split(" ")):
                 if on_text:
                     on_text(("" if i == 0 else " ") + word)
                 time.sleep(0.04)
             self.messages.append("assistant")
-            if calls:                    # look at the cell the tool writes
-                FOCUS[0] = ("cell", calls[0][1].get("index", -1))
+            if calls:
                 time.sleep(0.4)
             calls = [ToolCall(f"t{len(self.messages)}{k}", name, args) for k, (name, args) in enumerate(calls)]
             return Reply(text, calls, "tool_use" if calls else "end")
@@ -206,7 +204,6 @@ def record(name, frames_dir):
     from ewald import plugins, settings
     from ewald.gui import notebook_panel
     from ewald.gui.app import MainWindow
-    from ewald.gui.ask_panel import Message
 
     scene = SCENES[name]
     notebook_panel.CONFIRM_UNSAVED = False
@@ -232,21 +229,8 @@ def record(name, frames_dir):
             box = w.ask_panel.input
             top = box.mapTo(w, QtCore.QPoint(0, 0)).y()
             return cw / 2, top + box.height() + 12 - ch / 2, zoom
-        if what[0] == "chat":        # the bottom of the newest message near the bottom of the picture
-            shown = [m for m in w.ask_panel.findChildren(Message) if m.isVisible()]
-            if shown:
-                bottom = max(m.mapTo(w, QtCore.QPoint(0, m.height())).y() for m in shown)
-                return cw / 2, bottom + 40 - ch / 2, zoom
-            return cw / 2, ch / 2, zoom
-        if what[0] == "cell":        # same columns as the chat (the picture only moves up and down)
-            view = w.panel.view
-            cells = view.notebook.cells
-            cell = view.widget_for(cells[what[1]]) if cells else None
-            x = cw / 2
-            if cell is None or not cell.isVisible():
-                return x, w.height() / 2, zoom
-            top = cell.mapTo(w, QtCore.QPoint(0, 0)).y()
-            return x, min(top + cell.height() / 2, top + ch / 2 - 40), zoom
+        if what[0] == "work":        # chat and notebook side by side, held still while the AI works
+            return cw / 2, w.height() - ch / 2, zoom
         if what[0] == "view":
             v = w.viewport
             c = v.mapTo(w, QtCore.QPoint(v.width() // 2, v.height() // 2))
@@ -289,12 +273,10 @@ def record(name, frames_dir):
         settle(0.025)
     settle(0.5)
     w.ask_panel.ask()
+    FOCUS[0] = ("work",)
     while w.ask_panel.busy():
         settle(0.1)
-    FOCUS[0] = ("chat",)
     settle(3.5)                        # read the answer
-    FOCUS[0] = ("full",)
-    settle(1.2)
     FOCUS[0] = ("view",)               # the run plays in the structure view
     settle(0.6)
     start, stop, step = scene["play"]
@@ -368,10 +350,18 @@ def to_gif(names, dirs, out):
     images = [Image.open(png).convert("RGB") for png, _ in entries]
     sample = images[:: max(1, len(images) // 40)]
     w, h = images[0].size
-    montage = Image.new("RGB", (w, h * len(sample)))
+    montage = Image.new("RGB", (w, h * (len(sample) + 4)))
     for k, image in enumerate(sample):
         montage.paste(image, (0, h * k))
-    palette = montage.quantize(colors=96, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    # the trajectory color maps cover few pixels: give them rows of their own so the palette keeps them
+    from ewald.colormaps import get_colormap
+
+    for k, name in enumerate(("viridis", "plasma")):
+        cmap = get_colormap(name)
+        band = Image.new("RGB", (w, 2 * h))
+        band.putdata([tuple(int(255 * c) for c in cmap(x / (w - 1))[:3]) for _ in range(2 * h) for x in range(w)])
+        montage.paste(band, (0, h * (len(sample) + 2 * k)))
+    palette = montage.quantize(colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
     frames = [image.quantize(palette=palette, dither=Image.Dither.NONE) for image in images]
     frames[0].save(out, save_all=True, append_images=frames[1:], loop=0, disposal=1,
                    duration=[round(ms) for _, ms in entries])

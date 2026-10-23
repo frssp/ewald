@@ -332,18 +332,23 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Decision:** the first picture of the README and the manual's home page is
   `docs/images/ai-demo.gif`: Ask AI analysing three runs that move (Li paths and D* in a
   Li6PS5Cl AIMD run, sp/sp2/sp3 carbon through a melt-quench MD run, the barrier of a Fe vacancy
-  NEB) by writing and running cells. The recording zooms in on the typed question, the answer and
-  each cell (like a screen recording), not into the 3D view.
+  NEB) by writing and running cells. The recording zooms like a screen recording, not into the
+  3D view, and moves little: in on the chat input while the question is typed, then the chat and
+  the notebook held still side by side while the AI works, then over to the structure view.
 - **Why:** the owner asked for "AI 사용해서 예제 노트북 수정하는 좋은 케이스" as a GIF in the
   README, then: "줌인줌아웃이 화면에서 타이핑하는 또는 노트북 글자 잘보이게 하라는 거였어. 뷰포트가
   아니라" (zoom so the typing and the notebook text read, not the viewport), "대표 그림도 이걸로
   해도 좋아" (use it as the lead picture), and "나노파티클 보다 뭔가 움직이는 것, neb, md 등이
   관심있어" (something that moves, NEB or MD, rather than a nanoparticle); of the options shown
   (Li AIMD, carbon quench, Fe NEB, or joined) the owner picked all of them joined, "AI 써서 분석하는
-  케이스로" (as cases of analysing with AI).
+  케이스로" (as cases of analysing with AI). On the first cut, which panned between the chat and each cell:
+  "지금은 화면이 너무 채팅창-노트북 사이를 빨리 왔다갔다하던데?" (it flips between the chat and the
+  notebook too fast), after "화면 전환이 너무 많거나 빠르거나 그러면 어지러워. 그럴 경우 화면을 좀 넓게
+  써도 좋아" (too many or fast moves make one dizzy; a wider picture is fine). Then "카메라 좋아. 그리고 neb에 traj. color code
+  해줘. viridis" (the camera is good; color the NEB trajectory with viridis).
 - **Alternatives:** a Pt nanoparticle site classification with a 3D-view zoom (PR #239, replaced);
   a single run.
-- **Landed:** PR #241.
+- **Landed:** PR #241 (pre-publication repository); the calm cut and the viridis NEB path in PR #2.
 
 ### D32. Publish from a fresh repository (2026-10-23)
 
