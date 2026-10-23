@@ -204,6 +204,57 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
 _RENDER_NAMES = {"colors": "type_colors", "radii": "type_radii", "cell": "show_cell", "atoms": "show_atoms",
                  "transparency": "type_transparency"}
 SELECTION_COLOR = "red"   # selection=True
+# booleans spelled as text: settings and session files, JSON from an AI model, Qt settings on macOS
+_FALSE_WORDS = frozenset({"false", "off", "no", "none", "null", "0", ""})
+_TRUE_WORDS = frozenset({"true", "on", "yes", "1"})
+
+
+def boolish(value):
+    """``True``/``False`` for a bool (also numpy's) or a bool spelled as text ('false', 'Off', 'none',
+    ...), else None."""
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, str):
+        word = value.strip().lower()
+        if word in _FALSE_WORDS:
+            return False
+        if word in _TRUE_WORDS:
+            return True
+    return None
+
+
+def selection_setting(value):
+    """The ``selection`` view setting from any spelling: True, False or a checked color. None and
+    'false'/'none'/'' turn the highlight off, 'true' is red; a color that is not one raises ValueError."""
+    if value is None:
+        return False
+    flag = boolish(value)
+    if flag is not None:
+        return flag
+    from .colormaps import to_rgb
+
+    try:
+        rgb = to_rgb(value)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"selection is True, False or a color, not {value!r}") from exc
+    if np.shape(rgb) != (3,):
+        raise ValueError(f"selection is True, False or a color, not {value!r}")
+    return value if isinstance(value, str) else _color(value)
+
+
+def selection_color(value):
+    """The highlight color a ``selection`` setting draws with, or None for no highlight. Never raises
+    (a stored value reaches every redraw): a bad color warns and draws red."""
+    try:
+        value = selection_setting(value)
+    except ValueError as exc:
+        import warnings
+
+        warnings.warn(f"{exc}; highlighting in {SELECTION_COLOR}", stacklevel=2)
+        return SELECTION_COLOR
+    if value is False:
+        return None
+    return SELECTION_COLOR if value is True else value
 # settings a style preset implies (index into STYLE_PRESETS values)
 _PRESET_KEYS = {"radius_scale": 0, "bonds": 1, "atom_style": 2}
 GROUPS = ("style", "atoms", "bonds", "cell", "boundary", "elements", "camera", "picture")
@@ -417,8 +468,9 @@ class View:
             kw[_RENDER_NAMES.get(name, name)] = _copy(value)
         if "type_colors" in kw:
             kw["type_colors"] = {k: _color(v) for k, v in kw["type_colors"].items()}
-        if self.selection is not False:
-            kw["selection_color"] = SELECTION_COLOR if self.selection is True else _copy(self.selection)
+        color = selection_color(self.selection)
+        if color is not None:
+            kw["selection_color"] = _copy(color)
         if kw.get("camera") is not None:
             kw.pop("direction", None)
             kw.pop("zoom", None)
@@ -726,6 +778,14 @@ def _check(name, value):
     s = SETTINGS[name]
     if value is None:
         return s.default if not isinstance(s.default, (dict, list)) else type(s.default)()
+    kinds = (s.schema or {}).get("type")
+    if isinstance(value, (str, np.bool_)) and "boolean" in (kinds if isinstance(kinds, list) else [kinds]) \
+            and not (name == "labels" and str(value).strip() in ("0", "1")):
+        flag = boolish(value)   # 'false' is False, never bool('false') == True
+        if flag is not None:
+            value = flag
+        elif not isinstance(kinds, list) or "string" not in kinds:
+            raise ValueError(f"{name} is True or False, not {value!r}")
     if s.choices is not None and value not in s.choices:
         raise ValueError(f"{name} must be one of {[c for c in s.choices if c is not None]}, not {value!r}")
     if name == "theme":
@@ -762,8 +822,7 @@ def _check(name, value):
         value = {k: ([float(x) for x in v] if k == "direction" else float(v)) for k, v in value.items()} \
             if isinstance(value, dict) else [float(x) for x in value]
     elif name == "selection":
-        if not isinstance(value, bool):
-            value = _color(value)
+        value = selection_setting(value)
     elif name in ("radii", "oxidation_states"):
         if not isinstance(value, dict):
             raise TypeError(f"{name} is {{type: number}}")
