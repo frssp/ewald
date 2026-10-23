@@ -27,6 +27,8 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- New app icon: an ammonia molecule with a glass lone-pair lobe over an orange chat bubble
+  (replaces the Ewald sphere).
 - The separate `gateway` AI provider and its *User id* / *System name* settings are gone; a
   gateway is set up as an OpenAI-compatible server with an API key header and extra headers.
 - Fewer extras: spglib, imageio-ffmpeg, h5py, anthropic, openai, mcp, jupyter_client and ipykernel
