@@ -176,6 +176,8 @@ class PlotsPanel(QtWidgets.QWidget):
         with mpl.rc_context(mpl.rcParamsOrig):
             self._figure = Figure(figsize=(5, 3), facecolor=TOKENS["bg"])
             self._canvas = canvas = FigureCanvasQTAgg(self._figure)
+        # the canvas paints from the event loop, outside _styled: draw in the style there too
+        plotstyle.bind(self._figure, lambda: (TOKENS, self._font_size))
         self.layout().replaceWidget(self._canvas_slot, canvas)
         self._canvas_slot.deleteLater()
         self._canvas_slot = None
@@ -1192,7 +1194,7 @@ class PlotsPanel(QtWidgets.QWidget):
         try:
             self.redraw()
             fig = self.figure
-            fig._ewald_style = (plotstyle.PRINT, fs)
+            plotstyle.bind(fig, (plotstyle.PRINT, fs))
             q = quality.lower() if quality.lower() in plotstyle.DPI else "publication"
             plotstyle.save(fig, path, quality=q)
         finally:
