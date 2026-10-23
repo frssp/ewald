@@ -149,13 +149,25 @@ def _text_label(out):
 
 
 def _rich_label(text: str, fmt):
+    """The output as rich text; an HTML table (a ``workflow_table``, a pandas frame) keeps its
+    width and scrolls sideways instead of being cut off or wrapped."""
     w = QtWidgets.QLabel(objectName="cellRich")
     w.setTextFormat(fmt)
     w.setText(text)
-    w.setWordWrap(True)
     w.setOpenExternalLinks(True)
     w.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-    return w
+    if fmt != QtCore.Qt.RichText or "<table" not in text.lower():
+        w.setWordWrap(True)
+        return w
+    w.adjustSize()
+    area = QtWidgets.QScrollArea(objectName="cellRichScroll")
+    area.setFrameShape(QtWidgets.QFrame.NoFrame)
+    area.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+    area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+    area.setWidget(w)
+    area.setFixedHeight(w.sizeHint().height() + area.horizontalScrollBar().sizeHint().height())
+    area.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
+    return area
 
 
 def _same_widget(a, b) -> bool:

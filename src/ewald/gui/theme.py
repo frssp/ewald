@@ -356,6 +356,7 @@ QFrame#cell[state="stale"] QPlainTextEdit#cellEditor {{ background: {raised}; }}
 QLabel#cellError {{ color: {error}; border-left: 3px solid {error}; padding: 2px 8px; }}
 QLabel#cellValue, QLabel#cellText {{ color: {secondary}; }}
 QLabel#cellRich {{ color: {text}; }}
+QScrollArea#cellRichScroll, QScrollArea#cellRichScroll > QWidget > QWidget {{ background: transparent; }}
 QProgressBar#cellProgress {{ border: none; border-radius: 3px; background: {raised}; max-height: 6px; }}
 QProgressBar#cellProgress::chunk {{ background: {accent}; border-radius: 3px; }}
 QLabel#cellMarkdown {{ color: {text}; font-size: 13px; padding: 2px 4px; }}
