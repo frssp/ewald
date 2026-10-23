@@ -74,6 +74,17 @@ def parse_headers(headers) -> dict[str, str]:
     return out
 
 
+def _server_says(exc) -> str:
+    """": <the server's reason>." from an API error's body (a 422's validation details, ...), or "."."""
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        body = body.get("detail") or body.get("error") or body.get("message") or body
+        if isinstance(body, dict):
+            body = body.get("message") or body
+    text = str(body if body not in (None, "", {}) else getattr(exc, "message", "") or "").strip()
+    return f": {text[:300]}" if text else "."
+
+
 @dataclass
 class Provider:
     """An AI service. ``models`` maps suggested model ids to labels (the first is the default;
@@ -227,7 +238,7 @@ class Provider:
                 where = base_url or self.base_url or f"the {self.label} API"
                 return False, f"Could not reach {where} (network, proxy or server not running)."
             if caught(exc, "APIStatusError"):
-                return False, f"API error {getattr(exc, 'status_code', '')}.".replace(" .", ".")
+                return False, f"API error {getattr(exc, 'status_code', '')}{_server_says(exc)}".replace(" .", ".")
             msg = str(exc)
             if isinstance(exc, ValueError) and msg.startswith("No "):
                 return False, msg

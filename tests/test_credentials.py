@@ -326,3 +326,20 @@ def test_cli_profile_flag():
                                                                           "http://box:8000/v1")
     args = cli.build_parser().parse_args(["forge", "x", "--profile", "local", "--model", "llama3.1"])
     assert cli._ai_options(args, effort=False) == {"provider": ai["provider"], "model": "llama3.1"}
+
+
+def test_check_shows_the_servers_reason(no_keychain):
+    """A 422 from a gateway says which field it rejected, not just the status code."""
+    pytest.importorskip("openai")
+    import httpx2 as httpx
+
+    from ewald.llm import providers
+
+    def handler(request):
+        return httpx.Response(422, json={"detail": [{"loc": ["header", "x-system"], "msg": "field required"}]})
+
+    conn = providers.get("openai-compatible").connect(base_url="http://gw.example/v1")
+    client = conn.client(api_key="k", http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+                         max_retries=0)
+    ok, msg = conn.check(model="m1", _client=client)
+    assert not ok and msg.startswith("API error 422: ") and "x-system" in msg and "field required" in msg
