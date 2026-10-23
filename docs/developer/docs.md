@@ -25,7 +25,10 @@ statically, so building the docs does not need the C++ extension.
   `examples/notebooks/` by `xvfb-run -a -s "-screen 0 1920x1200x24" python docs/images/make_screenshots.py`;
   never edited by hand. Rerun it when the window changes visibly. `ai-demo.gif` (README, AI page)
   is recorded by `xvfb-run -a -s "-screen 0 1920x1200x24" python docs/images/make_ai_demo.py`: the
-  real window and tools with a scripted model (`SCENES` in that file), so no API key is needed. The notebooks themselves are
+  real window and tools with a scripted model (`SCENES` in that file), so no API key is needed;
+  with `--live` a real model answers (key in `EWALD_DEMO_ANTHROPIC_KEY`, kept out of the app's
+  environment and settings) and the tool calls and answers go to `ai-demo-transcript.json`. The
+  committed GIF is a live take; look at a new one before committing it. The notebooks themselves are
   tested by `tests/test_tutorials.py`, which also checks the numbers the tutorials quote.
 - `docs/todo.md`: the one list of open work.
 - `docs/ROADMAP.md`: milestones.
