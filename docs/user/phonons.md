@@ -4,23 +4,25 @@ ewald reads phonon eigenvectors from phonopy and VASP and animates a mode: the a
 along it over one period, the mode pattern is drawn as arrows, and in the desktop GUI the
 Plots tab shows the band structure, where clicking a band plays that mode.
 
-This is the **ewald-phonopy plugin** (id `phonopy`), not part of ewald itself: install it from
-the Plugins panel or with
+VASP OUTCARs and phonopy's band.yaml, mesh.yaml and qpoints.yaml are read by ewald itself
+(the built-in plugin group "Phonons", which can be switched off in the Plugins side bar).
+Computing the bands from phonopy's input with forces (`phonopy.yaml` with `FORCE_SETS` or
+`FORCE_CONSTANTS`) needs phonopy, and that is the **ewald-phonopy plugin** (id `phonopy`):
+install it from the Plugins side bar or with
 
 ```bash
 pip install 'git+https://github.com/frssp/ewald-plugins#subdirectory=packages/ewald-phonopy'
 ```
 
-It brings phonopy along. `PhononMode` then imports from `ewald.modifiers` like a built-in
-modifier, the readers below join `import_file`, and the example file `Cu3Au_band.yaml` ships in
-the plugin (`ewald_phonopy.EXAMPLES`).
+It brings phonopy along, adds the `phonopy-fc` format below, `from_phonopy(phonon)` for a
+`phonopy.Phonopy` object (from aiida-phonopy, say) and the example file `Cu3Au_band.yaml`
+(`ewald_phonopy.EXAMPLES`).
 
 ```python
 from ewald import import_file
 from ewald.modifiers import PhononMode
-from ewald_phonopy import EXAMPLES
 
-pipe = import_file(EXAMPLES / "Cu3Au_band.yaml", frames=24)   # or your band.yaml; 24 frames = one period
+pipe = import_file("band.yaml", frames=24)           # 24 frames = one period
 pipe.modifiers.append(PhononMode(qpoint=10, band=3, amplitude=0.3))
 data = pipe.compute(0)
 print(data.attributes["Phonon.Frequency"], "THz", data.attributes["Phonon.Supercell"])
@@ -35,11 +37,11 @@ render_animation(pipe, "mode.gif", fps=24)           # loops seamlessly
 |---|---|
 | phonopy `band.yaml` | band structure along a path; needs eigenvectors (`phonopy --eigvecs`, `EIGENVECTORS = .TRUE.`). High-symmetry labels come from `labels` or the per-point `label` keys |
 | phonopy `mesh.yaml`, `qpoints.yaml` | modes on a mesh or a list of q-points, with eigenvectors. `qpoints.yaml` has no cell: pass the primitive cell as `structure="POSCAR"` |
-| phonopy `phonopy.yaml`, `phonopy_params.yaml`, `phonopy_disp.yaml` with `FORCE_SETS` or `FORCE_CONSTANTS` | format `phonopy-fc`: phonopy computes the band structure with eigenvectors along the seekpath path, so no `band.yaml` is needed |
+| phonopy `phonopy.yaml`, `phonopy_params.yaml`, `phonopy_disp.yaml` with `FORCE_SETS` or `FORCE_CONSTANTS` | ewald-phonopy plugin, format `phonopy-fc`: phonopy computes the band structure with eigenvectors along the seekpath path, so no `band.yaml` is needed |
 | VASP OUTCAR, IBRION = 5, 6, 7 or 8 | Gamma-point modes from "Eigenvectors and eigenvalues of the dynamical matrix"; the structure is the first ionic step and the masses come from POMASS. Imaginary modes (`f/i=`) become negative frequencies, as in phonopy |
 
 A phonon OUTCAR is recognized by `IBRION` in its header; any other OUTCAR still opens as ionic
-steps. `format="phonopy"` or `format="vasp-phonon"` forces the phonon reader.
+steps. `format="phonopy-yaml"` (or `"phonopy"`) or `format="vasp-phonon"` forces the phonon reader.
 
 Each frame of the file is the primitive cell with the modes in
 `data.attributes["Phonon Modes"]` (a `PhononModes` object with `qpoints`, `frequencies` in THz,
@@ -82,4 +84,4 @@ first q-point plays at once. The Plots tab draws the band structure with its hig
 labels (or one tick per mode for a Gamma-only OUTCAR) and circles the mode on screen. Click a
 band to switch to the nearest mode and start playback; the status bar shows its q-point and
 frequency. The modifier's parameter form changes amplitude, supercell and arrows. Phonon mode
-animation is also under Insert › Step (in the plugin's category).
+animation is also under Insert › Step (Phonons).

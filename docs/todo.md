@@ -327,7 +327,8 @@ Symmetry and diffraction
 - Show the symmetry summary (space group, Wyckoff sites) in the inspector header rather than only
   as attributes.
 
-Phonons (ewald-phonopy plugin, frssp/ewald-plugins `packages/ewald-phonopy`)
+Phonons (built in: `phonon.py`, `io/phonon.py`, `modifiers/phonon.py`; phonopy force constants in the
+ewald-phonopy plugin, frssp/ewald-plugins `packages/ewald-phonopy`)
 
 - Phonon DOS / projected DOS from phonopy `total_dos.dat`/`projected_dos.dat` in the Plots tab.
 - Non-diagonal supercells for a mode (`supercell` as a 3x3 matrix), and several modes
@@ -460,7 +461,7 @@ Plugins and AI
 
 - AiiDA (ewald-aiida in frssp/ewald-plugins: local profiles, and remote ones over SSH with
   `aiida://user@host/1234`): an AiiDA side bar (profiles and hosts, recent workflows, outputs;
-  copy `load("aiida:...")`), a AI tool to find and open workflows, PDOS/projected bands
+  copy `load("aiida:...")`), PDOS/projected bands
   from aiida-quantumespresso, NEB and aiida-lammps outputs, streaming very long remote
   trajectories frame by frame instead of one bundle, export of analysis results back as new
   nodes (opt-in, never default). Not yet tried against a real remote AiiDA host.
@@ -534,6 +535,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- AI workflow search on a real sim-agent server with the site's model: "open the TiN
+  calculation that finished yesterday" should call `list_workflows` with `formula`, `status` and
+  `since`/`until`, then `open_workflow`; days are the PC's local days against sim-agent's
+  creation time.
 - GUI startup on the owner's Windows machine: `python benchmarks/startup.py --cold-jit` prints
   where the seconds go (import, window, 3D view, console, busy stretches, peak memory); compare
   with the container numbers under Performance. Windows Defender scanning freshly installed

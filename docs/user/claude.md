@@ -111,7 +111,7 @@ accept only arithmetic, comparisons and NumPy array functions; `export_file` rep
 inside its work dir and never writes into hidden folders such as `~/.ssh`; and the plugin tool
 `compute_plumed_cvs` refuses `LOAD` (native code) and absolute or `..` file paths.
 
-The files the model opens itself (`load_structure`, `describe_workflow`, plugin tools such as
+The files the model opens itself (`load_structure`, `describe_workflow`, `open_workflow`, plugin tools such as
 `read_plumed_output`) can be limited to some folders: Preferences › AI › **Folders the AI may
 read** (`llm.read_folders`, separated by `;`; empty means any folder). Links, `..` and wildcards
 are resolved before the check, which ignores case on Windows. Before the AI connects to an SSH

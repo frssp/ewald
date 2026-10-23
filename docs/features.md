@@ -11,7 +11,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Modifiers
 
-64 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
+65 built-in modifiers in `ewald.modifiers` (OVITO spellings such as `CommonNeighborAnalysisModifier` also import). Details: [Modifiers](user/modifiers.md).
 
 ### Analysis
 
@@ -138,6 +138,12 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 |---|---|
 | `NebEnergyProfile` | Energy along a NEB band, with the barrier, from frames that are the band's images. |
 
+### phonon
+
+| Modifier | What it does |
+|---|---|
+| `PhononMode` | Animate one phonon mode read from phonopy band.yaml/mesh.yaml/qpoints.yaml or a VASP IBRION=5-8 OUTCAR: frame ``f`` of ``N`` shows phase ``2 pi f / N`` of the vibration, so the trajectory loops over one period. |
+
 ### statistics
 
 | Modifier | What it does |
@@ -198,12 +204,14 @@ Tried in this order when no `format=` is given; reader plugins slot in at priori
 | `vaspout` | `vaspout*.h5` | VASP 6 vaspout.h5: ionic steps with forces, energies, stress, velocities, moments, local potential grid, DOS/PDOS and bands, lazy; a file VASP has not closed yet is read from the vasprun.xml/OUTCAR next to it; needs h5py | `vasp-h5`, `vaspout.h5` |
 | `vaspwave` | `vaspwave*.h5` | VASP 6 vaspwave.h5 charge density (structure from vaspout.h5 next to it); needs h5py | `vaspwave.h5` |
 | `xsf` | `*.xsf` `*.axsf` | XCrySDen XSF/AXSF: structure, ANIMSTEPS trajectory, DATAGRID_3D grids |  |
+| `phonopy-yaml` | `band.yaml` `mesh.yaml` `qpoints.yaml` `*.yaml` | phonopy band.yaml/mesh.yaml/qpoints.yaml with eigenvectors: phonon modes (PhononMode animates one); frames= per period, structure= for qpoints.yaml | `phonopy`, `band.yaml`, `phonon` |
 | `lammps-dump` | `*.lammpstrj` `*.dump` | LAMMPS text dump (atom/custom), lazy | `lammps/dump`, `lammps-dump-text` |
 | `xdatcar` | `XDATCAR*` | VASP XDATCAR, fixed or variable cell, lazy | `vasp-xdatcar` |
 | `lammps-data` | `*.data` | LAMMPS data file | `lammps/data`, `lammps-data-native` |
 | `ase-db` | `*.db` | ASE database (SQLite .db or .json), one row per frame, lazy; selection= query | `db`, `ase.db` |
 | `ase-traj` | `*.traj` | ASE binary trajectory (.traj), lazy | `traj` |
 | `md-trajectory` | `*.xtc` `*.trr` `*.dcd` `*.nc` `*.ncdf` | GROMACS XTC/TRR, DCD, AMBER NetCDF via MDAnalysis, lazy; topology= (.gro/.pdb/.tpr/...) for atom types | `xtc`, `trr`, `dcd`, `netcdf`, `ncdf`, `mdanalysis` |
+| `vasp-phonon` | `OUTCAR*` | VASP OUTCAR of an IBRION=5-8 run: Gamma phonon modes (PhononMode animates one) | `outcar-phonon` |
 | `outcar` | `OUTCAR*` | VASP OUTCAR: ionic steps with forces, energies, stress, magnetic moments, lazy | `vasp-outcar` |
 | `vasprun` | `vasprun*.xml` | VASP vasprun.xml: ionic steps with cell, forces, stress, energies, DOS/PDOS and bands, lazy | `vasp-vasprun` |
 | `extxyz` | `*.xyz` `*.extxyz` | XYZ / extended XYZ (Lattice=, Properties=), lazy | `xyz`, `ext-xyz` |
@@ -373,7 +381,8 @@ Tools:
 | `export_file` *cell* | Write frames of the pipeline (after its modifiers) to a file: POSCAR, LAMMPS data/dump, extxyz, CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... as an export_file(...) cell in the notebook, run at once. |
 | `get_script` | The notebook as a standalone Python script (percent format): it reproduces everything the tools did, since they work only through its cells. |
 | `python_api` | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature, the notebook's cell kinds, show/view/paint, and the modifier plugins installed here). |
-| `list_workflows` | Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs, or folders of VASP/LAMMPS/NEB/phonopy calculations: source 'folders') of a workflow source, newest first: id, kind, formula, state and the path that opens each. |
+| `list_workflows` | Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs, or folders of VASP/LAMMPS/NEB/phonopy calculations: source 'folders') of a workflow source, newest first: id, kind, formula, state and the path that opens each, and today's date. |
+| `open_workflow` *cell* | Open a workflow, one of its steps or one of its outputs as the pipeline (like load_structure: a pipe = load(...) cell at the end of the notebook, run at once). |
 | `describe_workflow` | Steps of a workflow (nested; restarts joined), their states, numbers (energies, gaps) and outputs, each with the path load_structure opens, and the analyses its plugin offers (add_analysis). |
 | `add_analysis` *cell* | Add one of a workflow's analyses (listed under 'analyses' by describe_workflow, e.g. the potential lineup of a band-offset workflow: potential, VBM, CBM and Fermi level on one axis) to the notebook and run it. |
 | `list_cells` *notebook* | The cells of the user's notebook: index, id, kind (code, step = one pipe.add(...), view = one show(pipe, ...), markdown), state (new = not run, ok, error, stale = out of date), first line and output kinds. |
@@ -698,6 +707,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
     - Isosurface, signed (density difference / spin)
     - Slice plane (2D map)
     - Charge density difference
+  - Phonons
+    - Phonon mode animation
   - Vectors (arrows)
     - Force / displacement / velocity arrows
     - Magnetic moment arrows

@@ -20,6 +20,7 @@ from .mdtraj_h5 import MdtrajH5Reader, is_mdtraj_h5
 from .vasp_h5 import VaspoutReader, VaspwaveReader, is_vaspout, is_vaspwave
 from .mdanalysis_reader import MDAnalysisReader, is_md_trajectory, write_md_trajectory
 from .neb import NebReader, is_neb, neb_run_of, read_lammps_neb_log
+from .phonon import PhonopyYamlReader, VaspPhononReader, is_outcar_phonon, is_phonopy_yaml
 from .xdatcar import XdatcarReader, is_xdatcar
 from .xsf import XsfReader, is_xsf, write_xsf
 
@@ -391,6 +392,13 @@ def builtin_readers():
         ReaderPlugin("neb", NebReader, (), is_neb,
                      "NEB band, one frame per image: VASP NEB folder (00..NN) or LAMMPS neb run folder "
                      "(detected), or format='neb' with one file per image (dump.neb.*)", B, 4, _NEB_FORMATS[1:]),
+        ReaderPlugin("phonopy-yaml", PhonopyYamlReader, ("band.yaml", "mesh.yaml", "qpoints.yaml", "*.yaml"),
+                     is_phonopy_yaml, "phonopy band.yaml/mesh.yaml/qpoints.yaml with eigenvectors: phonon modes "
+                     "(PhononMode animates one); frames= per period, structure= for qpoints.yaml", B, 9,
+                     ("phonopy", "band.yaml", "phonon")),
+        ReaderPlugin("vasp-phonon", VaspPhononReader, ("OUTCAR*",), is_outcar_phonon,
+                     "VASP OUTCAR of an IBRION=5-8 run: Gamma phonon modes (PhononMode animates one)", B, 15,
+                     ("outcar-phonon",)),   # before the OUTCAR reader (16): ionic steps
         ReaderPlugin("cube", _open_cube, ("*.cube", "*.cub"), is_cube,
                      "Gaussian cube volumetric data (atoms + grid)", B, 5, ("gaussian-cube",), category="volumetric"),
         ReaderPlugin("vasp-volumetric", _open_vasp_volumetric,
