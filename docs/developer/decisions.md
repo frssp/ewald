@@ -230,6 +230,18 @@ the end.
   AI writing the code each time; sharing the computing code with other tools (only the knowledge
   is shared).
 - **Landed:** milestone in docs/ROADMAP.md (Properties).
+### D23. Color bars on translucent cards, drawn once for screen and file (2026-10-23)
+
+- **Decision:** a color bar (ColorCoding, `color_by`, trajectory maps, grid slices) is a thin
+  rounded ramp with round-number ticks on a small translucent card in the top right corner;
+  several bars stand side by side. The 3D view draws the same overlay items as the pictures
+  (`ewald.colorbars`), no longer VTK's scalar bar.
+- **Why:** on the old viewport bar, "안 예쁘다. 디자인 다시해라" (it is not pretty, redesign it).
+  From four options rendered on the Fe vacancy NEB the owner picked the card once it was clear
+  it costs nothing: "성능에 영향없으면 B가 좋아" (if it does not affect performance, B is good).
+- **Considered:** a slim bar without a card at the right edge (recommended), a horizontal bar in
+  the bottom right corner, a framed matplotlib-style bar.
+- **Landed:** PR #231 (`colorbars.py`, `overlays.ColorRamp`, `gui/viewport.py`).
 
 ### D22. Generic AI tools in the core, source-specific ones in plugins (2026-10-23)
 

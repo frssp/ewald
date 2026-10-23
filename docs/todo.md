@@ -405,7 +405,10 @@ Visualization plugins (later phases of the Scene IR plan)
   their `VisualElement` parameters, replacing the hand-written style controls.
 - OpenGL and the ray tracer ignore `Cylinders.alpha`; see-through bonds need it.
 - Ray tracer: `Lines` without a `radius` are not drawn (trajectory lines now have one).
-- Trajectory lines: the legacy OpenGL 1.x viewport (ssh -X) draws the color map but no color bar;
+- Color bars: the legacy OpenGL 1.x viewport (ssh -X) draws the color maps but no color bar card
+  (`gui/viewport.py` `_draw_colorbars` has the image to draw); the card can cover an `Attributes`
+  overlay placed top right.
+- Trajectory lines:
   a trail ends at the last traced frame before the current one, not at the atom's current
   position between traced frames (step > 1); color by a per-frame particle property along the
   path (e.g. coordination at each frame) needs that property in the trajectory-lines table.

@@ -351,20 +351,6 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
         ax.add_patch(Circle((row["x"] + d / 2, row["y"] + d / 2), d / 2, facecolor=row["rgb"], edgecolor=ink,
                             linewidth=max(1, d // 14) * pt))
         ax.text(row["x"] + 1.5 * d, row["y"] + d / 2, row["name"], color=ink, fontsize=fs, va="center", ha="left")
-    from .colormaps import get_colormap
-
-    for cb in lay.get("colorbars", []):
-        x0, y0, x1, y1 = cb["box"]
-        cmap = get_colormap(cb["cmap"])
-        n = 64
-        stripes = [Rectangle((x0, y0 + (y1 - y0) * k / n), x1 - x0, (y1 - y0) / n + 0.5) for k in range(n)]
-        ax.add_collection(PatchCollection(stripes, facecolors=[cmap(1 - (k + 0.5) / n) for k in range(n)],
-                                          edgecolors="none", linewidths=0))
-        ax.add_patch(Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False, edgecolor=ink, linewidth=pt))
-        ax.text(cb["title_x"], y0 - 0.4 * lay["font_size"], cb["title"], color=ink, fontsize=small, va="bottom", ha="left")
-        for y, label in cb["ticks"]:
-            ax.plot([x1, x1 + cb["tick_len"]], [y, y], color=ink, linewidth=pt)
-            ax.text(cb["label_x"], y, label, color=ink, fontsize=small, va="center", ha="left")
     if "scale_bar" in lay:
         sb = lay["scale_bar"]
         th = sb["thickness"]

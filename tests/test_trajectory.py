@@ -244,8 +244,10 @@ def test_trajectory_lines_color_by_time_window_and_trail(rng):
     assert set(table["Time"][drawn]) == {400, 500, 600, 700, 800}
     assert scene.legends[0]["range"] == (0.0, 800.0)   # lo fixed, hi from what is drawn
     # trail: the frame shown (the data's SourceFrame) is 7, Time 700; 'True' draws up to it, a number only that much before it
-    _, lines = _lines(data, 7, trail=True)
+    scene, lines = _lines(data, 7, trail=True, color_by="Time")
     assert set(table["Time"][np.concatenate(lines.strips)]) == set(range(200, 701, 100))
+    assert scene.legends[0]["range"] == (200.0, 1100.0)   # the whole path, so colors keep their meaning
+    _, lines = _lines(data, 7, trail=True)
     _, lines = _lines(data, 7, trail=250)
     assert set(table["Time"][np.concatenate(lines.strips)]) == {500, 600, 700}
     assert lines.point_rgb is None and lines.rgb.shape == (8, 3)   # atom colors without color_by
@@ -343,7 +345,9 @@ def test_overlay_layout_stacks_color_bars():
     d.attributes.update({"ColorCoding.range": (0.0, 1.0), "ColorCoding.property": "Charge"})
     lay = overlay_layout(d, (800, 600), colorbars=[{"title": "Time", "cmap": "magma", "range": (0, 5000)}])
     bars = lay["colorbars"]
-    assert [b["title"] for b in bars] == ["Charge", "Time"] and lay["colorbar"] is bars[0]
-    assert bars[1]["box"][2] < bars[0]["box"][0]                  # side by side, the second to the left
-    assert [t for _, t in bars[1]["ticks"]] == ["0", "1250", "2500", "3750", "5000"]
+    assert [b["title"] for b in bars] == ["Charge", "Time"]
+    texts = {it.text: it for it in lay["items"] if hasattr(it, "text")}
+    assert texts["Time"].x < texts["Charge"].x                    # side by side, the second to the left
+    assert [t for t in ("0", "1000", "2000", "3000", "4000", "5000") if t in texts] == \
+        ["0", "1000", "2000", "3000", "4000", "5000"]
     assert "colorbars" not in overlay_layout(d, (800, 600), legend=False, colorbars=bars)

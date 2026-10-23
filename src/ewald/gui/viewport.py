@@ -15,7 +15,6 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from ..render import (
     _RADIUS_KEYS,
-    _add_colorbar,
     add_atoms,
     atom_cloud,
     build_scene,
@@ -135,6 +134,35 @@ def release_gl(widget) -> None:
                 setattr(widget, name, None)
 
 
+def _image_actor(rgba, dx, dy, anchor):
+    """A 2D actor showing an RGBA image with its lower-left corner (dx, dy) display pixels from ``anchor``
+    (normalized viewport coordinates)."""
+    from vtkmodules.util.numpy_support import numpy_to_vtk
+    from vtkmodules.vtkCommonDataModel import vtkImageData
+    from vtkmodules.vtkRenderingCore import vtkActor2D, vtkCoordinate, vtkImageMapper
+
+    h, w = rgba.shape[:2]
+    img = vtkImageData()
+    img.SetDimensions(w, h, 1)
+    arr = numpy_to_vtk(np.ascontiguousarray(rgba[::-1]).reshape(-1, 4), deep=True)
+    arr.SetName("rgba")
+    img.GetPointData().SetScalars(arr)
+    mapper = vtkImageMapper()
+    mapper.SetInputData(img)
+    mapper.SetColorWindow(255.0)
+    mapper.SetColorLevel(127.5)
+    actor = vtkActor2D()
+    actor.SetMapper(mapper)
+    ref = vtkCoordinate()
+    ref.SetCoordinateSystemToNormalizedViewport()
+    ref.SetValue(*anchor)
+    c = actor.GetPositionCoordinate()
+    c.SetCoordinateSystemToDisplay()
+    c.SetReferenceCoordinate(ref)
+    c.SetValue(round(dx), round(dy))
+    return actor
+
+
 class Viewport(QtWidgets.QWidget):
     """QtInteractor wrapped with the view toolbar, tool rail and picking."""
 
@@ -170,6 +198,7 @@ class Viewport(QtWidgets.QWidget):
         self.arrow_resolution = 6
         self.show_overlay = True
         self.show_legend = True           # the atoms' color bar or category swatches
+        self._has_colorbar = False
         self.show_axes = True
         self.initial_view = "iso"
         # interactive level of detail (Preferences › Viewports › Performance)
@@ -529,12 +558,9 @@ class Viewport(QtWidgets.QWidget):
                 and not getattr(self, "_peeling", False):
             p.enable_depth_peeling()
             self._peeling = True
-        if self.show_legend and ("ColorCoding.range" in shown.attributes or drawn.legends):
-            _add_colorbar(p, shown, font_size=12, legends=drawn.legends)
-            for sb in (p.scalar_bars.values() if dark else ()):
-                for prop in (sb.GetTitleTextProperty(), sb.GetLabelTextProperty()):
-                    prop.SetColor(0.9, 0.91, 0.93)
+        self._has_colorbar = False
         if self.show_legend:
+            self._draw_colorbars(shown, drawn.legends)
             self._draw_color_legend(shown, dark)
         if self.overlay_text and self.show_overlay:
             p.add_text(self.overlay_text, position="upper_left", font_size=7, name="_overlay",
@@ -1006,6 +1032,29 @@ class Viewport(QtWidgets.QWidget):
             return f"∠({label(P[0])}, {label(P[1])}, {label(P[2])}) = {ang:.2f}°"
         return f"{len(P)} atom(s) picked"
 
+    COLORBAR_FONT = 12   # px at a device pixel ratio of 1
+
+    def _draw_colorbars(self, data, legends):
+        """The color bars (:func:`ewald.overlays.color_legends`) as one image pinned to the top right corner:
+        the items pictures draw (:mod:`ewald.colorbars`), so the view and the rendered figure match."""
+        from ..colorbars import colorbar_items, items_rgba
+        from ..overlays import color_legends, ink_color
+
+        bars = color_legends(data, legends)
+        if not bars:
+            return
+        w = self.plotter.interactor
+        ratio = w.devicePixelRatioF() or 1.0
+        W, H = max(1, int(w.width() * ratio)), max(1, int(w.height() * ratio))
+        ink = ink_color(self.style.background, False)
+        items = colorbar_items(bars, (W, H), unit=self.COLORBAR_FONT * ratio, ink=ink, background=self.style.background)
+        rgba, x0, y0 = items_rgba(items, ink)
+        # VTK display coordinates start at the bottom left; the offset is kept from the top right corner, so the
+        # cards stay there while the view is resized
+        self.plotter.add_actor(_image_actor(rgba, x0 - W, -y0 - rgba.shape[0], (1.0, 1.0)), name="_legend",
+                               reset_camera=False, render=False)
+        self._has_colorbar = True
+
     def _draw_color_legend(self, data, dark: bool):
         """Swatches of the atoms' color rule (structure types, painted conditions; :mod:`ewald.color_rule`):
         top right, or top left under the caption when a color bar takes the right edge. Text actors placed in
@@ -1018,7 +1067,7 @@ class Viewport(QtWidgets.QWidget):
         rows = legend_entries(r)
         if not rows:
             return
-        right = not self.plotter.scalar_bars
+        right = not self._has_colorbar
         ink = (0.9, 0.91, 0.93) if dark else (0.1, 0.1, 0.1)
         size, step = 12, 18
         x0, y = (-14, -14) if right else (12, -40)
