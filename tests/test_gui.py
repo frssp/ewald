@@ -3053,7 +3053,10 @@ def test_main_window_follows_a_growing_dump(app, lammps_dir, tmp_path):
     assert w.timeline.selection == [0, 1]  # kept while the file grows
     assert f"frame {n - 1}/{n - 1}" in w.status.text()
     w.timeline._set(0)  # looking at an early frame: stay there
-    path.write_bytes(blob + blob[offsets[-1]:])
+    last = blob[offsets[-1]:]   # one more frame, at a later step (the same step again is a restart)
+    head, _, rest = last.partition(b"ITEM: TIMESTEP\n")
+    step, _, rest = rest.partition(b"\n")
+    path.write_bytes(blob + head + b"ITEM: TIMESTEP\n" + str(int(step) + 1000).encode() + b"\n" + rest)
     w.live_reload.poll(wait=True)
     assert w.timeline.slider.maximum() == n and w.frame == 0
     w.live_reload.timer.start()
