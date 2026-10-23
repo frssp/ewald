@@ -57,8 +57,13 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   for k = 12-33, was 0.32-0.71 s with cKDTree + image padding). PTM (0.93 s) and Steinhardt
   (0.95 s) are now dominated by their per-atom kernels (PTM's C++ template matching, the Ylm
   sums), Voronoi (0.72 s) by voro++; those already use every core.
-- Ray tracer: a BVH instead of the uniform grid for large surfaces, adaptive sampling that
-  stops on converged pixels, and the CUDA path.
+- Ray tracer: the CUDA path. Fine surface meshes now go through a BVH (isosurfaces 1.4-2.2x
+  faster) while atoms, bonds, arrows, glass spheres and polyhedra stay in the uniform grid, where
+  a BVH measured 1.2-2x slower; the binned-SAH build is single-threaded (0.23 s for 271k
+  triangles). Adaptive sampling (`noise_threshold`, Publication 0.01) saves only 1.0-1.5x at 16
+  rays/pixel: its error estimate (variance / n) treats the low-discrepancy AO as random, so it
+  overestimates the noise of shaded pixels; an estimate that knows the R2 sequence (or comparing
+  two half-sample images) would let more pixels stop.
 - GUI startup: the window paints after 1.7 s (was 2.85 s); the 3D view (pyvistaqt import,
   ~1.2 s), the Plots canvas, the IPython console and the ~/.ssh/config hosts come after the
   first paint, so the 3D view is ready at about 2.8 s. Left: `import ewald.gui.app` itself

@@ -692,14 +692,16 @@ RENDERERS = {
 }
 
 # Output quality presets (file output puts quality first; the interactive viewport has its own settings).
-# samples: ray-traced rays per pixel; ao_samples: ambient-occlusion rays; antialiasing: OpenGL SSAA;
+# samples: ray-traced rays per pixel (the most a pixel takes with adaptive sampling); ao_samples:
+# ambient-occlusion rays; noise_threshold: ray tracer adaptive sampling, pixels whose standard error is
+# below it stop early (0 = off; see ewald.raytrace.raytrace); antialiasing: OpenGL SSAA;
 # ambient_occlusion: OpenGL SSAO; sphere_resolution: OpenGL sphere mesh detail; scale: pixel size factor.
 QUALITY_PRESETS = {
-    "draft": {"samples": 1, "ao_samples": 0, "shadows": False, "antialiasing": False,
+    "draft": {"samples": 1, "ao_samples": 0, "noise_threshold": 0.0, "shadows": False, "antialiasing": False,
               "ambient_occlusion": False, "sphere_resolution": 8, "scale": 0.5},
-    "standard": {"samples": 4, "ao_samples": 4, "shadows": True, "antialiasing": True,
+    "standard": {"samples": 4, "ao_samples": 4, "noise_threshold": 0.0, "shadows": True, "antialiasing": True,
                  "ambient_occlusion": False, "sphere_resolution": 16, "scale": 1.0},
-    "publication": {"samples": 16, "ao_samples": 8, "shadows": True, "antialiasing": True,
+    "publication": {"samples": 16, "ao_samples": 8, "noise_threshold": 0.01, "shadows": True, "antialiasing": True,
                     "ambient_occlusion": True, "sphere_resolution": 28, "scale": 1.0},
 }
 
@@ -720,7 +722,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
            legend: bool = True, show_cell: bool = True, bonds: float | None = None,
            radius_scale: float = 1.0, antialiasing: bool | None = None, text: str | None = None,
            camera: dict | None = None, renderer: str = "opengl", samples: int | None = None,
-           ao_samples: int | None = None, shadows: bool | None = None, type_legend: bool = False,
+           ao_samples: int | None = None, noise_threshold: float | None = None, shadows: bool | None = None,
+           type_legend: bool = False,
            scale_bar: bool | float | None = None, dpi: float | None = None, quality: str = "publication",
            scale: float | None = None, theme=None, overlays=None, region=None, labels=None, light=None,
            progress=None, **scene_kwargs):
@@ -733,12 +736,13 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     the view height (see :mod:`ewald.framing`); None shows the whole view height, centered.
 
     ``renderer``: 'opengl' (VTK, fast), 'raytrace' (built-in ray tracer: ambient
-    occlusion with ``ao_samples`` rays, ``shadows``, ``samples`` rays per pixel) or
+    occlusion with ``ao_samples`` rays, ``shadows``, ``samples`` rays per pixel, of which pixels
+    that converge below ``noise_threshold`` take fewer: adaptive sampling, 0 = off) or
     'vector' (SVG/PDF/EPS with real circles and editable text, see :mod:`ewald.vector`).
     Raster renderers can also write .pdf/.svg/.eps, embedding the image.
 
     ``quality``: 'draft', 'standard' or 'publication' (default) fills in every sampling
-    setting left as None (``samples``, ``ao_samples``, ``shadows``, ``antialiasing``,
+    setting left as None (``samples``, ``ao_samples``, ``noise_threshold``, ``shadows``, ``antialiasing``,
     ``ambient_occlusion``, sphere mesh detail and ``scale``, a factor on ``size``);
     see ``QUALITY_PRESETS``. Explicit arguments always win.
 
@@ -799,10 +803,11 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     background = "white" if background is None else background
     if scene_kwargs.get("atom_style") == "flat" and ambient_occlusion is None:
         ambient_occlusion = False  # SSAO would shade the flat discs
-    q = quality_settings(quality, samples=samples, ao_samples=ao_samples, shadows=shadows,
+    q = quality_settings(quality, samples=samples, ao_samples=ao_samples, noise_threshold=noise_threshold,
+                         shadows=shadows,
                          antialiasing=antialiasing, ambient_occlusion=ambient_occlusion,
                          sphere_resolution=scene_kwargs.pop("sphere_resolution", None), scale=scale)
-    samples, ao_samples, shadows = q["samples"], q["ao_samples"], q["shadows"]
+    samples, ao_samples, shadows, noise_threshold = q["samples"], q["ao_samples"], q["shadows"], q["noise_threshold"]
     antialiasing, ambient_occlusion = q["antialiasing"], q["ambient_occlusion"]
     if q["scale"] != 1.0:
         size = (max(16, round(size[0] * q["scale"])), max(16, round(size[1] * q["scale"])))
@@ -834,7 +839,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
                                  zoom=zoom, background=background, transparent_background=transparent_background,
                                  show_cell=show_cell, bonds=bonds, radius_scale=radius_scale, camera=camera,
                                  samples=samples, ao_samples=ao_samples, shadows=shadows, overlays=overlays,
-                                 dpi=dpi, light=light, progress=progress, **scene_kwargs)
+                                 dpi=dpi, light=light, progress=progress, noise_threshold=noise_threshold,
+                                 **scene_kwargs)
 
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     p.set_background(background)
@@ -924,7 +930,7 @@ def save_image(rgba, filename, *, transparent=False, dpi=None):
 
 def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, background, transparent_background,
                       show_cell, bonds, radius_scale, camera, samples, ao_samples, shadows, overlays, dpi,
-                      light=None, progress=None, **scene_kwargs):
+                      light=None, progress=None, noise_threshold=0.0, **scene_kwargs):
     from .overlays import cell_line_color
     from .raytrace import raytrace, scene_from_data
 
@@ -943,6 +949,7 @@ def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, ba
         d, k = light_params(light)
         lit = {"light_direction": tuple(d), "diffuse": 0.6 * k, "specular": 0.25 * k}
     img = raytrace(scene, camera, size, samples=samples, ao_samples=ao_samples, shadows=shadows,
+                   noise_threshold=noise_threshold,
                    background=background, transparent_background=transparent_background, progress=progress, **lit)
     rgba = (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)
     overlays = {**overlays, "colorbars": scene.legends}

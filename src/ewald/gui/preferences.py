@@ -52,7 +52,7 @@ LAYOUT = {
         ("Element table", ["elements.overrides"])]),
     "Rendering": ("Starting values for the Render workspace.", [
         ("Renderer", ["render.renderer", "render.quality", "render.movie_quality", "render.samples",
-                      "render.ao_samples", "render.shadows"]),
+                      "render.ao_samples", "render.noise_threshold", "render.shadows"]),
         ("Output", ["render.size_preset", "render.dpi", "render.background", "render.output_dir"]),
         ("Overlays and movies", ["render.type_legend", "render.scale_bar", "render.movie_format"]),
         ("Plots", ["plots.size", "plots.font_size"])]),
@@ -497,6 +497,8 @@ class PreferencesDialog(QtWidgets.QDialog):
             w = QtWidgets.QDoubleSpinBox(minimum=opt.minimum or 0, maximum=opt.maximum or 1e9,
                                          decimals=1 if opt.key == "viewport.rotation_step" else 2,
                                          singleStep=0.05 if (opt.maximum or 10) <= 5 else 1)
+            if opt.key == "render.noise_threshold":
+                w.setDecimals(3); w.setSingleStep(0.005); w.setSpecialValueText("Off")
             w.valueChanged.connect(lambda _, k=opt.key: self._changed(k))
         else:
             w = QtWidgets.QLineEdit(placeholderText="Not set", objectName="field")

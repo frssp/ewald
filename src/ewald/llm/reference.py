@@ -90,7 +90,7 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 | `vp.render_anim(filename="movie.mp4", fps=10)` | `render_animation(pipe, "movie.mp4", fps=10, text="t = [Time] ps")` (`from ewald.render import render_animation`; .gif/.avi/.mov/PNG sequence too) |
 | `TextLabelOverlay`, `ColorLegendOverlay` | `render(..., text="frame [Frame]", legend=True, type_legend=True, scale_bar=True)` |
 | vector export (`.pdf`/`.svg`) | `render(data, "fig.svg", renderer="vector")` (also .pdf/.eps) |
-| `TachyonRenderer(antialiasing_samples=, ambient_occlusion_samples=)` | `render(..., renderer="raytrace", quality="publication")` (default; `"draft"`/`"standard"`, or explicit `samples=`, `ao_samples=`) |
+| `TachyonRenderer(antialiasing_samples=, ambient_occlusion_samples=)` | `render(..., renderer="raytrace", quality="publication")` (default; `"draft"`/`"standard"`, or explicit `samples=`, `ao_samples=`, `noise_threshold=` for adaptive sampling) |
 | visual elements (`data.particles.vis`) | `ewald.scene` primitives; plugin elements with `@visual`, drawn by every renderer via `render(..., visuals=["Cell axes", MyElement(...)])` |
 | `CoordinateTripodOverlay`, `PythonViewportOverlay` | `render(..., overlays=["Coordinate tripod", "Attributes"])`; custom ones subclass `ewald.overlays.OverlayElement` (`@overlay`) and return 2D items |
 | element color presets | `render(..., theme="VESTA")` (`"CPK"`, `"Journal"`, `"ASE"`, `"Dark slide"`, `@theme` plugins) |
