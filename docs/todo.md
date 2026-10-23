@@ -10,6 +10,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): the Plots panel draws a lineup
+  table as curves only; the `levels` (VBM, CBM, E_F) and plateau `regions` in its attributes are
+  not drawn yet (needs a GUI mockup first), and the side bar has no "Analysis" row. Only the
+  sim-agent band-offset lineup exists; work function, EOS, formation energy and polycrystalline
+  work function recipes are next. Not yet checked against sim-agent's own finalize result on a
+  real workflow.
 - Opening without running (`python.run_notebooks`, default "never"): covers notebook files only. A
   folder or workflow (`simagent:`, AiiDA, calculation folders) still runs its generated `load(...)`
   notebook at once, since it is ewald's own code; no per-notebook "always run this one" choice yet.
