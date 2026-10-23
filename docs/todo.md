@@ -63,11 +63,18 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   rays/pixel: its error estimate (variance / n) treats the low-discrepancy AO as random, so it
   overestimates the noise of shaded pixels; an estimate that knows the R2 sequence (or comparing
   two half-sample images) would let more pixels stop.
-- GUI startup: the window paints after 1.7 s (was 2.85 s); the 3D view (pyvistaqt import,
-  ~1.2 s), the Plots canvas, the IPython console and the ~/.ssh/config hosts come after the
-  first paint, so the 3D view is ready at about 2.8 s. Left: `import ewald.gui.app` itself
-  (~0.8 s, numba and the modifier modules) and `_style_changed` at construction (0.1 s).
-  Importing pyvistaqt on a background thread did not help (the GIL serializes it).
+- GUI startup (2026-10-23, `python benchmarks/startup.py [--cold-jit]`): `MainWindow()` returns
+  after 1.2 s, the 3D view is built at 2.2 s and the console at 2.65 s (was 1.65 / 2.7 / 3.15 s).
+  The numba warm-up thread now starts 1.5 s after the window shows: started in `MainWindow()`
+  it held the GIL while the window built, and with a cold numba cache (fresh install, or after
+  an update touched the kernels) that pushed the usable window from 2.9 s to 6 s. The View tab's
+  cards are built once instead of twice, and picking and the render frame import single VTK
+  modules instead of `import vtk` (0.3 s and ~150 MB on the first click). Left: the pyvistaqt
+  import (~0.9 s, blocks the window right after its first paint; on a thread it does not help,
+  the GIL serializes it), `import ewald.gui.app` (~0.6 s: numba, scipy, the modifier modules),
+  the in-process IPython console (~0.4 s, built when its tab first paints) and peak memory
+  (~700 MB with VTK, Qt, numba and IPython). Not yet measured on Windows, where cold imports
+  are usually slower (run `python benchmarks/startup.py --cold-jit` there).
 - UI theme switch takes 0.5-1 s in `QApplication.setStyleSheet` (one app-wide QSS).
 - Playback: plots whose data does not change are not redrawn; per-frame histograms and
   tables update their bars or lines in place (20k-atom histogram 157 -> 65 ms per frame,
@@ -510,6 +517,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- GUI startup on the owner's Windows machine: `python benchmarks/startup.py --cold-jit` prints
+  where the seconds go (import, window, 3D view, console, busy stretches, peak memory); compare
+  with the container numbers under Performance. Windows Defender scanning freshly installed
+  packages can make the first start after an update much slower than later ones.
 - Simple (ASE) style on a real GPU (the owner's Windows machine): rotating a few thousand bonded
   atoms should now be as fluid as Ball & stick. The bond outline became a static inverted hull
   (front faces culled) instead of `vtkPolyDataSilhouette`, which re-ran on the CPU on every camera
