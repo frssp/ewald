@@ -256,6 +256,19 @@ the end.
 - **Landed:** this PR (`src/ewald/workflow.py` `find`/`target`, `src/ewald/llm/tools.py`).
 
 
+### D24. Python steps in the tutorials use the decorators (2026-10-23)
+
+- **Decision:** the tutorial notebooks write their Python steps as functions under `@pipe.add`
+  marked `@each_frame` or `@all_frames`, and use them where a step works per frame or over the
+  whole run (surface atoms over the run, energy and forces in the MD tutorial). New notebooks
+  import `each_frame` and `all_frames`.
+- **Why:** asked whether the examples used a decorator, the owner answered "Each frame 데코레이터
+  적용" (apply the each-frame decorator) and asked for other places to use them, with more plots
+  where useful.
+- **Considered:** `# %% name [each frame]` cell tags, which read more like a notebook in the GUI
+  but do not run as a plain `python` script.
+- **Landed:** PR #236.
+
 ## Project
 
 ### D15. Name, license and openness (2026-10-19, 2026-10-20)

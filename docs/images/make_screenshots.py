@@ -20,7 +20,7 @@ NOTEBOOKS = os.path.join(HERE, "..", "..", "examples", "notebooks")
 SHOTS = {
     "notebook": ("notebook.png", "cu_void.py", 4, None),
     "structure": ("tutorial-structure.png", "srtio3_octahedra.py", 7, None),
-    "trajectory": ("tutorial-trajectory.png", "cu_md_trajectory.py", 7, "frame"),
+    "trajectory": ("tutorial-trajectory.png", "cu_md_trajectory.py", 11, "frame"),
     "minimal": ("minimal-mode.png", "cu_void.py", None, "minimal"),
     "plugins": ("plugins.png", "cu_void.py", None, "plugins"),
     "plugin-panel": ("plugin_panel.png", "cu_void.py", None, "plugin-panel"),

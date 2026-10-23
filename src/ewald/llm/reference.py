@@ -121,14 +121,15 @@ curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] 
 ## Notebook cells (the GUI notebook, `ewald notebook`, `.ewd`)
 
 A notebook is a percent-format `.py` file (`# %%` cells, one namespace). New notebooks import
-`numpy as np`, `import_file, load` (from `ewald`), every modifier (`from ewald.modifiers import *`), `show, view`
+`numpy as np`, `all_frames, each_frame, import_file, load` (from `ewald`), every modifier (`from ewald.modifiers import *`), `show, view`
 (from `ewald.views`) and `paint, hide, isolate, fade, resize` (from `ewald.paint`); import anything else in the cell.
 `pipe` is the pipeline. Write each change as its own cell, in the kinds the GUI recognizes:
 
 - load cell: `pipe = load("XDATCAR")`.
 - step cell: exactly one `pipe.add(CoordinationAnalysis(cutoff=3.0))` with literal arguments (the GUI shows a form for
   it and edits the call); several steps are several cells. A Python step is a cell headed `# %% name [each frame]`
-  (body sees `frame`, `data`) or `[all frames]` (`frames`, `data`), or an `@pipe.add` function.
+  (body sees `frame`, `data`) or `[all frames]` (`frames`, `data`), or a function under
+  `@pipe.add` and `@each_frame` / `@all_frames` (also runs as a plain script).
 - view cell: exactly one `view(pipe, ...)` call (the 3D view, see below) or one `show(...)` call (a plot).
 - `show(pipe, table=None, y=None, histogram=None, frame=0, bins=50, xlim=None, ylim=None, panel=None)` plots any
   `data.tables` key (`"coordination-rdf"`, `"structure-factor"`, `"diffraction"`, `"msd"`, `"DOS"`, `"Bands"`, `"Steps"`

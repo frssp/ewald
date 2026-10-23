@@ -79,7 +79,7 @@ it produced, and write any Python in between. This is the notebook from the
 
 ```python
 # %%
-from ewald import examples, load
+from ewald import each_frame, examples, load
 from ewald.modifiers import *
 from ewald.paint import paint, hide
 from ewald.views import show
@@ -91,6 +91,7 @@ pipe.add(CoordinationAnalysis(cutoff=3.0))
 
 # %% style: surface atoms, every frame
 @pipe.add
+@each_frame
 def style(frame, data):
     paint(data, "Coordination < 12", "#C8551F")      # the legend names the condition
     hide(data, "Position.X > 8")                     # cut the block open

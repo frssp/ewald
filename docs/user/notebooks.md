@@ -134,7 +134,7 @@ cell. One cell is one step, so to mix kinds in one cell, or to write the same th
 Python (Jupyter runs a tagged cell once, as ordinary code), use the decorators:
 
 ```python
-from ewald import all_frames, each_frame
+from ewald import all_frames, each_frame   # new notebooks already import them
 
 @each_frame                       # every frame: the function gets that frame
 def height(frame, data):

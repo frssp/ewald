@@ -27,7 +27,46 @@ frame to see which atoms went furthest. A histogram of the same property:
 show(pipe, histogram="Displacement Magnitude")
 ```
 
-## 3. Mean squared displacement
+## 3. Energy and forces, frame by frame
+
+Your own analysis is a Python function under `@pipe.add`. One that needs the whole run reads it
+once with `@all_frames`; here the energy of every frame (from the file) and the largest
+displacement so far, as one table:
+
+```python
+@pipe.add
+@all_frames
+def run_summary(frames, data):
+    data.tables["run"] = {
+        "Timestep": np.array([d.attributes["Timestep"] for d in frames]),
+        "Energy": np.array([d.attributes["Energy"] for d in frames]),
+        "Max displacement": np.array([d["Displacement Magnitude"].max() for d in frames]),
+    }
+
+show(pipe, table="run", y="Energy")
+```
+
+`frames` gives each frame with the steps above already applied, so `Displacement Magnitude` is
+there. The first column `Timestep` makes the table a time series: a marker follows the current
+frame and a click on the curve goes to that frame; pick `Max displacement` under *y* to see the
+other column. The step does not run again during playback, only when a step above it changes.
+
+A function that works on one frame at a time is `@each_frame` (the `frame` number and that frame's
+`data`), here the size of the force on each atom as a new property:
+
+```python
+@pipe.add
+@each_frame
+def force_magnitude(frame, data):
+    data["Force Magnitude"] = np.linalg.norm(data["Force"], axis=1)
+
+show(pipe, histogram="Force Magnitude")
+```
+
+The histogram is drawn again at every frame. `Force Magnitude` is a property like any other, so
+`ColorCoding("Force Magnitude")` or `paint(data, "Force Magnitude > 1", "red")` work on it too.
+
+## 4. Mean squared displacement
 
 ```python
 pipe.add(MeanSquaredDisplacement(time_per_frame=0.01))
@@ -46,7 +85,7 @@ on the timeline and playback steps through them only. Clicking a point jumps to 
 same works on the `Steps` table of a LAMMPS or VASP run, so you can, for example, select the
 frames where the temperature is above some value (Shift+drag a box).
 
-## 4. Force arrows
+## 5. Force arrows
 
 ```python
 pipe.add(VectorVis(property="Force", scaling=4.0))
@@ -55,7 +94,7 @@ pipe.add(VectorVis(property="Force", scaling=4.0))
 draws an arrow per atom, `scaling` Å per eV/Å. Any vector property works the same way
 (`Displacement`, `Velocity`, `Magnetic Moment`).
 
-## 5. A movie
+## 6. A movie
 
 The render workspace writes movies too (MP4 uses the ffmpeg that comes with ewald; GIF
 needs nothing), or from a cell:
