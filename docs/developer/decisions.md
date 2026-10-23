@@ -305,6 +305,15 @@ the end.
   the merge gate (full suite under a virtual display for GUI and rendering changes, visual
   regression for renderers); each feature PR updates the feature inventory and the TODO list.
 
+### D29. "AI-native", not "Claude built in" (2026-10-23)
+
+- **Decision:** the README and the manual describe EWALD as an AI-native notebook; Claude is the
+  default provider of Ask AI, not the product's identity, and the text names the other providers
+  (OpenAI, Gemini, local models) where it matters.
+- **Why:** the owner asked to replace "with Claude built in" in the README introduction: "claude
+  built in 아니고 ai native? 이정도로" (not "Claude built in", something like "AI-native").
+- **Landed:** PR #PRNUM.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
