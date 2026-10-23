@@ -47,7 +47,7 @@ leading step number (`02_neb` becomes `neb`).
 |---|---|---|
 | VASP image folders `00 .. NN`, or a LAMMPS NEB run (`log.lammps` + one dump per replica) | NEB (`barrier` from OSZICARs / the NEB log) | the whole band, one frame per image |
 | `phonopy_disp.yaml`, `phonopy.yaml`, `phonopy_params.yaml`, `FORCE_SETS`, `band.yaml` | phonon (`disp-001 ...` counted, not listed) | `band.yaml`, else phonopy's yaml (needs the phonopy plugin) |
-| `vasprun.xml`, `OUTCAR`, `XDATCAR`, `OSZICAR`, or `INCAR` + `POSCAR` | relax, md, static, phonon or neb from the INCAR; `energy` and `ionic steps` from OSZICAR | XDATCAR for MD, else vasprun.xml, OUTCAR, XDATCAR, CONTCAR, POSCAR |
+| `vasprun.xml`, `OUTCAR`, `XDATCAR`, `OSZICAR`, or `INCAR` + `POSCAR` | relax, md, static, phonon or neb from the INCAR; `energy` and `ionic steps` from OSZICAR, `atoms` (CONTCAR/POSCAR) and `energy/atom`, `max force` from the OUTCAR's last force block, `gap` from EIGENVAL | XDATCAR for MD, else vasprun.xml, OUTCAR, XDATCAR, CONTCAR, POSCAR |
 | LAMMPS dump files (`ITEM: TIMESTEP`) | the kind from `log.lammps` | the first dump; the others as outputs |
 | sub-folders that are all calculations named `run1, run2`, `restart_1`, `1, 2`, `r0, r1`, ... | one step with **runs** = the number of segments | all segments joined: `md/run*/XDATCAR` |
 | any other folder with calculations below it (up to three levels) | a group of steps | |
@@ -60,6 +60,43 @@ others show as still running.
 Restarted segments are joined the way `load` joins several files (`join="timestep"`): LAMMPS
 dumps that overlap after a restart from an earlier step keep the later segment's frames; VASP
 segments, which carry no timestep, are put one after the other.
+
+## The numbers of every step, and several workflows side by side
+
+The notebook a workflow opens as starts with a table of its steps and their numbers. The same
+table, live, and for several workflows at once (another functional, a bigger cell, a different
+dopant), comes from `workflow_table`:
+
+```python
+from ewald import workflow_table
+
+workflow_table("~/calc/li_pbe")                          # a row per step, a column per number
+t = workflow_table("~/calc/li_pbe", "~/calc/li_r2scan", labels=["PBE", "r2SCAN"])
+t                                                        # each number gets a column per workflow
+t.difference("PBE")                                      # r2SCAN − PBE, step by step
+t["energy/atom"]                                         # {"PBE": array, "r2SCAN": array}
+t.plot("gap")                                            # the steps on x, a line per workflow
+t.to_csv("compare.csv")                                 # pandas.read_csv reads it back
+```
+
+| step | state PBE | state r2SCAN | energy/atom (eV) PBE | energy/atom (eV) r2SCAN | gap (eV) PBE | gap (eV) r2SCAN |
+|---|---|---|---|---|---|---|
+| 01_relax | ✓ | ✓ | -5.4250 | -6.0120 | | |
+| 02_static | ✓ | ✓ | -5.4310 | -6.0170 | 1.0120 | 1.3840 |
+
+(made-up numbers; in a notebook the heads of one number span its workflows)
+
+Rows are the steps that ran a calculation: a group of steps adds its name in front
+(`bands / scf`), a restarted MD is one row. Steps of different workflows are matched by name,
+ignoring case and a leading step number (`01_relax` and `1-Relax` are one row); folders named
+differently line up by order with `align="position"`. `columns=["energy/atom", "gap"]` picks the
+numbers. Any source works: `workflow_table("aiida:1234", "aiida:1240")` compares AiiDA workflows
+with the numbers their source reads.
+
+In the **Workflows** side bar, select two or more workflows (Ctrl or Shift click) and pick
+**Compare 2 workflows in a table** from the right-click menu (one workflow: **Table of the steps'
+numbers**): a cell `workflow_table(...)` is added to the
+notebook on screen and run.
 
 ## For the AI
 

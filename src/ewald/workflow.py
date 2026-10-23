@@ -192,6 +192,14 @@ def describe(path: str, source: str | None = None) -> Workflow:
     return plugin.describe(path)
 
 
+def reference(wf: Workflow) -> str:
+    """The string :func:`describe` reads ``wf`` back from: a folder workflow's folder (its
+    ``path`` is the last step's result), else the source's path or id."""
+    if wf.source == "folders" and wf.id:
+        return wf.id
+    return wf.path or wf.id
+
+
 # ----------------------------------------------------------------------- as text
 def text(wf: Workflow) -> str:
     """The workflow as an indented tree, one line per step and output, with the paths."""
@@ -234,6 +242,30 @@ def _one_line(value) -> str:
     """``value`` on one line: text from a server (a label, a step name) must not end a markdown
     cell or a cell title and start a code cell of its own."""
     return " ".join(str(value).split())
+
+
+def _cell(value) -> str:
+    """``value`` on one line for a markdown table cell (``|`` escaped)."""
+    return _one_line(value).replace("|", "\\|")
+
+
+#: steps listed in a workflow notebook's heading table at most
+MAX_TABLE_STEPS = 40
+
+
+def _steps_markdown(wf: Workflow) -> list:
+    """The lines of the heading's step table (:func:`ewald.workflow_table.workflow_table`), or
+    none when the workflow has fewer than two steps with numbers. One line per row, each value
+    on one line, so nothing a source writes can leave the markdown cell."""
+    from .workflow_table import step_rows, workflow_table
+
+    rows = step_rows(wf)
+    if len(rows) < 2 or not any(s.scalars for _, s in rows):
+        return []
+    lines = workflow_table(wf)._repr_markdown_().splitlines()[:MAX_TABLE_STEPS + 2]
+    if len(rows) > MAX_TABLE_STEPS:
+        lines.append(f"| … {len(rows) - MAX_TABLE_STEPS} more steps |")
+    return [_one_line(x) for x in lines]
 
 
 def _loads(wf: Workflow) -> list:
@@ -284,7 +316,11 @@ def notebook_text(wf: Workflow, pipeline_name: str = "pipe") -> str:
         head += ["#", f"# {line(wf.description)}"]
     numbers = list(wf.scalars.items())[:12]
     if numbers:
-        head += ["#", "# | Quantity | Value |", "# |---|---|"] + [f"# | {line(k)} | {line(v)} |" for k, v in numbers]
+        head += ["#", "# | Quantity | Value |", "# |---|---|"] + [f"# | {_cell(k)} | {_cell(v)} |" for k, v in numbers]
+    steps = _steps_markdown(wf)
+    if steps:
+        head += ["#", "# Steps (`workflow_table(...)` gives this table to compare with other workflows):", "#"]
+        head += [f"# {row}" for row in steps]
     cells = ["# %% [markdown]\n" + "\n".join(head), "# %%\n" + IMPORTS]
     loads = _loads(wf)
     by_path = {path: name for name, path, _ in loads}
