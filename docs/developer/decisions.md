@@ -61,6 +61,15 @@ the end.
   public services.
 - **Landed:** PR #116.
 
+### D21. AI answers link the cells they changed (2026-10-23)
+
+- **Decision:** when the AI writes, edits or runs a cell, its answer in the chat links to that
+  cell (a click shows the notebook tab and lights the cell up). The links come from the tools'
+  results, not from the model's wording, and cells are named as the user counts them (from 1).
+- **Why:** the owner saw an answer saying it changed "the view cell (index 5)" and noted
+  "어느 셀을 수정했는지 링크가 없다" (there is no link to which cell was changed).
+- **Landed:** this PR (`notebook_tools.touched_cells`, the chat's cell links).
+
 ### D6. Structure editing is deferred (2026-10-19)
 
 - **Decision:** no supercell, slab or defect builder until the owner asks.
@@ -102,6 +111,16 @@ the end.
   can be switched off; domain packages (phonopy, PLUMED, AiiDA) live in frssp/ewald-plugins;
   plugins declare themselves in a manifest (`ewald-plugin.toml`), as in VS Code.
 - **Landed:** PRs #14, #22 and later; plugin index in frssp/ewald-plugins.
+
+### D18. Recommend a restart when a plugin change needs one (2026-10-23)
+
+- **Decision:** when installing, updating, switching on or removing a plugin only takes effect
+  after a restart, ewald says so and offers *Restart now* (which reopens the saved notebooks);
+  everything that can take effect at once does (removing a single-file plugin no longer waits
+  for a restart).
+- **Why:** "플러그인 중 재시작이 필요한 것이 있으면 재시작을 추천해줘" (if a plugin needs a
+  restart, recommend restarting).
+- **Landed:** PR #229 (Plugins side bar restart bar, `plugin_catalog.restart_reason`).
 
 ### D12. Reuse before writing (2026-10-18)
 
@@ -183,7 +202,23 @@ the end.
   scrolls (as long, only hidden).
 - **Landed:** PR #222 (`gui/plugin_settings.py`, `gui/preferences.py`, `SettingsField.advanced`).
 
-### D21. Generic AI tools in the core, source-specific ones in plugins (2026-10-23)
+### D21. Computed properties as plugins, with their knowledge as data (2026-10-23)
+
+- **Decision:** material properties beyond the shared primitives become plugins of their own
+  kind, each with a manifest (inputs, outputs and units, method, limits, references, checks, a
+  reference case) that the AI reads to list and explain them; the knowledge part is a milestone
+  for a general plugin about computed properties that other tools can read. Band structure and
+  DOS level stays in core.
+- **Why:** "band정도면 코어에 넣겠는데 좀 더 복잡한 물성이면 나중에 밖에서 유저가 추가해도 좋겠다"
+  (band-level goes into core, more complex properties users may add from outside later), with
+  "ai와 함께쓴다는 걸 고려해서"; the knowledge sharing "일반적인 계산 물성에 대한 지식 플러그인으로
+  마일스톤에 두자" (as a milestone: a knowledge plugin for computed properties in general).
+- **Considered:** keeping per-source recipes with the kernels in core; knowledge as data with the
+  AI writing the code each time; sharing the computing code with other tools (only the knowledge
+  is shared).
+- **Landed:** milestone in docs/ROADMAP.md (Properties).
+
+### D22. Generic AI tools in the core, source-specific ones in plugins (2026-10-23)
 
 - **Decision:** AI tools that work on any file, pipeline or workflow source belong to the core;
   a plugin adds only what is specific to its source. Searching workflows by formula, status
@@ -194,6 +229,7 @@ the end.
 - **Considered:** `simagent_find` / `simagent_open` inside ewald-simagent, which would have
   left local folders and AiiDA without them.
 - **Landed:** this PR (`src/ewald/workflow.py` `find`/`target`, `src/ewald/llm/tools.py`).
+
 
 ## Project
 

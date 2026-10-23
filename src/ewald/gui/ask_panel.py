@@ -51,7 +51,9 @@ insert_cell, edit_cell (step parameters through params), move_cell and delete_ce
 add_modifier, set_view, load_structure and export_file write their own cell and run it. Tool names are not Python: never \
 put set_view(...), add_modifier(...) or another tool call in a ```python block or a cell; call the tool, \
 or write the cell's own code (view(pipe, ...), pipe.add(Modifier(...)), pipe = load(path)). Say which \
-cells you changed, and when something is already drawn, say which cell does it."""
+cells you changed, and when something is already drawn, say which cell does it; call a cell "cell N" \
+with N counted from 1 as the user sees them (index + 1), never by its index (the chat also links the \
+cells your tools wrote)."""
 
 #: What the note above says about running cells (Preferences › AI › Let the AI run cells).
 RUN_CELLS_NOTE = {
@@ -159,6 +161,11 @@ def _step_done(chip):
     """A tool chip from "Running name…" to "✓ Used name"."""
     if chip.property("tool"):
         chip.setText(f"✓ Used {chip.property('tool')}")
+
+
+def cell_link_text(ref: dict) -> str:
+    """What a cell link says: the tool's verb and the cell's number as the user counts (index + 1)."""
+    return f"{ref['verb']} cell {ref['index'] + 1}"
 
 class _Worker(QtCore.QThread):
     event = QtCore.Signal(str, object)
@@ -273,11 +280,17 @@ class Message(QtWidgets.QWidget):
 
     STREAM_MS = 60   # a streamed answer is redrawn at most this often
 
+    cellClicked = QtCore.Signal(str)   # the id of a cell link the user clicked
+
     def __init__(self, role: str, text: str = "", meta: str = "", insert=None, parent=None, author: str = "AI",
-                 tools: list | None = None, error: bool = False):
+                 tools: list | None = None, error: bool = False, cells: list | None = None):
         super().__init__(parent)
         self.role, self.text, self.meta, self.author, self.error = role, text, meta, author, error
         self.tools: list[str] = []
+        self.cells: list[dict] = []          # the cells the tools wrote: {"step", "id", "index", "verb"}
+        self.cell_links: list[QtWidgets.QToolButton] = []
+        self._chips: list[QtWidgets.QLabel] = []
+        self._rows: list[QtWidgets.QHBoxLayout] = []
         self.code_blocks: list[CodeBlock] = []
         self.live: QtWidgets.QLabel | None = None   # the streamed text of the round under way
         self._live_text = ""
@@ -320,13 +333,16 @@ class Message(QtWidgets.QWidget):
         self._redraw.timeout.connect(self._draw_live)
         for name in tools or []:
             self.add_step(name)
+        for ref in cells or []:
+            self.add_cells([ref], step=ref.get("step"))
         if text or tools:
             self.set_answer(text, error=error)
 
     @classmethod
     def from_dict(cls, entry: dict, insert=None) -> "Message":
         return cls(entry["role"], entry.get("text", ""), entry.get("meta", ""), insert=insert,
-                   author=entry.get("author", "AI"), tools=entry.get("tools"), error=bool(entry.get("error")))
+                   author=entry.get("author", "AI"), tools=entry.get("tools"), error=bool(entry.get("error")),
+                   cells=entry.get("cells"))
 
     def to_dict(self) -> dict:
         out = {"role": self.role, "text": self.text}
@@ -336,6 +352,8 @@ class Message(QtWidgets.QWidget):
             out["author"] = self.author
             if self.tools:
                 out["tools"] = list(self.tools)
+            if self.cells:
+                out["cells"] = [dict(c) for c in self.cells]
             if self.error:
                 out["error"] = True
         return out
@@ -370,14 +388,55 @@ class Message(QtWidgets.QWidget):
     def add_step(self, name: str):
         """A tool the model runs: a chip that turns from running to done."""
         self._keep_live()
-        for i in range(self.steps.count()):
-            _step_done(self.steps.itemAt(i).widget())
+        for chip in self._chips:
+            _step_done(chip)
         chip = QtWidgets.QLabel(f"Running {name}…", objectName="chatStep")
         chip.setProperty("tool", name)
         self.tools.append(name)
-        self.steps.addWidget(chip, 0, QtCore.Qt.AlignLeft)
+        self._chips.append(chip)
+        row = QtWidgets.QHBoxLayout()   # the chip, or links to the cells the tool wrote
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        row.addWidget(chip)
+        row.addStretch(1)
+        self._rows.append(row)
+        self.steps.addLayout(row)
         self.status.setText("Working…")
         self.status.show()
+
+    def add_cells(self, refs: list[dict], step: int | None = None):
+        """Links, in place of a tool's chip (``step``; default the last one), to the cells it wrote, ran or
+        deleted (:func:`ewald.llm.notebook_tools.touched_cells`); clicking one shows the cell in the
+        notebook. A deleted cell's link is only a label."""
+        if not self._rows:
+            return
+        k = len(self._rows) - 1 if step is None or not 0 <= step < len(self._rows) else step
+        row = self._rows[k]
+        added = False
+        for ref in refs:
+            if not isinstance(ref.get("index"), int) or not isinstance(ref.get("verb"), str):
+                continue
+            cid = ref.get("id") if isinstance(ref.get("id"), str) else None
+            self.cells.append({"step": k, "id": cid, "index": ref["index"], "verb": ref["verb"]})
+            link = QtWidgets.QToolButton(objectName="chatCellLink", text=cell_link_text(ref), autoRaise=True)
+            link.setProperty("gone", cid is None)
+            if cid is None:
+                link.setEnabled(False)
+            else:
+                link.setIcon(icon("arrow_up_right", TOKENS["accent"]))
+                link.setProperty("ewald_icon", "arrow_up_right")
+                link.setProperty("ewald_icon_color", "accent")
+                link.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+                link.setCursor(QtCore.Qt.PointingHandCursor)
+                link.setToolTip("Show this cell in the notebook")
+                link.clicked.connect(lambda _=False, c=cid: self.cellClicked.emit(c))
+            # room for the whole text: the style sheet's padding and icon are not in the size hint
+            link.setMinimumWidth(link.fontMetrics().horizontalAdvance(link.text()) + (28 if cid else 16))
+            self.cell_links.append(link)
+            row.insertWidget(row.count() - 1, link)
+            added = True
+        if added:   # the links take the place of the tool's chip ("Used edit_cell")
+            self._chips[k].hide()
 
     def set_answer(self, text: str, error: bool = False):
         if error:   # what streamed before the error stays readable
@@ -389,8 +448,8 @@ class Message(QtWidgets.QWidget):
             self.live.deleteLater()
             self.live, self._live_text = None, ""
         self.text, self.error = text, error
-        for i in range(self.steps.count()):
-            _step_done(self.steps.itemAt(i).widget())
+        for chip in self._chips:
+            _step_done(chip)
         self.status.hide()
         if error:
             self.body.addWidget(_markdown_label(text, "chatError"))
@@ -490,6 +549,7 @@ class AskPanel(QtWidgets.QWidget):
     """
 
     pipelineChanged = QtCore.Signal()
+    cellRequested = QtCore.Signal(object, str)   # notebook (None: no notebook), cell id: show that cell
     insertRequested = QtCore.Signal(str)
     runRequested = QtCore.Signal(str)
 
@@ -715,6 +775,7 @@ class AskPanel(QtWidgets.QWidget):
         conv = conv or self._conv()
         conv.welcome.hide()
         conv.messages.append(message)
+        message.cellClicked.connect(lambda cid, c=conv: self.cellRequested.emit(c.key, cid))
         conv.list.insertWidget(conv.list.count() - 1, message)
         if save:
             conv.save()
@@ -852,6 +913,12 @@ class AskPanel(QtWidgets.QWidget):
         if kind == "tool_call":
             conv.tools_used.append(payload["name"])
             conv.pending.add_step(payload["name"])
+        elif kind == "tool_result" and isinstance(payload, dict):
+            from ..llm.notebook_tools import touched_cells
+
+            refs = touched_cells(payload.get("name", ""), payload.get("result"))
+            if refs:
+                conv.pending.add_cells(refs)
         elif kind == "text" and isinstance(payload, str):
             conv.pending.append_text(payload)
 

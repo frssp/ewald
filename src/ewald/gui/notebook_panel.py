@@ -322,6 +322,9 @@ class NotebookView(QtWidgets.QWidget):
                                      toolTip="Add an analysis or modification step (plugin steps under Plugins)")
         self.step_menu = QtWidgets.QMenu(step)
         self.step_menu.aboutToShow.connect(self._fill_step_menu)
+        # + Step › Plugins, rebuilt each time + Step opens; Insert › Plugin step and the command
+        # palette fill it too, also before + Step was ever opened
+        self.plugin_menu = QtWidgets.QMenu("Plugins", self)
         step.setMenu(self.step_menu)
         view = QtWidgets.QPushButton("+ View", objectName="addCell",
                                      toolTip="A plot of a data table (g(r), XRD, DOS, bands, thermo) or a histogram")
@@ -456,6 +459,19 @@ class NotebookView(QtWidgets.QWidget):
         for w in self.widgets:
             w.set_current(w.cell is self.current)
             w.set_selected(len(sel) > 1 and w.cell in sel)
+
+    def reveal(self, cell) -> bool:
+        """Make ``cell`` current, scroll to it and light it up (a cell link in the AI chat);
+        False when it is not in this notebook."""
+        w = self.widget_for(cell)
+        if w is None:
+            return False
+        if cell.collapsed:
+            w.set_collapsed(False)
+        self.select(cell)
+        self._focus_cell(cell)
+        w.flash()
+        return True
 
     def _focus_cell(self, cell):
         """Give ``cell`` the keyboard in command mode and scroll to it."""

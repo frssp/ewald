@@ -403,7 +403,8 @@ def load_ewd(path, cls=None, trusted: bool | None = None, **kwargs):
 
 def chat_messages(raw) -> list[dict]:
     """The messages of a saved AI chat, checked: ``role`` (user, assistant or note), ``text`` and the
-    optional ``meta``, ``author``, ``tools`` (names of the tools the answer used) and ``error``.
+    optional ``meta``, ``author``, ``tools`` (names of the tools the answer used), ``cells`` (links to
+    the cells they wrote: ``step``, ``id``, ``index``, ``verb``) and ``error``.
     Anything else in a file someone sent is dropped; the chat is text the AI side bar shows, never code."""
     out = []
     for m in raw if isinstance(raw, list) else []:
@@ -416,6 +417,13 @@ def chat_messages(raw) -> list[dict]:
         tools = [t for t in m.get("tools") or [] if isinstance(t, str)] if isinstance(m.get("tools"), list) else []
         if tools:
             entry["tools"] = tools
+        cells = [{"step": c["step"], "id": c["id"] if isinstance(c.get("id"), str) else None,
+                  "index": c["index"], "verb": c["verb"][:40]}
+                 for c in (m.get("cells") if isinstance(m.get("cells"), list) else [])
+                 if isinstance(c, dict) and all(type(c.get(k)) is int and c[k] >= 0 for k in ("step", "index"))
+                 and isinstance(c.get("verb"), str)]
+        if cells:
+            entry["cells"] = cells
         if m.get("error") is True:
             entry["error"] = True
         out.append(entry)

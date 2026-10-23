@@ -261,3 +261,36 @@ def test_catalog_file_without_a_version_is_not_offered_its_own_update(tmp_path):
     pc.install_file(entry)
     pc.remove_file(next(i for i in pc.installed() if i.id == "unversioned_shift"))
     assert src.name.lower() not in pc._sources()
+
+
+def test_restart_reason_names_loaded_packages_pip_changed(monkeypatch):
+    before = pc.loaded_versions()
+    assert before["numpy"]                                   # imported by ewald itself
+    assert pc.restart_reason("install", before=before) == ""   # pip changed nothing loaded
+    reason = pc.restart_reason("update", before=dict(before, numpy="0.0.1"))
+    assert "numpy 0.0.1 -> " in reason and "already loaded" in reason
+    gone = pc.restart_reason("uninstall", before={"ewald-surely-not-installed": "1.0"})
+    assert "ewald-surely-not-installed 1.0 (removed)" in gone
+    assert pc.restart_reason("enable", before={"numpy": "0.0.1"}) == ""   # only pip actions compare
+
+
+def test_restart_reason_for_switching_on_a_loaded_package_and_updating_a_folder(tmp_path):
+    loaded = pc.Installed("NumPy", "numpy", package="numpy")
+    assert "after a restart" in pc.restart_reason("enable", loaded)
+    assert pc.restart_reason("enable", pc.Installed("New", "x", package="ewald-surely-not-installed")) == ""
+    assert pc.restart_reason("disable", loaded) == ""         # its contributions leave the registries at once
+    folder = tmp_path / "pkg_plugin"
+    folder.mkdir()
+    one = tmp_path / "one.py"
+    one.write_text("x = 1\n")
+    assert "folder plugin" in pc.restart_reason("update", pc.Installed("Pkg", str(folder), path=str(folder)))
+    assert pc.restart_reason("update", pc.Installed("One", str(one), path=str(one))) == ""   # a file is run again
+    assert pc.restart_reason("update", None) == ""
+
+
+def test_restart_command_runs_this_python_or_the_frozen_app(monkeypatch):
+    nb = r"C:\Users\kim\Documents\cu void.ewd"                # a Windows path goes through as one argument
+    assert pc.restart_command([nb]) == [sys.executable, "-m", "ewald", "gui", nb]
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert pc.restart_command([nb]) == [sys.executable, nb]
+    assert pc.restart_command() == [sys.executable]

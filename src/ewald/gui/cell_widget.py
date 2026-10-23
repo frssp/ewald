@@ -817,7 +817,7 @@ class CellWidget(QtWidgets.QFrame):
         act = lambda name: (lambda: self.actionRequested.emit(self.cell, name))  # noqa: E731
         code = self.cell.kind == "code"
         if code:
-            m.addAction("Run", lambda: self.runRequested.emit(self.cell, False))
+            m.addAction("Run\tCtrl+Enter", lambda: self.runRequested.emit(self.cell, False))
             m.addAction("Run this and below", act("below"))
         else:
             m.addAction("Edit", self.edit_markdown)
@@ -842,13 +842,14 @@ class CellWidget(QtWidgets.QFrame):
         m.addSeparator()
         m.addAction("Insert cell above\tA", act("above"))
         m.addAction("Insert cell below\tB", act("after"))
-        m.addAction("Move up", act("up"))
-        m.addAction("Move down", act("down"))
+        m.addAction("Move up\tCtrl+Shift+Up", act("up"))
+        m.addAction("Move down\tCtrl+Shift+Down", act("down"))
         m.addSeparator()
         m.addAction("Cut\tX", act("cut"))
         m.addAction("Copy\tC", act("copy"))
         m.addAction("Paste below\tV", act("paste:below"))
         m.addAction("Merge with the cell below\tShift+M", act("merge"))
+        m.addSeparator()   # the destructive entry apart from the rest
         m.addAction("Delete\tD, D", act("delete"))
         self._plugin_actions = []
         m.aboutToShow.connect(lambda: self._plugin_menu_items(m))
@@ -1317,7 +1318,8 @@ class CellWidget(QtWidgets.QFrame):
 
     def _repolish(self):
         chips = self.chips if self.cell.is_step else None
-        key = (self.property("state"), self.property("current"), self.property("selected"), chips.objectName() if chips is not None else None)
+        key = (self.property("state"), self.property("current"), self.property("selected"), self.property("flash"),
+               chips.objectName() if chips is not None else None)
         if key == getattr(self, "_polished", None):
             return   # nothing the style sheet reads changed (e.g. a new frame during playback)
         self._polished = key
@@ -1325,6 +1327,18 @@ class CellWidget(QtWidgets.QFrame):
             if w is not None:
                 w.style().unpolish(w)
                 w.style().polish(w)
+
+    FLASH_MS = 1200
+
+    def flash(self):
+        """Light the cell up for a moment (a link in the AI chat led here)."""
+        self.setProperty("flash", True)
+        self._repolish()
+
+        def off():
+            self.setProperty("flash", False)
+            self._repolish()
+        QtCore.QTimer.singleShot(self.FLASH_MS, self, off)
 
     def set_selected(self, on: bool):
         """Part of a multi-cell selection (Shift+Up/Down, Shift+click)."""

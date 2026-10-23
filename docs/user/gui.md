@@ -144,6 +144,12 @@ before running a tool stays, muted, above that tool's chip (Preferences â€º AI â
 off shows each answer once it is complete, for a server that cannot stream). While an answer is on
 its way the send button turns into Stop (also Esc): the chat is free again at once, what arrived so
 far stays readable, and the stopped question is forgotten.
+A tool that wrote, edited or ran a cell shows a link in place of its chip (*Edited and ran cell 3*,
+*Changed view in cell 5*; cells are counted from 1, top to bottom, as they were then): clicking it
+switches to that notebook's tab, scrolls to the cell and lights it up for a moment. The links come
+from the tools' results, not from the model's text, and they are saved with the chat in an
+`.ewd`; a deleted cell's link is greyed out, and one whose cell is gone since says so in the
+status bar.
 Each notebook tab has its own chat: switching tabs switches the chat, an answer still on its way
 finishes in its own tab's chat (and its cell tools act on that notebook), and *New chat* starts
 over in the current tab only. Saving the notebook as `.ewd` saves its chat; opening the file shows
