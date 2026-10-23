@@ -1124,7 +1124,7 @@ def test_window_asks_before_the_ai_connects_to_a_host(app, monkeypatch):
     try:
         answers = iter([QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No])
         monkeypatch.setattr(QtWidgets.QMessageBox, "exec", lambda self: next(answers))
-        bridge = w.ask_panel.notebook_access
+        bridge = w.ask_panel.notebook_access(w.panel.notebook)   # each tab's chat has its own bridge
         assert bridge.confirm_host("cluster") is True
         assert bridge.confirm_host("other") is False
     finally:
