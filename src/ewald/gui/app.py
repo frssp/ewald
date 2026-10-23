@@ -747,11 +747,13 @@ def _app():
 
     app = QtWidgets.QApplication.instance()
     if app is None:
-        from . import check_qt_platform, check_remote_display, viewport_backend
+        from . import check_qt_platform, check_remote_display, use_software_gl_if_needed, viewport_backend
         from .. import settings as settings_mod
 
         check_qt_platform()
-        if viewport_backend(settings_mod.load()["viewport.backend"]) == "vtk":
+        backend = viewport_backend(settings_mod.load()["viewport.backend"])
+        use_software_gl_if_needed(backend)
+        if backend == "vtk":
             check_remote_display()
             from .viewport import use_vtk_surface_format
 
