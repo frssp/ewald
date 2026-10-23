@@ -206,7 +206,8 @@ def collect_trajectory(frames, properties=("Position",), particle_ids=None, indi
     cells, steps = [], []
     first = None
     for k, data in enumerate(frames):
-        if "Particle Identifier" in data:
+        # identifiers match particles only when the first frame has them too; else by index
+        if "Particle Identifier" in data and (first is None or ident is not None):
             ids = np.asarray(data["Particle Identifier"])
             if first is None:
                 want = np.unique(ids if particle_ids is None else np.asarray(particle_ids))

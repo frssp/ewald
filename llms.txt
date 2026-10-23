@@ -105,6 +105,35 @@ counting tables, `.counts` (`cna(pipe).counts == {"OTHER": 0, "FCC": 500, ...}`)
 In Jupyter a Pipeline, DataCollection or Table as a cell's last line shows a picture (ray-traced frame 0, or the
 curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] = False` turns it off.
 
+## Notebook cells (the GUI notebook, `ewald notebook`, `.ewd`)
+
+A notebook is a percent-format `.py` file (`# %%` cells, one namespace). New notebooks import
+`numpy as np`, `import_file, load` (from `ewald`), every modifier (`from ewald.modifiers import *`), `show, view`
+(from `ewald.views`) and `paint, hide, isolate, fade, resize` (from `ewald.paint`); import anything else in the cell.
+`pipe` is the pipeline. Write each change as its own cell, in the kinds the GUI recognizes:
+
+- load cell: `pipe = load("XDATCAR")`.
+- step cell: exactly one `pipe.add(CoordinationAnalysis(cutoff=3.0))` with literal arguments (the GUI shows a form for
+  it and edits the call); several steps are several cells. A Python step is a cell headed `# %% name [each frame]`
+  (body sees `frame`, `data`) or `[all frames]` (`frames`, `data`), or an `@pipe.add` function.
+- view cell: exactly one `view(pipe, ...)` call (the 3D view, see below) or one `show(...)` call (a plot).
+- `show(pipe, table=None, y=None, histogram=None, frame=0, bins=50, xlim=None, ylim=None, panel=None)` plots any
+  `data.tables` key (`"coordination-rdf"`, `"structure-factor"`, `"diffraction"`, `"msd"`, `"DOS"`, `"Bands"`, `"Steps"`
+  (thermo), ...; `y=` one column) or a histogram of a particle property (`histogram="Coordination"`). In the GUI it is a
+  live plot linked to the 3D view; `panel=True`/`False` puts it in the Plots panel or under the cell. `xlim`/`ylim` set
+  the range (`xlim=(-3, 3)` for a DOS window). `ewald.views.figure(...)` returns the matplotlib Figure instead.
+- `snapshot(pipe, frame=None, **render_kwargs)` (`from ewald.views import snapshot`) as a cell's last line shows a
+  picture of the 3D view.
+- `paint(data, where, color)`, `hide(data, where)`, `isolate(data, where)`, `fade(data, where, transparency=0.7)`,
+  `resize(data, where, factor)` change "Color", "Transparency" or "Radius" inside a step (`where`: boolean mask, index
+  array or expression string such as `"Coordination < 12"`); they need `data`, so use them in an `[each frame]` cell or
+  `@pipe.add` function, not on `pipe`.
+- Plain code cells (print, numpy, matplotlib) may read `pipe.compute(i)` freely; anything that should change the
+  structure, the view or a result goes through the cells above, so the notebook alone reproduces it.
+- VASP DOS/bands (vasprun.xml, vaspout.h5): `data.tables["DOS"]`, `data.tables["Bands"]`, the attributes
+  `"Fermi Energy"`, `"Band Gap"` and `data.attributes["Electronic Structure"]` (`ewald.electronic.ElectronicStructure`:
+  `.pdos_of(atoms, orbitals)`, `.efermi`, `.eigenvalues`).
+
 ## Runs: input files, health check, series
 
 `run_info(pipe)` reads the run's INCAR (else the OUTCAR/vasprun echo), KPOINTS or log.lammps: `.code`, `.kind`
@@ -145,7 +174,15 @@ view(pipe, labels="{type}{index}")                        # atom labels: True, a
 view(pipe, light={"azimuth": 60, "elevation": 20, "intensity": 1.2})   # key light relative to the viewer
 pipe.view.measure(0, 5); pipe.view.measure(4, 0, 7)       # distance / angle drawn with its value; returns it
 view(pipe, color_by="Coordination", colormap="plasma", color_range=[2, 5])   # display-only color map; 'type': type colors
+pipe.add(GenerateTrajectoryLines())                       # atom paths are a step (the selected atoms, else all) ...
+view(pipe, trajectory_trail=True, trajectory_color_by="Time", trajectory_width=3)   # ... the trajectory_* settings
+                                                          # only style its lines (without the step: a warning, no lines)
 ```
+
+A NEB folder (`load("neb/")`, images 00..NN as frames) comes with `UnwrapTrajectories`, `NebEnergyProfile` (tables
+"NEB", "NEB spline"; attributes `NEB.Barrier`, `NEB.Saddle Image`, ...) and `OverlayFrames` (the other images as
+see-through atoms). For lines along the band add `GenerateTrajectoryLines()` as above; `trajectory_trail=True` then
+grows them image by image with the timeline.
 
 What colors the atoms: structure identification steps (`CommonNeighborAnalysis`, `PolyhedralTemplateMatching`,
 `IdentifyDiamond`, ...) write a "Color" per structure type unless `color_by_type=False`, `ColorCoding` maps a
