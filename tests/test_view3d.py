@@ -382,6 +382,89 @@ def test_type_transparency_and_selection_highlight(srtio3):
     assert "selection_color" not in v.render_kwargs(data)
 
 
+
+@pytest.mark.parametrize("off", ["false", "False", "FALSE", " off ", "no", "none", "null", "0", "", np.False_])
+def test_selection_spelled_as_text_turns_the_highlight_off(srtio3, off):
+    # A stored 'false' (settings or session JSON, an AI model's set_view, Qt settings on macOS that hand
+    # booleans back as text) once reached matplotlib as a color name and crashed every viewport redraw.
+    from ewald.modifiers import ExpressionSelection
+    from ewald.scene import build
+    from ewald.view_style import ViewStyle
+
+    srtio3.add(ExpressionSelection("ParticleType == 'Ti'"))
+    data = srtio3.compute(0)
+    v = View(selection=off)
+    assert v.selection is False and "selection_color" not in v.render_kwargs(data)
+    st = ViewStyle()
+    st.selection = off                       # sessions and notebook state set it without checks
+    assert "selection_color" not in st.scene_kwargs()
+    atoms = build(data, selection_color=off)["atoms"].primitive   # the element itself never raises
+    ti = np.asarray(data.types)[atoms.index] == "Ti"
+    assert not np.allclose(atoms.colors()[ti], [1, 0, 0])
+
+
+@pytest.mark.parametrize("on, rgb", [("true", [1, 0, 0]), (" On", [1, 0, 0]), ("lime", [0, 1, 0]),
+                                     ("#0000ff", [0, 0, 1]), ([0, 255, 0], [0, 1, 0]), (np.True_, [1, 0, 0])])
+def test_selection_spelled_as_text_or_a_color_highlights(srtio3, on, rgb):
+    from ewald.modifiers import ExpressionSelection
+    from ewald.scene import build
+
+    srtio3.add(ExpressionSelection("ParticleType == 'Ti'"))
+    data = srtio3.compute(0)
+    atoms = build(data, **View(selection=on).render_kwargs(data))["atoms"].primitive
+    ti = np.asarray(data.types)[atoms.index] == "Ti"
+    assert np.allclose(atoms.colors()[ti], rgb)
+
+
+def test_a_bad_selection_color_fails_when_set_and_warns_when_drawn(srtio3):
+    from ewald.modifiers import ExpressionSelection
+    from ewald.scene import build
+    from ewald.view_style import ViewStyle
+
+    with pytest.raises(ValueError, match="selection"):
+        View(selection="maybe")
+    with pytest.raises(ValueError, match="selection"):
+        srtio3.view.selection = [1, 2]
+    st = ViewStyle(selection="maybe")         # e.g. a hand-edited session file
+    with pytest.warns(UserWarning, match="maybe"):
+        assert st.scene_kwargs()["selection_color"] == "red"
+    srtio3.add(ExpressionSelection("ParticleType == 'Ti'"))
+    with pytest.warns(UserWarning):
+        build(srtio3.compute(0), selection_color="maybe")
+
+
+def test_boolean_settings_read_booleans_spelled_as_text():
+    # bool('false') is True: a text boolean must never switch a setting on
+    v = View(cell="false", atoms="False", orthographic="TRUE", bonds="off", trajectory_trail="no", labels="none")
+    assert (v.cell, v.atoms, v.orthographic, v.bonds, v.trajectory_trail, v.labels) == \
+        (False, False, True, False, None, None)
+    assert View(labels="false").labels is None and View(labels="true").labels is True
+    assert View(labels="{type}{index}").labels == "{type}{index}" and View(labels="1").labels == "1"
+    with pytest.raises(ValueError, match="cell"):
+        View(cell="maybe")
+
+
+def test_session_and_notebook_state_with_text_booleans_draw(tmp_path):
+    import json
+
+    from ewald.notebook import Notebook
+    from ewald.view_style import ViewStyle
+
+    nb = Notebook.from_py("# %%\nx = 1\n")
+    nb.state = {"style": {"selection": "false"}}
+    path = tmp_path / "state.py"
+    path.write_text(nb.to_py(header=True), encoding="utf-8", newline="\n")
+    # read the file as Windows would hand it back (CRLF) too
+    crlf = tmp_path / "state_crlf.py"
+    crlf.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    for p in (path, crlf):
+        back = Notebook.from_py(p.read_text(encoding="utf-8"))
+        style = ViewStyle(**back.state["style"])
+        assert back.state["style"] == {"selection": "false"}
+        assert "selection_color" not in style.scene_kwargs()
+    session = json.loads(json.dumps({"selection": "False"}))
+    assert "selection_color" not in ViewStyle(**session).scene_kwargs()
+
 def test_atom_labels_in_pictures_and_settings(srtio3):
     from ewald.overlays import AtomLabels, OverlayContext, atom_label_texts, label_params
     from ewald.render import default_camera

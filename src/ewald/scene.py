@@ -328,13 +328,18 @@ class ParticlesVis(VisualElement):
             rgb = colors[sel]
         else:
             palette = np.clip(_color_table(groups[0], self.type_colors), 0, 1)
+        highlight = None
         if self.selection_color is not None and "Selection" in data:
+            from .view3d import selection_color
+
+            highlight = selection_color(self.selection_color)   # False / 'false': none
+        if highlight is not None:
             chosen = np.asarray(data["Selection"]) != 0
             if chosen.any():
                 from .render import _rgb
 
                 colors = colors.copy() if colors is not None else palette[groups[1]]
-                colors[chosen] = _rgb(self.selection_color)
+                colors[chosen] = _rgb(highlight)
                 rgb, palette = colors[sel], None
         if "Radius" in data:
             radii = np.asarray(data["Radius"], float)[sel] * self.radius_scale
