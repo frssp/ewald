@@ -18,6 +18,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ..notebook import Cell, History, Notebook, new_notebook
 from ..pipeline import Pipeline
 from . import header, workers
+from .ai_follow import AiFollow
 
 # re-exported: the cell widgets and the editor moved to their own modules
 from .cell_widget import (  # noqa: F401
@@ -201,6 +202,7 @@ class NotebookView(QtWidgets.QWidget):
         self.drop_line.setFixedHeight(3)
         self.drop_line.hide()
         self.stack.addWidget(self.scroll)
+        self.ai_follow = AiFollow(self)   # how the scroll follows the cells the AI chat writes
         self.file_view = CodeEditor()
         self.file_view.setReadOnly(True)
         self.file_view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
@@ -430,6 +432,7 @@ class NotebookView(QtWidgets.QWidget):
     def rebuild(self):
         """Recreate every cell widget (after cells were added, removed or moved)."""
         keep, anchor = self.current, self.anchor
+        focused = self._park_focus()
         for w in self.widgets:
             w.setParent(None)
             w.deleteLater()
@@ -458,6 +461,35 @@ class NotebookView(QtWidgets.QWidget):
             self.anchor = anchor
         self._mark_current()
         self.update_results()
+        if focused is not None:
+            self._restore_focus(*focused)
+
+    def _park_focus(self):
+        """Before the cell widgets go: move the keyboard focus out of them. A focused cell that is
+        deleted hands its focus to the next cell, and the scroll area scrolls to each one, so the
+        notebook jumped cell by cell whenever the AI chat wrote a cell. Returns ``(cell, editor
+        cursor position or None)`` of the focused cell for :meth:`_restore_focus`, else None."""
+        fw = QtWidgets.QApplication.focusWidget()
+        if fw is None or not self.container.isAncestorOf(fw):
+            return None
+        w = next((w for w in self.widgets if w is fw or w.isAncestorOf(fw)), None)
+        editing = w is not None and w.editor is not None and (fw is w.editor or w.editor.isAncestorOf(fw))
+        self.scroll.setFocus(QtCore.Qt.OtherFocusReason)
+        return (w.cell if w is not None else None), (w.editor.textCursor().position() if editing else None)
+
+    def _restore_focus(self, cell, cursor):
+        """Give the focus back to the cell that had it (its editor at the same place), or the
+        current cell; setFocus does not scroll, so the notebook stays where it was."""
+        w = self.widget_for(cell) or self.widget_for(self.current)
+        if w is None:
+            return
+        if cursor is not None and w.cell is cell and w.editor is not None and w.editor.isVisibleTo(w):
+            c = w.editor.textCursor()
+            c.setPosition(min(cursor, len(w.editor.toPlainText())))
+            w.editor.setTextCursor(c)
+            w.editor.setFocus(QtCore.Qt.OtherFocusReason)
+        else:
+            w.setFocus(QtCore.Qt.OtherFocusReason)
 
     def widget_for(self, cell):
         return next((w for w in self.widgets if w.cell is cell), None)

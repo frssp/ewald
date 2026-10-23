@@ -5466,6 +5466,84 @@ def test_main_window_plays_phonon_mode(app):
     w.close()
 
 
+def test_notebook_follows_the_ai_cells_without_jumping(app, pipe):
+    """While the AI chat works on cells the notebook does not hop: reading never scrolls, a
+    rewritten cell keeps the focus where it was (it used to pass from cell to cell, scrolling to
+    each), a written cell off screen is scrolled to until you scroll yourself, then a pill points
+    at it; Preferences › AI › Follow the AI's cells: end scrolls once at the end, never not at all."""
+    from PySide6 import QtWidgets
+
+    from ewald.gui.app import MainWindow
+    from ewald.llm.tools import Toolset
+
+    def settle():
+        for _ in range(5):
+            app.processEvents()
+
+    w = MainWindow(pipe)
+    w.resize(1200, 700)
+    w.show()
+    view = w.panel.view
+    for i in range(25):
+        view.add_cell("code", f"x{i} = {i}")
+    settle()
+    nb, bar, follow = view.notebook, view.scroll.verticalScrollBar(), view.ai_follow
+    assert bar.maximum() > 0
+    ts = Toolset(None, notebook=w.ask_panel.notebook_access(nb))
+    first = nb.cells[1]
+    w.activateWindow()
+    view.reveal(first)                                     # the keyboard is on a cell
+    bar.setValue(0)
+    settle()
+    moves = []
+    bar.valueChanged.connect(moves.append)
+
+    def edit(k):
+        moves.append("edit")    # every edit writes new source
+        ts.call("edit_cell", {"index": k, "source": f"y = {len(moves)}", "run": False})
+        settle()
+        return nb.cells[k]
+
+    w._ai_answer(nb, True)
+    ts.call("list_cells", {})
+    ts.call("read_cell", {"index": len(nb.cells) - 1})
+    edit(2)                                                # on screen: nothing moves
+    assert moves == ["edit"] and not follow.pill.isVisible()
+    focused = QtWidgets.QApplication.focusWidget()
+    if focused is not None:                                # the window has the keyboard (an X server)
+        assert view.widget_for(first) in (focused, focused.parentWidget())
+    far = edit(len(nb.cells) - 3)                          # off screen: shown
+    assert bar.value() > 0 and follow.visible(far) and not follow.pill.isVisible()
+    bar.triggerAction(QtWidgets.QAbstractSlider.SliderToMinimum)   # you scroll back up
+    settle()
+    last = edit(len(nb.cells) - 2)
+    assert bar.value() == 0 and follow.pill.isVisible()
+    assert follow.pill.text() == f"AI is on cell {len(nb.cells) - 1}"
+    w._ai_answer(nb, False)
+    assert follow.pill.text() == f"AI edited cell {len(nb.cells) - 1}"
+    follow.pill.click()
+    settle()
+    assert follow.visible(last) and not follow.pill.isVisible() and view.current is last
+
+    w.settings["llm.follow_cells"] = "end"
+    bar.setValue(0)
+    w._ai_answer(nb, True)
+    cell = edit(len(nb.cells) - 1)
+    assert bar.value() == 0
+    w._ai_answer(nb, False)
+    settle()
+    assert follow.visible(cell) and bar.value() > 0
+
+    w.settings["llm.follow_cells"] = "never"
+    bar.setValue(0)
+    w._ai_answer(nb, True)
+    edit(len(nb.cells) - 1)
+    w._ai_answer(nb, False)
+    settle()
+    assert bar.value() == 0 and follow.pill.isVisible()
+    w.close()
+
+
 def test_first_run_notice_stays_until_the_window_is_up(app):
     """The first start after an install or update shows a notice before gui.app is imported and
     closes it once the main window is on screen; the saved stamp keeps it away next time."""

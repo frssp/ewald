@@ -13,6 +13,13 @@ AI › "Let the AI run cells" on, the AI adds steps, writes and edits cells and 
 answer links the cells it touched. (The recording's model answers are scripted, see
 `docs/images/make_ai_demo.py`; the tools and cells are real.)
 
+Reading cells never scrolls the notebook. Preferences › AI › **Follow the AI's cells**
+(`llm.follow_cells`) says what happens when the AI writes or runs one: `follow` (default)
+scrolls to it only when it is off screen, and stops for the rest of the answer once you scroll
+the notebook yourself; `end` scrolls once to the last cell it wrote when the answer is done;
+`never` leaves the notebook where it is. When the notebook does not go to the cell, a pill at its
+edge ("AI is on cell 7") jumps there.
+
 ```bash
 pip install -e ".[llm]"
 export ANTHROPIC_API_KEY=...          # or: ant auth login, or Preferences › AI in the GUI
