@@ -15,11 +15,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   notebook at once, since it is ewald's own code; no per-notebook "always run this one" choice yet.
 - Open dialog: `log.lammps` and `OSZICAR` are read only as companions of a trajectory, not
   opened on their own.
-- Several files as one trajectory: File › Open and drops join several data files in natural order
-  only (no dialog to reorder them or pick `join="concat"`), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
-  appended to after a restart (`dump_modify append yes`). Restart detection needs a Timestep per
-  frame, which only the LAMMPS dump reader gives cheaply (extxyz `Timestep=` comments, H5MD
-  steps and XTC steps are not used yet).
+- Several files as one trajectory: restart detection (on Timestep, between files and inside one
+  appended dump) works for LAMMPS dumps only; extxyz `Timestep=` comments, H5MD steps and XTC
+  steps are not used yet. The join dialog shows file names only, not each file's frames and steps
+  before opening (that needs a scan of every file). A run restarted from step 0 into the same dump
+  counts as a `reset_timestep`, so both copies are kept.
 - View tab: a card has no per-card reset to defaults.
 - Atom color rules (`ewald.color_rule`): a step's category colors (structure types) can only be changed
   through the step (`color_by_type=False` plus `paint`), not per category in the Colors card as OVITO's

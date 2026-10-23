@@ -851,6 +851,45 @@ def test_dropping_a_neb_folder_opens_the_band(app, vasp_dir):
     w.close()
 
 
+def test_join_files_dialog_orders_files_and_picks_join(app):
+    from ewald.gui.join_dialog import JoinFilesDialog
+
+    paths = [os.path.join("data", "run2", "dump.lammpstrj"), os.path.join("data", "run10", "dump.lammpstrj"),
+             os.path.join("data", "run1", "dump.lammpstrj")]
+    d = JoinFilesDialog(paths)
+    assert [d.list.item(i).text() for i in range(3)] == [os.path.join(f"run{n}", "dump.lammpstrj") for n in (2, 10, 1)]
+    assert d.list.item(0).toolTip() == paths[0] and d.join() == "timestep"
+    d.sort_natural()
+    assert d.paths() == [paths[2], paths[0], paths[1]]
+    d.list.setCurrentRow(2)
+    d.move(-1)
+    assert d.paths() == [paths[2], paths[1], paths[0]] and d.list.currentRow() == 1
+    d.move(5)   # past the end: nothing moves
+    d.list.setCurrentRow(0)
+    d.move(-1)
+    assert d.paths() == [paths[2], paths[1], paths[0]]
+    d.reverse()
+    assert d.paths() == [paths[0], paths[1], paths[2]]
+    d.join_buttons["concat"].setChecked(True)
+    assert d.join() == "concat" and "nothing left out" in d.hint.text()
+    assert JoinFilesDialog(paths, join="concat").join() == "concat"
+    d.close()
+
+
+def test_join_dialog_names_files_from_any_platform():
+    import ntpath
+    import posixpath
+
+    from ewald.gui.join_dialog import display_names
+
+    assert display_names(["/a/run1/dump", "/a/run2/dump"], posixpath) == ["run1/dump", "run2/dump"]
+    assert display_names(["C:\\md\\run1\\XDATCAR", "c:\\md\\run2\\XDATCAR"], ntpath) == \
+        ["run1\\XDATCAR", "run2\\XDATCAR"]
+    across = ["C:\\md\\XDATCAR", "D:\\md\\XDATCAR"]   # no common folder across drives
+    assert display_names(across, ntpath) == across
+    assert display_names(["/x/dump.200", "/x/dump.1000"], posixpath) == ["dump.200", "dump.1000"]
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_open_several_files_as_one_trajectory(app, tmp_path, monkeypatch):
     """File › Open with several data files: one trajectory in natural order, as load([...])."""
@@ -872,13 +911,33 @@ def test_open_several_files_as_one_trajectory(app, tmp_path, monkeypatch):
     chosen = [str(tmp_path / "dump.1000"), str(tmp_path / "dump.200")]
     monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileNames", lambda *a, **k: (chosen, ""))
     monkeypatch.setattr(QtWidgets.QInputDialog, "getText", lambda *a, **k: ("", False))
+    asked = []
+
+    def ask_join(parent, paths, join="timestep"):   # the dialog, accepted as shown
+        asked.append(list(paths))
+        return list(paths), join
+
+    monkeypatch.setattr("ewald.gui.join_dialog.ask_join", ask_join)
     w = MainWindow()
     w.open_dialog()
+    assert asked == [[str(tmp_path / "dump.200"), str(tmp_path / "dump.1000")]]   # shown in natural order
     pipe = w.pipeline
     assert [pipe.compute(i).attributes["Timestep"] for i in range(pipe.num_frames)] == [200, 300, 1000, 1100]
     assert "dump.200 + 1 more" in w.windowTitle()
     code = w.panel.notebook.to_py()
     assert "dump.200" in code and "dump.1000" in code and code.index("dump.200") < code.index("dump.1000")
+    assert "join=" not in code
+
+    # reordered in the dialog with every frame kept: load([...], join='concat') in that order
+    monkeypatch.setattr("ewald.gui.join_dialog.ask_join", lambda parent, paths, join="timestep": (paths[::-1], "concat"))
+    w.open_dialog()
+    pipe = w.pipeline
+    assert [pipe.compute(i).attributes["Timestep"] for i in range(pipe.num_frames)] == [1000, 1100, 200, 300]
+    code = w.panel.notebook.to_py()
+    assert "join='concat'" in code and code.index("dump.1000") < code.index("dump.200")
+    monkeypatch.setattr("ewald.gui.join_dialog.ask_join", lambda *a, **k: None)   # cancelled: nothing opens
+    w.open_dialog()
+    assert w.pipeline is pipe
 
     monkeypatch.setattr(w, "_ask_trust", lambda path: False)
     chosen[:] = [str(nb_path), str(tmp_path / "dump.200")]   # a notebook opens in a tab, the data file as usual
@@ -2994,7 +3053,10 @@ def test_main_window_follows_a_growing_dump(app, lammps_dir, tmp_path):
     assert w.timeline.selection == [0, 1]  # kept while the file grows
     assert f"frame {n - 1}/{n - 1}" in w.status.text()
     w.timeline._set(0)  # looking at an early frame: stay there
-    path.write_bytes(blob + blob[offsets[-1]:])
+    last = blob[offsets[-1]:]   # one more frame, at a later step (the same step again is a restart)
+    head, _, rest = last.partition(b"ITEM: TIMESTEP\n")
+    step, _, rest = rest.partition(b"\n")
+    path.write_bytes(blob + head + b"ITEM: TIMESTEP\n" + str(int(step) + 1000).encode() + b"\n" + rest)
     w.live_reload.poll(wait=True)
     assert w.timeline.slider.maximum() == n and w.frame == 0
     w.live_reload.timer.start()
