@@ -7,6 +7,8 @@ import os
 
 from PySide6 import QtCore, QtWidgets
 
+from .palette import native_keys
+
 MAX_RECENT = 10
 
 
@@ -80,7 +82,7 @@ class WelcomePage(QtWidgets.QWidget):
         self.recent_box.setSpacing(0)
         col.addLayout(self.recent_box)
         col.addSpacing(10)
-        col.addWidget(QtWidgets.QLabel("Drop files here to open them  ·  Ctrl+K for every command",
+        col.addWidget(QtWidgets.QLabel(f"Drop files here to open them  ·  {native_keys('Ctrl+K')} for every command",
                                        objectName="muted", wordWrap=True))
         self.refresh()
 

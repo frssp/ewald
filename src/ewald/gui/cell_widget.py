@@ -817,7 +817,7 @@ class CellWidget(QtWidgets.QFrame):
         act = lambda name: (lambda: self.actionRequested.emit(self.cell, name))  # noqa: E731
         code = self.cell.kind == "code"
         if code:
-            m.addAction("Run", lambda: self.runRequested.emit(self.cell, False))
+            m.addAction("Run\tCtrl+Enter", lambda: self.runRequested.emit(self.cell, False))
             m.addAction("Run this and below", act("below"))
         else:
             m.addAction("Edit", self.edit_markdown)
@@ -842,13 +842,14 @@ class CellWidget(QtWidgets.QFrame):
         m.addSeparator()
         m.addAction("Insert cell above\tA", act("above"))
         m.addAction("Insert cell below\tB", act("after"))
-        m.addAction("Move up", act("up"))
-        m.addAction("Move down", act("down"))
+        m.addAction("Move up\tCtrl+Shift+Up", act("up"))
+        m.addAction("Move down\tCtrl+Shift+Down", act("down"))
         m.addSeparator()
         m.addAction("Cut\tX", act("cut"))
         m.addAction("Copy\tC", act("copy"))
         m.addAction("Paste below\tV", act("paste:below"))
         m.addAction("Merge with the cell below\tShift+M", act("merge"))
+        m.addSeparator()   # the destructive entry apart from the rest
         m.addAction("Delete\tD, D", act("delete"))
         self._plugin_actions = []
         m.aboutToShow.connect(lambda: self._plugin_menu_items(m))
