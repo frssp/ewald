@@ -23,7 +23,9 @@ statically, so building the docs does not need the C++ extension.
   never edited by hand.
 - `docs/images/`: screenshots for the manual and README, made from the tutorial notebooks in
   `examples/notebooks/` by `xvfb-run -a -s "-screen 0 1920x1200x24" python docs/images/make_screenshots.py`;
-  never edited by hand. Rerun it when the window changes visibly. The notebooks themselves are
+  never edited by hand. Rerun it when the window changes visibly. `ai-demo.gif` (README, AI page)
+  is recorded by `xvfb-run -a -s "-screen 0 1920x1200x24" python docs/images/make_ai_demo.py`: the
+  real window and tools with a scripted model (`SCRIPT` in that file), so no API key is needed. The notebooks themselves are
   tested by `tests/test_tutorials.py`, which also checks the numbers the tutorials quote.
 - `docs/todo.md`: the one list of open work.
 - `docs/ROADMAP.md`: milestones.

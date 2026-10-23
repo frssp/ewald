@@ -6,6 +6,13 @@ Google Gemini, a model on your own machine (Ollama, LM Studio) or any other Open
 server work the same way (see [Providers](#providers)). Every tool, what it may change and everything
 that is sent to the provider are listed in [What the AI may do and what it sees](ai-permissions.md).
 
+![Ask AI classifies the surface sites of a Pt nanoparticle by writing, editing and running notebook cells](../images/ai-demo.gif)
+
+In the window, the AI chat side bar (Ctrl+J) works on the notebook beside it: with Preferences ›
+AI › "Let the AI run cells" on, the AI adds steps, writes and edits cells and runs them, and each
+answer links the cells it touched. (The recording's model answers are scripted, see
+`docs/images/make_ai_demo.py`; the tools and cells are real.)
+
 ```bash
 pip install -e ".[llm]"
 export ANTHROPIC_API_KEY=...          # or: ant auth login, or Preferences › AI in the GUI

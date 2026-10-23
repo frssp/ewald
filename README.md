@@ -15,6 +15,13 @@ Under the notebook is an OVITO-style pipeline (`load` → `pipe.add(...)` → `p
 `pipe.render(...)`) that runs the same in a script, on the CPU or an NVIDIA GPU, with a built-in
 ray tracer and vector output for publication figures.
 
+![Ask AI in the EWALD window: asked to find the vertex, edge and facet atoms of a Pt nanoparticle, the AI adds a coordination step, writes and runs a cell that paints each site type, then edits that cell to cut the particle open and adds a histogram; the 3D view is zoomed in and out between the questions](docs/images/ai-demo.gif)
+
+*Ask AI changes results only through notebook cells: every step it took above is a cell you can
+read, edit and rerun. The model's answers in this recording are scripted (no API key in the
+recording environment); the window, tools and cells are real. Made by
+[docs/images/make_ai_demo.py](docs/images/make_ai_demo.py).*
+
 ## The idea
 
 EWALD is for computational materials researchers who run VASP and LAMMPS, often on a remote
