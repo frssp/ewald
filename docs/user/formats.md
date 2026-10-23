@@ -22,12 +22,20 @@ file wins from that step on and the frames the earlier file wrote after it are d
 steps only go up. A file that is covered completely by a later one is left out with a warning.
 Files that all start at the same step (independent runs, NEB replicas) and formats whose steps
 start again in every run (XDATCAR, OUTCAR, vasprun.xml) are appended as they are.
+One LAMMPS dump that a restarted run appended to (`dump_modify append yes`) is joined the same
+way: where the Timestep goes back inside the file, the run after it wins from its first step on,
+and `pipe.source.restarts` lists those places as `(file, frame, Timestep)`. A step counter that
+goes back to or below the first step of the run before it (`reset_timestep 0` after a
+minimization) starts a new count instead, so both parts are kept. The steps come from the index
+the reader builds anyway (on SSH from the same remote `grep`), so this costs nothing extra.
 `join="concat"` always keeps every frame of every file. Per-step tables (`Steps`) next to each file
 (log.lammps, OSZICAR) are joined on the step the same way, the later run winning. Lists work for
 remote paths, sessions and live reload too: a restart folder that appears later replaces the
 frames it overlaps.
-In the app, choose several data files in File › Open (or drop them on the window): they open as
-one trajectory in natural order, the same as `load([...])`.
+In the app, choose several data files in File › Open (or drop them on the window): a dialog lists
+them in natural order; drag them (or use Move up/down, Alt+Up/Down) into the order to read them,
+pick "join on Timestep" or "keep every frame", and Open makes the same `load([...], join=...)`
+cell. The status bar says how many frames of earlier runs a later one replaced.
 
 | Format | Reader | Notes |
 |---|---|---|

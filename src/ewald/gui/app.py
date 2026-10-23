@@ -126,10 +126,13 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.render_page.regionWritten.connect(lambda: self.write_view(region=True))
         self.setCentralWidget(self.workbench)
 
-        self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings, notebook=True),
-                                  notebook=self._notebook_code, notebook_access=NotebookBridge(self),
+        bridge = NotebookBridge(self)
+        self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings, notebook=True,
+                                                                         confirm_host=bridge.confirm_host),
+                                  notebook=self._notebook_code, notebook_access=lambda nb: NotebookBridge(self, nb),
                                   auto_insert=lambda: code_cells_mode(self.settings) == "insert",
-                                  errors=self._notebook_errors, view=self._view_summary)
+                                  errors=self._notebook_errors, view=self._view_summary,
+                                  current=lambda: getattr(getattr(self, "panel", None), "notebook", None))
         self.ask_panel.pipelineChanged.connect(self._after_claude)
         self.ask_panel.insertRequested.connect(self._insert_claude_cell)
         # --- left: notebook tabs (the pipeline as Python cells); right: display settings
@@ -745,11 +748,13 @@ def _app():
 
     app = QtWidgets.QApplication.instance()
     if app is None:
-        from . import check_qt_platform, check_remote_display, viewport_backend
+        from . import check_qt_platform, check_remote_display, use_software_gl_if_needed, viewport_backend
         from .. import settings as settings_mod
 
         check_qt_platform()
-        if viewport_backend(settings_mod.load()["viewport.backend"]) == "vtk":
+        backend = viewport_backend(settings_mod.load()["viewport.backend"])
+        use_software_gl_if_needed(backend)
+        if backend == "vtk":
             check_remote_display()
             from .viewport import use_vtk_surface_format
 
@@ -760,6 +765,9 @@ def _app():
         app.setApplicationName("ewald")
         app.setDesktopFileName("ewald")
         app.setWindowIcon(app_icon())
+        from .fonts import load_fonts
+
+        load_fonts()   # before the theme, whose QSS names IBM Plex Sans and JetBrains Mono
         try:
             name = settings_mod.load()["general.ui_theme"]
         except Exception:  # a broken settings file must not stop the GUI

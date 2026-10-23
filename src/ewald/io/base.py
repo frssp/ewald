@@ -59,6 +59,12 @@ class FrameReader:
         """
         return None
 
+    def run_starts(self) -> list[int]:
+        """Frames where the step goes back inside this one file: a restarted simulation that
+        appended to it, or a reset step counter. :class:`~ewald.io.FileSource` splits the file
+        there and joins the parts like separate files. Empty when the format cannot tell cheaply."""
+        return []
+
     def timestep(self, index: int) -> int | None:
         """The simulation step of frame ``index`` without reading the whole frame, or None when
         the format has no step that counts across restarts (VASP numbers each run from 1).

@@ -10,16 +10,22 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): the Plots panel draws a lineup
+  table as curves only; the `levels` (VBM, CBM, E_F) and plateau `regions` in its attributes are
+  not drawn yet (needs a GUI mockup first), and the side bar has no "Analysis" row. Only the
+  sim-agent band-offset lineup exists; work function, EOS, formation energy and polycrystalline
+  work function recipes are next. Not yet checked against sim-agent's own finalize result on a
+  real workflow.
 - Opening without running (`python.run_notebooks`, default "never"): covers notebook files only. A
   folder or workflow (`simagent:`, AiiDA, calculation folders) still runs its generated `load(...)`
   notebook at once, since it is ewald's own code; no per-notebook "always run this one" choice yet.
 - Open dialog: `log.lammps` and `OSZICAR` are read only as companions of a trajectory, not
   opened on their own.
-- Several files as one trajectory: File › Open and drops join several data files in natural order
-  only (no dialog to reorder them or pick `join="concat"`), and `join="timestep"` cuts only at file boundaries, not inside one dump that LAMMPS
-  appended to after a restart (`dump_modify append yes`). Restart detection needs a Timestep per
-  frame, which only the LAMMPS dump reader gives cheaply (extxyz `Timestep=` comments, H5MD
-  steps and XTC steps are not used yet).
+- Several files as one trajectory: restart detection (on Timestep, between files and inside one
+  appended dump) works for LAMMPS dumps only; extxyz `Timestep=` comments, H5MD steps and XTC
+  steps are not used yet. The join dialog shows file names only, not each file's frames and steps
+  before opening (that needs a scan of every file). A run restarted from step 0 into the same dump
+  counts as a `reset_timestep`, so both copies are kept.
 - View tab: a card has no per-card reset to defaults.
 - Atom color rules (`ewald.color_rule`): a step's category colors (structure types) can only be changed
   through the step (`color_by_type=False` plus `paint`), not per category in the Colors card as OVITO's
@@ -28,9 +34,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   on/off switch (`Viewport.show_legend`). Plugin modifiers that write "Color" show as "custom" until
   they call `color_rule.record` (not yet in `plugin_api`).
 
-- Workflows (`ewald.workflow`): a table that compares the scalars of every step of a workflow
-  (energies, gaps, forces) and of several workflows side by side, and opening one step's input
-  next to its output (INCAR/KPOINTS as text cells). The side bar's step switch (●/○) and
+- Workflows (`ewald.workflow`): opening one step's input next to its output (INCAR/KPOINTS as
+  text cells). `workflow_table` matches steps across workflows by name or position only (no
+  manual pairing in the GUI), its side bar entry needs a notebook cell (no table view of its
+  own), and the folder source reads no LAMMPS energy (last `PotEng` of `log.lammps`), no
+  Fermi energy and no gap from vasprun.xml or DOSCAR (EIGENVAL only, up to 32 MB). The side bar's step switch (●/○) and
   "Plot <table>" rows exist; a step picker on top of the Plots panel itself does not, and the
   rows list the tables of a step's first frame only.
 - Workflow folders (`ewald/workflow_folder.py`, docs/user/workflows.md): a killed VASP or LAMMPS
@@ -87,9 +95,11 @@ GUI
   sharing the energy axis, once the panel layout can place plots side by side); a scatter view
   of two particle properties where a brushed box selects atoms; the `show()` script path draws
   DOS/bands like the GUI (it plots the raw table columns now).
-- AI chat side bar (`gui/ask_panel.py`, activity bar): stream answers as they arrive (now the
-  whole answer at once), keep chats per notebook tab and save them in `.ewd`,
-  show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
+- AI chat side bar (`gui/ask_panel.py`, activity bar): chats are per notebook tab and saved only in
+  `.ewd` (not `.py`/`.ipynb`), and a chat changes no "unsaved" mark, so closing without saving
+  loses it; a saved chat reaches a new model as a text transcript (no tool results or images);
+  a streamed answer is drawn as Markdown a few times a second, so an unclosed code fence shows as
+  text until it closes; `ewald ask` and the MCP server do not stream; show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
   edit or regenerate a sent message. The notebook cell tools (`llm/notebook_tools.py`) could
   highlight the cells the AI changed and show a diff to accept or undo; `ewald ask` and the MCP
   server could take a notebook (`--notebook analysis.py`) and save it back.
@@ -99,6 +109,10 @@ GUI
   A failed generated cell leaves two undo entries in the GUI (insert, then removal). After a second
   `pipe = load(...)` cell, the step cells above it still hold the old pipeline's modifiers, and
   `Notebook.sync` (the GUI's refresh) deletes them.
+- AI and the Python API: the model reads `python_api` (about 9k tokens) on demand rather than in the
+  system prompt, and no eval task yet checks that the cells it writes follow it (one `pipe.add` per
+  step cell, `paint`/`hide` inside an `[each frame]` cell); `ewald ask` and the MCP server do not get the
+  GUI's notebook note.
 - `PythonScript` step cells: `Modifier.__repr__` uses `name`, which PythonScript sets to its title,
   so `step_source` writes `pipe.add(Python script(...))`, which does not parse.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
@@ -340,6 +354,8 @@ Formats
 - NEB: warn when an endpoint OUTCAR lists the atoms in another order than the band (the Fe
   vacancy example's 04/OUTCAR does; the reader takes POSCAR atoms, so only other tools are hit),
   and match atoms by position when images carry no identifiers.
+- `style='Points'` in a view cell reportedly left the bonds of an NEB view on the owner's
+  Windows GUI (2026-10-23); not reproduced in the container (bonds go off there), needs a screenshot.
 - NEB: interpolate between images for a smoother movie; `OverlayFrames` copies are extra
   particles, so picking one in the viewport selects a copy, not the real atom.
 - Ray tracer: see-through spheres are tessellated glass (`OverlayFrames` copies, Transparency);
@@ -394,8 +410,9 @@ Plugins and AI
 
 - AI providers (`llm/providers.py`): the OpenAI-compatible provider never sends images (no
   per-server vision switch yet); Effort reaches only Claude and OpenAI reasoning models; one
-  `llm.model` setting for all providers (switching the provider in Preferences clears it); no
-  streaming for any provider; a native Gemini or Bedrock/Vertex client would need a `Chat`
+  `llm.model` setting for all providers (switching the provider in Preferences clears it);
+  streaming falls back by itself only for Chat Completions servers (a Claude gateway that cannot
+  stream needs Preferences › AI › Stream answers off); a native Gemini or Bedrock/Vertex client would need a `Chat`
   subclass (today Gemini goes through its OpenAI-compatible endpoint). Keys are per provider, so two
   saved connections of one provider with different keys share one keychain entry. Preferences › AI › Extra headers is a
   one-line field, so a long header list is hard to read and easy to cut short (it happened with a
@@ -496,17 +513,25 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Simple (ASE) style on a real GPU (the owner's Windows machine): rotating a few thousand bonded
+  atoms should now be as fluid as Ball & stick. The bond outline became a static inverted hull
+  (front faces culled) instead of `vtkPolyDataSilhouette`, which re-ran on the CPU on every camera
+  move (about 100 ms per frame at 4000 atoms); the container only has llvmpipe.
 - IPython cells on a real Windows and Mac: `!dir` / `!ls` (IPython runs `!commands` with
   cmd.exe on Windows, a pty on macOS/Linux), `%time`, progress bars while a cell runs, and the
   console sharing the notebook's namespace; in the frozen Windows app and EWALD.app too, where
   `!pip` has no Python at `sys.executable`.
+- Windows checks of 2026-10-23: the OpenGL check in a VM and a Remote Desktop session without
+  GPU (the Legacy GL viewport with `opengl32sw.dll` should come up, with the note on stderr);
+  saving a notebook open in Notepad++ or synced by OneDrive (the message names the program); the
+  `icacls` ACL on `credentials.json` (only your account listed); the bundled fonts in the UI.
 - Windows parity after the portability audit ([Windows, macOS and Linux](developer/portability.md)):
   open and export a POSCAR, XDATCAR, LAMMPS dump and an `.ewd` with data on another drive (D:);
   check exported files have LF ends; the open dialog lists lower-case `poscar`/`*.CIF`; a save
   dialog with a name typed without extension; settings with non-ASCII text on Korean Windows;
   per-monitor DPI at 125/150 %; Windows Credential Manager; `ewald api > llms.txt` in cmd and
   PowerShell. The same list on a real Mac.
-- Resize handles between panels (dotted grip on a 1 px rule, accent on hover, 7 px hit area)
+- Resize handles between panels (a 1 px rule thickening into a pill grip, accent on hover, 7 px hit area)
   on Windows at 125/150 % and on a Retina Mac: the grip uses the `@2x` PNG and stays sharp, and
   the split cursor shows over the whole handle.
 - Plugins side bar on Windows and macOS: install ewald-phonopy from the default index (uv and
@@ -586,13 +611,11 @@ Portability ([Windows, macOS and Linux](developer/portability.md), audit of 2026
 - Frozen apps have no Python at `sys.executable` (it is `ewald.exe` / the app binary): the Forge
   check subprocess, plugin `pip install` and the default notebook kernel need a bundled
   interpreter entry (`ewald.exe python -I ...`) or a clear "not in the app" message.
-- No OpenGL probe or software fallback on Windows (VMs, Remote Desktop, GDI OpenGL 1.1) like the
-  Linux `ssh -X` one; PySide6 ships `opengl32sw.dll` that could serve as the fallback.
-- UI fonts (IBM Plex Sans, JetBrains Mono) are not bundled, so the look differs per system;
-  bundle the OFL fonts or settle on per-OS defaults.
-- `os.replace` of settings, notebooks and sessions fails on Windows while another program has
-  the target open: retry briefly and say which program holds it.
-- The credentials fallback file relies on 0600, which means nothing on Windows (no ACL set).
+- Windows without OpenGL 3.2 gets the Legacy GL viewport with Qt's software OpenGL, but VTK's
+  offscreen pictures (OpenGL renderer, `snapshot`, the notebook's frame pictures when they use
+  OpenGL) still go to the system OpenGL 1.1 there; fall back to the ray tracer in that case.
+- `plugin_catalog` installs move folders with `shutil.move`, not `fileops.replace`, so a plugin
+  folder held open on Windows fails without naming the program.
 
 Left from the 2026-10-19 review (minimum image, element masses, color parsing and the
 dark-background test are shared now; `gui/app.py` and `gui/preferences.py` are split into
@@ -614,9 +637,9 @@ mixins and helper modules):
 From the 2026-10-19 review (expression sandbox, session classes, Forge consent and environment,
 `export_file` paths, PLUMED `LOAD` and the known_hosts key type are fixed):
 
-- Claude's read tools (`load_structure`, `read_plumed_output`) open any local path and any
-  `host:/path` in known_hosts; add an optional folder allow-list and a GUI confirmation before
-  connecting to a host the model chose.
+- What the AI may read (`ewald.llm.access`, Preferences › AI › Folders the AI may read, Ask before
+  the AI connects to a host): `ewald ask` and the MCP server have no flag for the folders and never
+  ask about hosts; the allowed hosts are forgotten with each new chat.
 - The GUI's "Python code in session" question covers only top-level PythonScript and
   PythonModifier entries; nested `__modifier__` code and a disabled `Plumed` load silently
   disabled, with only a log message.

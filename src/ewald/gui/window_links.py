@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 
 import numpy as np
-from PySide6 import QtCore, QtGui
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import modifiers as mods
 from ..io import import_file
@@ -47,12 +47,14 @@ class _GuiCall(QtCore.QObject):
 
 
 class NotebookBridge(NotebookAccess):
-    """The AI chat's notebook tools on the window's current notebook tab: edits happen on the GUI
-    thread, redraw the cells, count as one undo step each ("AI: insert cell", Ctrl+Z) and recompute
-    when the pipeline changed; run_cell (Preferences › AI › Let the AI run cells) runs like Shift+Enter."""
+    """The AI chat's notebook tools on one notebook tab (``notebook``; None: the current tab): edits
+    happen on the GUI thread, redraw the cells, count as one undo step each ("AI: insert cell", Ctrl+Z)
+    and recompute when the pipeline changed; run_cell (Preferences › AI › Let the AI run cells) runs
+    like Shift+Enter. Each tab's chat has its own, so an answer still on its way after a switch keeps
+    working on its own notebook."""
 
-    def __init__(self, window):
-        super().__init__(lambda: window.panel.notebook,
+    def __init__(self, window, notebook=None):
+        super().__init__(notebook if notebook is not None else (lambda: window.panel.notebook),
                          can_run=lambda: bool(window.settings["llm.run_cells"]))
         self.window = window
         self.call = _GuiCall()
@@ -73,6 +75,19 @@ class NotebookBridge(NotebookAccess):
             view.changed.emit()
         self.window.notebook_dock.show()
         self.window.message(f"{label} (Ctrl+Z undoes it)")
+
+    def confirm_host(self, host: str) -> bool:
+        """Ask the user (on the GUI thread) whether the AI may open files on SSH host ``host``."""
+        def ask():
+            box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Question, "Ask AI",
+                                        f"The AI wants to open a file on {host} over SSH.",
+                                        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, self.window)
+            box.setInformativeText("Allow it to connect to this host for the rest of this chat? "
+                                   "(Preferences › AI › Ask before the AI connects to a host)")
+            box.setDefaultButton(QtWidgets.QMessageBox.No)
+            return box.exec() == QtWidgets.QMessageBox.Yes
+
+        return bool(self.call(ask))
 
     def run(self, nb, cell) -> bool:
         view = self.call(lambda: self._view(nb))

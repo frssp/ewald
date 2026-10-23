@@ -25,10 +25,17 @@ the rest the same way for every source:
 | `WorkflowStep` | one step: `name`, `path` (its own result, or ""), `state`, `exit_status`, `runs` (restarts joined), `id`, `work_dir`, `scalars`, `outputs` and nested `steps` |
 | `WorkflowOutput` | something a step made: `name`, `path`, `kind` ("structure", "trajectory", "band" for NEB images, "volumetric", "file", "data"), `note` ("Si2", "on the cluster") |
 | `WorkflowPage` | one page of a list: `workflows` and `next`, the cursor of the next page (None: the last) |
+| `Analysis` | something the plugin can compute from the workflow: `name`, `title`, `cells` (notebook code), `result` (the variable the last cell leaves, usually a `Table`), `reason` (why it cannot run here; `available` is False) |
 
 Every `path` is a string `load()` opens, served by the plugin's own reader for its scheme
 (`@reader(..., schemes=("mydb",))`). So whatever the side bar or the AI does with a workflow, a
 notebook cell can repeat.
+
+A step's `scalars` are what `workflow_table(...)` shows and compares across workflows
+([Workflows](../user/workflows.md)): numbers become columns, and the names ewald's own sources use
+(`energy`, `energy/atom`, `barrier`, `gap`, `max force`, `fermi energy`, `atoms`, all in eV and
+eV/Å) come first and get units in the heads, so a source that uses them lines up with the folder
+source. Words (`code`, `kind`) show only in the table of one workflow.
 
 ## Writing a source
 
@@ -74,3 +81,35 @@ act on. Requests run off the GUI thread.
 Names, labels and numbers from a source reach the notebook only as comments and markdown, one
 line each, and paths only as string literals, so a workflow cannot put code into the notebook
 it opens (`tests/test_security.py`).
+
+## Analyses
+
+A source may also say what can be computed from a finished workflow, by adding an
+`analyses(wf)` method that returns `Analysis` entries. `describe` calls it for complete
+workflows; the opened notebook gets each analysis as a markdown heading and its cells, and the
+AI tool `add_analysis` adds and runs them. An analysis is code the user can read and change, not a
+number the plugin hands over, so it is written against EWALD's own kernels (for example
+`ewald.potential` for planar-averaged potentials, band edges and lineups) and reads files through
+the paths the steps already carry.
+
+```python
+from ewald.plugin_api import Analysis
+
+def analyses(self, wf):
+    if wf.kind != "band_offset":
+        return []
+    steps = {s.name: s for _, s in wf.walk()}
+    if "interface" not in steps:                      # say why, never guess another step
+        return [Analysis("lineup", "Potential lineup", reason="no interface step")]
+    fetch = f"run = load({steps['interface'].path!r})\nframe = run.compute(run.num_frames - 1)"
+    return [Analysis("lineup", "Potential lineup", [fetch, "lineup = ..."], result="lineup")]
+```
+
+Recipes are keyed by the workflow's `kind` (its template), and name the steps they read by the
+template's own step names. When a step is missing or failed, return the analysis with a `reason`
+rather than nothing, so the user and the AI see why it is not there. A recipe that raises is
+shown as unavailable with the error. Values from the source go into the cells only as literals
+(`repr` of strings and numbers), as for the generated `load` cells, and the cells themselves
+come from the plugin's code, which is trusted because it is installed. When `result` names a
+`Table`, `add_analysis` returns its `energy_axis`, `result` and `levels` attributes to the AI, so
+it can quote the numbers instead of computing them.

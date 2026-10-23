@@ -147,3 +147,98 @@ def test_remote_list_and_restart(server):
     pipe = load("hpc:/data/run*/dump.lammpstrj")
     assert pipe.source.paths[-1] == "hpc:/data/run10/dump.lammpstrj"
     assert steps(pipe) == [0, 10, 20, 30, 40, 50]
+
+
+def appended(path, *runs):
+    """One dump that several runs wrote one after the other (``dump_modify append yes``)."""
+    os.makedirs(os.path.dirname(str(path)) or ".", exist_ok=True)
+    for k, run in enumerate(runs):
+        write_lammps_dump(str(path) + ".part", [frame(s) for s in run])
+        with open(path, "ab" if k else "wb") as out, open(str(path) + ".part", "rb") as part:
+            out.write(part.read())
+    os.remove(str(path) + ".part")
+    return str(path)
+
+
+def test_restart_inside_one_appended_dump(tmp_path):
+    path = appended(tmp_path / "dump.lammpstrj", range(0, 1201, 100), range(800, 2001, 100))
+    pipe = load(path)
+    assert steps(pipe) == list(range(0, 2001, 100))
+    assert pipe.source.restarts == [(path, 13, 800)]
+    assert pipe.source.segments == [(path, 21, 26)]
+    concat = load(path, join="concat")
+    assert concat.num_frames == 26 and concat.source.restarts == []
+    # restarting at the last step written repeats that frame: the later one wins
+    path = appended(tmp_path / "same.lammpstrj", [0, 100, 200], [200, 300])
+    pipe = load(path)
+    assert steps(pipe) == [0, 100, 200, 300] and pipe.compute(2).attributes["SourceFrame"] == 2
+    assert np.allclose(pipe.compute(2).particles["Position"], load(path, join="concat").compute(3).particles["Position"])
+
+
+def test_restarts_inside_files_and_across_them(tmp_path):
+    a = appended(tmp_path / "run1" / "dump.lammpstrj", [0, 10, 20, 30], [20, 30, 40, 50])
+    b = dump(tmp_path / "run2" / "dump.lammpstrj", [40, 50, 60])
+    assert steps(load([a, b])) == [0, 10, 20, 30, 40, 50, 60]
+    c = appended(tmp_path / "run3" / "dump.lammpstrj", [55, 65], [60, 70])   # run3 restarted once more
+    assert steps(load([a, b, c])) == [0, 10, 20, 30, 40, 50, 55, 60, 70]
+
+
+def test_reset_timestep_inside_one_dump_keeps_both_counts(tmp_path):
+    # minimize, reset_timestep 0, then MD that was restarted from step 300 into the same dump
+    path = appended(tmp_path / "dump.lammpstrj", [0, 5, 10], [0, 100, 200, 300, 400], [300, 400, 500])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        pipe = load(path)
+    assert steps(pipe) == [0, 5, 10, 0, 100, 200, 300, 400, 500]
+    assert pipe.source.restarts == [(path, 8, 300)]
+    # a file of independent snapshots, all at step 0, stays whole
+    path = appended(tmp_path / "snapshots.lammpstrj", [0], [0], [0])
+    assert load(path).num_frames == 3 and load(path).source.restarts == []
+
+
+def test_restart_steps_come_from_the_index_scan(tmp_path, monkeypatch):
+    from ewald.io.lammps_dump import LammpsDumpReader
+
+    path = appended(tmp_path / "dump.lammpstrj", range(0, 500, 10), range(300, 800, 10))
+    reader = LammpsDumpReader(path)
+    monkeypatch.setattr("ewald.io.lammps_dump.open_binary", lambda *a: pytest.fail("read a frame for its step"))
+    assert reader.run_starts() == [50] and reader.timestep(50) == 300
+
+
+def test_restart_in_a_crlf_and_a_gzipped_dump(tmp_path):
+    import gzip
+
+    path = appended(tmp_path / "dump.lammpstrj", [0, 10, 20, 30], [20, 30, 40])
+    raw = open(path, "rb").read()
+    crlf = tmp_path / "crlf.lammpstrj"
+    crlf.write_bytes(raw.replace(b"\n", b"\r\n"))
+    gz = tmp_path / "dump.lammpstrj.gz"
+    gz.write_bytes(gzip.compress(raw))
+    for p in (crlf, gz):
+        pipe = load(str(p))
+        assert steps(pipe) == [0, 10, 20, 30, 40], p
+        assert [r[1:] for r in pipe.source.restarts] == [(4, 20)]
+
+
+def test_refresh_sees_a_restart_appended_while_running(tmp_path):
+    path = appended(tmp_path / "dump.lammpstrj", [0, 10, 20, 30])
+    pipe = load(path)
+    assert pipe.num_frames == 4
+    appended(tmp_path / "more", [20, 30, 40])
+    with open(path, "ab") as fh:
+        fh.write(open(tmp_path / "more", "rb").read())
+    assert pipe.source.refresh() == 2
+    assert steps(pipe) == [0, 10, 20, 30, 40] and pipe.source.restarts[0][1:] == (4, 20)
+
+
+def test_remote_restart_inside_one_dump(server):
+    data = server.local("/data")
+    os.makedirs(data, exist_ok=True)
+    appended(os.path.join(data, "dump.lammpstrj"), [0, 10, 20, 30], [20, 30, 40])
+    raw = open(os.path.join(data, "dump.lammpstrj"), "rb").read()
+    with open(os.path.join(data, "crlf.lammpstrj"), "wb") as fh:
+        fh.write(raw.replace(b"\n", b"\r\n"))
+    for name in ("dump.lammpstrj", "crlf.lammpstrj"):
+        pipe = load(f"hpc:/data/{name}")
+        assert steps(pipe) == [0, 10, 20, 30, 40], name
+        assert pipe.source.restarts == [(f"hpc:/data/{name}", 4, 20)]

@@ -543,35 +543,20 @@ def _add_cylinders(plotter, cyl, name, flat: bool = False):
             _add_stick_outline(plotter, cyl.start[pick], cyl.end[pick], float(r), f"{actor_name}:outline")
 
 
-def _add_stick_outline(plotter, start, end, radius, name):
-    """Dark silhouette edges of sticks (ASE GUI look), recomputed by VTK whenever the camera moves.
-    The two halves of a bond (same midpoint ``end``) become one tube, so no ring is drawn between them;
-    a half without its partner (a bond across the periodic boundary) keeps its real end."""
-    import pyvista as pv
-    import vtk
+STICK_OUTLINE = 0.3  # outline width of flat sticks, as a fraction of the stick radius
 
-    _, inv, cnt = np.unique(np.round(end / 1e-4).astype(np.int64), axis=0, return_inverse=True,
-                            return_counts=True)
-    inv = inv.ravel()
-    paired = cnt[inv] == 2
-    halves = np.flatnonzero(paired)[np.argsort(inv[paired], kind="stable")].reshape(-1, 2)
-    single = np.flatnonzero(~paired)
-    a = np.concatenate([start[halves[:, 0]], start[single]])
-    b = np.concatenate([start[halves[:, 1]], end[single]])
-    k = len(a)
-    pts = np.empty((2 * k, 3))
-    pts[0::2], pts[1::2] = a, b
-    lines = np.column_stack([np.full(k, 2), np.arange(0, 2 * k, 2), np.arange(1, 2 * k, 2)]).ravel()
-    tubes = pv.PolyData(pts, lines=lines).tube(radius=radius, n_sides=12, capping=False).triangulate()
-    sil = vtk.vtkPolyDataSilhouette()  # needs polygons, hence triangulate (tube makes strips)
-    sil.SetInputData(tubes)
-    sil.SetCamera(plotter.renderer.GetActiveCamera())
-    sil.SetDirectionToCameraVector()
-    actor = plotter.add_mesh(sil, color=(0.08, 0.08, 0.08), line_width=1.5, name=name, render=False,
-                             lighting=False)
-    m = actor.GetMapper()  # the lines lie on the tube surface: pull them in front of it
-    m.SetResolveCoincidentTopologyToPolygonOffset()
-    m.SetRelativeCoincidentTopologyLineOffsetParameters(-2, -4)
+
+def _add_stick_outline(plotter, start, end, radius, name):
+    """Dark outline of flat sticks (ASE GUI look) as an inverted hull: a slightly wider tube that
+    shows only its back faces, so a dark rim appears around each stick from any direction. The mesh
+    is static and drawn by the GPU; ``vtkPolyDataSilhouette`` recomputed the edges on the CPU on
+    every camera move, which made the whole style several times slower to rotate."""
+    import pyvista as pv
+
+    verts, faces, _ = tube_mesh(start, end, radius * (1.0 + STICK_OUTLINE))
+    hull = pv.PolyData.from_regular_faces(verts, faces)
+    actor = plotter.add_mesh(hull, color=(0.08, 0.08, 0.08), name=name, render=False, lighting=False)
+    actor.GetProperty().FrontfaceCullingOn()  # tube_mesh faces wind outward
 
 
 def _add_mesh(plotter, mesh, name):

@@ -628,3 +628,16 @@ def test_percent_py_round_trips_through_jupytext(tmp_path):
     back = Notebook.from_py(jupytext.writes(doc, fmt="py:percent"))
     assert [(c.kind, c.title, c.frames, c.source) for c in back.cells] == \
         [(c.kind, c.title, c.frames, c.source) for c in nb.cells]
+
+
+def test_ai_tool_name_in_a_cell_says_what_to_write():
+    """A model's answer once put set_view(pipe, ...) into a cell: the NameError says set_view is an AI
+    chat tool and names the cell code (view(pipe, ...))."""
+    nb = Notebook.from_py("# %%\nset_view(pipe, trajectory_width=4)\n")
+    nb.run_all(stop_on_error=False)
+    (out,) = nb.cells[0].outputs
+    assert nb.cells[0].state == "error" and "NameError" in out.data
+    assert "set_view is a tool of the AI chat" in out.data and "view(pipe, ...)" in out.data
+    nb = Notebook.from_py("# %%\nundefined_thing\n")
+    nb.run_all(stop_on_error=False)
+    assert "AI chat" not in nb.cells[0].outputs[0].data

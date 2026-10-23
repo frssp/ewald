@@ -323,6 +323,150 @@ def test_openai_sdk_round_trip(cu_fcc, fake_render):
     assert seen[1][2]["messages"][-1]["role"] == "tool"
 
 
+def _sse(events) -> bytes:
+    """A server-sent event stream: ``(event name or None, JSON payload or "[DONE]")`` pairs."""
+    out = []
+    for name, data in events:
+        out.append((f"event: {name}\n" if name else "") + "data: " + (data if isinstance(data, str) else json.dumps(data)))
+    return ("\n\n".join(out) + "\n\n").encode()
+
+
+def test_streamed_answers_with_the_real_sdks(cu_fcc, fake_render):
+    """``Agent(stream=True)`` over the real anthropic and openai clients against mocked SSE servers:
+    the text arrives in pieces as ``text`` events, tool calls built from pieces run, and the reply
+    and conversation are the same as without streaming."""
+    anthropic = pytest.importorskip("anthropic")
+    openai = pytest.importorskip("openai")
+    import httpx2 as httpx
+
+    def message_events(blocks, stop):
+        ev = [("message_start", {"type": "message_start", "message": {
+            "id": "m", "type": "message", "role": "assistant", "model": "claude-opus-5-5", "content": [],
+            "stop_reason": None, "stop_sequence": None, "usage": {"input_tokens": 1, "output_tokens": 0}}})]
+        for i, block in enumerate(blocks):
+            if block[0] == "text":
+                ev.append(("content_block_start", {"type": "content_block_start", "index": i,
+                                                   "content_block": {"type": "text", "text": ""}}))
+                ev += [("content_block_delta", {"type": "content_block_delta", "index": i,
+                                                "delta": {"type": "text_delta", "text": piece}}) for piece in block[1]]
+            else:
+                _, tid, name, args = block
+                ev.append(("content_block_start", {"type": "content_block_start", "index": i, "content_block": {
+                    "type": "tool_use", "id": tid, "name": name, "input": {}}}))
+                ev += [("content_block_delta", {"type": "content_block_delta", "index": i,
+                                                "delta": {"type": "input_json_delta", "partial_json": part}})
+                       for part in (args[:5], args[5:])]
+            ev.append(("content_block_stop", {"type": "content_block_stop", "index": i}))
+        ev += [("message_delta", {"type": "message_delta", "delta": {"stop_reason": stop, "stop_sequence": None},
+                                  "usage": {"output_tokens": 5}}),
+               ("message_stop", {"type": "message_stop"})]
+        return _sse(ev)
+
+    replies = iter([message_events([("text", ["Let me ", "look."]),
+                                    ("tool", "t1", "describe_frame", json.dumps({"cutoff": 3.0}))], "tool_use"),
+                    message_events([("text", ["Cu, ", "fcc", "."])], "end_turn")])
+    seen = []
+
+    def claude(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=next(replies))
+
+    client = anthropic.Anthropic(api_key="sk-ant-test", http_client=httpx.Client(transport=httpx.MockTransport(claude)))
+    events = []
+    agent = Agent.from_pipeline(Pipeline(StaticSource(cu_fcc)), client=client, stream=True,
+                                on_event=lambda k, p: events.append((k, p if isinstance(p, str) else p.get("name"))))
+    assert agent.ask("What is it?") == "Cu, fcc."
+    assert seen[0]["stream"] is True and seen[0]["fallbacks"] == "default"
+    assert [p for k, p in events if k == "text"] == ["Let me ", "look.", "Cu, ", "fcc", "."]
+    assert ("tool_call", "describe_frame") in events
+    assert events.index(("tool_call", "describe_frame")) == 2   # the first round's text, then its tool
+    result = seen[1]["messages"][-1]["content"][0]
+    assert result["tool_use_id"] == "t1" and json.loads(result["content"][0]["text"])["coordination"]["mean"] == 12
+
+    def chunk(delta, finish=None):
+        return {"id": "c", "object": "chat.completion.chunk", "created": 0, "model": "m",
+                "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
+
+    streams = iter([
+        _sse([(None, chunk({"role": "assistant", "content": "Hm"})),
+              (None, chunk({"tool_calls": [{"index": 0, "id": "c1", "type": "function",
+                                            "function": {"name": "describe_frame", "arguments": "{\"cut"}}]})),
+              (None, chunk({"tool_calls": [{"index": 0, "function": {"arguments": "off\": 3.0}"}}]})),
+              (None, chunk({}, "tool_calls")), (None, "[DONE]")]),
+        _sse([(None, chunk({"content": "Cu, "})), (None, chunk({"content": "fcc."})), (None, chunk({}, "stop")),
+              (None, "[DONE]")])])
+    sent = []
+
+    def compatible(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=next(streams))
+
+    client = openai.OpenAI(api_key="sk-test", base_url="http://localhost:11434/v1",
+                           http_client=httpx.Client(transport=httpx.MockTransport(compatible)))
+    texts = []
+    agent = Agent.from_pipeline(Pipeline(StaticSource(cu_fcc)), client=client, provider="openai-compatible",
+                                stream=True, on_event=lambda k, p: k == "text" and texts.append(p))
+    assert agent.ask("What is it?") == "Cu, fcc."
+    assert sent[0]["stream"] is True and texts == ["Hm", "Cu, ", "fcc."]
+    call = sent[1]["messages"][2]["tool_calls"][0]
+    assert call["id"] == "c1" and json.loads(call["function"]["arguments"]) == {"cutoff": 3.0}
+    assert sent[1]["messages"][3]["role"] == "tool"
+
+
+def test_streaming_falls_back_and_stops():
+    """A server that refuses ``stream`` gets the request again in one piece (and no more streamed
+    ones); a fake client without streaming answers in one piece; a Stop during a stream ends it."""
+    import threading
+
+    from ewald.llm.agent import Cancelled
+    from ewald.llm.chat import AnthropicChat, OpenAIChat
+
+    class Refused(Exception):
+        status_code = 400
+
+    calls = []
+
+    def create(**params):
+        calls.append(params.get("stream", False))
+        if params.get("stream"):
+            raise Refused("stream is not supported")
+        return _completion("whole")
+
+    chat = OpenAIChat(NS(chat=NS(completions=NS(create=create))), "m")
+    chat.user("hi")
+    pieces = []
+    assert chat.send(on_text=pieces.append).text == "whole" and pieces == ["whole"] and calls == [True, False]
+    chat.user("again")
+    assert chat.send(on_text=pieces.append).text == "whole" and calls == [True, False, False]
+
+    claude = AnthropicChat(FakeClient([NS(stop_reason="end_turn", content=[_text("one piece")])]), "m")
+    claude.user("hi")
+    assert claude.send(on_text=pieces.append).text == "one piece" and pieces[-1] == "one piece"
+
+    closed = []
+
+    class Stream:
+        def __iter__(self):
+            for word in ("a", "b", "c"):
+                yield NS(choices=[NS(delta=NS(content=word, tool_calls=None, refusal=None), finish_reason=None)])
+
+        def close(self):
+            closed.append(True)
+
+    cancel = threading.Event()
+    seen = []
+
+    def on_event(kind, piece):
+        seen.append(piece)
+        cancel.set()                               # Stop after the first piece
+
+    client = NS(chat=NS(completions=NS(create=lambda **p: Stream())))
+    agent = Agent(Toolset(), client=client, provider="openai", stream=True, on_event=on_event)
+    with pytest.raises(Cancelled):
+        agent.ask("hi", cancel=cancel)
+    assert seen == ["a"] and closed and agent.messages[1:] == []   # (the system prompt stays)
+
+
 def test_forge_and_narrate_with_another_provider(cu_fcc):
     from ewald.llm import narrate
     from ewald.llm.forge import forge
@@ -490,6 +634,41 @@ def test_code_modifiers_need_allow_code(cu_fcc):
     assert "PythonScript" in opened.call("list_modifiers").content
     ref = closed.call("python_api").content   # a reference for writing cells: offered to every session
     assert "Differences from OVITO" in ref and "`CommonNeighborAnalysis(" in ref
+
+
+def test_python_api_cells_run_as_documented(tmp_path, monkeypatch):
+    """The notebook section of the API reference the AI reads: its cell kinds run on the default
+    imports and the GUI recognizes them (step and view cells)."""
+    import matplotlib
+
+    from ewald import plugins
+    from ewald.llm.reference import GUIDE
+    from ewald.notebook import IMPORTS, Notebook
+    from ewald.pipeline import Modifier
+
+    matplotlib.use("Agg")
+    for name in ("show(pipe, table=None", "paint(data, where, color)", "isolate(data, where)", "[each frame]",
+                 'data.tables["DOS"]', "view(pipe, ...)"):
+        assert name in GUIDE, name
+    path = tmp_path / "cu.vasp"
+    write(path, bulk("Cu", "fcc", a=3.615, cubic=True).repeat(2), format="vasp")
+    nb = Notebook.from_py(f"# %%\nimport numpy as np\n{IMPORTS}\n\n# %%\npipe = load({str(path)!r})\n\n"
+                          "# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n\n"
+                          "# %% surface [each frame]\npaint(data, 'Coordination >= 12', 'gold')\n"
+                          "fade(data, data['Position'][:, 2] > 3, 0.5)\n\n"
+                          "# %%\nshow(pipe, table='coordination-rdf', xlim=(0, 3))\n\n"
+                          "# %%\nview(pipe, style='Ball & stick', direction='z')\n")
+    assert nb.run_all()
+    assert [c.is_step for c in nb.cells] == [False, False, True, False, False, False]
+    data = nb.namespace["pipe"].compute(0)
+    assert np.allclose(data["Color"][0], matplotlib.colors.to_rgb("gold"))
+    assert nb.namespace["pipe"].view.direction == "z"
+
+    # python_api lists the modifier plugins installed here, which the model can add too
+    tracker = type("GrainTracker", (Modifier,), {"__doc__": "Track grains."})
+    monkeypatch.setattr(plugins, "modifiers",
+                        lambda: {"GrainTracker": plugins.ModifierPlugin("GrainTracker", tracker, "Plugins", "", "python")})
+    assert "`GrainTracker()`: Track grains." in Toolset().call("python_api").content
 
 
 def test_notebook_tools_read_insert_edit_move_delete(tmp_path):

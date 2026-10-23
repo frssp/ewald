@@ -45,6 +45,7 @@ from .. import modifiers as _modifiers
 from ..notebook import Cell, Notebook
 from ..pipeline import Modifier, Pipeline, PythonModifier
 from . import describe as _describe
+from .access import ReadAccess
 
 
 @dataclass
@@ -101,7 +102,7 @@ def downsample(table: dict, max_rows: int = 60) -> dict:
 
 #: Tools that change something, each by writing a notebook cell and running it (module docstring).
 CELL_WRITERS = frozenset({"load_structure", "add_modifier", "remove_modifier", "set_view", "add_visual",
-                          "remove_visual", "add_overlay", "remove_overlay", "export_file"})
+                          "remove_visual", "add_overlay", "remove_overlay", "export_file", "add_analysis"})
 
 #: Modifiers that run code or take Python objects: only PythonScript, and only with allow_code.
 _CODE_MODIFIERS = {"PythonScript"}
@@ -161,8 +162,15 @@ class Toolset:
         self.figures: list[str] = []
         self.tools: dict[str, Tool] = {}
         self.notebook_access = None
+        #: Which local folders and SSH hosts the read tools may open (:mod:`ewald.llm.access`).
+        self.read_access = ReadAccess()
         self._register()
         self.attach_notebook(notebook if notebook is not None else session_notebook(pipeline))
+
+    def check_read(self, path) -> None:
+        """Raise ``PermissionError`` unless the tools may read ``path`` (``read_access``); plugin
+        tools that open a path the model chose call it first."""
+        self.read_access.check(path)
 
     @property
     def notebook(self) -> Notebook | None:
@@ -279,7 +287,7 @@ class Toolset:
 
     def _apply_view(self, settings: dict, reset=None, rotate=None) -> dict:
         """Change view settings by writing the notebook's view cell and running it."""
-        from ..view3d import View, view_source
+        from ..view3d import View, view_notes, view_source
 
         pipe = self._need_pipeline()
         old = pipe.view.changed()
@@ -336,6 +344,9 @@ class Toolset:
         out = {"changed": pipe.view.changed(), "code": view_source(self.pipeline_name, **pipe.view.changed())}
         if k is not None:
             out["cell"] = k
+        notes = view_notes(pipe.view, pipe.modifiers)
+        if notes:
+            out["notes"] = notes
         return out
 
     # ----------------------------------------------------------- registration
@@ -407,6 +418,7 @@ class Toolset:
         def load_structure(path, format=None, type_map=None):
             import ewald
 
+            self.check_read(path)
             args = [repr(os.path.expanduser(str(path)))]
             if format:
                 args.append(f"format={str(format)!r}")
@@ -760,7 +772,8 @@ class Toolset:
            "Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style "
            "preset, theme, element colors and radii, atoms on/off, bonds on/off, bond table, cell, background, VESTA "
            "boundary, polyhedra/isosurface look by surface name (surfaces), distance/angle measurements, key light, "
-           "atom labels, plugin visuals, vectors, camera "
+           "atom labels, plugin visuals, vectors, the look of trajectory lines (trajectory_*: the lines "
+           "themselves come from a GenerateTrajectoryLines step, so add_modifier it first), camera "
            "(direction, zoom, rotate), frame, and picture options (renderer, "
            "quality, legends, scale bar, text). Only the settings given change; null resets one to its default. "
            "'rotate' turns the current view by [azimuth, elevation] degrees; 'reset' (true or a list of names) "
@@ -924,11 +937,12 @@ class Toolset:
 
         @T("python_api",
            "Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every "
-           "modifier signature). Read it before writing notebook cells (insert_cell, edit_cell).", _obj({}))
+           "modifier signature, the notebook's cell kinds, show/view/paint, and the modifier plugins installed here). "
+           "Read it before writing notebook cells (insert_cell, edit_cell, or code blocks in answers).", _obj({}))
         def python_api():
             from .reference import api_reference
 
-            return api_reference()
+            return api_reference(with_plugins=True)
 
         @T("list_workflows",
            "Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs, or folders of VASP/LAMMPS/"
@@ -953,15 +967,42 @@ class Toolset:
 
         @T("describe_workflow",
            "Steps of a workflow (nested; restarts joined), their states, numbers (energies, gaps) and outputs, "
-           "each with the path load_structure opens. 'path' is a workflow path such as simagent:1234 or "
-           "aiida:1234, or a folder of calculations (local or host:/path).",
+           "each with the path load_structure opens, and the analyses its plugin offers (add_analysis). 'path' "
+           "is a workflow path such as simagent:1234 or aiida:1234, or a folder of calculations (local or "
+           "host:/path).",
            _obj({"path": {"type": "string"}}, ["path"]))
         def describe_workflow(path):
             from .. import workflow
 
+            self.check_read(path)
             return workflow.describe(str(path)).as_dict()
 
-        for name in ("list_workflows", "describe_workflow"):
+        @T("add_analysis",
+           "Add one of a workflow's analyses (listed under 'analyses' by describe_workflow, e.g. the potential "
+           "lineup of a band-offset workflow: potential, VBM, CBM and Fermi level on one axis) to the notebook "
+           "and run it. The cells are written by the workflow's plugin, not by you; quote the numbers this "
+           "returns instead of computing or aligning energies yourself.",
+           _obj({"path": {"type": "string", "description": "workflow path, e.g. simagent:1234"},
+                 "name": {"type": "string", "description": "analysis name from describe_workflow"}},
+                ["path", "name"]))
+        def add_analysis(path, name):
+            from .. import workflow
+
+            a = workflow.describe(str(path)).analysis(str(name))
+            if not a.available:
+                raise ValueError(f"{a.title or a.name} cannot run on {path}: {a.reason}")
+            nb, cell = None, None
+            for k, source in enumerate(a.cells):
+                nb, cell = self._run_new_cell(source.strip(), f"AI: {a.title or a.name} ({k + 1}/{len(a.cells)})")
+            out = {"analysis": a.name, "cells": len(a.cells), "cell": self._cell_index(nb, cell)}
+            table = nb.namespace.get(a.result) if a.result else None
+            if table is not None:
+                attrs = getattr(table, "attributes", {}) or {}
+                out.update({"table": getattr(table, "name", a.result), "variable": a.result,
+                            **{k: attrs[k] for k in ("energy_axis", "result", "levels") if k in attrs}})
+            return out
+
+        for name in ("list_workflows", "describe_workflow", "add_analysis"):
             self.tools[name].available = lambda: bool(plugins.workflow_sources())
 
         for plugin in plugins.tools().values():  # @claude_tool plugins; built-in names win

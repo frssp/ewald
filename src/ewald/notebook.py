@@ -41,6 +41,7 @@ import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import fileops
 from .pipeline import Modifier, Pipeline, PythonModifier
 
 PIPELINE_NAME = "pipe"
@@ -253,6 +254,7 @@ class Notebook:
         self.dirty = False
         self.metadata: dict = {}      # .ipynb notebook metadata, kept on a round trip
         self.state: dict = {}         # viewer state saved in .ewd files: style, camera, frame
+        self.chat: list = []          # the AI chat beside this notebook, saved in .ewd files (chat.json)
         self.data_dirs: list = []     # more folders where load() looks (an .ewd's bundled data)
         self.bundle_dir: str | None = None   # where an .ewd file was unpacked
         self.restricted = False       # a file not trusted yet (see trust()): cells do not run
@@ -943,7 +945,7 @@ class Notebook:
             tmp = str(path) + ".tmp"
             with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(text)
-            os.replace(tmp, path)
+            fileops.replace(tmp, path)
         self.path = os.path.abspath(path)
         self.namespace["__file__"] = self.path
         self.dirty = False

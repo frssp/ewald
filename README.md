@@ -161,6 +161,8 @@ energy. [Runs](docs/user/runs.md)
 **Workflows.** A folder of calculations (relaxed end points, a NEB, an MD restarted in `run1/ run2/`,
 phonopy) opens as one notebook with a `load` line per step: File › Open workflow folder…, a folder
 dropped on the window, the Workflows side bar, or `workflow.describe("hpc:/scratch/study")`.
+`workflow_table("pbe/", "r2scan/")` lines up the numbers of every step (energy per atom, gap, max
+force, barrier) and of several workflows side by side.
 AiiDA and other databases plug in as workflow sources. [Workflows](docs/user/workflows.md)
 
 **Files.** Native lazy readers for big text trajectories (LAMMPS dump, XDATCAR, extxyz, OUTCAR,

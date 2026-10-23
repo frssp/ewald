@@ -21,6 +21,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import fileops
+
 log = logging.getLogger(__name__)
 
 
@@ -241,6 +243,10 @@ OPTIONS = (
     Option("llm.effort", "high", "Effort",
            "How hard the model thinks before answering (Claude, OpenAI reasoning models); lower is faster and cheaper.",
            choices=("low", "medium", "high", "xhigh", "max")),
+    Option("llm.stream", True, "Stream answers",
+           "The AI chat shows each answer while it arrives, and Stop ends it at once. Off: the answer "
+           "appears when it is complete (for a server or gateway that cannot stream; ewald also answers "
+           "in one piece by itself when an OpenAI-compatible server refuses streaming)."),
     Option("llm.code_cells", "insert", "Code in answers",
            "insert: each Python block the AI chat writes becomes a new notebook cell right away (not run; "
            "Ctrl+Z removes it). button: the block gets a + Insert as cell button instead.",
@@ -248,6 +254,11 @@ OPTIONS = (
     Option("llm.run_cells", False, "Let the AI run cells",
            "The AI chat can read, insert and edit notebook cells; with this on it can also run them (any "
            "Python, like Shift+Enter). Off: cells it writes wait until you run them."),
+    Option("llm.read_folders", "", "Folders the AI may read",
+           "Files the AI chat opens itself (load_structure, workflows, plugin tools) must lie in one of these "
+           "folders, separated by ';'. Empty: any folder. Cells you run are not limited.", kind="dir"),
+    Option("llm.confirm_hosts", True, "Ask before the AI connects to a host",
+           "Before the AI chat opens a file on an SSH host for the first time in a chat, ask whether it may."),
 )
 OPTION = {o.key: o for o in OPTIONS}
 
@@ -420,8 +431,7 @@ class Settings:
     def save(self, path=None):
         p = Path(path) if path else self.path
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(self.changed(), indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-                     encoding="utf-8", newline="\n")
+        fileops.write_text(p, json.dumps(self.changed(), indent=2, sort_keys=True, ensure_ascii=False) + "\n")
         return p
 
     def __repr__(self):
