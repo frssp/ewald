@@ -19,7 +19,7 @@ NOTEBOOKS = os.path.join(HERE, "..", "..", "examples", "notebooks")
 # name: (output file, notebook, cell to scroll to, extra setup)
 SHOTS = {
     "notebook": ("notebook.png", "cu_void.py", 4, None),
-    "structure": ("tutorial-structure.png", "srtio3_octahedra.py", 6, None),
+    "structure": ("tutorial-structure.png", "srtio3_octahedra.py", 7, None),
     "trajectory": ("tutorial-trajectory.png", "cu_md_trajectory.py", 7, "frame"),
     "minimal": ("minimal-mode.png", "cu_void.py", None, "minimal"),
     "plugins": ("plugins.png", "cu_void.py", None, "plugins"),

@@ -92,8 +92,8 @@ pipe.add(CoordinationAnalysis(cutoff=3.0))
 # %% style: surface atoms, every frame
 @pipe.add
 def style(frame, data):
-    paint(data, data["Coordination"] < 12, "#C8551F")
-    hide(data, data["Position"][:, 0] > 8)           # cut the block open
+    paint(data, "Coordination < 12", "#C8551F")      # the legend names the condition
+    hide(data, "Position.X > 8")                     # cut the block open
 
 # %%
 show(pipe, histogram="Coordination")
@@ -184,7 +184,7 @@ is an API reference for agents that write EWALD code. [AI integration](docs/user
 **Plugins.** Readers, writers, modifiers, visual elements, overlays, color maps, themes, AI
 tools and AI providers are all plugins, built-in ones included (`ewald plugins --disable vasp` switches a core
 format off). The Plugins side bar (Ctrl+Shift+X) installs them from catalogs, and Modifier Forge has
-the AI write and test a new one. PLUMED and phonon modes (phonopy, VASP IBRION=5-8) are the
+the AI write and test a new one. PLUMED and phonopy force constants are the
 first-party `ewald-plumed` and `ewald-phonopy` plugins in
 [frssp/ewald-plugins](https://github.com/frssp/ewald-plugins).
 [Plugins](docs/plugins/index.md)

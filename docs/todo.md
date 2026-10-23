@@ -326,7 +326,8 @@ Symmetry and diffraction
 - Show the symmetry summary (space group, Wyckoff sites) in the inspector header rather than only
   as attributes.
 
-Phonons (ewald-phonopy plugin, frssp/ewald-plugins `packages/ewald-phonopy`)
+Phonons (built in: `phonon.py`, `io/phonon.py`, `modifiers/phonon.py`; phonopy force constants in the
+ewald-phonopy plugin, frssp/ewald-plugins `packages/ewald-phonopy`)
 
 - Phonon DOS / projected DOS from phonopy `total_dos.dat`/`projected_dos.dat` in the Plots tab.
 - Non-diagonal supercells for a mode (`supercell` as a 3x3 matrix), and several modes
@@ -403,7 +404,10 @@ Visualization plugins (later phases of the Scene IR plan)
   their `VisualElement` parameters, replacing the hand-written style controls.
 - OpenGL and the ray tracer ignore `Cylinders.alpha`; see-through bonds need it.
 - Ray tracer: `Lines` without a `radius` are not drawn (trajectory lines now have one).
-- Trajectory lines: the legacy OpenGL 1.x viewport (ssh -X) draws the color map but no color bar;
+- Color bars: the legacy OpenGL 1.x viewport (ssh -X) draws the color maps but no color bar card
+  (`gui/viewport.py` `_draw_colorbars` has the image to draw); the card can cover an `Attributes`
+  overlay placed top right.
+- Trajectory lines:
   a trail ends at the last traced frame before the current one, not at the atom's current
   position between traced frames (step > 1); color by a per-frame particle property along the
   path (e.g. coordination at each frame) needs that property in the trajectory-lines table.
@@ -459,7 +463,7 @@ Plugins and AI
 
 - AiiDA (ewald-aiida in frssp/ewald-plugins: local profiles, and remote ones over SSH with
   `aiida://user@host/1234`): an AiiDA side bar (profiles and hosts, recent workflows, outputs;
-  copy `load("aiida:...")`), a AI tool to find and open workflows, PDOS/projected bands
+  copy `load("aiida:...")`), PDOS/projected bands
   from aiida-quantumespresso, NEB and aiida-lammps outputs, streaming very long remote
   trajectories frame by frame instead of one bundle, export of analysis results back as new
   nodes (opt-in, never default). Not yet tried against a real remote AiiDA host.
@@ -473,9 +477,9 @@ Docs
 
 - Example files: list the examples (and the downloadable paper datasets) on an empty viewport at
   first start; a GUI entry for `examples.fetch` (File › Open example › From a paper).
-- Examples run (2026-10-20, /mnt/project-files/ewald-review/examples-test.md): Tutorial 2 and
-  `llzo_arrhenius.py` need the `symmetry` / `formats` extras that the README's `[gui]` install
-  leaves out (both say so now); decide with the extras work whether spglib joins the core install.
+- Examples run (2026-10-20, /mnt/project-files/ewald-review/examples-test.md; rerun 2026-10-23:
+  every tutorial, paper script and demo.py passes): `llzo_arrhenius.py` needs the `formats` extra
+  (MDAnalysis) that the README's `[gui]` install leaves out (it says so); spglib is core now.
   Plugin example files (`ewald_phonopy.EXAMPLES`, Cu3Au_band.yaml) are not under File › Open
   example. The Plugins side bar's default catalog (raw.githubusercontent.com of the private
   frssp/ewald-plugins) answers 404 without a GitHub token, so first-party plugins install only by pip.
@@ -498,7 +502,11 @@ Docs
 - More tutorials in the notebook style (examples/notebooks, tested by tests/test_tutorials.py):
   Ask AI and Modifier Forge on a real question, a plugin from the Plugins side bar, a volumetric
   file (CHGCAR isosurface), opening a run on a cluster over SSH, and PLUMED/phonopy once they are
-  plugins. The remaining manual pages (Python scripting, Rendering figures, Modifiers) still show
+  plugins. Features no tutorial shows yet (review 2026-10-23): trajectory lines with
+  `trajectory_trail` and their color bar (the Cu_md example moves too little to show them; needs
+  a diffusing example file), a NEB folder (`NebEnergyProfile`, `OverlayFrames`; only the
+  fe_vacancy_neb paper script), `load([...], join=...)` restart segments, `workflow_table`,
+  `run_info`/`check_run`/`load_runs`, `[each frame]`/`[all frames]` cells, VASP DOS/bands. The remaining manual pages (Python scripting, Rendering figures, Modifiers) still show
   `pipe.modifiers.append` and `import_file`; switch their examples to `load`/`pipe.add` when they
   are next edited.
 - GUI screenshots in docs/images are made by docs/images/make_screenshots.py; Help › About and the
@@ -529,6 +537,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- AI workflow search on a real sim-agent server with the site's model: "open the TiN
+  calculation that finished yesterday" should call `list_workflows` with `formula`, `status` and
+  `since`/`until`, then `open_workflow`; days are the PC's local days against sim-agent's
+  creation time.
 - GUI startup on the owner's Windows machine: `python benchmarks/startup.py --cold-jit` prints
   where the seconds go (import, window, 3D view, console, busy stretches, peak memory); compare
   with the container numbers under Performance. Windows Defender scanning freshly installed

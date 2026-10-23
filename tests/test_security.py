@@ -97,8 +97,8 @@ def test_session_with_moved_modifier_says_how_to_install(monkeypatch):
     m, warning = modifier_from_dict({"type": "Plumed", "module": "ewald.modifiers.plumed",
                                      "parameters": {"input": "d: DISTANCE ATOMS=1,2"}})
     assert m is None and "ewald-plumed" in warning and "pip install" in warning
-    with pytest.raises(ImportError, match="ewald-phonopy"):
-        modifiers.PhononMode
+    with pytest.raises(ImportError, match="ewald-plumed"):
+        modifiers.LoadColvar
 
 
 def test_claude_export_stays_out_of_user_files(tmp_path, cu):

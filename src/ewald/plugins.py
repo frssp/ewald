@@ -851,6 +851,8 @@ BUILTIN_PLUGINS = {
              "and NEB folders",
              ("neb", "vasp-volumetric", "vaspout", "vaspwave", "xdatcar", "outcar", "vasprun"),
              ("vasp-volumetric", "poscar", "xdatcar")),
+    "phonons": ("Phonons", "Phonon modes from VASP IBRION=5-8 OUTCARs and phonopy band.yaml/mesh.yaml/"
+                "qpoints.yaml; PhononMode animates one", ("vasp-phonon", "phonopy-yaml"), ()),
     "lammps": ("LAMMPS", "LAMMPS text dumps and data files",
                ("lammps-dump", "lammps-data", "lammps-data-ase"), ("lammps-dump", "lammps-data")),
     "cube": ("Gaussian cube", "Volumetric data in Gaussian cube files", ("cube",), ("cube",)),

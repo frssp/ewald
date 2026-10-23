@@ -48,17 +48,18 @@ Add a code cell (**+ Code**) and type:
 ```python
 @pipe.add
 def style(frame, data):
-    cn = data["Coordination"]
-    paint(data, cn < 12, "#C8551F")           # surface atoms
-    paint(data, cn < 9, "gold")               # edges and corners of the void
-    hide(data, data["Position"][:, 0] > 8)    # cut the block open
+    paint(data, "Coordination < 12", "#C8551F")   # surface atoms
+    paint(data, "Coordination < 9", "gold")       # void edges and corners
+    hide(data, "Position.X > 8")                  # cut the block open
 ```
 
 Run it with Ctrl+Enter. `@pipe.add` makes the function a step that runs on every frame, after the
 coordination step, so the colors follow the atoms through the trajectory: press play under the
-view to check. `paint` takes any matplotlib color, `hide` removes atoms from the picture (not from
-the data), and the condition can also be a string such as `"Coordination < 12"`. `isolate`,
-`fade` and `resize` work the same way.
+view to check. `paint` takes any matplotlib color and `hide` removes atoms from the picture (not
+from the data). The condition is an expression on the particle properties (`Position.X` is the x
+component), so the legend in the corner of the view and of rendered figures says which condition
+each color stands for. A boolean array (`data["Coordination"] < 12`) works too, but the legend can
+then only call it "a mask in code". `isolate`, `fade` and `resize` work the same way.
 
 ## 4. Plot
 

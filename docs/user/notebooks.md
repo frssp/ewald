@@ -226,11 +226,15 @@ frame, so the style follows the trajectory:
 ```python
 @pipe.add
 def style(frame, data):
+    paint(data, "Coordination < 12", "crimson")   # any matplotlib color or RGB
+    hide(data, "Position.X > 9")                  # cut the block open
     cn = data["Coordination"]
-    paint(data, cn < 12, "crimson")             # any matplotlib color or RGB
-    hide(data, data["Position"][:, 0] > 9)      # cut the block open
-    resize(data, "Coordination < 9", 1.3)       # a condition can be an expression string
+    resize(data, cn < 9, 1.3)                     # a boolean array or index list works too
 ```
+
+Write conditions as expression strings where you can: the color legend of the view and of
+rendered figures then names each condition (`Coordination < 12`), while for an array it can only
+say "a mask in code".
 
 `paint`, `hide`, `isolate` (hide the rest), `fade` and `resize` write new Color, Transparency
 and Radius properties, which every renderer draws. Import them with

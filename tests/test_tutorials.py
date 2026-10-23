@@ -35,6 +35,7 @@ def test_srtio3_octahedra(tmp_path, monkeypatch):
     assert "Pm-3m 221 Sr 1a, Ti 1b, O 3c" in out           # quoted in structure-figure.md
     assert (tmp_path / "srtio3.png").stat().st_size > 0
     assert nb.pipeline.compute(0).attributes["CoordinationPolyhedra.count"] == 8
+    assert nb.pipeline.view.boundary == [-0.05, 1.05] and nb.pipeline.view.theme == "VESTA"   # the view cell
 
 
 def test_cu_md_trajectory(tmp_path, monkeypatch):

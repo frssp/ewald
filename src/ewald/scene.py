@@ -454,7 +454,8 @@ class TrajectoryLinesVis(VisualElement):
     ``colormap`` point by point: 'Time' (the table's Time, the timestep), 'Frame', 'Step Length' (the
     distance moved since the previous point), another table column, or a particle property of the
     current frame ('Path Length', 'Net Displacement', ...) that colors a whole line. ``color_range``
-    ``(lo, hi)`` fixes the ends of the map (values outside take the end colors); None spans what is drawn.
+    ``(lo, hi)`` fixes the ends of the map (values outside take the end colors); None spans the values in
+    the Time window (all of a trail, also the part not drawn yet, so a color keeps its meaning).
 
     ``time_range`` ``(t0, t1)`` draws only the part of the paths inside that Time window (either end
     may be None). ``trail`` follows the current frame: True draws the paths up to it, a number only
@@ -521,8 +522,10 @@ class TrajectoryLinesVis(VisualElement):
             return [("trajectories", Lines(pts, strips, colors[owner], self.width, radius))]
         from .colormaps import get_colormap
 
-        shown = np.concatenate(strips)
-        lo, hi = self._limits(values[shown])
+        # the map spans the whole Time window, not just the trail drawn so far: colors keep their meaning
+        # while the trail grows frame by frame
+        span = self._window(table, time, data, ctx, trail=False)
+        lo, hi = self._limits(values if span is None else values[span])
         span = hi - lo if hi > lo else 1.0
         rgb = np.asarray(get_colormap(self.colormap)(np.clip((values - lo) / span, 0, 1)), float)[:, :3]
         rgb[~np.isfinite(values)] = 0.5
@@ -542,8 +545,8 @@ class TrajectoryLinesVis(VisualElement):
         lo, hi = rng
         return (auto[0] if lo is None else float(lo)), (auto[1] if hi is None else float(hi))
 
-    def _window(self, table, time, data, ctx):
-        """Which points to draw (None: all): ``time_range`` and ``trail``."""
+    def _window(self, table, time, data, ctx, trail: bool = True):
+        """Which points to draw (None: all): ``time_range`` and (``trail``) the trail."""
         keep = None
         if self.time_range is not None:
             t0, t1 = self.time_range
@@ -552,7 +555,7 @@ class TrajectoryLinesVis(VisualElement):
                 keep &= time >= float(t0)
             if t1 is not None:
                 keep &= time <= float(t1)
-        if self.trail is not None and self.trail is not False:
+        if trail and self.trail is not None and self.trail is not False:
             now = self._current_time(table, time, data, ctx)
             tail = time <= now + 1e-9 * max(1.0, abs(now))
             if self.trail is not True:

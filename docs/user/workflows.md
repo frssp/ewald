@@ -103,7 +103,14 @@ notebook on screen and run.
 The AI tools `list_workflows` (source `folders`: the folders opened lately) and
 `describe_workflow` (any folder path, local or `host:/path`) read the same tree, with each step's
 path, state and numbers, so "open the NEB of this study and plot the barrier" needs no file
-names. Other workflow sources (AiiDA, sim-agent) come from plugins
+names. `list_workflows` also filters in code, for every source: `formula` (exactly those
+elements in any ratio, so `TiN` finds the Hill formula `N4Ti4` and a TiN slab), `elements`,
+`kind` (template), `status` (succeeded, failed, running) and `since`/`until` days (`today`,
+`yesterday`, `3d`, `2026-10-22`; the day a workflow was created), and it returns today's date,
+so "open yesterday's finished TiN calculation" does not depend on the model guessing.
+`open_workflow` then loads the workflow, a step (`bands`, `bands/scf`) or an output of it
+(`CHGCAR`) as the pipeline, and refuses a name that is not there with the ones that are.
+Other workflow sources (AiiDA, sim-agent) come from plugins
 ([Workflow sources](../plugins/workflows.md)).
 
 Plugins can also offer **analyses** of a finished workflow: the notebook a sim-agent

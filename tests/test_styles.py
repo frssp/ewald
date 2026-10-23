@@ -78,7 +78,10 @@ def test_colormap_reaches_color_coding_and_legend():
     t = (x - x.min()) / np.ptp(x)
     assert np.allclose(data["Color"], get_colormap("two")(t)[:, :3])
     img = render(data, size=(160, 120), renderer="vector", camera=CAMERA)
-    bar = img[30:90, 141]                                   # the color bar column, top to bottom
+    from ewald.overlays import ColorRamp, overlay_layout
+
+    ramp = next(it for it in overlay_layout(data, (160, 120))["items"] if isinstance(it, ColorRamp))
+    bar = img[int(ramp.y0) + 3:int(ramp.y1) - 3, int((ramp.x0 + ramp.x1) / 2)]   # the color bar, top to bottom
     assert bar[0, 2] < 80 and bar[0, 0] > 150                 # gold at the top
     assert bar[-1, 2] > 60 and bar[-1, 0] < 60                # navy at the bottom
 
