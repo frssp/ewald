@@ -3,6 +3,7 @@
 All notable changes to ewald. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and versions follow [Semantic Versioning](https://semver.org/) (before 1.0, a minor version may
 change the API). Pull request numbers refer to <https://github.com/frssp/ewald/pulls>.
+Pull request numbers up to #242 refer to the pre-publication repository, which is kept private; the public repository's numbering starts again at #1 (decision D32).
 How to cut a release is in [docs/developer/release.md](docs/developer/release.md).
 
 ## [Unreleased]
