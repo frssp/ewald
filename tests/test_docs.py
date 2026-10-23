@@ -31,6 +31,15 @@ def test_every_page_is_in_the_nav_and_exists():
     assert all((DOCS / p).exists() for p in manual.PAGES.values())
 
 
+def test_decision_numbers_are_unique():
+    """Parallel PRs each take "the next" D-number; the decision log needs every number once."""
+    text = (DOCS / "developer" / "decisions.md").read_text(encoding="utf-8")
+    numbers = [int(n) for n in re.findall(r"^### D(\d+)\.", text, flags=re.MULTILINE)]
+    assert numbers
+    duplicates = sorted({n for n in numbers if numbers.count(n) > 1})
+    assert not duplicates, f"decision numbers used twice: {duplicates}; take max+1 = D{max(numbers) + 1}"
+
+
 def test_every_modifier_is_in_the_user_manual():
     text = (DOCS / "user" / "modifiers.md").read_text()
     names = [n for n in mods.__all__ if n not in ("Modifier", "PythonModifier")]

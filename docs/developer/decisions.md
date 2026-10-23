@@ -135,7 +135,7 @@ the end.
   plugins declare themselves in a manifest (`ewald-plugin.toml`), as in VS Code.
 - **Landed:** PRs #14, #22 and later; plugin index in frssp/ewald-plugins.
 
-### D18. Recommend a restart when a plugin change needs one (2026-10-23)
+### D26. Recommend a restart when a plugin change needs one (2026-10-23)
 
 - **Decision:** when installing, updating, switching on or removing a plugin only takes effect
   after a restart, ewald says so and offers *Restart now* (which reopens the saved notebooks);
@@ -145,7 +145,7 @@ the end.
   restart, recommend restarting).
 - **Landed:** PR #229 (Plugins side bar restart bar, `plugin_catalog.restart_reason`).
 
-### D19. VASP phonons back in the core (2026-10-23)
+### D27. VASP phonons back in the core (2026-10-23)
 
 - **Decision:** the part of phonon support that needs no phonopy (VASP OUTCAR of IBRION=5-8,
   phonopy band.yaml/mesh.yaml/qpoints.yaml, the `PhononMode` animation) moves back into the
@@ -238,7 +238,7 @@ the end.
   scrolls (as long, only hidden).
 - **Landed:** PR #222 (`gui/plugin_settings.py`, `gui/preferences.py`, `SettingsField.advanced`).
 
-### D21. Computed properties as plugins, with their knowledge as data (2026-10-23)
+### D28. Computed properties as plugins, with their knowledge as data (2026-10-23)
 
 - **Decision:** material properties beyond the shared primitives become plugins of their own
   kind, each with a manifest (inputs, outputs and units, method, limits, references, checks, a
@@ -311,5 +311,6 @@ Add an entry in the same pull request that implements a decision, whenever the o
 between real alternatives, sets a rule, or rejects an approach. Write the date, the decision,
 the owner's reason (quote the owner where possible), what else was considered and the PR. Do
 not record implementation details that the code already shows, and do not invent reasons: if
-the reason was not stated, leave "Why" out. A decision that is later reversed keeps its entry,
+the reason was not stated, leave "Why" out. Take the next free number (the highest D-number plus one), even when the
+entry goes into an earlier section; `tests/test_docs.py` fails on a number used twice. A decision that is later reversed keeps its entry,
 with a line saying what replaced it and when.
