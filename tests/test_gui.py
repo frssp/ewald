@@ -4708,3 +4708,15 @@ def test_resize_handles_are_visible_in_every_theme(app):
         theme.STYLE.update(saved[1])
     css = theme.stylesheet()     # hover: a 3 px accent rule and an accent grip
     assert "QSplitter::handle:horizontal:hover" in css and "grip_v_hover" in css
+
+
+def test_bundled_ui_fonts_are_registered(app):
+    from PySide6 import QtGui
+
+    from ewald.gui.fonts import load_fonts
+
+    families = load_fonts()
+    assert {"IBM Plex Sans", "IBM Plex Mono", "JetBrains Mono"} <= set(families)
+    assert load_fonts() == families                      # once per process
+    for family in ("JetBrains Mono", "IBM Plex Sans"):   # Qt adds "[foundry]" when the system has it too
+        assert QtGui.QFontInfo(QtGui.QFont(family)).family().startswith(family)

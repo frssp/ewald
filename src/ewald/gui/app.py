@@ -764,6 +764,9 @@ def _app():
         app.setApplicationName("ewald")
         app.setDesktopFileName("ewald")
         app.setWindowIcon(app_icon())
+        from .fonts import load_fonts
+
+        load_fonts()   # before the theme, whose QSS names IBM Plex Sans and JetBrains Mono
         try:
             name = settings_mod.load()["general.ui_theme"]
         except Exception:  # a broken settings file must not stop the GUI
