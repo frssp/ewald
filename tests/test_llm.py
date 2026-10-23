@@ -67,6 +67,32 @@ def test_describe_frame_small_cell():
     assert d["num_particles"] == 8 and abs(d["min_distance"]["value"] - 2.352) < 0.01
 
 
+def test_describe_trajectory_small_cell():
+    # a NEB band of a 7.3 A cell: the per-frame shortest distance stays within half the cell width
+    from ewald import examples
+
+    si = examples.load("Si.cif").compute(0)
+    out = describe_trajectory(Pipeline(StaticSource([si, si])))
+    assert abs(out["series"]["min_distance"]["start"] - 2.352) < 0.01
+
+
+def test_describe_frame_leaves_out_overlay_copies():
+    from ewald import examples
+    from ewald.modifiers import OverlayFrames
+
+    pipe = examples.load("Si.cif")
+    data = pipe.compute(0)
+    moved = data.copy()
+    pos = np.array(data.positions)
+    pos[0] += 0.5
+    moved.positions = pos
+    pipe = Pipeline(StaticSource([data, moved]))
+    pipe.add(OverlayFrames())
+    out = describe_frame(pipe.compute(0))
+    assert out["num_particles"] == 8 and out["overlay_copies_left_out"] > 0
+    assert out["min_distance"]["value"] > 1.5
+
+
 def test_describe_trajectory_finds_event(cu_fcc):
     out = describe_trajectory(_jump_trajectory(cu_fcc))
     assert [e["frame"] for e in out["events"]] == [20]
@@ -931,6 +957,23 @@ def test_the_notebook_alone_reproduces_what_the_tools_did(cu_file, fake_render, 
     (tmp_path / "out.extxyz").unlink()
     assert again.run_all()
     assert _state(again)[:2] == _state(ts.notebook)[:2] and (tmp_path / "out.extxyz").exists()
+
+
+def test_add_modifier_never_goes_above_the_load_cell(cu_file):
+    # a real model asked for index 2 in a NEB folder whose load cell adds three steps itself: the
+    # new cell went above the load cell
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\nfrom ewald.modifiers import *\n"
+                          f"pipe = load({str(cu_file)!r})\npipe.add(UnwrapTrajectories())\n"
+                          f"pipe.add(CoordinationAnalysis(cutoff=3.0))\n")
+    assert nb.run_all()
+    ts = Toolset(notebook=nb)
+    r = ts.call("add_modifier", {"name": "ExpressionSelection", "params": {"expression": "Coordination == 12"},
+                                 "index": 1})
+    assert not r.is_error, r.content
+    assert len(nb.cells) == 2 and "load(" in nb.cells[0].source and "ExpressionSelection" in nb.cells[1].source
+    assert Notebook.from_py(nb.to_py()).run_all()
 
 
 def test_cell_writing_tools_refuse_a_restricted_notebook(cu_file):

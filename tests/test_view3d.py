@@ -496,3 +496,16 @@ def test_measurements_draw_in_every_renderer_and_view(srtio3):
         drawn = srtio3.view.render(**kw)[..., :3].astype(float)
         srtio3.view.measurements = None
         assert np.abs(drawn - plain).mean() > 0.2, r
+
+
+def test_selection_takes_bool_strings_and_checks_colors(srtio3):
+    # a model's set_view call once sent selection="false": it must not reach the renderer
+    v = srtio3.view
+    v.selection = "false"
+    assert v.selection is False
+    v.selection = "True"
+    assert v.selection is True
+    v.selection = "gold"
+    assert v.selection == "gold"
+    with pytest.raises(ValueError):
+        v.selection = "nonsense"

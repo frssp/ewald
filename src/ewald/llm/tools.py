@@ -1119,14 +1119,21 @@ def _owner(nb: Notebook, modifier) -> int | None:
 
 def _cell_before(nb: Notebook, index) -> int | None:
     """Where a step cell goes so its modifier lands at pipeline position ``index``: before the cell
-    of the modifier now there (None: at the end of the notebook)."""
+    of the modifier now there (None: at the end of the notebook). When that cell also made the
+    modifier before it (the load cell's own steps, e.g. a NEB folder's), the new cell goes right
+    after it: a step never goes above the cell that loads ``pipe``."""
     if index is None:
         return None
     mods = nb.pipeline.modifiers if nb.pipeline is not None else []
     i = int(index)
     if i < 0:
         i = max(0, len(mods) + i)
-    return _owner(nb, mods[i]) if i < len(mods) else None
+    if i >= len(mods):
+        return None
+    k = _owner(nb, mods[i])
+    if k is not None and i > 0 and any(m is mods[i - 1] for m in nb.cells[k].added):
+        return k + 1
+    return k
 
 
 def _diff(before, after) -> dict:

@@ -4343,6 +4343,35 @@ def test_ai_chat_streams_the_answer(app, pipe):
     assert texts == ["It is fcc."] and answer.to_dict()["tools"] == ["describe_frame"]
 
 
+def test_ai_chat_shows_a_long_answer_whole(app):
+    """A long Markdown answer (lists, a table, inline code) is as tall as its text: a live model's
+    answer was cut off after a few paragraphs, with blank space below."""
+    from PySide6 import QtWidgets
+
+    from ewald.gui.ask_panel import Message
+
+    rows = "\n".join(f"| {k} | {k * 0.37:.2f} | {k * 1.1:.2f} |" for k in range(15))
+    text = ("**Barrier: 0.325 eV.** " + "The atom that moves is Fe id 8. " * 8 + "\n\n**Steps**\n"
+            + "".join(f"- **Cell {k}:** `ExpressionSelection(\"(ParticleIdentifier == 8)\")` and more words\n"
+                      for k in range(8))
+            + "\n| id | a | b |\n|---|---|---|\n" + rows + "\n\n**Last line.**")
+    area = QtWidgets.QScrollArea(widgetResizable=True)
+    inner = QtWidgets.QWidget()
+    lay = QtWidgets.QVBoxLayout(inner)
+    area.setWidget(inner)
+    m = Message("assistant")
+    lay.addWidget(m)
+    lay.addStretch()
+    area.resize(300, 600)
+    area.show()
+    m.set_answer(text)
+    for _ in range(50):
+        app.processEvents()
+    label = next(lb for lb in m.findChildren(QtWidgets.QLabel, "chatText") if "Last line" in lb.text())
+    assert label.height() >= label.heightForWidth(label.width()) > 0
+    area.close()
+
+
 def test_ai_chat_per_notebook_tab(app, pipe):
     """Each notebook tab has its own chat: switching tabs shows that tab's messages, an answer still
     on its way lands in its own tab's chat, the messages are kept on the notebook (saved in .ewd), and

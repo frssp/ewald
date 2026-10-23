@@ -762,7 +762,13 @@ def _check(name, value):
         value = {k: ([float(x) for x in v] if k == "direction" else float(v)) for k, v in value.items()} \
             if isinstance(value, dict) else [float(x) for x in value]
     elif name == "selection":
+        if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+            value = value.strip().lower() == "true"   # a model's JSON may send the bool as a string
         if not isinstance(value, bool):
+            if isinstance(value, str):
+                from .colormaps import to_rgb
+
+                to_rgb(value)   # fails on a bad name now, not when the view draws
             value = _color(value)
     elif name in ("radii", "oxidation_states"):
         if not isinstance(value, dict):
