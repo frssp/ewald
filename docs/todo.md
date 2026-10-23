@@ -475,9 +475,9 @@ Docs
 
 - Example files: list the examples (and the downloadable paper datasets) on an empty viewport at
   first start; a GUI entry for `examples.fetch` (File › Open example › From a paper).
-- Examples run (2026-10-20, /mnt/project-files/ewald-review/examples-test.md): Tutorial 2 and
-  `llzo_arrhenius.py` need the `symmetry` / `formats` extras that the README's `[gui]` install
-  leaves out (both say so now); decide with the extras work whether spglib joins the core install.
+- Examples run (2026-10-20, /mnt/project-files/ewald-review/examples-test.md; rerun 2026-10-23:
+  every tutorial, paper script and demo.py passes): `llzo_arrhenius.py` needs the `formats` extra
+  (MDAnalysis) that the README's `[gui]` install leaves out (it says so); spglib is core now.
   Plugin example files (`ewald_phonopy.EXAMPLES`, Cu3Au_band.yaml) are not under File › Open
   example. The Plugins side bar's default catalog (raw.githubusercontent.com of the private
   frssp/ewald-plugins) answers 404 without a GitHub token, so first-party plugins install only by pip.
@@ -500,7 +500,11 @@ Docs
 - More tutorials in the notebook style (examples/notebooks, tested by tests/test_tutorials.py):
   Ask AI and Modifier Forge on a real question, a plugin from the Plugins side bar, a volumetric
   file (CHGCAR isosurface), opening a run on a cluster over SSH, and PLUMED/phonopy once they are
-  plugins. The remaining manual pages (Python scripting, Rendering figures, Modifiers) still show
+  plugins. Features no tutorial shows yet (review 2026-10-23): trajectory lines with
+  `trajectory_trail` and their color bar (the Cu_md example moves too little to show them; needs
+  a diffusing example file), a NEB folder (`NebEnergyProfile`, `OverlayFrames`; only the
+  fe_vacancy_neb paper script), `load([...], join=...)` restart segments, `workflow_table`,
+  `run_info`/`check_run`/`load_runs`, `[each frame]`/`[all frames]` cells, VASP DOS/bands. The remaining manual pages (Python scripting, Rendering figures, Modifiers) still show
   `pipe.modifiers.append` and `import_file`; switch their examples to `load`/`pipe.add` when they
   are next edited.
 - GUI screenshots in docs/images are made by docs/images/make_screenshots.py; Help › About and the
