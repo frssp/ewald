@@ -512,7 +512,7 @@ Docs
   are next edited.
 - GUI screenshots in docs/images are made by docs/images/make_screenshots.py; Help › About and the
   Render workspace have none yet, and a GIF of linked selection (drag on a histogram) would show
-  what a still cannot. docs/images/ai-demo.gif (Ask AI on a Pt nanoparticle) is recorded by
+  what a still cannot. docs/images/ai-demo.gif (Ask AI on Li6PS5Cl AIMD, amorphous carbon MD and a Fe NEB) is recorded by
   docs/images/make_ai_demo.py with a scripted model; re-record it with a live model once one is
   available in the recording environment, and when the chat side bar changes visibly.
 - Cell links in the AI chat count cells by position ("cell 3", markdown cells included), while a
