@@ -127,6 +127,10 @@ energy drift, LAMMPS warnings/errors, close contacts); `.ok`, `.to_dict()`. Seve
 `runs = load_runs("T*/XDATCAR", label=r"T(\\d+)")` (sorted by the label's number); `runs.pipe`, `runs["600"].pipe`,
 `runs.add(m)` (a copy per run); every verb takes `runs` and returns `RunTables` `{label: Table}` (`.plot()`,
 `.attribute(name)`); `arrhenius(msd(runs))` fits Ea (eV) to D(T) with T from each run's thermostat.
+Workflows (a folder of calculations, `aiida:...`): `workflow_table(path, ...)` (`from ewald import workflow_table`)
+is a row per step and a column per number (energy, energy/atom, barrier, gap, max force, atoms, ...); several paths
+compare side by side (steps matched by name, `align="position"` by order; `labels=[...]`); `t.difference("PBE")`,
+`t["energy"]` (`{workflow: array}`), `t.plot("gap")`, `t.to_csv(path)`, `t.as_dict()`.
 
 ## The 3D view (`pipe.view`)
 

@@ -30,6 +30,12 @@ Every `path` is a string `load()` opens, served by the plugin's own reader for i
 (`@reader(..., schemes=("mydb",))`). So whatever the side bar or the AI does with a workflow, a
 notebook cell can repeat.
 
+A step's `scalars` are what `workflow_table(...)` shows and compares across workflows
+([Workflows](../user/workflows.md)): numbers become columns, and the names ewald's own sources use
+(`energy`, `energy/atom`, `barrier`, `gap`, `max force`, `fermi energy`, `atoms`, all in eV and
+eV/Å) come first and get units in the heads, so a source that uses them lines up with the folder
+source. Words (`code`, `kind`) show only in the table of one workflow.
+
 ## Writing a source
 
 ```python

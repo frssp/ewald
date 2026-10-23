@@ -5,7 +5,9 @@ takes an id (that workflow alone) or words (a search). Below, the source's workf
 first; expanding one asks the source to describe it and lists its steps (nested, restarts joined)
 with their outputs. A double click on a workflow opens it as one notebook with a variable per
 step; on a step or an output it opens that path, as File › Open location would. The buttons
-insert a ``load(...)`` cell instead or copy the path. Requests run off the GUI thread, so a slow
+insert a ``load(...)`` cell instead or copy the path. The right-click menu on one or more selected
+workflows adds and runs a cell ``workflow_table(...)``: their steps' numbers in one table, side by
+side (:mod:`ewald.workflow_table`). Requests run off the GUI thread, so a slow
 server never freezes the window.
 
 When the notebook on screen is one such workflow notebook, every step it loads gets a mark in the
@@ -23,7 +25,7 @@ from PySide6 import QtCore, QtWidgets
 
 from .. import plugins
 from ..pipeline import Pipeline
-from ..workflow import Workflow, step_variables
+from ..workflow import Workflow, reference, step_variables
 from . import workers
 
 ITEM = QtCore.Qt.UserRole          # the Workflow, WorkflowStep or WorkflowOutput an item shows
@@ -84,6 +86,7 @@ class WorkflowPanel(QtWidgets.QWidget):
         lay.addLayout(row)
         self.tree = QtWidgets.QTreeWidget(headerHidden=True, objectName="workflowTree", columnCount=2)
         self.tree.setUniformRowHeights(True)
+        self.tree.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         head_view = self.tree.header()
         head_view.setStretchLastSection(False)
         head_view.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
@@ -417,6 +420,26 @@ class WorkflowPanel(QtWidgets.QWidget):
         if path:
             self.context.insert_cell(f"pipe = load({path!r})")
 
+    def selected_workflows(self) -> list:
+        """The workflows selected in the list (Ctrl/Shift-click picks several), in list order."""
+        top = [self.tree.topLevelItem(i) for i in range(self.tree.topLevelItemCount())]
+        return [self._object(it) for it in top if it.isSelected() and isinstance(self._object(it), Workflow)]
+
+    def compare(self, workflows=None):
+        """Add and run a cell ``workflow_table(<workflow>, ...)`` in the notebook on screen (a new
+        one if none): the numbers of every step, of several workflows side by side. The paths are
+        string literals, so a workflow's name or path cannot put code into the cell."""
+        workflows = self.selected_workflows() if workflows is None else list(workflows)
+        refs = [reference(w) for w in workflows if reference(w)]
+        if not refs:
+            return None
+        view = self._view() or self.context.window.panel.new_notebook()
+        cell = view.add_cell("code", "from ewald import workflow_table\n\n"
+                                     f"workflow_table({', '.join(repr(str(r)) for r in refs)})")
+        self.context.window.notebook_dock.show()
+        view.run(cell)
+        return cell
+
     def copy_path(self):
         path = self._path()
         if path:
@@ -434,6 +457,10 @@ class WorkflowPanel(QtWidgets.QWidget):
         menu.addAction("Open as notebook" if isinstance(self._object(item), Workflow) else "Open",
                        lambda: self.open(item))
         menu.addAction("Insert load() cell", self.insert_cell)
+        workflows = self.selected_workflows()
+        if workflows:
+            menu.addAction(f"Compare {len(workflows)} workflows in a table" if len(workflows) > 1
+                           else "Table of the steps' numbers", lambda: self.compare(workflows))
         menu.addAction("Copy path", self.copy_path)
         menu.exec(self.tree.viewport().mapToGlobal(pos))
 

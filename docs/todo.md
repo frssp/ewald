@@ -28,9 +28,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   on/off switch (`Viewport.show_legend`). Plugin modifiers that write "Color" show as "custom" until
   they call `color_rule.record` (not yet in `plugin_api`).
 
-- Workflows (`ewald.workflow`): a table that compares the scalars of every step of a workflow
-  (energies, gaps, forces) and of several workflows side by side, and opening one step's input
-  next to its output (INCAR/KPOINTS as text cells). The side bar's step switch (●/○) and
+- Workflows (`ewald.workflow`): opening one step's input next to its output (INCAR/KPOINTS as
+  text cells). `workflow_table` matches steps across workflows by name or position only (no
+  manual pairing in the GUI), its side bar entry needs a notebook cell (no table view of its
+  own), and the folder source reads no LAMMPS energy (last `PotEng` of `log.lammps`), no
+  Fermi energy and no gap from vasprun.xml or DOSCAR (EIGENVAL only, up to 32 MB). The side bar's step switch (●/○) and
   "Plot <table>" rows exist; a step picker on top of the Plots panel itself does not, and the
   rows list the tables of a step's first frame only.
 - Workflow folders (`ewald/workflow_folder.py`, docs/user/workflows.md): a killed VASP or LAMMPS
