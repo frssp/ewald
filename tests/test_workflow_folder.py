@@ -38,7 +38,8 @@ def test_folder_of_calculations_is_one_workflow(study):
     assert [s.name for s in wf.steps] == ["01_relax", "02_neb", "03_md", "04_lmp_neb", "10_phonon"]
     relax, neb, md, lmp, phonon = wf.steps
     assert relax.path == str(study / "01_relax" / "OUTCAR") and relax.state == "finished"
-    assert relax.scalars == {"code": "vasp", "kind": "relax", "energy": -16.275, "ionic steps": 2}
+    assert relax.scalars == {"code": "vasp", "kind": "relax", "energy": -16.275, "ionic steps": 2, "atoms": 3,
+                             "energy/atom": -5.425, "max force": 0.01}
     assert relax.outputs[0].name == "CONTCAR" and relax.outputs[0].kind == "structure"
     assert neb.path == str(study / "02_neb") and neb.scalars["kind"] == "neb" and neb.scalars["images"] == 5
     assert neb.outputs[0].kind == "band"
@@ -145,4 +146,6 @@ def test_folder_names_cannot_put_code_into_the_notebook(tmp_path, vasp_dir):
     nb = Notebook.from_py(workflow.notebook_text(describe_folder(root)))
     assert not any(c.source.startswith("import os") for c in nb.cells)
     assert all("os.system" not in line or "load(" in line or line.startswith("#")
-               for c in nb.cells for line in c.source.splitlines())
+               for c in nb.cells if c.kind == "code" for line in c.source.splitlines())
+    head = nb.cells[0]                         # the step table: one line per step, still markdown
+    assert head.kind == "markdown" and "| x # %% import os; os.system('touch PWNED') |" in head.source
