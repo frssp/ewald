@@ -56,6 +56,7 @@ the model.
 | `remove_modifier` | deletes that step cell |
 | `set_view`, `add_visual`, `remove_visual`, `add_overlay`, `remove_overlay` | the view cell `view(pipe, ...)` |
 | `export_file` | `export_file(pipe, 'out.extxyz', frames=[0])` |
+| `add_analysis` | the cells of a workflow analysis (from `describe_workflow`), written by the workflow's plugin, not by the model; offered only with a workflow source |
 
 `add_modifier` offers every modifier in `ewald.modifiers` and the modifier plugins, except
 `PythonScript` (only with `allow_code`) and `OvitoModifier` (never; it takes a Python object).
@@ -103,7 +104,7 @@ its work dir, and `compute_plumed_cvs` refuses `LOAD` (native code) and absolute
 
 ## Files and hosts the AI may open
 
-The files the model opens itself (`load_structure`, `describe_workflow`, plugin tools such as
+The files the model opens itself (`load_structure`, `describe_workflow`, `add_analysis`, plugin tools such as
 `read_plumed_output`) pass `ReadAccess` (`llm/access.py`):
 
 | Setting | Default | Effect |
