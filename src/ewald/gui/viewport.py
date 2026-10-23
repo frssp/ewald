@@ -1032,12 +1032,12 @@ class Viewport(QtWidgets.QWidget):
             return f"∠({label(P[0])}, {label(P[1])}, {label(P[2])}) = {ang:.2f}°"
         return f"{len(P)} atom(s) picked"
 
-    COLORBAR_FONT = 11   # px at a device pixel ratio of 1
+    COLORBAR_FONT = 12   # px at a device pixel ratio of 1
 
     def _draw_colorbars(self, data, legends):
-        """The color bars (:func:`ewald.overlays.color_legends`) as one image pinned to the right edge:
+        """The color bars (:func:`ewald.overlays.color_legends`) as one image pinned to the top right corner:
         the items pictures draw (:mod:`ewald.colorbars`), so the view and the rendered figure match."""
-        from ..colorbars import colorbar_items, default_style, items_rgba
+        from ..colorbars import colorbar_items, items_rgba
         from ..overlays import color_legends, ink_color
 
         bars = color_legends(data, legends)
@@ -1047,16 +1047,12 @@ class Viewport(QtWidgets.QWidget):
         ratio = w.devicePixelRatioF() or 1.0
         W, H = max(1, int(w.width() * ratio)), max(1, int(w.height() * ratio))
         ink = ink_color(self.style.background, False)
-        style = default_style()
-        items = colorbar_items(bars, (W, H), unit=self.COLORBAR_FONT * ratio, ink=ink,
-                               background=self.style.background, style=style)
+        items = colorbar_items(bars, (W, H), unit=self.COLORBAR_FONT * ratio, ink=ink, background=self.style.background)
         rgba, x0, y0 = items_rgba(items, ink)
-        corner = {"slim": (1.0, 0.5), "classic": (1.0, 0.5), "card": (1.0, 1.0)}.get(style, (1.0, 0.0))
-        h = rgba.shape[0]
-        # VTK display coordinates start at the bottom left; keep the offset from the anchor corner, so the bars
-        # stay at the edge while the view is resized
-        self.plotter.add_actor(_image_actor(rgba, x0 - corner[0] * W, (H - y0 - h) - corner[1] * H, corner),
-                               name="_legend", reset_camera=False, render=False)
+        # VTK display coordinates start at the bottom left; the offset is kept from the top right corner, so the
+        # cards stay there while the view is resized
+        self.plotter.add_actor(_image_actor(rgba, x0 - W, -y0 - rgba.shape[0], (1.0, 1.0)), name="_legend",
+                               reset_camera=False, render=False)
         self._has_colorbar = True
 
     def _draw_color_legend(self, data, dark: bool):

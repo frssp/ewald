@@ -544,7 +544,7 @@ def color_rule_items(data, type_colors, lay: dict, size, right: bool = True, y: 
 
 def overlay_layout(data, size, *, text=None, legend=True, type_legend=False, scale_bar=None, camera=None,
                    type_colors=None, overlays=None, frame=0, background="white", transparent=False,
-                   colorbars=None, colorbar_style=None) -> dict:
+                   colorbars=None) -> dict:
     """Positions (pixels, origin top-left) and contents of the requested overlays.
 
     ``legend`` draws the color bars: the ColorCoding one of ``data`` and ``colorbars``, the visual
@@ -570,14 +570,13 @@ def overlay_layout(data, size, *, text=None, legend=True, type_legend=False, sca
         if rows:
             out["types"] = rows
     if legend:
-        from .colorbars import colorbar_items, default_style
+        from .colorbars import colorbar_items
 
         bars = color_legends(data, colorbars)
         if bars:
             out["colorbars"] = bars
             out["items"] = colorbar_items(bars, (w, h), unit=out["small"], ink=ink_color(background, transparent),
-                                          background=background, transparent=transparent,
-                                          style=colorbar_style or default_style())
+                                          background=background, transparent=transparent)
         swatches = color_rule_items(data, type_colors, out, (w, h), right=not bars, y=y)
         if swatches:
             out["items"] = out.get("items", []) + swatches

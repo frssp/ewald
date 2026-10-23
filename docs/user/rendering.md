@@ -224,7 +224,9 @@ Every renderer draws the same overlays, sized relative to the image:
   brackets are filled in (in animations, per frame);
 - `legend=True`: the atoms' color legend (category swatches of structure types and painted
   conditions, or the color bar of `ColorCoding`/`color_by`), the color bars of grid slices and of
-  color-mapped trajectory lines, side by side;
+  color-mapped trajectory lines, each on a small translucent card in the top right corner, side by
+  side. Ticks are round numbers (whole ones for frames and timesteps). The 3D view draws the same
+  cards, so what you see is what the picture gets;
 - `type_legend=True`: one color swatch per particle type;
 - `scale_bar=True`: a round length (Å, or nm from 10 Å); `scale_bar=20` for 20 Å. Exact in
   orthographic views, at the focal plane in perspective.

@@ -18,9 +18,6 @@ import numpy as np
 
 from .overlays import ColorRamp, Image, Polyline, Rect, Text
 
-STYLES = ("slim", "card", "horizontal", "classic")
-
-
 def nice_ticks(lo: float, hi: float, n: int = 5) -> list[float]:
     """Round tick values inside [lo, hi] (about ``n``); whole numbers only when both ends are whole and
     at least 2 apart (frames, timesteps)."""
@@ -111,42 +108,21 @@ def _surface(background, transparent: bool) -> tuple:
 
 
 def colorbar_items(bars, size, *, unit: float, ink=(0.08, 0.08, 0.08), background="white",
-                   transparent: bool = False, style: str = "slim", corner: str | None = None) -> list:
-    """Overlay items of the color ``bars`` in an image of ``size`` (w, h) px; ``unit`` is the label font
-    size in px. Several bars sit side by side (vertical styles) or stack upward (horizontal)."""
-    if style not in STYLES:
-        raise ValueError(f"color bar style {style!r}: one of {', '.join(STYLES)}")
+                   transparent: bool = False) -> list:
+    """Overlay items of the color ``bars`` in an image of ``size`` (w, h) px, ``unit`` being the label font
+    size in px: each bar on its own translucent card in the top right corner, further bars to the left."""
     bars = [dict(b) for b in bars or ()]
-    if not bars:
-        return []
     W, H = float(size[0]), float(size[1])
     u = float(unit)
     ink = tuple(float(c) for c in ink[:3])
-    faint = ink + (0.55,)
     margin = max(0.8 * u, 0.02 * H)
-    blocks = [_block(b, u, H, ink, faint, style, background, transparent) for b in bars]
     out = []
-    if style == "horizontal":
-        corner = corner or "bottom-right"
-        y = H - margin if corner.startswith("bottom") else margin
-        for w, h, items in blocks:
-            x = W - margin - w if corner.endswith("right") else margin
-            top = y - h if corner.startswith("bottom") else y
-            out += _shift(items, round(x), round(top))
-            y = top - 0.9 * u if corner.startswith("bottom") else top + h + 0.9 * u
-        return out
-    corner = corner or ("top-right" if style == "card" else "right")
     x = W - margin
-    for w, h, items in blocks:
+    for bar in bars:
+        w, _, items = _card(bar, u, H, ink, _surface(background, transparent))
         x -= w
-        if corner == "right":
-            top = (H - h) / 2
-        elif corner.startswith("bottom"):
-            top = H - margin - h
-        else:
-            top = margin
-        out += _shift(items, round(x), round(top))
-        x -= 1.2 * u
+        out += _shift(items, round(x), round(margin))
+        x -= 0.6 * u
     return out
 
 
@@ -164,61 +140,33 @@ def _shift(items, dx, dy):
     return out
 
 
-def _block(bar, u, H, ink, faint, style, background, transparent):
-    """(width, height, items at the origin) of one bar."""
+def _card(bar, u, H, ink, surface):
+    """(width, height, items with the top-left corner at the origin) of one bar: the title, a thin
+    rounded ramp (high values on top) with faint ticks and round labels on its right, on a card."""
     lo, hi = (float(v) for v in bar["range"])
     title = str(bar.get("title", ""))
-    ticks = nice_ticks(lo, hi, 5 if style != "horizontal" else 4)
+    ticks = nice_ticks(lo, hi, 5)
     labels = tick_labels(ticks)
     span = hi - lo if hi > lo else 1.0
-    lab = 0.92 * u
-    if style == "horizontal":
-        L, T = 11.0 * u, 0.62 * u
-        title_h = 1.5 * u if title else 0.0
-        items = [Text(0, 0, title, u, ink, "lt")] if title else []
-        items.append(ColorRamp(0, title_h, L, title_h + T, bar["cmap"], False, T / 2))
-        items.append(Rect(0, title_h, L, title_h + T, outline=ink + (0.18,), width=1, radius=T / 2))
-        for t, s in zip(ticks, labels):
-            x = (t - lo) / span * L
-            items.append(Polyline([[x, title_h + T + 0.15 * u], [x, title_h + T + 0.45 * u]], faint, 1))
-            items.append(Text(x, title_h + T + 0.6 * u, s, lab, ink, "mt"))
-        # keep the end labels inside the block
-        w_first, w_last = _text_width(labels[0], lab) / 2, _text_width(labels[-1], lab) / 2
-        pad_l = max(0.0, w_first - (ticks[0] - lo) / span * L)
-        pad_r = max(0.0, w_last - (hi - ticks[-1]) / span * L)
-        width = max(pad_l + L + pad_r, _text_width(title, u))
-        items = _shift(items, pad_l, 0)
-        return width, title_h + T + 0.6 * u + 1.2 * lab, items
-    classic = style == "classic"
-    L = min(max(8.5 * u, 0.3 * H), 0.45 * H) if not classic else 0.42 * H
-    T = 0.7 * u if not classic else 1.1 * u
+    lab = 0.92 * u                                  # label size
+    L = min(max(8.5 * u, 0.3 * H), 0.45 * H)        # ramp length
+    T = 0.7 * u                                     # ramp thickness
+    pad = 0.8 * u
     title_h = 1.7 * u if title else 0.4 * u
-    label_w = max(_text_width(s, lab) for s in labels)
-    gap = 0.5 * u
     tick_out = 0.35 * u
-    radius = 0.0 if classic else T / 2
-    items = []
-    if title:
-        items.append(Text(0, 0, title, u, ink, "lt", bold=classic))
-    items.append(ColorRamp(0, title_h, T, title_h + L, bar["cmap"], True, radius))
-    items.append(Rect(0, title_h, T, title_h + L, outline=ink + ((1.0,) if classic else (0.18,)),
-                      width=1, radius=radius))
+    items = [Text(pad, pad, title, u, ink, "lt")] if title else []
+    top = pad + title_h
+    items.append(ColorRamp(pad, top, pad + T, top + L, bar["cmap"], True, T / 2))
+    items.append(Rect(pad, top, pad + T, top + L, outline=ink + (0.18,), width=1, radius=T / 2))
     for t, s in zip(ticks, labels):
-        y = title_h + L - (t - lo) / span * L
-        if classic:
-            items.append(Polyline([[T - tick_out, y], [T, y]], ink, 1))
-            items.append(Polyline([[0, y], [tick_out, y]], ink, 1))
-        else:
-            items.append(Polyline([[T + 0.15 * u, y], [T + 0.15 * u + tick_out, y]], faint, 1))
-        items.append(Text(T + gap + (0.0 if classic else tick_out), y, s, lab, ink, "lm"))
-    width = max(T + gap + tick_out + label_w, _text_width(title, u, classic))
-    height = title_h + L + 0.5 * lab
-    if style == "card":
-        pad = 0.8 * u
-        items = _shift(items, pad, pad)
-        items.insert(0, Rect(0, 0, width + 2 * pad, height + 2 * pad - 0.3 * u, fill=_surface(background, transparent),
-                             outline=ink + (0.12,), width=1, radius=0.55 * u))
-        width, height = width + 2 * pad, height + 2 * pad - 0.3 * u
+        y = top + L - (t - lo) / span * L
+        x = pad + T + 0.15 * u
+        items.append(Polyline([[x, y], [x + tick_out, y]], ink + (0.55,), 1))
+        items.append(Text(x + tick_out + 0.5 * u, y, s, lab, ink, "lm"))
+    label_w = max(_text_width(s, lab) for s in labels)
+    width = 2 * pad + max(T + 0.65 * u + tick_out + label_w, _text_width(title, u))
+    height = top + L + 0.5 * lab + pad - 0.3 * u
+    items.insert(0, Rect(0, 0, width, height, fill=surface, outline=ink + (0.12,), width=1, radius=0.55 * u))
     return width, height, items
 
 
@@ -269,8 +217,3 @@ def _copy(it):
 
     return replace(it)
 
-
-def default_style() -> str:
-    import os
-
-    return os.environ.get("EWALD_COLORBAR_STYLE", "slim")
