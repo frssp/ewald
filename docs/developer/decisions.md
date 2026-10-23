@@ -52,7 +52,7 @@ the end.
   rejected for the reason above).
 - **Landed:** PR #161 (`CELL_WRITERS`, enforced by `tests/test_llm.py`).
 
-### D29. The AI's API reference is complete in one read (2026-10-23)
+### D31. The AI's API reference is complete in one read (2026-10-23)
 
 - **Decision:** `python_api` (and `llms.txt`, the same text) gives the whole reference in one
   call, about 60 KB: notebook cells first, tested recipes, generated function signatures, and
