@@ -83,6 +83,22 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   "어느 셀을 수정했는지 링크가 없다" (there is no link to which cell was changed).
 - **Landed:** this PR (`notebook_tools.touched_cells`, the chat's cell links).
 
+### D35. The notebook follows the AI's cells until you scroll (2026-10-23)
+
+- **Decision:** while the AI chat works, reading cells never scrolls the notebook; a cell it
+  writes or runs is scrolled to only when it is off screen, and once the user scrolls the
+  notebook during that answer it stops following and a pill at the notebook's edge ("AI is on
+  cell 7") jumps there instead. Scrolling once to the last cell at the end, or never, are
+  Preferences › AI › Follow the AI's cells (`llm.follow_cells`).
+- **Why:** the owner found the notebook "너무 왔다갔다" while the AI read and wrote cells and
+  asked to weigh not moving at all, moving less, or going to the last edited cell at the end
+  ("또는 다른 방식일지 고민해줘"); from these options the owner picked following while
+  respecting the user's scroll. (The jumping itself was a bug: rebuilt cells passed the
+  keyboard focus from cell to cell and the scroll area followed each.)
+- **Considered:** never scrolling (cell links and the pill only); scrolling once to the last
+  edited cell when the answer is done. Both stay as settings.
+- **Landed:** PR #5.
+
 ### D6. Structure editing is deferred (2026-10-19)
 
 - **Decision:** no supercell, slab or defect builder until the owner asks.

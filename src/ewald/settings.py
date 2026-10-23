@@ -259,6 +259,12 @@ OPTIONS = (
     Option("llm.run_cells", False, "Let the AI run cells",
            "The AI chat can read, insert and edit notebook cells; with this on it can also run them (any "
            "Python, like Shift+Enter). Off: cells it writes wait until you run them."),
+    Option("llm.follow_cells", "follow", "Follow the AI's cells",
+           "How the notebook scrolls while the AI chat writes and runs cells (reading them never scrolls). "
+           "follow: to a cell it writes when that cell is off screen, until you scroll yourself during the "
+           "answer. end: once, to the last cell it wrote, when the answer is done. never: not at all. "
+           "When the notebook does not go there, a pill at its edge shows the cell and jumps to it.",
+           choices=("follow", "end", "never")),
     Option("llm.read_folders", "", "Folders the AI may read",
            "Files the AI chat opens itself (load_structure, workflows, plugin tools) must lie in one of these "
            "folders, separated by ';'. Empty: any folder. Cells you run are not limited.", kind="dir"),
