@@ -336,7 +336,7 @@ def record(name, frames_dir):
         json.dump({"size": [w.width(), w.height()], "shots": shots}, f)
     if LIVE:
         with open(os.path.join(frames_dir, "transcript.json"), "w", encoding="utf-8", newline="\n") as f:
-            json.dump({"scene": name, "model": s["llm.model"] or "default", "question": scene["question"],
+            json.dump({"scene": name, "question": scene["question"],
                        "events": events, "notebook": notebook}, f, indent=1)
 
 
