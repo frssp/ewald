@@ -1,7 +1,12 @@
 """Command palette (Ctrl+K): fuzzy search over menu actions and modifiers."""
 from __future__ import annotations
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
+
+
+def native_keys(keys: str) -> str:
+    """``keys`` as this platform writes them (Ctrl+K on Windows and Linux, ⌘K on macOS)."""
+    return QtGui.QKeySequence(keys).toString(QtGui.QKeySequence.NativeText)
 
 
 def fuzzy_score(query: str, text: str):
@@ -29,7 +34,7 @@ class CommandPalette(QtWidgets.QDialog):
         self.setMinimumWidth(560)
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
-        self.edit = QtWidgets.QLineEdit(placeholderText="Search commands, modifiers, views…")
+        self.edit = QtWidgets.QLineEdit(placeholderText="Search commands and steps…")
         self.list = QtWidgets.QListWidget()
         lay.addWidget(self.edit)
         lay.addWidget(self.list)
@@ -71,7 +76,7 @@ def _label(text: str) -> str:
 
 
 def menu_entries(menubar: QtWidgets.QMenuBar):
-    """All enabled actions under a menu bar as (label, 'File › ...', callable)."""
+    """All enabled actions under a menu bar as (label, 'File › ...' and the shortcut, callable)."""
     out = []
 
     def walk(menu, path):
@@ -79,7 +84,10 @@ def menu_entries(menubar: QtWidgets.QMenuBar):
             if act.menu():
                 walk(act.menu(), path + [_label(act.text())])
             elif act.text() and not act.isSeparator() and act.isEnabled():
-                out.append((_label(act.text()), " › ".join(path), act.trigger))
+                where = " › ".join(path)
+                if not act.shortcut().isEmpty():   # shown after the menu path, as the platform writes it
+                    where += "   " + act.shortcut().toString(QtGui.QKeySequence.NativeText)
+                out.append((_label(act.text()), where, act.trigger))
 
     for act in menubar.actions():
         if act.menu():

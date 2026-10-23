@@ -7,7 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import examples, manual
 from .icons import icon
-from .palette import CommandPalette, menu_entries
+from .palette import CommandPalette, menu_entries, native_keys
 from .pipeline_panel import fill_modifier_menu
 from .cell_widget import fill_view_menu
 from .theme import PALETTES
@@ -199,7 +199,7 @@ class MenusMixin:
             self.ws_buttons.append(b)
         self.ws_buttons[0].setChecked(True)
         tb.addSeparator()
-        search = QtWidgets.QPushButton("  Search commands, steps, cells…      Ctrl K")
+        search = QtWidgets.QPushButton(f"  Search commands and steps…      {native_keys('Ctrl+K')}")
         search.setObjectName("searchBox")
         search.clicked.connect(self.command_palette)
         tb.addWidget(search)
@@ -275,6 +275,10 @@ class MenusMixin:
         v.addSeparator()
         for label, d in (("Top (+z)", "z"), ("Front (-y)", "front"), ("Right (+x)", "x"), ("Isometric", "iso")):
             v.addAction(label, lambda d=d: self.viewport.view_direction(d))
+        self.ortho_action = v.addAction("Orthographic")   # also the view toolbar's Ortho and the right-click menu
+        self.ortho_action.setCheckable(True)
+        self.ortho_action.toggled.connect(lambda on: self.viewport.ortho_button.setChecked(on))
+        v.aboutToShow.connect(lambda: self.ortho_action.setChecked(self.viewport.ortho))
         v.addAction("Zoom to fit", self.viewport.zoom_fit, "Ctrl+0")
         rep = v.addMenu("Replicate cell")  # display only: n x n x m copies (view(pipe, replicate=...))
         rep.aboutToShow.connect(lambda: self.fill_replicate_menu(rep))
@@ -298,7 +302,10 @@ class MenusMixin:
         n = mb.addMenu("&Notebook")
         n.addAction("Run &all", lambda: self._on_view("run_all"), "Ctrl+Shift+Return").setToolTip(
             "Restart and run every cell from the top")
+        n.addAction("Run current &cell", lambda: self._cell_action("run")).setToolTip(
+            "Run the current cell (Ctrl+Enter; Shift+Enter also moves to the next cell)")
         n.addAction("Run current cell and &below", lambda: self._cell_action("below"))
+        n.addAction("&Interrupt", lambda: self._on_view("interrupt")).setToolTip("Stop the running cell")
         n.addAction("&Restart", lambda: self._on_view("restart")).setToolTip(
             "Clear the namespace; cells keep their code and outputs")
         n.addAction("Restart && clear outputs", lambda: self._on_view("restart", True))
@@ -358,14 +365,23 @@ class MenusMixin:
         plug = ins.addMenu("&Plugin step")
         plug.aboutToShow.connect(lambda: self._fill_plugin_menu(plug))
         self.step_menu = m
-        t = mb.addMenu("&Tools")
+        t = self.tools_menu = mb.addMenu("&Tools")
+        tools = QtGui.QActionGroup(t)   # one viewport tool at a time, like the tool rail
         for key, _icon, tip in Viewport.TOOLS:
-            t.addAction(tip.split(":")[0], lambda k=key: self.viewport.set_tool(k))
+            act = t.addAction(tip.split(":")[0], lambda k=key: self.viewport.set_tool(k))
+            act.setCheckable(True)
+            act.setData(key)
+            tools.addAction(act)
+        t.aboutToShow.connect(self._update_tools_menu)
         w = self.window_menu = mb.addMenu("&Window")
         w.addAction("Notebook workspace", lambda: self.set_workspace(0), "Ctrl+1")
         w.addAction("Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
+        w.addSeparator()   # side bars
         w.addAction("Notebook", lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))
         w.addAction("Plugins", lambda: self._show_side_bar(self.plugins_dock), "Ctrl+Shift+X")
+        w.addAction("AI chat", self.ask_claude, "Ctrl+J").setToolTip(
+            "Chat with AI about the notebook, the structure or the picked atoms")
+        w.addSeparator()   # views of the editor area and the panel
         w.addAction("Structure", lambda: self.workbench.show(self.viewport))
         w.addAction("View settings", lambda: self.workbench.show(self.display))
         w.addAction("Python console", lambda: self.workbench.show(self.console))
@@ -373,8 +389,7 @@ class MenusMixin:
         w.addAction("Plots", lambda: self.workbench.show(self.plots))
         w.addAction("New plot view", lambda: self.new_plot_view())
         w.addAction("Log", lambda: self.workbench.show(self.log))
-        w.addAction("AI chat", self.ask_claude, "Ctrl+J").setToolTip(
-            "Chat with AI about the notebook, the structure or the picked atoms")
+        w.addSeparator()
         w.addAction("Command palette", self.command_palette, "Ctrl+K")
         h = mb.addMenu("&Help")
         for label, page in manual.PAGES.items():
@@ -382,6 +397,11 @@ class MenusMixin:
         h.addSeparator()
         about = h.addAction("About EWALD", self.about)
         about.setMenuRole(QtGui.QAction.AboutRole)
+
+    def _update_tools_menu(self):
+        """Tick the viewport tool in use (the tool rail may have changed it)."""
+        for act in self.tools_menu.actions():
+            act.setChecked(act.data() == self.viewport.tool)
 
     def _notebook_view(self):
         """The current notebook's view; a new notebook when none is open (the welcome page)."""

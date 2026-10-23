@@ -569,6 +569,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Front (-y)
 - Right (+x)
 - Isometric
+- Orthographic
 - Zoom to fit (`Ctrl+0`)
 - Replicate cell
   - Off (1 × 1 × 1)
@@ -612,7 +613,9 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 **Notebook**
 
 - Run all (`Ctrl+Shift+Return`)
+- Run current cell
 - Run current cell and below
+- Interrupt
 - Restart
 - Restart & clear outputs
 - Kernel
@@ -747,6 +750,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Render workspace (`Ctrl+2`)
 - Notebook
 - Plugins (`Ctrl+Shift+X`)
+- AI chat (`Ctrl+J`)
 - Structure
 - View settings
 - Python console
@@ -754,7 +758,6 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Plots
 - New plot view
 - Log
-- AI chat (`Ctrl+J`)
 - Command palette (`Ctrl+K`)
 - Plugin panels
   - Workflows
@@ -818,7 +821,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 ### Toolbar
 
-Open, Save, Notebook, Render, Search commands, steps, cells… Ctrl K, Compute device switch (CPU / CUDA / auto).
+Open, Save, Notebook, Render, Search commands and steps… Ctrl+K, Compute device switch (CPU / CUDA / auto).
 
 ### Panels
 

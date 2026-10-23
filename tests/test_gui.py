@@ -3825,6 +3825,41 @@ def test_menu_audit_fixes(app, cu_fcc):
     w.close()
 
 
+def test_menu_ux_review(app, cu_fcc):
+    """2026-10-23 menu review: Insert › Plugin step and the palette work before + Step was ever
+    opened; Tools ticks the viewport tool in use; View › Orthographic follows the view; Window
+    groups its entries; Notebook runs and interrupts the current cell; the palette shows shortcuts."""
+    from PySide6 import QtGui
+
+    from ewald.gui.app import MainWindow
+    from ewald.gui.palette import menu_entries
+
+    w = MainWindow(Pipeline(StaticSource([cu_fcc])))
+    w.panel.new_notebook()
+    plug = next(a.menu() for a in w.menuBar().actions()[4].menu().actions() if a.text() == "&Plugin step")
+    plug.aboutToShow.emit()                       # raised AttributeError: no plugin_menu yet
+    assert "Load plugin file…" in [a.text() for a in plug.actions()]
+    w.viewport.set_tool("distance")
+    w.tools_menu.aboutToShow.emit()
+    ticked = [a.data() for a in w.tools_menu.actions() if a.isChecked()]
+    assert ticked == ["distance"]
+    next(a for a in w.tools_menu.actions() if a.data() == "pick").trigger()
+    assert w.viewport.tool == "pick"
+    w.menuBar().actions()[2].menu().aboutToShow.emit()   # View: the tick follows the view
+    assert w.ortho_action.isChecked() is w.viewport.ortho is True
+    w.ortho_action.setChecked(False)
+    assert w.viewport.ortho is False
+    w.ortho_action.setChecked(True)
+    assert w.viewport.ortho is True
+    window = [a.text() for a in w.window_menu.actions()]
+    assert window[2] == "" and window.index("AI chat") < window.index("Structure")
+    notebook = [a.text().replace("&", "") for a in w.notebook_menu.actions()]
+    assert "Run current cell" in notebook and "Interrupt" in notebook
+    entries = {label: where for label, where, _ in menu_entries(w.menuBar())}
+    assert entries["Command palette"].endswith(QtGui.QKeySequence("Ctrl+K").toString(QtGui.QKeySequence.NativeText))
+    w.close()
+
+
 def test_steps_follow_the_data(cu_fcc):
     """Insert › Step: why a step cannot run on the data, and what goes in before it."""
     from ewald.gui.pipeline_panel import prepare_step, step_unavailable
