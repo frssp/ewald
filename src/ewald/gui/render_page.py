@@ -107,9 +107,14 @@ class RenderPage(QtWidgets.QWidget):
         form.addRow("Quality", self.quality)
         self.samples = QtWidgets.QSpinBox(minimum=1, maximum=256, value=8, suffix=" rays/pixel")
         self.ao_samples = QtWidgets.QSpinBox(minimum=0, maximum=512, value=16, suffix=" AO rays")
+        self.noise = QtWidgets.QDoubleSpinBox(minimum=0.0, maximum=0.1, singleStep=0.005, decimals=3, value=0.01,
+                                              specialValueText="Off (every pixel takes all rays)")
+        self.noise.setToolTip("Adaptive sampling: a pixel stops taking rays once its estimated error "
+                              "(standard error, 0-1 color units) is below this; edges, shadows and AO keep all.")
         self.shadows = QtWidgets.QCheckBox("Shadows", checked=True)
         form.addRow("Anti-aliasing", self.samples)
         form.addRow("Ambient occl.", self.ao_samples)
+        form.addRow("Noise threshold", self.noise)
         form.addRow(self.shadows)
         self.ao = QtWidgets.QCheckBox("Ambient occlusion", toolTip="OpenGL screen-space ambient occlusion (SSAO)")
         self.aa = QtWidgets.QCheckBox("Supersampling", checked=True, toolTip="OpenGL anti-aliasing")
@@ -215,7 +220,7 @@ class RenderPage(QtWidgets.QWidget):
             w.toggled.connect(self.update_code)
         self.renderer.currentIndexChanged.connect(self.update_code)
         for w in (self.width, self.height, self.dpi, self.time_per_frame, self.samples, self.ao_samples,
-                  self.scale_length):
+                  self.noise, self.scale_length):
             w.valueChanged.connect(self.update_code)
         for w in (self.text, self.output):
             w.textChanged.connect(self.update_code)
@@ -224,7 +229,7 @@ class RenderPage(QtWidgets.QWidget):
         self._renderer_changed()
         self._syncing_quality = False
         self.quality.currentTextChanged.connect(self._quality_changed)
-        for w in (self.samples, self.ao_samples):
+        for w in (self.samples, self.ao_samples, self.noise):
             w.valueChanged.connect(self._quality_edited)
         for w in (self.shadows, self.ao, self.aa):
             w.toggled.connect(self._quality_edited)
@@ -338,6 +343,7 @@ class RenderPage(QtWidgets.QWidget):
         try:
             self.samples.setValue(preset["samples"])
             self.ao_samples.setValue(preset["ao_samples"])
+            self.noise.setValue(preset["noise_threshold"])
             self.shadows.setChecked(preset["shadows"])
             self.ao.setChecked(preset["ambient_occlusion"])
             self.aa.setChecked(preset["antialiasing"])
@@ -360,7 +366,7 @@ class RenderPage(QtWidgets.QWidget):
             return {"quality": name.lower()}
         if self.renderer_name == "raytrace":
             return {"samples": self.samples.value(), "ao_samples": self.ao_samples.value(),
-                    "shadows": self.shadows.isChecked()}
+                    "noise_threshold": self.noise.value(), "shadows": self.shadows.isChecked()}
         if self.renderer_name == "opengl":
             return {"ambient_occlusion": self.ao.isChecked(), "antialiasing": self.aa.isChecked()}
         return {}
@@ -373,7 +379,7 @@ class RenderPage(QtWidgets.QWidget):
         self.renderer.setCurrentIndex(RENDERERS.index(name) if name in RENDERERS else 0)
 
     def _renderer_changed(self, *_):
-        for w in (self.samples, self.ao_samples, self.shadows):
+        for w in (self.samples, self.ao_samples, self.noise, self.shadows):
             w.setEnabled(self.raytrace)
         for w in (self.ao, self.aa):
             w.setEnabled(self.renderer_name == "opengl")
@@ -522,7 +528,8 @@ class RenderPage(QtWidgets.QWidget):
         """Everything on this page, for session files (GUI keys next to render() keywords)."""
         return {"renderer_name": self.renderer_name, "quality": self.quality.currentText(),
                 "movie_quality": self.movie_quality.currentText(), "samples": self.samples.value(),
-                "ao_samples": self.ao_samples.value(), "shadows": self.shadows.isChecked(),
+                "ao_samples": self.ao_samples.value(), "noise_threshold": self.noise.value(),
+                "shadows": self.shadows.isChecked(),
                 "ambient_occlusion": self.ao.isChecked(), "antialiasing": self.aa.isChecked(),
                 "preset": self.preset.currentText(), "dpi": self.dpi.value(),
                 "size": (self.width.value(), self.height.value()), "background_choice": self.background.currentText(),
@@ -538,7 +545,8 @@ class RenderPage(QtWidgets.QWidget):
             self.set_renderer(st["renderer_name"])
         if st.get("movie_quality"):
             self.movie_quality.setCurrentText(st["movie_quality"])
-        for key, w in (("samples", self.samples), ("ao_samples", self.ao_samples), ("dpi", self.dpi),
+        for key, w in (("samples", self.samples), ("ao_samples", self.ao_samples), ("noise_threshold", self.noise),
+                       ("dpi", self.dpi),
                        ("time_per_frame", self.time_per_frame), ("scale_bar_length", self.scale_length)):
             if key in st:
                 w.setValue(st[key])

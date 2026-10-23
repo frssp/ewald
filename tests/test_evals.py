@@ -76,7 +76,7 @@ def test_reproducibility_catches_state_the_notebook_does_not_make():
     # but the notebook makes it black
     code = "view(pipe, background='white', bonds=False)"
     calls = [("insert_cell", {"source": code}), ("run_cell", {"index": -1}),
-             ("edit_cell", {"index": -1, "old_text": "'white'", "new_text": "'black'"})]
+             ("edit_cell", {"index": -1, "old_text": "'white'", "new_text": "'black'", "run": False})]
     r = _play("sto-white", calls=calls, answer="Done.", allow_code=True)
     assert r.passed and r.reproducible is False and "background" in r.reproduce_detail
     r = _play("sto-white", calls=calls[:2], answer="Done.", allow_code=True)

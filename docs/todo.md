@@ -14,6 +14,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): the Plots panel draws a lineup
+  table as curves only; the `levels` (VBM, CBM, E_F) and plateau `regions` in its attributes are
+  not drawn yet (needs a GUI mockup first), and the side bar has no "Analysis" row. Only the
+  sim-agent band-offset lineup exists; work function, EOS, formation energy and polycrystalline
+  work function recipes are next. Not yet checked against sim-agent's own finalize result on a
+  real workflow.
 - Opening without running (`python.run_notebooks`, default "never"): covers notebook files only. A
   folder or workflow (`simagent:`, AiiDA, calculation folders) still runs its generated `load(...)`
   notebook at once, since it is ewald's own code; no per-notebook "always run this one" choice yet.
@@ -55,8 +61,13 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   for k = 12-33, was 0.32-0.71 s with cKDTree + image padding). PTM (0.93 s) and Steinhardt
   (0.95 s) are now dominated by their per-atom kernels (PTM's C++ template matching, the Ylm
   sums), Voronoi (0.72 s) by voro++; those already use every core.
-- Ray tracer: a BVH instead of the uniform grid for large surfaces, adaptive sampling that
-  stops on converged pixels, and the CUDA path.
+- Ray tracer: the CUDA path. Fine surface meshes now go through a BVH (isosurfaces 1.4-2.2x
+  faster) while atoms, bonds, arrows, glass spheres and polyhedra stay in the uniform grid, where
+  a BVH measured 1.2-2x slower; the binned-SAH build is single-threaded (0.23 s for 271k
+  triangles). Adaptive sampling (`noise_threshold`, Publication 0.01) saves only 1.0-1.5x at 16
+  rays/pixel: its error estimate (variance / n) treats the low-discrepancy AO as random, so it
+  overestimates the noise of shaded pixels; an estimate that knows the R2 sequence (or comparing
+  two half-sample images) would let more pixels stop.
 - GUI startup: the window paints after 1.7 s (was 2.85 s); the 3D view (pyvistaqt import,
   ~1.2 s), the Plots canvas, the IPython console and the ~/.ssh/config hosts come after the
   first paint, so the 3D view is ready at about 2.8 s. Left: `import ewald.gui.app` itself
@@ -347,8 +358,6 @@ Formats
 - NEB: warn when an endpoint OUTCAR lists the atoms in another order than the band (the Fe
   vacancy example's 04/OUTCAR does; the reader takes POSCAR atoms, so only other tools are hit),
   and match atoms by position when images carry no identifiers.
-- `style='Points'` in a view cell reportedly left the bonds of an NEB view on the owner's
-  Windows GUI (2026-10-23); not reproduced in the container (bonds go off there), needs a screenshot.
 - NEB: interpolate between images for a smoother movie; `OverlayFrames` copies are extra
   particles, so picking one in the viewport selects a copy, not the real atom.
 - Ray tracer: see-through spheres are tessellated glass (`OverlayFrames` copies, Transparency);
@@ -552,7 +561,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   changes against; check that the tolerances and the `ANSWER:` convention are fair to real answers.
 - AI features with a real API key (Claude; also OpenAI, Gemini and a local Ollama/LM Studio
   server, which are tested only against mocked servers): `ewald ask` (also `--select`), the GUI AI chat side bar
-  (notebook code in the prompt, code blocks inserted as cells, the notebook cell tools),
+  (notebook code in the prompt, code blocks inserted as cells, the notebook cell tools; with
+  Let the AI run cells on, that the model runs and fixes its cells, also over an OpenAI-compatible gateway),
   `ewald narrate`, `ewald forge`, `ewald mcp`, and Preferences › AI › Test connection.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
   KWallet); the container has none, so only the 0600 file fallback runs for real.
