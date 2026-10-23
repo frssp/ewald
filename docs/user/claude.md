@@ -91,6 +91,9 @@ nb.save()
 `agent.ask(question, cancel=event)` stops at its next step once the `threading.Event` is set
 (the request already sent still finishes) and raises `ewald.llm.agent.Cancelled`, leaving the
 conversation as it was before the question; the AI chat's Stop button uses it.
+`Agent(..., stream=True)` streams the answers: their text reaches `on_event` as `("text", piece)`
+events while it arrives (Claude and every Chat Completions server; a server that refuses
+streaming gets the request again in one piece), and a Stop then ends the request at once.
 
 Cells the model inserts or edits are not run: they are marked not run (or out of date) until you
 run them. `run_cell` exists only with `allow_code=True` (`--allow-code` on the command line) or,

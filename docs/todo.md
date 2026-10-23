@@ -82,9 +82,11 @@ GUI
   sharing the energy axis, once the panel layout can place plots side by side); a scatter view
   of two particle properties where a brushed box selects atoms; the `show()` script path draws
   DOS/bands like the GUI (it plots the raw table columns now).
-- AI chat side bar (`gui/ask_panel.py`, activity bar): stream answers as they arrive (now the
-  whole answer at once), keep chats per notebook tab and save them in `.ewd`,
-  show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
+- AI chat side bar (`gui/ask_panel.py`, activity bar): chats are per notebook tab and saved only in
+  `.ewd` (not `.py`/`.ipynb`), and a chat changes no "unsaved" mark, so closing without saving
+  loses it; a saved chat reaches a new model as a text transcript (no tool results or images);
+  a streamed answer is drawn as Markdown a few times a second, so an unclosed code fence shows as
+  text until it closes; `ewald ask` and the MCP server do not stream; show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
   edit or regenerate a sent message. The notebook cell tools (`llm/notebook_tools.py`) could
   highlight the cells the AI changed and show a diff to accept or undo; `ewald ask` and the MCP
   server could take a notebook (`--notebook analysis.py`) and save it back.
@@ -393,8 +395,9 @@ Plugins and AI
 
 - AI providers (`llm/providers.py`): the OpenAI-compatible provider never sends images (no
   per-server vision switch yet); Effort reaches only Claude and OpenAI reasoning models; one
-  `llm.model` setting for all providers (switching the provider in Preferences clears it); no
-  streaming for any provider; a native Gemini or Bedrock/Vertex client would need a `Chat`
+  `llm.model` setting for all providers (switching the provider in Preferences clears it);
+  streaming falls back by itself only for Chat Completions servers (a Claude gateway that cannot
+  stream needs Preferences › AI › Stream answers off); a native Gemini or Bedrock/Vertex client would need a `Chat`
   subclass (today Gemini goes through its OpenAI-compatible endpoint). Keys are per provider, so two
   saved connections of one provider with different keys share one keychain entry. Preferences › AI › Extra headers is a
   one-line field, so a long header list is hard to read and easy to cut short (it happened with a

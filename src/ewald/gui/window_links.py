@@ -47,12 +47,14 @@ class _GuiCall(QtCore.QObject):
 
 
 class NotebookBridge(NotebookAccess):
-    """The AI chat's notebook tools on the window's current notebook tab: edits happen on the GUI
-    thread, redraw the cells, count as one undo step each ("AI: insert cell", Ctrl+Z) and recompute
-    when the pipeline changed; run_cell (Preferences › AI › Let the AI run cells) runs like Shift+Enter."""
+    """The AI chat's notebook tools on one notebook tab (``notebook``; None: the current tab): edits
+    happen on the GUI thread, redraw the cells, count as one undo step each ("AI: insert cell", Ctrl+Z)
+    and recompute when the pipeline changed; run_cell (Preferences › AI › Let the AI run cells) runs
+    like Shift+Enter. Each tab's chat has its own, so an answer still on its way after a switch keeps
+    working on its own notebook."""
 
-    def __init__(self, window):
-        super().__init__(lambda: window.panel.notebook,
+    def __init__(self, window, notebook=None):
+        super().__init__(notebook if notebook is not None else (lambda: window.panel.notebook),
                          can_run=lambda: bool(window.settings["llm.run_cells"]))
         self.window = window
         self.call = _GuiCall()

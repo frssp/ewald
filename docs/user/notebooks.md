@@ -383,6 +383,7 @@ An `.ewd` file is a zip archive:
 analysis.ewd
 ├── notebook.ipynb   code and outputs (a standard Jupyter notebook)
 ├── manifest.json    ewald version, data files, plugins, style, camera and frame
+├── chat.json        the notebook's AI chat (when it has one)
 ├── figures/         each view cell as SVG and PNG, and the plotted data as CSV
 ├── data/            data files up to 50 MB
 └── plugins/         plugin files from your plugin folder that the steps use
@@ -394,6 +395,9 @@ each file next to the notebook or in the copy the `.ewd` carries, and says when 
 changed or is missing. `load("traj.dump")` in a cell looks in the same places, so a notebook
 you send with its data, or one that carries it, runs on another computer. Preferences › Python
 sets the size limit (*Copy data files up to*, 0 for links only) and whether figures are saved.
+The AI chat beside the notebook goes into the `.ewd` too (as text: messages and the names of the
+tools used) and is back in the chat side bar when you open the file; `.py` and `.ipynb` files do
+not keep it.
 
 Trust works as in Jupyter. A notebook you saved yourself, or trusted before, opens trusted (it
 runs when opened only if *Run notebooks when opened* is *always*, or you answer *Yes* with *ask*). Any other notebook file

@@ -253,6 +253,7 @@ class Notebook:
         self.dirty = False
         self.metadata: dict = {}      # .ipynb notebook metadata, kept on a round trip
         self.state: dict = {}         # viewer state saved in .ewd files: style, camera, frame
+        self.chat: list = []          # the AI chat beside this notebook, saved in .ewd files (chat.json)
         self.data_dirs: list = []     # more folders where load() looks (an .ewd's bundled data)
         self.bundle_dir: str | None = None   # where an .ewd file was unpacked
         self.restricted = False       # a file not trusted yet (see trust()): cells do not run
