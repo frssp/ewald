@@ -4660,8 +4660,9 @@ def test_viewport_has_no_msaa_so_depth_peeling_keeps_see_through_atoms(app):
 
 
 def test_resize_handles_are_visible_in_every_theme(app):
-    """Dock separators and split handles show a rule and a dotted grip in a 7 px hit area (the
-    owner could only find the notebook/structure boundary by hovering), in every UI theme."""
+    """Dock separators and split handles show a rule that thickens into a pill grip, in a 7 px hit
+    area (the owner could only find the notebook/structure boundary by hovering, then found the
+    plain border rule too faint under the grip), in every UI theme."""
     from PySide6 import QtGui
 
     from ewald.gui import theme
@@ -4673,7 +4674,8 @@ def test_resize_handles_are_visible_in_every_theme(app):
             for img in ("grip_v", "grip_h", "grip_v_hover", "grip_h_hover"):
                 path = theme.image(img)      # PNG (Qt squares SVG style-sheet images) with a @2x copy
                 small, large = QtGui.QImage(path), QtGui.QImage(path.replace(".png", "@2x.png"))
-                assert sorted((small.width(), small.height())) == [7, 25] and large.width() == 2 * small.width()
+                assert sorted((small.width(), small.height())) == [7, 32] and large.width() == 2 * small.width()
+            rule = theme._mix(t["border"], t["muted"], theme.RULE)
             w = QtWidgets.QMainWindow()
             w.setStyleSheet(theme.stylesheet())
             w.resize(400, 300)
@@ -4690,15 +4692,17 @@ def test_resize_handles_are_visible_in_every_theme(app):
             left, right = dock.geometry().right() + 1, w.centralWidget().geometry().left()
             assert right - left == 7, name                         # the separator's hit area
             row = [im.pixelColor(x, 20).name().upper() for x in range(left, right)]
-            assert row == [t["panel"]] * 3 + [t["border"]] + [t["panel"]] * 3, (name, row)
+            assert row == [t["panel"]] * 3 + [rule] + [t["panel"]] * 3, (name, row)
             mid = dock.geometry().center().y()
-            grip = [im.pixelColor(left + 3, y).name().upper() for y in range(mid - 14, mid + 14)]
-            assert grip.count(t["muted"]) >= 3, (name, grip)       # three dots on the rule
+            grip = [im.pixelColor(x, mid).name().upper() for x in range(left, right)]
+            assert grip[2:5] == [t["muted"]] * 3, (name, grip)     # the pill sits on the rule
+            pill = [im.pixelColor(left + 3, y).name().upper() for y in range(mid - 20, mid + 20)]
+            assert 18 <= pill.count(t["muted"]) <= 26, (name, pill)
             handle = split.handle(1)
             assert handle.height() == 7, name
             corner = handle.mapTo(w, QtCore.QPoint(0, 0))
             col = [im.pixelColor(corner.x() + 20, y).name().upper() for y in range(corner.y(), corner.y() + 7)]
-            assert col == [t["panel"]] * 3 + [t["border"]] + [t["panel"]] * 3, (name, col)
+            assert col == [t["panel"]] * 3 + [rule] + [t["panel"]] * 3, (name, col)
             w.close()
             _dispose(w)
     finally:
@@ -4706,7 +4710,7 @@ def test_resize_handles_are_visible_in_every_theme(app):
         theme.TOKENS.update(saved[0])
         theme.STYLE.clear()
         theme.STYLE.update(saved[1])
-    css = theme.stylesheet()     # hover: a 3 px accent rule and an accent grip
+    css = theme.stylesheet()     # hover: an accent rule and a wider accent grip
     assert "QSplitter::handle:horizontal:hover" in css and "grip_v_hover" in css
 
 

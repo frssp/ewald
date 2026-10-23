@@ -515,7 +515,7 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   dialog with a name typed without extension; settings with non-ASCII text on Korean Windows;
   per-monitor DPI at 125/150 %; Windows Credential Manager; `ewald api > llms.txt` in cmd and
   PowerShell. The same list on a real Mac.
-- Resize handles between panels (dotted grip on a 1 px rule, accent on hover, 7 px hit area)
+- Resize handles between panels (a 1 px rule thickening into a pill grip, accent on hover, 7 px hit area)
   on Windows at 125/150 % and on a Retina Mac: the grip uses the `@2x` PNG and stays sharp, and
   the split cursor shows over the whole handle.
 - Plugins side bar on Windows and macOS: install ewald-phonopy from the default index (uv and

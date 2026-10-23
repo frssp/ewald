@@ -31,12 +31,13 @@ _IMAGES = {
     "check": ("on_accent", '<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
     "close": ("muted", '<path d="M7 7l10 10M17 7 7 17"/>'),
     "close_hover": ("text", '<path d="M7 7l10 10M17 7 7 17"/>'),
-    # three dots in the middle of a resize handle (on a vertical, a horizontal bar). Qt squares SVG
-    # style-sheet images, so these are written as PNG (plus @2x) at their own 7 x 25 px size.
-    "grip_v": ("muted", '<path d="M3.5 4.5v0.01M3.5 12.5v0.01M3.5 20.5v0.01"/>', "0 0 7 25"),
-    "grip_h": ("muted", '<path d="M4.5 3.5h0.01M12.5 3.5h0.01M20.5 3.5h0.01"/>', "0 0 25 7"),
-    "grip_v_hover": ("accent", '<path d="M3.5 4.5v0.01M3.5 12.5v0.01M3.5 20.5v0.01"/>', "0 0 7 25"),
-    "grip_h_hover": ("accent", '<path d="M4.5 3.5h0.01M12.5 3.5h0.01M20.5 3.5h0.01"/>', "0 0 25 7"),
+    # the grip of a resize handle: a short pill on its rule (a vertical, a horizontal bar), wider
+    # on hover. Qt squares SVG style-sheet images, so these are written as PNG (plus @2x) at
+    # their own 7 x 32 px size; the fourth field is the stroke width.
+    "grip_v": ("muted", '<path d="M3.5 4v24"/>', "0 0 7 32", 3),
+    "grip_h": ("muted", '<path d="M4 3.5h24"/>', "0 0 32 7", 3),
+    "grip_v_hover": ("accent", '<path d="M3.5 3.5v25"/>', "0 0 7 32", 5),
+    "grip_h_hover": ("accent", '<path d="M3.5 3.5h25"/>', "0 0 32 7", 5),
 }
 
 
@@ -46,22 +47,23 @@ def image(name: str, tokens: dict | None = None) -> str:
     import tempfile
 
     key, path_d, *box = _IMAGES[name]
+    box, stroke = box or (None, 2.4)
     color = (tokens or TOKENS)[key]
     stem = os.path.join(tempfile.gettempdir(), f"ewald-ui-{name}-{color.lstrip('#')}")
     svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="{}" fill="none" stroke="{}" stroke-width="{}" '
            'stroke-linecap="round" stroke-linejoin="round">{}</svg>')
-    if not box:
+    if box is None:
         path = stem + ".svg"
         if not os.path.exists(path):
             with open(path, "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(svg.format("0 0 24 24", color, 2.4, path_d))
+                fh.write(svg.format("0 0 24 24", color, stroke, path_d))
         return path.replace("\\", "/")
     path = stem + ".png"
     if not os.path.exists(path):
         from PySide6 import QtCore, QtGui, QtSvg
 
-        w, h = (int(v) for v in box[0].split()[2:])
-        renderer = QtSvg.QSvgRenderer(QtCore.QByteArray(svg.format(box[0], color, 3.2, path_d).encode()))
+        w, h = (int(v) for v in box.split()[2:])
+        renderer = QtSvg.QSvgRenderer(QtCore.QByteArray(svg.format(box, color, stroke, path_d).encode()))
         for scale, out in ((1, path), (2, stem + "@2x.png")):
             img = QtGui.QImage(w * scale, h * scale, QtGui.QImage.Format_ARGB32_Premultiplied)
             img.fill(QtCore.Qt.transparent)
@@ -117,18 +119,27 @@ def use(name: str) -> dict:
 QSS = """
 * {{ font-family: "IBM Plex Sans", "Inter", "Segoe UI", "Helvetica Neue", sans-serif; font-size: 12px; }}
 QMainWindow, QWidget {{ background: {panel}; color: {text}; }}
-/* resize handles between docks and split panels: a 1 px rule with a dotted grip in a 7 px hit
-   area (the split cursor shows over all of it); hover widens the rule to 3 px in the accent.
-   QSS draws no borders on these, so the rule is a hard-stopped gradient. */
+/* resize handles between docks and split panels: a 7 px hit area (the split cursor shows over all
+   of it) with a 1 px rule that thickens into a pill-shaped grip in the middle; on hover both turn
+   accent and widen. QSS draws no borders on these, so the rule is a hard-stopped gradient;
+   {rule} sits between the border and muted tokens so the rule and its grip read as one. */
 QMainWindow::separator {{ width: 7px; height: 7px; }}
 QMainWindow::separator:vertical, QSplitter::handle:horizontal {{ width: 7px;
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {panel}, stop:0.428 {panel}, stop:0.429 {border}, stop:0.571 {border}, stop:0.572 {panel}, stop:1 {panel}); image: url({img_grip_v}); }}
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {panel}, stop:0.428 {panel},
+        stop:0.429 {rule}, stop:0.571 {rule}, stop:0.572 {panel}, stop:1 {panel});
+    image: url({img_grip_v}); }}
 QMainWindow::separator:horizontal, QSplitter::handle:vertical {{ height: 7px;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {panel}, stop:0.428 {panel}, stop:0.429 {border}, stop:0.571 {border}, stop:0.572 {panel}, stop:1 {panel}); image: url({img_grip_h}); }}
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {panel}, stop:0.428 {panel},
+        stop:0.429 {rule}, stop:0.571 {rule}, stop:0.572 {panel}, stop:1 {panel});
+    image: url({img_grip_h}); }}
 QMainWindow::separator:vertical:hover, QSplitter::handle:horizontal:hover {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {panel}, stop:0.285 {panel}, stop:0.286 {accent}, stop:0.714 {accent}, stop:0.715 {panel}, stop:1 {panel}); image: url({img_grip_v_hover}); }}
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {panel}, stop:0.428 {panel},
+        stop:0.429 {accent}, stop:0.571 {accent}, stop:0.572 {panel}, stop:1 {panel});
+    image: url({img_grip_v_hover}); }}
 QMainWindow::separator:horizontal:hover, QSplitter::handle:vertical:hover {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {panel}, stop:0.285 {panel}, stop:0.286 {accent}, stop:0.714 {accent}, stop:0.715 {panel}, stop:1 {panel}); image: url({img_grip_h_hover}); }}
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {panel}, stop:0.428 {panel},
+        stop:0.429 {accent}, stop:0.571 {accent}, stop:0.572 {panel}, stop:1 {panel});
+    image: url({img_grip_h_hover}); }}
 QMenuBar {{ background: {bg}; color: {secondary}; }}
 QMenuBar::item:selected, QMenu::item:selected {{ background: {raised}; color: {text}; }}
 QMenu {{ background: {raised}; border: 1px solid {border}; padding: 4px; }}
@@ -428,9 +439,15 @@ def _restyle(css: str, st: dict) -> str:
     return css
 
 
+#: How far a resize handle's rule moves from the border color toward the grip's (muted): the
+#: plain border is too faint to carry the grip.
+RULE = 0.45
+
+
 def stylesheet(font_size: int = 12) -> str:
     images = {f"img_{name}": image(name) for name in _IMAGES}
-    css = _restyle(QSS.format(**TOKENS, **images), STYLE).replace("font-size: 12px", f"font-size: {font_size}px")
+    rule = _mix(TOKENS["border"], TOKENS["muted"], RULE)
+    css = _restyle(QSS.format(**TOKENS, **images, rule=rule), STYLE).replace("font-size: 12px", f"font-size: {font_size}px")
     if STYLE["qss"]:   # the theme's own rules last, so they win
         css += "\n/* UI theme */\n" + Template(STYLE["qss"]).safe_substitute(TOKENS) + "\n"
     return css
