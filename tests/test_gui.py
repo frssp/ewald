@@ -4920,6 +4920,14 @@ def test_resize_handles_are_visible_in_every_theme(app):
     from ewald.gui import theme
 
     saved = dict(theme.TOKENS), dict(theme.STYLE)
+    # images are cached in the temp folder by content: an older grip drawing there is not reused
+    first = theme.image("grip_v")
+    entry = theme._IMAGES["grip_v"]
+    try:
+        theme._IMAGES["grip_v"] = (entry[0], entry[1].replace("v24", "v20"), *entry[2:])
+        assert theme.image("grip_v") != first
+    finally:
+        theme._IMAGES["grip_v"] = entry
     try:
         for name in theme.PALETTES:
             t = theme.use(name)
