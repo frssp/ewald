@@ -25,6 +25,10 @@ kept for history.
   tests pass (full suite under `xvfb-run` when GUI or rendering is touched, `tests/test_visual.py`
   for renderer files). No need to wait for an explicit "merge". When PRs must land in order, the
   thread that merges tells the next one.
+- The repository was recreated from a scrubbed history on 2026-10-23 (D32): PR numbers up to #242
+  live in the private pre-publication repository. Never push a branch from a clone or branch made
+  before that, and never write the owner's institutional gateway identifiers (header names, model
+  names, user ids) into code, tests, docs or commit messages.
 - GitHub Actions minutes are exhausted, so every workflow is `workflow_dispatch` only (PR #62) and
   CI does not run on PRs; local runs are the gate. Do not watch, re-run or re-enable Actions, and do
   not push tags (v0.1.0 is prepared but untagged; docs/developer/release.md, testing.md say how to

@@ -10,6 +10,8 @@ Quotes are the owner's own words (often Korean) from the project discussion. Whe
 reason was not written down, "Why" is left out rather than guessed. How to add an entry is at
 the end.
 
+Pull request numbers up to #242 refer to the pre-publication repository, which is kept private; the public repository's numbering starts again at #1 (decision D32).
+
 ## Product
 
 ### D1. Target users and scope (2026-10-18, 2026-10-19)
@@ -342,6 +344,19 @@ the end.
 - **Alternatives:** a Pt nanoparticle site classification with a 3D-view zoom (PR #239, replaced);
   a single run.
 - **Landed:** PR #241.
+
+### D32. Publish from a fresh repository (2026-10-23)
+
+- **Decision:** before going public, the history was scrubbed (author name unified to Sunghyun
+  Kim, session links and the institution's API gateway identifiers removed with `git
+  filter-repo`), and the clean `main` was pushed to a new `frssp/ewald`; the old repository was
+  kept private as an archive. The commits stay; pull requests #1-#242 and their reviews do not
+  carry over.
+- **Why:** GitHub keeps pull request refs pointing at the old commits, which a force push cannot
+  remove. Asked whether to delete the repository and create it again, the owner went ahead with
+  it ("지금 github에서 저장소를 지우고 다시 ewald를 만들면 되나?").
+- **Alternatives:** asking GitHub Support to purge the pull request refs (keeps the pull
+  requests, delays publication); publishing with the refs as they were.
 
 ## Adding an entry
 
