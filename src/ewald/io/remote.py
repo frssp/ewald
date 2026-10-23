@@ -40,6 +40,8 @@ from collections import OrderedDict
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from .. import fileops
+
 _URL = re.compile(r"^(?:ssh|sftp)://(?:(?P<user>[^@/]+)@)?(?P<host>\[[^\]]+\]|[^:/]+)(?::(?P<port>\d+))?(?P<path>/.*)?$")
 _SCP = re.compile(r"^(?:(?P<user>[^@/:\s\\]+)@)?(?P<host>\[[^\]]+\]|[^@/:\s\\]{2,}):(?P<path>.*)$")
 
@@ -748,7 +750,7 @@ def fetch(path) -> str:
     callback = (lambda done, total: _progress(done, total, label)) if _progress else None
     with conn.lock:
         conn.sftp.get(full, str(tmp), callback=callback)
-    os.replace(tmp, local)
+    fileops.replace(tmp, local)
     meta_path.write_text(json.dumps(meta), encoding="utf-8", newline="\n")
     return str(local)
 
@@ -770,7 +772,7 @@ def download(path, dest) -> str:
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
-    os.replace(tmp, dest)
+    fileops.replace(tmp, dest)
     return str(dest)
 
 

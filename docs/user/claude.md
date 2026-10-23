@@ -3,7 +3,8 @@
 `ewald.llm` exposes the pipeline to an AI model as tools, so an analysis can be asked for in
 words and still ends up as an ordinary, reproducible pipeline. Claude is the default; OpenAI,
 Google Gemini, a model on your own machine (Ollama, LM Studio) or any other OpenAI-compatible
-server work the same way (see [Providers](#providers)).
+server work the same way (see [Providers](#providers)). Every tool, what it may change and everything
+that is sent to the provider are listed in [What the AI may do and what it sees](ai-permissions.md).
 
 ```bash
 pip install -e ".[llm]"
@@ -91,6 +92,9 @@ nb.save()
 `agent.ask(question, cancel=event)` stops at its next step once the `threading.Event` is set
 (the request already sent still finishes) and raises `ewald.llm.agent.Cancelled`, leaving the
 conversation as it was before the question; the AI chat's Stop button uses it.
+`Agent(..., stream=True)` streams the answers: their text reaches `on_event` as `("text", piece)`
+events while it arrives (Claude and every Chat Completions server; a server that refuses
+streaming gets the request again in one piece), and a Stop then ends the request at once.
 
 By default cells the model inserts or edits are not run: they are marked not run (or out of
 date) until you run them. With `allow_code=True` (`--allow-code` on the command line) or, in the
@@ -106,6 +110,15 @@ instructions), so the always-on tools are limited to what such text cannot abuse
 accept only arithmetic, comparisons and NumPy array functions; `export_file` replaces files only
 inside its work dir and never writes into hidden folders such as `~/.ssh`; and the plugin tool
 `compute_plumed_cvs` refuses `LOAD` (native code) and absolute or `..` file paths.
+
+The files the model opens itself (`load_structure`, `describe_workflow`, plugin tools such as
+`read_plumed_output`) can be limited to some folders: Preferences › AI › **Folders the AI may
+read** (`llm.read_folders`, separated by `;`; empty means any folder). Links, `..` and wildcards
+are resolved before the check, which ignores case on Windows. Before the AI connects to an SSH
+host for the first time in a chat, the GUI asks whether it may (**Ask before the AI connects to a
+host**, on by default). In Python, `toolset.read_access = ReadAccess(folders, confirm_host)`
+(`ewald.llm.access`) does the same; plugin tools call `toolset.check_read(path)` before opening a
+path the model gave them. Cells you run yourself are not limited.
 
 ## Providers
 

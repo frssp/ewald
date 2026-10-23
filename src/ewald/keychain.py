@@ -8,16 +8,20 @@
 
 Every secret is stored under the service ``ewald`` with its name as the user name. Where no
 keychain backend works (a headless Linux box, ssh without a desktop session) secrets go to
-``<config dir>/credentials.json``, one entry per name, readable by the owner only. Secrets
+``<config dir>/credentials.json``, one entry per name, readable by the owner only (mode 0600;
+an owner-only ACL on Windows). Secrets
 never go to settings.json, sessions, notebooks or logs.
 """
 from __future__ import annotations
 
 import json
+import logging
 import os
+import sys
 from pathlib import Path
 
 SERVICE = "ewald"
+log = logging.getLogger(__name__)
 
 
 def _keyring():
@@ -80,10 +84,35 @@ def file_set(name: str, value: str | None) -> None:
         path.unlink(missing_ok=True)
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+    os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
+    owner_only(path)   # before the secrets go in; an existing file keeps its old mode through O_CREAT
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(data, f)
-    os.chmod(path, 0o600)  # an existing file keeps its old mode through O_CREAT
+
+
+def owner_only(path) -> bool:
+    """Let only the current user read ``path``: mode 0600 on Linux and macOS; on Windows, where
+    the mode means nothing, an ACL that grants the current user full control and drops every
+    inherited entry (``icacls``). False (and a warning) when Windows refused."""
+    if sys.platform != "win32":
+        os.chmod(path, 0o600)
+        return True
+    import getpass
+    import subprocess
+
+    user, domain = getpass.getuser(), os.environ.get("USERDOMAIN", "")
+    account = f"{domain}\\{user}" if domain else user
+    try:
+        done = subprocess.run(["icacls", os.fspath(path), "/inheritance:r", "/grant:r", f"{account}:F"],
+                              capture_output=True, encoding="utf-8", errors="replace", timeout=30,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        ok, why = done.returncode == 0, (done.stderr or done.stdout).strip()
+    except (OSError, subprocess.SubprocessError) as e:
+        ok, why = False, str(e)
+    if not ok:
+        log.warning("could not limit %s to %s (icacls: %s); other accounts on this PC may read it",
+                    path, account, why)
+    return ok
 
 
 # ----------------------------------------------------------------- generic secrets

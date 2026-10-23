@@ -53,7 +53,8 @@ class LammpsDumpReader(FrameReader):
         self.type_map = {str(k): v for k, v in (type_map or {}).items()}
         self.sort_by_id = sort_by_id
         self._size = file_size(self.path)
-        self._offsets, last_complete = _scan_frames(self.path)
+        self._timesteps: dict[int, int] = {}  # frame offset -> ITEM: TIMESTEP, from the index scan
+        self._offsets, last_complete = _scan_frames(self.path, steps=self._timesteps)
         if not self._offsets:
             raise ValueError(f"{path}: no 'ITEM: TIMESTEP' found; not a LAMMPS dump file")
         self._end = None  # where the last frame ends (None: end of file)
@@ -64,7 +65,6 @@ class LammpsDumpReader(FrameReader):
                                           f"or stopped)") from None
             self._set_incomplete(f"{len(self._offsets)} frame(s) read, the partial last one skipped")
         self._last = None
-        self._timesteps: dict[int, int] = {}  # frame offset -> ITEM: TIMESTEP, read on demand
         self._units = None  # LAMMPS writes ITEM: UNITS only in the first snapshot
         self._read_units()
 
@@ -88,7 +88,9 @@ class LammpsDumpReader(FrameReader):
             self._size = size
             start = self._end if self._end is not None else self._offsets[-1]
             keep = len(self._offsets) - (self._end is None)
-        offsets, complete = _scan_frames(self.path, start)
+        if keep == 0:  # rewritten: the same offsets may hold other frames now
+            self._timesteps = {}
+        offsets, complete = _scan_frames(self.path, start, steps=self._timesteps)
         end = None
         if offsets and not complete:  # the frame being written right now
             end = offsets.pop()
@@ -98,16 +100,32 @@ class LammpsDumpReader(FrameReader):
         # the old last frame was scanned again: its last line may have been half written
         changed = keep < len(self._offsets) or offsets != self._offsets
         self._offsets, self._end, self._last = offsets, end, None
-        if keep == 0:  # rewritten: the same offsets may hold other frames now
-            self._timesteps = {}
         self._set_incomplete(f"{len(offsets)} frame(s) read, the partial last one skipped" if end is not None
                              else None, warn=False)
         if keep == 0 or (self._units is None and len(offsets) > 1):
             self._read_units()
         return keep if changed else None
 
+    def run_starts(self) -> list[int]:
+        """Frames whose Timestep is not above the previous frame's: LAMMPS went on writing after
+        a restart into the same file (``dump_modify append yes``), or ``reset_timestep``.
+        The steps come from the index scan, so this reads nothing."""
+        cache, offsets = self._timesteps, self._offsets
+        if remote.is_remote(self.path) and any(o not in cache for o in offsets):
+            return []  # no grep on the host: reading every frame's step over SFTP is too slow
+        out, prev = [], None
+        for i in range(len(offsets)):
+            step = cache.get(offsets[i])
+            if step is None:
+                step = self.timestep(i)
+            if step is not None and prev is not None and step <= prev:
+                out.append(i)
+            prev = step if step is not None else prev
+        return out
+
     def timestep(self, index: int) -> int | None:
-        """``ITEM: TIMESTEP`` of frame ``index``, from its first lines only (cached)."""
+        """``ITEM: TIMESTEP`` of frame ``index`` (known from the index scan, else read from the
+        frame's first lines and cached)."""
         index = range(len(self._offsets))[index]
         cache = self._timesteps
         offset = self._offsets[index]
@@ -268,24 +286,28 @@ def _type_labels(values, type_map=None) -> np.ndarray:
     return np.array(names, dtype=str)[inverse]
 
 
-def _scan_frames(path, start: int = 0, chunk_size: int = 1 << 24) -> tuple[list[int], bool]:
+def _scan_frames(path, start: int = 0, chunk_size: int = 1 << 24,
+                 steps: dict[int, int] | None = None) -> tuple[list[int], bool]:
     """Byte offset of the first ITEM line of every frame (UNITS/TIME may precede TIMESTEP),
     and whether the last frame holds all of its atom lines. ``start`` (a frame start)
-    skips the bytes before it.
+    skips the bytes before it. ``steps``, when given, receives frame offset -> Timestep.
 
     Reads the file in large chunks and only looks at 'ITEM:' lines, so indexing a
     multi-GB dump costs about as much as reading it from disk. A remote dump is indexed
     by ``grep`` on the host instead (only the ITEM lines cross the network).
     """
-    hits = remote.line_offsets(path, "^ITEM: (TIME|UNITS|ATOMS)", start) if remote.is_remote(path) else None
+    # bare numbers too: the line after ITEM: TIMESTEP holds the step
+    hits = remote.line_offsets(path, "^ITEM: (TIME|UNITS|ATOMS)|^[[:space:]]*[0-9]+[[:space:]]*$", start) \
+        if remote.is_remote(path) else None
     if hits is not None:
-        return _scan_remote(path, hits)
+        return _scan_remote(path, hits, steps)
     offsets: list[int] = []
     in_header = False
     natoms = None  # NUMBER OF ATOMS of the current frame
     ncols = 0  # columns in its ATOMS line
     counted = None  # atom lines seen since the ATOMS line, None outside the atom block
     want_n = False  # the next line holds the atom count
+    want_step = False  # the next line holds the Timestep
     pos = start  # file offset of buf[0]
     carry = b""
     with open_binary(path) as fh:
@@ -312,6 +334,10 @@ def _scan_frames(path, start: int = 0, chunk_size: int = 1 << 24) -> tuple[list[
             if want_n and seg:
                 eol = seg.find(b"\n") + 1 or end
                 natoms, want_n, i = int(seg[:eol]), False, eol
+            elif want_step and seg:
+                eol = seg.find(b"\n") + 1 or end
+                _store_step(steps, offsets[-1], seg[:eol])
+                want_step, i = False, eol
             while True:
                 j = seg.find(b"ITEM:", i)
                 while j > 0 and seg[j - 1] != 10:  # 'ITEM:' not at a line start
@@ -331,6 +357,13 @@ def _scan_frames(path, start: int = 0, chunk_size: int = 1 << 24) -> tuple[list[
                     if not in_header:
                         offsets.append(pos + j)
                         in_header, natoms = True, None
+                    if steps is not None and line.startswith(b"ITEM: TIMESTEP"):
+                        nl = seg.find(b"\n", eol) + 1
+                        if nl:
+                            _store_step(steps, offsets[-1], seg[eol:nl])
+                            eol = nl
+                        else:
+                            want_step = True
                 elif line.startswith(b"ITEM: NUMBER OF ATOMS"):
                     nl = seg.find(b"\n", eol) + 1
                     if nl:
@@ -347,14 +380,26 @@ def _scan_frames(path, start: int = 0, chunk_size: int = 1 << 24) -> tuple[list[
     return offsets, complete
 
 
-def _scan_remote(path, hits) -> tuple[list[int], bool]:
-    """Frame offsets from remote ITEM-line hits; the last frame is checked by reading only it."""
-    offsets, in_header = [], False
+def _store_step(steps, offset: int, line: bytes) -> None:
+    try:
+        steps[offset] = int(line.split()[0])
+    except (ValueError, IndexError):
+        pass
+
+
+def _scan_remote(path, hits, steps=None) -> tuple[list[int], bool]:
+    """Frame offsets (and steps: the number line right after ITEM: TIMESTEP) from remote
+    ITEM-line hits; the last frame is checked by reading only it."""
+    offsets, in_header, step_at = [], False, -1  # step_at: where the line after ITEM: TIMESTEP starts
     for pos, line in hits:
+        if steps is not None and step_at <= pos <= step_at + 1 and not line.startswith(b"ITEM:"):
+            _store_step(steps, offsets[-1], line)  # (+1: grep's line text has no CR of a CRLF file)
         if line.startswith(_FRAME_START):
             if not in_header:
                 offsets.append(pos)
                 in_header = True
+            if line.startswith(b"ITEM: TIMESTEP"):
+                step_at = pos + len(line) + 1
         elif line.startswith(b"ITEM: ATOMS"):
             in_header = False
     if not offsets:

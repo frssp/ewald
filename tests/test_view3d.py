@@ -172,6 +172,27 @@ def test_claude_tools_drive_the_view(tmp_path, monkeypatch):
     assert ts.call("set_view", {"reset": True}).content["changed"] == {}
     ts.call("set_view", {"cell": False})
     assert "view(pipe, cell=False)" in ts.to_script()
+    # trajectory_* only style the lines of a GenerateTrajectoryLines step: the tool says when there is none
+    r = ts.call("set_view", {"trajectory_trail": True})
+    assert not r.is_error and "GenerateTrajectoryLines" in r.content["notes"][0]
+    ts.call("add_modifier", {"name": "GenerateTrajectoryLines", "params": {}})
+    assert "notes" not in ts.call("set_view", {"trajectory_trail": 1.0}).content
+
+
+def test_view_warns_when_trajectory_settings_have_no_lines(srtio3):
+    """view(pipe, trajectory_trail=True) without a GenerateTrajectoryLines step draws nothing: say so."""
+    from ewald.modifiers import GenerateTrajectoryLines
+
+    with pytest.warns(UserWarning, match=r"trajectory_trail.*GenerateTrajectoryLines"):
+        view(srtio3, trajectory_trail=True)
+    srtio3.add(GenerateTrajectoryLines())
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        view(srtio3, trajectory_trail=True, trajectory_color_by="Time")
+    with pytest.raises(KeyError, match="no view setting 'trajectory_trial'"):   # misspelt settings fail
+        view(srtio3, trajectory_trial=True)
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")

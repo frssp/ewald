@@ -69,7 +69,9 @@ LAYOUT = {
         ("Saved connections", ["llm.profiles"]),
         ("Provider", ["llm.provider"]),
         ("Model", ["llm.model", "llm.effort"]),
+        ("Chat", ["llm.stream"]),
         ("Notebook", ["llm.code_cells", "llm.run_cells"]),
+        ("Files", ["llm.read_folders", "llm.confirm_hosts"]),
         ("Connection", ["llm.base_url", "llm.route_prefix", "llm.key_header", "llm.headers",
                         "llm.timeout"])]),
 }

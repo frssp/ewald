@@ -45,6 +45,7 @@ from .. import modifiers as _modifiers
 from ..notebook import Cell, Notebook
 from ..pipeline import Modifier, Pipeline, PythonModifier
 from . import describe as _describe
+from .access import ReadAccess
 
 
 @dataclass
@@ -161,8 +162,15 @@ class Toolset:
         self.figures: list[str] = []
         self.tools: dict[str, Tool] = {}
         self.notebook_access = None
+        #: Which local folders and SSH hosts the read tools may open (:mod:`ewald.llm.access`).
+        self.read_access = ReadAccess()
         self._register()
         self.attach_notebook(notebook if notebook is not None else session_notebook(pipeline))
+
+    def check_read(self, path) -> None:
+        """Raise ``PermissionError`` unless the tools may read ``path`` (``read_access``); plugin
+        tools that open a path the model chose call it first."""
+        self.read_access.check(path)
 
     @property
     def notebook(self) -> Notebook | None:
@@ -279,7 +287,7 @@ class Toolset:
 
     def _apply_view(self, settings: dict, reset=None, rotate=None) -> dict:
         """Change view settings by writing the notebook's view cell and running it."""
-        from ..view3d import View, view_source
+        from ..view3d import View, view_notes, view_source
 
         pipe = self._need_pipeline()
         old = pipe.view.changed()
@@ -336,6 +344,9 @@ class Toolset:
         out = {"changed": pipe.view.changed(), "code": view_source(self.pipeline_name, **pipe.view.changed())}
         if k is not None:
             out["cell"] = k
+        notes = view_notes(pipe.view, pipe.modifiers)
+        if notes:
+            out["notes"] = notes
         return out
 
     # ----------------------------------------------------------- registration
@@ -407,6 +418,7 @@ class Toolset:
         def load_structure(path, format=None, type_map=None):
             import ewald
 
+            self.check_read(path)
             args = [repr(os.path.expanduser(str(path)))]
             if format:
                 args.append(f"format={str(format)!r}")
@@ -760,7 +772,8 @@ class Toolset:
            "Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style "
            "preset, theme, element colors and radii, atoms on/off, bonds on/off, bond table, cell, background, VESTA "
            "boundary, polyhedra/isosurface look by surface name (surfaces), distance/angle measurements, key light, "
-           "atom labels, plugin visuals, vectors, camera "
+           "atom labels, plugin visuals, vectors, the look of trajectory lines (trajectory_*: the lines "
+           "themselves come from a GenerateTrajectoryLines step, so add_modifier it first), camera "
            "(direction, zoom, rotate), frame, and picture options (renderer, "
            "quality, legends, scale bar, text). Only the settings given change; null resets one to its default. "
            "'rotate' turns the current view by [azimuth, elevation] degrees; 'reset' (true or a list of names) "
@@ -960,6 +973,7 @@ class Toolset:
         def describe_workflow(path):
             from .. import workflow
 
+            self.check_read(path)
             return workflow.describe(str(path)).as_dict()
 
         for name in ("list_workflows", "describe_workflow"):

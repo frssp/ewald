@@ -130,6 +130,110 @@ def _ionic_steps(oszicar: str) -> int | None:
         return None
 
 
+def _head(path: str, size: int = 1 << 14) -> bytes:
+    from .io.base import open_binary
+
+    try:
+        with open_binary(path) as fh:
+            return fh.read(size)
+    except OSError:
+        return b""
+
+
+def _atom_count(folder: str, entries: dict) -> int | None:
+    """Atoms in the cell: the counts line of CONTCAR or POSCAR, else ``NIONS`` in the OUTCAR head."""
+    files = _files(entries)
+    for name in ("CONTCAR", "POSCAR"):
+        if name not in files:
+            continue
+        lines = _head(_join(folder, _real_name(entries, name)), 1 << 12).decode("utf-8", "replace").splitlines()
+        for line in lines[5:7]:          # VASP 5 has a species line first, VASP 4 does not
+            words = line.split()
+            if words and all(w.isdigit() for w in words):
+                return sum(int(w) for w in words)
+    if "OUTCAR" in files:
+        m = re.search(rb"NIONS\s*=\s*(\d+)", _head(_join(folder, _real_name(entries, "OUTCAR")), 1 << 16))
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def _max_force(outcar: str, atoms: int | None) -> float | None:
+    """Largest force (eV/Å) on an atom in the last ``TOTAL-FORCE`` block of an OUTCAR (its tail
+    only: None when the block is not in the last part of the file or is cut off)."""
+    size = max(1 << 16, 120 * (atoms or 0) + (1 << 15))
+    text = _tail(outcar, min(size, 1 << 23)).decode("utf-8", "replace")
+    at = text.rfind("TOTAL-FORCE")
+    if at < 0:
+        return None
+    best, rows = None, 0
+    lines = text[at:].splitlines()[2:]
+    for line in lines:
+        words = line.split()
+        if len(words) != 6:
+            break
+        try:
+            f = [float(w) for w in words[3:]]
+        except ValueError:
+            break
+        norm = (f[0] ** 2 + f[1] ** 2 + f[2] ** 2) ** 0.5
+        best = norm if best is None else max(best, norm)
+        rows += 1
+    if not rows or (atoms and rows != atoms):
+        return None
+    return round(best, 6)
+
+
+#: EIGENVAL files larger than this are not read for the band gap (bytes)
+MAX_EIGENVAL = 32 << 20
+
+
+def _band_gap(eigenval: str) -> float | None:
+    """Band gap (eV, 0 for a metal) from the band energies and occupations of an EIGENVAL file
+    (VASP 5.4 or later writes the occupations); None when it has none."""
+    import numpy as np
+
+    from .io.base import open_binary
+
+    try:
+        with open_binary(eigenval) as fh:
+            lines = fh.read(MAX_EIGENVAL + 1).decode("utf-8", "replace").splitlines()
+    except OSError:
+        return None
+    try:
+        spin = int(lines[0].split()[3])
+        _, nk, nb = (int(w) for w in lines[5].split()[:3])
+    except (IndexError, ValueError):
+        return None
+    energies, occupations, i = [], [], 6
+    for _ in range(nk):
+        while i < len(lines) and not lines[i].strip():
+            i += 1
+        i += 1                                       # the k-point line
+        for _ in range(nb):
+            if i >= len(lines):
+                return None
+            words = lines[i].split()
+            i += 1
+            if len(words) < (5 if spin == 2 else 3):
+                return None
+            try:
+                values = [float(w) for w in words[1:]]
+            except ValueError:
+                return None
+            if spin == 2:
+                energies += values[0:2]
+                occupations += values[2:4]
+            else:
+                energies.append(values[0])
+                occupations.append(values[1])
+    e, occ = np.asarray(energies), np.asarray(occupations)
+    full, empty = e[occ > 0.5], e[occ <= 0.5]
+    if not len(full) or not len(empty):
+        return None
+    return round(max(0.0, float(empty.min() - full.max())), 6)
+
+
 # ----------------------------------------------------------------------- one folder
 def _neb_step(name: str, folder: str, entries: dict) -> WorkflowStep | None:
     images, _log = vasp_neb_images(folder), None
@@ -228,6 +332,19 @@ def _vasp_step(name: str, folder: str, entries: dict) -> WorkflowStep | None:
         n = _ionic_steps(path_of("OSZICAR"))
         if n:
             step.scalars["ionic steps"] = n
+    atoms = _atom_count(folder, entries)
+    if atoms:
+        step.scalars["atoms"] = atoms
+        if "energy" in step.scalars:
+            step.scalars["energy/atom"] = round(step.scalars["energy"] / atoms, 6)
+    if "OUTCAR" in files:
+        force = _max_force(path_of("OUTCAR"), atoms)
+        if force is not None:
+            step.scalars["max force"] = force
+    if "EIGENVAL" in files and files["EIGENVAL"] <= MAX_EIGENVAL:
+        gap = _band_gap(path_of("EIGENVAL"))
+        if gap is not None:
+            step.scalars["gap"] = gap
     if "CONTCAR" in files and main != "CONTCAR":
         step.outputs.append(WorkflowOutput("CONTCAR", path_of("CONTCAR"), kind="structure", note="final structure"))
     for f in _VOLUMETRIC:

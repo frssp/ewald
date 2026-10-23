@@ -37,7 +37,9 @@ compute it. You change the structure, the view and every other result only throu
 the notebook: each tool that changes something writes a cell and runs it (add_modifier a step \
 cell, the same one Insert > Step makes; set_view the view cell, which the Display panel edits \
 too; load_structure a load cell; export_file an export cell), so the notebook alone reproduces \
-the analysis. Prefer pipeline modifiers over ad-hoc code. Before you write Python for the user \
+the analysis. Tools are not Python functions: code you show or write for a cell uses ewald's API \
+(view(pipe, ...) for set_view, pipe.add(Modifier(...)) for add_modifier), never a tool call. \
+Prefer pipeline modifiers over ad-hoc code. Before you write Python for the user \
 (a notebook cell or a code block), call python_api once in the conversation and follow it: \
 ewald's API looks like OVITO's but differs in places, and plugins add modifiers. In the GUI the Structure tab shows \
 the result, and you answer in the AI chat side bar next to the notebook.
@@ -63,14 +65,16 @@ class Agent:
     (``beta.messages.create`` for Claude, ``chat.completions.create`` for the others) to test
     without network access. ``fallbacks=True`` enables Claude's server-side refusal fallback
     (another model continues if the request is declined). ``effort`` applies where the provider
-    has such a setting.
+    has such a setting. ``stream=True`` streams the answers: their text reaches ``on_event`` as
+    ``("text", piece)`` events while it arrives (a ``"tool_call"`` event ends the text of a round
+    that goes on with tools), and a Stop ends the request on the wire at once.
     """
 
     def __init__(self, toolset: Toolset | None = None, *, client=None, model: str | None = None,
                  provider=None, base_url: str | None = None,
                  effort: str = "high", max_tokens: int = 16000, max_turns: int = 30,
                  system: str = SYSTEM_PROMPT, fallbacks: bool = True,
-                 on_event: Callable[[str, object], None] | None = None):
+                 on_event: Callable[[str, object], None] | None = None, stream: bool = False):
         from .providers import get
 
         self.toolset = toolset or Toolset()
@@ -85,6 +89,7 @@ class Agent:
         self.system = system
         self.fallbacks = fallbacks
         self.on_event = on_event or (lambda kind, payload: None)
+        self.stream = stream
         self.chat = self.provider.chat(client, self.model, system=system, tools=self.toolset.definitions,
                                        max_tokens=max_tokens, effort=effort, fallbacks=fallbacks)
         self._lock = threading.Lock()
@@ -121,7 +126,8 @@ class Agent:
         """Send ``prompt`` (optionally with PNG images), run tools until the model answers, return its text.
 
         ``cancel`` (a :class:`threading.Event`) stops the exchange when set, from another thread: the
-        request on the wire still finishes, then no further tool runs or request goes out,
+        request on the wire still finishes (a streamed one ends at its next piece), then no further
+        tool runs or request goes out,
         :class:`Cancelled` is raised and the conversation is as it was before this question.
         Questions from several threads take turns."""
         with self._lock:
@@ -137,11 +143,16 @@ class Agent:
             if cancel is not None and cancel.is_set():
                 raise Cancelled("stopped")
 
+        def text(piece):
+            check()
+            if piece:
+                self.on_event("text", piece)
+
         check()
         self._sync()
         self.chat.user(prompt, images)
         for _ in range(self.max_turns):
-            reply = self.chat.send()
+            reply = self.chat.send(on_text=text) if self.stream else self.chat.send()
             check()
             if reply.stop == "refusal":
                 return "[request declined by the model]"
