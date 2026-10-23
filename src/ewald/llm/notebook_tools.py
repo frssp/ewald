@@ -88,6 +88,41 @@ def cell_summary(nb: Notebook, index: int) -> dict:
     return out
 
 
+#: How the chat names what a cell-writing tool did to its cell ("Changed view in cell 6").
+_WRITER_VERBS = {"load_structure": "Loaded in", "add_modifier": "Added step in", "remove_modifier": "Removed step in",
+                 "set_view": "Changed view in", "add_visual": "Changed view in", "remove_visual": "Changed view in",
+                 "add_overlay": "Changed view in", "remove_overlay": "Changed view in", "export_file": "Exported in",
+                 "add_analysis": "Added analysis in"}
+
+
+def touched_cells(name: str, result) -> list[dict]:
+    """The cells a tool call wrote, ran or deleted, read from its result (a :class:`ToolResult` or its
+    content): ``[{"id", "index", "verb"}]``, ``index`` 0-based as it was then, ``id`` None for a
+    deleted cell. The AI chat shows them as links to the cells ("Edited cell 6")."""
+    content = result.content if isinstance(result, ToolResult) else result
+    if not isinstance(content, dict):
+        return []
+
+    def ref(summary, verb):
+        if not isinstance(summary, dict) or not isinstance(summary.get("index"), int):
+            return []
+        return [{"id": summary.get("id") if isinstance(summary.get("id"), str) else None,
+                 "index": summary["index"], "verb": verb}]
+
+    ran = " and ran" if isinstance(content.get("run"), dict) else ""
+    if "inserted" in content:
+        return ref(content["inserted"], "Inserted" + ran)
+    if "edited" in content:
+        return ref(content["edited"], "Edited" + ran)
+    if "deleted" in content:
+        return [dict(r, id=None) for r in ref(content["deleted"], "Deleted")]
+    if name == "run_cell":
+        return ref(content, "Ran")
+    if isinstance(content.get("cell_id"), str):
+        return ref({"index": content.get("cell"), "id": content["cell_id"]}, _WRITER_VERBS.get(name, "Wrote"))
+    return []
+
+
 def failed_cells(nb: Notebook, max_lines: int = 25, max_chars: int = 6000) -> str:
     """The cells whose last run failed, with the end of each error (what the AI chat sends along)."""
     parts = []
@@ -358,7 +393,7 @@ def _runner(access: NotebookAccess):
             items, images = _outputs(cell)
             out = {"ok": bool(ok), "state": cell.state, "outputs": items}
             if k is not None:
-                out["index"] = k
+                out["index"], out["id"] = k, cell.id
             pipe = nb.pipeline
             if pipe is not None:
                 out["pipeline"] = [repr(m) for m in pipe.modifiers]
@@ -379,6 +414,7 @@ def _runner(access: NotebookAccess):
             return out
         content, images, ok = execute(nb, cell)
         content.pop("index", None)
+        content.pop("id", None)
         out["run"] = content
         return ToolResult(_jsonable(out), images=images, is_error=not ok)
 

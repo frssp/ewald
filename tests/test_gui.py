@@ -1552,7 +1552,7 @@ def test_ask_panel_selection_and_frame(app, pipe):
     assert "What are these?" in text and "2 atoms: **fcc** neighbors" in text
     user, claude = panel.messages
     assert user.role == "user" and claude.role == "assistant"
-    assert [claude.steps.itemAt(i).widget().text() for i in range(claude.steps.count())] == ["✓ Used describe_selection"]
+    assert [chip.text() for chip in claude._chips] == ["✓ Used describe_selection"]
     assert changed == [1] and panel.ask_button.isEnabled() and panel.input.toPlainText() == ""
 
     ctx["indices"] = []
@@ -4036,6 +4036,60 @@ def test_ai_chat_does_not_insert_twice_when_the_model_wrote_cells(app, pipe):
     w.ask_panel.ask("Add x")
     _wait(app, w.ask_panel)
     assert len(w.panel.view.notebook.cells) == n           # the tool call wrote it; the block only shows it
+    w.close()
+
+
+def test_ai_chat_links_the_cells_its_tools_wrote(app, pipe):
+    """A tool that wrote a cell gets a link next to its chip ("Edited cell 2"): clicking it shows that
+    notebook's tab and the cell (current, lit up), the link is saved with the chat (.ewd) and comes
+    back, and a deleted cell's link is only a label."""
+    from PySide6 import QtWidgets
+
+    from ewald.gui.app import MainWindow
+    from ewald.gui.ask_panel import Message
+    from ewald.llm.notebook_tools import cell_summary
+    from ewald.notebook_io import chat_messages
+
+    w = MainWindow(pipe)
+    view = w.panel.view
+    target = view.add_cell("code", "x = 1")
+    k = view.notebook.cells.index(target)
+    summary = cell_summary(view.notebook, k)
+
+    class ToolAgent(_FakeAgent):
+        def ask(self, question):
+            self.on_event("tool_call", {"name": "edit_cell", "input": {"index": k}})
+            self.on_event("tool_result", {"name": "edit_cell", "result": {"edited": summary}})
+            self.on_event("tool_call", {"name": "delete_cell", "input": {"index": 0}})
+            self.on_event("tool_result", {"name": "delete_cell",
+                                          "result": {"deleted": {"index": 0, "id": "gone"}, "cells": 3}})
+            return "Done."
+
+    w.ask_panel.agent_factory = lambda p, ev: ToolAgent(p, ev)
+    w.ask_panel.ask("Change x")
+    _wait(app, w.ask_panel)
+    answer = w.ask_panel.messages[-1]
+    links = answer.findChildren(QtWidgets.QToolButton, "chatCellLink")
+    assert [b.text() for b in links] == [f"Edited cell {k + 1}", "Deleted cell 1"]
+    assert links[0].isEnabled() and not links[1].isEnabled()
+    saved = answer.to_dict()["cells"]
+    assert saved[0] == {"step": 0, "id": target.id, "index": k, "verb": "Edited"} and saved[1]["step"] == 1
+
+    other = w.panel.new_notebook()                      # the link leads back to the first tab
+    w.ask_panel.sync()
+    assert w.panel.view is other
+    answer.cell_links[0].click()
+    app.processEvents()
+    assert w.panel.view is view and view.current is target
+    assert view.widget_for(target).property("flash")
+
+    entry = chat_messages([answer.to_dict(), {"role": "assistant", "text": "x",
+                                              "cells": [{"step": -1, "index": 0, "verb": "Ran"}, "junk"]}])
+    assert entry[0]["cells"] == saved and "cells" not in entry[1]
+    again = Message.from_dict(entry[0])
+    assert [b.text() for b in again.cell_links] == [f"Edited cell {k + 1}", "Deleted cell 1"]
+    view.notebook.cells.remove(target)                  # gone since: a message instead of a jump
+    w._show_ai_cell(view.notebook, target.id)
     w.close()
 
 
