@@ -133,7 +133,7 @@ the end.
   review of the plugins; the recommendation it answered: VASP is a core format, and this part is
   about 500 lines with no dependency beyond numpy, so VASP users should not need a plugin for it.
 - **Considered:** keeping all phonon support in the plugin (as decided on 2026-10-19).
-- **Landed:** this PR; ewald-phonopy 0.3.0 in frssp/ewald-plugins.
+- **Landed:** PR #233; ewald-phonopy 0.3.0 in frssp/ewald-plugins.
 
 ### D12. Reuse before writing (2026-10-18)
 
