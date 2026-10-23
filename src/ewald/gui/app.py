@@ -20,7 +20,7 @@ from .. import modifiers as mods
 from ..raytrace import RenderCancelled
 from ..render import camera_state, render
 from .busy import busy, finish_orphans
-from .ask_panel import AskPanel, agent_from_settings, code_cells_mode
+from .ask_panel import AskPanel, agent_from_settings, code_cells_mode, run_cells
 from .collapsible import make_collapsible
 from .compute import ComputeRunner, warm_up_jit
 from .console import LazyConsole
@@ -132,9 +132,11 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
                                   notebook=self._notebook_code, notebook_access=lambda nb: NotebookBridge(self, nb),
                                   auto_insert=lambda: code_cells_mode(self.settings) == "insert",
                                   errors=self._notebook_errors, view=self._view_summary,
-                                  current=lambda: getattr(getattr(self, "panel", None), "notebook", None))
+                                  current=lambda: getattr(getattr(self, "panel", None), "notebook", None),
+                                  run_inserted=lambda: run_cells(self.settings))
         self.ask_panel.pipelineChanged.connect(self._after_claude)
         self.ask_panel.insertRequested.connect(self._insert_claude_cell)
+        self.ask_panel.runRequested.connect(lambda code: self._insert_claude_cell(code, run=True))
         # --- left: notebook tabs (the pipeline as Python cells); right: display settings
         self.panel = NotebookPanel()
         self.panel.openRequested.connect(self.open_dialog)

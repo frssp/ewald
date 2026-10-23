@@ -56,6 +56,7 @@ the model.
 | `remove_modifier` | deletes that step cell |
 | `set_view`, `add_visual`, `remove_visual`, `add_overlay`, `remove_overlay` | the view cell `view(pipe, ...)` |
 | `export_file` | `export_file(pipe, 'out.extxyz', frames=[0])` |
+| `add_analysis` | the cells of a workflow analysis (from `describe_workflow`), written by the workflow's plugin, not by the model; offered only with a workflow source |
 
 `add_modifier` offers every modifier in `ewald.modifiers` and the modifier plugins, except
 `PythonScript` (only with `allow_code`) and `OvitoModifier` (never; it takes a Python object).
@@ -64,7 +65,9 @@ as `~/.ssh`.
 
 **Cell editors** (`llm/notebook_tools.py`). These change the notebook's cells directly:
 `insert_cell`, `edit_cell`, `move_cell`, `delete_cell` and `run_cell`. A cell the model inserts
-or edits holds code the model wrote, so it is marked not run (or out of date) until it is run.
+or edits holds code the model wrote, so it is marked not run (or out of date) until it is run;
+when you let the AI run cells (below), `insert_cell` and `edit_cell` run the code cell they wrote
+at once and return its outputs (`run=false` only writes it).
 `edit_cell` with `params` is the exception: it rewrites a step's literal call with new values
 and runs it like a cell writer, and refuses code steps (`PythonScript`, Python steps). In the GUI
 each edit is one undo step ("AI: insert cell", Ctrl+Z).
@@ -72,7 +75,10 @@ each edit is one undo step ("AI: insert cell", Ctrl+Z).
 **`run_cell`** runs any cell, so it is offered only when you allow it: in the GUI with
 Preferences › AI › **Let the AI run cells** (`llm.run_cells`, off by default; read again before
 every question), in Python and on the command line with `allow_code=True` / `--allow-code`.
-While it is not offered, a call to it is refused with "the user has not allowed it".
+While it is not offered, a call to it is refused with "the user has not allowed it". The same
+permission makes `insert_cell` and `edit_cell` run what they wrote, tells the model in its
+system prompt that it may run cells, and runs the ```python blocks of an answer that go into
+the notebook.
 
 **Plugin tools.** Installed plugins add tools with `@ai_tool` ([AI tool plugins](../plugins/tools.md));
 ewald-plumed adds `compute_plumed_cvs` and `read_plumed_output`. A plugin tool cannot replace a
@@ -98,7 +104,7 @@ its work dir, and `compute_plumed_cvs` refuses `LOAD` (native code) and absolute
 
 ## Files and hosts the AI may open
 
-The files the model opens itself (`load_structure`, `describe_workflow`, plugin tools such as
+The files the model opens itself (`load_structure`, `describe_workflow`, `add_analysis`, plugin tools such as
 `read_plumed_output`) pass `ReadAccess` (`llm/access.py`):
 
 | Setting | Default | Effect |
@@ -176,8 +182,8 @@ keychain).
 | --- | --- |
 | `llm.provider`, `llm.model`, `llm.base_url`, `llm.route_prefix`, `llm.key_header`, `llm.headers`, `llm.timeout`, `llm.profiles` | who answers and how ewald connects ([Providers](claude.md#providers)) |
 | `llm.effort`, `llm.stream` | how hard the model thinks; answers streamed as they arrive |
-| `llm.code_cells` | ```python blocks in answers: inserted as cells (`insert`, default) or offered with a button (`button`); never run on their own |
-| `llm.run_cells` | whether `run_cell` is offered (off) |
+| `llm.code_cells` | ```python blocks in answers: inserted as cells (`insert`, default) or offered with a button (`button`); run only with `llm.run_cells` |
+| `llm.run_cells` | whether the AI runs cells: `run_cell` offered, cells written by `insert_cell`/`edit_cell` and inserted code blocks run at once (off) |
 | `llm.read_folders`, `llm.confirm_hosts` | which folders and hosts the AI may open |
 
 ## Other AI features
