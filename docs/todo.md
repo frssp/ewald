@@ -552,7 +552,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - GUI startup on the owner's Windows machine: `python benchmarks/startup.py --cold-jit` prints
   where the seconds go (import, window, 3D view, console, busy stretches, peak memory); compare
   with the container numbers under Performance. Windows Defender scanning freshly installed
-  packages can make the first start after an update much slower than later ones.
+  packages can make the first start after an update much slower than later ones (the
+  "Preparing EWALD" first-run notice, `gui/first_run.py`, shows during that start).
+- First-run notice on a real Mac and Windows machine: after `uv pip install -e .` the next
+  `ewald gui` should show "Preparing EWALD" within about a second (it needs only PySide6), keep
+  it on screen until the main window appears, and not show it on the start after.
 - Simple (ASE) style on a real GPU (the owner's Windows machine): rotating a few thousand bonded
   atoms should now be as fluid as Ball & stick. The bond outline became a static inverted hull
   (front faces culled) instead of `vtkPolyDataSilhouette`, which re-ran on the CPU on every camera
