@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from .. import modifiers as mods
 from ..io import import_file
 from ..llm.notebook_tools import NotebookAccess
+from . import workers
 
 
 def _alive(obj) -> bool:
@@ -326,14 +327,34 @@ class LinksMixin:
 
         return failed_cells(nb) or None
 
-    def _insert_claude_cell(self, code):
-        """'Insert as notebook cell' in the AI chat: a code cell after the current one, not run."""
+    def _insert_claude_cell(self, code, run=False):
+        """'Insert as notebook cell' in the AI chat: a code cell after the current one, not run
+        unless ``run`` (an answer's code block while Preferences › AI › Let the AI run cells is on)."""
         view = self.panel.view
         if view is None:
             view = self.panel.new_notebook()
-        view.add_cell("code", code)
+        cell = view.add_cell("code", code)
         self.notebook_dock.show()
-        self.message("Inserted the AI's code as a notebook cell (Shift+Enter runs it)")
+        if run and cell is not None and not view.notebook.restricted:
+            self._ai_runs = [*getattr(self, "_ai_runs", []), (view, cell)]
+            self._run_ai_cells()
+            self.message("Inserted and ran the AI's code as a notebook cell")
+        else:
+            self.message("Inserted the AI's code as a notebook cell (Shift+Enter runs it)")
+
+    def _run_ai_cells(self):
+        """Run the AI's inserted cells in order, each once its notebook is idle."""
+        queue = getattr(self, "_ai_runs", [])
+        while queue:
+            view, cell = queue[0]
+            if not workers.alive(view) or cell not in view.notebook.cells:
+                queue.pop(0)
+            elif view.running:
+                QtCore.QTimer.singleShot(50, self, self._run_ai_cells)
+                return
+            else:
+                queue.pop(0)
+                view.run(cell)
 
     def _install_notebook_packages(self, requirements):
         """A notebook's bar asked for the pip packages its steps need: pip runs in the Plugins side bar."""

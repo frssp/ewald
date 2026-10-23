@@ -148,6 +148,51 @@ the end.
   view shares the pipeline's arrays with the cells.
 - **Landed:** PR #205 (`src/ewald/shell.py`, `src/ewald/progress.py`).
 
+### D18. Analyses of a workflow are notebook cells from its plugin (2026-10-23)
+
+- **Decision:** a workflow source can offer analyses (`Analysis`: notebook cells plus the
+  variable they leave); the opened notebook includes them and the AI adds them with
+  `add_analysis`. The first is the potential lineup of sim-agent's band-offset workflow, computed
+  in EWALD from the retrieved `locpot_planar_avg.json` and `vasprun.xml` of the interface and the
+  two bulk references (bulk VBM/CBM moved by the plateau shift, E_F from the interface), with
+  the kernels in core (`ewald.potential`) so other sources can reuse them, and without changing
+  sim-agent. Recipes are per template, so work function, EOS and formation energies follow the
+  same way.
+- **Why:** "ewald에서 notebook으로 처리해야지" (handle it in an EWALD notebook); "sim-agent 수정은
+  안 하는게 좋아." (better not to modify sim-agent); "이걸 다른 계산에도 적용할 수 있도록 생각하면서
+  일해." (work so that this applies to other calculations too); and the planar average json is
+  enough, LOCPOT is not needed.
+- **Considered:** having sim-agent store its finalize result and serve it through the results
+  API; the AI computing the alignment itself from the numbers; reading LOCPOT over SSH.
+- **Landed:** this PR (`src/ewald/potential.py`, `ewald.workflow.Analysis`, `add_analysis`), with
+  the recipe in frssp/ewald-simagent.
+
+### D19. Restarts inside one dump: a default rule the user can change (2026-10-23)
+
+- **Decision:** when several files or one appended LAMMPS dump are joined on Timestep, a step
+  that goes back inside a file is a restart (the later run wins) unless it goes back to or below
+  the first step of the run before it, which counts as `reset_timestep` and cuts nothing. That
+  rule stays the default, and the user can change it: `join="restart"` (every step going back is
+  a restart), `join="files"` (join only between files) or `join="concat"`, in `load(...)` and in
+  the dialog that opens several files.
+- **Why:** "기본 동작은 이대로 하고 사용자가 조절할 수 있게 하면 되지 않을까?" (keep this as the
+  default and let the user adjust it).
+- **Considered:** one fixed rule with no option.
+- **Landed:** PR #212 (default rule, join dialog), PR #218 (the `join` options).
+
+### D20. Plugin settings dialogs stay short (2026-10-23)
+
+- **Decision:** in the plugin settings dialog a field's help is its tooltip, not a line under it,
+  and fields a plugin marks `advanced` (CA file, host aliases, connection name) fold under
+  **Advanced**, which says how many of them are set. Preferences pages keep their help lines
+  and fold the same advanced fields.
+- **Why:** "메뉴가 너무 긴데, 좀 위아래로 줄이는 레이아웃 구성 가능해?" (the menu is too long;
+  can the layout be shorter top to bottom?), on the sim-agent settings dialog with a diagnosis
+  report under it.
+- **Considered:** two columns of fields (wide, and the help still needs room); a dialog that
+  scrolls (as long, only hidden).
+- **Landed:** PR #222 (`gui/plugin_settings.py`, `gui/preferences.py`, `SettingsField.advanced`).
+
 ## Project
 
 ### D15. Name, license and openness (2026-10-19, 2026-10-20)

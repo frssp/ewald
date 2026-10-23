@@ -156,15 +156,15 @@ class RenderFrame(QtCore.QObject):
     def _ensure_actors(self):
         if self._actors is not None:
             return self._actors
-        import vtk
+        from vtkmodules import vtkCommonDataModel, vtkRenderingCore  # not ``import vtk`` (every module)
 
         ren = self.viewport.plotter.renderer
         actors = {}
         for name, opacity in (("dim", 0.42), ("line", 1.0), ("handles", 1.0)):
-            poly = vtk.vtkPolyData()
-            mapper = vtk.vtkPolyDataMapper2D()
+            poly = vtkCommonDataModel.vtkPolyData()
+            mapper = vtkRenderingCore.vtkPolyDataMapper2D()
             mapper.SetInputData(poly)
-            actor = vtk.vtkActor2D()
+            actor = vtkRenderingCore.vtkActor2D()
             actor.SetMapper(mapper)
             actor.GetProperty().SetOpacity(opacity)
             actor.SetPickable(False)
@@ -187,7 +187,8 @@ class RenderFrame(QtCore.QObject):
         """Place the frame for the current window size (called before each render)."""
         if not self.visible or self._actors is None:
             return
-        import vtk
+        from vtkmodules.vtkCommonCore import vtkPoints
+        from vtkmodules.vtkCommonDataModel import vtkCellArray
 
         ren = self.viewport.plotter.renderer
         W, H = ren.GetSize()
@@ -203,7 +204,7 @@ class RenderFrame(QtCore.QObject):
         acc = (accent.redF(), accent.greenF(), accent.blueF())
 
         def quads(poly, rects):
-            pts, cells = vtk.vtkPoints(), vtk.vtkCellArray()
+            pts, cells = vtkPoints(), vtkCellArray()
             for a, b, c, d in rects:
                 ids = [pts.InsertNextPoint(px, py, 0) for px, py in ((a, b), (c, b), (c, d), (a, d))]
                 cells.InsertNextCell(4, ids)
@@ -217,7 +218,7 @@ class RenderFrame(QtCore.QObject):
         dim_actor.GetProperty().SetColor(*dim)
         dim_actor.GetProperty().SetOpacity(0.3 if dark else 0.38)
         line_actor, line_poly = self._actors["line"]
-        pts, lines = vtk.vtkPoints(), vtk.vtkCellArray()
+        pts, lines = vtkPoints(), vtkCellArray()
         ids = [pts.InsertNextPoint(px, py, 0) for px, py in ((x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0))]
         lines.InsertNextCell(len(ids), ids)
         line_poly.SetPoints(pts)

@@ -909,6 +909,9 @@ def test_join_files_dialog_orders_files_and_picks_join(app):
     d.join_buttons["concat"].setChecked(True)
     assert d.join() == "concat" and "nothing left out" in d.hint.text()
     assert JoinFilesDialog(paths, join="concat").join() == "concat"
+    assert list(d.join_buttons) == ["timestep", "restart", "files", "concat"]
+    d.join_buttons["restart"].setChecked(True)
+    assert d.join() == "restart" and "step 0" in d.hint.text()
     d.close()
 
 
@@ -1715,6 +1718,15 @@ def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
     assert view.notebook.cells[-1].source.strip() == "pipe.add(CoordinationAnalysis(cutoff=3.0))"
     assert w.ask_panel.messages[-1].code_blocks[0].insert_button.text() == "✓ Inserted"
     assert view.undo() == "Insert cell" and len(view.notebook.cells) == n
+    w.settings["llm.run_cells"] = True                     # Let the AI run cells: the inserted code runs too
+    w.ask_panel.ask("Plot sin(x)")
+    _wait(app, w.ask_panel)
+    for _ in range(400):
+        app.processEvents()
+        if view.notebook.cells[-1].state not in ("new", "running") and not view.running:
+            break
+        time.sleep(0.01)
+    assert len(view.notebook.cells) == n + 1 and view.notebook.cells[-1].state == "ok"
     w.close()
 
 
@@ -1774,6 +1786,14 @@ def test_ai_chat_tells_claude_about_the_notebook(app, monkeypatch):
     s["llm.code_cells"] = "button"
     ask_panel.agent_from_settings(lambda: s, notebook=True)(None, None)
     assert "Insert as notebook cell" in made[2]["system"]
+    assert ask_panel.RUN_CELLS_NOTE[False] in made[0]["system"] and "(not run)" in made[0]["system"]
+    s["llm.code_cells"] = "insert"
+    s["llm.run_cells"] = True                              # Preferences › AI › Let the AI run cells
+    factory = ask_panel.agent_from_settings(lambda: s, notebook=True)
+    factory(None, None)
+    assert ask_panel.RUN_CELLS_NOTE[True] in made[3]["system"] and "(and run)" in made[3]["system"]
+    s["llm.run_cells"] = False                             # read again before every question
+    assert ask_panel.RUN_CELLS_NOTE[False] in factory.system()
 
 
 def test_viewport_draws_vector_arrows(app):
@@ -4398,6 +4418,10 @@ def test_plugin_settings_page_dialog(app, monkeypatch):
         dlg = w.plugins_panel.edit_settings(item, exec_=False)
         assert dlg.widgets["url"].text() == "http://old" and dlg.widgets["verify"].isChecked()
         assert dlg.widgets["key"].text() == "" and dlg.widgets["key"].placeholderText() == "not set"
+        assert dlg.widgets["url"].toolTip() == "Where it runs"          # help as a tooltip, not a row
+        assert dlg.advanced.isHidden()                  # "mode" is advanced and at its default: folded
+        dlg.advanced_button.click()
+        assert not dlg.advanced.isHidden() and dlg.advanced.isAncestorOf(dlg.widgets["mode"])
         dlg.widgets["url"].setText("ftp://nope")
         dlg.buttons.accepted.emit()
         assert dlg.isVisible() and "starts with http" in dlg.status.text()      # stays open to fix it
@@ -4455,6 +4479,10 @@ def test_plugin_settings_page_in_preferences_refuses_bad_values(app, monkeypatch
     dlg = prefs.PreferencesDialog(settings.Settings())
     entry = dlg.plugin_pages["Demo service"]
     assert entry["widgets"]["key"].placeholderText() == "not set"
+    fold = next(b for b in entry["card"].parent().findChildren(QtWidgets.QToolButton) if b.text().startswith("Advanced"))
+    assert entry["rows"]["mode"].parent().isHidden()        # the advanced card starts folded
+    fold.click()
+    assert not entry["rows"]["mode"].parent().isHidden()
     assert dlg.apply()                                    # nothing changed: save() is not called
     entry["widgets"]["url"].setText("ftp://nope")
     dlg.show_page("General")
@@ -4920,6 +4948,14 @@ def test_resize_handles_are_visible_in_every_theme(app):
     from ewald.gui import theme
 
     saved = dict(theme.TOKENS), dict(theme.STYLE)
+    # images are cached in the temp folder by content: an older grip drawing there is not reused
+    first = theme.image("grip_v")
+    entry = theme._IMAGES["grip_v"]
+    try:
+        theme._IMAGES["grip_v"] = (entry[0], entry[1].replace("v24", "v20"), *entry[2:])
+        assert theme.image("grip_v") != first
+    finally:
+        theme._IMAGES["grip_v"] = entry
     try:
         for name in theme.PALETTES:
             t = theme.use(name)

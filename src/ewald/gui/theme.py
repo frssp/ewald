@@ -43,15 +43,18 @@ _IMAGES = {
 
 def image(name: str, tokens: dict | None = None) -> str:
     """Path of the style-sheet image ``name`` drawn in the colors of ``tokens`` (the active palette)."""
+    import hashlib
     import os
     import tempfile
 
     key, path_d, *box = _IMAGES[name]
     box, stroke = box or (None, 2.4)
     color = (tokens or TOKENS)[key]
-    stem = os.path.join(tempfile.gettempdir(), f"ewald-ui-{name}-{color.lstrip('#')}")
     svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="{}" fill="none" stroke="{}" stroke-width="{}" '
            'stroke-linecap="round" stroke-linejoin="round">{}</svg>')
+    # the file name carries a hash of the drawing, so a changed image never reuses an old file
+    digest = hashlib.sha1(repr((path_d, box, stroke)).encode()).hexdigest()[:8]
+    stem = os.path.join(tempfile.gettempdir(), f"ewald-ui-{name}-{color.lstrip('#')}-{digest}")
     if box is None:
         path = stem + ".svg"
         if not os.path.exists(path):

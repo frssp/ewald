@@ -292,15 +292,15 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 ### Quality presets
 
-| `quality=` | `samples` | `ao_samples` | `shadows` | `antialiasing` | `ambient_occlusion` | `sphere_resolution` | `scale` |
-|---|---|---|---|---|---|---|---|
-| `draft` | 1 | 0 | False | False | False | 8 | 0.5 |
-| `standard` | 4 | 4 | True | True | False | 16 | 1.0 |
-| `publication` | 16 | 8 | True | True | True | 28 | 1.0 |
+| `quality=` | `samples` | `ao_samples` | `noise_threshold` | `shadows` | `antialiasing` | `ambient_occlusion` | `sphere_resolution` | `scale` |
+|---|---|---|---|---|---|---|---|---|
+| `draft` | 1 | 0 | 0.0 | False | False | False | 8 | 0.5 |
+| `standard` | 4 | 4 | 0.0 | True | True | False | 16 | 1.0 |
+| `publication` | 16 | 8 | 0.01 | True | True | True | 28 | 1.0 |
 
 ### `render()` options
 
-`size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`, `region`, `labels`, `light`, `progress`.
+`size`, `direction`, `orthographic`, `zoom`, `background`, `transparent_background`, `ambient_occlusion`, `legend`, `show_cell`, `bonds`, `radius_scale`, `antialiasing`, `text`, `camera`, `renderer`, `samples`, `ao_samples`, `noise_threshold`, `shadows`, `type_legend`, `scale_bar`, `dpi`, `quality`, `scale`, `theme`, `overlays`, `region`, `labels`, `light`, `progress`.
 
 Scene keywords `render()` also takes: `cell_color`, `cell_width`, `bond_radius`, `atom_style`, `mesh_limit`, `sphere_resolution`, `type_colors`, `type_radii`, `bond_pairs`, `trajectory_width`, `trajectory_color_by`, `trajectory_colormap`, `trajectory_color_range`, `trajectory_time_range`, `trajectory_trail`, `trajectory_radius`, `radius_preset`, `oxidation_states`, `coordination`, `vectors`, `arrow_resolution`, `visuals`, `boundary`, `boundary_bonds`, `replicate`, `replicate_cell`, `show_atoms`, `surfaces`, `cell_radius`, `type_transparency`, `selection_color`, `measurements`.
 
@@ -374,7 +374,8 @@ Tools:
 | `get_script` | The notebook as a standalone Python script (percent format): it reproduces everything the tools did, since they work only through its cells. |
 | `python_api` | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature, the notebook's cell kinds, show/view/paint, and the modifier plugins installed here). |
 | `list_workflows` | Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs, or folders of VASP/LAMMPS/NEB/phonopy calculations: source 'folders') of a workflow source, newest first: id, kind, formula, state and the path that opens each. |
-| `describe_workflow` | Steps of a workflow (nested; restarts joined), their states, numbers (energies, gaps) and outputs, each with the path load_structure opens. |
+| `describe_workflow` | Steps of a workflow (nested; restarts joined), their states, numbers (energies, gaps) and outputs, each with the path load_structure opens, and the analyses its plugin offers (add_analysis). |
+| `add_analysis` *cell* | Add one of a workflow's analyses (listed under 'analyses' by describe_workflow, e.g. the potential lineup of a band-offset workflow: potential, VBM, CBM and Fermi level on one axis) to the notebook and run it. |
 | `list_cells` *notebook* | The cells of the user's notebook: index, id, kind (code, step = one pipe.add(...), view = one show(pipe, ...), markdown), state (new = not run, ok, error, stale = out of date), first line and output kinds. |
 | `read_cell` *notebook* | One notebook cell: its full source and outputs (printed text, errors, values; plots come back as images). |
 | `insert_cell` *notebook* | Insert a new cell into the user's notebook (default: at the end; 'index' puts it before the cell at that index). |
@@ -462,6 +463,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `render.movie_quality` | Movie quality | `'Same as image'` |
 | `render.samples` | Anti-aliasing rays/pixel | `16` |
 | `render.ao_samples` | Ambient occlusion rays | `32` |
+| `render.noise_threshold` | Noise threshold | `0.01` |
 | `render.shadows` | Shadows | `True` |
 | `render.size_preset` | Size preset | `'1-column (3.5 in, 4:3)'` |
 | `render.dpi` | Resolution | `600` |

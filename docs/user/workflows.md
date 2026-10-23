@@ -105,3 +105,12 @@ The AI tools `list_workflows` (source `folders`: the folders opened lately) and
 path, state and numbers, so "open the NEB of this study and plot the barrier" needs no file
 names. Other workflow sources (AiiDA, sim-agent) come from plugins
 ([Workflow sources](../plugins/workflows.md)).
+
+Plugins can also offer **analyses** of a finished workflow: the notebook a sim-agent
+`vasp_band_offset` workflow opens ends with a "Potential lineup" section that reads the three
+statics' planar-averaged potentials and band edges and puts the potential, the macroscopic
+average, VBM, CBM and the interface Fermi level on one energy axis, with the band offset or
+Schottky barrier in the result. `describe_workflow` lists the analyses, with the reason when one
+cannot run (a missing or failed step), and `add_analysis` adds one to the notebook and runs it,
+so asking the AI to "draw the potential with VBM, CBM and E_F" runs these cells instead of the
+AI aligning energies itself.

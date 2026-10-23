@@ -70,14 +70,18 @@ class MyServiceSettings:
 ```
 
 Field kinds are `text`, `secret`, `bool`, `choice` (with `choices`), `multiline` and `int`.
-`label` defaults to the name, `help` is shown under the field and `default` fills a field that
-`load()` leaves out.
+`label` defaults to the name, `help` is shown under the field in Preferences and as its tooltip
+in the dialog, and `default` fills a field that `load()` leaves out. Mark rarely changed fields
+(a CA file, host aliases, a connection name) `advanced=True`: they start folded under
+**Advanced**, whose label says how many of them hold a value, so the page stays short.
 
 `save(values)` gets every field by name. It checks them, stores them and returns a short
 message, which the window's status bar shows. Raising `ValueError` keeps the dialog open with
 your message under the fields, so the user can fix the entry; any other exception is shown as a
 failure. Each entry in `actions` adds a button (label to a method name or to `f(values)`) that
-returns a message and leaves the dialog open: Test connection, Log out.
+returns a message and leaves the dialog open: Test connection, Log out. A message may be simple
+Qt rich text (a `<table>`, colors), for a report of several lines; escape anything that came
+from a server.
 
 Secrets never come back into the dialog. `load()` returns a true value when one is saved (the
 field then reads "saved; type to replace") and `save()` gets `""` when the user left it empty,
