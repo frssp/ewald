@@ -1,4 +1,4 @@
-"""Browse and open files on another machine over SSH (File › Load remote file…)."""
+"""Browse and open files on another machine over SSH (File › Open from › Remote file…)."""
 from __future__ import annotations
 
 import json
@@ -87,7 +87,7 @@ class RemoteFileDialog(QtWidgets.QDialog):
 
     def __init__(self, parent=None, host: str = "", path: str = ""):
         super().__init__(parent)
-        self.setWindowTitle("Load remote file (SSH)")
+        self.setWindowTitle("Open remote file (SSH)")
         self.resize(720, 520)
         self.url = None
         recent = load_recent()

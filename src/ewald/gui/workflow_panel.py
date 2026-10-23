@@ -4,7 +4,7 @@ Top: the account the source is set up with, and a button to its settings page. T
 takes an id (that workflow alone) or words (a search). Below, the source's workflows, newest
 first; expanding one asks the source to describe it and lists its steps (nested, restarts joined)
 with their outputs. A double click on a workflow opens it as one notebook with a variable per
-step; on a step or an output it opens that path, as File › Open location would. The buttons
+step; on a step or an output it opens that path, as File › Open from › Location would. The buttons
 insert a ``load(...)`` cell instead or copy the path. The right-click menu on one or more selected
 workflows adds and runs a cell ``workflow_table(...)``: their steps' numbers in one table, side by
 side (:mod:`ewald.workflow_table`). Requests run off the GUI thread, so a slow

@@ -34,7 +34,7 @@ The cell shows as a step: the parameters, *Form* to edit them, how long it took 
 (here a `Coordination` property and a `coordination-rdf` table, with a small histogram). Edit the
 cutoff and run the cell again (Ctrl+Enter) and the step is replaced, not added twice.
 
-**+ View** adds a plot of anything a step produced:
+**+ Plot** adds a plot of anything a step produced:
 
 ```python
 show(pipe, histogram="Coordination")

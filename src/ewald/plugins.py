@@ -519,7 +519,7 @@ def panel(fn=None, *, name: str | None = None, title: str = "", icon: str = "", 
           shortcut: str = "", width: int | None = None, description: str = "", area: str = ""):
     """Decorator registering ``f(context) -> QWidget`` as a side bar of the desktop app: a button
     on the activity bar (the icon column at the left edge, next to Notebook, Plugins and AI chat)
-    shows or hides it, and Window › Plugin panels lists it. The widget is built the first time
+    shows or hides it, and the Window menu lists it. The widget is built the first time
     the panel opens, so a plugin's Qt code costs nothing until then::
 
         from ewald.plugin_api import panel
@@ -652,7 +652,7 @@ def menu_items() -> dict[str, MenuItemPlugin]:
 def settings_page(name: str | None = None, title: str = "", fields=None, description: str = "",
                   actions: dict | None = None):
     """Decorator giving a plugin its own settings page, so it can be set up without Python
-    (a page of Preferences, Plugins side bar › Settings…, Edit › Plugin settings). It decorates a class (made with no
+    (a page of Preferences, Plugins side bar › Settings…). It decorates a class (made with no
     arguments) or an object with ``load() -> dict`` and ``save(values) -> str``; ``fields`` is a
     list of :class:`SettingsField` (or the class's ``fields`` attribute)::
 

@@ -82,7 +82,7 @@ and the band structure follow the picked atoms as projected DOS or fat bands, an
 phonon band plays that mode. Choosing another table, column or histogram in the plot's bar
 rewrites the cell, and so does zooming: the wheel, a drag on a DOS or band plot, or a pan
 writes `xlim=`/`ylim=`, and a double-click removes them. Run as a script, `show` draws the same plot with matplotlib. Add one with
-**+ View** or Insert › View, which list the tables and properties of the current frame.
+**+ Plot** or Insert › Plot, which list the tables and properties of the current frame.
 
 `show(pipe, ...)` anywhere else in a code cell (after other code, several in one cell, with
 arguments from variables) is a live plot too, under the cell where it was called: it follows
@@ -185,7 +185,7 @@ import. Each notebook keeps its own rcParams: whatever a cell sets (`plt.rcParam
 `plt.style.use(...)`) stays for the next cells of that notebook and is never overridden, and
 ewald's own renderers are not affected. `plotstyle.use("default")` in a cell goes back to
 matplotlib's defaults for that notebook, and `plotstyle.use()` to the publication style.
-Preferences › Python › *Style of your own plots* chooses the default: *Publication* (print
+Preferences › Plots › *Style of your own plots* chooses the default: *Publication* (print
 colors, so `plt.savefig` writes what you see), *Publication in UI theme colors*, or
 *Matplotlib default*. Restarting the notebook resets its rcParams.
 
@@ -255,7 +255,7 @@ cell, the background, the VESTA boundary, plugin visual elements and vector arro
 pipeline](rendering.md#the-view-of-a-pipeline) for the list. Running the cell redraws the
 viewport. Changing the style in the viewport, the View tab or the View menu writes the
 change back into this cell (a new one appears at the end when there is none), so the notebook
-always says how the picture was made. Insert › View settings with the camera also writes the
+always says how the picture was made. Insert › Write view settings to notebook also writes the
 current camera and frame. `pipe.view` is the same thing one setting at a time
 (`pipe.view.bonds = False`, `pipe.view.color("O", "red")`, `pipe.view.look("x").rotate(30, 15)`),
 or one visual element at a time (`pipe.view.elements["Bonds"].radius = 0.12`,
@@ -274,7 +274,7 @@ clusters(pipe, cutoff=3.2)       # cluster sizes, largest first; .counts is {id:
 ```
 
 Counting tables (`cna`, `ptm`, `voronoi`, `clusters`) show as bar charts and have `.counts`.
-Insert › Analysis adds any of these as a cell and runs it, with defaults that fit the current
+Insert › Quick analysis adds any of these as a cell and runs it, with defaults that fit the current
 frame (a g(r) cutoff below half a small cell, bonds created before bond angles); MSD and VACF
 are greyed out for a single frame.
 
@@ -285,7 +285,7 @@ Running the cell (or calling the verb) again replaces the step it added, so chan
 in a live view cell.
 
 **Text cells** are Markdown. Double-click one (or select it and press Enter) to edit it; Esc
-shows it rendered again. Under the cells, **+ Code**, **+ Text**, **+ Step** and **+ View** add a
+shows it rendered again. Under the cells, **+ Code**, **+ Text**, **+ Step** and **+ Plot** add a
 cell after the current one, in Jupyter's order.
 
 **Cell type.** A cell turns between code and text like in Jupyter, keeping its text: the ⋯ menu's
@@ -348,7 +348,7 @@ a welcome page: *New notebook* (Ctrl+T), *Open…*, *Open example* and the files
 Notebook › ... is greyed out then, and Insert › ... starts a notebook. The 3D view says how to
 open something and greys out its view bar and tools until there is a structure. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. Opening
 runs nothing: you see the cells and the results saved in the file, and a bar over the cells says
-*Not run yet* with a *Run all* button (or Notebook › Run all). Preferences › Python › *Run
+*Not run yet* with a *Run all* button (or Notebook › Run all). Preferences › Notebooks › *Run
 notebooks when opened* changes that: *never* (the default), *ask* (asks every time) or *always*
 (a notebook you saved or trusted before runs at once, as in Jupyter).
 
@@ -397,7 +397,7 @@ Larger trajectories stay links: the manifest keeps their path (relative to the `
 size and a fingerprint of their first and last MiB. When you open the notebook, ewald finds
 each file next to the notebook or in the copy the `.ewd` carries, and says when a file moved,
 changed or is missing. `load("traj.dump")` in a cell looks in the same places, so a notebook
-you send with its data, or one that carries it, runs on another computer. Preferences › Python
+you send with its data, or one that carries it, runs on another computer. Preferences › Notebooks
 sets the size limit (*Copy data files up to*, 0 for links only) and whether figures are saved.
 The AI chat beside the notebook goes into the `.ewd` too (as text: messages and the names of the
 tools used) and is back in the chat side bar when you open the file; `.py` and `.ipynb` files do
@@ -477,7 +477,7 @@ history, which starts empty when the notebook is opened.
 The puzzle icon on the far left opens the **Plugins** side bar, next to the notebook (Window ›
 Plugins, Ctrl+Shift+X). It lists the installed plugins, with where each comes from (plugin
 folder, pip package or this session) and any error it raised, and the plugins you can install:
-ewald's example plugins, the default plugin index and every catalog in Preferences › Python ›
+ewald's example plugins, the default plugin index and every catalog in Preferences › Plugins ›
 *Plugin catalogs* (see
 [Packaging and sharing](../plugins/packaging.md#plugin-catalogs)). Type to search, or filter with
 `@installed`, `@updates`, `@available` or a kind such as `@modifier`. *Install* copies a plugin file into the
@@ -492,7 +492,7 @@ folder's `.removed` folder (its steps stay available until ewald restarts). Sele
 and *Add as a step in the notebook*. *Create…* asks the AI to write a new plugin.
 
 Plugin modifiers ([Writing plugins](../plugins/index.md)) are steps like the built-in ones.
-Insert › Plugin step (or **+ Step** › Plugins) lists the installed ones and writes the import line for
+Insert › Step › Plugins (or **+ Step** › Plugins) lists the installed ones and writes the import line for
 you, for example `from ewald.modifiers import ShiftZ`. *Load plugin file…* adds a cell that
 registers the modifiers of a `.py` file:
 
@@ -535,7 +535,7 @@ and `trusted=False` opens any file restricted.
 The notebook layout is the only one (the OVITO-style "classic" layout was removed). Display
 settings (particle radii and colors, bonds, cell and visual plugins) are in the **Display** panel
 on the right; the AI chat opens left of the notebook from the activity bar, and code from its
-answers can be inserted as cells. View › Focus on the viewport (Ctrl+\\)
+answers can be inserted as cells. View › Focus on the structure view (Ctrl+\\)
 hides the panels, and pressing it again brings them back. The chevron at the right of a panel's title bar (for the
 Notebook panel, at the right of its tab row; or a double-click on the title) folds that panel: the Notebook, Plugins, Display and AI chat
 panels fold to a thin strip with their name written down it, and the Data panel to its title

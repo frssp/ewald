@@ -365,7 +365,7 @@ class FilesMixin:
         return sorted({s for p in plugins.readers().values() for s in p.schemes})
 
     def open_location_dialog(self, text: str | None = None):
-        """File › Open location: a path or address typed in, ``host:/path`` over SSH or a plugin
+        """File › Open from › Location: a path or address typed in, ``host:/path`` over SSH or a plugin
         scheme such as ``simagent:1234`` (the same strings ``load()`` takes)."""
         if text is None:
             schemes = self.location_schemes()

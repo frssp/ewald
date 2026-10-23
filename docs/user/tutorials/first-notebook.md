@@ -66,7 +66,7 @@ then only call it "a mask in code". `isolate`, `fade` and `resize` work the same
 
 ## 4. Plot
 
-Click **+ View** and choose the histogram of `Coordination`, then add a second view of the table
+Click **+ Plot** and choose the histogram of `Coordination`, then add a second view of the table
 `coordination-rdf`:
 
 ```python

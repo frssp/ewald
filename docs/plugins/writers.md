@@ -1,6 +1,6 @@
 # Writer plugins
 
-A writer plugin adds an output format to `export_file`, the GUI's File › Export data and the
+A writer plugin adds an output format to `export_file`, the GUI's File › Export › Data and the
 Claude `export_file` tool. It is the export-side twin of a [reader plugin](readers.md): the same
 plugin folder, the same kind of entry point, the same registry, and `ewald plugins` lists both.
 
@@ -19,7 +19,7 @@ def write_positions_csv(path, frames, precision=6):
                 fh.write(f"{k},{t}," + ",".join(f"{x:.{precision}f}" for x in p) + "\n")
 ```
 
-Then `export_file(pipe, "run.pcsv", precision=3)` uses it, and so does File › Export data.
+Then `export_file(pipe, "run.pcsv", precision=3)` uses it, and so does File › Export › Data.
 Keyword arguments of `export_file` are passed to the writer.
 
 `frames` is an iterator: when a pipeline is exported, each frame is computed just before the

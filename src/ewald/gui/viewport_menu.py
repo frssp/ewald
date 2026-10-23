@@ -48,8 +48,8 @@ class ViewportMenuMixin:
         menu = QtWidgets.QMenu(self)
         d, pipe = self.data, self.pipeline
         if d is None and not everything:
-            menu.addAction(icon("open"), "Load file…", self.open_dialog)
-            menu.addAction(icon("remote"), "Load remote file (SSH)…", self.open_remote_dialog)
+            menu.addAction(icon("open"), "Open file…", self.open_dialog)
+            menu.addAction(icon("remote"), "Open remote file (SSH)…", self.open_remote_dialog)
             ex = menu.addMenu(icon("example"), "Open example")
             for example in examples.EXAMPLES:
                 ex.addAction(example.file, lambda e=example: self.open_example(e.file))
@@ -96,22 +96,10 @@ class ViewportMenuMixin:
             self._overlay_entries(menu)
             menu.addSeparator()
 
-        show = menu.addMenu(icon("eye"), "Show")
-        for label, attr in (("Bonds", "bonds_enabled"), ("Simulation cell", "show_cell")):
-            act = show.addAction(label)
-            act.setCheckable(True)
-            act.setChecked(bool(getattr(self.style, attr)))
-            act.toggled.connect(lambda on, attr=attr: self._toggle_style(attr, on))
-        # the VTK view has a render frame (made once the view is built); OpenGL 1.x has none
-        if getattr(self, "render_frame", None) is not None or not getattr(self.viewport, "view_built", True):
-            act = show.addAction("Render frame")
-            act.setToolTip("The part of the view the rendered picture shows")
-            act.setCheckable(True)
-            act.setChecked(bool(self.settings["viewport.render_frame"]))
-            act.toggled.connect(self._toggle_render_frame)
+        self.fill_show_menu(menu.addMenu(icon("eye"), "Show"))
         if (d is not None and d.cell.is_valid) or everything:
             self.fill_replicate_menu(menu.addMenu(icon("layers"), "Replicate cell"))
-            views = menu.addMenu("View along")
+            views = menu.addMenu("Look along")
             for ax in ("a", "b", "c", "a*", "b*", "c*"):
                 views.addAction(ax, lambda ax=ax: self.viewport.view_along(ax))
         ortho = menu.addAction("Orthographic")
@@ -124,6 +112,24 @@ class ViewportMenuMixin:
         menu.addAction(icon("claude"), "Ask AI about selection…" if picks or everything else "Ask AI about this structure…",
                        self.ask_claude)
         return menu
+
+    def fill_show_menu(self, show: QtWidgets.QMenu) -> QtWidgets.QMenu:
+        """Show: bonds, the simulation cell and the render frame on or off (right-click and View › Show)."""
+        show.clear()
+        for label, attr in (("Bonds", "bonds_enabled"), ("Simulation cell", "show_cell")):
+            act = show.addAction(label)
+            act.setCheckable(True)
+            act.setChecked(bool(getattr(self.style, attr)))
+            act.toggled.connect(lambda on, attr=attr: self._toggle_style(attr, on))
+        # the VTK view has a render frame (made once the view is built); OpenGL 1.x has none
+        if getattr(self, "render_frame", None) is not None or not getattr(self.viewport, "view_built", True):
+            act = show.addAction("Render frame")
+            act.setToolTip("The part of the view the rendered picture shows")
+            act.setCheckable(True)
+            act.setChecked(bool(self.settings["viewport.render_frame"]))
+            act.toggled.connect(self._toggle_render_frame)
+        show.setToolTipsVisible(True)
+        return show
 
     def _show_viewport_menu(self):
         menu = self.viewport_menu()

@@ -149,7 +149,7 @@ data.tables["NEB"]                                     # Reaction Coordinate, En
 pipe = import_file("neb", energies=[-120.31, None, None, None, -120.12])  # endpoint energies by hand (None: from file)
 ```
 
-In a notebook, `pipe = load("neb")` does the same. In the GUI, File › Load NEB folder opens
+In a notebook, `pipe = load("neb")` does the same. In the GUI, File › Open from › NEB folder opens
 either folder layout and shows the profile in the Plots tab; dropping the folder on the window
 does too. Opening one image on its own (`03/OUTCAR`, `dump.neb.3`) asks whether to open the
 whole band instead. Remote NEB folders open the same way (`load("hpc:/scratch/neb")`, or
@@ -214,7 +214,7 @@ export_file(data, "rho.xsf")                                 # structure and its
 | `ase` | any other `format=` | many | `ase.io.write` |
 
 One-frame formats raise an error when given several frames; pass `frames=[i]`. The GUI's
-File › Export data lists the same writers and asks whether to write the current frame or the
+File › Export › Data lists the same writers and asks whether to write the current frame or the
 whole trajectory. A [writer plugin](../plugins/writers.md) adds a format.
 
 ## Files on an SSH host
@@ -222,7 +222,7 @@ whole trajectory. A [writer plugin](../plugins/writers.md) adds a format.
 Any path can be on another machine, written like `scp` or as a URL (no extra needed):
 `import_file("cluster:/scratch/me/run1/dump.lammpstrj")`, `"me@login.hpc.edu:run1/XDATCAR"`
 (relative to the remote home) or `"ssh://me@login.hpc.edu:2222/scratch/me/dump.*.lammpstrj"`.
-In the GUI, File › Load remote file (SSH)… browses the remote folders.
+In the GUI, File › Open from › Remote file (SSH)… browses the remote folders.
 
 ### Saved remote computers
 
@@ -246,7 +246,7 @@ Manager, Secret Service/KWallet), or, where there is none, to `credentials.json`
 you; it never goes into settings, sessions or notebooks, which keep only `nurion:/path`.
 One-time codes are always asked. If a saved password is refused you are asked for it.
 
-In the GUI the Remotes side bar (activity bar, or File › Remote computers, Ctrl+Alt+R) lists
+In the GUI the Remotes side bar (activity bar, or Window › Remotes, Ctrl+Alt+R) lists
 the profiles and the `~/.ssh/config` hosts not saved yet (right-click › Save as profile), with
 + New, Edit, Test connection, Duplicate and Delete. Below it a file browser opens the start
 folder of the picked computer: double-click opens a file in place (streamed or cached, as

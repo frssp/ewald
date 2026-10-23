@@ -69,7 +69,7 @@ Each finding says what it rests on. `check.ok` is False when any is a warning or
 (exit status 1 when something is wrong). The AI chat has the same check as its `check_run` tool.
 
 In the GUI, opening an MD run or a relaxation whose input files say so adds a `check_run(pipe)`
-cell under the load cell, run at once. Insert › Analysis › Run check adds one to any notebook.
+cell under the load cell, run at once. Insert › Quick analysis › Run check adds one to any notebook.
 
 ## Several runs: `load_runs`
 

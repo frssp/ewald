@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import numpy as np
 
-#: Insert › Analysis in the GUI: (verb, menu label, the code cell it inserts and runs)
+#: Insert › Quick analysis in the GUI: (verb, menu label, the code cell it inserts and runs)
 VERB_CELLS = [
     ("check_run", "Run check (convergence, equilibration)", "check = check_run(pipe)\ncheck"),
     ("rdf", "Radial distribution g(r)", "g = rdf(pipe, cutoff=6.0)\ng"),
@@ -30,12 +30,12 @@ VERB_CELLS = [
 ]
 
 
-#: verbs that need a trajectory (Insert › Analysis greys them out for a single frame)
+#: verbs that need a trajectory (Insert › Quick analysis greys them out for a single frame)
 TRAJECTORY_VERBS = ("msd", "vacf")
 
 
 def verb_cell(verb: str, data=None) -> str:
-    """The code cell Insert › Analysis adds for ``verb`` (with its import). With the current frame
+    """The code cell Insert › Quick analysis adds for ``verb`` (with its import). With the current frame
     ``data`` the defaults fit it: the g(r) cutoff stays below half the periodic cell width, and
     bond angles first create bonds (covalent radii, like the default view) when there are none."""
     code = next(c for v, _label, c in VERB_CELLS if v == verb)

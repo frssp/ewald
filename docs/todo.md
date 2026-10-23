@@ -7,13 +7,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 "In progress" when it merges.
 
 ## In progress
-- Menu UX review (2026-10-23): small fixes in this PR; the larger reorganization (menu bar
-  regrouping, File › Open recent, "View"/"Theme" naming, Insert › Analysis vs Step › Analysis,
-  Preferences pages, mnemonics and native shortcut text in tooltips) waits for the owner's pick
-  from the review report.
 
 
 ## Next
+- Menus after the 2026-10-23 review: right-click menus still mix entries with and without icons;
+  context menus have no mnemonics; Edit has no Find in notebook; the Keyboard shortcuts window lists
+  shortcuts but cannot change them; the palette's recent commands are kept for the session only.
 - Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): the Plots panel draws a lineup
   table as curves only; the `levels` (VBM, CBM, E_F) and plateau `regions` in its attributes are
   not drawn yet (needs a GUI mockup first), and the side bar has no "Analysis" row. Only the

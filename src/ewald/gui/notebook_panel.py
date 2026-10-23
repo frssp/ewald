@@ -17,16 +17,35 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..notebook import Cell, History, Notebook, new_notebook
 from ..pipeline import Pipeline
-from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea, FlowLayout, _discover, fill_modifier_menu
-from .notebook_tabs import NotebookTabs
 from . import header, workers
-from .icons import icon
-from .theme import TOKENS
+
 # re-exported: the cell widgets and the editor moved to their own modules
 from .cell_widget import (  # noqa: F401
-    CELL_MIME, GUTTER_WIDTH, CellWidget, MiniPlot, OutputArea, _badge, _call_name, _same_shape, _shape, fill_view_menu,
-    result_chips, result_plot)
-from .code_editor import MAX_EDITOR_LINES, CodeEditor, PythonHighlighter, mono_font  # noqa: F401
+    CELL_MIME,
+    GUTTER_WIDTH,
+    CellWidget,
+    MiniPlot,
+    OutputArea,
+    _badge,
+    _call_name,
+    _same_shape,
+    _shape,
+    fill_view_menu,
+    result_chips,
+    result_plot,
+)
+from .code_editor import (  # noqa: F401
+    MAX_EDITOR_LINES,
+    CodeEditor,
+    PythonHighlighter,
+    mono_font,
+)
+from .icons import icon
+from .notebook_tabs import NotebookTabs
+from .palette import native_text
+from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea
+from .pipeline_panel import FlowLayout, _discover, fill_modifier_menu
+from .theme import TOKENS
 
 # Seconds the window waits for cells to finish before it goes on and lets them run in the
 # background (Interrupt stops them); None waits for every run (tests that read results right away).
@@ -119,7 +138,7 @@ class NotebookView(QtWidgets.QWidget):
         self._worker = None
         self._marked = []
         run_all = self.run_all_button = QtWidgets.QPushButton("Run all", objectName="primary",
-                                                              toolTip="Restart and run every cell (Ctrl+Shift+Enter)")
+                                                              toolTip=native_text("Restart and run every cell (Ctrl+Shift+Enter)"))
         run_all.setProperty("ewald_icon", "play")
         run_all.setProperty("ewald_icon_color", "on_accent")
         run_all.setIcon(icon("play", TOKENS["on_accent"]))
@@ -139,7 +158,8 @@ class NotebookView(QtWidgets.QWidget):
         self.interrupt_button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
         self.interrupt_button.clicked.connect(self.interrupt)
         self.interrupt_button.setVisible(False)
-        self.py_button = QtWidgets.QToolButton(text=".py", checkable=True, toolTip="Show the notebook as its Python file")
+        self.py_button = QtWidgets.QToolButton(text="Python file", checkable=True,
+                                            toolTip="Show the notebook as its Python file (percent format)")
         self.py_button.toggled.connect(self._show_file)
         self.kernel_button = QtWidgets.QToolButton(objectName="kernelButton", autoRaise=True,
                                                    popupMode=QtWidgets.QToolButton.InstantPopup,
@@ -227,7 +247,7 @@ class NotebookView(QtWidgets.QWidget):
             self.banner_run.setText("Trust and run all")
         else:
             self.banner_text.setText("<b>Not run yet:</b> showing the results saved in the file.")
-            banner.setToolTip("Opened without running its cells (Preferences › Python › "
+            banner.setToolTip("Opened without running its cells (Preferences › Notebooks › "
                               "Run notebooks when opened).")
             self.banner_run.setText("Run all")
         self.banner_trust.setVisible(nb.restricted)
@@ -314,7 +334,7 @@ class NotebookView(QtWidgets.QWidget):
         w = QtWidgets.QWidget(objectName="addBar")
         row = FlowLayout(w, spacing=4)
         row.setContentsMargins(GUTTER_WIDTH + 2, 2, 0, 0)  # lined up with the cell bodies
-        code = QtWidgets.QPushButton("+ Code", objectName="addCell", toolTip="Python cell (Ctrl+Shift+N)")
+        code = QtWidgets.QPushButton("+ Code", objectName="addCell", toolTip=native_text("Python cell (Ctrl+Shift+N)"))
         code.clicked.connect(lambda: self.add_cell("code"))
         text = QtWidgets.QPushButton("+ Text", objectName="addCell", toolTip="Markdown text cell")
         text.clicked.connect(lambda: self.add_cell("markdown"))
@@ -322,11 +342,11 @@ class NotebookView(QtWidgets.QWidget):
                                      toolTip="Add an analysis or modification step (plugin steps under Plugins)")
         self.step_menu = QtWidgets.QMenu(step)
         self.step_menu.aboutToShow.connect(self._fill_step_menu)
-        # + Step › Plugins, rebuilt each time + Step opens; Insert › Plugin step and the command
+        # + Step › Plugins, rebuilt each time + Step opens; Insert › Step and the command
         # palette fill it too, also before + Step was ever opened
         self.plugin_menu = QtWidgets.QMenu("Plugins", self)
         step.setMenu(self.step_menu)
-        view = QtWidgets.QPushButton("+ View", objectName="addCell",
+        view = QtWidgets.QPushButton("+ Plot", objectName="addCell",
                                      toolTip="A plot of a data table (g(r), XRD, DOS, bands, thermo) or a histogram")
         self.view_menu = QtWidgets.QMenu(view)
         self.view_menu.aboutToShow.connect(lambda: fill_view_menu(self.view_menu, self.data, self.add_view))
@@ -337,9 +357,22 @@ class NotebookView(QtWidgets.QWidget):
 
     def _fill_step_menu(self):
         fill_modifier_menu(self.step_menu, self.add_step, self._step_context)
-        self.step_menu.addSeparator()
-        self.plugin_menu = self.step_menu.addMenu("Plugins")
+        self.fill_plugin_steps(self.step_menu)
+
+    def fill_plugin_steps(self, menu):
+        """Plugins at the end of a step menu (+ Step, Insert › Step): every plugin step, Load plugin
+        file and Open plugin folder; merged into a "Plugins" category the step menu already has."""
         self._fill_plugin_menu()
+        sub = next((a.menu() for a in menu.actions() if a.menu() is not None and a.text() == "Plugins"), None)
+        if sub is None:
+            menu.addSeparator()
+            sub = menu.addMenu("Plugins")
+        else:
+            sub.addSeparator()
+        listed = {a.text() for a in sub.actions()}
+        for act in self.plugin_menu.actions():
+            if act.isSeparator() or act.text() not in listed:
+                sub.addAction(act)
 
     def add_view(self, **kwargs) -> Cell:
         """Add a view cell (``show(pipe, **kwargs)``; ``source=`` another pipeline variable) after
@@ -499,7 +532,7 @@ class NotebookView(QtWidgets.QWidget):
         if not nb.path:
             parts.append("not saved")
         self.status.setText(" · ".join(parts))
-        self.status.setToolTip(nb.path or "Not saved yet (Ctrl+S)")
+        self.status.setToolTip(nb.path or native_text("Not saved yet (Ctrl+S)"))
         if self.py_button.isChecked():
             text = nb.to_py()
             if text != self.file_view.toPlainText():   # keeps the scroll position while frames play
@@ -657,7 +690,7 @@ class NotebookView(QtWidgets.QWidget):
             self._focus_cell(cells[k])
 
     def delete_cells(self, cells):
-        """Delete ``cells`` (DD, Notebook › Delete cells); Z brings them back."""
+        """Delete ``cells`` (DD, Edit › Delete cells); Z brings them back."""
         nb = self.notebook
         cells = [c for c in nb.cells if c in cells]
         if not cells:

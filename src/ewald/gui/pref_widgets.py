@@ -11,15 +11,19 @@ from .theme import STYLE, TOKENS
 _ICONS = {
     "General": '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/>'
                '<circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
-    "Viewports": '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/>'
+    "3D view": '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/>'
                  '<path d="M12 7l4 2.3v4.4L12 16l-4-2.3V9.3z"/>',
-    "Elements": '<circle cx="12" cy="12" r="1.5"/><ellipse cx="12" cy="12" rx="9" ry="3.6" transform="rotate(30 12 12)"/>'
+    "Atoms & bonds": '<circle cx="12" cy="12" r="1.5"/><ellipse cx="12" cy="12" rx="9" ry="3.6" transform="rotate(30 12 12)"/>'
                 '<ellipse cx="12" cy="12" rx="9" ry="3.6" transform="rotate(-30 12 12)"/>'
                 '<ellipse cx="12" cy="12" rx="9" ry="3.6" transform="rotate(90 12 12)"/>',
     "Rendering": '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
     "Compute": '<rect x="6" y="6" width="12" height="12" rx="1.5"/><rect x="9.5" y="9.5" width="5" height="5"/>'
                '<path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
     "Python": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/>',
+    "Plots": '<path d="M4 4v16h16"/><path d="M7 15l3-4 3 2 5-7"/>',
+    "Notebooks": '<path d="M6 3h11a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6z"/><path d="M6 3v18M9 8h6M9 12h6"/>',
+    "Plugins": '<path d="M9 3v4M15 3v4"/><rect x="6" y="7" width="12" height="6" rx="1.5"/>'
+               '<path d="M12 13v3a3 3 0 0 1-3 3H8"/>',
     "AI": '<path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6z"/><path d="M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z"/>',
 }
 

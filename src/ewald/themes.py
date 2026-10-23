@@ -1,6 +1,6 @@
 """Themes: named bundles of element colors, background, cell color and radius preset.
 
-``render(data, "fig.png", theme="VESTA")`` and the GUI's View › Theme menu apply one; explicit
+``render(data, "fig.png", theme="VESTA")`` and the GUI's View › Structure theme menu apply one; explicit
 arguments (``type_colors``, ``background``, ``radius_preset``, ...) still win over the theme.
 Plugins add themes with ``@theme``::
 

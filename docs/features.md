@@ -223,7 +223,7 @@ Remote paths (`host:/path`, `ssh://...`) work with every reader; LAMMPS dumps an
 
 ### Writers
 
-`export_file(source, path, format=...)` and File › Export data pick a writer by `format=` or by file name; *one frame* writers need e.g. `frames=[-1]`.
+`export_file(source, path, format=...)` and File › Export › Data pick a writer by `format=` or by file name; *one frame* writers need e.g. `frames=[-1]`.
 
 | Format | File names | Writes | `format=` aliases |
 |---|---|---|---|
@@ -281,7 +281,7 @@ What gets drawn; every renderer draws every element. Plugins add more ([Visual e
 
 ### Themes and color maps
 
-`theme=` (View › Theme in the GUI) sets element colors, background, cell color and radius preset; every `cmap` takes a matplotlib name or a color map plugin ([Color maps and themes](plugins/styles.md)).
+`theme=` (View › Structure theme in the GUI) sets element colors, background, cell color and radius preset; every `cmap` takes a matplotlib name or a color map plugin ([Color maps and themes](plugins/styles.md)).
 
 | Theme | What it sets |
 |---|---|
@@ -425,7 +425,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `general.live_reload_interval` | Live reload interval | `2.0` |
 | `general.docs_url` | Documentation URL | `''` |
 
-### Viewports
+### 3D view
 
 | Key | Label | Default |
 |---|---|---|
@@ -451,7 +451,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `viewport.interactive_atoms` | Atoms while moving | `1000000` |
 | `viewport.refine_delay` | Refine after | `0.3` |
 
-### Elements
+### Atoms & bonds
 
 | Key | Label | Default |
 |---|---|---|
@@ -480,9 +480,23 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `render.output_dir` | Output folder | `''` |
 | `render.type_legend` | Particle type legend | `False` |
 | `render.scale_bar` | Scale bar | `False` |
+| `render.movie_format` | Movie format | `'MP4 (H.264)'` |
+
+### Plots
+
+| Key | Label | Default |
+|---|---|---|
 | `plots.size` | Saved plot size | `'1-column (3.5 in)'` |
 | `plots.font_size` | Saved plot font size | `8.0` |
-| `render.movie_format` | Movie format | `'MP4 (H.264)'` |
+| `python.plot_style` | Style of your own plots | `'Publication'` |
+
+### Notebooks
+
+| Key | Label | Default |
+|---|---|---|
+| `python.run_notebooks` | Run notebooks when opened | `'never'` |
+| `python.save_figures` | Save figures with notebooks | `True` |
+| `python.bundle_data_mb` | Copy data files up to (MB) | `50.0` |
 
 ### Compute
 
@@ -497,11 +511,6 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 | Key | Label | Default |
 |---|---|---|
-| `python.run_notebooks` | Run notebooks when opened | `'never'` |
-| `python.plot_style` | Style of your own plots | `'Publication'` |
-| `python.save_figures` | Save figures with notebooks | `True` |
-| `python.bundle_data_mb` | Copy data files up to (MB) | `50.0` |
-| `python.plugin_catalogs` | Plugin catalogs | `''` |
 | `python.startup_script` | Console startup script | `''` |
 | `python.extra_paths` | Extra module paths | `''` |
 
@@ -524,6 +533,12 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `llm.read_folders` | Folders the AI may read | `''` |
 | `llm.confirm_hosts` | Ask before the AI connects to a host | `True` |
 
+### Plugins
+
+| Key | Label | Default |
+|---|---|---|
+| `python.plugin_catalogs` | Plugin catalogs | `''` |
+
 <!-- gui:start -->
 ## Desktop GUI
 
@@ -533,13 +548,9 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 **File**
 
-- New notebook (`Ctrl+T`)
+- New notebook (`Ctrl+N`)
 - Open… (`Ctrl+O`)
-- Load remote file (SSH)… (`Ctrl+Alt+O`)
-- Open location… (`Ctrl+L`)
-- Remote computers (SSH profiles)… (`Ctrl+Alt+R`)
-- Load NEB folder…
-- Open workflow folder…
+- Open recent
 - Open example
   - POSCAR.SrTiO3 (VASP POSCAR)
   - Si.cif (CIF)
@@ -549,15 +560,20 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - CHGCAR.Si (VASP CHGCAR)
   - Cu_void.lammpstrj (LAMMPS dump)
   - CuZr.data (LAMMPS data)
+- Open from
+  - Remote file (SSH)… (`Ctrl+Alt+O`)
+  - Location… (`Ctrl+L`)
+  - NEB folder…
+  - Workflow folder…
 - Save notebook (`Ctrl+S`)
 - Save notebook as… (`Ctrl+Shift+S`)
 - Close notebook (`Ctrl+W`)
-- Session (.ewald)
-  - Load session… (`Ctrl+Shift+O`)
-  - Save session as…
-- Render image… (`Ctrl+Shift+R`)
-- Export data… (`Ctrl+E`)
-- Export movie…
+- Export
+  - Image… (`Ctrl+Shift+R`)
+  - Data… (`Ctrl+E`)
+  - Movie…
+  - Session (.ewald)…
+- Import session (.ewald)…
 - Live reload
 - Quit (`Ctrl+Q`)
 
@@ -565,23 +581,34 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 - Undo (`Ctrl+Z`)
 - Redo (`Ctrl+Shift+Z`)
-- Plugin settings
+- Cut cells
+- Copy cells
+- Paste cells below
+- Paste cells above
+- Delete cells
+- Undo cell deletion
+- Merge cells
 - Preferences… (`Ctrl+,`)
 
 **View**
 
-- View along a
-- View along b
-- View along c
-- View along a*
-- View along b*
-- View along c*
-- Top (+z)
-- Front (-y)
-- Right (+x)
-- Isometric
+- Look along
+  - a
+  - b
+  - c
+  - a*
+  - b*
+  - c*
+  - Top (+z)
+  - Front (-y)
+  - Right (+x)
+  - Isometric
 - Orthographic
 - Zoom to fit (`Ctrl+0`)
+- Show
+  - Bonds
+  - Simulation cell
+  - Render frame
 - Replicate cell
   - Off (1 × 1 × 1)
   - 2 × 2 × 2
@@ -594,7 +621,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
     - Outline of the block
     - Original cell
     - Every cell
-- Theme
+- Structure theme
   - Default
   - VESTA
   - CPK
@@ -606,50 +633,46 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Layout
   - Split right (`Ctrl+Alt+\`)
   - Split down
-  - Move view left (`Ctrl+Alt+Left`)
-  - Move view right (`Ctrl+Alt+Right`)
-  - Move view up (`Ctrl+Alt+Up`)
-  - Move view down (`Ctrl+Alt+Down`)
-  - Move view to editor area
-  - Move view to panel
-  - Return view home (`Ctrl+Alt+W`)
+  - Move tab left (`Ctrl+Alt+Left`)
+  - Move tab right (`Ctrl+Alt+Right`)
+  - Move tab up (`Ctrl+Alt+Up`)
+  - Move tab down (`Ctrl+Alt+Down`)
+  - Move tab to editor area
+  - Move tab to panel
+  - Return tab home (`Ctrl+Alt+W`)
   - Maximize group (`Ctrl+Alt+M`)
   - Fold or unfold panel (`Ctrl+Alt+J`)
   - Reset layout
-- Fold all View cards
-- Unfold all View cards
-- Focus on the viewport (`Ctrl+\`)
+  - Fold all View cards
+  - Unfold all View cards
+- Focus on the structure view (`Ctrl+\`)
 - Minimal mode (menus hidden) (`Ctrl+Shift+M`)
+- Full screen (`F11`)
 
 **Notebook**
 
-- Run all (`Ctrl+Shift+Return`)
 - Run current cell
 - Run current cell and below
+- Run all (`Ctrl+Shift+Return`)
 - Interrupt
 - Restart
 - Restart & clear outputs
 - Kernel
-- Trust notebook…
 - Move cell up (`Ctrl+Shift+Up`)
 - Move cell down (`Ctrl+Shift+Down`)
-- Delete cells
-- Undo cell deletion
-- Cut cells
-- Copy cells
-- Paste cells below
-- Paste cells above
-- Merge cells
 - Change cell to code (`Ctrl+M, Y`)
 - Change cell to text (`Ctrl+M, M`)
 - Clear cell output (`Ctrl+Shift+Backspace`)
 - Clear all outputs (`Ctrl+Alt+Shift+Backspace`)
+- Trust notebook…
 - Show as Python file
 
 **Insert**
 
 - Code cell (`Ctrl+Shift+N`)
 - Text cell
+- Cell above
+- Cell below
 - Step
   - Analysis
     - Coordination analysis / RDF
@@ -732,10 +755,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
     - Clear selection
   - Python
     - Python script
-- View
-- 3D snapshot of the view
-- View settings with the camera
-- Analysis
+- Plot
+- Quick analysis
   - Run check (convergence, equilibration)
   - Radial distribution g(r)
   - Structure factor S(q)
@@ -747,21 +768,26 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
   - Clusters
   - Mean squared displacement
   - Velocity autocorrelation
-- Plugin step
+- Snapshot of the structure view
+- Write view settings to notebook
 
 **Tools**
 
-- Orbit / pan / zoom (mouse)
+- Orbit, pan and zoom
 - Pick atom
 - Measure distance
 - Measure angle
 - Edit bonds
+- Clear picks and measurements
+- Command palette (`Ctrl+K`)
 
 **Window**
 
 - Notebook workspace (`Ctrl+1`)
 - Render workspace (`Ctrl+2`)
 - Notebook
+- Workflows
+- Remotes (`Ctrl+Alt+R`)
 - Plugins (`Ctrl+Shift+X`)
 - AI chat (`Ctrl+J`)
 - Structure
@@ -769,20 +795,19 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Python console
 - Data inspector
 - Plots
-- New plot view
+- New plot tab
 - Log
-- Command palette (`Ctrl+K`)
-- Plugin panels
-  - Workflows
 
 **Help**
 
+- Tutorials
 - User manual
 - Desktop GUI
 - Modifiers
 - Python scripting
 - Writing plugins
 - Python API reference
+- Keyboard shortcuts
 - About EWALD
 
 **Viewport (right click)**, entries shown only when they apply (picked atoms, phonon modes, NEB band, volumetric grid, trajectory):
@@ -821,7 +846,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
     - Outline of the block
     - Original cell
     - Every cell
-- View along
+- Look along
   - a
   - b
   - c

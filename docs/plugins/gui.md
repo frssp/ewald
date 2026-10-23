@@ -40,13 +40,13 @@ shows the traceback and the rest of the window carries on.
 |---|---|
 | `title` | the button's and the side bar's name (default: `name`, the function name) |
 | `icon` | a built-in icon name (`"chart"`, `"plugins"`, ...), an SVG or PNG file next to the plugin file, or SVG markup (`"<svg ...>"`, handy for one-file plugins). Draw SVGs on a 24 px grid with `stroke="currentColor"`: they then take the UI theme's colors like the built-in buttons |
-| `shortcut` | a key sequence such as `"Ctrl+Alt+A"`, on the entry under Window › Plugin panels |
+| `shortcut` | a key sequence such as `"Ctrl+Alt+A"`, on its entry in the Window menu |
 | `width` | starting width in pixels |
 | `tooltip`, `description` | the button's tooltip (default: the docstring's first paragraph) |
 | `area` | `"side"` (default) for a side bar, `"bottom"` for a [tab under the 3D view](#a-tab-under-the-3d-view) |
 
 The side bar opens in a column of its own left of the notebook, like the AI chat, and can be
-dragged, floated and folded like the other side bars. Window › Plugin panels lists every plugin
+dragged, floated and folded like the other side bars. The Window menu lists every plugin
 side bar, and so does the command palette (Ctrl+K). A side bar that is open when the app closes
 opens again at the next start, where it was and as wide as it was (with Preferences › General ›
 *Restore window layout*); that is the first time its function runs in that session.
@@ -54,7 +54,7 @@ opens again at the next start, where it was and as wide as it was (with Preferen
 ### A tab under the 3D view
 
 With `area="bottom"` the panel is a tab next to Python console, View, Data inspector, Plots and
-Log instead of a side bar. It has no activity-bar button; Window › Plugin panels opens it. Like
+Log instead of a side bar. It has no activity-bar button; its entry in the Window menu opens it. Like
 the other tabs it can be dragged to another group or split beside the 3D view, and it has a
 close button; closing it deletes the widget, and the next open builds a new one. An open tab is
 part of the saved layout.

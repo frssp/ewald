@@ -19,6 +19,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from . import header
 from .layout_model import Group, Layout, Split, zone_at
+from .palette import native_text
 from .theme import TOKENS
 
 
@@ -117,9 +118,9 @@ class TabGroup(QtWidgets.QWidget):
         self.bar.tabCloseRequested.connect(lambda i: workbench.close_view(self.bar.tabData(i)))
         head.addWidget(self.bar, 1)
         self.buttons = {}
-        for key, tip in (("split", "Split the current view to the right (Ctrl+Alt+\\)"),
-                         ("maximize", "Maximize this group (Ctrl+Alt+M, or double-click a tab)"),
-                         ("fold", "Fold or unfold the panel (Ctrl+Alt+J)"),
+        for key, tip in (("split", native_text("Split the current view to the right (Ctrl+Alt+\\)")),
+                         ("maximize", native_text("Maximize this group (Ctrl+Alt+M, or double-click a tab)")),
+                         ("fold", native_text("Fold or unfold the panel (Ctrl+Alt+J)")),
                          ("more", "Move, split or close the current view")):
             b = header.button(key, tip, name="groupButton")
             head.addWidget(b, 0, QtCore.Qt.AlignVCenter)
@@ -779,14 +780,14 @@ class Workbench(QtWidgets.QWidget):
         """Move, split, maximize and close entries for ``view`` (tab right click and ⋯)."""
         g = self.layout.find(view)
         area = self.layout.area_of(g)
-        menu.addAction("Split right", lambda: self.split(view, "right"))
+        menu.addAction(native_text("Split right\tCtrl+Alt+\\"), lambda: self.split(view, "right"))
         menu.addAction("Split down", lambda: self.split(view, "bottom"))
         if area == "panel":
             menu.addAction("Move to editor area", lambda: self.move(view, "editor"))
         else:
             menu.addAction("Move to panel", lambda: self.move(view, "panel"))
         menu.addSeparator()
-        menu.addAction("Restore group" if self.maximized == g.id else "Maximize group",
+        menu.addAction(native_text(("Restore group" if self.maximized == g.id else "Maximize group") + "\tCtrl+Alt+M"),
                        lambda: self.toggle_maximize(g))
         for label, fn in self.extra_view_actions(view):
             menu.addAction(label, fn)
@@ -811,7 +812,7 @@ class Workbench(QtWidgets.QWidget):
             if op:
                 a.setEnabled(self.can(op))
                 a.setToolTip(f"Acts on {title}" if a.isEnabled() else
-                             f"{title} is alone in its group: click another view's tab first")
+                             f"{title} is alone in its group: click another tab first")
 
     def enable_actions(self):
         """Every move enabled again (the shortcuts check :meth:`can` themselves)."""
@@ -835,13 +836,13 @@ class Workbench(QtWidgets.QWidget):
             self._actions = [
                 act("Split right", lambda v: self.split(v, "right"), "Ctrl+Alt+\\", "split:right"),
                 act("Split down", lambda v: self.split(v, "bottom"), op="split:bottom"),
-                act("Move view left", lambda v: self.move_towards(v, "left"), "Ctrl+Alt+Left", "towards:left"),
-                act("Move view right", lambda v: self.move_towards(v, "right"), "Ctrl+Alt+Right", "towards:right"),
-                act("Move view up", lambda v: self.move_towards(v, "top"), "Ctrl+Alt+Up", "towards:top"),
-                act("Move view down", lambda v: self.move_towards(v, "bottom"), "Ctrl+Alt+Down", "towards:bottom"),
-                act("Move view to editor area", lambda v: self.move(v, "editor")),
-                act("Move view to panel", lambda v: self.move(v, "panel")),
-                act("Return view home", self.close_view, "Ctrl+Alt+W"),
+                act("Move tab left", lambda v: self.move_towards(v, "left"), "Ctrl+Alt+Left", "towards:left"),
+                act("Move tab right", lambda v: self.move_towards(v, "right"), "Ctrl+Alt+Right", "towards:right"),
+                act("Move tab up", lambda v: self.move_towards(v, "top"), "Ctrl+Alt+Up", "towards:top"),
+                act("Move tab down", lambda v: self.move_towards(v, "bottom"), "Ctrl+Alt+Down", "towards:bottom"),
+                act("Move tab to editor area", lambda v: self.move(v, "editor")),
+                act("Move tab to panel", lambda v: self.move(v, "panel")),
+                act("Return tab home", self.close_view, "Ctrl+Alt+W"),
                 act("Maximize group", lambda v: self.toggle_maximize(self.layout.find(v)), "Ctrl+Alt+M"),
             ]
             fold = QtGui.QAction("Fold or unfold panel", self)

@@ -102,7 +102,7 @@ def io_section() -> list[str]:
     writers.sort(key=lambda w: (w.priority is None, w.priority or 0, w.name))
     out += ["", "Remote paths (`host:/path`, `ssh://...`) work with every reader; LAMMPS dumps and XDATCARs "
             "are streamed, other formats are downloaded to a local cache.", "", "### Writers", "",
-            "`export_file(source, path, format=...)` and File › Export data pick a writer by `format=` or by "
+            "`export_file(source, path, format=...)` and File › Export › Data pick a writer by `format=` or by "
             "file name; *one frame* writers need e.g. `frames=[-1]`.", ""]
     out += _table(("Format", "File names", "Writes", "`format=` aliases"),
                   [(f"`{w.name}`" + ("" if w.multi_frame else " *one frame*"),
@@ -134,7 +134,7 @@ def rendering_section() -> list[str]:
     out += _table(("Overlay", "What it draws"), [(f"`{name}`", p.description.replace("|", "\\|"))
                                                 for name, p in _builtin_overlays().items()])
     out += ["", "### Themes and color maps", "",
-            "`theme=` (View › Theme in the GUI) sets element colors, background, cell color and radius "
+            "`theme=` (View › Structure theme in the GUI) sets element colors, background, cell color and radius "
             "preset; every `cmap` takes a matplotlib name or a color map plugin "
             "([Color maps and themes](plugins/styles.md)).", ""]
     out += _table(("Theme", "What it sets"), [(f"`{name}`", p.description.replace("|", "\\|"))

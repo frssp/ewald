@@ -41,7 +41,7 @@ class Option:
 
     @property
     def page(self) -> str:
-        return PAGE_OF_PREFIX[self.key.split(".")[0]]
+        return PAGE_OF_KEY.get(self.key) or PAGE_OF_PREFIX[self.key.split(".")[0]]
 
 
 # python.plot_style choices -> (ewald.plotstyle style, colors from the UI theme?)
@@ -56,10 +56,15 @@ def plot_style(choice: str, tokens: dict | None = None) -> tuple:
     return "publication", (dict(tokens) if tokens and "theme" in choice else None)
 
 
-PAGES = ("General", "Viewports", "Elements", "Rendering", "Compute", "Python", "AI")
-PAGE_OF_PREFIX = {"general": "General", "viewport": "Viewports", "elements": "Elements", "bonds": "Elements",
-                  "render": "Rendering", "plots": "Rendering", "compute": "Compute", "performance": "Compute",
+# Preferences pages in order (2026-10-23 menu review); plugin settings pages follow "Plugins"
+PAGES = ("General", "3D view", "Atoms & bonds", "Rendering", "Plots", "Notebooks", "Compute", "Python", "AI",
+         "Plugins")
+PAGE_OF_PREFIX = {"general": "General", "viewport": "3D view", "elements": "Atoms & bonds", "bonds": "Atoms & bonds",
+                  "render": "Rendering", "plots": "Plots", "compute": "Compute", "performance": "Compute",
                   "python": "Python", "llm": "AI"}
+PAGE_OF_KEY = {"python.plot_style": "Plots", "python.run_notebooks": "Notebooks", "python.save_figures": "Notebooks",
+               "python.bundle_data_mb": "Notebooks", "python.plugin_catalogs": "Plugins"}
+PAGE_ALIASES = {"Viewports": "3D view", "Elements": "Atoms & bonds"}   # names before 2026-10-23
 
 OPTIONS = (
     Option("general.ui_theme", "graphite", "UI theme",

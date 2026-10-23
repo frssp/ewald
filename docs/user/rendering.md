@@ -302,7 +302,7 @@ Above 150 000 atoms the OpenGL renderer draws GPU impostors (shaded point sprite
 per-pixel sphere depth) instead of sphere meshes, which keeps million-atom frames interactive;
 `atom_style="impostor"` uses them at any size. The GUI viewport draws impostors by default. Pass `mesh_limit=` to move the
 threshold; above it, vector arrows are drawn as colored lines. `arrow_resolution=` sets the
-sides per arrow (the viewport uses Preferences › Viewports › Arrow resolution while you
+sides per arrow (the viewport uses Preferences › 3D view › Arrow resolution while you
 interact, file output follows the quality preset).
 
 ## Simple (ASE-style) drawing
@@ -413,6 +413,6 @@ The Render workspace sets the same options with journal size presets, a Quality 
 (Draft / Standard / Publication / Custom) and a separate movie quality, overlay switches and
 a movie format menu, and shows "Python for this figure", the `render(...)` or
 `render_animation(...)` call that reproduces the output. Paste it into a script to render
-the same view for every frame or every sample. File › Save session (Ctrl+S) writes a
+the same view for every frame or every sample. File › Export › Session (.ewald) writes a
 `.ewald` file; opening one restores the whole figure. Defaults live in Preferences ›
 Rendering.

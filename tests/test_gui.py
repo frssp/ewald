@@ -1024,11 +1024,11 @@ def test_viewport_context_menu_follows_data_and_picks(app, cu_fcc, tmp_path):
         return {a.text(): a for a in menu.actions() if a.text()}
 
     w = MainWindow()
-    assert "Load file…" in entries(w.viewport_menu())  # nothing loaded yet
+    assert "Open file…" in entries(w.viewport_menu())  # nothing loaded yet
     w.set_pipeline(Pipeline(StaticSource([cu_fcc])))
     menu = entries(w.viewport_menu())
-    assert "Load file…" not in menu and "Play" not in menu and "Clear picks" not in menu  # one frame, no picks
-    assert "View along" in menu and "Ask AI about this structure…" in menu
+    assert "Open file…" not in menu and "Play" not in menu and "Clear picks" not in menu  # one frame, no picks
+    assert "Look along" in menu and "Ask AI about this structure…" in menu
     w.viewport.set_tool("pick")
     w.viewport.add_pick(3)
     w.viewport.add_pick(5, extend=True)
@@ -1246,7 +1246,7 @@ def test_preferences_dialog_edit_search_restore(app, tmp_path):
     assert settings.load()["compute.device"] == "auto"        # saved to disk
     dlg._search("radius")
     visible = {dlg.pages.item(i).text() for i in range(dlg.pages.count()) if not dlg.pages.item(i).isHidden()}
-    assert visible == {"Elements"}
+    assert visible == {"Atoms & bonds"}
     dlg._search("")
     dlg.pages.setCurrentRow(1)                                # Viewports
     dlg.restore_page()
@@ -1321,7 +1321,7 @@ def test_main_window_applies_settings(app, pipe):
     assert w.device == "cpu" and w.style.background == "#ffffff" and w.style.bonds_enabled
     assert w.viewport.rotation_step == 30.0 and not w.render_page.raytrace
     assert w.style.type_colors["Cu"] == "#c8794a"
-    assert any(a.text() == "&Preferences…" for a in w.menuBar().actions()[1].menu().actions())
+    assert any(a.text() == "Pr&eferences…" for a in w.menuBar().actions()[1].menu().actions())
     s["bonds.length_factor"] = 1.0
     s["viewport.show_axes"] = False
     apply_settings(w, s)
@@ -1445,7 +1445,7 @@ def test_help_menu_and_late_registered_modifier(app, pipe, monkeypatch):
     w = MainWindow(pipe, settings=s)
     menus = {a.text().replace("&", ""): a.menu() for a in w.menuBar().actions()}
     labels = [a.text() for a in menus["Help"].actions()]
-    assert "Writing plugins" in labels and "Open plugin folder" not in labels  # in Insert › Plugin step
+    assert "Writing plugins" in labels and "Open plugin folder" not in labels  # in Insert › Step › Plugins
     assert w.help_url("plugins/index.md") == "https://example.org/ewald/plugins/"
 
     # registered after the window exists (startup script, plugin): appears when the menus open
@@ -1453,7 +1453,7 @@ def test_help_menu_and_late_registered_modifier(app, pipe, monkeypatch):
     for menu in (w.panel.add_menu, w.step_menu):
         menu.aboutToShow.emit()
         groups = {a.text(): a.menu() for a in menu.actions()}
-        assert [a.text() for a in groups["Plugins"].actions()] == ["Late wrap"]
+        assert [a.text() for a in groups["Plugins"].actions()][0] == "Late wrap"
     w.close()
     w.deleteLater()
 
@@ -3337,10 +3337,10 @@ def test_workbench_drag_plot_over_3d_view(app, pipe):
     assert wb.group_of(p2) is g and "plot:2" in w.extra_plots and wb.can_close(p2)
     menu = QtWidgets.QMenu()
     wb.fill_view_menu(menu, "plot:2")
-    assert [a.text() for a in menu.actions() if a.text()] == [
-        "Split right", "Split down", "Move to panel", "Maximize group", "New plot view", "Close"]
+    assert [a.text().split("\t")[0] for a in menu.actions() if a.text()] == [
+        "Split right", "Split down", "Move to panel", "Maximize group", "New plot tab", "Close"]
     acts = {a.text(): a for a in wb.actions()}
-    assert acts["Move view down"].shortcut() == QtGui.QKeySequence("Ctrl+Alt+Down")
+    assert acts["Move tab down"].shortcut() == QtGui.QKeySequence("Ctrl+Alt+Down")
     wb.active = g
     acts["Maximize group"].trigger()
     settle()
@@ -3348,7 +3348,7 @@ def test_workbench_drag_plot_over_3d_view(app, pipe):
     assert not wb.panel_host.isVisible()                   # the panel makes room too
     acts["Maximize group"].trigger()
     assert wb.panel_host.isVisible()
-    acts["Move view down"].trigger()                       # from the editor area into the panel
+    acts["Move tab down"].trigger()                        # from the editor area into the panel
     settle()
     assert wb.layout.area_of(wb.group_of(p2)) == "panel" and not vp.parked
 
@@ -3502,10 +3502,10 @@ def test_notebook_cell_controls_add_bar_and_running_mark(app):
     view.run(printed)
     assert not view.widget_for(printed).outputs.isHidden()
     view.select(printed)
-    next(a for a in w.menuBar().findChildren(QtGui.QAction) if a.text() == "&Clear cell output").trigger()
+    next(a for a in w.menuBar().findChildren(QtGui.QAction) if a.text() == "C&lear cell output").trigger()
     assert not printed.outputs and printed.count is None and view.widget_for(printed).counter.text() == ""
     assert view.widget_for(printed).outputs.isHidden() and cell.count is not None
-    next(a for a in w.menuBar().findChildren(QtGui.QAction) if a.text() == "Clear &all outputs").trigger()
+    next(a for a in w.menuBar().findChildren(QtGui.QAction) if a.text() == "Clear all output&s").trigger()
     assert all(not c.outputs and c.count is None for c in view.notebook.cells)
     w.close()
 
@@ -3594,7 +3594,7 @@ def test_cell_type_switches_and_add_bar_like_jupyter(app, pipe):
     app.processEvents()
     view = w.panel.view
     texts = [b.text() for b in view.add_bar.findChildren(QtWidgets.QPushButton)]
-    assert texts == ["+ Code", "+ Text", "+ Step", "+ View"]
+    assert texts == ["+ Code", "+ Text", "+ Step", "+ Plot"]
     view.step_menu.aboutToShow.emit()
     plugins = next(a for a in view.step_menu.actions() if a.text() == "Plugins").menu()
     assert any(a.text() == "Load plugin file…" for a in plugins.actions())
@@ -3688,7 +3688,7 @@ def test_panel_headers_line_up_and_buttons_use_icons(app, pipe):
     assert w.minimal_exit.isVisible() and w.minimal_note.isVisible()
     w.menuBar().show()  # what a tap on Alt does; the View menu entry must leave minimal mode
     view_menu = next(a.menu() for a in w.menuBar().actions() if a.text().replace("&", "") == "View")
-    next(a for a in view_menu.actions() if a.text().startswith("Minimal mode")).trigger()
+    next(a for a in view_menu.actions() if a.text().replace("&", "").startswith("Minimal mode")).trigger()
     assert not w.minimal and not w.minimal_exit.isVisible() and w.statusBar().isVisible()
     w.close()
 
@@ -3831,12 +3831,13 @@ def test_menu_audit_fixes(app, cu_fcc):
     assert labels and len(labels) == len(set(labels))
     acts = [a for a in w.menuBar().findChildren(QtGui.QAction) if a.text()]
     texts = [a.text().replace("&", "") for a in acts]
-    pal = next(a for a in acts if a.text() == "Command palette")
+    pal = next(a for a in acts if a.text() == "Command &palette")
     assert pal.shortcut() == QtGui.QKeySequence("Ctrl+K")
     assert texts.count("AI chat") == 1 and "Ask AI about selection…" not in texts
-    assert next(a for a in acts if a.text() == "AI chat").shortcut() == QtGui.QKeySequence("Ctrl+J")
+    assert next(a for a in acts if a.text() == "&AI chat").shortcut() == QtGui.QKeySequence("Ctrl+J")
     assert "Restart and run all" not in texts and "Load plugin file…" not in texts
     assert "Dark background" not in [a.text() for a in w.menuBar().actions()[2].menu().actions()]
+    assert "Structure theme" in texts and "Theme" not in texts
     w.step_menu.aboutToShow.emit()                       # one frame of Cu: no trajectory steps
     steps = {a.text(): a for sub in w.step_menu.actions() if sub.menu() for a in sub.menu().actions()}
     assert not steps["Mean squared displacement / diffusion"].isEnabled()
@@ -3846,7 +3847,7 @@ def test_menu_audit_fixes(app, cu_fcc):
 
 
 def test_menu_ux_review(app, cu_fcc):
-    """2026-10-23 menu review: Insert › Plugin step and the palette work before + Step was ever
+    """2026-10-23 menu review: Insert › Step › Plugins and the palette work before + Step was ever
     opened; Tools ticks the viewport tool in use; View › Orthographic follows the view; Window
     groups its entries; Notebook runs and interrupts the current cell; the palette shows shortcuts."""
     from PySide6 import QtGui
@@ -3856,8 +3857,8 @@ def test_menu_ux_review(app, cu_fcc):
 
     w = MainWindow(Pipeline(StaticSource([cu_fcc])))
     w.panel.new_notebook()
-    plug = next(a.menu() for a in w.menuBar().actions()[4].menu().actions() if a.text() == "&Plugin step")
-    plug.aboutToShow.emit()                       # raised AttributeError: no plugin_menu yet
+    w.step_menu.aboutToShow.emit()                # raised AttributeError before + Step was opened
+    plug = next(a.menu() for a in w.step_menu.actions() if a.text() == "Plugins")
     assert "Load plugin file…" in [a.text() for a in plug.actions()]
     w.viewport.set_tool("distance")
     w.tools_menu.aboutToShow.emit()
@@ -3872,11 +3873,143 @@ def test_menu_ux_review(app, cu_fcc):
     w.ortho_action.setChecked(True)
     assert w.viewport.ortho is True
     window = [a.text() for a in w.window_menu.actions()]
-    assert window[2] == "" and window.index("AI chat") < window.index("Structure")
+    assert window[2] == "" and window.index("&AI chat") < window.index("&Structure")
     notebook = [a.text().replace("&", "") for a in w.notebook_menu.actions()]
     assert "Run current cell" in notebook and "Interrupt" in notebook
     entries = {label: where for label, where, _ in menu_entries(w.menuBar())}
     assert entries["Command palette"].endswith(QtGui.QKeySequence("Ctrl+K").toString(QtGui.QKeySequence.NativeText))
+    w.close()
+
+
+def test_menu_reorganization(app, cu_fcc, tmp_path, monkeypatch):
+    """The menu bar after the 2026-10-23 review (decisions D-menu): File › Open recent / Open from /
+    Export, cell editing in Edit, Look along and Show in View, Quick analysis and Plot in Insert,
+    side bars ticked in Window (Remotes with Ctrl+Alt+R), Help › Keyboard shortcuts, the
+    Preferences pages, shortcuts written the macOS way and the palette's recent commands first."""
+    from PySide6 import QtGui
+
+    from ewald.gui import palette, welcome
+    from ewald.gui.app import MainWindow
+    from ewald.gui.palette import CommandPalette, menu_entries
+
+    data = tmp_path / "POSCAR"
+    data.write_text("x", encoding="utf-8")
+    welcome.add_recent(str(data))
+    w = MainWindow(Pipeline(StaticSource([cu_fcc])))
+    menus = {a.text().replace("&", ""): a.menu() for a in w.menuBar().actions()}
+    assert list(menus) == ["File", "Edit", "View", "Notebook", "Insert", "Tools", "Window", "Help"]
+
+    def labels(menu):
+        return [a.text().replace("&", "") for a in menu.actions() if a.text()]
+
+    def sub(menu, title):
+        return next(a.menu() for a in menu.actions() if a.menu() is not None and a.text().replace("&", "") == title)
+
+    file_ = labels(menus["File"])
+    assert {"Open recent", "Open from", "Export", "Import session (.ewald)…"} <= set(file_)
+    assert "Remote computers (SSH profiles)…" not in file_ and "Session (.ewald)" not in file_
+    new = next(a for a in menus["File"].actions() if a.text() == "&New notebook")
+    assert QtGui.QKeySequence("Ctrl+N") in new.shortcuts() and QtGui.QKeySequence("Ctrl+T") in new.shortcuts()
+    recent = sub(menus["File"], "Open recent")
+    recent.aboutToShow.emit()
+    assert labels(recent)[0] == "POSCAR" and "Clear recent files" in labels(recent)
+    assert labels(sub(menus["File"], "Open from")) == ["Remote file (SSH)…", "Location…", "NEB folder…",
+                                                       "Workflow folder…"]
+    assert labels(sub(menus["File"], "Export"))[:3] == ["Image…", "Data…", "Movie…"]
+    edit = labels(menus["Edit"])
+    assert {"Cut cells", "Copy cells", "Paste cells below", "Delete cells", "Merge cells"} <= set(edit)
+    assert "Plugin settings" not in edit
+    assert not {"Cut cells", "Delete cells"} & set(labels(menus["Notebook"]))
+    view = labels(menus["View"])
+    assert view[:2] == ["Look along", "Orthographic"] and "Structure theme" in view and "Full screen" in view
+    assert "View along a" not in view and "Fold all View cards" in labels(sub(menus["View"], "Layout"))
+    assert labels(sub(menus["View"], "Show"))[:2] == ["Bonds", "Simulation cell"]
+    insert = labels(menus["Insert"])
+    assert {"Plot", "Quick analysis", "Cell above", "Cell below"} <= set(insert)
+    assert "View" not in insert and "Analysis" not in insert and "Plugin step" not in insert
+    assert "Command palette" in labels(menus["Tools"]) and "Command palette" not in labels(menus["Window"])
+    window = labels(menus["Window"])
+    assert window.index("Notebook") < window.index("Remotes") < window.index("Plugins") < window.index("AI chat")
+    remotes = w.remotes_action
+    assert remotes.shortcut() == QtGui.QKeySequence("Ctrl+Alt+R")
+    remotes.trigger()
+    menus["Window"].aboutToShow.emit()
+    assert remotes.isChecked() and not w.remotes_dock.isHidden()
+    remotes.trigger()
+    assert w.remotes_dock.isHidden()
+    help_ = labels(menus["Help"])
+    assert help_[0] == "Tutorials" and "Keyboard shortcuts" in help_
+    dlg = w.show_shortcuts()
+    rows = dlg.rows()
+    assert any(command == "Command palette" for _where, command, _keys in rows)
+    assert any(where.startswith("Command mode") and command.startswith("Cut") for where, command, _keys in rows)
+    dlg._filter("palette")
+    assert dlg.tree.topLevelItem(0).isHidden() or "palette" in dlg.tree.topLevelItem(0).text(1).lower()
+    dlg.close()
+    w.analysis_menu.aboutToShow.emit()
+    assert "table" in next(a for a in w.analysis_menu.actions() if a.data() == "rdf").toolTip()
+
+    # shortcuts named in tooltips follow the platform
+    monkeypatch.setattr(palette.sys, "platform", "darwin")
+    monkeypatch.setattr(palette, "native_keys", lambda k: "<" + k + ">")
+    assert palette.native_text("Run all (Ctrl+Shift+Enter)") == "Run all (<Ctrl+Shift+Enter>)"
+    monkeypatch.setattr(palette.sys, "platform", "win32")
+    assert palette.native_text("Run all (Ctrl+Shift+Enter)") == "Run all (Ctrl+Shift+Enter)"
+    monkeypatch.undo()
+
+    # the palette lists the commands run last first when nothing is typed
+    monkeypatch.setattr(palette, "RECENT", [])
+    entries = menu_entries(w.menuBar())
+    pal = CommandPalette(entries, w)
+    pal.edit.setText("zoom to fit")
+    ran = []
+    monkeypatch.setattr(pal, "entries", [(l, k, (lambda l=l: ran.append(l))) for l, k, _ in entries])
+    pal._run()
+    pal = CommandPalette(entries, w)
+    assert pal.list.item(0).text().startswith("Zoom to fit") and palette.RECENT == ["Zoom to fit"]
+    w.close()
+
+
+def test_preferences_pages_after_menu_review(app):
+    """Preferences: 3D view, Atoms & bonds, Plots, Notebooks and Plugins pages; old page names
+    still open the right page; the AI page starts with the provider."""
+    from ewald import settings
+    from ewald.gui.preferences import LAYOUT, PreferencesDialog
+
+    assert settings.PAGES == ("General", "3D view", "Atoms & bonds", "Rendering", "Plots", "Notebooks",
+                              "Compute", "Python", "AI", "Plugins")
+    assert settings.OPTION["python.plot_style"].page == "Plots" == settings.OPTION["plots.size"].page
+    assert settings.OPTION["python.run_notebooks"].page == "Notebooks"
+    assert settings.OPTION["python.plugin_catalogs"].page == "Plugins"
+    assert settings.OPTION["viewport.target_fps"].page == "3D view"
+    assert [title for title, _keys in LAYOUT["AI"][1]][:2] == ["Provider", "Connection"]
+    dlg = PreferencesDialog(settings.Settings(), page="Viewports")
+    assert dlg.pages.currentItem().text() == "3D view"
+    dlg.show_page("Elements")
+    assert dlg.pages.currentItem().text() == "Atoms & bonds"
+    dlg.close()
+
+
+def test_side_bar_and_tab_menus_after_menu_review(app, tmp_path):
+    """The Plugins side bar puts its install choices in a menu; a notebook tab can close the
+    others and show its file's folder."""
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+
+    w = MainWindow()
+    buttons = [b.text() for b in w.plugins_panel.findChildren(QtWidgets.QToolButton) if b.text()]
+    assert "Install" in buttons and "Create with AI…" in buttons and "pip…" not in buttons
+    install = next(b for b in w.plugins_panel.findChildren(QtWidgets.QToolButton) if b.text() == "Install")
+    assert [a.text() for a in install.menu().actions()] == ["From file…", "With pip…"]
+    path = tmp_path / "a.py"
+    Notebook().save(str(path))
+    w.open_notebook(str(path), run=False)
+    w.panel.new_notebook()
+    tabs = w.panel.tabs
+    assert tabs.count() == 2
+    tabs.close_others(1)
+    QtWidgets.QApplication.processEvents()
+    assert tabs.count() == 1
     w.close()
 
 
@@ -3914,7 +4047,7 @@ def test_layout_moves_grey_out_when_they_do_nothing(app, pipe):
     wb.update_actions()
     acts = {a.text(): a for a in wb.actions()}
     assert not acts["Split right"].isEnabled() and "alone" in acts["Split right"].toolTip()
-    assert acts["Move view down"].isEnabled()           # into the panel
+    assert acts["Move tab down"].isEnabled()            # into the panel
     wb.enable_actions()
     assert acts["Split right"].isEnabled()
     groups = len(wb.layout.groups())
@@ -4315,7 +4448,9 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
     titles = [a.text() for a in w.activity_bar.actions()]
     assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent", "Workflows"]
     assert w.plugin_panels["sim_agent"]["dock"] is None          # nothing built before it opens
-    assert sorted(a.text() for a in w.plugin_panel_menu.actions()) == ["Agent jobs", "Broken", "Sim agent", "Workflows"]
+    assert sorted(a.text() for a in w.plugin_panel_actions) == ["Agent jobs", "Broken", "Sim agent", "Workflows"]
+    window = [a.text() for a in w.window_menu.actions()]            # with the side bars, before Remotes
+    assert window.index("Workflows") < window.index("Re&motes") and "Plugin panels" not in window
     w.plugin_panels["sim_agent"]["action"].trigger()
     dock = w.plugin_panels["sim_agent"]["dock"]
     assert dock is not None and not dock.isHidden() and w.plugin_panels["sim_agent"]["action"].isChecked()
@@ -4501,8 +4636,7 @@ def test_plugin_settings_page_dialog(app, monkeypatch):
     plugins.load_plugins(force=True)
     try:
         w = MainWindow(settings=settings.Settings())
-        w._fill_plugin_settings_menu()
-        assert [a.text() for a in w.plugin_settings_menu.actions()] == ["Demo service…"]
+        assert "Plugin &settings" not in [a.text() for a in w.edit_menu.actions()]   # Preferences has the page
         item = next(i for i in w.plugins_panel.items if i.id == "demo_service")
         dlg = w.plugins_panel.edit_settings(item, exec_=False)
         assert dlg.widgets["url"].text() == "http://old" and dlg.widgets["verify"].isChecked()
@@ -4952,7 +5086,7 @@ def test_restart_keeps_outputs_and_restart_and_clear_drops_them(app):
     view.restart_button.menu().actions()[0].trigger()
     assert cell.outputs == [] and not view.widget_for(cell).outputs.outputs
     labels = [a.text() for a in w.notebook_menu.actions()]
-    assert labels[labels.index("&Restart") + 1] == "Restart && clear outputs"
+    assert labels[labels.index("&Restart") + 1] == "Restart && cl&ear outputs"
     w.close()
 
 
