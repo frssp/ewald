@@ -247,6 +247,11 @@ OPTIONS = (
     Option("llm.run_cells", False, "Let the AI run cells",
            "The AI chat can read, insert and edit notebook cells; with this on it can also run them (any "
            "Python, like Shift+Enter). Off: cells it writes wait until you run them."),
+    Option("llm.read_folders", "", "Folders the AI may read",
+           "Files the AI chat opens itself (load_structure, workflows, plugin tools) must lie in one of these "
+           "folders, separated by ';'. Empty: any folder. Cells you run are not limited.", kind="dir"),
+    Option("llm.confirm_hosts", True, "Ask before the AI connects to a host",
+           "Before the AI chat opens a file on an SSH host for the first time in a chat, ask whether it may."),
 )
 OPTION = {o.key: o for o in OPTIONS}
 

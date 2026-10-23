@@ -126,8 +126,10 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.render_page.regionWritten.connect(lambda: self.write_view(region=True))
         self.setCentralWidget(self.workbench)
 
-        self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings, notebook=True),
-                                  notebook=self._notebook_code, notebook_access=NotebookBridge(self),
+        bridge = NotebookBridge(self)
+        self.ask_panel = AskPanel(self._ask_context, agent_from_settings(lambda: self.settings, notebook=True,
+                                                                         confirm_host=bridge.confirm_host),
+                                  notebook=self._notebook_code, notebook_access=bridge,
                                   auto_insert=lambda: code_cells_mode(self.settings) == "insert",
                                   errors=self._notebook_errors, view=self._view_summary)
         self.ask_panel.pipelineChanged.connect(self._after_claude)

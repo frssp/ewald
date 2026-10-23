@@ -1093,6 +1093,44 @@ def test_ask_panel_agent_uses_ai_preferences(app, monkeypatch):
     assert factory.assistant() == "Gemini"
 
 
+def test_ai_chat_reads_only_allowed_folders_and_asks_for_hosts(app, monkeypatch, tmp_path):
+    import types
+
+    from ewald import settings
+    from ewald.gui import ask_panel
+
+    monkeypatch.setattr(ask_panel, "_default_agent", lambda p, ev, **kw: types.SimpleNamespace(toolset=types.SimpleNamespace()))
+    s = settings.load()
+    s["llm.read_folders"] = str(tmp_path)
+    asked = []
+    agent = ask_panel.agent_from_settings(lambda: s, confirm_host=lambda h: asked.append(h) or False)(None, None)
+    access = agent.toolset.read_access
+    assert access.folders == [os.path.realpath(str(tmp_path))]
+    with pytest.raises(PermissionError):
+        access.check("cluster:/scratch/XDATCAR")
+    assert asked == ["cluster"]
+    s["llm.confirm_hosts"] = False
+    agent = ask_panel.agent_from_settings(lambda: s, confirm_host=lambda h: False)(None, None)
+    agent.toolset.read_access.check("cluster:/scratch/XDATCAR")
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_window_asks_before_the_ai_connects_to_a_host(app, monkeypatch):
+    from PySide6 import QtWidgets
+
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    try:
+        answers = iter([QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No])
+        monkeypatch.setattr(QtWidgets.QMessageBox, "exec", lambda self: next(answers))
+        bridge = w.ask_panel.notebook_access
+        assert bridge.confirm_host("cluster") is True
+        assert bridge.confirm_host("other") is False
+    finally:
+        w.close()
+
+
 def test_preferences_dialog_edit_search_restore(app, tmp_path):
     from ewald import settings
     from ewald.gui.preferences import ElementTable, PreferencesDialog
