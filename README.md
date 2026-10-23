@@ -12,7 +12,7 @@ Plugins add file formats, analyses and drawing without changing EWALD itself.
 ![Ask AI in the EWALD window, three runs: the AI writes and runs notebook cells that draw the paths of the most mobile Li ions in a Li6PS5Cl AIMD run and fit D*, color sp, sp2 and sp3 carbon through a melt-quench MD run and plot their fractions, and find the barrier and the hopping atom of a Fe vacancy NEB; the recording zooms in on the chat and the cells and plays each run](docs/images/ai-demo.gif)
 
 *Ask AI changes results only through notebook cells: every step it took above is a cell you can
-read, edit and rerun. This is a live recording with Claude Opus 5.5: the questions are typed in,
+read, edit and rerun. This is a live recording with Claude: the questions are typed in,
 everything after them is the model's own (its tool calls, cells and answers, with the numbers its
 cells computed); the AI's work is shown time-lapsed. The tool calls and answers are in
 [docs/images/ai-demo-transcript.json](docs/images/ai-demo-transcript.json). The runs

@@ -1,7 +1,6 @@
 [
  {
   "scene": "li-diffusion",
-  "model": "default",
   "question": "Which Li ions hop in this run? Draw the paths of the most mobile ones colored by time, and give me the Li diffusion coefficient. Keep the answer short.",
   "events": [
    [
@@ -367,7 +366,6 @@
  },
  {
   "scene": "carbon-quench",
-  "model": "default",
   "question": "Color the atoms by hybridization and plot how the sp, sp2 and sp3 fractions change during the run. Keep the answer short.",
   "events": [
    [
@@ -583,7 +581,6 @@
  },
  {
   "scene": "fe-neb",
-  "model": "default",
   "question": "What is the barrier of this NEB, and which atom moves? Show its path colored by image (viridis). Keep the answer short.",
   "events": [
    [

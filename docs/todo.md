@@ -122,7 +122,7 @@ GUI
   `Notebook.sync` (the GUI's refresh) deletes them.
 - AI and the Python API: the model reads `python_api` (about 60 KB, roughly 15k tokens, since the
   modifier outputs and recipes were added) on demand rather than in the system prompt. The first
-  real-model runs (2026-10-23, Claude Opus 5.5 through `make_ai_demo.py --live`, three scenes,
+  real-model runs (2026-10-23, Claude through `make_ai_demo.py --live`, three scenes,
   three takes) read it every time and got the numbers right (barrier, hopping atom, sp/sp2/sp3
   fractions, D*(Li) 1.3-1.45 × 10⁻⁵ cm²/s against kinisi's 1.23(10)), but `ewald eval` has not been
   run with a live model yet, and no eval task checks that the cells it writes follow the reference

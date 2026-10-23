@@ -10,7 +10,7 @@ that is sent to the provider are listed in [What the AI may do and what it sees]
 
 In the window, the AI chat side bar (Ctrl+J) works on the notebook beside it: with Preferences ›
 AI › "Let the AI run cells" on, the AI adds steps, writes and edits cells and runs them, and each
-answer links the cells it touched. (The recording is a live one with Claude Opus 5.5, the work
+answer links the cells it touched. (The recording is a live one with Claude, the work
 time-lapsed; `docs/images/make_ai_demo.py --live` makes it, and `ai-demo-transcript.json` beside
 the GIF has every tool call and answer.)
 
