@@ -7,7 +7,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Python API
 
-`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `AllFramesModifier`, `Frames`, `each_frame`, `all_frames`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `View`, `view`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`, `run_info`, `check_run`, `load_runs`, `arrhenius`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
+`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `AllFramesModifier`, `Frames`, `each_frame`, `all_frames`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `View`, `view`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`, `run_info`, `check_run`, `load_runs`, `arrhenius`, `workflow_table`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
 
 ## Modifiers
 
@@ -508,6 +508,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `llm.headers` | Extra headers | `''` |
 | `llm.timeout` | Timeout | `0.0` |
 | `llm.effort` | Effort | `'high'` |
+| `llm.stream` | Stream answers | `True` |
 | `llm.code_cells` | Code in answers | `'insert'` |
 | `llm.run_cells` | Let the AI run cells | `False` |
 | `llm.read_folders` | Folders the AI may read | `''` |

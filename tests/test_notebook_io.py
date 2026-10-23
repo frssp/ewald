@@ -223,3 +223,26 @@ def test_rich_outputs_round_trip_through_ipynb(tmp_path):
     assert [o.kind for o in back] == ["rich"] * 5
     assert [sorted(o.mime) for o in back] == [sorted(o.mime) for o in nb.cells[0].outputs]
     assert back[2].mime["application/json"] == {"a": [1, 2]} and back[4].mime[PROGRESS_MIME]["n"] == 2
+
+
+def test_ewd_keeps_the_ai_chat(tmp_path):
+    """The AI chat beside a notebook is saved in its .ewd (chat.json) and comes back on opening;
+    a .py or .ipynb file does not carry it."""
+    nb = Notebook.from_py("# %%\nx = 1\n")
+    chat = [{"role": "user", "text": "Add coordination", "meta": "frame 0"},
+            {"role": "assistant", "text": "Done:\n```python\npipe.add(CoordinationAnalysis(cutoff=3.0))\n```",
+             "author": "Claude", "tools": ["add_modifier"]},
+            {"role": "assistant", "text": "**Error.** `timeout`", "author": "Claude", "error": True}]
+    nb.chat = [dict(m) for m in chat]
+    notebook_io.save_ewd(nb, tmp_path / "a.ewd", figures=False)
+    with zipfile.ZipFile(tmp_path / "a.ewd") as z:
+        assert json.loads(z.read("chat.json"))["messages"] == chat
+    again = Notebook.load(tmp_path / "a.ewd", trusted=True)
+    assert again.chat == chat and not again.warnings
+    nb.chat = []
+    notebook_io.save_ewd(nb, tmp_path / "b.ewd", figures=False)   # no chat: no chat.json
+    with zipfile.ZipFile(tmp_path / "b.ewd") as z:
+        assert "chat.json" not in z.namelist()
+    assert Notebook.load(tmp_path / "b.ewd", trusted=True).chat == []
+    nb.chat = chat
+    assert "chat" not in json.dumps(notebook_io.to_ipynb(nb)) and "Add coordination" not in nb.to_py()
