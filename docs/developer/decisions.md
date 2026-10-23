@@ -267,7 +267,7 @@ the end.
   where useful.
 - **Considered:** `# %% name [each frame]` cell tags, which read more like a notebook in the GUI
   but do not run as a plain `python` script.
-- **Landed:** PR #235.
+- **Landed:** PR #236.
 
 ## Project
 
