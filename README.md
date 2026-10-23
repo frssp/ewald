@@ -2,25 +2,24 @@
 
 # EWALD: Extensible Workbench for Atomic Lattices & Dynamics
 
-EWALD (Python package `ewald`) is a notebook for atomistic structures and trajectories, with Claude
-built in. You open a VASP, LAMMPS, extxyz or any other file and ask for what you want to see, or
-write it yourself: the analysis becomes Python cells next to a 3D view, each step adds a modifier,
-each view is a live plot linked to the atoms, and the whole thing is saved as one file that also
-runs as a plain Python script. Plugins add file formats, analyses and drawing without changing
-EWALD itself.
+EWALD (Python package `ewald`) is an AI-native notebook for atomistic structures and trajectories.
+You open a VASP, LAMMPS, extxyz or any other file and ask the AI for what you want to see, or write
+it yourself: either way the analysis becomes Python cells next to a 3D view, each step adds a
+modifier, each view is a live plot linked to the atoms, and the whole thing is saved as one file
+that also runs as a plain Python script. Ask AI works with Claude, OpenAI, Gemini or a local model.
+Plugins add file formats, analyses and drawing without changing EWALD itself.
 
-![The EWALD window: a notebook on the left, the Structure view in the middle, the View tab with display settings below](docs/images/notebook.png)
+![Ask AI in the EWALD window, three runs: the AI writes and runs notebook cells that draw the paths of the most mobile Li ions in a Li6PS5Cl AIMD run and fit D*, color sp, sp2 and sp3 carbon through a melt-quench MD run and plot their fractions, and find the barrier and the hopping atom of a Fe vacancy NEB; the recording zooms in on the chat and the cells and plays each run](docs/images/ai-demo.gif)
+
+*Ask AI changes results only through notebook cells: every step it took above is a cell you can
+read, edit and rerun. The model's answers in this recording are scripted (no API key in the
+recording environment); the window, tools, cells and the numbers they compute are real. The runs
+are published datasets (`ewald.examples.fetch`: kinisi's Li6PS5Cl AIMD, C-SYNTH-23 carbon,
+pymatgen's Fe NEB). Made by [docs/images/make_ai_demo.py](docs/images/make_ai_demo.py).*
 
 Under the notebook is an OVITO-style pipeline (`load` → `pipe.add(...)` → `pipe.compute(frame)` →
 `pipe.render(...)`) that runs the same in a script, on the CPU or an NVIDIA GPU, with a built-in
 ray tracer and vector output for publication figures.
-
-![Ask AI in the EWALD window: asked to find the vertex, edge and facet atoms of a Pt nanoparticle, the AI adds a coordination step, writes and runs a cell that paints each site type, then edits that cell to cut the particle open and adds a histogram; the 3D view is zoomed in and out between the questions](docs/images/ai-demo.gif)
-
-*Ask AI changes results only through notebook cells: every step it took above is a cell you can
-read, edit and rerun. The model's answers in this recording are scripted (no API key in the
-recording environment); the window, tools and cells are real. Made by
-[docs/images/make_ai_demo.py](docs/images/make_ai_demo.py).*
 
 ## The idea
 
@@ -31,8 +30,8 @@ never written down. EWALD aims at OVITO Pro's level of analysis and figures, but
 is a notebook, not a list of modifiers, so looking, analysing and drawing live in one reproducible
 file.
 
-- **AI first, one API.** The GUI, a script and Claude all drive the same notebook API (`load`,
-  `pipe.add`, `pipe.compute`, `show`, `pipe.render`). Claude reads the structure, adds steps and
+- **AI-native, one API.** The GUI, a script and the AI all drive the same notebook API (`load`,
+  `pipe.add`, `pipe.compute`, `show`, `pipe.render`). The AI reads the structure, adds steps and
   changes the Structure view by writing ordinary cells you can read and edit; a click in the GUI is
   recorded the same way.
 - **Quality for files, speed for the screen.** Rendered images, vector figures and movies put
@@ -49,7 +48,7 @@ file.
 - **One compute code for CPU and GPU.** Kernels are written once against NumPy/CuPy (NVIDIA CUDA);
   the backend is pluggable.
 - **Nothing runs until you trust it.** A notebook, `.ewd` bundle or text inside a structure file
-  cannot run code (or steer Claude into running it) until you trust it.
+  cannot run code (or steer the AI into running it) until you trust it.
 
 What EWALD is not: a clone of OVITO's interface, a workflow engine that submits calculations (that
 is AiiDA's job, reachable through a plugin), a biomolecular viewer, or a web service; your data
@@ -112,7 +111,7 @@ live histogram (drag a range to select those atoms in the Structure view), and t
 frame of the trajectory. `python cu_void.py` runs the same file without the GUI and draws the plots
 with matplotlib. Every display setting of the Structure view (style, colors, radii, bonds, cell, background,
 camera, frame) is code as well, one `view(pipe, style="Ball & stick", colors={"O": "red"}, direction="z")`
-cell that the viewport rewrites when you change it there and that Claude's chat sets through the same
+cell that the viewport rewrites when you change it there and that Ask AI sets through the same
 API. Cells are IPython cells (magics, `display()`, HTML/LaTeX/Markdown outputs, live output and
 progress bars while a cell runs). File › Save notebook writes it as a `.py`, a Jupyter `.ipynb`, or an `.ewd` that
 also carries the outputs, figures, small data files and the plugins it uses, so a colleague can open
@@ -184,10 +183,11 @@ timeline. [File formats](docs/user/formats.md)
 journal size presets, overlays (legends, color bars, scale bars, text) and movies.
 [Rendering figures](docs/user/rendering.md)
 
-**AI.** Ask AI about the atoms you picked, or ask for an analysis in words: Claude (the default),
-OpenAI, Gemini or a model on your own machine (Ollama, LM Studio) works through the same tools and its steps land in the notebook as ordinary code. `ewald ask`, `ewald
-describe` and an MCP server (`ewald mcp`) do the same from a shell or Claude Code, and `llms.txt`
-is an API reference for agents that write EWALD code. [AI integration](docs/user/claude.md)
+**AI.** Ask AI about the atoms you picked, or ask for an analysis in words. Every provider (Claude
+by default, OpenAI, Gemini, or a model on your own machine through Ollama or LM Studio) uses the same
+tools, and its steps land in the notebook as ordinary code. `ewald ask`, `ewald describe` and an MCP
+server (`ewald mcp`) do the same from a shell or from any MCP client, and `llms.txt` is an API
+reference for agents that write EWALD code. [AI integration](docs/user/claude.md)
 
 **Plugins.** Readers, writers, modifiers, visual elements, overlays, color maps, themes, AI
 tools and AI providers are all plugins, built-in ones included (`ewald plugins --disable vasp` switches a core

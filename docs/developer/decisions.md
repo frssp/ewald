@@ -316,6 +316,33 @@ the end.
   the merge gate (full suite under a virtual display for GUI and rendering changes, visual
   regression for renderers); each feature PR updates the feature inventory and the TODO list.
 
+### D29. "AI-native", not "Claude built in" (2026-10-23)
+
+- **Decision:** the README and the manual describe EWALD as an AI-native notebook; Claude is the
+  default provider of Ask AI, not the product's identity, and the text names the other providers
+  (OpenAI, Gemini, local models) where it matters.
+- **Why:** the owner asked to replace "with Claude built in" in the README introduction: "claude
+  built in 아니고 ai native? 이정도로" (not "Claude built in", something like "AI-native").
+- **Landed:** PR #240.
+
+### D30. The README's lead picture is an Ask AI recording of moving runs (2026-10-23)
+
+- **Decision:** the first picture of the README and the manual's home page is
+  `docs/images/ai-demo.gif`: Ask AI analysing three runs that move (Li paths and D* in a
+  Li6PS5Cl AIMD run, sp/sp2/sp3 carbon through a melt-quench MD run, the barrier of a Fe vacancy
+  NEB) by writing and running cells. The recording zooms in on the typed question, the answer and
+  each cell (like a screen recording), not into the 3D view.
+- **Why:** the owner asked for "AI 사용해서 예제 노트북 수정하는 좋은 케이스" as a GIF in the
+  README, then: "줌인줌아웃이 화면에서 타이핑하는 또는 노트북 글자 잘보이게 하라는 거였어. 뷰포트가
+  아니라" (zoom so the typing and the notebook text read, not the viewport), "대표 그림도 이걸로
+  해도 좋아" (use it as the lead picture), and "나노파티클 보다 뭔가 움직이는 것, neb, md 등이
+  관심있어" (something that moves, NEB or MD, rather than a nanoparticle); of the options shown
+  (Li AIMD, carbon quench, Fe NEB, or joined) the owner picked all of them joined, "AI 써서 분석하는
+  케이스로" (as cases of analysing with AI).
+- **Alternatives:** a Pt nanoparticle site classification with a 3D-view zoom (PR #239, replaced);
+  a single run.
+- **Landed:** PR #241.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
