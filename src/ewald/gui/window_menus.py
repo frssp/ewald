@@ -1,15 +1,16 @@
 """Toolbar, menu bar, Help menu and command palette of the main window."""
 from __future__ import annotations
 
+import os
 import sys
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import examples, manual
-from .icons import icon
-from .palette import CommandPalette, menu_entries, native_keys
-from .pipeline_panel import fill_modifier_menu
 from .cell_widget import fill_view_menu
+from .icons import icon
+from .palette import CommandPalette, menu_entries, native_keys, native_text
+from .pipeline_panel import fill_modifier_menu
 from .theme import PALETTES
 from .viewport import Viewport
 
@@ -34,7 +35,7 @@ class MenusMixin:
             act.triggered.connect(lambda on, d=dock: self._show_side_bar(d) if on else d.hide())
             dock.visibilityChanged.connect(lambda _shown, a=act, d=dock: a.setChecked(not d.isHidden()))
             act.setProperty("ewald_icon", icon_name)
-            act.setToolTip("Chat with AI (Ctrl+J)" if dock is self.ask_dock
+            act.setToolTip(native_text("Chat with AI (Ctrl+J)") if dock is self.ask_dock
                            else f"Show or hide the {name} side bar")
             bar.addAction(act)
             self.activity_buttons[name] = act
@@ -100,14 +101,14 @@ class MenusMixin:
         if on:
             self._place_minimal_exit()
             self.minimal_exit.raise_()
-            self.toast("Minimal mode: Ctrl+Shift+M or the Menus button at the bottom left brings the menus back; "
-                       "tap Alt for the menu bar, Ctrl+K for commands")
+            self.toast(native_text("Minimal mode: Ctrl+Shift+M or the Menus button at the bottom left brings the "
+                                   "menus back; tap Alt for the menu bar, Ctrl+K for commands"))
         else:
             self.minimal_note.hide()
 
     def _build_minimal_exit(self):
         b = self.minimal_exit = QtWidgets.QToolButton(self, objectName="minimalExit", autoRaise=True,
-                                                      toolTip="Leave minimal mode (Ctrl+Shift+M)")
+                                                      toolTip=native_text("Leave minimal mode (Ctrl+Shift+M)"))
         b.setProperty("ewald_icon", "menu")
         b.setIcon(icon("menu"))
         b.setIconSize(QtCore.QSize(16, 16))
@@ -188,8 +189,8 @@ class MenusMixin:
             self.styled_buttons.append((b, text_in_hybrid))
             return b
 
-        button("Open", "open", self.open_dialog, "Open a data file, notebook (.py) or session (Ctrl+O)")
-        button("Save", "save", lambda: self.save_notebook(), "Save the notebook (Ctrl+S)", False)
+        button("Open", "open", self.open_dialog, native_text("Open a data file, notebook (.py) or session (Ctrl+O)"))
+        button("Save", "save", lambda: self.save_notebook(), native_text("Save the notebook (Ctrl+S)"), False)
         # Run all, Restart and Interrupt live in the notebook's own bar (and Notebook › Run all, Ctrl+Shift+Enter)
         tb.addSeparator()
         self.ws_buttons = []
@@ -218,36 +219,42 @@ class MenusMixin:
         QtWidgets.QApplication.instance().setAttribute(QtCore.Qt.AA_DontShowIconsInMenus, style == "Text")
 
     def _build_menus(self):
+        """The menu bar. Grouped by role (2026-10-23 menu review, docs/developer/decisions.md):
+        File opens and exports, Edit edits cells, View is the camera and what is drawn, Insert adds
+        cells, Notebook runs them, Tools are the 3D view tools, Window shows side bars and tabs."""
         mb = self.menuBar()
         f = mb.addMenu("&File")
-        f.addAction("&New notebook", lambda: self.panel.new_notebook(), "Ctrl+T")
+        new = f.addAction("&New notebook", lambda: self.panel.new_notebook())
+        new.setShortcuts([QtGui.QKeySequence(QtGui.QKeySequence.New), QtGui.QKeySequence("Ctrl+T")])
         f.addAction(icon("open"), "&Open…", QtGui.QKeySequence.Open, self.open_dialog)
-        f.addAction(icon("remote"), "Load &remote file (SSH)…", QtGui.QKeySequence("Ctrl+Alt+O"), self.open_remote_dialog)
-        f.addAction("Open &location…", QtGui.QKeySequence("Ctrl+L"), self.open_location_dialog).setStatusTip(
-            "Open a path or address a reader understands: host:/path over SSH, or a plugin's "
-            "scheme such as aiida:1234 or simagent:1234")
-        f.addAction("Remote &computers (SSH profiles)…", QtGui.QKeySequence("Ctrl+Alt+R"), self.show_remotes)
-        f.addAction("Load &NEB folder…", self.open_neb_dialog)
-        f.addAction("Open &workflow folder…", self.open_workflow_dialog).setStatusTip(
-            "A folder of calculations (relax, NEB, MD restarts, phonopy) as one notebook, a load() per step")
+        self.recent_menu = f.addMenu("Open &recent")
+        self.recent_menu.aboutToShow.connect(self._fill_recent_menu)
         ex = f.addMenu(icon("example"), "Open e&xample")
         for example in examples.EXAMPLES:
             act = ex.addAction(f"{example.file}  ({example.format})", lambda e=example: self.open_example(e.file))
             act.setToolTip(example.description)
             act.setStatusTip(example.description)
         ex.setToolTipsVisible(True)
+        src = f.addMenu("Open &from")
+        src.addAction(icon("remote"), "&Remote file (SSH)…", QtGui.QKeySequence("Ctrl+Alt+O"), self.open_remote_dialog)
+        src.addAction("&Location…", QtGui.QKeySequence("Ctrl+L"), self.open_location_dialog).setStatusTip(
+            "Open a path or address a reader understands: host:/path over SSH, or a plugin's "
+            "scheme such as aiida:1234 or simagent:1234")
+        src.addAction("&NEB folder…", self.open_neb_dialog)
+        src.addAction("&Workflow folder…", self.open_workflow_dialog).setStatusTip(
+            "A folder of calculations (relax, NEB, MD restarts, phonopy) as one notebook, a load() per step")
         f.addSeparator()
         f.addAction(icon("save"), "&Save notebook", QtGui.QKeySequence.Save, self.save_notebook)
         f.addAction("Save notebook &as…", lambda: self.save_notebook(ask=True), QtGui.QKeySequence.SaveAs)
         f.addAction("&Close notebook", lambda: self.panel.close_tab(self.panel.tabs.currentIndex()), "Ctrl+W")
         f.addSeparator()
-        ses = f.addMenu("Sess&ion (.ewald)")  # the older single-pipeline file; notebooks and .ewd replace it
-        ses.addAction("&Load session…", self.load_session_dialog, "Ctrl+Shift+O")
-        ses.addAction("&Save session as…", lambda: self.save_session(ask=True))
-        f.addSeparator()
-        f.addAction(icon("image"), "Render &image…", QtGui.QKeySequence("Ctrl+Shift+R"), self.render_image)
-        f.addAction("E&xport data…", self.export_dialog, "Ctrl+E")
-        f.addAction("Export &movie…", self.export_movie)
+        exp = f.addMenu("&Export")
+        exp.addAction(icon("image"), "&Image…", QtGui.QKeySequence("Ctrl+Shift+R"), self.render_image)
+        exp.addAction("&Data…", self.export_dialog, "Ctrl+E")
+        exp.addAction("&Movie…", self.export_movie)
+        exp.addSeparator()   # the older single-pipeline file; notebooks and .ewd replace it
+        exp.addAction("&Session (.ewald)…", lambda: self.save_session(ask=True))
+        f.addAction("&Import session (.ewald)…", self.load_session_dialog)
         f.addSeparator()
         self.live_reload_action = f.addAction("&Live reload")
         self.live_reload_action.setCheckable(True)
@@ -256,6 +263,7 @@ class MenusMixin:
                                              "extend the timeline (Preferences › General).")
         f.addSeparator()
         f.addAction("&Quit", self.close, QtGui.QKeySequence.Quit).setMenuRole(QtGui.QAction.QuitRole)
+
         e = mb.addMenu("&Edit")
         # A focused cell editor takes Ctrl+Z itself (its typing); elsewhere these undo
         # notebook edits: cells added, deleted, moved or run, step forms, pipeline changes.
@@ -263,140 +271,224 @@ class MenusMixin:
         self.redo_action = e.addAction("&Redo", self.redo, QtGui.QKeySequence.Redo)
         e.aboutToShow.connect(self._update_undo_actions)
         e.addSeparator()
-        self.plugin_settings_menu = e.addMenu("Plugin &settings")
-        self.plugin_settings_menu.aboutToShow.connect(self._fill_plugin_settings_menu)   # filled when opened
-        act = e.addAction("&Preferences…", self.preferences, QtGui.QKeySequence.Preferences)
+        # cells, with Jupyter's command-mode keys (Esc first); Ctrl+X/C/V stay with the text editors
+        for label, action, keys in (("Cu&t cells", "cut", "X"), ("&Copy cells", "copy", "C"),
+                                    ("&Paste cells below", "paste:below", "V"),
+                                    ("Paste cells abo&ve", "paste:above", "Shift+V"),
+                                    ("&Delete cells", "delete", "D, D"), ("Undo cell deletion", "undelete", "Z"),
+                                    ("&Merge cells", "merge", "Shift+M")):
+            e.addAction(label, lambda a=action: self._cell_action(a)).setToolTip(f"Esc, then {keys}")
+        e.setToolTipsVisible(True)
+        e.addSeparator()
+        act = e.addAction("Pr&eferences…", self.preferences, QtGui.QKeySequence.Preferences)
         act.setMenuRole(QtGui.QAction.PreferencesRole)  # app menu on macOS, like OVITO/VESTA
         if act.shortcut().isEmpty():
             act.setShortcut("Ctrl+,")
+        self.edit_menu = e
+
         v = mb.addMenu("&View")
+        look = v.addMenu("&Look along")
         for ax in ("a", "b", "c", "a*", "b*", "c*"):
-            v.addAction(f"View along {ax}", lambda ax=ax: self.viewport.view_along(ax))
-        v.addSeparator()
-        for label, d in (("Top (+z)", "z"), ("Front (-y)", "front"), ("Right (+x)", "x"), ("Isometric", "iso")):
-            v.addAction(label, lambda d=d: self.viewport.view_direction(d))
-        self.ortho_action = v.addAction("Orthographic")   # also the view toolbar's Ortho and the right-click menu
+            look.addAction(ax, lambda ax=ax: self.viewport.view_along(ax))
+        look.addSeparator()
+        for label, d in (("&Top (+z)", "z"), ("&Front (-y)", "front"), ("&Right (+x)", "x"), ("&Isometric", "iso")):
+            look.addAction(label, lambda d=d: self.viewport.view_direction(d))
+        self.ortho_action = v.addAction("&Orthographic")   # also the view toolbar's Ortho and the right-click menu
         self.ortho_action.setCheckable(True)
         self.ortho_action.toggled.connect(lambda on: self.viewport.ortho_button.setChecked(on))
         v.aboutToShow.connect(lambda: self.ortho_action.setChecked(self.viewport.ortho))
-        v.addAction("Zoom to fit", self.viewport.zoom_fit, "Ctrl+0")
-        rep = v.addMenu("Replicate cell")  # display only: n x n x m copies (view(pipe, replicate=...))
+        v.addAction("&Zoom to fit", self.viewport.zoom_fit, "Ctrl+0")
+        show = v.addMenu("&Show")
+        show.aboutToShow.connect(lambda: self.fill_show_menu(show))
+        self.fill_show_menu(show)
+        rep = v.addMenu("Re&plicate cell")  # display only: n x n x m copies (view(pipe, replicate=...))
         rep.aboutToShow.connect(lambda: self.fill_replicate_menu(rep))
         self.fill_replicate_menu(rep)
-        v.addSeparator()
-        self.theme_menu = v.addMenu("Theme")
+        self.theme_menu = v.addMenu("Structure t&heme")   # element colors, background, radii; not the UI theme
         self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
         self._fill_theme_menu()
-        lay = v.addMenu("Layout")  # tabs drag between groups; these are the keyboard and menu way
+        v.addSeparator()
+        lay = v.addMenu("L&ayout")  # tabs drag between groups; these are the keyboard and menu way
         for act in self.workbench.actions():
             lay.addAction(act)
+        lay.addSeparator()
+        lay.addAction("Fold all View cards", lambda: self.display.fold_all(True)).setToolTip(
+            "Fold every card of the View tab (right-click a card for the same); kept for the next start")
+        lay.addAction("Unfold all View cards", lambda: self.display.fold_all(False))
         lay.setToolTipsVisible(True)
         lay.aboutToShow.connect(self.workbench.update_actions)
         lay.aboutToHide.connect(self.workbench.enable_actions)
-        v.addAction("Fold all View cards", lambda: self.display.fold_all(True)).setToolTip(
-            "Fold every card of the View tab (right-click a card for the same); kept for the next start")
-        v.addAction("Unfold all View cards", lambda: self.display.fold_all(False))
-        v.addSeparator()
-        v.addAction("Focus on the viewport", self.toggle_focus, "Ctrl+\\")
-        v.addAction("Minimal mode (menus hidden)", lambda: self.set_minimal(not getattr(self, "minimal", False)), "Ctrl+Shift+M")
+        v.addAction("Focus on the structure &view", self.toggle_focus, "Ctrl+\\")
+        v.addAction("&Minimal mode (menus hidden)", lambda: self.set_minimal(not getattr(self, "minimal", False)),
+                    "Ctrl+Shift+M")
+        self.full_screen_action = v.addAction("F&ull screen", self.toggle_full_screen)
+        self.full_screen_action.setCheckable(True)
+        keys = QtGui.QKeySequence.keyBindings(QtGui.QKeySequence.FullScreen)
+        self.full_screen_action.setShortcuts(keys or [QtGui.QKeySequence("F11")])   # F11; Ctrl+Cmd+F on macOS
+        v.aboutToShow.connect(lambda: self.full_screen_action.setChecked(self.isFullScreen()))
+
         n = mb.addMenu("&Notebook")
+        n.addAction("Run current &cell", lambda: self._cell_action("run")).setToolTip(
+            native_text("Run the current cell (Ctrl+Enter; Shift+Enter also moves to the next cell)"))
+        n.addAction("Run current cell and &below", lambda: self._cell_action("below"))
         n.addAction("Run &all", lambda: self._on_view("run_all"), "Ctrl+Shift+Return").setToolTip(
             "Restart and run every cell from the top")
-        n.addAction("Run current &cell", lambda: self._cell_action("run")).setToolTip(
-            "Run the current cell (Ctrl+Enter; Shift+Enter also moves to the next cell)")
-        n.addAction("Run current cell and &below", lambda: self._cell_action("below"))
         n.addAction("&Interrupt", lambda: self._on_view("interrupt")).setToolTip("Stop the running cell")
+        n.addSeparator()
         n.addAction("&Restart", lambda: self._on_view("restart")).setToolTip(
             "Clear the namespace; cells keep their code and outputs")
-        n.addAction("Restart && clear outputs", lambda: self._on_view("restart", True))
+        n.addAction("Restart && cl&ear outputs", lambda: self._on_view("restart", True))
         n.setToolTipsVisible(True)
         self.kernel_menu = n.addMenu("&Kernel")
         self.notebook_menu = n
         self.kernel_menu.aboutToShow.connect(lambda: self._on_view("fill_kernel_menu", self.kernel_menu))
-        self.trust_action = n.addAction("&Trust notebook…", lambda: self._on_view("trust"))
-        self.trust_action.setToolTip("Allow a notebook received as an .ewd file to run its code and plugins")
         n.aboutToShow.connect(self._update_notebook_menu)
         n.addSeparator()
         n.addAction("Move cell &up", lambda: self._cell_action("up"), "Ctrl+Shift+Up")
         n.addAction("Move cell &down", lambda: self._cell_action("down"), "Ctrl+Shift+Down")
-        n.addAction("D&elete cells", lambda: self._cell_action("delete")).setToolTip(
-            "Delete the selected cells (Esc, then D, D); Z brings them back")
-        n.addAction("Undo cell deletion", lambda: self._cell_action("undelete")).setToolTip(
-            "Bring back the cells deleted last (Esc, then Z)")
-        n.addAction("Cu&t cells", lambda: self._cell_action("cut")).setToolTip("Esc, then X")
-        n.addAction("Co&py cells", lambda: self._cell_action("copy")).setToolTip("Esc, then C")
-        n.addAction("Paste cells &below", lambda: self._cell_action("paste:below")).setToolTip("Esc, then V")
-        n.addAction("Paste cells abo&ve", lambda: self._cell_action("paste:above")).setToolTip("Esc, then Shift+V")
-        n.addAction("&Merge cells", lambda: self._cell_action("merge")).setToolTip(
-            "Join the selected cells, or the cell with the one below (Esc, then Shift+M)")
         n.addAction("Change cell to c&ode", lambda: self._cell_action("kind:code"), "Ctrl+M, Y").setToolTip(
             "Turn a text cell into a code cell (Esc, then Y, like Jupyter)")
         n.addAction("Change cell to &text", lambda: self._cell_action("kind:markdown"), "Ctrl+M, M").setToolTip(
             "Turn a code cell into a Markdown text cell (Esc, then M); its steps leave the pipeline")
         n.addSeparator()
-        n.addAction("&Clear cell output", lambda: self._cell_action("clear"), "Ctrl+Shift+Backspace")
-        n.addAction("Clear &all outputs", lambda: self._on_view("clear_outputs"),
+        n.addAction("C&lear cell output", lambda: self._cell_action("clear"), "Ctrl+Shift+Backspace")
+        n.addAction("Clear all output&s", lambda: self._on_view("clear_outputs"),
                     "Ctrl+Alt+Shift+Backspace").setToolTip("Remove every cell's output; the next save leaves them out")
         n.addSeparator()
+        self.trust_action = n.addAction("Tru&st notebook…", lambda: self._on_view("trust"))
+        self.trust_action.setToolTip("Allow a notebook received as an .ewd file to run its code and plugins")
         n.addAction("Show as Python &file", lambda: self.panel.view is not None and self.panel.view.py_button.toggle())
+
         ins = mb.addMenu("&Insert")
         ins.addAction("&Code cell", lambda: self._notebook_view().add_cell("code"), "Ctrl+Shift+N")
         ins.addAction("&Text cell", lambda: self._notebook_view().add_cell("markdown"))
+        ins.addAction("Cell &above", lambda: self._cell_action("above")).setToolTip("Esc, then A")
+        ins.addAction("Cell &below", lambda: self._cell_action("after")).setToolTip("Esc, then B")
         ins.addSeparator()
         m = ins.addMenu("&Step")
-        m.aboutToShow.connect(lambda: fill_modifier_menu(m, self.panel.add_modifier, self._step_context))
+        m.aboutToShow.connect(lambda: self._fill_insert_step_menu(m))
         fill_modifier_menu(m, self.panel.add_modifier)
-        vm = ins.addMenu("&View")
+        self.plot_menu = vm = ins.addMenu("&Plot")   # view cells: show(pipe, table=...) under the cell
         vm.aboutToShow.connect(lambda: fill_view_menu(vm, self.data, lambda **kw: self._notebook_view().add_view(**kw)))
-        ins.addAction("3D &snapshot of the view", self._insert_snapshot).setToolTip(
-            "A cell with a picture of the viewport as it is now (frame, camera, display style)")
-        ins.addAction("View &settings with the camera", self.write_camera).setToolTip(
-            "Write the display style, the camera and the frame into the notebook's view(pipe, ...) cell")
-        am = ins.addMenu("&Analysis")
+        am = ins.addMenu("&Quick analysis")
         from ..verbs import VERB_CELLS
 
         for verb, label, _code in VERB_CELLS:
             act = am.addAction(label, lambda v=verb: self._insert_verb(v))
-            act.setToolTip(f"A {verb}(pipe) cell, run at once")
+            act.setToolTip(f"A {verb}(pipe) cell that shows its table, run at once")
             act.setData(verb)
         am.setToolTipsVisible(True)
         am.aboutToShow.connect(self._update_analysis_menu)
         self.analysis_menu = am
-        plug = ins.addMenu("&Plugin step")
-        plug.aboutToShow.connect(lambda: self._fill_plugin_menu(plug))
+        ins.addSeparator()
+        ins.addAction("S&napshot of the structure view", self._insert_snapshot).setToolTip(
+            "A cell with a picture of the structure view as it is now (frame, camera, display style)")
+        ins.addAction("&Write view settings to notebook", self.write_camera).setToolTip(
+            "Write the display style, the camera and the frame into the notebook's view(pipe, ...) cell")
+        ins.setToolTipsVisible(True)
         self.step_menu = m
+
         t = self.tools_menu = mb.addMenu("&Tools")
         tools = QtGui.QActionGroup(t)   # one viewport tool at a time, like the tool rail
         for key, _icon, tip in Viewport.TOOLS:
-            act = t.addAction(tip.split(":")[0], lambda k=key: self.viewport.set_tool(k))
+            label = tip.split(":")[0]
+            act = t.addAction("&" + label, lambda k=key: self.viewport.set_tool(k))
             act.setCheckable(True)
             act.setData(key)
             tools.addAction(act)
         t.aboutToShow.connect(self._update_tools_menu)
+        t.addAction("&Clear picks and measurements", self.viewport.clear_picks).setToolTip(
+            "Also Esc or a double click on empty space in the structure view")
+        t.addSeparator()
+        t.addAction("Command &palette", self.command_palette, "Ctrl+K")
+        t.setToolTipsVisible(True)
+
         w = self.window_menu = mb.addMenu("&Window")
-        w.addAction("Notebook workspace", lambda: self.set_workspace(0), "Ctrl+1")
-        w.addAction("Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
-        w.addSeparator()   # side bars
-        w.addAction("Notebook", lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))
-        w.addAction("Plugins", lambda: self._show_side_bar(self.plugins_dock), "Ctrl+Shift+X")
-        w.addAction("AI chat", self.ask_claude, "Ctrl+J").setToolTip(
+        w.addAction("&Notebook workspace", lambda: self.set_workspace(0), "Ctrl+1")
+        w.addAction("&Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
+        w.addSeparator()   # side bars, ticked while shown; plugin side bars go in before Remotes
+        self.side_bar_actions = []
+
+        def side_bar(label, dock, shortcut=None, show=None):
+            act = w.addAction(label)
+            act.setCheckable(True)
+            act.triggered.connect(lambda on: (show or (lambda: self._show_side_bar(dock)))() if on else dock.hide())
+            if shortcut:
+                act.setShortcut(shortcut)
+            act.setData(dock)
+            self.side_bar_actions.append(act)
+            return act
+
+        side_bar("Note&book", self.notebook_dock, show=lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))
+        self.remotes_action = side_bar("Re&motes", self.remotes_dock, "Ctrl+Alt+R", self.show_remotes)
+        side_bar("Pl&ugins", self.plugins_dock, "Ctrl+Shift+X")
+        side_bar("&AI chat", self.ask_dock, "Ctrl+J", self.ask_claude).setToolTip(
             "Chat with AI about the notebook, the structure or the picked atoms")
-        w.addSeparator()   # views of the editor area and the panel
-        w.addAction("Structure", lambda: self.workbench.show(self.viewport))
-        w.addAction("View settings", lambda: self.workbench.show(self.display))
-        w.addAction("Python console", lambda: self.workbench.show(self.console))
-        w.addAction("Data inspector", lambda: self.workbench.show(self.inspector))
-        w.addAction("Plots", lambda: self.workbench.show(self.plots))
-        w.addAction("New plot view", lambda: self.new_plot_view())
-        w.addAction("Log", lambda: self.workbench.show(self.log))
-        w.addSeparator()
-        w.addAction("Command palette", self.command_palette, "Ctrl+K")
+        w.aboutToShow.connect(self._update_window_menu)
+        w.addSeparator()   # tabs of the editor area and the panel
+        w.addAction("&Structure", lambda: self.workbench.show(self.viewport))
+        w.addAction("&View settings", lambda: self.workbench.show(self.display))
+        w.addAction("&Python console", lambda: self.workbench.show(self.console))
+        w.addAction("&Data inspector", lambda: self.workbench.show(self.inspector))
+        w.addAction("P&lots", lambda: self.workbench.show(self.plots))
+        w.addAction("New plot &tab", lambda: self.new_plot_view())
+        w.addAction("L&og", lambda: self.workbench.show(self.log))
+        w.setToolTipsVisible(True)
+
         h = mb.addMenu("&Help")
         for label, page in manual.PAGES.items():
             h.addAction(label, lambda page=page: self.open_help(page))
         h.addSeparator()
-        about = h.addAction("About EWALD", self.about)
+        h.addAction("&Keyboard shortcuts", self.show_shortcuts)
+        h.addSeparator()
+        about = h.addAction("&About EWALD", self.about)
         about.setMenuRole(QtGui.QAction.AboutRole)
+
+    def _fill_recent_menu(self):
+        """File › Open recent: the files the welcome page lists, newest first."""
+        from .welcome import clear_recent, load_recent
+
+        menu = self.recent_menu
+        menu.clear()
+        recent = load_recent()
+        for path in recent:
+            act = menu.addAction(os.path.basename(path) or path, lambda p=path: self.open_any(p))
+            act.setStatusTip(path)
+            act.setToolTip(path)
+        if not recent:
+            menu.addAction("No recent files").setEnabled(False)
+        else:
+            menu.addSeparator()
+            menu.addAction("Clear recent files", lambda: (clear_recent(), self.panel.welcome.refresh()))
+        menu.setToolTipsVisible(True)
+
+    def _fill_insert_step_menu(self, menu):
+        """Insert › Step: the same entries as the notebook's + Step, plugin steps under Plugins."""
+        fill_modifier_menu(menu, self.panel.add_modifier, self._step_context)
+        view = self.panel.view
+        if view is not None:
+            view.fill_plugin_steps(menu)
+        else:
+            menu.addSeparator()
+            menu.addMenu("Plugins").addAction("Start or open a notebook first").setEnabled(False)
+
+    def _update_window_menu(self):
+        """Tick the side bars that are shown."""
+        for act in self.side_bar_actions:
+            act.setChecked(not act.data().isHidden())
+
+    def toggle_full_screen(self, on: bool | None = None):
+        """View › Full screen (F11; Ctrl+Cmd+F on macOS)."""
+        on = not self.isFullScreen() if on is None else on
+        self.showFullScreen() if on else self.showNormal()
+
+    def show_shortcuts(self):
+        """Help › Keyboard shortcuts: every menu shortcut and the notebook's command-mode keys."""
+        from .shortcuts import ShortcutsDialog
+
+        dlg = ShortcutsDialog(self)
+        dlg.show()
+        return dlg
 
     def _update_tools_menu(self):
         """Tick the viewport tool in use (the tool rail may have changed it)."""
@@ -419,17 +511,6 @@ class MenusMixin:
         view = self.panel.view
         if view is not None:
             getattr(view, method)(*args)
-
-    def _fill_plugin_menu(self, menu):
-        view = self.panel.view
-        if view is None:
-            menu.clear()
-            menu.addAction("Start or open a notebook first").setEnabled(False)
-            return
-        view._fill_plugin_menu()
-        menu.clear()
-        for act in view.plugin_menu.actions():
-            menu.addAction(act)
 
     def snapshot_code(self) -> str:
         """The ``snapshot(pipe, ...)`` cell for the viewport as it is now."""
@@ -468,7 +549,7 @@ class MenusMixin:
                                else "Needs a trajectory: the data has a single frame")
 
     def _insert_verb(self, verb):
-        """Insert › Analysis: a ``verb(pipe)`` cell after the current one, run at once (its table shows below)."""
+        """Insert › Quick analysis: a ``verb(pipe)`` cell after the current one, run at once (its table shows below)."""
         from ..verbs import verb_cell
 
         view = self.panel.view
@@ -550,7 +631,7 @@ class MenusMixin:
 
     def command_palette(self):
         for menu in self.menuBar().findChildren(QtWidgets.QMenu):
-            menu.aboutToShow.emit()  # fill the menus that fill themselves when opened (Kernel, Insert › View, ...)
+            menu.aboutToShow.emit()  # fill the menus that fill themselves when opened (Kernel, Insert › Plot, ...)
         entries = menu_entries(self.menuBar())  # Insert › Step lists the steps
         for menu in self.menuBar().findChildren(QtWidgets.QMenu):
             menu.aboutToHide.emit()  # View › Layout enables its moves again for their shortcuts
@@ -575,18 +656,6 @@ class MenusMixin:
         for label, color in (("Dark background", PALETTES["graphite"]["viewport"]), ("White background", "white")):
             act = self.theme_menu.addAction(label, lambda c=color: self._set_background(c))
             act.setToolTip("Change only the viewport background")
-
-    def _fill_plugin_settings_menu(self):
-        """Edit › Plugin settings: one entry per plugin settings page (:func:`ewald.plugins.settings_page`)."""
-        from .. import plugins
-
-        self.plugin_settings_menu.clear()
-        pages = plugins.settings_pages()
-        for name, page in pages.items():
-            act = self.plugin_settings_menu.addAction(f"{page.title}…", lambda n=name: self.edit_plugin_settings(n))
-            act.setStatusTip(page.description)
-        if not pages:
-            self.plugin_settings_menu.addAction("No plugin has settings").setEnabled(False)
 
     def edit_plugin_settings(self, name: str, exec_: bool = True):
         from .plugin_settings import edit

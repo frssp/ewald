@@ -24,6 +24,7 @@ from ..render import (
     setup_camera,
 )
 from . import header
+from .palette import native_text
 from .style import STYLE_PRESETS, ViewStyle
 from .theme import TOKENS
 
@@ -172,7 +173,7 @@ class Viewport(QtWidgets.QWidget):
         self.show_legend = True           # the atoms' color bar or category swatches
         self.show_axes = True
         self.initial_view = "iso"
-        # interactive level of detail (Preferences › Viewports › Performance)
+        # interactive level of detail (Preferences › 3D view › Performance)
         self.detail_mode = "auto"         # 'auto': coarse while moving if a full frame misses target_fps
         self.target_fps = 30.0
         self.interactive_atoms = 1_000_000  # coarse scenes draw at most this many atoms
@@ -188,7 +189,7 @@ class Viewport(QtWidgets.QWidget):
         self._picks: list[int] = []
         self._press = None
         self._empty_at = None             # (time, x, y) of the last click on empty space
-        # hover readout (Preferences › Viewports › Hover): ray cast once the cursor rests
+        # hover readout (Preferences › 3D view › Hover): ray cast once the cursor rests
         self.hover_info = True
         self.hover_delay = 0.25           # seconds the cursor rests before the readout appears
         self._hover_at = None             # (x, y, width, height) of the resting cursor, y from the top
@@ -302,12 +303,12 @@ class Viewport(QtWidgets.QWidget):
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
         for axis in ("a", "b", "c", "a*", "b*", "c*"):
-            b = _button(axis, f"View along {axis}")
+            b = _button(axis, f"Look along {axis}")
             b.clicked.connect(lambda _=False, ax=axis: self.view_along(ax))
             row.addWidget(b)
         lay.addWidget(axes)
         lay.addSpacing(8)
-        for name, tip, fn in (("arrow_left", "Rotate one step (Preferences › Viewports) left", lambda: self.rotate("azimuth", -self.rotation_step)),
+        for name, tip, fn in (("arrow_left", "Rotate one step (Preferences › 3D view) left", lambda: self.rotate("azimuth", -self.rotation_step)),
                               ("arrow_right", "Rotate one step right about the screen vertical", lambda: self.rotate("azimuth", self.rotation_step)),
                               ("arrow_up", "Tilt up one step", lambda: self.rotate("elevation", self.rotation_step)),
                               ("arrow_down", "Tilt down one step", lambda: self.rotate("elevation", -self.rotation_step)),
@@ -329,7 +330,7 @@ class Viewport(QtWidgets.QWidget):
         self.style_combo.currentTextChanged.connect(self._preset)
         lay.addWidget(self.style_combo)
         lay.addStretch()
-        fit = _button("Fit", "Zoom to fit (Ctrl+0)")
+        fit = _button("Fit", native_text("Zoom to fit (Ctrl+0)"))
         fit.setProperty("ewald_icon", "fit")
         fit.clicked.connect(self.zoom_fit)
         lay.addWidget(fit)
@@ -642,7 +643,7 @@ class Viewport(QtWidgets.QWidget):
         return info
 
     def set_anti_aliasing(self, on: bool):
-        """FXAA on or off (Preferences › Viewports › Smooth edges)."""
+        """FXAA on or off (Preferences › 3D view › Smooth edges)."""
         self._want_anti_aliasing = on
         if self._plotter is None or on == self.anti_aliasing:
             return
@@ -869,7 +870,9 @@ class Viewport(QtWidgets.QWidget):
         """Atom under window position (x, y from the top-left): the front-most atom sphere on the
         camera ray (as for hover), else the atom nearest to the surface VTK picks there (a bond,
         a polyhedron, an isosurface)."""
-        from vtkmodules.vtkRenderingCore import vtkPropPicker  # not ``import vtk``: that loads every VTK module
+        from vtkmodules.vtkRenderingCore import (
+            vtkPropPicker,  # not ``import vtk``: that loads every VTK module
+        )
 
         w = self.plotter.interactor
         idx = self.hover_index(x, y, w.width(), w.height())
@@ -1138,8 +1141,8 @@ class Viewport(QtWidgets.QWidget):
                                shape_opacity=0.7, name="_measure_label", render=False, always_visible=True)
 
 
-EMPTY_HINT = ("Open a structure, trajectory or notebook\n"
-              "File › Open (Ctrl+O), File › Open example, or drop a file here")
+EMPTY_HINT = native_text("Open a structure, trajectory or notebook\n"
+                         "File › Open (Ctrl+O), File › Open example, or drop a file here")
 
 
 def _is_dark(color: str) -> bool:

@@ -62,7 +62,7 @@ render(data, "figure.png", theme="VESTA")
 render(data, "slide.png", theme="Dark slide", type_colors={"Li": "#c080ff"})   # explicit settings win
 ```
 
-On the command line it is `--theme VESTA`; in the GUI, View › Theme. The GUI copies the theme's
+On the command line it is `--theme VESTA`; in the GUI, View › Structure theme. The GUI copies the theme's
 values into the view style, so a session keeps them even where the theme plugin is not installed.
 
 A theme plugin returns a `Theme`:
@@ -118,7 +118,7 @@ def nord():
 | `selection`, `pick` | selected atoms, picked atoms |
 | `error`, `ok` | error and success messages |
 | `hover`, `pressed`, `accent_hover`, `accent_pressed` | button and row shades under the mouse and while pressed; left out, they are mixed from `raised`/`accent` toward `text` |
-| `viewport` | the 3D view background (unless Preferences › Viewports › *Background follows the UI theme* is off) |
+| `viewport` | the 3D view background (unless Preferences › 3D view › *Background follows the UI theme* is off) |
 
 Values are `#rrggbb` colors. Pick the theme under Preferences › General › *UI theme*; panels,
 the console and open plots switch at once (saved figures keep print colors). A theme with an

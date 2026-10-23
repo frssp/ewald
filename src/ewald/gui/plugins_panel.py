@@ -11,6 +11,7 @@ from .. import plugin_catalog as pc
 from .. import plugins
 from . import workers
 from .busy import BusyLabel
+from .icons import icon
 from .theme import TOKENS
 
 
@@ -205,15 +206,29 @@ class PluginsPanel(QtWidgets.QWidget):
         self.busy_bar.setVisible(False)
         lay.addWidget(self.busy_bar)
         row = QtWidgets.QHBoxLayout()
-        for text, slot, tip in (("From file…", self.install_from_file, "Install a plugin .py file, or a downloaded .zip/.whl/.tar.gz package"),
-                                ("pip…", self.install_with_pip, "Install a plugin package with pip"),
-                                ("Create…", self.create_with_claude, "Ask AI to write a new plugin"),
-                                ("Folder", self.open_folder, "Open the plugin folder"),
-                                ("Refresh", self.refresh, "Reload the installed plugins and the catalogs")):
-            b = QtWidgets.QToolButton(text=text, toolTip=tip)
-            b.clicked.connect(slot)
+        # full names in short menus rather than five clipped words in a narrow side bar
+        install = QtWidgets.QToolButton(text="Install", toolTip="Install a plugin that is not in a catalog",
+                                        popupMode=QtWidgets.QToolButton.InstantPopup)
+        menu = QtWidgets.QMenu(install)
+        menu.addAction("From file…", self.install_from_file).setToolTip(
+            "A plugin .py file, or a downloaded .zip/.whl/.tar.gz package")
+        menu.addAction("With pip…", self.install_with_pip).setToolTip("A plugin package from PyPI or a URL")
+        menu.setToolTipsVisible(True)
+        install.setMenu(menu)
+        create = QtWidgets.QToolButton(text="Create with AI…", toolTip="Ask AI to write a new plugin")
+        create.clicked.connect(self.create_with_claude)
+        more = QtWidgets.QToolButton(toolTip="More", popupMode=QtWidgets.QToolButton.InstantPopup,
+                                     autoRaise=True)
+        more.setProperty("ewald_icon", "more")
+        more.setIcon(icon("more"))
+        menu = QtWidgets.QMenu(more)
+        menu.addAction("Open plugin folder", self.open_folder)
+        menu.addAction("Refresh", self.refresh).setToolTip("Reload the installed plugins and the catalogs")
+        more.setMenu(menu)
+        for b in (install, create):
             row.addWidget(b)
         row.addStretch()
+        row.addWidget(more)
         lay.addLayout(row)
         self.refresh()
 
@@ -322,7 +337,7 @@ class PluginsPanel(QtWidgets.QWidget):
                 self.list_layout.addWidget(QtWidgets.QLabel(f"{url}: {err}", objectName="cellError", wordWrap=True))
         if not available and not self.loading and not any(not pc.is_missing(e) for e in self.catalog_errors.values()):
             self.list_layout.addWidget(QtWidgets.QLabel(
-                "Nothing more to install here. Add plugin catalogs in Preferences › Python.",
+                "Nothing more to install here. Add plugin catalogs in Preferences › Plugins.",
                 objectName="muted", wordWrap=True))
         self.list_layout.addStretch()
 

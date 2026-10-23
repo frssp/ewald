@@ -10,6 +10,7 @@ DEFAULT_BASE = "https://github.com/frssp/ewald/blob/main/docs/"
 
 # Help menu: label -> page under docs/
 PAGES = {
+    "Tutorials": "user/tutorials/first-notebook.md",
     "User manual": "index.md",
     "Desktop GUI": "user/gui.md",
     "Modifiers": "user/modifiers.md",

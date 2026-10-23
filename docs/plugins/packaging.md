@@ -146,7 +146,7 @@ repository (such as `packages/ewald-aiida` in ewald-plugins) is installed from t
 
 The GUI's Plugins side bar lists plugins to install from catalogs: the default index
 (`https://raw.githubusercontent.com/frssp/ewald-plugins/main/index.json`) and JSON indexes at
-the URLs or paths in Preferences › Python › *Plugin catalogs* (`python.plugin_catalogs`,
+the URLs or paths in Preferences › Plugins › *Plugin catalogs* (`python.plugin_catalogs`,
 separated by `;`). The environment variable `EWALD_PLUGIN_INDEX` replaces the default index,
 and an empty value turns it off. An index that cannot be found (or, on GitHub, is private and
 there is no token) shows as one muted line. *Install*, *Update* and *Remove* run in the

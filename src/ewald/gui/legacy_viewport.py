@@ -113,7 +113,7 @@ class GLView(QOpenGLWindow):
 
 
 class LegacyViewport(Viewport):
-    """:class:`Viewport` drawing with OpenGL 1.x display lists (``Preferences › Viewports``)."""
+    """:class:`Viewport` drawing with OpenGL 1.x display lists (``Preferences › 3D view``)."""
 
     backend = "legacy-gl"
     uses_vtk = False   # its GLView asks for its own OpenGL 1.x format

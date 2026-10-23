@@ -11,7 +11,7 @@ import os
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import settings as settings_mod
-from ..settings import DEVICES, OPTION, OPTIONS, PAGES, Settings
+from ..settings import DEVICES, OPTION, OPTIONS, PAGE_ALIASES, PAGES, Settings
 from . import header, workers
 from .element_table import ElementTable  # noqa: F401 (imported from here by callers)
 from .pref_widgets import Toggle, _ColorButton, _PathEdit, _ProfileBox, _chevron, _icon, _restyle
@@ -37,7 +37,7 @@ LAYOUT = {
         ("LAMMPS files", ["general.lammps_type_prompt", "general.lammps_type_map"]),
         ("Running jobs", ["general.live_reload", "general.live_reload_interval"]),
         ("Help", ["general.docs_url"])]),
-    "Viewports": ("Defaults for the interactive 3D view.", [
+    "3D view": ("Defaults for the interactive structure view.", [
         ("View", ["viewport.follow_theme", "viewport.background", "viewport.projection", "viewport.initial_view", "viewport.style_preset"]),
         ("Navigation", ["viewport.rotation_step"]),
         ("Overlays", ["viewport.show_axes", "viewport.show_overlay", "viewport.render_frame"]),
@@ -46,7 +46,7 @@ LAYOUT = {
                          "viewport.refine_delay", "viewport.sphere_drawing", "viewport.anti_aliasing",
                          "viewport.sphere_resolution", "viewport.arrow_resolution",
                          "viewport.mesh_limit"])]),
-    "Elements": ("Default atom colors, radii and bond search, like VESTA's elements.ini.", [
+    "Atoms & bonds": ("Default atom colors, radii and bond search, like VESTA's elements.ini.", [
         ("Atoms", ["elements.color_scheme", "elements.radius_source", "elements.radius_scale"]),
         ("Bonds", ["bonds.length_factor", "bonds.radius", "bonds.auto_limit"]),
         ("Element table", ["elements.overrides"])]),
@@ -54,26 +54,30 @@ LAYOUT = {
         ("Renderer", ["render.renderer", "render.quality", "render.movie_quality", "render.samples",
                       "render.ao_samples", "render.noise_threshold", "render.shadows"]),
         ("Output", ["render.size_preset", "render.dpi", "render.background", "render.output_dir"]),
-        ("Overlays and movies", ["render.type_legend", "render.scale_bar", "render.movie_format"]),
-        ("Plots", ["plots.size", "plots.font_size"])]),
+        ("Overlays and movies", ["render.type_legend", "render.scale_bar", "render.movie_format"])]),
+    "Plots": ("How plots look on screen and in saved files.", [
+        ("Style", ["python.plot_style"]),
+        ("Saved plots", ["plots.size", "plots.font_size"])]),
+    "Notebooks": ("Opening, running and saving notebooks.", [
+        ("Opening", ["python.run_notebooks"]),
+        ("Saving", ["python.save_figures", "python.bundle_data_mb"])]),
     "Compute": ("Where pipelines run, and which optional packages are available.", [
         ("Device", ["compute.device", "compute.threads", "performance.background_compute"]),
         ("Memory", ["performance.cache_memory"])]),
-    "Python": ("Notebooks, console and module search path.", [
-        ("Notebooks", ["python.run_notebooks", "python.plot_style", "python.save_figures",
-                        "python.bundle_data_mb"]),
-        ("Plugins", ["python.plugin_catalogs"]),
+    "Python": ("The Python console and the module search path.", [
         ("Console", ["python.startup_script"]),
         ("Modules", ["python.extra_paths"])]),
     "AI": ("The AI service behind Ask AI and the AI chat, its API key, model and connection.", [
-        ("Saved connections", ["llm.profiles"]),
         ("Provider", ["llm.provider"]),
+        ("Connection", ["llm.base_url", "llm.route_prefix", "llm.key_header", "llm.headers",
+                        "llm.timeout"]),
         ("Model", ["llm.model", "llm.effort"]),
         ("Chat", ["llm.stream"]),
         ("Notebook", ["llm.code_cells", "llm.run_cells"]),
         ("Files", ["llm.read_folders", "llm.confirm_hosts"]),
-        ("Connection", ["llm.base_url", "llm.route_prefix", "llm.key_header", "llm.headers",
-                        "llm.timeout"])]),
+        ("Saved connections", ["llm.profiles"])]),
+    "Plugins": ("Where the Plugins side bar finds plugins; each plugin's own settings follow as pages.", [
+        ("Catalogs", ["python.plugin_catalogs"])]),
 }
 
 QSS = """
@@ -189,6 +193,7 @@ class PreferencesDialog(QtWidgets.QDialog):
             if plugin_page.title not in self.page_names:
                 self._build_plugin_page(plugin_page)
         self.pages.currentRowChanged.connect(self.stack.setCurrentIndex)
+        page = PAGE_ALIASES.get(page, page)
         self.pages.setCurrentRow(self.page_names.index(page) if page in self.page_names else 0)
         outer.addWidget(self._footer())
         self._load()
@@ -271,7 +276,7 @@ class PreferencesDialog(QtWidgets.QDialog):
 
     def show_page(self, name: str):
         """Turn to the page ``name`` (General, ..., or a plugin page's title)."""
-        self.pages.setCurrentRow(self.page_names.index(name))
+        self.pages.setCurrentRow(self.page_names.index(PAGE_ALIASES.get(name, name)))
 
     def _build_plugin_page(self, page):
         """A plugin's settings page: its fields as rows, its actions as buttons and a status line;

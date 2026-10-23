@@ -1,12 +1,26 @@
 """Command palette (Ctrl+K): fuzzy search over menu actions and modifiers."""
 from __future__ import annotations
 
+import re
+import sys
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
 
 def native_keys(keys: str) -> str:
     """``keys`` as this platform writes them (Ctrl+K on Windows and Linux, ⌘K on macOS)."""
     return QtGui.QKeySequence(keys).toString(QtGui.QKeySequence.NativeText)
+
+
+_KEYS = re.compile(r"\b(?:Ctrl|Alt|Shift|Meta)\+[^\s,;)]+")
+
+
+def native_text(text: str) -> str:
+    """``text`` with its shortcuts ("Run all (Ctrl+Shift+Enter)") written the platform's way: on
+    macOS ⇧⌘↩ style, elsewhere unchanged. For tooltips and labels that name a shortcut."""
+    if sys.platform != "darwin":
+        return text
+    return _KEYS.sub(lambda m: native_keys(m.group(0)) or m.group(0), text)
 
 
 def fuzzy_score(query: str, text: str):
@@ -24,6 +38,10 @@ def fuzzy_score(query: str, text: str):
         score += 5 if found == last + 1 else 1
         last, pos = found, found + 1
     return score
+
+
+RECENT: list[str] = []   # labels run from the palette, newest first (kept for the session)
+MAX_RECENT = 8
 
 
 class CommandPalette(QtWidgets.QDialog):
@@ -53,7 +71,12 @@ class CommandPalette(QtWidgets.QDialog):
 
     def _filter(self, text):
         scored = [(fuzzy_score(text, label), i) for i, (label, kind, fn) in enumerate(self.entries)]
-        scored = sorted((s, i) for s, i in scored if s is not None)[::-1] if text else [(0, i) for i in range(len(self.entries))]
+        if text:
+            scored = sorted((s, i) for s, i in scored if s is not None)[::-1]
+        else:   # the commands used last first (this session), then the menus in order
+            rank = {label: n for n, label in enumerate(RECENT)}
+            order = sorted(range(len(self.entries)), key=lambda i: rank.get(self.entries[i][0], len(rank)))
+            scored = [(0, i) for i in order]
         self.list.clear()
         for _, i in scored[:40]:
             label, kind, _fn = self.entries[i]
@@ -67,12 +90,17 @@ class CommandPalette(QtWidgets.QDialog):
         if it is None:
             return
         self.accept()
-        self.entries[it.data(QtCore.Qt.UserRole)][2]()
+        label, _kind, fn = self.entries[it.data(QtCore.Qt.UserRole)]
+        if label in RECENT:
+            RECENT.remove(label)
+        RECENT.insert(0, label)
+        del RECENT[MAX_RECENT:]
+        fn()
 
 
 def _label(text: str) -> str:
-    """Menu text without mnemonics; a literal "&&" stays "&"."""
-    return text.replace("&&", "\0").replace("&", "").replace("\0", "&")
+    """Menu text without mnemonics or a tab-separated key hint; a literal "&&" stays "&"."""
+    return text.split("\t")[0].replace("&&", "\0").replace("&", "").replace("\0", "&")
 
 
 def menu_entries(menubar: QtWidgets.QMenuBar):

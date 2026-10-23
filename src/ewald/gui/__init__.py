@@ -315,7 +315,7 @@ def check_remote_display(probe=probe_opengl):
         "(forwarded GLX only offers OpenGL 1.x), not even with Mesa software rendering "
         f"(LIBGL_ALWAYS_SOFTWARE=1). Last error: {last[-400:] or 'none'}\n"
         "Options: run ewald on your own computer and open the cluster's files over SSH "
-        "(ewald gui host:/path/to/file, or File > Load remote file (SSH)); use a remote desktop with GPU "
+        "(ewald gui host:/path/to/file, or File > Open from > Remote file (SSH)); use a remote desktop with GPU "
         "OpenGL (TurboVNC + VirtualGL: vglrun ewald-gui, X2Go, NoMachine, Open OnDemand); install "
         "Mesa's software OpenGL on the cluster (RHEL: dnf install mesa-dri-drivers mesa-libGL) and "
         "retry; or render without a window: ewald render FILE out.png. "

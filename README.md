@@ -73,7 +73,7 @@ ewald gui                       # the welcome page; Open example › Cu_void.lam
 ewald gui dump.lammpstrj        # or open your own file
 ```
 
-Opening a file makes a notebook for it. Click **+ Step** to add an analysis, **+ View** to plot what
+Opening a file makes a notebook for it. Click **+ Step** to add an analysis, **+ Plot** to plot what
 it produced, and write any Python in between. This is the notebook from the
 [first tutorial](docs/user/tutorials/first-notebook.md), as it is saved:
 
@@ -159,7 +159,7 @@ analysis runs on all of them, plots overlay, and `arrhenius(msd(runs))` gives th
 energy. [Runs](docs/user/runs.md)
 
 **Workflows.** A folder of calculations (relaxed end points, a NEB, an MD restarted in `run1/ run2/`,
-phonopy) opens as one notebook with a `load` line per step: File › Open workflow folder…, a folder
+phonopy) opens as one notebook with a `load` line per step: File › Open from › Workflow folder…, a folder
 dropped on the window, the Workflows side bar, or `workflow.describe("hpc:/scratch/study")`.
 `workflow_table("pbe/", "r2scan/")` lines up the numbers of every step (energy per atom, gap, max
 force, barrier) and of several workflows side by side.

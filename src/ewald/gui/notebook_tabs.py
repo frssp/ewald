@@ -1,5 +1,5 @@
 """Notebook tabs along the top of the notebook panel, like browser tabs: one per open
-notebook, ``+`` for a new one, right-click to rename or close.
+notebook, ``+`` for a new one, right-click to rename, show in folder or close.
 
 The tab row (:attr:`NotebookTabs.row`) is a separate widget so that it can be the Notebook dock's
 title bar (``DockTitleBar.embed``): dragging the empty part of the row moves the panel like any
@@ -8,9 +8,12 @@ opens a new notebook, as in VS Code.
 """
 from __future__ import annotations
 
-from PySide6 import QtCore, QtWidgets
+import os
+
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from . import header
+from .palette import native_text
 
 
 class _TabBar(QtWidgets.QTabBar):
@@ -55,7 +58,7 @@ class NotebookTabs(QtWidgets.QWidget):
         bar.setUsesScrollButtons(True)
         bar.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
         self.stack = QtWidgets.QStackedWidget(objectName="notebookPages")
-        self.new_button = new = header.button("plus", "New notebook (Ctrl+T)")
+        self.new_button = new = header.button("plus", native_text("New notebook (Ctrl+T)"))
         new.clicked.connect(self.newRequested.emit)
         self.row = QtWidgets.QWidget(objectName="notebookTabRow")
         row = self.row_layout = QtWidgets.QHBoxLayout(self.row)
@@ -157,5 +160,19 @@ class NotebookTabs(QtWidgets.QWidget):
             return
         m = QtWidgets.QMenu(self)
         m.addAction("Rename…", lambda: self.renameRequested.emit(i))
-        m.addAction("Close", lambda: self.tabCloseRequested.emit(i))
+        path = getattr(getattr(self.stack.widget(i), "notebook", None), "path", None)
+        if path:   # the file manager of the platform (Explorer, Finder, ...)
+            m.addAction("Show in folder", lambda: QtGui.QDesktopServices.openUrl(
+                QtCore.QUrl.fromLocalFile(os.path.dirname(os.path.abspath(path)))))
+        m.addSeparator()
+        m.addAction(native_text("Close\tCtrl+W"), lambda: self.tabCloseRequested.emit(i))
+        others = m.addAction("Close others", lambda: self.close_others(i))
+        others.setEnabled(self.count() > 1)
         m.exec(self.bar.mapToGlobal(pos))
+
+    def close_others(self, keep: int):
+        """Close every tab but ``keep`` (each asks about unsaved changes as Close does)."""
+        widget = self.stack.widget(keep)
+        for j in reversed(range(self.count())):
+            if self.stack.widget(j) is not widget:
+                self.tabCloseRequested.emit(j)

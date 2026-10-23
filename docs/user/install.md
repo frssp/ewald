@@ -164,7 +164,7 @@ draws like VESTA: OpenGL 1.x display lists, so the structure crosses the network
 computer's GPU draws it, and rotating only sends a new camera matrix. Picking, measuring, the view
 buttons, styles and sessions work as usual; impostor spheres, smooth edges, the color bar and 3D
 text don't (spheres are meshes, and above 400,000 atoms points), and Render still uses the full
-renderers offscreen. Preferences › Viewports › Viewport renderer (`auto`, `vtk`, `legacy-gl`) or
+renderers offscreen. Preferences › 3D view › Viewport renderer (`auto`, `vtk`, `legacy-gl`) or
 `EWALD_VIEWPORT=vtk|legacy-gl` choose it by hand; the setting takes effect at the next start.
 
 If you choose `vtk` on a forwarded display, `ewald gui` first opens a small test window in a child
@@ -174,7 +174,7 @@ with a message instead of crashing. If neither viewport works, or for large syst
 in order are:
 
 1. Run ewald on your own computer and open the cluster's files over SSH:
-   `ewald gui user@cluster:/scratch/run/XDATCAR`, or File › Load remote file (SSH). Only the
+   `ewald gui user@cluster:/scratch/run/XDATCAR`, or File › Open from › Remote file (SSH). Only the
    frames you look at are transferred.
 2. A remote desktop that renders with the cluster's GPU: TurboVNC + VirtualGL (`vglrun ewald gui`),
    X2Go, NoMachine, or an Open OnDemand desktop.

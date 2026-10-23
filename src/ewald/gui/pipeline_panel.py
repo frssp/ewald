@@ -7,6 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import modifiers as mods
 from . import header
+from .palette import native_text
 from .params import ParameterForm
 from .theme import TOKENS
 
@@ -923,7 +924,7 @@ class DisplayPanel(QtWidgets.QWidget):
             self.style.visuals[k] = {**visual_to_dict(el), "enabled": self.style.visuals[k].get("enabled", True)}
             self._emit()
 
-        button = QtWidgets.QPushButton("Apply  (Ctrl+Enter)")
+        button = QtWidgets.QPushButton(native_text("Apply  (Ctrl+Enter)"))
         button.setObjectName("primary")
         button.clicked.connect(apply)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), w, activated=apply)

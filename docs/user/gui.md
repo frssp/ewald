@@ -40,7 +40,7 @@ the right edge of the Structure view instead to see structure and plot side by s
 timeline and linked selections.
 
 Right click a tab (or use the group's menu button) for the same moves without dragging: Split
-right, Split down, Move to editor area or panel, Maximize group, New plot view (a second plot,
+right, Split down, Move to editor area or panel, Maximize group, New plot tab (a second plot,
 for example g(r) next to the MSD) and Close or Return to panel. Double-click a tab to maximize
 its group. View › Layout lists the moves with their shortcuts, and the command palette (Ctrl+K)
 finds them too:
@@ -63,21 +63,21 @@ editor area.
 
 **Viewport.** Drag to orbit and scroll to zoom (VTK's standard mouse controls). View › View
 along a, b, c, a*, b*, c* aligns the view with a cell vector or reciprocal vector, as in
-VESTA, and View › Zoom to fit (Ctrl+0) frames the cell. View › Theme applies a theme (Default,
+VESTA, and View › Zoom to fit (Ctrl+0) frames the cell. View › Structure theme applies a theme (Default,
 VESTA, CPK, Journal, ASE, Dark slide, or a [theme plugin](../plugins/styles.md#themes)): element
 colors, background, cell color and radius preset in one step; its Dark background and White
 background entries change only the background.
 
 **Styles.** The Style box on the view toolbar switches between Ball & stick (the default: small
 balls and bonds found automatically), Space-filling, Simple (ASE) and Points; Preferences ›
-Viewports › *Default style* picks the one a new window starts with. Simple (ASE) looks like ASE's
+3D view › *Default style* picks the one a new window starts with. Simple (ASE) looks like ASE's
 GUI: flat discs in the element color with a dark outline, bonds (on, like Ball & stick) as unshaded
 sticks with outlined edges, and the ASE theme (white background). It is drawn with impostors, so it stays fast for any number of
 atoms; leaving it restores the colors and background you had. Particles › Rendering = flat gives
 the same look with any radius. Automatic bonds come from a VESTA-style table (Bonds), one row per
 pair of types up to 1.15 × the sum of covalent radii; in compounds metal-metal pairs are left
 out, so SrTiO3 gets Ti-O and Sr-O bonds but not Sr-Ti. Opening a structure with more than
-Preferences › Elements › *Automatic bonds up to* atoms (100 000) turns bonds off, because the
+Preferences › Atoms & bonds › *Automatic bonds up to* atoms (100 000) turns bonds off, because the
 bond search and the sticks would slow the viewport down; turn them on under Bonds if you want them. The tool rail on the left switches
 between orbit, pick (click an atom to see its id, type, position and every property;
 Shift+click adds atoms to the pick or removes them),
@@ -88,16 +88,16 @@ empty space or press Esc to clear the picks, measurements and selection (with an
 orbit included). Resting the
 cursor on an atom with any tool shows its element, index (and id), Cartesian position in Å and,
 when there is a cell, fractional coordinates, in a tooltip and on the right of the status bar.
-The ray cast runs once, after the cursor rests (Viewports › Hover › *Hover delay*, 0.25 s), and
+The ray cast runs once, after the cursor rests (3D view › Hover › *Hover delay*, 0.25 s), and
 never while the view moves, so it costs nothing during rotation; *Atom info on hover* turns it
 off. Atoms drawn only as periodic images (VESTA boundary) are not reported. The viewport
 draws atoms as GPU impostors: each sphere is one point shaded per pixel, with the depth of the
 sphere surface, so spheres stay round at any zoom, overlapping spheres and bonds intersect as
-with meshes, and 100 000 atoms rotate smoothly. Viewports › Performance › *Sphere drawing* =
+with meshes, and 100 000 atoms rotate smoothly. 3D view › Performance › *Sphere drawing* =
 Mesh brings back triangle spheres (*Sphere resolution*, up to the *Impostor threshold*), and
 *Smooth edges* (on) applies FXAA to outlines.
 A right click (without dragging, which zooms) opens the viewport menu, whose entries follow
-what is loaded and picked. With nothing loaded it offers Load file, Load remote file and the
+what is loaded and picked. With nothing loaded it offers Open file, Open remote file and the
 examples. With picked atoms it starts with their count and Center view on picked, Select picked
 atoms (an `ExpressionSelection` on their identifiers, so the same atoms stay selected on every
 frame), Delete picked atoms (the selection plus `DeleteSelected`) and Clear picks. Phonon modes
@@ -110,14 +110,14 @@ along, Orthographic, Zoom to fit and Ask AI are always there.
 
 **Plugin side bars.** A plugin can bring its own side bar (a sim-agent panel, a database
 browser, ...): installing it adds a button at the bottom of the activity bar and an entry
-under Window › Plugin panels (or a tab under the 3D view instead), it may add toolbar buttons
+in the Window menu (or a tab under the 3D view instead), it may add toolbar buttons
 and entries to the menus and to the right-click menus of the 3D view, notebook cells and plots, and a plugin with settings adds its own page to
 Preferences. Plugin side bars and tabs that were open come back at the next start where they
 were. Switching the plugin off in the Plugins side bar removes all of it; its settings are kept
 for when it comes back ([Side bar plugins](../plugins/gui.md)).
 
 **Workflow side bars.** The built-in **Workflows** side bar reads folders of calculations
-(relax, NEB, MD restarts, phonopy; File › Open workflow folder… or dropping a folder does the
+(relax, NEB, MD restarts, phonopy; File › Open from › Workflow folder… or dropping a folder does the
 same, see [Workflows](workflows.md)). Plugins that read finished calculations (sim-agent, AiiDA)
 share its layout: the account, a search box that also takes an id, and the workflows newest
 first. Expanding a workflow lists its steps (restarts of one calculation joined, sub-workflows
@@ -193,7 +193,7 @@ selection*), **Camera** (what the view cell says about the camera and frame, the
 camera*) and **Elements** ([visual element plugins](../plugins/visuals.md), added with *Add
 element*). Every form shares one label column, so fields line up across cards; sub-sections such as
 Replicate cell, Boundary and Light show their rows only while ticked. Click a card's title to fold
-it; right-click a card, or View › Fold all View cards / Unfold all View cards, for every card.
+it; right-click a card, or View › Layout › Fold all View cards / Unfold all View cards, for every card.
 Folded cards stay folded the next time the app starts (with the window layout). Every value is a setting of
 the notebook's `view(pipe, ...)` cell: the rows the cell sets are highlighted, the card says *in
 notebook*, and the tooltip shows the value. A change made here is written back into that cell, and
@@ -252,7 +252,7 @@ also the frame or image a click goes to, with its value.
 
 *Save plot…* (and *Save plot…* in a view cell's menu) writes a publication figure, not a
 screenshot of the panel: the plot is redrawn at a journal column width (Preferences ›
-Rendering › Plots: 1-column 3.5 in, 1.5-column or 2-column 7.2 in) with 8 pt sans-serif type,
+Plots: 1-column 3.5 in, 1.5-column or 2-column 7.2 in) with 8 pt sans-serif type,
 inward ticks on all four sides, labels with units (*r* (Å), 2*θ* (°), *q* (Å⁻¹), MSD (Å²),
 *E* − *E*<sub>F</sub> (eV)), a colorblind-safe color cycle and a white background,
 whatever the UI theme. PDF, SVG and EPS keep the text as text (TrueType, editable in
@@ -283,8 +283,21 @@ style is drawn in the Paper or Graphite colors.
 The same mapping is available without the GUI in `ewald.linking` (`link_for`,
 `atoms_in_range`, `frames_in_box`, `selection_expression`).
 
-**Command palette.** Window › Command palette searches every menu action and every modifier by
-name.
+**Command palette.** Tools › Command palette (Ctrl+K) searches every menu action and every modifier by
+name and shows each one's shortcut; with nothing typed, the commands you ran from it last come first.
+
+**Menu bar.** Each menu has one job. File opens (Open recent, Open example, Open from › Remote file,
+Location, NEB folder, Workflow folder), saves and exports (Export › Image, Data, Movie, Session).
+Edit undoes and edits cells (cut, copy, paste, delete, merge; Jupyter's Esc keys are in the
+tooltips). View is the camera and what is drawn: Look along a, b, c, a*, b*, c* and the standard
+directions, Orthographic, Zoom to fit, Show (bonds, cell, render frame), Replicate cell, Structure
+theme, Layout, Focus on the structure view, Minimal mode and Full screen (F11; Ctrl+Cmd+F on macOS).
+Insert adds cells (code, text, Step, Plot, Quick analysis, a snapshot), Notebook runs them and holds
+the kernel, Tools are the structure view's tools and the command palette, Window shows the side bars
+(ticked while shown; plugin side bars sit with the built-in ones) and the tabs, and Help has the
+tutorials, the manual and Help › Keyboard shortcuts, a searchable list of every shortcut including
+the notebook's command-mode keys. Shortcuts in menus and tooltips are written the platform's way
+(⌘ on macOS).
 
 ## Render workspace
 
@@ -312,7 +325,7 @@ the frame, *Reset frame* goes back to the largest centered frame. After Render, 
 shows the picture; *3D view* goes back. The frame is the `region` of the notebook's view
 (`view(pipe, region=[x, y, height])`, see [Rendering](rendering.md#options)), so it round-trips
 with the notebook, and View › Write view to notebook stores it with the camera. Preferences ›
-Viewports › Render frame in the 3D view, or right-click › Show › Render frame, shows the frame
+3D view › Render frame in the 3D view, or right-click › Show › Render frame, shows the frame
 outside the Render page too. The frame is not drawn yet on the OpenGL 1.x viewport used over
 `ssh -X`. The "Python for this figure" panel shows the script that
 produces the same image with `pipe.render(...)`, updated as you change settings, so a figure
@@ -326,12 +339,12 @@ formats added by [reader plugins](../plugins/readers.md). Its file filter starts
 which lists every format at once, extensionless VASP names (`POSCAR`, `CONTCAR`, `XDATCAR`, `OUTCAR`,
 `CHGCAR`, ...) and notebooks and sessions included; the groups, one filter per format and All files
 follow it. LAMMPS dumps ask for a
-type-to-element map unless you set a default in Preferences. File › Load NEB folder opens a
+type-to-element map unless you set a default in Preferences. File › Open from › NEB folder opens a
 VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image
 ([NEB runs](formats.md#neb-runs)); opening a single image file of such a run asks whether to
 open the whole band. Files, notebooks and NEB folders can also be dropped on the window. In the notebook layout, File › Open also opens `.py`
-notebooks, and File › Save notebook writes one ([Notebooks](notebooks.md)). File › Export data writes the
-current frame or the whole trajectory through `export_file`, and File › Export movie writes an
+notebooks, and File › Save notebook writes one ([Notebooks](notebooks.md)). File › Export › Data writes the
+current frame or the whole trajectory through `export_file`, and File › Export › Movie writes an
 MP4 or GIF (needs the `movie` extra). File › Live reload turns following a growing trajectory
 on or off for the session; the default and the interval are in Preferences › General.
 
@@ -341,26 +354,28 @@ moment brings up a small dialog with a busy bar and *Cancel* (or Esc), which giv
 back at once. A cancelled SSH connect still runs out its timeout in the background, and its
 result is dropped.
 
-File › Load remote file (SSH) browses a folder on another machine once. For machines you use
-often, the Remotes side bar (the monitor icon in the activity bar, or File › Remote computers,
+File › Open from › Remote file (SSH) browses a folder on another machine once. For machines you use
+often, the Remotes side bar (the monitor icon in the activity bar, or Window › Remotes,
 Ctrl+Alt+R) keeps saved remote computers with their login, jump host, start folder and
 bookmarks, and browses their files; passwords and key passphrases go to the OS keychain
 ([Saved remote computers](formats.md#saved-remote-computers)).
 
-File › Open location (Ctrl+L) takes a typed path or address, the same text `load()` takes in a
+File › Open from › Location (Ctrl+L) takes a typed path or address, the same text `load()` takes in a
 notebook cell: `host:/path` over SSH, or a scheme a reader plugin serves, such as `aiida:1234`
 or `simagent:1234`; the dialog lists the schemes that are installed. A plugin that needs setting
-up (a server address, an access key) has its own page in Preferences, a Settings button in the
-Plugins side bar and an entry under Edit › Plugin settings, so it can be set up without Python.
+up (a server address, an access key) has its own page in Preferences (after the Plugins page) and a
+Settings button in the Plugins side bar, so it can be set up without Python.
 
 ## Preferences
 
-Edit › Preferences (Ctrl+, ; the application menu on macOS) has seven pages: General, Viewports,
-Elements (per-element color and radius, Jmol or CPK scheme, radius preset, VESTA `elements.ini` import),
-Rendering, Compute (device, CPU threads, installed components), Python (console
-startup script, extra module paths) and AI (provider, API key, model, server URL and effort for Ask AI; see
-[API key](claude.md#api-key)), followed by a page for each installed plugin that has settings
-(its fields, its buttons such as Test connection; Apply and OK save them through the plugin). Only values that differ from the defaults are saved, as
+Edit › Preferences (Ctrl+, ; the application menu on macOS) has ten pages: General, 3D view,
+Atoms & bonds (per-element color and radius, Jmol or CPK scheme, radius preset, bond search, VESTA
+`elements.ini` import), Rendering, Plots (the style of your own plots, saved plot size and font),
+Notebooks (run when opened, figures and data saved with a notebook), Compute (device, CPU threads,
+installed components), Python (console startup script, extra module paths), AI (provider, API key,
+server URL, model and effort for Ask AI; see [API key](claude.md#api-key)) and Plugins (plugin
+catalogs), followed by a page for each installed plugin that has settings (its fields, its buttons
+such as Test connection; Apply and OK save them through the plugin). Only values that differ from the defaults are saved, as
 JSON in the ewald config folder: `~/.config/ewald` on Linux,
 `~/Library/Application Support/ewald` on macOS, `%APPDATA%\ewald` on Windows, or
 `$EWALD_CONFIG_DIR` when set. Preferences affect the GUI only; scripts that call `compute` or
@@ -375,7 +390,7 @@ types fell back to covalent radii.
 ### Large systems
 
 Interaction comes first in the viewport, and quality comes first in rendered output. Under
-Viewports › Performance, *Detail while moving* (Auto by default) controls what happens while
+3D view › Performance, *Detail while moving* (Auto by default) controls what happens while
 you rotate, zoom, drag the timeline slider or play. Auto switches to a coarse scene only when a
 full-detail frame takes longer than 1/*Target frame rate* (30 fps). The coarse scene uses
 impostors and leaves out labels and measurements; above *Atoms while moving* (1,000,000) it

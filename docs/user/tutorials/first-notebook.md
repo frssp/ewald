@@ -62,7 +62,7 @@ the data), and the condition can also be a string such as `"Coordination < 12"`.
 
 ## 4. Plot
 
-Click **+ View** and choose the histogram of `Coordination`, then add a second view of the table
+Click **+ Plot** and choose the histogram of `Coordination`, then add a second view of the table
 `coordination-rdf`:
 
 ```python

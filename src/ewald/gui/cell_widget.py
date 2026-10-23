@@ -6,11 +6,12 @@ import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..notebook import Cell, Notebook, step_call
-from .params import ParameterForm
 from . import header
-from .icons import icon
-from .theme import TOKENS
 from .code_editor import CodeEditor, mono_font
+from .icons import icon
+from .palette import native_text
+from .params import ParameterForm
+from .theme import TOKENS
 
 
 class OutputArea(QtWidgets.QWidget):
@@ -722,7 +723,7 @@ class CellWidget(QtWidgets.QFrame):
         gutter = QtWidgets.QVBoxLayout(self.gutter)
         gutter.setContentsMargins(0, 0, 0, 0)
         gutter.setSpacing(1)
-        self.run_button = header.button("play", "Run cell (Ctrl+Enter)", name="cellRun")
+        self.run_button = header.button("play", native_text("Run cell (Ctrl+Enter)"), name="cellRun")
         self.run_button.setProperty("ewald_icon_color", "accent")
         self.run_button.setIcon(icon("play", TOKENS["accent"]))
         self.run_button.clicked.connect(lambda: self.runRequested.emit(self.cell, False))
@@ -817,7 +818,7 @@ class CellWidget(QtWidgets.QFrame):
         act = lambda name: (lambda: self.actionRequested.emit(self.cell, name))  # noqa: E731
         code = self.cell.kind == "code"
         if code:
-            m.addAction("Run\tCtrl+Enter", lambda: self.runRequested.emit(self.cell, False))
+            m.addAction(native_text("Run\tCtrl+Enter"), lambda: self.runRequested.emit(self.cell, False))
             m.addAction("Run this and below", act("below"))
         else:
             m.addAction("Edit", self.edit_markdown)
@@ -842,8 +843,8 @@ class CellWidget(QtWidgets.QFrame):
         m.addSeparator()
         m.addAction("Insert cell above\tA", act("above"))
         m.addAction("Insert cell below\tB", act("after"))
-        m.addAction("Move up\tCtrl+Shift+Up", act("up"))
-        m.addAction("Move down\tCtrl+Shift+Down", act("down"))
+        m.addAction(native_text("Move up\tCtrl+Shift+Up"), act("up"))
+        m.addAction(native_text("Move down\tCtrl+Shift+Down"), act("down"))
         m.addSeparator()
         m.addAction("Cut\tX", act("cut"))
         m.addAction("Copy\tC", act("copy"))
@@ -978,7 +979,7 @@ class CellWidget(QtWidgets.QFrame):
         self.view.setTextFormat(QtCore.Qt.MarkdownText)
         self.view.setWordWrap(True)
         self.view.setText(self.cell.source or "*Empty text cell; double-click to edit*")
-        self.view.setToolTip("Double-click to edit; Ctrl+Enter shows the text")
+        self.view.setToolTip(native_text("Double-click to edit; Ctrl+Enter shows the text"))
         self.editor = CodeEditor(self.cell.source)
         self.editor.escaped.connect(self.leave_editor)
         self.editor.highlighter.setDocument(None)
@@ -1086,7 +1087,7 @@ class CellWidget(QtWidgets.QFrame):
                 fl.addWidget(QtWidgets.QLabel(" ".join(doc.replace("``", "").split()), wordWrap=True, objectName="muted"))
             self.form = ParameterForm(mod)
             fl.addWidget(self.form)
-            apply = QtWidgets.QPushButton("Apply  (Ctrl+Enter)", objectName="primary")
+            apply = QtWidgets.QPushButton(native_text("Apply  (Ctrl+Enter)"), objectName="primary")
             apply.clicked.connect(self._apply_form)
             QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self.form_page, activated=self._apply_form)
             fl.addWidget(apply, 0, QtCore.Qt.AlignLeft)
@@ -1386,7 +1387,7 @@ def _call_name(source: str) -> str:
 
 
 def fill_view_menu(menu, data, add):
-    """'+ View' entries: every data table and a histogram of every numeric particle property."""
+    """'+ Plot' entries: every data table and a histogram of every numeric particle property."""
     menu.clear()
     tables = list(data.tables) if data is not None else []
     for name in tables:

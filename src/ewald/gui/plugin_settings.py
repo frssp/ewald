@@ -1,5 +1,5 @@
 """The settings page of a plugin (:func:`ewald.plugins.settings_page`) as a dialog, generated
-from its fields: Plugins side bar › Settings, Edit › Plugin settings. The same fields are a
+from its fields: Plugins side bar › Settings, its Preferences page. The same fields are a
 page of Preferences (``gui/preferences.py``), built with :func:`field_widget`."""
 from __future__ import annotations
 

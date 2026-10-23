@@ -128,7 +128,7 @@ class PanelContext:
         self.window.panel.add_modifier(modifier)
 
     def open(self, path: str):
-        """Open ``path`` (a file, ``host:/path`` or a plugin scheme) as File › Open location does."""
+        """Open ``path`` (a file, ``host:/path`` or a plugin scheme) as File › Open from › Location does."""
         return self.window.open_location_dialog(str(path))
 
     def open_workflow(self, workflow):
@@ -160,7 +160,8 @@ class PluginPanelsMixin:
         self.plugin_panels = {}      # name -> {"action", "dock", "widget", "context", "plugin"}
         self.plugin_menu_entries = []    # (menu the action is in, action) of @menu_item plugins
         self._menu_contexts = {}     # menu item name -> PanelContext
-        self.plugin_panel_menu = self.window_menu.addMenu("Plugin panels")
+        self.plugin_panel_actions = []   # Window entries of plugin panels, with the built-in side bars
+        self.window_menu.aboutToShow.connect(self._update_plugin_panel_actions)
         self.workbench.viewClosed.connect(self._plugin_tab_closed)
         self.viewport.picked.connect(self._update_plugin_menu_items)   # when="picks" on the toolbar
         self.refresh_plugin_panels()
@@ -200,15 +201,31 @@ class PluginPanelsMixin:
                 self.activity_buttons[f"plugin:{name}"] = act
             self.plugin_panels[name] = {"action": act, "dock": None, "widget": None, "context": None,
                                         "plugin": plugin}
-        menu = self.plugin_panel_menu
-        menu.clear()
-        for name, entry in self.plugin_panels.items():
+        menu = self.window_menu
+        for a in self.plugin_panel_actions:
+            menu.removeAction(a)
+            a.deleteLater()
+        self.plugin_panel_actions = []
+        for name, entry in self.plugin_panels.items():   # side bars between Notebook and Remotes
             plugin = entry["plugin"]
-            a = menu.addAction(plugin_icon(plugin.icon), plugin.title, lambda n=name: self.show_plugin_panel(n))
+            a = QtGui.QAction(plugin_icon(plugin.icon), plugin.title, menu)
+            a.setData(name)
+            if plugin.area == "side":
+                a.setCheckable(True)
+                a.triggered.connect(lambda on, n=name: self.show_plugin_panel(n, on))
+            else:
+                a.triggered.connect(lambda _=False, n=name: self.show_plugin_panel(n))
             if plugin.shortcut:
                 a.setShortcut(QtGui.QKeySequence(plugin.shortcut))
-        menu.menuAction().setVisible(bool(self.plugin_panels))
+            menu.insertAction(self.remotes_action, a)
+            self.plugin_panel_actions.append(a)
         self.refresh_plugin_menu_items()
+
+    def _update_plugin_panel_actions(self):
+        """Tick the plugin side bars that are shown (Window menu)."""
+        for a in self.plugin_panel_actions:
+            dock = self.plugin_panels.get(a.data(), {}).get("dock")
+            a.setChecked(a.isCheckable() and dock is not None and not dock.isHidden())
 
     def show_plugin_panel(self, name: str, on: bool = True):
         """Show (``on``) or hide a plugin's side bar or bottom tab; the first show builds its

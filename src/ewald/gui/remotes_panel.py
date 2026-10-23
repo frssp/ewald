@@ -534,7 +534,7 @@ class RemotesPanel(QtWidgets.QWidget):
 
 
 def install(window) -> QtWidgets.QDockWidget:
-    """Add the Remotes side bar to ``window`` (hidden; the activity bar or File › Remote computers shows it)."""
+    """Add the Remotes side bar to ``window`` (hidden; the activity bar or Window › Remotes shows it)."""
     panel = window.remotes_panel = RemotesPanel()
     panel.openRequested.connect(window._open_asking_types)
     panel.nebRequested.connect(window.open_neb)

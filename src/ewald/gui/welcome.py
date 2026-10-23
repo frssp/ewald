@@ -7,7 +7,7 @@ import os
 
 from PySide6 import QtCore, QtWidgets
 
-from .palette import native_keys
+from .palette import native_keys, native_text
 
 MAX_RECENT = 10
 
@@ -24,6 +24,14 @@ def load_recent() -> list[str]:
         return [str(p) for p in json.loads(recent_path().read_text(encoding="utf-8"))][:MAX_RECENT]
     except (OSError, ValueError, TypeError):
         return []
+
+
+def clear_recent() -> None:
+    """Forget the recent files (File › Open recent › Clear recent files)."""
+    try:
+        recent_path().write_text("[]", encoding="utf-8", newline="\n")
+    except OSError:
+        pass
 
 
 def add_recent(path) -> None:
@@ -63,9 +71,9 @@ class WelcomePage(QtWidgets.QWidget):
         col.addSpacing(6)
         row = QtWidgets.QHBoxLayout()
         self.new_button = QtWidgets.QPushButton("New notebook", objectName="primary",
-                                                toolTip="An empty notebook (Ctrl+T)")
+                                                toolTip=native_text("An empty notebook (Ctrl+T)"))
         self.new_button.clicked.connect(self.newRequested.emit)
-        self.open_button = QtWidgets.QPushButton("Open…", toolTip="A data file, notebook or session (Ctrl+O)")
+        self.open_button = QtWidgets.QPushButton("Open…", toolTip=native_text("A data file, notebook or session (Ctrl+O)"))
         self.open_button.clicked.connect(self.openRequested.emit)
         self.example_button = QtWidgets.QPushButton("Open example", toolTip="One of the example files shipped with EWALD")
         menu = QtWidgets.QMenu(self.example_button)

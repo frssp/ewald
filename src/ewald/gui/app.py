@@ -185,7 +185,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.console = LazyConsole(self._console_namespace, self._after_console, self, on_built=self._push_console)
         self.plots = PlotsPanel()
         self._connect_plot(self.plots)
-        self.extra_plots = {}  # view id -> PlotsPanel made with "New plot view"
+        self.extra_plots = {}  # view id -> PlotsPanel made with "New plot tab"
         self._plot_picking = False
         self.log = QtWidgets.QPlainTextEdit(readOnly=True)
         for view, widget, title in (("console", self.console, "Python console"), ("view", self.display, "View"),
@@ -303,7 +303,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.message(f"Live reload {'on' if on else 'off'}")
 
     def preferences(self, page: str | None = None):
-        """Edit › Preferences, at ``page`` (a page title such as "Viewports" or a plugin's page)."""
+        """Edit › Preferences, at ``page`` (a page title such as "3D view" or a plugin's page)."""
         dlg = prefs.PreferencesDialog(self.settings, self, page=page)
         dlg.applied.connect(lambda s: prefs.apply_settings(self, s))
         dlg.applied.connect(lambda s: self._plugin_event("settings", s))
@@ -465,7 +465,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
                 # bond search and sticks would make a big system slow
                 self.style.bonds_enabled, self._bonds_auto_off = False, True
                 self.message(f"Bonds off: {self.data.count:,} atoms is above the automatic-bonds limit "
-                             f"({limit:,}, Preferences › Elements). Turn them on under Bonds.")
+                             f"({limit:,}, Preferences › Atoms & bonds). Turn them on under Bonds.")
         if self.style.bonds_enabled:
             self.style.ensure_bond_pairs(self.data.types)
         self._apply_element_defaults()
