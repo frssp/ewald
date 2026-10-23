@@ -13,7 +13,7 @@ notebook. Linux system libraries and startup errors: [Install](install.md#linux-
 
 The window has the analysis on the left as a [notebook](notebooks.md): Python cells, steps and
 linked plots, saved as an `.ewd`, `.ipynb` or `.py` file, with one tab per open notebook. The
-[tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline take the rest of the width, the AI chat opens left of the notebook from the activity bar, and the panel
+[tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline take the rest of the width, the AI chat opens left of the notebook from the activity bar (side bars you work in on top: Notebook, AI chat, Workflows and other plugin side bars, Remotes; Plugins and Preferences at the bottom), and the panel
 below the viewport holds the Python console, the View tab (display settings), the data inspector, plots and the log. Tabs in the
 middle can be rearranged as in VS Code (see [Panel layout](#panel-layout)).
 
@@ -109,7 +109,7 @@ the current one (`OverlayFrames`; on by default for NEB folders), with its trans
 along, Orthographic, Zoom to fit and Ask AI are always there.
 
 **Plugin side bars.** A plugin can bring its own side bar (a sim-agent panel, a database
-browser, ...): installing it adds a button at the bottom of the activity bar and an entry
+browser, ...): installing it adds a button to the activity bar (after AI chat, before Remotes) and an entry
 in the Window menu (or a tab under the 3D view instead), it may add toolbar buttons
 and entries to the menus and to the right-click menus of the 3D view, notebook cells and plots, and a plugin with settings adds its own page to
 Preferences. Plugin side bars and tabs that were open come back at the next start where they
@@ -133,7 +133,7 @@ rewriting that last cell and running it. Under each loaded step its tables are l
 whichever step `pipe` is, so the bands stay in view while you switch the 3D view between relax and
 scf ([Workflow sources](../plugins/workflows.md)).
 
-**AI chat (Ask AI).** The AI button at the bottom of the activity bar on the far left (also
+**AI chat (Ask AI).** The AI button (a chat bubble, second from the top of the activity bar on the far left; also
 Window › AI chat, Ctrl+J, and Ask AI in the Structure view's right-click menu) opens a chat side bar left of the
 notebook. It reads like a
 chat app: your messages in bubbles on the right, the answers under the assistant's name (Claude, Gemini, ...) on the left,
@@ -361,7 +361,7 @@ back at once. A cancelled SSH connect still runs out its timeout in the backgrou
 result is dropped.
 
 File › Open from › Remote file (SSH) browses a folder on another machine once. For machines you use
-often, the Remotes side bar (the monitor icon in the activity bar, or Window › Remotes,
+often, the Remotes side bar (the server icon in the activity bar, or Window › Remotes,
 Ctrl+Alt+R) keeps saved remote computers with their login, jump host, start folder and
 bookmarks, and browses their files; passwords and key passphrases go to the OS keychain
 ([Saved remote computers](formats.md#saved-remote-computers)).

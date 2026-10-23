@@ -19,26 +19,41 @@ class MenusMixin:
     """Part of :class:`ewald.gui.app.MainWindow`."""
 
     def _build_activity_bar(self):
-        """Icons on the far left that show or hide the side bars (Notebook, Plugins, Remotes, AI chat)."""
+        """Icons on the far left that show or hide the side bars. Work on top (Notebook, AI chat,
+        plugin side bars, Remotes), management at the bottom (Plugins, Preferences), as in VS Code;
+        the Window menu lists the side bars in the same order."""
         bar = self.activity_bar = QtWidgets.QToolBar("Activity bar")
         bar.setObjectName("activity-bar")
         bar.setMovable(False)
         bar.setIconSize(QtCore.QSize(22, 22))
         self.addToolBar(QtCore.Qt.LeftToolBarArea, bar)
         self.activity_buttons = {}
-        for name, icon_name, dock in (("Notebook", "notebook", self.notebook_dock),
-                                      ("Plugins", "plugins", self.plugins_dock),
-                                      ("Remotes", "remote", self.remotes_dock),
-                                      ("AI chat", "claude", self.ask_dock)):
+        for name, icon_name, dock, tip in (("Notebook", "notebook", self.notebook_dock, "Notebook"),
+                                           ("AI chat", "ai", self.ask_dock, "AI chat (Ctrl+J)"),
+                                           ("Remotes", "remote", self.remotes_dock,
+                                            "Remotes: saved SSH computers (Ctrl+Alt+R)"),
+                                           (None, None, None, None),
+                                           ("Plugins", "plugins", self.plugins_dock, "Plugins (Ctrl+Shift+X)")):
+            if name is None:   # pushes Plugins and Preferences to the bottom
+                spacer = QtWidgets.QWidget(objectName="activitySpacer")
+                spacer.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
+                bar.addWidget(spacer)
+                continue
             # not dock.toggleViewAction(): Qt disables it for docks without DockWidgetClosable
             act = QtGui.QAction(icon(icon_name), name, bar, checkable=True)
             act.triggered.connect(lambda on, d=dock: self._show_side_bar(d) if on else d.hide())
             dock.visibilityChanged.connect(lambda _shown, a=act, d=dock: a.setChecked(not d.isHidden()))
             act.setProperty("ewald_icon", icon_name)
-            act.setToolTip(native_text("Chat with AI (Ctrl+J)") if dock is self.ask_dock
-                           else f"Show or hide the {name} side bar")
+            act.setProperty("ewald_tip", native_text(tip))
+            act.setToolTip(native_text(tip))
             bar.addAction(act)
             self.activity_buttons[name] = act
+        act = QtGui.QAction(icon("settings"), "Preferences", bar)
+        act.triggered.connect(lambda: self.preferences())
+        act.setProperty("ewald_icon", "settings")
+        act.setToolTip(native_text("Preferences (Ctrl+,)"))
+        bar.addAction(act)
+        self.activity_buttons["Preferences"] = act
         self.plugins_dock.visibilityChanged.connect(
             lambda shown: shown and self.plugins_panel.search.setFocus())
         self.plugins_panel.updatesChanged.connect(self._plugin_updates)
@@ -63,7 +78,7 @@ class MenusMixin:
         act = self.activity_buttons["Plugins"]
         act.setIcon(badged("plugins", count))
         act.setToolTip(f"Plugins: {count} update{'s' if count != 1 else ''} available" if count
-                       else "Show or hide the Plugins side bar")
+                       else act.property("ewald_tip"))
         act.setProperty("updates", count)
 
     def _show_side_bar(self, dock):
@@ -408,7 +423,8 @@ class MenusMixin:
         w = self.window_menu = mb.addMenu("&Window")
         w.addAction("&Notebook workspace", lambda: self.set_workspace(0), "Ctrl+1")
         w.addAction("&Render workspace", lambda: self.set_workspace(1), "Ctrl+2")
-        w.addSeparator()   # side bars, ticked while shown; plugin side bars go in before Remotes
+        w.addSeparator()   # side bars in the activity bar's order, ticked while shown;
+        # plugin side bars go in before Remotes
         self.side_bar_actions = []
 
         def side_bar(label, dock, shortcut=None, show=None):
@@ -422,10 +438,10 @@ class MenusMixin:
             return act
 
         side_bar("Note&book", self.notebook_dock, show=lambda: (self.notebook_dock.show(), self.notebook_dock.raise_()))
-        self.remotes_action = side_bar("Re&motes", self.remotes_dock, "Ctrl+Alt+R", self.show_remotes)
-        side_bar("Pl&ugins", self.plugins_dock, "Ctrl+Shift+X")
         side_bar("&AI chat", self.ask_dock, "Ctrl+J", self.ask_claude).setToolTip(
             "Chat with AI about the notebook, the structure or the picked atoms")
+        self.remotes_action = side_bar("Re&motes", self.remotes_dock, "Ctrl+Alt+R", self.show_remotes)
+        side_bar("Pl&ugins", self.plugins_dock, "Ctrl+Shift+X")
         w.aboutToShow.connect(self._update_window_menu)
         w.addSeparator()   # tabs of the editor area and the panel
         w.addAction("&Structure", lambda: self.workbench.show(self.viewport))
