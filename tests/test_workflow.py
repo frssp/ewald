@@ -136,3 +136,70 @@ def test_ai_tools_list_and_describe_workflows():
     out = ts.call("describe_workflow", {"path": "demo:7"}).content
     assert out["steps"][0]["path"] == "demo:7/relax" and out["source"] == "demo"
     assert ts.call("describe_workflow", {"path": "demo:9"}).is_error
+
+
+class Analysing(Demo):
+    """Demo calculations with an analysis for relaxations."""
+
+    def analyses(self, wf):
+        if wf.kind != "vasp_relax":
+            return []
+        steps = {s.name for _, s in wf.walk()}
+        cells = ["relaxed = load('demo:7/relax')",
+                 ("from ewald.verbs import Table\n"
+                  "summary = Table('Summary', {'frame': [0], 'atoms': [relaxed.compute(0).count]}, "
+                  "attributes={'result': {'atoms': relaxed.compute(0).count}})")]
+        return [workflow.Analysis("summary", "Atom count", cells, result="summary"),
+                workflow.Analysis("phonons", "Phonons", reason="no phonon step" if "phonons" not in steps else "")]
+
+
+def test_a_source_offers_analyses_that_become_notebook_cells():
+    plugins.register_reader("demo", si, schemes=("demo",))
+    plugins.workflow_source("demo")(Analysing)
+    wf = workflow.describe("demo:7")
+    assert [a.as_dict() for a in wf.analyses] == [
+        {"name": "summary", "title": "Atom count", "available": True},
+        {"name": "phonons", "title": "Phonons", "available": False, "reason": "no phonon step"}]
+    assert wf.as_dict()["analyses"][1]["reason"] == "no phonon step"
+    nb = Notebook.from_py(workflow.notebook_text(wf), name="Si relax")
+    sources = [c.source for c in nb.cells]
+    assert sources[4].startswith("## Atom count") and sources[5] == "relaxed = load('demo:7/relax')"
+    assert "Not available: no phonon step" in sources[-1]
+    assert nb.run_all()
+    assert nb.namespace["summary"].attributes["result"] == {"atoms": 2}
+    with pytest.raises(LookupError, match="it has: summary, phonons"):
+        wf.analysis("bands")
+
+
+def test_a_broken_recipe_does_not_hide_the_workflow():
+    class Broken(Demo):
+        def analyses(self, wf):
+            raise RuntimeError("recipe bug")
+
+    plugins.workflow_source("demo")(Broken)
+    wf = workflow.describe("demo:7")
+    assert wf.steps and not wf.analyses[0].available and "recipe bug" in wf.analyses[0].reason
+
+
+def test_ai_adds_an_analysis_through_cells_and_quotes_its_result():
+    from ewald.llm.tools import Toolset
+
+    plugins.register_reader("demo", si, schemes=("demo",))
+    plugins.workflow_source("demo")(Analysing)
+    ts = Toolset()
+    out = ts.call("add_analysis", {"path": "demo:7", "name": "summary"}).content
+    assert out["result"] == {"atoms": 2} and out["table"] == "Summary" and out["cells"] == 2
+    assert ts.notebook.cells[-1].source.startswith("from ewald.verbs import Table")
+    err = ts.call("add_analysis", {"path": "demo:7", "name": "phonons"})
+    assert err.is_error and "no phonon step" in err.content
+
+
+def test_add_analysis_reads_only_where_the_ai_may(tmp_path):
+    from ewald.llm.access import ReadAccess
+    from ewald.llm.tools import Toolset
+
+    (tmp_path / "allowed").mkdir()
+    ts = Toolset()
+    ts.read_access = ReadAccess([tmp_path / "allowed"])
+    err = ts.call("add_analysis", {"path": str(tmp_path / "other"), "name": "summary"})
+    assert err.is_error and "outside the folders" in err.content

@@ -116,6 +116,42 @@ def test_view_tab_surfaces_labels_transparency(app, pipe):
     _dispose(panel)
 
 
+def test_view_tab_opens_no_window_and_keeps_its_cards_over_neb_frames(app, vasp_dir):
+    """A NEB band with trajectory lines played on Windows flashed a window at every frame: the View tab
+    was rebuilt (the OverlayFrames copies change the atom count) and a checked group showed its rows
+    before they had a parent. Neither happens now."""
+    from ewald import import_file
+    from ewald.gui.pipeline_panel import DisplayPanel
+
+    pipe = import_file(vasp_dir / "neb")
+    pipe.add(mods.GenerateTrajectoryLines())
+    shown = []
+
+    class Spy(QtCore.QObject):
+        def eventFilter(self, obj, ev):
+            if ev.type() == QtCore.QEvent.Show and isinstance(obj, QtWidgets.QWidget) and obj.isWindow():
+                shown.append(obj.objectName())
+            return False
+
+    panel = DisplayPanel()
+    panel.style.trajectory_color_by = "Time"
+    panel.set_pipeline(pipe)
+    spy = Spy()
+    app.installEventFilter(spy)
+    try:
+        panel.set_data(pipe.compute(0))
+        page = panel.scroll.widget()
+        for k in (1, 2, 3, 4):
+            panel.set_data(pipe.compute(k))
+        assert panel.scroll.widget() is page                 # frames of one band keep the cards
+        panel.refresh()                                      # a rebuild with checked groups
+        app.processEvents()
+    finally:
+        app.removeEventFilter(spy)
+    assert shown == [], shown
+    _dispose(panel)
+
+
 def test_view_tab_trajectory_color_map(app, pipe):
     """The Elements card colors trajectory lines with a color map over a Time window or a trail; the values
     go into the style (and so the view cell) and the viewport draws them with a color bar."""
@@ -1679,6 +1715,15 @@ def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
     assert view.notebook.cells[-1].source.strip() == "pipe.add(CoordinationAnalysis(cutoff=3.0))"
     assert w.ask_panel.messages[-1].code_blocks[0].insert_button.text() == "✓ Inserted"
     assert view.undo() == "Insert cell" and len(view.notebook.cells) == n
+    w.settings["llm.run_cells"] = True                     # Let the AI run cells: the inserted code runs too
+    w.ask_panel.ask("Plot sin(x)")
+    _wait(app, w.ask_panel)
+    for _ in range(400):
+        app.processEvents()
+        if view.notebook.cells[-1].state not in ("new", "running") and not view.running:
+            break
+        time.sleep(0.01)
+    assert len(view.notebook.cells) == n + 1 and view.notebook.cells[-1].state == "ok"
     w.close()
 
 
@@ -1738,6 +1783,14 @@ def test_ai_chat_tells_claude_about_the_notebook(app, monkeypatch):
     s["llm.code_cells"] = "button"
     ask_panel.agent_from_settings(lambda: s, notebook=True)(None, None)
     assert "Insert as notebook cell" in made[2]["system"]
+    assert ask_panel.RUN_CELLS_NOTE[False] in made[0]["system"] and "(not run)" in made[0]["system"]
+    s["llm.code_cells"] = "insert"
+    s["llm.run_cells"] = True                              # Preferences › AI › Let the AI run cells
+    factory = ask_panel.agent_from_settings(lambda: s, notebook=True)
+    factory(None, None)
+    assert ask_panel.RUN_CELLS_NOTE[True] in made[3]["system"] and "(and run)" in made[3]["system"]
+    s["llm.run_cells"] = False                             # read again before every question
+    assert ask_panel.RUN_CELLS_NOTE[False] in factory.system()
 
 
 def test_viewport_draws_vector_arrows(app):
@@ -4892,6 +4945,14 @@ def test_resize_handles_are_visible_in_every_theme(app):
     from ewald.gui import theme
 
     saved = dict(theme.TOKENS), dict(theme.STYLE)
+    # images are cached in the temp folder by content: an older grip drawing there is not reused
+    first = theme.image("grip_v")
+    entry = theme._IMAGES["grip_v"]
+    try:
+        theme._IMAGES["grip_v"] = (entry[0], entry[1].replace("v24", "v20"), *entry[2:])
+        assert theme.image("grip_v") != first
+    finally:
+        theme._IMAGES["grip_v"] = entry
     try:
         for name in theme.PALETTES:
             t = theme.use(name)

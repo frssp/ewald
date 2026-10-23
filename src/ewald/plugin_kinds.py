@@ -398,7 +398,8 @@ class MenuItemPlugin:
 @dataclass
 class WorkflowSourcePlugin:
     """A place workflows come from (sim-agent, an AiiDA profile): ``source`` has ``account()``,
-    ``list(query, cursor) -> WorkflowPage`` and ``describe(ref) -> Workflow`` (:mod:`ewald.workflow`);
+    ``list(query, cursor) -> WorkflowPage`` and ``describe(ref) -> Workflow`` (:mod:`ewald.workflow`),
+    and optionally ``analyses(wf) -> [Analysis]`` for a described workflow;
     ``schemes`` are the ``load()`` path schemes its workflows use, ``settings_page`` the plugin
     settings page that sets it up ("" if none)."""
 
@@ -420,6 +421,14 @@ class WorkflowSourcePlugin:
     def describe(self, ref: str):
         wf = self.source.describe(ref)
         wf.source = wf.source or self.name
+        offer = getattr(self.source, "analyses", None)
+        if callable(offer) and getattr(wf, "complete", False) and not wf.analyses:
+            try:
+                wf.analyses = list(offer(wf) or [])
+            except Exception as exc:  # noqa: BLE001 - a broken recipe must not hide the workflow
+                from .workflow import Analysis
+
+                wf.analyses = [Analysis("analyses", reason=f"{self.name} could not offer analyses: {exc}")]
         return wf
 
     def _named(self, page):

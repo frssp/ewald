@@ -134,6 +134,7 @@ def apply_settings(win, s: Settings, startup: bool = False):
     page.set_renderer(s["render.renderer"])
     page.samples.setValue(s["render.samples"])
     page.ao_samples.setValue(s["render.ao_samples"])
+    page.noise.setValue(s["render.noise_threshold"])
     page.shadows.setChecked(s["render.shadows"])
     page.quality.setCurrentText(s["render.quality"])  # after the Custom values: a preset overwrites them
     page._quality_changed(s["render.quality"])
