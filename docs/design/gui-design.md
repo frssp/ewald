@@ -1,7 +1,5 @@
 # ewald GUI 디자인 (step 2 handoff)
 
-Mockup: https://claude.ai/artifact/7s8U7t8Dea9PCxMxmXu7Zo (Analyze, Render 두 artboard, Play로 클릭 가능)
-
 ## 설계 원칙
 
 OVITO 사용자가 바로 적응할 수 있도록 큰 골격(viewport 중앙, 오른쪽 command panel에 pipeline 위·properties 아래, 하단 timeline, data inspector)은 OVITO 3 convention을 그대로 따랐습니다. 그 위에 VESTA에서 결정 구조 작업에 필요한 조작(view along a/b/c/a*/b*/c*, 15° step rotation, style preset, boundary 범위, bond search pair table, 거리/각도 측정, elements.ini 색 import)을 얹었고, OVITO Basic에 없는 Pro 기능(Python script modifier, code generator, path-tracing renderer)을 무료로 GUI에 노출하는 것을 차별점으로 삼았습니다. 모든 GUI 동작은 같은 `ewald` Python API로 표현되며, console과 Render 화면의 "Python for this figure"가 그 계약을 사용자에게 보여 줍니다.

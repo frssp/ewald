@@ -4,10 +4,13 @@
 
 The window, the notebook, the tools and every cell are real: the AI's tool calls insert, edit
 and run notebook cells in the GUI as they would with a live model. Only the model is scripted
-(``SCRIPT`` below: what a model answered when asked the same questions), so the recording needs
-no API key and comes out the same every time. The viewport zoom in/out is done on the camera
-between the turns, as a user would with the mouse wheel. Needs ffmpeg (or imageio-ffmpeg) for
-the GIF palette.
+(``SCRIPT`` below, written for this recording), so it needs no API key and comes out the same
+every time. Needs ffmpeg (or imageio-ffmpeg) for the GIF palette.
+
+Like a screen recording, the picture zooms to where things happen: the chat while a question is
+typed and an answer streams in, the notebook cell the AI writes or edits, and back out to the
+whole window to show the result. The window is grabbed at full size; ``FOCUS`` names the region
+each moment, and ``frame_crops`` eases between them.
 """
 import os
 import shutil
@@ -19,8 +22,15 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "ai-demo.gif")
 SIZE = (1440, 860)      # window size; the GIF is scaled to WIDTH
-WIDTH = 960
-FPS = 8
+WIDTH = 720
+FPS = 6
+ZOOM = {"type": 2.0, "chat": 2.0, "cell": 1.6, "full": 1.0}   # how far each region is zoomed in
+EASE = 0.35             # seconds: how fast the picture follows a new region
+
+# where the picture looks now: ("type",) the chat input, ("chat",) the newest chat message,
+# ("cell", index; -1 = last) or ("full",). The scripted
+# model sets it from its thread, the recording loop reads it at every grab.
+FOCUS = [("full",)]
 
 NOTEBOOK = '''\
 # %% a Pt nanoparticle (201 atoms)
@@ -84,12 +94,16 @@ def scripted_provider():
 
         def send(self, tool_choice=None, on_text=None):
             text, calls = self.turn.pop(0)
+            FOCUS[0] = ("chat",)
             time.sleep(0.8)              # "thinking"
             for i, word in enumerate(text.split(" ")):
                 if on_text:
                     on_text(("" if i == 0 else " ") + word)
                 time.sleep(0.045)
             self.messages.append("assistant")
+            if calls:                    # look at the cell the tool writes
+                FOCUS[0] = ("cell", calls[0][1].get("index", -1))
+                time.sleep(0.5)
             calls = [ToolCall(f"t{len(self.messages)}{k}", name, args) for k, (name, args) in enumerate(calls)]
             return Reply(text, calls, "tool_use" if calls else "end")
 
@@ -97,7 +111,7 @@ def scripted_provider():
             for _call, result, *_ in results:
                 if getattr(result, "is_error", False):
                     raise RuntimeError(f"scripted tool call failed: {result.text()}")
-            time.sleep(0.4)
+            time.sleep(2.2)              # the cell runs and shows its output
             self.messages.append("tool results")
 
     return Provider("scripted", "Scripted demo", models={"demo": "Demo"}, assistant="AI",
@@ -110,6 +124,7 @@ def record():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     from ewald import plugins, settings
     from ewald.gui import notebook_panel
+    from ewald.gui.ask_panel import Message
     from ewald.gui.app import MainWindow
 
     notebook_panel.CONFIRM_UNSAVED = False
@@ -127,8 +142,35 @@ def record():
     frames_dir = tempfile.mkdtemp()
     shots = []
 
+    def region():
+        """(center x, center y, zoom) of the window region ``FOCUS`` names, in window pixels."""
+        what = FOCUS[0]
+        zoom = ZOOM[what[0]]
+        cw, ch = w.width() / zoom, w.height() / zoom
+        if what[0] == "type":
+            box = w.ask_panel.input
+            top = box.mapTo(w, QtCore.QPoint(0, 0)).y()
+            return cw / 2, top + box.height() + 12 - ch / 2, zoom
+        if what[0] == "chat":        # the bottom of the newest message near the bottom of the picture
+            shown = [m for m in w.ask_panel.findChildren(Message) if m.isVisible()]
+            if shown:
+                bottom = max(m.mapTo(w, QtCore.QPoint(0, m.height())).y() for m in shown)
+                return cw / 2, bottom + 40 - ch / 2, zoom
+            return cw / 2, ch / 2, zoom
+        if what[0] == "cell":
+            view = w.panel.view
+            cells = view.notebook.cells
+            cell = view.widget_for(cells[what[1]]) if cells else None
+            dock = w.notebook_dock
+            x = dock.mapTo(w, QtCore.QPoint(0, 0)).x() + dock.width() / 2
+            if cell is None or not cell.isVisible():
+                return x, w.height() / 2, zoom
+            top = cell.mapTo(w, QtCore.QPoint(0, 0)).y()
+            return x, min(top + cell.height() / 2, top + ch / 2 - 40), zoom
+        return w.width() / 2, w.height() / 2, 1.0
+
     def settle(seconds=0.0, n=None):
-        """Pump events for ``seconds``, grabbing a frame every 1/FPS s."""
+        """Pump events for ``seconds``, grabbing a frame (and the region to show) every 1/FPS s."""
         end = time.monotonic() + seconds
         while True:
             app.processEvents()
@@ -136,7 +178,7 @@ def record():
             if not shots or time.monotonic() - shots[-1][0] >= 1 / FPS:
                 shot = os.path.join(frames_dir, f"{len(shots):05d}.png")
                 w.grab().save(shot)
-                shots.append((time.monotonic(), shot))
+                shots.append((time.monotonic(), shot, region()))
             if time.monotonic() >= end:
                 return
             QtCore.QThread.msleep(10)
@@ -155,20 +197,11 @@ def record():
     shots.clear()
     settle(1.5)
 
-    cam = lambda: w.viewport.plotter  # noqa: E731
-
-    def zoom(factor, seconds, turn=0.0):
-        steps = max(1, int(seconds * FPS))
-        for _ in range(steps):
-            cam().camera.zoom(factor ** (1 / steps))
-            if turn:
-                cam().camera.azimuth = cam().camera.azimuth + turn / steps
-            cam().render()
-            settle(1 / FPS)
-
     def ask(question):
         box = w.ask_panel.input
         box.setFocus()
+        FOCUS[0] = ("type",)
+        settle(0.8)
         for ch in question:
             box.insertPlainText(ch)
             settle(0.03)
@@ -176,20 +209,41 @@ def record():
         w.ask_panel.ask()
         while w.ask_panel.busy():
             settle(0.1)
-        settle(2.0)
+        FOCUS[0] = ("chat",)
+        settle(3.0)                  # read the answer
+        FOCUS[0] = ("full",)
+        settle(3.0)                  # the whole window: structure, cells and chat
 
-    ask(QUESTIONS[0])
-    zoom(2.2, 2.5, turn=25)      # zoom in on the vertices and edges
-    settle(1.5)
-    zoom(1 / 2.2, 2.0, turn=-25)
     settle(1.0)
+    ask(QUESTIONS[0])
     ask(QUESTIONS[1])
-    zoom(1.8, 2.0, turn=-20)     # into the cut
-    settle(1.5)
-    zoom(1 / 1.8, 1.5, turn=20)
-    settle(2.5)
     w.close()
-    return shots
+    return shots, (w.width(), w.height())
+
+
+def frame_crops(shots, size):
+    """Crop every frame to its region, easing towards each new one, scaled to ``WIDTH``."""
+    from PIL import Image
+
+    W, H = size
+    out_size = (WIDTH, round(WIDTH * H / W))
+    cx, cy, zoom = W / 2, H / 2, 1.0
+    last = shots[0][0]
+    frames = []
+    for t, path, (tx, ty, tz) in shots:
+        a = 1 - pow(2.718281828, -(t - last) / EASE)
+        last = t
+        cx, cy, zoom = cx + a * (tx - cx), cy + a * (ty - cy), zoom + a * (tz - zoom)
+        cw, ch = W / zoom, H / zoom
+        x0 = min(max(cx - cw / 2, 0), W - cw)
+        y0 = min(max(cy - ch / 2, 0), H - ch)
+        image = Image.open(path).convert("RGB")
+        scale = image.width / W          # device pixels per window pixel
+        box = tuple(round(v * scale) for v in (x0, y0, x0 + cw, y0 + ch))
+        cropped = path[:-4] + "-crop.png"
+        image.crop(box).resize(out_size, Image.LANCZOS).save(cropped)
+        frames.append((t, cropped))
+    return frames
 
 
 def to_gif(shots, out):
@@ -200,15 +254,15 @@ def to_gif(shots, out):
         import imageio_ffmpeg
 
         ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    shots = frame_crops(*shots)
     work = os.path.dirname(shots[0][1])
     lst = os.path.join(work, "frames.txt")
     with open(lst, "w", encoding="utf-8", newline="\n") as f:
         for (t, shot), (t2, _) in zip(shots, shots[1:] + [(shots[-1][0] + 2.0, None)]):
             f.write(f"file '{shot}'\nduration {max(t2 - t, 0.02):.3f}\n")
         f.write(f"file '{shots[-1][1]}'\n")
-    scale = f"scale={WIDTH}:-1:flags=lanczos"
     subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst, "-vf",
-                    f"{scale},split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];"
+                    "split[a][b];[a]palettegen=max_colors=96:stats_mode=diff[p];"
                     "[b][p]paletteuse=dither=none:diff_mode=rectangle", out], check=True)
     print("wrote", out, f"{os.path.getsize(out) / 1e6:.1f} MB")
 
