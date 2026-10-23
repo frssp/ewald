@@ -295,7 +295,8 @@ name.
 ## Render workspace
 
 Window › Render workspace (Ctrl+2), or the Render button, opens the figure settings: renderer
-(the built-in ray tracer or OpenGL), anti-aliasing samples, ambient occlusion and shadows,
+(the built-in ray tracer or OpenGL), anti-aliasing samples, ambient occlusion, the noise
+threshold of adaptive sampling (Off gives every pixel all its rays) and shadows,
 journal size presets (1-column 3.5 in, 2-column 7.2 in, square, 16:9 slide) at a chosen dpi,
 background (white, transparent, black, or the viewport's), overlays, and an output file.
 Under Overlays, "+ Overlay" adds an overlay element (Coordinate tripod, Attributes, or an
@@ -303,7 +304,8 @@ Under Overlays, "+ Overlay" adds an overlay element (Coordinate tripod, Attribut
 The ray tracer renders in the background: the window stays usable, a spinner beside the picture
 size reads "Ray tracing… 40%" until the picture appears under *Last render*, and *Render* turns
 into *Cancel*, which stops the trace after the rows being traced (no file is written). In Python,
-`render(..., renderer="raytrace", progress=fn)` calls `fn(done_rows, total_rows)` the same way;
+`render(..., renderer="raytrace", progress=fn)` calls `fn(done_rows, total_rows)` the same way
+(with adaptive sampling the count can jump to the end when the last pixels converge);
 returning `False` stops it with `RenderCancelled`. OpenGL and vector output are quick and render right away.
 
 The left side is the live 3D view with the picture's frame on it: the part outside the frame

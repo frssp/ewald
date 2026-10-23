@@ -192,3 +192,14 @@ def test_ai_adds_an_analysis_through_cells_and_quotes_its_result():
     assert ts.notebook.cells[-1].source.startswith("from ewald.verbs import Table")
     err = ts.call("add_analysis", {"path": "demo:7", "name": "phonons"})
     assert err.is_error and "no phonon step" in err.content
+
+
+def test_add_analysis_reads_only_where_the_ai_may(tmp_path):
+    from ewald.llm.access import ReadAccess
+    from ewald.llm.tools import Toolset
+
+    (tmp_path / "allowed").mkdir()
+    ts = Toolset()
+    ts.read_access = ReadAccess([tmp_path / "allowed"])
+    err = ts.call("add_analysis", {"path": str(tmp_path / "other"), "name": "summary"})
+    assert err.is_error and "outside the folders" in err.content

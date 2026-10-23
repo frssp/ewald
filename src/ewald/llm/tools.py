@@ -992,6 +992,7 @@ class Toolset:
         def add_analysis(path, name):
             from .. import workflow
 
+            self.check_read(path)
             a = workflow.describe(str(path)).analysis(str(name))
             if not a.available:
                 raise ValueError(f"{a.title or a.name} cannot run on {path}: {a.reason}")

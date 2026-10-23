@@ -166,6 +166,19 @@ the end.
 - **Landed:** this PR (`src/ewald/potential.py`, `ewald.workflow.Analysis`, `add_analysis`), with
   the recipe in frssp/ewald-simagent.
 
+### D19. Restarts inside one dump: a default rule the user can change (2026-10-23)
+
+- **Decision:** when several files or one appended LAMMPS dump are joined on Timestep, a step
+  that goes back inside a file is a restart (the later run wins) unless it goes back to or below
+  the first step of the run before it, which counts as `reset_timestep` and cuts nothing. That
+  rule stays the default, and the user can change it: `join="restart"` (every step going back is
+  a restart), `join="files"` (join only between files) or `join="concat"`, in `load(...)` and in
+  the dialog that opens several files.
+- **Why:** "기본 동작은 이대로 하고 사용자가 조절할 수 있게 하면 되지 않을까?" (keep this as the
+  default and let the user adjust it).
+- **Considered:** one fixed rule with no option.
+- **Landed:** PR #212 (default rule, join dialog), PR #218 (the `join` options).
+
 ## Project
 
 ### D15. Name, license and openness (2026-10-19, 2026-10-20)
