@@ -1,27 +1,41 @@
 # EWALD (Extensible Workbench for Atomic Lattices & Dynamics): `ewald` Python API (for LLMs and people writing ewald code)
 
-ewald is an OVITO-style atomistic pipeline: `import_file` -> modifiers -> `compute(frame)` -> render.
-The API mirrors OVITO's, so OVITO knowledge transfers; the differences below are where it doesn't.
+ewald is an OVITO-style atomistic pipeline (source file -> modifiers -> frame -> 3D view, plots, pictures) driven
+from a Python notebook. The API mirrors OVITO's, so OVITO knowledge transfers; "Differences from OVITO" below lists
+where it doesn't. Write notebook cells (percent format, `# %%`), one change per cell:
 
 ```python
-from ewald import import_file
-from ewald.modifiers import CoordinationAnalysis, ExpressionSelection, DeleteSelected, ColorCoding
+# %%
+pipe = load("XDATCAR")                              # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vasprun.xml/vaspout.h5/CHGCAR, LAMMPS dump/data, extxyz, cif, ...
+# %%
+pipe.add(CoordinationAnalysis(cutoff=3.0))          # a step cell: exactly one pipe.add(...) with literal arguments
+# %%
+pipe.add(ExpressionSelection("Coordination < 12"))
+# %% undercoordinated [each frame]
+paint(data, "Coordination < 12", "red")             # a Python step: the body sees `frame` and `data`
+# %%
+view(pipe, style="Ball & stick", direction="z")     # a view cell: the 3D view's settings
+# %%
+show(pipe, table="coordination-rdf")                # a plot cell
+# %%
+data = pipe.compute(0)                              # a plain code cell may read results freely
+print(data.summary())                               # look before you code: properties, ranges, attributes
+print(np.bincount(data["Coordination"]))            # coordination histogram as numbers
+```
 
-pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vaspout.h5, LAMMPS dump/data, extxyz, xsf, h5md, xtc, cif, ...
-# pipe = import_file("dump.*.lammpstrj", type_map={1: "Cu", 2: "Zr"})   # LAMMPS numeric types -> elements
-# pipe = import_file("cluster:/scratch/run1/dump.lammpstrj")   # over SSH: host:/path, user@host:path, ssh://host/path
-# pipe = import_file("dump.lammpstrj", thermo="log.lammps")   # thermo columns -> data.attributes["Temp"], data.tables["Steps"]
-# pipe = import_file("run.npz", format="npz-trajectory")  # format= also names reader plugins (`ewald plugins`)
-pipe.modifiers.append(CoordinationAnalysis(cutoff=3.0))
-pipe.modifiers.append(ExpressionSelection("Coordination < 12"))
+Rules: change the structure, the view or a result only through such cells (never by mutating `pipe` from a plain
+cell or a tool), so the notebook alone reproduces the analysis. Read the output names a modifier writes (properties,
+`data.tables[...]`, `data.attributes[...]`) from its entry under "Modifiers" below instead of guessing them. Units:
+Angstrom, eV, ps for `time_per_frame` and trajectory times, fs for MD time steps, e/A^3 for charge densities.
+Outside a notebook the same API works as a script: `pipe = import_file(path)` (= `load`), `pipe.add(m)`
+(= `pipe.modifiers.append(m)`), any `def f(frame, data)` is a modifier, `pipe.render("fig.png", frame=10)`,
+`data = pipe.compute(10, device="cuda")` (GPU kernels where supported). Loading variants:
 
-def mark(frame, data):                               # any f(frame, data) is a modifier (OVITO signature)
-    data["Undercoordinated"] = data["Coordination"] < 12
-
-pipe.modifiers.append(mark)
-data = pipe.compute(10)                              # device="cuda" runs supported kernels on the GPU
-print(data.summary())                                # look before you code: properties, ranges, attributes
-pipe.render("frame10.png", frame=10, direction="iso", bonds=2.8)
+```python
+pipe = load("dump.*.lammpstrj", type_map={1: "Cu", 2: "Zr"})     # LAMMPS numeric types -> elements; wildcards join files
+pipe = load("cluster:/scratch/run1/dump.lammpstrj")             # over SSH: host:/path, user@host:path, ssh://host/path
+pipe = load("dump.lammpstrj", thermo="log.lammps")              # thermo columns -> data.attributes["Temp"], data.tables["Steps"]
+pipe = load("run.npz", format="npz-trajectory")                 # format= also names reader plugins (`ewald plugins`)
 ```
 
 ## Data model
@@ -35,7 +49,10 @@ pipe.render("frame10.png", frame=10, direction="iso", bonds=2.8)
   `data.cell.matrix` (3 x 3, ROWS are the cell vectors a, b, c), `data.cell.origin`, `data.cell.pbc`,
   `data.cell.volume`, `data.cell.wrap(pos)`, `data.cell.to_fractional(pos)`.
 - Property names are OVITO's: "Position", "Particle Type", "Particle Identifier", "Color", "Radius",
-  "Selection", "Coordination", "Structure Type", "Displacement", "Force", "Velocity".
+  "Selection", "Coordination", "Structure Type", "Displacement", "Force", "Velocity". "Structure Type" ids are OVITO's:
+  CNA, PTM and AcklandJones use 0 OTHER, 1 FCC, 2 HCP, 3 BCC, 4 ICO, 5 SC, 6 CUBIC_DIAMOND, 7 HEX_DIAMOND, 8 GRAPHENE
+  (expressions: `StructureType == 1`); IdentifyDiamond and ChillPlus number their own types (see their entries), and
+  every one of them also writes `<Modifier>.counts.<TYPE>` attributes.
 - `data.take(mask_or_index)`, `data.delete(mask)` return new collections; `data.to_ase()`, `DataCollection.from_ase(atoms)`.
 - **Never write into an array in place** (`data.positions[0] = ...`, `data["Color"][sel] = ...`): arrays are shared
   with cached frames. Build a new array and assign it: `pos = data.positions.copy(); pos[0] += 1; data.positions = pos`.
@@ -88,7 +105,8 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 
 ## Notebook verbs
 
-`from ewald import load, rdf, msd, vacf, sq, xrd, bond_angles, cna, ptm, voronoi, clusters, check_run, load_runs`: `pipe = load(path)` is `import_file`
+`from ewald import load, rdf, msd, vacf, sq, xrd, bond_angles, cna, ptm, voronoi, clusters, check_run, load_runs`
+(exact signatures under "Functions" below): `pipe = load(path)` is `import_file`
 (a list of files or a wildcard is one trajectory: restart segments are joined on Timestep, the later file winning,
 also inside one LAMMPS dump a restarted run appended to (`pipe.source.restarts`); `join="restart"` treats every step going
 back as a restart, `join="files"` joins only between files, `join="concat"` keeps every frame);
@@ -96,12 +114,8 @@ back as a restart, `join="files"` joins only between files, `join="concat"` keep
 `def f(frames, data)` makes a step that reads every frame once (`frames[k]`, `len(frames)`, slices) and whose
 result (tables, attributes, properties) is reused at every frame; `@each_frame` marks the per-frame default. In a
 notebook a cell headed `# %% [each frame]` (or `# %% name [all frames]`) is such a step itself: its code is the body,
-with `frame`/`frames` and `data` given. A verb adds its
-analysis step and returns its table: `rdf(pipe, cutoff=6, bins=200, partial=False)` (CoordinationAnalysis,
-`coordination-rdf`), `msd(pipe, **kw)` (`msd`), `vacf` (`vacf`), `sq(pipe, q_max=10)` (`structure-factor`),
-`xrd(pipe, **kw)` (`diffraction`), `bond_angles(pipe)` (`bond-angle-distr`), `cna(pipe, mode="adaptive")` and
-`ptm(pipe)` (`structures`), `voronoi(pipe)` (`voronoi-coordination`), `clusters(pipe, cutoff=3.2)` (`clusters`,
-largest first). The `Table` is a dict of columns (`pandas.DataFrame(table)` works) with `.x`, `.plot()` and, for
+with `frame`/`frames` and `data` given. A verb (`rdf`, `msd`, `cna`, ...)
+adds its analysis step and returns its table (which one: "Functions" below). The `Table` is a dict of columns (`pandas.DataFrame(table)` works) with `.x`, `.plot()` and, for
 counting tables, `.counts` (`cna(pipe).counts == {"OTHER": 0, "FCC": 500, ...}`); calling the verb again replaces its step.
 In Jupyter a Pipeline, DataCollection or Table as a cell's last line shows a picture (ray-traced frame 0, or the
 curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] = False` turns it off.
@@ -230,70 +244,210 @@ The AI's `set_view` / `get_view` tools take the same settings.
 - `ewald.llm.describe_frame(data)` / `describe_trajectory(pipe)`: compact JSON summaries and detected events.
 - `ewald.llm.narrate(pipe)`: event timeline; `ewald.llm.Agent.from_file(path, provider="anthropic").ask("...")`: an AI model (Claude, OpenAI, Gemini, a local server) over these tools.
 
+## Recipes (notebook cells)
+
+Crystal structure: bonds, TiO6 octahedra, space group:
+
+```python
+# %%
+pipe = load("POSCAR")
+# %%
+pipe.add(CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)]))
+# %%
+pipe.add(CoordinationPolyhedra(center_types=["Ti"]))
+# %%
+pipe.add(SymmetryAnalysis())
+# %%
+view(pipe, style="Ball & stick", direction="iso", type_legend=True)
+# %%
+data = pipe.compute(0)
+print(data.attributes["SymmetryAnalysis.space_group"], data.attributes["CreateBonds.num_bonds"])
+```
+
+MD trajectory: diffusion coefficient:
+
+```python
+# %%
+pipe = load("XDATCAR")
+# %%
+pipe.add(MeanSquaredDisplacement(time_per_frame=0.01))   # ps between stored frames (run_info(pipe) reads it from INCAR)
+# %%
+show(pipe, table="msd")
+# %%
+data = pipe.compute(0)
+D = data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]   # A^2/ps; per type: .diffusion_coefficient.<type>
+print(f"D = {D:.3g} A^2/ps = {D * 1e-4:.3g} cm^2/s")
+```
+
+Defects in a crystal: structure types, show only non-FCC atoms:
+
+```python
+# %%
+pipe = load("dump.lammpstrj")
+# %%
+pipe.add(CommonNeighborAnalysis())
+# %% defects [each frame]
+isolate(data, "StructureType != 1")
+# %%
+data = pipe.compute(0)
+print({k: v for k, v in data.attributes.items() if k.startswith("CommonNeighborAnalysis.counts.")})
+```
+
+NEB band: barrier and energy profile:
+
+```python
+# %%
+pipe = load("neb/")          # images 00..NN as frames; UnwrapTrajectories, NebEnergyProfile, OverlayFrames come with it
+# %%
+show(pipe, table="NEB")
+# %%
+data = pipe.compute(0)
+print(data.attributes["NEB.Barrier"], data.attributes["NEB.Saddle Image"])   # eV, image index
+```
+
+Charge density: isosurface and a lattice-plane slice:
+
+```python
+# %%
+pipe = load("CHGCAR")
+# %%
+pipe.add(CreateIsosurface(isolevel=0.3))       # e/A^3, absolute
+# %%
+pipe.add(GridSlice(miller=(1, 1, 0), distance=0.5))
+# %%
+view(pipe, cell=True, direction="x")
+# %%
+grid = pipe.compute(0).grids["charge-density"]
+print(grid.shape, grid.integrate("Charge Density"))
+```
+
+## Functions
+
+`from ewald import load, import_file, export_file, each_frame, all_frames, view, rdf, msd, vacf, sq, xrd, bond_angles, cna, ptm, voronoi, clusters, run_info, check_run, load_runs, arrhenius, workflow_table`:
+
+- `load(path, *args, **kwargs) -> Pipeline`: `import_file` under the short name notebooks use (`pipe = load("XDATCAR")`).
+- `import_file(path, format: str | None = None, **kwargs)`: Create a Pipeline reading `path` (wildcards allowed: `dump.*.lammpstrj`).
+- `export_file(source, path, format: str | None = None, frames=None, **kwargs)`: Write a DataCollection, a list of them, or a Pipeline's frames to `path`.
+- `each_frame(function: Callable) -> Callable`: Mark a Python step that runs at every frame, `f(frame, data)` (the default for a function added with `pipe.add`; the decorator says so in the notebook)
+- `all_frames(function: Callable) -> Callable`: Mark a Python step that reads the whole trajectory once, `f(frames, data)`: `frames` is a `Frames` (the data of every frame as it enters the step) and `data` the current frame, on which `f` sets its result (a table, attributes, a per-particle property).
+- `view(pipe, **settings) -> View`: Set display settings of `pipe`'s 3D view (see `SETTINGS`, `View.help()`) and return `pipe.view`; as the last line of a cell it shows the picture.
+- `rdf(pipe, cutoff: float = 6.0, bins: int = 200, partial: bool = False, frame: int = 0) -> Table`: Radial distribution function g(r) up to `cutoff` (Angstrom), per type pair with `partial=True`: adds `CoordinationAnalysis` (which also writes the `Coordination` property) and returns its `coordination-rdf` table.
+- `msd(pipe, frame: int = 0, time_per_frame: float | None = None, **kwargs) -> Table`: Mean squared displacement over the trajectory (per type, with the Einstein fit): `MeanSquaredDisplacement` with `kwargs`; the `msd` table, whose `attributes` hold the diffusion coefficient.
+- `vacf(pipe, frame: int = 0, time_per_frame: float | None = None, **kwargs) -> Table`: Velocity autocorrelation over the trajectory: `VelocityAutocorrelation` with `kwargs`; the `vacf` table.
+- `sq(pipe, q_max: float = 10.0, bins: int = 200, frame: int = 0, **kwargs) -> Table`: Structure factor S(q) up to `q_max` (1/Angstrom): `StructureFactor` with `kwargs` (`weighting=`, `experimental=`, ...); the `structure-factor` table.
+- `xrd(pipe, frame: int = 0, **kwargs) -> Table`: Powder diffraction pattern: `PowderDiffraction` with `kwargs` (wavelength, two-theta range, ...); the `diffraction` table.
+- `bond_angles(pipe, bins: int = 180, frame: int = 0, **kwargs) -> Table`: Bond-angle distribution of the pipeline's bonds (add `CreateBonds` first): `BondAngleDistribution`; the `bond-angle-distr` table.
+- `cna(pipe, mode: str = 'adaptive', frame: int = 0, **kwargs) -> Table`: Common neighbor analysis (FCC, HCP, BCC, ICO): adds `CommonNeighborAnalysis` (`mode=` adaptive, interval or fixed) and returns its `structures` table; `.counts` is `{"OTHER": n, "FCC": n, ...}`.
+- `ptm(pipe, frame: int = 0, **kwargs) -> Table`: Polyhedral template matching: `PolyhedralTemplateMatching` with `kwargs` (`types=`, `rmsd_cutoff=`, ...); the `structures` table, `.counts` by name.
+- `voronoi(pipe, frame: int = 0, **kwargs) -> Table`: Voronoi tessellation: adds `VoronoiAnalysis` (Atomic Volume, Coordination, ...) and returns the `voronoi-coordination` table (how many particles have each coordination number, also per type); `.counts` is `{coordination: n}`.
+- `clusters(pipe, cutoff: float = 3.2, frame: int = 0, **kwargs) -> Table`: Clusters of particles closer than `cutoff`: adds `ClusterAnalysis` (largest first) and returns its `clusters` table; `.counts` is `{cluster id: size}`.
+- `run_info(source, refresh: bool = False) -> RunInfo`: `RunInfo` of a pipeline (or a file path): read once, then cached on the pipeline (`refresh=True` reads the files again).
+- `check_run(pipe, close_contact: float = 0.5) -> RunCheck`: Check a run (a `Pipeline` from `load`) for the usual problems: files still being written, SCF steps that hit NELM, a relaxation that did not reach EDIFFG, MD that is not equilibrated (Chodera's method on the potential energy), temperature off the thermostat target, energy drift where energy is conserved, LAMMPS warnings and errors, and atoms closer than `close_contact` times the sum of their covalent radii in the first and last frame.
+- `load_runs(paths, label=None, sort: bool = True, **kwargs) -> Runs`: Open several runs at once: `paths` is a wildcard (`"T*/XDATCAR"`, `"cluster:/scratch/*/OUTCAR"`) or a list of files, each opened with `load` (`kwargs` such as `type_map=` go to it).
+- `arrhenius(data, values=None, attribute: str = ...) -> Arrhenius`: Activation energy from runs at several temperatures.
+- `workflow_table(*workflows, labels=None, columns=None, align: str = 'name') -> WorkflowTable`: The steps of one or more workflows with their numbers (see the module docstring).
+
+`from ewald.views import show, snapshot, figure`:
+
+- `show(source, table: str | None = None, y: str | None = None, histogram: str | None = None, frame: int = 0, bins: int = 50, xlim: tuple | None = None, ylim: tuple | None = None, panel: bool | None = None)`: Plot a data table or a particle-property histogram of `source` (a Pipeline or a DataCollection) at `frame` with matplotlib (`plt.show()`), in the publication style; `xlim`/`ylim` set the range shown.
+- `snapshot(source, frame: int | None = None, **kwargs) -> Snapshot`: A picture of `source` (a Pipeline or DataCollection) at `frame` (default: the view's) drawn with the pipeline's `view` settings; `camera=`, `size=` and the other keywords of `render` override them.
+- `figure(source, table: str | None = None, y: str | None = None, histogram: str | None = None, frame: int = 0, bins: int = 50, size: str | tuple | None = None, title: bool = False, xlim: tuple | None = None, ylim: tuple | None = None)`: The matplotlib Figure of a view (what `show` draws), without pyplot, in the publication style of `plotstyle` (`size`: a column width name or inches; `xlim`/`ylim`: the range shown, e.g.
+
+`from ewald.paint import paint, hide, isolate, fade, resize`:
+
+- `paint(data, where, color) -> None`: Set the color of the particles `where` is true (the others keep theirs).
+- `hide(data, where) -> None`: Hide the particles `where` is true (Transparency 1; the others keep theirs).
+- `isolate(data, where) -> None`: Hide every particle except those `where` is true.
+- `fade(data, where, transparency: float = 0.7) -> None`: Make the particles `where` is true see-through (0 opaque, 1 hidden).
+- `resize(data, where, factor: float) -> None`: Scale the radius of the particles `where` is true by `factor`.
+
 ## Modifiers
 
-- `CalculateDisplacements(reference_frame: int = 0, minimum_image: bool = True)`: Displacement from a reference frame (minimum-image convention).
-- `CoordinationAnalysis(cutoff: float = 3.2, number_of_bins: int = 200, partial: bool = False)`: Coordination numbers within ``cutoff`` and the radial distribution function.
-- `ClusterAnalysis(cutoff: float = 3.2, sort_by_size: bool = False, compute_com: bool = False, compute_gyration: bool = False, unwrap_particles: bool = False, only_selected: bool = False, cluster_coloring: bool = False)`: Group particles into clusters connected by distances below ``cutoff``.
+`from ewald.modifiers import *` (new notebooks do it); OVITO names (`XxxModifier`) resolve too. Add one with `pipe.add(Name(...))` in its own cell.
+
+### Selection, coloring and editing
+
 - `AssignColor(color=(0.3, 0.3, 1.0), keep_selection: bool = False)`: Give the selected particles (all, if nothing selected) one color.
-- `ColorCoding(property: str, cmap: str = 'viridis', start=None, end=None, only_selected: bool = False)`: Map a scalar property or expression to colors through a color map.
+- `ColorCoding(property: str, cmap: str = 'viridis', start=None, end=None, only_selected: bool = False)`: Map a scalar property or expression to colors through a color map. The range used is stored in attributes so a legend can be drawn later.
 - `ClearSelection()`: Remove the 'Selection' property.
 - `DeleteSelected()`: Delete the selected particles.
-- `ExpressionSelection(expression: str)`: Select particles where ``expression`` is true (sets 'Selection').
+- `ExpressionSelection(expression: str)`: Select particles where `expression` is true (sets 'Selection').
 - `InvertSelection()`: Select the unselected particles and unselect the selected ones.
-- `SelectType(types, property: str = 'Particle Type')`: Select particles whose 'Particle Type' (or another property) is in ``types``.
-- `Slice(normal=(0, 0, 1), distance: float = 0.0, width: float = 0.0, inverse: bool = False, select: bool = False, miller: bool = False)`: Keep (or select) particles in a slab ``|n.r - distance| <= width/2``.
+- `SelectType(types, property: str = 'Particle Type')`: Select particles whose 'Particle Type' (or another property) is in `types`.
+- `Slice(normal=(0, 0, 1), distance: float = 0.0, width: float = 0.0, inverse: bool = False, select: bool = False, miller: bool = False)`: Keep (or select) particles in a slab `|n.r - distance| <= width/2`.
 - `AffineTransformation(matrix, transform_cell: bool = True)`: Apply a 3x3 (or 3x4 with translation) matrix to particles and, optionally, the cell.
-- `ComputeProperty(output: str, expressions, only_selected: bool = False)`: Set ``output`` to an expression, e.g. ``ComputeProperty("Height", "Position.Z - 5")``.
-- `Replicate(n=(2, 2, 2), adjust_box: bool = True, unique_ids: bool = True)`: Tile the periodic cell ``n = (na, nb, nc)`` times.
+- `ComputeProperty(output: str, expressions, only_selected: bool = False)`: Set `output` to an expression, e.g. `ComputeProperty("Height", "Position.Z - 5")`.
+- `Replicate(n=(2, 2, 2), adjust_box: bool = True, unique_ids: bool = True)`: Tile the periodic cell `n = (na, nb, nc)` times.
 - `WrapAtoms()`: Map particles back into the periodic cell (bond periodic images follow).
-- `PythonScript(source: str = ..., title: str = 'Python script', **params)`: Run ``modify(frame, data)`` defined in ``source``.
-- `CommonNeighborAnalysis(mode: str = 'adaptive', cutoff: float = 3.2, types=None, color_by_type: bool = True, only_selected: bool = False, chunk_size: int = 32768)`: Common neighbor analysis (Honeycutt-Andersen; adaptive a-CNA of Stukowski 2012).
-- `PolyhedralTemplateMatching(types=None, rmsd_cutoff: float = 0.1, output_rmsd: bool = True, output_interatomic_distance: bool = False, output_orientation: bool = False, output_deformation_gradient: bool = False, output_ordering: bool = False, color_by_type: bool = True, only_selected: bool = False, num_threads: int = 0)`: Polyhedral template matching (Larsen, Schmidt, Schiotz 2016), using the PTM library.
-- `VoronoiAnalysis(compute_indices: bool = False, use_radii: bool = False, edge_threshold: float = 0.0, face_threshold: float = 0.0, relative_face_threshold: float = 0.0, compute_bonds: bool = False, only_selected: bool = False, num_threads: int = 0)`: Per-particle Voronoi cells: volume, coordination, Voronoi indices.
-- `WignerSeitzAnalysis(reference_frame: int = 0, output_current_config: bool = False, per_type_occupancies: bool = False, affine_mapping: str | None = None, frame_offset: int | None = None)`: Count atoms in the Wigner-Seitz cell of every site of a reference frame.
-- `DislocationAnalysis(input_crystal_structure: str = 'FCC', only_perfect_dislocations: bool = False, circuit_stretchability: int = 9, trial_circuit_length: int = 14, line_smoothing_level: int = 1, line_point_separation: float = 2.5, **kwargs)`: Dislocation extraction algorithm (DXA) via the `ovito` package.
-- `OvitoModifier(modifier, reference_frame: int | None = None)`: Run an OVITO modifier (``ovito.modifiers.*``) on the current frame.
-- `AcklandJones(types=None, color_by_type: bool = True, only_selected: bool = False)`: Bond-angle structure identification of Ackland and Jones (2006).
-- `AtomicStrain(cutoff: float = 3.0, reference_frame: int = 0, frame_offset: int | None = None, output_deformation_gradients: bool = False, output_strain_tensors: bool = False, output_nonaffine_squared_displacements: bool = False, output_rotations: bool = False, output_stretch_tensors: bool = False, select_invalid_particles: bool = True, affine_mapping: str | None = None, minimum_image_convention: bool = True)`: Atomic-level strain from a reference frame (Shimizu, Ogata, Li 2007; Falk-Langer D2min).
-- `CentroSymmetry(num_neighbors: int = 12, mode: str = 'conventional', only_selected: bool = False)`: Centrosymmetry parameter (Kelchner et al. 1998) from ``num_neighbors`` neighbors.
-- `ChillPlus(cutoff: float = 3.5, color_by_type: bool = True, only_selected: bool = False)`: Chill+ identification of water structures (Nguyen and Molinero 2015).
-- `IdentifyDiamond(types=None, color_by_type: bool = True, only_selected: bool = False)`: Cubic and hexagonal diamond lattice identification (Maras et al. 2016).
-- `MeanSquaredDisplacement(start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0, fit_range: tuple = (0.2, 0.8), by_type: bool = True, unwrapped: bool = False, subtract_drift: bool = False, only_selected: bool = False)`: Time-averaged mean squared displacement over a frame range and the diffusion coefficient.
-- `VelocityAutocorrelation(start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0, velocities: str = 'auto', by_type: bool = True, max_lag_fraction: float = 0.5, only_selected: bool = False)`: Velocity autocorrelation function and the Green-Kubo diffusion coefficient.
-- `TimeAveraging(operate_on='table:coordination-rdf', start: int = 0, stop: int | None = None, step: int = 1)`: Average upstream results over a frame range (OVITO's TimeAveragingModifier).
-- `TimeSeries(operate_on=None, start: int = 0, stop: int | None = None, step: int = 1)`: Global attributes as a function of time (OVITO's TimeSeriesModifier).
-- `GenerateTrajectoryLines(only_selected: bool = True, start: int = 0, stop: int | None = None, step: int = 1, unwrap_trajectories: bool = True)`: Particle paths over a frame range, drawn as lines, plus path metrics.
-- `CreateBonds(cutoff: float = 3.2, mode: str = 'uniform', pairs=None, lower_cutoff: float = 0.0, factor: float = 1.15)`: Create bonds between nearby particles (OVITO's CreateBondsModifier, plus VESTA's bond search).
+- `PythonScript(source: str = ..., title: str = 'Python script', **params)`: Run `modify(frame, data)` defined in `source`.
+- `ExpandSelection(mode: str = 'cutoff', cutoff: float = 3.2, num_neighbors: int = 1, iterations: int = 1)`: Grow the selection to the neighbors of selected particles (OVITO's ExpandSelectionModifier). `mode`: 'cutoff' adds every particle within `cutoff` of a selected one, 'nearest' the `num_neighbors` nearest neighbors of each selected particle, 'bonded' the particles bonded to a selected one (needs bonds, e.g. Writes 'Selection' and the attributes `ExpandSelection.num_added` and `ExpandSelection.num_selected`.
+- `LoadTrajectory(file: str = '', format: str | None = None, type_map: dict | None = None)`: Positions (and other per-particle properties) of every frame from a trajectory file, on top of a topology from the pipeline source (OVITO's LoadTrajectoryModifier). Typical use: a LAMMPS data file with bonds, charges and molecule ids as the source, the LAMMPS dump of the run as `file`. Every trajectory property replaces the topology's except 'Particle Type' (the topology's names win); the cell and attributes such as the timestep come from the trajectory, and bond periodic images follow the minimum-image convention.
+- `CombineDatasets(file: str = '', format: str | None = None, type_map: dict | None = None)`: Add the particles (and bonds) of another file to the current frame (OVITO's CombineDatasetsModifier). The cell and attributes of the pipeline win; the other file's attributes are added only where the name is new. Writes `CombineDatasets.num_merged`.
+
+### Neighbors, bonds and topology
+
+- `CalculateDisplacements(reference_frame: int = 0, minimum_image: bool = True)`: Displacement from a reference frame (minimum-image convention). Writes 'Displacement' (vector) and 'Displacement Magnitude', and the attribute 'MSD' (mean squared displacement).
+- `CoordinationAnalysis(cutoff: float = 3.2, number_of_bins: int = 200, partial: bool = False)`: Coordination numbers within `cutoff` and the radial distribution function. Writes 'Coordination' and the table `tables['coordination-rdf']` with columns `r` and `g(r)` (plus partial `g(r) A-B` columns if `partial`).
+- `ClusterAnalysis(cutoff: float = 3.2, sort_by_size: bool = False, compute_com: bool = False, compute_gyration: bool = False, unwrap_particles: bool = False, only_selected: bool = False, cluster_coloring: bool = False)`: Group particles into clusters connected by distances below `cutoff`. Writes 'Cluster' (ids from 1; 0 for particles excluded by `only_selected`) and the table `tables['clusters']` with 'Cluster Identifier' and 'Cluster Size', plus 'Center of Mass' (`compute_com`) and 'Radius of Gyration' / 'Gyration Tensor' (XX, YY, ZZ, XY, XZ, YZ; `compute_gyration`). Centers of mass and gyration use 'Mass' if present and coordinates unwrapped across periodic boundaries within each cluster (walking bonds from its lowest-index particle); `unwrap_particles` also writes those coordinates to 'Position'. Without `sort_by_size` clusters are numbered in order of their lowest particle index, as in OVITO; `sort_by_size` renumbers them largest first and sets 'ClusterAnalysis.largest_size'.
+- `CreateBonds(cutoff: float = 3.2, mode: str = 'uniform', pairs=None, lower_cutoff: float = 0.0, factor: float = 1.15)`: Create bonds between nearby particles (OVITO's CreateBondsModifier, plus VESTA's bond search). Bonds are appended to existing ones and stored in `data.bonds` ('Topology', 'Periodic Image'); attribute 'CreateBonds.num_bonds'.
 - `EditBonds(add=(), remove=())`: Add or delete individual bonds by hand, as in VESTA's bond editing.
-- `CoordinationPolyhedra(center_types=None, transparency: float = 0.25, edges: bool = True)`: Polyhedra spanned by the bonded neighbors of each center particle (OVITO's CoordinationPolyhedraModifier, VESTA's polyhedral style). Uses the bonds from upstream (CreateBonds); without any it finds them as ``CreateBonds(mode="covalent")`` would, for the polyhedra only (``data.bonds`` stays empty).
-- `CreateIsosurface(isolevel: float | None = None, property: str = 'Charge Density', grid: str | None = None, signed: bool = False, color=(1.0, 0.86, 0.0), negative_color=(0.0, 0.75, 1.0), transparency: float = 0.0, identifier: str = 'isosurface')`: VESTA-style isosurface of a grid property (OVITO's CreateIsosurfaceModifier).
-- `GridSlice(miller=(0, 0, 1), distance: float = 0.5, property: str = 'Charge Density', grid: str | None = None, cmap: str = 'viridis', range=None, scale: str = 'linear', resolution: float | None = None, transparency: float = 0.0, identifier: str = 'slice')`: Colour-mapped cross-section of a grid property on a lattice plane (VESTA's 2D slice).
-- `GridDifference(subtract=(), property: str = 'Charge Density', grid: str | None = None, output: str | None = None)`: Charge-density difference: subtract the grids of other files, e.g. rho(AB) - rho(A) - rho(B) with ``GridDifference(["A/CHGCAR", "B/CHGCAR"])``.
-- `Histogram(property: str = 'Position.Z', bin_count: int = 200, fix_xrange: bool = False, xrange_start: float = 0.0, xrange_end: float = 0.0, only_selected: bool = False, normalization: str = 'count', select_elements: bool = False, selection_start: float = 0.0, selection_end: float = 0.0, operate_on: str = 'particles')`: Histogram of a particle or bond property ('Mass', 'Position.Z', ...).
-- `SpatialBinning(property: str = '', reduction_operation: str = 'mean', direction: str = 'Z', bin_count=(50, 50, 20), first_derivative: bool = False, only_selected: bool = False)`: Coarse-grain a particle property on a 1D, 2D or 3D grid of bins along the cell vectors.
-- `ReduceProperty(property: str = 'Position.Z', reduction_operation: str = 'mean', only_selected: bool = False, operate_on: str = 'particles')`: Reduce a particle or bond property to one number per component.
-- `SteinhardtOrderParameters(degrees=(4, 6), num_neighbors: int = 12, cutoff: float | None = None, average: bool = False, wl: bool = False, wl_normalize: bool = True)`: Per-particle q_l (and w_l) for every degree in ``degrees``.
-- `BondAngleDistribution(bins: int = 180, cosine_mode: bool = False, partition: str = 'off')`: Histogram of the angles between pairs of bonds at each particle.
-- `BondLengthDistribution(bins: int = 100, length_cutoff: float = 4.0, partition: str = 'off')`: Histogram of bond lengths from 0 to ``length_cutoff`` in ``bins`` bins (longer bonds are skipped).
-- `FindRings(minimum_ring_size: int = 4, maximum_ring_size: int = 8)`: Rings of ``minimum_ring_size``..``maximum_ring_size`` bonds in the bond network.
-- `VectorVis(property: str = '', scaling: float = 1.0, width: float = 0.3, alignment: str = 'base', reverse: bool = False, color=(1.0, 1.0, 0.0), shading: str = 'normal', transparency: float = 0.0, offset=(0.0, 0.0, 0.0), color_mapping_property: str = '', cmap: str = 'viridis', color_mapping_interval=None, only_selected: bool = False, min_length: float = 1e-06)`: Draw an N x 3 particle property as arrows: 'Force', 'Displacement', 'Velocity', 'Magnetic Moment' (a scalar moment points along z), or any other vector property.
-- `NebEnergyProfile(energy: str = 'Energy', images: int | None = None, spline_points: int = 200)`: Energy along a NEB band, with the barrier, from frames that are the band's images.
-- `OverlayFrames(transparency: float = 0.7, min_displacement: float = 0.1, start: int = 0, stop: int | None = None, step: int = 1)`: Every frame of ``start:stop:step`` drawn at once: the current frame opaque, the others as see-through copies of the atoms (``transparency`` 0..1), e.g. all images of a NEB band over the image shown on the timeline.
-- `PhononMode(qpoint: int = 0, band: int | None = None, amplitude: float = 0.3, supercell=None, max_supercell: int = 8, arrows: bool = True, arrow_length: float = 2.5, arrow_width: float = 0.2, arrow_color=(0.85, 0.1, 0.1))`: Animate one phonon mode read from phonopy band.yaml/mesh.yaml/qpoints.yaml or a VASP IBRION=5-8 OUTCAR: frame ``f`` of ``N`` shows phase ``2 pi f / N`` of the vibration, so the trajectory loops over one period.
-- `SymmetryAnalysis(symprec: float = 0.01, angle_tolerance: float = -1.0, select_unique: bool = False)`: Space group, Wyckoff positions and symmetry-equivalent atoms (spglib).
-- `PowderDiffraction(radiation: str = 'xray', wavelength: str = 'CuKa', two_theta_min: float = 5.0, two_theta_max: float = 90.0, step: float = 0.02, fwhm: float = 0.1, eta: float = 0.5, debye_waller: dict | None = None, elements: dict | None = None, experimental: str = '')`: Powder X-ray or neutron diffraction pattern of the (periodic) cell.
-- `StructureFactor(method: str = 'auto', q_max: float = 10.0, q_min: float = 0.0, number_of_bins: int = 200, weighting: str = 'none', cutoff: float = 0.0, lorch: bool = True, elements: dict | None = None, experimental: str = '')`: Static structure factor S(q) (q = 4 pi sin(theta) / lambda in 1/Angstrom), for liquids, glasses and MD.
-- `ElasticStrain(input_crystal_structure: str = 'FCC', lattice_constant: float = 1.0, axial_ratio: float = 1.632993161855452, calculate_strain_tensors: bool = True, calculate_deformation_gradients: bool = False, push_strain_tensors_forward: bool = True, color_by_type: bool = True, only_selected: bool = False, num_threads: int = 0)`: Atomic-level elastic strain in a crystal (OVITO's Elastic strain calculation).
-- `GrainSegmentation(algorithm: str = 'auto', merging_threshold: float = 0.0, min_grain_size: int = 100, handle_stacking_faults: bool = True, orphan_adoption: bool = True, color_particles: bool = True, output_bonds: bool = False)`: Decompose a polycrystal into grains from PTM orientations (OVITO's Grain segmentation).
-- `IdentifyFCCPlanarFaults(color_other=(1.0, 0.4, 0.4), color_isf=(0.9, 0.7, 0.2), color_twin=(0.4, 0.4, 1.0), color_multi=(0.0, 1.0, 0.9))`: Classify hcp-like atoms in fcc crystals by planar fault (OVITO's Identify fcc planar faults).
-- `FreezeProperty(source_property: str = 'Selection', destination_property: str | None = None, freeze_at: int = 0)`: Copy a particle property as it was at frame ``freeze_at`` to every frame (OVITO's FreezePropertyModifier).
+- `CoordinationPolyhedra(center_types=None, transparency: float = 0.25, edges: bool = True)`: Polyhedra spanned by the bonded neighbors of each center particle (OVITO's CoordinationPolyhedraModifier, VESTA's polyhedral style). Uses the bonds from upstream (CreateBonds); without any it finds them as `CreateBonds(mode="covalent")` would, for the polyhedra only (`data.bonds` stays empty). Writes `data.surfaces['coordination-polyhedra']` with face properties 'Color' and 'Region' (index of the center particle) and the attribute 'CoordinationPolyhedra.count'.
+- `BondAngleDistribution(bins: int = 180, cosine_mode: bool = False, partition: str = 'off')`: Histogram of the angles between pairs of bonds at each particle. `bins` bins over 0-180 degrees, or over cos(angle) from -1 to 1 with `cosine_mode`. Writes `tables['bond-angle-distr']` with 'Angle' (or 'Cosine') and 'Count' or 'Count <class>' columns.
+- `BondLengthDistribution(bins: int = 100, length_cutoff: float = 4.0, partition: str = 'off')`: Histogram of bond lengths from 0 to `length_cutoff` in `bins` bins (longer bonds are skipped). Writes `tables['bond-length-distr']` with 'Bond Length' and 'Count' or 'Count <class>' columns.
+- `FindRings(minimum_ring_size: int = 4, maximum_ring_size: int = 8)`: Rings of `minimum_ring_size`..`maximum_ring_size` bonds in the bond network. Writes `tables['ring-size-histogram']` ('Ring Size', 'Count'), `tables['<N>-rings']` with 'Particle Indices' (one ring per row, starting at its smallest index), the per-particle 'Ring Count' and `FindRings.count.<N>`.
+
+### Structure identification and local order
+
+- `CommonNeighborAnalysis(mode: str = 'adaptive', cutoff: float = 3.2, types=None, color_by_type: bool = True, only_selected: bool = False, chunk_size: int = 32768)`: Common neighbor analysis (Honeycutt-Andersen; adaptive a-CNA of Stukowski 2012). Writes 'Structure Type' (0 OTHER, 1 FCC, 2 HCP, 3 BCC, 4 ICO), 'Color', and attributes `CommonNeighborAnalysis.counts.<TYPE>`.
+- `PolyhedralTemplateMatching(types=None, rmsd_cutoff: float = 0.1, output_rmsd: bool = True, output_interatomic_distance: bool = False, output_orientation: bool = False, output_deformation_gradient: bool = False, output_ordering: bool = False, color_by_type: bool = True, only_selected: bool = False, num_threads: int = 0)`: Polyhedral template matching (Larsen, Schmidt, Schiotz 2016), using the PTM library. Writes 'Structure Type', 'RMSD', 'Color' and optionally 'Interatomic Distance', 'Orientation' (quaternion x, y, z, w), 'Elastic Deformation Gradient' (3x3), 'Correspondences', and 'Ordering Type' (needs 'Particle Type'), plus attributes `PolyhedralTemplateMatching.counts.<TYPE>` and table 'ptm-rmsd'.
+- `VoronoiAnalysis(compute_indices: bool = False, use_radii: bool = False, edge_threshold: float = 0.0, face_threshold: float = 0.0, relative_face_threshold: float = 0.0, compute_bonds: bool = False, only_selected: bool = False, num_threads: int = 0)`: Per-particle Voronoi cells: volume, coordination, Voronoi indices. Writes 'Atomic Volume', 'Coordination', 'Max Face Order', 'Cavity Radius' and, if `compute_indices`, 'Voronoi Index' (N, max face order) whose column n-1 counts faces with n edges (so <0,0,0,0,12> -> index[:, 4] == 12). With `compute_bonds`, the table `tables['voronoi-faces']` lists every face as (i, j, area, order). `tables['voronoi-coordination']` counts the particles with each coordination number ('Coordination', 'Count', and 'Count <type>' when there are several particle types).
+- `WignerSeitzAnalysis(reference_frame: int = 0, output_current_config: bool = False, per_type_occupancies: bool = False, affine_mapping: str | None = None, frame_offset: int | None = None)`: Count atoms in the Wigner-Seitz cell of every site of a reference frame. `output_current_config=True` keeps the current atoms instead and gives each the 'Occupancy' of its site plus 'Site Type', 'Site Index' and 'Site Identifier' (if the reference has ids). `per_type_occupancies` makes 'Occupancy' an (N, n_types) array, one column per particle type (sorted type names, listed in attribute 'WignerSeitz.occupancy_types').
+- `DislocationAnalysis(input_crystal_structure: str = 'FCC', only_perfect_dislocations: bool = False, circuit_stretchability: int = 9, trial_circuit_length: int = 14, line_smoothing_level: int = 1, line_point_separation: float = 2.5, **kwargs)`: Dislocation extraction algorithm (DXA) via the `ovito` package. Writes 'Structure Type' (and 'Color'), the `DislocationAnalysis.*` attributes (total line length, counts per Burgers vector family, ...) and the table `tables['dislocations']` with one row per dislocation segment: 'Segment Identifier', 'Length', 'Burgers Vector' (crystal frame), 'Spatial Burgers Vector', 'Points' (array of (M, 3) polylines) and 'Is Loop'.
+- `OvitoModifier(modifier, reference_frame: int | None = None)`: Run an OVITO modifier (`ovito.modifiers.*`) on the current frame.
+- `AcklandJones(types=None, color_by_type: bool = True, only_selected: bool = False)`: Bond-angle structure identification of Ackland and Jones (2006). Writes 'Structure Type', 'Color' and `AcklandJones.counts.<TYPE>`.
+- `AtomicStrain(cutoff: float = 3.0, reference_frame: int = 0, frame_offset: int | None = None, output_deformation_gradients: bool = False, output_strain_tensors: bool = False, output_nonaffine_squared_displacements: bool = False, output_rotations: bool = False, output_stretch_tensors: bool = False, select_invalid_particles: bool = True, affine_mapping: str | None = None, minimum_image_convention: bool = True)`: Atomic-level strain from a reference frame (Shimizu, Ogata, Li 2007; Falk-Langer D2min). Writes 'Shear Strain' (von Mises) and 'Volumetric Strain', plus on request 'Deformation Gradient' (3x3), 'Strain Tensor' (XX, YY, ZZ, XY, XZ, YZ; Green-Lagrangian), 'Nonaffine Squared Displacement' (D2min), 'Rotation' (quaternion x, y, z, w) and 'Stretch Tensor'.
+- `CentroSymmetry(num_neighbors: int = 12, mode: str = 'conventional', only_selected: bool = False)`: Centrosymmetry parameter (Kelchner et al. 1998) from `num_neighbors` neighbors. Writes 'Centrosymmetry' and the histogram table 'csp-centrosymmetry'.
+- `ChillPlus(cutoff: float = 3.5, color_by_type: bool = True, only_selected: bool = False)`: Chill+ identification of water structures (Nguyen and Molinero 2015). Bond correlations c_ij of the l=3 bond-orientational order parameters of neighbors within `cutoff` (default 3.5 Å) classify each molecule with four neighbors as hexagonal ice, cubic ice, interfacial ice, hydrate or interfacial hydrate. Writes 'Structure Type', 'Color' and `ChillPlus.counts.<TYPE>`.
+- `IdentifyDiamond(types=None, color_by_type: bool = True, only_selected: bool = False)`: Cubic and hexagonal diamond lattice identification (Maras et al. 2016). Structure type ids follow OVITO: 0 OTHER, 1-3 cubic diamond (atom, 1st neighbor, 2nd neighbor), 4-6 hexagonal diamond. `color_by_type` (default) also writes OVITO's 'Color' per type: OTHER white, cubic diamond blue / cyan / green, hexagonal diamond orange / yellow / lime (the view's legend and `ewald.color_rule.describe(data)` list them).
+- `SteinhardtOrderParameters(degrees=(4, 6), num_neighbors: int = 12, cutoff: float | None = None, average: bool = False, wl: bool = False, wl_normalize: bool = True)`: Per-particle q_l (and w_l) for every degree in `degrees`. `wl=True` also writes w_l, normalized by (sum_m |q_lm|^2)^(3/2) unless `wl_normalize=False`. Writes 'Steinhardt Q4', 'Steinhardt Q6', ...
+- `SymmetryAnalysis(symprec: float = 0.01, angle_tolerance: float = -1.0, select_unique: bool = False)`: Space group, Wyckoff positions and symmetry-equivalent atoms (spglib). Particle types are the species; `symprec` is the distance tolerance in Angstrom (0.01 finds the symmetry of relaxed DFT cells; lower it to tell close structures apart) and `angle_tolerance` in degrees (-1: spglib's default). Writes the attributes `SymmetryAnalysis.space_group` (Hermann-Mauguin, e.g.
+- `ElasticStrain(input_crystal_structure: str = 'FCC', lattice_constant: float = 1.0, axial_ratio: float = 1.632993161855452, calculate_strain_tensors: bool = True, calculate_deformation_gradients: bool = False, push_strain_tensors_forward: bool = True, color_by_type: bool = True, only_selected: bool = False, num_threads: int = 0)`: Atomic-level elastic strain in a crystal (OVITO's Elastic strain calculation). Writes 'Structure Type' (OTHER, FCC, HCP, BCC, CUBIC_DIAMOND, HEX_DIAMOND), 'Color', 'Cluster', 'Volumetric Strain', 'Elastic Strain' (XX, YY, ZZ, XY, XZ, YZ; Euler-Almansi in the spatial frame by default, Green-Lagrange with `push_strain_tensors_forward=False`) and optionally 'Elastic Deformation Gradient' (3x3).
+- `GrainSegmentation(algorithm: str = 'auto', merging_threshold: float = 0.0, min_grain_size: int = 100, handle_stacking_faults: bool = True, orphan_adoption: bool = True, color_particles: bool = True, output_bonds: bool = False)`: Decompose a polycrystal into grains from PTM orientations (OVITO's Grain segmentation). Neighboring crystalline atoms are joined by bonds weighted by their lattice disorientation, and clusters are merged in order of increasing distance: `algorithm='auto'` (graph clustering with an automatically chosen `log` merge threshold), 'manual' (graph clustering, threshold `merging_threshold` on the log merge distance) or 'mst' (minimum spanning tree, `merging_threshold` in degrees). Writes 'Grain' (0 = no grain), 'Color' (`color_particles`), table 'grains' (Grain Identifier, Grain Size, Color, Structure Type, Orientation as x, y, z, w, Center of Mass, Radius, Radius of Gyration; largest grain first), tables 'grains-merge' and 'grains-log' (the merge sequence), attributes `GrainSegmentation.grain_count` and `GrainSegmentation.auto_merge_threshold`, and with `output_bonds` the neighbor graph as bonds with a 'Disorientation' property (degrees).
+- `IdentifyFCCPlanarFaults(color_other=(1.0, 0.4, 0.4), color_isf=(0.9, 0.7, 0.2), color_twin=(0.4, 0.4, 1.0), color_multi=(0.0, 1.0, 0.9))`: Classify hcp-like atoms in fcc crystals by planar fault (OVITO's Identify fcc planar faults). Writes 'Planar Fault Type': 0 non-hcp, 1 indeterminate hcp-like, 2 intrinsic stacking fault, 3 coherent twin boundary, 4 multilayer stacking fault; recolors hcp atoms by fault type, and fills table 'planar_faults' with the atom count, fraction and estimated area of each type.
+
+### Trajectories, transport, NEB and phonons
+
+- `MeanSquaredDisplacement(start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0, fit_range: tuple = (0.2, 0.8), by_type: bool = True, unwrapped: bool = False, subtract_drift: bool = False, only_selected: bool = False)`: Time-averaged mean squared displacement over a frame range and the diffusion coefficient. Writes `tables['msd']` with `Time`, `MSD`, per-type `MSD <type>` and the Einstein fit `MSD fit`, and attributes `MeanSquaredDisplacement.diffusion_coefficient` (`.<type>` per type) from a linear fit over `fit_range` (fraction of the lags). `time_per_frame` is the time between stored frames (e.g. ps, giving D in A^2/ps; 1 A^2/ps = 1e-4 cm^2/s); 0 reports lags in frames.
+- `VelocityAutocorrelation(start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0, velocities: str = 'auto', by_type: bool = True, max_lag_fraction: float = 0.5, only_selected: bool = False)`: Velocity autocorrelation function and the Green-Kubo diffusion coefficient. Writes `tables['vacf']` with `Time`, `VACF`, `VACF (normalized)`, per-type `VACF <type>` and the running integral `D(t)` = (1/3) int VACF dt, and the attribute `VelocityAutocorrelation.diffusion_coefficient`: `D(t)` averaged over the second half of `0 .. max_lag_fraction` of the lags.
+- `TimeAveraging(operate_on='table:coordination-rdf', start: int = 0, stop: int | None = None, step: int = 1)`: Average upstream results over a frame range (OVITO's TimeAveragingModifier). `'table:coordination-rdf'` after CoordinationAnalysis gives the time-averaged g(r)) writes `tables['<name>[average]']`; `'attribute:<name>'` writes the attribute `'<name> (Average)'`; `'property:<name>'` writes the per-particle property `'<name> (Average)'` (particles matched by identifier).
+- `TimeSeries(operate_on=None, start: int = 0, stop: int | None = None, step: int = 1)`: Global attributes as a function of time (OVITO's TimeSeriesModifier). `operate_on` is an attribute name or a tuple of names; None takes every numeric attribute of the first frame. Writes `tables['time-series']` with `Frame`, `Timestep` and one column per attribute.
+- `GenerateTrajectoryLines(only_selected: bool = True, start: int = 0, stop: int | None = None, step: int = 1, unwrap_trajectories: bool = True)`: Particle paths over a frame range, drawn as lines, plus path metrics. Writes `tables['trajectory-lines']` with one row per particle and frame (`Position`, `Particle Identifier`, `Time` (the timestep), `Frame`), and the particle properties 'Path Length' (summed step lengths), 'Net Displacement' and 'Max Displacement' (from the position at `start`); untraced particles get 0.
+- `NebEnergyProfile(energy: str = 'Energy', images: int | None = None, spline_points: int = 200)`: Energy along a NEB band, with the barrier, from frames that are the band's images. Image energies come from the attribute `energy` (eV; `Energy` from OUTCAR/vasprun or the LAMMPS NEB log, else `energy`/`PotEng`/... when present). Writes `tables['NEB']` (`Reaction Coordinate`, `Energy` relative to the first image, `Tangent Force`, `Image`, `Frame`), `tables['NEB spline']` (`spline_points` points of the profile), the attributes `NEB.Barrier` (highest image minus the first), `NEB.Reverse Barrier` (highest image minus the last), `NEB.Reaction Energy` (last minus first), `NEB.Spline Barrier` (maximum of the spline), `NEB.Saddle Image`, `NEB.Saddle Coordinate`, `NEB.Path Length` and `NEB.Reference Energy`, and on frames of the band `NEB.Image`, `NEB.Reaction Coordinate` and `NEB.Relative Energy`.
+- `OverlayFrames(transparency: float = 0.7, min_displacement: float = 0.1, start: int = 0, stop: int | None = None, step: int = 1)`: Every frame of `start:stop:step` drawn at once: the current frame opaque, the others as see-through copies of the atoms (`transparency` 0..1), e.g. all images of a NEB band over the image shown on the timeline. Only atoms that sit more than `min_displacement` (Angstrom) away from where they are in the current frame get a copy, so the atoms that move leave a translucent trail and the rest of the structure is drawn once.
+- `PhononMode(qpoint: int = 0, band: int | None = None, amplitude: float = 0.3, supercell=None, max_supercell: int = 8, arrows: bool = True, arrow_length: float = 2.5, arrow_width: float = 0.2, arrow_color=(0.85, 0.1, 0.1))`: Animate one phonon mode read from phonopy band.yaml/mesh.yaml/qpoints.yaml or a VASP IBRION=5-8 OUTCAR: frame `f` of `N` shows phase `2 pi f / N` of the vibration, so the trajectory loops over one period. Sets the attributes 'Phonon.Frequency' (THz), 'Phonon.Wavenumber' (cm^-1), 'Phonon.QPoint', 'Phonon.Band' and 'Phonon.q'.
+- `FreezeProperty(source_property: str = 'Selection', destination_property: str | None = None, freeze_at: int = 0)`: Copy a particle property as it was at frame `freeze_at` to every frame (OVITO's FreezePropertyModifier).
 - `UnwrapTrajectories()`: Undo the wrapping of particles at periodic boundaries, so trajectories are continuous (OVITO's UnwrapTrajectoriesModifier).
-- `ExpandSelection(mode: str = 'cutoff', cutoff: float = 3.2, num_neighbors: int = 1, iterations: int = 1)`: Grow the selection to the neighbors of selected particles (OVITO's ExpandSelectionModifier).
-- `LoadTrajectory(file: str = '', format: str | None = None, type_map: dict | None = None)`: Positions (and other per-particle properties) of every frame from a trajectory file, on top of a topology from the pipeline source (OVITO's LoadTrajectoryModifier).
-- `CombineDatasets(file: str = '', format: str | None = None, type_map: dict | None = None)`: Add the particles (and bonds) of another file to the current frame (OVITO's CombineDatasetsModifier).
-- `IonicConductivity(temperature: float = 300.0, time_per_frame: float = 0.0, charges: dict | None = None, start: int = 0, stop: int | None = None, step: int = 1, fit_range: tuple = (0.2, 0.8), unwrapped: bool = False, subtract_drift: bool = True, only_selected: bool = False)`: Ionic conductivity from the collective charge displacement, its Nernst-Einstein estimate and the Haven ratio.
-- `VanHoveCorrelation(times: tuple | None = None, part: str = 'self', r_max: float = 6.0, nbins: int = 120, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, max_origins: int = 100, unwrapped: bool = False, only_selected: bool = True)`: Van Hove correlation function at a few times: the self part (how far one ion gets, with peaks at the hop distances) and the distinct part (where the other ions are).
-- `SelfIntermediateScattering(q=None, directions: int = 16, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, unwrapped: bool = False, only_selected: bool = True)`: Self intermediate scattering function F_s(q, t) and its relaxation time.
-- `NonGaussianParameter(time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, max_origins: int = 200, unwrapped: bool = False, only_selected: bool = True)`: Non-Gaussian parameter alpha_2(t) = 3 <dr^4> / (5 <dr^2>^2) - 1 of the displacements.
-- `SiteHopping(sites=None, site_type: str = '', site_radius: float = 0.0, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, only_selected: bool = True, nbins: int = 50)`: Site occupancy, hops between sites and residence times of mobile ions.
+- `IonicConductivity(temperature: float = 300.0, time_per_frame: float = 0.0, charges: dict | None = None, start: int = 0, stop: int | None = None, step: int = 1, fit_range: tuple = (0.2, 0.8), unwrapped: bool = False, subtract_drift: bool = True, only_selected: bool = False)`: Ionic conductivity from the collective charge displacement, its Nernst-Einstein estimate and the Haven ratio. Writes `tables['conductivity']` (`Time`, `Charge MSD` in e^2 A^2, `Charge MSD fit`, `Nernst-Einstein MSD`) and attributes `IonicConductivity.conductivity` and `.nernst_einstein_conductivity` (S/cm, NaN without `time_per_frame` in ps), `.haven_ratio`, `.volume` (A^3, mean over frames) and `.temperature` (K).
+- `VanHoveCorrelation(times: tuple | None = None, part: str = 'self', r_max: float = 6.0, nbins: int = 120, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, max_origins: int = 100, unwrapped: bool = False, only_selected: bool = True)`: Van Hove correlation function at a few times: the self part (how far one ion gets, with peaks at the hop distances) and the distinct part (where the other ions are). Writes `tables['van-hove']` with `r` and, for every lag, `4πr²Gs(t=...)` (radial probability density of the displacement length, integrating to 1), `Gs(t=...)` and `Gd(t=...)` (normalized like g(r); g(r) at t=0).
+- `SelfIntermediateScattering(q=None, directions: int = 16, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, unwrapped: bool = False, only_selected: bool = True)`: Self intermediate scattering function F_s(q, t) and its relaxation time. `q` is a modulus in 1/A or a tuple of them; None uses 2 pi / d with d = (V / N)^(1/3) the mean spacing of the analyzed particles, the scale of one hop. Writes `tables['intermediate-scattering']` (`Time` and `Fs(q=...)` per q) and `SelfIntermediateScattering.relaxation_time` (time at which F_s of the first q drops below 1/e; `.relaxation_time.<i>` for the i-th q when there are several) and `.q`.
+- `NonGaussianParameter(time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, max_origins: int = 200, unwrapped: bool = False, only_selected: bool = True)`: Non-Gaussian parameter alpha_2(t) = 3 <dr^4> / (5 <dr^2>^2) - 1 of the displacements. Writes `tables['non-gaussian']` (`Time`, `MSD`, `MQD` = <dr^4>, `alpha2`) and attributes `NonGaussianParameter.max` and `.peak_time`.
+- `SiteHopping(sites=None, site_type: str = '', site_radius: float = 0.0, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1, only_selected: bool = True, nbins: int = 50)`: Site occupancy, hops between sites and residence times of mobile ions. Writes `tables['site-hops']` (one row per hop: `Frame`, `Time`, `Particle Identifier`, `From Site`, `To Site`, `Distance`), `tables['residence-times']` (histogram of completed stays) and `tables['site-occupancy']` (fraction of the analyzed frames each site is occupied), the particle properties 'Site Index' (at the current frame, -1 outside the analyzed frames or for ions not analyzed) and 'Hop Count', and attributes `SiteHopping.hops`, `.hop_rate` (hops per ion per time), `.mean_residence_time` (mean completed stay) and `.jump_diffusion_coefficient` (sum of squared hop lengths / (6 N t), the uncorrelated random-walk D to compare with the tracer D for the correlation factor; A^2 per unit of `time_per_frame`).
+
+### Statistics and diffraction
+
+- `Histogram(property: str = 'Position.Z', bin_count: int = 200, fix_xrange: bool = False, xrange_start: float = 0.0, xrange_end: float = 0.0, only_selected: bool = False, normalization: str = 'count', select_elements: bool = False, selection_start: float = 0.0, selection_end: float = 0.0, operate_on: str = 'particles')`: Histogram of a particle or bond property ('Mass', 'Position.Z', ...). `select_elements` selects the elements with values in `selection_start`..`selection_end` and sets `Histogram.num_selected`. Writes `tables['histogram[<property>]']` with the bin centers and 'Count' / 'Relative Frequency' / 'Probability Density'.
+- `SpatialBinning(property: str = '', reduction_operation: str = 'mean', direction: str = 'Z', bin_count=(50, 50, 20), first_derivative: bool = False, only_selected: bool = False)`: Coarse-grain a particle property on a 1D, 2D or 3D grid of bins along the cell vectors. `first_derivative` (1D) writes the central finite-difference derivative instead. 1D writes `tables['binning']` (bin centers along the cell vector and one column per component); 2D/3D write `grids['binning']` (shape `(n1, n2, 1)` or `(n1, n2, n3)`, cell-centered bins).
+- `ReduceProperty(property: str = 'Position.Z', reduction_operation: str = 'mean', only_selected: bool = False, operate_on: str = 'particles')`: Reduce a particle or bond property to one number per component. Writes `ReduceProperty.<operate_on>.<Op>.<property>` (e.g.
+- `PowderDiffraction(radiation: str = 'xray', wavelength: str = 'CuKa', two_theta_min: float = 5.0, two_theta_max: float = 90.0, step: float = 0.02, fwhm: float = 0.1, eta: float = 0.5, debye_waller: dict | None = None, elements: dict | None = None, experimental: str = '')`: Powder X-ray or neutron diffraction pattern of the (periodic) cell. `wavelength` is in Angstrom or a name ('CuKa', 'CuKa1', 'MoKa', 'CoKa', 'AgKa', ...). The peaks are broadened by a pseudo-Voigt of `fwhm` degrees and Lorentzian fraction `eta` on a `step` grid. `debye_waller` maps elements to B factors (Angstrom^2); `elements` maps type names to elements for numbered types (`{'1': 'Si', '2': 'O'}`). Writes `tables['diffraction']` ('2theta', 'Intensity', max 100) and `tables['diffraction-peaks']` ('2theta', 'Intensity', 'd', 'h', 'k', 'l', 'Multiplicity'), and the attribute `PowderDiffraction.num_peaks`.
+- `StructureFactor(method: str = 'auto', q_max: float = 10.0, q_min: float = 0.0, number_of_bins: int = 200, weighting: str = 'none', cutoff: float = 0.0, lorch: bool = True, elements: dict | None = None, experimental: str = '')`: Static structure factor S(q) (q = 4 pi sin(theta) / lambda in 1/Angstrom), for liquids, glasses and MD. Writes `tables['structure-factor']` with 'q' and 'S(q)' (bin centers between `q_min` and `q_max`); `TimeAveraging('table:structure-factor')` averages a trajectory. `experimental` (two-column text: q, S(q)) adds the 'Experimental' column, interpolated but not rescaled, and `StructureFactor.Rwp`.
+
+### Grids (CHGCAR, LOCPOT, cube) and vector arrows
+
+- `CreateIsosurface(isolevel: float | None = None, property: str = 'Charge Density', grid: str | None = None, signed: bool = False, color=(1.0, 0.86, 0.0), negative_color=(0.0, 0.75, 1.0), transparency: float = 0.0, identifier: str = 'isosurface')`: VESTA-style isosurface of a grid property (OVITO's CreateIsosurfaceModifier). `isolevel` in the property's units (e/A^3 for a CHGCAR "Charge Density"); None uses the mean of |values|. The surfaces go into `data.surfaces[identifier]` (and `identifier + "-"`); the level used is stored in the attribute `"<identifier>.isolevel"`.
+- `GridSlice(miller=(0, 0, 1), distance: float = 0.5, property: str = 'Charge Density', grid: str | None = None, cmap: str = 'viridis', range=None, scale: str = 'linear', resolution: float | None = None, transparency: float = 0.0, identifier: str = 'slice')`: Colour-mapped cross-section of a grid property on a lattice plane (VESTA's 2D slice). Values are trilinearly interpolated (periodically) onto a mesh with `resolution` Angstrom spacing (None: one voxel) and mapped through the color map `cmap` (matplotlib or plugin) over `range` (None: the min/max on the plane); `scale="log"` maps log10(|value|), which shows the valence density between nuclei. The slice goes into `data.surfaces[identifier]` and its colour range into the `ColorCoding.*` attributes, so a legend is drawn (unless a particle ColorCoding already set one).
+- `GridDifference(subtract=(), property: str = 'Charge Density', grid: str | None = None, output: str | None = None)`: Charge-density difference: subtract the grids of other files, e.g. rho(AB) - rho(A) - rho(B) with `GridDifference(["A/CHGCAR", "B/CHGCAR"])`.
+- `VectorVis(property: str = '', scaling: float = 1.0, width: float = 0.3, alignment: str = 'base', reverse: bool = False, color=(1.0, 1.0, 0.0), shading: str = 'normal', transparency: float = 0.0, offset=(0.0, 0.0, 0.0), color_mapping_property: str = '', cmap: str = 'viridis', color_mapping_interval=None, only_selected: bool = False, min_length: float = 1e-06)`: Draw an N x 3 particle property as arrows: 'Force', 'Displacement', 'Velocity', 'Magnetic Moment' (a scalar moment points along z), or any other vector property. Writes `data.vectors[property]`; all renderers (viewport, ray tracer, SVG/PDF) draw it.
+
+### In plugins
+
+`Plumed`, `LoadColvar`, `FreeEnergySurface` moved to first-party plugins (`ewald-phonopy`, `ewald-plumed`, frssp/ewald-plugins): they import from `ewald.modifiers` once the plugin is installed (Plugins panel); installed plugin modifiers are listed at the end of this reference when it is read inside ewald.

@@ -304,8 +304,12 @@ claude mcp add ewald -- ewald mcp           # register them in Claude Code
 
 ## For agents that write ewald code
 
-`llms.txt` in the repository root is a compact API reference for LLMs: the data model and its
-rules, expression syntax, the differences from OVITO's API (where models trained on OVITO code
-go wrong), and every modifier's signature. `ewald api` prints the current version.
+`llms.txt` in the repository root is the API reference for LLMs, the same text Ask AI reads
+through its `python_api` tool: notebook cells first (one change per cell), the data model and
+its rules, expression syntax, the differences from OVITO's API (where models trained on OVITO
+code go wrong), recipes for common workflows (crystal and polyhedra, MD diffusion, defects, NEB,
+charge density) that the test suite runs, the exact signatures of the notebook functions, and
+every modifier grouped by family with its signature, the properties, tables and attributes it
+writes and the units of its parameters. `ewald api` prints the current version.
 `data.summary()` shows a frame's properties and ranges, and OVITO modifier names resolve to
 the ewald classes, so OVITO-style code usually runs as written.

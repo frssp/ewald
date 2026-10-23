@@ -8,32 +8,47 @@ code. ``ewald api`` prints it; ``llms.txt`` in the repository root is a snapshot
 from __future__ import annotations
 
 import inspect
+import re
 
 GUIDE = '''\
 # EWALD (Extensible Workbench for Atomic Lattices & Dynamics): `ewald` Python API (for LLMs and people writing ewald code)
 
-ewald is an OVITO-style atomistic pipeline: `import_file` -> modifiers -> `compute(frame)` -> render.
-The API mirrors OVITO's, so OVITO knowledge transfers; the differences below are where it doesn't.
+ewald is an OVITO-style atomistic pipeline (source file -> modifiers -> frame -> 3D view, plots, pictures) driven
+from a Python notebook. The API mirrors OVITO's, so OVITO knowledge transfers; "Differences from OVITO" below lists
+where it doesn't. Write notebook cells (percent format, `# %%`), one change per cell:
 
 ```python
-from ewald import import_file
-from ewald.modifiers import CoordinationAnalysis, ExpressionSelection, DeleteSelected, ColorCoding
+# %%
+pipe = load("XDATCAR")                              # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vasprun.xml/vaspout.h5/CHGCAR, LAMMPS dump/data, extxyz, cif, ...
+# %%
+pipe.add(CoordinationAnalysis(cutoff=3.0))          # a step cell: exactly one pipe.add(...) with literal arguments
+# %%
+pipe.add(ExpressionSelection("Coordination < 12"))
+# %% undercoordinated [each frame]
+paint(data, "Coordination < 12", "red")             # a Python step: the body sees `frame` and `data`
+# %%
+view(pipe, style="Ball & stick", direction="z")     # a view cell: the 3D view's settings
+# %%
+show(pipe, table="coordination-rdf")                # a plot cell
+# %%
+data = pipe.compute(0)                              # a plain code cell may read results freely
+print(data.summary())                               # look before you code: properties, ranges, attributes
+print(np.bincount(data["Coordination"]))            # coordination histogram as numbers
+```
 
-pipe = import_file("XDATCAR")                        # VASP POSCAR/CONTCAR/XDATCAR/OUTCAR/vaspout.h5, LAMMPS dump/data, extxyz, xsf, h5md, xtc, cif, ...
-# pipe = import_file("dump.*.lammpstrj", type_map={1: "Cu", 2: "Zr"})   # LAMMPS numeric types -> elements
-# pipe = import_file("cluster:/scratch/run1/dump.lammpstrj")   # over SSH: host:/path, user@host:path, ssh://host/path
-# pipe = import_file("dump.lammpstrj", thermo="log.lammps")   # thermo columns -> data.attributes["Temp"], data.tables["Steps"]
-# pipe = import_file("run.npz", format="npz-trajectory")  # format= also names reader plugins (`ewald plugins`)
-pipe.modifiers.append(CoordinationAnalysis(cutoff=3.0))
-pipe.modifiers.append(ExpressionSelection("Coordination < 12"))
+Rules: change the structure, the view or a result only through such cells (never by mutating `pipe` from a plain
+cell or a tool), so the notebook alone reproduces the analysis. Read the output names a modifier writes (properties,
+`data.tables[...]`, `data.attributes[...]`) from its entry under "Modifiers" below instead of guessing them. Units:
+Angstrom, eV, ps for `time_per_frame` and trajectory times, fs for MD time steps, e/A^3 for charge densities.
+Outside a notebook the same API works as a script: `pipe = import_file(path)` (= `load`), `pipe.add(m)`
+(= `pipe.modifiers.append(m)`), any `def f(frame, data)` is a modifier, `pipe.render("fig.png", frame=10)`,
+`data = pipe.compute(10, device="cuda")` (GPU kernels where supported). Loading variants:
 
-def mark(frame, data):                               # any f(frame, data) is a modifier (OVITO signature)
-    data["Undercoordinated"] = data["Coordination"] < 12
-
-pipe.modifiers.append(mark)
-data = pipe.compute(10)                              # device="cuda" runs supported kernels on the GPU
-print(data.summary())                                # look before you code: properties, ranges, attributes
-pipe.render("frame10.png", frame=10, direction="iso", bonds=2.8)
+```python
+pipe = load("dump.*.lammpstrj", type_map={1: "Cu", 2: "Zr"})     # LAMMPS numeric types -> elements; wildcards join files
+pipe = load("cluster:/scratch/run1/dump.lammpstrj")             # over SSH: host:/path, user@host:path, ssh://host/path
+pipe = load("dump.lammpstrj", thermo="log.lammps")              # thermo columns -> data.attributes["Temp"], data.tables["Steps"]
+pipe = load("run.npz", format="npz-trajectory")                 # format= also names reader plugins (`ewald plugins`)
 ```
 
 ## Data model
@@ -47,7 +62,10 @@ pipe.render("frame10.png", frame=10, direction="iso", bonds=2.8)
   `data.cell.matrix` (3 x 3, ROWS are the cell vectors a, b, c), `data.cell.origin`, `data.cell.pbc`,
   `data.cell.volume`, `data.cell.wrap(pos)`, `data.cell.to_fractional(pos)`.
 - Property names are OVITO's: "Position", "Particle Type", "Particle Identifier", "Color", "Radius",
-  "Selection", "Coordination", "Structure Type", "Displacement", "Force", "Velocity".
+  "Selection", "Coordination", "Structure Type", "Displacement", "Force", "Velocity". "Structure Type" ids are OVITO's:
+  CNA, PTM and AcklandJones use 0 OTHER, 1 FCC, 2 HCP, 3 BCC, 4 ICO, 5 SC, 6 CUBIC_DIAMOND, 7 HEX_DIAMOND, 8 GRAPHENE
+  (expressions: `StructureType == 1`); IdentifyDiamond and ChillPlus number their own types (see their entries), and
+  every one of them also writes `<Modifier>.counts.<TYPE>` attributes.
 - `data.take(mask_or_index)`, `data.delete(mask)` return new collections; `data.to_ase()`, `DataCollection.from_ase(atoms)`.
 - **Never write into an array in place** (`data.positions[0] = ...`, `data["Color"][sel] = ...`): arrays are shared
   with cached frames. Build a new array and assign it: `pos = data.positions.copy(); pos[0] += 1; data.positions = pos`.
@@ -100,7 +118,8 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 
 ## Notebook verbs
 
-`from ewald import load, rdf, msd, vacf, sq, xrd, bond_angles, cna, ptm, voronoi, clusters, check_run, load_runs`: `pipe = load(path)` is `import_file`
+`from ewald import load, rdf, msd, vacf, sq, xrd, bond_angles, cna, ptm, voronoi, clusters, check_run, load_runs`
+(exact signatures under "Functions" below): `pipe = load(path)` is `import_file`
 (a list of files or a wildcard is one trajectory: restart segments are joined on Timestep, the later file winning,
 also inside one LAMMPS dump a restarted run appended to (`pipe.source.restarts`); `join="restart"` treats every step going
 back as a restart, `join="files"` joins only between files, `join="concat"` keeps every frame);
@@ -108,12 +127,8 @@ back as a restart, `join="files"` joins only between files, `join="concat"` keep
 `def f(frames, data)` makes a step that reads every frame once (`frames[k]`, `len(frames)`, slices) and whose
 result (tables, attributes, properties) is reused at every frame; `@each_frame` marks the per-frame default. In a
 notebook a cell headed `# %% [each frame]` (or `# %% name [all frames]`) is such a step itself: its code is the body,
-with `frame`/`frames` and `data` given. A verb adds its
-analysis step and returns its table: `rdf(pipe, cutoff=6, bins=200, partial=False)` (CoordinationAnalysis,
-`coordination-rdf`), `msd(pipe, **kw)` (`msd`), `vacf` (`vacf`), `sq(pipe, q_max=10)` (`structure-factor`),
-`xrd(pipe, **kw)` (`diffraction`), `bond_angles(pipe)` (`bond-angle-distr`), `cna(pipe, mode="adaptive")` and
-`ptm(pipe)` (`structures`), `voronoi(pipe)` (`voronoi-coordination`), `clusters(pipe, cutoff=3.2)` (`clusters`,
-largest first). The `Table` is a dict of columns (`pandas.DataFrame(table)` works) with `.x`, `.plot()` and, for
+with `frame`/`frames` and `data` given. A verb (`rdf`, `msd`, `cna`, ...)
+adds its analysis step and returns its table (which one: "Functions" below). The `Table` is a dict of columns (`pandas.DataFrame(table)` works) with `.x`, `.plot()` and, for
 counting tables, `.counts` (`cna(pipe).counts == {"OTHER": 0, "FCC": 500, ...}`); calling the verb again replaces its step.
 In Jupyter a Pipeline, DataCollection or Table as a cell's last line shows a picture (ray-traced frame 0, or the
 curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] = False` turns it off.
@@ -244,45 +259,216 @@ The AI's `set_view` / `get_view` tools take the same settings.
 '''
 
 
-def _signature(cls) -> str:
-    if "__init__" not in vars(cls) and not any("__init__" in vars(b) for b in cls.__mro__[1:-1]):
-        return "()"
-    params = []
-    for p in list(inspect.signature(cls.__init__).parameters.values())[1:]:
+#: Notebook recipes for common workflows: (title, file the recipe loads, cells). ``tests/test_llm.py``
+#: runs every one on a shipped example file, so they stay correct.
+RECIPES = [
+    ("Crystal structure: bonds, TiO6 octahedra, space group", "POSCAR", """\
+# %%
+pipe = load("POSCAR")
+# %%
+pipe.add(CreateBonds(mode="pairwise", pairs=[("Ti", "O", 2.4)]))
+# %%
+pipe.add(CoordinationPolyhedra(center_types=["Ti"]))
+# %%
+pipe.add(SymmetryAnalysis())
+# %%
+view(pipe, style="Ball & stick", direction="iso", type_legend=True)
+# %%
+data = pipe.compute(0)
+print(data.attributes["SymmetryAnalysis.space_group"], data.attributes["CreateBonds.num_bonds"])
+"""),
+    ("MD trajectory: diffusion coefficient", "XDATCAR", """\
+# %%
+pipe = load("XDATCAR")
+# %%
+pipe.add(MeanSquaredDisplacement(time_per_frame=0.01))   # ps between stored frames (run_info(pipe) reads it from INCAR)
+# %%
+show(pipe, table="msd")
+# %%
+data = pipe.compute(0)
+D = data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]   # A^2/ps; per type: .diffusion_coefficient.<type>
+print(f"D = {D:.3g} A^2/ps = {D * 1e-4:.3g} cm^2/s")
+"""),
+    ("Defects in a crystal: structure types, show only non-FCC atoms", "dump.lammpstrj", """\
+# %%
+pipe = load("dump.lammpstrj")
+# %%
+pipe.add(CommonNeighborAnalysis())
+# %% defects [each frame]
+isolate(data, "StructureType != 1")
+# %%
+data = pipe.compute(0)
+print({k: v for k, v in data.attributes.items() if k.startswith("CommonNeighborAnalysis.counts.")})
+"""),
+    ("NEB band: barrier and energy profile", "neb/", """\
+# %%
+pipe = load("neb/")          # images 00..NN as frames; UnwrapTrajectories, NebEnergyProfile, OverlayFrames come with it
+# %%
+show(pipe, table="NEB")
+# %%
+data = pipe.compute(0)
+print(data.attributes["NEB.Barrier"], data.attributes["NEB.Saddle Image"])   # eV, image index
+"""),
+    ("Charge density: isosurface and a lattice-plane slice", "CHGCAR", """\
+# %%
+pipe = load("CHGCAR")
+# %%
+pipe.add(CreateIsosurface(isolevel=0.3))       # e/A^3, absolute
+# %%
+pipe.add(GridSlice(miller=(1, 1, 0), distance=0.5))
+# %%
+view(pipe, cell=True, direction="x")
+# %%
+grid = pipe.compute(0).grids["charge-density"]
+print(grid.shape, grid.integrate("Charge Density"))
+"""),
+]
+
+#: Headings of the modifier list, by the module that defines a modifier (``ewald.modifiers.<module>``).
+FAMILIES = [
+    ("Selection, coloring and editing", ("selection", "coloring", "transform", "script", "datasets")),
+    ("Neighbors, bonds and topology", ("analysis", "cluster", "bonds", "topology")),
+    ("Structure identification and local order",
+     ("structure", "local_order", "crystal", "steinhardt", "voronoi", "wigner_seitz", "symmetry", "ovito_bridge")),
+    ("Trajectories, transport, NEB and phonons", ("trajectory", "transport", "neb", "phonon")),
+    ("Statistics and diffraction", ("statistics", "diffraction")),
+    ("Grids (CHGCAR, LOCPOT, cube) and vector arrows", ("volume", "vectors")),
+]
+
+#: Notebook functions whose exact signature the reference lists: (module, names).
+FUNCTIONS = [
+    ("ewald", ("load", "import_file", "export_file", "each_frame", "all_frames", "view", "rdf", "msd", "vacf", "sq",
+               "xrd", "bond_angles", "cna", "ptm", "voronoi", "clusters", "run_info", "check_run", "load_runs",
+               "arrhenius", "workflow_table")),
+    ("ewald.views", ("show", "snapshot", "figure")),
+    ("ewald.paint", ("paint", "hide", "isolate", "fade", "resize")),
+]
+
+# sentences of a docstring worth keeping beyond its first paragraph: what a modifier writes, its ids, its units
+_OUTPUTS = re.compile(r"\b(Writes|writes|Sets|sets|Adds|adds|Stores|stores|Fills|fills|Outputs?|ids)\b|tables\[|attributes?\b")
+_UNITS = re.compile(r"\b(Angstrom|A\^2|A\^3|1/A|ps|fs|eV|THz|S/cm|e/A\^3|degrees?|cm\^-1)\b|Å")
+
+
+def _plain(text: str) -> str:
+    """reST to Markdown: ``x`` -> `x`, :func:`~a.b.c` -> `c`."""
+    text = re.sub(r":\w+:`~?(?:[\w.]+\.)?([^`]+)`", r"`\1`", text)
+    return text.replace("``", "`")
+
+
+def _signature(obj) -> str:
+    if isinstance(obj, type):
+        if "__init__" not in vars(obj) and not any("__init__" in vars(b) for b in obj.__mro__[1:-1]):
+            return "()"
+        params = list(inspect.signature(obj.__init__).parameters.values())[1:]
+        ret = ""
+    else:
+        sig = inspect.signature(obj)
+        params = list(sig.parameters.values())
+        ret = sig.return_annotation
+        ret = "" if ret is sig.empty else " -> " + (ret if isinstance(ret, str) else getattr(ret, "__name__", str(ret)))
+    out = []
+    star = False
+    for p in params:
         if p.kind is p.VAR_POSITIONAL:
-            params.append(f"*{p.name}")
+            out.append(f"*{p.name}")
+            star = True
             continue
         if p.kind is p.VAR_KEYWORD:
-            params.append(f"**{p.name}")
+            out.append(f"**{p.name}")
             continue
+        if p.kind is p.KEYWORD_ONLY and not star:
+            out.append("*")
+            star = True
         text = p.name
         if p.annotation is not p.empty:
             text += f": {p.annotation if isinstance(p.annotation, str) else getattr(p.annotation, '__name__', p.annotation)}"
         if p.default is not p.empty:
             eq = " = " if p.annotation is not p.empty else "="
             text += eq + ("..." if len(repr(p.default)) > 40 else repr(p.default))  # long defaults: script templates
-        params.append(text)
-    return "(" + ", ".join(params) + ")"
+        out.append(text)
+    return "(" + ", ".join(out) + ")" + ret
 
 
-def _doc(cls) -> str:
-    text = inspect.cleandoc(cls.__doc__ or "")  # the class's own docstring, not an inherited one
-    return " ".join(text.split("\n\n")[0].split())
+def _doc(obj) -> str:
+    text = inspect.cleandoc(obj.__doc__ or "")  # the object's own docstring, not an inherited one
+    return _plain(" ".join(text.split("\n\n")[0].split()))
+
+
+def _first_sentence(text: str) -> str:
+    return re.split(r"(?<=\.)\s+(?=[A-Z`])", text.rstrip(":"), maxsplit=1)[0]
+
+
+def _details(cls) -> str:
+    """The sentences after the first paragraph that name outputs (properties, tables, attributes, type
+    ids) or give a parameter's units: what a model needs to chain steps without guessing names."""
+    text = " ".join(" ".join(inspect.cleandoc(cls.__doc__ or "").split("\n\n")[1:]).split())
+    params = set(inspect.signature(cls.__init__).parameters) - {"self"} if "__init__" in dir(cls) else set()
+    keep = []
+    for sentence in re.split(r"(?<=[.])\s+(?=[A-Z`'(])", text):
+        names = set(re.findall(r"``(\w+)``", sentence))
+        if _OUTPUTS.search(sentence) or (_UNITS.search(sentence) and names & params):
+            keep.append(sentence)
+    return _plain(" ".join(keep))
+
+
+def recipes_reference() -> str:
+    """The workflow recipes as notebook cells."""
+    lines = ["## Recipes (notebook cells)", ""]
+    for title, _, cells in RECIPES:
+        lines += [f"{title}:", "", "```python", cells.rstrip("\n"), "```", ""]
+    return "\n".join(lines)
+
+
+def function_reference() -> str:
+    """Exact signatures of the notebook functions, read from the code."""
+    import ewald
+    from .. import paint, views
+
+    modules = {"ewald": ewald, "ewald.views": views, "ewald.paint": paint}   # no import by name
+    lines = ["## Functions", ""]
+    for module, names in FUNCTIONS:
+        mod = modules[module]
+        lines.append(f"`from {module} import {', '.join(names)}`:")
+        lines.append("")
+        for name in names:
+            obj = getattr(mod, name)
+            doc = _first_sentence(_doc(obj))
+            lines.append(f"- `{name}{_signature(obj)}`" + (f": {doc}" if doc else ""))
+        lines.append("")
+    return "\n".join(lines)
 
 
 def modifier_reference() -> str:
-    """One entry per modifier exported by ``ewald.modifiers``, signature and first doc paragraph."""
+    """One entry per modifier exported by ``ewald.modifiers``, grouped by family: signature, first doc
+    paragraph and what it writes."""
     from .. import modifiers
     from ..pipeline import Modifier, PythonModifier
 
-    lines = ["## Modifiers", ""]
+    groups: dict[str, list[str]] = {title: [] for title, _ in FAMILIES}
+    family = {module: title for title, mods in FAMILIES for module in mods}
     for name in modifiers.__all__:
         cls = getattr(modifiers, name)
         if not (isinstance(cls, type) and issubclass(cls, Modifier)) or cls in (Modifier, PythonModifier):
             continue
-        doc = _doc(cls)
-        lines.append(f"- `{name}{_signature(cls)}`" + (f": {doc}" if doc else ""))
-    return "\n".join(lines) + "\n"
+        title = family.get(cls.__module__.rsplit(".", 1)[-1], "Other")
+        entry = f"- `{name}{_signature(cls)}`"
+        doc, details = _doc(cls), _details(cls)
+        entry += (f": {doc}" if doc else "") + (f" {details}" if details else "")
+        groups.setdefault(title, []).append(entry)
+    lines = ["## Modifiers", "",
+             "`from ewald.modifiers import *` (new notebooks do it); OVITO names (`XxxModifier`) resolve too. "
+             "Add one with `pipe.add(Name(...))` in its own cell.", ""]
+    for title, entries in groups.items():
+        if entries:
+            lines += [f"### {title}", ""] + entries + [""]
+    moved = ", ".join(f"`{name}`" for name in modifiers.MOVED)
+    if moved:
+        packages = ", ".join(f"`{pkg}`" for pkg in modifiers.PLUGIN_PACKAGES.values())
+        lines += ["### In plugins", "",
+                  f"{moved} moved to first-party plugins ({packages}, frssp/ewald-plugins): they import from "
+                  "`ewald.modifiers` once the plugin is installed (Plugins panel); installed plugin modifiers are "
+                  "listed at the end of this reference when it is read inside ewald.", ""]
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 def plugin_reference() -> str:
@@ -298,6 +484,8 @@ def plugin_reference() -> str:
 
 
 def api_reference(with_plugins: bool = False) -> str:
-    """The full reference: guide + live modifier list (+ installed modifier plugins)."""
-    text = GUIDE + "\n" + modifier_reference()
-    return text + ("\n" + plugin_reference() if with_plugins and plugin_reference() else "")
+    """The full reference: guide, recipes, function signatures, the live modifier list (+ installed
+    modifier plugins)."""
+    text = "\n".join([GUIDE, recipes_reference(), function_reference(), modifier_reference()])
+    plugins_text = plugin_reference() if with_plugins else ""
+    return text + ("\n" + plugins_text if plugins_text else "")

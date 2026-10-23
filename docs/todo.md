@@ -120,8 +120,9 @@ GUI
   A failed generated cell leaves two undo entries in the GUI (insert, then removal). After a second
   `pipe = load(...)` cell, the step cells above it still hold the old pipeline's modifiers, and
   `Notebook.sync` (the GUI's refresh) deletes them.
-- AI and the Python API: the model reads `python_api` (about 9k tokens) on demand rather than in the
-  system prompt, and no eval task yet checks that the cells it writes follow it (one `pipe.add` per
+- AI and the Python API: the model reads `python_api` (about 60 KB, roughly 15k tokens, since the
+  modifier outputs and recipes were added) on demand rather than in the system prompt; no real-model
+  eval run has measured what the larger reference changed, and no eval task yet checks that the cells it writes follow it (one `pipe.add` per
   step cell, `paint`/`hide` inside an `[each frame]` cell); `ewald ask` and the MCP server do not get the
   GUI's notebook note.
 - `PythonScript` step cells: `Modifier.__repr__` uses `name`, which PythonScript sets to its title,

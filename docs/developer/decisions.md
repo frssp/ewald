@@ -52,6 +52,17 @@ the end.
   rejected for the reason above).
 - **Landed:** PR #161 (`CELL_WRITERS`, enforced by `tests/test_llm.py`).
 
+### D31. The AI's API reference is complete in one read (2026-10-23)
+
+- **Decision:** `python_api` (and `llms.txt`, the same text) gives the whole reference in one
+  call, about 60 KB: notebook cells first, tested recipes, generated function signatures, and
+  every modifier with the outputs and units from its docstring, grouped by family.
+- **Why:** the owner asked for a better llms.txt ("llm.txt 를 잘 써야겠네") and, offered three
+  sizes, picked the full reference in one read.
+- **Considered:** splitting it by topic (`python_api(topic=...)`), cheaper per call but the
+  model may skip the part it needs; keeping the old size (about 36 KB) with only a reordering.
+- **Landed:** PR (this one).
+
 ### D5. Any AI provider, named "Ask AI" (2026-10-20)
 
 - **Decision:** not Claude-only: Anthropic by default, OpenAI, Gemini, OpenAI-compatible local
