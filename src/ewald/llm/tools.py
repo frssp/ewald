@@ -279,7 +279,7 @@ class Toolset:
 
     def _apply_view(self, settings: dict, reset=None, rotate=None) -> dict:
         """Change view settings by writing the notebook's view cell and running it."""
-        from ..view3d import View, view_source
+        from ..view3d import View, view_notes, view_source
 
         pipe = self._need_pipeline()
         old = pipe.view.changed()
@@ -336,6 +336,9 @@ class Toolset:
         out = {"changed": pipe.view.changed(), "code": view_source(self.pipeline_name, **pipe.view.changed())}
         if k is not None:
             out["cell"] = k
+        notes = view_notes(pipe.view, pipe.modifiers)
+        if notes:
+            out["notes"] = notes
         return out
 
     # ----------------------------------------------------------- registration
@@ -760,7 +763,8 @@ class Toolset:
            "Change how the structure is drawn in the GUI viewport, notebook pictures and render_image: style "
            "preset, theme, element colors and radii, atoms on/off, bonds on/off, bond table, cell, background, VESTA "
            "boundary, polyhedra/isosurface look by surface name (surfaces), distance/angle measurements, key light, "
-           "atom labels, plugin visuals, vectors, camera "
+           "atom labels, plugin visuals, vectors, the look of trajectory lines (trajectory_*: the lines "
+           "themselves come from a GenerateTrajectoryLines step, so add_modifier it first), camera "
            "(direction, zoom, rotate), frame, and picture options (renderer, "
            "quality, legends, scale bar, text). Only the settings given change; null resets one to its default. "
            "'rotate' turns the current view by [azimuth, elevation] degrees; 'reset' (true or a list of names) "

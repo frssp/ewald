@@ -153,7 +153,15 @@ view(pipe, labels="{type}{index}")                        # atom labels: True, a
 view(pipe, light={"azimuth": 60, "elevation": 20, "intensity": 1.2})   # key light relative to the viewer
 pipe.view.measure(0, 5); pipe.view.measure(4, 0, 7)       # distance / angle drawn with its value; returns it
 view(pipe, color_by="Coordination", colormap="plasma", color_range=[2, 5])   # display-only color map; 'type': type colors
+pipe.add(GenerateTrajectoryLines())                       # atom paths are a step (the selected atoms, else all) ...
+view(pipe, trajectory_trail=True, trajectory_color_by="Time", trajectory_width=3)   # ... the trajectory_* settings
+                                                          # only style its lines (without the step: a warning, no lines)
 ```
+
+A NEB folder (`load("neb/")`, images 00..NN as frames) comes with `UnwrapTrajectories`, `NebEnergyProfile` (tables
+"NEB", "NEB spline"; attributes `NEB.Barrier`, `NEB.Saddle Image`, ...) and `OverlayFrames` (the other images as
+see-through atoms). For lines along the band add `GenerateTrajectoryLines()` as above; `trajectory_trail=True` then
+grows them image by image with the timeline.
 
 What colors the atoms: structure identification steps (`CommonNeighborAnalysis`, `PolyhedralTemplateMatching`,
 `IdentifyDiamond`, ...) write a "Color" per structure type unless `color_by_type=False`, `ColorCoding` maps a

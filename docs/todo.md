@@ -335,6 +335,8 @@ Formats
 - NEB: warn when an endpoint OUTCAR lists the atoms in another order than the band (the Fe
   vacancy example's 04/OUTCAR does; the reader takes POSCAR atoms, so only other tools are hit),
   and match atoms by position when images carry no identifiers.
+- `style='Points'` in a view cell reportedly left the bonds of an NEB view on the owner's
+  Windows GUI (2026-10-23); not reproduced in the container (bonds go off there), needs a screenshot.
 - NEB: interpolate between images for a smoother movie; `OverlayFrames` copies are extra
   particles, so picking one in the viewport selects a copy, not the real atom.
 - Ray tracer: see-through spheres are tessellated glass (`OverlayFrames` copies, Transparency);
