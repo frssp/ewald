@@ -292,7 +292,8 @@ def _phonopy_step(name: str, folder: str, entries: dict) -> WorkflowStep | None:
                                                kind="data" if f != "band.yaml" else "file"))
     from . import plugins
 
-    if "phonopy" not in plugins.readers():
+    # band.yaml is built in; phonopy's input with forces needs phonopy itself (the ewald-phonopy plugin)
+    if main != "band.yaml" and "phonopy-fc" not in plugins.readers():
         step.outputs.insert(0, WorkflowOutput("needs the phonopy plugin", "", kind="data",
                                               note="Plugins side bar: install phonopy"))
     if "band.yaml" in files or "FORCE_SETS" in files or "FORCE_CONSTANTS" in files:
