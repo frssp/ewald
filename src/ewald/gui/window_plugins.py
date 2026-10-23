@@ -234,7 +234,7 @@ class PluginPanelsMixin:
         self.plugin_panel_actions = []
         for name, entry in self.plugin_panels.items():   # side bars between Notebook and Remotes
             plugin = entry["plugin"]
-            a = QtGui.QAction(plugin_icon(plugin.icon), plugin.title, menu)
+            a = QtGui.QAction(plugin.title, menu)   # no icon: it would take the place of the tick
             a.setData(name)
             if plugin.area == "side":
                 a.setCheckable(True)

@@ -61,8 +61,8 @@ editor area.
 
 ## Notebook workspace
 
-**Viewport.** Drag to orbit and scroll to zoom (VTK's standard mouse controls). View › View
-along a, b, c, a*, b*, c* aligns the view with a cell vector or reciprocal vector, as in
+**Viewport.** Drag to orbit and scroll to zoom (VTK's standard mouse controls). View › Look
+along › a, b, c, a*, b*, c* aligns the view with a cell vector or reciprocal vector, as in
 VESTA, and View › Zoom to fit (Ctrl+0) frames the cell. View › Structure theme applies a theme (Default,
 VESTA, CPK, Journal, ASE, Dark slide, or a [theme plugin](../plugins/styles.md#themes)): element
 colors, background, cell color and radius preset in one step; its Dark background and White
@@ -105,7 +105,7 @@ add Phonon band structure, an NEB band adds NEB energy profile (both open the Pl
 volumetric grid adds Add isosurface (or Edit isosurface once there is one). A trajectory adds
 Play/Pause and Overlay other frames, which draws every other frame as see-through copies behind
 the current one (`OverlayFrames`; on by default for NEB folders), with its transparency (50 to
-95 %) and whether only the atoms that move get copies. Show (bonds, simulation cell), View
+95 %) and whether only the atoms that move get copies. Show (bonds, simulation cell), Look
 along, Orthographic, Zoom to fit and Ask AI are always there.
 
 **Plugin side bars.** A plugin can bring its own side bar (a sim-agent panel, a database
@@ -330,7 +330,7 @@ zooms the view as usual. *Fit to structure* zooms and centers the view so the st
 the frame, *Reset frame* goes back to the largest centered frame. After Render, *Last render*
 shows the picture; *3D view* goes back. The frame is the `region` of the notebook's view
 (`view(pipe, region=[x, y, height])`, see [Rendering](rendering.md#options)), so it round-trips
-with the notebook, and View › Write view to notebook stores it with the camera. Preferences ›
+with the notebook, and Insert › Write view settings to notebook stores it with the camera. Preferences ›
 3D view › Render frame in the 3D view, or right-click › Show › Render frame, shows the frame
 outside the Render page too. The frame is not drawn yet on the OpenGL 1.x viewport used over
 `ssh -X`. The "Python for this figure" panel shows the script that

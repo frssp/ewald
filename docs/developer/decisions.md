@@ -103,6 +103,29 @@ the end.
   panel tabs with a thumbnail under the cell.
 - **Landed:** PRs #183, #184.
 
+### D22. Menus grouped by role, one word for one thing (2026-10-23)
+
+- **Decision:** the menu bar follows roles: File opens (Open recent, Open example, Open from ›
+  Remote file, Location, NEB folder, Workflow folder) and exports (Export › Image, Data, Movie,
+  Session); Edit edits cells; View is the camera and what is drawn (Look along, Show, Structure
+  theme, Layout, Full screen); Insert adds cells (Step with its Plugins, Plot, Quick analysis);
+  Notebook runs them; Tools are the structure view's tools and the command palette; Window ticks
+  the side bars (plugin side bars with the built-in ones) and lists the tabs; Help adds Tutorials
+  and Keyboard shortcuts. Names say one thing each: plot cells are "Plot" (not "View"), layout
+  moves act on a "tab", the structure color preset is "Structure theme" (the UI theme stays in
+  Preferences), and the 3D view is the "structure view". Preferences pages become General, 3D view,
+  Atoms & bonds, Rendering, Plots, Notebooks, Compute, Python, AI and Plugins, with plugin pages after
+  Plugins and Edit › Plugin settings removed. Shortcuts in menus and tooltips are written the
+  platform's way (⌘ on macOS), every menu entry has a mnemonic, Ctrl+N joins Ctrl+T for a new
+  notebook. Existing shortcuts stay, except Ctrl+Shift+O of the legacy session file.
+- **Why:** asked for a review of every menu "UX/UI디자이너의 관점으로" (from a UX/UI designer's
+  point of view); from the review's options the owner picked applying all of them (A–F) over only
+  the menu bar and naming, only platform conventions and labels, or only the small fixes.
+- **Considered:** keeping the menu structure and fixing labels only; leaving the reorganization
+  in the TODO list. The View tab keeps its name (the owner chose it in PR #127).
+- **Landed:** PR #227 (small fixes found by the review), this PR (the reorganization); review
+  report with screenshots in the project files (`ewald-menu-review/`).
+
 ## Architecture
 
 ### D11. A small core, everything else a plugin (2026-10-19, 2026-10-20)

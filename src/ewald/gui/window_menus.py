@@ -275,7 +275,7 @@ class MenusMixin:
         for label, action, keys in (("Cu&t cells", "cut", "X"), ("&Copy cells", "copy", "C"),
                                     ("&Paste cells below", "paste:below", "V"),
                                     ("Paste cells abo&ve", "paste:above", "Shift+V"),
-                                    ("&Delete cells", "delete", "D, D"), ("Undo cell deletion", "undelete", "Z"),
+                                    ("&Delete cells", "delete", "D, D"), ("Undo cell de&letion", "undelete", "Z"),
                                     ("&Merge cells", "merge", "Shift+M")):
             e.addAction(label, lambda a=action: self._cell_action(a)).setToolTip(f"Esc, then {keys}")
         e.setToolTipsVisible(True)
@@ -390,9 +390,11 @@ class MenusMixin:
 
         t = self.tools_menu = mb.addMenu("&Tools")
         tools = QtGui.QActionGroup(t)   # one viewport tool at a time, like the tool rail
+        names = {"orbit": "&Orbit, pan and zoom", "pick": "&Pick atom", "distance": "Measure &distance",
+                 "angle": "Measure &angle", "bond": "Edit &bonds"}
         for key, _icon, tip in Viewport.TOOLS:
-            label = tip.split(":")[0]
-            act = t.addAction("&" + label, lambda k=key: self.viewport.set_tool(k))
+            act = t.addAction(names.get(key, tip.split(":")[0]), lambda k=key: self.viewport.set_tool(k))
+            act.setToolTip(tip)
             act.setCheckable(True)
             act.setData(key)
             tools.addAction(act)
