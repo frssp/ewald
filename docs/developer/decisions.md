@@ -363,6 +363,25 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Alternatives:** asking GitHub Support to purge the pull request refs (keeps the pull
   requests, delays publication); publishing with the refs as they were.
 
+### D33. The app icon is an ammonia molecule over an orange chat bubble (2026-10-23)
+
+- **Decision:** the app icon is NH3 (an Azure N, three H and a glass lone-pair lobe) over an
+  orange chat bubble on a Graphite tile; the molecule is larger than the bubble and overlaps it.
+  Sizes up to 32 px use a variant with heavier bonds. It replaces the teal Ewald sphere of PR #54
+  (old repository).
+- **Why:** the owner disliked the teal icon ("아이콘이 맘에 안 들어") and asked to explore widely
+  first: "너무 완성작을 만들지 말고 한 15가지 정도 디자인 컨샙만 보여주고 거기서 선택한 다음
+  다듬어 완성하자". From 15 rough concepts the owner kept a code prompt with an atom, a chat bubble
+  with a molecule, a phonon wave and a periodic box, then narrowed to the prompt and the chat
+  bubble, asked for "NH3 lone pair" with a large teardrop lobe drawn like a textbook sp3 orbital
+  and no electron dots, let the molecule overflow the bubble ("분자가 메세지 창이 넘어가도
+  괜찮은데", 1.4 times larger), asked for a clearer and then a bolder bubble colour and picked
+  orange, and picked a glass lobe ("L1 glass") over Azure, nested shells and a stippled lobe.
+- **Considered:** a code prompt `>` next to an atom on a baseline; the four sp3 lobes alone;
+  slate, white, steel blue, violet and raspberry bubbles; a lit atom, a unit cell, a diffraction
+  pattern, lattice planes and a 3D Ewald sphere (drafts in the project files `ewald-icons-*`).
+- **Landed:** PR (this one).
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

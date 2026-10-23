@@ -1,9 +1,133 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <!-- EWALD app icon for 16-32 px: the Ewald circle, the origin and three reflections, no lattice. -->
-  <rect x="32" y="32" width="960" height="960" rx="200" fill="#12786A"/>
-  <circle cx="512" cy="512" r="300" fill="none" stroke="#FFFFFF" stroke-width="96"/>
-  <g fill="#D9622B" stroke="#12786A" stroke-width="36">
-    <circle cx="378" cy="244" r="120"/><circle cx="780" cy="378" r="120"/><circle cx="646" cy="780" r="120"/>
-  </g>
-  <circle cx="244" cy="646" r="100" fill="#FFFFFF" stroke="#12786A" stroke-width="36"/>
+<!-- EWALD app icon, 16-32 px variant of ewald.svg: slightly larger molecule, heavier bonds. -->
+<defs>
+<linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#2E333C"/>
+<stop offset="1" stop-color="#14171C"/>
+</linearGradient>
+<linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#FFFFFF" stop-opacity=".22"/>
+<stop offset=".5" stop-color="#FFFFFF" stop-opacity=".04"/>
+<stop offset="1" stop-color="#FFFFFF" stop-opacity=".10"/>
+</linearGradient>
+<radialGradient id="glow">
+<stop offset="0" stop-color="#5CA0F2" stop-opacity=".45"/>
+<stop offset="1" stop-color="#5CA0F2" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="shadow">
+<stop offset="0" stop-color="#000" stop-opacity=".45"/>
+<stop offset="1" stop-color="#000" stop-opacity="0"/>
+</radialGradient>
+<linearGradient id="bi" x1="0" y1="0" x2="1" y2="1">
+<stop offset="0" stop-color="#8A7CFF"/>
+<stop offset="1" stop-color="#4E3FD6"/>
+</linearGradient>
+<linearGradient id="bw" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#FFFFFF"/>
+<stop offset="1" stop-color="#DCE4EE"/>
+</linearGradient>
+<linearGradient id="bo" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#F7A06A"/>
+<stop offset="1" stop-color="#DB6A2C"/>
+</linearGradient>
+<linearGradient id="bs" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#465061"/>
+<stop offset="1" stop-color="#343C49"/>
+</linearGradient>
+<radialGradient id="sa" cx=".36" cy=".32" r=".75" fx=".3" fy=".26">
+<stop offset="0" stop-color="#EAF3FF"/>
+<stop offset=".5" stop-color="#5CA0F2"/>
+<stop offset="1" stop-color="#0F3F86"/>
+</radialGradient>
+<radialGradient id="so" cx=".36" cy=".32" r=".75" fx=".3" fy=".26">
+<stop offset="0" stop-color="#FFE4D1"/>
+<stop offset=".5" stop-color="#F08A4B"/>
+<stop offset="1" stop-color="#93380F"/>
+</radialGradient>
+<radialGradient id="sw" cx=".36" cy=".32" r=".75" fx=".3" fy=".26">
+<stop offset="0" stop-color="#FFFFFF"/>
+<stop offset=".5" stop-color="#E4ECF6"/>
+<stop offset="1" stop-color="#8FA6C4"/>
+</radialGradient>
+<radialGradient id="sh" cx=".36" cy=".32" r=".75" fx=".3" fy=".26">
+<stop offset="0" stop-color="#FFFFFF"/>
+<stop offset=".55" stop-color="#D3DCE8"/>
+<stop offset="1" stop-color="#7C8CA3"/>
+</radialGradient>
+<radialGradient id="sn" cx=".36" cy=".32" r=".75" fx=".3" fy=".26">
+<stop offset="0" stop-color="#DDEBFF"/>
+<stop offset=".5" stop-color="#3F86E6"/>
+<stop offset="1" stop-color="#0C2F6E"/>
+</radialGradient>
+<linearGradient id="lA" x1="0" y1="0" x2="1" y2="1">
+<stop offset="0" stop-color="#BFDBFF"/>
+<stop offset="1" stop-color="#2F78D8"/>
+</linearGradient>
+<linearGradient id="lW" x1="0" y1="0" x2="1" y2="1">
+<stop offset="0" stop-color="#FFFFFF"/>
+<stop offset="1" stop-color="#AEBBCC"/>
+</linearGradient>
+<linearGradient id="lO" x1="0" y1="0" x2="1" y2="1">
+<stop offset="0" stop-color="#FFC9A6"/>
+<stop offset="1" stop-color="#D9612A"/>
+</linearGradient>
+<linearGradient id="gLA" x1="0" y1="1" x2="0" y2="0">
+<stop offset="0" stop-color="#2F78D8"/>
+<stop offset="1" stop-color="#A9CEFF"/>
+</linearGradient>
+<linearGradient id="gLW" x1="0" y1="1" x2="0" y2="0">
+<stop offset="0" stop-color="#B3BFCF"/>
+<stop offset="1" stop-color="#FFFFFF"/>
+</linearGradient>
+<linearGradient id="gLO" x1="0" y1="1" x2="0" y2="0">
+<stop offset="0" stop-color="#D45A22"/>
+<stop offset="1" stop-color="#FFB98C"/>
+</linearGradient>
+<linearGradient id="bO" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#F2955A"/>
+<stop offset="1" stop-color="#D2622A"/>
+</linearGradient>
+<linearGradient id="bV" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#8B6CF0"/>
+<stop offset="1" stop-color="#5F43C8"/>
+</linearGradient>
+<linearGradient id="bR" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#E35A78"/>
+<stop offset="1" stop-color="#B83456"/>
+</linearGradient>
+<linearGradient id="bA" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#76839A"/>
+<stop offset="1" stop-color="#5E6A80"/>
+</linearGradient>
+<linearGradient id="bB" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#5079B8"/>
+<stop offset="1" stop-color="#3A5E98"/>
+</linearGradient>
+<linearGradient id="bC" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#B9C6D8"/>
+<stop offset="1" stop-color="#9AAAC0"/>
+</linearGradient>
+<linearGradient id="gGl" x1="0" y1="1" x2="0" y2="0">
+<stop offset="0" stop-color="#FFFFFF" stop-opacity=".25"/>
+<stop offset="1" stop-color="#FFFFFF" stop-opacity=".75"/>
+</linearGradient>
+<linearGradient id="gAz" x1="0" y1="1" x2="0" y2="0">
+<stop offset="0" stop-color="#1F5FC0"/>
+<stop offset="1" stop-color="#9CC8FF"/>
+</linearGradient>
+</defs>
+<rect x="32" y="32" width="960" height="960" rx="216" fill="url(#tg)"/>
+<path d="M236 262 H788 Q878 262 878 352 V700 Q878 790 788 790 H536 L338 930 Q320 942 324 920 L350 790 H236 Q146 790 146 700 V352 Q146 262 236 262 Z" fill="url(#bO)"/>
+<g transform="translate(512 556) scale(1.48) translate(-512 -486)">
+<path d="M512 486 C 523.25 415.6 624.5 358.0 624.5 268.4 C 624.5 204.39999999999998 573.875 166 512 166 C 450.125 166 399.5 204.39999999999998 399.5 268.4 C 399.5 358.0 500.75 415.6 512 486 Z" fill="url(#gGl)" stroke="#FFFFFF" stroke-width="10" stroke-linejoin="round" transform="rotate(0 512 486)"/>
+<path d="M484 346 C 488.725 307.28 531.25 275.6 531.25 226.32 C 531.25 191.12 509.9875 170.0 484 170.0 C 458.0125 170.0 436.75 191.12 436.75 226.32 C 436.75 275.6 479.275 307.28 484 346 Z" fill="url(#gGl)" stroke="none" stroke-width="0" stroke-linejoin="round" transform="rotate(0 484 346)" opacity="0.9"/>
+<path d="M512 486 L344 588" fill="none" stroke="#D5DDE8" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" opacity="1"/>
+<path d="M512 486 L680 588" fill="none" stroke="#D5DDE8" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" opacity="1"/>
+<circle cx="344" cy="588" r="64" fill="url(#sh)"/>
+<circle cx="680" cy="588" r="64" fill="url(#sh)"/>
+<circle cx="512" cy="486" r="108" fill="url(#sn)"/>
+<path d="M512 486 L556 656" fill="none" stroke="#D5DDE8" stroke-width="48" stroke-linecap="round" stroke-linejoin="round" opacity="1"/>
+<circle cx="556" cy="656" r="72" fill="url(#sh)"/>
+</g>
+<rect x="36" y="36" width="952" height="952" rx="212" fill="none" stroke="url(#rim)" stroke-width="8"/>
 </svg>
