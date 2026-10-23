@@ -5237,6 +5237,38 @@ def test_bundled_ui_fonts_are_registered(app):
         assert QtGui.QFontInfo(QtGui.QFont(family)).family().startswith(family)
 
 
+def test_style_sheets_name_only_installed_font_families(app):
+    """A family Qt cannot find (as the first choice or as a glyph fallback) makes it build its
+    alias table: ~200 ms on macOS and a "Replace uses of missing font family" warning. The
+    fallback lists name fonts of every platform; what reaches Qt is cut to what is installed."""
+    import re
+
+    from PySide6 import QtGui
+
+    from ewald.gui import fonts, theme
+
+    sans = fonts._system("GeneralFont")
+    mac = {"ibm plex sans", "helvetica neue", "menlo"}        # no Segoe UI, Consolas or Inter
+    windows = {"ibm plex sans", "segoe ui", "consolas"}
+    rule = 'font-family: "IBM Plex Sans", "Inter", "Segoe UI", "Helvetica Neue", sans-serif;'
+    assert fonts.css(rule, mac) == f'font-family: "IBM Plex Sans", "Helvetica Neue", "{sans}";'
+    assert fonts.css(rule, windows) == f'font-family: "IBM Plex Sans", "Segoe UI", "{sans}";'
+    mono = 'font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace; }'
+    fixed = fonts._system("FixedFont")
+    assert fonts.css(mono, mac) == f'font-family: "Menlo", "{fixed}"; }}'
+    assert fonts.installed(["Inter", "Fira Code"], set()) == [sans]   # never empty
+    assert fonts.installed(["Menlo", "menlo", "MENLO"], mac) == ["Menlo"]
+
+    known = {re.sub(r"\s*\[.*\]$", "", f).lower() for f in QtGui.QFontDatabase.families()}
+    theme.apply(app, "graphite")
+    lists = re.findall(r"font-family:\s*([^;}]+)", app.styleSheet())
+    assert lists
+    for names in lists:
+        for name in names.split(","):
+            assert name.strip().strip('"').lower() in known, name
+    assert "Inter" not in theme.QSS
+
+
 def test_plugins_side_bar_recommends_a_restart_when_pip_replaced_loaded_code(app):
     from ewald import settings
     from ewald.gui import plugins_panel

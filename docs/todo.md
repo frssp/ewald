@@ -569,6 +569,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   GPU (the Legacy GL viewport with `opengl32sw.dll` should come up, with the note on stderr);
   saving a notebook open in Notepad++ or synced by OneDrive (the message names the program); the
   `icacls` ACL on `credentials.json` (only your account listed); the bundled fonts in the UI.
+- macOS start-up log (2026-10-23): no "Populating font family aliases" (Qt) or "findfont ...
+  Apple Chancery" (matplotlib) lines when the GUI opens a notebook with plots. The
+  `TSMSendMessageToUIServer ... com.apple.tsm.uiserver` lines are AppKit's input-method client
+  logging from the Python process and are harmless; they are not silenced.
 - Windows parity after the portability audit ([Windows, macOS and Linux](developer/portability.md)):
   open and export a POSCAR, XDATCAR, LAMMPS dump and an `.ewd` with data on another drive (D:);
   check exported files have LF ends; the open dialog lists lower-case `poscar`/`*.CIF`; a save

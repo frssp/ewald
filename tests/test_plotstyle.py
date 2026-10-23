@@ -111,3 +111,50 @@ def test_notebook_cells_draw_plain_pyplot_in_the_style():
     assert nb.cells[1].outputs[0].data.split() == [str(float(mpl.rcParams["font.size"])), "4.0"]
     assert plot_style("Publication in UI theme colors", {"bg": "#000000"}) == ("publication", {"bg": "#000000"})
     assert plot_style("Publication", {"bg": "#000000"}) == ("publication", None)
+
+
+def test_style_figures_draw_math_in_the_style_outside_its_context(monkeypatch):
+    """A GUI canvas paints from the event loop and savefig may run after ``with context()``:
+    math must still come from the style's sans, never from matplotlib's default
+    ``mathtext.cal`` = "cursive" (Apple Chancery on macOS, with a findfont weight warning)."""
+    import io
+
+    import matplotlib as mpl
+    from matplotlib import _mathtext
+
+    asked = []
+    real = _mathtext.findfont
+    monkeypatch.setattr(_mathtext, "findfont", lambda prop, *a, **k: asked.append(str(prop)) or real(prop, *a, **k))
+    with mpl.rc_context(mpl.rcParamsDefault):   # process rcParams: matplotlib's, as in the GUI
+        fig = plotstyle.figure()
+        with plotstyle.context(*fig._ewald_style):
+            ax = fig.add_subplot()
+            ax.plot([0, 1], [0, 2e5])
+            ax.set_xlabel(plotstyle.axis_label("r"))
+        fig.canvas.draw()                                       # outside the context
+        fig.savefig(io.BytesIO(), format="png")
+        assert mpl.rcParams["mathtext.fontset"] == "dejavusans"   # the process rc is left alone
+    assert asked and not any("cursive" in a for a in asked)
+    assert any(plotstyle._sans() in a for a in asked)
+
+
+def test_bound_style_follows_a_changing_theme():
+    import matplotlib as mpl
+    from matplotlib.artist import Artist
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
+    seen = []
+
+    class Probe(Artist):
+        def draw(self, renderer):
+            seen.append((mpl.rcParams["font.size"], mpl.rcParams["axes.facecolor"]))
+
+    tokens = {"bg": "#FFFFFF"}
+    fig = plotstyle.bind(Figure(), lambda: (tokens, 9.0))
+    fig.add_artist(Probe())
+    FigureCanvasAgg(fig).draw()
+    tokens = {"bg": "#14161A"}
+    fig._ewald_style = lambda: (tokens, 11.0)
+    fig.canvas.draw()
+    assert seen == [(9.0, "#FFFFFF"), (11.0, "#14161A")]

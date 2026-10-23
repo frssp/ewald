@@ -253,14 +253,35 @@ def figure(size: str | tuple | None = None, tokens: dict | None = None, font_siz
     fs = FONT_SIZE * max(1.0, (w / 3.5) ** 0.5) if font_size is None else font_size
     with context(tokens, fs):
         fig = Figure(figsize=(w, h), layout="constrained")
-    fig._ewald_style = (tokens, fs)
+    return bind(fig, (tokens, fs))
+
+
+def _draw_styled(fig, renderer):
+    style = fig._ewald_style
+    tokens, fs = style() if callable(style) else style
+    with context(tokens, fs):
+        return type(fig).draw(fig, renderer)
+
+
+def bind(fig, style=(None, FONT_SIZE)):
+    """Draw ``fig`` in the style wherever it is drawn: a GUI canvas paints it from the Qt event
+    loop, and ``savefig`` may run after the ``with context()`` that made its artists. Text made
+    in the style sets math in the style's ``mathtext.fontset`` ("custom"), which reads the
+    ``mathtext.rm``/``it``/``cal``... families when drawn; outside the style those are matplotlib's
+    defaults (``cal`` = "cursive": Apple Chancery on macOS, with a findfont warning). ``style``
+    is ``(tokens, font_size)`` or a function returning them (a theme that may change)."""
+    import functools
+
+    fig._ewald_style = style
+    fig.draw = functools.partial(_draw_styled, fig)
     return fig
 
 
 def save(fig, target, format: str | None = None, quality: str = "publication", dpi: float | None = None, **kwargs):
     """``fig.savefig`` with the style's output settings: editable text in PDF/EPS/SVG, a tight
     box, and :data:`DPI` of ``quality`` for raster formats (``dpi=`` wins)."""
-    tokens, fs = getattr(fig, "_ewald_style", (None, FONT_SIZE))
+    style = getattr(fig, "_ewald_style", (None, FONT_SIZE))
+    tokens, fs = style() if callable(style) else style
     with context(tokens, fs):
         fig.savefig(target, format=format, dpi=dpi or DPI[quality.lower()], **kwargs)
 
