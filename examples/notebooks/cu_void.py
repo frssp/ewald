@@ -6,7 +6,9 @@
 # block open and look at the coordination histogram and g(r).
 
 # %%
-from ewald import examples, load
+import numpy as np
+
+from ewald import all_frames, each_frame, examples, load
 from ewald.modifiers import *
 from ewald.paint import fade, hide, isolate, paint, resize
 from ewald.views import show
@@ -18,6 +20,7 @@ pipe.add(CoordinationAnalysis(cutoff=3.0))
 
 # %% style: surface atoms, every frame
 @pipe.add
+@each_frame
 def style(frame, data):
     paint(data, "Coordination < 12", "#C8551F")   # surface atoms
     paint(data, "Coordination < 9", "gold")       # void edges and corners
@@ -28,6 +31,18 @@ show(pipe, histogram="Coordination")
 
 # %%
 show(pipe, table="coordination-rdf")
+
+# %% surface atoms over the run: read every frame once
+@pipe.add
+@all_frames
+def surface(frames, data):
+    data.tables["surface"] = {
+        "Timestep": np.array([d.attributes["Timestep"] for d in frames]),
+        "Surface atoms": np.array([np.count_nonzero(d["Coordination"] < 12) for d in frames]),
+    }
+
+# %%
+show(pipe, table="surface")
 
 # %%
 data = pipe.compute(0)

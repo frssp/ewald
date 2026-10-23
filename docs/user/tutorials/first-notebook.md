@@ -15,7 +15,9 @@ the left gets its first cell, which imports what notebooks use and loads the fil
 the file's full path; the tutorial notebook uses `examples.path` so it runs anywhere):
 
 ```python
-from ewald import examples, load
+import numpy as np
+
+from ewald import all_frames, each_frame, examples, load
 from ewald.modifiers import *
 from ewald.paint import fade, hide, isolate, paint, resize
 from ewald.views import show
@@ -47,15 +49,16 @@ Add a code cell (**+ Code**) and type:
 
 ```python
 @pipe.add
+@each_frame
 def style(frame, data):
     paint(data, "Coordination < 12", "#C8551F")   # surface atoms
     paint(data, "Coordination < 9", "gold")       # void edges and corners
     hide(data, "Position.X > 8")                  # cut the block open
 ```
 
-Run it with Ctrl+Enter. `@pipe.add` makes the function a step that runs on every frame, after the
-coordination step, so the colors follow the atoms through the trajectory: press play under the
-view to check. `paint` takes any matplotlib color and `hide` removes atoms from the picture (not
+Run it with Ctrl+Enter. `@pipe.add` makes the function a step after the coordination step, and
+`@each_frame` says it runs again on every frame (`frame` is the frame number, `data` that frame's
+atoms), so the colors follow the atoms through the trajectory: press play under the view to check. `paint` takes any matplotlib color and `hide` removes atoms from the picture (not
 from the data). The condition is an expression on the particle properties (`Position.X` is the x
 component), so the legend in the corner of the view and of rendered figures says which condition
 each color stands for. A boolean array (`data["Coordination"] < 12`) works too, but the legend can
@@ -75,6 +78,29 @@ Views are live. Drag over the bars from 8 to 11 on the histogram and those atoms
 the Structure view; *Keep as selection* turns that range into a step (`ExpressionSelection`) so the
 selection is part of the notebook. Shift+click atoms in the view and they show up on the plot.
 
+## 5. Over the whole run
+
+The void changes as the block anneals. A step marked `@all_frames` reads every frame once and
+leaves a result that every frame shares, here a table of the surface atoms against time:
+
+```python
+@pipe.add
+@all_frames
+def surface(frames, data):
+    data.tables["surface"] = {
+        "Timestep": np.array([d.attributes["Timestep"] for d in frames]),
+        "Surface atoms": np.array([np.count_nonzero(d["Coordination"] < 12) for d in frames]),
+    }
+
+show(pipe, table="surface")
+```
+
+`frames` gives each frame as it enters the step, with the coordination step above already
+applied (`len(frames)`, `frames[k]`, `for d in frames`). The surface grows from 78 to 107 atoms in
+the last two frames. A table whose first column is `Timestep` is a time series: a marker follows
+the current frame, a click on the curve goes to that frame and dragging over a range selects
+frames. The step runs again only when a step above it or the file changes, not during playback.
+
 Last, a code cell for a number to quote:
 
 ```python
@@ -85,10 +111,10 @@ print(f"{int(surface.sum())} surface atoms of {data.count}")
 
 which prints `78 surface atoms of 462`.
 
-## 5. Save
+## 6. Save
 
 File › Save notebook (Ctrl+S). Save it as `cu_void.py` to keep it in git: `python cu_void.py` runs
-it without the GUI and draws the two plots with matplotlib. Save it as `cu_void.ewd` to send it to
+it without the GUI and draws the plots with matplotlib. Save it as `cu_void.ewd` to send it to
 someone: the file also carries the outputs, the plots as SVG, PNG and CSV, and the trajectory
 itself, since it is small. See [Notebooks](../notebooks.md#notebook-files).
 

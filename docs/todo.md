@@ -507,7 +507,8 @@ Docs
   `trajectory_trail` and their color bar (the Cu_md example moves too little to show them; needs
   a diffusing example file), a NEB folder (`NebEnergyProfile`, `OverlayFrames`; only the
   fe_vacancy_neb paper script), `load([...], join=...)` restart segments, `workflow_table`,
-  `run_info`/`check_run`/`load_runs`, `[each frame]`/`[all frames]` cells, VASP DOS/bands. The remaining manual pages (Python scripting, Rendering figures, Modifiers) still show
+  `run_info`/`check_run`/`load_runs`, `[each frame]`/`[all frames]` cell tags (the tutorials use
+  the decorators), VASP DOS/bands. The remaining manual pages (Python scripting, Rendering figures, Modifiers) still show
   `pipe.modifiers.append` and `import_file`; switch their examples to `load`/`pipe.add` when they
   are next edited.
 - GUI screenshots in docs/images are made by docs/images/make_screenshots.py; Help › About and the

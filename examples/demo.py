@@ -13,7 +13,7 @@ import numpy as np
 from ase.build import bulk
 import ase.io
 
-from ewald import DataCollection, import_file
+from ewald import DataCollection, each_frame, import_file
 from ewald.io.lammps_dump import write_lammps_dump
 from ewald.modifiers import (CalculateDisplacements, ColorCoding, CoordinationAnalysis, DeleteSelected,
                              ExpressionSelection, Slice)
@@ -63,6 +63,7 @@ ax.set_xlabel(r"$r$ ($\mathrm{\AA}$)"); ax.set_ylabel(r"$g(r)$")
 fig.tight_layout(); fig.savefig(out / "cu_rdf.png")
 
 # --- 3. displacement + an OVITO-style Python modifier (user function)
+@each_frame
 def surface_shell(frame, data):
     """Custom modifier: flag under-coordinated atoms and record their fraction."""
     data.particles["Surface"] = (data["Coordination"] < 12).astype(np.int8)

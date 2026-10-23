@@ -6,7 +6,9 @@
 # and force arrows.
 
 # %%
-from ewald import examples, load
+import numpy as np
+
+from ewald import all_frames, each_frame, examples, load
 from ewald.modifiers import *
 from ewald.paint import paint, resize
 from ewald.views import show
@@ -20,6 +22,25 @@ pipe.add(CalculateDisplacements(reference_frame=0))
 # %% color by how far each atom moved
 pipe.add(ColorCoding("Displacement Magnitude", cmap="viridis"))
 
+# %% energy and the largest displacement of every frame, as one time series
+@pipe.add
+@all_frames
+def run_summary(frames, data):
+    data.tables["run"] = {
+        "Timestep": np.array([d.attributes["Timestep"] for d in frames]),
+        "Energy": np.array([d.attributes["Energy"] for d in frames]),
+        "Max displacement": np.array([d["Displacement Magnitude"].max() for d in frames]),
+    }
+
+# %%
+show(pipe, table="run", y="Energy")
+
+# %% force on each atom, frame by frame
+@pipe.add
+@each_frame
+def force_magnitude(frame, data):
+    data["Force Magnitude"] = np.linalg.norm(data["Force"], axis=1)
+
 # %% mean squared displacement
 pipe.add(MeanSquaredDisplacement(time_per_frame=0.01))
 
@@ -31,3 +52,6 @@ show(pipe, table="msd")
 
 # %%
 show(pipe, histogram="Displacement Magnitude")
+
+# %%
+show(pipe, histogram="Force Magnitude")

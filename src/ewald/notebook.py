@@ -990,7 +990,7 @@ def _worth_checking(pipeline) -> bool:
         return False
 
 
-IMPORTS = ("from ewald import import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\n"
+IMPORTS = ("from ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\n"
            "from ewald.paint import paint, hide, isolate, fade, resize")
 NEW_NOTEBOOK = '''# %% [markdown]
 # # {title}
