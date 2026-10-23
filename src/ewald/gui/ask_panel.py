@@ -222,8 +222,19 @@ def split_answer(text: str) -> list[tuple[str, str, str]]:
     return parts
 
 
+class _WrapLabel(QtWidgets.QLabel):
+    """A word-wrapped label that is always as tall as its text at its width: nested layouts give a
+    long Markdown answer (lists, tables) less height than it needs, which cut it off mid-answer."""
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        h = self.heightForWidth(self.width())
+        if h > 0 and h != self.minimumHeight():
+            self.setMinimumHeight(h)
+
+
 def _markdown_label(text: str, name: str = "chatText") -> QtWidgets.QLabel:
-    label = QtWidgets.QLabel(objectName=name)
+    label = _WrapLabel(objectName=name)
     label.setTextFormat(QtCore.Qt.MarkdownText)
     label.setText(text)
     label.setWordWrap(True)

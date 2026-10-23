@@ -152,18 +152,35 @@ def _property_summary(data: DataCollection, max_props: int = 24) -> dict:
     return out
 
 
+def _pair_reach(cell, reach: float = 4.0) -> float:
+    """``reach``, cut to just under half the periodic cell width (find_pairs refuses more: a small
+    unit cell)."""
+    if cell.is_valid and cell.pbc.any():
+        reach = min(reach, 0.499 * float(np.min(cell.perpendicular_widths()[cell.pbc])))
+    return reach
+
+
 def describe_frame(data: DataCollection, cutoff: float | str | None = "auto", rdf_peaks_: bool = True,
                    frame: int | None = None) -> dict:
     """Describe one snapshot in a few hundred tokens.
 
     ``cutoff`` sets the coordination cutoff in Angstrom; ``"auto"`` takes the
-    first minimum of g(r); ``None`` skips coordination analysis.
+    first minimum of g(r); ``None`` skips coordination analysis. The copies ``OverlayFrames``
+    adds (``Overlay Frame`` >= 0) are left out: they sit on the real atoms.
     """
+    copies = 0
+    if "Overlay Frame" in data:
+        real = np.asarray(data["Overlay Frame"]) < 0
+        copies = int((~real).sum())
+        if copies:
+            data = data.take(np.flatnonzero(real))
     types = np.asarray(data.types)
     comp = dict(sorted(Counter(str(t) for t in types).items(), key=lambda kv: -kv[1]))
     desc: dict = {"num_particles": data.count, "composition": comp, "cell": cell_parameters(data.cell)}
     if frame is not None:
         desc["frame"] = frame
+    if copies:
+        desc["overlay_copies_left_out"] = copies
     if data.cell.is_valid and data.count:
         desc["number_density_per_A3"] = _round(data.count / data.cell.volume)
         m = _masses(types)
@@ -171,9 +188,7 @@ def describe_frame(data: DataCollection, cutoff: float | str | None = "auto", rd
             desc["density_g_cm3"] = _round(m.sum() * 1.66053906660 / data.cell.volume)
     warnings = health_check(data)
     if data.count > 1 and not any("NaN" in w for w in warnings):
-        reach = 4.0   # find_pairs refuses more than half the periodic cell width (a small unit cell)
-        if data.cell.is_valid and data.cell.pbc.any():
-            reach = min(reach, 0.499 * float(np.min(data.cell.perpendicular_widths()[data.cell.pbc])))
+        reach = _pair_reach(data.cell)
         i, j, _, d = find_pairs(data.positions, data.cell, reach, half=True)
         d = np.asarray(d)
         if len(d):
@@ -258,7 +273,7 @@ def trajectory_series(pipeline, start: int = 0, stop: int | None = None, step: i
         cols["frame"].append(f)
         cols["volume"].append(data.cell.volume if data.cell.is_valid else np.nan)
         if data.count > 1:
-            _, _, _, d = find_pairs(data.positions, data.cell, 4.0, half=True)
+            _, _, _, d = find_pairs(data.positions, data.cell, _pair_reach(data.cell), half=True)
             cols["min_distance"].append(float(np.min(d)) if len(d) else np.nan)
         else:
             cols["min_distance"].append(np.nan)

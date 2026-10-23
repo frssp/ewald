@@ -10,8 +10,9 @@ that is sent to the provider are listed in [What the AI may do and what it sees]
 
 In the window, the AI chat side bar (Ctrl+J) works on the notebook beside it: with Preferences ›
 AI › "Let the AI run cells" on, the AI adds steps, writes and edits cells and runs them, and each
-answer links the cells it touched. (The recording's model answers are scripted, see
-`docs/images/make_ai_demo.py`; the tools and cells are real.)
+answer links the cells it touched. (The recording is a live one with Claude Opus 5.5, the work
+time-lapsed; `docs/images/make_ai_demo.py --live` makes it, and `ai-demo-transcript.json` beside
+the GIF has every tool call and answer.)
 
 Reading cells never scrolls the notebook. Preferences › AI › **Follow the AI's cells**
 (`llm.follow_cells`) says what happens when the AI writes or runs one: `follow` (default)
