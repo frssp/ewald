@@ -61,7 +61,7 @@ the end.
   public services.
 - **Landed:** PR #116.
 
-### D19. AI answers link the cells they changed (2026-10-23)
+### D21. AI answers link the cells they changed (2026-10-23)
 
 - **Decision:** when the AI writes, edits or runs a cell, its answer in the chat links to that
   cell (a click shows the notebook tab and lights the cell up). The links come from the tools'
