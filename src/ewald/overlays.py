@@ -6,7 +6,7 @@ The layout is computed once in pixel coordinates (origin top-left) by
 and the vector renderer draws the same items as vector text and shapes.
 
 An :class:`OverlayElement` returns 2D items (:class:`Text`, :class:`Rect`, :class:`Polyline`,
-:class:`Circle`, :class:`Image`) from ``layout(data, ctx)``; every renderer draws them, so a
+:class:`Circle`, :class:`Image`, :class:`ColorRamp`) from ``layout(data, ctx)``; every renderer draws them, so a
 plugin overlay appears in OpenGL, ray-traced and SVG/PDF figures alike.
 """
 from __future__ import annotations
@@ -44,6 +44,7 @@ class Rect:
     fill: object = None          # None: not filled
     outline: object = None       # None: no outline; "ink" for the ink color
     width: float = 1.0
+    radius: float = 0.0          # rounded corners (px)
 
 
 @dataclass
@@ -76,7 +77,22 @@ class Image:
     height: float | None = None
 
 
-ITEMS = (Text, Rect, Polyline, Circle, Image)
+@dataclass
+class ColorRamp:
+    """A color map across the box (x0, y0)-(x1, y1): low to high from the bottom up (``vertical``) or from
+    left to right, with corners rounded by ``radius`` px. Pictures draw it as pixels, vector files as
+    shapes."""
+
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    cmap: object = "viridis"
+    vertical: bool = True
+    radius: float = 0.0
+
+
+ITEMS = (Text, Rect, Polyline, Circle, Image, ColorRamp)
 
 
 @dataclass
@@ -528,12 +544,12 @@ def color_rule_items(data, type_colors, lay: dict, size, right: bool = True, y: 
 
 def overlay_layout(data, size, *, text=None, legend=True, type_legend=False, scale_bar=None, camera=None,
                    type_colors=None, overlays=None, frame=0, background="white", transparent=False,
-                   colorbars=None) -> dict:
+                   colorbars=None, colorbar_style=None) -> dict:
     """Positions (pixels, origin top-left) and contents of the requested overlays.
 
     ``legend`` draws the color bars: the ColorCoding one of ``data`` and ``colorbars``, the visual
-    elements' (:attr:`ewald.scene.Scene.legends`), side by side from the right edge (``"colorbars"``;
-    ``"colorbar"`` is the first).
+    elements' (:attr:`ewald.scene.Scene.legends`), as overlay items (:mod:`ewald.colorbars`, the same bars
+    the viewport shows); ``"colorbars"`` lists them.
 
     ``scale_bar``: True picks a round length (about a fifth of the width), a number
     gives the length in Angstrom; needs ``camera``. ``overlays``: overlay elements (see
@@ -554,22 +570,17 @@ def overlay_layout(data, size, *, text=None, legend=True, type_legend=False, sca
         if rows:
             out["types"] = rows
     if legend:
-        bars = []
-        for k, bar in enumerate(color_legends(data, colorbars)):
-            lo, hi = (float(v) for v in bar["range"])
-            right = w * (0.985 - 0.13 * k)    # each further bar sits left of the one before
-            x0, x1, y0, y1 = int(right - 0.105 * w), int(right - 0.075 * w), int(0.15 * h), int(0.85 * h)
-            ticks = [(int(y1 - 1 - f * (y1 - y0 - 1)), _tick(lo + f * (hi - lo))) for f in (0, 0.25, 0.5, 0.75, 1)]
-            title = str(bar["title"])
-            title_x = int(min(x0, right - 0.62 * int(fs * 0.8) * len(title)))  # keep long titles inside
-            bars.append({"box": (x0, y0, x1, y1), "cmap": bar["cmap"], "title": title, "title_x": title_x,
-                         "ticks": ticks, "tick_len": int(0.006 * w) + 1, "label_x": x1 + int(0.01 * w),
-                         "right": right})
+        from .colorbars import colorbar_items, default_style
+
+        bars = color_legends(data, colorbars)
         if bars:
-            out["colorbar"], out["colorbars"] = bars[0], bars
+            out["colorbars"] = bars
+            out["items"] = colorbar_items(bars, (w, h), unit=out["small"], ink=ink_color(background, transparent),
+                                          background=background, transparent=transparent,
+                                          style=colorbar_style or default_style())
         swatches = color_rule_items(data, type_colors, out, (w, h), right=not bars, y=y)
         if swatches:
-            out["items"] = swatches
+            out["items"] = out.get("items", []) + swatches
     if scale_bar and camera is not None:
         ppa = pixels_per_angstrom(camera, size)
         length = nice_length(0.2 * w / ppa) if scale_bar is True else float(scale_bar)
@@ -616,18 +627,6 @@ def draw_overlays(rgba: np.ndarray, data, *, text=None, legend=True, type_legend
         fill = tuple(int(255 * v) for v in row["rgb"]) + (255,)
         draw.ellipse([x, y, x + d, y + d], fill=fill, outline=ink, width=max(1, d // 14))
         draw.text((x + int(1.5 * d), y + d // 2), row["name"], fill=ink, font=font, anchor="lm")
-    for cb in lay.get("colorbars", []):
-        x0, y0, x1, y1 = cb["box"]
-        cmap = get_colormap(cb["cmap"])
-        for y in range(y0, y1):
-            c = cmap(1 - (y - y0) / max(1, y1 - y0 - 1))
-            draw.line([(x0, y), (x1, y)], fill=tuple(int(255 * v) for v in c[:3]) + (255,))
-        draw.rectangle([x0, y0, x1, y1 - 1], outline=ink)
-        tx = min(cb["title_x"], int(cb["right"] - draw.textlength(cb["title"], font=small)))
-        draw.text((tx, y0 - int(1.4 * fs)), cb["title"], fill=ink, font=small)
-        for y, label in cb["ticks"]:
-            draw.line([(x1, y), (x1 + cb["tick_len"], y)], fill=ink)
-            draw.text((cb["label_x"], y), label, fill=ink, font=small, anchor="lm")
     if "scale_bar" in lay:
         sb = lay["scale_bar"]
         th = sb["thickness"]
@@ -667,7 +666,14 @@ def _draw_items_pil(im, items, ink, font_path, font_size):
 
     draw = ImageDraw.Draw(im)
     for it in items:
-        if isinstance(it, Image):
+        if isinstance(it, ColorRamp):
+            from .colorbars import gradient_rgba
+
+            x, y = int(round(it.x0)), int(round(it.y0))
+            ramp = gradient_rgba(it.cmap, round(it.x1) - x, round(it.y1) - y, it.vertical, it.radius)
+            im.alpha_composite(PILImage.fromarray(ramp, "RGBA"), (x, y))
+            draw = ImageDraw.Draw(im)
+        elif isinstance(it, Image):
             src = np.asarray(it.rgba, np.uint8)
             src = src if src.shape[-1] == 4 else np.dstack([src, np.full(src.shape[:2], 255, np.uint8)])
             pic = PILImage.fromarray(np.ascontiguousarray(src), "RGBA")
@@ -683,23 +689,55 @@ def _draw_items_pil(im, items, ink, font_path, font_size):
             draw.text((it.x, it.y), it.text, fill=_rgba255(it.color, ink), font=font(it.size, it.bold), anchor=anchor,
                       **halo)
         elif isinstance(it, Rect):
-            draw.rectangle([it.x0, it.y0, it.x1, it.y1],
-                           fill=None if it.fill is None else _rgba255(it.fill, ink),
-                           outline=None if it.outline is None else _rgba255(it.outline, ink),
-                           width=max(1, int(round(it.width))))
+            fill = None if it.fill is None else _rgba255(it.fill, ink)
+            outline = None if it.outline is None else _rgba255(it.outline, ink)
+            on, (dx, dy), done = _layer(im, draw, [it.x0, it.y0, it.x1, it.y1], it.width, fill, outline)
+            box = [it.x0 - dx, it.y0 - dy, it.x1 - dx, it.y1 - dy]
+            if it.radius > 0:
+                on.rounded_rectangle(box, radius=it.radius, fill=fill, outline=outline,
+                                     width=max(1, int(round(it.width))))
+            else:
+                on.rectangle(box, fill=fill, outline=outline, width=max(1, int(round(it.width))))
+            draw = done()
         elif isinstance(it, Circle):
             draw.ellipse([it.x - it.r, it.y - it.r, it.x + it.r, it.y + it.r],
                          fill=None if it.fill is None else _rgba255(it.fill, ink),
                          outline=None if it.outline is None else _rgba255(it.outline, ink),
                          width=max(1, int(round(it.width))))
         elif isinstance(it, Polyline):
-            pts = [tuple(map(float, p)) for p in np.asarray(it.points, float)]
-            if it.closed and it.fill is not None:
-                draw.polygon(pts, fill=_rgba255(it.fill, ink))
-            if it.width > 0 and len(pts) > 1:
-                draw.line(pts + (pts[:1] if it.closed else []), fill=_rgba255(it.color, ink),
-                          width=max(1, int(round(it.width))), joint="curve")
+            arr = np.asarray(it.points, float).reshape(-1, 2)
+            fill = _rgba255(it.fill, ink) if it.closed and it.fill is not None else None
+            color = _rgba255(it.color, ink) if it.width > 0 and len(arr) > 1 else None
+            on, off, done = _layer(im, draw, [*arr.min(axis=0), *arr.max(axis=0)], it.width, fill, color)
+            pts = [tuple(map(float, p)) for p in arr - off]
+            if fill is not None:
+                on.polygon(pts, fill=fill)
+            if color is not None:
+                on.line(pts + (pts[:1] if it.closed else []), fill=color, width=max(1, int(round(it.width))),
+                        joint="curve")
+            draw = done()
     return im
+
+
+def _layer(im, draw, box, width, *colors):
+    """Where to draw a shape: (drawer, offset to subtract, finish() -> drawer). Opaque shapes go
+    straight onto ``im``; translucent ones onto a small transparent layer that is blended in (PIL
+    replaces pixels, so a translucent shape would punch a hole into an opaque picture)."""
+    if all(c is None or len(c) < 4 or c[3] == 255 for c in colors):
+        return draw, (0.0, 0.0), lambda: draw
+    from PIL import Image as PILImage
+    from PIL import ImageDraw
+
+    pad = int(math.ceil(width)) + 2
+    x0, y0 = max(0, int(math.floor(box[0])) - pad), max(0, int(math.floor(box[1])) - pad)
+    x1, y1 = min(im.width, int(math.ceil(box[2])) + pad), min(im.height, int(math.ceil(box[3])) + pad)
+    layer = PILImage.new("RGBA", (max(1, x1 - x0), max(1, y1 - y0)), (0, 0, 0, 0))
+
+    def done():
+        im.alpha_composite(layer, (x0, y0))
+        return ImageDraw.Draw(im)
+
+    return ImageDraw.Draw(layer), (x0, y0), done
 
 
 _MPL_HA = {"l": "left", "m": "center", "r": "right"}
@@ -710,13 +748,15 @@ def draw_items_mpl(ax, items, ink, pt: float, font_size: float):
     """Draw overlay items on a matplotlib axes in pixel coordinates (y down); ``pt`` = points per px."""
     from matplotlib import patheffects
     from matplotlib.patches import Circle as MCircle
-    from matplotlib.patches import Polygon, Rectangle
+    from matplotlib.patches import FancyBboxPatch, Polygon, Rectangle
 
     def col(c):
         return ink if c is None or (isinstance(c, str) and c == "ink") else c
 
     for it in items:
-        if isinstance(it, Image):
+        if isinstance(it, ColorRamp):
+            _ramp_mpl(ax, it)
+        elif isinstance(it, Image):
             src = np.asarray(it.rgba, np.uint8)
             w = it.width or src.shape[1]
             h = it.height or src.shape[0] * w / src.shape[1]
@@ -732,10 +772,15 @@ def draw_items_mpl(ax, items, ink, pt: float, font_size: float):
                     **({} if it.halo is None else {"path_effects": [patheffects.withStroke(
                         linewidth=(it.size or font_size) * pt / 4, foreground=col(it.halo))]}))
         elif isinstance(it, Rect):
-            ax.add_patch(Rectangle((it.x0, it.y0), it.x1 - it.x0, it.y1 - it.y0,
-                                   facecolor="none" if it.fill is None else col(it.fill),
-                                   edgecolor="none" if it.outline is None else col(it.outline),
-                                   linewidth=it.width * pt, zorder=3))
+            style = dict(facecolor="none" if it.fill is None else col(it.fill),
+                         edgecolor="none" if it.outline is None else col(it.outline), linewidth=it.width * pt,
+                         zorder=3)
+            if it.radius > 0:
+                r = min(it.radius, (it.x1 - it.x0) / 2, (it.y1 - it.y0) / 2)
+                ax.add_patch(FancyBboxPatch((it.x0, it.y0), it.x1 - it.x0, it.y1 - it.y0,
+                                            boxstyle=f"round,pad=0,rounding_size={r}", **style))
+            else:
+                ax.add_patch(Rectangle((it.x0, it.y0), it.x1 - it.x0, it.y1 - it.y0, **style))
         elif isinstance(it, Circle):
             ax.add_patch(MCircle((it.x, it.y), it.r, facecolor="none" if it.fill is None else col(it.fill),
                                  edgecolor="none" if it.outline is None else col(it.outline),
@@ -748,3 +793,29 @@ def draw_items_mpl(ax, items, ink, pt: float, font_size: float):
                 p = np.vstack([pts, pts[:1]]) if it.closed else pts
                 ax.plot(p[:, 0], p[:, 1], color=col(it.color), linewidth=it.width * pt, solid_capstyle="round",
                         solid_joinstyle="round", zorder=3)
+
+
+def _ramp_mpl(ax, it):
+    """A :class:`ColorRamp` as vector stripes clipped to its (rounded) box: no raster in SVG/PDF."""
+    from matplotlib.collections import PatchCollection
+    from matplotlib.patches import FancyBboxPatch, Rectangle
+
+    from .colormaps import get_colormap
+
+    cmap = get_colormap(it.cmap)
+    w, h = it.x1 - it.x0, it.y1 - it.y0
+    n = 96
+    if it.vertical:
+        stripes = [Rectangle((it.x0, it.y0 + h * k / n), w, h / n * 1.02) for k in range(n)]
+        colors = [cmap(1 - (k + 0.5) / n) for k in range(n)]
+    else:
+        stripes = [Rectangle((it.x0 + w * k / n, it.y0), w / n * 1.02, h) for k in range(n)]
+        colors = [cmap((k + 0.5) / n) for k in range(n)]
+    coll = PatchCollection(stripes, facecolors=colors, edgecolors="none", linewidths=0, zorder=3)
+    ax.add_collection(coll)
+    r = min(it.radius, w / 2, h / 2)
+    if r > 0:
+        clip = FancyBboxPatch((it.x0, it.y0), w, h, boxstyle=f"round,pad=0,rounding_size={r}", facecolor="none",
+                              edgecolor="none", transform=ax.transData)
+        ax.add_patch(clip)
+        coll.set_clip_path(clip)

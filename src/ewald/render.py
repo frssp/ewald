@@ -956,32 +956,6 @@ def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, ba
     return _finish(rgba, data, filename, camera, overlays, background, transparent_background, dpi)
 
 
-def _add_colorbar(plotter, data, font_size=None, legends=()):
-    """VTK scalar bars for :func:`color_legends`, side by side from the right edge. Returns the bars."""
-    import pyvista as pv
-
-    from .colormaps import get_colormap
-    from .overlays import color_legends
-
-    bars = color_legends(data, legends)
-    titles = set()
-    for k, bar in enumerate(bars):
-        lo, hi = bar["range"]
-        dummy = pv.PolyData(np.zeros((2, 3)))
-        dummy["v"] = np.array([lo, hi])
-        actor = plotter.add_mesh(dummy, scalars="v", cmap=get_colormap(bar["cmap"]), clim=(lo, hi), opacity=0.0,
-                                 show_scalar_bar=False, name="_legend" if k == 0 else f"_legend{k}")
-        actor.VisibilityOff()
-        title = str(bar["title"])
-        while title in titles:   # pyvista keys scalar bars by title
-            title += " "
-        titles.add(title)
-        plotter.add_scalar_bar(title=title, mapper=actor.mapper, vertical=True, position_x=0.86 - 0.13 * k,
-                               position_y=0.1, height=0.8, width=0.06, color="black", fmt="%.4g",
-                               **({"title_font_size": font_size + 2, "label_font_size": font_size} if font_size else {}))
-    return bars
-
-
 def render_animation(pipeline, filename, *, frames=None, fps: float = 10, device=None, text=None,
                      time_per_frame: float | None = None, progress=None, **kwargs):
     """Render frames of a pipeline into a movie; see :func:`ewald.movie.render_animation`."""
