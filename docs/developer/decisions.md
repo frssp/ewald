@@ -103,7 +103,7 @@ the end.
   panel tabs with a thumbnail under the cell.
 - **Landed:** PRs #183, #184.
 
-### D22. Menus grouped by role, one word for one thing (2026-10-23)
+### D24. Menus grouped by role, one word for one thing (2026-10-23)
 
 - **Decision:** the menu bar follows roles: File opens (Open recent, Open example, Open from ›
   Remote file, Location, NEB folder, Workflow folder) and exports (Export › Image, Data, Movie,
