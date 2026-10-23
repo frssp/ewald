@@ -4542,6 +4542,41 @@ def test_dropping_a_folder_of_calculations_opens_it_as_a_workflow(app, tmp_path,
     w.close()
 
 
+def test_workflows_side_bar_compares_selected_workflows_in_a_table(app, tmp_path, vasp_dir):
+    """Two folder workflows selected in the Workflows side bar: the right-click action adds and
+    runs one cell workflow_table('<folder>', '<folder>') whose output is the side-by-side table."""
+    import ast
+    import shutil
+
+    from ewald.gui.app import MainWindow
+    from ewald.workflow_folder import add_recent_folder
+
+    for name in ("pbe", "hse"):
+        for step in ("1_relax", "2_md"):
+            shutil.copytree(vasp_dir / "md", tmp_path / name / step)
+        add_recent_folder(tmp_path / name)
+    w = MainWindow()
+    w.show_plugin_panel("workflows")
+    side = w.plugin_panels["workflows"]["dock"].widget()
+    side.wait()
+    assert side.tree.topLevelItemCount() == 2
+    for i in range(2):
+        side.tree.topLevelItem(i).setSelected(True)
+    chosen = side.selected_workflows()
+    assert [wf.id for wf in chosen] == [str(tmp_path / "hse"), str(tmp_path / "pbe")]   # newest first
+    cell = side.compare()
+    assert w.panel.view.wait()
+    code = ast.parse(cell.source)
+    call = code.body[-1].value
+    assert [a.value for a in call.args] == [str(tmp_path / "hse"), str(tmp_path / "pbe")]   # literals only
+    html = next(o for o in cell.outputs if o.kind == "rich").mime["text/html"]
+    assert "<th>hse</th>" in html and "<th>pbe</th>" in html and "1_relax" in html
+    widget = next(x for x in w.panel.view.widgets if x.cell is cell)
+    area = widget.findChild(QtWidgets.QScrollArea, "cellRichScroll")   # a wide table scrolls sideways
+    assert area is not None and area.widget().text() == html
+    w.close()
+
+
 def test_wait_for_runs_off_the_gui_thread_with_cancel(app, pipe, tmp_path):
     import threading
 
@@ -4643,7 +4678,9 @@ def test_rich_outputs_render_in_cells(app):
     area = OutputArea(live=False)
     area.resize(400, 300)
     area.set_outputs(nb.cells[0].outputs)
-    html, md, latex, picture = area._widgets
+    table, md, latex, picture = area._widgets
+    assert isinstance(table, QtWidgets.QScrollArea)          # a table scrolls sideways, never cut off
+    html = table.widget()
     assert html.textFormat() == QtCore.Qt.RichText and "<table>" in html.text()
     assert md.textFormat() == QtCore.Qt.MarkdownText
     assert latex.objectName() == picture.objectName() == "cellImage"       # mathtext and SVG as pictures
