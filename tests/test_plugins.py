@@ -667,7 +667,7 @@ STORE = {"url": "http://old", "key": None, "verify": True}
     SettingsField("url", "Server address", help="Where it runs"),
     SettingsField("key", "Access key", kind="secret"),
     SettingsField("verify", kind="bool"),
-    SettingsField("mode", kind="choice", choices=("fast", "safe"))],
+    SettingsField("mode", kind="choice", choices=("fast", "safe"), advanced=True)],
     actions={"Test": "test"})
 class DemoSettings:
     """Connect to the demo service."""
