@@ -12,6 +12,8 @@ import math
 
 import numpy as np
 
+from .render import FLAT_OUTLINE, STICK_OUTLINE
+
 def _basis(camera):
     """Camera eye and orthonormal (right, up, forward) axes."""
     eye = np.asarray(camera["position"], float)
@@ -132,9 +134,7 @@ def scene_prims(scene, camera, size, pt, shading="gradient", ink="black", light=
 
 
 def _highlight(light):
-    """Screen offset (x right, y down) of the highlight towards the key light, (-1, -1) by default."""
-    if light is None:
-        return -1.0, -1.0
+    """Screen offset (x right, y down) of the highlight towards the key light (the default one when None)."""
     from .render import light_params
 
     d, _ = light_params(light)
@@ -158,8 +158,10 @@ def _sphere_prims(sph, camera, size, pt, shading, light=None):
         c, r, a = colors[i], radii[i] * s[k], alpha[i]
         x, y = sx[k], sy[k]
         edge = (*(c * 0.45), a)
-        if shading == "flat":
-            prims.append((z[k], [Circle((x, y), r)], [(*c, a)], [edge], [max(0.4, 0.06 * r) * pt]))
+        if shading == "flat":  # the OpenGL flat shader: a dark rim of max(0.8 px, 5 %) inside the disc
+            rim = max(0.8, 0.05 * r)
+            prims.append((z[k], [Circle((x, y), r), Circle((x, y), max(r - rim, 0.5 * r))],
+                          [(FLAT_OUTLINE, FLAT_OUTLINE, FLAT_OUTLINE, a), (*c, a)], ["none", "none"], [0, 0]))
         else:
             prims.append((z[k], [Circle((x, y), r), Circle((x + 0.06 * hx * r, y + 0.06 * hy * r), 0.86 * r),
                                  Circle((x + 0.2 * hx * r, y + 0.2 * hy * r), 0.52 * r),
@@ -171,8 +173,10 @@ def _sphere_prims(sph, camera, size, pt, shading, light=None):
 
 def _cylinder_prims(cyl, camera, size, pt, shading, light=None):
     """Projected sticks with a highlight stripe, each painted just before its start (a half-bond's
-    own atom hides the stick's root)."""
-    from matplotlib.patches import Polygon
+    own atom hides the stick's root), and their caps: a round cap is a disc of the stick radius, a
+    flat cap the projected ellipse; one on the near end is painted over the stick, a round one on
+    the far end under it (a flat one there is hidden)."""
+    from matplotlib.patches import Circle, Ellipse, Polygon
 
     prims = []
     keep = np.flatnonzero(cyl.alpha > 0)
@@ -193,6 +197,14 @@ def _cylinder_prims(cyl, camera, size, pt, shading, light=None):
                 (ax1[k] - nx * r1, ay1[k] - ny * r1), (ax0[k] - nx * r0, ay0[k] - ny * r0)]
         patches, fc, ec, lw = [Polygon(quad, closed=True)], [(*(c * 0.85), a)], [(*(c * 0.45), a)], \
             [max(0.3, 0.06 * r0) * pt]
+        body = fc[0], ec[0], lw[0]   # caps match the stick
+        if shading == "flat":  # unlit, inside a dark outline 30 % of the radius wide (the OpenGL hull)
+            w0, w1 = (1 + STICK_OUTLINE) * r0, (1 + STICK_OUTLINE) * r1
+            hull = [(ax0[k] + nx * w0, ay0[k] + ny * w0), (ax1[k] + nx * w1, ay1[k] + ny * w1),
+                    (ax1[k] - nx * w1, ay1[k] - ny * w1), (ax0[k] - nx * w0, ay0[k] - ny * w0)]
+            patches, fc, ec, lw = [Polygon(hull, closed=True), patches[0]], [(FLAT_OUTLINE, FLAT_OUTLINE, FLAT_OUTLINE, a), (*c, a)], \
+                ["none", "none"], [0, 0]
+            body = fc[1], "none", 0
         if shading != "flat":  # highlight stripe toward the light (upper left by default)
             side = 1.0 if nx * hx + ny * hy > 0 else -1.0
             o0, o1 = 0.35 * r0 * side, 0.35 * r1 * side
@@ -203,6 +215,16 @@ def _cylinder_prims(cyl, camera, size, pt, shading, light=None):
                                     (ax0[k] + nx * (o0 - hw0), ay0[k] + ny * (o0 - hw0))], closed=True))
             fc.append((*_mix(c, 0.35), a)); ec.append("none"); lw.append(0)
         prims.append((z0[k] + 1e-6, patches, fc, ec, lw))
+        span = float(np.linalg.norm(cyl.end[i] - cyl.start[i]))
+        tilt = abs(z1[k] - z0[k]) / span if span > 0 else 0.0   # |cos| of the axis to the view direction
+        for x, y, z, rr, code, near in ((ax0[k], ay0[k], z0[k], r0, cyl.start_cap[i], z0[k] < z1[k]),
+                                        (ax1[k], ay1[k], z1[k], r1, cyl.end_cap[i], z1[k] < z0[k])):
+            if code == 2:  # outlined disc under the stick, plain one over its end line
+                prims.append((z0[k] + 2e-6, [Circle((x, y), rr)], [body[0]], [body[1]], [body[2]]))
+                prims.append((min(z, z0[k]) - 1e-7, [Circle((x, y), rr - 0.5 * body[2] / pt)], [body[0]], ["none"], [0]))
+            elif code == 1 and near:
+                cap = Ellipse((x, y), 2 * rr, 2 * rr * tilt, angle=math.degrees(math.atan2(ny, nx)))
+                prims.append((z - 1e-7, [cap], [body[0]], [body[1]], [body[2]]))
     return prims
 
 
@@ -251,7 +273,7 @@ def _mesh_prims(mesh, camera, size, pt, light=None):
 
 
 def _line_prims(lines, camera, size, ink):
-    """Line pieces as screen-space strips, ``width`` scaled with the image height, extended by half a
+    """Line pieces as screen-space strips as wide as :func:`ewald.scene.line_pixels`, extended by half a
     width so corners close."""
     from matplotlib.patches import Polygon
 
@@ -262,7 +284,9 @@ def _line_prims(lines, camera, size, ink):
     if not len(seg):
         return prims
     cx, cy, cz, _ = _project(lines.points, camera, size)
-    half = max(0.5, lines.width * size[1] / 1600)
+    from .scene import line_pixels
+
+    half = 0.5 * line_pixels(lines.width, size[1])
     seg_rgb = lines.segment_colors(_rgb(ink))
     for (i, j), cc in zip(seg, seg_rgb):
         dx, dy = cx[j] - cx[i], cy[j] - cy[i]

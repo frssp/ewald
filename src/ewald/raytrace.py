@@ -33,6 +33,7 @@ class Scene:
         self.sph_c = np.zeros((0, 3)); self.sph_r = np.zeros(0); self.sph_rgb = np.zeros((0, 3))
         self.cyl_a = np.zeros((0, 3)); self.cyl_b = np.zeros((0, 3)); self.cyl_r = np.zeros(0)
         self.cyl_rgb = np.zeros((0, 3))
+        self.cyl_cap = np.zeros((0, 2))   # 1: a flat disk closes the start / end (round caps are spheres)
         self.tri_a = np.zeros((0, 3)); self.tri_b = np.zeros((0, 3)); self.tri_c = np.zeros((0, 3))
         self.tri_rgb = np.zeros((0, 3)); self.tri_alpha = np.zeros(0)
         # per-vertex normals and colours (M x 3 x 3), for smooth isosurfaces and colour-mapped slices
@@ -50,8 +51,11 @@ class Scene:
         self.sph_rgb = np.vstack([self.sph_rgb, np.broadcast_to(np.asarray(colors, float), (len(centers), 3))])
         self.sph_cast = np.concatenate([self.sph_cast, np.full(len(centers), bool(cast_shadows))])
 
-    def add_cylinders(self, a, b, radii, colors, cast_shadows=True):
+    def add_cylinders(self, a, b, radii, colors, cast_shadows=True, flat_caps=(False, False)):
+        """Open cylinders from ``a`` to ``b``; ``flat_caps`` (start, end), one pair or one per
+        cylinder, closes those ends with disks."""
         a = np.asarray(a, float).reshape(-1, 3)
+        self.cyl_cap = np.vstack([self.cyl_cap, np.broadcast_to(np.asarray(flat_caps, float), (len(a), 2))])
         self.cyl_a = np.vstack([self.cyl_a, a])
         self.cyl_b = np.vstack([self.cyl_b, np.asarray(b, float).reshape(-1, 3)])
         self.cyl_r = np.concatenate([self.cyl_r, np.broadcast_to(np.asarray(radii, float), (len(a),))])
@@ -106,10 +110,12 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
                     trajectory_colormap="viridis", trajectory_color_range=None, trajectory_time_range=None,
                     trajectory_trail=None, trajectory_radius=None, visuals=None, frame=0, boundary=None, boundary_bonds="half", replicate=None, replicate_cell="super",
                     show_atoms=True, surfaces=None, type_transparency=None, selection_color=None, measurements=None,
-                    **_ignored):
+                    pixel=None, flat=False, **_ignored):
     """Build a Scene with the same colors/radii/bonds/arrows as :func:`ewald.render.build_scene`.
 
     ``view_direction`` (scene -> camera) lets 'flat' arrows face the viewer evenly lit.
+    ``pixel``: ``(size of a pixel in Angstrom, image height)`` sizes lines as in the other renderers.
+    ``flat``: the flat (ASE) style's outlines (see :func:`scene_from_ir`).
     ``visuals``: extra visual elements (plugins), see :mod:`ewald.scene`.
     """
     from . import scene as ir
@@ -126,14 +132,36 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
                      replicate_cell=replicate_cell, show_atoms=show_atoms, surfaces=surfaces,
                      type_transparency=type_transparency, selection_color=selection_color,
                      measurements=measurements)
-    return scene_from_ir(scene, arrow_resolution=arrow_resolution, view_direction=view_direction, ink=cell_color)
+    return scene_from_ir(scene, arrow_resolution=arrow_resolution, view_direction=view_direction, ink=cell_color,
+                         pixel=pixel, flat=flat)
 
 
-def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 0.0, 0.0)) -> Scene:
+def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 0.0, 0.0), pixel=None,
+                  flat=False) -> Scene:
     """Ray-tracer primitives for every layer of an :class:`ewald.scene.Scene`. The ray tracer is
-    opaque except for triangles: sphere and cylinder ``alpha`` is ignored. Lines without a
-    ``radius`` (screen-space only) are not drawn."""
-    from .render import _rgb
+    opaque except for triangles: sphere and cylinder ``alpha`` is ignored. Lines are tubes of their
+    ``radius``, else as wide as :func:`ewald.scene.line_pixels` with ``pixel`` = ``(size of a pixel in
+    Angstrom, image height)``; without either they are not drawn.
+
+    ``flat`` (with ``view_direction``): the flat (ASE) style's dark outlines, as the OpenGL renderer draws
+    them (render it unlit): a dark rim inside each atom, ``max(0.8 pixel, 5 %)`` of its radius, and one
+    around each stick, 30 % of its radius. Both are dark copies pushed back along the view, so only the
+    rim shows past the colored primitive (the OpenGL inverted hull)."""
+    from .render import FLAT_OUTLINE, STICK_OUTLINE, _rgb
+    from .scene import line_pixels
+
+    toward = None
+    if flat and view_direction is not None:
+        toward = np.asarray(view_direction, float) / np.linalg.norm(view_direction)
+    dark = np.array([FLAT_OUTLINE] * 3)
+
+    def outline(centers, radii, start=None, end=None):
+        """Dark spheres (``centers``) or cylinders (``start``, ``end``) of ``radii``, pushed back by their radius."""
+        back = np.asarray(radii, float)[:, None] * toward
+        if start is None:
+            sc.add_spheres(centers - back, radii, dark, False)
+        else:
+            sc.add_cylinders(start - back, end - back, radii, dark, False)
 
     sc = Scene()
     sc.legends = list(getattr(scene, "legends", []))
@@ -142,6 +170,10 @@ def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 
         if layer.kind == "spheres":
             if prim.count:
                 c, r, rgb, a = prim.centers, prim.sizes(), prim.colors(), prim.alpha
+                if toward is not None:   # the rim: a dark sphere behind, the colored one that much smaller
+                    rim = np.maximum(0.05 * r, 0.8 * pixel[0] if pixel is not None else 0.0)
+                    outline(c, r)
+                    r = np.maximum(r - rim, 0.5 * r)
                 solid = a >= 1
                 if solid.all():
                     sc.add_spheres(c, r, rgb)
@@ -151,9 +183,16 @@ def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 
                     _add_glass_spheres(sc, c[~solid], r[~solid], rgb[~solid], a[~solid])
         elif layer.kind == "cylinders":
             if prim.count:
-                sc.add_cylinders(prim.start, prim.end, prim.radius, prim.rgb)
-                if prim.cap_end:
-                    sc.add_spheres(prim.end, prim.radius, prim.rgb)  # close the open tube end
+                sc.add_cylinders(prim.start, prim.end, prim.radius, prim.rgb,
+                                 flat_caps=np.column_stack([prim.start_cap == 1, prim.end_cap == 1]))
+                center, _, radius, rgb, _, _ = prim.caps("round")
+                if len(center):  # a sphere of the tube radius shows as a hemisphere past the end
+                    sc.add_spheres(center, radius, rgb)
+                if toward is not None:
+                    wide = (1.0 + STICK_OUTLINE) * np.broadcast_to(prim.radius, (prim.count,))
+                    outline(None, wide, prim.start, prim.end)
+                    if len(center):
+                        outline(center, (1.0 + STICK_OUTLINE) * np.asarray(radius, float))
         elif layer.kind == "mesh":
             mesh = prim
             if mesh.face_count:
@@ -168,7 +207,10 @@ def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 
         elif layer.kind == "arrows":
             _add_arrows(sc, prim, arrow_resolution, view_direction)
         elif layer.kind == "lines":
-            if prim.radius is None or not prim.count:
+            radius = prim.radius
+            if radius is None and pixel is not None:
+                radius = 0.5 * line_pixels(prim.width, pixel[1]) * pixel[0]
+            if radius is None or not prim.count:
                 continue
             seg = prim.segments()
             if not len(seg):
@@ -178,18 +220,18 @@ def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 
             else:
                 seg_rgb = prim.segment_colors()
             cast = prim.cast_shadows
-            sc.add_cylinders(prim.points[seg[:, 0]], prim.points[seg[:, 1]], prim.radius, seg_rgb, cast)
+            sc.add_cylinders(prim.points[seg[:, 0]], prim.points[seg[:, 1]], radius, seg_rgb, cast)
             # round joints so corners look closed
             joints = np.unique(seg)
             if prim.rgb is None and prim.point_rgb is None:
-                sc.add_spheres(prim.points[joints], prim.radius, seg_rgb, cast)
+                sc.add_spheres(prim.points[joints], radius, seg_rgb, cast)
             elif prim.point_rgb is not None:
-                sc.add_spheres(prim.points[joints], prim.radius, np.asarray(prim.point_rgb, float)[joints], cast)
+                sc.add_spheres(prim.points[joints], radius, np.asarray(prim.point_rgb, float)[joints], cast)
             else:
                 rgb = np.empty((len(prim.points), 3))
                 rgb[seg[:, 1]] = seg_rgb
                 rgb[seg[:, 0]] = seg_rgb
-                sc.add_spheres(prim.points[joints], prim.radius, rgb[joints], cast)
+                sc.add_spheres(prim.points[joints], radius, rgb[joints], cast)
     return sc
 
 
@@ -282,7 +324,7 @@ class Accel:
         self.nodes, self.bvh_items, self.depth = build_bvh(scene, triangles=sheet)
         # one row per primitive for the ray casts (fewer arrays per call, no row views)
         self.sph = np.ascontiguousarray(np.column_stack([scene.sph_c, scene.sph_r]))
-        self.cyl = np.ascontiguousarray(np.column_stack([scene.cyl_a, scene.cyl_b, scene.cyl_r]))
+        self.cyl = np.ascontiguousarray(np.column_stack([scene.cyl_a, scene.cyl_b, scene.cyl_r, scene.cyl_cap]))
         self.tri = np.ascontiguousarray(np.column_stack([scene.tri_a, scene.tri_b, scene.tri_c, scene.tri_alpha]))
 
 
@@ -510,8 +552,8 @@ def _hit_sphere(o, d, sph, i):
 
 @njit(cache=True, inline="always")
 def _hit_cylinder(o, d, cyl, i):
-    """Finite open cylinder ``i`` of ``cyl`` (rows: start, end, radius); caps omitted, bond ends
-    sit inside spheres."""
+    """Finite cylinder ``i`` of ``cyl`` (rows: start, end, radius, flat start cap, flat end cap):
+    the side, plus a disk at each end whose flag is set."""
     ax, ay, az = cyl[i, 3] - cyl[i, 0], cyl[i, 4] - cyl[i, 1], cyl[i, 5] - cyl[i, 2]
     r = cyl[i, 6]
     L = math.sqrt(ax * ax + ay * ay + az * az)
@@ -523,21 +565,30 @@ def _hit_cylinder(o, d, cyl, i):
     od = ox * ax + oy * ay + oz * az
     px, py, pz = d[0] - dd * ax, d[1] - dd * ay, d[2] - dd * az
     qx, qy, qz = ox - od * ax, oy - od * ay, oz - od * az
+    best = -1.0
+    if abs(dd) > 1e-12:  # flat caps: the planes h = 0 and h = L, inside the rim
+        for col, h in ((7, 0.0), (8, L)):
+            if cyl[i, col] > 0.5:
+                t = (h - od) / dd
+                if t > 1e-6 and (best < 0 or t < best):
+                    wx, wy, wz = qx + t * px, qy + t * py, qz + t * pz
+                    if wx * wx + wy * wy + wz * wz <= r * r:
+                        best = t
     A = px * px + py * py + pz * pz
     if A < 1e-14:
-        return -1.0
+        return best
     B = px * qx + py * qy + pz * qz
     C = qx * qx + qy * qy + qz * qz - r * r
     disc = B * B - A * C
     if disc < 0:
-        return -1.0
+        return best
     s = math.sqrt(disc)
     for t in ((-B - s) / A, (-B + s) / A):
         if t > 1e-6:
             h = od + t * dd
             if 0.0 <= h <= L:
-                return t
-    return -1.0
+                return t if best < 0 or t < best else best
+    return best
 
 
 @njit(cache=True, inline="always")
@@ -835,14 +886,17 @@ def _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, s1, sampl
                 continue
             state[0] = np.uint64(seed) * np.uint64(0x9E3779B97F4A7C15) + np.uint64(py * width + px + 1)
             aos[0] = _rand(state); aos[1] = _rand(state); aos[2] = 0.0
+            jox = _rand(state); joy = _rand(state)
             s0 = nsamp[py, px] if keep else 0
             if s0 > 0:
                 state[0] = rng[py, px]; aos[2] = ao_next[py, px]
             acc_r, acc_g, acc_b, acc_a = acc[py, px, 0], acc[py, px, 1], acc[py, px, 2], acc[py, px, 3]
             acc_q = sq[py, px] if keep else 0.0
             for s in range(s0, s1):
-                jx = _rand(state) if samples > 1 else 0.5
-                jy = _rand(state) if samples > 1 else 0.5
+                # sub-pixel positions follow the R2 sequence (shifted per pixel) like the AO rays: evenly
+                # spread for any sample count, so lines one pixel wide come out solid, not dotted
+                jx = (jox + s * 0.7548776662466927) % 1.0 if samples > 1 else 0.5
+                jy = (joy + s * 0.5698402909980532) % 1.0 if samples > 1 else 0.5
                 u = ((px + jx) / width * 2.0 - 1.0) * half_w
                 v = (1.0 - (py + jy) / height * 2.0) * half_h
                 for k in range(3):
@@ -880,8 +934,14 @@ def _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, s1, sampl
                         for k, a_k in ((0, ax), (1, ay), (2, az)):
                             n[k] = p[k] - (cyl_a[i, k] + h * a_k)
                         nn = math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2])
-                        for k in range(3):
-                            n[k] /= nn
+                        # a flat cap: the hit is closer to the end's plane than to the side
+                        cap = cyl[i, 7] if h < 0.5 else cyl[i, 8]
+                        if cap > 0.5 and min(abs(h), abs(1.0 - h)) * math.sqrt(L2) < cyl[i, 6] - nn:
+                            sign = (-1.0 if h < 0.5 else 1.0) / math.sqrt(L2)
+                            n[0], n[1], n[2] = sign * ax, sign * ay, sign * az
+                        else:
+                            for k in range(3):
+                                n[k] /= nn
                         cr, cg, cb = cyl_rgb[i, 0], cyl_rgb[i, 1], cyl_rgb[i, 2]
                     else:
                         # barycentric weights of the hit point, then interpolate normal and colour

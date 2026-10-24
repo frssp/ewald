@@ -36,7 +36,7 @@ print(pipe.view.source())                     # the same as a view(pipe, ...) li
 | style | `style` (Ball & stick, Space-filling, Simple (ASE), Points), `theme`, `atom_style` (auto, mesh, impostor, flat), `background`, `light` (key light) |
 | atoms | `atoms` (False: a stick model), `color_by`, `colormap`, `color_range` (what colors the atoms, below), `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `transparency` {type: 0..1}, `selection` (True: selected atoms red, False, or a color), `labels` (atom labels), `radius_preset`, `oxidation_states` |
 | bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax]], `bond_factor`, `bond_radius` |
-| cell | `cell`, `cell_width`, `cell_color`, `cell_radius` (ray-traced tube, Angstrom) |
+| cell | `cell`, `cell_width`, `cell_color`, `cell_radius` (ray-traced tube, Angstrom; None: as wide as the line) |
 | boundary | `boundary` (VESTA range), `boundary_bonds` (half, complete, none), `replicate` [na, nb, nc], `replicate_cell` (super, unit, all) |
 | elements | `surfaces` (polyhedra, isosurface and slice look by name), `visuals` (plugin visual elements), `vectors` (arrows of a vector property), `measurements` (distances, angles, dihedrals), `trajectory_width`, `trajectory_color_by`, `trajectory_colormap`, `trajectory_color_range`, `trajectory_time_range`, `trajectory_trail`, `trajectory_radius` (trajectory lines, below) |
 | camera | `frame`, `direction`, `zoom`, `orthographic`, `camera` (an exact camera, as the GUI saves it) |
@@ -89,7 +89,8 @@ band works the same way: its images are frames, so after `load("neb/")` add
 
 `trajectory_color_by="Step Length"` shows how far a particle moved per traced step (hops stand
 out); a particle property such as `"Path Length"` or `"Net Displacement"` gives each line one
-color. `trajectory_radius` sets the tube radius of ray-traced lines (default 0.04 x the width).
+color. `trajectory_radius` sets the tube radius of ray-traced lines in Angstrom (default: as wide
+as the line in the other renderers).
 In the GUI the View tab's Elements card has the same settings (Trajectories, Color map, Time
 window, Trail). Several color bars (a `ColorCoding` step and the trajectory map) stand side by side.
 In the viewport a click on a color bar card folds the cards to one-line chips (a short ramp and the
@@ -160,8 +161,14 @@ view(pipe, measurements=[[0, 5], [4, 0, 7]])
 `light` sets the key light for the viewport and every renderer (OpenGL, ray tracer, SVG/PDF
 highlights): a direction `[x, y, z]` relative to the viewer (x right, y up, z towards you) or a
 dict with `azimuth` and `elevation` in degrees (azimuth turns it right, elevation up) and
-`intensity` (1 is the default strength). Left at None, each renderer uses its default light
-from the upper left.
+`intensity` (1 is the default strength). Left at None, every renderer uses the same default key
+light from the upper left in front, plus a weak head light in the OpenGL views (D51).
+
+Lines (the cell, measurements, trajectory lines) are equally wide in every renderer: `cell_width`
+and `trajectory_width` are pixels in a picture 1600 pixels high and scale with the picture's
+height, never thinner than one pixel (2 pixels at 1600, 1.5 at 1200, 1 in a small view cell). The
+ray tracer draws them as tubes that wide unless `cell_radius`/`trajectory_radius` set a radius in
+Angstrom; mesh edges (polyhedra) have their width in Angstrom everywhere.
 
 ```python
 view(pipe, light={"azimuth": 60, "elevation": 20})                # from the right
@@ -216,6 +223,13 @@ atoms, bond sticks, polyhedra, isosurfaces and slices painted far to near, and o
 editable text, so a figure can be finished in Illustrator or Inkscape. It needs no OpenGL.
 The raster renderers can also be given a `.pdf`, `.svg` or `.eps` name; the image is then
 embedded in a page of the same size.
+
+Bond ends look the same in every renderer (the viewport, the OpenGL 1.x viewport, the ray
+tracer on CPU or GPU, and vector files). A half-bond cut off by the periodic cell or a boundary,
+or whose other half is hidden, ends in a flat disk, which reads as "cut here". An end at an atom
+is open inside the atom, and round (a hemisphere of the bond radius) where the atom does not hide
+it: atoms off, smaller than the bond, or see-through, so stick-only drawings have smooth joints.
+Plugin elements choose with `Cylinders(..., start_cap=, end_cap=)` ("none", "flat", "round").
 
 ## Quality
 
@@ -335,9 +349,9 @@ render(data, "simple.png", atom_style="flat", theme="ASE", radius_scale=0.7, bon
 ```
 
 It uses impostors, so it is as fast as `"impostor"` at any size, and screen-space ambient
-occlusion is off unless you pass `ambient_occlusion=True`. The vector renderer draws it with
-`shading="flat"` (one color plus outline); the ray tracer draws the same atoms and bonds with its
-own shading.
+occlusion is off unless you pass `ambient_occlusion=True`. Every renderer draws it the same way
+(D51): the vector renderer with `shading="flat"`, the ray tracer unlit (no shadows or occlusion,
+and its surfaces and arrows unlit too) and the OpenGL 1.x viewport with the same outlines.
 
 ## Boundary (VESTA)
 

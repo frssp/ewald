@@ -284,8 +284,7 @@ GUI
 - Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
   screen edges). The `light` setting moves the key light; a fill/rim light and
   shadows in the OpenGL view are not settable.
-- Flat (ASE) style in the ray tracer (now OpenGL and vector only), and a
-  per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
+- A per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.
 - One display style per notebook tab: the window keeps a single `ViewStyle`, and a notebook whose
   view nothing set yet is seeded from it (the previous tab's style). Settings for elements the new
@@ -447,7 +446,14 @@ Visualization plugins (later phases of the Scene IR plan)
 - GUI: the built-in elements (Particles, Bonds, Cell, ...) as rows with forms generated from
   their `VisualElement` parameters, replacing the hand-written style controls.
 - OpenGL and the ray tracer ignore `Cylinders.alpha`; see-through bonds need it.
-- Ray tracer: `Lines` without a `radius` are not drawn (trajectory lines now have one).
+- Vector files draw bond caps (D50) as a flat ellipse or disc without the stick's highlight stripe,
+  and a round joint where several sticks meet can show the stick outlines crossing it.
+- Renderer consistency left from the D51 audit (project files `ewald-visual-audit/`): vector files
+  show seams between the triangles of color-mapped slices and draw isosurfaces faceted; a
+  see-through isosurface casts a fully dark shadow in the ray tracer; an impostor atom inside a
+  see-through isosurface comes out washed white; the material tone still differs (ray-traced
+  atoms lighter, vector highlights as rings); the ray tracer's flat style also flattens surfaces
+  and arrows; the OpenGL 1.x viewport blends see-through surfaces unsorted, so they look lighter.
 - Color bars: the legacy OpenGL 1.x viewport (ssh -X) draws the color maps but no color bar card
   (`gui/viewport.py` `_draw_colorbars` has the image to draw), so it cannot fold them either; the card can cover an `Attributes`
   overlay placed top right.

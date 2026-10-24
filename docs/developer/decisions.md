@@ -608,6 +608,45 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   which runs on every machine.
 - **Landed:** public PR #39.
 
+### D50. Bond ends: flat where cut, round at a visible atom, the same in every renderer (2026-10-24)
+
+- **Decision:** a half-bond's end is closed by what it means. Where the bond is cut (by the
+  periodic cell or a boundary, or its other half is hidden) it ends in a flat disk; at an atom
+  that does not hide it (atoms off, smaller than the bond, or see-through) it ends in a
+  hemisphere of the bond radius; ends inside an atom or meeting the other half stay open. Every
+  renderer draws this the same way: the VTK viewport and images (tube meshes and GPU stick
+  impostors), the OpenGL 1.x viewport, the CPU and GPU ray tracers and vector files.
+- **Why:** the owner picked "잘린 끝 평면 + 원자 끝 반구" on the decision card after a comparison
+  of open, flat, slightly domed and hemispherical ends, and added that the result must not
+  depend on the renderer ("렌더러와 상관없이 동일한 경험"). Before, the viewport left tube ends
+  open (hollow pipes at every cell face), the stick impostors and vector files ended flat and the
+  ray tracer round.
+- **Considered:** flat disks everywhere (as OVITO; stick-only joints look angular), a low dome
+  (h = 0.35 r) everywhere, hemispheres everywhere (a cut bond then looks continued).
+- **Landed:** public PR #41.
+
+### D51. Lines, light and the flat style the same in every renderer (2026-10-24)
+
+- **Decision:** after D50 the renderers were compared scene by scene (atoms, bonds, cell,
+  transparency, polyhedra, isosurface and slice, arrows, selection, labels, measurements, flat
+  style) and five mismatches are fixed so that the look follows D50's rule: (1) OpenGL pictures
+  draw the cell in the same ink as the ray tracer and vector files (light grey on dark
+  backgrounds); (2) a line `width` means pixels in a 1600-pixel-high picture and scales with the
+  picture height, at least one pixel, in every renderer (VTK, OpenGL 1.x, vector, and the ray
+  tracer's tubes unless a radius is set), and the ray tracer spreads its sub-pixel samples evenly
+  (R2 sequence) so one-pixel lines are solid; (3) the flat (ASE) style is unlit with the same dark
+  outlines in the ray tracer and the OpenGL 1.x viewport; (4) with no `light` set every renderer
+  uses the ray tracer's key light (VTK's light kit and the two other head lights are gone), and the
+  impostor and OpenGL 1.x materials match the VTK mesh; (5) OpenGL 1.x polyhedra use the default
+  grey and the VTK surface material.
+- **Why:** the owner asked whether other visual elements needed checking after D50 ("다른 비쥬얼
+  요소 점검할 것 있나?"), was shown seven mismatches with comparison images, and picked "1-5
+  고치기 (권장)" on the decision card. The rule is D50's "렌더러와 상관없이 동일한 경험".
+- **Considered:** fixing only the dark-background bug, 1-4, or all seven (also vector surface
+  seams, the ray tracer's shadow of see-through surfaces and the overall material tone); 6-7 stay
+  in docs/todo.md.
+- **Landed:** public PR #42.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

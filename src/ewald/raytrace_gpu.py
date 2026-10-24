@@ -91,7 +91,7 @@ DEVFN REAL hit_sphere(const REAL* o, const REAL* d, GLOBAL const REAL* sph, I64 
 
 DEVFN REAL hit_cylinder(const REAL* o, const REAL* d, GLOBAL const REAL* cyl, I64 i)
 {
-    GLOBAL const REAL* c = cyl + 7 * i;
+    GLOBAL const REAL* c = cyl + 9 * i;
     REAL ax = c[3] - c[0], ay = c[4] - c[1], az = c[5] - c[2];
     REAL r = c[6];
     REAL L = sqrt(ax * ax + ay * ay + az * az);
@@ -102,22 +102,34 @@ DEVFN REAL hit_cylinder(const REAL* o, const REAL* d, GLOBAL const REAL* cyl, I6
     REAL od = ox * ax + oy * ay + oz * az;
     REAL px = d[0] - dd * ax, py = d[1] - dd * ay, pz = d[2] - dd * az;
     REAL qx = ox - od * ax, qy = oy - od * ay, qz = oz - od * az;
+    REAL best = -1;
+    if (fabs(dd) > (REAL)1e-12) {  /* flat caps (c[7], c[8]): the planes h = 0 and h = L inside the rim */
+        for (int e = 0; e < 2; ++e) {
+            if (c[7 + e] > (REAL)0.5) {
+                REAL t = ((e ? L : 0) - od) / dd;
+                if (t > (REAL)1e-6 && (best < 0 || t < best)) {
+                    REAL wx = qx + t * px, wy = qy + t * py, wz = qz + t * pz;
+                    if (wx * wx + wy * wy + wz * wz <= r * r) best = t;
+                }
+            }
+        }
+    }
     REAL A = px * px + py * py + pz * pz;
-    if (A < (REAL)1e-14) return -1;
+    if (A < (REAL)1e-14) return best;
     REAL B = px * qx + py * qy + pz * qz;
     REAL C = qx * qx + qy * qy + qz * qz - r * r;
     REAL disc = B * B - A * C;
-    if (disc < 0) return -1;
+    if (disc < 0) return best;
     REAL s = sqrt(disc);
     REAL ts[2] = {(-B - s) / A, (-B + s) / A};
     for (int k = 0; k < 2; ++k) {
         REAL t = ts[k];
         if (t > (REAL)1e-6) {
             REAL h = od + t * dd;
-            if (0 <= h && h <= L) return t;
+            if (0 <= h && h <= L) return (best < 0 || t < best) ? t : best;
         }
     }
-    return -1;
+    return best;
 }
 
 DEVFN REAL hit_triangle(const REAL* o, const REAL* d, GLOBAL const REAL* tri, I64 i)
@@ -396,14 +408,16 @@ KERNEL void ewald_raytrace(GLOBAL const REAL* grid, GLOBAL const I64* starts, GL
     U64 state = (U64)seed * (U64)0x9E3779B97F4A7C15 + (U64)(pix + 1);
     WIDE aos[3];
     aos[0] = rand01(&state); aos[1] = rand01(&state); aos[2] = 0.0;
+    const WIDE jox = rand01(&state), joy = rand01(&state);
     I64 s0 = keep ? nsamp[pix] : 0;
     if (s0 > 0) { state = rng[pix]; aos[2] = ao_next[pix]; }
     WIDE acc_r = acc[4 * pix], acc_g = acc[4 * pix + 1], acc_b = acc[4 * pix + 2], acc_a = acc[4 * pix + 3];
     WIDE acc_q = keep ? sq[pix] : 0.0;
     REAL o[3], d[3], n[3], p[3], sh[3];
     for (I64 s = s0; s < s1; ++s) {
-        WIDE jx = samples > 1 ? rand01(&state) : 0.5;
-        WIDE jy = samples > 1 ? rand01(&state) : 0.5;
+        WIDE jx = samples > 1 ? jox + s * 0.7548776662466927 : 0.5;   // R2 sub-pixel positions, as on the CPU
+        WIDE jy = samples > 1 ? joy + s * 0.5698402909980532 : 0.5;
+        jx -= floor(jx); jy -= floor(jy);
         WIDE u = ((px + jx) / width * 2.0 - 1.0) * half_w;
         WIDE v = (1.0 - (py + jy) / height * 2.0) * half_h;
         for (int q = 0; q < 3; ++q) {
@@ -429,13 +443,20 @@ KERNEL void ewald_raytrace(GLOBAL const REAL* grid, GLOBAL const I64* starts, GL
                 for (int q = 0; q < 3; ++q) n[q] = (p[q] - sph[4 * i + q]) / sph[4 * i + 3];
                 cr = sph_rgb[3 * i]; cg = sph_rgb[3 * i + 1]; cb = sph_rgb[3 * i + 2];
             } else if (kind == 1) {
-                GLOBAL const REAL* c = cyl + 7 * i;
+                GLOBAL const REAL* c = cyl + 9 * i;
                 REAL ax = c[3] - c[0], ay = c[4] - c[1], az = c[5] - c[2];
                 REAL L2 = ax * ax + ay * ay + az * az;
                 REAL h = ((p[0] - c[0]) * ax + (p[1] - c[1]) * ay + (p[2] - c[2]) * az) / L2;
                 n[0] = p[0] - (c[0] + h * ax); n[1] = p[1] - (c[1] + h * ay); n[2] = p[2] - (c[2] + h * az);
                 REAL nn = sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-                for (int q = 0; q < 3; ++q) n[q] /= nn;
+                /* a flat cap: the hit is closer to the end's plane than to the side */
+                REAL plane = (h < (REAL)0.5 ? fabs(h) : fabs(1 - h)) * sqrt(L2);
+                if ((h < (REAL)0.5 ? c[7] : c[8]) > (REAL)0.5 && plane < c[6] - nn) {
+                    REAL sg = (h < (REAL)0.5 ? -1 : 1) / sqrt(L2);
+                    n[0] = sg * ax; n[1] = sg * ay; n[2] = sg * az;
+                } else {
+                    for (int q = 0; q < 3; ++q) n[q] /= nn;
+                }
                 cr = cyl_rgb[3 * i]; cg = cyl_rgb[3 * i + 1]; cb = cyl_rgb[3 * i + 2];
             } else {
                 GLOBAL const REAL* T = tri + 10 * i;

@@ -14,6 +14,12 @@ def test_unit_geometry():
     v, n, f = legacy_gl.unit_cylinder(8)
     assert v[:, 2].min() == 0 and v[:, 2].max() == 1 and f.max() < len(v)
     np.testing.assert_allclose(np.linalg.norm(n, axis=1), 1)
+    for top in (False, True):   # flat bond caps (D50): disks at either end, wound to face outward
+        v, n, f = legacy_gl.unit_disk(8, top)
+        side = 1.0 if top else -1.0
+        assert np.all(v[:, 2] == (1 if top else 0)) and np.all(n == [0, 0, side]) and f.max() < len(v)
+        tri = v[f]
+        assert (np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])[:, 2] * side > 0).all()
 
 
 def test_align_matrices_map_unit_cylinder_to_segments():
@@ -129,3 +135,45 @@ def test_opengl_check_is_windows_only(monkeypatch):
     monkeypatch.setattr(gui, "_windows_gl_cache", [])
     monkeypatch.setenv("EWALD_SKIP_GL_PROBE", "1")
     assert not gui.windows_needs_software_gl()
+
+
+class RecordingGL:
+    """A stand-in for libGL that records every call (no context needed)."""
+
+    def __init__(self):
+        self.calls, self._next = [], 0
+
+    def glGenLists(self, n):
+        self._next += 1
+        return self._next
+
+    def __getattr__(self, name):
+        if not name.startswith("gl"):
+            raise AttributeError(name)
+        return lambda *args: self.calls.append((name, args))
+
+
+def test_flat_style_lines_and_light_follow_the_other_renderers():
+    """D51: flat atoms are unlit inside a dark hull, lines are line_pixels wide on every draw, and the
+    default light is the ray tracer's key light plus a head light."""
+    from ewald import DataCollection
+    from ewald.data import Cell
+    from ewald.render import DEFAULT_LIGHT, FLAT_OUTLINE, apply_camera_state, default_camera
+    from ewald.scene import build
+
+    data = DataCollection([[0, 0, 0], [2.0, 0, 0]], ["Cu", "Cu"], Cell(np.diag([4.0, 4.0, 4.0])))
+    gl = RecordingGL()
+    r = legacy_gl.LegacyRenderer(gl)
+    r.setup_state()
+    r.compile(build(data, bonds=2.5), flat=True)
+    assert ("glCullFace", (legacy_gl.GL_FRONT,)) in gl.calls
+    assert ("glColor4d", (FLAT_OUTLINE, FLAT_OUTLINE, FLAT_OUTLINE, 1.0)) in gl.calls
+    assert list(r._line_width.values()) == [("pixels", 2.0)]          # the cell
+    plotter = CameraPlotter()
+    apply_camera_state(plotter, default_camera(data, (400, 1600)))
+    gl.calls.clear()
+    r.draw(plotter, 400, 1600, axes=False)
+    assert ("glLineWidth", (2.0,)) in gl.calls                        # 2 px at 1600 px high
+    pos = [a for n, a in gl.calls if n == "glLightfv" and a[0] == legacy_gl.GL_LIGHT0 and a[1] == 0x1203][0][2]
+    d = np.asarray(DEFAULT_LIGHT) / np.linalg.norm(DEFAULT_LIGHT)
+    assert np.allclose(list(pos)[:3], d, atol=1e-6)

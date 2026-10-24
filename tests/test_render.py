@@ -122,13 +122,16 @@ def test_flat_stick_outline_is_static_geometry(cu_fcc):
 
 
 def test_flat_style_in_vector_output(tmp_path, cu_fcc):
-    """atom_style='flat' reaches the vector renderer as its flat shading (no gradient fills)."""
+    """atom_style='flat' reaches the vector renderer as its flat shading (no gradient fills), with the
+    dark outlines of the other renderers (D51)."""
     from ewald.render import render
 
     render(cu_fcc, tmp_path / "flat.svg", renderer="vector", atom_style="flat", bonds=2.6, size=(200, 150))
     render(cu_fcc, tmp_path / "shaded.svg", renderer="vector", bonds=2.6, size=(200, 150))
     paths = [(tmp_path / f).read_text().count("<path") for f in ("flat.svg", "shaded.svg")]
-    assert paths[0] < 0.7 * paths[1]  # one disc per atom instead of stacked shading rings
+    assert paths[0] < paths[1]  # a disc in its rim per atom instead of four stacked shading rings
+    flat, shaded = ((tmp_path / f).read_text().lower() for f in ("flat.svg", "shaded.svg"))
+    assert "#141414" in flat and "#141414" not in shaded  # FLAT_OUTLINE, as the OpenGL flat shader
 
 
 def test_impostors_have_sphere_depth():
@@ -431,3 +434,44 @@ def test_render_region_is_that_part_of_the_full_picture(cu_fcc):
     assert part.shape == crop.shape
     assert np.abs(part - crop).mean() < 4          # same picture up to edge pixels
     assert np.abs(part - full[:h, :w]).mean() > 10  # and not just any corner of it
+
+
+def test_opengl_cell_is_light_on_dark_backgrounds(cu_fcc):
+    """The OpenGL picture draws the cell in the ink the ray tracer and vector files use (D51): light grey on a
+    dark background, not black."""
+    from ewald.render import render
+
+    img = render(cu_fcc, size=(160, 120), background="#202124", show_atoms=False, legend=False,
+                 quality="draft").astype(int)
+    assert (img.sum(-1) > 400).sum() > 50  # light cell lines
+
+
+def test_line_width_scales_with_the_image_in_every_renderer(cu_fcc):
+    """Lines are line_pixels(width, height) wide in every renderer (D51): wider in a taller picture, never
+    under one pixel, and the ray tracer's tubes as wide as the OpenGL lines."""
+    from ewald.render import render
+    from ewald.scene import line_pixels
+
+    assert line_pixels(2, 1600) == 2 and line_pixels(2, 3200) == 4 and line_pixels(2, 100) == 1
+    kw = dict(show_atoms=False, legend=False, direction="z", quality="draft", antialiasing=False, scale=1.0)
+    widths = {}
+    for r in ("opengl", "raytrace", "vector"):
+        for h in (300, 2400):                   # 1 and 3 pixels
+            img = render(cu_fcc, size=(h, h), renderer=r, **kw)[..., :3].astype(int).sum(-1)
+            dark = img[h // 2] < 380            # a row through the middle crosses the two vertical cell edges
+            widths[r, h] = dark.sum() / 2
+    for r in ("opengl", "raytrace", "vector"):
+        assert widths[r, 300] <= 2 and 2 <= widths[r, 2400] <= 4, (r, widths)
+
+
+def test_default_light_is_the_ray_tracers_key_light():
+    """With no light set, the OpenGL renderer uses DEFAULT_LIGHT plus a head light, as every renderer (D51)."""
+    import pyvista as pv
+
+    from ewald.render import DEFAULT_LIGHT, apply_light
+
+    p = pv.Plotter(off_screen=True, window_size=(50, 50))
+    apply_light(p, None)
+    d = np.asarray(DEFAULT_LIGHT) / np.linalg.norm(DEFAULT_LIGHT)
+    assert len(p.renderer.lights) == 2 and np.allclose(p.renderer._ewald_light[:3], d)
+    p.close()

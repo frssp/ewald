@@ -55,6 +55,18 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Fixed
 
+- Bond ends look the same in every renderer (D50): bonds cut by the periodic cell end in flat
+  disks instead of hollow tubes in the viewport (and instead of round ends in the ray tracer),
+  and bond ends at hidden, small or see-through atoms are round, so stick-only drawings have
+  smooth joints in the viewport, the OpenGL 1.x viewport, the ray tracer and vector files.
+- Every renderer looks alike in four more ways (D51): OpenGL pictures draw the cell light grey on
+  dark backgrounds (it vanished in black before); lines are as wide in every renderer, scaling with
+  the picture height (`cell_width` pixels at 1600 high, at least 1), and ray-traced one-pixel lines
+  are solid instead of dotted (sub-pixel samples follow the R2 sequence); the flat (ASE) style is
+  unlit with dark outlines in the ray tracer and the OpenGL 1.x viewport too; with no `light` set,
+  every renderer uses the ray tracer's key light (the VTK viewport's light kit and the impostors'
+  and OpenGL 1.x viewport's own head lights are gone), and polyhedra in the OpenGL 1.x viewport
+  are grey instead of washed out.
 - Plugins side bar *From file…* also takes a downloaded `.zip`, `.whl` or `.tar.gz` package and installs it with pip.
 - Plugin index and example downloads trust the OS certificate store (`truststore`), so they work behind a
   company proxy that re-signs HTTPS ("certificate verify failed"). In a uv environment without pip, the
