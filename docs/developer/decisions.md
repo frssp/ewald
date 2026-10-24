@@ -417,6 +417,17 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** leaving the first start silent; a splash screen on every start.
 - **Landed:** PR (this one).
 
+### D36. A workflow row shows the group it came from (2026-10-24)
+
+- **Decision:** a workflow source may give each workflow a `group` (the session, project or
+  folder it was submitted from, such as the name of the chat session that submitted a
+  calculation), and the workflow side bar draws it dimmed under the row's title, on every row.
+- **Why:** the owner asked whether the plugin side bar could show the chat session name of each
+  calculation ("플러그인에서 채팅 세션 이름을 보여줄 수 있어?") and picked a name per row.
+- **Considered:** grouping the side bar under one header per session; showing the name only in
+  the row's tooltip; the name after the title on the same line (cut off in a narrow side bar).
+- **Landed:** PR (this one).
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
