@@ -4,7 +4,7 @@
     python benchmarks/analysis.py --size 40 --repeat 3 # 256k atoms
     python benchmarks/analysis.py --skip-render        # modifiers only
     python benchmarks/analysis.py --skip-modifiers     # ray tracer only
-    python benchmarks/analysis.py --skip-modifiers --device cuda   # ray tracer on the GPU
+    python benchmarks/analysis.py --skip-modifiers --device cuda   # ray tracer on the GPU (opencl: Intel, AMD, Apple)
 
 Modifiers run on a thermally displaced fcc Cu crystal of 4*size^3 atoms (size=30 -> 108k atoms).
 Times are the best of ``--repeat`` runs after one warm-up run, so numba compile and cache loading
@@ -126,7 +126,7 @@ def main():
     ap.add_argument("--repeat", type=int, default=2)
     ap.add_argument("--skip-render", action="store_true")
     ap.add_argument("--skip-modifiers", action="store_true")
-    ap.add_argument("--device", default=None, help="ray tracer device: cpu (default), cuda or auto")
+    ap.add_argument("--device", default=None, help="ray tracer device: cpu (default), cuda, opencl or auto")
     args = ap.parse_args()
     if not args.skip_modifiers:
         bench_modifiers(args.size, args.repeat)

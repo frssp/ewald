@@ -199,11 +199,16 @@ estimated error is still above the threshold, and their neighbours, go on to `sa
 background and evenly lit surfaces stop early, while edges, shadows and occlusion keep the full
 count. `noise_threshold=0` gives every pixel all `samples` rays.
 
-`device="cuda"` runs the ray tracer on an NVIDIA GPU through CuPy (`pip install 'ewald[gpu]'`);
-`"auto"` takes the GPU when there is one, `None`/`"cpu"` (default) the CPU. The GPU kernel
-(`ewald.raytrace_cuda`) is the same algorithm, one thread per pixel, with the same random rays,
-in single precision: its pictures differ from the CPU's only at a few edge pixels (in the tests
-0.7 % of pixels by more than 1/255). `pipe.render(...)` follows `pipe.device`, and the GUI's
+`device="cuda"` runs the ray tracer on an NVIDIA GPU through CuPy (`pip install 'ewald[gpu]'`),
+`device="opencl"` on any GPU with an OpenCL driver, Intel Arc and integrated graphics, AMD,
+NVIDIA and Apple, through pyopencl (`pip install 'ewald[opencl]'`). `"auto"` takes CUDA when
+there is an NVIDIA GPU, else an OpenCL GPU, else the CPU; `None`/`"cpu"` (default) the CPU. Both
+GPU kernels are one C source (`ewald.raytrace_gpu`), the same algorithm as the CPU tracer, one
+thread per pixel, with the same random rays, in single precision: their pictures differ from
+the CPU's only at a few edge pixels (in the tests 0.7 % of pixels by more than 1/255). A GPU
+without double precision, such as Intel Arc, also keeps the per-pixel sums in single precision,
+which changes nothing visible. The first OpenCL picture of a session waits a few seconds while
+the driver compiles the kernel. `pipe.render(...)` follows `pipe.device`, and the GUI's
 Render page and movies follow Preferences › Compute › Device ([GPU compute](gpu.md)).
 
 `renderer="vector"` writes SVG, PDF or EPS (format from the extension) with real circles for
