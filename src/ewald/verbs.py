@@ -100,9 +100,18 @@ class Table(dict):
         return f"<Table {self.name!r}: {n} rows; {', '.join(self.columns)}>"
 
 
+#: the verb that adds each step class (names a table the verb puts beside an earlier step's)
+VERB_OF = {"CoordinationAnalysis": "rdf", "MeanSquaredDisplacement": "msd", "VelocityAutocorrelation": "vacf",
+           "StructureFactor": "sq", "PowderDiffraction": "xrd", "BondAngleDistribution": "bond_angles",
+           "CommonNeighborAnalysis": "cna", "PolyhedralTemplateMatching": "ptm", "VoronoiAnalysis": "voronoi",
+           "ClusterAnalysis": "clusters"}
+
+
 def _verb(pipe, cls, table: str, frame: int, labels=None, **params) -> Table:
     """Add ``cls(**params)`` to ``pipe`` (replacing the one an earlier verb call added) and return
-    ``table`` at ``frame``. For :class:`~ewald.runs.Runs` the same on every run: a
+    ``table`` at ``frame``. The step never changes what earlier steps wrote: a property, attribute
+    or table they made keeps its value, and a table of the same name from this step is
+    ``"<table> (<verb>)"`` (see :func:`ewald.pipeline._keep_upstream`). For :class:`~ewald.runs.Runs` the same on every run: a
     :class:`~ewald.runs.RunTables` of one table per run."""
     from .runs import Runs, RunTables
 
@@ -114,6 +123,7 @@ def _verb(pipe, cls, table: str, frame: int, labels=None, **params) -> Table:
         params["time_per_frame"] = run_info(pipe).time_per_frame or 0.0
     mod = cls(**params)
     mod._verb = cls.__name__
+    mod._verb_name = VERB_OF.get(cls.__name__, cls.__name__)
     for i, m in enumerate(pipe.modifiers):
         if getattr(m, "_verb", None) == cls.__name__:
             pipe.modifiers[i] = mod
@@ -121,14 +131,16 @@ def _verb(pipe, cls, table: str, frame: int, labels=None, **params) -> Table:
     else:
         pipe.add(mod)
     data = pipe.compute(frame)
-    if table not in data.tables:
-        raise RuntimeError(f"{cls.__name__} wrote no {table!r} table: {mod.status or 'see the step for details'}")
-    columns = data.tables[table]
+    table_name = getattr(mod, "_verb_tables", {}).get(table, table)
+    if table_name not in data.tables:
+        raise RuntimeError(f"{cls.__name__} wrote no {table_name!r} table: {mod.status or 'see the step for details'}")
+    columns = data.tables[table_name]
     if callable(labels):
         labels = labels(mod, columns)
     prefix = cls.__name__ + "."
-    attrs = {k: v for k, v in data.attributes.items() if k.startswith(prefix)}
-    return Table(table, columns, pipe, frame, labels, attrs)
+    attrs = {k: v for k, v in {**data.attributes, **getattr(mod, "_verb_attributes", {})}.items()
+             if k.startswith(prefix)}
+    return Table(table_name, columns, pipe, frame, labels, attrs)
 
 
 def rdf(pipe, cutoff: float = 6.0, bins: int = 200, partial: bool = False, frame: int = 0) -> Table:

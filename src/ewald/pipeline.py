@@ -315,6 +315,38 @@ class ModifierList(list):
         super().__setitem__(i, [self._wrap(x) for x in m] if isinstance(i, slice) else self._wrap(m))
 
 
+def _upstream(data: DataCollection) -> tuple:
+    """What a step's input holds, for :func:`_keep_upstream`."""
+    return dict(data.particles), {k: dict(v) for k, v in data.tables.items()}, dict(data.attributes)
+
+
+def _keep_upstream(mod, upstream: tuple, data: DataCollection):
+    """A step a verb added (``rdf(pipe)``, ``cna(pipe)``, see :mod:`ewald.verbs`) never replaces what
+    the steps before it wrote: ``rdf(pipe, cutoff=6)`` after the user's own
+    ``CoordinationAnalysis(cutoff=3)`` must not change their "Coordination". Particle properties and
+    attributes that existed before keep their values; a table of the same name keeps the earlier one,
+    and the verb's goes in beside it as ``"<name> (<verb>)"`` (``mod._verb_tables`` maps the names)."""
+    particles, tables, attributes = upstream
+    renamed = {}
+    for name, arr in particles.items():
+        if name in data.particles and data.particles[name] is not arr and len(arr) == data.count:
+            data.particles[name] = arr
+    shadowed = {}
+    for name, value in attributes.items():
+        if data.attributes.get(name, value) is not value:
+            shadowed[name] = data.attributes[name]
+        data.attributes[name] = value
+    mod._verb_attributes = shadowed   # the step's own values of those, for the verb's Table
+    for name, table in tables.items():
+        out = data.tables.get(name)
+        if out is not None and (out.keys() != table.keys() or any(out[c] is not a for c, a in table.items())):
+            new = f"{name} ({getattr(mod, '_verb_name', None) or mod.name})"
+            data.tables[new] = out
+            data.tables[name] = table
+            renamed[name] = new
+    mod._verb_tables = renamed
+
+
 def _snapshot(data: DataCollection) -> tuple:
     """Cheap fingerprint of a collection (array identities, not contents): modifiers
     replace arrays instead of writing into them, so identity tells what changed."""
@@ -459,19 +491,27 @@ class Pipeline:
     def __len__(self):
         return self.num_frames
 
+    def _frame_index(self, frame) -> int:
+        """``frame`` as an index into the frames: negative counts from the end, as in a list;
+        out of range raises IndexError (``compute(999)`` on 5 frames used to give frame 4)."""
+        n = self.num_frames
+        try:
+            i = operator.index(frame)
+        except TypeError:
+            raise TypeError(f"frame must be an int, not {type(frame).__name__}") from None
+        if not -n <= i < n:
+            raise IndexError(f"frame {i} out of range: the pipeline has {n} frame{'s' * (n != 1)}")
+        return i % n
+
     def __getitem__(self, index):
         """``pipe[i]`` is ``pipe.compute(i)`` (negative from the end, out of range raises IndexError);
         ``pipe[a:b:c]`` is a list of those frames, as ``ase.io.read(path, index=":")`` gives."""
         n = self.num_frames
         if isinstance(index, slice):
             return [self.compute(i) for i in range(*index.indices(n))]
-        try:
-            i = operator.index(index)
-        except TypeError:
-            raise TypeError(f"pipeline frames are indexed by int or slice, not {type(index).__name__}") from None
-        if not -n <= i < n:
-            raise IndexError(f"frame {i} out of range: the pipeline has {n} frame{'s' * (n != 1)}")
-        return self.compute(i % n)
+        if not isinstance(index, int) and not hasattr(index, "__index__"):
+            raise TypeError(f"pipeline frames are indexed by int or slice, not {type(index).__name__}")
+        return self.compute(index)
 
     def __iter__(self):
         """Every frame, computed one at a time (``for data in pipe``); see :meth:`frames`."""
@@ -547,7 +587,8 @@ class Pipeline:
 
     def compute(self, frame: int = 0, device: str | None = None, errors: str = "raise",
                 upto: int | None = None, cancel: threading.Event | None = None) -> DataCollection:
-        """Evaluate the pipeline at ``frame``.
+        """Evaluate the pipeline at ``frame`` (negative counts from the end, as in a list; out of
+        range raises IndexError).
 
         ``errors="skip"`` keeps going past a failing modifier (its message is stored
         in ``modifier.status``); the GUI uses this so one bad modifier never blanks the view.
@@ -559,7 +600,7 @@ class Pipeline:
             return self._compute(frame, device, errors, upto, cancel)
 
     def _compute(self, frame, device, errors, upto, cancel) -> DataCollection:
-        frame %= self.num_frames
+        frame = self._frame_index(frame)
         backend = get_backend(device or self.device)
         mods = list(self.modifiers[:upto])
         keys = []  # settings of the leading modifiers whose output can be reused
@@ -598,6 +639,7 @@ class Pipeline:
                 continue
             ctx = ComputeContext(frame, self, backend, modifier_index=index, cancel=cancel)
             before = _snapshot(data)
+            upstream = _upstream(data) if getattr(mod, "_verb", None) else None
             t0 = time.perf_counter()
             try:
                 result = mod.modify(data, ctx)
@@ -622,6 +664,8 @@ class Pipeline:
             mod.last_time = time.perf_counter() - t0
             if result is not None:
                 data = result
+            if upstream is not None:
+                _keep_upstream(mod, upstream, data)
             mod.last_output = output_summary(before, data, frame)
         if len(keys) == len(mods) and keys and not failed and start < len(keys):
             self._store_output(base + (tuple(keys),), data)
