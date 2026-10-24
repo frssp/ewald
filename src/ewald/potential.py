@@ -558,7 +558,7 @@ def lineup_table(planar: PlanarProfile, lineup: dict, alignment: dict, scissor: 
     if scissor:
         result["scissor"] = scissor
     result["plateaus"] = {s: {k: v for k, v in p.items()} for s, p in (lineup.get("plateaus") or {}).items()}
-    return Table("Lineup", columns, attributes={"energy_axis": axis, "energy_zero_eV": zero, "levels": levels,
+    return Table("Lineup", columns, attributes={"axis": "c", "energy_axis": axis, "energy_zero_eV": zero, "levels": levels,
                                                "regions": regions, "gaps": gaps, "result": result})
 
 
@@ -573,7 +573,7 @@ def work_function_table(planar: PlanarProfile, wf: dict, name: str = ""):
               Level("E_F", wf["fermi_eV"] - zero, None, "dashed", f"Phi = {wf['work_function_eV']:.3f} eV").as_dict()]
     title = f"Work function {name}".strip()
     return Table(title, {"z (A)": planar.z, "Planar average": planar.values - zero},
-                 attributes={"energy_axis": "E - E_vac", "energy_zero_eV": zero, "levels": levels,
+                 attributes={"axis": "c", "energy_axis": "E - E_vac", "energy_zero_eV": zero, "levels": levels,
                              "gaps": [{"name": f"Φ = {wf['work_function_eV']:.2f} eV",
                                        "lower": wf["fermi_eV"] - zero, "upper": 0.0}],
                              "result": dict(wf, surface=name)})

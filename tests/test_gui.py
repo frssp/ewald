@@ -609,6 +609,67 @@ def test_view_cell_of_an_analysis_table_is_a_live_plot_with_its_levels(app, tmp_
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_profile_plot_aligns_the_3d_view_selects_slabs_and_marks_positions(app, tmp_path):
+    """A profile along c shown on its own (an analysis table, ``attributes["axis"]``) links to the
+    structure in the 3D view: Align 3D view turns it side-on with the plot's range, zooming either
+    moves both, turning the view away lets go; a dragged range picks that slab, hovering puts a
+    plane there and the picked atoms show as ticks."""
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+
+    data = os.path.join(os.path.dirname(__file__), "data", "interface_tin_mgo_100.extxyz")
+    path = tmp_path / "profile.py"
+    path.write_text(
+        "# %%\nimport numpy as np\nfrom ewald import load\nfrom ewald.verbs import Table\n"
+        f"from ewald.views import show\npipe = load({data!r})\n"
+        "z = np.linspace(0, 29.35, 200)\n"
+        "profile = Table('Profile', {'z (A)': z, 'V': np.cos(z)}, attributes={'axis': 'c'})\n\n"
+        "# %%\nshow(profile, panel=False)\n", encoding="utf-8")
+    w = MainWindow(settings=settings.Settings())
+    w.resize(1200, 800)
+    w.show()
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    for _ in range(20):
+        app.processEvents()
+    plot = view.widgets[1].plot_panel
+    assert plot.link.kind == "space" and plot.space_data() is w.data
+    assert plot.sync.isVisibleTo(plot) and plot.sync.isEnabled()
+
+    plot.set_view(xlim=(8.0, 18.0))
+    plot.sync.setChecked(True)                                 # Align 3D view
+    app.processEvents()
+    vp = w.viewport
+    assert w._aligned_plot is plot
+    assert vp.axis_view_range(w.data.cell, "c") == pytest.approx((8.0, 18.0))
+    plot.set_view(xlim=(10.0, 14.0))                           # the plot zooms: the view follows
+    app.processEvents()
+    assert vp.axis_view_range(w.data.cell, "c") == pytest.approx((10.0, 14.0))
+    vp.plotter.camera.parallel_scale *= 2                      # the view zooms out: the plot follows
+    vp._camera_check()
+    assert plot.view_limits()[0] == pytest.approx((8.0, 16.0))
+    vp.rotate("azimuth", 30)                                   # turned away: no longer aligned
+    vp._camera_check()
+    assert not plot.sync.isChecked() and w._aligned_plot is None
+
+    plot.select(10.0, 14.0)                                    # a slab: those atoms picked
+    z = w.data.cell.to_fractional(w.data.positions)[:, 2] % 1 * 29.35
+    assert sorted(vp.picks) == sorted(np.nonzero((z >= 10) & (z <= 14))[0].tolist())
+    w._on_pick("")                                             # the picks come back as ticks on the plot
+    assert len(plot._overlays) >= len(vp.picks)
+    plot._hover_axis(12.0)                                     # the cursor at z = 12: a plane there
+    assert "_axis_plane" in vp.plotter.actors
+    np.testing.assert_allclose(vp.plotter.actors["_axis_plane"].GetMapper().GetInput().points[:, 2], 12.0)
+    vp.style.replicate = [2, 3, 1]                             # across the copies drawn side by side
+    plot._hover_axis(12.5)
+    pts = vp.plotter.actors["_axis_plane"].GetMapper().GetInput().points
+    np.testing.assert_allclose(np.ptp(pts, axis=0)[:2], [2 * 2.998, 3 * 2.998], atol=0.01)
+    plot._hover_axis(None)
+    assert "_axis_plane" not in vp.plotter.actors
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_show_anywhere_in_a_cell_is_a_live_plot(app, tmp_path):
     from ewald import examples, settings
     from ewald.gui.app import MainWindow

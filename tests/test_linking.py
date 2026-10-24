@@ -113,3 +113,49 @@ def test_fes_box_selects_frames_through_colvar(tmp_path, cu_fcc):
     # the colvar table itself is a per-frame plot (x = time)
     Lc = linking.link_for(d, "colvar", "d1", num_frames=3)
     assert Lc.kind == "frames" and linking.frames_in_box(pipe, d, Lc, 1.5, 4.5) == [1, 2]
+
+
+def test_profile_along_the_cell_selects_its_slab_and_places_the_camera():
+    """A table whose x runs along a cell vector (``attributes["axis"]``, as SpatialBinning and the
+    planar averages write it) links to the slab of atoms there, and the 3D view can look at that
+    direction from the side with the plot's range across its width, and read the range back."""
+    from ewald import DataCollection
+    from ewald.backend import CPU
+    from ewald.data import Cell
+    from ewald.modifiers import SpatialBinning
+    from ewald.pipeline import ComputeContext
+
+    m = np.array([[4.0, 0, 0], [1.0, 5.0, 0], [0, 0, 20.0]])   # a and b tilted, c along z
+    frac = np.array([[0.1, 0.2, 0.05], [0.5, 0.5, 0.45], [0.3, 0.9, 0.52], [0.7, 0.1, 0.98]])
+    d = DataCollection(frac @ m + 1.0, np.array(["Ti", "O", "O", "Ti"]), cell=Cell(m, origin=np.ones(3)))
+    SpatialBinning(direction="Z", bin_count=10).modify(d, ComputeContext(0, None, CPU))
+    link = linking.link_for(d, "binning")
+    assert link.kind == "space" and link.axis == "c" and link.selects_atoms
+    assert list(linking.atoms_in_range(d, link, 8.0, 11.0)) == [1, 2]
+    np.testing.assert_allclose(linking.values_of(d, link, [0, 3]), [1.0, 19.6])
+    assert linking.selection_expression(link, 8, 11, d.cell) == "(Position.Z >= 9) & (Position.Z <= 12)"
+    link_a = linking.Link("space", "t", axis="a")
+    assert linking.selection_expression(link_a, 1, 2, d.cell) == "(Position.X >= 2) & (Position.X <= 3)"
+    link_b = linking.Link("space", "t", axis="b")
+    assert linking.selection_expression(link_b, 1, 2, d.cell) is None   # b is tilted: no fractional expression
+
+    cam = linking.axis_camera(d.cell, "c", 5.0, 15.0, aspect=2.0)
+    dop = np.subtract(cam["focal_point"], cam["position"])
+    right = np.cross(dop / np.linalg.norm(dop), cam["up"])
+    np.testing.assert_allclose(right, [0, 0, 1], atol=1e-12)             # c runs left to right
+    assert cam["parallel_scale"] == pytest.approx(2.5)                   # 10 A wide on a 2:1 view
+    assert linking.axis_range(d.cell, "c", cam["focal_point"], right, cam["parallel_scale"], 2.0) == \
+        pytest.approx((5.0, 15.0))
+    assert linking.axis_range(d.cell, "c", cam["focal_point"], [1, 0, 0], 2.5, 2.0) is None   # turned away
+    # along b (tilted): the planes of equal b are spanned by c and a; b's share across them is 5/|b|
+    u, scale, _ = linking.axis_frame(d.cell, "b")
+    np.testing.assert_allclose(u, [0, 1, 0], atol=1e-12)
+    assert scale == pytest.approx(5.0 / np.hypot(1, 5))
+    cam = linking.axis_camera(d.cell, "b", 1.0, 3.0, aspect=1.0)
+    dop = np.subtract(cam["focal_point"], cam["position"])
+    right = np.cross(dop / np.linalg.norm(dop), cam["up"])
+    assert linking.axis_range(d.cell, "b", cam["focal_point"], right, cam["parallel_scale"], 1.0) == \
+        pytest.approx((1.0, 3.0))
+    plane = linking.axis_plane(d.cell, "c", 10.0)
+    np.testing.assert_allclose(plane[:, 2], 11.0)                        # half way up c, from the origin
+    np.testing.assert_allclose(plane[2] - plane[0], m[0] + m[1])

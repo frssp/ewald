@@ -13,7 +13,12 @@ the viewport can be drawn back on the plot:
 - tables with one row per frame or timestep (``time-series``, ``plumed``, ``colvar``, the
   ``Steps`` table of log files, MSD/VACF): the frames whose points lie in the dragged box;
 - 2D free energy surfaces (``fes``): the frames whose CV pair (from ``colvar`` or ``plumed``)
-  lies in the box.
+  lies in the box;
+- profiles along a direction of the cell (a table whose ``attributes["axis"]`` is "a", "b" or
+  "c": x is the distance along that cell vector, fractional coordinate times its length, as
+  ``SpatialBinning`` and planar averages write it; "x", "y" or "z": the Cartesian coordinate):
+  the particles in the slab between the two positions. The 3D view can follow such a plot
+  (:func:`axis_frame`, :func:`axis_camera`, :func:`axis_range`, :func:`axis_plane`).
 
 Everything here is GUI-free so the mapping can be tested and reused from scripts.
 """
@@ -34,20 +39,22 @@ _STEP_COLUMNS = ("Step", "Timestep")
 class Link:
     """What a plot is linked to.
 
-    ``kind``: "property", "pairs", "bonds", "angles" (particle selections from an x range),
-    "frames" (frames from points in a box) or "frames2d" (frames from a CV pair in a box).
+    ``kind``: "property", "pairs", "bonds", "angles", "space" (particle selections from an x
+    range), "frames" (frames from points in a box) or "frames2d" (frames from a CV pair in a box).
     ``name`` is the property (for "property") or the table; ``types`` restricts pairs, bonds
-    and angles to a partial column's particle types (vertex in the middle for angles).
+    and angles to a partial column's particle types (vertex in the middle for angles);
+    ``axis`` is the direction of a "space" plot ("a", "b", "c", "x", "y" or "z").
     """
 
     kind: str
     name: str
     column: str | None = None
     types: tuple = ()
+    axis: str = ""
 
     @property
     def selects_atoms(self) -> bool:
-        return self.kind in ("property", "pairs", "bonds", "angles")
+        return self.kind in ("property", "pairs", "bonds", "angles", "space")
 
 
 def link_for(data, table: str | None = None, column: str | None = None,
@@ -64,6 +71,9 @@ def link_for(data, table: str | None = None, column: str | None = None,
     keys = list(t)
     x = keys[0]
     col = column if column in t else None
+    axis = spatial_axis(t)
+    if axis:   # a profile along the cell: the slab of atoms (of the 3D view's structure when not here)
+        return Link("space", table, col, axis=axis)
     if grid_map(t):
         cv = _cv_table(data, keys[:2])
         return Link("frames2d", table, cv) if cv else None
@@ -126,6 +136,104 @@ def _cv_table(data, cvs):
     return None
 
 
+# ------------------------------------------------------------------ positions along the cell
+AXES = ("a", "b", "c", "x", "y", "z")
+
+
+def spatial_axis(table) -> str:
+    """The direction a table's x runs along (``attributes["axis"]``), "" for any other table."""
+    axis = (getattr(table, "attributes", None) or {}).get("axis")
+    return axis if axis in AXES else ""
+
+
+def coordinates(data, axis: str) -> np.ndarray:
+    """Each particle's position along ``axis`` as a profile's x measures it: along cell vector
+    "a"/"b"/"c" the fractional coordinate times the vector's length (wrapped into the cell along
+    periodic directions), along "x"/"y"/"z" the Cartesian coordinate."""
+    pos = np.asarray(data.positions, float)
+    if axis in "xyz":
+        return pos[:, "xyz".index(axis)]
+    k = "abc".index(axis)
+    f = data.cell.to_fractional(pos)[:, k]
+    if data.cell.pbc[k]:
+        f = f - np.floor(f)
+    return f * float(np.linalg.norm(data.cell.matrix[k]))
+
+
+def axis_frame(cell, axis: str):
+    """``(u, scale, p0)``: where a profile's x lies in space. A point at x is on the plane through
+    ``p0 + x * scale * u`` with normal ``u``. Along a cell vector, ``u`` is the normal of the
+    planes of equal fractional coordinate and ``scale`` (<= 1) the vector's share along it."""
+    if axis in "xyz":
+        return np.eye(3)["xyz".index(axis)], 1.0, np.zeros(3)
+    k = "abc".index(axis)
+    m = np.asarray(cell.matrix, float)
+    n = np.cross(m[(k + 1) % 3], m[(k + 2) % 3])
+    n = n / np.linalg.norm(n)
+    if np.dot(n, m[k]) < 0:
+        n = -n
+    return n, float(np.dot(m[k], n) / np.linalg.norm(m[k])), np.asarray(cell.origin, float)
+
+
+def axis_plane(cell, axis: str, x: float) -> np.ndarray:
+    """The four corners (4 x 3) of the plane at position ``x`` of a profile along ``axis``, across
+    the cell: spanned by the two other cell vectors (Cartesian axes: the cell's extent there)."""
+    m, o = np.asarray(cell.matrix, float), np.asarray(cell.origin, float)
+    if axis in "abc":
+        k = "abc".index(axis)
+        base = o + x / np.linalg.norm(m[k]) * m[k]
+        e1, e2 = m[(k + 1) % 3], m[(k + 2) % 3]
+    else:
+        k = "xyz".index(axis)
+        corners = o + np.array([[i, j, l] for i in (0, 1) for j in (0, 1) for l in (0, 1)]) @ m
+        lo, hi = corners.min(0), corners.max(0)
+        base = lo.copy()
+        base[k] = x
+        e1, e2 = np.zeros(3), np.zeros(3)
+        i, j = [d for d in range(3) if d != k]
+        e1[i], e2[j] = hi[i] - lo[i], hi[j] - lo[j]
+    return np.array([base, base + e1, base + e1 + e2, base + e2])
+
+
+def axis_camera(cell, axis: str, lo: float, hi: float, aspect: float, center=None) -> dict:
+    """A parallel-projection camera that shows the plot range ``lo``..``hi`` of a profile along
+    ``axis`` from the side, that direction running left to right across the full width of a
+    view ``aspect`` (width / height) wide: ``position``, ``focal_point``, ``up``,
+    ``parallel_scale``. ``center`` (default: the cell's center) fixes the other two directions."""
+    u, scale, p0 = axis_frame(cell, axis)
+    m = np.asarray(cell.matrix, float)
+    if center is None:
+        center = np.asarray(cell.origin, float) + 0.5 * m.sum(0)
+    # look along the next cell vector (a for c, b for a, c for b), so the third one is up
+    k = ("abc" if axis in "abc" else "xyz").index(axis)
+    nxt = m[(k + 1) % 3] if axis in "abc" else np.eye(3)[(k + 1) % 3]
+    d = nxt - np.dot(nxt, u) * u
+    d = d / np.linalg.norm(d)
+    lo, hi = sorted((float(lo), float(hi)))
+    mid = p0 + 0.5 * (lo + hi) * scale * u
+    focal = np.asarray(center, float) + np.dot(mid - np.asarray(center, float), u) * u
+    dop = d   # direction of projection: from the camera to the focal point
+    up = np.cross(u, dop)
+    dist = float(np.linalg.norm(m.sum(0))) * 2 + 1.0
+    return {"position": tuple(focal - dop * dist), "focal_point": tuple(focal), "up": tuple(up / np.linalg.norm(up)),
+            "parallel_scale": max((hi - lo) * scale / 2 / max(aspect, 1e-6), 1e-3)}
+
+
+def axis_range(cell, axis: str, focal_point, right, parallel_scale: float, aspect: float,
+               tolerance_deg: float = 3.0):
+    """The plot range ``(lo, hi)`` of a profile along ``axis`` that a parallel-projection camera
+    shows across its width (``right``: the screen's right direction), or None when the camera
+    does not look at the axis from the side (rotated more than ``tolerance_deg`` away)."""
+    u, scale, p0 = axis_frame(cell, axis)
+    right = np.asarray(right, float)
+    right = right / (np.linalg.norm(right) or 1)
+    if np.dot(right, u) < np.cos(np.radians(tolerance_deg)):
+        return None
+    mid = (np.dot(np.asarray(focal_point, float) - p0, u)) / scale
+    half = parallel_scale * aspect / scale
+    return mid - half, mid + half
+
+
 # ------------------------------------------------------------------ particles
 def atoms_in_range(data, link: Link, lo: float, hi: float) -> np.ndarray:
     """Indices of the particles that ``link``'s x range ``lo``..``hi`` selects."""
@@ -135,6 +243,9 @@ def atoms_in_range(data, link: Link, lo: float, hi: float) -> np.ndarray:
         from .modifiers.statistics import property_values
 
         v = property_values(data.particles, link.name)[0].astype(float)
+        return np.nonzero((v >= lo) & (v <= hi))[0]
+    if link.kind == "space":
+        v = coordinates(data, link.axis)
         return np.nonzero((v >= lo) & (v <= hi))[0]
     if link.kind == "pairs":
         i, j, d = _pairs(data, hi)
@@ -165,6 +276,8 @@ def values_of(data, link: Link, indices, xmax: float | None = None) -> np.ndarra
         from .modifiers.statistics import property_values
 
         return property_values(data.particles, link.name)[0][sel].astype(float)
+    if link.kind == "space":
+        return coordinates(data, link.axis)[sel]
     if link.kind == "pairs":
         if not xmax:
             return np.zeros(0)
@@ -183,9 +296,20 @@ def values_of(data, link: Link, indices, xmax: float | None = None) -> np.ndarra
     return np.zeros(0)
 
 
-def selection_expression(link: Link, lo: float, hi: float) -> str | None:
+def selection_expression(link: Link, lo: float, hi: float, cell=None) -> str | None:
     """An :class:`~ewald.modifiers.ExpressionSelection` expression for a property range, so the
-    selection can be kept in the pipeline (re-evaluated on every frame); None for other links."""
+    selection can be kept in the pipeline (re-evaluated on every frame); None for other links.
+    A slab of a profile along a cell vector needs ``cell`` and that vector along x, y or z."""
+    if link is not None and link.kind == "space":
+        k = "abcxyz".index(link.axis) % 3
+        shift = 0.0
+        if link.axis in "abc":
+            v = None if cell is None else np.asarray(cell.matrix, float)[k]
+            if v is None or abs(v[k]) < np.linalg.norm(v) * (1 - 1e-6) or v[k] < 0:
+                return None   # not along a Cartesian axis: no expression says "fractional"
+            shift = float(np.asarray(cell.origin, float)[k])
+        link = Link("property", "Position." + "XYZ"[k])
+        lo, hi = lo + shift, hi + shift
     if link is None or link.kind != "property":
         return None
     lo, hi = sorted((float(lo), float(hi)))
