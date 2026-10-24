@@ -569,7 +569,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   없네"); the owner chose "CUDA merge + OpenCL 추가" on the decision card.
 - **Considered:** merging CUDA alone and leaving Arc on the CPU; an edge-aware denoiser instead,
   which runs on every machine.
-- **Landed:** public PR #PRNUM.
+- **Landed:** public PR #39.
 
 ## Adding an entry
 
