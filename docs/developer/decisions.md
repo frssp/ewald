@@ -64,7 +64,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   blocked ("뭘 막아야하지? 위험?") and, of the five, approved fixing the plugin tools and
   `export_file` ("진행하고 문서 정리").
 - **Considered:** only documenting the gaps; a warning without undoing the change.
-- **Landed:** public PR #NN.
+- **Landed:** public PR #21.
 
 ### D31. The AI's API reference is complete in one read (2026-10-23)
 
