@@ -15,8 +15,10 @@ import os
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ..data import DataCollection
 from ..notebook import Cell, History, Notebook, cell_from_source, new_notebook
 from ..pipeline import Pipeline
+from ..verbs import Table
 from . import header, workers
 from .ai_follow import AiFollow
 
@@ -573,10 +575,16 @@ class NotebookView(QtWidgets.QWidget):
     def view_source(self, cell) -> tuple:
         """``(data, pipeline)`` a view cell plots: the frame shown of ``pipe``, or for
         ``show(<other>, ...)`` that pipeline of the namespace at the same frame (its last one
-        when it has fewer, e.g. a band structure next to a relaxation)."""
+        when it has fewer, e.g. a band structure next to a relaxation), or a data collection of
+        just that table when ``<other>`` is a :class:`~ewald.verbs.Table` (an analysis result,
+        drawn with its levels)."""
         nb = self.notebook
         name = (cell.view or {}).get("source", nb.pipeline_name)
         other = nb.namespace.get(name)
+        if isinstance(other, Table):   # an analysis result: the plot shows that table alone
+            data = DataCollection()
+            data.tables[other.name] = other
+            return data, None
         if name == nb.pipeline_name or not isinstance(other, Pipeline) or other is nb.pipeline:
             return self.data, nb.pipeline
         frame = getattr(self.window(), "frame", 0) or 0

@@ -1,6 +1,7 @@
 """Core data model: a single simulation snapshot (``DataCollection``)."""
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -255,7 +256,8 @@ class DataCollection:
         new = DataCollection.__new__(DataCollection)
         new.particles = dict(self.particles)
         new.attributes = dict(self.attributes)
-        new.tables = {k: dict(v) for k, v in self.tables.items()}
+        # a table that carries labels or attributes (an ewald.verbs.Table: levels to draw) keeps them
+        new.tables = {k: dict(v) if type(v) is dict else copy.copy(v) for k, v in self.tables.items()}
         new.bonds = None if getattr(self, "bonds", None) is None else self.bonds.copy()
         new.surfaces = dict(getattr(self, "surfaces", {}))
         new.grids = {k: v.copy() for k, v in getattr(self, "grids", {}).items()}

@@ -61,6 +61,9 @@ class Table(dict):
         self.labels = None if labels is None else list(labels)  # names of the rows (structure types)
         self.attributes = dict(attributes or {})  # global results of the step (diffusion coefficient, ...)
 
+    def __copy__(self):   # DataCollection.copy(): new containers, shared arrays, as for a plain table
+        return Table(self.name, self, self.pipe, self.frame, self.labels, self.attributes)
+
     @property
     def counts(self) -> dict:
         """``{row: Count}`` for a counting table (structure types, coordination numbers, clusters);

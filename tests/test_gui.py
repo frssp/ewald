@@ -535,6 +535,79 @@ def test_playback_leaves_frame_independent_cells_alone(app, monkeypatch):
     w.close()
 
 
+LEVELS = {"energy_axis": "E - E_F",
+          "levels": [{"name": "E_F", "energy": 0.0, "z": None, "style": "dashed"},
+                     {"name": "VBM", "energy": -1.0, "z": [12.0, 18.0], "style": "solid"}],
+          "regions": [{"name": "film plateau", "z": [12.0, 18.0]}],
+          "gaps": [{"name": "Φ = 1.00 eV", "lower": -1.0, "upper": 0.0}]}
+
+
+def test_plots_draw_an_analysis_tables_levels_and_named_rows(app):
+    """A table carrying levels, plateaus and barriers (an analysis result in a frame's tables)
+    draws them in the Plots panel as under a cell, in the theme's colors; one value per named
+    row draws as bars."""
+    import matplotlib.colors
+
+    from ewald import DataCollection
+    from ewald.gui.plots import PlotsPanel
+    from ewald.gui.theme import TOKENS
+    from ewald.verbs import Table
+
+    z = np.linspace(0, 20, 50)
+    d = DataCollection(np.zeros((1, 3)), np.array(["Si"]))
+    d.tables["Lineup"] = Table("Lineup", {"z (A)": z, "Planar average": np.sin(z)}, attributes=LEVELS)
+    panel = PlotsPanel()
+    panel.set_data(d.copy())
+    ax = panel.figure.axes[0]
+    texts = {t.get_text(): t for t in ax.texts}
+    assert {"E_F", "VBM", "film plateau", "Φ = 1.00 eV"} <= set(texts)
+    assert ax.get_ylabel() == "E - E_F (eV)" and len(ax.patches) == 1     # the plateau shaded
+    ef = next(line for line in ax.lines if line.get_linestyle() == "--")
+    assert matplotlib.colors.to_hex(ef.get_color()) == TOKENS["text"].lower()   # not black on a dark theme
+    moved = dict(LEVELS, levels=[dict(LEVELS["levels"][0], energy=0.5)])
+    d2 = d.copy()
+    d2.tables["Lineup"] = Table("Lineup", dict(d.tables["Lineup"]), attributes=moved)   # same curve
+    panel.set_data(d2)
+    ax = panel.figure.axes[0]
+    assert next(t for t in ax.texts if t.get_text() == "E_F").xy[1] == 0.5 and "VBM" not in {
+        t.get_text() for t in ax.texts}
+    d.tables["Work functions"] = Table("Work functions", {"Surface #": np.arange(3),
+                                                          "Work function (eV)": [4.6, 4.9, 4.4]},
+                                       labels=["111", "100", "110"])
+    panel.set_data(d)
+    panel.table.setCurrentText("Work functions")
+    ax = panel.figure.axes[0]
+    assert len(ax.patches) == 3 and [t.get_text() for t in ax.get_xticklabels()] == ["111", "100", "110"]
+    assert ax.get_ylim()[0] > 0                    # 4.4 and 4.9 eV do not look alike
+    _dispose(panel)
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_view_cell_of_an_analysis_table_is_a_live_plot_with_its_levels(app, tmp_path):
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    path = tmp_path / "analysis.py"
+    path.write_text(
+        "# %%\nimport numpy as np\nfrom ewald import load\nfrom ewald.verbs import Table\n"
+        f"from ewald.views import show\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n"
+        "z = np.linspace(0, 20, 50)\n"
+        f"lineup = Table('Lineup', {{'z (A)': z, 'Planar average': np.sin(z)}}, attributes={LEVELS!r})\n\n"
+        "# %%\nshow(lineup)\n", encoding="utf-8")
+    w = MainWindow(settings=settings.Settings())
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    app.processEvents()
+    cell = view.widgets[1]
+    plot = cell.plot_panel
+    assert list(plot.data.tables) == ["Lineup"] and plot.table.currentText() == "Lineup"   # not pipe's tables
+    assert not cell.plot_slot.docked                                    # not linked: under the cell
+    assert {"E_F", "VBM", "film plateau"} <= {t.get_text() for t in plot.figure.axes[0].texts}
+    w.timeline._set(3)                                                  # another frame of pipe
+    app.processEvents()
+    assert list(cell.plot_panel.data.tables) == ["Lineup"]
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_show_anywhere_in_a_cell_is_a_live_plot(app, tmp_path):
     from ewald import examples, settings

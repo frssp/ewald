@@ -27,8 +27,18 @@ KINDS = ("table", "histogram")
 def view_data(source, table: str | None = None, y: str | None = None, histogram: str | None = None,
               frame: int = 0, bins: int = 50) -> tuple[str, dict]:
     """What a view plots, as ``(title, {column: values})``: the first column is x. For a
-    histogram the columns are the bin centers and the counts. ``source`` is a Pipeline or a
-    DataCollection."""
+    histogram the columns are the bin centers and the counts. ``source`` is a Pipeline, a
+    DataCollection or a :class:`~ewald.verbs.Table` (an analysis result); a table comes back as a
+    ``Table`` with its ``labels`` and ``attributes`` (the levels and regions drawn over it)."""
+    from .verbs import Table
+
+    if isinstance(source, Table):   # a result of its own (an analysis): the table is the data
+        if table not in (None, source.name):
+            raise KeyError(f"no table {table!r}; this result is {source.name!r}")
+        names = list(source)
+        keep = [names[0]] + ([y] if y is not None else names[1:])
+        return source.name, Table(source.name, {n: source[n] for n in keep}, labels=source.labels,
+                                  attributes=source.attributes)
     data = source.compute(frame) if hasattr(source, "compute") else source
     if histogram is not None:
         if histogram not in data.particles:
@@ -45,7 +55,8 @@ def view_data(source, table: str | None = None, y: str | None = None, histogram:
     columns = data.tables[table]
     names = list(columns)
     keep = [names[0]] + ([y] if y is not None else names[1:])
-    return table, {n: np.asarray(columns[n]) for n in keep}
+    return table, Table(table, {n: columns[n] for n in keep}, labels=getattr(columns, "labels", None),
+                        attributes=getattr(columns, "attributes", None))
 
 
 COUNT_TABLES = {"structures": "Count", "voronoi-coordination": "Count", "clusters": "Cluster Size"}
@@ -104,11 +115,22 @@ def _draw_named_rows(ax, columns, labels, color):
     ax.set_ylabel(axis_label(name))
 
 
-def _draw_levels(ax, attributes, x, colors):
+DECORATIONS = ("levels", "regions", "gaps", "energy_axis")   # what _draw_levels reads of a table's attributes
+
+
+def decorations(table) -> dict:
+    """The ``levels``/``regions``/``gaps``/``energy_axis`` a table's ``attributes`` put over its
+    curves (empty for a plain table)."""
+    attributes = getattr(table, "attributes", None) or {}
+    return {k: attributes[k] for k in DECORATIONS if attributes.get(k)}
+
+
+def _draw_levels(ax, attributes, x, colors, ink="0.15", muted="0.35"):
     """What a table's ``attributes`` put over its curves: ``regions`` (shaded x spans, named at the
     bottom), ``levels`` (horizontal lines over an x span or, as references like E_F, the whole
     width, named at their right end), ``gaps`` (arrows between two energies with their value) and
-    ``energy_axis`` (the y label, in eV)."""
+    ``energy_axis`` (the y label, in eV). ``ink`` draws the references and ``muted`` the region
+    names (the Plots panel passes its theme's text colors)."""
     regions, levels, gaps = (attributes.get(k) or [] for k in ("regions", "levels", "gaps"))
     if attributes.get("energy_axis"):
         ax.set_ylabel(f"{attributes['energy_axis']} (eV)")
@@ -118,13 +140,13 @@ def _draw_levels(ax, attributes, x, colors):
     for r in regions:
         ax.axvspan(*r["z"], color="0.5", alpha=0.12, lw=0, zorder=0)
         ax.text(sum(r["z"]) / 2, 0.02, r["name"], transform=ax.get_xaxis_transform(), ha="center",
-                va="bottom", fontsize="x-small", color="0.35", zorder=4,
+                va="bottom", fontsize="x-small", color=muted, zorder=4,
                 bbox={"boxstyle": "round,pad=0.15", "fc": ax.get_facecolor(), "ec": "none", "alpha": 0.85})
     styles = {"solid": "-", "dashed": "--", "dotted": ":"}
     accent = colors[2 % len(colors)]
     for lv in levels:
         a, b = lv.get("z") or (x0, x1)
-        color = "0.15" if lv.get("z") is None else accent
+        color = ink if lv.get("z") is None else accent
         # a dense line, so the legend's "best" place keeps clear of it
         ax.plot(np.linspace(a, b, 64), np.full(64, float(lv["energy"])), color=color,
                 ls=styles.get(lv.get("style"), "-"), lw=1.2, zorder=3)
@@ -158,6 +180,8 @@ def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool
 
     colors = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
     first = colors[0]
+    labels = getattr(columns, "labels", None) if labels is None else labels
+    attributes = getattr(columns, "attributes", None) if attributes is None else attributes
     names = list(columns)
     x = np.asarray(columns[names[0]], float)
     if histogram is not None:
