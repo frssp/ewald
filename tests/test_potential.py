@@ -19,8 +19,8 @@ from ewald.potential import (
     bulk_edges,
     classify_junction,
     layer_extent,
+    layer_period,
     lineup_table,
-    normal_period,
     potential_lineup,
     read_planar_json,
     scissor_schottky,
@@ -173,13 +173,30 @@ class TestGeometry:
         with pytest.raises(ValueError, match="interleave"):
             split_sides(iface, _frame([(1, ["Ti", "N"])]), _frame([(1, ["Ti", "O", "O"])]))
 
-    def test_normal_period_is_the_primitive_spacing(self):
-        a = 4.0
-        fcc = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
-        conv = DataCollection(np.array(fcc) * a, ["Cu"] * 4, Cell(np.diag([a, a, a])))
-        assert normal_period(conv) == pytest.approx(a / 2)
-        sc = DataCollection([[0, 0, 0], [0, 0, 3.0]], ["Po", "Po"], Cell(np.diag([3.0, 3.0, 6.0])))
-        assert normal_period(sc) == pytest.approx(3.0)
+    def test_layer_period_is_the_primitive_spacing_whatever_the_reference(self):
+        # rock salt along [001]: the conventional cell repeats every a, the crystal every a/2
+        # (the face-centring translation); a primitive bulk cell's a x b is not even the facet,
+        # which is why the period is read from the layer in the interface (sim-agent's
+        # period_along_normal gives a/2 = 2.12 A for TiN(100))
+        a = 4.24
+        base = [([0, 0, 0], "Ti"), ([.5, .5, 0], "Ti"), ([.5, 0, .5], "Ti"), ([0, .5, .5], "Ti"),
+                ([.5, 0, 0], "N"), ([0, .5, 0], "N"), ([0, 0, .5], "N"), ([.5, .5, .5], "N")]
+        pos = [(np.array(f) + [0, 0, k]) * a for k in range(4) for f, _ in base]
+        types = [t for _ in range(4) for _, t in base]
+        slab = DataCollection(np.array(pos), types, Cell(np.diag([a, a, 4 * a + 6.0])))
+        assert layer_period(slab, np.arange(len(types))) == pytest.approx(a / 2)
+        # fcc(111) in a hexagonal cell: ABC stacking repeats every 3 planes, the crystal every one
+        d = 4.05 / np.sqrt(3)
+        cell = np.array([[2.864, 0, 0], [1.432, 2.480, 0], [0, 0, 9 * d + 8.0]])
+        shifts = [np.zeros(3), (cell[0] + cell[1]) / 3, 2 * (cell[0] + cell[1]) / 3]
+        pos = [shifts[k % 3] + [0, 0, k * d] for k in range(9)]
+        al = DataCollection(np.array(pos), ["Al"] * 9, Cell(cell))
+        assert layer_period(al, np.arange(9)) == pytest.approx(d)
+
+    def test_layer_period_needs_two_periods(self):
+        one = DataCollection([[0, 0, 0], [0, 0, 2.0]], ["Ti", "N"], Cell(np.diag([3.0, 3.0, 20.0])))
+        with pytest.raises(ValueError, match="repeat"):
+            layer_period(one, [0, 1])
 
 
 class TestReadersAndTables:
@@ -219,3 +236,34 @@ class TestReadersAndTables:
         assert "TiO2 CBM* (scissor, approx.)" in levels
         assert not any(name.startswith("substrate V") for name in levels)   # a metal has no band edges
         assert [r["side"] for r in t.attributes["regions"]] == ["substrate", "film"]
+
+
+def test_work_function_table_is_on_the_vacuum_level():
+    from ewald.potential import work_function, work_function_table
+
+    z = np.arange(100) * 0.3
+    prof = PlanarProfile(np.where((z > 5) & (z < 20), -8.0, 4.0), 30.0)
+    wf = work_function(prof, efermi=-0.5)
+    t = work_function_table(prof, wf, "Cu(111)")
+    assert t.attributes["result"]["work_function_eV"] == pytest.approx(4.5)
+    assert t.attributes["energy_axis"] == "E - E_vac" and t["Planar average"].max() == pytest.approx(0.0)
+    assert {lv["name"]: lv["energy"] for lv in t.attributes["levels"]}["E_F"] == pytest.approx(-4.5)
+
+
+@pytest.mark.parametrize("key", ["tin_mgo_100", "gaas_alas_110"])
+def test_sides_and_periods_match_the_builders_metadata(key):
+    """Interfaces built by sim-agent's builder (tests/data/make_interface_reference.py): the
+    sides and filter periods derived here are the ones sim-agent stores and lines up with,
+    although its bulk references are primitive cells whose a x b is not the facet."""
+    from pathlib import Path
+
+    from ewald import import_file
+
+    data = Path(__file__).parent / "data"
+    ref = json.loads((data / "interface_reference.json").read_text(encoding="utf-8"))[key]
+    frame = {role: import_file(str(data / f"interface_{key}{suffix}.extxyz")).compute(0)
+             for role, suffix in (("interface", ""), ("substrate", "_substrate"), ("film", "_film"))}
+    sides = split_sides(frame["interface"], frame["substrate"], frame["film"])
+    assert list(sides["substrate"]) == sorted(ref["substrate"]) and list(sides["film"]) == sorted(ref["film"])
+    assert layer_period(frame["interface"], sides["substrate"]) == pytest.approx(ref["period_substrate_A"], abs=1e-4)
+    assert layer_period(frame["interface"], sides["film"]) == pytest.approx(ref["period_film_A"], abs=1e-4)
