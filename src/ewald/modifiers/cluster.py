@@ -39,6 +39,7 @@ class ClusterAnalysis(Modifier):
         self.cluster_coloring = cluster_coloring
 
     def modify(self, data, ctx):
+        self._check_positive("cutoff")
         be = ctx.backend
         n_all = data.count
         subset = np.nonzero(data.selection)[0] if self.only_selected else np.arange(n_all)

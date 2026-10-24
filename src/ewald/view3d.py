@@ -263,6 +263,14 @@ _PRESET_KEYS = {"radius_scale": 0, "bonds": 1, "atom_style": 2}
 GROUPS = ("style", "atoms", "bonds", "cell", "boundary", "elements", "camera", "picture")
 
 
+class UnknownSetting(TypeError, KeyError):
+    """A view setting that does not exist (``view(pipe, stlye=...)``): a TypeError like any unknown
+    keyword argument, and a KeyError for code written when it was one."""
+
+    def __str__(self):
+        return str(self.args[0]) if self.args else ""
+
+
 class View:
     """How a pipeline's structure is drawn: style, colors, radii, bonds, cell, boundary, camera and
     picture settings (see :data:`SETTINGS`). Read and set them as attributes (``view.bonds``,
@@ -303,7 +311,11 @@ class View:
         keeps the bonds. ``None`` (or the default) for a setting goes back to its default. Returns self."""
         for name in settings:
             if name not in SETTINGS:
-                raise KeyError(f"no view setting {name!r}; settings: {', '.join(SETTINGS)}")
+                import difflib
+
+                close = difflib.get_close_matches(name, SETTINGS, n=1)
+                hint = f" Did you mean {close[0]!r}?" if close else ""
+                raise UnknownSetting(f"no view setting {name!r}.{hint} Settings: {', '.join(SETTINGS)}")
         order = sorted(settings, key=lambda n: n != "style")
         values = dict(self._values)
         for name in order:

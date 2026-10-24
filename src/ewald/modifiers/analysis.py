@@ -22,6 +22,7 @@ class CoordinationAnalysis(Modifier):
         self.partial = partial
 
     def modify(self, data, ctx):
+        self._check_positive("cutoff", "number_of_bins")
         be, xp = ctx.backend, ctx.xp
         n = data.count
         # Half list (i < j): half the pairs to find, histogram and transfer.

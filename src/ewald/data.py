@@ -337,6 +337,32 @@ class DataCollection:
         data.attributes.update({k: v for k, v in atoms.info.items() if np.isscalar(v)})
         return data
 
+    def to_pymatgen(self):
+        """This frame as a pymatgen ``Structure`` (a ``Molecule`` when there is no cell), via
+        :meth:`to_ase`; needs ``pip install pymatgen``."""
+        AseAtomsAdaptor = _pymatgen_adaptor("to_pymatgen")
+        atoms = self.to_ase()
+        if self.cell.is_valid:
+            return AseAtomsAdaptor.get_structure(atoms)
+        return AseAtomsAdaptor.get_molecule(atoms)
+
+    @classmethod
+    def from_pymatgen(cls, structure) -> "DataCollection":
+        """A DataCollection from a pymatgen ``Structure`` or ``Molecule`` (via ASE)."""
+        return cls.from_ase(_pymatgen_adaptor("from_pymatgen").get_atoms(structure))
+
+    def apply(self, modifier) -> "DataCollection":
+        """Run ``modifier`` (a :class:`~ewald.pipeline.Modifier` or an ``f(frame, data)`` function) on
+        this frame alone and return the result, as OVITO's ``data.apply(mod)``; ``self`` stays as it
+        was. Steps that read other frames (MSD, displacements) need a :class:`~ewald.pipeline.Pipeline`."""
+        from .io import StaticSource
+        from .pipeline import Pipeline
+
+        pipe = Pipeline(StaticSource(self))
+        pipe.cache_outputs = False
+        pipe.add(modifier)
+        return pipe.compute(0)
+
     def summary(self, max_values: int = 6) -> str:
         """Human- (and LLM-) readable overview: cell, every property with dtype, shape and
         range (or most common values), attributes and tables. Cheap; print it before
@@ -400,3 +426,11 @@ def _ase_symbol(t: str) -> str:
     from ase.data import chemical_symbols
 
     return t if t in chemical_symbols else "X"
+
+
+def _pymatgen_adaptor(what: str):
+    try:
+        from pymatgen.io.ase import AseAtomsAdaptor
+    except ImportError as exc:
+        raise ImportError(f"{what} needs pymatgen: pip install pymatgen") from exc
+    return AseAtomsAdaptor

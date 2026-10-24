@@ -8,7 +8,19 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
+- Python library API audit (2026-10-24): non-breaking part done (headless renderer fallback,
+  `load(atoms)`, `pipe[i]`, `pipe.to_ase()`, pymatgen bridge, `data.apply`, `export_file(frames=...)`,
+  clearer errors). Waiting for the owner's choice on the behaviour changes: verbs (`rdf()` adds a
+  second CoordinationAnalysis that overwrites a user's "Coordination"), `compute(i)` wrapping an
+  out-of-range frame instead of raising, `pipe.render(file)` returning the whole image and `show()`
+  returning None, and one name per idea across modifiers (`bins`/`nbins`/`bin_count`/`number_of_bins`,
+  `range` vs `start`/`end` vs `xrange_*`, `unwrapped` vs `unwrap_*`, `only_selected` defaults,
+  PowderDiffraction `step`, `trajectory_rdf(nbins=)`).
+
 ## Next
+- Library API, rest of the audit: frame selection when loading (`load(path, frames=...)` like ASE's
+  `index=":"`) and reader keyword errors that name `load()` instead of the reader class; internal
+  state (`Color.rule`) out of `data.attributes`; `data.tables` values as `verbs.Table`.
 - Activity bar: buttons cannot be reordered by dragging yet (hiding and the … overflow menu work).
 - Menus after the 2026-10-23 review: right-click menus still mix entries with and without icons;
   context menus have no mnemonics; Edit has no Find in notebook; the Keyboard shortcuts window lists

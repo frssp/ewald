@@ -213,10 +213,12 @@ at why and says what to run:
 
 ## Headless machines
 
-Rendering uses VTK's OpenGL. On a cluster node or a server without a display, install an
-offscreen OpenGL such as OSMesa (`apt install libosmesa6`) or EGL, or run under a virtual
-display with `xvfb-run -a python script.py`. The built-in ray tracer
-(`renderer="raytrace"`) needs no OpenGL for the image itself.
+`pipe.render()` and `ewald render` work without a display. When no OpenGL context can be opened
+(Linux without `DISPLAY` and without EGL or OSMesa, as on most cluster nodes), the default renderer
+is the built-in ray tracer, which needs no OpenGL; asking for `renderer="opengl"` there raises a
+`RuntimeError` instead of letting VTK abort Python. For the OpenGL renderer on such a machine,
+install an offscreen OpenGL such as OSMesa (`apt install libosmesa6`) or EGL, or run under a
+virtual display with `xvfb-run -a python script.py`. `EWALD_OPENGL=0` or `1` overrides the check.
 
 ## After updating
 
