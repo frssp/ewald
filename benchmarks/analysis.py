@@ -4,6 +4,7 @@
     python benchmarks/analysis.py --size 40 --repeat 3 # 256k atoms
     python benchmarks/analysis.py --skip-render        # modifiers only
     python benchmarks/analysis.py --skip-modifiers     # ray tracer only
+    python benchmarks/analysis.py --skip-modifiers --device cuda   # ray tracer on the GPU
 
 Modifiers run on a thermally displaced fcc Cu crystal of 4*size^3 atoms (size=30 -> 108k atoms).
 Times are the best of ``--repeat`` runs after one warm-up run, so numba compile and cache loading
@@ -67,7 +68,7 @@ def bench_modifiers(size: int, repeat: int):
         print(f"  {name:28s} {best(run, repeat) * 1000:9.1f} ms", flush=True)
 
 
-def bench_raytrace(repeat: int):
+def bench_raytrace(repeat: int, device=None):
     from ewald import examples, load, render
 
     pipe = load(examples.path("POSCAR.SrTiO3"))
@@ -76,7 +77,7 @@ def bench_raytrace(repeat: int):
     data = pipe.compute(0)
     print(f"ray tracer, SrTiO3 + TiO6 polyhedra, 1600x1200, best of {repeat}")
     for quality in ("draft", "standard", "publication"):
-        t = best(lambda: render.render(data, None, renderer="raytrace", quality=quality), repeat)
+        t = best(lambda: render.render(data, None, renderer="raytrace", quality=quality, device=device), repeat)
         print(f"  {quality:28s} {t:9.2f} s", flush=True)
 
 
@@ -93,7 +94,7 @@ def gyroid(n: int = 96, period: float = 6.0):
     return d
 
 
-def bench_trace_scenes(size: int, repeat: int):
+def bench_trace_scenes(size: int, repeat: int, device=None):
     """Trace time only: the scene and camera are built once, so this is the ray tracer itself."""
     from ewald import render
     from ewald.raytrace import raytrace, scene_from_data
@@ -115,7 +116,7 @@ def bench_trace_scenes(size: int, repeat: int):
         scene = scene_from_data(data, show_cell=False)
         n = len(scene.sph_r) + len(scene.cyl_r) + len(scene.tri_alpha)
         t = best(lambda: raytrace(scene, cam, px, samples=q["samples"], ao_samples=q["ao_samples"],
-                                  shadows=q["shadows"]), repeat)
+                                  shadows=q["shadows"], device=device), repeat)
         print(f"  {name:34s} {n:>9,} prims {t:9.2f} s", flush=True)
 
 
@@ -125,12 +126,13 @@ def main():
     ap.add_argument("--repeat", type=int, default=2)
     ap.add_argument("--skip-render", action="store_true")
     ap.add_argument("--skip-modifiers", action="store_true")
+    ap.add_argument("--device", default=None, help="ray tracer device: cpu (default), cuda or auto")
     args = ap.parse_args()
     if not args.skip_modifiers:
         bench_modifiers(args.size, args.repeat)
     if not args.skip_render:
-        bench_raytrace(1)
-        bench_trace_scenes(args.size, 1)
+        bench_raytrace(1, args.device)
+        bench_trace_scenes(args.size, 1, args.device)
 
 
 if __name__ == "__main__":
