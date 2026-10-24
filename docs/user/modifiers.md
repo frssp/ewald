@@ -92,7 +92,7 @@ pipe.modifiers.append(VectorVis("Magnetic Moment", scaling=0.5, alignment="cente
 
 `PhononMode(qpoint, band, amplitude, supercell, arrows, ...)` animates one phonon mode of a
 phonopy `band.yaml`/`mesh.yaml`/`qpoints.yaml` or a VASP IBRION=5-8 OUTCAR over one period (the
-file's frames), in a commensurate supercell, with the mode pattern as arrows. See
+file's frames), in a commensurate supercell, with arrows that follow the motion (`arrow_mode`: displacement, velocity or the fixed pattern). See
 [Phonon modes](phonons.md).
 
 ```python

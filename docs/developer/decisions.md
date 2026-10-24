@@ -647,7 +647,20 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   in docs/todo.md.
 - **Landed:** public PR #42.
 
-### D52. Mac GPU ray tracing through Metal, after trimming the kernel's 64-bit integers (2026-10-24)
+### D52. Phonon arrows follow the motion (2026-10-24)
+
+- **Decision:** `PhononMode` arrows show each frame's displacement by default
+  (`arrow_mode="displacement"`), so an arrow shrinks, vanishes at the rest position and flips as
+  the atom swings back. `"velocity"` (this frame's velocity) and `"fixed"` (the frame-0 mode
+  pattern, the old behaviour, for still figures) stay as options.
+- **Why:** the owner found the fixed arrows wrong during the animation ("화살표가 고정이라
+  이상한데, 움직이는 방향이 바뀌어도 화살표 방향 크기는 그대로야") and picked "A displacement"
+  on the decision card after a side-by-side GIF of the three.
+- **Considered:** velocity arrows (longest at the rest position) and the fixed pattern (VESTA's
+  convention for still pictures) as the default.
+- **Landed:** public PR #49.
+
+### D53. Mac GPU ray tracing through Metal, after trimming the kernel's 64-bit integers (2026-10-24)
 
 - **Decision:** the GPU kernel first moves its indices and item codes to 32-bit (public PR #47),
   and since Apple's OpenCL was still slower than the CPU, the same kernel source gets a Metal

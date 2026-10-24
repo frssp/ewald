@@ -377,6 +377,8 @@ ewald-phonopy plugin, frssp/ewald-plugins `packages/ewald-phonopy`)
   superposed (phonopy `--modulation` takes a list).
 - Export a modulated structure (frame 0 as POSCAR) from the GUI; irreducible-representation
   labels of the modes (phonopy `--irreps`).
+- A trace of each atom's path (an ellipse for a complex q != 0 mode) as an alternative to the
+  per-frame arrows of `PhononMode(arrow_mode=...)`.
 - Fast reading of large `mesh.yaml` files (the parser holds the whole file in memory).
 - OUTCAR modes checked against real VASP IBRION=5-8 output; the fixture is written in VASP's
   layout from phonopy results.
