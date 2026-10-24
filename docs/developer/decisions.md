@@ -691,7 +691,9 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   (its own same-named table goes beside the earlier one); `pipe.compute(i)` raises IndexError out
   of range instead of wrapping; `pipe.render()` returns an `Image` with a one-line repr;
   `show()` returns a `Plot` or, for `show(pipe)` alone, a picture of the structure; and each idea
-  gets one argument name across the modifiers, with OVITO's spellings kept as aliases.
+  gets one argument name across the modifiers, with OVITO's spellings kept as aliases (`bins`,
+  `range`, `unwrapped`, `two_theta_step`; `only_selected` off by default everywhere, so the four
+  transport modifiers that had it on now need `only_selected=True` after a selection).
 - **Why:** the owner asked to check ewald as a plain Python library ("ewald를 lib로 쓸 때 기능
   문법 등을 점검하자") and chose "추천안 전부 적용" on the decision card. The audit found
   `rdf(pipe, cutoff=6)` changing a user's Coordination from 11.6 to 73.8 and `compute(999)` on 5
@@ -700,7 +702,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   fixes (public PR #50); returning the file path from `render()` (rejected while implementing:
   it would break every caller that uses the pixels, the `Image` array gives the short repr
   without that).
-- **Landed:** public PR #55 (behaviour); names in a follow-up PR.
+- **Landed:** public PR #55 (behaviour); public PR #58 (names).
 
 ## Adding an entry
 

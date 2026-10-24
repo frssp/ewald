@@ -39,6 +39,7 @@ CPU = Backend("cpu", np)
 
 
 def gpu_available() -> bool:
+    """True when CuPy is installed and sees an NVIDIA GPU, so ``device="cuda"`` will run there."""
     try:
         import cupy
 

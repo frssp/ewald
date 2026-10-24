@@ -39,8 +39,8 @@ write_lammps_dump(out / "cu_void.lammpstrj", frames, columns=("id", "type", "x",
 # --- 2. LAMMPS pipeline: coordination -> color -> cut open with a slice
 pipe = import_file(out / "cu_void.lammpstrj", type_map={1: "Cu"})
 print(pipe, "| atoms:", pipe.compute(0).count)
-pipe.modifiers.append(CoordinationAnalysis(cutoff=3.08, number_of_bins=150))
-pipe.modifiers.append(ColorCoding("Coordination", cmap="coolwarm_r", start=6, end=12))
+pipe.modifiers.append(CoordinationAnalysis(cutoff=3.08, bins=150))
+pipe.modifiers.append(ColorCoding("Coordination", cmap="coolwarm_r", range=(6, 12)))
 pipe.modifiers.append(Slice(normal=(0, 1, 0), distance=center[1], inverse=True))
 t = time.perf_counter()
 data = pipe.compute(4, device=device)

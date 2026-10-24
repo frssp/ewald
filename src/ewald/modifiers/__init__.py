@@ -47,7 +47,19 @@ __all__ = ["Modifier", "PythonModifier", "CalculateDisplacements", "Coordination
 
 # OVITO spellings (``CommonNeighborAnalysisModifier``, ``WrapPeriodicImagesModifier``, ...) resolve to the
 # ewald class, so OVITO scripts - and code written by LLMs that learned OVITO - run unchanged.
-_OVITO_NAMES = {"WrapPeriodicImagesModifier": "WrapAtoms", "PythonScriptModifier": "PythonScript"}
+_OVITO_NAMES = {"WrapPeriodicImagesModifier": "WrapAtoms", "PythonScriptModifier": "PythonScript",
+                "IdentifyDiamondStructureModifier": "IdentifyDiamond"}
+
+_THROUGH_OVITO = "ewald has no port of it; with the ovito package installed, OvitoModifier(ovito.modifiers.{0}Modifier(...)) runs OVITO's"
+# OVITO modifiers ewald does not have: name -> what to use instead (docs/user/modifiers.md lists them)
+NOT_PORTED = {
+    "ConstructSurface": _THROUGH_OVITO.format("ConstructSurface"),
+    "SmoothTrajectory": "use TimeAveraging for averaged properties, or " + _THROUGH_OVITO.format("SmoothTrajectory"),
+    "VoroTop": _THROUGH_OVITO.format("VoroTop"),
+    "ManualSelection": "select atoms by a condition with ExpressionSelection, or pick them in the 3D view",
+    "ScatterPlot": "plot a table with show(pipe, table=..., y=...), or two properties with matplotlib in a Python cell",
+    "ColorByType": "atoms are colored by type already, unless a step writes Color; AssignColor colors a selection",
+}
 
 # modifiers that moved out of ewald into first-party plugins (frssp/ewald-plugins): name -> plugin
 MOVED = {"Plumed": "plumed", "LoadColvar": "plumed", "FreeEnergySurface": "plumed"}
@@ -77,4 +89,7 @@ def __getattr__(name):
     hint = moved_hint(name) or (moved_hint(target) if target else None)
     if hint:
         raise ImportError(hint, name=name)
+    missing = NOT_PORTED.get(name) or NOT_PORTED.get(target)
+    if missing:
+        raise ImportError(f"{name}: {missing}", name=name)
     raise AttributeError(f"module 'ewald.modifiers' has no attribute {name!r}")

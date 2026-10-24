@@ -246,11 +246,11 @@ def _weights_per_type(names, weighting: str):
     raise ValueError("weighting must be 'none', 'xray' or 'neutron'")
 
 
-def structure_factor(positions, cell: Cell, q_max: float = 10.0, number_of_bins: int = 200,
+def structure_factor(positions, cell: Cell, q_max: float = 10.0, bins: int | None = None,
                      q_min: float = 0.0, method: str = "auto", types=None, weighting: str = "none",
-                     elements=None, cutoff: float = 0.0, lorch: bool = True, backend=None) -> dict:
+                     elements=None, cutoff: float = 0.0, lorch: bool = True, backend=None, **kwargs) -> dict:
     """Static structure factor S(q) (q = 4 pi sin(theta) / lambda, 1/Angstrom) on the centers of
-    ``number_of_bins`` bins between ``q_min`` and ``q_max``.
+    ``bins`` bins (default 200; ``number_of_bins`` is the old name) between ``q_min`` and ``q_max``.
 
     ``method``:
 
@@ -269,6 +269,9 @@ def structure_factor(positions, cell: Cell, q_max: float = 10.0, number_of_bins:
     ``types``) and normalizes in the Faber-Ziman way, ``(|sum w e|^2 / N - (<w^2> - <w>^2)) / <w>^2``,
     so S tends to 1 at high q; "none" gives the number-number S(q). Returns ``{'q', 'S(q)'}``.
     """
+    from .kernels import _bins
+
+    bins = _bins(bins, kwargs, "number_of_bins")
     be = get_backend(backend)
     xp = be.xp
     pos = np.asarray(positions, float)
@@ -277,7 +280,7 @@ def structure_factor(positions, cell: Cell, q_max: float = 10.0, number_of_bins:
     method = str(method).lower()
     if method == "auto":
         method = "direct" if periodic else "debye"
-    edges = np.linspace(float(q_min), float(q_max), int(number_of_bins) + 1)
+    edges = np.linspace(float(q_min), float(q_max), bins + 1)
     q = 0.5 * (edges[1:] + edges[:-1])
     if str(weighting).lower() in ("none", "", "unweighted"):
         names, codes = np.array(["X"]), np.zeros(n, int)

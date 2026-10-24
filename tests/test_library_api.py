@@ -217,3 +217,72 @@ def test_show_returns_a_plot_or_the_structure(monkeypatch, dump, tmp_path):
     import matplotlib.pyplot as plt
 
     plt.close("all")   # Agg's plt.show() leaves them open; later notebook tests collect open figures
+
+
+# ---- one name per idea (D55): new names, OVITO's and older spellings still accepted
+
+@pytest.mark.parametrize("cls,kwargs,old,new", [
+    (M.CoordinationAnalysis, {"cutoff": 3.0}, "number_of_bins", "bins"),
+    (M.StructureFactor, {}, "number_of_bins", "bins"),
+    (M.Histogram, {"property": "Mass"}, "bin_count", "bins"),
+    (M.SpatialBinning, {"property": "Mass"}, "bin_count", "bins"),
+    (M.VanHoveCorrelation, {}, "nbins", "bins"),
+    (M.SiteHopping, {}, "nbins", "bins"),
+    (M.PowderDiffraction, {}, "step", "two_theta_step"),
+    (M.ClusterAnalysis, {"cutoff": 3.0}, "unwrap_particles", "unwrapped"),
+    (M.GenerateTrajectoryLines, {}, "unwrap_trajectories", "unwrapped"),
+])
+def test_old_argument_names_still_work(cls, kwargs, old, new):
+    value = 7 if new != "unwrapped" else True
+    m = cls(**kwargs, **{old: value})
+    assert getattr(m, new) == value and getattr(m, old) == value
+    assert new in m.parameters() and old not in m.parameters() and f"{new}=" in repr(m)
+    setattr(m, old, value)      # an old attribute name sets the new one
+    assert old not in vars(m)
+    with pytest.raises(TypeError, match="old name"):
+        cls(**kwargs, **{old: value, new: value})
+
+
+def test_histogram_and_color_coding_take_a_range(dump):
+    h = M.Histogram("Position.Z", bin_count=4, fix_xrange=True, xrange_start=1.0, xrange_end=9.0)
+    assert h.range == (1.0, 9.0) and h.bins == 4
+    assert M.Histogram("Position.Z", fix_xrange=False, xrange_start=1.0).range is None
+    c = M.ColorCoding("Position.Z", start=2.0, end=8.0)
+    assert c.range == (2.0, 8.0) and (c.start, c.end, c.start_value) == (2.0, 8.0, 2.0)
+    c.end = 9.0
+    assert c.range == (2.0, 9.0)
+    dump.add(M.ColorCoding("Position.Z", range=(0.0, 10.0)))
+    assert dump.compute().attributes["ColorCoding.range"] == (0.0, 10.0)
+
+
+def test_sessions_and_subclasses_keep_old_names():
+    from ewald.session import modifier_from_dict
+
+    m, warning = modifier_from_dict({"type": "CoordinationAnalysis", "parameters": {"cutoff": 3.0, "number_of_bins": 30}})
+    assert warning is None and m.bins == 30
+
+    class MyHistogram(M.Histogram):   # no __init__ of its own
+        pass
+
+    assert MyHistogram("Mass", bin_count=9).bins == 9
+
+
+def test_transport_steps_use_every_particle_unless_asked():
+    for cls in (M.VanHoveCorrelation, M.SelfIntermediateScattering, M.NonGaussianParameter, M.SiteHopping,
+                M.MeanSquaredDisplacement, M.IonicConductivity):
+        assert cls().only_selected is False
+
+
+def test_kernel_bins_and_unported_ovito_modifiers():
+    from ewald import kernels
+    from ewald.data import Cell
+
+    pos = np.random.default_rng(0).random((30, 3)) * 6
+    a = kernels.rdf(pos, Cell(np.eye(3) * 6), 2.5, bins=40)
+    b = kernels.rdf(pos, Cell(np.eye(3) * 6), 2.5, nbins=40)
+    np.testing.assert_array_equal(a["g(r)"], b["g(r)"])
+    with pytest.raises(TypeError, match="unexpected keyword"):
+        kernels.rdf(pos, Cell(np.eye(3) * 6), 2.5, bns=40)
+    with pytest.raises(ImportError, match="OvitoModifier"):
+        from ewald.modifiers import ConstructSurfaceModifier  # noqa: F401
+    assert M.IdentifyDiamondStructureModifier is M.IdentifyDiamond

@@ -156,13 +156,15 @@ class VanHoveCorrelation(_TrajectoryModifier):
     origin, uses up to a fifth of them. ``only_selected`` uses the particles selected at ``start``.
     """
 
-    def __init__(self, times: tuple | None = None, part: str = "self", r_max: float = 6.0, nbins: int = 120,
+    ALIASES = {"nbins": "bins"}
+
+    def __init__(self, times: tuple | None = None, part: str = "self", r_max: float = 6.0, bins: int = 120,
                  time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1,
-                 max_origins: int = 100, unwrapped: bool = False, only_selected: bool = True):
+                 max_origins: int = 100, unwrapped: bool = False, only_selected: bool = False):
         self.times = times
         self.part = part
         self.r_max = r_max
-        self.nbins = nbins
+        self.bins = bins
         self.time_per_frame = time_per_frame
         self.start = start
         self.stop = stop
@@ -185,7 +187,7 @@ class VanHoveCorrelation(_TrajectoryModifier):
         table = {}
         if self.part in ("self", "both"):
             u = x if self.unwrapped else unwrap(x, traj["cells"], traj["pbc"], be)
-            r, p = van_hove_self(u, lags, self.r_max, self.nbins, self.max_origins, be)
+            r, p = van_hove_self(u, lags, self.r_max, self.bins, self.max_origins, be)
             table["r"] = r
             with np.errstate(divide="ignore", invalid="ignore"):
                 for m, row in zip(lags, p):
@@ -198,7 +200,7 @@ class VanHoveCorrelation(_TrajectoryModifier):
                 raise ValueError(f"r_max={self.r_max} is more than half the cell width ({2 * r_max:.3g}); "
                                  f"lower it for part='both'")
             r, g = van_hove_distinct(x, traj["cells"], traj["pbc"], [0] + [m for m in lags if m != 0], r_max,
-                                     self.nbins, max(1, self.max_origins // 5), be)
+                                     self.bins, max(1, self.max_origins // 5), be)
             table.setdefault("r", r)
             for m, row in zip([0] + [m for m in lags if m != 0], g):
                 table[f"Gd(t={m * dt:g})"] = row
@@ -225,7 +227,7 @@ class SelfIntermediateScattering(_TrajectoryModifier):
     """
 
     def __init__(self, q=None, directions: int = 16, time_per_frame: float = 0.0, start: int = 0,
-                 stop: int | None = None, step: int = 1, unwrapped: bool = False, only_selected: bool = True):
+                 stop: int | None = None, step: int = 1, unwrapped: bool = False, only_selected: bool = False):
         self.q = q
         self.directions = directions
         self.time_per_frame = time_per_frame
@@ -277,7 +279,7 @@ class NonGaussianParameter(_TrajectoryModifier):
     """
 
     def __init__(self, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1,
-                 max_origins: int = 200, unwrapped: bool = False, only_selected: bool = True):
+                 max_origins: int = 200, unwrapped: bool = False, only_selected: bool = False):
         self.time_per_frame = time_per_frame
         self.start = start
         self.stop = stop
@@ -329,9 +331,11 @@ class SiteHopping(_TrajectoryModifier):
     factor; A^2 per unit of ``time_per_frame``).
     """
 
+    ALIASES = {"nbins": "bins"}
+
     def __init__(self, sites=None, site_type: str = "", site_radius: float = 0.0, time_per_frame: float = 0.0,
-                 start: int = 0, stop: int | None = None, step: int = 1, only_selected: bool = True,
-                 nbins: int = 50):
+                 start: int = 0, stop: int | None = None, step: int = 1, only_selected: bool = False,
+                 bins: int = 50):
         self.sites = sites
         self.site_type = site_type
         self.site_radius = site_radius
@@ -340,7 +344,7 @@ class SiteHopping(_TrajectoryModifier):
         self.stop = stop
         self.step = step
         self.only_selected = only_selected
-        self.nbins = nbins
+        self.bins = bins
 
     def modify(self, data, ctx):
         res = self._cached(ctx, lambda: self._compute(ctx))
@@ -415,7 +419,7 @@ class SiteHopping(_TrajectoryModifier):
                 stays.append(np.diff(when) * dt)
         stays = np.concatenate(stays) if stays else np.zeros(0)
         hi = max(float(stays.max()) if len(stays) else dt, dt)
-        counts, edges = np.histogram(stays, bins=max(1, int(self.nbins)), range=(0.0, hi))
+        counts, edges = np.histogram(stays, bins=max(1, int(self.bins)), range=(0.0, hi))
         occupied = np.zeros(M)
         for k in range(T):
             occupied[np.unique(assign[k])] += 1

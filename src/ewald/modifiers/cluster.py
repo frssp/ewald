@@ -20,21 +20,23 @@ class ClusterAnalysis(Modifier):
     Gyration' / 'Gyration Tensor' (XX, YY, ZZ, XY, XZ, YZ; ``compute_gyration``).
     Centers of mass and gyration use 'Mass' if present and coordinates unwrapped
     across periodic boundaries within each cluster (walking bonds from its
-    lowest-index particle); ``unwrap_particles`` also writes those coordinates
+    lowest-index particle); ``unwrapped`` (OVITO: ``unwrap_particles``) also writes those coordinates
     to 'Position'. Without ``sort_by_size`` clusters are numbered in order of
     their lowest particle index, as in OVITO; ``sort_by_size`` renumbers them
     largest first and sets 'ClusterAnalysis.largest_size'.
     'ClusterAnalysis.cluster_count' is always set.
     """
 
+    ALIASES = {"unwrap_particles": "unwrapped"}
+
     def __init__(self, cutoff: float = 3.2, sort_by_size: bool = False, compute_com: bool = False,
-                 compute_gyration: bool = False, unwrap_particles: bool = False,
+                 compute_gyration: bool = False, unwrapped: bool = False,
                  only_selected: bool = False, cluster_coloring: bool = False):
         self.cutoff = cutoff
         self.sort_by_size = sort_by_size
         self.compute_com = compute_com
         self.compute_gyration = compute_gyration
-        self.unwrap_particles = unwrap_particles
+        self.unwrapped = unwrapped
         self.only_selected = only_selected
         self.cluster_coloring = cluster_coloring
 
@@ -48,7 +50,7 @@ class ClusterAnalysis(Modifier):
         labels, ncl = connected_components(len(pos), i, j, be)   # numbered by lowest member
         sizes = be.to_numpy(be.xp.bincount(labels, minlength=ncl))
 
-        if self.compute_com or self.compute_gyration or self.unwrap_particles:
+        if self.compute_com or self.compute_gyration or self.unwrapped:
             unwrapped = unwrap_clusters(pos, i, j, delta, labels, ncl, be)
             mass = np.asarray(data["Mass"], float)[subset] if "Mass" in data else None
             _, com, gyr, rg = cluster_properties(unwrapped, labels, ncl, mass, be)
@@ -76,7 +78,7 @@ class ClusterAnalysis(Modifier):
             table["Radius of Gyration"] = rg[order]
             table["Gyration Tensor"] = gyr[order]
         data.tables["clusters"] = table
-        if self.unwrap_particles:
+        if self.unwrapped:
             p = data.positions.copy()
             p[subset] = unwrapped
             data.positions = p

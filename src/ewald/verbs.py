@@ -149,7 +149,7 @@ def rdf(pipe, cutoff: float = 6.0, bins: int = 200, partial: bool = False, frame
     ``Coordination`` property) and returns its ``coordination-rdf`` table."""
     from .modifiers import CoordinationAnalysis
 
-    return _verb(pipe, CoordinationAnalysis, "coordination-rdf", frame, cutoff=cutoff, number_of_bins=bins,
+    return _verb(pipe, CoordinationAnalysis, "coordination-rdf", frame, cutoff=cutoff, bins=bins,
                  partial=partial)
 
 
@@ -186,7 +186,7 @@ def sq(pipe, q_max: float = 10.0, bins: int = 200, frame: int = 0, **kwargs) -> 
     with ``kwargs`` (``weighting=``, ``experimental=``, ...); the ``structure-factor`` table."""
     from .modifiers import StructureFactor
 
-    return _verb(pipe, StructureFactor, "structure-factor", frame, q_max=q_max, number_of_bins=bins, **kwargs)
+    return _verb(pipe, StructureFactor, "structure-factor", frame, q_max=q_max, bins=bins, **kwargs)
 
 
 def xrd(pipe, frame: int = 0, **kwargs) -> Table:

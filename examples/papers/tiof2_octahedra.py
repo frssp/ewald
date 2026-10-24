@@ -57,7 +57,7 @@ rdfs = []
 print("        Ti-F max   min  mean   MAD | Ti-O max   min  mean   MAD")
 for k, ref in PAPER.items():
     pipe = import_file(folder / f"config_{k}.cif")
-    pipe.modifiers += [bonds, CoordinationAnalysis(cutoff=6.0, number_of_bins=300, partial=True)]
+    pipe.modifiers += [bonds, CoordinationAnalysis(cutoff=6.0, bins=300, partial=True)]
     data = pipe.compute(0)
     rdfs.append(data.tables["coordination-rdf"])
     d, _, anion = ti_anion_bonds(data)

@@ -19,7 +19,8 @@ class PythonScript(Modifier):
     """Run ``modify(frame, data)`` defined in ``source``.
 
     Extra keyword parameters are passed to ``modify`` so the same script can be
-    reused with different settings.
+    reused with different settings. In a script, ``pipe.add(function)`` (a
+    :class:`~ewald.pipeline.PythonModifier`) is the simpler form of the same step.
     """
 
     cacheable = False  # arbitrary code: may read files, globals or the clock
