@@ -527,10 +527,24 @@ def _scene_arrays(scene, accel, dtype):
             arr(scene.sph_rgb), arr(scene.cyl_rgb), arr(scene.tri_n), arr(scene.tri_vrgb))
 
 
-def _pass_ints(ints, rows):
-    ints = np.asarray(ints, np.int64).copy()
-    ints[8] = len(rows)
-    return ints, len(rows) * int(ints[0])
+# Rays one kernel launch may trace. Windows resets a GPU whose kernel runs for more than about
+# 2 s (TDR) and macOS stops it as well, so a picture is traced in launches of a few rows that
+# stay well below that even on an integrated GPU.
+RAYS_PER_LAUNCH = 1 << 23
+
+
+def _launches(ints, rows):
+    """``(ints, rows, threads)`` for each kernel launch of one pass over ``rows``."""
+    ints = np.asarray(ints, np.int64)
+    width, s1, ao, shadows = (int(ints[i]) for i in (0, 3, 5, 6))
+    per_row = width * max(1, s1) * (1 + ao + shadows)
+    step = max(1, RAYS_PER_LAUNCH // max(1, per_row))
+    rows = np.ascontiguousarray(rows, np.int64)
+    for i in range(0, len(rows), step):
+        chunk = rows[i:i + step]
+        part = ints.copy()
+        part[8] = len(chunk)
+        yield part, chunk, len(chunk) * width
 
 
 # --- CUDA (CuPy) ----------------------------------------------------------------------------
@@ -565,14 +579,13 @@ class CudaTracer:
     def trace(self, params, ints, rows, active, acc, sq, nsamp, rng, ao_next):
         """One pass of :func:`ewald.raytrace._render`: every ``active`` pixel of ``rows`` is
         brought to ``ints[3]`` samples; the state arrays are updated in place."""
-        ints, n = _pass_ints(ints, rows)
-        if n == 0:
-            return
         cp = self.cp
-        args = self.args + (cp.asarray(np.ascontiguousarray(params, np.float64)), cp.asarray(ints),
-                            cp.asarray(np.ascontiguousarray(rows, np.int64)), active, acc, sq, nsamp, rng, ao_next)
-        _kernel(cp, self.real)(((n + THREADS - 1) // THREADS,), (THREADS,), args)
-        self.backend.synchronize()   # progress and cancelling follow the work actually done
+        dev_params = cp.asarray(np.ascontiguousarray(params, np.float64))
+        for part, chunk, n in _launches(ints, rows):
+            args = self.args + (dev_params, cp.asarray(part), cp.asarray(chunk), active, acc, sq, nsamp, rng,
+                                ao_next)
+            _kernel(cp, self.real)(((n + THREADS - 1) // THREADS,), (THREADS,), args)
+            self.backend.synchronize()   # one launch at a time; progress follows the work done
 
 
 # --- OpenCL (pyopencl) ----------------------------------------------------------------------
@@ -644,14 +657,12 @@ class OpenCLTracer:
 
     def trace(self, params, ints, rows, active, acc, sq, nsamp, rng, ao_next):
         """As :meth:`CudaTracer.trace`."""
-        ints, n = _pass_ints(ints, rows)
-        if n == 0:
-            return
-        extra = (self._to_device(np.asarray(params, self.wide)), self._to_device(ints),
-                 self._to_device(np.asarray(rows, np.int64)), active, acc, sq, nsamp, rng, ao_next)
-        args = [a if isinstance(a, np.int64) else a.data for a in self.args + extra]
-        self.kernel(self.queue, (n,), None, *args)
-        self.queue.finish()          # progress and cancelling follow the work actually done
+        dev_params = self._to_device(np.asarray(params, self.wide))
+        for part, chunk, n in _launches(ints, rows):
+            extra = (dev_params, self._to_device(part), self._to_device(chunk), active, acc, sq, nsamp, rng, ao_next)
+            args = [a if isinstance(a, np.int64) else a.data for a in self.args + extra]
+            self.kernel(self.queue, (n,), None, *args)
+            self.queue.finish()      # one launch at a time; progress follows the work done
 
 
 # --- choosing a device ----------------------------------------------------------------------
