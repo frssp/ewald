@@ -89,7 +89,7 @@ def run(cells: list, index: int, run_below: bool, counter: int, result_path: str
         path: str | None = None, data_dirs: tuple = (), plot_style=None):
     """Run cell ``index`` of ``cells`` and write the result JSON to ``result_path``. ``path`` and
     ``data_dirs`` are where ``load()`` looks for data files (the notebook's folder, an .ewd's data);
-    ``plot_style`` is ``(style, tokens)`` for the cells' own matplotlib plots."""
+    ``plot_style`` is ``(style, tokens, user rcParams)`` for the cells' own matplotlib plots."""
     nb = notebook()
     nb.pipeline_name, nb.path, nb.data_dirs = pipeline_name, path, list(data_dirs)
     if plot_style:

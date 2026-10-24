@@ -83,13 +83,8 @@ def apply_settings(win, s: Settings, startup: bool = False):
         for highlighter in win.findChildren(QtGui.QSyntaxHighlighter):  # notebook code cells
             highlighter.rehighlight()
     win._ui_tokens = tokens
-    from ..settings import plot_style
-    from .console import set_plot_style
-
-    user_plots = plot_style(s["python.plot_style"], tokens)   # plots that cells and the console draw
-    set_plot_style(win.console, *user_plots)
-    if getattr(win, "panel", None) is not None and hasattr(win.panel, "set_plot_style"):
-        win.panel.set_plot_style(*user_plots)
+    apply_plot_style(win, s)
+    watch_plot_style(win)
 
     win.set_button_style(s["general.toolbar_style"])
     from .icons import refresh
@@ -242,3 +237,47 @@ def run_startup_script(win, s: Settings):
         win.message(f"Ran startup script {path}")
     except Exception as exc:
         win.message(f"Startup script {path}: {exc}", error=True)
+
+
+def apply_plot_style(win, s: Settings | None = None):
+    """The matplotlib style of every plot in the window: ``python.plot_style`` for the plots
+    cells and the console draw, the user's style file (:func:`ewald.plotstyle.read_style`) on
+    top of those and of the Plots panel and view cells. Returns the file's problems."""
+    from .. import plotstyle
+    from ..settings import plot_style
+    from . import plots, theme
+    from .console import set_plot_style
+
+    s = s if s is not None else win.settings
+    user, problems = plotstyle.read_style()
+    if user != plots.USER_RC:
+        plots.USER_RC.clear()
+        plots.USER_RC.update(user)
+        for panel in win.findChildren(plots.PlotsPanel):
+            if panel.canvas_built:
+                panel.restyle()
+    user_plots = (*plot_style(s["python.plot_style"], dict(theme.TOKENS)), user or None)
+    set_plot_style(win.console, *user_plots)
+    if getattr(win, "panel", None) is not None and hasattr(win.panel, "set_plot_style"):
+        win.panel.set_plot_style(*user_plots)
+    win.plot_style_problems = problems
+    return problems
+
+
+def watch_plot_style(win):
+    """Re-read the style file when it changes (an editor opened by Preferences › Plots › Open as
+    text). The folder is watched too: editors that save by replacing the file drop the file watch."""
+    from .. import plotstyle
+
+    path = plotstyle.user_style_path()
+    watcher = getattr(win, "_plot_style_watcher", None)
+    if watcher is None:
+        watcher = win._plot_style_watcher = QtCore.QFileSystemWatcher(win)
+        timer = win._plot_style_timer = QtCore.QTimer(win, singleShot=True, interval=200)   # one reload per save
+        timer.timeout.connect(lambda: (apply_plot_style(win), watch_plot_style(win)))
+        watcher.fileChanged.connect(lambda _: timer.start())
+        watcher.directoryChanged.connect(lambda _: timer.start())
+    wanted = [str(p) for p in (path.parent.parent, path.parent, path) if p.exists()]   # config dir: plots/ made later
+    missing = [p for p in wanted if p not in watcher.files() + watcher.directories()]
+    if missing:
+        watcher.addPaths(missing)

@@ -377,7 +377,8 @@ Settings button in the Plugins side bar, so it can be set up without Python.
 
 Edit › Preferences (Ctrl+, ; the application menu on macOS) has ten pages: General, 3D view,
 Atoms & bonds (per-element color and radius, Jmol or CPK scheme, radius preset, bond search, VESTA
-`elements.ini` import), Rendering, Plots (the style of your own plots, saved plot size and font),
+`elements.ini` import), Rendering, Plots (the style of your own plots, saved plot size and font, and the form and *Open as text* button of your
+matplotlib style file, see [Notebooks](notebooks.md)),
 Notebooks (run when opened, figures and data saved with a notebook), Compute (device, CPU threads,
 installed components), Python (console startup script, extra module paths), AI (provider, API key,
 server URL, model and effort for Ask AI; see [API key](claude.md#api-key)) and Plugins (plugin

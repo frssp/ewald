@@ -189,6 +189,25 @@ Preferences › Plots › *Style of your own plots* chooses the default: *Public
 colors, so `plt.savefig` writes what you see), *Publication in UI theme colors*, or
 *Matplotlib default*. Restarting the notebook resets its rcParams.
 
+Your own changes to the style live in one matplotlib style file, `user.mplstyle` in the
+`plots` folder of the settings folder (`%APPDATA%\ewald\plots` on Windows,
+`~/Library/Application Support/ewald/plots` on macOS, `~/.config/ewald/plots` on Linux). It
+holds plain rcParams (`font.size: 9`, `lines.linewidth: 1.5`, ...) and is drawn over the
+publication style everywhere in the GUI: the Plots panel, view cells, notebook cells, a
+notebook's kernel and the console. The file is the source. Preferences › Plots › *Style file*
+shows its common keys (font, font size, line widths, tick direction, minor ticks, legend frame,
+color cycle) as a form, read from the file when Preferences opens, and Apply writes back only
+the rows you changed, keeping the file's other lines and comments. *Open as text* opens the
+file in your text editor (a new file starts with every key of the publication style commented
+out); EWALD reads it again as soon as you save. Lines matplotlib does not accept are listed
+under the button and left out. On screen the Plots panel keeps the UI theme's background and
+text colors and its own font size; plots you save from it use everything in the file.
+
+Scripts and notebooks run outside the GUI never read the file by themselves, so a script draws
+the same plots on every computer. Ask for it in a cell or script: `plotstyle.use("user")` for
+your file, `plotstyle.use("acs")` for any other `acs.mplstyle` you put in the same folder, or
+`plotstyle.use("path/to/journal.mplstyle")`.
+
 Spectra, diffraction patterns and time series are not separate panels. They are views in the
 notebook, next to the steps that compute them.
 
