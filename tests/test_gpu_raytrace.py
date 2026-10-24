@@ -32,8 +32,8 @@ extern "C" void host_launch(long long nblocks, long long nthreads, void** a)
     for (long long b = 0; b < nblocks; ++b)
         for (long long t = 0; t < nthreads; ++t) {
             blockIdx.x = b; threadIdx.x = t;
-            ewald_raytrace((const REAL*)a[0], (const long long*)a[1], (const long long*)a[2], *(long long*)a[3],
-                           (const REAL*)a[4], (const long long*)a[5], *(long long*)a[6],
+            ewald_raytrace((const REAL*)a[0], (const int*)a[1], (const int*)a[2], *(long long*)a[3],
+                           (const REAL*)a[4], (const int*)a[5], *(long long*)a[6],
                            (const REAL*)a[7], (const REAL*)a[8], (const REAL*)a[9],
                            (const REAL*)a[10], (const REAL*)a[11], (const REAL*)a[12], (const REAL*)a[13],
                            (const double*)a[14], (const long long*)a[15], (const long long*)a[16],
@@ -243,3 +243,18 @@ def test_auto_takes_an_opencl_gpu_except_on_macos(monkeypatch, platform, picks):
     got = rc.tracer(sc, rt.Accel(sc), "auto")
     assert got == (("opencl", "gpu") if picks else None)
     assert rc.tracer(sc, rt.Accel(sc), "opencl") == ("opencl", "gpu")   # asked for by name: always
+
+
+def test_gpu_codes_are_32_bit_and_keep_kind_shadow_and_index():
+    codes = np.array([0 << 40 | 5, 1 << 40 | rt.NO_SHADOW | 7, 2 << 40 | (rc.GPU_NO_SHADOW - 1)], np.int64)
+    g = rc.gpu_codes(codes)
+    assert g.dtype == np.int32
+    assert list(g >> rc.GPU_KIND_SHIFT) == [0, 1, 2]
+    assert list((g & rc.GPU_NO_SHADOW) != 0) == [False, True, False]
+    assert list(g & (rc.GPU_NO_SHADOW - 1)) == [5, 7, rc.GPU_NO_SHADOW - 1]
+
+
+def test_scene_too_large_for_32_bit_codes_stays_on_cpu(fake_gpu, monkeypatch):
+    monkeypatch.setattr(rc, "GPU_NO_SHADOW", 4)     # pretend: at most 4 primitives of a kind
+    rt.raytrace(busy_scene(), CAM, (16, 12), samples=1, ao_samples=0, device=fake_gpu)
+    assert not fake_gpu.launches

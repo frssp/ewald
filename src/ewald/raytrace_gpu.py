@@ -38,6 +38,7 @@ CUDA_PRELUDE = r"""
 #define GLOBAL
 typedef long long I64;
 typedef unsigned long long U64;
+typedef int IX;
 #define THREAD_ID ((I64)blockDim.x * blockIdx.x + threadIdx.x)
 """
 
@@ -53,11 +54,13 @@ OPENCL_PRELUDE = r"""
 #define GLOBAL __global
 typedef long I64;
 typedef ulong U64;
+typedef int IX;
 #define THREAD_ID ((I64)get_global_id(0))
 """
 
 RAYTRACE_BODY = r"""
-#define NO_SHADOW ((I64)1 << 39)
+#define KIND_SHIFT 29
+#define NO_SHADOW ((IX)1 << 28)
 #define INDEX_MASK (NO_SHADOW - 1)
 #define MAX_STACK %(max_stack)d
 
@@ -74,7 +77,7 @@ DEVFN WIDE rand01(U64* state)
     return (WIDE)((x * (U64)2685821657736338717) >> 11) * (1.0 / 9007199254740992.0);
 }
 
-DEVFN REAL hit_sphere(const REAL* o, const REAL* d, GLOBAL const REAL* sph, I64 i)
+DEVFN REAL hit_sphere(const REAL* o, const REAL* d, GLOBAL const REAL* sph, IX i)
 {
     GLOBAL const REAL* s = sph + 4 * i;
     REAL ox = o[0] - s[0], oy = o[1] - s[1], oz = o[2] - s[2];
@@ -90,7 +93,7 @@ DEVFN REAL hit_sphere(const REAL* o, const REAL* d, GLOBAL const REAL* sph, I64 
     return t > (REAL)1e-6 ? t : -1;
 }
 
-DEVFN REAL hit_cylinder(const REAL* o, const REAL* d, GLOBAL const REAL* cyl, I64 i)
+DEVFN REAL hit_cylinder(const REAL* o, const REAL* d, GLOBAL const REAL* cyl, IX i)
 {
     GLOBAL const REAL* c = cyl + 9 * i;
     REAL ax = c[3] - c[0], ay = c[4] - c[1], az = c[5] - c[2];
@@ -133,7 +136,7 @@ DEVFN REAL hit_cylinder(const REAL* o, const REAL* d, GLOBAL const REAL* cyl, I6
     return best;
 }
 
-DEVFN REAL hit_triangle(const REAL* o, const REAL* d, GLOBAL const REAL* tri, I64 i)
+DEVFN REAL hit_triangle(const REAL* o, const REAL* d, GLOBAL const REAL* tri, IX i)
 {
     GLOBAL const REAL* T = tri + 10 * i;
     REAL e1x = T[3] - T[0], e1y = T[4] - T[1], e1z = T[5] - T[2];
@@ -152,11 +155,11 @@ DEVFN REAL hit_triangle(const REAL* o, const REAL* d, GLOBAL const REAL* tri, I6
     return t > (REAL)1e-6 ? t : -1;
 }
 
-DEVFN REAL hit_code(const REAL* o, const REAL* d, I64 code, int any_hit,
+DEVFN REAL hit_code(const REAL* o, const REAL* d, IX code, int any_hit,
                                        GLOBAL const REAL* sph, GLOBAL const REAL* cyl, GLOBAL const REAL* tri)
 {
-    I64 kind = code >> 40;
-    I64 i = code & INDEX_MASK;
+    IX kind = code >> KIND_SHIFT;
+    IX i = code & INDEX_MASK;
     if (kind == 0) return hit_sphere(o, d, sph, i);
     if (kind == 1) return hit_cylinder(o, d, cyl, i);
     if (any_hit && tri[10 * i + 9] < (REAL)0.999) return -1;
@@ -169,7 +172,7 @@ DEVFN REAL inv_dir(REAL x)
     return 1 / x;
 }
 
-DEVFN REAL hit_box(GLOBAL const REAL* box, I64 k, REAL ox, REAL oy, REAL oz,
+DEVFN REAL hit_box(GLOBAL const REAL* box, IX k, REAL ox, REAL oy, REAL oz,
                                       REAL ix, REAL iy, REAL iz, REAL tmax)
 {
     GLOBAL const REAL* b = box + 8 * k;
@@ -183,10 +186,10 @@ DEVFN REAL hit_box(GLOBAL const REAL* box, I64 k, REAL ox, REAL oy, REAL oz,
     return (tn <= tf && tn < tmax) ? tn : -1;
 }
 
-DEVFN void dda_axis(REAL o, REAL d, REAL lo, REAL size, I64 dim, REAL t0,
-                                       I64* c, I64* step, REAL* next, REAL* delta)
+DEVFN void dda_axis(REAL o, REAL d, REAL lo, REAL size, IX dim, REAL t0,
+                                       IX* c, IX* step, REAL* next, REAL* delta)
 {
-    I64 cc = (I64)((o + d * (t0 + (REAL)1e-9) - lo) / size);
+    IX cc = (IX)((o + d * (t0 + (REAL)1e-9) - lo) / size);
     cc = cc < 0 ? 0 : (cc > dim - 1 ? dim - 1 : cc);
     *c = cc;
     if (d > 0) { *step = 1; *next = (lo + (cc + 1) * size - o) / d; *delta = size / d; }
@@ -194,8 +197,8 @@ DEVFN void dda_axis(REAL o, REAL d, REAL lo, REAL size, I64 dim, REAL t0,
     else { *step = 0; *next = (REAL)1e30; *delta = (REAL)1e30; }
 }
 
-DEVFN I64 trace_grid(const REAL* o, const REAL* d, REAL tmax, GLOBAL const REAL* grid,
-                                       GLOBAL const I64* starts, GLOBAL const I64* items, I64 n_items,
+DEVFN IX trace_grid(const REAL* o, const REAL* d, REAL tmax, GLOBAL const REAL* grid,
+                                       GLOBAL const IX* starts, GLOBAL const IX* items, IX n_items,
                                        GLOBAL const REAL* sph, GLOBAL const REAL* cyl, GLOBAL const REAL* tri, int any_hit, REAL* t_out)
 {
     if (n_items == 0) return -1;
@@ -213,19 +216,19 @@ DEVFN I64 trace_grid(const REAL* o, const REAL* d, REAL tmax, GLOBAL const REAL*
         }
     }
     if (t0 > t1) return -1;
-    I64 dx = (I64)grid[6], dy = (I64)grid[7], dz = (I64)grid[8];
-    I64 cx, sx, cy, sy, cz, sz;
+    IX dx = (IX)grid[6], dy = (IX)grid[7], dz = (IX)grid[8];
+    IX cx, sx, cy, sy, cz, sz;
     REAL nx, ex, ny, ey, nz, ez;
     dda_axis(o[0], d[0], grid[0], grid[3], dx, t0, &cx, &sx, &nx, &ex);
     dda_axis(o[1], d[1], grid[1], grid[4], dy, t0, &cy, &sy, &ny, &ey);
     dda_axis(o[2], d[2], grid[2], grid[5], dz, t0, &cz, &sz, &nz, &ez);
     REAL best_t = (REAL)1e30;
-    I64 best = -1;
+    IX best = -1;
     // a ray crosses at most dx + dy + dz cells; the bound also ends a ray made NaN by float round-off
-    for (I64 steps = dx + dy + dz + 3; steps > 0; --steps) {
-        I64 c = (cx * dy + cy) * dz + cz;
-        for (I64 s = starts[c]; s < starts[c + 1]; ++s) {
-            I64 code = items[s];
+    for (IX steps = dx + dy + dz + 3; steps > 0; --steps) {
+        IX c = (cx * dy + cy) * dz + cz;
+        for (IX s = starts[c]; s < starts[c + 1]; ++s) {
+            IX code = items[s];
             if (any_hit && (code & NO_SHADOW)) continue;
             REAL t = hit_code(o, d, code, any_hit, sph, cyl, tri);
             if (t > 0 && t < best_t && t < tmax) {
@@ -254,17 +257,17 @@ DEVFN I64 trace_grid(const REAL* o, const REAL* d, REAL tmax, GLOBAL const REAL*
     return -1;
 }
 
-DEVFN I64 trace_bvh(const REAL* o, const REAL* d, REAL tmax, GLOBAL const REAL* box, I64 n_nodes,
-                                      GLOBAL const I64* items, GLOBAL const REAL* sph, GLOBAL const REAL* cyl, GLOBAL const REAL* tri,
+DEVFN IX trace_bvh(const REAL* o, const REAL* d, REAL tmax, GLOBAL const REAL* box, IX n_nodes,
+                                      GLOBAL const IX* items, GLOBAL const REAL* sph, GLOBAL const REAL* cyl, GLOBAL const REAL* tri,
                                       int any_hit, REAL* t_out)
 {
     if (n_nodes == 0) return -1;
-    I64 stack[MAX_STACK];
+    IX stack[MAX_STACK];
     REAL stack_t[MAX_STACK];
     REAL ox = o[0], oy = o[1], oz = o[2];
     REAL ix = inv_dir(d[0]), iy = inv_dir(d[1]), iz = inv_dir(d[2]);
     REAL best_t = tmax;
-    I64 best = -1;
+    IX best = -1;
     REAL t_root = hit_box(box, 0, ox, oy, oz, ix, iy, iz, best_t);
     if (t_root < 0) return -1;
     stack[0] = 0; stack_t[0] = t_root;
@@ -272,12 +275,12 @@ DEVFN I64 trace_bvh(const REAL* o, const REAL* d, REAL tmax, GLOBAL const REAL* 
     while (sp > 0) {
         --sp;
         if (stack_t[sp] >= best_t) continue;
-        I64 node = stack[sp];
-        I64 n = (I64)box[8 * node + 7];
+        IX node = stack[sp];
+        IX n = (IX)box[8 * node + 7];
         if (n > 0) {
-            I64 first = (I64)box[8 * node + 6];
-            for (I64 s = first; s < first + n; ++s) {
-                I64 code = items[s];
+            IX first = (IX)box[8 * node + 6];
+            for (IX s = first; s < first + n; ++s) {
+                IX code = items[s];
                 if (any_hit && (code & NO_SHADOW)) continue;
                 REAL t = hit_code(o, d, code, any_hit, sph, cyl, tri);
                 if (t > 0 && t < best_t) {
@@ -286,7 +289,7 @@ DEVFN I64 trace_bvh(const REAL* o, const REAL* d, REAL tmax, GLOBAL const REAL* 
                 }
             }
         } else {
-            I64 left = (I64)box[8 * node + 6];
+            IX left = (IX)box[8 * node + 6];
             REAL tl = hit_box(box, left, ox, oy, oz, ix, iy, iz, best_t);
             REAL tr = hit_box(box, left + 1, ox, oy, oz, ix, iy, iz, best_t);
             if (tl >= 0 && tr >= 0) {
@@ -310,15 +313,15 @@ DEVFN I64 trace_bvh(const REAL* o, const REAL* d, REAL tmax, GLOBAL const REAL* 
 }
 
 typedef struct {
-    GLOBAL const REAL* grid; GLOBAL const I64* starts; GLOBAL const I64* items; I64 n_items;
-    GLOBAL const REAL* nodes; GLOBAL const I64* bvh_items; I64 n_nodes;
+    GLOBAL const REAL* grid; GLOBAL const IX* starts; GLOBAL const IX* items; IX n_items;
+    GLOBAL const REAL* nodes; GLOBAL const IX* bvh_items; IX n_nodes;
     GLOBAL const REAL* sph; GLOBAL const REAL* cyl; GLOBAL const REAL* tri;
 } Accel;
 
-DEVFN I64 trace(const REAL* o, const REAL* d, REAL tmax, const Accel* a, int any_hit, REAL* t_out)
+DEVFN IX trace(const REAL* o, const REAL* d, REAL tmax, const Accel* a, int any_hit, REAL* t_out)
 {
     REAL tg = -1;
-    I64 cg = -1;
+    IX cg = -1;
     if (a->n_items) {
         cg = trace_grid(o, d, tmax, a->grid, a->starts, a->items, a->n_items, a->sph, a->cyl, a->tri, any_hit, &tg);
         if (cg >= 0) {
@@ -328,7 +331,7 @@ DEVFN I64 trace(const REAL* o, const REAL* d, REAL tmax, const Accel* a, int any
     }
     if (a->n_nodes) {
         REAL tb = -1;
-        I64 cb = trace_bvh(o, d, tmax, a->nodes, a->n_nodes, a->bvh_items, a->sph, a->cyl, a->tri, any_hit, &tb);
+        IX cb = trace_bvh(o, d, tmax, a->nodes, a->n_nodes, a->bvh_items, a->sph, a->cyl, a->tri, any_hit, &tb);
         if (cb >= 0) { *t_out = tb; return cb; }
     }
     *t_out = tg;
@@ -337,7 +340,7 @@ DEVFN I64 trace(const REAL* o, const REAL* d, REAL tmax, const Accel* a, int any
 
 DEVFN void shade(const REAL* p, const REAL* n, const REAL* d, REAL cr, REAL cg, REAL cb,
                              const REAL* light, REAL ambient, REAL diffuse, REAL specular, REAL shininess,
-                             int shadows, I64 ao_samples, REAL ao_dist, const Accel* a, WIDE* aos,
+                             int shadows, IX ao_samples, REAL ao_dist, const Accel* a, WIDE* aos,
                              REAL* out)
 {
     REAL ndl = n[0] * light[0] + n[1] * light[1] + n[2] * light[2];
@@ -359,9 +362,9 @@ DEVFN void shade(const REAL* p, const REAL* n, const REAL* d, REAL cr, REAL cg, 
         REAL bn = sqrt(bx * bx + by * by + bz * bz);
         bx /= bn; by /= bn; bz /= bn;
         REAL cx = n[1] * bz - n[2] * by, cy = n[2] * bx - n[0] * bz, cz = n[0] * by - n[1] * bx;
-        I64 hits = 0;
+        IX hits = 0;
         REAL od[3];
-        for (I64 s = 0; s < ao_samples; ++s) {
+        for (IX s = 0; s < ao_samples; ++s) {
             WIDE g = aos[2];
             aos[2] += 1.0;
             WIDE r1 = fmod(aos[0] + g * 0.7548776662466927, 1.0);
@@ -382,21 +385,22 @@ DEVFN void shade(const REAL* p, const REAL* n, const REAL* d, REAL cr, REAL cg, 
     out[2] = rmin((REAL)1, cb * sh + specular * spec);
 }
 
-KERNEL void ewald_raytrace(GLOBAL const REAL* grid, GLOBAL const I64* starts, GLOBAL const I64* items, const I64 n_items,
-                    GLOBAL const REAL* nodes, GLOBAL const I64* bvh_items, const I64 n_nodes,
+KERNEL void ewald_raytrace(GLOBAL const REAL* grid, GLOBAL const IX* starts, GLOBAL const IX* items, const I64 n_items,
+                    GLOBAL const REAL* nodes, GLOBAL const IX* bvh_items, const I64 n_nodes,
                     GLOBAL const REAL* sph, GLOBAL const REAL* cyl, GLOBAL const REAL* tri,
                     GLOBAL const REAL* sph_rgb, GLOBAL const REAL* cyl_rgb, GLOBAL const REAL* tri_n, GLOBAL const REAL* tri_vrgb,
                     GLOBAL const WIDE* P, GLOBAL const I64* I, GLOBAL const I64* rows, GLOBAL const unsigned char* active,
                     GLOBAL WIDE* acc, GLOBAL WIDE* sq, GLOBAL I64* nsamp, GLOBAL U64* rng, GLOBAL WIDE* ao_next)
 {
-    const I64 width = I[0], height = I[1], ortho = I[2], s1 = I[3], samples = I[4];
-    const I64 ao_samples = I[5], shadows = I[6], seed = I[7], n_rows = I[8], keep = I[9];
-    I64 k = THREAD_ID;
+    const IX width = I[0], height = I[1], ortho = I[2], s1 = I[3], samples = I[4];
+    const IX ao_samples = I[5], shadows = I[6], n_rows = I[8], keep = I[9];
+    const I64 seed = I[7];
+    IX k = (IX)THREAD_ID;
     if (k >= n_rows * width) return;
-    const I64 py = rows[k / width], px = k %% width;
-    const I64 pix = py * width + px;
+    const IX py = rows[k / width], px = k %% width;
+    const IX pix = py * width + px;
     if (!active[pix]) return;
-    Accel a = {grid, starts, items, n_items, nodes, bvh_items, n_nodes, sph, cyl, tri};
+    Accel a = {grid, starts, items, (IX)n_items, nodes, bvh_items, (IX)n_nodes, sph, cyl, tri};
     REAL eye[3], fwd[3], right[3], up[3], light[3];
     for (int q = 0; q < 3; ++q) {
         eye[q] = (REAL)P[q]; fwd[q] = (REAL)P[3 + q]; right[q] = (REAL)P[6 + q]; up[q] = (REAL)P[9 + q];
@@ -411,12 +415,12 @@ KERNEL void ewald_raytrace(GLOBAL const REAL* grid, GLOBAL const I64* starts, GL
     WIDE aos[3];
     aos[0] = rand01(&state); aos[1] = rand01(&state); aos[2] = 0.0;
     const WIDE jox = rand01(&state), joy = rand01(&state);
-    I64 s0 = keep ? nsamp[pix] : 0;
+    IX s0 = keep ? (IX)nsamp[pix] : 0;
     if (s0 > 0) { state = rng[pix]; aos[2] = ao_next[pix]; }
     WIDE acc_r = acc[4 * pix], acc_g = acc[4 * pix + 1], acc_b = acc[4 * pix + 2], acc_a = acc[4 * pix + 3];
     WIDE acc_q = keep ? sq[pix] : 0.0;
     REAL o[3], d[3], n[3], p[3], sh[3];
-    for (I64 s = s0; s < s1; ++s) {
+    for (IX s = s0; s < s1; ++s) {
         WIDE jx = samples > 1 ? jox + s * 0.7548776662466927 : 0.5;   // R2 sub-pixel positions, as on the CPU
         WIDE jy = samples > 1 ? joy + s * 0.5698402909980532 : 0.5;
         jx -= floor(jx); jy -= floor(jy);
@@ -432,13 +436,13 @@ KERNEL void ewald_raytrace(GLOBAL const REAL* grid, GLOBAL const I64* starts, GL
         WIDE trans = 1.0;
         for (int layer = 0; layer < 16; ++layer) {
             REAL t;
-            I64 code = trace(o, d, (REAL)1e30, &a, 0, &t);
+            IX code = trace(o, d, (REAL)1e30, &a, 0, &t);
             if (code < 0) {
                 vr += trans * bg[0]; vg += trans * bg[1]; vb += trans * bg[2]; va += trans * bg[3];
                 break;
             }
-            I64 kind = code >> 40;
-            I64 i = code & INDEX_MASK;
+            IX kind = code >> KIND_SHIFT;
+            IX i = code & INDEX_MASK;
             for (int q = 0; q < 3; ++q) p[q] = o[q] + t * d[q];
             REAL alpha = 1, cr, cg, cb;
             if (kind == 0) {
@@ -517,15 +521,37 @@ def opencl_source() -> str:
     return OPENCL_PRELUDE + RAYTRACE_BODY % {"max_stack": MAX_STACK}
 
 
+GPU_KIND_SHIFT, GPU_NO_SHADOW = 29, 1 << 28    # the kernel's 32-bit item codes
+
+
+def gpu_codes(codes):
+    """The CPU tracer's 64-bit item codes (``kind << 40 | NO_SHADOW | index``) as the kernel's
+    32-bit ones (``kind << 29 | 1 << 28 | index``): GPUs emulate 64-bit integers (Apple, Intel
+    Arc), and the grid and BVH walks do little else."""
+    from .raytrace import INDEX_MASK, NO_SHADOW
+
+    codes = np.asarray(codes, np.int64)
+    out = (codes >> 40 << GPU_KIND_SHIFT) | np.where(codes & NO_SHADOW, GPU_NO_SHADOW, 0) | (codes & INDEX_MASK)
+    return out.astype(np.int32)
+
+
+def fits(scene, accel) -> bool:
+    """Whether the kernel's 32-bit codes and indices, and the BVH node fields stored as float,
+    hold this scene."""
+    n = max(len(scene.sph_rgb), len(scene.cyl_rgb), len(scene.tri_vrgb))
+    return n < GPU_NO_SHADOW and len(accel.items) < 2 ** 31 and len(accel.bvh_items) < 2 ** 24 \
+        and len(accel.nodes) < 2 ** 24
+
+
 def _scene_arrays(scene, accel, dtype):
     """The 14 scene arguments of ``ewald_raytrace`` as host arrays (and two counts)."""
     def arr(a, dt=dtype):
         a = np.ascontiguousarray(np.asarray(a, dtype=dt).ravel())
         return a if len(a) else np.zeros(1, dt)     # no zero-size device arrays
 
-    return (arr(accel.grid), arr(accel.starts, np.int64), arr(accel.items, np.int64), np.int64(len(accel.items)),
-            arr(accel.nodes), arr(accel.bvh_items, np.int64), np.int64(len(accel.nodes)),
-            arr(accel.sph), arr(accel.cyl), arr(accel.tri),
+    return (arr(accel.grid), arr(accel.starts, np.int32), arr(gpu_codes(accel.items), np.int32),
+            np.int64(len(accel.items)), arr(accel.nodes), arr(gpu_codes(accel.bvh_items), np.int32),
+            np.int64(len(accel.nodes)), arr(accel.sph), arr(accel.cyl), arr(accel.tri),
             arr(scene.sph_rgb), arr(scene.cyl_rgb), arr(scene.tri_n), arr(scene.tri_vrgb))
 
 
@@ -699,6 +725,9 @@ def tracer(scene, accel, device, real: str = "float"):
         if not backend.raw_kernels:
             return None
         make = lambda: CudaTracer(backend, scene, accel, real)   # noqa: E731
+    if not fits(scene, accel):
+        logging.getLogger(__name__).warning("scene too large for the GPU tracer's 32-bit indices; tracing on the CPU")
+        return None
     if accel.depth + 2 > MAX_STACK:
         logging.getLogger(__name__).warning("BVH depth %d exceeds the GPU tracer's stack; tracing on the CPU",
                                             accel.depth)
