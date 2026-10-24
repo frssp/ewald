@@ -11,6 +11,7 @@ uses, it must stay within what the eye cannot see, also with float sums (Intel A
 import ctypes
 import shutil
 import subprocess
+import types
 
 import numpy as np
 import pytest
@@ -128,14 +129,179 @@ def _opencl_on_pocl(request, monkeypatch):
     return dev
 
 
-@pytest.fixture(params=["cuda-double", "cuda-float", "opencl-double", "opencl-float", "opencl-float-sums"])
+METAL_SHIM = r"""
+#include <math.h>
+#define REAL float
+#define WIDE float
+#define DEVFN static inline
+#define GLOBAL
+#define PRIV
+#define device
+#define constant
+#define kernel extern "C"
+typedef long long I64;
+typedef unsigned long long U64;
+typedef int IX;
+typedef unsigned int uint;
+"""
+
+METAL_LAUNCH = r"""
+extern "C" void host_launch(long long n, void** a)
+{
+    for (long long t = 0; t < n; ++t)
+        ewald_raytrace((const float*)a[0], (const int*)a[1], (const int*)a[2], *(long long*)a[3],
+                       (const float*)a[4], (const int*)a[5], *(long long*)a[6],
+                       (const float*)a[7], (const float*)a[8], (const float*)a[9],
+                       (const float*)a[10], (const float*)a[11], (const float*)a[12], (const float*)a[13],
+                       (const float*)a[14], (const long long*)a[15], (const long long*)a[16],
+                       (const unsigned char*)a[17], (float*)a[18], (float*)a[19], (long long*)a[20],
+                       (unsigned long long*)a[21], (float*)a[22], (uint)t);
+}
+"""
+
+
+class FakeMetal:
+    """The part of PyObjC's ``Metal`` module that ``MetalTracer`` uses, over the Metal source
+    compiled by g++ (Metal's address spaces and attributes removed by ``METAL_SHIM``)."""
+
+    MTLResourceStorageModeShared = 0
+
+    def __init__(self, workdir):
+        self.workdir, self.lib, self.launches, self.fast_math = workdir, None, [], None
+
+    @staticmethod
+    def MTLSizeMake(w, h, d):
+        return (w, h, d)
+
+    class MTLCompileOptions:
+        @classmethod
+        def new(cls):
+            return cls()
+
+        def setFastMathEnabled_(self, on):
+            self.fast_math = on
+
+    def MTLCreateSystemDefaultDevice(self):
+        return FakeMetalDevice(self)
+
+
+class _Contents:
+    def __init__(self, data):
+        self.data = data
+
+    def as_buffer(self, n):
+        return memoryview(self.data)[:n]
+
+
+class FakeMetalBuffer:
+    def __init__(self, data):
+        self.data = np.frombuffer(bytearray(data), np.uint8)
+
+    def contents(self):
+        return _Contents(self.data)
+
+
+class FakeMetalDevice:
+    def __init__(self, mtl):
+        self.mtl = mtl
+
+    def name(self):
+        return "Fake Apple GPU"
+
+    def newLibraryWithSource_options_error_(self, src, opts, err):
+        assert src.startswith(rc.METAL_PRELUDE) and opts.fast_math is False
+        path = self.mtl.workdir / "metal_rt.cpp"
+        path.write_text(METAL_SHIM + src[len(rc.METAL_PRELUDE):] + METAL_LAUNCH, encoding="utf-8")
+        so = self.mtl.workdir / "metal_rt.so"
+        subprocess.run(["g++", "-O2", "-ffp-contract=off", "-Wno-attributes", "-shared", "-fPIC", "-o", str(so),
+                        str(path)], check=True)
+        lib = ctypes.CDLL(str(so))
+        lib.host_launch.restype = None
+        self.mtl.lib = lib
+        return types.SimpleNamespace(newFunctionWithName_=lambda name: name), None
+
+    def newComputePipelineStateWithFunction_error_(self, fn, err):
+        assert fn == "ewald_raytrace"
+        return types.SimpleNamespace(maxTotalThreadsPerThreadgroup=lambda: 1024), None
+
+    def newCommandQueue(self):
+        return FakeMetalQueue(self.mtl)
+
+    def newBufferWithBytes_length_options_(self, data, n, mode):
+        assert len(data) <= n and mode == 0
+        return FakeMetalBuffer(bytes(data) + bytes(n - len(data)))
+
+
+class FakeMetalQueue:
+    def __init__(self, mtl):
+        self.mtl = mtl
+
+    def commandBuffer(self):
+        return FakeMetalCommands(self.mtl)
+
+
+class FakeMetalCommands:
+    def __init__(self, mtl):
+        self.mtl, self.bound, self.grid = mtl, {}, None
+
+    def computeCommandEncoder(self):
+        return self
+
+    def setComputePipelineState_(self, state):
+        pass
+
+    def setBuffer_offset_atIndex_(self, buf, offset, i):
+        assert offset == 0
+        self.bound[i] = buf.data
+
+    def setBytes_length_atIndex_(self, data, n, i):
+        assert n == 8 == len(data)
+        self.bound[i] = np.frombuffer(bytearray(data), np.uint8)
+
+    def dispatchThreads_threadsPerThreadgroup_(self, grid, group):
+        self.grid = grid
+
+    def endEncoding(self):
+        pass
+
+    def commit(self):
+        assert sorted(self.bound) == list(range(23))
+        ptrs = (ctypes.c_void_p * 23)(*[self.bound[i].ctypes.data for i in range(23)])
+        self.mtl.launches.append((self.grid, None))
+        self.mtl.lib.host_launch(ctypes.c_longlong(self.grid[0]), ptrs)
+
+    def waitUntilCompleted(self):
+        pass
+
+    def error(self):
+        return None
+
+
+def _metal_on_cpu(request, monkeypatch):
+    mtl = FakeMetal(request.getfixturevalue("tmp_path"))
+    monkeypatch.setattr(rc, "_import_metal", lambda: mtl)
+    monkeypatch.setattr(rc, "_metal_pipelines", {})
+    monkeypatch.setattr(rt, "GPU_REAL", "float")
+
+    class Device(str):
+        pass
+
+    dev = Device("metal")
+    dev.launches, dev.real = mtl.launches, "float"
+    return dev
+
+
+@pytest.fixture(params=["cuda-double", "cuda-float", "opencl-double", "opencl-float", "opencl-float-sums",
+                        "metal-float"])
 def fake_gpu(request, monkeypatch):
-    """A GPU device for ``raytrace(device=...)``: the CUDA source on the host compiler, or the
-    OpenCL source on pocl; ``.launches`` records the kernel calls, ``.real`` the precision."""
+    """A GPU device for ``raytrace(device=...)``: the CUDA or Metal source on the host compiler,
+    or the OpenCL source on pocl; ``.launches`` records the kernel calls, ``.real`` the precision."""
+    if request.param.startswith(("cuda", "metal")) and shutil.which("g++") is None:
+        pytest.skip("needs g++")
     if request.param.startswith("cuda"):
-        if shutil.which("g++") is None:
-            pytest.skip("needs g++")
         return _cuda_on_cpu(request, request.getfixturevalue("host_kernels"), monkeypatch)
+    if request.param.startswith("metal"):
+        return _metal_on_cpu(request, monkeypatch)
     return _opencl_on_pocl(request, monkeypatch)
 
 
@@ -233,16 +399,28 @@ def test_a_pass_is_split_into_short_launches(fake_gpu, monkeypatch):
     assert np.array_equal(whole, split)
 
 
-@pytest.mark.parametrize("platform, picks", [("win32", True), ("linux", True), ("darwin", False)])
-def test_auto_takes_an_opencl_gpu_except_on_macos(monkeypatch, platform, picks):
+@pytest.mark.parametrize("platform, metal, picks", [
+    ("win32", None, "opencl"), ("linux", None, "opencl"), ("darwin", None, None), ("darwin", "m2", "metal")])
+def test_auto_takes_metal_on_a_mac_and_opencl_elsewhere(monkeypatch, platform, metal, picks):
+    """Apple's OpenCL traced 5x slower than the CPU on an M2 Air, so a Mac uses Metal or the CPU."""
     monkeypatch.setattr(rc, "opencl_devices", lambda gpu_only=False: ["gpu"])
     monkeypatch.setattr(rc, "OpenCLTracer", lambda device, scene, accel, real: ("opencl", device))
+    monkeypatch.setattr(rc, "metal_device", lambda: metal)
+    monkeypatch.setattr(rc, "MetalTracer", lambda device, scene, accel, real: ("metal", device))
     monkeypatch.setattr("ewald.backend.gpu_available", lambda: False)
     monkeypatch.setattr(rc.sys, "platform", platform)
     sc = busy_scene()
     got = rc.tracer(sc, rt.Accel(sc), "auto")
-    assert got == (("opencl", "gpu") if picks else None)
+    assert (got[0] if got else None) == picks
     assert rc.tracer(sc, rt.Accel(sc), "opencl") == ("opencl", "gpu")   # asked for by name: always
+
+
+def test_metal_without_pyobjc_says_how_to_install(monkeypatch):
+    monkeypatch.setattr(rc, "metal_device", lambda: None)
+    monkeypatch.setattr(rc.importlib.util, "find_spec", lambda name: None)
+    sc = busy_scene()
+    with pytest.raises(RuntimeError, match=r"ewald\[metal\]"):
+        rc.tracer(sc, rt.Accel(sc), "metal")
 
 
 def test_gpu_codes_are_32_bit_and_keep_kind_shadow_and_index():
