@@ -4600,6 +4600,17 @@ def test_activity_bar_order_icons_and_tooltips(app, pipe, monkeypatch):
     w.close()
 
 
+def test_preferences_pages_use_the_shared_icons():
+    """Preferences pages draw their icons from icons.PATHS, so Notebooks, AI and Plugins look
+    the same as on the activity bar."""
+    from ewald.gui.icons import PATHS
+    from ewald.gui.pref_widgets import PAGE_ICONS
+    from ewald.settings import PAGES
+
+    assert set(PAGE_ICONS) == set(PAGES) and all(name in PATHS for name in PAGE_ICONS.values())
+    assert (PAGE_ICONS["Notebooks"], PAGE_ICONS["AI"], PAGE_ICONS["Plugins"]) == ("notebook", "ai", "plugins")
+
+
 def test_activity_bar_overflow_and_hidden_buttons(app, pipe, monkeypatch):
     """Too many side bars for the window's height: the top group ends in "More side bars" with
     the rest, Plugins and Preferences stay, an open side bar keeps its button and buttons hidden
