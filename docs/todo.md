@@ -65,10 +65,16 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 - Ray tracer: the CUDA path. Fine surface meshes now go through a BVH (isosurfaces 1.4-2.2x
   faster) while atoms, bonds, arrows, glass spheres and polyhedra stay in the uniform grid, where
   a BVH measured 1.2-2x slower; the binned-SAH build is single-threaded (0.23 s for 271k
-  triangles). Adaptive sampling (`noise_threshold`, Publication 0.01) saves only 1.0-1.5x at 16
-  rays/pixel: its error estimate (variance / n) treats the low-discrepancy AO as random, so it
-  overestimates the noise of shaded pixels; an estimate that knows the R2 sequence (or comparing
-  two half-sample images) would let more pixels stop.
+  triangles). Adaptive sampling (`noise_threshold`, Publication 0.01) saves almost nothing on
+  real scenes (2026-10-24, 800 x 600: SrTiO3 with polyhedra 4.0 s full vs 3.96 s adaptive,
+  32k-atom Cu 3.2 vs 3.4 s), but not because its error estimate is wrong: an estimate from two
+  half-sample images (even vs odd samples) was tried and matches the true error against a
+  192-sample render (median 0.010 vs 0.013 at 4 samples), and the foreground really is noisier
+  than 0.01 (only 64 % of its pixels are below it at 16 samples; the error falls as 1/sqrt(n),
+  0.020 at 8 samples, 0.014 at 16). The background is already cheap, so no stopping rule gains
+  much at equal quality (the best variant, 2.45 s, had 9 % more error). What would make
+  Publication pictures faster: a denoiser on the ray tracer's output (edge-aware, from its
+  normal and depth buffers) or the CUDA path.
 - GUI startup (2026-10-23, `python benchmarks/startup.py [--cold-jit]`): `MainWindow()` returns
   after 1.2 s, the 3D view is built at 2.2 s and the console at 2.65 s (was 1.65 / 2.7 / 3.15 s).
   The numba warm-up thread now starts 1.5 s after the window shows: started in `MainWindow()`
