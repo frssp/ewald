@@ -78,8 +78,13 @@ class Spheres:
 class Cylinders:
     """Cylinders from ``start`` to ``end`` (M x 3) with ``radius`` (M) and ``rgb`` (M x 3).
     ``owner`` is the particle each one belongs to (the vector renderer paints a half-bond just
-    behind its atom), ``alpha`` its opacity (renderers without transparency skip only 0), and
-    ``cap_end`` closes the end with a sphere in the ray tracer."""
+    behind its atom), ``alpha`` its opacity (renderers without transparency skip only 0).
+
+    ``start_cap`` and ``end_cap`` close each end, one value for all or one per cylinder: "none"
+    (open, for ends hidden inside an atom or a partner tube), "flat" (a disk: an end cut off, such
+    as a bond leaving the periodic cell) or "round" (a hemisphere: a joint, such as a bond end at
+    an atom smaller than the bond). Every renderer draws them the same way (D50).
+    ``cap_end=False`` (older plugins) leaves the end open."""
 
     start: np.ndarray
     end: np.ndarray
@@ -87,7 +92,9 @@ class Cylinders:
     rgb: np.ndarray | None = None
     alpha: np.ndarray | None = None
     owner: np.ndarray | None = None
-    cap_end: bool = True
+    cap_end: bool | None = None
+    start_cap: np.ndarray | str = "flat"
+    end_cap: np.ndarray | str = "flat"
 
     def __post_init__(self):
         self.start = np.asarray(self.start, float).reshape(-1, 3)
@@ -96,10 +103,41 @@ class Cylinders:
         self.radius = np.broadcast_to(np.asarray(self.radius, float), (m,))
         self.rgb = np.broadcast_to(np.asarray((0.6, 0.6, 0.6) if self.rgb is None else self.rgb, float), (m, 3))
         self.alpha = np.broadcast_to(np.asarray(1.0 if self.alpha is None else self.alpha, float), (m,))
+        if self.cap_end is False:
+            self.end_cap = "none"
+        self.start_cap, self.end_cap = _cap_codes(self.start_cap, m), _cap_codes(self.end_cap, m)
 
     @property
     def count(self) -> int:
         return len(self.start)
+
+    def caps(self, kind: str):
+        """The ends closed with ``kind`` ("flat" or "round"): ``(center, outward unit axis, radius,
+        rgb, alpha, cylinder index)``, start caps first."""
+        code = CAPS.index(kind)
+        axis = self.end - self.start
+        length = np.linalg.norm(axis, axis=1, keepdims=True)
+        axis = np.divide(axis, length, out=np.tile([0.0, 0.0, 1.0], (self.count, 1)), where=length > 0)
+        i = np.flatnonzero(self.start_cap == code)
+        j = np.flatnonzero(self.end_cap == code)
+        idx = np.concatenate([i, j])
+        return (np.concatenate([self.start[i], self.end[j]]), np.concatenate([-axis[i], axis[j]]),
+                self.radius[idx], self.rgb[idx], self.alpha[idx], idx)
+
+
+CAPS = ("none", "flat", "round")  # Cylinders.start_cap / end_cap values, stored as these indices
+
+
+def _cap_codes(value, m: int) -> np.ndarray:
+    """``"none"``/``"flat"``/``"round"`` (or their indices), one or one per cylinder, as int8 codes."""
+    a = np.asarray(value)
+    if a.dtype.kind in "US":
+        names = np.unique(a)
+        bad = [str(n) for n in names if str(n) not in CAPS]
+        if bad:
+            raise ValueError(f"cylinder caps are {', '.join(CAPS)}, not {', '.join(bad)}")
+        a = np.vectorize(CAPS.index, otypes=[np.int8])(a)
+    return np.ascontiguousarray(np.broadcast_to(np.asarray(a, np.int8), (m,)))
 
 
 @dataclass
@@ -236,8 +274,9 @@ class Scene:
 class SceneContext:
     """What an element may know besides the data: the ``frame``, the direction toward the camera
     (``view_direction``, may be None), ``only_visible`` (a particle mask the viewport uses for its
-    coarse level of detail) and ``particle_colors``, the per-particle RGB of the Particles element
-    (Bonds and other per-particle elements reuse it)."""
+    coarse level of detail), ``particle_colors``, the per-particle RGB of the Particles element
+    (Bonds and other per-particle elements reuse it), and ``particle_radii``, the drawn radius of
+    each particle (None when atoms are not drawn; Bonds caps the ends atoms do not hide)."""
 
     frame: int = 0
     view_direction: np.ndarray | None = None
@@ -352,6 +391,8 @@ class ParticlesVis(VisualElement):
                        np.arange(data.count) if keep is None else keep, palette, radius_table,
                        None if groups is None else groups[1][sel])
         ctx.particle_colors = colors if colors is not None else palette[groups[1]]
+        ctx.particle_radii = np.asarray(data["Radius"], float) * self.radius_scale if "Radius" in data \
+            else radius_table[groups[1]]
         return [("atoms", prim)]
 
 
@@ -380,16 +421,37 @@ class BondsVis(VisualElement):
         start, end, rgb, _ = bond_segments(data, b, colors)
         i, j = b.topology.T
         owner = np.concatenate([i, j])
+        keep = np.ones(2 * b.count, bool)
         if "Half Bond" in b:  # boundary display: only the half at the displayed atom
-            keep = np.r_[np.ones(b.count, bool), ~np.asarray(b["Half Bond"], bool)]
-            start, end, rgb, owner = start[keep], end[keep], rgb[keep], owner[keep]
+            keep[b.count:] = ~np.asarray(b["Half Bond"], bool)
         alpha = 1 - np.clip(np.asarray(data["Transparency"], float), 0, 1)[owner] if "Transparency" in data else None
         if alpha is not None:  # a hidden atom (Transparency 1) takes its half-bonds with it
-            keep = alpha > 0
-            start, end, rgb, owner, alpha = start[keep], end[keep], rgb[keep], owner[keep], alpha[keep]
-            if not len(owner):
-                return None
-        return [("bonds", Cylinders(start, end, self.radius, np.clip(rgb, 0, 1), alpha, owner, cap_end=True))]
+            keep &= alpha > 0
+        start_cap, end_cap = self._caps(data, ctx, start, end, keep, owner, alpha)
+        if not keep.any():
+            return None
+        alpha = None if alpha is None else alpha[keep]
+        return [("bonds", Cylinders(start[keep], end[keep], self.radius, np.clip(rgb[keep], 0, 1), alpha, owner[keep],
+                                    start_cap=start_cap[keep], end_cap=end_cap[keep]))]
+
+    def _caps(self, data, ctx, start, end, keep, owner, alpha):
+        """Caps of the half-bonds (D50): the middle end is flat where its partner half does not meet
+        it (a bond cut by the periodic cell or the boundary, or a hidden partner) and open where it
+        does; the atom end is round where the atom does not hide it (atoms off, smaller than the
+        bond, or see-through) and open where it does."""
+        m = len(owner) // 2
+        partner = np.r_[np.arange(m, 2 * m), np.arange(m)]
+        met = keep[partner] & np.all(np.abs(end - end[partner]) < 1e-6, axis=1)
+        end_cap = np.where(met, 0, 1).astype(np.int8)
+        radii = ctx.particle_radii
+        if radii is None:  # Particles off: every atom end is a visible joint
+            shown = np.zeros(len(owner), bool)
+        else:
+            shown = np.asarray(radii, float)[owner] >= self.radius
+            if alpha is not None:
+                shown &= alpha >= 1
+        start_cap = np.where(shown, 0, 2).astype(np.int8)
+        return start_cap, end_cap
 
 
 class SurfacesVis(VisualElement):
@@ -772,6 +834,7 @@ def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None,
         if not getattr(el, "enabled", True) or not el.applies(data):
             if isinstance(el, ParticlesVis) and el.applies(data):
                 el.build(data, ctx)   # hidden atoms still give their bonds their colors
+                ctx.particle_radii = None   # but hide no bond ends
             continue
         out = el.build(data, ctx)
         bar = el.legend(data, ctx) if out is not None else None

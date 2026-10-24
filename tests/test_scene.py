@@ -227,3 +227,112 @@ def test_raytrace_cell_casts_no_shadow():
     assert np.allclose(img[:, away], clean[:, away])
     rod.cyl_cast[:] = True
     assert not np.allclose(raytrace(rod, cam, **kw)[:, away], clean[:, away])
+
+
+# ----------------------------------------------------------------------------- bond caps (D50)
+def _caps(scene):
+    cyl = next(lay.primitive for lay in scene.layers if lay.kind == "cylinders")
+    return cyl, np.bincount(cyl.start_cap, minlength=3), np.bincount(cyl.end_cap, minlength=3)
+
+
+def test_bond_caps_flat_where_cut_round_where_atoms_do_not_hide_the_end():
+    data = _crystal()   # cubic NaCl: half of the 24 bonds cross the periodic cell
+    cyl, start, end = _caps(build(data, bonds=3.0))
+    assert cyl.count == 48 and start.tolist() == [48, 0, 0]   # every atom end inside its atom
+    assert end.tolist() == [24, 24, 0]                         # met halves open, cut halves flat
+    cut = cyl.end_cap == 1
+    met = ~cut
+    # an open end meets its partner's; a flat one is not at any other half-bond's end
+    ends = {tuple(np.round(e, 6)) for e in cyl.end[met]}
+    assert len(ends) == 12 and not ends & {tuple(np.round(e, 6)) for e in cyl.end[cut]}
+    for kw in (dict(show_atoms=False), dict(radius_scale=0.05)):   # atoms off or smaller than the bond
+        assert _caps(build(data, bonds=3.0, **kw))[1].tolist() == [0, 0, 48]
+    see_through = _crystal()
+    see_through.particles["Transparency"] = np.where(np.arange(see_through.count) < 4, 0.5, 0.0)
+    cyl, start, end = _caps(build(see_through, bonds=3.0))
+    assert start.tolist() == [24, 0, 24] and np.all(cyl.start_cap[cyl.owner < 4] == 2)
+
+
+def test_bond_caps_close_a_half_bond_whose_partner_is_gone():
+    data = _crystal()
+    data.particles["Transparency"] = np.where(np.arange(data.count) == 0, 1.0, 0.0)  # atom 0 hidden
+    cyl, start, end = _caps(build(data, bonds=3.0))
+    # atom 0 takes 3 cut halves with it; the halves of its 3 in-cell partners are now cut too
+    assert cyl.count == 48 - 6 and end[1] == 24 - 3 + 3 and end[0] == 24 - 3 - 3
+    cyl, _, end = _caps(build(_crystal(), bonds=3.0, boundary=((-0.01, 1.01),) * 3))
+    assert end[1] > 24  # boundary half-bonds end flat at the cut
+
+
+def test_cylinder_caps_values_and_old_cap_end():
+    one = Cylinders([[0, 0, 0]], [[0, 0, 1]], 0.2)
+    assert one.start_cap.tolist() == [1] and one.end_cap.tolist() == [1]    # closed by default
+    assert Cylinders([[0, 0, 0]], [[0, 0, 1]], cap_end=False).end_cap.tolist() == [0]
+    two = Cylinders(np.zeros((2, 3)), np.eye(3)[:2], 0.2, start_cap=["round", "none"], end_cap=2)
+    assert two.start_cap.tolist() == [2, 0] and two.end_cap.tolist() == [2, 2]
+    center, axis, radius, *_, idx = two.caps("round")
+    assert idx.tolist() == [0, 0, 1] and np.allclose(axis, [[-1, 0, 0], [1, 0, 0], [0, 1, 0]])
+    assert np.allclose(center, [[0, 0, 0], [1, 0, 0], [0, 1, 0]]) and np.allclose(radius, 0.2)
+    with pytest.raises(ValueError, match="dome"):
+        Cylinders([[0, 0, 0]], [[0, 0, 1]], end_cap="dome")
+
+
+def test_cap_meshes_close_the_tube_without_cracks():
+    from ewald.render import TUBE_SIDES, cap_mesh, tube_mesh
+
+    start, end = np.array([[0.0, 0, 0], [1, 1, 0]]), np.array([[0.0, 0, 2], [1, 3, 1]])
+    verts, _, _ = tube_mesh(start, end, 0.3)
+    rims = verts.reshape(2, 2, TUBE_SIDES, 3)
+    axis = (end - start) / np.linalg.norm(end - start, axis=1, keepdims=True)
+    for kind in ("flat", "round"):
+        for which, (p, d) in enumerate(((start, -axis), (end, axis))):
+            v, f, n = cap_mesh(p, d, np.full(2, 0.3), kind)
+            v = v.reshape(2, -1, 3)
+            # the cap's rim is the tube's ring at that end (as a set: the start cap turns the other way)
+            for k in range(2):
+                rim = {tuple(np.round(x, 9)) for x in rims[k, which]}
+                assert rim <= {tuple(np.round(x, 9)) for x in v[k]}
+            assert np.allclose(np.linalg.norm(n, axis=1), 1) and f.max() < len(v.reshape(-1, 3))
+            if kind == "round":   # every vertex on the hemisphere, on the outer side of the end
+                rel = v - p[:, None]
+                assert np.allclose(np.linalg.norm(rel, axis=2), 0.3)
+                assert (np.einsum("kij,kj->ki", rel, d) > -1e-9).all()
+            # triangles face outward
+            tri = v.reshape(-1, 3)[f]
+            normal = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+            out = tri.mean(1) - np.repeat(p, len(f) // 2, axis=0)
+            assert (np.einsum("ij,ij->i", normal, out + 1e-3 * np.repeat(d, len(f) // 2, axis=0)) > 0).all()
+
+
+def test_raytracer_flat_caps_are_disks_and_round_caps_spheres():
+    from ewald import raytrace as rt
+    from ewald.raytrace import _hit_cylinder, scene_from_ir
+
+    o, d = np.array([0.0, 0.05, 5.0]), np.array([0.0, 0.0, -1.0])   # down the axis, inside the rim
+    for caps, t in (((0, 0), -1.0), ((0, 1), 3.0), ((1, 0), 5.0), ((1, 1), 3.0)):
+        cyl = np.array([[0, 0, 0, 0, 0, 2, 0.2, *caps]], float)
+        assert _hit_cylinder(o, d, cyl, 0) == pytest.approx(t)
+    scene = Scene()
+    scene.add("sticks", Cylinders(np.zeros((2, 3)), [[0, 0, 2], [2, 0, 0]], 0.2,
+                                  start_cap="round", end_cap=["flat", "none"]))
+    sc = scene_from_ir(scene)
+    assert sc.cyl_cap.tolist() == [[0, 1], [0, 0]] and np.allclose(sc.sph_r, 0.2) and len(sc.sph_r) == 2
+    img = rt.raytrace(sc, {"position": (0, 0, 6), "focal_point": (0, 0, 0), "up": (0, 1, 0),
+                           "parallel_projection": True, "parallel_scale": 0.5}, (20, 20), samples=1,
+                      ao_samples=0, shadows=False)
+    centre = img[10, 10, :3]
+    assert centre.max() > 0.3 and np.allclose(centre, centre[0], atol=0.05)  # a lit disk, not a hole
+
+
+def test_vector_draws_caps():
+    from ewald.vector import scene_prims
+
+    cam = {"position": (0, 0, 10), "focal_point": (0, 0, 0), "up": (0, 1, 0), "parallel_projection": True,
+           "parallel_scale": 3.0}
+    def count(**caps):
+        scene = Scene()
+        scene.add("sticks", Cylinders([[0, 0, 0]], [[1, 0, 1]], 0.2, **caps))
+        return len(scene_prims(scene, cam, (200, 150), 1.0))
+    assert count(start_cap="none", end_cap="none") == 1
+    assert count(start_cap="none", end_cap="flat") == 2     # the end faces the camera: an ellipse
+    assert count(start_cap="flat", end_cap="none") == 1     # the start faces away: hidden by the stick
+    assert count(start_cap="round", end_cap="round") == 5   # a disc under and over each end

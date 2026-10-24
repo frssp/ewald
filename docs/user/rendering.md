@@ -217,6 +217,13 @@ editable text, so a figure can be finished in Illustrator or Inkscape. It needs 
 The raster renderers can also be given a `.pdf`, `.svg` or `.eps` name; the image is then
 embedded in a page of the same size.
 
+Bond ends look the same in every renderer (the viewport, the OpenGL 1.x viewport, the ray
+tracer on CPU or GPU, and vector files). A half-bond cut off by the periodic cell or a boundary,
+or whose other half is hidden, ends in a flat disk, which reads as "cut here". An end at an atom
+is open inside the atom, and round (a hemisphere of the bond radius) where the atom does not hide
+it: atoms off, smaller than the bond, or see-through, so stick-only drawings have smooth joints.
+Plugin elements choose with `Cylinders(..., start_cap=, end_cap=)` ("none", "flat", "round").
+
 ## Quality
 
 File output puts quality first. `quality=` picks a preset for every sampling setting you do

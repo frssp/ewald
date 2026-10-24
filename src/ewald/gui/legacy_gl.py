@@ -121,6 +121,18 @@ def unit_cylinder(res: int, cone: bool = False):
     return np.ascontiguousarray(verts), np.ascontiguousarray(normals), np.ascontiguousarray(faces.astype(np.uint32))
 
 
+def unit_disk(res: int, top: bool):
+    """Flat cap of the unit cylinder: a disk of radius 1 at z=1 facing +z (``top``) or at z=0 facing -z."""
+    n = max(res, 4)
+    ang = np.linspace(0, 2 * np.pi, n + 1)
+    z = 1.0 if top else 0.0
+    verts = np.vstack([np.stack([np.cos(ang), np.sin(ang), np.full_like(ang, z)], -1), [[0, 0, z]]])
+    normals = np.tile([0.0, 0.0, 1.0 if top else -1.0], (len(verts), 1))
+    k = np.arange(n)
+    faces = np.stack([np.full(n, n + 1), k, k + 1] if top else [np.full(n, n + 1), k + 1, k], -1)
+    return np.ascontiguousarray(verts), np.ascontiguousarray(normals), np.ascontiguousarray(faces.astype(np.uint32))
+
+
 def align_matrices(start, end, radius):
     """Column-major 4x4 matrices taking the unit cylinder (z from 0 to 1, radius 1) to each segment."""
     start, end = np.asarray(start, float), np.asarray(end, float)
@@ -314,6 +326,9 @@ class LegacyRenderer:
     def cylinder_list(self, res, cone=False):
         return self._unit_list(("cone" if cone else "cylinder", res), lambda: unit_cylinder(res, cone))
 
+    def disk_list(self, res, top):
+        return self._unit_list(("disk", res, top), lambda: unit_disk(res, top))
+
     # ---------------------------------------------------------------- compile
     def compile(self, scene, *, sphere_resolution=None, background=None, ink=None, light=None):
         """Replace the drawn geometry with ``scene`` (needs a current context); ``light`` is the view's key
@@ -338,7 +353,13 @@ class LegacyRenderer:
                     index.append(prim.index)
                 pts = prim.centers
             elif kind == "cylinders" and prim.count:
-                self._compile_cylinders(prim.start, prim.end, prim.radius, prim.rgb, prim.alpha)
+                self._compile_cylinders(prim.start, prim.end, prim.radius, prim.rgb, prim.alpha,
+                                        flat_caps=(prim.start_cap == 1, prim.end_cap == 1))
+                center, _, radius, rgb, alpha, _ = prim.caps("round")
+                if len(center):  # a sphere of the tube radius shows as a hemisphere past the end
+                    from ..scene import Spheres
+
+                    self._compile_spheres(Spheres(center, radius, rgb, alpha))
                 pts = np.vstack([prim.start, prim.end])
             elif kind == "lines" and prim.count:
                 self._compile_lines(prim)
@@ -407,11 +428,15 @@ class LegacyRenderer:
                 gl.glPopMatrix()
             gl.glEndList()
 
-    def _compile_cylinders(self, start, end, radius, rgb, alpha, cone=False, res=None):
+    def _compile_cylinders(self, start, end, radius, rgb, alpha, cone=False, res=None, flat_caps=None):
+        """Cylinders (or cones) as display lists; ``flat_caps`` (start mask, end mask) closes those ends."""
         gl = self.gl
         alpha = np.broadcast_to(np.asarray(alpha, float), (len(start),))
         res = res or max(self._sphere_res(len(start)) // 2 + 2, 6)
         unit = self.cylinder_list(res, cone)
+        no = np.zeros(len(start), bool)
+        caps = [(np.broadcast_to(m, (len(start),)), self.disk_list(res, top))
+                for m, top in zip(flat_caps or (no, no), (False, True)) if np.any(m)]
         mats = align_matrices(start, end, radius)
         rgb = np.asarray(rgb, float)
         base = mats.ctypes.data
@@ -429,6 +454,9 @@ class LegacyRenderer:
                 gl.glPushMatrix()
                 gl.glMultMatrixd(ctypes.c_void_p(base + int(i) * 128))
                 gl.glCallList(unit)
+                for mask, disk in caps:
+                    if mask[i]:
+                        gl.glCallList(disk)
                 gl.glPopMatrix()
             gl.glEndList()
 

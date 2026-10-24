@@ -608,6 +608,23 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   which runs on every machine.
 - **Landed:** public PR #39.
 
+### D50. Bond ends: flat where cut, round at a visible atom, the same in every renderer (2026-10-24)
+
+- **Decision:** a half-bond's end is closed by what it means. Where the bond is cut (by the
+  periodic cell or a boundary, or its other half is hidden) it ends in a flat disk; at an atom
+  that does not hide it (atoms off, smaller than the bond, or see-through) it ends in a
+  hemisphere of the bond radius; ends inside an atom or meeting the other half stay open. Every
+  renderer draws this the same way: the VTK viewport and images (tube meshes and GPU stick
+  impostors), the OpenGL 1.x viewport, the CPU and GPU ray tracers and vector files.
+- **Why:** the owner picked "잘린 끝 평면 + 원자 끝 반구" on the decision card after a comparison
+  of open, flat, slightly domed and hemispherical ends, and added that the result must not
+  depend on the renderer ("렌더러와 상관없이 동일한 경험"). Before, the viewport left tube ends
+  open (hollow pipes at every cell face), the stick impostors and vector files ended flat and the
+  ray tracer round.
+- **Considered:** flat disks everywhere (as OVITO; stick-only joints look angular), a low dome
+  (h = 0.35 r) everywhere, hemispheres everywhere (a cut bond then looks continued).
+- **Landed:** public PR #41.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

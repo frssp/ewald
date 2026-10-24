@@ -171,8 +171,10 @@ def _sphere_prims(sph, camera, size, pt, shading, light=None):
 
 def _cylinder_prims(cyl, camera, size, pt, shading, light=None):
     """Projected sticks with a highlight stripe, each painted just before its start (a half-bond's
-    own atom hides the stick's root)."""
-    from matplotlib.patches import Polygon
+    own atom hides the stick's root), and their caps: a round cap is a disc of the stick radius, a
+    flat cap the projected ellipse; one on the near end is painted over the stick, a round one on
+    the far end under it (a flat one there is hidden)."""
+    from matplotlib.patches import Circle, Ellipse, Polygon
 
     prims = []
     keep = np.flatnonzero(cyl.alpha > 0)
@@ -203,6 +205,16 @@ def _cylinder_prims(cyl, camera, size, pt, shading, light=None):
                                     (ax0[k] + nx * (o0 - hw0), ay0[k] + ny * (o0 - hw0))], closed=True))
             fc.append((*_mix(c, 0.35), a)); ec.append("none"); lw.append(0)
         prims.append((z0[k] + 1e-6, patches, fc, ec, lw))
+        span = float(np.linalg.norm(cyl.end[i] - cyl.start[i]))
+        tilt = abs(z1[k] - z0[k]) / span if span > 0 else 0.0   # |cos| of the axis to the view direction
+        for x, y, z, rr, code, near in ((ax0[k], ay0[k], z0[k], r0, cyl.start_cap[i], z0[k] < z1[k]),
+                                        (ax1[k], ay1[k], z1[k], r1, cyl.end_cap[i], z1[k] < z0[k])):
+            if code == 2:  # outlined disc under the stick, plain one over its end line
+                prims.append((z0[k] + 2e-6, [Circle((x, y), rr)], [fc[0]], [ec[0]], [lw[0]]))
+                prims.append((min(z, z0[k]) - 1e-7, [Circle((x, y), rr - 0.5 * lw[0] / pt)], [fc[0]], ["none"], [0]))
+            elif code == 1 and near:
+                cap = Ellipse((x, y), 2 * rr, 2 * rr * tilt, angle=math.degrees(math.atan2(ny, nx)))
+                prims.append((z - 1e-7, [cap], [fc[0]], [ec[0]], [lw[0]]))
     return prims
 
 
