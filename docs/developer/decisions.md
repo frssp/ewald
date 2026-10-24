@@ -674,6 +674,23 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   later, but a separate renderer); a denoiser instead of a GPU; stopping with the CPU on a Mac.
 - **Landed:** public PR #48.
 
+### D54. The library API changes behaviour where results were silently wrong (2026-10-24)
+
+- **Decision:** a step a verb (`rdf`, `cna`, ...) added never replaces what earlier steps wrote
+  (its own same-named table goes beside the earlier one); `pipe.compute(i)` raises IndexError out
+  of range instead of wrapping; `pipe.render()` returns an `Image` with a one-line repr;
+  `show()` returns a `Plot` or, for `show(pipe)` alone, a picture of the structure; and each idea
+  gets one argument name across the modifiers, with OVITO's spellings kept as aliases.
+- **Why:** the owner asked to check ewald as a plain Python library ("ewald를 lib로 쓸 때 기능
+  문법 등을 점검하자") and chose "추천안 전부 적용" on the decision card. The audit found
+  `rdf(pipe, cutoff=6)` changing a user's Coordination from 11.6 to 73.8 and `compute(999)` on 5
+  frames returning frame 4.
+- **Considered:** only the two bug-like changes (verbs, frame wrap); only the non-breaking
+  fixes (public PR #50); returning the file path from `render()` (rejected while implementing:
+  it would break every caller that uses the pixels, the `Image` array gives the short repr
+  without that).
+- **Landed:** public PR #55 (behaviour); names in a follow-up PR.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

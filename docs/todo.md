@@ -8,14 +8,13 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Python library API audit (2026-10-24): non-breaking part done (headless renderer fallback,
-  `load(atoms)`, `pipe[i]`, `pipe.to_ase()`, pymatgen bridge, `data.apply`, `export_file(frames=...)`,
-  clearer errors). Waiting for the owner's choice on the behaviour changes: verbs (`rdf()` adds a
-  second CoordinationAnalysis that overwrites a user's "Coordination"), `compute(i)` wrapping an
-  out-of-range frame instead of raising, `pipe.render(file)` returning the whole image and `show()`
-  returning None, and one name per idea across modifiers (`bins`/`nbins`/`bin_count`/`number_of_bins`,
-  `range` vs `start`/`end` vs `xrange_*`, `unwrapped` vs `unwrap_*`, `only_selected` defaults,
-  PowderDiffraction `step`, `trajectory_rdf(nbins=)`).
+- Python library API audit (2026-10-24, D54): non-breaking fixes (public PR #50) and the behaviour
+  changes (public PR #55) are in. Left: one name per idea across modifiers with OVITO's spellings
+  as aliases (`bins`/`nbins`/`bin_count`/`number_of_bins`, `range` vs `start`/`end` vs `xrange_*`,
+  `unwrapped` vs `unwrap_*`, `only_selected` defaults, PowderDiffraction `step`,
+  `trajectory_rdf(nbins=)`) and the renames N2-N7 of the audit (`kernels.rdf`, `VectorVis`,
+  `Frames`, the `views.view` forwarder, generic helper names, a message for OVITO modifiers ewald
+  lacks).
 
 ## Next
 - Library API, rest of the audit: frame selection when loading (`load(path, frames=...)` like ASE's
