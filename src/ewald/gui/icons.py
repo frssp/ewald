@@ -52,8 +52,9 @@ PATHS = {
     "image": '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
     "settings": '<circle cx="12" cy="12" r="3"/><path d="M10.3 3.5h3.4l.5 2.4 1.6.9 2.3-.8 1.7 2.9-1.8 1.6v1.9l1.8 1.6-1.7 2.9'
                 '-2.3-.8-1.6.9-.5 2.4h-3.4l-.5-2.4-1.6-.9-2.3.8-1.7-2.9 1.8-1.6v-1.9L4.2 8.9l1.7-2.9 2.3.8 1.6-.9z"/>',
-    "plugins": '<path d="M9 4h4v3a2 2 0 1 0 4 0V4h3v6h-3a2 2 0 1 0 0 4h3v6h-6v-3a2 2 0 1 0-4 0v3H4v-6h3a2 2 0 1 0 0-4H4V4z"/>',
-    "notebook": '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+    "plugins": '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/>'
+               '<rect x="13" y="13" width="7" height="7" rx="1.5"/><path d="M16.5 3.2l3.3 3.3-3.3 3.3-3.3-3.3z"/>',
+    "notebook": '<rect x="4.5" y="3" width="15" height="18" rx="2"/><path d="m8 8 2.5 2.5L8 13M13 13h3M8 17h8"/>',
     "eye": '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     "split": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>',
     "maximize": '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>',

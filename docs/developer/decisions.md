@@ -103,6 +103,22 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 
 - **Decision:** no supercell, slab or defect builder until the owner asks.
 
+### D36. Activity bar: work on top, management at the bottom (2026-10-24)
+
+- **Decision:** the activity bar lists the side bars you work in on top (Notebook, AI chat,
+  plugin side bars such as Workflows, Remotes) and Plugins plus a new Preferences button at the
+  bottom; the Window menu follows the same order and every tooltip names its shortcut. New
+  line icons: a notebook page with a `>_` cell, a chat bubble with a sparkle for AI (it looked
+  like a loading spinner and like the settings icon), a server for Remotes (a monitor read as
+  "display"), a flow chart for Workflows (instead of the layers icon of Replicate cell),
+  blocks for Plugins and a gear for Preferences.
+- **Why:** the owner asked to review the bar's icons ("왼쪽 바에 아이콘들 재검토"); from a sheet
+  of options in both themes the owner picked the regrouped set B with the notebook-cells icon
+  ("B + notebook cells") and the blocks icon for Plugins ("Plugin도 blocks").
+- **Considered:** fixing only the misread icons and keeping the order (A); a sparkle-only AI
+  icon (C); keeping the page-with-lines notebook icon and the puzzle piece.
+- **Landed:** PR (this one).
+
 ## Quality and platforms
 
 ### D7. Quality for files, speed for the screen (2026-10-19)
