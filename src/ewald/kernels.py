@@ -58,9 +58,22 @@ def rdf_from_pairs(dist, n: int, volume: float, cutoff: float, nbins: int, backe
     return table
 
 
-def rdf(positions, cell: Cell, cutoff: float, nbins: int = 200, types=None, backend=None,
-        method: str = "auto"):
-    """Radial distribution function (total, plus partials when ``types`` is given)."""
+def _bins(bins, kwargs, old: str = "nbins"):
+    """``bins``, also accepted under its old name (``nbins``) in ``kwargs``; default 200."""
+    if old in kwargs:
+        if bins is not None:
+            raise TypeError(f"give bins or {old}, not both")
+        bins = kwargs.pop(old)
+    if kwargs:
+        raise TypeError(f"unexpected keyword argument {next(iter(kwargs))!r}")
+    return 200 if bins is None else int(bins)
+
+
+def rdf(positions, cell: Cell, cutoff: float, bins: int | None = None, types=None, backend=None,
+        method: str = "auto", **kwargs):
+    """Radial distribution function (total, plus partials when ``types`` is given) in ``bins``
+    shells up to ``cutoff`` (default 200; ``nbins`` is the old name)."""
+    nbins = _bins(bins, kwargs)
     be = get_backend(backend)
     pos = np.asarray(positions, dtype=float)
     i, j, _, dist = find_pairs(pos, cell, cutoff, be, half=True, method=method)
@@ -324,9 +337,11 @@ def vacf_table(frames, dt: float, velocities: str, backend, by_type: bool = True
     return table
 
 
-def trajectory_rdf(pipeline, cutoff: float, nbins: int = 200, start: int = 0, stop: int | None = None,
-                   step: int = 1, partial: bool = False, device=None):
-    """Time-averaged g(r) (total, plus partials with ``partial``) over the source frames."""
+def trajectory_rdf(pipeline, cutoff: float, bins: int | None = None, start: int = 0, stop: int | None = None,
+                   step: int = 1, partial: bool = False, device=None, **kwargs):
+    """Time-averaged g(r) (total, plus partials with ``partial``) over the source frames, in
+    ``bins`` shells (default 200; ``nbins`` is the old name)."""
+    nbins = _bins(bins, kwargs)
     be = get_backend(device or pipeline.device)
     stop = pipeline.num_frames if stop is None else stop
     return average_tables(

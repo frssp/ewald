@@ -59,23 +59,35 @@ def _selected(props: dict, only_selected: bool):
 class Histogram(Modifier):
     """Histogram of a particle or bond property ('Mass', 'Position.Z', ...).
 
-    The range is the min..max of the values unless ``fix_xrange`` (then ``xrange_start``..
-    ``xrange_end``; values outside are skipped). ``normalization``: "count", "frequency"
+    ``range=(lo, hi)`` fixes the binned range (values outside are skipped); None (default) is the
+    min..max of the values. OVITO's ``fix_xrange``, ``xrange_start``, ``xrange_end`` and
+    ``bin_count`` are accepted too. ``normalization``: "count", "frequency"
     (relative frequency) or "density" (probability density). ``select_elements`` selects the
     elements with values in ``selection_start``..``selection_end`` and sets
     ``Histogram.num_selected``. Writes ``tables['histogram[<property>]']`` with the bin centers and
     'Count' / 'Relative Frequency' / 'Probability Density'.
     """
 
-    def __init__(self, property: str = "Position.Z", bin_count: int = 200, fix_xrange: bool = False,
-                 xrange_start: float = 0.0, xrange_end: float = 0.0, only_selected: bool = False,
+    ALIASES = {"bin_count": "bins"}
+
+    @staticmethod
+    def _legacy_arguments(kwargs):
+        """OVITO's ``fix_xrange``/``xrange_start``/``xrange_end`` -> ``range``."""
+        old = [k for k in ("fix_xrange", "xrange_start", "xrange_end") if k in kwargs]
+        if not old:
+            return
+        if "range" in kwargs:
+            raise TypeError(f"Histogram() got both 'range' and its old form {', '.join(old)}")
+        fixed = kwargs.pop("fix_xrange", True)
+        lo, hi = float(kwargs.pop("xrange_start", 0.0)), float(kwargs.pop("xrange_end", 0.0))
+        kwargs["range"] = (lo, hi) if fixed else None
+
+    def __init__(self, property: str = "Position.Z", bins: int = 200, range=None, only_selected: bool = False,
                  normalization: str = "count", select_elements: bool = False, selection_start: float = 0.0,
                  selection_end: float = 0.0, operate_on: str = "particles"):
         self.property = property
-        self.bin_count = bin_count
-        self.fix_xrange = fix_xrange
-        self.xrange_start = xrange_start
-        self.xrange_end = xrange_end
+        self.bins = bins
+        self.range = None if range is None else tuple(float(v) for v in range)
         self.only_selected = only_selected
         self.normalization = normalization
         self.select_elements = select_elements
@@ -94,13 +106,13 @@ class Histogram(Modifier):
         if norm is None:
             raise ValueError("normalization must be 'count', 'frequency' or 'density'")
         sel = _selected(props, self.only_selected)
-        nbins = max(1, int(self.bin_count))
+        nbins = max(1, int(self.bins))
         counts = np.zeros(nbins, np.int64)
         v = values if sel is None else values[sel]
         v = v.astype(float)
         if len(values):
-            if self.fix_xrange:
-                start, end = float(self.xrange_start), float(self.xrange_end)
+            if self.range is not None:
+                start, end = self.range
             else:
                 start, end = (float(v.min()), float(v.max())) if len(v) else (0.0, 0.0)
             size = (end - start) / nbins
@@ -138,7 +150,8 @@ class SpatialBinning(Modifier):
     """Coarse-grain a particle property on a 1D, 2D or 3D grid of bins along the cell vectors.
 
     ``direction`` is "X", "Y", "Z" (1D), "XY", "XZ", "YZ" (2D) or "XYZ" (3D), meaning the first,
-    second and third cell vector; ``bin_count`` is an int or one count per binned direction.
+    second and third cell vector; ``bins`` (OVITO: ``bin_count``) is an int or one count per binned
+    direction.
     ``reduction_operation``: "mean", "sum", "sumvol" (sum divided by the bin volume), "min" or
     "max"; empty bins are 0. ``property=""`` bins the value 1 (counts particles; with "sumvol" the
     number density). Particles are wrapped into the cell along periodic directions and skipped
@@ -148,12 +161,14 @@ class SpatialBinning(Modifier):
     ``(n1, n2, n3)``, cell-centered bins).
     """
 
+    ALIASES = {"bin_count": "bins"}
+
     def __init__(self, property: str = "", reduction_operation: str = "mean", direction: str = "Z",
-                 bin_count=(50, 50, 20), first_derivative: bool = False, only_selected: bool = False):
+                 bins=(50, 50, 20), first_derivative: bool = False, only_selected: bool = False):
         self.property = property
         self.reduction_operation = reduction_operation
         self.direction = direction
-        self.bin_count = bin_count
+        self.bins = bins
         self.first_derivative = first_derivative
         self.only_selected = only_selected
 
@@ -166,7 +181,7 @@ class SpatialBinning(Modifier):
             raise ValueError(f"reduction_operation must be one of {', '.join(_OPS)}")
         if not data.cell.is_valid:
             raise ValueError("SpatialBinning needs a simulation cell")
-        counts = np.atleast_1d(np.asarray(self.bin_count, int))
+        counts = np.atleast_1d(np.asarray(self.bins, int))
         shape = tuple(max(1, int(counts[k] if k < len(counts) else counts[-1])) for k in range(len(axes)))
         if self.property:
             values, label = property_values(data.particles, self.property)

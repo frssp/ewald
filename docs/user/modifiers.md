@@ -54,8 +54,8 @@ nearest ones (`"nearest"`) or the bonded ones (`"bonded"`, after `CreateBonds`);
 
 ## Coloring
 
-`ColorCoding(property, cmap, start, end)` maps a property or expression to a matplotlib
-colormap and stores the range, so the renderer can draw a legend. `AssignColor(color)` colors
+`ColorCoding(property, cmap, range)` maps a property or expression to a matplotlib
+colormap over `range=(lo, hi)` (None: this frame's min and max) and stores the range, so the renderer can draw a legend. `AssignColor(color)` colors
 the selected particles.
 
 ## Vector arrows
@@ -108,7 +108,7 @@ cell. `Replicate(n)` tiles the periodic cell. `WrapAtoms()` maps particles back 
 
 ## Neighbors, clusters and displacements
 
-`CoordinationAnalysis(cutoff, number_of_bins, partial)` gives the coordination number of
+`CoordinationAnalysis(cutoff, bins, partial)` gives the coordination number of
 every particle and the radial distribution function as `tables["coordination-rdf"]`, with
 partial g(r) per type pair when `partial=True`. `ClusterAnalysis(cutoff, ...)` groups
 particles connected by distances below the cutoff, with size, center of mass, gyration tensor
@@ -140,10 +140,10 @@ These match OVITO 3.16's Histogram, Spatial Binning and Reduce Property modifier
 value. A property is named as in expressions' dotted form: `"Mass"`, `"Position.Z"`,
 `"Color.R"`, or a bond property such as `"Topology.A"` with `operate_on="bonds"`.
 
-- `Histogram(property, bin_count, ...)`: `tables["histogram[<property>]"]`, as counts, relative
+- `Histogram(property, bins, range, ...)`: `tables["histogram[<property>]"]`, as counts, relative
   frequency or probability density (`normalization`), over the value range or a fixed one;
   `select_elements=True` selects the elements in a value window.
-- `SpatialBinning(property, reduction_operation, direction, bin_count)`: mean, sum, sum per
+- `SpatialBinning(property, reduction_operation, direction, bins)`: mean, sum, sum per
   volume, min or max of a property in bins along one, two or three cell vectors, for density
   and temperature profiles or 2D maps. 1D results go to `tables["binning"]` (with
   `first_derivative=True` for gradients), 2D and 3D results to `data.grids["binning"]`, where
@@ -154,8 +154,8 @@ value. A property is named as in expressions' dotted form: `"Mass"`, `"Position.
   `ReduceProperty.particles.Mean.Position.Z` (one per component of a vector property).
 
 ```python
-pipe.modifiers.append(SpatialBinning("Velocity.X", "mean", direction="Z", bin_count=40))
-pipe.modifiers.append(SpatialBinning("", "sumvol", direction="XY", bin_count=(64, 64)))
+pipe.modifiers.append(SpatialBinning("Velocity.X", "mean", direction="Z", bins=40))
+pipe.modifiers.append(SpatialBinning("", "sumvol", direction="XY", bins=(64, 64)))
 pipe.modifiers.append(ReduceProperty("Potential Energy", "sum"))
 ```
 
@@ -193,7 +193,7 @@ pipe.modifiers.append(SteinhardtOrderParameters((4, 6), average=True))
   and per atom the 'Wyckoff Position' ('4a'), 'Site Symmetry' and 'Equivalent Atom'.
   `select_unique=True` selects one atom per orbit (the asymmetric unit). `symprec` is in
   Angstrom; 0.01 finds the symmetry of relaxed DFT cells.
-- `PowderDiffraction(radiation, wavelength, two_theta_min, two_theta_max, step, fwhm, eta,
+- `PowderDiffraction(radiation, wavelength, two_theta_min, two_theta_max, two_theta_step, fwhm, eta,
   debye_waller, elements, experimental)`: the powder X-ray (atomic form factors,
   Lorentz-polarization factor) or neutron (coherent scattering lengths) pattern of the cell,
   identical to pymatgen's XRDCalculator and NDCalculator. `tables["diffraction"]` is the
@@ -201,7 +201,7 @@ pipe.modifiers.append(SteinhardtOrderParameters((4, 6), average=True))
   100) and `tables["diffraction-peaks"]` the reflections with d, h k l and multiplicity, drawn
   as sticks in the Plots tab. `wavelength` takes Angstrom or a name (`"CuKa"`, `"CuKa1"`,
   `"MoKa"`, `"CoKa"`, `"AgKa"`, ...).
-- `StructureFactor(method, q_max, q_min, number_of_bins, weighting, cutoff, lorch, elements,
+- `StructureFactor(method, q_max, q_min, bins, weighting, cutoff, lorch, elements,
   experimental)`: S(q) for liquids, glasses and MD in `tables["structure-factor"]`, by the
   direct sum over the reciprocal lattice of the cell (`"direct"`, exact for the periodic
   configuration), the Fourier transform of g(r) (`"rdf"`, smooth, with the Lorch window) or the
@@ -369,7 +369,8 @@ pipe.num_frames   # the dump's frames
 Trajectory modifiers for ionic conductors and liquids. They read `start:stop:step` like the
 ones above; `time_per_frame` is the time between stored frames in ps (0 reports times in
 frames). With `only_selected=True` they use the particles selected at `start`, so put
-`SelectType("Li")` above them to look at one species.
+`SelectType("Li")` above them and pass `only_selected=True` to look at one species (it is off by
+default in every modifier, as in OVITO, D55).
 
 - `IonicConductivity(temperature=300, time_per_frame, charges=None, ...)`: conductivity from
   the collective charge displacement (Einstein-Helfand, σ = d/dt ⟨|Σ qᵢ Δrᵢ|²⟩ / 6VkT, in
