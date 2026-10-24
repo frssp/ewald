@@ -20,6 +20,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - Menus after the 2026-10-23 review: right-click menus still mix entries with and without icons;
   context menus have no mnemonics; Edit has no Find in notebook; the Keyboard shortcuts window lists
   shortcuts but cannot change them; the palette's recent commands are kept for the session only.
+- Search box and + Step (D57): the step list of the notebook bar's + Step and the Ctrl+K palette leave
+  out steps that cannot work on the current frame, where the menus grey them out with the reason.
 - Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): a table's `levels`, `regions`
   and `gaps` are drawn in cell outputs, figures, the Plots panel and a `show(<table>)` view cell,
   but an analysis does not end with such a view cell yet (its result is a picture under the cell

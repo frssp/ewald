@@ -181,7 +181,7 @@ QPushButton#primary:hover {{ background: {accent_hover}; border-color: {accent_h
 QPushButton#primary:pressed {{ background: {accent_pressed}; border-color: {accent_pressed}; }}
 QPushButton#primary:disabled {{ background: {border}; border-color: {border}; color: {muted}; }}
 QPushButton#searchBox {{ text-align: left; color: {muted}; background: {panel}; border: 1px solid {border};
-    border-radius: 6px; padding: 5px 12px; min-width: 320px; font-weight: normal; }}
+    border-radius: 6px; padding: 5px 12px; font-weight: normal; }}
 QPushButton#searchBox:hover {{ border-color: {muted}; background: {panel}; color: {secondary}; }}
 QToolTip {{ background: {raised}; color: {text}; border: 1px solid {border}; border-radius: 4px; padding: 4px 6px; }}
 

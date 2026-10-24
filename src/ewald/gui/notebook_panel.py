@@ -45,7 +45,7 @@ from .code_editor import (  # noqa: F401
 )
 from .icons import icon
 from .notebook_tabs import NotebookTabs
-from .palette import native_text
+from .palette import CommandPalette, menu_entries, native_text
 from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea
 from .pipeline_panel import FlowLayout, _discover, fill_modifier_menu
 from .theme import TOKENS
@@ -173,7 +173,12 @@ class NotebookView(QtWidgets.QWidget):
         self.kernel_menu = QtWidgets.QMenu(self.kernel_button)
         self.kernel_menu.aboutToShow.connect(lambda: self.fill_kernel_menu(self.kernel_menu))
         self.kernel_button.setMenu(self.kernel_menu)
+        # + Step next to Run all (the step goes after the current cell): a step list to search, D-entry in decisions.md
+        self.step_button = QtWidgets.QToolButton(text="+ Step", objectName="stepButton",
+                                                 toolTip="Add an analysis or modification step after the current cell")
+        self.step_button.clicked.connect(self.pick_step)
         bar.addWidget(run_all)
+        bar.addWidget(self.step_button)
         bar.addWidget(restart)
         bar.addWidget(self.interrupt_button)
         bar.addWidget(self.kernel_button)
@@ -358,6 +363,18 @@ class NotebookView(QtWidgets.QWidget):
         for b in (code, text, step, view):   # Jupyter's order; Ask AI is the side bar (Ctrl+J) and the cell menu
             row.addWidget(b)
         return w
+
+    def pick_step(self):
+        """The + Step of the notebook bar: every step of the + Step menu (plugin steps too) in a
+        list to search, opened below the button; the picked one goes after the current cell."""
+        if self.notebook.pipeline is None:
+            self.add_step(None)   # says to open a file first
+            return
+        self._fill_step_menu()
+        pal = CommandPalette(menu_entries(self.step_menu), self, placeholder="Search steps…")
+        pal.place_under(self.step_button, width=460, centered=False)
+        pal.edit.setFocus()
+        pal.exec()
 
     def _fill_step_menu(self):
         fill_modifier_menu(self.step_menu, self.add_step, self._step_context)

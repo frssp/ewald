@@ -59,8 +59,9 @@ There are six kinds of cell.
 switch it off, the time it took and what it produced (new properties, selected atoms, tables,
 removed atoms). A small histogram or curve of the new property or table sits next to the
 results. *Form* opens the parameter form, and Apply writes the new values back into the cell's
-code. *Python* shows the code. Insert › Step (or **+ Step** under the cells) adds a step with
-default parameters after the current cell. Steps that cannot work on the current frame are
+code. *Python* shows the code. **+ Step** next to Run all opens the list of steps to search (type `coord`
+or `msd`), and Insert › Step or **+ Step** under the cells opens the same steps as a menu; each adds
+a step with default parameters after the current cell. Steps that cannot work on the current frame are
 greyed out, and their tooltip says what is missing (a volumetric grid, a vector property, a
 trajectory, a selection, PTM orientations). Bond analyses (bond angles, bond lengths, rings)
 add `CreateBonds(mode="covalent")` first when the data has no bonds, and Coordination polyhedra
