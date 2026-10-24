@@ -1174,6 +1174,28 @@ START_NOTEBOOK = False  # a new window shows the welcome page, not an empty "Not
 CONFIRM_UNSAVED = True  # ask before closing notebooks with unsaved changes (tests turn it off)
 
 
+def ask_unsaved(parent, title: str, names: list[str]) -> str:
+    """Ask what to do with unsaved notebooks before closing: "save", "discard" or "cancel".
+    Standard buttons, so Qt puts Save, Don't Save and Cancel where each platform expects them."""
+    box = QtWidgets.QMessageBox(parent)
+    box.setIcon(QtWidgets.QMessageBox.Warning)
+    box.setWindowTitle(title)
+    if len(names) == 1:
+        box.setText(f'Do you want to save the changes to "{names[0]}"?')
+        save = QtWidgets.QMessageBox.Save
+    else:
+        box.setText(f"{len(names)} notebooks have unsaved changes:\n" + "\n".join(names))
+        save = QtWidgets.QMessageBox.SaveAll
+    box.setInformativeText("Your changes will be lost if you don't save them.")
+    box.setStandardButtons(save | QtWidgets.QMessageBox.Discard | QtWidgets.QMessageBox.Cancel)
+    box.button(QtWidgets.QMessageBox.Discard).setText("Don't Save")
+    box.setDefaultButton(save)
+    box.setEscapeButton(QtWidgets.QMessageBox.Cancel)
+    box.exec()
+    clicked = box.standardButton(box.clickedButton()) if box.clickedButton() is not None else None
+    return {save: "save", QtWidgets.QMessageBox.Discard: "discard"}.get(clicked, "cancel")
+
+
 CELL_CLIPBOARD: list = []   # copied cells as snapshot entries (kind, title, source, frames), for V in any tab
 
 # command-mode actions a CellWidget asks for (CellWidget.COMMAND_KEYS / SHIFT_KEYS)
@@ -1210,6 +1232,7 @@ class NotebookPanel(QtWidgets.QWidget):
     openRequested = QtCore.Signal()           # the welcome page's Open…
     exampleRequested = QtCore.Signal(str)     # ... Open example (a file name of ewald.examples)
     recentRequested = QtCore.Signal(str)      # ... a recent file
+    save_view = None  # the window's "Save" for the current tab (path or None); set by MainWindow
 
     def __init__(self, parent=None, start_notebook: bool = START_NOTEBOOK):
         super().__init__(parent)
@@ -1331,12 +1354,29 @@ class NotebookPanel(QtWidgets.QWidget):
         self._retitle(view)
 
     def confirm_discard(self, views=None, title="Close notebook") -> bool:
-        """True if ``views`` (default: all) have no unsaved changes or the user lets them go."""
-        dirty = [v.notebook.name for v in (self.views() if views is None else views) if v.notebook.dirty]
+        """True if ``views`` (default: all) may close: nothing is unsaved, or the user saved them
+        (Save / Save All) or let them go (Don't Save). Cancel, a cancelled "Save as" dialog or a
+        failed save keeps them open."""
+        dirty = [v for v in (self.views() if views is None else views) if v.notebook.dirty]
         if not dirty or not CONFIRM_UNSAVED:
             return True
-        return QtWidgets.QMessageBox.question(
-            self, title, f"Unsaved changes in {', '.join(dirty)}. Close anyway?") == QtWidgets.QMessageBox.Yes
+        answer = ask_unsaved(self, title, [v.notebook.name for v in dirty])
+        if answer == "discard":
+            return True
+        return answer == "save" and all(self._save_view(v) for v in dirty)  # stops at the first failure
+
+    def _save_view(self, view) -> bool:
+        """Save one notebook, showing its tab first (the window saves the current tab's view
+        state with it); a notebook never saved asks for a name. False if cancelled or failed."""
+        self.tabs.setCurrentWidget(view)
+        if self.save_view is not None:
+            return self.save_view() is not None
+        if view.notebook.path is None:
+            return False
+        try:
+            return self.save() is not None
+        except OSError:
+            return False
 
     def close_tab(self, index):
         view = self.tabs.widget(index)
