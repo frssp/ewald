@@ -119,6 +119,20 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   icon (C); keeping the page-with-lines notebook icon and the puzzle piece.
 - **Landed:** PR (this one).
 
+### D38. A full activity bar ends in a "More side bars" menu (2026-10-24)
+
+- **Decision:** when the activity bar's top group does not fit the window's height, its last
+  slot becomes a "More side bars" (…) button listing the rest; an open side bar keeps its
+  button, and Plugins and Preferences at the bottom always stay. A right-click on the bar hides
+  or shows buttons (saved as `general.activity_hidden`); hidden side bars stay in the Window
+  menu and the command palette.
+- **Why:** the owner asked what happens when side bar icons become many or the window is short
+  ("사이드바 아이콘이 아주 많아지면 어쩌지? 창이 작아서 밑으로 밀려내려가면?"); Qt cut the bottom
+  group first and hid the rest behind a nearly invisible arrow. From three options the owner
+  picked the VS Code-style overflow with a fixed bottom group and hiding.
+- **Considered:** the overflow menu and fixed bottom group without hiding; scrolling the bar.
+- **Landed:** PR (this one).
+
 ## Quality and platforms
 
 ### D7. Quality for files, speed for the screen (2026-10-19)

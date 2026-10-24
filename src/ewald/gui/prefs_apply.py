@@ -97,6 +97,7 @@ def apply_settings(win, s: Settings, startup: bool = False):
     refresh(win)  # header, timeline and cell icons follow the UI theme
     if hasattr(win, "activity_buttons"):
         win.refresh_activity_icons()
+        win.arrange_activity_bar()   # Preferences › General › Hidden activity bar buttons
     # a background from the UI theme or Preferences is not written into the notebook's view
     background = theme.TOKENS["viewport"] if s["viewport.follow_theme"] else s["viewport.background"]
     set_default_background(background)

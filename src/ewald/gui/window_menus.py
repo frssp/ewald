@@ -15,6 +15,20 @@ from .theme import PALETTES
 from .viewport import Viewport
 
 
+class _ResizeWatch(QtCore.QObject):
+    """Calls ``callback`` after ``target`` changes size (once the layout settled)."""
+
+    def __init__(self, target, callback):
+        super().__init__(target)
+        self.callback = callback
+        target.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if event.type() == QtCore.QEvent.Resize:
+            QtCore.QTimer.singleShot(0, self, self.callback)
+        return False
+
+
 class MenusMixin:
     """Part of :class:`ewald.gui.app.MainWindow`."""
 
@@ -34,10 +48,15 @@ class MenusMixin:
                                             "Remotes: saved SSH computers (Ctrl+Alt+R)"),
                                            (None, None, None, None),
                                            ("Plugins", "plugins", self.plugins_dock, "Plugins (Ctrl+Shift+X)")):
-            if name is None:   # pushes Plugins and Preferences to the bottom
+            if name is None:   # "More side bars" when the top group overflows, then the bottom group
+                more = self.activity_more = QtGui.QAction(icon("more"), "More side bars", bar)
+                more.setProperty("ewald_icon", "more")
+                more.setToolTip("More side bars")
+                more.triggered.connect(self._activity_overflow_menu)
+                bar.addAction(more)
                 spacer = QtWidgets.QWidget(objectName="activitySpacer")
                 spacer.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
-                bar.addWidget(spacer)
+                self.activity_spacer = bar.addWidget(spacer)
                 continue
             # not dock.toggleViewAction(): Qt disables it for docks without DockWidgetClosable
             act = QtGui.QAction(icon(icon_name), name, bar, checkable=True)
@@ -46,6 +65,7 @@ class MenusMixin:
             act.setProperty("ewald_icon", icon_name)
             act.setProperty("ewald_tip", native_text(tip))
             act.setToolTip(native_text(tip))
+            act.toggled.connect(self.arrange_activity_bar)   # an open side bar keeps its button
             bar.addAction(act)
             self.activity_buttons[name] = act
         act = QtGui.QAction(icon("settings"), "Preferences", bar)
@@ -59,6 +79,76 @@ class MenusMixin:
         self.plugins_panel.updatesChanged.connect(self._plugin_updates)
         self._plugin_updates(len(self.plugins_panel.updates()))
         self.ask_dock.visibilityChanged.connect(lambda shown: shown and self.ask_panel.input.setFocus())
+        self._activity_overflow = []
+        bar.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        bar.customContextMenuRequested.connect(self._activity_context_menu)
+        _ResizeWatch(bar, self.arrange_activity_bar)
+
+    def _activity_top(self) -> list:
+        """The actions of the activity bar's top group (side bars you work in), in bar order."""
+        acts = self.activity_bar.actions()
+        return [a for a in acts[:acts.index(self.activity_spacer)] if a is not self.activity_more]
+
+    def _activity_hidden(self) -> set:
+        return {n.strip() for n in self.settings["general.activity_hidden"].split(",") if n.strip()}
+
+    def arrange_activity_bar(self, *_):
+        """Fit the activity bar's top group into its height: buttons hidden from its right-click menu
+        stay off, and when the rest do not fit the last slot becomes "More side bars" listing the
+        others, as in VS Code. An open side bar keeps its button; Plugins and Preferences at the
+        bottom always stay. Every side bar stays in the Window menu."""
+        bar = self.activity_bar
+        if not hasattr(self, "activity_spacer") or "Preferences" not in self.activity_buttons:
+            return   # still being built
+        hidden = self._activity_hidden()
+        top = self._activity_top()
+        wanted = [a for a in top if a.text() not in hidden]
+        button = bar.widgetForAction(self.activity_buttons["Preferences"])
+        step = button.sizeHint().height() + max(bar.layout().spacing(), 0)
+        margins = bar.contentsMargins().top() + bar.contentsMargins().bottom() + 2 * bar.layout().contentsMargins().top()
+        fit = max(1, int((bar.height() - margins - 2 * step) // step))   # 2: Plugins, Preferences
+        keep = wanted
+        if len(wanted) > fit:
+            keep = wanted[:max(fit - 1, 0)]                       # one slot for "More side bars"
+            for a in [a for a in wanted[len(keep):] if a.isChecked()][:len(keep)]:
+                keep = keep[:-1] if not keep[-1].isChecked() else keep
+                keep.append(a)
+            keep = [a for a in wanted if a in keep]
+        self._activity_overflow = [a for a in wanted if a not in keep]
+        for a in top:
+            a.setVisible(a in keep)
+        self.activity_more.setVisible(bool(self._activity_overflow))
+
+    def _activity_overflow_menu(self):
+        """The side bars that did not fit the activity bar, beside its "More side bars" button."""
+        menu = QtWidgets.QMenu(self)
+        for a in self._activity_overflow:
+            menu.addAction(a)
+        button = self.activity_bar.widgetForAction(self.activity_more)
+        menu.exec(button.mapToGlobal(QtCore.QPoint(button.width(), 0)))
+
+    def _activity_context_menu(self, pos):
+        """Right-click on the activity bar: tick the side bars whose buttons it shows."""
+        menu = QtWidgets.QMenu(self)
+        hidden = self._activity_hidden()
+        for a in self._activity_top():
+            entry = menu.addAction(a.text())
+            entry.setCheckable(True)
+            entry.setChecked(a.text() not in hidden)
+            entry.toggled.connect(lambda on, n=a.text(): self.set_activity_hidden(n, not on))
+        menu.addSeparator()
+        menu.addAction("Show all buttons", lambda: self.set_activity_hidden(None))
+        menu.exec(self.activity_bar.mapToGlobal(pos))
+
+    def set_activity_hidden(self, name: str | None, hide: bool = False):
+        """Hide or show the activity-bar button of side bar ``name`` (``None``: show all) and save
+        it (Preferences › General › Hidden activity bar buttons)."""
+        hidden = set() if name is None else self._activity_hidden()
+        if name is not None:
+            hidden = hidden | {name} if hide else hidden - {name}
+        self.settings["general.activity_hidden"] = ", ".join(sorted(hidden))
+        self.settings.save()
+        self.arrange_activity_bar()
 
     def refresh_activity_icons(self):
         """Redraw the activity bar icons in the colors of the UI theme now active."""
@@ -69,6 +159,7 @@ class MenusMixin:
                 self._plugin_updates(act.property("updates") or 0)
             else:
                 act.setIcon(icon(act.property("ewald_icon")))
+        self.activity_more.setIcon(icon("more"))
         self.refresh_plugin_icons()
 
     def _plugin_updates(self, count):

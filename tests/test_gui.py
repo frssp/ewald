@@ -4567,6 +4567,47 @@ def test_activity_bar_order_icons_and_tooltips(app, pipe, monkeypatch):
     w.close()
 
 
+def test_activity_bar_overflow_and_hidden_buttons(app, pipe, monkeypatch):
+    """Too many side bars for the window's height: the top group ends in "More side bars" with
+    the rest, Plugins and Preferences stay, an open side bar keeps its button and buttons hidden
+    from the right-click menu are saved (D38)."""
+    from ewald import plugins
+    from ewald.gui.app import MainWindow
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    for i in range(14):
+        plugins.register_panel(f"p{i}", lambda context: QtWidgets.QLabel("x"), title=f"Panel {i}")
+    w = MainWindow(pipe)
+    w.resize(900, 600)
+    w.show()
+    for _ in range(5):
+        app.processEvents()
+    w.arrange_activity_bar()
+    bar = w.activity_bar
+    shown = lambda name: bar.widgetForAction(w.activity_buttons[name]).isVisible()   # noqa: E731
+    overflow = [a.text() for a in w._activity_overflow]
+    assert w.activity_more.isVisible() and "Panel 13" in overflow and "Remotes" in overflow
+    assert shown("Plugins") and shown("Preferences") and shown("Notebook")
+    ext = [b for b in bar.findChildren(QtWidgets.QToolButton) if b.objectName() == "qt_toolbar_ext_button"]
+    assert not any(b.isVisible() for b in ext)                  # Qt's own overflow arrow never shows
+    w.show_plugin_panel("p13")
+    app.processEvents()
+    assert w.activity_buttons["plugin:p13"].isVisible()         # the open side bar keeps its button
+    w.set_activity_hidden("Panel 0", True)
+    assert "Panel 0" not in [a.text() for a in w._activity_overflow] and not w.activity_buttons["plugin:p0"].isVisible()
+    assert w.settings["general.activity_hidden"] == "Panel 0"
+    assert "Panel 0" in [a.text() for a in w.plugin_panel_actions]   # still in the Window menu
+    w.set_activity_hidden(None)
+    assert w.settings["general.activity_hidden"] == ""
+    w.resize(900, 1400)
+    for _ in range(5):
+        app.processEvents()
+    w.arrange_activity_bar()
+    if bar.height() > 22 * 46:                                  # tall enough for every button
+        assert not w.activity_more.isVisible() and not w._activity_overflow
+    w.close()
+
+
 def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatch):
     """Installing a plugin with @panel and @settings_page adds an activity-bar button that opens
     its side bar (built on first open) and a page in Preferences; switching it off removes both."""
@@ -4589,7 +4630,7 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
 
     plugins.register_panel("broken", broken, title="Broken")
     w = MainWindow(pipe)
-    titles = [a.text() for a in w.activity_bar.actions() if a.text()]   # work on top, management at the bottom
+    titles = [a.text() for a in w.activity_bar.actions() if a.text() and a is not w.activity_more]   # work on top
     assert titles[:2] == ["Notebook", "AI chat"] and titles[-3:] == ["Remotes", "Plugins", "Preferences"]
     assert sorted(titles[2:-3]) == ["Broken", "Sim agent", "Workflows"]
     assert w.plugin_panels["sim_agent"]["dock"] is None          # nothing built before it opens
@@ -4633,7 +4674,8 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
 
     plugins.set_enabled("sim-agent-example", False)
     w.refresh_plugin_panels()
-    assert [a.text() for a in w.activity_bar.actions() if a.text()][2:-3] == ["Broken", "Workflows"]
+    assert [a.text() for a in w.activity_bar.actions() if a.text() and a is not w.activity_more][2:-3] \
+        == ["Broken", "Workflows"]
     assert "sim_agent" not in w.plugin_panels
     w.close()
 

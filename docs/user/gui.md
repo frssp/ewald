@@ -13,7 +13,7 @@ notebook. Linux system libraries and startup errors: [Install](install.md#linux-
 
 The window has the analysis on the left as a [notebook](notebooks.md): Python cells, steps and
 linked plots, saved as an `.ewd`, `.ipynb` or `.py` file, with one tab per open notebook. The
-[tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline take the rest of the width, the AI chat opens left of the notebook from the activity bar (side bars you work in on top: Notebook, AI chat, Workflows and other plugin side bars, Remotes; Plugins and Preferences at the bottom), and the panel
+[tutorials](tutorials/first-notebook.md) walk through it. The viewport and timeline take the rest of the width, the AI chat opens left of the notebook from the activity bar (side bars you work in on top: Notebook, AI chat, Workflows and other plugin side bars, Remotes; Plugins and Preferences at the bottom; when the window is too short, the last top button becomes … with the rest, and a right-click on the bar hides buttons you do not use, which stay in the Window menu), and the panel
 below the viewport holds the Python console, the View tab (display settings), the data inspector, plots and the log. Tabs in the
 middle can be rearranged as in VS Code (see [Panel layout](#panel-layout)).
 
