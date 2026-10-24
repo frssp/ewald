@@ -232,6 +232,14 @@ last line (as in Jupyter). Matplotlib figures are shown as images, without `plt.
 opening a window, and so are a pipeline (`pipe` as the last line draws frame 0) and a verb
 table (its curve); a frame (`pipe.compute(0)`) shows its summary.
 
+**Long output scrolls.** Printed text, a value or a traceback longer than 50 lines scrolls in a
+box 20 lines tall, as Jupyter's scrolled output (a traceback shows its end, a running cell's log
+follows the newest line until you scroll up). The thin rule left of the output is Jupyter's
+output prompt: click it (or press Shift+O on the selected cell) to show every line or scroll it
+again, also for a shorter output; a click on an output shorter than the box, a double-click, or
+O hides the outputs behind an *Output hidden* line, which a click brings back. Preferences ›
+Notebooks › Outputs sets both numbers (*Scroll outputs longer than* 0 scrolls nothing by itself).
+
 Cells are IPython cells, as in Jupyter: magics (`%time`, `%%timeit`, `%env`, `%who`),
 `!commands` (`!pip list`), `display(...)` and `display(..., display_id=True).update(...)`,
 `_` and `Out[n]`, and IPython's tracebacks all work, and an object's `_repr_html_`,
@@ -344,6 +352,7 @@ you run it.
 | X / C | cut / copy the selected cells |
 | V / Shift+V | paste them below / above (also into another notebook tab) |
 | Shift+M | merge the selected cells (one cell: with the cell below) |
+| O / Shift+O | hide or show the outputs / scroll them or show them whole |
 | Ctrl+Enter / Shift+Enter | run the selected cells (Shift+Enter then moves on) |
 
 The cell's ⋯ menu and the Notebook menu have the same commands; *Move up* / *Move down* move the

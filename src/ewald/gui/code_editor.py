@@ -185,8 +185,13 @@ class OutputText(FittedText):
     A label's height came from a width its unbreakable lines made too wide, so the last lines
     were cut off."""
 
-    max_lines = 400            # a long log scrolls in place instead of making the page endless
+    fitted = QtCore.Signal()   # measured again: the outputs' rule may toggle it now, or no more
+    scroll_after = 50          # longer output scrolls in place, as in Jupyter (python.output_scroll_after; 0: never)
+    box_lines = 20             # ... in a box this many lines tall (python.output_box_lines)
+    full_lines = 10000         # even an expanded log stops growing here
     pad = 0
+    scrolled = None            # None: by its length; True / False: set by hand (the outputs' rule)
+    follow_end = False         # the box stays scrolled to its last line
 
     def __init__(self, text="", kind="text", parent=None):
         super().__init__(text, parent)
@@ -199,11 +204,70 @@ class OutputText(FittedText):
         self.viewport().setCursor(QtCore.Qt.IBeamCursor)
         self.setObjectName({"error": "cellError", "value": "cellValue"}.get(kind, "cellText"))
         self.setProperty("ewald_kind", kind)
+        # a scrolled traceback shows its end (the exception); scrolling up lets go of it
+        self.follow_end = kind == "error"
+        self.verticalScrollBar().actionTriggered.connect(self._scrolled_by_user)
         self._fit()
+
+    def _scrolled_by_user(self, _action):
+        bar = self.verticalScrollBar()
+        QtCore.QTimer.singleShot(0, self, lambda: setattr(self, "follow_end", bar.value() >= bar.maximum()))
+
+    @property
+    def max_lines(self):
+        return self.box_lines if self.is_scrolled() else self.full_lines
+
+    def line_count(self) -> int:
+        """Laid-out lines (wrapped ones count)."""
+        ls = max(1, self.fontMetrics().lineSpacing())
+        block, n = self.document().firstBlock(), 0
+        while block.isValid():
+            n += max(1, round(self.blockBoundingRect(block).height() / ls))
+            block = block.next()
+        return n
+
+    def is_long(self) -> bool:
+        """Longer than ``scroll_after`` lines: scrolled unless shown whole by hand."""
+        return 0 < self.scroll_after < self.line_count()
+
+    def can_scroll(self) -> bool:
+        """Taller than the box: scrolling it hides lines (the rule can toggle it)."""
+        return self.line_count() > self.box_lines
+
+    def is_scrolled(self) -> bool:
+        if not self.can_scroll():
+            return False
+        return self.is_long() if self.scrolled is None else self.scrolled
+
+    def set_scrolled(self, on):
+        """True: in a box of ``box_lines``; False: every line; None: by its length."""
+        if on != self.scrolled:
+            self.scrolled = on
+            self._fit()
+
+    def _fit(self):
+        super()._fit()
+        try:
+            if self.follow_end:
+                bar = self.verticalScrollBar()
+                bar.setValue(bar.maximum())
+            self.fitted.emit()
+        except RuntimeError:   # being deleted
+            pass
 
     def text(self) -> str:
         return self.toPlainText()
 
     def setText(self, text: str):
-        if text != self.toPlainText():
+        if text == self.toPlainText():
+            return
+        bar = self.verticalScrollBar()
+        old = self.toPlainText()
+        if old and text.startswith(old):
+            # a running cell printed more: append, and a log scrolled to its end keeps following it
+            self.follow_end = self.follow_end or bar.value() >= bar.maximum()
+            cursor = QtGui.QTextCursor(self.document())
+            cursor.movePosition(QtGui.QTextCursor.End)
+            cursor.insertText(text[len(old):])
+        else:
             self.setPlainText(text)
