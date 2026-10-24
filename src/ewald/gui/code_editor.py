@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import keyword
+import math
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -75,7 +76,63 @@ class PythonHighlighter(QtGui.QSyntaxHighlighter):
             start = text.find('"""', end + 3)
 
 
-class CodeEditor(QtWidgets.QPlainTextEdit):
+class FittedText(QtWidgets.QPlainTextEdit):
+    """Plain text that is as tall as its laid-out lines, up to :attr:`max_lines` (then it
+    scrolls), in pixels of the font the style sheet gave it. Rounding to whole lines of the
+    font set before the style sheet, and not measuring again when the font changed, cut the last
+    line off and the cell's output was drawn right over it (Windows at 200 %)."""
+
+    max_lines = MAX_EDITOR_LINES
+    grows = True                    # False: a fixed-size view (the notebook's Python file)
+    pad = 6                         # at least this much around the text
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setFont(mono_font())
+        self.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.textChanged.connect(self._fit)
+
+    def _fit(self):
+        try:
+            doc = self.document()
+        except RuntimeError:  # a late textChanged while the widget is being deleted
+            return
+        if not self.grows:
+            return
+        ls = self.fontMetrics().lineSpacing()
+        text_h, lines = 0.0, 0
+        block = doc.firstBlock()
+        while block.isValid():  # wrapped lines count too; blockBoundingRect lays the block out first
+            h = self.blockBoundingRect(block).height()
+            text_h += h
+            lines += max(1, round(h / ls))
+            block = block.next()
+        text_h = max(text_h, ls)
+        shown = text_h if lines <= self.max_lines else self.max_lines * ls
+        m = self.contentsMargins()  # frame and style sheet padding
+        h = math.ceil(shown + 2 * doc.documentMargin()) + max(self.pad, m.top() + m.bottom())
+        if self.height() != h or self.minimumHeight() != h:
+            self.setFixedHeight(h)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded if lines > self.max_lines
+                                        else QtCore.Qt.ScrollBarAlwaysOff)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if event.oldSize().width() != event.size().width():
+            QtCore.QTimer.singleShot(0, self, self._fit)  # rewrapped after the layout; dropped if deleted
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QtCore.QEvent.FontChange, QtCore.QEvent.StyleChange):
+            # the style sheet's font arrives after construction (and changes with the theme, the
+            # font size preference and the screen's scaling): measure the text again
+            self.setTabStopDistance(4 * self.fontMetrics().horizontalAdvance(" "))
+            QtCore.QTimer.singleShot(0, self, self._fit)
+
+
+class CodeEditor(FittedText):
     """Python editor that grows with its text. Ctrl+Enter runs, Shift+Enter runs and moves on."""
 
     runRequested = QtCore.Signal(bool)
@@ -84,39 +141,11 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
 
     def __init__(self, text="", parent=None):
         super().__init__(text, parent)
-        self.setFont(mono_font())
         self.setLineWrapMode(QtWidgets.QPlainTextEdit.WidgetWidth)  # the page never scrolls sideways
         self.setTabStopDistance(4 * self.fontMetrics().horizontalAdvance(" "))
-        self.setFrameShape(QtWidgets.QFrame.NoFrame)
-        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
         self.setObjectName("cellEditor")
         self.highlighter = PythonHighlighter(self.document())
-        self.textChanged.connect(self._fit)
         self._fit()
-
-    def _fit(self):
-        try:
-            doc, lines = self.document(), 0
-        except RuntimeError:  # a late textChanged while the editor is being deleted
-            return
-        ls = self.fontMetrics().lineSpacing()
-        block = doc.firstBlock()
-        while block.isValid():  # wrapped lines count too; blockBoundingRect lays the block out first
-            lines += max(1, round(self.blockBoundingRect(block).height() / ls))
-            block = block.next()
-        lines = max(1, lines)
-        shown = min(lines, MAX_EDITOR_LINES)
-        m = self.contentsMargins()  # frame and style sheet padding
-        h = shown * ls + 2 * self.document().documentMargin() + max(6, m.top() + m.bottom())
-        self.setFixedHeight(int(h))
-        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded if lines > MAX_EDITOR_LINES
-                                        else QtCore.Qt.ScrollBarAlwaysOff)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if event.oldSize().width() != event.size().width():
-            QtCore.QTimer.singleShot(0, self, self._fit)  # rewrapped after the layout; dropped if deleted
 
     def keyPressEvent(self, event):
         key, mods = event.key(), event.modifiers()
@@ -148,3 +177,33 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
 
 
 # ---------------------------------------------------------------- outputs and results
+
+
+class OutputText(FittedText):
+    """What a cell printed, returned or raised: selectable plain text that wraps anywhere (a
+    traceback's rule or a long array line never runs past the cell) and is as tall as its lines.
+    A label's height came from a width its unbreakable lines made too wide, so the last lines
+    were cut off."""
+
+    max_lines = 400            # a long log scrolls in place instead of making the page endless
+    pad = 0
+
+    def __init__(self, text="", kind="text", parent=None):
+        super().__init__(text, parent)
+        self.setReadOnly(True)
+        self.document().setDocumentMargin(2)
+        self.setLineWrapMode(QtWidgets.QPlainTextEdit.WidgetWidth)
+        self.setWordWrapMode(QtGui.QTextOption.WrapAtWordBoundaryOrAnywhere)
+        self.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse | QtCore.Qt.TextSelectableByKeyboard)
+        self.setFocusPolicy(QtCore.Qt.ClickFocus)
+        self.viewport().setCursor(QtCore.Qt.IBeamCursor)
+        self.setObjectName({"error": "cellError", "value": "cellValue"}.get(kind, "cellText"))
+        self.setProperty("ewald_kind", kind)
+        self._fit()
+
+    def text(self) -> str:
+        return self.toPlainText()
+
+    def setText(self, text: str):
+        if text != self.toPlainText():
+            self.setPlainText(text)
