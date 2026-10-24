@@ -577,6 +577,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Windows with the VTK viewport: maximizing or resizing the window keeps it drawn (it went
+  black until restart while the VTK default format was the window's default; now macOS only),
+  and the 3D view still shows the atoms. Closing the window with a cell's plot in the Plots panel
+  prints no `QSplitter already deleted` error.
 - Preferences › Plots › Open as text on Windows and macOS: a `.mplstyle` file has no program
   associated on a fresh system, so Windows falls back to Notepad and macOS uses `open -t` (the
   default text editor); EWALD must re-read the file when the editor saves (watched with

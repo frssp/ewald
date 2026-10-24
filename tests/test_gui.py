@@ -567,6 +567,39 @@ def test_show_anywhere_in_a_cell_is_a_live_plot(app, tmp_path):
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_deleting_the_window_with_a_docked_plot_in_a_split(app, tmp_path, monkeypatch):
+    """Qt deletes the workbench (its splitters) before the notebook cells; the cell's docked plot
+    then leaves the workbench, which must not touch the deleted splitters (seen on Windows:
+    'Internal C++ object (QSplitter) already deleted' from Workbench._capture)."""
+    import sys
+
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    errors = []
+    monkeypatch.setattr(sys, "excepthook", lambda *exc: errors.append(exc[1]))
+    path = tmp_path / "docked.py"
+    path.write_text(
+        "# %%\nfrom ewald import load\nfrom ewald.modifiers import *\nfrom ewald.views import show\n"
+        f"pipe = load({str(examples.path('Cu_md.extxyz'))!r})\n\n"
+        "# %%\npipe.add(CalculateDisplacements(reference_frame=0))\n"
+        "show(pipe, histogram='Displacement Magnitude')\n", encoding="utf-8")
+    w = MainWindow(settings=settings.Settings())
+    view = w.panel.open_notebook(str(path), trusted=True)
+    view.run_all()
+    app.processEvents()
+    (docked,) = w.docked_plots()
+    w.workbench.split(docked, "right")              # a QSplitter in the workbench
+    app.processEvents()
+    w.close()
+    w.deleteLater()
+    for _ in range(3):
+        app.processEvents()
+        app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+    assert errors == []
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_linked_plots_open_in_the_plots_panel_others_stay_under_the_cell(app, tmp_path):
     from ewald import examples, settings
     from ewald.gui.app import MainWindow
@@ -5319,14 +5352,17 @@ def test_next_notebook_does_not_inherit_the_previous_ones_bond_table(app, tmp_pa
     w.close()
 
 
-def test_viewport_sets_vtk_surface_format_before_any_gl_widget(app):
+def test_viewport_sets_vtk_surface_format_before_any_gl_widget(app, monkeypatch):
     """The placeholder (the window's first OpenGL widget) already gets VTK's 3.2 core format, so
     the window's compositing context can share with the VTK view's on macOS (black view otherwise)."""
+    import sys
+
     from ewald.gui.legacy_viewport import LegacyViewport
     from ewald.gui.style import ViewStyle
     from ewald.gui.viewport import Viewport, vtk_surface_format
 
     QtGui.QSurfaceFormat.setDefaultFormat(QtGui.QSurfaceFormat())  # Qt's default: legacy profile
+    monkeypatch.setattr(sys, "platform", "darwin")
     try:
         v = Viewport(ViewStyle())
         assert QtGui.QSurfaceFormat.defaultFormat() == vtk_surface_format()
@@ -5334,6 +5370,24 @@ def test_viewport_sets_vtk_surface_format_before_any_gl_widget(app):
         assert v._placeholder.format().version() == (3, 2)
         _dispose(v)
         assert Viewport.uses_vtk and not LegacyViewport.uses_vtk  # GLView asks for OpenGL 1.x itself
+    finally:
+        QtGui.QSurfaceFormat.setDefaultFormat(vtk_surface_format())
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+def test_vtk_surface_format_stays_off_the_window_outside_macos(app, monkeypatch, platform):
+    """On Windows the VTK default format (alpha, 8-bit depth) on the window's compositing surface
+    turned the whole window black after a maximize or resize; only macOS needs it up front."""
+    import sys
+
+    from ewald.gui.application import use_vtk_surface_format
+    from ewald.gui.viewport import vtk_surface_format
+
+    QtGui.QSurfaceFormat.setDefaultFormat(QtGui.QSurfaceFormat())
+    monkeypatch.setattr(sys, "platform", platform)
+    try:
+        use_vtk_surface_format()
+        assert QtGui.QSurfaceFormat.defaultFormat() == QtGui.QSurfaceFormat()
     finally:
         QtGui.QSurfaceFormat.setDefaultFormat(vtk_surface_format())
 

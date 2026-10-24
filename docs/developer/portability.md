@@ -86,8 +86,10 @@ family; scale pixel sizes by `devicePixelRatioF()`; save dialogs pass their resu
 shortcuts use `QKeySequence` standard keys or Ctrl, which Qt maps to Cmd on macOS.
 OpenGL widgets of one window share with its compositing context, made from the default format
 when the first one appears: `gui/viewport.use_vtk_surface_format()` sets VTK's 3.2 core format
-before that (`_app()` and `Viewport`). Linux and Windows drivers share across profiles, macOS
-does not, and the VTK view composited black there while the rest of the window worked.
+before that (`_app()` and `Viewport`), on macOS only. Linux and Windows drivers share across
+profiles, macOS does not, and the VTK view composited black there while the rest of the window
+worked. On Windows the same default (alpha, 8-bit depth) on the window's own surface turned the
+whole window black after a maximize or resize, so Windows and Linux keep Qt's default there.
 See-through atoms are sphere meshes, not impostors (`render.draw_scene`): the impostor shader under
 depth peeling draws nothing on macOS. The VTK view has no MSAA: depth peeling into multisampled
 framebuffers drops every see-through layer, on Mesa too.
