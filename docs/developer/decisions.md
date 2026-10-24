@@ -552,12 +552,24 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   (`device="cuda"`, single precision, the same rays as the CPU tracer) rather than an
   edge-aware denoiser over fewer samples or no further work.
 - **Why:** the owner picked the CUDA ray tracer on the decision card. The owner then added that
-  their own PC has no NVIDIA GPU ("앗 근데 나는 nvidia gpu가 없네", Intel Arc), so whether an
-  OpenCL build of the same kernel follows is open.
+  their own PC has no NVIDIA GPU ("앗 근데 나는 nvidia gpu가 없네", Intel Arc); D46 adds the
+  OpenCL build of the same kernel.
 - **Considered:** an edge-aware denoiser from the ray tracer's normal and depth buffers
   (recommended, since it runs on every machine and could be checked here); stopping after
   public PR #27 showed that adaptive sampling cannot gain at equal quality.
 - **Landed:** public PR #33.
+
+### D46. One GPU ray tracer source for CUDA and OpenCL (2026-10-24)
+
+- **Decision:** the CUDA ray tracer is merged, and the same kernel source also builds as OpenCL
+  C (`device="opencl"`, pyopencl, the `opencl` extra), so Intel Arc, AMD and Apple GPUs ray
+  trace too. `"auto"` takes CUDA, then an OpenCL GPU, then the CPU. Only the ray tracer uses
+  OpenCL; the analysis stays on CuPy or the CPU.
+- **Why:** the owner's PC has an Intel Arc GPU and no NVIDIA one ("앗 근데 나는 nvidia gpu가
+  없네"); the owner chose "CUDA merge + OpenCL 추가" on the decision card.
+- **Considered:** merging CUDA alone and leaving Arc on the CPU; an edge-aware denoiser instead,
+  which runs on every machine.
+- **Landed:** public PR #PRNUM.
 
 ## Adding an entry
 

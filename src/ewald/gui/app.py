@@ -317,7 +317,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         return dlg
 
     def set_device(self, dev: str):
-        """Compute on ``dev`` ("cpu", "cuda", "auto"; Preferences › Compute › Device). The
+        """Compute on ``dev`` ("cpu", "cuda", "opencl", "auto"; Preferences › Compute › Device). The
         notebook's ``pipe`` follows unless its code chose a device itself, so a cell's
         ``pipe.compute()`` runs where the window computes."""
         old = self.device

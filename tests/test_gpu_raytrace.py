@@ -1,10 +1,12 @@
-"""Run the CUDA ray tracer on the CPU.
+"""Run the GPU ray tracers without a GPU.
 
-The kernel source (``ewald.raytrace_cuda.RAYTRACE_SOURCE``) is compiled with the host C++
+CUDA: the kernel source (``ewald.raytrace_gpu.cuda_source``) is compiled with the host C++
 compiler behind a shim (``__global__``/``__device__`` removed, a serial loop standing in for the
 thread grid) and CuPy's ``RawKernel`` is replaced by a ctypes call, as in test_cuda_kernel.py.
-In double precision the port must give the numba tracer's image; in float, the precision the
-GPU uses, it must stay within what the eye cannot see.
+OpenCL: the same body with the OpenCL prelude runs through pyopencl on pocl's CPU device, when
+both are installed (``pip install "pyopencl[pocl]"``).
+In double precision the port must give the numba tracer's image; in float, the precision a GPU
+uses, it must stay within what the eye cannot see, also with float sums (Intel Arc).
 """
 import ctypes
 import shutil
@@ -14,10 +16,8 @@ import numpy as np
 import pytest
 
 import ewald.raytrace as rt
-import ewald.raytrace_cuda as rc
+import ewald.raytrace_gpu as rc
 from ewald.backend import Backend
-
-pytestmark = pytest.mark.skipif(shutil.which("g++") is None, reason="needs g++")
 
 SHIM = r"""
 #include <math.h>
@@ -59,7 +59,7 @@ def host_kernels(tmp_path_factory):
     libs = {}
     for real in ("double", "float"):
         src = d / f"rt_{real}.cpp"
-        src.write_text(f"#define REAL {real}\n" + SHIM % rc.RAYTRACE_SOURCE, encoding="utf-8")
+        src.write_text(SHIM % rc.cuda_source(real), encoding="utf-8")
         so = d / f"rt_{real}.so"
         # no FMA contraction: numba does not fuse either, and the double image must match it
         subprocess.run(["g++", "-O2", "-ffp-contract=off", "-shared", "-fPIC", "-o", str(so), str(src)], check=True)
@@ -69,9 +69,8 @@ def host_kernels(tmp_path_factory):
     return libs
 
 
-@pytest.fixture(params=["double", "float"])
-def fake_gpu(request, host_kernels, monkeypatch):
-    real = request.param
+def _cuda_on_cpu(request, host_kernels, monkeypatch):
+    real = request.param.split("-")[1]
     launches = []
 
     def kernel(cp, which):
@@ -100,6 +99,44 @@ def fake_gpu(request, host_kernels, monkeypatch):
     be.launches = launches
     be.real = real
     return be
+
+
+def _opencl_on_pocl(request, monkeypatch):
+    pytest.importorskip("pyopencl")
+    devices = [d for d in rc.opencl_devices() if d.double_fp_config]
+    if not devices:
+        pytest.skip("needs an OpenCL device with double precision (pocl)")
+    real, fp64 = {"double": ("double", None), "float": ("float", None), "float-sums": ("float", False)}[
+        request.param.split("-", 1)[1]]
+    launches = []
+    trace = rc.OpenCLTracer.trace
+
+    def counted(self, *args):
+        launches.append((None, None))
+        trace(self, *args)
+
+    monkeypatch.setattr(rc, "opencl_devices", lambda gpu_only=False: devices)
+    monkeypatch.setattr(rc, "OPENCL_FP64", fp64)
+    monkeypatch.setattr(rc.OpenCLTracer, "trace", counted)
+    monkeypatch.setattr(rt, "GPU_REAL", real)
+
+    class Device(str):
+        pass
+
+    dev = Device("opencl")
+    dev.launches, dev.real = launches, real
+    return dev
+
+
+@pytest.fixture(params=["cuda-double", "cuda-float", "opencl-double", "opencl-float", "opencl-float-sums"])
+def fake_gpu(request, monkeypatch):
+    """A GPU device for ``raytrace(device=...)``: the CUDA source on the host compiler, or the
+    OpenCL source on pocl; ``.launches`` records the kernel calls, ``.real`` the precision."""
+    if request.param.startswith("cuda"):
+        if shutil.which("g++") is None:
+            pytest.skip("needs g++")
+        return _cuda_on_cpu(request, request.getfixturevalue("host_kernels"), monkeypatch)
+    return _opencl_on_pocl(request, monkeypatch)
 
 
 CAM = {"position": (6.0, 4.0, 9.0), "focal_point": (0.0, 0.0, 0.0), "up": (0.0, 1.0, 0.0),
@@ -140,7 +177,7 @@ def test_gpu_image_matches_cpu(fake_gpu, ortho):
     kw = dict(samples=4, ao_samples=4)
     cpu = rt.raytrace(sc, cam, (48, 36), **kw)
     gpu = rt.raytrace(sc, cam, (48, 36), device=fake_gpu, **kw)
-    assert fake_gpu.launches and fake_gpu.launches[0][1] == (rc.THREADS,)
+    assert fake_gpu.launches and fake_gpu.launches[0][1] in ((rc.THREADS,), None)
     diff = np.abs(gpu - cpu).max(-1)
     if fake_gpu.real == "double":   # the same rays: a pixel may differ only on a knife edge
         assert (diff < 1e-9).mean() > 0.999 and diff.max() < 0.3

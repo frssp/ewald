@@ -37,8 +37,15 @@ change with the device.
 The ray tracer runs there too: `render(data, "fig.png", renderer="raytrace", device="cuda")`,
 or `pipe.render(...)` with `pipe.device` set, and the GUI's Render page and movie export when
 Preferences › Compute › Device is `cuda` or `auto`. It traces in single precision
-([Rendering](rendering.md)). Only NVIDIA GPUs run it so far; Intel Arc, AMD and Apple GPUs ray
-trace on the CPU.
+([Rendering](rendering.md)).
+
+On other GPUs (Intel Arc and integrated graphics, AMD, Apple) the ray tracer runs through
+OpenCL: `pip install 'ewald[opencl]'`, then `device="opencl"`, or OpenCL in Preferences ›
+Compute › Device. The GPU's driver brings the OpenCL runtime (on Windows the Intel, AMD and
+NVIDIA graphics drivers do). Only the ray tracer uses OpenCL; the analysis runs on the CPU
+with this device. `device="auto"` picks CUDA first, then an OpenCL GPU for ray tracing. To see
+what the GPU gains, run `python benchmarks/analysis.py --skip-modifiers --device opencl` and
+compare with `--device cpu`.
 
 ## CPU threads
 

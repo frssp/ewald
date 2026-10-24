@@ -951,9 +951,10 @@ def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8,
     ``progress(done, total)`` is called after each batch of rows; when it returns ``False`` the
     trace stops and :class:`RenderCancelled` is raised. The image does not depend on it.
 
-    ``device``: ``"cpu"`` (default, numba on every core), ``"cuda"`` (an NVIDIA GPU through CuPy,
-    :mod:`ewald.raytrace_cuda`; single precision, so it matches the CPU image to within a few
-    1e-3 rather than exactly) or ``"auto"`` (the GPU when there is one).
+    ``device``: ``"cpu"`` (default, numba on every core), ``"cuda"`` (an NVIDIA GPU through CuPy),
+    ``"opencl"`` (an Intel, AMD, NVIDIA or Apple GPU through pyopencl) or ``"auto"`` (CUDA, else an
+    OpenCL GPU, else the CPU); :mod:`ewald.raytrace_gpu`. Single precision, so a GPU image matches
+    the CPU one to within a few 1e-3 rather than exactly.
     """
     from .render import _rgb
 
@@ -1051,48 +1052,14 @@ def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8,
     return acc / (nsamp[..., None] if adaptive else samples)
 
 
-class _GPUTracer:
-    """The device side of :func:`raytrace` (see :mod:`ewald.raytrace_cuda`)."""
-
-    def __init__(self, backend, scene, accel, real="float"):
-        from . import raytrace_cuda
-
-        self.backend, self.real, self.cuda = backend, real, raytrace_cuda
-        self.dscene = raytrace_cuda.DeviceScene(backend.xp, scene, accel, real)
-
-    def upload(self, a):
-        return self.backend.xp.asarray(np.ascontiguousarray(a))
-
-    def download(self, a):
-        return self.backend.to_numpy(a)
-
-    def trace(self, params, ints, rows, active, acc, sq, nsamp, rng, ao_next):
-        self.cuda.trace_rows(self.backend.xp, self.dscene, self.real, params, ints, rows, active,
-                             acc, sq, nsamp, rng, ao_next)
-        self.backend.synchronize()   # progress and cancelling follow the work actually done
-
-
-GPU_REAL = "float"   # precision of the CUDA tracer; tests set "double" to compare with the CPU
+GPU_REAL = "float"   # precision of the GPU tracers; tests set "double" to compare with the CPU
 
 
 def _gpu_tracer(scene, accel, device):
-    """A :class:`_GPUTracer` when ``device`` names a GPU, else None (the CPU kernels). A BVH
-    deeper than the kernel's fixed traversal stack falls back to the CPU."""
-    if device is None or device == "cpu":
-        return None
-    from .backend import get_backend
-    from .raytrace_cuda import MAX_STACK
+    """A GPU tracer from :mod:`ewald.raytrace_gpu` when ``device`` names a GPU, else None."""
+    from .raytrace_gpu import tracer
 
-    backend = get_backend(device)
-    if not backend.raw_kernels:
-        return None
-    if accel.depth + 2 > MAX_STACK:
-        import logging
-
-        logging.getLogger(__name__).warning("BVH depth %d exceeds the CUDA tracer's stack; tracing on the CPU",
-                                            accel.depth)
-        return None
-    return _GPUTracer(backend, scene, accel, GPU_REAL)
+    return tracer(scene, accel, device, GPU_REAL)
 
 
 def _still_noisy(acc, sq, nsamp, threshold, grow=2):
