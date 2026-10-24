@@ -179,6 +179,7 @@ it, and the GUI writes viewport edits back into the notebook's `view(pipe, ...)`
 view(pipe, style="Ball & stick",              # 'Space-filling', 'Simple (ASE)', 'Points' (set radius_scale, bonds, atom_style)
      theme="VESTA", colors={"O": "red"}, radii={"Ti": 0.6}, radius_preset="ionic", oxidation_states={"Ti": 4},
      bonds=True, bond_pairs=[["Ti", "O", 0, 2.3]], bond_radius=0.12,   # bonds=False, or a cutoff (A)
+     # bond_pairs rules: '*' = any type, A-B beats A-* beats *-*, dmax 0 = off, 5th item False = not through PBC
      cell=False, background="white", boundary=[-0.1, 1.1],             # VESTA boundary: periodic images
      replicate=[2, 2, 2], replicate_cell="super",                      # draw 2x2x2 cells (display only)
      direction="z", zoom=1.3, orthographic=True, frame=5,              # or camera={...} (exact, from the GUI)

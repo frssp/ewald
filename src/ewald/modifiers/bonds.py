@@ -14,8 +14,11 @@ class CreateBonds(Modifier):
     """Create bonds between nearby particles (OVITO's CreateBondsModifier, plus VESTA's bond search).
 
     ``mode``: 'uniform' bonds every pair closer than ``cutoff``; 'pairwise' uses the pair
-    table ``pairs``, rows ``(A, B, dmin, dmax)`` or ``(A, B, dmax)`` with '*' for any type, or a
-    ``{(A, B): dmax}`` dict (also filled by :meth:`set_pairwise_cutoff`); 'covalent' bonds A-B
+    table ``pairs``, VESTA-style rules ``(A, B, dmin, dmax)`` or ``(A, B, dmax)`` with '*' for any
+    type, or a ``{(A, B): dmax}`` dict (also filled by :meth:`set_pairwise_cutoff`). The most specific
+    rules for a pair decide it (A-B before A-* before *-*; dmax 0 turns a pair off), and a fifth item
+    ``False`` (``(A, B, dmin, dmax, False)``) keeps that rule's bonds inside the cell, none through
+    periodic boundaries (molecules, slabs, unwrapped trajectories). 'covalent' bonds A-B
     pairs shorter than ``factor * (r_A + r_B)`` with covalent radii, VESTA's default.
     Pairs shorter than ``lower_cutoff`` are skipped. Bonds are appended to existing ones and
     stored in ``data.bonds`` ('Topology', 'Periodic Image'); attribute 'CreateBonds.num_bonds'.

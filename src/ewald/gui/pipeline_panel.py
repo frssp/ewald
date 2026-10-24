@@ -1351,41 +1351,52 @@ class DisplayPanel(QtWidgets.QWidget):
             auto = ViewStyle(bond_factor=self.style.bond_factor)
             auto.ensure_bond_pairs(self.data.types)
             pairs = auto.bond_pairs
-        table = QtWidgets.QTableWidget(len(pairs), 4, objectName="viewTable")
-        table.setHorizontalHeaderLabels(["A", "B", "min Å", "max Å"])
+        from ..bonds import normalize_pairs, rule_rows
+
+        rules = normalize_pairs(pairs)
+        table = QtWidgets.QTableWidget(len(rules), 5, objectName="viewTable")
+        table.setHorizontalHeaderLabels(["A", "B", "min Å", "max Å", "PBC"])
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeToContents)
         table.horizontalHeader().setDefaultAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-        for r, (a, b, lo, hi) in enumerate(pairs):
+        for r, (a, b, lo, hi, pbc) in enumerate(rules):
             for c, v in enumerate((a, b, f"{lo:.2f}", f"{hi:.2f}")):
                 item = QtWidgets.QTableWidgetItem(str(v))
                 if c >= 2:
                     item.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
                 table.setItem(r, c, item)
+            check = QtWidgets.QTableWidgetItem()
+            check.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsSelectable)
+            check.setCheckState(QtCore.Qt.Checked if pbc else QtCore.Qt.Unchecked)
+            check.setToolTip("Bond through periodic boundaries; off keeps this rule's bonds inside the cell")
+            table.setItem(r, 4, check)
         self._numeric_headers(table, 2, 3)
         self._fit_table(table, rows=6)
         table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)   # cells are edited in place
-        table.setToolTip("Bond search: pairwise cutoffs, * = any type")
+        table.setToolTip("Bond rules, * = any type. The most specific rules for a pair decide it: "
+                         "A-B before A-* before *-*; max 0 turns a pair off.")
 
         def commit():
             rows = []
             for r in range(table.rowCount()):
                 try:
                     rows.append([table.item(r, 0).text().strip(), table.item(r, 1).text().strip(),
-                                 float(table.item(r, 2).text()), float(table.item(r, 3).text())])
+                                 float(table.item(r, 2).text()), float(table.item(r, 3).text()),
+                                 table.item(r, 4).checkState() == QtCore.Qt.Checked])
                 except (AttributeError, ValueError):
                     continue
-            self.style.bond_pairs = rows
+            self.style.bond_pairs = rule_rows(rows)
             self._emit()
 
         table.itemChanged.connect(lambda *_: commit())
         on.toggled.connect(lambda v: (setattr(self.style, "bonds_enabled", v), self.styleChanged.emit(),
                                       QtCore.QTimer.singleShot(0, self.refresh)))
-        pairs_label = QtWidgets.QLabel("Pairs (cutoffs, * = any type)", objectName="viewLabel")
+        pairs_label = QtWidgets.QLabel("Rules (* = any type; A-B before A-* before *-*)", objectName="viewLabel")
         self._marks.append((pairs_label, ("bond_pairs",)))
         f.addRow(pairs_label)
         f.addRow(table)
-        add = QtWidgets.QPushButton("Add pair")
+        add = QtWidgets.QPushButton("Add rule")
         def edit(change):
             if not self.style.bond_pairs:
                 self.style.bond_pairs = [list(p) for p in pairs]

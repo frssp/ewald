@@ -38,7 +38,7 @@ print(pipe.view.source())                     # the same as a view(pipe, ...) li
 |---|---|
 | style | `style` (Ball & stick, Space-filling, Simple (ASE), Points), `theme`, `atom_style` (auto, mesh, impostor, flat), `background`, `light` (key light) |
 | atoms | `atoms` (False: a stick model), `color_by`, `colormap`, `color_range` (what colors the atoms, below), `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `transparency` {type: 0..1}, `selection` (True: selected atoms red, False, or a color), `labels` (atom labels), `radius_preset`, `oxidation_states` |
-| bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax]], `bond_factor`, `bond_radius` |
+| bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax(, pbc)]] ([bond rules](#bond-rules-vesta)), `bond_factor`, `bond_radius` |
 | cell | `cell`, `cell_width`, `cell_color`, `cell_radius` (ray-traced tube, Angstrom; None: as wide as the line) |
 | boundary | `boundary` (VESTA range), `boundary_bonds` (half, complete, none), `replicate` [na, nb, nc], `replicate_cell` (super, unit, all) |
 | elements | `surfaces` (polyhedra, isosurface and slice look by name), `visuals` (plugin visual elements), `vectors` (arrows of a vector property), `measurements` (distances, angles, dihedrals), `trajectory_width`, `trajectory_color_by`, `trajectory_colormap`, `trajectory_color_range`, `trajectory_time_range`, `trajectory_trail`, `trajectory_radius` (trajectory lines, below) |
@@ -357,6 +357,25 @@ It uses impostors, so it is as fast as `"impostor"` at any size, and screen-spac
 occlusion is off unless you pass `ambient_occlusion=True`. Every renderer draws it the same way
 (D51): the vector renderer with `shading="flat"`, the ray tracer unlit (no shadows or occlusion,
 and its surfaces and arrows unlit too) and the OpenGL 1.x viewport with the same outlines.
+
+## Bond rules (VESTA)
+
+`bond_pairs` is VESTA's bond search table: rows `[A, B, dmin, dmax]`, where `*` matches any type.
+The most specific rows for a pair decide it, A-B before A-* before *-*, whatever their order, so a
+wide default and a few exceptions read naturally; `dmax` 0 turns a pair off. Rows equally specific
+add up (two length ranges for one pair). A fifth item `False` keeps that rule's bonds inside the
+cell: no bond through a periodic boundary, for molecules in a box, slabs or unwrapped trajectories.
+
+```python
+view(pipe, bond_pairs=[["*", "*", 0, 2.8],          # everything up to 2.8 A ...
+                       ["O", "O", 0, 0],            # ... but no O-O bonds
+                       ["Sr", "*", 0, 2.0],         # Sr only to atoms closer than 2.0 A
+                       ["C", "H", 0, 1.2, False]])  # C-H only inside the cell, not through its faces
+```
+
+The same rows work in `CreateBonds(mode="pairwise", pairs=...)`, and the GUI's View › Bonds card
+edits them (its *PBC* column is the fifth item). Every renderer draws the same bonds, since they all
+search with these rules.
 
 ## Boundary (VESTA)
 

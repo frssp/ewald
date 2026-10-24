@@ -112,8 +112,10 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
     _s("bonds", True, "bonds", "Draw bonds: True (VESTA-style pairs, or bond_pairs; off above "
        f"{BOND_AUTO_LIMIT:,} atoms), False, or a cutoff in Angstrom. Bonds a step created (CreateBonds) "
        "are always drawn.", type=["boolean", "number"]),
-    _s("bond_pairs", [], "bonds", "Bond table [[A, B, dmin, dmax], ...]; empty: one row per type pair with "
-       "dmax = bond_factor * (r_A + r_B), metal-metal pairs left out in compounds.",
+    _s("bond_pairs", [], "bonds", "Bond rules (VESTA) [[A, B, dmin, dmax], ...] with '*' for any type; the most "
+       "specific rules for a pair decide it (A-B before A-* before *-*, dmax 0 turns a pair off); a fifth "
+       "item False keeps that rule's bonds inside the cell (none through periodic boundaries). Empty: one "
+       "row per type pair with dmax = bond_factor * (r_A + r_B), metal-metal pairs left out in compounds.",
        type="array", items={"type": "array"}),
     _s("bond_factor", 1.15, "bonds", "dmax factor of the automatic bond table (VESTA)."),
     _s("bond_radius", 0.15, "bonds", "Stick radius in Angstrom."),
@@ -882,7 +884,9 @@ def _check(name, value):
             raise TypeError(f"{name} is {{type: number}}")
         value = {str(k): (float(v) if name == "radii" else v) for k, v in value.items()}
     elif name == "bond_pairs":
-        value = [[str(p[0]), str(p[1]), float(p[2]), float(p[3])] for p in value]
+        from .bonds import rule_rows
+
+        value = rule_rows(value)
     elif name == "bonds":
         if not isinstance(value, bool):
             value = float(value)

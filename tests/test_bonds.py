@@ -205,3 +205,58 @@ def test_tube_mesh_is_an_open_cylinder_per_segment():
     assert np.allclose(ring[:, 0] - 0.2 * normals.reshape(k, 2, n, 3)[:, 0], start[:, None])
     assert np.allclose(ring[:, 1] - 0.2 * normals.reshape(k, 2, n, 3)[:, 1], end[:, None])
     assert (faces // (2 * n) == np.repeat(np.arange(k), 2 * n)[:, None]).all()   # no face spans two bonds
+
+
+def test_bond_rules_most_specific_wins(srtio3):
+    """VESTA-style rules: A-B before A-* before *-*; dmax 0 turns a pair off."""
+    every = run(srtio3, CreateBonds(mode="pairwise", pairs=[("*", "*", 0.0, 2.8)]))
+    kinds = {tuple(sorted(p)) for p in every.types[every.bonds.topology]}
+    assert ("O", "O") in kinds and ("O", "Ti") in kinds and ("O", "Sr") in kinds
+    no_oo = run(srtio3, CreateBonds(mode="pairwise", pairs=[("*", "*", 0.0, 2.8), ("O", "O", 0.0, 0.0)]))
+    kinds = {tuple(sorted(p)) for p in no_oo.types[no_oo.bonds.topology]}
+    assert ("O", "O") not in kinds and ("O", "Ti") in kinds and ("O", "Sr") in kinds
+    # Sr-* narrows Sr's bonds; the order of the rows does not matter
+    rules = [("Sr", "*", 0.0, 2.0), ("*", "*", 0.0, 2.8)]
+    for table in (rules, rules[::-1]):
+        d = run(srtio3, CreateBonds(mode="pairwise", pairs=table))
+        kinds = {tuple(sorted(p)) for p in d.types[d.bonds.topology]}
+        assert ("O", "Sr") not in kinds and ("O", "Ti") in kinds
+    # equally specific rules add up (two length ranges for one pair)
+    two = run(srtio3, CreateBonds(mode="pairwise", pairs=[("Ti", "O", 0.0, 1.0), ("O", "Ti", 1.5, 2.0)]))
+    assert two.bonds.count == 6
+
+
+def test_bond_rule_pbc_option(srtio3):
+    """A fifth item False keeps that rule's bonds inside the cell."""
+    with_pbc = find_bonds(srtio3, pairs=[("Ti", "O", 0.0, 2.2)])
+    assert with_pbc.count == 6 and np.any(with_pbc.pbc_images != 0)   # O on the cell faces: some cross
+    across = find_bonds(srtio3, pairs=[("Sr", "O", 0.0, 2.9)])
+    assert across.count == 12 and np.any(across.pbc_images != 0)
+    inside = find_bonds(srtio3, pairs=[("Sr", "O", 0.0, 2.9, False)])
+    assert 0 < inside.count < 12 and not np.any(inside.pbc_images)
+    mixed = find_bonds(srtio3, pairs=[("Sr", "O", 0.0, 2.9, False), ("Ti", "O", 0.0, 2.2)])
+    assert mixed.count == inside.count + 6
+    assert find_bonds(srtio3, pairs=[("Sr", "O", 0.0, 2.9, "no pbc")]).count == inside.count
+    with pytest.raises(ValueError):
+        find_bonds(srtio3, pairs=[("Sr", "O", 0.0, 2.9, "maybe")])
+
+
+def test_bond_rules_in_view_round_trip(srtio3):
+    from ewald.bonds import rule_rows
+    from ewald.view3d import View
+    from ewald.view_style import ViewStyle
+
+    assert rule_rows([("Ti", "O", 2.2), ("Sr", "O", 0, 2.9, False)]) == [["Ti", "O", 0.0, 2.2],
+                                                                          ["Sr", "O", 0.0, 2.9, False]]
+    pipe = Pipeline(StaticSource(srtio3))
+    pipe.view.bond_pairs = [("Sr", "O", 0, 2.9, False), ("*", "*", 0, 2.2)]
+    assert pipe.view.bond_pairs[0] == ["Sr", "O", 0.0, 2.9, False]
+    assert "False" in pipe.view.source()                       # the view cell carries the option
+    kw = pipe.view.render_kwargs(srtio3)
+    assert find_bonds(srtio3, pairs=kw["bond_pairs"]).count == 6 + find_bonds(
+        srtio3, pairs=[("Sr", "O", 0, 2.9, False)]).count
+    style = ViewStyle()
+    style.apply_view(pipe.view, srtio3.types)                  # GUI <- notebook
+    assert style.bond_pairs[0] == ["Sr", "O", 0.0, 2.9, False]
+    back = View(**style.view_settings(srtio3.types))           # GUI -> notebook
+    assert back.bond_pairs == pipe.view.bond_pairs

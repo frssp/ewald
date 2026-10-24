@@ -219,6 +219,30 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
     _dispose(panel)
 
 
+def test_bonds_card_rule_pbc_column(app):
+    """The Bonds card shows the bond rules with a PBC check per rule; unchecking it writes the rule's
+    fifth item False, which keeps that rule's bonds inside the cell."""
+    from ase.spacegroup import crystal
+
+    from ewald import DataCollection
+    from ewald.gui.pipeline_panel import DisplayPanel
+
+    atoms = crystal(["Sr", "Ti", "O"], basis=[(0, 0, 0), (0.5, 0.5, 0.5), (0.5, 0.5, 0)], spacegroup=221,
+                    cellpar=[3.905] * 3 + [90] * 3)
+    pipe = Pipeline(StaticSource(DataCollection.from_ase(atoms)))
+    panel = DisplayPanel()
+    panel.set_pipeline(pipe)
+    panel.style.bond_pairs = [["Sr", "O", 0.0, 2.9], ["*", "*", 0.0, 0.0]]
+    panel.set_data(pipe.compute(0))
+    table = panel.sections["Bonds"].findChild(QtWidgets.QTableWidget)
+    assert table.columnCount() == 5 and table.horizontalHeaderItem(4).text() == "PBC"
+    assert table.item(0, 4).checkState() == QtCore.Qt.Checked
+    table.item(0, 4).setCheckState(QtCore.Qt.Unchecked)
+    assert panel.style.bond_pairs[0] == ["Sr", "O", 0.0, 2.9, False]
+    assert panel.style.bond_pairs[1] == ["*", "*", 0.0, 0.0]          # untouched rules stay four items
+    _dispose(panel)
+
+
 def test_view_tab_columns_fold_and_aligned_labels(app, pipe):
     """The View tab lays its cards out in equal-width columns, every form label has one width (fields
     line up across cards), and a folded card stays folded across rebuilds."""
@@ -235,7 +259,7 @@ def test_view_tab_columns_fold_and_aligned_labels(app, pipe):
     cards = list(panel.sections.values())
     assert lay.columns(width) == 3 and len({c.x() for c in cards}) == 3 and len({c.width() for c in cards}) == 1
     labels = [lab for lab, _ in panel._marks if isinstance(lab, QtWidgets.QLabel) and lab.objectName() == "viewLabel"
-              and lab.text() != "Pairs (cutoffs, * = any type)"]
+              and not lab.text().startswith("Rules (")]
     assert len({lab.width() if lab.isVisible() else lab.maximumWidth() for lab in labels}) == 1
     panel.set_folded("Bonds", True)
     assert not panel.sections["Bonds"].content.isVisibleTo(panel.sections["Bonds"])
