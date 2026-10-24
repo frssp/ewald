@@ -67,6 +67,15 @@ def get_api_key(provider=None) -> tuple[str | None, str | None]:
     return None, None
 
 
+_changes = 0   # saved keys changed this many times in this process (see changes())
+
+
+def changes() -> int:
+    """How often a key was saved or deleted in this process; a chat compares it to know that the
+    client it made earlier holds an old key."""
+    return _changes
+
+
 def save_api_key(key: str, provider=None) -> str:
     """Save ``key`` for ``provider``; returns 'keychain' or 'file' (the keychain when one works)."""
     key = key.strip()
@@ -75,13 +84,17 @@ def save_api_key(key: str, provider=None) -> str:
     name = _provider(provider).key_name
     if not name:
         raise ValueError(f"{_provider(provider).label} takes no API key")
+    global _changes
+    _changes += 1
     return keychain.set_secret(name, key, _kr=_keyring())
 
 
 def delete_api_key(provider=None):
     """Forget the saved key (keychain and file); the environment variable is left alone."""
+    global _changes
     name = _provider(provider).key_name
     if name:
+        _changes += 1
         keychain.delete_secret(name, _kr=_keyring())
 
 
