@@ -10,7 +10,7 @@ Quotes are the owner's own words (often Korean) from the project discussion. Whe
 reason was not written down, "Why" is left out rather than guessed. How to add an entry is at
 the end.
 
-Pull request numbers up to #242 refer to the pre-publication repository, which is kept private; the public repository's numbering starts again at #1 (decision D32).
+Pull request numbers up to #242 refer to the pre-publication repository, which is kept private; the public repository's numbering starts again at #1 (decision D32), so its pull requests are written "public PR #N" here.
 
 ## Product
 
@@ -63,7 +63,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   sizes, picked the full reference in one read.
 - **Considered:** splitting it by topic (`python_api(topic=...)`), cheaper per call but the
   model may skip the part it needs; keeping the old size (about 36 KB) with only a reordering.
-- **Landed:** PR (this one).
+- **Landed:** PR #242.
 
 ### D5. Any AI provider, named "Ask AI" (2026-10-20)
 
@@ -81,7 +81,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   results, not from the model's wording, and cells are named as the user counts them (from 1).
 - **Why:** the owner saw an answer saying it changed "the view cell (index 5)" and noted
   "어느 셀을 수정했는지 링크가 없다" (there is no link to which cell was changed).
-- **Landed:** this PR (`notebook_tools.touched_cells`, the chat's cell links).
+- **Landed:** PR #228 (`notebook_tools.touched_cells`, the chat's cell links).
 
 ### D35. The notebook follows the AI's cells until you scroll (2026-10-23)
 
@@ -97,7 +97,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   keyboard focus from cell to cell and the scroll area followed each.)
 - **Considered:** never scrolling (cell links and the pill only); scrolling once to the last
   edited cell when the answer is done. Both stay as settings.
-- **Landed:** PR #5.
+- **Landed:** public PR #5.
 
 ### D6. Structure editing is deferred (2026-10-19)
 
@@ -117,7 +117,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   ("B + notebook cells") and the blocks icon for Plugins ("Plugin도 blocks").
 - **Considered:** fixing only the misread icons and keeping the order (A); a sparkle-only AI
   icon (C); keeping the page-with-lines notebook icon and the puzzle piece.
-- **Landed:** PR (this one).
+- **Landed:** public PR #11.
 
 ### D38. A full activity bar ends in a "More side bars" menu (2026-10-24)
 
@@ -131,7 +131,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   group first and hid the rest behind a nearly invisible arrow. From three options the owner
   picked the VS Code-style overflow with a fixed bottom group and hiding.
 - **Considered:** the overflow menu and fixed bottom group without hiding; scrolling the bar.
-- **Landed:** PR (this one).
+- **Landed:** public PR #15.
 
 ## Quality and platforms
 
@@ -182,7 +182,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   the menu bar and naming, only platform conventions and labels, or only the small fixes.
 - **Considered:** keeping the menu structure and fixing labels only; leaving the reorganization
   in the TODO list. The View tab keeps its name (the owner chose it in PR #127).
-- **Landed:** PR #227 (small fixes found by the review), this PR (the reorganization); review
+- **Landed:** PR #227 (small fixes found by the review), PR #235 (the reorganization); review
   report with screenshots in the project files (`ewald-menu-review/`).
 
 ## Architecture
@@ -268,7 +268,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   enough, LOCPOT is not needed.
 - **Considered:** having sim-agent store its finalize result and serve it through the results
   API; the AI computing the alignment itself from the numbers; reading LOCPOT over SSH.
-- **Landed:** this PR (`src/ewald/potential.py`, `ewald.workflow.Analysis`, `add_analysis`), with
+- **Landed:** PR #217 (`src/ewald/potential.py`, `ewald.workflow.Analysis`, `add_analysis`), with
   the recipe in frssp/ewald-simagent.
 
 ### D19. Restarts inside one dump: a default rule the user can change (2026-10-23)
@@ -335,7 +335,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   (the EWALD side may well have general file or pipeline tools, not specific to sim-agent).
 - **Considered:** `simagent_find` / `simagent_open` inside ewald-simagent, which would have
   left local folders and AiiDA without them.
-- **Landed:** this PR (`src/ewald/workflow.py` `find`/`target`, `src/ewald/llm/tools.py`).
+- **Landed:** PR #232 (`src/ewald/workflow.py` `find`/`target`, `src/ewald/llm/tools.py`).
 
 
 ### D24. Python steps in the tutorials use the decorators (2026-10-23)
@@ -394,7 +394,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   해줘. viridis" (the camera is good; color the NEB trajectory with viridis).
 - **Alternatives:** a Pt nanoparticle site classification with a 3D-view zoom (PR #239, replaced);
   a single run.
-- **Landed:** PR #241 (pre-publication repository); the calm cut and the viridis NEB path in PR #2.
+- **Landed:** PR #241 (pre-publication repository); the calm cut and the viridis NEB path in public PR #2.
 - **Update (2026-10-23): a live model instead of the scripted one.** The owner put an Anthropic key
   into the recording environment ("환경변수 추가 완료") so the GIF could be recorded with a real
   model; `make_ai_demo.py --live` does it with the same three scenes and the same calm camera
@@ -402,7 +402,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   a take with correct numbers but long answers and a failed cell on screen, the owner chose
   "live로 한 번 더 녹화" (record another live take) over using it or keeping the scripted GIF; the
   next take is the one committed. Alternatives: keep the scripted recording; commit the take
-  shown.
+  shown. Landed in public PR #9 (model names taken out of the caption and transcript in public PR #10).
 
 ### D32. Publish from a fresh repository (2026-10-23)
 
@@ -434,7 +434,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** a code prompt `>` next to an atom on a baseline; the four sp3 lobes alone;
   slate, white, steel blue, violet and raspberry bubbles; a lit atom, a unit cell, a diffraction
   pattern, lattice planes and a 3D Ewald sphere (drafts in the project files `ewald-icons-*`).
-- **Landed:** PR (this one).
+- **Landed:** public PR #3.
 
 ### D34. The first start after an install or update shows a notice (2026-10-23)
 
@@ -445,7 +445,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   fast ("아니다 지금 다시 여니 빠른데?!"); the owner asked "첫 실행은 느리다고 뭔가 노티스를
   띄울 수 있어?".
 - **Considered:** leaving the first start silent; a splash screen on every start.
-- **Landed:** PR (this one).
+- **Landed:** public PR #7.
 
 ### D37. A workflow row shows the group it came from (2026-10-24)
 
@@ -456,7 +456,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   calculation ("플러그인에서 채팅 세션 이름을 보여줄 수 있어?") and picked a name per row.
 - **Considered:** grouping the side bar under one header per session; showing the name only in
   the row's tooltip; the name after the title on the same line (cut off in a narrow side bar).
-- **Landed:** PR (this one).
+- **Landed:** public PR #12.
 
 ## Adding an entry
 
@@ -464,6 +464,8 @@ Add an entry in the same pull request that implements a decision, whenever the o
 between real alternatives, sets a rule, or rejects an approach. Write the date, the decision,
 the owner's reason (quote the owner where possible), what else was considered and the PR. Do
 not record implementation details that the code already shows, and do not invent reasons: if
-the reason was not stated, leave "Why" out. Take the next free number (the highest D-number plus one), even when the
+the reason was not stated, leave "Why" out. Name the pull request by its number ("public PR #N"): open the
+pull request first and write the number in before merging, since "this PR" means nothing once
+it has merged (`tests/test_docs.py` checks). Take the next free number (the highest D-number plus one), even when the
 entry goes into an earlier section; `tests/test_docs.py` fails on a number used twice. A decision that is later reversed keeps its entry,
 with a line saying what replaced it and when.

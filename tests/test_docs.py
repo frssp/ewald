@@ -40,6 +40,14 @@ def test_decision_numbers_are_unique():
     assert not duplicates, f"decision numbers used twice: {duplicates}; take max+1 = D{max(numbers) + 1}"
 
 
+def test_every_decision_names_its_pull_request():
+    text = (DOCS / "developer" / "decisions.md").read_text(encoding="utf-8")
+    entries = [e for e in re.split(r"^(?=##)", text, flags=re.MULTILINE) if e.startswith("### D")]
+    vague = [e.split("\n", 1)[0] for e in entries
+             if re.search(r"\bthis PR\b|\(this one\)|\bthis pull request\b", e, flags=re.IGNORECASE)]
+    assert not vague, f"write the pull request number (\"public PR #N\") instead of \"this PR\": {vague}"
+
+
 def test_every_modifier_is_in_the_user_manual():
     text = (DOCS / "user" / "modifiers.md").read_text()
     names = [n for n in mods.__all__ if n not in ("Modifier", "PythonModifier")]

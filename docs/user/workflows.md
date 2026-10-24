@@ -10,7 +10,8 @@ the folder is run; files are only listed and their heads or tails read.
 
 - **Desktop app:** File › Open from › Workflow folder…, drop the folder on the window, or the
   **Workflows** side bar (activity bar): Open folder…, or a folder path typed in its search box.
-  The side bar lists the folders opened lately; expanding one shows its steps, their state
+  The side bar lists the folders opened lately, each with the group it came from (the session,
+  project or folder at its source) dimmed under its title; expanding one shows its steps, their state
   (✓ finished, … still running) and their outputs (CONTCAR, CHGCAR, NEB band, ...). A double
   click opens a step, or the whole workflow as one notebook.
 - **Notebook or script:**
