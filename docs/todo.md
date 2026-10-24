@@ -772,11 +772,11 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 - Going public (files prepared 2026-10-20: CITATION.cff, FUNDING.yml, CONTRIBUTING.md,
   SECURITY.md, issue templates; history scrubbed and moved to a fresh repository 2026-10-23,
   D32): the owner switches the repository to public; then enable private vulnerability reporting and GitHub Sponsors, archive
-  a release on Zenodo and add its DOI (and an ORCID) to CITATION.cff, and restore the CI triggers
+  a release on Zenodo and add its DOI to CITATION.cff, and restore the CI triggers
   (public repositories get free Actions minutes).
 - JOSS paper (draft in `paper/`, checked by `tests/test_paper.py`): JOSS (2026 rules) wants at least
   six months of public history with releases, issues and pull requests, so the earliest submission
-  is six months after the repository goes public. Before then: fill in the author list, ORCIDs,
+  is six months after the repository goes public. Before then: fill in the author list,
   affiliations, funding and conflict-of-interest statement (TODOs in `paper/paper.md`), tag
   releases, collect research use (papers, groups, courses) for the research impact statement, and
   archive the submitted version on Zenodo.

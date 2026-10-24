@@ -55,7 +55,8 @@ def agent_from_settings(get_settings: Callable[[], object], notebook: bool = Fal
     folders and hosts the AI may read), read when a chat starts; ``notebook`` tells the model about the
     notebook it sits beside, ``confirm_host(host)`` asks the user before an SSH host the model
     named (:mod:`ewald.llm.access`). The factory's ``assistant()`` names the provider's assistant
-    for the chat ("Claude", "Gemini", ...)."""
+    for the chat ("Claude", "Gemini", ...); its ``connection()`` says which connection an agent made
+    now would use, so the panel makes the agent again when Preferences › AI changed it."""
     def factory(pipeline, on_event):
         from ..llm.providers import from_settings
 
@@ -90,7 +91,24 @@ def agent_from_settings(get_settings: Callable[[], object], notebook: bool = Fal
         except Exception:
             return "AI"
 
+    def connection() -> tuple:
+        """Provider, model, effort, address, headers, timeout and streaming of Preferences › AI, plus
+        how often a key was saved: an agent holds a client made from them, so any change needs a
+        new agent."""
+        from ..llm import credentials
+        from ..llm.providers import PROFILE_FIELDS
+
+        settings = get_settings()
+        values = []
+        for key in [f"llm.{f}" for f in PROFILE_FIELDS] + ["llm.stream"]:
+            try:
+                values.append(repr(settings[key]))
+            except Exception:
+                values.append(None)
+        return (*values, credentials.changes())
+
     factory.assistant = assistant
+    factory.connection = connection
     if notebook:
         factory.system = system
     return factory
@@ -154,6 +172,17 @@ def _safe(fn) -> str | None:
     """``fn()``, or None when there is no ``fn`` or it fails."""
     try:
         return fn() if fn is not None else None
+    except Exception:
+        return None
+
+
+def _safe_connection(factory):
+    """``factory.connection()`` (None for factories without one, or when it fails)."""
+    connection = getattr(factory, "connection", None)
+    if connection is None:
+        return None
+    try:
+        return connection()
     except Exception:
         return None
 
@@ -471,6 +500,7 @@ class _Conversation:
         self.snippets: list[str] = []   # Python code blocks of the answers, in order
         self.agent = None
         self.agent_pipeline = None
+        self.agent_connection = None    # the factory's connection() when the agent was made
         self.sent_notebook: str | None = None
         self.sent_errors: str | None = None
         self.sent_view: str | None = None
@@ -820,7 +850,10 @@ class AskPanel(QtWidgets.QWidget):
         if pipeline is None and self.notebook is None:
             self._note("*Open a file first.*")
             return
-        if conv.agent is None or conv.agent_pipeline is not pipeline:
+        connection = _safe_connection(self.agent_factory)
+        if conv.agent is None or conv.agent_pipeline is not pipeline or connection != conv.agent_connection:
+            # a new pipeline, or Preferences › AI changed the key, address, headers or model: the
+            # agent's client was made from the old ones
             try:
                 conv.agent = self.agent_factory(pipeline, lambda kind, payload, c=conv: self._event_threadsafe(c, kind, payload))
             except Exception as exc:
@@ -831,6 +864,7 @@ class AskPanel(QtWidgets.QWidget):
                 conv.save()
                 return
             conv.agent_pipeline = pipeline
+            conv.agent_connection = connection
             conv.forget_sent()
             # the new agent has not seen this chat: its first question carries the transcript
             trusted = not getattr(conv.key, "restricted", False)
