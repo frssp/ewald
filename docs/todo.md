@@ -126,7 +126,7 @@ GUI
 - AI tools only through cells (`llm/tools.py` `CELL_WRITERS`): after a plugin tool, steps and
   view settings changed without a cell are undone (`Toolset._undo_outside_cells`), but other
   state a plugin touches by hand (a modifier's attributes, `pipe.source`, files) is not checked.
-  Left by design (docs/user/ai-permissions.md, "Gaps in the rule"): `render_image(filename=...)`
+  Left by design (docs/user/ai-permissions.md, "Gaps in the rule") (D40): `render_image(filename=...)`
   replaces a work-dir file, `set_frame` leaves no cell, and a Forge plugin a notebook uses is
   not part of the notebook (an `.ewd` could carry it in plugins/).
   A failed generated cell leaves two undo entries in the GUI (insert, then removal). After a second

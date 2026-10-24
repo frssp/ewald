@@ -54,7 +54,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   rejected for the reason above).
 - **Landed:** PR #161 (`CELL_WRITERS`, enforced by `tests/test_llm.py`).
 
-### D39. Plugin tools that change results outside cells are undone (2026-10-24)
+### D40. Plugin tools that change results outside cells are undone (2026-10-24)
 
 - **Decision:** after every AI plugin tool, ewald undoes steps and view settings it changed
   without a cell and fails the call; `export_file` makes missing folders inside the cell it
