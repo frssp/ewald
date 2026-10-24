@@ -54,6 +54,18 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   rejected for the reason above).
 - **Landed:** PR #161 (`CELL_WRITERS`, enforced by `tests/test_llm.py`).
 
+### D40. Plugin tools that change results outside cells are undone (2026-10-24)
+
+- **Decision:** after every AI plugin tool, ewald undoes steps and view settings it changed
+  without a cell and fails the call; `export_file` makes missing folders inside the cell it
+  runs. The other places that act outside cells (`render_image` files in the AI's work dir,
+  `set_frame`, Forge plugins) stay, documented in docs/user/ai-permissions.md.
+- **Why:** after the list of what the AI does outside cells, the owner asked what had to be
+  blocked ("뭘 막아야하지? 위험?") and, of the five, approved fixing the plugin tools and
+  `export_file` ("진행하고 문서 정리").
+- **Considered:** only documenting the gaps; a warning without undoing the change.
+- **Landed:** public PR #21.
+
 ### D31. The AI's API reference is complete in one read (2026-10-23)
 
 - **Decision:** `python_api` (and `llms.txt`, the same text) gives the whole reference in one
@@ -474,19 +486,33 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   scripts outside EWALD).
 - **Landed:** public PR #19.
 
-### D40. Plot style presets named by what they do, a short form (2026-10-24)
+### D42. Plot style presets named by their look, a short form (2026-10-24)
 
-- **Decision:** the style file ships five presets named by their character (Publication,
-  Compact, Narrow column, Serif, Slides), never by journal; the Preferences form shows the preset
+- **Decision:** the style file ships six presets that differ in look, not only in size
+  (Publication, Classic serif, Monochrome, Minimal, Grid, Slides: boxed vs open axes, ticks in
+  or out, serif or sans, line styles vs colors, grid, slide sizes), named by that look and never
+  by journal; the Preferences form shows the preset
   and four keys (font, font size, line width, color cycle), everything else is in the file,
   which lists its keys by topic. The separate "Saved plot font size" preference is retired
   (the file's `font.size`).
 - **Why:** the owner asked "기본 설정파일도 좀 꾸며줘 니가 보기 좋게. 그리고 프리셋 넣고. 그리고
   폼에서 설정할 수 있는 파람이 넘 많은 듯." and, on journal-named presets, "저널이름 쓰지마.
-  특징으로 아니면 적당한 이름으로".
-- **Considered:** presets named after journals; eight form rows (tick direction, minor ticks,
+  특징으로 아니면 적당한 이름으로"; the first set (sizes and fonts only) was sent back with
+  "Distinction 이 부족. 논문 퀄리티. 스타일 참고해서 다시".
+- **Considered:** presets named after journals; presets that differ only in column width and
+  type size; eight form rows (tick direction, minor ticks,
   legend frame, axes line width).
 - **Landed:** public PR #20.
+
+### D41. Analysis plots draw their levels; one value per surface is a bar (2026-10-24)
+
+- **Decision:** a table's energy levels, plateaus and barriers (VBM, CBM, E_F, E_vac, Φ) are
+  drawn over its curves, and a table with one value per named row (one work function per
+  surface) is drawn as one bar per row, not as a line through the row numbers.
+- **Why:** looking at the mockups, the owner pointed out that the work-function summary drawn
+  as a line was wrong ("저게 선으로 나올 수 있나? 표면 인덱스당 하나 아니고?"), then approved
+  the mockups ("적용").
+- **Landed:** public PR #18.
 
 ## Adding an entry
 

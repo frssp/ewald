@@ -74,13 +74,90 @@ def _draw_counts(ax, x, columns, column, labels, color):
         ax.legend(loc="best")
 
 
-def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool = True, labels=None):
-    """Draw a view onto ``ax`` in the active :mod:`ewald.plotstyle` (labels with units)."""
+def _named_rows(x, labels) -> bool:
+    """A table of one value per named row (per surface, per run): its x is only the row number."""
+    return labels is not None and len(labels) == len(x) and np.array_equal(x, np.arange(len(x)))
+
+
+def _draw_named_rows(ax, columns, labels, color):
+    """One bar per named row for the first value column, its value written on the bar; the
+    other columns stay in the table. The axis starts near the values when they are far from 0,
+    so 4.6 and 4.9 eV do not look alike."""
+    from .plotstyle import axis_label
+
+    name = list(columns)[1]
+    y = np.asarray(columns[name], float)
+    x = np.arange(len(y))
+    ax.bar(x, y, width=0.6, color=color, lw=0)
+    ok = y[np.isfinite(y)]
+    if len(ok):
+        lo, hi = ok.min(), ok.max()
+        pad = max(0.1 * (hi - lo), 0.05 * max(abs(lo), abs(hi)), 1e-12)
+        bottom = lo - 3 * pad if lo - 3 * pad > 0 else min(0.0, lo - pad)
+        ax.set_ylim(bottom, max(0.0, hi) + pad)
+        for xi, yi in zip(x, y):
+            if np.isfinite(yi):
+                ax.annotate(f"{yi:.3g}", (xi, yi), xytext=(0, 2), textcoords="offset points",
+                            ha="center", va="bottom", fontsize="small")
+    ax.set_xticks(x, labels, rotation=45 if len(labels) > 5 else 0, ha="right" if len(labels) > 5 else "center")
+    ax.set_xlim(-0.6, len(y) - 0.4)
+    ax.set_ylabel(axis_label(name))
+
+
+def _draw_levels(ax, attributes, x, colors):
+    """What a table's ``attributes`` put over its curves: ``regions`` (shaded x spans, named at the
+    bottom), ``levels`` (horizontal lines over an x span or, as references like E_F, the whole
+    width, named at their right end), ``gaps`` (arrows between two energies with their value) and
+    ``energy_axis`` (the y label, in eV)."""
+    regions, levels, gaps = (attributes.get(k) or [] for k in ("regions", "levels", "gaps"))
+    if attributes.get("energy_axis"):
+        ax.set_ylabel(f"{attributes['energy_axis']} (eV)")
+    if not (regions or levels or gaps):
+        return
+    x0, x1 = float(np.nanmin(x)), float(np.nanmax(x))
+    for r in regions:
+        ax.axvspan(*r["z"], color="0.5", alpha=0.12, lw=0, zorder=0)
+        ax.text(sum(r["z"]) / 2, 0.02, r["name"], transform=ax.get_xaxis_transform(), ha="center",
+                va="bottom", fontsize="x-small", color="0.35", zorder=4,
+                bbox={"boxstyle": "round,pad=0.15", "fc": ax.get_facecolor(), "ec": "none", "alpha": 0.85})
+    styles = {"solid": "-", "dashed": "--", "dotted": ":"}
+    accent = colors[2 % len(colors)]
+    for lv in levels:
+        a, b = lv.get("z") or (x0, x1)
+        color = "0.15" if lv.get("z") is None else accent
+        # a dense line, so the legend's "best" place keeps clear of it
+        ax.plot(np.linspace(a, b, 64), np.full(64, float(lv["energy"])), color=color,
+                ls=styles.get(lv.get("style"), "-"), lw=1.2, zorder=3)
+        ax.annotate(lv["name"], (b, lv["energy"]), xytext=(3, 0), textcoords="offset points", va="center",
+                    fontsize="x-small", color=color)
+    ylo, yhi = ax.get_ylim()
+    ylo, yhi = min([ylo] + [lv["energy"] for lv in levels]), max([yhi] + [lv["energy"] for lv in levels])
+    top = 0.04
+    for k, g in enumerate(gaps):
+        gx = g.get("x")
+        gx = x0 + (0.85 - 0.12 * k) * (x1 - x0) if gx is None else gx
+        ax.annotate("", (gx, g["lower"]), (gx, g["upper"]),
+                    arrowprops={"arrowstyle": "<->", "color": "C3", "lw": 1.0, "shrinkA": 0, "shrinkB": 0})
+        small = g["upper"] - g["lower"] < 0.08 * (yhi - ylo)
+        top = max(top, 0.12 if small else top)
+        ax.annotate(g["name"], (gx, g["upper"] if small else 0.5 * (g["lower"] + g["upper"])),
+                    xytext=(3, 6 if small else 0), textcoords="offset points", va="bottom" if small else "center",
+                    fontsize="small", color="C3")
+    # room on the right for the level names
+    ax.set_xlim(x0, x1 + 0.2 * (x1 - x0))
+    ax.set_ylim(ylo, yhi + top * (yhi - ylo))
+
+
+def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool = True, labels=None,
+          attributes=None):
+    """Draw a view onto ``ax`` in the active :mod:`ewald.plotstyle` (labels with units); a table
+    of named rows as bars, and the ``levels``/``regions``/``gaps`` of its ``attributes`` over it."""
     from .plotstyle import axis_label, legend_labels, start_at_zero
 
     import matplotlib as mpl
 
-    first = mpl.rcParams["axes.prop_cycle"].by_key()["color"][0]
+    colors = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
+    first = colors[0]
     names = list(columns)
     x = np.asarray(columns[names[0]], float)
     if histogram is not None:
@@ -93,6 +170,11 @@ def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool
     ys = names[1:]
     if title in COUNT_TABLES:   # structure types, coordination numbers, cluster sizes: bars
         _draw_counts(ax, x, columns, COUNT_TABLES[title], labels, first)
+        if show_title:
+            ax.set_title(title)
+        return
+    if len(names) > 1 and _named_rows(x, labels):   # one value per surface, per run, ...: bars
+        _draw_named_rows(ax, columns, labels, first)
         if show_title:
             ax.set_title(title)
         return
@@ -117,7 +199,10 @@ def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool
     units = {axis_label(n) for n in ys}
     if len(ys) == 1 or len(units) == 1:
         ax.set_ylabel(units.pop() if units else "")
-    if len(ys) > 1:
+    _draw_levels(ax, attributes or {}, x, colors)
+    if len(ys) > 1 and (attributes or {}).get("levels"):   # over the level lines where it must
+        ax.legend(loc="best", frameon=True, framealpha=0.85, edgecolor="none")
+    elif len(ys) > 1:
         ax.legend(loc="best")
     if show_title:
         ax.set_title(title)

@@ -31,6 +31,7 @@ from __future__ import annotations
 import functools
 import inspect
 import json
+import logging
 import os
 import pathlib
 import tempfile
@@ -47,6 +48,8 @@ from ..notebook import Cell, Notebook
 from ..pipeline import Modifier, Pipeline, PythonModifier
 from . import describe as _describe
 from .access import ReadAccess
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -68,6 +71,7 @@ class Tool:
     input_schema: dict
     function: Callable
     available: Callable[[], bool] | None = None   # None: always offered; else asked on every send
+    plugin: bool = False   # an @ai_tool function: checked for changes made outside cells (Toolset.call)
 
     def offered(self) -> bool:
         return self.available is None or bool(self.available())
@@ -218,10 +222,17 @@ class Toolset:
         if tool is None:
             offered = ", ".join(n for n, t in self.tools.items() if t.offered())
             return ToolResult(f"unknown tool {name!r}; available: {offered}", is_error=True)
+        before = self._outside_cells_state() if tool.plugin else None
         try:
             out = tool.function(**(arguments or {}))
         except Exception as exc:  # the model reads the error and corrects itself
-            return ToolResult(f"{type(exc).__name__}: {exc}", is_error=True)
+            out = ToolResult(f"{type(exc).__name__}: {exc}", is_error=True)
+        if before is not None:
+            undone = self._undo_outside_cells(before)
+            if undone:
+                return ToolResult(f"{name} changed {' and '.join(undone)} outside the notebook's cells, so ewald "
+                                  "undid that (plugin tools must change results through toolset.call('add_modifier', "
+                                  "...) or toolset.call('set_view', ...)); its result was dropped", is_error=True)
         return out if isinstance(out, ToolResult) else ToolResult(_jsonable(out))
 
     def to_script(self) -> str:
@@ -928,8 +939,7 @@ class Toolset:
                     raise FileExistsError(f"{target} exists; files outside the work dir {work} are never replaced")
             elif os.path.exists(target) and not overwrite:
                 raise FileExistsError(f"{target} exists; pass overwrite=true to replace it")
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            writer = plugins.find_writer(target, format)
+            writer = plugins.find_writer(target, format)   # missing folders are made by the cell
             if frames == "all":
                 idx = list(range(pipe.num_frames))
             elif frames in (None, "current"):
@@ -1058,9 +1068,51 @@ class Toolset:
         for plugin in plugins.tools().values():  # @claude_tool plugins; built-in names win
             if plugin.name not in self.tools:
                 self.tools[plugin.name] = Tool(plugin.name, plugin.description, plugin.schema,
-                                               functools.partial(plugin.function, self))
+                                               functools.partial(plugin.function, self), plugin=True)
 
     # -------------------------------------------------------------- helpers
+    def _outside_cells_state(self):
+        """What a plugin tool might change by hand: the pipeline, its modifiers, view settings and
+        the view cells' sources (None without a notebook or pipeline)."""
+        def op():
+            nb = self.notebook
+            pipe = nb.pipeline if nb is not None else None
+            if pipe is None:
+                return None
+            return (nb, pipe, list(pipe.modifiers), pipe.view.copy(), _view_sources(nb))
+
+        return self.notebook_access.call(op)   # the GUI's notebook is read on the GUI thread
+
+    def _undo_outside_cells(self, before) -> list[str]:
+        """Undo what a plugin tool changed without a cell (the AI changes results only through
+        cells): modifiers that no cell added are taken out again, modifiers taken out while their
+        cell is still there are put back, and view settings changed while no view cell changed go
+        back. Returns what was undone (empty when the tool kept to cells)."""
+        nb, pipe, mods, view, view_cells = before
+
+        def op():
+            if self.notebook is not nb or nb.pipeline is not pipe:
+                return []   # a load cell made a new pipe: nothing here was changed by hand
+            undone = []
+            stray = [m for m in pipe.modifiers if not any(m is b for b in mods) and _owner(nb, m) is None]
+            lost = [(k, m) for k, m in enumerate(mods)
+                    if not any(m is x for x in pipe.modifiers) and _owner(nb, m) is not None]
+            for m in stray:
+                pipe.modifiers.remove(m)
+            for k, m in lost:
+                pipe.modifiers.insert(min(k, len(pipe.modifiers)), m)
+            if stray or lost:
+                undone.append("the pipeline (" + ", ".join(m.name for m in stray + [m for _, m in lost]) + ")")
+            if pipe.view.changed() != view.changed() and _view_sources(nb) == view_cells:
+                pipe.view = view
+                undone.append("the view")
+            if undone:
+                self.notebook_access.changed(nb, "AI: undo a plugin tool's change", None, pipeline=True)
+                log.warning("AI plugin tool changed %s outside notebook cells; undone", " and ".join(undone))
+            return undone
+
+        return self.notebook_access.call(op)
+
     def _view_list(self, name: str) -> list:
         return [dict(x) if isinstance(x, dict) else {"name": x} for x in getattr(self._need_pipeline().view, name)]
 
@@ -1117,6 +1169,11 @@ def _last_binding(nb: Notebook) -> int:
     """Index of the last code cell that assigns the pipeline (-1 when none does)."""
     return max((k for k, c in enumerate(nb.cells) if c.kind == "code" and _binds(c.source, nb.pipeline_name)),
                default=-1)
+
+
+def _view_sources(nb: Notebook) -> list[str]:
+    """Sources of the notebook's view cells (``view(pipe, ...)``)."""
+    return [c.source for c in nb.cells if c.is_view]
 
 
 def _owner(nb: Notebook, modifier) -> int | None:

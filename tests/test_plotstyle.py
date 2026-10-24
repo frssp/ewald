@@ -190,15 +190,15 @@ def test_style_template_groups_keys_and_reads_back_uncommented():
 
 def test_presets_switch_without_touching_other_lines(tmp_path):
     f = tmp_path / "user.mplstyle"
-    plotstyle.apply_preset("compact", f)
-    assert plotstyle.preset_of(f) == "compact" and plotstyle.read_style(f)[0]["font.size"] == "7"
+    plotstyle.apply_preset("minimal", f)
+    assert plotstyle.preset_of(f) == "minimal" and plotstyle.read_style(f)[0]["xtick.direction"] == "out"
     with open(f, "a", encoding="utf-8") as fh:
         fh.write("axes.grid: True\n")
-    plotstyle.apply_preset("Serif", f)          # by label too
+    plotstyle.apply_preset("Classic serif", f)          # by label too
     rc, problems = plotstyle.read_style(f)
-    assert not problems and plotstyle.preset_of(f) == "serif"
+    assert not problems and plotstyle.preset_of(f) == "classic"
     assert rc["font.family"] == "serif" and rc["font.size"] == "8" and rc["axes.grid"] == "True"
-    assert "lines.linewidth" not in rc and "font.sans-serif" not in rc   # Compact's own keys went
+    assert "axes.spines.top" not in rc and "xtick.direction" not in rc   # Minimal's own keys went
     plotstyle.apply_preset("publication", f)
     assert plotstyle.read_style(f)[0] == {"axes.grid": "True"}
     with pytest.raises(ValueError, match="unknown preset"):
@@ -207,7 +207,8 @@ def test_presets_switch_without_touching_other_lines(tmp_path):
 
     with mpl.rc_context():
         plotstyle.use("slides")
-        assert mpl.rcParams["font.size"] == 14 and mpl.rcParams["lines.linewidth"] == 2
+        assert mpl.rcParams["font.size"] == 14 and mpl.rcParams["lines.linewidth"] == 2.5
+        assert not mpl.rcParams["axes.spines.top"] and mpl.rcParams["xtick.direction"] == "out"
 
 
 def test_write_style_keeps_other_lines_and_uncomments_template_lines(tmp_path):

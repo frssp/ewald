@@ -517,21 +517,44 @@ def write_style(updates: dict, path=None) -> Path:
 
 
 # Starting points for a style file (Preferences › Plots › Preset, or plotstyle.use(name)), named
-# by what they do. Check the figure guide of the venue before submitting.
+# by their look: each differs in frame, ticks, line styles and colors, not just in size.
+_SERIF = "Times New Roman, STIXGeneral, TeX Gyre Termes, Nimbus Roman, DejaVu Serif"
+_OPEN = {"axes.spines.top": "False", "axes.spines.right": "False", "xtick.top": "False", "ytick.right": "False",
+         "xtick.direction": "out", "ytick.direction": "out", "xtick.minor.visible": "False",
+         "ytick.minor.visible": "False"}
 PRESETS = {
-    "publication": {"label": "Publication", "rc": {}},   # 3.5 in column, 8 pt sans-serif
-    "compact": {"label": "Compact", "rc": {   # small type and thin lines in a 3.5 in column
-        "font.sans-serif": "Arial, Helvetica, Liberation Sans, DejaVu Sans", "font.size": "7",
-        "lines.linewidth": "1.0", "axes.linewidth": "0.6", "figure.figsize": "3.5, 2.6"}},
-    "narrow": {"label": "Narrow column", "rc": {   # a 3.25 in column, 7 pt
-        "font.sans-serif": "Arial, Helvetica, Liberation Sans, DejaVu Sans", "font.size": "7",
-        "lines.linewidth": "1.0", "axes.linewidth": "0.6", "figure.figsize": "3.25, 2.4"}},
-    "serif": {"label": "Serif", "rc": {   # Times-like text and math, 3.4 in column
-        "font.family": "serif", "font.serif": "Times New Roman, TeX Gyre Termes, Nimbus Roman, DejaVu Serif",
-        "mathtext.fontset": "stix", "font.size": "8", "figure.figsize": "3.4, 2.5"}},
-    "slides": {"label": "Slides", "rc": {   # large type, thick lines
-        "font.size": "14", "lines.linewidth": "2.0", "lines.markersize": "7", "axes.linewidth": "1.2",
-        "xtick.major.width": "1.2", "ytick.major.width": "1.2", "xtick.major.size": "5", "ytick.major.size": "5",
+    # boxed axes, ticks inside on four sides with minor ticks, 8 pt sans-serif, colorblind-safe colors
+    "publication": {"label": "Publication", "rc": {}},
+    # serif text and math, thin box, black first and a line style per series (reads in grayscale too)
+    "classic": {"label": "Classic serif", "rc": {
+        "font.family": "serif", "font.serif": _SERIF, "mathtext.fontset": "stix", "font.size": "8",
+        "axes.linewidth": "0.5", "xtick.major.width": "0.5", "ytick.major.width": "0.5",
+        "xtick.minor.width": "0.5", "ytick.minor.width": "0.5", "xtick.major.size": "3", "ytick.major.size": "3",
+        "xtick.minor.size": "1.5", "ytick.minor.size": "1.5", "lines.linewidth": "1.0",
+        "axes.prop_cycle": "cycler(color=['000000', 'C0392B', '1F4E9C', '2E7D32', '7B3F99']) + "
+                           "cycler(linestyle=['-', '--', '-.', ':', (0, (5, 1, 1, 1))])"}},
+    # black and grays only, told apart by line style: for print in black and white
+    "monochrome": {"label": "Monochrome", "rc": {
+        "axes.prop_cycle": "cycler(color=['000000', '000000', '595959', '595959', '8C8C8C']) + "
+                           "cycler(linestyle=['-', '--', '-', '--', ':'])",
+        "lines.linewidth": "1.1", "image.cmap": "gray_r"}},
+    # open axes (no top and right lines), ticks outside, soft colors, a little more air
+    "minimal": {"label": "Minimal", "rc": {**_OPEN,
+        "axes.prop_cycle": "cycler(color=['4477AA', 'EE6677', '228833', 'CCBB44', '66CCEE', 'AA3377'])",
+        "lines.linewidth": "1.5", "axes.linewidth": "0.7", "axes.edgecolor": "555555",
+        "xtick.color": "555555", "ytick.color": "555555", "axes.ymargin": "0.06", "axes.labelpad": "4"}},
+    # dashed light grid behind the data, framed legend, bright colors and markers-ready widths
+    "grid": {"label": "Grid", "rc": {
+        "axes.grid": "True", "grid.linestyle": "--", "grid.linewidth": "0.5", "grid.color": "B0B0B0",
+        "grid.alpha": "0.7", "xtick.minor.visible": "False", "ytick.minor.visible": "False",
+        "legend.frameon": "True", "legend.framealpha": "0.9", "legend.edgecolor": "B0B0B0", "legend.fancybox": "False",
+        "axes.prop_cycle": "cycler(color=['0C5DA5', 'FF2C00', '00B945', 'FF9500', '845B97', '474747'])",
+        "lines.linewidth": "1.3"}},
+    # slides: large type, thick lines, open axes, vivid colors, 16:10 figure
+    "slides": {"label": "Slides", "rc": {**_OPEN,
+        "font.size": "14", "lines.linewidth": "2.5", "lines.markersize": "8", "axes.linewidth": "1.5",
+        "xtick.major.width": "1.5", "ytick.major.width": "1.5", "xtick.major.size": "6", "ytick.major.size": "6",
+        "axes.prop_cycle": "cycler(color=['0072B2', 'E69F00', '009E73', 'D55E00', 'CC79A7', '56B4E9'])",
         "figure.figsize": "6.4, 4.0"}},
 }
 

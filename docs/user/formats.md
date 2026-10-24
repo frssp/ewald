@@ -183,7 +183,8 @@ Readers name properties as OVITO does: `Position`, `Particle Type`, `Particle Id
 `export_file(source, path)` writes a `DataCollection`, a list of them or a pipeline's frames
 (after its modifiers). The writer follows the file name, or `format=` names one (or an ASE
 format). Pipeline frames are computed and written one at a time, so exporting a long
-trajectory to extxyz, H5MD or XTC never holds it in memory.
+trajectory to extxyz, H5MD or XTC never holds it in memory. A missing folder in `path` is
+created (and removed again if writing fails).
 
 ```python
 from ewald.io import export_file

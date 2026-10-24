@@ -197,9 +197,12 @@ publication style everywhere in the GUI: the Plots panel, view cells, notebook c
 notebook's kernel and the console. The file is the source. Preferences › Plots › *Style file*
 shows a preset and four keys (font, font size, line width, color cycle) as a form, read from
 the file when Preferences opens, and Apply writes back only the rows you changed, keeping the
-file's other lines and comments. The presets are starting points: *Publication* (3.5 in column,
-8 pt sans-serif, the default), *Compact* (7 pt, thinner lines), *Narrow column* (3.25 in, 7 pt),
-*Serif* (Times-like text and math) and *Slides* (14 pt, thick lines); choosing one sets its
+file's other lines and comments. The presets are starting points with different looks: *Publication* (the default:
+boxed axes, ticks inside on four sides with minor ticks, 8 pt sans-serif, colorblind-safe colors),
+*Classic serif* (serif text and math, thin box, black first and a line style per series),
+*Monochrome* (black and grays told apart by line style, for black-and-white print), *Minimal*
+(open axes without the top and right lines, ticks outside, soft colors), *Grid* (dashed light
+grid, framed legend, bright colors) and *Slides* (14 pt, thick lines, open axes); choosing one sets its
 keys in the file and names it on the file's `# preset:` line. *Open as text* opens the file in
 your text editor. A new file lists the useful keys by topic (fonts, lines, colors, axes, ticks,
 legend, figure and files, background colors), commented out with the publication values;

@@ -42,9 +42,10 @@ Tools run in your Python process with your permissions, so treat inputs as you w
 in a file the model reads: check paths and refuse anything that loads code (the ewald-plumed plugin's
 `compute_plumed_cvs` refuses PLUMED `LOAD`).
 
-The AI changes results only through the notebook, and ewald cannot check a plugin's code for
-that, so keep to it yourself: read `toolset.pipeline` but do not change its modifiers or view by
-hand. To add a step, call the built-in tool, which writes the step cell and runs it
+The AI changes results only through the notebook: read `toolset.pipeline` but do not change
+its modifiers or view by hand. ewald checks after every plugin tool: a step that no cell added,
+a step taken out while its cell is still there, or view settings changed while no view cell
+changed are undone, and the call fails with an error for the model. To add a step, call the built-in tool, which writes the step cell and runs it
 (`toolset.call("add_modifier", {"name": "Plumed", "params": {...}})`, as `compute_plumed_cvs`
 does), and compute a look-only variant on a copy (`Pipeline(pipe.source, [*pipe.modifiers, m])`).
 

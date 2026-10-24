@@ -14,9 +14,10 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - Menus after the 2026-10-23 review: right-click menus still mix entries with and without icons;
   context menus have no mnemonics; Edit has no Find in notebook; the Keyboard shortcuts window lists
   shortcuts but cannot change them; the palette's recent commands are kept for the session only.
-- Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): the Plots panel draws a lineup
-  table as curves only; the `levels` (VBM, CBM, E_F) and plateau `regions` in its attributes are
-  not drawn yet (needs a GUI mockup first), and the side bar has no "Analysis" row. Only the
+- Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): a table's `levels`, `regions`
+  and `gaps` are drawn in cell outputs and figures (`views._draw`), but the live Plots panel and
+  view cells, which draw pipeline tables, do not take them yet, and the side bar has no "Analysis"
+  row. Only the
   sim-agent band-offset lineup and the per-surface work function exist; the work-function
   workflows' surface energies and the polycrystalline aggregate, EOS and formation energy are next.
   The lineup matches sim-agent's own `assemble` on interfaces built by sim-agent's builder with
@@ -123,13 +124,12 @@ GUI
   the notebook and show a diff to accept or undo, and a cell number the model writes in its text
   ("cell 3") is not a link (only the tools' results are); `ewald ask` and the MCP
   server could take a notebook (`--notebook analysis.py`) and save it back.
-- AI tools only through cells (`llm/tools.py` `CELL_WRITERS`): `@ai_tool` plugin functions can
-  still change `toolset.pipeline` by hand (ewald cannot check them; docs/plugins/tools.md asks
-  them not to); a check after each plugin tool that every modifier belongs to a cell could warn.
-  Smaller gaps listed in docs/user/ai-permissions.md ("Gaps in the rule"): `export_file` makes
-  its target's folders before the cell runs, `render_image(filename=...)` replaces a work-dir
-  file without asking, `set_frame` leaves no cell, and a Forge plugin a notebook uses is not
-  part of the notebook.
+- AI tools only through cells (`llm/tools.py` `CELL_WRITERS`): after a plugin tool, steps and
+  view settings changed without a cell are undone (`Toolset._undo_outside_cells`), but other
+  state a plugin touches by hand (a modifier's attributes, `pipe.source`, files) is not checked.
+  Left by design (docs/user/ai-permissions.md, "Gaps in the rule") (D40): `render_image(filename=...)`
+  replaces a work-dir file, `set_frame` leaves no cell, and a Forge plugin a notebook uses is
+  not part of the notebook (an `.ewd` could carry it in plugins/).
   A failed generated cell leaves two undo entries in the GUI (insert, then removal). After a second
   `pipe = load(...)` cell, the step cells above it still hold the old pipeline's modifiers, and
   `Notebook.sync` (the GUI's refresh) deletes them.

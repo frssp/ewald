@@ -45,3 +45,29 @@ def test_table_pictures_and_text_fallback(cu_fcc, small, monkeypatch):
 
     monkeypatch.setattr("ewald.render.render", boom)
     assert pipe._repr_png_() is None                                     # Jupyter falls back to the repr
+
+
+def test_a_table_of_named_rows_is_bars_and_a_series_stays_a_curve():
+    """One value per surface is a bar per surface, not a line through the row numbers; a table
+    whose x is a real quantity (run temperatures) stays a curve although its rows have names."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from matplotlib.figure import Figure
+
+    from ewald.verbs import Table
+    from ewald.views import _draw
+
+    rows = Table("Work functions", {"Surface #": [0, 1], "Work function (eV)": [4.9, 4.6], "E_F (eV)": [-0.4, 0.2]},
+                 labels=["111", "100"])
+    ax = Figure().add_subplot()
+    _draw(ax, rows.name, dict(rows), None, labels=rows.labels)
+    assert [p.get_height() for p in ax.patches] == pytest.approx([4.9, 4.6]) and not ax.lines
+    assert [x.get_text() for x in ax.get_xticklabels()] == ["111", "100"]
+    assert 0 < ax.get_ylim()[0] < 4.6          # zoomed onto the values, so 4.6 and 4.9 differ
+    assert {x.get_text() for x in ax.texts} == {"4.9", "4.6"}
+    runs = Table("D", {"Run": [300.0, 600.0], "D": [1.0, 2.0]}, labels=["300K", "600K"])
+    ax = Figure().add_subplot()
+    _draw(ax, runs.name, dict(runs), None, labels=runs.labels)
+    assert len(ax.lines) == 1 and not ax.patches
+    assert display.table_png(rows).startswith(PNG)

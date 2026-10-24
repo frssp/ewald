@@ -515,8 +515,8 @@ def lineup_table(planar: PlanarProfile, lineup: dict, alignment: dict, scissor: 
                  names: dict | None = None):
     """A ``Lineup`` table (z, planar and macroscopic average, on the alignment's energy zero) whose
     attributes carry what a plot draws over it: ``levels`` (E_F and the band edges of each side
-    with a gap, over that side's plateau), ``regions`` (the plateaus) and ``energy_axis``,
-    plus the numbers (``result``). ``names`` labels the sides (``{"film": "TiO2"}``)."""
+    with a gap, over that side's plateau), ``regions`` (the plateaus), ``gaps`` (the Schottky
+    barriers as arrows between two levels) and ``energy_axis``, plus the numbers (``result``). ``names`` labels the sides (``{"film": "TiO2"}``)."""
     from .verbs import Table
 
     names = {SUBSTRATE: SUBSTRATE, FILM: FILM, **(names or {})}
@@ -541,19 +541,30 @@ def lineup_table(planar: PlanarProfile, lineup: dict, alignment: dict, scissor: 
             if (scissor or {}).get("applied") and side == alignment.get("semiconductor_side"):
                 levels.append(Level(f"{names[side]} CBM* (scissor, approx.)", scissor["cbm_scissor_eV"] - zero,
                                     span, "dotted", f"E_g {scissor['reference_gap_eV']} eV").as_dict())
+    gaps = []
     if alignment.get("interface_fermi_eV") is not None:
-        levels.append(Level("E_F (interface)", alignment["interface_fermi_eV"] - zero, None, "dashed").as_dict())
+        ef = alignment["interface_fermi_eV"] - zero
+        levels.append(Level("E_F (interface)", ef, None, "dashed").as_dict())
+        semi = alignment.get("semiconductor_side")
+        if "schottky_barrier_p_eV" in alignment and semi in edges:
+            span = next((r["z"] for r in regions if r["side"] == semi), None)
+            at = (lambda f: None) if span is None else (lambda f: span[0] + f * (span[1] - span[0]))
+            vbm, cbm = edges[semi]["vbm_eV"] - zero, edges[semi]["cbm_eV"] - zero
+            gaps = [{"name": f"Φ_Bp = {alignment['schottky_barrier_p_eV']:.2f} eV", "lower": min(vbm, ef),
+                     "upper": max(vbm, ef), "x": at(0.6)},
+                    {"name": f"Φ_Bn = {alignment['schottky_barrier_n_eV']:.2f} eV", "lower": min(ef, cbm),
+                     "upper": max(ef, cbm), "x": at(0.15)}]
     result = {k: v for k, v in alignment.items() if not isinstance(v, np.ndarray)}
     if scissor:
         result["scissor"] = scissor
     result["plateaus"] = {s: {k: v for k, v in p.items()} for s, p in (lineup.get("plateaus") or {}).items()}
     return Table("Lineup", columns, attributes={"energy_axis": axis, "energy_zero_eV": zero, "levels": levels,
-                                               "regions": regions, "result": result})
+                                               "regions": regions, "gaps": gaps, "result": result})
 
 
 def work_function_table(planar: PlanarProfile, wf: dict, name: str = ""):
     """A ``Work function`` table (z, planar average) on the vacuum level as zero, as sim-agent
-    draws it, with ``levels`` (vacuum 0, E_F at -Phi), ``energy_axis`` and the numbers of
+    draws it, with ``levels`` (vacuum 0, E_F at -Phi), ``gaps`` (Phi), ``energy_axis`` and the numbers of
     :func:`work_function` as ``result``."""
     from .verbs import Table
 
@@ -563,4 +574,6 @@ def work_function_table(planar: PlanarProfile, wf: dict, name: str = ""):
     title = f"Work function {name}".strip()
     return Table(title, {"z (A)": planar.z, "Planar average": planar.values - zero},
                  attributes={"energy_axis": "E - E_vac", "energy_zero_eV": zero, "levels": levels,
+                             "gaps": [{"name": f"Φ = {wf['work_function_eV']:.2f} eV",
+                                       "lower": wf["fermi_eV"] - zero, "upper": 0.0}],
                              "result": dict(wf, surface=name)})

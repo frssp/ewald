@@ -236,6 +236,31 @@ class TestReadersAndTables:
         assert "TiO2 CBM* (scissor, approx.)" in levels
         assert not any(name.startswith("substrate V") for name in levels)   # a metal has no band edges
         assert [r["side"] for r in t.attributes["regions"]] == ["substrate", "film"]
+        gaps = {g["name"].split(" =")[0]: g for g in t.attributes["gaps"]}
+        for key in ("Φ_Bp", "Φ_Bn"):
+            g = gaps[key]
+            assert g["upper"] - g["lower"] == pytest.approx(abs(res["schottky_barrier_" + key[-1] + "_eV"]))
+            assert t.attributes["regions"][1]["z"][0] < g["x"] < t.attributes["regions"][1]["z"][1]
+
+    def test_the_picture_draws_levels_plateaus_and_barriers(self):
+        """What the attributes carry is drawn over the curves (cell outputs, figure files)."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from matplotlib.figure import Figure
+
+        from ewald.views import _draw
+
+        lineup = _lineup()
+        res = band_alignment(lineup, METAL, SEMI, interface_fermi=-1.0)
+        t = lineup_table(PlanarProfile(_profile(), L), lineup, res, names={"film": "TiO2"})
+        ax = Figure().add_subplot()
+        _draw(ax, t.name, dict(t), None, labels=t.labels, attributes=t.attributes)
+        texts = {x.get_text() for x in ax.texts}
+        assert {"TiO2 VBM", "TiO2 CBM", "E_F (interface)", "substrate plateau", "TiO2 plateau"} <= texts
+        assert any(x.startswith("Φ_Bp = ") for x in texts)
+        assert ax.get_ylabel() == "E - E_F (interface) (eV)"
+        assert len(ax.patches) == 2                                      # the two plateaus shaded
 
 
 def test_work_function_table_is_on_the_vacuum_level():
@@ -248,6 +273,8 @@ def test_work_function_table_is_on_the_vacuum_level():
     assert t.attributes["result"]["work_function_eV"] == pytest.approx(4.5)
     assert t.attributes["energy_axis"] == "E - E_vac" and t["Planar average"].max() == pytest.approx(0.0)
     assert {lv["name"]: lv["energy"] for lv in t.attributes["levels"]}["E_F"] == pytest.approx(-4.5)
+    (gap,) = t.attributes["gaps"]
+    assert (gap["lower"], gap["upper"], gap["name"]) == (pytest.approx(-4.5), 0.0, "Φ = 4.50 eV")
 
 
 @pytest.mark.parametrize("key", ["tin_mgo_100", "gaas_alas_110"])
