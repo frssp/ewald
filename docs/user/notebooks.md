@@ -81,8 +81,11 @@ those atoms, or those frames on a per-frame plot. The atoms you pick appear on t
 and the band structure follow the picked atoms as projected DOS or fat bands, and clicking a
 phonon band plays that mode. Choosing another table, column or histogram in the plot's bar
 rewrites the cell, and so does zooming: the wheel, a drag on a DOS or band plot, or a pan
-writes `xlim=`/`ylim=`, and a double-click removes them. Run as a script, `show` draws the same plot with matplotlib. Add one with
+writes `xlim=`/`ylim=`, and a double-click removes them. Run as a script, `show` draws the same plot with matplotlib
+(`save="rdf.pdf"` also writes it; it returns a `Plot` whose `.figure` is the Figure). Add one with
 **+ Plot** or Insert › Plot, which list the tables and properties of the current frame.
+`show(pipe)` with no table or histogram is a picture of the structure instead (a snapshot drawn
+with the pipeline's view settings), not a plot.
 
 `show(pipe, ...)` anywhere else in a code cell (after other code, several in one cell, with
 arguments from variables) is a live plot too, under the cell where it was called: it follows
@@ -312,7 +315,10 @@ are greyed out for a single frame.
 A table is a dict of numpy columns with `.x`, `.columns` and `.plot()`; `pandas.DataFrame(g)`
 turns it into a data frame.
 Running the cell (or calling the verb) again replaces the step it added, so changing
-`cutoff=` never stacks duplicates. `show(pipe, table="coordination-rdf")` puts the same table
+`cutoff=` never stacks duplicates. A verb's step never changes what your own steps before it
+wrote: after `pipe.add(CoordinationAnalysis(cutoff=3.0))`, `rdf(pipe, cutoff=6)` keeps your
+"Coordination" values and your `coordination-rdf` table, and its own table is
+`coordination-rdf (rdf)`. `show(pipe, table="coordination-rdf")` puts the same table
 in a live view cell.
 
 **Text cells** are Markdown. Double-click one (or select it and press Enter) to edit it; Esc
