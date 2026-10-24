@@ -546,7 +546,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   1.4 s at 108k atoms).
 - **Landed:** public PR #25 (bond impostors).
 
-### D44. Viewport color bars fold to chips (2026-10-24)
+### D45. Viewport color bars fold to chips (2026-10-24)
 
 - **Decision:** the viewport's color bar cards (D23) fold to one-line chips (a short horizontal
   ramp and the title, a down chevron) and unfold again with a click on a card or chip; an up

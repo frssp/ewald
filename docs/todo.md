@@ -7,8 +7,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 "In progress" when it merges.
 
 ## In progress
-- Folding the viewport color bars (`colorbar_collapsed`, click a card): waiting for the owner's
-  look at the collapsed and expanded cards in both themes before merging.
 
 ## Next
 - Activity bar: buttons cannot be reordered by dragging yet (hiding and the … overflow menu work).
@@ -446,7 +444,7 @@ Visualization plugins (later phases of the Scene IR plan)
 - OpenGL and the ray tracer ignore `Cylinders.alpha`; see-through bonds need it.
 - Ray tracer: `Lines` without a `radius` are not drawn (trajectory lines now have one).
 - Color bars: the legacy OpenGL 1.x viewport (ssh -X) draws the color maps but no color bar card
-  (`gui/viewport.py` `_draw_colorbars` has the image to draw); the card can cover an `Attributes`
+  (`gui/viewport.py` `_draw_colorbars` has the image to draw), so it cannot fold them either; the card can cover an `Attributes`
   overlay placed top right.
 - Trajectory lines:
   a trail ends at the last traced frame before the current one, not at the atom's current
