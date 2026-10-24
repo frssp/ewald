@@ -153,7 +153,7 @@ OPTIONS = (
     Option("bonds.length_factor", 1.15, "Bond length factor", "Max bond = factor × (r_A + r_B), like VESTA.",
            minimum=0.5, maximum=2),
     Option("bonds.radius", 0.15, "Bond radius", "Stick radius in ball-and-stick views.", minimum=0.01, maximum=1),
-    Option("bonds.auto_limit", 100_000, "Automatic bonds up to",
+    Option("bonds.auto_limit", 250_000, "Automatic bonds up to",
            "Opening a structure with more atoms turns bonds off (search and sticks get slow); "
            "turn them on under Bonds.", minimum=0, maximum=100_000_000),
 

@@ -77,7 +77,7 @@ atoms; leaving it restores the colors and background you had. Particles › Rend
 the same look with any radius. Automatic bonds come from a VESTA-style table (Bonds), one row per
 pair of types up to 1.15 × the sum of covalent radii; in compounds metal-metal pairs are left
 out, so SrTiO3 gets Ti-O and Sr-O bonds but not Sr-Ti. Opening a structure with more than
-Preferences › Atoms & bonds › *Automatic bonds up to* atoms (100 000) turns bonds off, because the
+Preferences › Atoms & bonds › *Automatic bonds up to* atoms (250 000) turns bonds off, because the
 bond search and the sticks would slow the viewport down; turn them on under Bonds if you want them. The tool rail on the left switches
 between orbit, pick (click an atom to see its id, type, position and every property;
 Shift+click adds atoms to the pick or removes them),
@@ -93,7 +93,9 @@ never while the view moves, so it costs nothing during rotation; *Atom info on h
 off. Atoms drawn only as periodic images (VESTA boundary) are not reported. The viewport
 draws atoms as GPU impostors: each sphere is one point shaded per pixel, with the depth of the
 sphere surface, so spheres stay round at any zoom, overlapping spheres and bonds intersect as
-with meshes, and 100 000 atoms rotate smoothly. 3D view › Performance › *Sphere drawing* =
+with meshes, and 100 000 atoms rotate smoothly. Bonds are impostors too: each half-bond is one
+point ray-cast as a cylinder, so a 100 000-atom ball-and-stick frame (over a million half-bonds)
+is built in a fraction of a second instead of as millions of triangles. 3D view › Performance › *Sphere drawing* =
 Mesh brings back triangle spheres (*Sphere resolution*, up to the *Impostor threshold*), and
 *Smooth edges* (on) applies FXAA to outlines.
 A right click (without dragging, which zooms; on a Mac also a two-finger click or Control+click)

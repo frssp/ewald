@@ -166,6 +166,22 @@ def test_lammps_data_bonds(tmp_path):
     np.testing.assert_allclose(d.bonds.lengths(d), [np.hypot(1, 1), 0.5])   # bond 1-2 crosses x boundary
 
 
+def test_stick_data_is_one_point_per_cylinder():
+    """Impostor bonds (vtkOpenGLStickMapper) read the middle, unit axis and (length, radius, radius)."""
+    from ewald.render import stick_data
+    from ewald.scene import Cylinders
+
+    start = np.array([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0], [2.0, 0.0, 0.0]])
+    end = np.array([[2.0, 0.0, 0.0], [1.0, 1.0, 4.0], [2.0, 0.0, 0.0]])  # the last has zero length
+    cyl = Cylinders(start, end, radius=[0.1, 0.2, 0.3], rgb=[[1, 0, 0], [0, 1, 0], [0.5, 0.5, 2.0]])
+    sticks = stick_data(cyl)
+    assert sticks.n_points == 3 and sticks.points.dtype == np.float32
+    np.testing.assert_allclose(sticks.points, [[1, 0, 0], [1, 1, 2.5], [2, 0, 0]])
+    np.testing.assert_allclose(sticks["orient"], [[1, 0, 0], [0, 0, 1], [0, 0, 1]])
+    np.testing.assert_allclose(sticks["scale"], [[2, 0.1, 0.1], [3, 0.2, 0.2], [0, 0.3, 0.3]], rtol=1e-6)
+    np.testing.assert_array_equal(sticks["rgb"], [[255, 0, 0], [0, 255, 0], [127, 127, 255]])
+
+
 def test_tube_mesh_is_an_open_cylinder_per_segment():
     """Bond sticks are built in numpy (vtkTubeFilter was most of a frame's build time during playback)."""
     from ewald.render import TUBE_SIDES, tube_mesh

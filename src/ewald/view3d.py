@@ -37,7 +37,7 @@ STYLE_PRESETS = {
 PRESET_THEMES = {"Simple (ASE)": "ASE"}
 DEFAULT_PRESET = "Ball & stick"
 ATOM_STYLES = ("auto", "mesh", "impostor", "flat")
-BOND_AUTO_LIMIT = 100_000   # automatic bonds stop above this many atoms (GUI: bonds.auto_limit)
+BOND_AUTO_LIMIT = 250_000   # automatic bonds stop above this many atoms (GUI: bonds.auto_limit)
 DIRECTIONS = ("iso", "x", "-x", "y", "-y", "z", "-z", "top", "front", "persp")
 
 
