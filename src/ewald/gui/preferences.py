@@ -33,7 +33,7 @@ _CHOICE_LABELS = {"auto": "Auto", "coarse": "Always coarse", "full": "Always ful
 LAYOUT = {
     "General": ("Startup behaviour and file handling.", [
         ("Startup", ["general.startup_workspace", "general.restore_layout"]),
-        ("Appearance", ["general.ui_theme", "general.font_size", "general.toolbar_style"]),
+        ("Appearance", ["general.ui_theme", "general.font_size", "general.toolbar_style", "general.activity_hidden"]),
         ("LAMMPS files", ["general.lammps_type_prompt", "general.lammps_type_map"]),
         ("Running jobs", ["general.live_reload", "general.live_reload_interval"]),
         ("Help", ["general.docs_url"])]),

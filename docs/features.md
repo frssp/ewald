@@ -417,6 +417,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `general.ui_theme` | UI theme | `'graphite'` |
 | `general.startup_workspace` | Startup workspace | `'Notebook'` |
 | `general.toolbar_style` | Toolbar buttons | `'Icons and text'` |
+| `general.activity_hidden` | Hidden activity bar buttons | `''` |
 | `general.font_size` | UI font size | `12` |
 | `general.restore_layout` | Restore window layout | `True` |
 | `general.lammps_type_prompt` | LAMMPS type names | `'ask'` |

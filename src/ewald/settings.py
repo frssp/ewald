@@ -74,6 +74,9 @@ OPTIONS = (
     Option("general.toolbar_style", "Icons and text", "Toolbar buttons",
            "Icons and text: text on mode switches and rarely used buttons, icons alone on the tool rail.",
            choices=("Icons and text", "Icons", "Text")),
+    Option("general.activity_hidden", "", "Hidden activity bar buttons",
+           "Side bar names, comma separated (right-click the activity bar to change); "
+           "hidden side bars stay in the Window menu."),
     Option("general.font_size", 12, "UI font size", "Pixels; applies to every panel.", minimum=9, maximum=20),
     Option("general.restore_layout", True, "Restore window layout", "Reopen docks and window size as you left them."),
     Option("general.lammps_type_prompt", "ask", "LAMMPS type names",

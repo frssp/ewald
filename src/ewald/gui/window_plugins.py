@@ -223,6 +223,7 @@ class PluginPanelsMixin:
                 act.setToolTip(plugin.tooltip or plugin.description or f"Show or hide the {plugin.title} side bar")
                 act.setProperty("ewald_plugin_icon", plugin.icon)
                 act.triggered.connect(lambda on, n=name: self.show_plugin_panel(n, on))
+                act.toggled.connect(self.arrange_activity_bar)
                 self.activity_bar.insertAction(self.activity_buttons["Remotes"], act)   # after AI chat
                 self.activity_buttons[f"plugin:{name}"] = act
             self.plugin_panels[name] = {"action": act, "dock": None, "widget": None, "context": None,
@@ -246,6 +247,7 @@ class PluginPanelsMixin:
             menu.insertAction(self.remotes_action, a)
             self.plugin_panel_actions.append(a)
         self.refresh_plugin_menu_items()
+        self.arrange_activity_bar()
 
     def _update_plugin_panel_actions(self):
         """Tick the plugin side bars that are shown (Window menu)."""

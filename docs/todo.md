@@ -10,6 +10,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 
 ## Next
+- Activity bar: buttons cannot be reordered by dragging yet (hiding and the … overflow menu work).
 - Menus after the 2026-10-23 review: right-click menus still mix entries with and without icons;
   context menus have no mnemonics; Edit has no Find in notebook; the Keyboard shortcuts window lists
   shortcuts but cannot change them; the palette's recent commands are kept for the session only.
