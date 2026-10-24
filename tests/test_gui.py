@@ -5321,6 +5321,54 @@ def test_rich_outputs_render_in_cells(app):
     assert len(area._images) == 2 and all(not pix.isNull() for _, pix in area._images)
 
 
+def test_cell_code_and_output_never_overlap(app):
+    """The editor and the outputs are as tall as their laid-out text in the font the style
+    sheet gives them, also after that font changes (Windows at 200 %, the font size preference),
+    and a traceback's unbreakable rule wraps instead of cutting the last lines off. The outputs
+    sit in their own area (cellOutput) in a monospaced font."""
+    from PySide6 import QtCore, QtGui
+
+    from ewald.gui import theme
+    from ewald.gui.cell_widget import CellWidget
+    from ewald.gui.code_editor import OutputText
+    from ewald.notebook import Cell, Notebook
+
+    def pump():
+        for _ in range(5):
+            app.processEvents()
+
+    def text_height(w):
+        doc = w.document()
+        return sum(w.blockBoundingRect(doc.findBlockByNumber(i)).height() for i in range(doc.blockCount())) \
+            + 2 * doc.documentMargin()
+
+    before = app.styleSheet()
+    nb = Notebook([Cell("for i in range(3):\n    print('step', i)\nprint('-' * 200)\n1/0")])
+    nb.run_all(stop_on_error=False)
+    try:
+        theme.apply(app, "graphite", font_size=12)
+        w = CellWidget(nb, nb.cells[0])
+        w.resize(420, 400)
+        w.show()
+        pump()
+        outs = w.outputs._widgets
+        assert [o.objectName() for o in outs] == ["cellText", "cellError"]
+        assert all(isinstance(o, OutputText) for o in outs)
+        assert all(QtGui.QFontInfo(t.font()).fixedPitch() for t in (w.editor, *outs))   # not the UI font
+        assert w.content.objectName() == "cellContent" and w.outputs.testAttribute(QtCore.Qt.WA_StyledBackground)
+        for size in (12, 20):     # a bigger font after the widgets exist: measured again
+            theme.apply(app, "graphite", font_size=size)
+            pump()
+            for t in (w.editor, *outs):
+                assert t.viewport().height() + 1 >= text_height(t), (size, t.objectName())
+            top = w.outputs.mapTo(w, QtCore.QPoint(0, 0)).y()
+            assert w.editor.mapTo(w, QtCore.QPoint(0, w.editor.height())).y() <= top
+        assert "ZeroDivisionError: division by zero" in outs[1].text()
+        w.close()
+    finally:
+        app.setStyleSheet(before)
+
+
 def test_console_shares_the_notebook_namespace(app, tmp_path, monkeypatch):
     """The Python console runs in the notebook's IPython namespace: a cell's variables are there
     and what the console defines is seen by the next cell, without copying."""

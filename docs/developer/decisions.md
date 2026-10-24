@@ -154,6 +154,18 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   they did not (Preferences had its own book, sparkle and plug icons).
 - **Landed:** public PR #29.
 
+### D47. A notebook cell's output sits beside a rule, under the code box (2026-10-24)
+
+- **Decision:** what a cell prints, returns or raises is set off from the code by a 2 px rule on
+  its left, on the cell's own background, in the monospaced font of the code; the code keeps its
+  box.
+- **Why:** the owner reported "노트북에 코드 입력부분과 stdout 출력부분이 겹친다. 영역 구분도
+  안된다" (Windows, 200 % scaling) and picked option A (left rule) on the decision card from
+  rendered Graphite and Paper shots.
+- **Considered:** B, the output in a box of its own color under the code box; C, no mark at all,
+  only the contrast between the code box and the cell.
+- **Landed:** public PR #38.
+
 ## Quality and platforms
 
 ### D7. Quality for files, speed for the screen (2026-10-19)
@@ -552,8 +564,8 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   (`device="cuda"`, single precision, the same rays as the CPU tracer) rather than an
   edge-aware denoiser over fewer samples or no further work.
 - **Why:** the owner picked the CUDA ray tracer on the decision card. The owner then added that
-  their own PC has no NVIDIA GPU ("앗 근데 나는 nvidia gpu가 없네", Intel Arc), so whether an
-  OpenCL build of the same kernel follows is open.
+  their own PC has no NVIDIA GPU ("앗 근데 나는 nvidia gpu가 없네", Intel Arc); D47 adds the
+  OpenCL build of the same kernel.
 - **Considered:** an edge-aware denoiser from the ray tracer's normal and depth buffers
   (recommended, since it runs on every machine and could be checked here); stopping after
   public PR #27 showed that adaptive sampling cannot gain at equal quality.
@@ -583,6 +595,18 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** a Save button that only saves and leaves the window open; the old Yes/No
   "Close anyway?" question.
 - **Landed:** public PR #36.
+
+### D47. One GPU ray tracer source for CUDA and OpenCL (2026-10-24)
+
+- **Decision:** the CUDA ray tracer is merged, and the same kernel source also builds as OpenCL
+  C (`device="opencl"`, pyopencl, the `opencl` extra), so Intel Arc, AMD and Apple GPUs ray
+  trace too. `"auto"` takes CUDA, then an OpenCL GPU, then the CPU. Only the ray tracer uses
+  OpenCL; the analysis stays on CuPy or the CPU.
+- **Why:** the owner's PC has an Intel Arc GPU and no NVIDIA one ("앗 근데 나는 nvidia gpu가
+  없네"); the owner chose "CUDA merge + OpenCL 추가" on the decision card.
+- **Considered:** merging CUDA alone and leaving Arc on the CPU; an edge-aware denoiser instead,
+  which runs on every machine.
+- **Landed:** public PR #39.
 
 ## Adding an entry
 

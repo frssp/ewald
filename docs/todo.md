@@ -73,11 +73,12 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   0.020 at 8 samples, 0.014 at 16). The background is already cheap, so no stopping rule gains
   much at equal quality (the best variant, 2.45 s, had 9 % more error). What would make
   Publication pictures faster: a denoiser on the ray tracer's output (edge-aware, from its
-  normal and depth buffers) or a GPU. The CUDA tracer (`device="cuda"`, `ewald.raytrace_cuda`,
-  2026-10-24) is checked only behind a host-compiler shim (bit-identical to the CPU in double
-  precision) and by compiling it with NVRTC; its speed on a real NVIDIA GPU is unmeasured, and
-  Intel Arc, AMD and Apple GPUs have no GPU ray tracer (an OpenCL build of the same source is
-  the candidate). The BVH build and the uniform grid are still built on the CPU and uploaded.
+  normal and depth buffers) or a GPU. The GPU tracers (`ewald.raytrace_gpu`, 2026-10-24: `device="cuda"` and
+  `device="opencl"` from one C source) are checked behind a host-compiler shim (CUDA) and on
+  pocl's CPU device (OpenCL), both bit-identical to the CPU in double precision, and by
+  compiling the CUDA source with NVRTC; their speed on a real GPU is unmeasured (the owner's
+  Intel Arc: `python benchmarks/analysis.py --skip-modifiers --device opencl`). The BVH build
+  and the uniform grid are still built on the CPU and uploaded.
 - GUI startup (2026-10-23, `python benchmarks/startup.py [--cold-jit]`): `MainWindow()` returns
   after 1.2 s, the 3D view is built at 2.2 s and the console at 2.65 s (was 1.65 / 2.7 / 3.15 s).
   The numba warm-up thread now starts 1.5 s after the window shows: started in `MainWindow()`
@@ -590,6 +591,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- The OpenCL ray tracer on a real GPU (the owner's Intel Arc on Windows: float sums, no double
+  precision; AMD; Apple): `pip install pyopencl`, Preferences › Compute › Device lists the GPU,
+  and `python benchmarks/analysis.py --skip-modifiers --device opencl` traces the same pictures
+  as `--device cpu`, faster. Checked on pocl's CPU device only. The CUDA tracer likewise on a
+  real NVIDIA GPU.
 - `no display: DISPLAY is not set` on a real Linux machine: the message should name the cause
   (SSH login without `-X`, tmux/screen or `sudo` on the desktop, a Wayland session) and the
   command that fixes it (`gui.no_display_hint`); tested with simulated environments only.
@@ -597,6 +603,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   black until restart while the VTK default format was the window's default; now macOS only),
   and the 3D view still shows the atoms. Closing the window with a cell's plot in the Plots panel
   prints no `QSplitter already deleted` error.
+- Notebook cells on Windows at 125-200 % display scaling and on macOS: the code box ends below
+  its last line and the output area (rule on the left, monospaced text) starts under it, also
+  after changing the font size in Preferences; a traceback or a long `print` wraps inside the
+  cell. Checked with `QT_SCALE_FACTOR=2` on Linux only.
 - Preferences › Plots › Open as text on Windows and macOS: a `.mplstyle` file has no program
   associated on a fresh system, so Windows falls back to Notepad and macOS uses `open -t` (the
   default text editor); EWALD must re-read the file when the editor saves (watched with

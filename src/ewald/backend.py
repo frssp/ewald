@@ -54,11 +54,13 @@ APPLE_GPU_MESSAGE = ("Apple GPUs (Metal) are not supported for compute yet; use 
 
 
 def get_backend(device: str | Backend | None = None) -> Backend:
-    """``None``/``"cpu"`` -> numpy; ``"cuda"``/``"gpu"`` -> CuPy; ``"auto"`` -> GPU if present."""
+    """``None``/``"cpu"`` -> numpy; ``"cuda"``/``"gpu"`` -> CuPy; ``"auto"`` -> GPU if present.
+    ``"opencl"`` -> numpy: only the ray tracer runs on OpenCL (:mod:`ewald.raytrace_gpu`), the
+    analysis stays on the CPU."""
     if isinstance(device, Backend):
         return device
     device = (device or "cpu").lower()
-    if device == "cpu":
+    if device in ("cpu", "opencl"):
         return CPU
     if device == "auto":
         return get_backend("cuda") if gpu_available() else CPU
@@ -73,4 +75,4 @@ def get_backend(device: str | Backend | None = None) -> Backend:
         return Backend("cuda", cupy, raw_kernels=True)
     if device in APPLE_DEVICES:
         raise RuntimeError(APPLE_GPU_MESSAGE)
-    raise ValueError(f"unknown device {device!r}; use 'cpu', 'cuda' or 'auto'")
+    raise ValueError(f"unknown device {device!r}; use 'cpu', 'cuda', 'opencl' or 'auto'")

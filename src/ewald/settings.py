@@ -185,9 +185,10 @@ OPTIONS = (
            choices=("MP4 (H.264)", "GIF", "AVI (Motion JPEG)", "MOV (H.264)", "PNG sequence")),
 
     Option("compute.device", "cpu", "Device", "Where analysis and ray-traced pictures run: the window, the "
-           "notebook's pipe and the Render page. CPU is the safe default; Auto uses the CUDA GPU when CuPy "
-           "finds one, else the CPU.",
-           choices=("cpu", "cuda", "auto")),
+           "notebook's pipe and the Render page. CPU is the safe default; OpenCL ray traces on any GPU (Intel, "
+           "AMD, NVIDIA, Apple) and keeps the analysis on the CPU; Auto uses the CUDA GPU when CuPy finds one, "
+           "else an OpenCL GPU for ray tracing, else the CPU.",
+           choices=("cpu", "cuda", "opencl", "auto")),
     Option("performance.cache_memory", 2048, "Frame cache memory",
            "Upper bound for cached trajectory frames (MB); the current frame is always kept.",
            minimum=64, maximum=1_048_576),
@@ -293,10 +294,22 @@ def _probe_cuda():
         return True, "CUDA device"
 
 
+def _probe_opencl():
+    if importlib.util.find_spec("pyopencl") is None:
+        return False, "pyopencl not installed: pip install 'ewald[opencl]'"
+    from .raytrace_gpu import opencl_devices
+
+    devices = opencl_devices()
+    if not devices:
+        return False, "pyopencl installed but no OpenCL device found (install the GPU driver)"
+    return True, f"ray tracing on {devices[0].name.strip()}; analysis on the CPU"
+
+
 # key, label, probe() -> (available, detail). New backends (e.g. Apple Metal) add one row here.
 DEVICES = (
     ("cpu", "CPU (NumPy / Numba)", lambda: (True, f"{os.cpu_count()} cores")),
     ("cuda", "NVIDIA CUDA (CuPy)", _probe_cuda),
+    ("opencl", "OpenCL GPU (ray tracing)", _probe_opencl),
     ("auto", "Auto (GPU if available)", lambda: (True, "falls back to CPU")),
 )
 
@@ -305,6 +318,7 @@ COMPONENTS = (
     ("ewald._native", "PTM, Voronoi, CSP matching, interval CNA (C++ extension)",
      "install a C++ compiler, then reinstall ewald (docs/user/install.md)"),
     ("cupy", "GPU compute (CUDA)", "pip install 'ewald[gpu]'"),
+    ("pyopencl", "GPU ray tracing on any GPU (OpenCL)", "pip install 'ewald[opencl]'"),
     ("ovito", "Dislocation analysis (DXA)", "pip install 'ewald[gui,ovito]'"),
     ("imageio_ffmpeg", "Movie export (.mp4)", "pip install imageio-ffmpeg (part of the ewald install)"),
     ("qtconsole", "IPython console in the GUI", "pip install 'ewald[gui]'"),
