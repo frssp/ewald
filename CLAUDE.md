@@ -4,7 +4,7 @@ EWALD (Extensible Workbench for Atomic Lattices & Dynamics; package and import n
 atomistic structure/trajectory viewer and analysis library at OVITO Pro level, for VASP and LAMMPS
 first: `load`/`import_file` -> `pipe.add(...)` -> `pipe.compute(frame, device=...)` -> `show`/`pipe.render(...)`.
 Its identity is not "OVITO clone" but a Jupyter-like notebook (scripts plus Python visualization)
-with Claude and plugins built in: the GUI is notebooks as top tabs, step and view cells, a VS Code
+AI-native (Ask AI over any provider, Claude by default; D29) with plugins built in: the GUI is notebooks as top tabs, step and view cells, a VS Code
 style plugin side bar and an AI chat side bar. User-facing docs: the manual in docs/ (MkDocs,
 `mkdocs.yml`; user/ with tutorials/, plugins/, developer/, reference/) and README.md, both
 notebook-first; tutorial notebooks in examples/notebooks/ (run by tests/test_tutorials.py); what exists:
@@ -21,6 +21,9 @@ kept for history.
   an entry (date, decision, the owner's reason quoted where possible, alternatives, PR). Never
   invent a reason. This log is the public evidence of human design work that JOSS asks for
   (paper/, docs/todo.md "JOSS paper"), so also put the owner's choice and reason in the PR body.
+  Take the highest D-number plus one and write "public PR #N" (open the PR first). Parallel
+  threads collide on numbers (D40 was taken twice by public PRs #18 and #21), so after
+  merging `main` take max+1 again and run `tests/test_docs.py` before merging the PR.
 - Merging: a thread merges its own PR once it has merged the latest `main` and the relevant local
   tests pass (full suite under `xvfb-run` when GUI or rendering is touched, `tests/test_visual.py`
   for renderer files). No need to wait for an explicit "merge". When PRs must land in order, the
@@ -29,6 +32,14 @@ kept for history.
   live in the private pre-publication repository. Never push a branch from a clone or branch made
   before that, and never write the owner's institutional gateway identifiers (header names, model
   names, user ids) into code, tests, docs or commit messages.
+- The repository is public (since 2026-10-23): nothing pushed may hold secrets, private paths
+  (project-file mounts, home directories), model identifiers (public PR #10) or session links.
+  Commits end with the `Co-Authored-By` line only, no `Claude-Session` trailer (D32 scrub).
+- Visual choices (icons, colors, layouts, panels, figures) are the owner's: render the options
+  as images, put them in the project files and let the owner pick before merging. For open
+  design questions show many rough concepts first, then polish the one picked (D33). A thread
+  told "아직 머지 말고" waits for the owner's word. Name presets and styles by what they do,
+  never after a journal or publisher ("저널이름 쓰지마. 특징으로 아니면 적당한 이름으로").
 - GitHub Actions minutes are exhausted, so every workflow is `workflow_dispatch` only (PR #62) and
   CI does not run on PRs; local runs are the gate. Do not watch, re-run or re-enable Actions, and do
   not push tags (v0.1.0 is prepared but untagged; docs/developer/release.md, testing.md say how to
@@ -38,7 +49,7 @@ kept for history.
   target FPS, cache budget under `viewport.*`/`performance.*`). Both stay adjustable in settings.
 - Core vs plugins: VASP and LAMMPS (and the other core formats) are built in, registered as
   "built-in" plugin groups that can be disabled. Domain extras live as first-party packages in
-  frssp/ewald-plugins: `ewald-phonopy` (phonons), `ewald-plumed` (all PLUMED), `ewald-aiida`; the
+  frssp/ewald-plugins: `ewald-phonopy` (what needs phonopy; VASP/yaml phonons are core, D27), `ewald-plumed` (all PLUMED), `ewald-aiida`; the
   core keeps only stubs and `modifiers.MOVED` hints. The plugin index pins commits, so merge plugin
   PRs with a merge commit, not squash. Plugins declare themselves in `ewald-plugin.toml` (no import
   needed to list them) and run in-process.
@@ -47,6 +58,12 @@ kept for history.
   package root); a separate DXA implementation (use the optional `ovito` package).
 - Reuse first: OVITO's public source is GPLv3-or-MIT, so ports are taken under MIT with the notice
   kept (`tests/test_licenses.py`); freud, VIAMD/mdlib and tomviz are fine references, VMD code is not.
+- AI only through notebook cells (D4, D40): the AI changes structures, views or results only
+  by writing and running cells. A tool that changes something goes into `CELL_WRITERS` in
+  `llm/tools.py`; plugin `@ai_tool`s call `toolset.call(...)`, and `Toolset.call` undoes what
+  they change outside a cell. docs/user/ai-permissions.md lists every channel; keep it current.
+- Opening a notebook never runs it (D9, `python.run_notebooks` = "never"); new open paths go
+  through `MainWindow.open_notebook`.
 - Security: a session, notebook, `.ewd` or text inside a structure file (prompt injection to Claude)
   must not run code unless trusted (`allow_code`, `Notebook.trust()`). Code that evaluates strings,
   imports by name, or writes files for Claude needs the same checks and a case in
@@ -181,8 +198,9 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   notebook view cells), `verbs.py` (`rdf`/`msd`/`sq`/... add a step and return its `Table`), `display.py` (`_repr_png_` of Pipeline/DataCollection/Table for Jupyter, `options`), `plugin_catalog.py` (installed plugins, catalog indexes, install/remove;
   GUI side `gui/plugins_panel.py`, the left Plugins side bar).
 - `inventory.py`: `ewald inventory`, docs/features.md from the registries, CLI parser and GUI menus.
-- `plumed.py`, `phonon.py`: stubs that alias the `ewald-plumed` / `ewald-phonopy` plugin modules
-  (frssp/ewald-plugins); the code and its tests live there.
+- `plumed.py`: stub aliasing the `ewald-plumed` plugin module (frssp/ewald-plugins), where the
+  code and its tests live. `phonon.py`: VASP OUTCAR and phonopy yaml modes plus the `PhononMode`
+  animation, core since D27; what needs the phonopy package stays in `ewald-phonopy`.
 - Domain modules: `electronic.py` (VASP DOS/bands), `diffraction.py` (XRD, S(q)), `arrows.py`
   (per-atom vectors), `measure.py` (distances/angles/dihedrals of the view's `measurements`),
   `linking.py` (linked selection between plots and the 3D view), `keychain.py`
