@@ -548,7 +548,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   right corner of the view.
 - **Considered:** hiding the bars (already `legend=False`, which also drops them from pictures);
   folding each bar on its own (one switch for all keeps the view cell to one setting).
-- **Landed:** public PR #N.
+- **Landed:** public PR #31.
 
 ## Adding an entry
 
