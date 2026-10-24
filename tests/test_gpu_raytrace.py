@@ -231,3 +231,15 @@ def test_a_pass_is_split_into_short_launches(fake_gpu, monkeypatch):
     assert all(p[8] == len(c) and n == 40 * len(c) for p, c, n in parts)
     split = rt.raytrace(sc, CAM, (40, 30), device=fake_gpu, **kw)
     assert np.array_equal(whole, split)
+
+
+@pytest.mark.parametrize("platform, picks", [("win32", True), ("linux", True), ("darwin", False)])
+def test_auto_takes_an_opencl_gpu_except_on_macos(monkeypatch, platform, picks):
+    monkeypatch.setattr(rc, "opencl_devices", lambda gpu_only=False: ["gpu"])
+    monkeypatch.setattr(rc, "OpenCLTracer", lambda device, scene, accel, real: ("opencl", device))
+    monkeypatch.setattr("ewald.backend.gpu_available", lambda: False)
+    monkeypatch.setattr(rc.sys, "platform", platform)
+    sc = busy_scene()
+    got = rc.tracer(sc, rt.Accel(sc), "auto")
+    assert got == (("opencl", "gpu") if picks else None)
+    assert rc.tracer(sc, rt.Accel(sc), "opencl") == ("opencl", "gpu")   # asked for by name: always
