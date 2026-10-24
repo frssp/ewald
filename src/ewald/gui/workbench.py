@@ -23,6 +23,15 @@ from .palette import native_text
 from .theme import TOKENS
 
 
+def _valid(obj) -> bool:
+    """Whether the Qt object behind ``obj`` still exists."""
+    try:
+        obj.objectName()
+        return True
+    except RuntimeError:
+        return False
+
+
 @dataclass
 class ViewSpec:
     id: str
@@ -290,9 +299,12 @@ class Workbench(QtWidgets.QWidget):
         spec = self.specs.pop(view, None)
         if view in self.order:
             self.order.remove(view)
+        if not self._alive():  # the window is being torn down (a cell's plot left as its notebook went)
+            self.layout.remove(view)
+            return
         self._capture()
         self.layout.remove(view)
-        if spec is not None:
+        if spec is not None and _valid(spec.widget):
             spec.widget.setParent(None)
             if delete:
                 spec.widget.deleteLater()
@@ -503,9 +515,17 @@ class Workbench(QtWidgets.QWidget):
         return bool(self.factory and self.factory(view)) and view in self.specs
 
     # ------------------------------------------------------------------ drawing
+    def _alive(self) -> bool:
+        """Whether the workbench's Qt objects still exist: when the window is deleted, Qt deletes
+        them before the notebook cells, whose docked plots then leave (``unregister``)."""
+        return all(_valid(o) for o in (self, self.vsplit, self.editor_host, self.panel_host,
+                                       *(sp for sp, _ in self._splitters)))
+
     def _capture(self):
         """Copy the splitter positions into the model before it changes."""
         for sp, node in self._splitters:
+            if not _valid(sp):
+                continue
             sizes = sp.sizes()
             if sum(sizes) > 0 and len(sizes) == len(node.children):
                 node.sizes = [float(s) for s in sizes]
