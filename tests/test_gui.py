@@ -1224,6 +1224,53 @@ def test_ask_panel_agent_uses_ai_preferences(app, monkeypatch):
     assert factory.assistant() == "Gemini"
 
 
+def test_ask_panel_new_agent_when_ai_preferences_change(app, pipe, monkeypatch):
+    """Changing the headers, key, address or model in Preferences › AI applies to the next question,
+    without restarting: the agent holds a client made from the old ones, so a new one is made and
+    gets the conversation so far."""
+    from ewald import settings
+    from ewald.gui import ask_panel
+    from ewald.llm import credentials
+
+    s = settings.load()
+    s["llm.provider"], s["llm.base_url"] = "openai-compatible", "https://gateway.example.org/v1"
+    s["llm.key_header"], s["llm.headers"] = "x-ticket", "X-Team: md"
+    made = []
+    monkeypatch.setattr(ask_panel, "_default_agent", lambda p, ev, **kw: made.append(kw) or _FakeAgent(p, ev))
+    factory = ask_panel.agent_from_settings(lambda: s)
+    panel = ask_panel.AskPanel(lambda: (pipe, 0, []), agent_factory=factory)
+    seen = factory.connection()
+    assert factory.connection() == seen
+
+    panel.ask("first")
+    _wait(app, panel)
+    panel.ask("same connection")
+    _wait(app, panel)
+    assert len(made) == 1
+    assert made[0]["provider"].client_options["default_headers"] == {"X-Team": "md"}
+
+    s["llm.headers"] = "X-Team: md; X-Site: lab"               # Preferences › AI › Apply
+    panel.ask("after the header change")
+    _wait(app, panel)
+    assert len(made) == 2
+    assert made[1]["provider"].client_options["default_headers"] == {"X-Team": "md", "X-Site": "lab"}
+    assert len([m for m in panel.messages if m.role == "user"]) == 3
+    assert "first" in panel._conv().agent.calls[0][1]          # the new agent got the conversation
+
+    for key, value in [("llm.key_header", "api-key"), ("llm.base_url", "https://other.example.org/v1"),
+                       ("llm.model", "local-model"), ("llm.timeout", 30.0), ("llm.stream", False)]:
+        before = factory.connection()
+        s[key] = value
+        assert factory.connection() != before, key
+    before = factory.connection()
+    monkeypatch.setattr(credentials.keychain, "set_secret", lambda *a, **k: "keychain")
+    credentials.save_api_key("sk-test-new-key-0000000000", provider="openai-compatible")
+    assert factory.connection() != before                      # a new key needs a new client too
+    panel.ask("after the key change")
+    _wait(app, panel)
+    assert len(made) == 3
+
+
 def test_ai_chat_reads_only_allowed_folders_and_asks_for_hosts(app, monkeypatch, tmp_path):
     import types
 
