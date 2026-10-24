@@ -122,3 +122,8 @@ Schottky barrier in the result. `describe_workflow` lists the analyses, with the
 cannot run (a missing or failed step), and `add_analysis` adds one to the notebook and runs it,
 so asking the AI to "draw the potential with VBM, CBM and E_F" runs these cells instead of the
 AI aligning energies itself.
+
+The table an analysis leaves is drawn under its cell with what its attributes name: energy
+levels as horizontal lines (band edges over their plateau, E_F and the vacuum level across the
+plot), plateaus shaded, and barriers or work functions as arrows with their values. A table with
+one value per named row, such as one work function per surface, is drawn as one bar per row.

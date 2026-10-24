@@ -474,6 +474,16 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   scripts outside EWALD).
 - **Landed:** public PR #19.
 
+### D40. Analysis plots draw their levels; one value per surface is a bar (2026-10-24)
+
+- **Decision:** a table's energy levels, plateaus and barriers (VBM, CBM, E_F, E_vac, Φ) are
+  drawn over its curves, and a table with one value per named row (one work function per
+  surface) is drawn as one bar per row, not as a line through the row numbers.
+- **Why:** looking at the mockups, the owner pointed out that the work-function summary drawn
+  as a line was wrong ("저게 선으로 나올 수 있나? 표면 인덱스당 하나 아니고?"), then approved
+  the mockups ("적용").
+- **Landed:** public PR #18.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

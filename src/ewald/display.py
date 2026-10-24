@@ -87,7 +87,7 @@ def table_png(table) -> bytes | None:
     try:
         with plotstyle.context(*fig._ewald_style):
             _draw(fig.add_subplot(), table.name, dict(table), None, show_title=False,
-                  labels=getattr(table, "labels", None))
+                  labels=getattr(table, "labels", None), attributes=getattr(table, "attributes", None))
         buf = io.BytesIO()
         plotstyle.save(fig, buf, format="png", dpi=150)
     except Exception:  # noqa: BLE001
