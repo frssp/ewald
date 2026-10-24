@@ -197,12 +197,14 @@ publication style everywhere in the GUI: the Plots panel, view cells, notebook c
 notebook's kernel and the console. The file is the source. Preferences › Plots › *Style file*
 shows a preset and four keys (font, font size, line width, color cycle) as a form, read from
 the file when Preferences opens, and Apply writes back only the rows you changed, keeping the
-file's other lines and comments. The presets are starting points with different looks: *Slides* (the default for a new
-file: 14 pt, thick lines, open axes, vivid colors), *Boxed* (boxed axes, ticks inside on four
-sides with minor ticks, 9 pt sans-serif, colorblind-safe colors), *Classic serif* (serif text and
-math, thin box, black first and a line style per series), *Minimal* (only the x axis line, light
-horizontal grid lines in place of a y axis, soft colors), *Grid* (dashed light grid, framed legend, bright
-colors) and *Gray panel* (a light gray plot area with a white grid in saved figures). *Save as
+file's other lines and comments. The presets are starting points named after cities; all share a slide scale (14 pt
+type, thick lines) and differ in look: *Seoul* (the default for a new file: open axes, ticks
+outside, vivid colorblind-safe colors), *London* (serif text and math in a box, deep colors with
+a line style per series), *Barcelona* (a warm sand plot area with a white grid and no frame
+lines), *Boston* (a box with a dashed grid and a framed legend, crimson first), *Helsinki* (thin
+gray axes on the left and bottom, cool blues with an orange accent), *Dongtan* (a dark plot
+area with neon lines in saved figures) and *Samlangjin* (a box with ticks inside on four sides and
+minor ticks, a dotted row grid, thicker lines, strawberry and leaf colors). *Save as
 preset…* keeps the current file as a preset of your own (`plots/<name>.mplstyle`), listed after
 the built-in ones; delete the file to remove it; choosing one sets its
 keys in the file and names it on the file's `# preset:` line. *Open as text* opens the file in
@@ -214,7 +216,7 @@ text colors and its own font size; plots you save from it use everything in the 
 
 Scripts and notebooks run outside the GUI never read the file by themselves, so a script draws
 the same plots on every computer. Ask for it in a cell or script: `plotstyle.use("user")` for
-your file, `plotstyle.use("slides")` for a preset, `plotstyle.use("thesis")` for any other
+your file, `plotstyle.use("seoul")` for a preset, `plotstyle.use("thesis")` for any other
 `thesis.mplstyle` you put in the same folder, or
 `plotstyle.use("path/to/journal.mplstyle")`.
 

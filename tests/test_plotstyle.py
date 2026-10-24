@@ -174,14 +174,14 @@ def test_style_file_reads_crlf_bom_comments_and_reports_bad_lines(tmp_path):
 
 
 def test_style_template_groups_keys_and_reads_back_uncommented():
-    text = plotstyle.template("boxed")
-    assert plotstyle.parse_style(text) == (plotstyle.preset_rc("boxed"), [])   # the rest commented out
-    assert plotstyle.parse_style(plotstyle.template())[0] == plotstyle.preset_rc("slides")   # the default
-    assert "## Fonts" in text and "## Ticks" in text and plotstyle.preset_of_text(plotstyle.template()) == "slides"
+    text = plotstyle.template("london")
+    assert plotstyle.parse_style(text) == (plotstyle.preset_rc("london"), [])   # the rest commented out
+    assert plotstyle.parse_style(plotstyle.template())[0] == plotstyle.preset_rc("seoul")   # the default
+    assert "## Fonts" in text and "## Ticks" in text and plotstyle.preset_of_text(plotstyle.template()) == "seoul"
     rc, problems = plotstyle.parse_style("\n".join(line[2:] for line in text.splitlines()
                                                    if line.startswith("# ") and plotstyle._key_of(line, commented=True)))
-    assert not problems and set(rc) | set(plotstyle.preset_rc("boxed")) == {k for _t, _h, keys in plotstyle.TEMPLATE
-                                                                            for k in keys}
+    listed = {k for _t, _h, keys in plotstyle.TEMPLATE for k in keys}
+    assert not problems and set(rc) == listed - set(plotstyle.preset_rc("london"))
     pub = plotstyle._style_rc("publication")
     for key, value in plotstyle.validated(rc).items():
         if key in pub:
@@ -192,23 +192,23 @@ def test_style_template_groups_keys_and_reads_back_uncommented():
 
 def test_presets_switch_without_touching_other_lines(tmp_path):
     f = tmp_path / "user.mplstyle"
-    plotstyle.apply_preset("minimal", f)
-    assert plotstyle.preset_of(f) == "minimal" and plotstyle.read_style(f)[0]["xtick.direction"] == "out"
+    plotstyle.apply_preset("barcelona", f)
+    assert plotstyle.preset_of(f) == "barcelona" and plotstyle.read_style(f)[0]["axes.facecolor"] == "F3ECE0"
     with open(f, "a", encoding="utf-8") as fh:
         fh.write("legend.frameon: True\n")
-    plotstyle.apply_preset("Classic serif", f)          # by label too
+    plotstyle.apply_preset("London", f)                 # by label too
     rc, problems = plotstyle.read_style(f)
-    assert not problems and plotstyle.preset_of(f) == "classic"
-    assert rc["font.family"] == "serif" and rc["font.size"] == "9" and rc["legend.frameon"] == "True"
-    assert "axes.spines.top" not in rc and "xtick.direction" not in rc   # Minimal's own keys went
-    plotstyle.apply_preset("boxed", f)
-    assert plotstyle.read_style(f)[0] == {**plotstyle.preset_rc("boxed"), "legend.frameon": "True"}
+    assert not problems and plotstyle.preset_of(f) == "london"
+    assert rc["font.family"] == "serif" and rc["font.size"] == "14" and rc["legend.frameon"] == "True"
+    assert "axes.facecolor" not in rc and "xtick.direction" not in rc   # Barcelona's own keys went
+    plotstyle.apply_preset("boston", f)
+    assert plotstyle.read_style(f)[0] == {**plotstyle.preset_rc("boston"), "legend.frameon": "True"}
     with pytest.raises(ValueError, match="unknown preset"):
         plotstyle.preset_rc("nope")
     import matplotlib as mpl
 
     with mpl.rc_context():
-        plotstyle.use("slides")
+        plotstyle.use("seoul")
         assert mpl.rcParams["font.size"] == 14 and mpl.rcParams["lines.linewidth"] == 2.5
         assert not mpl.rcParams["axes.spines.top"] and mpl.rcParams["xtick.direction"] == "out"
 
@@ -222,7 +222,7 @@ def test_write_style_keeps_other_lines_and_uncomments_template_lines(tmp_path):
     f.write_text(text + "axes.grid: True   # mine\nfont.size: 12\n", encoding="utf-8")
     plotstyle.write_style({"lines.linewidth": "2", "font.size": "9"}, f)
     rc, _ = plotstyle.read_style(f)
-    assert rc == {**plotstyle.preset_rc("slides"), "font.size": "9", "lines.linewidth": "2", "axes.grid": "True"}
+    assert rc == {**plotstyle.preset_rc("seoul"), "font.size": "9", "lines.linewidth": "2", "axes.grid": "True"}
     assert "axes.grid: True   # mine" in f.read_text(encoding="utf-8")
     plotstyle.write_style({"font.size": None}, f)
     assert "font.size" not in plotstyle.read_style(f)[0] and "# font.size:" in f.read_text(encoding="utf-8")
@@ -314,19 +314,29 @@ def test_editor_commands_per_platform():
 
 
 def test_saved_presets_are_listed_and_named_safely_on_every_platform():
-    plotstyle.apply_preset("minimal")
+    plotstyle.apply_preset("barcelona")
     plotstyle.write_style({"font.size": "11"})
     target = plotstyle.save_preset("My Talk")
     assert target.name == "My Talk.mplstyle" and plotstyle.preset_of() == "my talk"
     assert set(plotstyle.user_presets()) == {"my talk"} and plotstyle.preset_rc("MY TALK")["font.size"] == "11"
-    plotstyle.apply_preset("slides")
+    plotstyle.apply_preset("boston")
     assert plotstyle.read_style()[0]["font.size"] == "14"
-    plotstyle.apply_preset("my talk")                             # back: its keys, Slides' own ones gone
+    plotstyle.apply_preset("my talk")                             # back: its keys, Boston's own ones gone
     rc = plotstyle.read_style()[0]
-    assert rc["font.size"] == "11" and rc["xtick.direction"] == "out" and "figure.figsize" not in rc
+    assert rc["font.size"] == "11" and rc["axes.facecolor"] == "F3ECE0" and "legend.frameon" not in rc
     plotstyle.write_style({"font.size": "12"})
     assert plotstyle.save_preset("my talk") == target            # same name, any case: replaced
     assert plotstyle.preset_rc("My Talk")["font.size"] == "12"
-    for bad in ("Slides", "classic serif", "user", "a/b", "a\\b", "C:x", "dots.", "", "x#y"):
+    for bad in ("Seoul", "dongtan", "user", "a/b", "a\\b", "C:x", "dots.", "", "x#y"):
         with pytest.raises(ValueError):
             plotstyle.save_preset(bad)
+
+
+def test_dark_theme_swaps_cycle_colors_too_dark_to_see():
+    dark = {"bg": "#15171C", "text": "#E6E6E6"}
+    colors = plotstyle.validated(plotstyle.screen_rc(plotstyle.preset_rc("london"), dark))["axes.prop_cycle"]
+    assert colors.by_key()["color"][:2] == ["#E6E6E6", "#A4161A"]          # navy goes, crimson stays
+    assert "linestyle" in colors.keys
+    light = plotstyle.screen_rc(plotstyle.preset_rc("london"), {"bg": "#FFFFFF", "text": "#1A1A1A"})
+    assert light["axes.prop_cycle"] == plotstyle.preset_rc("london")["axes.prop_cycle"]
+    assert "axes.facecolor" not in plotstyle.screen_rc(plotstyle.preset_rc("dongtan"), dark)

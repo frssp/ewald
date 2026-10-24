@@ -717,8 +717,8 @@ class PreferencesDialog(QtWidgets.QDialog):
 
         user, problems = plotstyle.read_style()
         self.style_preset.blockSignals(True)
-        marked = plotstyle.preset_of()   # None: a file without a "# preset:" line, shown as Boxed
-        self.style_preset.setCurrentIndex(max(0, self.style_preset.findData(marked or "boxed")))
+        marked = plotstyle.preset_of()   # None: a file without a "# preset:" line, shown as the default
+        self.style_preset.setCurrentIndex(max(0, self.style_preset.findData(marked or plotstyle.DEFAULT_PRESET)))
         self.style_preset.blockSignals(False)
         for f in plotstyle.FORM:
             self._set_style_value(f, f.value(user))

@@ -5716,10 +5716,10 @@ def test_plot_style_file_is_the_source_of_the_preferences_form(app, monkeypatch)
     dlg.style_widgets["Line width"].setValue(2.0)
     assert dlg.apply()
     assert plotstyle.read_style()[0] == {"font.size": "9", "axes.grid": "True", "lines.linewidth": "2"}
-    dlg.style_preset.setCurrentIndex(dlg.style_preset.findData("slides"))   # the rows preview the preset
+    dlg.style_preset.setCurrentIndex(dlg.style_preset.findData("boston"))   # the rows preview the preset
     assert dlg._style_form()["Font size"] == 14.0
     dlg.style_widgets["Line width"].setValue(1.5)                         # ... and a row set on top of it
-    assert dlg.apply() and plotstyle.preset_of() == "slides"
+    assert dlg.apply() and plotstyle.preset_of() == "boston"
     rc = plotstyle.read_style()[0]
     assert rc["font.size"] == "14" and rc["lines.linewidth"] == "1.5" and rc["axes.grid"] == "True"
     plotstyle.write_style({"font.size": "12"})                 # edited in a text editor meanwhile
@@ -5727,23 +5727,23 @@ def test_plot_style_file_is_the_source_of_the_preferences_form(app, monkeypatch)
     os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
     dlg.event(QtCore.QEvent(QtCore.QEvent.WindowActivate))
     assert dlg._style_form()["Font size"] == 12.0
-    cycle = plotstyle.read_style()[0]["axes.prop_cycle"]          # the Slides preset's
+    cycle = plotstyle.read_style()[0]["axes.prop_cycle"]          # the Boston preset's
     dlg.style_widgets["Color cycle"].setText("nocolor")
     assert not dlg.apply() and "Color cycle" in dlg.style_problems.text()
     assert plotstyle.read_style()[0]["axes.prop_cycle"] == cycle
     dlg.style_widgets["Color cycle"].setText("")
     dlg.restore_page()                                          # Reset page: the preset and the rows go
-    assert dlg.apply() and plotstyle.preset_of() == "slides"
-    assert plotstyle.read_style()[0] == {**plotstyle.preset_rc("slides"), "axes.grid": "True"}
+    assert dlg.apply() and plotstyle.preset_of() == "seoul"
+    assert plotstyle.read_style()[0] == plotstyle.preset_rc("seoul")   # Boston's grid went with it
     dlg.style_widgets["Font size"].setValue(16)                  # Save as preset: listed from then on
     assert dlg.save_style_preset("Talk 16") and plotstyle.preset_of() == "talk 16"
-    assert dlg.style_preset.currentData() == "talk 16" and dlg.style_preset.findData("slides") >= 0
+    assert dlg.style_preset.currentData() == "talk 16" and dlg.style_preset.findData("seoul") >= 0
     assert plotstyle.preset_rc("Talk 16")["font.size"] == "16"
-    assert not dlg.save_style_preset("Slides") and "built-in" in dlg.style_problems.text()
+    assert not dlg.save_style_preset("Seoul") and "built-in" in dlg.style_problems.text()
     opened = []
     monkeypatch.setattr("ewald.gui.file_dialogs.open_in_editor", lambda p: opened.append(p) or True)
     path.unlink()
-    assert dlg.open_style_file() and opened == [path] and plotstyle.read_style() == (plotstyle.preset_rc("slides"), [])
+    assert dlg.open_style_file() and opened == [path] and plotstyle.read_style() == (plotstyle.preset_rc("seoul"), [])
     assert "# EWALD plot style" in path.read_text(encoding="utf-8")
     dlg.close()
 

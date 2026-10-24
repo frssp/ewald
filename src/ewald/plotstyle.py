@@ -82,6 +82,14 @@ def _dark(color: str) -> bool:
     return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.5
 
 
+def _luminance(color: str) -> float:
+    """WCAG relative luminance of a ``#rrggbb`` color."""
+    c = color.lstrip("#")
+    r, g, b = ((v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4)
+               for v in (int(c[i:i + 2], 16) / 255 for i in (0, 2, 4)))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
 def colors(tokens: dict | None = None) -> tuple:
     """The color cycle for a surface: :data:`DARK` on a dark ``tokens['bg']``, else :data:`LIGHT`.
     A colorful ``tokens['accent']`` (a UI theme's) leads the cycle in place of the cycle colors
@@ -184,7 +192,7 @@ def use(style: str | dict | None = "publication", tokens: dict | None = None, fo
     """Set matplotlib's rcParams for your own figures: ``use()`` the publication style (in
     ``tokens`` colors), ``use("default")`` matplotlib's own defaults, ``use("user")`` the
     publication style with your style file (:func:`user_style_path`) on top, ``use("thesis")`` with
-    ``<config dir>/plots/thesis.mplstyle``, ``use("slides")`` a :data:`PRESETS` entry, ``use("my.mplstyle")``
+    ``<config dir>/plots/thesis.mplstyle``, ``use("seoul")`` a :data:`PRESETS` entry, ``use("my.mplstyle")``
     with that file. In an ewald notebook or the GUI console the change lasts for that notebook
     only (see :class:`Session`)."""
     import warnings
@@ -409,17 +417,17 @@ def validated(user: dict | None) -> dict:
 
 def screen_rc(user: dict | None, tokens: dict | None = None) -> dict:
     """``user`` without :data:`THEME_KEYS`, for plots drawn in a UI theme's colors. On a dark
-    ``tokens['bg']`` the near-black lines of a color cycle (Classic serif's first) take the
-    theme's text color, so they stay visible."""
+    ``tokens['bg']`` the lines of a color cycle too dark to see on it (London's navy first) take
+    the theme's text color."""
     out = {k: v for k, v in (user or {}).items() if k not in THEME_KEYS}
     if tokens and _dark(tokens.get("bg", "#FFFFFF")) and "axes.prop_cycle" in out:
         from matplotlib.colors import to_hex
 
         cycle = validated({"axes.prop_cycle": out["axes.prop_cycle"]}).get("axes.prop_cycle")
         if cycle is not None and "color" in cycle.keys:
-            ink = tokens.get("text", "#E6E6E6")
+            ink, bg = tokens.get("text", "#E6E6E6"), _luminance(tokens.get("bg", "#000000"))
             keys = cycle.by_key()
-            keys["color"] = [ink if sum(int(to_hex(c)[i:i + 2], 16) for i in (1, 3, 5)) < 120 else c
+            keys["color"] = [ink if (_luminance(to_hex(c)) + 0.05) / (bg + 0.05) < 2 else c
                              for c in keys["color"]]
             out["axes.prop_cycle"] = _cycle(keys)
     return out
@@ -542,58 +550,64 @@ def write_style(updates: dict, path=None) -> Path:
     return write_text(path, "\n".join(lines) + "\n")
 
 
-# Starting points for a style file (Preferences › Plots › Preset, or plotstyle.use(name)), named
-# by their look: each differs in frame, ticks, line styles and colors, not just in size.
+# Starting points for a style file (Preferences › Plots › Preset, or plotstyle.use(name)). All
+# share the slide scale (14 pt type, thick lines, a 6.4 x 4 in figure) and differ in look; they
+# are named after cities, not after what they imitate.
 _SERIF = "Times New Roman, STIXGeneral, TeX Gyre Termes, Nimbus Roman, DejaVu Serif"
+_SLIDE = {"font.size": "14", "lines.linewidth": "2.5", "lines.markersize": "8", "axes.linewidth": "1.5",
+          "xtick.major.width": "1.5", "ytick.major.width": "1.5", "xtick.major.size": "6", "ytick.major.size": "6",
+          "xtick.minor.width": "1.0", "ytick.minor.width": "1.0", "xtick.minor.size": "3", "ytick.minor.size": "3",
+          "figure.figsize": "6.4, 4.0"}
 _OPEN = {"axes.spines.top": "False", "axes.spines.right": "False", "xtick.top": "False", "ytick.right": "False",
          "xtick.direction": "out", "ytick.direction": "out", "xtick.minor.visible": "False",
          "ytick.minor.visible": "False"}
 PRESETS = {
-    # slides and screens: large type, thick lines, open axes, vivid colors, 16:10 figure (the default)
-    "slides": {"label": "Slides", "rc": {**_OPEN,
-        "font.size": "14", "lines.linewidth": "2.5", "lines.markersize": "8", "axes.linewidth": "1.5",
-        "xtick.major.width": "1.5", "ytick.major.width": "1.5", "xtick.major.size": "6", "ytick.major.size": "6",
-        "axes.prop_cycle": "cycler(color=['0072B2', 'E69F00', '009E73', 'D55E00', 'CC79A7', '56B4E9'])",
-        "figure.figsize": "6.4, 4.0"}},
-    # boxed axes, ticks inside on four sides with minor ticks, 8 pt sans-serif, colorblind-safe colors
-    "boxed": {"label": "Boxed", "rc": {"font.size": "9", "lines.linewidth": "1.75", "axes.linewidth": "1.0",
-                                       "xtick.major.width": "1.0", "ytick.major.width": "1.0"}},
-    # serif text and math, thin box, black first and a line style per series (reads in grayscale too)
-    "classic": {"label": "Classic serif", "rc": {
-        "font.family": "serif", "font.serif": _SERIF, "mathtext.fontset": "stix", "font.size": "9",
-        "axes.linewidth": "0.8", "xtick.major.width": "0.8", "ytick.major.width": "0.8",
-        "xtick.minor.width": "0.6", "ytick.minor.width": "0.6", "xtick.major.size": "3.5", "ytick.major.size": "3.5",
-        "xtick.minor.size": "2", "ytick.minor.size": "2", "lines.linewidth": "1.6",
-        "axes.prop_cycle": "cycler(color=['000000', 'C0392B', '1F4E9C', '2E7D32', '7B3F99']) + "
+    # open axes, ticks outside, vivid colorblind-safe colors (the default)
+    "seoul": {"label": "Seoul", "rc": {**_SLIDE, **_OPEN,
+        "axes.prop_cycle": "cycler(color=['0072B2', 'E69F00', '009E73', 'D55E00', 'CC79A7', '56B4E9'])"}},
+    # serif text and math in a box with ticks inside on four sides, deep colors with a line style each
+    "london": {"label": "London", "rc": {**_SLIDE,
+        "font.family": "serif", "font.serif": _SERIF, "mathtext.fontset": "stix",
+        "axes.prop_cycle": "cycler(color=['1B2A49', 'A4161A', '2D6A4F', 'B07D2B', '5E4B8B']) + "
                            "cycler(linestyle=['-', '--', '-.', ':', (0, (5, 1, 1, 1))])"}},
-    # only the x axis line; light horizontal grid lines instead of a y axis, no tick marks on y,
-    # soft colors, a little more air
-    "minimal": {"label": "Minimal", "rc": {**_OPEN,
-        "axes.spines.left": "False", "ytick.major.size": "0", "ytick.major.pad": "4",
-        "axes.grid": "True", "axes.grid.axis": "y", "axes.axisbelow": "True",
-        "grid.color": "D9D9D9", "grid.linestyle": "-", "grid.linewidth": "0.8",
-        "axes.prop_cycle": "cycler(color=['4477AA', 'EE6677', '228833', 'CCBB44', '66CCEE', 'AA3377'])",
-        "font.size": "9", "lines.linewidth": "2.0", "axes.linewidth": "1.0", "axes.edgecolor": "555555",
-        "xtick.major.width": "1.0", "xtick.color": "555555", "ytick.color": "555555",
-        "axes.ymargin": "0.06", "axes.labelpad": "4"}},
-    # dashed light grid behind the data, framed legend, bright colors
-    "grid": {"label": "Grid", "rc": {
-        "axes.grid": "True", "grid.linestyle": "--", "grid.linewidth": "0.5", "grid.color": "B0B0B0",
-        "grid.alpha": "0.7", "xtick.minor.visible": "False", "ytick.minor.visible": "False",
-        "legend.frameon": "True", "legend.framealpha": "0.9", "legend.edgecolor": "B0B0B0", "legend.fancybox": "False",
-        "axes.prop_cycle": "cycler(color=['0C5DA5', 'FF2C00', '00B945', 'FF9500', '845B97', '474747'])",
-        "font.size": "9", "lines.linewidth": "1.75", "axes.linewidth": "1.0"}},
-    # a light gray plot area with a white grid and no frame lines (in saved figures; on screen the
-    # UI theme keeps the background), short ticks outside
-    "panel": {"label": "Gray panel", "rc": {**_OPEN,
-        "axes.facecolor": "EBEBEB", "axes.edgecolor": "FFFFFF", "axes.linewidth": "0",
-        "axes.spines.left": "False", "axes.spines.bottom": "False", "axes.axisbelow": "True",
-        "axes.grid": "True", "grid.color": "FFFFFF", "grid.linestyle": "-", "grid.linewidth": "0.9",
-        "xtick.major.size": "2.5", "ytick.major.size": "2.5", "xtick.color": "4D4D4D", "ytick.color": "4D4D4D",
-        "axes.prop_cycle": "cycler(color=['E24A33', '348ABD', '988ED5', '777777', 'FBC15E', '8EBA42'])",
-        "font.size": "9", "lines.linewidth": "1.75"}},
+    # a warm sand plot area with a white grid and no frame lines, Mediterranean colors
+    "barcelona": {"label": "Barcelona", "rc": {**_SLIDE, **_OPEN,
+        "axes.facecolor": "F3ECE0", "axes.spines.left": "False", "axes.spines.bottom": "False",
+        "axes.axisbelow": "True", "axes.grid": "True", "grid.color": "FFFFFF", "grid.linewidth": "1.4",
+        "xtick.major.size": "0", "ytick.major.size": "0", "xtick.major.pad": "6", "ytick.major.pad": "6",
+        "axes.prop_cycle": "cycler(color=['E76F51', '2A9D8F', 'E9C46A', '264653', 'C8553D', '8AB17D'])"}},
+    # a box with a dashed grid behind the data, a framed legend, crimson first
+    "boston": {"label": "Boston", "rc": {**_SLIDE,
+        "xtick.minor.visible": "False", "ytick.minor.visible": "False",
+        "axes.grid": "True", "grid.linestyle": "--", "grid.linewidth": "0.8", "grid.color": "B0B0B0",
+        "legend.frameon": "True", "legend.framealpha": "0.95", "legend.edgecolor": "8C8C8C", "legend.fancybox": "False",
+        "axes.prop_cycle": "cycler(color=['A51C30', '1E4D8C', 'D48C00', '4B7F52', '6B4C9A', '4D4D4D'])"}},
+    # light: thin gray axes on the left and bottom only, ticks inside, cool blues and one accent
+    "helsinki": {"label": "Helsinki", "rc": {**_SLIDE,
+        "axes.spines.top": "False", "axes.spines.right": "False", "xtick.top": "False", "ytick.right": "False",
+        "xtick.minor.visible": "False", "ytick.minor.visible": "False",
+        "axes.linewidth": "0.8", "xtick.major.width": "0.8", "ytick.major.width": "0.8", "axes.edgecolor": "8A8F98",
+        "xtick.color": "8A8F98", "ytick.color": "8A8F98", "lines.linewidth": "2.2",
+        "axes.prop_cycle": "cycler(color=['1F5AA6', '6FA8DC', 'F2994A', '0B2545', '9DB4C0', '8E9AAF'])"}},
+    # night: a dark plot area with bright lines and a faint grid (saved figures; on screen the UI
+    # theme keeps its background)
+    "dongtan": {"label": "Dongtan", "rc": {**_SLIDE, **_OPEN,
+        "figure.facecolor": "15171C", "axes.facecolor": "15171C", "savefig.facecolor": "15171C",
+        "text.color": "E8EAED", "axes.labelcolor": "E8EAED", "axes.edgecolor": "6B7280",
+        "xtick.color": "9AA0A6", "ytick.color": "9AA0A6", "xtick.labelcolor": "E8EAED", "ytick.labelcolor": "E8EAED",
+        "legend.labelcolor": "E8EAED", "axes.grid": "True", "grid.color": "2E323A", "grid.linewidth": "0.8",
+        "axes.prop_cycle": "cycler(color=['00D1FF', 'FF4FA3', 'B8F400', 'FFB000', 'A78BFA', 'FF6B57'])"}},
+    # countryside: a box with ticks inside on four sides and minor ticks, a dotted row grid,
+    # strawberry and leaf colors, thicker lines
+    "samlangjin": {"label": "Samlangjin", "rc": {**_SLIDE,
+        "xtick.top": "True", "ytick.right": "True", "xtick.direction": "in", "ytick.direction": "in",
+        "xtick.minor.visible": "True", "ytick.minor.visible": "True",
+        "axes.grid": "True", "axes.grid.axis": "y", "grid.linestyle": ":", "grid.linewidth": "1.0",
+        "grid.color": "9C9C8A", "axes.edgecolor": "3B3A30", "lines.linewidth": "3.5", "axes.linewidth": "2.0",
+        "xtick.major.width": "2.0", "ytick.major.width": "2.0", "xtick.minor.width": "1.3", "ytick.minor.width": "1.3",
+        "axes.prop_cycle": "cycler(color=['D62246', '2B9348', 'F4A259', '4E598C', 'A44A3F', '8D99AE'])"}},
 }
-DEFAULT_PRESET = "slides"   # what a new style file (or none at all) gives
+DEFAULT_PRESET = "seoul"   # what a new style file (or none at all) gives
 
 
 def user_presets() -> dict:
@@ -700,10 +714,10 @@ def apply_preset(name: str, path=None) -> Path:
     key = _preset_key(name)
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        write_text(path, template(key if key in PRESETS else "boxed"))
+        write_text(path, template(key if key in PRESETS else DEFAULT_PRESET))
         if key in PRESETS:
             return path
-        old = preset_rc("boxed")
+        old = preset_rc(DEFAULT_PRESET)
     else:
         was = preset_of_text(path.read_text(encoding="utf-8-sig"))
         old = preset_rc(was) if was else {}
