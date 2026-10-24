@@ -70,12 +70,14 @@ modulations.
 | `qpoint`, `band` | the mode, 0-based; `band=None` takes the first optical branch (band 3) |
 | `amplitude` | the largest atomic displacement, Å |
 | `supercell` | `(na, nb, nc)` repeats of the primitive cell; `None` takes the smallest one in which the mode is periodic (X: 2×1×1), up to `max_supercell` per axis |
-| `arrows`, `arrow_length`, `arrow_width`, `arrow_color` | draw the mode pattern (property "Phonon Mode", the displacement at frame 0) as arrows; the longest is `arrow_length` Å, the others in proportion |
+| `arrows`, `arrow_length`, `arrow_width`, `arrow_color` | draw one arrow per atom; at full swing the longest is `arrow_length` Å, the others in proportion |
+| `arrow_mode` | what the arrows show: `"displacement"` (default) this frame's displacement, property "Phonon Displacement", so an arrow shrinks, vanishes at the rest position and flips as the atom swings back; `"velocity"` this frame's velocity, "Phonon Velocity" in Å/ps, longest as an atom passes its rest position; `"fixed"` the mode pattern, "Phonon Mode" (the displacement at frame 0), the same in every frame, as in a still figure |
 
 It sets the attributes `Phonon.Frequency` (THz), `Phonon.Wavenumber` (cm⁻¹), `Phonon.QPoint`,
-`Phonon.Band`, `Phonon.q` and `Phonon.Supercell`. The arrows are an ordinary `VectorVis`
-style, so every renderer draws them; for a still figure of a mode, render frame 0 with the ray
-tracer or as SVG/PDF.
+`Phonon.Band`, `Phonon.q` and `Phonon.Supercell`, and the particle properties "Phonon Mode",
+"Phonon Displacement" and "Phonon Velocity" in every frame. The arrows are an ordinary
+`VectorVis` style, so every renderer draws them; for a still figure of a mode, use
+`arrow_mode="fixed"` (or frame 0, where both agree) with the ray tracer or as SVG/PDF.
 
 ## In the GUI
 

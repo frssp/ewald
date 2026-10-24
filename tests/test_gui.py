@@ -5724,7 +5724,7 @@ def test_main_window_plays_phonon_mode(app):
     w = MainWindow()
     pipe = w.open_file(os.path.join(PHONON_DATA, "OUTCAR.phonon"))
     assert [type(m).__name__ for m in pipe.modifiers] == ["PhononMode"]  # added on open
-    assert w.data.attributes["Phonon.Band"] == 3 and "Phonon Mode" in w.data.vectors
+    assert w.data.attributes["Phonon.Band"] == 3 and "Phonon Displacement" in w.data.vectors
     w.play_phonon_mode(0, 9)
     assert pipe.modifiers[0].band == 9 and w.data.attributes["Phonon.Band"] == 9
     assert w.timeline.play.isChecked()

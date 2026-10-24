@@ -120,10 +120,41 @@ def test_phonon_mode_animation_loops_one_period():
     a = d0.attributes
     assert a["Phonon.QPoint"] == 4 and a["Phonon.Band"] == 5 and a["Phonon.q"] == (0.5, 0.0, 0.0)
     assert a["Phonon.Wavenumber"] == pytest.approx(a["Phonon.Frequency"] * 33.35641)
-    assert "Phonon Mode" in d0.vectors and d0.vectors["Phonon Mode"].scaling == pytest.approx(2.5 / 0.2)
+    assert "Phonon Displacement" in d0.vectors and d0.vectors["Phonon Displacement"].scaling == pytest.approx(2.5 / 0.2)
     pipe.modifiers[0].arrows = False
-    assert "Phonon Mode" not in pipe.compute(1).vectors
+    assert not pipe.compute(1).vectors
     assert "Phonon Mode" not in pipe.source_frame(0)  # source frames stay untouched
+
+
+def test_phonon_arrows_follow_the_motion():
+    pipe = import_file(DATA / "band.yaml", frames=8)
+    mod = PhononMode(qpoint=4, band=5, amplitude=0.2)
+    pipe.modifiers.append(mod)
+    d0, d2, d4 = pipe.compute(0), pipe.compute(2), pipe.compute(4)
+    eq = d0.positions - d0["Phonon Mode"]
+    for d in (d0, d2, d4):   # the arrow is this frame's displacement: it shrinks and flips with the atom
+        np.testing.assert_allclose(d["Phonon Displacement"], d.positions - eq, atol=1e-12)
+        np.testing.assert_allclose(d["Phonon Mode"], d0["Phonon Mode"])          # the pattern stays
+        assert list(d.vectors) == ["Phonon Displacement"]
+    np.testing.assert_allclose(d4["Phonon Displacement"], -d0["Phonon Displacement"], atol=1e-12)
+    assert np.abs(d2["Phonon Displacement"]).max() < 1e-12                           # quarter period: at rest position
+    # velocity: finite difference of the positions, fastest a quarter period in
+    w = 2 * np.pi * abs(d0.attributes["Phonon.Frequency"])
+    dt = 2 * np.pi / w / 8                                                           # ps per frame
+    fd = (pipe.compute(3).positions - pipe.compute(1).positions) / (2 * dt)
+    h = 2 * np.pi / 8                                                                # central difference of a sine
+    np.testing.assert_allclose(d2["Phonon Velocity"], fd * h / np.sin(h), atol=1e-9)
+    assert np.abs(d0["Phonon Velocity"]).max() < 1e-12
+    mod.arrow_mode = "velocity"
+    v = pipe.compute(2)
+    assert list(v.vectors) == ["Phonon Velocity"]
+    longest = np.linalg.norm(v["Phonon Velocity"], axis=1).max() * v.vectors["Phonon Velocity"].scaling
+    assert longest == pytest.approx(2.5)
+    mod.arrow_mode = "fixed"
+    assert list(pipe.compute(2).vectors) == ["Phonon Mode"]
+    mod.arrow_mode = "sideways"
+    with pytest.raises(ValueError, match="arrow_mode"):
+        pipe.compute(5)
 
 
 def test_default_band_is_first_optical_and_modifier_needs_modes(cu_fcc):
@@ -144,7 +175,7 @@ def test_render_phonon_arrows(tmp_path):
 
     pipe = import_file(DATA / "band.yaml", frames=4)
     pipe.modifiers.append(PhononMode(qpoint=4, band=5))
-    data = pipe.compute(1)
+    data = pipe.compute(0)                            # full swing (frame 1 of 4 is the rest position)
     cam = {"position": (20, -30, 15), "focal_point": (3.75, 1.9, 1.9), "up": (0, 0, 1), "parallel_projection": True,
            "parallel_scale": 6.0, "view_angle": 30.0}
     bare = data.copy()
