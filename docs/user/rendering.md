@@ -1,7 +1,8 @@
 # Rendering figures
 
 `pipe.render(filename, frame=..., **options)` renders one frame offscreen to PNG, JPG, TIFF,
-SVG, PDF or EPS; without a file name it returns the image as an RGB array. `ewald.render.render(data, ...)`
+SVG, PDF or EPS. It returns the picture as an RGB array (an `Image`, whose repr is one line such
+as `<Image 1600x1200 RGB, saved to fig.png>` and which Jupyter shows as the picture). `ewald.render.render(data, ...)`
 does the same for a `DataCollection`. Without `renderer=` it uses OpenGL where an OpenGL context
 can be opened and the ray tracer elsewhere (a cluster node without a display; see
 [Headless machines](install.md#headless-machines)).

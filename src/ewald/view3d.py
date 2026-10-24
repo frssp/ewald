@@ -263,6 +263,41 @@ _PRESET_KEYS = {"radius_scale": 0, "bonds": 1, "atom_style": 2}
 GROUPS = ("style", "atoms", "bonds", "cell", "boundary", "elements", "camera", "picture")
 
 
+class Image(np.ndarray):
+    """What ``pipe.render()`` returns: the RGB(A) picture as a numpy array, whose repr is one line
+    (``<Image 1600x1200 RGB, saved to fig.png>``) instead of a screen of pixels, and which Jupyter
+    and notebook cells show as the picture. ``filename`` is where it was saved (None: nowhere)."""
+
+    def __new__(cls, pixels, filename=None):
+        obj = np.asarray(pixels).view(cls)
+        obj.filename = None if filename is None else str(filename)
+        return obj
+
+    def __array_finalize__(self, obj):
+        self.filename = getattr(obj, "filename", None)
+
+    def _is_picture(self) -> bool:
+        return self.ndim == 3 and self.shape[2] in (3, 4) and self.dtype == np.uint8
+
+    def _repr_png_(self):
+        if not self._is_picture():
+            return None
+        import io
+
+        from PIL import Image as PILImage
+
+        buf = io.BytesIO()
+        PILImage.fromarray(np.asarray(self)).save(buf, format="PNG")
+        return buf.getvalue()
+
+    def __repr__(self):
+        if not self._is_picture():
+            return repr(np.asarray(self))
+        mode = "RGBA" if self.shape[2] == 4 else "RGB"
+        saved = f", saved to {self.filename}" if self.filename else ""
+        return f"<Image {self.shape[1]}x{self.shape[0]} {mode}{saved}>"
+
+
 class UnknownSetting(TypeError, KeyError):
     """A view setting that does not exist (``view(pipe, stlye=...)``): a TypeError like any unknown
     keyword argument, and a KeyError for code written when it was one."""
@@ -521,7 +556,7 @@ class View:
         device = getattr(self.pipeline, "device", None)
         if device not in (None, "cpu") and kw.get("renderer") == "raytrace":
             kw.setdefault("device", device)   # the ray tracer runs where the pipeline computes
-        return render(data, filename, **kw)
+        return Image(render(data, filename, **kw), filename)
 
     def snapshot(self, frame: int | None = None, **overrides):
         """A :class:`ewald.views.Snapshot` (an image under the cell) of this view."""
