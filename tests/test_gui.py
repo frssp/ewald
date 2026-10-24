@@ -2724,6 +2724,92 @@ def test_viewport_hover_shows_atom_type_index_and_coordinates(app):
     v.close()
 
 
+def test_right_click_menu_and_right_drag_leave_the_view_out_of_zoom(app, monkeypatch):
+    """After a right-click menu (or a right-drag zoom) every mouse move kept zooming: pyvista
+    observes right releases on the interactor style, so VTK skipped the style's own EndDolly."""
+    import sys
+
+    from PySide6 import QtTest
+
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    v = Viewport(ViewStyle())
+    v.resize(400, 300)
+    v.show()
+    v.ensure_view()
+    v.set_data(DataCollection([[2.0, 2.0, 2.0], [6.0, 6.0, 6.0]], ["O", "Ti"], Cell(np.diag([8.0] * 3))))
+    app.processEvents()
+    menus = []
+    v.contextMenuRequested.connect(lambda: menus.append(1))
+    w, style, p = v.plotter.interactor, v.plotter.iren.style, QtCore.QPoint(200, 150)
+    try:
+        QtTest.QTest.mousePress(w, QtCore.Qt.RightButton, QtCore.Qt.NoModifier, p)
+        assert style.GetState() == 4  # VTKIS_DOLLY while the button is down
+        QtTest.QTest.mouseRelease(w, QtCore.Qt.RightButton, QtCore.Qt.NoModifier, p)
+        assert menus == [1] and style.GetState() == 0  # menu shown, zoom over
+        QtTest.QTest.mousePress(w, QtCore.Qt.RightButton, QtCore.Qt.NoModifier, p)
+        QtGui.QCursor.setPos(w.mapToGlobal(p + QtCore.QPoint(0, 40)))  # the click test reads the cursor
+        QtTest.QTest.mouseMove(w, p + QtCore.QPoint(0, 40))
+        QtTest.QTest.mouseRelease(w, QtCore.Qt.RightButton, QtCore.Qt.NoModifier, p + QtCore.QPoint(0, 40))
+        assert menus == [1] and style.GetState() == 0  # a zoom drag, no menu
+        QtGui.QCursor.setPos(w.mapToGlobal(p))
+        # macOS: Control+click (Qt's MetaModifier there) opens the menu instead of picking
+        monkeypatch.setattr(sys, "platform", "darwin")
+        monkeypatch.setattr(QtWidgets.QApplication, "keyboardModifiers",
+                            staticmethod(lambda: QtCore.Qt.MetaModifier))
+        QtTest.QTest.mouseClick(w, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p)
+        assert menus == [1, 1] and style.GetState() == 0 and not v.picks
+    finally:
+        _dispose(v)
+
+
+def test_control_click_is_the_context_click_only_on_macos():
+    from ewald.gui.viewport import control_click
+
+    meta, ctrl = QtCore.Qt.MetaModifier, QtCore.Qt.ControlModifier
+    assert control_click(meta, "darwin") and not control_click(ctrl, "darwin")
+    assert not control_click(meta, "win32") and not control_click(ctrl, "win32")
+    assert not control_click(meta, "linux") and not control_click(QtCore.Qt.NoModifier, "darwin")
+
+
+def test_legacy_gl_view_right_click_and_macos_control_click_open_the_menu(monkeypatch):
+    """The OpenGL 1.x view: a right click (or Control+click on macOS) asks for the menu, a right
+    drag only zooms."""
+    import sys
+    from types import SimpleNamespace
+
+    from ewald.gui.legacy_viewport import GLView
+
+    menus, zooms = [], []
+    viewport = SimpleNamespace(
+        contextMenuRequested=SimpleNamespace(emit=lambda: menus.append(1)), hover_leave=lambda: None,
+        zoom=zooms.append, click=lambda *a, **k: menus.append("pick"),
+        plotter=SimpleNamespace(camera=None))
+    view = SimpleNamespace(viewport=viewport, width=lambda: 400, height=lambda: 300, update=lambda: None)
+
+    def event(kind, button, pos, mods=QtCore.Qt.NoModifier):
+        return QtGui.QMouseEvent(kind, QtCore.QPointF(*pos), QtCore.QPointF(*pos), button, button, mods)
+
+    def click(button, mods=QtCore.Qt.NoModifier, end=(10, 10)):
+        GLView.mousePressEvent(view, event(QtCore.QEvent.MouseButtonPress, button, (10, 10), mods))
+        if end != (10, 10):
+            GLView.mouseMoveEvent(view, event(QtCore.QEvent.MouseMove, button, end, mods))
+        GLView.mouseReleaseEvent(view, event(QtCore.QEvent.MouseButtonRelease, button, end, mods))
+
+    click(QtCore.Qt.RightButton)
+    assert menus == [1] and view._press is None
+    click(QtCore.Qt.RightButton, end=(10, 60))  # a zoom drag, no menu
+    assert menus == [1] and zooms
+    monkeypatch.setattr(sys, "platform", "darwin")
+    click(QtCore.Qt.LeftButton, QtCore.Qt.MetaModifier)
+    assert menus == [1, 1]
+    monkeypatch.setattr(sys, "platform", "win32")
+    click(QtCore.Qt.LeftButton, QtCore.Qt.MetaModifier)
+    assert menus == [1, 1, "pick"]
+
+
 def test_main_window_legacy_gl_viewport(app, pipe, tmp_path, monkeypatch):
     """The OpenGL 1.x viewport (for ssh -X) draws, picks, measures and keeps the camera in sessions."""
     import time
@@ -4343,6 +4429,35 @@ def test_ai_chat_streams_the_answer(app, pipe):
     assert texts == ["It is fcc."] and answer.to_dict()["tools"] == ["describe_frame"]
 
 
+def test_ai_chat_shows_a_long_answer_whole(app):
+    """A long Markdown answer (lists, a table, inline code) is as tall as its text: a live model's
+    answer was cut off after a few paragraphs, with blank space below."""
+    from PySide6 import QtWidgets
+
+    from ewald.gui.ask_panel import Message
+
+    rows = "\n".join(f"| {k} | {k * 0.37:.2f} | {k * 1.1:.2f} |" for k in range(15))
+    text = ("**Barrier: 0.325 eV.** " + "The atom that moves is Fe id 8. " * 8 + "\n\n**Steps**\n"
+            + "".join(f"- **Cell {k}:** `ExpressionSelection(\"(ParticleIdentifier == 8)\")` and more words\n"
+                      for k in range(8))
+            + "\n| id | a | b |\n|---|---|---|\n" + rows + "\n\n**Last line.**")
+    area = QtWidgets.QScrollArea(widgetResizable=True)
+    inner = QtWidgets.QWidget()
+    lay = QtWidgets.QVBoxLayout(inner)
+    area.setWidget(inner)
+    m = Message("assistant")
+    lay.addWidget(m)
+    lay.addStretch()
+    area.resize(300, 600)
+    area.show()
+    m.set_answer(text)
+    for _ in range(50):
+        app.processEvents()
+    label = next(lb for lb in m.findChildren(QtWidgets.QLabel, "chatText") if "Last line" in lb.text())
+    assert label.height() >= label.heightForWidth(label.width()) > 0
+    area.close()
+
+
 def test_ai_chat_per_notebook_tab(app, pipe):
     """Each notebook tab has its own chat: switching tabs shows that tab's messages, an answer still
     on its way lands in its own tab's chat, the messages are kept on the notebook (saved in .ewd), and
@@ -5408,6 +5523,84 @@ def test_main_window_plays_phonon_mode(app):
     w.timeline.play.setChecked(False)
     menu = {a.text(): a for a in w.viewport_menu().actions()}
     assert "Phonon band structure" in menu and "Play" in menu
+    w.close()
+
+
+def test_notebook_follows_the_ai_cells_without_jumping(app, pipe):
+    """While the AI chat works on cells the notebook does not hop: reading never scrolls, a
+    rewritten cell keeps the focus where it was (it used to pass from cell to cell, scrolling to
+    each), a written cell off screen is scrolled to until you scroll yourself, then a pill points
+    at it; Preferences › AI › Follow the AI's cells: end scrolls once at the end, never not at all."""
+    from PySide6 import QtWidgets
+
+    from ewald.gui.app import MainWindow
+    from ewald.llm.tools import Toolset
+
+    def settle():
+        for _ in range(5):
+            app.processEvents()
+
+    w = MainWindow(pipe)
+    w.resize(1200, 700)
+    w.show()
+    view = w.panel.view
+    for i in range(25):
+        view.add_cell("code", f"x{i} = {i}")
+    settle()
+    nb, bar, follow = view.notebook, view.scroll.verticalScrollBar(), view.ai_follow
+    assert bar.maximum() > 0
+    ts = Toolset(None, notebook=w.ask_panel.notebook_access(nb))
+    first = nb.cells[1]
+    w.activateWindow()
+    view.reveal(first)                                     # the keyboard is on a cell
+    bar.setValue(0)
+    settle()
+    moves = []
+    bar.valueChanged.connect(moves.append)
+
+    def edit(k):
+        moves.append("edit")    # every edit writes new source
+        ts.call("edit_cell", {"index": k, "source": f"y = {len(moves)}", "run": False})
+        settle()
+        return nb.cells[k]
+
+    w._ai_answer(nb, True)
+    ts.call("list_cells", {})
+    ts.call("read_cell", {"index": len(nb.cells) - 1})
+    edit(2)                                                # on screen: nothing moves
+    assert moves == ["edit"] and not follow.pill.isVisible()
+    focused = QtWidgets.QApplication.focusWidget()
+    if focused is not None:                                # the window has the keyboard (an X server)
+        assert view.widget_for(first) in (focused, focused.parentWidget())
+    far = edit(len(nb.cells) - 3)                          # off screen: shown
+    assert bar.value() > 0 and follow.visible(far) and not follow.pill.isVisible()
+    bar.triggerAction(QtWidgets.QAbstractSlider.SliderToMinimum)   # you scroll back up
+    settle()
+    last = edit(len(nb.cells) - 2)
+    assert bar.value() == 0 and follow.pill.isVisible()
+    assert follow.pill.text() == f"AI is on cell {len(nb.cells) - 1}"
+    w._ai_answer(nb, False)
+    assert follow.pill.text() == f"AI edited cell {len(nb.cells) - 1}"
+    follow.pill.click()
+    settle()
+    assert follow.visible(last) and not follow.pill.isVisible() and view.current is last
+
+    w.settings["llm.follow_cells"] = "end"
+    bar.setValue(0)
+    w._ai_answer(nb, True)
+    cell = edit(len(nb.cells) - 1)
+    assert bar.value() == 0
+    w._ai_answer(nb, False)
+    settle()
+    assert follow.visible(cell) and bar.value() > 0
+
+    w.settings["llm.follow_cells"] = "never"
+    bar.setValue(0)
+    w._ai_answer(nb, True)
+    edit(len(nb.cells) - 1)
+    w._ai_answer(nb, False)
+    settle()
+    assert bar.value() == 0 and follow.pill.isVisible()
     w.close()
 
 

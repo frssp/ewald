@@ -83,6 +83,22 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   "어느 셀을 수정했는지 링크가 없다" (there is no link to which cell was changed).
 - **Landed:** this PR (`notebook_tools.touched_cells`, the chat's cell links).
 
+### D35. The notebook follows the AI's cells until you scroll (2026-10-23)
+
+- **Decision:** while the AI chat works, reading cells never scrolls the notebook; a cell it
+  writes or runs is scrolled to only when it is off screen, and once the user scrolls the
+  notebook during that answer it stops following and a pill at the notebook's edge ("AI is on
+  cell 7") jumps there instead. Scrolling once to the last cell at the end, or never, are
+  Preferences › AI › Follow the AI's cells (`llm.follow_cells`).
+- **Why:** the owner found the notebook "너무 왔다갔다" while the AI read and wrote cells and
+  asked to weigh not moving at all, moving less, or going to the last edited cell at the end
+  ("또는 다른 방식일지 고민해줘"); from these options the owner picked following while
+  respecting the user's scroll. (The jumping itself was a bug: rebuilt cells passed the
+  keyboard focus from cell to cell and the scroll area followed each.)
+- **Considered:** never scrolling (cell links and the pill only); scrolling once to the last
+  edited cell when the answer is done. Both stay as settings.
+- **Landed:** PR #5.
+
 ### D6. Structure editing is deferred (2026-10-19)
 
 - **Decision:** no supercell, slab or defect builder until the owner asks.
@@ -349,6 +365,14 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Alternatives:** a Pt nanoparticle site classification with a 3D-view zoom (PR #239, replaced);
   a single run.
 - **Landed:** PR #241 (pre-publication repository); the calm cut and the viridis NEB path in PR #2.
+- **Update (2026-10-23): a live model instead of the scripted one.** The owner put an Anthropic key
+  into the recording environment ("환경변수 추가 완료") so the GIF could be recorded with a real
+  model; `make_ai_demo.py --live` does it with the same three scenes and the same calm camera
+  (the work time-lapsed, at most 20 s a scene, since a live model works for a minute or two). Shown
+  a take with correct numbers but long answers and a failed cell on screen, the owner chose
+  "live로 한 번 더 녹화" (record another live take) over using it or keeping the scripted GIF; the
+  next take is the one committed. Alternatives: keep the scripted recording; commit the take
+  shown.
 
 ### D32. Publish from a fresh repository (2026-10-23)
 

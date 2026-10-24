@@ -1,6 +1,6 @@
 """Record docs/images/ai-demo.gif: Ask AI analyses three runs, one scene each.
 
-    xvfb-run -a -s "-screen 0 1920x1200x24" python docs/images/make_ai_demo.py [scene ...]
+    xvfb-run -a -s "-screen 0 1920x1200x24" python docs/images/make_ai_demo.py [--live] [scene ...]
 
 Scenes (``SCENES``): Li diffusion in a Li6PS5Cl AIMD run (VASP XDATCAR), sp/sp2/sp3 carbon in a
 melt-quench MD run (extxyz), and the barrier of a vacancy hop in fcc Fe (VASP NEB folder). The
@@ -8,9 +8,16 @@ data are the published datasets of ``ewald.examples.fetch`` (downloaded once, ca
 
 The window, the notebook, the tools and every cell are real: the AI's tool calls insert, edit
 and run notebook cells in the GUI as they would with a live model, and the numbers in its answers
-are what those cells compute. Only the model is scripted (each scene's ``script``, written for
-this recording), so it needs no API key and comes out the same every time. After the answer the
-trajectory plays in the structure view.
+are what those cells compute. By default the model is scripted (each scene's ``script``, written
+for this recording), so it needs no API key and comes out the same every time. With ``--live`` a
+real model answers (Claude, the default provider): the key is read from ``EWALD_DEMO_ANTHROPIC_KEY``
+and saved in each scene's throwaway config folder (the 0600 key file), never in the recording
+process's environment or settings.json; the folder is deleted afterwards. A live run also writes
+``ai-demo-transcript.json`` (questions, tool calls, answers, timings) next to the GIF, to check the
+model's numbers against what its cells computed; stretches where the screen does not change (the
+model thinking) are shortened to ``IDLE`` seconds and the whole stretch of the AI's work is
+time-lapsed to at most ``WORK_MAX`` seconds a scene (a live model takes a minute or two). After the answer the trajectory plays in the
+structure view.
 
 Like a screen recording, the picture zooms in so the text reads, but calmly: three slow moves a
 scene. It zooms in on the chat input while the question is typed, then holds the chat and the
@@ -38,6 +45,10 @@ ZOOM = {"type": 1.5, "work": 1.25, "view": 1.5, "full": 1.0}   # how far each re
 EASE = 0.9              # seconds: how fast the picture follows a new region (slow: calm)
 TITLE_SECONDS = 2.2
 SPEED = 1.7             # the GIF plays this much faster than the recording (grabs slow the window)
+IDLE = 1.2              # live: an unchanged screen is shown at most this long (seconds, before SPEED)
+WORK_MAX = 20.0         # live: the AI's work (tool calls, cells) is time-lapsed to at most this long a scene
+READ = (3.5, 9.0)       # seconds to read the final answer: (minimum, maximum), longer answers longer
+LIVE = os.environ.get("_EWALD_AI_DEMO_LIVE") == "1"
 
 HEADER = '''\
 import numpy as np
@@ -59,7 +70,7 @@ SCENES = {
         notebook="# %% Li6PS5Cl argyrodite, AIMD at 0.1 ps per frame\n" + HEADER
                  + 'pipe = load(examples.fetch("li6ps5cl-aimd") / "XDATCAR.gz")\n',
         question="Which Li ions hop in this run? Draw the paths of the most mobile ones colored by time, "
-                 "and give me the Li diffusion coefficient.",
+                 "and give me the Li diffusion coefficient. Keep the answer short.",
         script=[
             ("I'll measure how far every atom moves from the first frame.",
              [("add_modifier", {"name": "CalculateDisplacements", "params": {"reference_frame": 0}})]),
@@ -94,7 +105,7 @@ def mobile_li(frames, data):
         notebook="# %% amorphous carbon at 2.0 g/cm3, quenched and annealed at 3000 K\n" + HEADER
                  + 'pipe = load(examples.fetch("carbon-synth") / "density-2.0-T-3000.extxyz")\n',
         question="Color the atoms by hybridization and plot how the sp, sp2 and sp3 fractions change "
-                 "during the run.",
+                 "during the run. Keep the answer short.",
         script=[
             ("Hybridization follows the number of C neighbors within 1.85 Å: 2 is sp, 3 is sp², 4 is sp³.",
              [("add_modifier", {"name": "CoordinationAnalysis", "params": {"cutoff": 1.85}})]),
@@ -130,7 +141,8 @@ def fractions(frames, data):
         subtitle="VASP climbing-image NEB folder: 5 images",
         notebook="# %% fcc Fe with one vacancy, VTST NEB folder 00-04\n" + HEADER
                  + 'pipe = load(examples.fetch("fe-vacancy-neb"))\n',
-        question="What is the barrier of this NEB, and which atom moves?",
+        question="What is the barrier of this NEB, and which atom moves? Show its path colored by "
+                 "image (viridis). Keep the answer short.",
         script=[
             ("The folder loads as a band with its energy profile. I'll plot it.",
              [("insert_cell", {"source": 'show(pipe, table="NEB spline", y="Energy")'})]),
@@ -207,9 +219,14 @@ def record(name, frames_dir):
 
     scene = SCENES[name]
     notebook_panel.CONFIRM_UNSAVED = False
-    plugins.register_ai_provider("scripted", scripted_provider(scene["script"]))
     s = settings.Settings()
-    s["llm.provider"] = "scripted"
+    if LIVE:                           # the key is in this config folder's key file (see main)
+        s["llm.provider"] = "anthropic"
+        if os.environ.get("_EWALD_AI_DEMO_MODEL"):
+            s["llm.model"] = os.environ["_EWALD_AI_DEMO_MODEL"]
+    else:
+        plugins.register_ai_provider("scripted", scripted_provider(scene["script"]))
+        s["llm.provider"] = "scripted"
     s["llm.run_cells"] = True          # Preferences > AI > Let the AI run cells
     path = os.path.join(os.getcwd(), f"{name.replace('-', '_')}.py")
     with open(path, "w", encoding="utf-8", newline="\n") as f:
@@ -219,6 +236,25 @@ def record(name, frames_dir):
     w.resize(*SIZE)
     w.show()
     shots = []
+    events = []                        # (seconds since the question, kind, details) for the transcript
+    started = [time.monotonic()]
+    on_event = w.ask_panel._on_event   # the panel's handler of agent events, on the GUI thread
+
+    def spy(conv, kind, payload):
+        t = round(time.monotonic() - started[0], 1)
+        if kind == "tool_call":
+            events.append((t, kind, payload["name"], payload.get("input")))
+        elif kind == "tool_result" and isinstance(payload, dict):
+            result = payload.get("result")
+            text = result.text() if hasattr(result, "text") else str(result)
+            events.append((t, kind, payload.get("name"), text[:4000], bool(getattr(result, "is_error", False))))
+        elif kind == "answer":
+            events.append((t, kind, payload))
+        elif kind == "text" and not (events and events[-1][1] == "text"):
+            events.append((t, kind))     # first streamed piece of a reply
+        on_event(conv, kind, payload)
+
+    w.ask_panel._on_event = spy
 
     def region():
         """(center x, center y, zoom) of the window region ``FOCUS`` names, in window pixels."""
@@ -246,7 +282,7 @@ def record(name, frames_dir):
             if not shots or time.monotonic() - shots[-1][0] >= 1 / FPS:
                 shot = os.path.join(frames_dir, f"{len(shots):05d}.png")
                 w.grab().save(shot)
-                shots.append((time.monotonic(), shot, region()))
+                shots.append((time.monotonic(), shot, region(), "/".join(FOCUS[0])))
             if time.monotonic() >= end:
                 return
             QtCore.QThread.msleep(10)
@@ -273,10 +309,19 @@ def record(name, frames_dir):
         settle(0.025)
     settle(0.5)
     w.ask_panel.ask()
+    started[0] = time.monotonic()
+    if LIVE:
+        # the camera follows the model, but calmly: the sent question stays in view until its first
+        # event (streamed text or a tool call), then chat and notebook are held still however many
+        # tool calls follow, and the answer gets reading time by its length
+        while w.ask_panel.busy() and not events:
+            settle(0.1)
     FOCUS[0] = ("work",)
     while w.ask_panel.busy():
         settle(0.1)
-    settle(3.5)                        # read the answer
+    answer = next((e[2] for e in reversed(events) if e[1] == "answer"), "")
+    FOCUS[0] = ("work", "read")        # same picture, played at normal speed
+    settle(min(max(READ[0], len(answer) / 60), READ[1]) if LIVE else 3.5)   # read the answer
     FOCUS[0] = ("view",)               # the run plays in the structure view
     settle(0.6)
     start, stop, step = scene["play"]
@@ -285,9 +330,14 @@ def record(name, frames_dir):
         w.set_frame(frame)
         settle(0.6 if short else 1 / FPS)
     settle(1.5)
+    notebook = w.panel.notebook.to_py()   # with the cells the AI wrote
     w.close()
     with open(os.path.join(frames_dir, "shots.json"), "w", encoding="utf-8", newline="\n") as f:
         json.dump({"size": [w.width(), w.height()], "shots": shots}, f)
+    if LIVE:
+        with open(os.path.join(frames_dir, "transcript.json"), "w", encoding="utf-8", newline="\n") as f:
+            json.dump({"scene": name, "question": scene["question"],
+                       "events": events, "notebook": notebook}, f, indent=1)
 
 
 def title_card(number, scene, size, path):
@@ -316,7 +366,7 @@ def frame_crops(shots, size, work):
     cx, cy, zoom = W / 2, H / 2, 1.0
     last = shots[0][0]
     frames = []
-    for t, path, (tx, ty, tz) in shots:
+    for t, path, (tx, ty, tz), *phase in shots:
         a = 1 - math.exp(-(t - last) / EASE)
         last = t
         cx, cy, zoom = cx + a * (tx - cx), cy + a * (ty - cy), zoom + a * (tz - zoom)
@@ -328,8 +378,23 @@ def frame_crops(shots, size, work):
         box = tuple(round(v * scale) for v in (x0, y0, x0 + cw, y0 + ch))
         cropped = os.path.join(work, os.path.basename(path)[:-4] + "-crop.png")
         image.crop(box).resize(out_size, Image.LANCZOS).save(cropped)
-        frames.append((t, cropped))
+        frames.append((t, cropped, phase[0] if phase else ""))
     return frames, out_size
+
+
+def shorten_idle(entries):
+    """Merge runs of identical frames, each shown at most ``IDLE`` s (the model thinking)."""
+    from PIL import Image
+
+    out, last = [], None
+    for png, ms in entries:
+        data = Image.open(png).convert("RGB").tobytes()
+        if out and data == last:
+            out[-1] = (out[-1][0], min(out[-1][1] + ms, IDLE * 1000 / SPEED))
+        else:
+            out.append((png, ms))
+        last = data
+    return out
 
 
 def to_gif(names, dirs, out):
@@ -345,8 +410,22 @@ def to_gif(names, dirs, out):
         card = os.path.join(folder, "title.png")
         title_card(k, SCENES[name], out_size, card)
         entries.append((card, TITLE_SECONDS * 1000))
-        for (t, png), (t2, _) in zip(frames, frames[1:] + [(frames[-1][0] + 1 / FPS, None)]):
-            entries.append((png, max(t2 - t, 0.02) * 1000 / SPEED))
+        scene = []
+        for (t, png, phase), (t2, *_) in zip(frames, frames[1:] + [(frames[-1][0] + 1 / FPS, None, None)]):
+            scene.append((png, max(t2 - t, 0.02) * 1000 / SPEED, phase))
+        work = sum(ms for _, ms, phase in scene if phase == "work")
+        lapse = max(1.0, work / (WORK_MAX * 1000)) if LIVE else 1.0
+        held = 0.0                       # time-lapse by dropping frames: GIF delays under 20 ms play slow
+        for png, ms, phase in scene:
+            if phase != "work":
+                entries.append((png, ms))
+                continue
+            held += ms / lapse
+            if held >= 60:
+                entries.append((png, held))
+                held = 0.0
+    if LIVE:
+        entries = shorten_idle(entries)
     images = [Image.open(png).convert("RGB") for png, _ in entries]
     sample = images[:: max(1, len(images) // 40)]
     w, h = images[0].size
@@ -374,12 +453,36 @@ if __name__ == "__main__":
     if os.environ.get("_EWALD_AI_DEMO"):
         record(os.environ["_EWALD_AI_DEMO"], os.environ["_EWALD_AI_DEMO_DIR"])
         sys.exit(0)
-    names = sys.argv[1:] or list(SCENES)
-    dirs = []
+    args = sys.argv[1:]
+    LIVE = "--live" in args
+    model = next((a.split("=", 1)[1] for a in args if a.startswith("--model=")), "")
+    names = [a for a in args if not a.startswith("--")] or list(SCENES)
+    key = os.environ.get("EWALD_DEMO_ANTHROPIC_KEY", "").strip()
+    if LIVE and not key:
+        sys.exit("--live needs the Anthropic API key in EWALD_DEMO_ANTHROPIC_KEY")
+    dirs, transcripts = [], []
     for name in names:
-        folder = tempfile.mkdtemp()
-        env = dict(os.environ, _EWALD_AI_DEMO=name, _EWALD_AI_DEMO_DIR=folder, EWALD_CONFIG_DIR=tempfile.mkdtemp(),
-                   MPLBACKEND="Agg", EWALD_PLUGIN_INDEX="")
-        subprocess.run([sys.executable, os.path.abspath(__file__)], env=env, cwd=tempfile.mkdtemp(), check=True)
+        folder, config = tempfile.mkdtemp(), tempfile.mkdtemp()
+        env = {k: v for k, v in os.environ.items() if k not in ("EWALD_DEMO_ANTHROPIC_KEY", "ANTHROPIC_API_KEY")}
+        env.update(_EWALD_AI_DEMO=name, _EWALD_AI_DEMO_DIR=folder, EWALD_CONFIG_DIR=config,
+                   MPLBACKEND="Agg", EWALD_PLUGIN_INDEX="", _EWALD_AI_DEMO_LIVE="1" if LIVE else "",
+                   _EWALD_AI_DEMO_MODEL=model)
+        try:
+            if LIVE:                     # the 0600 key file of this config folder, not a system keychain
+                from ewald import keychain
+                from ewald.llm import credentials
+
+                os.environ["EWALD_CONFIG_DIR"] = config
+                keychain.file_set(credentials.USERNAME, key)
+                del os.environ["EWALD_CONFIG_DIR"]
+            subprocess.run([sys.executable, os.path.abspath(__file__)], env=env, cwd=tempfile.mkdtemp(), check=True)
+        finally:
+            shutil.rmtree(config, ignore_errors=True)
         dirs.append(folder)
+        if LIVE:
+            with open(os.path.join(folder, "transcript.json"), encoding="utf-8") as f:
+                transcripts.append(json.load(f))
     to_gif(names, dirs, OUT)
+    if LIVE:
+        with open(os.path.join(HERE, "ai-demo-transcript.json"), "w", encoding="utf-8", newline="\n") as f:
+            json.dump(transcripts, f, indent=1, ensure_ascii=False)

@@ -222,8 +222,19 @@ def split_answer(text: str) -> list[tuple[str, str, str]]:
     return parts
 
 
+class _WrapLabel(QtWidgets.QLabel):
+    """A word-wrapped label that is always as tall as its text at its width: nested layouts give a
+    long Markdown answer (lists, tables) less height than it needs, which cut it off mid-answer."""
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        h = self.heightForWidth(self.width())
+        if h > 0 and h != self.minimumHeight():
+            self.setMinimumHeight(h)
+
+
 def _markdown_label(text: str, name: str = "chatText") -> QtWidgets.QLabel:
-    label = QtWidgets.QLabel(objectName=name)
+    label = _WrapLabel(objectName=name)
     label.setTextFormat(QtCore.Qt.MarkdownText)
     label.setText(text)
     label.setWordWrap(True)
@@ -550,6 +561,8 @@ class AskPanel(QtWidgets.QWidget):
 
     pipelineChanged = QtCore.Signal()
     cellRequested = QtCore.Signal(object, str)   # notebook (None: no notebook), cell id: show that cell
+    answerStarted = QtCore.Signal(object)        # notebook of the chat (None: no notebook): an answer is on its way
+    answerFinished = QtCore.Signal(object)       # ... it arrived, failed or was stopped
     insertRequested = QtCore.Signal(str)
     runRequested = QtCore.Signal(str)
 
@@ -896,6 +909,7 @@ class AskPanel(QtWidgets.QWidget):
         worker.answered.connect(lambda text, c=conv: self._on_answer(c, text))
         worker.failed.connect(lambda message, c=conv: self._on_failed(c, message))
         self._set_stop_button(True)
+        self.answerStarted.emit(conv.key)
         worker.start()
 
     def _insert(self, code):
@@ -966,6 +980,7 @@ class AskPanel(QtWidgets.QWidget):
             self._set_stop_button(False)
         conv.pending = None
         conv.save()
+        self.answerFinished.emit(conv.key)
         pipeline = conv.agent_pipeline if conv.agent else None
         now = getattr(getattr(conv.agent, "toolset", None), "pipeline", pipeline)
         changed = False

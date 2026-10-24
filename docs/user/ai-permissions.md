@@ -192,6 +192,7 @@ keychain).
 | `llm.code_cells` | ```python blocks in answers: inserted as cells (`insert`, default) or offered with a button (`button`); run only with `llm.run_cells` |
 | `llm.run_cells` | whether the AI runs cells: `run_cell` offered, cells written by `insert_cell`/`edit_cell` and inserted code blocks run at once (off) |
 | `llm.read_folders`, `llm.confirm_hosts` | which folders and hosts the AI may open |
+| `llm.follow_cells` | how the notebook scrolls while the AI writes and runs cells: `follow` (default), `end`, `never`; no effect on what the AI may do |
 
 ## Other AI features
 

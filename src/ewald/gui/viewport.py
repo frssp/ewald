@@ -1,6 +1,7 @@
 """3D viewport: VESTA-style view toolbar, tool rail (orbit/pick/measure), overlays."""
 from __future__ import annotations
 
+import sys
 import time
 import weakref
 
@@ -36,6 +37,12 @@ def _button(text, tip, checkable=False, parent=None):
     b.setCheckable(checkable)
     b.setAutoRaise(True)
     return b
+
+
+def control_click(modifiers, platform: str | None = None) -> bool:
+    """Whether a left click is the macOS one-button context click, Control+click (Qt reports the
+    Control key as ``MetaModifier`` there; elsewhere Ctrl+click stays a normal click)."""
+    return (platform or sys.platform) == "darwin" and bool(modifiers & QtCore.Qt.MetaModifier)
 
 
 def camera_ray(camera, x, y, width, height):
@@ -607,6 +614,11 @@ class Viewport(QtWidgets.QWidget):
 
     def _on_drag_end(self, obj, event):
         self._dragging = False
+        if event == "RightButtonReleaseEvent":
+            # pyvista observes right releases on the interactor style, and a VTK style that has an
+            # observer for an event skips its own handler: end the zoom drag here, or every later
+            # mouse move (after a right-click menu, too) keeps zooming
+            self.plotter.iren.style.OnRightButtonUp()
         start = getattr(self, "_right_press", None)
         if event == "RightButtonReleaseEvent" and start is not None \
                 and (QtGui.QCursor.pos() - start).manhattanLength() < 5:
@@ -806,11 +818,16 @@ class Viewport(QtWidgets.QWidget):
 
     def _on_release(self, obj, event):
         self._on_drag_end(obj, event)
-        if self._press is None or self.data is None:
+        if self._press is None:
             return
         x, y = self._event_position()
         if abs(x - self._press[0]) + abs(y - self._press[1]) > 4:
             return  # it was a drag (rotation), not a click
+        if control_click(QtWidgets.QApplication.keyboardModifiers()):
+            self.contextMenuRequested.emit()  # macOS Control+click
+            return
+        if self.data is None:
+            return
         shift = bool(self.plotter.iren.interactor.GetShiftKey())
         self._click(x, y, shift, self.pick_at)
 

@@ -414,6 +414,9 @@ QLabel#chatStep {{ background: {panel}; color: {secondary}; border: 1px solid {b
 QToolButton#chatCellLink {{ background: {accent_soft}; color: {accent}; border: 1px solid transparent;
     border-radius: 10px; padding: 1px 8px 1px 6px; font-size: 11px; font-weight: 600; }}
 QToolButton#chatCellLink:hover {{ border-color: {accent}; }}
+QToolButton#aiCellPill {{ background: {accent}; color: {on_accent}; border: none; border-radius: 12px;
+    padding: 3px 12px 3px 8px; font-size: 11px; font-weight: 600; }}
+QToolButton#aiCellPill:hover {{ background: {accent_hover}; }}
 QToolButton#chatCellLink:disabled {{ background: transparent; color: {muted}; font-weight: 400;
     text-decoration: line-through; }}
 QFrame#chatCode {{ background: {panel}; border: 1px solid {border}; border-radius: 8px; }}

@@ -76,6 +76,7 @@ class NotebookBridge(NotebookAccess):
             view.changed.emit()
         self.window.notebook_dock.show()
         self.window.message(f"{label} (Ctrl+Z undoes it)")
+        view.ai_follow.touched(cell)
 
     def confirm_host(self, host: str) -> bool:
         """Ask the user (on the GUI thread) whether the AI may open files on SSH host ``host``."""
@@ -97,6 +98,7 @@ class NotebookBridge(NotebookAccess):
         self.call(lambda: view.run(cell))
         while self.call(lambda: view.running):   # the cell runs on the notebook's own worker thread
             time.sleep(0.05)
+        self.call(lambda: view.ai_follow.touched(cell))   # its outputs may have moved it off screen
         return cell.state == "ok"
 
 
@@ -326,6 +328,17 @@ class LinksMixin:
         from ..llm.notebook_tools import failed_cells
 
         return failed_cells(nb) or None
+
+    def _ai_answer(self, notebook, started: bool):
+        """An AI chat answer about ``notebook`` starts or ends: its tab follows the cells the AI
+        writes as Preferences › AI › Follow the AI's cells says (:mod:`ewald.gui.ai_follow`)."""
+        view = next((v for v in self.panel.views() if v.notebook is notebook), None)
+        if view is None:
+            return
+        if started:
+            view.ai_follow.begin(self.settings["llm.follow_cells"])
+        else:
+            view.ai_follow.end()
 
     def _show_ai_cell(self, notebook, cell_id):
         """A cell link in the AI chat: show that notebook's tab and the cell, lit up for a moment."""

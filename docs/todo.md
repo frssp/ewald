@@ -121,10 +121,18 @@ GUI
   `pipe = load(...)` cell, the step cells above it still hold the old pipeline's modifiers, and
   `Notebook.sync` (the GUI's refresh) deletes them.
 - AI and the Python API: the model reads `python_api` (about 60 KB, roughly 15k tokens, since the
-  modifier outputs and recipes were added) on demand rather than in the system prompt; no real-model
-  eval run has measured what the larger reference changed, and no eval task yet checks that the cells it writes follow it (one `pipe.add` per
-  step cell, `paint`/`hide` inside an `[each frame]` cell); `ewald ask` and the MCP server do not get the
-  GUI's notebook note.
+  modifier outputs and recipes were added) on demand rather than in the system prompt. The first
+  real-model runs (2026-10-23, Claude through `make_ai_demo.py --live`, three scenes,
+  three takes) read it every time and got the numbers right (barrier, hopping atom, sp/sp2/sp3
+  fractions, D*(Li) 1.3-1.45 × 10⁻⁵ cm²/s against kinisi's 1.23(10)), but `ewald eval` has not been
+  run with a live model yet, and no eval task checks that the cells it writes follow the reference
+  (one `pipe.add` per step cell, `paint`/`hide` inside an `[each frame]` cell); `ewald ask` and the
+  MCP server do not get the GUI's notebook note. What the model tripped over in those runs:
+  property expressions in OVITO's C syntax (`a ? b : c`, `&&`, `||`) are syntax errors, and
+  `A == 1 | B == 2` parses with Python precedence; `suggest_cutoff` picks 0.84 Å on a melt-quench
+  first frame with close contacts; `show(pipe, table="time-series")` also plots the Timestep column,
+  so the model drew its own matplotlib plot; it adds a second `GenerateTrajectoryLines` instead of
+  editing the first; it ignores "keep the answer short" (answers of 300-500 words with tables).
 - `PythonScript` step cells: `Modifier.__repr__` uses `name`, which PythonScript sets to its title,
   so `step_source` writes `pipe.add(Python script(...))`, which does not parse.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
@@ -514,8 +522,9 @@ Docs
 - GUI screenshots in docs/images are made by docs/images/make_screenshots.py; Help › About and the
   Render workspace have none yet, and a GIF of linked selection (drag on a histogram) would show
   what a still cannot. docs/images/ai-demo.gif (Ask AI on Li6PS5Cl AIMD, amorphous carbon MD and a Fe NEB) is recorded by
-  docs/images/make_ai_demo.py with a scripted model; re-record it with a live model once one is
-  available in the recording environment, and when the chat side bar changes visibly.
+  docs/images/make_ai_demo.py, with a scripted model by default or a real one with `--live`
+  (key from `EWALD_DEMO_ANTHROPIC_KEY`); re-record it when the chat side bar changes visibly. A
+  live take differs every time, so look at it before committing it.
 - Cell links in the AI chat count cells by position ("cell 3", markdown cells included), while a
   cell's gutter shows its run count as in Jupyter; after the AI edits and reruns a cell the two
   numbers differ (seen in the ai-demo.gif recording). Consider showing positions in the gutter or
@@ -545,6 +554,14 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Structure view right-click menu on a real Mac (two-finger click, Control+click) and Windows:
+  after closing the menu, moving the mouse must not zoom (fixed for the VTK and OpenGL 1.x views,
+  tested with simulated events under xvfb only).
+- Notebook scroll while the AI chat writes cells, on Windows and macOS: with the keyboard on a
+  notebook cell, an AI edit must not scroll the notebook (the fix moves the focus out of the cell
+  widgets before they are rebuilt; xvfb has no window manager, so focus there is not the real
+  thing), and Follow the AI's cells (follow, end, never) and the "AI is on cell N" pill should
+  behave as on Linux.
 - AI workflow search on a real sim-agent server with the site's model: "open the TiN
   calculation that finished yesterday" should call `list_workflows` with `formula`, `status` and
   `since`/`until`, then `open_workflow`; days are the PC's local days against sim-agent's
