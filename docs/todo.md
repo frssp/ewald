@@ -87,6 +87,10 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   the in-process IPython console (~0.4 s, built when its tab first paints) and peak memory
   (~700 MB with VTK, Qt, numba and IPython). Not yet measured on Windows, where cold imports
   are usually slower (run `python benchmarks/startup.py --cold-jit` there).
+- Maximizing the window (2026-10-24, `python benchmarks/resize.py`): in the container (llvmpipe,
+  cu_void tutorial) it is settled after 0.3-0.7 s, of which one full 3D render is 0.1-0.3 s;
+  restoring takes about 0.12 s. The rest is Qt layout and painting plus matplotlib mathtext
+  parsing of the plot labels (~40 ms). The owner finds it slow on Windows; not yet measured there.
 - UI theme switch takes 0.5-1 s in `QApplication.setStyleSheet` (one app-wide QSS).
 - Playback: plots whose data does not change are not redrawn; per-frame histograms and
   tables update their bars or lines in place (20k-atom histogram 157 -> 65 ms per frame,
@@ -606,6 +610,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   calculation that finished yesterday" should call `list_workflows` with `formula`, `status` and
   `since`/`until`, then `open_workflow`; days are the PC's local days against sim-agent's
   creation time.
+- Window maximize on the owner's Windows machine: `python benchmarks/resize.py` prints how long
+  each maximize and restore takes and how much of it is the 3D render; compare with the container
+  numbers under Performance.
 - GUI startup on the owner's Windows machine: `python benchmarks/startup.py --cold-jit` prints
   where the seconds go (import, window, 3D view, console, busy stretches, peak memory); compare
   with the container numbers under Performance. Windows Defender scanning freshly installed
