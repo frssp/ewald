@@ -103,8 +103,8 @@ DEVFN REAL hit_sphere(PRIV const REAL* o, PRIV const REAL* d, GLOBAL const REAL*
     REAL ox = o[0] - s[0], oy = o[1] - s[1], oz = o[2] - s[2];
     REAL r = s[3];
     REAL b = ox * d[0] + oy * d[1] + oz * d[2];
-    REAL cc = ox * ox + oy * oy + oz * oz - r * r;
-    REAL disc = b * b - cc;
+    REAL fx = ox - b * d[0], fy = oy - b * d[1], fz = oz - b * d[2];   /* see raytrace._hit_sphere */
+    REAL disc = r * r - (fx * fx + fy * fy + fz * fz);
     if (disc < 0) return -1;
     REAL q = sqrt(disc);
     REAL t = -b - q;
@@ -141,8 +141,8 @@ DEVFN REAL hit_cylinder(PRIV const REAL* o, PRIV const REAL* d, GLOBAL const REA
     REAL A = px * px + py * py + pz * pz;
     if (A < (REAL)1e-14) return best;
     REAL B = px * qx + py * qy + pz * qz;
-    REAL C = qx * qx + qy * qy + qz * qz - r * r;
-    REAL disc = B * B - A * C;
+    REAL wx = qx - B / A * px, wy = qy - B / A * py, wz = qz - B / A * pz;
+    REAL disc = A * (r * r - (wx * wx + wy * wy + wz * wz));
     if (disc < 0) return best;
     REAL s = sqrt(disc);
     REAL ts[2] = {(-B - s) / A, (-B + s) / A};

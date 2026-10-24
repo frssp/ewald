@@ -358,6 +358,24 @@ def test_gpu_image_matches_cpu(fake_gpu, ortho):
         assert np.median(diff) < 2e-3 and (diff < 0.02).mean() > 0.99
 
 
+@pytest.mark.parametrize("ortho", [True, False])
+def test_far_camera_keeps_float_spheres_clean(fake_gpu, ortho):
+    """A big box seen from far away (a 100k-atom a-Si cell, zoomed in, on an M2 Mac): single precision
+    sphere and cylinder tests lost the atoms' edges and normals to rounding, so the picture was noise."""
+    sc = rt.Scene()
+    rng = np.random.default_rng(5)
+    c = rng.uniform(-3, 3, (40, 3)) + 300.0
+    sc.add_spheres(c, 0.5, rng.uniform(0.2, 1.0, (40, 3)))
+    sc.add_cylinders(c[:20], c[20:], 0.15, (0.7, 0.7, 0.7))
+    cam = {"position": [1300.0, 1300.0, 1300.0], "focal_point": [300.0, 300.0, 300.0], "up": [0, 0, 1],
+           "parallel_projection": ortho, "parallel_scale": 3.0, "view_angle": 0.2}
+    kw = dict(samples=2, ao_samples=2)
+    cpu = rt.raytrace(sc, cam, (48, 36), **kw)
+    gpu = rt.raytrace(sc, cam, (48, 36), device=fake_gpu, **kw)
+    diff = np.abs(gpu - cpu).max(-1)
+    assert np.median(diff) < 2e-3 and (diff < 0.02).mean() > 0.97
+
+
 def test_gpu_adaptive_and_progress(fake_gpu):
     sc = busy_scene()
     seen = []
