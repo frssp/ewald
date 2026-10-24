@@ -41,7 +41,12 @@ def use_vtk_surface_format() -> None:
     pyvistaqt installs its 3.2 core default only when the VTK widget is built, after the window
     is on screen. Linux and Windows drivers share between the two profiles anyway; macOS cannot
     share a legacy 2.1 context with a 4.1 core one, so the VTK view composites black there.
+
+    Only on macOS: on Windows this default (alpha and an 8-bit depth buffer for the window's own
+    compositing surface) left the whole window black after a resize or maximize, until restart.
     """
+    if sys.platform != "darwin":
+        return
     want = vtk_surface_format()
     if QtGui.QSurfaceFormat.defaultFormat() != want:
         QtGui.QSurfaceFormat.setDefaultFormat(want)
