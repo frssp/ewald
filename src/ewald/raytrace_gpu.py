@@ -220,7 +220,8 @@ DEVFN I64 trace_grid(const REAL* o, const REAL* d, REAL tmax, GLOBAL const REAL*
     dda_axis(o[2], d[2], grid[2], grid[5], dz, t0, &cz, &sz, &nz, &ez);
     REAL best_t = (REAL)1e30;
     I64 best = -1;
-    while (1) {
+    // a ray crosses at most dx + dy + dz cells; the bound also ends a ray made NaN by float round-off
+    for (I64 steps = dx + dy + dz + 3; steps > 0; --steps) {
         I64 c = (cx * dy + cy) * dz + cz;
         for (I64 s = starts[c]; s < starts[c + 1]; ++s) {
             I64 code = items[s];
