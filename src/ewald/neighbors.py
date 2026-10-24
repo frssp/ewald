@@ -48,8 +48,11 @@ def find_pairs(positions, cell: Cell, cutoff: float, backend: Backend | str | No
     ``half=True`` only i < j. ``method`` picks the implementation (see module
     docstring); ``"auto"`` uses numba on CPU and the array code on GPU.
 
-    Requires ``cutoff`` < half the cell width along periodic directions; larger
-    cutoffs need a replicated cell (not done implicitly).
+    A ``cutoff`` beyond half the cell width along a periodic direction (a small cell,
+    e.g. ``rdf(pipe, cutoff=6)`` on a 108-atom box) is searched over periodic images
+    (:func:`_image_pairs`): then a pair (i, j) is listed once per image of j within reach,
+    with that image's ``delta``, and an atom is its own neighbor (i == j) once the cutoff
+    passes a lattice vector, as in OVITO.
     """
     if method not in METHODS:
         raise ValueError(f"unknown method {method!r}; use one of {METHODS}")
@@ -71,8 +74,7 @@ def find_pairs(positions, cell: Cell, cutoff: float, backend: Backend | str | No
         pbc = cell.pbc
         widths = np.diag(matrix).copy()
     if np.any(pbc & (widths < 2 * cutoff)):
-        raise ValueError(f"cutoff {cutoff} exceeds half the periodic cell width "
-                         f"(min width {widths[pbc].min():.3f}); replicate the cell first")
+        return _image_pairs(be, pos, cell, matrix, pbc, widths, cutoff, half, method)
 
     inv = np.linalg.inv(matrix)
     frac = (pos - cell.origin) @ inv
@@ -113,6 +115,41 @@ def find_pairs(positions, cell: Cell, cutoff: float, backend: Backend | str | No
     else:
         out = _cell_list_xp(be, frac, matrix, pbc, cutoff, lo, span, nbins, half)
     return out
+
+
+#: Most atoms (the cell's atoms times its periodic images) :func:`_image_pairs` searches.
+MAX_IMAGE_ATOMS = 2_000_000
+
+
+def _image_pairs(be: Backend, pos, cell: Cell, matrix, pbc, widths, cutoff, half, method):
+    """Pairs within a cutoff beyond half the cell width: the wrapped atoms and their periodic
+    images within reach go through the non-periodic search, and the pairs that start at an
+    atom of the cell itself are kept (j mapped back to its atom)."""
+    xp = be.xp
+    n = len(pos)
+    reps = np.where(pbc, np.ceil(cutoff / np.where(pbc, widths, 1.0)).astype(np.int64), 0)
+    shifts = np.array(list(itertools.product(*[range(-r, r + 1) for r in reps])), dtype=float)
+    if n * len(shifts) > MAX_IMAGE_ATOMS:
+        raise ValueError(f"cutoff {cutoff} exceeds half the periodic cell width (min width "
+                         f"{widths[pbc].min():.3f}) and the {len(shifts)} periodic images it needs hold more than "
+                         f"{MAX_IMAGE_ATOMS} atoms; use a smaller cutoff or replicate the cell first")
+    frac = (pos - cell.origin) @ np.linalg.inv(matrix)
+    frac[:, pbc] %= 1.0
+    wrapped = frac @ matrix + cell.origin
+    center = int(np.flatnonzero(~shifts.any(1))[0])      # the image with no shift: the cell itself
+    ext = (wrapped[None] + (shifts @ matrix)[:, None]).reshape(-1, 3)
+    inner = "auto" if method == "cuda" else method        # small cells: the images are searched on the CPU
+    i, j, delta, dist = (be.to_numpy(a) for a in find_pairs(ext, Cell(np.zeros((3, 3))), cutoff,
+                                                             backend="cpu", method=inner))
+    keep = (i // n) == center
+    i, j, delta, dist = i[keep] % n, j[keep], delta[keep], dist[keep]
+    image, j = j // n, j % n
+    if half:   # one of (i, j, image) and (j, i, -image): i < j, and an atom's own images once
+        mirror = len(shifts) - 1 - image                 # shifts are symmetric: index k <-> -shift
+        keep = (i < j) | ((i == j) & (image > mirror))
+        i, j, image, delta, dist = i[keep], j[keep], image[keep], delta[keep], dist[keep]
+    order = np.lexsort((image, j, i))
+    return tuple(xp.asarray(a[order]) for a in (i, j, delta, dist))
 
 
 def _bin_index(frac, lo, span, nbins):

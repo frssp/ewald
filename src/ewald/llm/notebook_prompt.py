@@ -1,0 +1,84 @@
+"""What the AI chat side bar tells the model about the notebook beside it (Qt-free).
+
+The GUI's chat (:mod:`ewald.gui.ask_panel`) appends :data:`NOTEBOOK_NOTE` to the agent's system
+prompt and starts each question with the notebook's code, the errors of its failed cells and what the
+3D view shows (:func:`notebook_message`); the Python blocks of an answer become cells
+(:func:`code_blocks`). The AI eval suite (:mod:`ewald.llm.evals`) builds the same prompts, so a
+score measures what the GUI user gets.
+"""
+from __future__ import annotations
+
+import re
+
+NOTEBOOK_NOTE = """
+
+You are the chat side bar of ewald's notebook window. The user's notebook is a percent-format \
+Python file (`# %%` cells, one namespace) where `pipe` is the pipeline: step cells are one \
+`pipe.add(Modifier(...))` (every modifier of `ewald.modifiers` is imported by name), \
+view cells are one `show(pipe, ...)` (a plot) or one `view(pipe, ...)` (the 3D view), and `pipe = load(path)` \
+opens a file; python_api describes these cells, show, view and paint. When the user's message \
+starts with the notebook's code, that is its current state. {code_cells} Write each ```python \
+block as one complete cell that runs in that namespace; prefer `pipe.add(...)` steps over ad-hoc \
+loops. When the user asks you to \
+change the notebook itself, use the cell tools: list_cells and read_cell (sources and outputs), \
+insert_cell, edit_cell (step parameters through params), move_cell and delete_cell. {run_cells} \
+add_modifier, set_view, load_structure and export_file write their own cell and run it. Tool names are not Python: never \
+put set_view(...), add_modifier(...) or another tool call in a ```python block or a cell; call the tool, \
+or write the cell's own code (view(pipe, ...), pipe.add(Modifier(...)), pipe = load(path)). Say which \
+cells you changed, and when something is already drawn, say which cell does it; call a cell "cell N" \
+with N counted from 1 as the user sees them (index + 1), never by its index (the chat also links the \
+cells your tools wrote)."""
+
+#: What the note above says about running cells (Preferences › AI › Let the AI run cells).
+RUN_CELLS_NOTE = {
+    True: "The user lets you run cells: insert_cell and edit_cell run the code cell they write at once "
+          "and return its outputs, and run_cell runs any cell, so run the cells you write, read their "
+          "outputs and fix errors yourself instead of asking the user to run them.",
+    False: "The user has not let you run cells: cells you write wait, marked not run, until the user "
+           "runs them, so tell the user which cells to run.",
+}
+
+#: How the note above describes the ```python blocks of an answer (Preferences › AI › Code in answers).
+CODE_CELLS_NOTE = {
+    "insert": "Every ```python block of your answer is added to the notebook as a new cell ({run}), in "
+              "order, so put only code meant for the notebook in ```python blocks (other code, such as "
+              "a one-line illustration, in a ```text block), and do not also insert_cell the same code.",
+    "button": "Every ```python block of your answer gets an \"Insert as notebook cell\" button.",
+}
+
+MAX_NOTEBOOK = 20000  # characters of notebook code sent with a question
+_CODE_BLOCK = re.compile(r"```(?:python|py|python3)?[ \t]*\n(.*?)```", re.S)
+
+
+def notebook_system(base: str, run_cells: bool = False, code_cells: str = "insert") -> str:
+    """``base`` (the agent's system prompt) plus the notebook note for these Preferences › AI
+    settings: ``run_cells`` (Let the AI run cells) and ``code_cells`` ('insert' or 'button')."""
+    mode = code_cells if code_cells in CODE_CELLS_NOTE else "insert"
+    code = CODE_CELLS_NOTE[mode].format(run="and run" if run_cells else "not run")
+    return base + NOTEBOOK_NOTE.format(code_cells=code, run_cells=RUN_CELLS_NOTE[bool(run_cells)])
+
+
+def notebook_part(code: str) -> str:
+    """The notebook's code as a question carries it (cut after :data:`MAX_NOTEBOOK` characters)."""
+    if len(code) > MAX_NOTEBOOK:
+        code = code[:MAX_NOTEBOOK] + "\n# … (notebook truncated)\n"
+    return f"The notebook now reads:\n```python\n{code}```"
+
+
+def errors_part(errors: str) -> str:
+    """The failed cells' errors as a question carries them ('' when they are gone)."""
+    return (f"These notebook cells failed when they last ran:\n```text\n{errors}```" if errors
+            else "The notebook's cells no longer show errors.")
+
+
+def view_part(view: str) -> str:
+    return f"The 3D view now shows: {view}"
+
+
+def code_blocks(text: str) -> list[str]:
+    """The Python code blocks of a Markdown answer (fenced as python, py or untagged)."""
+    return [m.group(1).rstrip() + "\n" for m in _CODE_BLOCK.finditer(text) if m.group(1).strip()]
+
+
+__all__ = ["CODE_CELLS_NOTE", "MAX_NOTEBOOK", "NOTEBOOK_NOTE", "RUN_CELLS_NOTE", "code_blocks", "errors_part",
+           "notebook_part", "notebook_system", "view_part"]

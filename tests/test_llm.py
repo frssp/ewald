@@ -145,6 +145,8 @@ def test_toolset_end_to_end(cu_file, fake_render):
     assert "Coordination" in r.content["effect"]["new_properties"]
     r = ts.call("evaluate_expression", {"expression": "Coordination == 12"})
     assert r.content["count"] == 108
+    assert ts.call("evaluate_expression", {"expression": "ParticleType"}).content == {"counts": {"Cu": 108}, "of": 108}
+    assert "ParticleType == 'Cu'" in ts.call("evaluate_expression", {"expression": "ParticleType == 1"}).content
     r = ts.call("add_modifier", {"name": "Slice", "params": {"normal": [0, 0, 1], "distance": 5.0}})
     assert r.content["effect"]["num_particles"][1] < 108
 
@@ -678,7 +680,7 @@ def test_python_api_cells_run_as_documented(tmp_path, monkeypatch):
         assert name in GUIDE, name
     path = tmp_path / "cu.vasp"
     write(path, bulk("Cu", "fcc", a=3.615, cubic=True).repeat(2), format="vasp")
-    nb = Notebook.from_py(f"# %%\nimport numpy as np\n{IMPORTS}\n\n# %%\npipe = load({str(path)!r})\n\n"
+    nb = Notebook.from_py(f"# %%\n{IMPORTS}\n\n# %%\npipe = load({str(path)!r})\n\n"
                           "# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n\n"
                           "# %% surface [each frame]\npaint(data, 'Coordination >= 12', 'gold')\n"
                           "fade(data, data['Position'][:, 2] > 3, 0.5)\n\n"
@@ -730,7 +732,7 @@ def test_reference_examples_run(index):
         _, name, cells = reference.RECIPES[index - 1]
     assert f'load("{name}")' in cells
     cells = cells.replace(f'load("{name}")', f"load({str(_reference_path(name))!r})")
-    nb = Notebook.from_py(f"# %%\nimport numpy as np\n{IMPORTS}\n\n" + cells)
+    nb = Notebook.from_py(f"# %%\n{IMPORTS}\n\n" + cells)
     assert nb.run_all(), [(c.source, c.outputs) for c in nb.cells if c.state == "error"]
     for cell in nb.cells:
         if cell.source.startswith("pipe.add("):
@@ -816,6 +818,34 @@ def test_notebook_tools_run_cell_with_allow_code():
     r = ts.call("run_cell", {"index": -1})
     assert r.is_error and r.content["state"] == "error" and "ZeroDivisionError" in r.content["outputs"][0]["text"]
     assert "run_cell" not in [d["name"] for d in Toolset(None).definitions()]   # not without allow_code
+
+
+def test_notebook_tools_read_a_percent_marker_as_the_cells_header(tmp_path):
+    """The model writes cells as python_api shows them, '# %% name [each frame]' first: the marker
+    sets the cell's title and frame tag rather than staying in the code, where the step would run
+    once without `data` (a NameError in the first real-model eval runs)."""
+    from ewald.notebook import Notebook, cell_from_source, split_header
+
+    path = tmp_path / "cu.vasp"
+    write(path, bulk("Cu", "fcc", a=3.615, cubic=True).repeat(2), format="vasp")
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\nfrom ewald.paint import hide\npipe = load({str(path)!r})\n")
+    assert nb.run_all()
+    ts = Toolset(nb.pipeline, notebook=nb, allow_code=True)
+    r = ts.call("insert_cell", {"source": "# %% top half [each frame]\nhide(data, 'Position.Z > 3')\n"})
+    assert not r.is_error, r.content
+    cell = nb.cells[-1]
+    assert (cell.title, cell.frames, cell.source, cell.state) == ("top half", "each", "hide(data, 'Position.Z > 3')", "ok")
+    hidden = nb.pipeline.compute(0)["Transparency"]
+    assert 0 < (hidden > 0.99).sum() < len(hidden)
+
+    r = ts.call("edit_cell", {"index": -1, "source": "# %% [all frames]\nhide(data, 'Position.Z > 1')"})
+    assert not r.is_error and nb.cells[-1].frames == "all" and nb.cells[-1].title == "top half"
+    assert nb.cells[-1].source == "hide(data, 'Position.Z > 1')"
+
+    ts.call("insert_cell", {"source": "# %% [markdown]\n# Notes"})
+    assert nb.cells[-1].kind == "markdown" and nb.cells[-1].source == "Notes"
+    assert split_header("x = 1\n# %%\n") is None and cell_from_source("x = 1").source == "x = 1"
+    assert split_header("\n# %% a\nx = 1") == ("code", "a", "", "x = 1")
 
 
 def test_notebook_tools_run_the_cells_they_write_when_allowed():

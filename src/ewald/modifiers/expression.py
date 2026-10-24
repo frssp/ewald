@@ -16,11 +16,35 @@ import numpy as np
 _COMPONENTS = {"Color": "RGB"}
 
 
+class _TypeNames(np.ndarray):
+    """``ParticleType`` (type names) in an expression. OVITO's ParticleType is a number, so
+    ``ParticleType == 2`` compares a LAMMPS type number with names that are numbers ("2"), and
+    is an error, not silently no match, when the types have element names."""
+
+    def _compare(self, other, op):
+        plain = self.view(np.ndarray)
+        if isinstance(other, (int, float, np.integer, np.floating)) and not isinstance(other, (bool, np.bool_)):
+            names = np.unique(plain)
+            if all(str(n).lstrip("-").isdigit() for n in names):
+                return op(plain.astype(np.int64), other)
+            raise ValueError(f"ParticleType holds type names here ({', '.join(map(str, names[:8]))}), not "
+                             f"OVITO's type numbers: compare with a name, e.g. ParticleType == {str(names[-1])!r}")
+        return op(plain, other.view(np.ndarray) if isinstance(other, _TypeNames) else other)
+
+    def __eq__(self, other):
+        return self._compare(other, np.equal)
+
+    def __ne__(self, other):
+        return self._compare(other, np.not_equal)
+
+    __hash__ = None
+
+
 def namespace(data, frame=None) -> dict:
     ns: dict[str, object] = {}
     for name, arr in data.particles.items():
         key = name.replace(" ", "")
-        ns[key] = arr
+        ns[key] = arr.view(_TypeNames) if key == "ParticleType" and arr.dtype.kind in "US" else arr
         if arr.ndim == 2 and arr.shape[1] in (2, 3):
             letters = _COMPONENTS.get(name, "XYZ")
             for k in range(arr.shape[1]):
@@ -122,7 +146,8 @@ def evaluate(expr: str, data, frame=None):
     env.update({k: v for k, v in ns.items() if "." not in k})
     try:
         _check(code, expr)
-        return eval(compile(code, "<expression>", "eval"), {"__builtins__": _BUILTINS}, env)
+        out = eval(compile(code, "<expression>", "eval"), {"__builtins__": _BUILTINS}, env)
+        return out.view(np.ndarray) if isinstance(out, _TypeNames) else out
     except ValueError as exc:
         if "truth value" in str(exc):
             raise ValueError(f"{expr!r}: use '&', '|', '~' with parentheses instead of "

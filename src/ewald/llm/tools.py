@@ -587,7 +587,8 @@ class Toolset:
 
         @T("evaluate_expression",
            "Evaluate an OVITO-style per-particle expression on a frame and return statistics "
-           "(count of true values for conditions; min/max/mean/percentiles for numbers). "
+           "(count of true values for conditions; min/max/mean/percentiles for numbers; counts of each "
+           "value for names such as ParticleType). "
            "Names: Position.X, ParticleType, ParticleIdentifier, Coordination, any computed property; N, CellSize.X.",
            _obj({"expression": {"type": "string"}, "frame": frame_p}, ["expression"]))
         def evaluate_expression(expression, frame=None):
@@ -601,6 +602,9 @@ class Toolset:
                         "first_indices": idx[:20].tolist()}
             if v.ndim == 0:
                 return {"value": v.item()}
+            if v.dtype.kind not in "biuf":   # names (ParticleType): how many of each
+                values, counts = np.unique(v.astype(str), return_counts=True)
+                return {"counts": dict(zip(values.tolist(), counts.tolist())), "of": int(v.size)}
             v = v.astype(float)
             return {"min": float(v.min()), "max": float(v.max()), "mean": float(v.mean()),
                     "percentiles": dict(zip(("p5", "p25", "p50", "p75", "p95"),
@@ -760,7 +764,7 @@ class Toolset:
            "'atom_colors' what colors the atoms now (a step's structure-type colors, a color map, paint "
            "conditions or the type colors, with each color), "
            "'measured' the values of its distance/angle measurements, "
-           f"'help' what each means. Groups: {groups}.",
+           f"'help' what each means. It takes no arguments and returns every setting; by group: {groups}.",
            _obj({}))
         def get_view():
             v = self._need_pipeline().view

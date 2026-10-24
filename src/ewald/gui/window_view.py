@@ -98,7 +98,8 @@ class ViewSyncMixin:
         if v.frame != self._view_frame:
             self._view_frame = v.frame
             if "frame" in v._values and v.frame != self.frame and self.pipeline is not None:
-                self.timeline._set(min(max(v.frame, 0), self.pipeline.num_frames - 1))
+                n = self.pipeline.num_frames     # view(pipe, frame=-1) is the last frame, as in pipe.compute(-1)
+                self.timeline._set(min(max(v.frame + n if v.frame < 0 else v.frame, 0), n - 1))
 
     def write_view(self, camera: bool = False, region: bool = False):
         """After a change in the viewport, the View tab or a style menu: put the style into
