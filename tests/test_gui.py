@@ -4570,7 +4570,7 @@ def test_activity_bar_order_icons_and_tooltips(app, pipe, monkeypatch):
 def test_activity_bar_overflow_and_hidden_buttons(app, pipe, monkeypatch):
     """Too many side bars for the window's height: the top group ends in "More side bars" with
     the rest, Plugins and Preferences stay, an open side bar keeps its button and buttons hidden
-    from the right-click menu are saved (D37)."""
+    from the right-click menu are saved (D38)."""
     from ewald import plugins
     from ewald.gui.app import MainWindow
 
