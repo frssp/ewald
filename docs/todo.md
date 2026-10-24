@@ -786,7 +786,7 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 - JOSS paper (draft in `paper/`, checked by `tests/test_paper.py`): JOSS (2026 rules) wants at least
   six months of public history with releases, issues and pull requests, so the earliest submission
   is six months after the repository goes public. Before then: fill in the author list,
-  affiliations, funding and conflict-of-interest statement (TODOs in `paper/paper.md`), tag
+  funding and conflict-of-interest statement (TODOs in `paper/paper.md`), tag
   releases, collect research use (papers, groups, courses) for the research impact statement, and
   archive the submitted version on Zenodo.
 - From the literature (docs/developer/references.md, 2026-10-24): precomputed per-atom ambient
