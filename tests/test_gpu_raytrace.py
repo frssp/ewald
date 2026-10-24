@@ -237,12 +237,12 @@ class FakeMetalQueue:
         self.mtl = mtl
 
     def commandBuffer(self):
-        return FakeMetalCommands(self.mtl)
+        return FakeMetalCommands(self.mtl, self)
 
 
 class FakeMetalCommands:
-    def __init__(self, mtl):
-        self.mtl, self.bound, self.grid = mtl, {}, None
+    def __init__(self, mtl, queue):
+        self.mtl, self.queue, self.bound, self.grid, self.done = mtl, queue, {}, None, False
 
     def computeCommandEncoder(self):
         return self
@@ -265,13 +265,19 @@ class FakeMetalCommands:
         pass
 
     def commit(self):
+        """Queued: like the GPU, the work runs later, in commit order."""
         assert sorted(self.bound) == list(range(23))
+        self.queue.pending = getattr(self.queue, "pending", []) + [self]
+
+    def _run(self):
         ptrs = (ctypes.c_void_p * 23)(*[self.bound[i].ctypes.data for i in range(23)])
         self.mtl.launches.append((self.grid, None))
         self.mtl.lib.host_launch(ctypes.c_longlong(self.grid[0]), ptrs)
+        self.done = True
 
     def waitUntilCompleted(self):
-        pass
+        while not self.done:
+            self.queue.pending.pop(0)._run()
 
     def error(self):
         return None
