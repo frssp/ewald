@@ -200,8 +200,8 @@ the file when Preferences opens, and Apply writes back only the rows you changed
 file's other lines and comments. The presets are starting points with different looks: *Slides* (the default for a new
 file: 14 pt, thick lines, open axes, vivid colors), *Boxed* (boxed axes, ticks inside on four
 sides with minor ticks, 9 pt sans-serif, colorblind-safe colors), *Classic serif* (serif text and
-math, thin box, black first and a line style per series), *Minimal* (open axes without the top
-and right lines, ticks outside, soft colors), *Grid* (dashed light grid, framed legend, bright
+math, thin box, black first and a line style per series), *Minimal* (only the x axis line, light
+horizontal grid lines in place of a y axis, soft colors), *Grid* (dashed light grid, framed legend, bright
 colors) and *Gray panel* (a light gray plot area with a white grid in saved figures). *Save as
 preset…* keeps the current file as a preset of your own (`plots/<name>.mplstyle`), listed after
 the built-in ones; delete the file to remove it; choosing one sets its

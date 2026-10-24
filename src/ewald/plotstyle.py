@@ -566,12 +566,16 @@ PRESETS = {
         "xtick.minor.size": "2", "ytick.minor.size": "2", "lines.linewidth": "1.6",
         "axes.prop_cycle": "cycler(color=['000000', 'C0392B', '1F4E9C', '2E7D32', '7B3F99']) + "
                            "cycler(linestyle=['-', '--', '-.', ':', (0, (5, 1, 1, 1))])"}},
-    # open axes (no top and right lines), ticks outside, soft colors, a little more air
+    # only the x axis line; light horizontal grid lines instead of a y axis, no tick marks on y,
+    # soft colors, a little more air
     "minimal": {"label": "Minimal", "rc": {**_OPEN,
+        "axes.spines.left": "False", "ytick.major.size": "0", "ytick.major.pad": "4",
+        "axes.grid": "True", "axes.grid.axis": "y", "axes.axisbelow": "True",
+        "grid.color": "D9D9D9", "grid.linestyle": "-", "grid.linewidth": "0.8",
         "axes.prop_cycle": "cycler(color=['4477AA', 'EE6677', '228833', 'CCBB44', '66CCEE', 'AA3377'])",
         "font.size": "9", "lines.linewidth": "2.0", "axes.linewidth": "1.0", "axes.edgecolor": "555555",
-        "xtick.major.width": "1.0", "ytick.major.width": "1.0",
-        "xtick.color": "555555", "ytick.color": "555555", "axes.ymargin": "0.06", "axes.labelpad": "4"}},
+        "xtick.major.width": "1.0", "xtick.color": "555555", "ytick.color": "555555",
+        "axes.ymargin": "0.06", "axes.labelpad": "4"}},
     # dashed light grid behind the data, framed legend, bright colors
     "grid": {"label": "Grid", "rc": {
         "axes.grid": "True", "grid.linestyle": "--", "grid.linewidth": "0.5", "grid.color": "B0B0B0",

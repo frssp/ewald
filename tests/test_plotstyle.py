@@ -195,14 +195,14 @@ def test_presets_switch_without_touching_other_lines(tmp_path):
     plotstyle.apply_preset("minimal", f)
     assert plotstyle.preset_of(f) == "minimal" and plotstyle.read_style(f)[0]["xtick.direction"] == "out"
     with open(f, "a", encoding="utf-8") as fh:
-        fh.write("axes.grid: True\n")
+        fh.write("legend.frameon: True\n")
     plotstyle.apply_preset("Classic serif", f)          # by label too
     rc, problems = plotstyle.read_style(f)
     assert not problems and plotstyle.preset_of(f) == "classic"
-    assert rc["font.family"] == "serif" and rc["font.size"] == "9" and rc["axes.grid"] == "True"
+    assert rc["font.family"] == "serif" and rc["font.size"] == "9" and rc["legend.frameon"] == "True"
     assert "axes.spines.top" not in rc and "xtick.direction" not in rc   # Minimal's own keys went
     plotstyle.apply_preset("boxed", f)
-    assert plotstyle.read_style(f)[0] == {**plotstyle.preset_rc("boxed"), "axes.grid": "True"}
+    assert plotstyle.read_style(f)[0] == {**plotstyle.preset_rc("boxed"), "legend.frameon": "True"}
     with pytest.raises(ValueError, match="unknown preset"):
         plotstyle.preset_rc("nope")
     import matplotlib as mpl
