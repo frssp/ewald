@@ -702,7 +702,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   fixes (public PR #50); returning the file path from `render()` (rejected while implementing:
   it would break every caller that uses the pixels, the `Image` array gives the short repr
   without that).
-- **Landed:** public PR #55 (behaviour); public PR #NN (names).
+- **Landed:** public PR #55 (behaviour); public PR #58 (names).
 
 ## Adding an entry
 
