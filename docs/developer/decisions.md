@@ -433,7 +433,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** leaving the first start silent; a splash screen on every start.
 - **Landed:** PR (this one).
 
-### D36. A workflow row shows the group it came from (2026-10-24)
+### D37. A workflow row shows the group it came from (2026-10-24)
 
 - **Decision:** a workflow source may give each workflow a `group` (the session, project or
   folder it was submitted from, such as the name of the chat session that submitted a
