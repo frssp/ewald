@@ -645,7 +645,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** fixing only the dark-background bug, 1-4, or all seven (also vector surface
   seams, the ray tracer's shadow of see-through surfaces and the overall material tone); 6-7 stay
   in docs/todo.md.
-- **Landed:** public PR #NN.
+- **Landed:** public PR #42.
 
 ## Adding an entry
 
