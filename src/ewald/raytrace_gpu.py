@@ -19,6 +19,7 @@ pixel takes the same rays on every device, or ``float`` on a device without doub
 from __future__ import annotations
 
 import logging
+import sys
 
 import numpy as np
 
@@ -671,8 +672,8 @@ class OpenCLTracer:
 def tracer(scene, accel, device, real: str = "float"):
     """A GPU tracer for ``device``, or None for the CPU kernels. ``"cuda"``/``"gpu"`` (or a CuPy
     :class:`ewald.backend.Backend`) is the CUDA tracer, ``"opencl"`` the first OpenCL GPU (any
-    OpenCL device if there is no GPU), ``"auto"`` CUDA if CuPy finds a GPU, else an OpenCL GPU,
-    else the CPU. A BVH deeper than the kernel's fixed traversal stack stays on the CPU."""
+    OpenCL device if there is no GPU), ``"auto"`` CUDA if CuPy finds a GPU, else an OpenCL GPU
+    (not on macOS, where Apple's OpenCL is slower than the CPU), else the CPU. A BVH deeper than the kernel's fixed traversal stack stays on the CPU."""
     if device is None or (isinstance(device, str) and device.lower() == "cpu"):
         return None
     from .backend import get_backend, gpu_available
@@ -688,7 +689,8 @@ def tracer(scene, accel, device, real: str = "float"):
             raise RuntimeError("pyopencl is installed but no OpenCL device was found (install the GPU driver)")
         make = lambda: OpenCLTracer(devices[0], scene, accel, real)   # noqa: E731
     elif name == "auto" and not gpu_available():
-        devices = opencl_devices(gpu_only=True)
+        # Apple's OpenCL (deprecated, over Metal) traced 40x slower than the CPU on an M2 Air
+        devices = [] if sys.platform == "darwin" else opencl_devices(gpu_only=True)
         if not devices:
             return None
         make = lambda: OpenCLTracer(devices[0], scene, accel, real)   # noqa: E731

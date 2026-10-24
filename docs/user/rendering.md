@@ -209,7 +209,7 @@ count. `noise_threshold=0` gives every pixel all `samples` rays.
 `device="cuda"` runs the ray tracer on an NVIDIA GPU through CuPy (`pip install 'ewald[gpu]'`),
 `device="opencl"` on any GPU with an OpenCL driver, Intel Arc and integrated graphics, AMD,
 NVIDIA and Apple, through pyopencl (`pip install 'ewald[opencl]'`). `"auto"` takes CUDA when
-there is an NVIDIA GPU, else an OpenCL GPU, else the CPU; `None`/`"cpu"` (default) the CPU. Both
+there is an NVIDIA GPU, else an OpenCL GPU (except on a Mac), else the CPU; `None`/`"cpu"` (default) the CPU. Both
 GPU kernels are one C source (`ewald.raytrace_gpu`), the same algorithm as the CPU tracer, one
 thread per pixel, with the same random rays, in single precision: their pictures differ from
 the CPU's only at a few edge pixels (in the tests 0.7 % of pixels by more than 1/255). A GPU

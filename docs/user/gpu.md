@@ -43,7 +43,9 @@ On other GPUs (Intel Arc and integrated graphics, AMD, Apple) the ray tracer run
 OpenCL: `pip install 'ewald[opencl]'`, then `device="opencl"`, or OpenCL in Preferences ›
 Compute › Device. The GPU's driver brings the OpenCL runtime (on Windows the Intel, AMD and
 NVIDIA graphics drivers do). Only the ray tracer uses OpenCL; the analysis runs on the CPU
-with this device. `device="auto"` picks CUDA first, then an OpenCL GPU for ray tracing. To see
+with this device. `device="auto"` picks CUDA first, then an OpenCL GPU for ray tracing. On a Mac `auto` stays on
+the CPU: Apple's OpenCL, deprecated and layered over Metal, traced a Publication picture about
+40 times slower than the CPU on an M2 MacBook Air (`device="opencl"` still works there). To see
 what the GPU gains, run `python benchmarks/analysis.py --skip-modifiers --device opencl` and
 compare with `--device cpu`.
 
