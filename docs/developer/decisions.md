@@ -486,7 +486,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   특징으로 아니면 적당한 이름으로".
 - **Considered:** presets named after journals; eight form rows (tick direction, minor ticks,
   legend frame, axes line width).
-- **Landed:** PR (this one).
+- **Landed:** public PR #20.
 
 ## Adding an entry
 
