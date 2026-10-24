@@ -30,14 +30,25 @@ class OutputArea(QtWidgets.QWidget):
         row = QtWidgets.QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
-        self.rule = OutputRule()   # the rule beside the outputs: a click scrolls or expands long ones
-        self.rule.clicked.connect(self.toggle_scrolled)
+        self.rule = OutputRule()   # the rule beside the outputs: click scrolls or folds, double-click hides
+        self.rule.clicked.connect(self.click_rule)
+        self.rule.doubleClicked.connect(self.toggle_hidden)
         row.addWidget(self.rule)
+        column = QtWidgets.QVBoxLayout()
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
+        row.addLayout(column, 1)
+        self.hidden_note = QtWidgets.QPushButton(objectName="cellOutputHidden", flat=True)
+        self.hidden_note.setCursor(QtCore.Qt.PointingHandCursor)
+        self.hidden_note.clicked.connect(lambda: self.set_hidden(False))
+        self.hidden_note.hide()
+        column.addWidget(self.hidden_note, 0, QtCore.Qt.AlignLeft)
         self.lay = QtWidgets.QVBoxLayout()
         self.lay.setContentsMargins(0, 2, 0, 2)
         self.lay.setSpacing(4)
-        row.addLayout(self.lay, 1)
-        self.expanded = False   # long text outputs show every line (Jupyter's unscrolled output)
+        column.addLayout(self.lay)
+        self.scrolled = None    # long text outputs: None by their length, True / False set by hand
+        self.hidden = False     # every output folded away (Jupyter's collapsed output)
         self.live = live
         self.key = ""        # the cell's id: names the Plots panel tabs of its plots
         self._images = []    # (label, full-size pixmap): rescaled when the cell's width changes
@@ -61,6 +72,7 @@ class OutputArea(QtWidgets.QWidget):
             self.outputs = outputs
             self._fit_images()
             self.setVisible(bool(outputs))
+            self._update_rule()
             return
         self.outputs = outputs
         for slot in self.slots:
@@ -75,6 +87,7 @@ class OutputArea(QtWidgets.QWidget):
             self._add(out)
         self._fit_images()
         self.setVisible(bool(outputs))
+        self._update_rule()
 
     def _add(self, out):
         if out.kind == "image" and out.view is not None and self.live:
@@ -91,10 +104,12 @@ class OutputArea(QtWidgets.QWidget):
         else:
             w = _text_label(out)
         if isinstance(w, OutputText):
-            w.set_expanded(self.expanded)
+            w.set_scrolled(self.scrolled)
             w.fitted.connect(self._update_rule)
         self._widgets.append(w)
         self.lay.addWidget(w)
+        w.setVisible(not self.hidden)
+        self._update_rule()
 
     def _picture(self, data: bytes, fmt=None):
         pix = QtGui.QPixmap()
@@ -136,26 +151,56 @@ class OutputArea(QtWidgets.QWidget):
     def texts(self) -> list:
         return [w for w in self._widgets if isinstance(w, OutputText)]
 
-    def overflows(self) -> bool:
-        """A text output is longer than a scrolled output shows (so the rule can toggle it)."""
-        return any(w.overflows() for w in self.texts())
+    def can_scroll(self) -> bool:
+        """A text output is taller than the scrolled box (so the rule can scroll or expand it)."""
+        return any(w.can_scroll() for w in self.texts())
+
+    def is_scrolled(self) -> bool:
+        return any(w.is_scrolled() for w in self.texts())
+
+    def click_rule(self):
+        """A click on the rule, as on Jupyter's output prompt: a hidden output comes back, a long
+        one scrolls in its box or shows every line, a short one folds away."""
+        if self.hidden:
+            self.set_hidden(False)
+        elif self.can_scroll():
+            self.toggle_scrolled()
+        else:
+            self.set_hidden(True)
 
     def toggle_scrolled(self):
-        """Jupyter's click on the output prompt: every line of the long outputs, or back to
-        scrolling them in a box of ``python.output_lines`` lines."""
-        if self.overflows():
-            self.set_expanded(not self.expanded)
+        """Jupyter's Shift+O: the text outputs in a box of ``python.output_box_lines`` lines, or
+        every line, whatever their length."""
+        if self.can_scroll():
+            self.set_scrolled(not self.is_scrolled())
 
-    def set_expanded(self, on: bool):
-        self.expanded = bool(on)
+    def set_scrolled(self, on):
+        self.scrolled = on
         for w in self.texts():
-            w.set_expanded(self.expanded)
+            w.set_scrolled(on)
+        self._update_rule()
+
+    def toggle_hidden(self):
+        """Jupyter's O (and a double-click on the rule): fold every output away, or show it again."""
+        self.set_hidden(not self.hidden)
+
+    def set_hidden(self, on: bool):
+        self.hidden = bool(on) and bool(self._widgets)
+        for w in self._widgets:
+            w.setVisible(not self.hidden)
         self._update_rule()
 
     def _update_rule(self):
-        long = self.overflows()
-        lines = max((w.line_count() for w in self.texts()), default=0)
-        self.rule.set_state(long, self.expanded, lines)
+        texts, hidden = self.texts(), self.hidden and bool(self._widgets)
+        lines = sum(w.line_count() for w in texts)
+        if hidden:
+            n = len(self._widgets)
+            what = f"{lines} line" + ("s" if lines != 1 else "") if len(texts) == n else f"{n} output" + ("s" if n > 1 else "")
+            self.hidden_note.setText(f"Output hidden ({what}), click to show")
+        self.hidden_note.setVisible(hidden)
+        state = ("hidden" if hidden else "" if not self._widgets else
+                 ("scrolled" if self.is_scrolled() else "expanded") if self.can_scroll() else "short")
+        self.rule.set_state(state, lines)
 
     def _fit_images(self):
         width = max(120, self.width() - self.rule.width() - 6)
@@ -175,10 +220,11 @@ class OutputArea(QtWidgets.QWidget):
 
 
 class OutputRule(QtWidgets.QWidget):
-    """The thin rule left of a cell's outputs. Over a long output it takes a click, as the output
-    prompt does in Jupyter: show every line, or scroll them again."""
+    """The thin rule left of a cell's outputs, Jupyter's output prompt: a click scrolls a long
+    output or shows it whole (a short one folds away), a double-click hides every output."""
 
     clicked = QtCore.Signal()
+    doubleClicked = QtCore.Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -187,24 +233,39 @@ class OutputRule(QtWidgets.QWidget):
         self.setAttribute(QtCore.Qt.WA_Hover)
         self.setFixedWidth(8)    # 2 px drawn, the rest is room to hit it
         self.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Preferred)
-        self.set_state(False, False, 0)
+        self._click = QtCore.QTimer(self, singleShot=True)   # a click waits to see if it was a double-click
+        self._click.timeout.connect(self.clicked.emit)
+        self.set_state("", 0)
 
-    def set_state(self, long: bool, expanded: bool, lines: int):
-        state = "expanded" if long and expanded else "scrolled" if long else ""
+    TIPS = {"scrolled": "Show all {} lines (Shift+O); double-click hides the output (O)",
+            "expanded": "Scroll the output (Shift+O); double-click hides it (O)",
+            "short": "Hide the output (O)",
+            "hidden": "Show the output (O)"}
+
+    def set_state(self, state: str, lines: int):
+        """``scrolled``, ``expanded``, ``short`` (nothing to scroll), ``hidden`` or "" (no output)."""
         if self.property("state") != state:
             self.setProperty("state", state)
             self.style().unpolish(self)
             self.style().polish(self)
-        self.setCursor(QtCore.Qt.PointingHandCursor if long else QtCore.Qt.ArrowCursor)
-        self.setToolTip("" if not long else
-                        "Scroll the output (Shift+O)" if expanded else f"Show all {lines} lines (Shift+O)")
+        self.setCursor(QtCore.Qt.PointingHandCursor if state else QtCore.Qt.ArrowCursor)
+        self.setToolTip(self.TIPS.get(state, "").format(lines))
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton and self.property("state"):
-            self.clicked.emit()
+            if not self._click.isActive():
+                self._click.start(QtWidgets.QApplication.doubleClickInterval())
             event.accept()
             return
         super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton and self.property("state"):
+            self._click.stop()
+            self.doubleClicked.emit()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
 
 def _text_label(out):
@@ -1093,8 +1154,10 @@ class CellWidget(QtWidgets.QFrame):
         if table is not None and key in table:
             self.actionRequested.emit(self.cell, table[key])
             return
-        if key == QtCore.Qt.Key_O and mods == QtCore.Qt.ShiftModifier and isinstance(self.outputs, OutputArea):
-            self.outputs.toggle_scrolled()   # Jupyter's Shift+O: scroll long outputs or show them whole
+        if key == QtCore.Qt.Key_O and mods in (QtCore.Qt.NoModifier, QtCore.Qt.ShiftModifier) \
+                and isinstance(self.outputs, OutputArea):
+            # Jupyter's O hides the outputs, Shift+O scrolls them or shows them whole
+            self.outputs.toggle_scrolled() if mods else self.outputs.toggle_hidden()
             return
         if key in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) and mods == QtCore.Qt.ControlModifier:
             self.actionRequested.emit(self.cell, "run")   # runs the selected cells

@@ -5394,25 +5394,36 @@ def test_rich_outputs_render_in_cells(app):
     assert len(area._images) == 2 and all(not pix.isNull() for _, pix in area._images)
 
 
-def test_long_cell_output_scrolls_and_the_rule_expands_it(app, monkeypatch):
-    """Output longer than python.output_lines scrolls in a box that tall (Jupyter's scrolled
-    output); a click on the rule beside it, or Shift+O on the cell, shows every line and back. A
-    traceback shows its end, a running cell's log follows its newest line, short output has no
-    toggle, and 0 never scrolls."""
-    from PySide6 import QtCore, QtTest
+def test_long_cell_output_scrolls_and_the_rule_folds_it(app, monkeypatch):
+    """Output longer than python.output_scroll_after scrolls in a box python.output_box_lines
+    tall (Jupyter's scrolled output). The rule beside the outputs is Jupyter's output prompt: a
+    click (Shift+O) shows every line or scrolls again, also a shorter output by hand; a click on
+    one shorter than the box, a double-click or O hides the outputs. A traceback shows its end, a
+    running cell's log follows its newest line, and 0 scrolls nothing by itself."""
+    from PySide6 import QtTest
 
     from ewald.gui import theme
     from ewald.gui.cell_widget import CellWidget
     from ewald.gui.code_editor import OutputText
     from ewald.notebook import Cell, Notebook
 
-    def pump():
+    def pump(wait=False):
+        if wait:   # a single click waits out the double-click interval
+            QtTest.QTest.qWait(QtWidgets.QApplication.doubleClickInterval() + 50)
         for _ in range(5):
             app.processEvents()
 
-    monkeypatch.setattr(OutputText, "scroll_lines", 20)
-    nb = Notebook([Cell("for i in range(100):\n    print('step', i)"), Cell("print('short')"),
-                   Cell("def f(n):\n    return f(n - 1) if n else 1/0\nf(30)")])
+    def click(rule, double=False):
+        if double:
+            QtTest.QTest.mouseDClick(rule, QtCore.Qt.LeftButton, pos=QtCore.QPoint(3, 5))
+        else:
+            QtTest.QTest.mouseClick(rule, QtCore.Qt.LeftButton, pos=QtCore.QPoint(3, 5))
+        pump(wait=True)
+
+    monkeypatch.setattr(OutputText, "scroll_after", 50)
+    monkeypatch.setattr(OutputText, "box_lines", 20)
+    nb = Notebook([Cell("for i in range(100):\n    print('step', i)"), Cell("print('\\n'.join(map(str, range(30))))"),
+                   Cell("print('short')"), Cell("def f(n):\n    return f(n - 1) if n else 1/0\nf(30)")])
     nb.run_all(stop_on_error=False)
     theme.apply(app, "graphite", font_size=12)
     cells = [CellWidget(nb, c) for c in nb.cells]
@@ -5423,28 +5434,48 @@ def test_long_cell_output_scrolls_and_the_rule_expands_it(app, monkeypatch):
     w = cells[0]
     text, rule = w.outputs.texts()[0], w.outputs.rule
     ls = text.fontMetrics().lineSpacing()
-    assert text.line_count() == 100 and text.overflows()
+    assert text.line_count() == 100 and text.is_scrolled()
     assert text.height() < 22 * ls and text.verticalScrollBar().maximum() > 0
     assert rule.property("state") == "scrolled" and "100 lines" in rule.toolTip()
-    QtTest.QTest.mouseClick(rule, QtCore.Qt.LeftButton, pos=QtCore.QPoint(3, 5))
-    pump()
+    click(rule)
     assert text.height() > 99 * ls and rule.property("state") == "expanded"
-    QtTest.QTest.mouseClick(rule, QtCore.Qt.LeftButton, pos=QtCore.QPoint(3, 5))
-    pump()
+    click(rule)
     assert text.height() < 22 * ls and rule.property("state") == "scrolled"
     w.setFocus()
-    QtTest.QTest.keyClick(w, QtCore.Qt.Key_O, QtCore.Qt.ShiftModifier)   # Jupyter's command key
+    QtTest.QTest.keyClick(w, QtCore.Qt.Key_O, QtCore.Qt.ShiftModifier)   # Jupyter's command keys
     pump()
-    assert w.outputs.expanded and text.height() > 99 * ls
+    assert text.height() > 99 * ls
+    QtTest.QTest.keyClick(w, QtCore.Qt.Key_O)
+    pump()
+    assert w.outputs.hidden and not text.isVisible() and rule.property("state") == "hidden"
+    assert "100 lines" in w.outputs.hidden_note.text() and w.outputs.hidden_note.isVisible()
+    w.outputs.hidden_note.click()
+    pump()
+    assert text.isVisible() and not w.outputs.hidden_note.isVisible()
+    click(rule, double=True)                       # a double-click hides, without a click first
+    assert w.outputs.hidden and text.height() > 99 * ls
+    click(rule)
+    assert not w.outputs.hidden
 
-    short = cells[1].outputs
-    assert short.rule.property("state") == "" and not short.overflows()
-    QtTest.QTest.mouseClick(short.rule, QtCore.Qt.LeftButton, pos=QtCore.QPoint(3, 3))
-    assert not short.expanded
+    mid = cells[1].outputs                          # 30 lines: whole, but can be scrolled by hand
+    assert mid.rule.property("state") == "expanded" and not mid.is_scrolled()
+    click(mid.rule)
+    assert mid.is_scrolled() and mid.texts()[0].height() < 22 * ls
 
-    err = cells[2].outputs.texts()[0]
+    short = cells[2].outputs                        # shorter than the box: a click hides it
+    assert short.rule.property("state") == "short" and not short.can_scroll()
+    click(short.rule)
+    assert short.hidden and "(1 line)" in short.hidden_note.text()
+    click(short.rule)
+    assert not short.hidden
+
+    err = cells[3].outputs.texts()[0]
     bar = err.verticalScrollBar()
-    assert err.objectName() == "cellError" and bar.maximum() > 0 and bar.value() == bar.maximum()
+    if err.is_scrolled():
+        assert bar.value() == bar.maximum() > 0
+    err.set_scrolled(True)
+    pump()
+    assert err.objectName() == "cellError" and bar.value() == bar.maximum() > 0
 
     log = OutputText("line 0")   # a running cell printing: the box follows the newest line
     log.resize(400, 100)
@@ -5452,17 +5483,17 @@ def test_long_cell_output_scrolls_and_the_rule_expands_it(app, monkeypatch):
     for n in range(1, 60):
         log.setText(log.text() + f"\nline {n}")
     pump()
-    assert log.verticalScrollBar().value() == log.verticalScrollBar().maximum() > 0
+    assert log.is_scrolled() and log.verticalScrollBar().value() == log.verticalScrollBar().maximum() > 0
     log.verticalScrollBar().triggerAction(QtWidgets.QAbstractSlider.SliderToMinimum)   # scrolled up: stays
     pump()
     log.setText(log.text() + "\nline 60")
     pump()
     assert log.verticalScrollBar().value() == 0
 
-    monkeypatch.setattr(OutputText, "scroll_lines", 0)   # Preferences: never scroll
-    text.set_expanded(False)
+    monkeypatch.setattr(OutputText, "scroll_after", 0)   # Preferences: nothing scrolls by itself
+    w.outputs.set_scrolled(None)
     pump()
-    assert not text.overflows() and text.height() > 99 * ls
+    assert not text.is_scrolled() and text.height() > 99 * ls
     for x in (*cells, log):
         x.close()
 

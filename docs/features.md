@@ -512,7 +512,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 
 | Key | Label | Default |
 |---|---|---|
-| `python.output_lines` | Scroll outputs longer than (lines) | `30` |
+| `python.output_scroll_after` | Scroll outputs longer than (lines) | `50` |
+| `python.output_box_lines` | Scrolled output height (lines) | `20` |
 | `python.startup_script` | Console startup script | `''` |
 | `python.extra_paths` | Extra module paths | `''` |
 

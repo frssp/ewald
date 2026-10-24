@@ -163,8 +163,9 @@ def apply_settings(win, s: Settings, startup: bool = False):
         win.set_device(dev)
     from .code_editor import OutputText
 
-    if OutputText.scroll_lines != s["python.output_lines"]:   # long cell outputs scroll in a box this tall
-        OutputText.scroll_lines = s["python.output_lines"]
+    lines = (s["python.output_scroll_after"], s["python.output_box_lines"])
+    if (OutputText.scroll_after, OutputText.box_lines) != lines:   # long cell outputs scroll in a box
+        OutputText.scroll_after, OutputText.box_lines = lines
         for text in win.findChildren(OutputText):
             text._fit()
     for p in filter(None, (x.strip() for x in s["python.extra_paths"].split(";"))):

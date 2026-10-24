@@ -674,6 +674,20 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   later, but a separate renderer); a denoiser instead of a GPU; stopping with the CPU on a Mac.
 - **Landed:** public PR #48.
 
+### D54. Long cell outputs scroll in a fixed-height box, as in Jupyter (2026-10-24)
+
+- **Decision:** printed text, values and tracebacks longer than `python.output_scroll_after`
+  (50 lines; 0 = never by itself) scroll in a box `python.output_box_lines` (20 lines) tall. The
+  rule left of the outputs (D47) works as Jupyter's output prompt: a click (Shift+O) scrolls an
+  output or shows it whole, also a short one, and a double-click (O) hides the outputs.
+- **Why:** the owner asked "주피터 노트북 처럼 stdout이 너무 길면 고정길이에 스크롤바로 만들 수 있게",
+  picked the numbers after comparing Jupyter's defaults (classic Notebook: over 100 lines, a
+  24em box; VS Code: 30 lines) with "50 넘으면 20줄 정도로 할까?", and added "그리고 수동으로
+  접을 수 있게".
+- **Considered:** one number for both (30, first draft); the 400-line limit before it (pages
+  grew endless); a separate expand button under the output.
+- **Landed:** public PR #56.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

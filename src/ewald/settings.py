@@ -209,10 +209,13 @@ OPTIONS = (
            "matplotlib figures that notebook cells and the console draw (plt.plot ...): the publication "
            "style of saved plots, in print colors or the UI theme's, or matplotlib's defaults; the style "
            "file below goes on top. rcParams a cell sets always win.", choices=PLOT_STYLES),
-    Option("python.output_lines", 30, "Scroll outputs longer than (lines)",
-           "A cell's printed text, value or traceback longer than this scrolls in a box of this "
-           "height, as in Jupyter; click the rule left of the output (or press Shift+O on the cell) "
-           "to show every line. 0 never scrolls.", minimum=0, maximum=10000),
+    Option("python.output_scroll_after", 50, "Scroll outputs longer than (lines)",
+           "A cell's printed text, value or traceback longer than this scrolls in a box, as in "
+           "Jupyter. Click the rule left of an output (or press Shift+O on the cell) to scroll it or "
+           "show every line, double-click it (or O) to hide it. 0 scrolls nothing by itself.",
+           minimum=0, maximum=100000),
+    Option("python.output_box_lines", 20, "Scrolled output height (lines)",
+           "How many lines the box of a scrolled output shows.", minimum=3, maximum=10000),
     Option("python.save_figures", True, "Save figures with notebooks",
            "An .ewd notebook keeps every view cell as SVG and PNG, with the plotted data as CSV."),
     Option("python.bundle_data_mb", 50.0, "Copy data files up to (MB)",

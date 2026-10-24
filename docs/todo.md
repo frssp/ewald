@@ -21,8 +21,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 - Long cell outputs: whether a cell's output is scrolled or shown whole is kept per window only;
   Jupyter stores it as the cell's `scrolled` metadata in `.ipynb` (read and write it once cells
-  keep metadata). Double-click on the rule to hide an output entirely (Jupyter's collapse) is not
-  there yet.
+  keep metadata), and so is a hidden output (Jupyter's `collapsed`).
 - Library API, rest of the audit: frame selection when loading (`load(path, frames=...)` like ASE's
   `index=":"`) and reader keyword errors that name `load()` instead of the reader class; internal
   state (`Color.rule`) out of `data.attributes`; `data.tables` values as `verbs.Table`.
@@ -643,9 +642,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - Notebook cells on Windows at 125-200 % display scaling and on macOS: the code box ends below
   its last line and the output area (rule on the left, monospaced text) starts under it, also
   after changing the font size in Preferences; a traceback or a long `print` wraps inside the
-  cell. Checked with `QT_SCALE_FACTOR=2` on Linux only. A print longer than 30 lines scrolls in
-  a box that ends on a whole line, and a click on the rule beside it (8 px hit area) or Shift+O
-  shows every line.
+  cell. Checked with `QT_SCALE_FACTOR=2` on Linux only. A print longer than 50 lines scrolls in
+  a 20-line box that ends on a whole line; a click on the rule beside it (8 px hit area) or
+  Shift+O shows every line, a double-click hides it.
 - Preferences › Plots › Open as text on Windows and macOS: a `.mplstyle` file has no program
   associated on a fresh system, so Windows falls back to Notepad and macOS uses `open -t` (the
   default text editor); EWALD must re-read the file when the editor saves (watched with

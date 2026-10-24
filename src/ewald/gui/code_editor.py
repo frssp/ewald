@@ -186,10 +186,11 @@ class OutputText(FittedText):
     were cut off."""
 
     fitted = QtCore.Signal()   # measured again: the outputs' rule may toggle it now, or no more
-    scroll_lines = 30          # longer output scrolls in place, as in Jupyter (python.output_lines; 0: never)
+    scroll_after = 50          # longer output scrolls in place, as in Jupyter (python.output_scroll_after; 0: never)
+    box_lines = 20             # ... in a box this many lines tall (python.output_box_lines)
     full_lines = 10000         # even an expanded log stops growing here
     pad = 0
-    expanded = False           # True: every line shown (the left rule of the outputs toggles it)
+    scrolled = None            # None: by its length; True / False: set by hand (the outputs' rule)
     follow_end = False         # the box stays scrolled to its last line
 
     def __init__(self, text="", kind="text", parent=None):
@@ -214,10 +215,10 @@ class OutputText(FittedText):
 
     @property
     def max_lines(self):
-        return self.full_lines if self.expanded or self.scroll_lines <= 0 else self.scroll_lines
+        return self.box_lines if self.is_scrolled() else self.full_lines
 
     def line_count(self) -> int:
-        """Laid-out lines (wrapped ones count): more than ``scroll_lines`` scroll."""
+        """Laid-out lines (wrapped ones count)."""
         ls = max(1, self.fontMetrics().lineSpacing())
         block, n = self.document().firstBlock(), 0
         while block.isValid():
@@ -225,13 +226,23 @@ class OutputText(FittedText):
             block = block.next()
         return n
 
-    def overflows(self) -> bool:
-        """More lines than a scrolled output shows: the rule can expand it."""
-        return 0 < self.scroll_lines < self.line_count()
+    def is_long(self) -> bool:
+        """Longer than ``scroll_after`` lines: scrolled unless shown whole by hand."""
+        return 0 < self.scroll_after < self.line_count()
 
-    def set_expanded(self, on: bool):
-        if on != self.expanded:
-            self.expanded = on
+    def can_scroll(self) -> bool:
+        """Taller than the box: scrolling it hides lines (the rule can toggle it)."""
+        return self.line_count() > self.box_lines
+
+    def is_scrolled(self) -> bool:
+        if not self.can_scroll():
+            return False
+        return self.is_long() if self.scrolled is None else self.scrolled
+
+    def set_scrolled(self, on):
+        """True: in a box of ``box_lines``; False: every line; None: by its length."""
+        if on != self.scrolled:
+            self.scrolled = on
             self._fit()
 
     def _fit(self):
