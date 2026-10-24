@@ -105,7 +105,7 @@ For quantities over the whole trajectory, prefer the trajectory modifiers or `ew
 from ewald.kernels import trajectory_msd, trajectory_rdf, diffusion_fit
 
 msd = trajectory_msd(pipe, device="cuda")              # table: lag, MSD, MSD <type>
-gr = trajectory_rdf(pipe, cutoff=6.0, nbins=300)       # time-averaged g(r)
+gr = trajectory_rdf(pipe, cutoff=6.0, bins=300)       # time-averaged g(r)
 ```
 
 ## In Jupyter

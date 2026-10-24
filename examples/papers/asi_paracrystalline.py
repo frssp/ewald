@@ -35,7 +35,7 @@ for model, ax in zip(("para", "poly"), axes):
     # %% S(q), g(r), coordination and diamond-like environments of one model
     pipe = import_file(folder / f"100k-{model}.xyz")
     pipe.modifiers.extend([
-        StructureFactor(method="rdf", q_min=1.0, q_max=12.0, number_of_bins=220, cutoff=20.0),
+        StructureFactor(method="rdf", q_min=1.0, q_max=12.0, bins=220, cutoff=20.0),
         CoordinationAnalysis(cutoff=2.85),                        # first shell, Si-Si ~2.35 A
         # Structure Type per atom, and (color_by_type) the atom colors of the 3D view, OVITO's:
         # white OTHER (amorphous), blue cubic diamond, cyan/green its 1st/2nd neighbors,
@@ -45,7 +45,7 @@ for model, ax in zip(("para", "poly"), axes):
     data = pipe.compute(0)
     print(model, color_rule.describe(data))                     # the color rule, with each color and count
     sq = data.tables["structure-factor"]
-    pipe.modifiers.append(CoordinationAnalysis(cutoff=8.0, number_of_bins=200))   # g(r) to 8 A
+    pipe.modifiers.append(CoordinationAnalysis(cutoff=8.0, bins=200))   # g(r) to 8 A
     gr = pipe.compute(0).tables["coordination-rdf"]
     cn = np.bincount(data.particles["Coordination"], minlength=6)[3:6] / data.count
     crystalline = np.count_nonzero(data.particles["Structure Type"]) / data.count

@@ -306,17 +306,19 @@ class GenerateTrajectoryLines(_TrajectoryModifier):
     ``only_selected`` is False). Writes ``tables['trajectory-lines']`` with one row per particle
     and frame (``Position``, ``Particle Identifier``, ``Time`` (the timestep), ``Frame``), and the
     particle properties 'Path Length' (summed step lengths), 'Net Displacement' and 'Max Displacement' (from the
-    position at ``start``); untraced particles get 0. ``unwrap_trajectories`` keeps paths
+    position at ``start``); untraced particles get 0. ``unwrapped`` (OVITO: ``unwrap_trajectories``) keeps paths
     continuous across periodic boundaries.
     """
 
+    ALIASES = {"unwrap_trajectories": "unwrapped"}
+
     def __init__(self, only_selected: bool = True, start: int = 0, stop: int | None = None, step: int = 1,
-                 unwrap_trajectories: bool = True):
+                 unwrapped: bool = True):
         self.only_selected = only_selected
         self.start = start
         self.stop = stop
         self.step = step
-        self.unwrap_trajectories = unwrap_trajectories
+        self.unwrapped = unwrapped
 
     def modify(self, data, ctx):
         lines, traj, stats = self._cached(ctx, lambda: self._compute(ctx))
@@ -330,7 +332,7 @@ class GenerateTrajectoryLines(_TrajectoryModifier):
         x = traj["Position"]
         unwrapped = unwrap(x, traj["cells"], traj["pbc"], be)
         path, net, peak = path_statistics(unwrapped, be)
-        shown = be.to_numpy(unwrapped) if self.unwrap_trajectories else x
+        shown = be.to_numpy(unwrapped) if self.unwrapped else x
         T, n = shown.shape[:2]
         ids = traj["Particle Identifier"]
         line_ids = ids if ids is not None else np.arange(n)
