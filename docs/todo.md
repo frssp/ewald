@@ -389,6 +389,8 @@ ewald-phonopy plugin, frssp/ewald-plugins `packages/ewald-phonopy`)
   superposed (phonopy `--modulation` takes a list).
 - Export a modulated structure (frame 0 as POSCAR) from the GUI; irreducible-representation
   labels of the modes (phonopy `--irreps`).
+- A trace of each atom's path (an ellipse for a complex q != 0 mode) as an alternative to the
+  per-frame arrows of `PhononMode(arrow_mode=...)`.
 - Fast reading of large `mesh.yaml` files (the parser holds the whole file in memory).
 - OUTCAR modes checked against real VASP IBRION=5-8 output; the fixture is written in VASP's
   layout from phonopy results.
@@ -612,10 +614,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - The OpenCL ray tracer on a real GPU (the owner's Intel Arc on Windows: float sums, no double
   precision; AMD; Apple): `pip install pyopencl`, Preferences › Compute › Device lists the GPU,
   and `python benchmarks/analysis.py --skip-modifiers --device opencl` traces the same pictures
-  as `--device cpu`, faster. On the owner's M2 MacBook Air (2026-10-24) Apple's OpenCL took
-  20 s for a 400x300 Publication picture against about 0.5 s on the CPU, with stalls of several
-  seconds in some batches, so `auto` skips OpenCL on macOS; why it is that slow is open. The CUDA tracer likewise on a
-  real NVIDIA GPU.
+  as `--device cpu`, faster. The CUDA tracer likewise on a real NVIDIA GPU.
+- The Metal ray tracer on a real Mac (`device="metal"`, `pip install 'ewald[metal]'`): it is
+  checked only behind a g++ shim and a fake PyObjC module (tests/test_gpu_raytrace.py), so the
+  Metal compiler has never seen the source. On the owner's M2 MacBook Air (2026-10-24) Apple's
+  OpenCL took 2.4 s for a 400x300 Publication picture (19.5 s before the 32-bit item codes)
+  against 0.5 s on the CPU; Metal has to beat the CPU, or `auto` should go back to the CPU.
 - `no display: DISPLAY is not set` on a real Linux machine: the message should name the cause
   (SSH login without `-X`, tmux/screen or `sudo` on the desktop, a Wayland session) and the
   command that fixes it (`gui.no_display_hint`); tested with simulated environments only.

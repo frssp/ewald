@@ -64,10 +64,11 @@ hosts (paramiko, keyring). Only heavy or platform-specific parts are extras:
 |---|---|---|
 | `gui` | desktop app (PySide6, pyvistaqt, qtconsole) | `pip install -e ".[gui]"` |
 | `gpu` | `device="cuda"` through CuPy (NVIDIA, CUDA 12) | `pip install -e ".[gpu]"` |
-| `opencl` | `device="opencl"`: the ray tracer on Intel, AMD, NVIDIA or Apple GPUs (pyopencl) | `pip install -e ".[opencl]"` |
+| `opencl` | `device="opencl"`: the ray tracer on Intel, AMD or NVIDIA GPUs (pyopencl) | `pip install -e ".[opencl]"` |
+| `metal` | `device="metal"`: the ray tracer on a Mac's GPU (PyObjC's Metal; installs nothing elsewhere) | `pip install -e ".[metal]"` |
 | `formats` | GROMACS XTC/TRR, DCD, NetCDF through MDAnalysis | `pip install -e ".[formats]"` |
 | `ovito` | `DislocationAnalysis` (DXA) and `OvitoModifier`; the `ovito` wheel pins its own PySide6, so install it in the same command as `gui` | `pip install -e ".[gui,ovito]"` |
-| `all` | `gui`, `formats`, `ovito` and `opencl` together (not `gpu`) | `pip install -e ".[all]"` |
+| `all` | `gui`, `formats`, `ovito`, `opencl` and `metal` together (not `gpu`) | `pip install -e ".[all]"` |
 | `dev` | pytest | `pip install -e ".[dev]"` |
 
 For a desktop, `pip install -e ".[all]"` is the usual command; add `gpu` on a machine with an

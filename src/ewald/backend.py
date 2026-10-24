@@ -1,7 +1,7 @@
 """Array backends: numpy on CPU, CuPy on NVIDIA GPUs.
 
-Apple GPUs (Metal) have no compute backend yet: ``"auto"`` runs on the CPU on a Mac and
-``"metal"``/``"mps"`` raise an error that says so (docs/user/gpu.md, "Apple Silicon").
+Apple GPUs (Metal) run only the ray tracer (:mod:`ewald.raytrace_gpu`): with ``"metal"``/``"mps"``
+the analysis stays on the CPU, and ``"auto"`` is the CPU on a Mac (docs/user/gpu.md, "Apple Silicon").
 
 Compute kernels are written once against an array module ``xp`` and run on
 either device, so the GPU path is exercised by the same tests as the CPU path.
@@ -48,19 +48,16 @@ def gpu_available() -> bool:
 
 
 APPLE_DEVICES = ("metal", "mps", "apple")
-APPLE_GPU_MESSAGE = ("Apple GPUs (Metal) are not supported for compute yet; use device='cpu' "
-                     "(or 'auto', which picks the CPU on a Mac). The numba and C++ kernels use every CPU core, "
-                     "and the viewport and renderer still draw on the GPU.")
 
 
 def get_backend(device: str | Backend | None = None) -> Backend:
     """``None``/``"cpu"`` -> numpy; ``"cuda"``/``"gpu"`` -> CuPy; ``"auto"`` -> GPU if present.
-    ``"opencl"`` -> numpy: only the ray tracer runs on OpenCL (:mod:`ewald.raytrace_gpu`), the
-    analysis stays on the CPU."""
+    ``"opencl"`` and ``"metal"``/``"mps"`` -> numpy: only the ray tracer runs on OpenCL or Metal
+    (:mod:`ewald.raytrace_gpu`), the analysis stays on the CPU."""
     if isinstance(device, Backend):
         return device
     device = (device or "cpu").lower()
-    if device in ("cpu", "opencl"):
+    if device in ("cpu", "opencl") or device in APPLE_DEVICES:
         return CPU
     if device == "auto":
         return get_backend("cuda") if gpu_available() else CPU
@@ -73,6 +70,4 @@ def get_backend(device: str | Backend | None = None) -> Backend:
         if not gpu_available():
             raise RuntimeError("CuPy is installed but no CUDA device was found")
         return Backend("cuda", cupy, raw_kernels=True)
-    if device in APPLE_DEVICES:
-        raise RuntimeError(APPLE_GPU_MESSAGE)
-    raise ValueError(f"unknown device {device!r}; use 'cpu', 'cuda', 'opencl' or 'auto'")
+    raise ValueError(f"unknown device {device!r}; use 'cpu', 'cuda', 'opencl', 'metal' or 'auto'")

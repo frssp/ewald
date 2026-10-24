@@ -18,7 +18,9 @@ pixel takes the same rays on every device, or ``float`` on a device without doub
 """
 from __future__ import annotations
 
+import importlib.util
 import logging
+import re
 import sys
 
 import numpy as np
@@ -36,6 +38,7 @@ CUDA_PRELUDE = r"""
 #define DEVFN __device__ static inline
 #define KERNEL extern "C" __global__
 #define GLOBAL
+#define PRIV
 typedef long long I64;
 typedef unsigned long long U64;
 typedef int IX;
@@ -52,10 +55,27 @@ OPENCL_PRELUDE = r"""
 #define DEVFN static inline
 #define KERNEL __kernel
 #define GLOBAL __global
+#define PRIV
 typedef long I64;
 typedef ulong U64;
 typedef int IX;
 #define THREAD_ID ((I64)get_global_id(0))
+"""
+
+# Metal Shading Language (C++14): no double at all, so REAL and WIDE are float; every pointer
+# names its address space (GLOBAL = device, PRIV = thread). Fast math stays off (MetalTracer),
+# as on the other APIs.
+METAL_PRELUDE = r"""
+#include <metal_stdlib>
+using namespace metal;
+#define REAL float
+#define WIDE float
+#define DEVFN static inline
+#define GLOBAL device
+#define PRIV thread
+typedef long I64;
+typedef ulong U64;
+typedef int IX;
 """
 
 RAYTRACE_BODY = r"""
@@ -67,7 +87,7 @@ RAYTRACE_BODY = r"""
 DEVFN REAL rmin(REAL a, REAL b) { return a < b ? a : b; }
 DEVFN REAL rmax(REAL a, REAL b) { return a > b ? a : b; }
 
-DEVFN WIDE rand01(U64* state)
+DEVFN WIDE rand01(PRIV U64* state)
 {
     U64 x = *state;
     x ^= x >> 12;
@@ -77,7 +97,7 @@ DEVFN WIDE rand01(U64* state)
     return (WIDE)((x * (U64)2685821657736338717) >> 11) * (1.0 / 9007199254740992.0);
 }
 
-DEVFN REAL hit_sphere(const REAL* o, const REAL* d, GLOBAL const REAL* sph, IX i)
+DEVFN REAL hit_sphere(PRIV const REAL* o, PRIV const REAL* d, GLOBAL const REAL* sph, IX i)
 {
     GLOBAL const REAL* s = sph + 4 * i;
     REAL ox = o[0] - s[0], oy = o[1] - s[1], oz = o[2] - s[2];
@@ -93,7 +113,7 @@ DEVFN REAL hit_sphere(const REAL* o, const REAL* d, GLOBAL const REAL* sph, IX i
     return t > (REAL)1e-6 ? t : -1;
 }
 
-DEVFN REAL hit_cylinder(const REAL* o, const REAL* d, GLOBAL const REAL* cyl, IX i)
+DEVFN REAL hit_cylinder(PRIV const REAL* o, PRIV const REAL* d, GLOBAL const REAL* cyl, IX i)
 {
     GLOBAL const REAL* c = cyl + 9 * i;
     REAL ax = c[3] - c[0], ay = c[4] - c[1], az = c[5] - c[2];
@@ -136,7 +156,7 @@ DEVFN REAL hit_cylinder(const REAL* o, const REAL* d, GLOBAL const REAL* cyl, IX
     return best;
 }
 
-DEVFN REAL hit_triangle(const REAL* o, const REAL* d, GLOBAL const REAL* tri, IX i)
+DEVFN REAL hit_triangle(PRIV const REAL* o, PRIV const REAL* d, GLOBAL const REAL* tri, IX i)
 {
     GLOBAL const REAL* T = tri + 10 * i;
     REAL e1x = T[3] - T[0], e1y = T[4] - T[1], e1z = T[5] - T[2];
@@ -155,7 +175,7 @@ DEVFN REAL hit_triangle(const REAL* o, const REAL* d, GLOBAL const REAL* tri, IX
     return t > (REAL)1e-6 ? t : -1;
 }
 
-DEVFN REAL hit_code(const REAL* o, const REAL* d, IX code, int any_hit,
+DEVFN REAL hit_code(PRIV const REAL* o, PRIV const REAL* d, IX code, int any_hit,
                                        GLOBAL const REAL* sph, GLOBAL const REAL* cyl, GLOBAL const REAL* tri)
 {
     IX kind = code >> KIND_SHIFT;
@@ -187,7 +207,7 @@ DEVFN REAL hit_box(GLOBAL const REAL* box, IX k, REAL ox, REAL oy, REAL oz,
 }
 
 DEVFN void dda_axis(REAL o, REAL d, REAL lo, REAL size, IX dim, REAL t0,
-                                       IX* c, IX* step, REAL* next, REAL* delta)
+                                       PRIV IX* c, PRIV IX* step, PRIV REAL* next, PRIV REAL* delta)
 {
     IX cc = (IX)((o + d * (t0 + (REAL)1e-9) - lo) / size);
     cc = cc < 0 ? 0 : (cc > dim - 1 ? dim - 1 : cc);
@@ -197,9 +217,9 @@ DEVFN void dda_axis(REAL o, REAL d, REAL lo, REAL size, IX dim, REAL t0,
     else { *step = 0; *next = (REAL)1e30; *delta = (REAL)1e30; }
 }
 
-DEVFN IX trace_grid(const REAL* o, const REAL* d, REAL tmax, GLOBAL const REAL* grid,
+DEVFN IX trace_grid(PRIV const REAL* o, PRIV const REAL* d, REAL tmax, GLOBAL const REAL* grid,
                                        GLOBAL const IX* starts, GLOBAL const IX* items, IX n_items,
-                                       GLOBAL const REAL* sph, GLOBAL const REAL* cyl, GLOBAL const REAL* tri, int any_hit, REAL* t_out)
+                                       GLOBAL const REAL* sph, GLOBAL const REAL* cyl, GLOBAL const REAL* tri, int any_hit, PRIV REAL* t_out)
 {
     if (n_items == 0) return -1;
     REAL t0 = 0, t1 = tmax;
@@ -257,9 +277,9 @@ DEVFN IX trace_grid(const REAL* o, const REAL* d, REAL tmax, GLOBAL const REAL* 
     return -1;
 }
 
-DEVFN IX trace_bvh(const REAL* o, const REAL* d, REAL tmax, GLOBAL const REAL* box, IX n_nodes,
+DEVFN IX trace_bvh(PRIV const REAL* o, PRIV const REAL* d, REAL tmax, GLOBAL const REAL* box, IX n_nodes,
                                       GLOBAL const IX* items, GLOBAL const REAL* sph, GLOBAL const REAL* cyl, GLOBAL const REAL* tri,
-                                      int any_hit, REAL* t_out)
+                                      int any_hit, PRIV REAL* t_out)
 {
     if (n_nodes == 0) return -1;
     IX stack[MAX_STACK];
@@ -318,7 +338,7 @@ typedef struct {
     GLOBAL const REAL* sph; GLOBAL const REAL* cyl; GLOBAL const REAL* tri;
 } Accel;
 
-DEVFN IX trace(const REAL* o, const REAL* d, REAL tmax, const Accel* a, int any_hit, REAL* t_out)
+DEVFN IX trace(PRIV const REAL* o, PRIV const REAL* d, REAL tmax, PRIV const Accel* a, int any_hit, PRIV REAL* t_out)
 {
     REAL tg = -1;
     IX cg = -1;
@@ -338,10 +358,10 @@ DEVFN IX trace(const REAL* o, const REAL* d, REAL tmax, const Accel* a, int any_
     return cg;
 }
 
-DEVFN void shade(const REAL* p, const REAL* n, const REAL* d, REAL cr, REAL cg, REAL cb,
-                             const REAL* light, REAL ambient, REAL diffuse, REAL specular, REAL shininess,
-                             int shadows, IX ao_samples, REAL ao_dist, const Accel* a, WIDE* aos,
-                             REAL* out)
+DEVFN void shade(PRIV const REAL* p, PRIV const REAL* n, PRIV const REAL* d, REAL cr, REAL cg, REAL cb,
+                             PRIV const REAL* light, REAL ambient, REAL diffuse, REAL specular, REAL shininess,
+                             int shadows, IX ao_samples, REAL ao_dist, PRIV const Accel* a, PRIV WIDE* aos,
+                             PRIV REAL* out)
 {
     REAL ndl = n[0] * light[0] + n[1] * light[1] + n[2] * light[2];
     REAL lit = 0, spec = 0, ts;
@@ -385,17 +405,16 @@ DEVFN void shade(const REAL* p, const REAL* n, const REAL* d, REAL cr, REAL cg, 
     out[2] = rmin((REAL)1, cb * sh + specular * spec);
 }
 
-KERNEL void ewald_raytrace(GLOBAL const REAL* grid, GLOBAL const IX* starts, GLOBAL const IX* items, const I64 n_items,
+DEVFN void raytrace_pixel(GLOBAL const REAL* grid, GLOBAL const IX* starts, GLOBAL const IX* items, const I64 n_items,
                     GLOBAL const REAL* nodes, GLOBAL const IX* bvh_items, const I64 n_nodes,
                     GLOBAL const REAL* sph, GLOBAL const REAL* cyl, GLOBAL const REAL* tri,
                     GLOBAL const REAL* sph_rgb, GLOBAL const REAL* cyl_rgb, GLOBAL const REAL* tri_n, GLOBAL const REAL* tri_vrgb,
                     GLOBAL const WIDE* P, GLOBAL const I64* I, GLOBAL const I64* rows, GLOBAL const unsigned char* active,
-                    GLOBAL WIDE* acc, GLOBAL WIDE* sq, GLOBAL I64* nsamp, GLOBAL U64* rng, GLOBAL WIDE* ao_next)
+                    GLOBAL WIDE* acc, GLOBAL WIDE* sq, GLOBAL I64* nsamp, GLOBAL U64* rng, GLOBAL WIDE* ao_next, const IX k)
 {
     const IX width = I[0], height = I[1], ortho = I[2], s1 = I[3], samples = I[4];
     const IX ao_samples = I[5], shadows = I[6], n_rows = I[8], keep = I[9];
     const I64 seed = I[7];
-    IX k = (IX)THREAD_ID;
     if (k >= n_rows * width) return;
     const IX py = rows[k / width], px = k %% width;
     const IX pix = py * width + px;
@@ -511,14 +530,48 @@ KERNEL void ewald_raytrace(GLOBAL const REAL* grid, GLOBAL const IX* starts, GLO
 """
 
 
+# the per-pixel function's parameters, which each API's kernel takes as its arguments
+_PARAMS = [p.strip() for p in
+           re.search(r"DEVFN void raytrace_pixel\((.*?), const IX k\)", RAYTRACE_BODY, re.S).group(1).split(",")]
+_NAMES = ", ".join(p.split()[-1].lstrip("*") for p in _PARAMS)
+
+
+def _body() -> str:
+    return RAYTRACE_BODY % {"max_stack": MAX_STACK}
+
+
+def _c_kernel() -> str:
+    """``ewald_raytrace`` for CUDA and OpenCL: one thread per pixel."""
+    return (f"\nKERNEL void ewald_raytrace({', '.join(_PARAMS)})\n"
+            f"{{\n    raytrace_pixel({_NAMES}, (IX)THREAD_ID);\n}}\n")
+
+
 def cuda_source(real: str = "float") -> str:
     """The CUDA C source in ``real`` precision (``WIDE`` stays double)."""
-    return f"#define REAL {real}\n" + CUDA_PRELUDE + RAYTRACE_BODY % {"max_stack": MAX_STACK}
+    return f"#define REAL {real}\n" + CUDA_PRELUDE + _body() + _c_kernel()
 
 
 def opencl_source() -> str:
     """The OpenCL C source; ``REAL`` and ``WIDE`` come from the build options."""
-    return OPENCL_PRELUDE + RAYTRACE_BODY % {"max_stack": MAX_STACK}
+    return OPENCL_PRELUDE + _body() + _c_kernel()
+
+
+_FLOAT_LITERAL = re.compile(r"(?<![\w.])(\d+\.\d*(?:[eE][-+]?\d+)?|\d+[eE][-+]?\d+)(?![\w.])")
+
+
+def metal_source(prelude: str = METAL_PRELUDE) -> str:
+    """The Metal Shading Language source: float literals (Metal has no double), buffers bound
+    in parameter order, scalars as ``constant`` references."""
+    args = []
+    for i, p in enumerate(_PARAMS):
+        if p.startswith("GLOBAL "):
+            args.append(f"{p.replace('GLOBAL ', 'device ', 1)} [[buffer({i})]]")
+        else:                               # const I64 n_items
+            kind, name = p.rsplit(" ", 1)
+            args.append(f"constant {kind.replace('const ', '')}& {name} [[buffer({i})]]")
+    kernel = (f"\nkernel void ewald_raytrace({', '.join(args)}, uint tid [[thread_position_in_grid]])\n"
+              f"{{\n    raytrace_pixel({_NAMES}, (IX)tid);\n}}\n")
+    return prelude + _FLOAT_LITERAL.sub(r"\1f", _body()) + kernel
 
 
 GPU_KIND_SHIFT, GPU_NO_SHADOW = 29, 1 << 28    # the kernel's 32-bit item codes
@@ -693,13 +746,113 @@ class OpenCLTracer:
             self.queue.finish()      # one launch at a time; progress follows the work done
 
 
+# --- Metal (PyObjC) -------------------------------------------------------------------------
+
+METAL_DEVICES = ("metal", "mps", "apple")
+METAL_MISSING = "device='metal' needs PyObjC's Metal bindings: pip install 'ewald[metal]' (macOS only)"
+
+
+def _import_metal():
+    import Metal   # pyobjc-framework-Metal
+
+    return Metal
+
+
+def metal_device():
+    """The Mac's GPU (``MTLCreateSystemDefaultDevice``), or None without PyObjC or a GPU."""
+    try:
+        return _import_metal().MTLCreateSystemDefaultDevice()
+    except Exception:
+        return None
+
+
+class _MetalArray:
+    """A shared-storage ``MTLBuffer`` with the shape and dtype of the array it holds."""
+
+    def __init__(self, buf, dtype, shape):
+        self.buf, self.dtype, self.shape = buf, np.dtype(dtype), shape
+
+    def get(self):
+        n = int(np.prod(self.shape)) * self.dtype.itemsize
+        return np.frombuffer(self.buf.contents().as_buffer(n), self.dtype).reshape(self.shape).copy()
+
+
+_metal_pipelines = {}   # device -> (pipeline state, command queue)
+
+
+class MetalTracer:
+    """The device side of :func:`ewald.raytrace.raytrace` on an Apple GPU through Metal.
+    Metal has no double precision, so geometry, shading, sums and random numbers are float;
+    buffers live in shared memory, which the CPU and the GPU of a Mac both see."""
+
+    name = "Metal"
+
+    def __init__(self, device, scene, accel, real: str = "float"):
+        if real != "float":
+            raise RuntimeError("Metal has no double precision")
+        mtl = _import_metal()
+        self.mtl, self.device = mtl, device
+        if device not in _metal_pipelines:
+            opts = mtl.MTLCompileOptions.new()
+            opts.setFastMathEnabled_(False)      # the same arithmetic as the CPU tracer
+            lib, err = device.newLibraryWithSource_options_error_(metal_source(), opts, None)
+            if lib is None:
+                raise RuntimeError(f"building the Metal ray tracer failed: {err}")
+            state, err = device.newComputePipelineStateWithFunction_error_(lib.newFunctionWithName_("ewald_raytrace"),
+                                                                           None)
+            if state is None:
+                raise RuntimeError(f"building the Metal ray tracer failed: {err}")
+            _metal_pipelines[device] = (state, device.newCommandQueue())
+        self.state, self.queue = _metal_pipelines[device]
+        self.args = tuple(a if isinstance(a, np.int64) else self._to_device(a)
+                          for a in _scene_arrays(scene, accel, np.float32))
+
+    def _to_device(self, a):
+        a = np.ascontiguousarray(a)
+        buf = self.device.newBufferWithBytes_length_options_(a.tobytes(), max(1, a.nbytes),
+                                                             self.mtl.MTLResourceStorageModeShared)
+        return _MetalArray(buf, a.dtype, a.shape)
+
+    def upload(self, a):
+        a = np.asarray(a)
+        return self._to_device(a.astype(np.float32) if a.dtype == np.float64 else a)
+
+    def download(self, a):
+        a = a.get()
+        return a.astype(np.float64) if a.dtype.kind == "f" else a
+
+    def trace(self, params, ints, rows, active, acc, sq, nsamp, rng, ao_next):
+        """As :meth:`CudaTracer.trace`."""
+        mtl = self.mtl
+        dev_params = self._to_device(np.asarray(params, np.float32))
+        group = min(THREADS, int(self.state.maxTotalThreadsPerThreadgroup()))
+        for part, chunk, n in _launches(ints, rows):
+            extra = (dev_params, self._to_device(part), self._to_device(chunk), active, acc, sq, nsamp, rng, ao_next)
+            cmd = self.queue.commandBuffer()
+            enc = cmd.computeCommandEncoder()
+            enc.setComputePipelineState_(self.state)
+            for i, a in enumerate(self.args + extra):
+                if isinstance(a, np.int64):
+                    enc.setBytes_length_atIndex_(a.tobytes(), 8, i)
+                else:
+                    enc.setBuffer_offset_atIndex_(a.buf, 0, i)
+            enc.dispatchThreads_threadsPerThreadgroup_(mtl.MTLSizeMake(n, 1, 1), mtl.MTLSizeMake(group, 1, 1))
+            enc.endEncoding()
+            cmd.commit()
+            cmd.waitUntilCompleted()     # one launch at a time; progress follows the work done
+            if cmd.error() is not None:
+                raise RuntimeError(f"Metal ray tracer failed: {cmd.error()}")
+
+
 # --- choosing a device ----------------------------------------------------------------------
 
 def tracer(scene, accel, device, real: str = "float"):
     """A GPU tracer for ``device``, or None for the CPU kernels. ``"cuda"``/``"gpu"`` (or a CuPy
     :class:`ewald.backend.Backend`) is the CUDA tracer, ``"opencl"`` the first OpenCL GPU (any
     OpenCL device if there is no GPU), ``"auto"`` CUDA if CuPy finds a GPU, else an OpenCL GPU
-    (not on macOS, where Apple's OpenCL is slower than the CPU), else the CPU. A BVH deeper than the kernel's fixed traversal stack stays on the CPU."""
+    (on a Mac: Metal, since Apple's OpenCL is slower than the CPU), else the CPU. ``"metal"``
+    (or ``"mps"``) is the Mac's GPU through Metal. A BVH deeper than the kernel's fixed
+    traversal stack stays on the CPU."""
     if device is None or (isinstance(device, str) and device.lower() == "cpu"):
         return None
     from .backend import get_backend, gpu_available
@@ -714,9 +867,18 @@ def tracer(scene, accel, device, real: str = "float"):
                 raise RuntimeError(OPENCL_MISSING) from exc
             raise RuntimeError("pyopencl is installed but no OpenCL device was found (install the GPU driver)")
         make = lambda: OpenCLTracer(devices[0], scene, accel, real)   # noqa: E731
+    elif name in METAL_DEVICES or (name == "auto" and sys.platform == "darwin"):
+        # Apple's OpenCL (deprecated, over Metal) traced 5x slower than the CPU on an M2 Air
+        mtl = metal_device()
+        if mtl is None:
+            if name == "auto":
+                return None
+            if importlib.util.find_spec("Metal") is None:
+                raise RuntimeError(METAL_MISSING)
+            raise RuntimeError("no Metal GPU found")
+        make = lambda: MetalTracer(mtl, scene, accel, real)   # noqa: E731
     elif name == "auto" and not gpu_available():
-        # Apple's OpenCL (deprecated, over Metal) traced 40x slower than the CPU on an M2 Air
-        devices = [] if sys.platform == "darwin" else opencl_devices(gpu_only=True)
+        devices = opencl_devices(gpu_only=True)
         if not devices:
             return None
         make = lambda: OpenCLTracer(devices[0], scene, accel, real)   # noqa: E731
