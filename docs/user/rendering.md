@@ -1,7 +1,8 @@
 # Rendering figures
 
 `pipe.render(filename, frame=..., **options)` renders one frame offscreen to PNG, JPG, TIFF,
-SVG, PDF or EPS; without a file name it returns the image as an RGB array. `ewald.render.render(data, ...)`
+SVG, PDF or EPS. It returns the picture as an RGB array (an `Image`, whose repr is one line such
+as `<Image 1600x1200 RGB, saved to fig.png>` and which Jupyter shows as the picture). `ewald.render.render(data, ...)`
 does the same for a `DataCollection`. Without `renderer=` it uses OpenGL where an OpenGL context
 can be opened and the ray tracer elsewhere (a cluster node without a display; see
 [Headless machines](install.md#headless-machines)).
@@ -212,7 +213,7 @@ count. `noise_threshold=0` gives every pixel all `samples` rays.
 `device="opencl"` on any GPU with an OpenCL driver, Intel Arc and integrated graphics, AMD and
 NVIDIA, through pyopencl (`pip install 'ewald[opencl]'`), and `device="metal"` on a Mac's GPU
 through PyObjC (`pip install 'ewald[metal]'`). `"auto"` takes CUDA when there is an NVIDIA GPU,
-else an OpenCL GPU (not on a Mac, where the CPU was faster), else the CPU; `None`/`"cpu"` (default) the CPU. All
+Metal on a Mac, else an OpenCL GPU, else the CPU; `None`/`"cpu"` (default) the CPU. All
 GPU kernels are one C source (`ewald.raytrace_gpu`), the same algorithm as the CPU tracer, one
 thread per pixel, with the same random rays, in single precision: their pictures differ from
 the CPU's only at a few edge pixels (in the tests 0.7 % of pixels by more than 1/255). A GPU

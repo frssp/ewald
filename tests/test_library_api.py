@@ -151,3 +151,69 @@ def test_headless_render_falls_back_to_the_ray_tracer(monkeypatch, cu):
     assert used == {"raytrace": True}
     with pytest.raises(RuntimeError, match="needs an OpenGL context"):
         load(cu).render(size=(40, 30), renderer="opengl")
+
+
+# ---- behaviour changes chosen by the owner (D-number in docs/developer/decisions.md)
+
+def test_compute_out_of_range_raises(dump):
+    assert dump.compute(-5).attributes["SourceFrame"] == 0
+    for frame in (5, -6, 999):
+        with pytest.raises(IndexError, match="out of range"):
+            dump.compute(frame)
+
+
+def test_verb_never_changes_a_users_step(dump):
+    dump.add(M.CoordinationAnalysis(cutoff=3.0))
+    before = dump.compute()["Coordination"].copy()
+    g = ewald.rdf(dump, cutoff=6.0)
+    data = dump.compute()
+    np.testing.assert_array_equal(data["Coordination"], before)
+    assert g.name == "coordination-rdf (rdf)" and g.x.max() > 5.5
+    assert data.tables["coordination-rdf"]["r"].max() < 3.0           # the user's table stays
+    assert set(data.tables) == {"coordination-rdf", "coordination-rdf (rdf)"}
+    assert len(dump.modifiers) == 2
+    ewald.rdf(dump, cutoff=5.0)                                         # replaces its own step
+    assert len(dump.modifiers) == 2 and dump.modifiers[1].cutoff == 5.0
+
+
+def test_verb_alone_still_writes_its_results(dump):
+    counts = ewald.cna(dump).counts
+    data = dump.compute()
+    assert counts["FCC"] == data.attributes["CommonNeighborAnalysis.counts.FCC"] > 0
+    assert "Structure Type" in data and "Color" in data
+
+
+def test_verb_table_attributes_are_its_own(dump):
+    dump.add(M.CommonNeighborAnalysis(mode="fixed", cutoff=2.0))         # finds no FCC
+    table = ewald.cna(dump)
+    assert table.attributes["CommonNeighborAnalysis.counts.FCC"] > 0
+    assert dump.compute().attributes["CommonNeighborAnalysis.counts.FCC"] == 0
+
+
+def test_render_returns_an_image_with_a_short_repr(monkeypatch, cu, tmp_path):
+    monkeypatch.setattr(render_mod, "_render_raytraced",
+                        lambda data, filename, **kw: np.full((30, 40, 3), 200, np.uint8))
+    img = load(cu).render(tmp_path / "x.png", renderer="raytrace", size=(40, 30))
+    assert repr(img) == f"<Image 40x30 RGB, saved to {tmp_path / 'x.png'}>"
+    assert img.shape == (30, 40, 3) and img[0, 0, 0] == 200 and img._repr_png_()[:4] == b"\x89PNG"
+    assert "Image" not in repr(img.astype(float).mean(axis=2))         # computed arrays print as arrays
+
+
+def test_show_returns_a_plot_or_the_structure(monkeypatch, dump, tmp_path):
+    pytest.importorskip("matplotlib")
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from ewald.views import Plot, Snapshot, view_args
+
+    ewald.rdf(dump, cutoff=5.0)
+    plot = ewald.show(dump, table="coordination-rdf", save=tmp_path / "g.pdf")
+    assert isinstance(plot, Plot) and plot.figure.axes and (tmp_path / "g.pdf").stat().st_size > 0
+    assert plot.savefig == plot.figure.savefig
+    monkeypatch.setattr(Snapshot, "image", lambda self, **kw: np.zeros((3, 4, 3), np.uint8))
+    assert isinstance(ewald.show(dump), Snapshot)
+    # a bare show(pipe) cell is a picture, not a plot cell of the GUI
+    assert view_args("show(pipe)") is None and view_args("show(pipe, histogram='Coordination')")
+    import matplotlib.pyplot as plt
+
+    plt.close("all")   # Agg's plt.show() leaves them open; later notebook tests collect open figures

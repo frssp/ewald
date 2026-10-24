@@ -666,7 +666,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   and since Apple's OpenCL was still slower than the CPU, the same kernel source gets a Metal
   build (`device="metal"`, PyObjC, the `metal` extra) that `auto` uses on a Mac. Changed the
   same day (public PR #51): on the owner's Mac Metal ran from 2x faster to 20x slower than the
-  CPU from run to run, so `auto` is the CPU on a Mac and Metal is chosen by name.
+  CPU from run to run, so `auto` is the CPU on a Mac and Metal is chosen by name. Changed back to Metal later that day (D54).
 - **Why:** the owner asked "mac에서 opencl말고 다른 방법은 없어?" after Apple's OpenCL took
   19.5 s for a picture the CPU draws in 0.5 s, and chose "64-bit 정리 먼저, 필요하면 Metal" on the
   decision card. After the 32-bit change it took 2.4 s, still slower than the CPU.
@@ -674,7 +674,35 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   later, but a separate renderer); a denoiser instead of a GPU; stopping with the CPU on a Mac.
 - **Landed:** public PR #48.
 
-### D54. Long cell outputs scroll in a fixed-height box, as in Jupyter (2026-10-24)
+### D54. On a Mac, `auto` ray traces on Metal (2026-10-24)
+
+- **Decision:** `device="auto"` uses Metal on a Mac when the `metal` extra is installed, the CPU
+  otherwise; this replaces the "CPU on a Mac" rule of D53 (public PR #51).
+- **Why:** the owner picked "auto = Metal (Mac)" on the decision card after measuring on an M2
+  MacBook Air, plugged in and with the launches queued (public PR #52): Metal 2.6 s against 9.0 s
+  on the CPU for 108 000 fcc Cu atoms at 1600x1200 Publication, 2.5 s against 11.0 s for 500 000,
+  and as fast as the CPU on small pictures.
+- **Considered:** keeping the CPU as the Mac default and choosing Metal by name.
+- **Landed:** public PR #54.
+
+### D55. The library API changes behaviour where results were silently wrong (2026-10-24)
+
+- **Decision:** a step a verb (`rdf`, `cna`, ...) added never replaces what earlier steps wrote
+  (its own same-named table goes beside the earlier one); `pipe.compute(i)` raises IndexError out
+  of range instead of wrapping; `pipe.render()` returns an `Image` with a one-line repr;
+  `show()` returns a `Plot` or, for `show(pipe)` alone, a picture of the structure; and each idea
+  gets one argument name across the modifiers, with OVITO's spellings kept as aliases.
+- **Why:** the owner asked to check ewald as a plain Python library ("ewald를 lib로 쓸 때 기능
+  문법 등을 점검하자") and chose "추천안 전부 적용" on the decision card. The audit found
+  `rdf(pipe, cutoff=6)` changing a user's Coordination from 11.6 to 73.8 and `compute(999)` on 5
+  frames returning frame 4.
+- **Considered:** only the two bug-like changes (verbs, frame wrap); only the non-breaking
+  fixes (public PR #50); returning the file path from `render()` (rejected while implementing:
+  it would break every caller that uses the pixels, the `Image` array gives the short repr
+  without that).
+- **Landed:** public PR #55 (behaviour); names in a follow-up PR.
+
+### D56. Long cell outputs scroll in a fixed-height box, as in Jupyter (2026-10-24)
 
 - **Decision:** printed text, values and tracebacks longer than `python.output_scroll_after`
   (50 lines; 0 = never by itself) scroll in a box `python.output_box_lines` (20 lines) tall. The

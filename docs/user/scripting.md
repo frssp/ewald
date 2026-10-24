@@ -36,7 +36,8 @@ A pipeline indexes like a list of frames, each computed when asked for:
 
 ```python
 pipe = load("XDATCAR")
-pipe[0], pipe[-1]              # pipe.compute(0), the last frame; out of range raises IndexError
+pipe[0], pipe[-1]              # pipe.compute(0), the last frame; out of range raises IndexError,
+                               # in compute() too
 pipe[::10]                     # a list of every tenth frame
 for data in pipe: ...          # every frame, one at a time
 images = pipe.to_ase()         # list of ase.Atoms, e.g. for ase.io.write

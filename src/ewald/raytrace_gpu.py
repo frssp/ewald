@@ -855,7 +855,7 @@ def tracer(scene, accel, device, real: str = "float"):
     """A GPU tracer for ``device``, or None for the CPU kernels. ``"cuda"``/``"gpu"`` (or a CuPy
     :class:`ewald.backend.Backend`) is the CUDA tracer, ``"opencl"`` the first OpenCL GPU (any
     OpenCL device if there is no GPU), ``"auto"`` CUDA if CuPy finds a GPU, else an OpenCL GPU
-    (not on a Mac, where the CPU beat both Apple's OpenCL and Metal), else the CPU. ``"metal"``
+    (on a Mac: Metal, since Apple's OpenCL is slower than the CPU), else the CPU. ``"metal"``
     (or ``"mps"``) is the Mac's GPU through Metal. A BVH deeper than the kernel's fixed
     traversal stack stays on the CPU."""
     if device is None or (isinstance(device, str) and device.lower() == "cpu"):
@@ -872,13 +872,13 @@ def tracer(scene, accel, device, real: str = "float"):
                 raise RuntimeError(OPENCL_MISSING) from exc
             raise RuntimeError("pyopencl is installed but no OpenCL device was found (install the GPU driver)")
         make = lambda: OpenCLTracer(devices[0], scene, accel, real)   # noqa: E731
-    elif name == "auto" and sys.platform == "darwin":
-        # on an M2 Air Apple's OpenCL traced 5x slower than the CPU and Metal 1.7-20x slower to
-        # 2x faster from run to run, while the CPU stayed steady: a Mac's auto is the CPU
-        return None
-    elif name in METAL_DEVICES:
+    elif name in METAL_DEVICES or (name == "auto" and sys.platform == "darwin"):
+        # on an M2 Air Metal traced 500k atoms 4.4x faster than the CPU and small scenes as fast;
+        # Apple's OpenCL was 5x slower than the CPU, so a Mac's auto is Metal or the CPU
         mtl = metal_device()
         if mtl is None:
+            if name == "auto":
+                return None
             if importlib.util.find_spec("Metal") is None:
                 raise RuntimeError(METAL_MISSING)
             raise RuntimeError("no Metal GPU found")
