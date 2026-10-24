@@ -659,14 +659,16 @@ class CudaTracer:
 
     def trace(self, params, ints, rows, active, acc, sq, nsamp, rng, ao_next):
         """One pass of :func:`ewald.raytrace._render`: every ``active`` pixel of ``rows`` is
-        brought to ``ints[3]`` samples; the state arrays are updated in place."""
+        brought to ``ints[3]`` samples; the state arrays are updated in place. The launches are
+        queued back to back and waited for once at the end: a GPU that idles between them drops
+        its clock (an M2 MacBook Air on battery took up to 14x longer)."""
         cp = self.cp
         dev_params = cp.asarray(np.ascontiguousarray(params, np.float64))
         for part, chunk, n in _launches(ints, rows):
             args = self.args + (dev_params, cp.asarray(part), cp.asarray(chunk), active, acc, sq, nsamp, rng,
                                 ao_next)
             _kernel(cp, self.real)(((n + THREADS - 1) // THREADS,), (THREADS,), args)
-            self.backend.synchronize()   # one launch at a time; progress follows the work done
+        self.backend.synchronize()   # progress and cancelling follow the work done
 
 
 # --- OpenCL (pyopencl) ----------------------------------------------------------------------
@@ -743,7 +745,7 @@ class OpenCLTracer:
             extra = (dev_params, self._to_device(part), self._to_device(chunk), active, acc, sq, nsamp, rng, ao_next)
             args = [a if isinstance(a, np.int64) else a.data for a in self.args + extra]
             self.kernel(self.queue, (n,), None, *args)
-            self.queue.finish()      # one launch at a time; progress follows the work done
+        self.queue.finish()          # progress and cancelling follow the work done
 
 
 # --- Metal (PyObjC) -------------------------------------------------------------------------
@@ -826,6 +828,7 @@ class MetalTracer:
         mtl = self.mtl
         dev_params = self._to_device(np.asarray(params, np.float32))
         group = min(THREADS, int(self.state.maxTotalThreadsPerThreadgroup()))
+        cmds = []      # a command buffer keeps the buffers it binds alive until it has run
         for part, chunk, n in _launches(ints, rows):
             extra = (dev_params, self._to_device(part), self._to_device(chunk), active, acc, sq, nsamp, rng, ao_next)
             cmd = self.queue.commandBuffer()
@@ -838,8 +841,10 @@ class MetalTracer:
                     enc.setBuffer_offset_atIndex_(a.buf, 0, i)
             enc.dispatchThreads_threadsPerThreadgroup_(mtl.MTLSizeMake(n, 1, 1), mtl.MTLSizeMake(group, 1, 1))
             enc.endEncoding()
-            cmd.commit()
-            cmd.waitUntilCompleted()     # one launch at a time; progress follows the work done
+            cmd.commit()               # the queue runs them in order
+            cmds.append(cmd)
+        for cmd in cmds:
+            cmd.waitUntilCompleted()   # progress and cancelling follow the work done
             if cmd.error() is not None:
                 raise RuntimeError(f"Metal ray tracer failed: {cmd.error()}")
 

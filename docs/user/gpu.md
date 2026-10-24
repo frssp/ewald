@@ -62,7 +62,8 @@ precision throughout, since Metal has no double. Apple's OpenCL works too (`devi
 but on an M2 MacBook Air it traced a 400x300 Publication picture in 2.4 s against 0.5 s on the
 CPU. Metal was uneven on that Mac: twice as fast as the CPU on 108 000 fcc Cu atoms (800x600,
 Publication: 0.85 s against 1.64 s), as fast on see-through polyhedra and fine isosurfaces,
-and from 0.7 s to 8.7 s for the same small picture from run to run while the CPU took 0.4 s.
+and on battery from 0.7 s to 8.7 s for the same small picture from run to run (0.6 s plugged
+in) while the CPU took 0.4-0.5 s.
 So `auto` stays on the CPU on a Mac; choose `metal` for big atom scenes. The first Metal
 picture of a session waits a few seconds while Metal builds the kernel.
 
