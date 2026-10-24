@@ -189,6 +189,10 @@ for a proxy or a server that wants more; `{uuid}` in a value becomes a new id pe
 *Timeout*; the OpenAI-compatible provider also takes a *Model prefix* and an *API key header*. Put secrets in the API key field, not in the headers, which are stored
 in `settings.json`.
 
+Changes on the AI page (provider, model, key, address, headers, timeout, streaming) apply from
+the next question once you press Apply or OK, without restarting EWALD: open chats switch to the
+new connection and carry the conversation so far over to it.
+
 *Saved connections* at the top of the AI page keep several of these setups under a name: fill in
 the provider, model and connection, press *Save as…*, and pick a name later to fill the fields
 back in (Apply makes it the one Ask AI uses). On the command line `--profile NAME` uses a saved
