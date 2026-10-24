@@ -181,7 +181,8 @@ OPTIONS = (
            "Journal column width of plots saved from the Plots tab and view cells (PDF, SVG, PNG); "
            "PNG uses the DPI of the image quality.",
            choices=("1-column (3.5 in)", "1.5-column (5.0 in)", "2-column (7.2 in)")),
-    Option("plots.font_size", 8.0, "Saved plot font size", "Points; 7-9 pt is what journals ask for.",
+    Option("plots.font_size", 8.0, "Saved plot font size", "Points; 7-9 pt is what journals ask for. "
+           "A font size in the style file (below) wins.",
            minimum=5, maximum=24),
     Option("render.movie_format", "MP4 (H.264)", "Movie format", "AVI uses Motion JPEG for PowerPoint.",
            choices=("MP4 (H.264)", "GIF", "AVI (Motion JPEG)", "MOV (H.264)", "PNG sequence")),
@@ -207,8 +208,8 @@ OPTIONS = (
            choices=("never", "ask", "always")),
     Option("python.plot_style", "Publication", "Style of your own plots",
            "matplotlib figures that notebook cells and the console draw (plt.plot ...): the publication "
-           "style of saved plots, in print colors or the UI theme's, or matplotlib's defaults. rcParams a "
-           "cell sets always win.", choices=PLOT_STYLES),
+           "style of saved plots, in print colors or the UI theme's, or matplotlib's defaults; the style "
+           "file below goes on top. rcParams a cell sets always win.", choices=PLOT_STYLES),
     Option("python.save_figures", True, "Save figures with notebooks",
            "An .ewd notebook keeps every view cell as SVG and PNG, with the plotted data as CSV."),
     Option("python.bundle_data_mb", 50.0, "Copy data files up to (MB)",

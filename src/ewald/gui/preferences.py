@@ -253,6 +253,14 @@ class PreferencesDialog(QtWidgets.QDialog):
                 self._api_key_rows(rows)
                 col.addWidget(card)
                 self.api_key_card = (heading, card)
+        if name == "Plots":
+            col.addSpacing(16)
+            heading = QtWidgets.QLabel("STYLE FILE", objectName="sectionTitle")
+            col.addWidget(heading)
+            card, rows = self._card()
+            self._style_rows(rows)
+            col.addWidget(card)
+            self.style_card = (heading, card)
         if name == "Compute":
             col.addSpacing(16)
             heading = QtWidgets.QLabel("OPTIONAL COMPONENTS", objectName="sectionTitle")
@@ -539,6 +547,169 @@ class PreferencesDialog(QtWidgets.QDialog):
             if suffix:
                 w.setSuffix(suffix)
         return w
+
+    # ---------------------------------------------------------------- plot style file
+    def _style_rows(self, rows):
+        """Plots › Style file: the common keys of the user's ``.mplstyle`` as a form, read from
+        the file when the dialog opens (and again when the file changed while it was open);
+        Apply writes back only the rows that changed. Open as text edits the file itself."""
+        from .. import plotstyle
+
+        self.style_widgets = {}
+        for f in plotstyle.FORM:
+            row = self._row_frame(rows)
+            grid = QtWidgets.QGridLayout(row)
+            grid.setContentsMargins(16, 12, 16, 12)
+            grid.setHorizontalSpacing(16)
+            text = QtWidgets.QVBoxLayout()
+            text.setSpacing(2)
+            text.addWidget(QtWidgets.QLabel(f.label, objectName="rowLabel", toolTip=", ".join(f.keys)))
+            if f.help:
+                text.addWidget(QtWidgets.QLabel(f.help, objectName="rowHelp", wordWrap=True))
+            grid.addLayout(text, 0, 0)
+            w = self._style_editor(f)
+            grid.addWidget(w, 0, 1, QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+            grid.setColumnStretch(0, 1)
+            self.style_widgets[f.label] = w
+        row = self._row_frame(rows)
+        lay = QtWidgets.QHBoxLayout(row)
+        lay.setContentsMargins(16, 10, 16, 10)
+        text = QtWidgets.QVBoxLayout()
+        text.setSpacing(2)
+        text.addWidget(QtWidgets.QLabel("matplotlib style file", objectName="rowLabel"))
+        text.addWidget(QtWidgets.QLabel(
+            "The source of the rows above, drawn over the publication style in the Plots panel, notebook "
+            "cells and the console; every other rcParam goes here. On screen the UI theme keeps the "
+            "background and text colors.", objectName="rowHelp", wordWrap=True))
+        self.style_path_label = QtWidgets.QLabel(str(plotstyle.user_style_path()), objectName="mono")
+        self.style_path_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.style_path_label.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
+        text.addWidget(self.style_path_label)
+        self.style_problems = QtWidgets.QLabel(objectName="cellError", wordWrap=True)
+        self.style_problems.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.style_problems.hide()
+        text.addWidget(self.style_problems)
+        lay.addLayout(text, 1)
+        self.style_open = QtWidgets.QPushButton("Open as text", objectName="secondary",
+                                                toolTip="Edit the style file in your text editor")
+        self.style_open.clicked.connect(self.open_style_file)
+        lay.addWidget(self.style_open, 0, QtCore.Qt.AlignTop)
+        self._load_style_form()
+
+    def _style_editor(self, f):
+        default = f.default()
+        if f.kind == "float":
+            w = QtWidgets.QDoubleSpinBox(minimum=0.0, maximum=72.0, decimals=2, singleStep=0.25, suffix=" pt")
+            w.setSpecialValueText(f"Default ({default:g} pt)")
+            w.setAlignment(QtCore.Qt.AlignRight)
+            w.setFixedWidth(140)
+            return w
+        if f.kind in ("choice", "bool"):
+            w = QtWidgets.QComboBox()
+            items = [(c, c) for c in f.choices] if f.kind == "choice" else [("On", True), ("Off", False)]
+            shown = dict((v, t) for t, v in items).get(default, default)
+            w.addItem(f"Default ({shown})", None)
+            for label, value in items:
+                w.addItem(label, value)
+            w.setFixedWidth(self.EDITOR_WIDTH)
+            return w
+        w = QtWidgets.QLineEdit(objectName="field", placeholderText=f"Default: {default}")
+        w.setToolTip(f"Default: {default}")
+        w.setFixedWidth(self.EDITOR_WIDTH)
+        return w
+
+    def _style_value(self, f):
+        w = self.style_widgets[f.label]
+        if isinstance(w, QtWidgets.QLineEdit):
+            return w.text().strip() or None
+        if isinstance(w, QtWidgets.QDoubleSpinBox):
+            return w.value() or None
+        return w.currentData()
+
+    def _set_style_value(self, f, value):
+        w = self.style_widgets[f.label]
+        if isinstance(w, QtWidgets.QLineEdit):
+            w.setText("" if value is None else str(value))
+        elif isinstance(w, QtWidgets.QDoubleSpinBox):
+            w.setValue(float(value or 0.0))
+        else:
+            w.setCurrentIndex(max(0, w.findData(value)) if value is not None else 0)
+
+    def _style_form(self) -> dict:
+        from ..plotstyle import FORM
+
+        return {f.label: self._style_value(f) for f in FORM}
+
+    def _style_say(self, problems):
+        self.style_problems.setText("\n".join(problems))
+        self.style_problems.setVisible(bool(problems))
+
+    def _style_mtime(self):
+        from ..plotstyle import user_style_path
+
+        try:
+            return os.stat(user_style_path()).st_mtime_ns
+        except OSError:
+            return None
+
+    def _load_style_form(self):
+        """Fill the form from the style file (rows the file does not set show the default)."""
+        from .. import plotstyle
+
+        user, problems = plotstyle.read_style()
+        for f in plotstyle.FORM:
+            self._set_style_value(f, f.value(user))
+        self.style_loaded, self.style_loaded_mtime = self._style_form(), self._style_mtime()
+        self._style_say(problems)
+
+    def _save_style_form(self) -> bool:
+        """Write the rows that changed into the style file; False (and the page shown) when one
+        holds a value matplotlib refuses."""
+        from .. import plotstyle
+
+        updates = {}
+        for f in plotstyle.FORM:
+            value = self._style_value(f)
+            if value == self.style_loaded.get(f.label):
+                continue
+            try:
+                updates.update(f.updates(value))
+            except ValueError as exc:
+                self._style_say([str(exc)])
+                self.show_page("Plots")
+                return False
+        if updates:
+            try:
+                plotstyle.write_style(updates)
+            except OSError as exc:
+                self._style_say([f"Could not save {plotstyle.user_style_path()}: {exc}"])
+                return False
+        self._load_style_form()
+        return True
+
+    def open_style_file(self):
+        """Open the style file in the user's text editor (a commented template first if missing)."""
+        from .. import plotstyle
+        from .file_dialogs import open_in_editor
+
+        path = plotstyle.user_style_path()
+        if not path.exists():
+            try:
+                plotstyle.write_style({}, path)
+            except OSError as exc:
+                self._style_say([f"Could not create {path}: {exc}"])
+                return False
+        if not open_in_editor(path):
+            self._style_say([f"No program opened {path}; open it in a text editor yourself."])
+            return False
+        return True
+
+    def event(self, e):
+        # back from the editor: show what the file says now, unless the form has unsaved edits
+        if e.type() == QtCore.QEvent.WindowActivate and getattr(self, "style_widgets", None) \
+                and self._style_mtime() != self.style_loaded_mtime and self._style_form() == self.style_loaded:
+            self._load_style_form()
+        return super().event(e)
 
     def _device_combo(self):
         combo = QtWidgets.QComboBox()
@@ -913,6 +1084,11 @@ class PreferencesDialog(QtWidgets.QDialog):
             return
         self.work.reset([o.key for o in OPTIONS if o.page == page])
         self._load()
+        if page == "Plots":   # Apply comments the form's keys out of the style file
+            from ..plotstyle import FORM
+
+            for f in FORM:
+                self._set_style_value(f, None)
 
     def _search(self, text):
         text = text.strip().lower()
@@ -939,6 +1115,12 @@ class PreferencesDialog(QtWidgets.QDialog):
         self.api_key_card[1].setVisible(key_hit)
         if key_hit:
             matched_pages.add("AI")
+        style = not text or any(text in s for s in ("matplotlib", "rcparams", "mplstyle", "style", "font", "line",
+                                                    "tick", "legend", "color", "cycle", "plot"))
+        self.style_card[0].setVisible(style)
+        self.style_card[1].setVisible(style)
+        if style:
+            matched_pages.add("Plots")
         comp = not text or any(text in s for s in ("component", "install", "package", "ovito", "dxa", "cupy"))
         self.components_card[0].setVisible(comp)
         self.components_card[1].setVisible(comp)
@@ -978,6 +1160,7 @@ class PreferencesDialog(QtWidgets.QDialog):
     def apply(self) -> bool:
         """Save everything; False when a plugin page refused its values (the dialog stays open on it)."""
         ok = self._save_plugin_pages()
+        ok = self._save_style_form() and ok
         self._apply_api_key()
         self.settings.update(self.work)
         try:

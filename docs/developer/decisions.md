@@ -458,6 +458,22 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   the row's tooltip; the name after the title on the same line (cut off in a narrow side bar).
 - **Landed:** public PR #12.
 
+### D39. Plot settings: a matplotlib style file first, a form over it (2026-10-24)
+
+- **Decision:** the user's plot settings are one matplotlib `.mplstyle` file
+  (`<config dir>/plots/user.mplstyle`) drawn over the publication style. Preferences › Plots
+  shows its common keys as a form that loads the file when it opens and writes back only the
+  rows that changed; *Open as text* edits the whole file in the OS text editor. The Plots panel
+  shares the file with notebook cells, kernels and the console.
+- **Why:** the owner asked "Matplotlib 을 포함한 plot설정. 설정에 폼을 쓸까? 아님 (기본) 설정
+  파일을 텍스트 에디터로 열어서 수정?", picked the hybrid, and set the rule "텍스트 파일 우선으로
+  적용. 폼은 열때 파일 로드. 폼 저장하면 파일 업데이트."; and asked "Plot panel도 matplotlib rc 설정
+  공유가능?".
+- **Considered:** a form only (most rcParams out of reach); a text file only (no help for the
+  common keys); TOML or settings.json instead of `.mplstyle` (not usable by `plt.style.use` in
+  scripts outside EWALD).
+- **Landed:** public PR #19.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

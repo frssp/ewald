@@ -297,6 +297,7 @@ class Notebook:
         self.py_header: list = []     # other lines of a .py file's jupytext header, kept on save
         self.plot_style = "publication"   # matplotlib style of the cells' own plots ('default': none)
         self.plot_tokens = None           # its colors (a UI theme's tokens); None = print colors
+        self.plot_user = None             # rcParams of the user's style file on top (GUI), {key: text}
         self._plots = None                # ewald.plotstyle.Session: the cells' rcParams
         self.on_output = None             # on_output(cell): a running cell's outputs changed (any thread)
         self.reset()
@@ -404,7 +405,7 @@ class Notebook:
         specs = [{"id": c.id, "kind": c.kind, "source": c.source, "frames": c.frames} for c in self.cells]
         try:
             r = self.kernel.run(specs, index, run_below, self.counter, self.pipeline_name, self.path,
-                                self._data_dirs(), plot_style=(self.plot_style, self.plot_tokens))
+                                self._data_dirs(), plot_style=(self.plot_style, self.plot_tokens, self.plot_user))
         except KernelError as exc:
             self.counter += 1
             cell.count, cell.state, cell.outputs = self.counter, "error", [Output("error", str(exc))]
@@ -510,13 +511,14 @@ class Notebook:
         dirs = [os.path.dirname(self.path)] if self.path else []
         return dirs + [d for d in self.data_dirs if d not in dirs]
 
-    def set_plot_style(self, style: str = "publication", tokens: dict | None = None):
+    def set_plot_style(self, style: str = "publication", tokens: dict | None = None, user: dict | None = None):
         """The matplotlib style of plots the cells draw themselves (``plt.plot`` ...):
         'publication' (:mod:`ewald.plotstyle`, in ``tokens`` colors or print colors) or 'default'
-        (matplotlib's own). rcParams a cell set stay as the cell set them."""
-        self.plot_style, self.plot_tokens = style, tokens
+        (matplotlib's own), with ``user`` (a style file's rcParams, :func:`ewald.plotstyle.read_style`)
+        on top. rcParams a cell set stay as the cell set them."""
+        self.plot_style, self.plot_tokens, self.plot_user = style, tokens, user
         if self._plots is not None:
-            self._plots.configure(style, tokens)
+            self._plots.configure(style, tokens, user)
 
     def _plot_session(self):
         """The cells' rcParams (:class:`ewald.plotstyle.Session`), or a no-op without matplotlib."""
@@ -524,7 +526,7 @@ class Notebook:
             try:
                 from .plotstyle import Session
 
-                self._plots = Session(self.plot_style, self.plot_tokens)
+                self._plots = Session(self.plot_style, self.plot_tokens, self.plot_user)
             except ImportError:
                 return contextlib.nullcontext()
         return self._plots.active()

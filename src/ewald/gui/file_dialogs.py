@@ -19,3 +19,25 @@ def suffixed(path: str, chosen_filter: str = "") -> str:
         return path
     ext = next((p[1:] for p in patterns if p.startswith("*.")), "")
     return path + ext
+
+
+def open_in_editor(path) -> bool:
+    """Open a text file in the user's editor (:func:`ewald.fileops.editor_commands`); False when
+    nothing could open it."""
+    import subprocess
+
+    from PySide6 import QtCore, QtGui
+
+    from ..fileops import editor_commands
+
+    for way in editor_commands(path):
+        if way == "url":
+            if QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(path))):
+                return True
+            continue
+        try:
+            subprocess.Popen(way, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        except OSError:
+            continue
+    return False

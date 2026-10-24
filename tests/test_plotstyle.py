@@ -158,3 +158,123 @@ def test_bound_style_follows_a_changing_theme():
     fig._ewald_style = lambda: (tokens, 11.0)
     fig.canvas.draw()
     assert seen == [(9.0, "#FFFFFF"), (11.0, "#14161A")]
+
+
+# ---------------------------------------------------------------- style files (user.mplstyle)
+
+def test_style_file_reads_crlf_bom_comments_and_reports_bad_lines(tmp_path):
+    f = tmp_path / "s.mplstyle"
+    f.write_bytes("\ufefffont.size: 10  # comment\r\n# lines.linewidth: 3\r\n"
+                  "axes.prop_cycle: cycler(color=['D55E00', '#008C7E'])\r\nfoo.bar: 1\r\nfont.size 4\r\n"
+                  "lines.markersize: big\r\nbackend: agg\r\n".encode("utf-8"))
+    rc, problems = plotstyle.read_style(f)
+    assert rc == {"font.size": "10", "axes.prop_cycle": "cycler(color=['D55E00', '#008C7E'])"}
+    assert [p.split(":")[0] for p in problems] == ["line 4", "line 5", "line 6", "line 7"]
+    assert plotstyle.read_style(tmp_path / "missing.mplstyle") == ({}, [])
+
+
+def test_style_template_lists_every_publication_key_and_reads_back_uncommented():
+    text = plotstyle.template()
+    assert plotstyle.parse_style(text) == ({}, [])            # all commented out
+    rc, problems = plotstyle.parse_style("\n".join(line[2:] for line in text.splitlines() if line.startswith("# ") and ":" in line
+                                                   and line[2:].split(":")[0] in plotstyle.rc()))
+    assert not problems and set(rc) == set(plotstyle.rc())
+    for key, value in plotstyle.validated(rc).items():
+        assert value == plotstyle.validated({key: plotstyle.rc()[key]})[key], key
+
+
+def test_write_style_keeps_other_lines_and_uncomments_template_lines(tmp_path):
+    f = tmp_path / "plots" / "user.mplstyle"
+    plotstyle.write_style({"font.size": "10"}, f)               # a new file starts from the template
+    text = f.read_bytes().decode("utf-8")
+    assert "\r" not in text and "font.size: 10\n" in text and "# EWALD plot style" in text
+    assert text.count("font.size:") == 1                      # the template line took the value
+    f.write_text(text + "axes.grid: True   # mine\nfont.size: 12\n", encoding="utf-8")
+    plotstyle.write_style({"lines.linewidth": "2", "font.size": "9"}, f)
+    rc, _ = plotstyle.read_style(f)
+    assert rc == {"font.size": "9", "lines.linewidth": "2", "axes.grid": "True"}
+    assert "axes.grid: True   # mine" in f.read_text(encoding="utf-8")
+    plotstyle.write_style({"font.size": None}, f)
+    assert "font.size" not in plotstyle.read_style(f)[0] and "# font.size: 9" in f.read_text(encoding="utf-8")
+
+
+def test_form_fields_round_trip_through_the_file(tmp_path):
+    f = tmp_path / "user.mplstyle"
+    fields = {x.label: x for x in plotstyle.FORM}
+    updates = {}
+    for label, value in [("Font", "Liberation Sans, Arial"), ("Font size", 9.5), ("Tick direction", "out"),
+                         ("Minor ticks", False), ("Color cycle", "d55e00, #008C7E, red")]:
+        updates.update(fields[label].updates(value))
+    assert set(updates) >= {"xtick.direction", "ytick.direction", "xtick.minor.visible", "ytick.minor.visible"}
+    plotstyle.write_style(updates, f)
+    rc, problems = plotstyle.read_style(f)
+    assert not problems
+    assert fields["Font"].value(rc) == "Liberation Sans, Arial" and fields["Font size"].value(rc) == 9.5
+    assert fields["Tick direction"].value(rc) == "out" and fields["Minor ticks"].value(rc) is False
+    assert fields["Color cycle"].value(rc) == "#D55E00, #008C7E, #FF0000"
+    assert fields["Line width"].value(rc) is None and fields["Line width"].default() == 1.25
+    assert fields["Font size"].updates(None) == {"font.size": None}
+    with pytest.raises(ValueError, match="Color cycle"):
+        fields["Color cycle"].updates("#12, nocolor")
+
+
+def test_style_file_goes_over_the_publication_style():
+    user = {"font.size": "10", "font.sans-serif": "Liberation Sans, Arial", "axes.facecolor": "EEEEEE",
+            "figure.figsize": "4, 3", "lines.linewidth": "2"}
+    rc = plotstyle.rc(None, 8, user)
+    assert rc["font.size"] == 10 and rc["xtick.labelsize"] == 9 and rc["lines.linewidth"] == 2
+    plotstyle._sans()
+    if "liberation sans" in plotstyle._FONTS:
+        assert rc["mathtext.rm"] == "Liberation Sans"
+    pub = plotstyle._style_rc("publication", None, user=user)
+    assert pub["axes.facecolor"] == "#EEEEEE" and pub["figure.figsize"] == [4.0, 3.0]
+    screen = plotstyle._style_rc("publication", {"bg": "#14161A"}, user=user)   # a UI theme keeps its colors
+    assert screen["axes.facecolor"] == "#14161A" and screen["lines.linewidth"] == 2
+    assert plotstyle._style_rc("default", None, user=user)["lines.linewidth"] == 2
+
+
+def test_use_reads_style_files_only_when_asked(tmp_path):
+    import matplotlib as mpl
+
+    plotstyle.write_style({"lines.linewidth": "3"})            # <EWALD_CONFIG_DIR>/plots/user.mplstyle
+    assert plotstyle.user_style_path().parent.name == "plots"
+    (plotstyle.user_style_path().parent / "ACS.mplstyle").write_text("lines.linewidth: 0.5\n", encoding="utf-8")
+    other = tmp_path / "Mine.MPLSTYLE"
+    other.write_text("lines.linewidth: 5\r\n", encoding="utf-8")
+    with mpl.rc_context():
+        plotstyle.use()
+        assert mpl.rcParams["lines.linewidth"] == 1.25          # never implicitly
+        plotstyle.use("user")
+        assert mpl.rcParams["lines.linewidth"] == 3 and mpl.rcParams["font.size"] == 8
+        plotstyle.use("acs")                                    # names ignore case
+        assert mpl.rcParams["lines.linewidth"] == 0.5
+        plotstyle.use(str(other))
+        assert mpl.rcParams["lines.linewidth"] == 5
+        assert set(plotstyle.named_styles()) == {"user", "acs"}
+        with pytest.raises(ValueError, match="unknown plot style"):
+            plotstyle.use("nature")
+        with pytest.warns(UserWarning, match="does not exist"):
+            plotstyle.use(str(tmp_path / "gone.mplstyle"))
+
+
+def test_session_and_notebook_take_the_style_file_and_cells_still_win():
+    from ewald.notebook import Cell, Notebook
+
+    src = "import matplotlib.pyplot as plt\nprint(plt.rcParams['lines.linewidth'], plt.rcParams['font.size'])"
+    nb = Notebook([Cell(src)])
+    nb.set_plot_style("publication", None, {"lines.linewidth": "2"})
+    nb.run_all()
+    assert nb.cells[0].outputs[0].data.split() == ["2.0", "8.0"]
+    nb.cells.insert(0, Cell("import matplotlib.pyplot as plt\nplt.rcParams['font.size'] = 11"))
+    nb.run_all()
+    nb.set_plot_style("publication", None, {"lines.linewidth": "3", "font.size": "9"})   # the file changed
+    nb.run_cell(1)
+    assert nb.cells[1].outputs[0].data.split() == ["3.0", "11.0"]        # the cell's font size stays
+
+
+def test_editor_commands_per_platform():
+    from ewald.fileops import editor_commands
+
+    assert editor_commands("C:\\Users\\me\\user.mplstyle", "win32") == ["url", ["notepad.exe", "C:\\Users\\me\\user.mplstyle"]]
+    assert editor_commands("/Users/me/user.mplstyle", "darwin") == [["open", "-t", "/Users/me/user.mplstyle"], "url"]
+    assert editor_commands("/home/me/user.mplstyle", "linux") == ["url"]

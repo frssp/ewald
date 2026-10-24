@@ -125,3 +125,17 @@ def _restart_manager_list(path: str) -> list[str]:  # pragma: no cover - Windows
         return names
     finally:
         rm.RmEndSession(session)
+
+
+def editor_commands(path, platform: str | None = None) -> list:
+    """How to open a text file (a ``.mplstyle`` style) in the user's editor, in the order to
+    try: ``"url"`` is the file's OS association (``QDesktopServices.openUrl``), a list is a
+    program to start. A suffix such as ``.mplstyle`` has no association on a fresh Windows or
+    macOS, so Windows falls back to Notepad and macOS asks for the default text editor."""
+    platform = platform or sys.platform
+    path = os.fspath(path)
+    if platform == "darwin":
+        return [["open", "-t", path], "url"]
+    if platform == "win32":
+        return ["url", ["notepad.exe", path]]
+    return ["url"]
