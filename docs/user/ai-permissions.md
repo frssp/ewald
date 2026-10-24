@@ -13,6 +13,60 @@ cells, so the notebook is the full record of what it did. It cannot run Python o
 you allow it, it never sees your API key, and the built-in tools never hand it raw coordinate
 arrays.
 
+## Through the notebook or not
+
+Everything the AI can do falls on one side of this line. What changes the structure, the
+pipeline, the view or a file you keep goes through a notebook cell (written, and run, in the
+notebook the AI works on), so the notebook replays it. What only looks, or only changes how
+ewald itself shows the chat, does not write a cell.
+
+**Through notebook cells** (each leaves a cell; Ctrl+Z undoes it in the GUI):
+
+| What the AI controls | How | Cell |
+| --- | --- | --- |
+| The loaded structure or workflow | `load_structure`, `open_workflow` | `pipe = load(...)` |
+| Pipeline steps | `add_modifier`, `remove_modifier`, `edit_cell` with `params` | step cell `pipe.add(...)`, deleted or rewritten |
+| Everything the 3D view and pictures show: style, colors, radii, bonds, cell, camera, frame, labels, measurements, visuals, overlays, renderer | `set_view`, `add_visual`, `remove_visual`, `add_overlay`, `remove_overlay` | the view cell `view(pipe, ...)` |
+| Files written for you | `export_file` | `export_file(pipe, ...)` |
+| A workflow's analysis | `add_analysis` | the plugin's cells |
+| Its own code (plots, tables, anything the API does) | `insert_cell`, `edit_cell`, then `run_cell` or the run permission; ```python blocks of an answer (`llm.code_cells`) | the cell it wrote |
+| Notebook order and contents | `move_cell`, `delete_cell` | moves or deletes the cell |
+| Plugin tools that change results, e.g. `compute_plumed_cvs` | the plugin calls `add_modifier` | step cell |
+
+**Not through cells** (nothing is written to the notebook):
+
+| What | Effect outside the notebook |
+| --- | --- |
+| The read-only tools (table above, `python_api`, `check_run`, `describe_workflow`, `list_workflows`, `read_plumed_output`, `compute_plumed_cvs` with `keep=false`) | none on your data; they compute on the pipeline or on a copy and return text, tables or images |
+| `set_frame` | sets the frame the next tools look at, kept in the toolset only; the view's frame is `set_view frame` (a cell) |
+| `render_image`, `read_plumed_output`, the selection close-up | write PNGs into the AI's work dir, a temporary `ewald-llm-*` folder |
+| Remote paths the AI opens (`host:/path`) | connect over SSH (after you agree, `llm.confirm_hosts`) and may download into ewald's remote cache |
+| The chat itself | kept per notebook tab and saved in the `.ewd` (`Notebook.chat`), not as cells |
+| GUI behavior around an answer | scrolls to the cells it writes (`llm.follow_cells`), links them from the answer, redraws the viewport after cells ran; none of it changes a result |
+| `ewald narrate` | no tools; reads descriptors and renders, returns text |
+| Modifier Forge (`ewald forge`) | saves a new modifier plugin into the plugin folder after you confirm; using it in an analysis is a step cell like any other |
+
+In Python, `Agent.from_pipeline(pipe)` wraps your `pipe` in a session notebook, so steps the AI
+adds appear on `pipe` itself and `agent.toolset.to_script()` holds the cells that put them
+there. `ewald ask` and `ewald mcp` keep their session notebook in memory; it is not written to
+disk.
+
+### Gaps in the rule
+
+The rule is enforced for the built-in tools (`test_tools_do_not_touch_the_pipeline_or_view_directly`
+and `test_read_only_tools_change_nothing` in `tests/test_llm.py`). These places still act
+outside cells:
+
+- Plugin tools (`@ai_tool`) run in-process and can change `toolset.pipeline` by hand; ewald only
+  asks them not to ([AI tool plugins](../plugins/tools.md)) and does not check afterwards.
+- `export_file` creates missing folders for its target before it writes the cell, so a cell that
+  then fails leaves those folders behind.
+- `render_image` with `filename` replaces a file of that name in the work dir without asking.
+- `set_frame` is not recorded, so an answer about frame 120 has no cell that says which frame
+  the AI looked at unless it also moved the view.
+- The Forge's plugin is a file in the plugin folder, not a cell: a notebook that uses it runs
+  only where that plugin is installed.
+
 ## Tools and what they may change
 
 Every tool belongs to one of four groups. `tests/test_llm.py::test_every_tool_is_classified`
