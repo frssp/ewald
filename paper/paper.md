@@ -61,8 +61,12 @@ large trajectories but targets biomolecular systems and is distributed under a l
 restricts redistribution of its code. VESTA [@Momma2011] is the common choice for crystal structures
 and volumetric data but has no trajectory analysis or scripting. The ASE GUI [@Larsen2017], nglview
 [@Nguyen2018] and chemiscope [@Fraux2020] are lightweight and Python native but offer limited
-analysis and rendering. Libraries such as freud [@Ramasubramani2020], pymatgen [@Ong2013] and
-MDAnalysis [@MichaudAgrawal2011] provide analyses without an interactive view. EWALD combines an
+analysis and rendering. Libraries such as freud [@Ramasubramani2020], pymatgen [@Ong2013],
+MDAnalysis [@MichaudAgrawal2011] and MDTraj [@McGibbon2015] provide analyses without an interactive view.
+Language-model agents with domain tools plan and run chemistry and simulation tasks
+[@Bran2024; @Boiko2023; @Campbell2025], and agents that act by writing code do better than
+agents limited to fixed tool calls [@Wang2024]; EWALD applies both ideas to analysis and
+visualization, with notebook cells as the assistant's only way to act. EWALD combines an
 OVITO-style analysis pipeline, VESTA-style crystal and volumetric display, a notebook in the spirit
 of Jupyter [@Kluyver2016] and publication rendering under the MIT license, so that the complete
 workflow can be shared, inspected and extended.
@@ -79,7 +83,7 @@ CuPy [@Okuta2017]), so the CPU path exercised in tests is the same code that run
 
 Analyses where a verified implementation exists are ported rather than rewritten. The common
 neighbor analysis [@Honeycutt1987], polyhedral template matching [@Larsen2016], Voronoi analysis
-(voro++ [@Rycroft2009]) and centrosymmetry implementations are C++ ports of OVITO's source, which is
+(voro++ [@Rycroft2009]) and centrosymmetry [@Kelchner1998] implementations are C++ ports of OVITO's source, which is
 available under the MIT license, and are tested against reference results computed with OVITO and
 freud. Symmetry uses spglib [@Togo2024].
 
@@ -87,7 +91,7 @@ All renderers draw a renderer-neutral scene description made of spheres, cylinde
 overlays: an interactive VTK/PyVista [@Schroeder2006; @Sullivan2019] viewport that favours frame
 rate (level of detail, sphere impostors for millions of atoms, a legacy OpenGL path for remote X
 sessions), a Numba ray tracer that favours quality for publication images and movies, and a
-Matplotlib-based vector renderer for SVG and PDF figures. The desktop application (PySide6) is
+Matplotlib-based [@Hunter2007] vector renderer for SVG and PDF figures. The desktop application (PySide6) is
 built on the notebook model: notebooks are top-level tabs, each step cell carries a parameter form
 generated from the modifier's constructor signature, and view cells hold plots linked to the 3D
 selection (\autoref{fig:notebook}). Notebooks can also run in a separate Jupyter kernel.
