@@ -8,7 +8,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Python library API audit (2026-10-24, D54): non-breaking fixes (public PR #50) and the behaviour
+- Python library API audit (2026-10-24, D55): non-breaking fixes (public PR #50) and the behaviour
   changes (public PR #55) are in. Left: one name per idea across modifiers with OVITO's spellings
   as aliases (`bins`/`nbins`/`bin_count`/`number_of_bins`, `range` vs `start`/`end` vs `xrange_*`,
   `unwrapped` vs `unwrap_*`, `only_selected` defaults, PowderDiffraction `step`,
@@ -597,6 +597,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   scatter plots of two properties (brushing a box selects atoms); keep a pair, bond or angle
   range as a modifier (only property ranges become an `ExpressionSelection` now).
 - P2: glTF, interactive HTML and Blender export.
+- P3: A Metal viewport on the Mac through VTK's WebGPU backend (Dawn maps it to Metal, Vulkan
+  or Direct3D 12). The VTK viewport draws through OpenGL 4.1 on a Mac now, which macOS runs on
+  top of Metal; the Metal option in Compute › Device is only for the ray tracer. Wait until
+  VTK's WebGPU backend leaves experimental and supports what the viewport uses (impostors,
+  depth peeling, picking), then add it as a `viewport.backend` choice.
 - P2: Batch render CLI: apply one `.ewald` session to many run folders.
 - P2: Native GSD reader (H5MD and XTC/TRR/DCD are done).
 - P2: Live reload for XTC/TRR/DCD and compressed files (dump, XDATCAR, OUTCAR, vasprun.xml,
@@ -621,10 +626,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   0.85 vs 1.64 s, Cu slab 0.20 vs 0.34 s. Atoms gain about 2x; see-through polyhedra and the
   fine mesh do not (divergent transparency layers, the BVH stack). Apple's OpenCL took 2.4 s
   for a 400x300 Publication picture the CPU draws in 0.4-0.5 s (19.5 s before the 32-bit item
-  codes), and Metal took 0.7 s, then 1.6 s and 8.7 s for the same picture in later runs, so
-  `auto` stays on the CPU on a Mac. Plugged in it took a steady 0.6 s: the stalls were the GPU's
+  codes), and Metal took 0.7 s, then 1.6 s and 8.7 s for the same picture in later runs. Plugged in it took a steady 0.6 s: the stalls were the GPU's
   battery power state, and the tracers now queue all launches of a pass and wait once (a GPU
-  idle between launches clocks down). Still slow for a GPU: divergent transparency layers and
+  idle between launches clocks down). At 1600x1200 Publication Metal took 2.6 s against 9.0 s
+  for 108k fcc Cu atoms and 2.5 s against 11.0 s for 500k, so `auto` on a Mac is Metal again. Still slow for a GPU: divergent transparency layers and
   AO rays in one kernel per pixel, the per-thread BVH stack (a wavefront tracer would fix both). Retina, the
   GUI Render page and movies on Metal are unchecked.
 - `no display: DISPLAY is not set` on a real Linux machine: the message should name the cause
