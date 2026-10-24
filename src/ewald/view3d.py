@@ -77,6 +77,8 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        "camera frame (x right, y up, z towards the viewer) or {'direction' or 'azimuth'/'elevation' (degrees, "
        "right of and above the viewer), 'intensity' (1 = default)}; None: the default (upper left).",
        type=["array", "object", "null"]),
+    _s("colorbar_collapsed", False, "style", "Viewport only: fold the color bar cards to one-line chips (click "
+       "a card or chip to toggle); pictures always draw the whole bars (legend=False leaves them out)."),
     # atoms
     _s("atoms", True, "atoms", "Draw the atoms (the Particles element); False keeps bonds, polyhedra and the "
        "rest, e.g. a stick model."),
@@ -458,7 +460,7 @@ class View:
         bond table and the text label). Settings left at None are left out, so the caller's defaults hold."""
         kw = {}
         for name in SETTINGS:
-            if name in ("style", "frame", "bonds", "bond_pairs", "bond_factor", "text", "selection"):
+            if name in ("style", "frame", "bonds", "bond_pairs", "bond_factor", "text", "selection", "colorbar_collapsed"):
                 continue
             value = getattr(self, name)
             if value is None or (isinstance(value, (dict, list)) and not value) or (name == "atoms" and value):
@@ -876,7 +878,7 @@ def _check(name, value):
         if not isinstance(value, dict):
             raise TypeError("surfaces is {name: {'visible', 'color', 'transparency', 'edges'}}")
         value = {str(k): _surface_style(k, v) for k, v in value.items()}
-    elif name in ("atoms", "cell", "orthographic", "legend", "type_legend", "transparent_background"):
+    elif name in ("atoms", "cell", "orthographic", "legend", "colorbar_collapsed", "type_legend", "transparent_background"):
         value = bool(value)
     elif name == "size":
         value = [int(value[0]), int(value[1])]
