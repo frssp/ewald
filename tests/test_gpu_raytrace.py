@@ -152,6 +152,7 @@ def busy_scene():
     sc.add_spheres(c, rng.uniform(0.25, 0.5, 12), rng.uniform(0.2, 1.0, (12, 3)))
     sc.add_cylinders(c[:6], c[6:], 0.12, (0.7, 0.7, 0.7))
     sc.add_cylinders([[-2, -2, -2]], [[2, -2, -2]], 0.03, (0, 0, 0), cast_shadows=False)
+    sc.add_cylinders([[-2.0, 1.2, -1.0]], [[-1.4, 1.6, -0.1]], 0.25, (0.3, 0.5, 0.9), flat_caps=(True, True))
     sc.add_triangles([[-2.5, -1.8, -2.5]], [[2.5, -1.8, -2.5]], [[0, -1.8, 2.5]], (0.9, 0.9, 0.9))
     sc.add_triangles([[-1, 1, 1]], [[1, 1, 1]], [[0, 2, 1]], (0.2, 0.4, 1.0), alpha=0.4)
     # a fine sphere mesh, enough triangles for the BVH

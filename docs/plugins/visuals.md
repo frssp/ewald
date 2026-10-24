@@ -79,7 +79,7 @@ All positions are world coordinates in Angstrom; primitives know nothing about t
 | Primitive | Fields | OpenGL | Ray tracer | Vector (SVG/PDF) |
 |---|---|---|---|---|
 | `Spheres` | `centers`, `radii`, `rgb`, `alpha`, `index` | sphere meshes or GPU impostors; `alpha` < 1 is see-through | spheres; `alpha` < 1 becomes a see-through triangle sphere | shaded discs with opacity |
-| `Cylinders` | `start`, `end`, `radius`, `rgb`, `alpha`, `owner`, `cap_end` | tubes | cylinders (+ a sphere cap at `end`) | sticks with a highlight, painted just behind `owner`'s atom; `alpha` 0 hides one |
+| `Cylinders` | `start`, `end`, `radius`, `rgb`, `alpha`, `owner`, `start_cap`, `end_cap` ("none", "flat" (default) or "round", one or one per cylinder; `cap_end=False` = open end) | tubes with disk or hemisphere caps | cylinders with disk caps; round caps are spheres | sticks with a highlight, painted just behind `owner`'s atom, flat caps as ellipses, round ones as discs; `alpha` 0 hides one |
 | `Lines` | `points`, `strips`, `rgb` (or None for the ink color), `point_rgb` (a color per point, for color maps), `width` (px at 1600 px height), `radius` | polylines, `point_rgb` blended along each piece | tubes with round joints when `radius` is set, else not drawn | strips scaled with the image height |
 | `SurfaceMesh` | `vertices`, `faces`, colors, normals, `transparency`, `edges` | lit faces + edges | triangles + edge cylinders | lit polygons + edge strips |
 | `Arrows` | from `make_arrows(base, tip, width, rgb, alpha, shading)` | cylinder + cone meshes | cylinders + cones | true silhouettes |

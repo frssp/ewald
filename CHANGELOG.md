@@ -55,6 +55,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Fixed
 
+- Bond ends look the same in every renderer (D50): bonds cut by the periodic cell end in flat
+  disks instead of hollow tubes in the viewport (and instead of round ends in the ray tracer),
+  and bond ends at hidden, small or see-through atoms are round, so stick-only drawings have
+  smooth joints in the viewport, the OpenGL 1.x viewport, the ray tracer and vector files.
 - Plugins side bar *From file…* also takes a downloaded `.zip`, `.whl` or `.tar.gz` package and installs it with pip.
 - Plugin index and example downloads trust the OS certificate store (`truststore`), so they work behind a
   company proxy that re-signs HTTPS ("certificate verify failed"). In a uv environment without pip, the

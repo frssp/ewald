@@ -521,25 +521,97 @@ def tube_mesh(start, end, radius: float, sides: int = TUBE_SIDES):
     return verts.reshape(-1, 3), faces, normals.reshape(-1, 3)
 
 
+CAP_RINGS = 3  # latitude rings of a round (hemisphere) cap mesh, pole excluded
+
+
+def cap_mesh(center, axis, radius, kind: str, sides: int = TUBE_SIDES):
+    """Caps closing tube ends as triangles: ``(verts, faces, normals)``, one block of vertices per
+    cap. ``axis`` points out of the tube; ``kind`` is "flat" (a disk) or "round" (a hemisphere).
+    The rim matches :func:`tube_mesh`'s vertices, so caps close the tubes without cracks."""
+    center, axis = np.asarray(center, float).reshape(-1, 3), np.asarray(axis, float).reshape(-1, 3)
+    k = len(center)
+    ref = np.zeros_like(axis)
+    ref[np.arange(k), np.argmin(np.abs(axis), axis=1)] = 1.0
+    u = np.cross(axis, ref)
+    u /= np.linalg.norm(u, axis=1, keepdims=True)
+    v = np.cross(axis, u)
+    ang = 2 * np.pi * np.arange(sides) / sides
+    ring = np.cos(ang)[None, :, None] * u[:, None] + np.sin(ang)[None, :, None] * v[:, None]   # k, sides, 3
+    a = np.arange(sides)
+    b = (a + 1) % sides
+    if kind == "flat":
+        normals = np.repeat(axis[:, None], sides + 1, axis=1)
+        verts = np.concatenate([radius[:, None, None] * ring, np.zeros((k, 1, 3))], axis=1) + center[:, None]
+        tri = np.column_stack([np.full(sides, sides), a, b])
+    else:
+        lat = 0.5 * np.pi * np.arange(CAP_RINGS) / CAP_RINGS
+        normals = np.concatenate([(np.cos(lat)[None, :, None, None] * ring[:, None]
+                                   + np.sin(lat)[None, :, None, None] * axis[:, None, None]).reshape(k, -1, 3),
+                                  axis[:, None]], axis=1)
+        verts = radius[:, None, None] * normals + center[:, None]
+        pole = CAP_RINGS * sides
+        tri = [np.column_stack([a + j * sides, b + j * sides, b + (j + 1) * sides]) for j in range(CAP_RINGS - 1)]
+        tri += [np.column_stack([a + j * sides, b + (j + 1) * sides, a + (j + 1) * sides]) for j in range(CAP_RINGS - 1)]
+        tri.append(np.column_stack([a + (CAP_RINGS - 1) * sides, b + (CAP_RINGS - 1) * sides, np.full(sides, pole)]))
+        tri = np.concatenate(tri)
+    per = verts.shape[1]
+    faces = (tri[None] + (per * np.arange(k))[:, None, None]).reshape(-1, 3)
+    return verts.reshape(-1, 3), faces, normals.reshape(-1, 3)
+
+
+def _tube_caps(cyl, pick, sides: int = TUBE_SIDES):
+    """Flat and round cap meshes of cylinders ``pick`` (one radius): ``(verts, faces, normals, rgb)``
+    blocks to append to their tubes."""
+    out = []
+    mask = np.zeros(cyl.count, bool)
+    mask[pick] = True
+    for kind in ("flat", "round"):
+        center, axis, radius, rgb, _, idx = cyl.caps(kind)
+        sel = mask[idx]
+        if sel.any():
+            verts, faces, normals = cap_mesh(center[sel], axis[sel], radius[sel], kind, sides)
+            out.append((verts, faces, normals, np.repeat(rgb[sel], len(verts) // int(sel.sum()), axis=0)))
+    return out
+
+
+def _round_cap_spheres(cyl):
+    """Round caps as spheres of the cylinder radius (for GPU stick impostors, whose ends are flat)."""
+    from .scene import Spheres
+
+    center, _, radius, rgb, alpha, _ = cyl.caps("round")
+    return Spheres(center, radius, rgb, alpha) if len(center) else None
+
+
 def _add_cylinders(plotter, cyl, name, flat: bool = False, impostor: bool = False):
-    """Cylinders as tubes (half-bonds: one per atom, in its color); ``flat``: unshaded (ASE-GUI look);
-    ``impostor``: GPU ray-cast cylinders (:func:`add_sticks`), one vertex each instead of a tube."""
+    """Cylinders as tubes (half-bonds: one per atom, in its color) with their caps; ``flat``: unshaded
+    (ASE-GUI look); ``impostor``: GPU ray-cast cylinders (:func:`add_sticks`), one vertex each
+    instead of a tube, plus sphere impostors for round caps."""
     import pyvista as pv
 
     if not cyl.count:
         return
     if impostor:
         add_sticks(plotter, cyl, name)
+        caps = _round_cap_spheres(cyl)
+        if caps is not None:
+            add_atoms(plotter, spheres_cloud(caps), atom_style="impostor", name=f"{name}:caps")
         return
     radii = np.unique(cyl.radius)
     for r in radii:  # one tube actor per radius (bonds have one)
         pick = np.flatnonzero(cyl.radius == r) if len(radii) > 1 else np.arange(cyl.count)
         verts, faces, normals = tube_mesh(cyl.start[pick], cyl.end[pick], float(r))
+        rgb = np.repeat(cyl.rgb[pick], 2 * TUBE_SIDES, axis=0)
+        parts = [(verts, faces, normals, rgb)] + _tube_caps(cyl, pick)
+        if len(parts) > 1:
+            offsets = np.cumsum([0] + [len(p[0]) for p in parts[:-1]])
+            verts = np.concatenate([p[0] for p in parts])
+            faces = np.concatenate([p[1] + o for p, o in zip(parts, offsets)])
+            normals = np.concatenate([p[2] for p in parts])
+            rgb = np.concatenate([p[3] for p in parts])
         tubes = pv.PolyData.from_regular_faces(verts, faces)
         tubes.point_data["Normals"] = normals
         tubes.point_data.active_normals_name = "Normals"
-        rgb = (np.clip(cyl.rgb[pick], 0, 1) * 255).astype(np.uint8)
-        tubes.point_data["rgb"] = np.repeat(rgb, 2 * TUBE_SIDES, axis=0)
+        tubes.point_data["rgb"] = (np.clip(rgb, 0, 1) * 255).astype(np.uint8)
         light = dict(ambient=1.0, diffuse=0.0, specular=0.0) if flat else _TUBE_LIGHT
         actor_name = name if len(radii) == 1 else f"{name}:{r:g}"
         plotter.add_mesh(tubes, scalars="rgb", rgb=True, name=actor_name, smooth_shading=not flat, render=False,
@@ -580,8 +652,9 @@ def stick_data(cyl):
 def add_sticks(plotter, cyl, name):
     """Cylinders as GPU impostors (Sigg et al. 2006): VTK's stick mapper, the one its molecule
     mapper draws bonds with, ray-casts each cylinder in the fragment shader from one point, so a
-    million half-bonds build in about a second and draw without a triangle each. The ends are
-    flat caps (hidden inside the atoms for bonds); the material matches the tubes'."""
+    million half-bonds build in about a second and draw without a triangle each. Both ends are
+    flat caps (round ones are added as spheres by :func:`_add_cylinders`); the material matches
+    the tubes'."""
     from vtkmodules.vtkRenderingCore import vtkActor
     from vtkmodules.vtkRenderingOpenGL2 import vtkOpenGLStickMapper
 

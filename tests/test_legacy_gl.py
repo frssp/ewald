@@ -14,6 +14,12 @@ def test_unit_geometry():
     v, n, f = legacy_gl.unit_cylinder(8)
     assert v[:, 2].min() == 0 and v[:, 2].max() == 1 and f.max() < len(v)
     np.testing.assert_allclose(np.linalg.norm(n, axis=1), 1)
+    for top in (False, True):   # flat bond caps (D50): disks at either end, wound to face outward
+        v, n, f = legacy_gl.unit_disk(8, top)
+        side = 1.0 if top else -1.0
+        assert np.all(v[:, 2] == (1 if top else 0)) and np.all(n == [0, 0, side]) and f.max() < len(v)
+        tri = v[f]
+        assert (np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])[:, 2] * side > 0).all()
 
 
 def test_align_matrices_map_unit_cylinder_to_segments():

@@ -447,6 +447,8 @@ Visualization plugins (later phases of the Scene IR plan)
 - GUI: the built-in elements (Particles, Bonds, Cell, ...) as rows with forms generated from
   their `VisualElement` parameters, replacing the hand-written style controls.
 - OpenGL and the ray tracer ignore `Cylinders.alpha`; see-through bonds need it.
+- Vector files draw bond caps (D50) as a flat ellipse or disc without the stick's highlight stripe,
+  and a round joint where several sticks meet can show the stick outlines crossing it.
 - Ray tracer: `Lines` without a `radius` are not drawn (trajectory lines now have one).
 - Color bars: the legacy OpenGL 1.x viewport (ssh -X) draws the color maps but no color bar card
   (`gui/viewport.py` `_draw_colorbars` has the image to draw), so it cannot fold them either; the card can cover an `Attributes`
