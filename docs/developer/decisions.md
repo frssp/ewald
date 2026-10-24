@@ -623,7 +623,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   ray tracer round.
 - **Considered:** flat disks everywhere (as OVITO; stick-only joints look angular), a low dome
   (h = 0.35 r) everywhere, hemispheres everywhere (a cut bond then looks continued).
-- **Landed:** public PR #NN.
+- **Landed:** public PR #41.
 
 ## Adding an entry
 
