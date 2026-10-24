@@ -31,6 +31,8 @@ statically, so building the docs does not need the C++ extension.
   committed GIF is a live take; look at a new one before committing it. The notebooks themselves are
   tested by `tests/test_tutorials.py`, which also checks the numbers the tutorials quote.
 - `docs/todo.md`: the one list of open work.
+- `docs/developer/references.md`: related work, with verified citations and what each means for
+  EWALD; `paper/paper.bib` holds the entries the JOSS paper cites.
 - `docs/ROADMAP.md`: milestones.
 - `docs/developer/decisions.md`: the owner's design decisions with dates, reasons and
   alternatives; a PR that implements a new decision adds its entry.
