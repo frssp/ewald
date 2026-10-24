@@ -7,7 +7,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 "In progress" when it merges.
 
 ## In progress
-
+- Folding the viewport color bars (`colorbar_collapsed`, click a card): waiting for the owner's
+  look at the collapsed and expanded cards in both themes before merging.
 
 ## Next
 - Activity bar: buttons cannot be reordered by dragging yet (hiding and the … overflow menu work).

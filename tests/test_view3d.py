@@ -592,3 +592,24 @@ def test_selection_takes_bool_strings_and_checks_colors(srtio3):
     assert v.selection == "gold"
     with pytest.raises(ValueError):
         v.selection = "nonsense"
+
+
+def test_colorbar_collapsed_is_a_view_setting_pictures_ignore(srtio3, tmp_path):
+    """The viewport's folded color bars are notebook code (view(pipe, colorbar_collapsed=True)), round-trip
+    through the GUI's style and sessions, and never change a picture."""
+    from ewald.session import load_session, save_session
+    from ewald.view_style import ViewStyle
+
+    v = view(srtio3, colorbar_collapsed="yes")
+    assert v.colorbar_collapsed is True and v.changed() == {"colorbar_collapsed": True}
+    assert "colorbar_collapsed=True" in v.source()
+    assert "colorbar_collapsed" not in v.render_kwargs(srtio3.compute(0))
+    st = ViewStyle()
+    st.apply_view(v, ["Sr", "Ti", "O"])
+    assert st.colorbar_collapsed is True and "colorbar_collapsed" not in st.scene_kwargs()
+    assert View(**st.view_settings(["Sr", "Ti", "O"])).changed()["colorbar_collapsed"] is True
+    path = save_session(str(tmp_path / "s.ewald"), srtio3, style=st)
+    session = load_session(path)
+    assert session.style["colorbar_collapsed"] is True and "colorbar_collapsed" not in session.render_kwargs()
+    st.apply_view(View(), ["Sr", "Ti", "O"])
+    assert st.colorbar_collapsed is False

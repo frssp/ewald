@@ -89,3 +89,35 @@ def test_long_titles_and_many_bars_never_overlap():
         for b in cards[i + 1:]:
             assert a.x1 <= b.x0 or b.x1 <= a.x0 or a.y1 <= b.y0 or b.y1 <= a.y0
     assert len({c.y0 for c in cards}) > 1                  # wrapped into a second row
+
+
+def test_collapsed_bars_are_one_line_chips_and_only_the_viewport_gets_chevrons():
+    """colorbar_collapsed folds each card to a chip (a short horizontal ramp and the title); the viewport
+    asks for chevrons (up on a card, down on a chip), pictures never get them."""
+    from ewald.overlays import Polyline
+
+    def chevrons(items):   # three-point open polylines; ticks have two points
+        return [it for it in items if isinstance(it, Polyline) and len(it.points) == 3]
+
+    full = colorbar_items(BARS, (800, 600), unit=12)
+    assert not chevrons(full)
+    cards = colorbar_items(BARS, (800, 600), unit=12, chevrons=True)
+    chips = colorbar_items(BARS, (800, 600), unit=12, collapsed=True, chevrons=True)
+    up, down = chevrons(cards), chevrons(chips)
+    assert len(up) == len(down) == 2
+    assert all(c.points[1][1] < c.points[0][1] for c in up)        # apex on top: fold
+    assert all(c.points[1][1] > c.points[0][1] for c in down)      # apex below: unfold
+    ramps = [it for it in chips if isinstance(it, ColorRamp)]
+    assert len(ramps) == 2 and not any(r.vertical for r in ramps)
+    assert sorted(it.text for it in chips if isinstance(it, Text)) == ["Charge (e)", "Frame"]
+    card_h = max(it.y1 for it in cards if isinstance(it, Rect) and it.fill is not None)
+    chip_h = max(it.y1 for it in chips if isinstance(it, Rect) and it.fill is not None)
+    assert chip_h < 0.3 * card_h
+    for it in chips:                                               # still in the top right corner
+        if isinstance(it, Rect) and it.fill is not None:
+            assert it.x1 < 800 and it.y0 < 30
+
+
+def test_a_chip_without_title_shows_the_range():
+    items = colorbar_items([{"title": "", "cmap": "viridis", "range": (0, 7)}], (800, 600), unit=12, collapsed=True)
+    assert [it.text for it in items if isinstance(it, Text)] == ["0 – 7"]

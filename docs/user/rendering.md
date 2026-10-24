@@ -92,6 +92,9 @@ out); a particle property such as `"Path Length"` or `"Net Displacement"` gives 
 color. `trajectory_radius` sets the tube radius of ray-traced lines (default 0.04 x the width).
 In the GUI the View tab's Elements card has the same settings (Trajectories, Color map, Time
 window, Trail). Several color bars (a `ColorCoding` step and the trajectory map) stand side by side.
+In the viewport a click on a color bar card folds the cards to one-line chips (a short ramp and the
+title) and a click on a chip unfolds them; the view cell records it as `colorbar_collapsed=True`,
+which code can set too. Pictures always draw the whole bars (`legend=False` leaves them out).
 
 ### What colors the atoms
 
