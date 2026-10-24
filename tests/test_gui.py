@@ -4900,7 +4900,8 @@ def test_workflow_side_bar_lists_expands_and_opens_a_workflow_as_one_notebook(ap
             if cursor is None:
                 return WorkflowPage([], next="1")
             return WorkflowPage([Workflow("relax", id="7", path="demo:7/relax", kind="vasp_relax",
-                                          state="finished")], next="2" if cursor == "1" and query is None else None)
+                                          state="finished", group="Si study")],
+                                next="2" if cursor == "1" and query is None else None)
 
         def describe(self, ref):
             return full()
@@ -4918,6 +4919,11 @@ def test_workflow_side_bar_lists_expands_and_opens_a_workflow_as_one_notebook(ap
     top.setExpanded(True)
     side.wait()
     assert [top.child(i).text(0) for i in range(top.childCount())] == ["relax  (2 runs)  ✓", "bands"]
+    # the group is drawn under the title (a two-line row), not put into the item text
+    from ewald.gui.workflow_panel import GROUP
+
+    assert top.data(0, GROUP) == "Si study" and top.toolTip(0).startswith("Si study")
+    assert side.tree.visualItemRect(top).height() > side.tree.visualItemRect(top.child(0)).height()
     assert top.child(1).child(0).text(0) == "scf  ✓" and top.child(0).child(0).text(0) == "vasprun.xml"
     side.tree.setCurrentItem(top.child(1).child(0))
     assert side.path.text() == "demo:7/bands/scf" and side.buttons["Open"].isEnabled()

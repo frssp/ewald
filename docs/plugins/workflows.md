@@ -21,7 +21,7 @@ the rest the same way for every source:
 
 | Class | What it holds |
 |---|---|
-| `Workflow` | the whole workflow: `id`, `path` (its main result), `kind` (template or process label), `formula`, `label`, `state`, `exit_status`, `ctime`, `scalars`, `steps`, `outputs`; `complete=False` for a list row whose steps are not read yet |
+| `Workflow` | the whole workflow: `id`, `path` (its main result), `kind` (template or process label), `formula`, `label`, `group` (the session, project or folder it belongs to at the source, shown dimmed under the title in the side bar), `state`, `exit_status`, `ctime`, `scalars`, `steps`, `outputs`; `complete=False` for a list row whose steps are not read yet |
 | `WorkflowStep` | one step: `name`, `path` (its own result, or ""), `state`, `exit_status`, `runs` (restarts joined), `id`, `work_dir`, `scalars`, `outputs` and nested `steps` |
 | `WorkflowOutput` | something a step made: `name`, `path`, `kind` ("structure", "trajectory", "band" for NEB images, "volumetric", "file", "data"), `note` ("Si2", "on the cluster") |
 | `WorkflowPage` | one page of a list: `workflows` and `next`, the cursor of the next page (None: the last) |
