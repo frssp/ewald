@@ -10,7 +10,7 @@ authors:
   - family-names: Kim
     given-names: Sunghyun
     alias: frssp
-    # orcid: "https://orcid.org/0000-0000-0000-0000"
+    orcid: "https://orcid.org/0000-0001-5072-6801"
 repository-code: "https://github.com/frssp/ewald"
 url: "https://github.com/frssp/ewald"
 license: MIT
