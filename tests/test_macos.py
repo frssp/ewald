@@ -11,11 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.parametrize("device", ["metal", "mps", "MPS"])
-def test_apple_gpu_device_says_cpu(device):
-    from ewald.backend import get_backend
+def test_apple_gpu_device_runs_the_analysis_on_the_cpu(device):
+    """Only the ray tracer runs on Metal (tests/test_gpu_raytrace.py); the analysis stays on the CPU."""
+    from ewald import backend
 
-    with pytest.raises(RuntimeError, match="Apple GPUs.*device='cpu'"):
-        get_backend(device)
+    assert backend.get_backend(device) is backend.CPU
 
 
 def test_auto_without_cuda_is_cpu(monkeypatch):

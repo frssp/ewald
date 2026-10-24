@@ -43,9 +43,8 @@ On other GPUs (Intel Arc and integrated graphics, AMD, Apple) the ray tracer run
 OpenCL: `pip install 'ewald[opencl]'`, then `device="opencl"`, or OpenCL in Preferences ›
 Compute › Device. The GPU's driver brings the OpenCL runtime (on Windows the Intel, AMD and
 NVIDIA graphics drivers do). Only the ray tracer uses OpenCL; the analysis runs on the CPU
-with this device. `device="auto"` picks CUDA first, then an OpenCL GPU for ray tracing. On a Mac `auto` stays on
-the CPU: Apple's OpenCL, deprecated and layered over Metal, traced a Publication picture about
-40 times slower than the CPU on an M2 MacBook Air (`device="opencl"` still works there). To see
+with this device. `device="auto"` picks CUDA first, then an OpenCL GPU for ray tracing (on a Mac, Metal; see
+below). To see
 what the GPU gains, run `python benchmarks/analysis.py --skip-modifiers --device opencl` and
 compare with `--device cpu`.
 
@@ -56,9 +55,19 @@ The numba and C++ kernels use all cores by default. Preferences › Compute › 
 
 ## macOS
 
-Apple GPUs have no compute backend yet, so on a Mac analysis runs on the CPU: `device="auto"`
-(the GUI default) picks the CPU, and `device="metal"` or `"mps"` stops with an error that says
-so. The viewport and the OpenGL renderer still draw on the GPU. Apple Silicon CPUs are fast for
+On a Mac the ray tracer runs on the GPU through Metal: `pip install 'ewald[metal]'` (PyObjC's
+Metal bindings), then `device="metal"` (or `"mps"`), or Apple GPU (Metal) in
+Preferences › Compute › Device. It is the same kernel source as CUDA and OpenCL, in single
+precision throughout, since Metal has no double. Apple's OpenCL works too (`device="opencl"`),
+but on an M2 MacBook Air it traced a 400x300 Publication picture in 2.4 s against 0.5 s on the
+CPU. Metal was uneven on that Mac: twice as fast as the CPU on 108 000 fcc Cu atoms (800x600,
+Publication: 0.85 s against 1.64 s), as fast on see-through polyhedra and fine isosurfaces,
+and from 0.7 s to 8.7 s for the same small picture from run to run while the CPU took 0.4 s.
+So `auto` stays on the CPU on a Mac; choose `metal` for big atom scenes. The first Metal
+picture of a session waits a few seconds while Metal builds the kernel.
+
+The analysis has no Apple GPU backend yet: with `metal` or `mps` it runs on the CPU.
+The viewport and the OpenGL renderer still draw on the GPU. Apple Silicon CPUs are fast for
 this work: the numba neighbor list and the C++ kernels use every performance and efficiency
 core (Preferences › Compute › CPU threads).
 

@@ -185,10 +185,10 @@ OPTIONS = (
            choices=("MP4 (H.264)", "GIF", "AVI (Motion JPEG)", "MOV (H.264)", "PNG sequence")),
 
     Option("compute.device", "cpu", "Device", "Where analysis and ray-traced pictures run: the window, the "
-           "notebook's pipe and the Render page. CPU is the safe default; OpenCL ray traces on any GPU (Intel, "
-           "AMD, NVIDIA, Apple) and keeps the analysis on the CPU; Auto uses the CUDA GPU when CuPy finds one, "
-           "else an OpenCL GPU for ray tracing, else the CPU.",
-           choices=("cpu", "cuda", "opencl", "auto")),
+           "notebook's pipe and the Render page. CPU is the safe default; OpenCL ray traces on Intel, AMD and "
+           "NVIDIA GPUs and Metal on a Mac's GPU, both keeping the analysis on the CPU; Auto uses the CUDA GPU "
+           "when CuPy finds one, else an OpenCL GPU for ray tracing (not on a Mac), else the CPU.",
+           choices=("cpu", "cuda", "opencl", "metal", "auto")),
     Option("performance.cache_memory", 2048, "Frame cache memory",
            "Upper bound for cached trajectory frames (MB); the current frame is always kept.",
            minimum=64, maximum=1_048_576),
@@ -305,11 +305,25 @@ def _probe_opencl():
     return True, f"ray tracing on {devices[0].name.strip()}; analysis on the CPU"
 
 
+def _probe_metal():
+    if sys.platform != "darwin":
+        return False, "macOS only"
+    if importlib.util.find_spec("Metal") is None:
+        return False, "PyObjC's Metal bindings not installed: pip install 'ewald[metal]'"
+    from .raytrace_gpu import metal_device
+
+    dev = metal_device()
+    if dev is None:
+        return False, "no Metal GPU found"
+    return True, f"ray tracing on {dev.name()}; analysis on the CPU"
+
+
 # key, label, probe() -> (available, detail). New backends (e.g. Apple Metal) add one row here.
 DEVICES = (
     ("cpu", "CPU (NumPy / Numba)", lambda: (True, f"{os.cpu_count()} cores")),
     ("cuda", "NVIDIA CUDA (CuPy)", _probe_cuda),
     ("opencl", "OpenCL GPU (ray tracing)", _probe_opencl),
+    ("metal", "Apple GPU (Metal, ray tracing)", _probe_metal),
     ("auto", "Auto (GPU if available)", lambda: (True, "falls back to CPU")),
 )
 

@@ -10,7 +10,8 @@ import ewald.gui as gui
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 # import name -> distribution name, where they differ
 DIST = {"PIL": "pillow", "cupyx": "cupy-cuda12x", "cupy": "cupy-cuda12x", "imageio_ffmpeg": "imageio-ffmpeg",
-        "MDAnalysis": "mdanalysis", "PySide6": "pyside6", "vtkmodules": "vtk"}
+        "MDAnalysis": "mdanalysis", "PySide6": "pyside6", "vtkmodules": "vtk",
+        "Metal": "pyobjc-framework-metal"}
 # used opportunistically when installed, or arriving with a declared package
 UNDECLARED_OK = {"pymatgen", "anyio"}
 

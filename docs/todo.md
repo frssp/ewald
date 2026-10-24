@@ -378,6 +378,8 @@ ewald-phonopy plugin, frssp/ewald-plugins `packages/ewald-phonopy`)
   superposed (phonopy `--modulation` takes a list).
 - Export a modulated structure (frame 0 as POSCAR) from the GUI; irreducible-representation
   labels of the modes (phonopy `--irreps`).
+- A trace of each atom's path (an ellipse for a complex q != 0 mode) as an alternative to the
+  per-frame arrows of `PhononMode(arrow_mode=...)`.
 - Fast reading of large `mesh.yaml` files (the parser holds the whole file in memory).
 - OUTCAR modes checked against real VASP IBRION=5-8 output; the fixture is written in VASP's
   layout from phonopy results.
@@ -601,10 +603,17 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - The OpenCL ray tracer on a real GPU (the owner's Intel Arc on Windows: float sums, no double
   precision; AMD; Apple): `pip install pyopencl`, Preferences › Compute › Device lists the GPU,
   and `python benchmarks/analysis.py --skip-modifiers --device opencl` traces the same pictures
-  as `--device cpu`, faster. On the owner's M2 MacBook Air (2026-10-24) Apple's OpenCL took
-  20 s for a 400x300 Publication picture against about 0.5 s on the CPU, with stalls of several
-  seconds in some batches, so `auto` skips OpenCL on macOS; why it is that slow is open. The CUDA tracer likewise on a
-  real NVIDIA GPU.
+  as `--device cpu`, faster. The CUDA tracer likewise on a real NVIDIA GPU.
+- The Metal ray tracer runs on the owner's M2 MacBook Air (2026-10-24; first picture of a session
+  +4 s for the kernel build). `benchmarks/analysis.py --skip-modifiers`, Metal vs CPU: SrTiO3 +
+  TiO6 polyhedra 1600x1200 Publication 7.14 vs 7.12 s, gyroid 4.76 vs 4.34 s, fcc Cu 108k
+  0.85 vs 1.64 s, Cu slab 0.20 vs 0.34 s. Atoms gain about 2x; see-through polyhedra and the
+  fine mesh do not (divergent transparency layers, the BVH stack). Apple's OpenCL took 2.4 s
+  for a 400x300 Publication picture the CPU draws in 0.4-0.5 s (19.5 s before the 32-bit item
+  codes), and Metal took 0.7 s, then 1.6 s and 8.7 s for the same picture in later runs, so
+  `auto` stays on the CPU on a Mac. Open: why Metal and Apple's OpenCL stall for seconds (power
+  state of a fanless Air, the per-thread BVH stack, divergent transparency layers). Retina, the
+  GUI Render page and movies on Metal are unchecked.
 - `no display: DISPLAY is not set` on a real Linux machine: the message should name the cause
   (SSH login without `-X`, tmux/screen or `sudo` on the desktop, a Wayland session) and the
   command that fixes it (`gui.no_display_hint`); tested with simulated environments only.
