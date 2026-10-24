@@ -4209,6 +4209,54 @@ def test_menu_reorganization(app, cu_fcc, tmp_path, monkeypatch):
     w.close()
 
 
+def test_search_box_centered_and_step_button(app, cu_fcc, monkeypatch):
+    """The search box sits in the middle of the window and the palette opens right below it; the
+    notebook bar's + Step lists the steps to search and adds the picked one after the current
+    cell; in minimal mode the Menus button keeps the bottom strip to itself."""
+    from ewald.gui import palette
+    from ewald.gui.app import MainWindow
+
+    assert palette.fuzzy_score("msd", "Mean squared displacement / diffusion") > \
+        palette.fuzzy_score("msd", "Combine datasets (add particles from a file)")
+    w = MainWindow(Pipeline(StaticSource([cu_fcc])))
+    w.resize(1400, 900)
+    w.show()
+    w.panel.new_notebook()
+    app.processEvents()
+    box = w.command_center.box
+    center = box.mapTo(w, QtCore.QPoint(box.width() // 2, 0)).x()
+    assert abs(center - w.width() // 2) <= 2 and box.width() == palette.CommandCenter.WIDTH
+    opened = []
+    monkeypatch.setattr(palette.CommandPalette, "exec", lambda self: opened.append(self))
+    w.command_palette()
+    pal = opened.pop()
+    top_left = box.mapToGlobal(QtCore.QPoint(0, box.height()))
+    assert pal.y() == top_left.y() + 2 and abs(pal.x() + pal.width() // 2 - (top_left.x() + box.width() // 2)) <= 1
+    w.resize(700, 900)    # little room: the box moves right of the buttons, never over them
+    app.processEvents()
+    assert box.mapTo(w, QtCore.QPoint(0, 0)).x() >= w.command_center.mapTo(w, QtCore.QPoint(0, 0)).x()
+
+    view = w.panel.view
+    current = view.current
+    view.step_button.click()
+    pal = opened.pop()
+    labels = [label for label, _kind, _fn in pal.entries]
+    assert "Common neighbor analysis" in labels and "Mean squared displacement / diffusion" not in labels  # one frame
+    assert pal.edit.placeholderText() == "Search steps…"
+    pal.edit.setText("common neighbor")
+    pal._run()
+    assert "CommonNeighborAnalysis" in view.current.source
+    index = view.notebook.cells.index(view.current)
+    assert current is None or view.notebook.cells.index(current) == index - 1
+
+    w.set_minimal(True)
+    app.processEvents()
+    assert w.contentsMargins().bottom() >= w.minimal_exit.height()
+    w.set_minimal(False)
+    assert w.contentsMargins().bottom() == 0
+    w.close()
+
+
 def test_preferences_pages_after_menu_review(app):
     """Preferences: 3D view, Atoms & bonds, Plots, Notebooks and Plugins pages; old page names
     still open the right page; the AI page starts with the provider."""

@@ -9,7 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from .. import examples, manual
 from .cell_widget import fill_view_menu
 from .icons import icon
-from .palette import CommandPalette, menu_entries, native_keys, native_text
+from .palette import CommandCenter, CommandPalette, menu_entries, native_text
 from .pipeline_panel import fill_modifier_menu
 from .theme import PALETTES
 from .viewport import Viewport
@@ -204,8 +204,8 @@ class MenusMixin:
         if not hasattr(self, "minimal_exit"):
             self._build_minimal_exit()
         self.minimal_exit.setVisible(on)
+        self._place_minimal_exit()
         if on:
-            self._place_minimal_exit()
             self.minimal_exit.raise_()
             self.toast(native_text("Minimal mode: Ctrl+Shift+M or the Menus button at the bottom left brings the "
                                    "menus back; tap Alt for the menu bar, Ctrl+K for commands"))
@@ -258,7 +258,10 @@ class MenusMixin:
             return
         b.adjustSize()
         top = self.menuBar().height() if self.menuBar().isVisible() else 0
-        b.move(10, self.height() - b.height() - 10)  # the status bar's place, hidden in minimal mode
+        # the status bar's place, hidden in minimal mode: kept free so the button covers nothing
+        # (it hid the notebook's + Code)
+        self.setContentsMargins(0, 0, 0, b.height() + 8 if not b.isHidden() else 0)
+        b.move(10, self.height() - b.height() - 4)
         note = self.minimal_note
         if note.isVisible():
             note.setFixedWidth(min(560, self.width() - 40))
@@ -306,13 +309,9 @@ class MenusMixin:
             self.ws_buttons.append(b)
         self.ws_buttons[0].setChecked(True)
         tb.addSeparator()
-        search = QtWidgets.QPushButton(f"  Search commands and steps…      {native_keys('Ctrl+K')}")
-        search.setObjectName("searchBox")
-        search.clicked.connect(self.command_palette)
-        tb.addWidget(search)
-        spacer = QtWidgets.QWidget(objectName="toolbarSpacer")
-        spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
-        tb.addWidget(spacer)
+        # the search box in the middle of the window, the palette opens right below it (D-entry in decisions.md)
+        self.command_center = CommandCenter(self.command_palette)
+        tb.addWidget(self.command_center)
 
     def set_button_style(self, style: str):
         """Toolbar and tool rail buttons as icons with text, icons or text
@@ -745,8 +744,12 @@ class MenusMixin:
         for menu in self.menuBar().findChildren(QtWidgets.QMenu):
             menu.aboutToHide.emit()  # View › Layout enables its moves again for their shortcuts
         pal = CommandPalette(entries, self)
-        geo = self.geometry()
-        pal.move(geo.x() + (geo.width() - 560) // 2, geo.y() + 90)
+        box = self.command_center.box
+        if box.isVisible():   # below the toolbar's search box
+            pal.place_under(box, width=max(CommandPalette.WIDTH, box.width() + 80))
+        else:                 # minimal mode: the toolbar is hidden
+            geo = self.geometry()
+            pal.move(geo.x() + (geo.width() - CommandPalette.WIDTH) // 2, geo.y() + 40)
         pal.edit.setFocus()
         pal.exec()
 

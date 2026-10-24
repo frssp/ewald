@@ -180,7 +180,8 @@ added to the timeline as they appear ([live reload](formats.md#runs-that-are-sti
 calculation that has not finished (VASP still running or killed) opens with what is complete,
 and the status bar says what is missing ([details](formats.md#calculations-that-have-not-finished)).
 
-**Steps.** Insert › Step (or the notebook's **+ Step** button and the command palette) adds a
+**Steps.** **+ Step** next to the notebook's Run all (a list of steps to search), Insert › Step, **+ Step**
+under the cells and the command palette add a
 modifier as a step cell. The cell's checkbox disables it without removing it, Move cell up/down
 reorders it, and its header shows the time it took and, if it failed, its error. A failing step
 is skipped so the view never goes blank. The step's parameter form is generated from the
@@ -292,8 +293,10 @@ style is drawn in the Paper or Graphite colors.
 The same mapping is available without the GUI in `ewald.linking` (`link_for`,
 `atoms_in_range`, `frames_in_box`, `selection_expression`).
 
-**Command palette.** Tools › Command palette (Ctrl+K) searches every menu action and every modifier by
-name and shows each one's shortcut; with nothing typed, the commands you ran from it last come first.
+**Command palette.** The search box in the middle of the toolbar, or Tools › Command palette (Ctrl+K),
+opens the palette right below the box. It searches every menu action and every modifier by name
+(initials work too: `msd` finds Mean squared displacement) and shows each one's shortcut; with
+nothing typed, the commands you ran from it last come first.
 
 **Menu bar.** Each menu has one job. File opens (Open recent, Open example, Open from › Remote file,
 Location, NEB folder, Workflow folder), saves and exports (Export › Image, Data, Movie, Session).
