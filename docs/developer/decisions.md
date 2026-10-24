@@ -657,7 +657,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   decision card. After the 32-bit change it took 2.4 s, still slower than the CPU.
 - **Considered:** going to Metal at once; Metal's hardware ray tracing API (fastest on M3 and
   later, but a separate renderer); a denoiser instead of a GPU; stopping with the CPU on a Mac.
-- **Landed:** public PR #PRNUM.
+- **Landed:** public PR #48.
 
 ## Adding an entry
 
