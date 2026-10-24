@@ -715,7 +715,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** for the box, leaving it in place, one row with the menu bar (differs on macOS,
   where the menu bar is at the top of the screen) and a button only (JupyterLab); for + Step,
   leaving it under the cells, an inserter between cells, and both.
-- **Landed:** public PR #NN.
+- **Landed:** public PR #60.
 
 ## Adding an entry
 
