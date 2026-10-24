@@ -10,7 +10,7 @@ tags:
   - LAMMPS
 authors:
   - name: Sunghyun Kim
-    orcid: 0000-0000-0000-0000   # TODO: the author's ORCID
+    orcid: 0000-0001-5072-6801
     affiliation: 1
 affiliations:
   - name: TODO affiliation, Country   # TODO: the author's affiliation (add `ror:` if known)
