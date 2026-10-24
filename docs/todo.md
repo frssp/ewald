@@ -100,6 +100,13 @@ GUI
   to new window (multi-monitor), named layouts, drop bands along an area's outer edge for
   full-length splits, a second 3D view (another camera) and a `@view` plugin API. Not yet tried
   on a real `ssh -X` display.
+- Plot style file (`<config dir>/plots/user.mplstyle`, Preferences › Plots form + Open as text, shared
+  by the Plots panel, cells, kernels and the console): a notebook's own `plotstyle.use(...)` does not
+  reach that notebook's Plots panel tabs and view cells (they follow the file only); journal presets
+  as a `@plot_style` plugin kind (today: drop `<name>.mplstyle` files into the folder and
+  `plotstyle.use(name)`), listed in *Style of your own plots*; an `.ewd` does not carry the style file,
+  so a shared notebook draws in the receiver's style (bundling it needs a trust check: matplotlib
+  evaluates `axes.prop_cycle`); the form cannot pick installed fonts from a list.
 - Interactive plots (zoom, pan, energy window, hover and click-to-frame on every plot exist):
   drag on an axis to zoom that axis only and pinch zoom on touchpads; hover readout of the
   phonon mode (q-point, band, frequency) and band index under the cursor; hovering a per-frame
@@ -563,6 +570,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Preferences › Plots › Open as text on Windows and macOS: a `.mplstyle` file has no program
+  associated on a fresh system, so Windows falls back to Notepad and macOS uses `open -t` (the
+  default text editor); EWALD must re-read the file when the editor saves (watched with
+  QFileSystemWatcher, folder included for editors that replace the file). Tested on Linux only.
 - Structure view right-click menu on a real Mac (two-finger click, Control+click) and Windows:
   after closing the menu, moving the mouse must not zoom (fixed for the VTK and OpenGL 1.x views,
   tested with simulated events under xvfb only).

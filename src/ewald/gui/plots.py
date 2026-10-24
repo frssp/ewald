@@ -49,12 +49,21 @@ ZOOM_STEP = 1.25             # range factor per wheel step
 CLICK_RADIUS = 12.0          # px: a click on a two-CV plot goes to a frame this close
 NAV_HINT = "Wheel: zoom (Ctrl: other axis) · right or middle drag: pan · double-click: full range"
 SCREEN_FONT = 9.0            # pt on the canvas (12 px at 100 dpi, the UI font)
+USER_RC: dict = {}           # rcParams of the user's style file (ewald.plotstyle.read_style), set by Preferences
+
+
+def _user_rc(exporting: bool) -> dict:
+    """The style file's rcParams for a plot: all of them in a saved file; on screen the UI theme
+    keeps its colors and the canvas its readable font size."""
+    if exporting:
+        return dict(USER_RC)
+    return {k: v for k, v in plotstyle.screen_rc(USER_RC).items() if k != "font.size"}
 
 
 def _styled(method):
     """Run a drawing method in the plot style, in the colors of the active UI theme."""
     def wrapper(self, *args, **kwargs):
-        with plotstyle.context(TOKENS, self._font_size):
+        with plotstyle.context(TOKENS, self._font_size, _user_rc(self._exporting)):
             return method(self, *args, **kwargs)
     wrapper.__name__, wrapper.__doc__ = method.__name__, method.__doc__
     return wrapper
@@ -177,7 +186,7 @@ class PlotsPanel(QtWidgets.QWidget):
             self._figure = Figure(figsize=(5, 3), facecolor=TOKENS["bg"])
             self._canvas = canvas = FigureCanvasQTAgg(self._figure)
         # the canvas paints from the event loop, outside _styled: draw in the style there too
-        plotstyle.bind(self._figure, lambda: (TOKENS, self._font_size))
+        plotstyle.bind(self._figure, lambda: (TOKENS, self._font_size, _user_rc(self._exporting)))
         self.layout().replaceWidget(self._canvas_slot, canvas)
         self._canvas_slot.deleteLater()
         self._canvas_slot = None
@@ -277,8 +286,11 @@ class PlotsPanel(QtWidgets.QWidget):
         self._live = None
         fig = self.figure
         fig.clear()
-        fig.set_facecolor(TOKENS["bg"])
-        ax = self._ax = fig.add_subplot(111, facecolor=TOKENS["bg"])
+        import matplotlib as mpl
+
+        # the theme's background (in the style's rcParams), or the style file's in a saved plot
+        fig.set_facecolor(mpl.rcParams["figure.facecolor"])
+        ax = self._ax = fig.add_subplot(111, facecolor=mpl.rcParams["axes.facecolor"])
         self._ax2, self._edges, self._overlays, self._rubber = None, None, [], None
         self._bars = False  # integer histogram drawn as bars
         self._xname = ""
@@ -1194,7 +1206,7 @@ class PlotsPanel(QtWidgets.QWidget):
         try:
             self.redraw()
             fig = self.figure
-            plotstyle.bind(fig, (plotstyle.PRINT, fs))
+            plotstyle.bind(fig, (plotstyle.PRINT, fs, _user_rc(True)))
             q = quality.lower() if quality.lower() in plotstyle.DPI else "publication"
             plotstyle.save(fig, path, quality=q)
         finally:

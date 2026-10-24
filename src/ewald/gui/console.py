@@ -153,7 +153,7 @@ def dark_color(color: str) -> bool:
     return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.5
 
 
-PLOT_STYLE = ["publication", None]   # (style, tokens) of plots drawn in the console (python.plot_style)
+PLOT_STYLE = ["publication", None, None]   # (style, tokens, user rc) of the console's plots (python.plot_style)
 
 
 def _plot_session():
@@ -187,15 +187,15 @@ def _style_shell(shell):
     shell.events.register("post_run_cell", post)
 
 
-def set_plot_style(console, style: str = "publication", tokens: dict | None = None):
+def set_plot_style(console, style: str = "publication", tokens: dict | None = None, user: dict | None = None):
     """Change the style of the console's plots (rcParams a command set stay)."""
-    PLOT_STYLE[:] = [style, tokens]
+    PLOT_STYLE[:] = [style, tokens, user]
     if not getattr(console, "built", True):   # a LazyConsole not built yet reads PLOT_STYLE then
         return
     w = console.widget() if hasattr(console, "widget") else console
     plots = getattr(getattr(w, "shell", None), "_ewald_plots", None) or getattr(w, "plots", None)
     if plots is not None:
-        plots.configure(style, tokens)
+        plots.configure(style, tokens, user)
 
 
 class SimpleConsole(QtWidgets.QWidget):
