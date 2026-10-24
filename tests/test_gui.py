@@ -5893,3 +5893,33 @@ def test_plots_panel_shares_the_style_file(app, tmp_path):
         plots.USER_RC.clear()
         console.PLOT_STYLE[:] = ["publication", None, None]
         host.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_clicking_the_color_bars_folds_them_and_writes_the_view(app, pipe):
+    """A click on the viewport's color bar cards folds them to chips (and back), never picks an atom
+    behind them, and writes colorbar_collapsed into pipe.view; code sets it the other way round."""
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(pipe)
+    w.panel.add_modifier(mods.ColorCoding("Position.Z", cmap="plasma"))
+    w.recompute()
+    app.processEvents()
+    vp = w.viewport
+    box = vp._colorbar_box
+    assert box is not None and box[2] <= 0 < box[3]                 # pinned to the top right corner
+    width = vp.plotter.interactor.width()
+    x, y = width + (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    assert vp.on_colorbar(x, y) and not vp.on_colorbar(width / 2, (box[1] + box[3]) / 2 + 400)
+    vp.set_tool("pick")
+    vp.on_colorbar(x, y) and vp.toggle_colorbars()                 # what a click on the cards does
+    app.processEvents()
+    assert w.pipeline.view.colorbar_collapsed is True and not vp.picks
+    folded = vp._colorbar_box
+    assert folded[3] - folded[1] < 3 * vp.COLORBAR_FONT + 6 < box[3] - box[1]   # a one-line chip
+    w.pipeline.view.update(colorbar_collapsed=False)                 # a view cell unfolds them
+    w.recompute()
+    app.processEvents()
+    assert w.style.colorbar_collapsed is False
+    assert vp._colorbar_box[3] - vp._colorbar_box[1] == pytest.approx(box[3] - box[1], abs=2)
+    w.close()

@@ -559,6 +559,19 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   public PR #27 showed that adaptive sampling cannot gain at equal quality.
 - **Landed:** public PR #33.
 
+### D46. Viewport color bars fold to chips (2026-10-24)
+
+- **Decision:** the viewport's color bar cards (D23) fold to one-line chips (a short horizontal
+  ramp and the title, a down chevron) and unfold again with a click on a card or chip; an up
+  chevron on each card shows that it folds. The state is the view setting
+  `colorbar_collapsed`, written into the notebook's view cell and the session, so code and the
+  AI set it like any other view property. Pictures ignore it and always draw the whole bars.
+- **Why:** the owner asked for it ("뷰포트 컬러바 접을 수 있게."); the cards take room in the top
+  right corner of the view.
+- **Considered:** hiding the bars (already `legend=False`, which also drops them from pictures);
+  folding each bar on its own (one switch for all keeps the view cell to one setting).
+- **Landed:** public PR #31.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

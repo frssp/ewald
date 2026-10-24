@@ -67,6 +67,7 @@ class ViewStyle:
     color_by: str | None = None                       # None: the steps' colors; 'type'; or a property via colormap
     colormap: str = "viridis"
     color_range: list | None = None                   # [lo, hi] of the color_by color map (either may be None)
+    colorbar_collapsed: bool = False                  # viewport color bars folded to chips (pictures draw them whole)
     light: object = None                              # key light: [x, y, z] (camera frame) or {direction|azimuth/elevation, intensity}
 
     def apply_preset(self, name: str, types=()):
@@ -232,6 +233,7 @@ class ViewStyle:
         self.selection = view.selection
         self.labels = view.labels
         self.light = view.light
+        self.colorbar_collapsed = bool(view.colorbar_collapsed)
         self.color_by, self.colormap = view.color_by, view.colormap
         self.color_range = None if view.color_range is None else list(view.color_range)
         self.measurements = [list(m) for m in view.measurements]
@@ -302,7 +304,7 @@ class ViewStyle:
                   for k in TRAJECTORY_KEYS},
                "cell_radius": self.cell_radius, "surfaces": {k: dict(v) for k, v in self.surfaces.items()},
                "transparency": own(dict(self.type_transparency)), "selection": self.selection, "labels": self.labels,
-               "light": self.light, "measurements": [list(m) for m in self.measurements],
+               "light": self.light, "colorbar_collapsed": bool(self.colorbar_collapsed), "measurements": [list(m) for m in self.measurements],
                "color_by": self.color_by, "colormap": self.colormap,
                "color_range": None if self.color_range is None else list(self.color_range)}
         if theme is None or theme.radius_preset != self.radius_preset:
