@@ -108,10 +108,13 @@ def _surface(background, transparent: bool) -> tuple:
 
 
 def colorbar_items(bars, size, *, unit: float, ink=(0.08, 0.08, 0.08), background="white",
-                   transparent: bool = False) -> list:
+                   transparent: bool = False, collapsed: bool = False, chevrons: bool = False) -> list:
     """Overlay items of the color ``bars`` in an image of ``size`` (w, h) px, ``unit`` being the label font
     size in px: each bar on its own translucent card in the top right corner, further bars to the left (a
-    card is as wide as its title, so titles never overlap), in a new row below when the width runs out."""
+    card is as wide as its title, so titles never overlap), in a new row below when the width runs out.
+
+    ``collapsed`` folds each card to a one-line chip (a short ramp and the title); ``chevrons`` adds the
+    fold (up) or unfold (down) chevron the viewport's cards are clicked by (pictures leave it out)."""
     bars = [dict(b) for b in bars or ()]
     W, H = float(size[0]), float(size[1])
     u = float(unit)
@@ -120,7 +123,8 @@ def colorbar_items(bars, size, *, unit: float, ink=(0.08, 0.08, 0.08), backgroun
     out = []
     x, y, row_h = W - margin, margin, 0.0
     for bar in bars:
-        w, h, items = _card(bar, u, H, ink, _surface(background, transparent))
+        surface = _surface(background, transparent)
+        w, h, items = (_chip if collapsed else _card)(bar, u, H, ink, surface, chevrons)
         if x - w < margin and row_h:      # no room left of the previous card: start a row below
             x, y, row_h = W - margin, y + row_h + 0.6 * u, 0.0
         x -= w
@@ -144,7 +148,17 @@ def _shift(items, dx, dy):
     return out
 
 
-def _card(bar, u, H, ink, surface):
+def _chevron(x, y, u, ink, up: bool) -> Polyline:
+    """A small chevron centered at (x, y): pointing up (fold the card) or down (unfold the chip)."""
+    a, b = 0.3 * u, 0.16 * u
+    s = -1 if up else 1
+    return Polyline([[x - a, y - s * b], [x, y + s * b], [x + a, y - s * b]], ink + (0.6,), max(1.0, 0.11 * u))
+
+
+CHEVRON_ROOM = 1.3    # width the chevron takes right of the title, in units
+
+
+def _card(bar, u, H, ink, surface, chevron=False):
     """(width, height, items with the top-left corner at the origin) of one bar: the title, a thin
     rounded ramp (high values on top) with faint ticks and round labels on its right, on a card."""
     lo, hi = (float(v) for v in bar["range"])
@@ -168,8 +182,28 @@ def _card(bar, u, H, ink, surface):
         items.append(Polyline([[x, y], [x + tick_out, y]], ink + (0.55,), 1))
         items.append(Text(x + tick_out + 0.5 * u, y, s, lab, ink, "lm"))
     label_w = max(_text_width(s, lab) for s in labels)
-    width = 2 * pad + max(T + 0.65 * u + tick_out + label_w, _text_width(title, u))
+    room = CHEVRON_ROOM * u if chevron else 0.0
+    width = 2 * pad + max(T + 0.65 * u + tick_out + label_w, _text_width(title, u) + room)
     height = top + L + 0.5 * lab + pad - 0.3 * u
+    items.insert(0, Rect(0, 0, width, height, fill=surface, outline=ink + (0.12,), width=1, radius=0.55 * u))
+    if chevron:
+        items.append(_chevron(width - pad - 0.35 * u, pad + 0.6 * u, u, ink, up=True))
+    return width, height, items
+
+
+def _chip(bar, u, H, ink, surface, chevron=False):
+    """A folded card: a short horizontal ramp and the title (or the range when there is none) on one line."""
+    lo, hi = (float(v) for v in bar["range"])
+    title = str(bar.get("title", "")) or " – ".join(tick_labels([lo, hi]))
+    pad, T, L = 0.65 * u, 0.6 * u, 2.2 * u
+    height = 2 * pad + 1.2 * u
+    mid = height / 2
+    items = [ColorRamp(pad, mid - T / 2, pad + L, mid + T / 2, bar["cmap"], False, T / 2),
+             Rect(pad, mid - T / 2, pad + L, mid + T / 2, outline=ink + (0.18,), width=1, radius=T / 2),
+             Text(pad + L + 0.6 * u, mid, title, u, ink, "lm")]
+    width = pad + L + 0.6 * u + _text_width(title, u) + (CHEVRON_ROOM * u if chevron else 0.0) + pad
+    if chevron:
+        items.append(_chevron(width - pad - 0.35 * u, mid, u, ink, up=False))
     items.insert(0, Rect(0, 0, width, height, fill=surface, outline=ink + (0.12,), width=1, radius=0.55 * u))
     return width, height, items
 
