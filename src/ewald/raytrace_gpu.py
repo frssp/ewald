@@ -408,14 +408,16 @@ KERNEL void ewald_raytrace(GLOBAL const REAL* grid, GLOBAL const I64* starts, GL
     U64 state = (U64)seed * (U64)0x9E3779B97F4A7C15 + (U64)(pix + 1);
     WIDE aos[3];
     aos[0] = rand01(&state); aos[1] = rand01(&state); aos[2] = 0.0;
+    const WIDE jox = rand01(&state), joy = rand01(&state);
     I64 s0 = keep ? nsamp[pix] : 0;
     if (s0 > 0) { state = rng[pix]; aos[2] = ao_next[pix]; }
     WIDE acc_r = acc[4 * pix], acc_g = acc[4 * pix + 1], acc_b = acc[4 * pix + 2], acc_a = acc[4 * pix + 3];
     WIDE acc_q = keep ? sq[pix] : 0.0;
     REAL o[3], d[3], n[3], p[3], sh[3];
     for (I64 s = s0; s < s1; ++s) {
-        WIDE jx = samples > 1 ? rand01(&state) : 0.5;
-        WIDE jy = samples > 1 ? rand01(&state) : 0.5;
+        WIDE jx = samples > 1 ? jox + s * 0.7548776662466927 : 0.5;   // R2 sub-pixel positions, as on the CPU
+        WIDE jy = samples > 1 ? joy + s * 0.5698402909980532 : 0.5;
+        jx -= floor(jx); jy -= floor(jy);
         WIDE u = ((px + jx) / width * 2.0 - 1.0) * half_w;
         WIDE v = (1.0 - (py + jy) / height * 2.0) * half_h;
         for (int q = 0; q < 3; ++q) {

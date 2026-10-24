@@ -119,11 +119,12 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
     _s("bond_radius", 0.15, "bonds", "Stick radius in Angstrom."),
     # cell
     _s("cell", True, "cell", "Draw the simulation cell."),
-    _s("cell_width", 2.0, "cell", "Cell line width in pixels."),
+    _s("cell_width", 2.0, "cell", "Cell line width in pixels of a 1600-pixel-high picture (scales with the "
+       "picture, at least 1 pixel)."),
     _s("cell_color", None, "cell", "Cell line color; None: black, or light grey on dark backgrounds.",
        type=["string", "array", "null"]),
-    _s("cell_radius", None, "cell", "Cell tube radius in Angstrom in ray-traced pictures; None: 0.15 % of the "
-       "cell diagonal.", type=["number", "null"]),
+    _s("cell_radius", None, "cell", "Cell tube radius in Angstrom in ray-traced pictures; None: as wide as the "
+       "line in the other renderers.", type=["number", "null"]),
     # boundary
     _s("boundary", None, "boundary", "VESTA boundary (fractional), e.g. [-0.1, 1.1] or three pairs: also draws "
        "periodic images inside it and completes bonds and polyhedra cut by the cell. Display only.",
@@ -169,7 +170,7 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        "trajectory_* setting it only styles the lines of a GenerateTrajectoryLines step, which must be added first.",
        type=["boolean", "number", "null"]),
     _s("trajectory_radius", None, "elements", "Tube radius in Angstrom of trajectory lines in ray-traced pictures; "
-       "None: 0.04 x trajectory_width.", type=["number", "null"]),
+       "None: as wide as the line in the other renderers.", type=["number", "null"]),
     # camera
     _s("frame", 0, "camera", "Trajectory frame shown.", type="integer"),
     _s("direction", "iso", "camera", "View direction, from the structure towards the camera: 'x', '-y', 'z', "

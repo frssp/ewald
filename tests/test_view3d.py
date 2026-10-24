@@ -525,9 +525,11 @@ def test_light_moves_the_highlight_in_every_renderer(srtio3):
             left = srtio3.view.render(light={"azimuth": -80, "elevation": 0}, **kw)[..., :3].astype(float)
             right = srtio3.view.render(light={"azimuth": 80, "elevation": 0}, **kw)[..., :3].astype(float)
             assert np.abs(left - right).mean() > 1, (r, style)
-            # mirrored lights: the left half is brighter when lit from the left
-            h = left.shape[1] // 2
-            assert left[:, :h].sum() - right[:, :h].sum() > right[:, h:].sum() - left[:, h:].sum() - 1e-6, (r, style)
+            # mirrored lights: what the left light brightens lies left of what the right light brightens
+            d = (left - right).mean(-1)
+            x = np.arange(d.shape[1])[None, :]
+            gain, loss = np.clip(d, 0, None), np.clip(-d, 0, None)
+            assert (x * gain).sum() / gain.sum() < (x * loss).sum() / loss.sum(), (r, style)
 
 
 def test_measurements_values_and_setting(srtio3):

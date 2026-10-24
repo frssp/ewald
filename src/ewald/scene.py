@@ -146,9 +146,11 @@ class Lines:
     ``rgb`` per strip (S x 3) or ``None`` for the renderer's ink color (black on light backgrounds).
     ``point_rgb`` (P x 3), when given, colors every point instead (a color map along the line):
     renderers blend it along each piece where they can, else give a piece the mean of its ends.
-    ``width`` is in pixels of a 1600-pixel-high image; ``radius`` (Angstrom), when given, lets
-    renderers that have no lines draw them as tubes with round joints. Lines are guides, so those
-    tubes cast no shadows and no ambient occlusion unless ``cast_shadows`` is True."""
+    ``width`` is in pixels of a 1600-pixel-high image and scales with the image height, at least one
+    pixel (:func:`line_pixels`), in every renderer (D51). Renderers that have no lines draw them as tubes
+    with round joints, as wide on screen as the line, or of ``radius`` (Angstrom) when one is given.
+    Lines are guides, so those tubes cast no shadows and no ambient occlusion unless ``cast_shadows``
+    is True."""
 
     points: np.ndarray
     strips: list
@@ -198,6 +200,16 @@ class Lines:
             return np.tile(np.asarray(ink, float), (len(seg), 1))
         return self.rgb[np.concatenate([np.full(max(len(s) - 1, 0), k) for k, s in enumerate(self.strips)]
                                        or [np.zeros(0, np.int64)])]
+
+
+LINE_REFERENCE_HEIGHT = 1600
+
+
+def line_pixels(width: float, height: float) -> float:
+    """On-screen width in pixels of a :class:`Lines` ``width`` in an image ``height`` pixels high: the
+    width scales with the image (``width`` pixels at 1600), never thinner than one pixel. Every renderer
+    draws lines this wide (D51)."""
+    return max(1.0, float(width) * float(height) / LINE_REFERENCE_HEIGHT)
 
 
 def make_arrows(base, tip, width: float = 0.2, rgb=(0.85, 0.2, 0.2), alpha: float = 1.0,
@@ -515,7 +527,7 @@ class TrajectoryLinesVis(VisualElement):
     """``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle, in its atom
     color or a color map by Time, Frame, step length or a property, over a Time window or a trail.
 
-    ``width`` in pixels, 0 hides them; ``radius`` (Angstrom) sizes the ray-traced tubes (None: 0.04 x width).
+    ``width`` in pixels, 0 hides them; ``radius`` (Angstrom) sizes the ray-traced tubes (None: as wide as the line).
 
     ``color_by`` None draws each line in its atom's color. Otherwise the lines follow the color map
     ``colormap`` point by point: 'Time' (the table's Time, the timestep), 'Frame', 'Step Length' (the
@@ -584,7 +596,7 @@ class TrajectoryLinesVis(VisualElement):
                     owner.append(k)
         if not strips:
             return None
-        radius = self.radius if self.radius else 0.04 * float(self.width)
+        radius = self.radius or None   # None: as wide as the line on screen
         if values is None:
             return [("trajectories", Lines(pts, strips, colors[owner], self.width, radius))]
         from .colormaps import get_colormap
@@ -677,7 +689,7 @@ _CELL_EDGES = [(0, 1), (0, 2), (0, 3), (1, 4), (1, 5), (2, 4), (2, 6), (3, 5), (
 class SimulationCellVis(VisualElement):
     """The cell edges as lines, ``width`` pixels wide; ``color`` None uses the renderer's ink
     (black, or light grey on dark backgrounds). ``radius`` (Angstrom) sizes the ray-traced tubes,
-    None = 0.15 % of the cell diagonal."""
+    None = as wide as the line in the other renderers."""
 
     name = "Simulation cell"
 
@@ -700,8 +712,7 @@ class SimulationCellVis(VisualElement):
 
             corners, edges = cell_edges(*ctx.extras["replicate_cell"])
         rgb = None if self.color is None else _rgb(self.color)
-        radius = self.radius or 0.0015 * float(np.linalg.norm(a + b + c))
-        return [("cell", Lines(corners, edges, rgb, self.width, radius))]
+        return [("cell", Lines(corners, edges, rgb, self.width, self.radius or None))]
 
 
 MEASUREMENT_COLOR = "#E0701F"
@@ -735,8 +746,7 @@ class MeasurementsVis(VisualElement):
         for idx in items:
             strips.append(np.arange(len(idx)) + sum(len(s) for s in strips))
             pts.append(measure.points(real, idx))
-        radius = 0.04 * float(np.median(np.linalg.norm(np.diff(np.vstack(pts), axis=0), axis=1)) or 1.0)
-        return [("measurements", Lines(np.vstack(pts), strips, _rgb(self.color), self.width, radius))]
+        return [("measurements", Lines(np.vstack(pts), strips, _rgb(self.color), self.width))]
 
 
 BUILTIN = (ParticlesVis, BondsVis, SurfacesVis, VectorsVis, TrajectoryLinesVis, SimulationCellVis, MeasurementsVis)
