@@ -564,7 +564,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   (`device="cuda"`, single precision, the same rays as the CPU tracer) rather than an
   edge-aware denoiser over fewer samples or no further work.
 - **Why:** the owner picked the CUDA ray tracer on the decision card. The owner then added that
-  their own PC has no NVIDIA GPU ("앗 근데 나는 nvidia gpu가 없네", Intel Arc); D47 adds the
+  their own PC has no NVIDIA GPU ("앗 근데 나는 nvidia gpu가 없네", Intel Arc); D48 adds the
   OpenCL build of the same kernel.
 - **Considered:** an edge-aware denoiser from the ray tracer's normal and depth buffers
   (recommended, since it runs on every machine and could be checked here); stopping after
@@ -583,7 +583,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** hiding the bars (already `legend=False`, which also drops them from pictures);
   folding each bar on its own (one switch for all keeps the view cell to one setting).
 - **Landed:** public PR #31.
-### D48. Closing with unsaved notebooks: Save, Don't Save, Cancel (2026-10-24)
+### D49. Closing with unsaved notebooks: Save, Don't Save, Cancel (2026-10-24)
 
 - **Decision:** closing a tab or the window with unsaved notebooks asks with three buttons:
   Save (save, then close; Save All for several notebooks; Save as for one never saved), Don't
@@ -596,7 +596,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   "Close anyway?" question.
 - **Landed:** public PR #36.
 
-### D47. One GPU ray tracer source for CUDA and OpenCL (2026-10-24)
+### D48. One GPU ray tracer source for CUDA and OpenCL (2026-10-24)
 
 - **Decision:** the CUDA ray tracer is merged, and the same kernel source also builds as OpenCL
   C (`device="opencl"`, pyopencl, the `opencl` extra), so Intel Arc, AMD and Apple GPUs ray
