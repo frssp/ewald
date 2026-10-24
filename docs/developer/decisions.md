@@ -486,7 +486,32 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   scripts outside EWALD).
 - **Landed:** public PR #19.
 
-### D40. Analysis plots draw their levels; one value per surface is a bar (2026-10-24)
+### D42. Plot style presets named after cities, a short form (2026-10-24)
+
+- **Decision:** the style file ships seven presets on one slide scale (14 pt type, 2.5 pt lines)
+  that differ in look, named after cities and never after journals: Seoul (open axes, vivid
+  colorblind-safe colors; what a new style file starts from), London (serif in a box, a line
+  style per series), Barcelona (sand plot area, white grid, no frame lines), Boston (dashed
+  grid, framed legend), Helsinki (thin gray axes, cool blues), Dongtan (dark background, neon
+  lines) and Samlangjin (ticks inside on four sides with minor ticks, a dotted row grid, 3.5 pt lines). Your own presets can be saved from the form (`plots/<name>.mplstyle`) and are listed
+  after the built-in ones; the Preferences form shows the preset and four keys (font, font
+  size, line width, color cycle), everything else is in the file, which lists its keys by
+  topic. The separate "Saved plot font size" preference is retired (the file's `font.size`).
+- **Why:** the owner asked "기본 설정파일도 좀 꾸며줘 니가 보기 좋게. 그리고 프리셋 넣고. 그리고
+  폼에서 설정할 수 있는 파람이 넘 많은 듯." and, on journal-named presets, "저널이름 쓰지마.
+  특징으로 아니면 적당한 이름으로"; the first set (sizes and fonts only) was sent back with
+  "Distinction 이 부족. 논문 퀄리티. 스타일 참고해서 다시", and the second with "Publication 이름
+  별로 그냥 다른 이름. Slides를 기본으로. 모노크롬 별로 삭제. 다른 것 하나 만드렁봐", "선 굷기랑 글자
+  크기를 좀 키우면 어때?" and "프리셋 저장도 되지?". The owner then set the final set: "슬라이드
+  기준으로 도시이름 베리에이션 프리셋 / Seoul London Barcelona Boston Helsinki Dongtan", and after seeing them "Good Samlangjin 추가", then "색 팔레트 변경" and "선도 두껍게" for it.
+- **Considered:** presets named after journals; presets that differ only in column width and
+  type size; presets named by their look (Slides, Boxed, Classic serif, Grid, Gray panel), each
+  at its own scale; Monochrome and Minimal presets (dropped: "모노크롬 별로 삭제"; Minimal looked
+  like a small Slides, then "아니 제거"); eight form rows (tick direction, minor ticks, legend
+  frame, axes line width).
+- **Landed:** public PR #20.
+
+### D41. Analysis plots draw their levels; one value per surface is a bar (2026-10-24)
 
 - **Decision:** a table's energy levels, plateaus and barriers (VBM, CBM, E_F, E_vac, Φ) are
   drawn over its curves, and a table with one value per named row (one work function per

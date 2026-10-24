@@ -57,7 +57,7 @@ def _user_rc(exporting: bool) -> dict:
     keeps its colors and the canvas its readable font size."""
     if exporting:
         return dict(USER_RC)
-    return {k: v for k, v in plotstyle.screen_rc(USER_RC).items() if k != "font.size"}
+    return {k: v for k, v in plotstyle.screen_rc(USER_RC, TOKENS).items() if k != "font.size"}
 
 
 def _styled(method):
@@ -1187,7 +1187,7 @@ class PlotsPanel(QtWidgets.QWidget):
             from .. import settings as settings_mod
 
             s = settings_mod.load()
-            self.export(path, s["plots.size"], s["plots.font_size"], s["render.quality"])
+            self.export(path, s["plots.size"], None, s["render.quality"])   # the style file's font.size wins
 
     def export(self, path, size: str | tuple | None = None, font_size: float | None = None,
                quality: str = "Publication"):

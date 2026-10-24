@@ -489,7 +489,6 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | Key | Label | Default |
 |---|---|---|
 | `plots.size` | Saved plot size | `'1-column (3.5 in)'` |
-| `plots.font_size` | Saved plot font size | `8.0` |
 | `python.plot_style` | Style of your own plots | `'Publication'` |
 
 ### Notebooks

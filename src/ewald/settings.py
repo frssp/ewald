@@ -181,9 +181,6 @@ OPTIONS = (
            "Journal column width of plots saved from the Plots tab and view cells (PDF, SVG, PNG); "
            "PNG uses the DPI of the image quality.",
            choices=("1-column (3.5 in)", "1.5-column (5.0 in)", "2-column (7.2 in)")),
-    Option("plots.font_size", 8.0, "Saved plot font size", "Points; 7-9 pt is what journals ask for. "
-           "A font size in the style file (below) wins.",
-           minimum=5, maximum=24),
     Option("render.movie_format", "MP4 (H.264)", "Movie format", "AVI uses Motion JPEG for PowerPoint.",
            choices=("MP4 (H.264)", "GIF", "AVI (Motion JPEG)", "MOV (H.264)", "PNG sequence")),
 
@@ -386,7 +383,8 @@ def _valid(opt: Option, value):
 
 # Options that no longer exist, dropped quietly from older settings files: the OVITO-like
 # "classic" window layout was removed, so the notebook layout is the only one.
-RETIRED = {"general.layout", "llm.user_id", "llm.system_name"}   # the last two: gateway headers, now llm.headers
+RETIRED = {"general.layout", "llm.user_id", "llm.system_name",   # these two: gateway headers, now llm.headers
+           "plots.font_size"}   # now font.size of the plot style file (ewald.plotstyle)
 # Values renamed since: key -> {old: new}
 RENAMED_VALUES = {"general.startup_workspace": {"Analyze": "Notebook"}}
 

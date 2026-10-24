@@ -102,9 +102,9 @@ GUI
   on a real `ssh -X` display.
 - Plot style file (`<config dir>/plots/user.mplstyle`, Preferences › Plots form + Open as text, shared
   by the Plots panel, cells, kernels and the console): a notebook's own `plotstyle.use(...)` does not
-  reach that notebook's Plots panel tabs and view cells (they follow the file only); journal presets
-  as a `@plot_style` plugin kind (today: drop `<name>.mplstyle` files into the folder and
-  `plotstyle.use(name)`), listed in *Style of your own plots*; an `.ewd` does not carry the style file,
+  reach that notebook's Plots panel tabs and view cells (they follow the file only); more presets
+  as a `@plot_style` plugin kind (today: five built-in `plotstyle.PRESETS`, or drop
+  `<name>.mplstyle` files into the folder and `plotstyle.use(name)`); an `.ewd` does not carry the style file,
   so a shared notebook draws in the receiver's style (bundling it needs a trust check: matplotlib
   evaluates `axes.prop_cycle`); the form cannot pick installed fonts from a list.
 - Interactive plots (zoom, pan, energy window, hover and click-to-frame on every plot exist):

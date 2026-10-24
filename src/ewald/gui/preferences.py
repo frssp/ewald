@@ -57,7 +57,7 @@ LAYOUT = {
         ("Overlays and movies", ["render.type_legend", "render.scale_bar", "render.movie_format"])]),
     "Plots": ("How plots look on screen and in saved files.", [
         ("Style", ["python.plot_style"]),
-        ("Saved plots", ["plots.size", "plots.font_size"])]),
+        ("Saved plots", ["plots.size"])]),
     "Notebooks": ("Opening, running and saving notebooks.", [
         ("Opening", ["python.run_notebooks"]),
         ("Saving", ["python.save_figures", "python.bundle_data_mb"])]),
@@ -556,6 +556,22 @@ class PreferencesDialog(QtWidgets.QDialog):
         from .. import plotstyle
 
         self.style_widgets = {}
+        row = self._row_frame(rows)
+        grid = QtWidgets.QGridLayout(row)
+        grid.setContentsMargins(16, 12, 16, 12)
+        grid.setHorizontalSpacing(16)
+        text = QtWidgets.QVBoxLayout()
+        text.setSpacing(2)
+        text.addWidget(QtWidgets.QLabel("Preset", objectName="rowLabel"))
+        text.addWidget(QtWidgets.QLabel("Column width, type and line weights to start from; the rows below "
+                                        "and the file show what it sets.", objectName="rowHelp", wordWrap=True))
+        grid.addLayout(text, 0, 0)
+        self.style_preset = QtWidgets.QComboBox()
+        self._fill_presets()
+        self.style_preset.setFixedWidth(self.EDITOR_WIDTH)
+        self.style_preset.currentIndexChanged.connect(self._preview_preset)
+        grid.addWidget(self.style_preset, 0, 1, QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        grid.setColumnStretch(0, 1)
         for f in plotstyle.FORM:
             row = self._row_frame(rows)
             grid = QtWidgets.QGridLayout(row)
@@ -593,8 +609,51 @@ class PreferencesDialog(QtWidgets.QDialog):
         self.style_open = QtWidgets.QPushButton("Open as text", objectName="secondary",
                                                 toolTip="Edit the style file in your text editor")
         self.style_open.clicked.connect(self.open_style_file)
-        lay.addWidget(self.style_open, 0, QtCore.Qt.AlignTop)
+        self.style_save = QtWidgets.QPushButton("Save as preset…", objectName="secondary",
+                                                toolTip="Keep the style file as a preset of your own")
+        self.style_save.clicked.connect(lambda: self.save_style_preset())
+        buttons = QtWidgets.QVBoxLayout()
+        buttons.addWidget(self.style_open)
+        buttons.addWidget(self.style_save)
+        buttons.addStretch()
+        lay.addLayout(buttons)
         self._load_style_form()
+
+    def _fill_presets(self):
+        """The built-in presets, then the ones you saved (``<config dir>/plots/<name>.mplstyle``)."""
+        from .. import plotstyle
+
+        combo = self.style_preset
+        combo.blockSignals(True)
+        combo.clear()
+        for key, preset in plotstyle.PRESETS.items():
+            combo.addItem(preset["label"], key)
+        mine = plotstyle.user_presets()
+        if mine:
+            combo.insertSeparator(combo.count())
+            for key, path in mine.items():
+                combo.addItem(path.stem, key)
+                combo.setItemData(combo.count() - 1, str(path), QtCore.Qt.ToolTipRole)
+        combo.blockSignals(False)
+
+    def save_style_preset(self, name: str | None = None) -> bool:
+        """Apply the form, then keep the style file as a preset named ``name`` (asked for)."""
+        from .. import plotstyle
+
+        if name is None:
+            name, ok = QtWidgets.QInputDialog.getText(self, "Save as preset", "Preset name:")
+            if not ok:
+                return False
+        if not self._save_style_form():
+            return False
+        try:
+            plotstyle.save_preset(name)
+        except (ValueError, OSError) as exc:
+            self._style_say([str(exc)])
+            return False
+        self._fill_presets()
+        self._load_style_form()
+        return True
 
     def _style_editor(self, f):
         default = f.default()
@@ -657,20 +716,42 @@ class PreferencesDialog(QtWidgets.QDialog):
         from .. import plotstyle
 
         user, problems = plotstyle.read_style()
+        self.style_preset.blockSignals(True)
+        marked = plotstyle.preset_of()   # None: a file without a "# preset:" line, shown as the default
+        self.style_preset.setCurrentIndex(max(0, self.style_preset.findData(marked or plotstyle.DEFAULT_PRESET)))
+        self.style_preset.blockSignals(False)
         for f in plotstyle.FORM:
             self._set_style_value(f, f.value(user))
         self.style_loaded, self.style_loaded_mtime = self._style_form(), self._style_mtime()
+        self.style_loaded_preset, self.style_loaded_marked = self.style_preset.currentData(), marked is not None
         self._style_say(problems)
+
+    def _preview_preset(self):
+        """Show in the rows what the chosen preset will set (written on Apply)."""
+        from .. import plotstyle
+
+        user = plotstyle.read_style()[0]
+        old = plotstyle.preset_rc(self.style_loaded_preset) if self.style_loaded_marked else {}
+        new = plotstyle.preset_rc(self.style_preset.currentData())
+        merged = {**{k: v for k, v in user.items() if k not in old}, **new}
+        for f in plotstyle.FORM:
+            self._set_style_value(f, f.value(merged))
 
     def _save_style_form(self) -> bool:
         """Write the rows that changed into the style file; False (and the page shown) when one
         holds a value matplotlib refuses."""
         from .. import plotstyle
 
-        updates = {}
+        updates, preset = {}, self.style_preset.currentData()
+        preview = {}
+        if preset != self.style_loaded_preset:   # what the preset sets by itself is not a row change
+            user = plotstyle.read_style()[0]
+            old = plotstyle.preset_rc(self.style_loaded_preset) if self.style_loaded_marked else {}
+            merged = {**{k: v for k, v in user.items() if k not in old}, **plotstyle.preset_rc(preset)}
+            preview = {f.label: f.value(merged) for f in plotstyle.FORM}
         for f in plotstyle.FORM:
             value = self._style_value(f)
-            if value == self.style_loaded.get(f.label):
+            if value == preview.get(f.label, self.style_loaded.get(f.label)):
                 continue
             try:
                 updates.update(f.updates(value))
@@ -678,9 +759,12 @@ class PreferencesDialog(QtWidgets.QDialog):
                 self._style_say([str(exc)])
                 self.show_page("Plots")
                 return False
-        if updates:
+        if preset != self.style_loaded_preset or updates:
             try:
-                plotstyle.write_style(updates)
+                if preset != self.style_loaded_preset:
+                    plotstyle.apply_preset(preset)
+                if updates:
+                    plotstyle.write_style(updates)
             except OSError as exc:
                 self._style_say([f"Could not save {plotstyle.user_style_path()}: {exc}"])
                 return False
@@ -707,7 +791,8 @@ class PreferencesDialog(QtWidgets.QDialog):
     def event(self, e):
         # back from the editor: show what the file says now, unless the form has unsaved edits
         if e.type() == QtCore.QEvent.WindowActivate and getattr(self, "style_widgets", None) \
-                and self._style_mtime() != self.style_loaded_mtime and self._style_form() == self.style_loaded:
+                and self._style_mtime() != self.style_loaded_mtime and self._style_form() == self.style_loaded \
+                and self.style_preset.currentData() == self.style_loaded_preset:
             self._load_style_form()
         return super().event(e)
 
@@ -1085,10 +1170,12 @@ class PreferencesDialog(QtWidgets.QDialog):
         self.work.reset([o.key for o in OPTIONS if o.page == page])
         self._load()
         if page == "Plots":   # Apply comments the form's keys out of the style file
-            from ..plotstyle import FORM
+            from ..plotstyle import DEFAULT_PRESET, FORM
 
             for f in FORM:
                 self._set_style_value(f, None)
+            self.style_preset.setCurrentIndex(self.style_preset.findData(DEFAULT_PRESET))
+            self._preview_preset()
 
     def _search(self, text):
         text = text.strip().lower()

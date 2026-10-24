@@ -195,17 +195,29 @@ Your own changes to the style live in one matplotlib style file, `user.mplstyle`
 holds plain rcParams (`font.size: 9`, `lines.linewidth: 1.5`, ...) and is drawn over the
 publication style everywhere in the GUI: the Plots panel, view cells, notebook cells, a
 notebook's kernel and the console. The file is the source. Preferences › Plots › *Style file*
-shows its common keys (font, font size, line widths, tick direction, minor ticks, legend frame,
-color cycle) as a form, read from the file when Preferences opens, and Apply writes back only
-the rows you changed, keeping the file's other lines and comments. *Open as text* opens the
-file in your text editor (a new file starts with every key of the publication style commented
-out); EWALD reads it again as soon as you save. Lines matplotlib does not accept are listed
+shows a preset and four keys (font, font size, line width, color cycle) as a form, read from
+the file when Preferences opens, and Apply writes back only the rows you changed, keeping the
+file's other lines and comments. The presets are starting points named after cities; all share a slide scale (14 pt
+type, thick lines) and differ in look: *Seoul* (the default for a new file: open axes, ticks
+outside, vivid colorblind-safe colors), *London* (serif text and math in a box, deep colors with
+a line style per series), *Barcelona* (a warm sand plot area with a white grid and no frame
+lines), *Boston* (a box with a dashed grid and a framed legend, crimson first), *Helsinki* (thin
+gray axes on the left and bottom, cool blues with an orange accent), *Dongtan* (a dark plot
+area with neon lines in saved figures) and *Samlangjin* (a box with ticks inside on four sides and
+minor ticks, a dotted row grid, thicker lines, strawberry and leaf colors). *Save as
+preset…* keeps the current file as a preset of your own (`plots/<name>.mplstyle`), listed after
+the built-in ones; delete the file to remove it; choosing one sets its
+keys in the file and names it on the file's `# preset:` line. *Open as text* opens the file in
+your text editor. A new file lists the useful keys by topic (fonts, lines, colors, axes, ticks,
+legend, figure and files, background colors), commented out with the publication values;
+EWALD reads it again as soon as you save. Lines matplotlib does not accept are listed
 under the button and left out. On screen the Plots panel keeps the UI theme's background and
 text colors and its own font size; plots you save from it use everything in the file.
 
 Scripts and notebooks run outside the GUI never read the file by themselves, so a script draws
 the same plots on every computer. Ask for it in a cell or script: `plotstyle.use("user")` for
-your file, `plotstyle.use("acs")` for any other `acs.mplstyle` you put in the same folder, or
+your file, `plotstyle.use("seoul")` for a preset, `plotstyle.use("thesis")` for any other
+`thesis.mplstyle` you put in the same folder, or
 `plotstyle.use("path/to/journal.mplstyle")`.
 
 Spectra, diffraction patterns and time series are not separate panels. They are views in the
