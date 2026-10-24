@@ -110,7 +110,7 @@ def main():
 
     settle(3.0)  # the 3D view and the plots are built after the first paint
     vp = w.viewport
-    if vp.view_built:
+    if vp.view_built and getattr(vp, "uses_vtk", False):  # the legacy-gl view has no VTK render window
         rw = vp.plotter.render_window
         start = []
         rw.AddObserver("StartEvent", lambda *_: start.append(time.perf_counter()))
