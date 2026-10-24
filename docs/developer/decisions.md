@@ -583,7 +583,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** hiding the bars (already `legend=False`, which also drops them from pictures);
   folding each bar on its own (one switch for all keeps the view cell to one setting).
 - **Landed:** public PR #31.
-### D47. Closing with unsaved notebooks: Save, Don't Save, Cancel (2026-10-24)
+### D48. Closing with unsaved notebooks: Save, Don't Save, Cancel (2026-10-24)
 
 - **Decision:** closing a tab or the window with unsaved notebooks asks with three buttons:
   Save (save, then close; Save All for several notebooks; Save as for one never saved), Don't
