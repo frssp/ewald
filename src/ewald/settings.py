@@ -184,8 +184,9 @@ OPTIONS = (
     Option("render.movie_format", "MP4 (H.264)", "Movie format", "AVI uses Motion JPEG for PowerPoint.",
            choices=("MP4 (H.264)", "GIF", "AVI (Motion JPEG)", "MOV (H.264)", "PNG sequence")),
 
-    Option("compute.device", "cpu", "Device", "Where analysis runs: the window and the notebook's pipe. "
-           "CPU is the safe default; Auto uses the CUDA GPU when CuPy finds one, else the CPU.",
+    Option("compute.device", "cpu", "Device", "Where analysis and ray-traced pictures run: the window, the "
+           "notebook's pipe and the Render page. CPU is the safe default; Auto uses the CUDA GPU when CuPy "
+           "finds one, else the CPU.",
            choices=("cpu", "cuda", "auto")),
     Option("performance.cache_memory", 2048, "Frame cache memory",
            "Upper bound for cached trajectory frames (MB); the current frame is always kept.",

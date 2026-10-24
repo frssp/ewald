@@ -34,6 +34,12 @@ CPU threads even when `device="cuda"`.
 Results come back as NumPy arrays in the `DataCollection`, so code after `compute` does not
 change with the device.
 
+The ray tracer runs there too: `render(data, "fig.png", renderer="raytrace", device="cuda")`,
+or `pipe.render(...)` with `pipe.device` set, and the GUI's Render page and movie export when
+Preferences › Compute › Device is `cuda` or `auto`. It traces in single precision
+([Rendering](rendering.md)). Only NVIDIA GPUs run it so far; Intel Arc, AMD and Apple GPUs ray
+trace on the CPU.
+
 ## CPU threads
 
 The numba and C++ kernels use all cores by default. Preferences › Compute › CPU threads, or

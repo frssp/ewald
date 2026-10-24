@@ -560,6 +560,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         kw = dict(self.style.scene_kwargs())
         kw.update(self.render_page.render_kwargs())
         kw.update(overrides)
+        kw.setdefault("device", self.device)   # the ray tracer runs where analysis does
         text = self.render_page.label_text(self.frame, self.data)
         data, camera = self.data, camera_state(self.viewport.plotter)
         return kw, lambda progress=None: render(data, filename, camera=camera, text=text or None,

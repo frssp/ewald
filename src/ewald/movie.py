@@ -137,6 +137,7 @@ def render_animation(pipeline, filename, *, frames=None, fps: float = 10, device
     if os.path.splitext(str(filename))[1].lower() not in IMAGE_SUFFIXES:
         kwargs["transparent_background"] = False  # only image sequences keep alpha
     kwargs.pop("filename", None)
+    kwargs.setdefault("device", device)   # the ray tracer runs where the pipeline does
     written = 0
     with MovieWriter(filename, fps=fps, background=bg) as writer:
         for n, f in enumerate(idx):
