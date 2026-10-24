@@ -119,6 +119,10 @@ GUI
 - AI tools only through cells (`llm/tools.py` `CELL_WRITERS`): `@ai_tool` plugin functions can
   still change `toolset.pipeline` by hand (ewald cannot check them; docs/plugins/tools.md asks
   them not to); a check after each plugin tool that every modifier belongs to a cell could warn.
+  Smaller gaps listed in docs/user/ai-permissions.md ("Gaps in the rule"): `export_file` makes
+  its target's folders before the cell runs, `render_image(filename=...)` replaces a work-dir
+  file without asking, `set_frame` leaves no cell, and a Forge plugin a notebook uses is not
+  part of the notebook.
   A failed generated cell leaves two undo entries in the GUI (insert, then removal). After a second
   `pipe = load(...)` cell, the step cells above it still hold the old pipeline's modifiers, and
   `Notebook.sync` (the GUI's refresh) deletes them.
