@@ -3,6 +3,7 @@
     python benchmarks/resize.py                     # Linux without a display: xvfb-run -a python benchmarks/resize.py
     python benchmarks/resize.py --notebook examples/notebooks/cu_void.py
     python benchmarks/resize.py --profile          # also: where the first maximize spends its time
+    python benchmarks/resize.py --gl-format core   # with another OpenGL default format for the window
 
 Opens the main window with a tutorial notebook (run, so its plots and the 3D view are drawn),
 then maximizes and restores it a few times. For each step it prints when the window was settled
@@ -11,6 +12,9 @@ such stretch, and how many 3D renders it took and how long they were. Runs on Wi
 and Linux; settings go to a temporary config folder, so your own preferences and layout are not
 used or changed. ``--profile`` samples every thread's Python stack during the first maximize
 and prints the most frequent ones (time inside Qt or VTK shows as the Python line that called it).
+``--gl-format`` sets the process OpenGL default format before the window exists: ``app`` keeps
+what ``ewald gui`` does, ``vtk`` is VTK's format (3.2 core, alpha, 8-bit depth), ``core`` is
+3.2 core without alpha and with a 24-bit depth buffer.
 """
 from __future__ import annotations
 
@@ -71,6 +75,7 @@ def main():
     ap.add_argument("--notebook", default=os.path.join(HERE, os.pardir, "examples", "notebooks", "cu_void.py"))
     ap.add_argument("--repeat", type=int, default=3)
     ap.add_argument("--profile", action="store_true", help="sample the stacks during the first maximize")
+    ap.add_argument("--gl-format", choices=("app", "vtk", "core"), default="app")
     args = ap.parse_args()
     os.environ.setdefault("EWALD_CONFIG_DIR", tempfile.mkdtemp(prefix="ewald-resize-"))
 
@@ -79,6 +84,16 @@ def main():
     from ewald.gui.app import MainWindow, _app
     from PySide6 import QtCore
 
+    if args.gl_format != "app":
+        from PySide6 import QtGui
+
+        from ewald.gui.application import vtk_surface_format
+
+        fmt = vtk_surface_format()
+        if args.gl_format == "core":
+            fmt.setAlphaBufferSize(0)
+            fmt.setDepthBufferSize(24)
+        QtGui.QSurfaceFormat.setDefaultFormat(fmt)
     app = _app()
     notebook_panel.CONFIRM_UNSAVED = False
     notebook_panel.CELL_BUDGET = None
@@ -149,7 +164,7 @@ def main():
             ms = ", ".join(f"{r * 1000:.0f}" for r in renders) or "-"
             print(f"{name:<10}{settled * 1000:>8.0f} ms{longest * 1000:>7.0f} ms{len(renders):>9}{ms:>12}")
     gl = vp.opengl_info() if vp.view_built else {}
-    print("OpenGL:", gl.get("renderer", "?"), gl.get("version", ""))
+    print("OpenGL:", gl.get("renderer", "?"), gl.get("version", ""), "| default format:", args.gl_format)
     if sampler is not None:
         sampler.report()
     heart.stop()
