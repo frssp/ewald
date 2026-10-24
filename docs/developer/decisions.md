@@ -152,7 +152,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   AI and Plugins look the same in the bar and in Preferences.
 - **Why:** the owner asked "왼쪽 바 아이콘과 설정 안에 있는 아이콘 동일하게. 같은 이미지 사용하나?";
   they did not (Preferences had its own book, sparkle and plug icons).
-- **Landed:** PR (this one).
+- **Landed:** public PR #29.
 
 ## Quality and platforms
 
