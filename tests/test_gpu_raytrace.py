@@ -400,9 +400,9 @@ def test_a_pass_is_split_into_short_launches(fake_gpu, monkeypatch):
 
 
 @pytest.mark.parametrize("platform, metal, picks", [
-    ("win32", None, "opencl"), ("linux", None, "opencl"), ("darwin", None, None), ("darwin", "m2", "metal")])
-def test_auto_takes_metal_on_a_mac_and_opencl_elsewhere(monkeypatch, platform, metal, picks):
-    """Apple's OpenCL traced 5x slower than the CPU on an M2 Air, so a Mac uses Metal or the CPU."""
+    ("win32", None, "opencl"), ("linux", None, "opencl"), ("darwin", None, None), ("darwin", "m2", None)])
+def test_auto_is_the_cpu_on_a_mac_and_opencl_elsewhere(monkeypatch, platform, metal, picks):
+    """On an M2 Air the CPU beat Apple's OpenCL and, most runs, Metal: a Mac's auto is the CPU."""
     monkeypatch.setattr(rc, "opencl_devices", lambda gpu_only=False: ["gpu"])
     monkeypatch.setattr(rc, "OpenCLTracer", lambda device, scene, accel, real: ("opencl", device))
     monkeypatch.setattr(rc, "metal_device", lambda: metal)

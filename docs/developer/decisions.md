@@ -664,7 +664,9 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 
 - **Decision:** the GPU kernel first moves its indices and item codes to 32-bit (public PR #47),
   and since Apple's OpenCL was still slower than the CPU, the same kernel source gets a Metal
-  build (`device="metal"`, PyObjC, the `metal` extra) that `auto` uses on a Mac.
+  build (`device="metal"`, PyObjC, the `metal` extra) that `auto` uses on a Mac. Changed the
+  same day (public PR #50): on the owner's Mac Metal ran from 2x faster to 20x slower than the
+  CPU from run to run, so `auto` is the CPU on a Mac and Metal is chosen by name.
 - **Why:** the owner asked "mac에서 opencl말고 다른 방법은 없어?" after Apple's OpenCL took
   19.5 s for a picture the CPU draws in 0.5 s, and chose "64-bit 정리 먼저, 필요하면 Metal" on the
   decision card. After the 32-bit change it took 2.4 s, still slower than the CPU.
