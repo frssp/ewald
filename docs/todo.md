@@ -748,6 +748,13 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
   affiliations, funding and conflict-of-interest statement (TODOs in `paper/paper.md`), tag
   releases, collect research use (papers, groups, courses) for the research impact statement, and
   archive the submitted version on Zenodo.
+- From the literature (docs/developer/references.md, 2026-10-24): precomputed per-atom ambient
+  occlusion for the impostor path (Tarini et al. 2006) next to SSAO; image-space outlines from the
+  depth and normal buffers for every style and renderer (Saito and Takahashi 1990); cylinder
+  impostors for bonds in large systems (Sigg et al. 2006); occlusion culling for
+  multi-million-atom frames (Grottel et al. 2010); harder `ewald eval` tasks modelled on MDCrow's
+  graded MD tasks and ChatVis's visualization tasks; an AI tool that fetches reference structures
+  and properties (LLaMP). Confirm the DOIs the page marks as not confirmed before citing them.
 
 - From the 2026-10-20 systems review (/mnt/project-files/ewald-review/senior-systems-review.md;
   its refactors are merged, #129-#135): a self-hosted runner (xvfb + Mesa) to restore the PR
