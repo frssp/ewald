@@ -5709,12 +5709,13 @@ def test_plot_style_file_is_the_source_of_the_preferences_form(app, monkeypatch)
     from ewald.gui.preferences import PreferencesDialog
 
     path = plotstyle.user_style_path()
-    plotstyle.write_style({"font.size": "9", "axes.grid": "True"})
+    path.parent.mkdir(parents=True)
+    path.write_text("# my style\nfont.size: 9\naxes.grid: True\n", encoding="utf-8")
     dlg = PreferencesDialog(settings.Settings(), page="Plots")
     assert dlg._style_form()["Font size"] == 9.0 and dlg._style_form()["Line width"] is None
     dlg.style_widgets["Line width"].setValue(2.0)
     assert dlg.apply()
-    assert plotstyle.read_style()[0] == {"font.size": "9", "axes.grid": "True", "lines.linewidth": "2.0"}
+    assert plotstyle.read_style()[0] == {"font.size": "9", "axes.grid": "True", "lines.linewidth": "2"}
     dlg.style_preset.setCurrentIndex(dlg.style_preset.findData("slides"))   # the rows preview the preset
     assert dlg._style_form()["Font size"] == 14.0
     dlg.style_widgets["Line width"].setValue(1.5)                         # ... and a row set on top of it
@@ -5732,11 +5733,17 @@ def test_plot_style_file_is_the_source_of_the_preferences_form(app, monkeypatch)
     assert plotstyle.read_style()[0]["axes.prop_cycle"] == cycle
     dlg.style_widgets["Color cycle"].setText("")
     dlg.restore_page()                                          # Reset page: the preset and the rows go
-    assert dlg.apply() and plotstyle.read_style()[0] == {"axes.grid": "True"} and plotstyle.preset_of() == "publication"
+    assert dlg.apply() and plotstyle.preset_of() == "slides"
+    assert plotstyle.read_style()[0] == {**plotstyle.preset_rc("slides"), "axes.grid": "True"}
+    dlg.style_widgets["Font size"].setValue(16)                  # Save as preset: listed from then on
+    assert dlg.save_style_preset("Talk 16") and plotstyle.preset_of() == "talk 16"
+    assert dlg.style_preset.currentData() == "talk 16" and dlg.style_preset.findData("slides") >= 0
+    assert plotstyle.preset_rc("Talk 16")["font.size"] == "16"
+    assert not dlg.save_style_preset("Slides") and "built-in" in dlg.style_problems.text()
     opened = []
     monkeypatch.setattr("ewald.gui.file_dialogs.open_in_editor", lambda p: opened.append(p) or True)
     path.unlink()
-    assert dlg.open_style_file() and opened == [path] and plotstyle.read_style() == ({}, [])
+    assert dlg.open_style_file() and opened == [path] and plotstyle.read_style() == (plotstyle.preset_rc("slides"), [])
     assert "# EWALD plot style" in path.read_text(encoding="utf-8")
     dlg.close()
 
@@ -5755,7 +5762,9 @@ def test_plots_panel_shares_the_style_file(app, tmp_path):
     d = DataCollection(np.zeros((1, 3)), np.array(["C"]))
     d.tables["rdf"] = {"r": np.linspace(0, 5, 20), "g(r)": np.linspace(0, 2, 20)}
     panel.set_data(d)
-    plotstyle.write_style({"lines.linewidth": "3", "axes.facecolor": "FFEEDD", "font.size": "6"})
+    path = plotstyle.user_style_path()
+    path.parent.mkdir(parents=True)
+    path.write_text("lines.linewidth: 3\naxes.facecolor: FFEEDD\nfont.size: 6\n", encoding="utf-8")
     try:
         assert prefs_apply.apply_plot_style(host) == []
         assert plots.USER_RC["lines.linewidth"] == "3" and console.PLOT_STYLE[2] == plots.USER_RC

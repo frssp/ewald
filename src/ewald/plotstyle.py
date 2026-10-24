@@ -126,7 +126,7 @@ def rc(tokens: dict | None = None, font_size: float = FONT_SIZE, user: dict | No
         "text.color": t["text"], "axes.labelcolor": t["text"], "axes.titlecolor": t["text"],
         "axes.edgecolor": ink, "xtick.color": ink, "ytick.color": ink,
         "xtick.labelcolor": t["text"], "ytick.labelcolor": t["text"],
-        "figure.facecolor": t["bg"], "axes.facecolor": t["bg"], "savefig.facecolor": t["bg"],
+        "figure.facecolor": t["bg"], "axes.facecolor": t["bg"], "savefig.facecolor": t["bg"], "grid.color": t["border"],
         "legend.labelcolor": t["text"],
         "axes.linewidth": 0.8, "axes.grid": False, "axes.axisbelow": True,
         "axes.prop_cycle": cycler(color=list(colors(tokens))),
@@ -169,7 +169,7 @@ def _style_rc(style: str = "publication", tokens: dict | None = None, font_size:
     (a style file's rcParams) goes on top of either, without :data:`THEME_KEYS` when the colors
     are a UI theme's (``tokens``)."""
     if tokens is not None:
-        user = screen_rc(user)
+        user = screen_rc(user, tokens)
     if style == "default":
         return validated(user)
     if style != "publication":
@@ -203,7 +203,7 @@ def use(style: str | dict | None = "publication", tokens: dict | None = None, fo
                              f"a preset ({', '.join(PRESETS)}), a name in {user_style_path().parent} "
                              f"or a .mplstyle file")
     if style not in STYLES and path is not None:
-        user, problems = read_style(path)
+        user, problems = read_style(None if style.lower() == "user" else path)
         if not path.is_file():
             problems = [f"{path} does not exist"] if style != "user" else []
         for problem in problems:
@@ -376,14 +376,16 @@ def parse_style(text: str) -> tuple[dict, list]:
 
 
 def read_style(path=None) -> tuple[dict, list]:
-    """:func:`parse_style` of a file (default :func:`user_style_path`); ``({}, [])`` when it does
-    not exist, so a fresh install draws the publication style."""
+    """:func:`parse_style` of a file; without ``path``, the user's (:func:`user_style_path`),
+    which a fresh install does not have yet: then :data:`DEFAULT_PRESET`, as a new file would
+    say. A missing ``path`` reads as ``({}, [])``."""
+    user = path is None
     path = Path(path) if path is not None else user_style_path()
     try:
         with open(path, encoding="utf-8-sig") as fh:
             text = fh.read()
     except FileNotFoundError:
-        return {}, []
+        return (preset_rc(DEFAULT_PRESET) if user else {}), []
     except (OSError, UnicodeDecodeError) as exc:
         return {}, [f"{path}: {exc}"]
     return parse_style(text)
@@ -405,9 +407,32 @@ def validated(user: dict | None) -> dict:
     return out
 
 
-def screen_rc(user: dict | None) -> dict:
-    """``user`` without :data:`THEME_KEYS`, for plots drawn in a UI theme's colors."""
-    return {k: v for k, v in (user or {}).items() if k not in THEME_KEYS}
+def screen_rc(user: dict | None, tokens: dict | None = None) -> dict:
+    """``user`` without :data:`THEME_KEYS`, for plots drawn in a UI theme's colors. On a dark
+    ``tokens['bg']`` the near-black lines of a color cycle (Classic serif's first) take the
+    theme's text color, so they stay visible."""
+    out = {k: v for k, v in (user or {}).items() if k not in THEME_KEYS}
+    if tokens and _dark(tokens.get("bg", "#FFFFFF")) and "axes.prop_cycle" in out:
+        from matplotlib.colors import to_hex
+
+        cycle = validated({"axes.prop_cycle": out["axes.prop_cycle"]}).get("axes.prop_cycle")
+        if cycle is not None and "color" in cycle.keys:
+            ink = tokens.get("text", "#E6E6E6")
+            keys = cycle.by_key()
+            keys["color"] = [ink if sum(int(to_hex(c)[i:i + 2], 16) for i in (1, 3, 5)) < 120 else c
+                             for c in keys["color"]]
+            out["axes.prop_cycle"] = _cycle(keys)
+    return out
+
+
+def _cycle(keys: dict):
+    """A cycler of several properties in step (``{"color": [...], "linestyle": [...]}``)."""
+    from matplotlib import cycler
+
+    out = None
+    for k, v in keys.items():
+        out = cycler(k, v) if out is None else out + cycler(k, v)
+    return out
 
 
 def format_value(value) -> str:
@@ -450,15 +475,16 @@ TEMPLATE = (
 PRESET_MARK = "# preset:"   # the preset a file was made from (a comment, so plt.style.use ignores it)
 
 
-def template(preset: str = "publication") -> str:
+def template(preset: str | None = None) -> str:
     """A new style file: a header that says how it works, then the keys of :data:`TEMPLATE` by
     topic, commented out with the publication style's values (a ``preset``'s set, not commented)."""
+    preset = preset or DEFAULT_PRESET
     import matplotlib as mpl
 
     values = dict(mpl.rcParamsDefault)
     values.update(_style_rc("publication"))
     chosen = preset_rc(preset)
-    names = ", ".join(PRESETS[k]["label"] for k in PRESETS)
+    names = ", ".join([*(PRESETS[k]["label"] for k in PRESETS), *user_presets()])
     rule = "# " + "-" * 76
     lines = [rule,
              "# EWALD plot style: matplotlib rcParams drawn over EWALD's publication style",
@@ -480,7 +506,7 @@ def template(preset: str = "publication") -> str:
                 lines.append(f"# {key + ':':<32}{format_value(values[key])}")
     extra = [k for k in chosen if not any(k in keys for _t, _h, keys in TEMPLATE)]
     if extra:
-        lines += ["", f"## Also set by the {PRESETS[preset.lower()]['label']} preset"]
+        lines += ["", f"## Also set by the {PRESETS.get(preset.lower(), {'label': preset})['label']} preset"]
         lines += [f"{k + ':':<34}{chosen[k]}" for k in extra]
     return "\n".join(lines) + "\n"
 
@@ -523,66 +549,139 @@ _OPEN = {"axes.spines.top": "False", "axes.spines.right": "False", "xtick.top": 
          "xtick.direction": "out", "ytick.direction": "out", "xtick.minor.visible": "False",
          "ytick.minor.visible": "False"}
 PRESETS = {
-    # boxed axes, ticks inside on four sides with minor ticks, 8 pt sans-serif, colorblind-safe colors
-    "publication": {"label": "Publication", "rc": {}},
-    # serif text and math, thin box, black first and a line style per series (reads in grayscale too)
-    "classic": {"label": "Classic serif", "rc": {
-        "font.family": "serif", "font.serif": _SERIF, "mathtext.fontset": "stix", "font.size": "8",
-        "axes.linewidth": "0.5", "xtick.major.width": "0.5", "ytick.major.width": "0.5",
-        "xtick.minor.width": "0.5", "ytick.minor.width": "0.5", "xtick.major.size": "3", "ytick.major.size": "3",
-        "xtick.minor.size": "1.5", "ytick.minor.size": "1.5", "lines.linewidth": "1.0",
-        "axes.prop_cycle": "cycler(color=['000000', 'C0392B', '1F4E9C', '2E7D32', '7B3F99']) + "
-                           "cycler(linestyle=['-', '--', '-.', ':', (0, (5, 1, 1, 1))])"}},
-    # black and grays only, told apart by line style: for print in black and white
-    "monochrome": {"label": "Monochrome", "rc": {
-        "axes.prop_cycle": "cycler(color=['000000', '000000', '595959', '595959', '8C8C8C']) + "
-                           "cycler(linestyle=['-', '--', '-', '--', ':'])",
-        "lines.linewidth": "1.1", "image.cmap": "gray_r"}},
-    # open axes (no top and right lines), ticks outside, soft colors, a little more air
-    "minimal": {"label": "Minimal", "rc": {**_OPEN,
-        "axes.prop_cycle": "cycler(color=['4477AA', 'EE6677', '228833', 'CCBB44', '66CCEE', 'AA3377'])",
-        "lines.linewidth": "1.5", "axes.linewidth": "0.7", "axes.edgecolor": "555555",
-        "xtick.color": "555555", "ytick.color": "555555", "axes.ymargin": "0.06", "axes.labelpad": "4"}},
-    # dashed light grid behind the data, framed legend, bright colors and markers-ready widths
-    "grid": {"label": "Grid", "rc": {
-        "axes.grid": "True", "grid.linestyle": "--", "grid.linewidth": "0.5", "grid.color": "B0B0B0",
-        "grid.alpha": "0.7", "xtick.minor.visible": "False", "ytick.minor.visible": "False",
-        "legend.frameon": "True", "legend.framealpha": "0.9", "legend.edgecolor": "B0B0B0", "legend.fancybox": "False",
-        "axes.prop_cycle": "cycler(color=['0C5DA5', 'FF2C00', '00B945', 'FF9500', '845B97', '474747'])",
-        "lines.linewidth": "1.3"}},
-    # slides: large type, thick lines, open axes, vivid colors, 16:10 figure
+    # slides and screens: large type, thick lines, open axes, vivid colors, 16:10 figure (the default)
     "slides": {"label": "Slides", "rc": {**_OPEN,
         "font.size": "14", "lines.linewidth": "2.5", "lines.markersize": "8", "axes.linewidth": "1.5",
         "xtick.major.width": "1.5", "ytick.major.width": "1.5", "xtick.major.size": "6", "ytick.major.size": "6",
         "axes.prop_cycle": "cycler(color=['0072B2', 'E69F00', '009E73', 'D55E00', 'CC79A7', '56B4E9'])",
         "figure.figsize": "6.4, 4.0"}},
+    # boxed axes, ticks inside on four sides with minor ticks, 8 pt sans-serif, colorblind-safe colors
+    "boxed": {"label": "Boxed", "rc": {"font.size": "9", "lines.linewidth": "1.75", "axes.linewidth": "1.0",
+                                       "xtick.major.width": "1.0", "ytick.major.width": "1.0"}},
+    # serif text and math, thin box, black first and a line style per series (reads in grayscale too)
+    "classic": {"label": "Classic serif", "rc": {
+        "font.family": "serif", "font.serif": _SERIF, "mathtext.fontset": "stix", "font.size": "9",
+        "axes.linewidth": "0.8", "xtick.major.width": "0.8", "ytick.major.width": "0.8",
+        "xtick.minor.width": "0.6", "ytick.minor.width": "0.6", "xtick.major.size": "3.5", "ytick.major.size": "3.5",
+        "xtick.minor.size": "2", "ytick.minor.size": "2", "lines.linewidth": "1.6",
+        "axes.prop_cycle": "cycler(color=['000000', 'C0392B', '1F4E9C', '2E7D32', '7B3F99']) + "
+                           "cycler(linestyle=['-', '--', '-.', ':', (0, (5, 1, 1, 1))])"}},
+    # open axes (no top and right lines), ticks outside, soft colors, a little more air
+    "minimal": {"label": "Minimal", "rc": {**_OPEN,
+        "axes.prop_cycle": "cycler(color=['4477AA', 'EE6677', '228833', 'CCBB44', '66CCEE', 'AA3377'])",
+        "font.size": "9", "lines.linewidth": "2.0", "axes.linewidth": "1.0", "axes.edgecolor": "555555",
+        "xtick.major.width": "1.0", "ytick.major.width": "1.0",
+        "xtick.color": "555555", "ytick.color": "555555", "axes.ymargin": "0.06", "axes.labelpad": "4"}},
+    # dashed light grid behind the data, framed legend, bright colors
+    "grid": {"label": "Grid", "rc": {
+        "axes.grid": "True", "grid.linestyle": "--", "grid.linewidth": "0.5", "grid.color": "B0B0B0",
+        "grid.alpha": "0.7", "xtick.minor.visible": "False", "ytick.minor.visible": "False",
+        "legend.frameon": "True", "legend.framealpha": "0.9", "legend.edgecolor": "B0B0B0", "legend.fancybox": "False",
+        "axes.prop_cycle": "cycler(color=['0C5DA5', 'FF2C00', '00B945', 'FF9500', '845B97', '474747'])",
+        "font.size": "9", "lines.linewidth": "1.75", "axes.linewidth": "1.0"}},
+    # a light gray plot area with a white grid and no frame lines (in saved figures; on screen the
+    # UI theme keeps the background), short ticks outside
+    "panel": {"label": "Gray panel", "rc": {**_OPEN,
+        "axes.facecolor": "EBEBEB", "axes.edgecolor": "FFFFFF", "axes.linewidth": "0",
+        "axes.spines.left": "False", "axes.spines.bottom": "False", "axes.axisbelow": "True",
+        "axes.grid": "True", "grid.color": "FFFFFF", "grid.linestyle": "-", "grid.linewidth": "0.9",
+        "xtick.major.size": "2.5", "ytick.major.size": "2.5", "xtick.color": "4D4D4D", "ytick.color": "4D4D4D",
+        "axes.prop_cycle": "cycler(color=['E24A33', '348ABD', '988ED5', '777777', 'FBC15E', '8EBA42'])",
+        "font.size": "9", "lines.linewidth": "1.75"}},
 }
+DEFAULT_PRESET = "slides"   # what a new style file (or none at all) gives
+
+
+def user_presets() -> dict:
+    """``{name: path}`` of the presets you saved (:func:`save_preset`): the ``.mplstyle`` files
+    in ``<config dir>/plots`` other than ``user.mplstyle``, names lower-case."""
+    return {k: v for k, v in named_styles().items() if k != "user" and k not in PRESETS}
+
+
+def _preset_key(name: str) -> str | None:
+    """The key of a built-in or saved preset (by key or label, any case), or None."""
+    name = (name or DEFAULT_PRESET).strip().lower()
+    for key, preset in PRESETS.items():
+        if name in (key, preset["label"].lower()):
+            return key
+    return name if name in user_presets() else None
 
 
 def preset_rc(name: str) -> dict:
-    """``{key: text}`` of a :data:`PRESETS` entry (by key or label, any case)."""
-    name = (name or "publication").lower()
-    for key, preset in PRESETS.items():
-        if name in (key, preset["label"].lower()):
-            return dict(preset["rc"])
-    raise ValueError(f"unknown preset {name!r}; use one of {', '.join(PRESETS)}")
+    """``{key: text}`` of a :data:`PRESETS` entry (by key or label, any case) or of a preset you
+    saved (:func:`user_presets`)."""
+    key = _preset_key(name)
+    if key in PRESETS:
+        return dict(PRESETS[key]["rc"])
+    if key is not None:
+        return read_style(user_presets()[key])[0]
+    raise ValueError(f"unknown preset {name!r}; use one of {', '.join([*PRESETS, *user_presets()])}")
 
 
 def preset_of_text(text: str) -> str | None:
     """The preset named by the ``# preset:`` line of style file text, or None."""
     for line in text.splitlines():
         if line.lower().startswith(PRESET_MARK):
-            name = line[len(PRESET_MARK):].split("#")[0].strip().lower()
-            return name if name in PRESETS else None
+            name = line[len(PRESET_MARK):].split("#")[0].strip()
+            return _preset_key(name) if name else None
     return None
 
 
+_BAD_NAME = set('<>:"/\\|?*#')
+
+
+def save_preset(name: str, path=None) -> Path:
+    """Save the keys a style file sets (default :func:`user_style_path`) as a preset of your own,
+    ``<config dir>/plots/<name>.mplstyle``, listed with the built-in ones from then on and named
+    on the file's ``# preset:`` line. A name may not be a built-in preset's, "user", or hold
+    characters Windows refuses in file names; saving under an existing name of yours replaces it."""
+    from .fileops import write_text
+
+    name = (name or "").strip()
+    if not name or _BAD_NAME & set(name) or name.endswith(".") or any(ord(c) < 32 for c in name):
+        raise ValueError(f"{name!r} is not a usable preset name (no <>:\"/\\|?*# or trailing dot)")
+    if name.lower() == "user" or any(name.lower() in (k, p["label"].lower()) for k, p in PRESETS.items()):
+        raise ValueError(f"{name!r} is a built-in preset; choose another name")
+    path = Path(path) if path is not None else user_style_path()
+    rc_, _problems = read_style(path)
+    folder = user_style_path().parent
+    folder.mkdir(parents=True, exist_ok=True)
+    old = user_presets().get(name.lower())
+    target = old or folder / f"{name}.mplstyle"
+    lines = [f"# EWALD plot style preset {name!r}, saved from Preferences > Plots.",
+             "# plotstyle.use(\"" + name.lower() + "\") draws with it; delete this file to remove it.", ""]
+    lines += [f"{k + ':':<34}{v}" for k, v in rc_.items()]
+    write_text(target, "\n".join(lines) + "\n")
+    _mark(path, name.lower())
+    return target
+
+
+def _mark(path: Path, key: str):
+    """Name ``key`` on the ``# preset:`` line of a style file (added on top when missing)."""
+    from .fileops import write_text
+
+    with open(path, encoding="utf-8-sig") as fh:
+        lines = fh.read().splitlines()
+    names = ", ".join([*(p["label"] for p in PRESETS.values()), *user_presets()])
+    mark = f"{PRESET_MARK} {key}" + " " * max(1, 22 - len(key)) + f"# one of: {names}"
+    at = [i for i, line in enumerate(lines) if line.lower().startswith(PRESET_MARK)]
+    if at:
+        lines[at[0]] = mark
+    else:
+        lines.insert(0, mark)
+    write_text(path, "\n".join(lines) + "\n")
+
+
 def preset_of(path=None) -> str | None:
-    """The preset a style file says it was made from (its ``# preset:`` line), or None."""
+    """The preset a style file says it was made from (its ``# preset:`` line), or None; the
+    user's file before it exists is :data:`DEFAULT_PRESET`."""
+    user = path is None
     path = Path(path) if path is not None else user_style_path()
     try:
         with open(path, encoding="utf-8-sig") as fh:
             return preset_of_text(fh.read())
+    except FileNotFoundError:
+        return DEFAULT_PRESET if user else None
     except OSError:
         return None
 
@@ -594,21 +693,19 @@ def apply_preset(name: str, path=None) -> Path:
 
     path = Path(path) if path is not None else user_style_path()
     new = preset_rc(name)
-    key = next(k for k, p in PRESETS.items() if name.lower() in (k, p["label"].lower()))
+    key = _preset_key(name)
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        return write_text(path, template(key))
-    old = PRESETS.get(preset_of(path) or "", {}).get("rc", {})
-    write_style({**{k: None for k in old if k not in new}, **new}, path)
-    with open(path, encoding="utf-8-sig") as fh:
-        lines = fh.read().splitlines()
-    mark = f"{PRESET_MARK} {key}"
-    at = [i for i, line in enumerate(lines) if line.lower().startswith(PRESET_MARK)]
-    if at:
-        lines[at[0]] = mark + " " * max(1, 22 - len(key)) + "# one of: " + ", ".join(p["label"] for p in PRESETS.values())
+        write_text(path, template(key if key in PRESETS else "boxed"))
+        if key in PRESETS:
+            return path
+        old = preset_rc("boxed")
     else:
-        lines.insert(0, mark)
-    return write_text(path, "\n".join(lines) + "\n")
+        was = preset_of_text(path.read_text(encoding="utf-8-sig"))
+        old = preset_rc(was) if was else {}
+    write_style({**{k: None for k in old if k not in new}, **new}, path)
+    _mark(path, key)
+    return path
 
 
 @dataclass(frozen=True)
@@ -658,6 +755,8 @@ class FormField:
             text = "cycler(color=[" + ", ".join(repr(h) for h in hexes) + "])"
         elif self.kind == "bool":
             text = "True" if value else "False"
+        elif self.kind == "float":
+            text = f"{float(value):g}"
         else:
             text = format_value(value)
         problems = parse_style(f"{self.keys[0]}: {text}")[1]

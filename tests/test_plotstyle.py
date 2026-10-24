@@ -174,12 +174,14 @@ def test_style_file_reads_crlf_bom_comments_and_reports_bad_lines(tmp_path):
 
 
 def test_style_template_groups_keys_and_reads_back_uncommented():
-    text = plotstyle.template()
-    assert plotstyle.parse_style(text) == ({}, [])            # all commented out
-    assert "## Fonts" in text and "## Ticks" in text and plotstyle.preset_of_text(text) == "publication"
+    text = plotstyle.template("boxed")
+    assert plotstyle.parse_style(text) == (plotstyle.preset_rc("boxed"), [])   # the rest commented out
+    assert plotstyle.parse_style(plotstyle.template())[0] == plotstyle.preset_rc("slides")   # the default
+    assert "## Fonts" in text and "## Ticks" in text and plotstyle.preset_of_text(plotstyle.template()) == "slides"
     rc, problems = plotstyle.parse_style("\n".join(line[2:] for line in text.splitlines()
                                                    if line.startswith("# ") and plotstyle._key_of(line, commented=True)))
-    assert not problems and set(rc) == {k for _t, _h, keys in plotstyle.TEMPLATE for k in keys}
+    assert not problems and set(rc) | set(plotstyle.preset_rc("boxed")) == {k for _t, _h, keys in plotstyle.TEMPLATE
+                                                                            for k in keys}
     pub = plotstyle._style_rc("publication")
     for key, value in plotstyle.validated(rc).items():
         if key in pub:
@@ -197,10 +199,10 @@ def test_presets_switch_without_touching_other_lines(tmp_path):
     plotstyle.apply_preset("Classic serif", f)          # by label too
     rc, problems = plotstyle.read_style(f)
     assert not problems and plotstyle.preset_of(f) == "classic"
-    assert rc["font.family"] == "serif" and rc["font.size"] == "8" and rc["axes.grid"] == "True"
+    assert rc["font.family"] == "serif" and rc["font.size"] == "9" and rc["axes.grid"] == "True"
     assert "axes.spines.top" not in rc and "xtick.direction" not in rc   # Minimal's own keys went
-    plotstyle.apply_preset("publication", f)
-    assert plotstyle.read_style(f)[0] == {"axes.grid": "True"}
+    plotstyle.apply_preset("boxed", f)
+    assert plotstyle.read_style(f)[0] == {**plotstyle.preset_rc("boxed"), "axes.grid": "True"}
     with pytest.raises(ValueError, match="unknown preset"):
         plotstyle.preset_rc("nope")
     import matplotlib as mpl
@@ -220,7 +222,7 @@ def test_write_style_keeps_other_lines_and_uncomments_template_lines(tmp_path):
     f.write_text(text + "axes.grid: True   # mine\nfont.size: 12\n", encoding="utf-8")
     plotstyle.write_style({"lines.linewidth": "2", "font.size": "9"}, f)
     rc, _ = plotstyle.read_style(f)
-    assert rc == {"font.size": "9", "lines.linewidth": "2", "axes.grid": "True"}
+    assert rc == {**plotstyle.preset_rc("slides"), "font.size": "9", "lines.linewidth": "2", "axes.grid": "True"}
     assert "axes.grid: True   # mine" in f.read_text(encoding="utf-8")
     plotstyle.write_style({"font.size": None}, f)
     assert "font.size" not in plotstyle.read_style(f)[0] and "# font.size:" in f.read_text(encoding="utf-8")
@@ -243,7 +245,7 @@ def test_form_fields_round_trip_through_the_file(tmp_path):
     assert fields["Font"].value(rc) == "Liberation Sans, Arial" and fields["Font size"].value(rc) == 9.5
     assert two.value(rc) == "out" and rc["ytick.direction"] == "out" and off.value(rc) is False
     assert fields["Color cycle"].value(rc) == "#D55E00, #008C7E, #FF0000"
-    assert fields["Line width"].value(rc) is None and fields["Line width"].default() == 1.25
+    assert fields["Line width"].value(rc) == 2.5 and fields["Line width"].default() == 1.25   # new files: Slides
     assert fields["Font size"].updates(None) == {"font.size": None}
     with pytest.raises(ValueError, match="Color cycle"):
         fields["Color cycle"].updates("#12, nocolor")
@@ -276,7 +278,7 @@ def test_use_reads_style_files_only_when_asked(tmp_path):
         plotstyle.use()
         assert mpl.rcParams["lines.linewidth"] == 1.25          # never implicitly
         plotstyle.use("user")
-        assert mpl.rcParams["lines.linewidth"] == 3 and mpl.rcParams["font.size"] == 8
+        assert mpl.rcParams["lines.linewidth"] == 3 and mpl.rcParams["font.size"] == 14   # a new file is Slides
         plotstyle.use("THESIS")                                 # names ignore case
         assert mpl.rcParams["lines.linewidth"] == 0.5
         plotstyle.use(str(other))
@@ -309,3 +311,22 @@ def test_editor_commands_per_platform():
     assert editor_commands("C:\\Users\\me\\user.mplstyle", "win32") == ["url", ["notepad.exe", "C:\\Users\\me\\user.mplstyle"]]
     assert editor_commands("/Users/me/user.mplstyle", "darwin") == [["open", "-t", "/Users/me/user.mplstyle"], "url"]
     assert editor_commands("/home/me/user.mplstyle", "linux") == ["url"]
+
+
+def test_saved_presets_are_listed_and_named_safely_on_every_platform():
+    plotstyle.apply_preset("minimal")
+    plotstyle.write_style({"font.size": "11"})
+    target = plotstyle.save_preset("My Talk")
+    assert target.name == "My Talk.mplstyle" and plotstyle.preset_of() == "my talk"
+    assert set(plotstyle.user_presets()) == {"my talk"} and plotstyle.preset_rc("MY TALK")["font.size"] == "11"
+    plotstyle.apply_preset("slides")
+    assert plotstyle.read_style()[0]["font.size"] == "14"
+    plotstyle.apply_preset("my talk")                             # back: its keys, Slides' own ones gone
+    rc = plotstyle.read_style()[0]
+    assert rc["font.size"] == "11" and rc["xtick.direction"] == "out" and "figure.figsize" not in rc
+    plotstyle.write_style({"font.size": "12"})
+    assert plotstyle.save_preset("my talk") == target            # same name, any case: replaced
+    assert plotstyle.preset_rc("My Talk")["font.size"] == "12"
+    for bad in ("Slides", "classic serif", "user", "a/b", "a\\b", "C:x", "dots.", "", "x#y"):
+        with pytest.raises(ValueError):
+            plotstyle.save_preset(bad)

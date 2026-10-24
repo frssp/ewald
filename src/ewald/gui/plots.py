@@ -57,7 +57,7 @@ def _user_rc(exporting: bool) -> dict:
     keeps its colors and the canvas its readable font size."""
     if exporting:
         return dict(USER_RC)
-    return {k: v for k, v in plotstyle.screen_rc(USER_RC).items() if k != "font.size"}
+    return {k: v for k, v in plotstyle.screen_rc(USER_RC, TOKENS).items() if k != "font.size"}
 
 
 def _styled(method):

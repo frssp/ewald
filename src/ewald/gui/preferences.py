@@ -567,8 +567,7 @@ class PreferencesDialog(QtWidgets.QDialog):
                                         "and the file show what it sets.", objectName="rowHelp", wordWrap=True))
         grid.addLayout(text, 0, 0)
         self.style_preset = QtWidgets.QComboBox()
-        for key, preset in plotstyle.PRESETS.items():
-            self.style_preset.addItem(preset["label"], key)
+        self._fill_presets()
         self.style_preset.setFixedWidth(self.EDITOR_WIDTH)
         self.style_preset.currentIndexChanged.connect(self._preview_preset)
         grid.addWidget(self.style_preset, 0, 1, QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
@@ -610,8 +609,51 @@ class PreferencesDialog(QtWidgets.QDialog):
         self.style_open = QtWidgets.QPushButton("Open as text", objectName="secondary",
                                                 toolTip="Edit the style file in your text editor")
         self.style_open.clicked.connect(self.open_style_file)
-        lay.addWidget(self.style_open, 0, QtCore.Qt.AlignTop)
+        self.style_save = QtWidgets.QPushButton("Save as preset…", objectName="secondary",
+                                                toolTip="Keep the style file as a preset of your own")
+        self.style_save.clicked.connect(lambda: self.save_style_preset())
+        buttons = QtWidgets.QVBoxLayout()
+        buttons.addWidget(self.style_open)
+        buttons.addWidget(self.style_save)
+        buttons.addStretch()
+        lay.addLayout(buttons)
         self._load_style_form()
+
+    def _fill_presets(self):
+        """The built-in presets, then the ones you saved (``<config dir>/plots/<name>.mplstyle``)."""
+        from .. import plotstyle
+
+        combo = self.style_preset
+        combo.blockSignals(True)
+        combo.clear()
+        for key, preset in plotstyle.PRESETS.items():
+            combo.addItem(preset["label"], key)
+        mine = plotstyle.user_presets()
+        if mine:
+            combo.insertSeparator(combo.count())
+            for key, path in mine.items():
+                combo.addItem(path.stem, key)
+                combo.setItemData(combo.count() - 1, str(path), QtCore.Qt.ToolTipRole)
+        combo.blockSignals(False)
+
+    def save_style_preset(self, name: str | None = None) -> bool:
+        """Apply the form, then keep the style file as a preset named ``name`` (asked for)."""
+        from .. import plotstyle
+
+        if name is None:
+            name, ok = QtWidgets.QInputDialog.getText(self, "Save as preset", "Preset name:")
+            if not ok:
+                return False
+        if not self._save_style_form():
+            return False
+        try:
+            plotstyle.save_preset(name)
+        except (ValueError, OSError) as exc:
+            self._style_say([str(exc)])
+            return False
+        self._fill_presets()
+        self._load_style_form()
+        return True
 
     def _style_editor(self, f):
         default = f.default()
@@ -675,12 +717,13 @@ class PreferencesDialog(QtWidgets.QDialog):
 
         user, problems = plotstyle.read_style()
         self.style_preset.blockSignals(True)
-        self.style_preset.setCurrentIndex(max(0, self.style_preset.findData(plotstyle.preset_of() or "publication")))
+        marked = plotstyle.preset_of()   # None: a file without a "# preset:" line, shown as Boxed
+        self.style_preset.setCurrentIndex(max(0, self.style_preset.findData(marked or "boxed")))
         self.style_preset.blockSignals(False)
         for f in plotstyle.FORM:
             self._set_style_value(f, f.value(user))
         self.style_loaded, self.style_loaded_mtime = self._style_form(), self._style_mtime()
-        self.style_loaded_preset = self.style_preset.currentData()
+        self.style_loaded_preset, self.style_loaded_marked = self.style_preset.currentData(), marked is not None
         self._style_say(problems)
 
     def _preview_preset(self):
@@ -688,7 +731,7 @@ class PreferencesDialog(QtWidgets.QDialog):
         from .. import plotstyle
 
         user = plotstyle.read_style()[0]
-        old = plotstyle.PRESETS.get(self.style_loaded_preset, {}).get("rc", {})
+        old = plotstyle.preset_rc(self.style_loaded_preset) if self.style_loaded_marked else {}
         new = plotstyle.preset_rc(self.style_preset.currentData())
         merged = {**{k: v for k, v in user.items() if k not in old}, **new}
         for f in plotstyle.FORM:
@@ -703,7 +746,7 @@ class PreferencesDialog(QtWidgets.QDialog):
         preview = {}
         if preset != self.style_loaded_preset:   # what the preset sets by itself is not a row change
             user = plotstyle.read_style()[0]
-            old = plotstyle.PRESETS.get(self.style_loaded_preset, {}).get("rc", {})
+            old = plotstyle.preset_rc(self.style_loaded_preset) if self.style_loaded_marked else {}
             merged = {**{k: v for k, v in user.items() if k not in old}, **plotstyle.preset_rc(preset)}
             preview = {f.label: f.value(merged) for f in plotstyle.FORM}
         for f in plotstyle.FORM:
@@ -1127,11 +1170,12 @@ class PreferencesDialog(QtWidgets.QDialog):
         self.work.reset([o.key for o in OPTIONS if o.page == page])
         self._load()
         if page == "Plots":   # Apply comments the form's keys out of the style file
-            from ..plotstyle import FORM
+            from ..plotstyle import DEFAULT_PRESET, FORM
 
             for f in FORM:
                 self._set_style_value(f, None)
-            self.style_preset.setCurrentIndex(0)
+            self.style_preset.setCurrentIndex(self.style_preset.findData(DEFAULT_PRESET))
+            self._preview_preset()
 
     def _search(self, text):
         text = text.strip().lower()

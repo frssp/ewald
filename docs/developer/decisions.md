@@ -489,18 +489,21 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 ### D42. Plot style presets named by their look, a short form (2026-10-24)
 
 - **Decision:** the style file ships six presets that differ in look, not only in size
-  (Publication, Classic serif, Monochrome, Minimal, Grid, Slides: boxed vs open axes, ticks in
-  or out, serif or sans, line styles vs colors, grid, slide sizes), named by that look and never
-  by journal; the Preferences form shows the preset
+  (Slides, Boxed, Classic serif, Minimal, Grid, Gray panel: open vs boxed axes, ticks in or out,
+  serif or sans, line styles vs colors, grid, a gray plot area), named by that look and never
+  by journal; Slides is what a new style file starts from; your own presets can be saved from
+  the form (`plots/<name>.mplstyle`) and are listed after the built-in ones; the Preferences form shows the preset
   and four keys (font, font size, line width, color cycle), everything else is in the file,
   which lists its keys by topic. The separate "Saved plot font size" preference is retired
   (the file's `font.size`).
 - **Why:** the owner asked "기본 설정파일도 좀 꾸며줘 니가 보기 좋게. 그리고 프리셋 넣고. 그리고
   폼에서 설정할 수 있는 파람이 넘 많은 듯." and, on journal-named presets, "저널이름 쓰지마.
   특징으로 아니면 적당한 이름으로"; the first set (sizes and fonts only) was sent back with
-  "Distinction 이 부족. 논문 퀄리티. 스타일 참고해서 다시".
+  "Distinction 이 부족. 논문 퀄리티. 스타일 참고해서 다시", and the second with "Publication 이름
+  별로 그냥 다른 이름. Slides를 기본으로. 모노크롬 별로 삭제. 다른 것 하나 만드렁봐", "선 굷기랑 글자
+  크기를 좀 키우면 어때?" and "프리셋 저장도 되지?".
 - **Considered:** presets named after journals; presets that differ only in column width and
-  type size; eight form rows (tick direction, minor ticks,
+  type size; a Monochrome preset (dropped); eight form rows (tick direction, minor ticks,
   legend frame, axes line width).
 - **Landed:** public PR #20.
 
