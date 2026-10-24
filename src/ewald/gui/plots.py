@@ -39,7 +39,7 @@ from __future__ import annotations
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .. import linking, plotstyle
+from .. import linking, plotstyle, views
 from ..linking import grid_map
 from .theme import TOKENS
 
@@ -212,9 +212,10 @@ class PlotsPanel(QtWidgets.QWidget):
     def set_data(self, data):
         self.data = data
         cur_t, cur_h = self.table.currentText(), self.hist.currentText()
-        for combo, items, cur in ((self.table, [""] + list(data.tables) if data else [""], cur_t),
+        have = data is not None   # (a collection of tables alone has no particles: len() 0, falsy)
+        for combo, items, cur in ((self.table, [""] + list(data.tables) if have else [""], cur_t),
                                   (self.hist, [""] + [k for k, v in data.particles.items()
-                                                      if v.ndim == 1 and v.dtype.kind in "biuf"] if data else [""], cur_h)):
+                                                      if v.ndim == 1 and v.dtype.kind in "biuf"] if have else [""], cur_h)):
             if [combo.itemText(i) for i in range(combo.count())] == items:
                 continue   # the same tables and properties as the last frame
             combo.blockSignals(True)
@@ -324,6 +325,14 @@ class PlotsPanel(QtWidgets.QWidget):
             ax.set_xlabel(plotstyle.axis_label(keys[0])); ax.set_ylabel(plotstyle.axis_label(keys[1]))
         elif d is not None and _is_neb(d.tables.get(self.table.currentText())):
             self._draw_neb(ax, d.tables[self.table.currentText()], d.tables.get("NEB spline"))
+        elif d is not None and _named_rows(d.tables.get(self.table.currentText())):
+            # one value per surface, per run, ...: a bar each, as under a cell
+            table = d.tables[self.table.currentText()]
+            keys = list(table)
+            col = self.column.currentText()
+            col = col if col in table else keys[1]
+            views._draw_named_rows(ax, {keys[0]: table[keys[0]], col: table[col]}, table.labels, TOKENS["accent"])
+            self._xname = keys[0]
         elif d is not None and self.table.currentText() in d.tables:
             table = d.tables[self.table.currentText()]
             keys = list(table)
@@ -331,6 +340,7 @@ class PlotsPanel(QtWidgets.QWidget):
             col = self.column.currentText()
             if col in table:
                 keys = [keys[0], col]
+            levels = views.decorations(table)
             sticks = self.table.currentText().endswith("-peaks") and "Intensity" in table
             if sticks:   # reflections (PowderDiffraction)
                 keys = [keys[0], "Intensity"]
@@ -361,10 +371,17 @@ class PlotsPanel(QtWidgets.QWidget):
                 self._marker = ax.axvline(x[0], color=TOKENS["secondary"], lw=0.8, ls="--")
                 self._place_marker()
             units = {plotstyle.axis_label(k) for k in keys[1:]}
-            if len(keys) > 2:
-                ax.legend()
             if len(units) == 1:
                 ax.set_ylabel(units.pop())
+            if levels:   # band edges, E_F, plateaus, barriers of an analysis (views._draw_levels)
+                import matplotlib as mpl
+
+                views._draw_levels(ax, levels, x, mpl.rcParams["axes.prop_cycle"].by_key()["color"],
+                                   ink=TOKENS["text"], muted=TOKENS["muted"])
+            if len(keys) > 2 and levels.get("levels"):   # over the level lines where it must
+                ax.legend(frameon=True, framealpha=0.85, edgecolor="none")
+            elif len(keys) > 2:
+                ax.legend()
             if len(x) > 1:
                 mid = 0.5 * (x[1:] + x[:-1])
                 self._edges = np.concatenate([[x[0] - (mid[0] - x[0])], mid, [x[-1] + (x[-1] - mid[-1])]])
@@ -418,8 +435,8 @@ class PlotsPanel(QtWidgets.QWidget):
             ax.set_ylim(bottom=0)
         elif kind == "lines":
             table = self._table()
-            if not table or tuple(table) != live[2]:
-                return False
+            if not table or tuple(table) != live[2] or views.decorations(table):
+                return False   # levels are placed for the old numbers: a full redraw
             keys = list(table)
             x = np.asarray(table[keys[0]])
             for k, line in live[1]:
@@ -468,6 +485,8 @@ class PlotsPanel(QtWidgets.QWidget):
         table = self._table()
         if not table:
             return None
+        # the levels and row names drawn with it (an analysis table), compared by value
+        labels += (repr(views.decorations(table)), repr(getattr(table, "labels", None)))
         objs = tuple(table.values())
         if _is_neb(table):
             objs += tuple((d.tables.get("NEB spline") or {}).values())
@@ -1242,6 +1261,12 @@ def _spinless(column: str) -> str:
 
 def _is_neb(table) -> bool:
     return bool(table) and next(iter(table)) == "Reaction Coordinate" and "Frame" in table and "Energy" in table
+
+
+def _named_rows(table) -> bool:
+    """A table of one value per named row (per surface, per run): drawn as bars, as under a cell."""
+    return bool(table) and len(table) > 1 and \
+        views._named_rows(np.asarray(next(iter(table.values()))), getattr(table, "labels", None))
 
 
 def _same_content(a, b) -> bool:

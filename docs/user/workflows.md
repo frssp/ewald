@@ -126,4 +126,8 @@ AI aligning energies itself.
 The table an analysis leaves is drawn under its cell with what its attributes name: energy
 levels as horizontal lines (band edges over their plateau, E_F and the vacuum level across the
 plot), plateaus shaded, and barriers or work functions as arrows with their values. A table with
-one value per named row, such as one work function per surface, is drawn as one bar per row.
+one value per named row, such as one work function per surface, is drawn as one bar per row. A
+cell that is only `show(<that table>)` (`show(band_offset)`) is a live plot of it with the same
+lines, shading and arrows: zoom, pan and read values under the cursor, under the cell or, with
+`panel=True`, in the Plots panel. A Python step that puts such a table into the frame's
+`tables` gets them drawn in the Plots tab as well.

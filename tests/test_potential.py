@@ -263,6 +263,35 @@ class TestReadersAndTables:
         assert len(ax.patches) == 2                                      # the two plateaus shaded
 
 
+    def test_show_and_pipeline_tables_keep_the_levels(self):
+        """``show(table)`` / ``figure(table)`` of an analysis result, and the same table put into a
+        frame's ``tables`` (where the Plots panel and view cells read it), draw the levels too:
+        the frame's copy keeps the table's attributes."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from ewald.views import decorations, figure, view_data
+
+        lineup = _lineup()
+        res = band_alignment(lineup, METAL, SEMI, interface_fermi=-1.0)
+        t = lineup_table(PlanarProfile(_profile(), L), lineup, res, names={"film": "TiO2"})
+        title, columns = view_data(t, y="Planar average")
+        assert title == "Lineup" and list(columns) == ["z (A)", "Planar average"]
+        assert decorations(columns)["levels"] == t.attributes["levels"]
+        with pytest.raises(KeyError, match="Lineup"):
+            view_data(t, table="DOS")
+        ax = figure(t).axes[0]
+        assert "E_F (interface)" in {x.get_text() for x in ax.texts}
+        d = DataCollection(np.zeros((1, 3)), np.array(["Si"]))
+        d.tables["Lineup"] = t
+        copy = d.copy()
+        assert copy.tables["Lineup"] is not t and copy.tables["Lineup"].attributes == t.attributes
+        assert copy.tables["Lineup"]["z (A)"] is t["z (A)"]           # arrays shared, as for a plain table
+        ax = figure(copy, table="Lineup").axes[0]
+        assert {"TiO2 VBM", "TiO2 plateau"} <= {x.get_text() for x in ax.texts}
+        assert decorations({"x": [1]}) == {}
+
+
 def test_work_function_table_is_on_the_vacuum_level():
     from ewald.potential import work_function, work_function_table
 
