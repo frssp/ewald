@@ -2,29 +2,75 @@
 
     python benchmarks/resize.py                     # Linux without a display: xvfb-run -a python benchmarks/resize.py
     python benchmarks/resize.py --notebook examples/notebooks/cu_void.py
+    python benchmarks/resize.py --profile          # also: where the first maximize spends its time
 
 Opens the main window with a tutorial notebook (run, so its plots and the 3D view are drawn),
 then maximizes and restores it a few times. For each step it prints when the window was settled
 (the last stretch of more than 30 ms in which it could not respond to input ended), the longest
 such stretch, and how many 3D renders it took and how long they were. Runs on Windows, macOS
 and Linux; settings go to a temporary config folder, so your own preferences and layout are not
-used or changed.
+used or changed. ``--profile`` samples every thread's Python stack during the first maximize
+and prints the most frequent ones (time inside Qt or VTK shows as the Python line that called it).
 """
 from __future__ import annotations
 
 import argparse
+import collections
 import os
 import sys
 import tempfile
+import threading
 import time
+import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+class Sampler:
+    """Every ``interval`` seconds, the innermost frames of every thread's Python stack."""
+
+    def __init__(self, interval=0.02, depth=6):
+        self.interval, self.depth = interval, depth
+        self.counts = collections.Counter()
+        self.samples = 0
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="resize-sampler", daemon=True)
+
+    def _run(self):
+        me = threading.get_ident()
+        names = lambda: {t.ident: t.name for t in threading.enumerate()}
+        while not self._stop.wait(self.interval):
+            self.samples += 1
+            tn = names()
+            for ident, frame in sys._current_frames().items():
+                if ident == me:
+                    continue
+                stack = traceback.extract_stack(frame)[-self.depth:]
+                key = (tn.get(ident, str(ident)),
+                       tuple(f"{os.path.basename(f.filename)}:{f.lineno} {f.name}" for f in stack))
+                self.counts[key] += 1
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        self._thread.join()
+
+    def report(self, top=12):
+        print(f"\nstacks during the first maximize ({self.samples} samples, {self.interval * 1000:.0f} ms apart):")
+        for (thread, stack), n in self.counts.most_common(top):
+            print(f"\n{n:4d} x  [{thread}]")
+            for line in stack:
+                print(f"         {line}")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--notebook", default=os.path.join(HERE, os.pardir, "examples", "notebooks", "cu_void.py"))
     ap.add_argument("--repeat", type=int, default=3)
+    ap.add_argument("--profile", action="store_true", help="sample the stacks during the first maximize")
     args = ap.parse_args()
     os.environ.setdefault("EWALD_CONFIG_DIR", tempfile.mkdtemp(prefix="ewald-resize-"))
 
@@ -84,13 +130,19 @@ def main():
             w.setGeometry(normal)
 
     print(f"{'step':<10}{'settled':>10}{'longest':>10}{'renders':>9}{'render ms':>12}")
-    for _ in range(args.repeat):
+    sampler = None
+    for i in range(args.repeat):
         for name, step in (("maximize", maximize), ("restore", restore)):
             gaps.clear()
             renders.clear()
             t0 = beat[0] = time.perf_counter()
-            step()
-            settle(1.5)
+            if args.profile and i == 0 and name == "maximize":
+                with Sampler() as sampler:
+                    step()
+                    settle(1.5)
+            else:
+                step()
+                settle(1.5)
             mine = [(a, b) for a, b in gaps if b >= t0]
             settled = (max(b for _, b in mine) - t0) if mine else 0.0
             longest = max((b - a for a, b in mine), default=0.0)
@@ -98,6 +150,8 @@ def main():
             print(f"{name:<10}{settled * 1000:>8.0f} ms{longest * 1000:>7.0f} ms{len(renders):>9}{ms:>12}")
     gl = vp.opengl_info() if vp.view_built else {}
     print("OpenGL:", gl.get("renderer", "?"), gl.get("version", ""))
+    if sampler is not None:
+        sampler.report()
     heart.stop()
     w.close()
 
