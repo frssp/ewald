@@ -2,7 +2,7 @@
 
 Top: the account the source is set up with, and a button to its settings page. Then a box that
 takes an id (that workflow alone) or words (a search). Below, the source's workflows, newest
-first; expanding one asks the source to describe it and lists its steps (nested, restarts joined)
+first, each with its group (the session or project it came from) dimmed under its title; expanding one asks the source to describe it and lists its steps (nested, restarts joined)
 with their outputs. A double click on a workflow opens it as one notebook with a variable per
 step; on a step or an output it opens that path, as File › Open from › Location would. The buttons
 insert a ``load(...)`` cell instead or copy the path. The right-click menu on one or more selected
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import plugins
 from ..pipeline import Pipeline
@@ -31,6 +31,7 @@ from . import workers
 ITEM = QtCore.Qt.UserRole          # the Workflow, WorkflowStep or WorkflowOutput an item shows
 VAR = QtCore.Qt.UserRole + 1       # the variable a workflow notebook loads that step or output into
 TABLE = QtCore.Qt.UserRole + 2     # on a "Plot ..." row: the table it opens
+GROUP = QtCore.Qt.UserRole + 3     # on a workflow row: its group, drawn dimmed under the title
 ACTIVE, OTHER = "\u25cf", "\u25cb"  # marks of the step that is pipe, and of the other steps loaded
 _ID = re.compile(r"^(\d+|[0-9a-fA-F-]{8,36})$")
 #: pages a search follows while they come back empty (a source reads a bounded number per page)
@@ -52,6 +53,44 @@ class _Job(QtCore.QThread):
         except Exception as exc:  # a source's failure shows in the side bar, never as a crash
             self.done.emit(None, str(exc) if isinstance(exc, (LookupError, ValueError, OSError))
                            else f"{type(exc).__name__}: {exc}")
+
+
+class _GroupDelegate(QtWidgets.QStyledItemDelegate):
+    """Draws a workflow row with a group (``Workflow.group``) as two lines: the title, and under
+    it the group dimmed, each elided to the side bar's width. The item text stays the title."""
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        if index.data(GROUP):
+            size.setHeight(size.height() + option.fontMetrics.height())
+        return size
+
+    def paint(self, painter, option, index):
+        group = index.data(GROUP)
+        if not group:
+            super().paint(painter, option, index)
+            return
+        opt = QtWidgets.QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        title, opt.text = opt.text, ""
+        style = opt.widget.style() if opt.widget is not None else QtWidgets.QApplication.style()
+        style.drawControl(QtWidgets.QStyle.CE_ItemViewItem, opt, painter, opt.widget)  # background, selection
+        rect = style.subElementRect(QtWidgets.QStyle.SE_ItemViewItemText, opt, opt.widget)
+        margin = style.pixelMetric(QtWidgets.QStyle.PM_FocusFrameHMargin, None, opt.widget) + 1
+        rect.adjust(margin, 0, -margin, 0)          # the inset the one-line rows' text has
+        metrics = opt.fontMetrics
+        line = metrics.height()
+        top = rect.top() + (rect.height() - 2 * line) // 2
+        selected = bool(opt.state & QtWidgets.QStyle.State_Selected)
+        align = int(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        painter.save()
+        painter.setPen(opt.palette.color(QtGui.QPalette.HighlightedText if selected else QtGui.QPalette.Text))
+        painter.drawText(QtCore.QRect(rect.left(), top, rect.width(), line), align,
+                         metrics.elidedText(title, QtCore.Qt.ElideRight, rect.width()))
+        painter.setPen(opt.palette.color(QtGui.QPalette.HighlightedText if selected else QtGui.QPalette.PlaceholderText))
+        painter.drawText(QtCore.QRect(rect.left(), top + line, rect.width(), line), align,
+                         metrics.elidedText(group, QtCore.Qt.ElideRight, rect.width()))
+        painter.restore()
 
 
 class WorkflowPanel(QtWidgets.QWidget):
@@ -85,7 +124,8 @@ class WorkflowPanel(QtWidgets.QWidget):
         row.addWidget(refresh)
         lay.addLayout(row)
         self.tree = QtWidgets.QTreeWidget(headerHidden=True, objectName="workflowTree", columnCount=2)
-        self.tree.setUniformRowHeights(True)
+        self.tree.setUniformRowHeights(False)   # a workflow row with a group takes two lines
+        self.tree.setItemDelegateForColumn(0, _GroupDelegate(self.tree))
         self.tree.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         head_view = self.tree.header()
         head_view.setStretchLastSection(False)
@@ -196,8 +236,9 @@ class WorkflowPanel(QtWidgets.QWidget):
             return
         for wf in workflows:
             item = QtWidgets.QTreeWidgetItem([wf.title])
-            item.setToolTip(0, "\n".join(x for x in (wf.label, wf.description, wf.ctime, wf.path) if x))
+            item.setToolTip(0, "\n".join(x for x in (wf.group, wf.label, wf.description, wf.ctime, wf.path) if x))
             item.setData(0, ITEM, wf)
+            item.setData(0, GROUP, wf.group or None)
             if wf.complete:
                 self._fill_workflow(item, wf)
             else:
