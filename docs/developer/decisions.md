@@ -154,7 +154,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   they did not (Preferences had its own book, sparkle and plug icons).
 - **Landed:** public PR #29.
 
-### D46. A notebook cell's output sits beside a rule, under the code box (2026-10-24)
+### D47. A notebook cell's output sits beside a rule, under the code box (2026-10-24)
 
 - **Decision:** what a cell prints, returns or raises is set off from the code by a 2 px rule on
   its left, on the cell's own background, in the monospaced font of the code; the code keeps its
