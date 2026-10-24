@@ -112,6 +112,8 @@ SCENES = {
                                                       "alignment": "center"}})),
 }
 OPENGL_ONLY = {"impostor": ("copper", dict(atom_style="impostor", show_cell=False)),
+               "impostor_bonds": ("copper", dict(atom_style="impostor", bonds=2.8, radius_scale=0.45,
+                                                 legend=False, direction=(3, 2, 1))),
                "flat_ase": ("perovskite", dict(atom_style="flat", theme="ASE", radius_scale=0.5,
                                                bond_pairs=[("Ti", "O", 0.0, 2.2)], direction=(3, 2, 1)))}
 

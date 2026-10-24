@@ -406,7 +406,9 @@ def draw_scene(plotter, scene, *, atom_style: str = "auto", mesh_limit: int = 15
                     add_atoms(plotter, part, atom_style=style, mesh_limit=mesh_limit,
                               sphere_resolution=sphere_resolution, name=name + suffix)
         elif layer.kind == "cylinders":
-            _add_cylinders(plotter, prim, name, flat=atom_style == "flat")
+            flat = atom_style == "flat"
+            impostor = not flat and (atom_style == "impostor" or (atom_style == "auto" and prim.count > mesh_limit))
+            _add_cylinders(plotter, prim, name, flat=flat, impostor=impostor)
         elif layer.kind == "mesh":
             _add_mesh(plotter, prim, name)
         elif layer.kind == "arrows":
@@ -519,11 +521,15 @@ def tube_mesh(start, end, radius: float, sides: int = TUBE_SIDES):
     return verts.reshape(-1, 3), faces, normals.reshape(-1, 3)
 
 
-def _add_cylinders(plotter, cyl, name, flat: bool = False):
-    """Cylinders as tubes (half-bonds: one per atom, in its color); ``flat``: unshaded (ASE-GUI look)."""
+def _add_cylinders(plotter, cyl, name, flat: bool = False, impostor: bool = False):
+    """Cylinders as tubes (half-bonds: one per atom, in its color); ``flat``: unshaded (ASE-GUI look);
+    ``impostor``: GPU ray-cast cylinders (:func:`add_sticks`), one vertex each instead of a tube."""
     import pyvista as pv
 
     if not cyl.count:
+        return
+    if impostor:
+        add_sticks(plotter, cyl, name)
         return
     radii = np.unique(cyl.radius)
     for r in radii:  # one tube actor per radius (bonds have one)
@@ -534,13 +540,69 @@ def _add_cylinders(plotter, cyl, name, flat: bool = False):
         tubes.point_data.active_normals_name = "Normals"
         rgb = (np.clip(cyl.rgb[pick], 0, 1) * 255).astype(np.uint8)
         tubes.point_data["rgb"] = np.repeat(rgb, 2 * TUBE_SIDES, axis=0)
-        light = dict(ambient=1.0, diffuse=0.0, specular=0.0) if flat else \
-            dict(ambient=0.25, diffuse=0.8, specular=0.2, specular_power=30)
+        light = dict(ambient=1.0, diffuse=0.0, specular=0.0) if flat else _TUBE_LIGHT
         actor_name = name if len(radii) == 1 else f"{name}:{r:g}"
         plotter.add_mesh(tubes, scalars="rgb", rgb=True, name=actor_name, smooth_shading=not flat, render=False,
                          **light)
         if flat:
             _add_stick_outline(plotter, cyl.start[pick], cyl.end[pick], float(r), f"{actor_name}:outline")
+
+
+_TUBE_LIGHT = dict(ambient=0.25, diffuse=0.8, specular=0.2, specular_power=30)
+
+
+def stick_data(cyl):
+    """The input of :func:`add_sticks`: one float32 point per cylinder at its middle, with its unit
+    axis ("orient"), (length, radius, radius) ("scale", what ``vtkOpenGLStickMapper`` reads), its
+    8-bit color ("rgb") and its index ("selection"). The mapper reads that index during picking
+    and crashes without it, and only a ``vtkIdTypeArray`` will do (an int64 array from numpy is a
+    ``vtkLongLongArray``)."""
+    import pyvista as pv
+    from vtkmodules.util.numpy_support import numpy_to_vtk
+    from vtkmodules.vtkCommonCore import VTK_ID_TYPE
+
+    start, end = cyl.start.astype(np.float32), cyl.end.astype(np.float32)
+    axis = end - start
+    length = np.sqrt(np.einsum("ij,ij->i", axis, axis))
+    unit = np.divide(axis, length[:, None], out=np.tile(np.float32([0, 0, 1]), (cyl.count, 1)), where=length[:, None] > 0)
+    middle = start + end
+    middle *= 0.5
+    sticks = pv.PolyData(middle)
+    sticks.point_data["orient"] = unit
+    sticks.point_data["scale"] = np.column_stack([length, cyl.radius, cyl.radius]).astype(np.float32)
+    sticks.point_data["rgb"] = (np.clip(cyl.rgb, 0, 1) * 255).astype(np.uint8)
+    ids = numpy_to_vtk(np.arange(cyl.count, dtype=np.int64), deep=True, array_type=VTK_ID_TYPE)
+    ids.SetName("selection")
+    sticks.GetPointData().AddArray(ids)
+    return sticks
+
+
+def add_sticks(plotter, cyl, name):
+    """Cylinders as GPU impostors (Sigg et al. 2006): VTK's stick mapper, the one its molecule
+    mapper draws bonds with, ray-casts each cylinder in the fragment shader from one point, so a
+    million half-bonds build in about a second and draw without a triangle each. The ends are
+    flat caps (hidden inside the atoms for bonds); the material matches the tubes'."""
+    from vtkmodules.vtkRenderingCore import vtkActor
+    from vtkmodules.vtkRenderingOpenGL2 import vtkOpenGLStickMapper
+
+    mapper = vtkOpenGLStickMapper()
+    mapper.SetInputData(stick_data(cyl))
+    mapper.SetOrientationArray("orient")
+    mapper.SetScaleArray("scale")
+    mapper.SetSelectionIdArray("selection")
+    mapper.SetScalarModeToUsePointFieldData()
+    mapper.SelectColorArray("rgb")
+    mapper.SetColorModeToDirectScalars()
+    mapper.ScalarVisibilityOn()
+    actor = vtkActor()
+    actor.SetMapper(mapper)
+    prop = actor.GetProperty()
+    prop.SetAmbient(_TUBE_LIGHT["ambient"])
+    prop.SetDiffuse(_TUBE_LIGHT["diffuse"])
+    prop.SetSpecular(_TUBE_LIGHT["specular"])
+    prop.SetSpecularPower(_TUBE_LIGHT["specular_power"])
+    plotter.add_actor(actor, name=name, render=False, reset_camera=False)
+    return actor
 
 
 STICK_OUTLINE = 0.3  # outline width of flat sticks, as a fraction of the stick radius
