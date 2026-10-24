@@ -216,3 +216,17 @@ def test_render_passes_device_to_the_ray_tracer(fake_gpu):
     data = DataCollection([[0.0, 0.0, 0.0], [1.5, 0.0, 0.0]], ["Cu", "O"], Cell(np.eye(3) * 4))
     img = render(data, None, size=(40, 30), renderer="raytrace", quality="draft", device=fake_gpu)
     assert fake_gpu.launches and img.ndim == 3
+
+
+def test_a_pass_is_split_into_short_launches(fake_gpu, monkeypatch):
+    """Windows and macOS stop a GPU kernel that runs for seconds, so a pass goes out in launches
+    of a few rows; the picture does not depend on how it is split."""
+    sc = busy_scene()
+    kw = dict(samples=4, ao_samples=4)
+    whole = rt.raytrace(sc, CAM, (40, 30), device=fake_gpu, **kw)
+    monkeypatch.setattr(rc, "RAYS_PER_LAUNCH", 40 * 4 * 6 * 7)    # 7 rows a launch
+    parts = list(rc._launches([40, 30, 1, 4, 4, 4, 1, 0, 0, 0], np.arange(30)))
+    assert [len(c) for _, c, _ in parts] == [7, 7, 7, 7, 2]
+    assert all(p[8] == len(c) and n == 40 * len(c) for p, c, n in parts)
+    split = rt.raytrace(sc, CAM, (40, 30), device=fake_gpu, **kw)
+    assert np.array_equal(whole, split)
