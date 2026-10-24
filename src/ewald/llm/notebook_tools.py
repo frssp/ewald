@@ -24,7 +24,7 @@ import base64
 import inspect
 from typing import Callable
 
-from ..notebook import Cell, Notebook, _remove, step_call
+from ..notebook import Cell, Notebook, _remove, cell_from_source, split_header, step_call
 from ..pipeline import PythonModifier
 from .tools import _CODE_MODIFIERS, ToolResult, _jsonable, _obj
 
@@ -240,7 +240,7 @@ def register(ts, access: NotebookAccess):
             nb = need()
             n = len(nb.cells)
             at = n if index is None else max(0, min(int(index) if int(index) >= 0 else n + int(index), n))
-            cell = nb.insert(at, Cell(source, kind=kind, state="new" if kind == "code" else "ok"))
+            cell = nb.insert(at, cell_from_source(source, kind=kind, state="new" if kind == "code" else "ok"))
             access.changed(nb, "AI: insert cell", cell)
             return {"inserted": cell_summary(nb, at), "cells": len(nb.cells)}, nb, cell
 
@@ -268,14 +268,20 @@ def register(ts, access: NotebookAccess):
             nb = need()
             k = find(nb, index, id)
             c = nb.cells[k]
+            frames = None
             if source is not None:
                 new = source
+                head = split_header(source) if c.kind == "code" else None
+                if head is not None and head[0] == "code":   # a marker line sets the cell's tag and title
+                    _, title, frames, new = head
+                    if title:
+                        c.title = title
             else:
                 hits = c.source.count(old_text)
                 if hits != 1:
                     raise ValueError(f"old_text occurs {hits} times in cell {k}; it must occur exactly once")
                 new = c.source.replace(old_text, new_text)
-            if new == c.source:
+            if new == c.source and (frames is None or frames == c.frames):
                 return {"unchanged": cell_summary(nb, k)}, nb, None
             pipe, removed = nb.pipeline, bool(c.added)
             if pipe is not None:  # the old code's steps leave with it, as when the cell is cleared
@@ -283,6 +289,8 @@ def register(ts, access: NotebookAccess):
                     _remove(pipe.modifiers, m)
             c.added, c.shadow = [], None
             c.source = new
+            if frames is not None:
+                c.frames = frames
             if c.kind == "code":
                 c.state = "stale" if c.state != "new" else "new"
             nb.dirty = True

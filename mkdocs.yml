@@ -94,6 +94,7 @@ nav:
       - Native code: developer/native.md
       - File readers: developer/readers.md
       - Testing and CI: developer/testing.md
+      - AI eval results: developer/ai-eval.md
       - Windows, macOS and Linux: developer/portability.md
       - Writing docs: developer/docs.md
       - Releases: developer/release.md

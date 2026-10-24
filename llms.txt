@@ -85,6 +85,7 @@ globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, 
 | `data.particles_['Position_'][...] = v` (in place) | `data.positions = v` (assign a new array) |
 | `data.particles_.create_property('X', data=v)` | `data['X'] = v` |
 | `data.particles.particle_types` (type objects, ids) | `data.types` (element strings) |
+| `ParticleType == 2` in an expression (type number) | `ParticleType == "Zr"` (names; numbers only when the names are numbers) |
 | `data.cell[:, :3]`: COLUMNS are the cell vectors, `data.cell[:, 3]` origin | `data.cell.matrix`: ROWS are the cell vectors, `data.cell.origin` |
 | `ColorCodingModifier(property=..., gradient=...)` | `ColorCoding(property, cmap="viridis")` (matplotlib name or `@colormap` plugin) |
 | `WrapPeriodicImagesModifier()` | `WrapAtoms()` |

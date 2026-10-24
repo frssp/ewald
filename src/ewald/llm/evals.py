@@ -13,6 +13,14 @@ over a fresh notebook session, and grades the outcome automatically:
   must still pass, so the notebook alone reproduces what the AI did (the rule that the AI
   changes results only through cells).
 
+By default a task runs as in the GUI's AI chat side bar (``context="gui"``): the system prompt
+carries the notebook note of :mod:`ewald.llm.notebook_prompt`, the question starts with the
+notebook's code (and the errors of failed cells), and the Python blocks of the answer become
+cells (run when the run allows code), as Preferences › AI › Code in answers = insert does.
+``context="plain"`` is the bare :class:`Agent` (``ewald ask``, the Python API). A task can start
+from a notebook with ``setup`` cells and load example ``plugins`` (``examples/plugins/*.py``)
+for its run.
+
 Per task it records pass/fail, tool calls, tool errors, requests, tokens and cost; a run is
 saved as JSON and two runs can be compared (:func:`compare`). ``ewald eval`` is the command
 line. Runs cost money and need a key, so nothing here is part of the default test suite;
@@ -34,7 +42,11 @@ from types import SimpleNamespace
 from typing import Callable
 
 from ..notebook import Cell, Notebook
+from .notebook_prompt import code_blocks, errors_part, notebook_part, notebook_system
 from .tools import Toolset
+
+#: Where the example plugins of a source checkout are (``Task.plugins``).
+EXAMPLE_PLUGINS = Path(__file__).resolve().parents[3] / "examples" / "plugins"
 
 #: Appended to every task prompt, so numeric answers can be graded.
 ANSWER_HINT = ("\n\n(This question is part of an automated evaluation. Work in the notebook as usual. "
@@ -64,6 +76,7 @@ class Outcome:
     toolset: Toolset
     workdir: str
     reference: Callable          # () -> a fresh pipeline over the task's file, for reference values
+    tools: list = field(default_factory=list)    # tool names the model called, in order
 
     @property
     def notebook(self) -> Notebook:
@@ -380,6 +393,52 @@ class CellNumber(Check):
 
 
 @dataclass
+class UsedTool(Check):
+    """The model called tool ``name`` (a plugin's ``@ai_tool`` too) at least once."""
+
+    name: str
+
+    def grade(self, outcome):
+        return self.name in outcome.tools, f"tools: {outcome.tools}"
+
+    def label(self):
+        return f"UsedTool {self.name}"
+
+
+@dataclass
+class Cells(Check):
+    """``value(notebook)`` of the notebook the model left holds (a bool) or equals ``expected``:
+    how it wrote the cells, e.g. one step cell edited rather than a second one added."""
+
+    value: Callable
+    expected: object = True
+    name: str = "cells"
+    state = True
+
+    def grade(self, outcome):
+        try:
+            got = self.value(outcome.notebook)
+        except Exception as exc:
+            return False, f"{type(exc).__name__}: {exc}"
+        if isinstance(self.expected, bool):
+            return bool(got) is self.expected, f"{self.name}: {got!r}"
+        return got == self.expected, f"{self.name}: {got!r} vs {self.expected!r}"
+
+    def label(self):
+        return f"Cells {self.name}"
+
+
+def step_cells(nb, name: str) -> int:
+    """How many cells of ``nb`` add a step of class ``name`` (for :class:`Cells`)."""
+    return sum(1 for c in nb.cells if c.kind == "code" and re.search(rf"\b{re.escape(name)}\s*\(", c.source))
+
+
+def error_cells(nb) -> int:
+    """How many cells of ``nb`` failed when they last ran (for :class:`Cells`)."""
+    return sum(1 for c in nb.cells if c.kind == "code" and c.state == "error")
+
+
+@dataclass
 class Any(Check):
     """At least one of ``checks`` passes."""
 
@@ -415,7 +474,9 @@ class Task:
     as when the user opens it. ``solution`` is the reference: tool calls (``(name, arguments)``)
     and a final answer, where ``{0}``, ``{1}``, ... are the expected values of the task's
     :class:`Number` checks. ``allow_code`` marks tasks that need the model to run cells it
-    wrote (skipped unless the run allows it)."""
+    wrote (skipped unless the run allows it). ``setup`` are cells (sources) added and run after
+    the file is loaded, the notebook the user already has; ``plugins`` are example plugin files
+    (:data:`EXAMPLE_PLUGINS`) loaded for the task and unloaded after it."""
 
     id: str
     prompt: str
@@ -426,6 +487,8 @@ class Task:
     answer: str = ""
     allow_code: bool = False
     reproducible: bool = True     # also grade the state checks on the re-run notebook
+    setup: list = field(default_factory=list)
+    plugins: list = field(default_factory=list)
 
     def resolve_file(self, fetch: bool = True) -> Path:
         from .. import examples
@@ -458,6 +521,7 @@ class TaskResult:
     tool_calls: int = 0
     tool_errors: int = 0
     tools: list = field(default_factory=list)      # tool names in call order
+    tool_error_messages: list = field(default_factory=list)   # [tool, start of its error], what to fix
     requests: int = 0
     tokens: dict = field(default_factory=dict)     # input, output, cache_read, cache_write
     cost: float | None = None
@@ -604,11 +668,15 @@ _FATAL = ("AuthenticationError", "PermissionDeniedError", "NotFoundError", "Impo
 
 def run_task(task: Task, *, agent_options: dict | None = None, client=None, allow_code: bool = False,
              dry_run: bool = False, max_turns: int = 30, prices: dict | None = None,
-             fetch: bool = True, on_event: Callable | None = None) -> TaskResult:
+             fetch: bool = True, on_event: Callable | None = None, context: str = "gui") -> TaskResult:
     """Run one task with the model in ``agent_options`` (``provider``, ``model``, ``effort``,
     ``base_url``: what :func:`ewald.llm.providers.from_settings` returns) or ``client``, or the
-    task's reference solution with ``dry_run``; grade it."""
-    from .agent import Agent
+    task's reference solution with ``dry_run``; grade it. ``context`` is 'gui' (as the AI chat
+    side bar asks) or 'plain' (the bare agent); see the module docstring."""
+    from .agent import SYSTEM_PROMPT, Agent
+
+    if context not in ("gui", "plain"):
+        raise ValueError(f"context is 'gui' or 'plain', not {context!r}")
 
     result = TaskResult(task.id, task.category, None)
     if task.allow_code and not (allow_code or dry_run):
@@ -622,17 +690,26 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
     if not path.exists():
         result.skipped = f"data not available: {path} (run once with network access)"
         return result
+    missing = [name for name in task.plugins if not (EXAMPLE_PLUGINS / name).exists()]
+    if missing:
+        result.skipped = f"example plugins not found (needs a source checkout): {', '.join(missing)}"
+        return result
 
     workdir = tempfile.mkdtemp(prefix=f"ewald-eval-{task.id}-")
     cwd = os.getcwd()
     started = time.perf_counter()
+    loaded_plugins = []
     try:
         os.chdir(workdir)
+        loaded_plugins = _load_plugins(task.plugins)
         # the reference solutions are ours, so a dry run may run their cells
         ts = Toolset(allow_code=allow_code or (dry_run and task.allow_code), workdir=workdir)
         loaded = ts.call("load_structure", {"path": str(path)})
         if loaded.is_error:
             raise RuntimeError(f"could not load {path}: {loaded.content}")
+        for source in task.setup:          # the notebook the user already has (our code, so it runs)
+            nb = ts.notebook
+            nb.run_cell(nb.insert(len(nb.cells), Cell(source)), run_below=False)
 
         def reference():
             from .. import import_file
@@ -660,13 +737,20 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
                 result.tools.append(payload["name"])
             elif kind == "tool_result" and payload["result"].is_error:
                 result.tool_errors += 1
+                result.tool_error_messages.append([payload["name"], _error_text(payload["result"].content)])
             if on_event:
                 on_event(kind, payload)
 
-        agent = Agent(ts, client=meter, max_turns=max_turns, on_event=event,
+        question, system = task.prompt + ANSWER_HINT, SYSTEM_PROMPT
+        if context == "gui":
+            question, system = _gui_question(ts, question), notebook_system(SYSTEM_PROMPT, run_cells=ts.allow_code)
+        agent = Agent(ts, client=meter, max_turns=max_turns, on_event=event, system=system,
                       fallbacks=not dry_run and options.get("fallbacks", True),
                       **{k: v for k, v in options.items() if k in ("provider", "model", "effort")})
-        answer = agent.ask(task.prompt + ANSWER_HINT)
+        answer = agent.ask(question)
+        if context == "gui" and not any(t in ("insert_cell", "edit_cell") for t in result.tools):
+            for code in code_blocks(answer):   # Code in answers = insert: each block becomes a cell
+                ts.call("insert_cell", {"source": code, "run": ts.allow_code})
         result.answer = answer
         result.tool_calls = len(result.tools)
         result.requests = meter.totals["requests"]
@@ -674,7 +758,7 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
         result.cost = None if dry_run else cost(result.tokens, agent.model, prices)
         result.notebook = ts.notebook.to_py() if ts.notebook is not None else ""
 
-        outcome = Outcome(answer, ts, workdir, reference)
+        outcome = Outcome(answer, ts, workdir, reference, list(result.tools))
         for check in task.checks:
             ok, detail = _grade(check, outcome)
             result.checks.append([check.label(), ok, detail])
@@ -684,7 +768,7 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
         if task.reproducible and state and ts.notebook is not None:
             fresh_nb = reproduce(ts.notebook, workdir)
             fresh_ts = Toolset(workdir=workdir, notebook=fresh_nb)
-            fresh = Outcome(answer, fresh_ts, workdir, reference)
+            fresh = Outcome(answer, fresh_ts, workdir, reference, list(result.tools))
             failed = []
             for check in state:
                 ok, detail = _grade(check, fresh)
@@ -700,9 +784,72 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
         result.passed = False
     finally:
         os.chdir(cwd)
+        _unload_plugins(loaded_plugins)
         result.seconds = round(time.perf_counter() - started, 2)
         shutil.rmtree(workdir, ignore_errors=True)
     return result
+
+
+def _error_text(content, limit: int = 400) -> str:
+    """What went wrong in a failed tool result: the end of a cell's traceback (insert_cell, edit_cell
+    and run_cell return the cell and its outputs), else the error message."""
+    errors = []
+
+    def walk(x):
+        if isinstance(x, dict):
+            if x.get("kind") == "error" and "text" in x:
+                errors.append(str(x["text"]))
+            for v in x.values():
+                walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+
+    walk(content)
+    if errors:
+        lines = [ln for ln in re.sub(r"\x1b\[[0-9;]*m", "", errors[-1]).splitlines() if ln.strip()]
+        return "\n".join(lines[-4:])[-limit:]
+    return str(content)[:limit]
+
+
+def _gui_question(ts: Toolset, question: str) -> str:
+    """``question`` as the AI chat side bar sends the first one: after the notebook's code and the
+    errors of its failed cells (the 3D view's coloring, which the GUI also sends, is left out)."""
+    from .notebook_tools import failed_cells
+
+    nb = ts.notebook
+    parts = []
+    if nb is not None and nb.cells:
+        parts.append(notebook_part(nb.to_py()))
+        errors = failed_cells(nb)
+        if errors:
+            parts.append(errors_part(errors))
+    return "\n\n".join(parts + [question])
+
+
+def _load_plugins(names) -> list:
+    """Load the example plugin files ``names``; returns what to unload (registry, name, origin)."""
+    from .. import plugins
+
+    out = []
+    for name in names:
+        path = str((EXAMPLE_PLUGINS / name).resolve())
+        if any(p.origin == path for p in plugins._registry.plugins.values()):
+            continue          # loaded already (the plugin folder, an earlier load): it stays
+        for registered in plugins.load_plugin_file(path):
+            for kind in plugins._REGISTRIES:
+                if registered in getattr(plugins._registry, kind):
+                    out.append((kind, registered, path))
+    return out
+
+
+def _unload_plugins(loaded: list):
+    from .. import plugins
+
+    for kind, name, path in loaded:
+        getattr(plugins._registry, kind).pop(name, None)
+        for key in [k for k, p in plugins._registry.plugins.items() if p.origin == path]:
+            del plugins._registry.plugins[key]
 
 
 def _grade(check: Check, outcome: Outcome) -> tuple[bool, str]:
@@ -714,7 +861,8 @@ def _grade(check: Check, outcome: Outcome) -> tuple[bool, str]:
 
 def run(tasks: list[Task] | None = None, *, agent_options: dict | None = None, client=None,
         allow_code: bool = False, dry_run: bool = False, repeat: int = 1, max_turns: int = 30,
-        prices: dict | None = None, fetch: bool = True, progress: Callable | None = None) -> dict:
+        prices: dict | None = None, fetch: bool = True, progress: Callable | None = None,
+        context: str = "gui") -> dict:
     """Run ``tasks`` (default: every built-in one) ``repeat`` times; returns the report
     (:func:`summarize` plus every :class:`TaskResult`), ready for :func:`save`."""
     import ewald
@@ -729,7 +877,7 @@ def run(tasks: list[Task] | None = None, *, agent_options: dict | None = None, c
     for r in range(repeat):
         for task in tasks:
             res = run_task(task, agent_options=options, client=client, allow_code=allow_code, dry_run=dry_run,
-                           max_turns=max_turns, prices=prices, fetch=fetch)
+                           max_turns=max_turns, prices=prices, fetch=fetch, context=context)
             res_dict = asdict(res)
             res_dict["repeat"] = r
             results.append(res_dict)
@@ -737,7 +885,7 @@ def run(tasks: list[Task] | None = None, *, agent_options: dict | None = None, c
                 progress(res)
     meta = {"provider": "solution" if dry_run else getattr(provider, "name", provider) or "anthropic",
             "model": "solution" if dry_run else (model or getattr(provider, "default_model", None)),
-            "effort": options.get("effort"), "allow_code": allow_code, "repeat": repeat,
+            "effort": options.get("effort"), "allow_code": allow_code, "repeat": repeat, "context": context,
             "ewald": getattr(ewald, "__version__", "?"), "commit": _commit(),
             "date": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
     return {"meta": meta, "summary": summarize(results), "results": results}
@@ -808,7 +956,8 @@ def format_result(r) -> str:
         why.append(r["error"])
     if r["reproducible"] is False:
         why.append("reproduce: " + r["reproduce_detail"])
-    return line + "".join(f"\n      - {w}" for w in why)
+    notes = [f"{name} error: {' '.join(msg.split())[:160]}" for name, msg in r.get("tool_error_messages", [])]
+    return line + "".join(f"\n      - {w}" for w in why) + "".join(f"\n      ~ {n}" for n in notes)
 
 
 def format_summary(report: dict) -> str:
@@ -869,7 +1018,7 @@ def compare(a: dict, b: dict) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["ANSWER_HINT", "PRICES", "Any", "CellNumber", "Check", "Data", "File", "Matches", "Number",
-           "Outcome", "SolutionClient", "Step", "Task", "TaskResult", "UsageMeter", "View", "along",
-           "answer_values", "compare", "cost", "format_result", "format_summary", "load", "reproduce", "run",
-           "run_task", "same_color", "save", "select", "summarize"]
+__all__ = ["ANSWER_HINT", "EXAMPLE_PLUGINS", "PRICES", "Any", "CellNumber", "Cells", "Check", "Data", "File",
+           "Matches", "Number", "Outcome", "SolutionClient", "Step", "Task", "TaskResult", "UsageMeter", "UsedTool",
+           "View", "along", "answer_values", "compare", "cost", "error_cells", "format_result", "format_summary",
+           "load", "reproduce", "run", "run_task", "same_color", "save", "select", "step_cells", "summarize"]

@@ -75,6 +75,23 @@ def test_expression_power_as_in_ovito(cu_fcc):
                        np.hypot(cu_fcc.positions[:, 0], cu_fcc.positions[:, 1]))
 
 
+def test_expression_particle_type_numbers(cu_fcc):
+    """OVITO's ParticleType is a number: ParticleType == 2 matches LAMMPS types named "2", and with
+    element names it is an error that names them, never silently no match (a model trained on
+    OVITO wrote it in the first real-model eval)."""
+    from ewald.modifiers.expression import evaluate
+
+    numbered = cu_fcc.copy()
+    numbered.particles["Particle Type"] = np.where(np.arange(cu_fcc.count) % 4 == 0, "2", "1")
+    assert evaluate("ParticleType == 2", numbered).sum() == cu_fcc.count // 4
+    assert evaluate("ParticleType != 2", numbered).sum() == cu_fcc.count - cu_fcc.count // 4
+    assert evaluate("ParticleType == '2'", numbered).sum() == cu_fcc.count // 4
+    assert type(evaluate("ParticleType", numbered)) is np.ndarray
+    assert evaluate("(ParticleType == 'Cu') & (Position.X >= 0)", cu_fcc).all()
+    with pytest.raises(ValueError, match="type names here \\(Cu\\).*ParticleType == 'Cu'"):
+        evaluate("ParticleType == 1", cu_fcc)
+
+
 def test_displacement_across_pbc(cu_fcc):
     moved = cu_fcc.copy()
     pos = cu_fcc.positions.copy()

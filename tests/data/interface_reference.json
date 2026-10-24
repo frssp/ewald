@@ -1,0 +1,80 @@
+{
+ "gaas_alas_110": {
+  "source": "GaAs(110)/AlAs(110), built by sim-agent tools/interface_utils.py (build_superlattice, period_along_normal, side_indices) at frssp/sim_agent 27ff1de",
+  "substrate": [
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23
+  ],
+  "film": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31
+  ],
+  "period_substrate_A": 1.9975766568519975,
+  "period_film_A": 2.00111219075793
+ },
+ "tin_mgo_100": {
+  "source": "TiN(100)/MgO(100), built by sim-agent tools/interface_utils.py (build_superlattice, period_along_normal, side_indices) at frssp/sim_agent 27ff1de",
+  "substrate": [
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20
+  ],
+  "film": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27
+  ],
+  "period_substrate_A": 2.1200000000000006,
+  "period_film_A": 2.1049999999999995
+ }
+}

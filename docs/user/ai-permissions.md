@@ -134,7 +134,7 @@ Studio) nothing leaves your machine.
 
 - The system prompt: `SYSTEM_PROMPT` in `llm/agent.py` (what ewald is, that numbers must come
   from tools, that changes go through cells, to read `python_api` before writing code). In the
-  GUI it is followed by the notebook note in `gui/ask_panel.py` (`NOTEBOOK_NOTE`: the cell kinds,
+  GUI it is followed by the notebook note in `llm/notebook_prompt.py` (`NOTEBOOK_NOTE`: the cell kinds,
   the cell tools, and how ```python blocks in answers are handled, `llm.code_cells`).
 - The tool definitions: name, description and JSON schema of every offered tool. The
   `load_structure` description names the installed readers.
@@ -203,4 +203,6 @@ keychain).
 - The Modifier Forge (`ewald forge`) asks the model to write a modifier plugin and its tests. The
   code runs only in a subprocess with an allow-listed environment and a scratch home to test it,
   and is saved to the plugin folder only after you confirm.
-- `ewald eval` runs the normal loop on fresh notebooks; its `code` tasks need `--allow-code`.
+- `ewald eval` runs the normal loop on fresh notebooks, asking as the GUI chat does (notebook note, notebook
+  code); tasks where the model runs cells need `--allow-code`, and plugin tasks load an example plugin
+  from `examples/plugins` for their run only.

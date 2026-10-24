@@ -24,12 +24,12 @@ def fake_render(monkeypatch):
 def test_tasks_are_well_formed():
     ids = [t.id for t in TASKS]
     assert len(ids) == len(set(ids)) and 30 <= len(TASKS) <= 60
-    assert set(CATEGORIES) == {"answer", "step", "view", "export", "code", "paper"}
+    assert set(CATEGORIES) == {"answer", "step", "view", "export", "code", "notebook", "recipe", "plugin", "paper"}
     for t in TASKS:
         assert t.checks and t.solution and t.answer, t.id
         numbers = [c for c in t.checks if isinstance(c, evals.Number)]
         assert t.answer.count("{") == len(numbers), t.id   # the reference answer fills every Number
-        if t.category in ("step", "view"):
+        if t.category in ("step", "view", "notebook", "recipe"):
             assert any(c.state for c in t.checks), t.id   # graded on the notebook's state, re-run too
 
 
@@ -165,3 +165,78 @@ def test_cli(tmp_path, capsys):
     assert "accuracy" in capsys.readouterr().out
     with pytest.raises(SystemExit, match="no task matches"):
         main(["eval", "--tasks", "nope"])
+
+
+class RecordingClient(evals.SolutionClient):
+    """A SolutionClient that keeps the requests it got."""
+
+    def __init__(self, calls, answer):
+        super().__init__(calls, answer)
+        self.requests = []
+        create = self._create
+        self.beta.messages.create = lambda **params: (self.requests.append(params), create(**params))[1]
+
+
+def _first_text(request):
+    content = request["messages"][0]["content"]
+    return content if isinstance(content, str) else "".join(b.get("text", "") for b in content if isinstance(b, dict))
+
+
+def test_gui_context_asks_like_the_chat_side_bar():
+    """By default a task is asked as the GUI's AI chat asks: the notebook note in the system prompt,
+    the notebook's code (and failing cells) before the question; 'plain' is the bare agent."""
+    from ewald.llm.notebook_prompt import RUN_CELLS_NOTE
+
+    task = next(t for t in TASKS if t.id == "nb-fix-error")
+    client = RecordingClient(task.solution, "Done.")
+    r = evals.run_task(task, client=client, agent_options={"model": "claude-opus-5-5"}, allow_code=True)
+    assert r.passed and r.reproducible
+    system = json.dumps(client.requests[0]["system"])
+    assert "chat side bar of ewald's notebook window" in system and json.dumps(RUN_CELLS_NOTE[True])[1:-1] in system
+    text = _first_text(client.requests[0])
+    assert text.startswith("The notebook now reads:") and "CoordinationAnalysis(cutof=3.0)" in text
+    assert "These notebook cells failed" in text and text.rstrip().endswith(evals.ANSWER_HINT.strip())
+
+    client = RecordingClient(task.solution, "Done.")
+    evals.run_task(task, client=client, agent_options={"model": "claude-opus-5-5"}, allow_code=True, context="plain")
+    assert "notebook window" not in json.dumps(client.requests[0]["system"])
+    assert _first_text(client.requests[0]).startswith(task.prompt)
+
+
+def test_answer_code_blocks_become_cells():
+    """As with Preferences > AI > Code in answers = insert: the answer's python blocks are added as
+    cells, run when the AI may run cells, left waiting (and so not graded as done) otherwise."""
+    answer = "Here you go:\n```python\nview(pipe, background='white', bonds=False)\n```\n"
+    r = _play("sto-white", calls=[], answer=answer, allow_code=True)
+    assert r.passed and r.reproducible and "view(pipe, background='white'" in r.notebook
+    r = _play("sto-white", calls=[], answer=answer)
+    assert not r.passed and "view(pipe, background='white'" in r.notebook   # inserted, not run
+    r = _play("sto-white", calls=[], answer=answer, allow_code=True, context="plain")
+    assert not r.passed and "background='white'" not in r.notebook
+
+
+def test_plugin_tasks_load_and_unload_their_plugins():
+    from ewald import plugins
+
+    tools, mods = set(plugins.tools()), set(plugins.modifiers())   # an earlier test may have loaded one
+    r = _play("plugin-tool", answer="ANSWER: 4.138")
+    assert r.passed and r.tools == ["bond_valence_sums"]
+    r = _play("plugin-tool", calls=[], answer="ANSWER: 4.14")       # right number, tool not used
+    assert not r.passed and not dict((c[0], c[1]) for c in r.checks)["UsedTool bond_valence_sums"]
+    r = _play("plugin-modifier", answer="Done.")
+    assert r.checks[0][1]                                             # the step was added
+    assert set(plugins.tools()) == tools and set(plugins.modifiers()) == mods
+
+
+def test_notebook_checks_need_the_cell_edited_not_added_again():
+    r = _play("nb-edit-cutoff", calls=[("add_modifier", {"name": "CoordinationAnalysis", "params": {"cutoff": 2.5}})],
+              answer="Done.")
+    assert not r.passed and "coordination cells: 2 vs 1" in " ".join(c[2] for c in r.checks)
+
+
+def test_tool_errors_are_kept():
+    r = _play("sto-count", calls=[("add_modifier", {"name": "NoSuchModifier"}), ("describe_frame", {})],
+              answer="ANSWER: 40, 24")
+    assert r.passed and r.tool_errors == 1 and r.tool_error_messages[0][0] == "add_modifier"
+    assert "NoSuchModifier" in r.tool_error_messages[0][1]
+    assert "~ add_modifier error:" in evals.format_result(r)

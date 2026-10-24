@@ -17,9 +17,10 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): the Plots panel draws a lineup
   table as curves only; the `levels` (VBM, CBM, E_F) and plateau `regions` in its attributes are
   not drawn yet (needs a GUI mockup first), and the side bar has no "Analysis" row. Only the
-  sim-agent band-offset lineup exists; work function, EOS, formation energy and polycrystalline
-  work function recipes are next. Not yet checked against sim-agent's own finalize result on a
-  real workflow.
+  sim-agent band-offset lineup and the per-surface work function exist; the work-function
+  workflows' surface energies and the polycrystalline aggregate, EOS and formation energy are next.
+  The lineup matches sim-agent's own `assemble` on interfaces built by sim-agent's builder with
+  model potentials (within 0.001 eV, relaxed seams included); not yet checked against a real run.
 - Opening without running (`python.run_notebooks`, default "never"): covers notebook files only. A
   folder or workflow (`simagent:`, AiiDA, calculation folders) still runs its generated `load(...)`
   notebook at once, since it is ewald's own code; no per-notebook "always run this one" choice yet.
@@ -125,10 +126,10 @@ GUI
   modifier outputs and recipes were added) on demand rather than in the system prompt. The first
   real-model runs (2026-10-23, Claude through `make_ai_demo.py --live`, three scenes,
   three takes) read it every time and got the numbers right (barrier, hopping atom, sp/sp2/sp3
-  fractions, D*(Li) 1.3-1.45 × 10⁻⁵ cm²/s against kinisi's 1.23(10)), but `ewald eval` has not been
-  run with a live model yet, and no eval task checks that the cells it writes follow the reference
-  (one `pipe.add` per step cell, `paint`/`hide` inside an `[each frame]` cell); `ewald ask` and the
-  MCP server do not get the GUI's notebook note. What the model tripped over in those runs:
+  fractions, D*(Li) 1.3-1.45 × 10⁻⁵ cm²/s against kinisi's 1.23(10)); `ewald eval` with Opus,
+  Sonnet and Haiku 5.5 (2026-10-24, docs/developer/ai-eval.md) passed all 53 tasks. `ewald ask` and
+  the MCP server still do not get the GUI's notebook note (`llm/notebook_prompt.py` has it Qt-free
+  now). What the model tripped over in those runs:
   property expressions in OVITO's C syntax (`a ? b : c`, `&&`, `||`) are syntax errors, and
   `A == 1 | B == 2` parses with Python precedence; `suggest_cutoff` picks 0.84 Å on a melt-quench
   first frame with close contacts; `show(pipe, table="time-series")` also plots the Timestep column,
@@ -431,9 +432,11 @@ Visualization plugins (later phases of the Scene IR plan)
 
 Plugins and AI
 
-- AI eval suite (`llm/evals.py`, `llm/eval_tasks.py`): more tasks from the paper datasets (LLZO
-  Arrhenius, a-Si, TiOF2 octahedra), from the GUI side (picks, Ask about selection, view cells the
-  Display panel edits) and multi-turn ones (a follow-up question); reproduction runs in a fresh
+- AI eval suite (`llm/evals.py`, `llm/eval_tasks.py`): every Claude model passed all 53 tasks on
+  2026-10-24, so the suite no longer separates models; it needs harder tasks: more from the paper
+  datasets (LLZO Arrhenius, a-Si, TiOF2 octahedra) with a judgement call, from the GUI side (picks,
+  Ask about selection, view cells the Display panel edits, the 3D view's coloring the GUI sends with
+  each question), multi-turn ones (a follow-up question) and ones with a wrong premise; reproduction runs in a fresh
   in-process namespace, not a separate kernel (`ewald.kernel`); explanations are not graded (an
   LLM judge could score them); plugin tasks (`@eval_task` from plugins such as ewald-phonopy) and
   a results page that tracks scores over commits.
@@ -620,9 +623,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - A vaspout.h5 from a real running and a real killed VASP 6 job: which groups exist mid-run,
   whether unwritten steps are zeros, and whether HDF5 can open the file of a killed job (tests
   use h5py-written fixtures, a second process holding the write lock, and a cut file).
-- AI eval suite with real keys (`ewald eval`, docs/user/claude.md): a first baseline per model
-  (Opus 5.5, Sonnet 5.5, Haiku 5.5, a local model) saved as JSON to compare later prompt and tool
-  changes against; check that the tolerances and the `ANSWER:` convention are fair to real answers.
+- AI eval suite with other providers (`ewald eval --provider ...`): the Claude baselines are in
+  benchmarks/ai_eval/ (2026-10-24); OpenAI, Gemini and a local model (Ollama, LM Studio) have not
+  been run, and no run used `--repeat` for the spread.
 - AI features with a real API key (Claude; also OpenAI, Gemini and a local Ollama/LM Studio
   server, which are tested only against mocked servers): `ewald ask` (also `--select`), the GUI AI chat side bar
   (notebook code in the prompt, code blocks inserted as cells, the notebook cell tools; with

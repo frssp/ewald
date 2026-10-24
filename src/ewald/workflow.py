@@ -143,8 +143,9 @@ class Workflow(WorkflowStep):
     """A whole workflow: the top step, and what a list of them shows.
 
     ``path`` opens its main result (what a double click on a step-less row opens); ``kind`` is
-    the template or process label ("vasp_relax", "PwRelaxWorkChain"); ``source`` the name of the
-    source it came from (filled in by ewald). A row of :meth:`list` may leave ``steps`` and
+    the template or process label ("vasp_relax", "PwRelaxWorkChain"); ``group`` what it belongs to
+    at the source, such as the session, project or folder it was submitted from (shown dimmed under
+    the title in the side bar); ``source`` the name of the source it came from (filled in by ewald). A row of :meth:`list` may leave ``steps`` and
     ``outputs`` empty with ``complete`` False: :func:`describe` fills them when it is expanded."""
 
     label: str = ""
@@ -152,6 +153,7 @@ class Workflow(WorkflowStep):
     kind: str = ""
     formula: str = ""
     ctime: str = ""
+    group: str = ""
     source: str = ""
     complete: bool = False
     analyses: list = field(default_factory=list)
@@ -164,7 +166,7 @@ class Workflow(WorkflowStep):
 
     def as_dict(self) -> dict:
         out = super().as_dict()
-        for key in ("label", "description", "kind", "formula", "ctime", "source"):
+        for key in ("label", "description", "kind", "formula", "ctime", "group", "source"):
             if getattr(self, key):
                 out[key] = getattr(self, key)
         if self.analyses:

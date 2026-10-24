@@ -330,7 +330,7 @@ Details: [Command line](user/cli.md).
 | `ewald api` | print the Python API reference for LLMs (llms.txt) | `--with-plugins` |
 | `ewald plugins` | list installed plugins and any that failed to load | `--json` `--enable` `--disable` |
 | `ewald forge [REQUEST...]` | have an AI write a modifier plugin, test it and save it | `--yes` `--draft` `--overwrite` `--rounds` `--model` `--provider` `--profile` `--base-url` |
-| `ewald eval` | score an AI model on tasks with known answers (costs API tokens; see --dry-run) | `--model` `--provider` `--profile` `--base-url` `--effort` `--tasks` `--category` `--list` `--allow-code` `--repeat` `--max-turns` `--out` `--compare` `--dry-run` `--price` `--no-download` |
+| `ewald eval` | score an AI model on tasks with known answers (costs API tokens; see --dry-run) | `--model` `--provider` `--profile` `--base-url` `--effort` `--tasks` `--category` `--list` `--allow-code` `--repeat` `--max-turns` `--out` `--compare` `--dry-run` `--price` `--no-download` `--context` |
 | `ewald mcp [INPUT]` | serve the analysis tools over MCP (stdio) | `--allow-code` |
 | `ewald remote [REMOTE_CMD]` | saved SSH profiles: list, add, remove, test, ls, get |  |
 | `ewald inventory` | print or update the feature inventory (docs/features.md) | `-o` `--gui` |
@@ -362,7 +362,7 @@ Tools:
 | `remove_modifier` *cell* | Remove the modifier at pipeline 'index' (see show_pipeline) by deleting its step cell from the notebook. |
 | `show_pipeline` | Current source, modifier list and frame. |
 | `set_frame` | Set the current frame used by tools that take no frame argument (only what you look at; the view's frame is set_view frame). |
-| `evaluate_expression` | Evaluate an OVITO-style per-particle expression on a frame and return statistics (count of true values for conditions; min/max/mean/percentiles for numbers). |
+| `evaluate_expression` | Evaluate an OVITO-style per-particle expression on a frame and return statistics (count of true values for conditions; min/max/mean/percentiles for numbers; counts of each value for names such as ParticleType). |
 | `compute_rdf` | Radial distribution function g(r) of a frame (total, plus partial pairs). |
 | `analyze_symmetry` | Space group (Hermann-Mauguin and number), point group, crystal system and the Wyckoff site of every symmetry-unique atom of a frame (spglib). |
 | `compute_diffraction` | Powder X-ray or neutron diffraction peaks of a frame (2-theta, d, hkl, relative intensity; strongest first), or the structure factor S(q) when kind='sq'. |
@@ -399,6 +399,7 @@ Also: `ewald describe` / `ewald narrate` (rule-based descriptors and a trajector
 
 Entry point groups `ewald.readers`, `ewald.writers`, `ewald.modifiers`, `ewald.visuals`, `ewald.overlays`, `ewald.colormaps`, `ewald.themes`, `ewald.tools`, `ewald.ui_themes`, `ewald.ai_providers`, `ewald.panels`, `ewald.menu_items`, `ewald.settings_pages` and `ewald.workflows`, or a file in `<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / `@colormap` / `@theme` / `@ai_tool` (or `@claude_tool`) / `@ui_theme` / `@ai_provider` / `@panel` (an activity-bar side bar or a tab under the 3D view) / `@menu_item` (an entry in a menu or the 3D view's right-click menu) / `@settings_page` (a Preferences page) / `@workflow_source` (workflows a side bar lists and a notebook opens); `ewald plugins` lists what loaded. Details: [Plugins](plugins/index.md).
 
+- `examples/plugins/bond_valence.py`: Example AI tool plugin: bond valence sums of the cations in the current frame.
 - `examples/plugins/cell_axes.py`: Example visual element plugins: cell axes and a halo around selected atoms.
 - `examples/plugins/figure_extras.py`: Example figure-style plugins: a color map, a theme and an overlay.
 - `examples/plugins/local_composition.py`: Example modifier plugin: local chemical composition around every particle.

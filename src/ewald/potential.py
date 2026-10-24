@@ -15,7 +15,8 @@ The filters, plateau rules, junction classification and barrier formulas are por
 sim-agent (frssp/sim_agent ``src/sim_agent/band_alignment.py``, MIT) so a calculation analysed
 here and in sim-agent's ``finalize_workgraph`` gives the same numbers; keep the two in step.
 Where sim-agent reads the side atoms and periods from the builder's metadata, this module
-derives them from the structures (:func:`split_sides`, :func:`normal_period`).
+derives them from the interface cell itself (:func:`split_sides`, :func:`layer_period`): a bulk
+reference is a primitive cell in any orientation, so its own a x b is not the facet.
 
 Every energy here is in eV, every length in Angstrom; profiles run along the third cell
 vector (c), sampled uniformly over ``[0, |c|)`` as VASP's LOCPOT grid is.
@@ -192,41 +193,64 @@ def split_sides(interface, substrate, film, plane_tol: float = 0.3) -> dict:
     return out
 
 
-def normal_period(bulk, symprec: float = 1e-3) -> float:
-    """Repeat distance along the normal (the direction of a x b) of a bulk reference cell:
-    the primitive cell's interplanar spacing d for that plane, which is the period sim-agent
-    filters with. Falls back to the cell's own spacing when no primitive cell is found."""
-    m = np.asarray(bulk.cell.matrix, dtype=float)
+def layer_period(interface, indices, tol: float = 0.3, min_match: float = 0.9) -> float:
+    """Repeat distance along the normal (a x b) of one side of an interface, read from that
+    side's own atoms: the smallest normal component of a translation that maps its interior
+    atoms onto atoms of the same species (in-plane periodic), which is the primitive d_hkl of
+    the side's crystal, the period sim-agent filters with (``period_along_normal``), however the
+    bulk reference cell is oriented. The outermost plane at each seam is left out (it relaxes),
+    and ``min_match`` of the remaining atoms must map within ``tol`` Angstrom. Raises
+    ``ValueError`` when no repeat is found (fewer than about two periods of material)."""
+    idx = np.asarray(indices, dtype=int)
+    m = np.asarray(interface.cell.matrix, dtype=float)
     normal = np.cross(m[0], m[1])
     normal /= np.linalg.norm(normal)
-    own = float(abs(np.dot(m[2], normal)))
-    try:
-        import spglib
+    height_c = float(abs(np.dot(m[2], normal)))
+    f = interface.cell.to_fractional(interface.positions[idx] - interface.cell.origin)
+    start, width = layer_extent(f[:, 2])
+    f = np.column_stack([np.mod(f[:, 0], 1.0), np.mod(f[:, 1], 1.0), np.mod(f[:, 2] - start, 1.0)])
+    h = f[:, 2] * height_c
+    types = np.asarray(interface.types).astype(str)[idx]
+    top = width * height_c
+    inner = (h > tol + 1e-9) & (h < top - tol - 1e-9)
+    planes = _planes(f[:, 2], height_c, tol)
+    if len(planes) > 4:              # leave out the seam planes, which relax
+        inner[planes[0]] = False
+        inner[planes[-1]] = False
+    if inner.sum() < 2:
+        raise ValueError("too few atoms inside the layer to find its repeat along the normal")
 
-        err = getattr(spglib, "error", None)
-        if err is not None and hasattr(err, "OLD_ERROR_HANDLING"):
-            err.OLD_ERROR_HANDLING = False   # spglib >= 2.5: raise instead of returning None (as modifiers/symmetry.py)
-        names = list(dict.fromkeys(np.asarray(bulk.types).astype(str)))
-        numbers = [names.index(t) + 1 for t in np.asarray(bulk.types).astype(str)]
-        frac = bulk.cell.to_fractional(bulk.positions - bulk.cell.origin)
-        prim = spglib.find_primitive((m, frac % 1.0, numbers), symprec=symprec)
-    except Exception:  # noqa: BLE001 - spglib missing or failing: the cell itself
-        prim = None
-    if prim is None:
-        return own
-    recip = np.linalg.inv(np.asarray(prim[0], dtype=float)).T   # rows: b_i with a_i . b_j = delta_ij
-    best = None
-    r = range(-6, 7)
-    for h in r:
-        for k in r:
-            for l in r:
-                if (h, k, l) == (0, 0, 0):
-                    continue
-                g = h * recip[0] + k * recip[1] + l * recip[2]
-                gn = np.linalg.norm(g)
-                if np.linalg.norm(np.cross(g / gn, normal)) < 1e-4 and (best is None or gn < best):
-                    best = gn
-    return own if best is None else float(1.0 / best)
+    def maps(shift):
+        """The normal components of the matched pairs when ``shift`` maps the layer onto
+        itself, else None."""
+        moved = f[inner] + shift
+        keep = moved[:, 2] * height_c <= top - tol    # images that stay inside the layer
+        if keep.sum() < 1:
+            return None
+        dz = []
+        for p, t in zip(moved[keep], types[inner][keep]):
+            same = f[types == t]
+            d = same - p
+            d[:, :2] -= np.round(d[:, :2])
+            dist = np.linalg.norm(d @ m, axis=1)
+            j = int(np.argmin(dist))
+            if dist[j] < tol:
+                dz.append((shift[2] + d[j, 2]) * height_c)
+        return dz if len(dz) >= min_match * keep.sum() else None
+
+    species, counts = np.unique(types[inner], return_counts=True)
+    rare = species[np.argmin(counts)]
+    pivots = np.flatnonzero(inner & (types == rare))
+    p = pivots[np.argmin(h[pivots])]
+    candidates = np.flatnonzero((types == rare) & (h - h[p] > 0.5))
+    for q in candidates[np.argsort(h[candidates])]:
+        shift = f[q] - f[p]
+        shift[:2] -= np.round(shift[:2])
+        dz = maps(shift)
+        if dz is not None:       # the mean over every matched pair, not the one pivot pair
+            return float(np.mean(dz))
+    raise ValueError("no repeat of the layer along the normal: it holds less than two periods of its "
+                     "crystal, or is not crystalline")
 
 
 def layer_extent(z_frac: Sequence[float]) -> tuple[float, float]:
@@ -276,7 +300,7 @@ def potential_lineup(planar: PlanarProfile, substrate_z_frac: Sequence[float], f
     """Step in macroscopic-average potential from substrate to film in an interface cell.
 
     ``substrate_z_frac``/``film_z_frac`` are the fractional c coordinates of each side's atoms
-    (:func:`split_sides`), the periods the two filter widths (:func:`normal_period`).
+    (:func:`split_sides`), the periods the two filter widths (:func:`layer_period`).
     ``margin`` (default half the summed windows, the reach of the double filter) is kept
     from each layer's outermost atoms. Returns ``ok`` and, when ok, ``delta_v_eV`` =
     V(film) - V(substrate); otherwise ``code`` (``NOT_LAYERED``, ``THIN_LAYER``,
@@ -525,3 +549,18 @@ def lineup_table(planar: PlanarProfile, lineup: dict, alignment: dict, scissor: 
     result["plateaus"] = {s: {k: v for k, v in p.items()} for s, p in (lineup.get("plateaus") or {}).items()}
     return Table("Lineup", columns, attributes={"energy_axis": axis, "energy_zero_eV": zero, "levels": levels,
                                                "regions": regions, "result": result})
+
+
+def work_function_table(planar: PlanarProfile, wf: dict, name: str = ""):
+    """A ``Work function`` table (z, planar average) on the vacuum level as zero, as sim-agent
+    draws it, with ``levels`` (vacuum 0, E_F at -Phi), ``energy_axis`` and the numbers of
+    :func:`work_function` as ``result``."""
+    from .verbs import Table
+
+    zero = wf["vacuum_level_eV"]
+    levels = [Level("E_vac", 0.0).as_dict(),
+              Level("E_F", wf["fermi_eV"] - zero, None, "dashed", f"Phi = {wf['work_function_eV']:.3f} eV").as_dict()]
+    title = f"Work function {name}".strip()
+    return Table(title, {"z (A)": planar.z, "Planar average": planar.values - zero},
+                 attributes={"energy_axis": "E - E_vac", "energy_zero_eV": zero, "levels": levels,
+                             "result": dict(wf, surface=name)})

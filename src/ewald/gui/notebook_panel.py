@@ -15,7 +15,7 @@ import os
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ..notebook import Cell, History, Notebook, new_notebook
+from ..notebook import Cell, History, Notebook, cell_from_source, new_notebook
 from ..pipeline import Pipeline
 from . import header, workers
 from .ai_follow import AiFollow
@@ -609,7 +609,9 @@ class NotebookView(QtWidgets.QWidget):
         return cell
 
     def add_cell(self, kind="code", source=""):
-        return self._insert(Cell(source, kind=kind))
+        """A new cell after the current one; a leading ``# %%`` line of ``source`` (pasted or the AI's
+        code) sets its kind, title and frame tag."""
+        return self._insert(cell_from_source(source, kind=kind))
 
     def _step_context(self):
         """(current frame, pipeline) for the + Step menu, when the window shows this notebook."""
