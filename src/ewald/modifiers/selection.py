@@ -1,6 +1,8 @@
 """Selection, deletion and slicing."""
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 from ..pipeline import Modifier
@@ -29,7 +31,13 @@ class SelectType(Modifier):
 
     def modify(self, data, ctx):
         values = data.particles[self.property]
-        sel = np.isin(values.astype(str), [str(t) for t in self.types])
+        names = values.astype(str)
+        sel = np.isin(names, [str(t) for t in self.types])
+        present = np.unique(names).tolist()
+        missing = sorted({str(t) for t in self.types} - set(present))
+        if missing:
+            warnings.warn(f"SelectType: no particles of type {', '.join(missing)} "
+                          f"({self.property!r} has {', '.join(present[:12])})", stacklevel=2)
         data.particles["Selection"] = sel.astype(np.int8)
         data.attributes["SelectType.num_selected"] = int(sel.sum())
 

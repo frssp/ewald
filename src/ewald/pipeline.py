@@ -1,6 +1,7 @@
 """Data pipeline: source -> modifiers -> DataCollection."""
 from __future__ import annotations
 
+import operator
 import threading
 import time
 from collections import OrderedDict
@@ -9,6 +10,12 @@ from typing import Callable
 
 from .backend import Backend, get_backend
 from .data import DataCollection
+
+
+#: added to numpy's "output array is read-only" when a step writes into a frame's array in place
+READ_ONLY_HINT = ("the arrays of a frame are shared with the pipeline's cache, so a step must replace them "
+                  "instead of writing into them: data.positions = data.positions + shift, or "
+                  "pos = data.positions.copy(); pos[0] += 1; data.positions = pos")
 
 
 class ComputeCancelled(Exception):
@@ -83,6 +90,14 @@ class Modifier:
         return {k: getattr(self, k) for k in list(sig.parameters)[1:]
                 if hasattr(self, k) and sig.parameters[k].kind not in (inspect.Parameter.VAR_KEYWORD,
                                                                        inspect.Parameter.VAR_POSITIONAL)}
+
+    def _check_positive(self, *names: str):
+        """Raise ValueError unless each named setting is a number above zero (a cutoff, a count):
+        ``cutoff=-1`` would otherwise run and give zeros everywhere."""
+        for name in names:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0:
+                raise ValueError(f"{type(self).__name__}: {name} must be a number above 0, not {value!r}")
 
     def __repr__(self):
         params = ", ".join(f"{k}={v!r}" for k, v in self.parameters().items())
@@ -444,6 +459,32 @@ class Pipeline:
     def __len__(self):
         return self.num_frames
 
+    def __getitem__(self, index):
+        """``pipe[i]`` is ``pipe.compute(i)`` (negative from the end, out of range raises IndexError);
+        ``pipe[a:b:c]`` is a list of those frames, as ``ase.io.read(path, index=":")`` gives."""
+        n = self.num_frames
+        if isinstance(index, slice):
+            return [self.compute(i) for i in range(*index.indices(n))]
+        try:
+            i = operator.index(index)
+        except TypeError:
+            raise TypeError(f"pipeline frames are indexed by int or slice, not {type(index).__name__}") from None
+        if not -n <= i < n:
+            raise IndexError(f"frame {i} out of range: the pipeline has {n} frame{'s' * (n != 1)}")
+        return self.compute(i % n)
+
+    def __iter__(self):
+        """Every frame, computed one at a time (``for data in pipe``); see :meth:`frames`."""
+        return self.frames()
+
+    def to_ase(self, frames=None) -> list:
+        """The computed frames as a list of ASE ``Atoms`` (``frames``: indices or a slice; default all),
+        ready for ``ase.io.write``; per-particle numeric properties go into ``atoms.arrays``."""
+        if frames is None:
+            frames = slice(None)
+        picked = self[frames] if isinstance(frames, slice) else [self[i] for i in frames]
+        return [data.to_ase() for data in picked]
+
     def source_frame(self, frame: int) -> DataCollection:
         frame %= self.source.num_frames
         with self._cache_lock:
@@ -564,11 +605,16 @@ class Pipeline:
                 raise
             except Exception as exc:
                 mod.last_time = time.perf_counter() - t0
+                read_only = isinstance(exc, ValueError) and "read-only" in str(exc)
+                if read_only:
+                    exc = ValueError(f"{exc}: {READ_ONLY_HINT}")
                 mod.status = f"{type(exc).__name__}: {exc}"
                 failed = True
                 if isinstance(exc, ImportError):
                     mod._missing_dependency = (repr(mod), mod.status)
                 if errors == "raise":
+                    if read_only:
+                        raise exc from exc.__context__
                     raise
                 continue
             mod.status = None

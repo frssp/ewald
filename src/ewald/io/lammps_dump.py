@@ -167,7 +167,9 @@ class LammpsDumpReader(FrameReader):
                 index = _numeric(column) if col == "type" else None
                 if index is not None and index.dtype.kind != "i":
                     index = None  # type labels instead of numbers
-                if col == "element" or "Particle Type" not in data.particles:
+                # the element column names the types, unless the caller gave type_map, which wins
+                mapped = col == "type" and bool(self.type_map)
+                if "Particle Type" not in data.particles or mapped or (col == "element" and not self.type_map):
                     data.particles["Particle Type"] = _type_labels(
                         index if index is not None else column, self.type_map if col == "type" else None)
                 if index is not None:

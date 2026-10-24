@@ -2,7 +2,9 @@
 
 `pipe.render(filename, frame=..., **options)` renders one frame offscreen to PNG, JPG, TIFF,
 SVG, PDF or EPS; without a file name it returns the image as an RGB array. `ewald.render.render(data, ...)`
-does the same for a `DataCollection`.
+does the same for a `DataCollection`. Without `renderer=` it uses OpenGL where an OpenGL context
+can be opened and the ray tracer elsewhere (a cluster node without a display; see
+[Headless machines](install.md#headless-machines)).
 
 ```python
 pipe.render("fig.png", frame=10, size=(2000, 1500), direction="iso")
