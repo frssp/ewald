@@ -54,6 +54,18 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   rejected for the reason above).
 - **Landed:** PR #161 (`CELL_WRITERS`, enforced by `tests/test_llm.py`).
 
+### D40. Plugin tools that change results outside cells are undone (2026-10-24)
+
+- **Decision:** after every AI plugin tool, ewald undoes steps and view settings it changed
+  without a cell and fails the call; `export_file` makes missing folders inside the cell it
+  runs. The other places that act outside cells (`render_image` files in the AI's work dir,
+  `set_frame`, Forge plugins) stay, documented in docs/user/ai-permissions.md.
+- **Why:** after the list of what the AI does outside cells, the owner asked what had to be
+  blocked ("뭘 막아야하지? 위험?") and, of the five, approved fixing the plugin tools and
+  `export_file` ("진행하고 문서 정리").
+- **Considered:** only documenting the gaps; a warning without undoing the change.
+- **Landed:** public PR #21.
+
 ### D31. The AI's API reference is complete in one read (2026-10-23)
 
 - **Decision:** `python_api` (and `llms.txt`, the same text) gives the whole reference in one
