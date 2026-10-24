@@ -496,6 +496,9 @@ class Toolset:
                  "cutoff": {"type": ["number", "string", "null"], "description": "coordination cutoff, 'auto' or null"},
                  "threshold": {"type": "number", "description": "change-point threshold in noise units (default 6; lower finds more)"}}))
         def describe_trajectory(start=0, stop=None, step=None, max_frames=200, cutoff="auto", threshold=6.0):
+            if isinstance(cutoff, str) and cutoff.strip().lower() != "auto":   # "3.0" from a model
+                cutoff = None if cutoff.strip().lower() in ("", "none", "null") else float(cutoff)
+            threshold = float(threshold)
             return _describe.describe_trajectory(self._need_pipeline(), start, stop, step, max_frames,
                                                  cutoff, threshold=threshold)
 

@@ -834,6 +834,8 @@ def _load_plugins(names) -> list:
     out = []
     for name in names:
         path = str((EXAMPLE_PLUGINS / name).resolve())
+        if any(p.origin == path for p in plugins._registry.plugins.values()):
+            continue          # loaded already (the plugin folder, an earlier load): it stays
         for registered in plugins.load_plugin_file(path):
             for kind in plugins._REGISTRIES:
                 if registered in getattr(plugins._registry, kind):

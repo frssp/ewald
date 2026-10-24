@@ -218,14 +218,14 @@ def test_answer_code_blocks_become_cells():
 def test_plugin_tasks_load_and_unload_their_plugins():
     from ewald import plugins
 
-    assert "bond_valence_sums" not in plugins.tools()
+    tools, mods = set(plugins.tools()), set(plugins.modifiers())   # an earlier test may have loaded one
     r = _play("plugin-tool", answer="ANSWER: 4.138")
     assert r.passed and r.tools == ["bond_valence_sums"]
-    assert "bond_valence_sums" not in plugins.tools()
     r = _play("plugin-tool", calls=[], answer="ANSWER: 4.14")       # right number, tool not used
     assert not r.passed and not dict((c[0], c[1]) for c in r.checks)["UsedTool bond_valence_sums"]
     r = _play("plugin-modifier", answer="Done.")
-    assert r.checks[0][1] and "LocalComposition" not in plugins.modifiers()   # the step was added
+    assert r.checks[0][1]                                             # the step was added
+    assert set(plugins.tools()) == tools and set(plugins.modifiers()) == mods
 
 
 def test_notebook_checks_need_the_cell_edited_not_added_again():

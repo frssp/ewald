@@ -311,7 +311,8 @@ run makes a few hundred requests; try `--category view` or a few `--tasks` first
 downloads its data (0.8 MB) once; `--no-download` skips it.
 
 Run it before and after changing the system prompt, a tool description or a tool, and compare the
-two files. In Python: `ewald.llm.evals.run(tasks, agent_options=...)`, with the tasks in
+two files. The first runs with real models (Opus, Sonnet and Haiku 5.5: all 53 tasks passed) and
+what they found are in [AI eval results](../developer/ai-eval.md). In Python: `ewald.llm.evals.run(tasks, agent_options=...)`, with the tasks in
 `ewald.llm.eval_tasks.TASKS`; a `Task` is a prompt, an example file and a list of checks
 (`Number`, `Matches`, `Step`, `View`, `Data`, `File`, `CellNumber`, `Cells`, `UsedTool`, `Any`), with
 optional `setup` cells (the notebook the user already has) and example `plugins`.
