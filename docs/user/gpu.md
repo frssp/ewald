@@ -60,7 +60,10 @@ Metal bindings), then `device="metal"` (or `"mps"`, or `"auto"`), or Apple GPU (
 Preferences › Compute › Device. It is the same kernel source as CUDA and OpenCL, in single
 precision throughout, since Metal has no double. Apple's OpenCL works too (`device="opencl"`),
 but on an M2 MacBook Air it traced a 400x300 Publication picture in 2.4 s against 0.5 s on the
-CPU, so `auto` never picks it.
+CPU, so `auto` never picks it. On that Mac Metal traced atoms about twice as fast as the CPU
+(108 000 fcc Cu atoms at 800x600, Publication: 0.85 s against 1.64 s) and see-through
+polyhedra and fine isosurfaces about as fast; the first picture of a session waits a few
+seconds while Metal builds the kernel.
 
 The analysis has no Apple GPU backend yet: with `metal`, `mps` or `auto` it runs on the CPU.
 The viewport and the OpenGL renderer still draw on the GPU. Apple Silicon CPUs are fast for
