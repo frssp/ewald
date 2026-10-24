@@ -39,9 +39,10 @@ dependencies = ["numpy>=2.0", "scipy", "ase>=3.23", "matplotlib", "pillow", "pyv
 gui = ["PySide6>=6.5", "pyvistaqt>=0.11", "qtconsole>=5.5", "pygments"]   # PySide6 only: no PyQt5/PyQt6 (see ewald/gui/__init__.py)
 gpu = ["cupy-cuda12x; sys_platform != 'darwin'"]   # no CUDA on macOS: the extra installs nothing there
 opencl = ["pyopencl>=2022.1"]   # ray tracing on Intel, AMD, NVIDIA and Apple GPUs; needs the GPU's OpenCL driver
+metal = ["pyobjc-framework-Metal>=10; sys_platform == 'darwin'"]   # ray tracing on a Mac's GPU
 formats = ["MDAnalysis>=2.7"]   # GROMACS XTC/TRR, DCD, NetCDF
 ovito = ["ovito"]   # DislocationAnalysis (DXA) and OvitoModifier bridge; pins its PySide6, so install with gui
-all = ["ewald[gui,formats,ovito,opencl]"]   # everything but gpu (needs an NVIDIA GPU with CUDA 12)
+all = ["ewald[gui,formats,ovito,opencl,metal]"]   # everything but gpu (needs an NVIDIA GPU with CUDA 12)
 dev = ["pytest", "nbformat", "jupytext"]   # nbformat/jupytext: round-trip tests of .ipynb and percent .py notebooks
 # kept so old install commands work: these packages are in the core install now
 kernel = []
