@@ -168,6 +168,15 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   `ewald.gui` (`tests/test_architecture.py`).
 - `settings.py`: user preferences as a registry of `Option(...)`, stored as JSON with only
   non-default values; `EWALD_CONFIG_DIR` overrides the location (tests set it per test).
+- `view3d.py` (`pipe.view`: every 3D display setting as code, drawn by GUI, render and Jupyter alike),
+  `color_rule.py` (what colors the atoms; steps that write "Color" call `record`), `colorbars.py`
+  (color bars as overlay items), `plotstyle.py` (the matplotlib look of every plot), `framing.py`
+  (the Render frame region), `replicate.py` (display-only `na x nb x nc` tiling), `fileops.py`
+  (atomic file replace, Windows-safe), `_tls.py` (OS trust store for downloads).
+- `runinfo.py` (`run_info`, `check_run` from INCAR/in.lammps/logs), `runs.py` (`load_runs`),
+  `workflow.py` (workflow sources, `Analysis`), `workflow_folder.py` (plain folders of calculations
+  as a workflow), `workflow_table.py`, `potential.py` (planar/macroscopic averages, lineup, work
+  function); GUI side `gui/workflow_panel.py`.
 - `paint.py` (`paint`/`hide`/`isolate`/`fade`/`resize` for Python steps), `views.py` (`show`, the
   notebook view cells), `verbs.py` (`rdf`/`msd`/`sq`/... add a step and return its `Table`), `display.py` (`_repr_png_` of Pipeline/DataCollection/Table for Jupyter, `options`), `plugin_catalog.py` (installed plugins, catalog indexes, install/remove;
   GUI side `gui/plugins_panel.py`, the left Plugins side bar).
@@ -213,7 +222,7 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   from `credentials.client(provider=...)`), Modifier Forge (`forge.py`: the model writes a
   plugin + tests, verified in a subprocess, saved to the plugin folder), descriptors (`describe.py`, `narrate.py`),
   `selection.py` (descriptor + close-up scene for Ask about selection; GUI side `gui/ask_panel.py`),
-  MCP server (`mcp_server.py`), `reference.py`, the source of `llms.txt`, and the AI eval suite
+  notebook tools and the GUI chat's notebook prompt (`notebook_tools.py`, `notebook_prompt.py`), which files and SSH hosts tools may read (`access.py`), MCP server (`mcp_server.py`), `reference.py`, the source of `llms.txt`, and the AI eval suite
   (`evals.py` harness and graders, `eval_tasks.py` tasks; `ewald eval`, never in the default
   pytest run since it costs tokens; `tests/test_evals.py` plays each task's reference solution).
 
