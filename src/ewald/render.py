@@ -32,10 +32,9 @@ def _element(t: str):
 _RADIUS_KEYS = ("type_radii", "radius_preset", "oxidation_states", "coordination")
 
 # The key light of every renderer, in the camera frame (x right, y up, z towards the viewer): upper left,
-# in front. The ray tracer and vector output use it as is; OpenGL keeps VTK's light kit unless a ``light``
-# is given (the impostor shader has its own head light, IMPOSTOR_LIGHT).
+# in front, used when a view sets no ``light`` (D51); the OpenGL renderers add a weak head light (fill).
 DEFAULT_LIGHT = (-0.4, 0.6, 1.0)
-IMPOSTOR_LIGHT = (-0.25, 0.35, 1.0, 1.0)
+FILL_LIGHT = 0.3   # the head light, as a fraction of the key light
 LIGHT_KEYS = ("direction", "azimuth", "elevation", "intensity")
 
 
@@ -72,23 +71,19 @@ def light_params(light) -> tuple[np.ndarray, float]:
 
 
 def apply_light(plotter, light=None):
-    """Light a PyVista plotter: ``light`` (see :func:`light_params`) replaces its lights with a camera key
-    light plus a weak head light (fill), and sets the impostor shader's light; None puts VTK's light kit
-    back if a light was set before."""
+    """Light a PyVista plotter like every other renderer (D51): a camera key light from ``light`` (see
+    :func:`light_params`; None is :data:`DEFAULT_LIGHT`, the ray tracer's) plus a weak head light (fill),
+    and the same light for the impostor shader."""
     import pyvista as pv
 
     ren = plotter.renderer
-    if light is None:
-        if getattr(ren, "_ewald_light", None) is not None:
-            plotter.remove_all_lights()
-            plotter.enable_lightkit()
-            ren._ewald_light = None
-        return
     d, k = light_params(light)
+    if getattr(ren, "_ewald_light", None) == (*d, k) and len(ren.lights) == 2:
+        return
     plotter.remove_all_lights()
     plotter.add_light(pv.Light(position=tuple(d), focal_point=(0, 0, 0), light_type="camera light", intensity=k))
     plotter.add_light(pv.Light(position=(0, 0, 1), focal_point=(0, 0, 0), light_type="camera light",
-                               intensity=0.3 * k))
+                               intensity=FILL_LIGHT * k))
     ren._ewald_light = (*d, k)
 
 
@@ -304,17 +299,33 @@ def add_atoms(plotter, cloud, *, atom_style: str = "auto", mesh_limit: int = 150
 
 def _impostor_camera(renderer, *_):
     """Pass the projection to every impostor actor of ``renderer`` (on each render), so their
-    fragments get the depth of the sphere surface."""
+    fragments get the depth of the sphere surface, and set the width of line actors from the window
+    height (:func:`ewald.scene.line_pixels`) or, for mesh edges, from their width in Angstrom."""
     cam = renderer.GetActiveCamera()
     m = cam.GetProjectionTransformMatrix(renderer)
     width = renderer.GetSize()[0]
     proj = [m.GetElement(0, 0) * width / 2, m.GetElement(2, 2), m.GetElement(2, 3),
             0.0 if cam.GetParallelProjection() else 1.0]
-    light = list(getattr(renderer, "_ewald_light", None) or IMPOSTOR_LIGHT)
+    from .scene import line_pixels
+
+    light = list(getattr(renderer, "_ewald_light", None) or (*light_params(None)[0], 1.0))
+    height = renderer.GetSize()[1]
     actors = renderer.GetActors()
     actors.InitTraversal()
     for _ in range(actors.GetNumberOfItems()):
         actor = actors.GetNextActor()
+        line = getattr(actor, "_ewald_line", None)
+        if line is not None:  # D51: lines scale with the image, mesh edges with the scene
+            kind, value = line
+            if kind == "world":
+                state = {"parallel_projection": cam.GetParallelProjection(), "parallel_scale": cam.GetParallelScale(),
+                         "position": cam.GetPosition(), "focal_point": cam.GetFocalPoint(),
+                         "view_angle": cam.GetViewAngle()}
+                width = max(1.0, value / pixel_size(state, height))
+            else:
+                width = line_pixels(value, height)
+            actor.GetProperty().SetLineWidth(width)
+            continue
         mapper = actor.GetMapper()
         code = mapper.GetSplatShaderCode() if hasattr(mapper, "GetSplatShaderCode") else None
         if code in (_IMPOSTOR_SHADER, _FLAT_SHADER):
@@ -322,6 +333,17 @@ def _impostor_camera(renderer, *_):
             uniforms.SetUniform4f("impostorProj", proj)
             if code == _IMPOSTOR_SHADER:
                 uniforms.SetUniform4f("impostorLight", light)
+
+
+def _watch_line(plotter, actor, kind: str, value: float):
+    """Let :func:`_impostor_camera` keep ``actor``'s line width right on every render: ``kind`` 'pixels'
+    (a :class:`ewald.scene.Lines` width) or 'world' (Angstrom, mesh edges)."""
+    actor._ewald_line = (kind, float(value))
+    ren = plotter.renderer
+    if not getattr(ren, "_impostor_observer", False):
+        ren.AddObserver("StartEvent", _impostor_camera)
+        ren._impostor_observer = True
+    _impostor_camera(ren)
 
 
 def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, show_cell: bool = True,
@@ -368,7 +390,7 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     ``data.surfaces`` by name (``{name: {"visible", "color", "transparency", "edges"}}``).
     ``type_transparency`` ``{type: 0..1}`` fades whole types; ``selection_color`` draws the particles of
     a 'Selection' property in that color (OVITO's red). ``light`` sets the plotter's key light (see
-    :func:`apply_light`); None keeps VTK's light kit. ``measurements`` draws the lines of distances, angles
+    :func:`apply_light`); None is the default key light of every renderer. ``measurements`` draws the lines of distances, angles
     and dihedrals (:mod:`ewald.measure`; the values are an overlay).
     """
     from .scene import SceneContext, build
@@ -418,8 +440,9 @@ def draw_scene(plotter, scene, *, atom_style: str = "auto", mesh_limit: int = 15
 
 
 # Fragment code for sphere impostors: discard outside the disc, then Blinn-Phong with a
-# key light ``impostorLight`` (camera frame direction, intensity; IMPOSTOR_LIGHT or the plotter's light)
-# plus ambient, matching the mesh material (ambient 0.25, diffuse 0.8).
+# key light ``impostorLight`` (camera frame direction, intensity; the plotter's light, see apply_light),
+# the head light (FILL_LIGHT) and ambient, matching the mesh material (ambient 0.25, diffuse 0.8,
+# specular 0.3, power 40).
 # The sprite sits at the sphere center; moving each fragment's depth to the sphere surface makes
 # overlapping spheres intersect and bonds enter them like real meshes. The world radius comes from
 # the sprite's size in pixels (screen derivative of the offset) and ``impostorProj`` =
@@ -433,7 +456,7 @@ vec3 n = vec3(offsetVCVSOutput.xy, nz);
 vec3 l = normalize(impostorLight.xyz);
 float diff = max(dot(n, l), 0.0);
 float spec = pow(max(dot(n, normalize(l + vec3(0.0, 0.0, 1.0))), 0.0), 40.0);
-diffuseColor = diffuseColor * (0.3 + 0.75 * impostorLight.w * diff) + vec3(0.3 * impostorLight.w * spec);
+diffuseColor = diffuseColor * (0.25 + 0.8 * impostorLight.w * (diff + 0.3 * nz)) + vec3(0.3 * impostorLight.w * spec);
 ambientColor = vec3(0.0);
 float rpix = 1.0 / max(length(vec2(dFdx(offsetVCVSOutput.x), dFdy(offsetVCVSOutput.x))), 1e-6);
 float zn = 2.0 * gl_FragCoord.z - 1.0;
@@ -449,7 +472,7 @@ gl_FragDepth = 0.5 * zn + 0.5;
 _FLAT_SHADER = _IMPOSTOR_SHADER.replace("""vec3 l = normalize(impostorLight.xyz);
 float diff = max(dot(n, l), 0.0);
 float spec = pow(max(dot(n, normalize(l + vec3(0.0, 0.0, 1.0))), 0.0), 40.0);
-diffuseColor = diffuseColor * (0.3 + 0.75 * impostorLight.w * diff) + vec3(0.3 * impostorLight.w * spec);
+diffuseColor = diffuseColor * (0.25 + 0.8 * impostorLight.w * (diff + 0.3 * nz)) + vec3(0.3 * impostorLight.w * spec);
 ambientColor = vec3(0.0);
 float rpix = 1.0 / max(length(vec2(dFdx(offsetVCVSOutput.x), dFdy(offsetVCVSOutput.x))), 1e-6);
 """, """float rpix = 1.0 / max(length(vec2(dFdx(offsetVCVSOutput.x), dFdy(offsetVCVSOutput.x))), 1e-6);
@@ -679,6 +702,7 @@ def add_sticks(plotter, cyl, name):
 
 
 STICK_OUTLINE = 0.3  # outline width of flat sticks, as a fraction of the stick radius
+FLAT_OUTLINE = 0.08  # gray of the flat (ASE) style's outlines in every renderer
 
 
 def _add_stick_outline(plotter, start, end, radius, name):
@@ -690,7 +714,7 @@ def _add_stick_outline(plotter, start, end, radius, name):
 
     verts, faces, _ = tube_mesh(start, end, radius * (1.0 + STICK_OUTLINE))
     hull = pv.PolyData.from_regular_faces(verts, faces)
-    actor = plotter.add_mesh(hull, color=(0.08, 0.08, 0.08), name=name, render=False, lighting=False)
+    actor = plotter.add_mesh(hull, color=(FLAT_OUTLINE,) * 3, name=name, render=False, lighting=False)
     actor.GetProperty().FrontfaceCullingOn()  # tube_mesh faces wind outward
 
 
@@ -719,8 +743,9 @@ def _add_mesh(plotter, mesh, name):
     if mesh.edges is not None and len(mesh.edges):
         lines = np.column_stack([np.full(len(mesh.edges), 2), mesh.edges]).ravel()
         edges = name.replace("surface:", "surface-edges:", 1) if name.startswith("surface:") else f"{name}:edges"
-        plotter.add_mesh(pv.PolyData(mesh.vertices, lines=lines), color=_rgb(mesh.edge_color), line_width=1.5,
-                         name=edges, render=False)
+        actor = plotter.add_mesh(pv.PolyData(mesh.vertices, lines=lines), color=_rgb(mesh.edge_color),
+                                 line_width=1.5, name=edges, render=False)
+        _watch_line(plotter, actor, "world", mesh.edge_width)
 
 
 def _add_arrows(plotter, arrows, name, sides, line_limit):
@@ -755,7 +780,8 @@ def _add_arrows(plotter, arrows, name, sides, line_limit):
 
 
 def _add_lines(plotter, lines, name, ink):
-    """Polylines ``width`` pixels wide, each in its color (or ``ink``)."""
+    """Polylines as wide as :func:`ewald.scene.line_pixels` (kept right when the window resizes), each in
+    its color (or ``ink``)."""
     import pyvista as pv
 
     if not lines.count or len(lines.points) < 2:
@@ -764,13 +790,13 @@ def _add_lines(plotter, lines, name, ink):
     poly = pv.PolyData(lines.points, lines=cells)
     if lines.point_rgb is not None:   # a color map along the lines, blended along each piece
         poly.point_data["rgb"] = (np.clip(lines.point_rgb, 0, 1) * 255).astype(np.uint8)
-        plotter.add_mesh(poly, scalars="rgb", rgb=True, line_width=lines.width, name=name, render=False)
-        return
-    if lines.rgb is None:
-        plotter.add_mesh(poly, color=ink, line_width=lines.width, name=name, render=False)
-        return
-    poly.cell_data["rgb"] = (np.clip(lines.rgb, 0, 1) * 255).astype(np.uint8)
-    plotter.add_mesh(poly, scalars="rgb", rgb=True, line_width=lines.width, name=name, render=False)
+        actor = plotter.add_mesh(poly, scalars="rgb", rgb=True, line_width=lines.width, name=name, render=False)
+    elif lines.rgb is None:
+        actor = plotter.add_mesh(poly, color=ink, line_width=lines.width, name=name, render=False)
+    else:
+        poly.cell_data["rgb"] = (np.clip(lines.rgb, 0, 1) * 255).astype(np.uint8)
+        actor = plotter.add_mesh(poly, scalars="rgb", rgb=True, line_width=lines.width, name=name, render=False)
+    _watch_line(plotter, actor, "pixels", lines.width)
 
 
 def _setup_camera(plotter, data, direction, orthographic, zoom):
@@ -813,6 +839,15 @@ def apply_camera_state(plotter, state: dict):
     cam.parallel_scale = state.get("parallel_scale", cam.parallel_scale)
     cam.view_angle = state.get("view_angle", cam.view_angle)
     plotter.reset_camera_clipping_range()
+
+
+def pixel_size(camera: dict, height: int) -> float:
+    """Size in Angstrom of one pixel of an image ``height`` pixels high seen through ``camera`` (see
+    :func:`camera_state`), at the focal point in perspective views."""
+    if camera.get("parallel_projection", True):
+        return 2.0 * float(camera["parallel_scale"]) / max(int(height), 1)
+    dist = float(np.linalg.norm(np.subtract(camera["position"], camera["focal_point"])))
+    return 2.0 * dist * np.tan(np.radians(float(camera.get("view_angle", 30.0))) / 2) / max(int(height), 1)
 
 
 def setup_camera(plotter, data, direction="iso", orthographic=True, zoom=1.0):
@@ -981,6 +1016,10 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
 
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     p.set_background(background)
+    if scene_kwargs.get("cell_color") is None:  # the ray tracer's and vector files' ink: light on dark backgrounds
+        from .overlays import cell_line_color
+
+        scene_kwargs["cell_color"] = cell_line_color(background, transparent_background)
     res = q["sphere_resolution"] if data.count <= 20_000 else min(q["sphere_resolution"], 16)
     scene = build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, bonds=bonds,
                         sphere_resolution=res, light=light, **scene_kwargs)
@@ -1071,6 +1110,7 @@ def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, ba
     from .overlays import cell_line_color
     from .raytrace import raytrace, scene_from_data
 
+    flat = scene_kwargs.get("atom_style") == "flat"
     for k in ("atom_style", "sphere_resolution", "mesh_limit", "antialiasing", "ambient_occlusion", "cell_width"):
         scene_kwargs.pop(k, None)
     if camera is None:  # same framing as the OpenGL path
@@ -1079,12 +1119,15 @@ def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, ba
     view = np.asarray(camera["position"], float) - np.asarray(camera["focal_point"], float)
     scene_kwargs.setdefault("arrow_resolution", 16 if samples <= 4 else 24)
     scene = scene_from_data(data, radius_scale=radius_scale, bonds=bonds, show_cell=show_cell,
-                            cell_color=scene_kwargs.pop("cell_color", cell_color), view_direction=view,
-                            **scene_kwargs)
+                            cell_color=scene_kwargs.pop("cell_color", None) or cell_color, view_direction=view,
+                            pixel=(pixel_size(camera, size[1]), size[1]), flat=flat, **scene_kwargs)
     lit = {}
     if light is not None:
         d, k = light_params(light)
         lit = {"light_direction": tuple(d), "diffuse": 0.6 * k, "specular": 0.25 * k}
+    if flat:  # the flat (ASE) style: every color as it is, no light, shadows or occlusion (D51)
+        lit.update(ambient=1.0, diffuse=0.0, specular=0.0)
+        ao_samples, shadows = 0, False
     img = raytrace(scene, camera, size, samples=samples, ao_samples=ao_samples, shadows=shadows,
                    noise_threshold=noise_threshold,
                    background=background, transparent_background=transparent_background, progress=progress,

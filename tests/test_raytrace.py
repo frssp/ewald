@@ -163,3 +163,41 @@ def test_quality_presets_carry_noise_threshold():
     assert all("noise_threshold" in p for p in QUALITY_PRESETS.values())
     assert QUALITY_PRESETS["publication"]["noise_threshold"] > 0
     assert quality_settings("publication", noise_threshold=0.0)["noise_threshold"] == 0.0
+
+
+def test_one_pixel_lines_are_solid():
+    """Sub-pixel positions follow the R2 sequence, so a one-pixel cell line covers its pixels evenly
+    instead of breaking into dots (D51)."""
+    from ewald import DataCollection
+    from ewald.data import Cell
+    from ewald.render import render
+
+    data = DataCollection([[2, 2, 2]], ["Si"], Cell(np.diag([4.0, 4.0, 4.0])))
+    img = render(data, size=(200, 150), renderer="raytrace", quality="standard", samples=16, ao_samples=0,
+                 shadows=False, legend=False, direction=(1, 1, 1)).astype(float).mean(-1)
+    col = int(np.argmin(img[60:90].mean(0)[:70]))             # the left vertical edge
+    profile = img[45:105, col - 1:col + 2].min(1)
+    assert profile.std() < 25 and profile.max() < 160
+
+
+def test_flat_style_outlines():
+    """scene_from_ir(flat=True) adds the dark outlines (a sphere behind each atom, a wider stick behind each
+    bond) and the flat render is unlit: one color inside each atom's rim."""
+    from ewald import DataCollection
+    from ewald import scene as ir
+    from ewald.render import FLAT_OUTLINE, render
+
+    data = DataCollection([[0, 0, 0], [2.0, 0, 0]], ["Cu", "Cu"])
+    s = ir.build(data, bonds=2.5)
+    plain = rt.scene_from_ir(s, view_direction=(0, 0, 1))
+    flat = rt.scene_from_ir(s, view_direction=(0, 0, 1), flat=True, pixel=(0.01, 400))
+    assert len(flat.sph_r) == 2 * len(plain.sph_r) and len(flat.cyl_r) == 2 * len(plain.cyl_r)
+    dark = np.all(np.isclose(flat.sph_rgb, FLAT_OUTLINE), axis=1)
+    assert dark.sum() == len(plain.sph_r) and (flat.sph_c[dark, 2] < 0).all()   # pushed back, away from the viewer
+    assert (flat.sph_r[~dark] < plain.sph_r).all()                    # the colored atom inside its rim
+    img = render(data, size=(200, 100), renderer="raytrace", atom_style="flat", quality="standard", legend=False,
+                 direction="z", show_cell=False).astype(int)
+    copper = (img[..., 0] > 150) & (img[..., 2] < 120)                 # inside the atoms and bonds
+    flat_color = np.abs(img - img[copper].mean(0)).max(-1) <= 6
+    assert copper.sum() > 500 and (flat_color & copper).sum() > 0.9 * copper.sum()   # unlit: one color
+    assert (img.sum(-1) < 3 * 60).sum() > 30                          # dark rims

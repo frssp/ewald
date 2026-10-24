@@ -18,10 +18,12 @@ import sys
 
 import numpy as np
 
+from ..render import FLAT_OUTLINE, STICK_OUTLINE
+
 # ----------------------------------------------------------------------------- libGL through ctypes
 GL_COMPILE = 0x1300
 GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT = 0x4000, 0x0100
-GL_DEPTH_TEST, GL_LIGHTING, GL_LIGHT0, GL_COLOR_MATERIAL = 0x0B71, 0x0B50, 0x4000, 0x0B57
+GL_DEPTH_TEST, GL_LIGHTING, GL_LIGHT0, GL_LIGHT1, GL_COLOR_MATERIAL = 0x0B71, 0x0B50, 0x4000, 0x4001, 0x0B57
 GL_NORMALIZE, GL_BLEND, GL_CULL_FACE, GL_LINE_SMOOTH = 0x0BA1, 0x0BE2, 0x0B44, 0x0B20
 GL_POLYGON_OFFSET_FILL, GL_POINT_SMOOTH = 0x8037, 0x0B10
 GL_MODELVIEW, GL_PROJECTION = 0x1700, 0x1701
@@ -33,6 +35,7 @@ GL_FLOAT, GL_DOUBLE, GL_UNSIGNED_INT = 0x1406, 0x140A, 0x1405
 GL_VERTEX_ARRAY, GL_NORMAL_ARRAY, GL_COLOR_ARRAY = 0x8074, 0x8075, 0x8076
 GL_VERSION, GL_RENDERER, GL_VENDOR = 0x1F02, 0x1F01, 0x1F00
 GL_FILL = 0x1B02
+GL_FRONT = 0x0404
 
 _SIGNATURES = {
     "glClearColor": [ctypes.c_float] * 4, "glClear": [ctypes.c_uint], "glEnable": [ctypes.c_uint],
@@ -56,7 +59,7 @@ _SIGNATURES = {
     "glColorPointer": [ctypes.c_int, ctypes.c_uint, ctypes.c_int, ctypes.c_void_p],
     "glDrawElements": [ctypes.c_uint, ctypes.c_int, ctypes.c_uint, ctypes.c_void_p],
     "glDrawArrays": [ctypes.c_uint, ctypes.c_int, ctypes.c_int],
-    "glGetString": [ctypes.c_uint], "glFinish": [], "glGetError": [],
+    "glGetString": [ctypes.c_uint], "glFinish": [], "glGetError": [], "glCullFace": [ctypes.c_uint],
 }
 
 
@@ -257,9 +260,11 @@ class LegacyRenderer:
         self.ink = (0.0, 0.0, 0.0)
         self.sphere_resolution = 16
         self.light = None                # key light (ewald.render.light_params); None: the head light
+        self.flat = False                # the flat (ASE) style: unlit atoms and sticks in dark outlines
         self._lists: list[int] = []      # opaque display lists
         self._glass: list[int] = []      # transparent display lists, drawn last
         self._overlay: list[int] = []    # picks / measurements, drawn without depth test
+        self._line_width: dict = {}      # line lists: ("pixels", Lines.width) or ("world", Angstrom), set per draw
         self._unit: dict = {}
         self.centers = np.zeros((0, 3))  # for picking: sphere centers, radii and particle indices
         self.radii = np.zeros(0)
@@ -330,10 +335,11 @@ class LegacyRenderer:
         return self._unit_list(("disk", res, top), lambda: unit_disk(res, top))
 
     # ---------------------------------------------------------------- compile
-    def compile(self, scene, *, sphere_resolution=None, background=None, ink=None, light=None):
+    def compile(self, scene, *, sphere_resolution=None, background=None, ink=None, light=None, flat=False):
         """Replace the drawn geometry with ``scene`` (needs a current context); ``light`` is the view's key
-        light (None: a head light)."""
+        light (None: the default key light); ``flat`` draws the flat (ASE) style as the other renderers do."""
         self.light = light
+        self.flat = bool(flat)
         if background is not None:
             self.background = tuple(background)
         if ink is not None:
@@ -342,6 +348,7 @@ class LegacyRenderer:
             self.sphere_resolution = int(sphere_resolution)
         self._free(self._lists)
         self._free(self._glass)
+        self._line_width.clear()
         centers, radii, index, lo, hi = [], [], [], [], []
         for layer in scene.layers:
             prim, kind = layer.primitive, layer.kind
@@ -354,7 +361,7 @@ class LegacyRenderer:
                 pts = prim.centers
             elif kind == "cylinders" and prim.count:
                 self._compile_cylinders(prim.start, prim.end, prim.radius, prim.rgb, prim.alpha,
-                                        flat_caps=(prim.start_cap == 1, prim.end_cap == 1))
+                                        flat_caps=(prim.start_cap == 1, prim.end_cap == 1), outline=self.flat)
                 center, _, radius, rgb, alpha, _ = prim.caps("round")
                 if len(center):  # a sphere of the tube radius shows as a hemisphere past the end
                     from ..scene import Spheres
@@ -416,20 +423,35 @@ class LegacyRenderer:
             key = np.round(np.column_stack([rgb[sel], alpha[sel]]), 4)
             order = np.lexsort(key.T[::-1])
             c, r, k = s.centers[sel][order], rad[sel][order], key[order]
-            last = None
-            for i in range(len(c)):
-                if last is None or not np.array_equal(k[i], last):
-                    gl.glColor4d(*k[i])
-                    last = k[i]
-                gl.glPushMatrix()
-                gl.glTranslated(*c[i])
-                gl.glScaled(r[i], r[i], r[i])
-                gl.glCallList(unit)
-                gl.glPopMatrix()
+            if self.flat:  # unlit discs inside a dark rim (5 % of the radius, as the other renderers)
+                gl.glDisable(GL_LIGHTING)
+                self._spheres(unit, c, r * 0.95, k)
+                gl.glEnable(GL_CULL_FACE)
+                gl.glCullFace(GL_FRONT)          # the inverted hull: only its far side shows, past the rim
+                self._spheres(unit, c, r, np.column_stack([np.full((len(c), 3), FLAT_OUTLINE), k[:, 3]]))
+                gl.glDisable(GL_CULL_FACE)
+                gl.glEnable(GL_LIGHTING)
+            else:
+                self._spheres(unit, c, r, k)
             gl.glEndList()
 
-    def _compile_cylinders(self, start, end, radius, rgb, alpha, cone=False, res=None, flat_caps=None):
-        """Cylinders (or cones) as display lists; ``flat_caps`` (start mask, end mask) closes those ends."""
+    def _spheres(self, unit, c, r, k):
+        """Unit-sphere calls at centers ``c`` scaled by ``r`` in RGBA colors ``k`` (inside a list)."""
+        gl = self.gl
+        last = None
+        for i in range(len(c)):
+            if last is None or not np.array_equal(k[i], last):
+                gl.glColor4d(*k[i])
+                last = k[i]
+            gl.glPushMatrix()
+            gl.glTranslated(*c[i])
+            gl.glScaled(r[i], r[i], r[i])
+            gl.glCallList(unit)
+            gl.glPopMatrix()
+
+    def _compile_cylinders(self, start, end, radius, rgb, alpha, cone=False, res=None, flat_caps=None, outline=False):
+        """Cylinders (or cones) as display lists; ``flat_caps`` (start mask, end mask) closes those ends;
+        ``outline``: unlit, in a dark hull 30 % of the radius wider (the flat style)."""
         gl = self.gl
         alpha = np.broadcast_to(np.asarray(alpha, float), (len(start),))
         res = res or max(self._sphere_res(len(start)) // 2 + 2, 6)
@@ -438,6 +460,7 @@ class LegacyRenderer:
         caps = [(np.broadcast_to(m, (len(start),)), self.disk_list(res, top))
                 for m, top in zip(flat_caps or (no, no), (False, True)) if np.any(m)]
         mats = align_matrices(start, end, radius)
+        hull = align_matrices(start, end, (1.0 + STICK_OUTLINE) * np.asarray(radius, float)) if outline else None
         rgb = np.asarray(rgb, float)
         base = mats.ctypes.data
         for glass in (False, True):
@@ -445,6 +468,17 @@ class LegacyRenderer:
             if not len(sel):
                 continue
             self._new_list(self._glass if glass else self._lists)
+            if outline:
+                gl.glDisable(GL_LIGHTING)
+                gl.glEnable(GL_CULL_FACE)
+                gl.glCullFace(GL_FRONT)
+                for i in sel:
+                    gl.glColor4d(FLAT_OUTLINE, FLAT_OUTLINE, FLAT_OUTLINE, alpha[i])
+                    gl.glPushMatrix()
+                    gl.glMultMatrixd(ctypes.c_void_p(hull.ctypes.data + int(i) * 128))
+                    gl.glCallList(unit)
+                    gl.glPopMatrix()
+                gl.glDisable(GL_CULL_FACE)
             last = None
             for i in sel:
                 col = (rgb[i, 0], rgb[i, 1], rgb[i, 2], alpha[i])
@@ -458,6 +492,8 @@ class LegacyRenderer:
                     if mask[i]:
                         gl.glCallList(disk)
                 gl.glPopMatrix()
+            if outline:
+                gl.glEnable(GL_LIGHTING)
             gl.glEndList()
 
     def _compile_lines(self, lines):
@@ -466,9 +502,9 @@ class LegacyRenderer:
         if not len(seg):
             return
         colors = lines.vertex_colors(self.ink)[seg.ravel()]   # per point: color maps blend along a piece
-        self._new_list(self._lists)
+        n = self._new_list(self._lists)
+        self._line_width[n] = ("pixels", float(lines.width))
         gl.glDisable(GL_LIGHTING)
-        gl.glLineWidth(max(float(lines.width) * 0.75, 1.0))
         self._draw_arrays(lines.points[seg.ravel()], None, colors=colors, mode=GL_LINES)
         gl.glEnable(GL_LIGHTING)
         gl.glEndList()
@@ -485,19 +521,27 @@ class LegacyRenderer:
             normals = np.repeat(n[:, None], 3, axis=1)
         if "Color" in mesh.vertex_properties:
             rgb = np.asarray(mesh.vertex_properties["Color"], float)[f]
-        elif "Color" in mesh.face_properties:
-            rgb = np.repeat(np.asarray(mesh.face_properties["Color"], float)[:, None], 3, axis=1)
-        else:
-            rgb = np.full((len(f), 3, 3), 0.7)
+        else:  # the face colors, with the other renderers' default grey
+            rgb = np.repeat(np.clip(mesh.face_colors(), 0, 1)[:, None], 3, axis=1)
+        # the VTK surface material (ambient 0.3, diffuse 0.7, specular 0.2; color-mapped slices 0.6, 0.45, 0, so
+        # they read true) from the lights' diffuse 0.8: colors scaled to the diffuse part, ambient light to match
+        mapped = "Color" in mesh.vertex_properties
+        amb, dif, spec = (0.6, 0.45, 0.0) if mapped else (0.3, 0.7, 0.2)
         alpha = 1.0 - mesh.transparency
-        colors = np.concatenate([rgb, np.full(rgb.shape[:2] + (1,), alpha)], -1).reshape(-1, 4)
+        colors = np.concatenate([rgb * (dif / 0.8), np.full(rgb.shape[:2] + (1,), alpha)], -1).reshape(-1, 4)
         self._new_list(self._glass if alpha < 1 else self._lists)
+        f4 = ctypes.c_float * 4
+        self._mesh_light = [f4(*([amb * 0.8 / dif] * 3), 1), f4(*([spec / 0.3] * 3), 1)]
+        gl.glLightModelfv(GL_LIGHT_MODEL_AMBIENT, self._mesh_light[0])
+        gl.glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, self._mesh_light[1])
         self._draw_arrays(tri.reshape(-1, 3), None, normals.reshape(-1, 3), colors)
+        gl.glLightModelfv(GL_LIGHT_MODEL_AMBIENT, self._keep[4])
+        gl.glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, self._keep[5])
         gl.glEndList()
         if mesh.edges is not None and len(mesh.edges):
-            self._new_list(self._lists)
+            n = self._new_list(self._lists)
+            self._line_width[n] = ("world", float(mesh.edge_width))
             gl.glDisable(GL_LIGHTING)
-            gl.glLineWidth(1.5)
             ec = np.broadcast_to(np.asarray(mesh.edge_color, float), (len(mesh.edges) * 2, 3))
             self._draw_arrays(v[mesh.edges.ravel()], None, colors=ec, mode=GL_LINES)
             gl.glEnable(GL_LIGHTING)
@@ -542,20 +586,23 @@ class LegacyRenderer:
         gl.glEnable(GL_DEPTH_TEST)
         gl.glEnable(GL_LIGHTING)
         gl.glEnable(GL_LIGHT0)
+        gl.glEnable(GL_LIGHT1)
         gl.glEnable(GL_NORMALIZE)
         gl.glEnable(GL_COLOR_MATERIAL)
         gl.glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
         gl.glShadeModel(GL_SMOOTH)
         gl.glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, 1)
         f4 = lambda *v: (ctypes.c_float * 4)(*v)  # noqa: E731
-        self._keep = [None, f4(0.85, 0.85, 0.85, 1), f4(0.45, 0.45, 0.45, 1),
-                      f4(0.0, 0.0, 0.0, 1), f4(0.25, 0.25, 0.25, 1)]
-        gl.glLightModelfv(GL_LIGHT_MODEL_AMBIENT, self._keep[4])
+        self._keep = [None, f4(0.8, 0.8, 0.8, 1), f4(0.3, 0.3, 0.3, 1),
+                      f4(0.0, 0.0, 0.0, 1), f4(0.25, 0.25, 0.25, 1), f4(1.0, 1.0, 1.0, 1)]
+        gl.glLightModelfv(GL_LIGHT_MODEL_AMBIENT, self._keep[4])   # ambient 0.25, diffuse 0.8, specular 0.3 x 40
         gl.glLightfv(GL_LIGHT0, GL_AMBIENT, self._keep[3])
         gl.glLightfv(GL_LIGHT0, GL_DIFFUSE, self._keep[1])
         gl.glLightfv(GL_LIGHT0, GL_SPECULAR, self._keep[2])
-        gl.glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, self._keep[2])
-        gl.glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 32.0)
+        gl.glLightfv(GL_LIGHT1, GL_AMBIENT, self._keep[3])
+        gl.glLightfv(GL_LIGHT1, GL_SPECULAR, self._keep[3])
+        gl.glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, self._keep[5])
+        gl.glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 40.0)
         gl.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         gl.glEnable(GL_LINE_SMOOTH)
 
@@ -570,20 +617,33 @@ class LegacyRenderer:
         gl.glLoadMatrixd(_ptr(proj))
         gl.glMatrixMode(GL_MODELVIEW)
         gl.glLoadIdentity()
-        if self.light is None:
-            d, k = (0.3, 0.4, 1.0), 1.0   # directional, from the viewer, eye space
-        else:
-            from ..render import light_params
+        from ..render import FILL_LIGHT, light_params
 
-            d, k = light_params(self.light)
+        d, k = light_params(self.light)  # the key light of every renderer (D51), eye space, plus a head light
         f4 = ctypes.c_float * 4
-        self._light_now = [f4(*d, 0.0), f4(0.85 * k, 0.85 * k, 0.85 * k, 1), f4(0.45 * k, 0.45 * k, 0.45 * k, 1)]
+        key, fill, spec = 0.8 * k, 0.8 * FILL_LIGHT * k, 0.3 * k   # the VTK mesh material
+        self._light_now = [f4(*d, 0.0), f4(key, key, key, 1), f4(spec, spec, spec, 1),
+                           f4(0.0, 0.0, 1.0, 0.0), f4(fill, fill, fill, 1)]
         gl.glLightfv(GL_LIGHT0, GL_POSITION, self._light_now[0])
         gl.glLightfv(GL_LIGHT0, GL_DIFFUSE, self._light_now[1])
         gl.glLightfv(GL_LIGHT0, GL_SPECULAR, self._light_now[2])
+        gl.glLightfv(GL_LIGHT1, GL_POSITION, self._light_now[3])
+        gl.glLightfv(GL_LIGHT1, GL_DIFFUSE, self._light_now[4])
         gl.glLoadMatrixd(_ptr(view))
         gl.glEnable(GL_DEPTH_TEST)
+        if self._line_width:  # D51: lines scale with the view height, mesh edges with the scene
+            from ..render import camera_state, pixel_size
+            from ..scene import line_pixels
+
+            px = pixel_size(camera_state(plotter), height)
         for n in self._lists:
+            if n in self._line_width:  # smooth (blended) lines, as wide as in the other renderers
+                kind, value = self._line_width[n]
+                gl.glLineWidth(line_pixels(value, height) if kind == "pixels" else max(1.0, value / px))
+                gl.glEnable(GL_BLEND)
+                gl.glCallList(n)
+                gl.glDisable(GL_BLEND)
+                continue
             gl.glCallList(n)
         if self._glass:
             gl.glEnable(GL_BLEND)

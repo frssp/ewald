@@ -49,7 +49,8 @@ def test_builtin_elements_make_one_layer_each():
     bonds = scene["bonds"].primitive
     assert bonds.count % 2 == 0 and set(bonds.owner) <= set(range(data.count))
     cell = scene["cell"].primitive
-    assert cell.count == 12 and cell.rgb is None and cell.radius > 0
+    assert cell.count == 12 and cell.rgb is None and cell.radius is None  # tubes as wide as the line (D51)
+    assert build(data, cell_radius=0.1)["cell"].primitive.radius == 0.1
     assert len(build(data, show_cell=False).layers) == 1
 
 

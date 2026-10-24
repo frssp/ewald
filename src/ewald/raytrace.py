@@ -110,10 +110,12 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
                     trajectory_colormap="viridis", trajectory_color_range=None, trajectory_time_range=None,
                     trajectory_trail=None, trajectory_radius=None, visuals=None, frame=0, boundary=None, boundary_bonds="half", replicate=None, replicate_cell="super",
                     show_atoms=True, surfaces=None, type_transparency=None, selection_color=None, measurements=None,
-                    **_ignored):
+                    pixel=None, flat=False, **_ignored):
     """Build a Scene with the same colors/radii/bonds/arrows as :func:`ewald.render.build_scene`.
 
     ``view_direction`` (scene -> camera) lets 'flat' arrows face the viewer evenly lit.
+    ``pixel``: ``(size of a pixel in Angstrom, image height)`` sizes lines as in the other renderers.
+    ``flat``: the flat (ASE) style's outlines (see :func:`scene_from_ir`).
     ``visuals``: extra visual elements (plugins), see :mod:`ewald.scene`.
     """
     from . import scene as ir
@@ -130,14 +132,36 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
                      replicate_cell=replicate_cell, show_atoms=show_atoms, surfaces=surfaces,
                      type_transparency=type_transparency, selection_color=selection_color,
                      measurements=measurements)
-    return scene_from_ir(scene, arrow_resolution=arrow_resolution, view_direction=view_direction, ink=cell_color)
+    return scene_from_ir(scene, arrow_resolution=arrow_resolution, view_direction=view_direction, ink=cell_color,
+                         pixel=pixel, flat=flat)
 
 
-def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 0.0, 0.0)) -> Scene:
+def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 0.0, 0.0), pixel=None,
+                  flat=False) -> Scene:
     """Ray-tracer primitives for every layer of an :class:`ewald.scene.Scene`. The ray tracer is
-    opaque except for triangles: sphere and cylinder ``alpha`` is ignored. Lines without a
-    ``radius`` (screen-space only) are not drawn."""
-    from .render import _rgb
+    opaque except for triangles: sphere and cylinder ``alpha`` is ignored. Lines are tubes of their
+    ``radius``, else as wide as :func:`ewald.scene.line_pixels` with ``pixel`` = ``(size of a pixel in
+    Angstrom, image height)``; without either they are not drawn.
+
+    ``flat`` (with ``view_direction``): the flat (ASE) style's dark outlines, as the OpenGL renderer draws
+    them (render it unlit): a dark rim inside each atom, ``max(0.8 pixel, 5 %)`` of its radius, and one
+    around each stick, 30 % of its radius. Both are dark copies pushed back along the view, so only the
+    rim shows past the colored primitive (the OpenGL inverted hull)."""
+    from .render import FLAT_OUTLINE, STICK_OUTLINE, _rgb
+    from .scene import line_pixels
+
+    toward = None
+    if flat and view_direction is not None:
+        toward = np.asarray(view_direction, float) / np.linalg.norm(view_direction)
+    dark = np.array([FLAT_OUTLINE] * 3)
+
+    def outline(centers, radii, start=None, end=None):
+        """Dark spheres (``centers``) or cylinders (``start``, ``end``) of ``radii``, pushed back by their radius."""
+        back = np.asarray(radii, float)[:, None] * toward
+        if start is None:
+            sc.add_spheres(centers - back, radii, dark, False)
+        else:
+            sc.add_cylinders(start - back, end - back, radii, dark, False)
 
     sc = Scene()
     sc.legends = list(getattr(scene, "legends", []))
@@ -146,6 +170,10 @@ def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 
         if layer.kind == "spheres":
             if prim.count:
                 c, r, rgb, a = prim.centers, prim.sizes(), prim.colors(), prim.alpha
+                if toward is not None:   # the rim: a dark sphere behind, the colored one that much smaller
+                    rim = np.maximum(0.05 * r, 0.8 * pixel[0] if pixel is not None else 0.0)
+                    outline(c, r)
+                    r = np.maximum(r - rim, 0.5 * r)
                 solid = a >= 1
                 if solid.all():
                     sc.add_spheres(c, r, rgb)
@@ -160,6 +188,11 @@ def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 
                 center, _, radius, rgb, _, _ = prim.caps("round")
                 if len(center):  # a sphere of the tube radius shows as a hemisphere past the end
                     sc.add_spheres(center, radius, rgb)
+                if toward is not None:
+                    wide = (1.0 + STICK_OUTLINE) * np.broadcast_to(prim.radius, (prim.count,))
+                    outline(None, wide, prim.start, prim.end)
+                    if len(center):
+                        outline(center, (1.0 + STICK_OUTLINE) * np.asarray(radius, float))
         elif layer.kind == "mesh":
             mesh = prim
             if mesh.face_count:
@@ -174,7 +207,10 @@ def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 
         elif layer.kind == "arrows":
             _add_arrows(sc, prim, arrow_resolution, view_direction)
         elif layer.kind == "lines":
-            if prim.radius is None or not prim.count:
+            radius = prim.radius
+            if radius is None and pixel is not None:
+                radius = 0.5 * line_pixels(prim.width, pixel[1]) * pixel[0]
+            if radius is None or not prim.count:
                 continue
             seg = prim.segments()
             if not len(seg):
@@ -184,18 +220,18 @@ def scene_from_ir(scene, *, arrow_resolution=24, view_direction=None, ink=(0.0, 
             else:
                 seg_rgb = prim.segment_colors()
             cast = prim.cast_shadows
-            sc.add_cylinders(prim.points[seg[:, 0]], prim.points[seg[:, 1]], prim.radius, seg_rgb, cast)
+            sc.add_cylinders(prim.points[seg[:, 0]], prim.points[seg[:, 1]], radius, seg_rgb, cast)
             # round joints so corners look closed
             joints = np.unique(seg)
             if prim.rgb is None and prim.point_rgb is None:
-                sc.add_spheres(prim.points[joints], prim.radius, seg_rgb, cast)
+                sc.add_spheres(prim.points[joints], radius, seg_rgb, cast)
             elif prim.point_rgb is not None:
-                sc.add_spheres(prim.points[joints], prim.radius, np.asarray(prim.point_rgb, float)[joints], cast)
+                sc.add_spheres(prim.points[joints], radius, np.asarray(prim.point_rgb, float)[joints], cast)
             else:
                 rgb = np.empty((len(prim.points), 3))
                 rgb[seg[:, 1]] = seg_rgb
                 rgb[seg[:, 0]] = seg_rgb
-                sc.add_spheres(prim.points[joints], prim.radius, rgb[joints], cast)
+                sc.add_spheres(prim.points[joints], radius, rgb[joints], cast)
     return sc
 
 
@@ -850,14 +886,17 @@ def _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, s1, sampl
                 continue
             state[0] = np.uint64(seed) * np.uint64(0x9E3779B97F4A7C15) + np.uint64(py * width + px + 1)
             aos[0] = _rand(state); aos[1] = _rand(state); aos[2] = 0.0
+            jox = _rand(state); joy = _rand(state)
             s0 = nsamp[py, px] if keep else 0
             if s0 > 0:
                 state[0] = rng[py, px]; aos[2] = ao_next[py, px]
             acc_r, acc_g, acc_b, acc_a = acc[py, px, 0], acc[py, px, 1], acc[py, px, 2], acc[py, px, 3]
             acc_q = sq[py, px] if keep else 0.0
             for s in range(s0, s1):
-                jx = _rand(state) if samples > 1 else 0.5
-                jy = _rand(state) if samples > 1 else 0.5
+                # sub-pixel positions follow the R2 sequence (shifted per pixel) like the AO rays: evenly
+                # spread for any sample count, so lines one pixel wide come out solid, not dotted
+                jx = (jox + s * 0.7548776662466927) % 1.0 if samples > 1 else 0.5
+                jy = (joy + s * 0.5698402909980532) % 1.0 if samples > 1 else 0.5
                 u = ((px + jx) / width * 2.0 - 1.0) * half_w
                 v = (1.0 - (py + jy) / height * 2.0) * half_h
                 for k in range(3):
