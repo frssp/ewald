@@ -598,6 +598,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   scatter plots of two properties (brushing a box selects atoms); keep a pair, bond or angle
   range as a modifier (only property ranges become an `ExpressionSelection` now).
 - P2: glTF, interactive HTML and Blender export.
+- P3: A Metal viewport on the Mac through VTK's WebGPU backend (Dawn maps it to Metal, Vulkan
+  or Direct3D 12). The VTK viewport draws through OpenGL 4.1 on a Mac now, which macOS runs on
+  top of Metal; the Metal option in Compute › Device is only for the ray tracer. Wait until
+  VTK's WebGPU backend leaves experimental and supports what the viewport uses (impostors,
+  depth peeling, picking), then add it as a `viewport.backend` choice.
 - P2: Batch render CLI: apply one `.ewald` session to many run folders.
 - P2: Native GSD reader (H5MD and XTC/TRR/DCD are done).
 - P2: Live reload for XTC/TRR/DCD and compressed files (dump, XDATCAR, OUTCAR, vasprun.xml,
