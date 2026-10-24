@@ -63,7 +63,8 @@ PAGE_OF_PREFIX = {"general": "General", "viewport": "3D view", "elements": "Atom
                   "render": "Rendering", "plots": "Plots", "compute": "Compute", "performance": "Compute",
                   "python": "Python", "llm": "AI"}
 PAGE_OF_KEY = {"python.plot_style": "Plots", "python.run_notebooks": "Notebooks", "python.save_figures": "Notebooks",
-               "python.bundle_data_mb": "Notebooks", "python.plugin_catalogs": "Plugins"}
+               "python.bundle_data_mb": "Notebooks", "python.output_scroll_after": "Notebooks",
+               "python.output_box_lines": "Notebooks", "python.plugin_catalogs": "Plugins"}
 PAGE_ALIASES = {"Viewports": "3D view", "Elements": "Atoms & bonds"}   # names before 2026-10-23
 
 OPTIONS = (
