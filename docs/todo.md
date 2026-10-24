@@ -569,6 +569,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- `no display: DISPLAY is not set` on a real Linux machine: the message should name the cause
+  (SSH login without `-X`, tmux/screen or `sudo` on the desktop, a Wayland session) and the
+  command that fixes it (`gui.no_display_hint`); tested with simulated environments only.
 - Preferences › Plots › Open as text on Windows and macOS: a `.mplstyle` file has no program
   associated on a fresh system, so Windows falls back to Notepad and macOS uses `open -t` (the
   default text editor); EWALD must re-read the file when the editor saves (watched with

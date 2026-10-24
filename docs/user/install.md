@@ -193,8 +193,22 @@ OpenGL (`opengl32sw.dll`, which comes with PySide6) and says so. Installing the 
 or enabling GPU acceleration for Remote Desktop, gives the full view again.
 `EWALD_VIEWPORT=vtk` forces the VTK view; `EWALD_SKIP_GL_PROBE=1` skips the check.
 
-**No window on a server.** Without `DISPLAY` there is nothing to open a window on: use
-`ssh -X`, a remote desktop, or `xvfb-run -a ewald gui` for screenshots and tests.
+**`no display: DISPLAY is not set`.** Qt has no X server to open the window on. `ewald gui` looks
+at why and says what to run:
+
+- Logged in over SSH without X11 forwarding: reconnect with `ssh -X user@host` (or `ssh -Y`;
+  on a Mac start XQuartz first, on Windows use MobaXterm or VcXsrv). `echo $DISPLAY` should then
+  print `localhost:10.0` or similar; if it stays empty, the server needs `X11Forwarding yes` in
+  `/etc/ssh/sshd_config` and the `xauth` package. Often faster: run ewald on your own computer and
+  open the files over SSH (`ewald gui user@host:/path/to/file`).
+- On the desktop machine, but inside tmux/screen, under `sudo`, or in an IDE's remote terminal:
+  these don't pass the desktop's `DISPLAY` on. `ls /tmp/.X11-unix` shows the running X servers
+  (`X0` is `:0`); `export DISPLAY=:0` and start again, or start from the desktop's own terminal
+  without `sudo`.
+- A Wayland session: `export WAYLAND_DISPLAY=wayland-0` (the name in `$XDG_RUNTIME_DIR`), or
+  `DISPLAY=:0` for its XWayland.
+- No display at all (a compute node): a remote desktop, `xvfb-run -a ewald gui` for screenshots
+  and tests, or `ewald render FILE out.png`.
 
 ## Headless machines
 
