@@ -369,7 +369,11 @@ File › New notebook (Ctrl+T), or a double-click on the empty part of the tab r
 Right-click a tab to rename or close it, or double-click it to rename. Drag a tab along the row to reorder
 the notebooks; drag the empty part of the row to move the whole Notebook panel to another side of the window,
 as with any panel's title bar.
-A dot marks unsaved changes. Each notebook has its own namespace and pipeline, and switching to
+A dot marks unsaved changes. Closing such a tab, or the window, asks first: **Save** saves and
+then closes (a notebook never saved asks for a file name), **Don't Save** closes without saving and
+**Cancel** keeps everything open. With several unsaved notebooks the question lists them and offers
+**Save All**; if a save fails or its file dialog is cancelled, nothing closes. Qt places the buttons
+in the order each platform uses. Each notebook has its own namespace and pipeline, and switching to
 a notebook that has a pipeline shows it in the viewport.
 
 Opening a data file (File › Open, or `ewald gui file`) makes a notebook for it: the imports, a

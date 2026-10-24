@@ -142,6 +142,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.ask_panel.runRequested.connect(lambda code: self._insert_claude_cell(code, run=True))
         # --- left: notebook tabs (the pipeline as Python cells); right: display settings
         self.panel = NotebookPanel()
+        self.panel.save_view = self.save_notebook   # Save in the "unsaved changes" question
         self.panel.openRequested.connect(self.open_dialog)
         self.panel.exampleRequested.connect(self.open_example)
         self.panel.recentRequested.connect(self.open_any)

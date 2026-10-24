@@ -546,6 +546,19 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   1.4 s at 108k atoms).
 - **Landed:** public PR #25 (bond impostors).
 
+### D45. Closing with unsaved notebooks: Save, Don't Save, Cancel (2026-10-24)
+
+- **Decision:** closing a tab or the window with unsaved notebooks asks with three buttons:
+  Save (save, then close; Save All for several notebooks; Save as for one never saved), Don't
+  Save and Cancel. A cancelled file dialog or a failed save keeps everything open. The buttons
+  are Qt standard buttons, so each platform gets its own order.
+- **Why:** the owner: "예스 노만 하지말고 저장 버튼도 보여줘" (not only Yes/No, show a Save
+  button too), asking which convention is usual; the save-then-close dialog is what VS Code,
+  Office and macOS apps use.
+- **Considered:** a Save button that only saves and leaves the window open; the old Yes/No
+  "Close anyway?" question.
+- **Landed:** public PR #NN.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
