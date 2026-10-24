@@ -535,7 +535,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** the CUDA ray tracer first (largest gain, but it cannot be checked without a
   GPU in the cloud container); analysis kernels and readers (already fast: PTM 0.74 s, Voronoi
   1.4 s at 108k atoms).
-- **Landed:** public PR #NN (bond impostors).
+- **Landed:** public PR #25 (bond impostors).
 
 ## Adding an entry
 
