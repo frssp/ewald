@@ -5697,3 +5697,73 @@ def test_view_frame_minus_one_is_the_last_frame(app):
     app.processEvents()
     assert w.frame == 2
     w.close()
+
+
+def test_plot_style_file_is_the_source_of_the_preferences_form(app, monkeypatch):
+    """Preferences › Plots › Style file: the form reads user.mplstyle when it opens (and again
+    when the file changed while it was open), Apply writes back only what changed, a bad value
+    keeps the dialog open, and Open as text creates the file from the template first."""
+    import os
+
+    from ewald import plotstyle, settings
+    from ewald.gui.preferences import PreferencesDialog
+
+    path = plotstyle.user_style_path()
+    plotstyle.write_style({"font.size": "9", "axes.grid": "True"})
+    dlg = PreferencesDialog(settings.Settings(), page="Plots")
+    assert dlg._style_form()["Font size"] == 9.0 and dlg._style_form()["Line width"] is None
+    dlg.style_widgets["Line width"].setValue(2.0)
+    dlg.style_widgets["Tick direction"].setCurrentIndex(dlg.style_widgets["Tick direction"].findData("out"))
+    assert dlg.apply()
+    assert plotstyle.read_style()[0] == {"font.size": "9", "axes.grid": "True", "lines.linewidth": "2.0",
+                                         "xtick.direction": "out", "ytick.direction": "out"}
+    plotstyle.write_style({"font.size": "12"})                 # edited in a text editor meanwhile
+    st = os.stat(path)
+    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+    dlg.event(QtCore.QEvent(QtCore.QEvent.WindowActivate))
+    assert dlg._style_form()["Font size"] == 12.0
+    dlg.style_widgets["Color cycle"].setText("nocolor")
+    assert not dlg.apply() and "Color cycle" in dlg.style_problems.text()
+    assert "axes.prop_cycle" not in plotstyle.read_style()[0]
+    dlg.style_widgets["Color cycle"].setText("")
+    dlg.restore_page()                                          # Reset page: the form's keys go
+    assert dlg.apply() and plotstyle.read_style()[0] == {"axes.grid": "True"}
+    opened = []
+    monkeypatch.setattr("ewald.gui.file_dialogs.open_in_editor", lambda p: opened.append(p) or True)
+    path.unlink()
+    assert dlg.open_style_file() and opened == [path] and plotstyle.read_style() == ({}, [])
+    assert "# EWALD plot style" in path.read_text(encoding="utf-8")
+    dlg.close()
+
+
+def test_plots_panel_shares_the_style_file(app, tmp_path):
+    """The Plots panel draws with the style file too: on screen without the theme's colors and
+    the canvas font size, in saved files with all of it; notebooks and the console get it too."""
+    from PIL import Image
+
+    from ewald import DataCollection, plotstyle, settings
+    from ewald.gui import console, plots, prefs_apply
+
+    host = QtWidgets.QWidget()
+    host.console, host.settings = None, settings.Settings()
+    panel = plots.PlotsPanel(host)
+    d = DataCollection(np.zeros((1, 3)), np.array(["C"]))
+    d.tables["rdf"] = {"r": np.linspace(0, 5, 20), "g(r)": np.linspace(0, 2, 20)}
+    panel.set_data(d)
+    plotstyle.write_style({"lines.linewidth": "3", "axes.facecolor": "FFEEDD", "font.size": "6"})
+    try:
+        assert prefs_apply.apply_plot_style(host) == []
+        assert plots.USER_RC["lines.linewidth"] == "3" and console.PLOT_STYLE[2] == plots.USER_RC
+        ax = panel.figure.axes[0]
+        assert ax.lines[0].get_linewidth() == 3 and ax.get_facecolor()[:3] != (1.0, 0xEE / 255, 0xDD / 255)
+        assert ax.xaxis.label.get_fontsize() == plots.SCREEN_FONT
+        panel.export(tmp_path / "rdf.png", quality="Draft")
+        img = Image.open(tmp_path / "rdf.png").convert("RGB")
+        assert (255, 238, 221) in {img.getpixel((x, img.height // 2)) for x in range(img.width)}
+        plotstyle.write_style({"lines.linewidth": None, "axes.facecolor": None, "font.size": None})
+        prefs_apply.apply_plot_style(host)
+        assert plots.USER_RC == {} and panel.figure.axes[0].lines[0].get_linewidth() == 1.25
+    finally:
+        plots.USER_RC.clear()
+        console.PLOT_STYLE[:] = ["publication", None, None]
+        host.close()
