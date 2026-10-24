@@ -683,7 +683,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   on the CPU for 108 000 fcc Cu atoms at 1600x1200 Publication, 2.5 s against 11.0 s for 500 000,
   and as fast as the CPU on small pictures.
 - **Considered:** keeping the CPU as the Mac default and choosing Metal by name.
-- **Landed:** public PR #NN.
+- **Landed:** public PR #54.
 
 ## Adding an entry
 
