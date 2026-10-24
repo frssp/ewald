@@ -660,6 +660,10 @@ def test_profile_plot_aligns_the_3d_view_selects_slabs_and_marks_positions(app, 
     plot._hover_axis(12.0)                                     # the cursor at z = 12: a plane there
     assert "_axis_plane" in vp.plotter.actors
     np.testing.assert_allclose(vp.plotter.actors["_axis_plane"].GetMapper().GetInput().points[:, 2], 12.0)
+    vp.style.replicate = [2, 3, 1]                             # across the copies drawn side by side
+    plot._hover_axis(12.5)
+    pts = vp.plotter.actors["_axis_plane"].GetMapper().GetInput().points
+    np.testing.assert_allclose(np.ptp(pts, axis=0)[:2], [2 * 2.998, 3 * 2.998], atol=0.01)
     plot._hover_axis(None)
     assert "_axis_plane" not in vp.plotter.actors
     w.close()

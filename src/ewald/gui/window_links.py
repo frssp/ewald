@@ -332,7 +332,8 @@ class LinksMixin:
         if d is None or not d.cell.is_valid:
             self.viewport.set_axis_plane(None)
             return
-        cell, n = d.cell, normalize_replicate(self.viewport.style.replicate)
+        rep = self.viewport.style.replicate
+        cell, n = d.cell, normalize_replicate(rep) if rep else None
         if n is not None:   # across the copies drawn side by side, not along the profile
             grow = np.array([1 if a == at[0] else k for a, k in zip("abc", n)], float)
             cell = Cell(cell.matrix * grow[:, None], cell.origin, cell.pbc)
