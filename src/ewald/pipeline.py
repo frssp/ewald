@@ -1,6 +1,7 @@
 """Data pipeline: source -> modifiers -> DataCollection."""
 from __future__ import annotations
 
+import functools
 import operator
 import threading
 import time
@@ -64,6 +65,27 @@ class ComputeContext:
                 tuple((type(m).__name__, repr(m)) for m in mods if m.enabled))
 
 
+@functools.lru_cache(maxsize=None)
+def _aliases(cls) -> dict:
+    """``ALIASES`` of ``cls`` and its bases (a subclass wins)."""
+    out = {}
+    for klass in reversed(cls.__mro__):
+        out.update(klass.__dict__.get("ALIASES", {}))
+    return out
+
+
+def _translate(cls, kwargs: dict):
+    """Rewrite old argument names in ``kwargs`` to ``cls``'s current ones, in place."""
+    for old, new in _aliases(cls).items():
+        if old in kwargs:
+            if new in kwargs:
+                raise TypeError(f"{cls.__name__}() got both {new!r} and its old name {old!r}")
+            kwargs[new] = kwargs.pop(old)
+    legacy = getattr(cls, "_legacy_arguments", None)
+    if legacy is not None:
+        legacy(kwargs)
+
+
 class Modifier:
     """Base class. Subclasses implement ``modify(data, ctx)`` and return new data or None."""
 
@@ -74,6 +96,34 @@ class Modifier:
     # Whether the pipeline may reuse this modifier's output for the same input and settings
     # (see :func:`_modifier_key`). None: built-in modifiers yes, plugins and scripts no.
     cacheable: bool | None = None
+
+    #: Old or OVITO argument names a subclass still accepts, as constructor keywords and as
+    #: attributes: ``{"number_of_bins": "bins"}`` (one name per idea across ewald, D55). A subclass
+    #: whose old arguments do not map one to one (``fix_xrange`` + ``xrange_start`` + ``xrange_end``
+    #: -> ``range``) also defines ``_legacy_arguments(kwargs)``, which rewrites them in place.
+    ALIASES: dict = {}
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        init = cls.__dict__.get("__init__")
+        if init is None or not (_aliases(cls) or hasattr(cls, "_legacy_arguments")):
+            return
+
+        @functools.wraps(init)
+        def __init__(self, *args, **kw):
+            _translate(cls, kw)   # idempotent: a subclass's wrapper may have translated them already
+            init(self, *args, **kw)
+
+        cls.__init__ = __init__
+
+    def __getattr__(self, name):
+        new = _aliases(type(self)).get(name)
+        if new is None or name.startswith("__"):
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+        return getattr(self, new)
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, _aliases(type(self)).get(name, name), value)
 
     def modify(self, data: DataCollection, ctx: ComputeContext):
         raise NotImplementedError
@@ -109,7 +159,9 @@ class PythonModifier(Modifier):
 
     The function may change ``data`` (set or replace its arrays; writing into them raises,
     since they are shared with the cached frame) or return a new DataCollection.
-    A third parameter, if present, receives the ComputeContext.
+    A third parameter, if present, receives the ComputeContext. ``pipe.add(f)`` wraps ``f`` in
+    one of these. :class:`~ewald.modifiers.PythonScript` is the same step kept as source text
+    (what a session or notebook stores and runs only when trusted).
     """
 
     def __init__(self, function: Callable, **params):

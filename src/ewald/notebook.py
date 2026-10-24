@@ -250,7 +250,11 @@ def step_source(modifier: Modifier, namespace: dict | None = None, name: str = P
     lines = []
     known = namespace is not None and namespace.get(cls.__name__) is cls
     if not known and cls.__name__ not in getattr(modifiers, "__all__", ()):
-        module = "ewald.modifiers" if getattr(modifiers, cls.__name__, None) is cls else cls.__module__
+        try:
+            exported = getattr(modifiers, cls.__name__, None) is cls
+        except ImportError:  # a user class named like a moved or unported modifier
+            exported = False
+        module = "ewald.modifiers" if exported else cls.__module__
         lines.append(f"from {module} import {cls.__name__}")
     lines.append(f"{name}.add({modifier!r})")
     if not modifier.enabled:

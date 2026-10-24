@@ -41,20 +41,55 @@ class ColorCoding(Modifier):
     """Map a scalar property or expression to colors through a color map.
 
     ``cmap`` is a matplotlib name or a color map plugin (see :mod:`ewald.colormaps`).
-    ``start``/``end`` default to the min/max over the current frame. The range used
-    is stored in attributes so a legend can be drawn later.
+    ``range=(lo, hi)`` is the value range of the color map; None, or None for either end, is the
+    min/max over the current frame (OVITO's ``start_value``/``end_value`` and the older
+    ``start``/``end`` are accepted too). The range used is stored in attributes so a legend can be
+    drawn later.
     """
 
-    def __init__(self, property: str, cmap: str = "viridis", start=None, end=None,
-                 only_selected: bool = False):
+    ALIASES = {"start_value": "start", "end_value": "end"}   # OVITO's names, as attributes too
+
+    @staticmethod
+    def _legacy_arguments(kwargs):
+        """``start``/``end`` -> ``range``."""
+        if "start" not in kwargs and "end" not in kwargs:
+            return
+        if "range" in kwargs:
+            raise TypeError("ColorCoding() got both 'range' and its old form start/end")
+        kwargs["range"] = (kwargs.pop("start", None), kwargs.pop("end", None))
+
+    def __init__(self, property: str, cmap: str = "viridis", range=None, only_selected: bool = False):
         self.property = property
         self.cmap = cmap
-        self.start = start
-        self.end = end
+        self.range = _value_range(range)
         self.only_selected = only_selected
 
+    @property
+    def start(self):
+        return None if self.range is None else self.range[0]
+
+    @start.setter
+    def start(self, value):
+        self.range = (value, self.end)
+
+    @property
+    def end(self):
+        return None if self.range is None else self.range[1]
+
+    @end.setter
+    def end(self, value):
+        self.range = (self.start, value)
+
     def modify(self, data, ctx):
+        self.range = _value_range(self.range)
         color_code(data, self.property, self.cmap, self.start, self.end, ctx.frame, self.only_selected)
+
+
+def _value_range(value):
+    """``range`` of :class:`ColorCoding`: None or ``(lo, hi)``, either end None for the frame's."""
+    if value is not None and (isinstance(value, (str, bytes)) or not hasattr(value, "__len__") or len(value) != 2):
+        raise TypeError(f"ColorCoding range is (lo, hi) or None, not {value!r}")
+    return None if value is None or tuple(value) == (None, None) else tuple(value)
 
 
 def color_code(data, property: str, cmap: str = "viridis", start=None, end=None, frame: int = 0,

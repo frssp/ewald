@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from .view3d import view  # noqa: F401 - notebooks import show and view from here
+
 KINDS = ("table", "histogram")
 
 
@@ -516,13 +518,6 @@ def write_csv(path, columns: dict):
         w = csv.writer(fh)
         w.writerow(names)
         w.writerows(rows.tolist())
-
-
-def view(pipe, **settings):
-    """Set the 3D view's display settings of ``pipe`` (see :func:`ewald.view3d.view`)."""
-    from .view3d import view as _view
-
-    return _view(pipe, **settings)
 
 
 def view_args(source: str, function: str = "show") -> dict | None:

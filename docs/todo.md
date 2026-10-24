@@ -8,14 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- Python library API audit (2026-10-24, D55): non-breaking fixes (public PR #50) and the behaviour
-  changes (public PR #55) are in. Left: one name per idea across modifiers with OVITO's spellings
-  as aliases (`bins`/`nbins`/`bin_count`/`number_of_bins`, `range` vs `start`/`end` vs `xrange_*`,
-  `unwrapped` vs `unwrap_*`, `only_selected` defaults, PowderDiffraction `step`,
-  `trajectory_rdf(nbins=)`) and the renames N2-N7 of the audit (`kernels.rdf`, `VectorVis`,
-  `Frames`, the `views.view` forwarder, generic helper names, a message for OVITO modifiers ewald
-  lacks).
-
 ## Next
 - Library API, rest of the audit: frame selection when loading (`load(path, frames=...)` like ASE's
   `index=":"`) and reader keyword errors that name `load()` instead of the reader class; internal

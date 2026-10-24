@@ -227,13 +227,13 @@ The AI's `set_view` / `get_view` tools take the same settings.
 
 ## Other entry points
 
-- `ewald.kernels.rdf(positions, cell, cutoff, nbins=200, types=None)` -> table with `r`, `g(r)`, partial `g(r) A-B`.
+- `ewald.kernels.rdf(positions, cell, cutoff, bins=200, types=None)` -> table with `r`, `g(r)`, partial `g(r) A-B`.
 - `ewald.diffraction.powder_peaks(positions, types, cell, wavelength="CuKa", radiation="xray", two_theta_range=(0, 90))`
   -> `2theta`, `Intensity` (max 100), `d`, `h`, `k`, `l`, `Multiplicity` (pymatgen XRDCalculator/NDCalculator formalism);
-  `powder_profile(peaks, two_theta, fwhm, eta)`; `structure_factor(positions, cell, q_max, number_of_bins, q_min, method,
+  `powder_profile(peaks, two_theta, fwhm, eta)`; `structure_factor(positions, cell, q_max, bins, q_min, method,
   types, weighting)` -> `q`, `S(q)`; `load_pattern(path)` reads a measured two-column pattern.
 - `ewald.kernels.trajectory_msd(pipe, start=0, stop=None, step=1)` -> `lag`, `MSD`, `MSD <type>` (unwrapped, by id).
-- `ewald.kernels.trajectory_vacf(pipe, time_per_frame=1.0, velocities="auto")`, `trajectory_rdf(pipe, cutoff, nbins)`
+- `ewald.kernels.trajectory_vacf(pipe, time_per_frame=1.0, velocities="auto")`, `trajectory_rdf(pipe, cutoff, bins)`
   (time-averaged g(r)), `diffusion_fit(time, msd)` -> `(D, intercept, fit window)`, `green_kubo(time, vacf)`.
 - Trajectory modifiers (`MeanSquaredDisplacement`, `VelocityAutocorrelation`, `TimeAveraging`, `TimeSeries`,
   `GenerateTrajectoryLines`) read every frame of `start:stop:step` through the modifiers above them and cache the
