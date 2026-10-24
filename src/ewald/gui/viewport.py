@@ -173,7 +173,7 @@ class Viewport(QtWidgets.QWidget):
         self.sphere_drawing = "impostor"  # 'auto' styles: GPU impostors, or 'mesh' up to mesh_limit atoms
         self.sphere_resolution = 16
         self.mesh_limit = 150_000
-        self.bond_limit = 100_000  # bonds.auto_limit: a style preset turns bonds on only up to this many atoms
+        self.bond_limit = 250_000  # bonds.auto_limit: a style preset turns bonds on only up to this many atoms
         self.arrow_resolution = 6
         self.show_overlay = True
         self.show_legend = True           # the atoms' color bar or category swatches

@@ -521,6 +521,22 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   the mockups ("적용").
 - **Landed:** public PR #18.
 
+### D43. Performance order: bonds as impostors first, then adaptive sampling (2026-10-24)
+
+- **Decision:** of nine measured candidates (bond cylinder impostors, lighter frame switches,
+  adaptive sampling that knows the low-discrepancy AO, a CUDA ray tracer, viewport per-atom AO
+  and outlines, GUI startup, the cluster notebook kernel, a Jupyter widget, harder AI eval
+  tasks), bonds drawn as GPU impostors together with lighter frame switches come first and the
+  ray tracer's adaptive sampling second; the rest stays in docs/todo.md.
+- **Why:** the owner took the recommended order ("그렇게 진행해"), based on the measurements:
+  a ball-and-stick frame took 1.3 s to build at 11k atoms and 11 s at 108k, almost all of it
+  bond tubes, and a Publication picture of SrTiO3 at 1600 x 1200 took 12.6 s with adaptive
+  sampling saving only 1.0-1.5x.
+- **Considered:** the CUDA ray tracer first (largest gain, but it cannot be checked without a
+  GPU in the cloud container); analysis kernels and readers (already fast: PTM 0.74 s, Voronoi
+  1.4 s at 108k atoms).
+- **Landed:** public PR #25 (bond impostors).
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

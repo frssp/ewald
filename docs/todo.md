@@ -246,7 +246,11 @@ GUI
   notebook kernels below exist; view cells and the Plots tab compute other frames on the GUI
   thread too.
 - Scene updates without a full rebuild when only colors or a few properties change, and frame
-  changes with the same atoms that replace only the point coordinates.
+  changes with the same atoms that replace only the point coordinates. Measured 2026-10-24 after
+  bond impostors: a ball-and-stick frame switch at 11k atoms spends ~20 ms rebuilding actors and
+  ~150 ms in llvmpipe's draw, at 108k ~0.4 s (mostly the bond search) and ~0.9 s drawing, so
+  reusing actors would save little until the per-frame bond search is cached or moved off the
+  GUI thread.
 - Picking without a render: click picks still use a `vtkPropPicker` selection render; the hover
   readout already does a CPU ray-sphere test (`camera_ray`, `ray_spheres` in `gui/viewport.py`)
   that `pick_at` could reuse.
@@ -264,7 +268,7 @@ GUI
   folded for a single structure.
 - Shortcuts for the viewport tools (orbit, pick, distance, angle, bond) and view-along axes.
 - Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
-  screen edges); bond impostors. The `light` setting moves the key light; a fill/rim light and
+  screen edges). The `light` setting moves the key light; a fill/rim light and
   shadows in the OpenGL view are not settable.
 - Flat (ASE) style in the ray tracer (now OpenGL and vector only), and a
   per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
@@ -279,8 +283,12 @@ GUI
   atoms, bonds and coordination polyhedra are repeated), VESTA's recursive "search molecules"
   mode, and keep the images while the coarse viewport level of detail is shown (they disappear
   during rotation of systems above the interactive atom limit).
-- Bonds above the automatic-bonds limit (100 000 atoms): a fast path (bond impostors or lines)
-  so large systems can show bonds by default too.
+- Bonds are impostors in the viewport (`render.add_sticks`, VTK's stick mapper), and the
+  automatic-bonds limit is 250 000 atoms (was 100 000): at 256k atoms the bond search and sticks
+  take 0.9 s per frame, at 500k 3.9 s, most of it the bond search. Left: the flat (ASE) style
+  still draws outlined tube meshes, impostor sticks have flat ends (a bond thicker than its atom
+  shows them), and the legacy OpenGL 1.x viewport (`ssh -X`) keeps its own bonds; checked under
+  llvmpipe only, not yet on a real Windows, macOS or NVIDIA driver.
 
 Runs (`ewald/runinfo.py`, `ewald/runs.py`; manual page docs/user/runs.md)
 
@@ -757,8 +765,7 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
   archive the submitted version on Zenodo.
 - From the literature (docs/developer/references.md, 2026-10-24): precomputed per-atom ambient
   occlusion for the impostor path (Tarini et al. 2006) next to SSAO; image-space outlines from the
-  depth and normal buffers for every style and renderer (Saito and Takahashi 1990); cylinder
-  impostors for bonds in large systems (Sigg et al. 2006); occlusion culling for
+  depth and normal buffers for every style and renderer (Saito and Takahashi 1990); occlusion culling for
   multi-million-atom frames (Grottel et al. 2010); harder `ewald eval` tasks modelled on MDCrow's
   graded MD tasks and ChatVis's visualization tasks; an AI tool that fetches reference structures
   and properties (LLaMP). Confirm the DOIs the page marks as not confirmed before citing them.

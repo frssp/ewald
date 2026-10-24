@@ -160,8 +160,8 @@ sampling), and the matplotlib vector renderer. These are the works each part fol
   ray-casting of quadratic surfaces", *Eurographics Symposium on Point-Based Graphics*, 59-65
   (2006), [doi:10.2312/SPBG/SPBG06/059-065](https://doi.org/10.2312/SPBG/SPBG06/059-065).
   Per-pixel ray casting of quadrics from one vertex: the basis of the impostor shader in
-  `render.py`. Cylinders (bonds) can be drawn the same way, which would lift the mesh limit on
-  bonds in large systems.
+  `render.py`. Bonds are drawn the same way (`render.add_sticks`, VTK's stick mapper), which
+  lifted the automatic-bonds limit from 100 000 to 250 000 atoms.
 - **Ambient occlusion and edge cueing for molecules (QuteMol).** M. Tarini, P. Cignoni,
   C. Montani, "Ambient occlusion and edge cueing to enhance real time molecular visualization",
   *IEEE TVCG* 12(5), 1237-1244 (2006),
@@ -343,6 +343,6 @@ notebook"). The works below are the ideas that design stands on and the ones sti
 
 Open items that these works suggest are in docs/todo.md under "From the literature". In short:
 precomputed per-atom ambient occlusion and image-space outlines in the viewport (Tarini et al.;
-Saito and Takahashi), cylinder impostors for bonds (Sigg et al.), occlusion culling for
+Saito and Takahashi), occlusion culling for
 multi-million-atom frames (Grottel et al.), harder AI eval tasks modelled on MDCrow and ChatVis,
 and an AI tool that fetches reference structures (LLaMP).

@@ -463,7 +463,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `elements.overrides` | Per-element overrides | `{}` |
 | `bonds.length_factor` | Bond length factor | `1.15` |
 | `bonds.radius` | Bond radius | `0.15` |
-| `bonds.auto_limit` | Automatic bonds up to | `100000` |
+| `bonds.auto_limit` | Automatic bonds up to | `250000` |
 
 ### Rendering
 

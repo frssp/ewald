@@ -43,6 +43,48 @@ def test_see_through_impostors_are_drawn_as_meshes(cu_fcc):
     p.close()
 
 
+def test_impostor_style_draws_bonds_as_sticks(cu_fcc):
+    """Impostor atoms get impostor bonds (one vertex per half-bond); mesh atoms keep tube meshes
+    unless there are more cylinders than the mesh limit; the flat style keeps outlined tubes."""
+    import pyvista as pv
+
+    from ewald.render import build_scene
+
+    def bond_mapper(**kw):
+        p = pv.Plotter(off_screen=True, window_size=(100, 100))
+        build_scene(p, cu_fcc, bonds=2.8, **kw)
+        name = p.actors["bonds"].GetMapper().GetClassName()
+        p.close()
+        return name
+
+    assert bond_mapper(atom_style="impostor") == "vtkOpenGLStickMapper"
+    assert bond_mapper(atom_style="mesh") != "vtkOpenGLStickMapper"
+    assert bond_mapper(atom_style="auto") != "vtkOpenGLStickMapper"
+    assert bond_mapper(atom_style="auto", mesh_limit=10) == "vtkOpenGLStickMapper"
+    assert bond_mapper(atom_style="flat") != "vtkOpenGLStickMapper"
+
+
+def test_impostor_bonds_can_be_picked():
+    """A selection render (vtkPropPicker, the viewport's click on a bond) crashed the stick mapper
+    until its points carried a vtkIdTypeArray of selection ids."""
+    import pyvista as pv
+    from vtkmodules.vtkRenderingCore import vtkPropPicker
+
+    from ewald.render import add_sticks
+    from ewald.scene import Cylinders
+
+    p = pv.Plotter(off_screen=True, window_size=(200, 200))
+    add_sticks(p, Cylinders([[0.0, 0.0, 0.0]], [[2.0, 0.0, 0.0]], 0.5, [[1.0, 0.0, 0.0]]), "bonds")
+    p.add_mesh(pv.PolyData(np.array([[0.0, -2.0, 0.0], [2.0, 2.0, 0.0]])), opacity=0.0)  # frame the view
+    p.view_xy()
+    p.screenshot(None)
+    picker = vtkPropPicker()
+    assert picker.Pick(100, 100, 0, p.renderer)
+    x, y, z = picker.GetPickPosition()
+    assert 0 <= x <= 2 and abs(y) < 0.1 and z == pytest.approx(0.5, abs=0.05)   # on the cylinder's surface
+    p.close()
+
+
 def test_flat_style_is_unshaded_with_outlines():
     """atom_style='flat' (ASE GUI look): one color inside each disc, a dark outline, outlined bonds."""
     from ewald.render import render
