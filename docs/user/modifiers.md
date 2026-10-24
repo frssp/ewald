@@ -6,6 +6,17 @@ appended. Their names, output property names, structure type ids and colors foll
 OVITO's class names also work: `CommonNeighborAnalysisModifier` resolves to
 `CommonNeighborAnalysis`, `WrapPeriodicImagesModifier` to `WrapAtoms`.
 
+Arguments have one name per idea across the modifiers: `bins` for a bin count, `range=(lo, hi)`
+for a fixed value range, `unwrapped`, `only_selected` (always off by default). OVITO's and
+older spellings (`number_of_bins`, `bin_count`, `nbins`, `fix_xrange` with `xrange_start` and
+`xrange_end`, `start_value`/`end_value`, `unwrap_particles`, ...) are still accepted.
+
+A few OVITO modifiers have no ewald counterpart: Construct Surface Mesh, Smooth Trajectory and
+VoroTop (run OVITO's own through `OvitoModifier` when the `ovito` package is installed), Manual
+Selection (use `ExpressionSelection` or pick atoms in the 3D view), Scatter Plot (`show(...)` or
+matplotlib) and Color By Type (atoms are colored by type already). Importing one of these names
+raises an ImportError that says so.
+
 ```python
 from ewald.modifiers import CommonNeighborAnalysis, ExpressionSelection, DeleteSelected
 
