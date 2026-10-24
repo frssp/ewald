@@ -113,6 +113,38 @@ class Cell:
         return self.shadow
 
 
+def split_header(source: str) -> tuple[str, str, str, str] | None:
+    """(kind, title, frames, body) when ``source`` starts with a ``# %%`` marker line, as code
+    pasted from a percent-format file or written by the AI does (``# %% hide fcc [each frame]``);
+    None otherwise. The marker belongs to the cell, not to its code: left in the code a
+    ``[each frame]`` tag would run once without ``data``."""
+    lines = source.lstrip("\n").split("\n")
+    m = _MARK.match(lines[0].rstrip()) if lines else None
+    if m is None:
+        return None
+    rest = m.group(1).strip()
+    kind = "markdown" if re.search(r"\[(markdown|md)\]", rest) else "code"
+    tag = _FRAME_TAG.search(rest) if kind == "code" else None
+    frames = "" if tag is None else tag.group(1).split()[0]
+    title = _FRAME_TAG.sub("", re.sub(r"\[(markdown|md)\]", "", rest)).strip()
+    body = "\n".join(lines[1:]).strip("\n")
+    if kind == "markdown":
+        body = "\n".join(re.sub(r"^# ?", "", ln) for ln in body.splitlines())
+    return kind, title, frames, body
+
+
+def cell_from_source(source: str, kind: str = "code", **kwargs) -> Cell:
+    """A new cell for ``source``; a leading ``# %%`` marker line sets its kind, title and
+    ``[each frame]``/``[all frames]`` tag instead of staying in the code (:func:`split_header`)."""
+    head = split_header(source) if kind == "code" else None
+    if head is None:
+        return Cell(source, kind=kind, **kwargs)
+    kind, title, frames, body = head
+    if kind == "markdown":
+        kwargs["state"] = "ok"
+    return Cell(body, kind=kind, title=title, frames=frames, **kwargs)
+
+
 def _shadow_step(cell: Cell):
     """A local modifier built from a step cell's code (its imports and the ``pipe.add(...)``
     argument), or None when it cannot be built here (a class only the kernel has, a variable)."""
@@ -990,13 +1022,14 @@ def _worth_checking(pipeline) -> bool:
         return False
 
 
-IMPORTS = ("from ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\n"
-           "from ewald.paint import paint, hide, isolate, fade, resize")
+# The import cell of every notebook: new ones, a file opened from the menu and the AI's session
+# (python_api promises numpy as np; without it the AI's cells failed with a NameError).
+IMPORTS = ("import numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\n"
+           "from ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize")
 NEW_NOTEBOOK = '''# %% [markdown]
 # # {title}
 
 # %%
-import numpy as np
 ''' + IMPORTS + "\n"
 
 

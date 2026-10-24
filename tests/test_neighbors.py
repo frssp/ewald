@@ -33,6 +33,31 @@ def test_brute_force_equals_cell_list(rng):
     assert _pairset(i, j) == _pairset(bi, bj)
 
 
-def test_cutoff_too_large_raises(cu_fcc):
+def test_cutoff_beyond_half_the_cell_uses_periodic_images(cu_fcc, monkeypatch):
+    """A cutoff over half the cell width (rdf(pipe, cutoff=6) on a small box; models asked for it
+    in every real-model eval run) lists a pair once per image of j, as ASE's neighbor list does;
+    an atom of a one-atom cell is its own neighbor."""
+    from ase.build import bulk
+    from ase.neighborlist import neighbor_list
+
+    from ewald import neighbors
+
+    for atoms, cutoff in [(bulk("Cu", "fcc", a=3.615), 6.0), (bulk("Si", "diamond", a=5.431, cubic=True), 4.0),
+                          (bulk("Cu", "fcc", a=3.615, cubic=True).repeat((3, 3, 1)), 5.0)]:
+        cell = Cell(np.array(atoms.cell), np.zeros(3), np.array([True, True, True]))
+        ai, aj, ad, a_vec = neighbor_list("ijdD", atoms, cutoff)
+        for method in ("auto", "brute", "xp"):
+            i, j, delta, dist = find_pairs(atoms.positions, cell, cutoff, method=method)
+            assert len(i) == len(ai)
+            assert np.array_equal(np.bincount(i, minlength=len(atoms)), np.bincount(ai, minlength=len(atoms)))
+            assert np.allclose(np.sort(dist), np.sort(ad)) and np.allclose(np.linalg.norm(delta, axis=1), dist)
+            got = sorted(zip(i, j, np.round(delta, 6).tolist()))
+            assert got == sorted(zip(ai, aj, np.round(a_vec, 6).tolist()))
+            hi, hj, _, hdist = find_pairs(atoms.positions, cell, cutoff, half=True, method=method)
+            assert 2 * len(hi) == len(i) and np.allclose(np.sort(np.r_[hdist, hdist]), np.sort(dist))
+    prim = bulk("Cu", "fcc", a=3.615)
+    i, j, _, _ = find_pairs(prim.positions, Cell(np.array(prim.cell)), 3.0)
+    assert len(i) == 12 and not i.any() and not j.any()      # the primitive cell's one atom: its 12 images
+    monkeypatch.setattr(neighbors, "MAX_IMAGE_ATOMS", 1000)
     with pytest.raises(ValueError, match="half the periodic cell"):
         find_pairs(cu_fcc.positions, cu_fcc.cell, 8.0)

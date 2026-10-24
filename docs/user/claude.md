@@ -269,14 +269,24 @@ ewald narrate dump.lammpstrj --type-map 1=Cu --no-llm        # event timeline, r
 
 ## Scoring a model (AI eval suite)
 
-`ewald eval` measures how well a model drives ewald: it asks 45 questions with known answers about
+`ewald eval` measures how well a model drives ewald: it asks 53 questions with known answers about
 the shipped example files (and one paper dataset), runs the normal AI loop on a fresh notebook for
 each, and grades the result automatically. The tasks ask for values (lattice constants, counts,
 energies, a diffusion coefficient, graded from the reply's final `ANSWER:` line within a
 tolerance), for analysis steps (coordination coloring, octahedra, CNA, deleting atoms), for view
-changes (background, colors, camera, legends) and for exported files. Every state check is graded
-twice: on the session, and again after the cells that ran are re-run from the top in a fresh
-namespace, so an answer only counts as reproducible when the notebook alone makes it.
+changes (background, colors, camera, legends), for exported files, for edits to a notebook the
+user already has (change a step's cutoff, take a step out, fix a failing cell), for recipes
+written as python_api shows them (a plot cell, an `[each frame]` step) and for plugins (the
+example `LocalComposition` modifier and the `bond_valence_sums` AI tool of `examples/plugins`,
+loaded for the task only). Every state check is graded twice: on the session, and again after
+the cells that ran are re-run from the top in a fresh namespace, so an answer only counts as
+reproducible when the notebook alone makes it.
+
+The questions are asked as the AI chat side bar asks them (`--context gui`, the default): the
+notebook note follows the system prompt, each question starts with the notebook's code and its
+failing cells, and the Python blocks of an answer become cells, run with `--allow-code` (which
+plays Preferences › AI › Let the AI run cells). `--context plain` asks the bare agent, as
+`ewald ask` does.
 
 ```bash
 ewald eval --list                                   # the tasks (id, category, file, question)
@@ -286,12 +296,14 @@ ewald eval --model claude-sonnet-5-5 --effort medium --out sonnet.json
 ewald eval --provider openai --model gpt-5 --price 1.25,10 --out gpt.json
 ewald eval --profile local --category answer,view   # a saved connection, some categories
 ewald eval --tasks 'sto-*,cu-fmax' --repeat 3       # some tasks, three times each
-ewald eval --allow-code                             # also the 'code' tasks (the model runs its cells)
+ewald eval --allow-code                             # also the tasks where the model runs its cells
+ewald eval --context plain                          # the bare agent (ewald ask) instead of the chat side bar
 ewald eval --compare opus.json sonnet.json          # accuracy, cost, tasks that flipped
 ```
 
 Each line shows pass or fail, tool calls and failed tool calls, tokens, cost, time and whether the
-notebook reproduces the result, with the reason for every failed check; the summary gives the
+notebook reproduces the result, with the reason for every failed check and the start of every tool
+error (`~` lines); the summary gives the
 accuracy overall and per category. `--out` saves everything, including each answer and the notebook
 the model left, as JSON. Costs come from list prices for the current Claude models; for any other
 model give `--price IN,OUT` in USD per million tokens (optionally `,CACHE_READ,CACHE_WRITE`). A full
@@ -299,9 +311,11 @@ run makes a few hundred requests; try `--category view` or a few `--tasks` first
 downloads its data (0.8 MB) once; `--no-download` skips it.
 
 Run it before and after changing the system prompt, a tool description or a tool, and compare the
-two files. In Python: `ewald.llm.evals.run(tasks, agent_options=...)`, with the tasks in
+two files. The first runs with real models (Opus, Sonnet and Haiku 5.5: all 53 tasks passed) and
+what they found are in [AI eval results](../developer/ai-eval.md). In Python: `ewald.llm.evals.run(tasks, agent_options=...)`, with the tasks in
 `ewald.llm.eval_tasks.TASKS`; a `Task` is a prompt, an example file and a list of checks
-(`Number`, `Matches`, `Step`, `View`, `Data`, `File`, `CellNumber`, `Any`).
+(`Number`, `Matches`, `Step`, `View`, `Data`, `File`, `CellNumber`, `Cells`, `UsedTool`, `Any`), with
+optional `setup` cells (the notebook the user already has) and example `plugins`.
 
 ## From Claude Code and other MCP clients
 

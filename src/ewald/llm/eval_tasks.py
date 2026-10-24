@@ -3,7 +3,10 @@ files and one paper dataset, each with an automatic grade and a reference soluti
 
 Categories: ``answer`` (a value or fact in the reply), ``step`` (analysis steps in the
 pipeline), ``view`` (how the structure is drawn), ``export`` (files written), ``code`` (cells the
-model writes and runs; needs ``--allow-code``) and ``paper`` (published data, downloaded once).
+model writes and runs; needs ``--allow-code``), ``notebook`` (editing a notebook the user already
+has: change a step, remove one, fix a failing cell), ``recipe`` (a plot or per-frame step written
+the way python_api's recipes do it), ``plugin`` (a plugin modifier or ``@ai_tool`` from
+``examples/plugins``) and ``paper`` (published data, downloaded once).
 
 Reference values are computed from the files with ewald itself when a task runs (the
 ``ref_*`` functions), so they follow the example files if those are regenerated; physical
@@ -13,7 +16,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .evals import Any, CellNumber, Data, File, Matches, Number, Step, Task, View, along, same_color
+from .evals import (Any, CellNumber, Cells, Data, File, Matches, Number, Step, Task, UsedTool, View, along,
+                    error_cells, same_color, step_cells)
 
 
 # ------------------------------------------------------------------ reference values
@@ -119,6 +123,25 @@ def ref_sto_mean_tio(pipe):
     return float(d[d < 2.5].mean())
 
 
+def ref_void_fcc_last(pipe):
+    return int(np.sum(_cna_types(pipe, pipe.num_frames - 1) == 1))
+
+
+def ref_cuzr_zr_fraction(pipe):
+    data = pipe.compute(0)
+    t = np.asarray(data.particles["Particle Type"]).astype(str)
+    near = (_distances(data) < 3.2) & (_distances(data) > 1e-8)
+    total = near.sum(1)
+    return float(np.mean(np.where(total > 0, (near & (t == "Zr")[None]).sum(1) / np.maximum(total, 1), 0.0)))
+
+
+def ref_sto_ti_bvs(pipe):
+    data = pipe.compute(0)
+    t = np.asarray(data.particles["Particle Type"]).astype(str)
+    d = _distances(data)[np.ix_(t == "Ti", t == "O")]
+    return float(np.exp((1.815 - d[d < 3.5]) / 0.37).sum() / np.sum(t == "Ti"))
+
+
 # ------------------------------------------------------------------ file checks
 def _png(path, outcome):
     return path.read_bytes()[:4] == b"\x89PNG"
@@ -139,6 +162,15 @@ def _types(name):
 
 def _red(c):
     return same_color(c, "red")
+
+
+def _hidden(data):
+    return int(np.sum(np.asarray(data["Transparency"]) > 0.99)) if "Transparency" in data else 0
+
+
+def _shows(table):
+    """A view cell plots ``table`` (``show(pipe, table="...")``)."""
+    return lambda nb: any(c.kind == "code" and "show(" in c.source and table in c.source for c in nb.cells)
 
 
 # ------------------------------------------------------------------ tasks
@@ -218,7 +250,9 @@ TASKS: list[Task] = [
 
     # ---------------------------------------------------------- pipeline steps
     Task("sto-color-cn", "Color the atoms by their coordination number.", STO,
-         [Step("CoordinationAnalysis"), Step("ColorCoding", {"property": lambda p: "Coordination" in str(p)})],
+         [Step("CoordinationAnalysis"),
+          Any(Step("ColorCoding", {"property": lambda p: "Coordination" in str(p)}),
+              View(color_by=lambda p: "Coordination" in str(p)))],
          category="step",
          solution=[("add_modifier", {"name": "CoordinationAnalysis", "params": {"cutoff": 2.5}}),
                    ("add_modifier", {"name": "ColorCoding", "params": {"property": "Coordination"}})],
@@ -265,7 +299,7 @@ TASKS: list[Task] = [
          solution=[("set_view", {"colors": {"O": "red"}, "radii": {"O": 0.6}})], answer="Done."),
     Task("sto-top", "Look straight down the c axis.", STO, [View(direction=along("z"))], category="view",
          solution=[("set_view", {"direction": "z"})], answer="Done."),
-    Task("cu-last-frame", "Show the last frame of the trajectory.", CU, [View(frame=9)], category="view",
+    Task("cu-last-frame", "Show the last frame of the trajectory.", CU, [View(frame=lambda f: f is not None and int(f) % 10 == 9)], category="view",
          solution=[("set_view", {"frame": 9})], answer="Done."),
     Task("void-cell-scale", "Hide the simulation cell and add a scale bar.", VOID,
          [View(cell=False, scale_bar=lambda v: bool(v))], category="view",
@@ -300,6 +334,58 @@ TASKS: list[Task] = [
          solution=[("insert_cell", {"source": (
              "@pipe.add\ndef height(frame, data):\n    data['Height'] = data.positions[:, 2].copy()")}),
              ("run_cell", {"index": -1})], answer="Done."),
+
+    # ---------------------------------------------------------- the user's notebook
+    Task("nb-edit-cutoff", "The coordination step in my notebook uses the wrong cutoff. Change it to 2.5 Angstrom.",
+         STO, [Step("CoordinationAnalysis", {"cutoff": 2.5}), Cells(lambda nb: step_cells(nb, "CoordinationAnalysis"), 1,
+                                                                    name="coordination cells")],
+         category="notebook",
+         setup=["pipe.add(CoordinationAnalysis(cutoff=2.0))", "pipe.add(ColorCoding(property='Coordination'))"],
+         solution=[("edit_cell", {"index": 2, "params": {"cutoff": 2.5}})], answer="Done."),
+    Task("nb-remove-step", "Take the color coding out of my notebook; I want the element colors back.", STO,
+         [Cells(lambda nb: step_cells(nb, "ColorCoding"), 0, name="color coding cells"),
+          Cells(lambda nb: step_cells(nb, "CoordinationAnalysis"), 1, name="coordination cells")],
+         category="notebook",
+         setup=["pipe.add(CoordinationAnalysis(cutoff=2.5))", "pipe.add(ColorCoding(property='Coordination'))"],
+         solution=[("delete_cell", {"index": 3})], answer="Done."),
+    Task("nb-fix-error", "One of my notebook cells fails. Fix it so the analysis runs.", CU,
+         [Cells(error_cells, 0, name="cells with errors"), Step("CoordinationAnalysis", {"cutoff": 3.0})],
+         category="notebook", allow_code=True,
+         setup=["pipe.add(CoordinationAnalysis(cutof=3.0))"],
+         solution=[("edit_cell", {"index": 2, "source": "pipe.add(CoordinationAnalysis(cutoff=3.0))"})],
+         answer="Done."),
+
+    # ---------------------------------------------------------- recipes (cells as python_api writes them)
+    Task("recipe-rdf-plot", "Plot the radial distribution function in the notebook.", CU,
+         [Cells(_shows("rdf"), name="show cell"),
+          Data(lambda d: any("rdf" in k for k in d.tables), name="rdf table")],
+         category="recipe", allow_code=True,
+         solution=[("add_modifier", {"name": "CoordinationAnalysis", "params": {"cutoff": 5.0}}),
+                   ("insert_cell", {"source": "show(pipe, table='coordination-rdf')"})], answer="Done."),
+    Task("recipe-msd-plot", "Compute the mean squared displacement over the trajectory and plot it in the notebook.",
+         SIMD, [Step("MeanSquaredDisplacement"), Cells(_shows("msd"), name="show cell")],
+         category="recipe", allow_code=True,
+         solution=[("add_modifier", {"name": "MeanSquaredDisplacement"}),
+                   ("insert_cell", {"source": "show(pipe, table='msd')"})], answer="Done."),
+    Task("recipe-hide-fcc", "Hide the FCC atoms in the 3D view, in every frame, so only the defects around the "
+         "void stay visible.", VOID,
+         [Step("CommonNeighborAnalysis"), Data(_hidden, ref_void_fcc_last, frame=-1, name="hidden atoms")],
+         category="recipe", allow_code=True,
+         solution=[("add_modifier", {"name": "CommonNeighborAnalysis"}),
+                   ("insert_cell", {"source": "# %% hide fcc [each frame]\nhide(data, 'StructureType == 1')"})],
+         answer="Done."),
+
+    # ---------------------------------------------------------- plugins (examples/plugins)
+    Task("plugin-modifier", "A local composition plugin is installed. Use it to find the average fraction of Zr "
+         "among each atom's neighbours within 3.2 Angstrom, over all atoms.", CUZR,
+         [Step("LocalComposition", {"cutoff": 3.2, "element": "Zr"}), Number(ref_cuzr_zr_fraction, tol=0.005)],
+         category="plugin", plugins=["local_composition.py"],
+         solution=[("add_modifier", {"name": "LocalComposition", "params": {"cutoff": 3.2, "element": "Zr"}})],
+         answer="ANSWER: {0}"),
+    Task("plugin-tool", "What is the bond valence sum of the Ti atoms? A bond valence tool is installed; use it.",
+         STO, [UsedTool("bond_valence_sums"), Number(ref_sto_ti_bvs, tol=0.02)],
+         category="plugin", plugins=["bond_valence.py"],
+         solution=[("bond_valence_sums", {})], answer="ANSWER: {0}"),
 
     # ---------------------------------------------------------- paper data (downloaded once)
     Task("li-diffusion", "This is an AIMD run of the Li6PS5Cl argyrodite; frames are 0.1 ps apart. What is the "

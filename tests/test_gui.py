@@ -5635,3 +5635,23 @@ def test_notice_comes_before_the_heavy_imports():
             " if m in sys.modules])")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, encoding="utf-8", check=True)
     assert out.stdout.strip() == "[]"
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_view_frame_minus_one_is_the_last_frame(app):
+    """view(pipe, frame=-1) shows the last frame, as pipe.compute(-1) does (a model wrote it for "show
+    the last frame" in the first real-model eval, and the window showed frame 0)."""
+    from ewald import examples, import_file
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(import_file(examples.path("Cu_md.extxyz")))
+    n = w.pipeline.num_frames
+    w.pipeline.view.update(frame=-1)
+    w.recompute()
+    app.processEvents()
+    assert w.frame == n - 1
+    w.pipeline.view.update(frame=2)
+    w.recompute()
+    app.processEvents()
+    assert w.frame == 2
+    w.close()

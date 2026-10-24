@@ -128,6 +128,9 @@ def build_parser():
     ev.add_argument("--price", default=None, metavar="IN,OUT[,CACHE_READ,CACHE_WRITE]",
                     help="USD per million tokens for this model (built in for current Claude models)")
     ev.add_argument("--no-download", action="store_true", help="skip paper tasks whose data is not downloaded yet")
+    ev.add_argument("--context", default="gui", choices=("gui", "plain"),
+                    help="gui (default): ask as the AI chat side bar does (notebook note, notebook code, answer "
+                         "code blocks become cells); plain: the bare agent, as ewald ask")
     m = sub.add_parser("mcp", help="serve the analysis tools over MCP (stdio)")
     m.add_argument("input", nargs="?")
     m.add_argument("--allow-code", action="store_true")
@@ -542,7 +545,7 @@ def _eval(args):
     try:
         report = evals.run(tasks, agent_options=options, allow_code=args.allow_code, dry_run=args.dry_run,
                            repeat=args.repeat, max_turns=args.max_turns, prices=prices,
-                           fetch=not args.no_download, progress=lambda r: print(evals.format_result(r), flush=True))
+                           fetch=not args.no_download, context=args.context, progress=lambda r: print(evals.format_result(r), flush=True))
     except evals.FatalError as exc:
         sys.exit(f"ewald eval: {exc}")
     print()

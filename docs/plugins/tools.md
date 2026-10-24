@@ -21,6 +21,10 @@ def count_short_contacts(toolset, cutoff=2.0):
     return {"pairs": int(len(i)), "frame": toolset.frame}
 ```
 
+[`examples/plugins/bond_valence.py`](https://github.com/frssp/ewald/blob/main/examples/plugins/bond_valence.py)
+is a complete one: `bond_valence_sums` gives the bond valence sums of the cations of an oxide
+(the AI eval suite's `plugin-tool` task checks that a model finds and uses it).
+
 The function receives the `Toolset` first: `toolset.pipeline` is the notebook's pipeline (or None),
 `toolset.frame` the current frame, `toolset.workdir` a folder for files and `toolset.figures`
 the images made so far. `toolset._need_pipeline()` raises the usual "no structure loaded" error.

@@ -1,0 +1,2055 @@
+{
+ "meta": {
+  "provider": "anthropic",
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "allow_code": true,
+  "repeat": 1,
+  "context": "gui",
+  "ewald": "0.1.0",
+  "commit": "c77caf1",
+  "date": "2026-10-24T01:06:52+0000"
+ },
+ "summary": {
+  "tasks": 53,
+  "ran": 53,
+  "passed": 53,
+  "skipped": 0,
+  "errors": 0,
+  "accuracy": 1.0,
+  "reproducible": 1.0,
+  "by_category": {
+   "answer": {
+    "passed": 25,
+    "ran": 25,
+    "accuracy": 1.0
+   },
+   "code": {
+    "passed": 2,
+    "ran": 2,
+    "accuracy": 1.0
+   },
+   "export": {
+    "passed": 2,
+    "ran": 2,
+    "accuracy": 1.0
+   },
+   "notebook": {
+    "passed": 3,
+    "ran": 3,
+    "accuracy": 1.0
+   },
+   "paper": {
+    "passed": 1,
+    "ran": 1,
+    "accuracy": 1.0
+   },
+   "plugin": {
+    "passed": 2,
+    "ran": 2,
+    "accuracy": 1.0
+   },
+   "recipe": {
+    "passed": 3,
+    "ran": 3,
+    "accuracy": 1.0
+   },
+   "step": {
+    "passed": 8,
+    "ran": 8,
+    "accuracy": 1.0
+   },
+   "view": {
+    "passed": 7,
+    "ran": 7,
+    "accuracy": 1.0
+   }
+  },
+  "tool_calls": 138,
+  "tool_calls_per_task": 2.6,
+  "tool_errors": 1,
+  "requests": 163,
+  "tokens": {
+   "input": 1300409,
+   "output": 20336,
+   "cache_read": 2592453,
+   "cache_write": 32394
+  },
+  "cost": 3.4037,
+  "seconds": 339.4
+ },
+ "results": [
+  {
+   "id": "sto-count",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number atoms",
+     true,
+     "40 vs 40"
+    ],
+    [
+     "Number O",
+     true,
+     "24 vs 24"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 1399,
+    "output": 106,
+    "cache_read": 16101,
+    "cache_write": 16101
+   },
+   "cost": 0.047330699999999996,
+   "seconds": 5.23,
+   "answer": "The structure has 40 atoms: 8 Sr, 8 Ti and 24 O. The cell is 7.81 \u00c5 on each side. I got these counts from `describe_frame` on frame 0.\n\nANSWER: 40, 24",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-lattice",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "3.905 vs 3.905"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 2,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame",
+    "analyze_symmetry"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 1850,
+    "output": 237,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.012510400000000001,
+   "seconds": 17.22,
+   "answer": "The supercell edge is 7.81 \u00c5 (cell a = b = c = 7.81 \u00c5, from `describe_frame`). It is a 2\u00d72\u00d72 supercell, so the primitive perovskite lattice constant is 7.81 / 2 = 3.905 \u00c5.\n\nTwo other results agree with this. The symmetry analysis gives Pm-3m with one formula unit per primitive cell. The Ti\u2013O distance is 1.952 \u00c5, which is half of 3.905 \u00c5, as expected for a cubic perovskite.\n\nANSWER: 3.905",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-spacegroup",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Matches Pm-?3m|\\b221\\b",
+     true,
+     "/Pm-?3m|\\b221\\b/ found"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "analyze_symmetry"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 957,
+    "output": 251,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.010864400000000001,
+   "seconds": 3.27,
+   "answer": "The structure is cubic **Pm-3m (No. 221)**. I got this from spglib with the default symprec of 0.01 \u00c5. The point group is m-3m.\n\nThe Wyckoff sites are Sr 1a, Ti 1b and O 3c, which is the ideal cubic perovskite arrangement. The cell is a supercell of the primitive perovskite cell. The reported fractional coordinates (Ti at 0.25, 0.25, 0.25) and the 384 symmetry operations both reflect that.\n\nANSWER: Pm-3m (221)",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-tio-bond",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "1.95 vs 1.9525"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 2,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame",
+    "compute_rdf"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 4223,
+    "output": 429,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.019176400000000003,
+   "seconds": 5.3,
+   "answer": "The Ti-O bond length is about 1.95 \u00c5 (1.952 \u00c5).\n\n- **Shortest distance:** `describe_frame` gives the minimum interatomic distance as 1.952 \u00c5, and it is an O-Ti pair.\n- **g(r) peak:** The O-Ti partial g(r) has a single sharp peak at 1.94 \u00c5. The peak position is binned, so 1.952 \u00c5 is the more exact value.\n- **Coordination:** Every Ti has 6 O neighbours and every O has 2 Ti neighbours, which is the TiO\u2086 octahedron of ideal cubic perovskite.\n- **Cross-check:** The cell is 7.81 \u00c5, so the lattice parameter is 3.905 \u00c5 for a 2\u00d72\u00d72 supercell. Half of that is 1.9525 \u00c5, which matches.\n\nANSWER: 1.95",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-ti-cn",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "6 vs 6"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 1405,
+    "output": 279,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.012040400000000001,
+   "seconds": 4.94,
+   "answer": "Each Ti atom is bonded to 6 oxygen atoms, which is the octahedral coordination expected in SrTiO3.\n\nI used `describe_frame` on frame 0 with the automatic cutoff of 2.363 \u00c5, which is the first minimum of g(r). All 8 Ti atoms have coordination 6. No Sr or other Ti atoms fall inside that cutoff, so the 6 neighbours are all O. The shortest Ti\u2013O distance is 1.952 \u00c5, and the O\u2013Ti g(r) peak is at 1.94 \u00c5.\n\nANSWER: 6",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "si-density",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "2.329 vs 2.32907"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 1140,
+    "output": 122,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.009940400000000002,
+   "seconds": 2.24,
+   "answer": "The density is 2.329 g/cm\u00b3. The cell is the conventional cubic diamond-structure cell of silicon: 8 Si atoms, a = 5.431 \u00c5, volume 160.2 \u00c5\u00b3. I took the value from `describe_frame`.\n\nANSWER: 2.329",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Si.cif')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "si-spacegroup",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Matches Fd-?3m|\\b227\\b",
+     true,
+     "/Fd-?3m|\\b227\\b/ found"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "analyze_symmetry"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 811,
+    "output": 154,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.009602400000000002,
+   "seconds": 2.66,
+   "answer": "The crystal's space group is Fd-3m (No. 227). I got this from spglib with the default symprec of 0.01 \u00c5.\n\n- **Crystal system and point group:** cubic, m-3m.\n- **Atomic site:** Si sits on a single Wyckoff site, 8a, with site symmetry -43m. This is the diamond structure.\n\nANSWER: 227",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Si.cif')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "si-nn",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "2.352 vs 2.3517"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 1156,
+    "output": 210,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.010852400000000002,
+   "seconds": 3.08,
+   "answer": "The nearest-neighbour Si\u2013Si distance is 2.352 \u00c5. That is the minimum interatomic distance in the frame, computed with periodic boundaries. The structure is the 8-atom conventional diamond-cubic cell with a = 5.431 \u00c5. Every Si atom has 4 neighbours within the 2.535 \u00c5 cutoff, which is the first g(r) minimum. The g(r) peak sits at 2.34 \u00c5, and the small gap to 2.352 \u00c5 is probably just the RDF bin width.\n\nANSWER: 2.352",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Si.cif')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "pt-count",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "201 vs 201"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 1014,
+    "output": 110,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.009568400000000001,
+   "seconds": 2.44,
+   "answer": "The nanoparticle has 201 Pt atoms. `describe_frame` on frame 0 shows no other elements, and the file has a single frame.\n\nANSWER: 201",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Pt_nanoparticle.xyz')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "pt-diameter",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "17.55 vs 17.5487"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 3,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame",
+    "python_api",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 3,
+   "tokens": {
+    "input": 56030,
+    "output": 290,
+    "cache_read": 48303,
+    "cache_write": 0
+   },
+   "cost": 0.12462060000000001,
+   "seconds": 4.77,
+   "answer": "The largest distance between any two Pt atoms is 17.549 \u00c5, so that is the particle's diameter. I got it by computing all pairwise distances among the 201 atoms in cell 3. The structure has no periodic boundaries, so no minimum-image correction was needed. This is the distance between atom centres, so it leaves out the atomic radius.\n\nANSWER: 17.55",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Pt_nanoparticle.xyz')\n\n# %%\nfrom scipy.spatial.distance import pdist\npos = pipe.compute(0).positions\nprint(pdist(pos).max())\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "pt-low-cn",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "122 vs 122"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 3,
+   "tool_errors": 0,
+   "tools": [
+    "list_modifiers",
+    "add_modifier",
+    "evaluate_expression"
+   ],
+   "tool_error_messages": [],
+   "requests": 4,
+   "tokens": {
+    "input": 22917,
+    "output": 337,
+    "cache_read": 64404,
+    "cache_write": 0
+   },
+   "cost": 0.0620848,
+   "seconds": 14.56,
+   "answer": "122 of the 201 atoms have fewer than 12 neighbours within 3.2 \u00c5.\n\nI added a `CoordinationAnalysis` step with a 3.2 \u00c5 cutoff, which is now the pipeline's only modifier. Coordination numbers run from 6 to 12 with a mean of 9.43. Counting atoms with `Coordination < 12` gives 122, about 61% of the total. I did not check the neighbour count at other cutoffs.\n\nANSWER: 122",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Pt_nanoparticle.xyz')\n\n# %%\npipe.add(CoordinationAnalysis(cutoff=3.2))\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "pt-fcc",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "39.3 vs 39.3035"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 2,
+   "tool_errors": 0,
+   "tools": [
+    "list_modifiers",
+    "add_modifier"
+   ],
+   "tool_error_messages": [],
+   "requests": 3,
+   "tokens": {
+    "input": 15415,
+    "output": 272,
+    "cache_read": 48303,
+    "cache_write": 0
+   },
+   "cost": 0.0432106,
+   "seconds": 4.13,
+   "answer": "79/201 = 39.3%\n\nAdaptive common neighbor analysis (cell 3 of the notebook) classifies 79 of the 201 atoms as FCC, which is 39.3%. The other 122 atoms are \"Other\". There are no HCP, BCC or icosahedral atoms. The \"Other\" atoms are probably mostly surface atoms of the nanoparticle, which have too few neighbors to match FCC.\n\nANSWER: 39.3",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Pt_nanoparticle.xyz')\n\n# %%\npipe.add(CommonNeighborAnalysis(mode='adaptive'))\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "cu-frames",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number frames",
+     true,
+     "10 vs 10"
+    ],
+    [
+     "Number atoms",
+     true,
+     "108 vs 108"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 2,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame",
+    "show_pipeline"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 1383,
+    "output": 161,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.010816400000000002,
+   "seconds": 2.65,
+   "answer": "The trajectory has 10 frames. Frame 0 has 108 Cu atoms, with a cubic 10.85 \u00c5 cell. I only inspected frame 0, so I haven't confirmed the other nine also have 108 atoms. The atom count normally stays fixed in an MD run.\n\nANSWER: 10, 108",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_md.extxyz')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "cu-energy",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "-379.84 vs -379.84"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 3,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame",
+    "evaluate_expression",
+    "check_run"
+   ],
+   "tool_error_messages": [],
+   "requests": 3,
+   "tokens": {
+    "input": 2726,
+    "output": 278,
+    "cache_read": 48303,
+    "cache_write": 0
+   },
+   "cost": 0.017892599999999998,
+   "seconds": 4.02,
+   "answer": "Frame 5 has a total energy of \u2212379.8396 eV. This is the `Energy` attribute stored in the file for that frame, and I read it with `evaluate_expression` on frame 5 (\u2212379.8396457\u2026). The 108-atom Cu cell at that frame is at timestep 500.\n\nANSWER: -379.8396",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_md.extxyz')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "cu-fmax",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "1.1427 vs 1.14271"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 2,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame",
+    "evaluate_expression"
+   ],
+   "tool_error_messages": [],
+   "requests": 3,
+   "tokens": {
+    "input": 2507,
+    "output": 284,
+    "cache_read": 48303,
+    "cache_write": 0
+   },
+   "cost": 0.017514599999999998,
+   "seconds": 4.55,
+   "answer": "The largest force magnitude on any atom in the last frame (frame 9) is about 1.143 eV/\u00c5. I computed it as sqrt(Fx\u00b2 + Fy\u00b2 + Fz\u00b2) for each of the 108 Cu atoms. The mean is 0.470 eV/\u00c5 and the minimum is 0.134 eV/\u00c5.\n\nANSWER: 1.1427",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_md.extxyz')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "cu-rdf-peak",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "2.55 vs 2.55629"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "compute_rdf"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 1431,
+    "output": 233,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.011632400000000001,
+   "seconds": 2.9,
+   "answer": "In frame 0, the first peak of g(r) is at r \u2248 2.55 \u00c5. I computed it with 300 bins up to the default 6 \u00c5 cutoff, so the bin width is about 0.02 \u00c5.\n\nThe g(r) is spiky, with g = 26.8 at the first peak. That suggests a nearly perfect crystal with little thermal broadening in this frame. The next peaks are at 3.62, 4.43 and 5.11 \u00c5.\n\nANSWER: 2.55",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_md.extxyz')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "cu-lattice",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "3.617 vs 3.615"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 1264,
+    "output": 367,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.012638400000000001,
+   "seconds": 4.44,
+   "answer": "The cubic lattice constant is about 3.617 \u00c5. `describe_frame` reports a cubic cell of 10.85 \u00c5 on each side, and 10.85 \u00c5 / 3 = 3.617 \u00c5. The 10.85 \u00c5 figure is rounded to two decimals, so the third decimal of 3.617 is approximate.\n\nTwo other results from `describe_frame` agree with fcc Cu:\n- All 108 atoms have 12 nearest neighbours.\n- The first g(r) peak is at 2.56 \u00c5. That equals a/\u221a2, which gives a \u2248 3.62 \u00c5.\n\nThe structure is a single frame with small residual forces (mean magnitude 0.044), so it is close to ideal and not strongly distorted.\n\nANSWER: 3.617",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_md.extxyz')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "simd-msd",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "0.03799 vs 0.0379876"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 2,
+   "tool_errors": 0,
+   "tools": [
+    "describe_trajectory",
+    "check_run"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 1374,
+    "output": 315,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.012338400000000001,
+   "seconds": 3.92,
+   "answer": "The mean squared displacement of the Si atoms between frame 0 and frame 9 (the last of 10 frames) is about 0.038 \u00c5\u00b2. This is the end value of the MSD series from `describe_trajectory`, which measures each frame against the first. The cell is fixed (1282 \u00c5\u00b3 in every frame), so the displacements are not affected by cell changes.\n\nThe largest single-atom displacement at the last frame is 0.376 \u00c5. The MSD peaks at 0.0391 \u00c5\u00b2 somewhere in the series, so the last frame is close to that maximum.\n\nANSWER: 0.03799",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/XDATCAR.Si')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "simd-max-frame",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "8 vs 8"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 8,
+   "tool_errors": 0,
+   "tools": [
+    "describe_trajectory",
+    "compute_msd",
+    "add_modifier",
+    "evaluate_expression",
+    "evaluate_expression",
+    "evaluate_expression",
+    "evaluate_expression",
+    "evaluate_expression"
+   ],
+   "tool_error_messages": [],
+   "requests": 5,
+   "tokens": {
+    "input": 6925,
+    "output": 873,
+    "cache_read": 80505,
+    "cache_write": 0
+   },
+   "cost": 0.038681,
+   "seconds": 9.83,
+   "answer": "Frame 8 deviates most from frame 0. Its MSD relative to frame 0 is 0.03911 \u00c5\u00b2, the largest of the 10 frames. Frame 9 is next at 0.03799 \u00c5\u00b2.\n\nI got these values by adding a `CalculateDisplacements` step (reference frame 0) and evaluating the squared displacement magnitude per frame. I read frames 6\u20139 individually. Frames 1\u20135 I didn't read one by one. The trajectory scan puts the maximum MSD over the whole run at 0.03911, which is the frame 8 value, so none of them is higher.\n\nANSWER: 8",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/XDATCAR.Si')\n\n# %%\npipe.add(CalculateDisplacements())\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "chg-grid",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Matches 16\\s*(x|\u00d7|,|by)\\s*16\\s*(x|\u00d7|,|by)\\s*16",
+     true,
+     "/16\\s*(x|\u00d7|,|by)\\s*16\\s*(x|\u00d7|,|by)\\s*16/ found"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 3,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame",
+    "python_api",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 4,
+   "tokens": {
+    "input": 56764,
+    "output": 232,
+    "cache_read": 64404,
+    "cache_write": 0
+   },
+   "cost": 0.1287288,
+   "seconds": 4.97,
+   "answer": "The charge density grid in `CHGCAR.Si` is 16 \u00d7 16 \u00d7 16 points. I read this from `grid.shape` in a new cell 3, which prints `(16, 16, 16)`.\n\nANSWER: 16, 16, 16",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/CHGCAR.Si')\n\n# %%\ngrid = pipe.compute(0).grids[\"charge-density\"]\nprint(grid.shape)\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "void-missing",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "38 vs 38"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 1332,
+    "output": 259,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.0116944,
+   "seconds": 3.46,
+   "answer": "The cell edge is 18.08 \u00c5, which is 5 \u00d7 3.615 \u00c5. A perfect fcc crystal would therefore hold 5\u00b3 \u00d7 4 = 500 atoms. The block has 462, so 500 \u2212 462 = 38 atoms are missing.\n\nI took the 500 from the cell size and lattice constant and did not check it against the atom positions. I did not look for further vacancies or other defects beyond the void.\n\nANSWER: 38",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_void.lammpstrj')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "void-low-cn",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "78 vs 78"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 3,
+   "tool_errors": 0,
+   "tools": [
+    "add_modifier",
+    "set_frame",
+    "evaluate_expression"
+   ],
+   "tool_error_messages": [],
+   "requests": 3,
+   "tokens": {
+    "input": 1878,
+    "output": 349,
+    "cache_read": 48303,
+    "cache_write": 0
+   },
+   "cost": 0.016906599999999997,
+   "seconds": 4.55,
+   "answer": "In frame 0, 78 of the 462 atoms have fewer than 12 neighbours within 3.0 \u00c5 (about 17%). I counted them with a `CoordinationAnalysis` step (cutoff 3.0 \u00c5) and then evaluated `Coordination < 12` on frame 0. Coordination there ranges from 8 to 12, with a mean of 11.64.\n\nANSWER: 78",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_void.lammpstrj')\n\n# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "cuzr-composition",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number Cu",
+     true,
+     "64 vs 64"
+    ],
+    [
+     "Number Zr",
+     true,
+     "64 vs 64"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 1575,
+    "output": 84,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.010430400000000001,
+   "seconds": 2.38,
+   "answer": "The structure has 128 atoms: 64 Cu and 64 Zr. I got this from `describe_frame` on frame 0.\n\nANSWER: 64, 64",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/CuZr.data')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "cuzr-spacegroup",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Matches Pm-?3m|\\b221\\b",
+     true,
+     "/Pm-?3m|\\b221\\b/ found"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 2,
+   "tool_errors": 0,
+   "tools": [
+    "analyze_symmetry",
+    "describe_frame"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 1899,
+    "output": 436,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.014598400000000001,
+   "seconds": 5.1,
+   "answer": "The space group is Pm-3m (No. 221). I got it from a spglib analysis of frame 0 at the default tolerance of 0.01 \u00c5.\n\n- **Structure:** The 128-atom cell (13.04 \u00c5 cube) is a 4\u00d74\u00d74 supercell of a CsCl-type (B2) unit cell, with a \u2248 3.26 \u00c5.\n- **Wyckoff sites:** Cu sits on 1a and Zr on 1b.\n- **Coordination:** Every atom has 8 neighbours in the first shell, which is what B2 requires.\n\nI did not repeat the analysis at a looser symmetry tolerance.\n\nANSWER: Pm-3m (221)",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/CuZr.data')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "cuzr-nn",
+   "category": "answer",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "2.823 vs 2.82324"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 2,
+   "tool_errors": 0,
+   "tools": [
+    "compute_rdf",
+    "describe_frame"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 3437,
+    "output": 443,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.0177444,
+   "seconds": 4.69,
+   "answer": "The shortest Cu\u2013Zr distance in frame 0 is 2.823 \u00c5. `describe_frame` reports it as the minimum interatomic distance of the whole structure, and the pair is Cu\u2013Zr. The structure has 64 Cu and 64 Zr atoms in a 13.04 \u00c5 cubic cell.\n\nThe partial g(r) agrees: the first Cu\u2013Zr peak is at about 2.81 \u00c5, and the first Cu\u2013Cu and Zr\u2013Zr peaks are at about 3.25 \u00c5. The cell is 4 \u00d7 3.26 \u00c5, and (\u221a3/2) \u00d7 3.26 \u00c5 = 2.823 \u00c5, which matches the body-diagonal Cu\u2013Zr spacing of a B2 (CsCl-type) lattice.\n\nANSWER: 2.823",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/CuZr.data')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-color-cn",
+   "category": "step",
+   "passed": true,
+   "checks": [
+    [
+     "Step CoordinationAnalysis",
+     true,
+     "CoordinationAnalysis(cutoff=2.4, number_of_bins=200, partial=False)"
+    ],
+    [
+     "Any(Step ColorCoding, View color_by)",
+     true,
+     "{'color_by': <function <lambda> at 0x7fe39f2331a0>}"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 6,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame",
+    "list_modifiers",
+    "add_modifier",
+    "set_view",
+    "render_image",
+    "set_view"
+   ],
+   "tool_error_messages": [],
+   "requests": 6,
+   "tokens": {
+    "input": 47701,
+    "output": 1318,
+    "cache_read": 96606,
+    "cache_write": 0
+   },
+   "cost": 0.1279032,
+   "seconds": 19.77,
+   "answer": "The atoms are now colored by coordination number, using the viridis color map with a color bar. Two cells did this:\n\n- **Cell 3:** `pipe.add(CoordinationAnalysis(cutoff=2.4))` computes the `Coordination` property.\n- **Cell 4:** `view(pipe, color_by='Coordination', bonds=False)` does the coloring. I switched the bonds off because the sticks hid the atoms.\n\nI did not re-render after switching the bonds off, so I haven't checked the final picture.\n\nWith a single 2.4 \u00c5 cutoff the coordination numbers are:\n- **Ti:** 6, from the six Ti\u2013O bonds at about 1.95 \u00c5 (yellow).\n- **O:** 2, from the two Ti neighbors (blue-teal).\n- **Sr:** 0, because the Sr\u2013O distance (2.75 \u00c5) is beyond the cutoff (dark purple).\n\nI chose 2.4 \u00c5 so the Ti\u2013O octahedra show up clearly. I couldn't use a larger cutoff to bring Sr in, because O\u2013O is also 2.75 \u00c5 and the cutoff is the same for every pair. A cutoff of 3.2 \u00c5 would give Sr a nonzero value, but it would also count O\u2013O contacts. Say if you want a different cutoff.\n\nANSWER: Coordination",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n\n# %%\npipe.add(CoordinationAnalysis(cutoff=2.4))\n\n# %%\nview(pipe, color_by='Coordination', bonds=False)\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-octahedra",
+   "category": "step",
+   "passed": true,
+   "checks": [
+    [
+     "Step CoordinationPolyhedra",
+     true,
+     "CoordinationPolyhedra(center_types=['Ti'], transparency=0.25, edges=True)"
+    ],
+    [
+     "Data polyhedra drawn",
+     true,
+     "polyhedra drawn: True"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 6,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "describe_frame",
+    "add_modifier",
+    "add_modifier",
+    "set_view",
+    "render_image"
+   ],
+   "tool_error_messages": [],
+   "requests": 5,
+   "tokens": {
+    "input": 115796,
+    "output": 761,
+    "cache_read": 80505,
+    "cache_write": 0
+   },
+   "cost": 0.255303,
+   "seconds": 13.52,
+   "answer": "The 3D view now shows all 8 TiO6 octahedra as translucent grey polyhedra. I checked this in a render, and the polyhedra are corner-sharing as expected for SrTiO3. Sr atoms sit in the cavities between them and are hidden by the polyhedra in this view.\n\nI added three cells:\n- **Cell 2:** `CreateBonds` with a Ti\u2013O pairwise cutoff of 2.4 \u00c5. It makes 48 bonds, which is 6 per Ti, and the nearest Ti\u2013O distance is 1.95 \u00c5.\n- **Cell 3:** `CoordinationPolyhedra(center_types=[\"Ti\"])`, which builds the octahedra. It reports a count of 8.\n- **Cell 4:** the 3D view with `style=\"Ball & stick\"` and `direction=\"iso\"` (isometric). It also turns on the type legend.\n\nANSWER: 8",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n\n# %%\npipe.add(CreateBonds(mode='pairwise', pairs=[['Ti', 'O', 2.4]]))\n\n# %%\npipe.add(CoordinationPolyhedra(center_types=['Ti']))\n\n# %%\nview(pipe, type_legend=True)\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-delete-o",
+   "category": "step",
+   "passed": true,
+   "checks": [
+    [
+     "Data atoms left",
+     true,
+     "atoms left: 16 vs 16"
+    ],
+    [
+     "Data O left",
+     true,
+     "O left: 0 vs 0"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 4,
+   "tool_errors": 0,
+   "tools": [
+    "list_modifiers",
+    "describe_frame",
+    "add_modifier",
+    "add_modifier"
+   ],
+   "tool_error_messages": [],
+   "requests": 4,
+   "tokens": {
+    "input": 25266,
+    "output": 351,
+    "cache_read": 64404,
+    "cache_write": 0
+   },
+   "cost": 0.0669228,
+   "seconds": 5.1,
+   "answer": "I removed all 24 oxygen atoms. The structure now has 16 atoms: 8 Sr and 8 Ti.\n\nI added two steps to the notebook. Cell 2 selects the oxygen atoms with `SelectType(types=['O'])`, and cell 3 deletes them with `DeleteSelected()`. I didn't re-run `describe_frame` on the result, so the 8 Sr and 8 Ti are inferred from the original composition.\n\nANSWER: 16",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n\n# %%\npipe.add(SelectType(types=['O']))\n\n# %%\npipe.add(DeleteSelected())\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "pt-half",
+   "category": "step",
+   "passed": true,
+   "checks": [
+    [
+     "Data atoms left",
+     true,
+     "atoms left: 82 vs 82"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 5,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "describe_frame",
+    "add_modifier",
+    "add_modifier",
+    "evaluate_expression"
+   ],
+   "tool_error_messages": [],
+   "requests": 5,
+   "tokens": {
+    "input": 112640,
+    "output": 523,
+    "cache_read": 80505,
+    "cache_write": 0
+   },
+   "cost": 0.246611,
+   "seconds": 9.99,
+   "answer": "I added two cells after the load cell. Cell 2 is `ExpressionSelection(\"Position.Z >= 0\")`, which selects 119 atoms. Cell 3 is `DeleteSelected()`, which removes them.\n\nThe structure went from 201 atoms to 82. I then checked the result: Position.Z now runs from \u22127.848 to \u22121.962 \u00c5, so every remaining atom has a negative z.\n\nI used `>= 0` for the delete condition, so any atom sitting exactly at z = 0 would also have been deleted. The reported z range shows nothing remains at or above that plane.\n\nANSWER: 82",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Pt_nanoparticle.xyz')\n\n# %%\npipe.add(ExpressionSelection(expression='Position.Z >= 0'))\n\n# %%\npipe.add(DeleteSelected())\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "void-cna",
+   "category": "step",
+   "passed": true,
+   "checks": [
+    [
+     "Step CommonNeighborAnalysis",
+     true,
+     "CommonNeighborAnalysis(mode='adaptive', cutoff=3.2, types=(1, 2, 3, 4), color_by_type=True, only_selected=False, chunk_size=32768)"
+    ],
+    [
+     "Data selected",
+     true,
+     "selected: 78 vs 78"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 3,
+   "tool_errors": 0,
+   "tools": [
+    "list_modifiers",
+    "add_modifier",
+    "add_modifier"
+   ],
+   "tool_error_messages": [],
+   "requests": 4,
+   "tokens": {
+    "input": 23525,
+    "output": 504,
+    "cache_read": 64404,
+    "cache_write": 0
+   },
+   "cost": 0.06497080000000001,
+   "seconds": 7.62,
+   "answer": "I ran adaptive common neighbor analysis on the first frame (462 atoms) and selected every atom that isn't FCC. That selects **78 atoms**.\n\n- **Structure types:** 384 atoms are FCC and 78 are classed as Other. There are no HCP, BCC or ICO atoms.\n- **Selection:** the selection step uses `StructureType != 1`, because FCC is type 1 in this analysis. It selected 78 atoms. That matches the Other count, as expected since there are no other non-FCC types.\n\nThe two steps are cells 2 and 3 of the notebook.\n\nI didn't render the selection. The 78 non-FCC atoms are presumably the ones around the void, but I haven't checked that.\n\nANSWER: 78",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_void.lammpstrj')\n\n# %%\npipe.add(CommonNeighborAnalysis(mode='adaptive'))\n\n# %%\npipe.add(ExpressionSelection(expression='StructureType != 1'))\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "chg-isosurface",
+   "category": "step",
+   "passed": true,
+   "checks": [
+    [
+     "Step CreateIsosurface",
+     true,
+     "CreateIsosurface(isolevel=0.3, property='Charge Density', grid=None, signed=False, color=(1.0, 0.86, 0.0), negative_color=(0.0, 0.75, 1.0), transparency=0.0, identifier='isosurface')"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 4,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "describe_frame",
+    "add_modifier",
+    "render_image"
+   ],
+   "tool_error_messages": [],
+   "requests": 4,
+   "tokens": {
+    "input": 85646,
+    "output": 481,
+    "cache_read": 64404,
+    "cache_write": 0
+   },
+   "cost": 0.18898279999999998,
+   "seconds": 8.79,
+   "answer": "I added a charge-density isosurface at 0.3 e/\u00c5\u00b3 to the pipeline (cell 3, `CreateIsosurface(isolevel=0.3)`). I rendered it, and it draws the yellow surface around the Si atoms in the 8-atom cubic cell.\n\n- **Area:** the surface covers 104.7 \u00c5\u00b2.\n- **Shape:** it is one connected network that follows the Si\u2013Si bonds. It sits on the bond regions and leaves the cell's open channels empty. The pieces at the cell corners and edges are the same network continuing through the periodic boundaries.\n- **Level:** the isolevel is an absolute value in e/\u00c5\u00b3, as the grid stores it. I didn't check the density range, so I don't know how 0.3 compares with the maximum.\n\nI didn't change the view settings. The picture above is an isometric render with the default styling.\n\nANSWER: 0.3",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/CHGCAR.Si')\n\n# %%\npipe.add(CreateIsosurface(isolevel=0.3))\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-replicate",
+   "category": "step",
+   "passed": true,
+   "checks": [
+    [
+     "Any(View replicate, Step Replicate)",
+     true,
+     "{'replicate': [3, 3, 1]}"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 2,
+   "tool_errors": 0,
+   "tools": [
+    "set_view",
+    "render_image"
+   ],
+   "tool_error_messages": [],
+   "requests": 3,
+   "tokens": {
+    "input": 2734,
+    "output": 293,
+    "cache_read": 48303,
+    "cache_write": 0
+   },
+   "cost": 0.018058599999999998,
+   "seconds": 6.94,
+   "answer": "The 3D view now shows 3\u00d73\u00d71 periodic copies of the cell. I added `view(pipe, replicate=[3, 3, 1])` as cell 3. This is a display setting only, so the structure and any analysis still use the original cell.\n\nI rendered the view to check. The block is a rhombus of 3\u00d73 cells in the plane, and the cell outline is drawn around the whole block. Bonds run across the copy boundaries. The bonds look dense because the view is straight down c, so the layers stack on top of each other.\n\nANSWER: 3x3x1",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n\n# %%\nview(pipe, replicate=[3, 3, 1])\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "cuzr-select-zr",
+   "category": "step",
+   "passed": true,
+   "checks": [
+    [
+     "Data selected",
+     true,
+     "selected: 64 vs 64"
+    ],
+    [
+     "Data only Zr",
+     true,
+     "only Zr: True"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 2,
+   "tool_errors": 0,
+   "tools": [
+    "list_modifiers",
+    "add_modifier"
+   ],
+   "tool_error_messages": [],
+   "requests": 3,
+   "tokens": {
+    "input": 15112,
+    "output": 165,
+    "cache_read": 48303,
+    "cache_write": 0
+   },
+   "cost": 0.0415346,
+   "seconds": 4.65,
+   "answer": "I selected all the Zr atoms with a `SelectType` step in cell 2. It selected 64 of the 128 atoms.\n\nANSWER: 64",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/CuZr.data')\n\n# %%\npipe.add(SelectType(types=['Zr']))\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-white",
+   "category": "view",
+   "passed": true,
+   "checks": [
+    [
+     "View background,bonds",
+     true,
+     "{'background': 'white', 'bonds': False}"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "set_view"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 757,
+    "output": 151,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.009464400000000001,
+   "seconds": 3.5,
+   "answer": "I changed the 3D view so the background is white and bonds are hidden. This is in cell 2 of the notebook:\n\n```text\nview(pipe, background='white', bonds=False)\n```\n\nI didn't render an image to check the result.\n\nANSWER: done",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n\n# %%\nview(pipe, background='white', bonds=False)\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-o-red",
+   "category": "view",
+   "passed": true,
+   "checks": [
+    [
+     "View colors,radii",
+     true,
+     "{'colors': {'O': <function _red at 0x7fe39f232de0>}, 'radii': {'O': 0.6}}"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 3,
+   "tool_errors": 0,
+   "tools": [
+    "set_view",
+    "render_image",
+    "get_view"
+   ],
+   "tool_error_messages": [],
+   "requests": 4,
+   "tokens": {
+    "input": 9050,
+    "output": 742,
+    "cache_read": 64404,
+    "cache_write": 0
+   },
+   "cost": 0.038400800000000006,
+   "seconds": 11.87,
+   "answer": "O atoms are now red with a radius of 0.6 \u00c5. The change is in cell 2:\n\n```python\nview(pipe, colors={'O': 'red'}, radii={'O': 0.6})\n```\n\nThe `radii` value is applied before the view's `radius_scale`, which is 0.5 in the Ball & stick style. The O spheres therefore draw at about 0.3 \u00c5, so they look small in the render and the red bonds hide most of them. For a drawn radius of 0.6 \u00c5, set `radii={'O': 1.2}`. You could also set `radius_scale=1`, but that enlarges the Sr and Ti atoms too. I haven't made either change.\n\nANSWER: view(pipe, colors={'O': 'red'}, radii={'O': 0.6})",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n\n# %%\nview(pipe, colors={'O': 'red'}, radii={'O': 0.6})\n\n# %%\nview(pipe, colors={'O': 'red'}, radii={'O': 0.6})\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-top",
+   "category": "view",
+   "passed": true,
+   "checks": [
+    [
+     "View direction",
+     true,
+     "{'direction': <function along.<locals>.match at 0x7fe39f2336a0>}"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 3,
+   "tool_errors": 0,
+   "tools": [
+    "set_view",
+    "render_image",
+    "describe_frame"
+   ],
+   "tool_error_messages": [],
+   "requests": 3,
+   "tokens": {
+    "input": 3415,
+    "output": 344,
+    "cache_read": 48303,
+    "cache_write": 0
+   },
+   "cost": 0.0199306,
+   "seconds": 5.68,
+   "answer": "The 3D view now looks straight down the c axis (cell 3: `view(pipe, direction='z')`). The cell is cubic with a = b = c = 7.81 \u00c5 and all angles 90\u00b0, so the c axis is the Cartesian z axis.\n\nIn the rendered image the a axis runs left to right and the b axis runs bottom to top. The Sr atoms are green, Ti grey and O red. Projected along c, they form a square grid.\n\nANSWER: z",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n\n# %%\nview(pipe, direction='z')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "cu-last-frame",
+   "category": "view",
+   "passed": true,
+   "checks": [
+    [
+     "View frame",
+     true,
+     "{'frame': <function <lambda> at 0x7fe39f233740>}"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 3,
+   "tool_errors": 0,
+   "tools": [
+    "describe_frame",
+    "set_view",
+    "render_image"
+   ],
+   "tool_error_messages": [],
+   "requests": 3,
+   "tokens": {
+    "input": 3956,
+    "output": 459,
+    "cache_read": 48303,
+    "cache_write": 0
+   },
+   "cost": 0.022162599999999998,
+   "seconds": 7.33,
+   "answer": "The 3D view now shows the last frame, frame 9 of 10. I set it with `view(pipe, frame=9)` in cell 2, and I rendered it along the isometric direction.\n\nThe frame has 108 Cu atoms in a 10.85 \u00c5 cubic cell, at a density of 8.935 g/cm\u00b3. Timestep is 900 and the energy is \u2212375.2. The atoms sit on a fcc-like lattice. The mean coordination is 12.06 within a 3.146 \u00c5 cutoff (the first g(r) minimum). 100 atoms have 12 neighbours, 7 have 13 and 1 has 11.\n\nThe describe_frame check warns that 14 atoms lie outside the periodic cell, which suggests the coordinates are unwrapped. This doesn't change the picture. The render draws bonds as sticks, so the lattice looks busy.\n\nANSWER: 9",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_md.extxyz')\n\n# %%\nview(pipe, frame=9)\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "void-cell-scale",
+   "category": "view",
+   "passed": true,
+   "checks": [
+    [
+     "View cell,scale_bar",
+     true,
+     "{'cell': False, 'scale_bar': <function <lambda> at 0x7fe39f2337e0>}"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "set_view"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 776,
+    "output": 160,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.009592400000000001,
+   "seconds": 3.43,
+   "answer": "I hid the simulation cell and turned on the scale bar. Both settings are in a new view cell, cell 3, which contains `view(pipe, cell=False, scale_bar=True)`. I haven't rendered an image to check how it looks.\n\nANSWER: done",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_void.lammpstrj')\n\n# %%\nview(pipe, cell=False, scale_bar=True)\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-type-legend",
+   "category": "view",
+   "passed": true,
+   "checks": [
+    [
+     "View type_legend",
+     true,
+     "{'type_legend': True}"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 2,
+   "tool_errors": 0,
+   "tools": [
+    "set_view",
+    "render_image"
+   ],
+   "tool_error_messages": [],
+   "requests": 3,
+   "tokens": {
+    "input": 2676,
+    "output": 289,
+    "cache_read": 48303,
+    "cache_write": 0
+   },
+   "cost": 0.017902599999999998,
+   "seconds": 5.44,
+   "answer": "I added a type legend to the 3D view in cell 3, `view(pipe, type_legend=True)`. In the rendered frame it shows up in the top-left corner:\n\n- **Sr:** green\n- **Ti:** grey\n- **O:** red\n\nThe render looks odd. The Ti atoms are drawn as large spheres, and the O and Sr atoms mostly show as bond sticks. That comes from the default radii and bond drawing, not from the legend. I haven't changed those settings. If you want a cleaner ball-and-stick picture, I can adjust the radii or switch the bonds off.\n\nANSWER: Sr green, Ti grey, O red",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n\n# %%\nview(pipe, type_legend=True)\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "si-spacefill",
+   "category": "view",
+   "passed": true,
+   "checks": [
+    [
+     "View style",
+     true,
+     "{'style': 'Space-filling'}"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "set_view"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 718,
+    "output": 129,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.009166400000000002,
+   "seconds": 2.18,
+   "answer": "I set the view to the space-filling style. This is a new view cell, cell 3 in the notebook, containing `view(pipe, style='Space-filling')`. I didn't render an image to check how it looks.\n\nANSWER: Space-filling",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Si.cif')\n\n# %%\nview(pipe, style='Space-filling')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "cu-export",
+   "category": "export",
+   "passed": true,
+   "checks": [
+    [
+     "File frame3.xyz",
+     true,
+     "frame3.xyz"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "export_file"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 838,
+    "output": 217,
+    "cache_read": 32202,
+    "cache_write": 0
+   },
+   "cost": 0.010286400000000001,
+   "seconds": 2.76,
+   "answer": "I exported frame 3 (counted from 0) as extended XYZ. The export cell is cell 3 of the notebook, and it wrote one frame to `frame3.xyz`. I didn't open the file afterwards to check its contents.\n\nANSWER: frame3.xyz",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_md.extxyz')\n\n# %%\nfrom ewald.io import export_file\nexport_file(pipe, 'frame3.xyz', format='extxyz', frames=[3])\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-render",
+   "category": "export",
+   "passed": true,
+   "checks": [
+    [
+     "File sto.png",
+     true,
+     "sto.png"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 5,
+   "tool_errors": 0,
+   "tools": [
+    "render_image",
+    "describe_frame",
+    "get_view",
+    "python_api",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 5,
+   "tokens": {
+    "input": 79432,
+    "output": 993,
+    "cache_read": 80505,
+    "cache_write": 0
+   },
+   "cost": 0.184895,
+   "seconds": 16.43,
+   "answer": "I rendered the SrTiO\u2083 cell in an isometric view and saved it as `sto.png`. I added the render call as cell 3 of the notebook, so `sto.png` is written to the notebook's working directory. Nothing in the existing cells changed.\n\n```python\npipe.render(\"sto.png\", direction=\"iso\")\n```\n\nThe default ball-and-stick style hides most of the Sr and O atoms:\n- **Cell:** 40 atoms (8 Sr, 8 Ti, 24 O) in a cubic cell with a = 7.81 \u00c5.\n- **Ti\u2013O bonds:** these are the grey and red sticks. The Ti atoms are the large grey spheres, each with 6 bonds, as expected for octahedral coordination.\n- **Sr atoms:** the green sticks are bonds that include Sr. The Sr spheres themselves are not visible.\n- **O atoms:** the small red spheres are covered by the red sticks.\n\nIf you want the atoms more visible, I can redo it with larger atoms, thinner bonds or TiO\u2086 octahedra.\n\nANSWER: sto.png",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n\n# %%\npipe.render(\"sto.png\", direction=\"iso\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "sto-code-tio",
+   "category": "code",
+   "passed": true,
+   "checks": [
+    [
+     "CellNumber",
+     true,
+     "1.9525 vs 1.9525"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 2,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 3,
+   "tokens": {
+    "input": 55333,
+    "output": 588,
+    "cache_read": 48303,
+    "cache_write": 0
+   },
+   "cost": 0.1262066,
+   "seconds": 6.55,
+   "answer": "I added cell 3 and ran it. It prints 48 Ti\u2013O pairs shorter than 2.5 \u00c5, with a mean Ti\u2013O distance of 1.9525 \u00c5.\n\nThe cell checks the neighboring periodic images (\u22121 to +1 in each direction), so it also counts Ti\u2013O pairs that cross the cell boundary. The 48 pairs match 6 O neighbors for each of 8 Ti atoms, so every Ti is fully octahedrally coordinated.\n\nANSWER: 1.9525",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n\n# %%\ndata = pipe.compute(0)\npos = data.positions\ntypes = np.array(data.types)\nti = pos[types == \"Ti\"]\no = pos[types == \"O\"]\ncell = data.cell.matrix\n# minimum-image distances (via fractional coordinates, checking neighbor images)\nd = ti[:, None, :] - o[None, :, :]\nfrac = d @ np.linalg.inv(cell)\ndists = []\nshifts = np.array([[i, j, k] for i in (-1, 0, 1) for j in (-1, 0, 1) for k in (-1, 0, 1)])\nbest = None\nalld = np.stack([np.linalg.norm((frac + s) @ cell, axis=-1) for s in shifts])\nr = alld[alld < 2.5]\nprint(len(r), \"Ti-O pairs < 2.5 A; mean Ti-O distance =\", r.mean(), \"A\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "cu-code-height",
+   "category": "code",
+   "passed": true,
+   "checks": [
+    [
+     "Data Height == z",
+     true,
+     "Height == z: True"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 3,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "insert_cell",
+    "evaluate_expression"
+   ],
+   "tool_error_messages": [],
+   "requests": 4,
+   "tokens": {
+    "input": 82670,
+    "output": 337,
+    "cache_read": 64404,
+    "cache_write": 0
+   },
+   "cost": 0.1815908,
+   "seconds": 5.08,
+   "answer": "I added a Python step as cell 3 and ran it. It sets a per-atom `Height` property equal to each atom's z coordinate:\n\n```python\n# %% Height [each frame]\ndata['Height'] = data.positions[:, 2].copy()\n```\n\nThe step runs on every frame. I checked it with the expression `Height - Position.Z`, which is 0.0 for all atoms (min and max both 0.0).\n\nANSWER: Height",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_md.extxyz')\n\n# %% Height [each frame]\ndata['Height'] = data.positions[:, 2].copy()\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "nb-edit-cutoff",
+   "category": "notebook",
+   "passed": true,
+   "checks": [
+    [
+     "Step CoordinationAnalysis",
+     true,
+     "CoordinationAnalysis(cutoff=2.5, number_of_bins=200, partial=False)"
+    ],
+    [
+     "Cells coordination cells",
+     true,
+     "coordination cells: 1 vs 1"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 2,
+   "tool_errors": 0,
+   "tools": [
+    "list_cells",
+    "edit_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 3,
+   "tokens": {
+    "input": 2220,
+    "output": 224,
+    "cache_read": 48303,
+    "cache_write": 0
+   },
+   "cost": 0.0163406,
+   "seconds": 5.27,
+   "answer": "I changed the coordination step in cell 3 from `cutoff=2.0` to `cutoff=2.5` and re-ran it. The cell now reads `pipe.add(CoordinationAnalysis(cutoff=2.5))`. I didn't look at the new coordination numbers or the colouring in cell 4.\n\nANSWER: 2.5",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n\n# %%\npipe.add(CoordinationAnalysis(cutoff=2.5))\n\n# %%\npipe.add(ColorCoding(property='Coordination'))\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "nb-remove-step",
+   "category": "notebook",
+   "passed": true,
+   "checks": [
+    [
+     "Cells color coding cells",
+     true,
+     "color coding cells: 0 vs 0"
+    ],
+    [
+     "Cells coordination cells",
+     true,
+     "coordination cells: 1 vs 1"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 3,
+   "tool_errors": 0,
+   "tools": [
+    "show_pipeline",
+    "remove_modifier",
+    "get_view"
+   ],
+   "tool_error_messages": [],
+   "requests": 4,
+   "tokens": {
+    "input": 6335,
+    "output": 274,
+    "cache_read": 64404,
+    "cache_write": 0
+   },
+   "cost": 0.0282908,
+   "seconds": 4.3,
+   "answer": "I removed the ColorCoding step, which was cell 4 of your notebook. The atoms are back to their element colors: Sr green (#00ff00), Ti grey (#bfc2c7) and O red (#ff0d0d). I didn't render an image; I read the colors from the view settings, which show no color override.\n\nI left the CoordinationAnalysis step in cell 3 alone. It only computes the Coordination property and doesn't change any colors. If you don't need that property either, I can remove it too.\n\nANSWER: done",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n\n# %%\npipe.add(CoordinationAnalysis(cutoff=2.5))\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "nb-fix-error",
+   "category": "notebook",
+   "passed": true,
+   "checks": [
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Step CoordinationAnalysis",
+     true,
+     "CoordinationAnalysis(cutoff=3.0, number_of_bins=200, partial=False)"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 3,
+   "tool_errors": 1,
+   "tools": [
+    "list_cells",
+    "edit_cell",
+    "edit_cell"
+   ],
+   "tool_error_messages": [
+    [
+     "edit_cell",
+     "ValueError: cell 2 is not a step cell that ran; edit its source instead"
+    ]
+   ],
+   "requests": 4,
+   "tokens": {
+    "input": 3515,
+    "output": 360,
+    "cache_read": 64404,
+    "cache_write": 0
+   },
+   "cost": 0.023510800000000002,
+   "seconds": 5.64,
+   "answer": "I fixed cell 3. It had a typo, `cutof=3.0`, and the keyword is `cutoff`. The cell now reads:\n\n```python\npipe.add(CoordinationAnalysis(cutoff=3.0))\n```\n\nIt ran without errors. The pipeline now has `CoordinationAnalysis(cutoff=3.0, number_of_bins=200, partial=False)`. I haven't looked at the coordination results yet.\n\nANSWER: cutoff",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_md.extxyz')\n\n# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "recipe-rdf-plot",
+   "category": "recipe",
+   "passed": true,
+   "checks": [
+    [
+     "Cells show cell",
+     true,
+     "show cell: True"
+    ],
+    [
+     "Data rdf table",
+     true,
+     "rdf table: True"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 4,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "add_modifier",
+    "insert_cell",
+    "compute_rdf"
+   ],
+   "tool_error_messages": [],
+   "requests": 4,
+   "tokens": {
+    "input": 83951,
+    "output": 719,
+    "cache_read": 64404,
+    "cache_write": 0
+   },
+   "cost": 0.1879728,
+   "seconds": 10.6,
+   "answer": "I plotted g(r) for frame 0 (108 Cu atoms) by adding two cells:\n- **Cell 3:** `CoordinationAnalysis(cutoff=8.0, number_of_bins=200)`. It computes g(r) out to 8 \u00c5 and writes the `coordination-rdf` table.\n- **Cell 4:** `show(pipe, table=\"coordination-rdf\")`. It draws the plot.\n\nThe plot has sharp, well-separated peaks, as expected for a crystal. Nothing is nonzero below about 2.4 \u00c5. The first peak is at about 2.5 \u00c5 and is the tallest, with g(r) \u2248 24. Further peaks follow near 3.6, 4.4, 5.1, 5.7 and 6.8 \u00c5.\n\nThe 200 bins over 8 \u00c5 are 0.04 \u00c5 wide, so the peak heights depend on that binning. Only frame 0 is plotted. If you want g(r) averaged over the whole trajectory, I can add `TimeAveraging(\"table:coordination-rdf\")`.\n\nANSWER: 2.5",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_md.extxyz')\n\n# %%\npipe.add(CoordinationAnalysis(cutoff=8.0, number_of_bins=200))\n\n# %%\nshow(pipe, table=\"coordination-rdf\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "recipe-msd-plot",
+   "category": "recipe",
+   "passed": true,
+   "checks": [
+    [
+     "Step MeanSquaredDisplacement",
+     true,
+     "MeanSquaredDisplacement(start=0, stop=None, step=1, time_per_frame=0.0, fit_range=(0.2, 0.8), by_type=True, unwrapped=False, subtract_drift=False, only_selected=False)"
+    ],
+    [
+     "Cells show cell",
+     true,
+     "show cell: True"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 5,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "check_run",
+    "compute_msd",
+    "add_modifier",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 4,
+   "tokens": {
+    "input": 84910,
+    "output": 575,
+    "cache_read": 64404,
+    "cache_write": 0
+   },
+   "cost": 0.1884508,
+   "seconds": 7.83,
+   "answer": "I added the MSD step in cell 2 (`MeanSquaredDisplacement`) and the plot in cell 3 (`show(pipe, table=\"msd\")`). The trajectory has 10 frames and 64 Si atoms.\n\n**What the curve shows.** The MSD jumps to about 0.032 \u00c5\u00b2 at lag 1. After that it creeps up to about 0.038 \u00c5\u00b2 by lag 9 and does not grow linearly from zero. This looks like thermal vibration of atoms in a solid, not diffusion.\n\n**Diffusion coefficient.**\n- The Einstein fit gives D \u2248 2.5e-4 \u00c5\u00b2/frame.\n- That value is small and rests on only 10 frames, so I would not treat it as a real diffusion coefficient.\n- It is in \u00c5\u00b2 per frame because no time step is available. `check_run` found no INCAR, so there is no time per frame to convert to cm\u00b2/s.\n- If you know the POTIM and the frame spacing, set `time_per_frame` (in ps) on the modifier to get D in physical units.\n\nThe plot x-axis is labelled \"Time\" but is in frames for the same reason.\n\nANSWER: 0.0000",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/XDATCAR.Si')\n\n# %%\npipe.add(MeanSquaredDisplacement())\n\n# %%\nshow(pipe, table=\"msd\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "recipe-hide-fcc",
+   "category": "recipe",
+   "passed": true,
+   "checks": [
+    [
+     "Step CommonNeighborAnalysis",
+     true,
+     "CommonNeighborAnalysis(mode='adaptive', cutoff=3.2, types=(1, 2, 3, 4), color_by_type=True, only_selected=False, chunk_size=32768)"
+    ],
+    [
+     "Data hidden atoms",
+     true,
+     "hidden atoms: 375 vs 375"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 6,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "describe_frame",
+    "add_modifier",
+    "insert_cell",
+    "render_image",
+    "set_view"
+   ],
+   "tool_error_messages": [],
+   "requests": 6,
+   "tokens": {
+    "input": 145765,
+    "output": 713,
+    "cache_read": 96606,
+    "cache_write": 0
+   },
+   "cost": 0.3179812,
+   "seconds": 10.78,
+   "answer": "I added two steps and one view setting, and the pipeline applies them to every frame. I rendered the last frame (frame 4) and the FCC atoms were hidden. I did not render the other frames.\n\n- **Cell 3:** `pipe.add(CommonNeighborAnalysis())` classifies each atom in every frame. In frame 0, 384 atoms are FCC and 78 are \"Other\", with no HCP, BCC or ICO.\n- **Cell 4:** a per-frame step with `hide(data, \"StructureType == 1\")`. This sets those atoms fully transparent in each frame.\n- **Cell 5:** `view(pipe, bonds=False)`. The default bonds were still drawing stubs towards the hidden FCC atoms, so I turned bonds off.\n\n```python\n# %% hide FCC [each frame]\nhide(data, \"StructureType == 1\")\n```\n\nWhat remains visible is the non-FCC shell around the void, plus a few isolated non-FCC atoms elsewhere in the cell. I haven't checked whether those isolated atoms are thermal disorder or real defects.",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/Cu_void.lammpstrj')\n\n# %%\npipe.add(CommonNeighborAnalysis())\n\n# %% hide FCC [each frame]\nhide(data, \"StructureType == 1\")\n\n# %%\nview(pipe, bonds=False)\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "plugin-modifier",
+   "category": "plugin",
+   "passed": true,
+   "checks": [
+    [
+     "Step LocalComposition",
+     true,
+     "LocalComposition(cutoff=3.2, element='Zr')"
+    ],
+    [
+     "Number 0",
+     true,
+     "0.5 vs 0.5"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 4,
+   "tool_errors": 0,
+   "tools": [
+    "list_modifiers",
+    "python_api",
+    "add_modifier",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 4,
+   "tokens": {
+    "input": 104431,
+    "output": 462,
+    "cache_read": 64404,
+    "cache_write": 0
+   },
+   "cost": 0.22636279999999998,
+   "seconds": 9.07,
+   "answer": "I added `LocalComposition(cutoff=3.2, element='Zr')` to the pipeline. It ran on all 128 atoms and gave a mean Zr fraction among neighbours within 3.2 \u00c5 of 0.5. I confirmed this in a second cell, where `Local Zr Fraction` averages exactly 0.5 and matches the `LocalComposition.mean` attribute. The cell holds 64 Cu and 64 Zr atoms.\n\nANSWER: 0.5",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/CuZr.data')\n\n# %%\nfrom ewald.modifiers import LocalComposition\npipe.add(LocalComposition(cutoff=3.2, element='Zr'))\n\n# %%\ndata = pipe.compute(0)\nf = data[\"Local Zr Fraction\"]\nprint(f.mean(), data.attributes[\"LocalComposition.mean\"], np.unique(data.types, return_counts=True))\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "plugin-tool",
+   "category": "plugin",
+   "passed": true,
+   "checks": [
+    [
+     "UsedTool bond_valence_sums",
+     true,
+     "tools: ['bond_valence_sums']"
+    ],
+    [
+     "Number 0",
+     true,
+     "4.138 vs 4.13769"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 1,
+   "tool_errors": 0,
+   "tools": [
+    "bond_valence_sums"
+   ],
+   "tool_error_messages": [],
+   "requests": 2,
+   "tokens": {
+    "input": 831,
+    "output": 239,
+    "cache_read": 16293,
+    "cache_write": 16293
+   },
+   "cost": 0.0480431,
+   "seconds": 3.05,
+   "answer": "The bond valence sum of Ti is 4.138 valence units. All 8 Ti atoms give the same value, so the mean, minimum and maximum are identical.\n\nI ran the bond valence tool on frame 0 with its default 3.5 \u00c5 cutoff for Ti\u2013O distances. It uses the Brown & Altermatt R0 for Ti (1.815 \u00c5) and b = 0.37 \u00c5. The value is close to the nominal Ti\u2074\u207a, with a slight over-bonding of about 0.14.\n\nAs a side result, Sr comes out at 2.109, also close to its nominal 2+.\n\nANSWER: 4.138",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('src/ewald/examples/files/POSCAR.SrTiO3')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "li-diffusion",
+   "category": "paper",
+   "passed": true,
+   "checks": [
+    [
+     "Number 0",
+     true,
+     "1.25e-05 vs 1.23e-05"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 3,
+   "tool_errors": 0,
+   "tools": [
+    "check_run",
+    "describe_frame",
+    "compute_msd"
+   ],
+   "tool_error_messages": [],
+   "requests": 3,
+   "tokens": {
+    "input": 7598,
+    "output": 854,
+    "cache_read": 48303,
+    "cache_write": 0
+   },
+   "cost": 0.0333966,
+   "seconds": 8.98,
+   "answer": "Li tracer D \u2248 1.25\u00d710\u207b\u2075 cm\u00b2/s, fitting the Li MSD from 3 ps on.\n\n- **Run:** `check_run` found no problems. It reads 140 frames (0.1 ps apart), with no close contacts at the first or last frame. The INCAR wasn't available, so I set the frame spacing to 100 fs by hand.\n- **Fit window:** I fitted the time-averaged, unwrapped Li MSD over lags of 30 to 139 frames (3 to 13.9 ps). The line is MSD = 0.0751 \u00c5\u00b2/frame \u00d7 lag + 1.35 \u00c5\u00b2.\n- **Conversion:** D = slope / 6, with the slope taken per 100 fs, gives 1.25\u00d710\u207b\u2075 cm\u00b2/s.\n- **Framework check:** the S, P and Cl MSDs stay flat at about 0.2\u20130.4 \u00c5\u00b2, so there is no cell drift. The Li MSD therefore reflects real diffusion.\n- **Uncertainty:** the longest lags average over few time origins, so they are noisy. The Li MSD curve bends upward over the last few lags, which pulls the slope slightly. Restricting the fit to half the lags would be a more conservative check.\n\nANSWER: 1.25e-5",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n\n# %%\npipe = load('/root/.cache/ewald/papers/li6ps5cl-aimd/XDATCAR.gz')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  }
+ ]
+}
