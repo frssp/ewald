@@ -2281,7 +2281,7 @@ def test_notebook_layout_tabs_steps_views_and_files(app, cu_path, tmp_path, monk
     w._plugin_updates(2)                                       # a count badge while plugins have updates
     assert plugins_button.property("updates") == 2 and "2 updates available" in plugins_button.toolTip()
     w._plugin_updates(0)
-    assert plugins_button.toolTip() == "Show or hide the Plugins side bar"
+    assert plugins_button.toolTip() == "Plugins (Ctrl+Shift+X)"
     tabs = w.panel.tabs
     assert tabs.count() == 0 and w.panel.view is None                    # a new window: the welcome page
     assert "_empty" in w.viewport.plotter.actors and not w.viewport._viewbar.isEnabled()   # and a hint in the view
@@ -4015,7 +4015,7 @@ def test_menu_reorganization(app, cu_fcc, tmp_path, monkeypatch):
     assert "View" not in insert and "Analysis" not in insert and "Plugin step" not in insert
     assert "Command palette" in labels(menus["Tools"]) and "Command palette" not in labels(menus["Window"])
     window = labels(menus["Window"])
-    assert window.index("Notebook") < window.index("Remotes") < window.index("Plugins") < window.index("AI chat")
+    assert window.index("Notebook") < window.index("AI chat") < window.index("Remotes") < window.index("Plugins")
     remotes = w.remotes_action
     assert remotes.shortcut() == QtGui.QKeySequence("Ctrl+Alt+R")
     remotes.trigger()
@@ -4538,6 +4538,35 @@ def test_ai_chat_per_notebook_tab(app, pipe):
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_activity_bar_order_icons_and_tooltips(app, pipe, monkeypatch):
+    """Work side bars on top, Plugins and Preferences at the bottom, the Window menu in the same
+    order, and every tooltip names its shortcut (D35)."""
+    from ewald.gui.app import MainWindow
+    from ewald.gui.icons import PATHS
+
+    w = MainWindow(pipe)
+    acts = w.activity_bar.actions()
+    titles = [a.text() for a in acts]
+    assert titles.index("AI chat") == 1 and titles[-2:] == ["Plugins", "Preferences"]
+    spacer = w.activity_bar.widgetForAction(acts[titles.index("Plugins") - 1])
+    assert spacer.objectName() == "activitySpacer"             # pushes the management group down
+    assert [w.activity_buttons[n].property("ewald_icon") for n in ("AI chat", "Remotes", "Preferences")] \
+        == ["ai", "remote", "settings"]
+    assert PATHS["claude"] == PATHS["ai"]                      # old icon name still works for plugins
+    assert w.plugin_panels["workflows"]["plugin"].icon == "workflow"
+    tips = {n: w.activity_buttons[n].toolTip() for n in ("AI chat", "Remotes", "Plugins", "Preferences")}
+    assert all("Ctrl+" in t or "\u2318" in t for t in tips.values()), tips
+    side = [a.text().replace("&", "") for a in w.side_bar_actions]
+    assert side == ["Notebook", "AI chat", "Remotes", "Plugins"]
+    bar_order = [t for t in titles if t in side]
+    assert bar_order == side
+    opened = []
+    monkeypatch.setattr(w, "preferences", lambda page=None: opened.append(page))
+    w.activity_buttons["Preferences"].trigger()
+    assert opened == [None] and not w.activity_buttons["Preferences"].isCheckable()
+    w.close()
+
+
 def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatch):
     """Installing a plugin with @panel and @settings_page adds an activity-bar button that opens
     its side bar (built on first open) and a page in Preferences; switching it off removes both."""
@@ -4560,8 +4589,9 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
 
     plugins.register_panel("broken", broken, title="Broken")
     w = MainWindow(pipe)
-    titles = [a.text() for a in w.activity_bar.actions()]
-    assert titles[:4] == ["Notebook", "Plugins", "Remotes", "AI chat"] and sorted(titles[4:]) == ["Broken", "Sim agent", "Workflows"]
+    titles = [a.text() for a in w.activity_bar.actions() if a.text()]   # work on top, management at the bottom
+    assert titles[:2] == ["Notebook", "AI chat"] and titles[-3:] == ["Remotes", "Plugins", "Preferences"]
+    assert sorted(titles[2:-3]) == ["Broken", "Sim agent", "Workflows"]
     assert w.plugin_panels["sim_agent"]["dock"] is None          # nothing built before it opens
     assert sorted(a.text() for a in w.plugin_panel_actions) == ["Agent jobs", "Broken", "Sim agent", "Workflows"]
     window = [a.text() for a in w.window_menu.actions()]            # with the side bars, before Remotes
@@ -4603,7 +4633,8 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
 
     plugins.set_enabled("sim-agent-example", False)
     w.refresh_plugin_panels()
-    assert [a.text() for a in w.activity_bar.actions()][4:] == ["Broken", "Workflows"] and "sim_agent" not in w.plugin_panels
+    assert [a.text() for a in w.activity_bar.actions() if a.text()][2:-3] == ["Broken", "Workflows"]
+    assert "sim_agent" not in w.plugin_panels
     w.close()
 
 

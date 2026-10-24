@@ -16,7 +16,8 @@ from .theme import STYLE, TOKENS
 
 PATHS = {
     "open": '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
-    "remote": '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+    "remote": '<rect x="4" y="4" width="16" height="7" rx="1.8"/><rect x="4" y="13" width="16" height="7" rx="1.8"/>'
+              '<path d="M8 7.5h.01M8 16.5h.01M12 7.5h4M12 16.5h4"/>',
     "save": '<path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8V3M7 21v-7h10v7"/>',
     "analyze": '<circle cx="8" cy="9" r="3"/><circle cx="16" cy="15" r="3"/><path d="M10.5 10.5l3 3"/>',
     "render": '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
@@ -43,12 +44,17 @@ PATHS = {
     "layers": '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
     "isosurface": '<path d="M12 3c5 0 8 4 8 9s-3 9-8 9-8-4-8-9 3-9 8-9z"/><path d="M8 12c2-3 6-3 8 0"/>',
     "chart": '<path d="M4 20V4M4 20h16"/><path d="m7 15 4-5 3 3 5-7"/>',
-    "claude": '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
+    "ai": '<path d="M6.5 4h11A2.5 2.5 0 0 1 20 6.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 3.5V17A2.5 2.5 0 0 1 4 14.5v-8A2.5 2.5 0 0 1 6.5 4z"/>'
+          '<path d="M12 6.9Q12.6 9.9 15.6 10.5Q12.6 11.1 12 14.1Q11.4 11.1 8.4 10.5Q11.4 9.9 12 6.9z" fill="currentColor" stroke-width="1"/>',
+    "workflow": '<rect x="3.5" y="3.5" width="7" height="5" rx="1.2"/><rect x="13.5" y="9.5" width="7" height="5" rx="1.2"/>'
+                '<rect x="3.5" y="15.5" width="7" height="5" rx="1.2"/><path d="M10.5 6H14a3 3 0 0 1 3 3v.5M17 14.5v.5a3 3 0 0 1-3 3h-3.5"/>',
     "example": '<path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M8 7h6"/>',
     "image": '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
-    "settings": '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>',
-    "plugins": '<path d="M9 4h4v3a2 2 0 1 0 4 0V4h3v6h-3a2 2 0 1 0 0 4h3v6h-6v-3a2 2 0 1 0-4 0v3H4v-6h3a2 2 0 1 0 0-4H4V4z"/>',
-    "notebook": '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+    "settings": '<circle cx="12" cy="12" r="3"/><path d="M10.3 3.5h3.4l.5 2.4 1.6.9 2.3-.8 1.7 2.9-1.8 1.6v1.9l1.8 1.6-1.7 2.9'
+                '-2.3-.8-1.6.9-.5 2.4h-3.4l-.5-2.4-1.6-.9-2.3.8-1.7-2.9 1.8-1.6v-1.9L4.2 8.9l1.7-2.9 2.3.8 1.6-.9z"/>',
+    "plugins": '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/>'
+               '<rect x="13" y="13" width="7" height="7" rx="1.5"/><path d="M16.5 3.2l3.3 3.3-3.3 3.3-3.3-3.3z"/>',
+    "notebook": '<rect x="4.5" y="3" width="15" height="18" rx="2"/><path d="m8 8 2.5 2.5L8 13M13 13h3M8 17h8"/>',
     "eye": '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     "split": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>',
     "maximize": '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>',
@@ -77,6 +83,7 @@ PATHS = {
     "star": '<path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
     "more": '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
 }
+PATHS["claude"] = PATHS["ai"]   # the name plugins used before "ai" (a multi-provider AI is not only Claude)
 
 APP_ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "icon"
 APP_ICON_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)

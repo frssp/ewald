@@ -787,10 +787,10 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 - Notebook workspace (`Ctrl+1`)
 - Render workspace (`Ctrl+2`)
 - Notebook
+- AI chat (`Ctrl+J`)
 - Workflows
 - Remotes (`Ctrl+Alt+R`)
 - Plugins (`Ctrl+Shift+X`)
-- AI chat (`Ctrl+J`)
 - Structure
 - View settings
 - Python console

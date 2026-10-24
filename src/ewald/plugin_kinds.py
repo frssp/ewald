@@ -304,7 +304,7 @@ def _builtin_workflows() -> dict:
 def _builtin_panels() -> dict:
     from .workflow import workflow_panel
 
-    f = workflow_panel("folders", title="Workflows", icon="layers",
+    f = workflow_panel("folders", title="Workflows", icon="workflow",
                        tooltip="Workflows: folders of VASP, LAMMPS, NEB and phonopy calculations")
     return {"workflows": PanelPlugin("workflows", f, f.title, f.icon, f.tooltip, "", 320,
                                      "Folders of calculations as workflows: their steps, outputs and one notebook",
