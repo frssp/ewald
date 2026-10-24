@@ -666,13 +666,24 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   and since Apple's OpenCL was still slower than the CPU, the same kernel source gets a Metal
   build (`device="metal"`, PyObjC, the `metal` extra) that `auto` uses on a Mac. Changed the
   same day (public PR #51): on the owner's Mac Metal ran from 2x faster to 20x slower than the
-  CPU from run to run, so `auto` is the CPU on a Mac and Metal is chosen by name.
+  CPU from run to run, so `auto` is the CPU on a Mac and Metal is chosen by name. Changed back to Metal later that day (D54).
 - **Why:** the owner asked "mac에서 opencl말고 다른 방법은 없어?" after Apple's OpenCL took
   19.5 s for a picture the CPU draws in 0.5 s, and chose "64-bit 정리 먼저, 필요하면 Metal" on the
   decision card. After the 32-bit change it took 2.4 s, still slower than the CPU.
 - **Considered:** going to Metal at once; Metal's hardware ray tracing API (fastest on M3 and
   later, but a separate renderer); a denoiser instead of a GPU; stopping with the CPU on a Mac.
 - **Landed:** public PR #48.
+
+### D54. On a Mac, `auto` ray traces on Metal (2026-10-24)
+
+- **Decision:** `device="auto"` uses Metal on a Mac when the `metal` extra is installed, the CPU
+  otherwise; this replaces the "CPU on a Mac" rule of D53 (public PR #51).
+- **Why:** the owner picked "auto = Metal (Mac)" on the decision card after measuring on an M2
+  MacBook Air, plugged in and with the launches queued (public PR #52): Metal 2.6 s against 9.0 s
+  on the CPU for 108 000 fcc Cu atoms at 1600x1200 Publication, 2.5 s against 11.0 s for 500 000,
+  and as fast as the CPU on small pictures.
+- **Considered:** keeping the CPU as the Mac default and choosing Metal by name.
+- **Landed:** public PR #NN.
 
 ## Adding an entry
 

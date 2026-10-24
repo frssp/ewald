@@ -56,18 +56,17 @@ The numba and C++ kernels use all cores by default. Preferences › Compute › 
 ## macOS
 
 On a Mac the ray tracer runs on the GPU through Metal: `pip install 'ewald[metal]'` (PyObjC's
-Metal bindings), then `device="metal"` (or `"mps"`), or Apple GPU (Metal) in
+Metal bindings), then `device="auto"`, `"metal"` (or `"mps"`), or Apple GPU (Metal) in
 Preferences › Compute › Device. It is the same kernel source as CUDA and OpenCL, in single
-precision throughout, since Metal has no double. Apple's OpenCL works too (`device="opencl"`),
-but on an M2 MacBook Air it traced a 400x300 Publication picture in 2.4 s against 0.5 s on the
-CPU. Metal was uneven on that Mac: twice as fast as the CPU on 108 000 fcc Cu atoms (800x600,
-Publication: 0.85 s against 1.64 s), as fast on see-through polyhedra and fine isosurfaces,
-and on battery from 0.7 s to 8.7 s for the same small picture from run to run (0.6 s plugged
-in) while the CPU took 0.4-0.5 s.
-So `auto` stays on the CPU on a Mac; choose `metal` for big atom scenes. The first Metal
-picture of a session waits a few seconds while Metal builds the kernel.
+precision throughout, since Metal has no double. On an M2 MacBook Air (plugged in) Metal traced
+108 000 fcc Cu atoms at 1600x1200 Publication in 2.6 s against 9.0 s on the CPU, 500 000 atoms
+in 2.5 s against 11.0 s, and small pictures, see-through polyhedra and fine isosurfaces as fast
+as the CPU. Apple's OpenCL works too (`device="opencl"`), but it traced a 400x300 Publication
+picture in 2.4 s against 0.5 s on the CPU, so `auto` on a Mac is Metal when the `metal` extra
+is installed and the CPU otherwise. On battery a Mac GPU may clock down and Metal times vary
+more. The first Metal picture of a session waits a few seconds while Metal builds the kernel.
 
-The analysis has no Apple GPU backend yet: with `metal` or `mps` it runs on the CPU.
+The analysis has no Apple GPU backend yet: with `metal`, `mps` or `auto` it runs on the CPU.
 The viewport and the OpenGL renderer still draw on the GPU. Apple Silicon CPUs are fast for
 this work: the numba neighbor list and the C++ kernels use every performance and efficiency
 core (Preferences › Compute › CPU threads).
