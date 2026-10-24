@@ -7,7 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..notebook import Cell, Notebook, step_call
 from . import header
-from .code_editor import CodeEditor, mono_font
+from .code_editor import CodeEditor, OutputText, mono_font
 from .icons import icon
 from .palette import native_text
 from .params import ParameterForm
@@ -26,8 +26,9 @@ class OutputArea(QtWidgets.QWidget):
     def __init__(self, parent=None, live: bool = True):
         super().__init__(parent)
         self.setObjectName("cellOutput")
+        self.setAttribute(QtCore.Qt.WA_StyledBackground)   # the style sheet's rule beside the outputs
         self.lay = QtWidgets.QVBoxLayout(self)
-        self.lay.setContentsMargins(2, 2, 0, 0)
+        self.lay.setContentsMargins(6, 2, 0, 2)
         self.lay.setSpacing(4)
         self.live = live
         self.key = ""        # the cell's id: names the Plots panel tabs of its plots
@@ -122,7 +123,7 @@ class OutputArea(QtWidgets.QWidget):
         return _text_label(out)
 
     def _fit_images(self):
-        width = max(120, self.width() - 4)
+        width = max(120, self.width() - self.lay.contentsMargins().left() - 6)
         for label, pix in self._images:
             if pix.isNull():
                 continue
@@ -139,14 +140,7 @@ class OutputArea(QtWidgets.QWidget):
 
 
 def _text_label(out):
-    w = QtWidgets.QLabel(str(out.data).rstrip("\n"))
-    w.setFont(mono_font())
-    w.setWordWrap(True)
-    w.setTextFormat(QtCore.Qt.PlainText)
-    w.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-    w.setObjectName({"error": "cellError", "value": "cellValue"}.get(out.kind, "cellText"))
-    w.setProperty("ewald_kind", out.kind)
-    return w
+    return OutputText(str(out.data).rstrip("\n"), out.kind)
 
 
 def _rich_label(text: str, fmt):
@@ -744,7 +738,7 @@ class CellWidget(QtWidgets.QFrame):
             w.setSizePolicy(policy)
         outer.addWidget(self.gutter)
         right = QtWidgets.QVBoxLayout()
-        self.content = QtWidgets.QWidget()
+        self.content = QtWidgets.QWidget(objectName="cellContent")
         self.body = QtWidgets.QVBoxLayout(self.content)
         self.body.setContentsMargins(0, 0, 0, 0)
         self.body.setSpacing(4)

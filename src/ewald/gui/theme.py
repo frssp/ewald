@@ -337,7 +337,11 @@ QFrame#cell[state="stale"] {{ background: {panel}; }}
 QFrame#cell[state="running"] {{ border-color: {data}; }}
 QFrame#cell[state="running"] QLabel#cellCounter {{ color: {data}; font-weight: 600; }}
 QFrame#cell[state="error"] QLabel#cellCounter {{ color: {error}; }}
-QWidget#cellGutter, QWidget#cellTools, QWidget#cellOutput, QLabel#cellImage {{ background: transparent; }}
+QWidget#cellGutter, QWidget#cellTools, QWidget#cellContent, QLabel#cellImage {{ background: transparent; }}
+/* what a cell printed or returned: its own area under the code, set off by a rule */
+QWidget#cellOutput {{ background: transparent; border: none; border-left: 2px solid {rule}; }}
+QPlainTextEdit#cellEditor, QPlainTextEdit#cellText, QPlainTextEdit#cellValue, QPlainTextEdit#cellError,
+QLabel#cellCounter {{ font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", monospace; }}
 QFrame#cell QLabel, QFrame#cell QCheckBox {{ background: transparent; }}
 QFrame#plotCard {{ background: {panel}; border: 1px solid {border}; border-radius: 6px; }}
 QFrame#plotCard:hover {{ border-color: {accent}; }}
@@ -364,6 +368,9 @@ QPlainTextEdit#cellEditor {{ background: {panel}; border: none; border-radius: 6
 QFrame#cell[state="stale"] QPlainTextEdit#cellEditor {{ background: {raised}; }}
 QLabel#cellError {{ color: {error}; border-left: 3px solid {error}; padding: 2px 8px; }}
 QLabel#cellValue, QLabel#cellText {{ color: {secondary}; }}
+QPlainTextEdit#cellText, QPlainTextEdit#cellValue, QPlainTextEdit#cellError {{ background: transparent; border: none;
+    padding: 0; color: {secondary}; }}
+QPlainTextEdit#cellError {{ color: {error}; }}
 QLabel#cellRich {{ color: {text}; }}
 QScrollArea#cellRichScroll, QScrollArea#cellRichScroll > QWidget > QWidget {{ background: transparent; }}
 QProgressBar#cellProgress {{ border: none; border-radius: 3px; background: {raised}; max-height: 6px; }}

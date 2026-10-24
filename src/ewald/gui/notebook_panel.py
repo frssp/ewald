@@ -206,7 +206,7 @@ class NotebookView(QtWidgets.QWidget):
         self.file_view = CodeEditor()
         self.file_view.setReadOnly(True)
         self.file_view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        self.file_view.textChanged.disconnect(self.file_view._fit)
+        self.file_view.grows = False   # fills the panel instead of growing with its text
         self.file_view.setMaximumHeight(16777215)
         self.file_view.setMinimumHeight(0)
         self.file_view.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)

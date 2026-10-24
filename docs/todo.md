@@ -594,6 +594,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   black until restart while the VTK default format was the window's default; now macOS only),
   and the 3D view still shows the atoms. Closing the window with a cell's plot in the Plots panel
   prints no `QSplitter already deleted` error.
+- Notebook cells on Windows at 125-200 % display scaling and on macOS: the code box ends below
+  its last line and the output area (rule on the left, monospaced text) starts under it, also
+  after changing the font size in Preferences; a traceback or a long `print` wraps inside the
+  cell. Checked with `QT_SCALE_FACTOR=2` on Linux only.
 - Preferences › Plots › Open as text on Windows and macOS: a `.mplstyle` file has no program
   associated on a fresh system, so Windows falls back to Notepad and macOS uses `open -t` (the
   default text editor); EWALD must re-read the file when the editor saves (watched with
