@@ -557,7 +557,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   Office and macOS apps use.
 - **Considered:** a Save button that only saves and leaves the window open; the old Yes/No
   "Close anyway?" question.
-- **Landed:** public PR #NN.
+- **Landed:** public PR #36.
 
 ## Adding an entry
 
