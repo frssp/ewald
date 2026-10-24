@@ -173,21 +173,48 @@ def test_style_file_reads_crlf_bom_comments_and_reports_bad_lines(tmp_path):
     assert plotstyle.read_style(tmp_path / "missing.mplstyle") == ({}, [])
 
 
-def test_style_template_lists_every_publication_key_and_reads_back_uncommented():
+def test_style_template_groups_keys_and_reads_back_uncommented():
     text = plotstyle.template()
     assert plotstyle.parse_style(text) == ({}, [])            # all commented out
-    rc, problems = plotstyle.parse_style("\n".join(line[2:] for line in text.splitlines() if line.startswith("# ") and ":" in line
-                                                   and line[2:].split(":")[0] in plotstyle.rc()))
-    assert not problems and set(rc) == set(plotstyle.rc())
+    assert "## Fonts" in text and "## Ticks" in text and plotstyle.preset_of_text(text) == "publication"
+    rc, problems = plotstyle.parse_style("\n".join(line[2:] for line in text.splitlines()
+                                                   if line.startswith("# ") and plotstyle._key_of(line, commented=True)))
+    assert not problems and set(rc) == {k for _t, _h, keys in plotstyle.TEMPLATE for k in keys}
+    pub = plotstyle._style_rc("publication")
     for key, value in plotstyle.validated(rc).items():
-        assert value == plotstyle.validated({key: plotstyle.rc()[key]})[key], key
+        if key in pub:
+            assert value == plotstyle.validated({key: pub[key]})[key], key
+    for name in plotstyle.PRESETS:                           # a preset's file sets its keys, and only those
+        assert plotstyle.parse_style(plotstyle.template(name)) == (plotstyle.preset_rc(name), [])
+
+
+def test_presets_switch_without_touching_other_lines(tmp_path):
+    f = tmp_path / "user.mplstyle"
+    plotstyle.apply_preset("compact", f)
+    assert plotstyle.preset_of(f) == "compact" and plotstyle.read_style(f)[0]["font.size"] == "7"
+    with open(f, "a", encoding="utf-8") as fh:
+        fh.write("axes.grid: True\n")
+    plotstyle.apply_preset("Serif", f)          # by label too
+    rc, problems = plotstyle.read_style(f)
+    assert not problems and plotstyle.preset_of(f) == "serif"
+    assert rc["font.family"] == "serif" and rc["font.size"] == "8" and rc["axes.grid"] == "True"
+    assert "lines.linewidth" not in rc and "font.sans-serif" not in rc   # Compact's own keys went
+    plotstyle.apply_preset("publication", f)
+    assert plotstyle.read_style(f)[0] == {"axes.grid": "True"}
+    with pytest.raises(ValueError, match="unknown preset"):
+        plotstyle.preset_rc("nope")
+    import matplotlib as mpl
+
+    with mpl.rc_context():
+        plotstyle.use("slides")
+        assert mpl.rcParams["font.size"] == 14 and mpl.rcParams["lines.linewidth"] == 2
 
 
 def test_write_style_keeps_other_lines_and_uncomments_template_lines(tmp_path):
     f = tmp_path / "plots" / "user.mplstyle"
     plotstyle.write_style({"font.size": "10"}, f)               # a new file starts from the template
     text = f.read_bytes().decode("utf-8")
-    assert "\r" not in text and "font.size: 10\n" in text and "# EWALD plot style" in text
+    assert "\r" not in text and "\nfont.size:" in text and "# EWALD plot style" in text
     assert text.count("font.size:") == 1                      # the template line took the value
     f.write_text(text + "axes.grid: True   # mine\nfont.size: 12\n", encoding="utf-8")
     plotstyle.write_style({"lines.linewidth": "2", "font.size": "9"}, f)
@@ -195,22 +222,25 @@ def test_write_style_keeps_other_lines_and_uncomments_template_lines(tmp_path):
     assert rc == {"font.size": "9", "lines.linewidth": "2", "axes.grid": "True"}
     assert "axes.grid: True   # mine" in f.read_text(encoding="utf-8")
     plotstyle.write_style({"font.size": None}, f)
-    assert "font.size" not in plotstyle.read_style(f)[0] and "# font.size: 9" in f.read_text(encoding="utf-8")
+    assert "font.size" not in plotstyle.read_style(f)[0] and "# font.size:" in f.read_text(encoding="utf-8")
 
 
 def test_form_fields_round_trip_through_the_file(tmp_path):
     f = tmp_path / "user.mplstyle"
     fields = {x.label: x for x in plotstyle.FORM}
     updates = {}
-    for label, value in [("Font", "Liberation Sans, Arial"), ("Font size", 9.5), ("Tick direction", "out"),
-                         ("Minor ticks", False), ("Color cycle", "d55e00, #008C7E, red")]:
+    for label, value in [("Font", "Liberation Sans, Arial"), ("Font size", 9.5), ("Color cycle", "d55e00, #008C7E, red")]:
         updates.update(fields[label].updates(value))
-    assert set(updates) >= {"xtick.direction", "ytick.direction", "xtick.minor.visible", "ytick.minor.visible"}
+    two = plotstyle.FormField("Ticks", ("xtick.direction", "ytick.direction"), "choice", choices=("in", "out"))
+    updates.update(two.updates("out"))
+    off = plotstyle.FormField("Minor", ("xtick.minor.visible", "ytick.minor.visible"), "bool")
+    updates.update(off.updates(False))
+    assert len(plotstyle.FORM) <= 4
     plotstyle.write_style(updates, f)
     rc, problems = plotstyle.read_style(f)
     assert not problems
     assert fields["Font"].value(rc) == "Liberation Sans, Arial" and fields["Font size"].value(rc) == 9.5
-    assert fields["Tick direction"].value(rc) == "out" and fields["Minor ticks"].value(rc) is False
+    assert two.value(rc) == "out" and rc["ytick.direction"] == "out" and off.value(rc) is False
     assert fields["Color cycle"].value(rc) == "#D55E00, #008C7E, #FF0000"
     assert fields["Line width"].value(rc) is None and fields["Line width"].default() == 1.25
     assert fields["Font size"].updates(None) == {"font.size": None}
@@ -238,7 +268,7 @@ def test_use_reads_style_files_only_when_asked(tmp_path):
 
     plotstyle.write_style({"lines.linewidth": "3"})            # <EWALD_CONFIG_DIR>/plots/user.mplstyle
     assert plotstyle.user_style_path().parent.name == "plots"
-    (plotstyle.user_style_path().parent / "ACS.mplstyle").write_text("lines.linewidth: 0.5\n", encoding="utf-8")
+    (plotstyle.user_style_path().parent / "Thesis.mplstyle").write_text("lines.linewidth: 0.5\n", encoding="utf-8")
     other = tmp_path / "Mine.MPLSTYLE"
     other.write_text("lines.linewidth: 5\r\n", encoding="utf-8")
     with mpl.rc_context():
@@ -246,13 +276,13 @@ def test_use_reads_style_files_only_when_asked(tmp_path):
         assert mpl.rcParams["lines.linewidth"] == 1.25          # never implicitly
         plotstyle.use("user")
         assert mpl.rcParams["lines.linewidth"] == 3 and mpl.rcParams["font.size"] == 8
-        plotstyle.use("acs")                                    # names ignore case
+        plotstyle.use("THESIS")                                 # names ignore case
         assert mpl.rcParams["lines.linewidth"] == 0.5
         plotstyle.use(str(other))
         assert mpl.rcParams["lines.linewidth"] == 5
-        assert set(plotstyle.named_styles()) == {"user", "acs"}
+        assert set(plotstyle.named_styles()) == {"user", "thesis"}
         with pytest.raises(ValueError, match="unknown plot style"):
-            plotstyle.use("nature")
+            plotstyle.use("nope")
         with pytest.warns(UserWarning, match="does not exist"):
             plotstyle.use(str(tmp_path / "gone.mplstyle"))
 

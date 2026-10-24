@@ -24,7 +24,7 @@ Your own style is a matplotlib ``.mplstyle`` file, ``<config dir>/plots/user.mpl
 (:func:`user_style_path`), drawn over the publication style: in the GUI it applies to the Plots
 panel, notebook cells and the console alike. The file is the source; Preferences › Plots shows
 its common keys as a form (:data:`FORM`) and writes back only what the form changed
-(:func:`write_style`). Scripts never read it implicitly: ``use("user")``, ``use("acs")`` (any
+(:func:`write_style`). Scripts never read it implicitly: ``use("user")``, ``use("thesis")`` (any
 ``<config dir>/plots/<name>.mplstyle``) or ``use("path/to/file.mplstyle")`` ask for it. On
 screen the UI theme keeps the background and text colors (:data:`THEME_KEYS`); saved figures
 use the file's.
@@ -183,9 +183,10 @@ def _style_rc(style: str = "publication", tokens: dict | None = None, font_size:
 def use(style: str | dict | None = "publication", tokens: dict | None = None, font_size: float = FONT_SIZE):
     """Set matplotlib's rcParams for your own figures: ``use()`` the publication style (in
     ``tokens`` colors), ``use("default")`` matplotlib's own defaults, ``use("user")`` the
-    publication style with your style file (:func:`user_style_path`) on top, ``use("acs")`` with
-    ``<config dir>/plots/acs.mplstyle``, ``use("my.mplstyle")`` with that file. In an ewald
-    notebook or the GUI console the change lasts for that notebook only (see :class:`Session`)."""
+    publication style with your style file (:func:`user_style_path`) on top, ``use("thesis")`` with
+    ``<config dir>/plots/thesis.mplstyle``, ``use("slides")`` a :data:`PRESETS` entry, ``use("my.mplstyle")``
+    with that file. In an ewald notebook or the GUI console the change lasts for that notebook
+    only (see :class:`Session`)."""
     import warnings
 
     import matplotlib as mpl
@@ -195,14 +196,19 @@ def use(style: str | dict | None = "publication", tokens: dict | None = None, fo
     user = None
     if style not in STYLES:
         path = style_file(style)
-        if path is None:
+        if path is None and style.lower() in PRESETS:
+            path, user = None, preset_rc(style)
+        elif path is None:
             raise ValueError(f"unknown plot style {style!r}; use one of {', '.join(STYLES + ('user',))}, "
-                             f"a name in {user_style_path().parent} or a .mplstyle file")
+                             f"a preset ({', '.join(PRESETS)}), a name in {user_style_path().parent} "
+                             f"or a .mplstyle file")
+    if style not in STYLES and path is not None:
         user, problems = read_style(path)
         if not path.is_file():
             problems = [f"{path} does not exist"] if style != "user" else []
         for problem in problems:
             warnings.warn(f"plot style {path.name}: {problem}", stacklevel=2)
+    if style not in STYLES:
         style = "publication"
     if style == "default":
         dict.update(mpl.rcParams, {k: v for k, v in mpl.rcParamsDefault.items() if k not in _SKIP})
@@ -418,17 +424,64 @@ def format_value(value) -> str:
     return one(value)
 
 
-def template() -> str:
-    """A new style file: how it works, then every key of the publication style commented out."""
-    lines = ["# EWALD plot style: matplotlib rcParams drawn over EWALD's publication style in the",
-             "# Plots panel, notebook cells and the console (help: matplotlib 'customizing').",
-             "# This file is the source: Preferences > Plots shows its common keys and writes back",
-             "# only what you change there. Uncomment a line to set it; a line you add wins.",
-             "# On screen the UI theme keeps the background and text colors; saved figures use yours.",
-             "# In a script or notebook: ewald.plotstyle.use(\"user\").",
+# What a new style file lists, by topic (every other rcParam can be added by hand).
+TEMPLATE = (
+    ("Fonts", "Sizes in points. Tick labels and legends follow font.size (1 pt smaller) unless set.",
+     ("font.family", "font.sans-serif", "font.size", "axes.labelsize", "axes.titlesize",
+      "xtick.labelsize", "ytick.labelsize", "legend.fontsize", "mathtext.fontset")),
+    ("Lines and markers", "Widths in points.",
+     ("lines.linewidth", "lines.markersize", "lines.markeredgewidth", "errorbar.capsize")),
+    ("Colors", "Line colors in order (hex without #, which starts a comment) and the color map of images.",
+     ("axes.prop_cycle", "image.cmap")),
+    ("Axes", "Margins are fractions of the data range.",
+     ("axes.linewidth", "axes.grid", "axes.xmargin", "axes.ymargin", "axes.formatter.use_mathtext")),
+    ("Ticks", "Directions: in, out or inout.",
+     ("xtick.direction", "ytick.direction", "xtick.top", "ytick.right", "xtick.minor.visible",
+      "ytick.minor.visible", "xtick.major.size", "ytick.major.size", "xtick.major.width", "ytick.major.width",
+      "xtick.minor.size", "ytick.minor.size")),
+    ("Legend", "", ("legend.frameon", "legend.handlelength", "legend.labelspacing")),
+    ("Figure and files", "Size in inches (3.5 = one journal column). Font type 42 keeps text editable in PDF.",
+     ("figure.figsize", "figure.dpi", "savefig.dpi", "savefig.bbox", "savefig.transparent", "pdf.fonttype",
+      "svg.fonttype")),
+    ("Background and text colors", "On screen the Plots panel keeps the UI theme's; saved figures use these.",
+     ("figure.facecolor", "axes.facecolor", "axes.edgecolor", "text.color", "axes.labelcolor")),
+)
+
+PRESET_MARK = "# preset:"   # the preset a file was made from (a comment, so plt.style.use ignores it)
+
+
+def template(preset: str = "publication") -> str:
+    """A new style file: a header that says how it works, then the keys of :data:`TEMPLATE` by
+    topic, commented out with the publication style's values (a ``preset``'s set, not commented)."""
+    import matplotlib as mpl
+
+    values = dict(mpl.rcParamsDefault)
+    values.update(_style_rc("publication"))
+    chosen = preset_rc(preset)
+    names = ", ".join(PRESETS[k]["label"] for k in PRESETS)
+    rule = "# " + "-" * 76
+    lines = [rule,
+             "# EWALD plot style: matplotlib rcParams drawn over EWALD's publication style",
+             rule,
+             "#  Used by the Plots panel, view cells, notebook cells, kernels and the console.",
+             "#  Remove the \"# \" in front of a line to set it; lines you add work too.",
+             "#  Preferences > Plots edits the preset and a few keys and rewrites only those",
+             "#  lines; everything else here, comments included, stays as you wrote it.",
+             "#  In a script or notebook: ewald.plotstyle.use(\"user\").",
+             "#  Every key: https://matplotlib.org/stable/users/explain/customizing.html",
              "#",
-             "# The publication style's values:"]
-    lines += [f"# {k}: {format_value(v)}" for k, v in sorted(rc().items())]
+             f"{PRESET_MARK} {preset.lower()}" + " " * max(1, 22 - len(preset)) + f"# one of: {names}"]
+    for title, hint, keys in TEMPLATE:
+        lines += ["", f"## {title}"] + ([f"## {hint}"] if hint else [])
+        for key in keys:
+            if key in chosen:
+                lines.append(f"{key + ':':<34}{chosen[key]}")
+            else:
+                lines.append(f"# {key + ':':<32}{format_value(values[key])}")
+    extra = [k for k in chosen if not any(k in keys for _t, _h, keys in TEMPLATE)]
+    if extra:
+        lines += ["", f"## Also set by the {PRESETS[preset.lower()]['label']} preset"]
+        lines += [f"{k + ':':<34}{chosen[k]}" for k in extra]
     return "\n".join(lines) + "\n"
 
 
@@ -451,7 +504,7 @@ def write_style(updates: dict, path=None) -> Path:
                 lines[i] = "# " + lines[i]
         if value is None:
             continue
-        text = f"{key}: {value if isinstance(value, str) else format_value(value)}"
+        text = f"{key + ':':<34}{value if isinstance(value, str) else format_value(value)}"
         commented = [i for i, line in enumerate(lines) if _key_of(line, commented=True) == key]
         if active:
             lines[active[0]] = text
@@ -460,6 +513,78 @@ def write_style(updates: dict, path=None) -> Path:
         else:
             lines.append(text)
     path.parent.mkdir(parents=True, exist_ok=True)
+    return write_text(path, "\n".join(lines) + "\n")
+
+
+# Starting points for a style file (Preferences › Plots › Preset, or plotstyle.use(name)), named
+# by what they do. Check the figure guide of the venue before submitting.
+PRESETS = {
+    "publication": {"label": "Publication", "rc": {}},   # 3.5 in column, 8 pt sans-serif
+    "compact": {"label": "Compact", "rc": {   # small type and thin lines in a 3.5 in column
+        "font.sans-serif": "Arial, Helvetica, Liberation Sans, DejaVu Sans", "font.size": "7",
+        "lines.linewidth": "1.0", "axes.linewidth": "0.6", "figure.figsize": "3.5, 2.6"}},
+    "narrow": {"label": "Narrow column", "rc": {   # a 3.25 in column, 7 pt
+        "font.sans-serif": "Arial, Helvetica, Liberation Sans, DejaVu Sans", "font.size": "7",
+        "lines.linewidth": "1.0", "axes.linewidth": "0.6", "figure.figsize": "3.25, 2.4"}},
+    "serif": {"label": "Serif", "rc": {   # Times-like text and math, 3.4 in column
+        "font.family": "serif", "font.serif": "Times New Roman, TeX Gyre Termes, Nimbus Roman, DejaVu Serif",
+        "mathtext.fontset": "stix", "font.size": "8", "figure.figsize": "3.4, 2.5"}},
+    "slides": {"label": "Slides", "rc": {   # large type, thick lines
+        "font.size": "14", "lines.linewidth": "2.0", "lines.markersize": "7", "axes.linewidth": "1.2",
+        "xtick.major.width": "1.2", "ytick.major.width": "1.2", "xtick.major.size": "5", "ytick.major.size": "5",
+        "figure.figsize": "6.4, 4.0"}},
+}
+
+
+def preset_rc(name: str) -> dict:
+    """``{key: text}`` of a :data:`PRESETS` entry (by key or label, any case)."""
+    name = (name or "publication").lower()
+    for key, preset in PRESETS.items():
+        if name in (key, preset["label"].lower()):
+            return dict(preset["rc"])
+    raise ValueError(f"unknown preset {name!r}; use one of {', '.join(PRESETS)}")
+
+
+def preset_of_text(text: str) -> str | None:
+    """The preset named by the ``# preset:`` line of style file text, or None."""
+    for line in text.splitlines():
+        if line.lower().startswith(PRESET_MARK):
+            name = line[len(PRESET_MARK):].split("#")[0].strip().lower()
+            return name if name in PRESETS else None
+    return None
+
+
+def preset_of(path=None) -> str | None:
+    """The preset a style file says it was made from (its ``# preset:`` line), or None."""
+    path = Path(path) if path is not None else user_style_path()
+    try:
+        with open(path, encoding="utf-8-sig") as fh:
+            return preset_of_text(fh.read())
+    except OSError:
+        return None
+
+
+def apply_preset(name: str, path=None) -> Path:
+    """Switch a style file to a preset: the previous preset's keys are commented out, the new
+    one's are set, the ``# preset:`` line names it; every other line stays."""
+    from .fileops import write_text
+
+    path = Path(path) if path is not None else user_style_path()
+    new = preset_rc(name)
+    key = next(k for k, p in PRESETS.items() if name.lower() in (k, p["label"].lower()))
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return write_text(path, template(key))
+    old = PRESETS.get(preset_of(path) or "", {}).get("rc", {})
+    write_style({**{k: None for k in old if k not in new}, **new}, path)
+    with open(path, encoding="utf-8-sig") as fh:
+        lines = fh.read().splitlines()
+    mark = f"{PRESET_MARK} {key}"
+    at = [i for i, line in enumerate(lines) if line.lower().startswith(PRESET_MARK)]
+    if at:
+        lines[at[0]] = mark + " " * max(1, 22 - len(key)) + "# one of: " + ", ".join(p["label"] for p in PRESETS.values())
+    else:
+        lines.insert(0, mark)
     return write_text(path, "\n".join(lines) + "\n")
 
 
@@ -518,16 +643,12 @@ class FormField:
         return dict.fromkeys(self.keys, text)
 
 
-# The common keys of a style file, shown as a form in Preferences › Plots (the rest: Open as text).
+# The keys of a style file the Preferences › Plots form shows under the preset (the rest: Open as text).
 FORM = (
     FormField("Font", ("font.sans-serif",), "text", "Sans-serif fonts in order of preference; the first "
               "installed one is used, also for math."),
     FormField("Font size", ("font.size",), "float", "Points; tick labels and legends are 1 pt smaller."),
     FormField("Line width", ("lines.linewidth",), "float", "Points."),
-    FormField("Axes line width", ("axes.linewidth",), "float", "Points; ticks follow the axes."),
-    FormField("Tick direction", ("xtick.direction", "ytick.direction"), "choice", choices=("in", "out", "inout")),
-    FormField("Minor ticks", ("xtick.minor.visible", "ytick.minor.visible"), "bool"),
-    FormField("Legend frame", ("legend.frameon",), "bool"),
     FormField("Color cycle", ("axes.prop_cycle",), "colors", "Line colors in order, as hex codes separated by "
               "commas; empty = the colorblind-safe cycle."),
 )

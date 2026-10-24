@@ -474,6 +474,20 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   scripts outside EWALD).
 - **Landed:** public PR #19.
 
+### D40. Plot style presets named by what they do, a short form (2026-10-24)
+
+- **Decision:** the style file ships five presets named by their character (Publication,
+  Compact, Narrow column, Serif, Slides), never by journal; the Preferences form shows the preset
+  and four keys (font, font size, line width, color cycle), everything else is in the file,
+  which lists its keys by topic. The separate "Saved plot font size" preference is retired
+  (the file's `font.size`).
+- **Why:** the owner asked "기본 설정파일도 좀 꾸며줘 니가 보기 좋게. 그리고 프리셋 넣고. 그리고
+  폼에서 설정할 수 있는 파람이 넘 많은 듯." and, on journal-named presets, "저널이름 쓰지마.
+  특징으로 아니면 적당한 이름으로".
+- **Considered:** presets named after journals; eight form rows (tick direction, minor ticks,
+  legend frame, axes line width).
+- **Landed:** PR (this one).
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

@@ -195,17 +195,22 @@ Your own changes to the style live in one matplotlib style file, `user.mplstyle`
 holds plain rcParams (`font.size: 9`, `lines.linewidth: 1.5`, ...) and is drawn over the
 publication style everywhere in the GUI: the Plots panel, view cells, notebook cells, a
 notebook's kernel and the console. The file is the source. Preferences › Plots › *Style file*
-shows its common keys (font, font size, line widths, tick direction, minor ticks, legend frame,
-color cycle) as a form, read from the file when Preferences opens, and Apply writes back only
-the rows you changed, keeping the file's other lines and comments. *Open as text* opens the
-file in your text editor (a new file starts with every key of the publication style commented
-out); EWALD reads it again as soon as you save. Lines matplotlib does not accept are listed
+shows a preset and four keys (font, font size, line width, color cycle) as a form, read from
+the file when Preferences opens, and Apply writes back only the rows you changed, keeping the
+file's other lines and comments. The presets are starting points: *Publication* (3.5 in column,
+8 pt sans-serif, the default), *Compact* (7 pt, thinner lines), *Narrow column* (3.25 in, 7 pt),
+*Serif* (Times-like text and math) and *Slides* (14 pt, thick lines); choosing one sets its
+keys in the file and names it on the file's `# preset:` line. *Open as text* opens the file in
+your text editor. A new file lists the useful keys by topic (fonts, lines, colors, axes, ticks,
+legend, figure and files, background colors), commented out with the publication values;
+EWALD reads it again as soon as you save. Lines matplotlib does not accept are listed
 under the button and left out. On screen the Plots panel keeps the UI theme's background and
 text colors and its own font size; plots you save from it use everything in the file.
 
 Scripts and notebooks run outside the GUI never read the file by themselves, so a script draws
 the same plots on every computer. Ask for it in a cell or script: `plotstyle.use("user")` for
-your file, `plotstyle.use("acs")` for any other `acs.mplstyle` you put in the same folder, or
+your file, `plotstyle.use("slides")` for a preset, `plotstyle.use("thesis")` for any other
+`thesis.mplstyle` you put in the same folder, or
 `plotstyle.use("path/to/journal.mplstyle")`.
 
 Spectra, diffraction patterns and time series are not separate panels. They are views in the

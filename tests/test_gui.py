@@ -5713,10 +5713,14 @@ def test_plot_style_file_is_the_source_of_the_preferences_form(app, monkeypatch)
     dlg = PreferencesDialog(settings.Settings(), page="Plots")
     assert dlg._style_form()["Font size"] == 9.0 and dlg._style_form()["Line width"] is None
     dlg.style_widgets["Line width"].setValue(2.0)
-    dlg.style_widgets["Tick direction"].setCurrentIndex(dlg.style_widgets["Tick direction"].findData("out"))
     assert dlg.apply()
-    assert plotstyle.read_style()[0] == {"font.size": "9", "axes.grid": "True", "lines.linewidth": "2.0",
-                                         "xtick.direction": "out", "ytick.direction": "out"}
+    assert plotstyle.read_style()[0] == {"font.size": "9", "axes.grid": "True", "lines.linewidth": "2.0"}
+    dlg.style_preset.setCurrentIndex(dlg.style_preset.findData("compact"))   # the rows preview the preset
+    assert dlg._style_form()["Font size"] == 7.0
+    dlg.style_widgets["Line width"].setValue(1.5)                         # ... and a row set on top of it
+    assert dlg.apply() and plotstyle.preset_of() == "compact"
+    rc = plotstyle.read_style()[0]
+    assert rc["font.size"] == "7" and rc["lines.linewidth"] == "1.5" and rc["axes.grid"] == "True"
     plotstyle.write_style({"font.size": "12"})                 # edited in a text editor meanwhile
     st = os.stat(path)
     os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
@@ -5726,8 +5730,8 @@ def test_plot_style_file_is_the_source_of_the_preferences_form(app, monkeypatch)
     assert not dlg.apply() and "Color cycle" in dlg.style_problems.text()
     assert "axes.prop_cycle" not in plotstyle.read_style()[0]
     dlg.style_widgets["Color cycle"].setText("")
-    dlg.restore_page()                                          # Reset page: the form's keys go
-    assert dlg.apply() and plotstyle.read_style()[0] == {"axes.grid": "True"}
+    dlg.restore_page()                                          # Reset page: the preset and the rows go
+    assert dlg.apply() and plotstyle.read_style()[0] == {"axes.grid": "True"} and plotstyle.preset_of() == "publication"
     opened = []
     monkeypatch.setattr("ewald.gui.file_dialogs.open_in_editor", lambda p: opened.append(p) or True)
     path.unlink()

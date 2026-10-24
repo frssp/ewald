@@ -1187,7 +1187,7 @@ class PlotsPanel(QtWidgets.QWidget):
             from .. import settings as settings_mod
 
             s = settings_mod.load()
-            self.export(path, s["plots.size"], s["plots.font_size"], s["render.quality"])
+            self.export(path, s["plots.size"], None, s["render.quality"])   # the style file's font.size wins
 
     def export(self, path, size: str | tuple | None = None, font_size: float | None = None,
                quality: str = "Publication"):
