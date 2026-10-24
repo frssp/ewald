@@ -538,8 +538,11 @@ def _hit_sphere(o, d, sph, i):
     ox, oy, oz = o[0] - sph[i, 0], o[1] - sph[i, 1], o[2] - sph[i, 2]
     r = sph[i, 3]
     b = ox * d[0] + oy * d[1] + oz * d[2]
-    cc = ox * ox + oy * oy + oz * oz - r * r
-    disc = b * b - cc
+    # r^2 - |closest approach|^2 rather than b^2 - (|o - c|^2 - r^2): from a far camera the second
+    # form subtracts two large numbers, and in single precision (the GPU kernels) the sphere's edge
+    # and normals turn to noise
+    fx, fy, fz = ox - b * d[0], oy - b * d[1], oz - b * d[2]
+    disc = r * r - (fx * fx + fy * fy + fz * fz)
     if disc < 0:
         return -1.0
     s = math.sqrt(disc)
@@ -578,8 +581,9 @@ def _hit_cylinder(o, d, cyl, i):
     if A < 1e-14:
         return best
     B = px * qx + py * qy + pz * qz
-    C = qx * qx + qy * qy + qz * qz - r * r
-    disc = B * B - A * C
+    # B^2 - A C as A (r^2 - |closest approach|^2), see _hit_sphere
+    wx, wy, wz = qx - B / A * px, qy - B / A * py, qz - B / A * pz
+    disc = A * (r * r - (wx * wx + wy * wy + wz * wz))
     if disc < 0:
         return best
     s = math.sqrt(disc)
@@ -1012,8 +1016,8 @@ def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8,
     trace stops and :class:`RenderCancelled` is raised. The image does not depend on it.
 
     ``device``: ``"cpu"`` (default, numba on every core), ``"cuda"`` (an NVIDIA GPU through CuPy),
-    ``"opencl"`` (an Intel, AMD, NVIDIA or Apple GPU through pyopencl) or ``"auto"`` (CUDA, else an
-    OpenCL GPU, else the CPU); :mod:`ewald.raytrace_gpu`. Single precision, so a GPU image matches
+    ``"opencl"`` (an Intel, AMD, NVIDIA or Apple GPU through pyopencl) or ``"auto"`` (CUDA, else Metal on a
+    Mac or an OpenCL GPU elsewhere, else the CPU); :mod:`ewald.raytrace_gpu`. Single precision, so a GPU image matches
     the CPU one to within a few 1e-3 rather than exactly.
     """
     from .render import _rgb
@@ -1031,9 +1035,13 @@ def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8,
     ortho = bool(camera.get("parallel_projection", True))
     if ortho:
         half_h = float(camera["parallel_scale"])
-        # start rays well behind the scene so nothing is clipped
+        # start rays just in front of the scene's bounding sphere: nothing is clipped, and hit
+        # distances stay small, which single-precision GPU kernels need (a far start point turns
+        # sphere edges and normals to noise)
         lo, hi = scene.bounds()
-        eye = eye - fwd * (np.linalg.norm(hi - lo) + dist)
+        if np.all(np.isfinite(lo)):
+            radius = 0.5 * float(np.linalg.norm(hi - lo)) + 1.0
+            eye = eye + fwd * (float(np.dot(0.5 * (lo + hi) - eye, fwd)) - radius)
     else:
         half_h = math.tan(math.radians(float(camera.get("view_angle", 30.0))) / 2)
     half_w = half_h * aspect
