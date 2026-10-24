@@ -76,6 +76,50 @@ XCB_LIBS = {"libxcb-cursor.so.0": "libxcb-cursor0", "libxkbcommon-x11.so.0": "li
             "libxcb-xkb.so.1": "libxcb-xkb1"}
 
 
+X11_SOCKET_DIR = "/tmp/.X11-unix"   # X servers of this machine listen on X0, X1, ... here
+
+
+def _sockets(directory: str, prefix: str) -> list[str]:
+    """Names in ``directory`` that start with ``prefix``, sorted ([] when it can't be read)."""
+    try:
+        return sorted(n for n in os.listdir(directory) if n.startswith(prefix))
+    except OSError:
+        return []
+
+
+def no_display_hint(env=None, x11_dir: str = X11_SOCKET_DIR) -> str:
+    """Why there is no ``DISPLAY`` here and the command that gives one: an SSH login without X11
+    forwarding, tmux/screen or sudo dropping the desktop's variables, or a Wayland session."""
+    env = os.environ if env is None else env
+    lines = ["no display: DISPLAY is not set, so there is no X server to open the window on."]
+    local = [":" + n[1:] for n in _sockets(x11_dir, "X") if n[1:].isdigit()]
+    runtime = env.get("XDG_RUNTIME_DIR", "")
+    wayland = [n for n in _sockets(runtime, "wayland-") if not n.endswith(".lock")] if runtime else []
+    if env.get("SSH_CONNECTION") or env.get("SSH_CLIENT"):
+        lines.append(
+            "You are logged in over SSH without X11 forwarding. Reconnect with ssh -X user@host "
+            "(or ssh -Y); on a Mac start XQuartz first, on Windows use MobaXterm or an X server such "
+            "as VcXsrv. After logging in, echo $DISPLAY should print localhost:10.0 or similar; if it "
+            "is still empty, the server needs 'X11Forwarding yes' in /etc/ssh/sshd_config and the "
+            "xauth package. Faster: run ewald on your own computer and open the files over SSH "
+            "(ewald gui user@host:/path/to/file).")
+    if env.get("SUDO_USER"):
+        lines.append("sudo drops DISPLAY: start ewald gui as your own user, without sudo.")
+    if env.get("TMUX") or env.get("STY"):
+        lines.append("This shell runs inside tmux/screen, which keeps the variables of the session "
+                     "that started it, so it does not see the desktop's DISPLAY.")
+    if local:
+        lines.append(f"An X server is running on this machine ({', '.join(local)}): "
+                     f"export DISPLAY={local[0]} and run ewald gui again (from the desktop's own "
+                     "terminal it is set for you).")
+    elif wayland:
+        lines.append(f"A Wayland session is running ({wayland[0]}): export WAYLAND_DISPLAY={wayland[0]} "
+                     "(or DISPLAY=:0 for its XWayland) and run ewald gui again.")
+    lines.append("Without any display: xvfb-run -a ewald gui (screenshots, tests) or ewald render FILE "
+                 "out.png. See 'Troubleshooting the GUI' in docs/user/install.md.")
+    return "\n".join(lines)
+
+
 def check_qt_platform():
     """On Linux, raise QtStartupError (instead of Qt aborting) when the X11 platform plugin can't start."""
     if not sys.platform.startswith("linux"):
@@ -86,8 +130,7 @@ def check_qt_platform():
     if not platform and os.environ.get("WAYLAND_DISPLAY"):
         return  # Qt picks wayland
     if not os.environ.get("DISPLAY"):
-        raise QtStartupError("no display: DISPLAY is not set. Run on a desktop session, through ssh -X, "
-                           "or headless with xvfb-run -a ewald-gui (QT_QPA_PLATFORM=offscreen for tests).")
+        raise QtStartupError(no_display_hint())
     import ctypes
 
     missing = []

@@ -94,6 +94,30 @@ def test_missing_xcb_libraries_are_named(monkeypatch):
         gui.check_qt_platform()
 
 
+def test_no_display_hint_names_the_cause(tmp_path):
+    x11 = tmp_path / "X11"
+    x11.mkdir()
+    # SSH login without -X: reconnect with forwarding; nothing local to point at
+    hint = gui.no_display_hint({"SSH_CONNECTION": "10.0.0.2 5000 10.0.0.1 22"}, str(x11))
+    assert "ssh -X" in hint and "X11Forwarding yes" in hint and "export DISPLAY" not in hint
+    # desktop's X server seen from tmux / sudo: name the DISPLAY to export
+    (x11 / "X1").write_text("", encoding="utf-8")
+    (x11 / "X0").write_text("", encoding="utf-8")
+    hint = gui.no_display_hint({"TMUX": "/tmp/tmux-1000/default,1,0", "SUDO_USER": "me"}, str(x11))
+    assert "tmux" in hint and "without sudo" in hint and "export DISPLAY=:0" in hint
+    assert "ssh -X" not in hint
+    # Wayland session without WAYLAND_DISPLAY in this shell
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "wayland-0").write_text("", encoding="utf-8")
+    (run / "wayland-0.lock").write_text("", encoding="utf-8")
+    hint = gui.no_display_hint({"XDG_RUNTIME_DIR": str(run)}, str(tmp_path / "missing"))
+    assert "export WAYLAND_DISPLAY=wayland-0" in hint
+    # nothing known: the headless options remain
+    hint = gui.no_display_hint({}, str(tmp_path / "missing"))
+    assert hint.startswith("no display") and "xvfb-run" in hint
+
+
 def test_cli_names_the_extra_for_a_missing_package(monkeypatch, capsys):
     from ewald import __main__ as cli
 

@@ -583,6 +583,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- `no display: DISPLAY is not set` on a real Linux machine: the message should name the cause
+  (SSH login without `-X`, tmux/screen or `sudo` on the desktop, a Wayland session) and the
+  command that fixes it (`gui.no_display_hint`); tested with simulated environments only.
 - Windows with the VTK viewport: maximizing or resizing the window keeps it drawn (it went
   black until restart while the VTK default format was the window's default; now macOS only),
   and the 3D view still shows the atoms. Closing the window with a cell's plot in the Plots panel
