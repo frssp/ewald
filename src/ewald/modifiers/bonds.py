@@ -42,6 +42,7 @@ class CreateBonds(Modifier):
         if self.mode not in _MODES:
             raise ValueError(f"unknown mode {self.mode!r}; use one of {_MODES}")
         if self.mode == "uniform":
+            self._check_positive("cutoff")
             new = find_bonds(data, cutoff=self.cutoff, lower_cutoff=self.lower_cutoff, backend=ctx.backend)
         else:
             pairs = covalent_pairs(data.types, self.factor) if self.mode == "covalent" else self.pairs

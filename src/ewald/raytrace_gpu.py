@@ -103,8 +103,8 @@ DEVFN REAL hit_sphere(PRIV const REAL* o, PRIV const REAL* d, GLOBAL const REAL*
     REAL ox = o[0] - s[0], oy = o[1] - s[1], oz = o[2] - s[2];
     REAL r = s[3];
     REAL b = ox * d[0] + oy * d[1] + oz * d[2];
-    REAL cc = ox * ox + oy * oy + oz * oz - r * r;
-    REAL disc = b * b - cc;
+    REAL fx = ox - b * d[0], fy = oy - b * d[1], fz = oz - b * d[2];   /* see raytrace._hit_sphere */
+    REAL disc = r * r - (fx * fx + fy * fy + fz * fz);
     if (disc < 0) return -1;
     REAL q = sqrt(disc);
     REAL t = -b - q;
@@ -141,8 +141,8 @@ DEVFN REAL hit_cylinder(PRIV const REAL* o, PRIV const REAL* d, GLOBAL const REA
     REAL A = px * px + py * py + pz * pz;
     if (A < (REAL)1e-14) return best;
     REAL B = px * qx + py * qy + pz * qz;
-    REAL C = qx * qx + qy * qy + qz * qz - r * r;
-    REAL disc = B * B - A * C;
+    REAL wx = qx - B / A * px, wy = qy - B / A * py, wz = qz - B / A * pz;
+    REAL disc = A * (r * r - (wx * wx + wy * wy + wz * wz));
     if (disc < 0) return best;
     REAL s = sqrt(disc);
     REAL ts[2] = {(-B - s) / A, (-B + s) / A};
@@ -659,14 +659,16 @@ class CudaTracer:
 
     def trace(self, params, ints, rows, active, acc, sq, nsamp, rng, ao_next):
         """One pass of :func:`ewald.raytrace._render`: every ``active`` pixel of ``rows`` is
-        brought to ``ints[3]`` samples; the state arrays are updated in place."""
+        brought to ``ints[3]`` samples; the state arrays are updated in place. The launches are
+        queued back to back and waited for once at the end: a GPU that idles between them drops
+        its clock (an M2 MacBook Air on battery took up to 14x longer)."""
         cp = self.cp
         dev_params = cp.asarray(np.ascontiguousarray(params, np.float64))
         for part, chunk, n in _launches(ints, rows):
             args = self.args + (dev_params, cp.asarray(part), cp.asarray(chunk), active, acc, sq, nsamp, rng,
                                 ao_next)
             _kernel(cp, self.real)(((n + THREADS - 1) // THREADS,), (THREADS,), args)
-            self.backend.synchronize()   # one launch at a time; progress follows the work done
+        self.backend.synchronize()   # progress and cancelling follow the work done
 
 
 # --- OpenCL (pyopencl) ----------------------------------------------------------------------
@@ -743,7 +745,7 @@ class OpenCLTracer:
             extra = (dev_params, self._to_device(part), self._to_device(chunk), active, acc, sq, nsamp, rng, ao_next)
             args = [a if isinstance(a, np.int64) else a.data for a in self.args + extra]
             self.kernel(self.queue, (n,), None, *args)
-            self.queue.finish()      # one launch at a time; progress follows the work done
+        self.queue.finish()          # progress and cancelling follow the work done
 
 
 # --- Metal (PyObjC) -------------------------------------------------------------------------
@@ -826,6 +828,7 @@ class MetalTracer:
         mtl = self.mtl
         dev_params = self._to_device(np.asarray(params, np.float32))
         group = min(THREADS, int(self.state.maxTotalThreadsPerThreadgroup()))
+        cmds = []      # a command buffer keeps the buffers it binds alive until it has run
         for part, chunk, n in _launches(ints, rows):
             extra = (dev_params, self._to_device(part), self._to_device(chunk), active, acc, sq, nsamp, rng, ao_next)
             cmd = self.queue.commandBuffer()
@@ -838,8 +841,10 @@ class MetalTracer:
                     enc.setBuffer_offset_atIndex_(a.buf, 0, i)
             enc.dispatchThreads_threadsPerThreadgroup_(mtl.MTLSizeMake(n, 1, 1), mtl.MTLSizeMake(group, 1, 1))
             enc.endEncoding()
-            cmd.commit()
-            cmd.waitUntilCompleted()     # one launch at a time; progress follows the work done
+            cmd.commit()               # the queue runs them in order
+            cmds.append(cmd)
+        for cmd in cmds:
+            cmd.waitUntilCompleted()   # progress and cancelling follow the work done
             if cmd.error() is not None:
                 raise RuntimeError(f"Metal ray tracer failed: {cmd.error()}")
 
@@ -850,7 +855,7 @@ def tracer(scene, accel, device, real: str = "float"):
     """A GPU tracer for ``device``, or None for the CPU kernels. ``"cuda"``/``"gpu"`` (or a CuPy
     :class:`ewald.backend.Backend`) is the CUDA tracer, ``"opencl"`` the first OpenCL GPU (any
     OpenCL device if there is no GPU), ``"auto"`` CUDA if CuPy finds a GPU, else an OpenCL GPU
-    (not on a Mac, where the CPU beat both Apple's OpenCL and Metal), else the CPU. ``"metal"``
+    (on a Mac: Metal, since Apple's OpenCL is slower than the CPU), else the CPU. ``"metal"``
     (or ``"mps"``) is the Mac's GPU through Metal. A BVH deeper than the kernel's fixed
     traversal stack stays on the CPU."""
     if device is None or (isinstance(device, str) and device.lower() == "cpu"):
@@ -867,13 +872,13 @@ def tracer(scene, accel, device, real: str = "float"):
                 raise RuntimeError(OPENCL_MISSING) from exc
             raise RuntimeError("pyopencl is installed but no OpenCL device was found (install the GPU driver)")
         make = lambda: OpenCLTracer(devices[0], scene, accel, real)   # noqa: E731
-    elif name == "auto" and sys.platform == "darwin":
-        # on an M2 Air Apple's OpenCL traced 5x slower than the CPU and Metal 1.7-20x slower to
-        # 2x faster from run to run, while the CPU stayed steady: a Mac's auto is the CPU
-        return None
-    elif name in METAL_DEVICES:
+    elif name in METAL_DEVICES or (name == "auto" and sys.platform == "darwin"):
+        # on an M2 Air Metal traced 500k atoms 4.4x faster than the CPU and small scenes as fast;
+        # Apple's OpenCL was 5x slower than the CPU, so a Mac's auto is Metal or the CPU
         mtl = metal_device()
         if mtl is None:
+            if name == "auto":
+                return None
             if importlib.util.find_spec("Metal") is None:
                 raise RuntimeError(METAL_MISSING)
             raise RuntimeError("no Metal GPU found")

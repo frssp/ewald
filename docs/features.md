@@ -7,7 +7,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Python API
 
-`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `AllFramesModifier`, `Frames`, `each_frame`, `all_frames`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `View`, `view`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`, `run_info`, `check_run`, `load_runs`, `arrhenius`, `workflow_table`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
+`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `AllFramesModifier`, `Frames`, `each_frame`, `all_frames`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `View`, `view`, `show`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`, `run_info`, `check_run`, `load_runs`, `arrhenius`, `workflow_table`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
 
 ## Modifiers
 
@@ -496,6 +496,8 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | Key | Label | Default |
 |---|---|---|
 | `python.run_notebooks` | Run notebooks when opened | `'never'` |
+| `python.output_scroll_after` | Scroll outputs longer than (lines) | `50` |
+| `python.output_box_lines` | Scrolled output height (lines) | `20` |
 | `python.save_figures` | Save figures with notebooks | `True` |
 | `python.bundle_data_mb` | Copy data files up to (MB) | `50.0` |
 

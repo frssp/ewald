@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from .view3d import view  # noqa: F401 - notebooks import show and view from here
+
 KINDS = ("table", "histogram")
 
 
@@ -258,14 +260,24 @@ def _limit(ax, xlim, ylim):
 
 def show(source, table: str | None = None, y: str | None = None, histogram: str | None = None,
          frame: int = 0, bins: int = 50, xlim: tuple | None = None, ylim: tuple | None = None,
-         panel: bool | None = None):
-    """Plot a data table or a particle-property histogram of ``source`` (a Pipeline or a
-    DataCollection) at ``frame`` with matplotlib (``plt.show()``), in the publication style;
-    ``xlim``/``ylim`` set the range shown. In the GUI, ``show()`` of the notebook's pipeline is a
-    live plot linked to the 3D view wherever it is called (the image stays for files and
-    Jupyter); in a cell that is only this call, zooming writes the range back into the arguments.
-    ``panel``: True opens the GUI's plot in the Plots panel (a thumbnail stays under the cell),
-    False keeps it under the cell; None (default) decides by :func:`in_panel`."""
+         panel: bool | None = None, save=None):
+    """Show ``source`` (a Pipeline or a DataCollection) at ``frame``.
+
+    ``show(pipe)`` alone (a Pipeline or DataCollection; a table still plots) is a picture of the structure, drawn with the pipeline's view settings (a
+    :func:`snapshot`; under a notebook cell or in Jupyter it shows as an image, from a script it
+    opens in a matplotlib window). With ``table`` (and ``y``) or ``histogram`` it plots a data table
+    or a particle-property histogram with matplotlib (``plt.show()``) in the publication style;
+    ``xlim``/``ylim`` set the range shown. ``save="rdf.pdf"`` also writes the figure (editable text
+    in PDF/SVG, see :func:`ewald.plotstyle.save`). Returns the :class:`Snapshot` or a :class:`Plot`
+    (``.figure`` is the matplotlib Figure).
+
+    In the GUI, a plot of the notebook's pipeline is a live plot linked to the 3D view wherever it is
+    called (the image stays for files and Jupyter); in a cell that is only this call, zooming writes
+    the range back into the arguments. ``panel``: True opens the GUI's plot in the Plots panel (a
+    thumbnail stays under the cell), False keeps it under the cell; None (default) decides by
+    :func:`in_panel`."""
+    if table is None and y is None and histogram is None and _is_structure(source):
+        return _show_structure(source, frame, save)
     import matplotlib.pyplot as plt
 
     from . import plotstyle
@@ -281,7 +293,64 @@ def show(source, table: str | None = None, y: str | None = None, histogram: str 
             "ylim": None if ylim is None else [float(v) for v in ylim],
             "panel": None if panel is None else bool(panel)}
     fig._ewald_view = (source, {k: v for k, v in args.items() if v is not None})
+    if save is not None:
+        plotstyle.save(fig, save)
     plt.show()
+    return Plot(fig, title)
+
+
+class Plot:
+    """What :func:`show` returns for a plot: ``.figure`` is the matplotlib Figure (``.savefig``,
+    ``.axes`` and the other Figure attributes work on it directly). Its repr is one line, so a
+    notebook cell ending in ``show(...)`` shows the plot once, not twice."""
+
+    def __init__(self, figure, title: str = ""):
+        self.figure, self.title = figure, title
+
+    def save(self, target, **kwargs):
+        """Write the figure with the plot style's settings (:func:`ewald.plotstyle.save`)."""
+        from . import plotstyle
+
+        plotstyle.save(self.figure, target, **kwargs)
+
+    def __getattr__(self, name):
+        if name == "figure":
+            raise AttributeError(name)
+        return getattr(self.figure, name)
+
+    def _ipython_display_(self):
+        pass   # plt.show() has drawn the figure already
+
+    def __repr__(self):
+        return f"<Plot {self.title!r}>" if self.title else "<Plot>"
+
+
+def _is_structure(source) -> bool:
+    from .data import DataCollection
+
+    return isinstance(source, DataCollection) or (hasattr(source, "compute") and hasattr(source, "num_frames"))
+
+
+def _show_structure(source, frame: int, save) -> "Snapshot":
+    """``show(pipe)``: the structure picture; from a plain script (no IPython) also in a
+    matplotlib window, since nothing else would display the returned :class:`Snapshot`."""
+    shot = snapshot(source, frame)
+    if save is not None:
+        shot.save(save)
+    try:
+        from IPython import get_ipython
+
+        interactive = get_ipython() is not None
+    except ImportError:
+        interactive = False
+    if not interactive:
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(layout="constrained")
+        ax.imshow(shot.image())
+        ax.set_axis_off()
+        plt.show()
+    return shot
 
 
 DRAW_ARGS = ("table", "y", "histogram", "frame", "bins")   # the arguments of view_data()
@@ -451,13 +520,6 @@ def write_csv(path, columns: dict):
         w.writerows(rows.tolist())
 
 
-def view(pipe, **settings):
-    """Set the 3D view's display settings of ``pipe`` (see :func:`ewald.view3d.view`)."""
-    from .view3d import view as _view
-
-    return _view(pipe, **settings)
-
-
 def view_args(source: str, function: str = "show") -> dict | None:
     """The arguments of a cell that is a single ``show(<name>, key=literal, ...)`` call
     (optionally after imports): ``{"source": name, **literal keywords}``; None otherwise."""
@@ -482,6 +544,8 @@ def view_args(source: str, function: str = "show") -> dict | None:
             args[kw.arg] = ast.literal_eval(kw.value)
         except ValueError:
             return None
+    if function == "show" and args["source"] == "pipe" and not {"table", "y", "histogram"} & set(args):
+        return None   # show(pipe) alone is a picture of the structure, not a plot (show(table) still plots)
     return args
 
 

@@ -63,7 +63,8 @@ PAGE_OF_PREFIX = {"general": "General", "viewport": "3D view", "elements": "Atom
                   "render": "Rendering", "plots": "Plots", "compute": "Compute", "performance": "Compute",
                   "python": "Python", "llm": "AI"}
 PAGE_OF_KEY = {"python.plot_style": "Plots", "python.run_notebooks": "Notebooks", "python.save_figures": "Notebooks",
-               "python.bundle_data_mb": "Notebooks", "python.plugin_catalogs": "Plugins"}
+               "python.bundle_data_mb": "Notebooks", "python.output_scroll_after": "Notebooks",
+               "python.output_box_lines": "Notebooks", "python.plugin_catalogs": "Plugins"}
 PAGE_ALIASES = {"Viewports": "3D view", "Elements": "Atoms & bonds"}   # names before 2026-10-23
 
 OPTIONS = (
@@ -187,7 +188,7 @@ OPTIONS = (
     Option("compute.device", "cpu", "Device", "Where analysis and ray-traced pictures run: the window, the "
            "notebook's pipe and the Render page. CPU is the safe default; OpenCL ray traces on Intel, AMD and "
            "NVIDIA GPUs and Metal on a Mac's GPU, both keeping the analysis on the CPU; Auto uses the CUDA GPU "
-           "when CuPy finds one, else an OpenCL GPU for ray tracing (not on a Mac), else the CPU.",
+           "when CuPy finds one, else Metal on a Mac or an OpenCL GPU for ray tracing, else the CPU.",
            choices=("cpu", "cuda", "opencl", "metal", "auto")),
     Option("performance.cache_memory", 2048, "Frame cache memory",
            "Upper bound for cached trajectory frames (MB); the current frame is always kept.",
@@ -209,6 +210,13 @@ OPTIONS = (
            "matplotlib figures that notebook cells and the console draw (plt.plot ...): the publication "
            "style of saved plots, in print colors or the UI theme's, or matplotlib's defaults; the style "
            "file below goes on top. rcParams a cell sets always win.", choices=PLOT_STYLES),
+    Option("python.output_scroll_after", 50, "Scroll outputs longer than (lines)",
+           "A cell's printed text, value or traceback longer than this scrolls in a box, as in "
+           "Jupyter. Click the rule left of an output (or press Shift+O on the cell) to scroll it or "
+           "show every line, double-click it (or O) to hide it. 0 scrolls nothing by itself.",
+           minimum=0, maximum=100000),
+    Option("python.output_box_lines", 20, "Scrolled output height (lines)",
+           "How many lines the box of a scrolled output shows.", minimum=3, maximum=10000),
     Option("python.save_figures", True, "Save figures with notebooks",
            "An .ewd notebook keeps every view cell as SVG and PNG, with the plotted data as CSV."),
     Option("python.bundle_data_mb", 50.0, "Copy data files up to (MB)",

@@ -4,6 +4,8 @@ from __future__ import annotations
 import glob
 import os
 
+import numpy as np
+
 from ..data import DataCollection
 from . import remote
 from .ase_reader import AseDbReader, AseReader, AseTrajectoryReader, is_ase_db, is_ase_traj
@@ -242,12 +244,14 @@ class FileSource:
 
 
 class StaticSource:
-    """Pipeline source wrapping an in-memory DataCollection or list of them."""
+    """Pipeline source wrapping in-memory frames: a DataCollection, an ASE ``Atoms``, a pymatgen
+    ``Structure``/``Molecule``, or a list of them (one frame each)."""
 
     def __init__(self, frames):
-        self.frames = frames if isinstance(frames, (list, tuple)) else [frames]
-        self.frames = [DataCollection.from_ase(f) if not isinstance(f, DataCollection) else f
-                       for f in self.frames]
+        self.frames = list(frames) if isinstance(frames, (list, tuple)) else [frames]
+        if not self.frames:
+            raise ValueError("StaticSource needs at least one frame")
+        self.frames = [_as_data(f) for f in self.frames]
 
     @property
     def num_frames(self) -> int:
@@ -257,6 +261,25 @@ class StaticSource:
         data = self.frames[frame].copy()
         data.attributes["SourceFrame"] = frame % self.num_frames
         return data
+
+
+def _as_data(frame) -> DataCollection:
+    """One in-memory frame as a DataCollection (see :class:`StaticSource`)."""
+    if isinstance(frame, DataCollection):
+        return frame
+    if hasattr(frame, "get_positions") and hasattr(frame, "numbers"):   # ase.Atoms
+        return DataCollection.from_ase(frame)
+    if hasattr(frame, "sites") and hasattr(frame, "species"):           # pymatgen Structure/Molecule
+        return DataCollection.from_pymatgen(frame)
+    raise TypeError(f"cannot use a {type(frame).__name__} as a frame: give a DataCollection, an ASE Atoms "
+                    "or a pymatgen Structure/Molecule")
+
+
+def _in_memory(source) -> bool:
+    """Whether :func:`import_file` got frames (Atoms, Structure, DataCollection, a list of them)
+    rather than file names."""
+    items = source if isinstance(source, (list, tuple)) else [source]
+    return bool(items) and not any(isinstance(i, (str, os.PathLike)) for i in items)
 
 
 _NEB_FORMATS = ("neb", "vasp-neb", "lammps-neb")
@@ -483,9 +506,17 @@ def import_file(path, format: str | None = None, **kwargs):
     own way, so atoms on a cell face would jump across it from image to image),
     ``NebEnergyProfile`` and ``OverlayFrames`` (every image see-through behind the current one;
     see :mod:`ewald.io.neb`).
+
+    ``path`` may also be frames already in memory: an ASE ``Atoms``, a pymatgen ``Structure`` or
+    ``Molecule``, a :class:`DataCollection`, or a list of them (one frame each; see
+    :class:`StaticSource`), so ``load(ase.io.read("OUTCAR", ":"))`` works.
     """
     from ..pipeline import Pipeline
 
+    if _in_memory(path):
+        if format is not None or kwargs:
+            raise TypeError("format and reader options apply to files, not to frames in memory")
+        return Pipeline(StaticSource(path))
     pipe = Pipeline(FileSource(path, format, **kwargs))
     if any(isinstance(r, NebReader) for r in pipe.source.readers):
         from ..modifiers import NebEnergyProfile, OverlayFrames, UnwrapTrajectories
@@ -611,6 +642,27 @@ def builtin_writers():
     ]
 
 
+def _frame_indices(frames, n: int) -> list[int]:
+    """``frames`` of :func:`export_file` as indices: None or ``"all"`` (every frame), ``"last"``, an int,
+    a slice, or a list/range of ints (negative from the end)."""
+    if frames is None or (isinstance(frames, str) and frames.lower() == "all"):
+        return list(range(n))
+    if isinstance(frames, str) and frames.lower() == "last":
+        return [n - 1]
+    if isinstance(frames, slice):
+        return list(range(*frames.indices(n)))
+    if isinstance(frames, (int, np.integer)):
+        frames = [frames]
+    if isinstance(frames, str) or not hasattr(frames, "__iter__"):
+        raise TypeError(f"frames={frames!r}: give 'all', 'last', an int, a slice or a list of ints")
+    out = []
+    for i in frames:
+        if not -n <= int(i) < n:
+            raise IndexError(f"frame {i} out of range: there are {n} frames")
+        out.append(int(i) % n)
+    return out
+
+
 def export_file(source, path, format: str | None = None, frames=None, **kwargs):
     """Write a DataCollection, a list of them, or a Pipeline's frames to ``path``.
 
@@ -618,7 +670,8 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
     ``"poscar"``, ``"xtc"``; unknown names go to ``ase.io.write``) or from the file name
     (``*.extxyz``, ``POSCAR``, ``*.data``, ``*.h5md``, ``*.xtc``, ``*.xsf``, ``*.cube``, ...;
     ``ewald plugins`` lists them, writer plugins included). Pipeline frames are computed and
-    written one at a time. ``frames=`` picks frames of a Pipeline; one-frame formats (POSCAR,
+    written one at a time. ``frames=`` picks frames of a Pipeline: ``"all"`` (default), ``"last"``, an
+    int, a slice or a list of ints; one-frame formats (POSCAR,
     LAMMPS data, CHGCAR, cube) need exactly one, e.g. ``frames=[-1]``. Grid writers take
     ``property="Charge Density"`` (and ``grid=``); other keyword arguments go to the writer
     (``columns=`` for LAMMPS dumps, ``atom_style=`` for LAMMPS data). A missing parent folder
@@ -639,14 +692,13 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
             os.makedirs(made[0], exist_ok=True)
 
     if isinstance(source, Pipeline):
-        idx = range(source.num_frames) if frames is None else frames
+        idx = _frame_indices(frames, source.num_frames)
         items = (source.compute(i) for i in idx)
     elif isinstance(source, DataCollection):
         items = [source]
     else:
         items = list(source)
-        if frames is not None:
-            items = [items[i] for i in frames]
+        items = [items[i] for i in _frame_indices(frames, len(items))]
     try:
         return plugins.write_file(path, items, format=format, **kwargs)
     except BaseException:

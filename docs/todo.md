@@ -9,6 +9,13 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 ## In progress
 
 ## Next
+
+- Long cell outputs: whether a cell's output is scrolled or shown whole is kept per window only;
+  Jupyter stores it as the cell's `scrolled` metadata in `.ipynb` (read and write it once cells
+  keep metadata), and so is a hidden output (Jupyter's `collapsed`).
+- Library API, rest of the audit: frame selection when loading (`load(path, frames=...)` like ASE's
+  `index=":"`) and reader keyword errors that name `load()` instead of the reader class; internal
+  state (`Color.rule`) out of `data.attributes`; `data.tables` values as `verbs.Table`.
 - Activity bar: buttons cannot be reordered by dragging yet (hiding and the … overflow menu work).
 - Menus after the 2026-10-23 review: right-click menus still mix entries with and without icons;
   context menus have no mnemonics; Edit has no Find in notebook; the Keyboard shortcuts window lists
@@ -18,6 +25,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   OpenGL 1.x viewport draws no hover plane; picks on replicated copies (`replicate=`) only ring
   the atoms of the first copy; a profile along a tilted cell vector keeps no `Keep as selection`
   (expressions have no fractional coordinates).
+- Search box and + Step (D57): the step list of the notebook bar's + Step and the Ctrl+K palette leave
+  out steps that cannot work on the current frame, where the menus grey them out with the reason.
 - Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): a table's `levels`, `regions`
   and `gaps` are drawn in cell outputs, figures, the Plots panel and a `show(<table>)` view cell,
   but an analysis does not end with such a view cell yet (its result is a picture under the cell
@@ -591,6 +600,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   scatter plots of two properties (brushing a box selects atoms); keep a pair, bond or angle
   range as a modifier (only property ranges become an `ExpressionSelection` now).
 - P2: glTF, interactive HTML and Blender export.
+- P3: A Metal viewport on the Mac through VTK's WebGPU backend (Dawn maps it to Metal, Vulkan
+  or Direct3D 12). The VTK viewport draws through OpenGL 4.1 on a Mac now, which macOS runs on
+  top of Metal; the Metal option in Compute › Device is only for the ray tracer. Wait until
+  VTK's WebGPU backend leaves experimental and supports what the viewport uses (impostors,
+  depth peeling, picking), then add it as a `viewport.backend` choice.
 - P2: Batch render CLI: apply one `.ewald` session to many run folders.
 - P2: Native GSD reader (H5MD and XTC/TRR/DCD are done).
 - P2: Live reload for XTC/TRR/DCD and compressed files (dump, XDATCAR, OUTCAR, vasprun.xml,
@@ -615,9 +629,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   0.85 vs 1.64 s, Cu slab 0.20 vs 0.34 s. Atoms gain about 2x; see-through polyhedra and the
   fine mesh do not (divergent transparency layers, the BVH stack). Apple's OpenCL took 2.4 s
   for a 400x300 Publication picture the CPU draws in 0.4-0.5 s (19.5 s before the 32-bit item
-  codes), and Metal took 0.7 s, then 1.6 s and 8.7 s for the same picture in later runs, so
-  `auto` stays on the CPU on a Mac. Open: why Metal and Apple's OpenCL stall for seconds (power
-  state of a fanless Air, the per-thread BVH stack, divergent transparency layers). Retina, the
+  codes), and Metal took 0.7 s, then 1.6 s and 8.7 s for the same picture in later runs. Plugged in it took a steady 0.6 s: the stalls were the GPU's
+  battery power state, and the tracers now queue all launches of a pass and wait once (a GPU
+  idle between launches clocks down). At 1600x1200 Publication Metal took 2.6 s against 9.0 s
+  for 108k fcc Cu atoms and 2.5 s against 11.0 s for 500k, so `auto` on a Mac is Metal again. Still slow for a GPU: divergent transparency layers and
+  AO rays in one kernel per pixel, the per-thread BVH stack (a wavefront tracer would fix both). Retina, the
   GUI Render page and movies on Metal are unchecked.
 - `no display: DISPLAY is not set` on a real Linux machine: the message should name the cause
   (SSH login without `-X`, tmux/screen or `sudo` on the desktop, a Wayland session) and the
@@ -629,7 +645,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - Notebook cells on Windows at 125-200 % display scaling and on macOS: the code box ends below
   its last line and the output area (rule on the left, monospaced text) starts under it, also
   after changing the font size in Preferences; a traceback or a long `print` wraps inside the
-  cell. Checked with `QT_SCALE_FACTOR=2` on Linux only.
+  cell. Checked with `QT_SCALE_FACTOR=2` on Linux only. A print longer than 50 lines scrolls in
+  a 20-line box that ends on a whole line; a click on the rule beside it (8 px hit area) or
+  Shift+O shows every line, a double-click hides it.
 - Preferences › Plots › Open as text on Windows and macOS: a `.mplstyle` file has no program
   associated on a fresh system, so Windows falls back to Notepad and macOS uses `open -t` (the
   default text editor); EWALD must re-read the file when the editor saves (watched with

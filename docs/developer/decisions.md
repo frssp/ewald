@@ -666,13 +666,86 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   and since Apple's OpenCL was still slower than the CPU, the same kernel source gets a Metal
   build (`device="metal"`, PyObjC, the `metal` extra) that `auto` uses on a Mac. Changed the
   same day (public PR #51): on the owner's Mac Metal ran from 2x faster to 20x slower than the
-  CPU from run to run, so `auto` is the CPU on a Mac and Metal is chosen by name.
+  CPU from run to run, so `auto` is the CPU on a Mac and Metal is chosen by name. Changed back to Metal later that day (D54).
 - **Why:** the owner asked "mac에서 opencl말고 다른 방법은 없어?" after Apple's OpenCL took
   19.5 s for a picture the CPU draws in 0.5 s, and chose "64-bit 정리 먼저, 필요하면 Metal" on the
   decision card. After the 32-bit change it took 2.4 s, still slower than the CPU.
 - **Considered:** going to Metal at once; Metal's hardware ray tracing API (fastest on M3 and
   later, but a separate renderer); a denoiser instead of a GPU; stopping with the CPU on a Mac.
 - **Landed:** public PR #48.
+
+### D54. On a Mac, `auto` ray traces on Metal (2026-10-24)
+
+- **Decision:** `device="auto"` uses Metal on a Mac when the `metal` extra is installed, the CPU
+  otherwise; this replaces the "CPU on a Mac" rule of D53 (public PR #51).
+- **Why:** the owner picked "auto = Metal (Mac)" on the decision card after measuring on an M2
+  MacBook Air, plugged in and with the launches queued (public PR #52): Metal 2.6 s against 9.0 s
+  on the CPU for 108 000 fcc Cu atoms at 1600x1200 Publication, 2.5 s against 11.0 s for 500 000,
+  and as fast as the CPU on small pictures.
+- **Considered:** keeping the CPU as the Mac default and choosing Metal by name.
+- **Landed:** public PR #54.
+
+### D55. The library API changes behaviour where results were silently wrong (2026-10-24)
+
+- **Decision:** a step a verb (`rdf`, `cna`, ...) added never replaces what earlier steps wrote
+  (its own same-named table goes beside the earlier one); `pipe.compute(i)` raises IndexError out
+  of range instead of wrapping; `pipe.render()` returns an `Image` with a one-line repr;
+  `show()` returns a `Plot` or, for `show(pipe)` alone, a picture of the structure; and each idea
+  gets one argument name across the modifiers, with OVITO's spellings kept as aliases (`bins`,
+  `range`, `unwrapped`, `two_theta_step`; `only_selected` off by default everywhere, so the four
+  transport modifiers that had it on now need `only_selected=True` after a selection).
+- **Why:** the owner asked to check ewald as a plain Python library ("ewald를 lib로 쓸 때 기능
+  문법 등을 점검하자") and chose "추천안 전부 적용" on the decision card. The audit found
+  `rdf(pipe, cutoff=6)` changing a user's Coordination from 11.6 to 73.8 and `compute(999)` on 5
+  frames returning frame 4.
+- **Considered:** only the two bug-like changes (verbs, frame wrap); only the non-breaking
+  fixes (public PR #50); returning the file path from `render()` (rejected while implementing:
+  it would break every caller that uses the pixels, the `Image` array gives the short repr
+  without that).
+- **Landed:** public PR #55 (behaviour); public PR #58 (names).
+
+### D56. Long cell outputs scroll in a fixed-height box, as in Jupyter (2026-10-24)
+
+- **Decision:** printed text, values and tracebacks longer than `python.output_scroll_after`
+  (50 lines; 0 = never by itself) scroll in a box `python.output_box_lines` (20 lines) tall. The
+  rule left of the outputs (D47) works as Jupyter's output prompt: a click (Shift+O) scrolls an
+  output or shows it whole, also a short one, and a double-click (O) hides the outputs.
+- **Why:** the owner asked "주피터 노트북 처럼 stdout이 너무 길면 고정길이에 스크롤바로 만들 수 있게",
+  picked the numbers after comparing Jupyter's defaults (classic Notebook: over 100 lines, a
+  24em box; VS Code: 30 lines) with "50 넘으면 20줄 정도로 할까?", and added "그리고 수동으로
+  접을 수 있게".
+- **Considered:** one number for both (30, first draft); the 400-line limit before it (pages
+  grew endless); a separate expand button under the output.
+- **Landed:** public PR #56.
+
+### D57. The search box in the middle, + Step next to Run all (2026-10-24)
+
+- **Decision:** the toolbar's "Search commands and steps" box sits in the middle of the window
+  (VS Code's command center) and the palette opens right below it; the notebook bar gets
+  **+ Step** next to Run all, which opens the steps as a list to search and adds the picked one
+  after the current cell. The + Step under the cells and Insert › Step stay.
+- **Why:** the owner asked to check whether the search box and the step entry are well placed
+  ("search command and steps 위치 적절한지 고민해봐") and picked these options on the decision
+  cards. The review found the palette opening away from the box it was opened from, and + Step
+  only at the bottom of the notebook although it adds after the current cell.
+- **Considered:** for the box, leaving it in place, one row with the menu bar (differs on macOS,
+  where the menu bar is at the top of the screen) and a button only (JupyterLab); for + Step,
+  leaving it under the cells, an inserter between cells, and both.
+- **Landed:** public PR #60.
+
+### D58. Profile plots and the 3D view follow each other, as a general link (2026-10-24)
+
+- **Decision:** a plot whose x is a position along the cell (any table with
+  `attributes["axis"]`, not only the potential lineup) is tied to the 3D view in three ways. *Align
+  3D view* turns the view side-on with the plot's range across its width, and zooming or panning
+  either one moves the other. A dragged range selects that slab of atoms. Hovering shows a plane at
+  that position, and picked atoms show as ticks on the plot.
+- **Why:** after seeing the lineup in the Plots panel the owner asked whether the 3D view could be
+  synchronized with the plot below it "마우스 동작이나 버튼으로". They added: "동기화하는 것은 좀
+  일반적인 툴로 만들면 다른 문제에도 써먹을 수 있을 듯". From the rough concepts (align, slab
+  brush, position marker) they picked all three on the decision card.
+- **Considered:** the alignment alone, and the alignment with the slab selection.
+- **Landed:** public PR #53.
 
 ## Adding an entry
 

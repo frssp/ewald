@@ -53,7 +53,8 @@ pipe = load("run.npz", format="npz-trajectory")                 # format= also n
 
 ## Data model
 
-- `pipe.num_frames`, `pipe.compute(i)`, `pipe.frames(start, stop, step)`, `pipe.source_frame(i)` (unmodified input).
+- `pipe.num_frames`, `pipe.compute(i)` (also `pipe[i]`, `pipe[a:b]`, `for data in pipe`; negative from the end, out of
+  range raises IndexError), `pipe.frames(start, stop, step)`, `pipe.source_frame(i)` (unmodified input).
 - `pipe.refresh()` picks up frames a running job appended since the file was opened (dump, XDATCAR, OUTCAR,
   extxyz; local or SSH) and returns how many were added; then `pipe.compute(-1)` is the newest frame.
 - `data = pipe.compute(i)` is a `DataCollection`: `data.count`, `data.positions` (N x 3, Angstrom),
@@ -147,11 +148,12 @@ A notebook is a percent-format `.py` file (`# %%` cells, one namespace). New not
   (body sees `frame`, `data`) or `[all frames]` (`frames`, `data`), or a function under
   `@pipe.add` and `@each_frame` / `@all_frames` (also runs as a plain script).
 - view cell: exactly one `view(pipe, ...)` call (the 3D view, see below) or one `show(...)` call (a plot).
-- `show(pipe, table=None, y=None, histogram=None, frame=0, bins=50, xlim=None, ylim=None, panel=None)` plots any
+- `show(pipe, table=None, y=None, histogram=None, frame=0, bins=50, xlim=None, ylim=None, panel=None, save=None)` plots any
   `data.tables` key (`"coordination-rdf"`, `"structure-factor"`, `"diffraction"`, `"msd"`, `"DOS"`, `"Bands"`, `"Steps"`
   (thermo), ...; `y=` one column) or a histogram of a particle property (`histogram="Coordination"`). In the GUI it is a
   live plot linked to the 3D view; `panel=True`/`False` puts it in the Plots panel or under the cell. `xlim`/`ylim` set
-  the range (`xlim=(-3, 3)` for a DOS window). `ewald.views.figure(...)` returns the matplotlib Figure instead.
+  the range (`xlim=(-3, 3)` for a DOS window); `save="rdf.pdf"` writes it. `show(pipe)` with no table or histogram is a
+  picture of the structure, not a plot. `ewald.views.figure(...)` returns the matplotlib Figure instead.
 - `snapshot(pipe, frame=None, **render_kwargs)` (`from ewald.views import snapshot`) as a cell's last line shows a
   picture of the 3D view.
 - `paint(data, where, color)`, `hide(data, where)`, `isolate(data, where)`, `fade(data, where, transparency=0.7)`,
@@ -225,13 +227,13 @@ The AI's `set_view` / `get_view` tools take the same settings.
 
 ## Other entry points
 
-- `ewald.kernels.rdf(positions, cell, cutoff, nbins=200, types=None)` -> table with `r`, `g(r)`, partial `g(r) A-B`.
+- `ewald.kernels.rdf(positions, cell, cutoff, bins=200, types=None)` -> table with `r`, `g(r)`, partial `g(r) A-B`.
 - `ewald.diffraction.powder_peaks(positions, types, cell, wavelength="CuKa", radiation="xray", two_theta_range=(0, 90))`
   -> `2theta`, `Intensity` (max 100), `d`, `h`, `k`, `l`, `Multiplicity` (pymatgen XRDCalculator/NDCalculator formalism);
-  `powder_profile(peaks, two_theta, fwhm, eta)`; `structure_factor(positions, cell, q_max, number_of_bins, q_min, method,
+  `powder_profile(peaks, two_theta, fwhm, eta)`; `structure_factor(positions, cell, q_max, bins, q_min, method,
   types, weighting)` -> `q`, `S(q)`; `load_pattern(path)` reads a measured two-column pattern.
 - `ewald.kernels.trajectory_msd(pipe, start=0, stop=None, step=1)` -> `lag`, `MSD`, `MSD <type>` (unwrapped, by id).
-- `ewald.kernels.trajectory_vacf(pipe, time_per_frame=1.0, velocities="auto")`, `trajectory_rdf(pipe, cutoff, nbins)`
+- `ewald.kernels.trajectory_vacf(pipe, time_per_frame=1.0, velocities="auto")`, `trajectory_rdf(pipe, cutoff, bins)`
   (time-averaged g(r)), `diffusion_fit(time, msd)` -> `(D, intercept, fit window)`, `green_kubo(time, vacf)`.
 - Trajectory modifiers (`MeanSquaredDisplacement`, `VelocityAutocorrelation`, `TimeAveraging`, `TimeSeries`,
   `GenerateTrajectoryLines`) read every frame of `start:stop:step` through the modifiers above them and cache the

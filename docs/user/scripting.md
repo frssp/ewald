@@ -25,13 +25,35 @@ print(data.summary())          # everything above with dtypes and ranges
 ```
 
 `data.take(mask)` and `data.delete(mask)` return new collections. `data.to_ase()` and
-`DataCollection.from_ase(atoms)` convert to and from ASE.
+`DataCollection.from_ase(atoms)` convert to and from ASE, `data.to_pymatgen()` and
+`DataCollection.from_pymatgen(structure)` to and from pymatgen (when it is installed).
+`data.apply(modifier)` runs one step on this frame alone and returns the result, as OVITO's
+`data.apply` does.
+
+## Frames, and structures already in memory
+
+A pipeline indexes like a list of frames, each computed when asked for:
+
+```python
+pipe = load("XDATCAR")
+pipe[0], pipe[-1]              # pipe.compute(0), the last frame; out of range raises IndexError,
+                               # in compute() too
+pipe[::10]                     # a list of every tenth frame
+for data in pipe: ...          # every frame, one at a time
+images = pipe.to_ase()         # list of ase.Atoms, e.g. for ase.io.write
+export_file(pipe, "last.vasp", format="vasp", frames="last")   # or "all", an int, a slice, a list
+```
+
+`load` also takes structures you already have: an ASE `Atoms`, a pymatgen `Structure` or
+`Molecule`, a `DataCollection`, or a list of them (one frame each), so
+`load(ase.io.read("OUTCAR", ":"))` or `load(bulk("Cu", cubic=True) * 4)` start a pipeline too.
 
 ## Rule: replace arrays, never write into them
 
-Arrays in a `DataCollection` are shared with the cached input frames. Writing into one in
-place (`data.positions[0] += 1`, `data["Color"][sel] = red`) silently changes the cached
-frame and every later result. Build a new array and assign it:
+Arrays in a `DataCollection` are shared with the cached input frames, so the pipeline makes them
+read-only: writing into one in place (`data.positions[0] += 1`, `data["Color"][sel] = red`) raises
+`ValueError: output array is read-only` with a note on how to replace it. Build a new array and
+assign it:
 
 ```python
 pos = data.positions.copy()
@@ -83,7 +105,7 @@ For quantities over the whole trajectory, prefer the trajectory modifiers or `ew
 from ewald.kernels import trajectory_msd, trajectory_rdf, diffusion_fit
 
 msd = trajectory_msd(pipe, device="cuda")              # table: lag, MSD, MSD <type>
-gr = trajectory_rdf(pipe, cutoff=6.0, nbins=300)       # time-averaged g(r)
+gr = trajectory_rdf(pipe, cutoff=6.0, bins=300)       # time-averaged g(r)
 ```
 
 ## In Jupyter

@@ -59,8 +59,9 @@ There are six kinds of cell.
 switch it off, the time it took and what it produced (new properties, selected atoms, tables,
 removed atoms). A small histogram or curve of the new property or table sits next to the
 results. *Form* opens the parameter form, and Apply writes the new values back into the cell's
-code. *Python* shows the code. Insert › Step (or **+ Step** under the cells) adds a step with
-default parameters after the current cell. Steps that cannot work on the current frame are
+code. *Python* shows the code. **+ Step** next to Run all opens the list of steps to search (type `coord`
+or `msd`), and Insert › Step or **+ Step** under the cells opens the same steps as a menu; each adds
+a step with default parameters after the current cell. Steps that cannot work on the current frame are
 greyed out, and their tooltip says what is missing (a volumetric grid, a vector property, a
 trajectory, a selection, PTM orientations). Bond analyses (bond angles, bond lengths, rings)
 add `CreateBonds(mode="covalent")` first when the data has no bonds, and Coordination polyhedra
@@ -81,8 +82,11 @@ those atoms, or those frames on a per-frame plot. The atoms you pick appear on t
 and the band structure follow the picked atoms as projected DOS or fat bands, and clicking a
 phonon band plays that mode. Choosing another table, column or histogram in the plot's bar
 rewrites the cell, and so does zooming: the wheel, a drag on a DOS or band plot, or a pan
-writes `xlim=`/`ylim=`, and a double-click removes them. Run as a script, `show` draws the same plot with matplotlib. Add one with
+writes `xlim=`/`ylim=`, and a double-click removes them. Run as a script, `show` draws the same plot with matplotlib
+(`save="rdf.pdf"` also writes it; it returns a `Plot` whose `.figure` is the Figure). Add one with
 **+ Plot** or Insert › Plot, which list the tables and properties of the current frame.
+`show(pipe)` with no table or histogram is a picture of the structure instead (a snapshot drawn
+with the pipeline's view settings), not a plot.
 
 `show(pipe, ...)` anywhere else in a code cell (after other code, several in one cell, with
 arguments from variables) is a live plot too, under the cell where it was called: it follows
@@ -228,6 +232,14 @@ last line (as in Jupyter). Matplotlib figures are shown as images, without `plt.
 opening a window, and so are a pipeline (`pipe` as the last line draws frame 0) and a verb
 table (its curve); a frame (`pipe.compute(0)`) shows its summary.
 
+**Long output scrolls.** Printed text, a value or a traceback longer than 50 lines scrolls in a
+box 20 lines tall, as Jupyter's scrolled output (a traceback shows its end, a running cell's log
+follows the newest line until you scroll up). The thin rule left of the output is Jupyter's
+output prompt: click it (or press Shift+O on the selected cell) to show every line or scroll it
+again, also for a shorter output; a click on an output shorter than the box, a double-click, or
+O hides the outputs behind an *Output hidden* line, which a click brings back. Preferences ›
+Notebooks › Outputs sets both numbers (*Scroll outputs longer than* 0 scrolls nothing by itself).
+
 Cells are IPython cells, as in Jupyter: magics (`%time`, `%%timeit`, `%env`, `%who`),
 `!commands` (`!pip list`), `display(...)` and `display(..., display_id=True).update(...)`,
 `_` and `Out[n]`, and IPython's tracebacks all work, and an object's `_repr_html_`,
@@ -312,7 +324,10 @@ are greyed out for a single frame.
 A table is a dict of numpy columns with `.x`, `.columns` and `.plot()`; `pandas.DataFrame(g)`
 turns it into a data frame.
 Running the cell (or calling the verb) again replaces the step it added, so changing
-`cutoff=` never stacks duplicates. `show(pipe, table="coordination-rdf")` puts the same table
+`cutoff=` never stacks duplicates. A verb's step never changes what your own steps before it
+wrote: after `pipe.add(CoordinationAnalysis(cutoff=3.0))`, `rdf(pipe, cutoff=6)` keeps your
+"Coordination" values and your `coordination-rdf` table, and its own table is
+`coordination-rdf (rdf)`. `show(pipe, table="coordination-rdf")` puts the same table
 in a live view cell.
 
 **Text cells** are Markdown. Double-click one (or select it and press Enter) to edit it; Esc
@@ -337,6 +352,7 @@ you run it.
 | X / C | cut / copy the selected cells |
 | V / Shift+V | paste them below / above (also into another notebook tab) |
 | Shift+M | merge the selected cells (one cell: with the cell below) |
+| O / Shift+O | hide or show the outputs / scroll them or show them whole |
 | Ctrl+Enter / Shift+Enter | run the selected cells (Shift+Enter then moves on) |
 
 The cell's ⋯ menu and the Notebook menu have the same commands; *Move up* / *Move down* move the

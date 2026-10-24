@@ -23,7 +23,7 @@ LAMMPS dump stores numbered types, so the GUI asks which element each number is 
 
 ## Add steps and views
 
-**+ Step** under the cells (or Insert › Step) adds an analysis. Pick one, for example Coordination
+**+ Step** next to Run all (or under the cells, or Insert › Step) adds an analysis. Pick one, for example Coordination
 analysis, and the notebook writes the cell for you:
 
 ```python

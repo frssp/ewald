@@ -16,12 +16,15 @@ class CoordinationAnalysis(Modifier):
     Runs on the pipeline's device (``compute(device="cuda")``).
     """
 
-    def __init__(self, cutoff: float = 3.2, number_of_bins: int = 200, partial: bool = False):
+    ALIASES = {"number_of_bins": "bins"}   # OVITO's name
+
+    def __init__(self, cutoff: float = 3.2, bins: int = 200, partial: bool = False):
         self.cutoff = cutoff
-        self.number_of_bins = number_of_bins
+        self.bins = bins
         self.partial = partial
 
     def modify(self, data, ctx):
+        self._check_positive("cutoff", "bins")
         be, xp = ctx.backend, ctx.xp
         n = data.count
         # Half list (i < j): half the pairs to find, histogram and transfer.
@@ -30,7 +33,7 @@ class CoordinationAnalysis(Modifier):
         data.particles["Coordination"] = be.to_numpy(coord).astype(np.int64)
         volume = data.cell.volume if data.cell.is_valid else np.prod(np.ptp(data.positions, 0) + 1e-9)
         data.tables["coordination-rdf"] = rdf_from_pairs(
-            dist, n, volume, self.cutoff, self.number_of_bins, be, half=True,
+            dist, n, volume, self.cutoff, self.bins, be, half=True,
             i=i, j=j, types=data.types if self.partial else None)
 
 

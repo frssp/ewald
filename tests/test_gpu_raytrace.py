@@ -237,12 +237,12 @@ class FakeMetalQueue:
         self.mtl = mtl
 
     def commandBuffer(self):
-        return FakeMetalCommands(self.mtl)
+        return FakeMetalCommands(self.mtl, self)
 
 
 class FakeMetalCommands:
-    def __init__(self, mtl):
-        self.mtl, self.bound, self.grid = mtl, {}, None
+    def __init__(self, mtl, queue):
+        self.mtl, self.queue, self.bound, self.grid, self.done = mtl, queue, {}, None, False
 
     def computeCommandEncoder(self):
         return self
@@ -265,13 +265,19 @@ class FakeMetalCommands:
         pass
 
     def commit(self):
+        """Queued: like the GPU, the work runs later, in commit order."""
         assert sorted(self.bound) == list(range(23))
+        self.queue.pending = getattr(self.queue, "pending", []) + [self]
+
+    def _run(self):
         ptrs = (ctypes.c_void_p * 23)(*[self.bound[i].ctypes.data for i in range(23)])
         self.mtl.launches.append((self.grid, None))
         self.mtl.lib.host_launch(ctypes.c_longlong(self.grid[0]), ptrs)
+        self.done = True
 
     def waitUntilCompleted(self):
-        pass
+        while not self.done:
+            self.queue.pending.pop(0)._run()
 
     def error(self):
         return None
@@ -352,6 +358,24 @@ def test_gpu_image_matches_cpu(fake_gpu, ortho):
         assert np.median(diff) < 2e-3 and (diff < 0.02).mean() > 0.99
 
 
+@pytest.mark.parametrize("ortho", [True, False])
+def test_far_camera_keeps_float_spheres_clean(fake_gpu, ortho):
+    """A big box seen from far away (a 100k-atom a-Si cell, zoomed in, on an M2 Mac): single precision
+    sphere and cylinder tests lost the atoms' edges and normals to rounding, so the picture was noise."""
+    sc = rt.Scene()
+    rng = np.random.default_rng(5)
+    c = rng.uniform(-3, 3, (40, 3)) + 300.0
+    sc.add_spheres(c, 0.5, rng.uniform(0.2, 1.0, (40, 3)))
+    sc.add_cylinders(c[:20], c[20:], 0.15, (0.7, 0.7, 0.7))
+    cam = {"position": [1300.0, 1300.0, 1300.0], "focal_point": [300.0, 300.0, 300.0], "up": [0, 0, 1],
+           "parallel_projection": ortho, "parallel_scale": 3.0, "view_angle": 0.2}
+    kw = dict(samples=2, ao_samples=2)
+    cpu = rt.raytrace(sc, cam, (48, 36), **kw)
+    gpu = rt.raytrace(sc, cam, (48, 36), device=fake_gpu, **kw)
+    diff = np.abs(gpu - cpu).max(-1)
+    assert np.median(diff) < 2e-3 and (diff < 0.02).mean() > 0.97
+
+
 def test_gpu_adaptive_and_progress(fake_gpu):
     sc = busy_scene()
     seen = []
@@ -400,9 +424,9 @@ def test_a_pass_is_split_into_short_launches(fake_gpu, monkeypatch):
 
 
 @pytest.mark.parametrize("platform, metal, picks", [
-    ("win32", None, "opencl"), ("linux", None, "opencl"), ("darwin", None, None), ("darwin", "m2", None)])
-def test_auto_is_the_cpu_on_a_mac_and_opencl_elsewhere(monkeypatch, platform, metal, picks):
-    """On an M2 Air the CPU beat Apple's OpenCL and, most runs, Metal: a Mac's auto is the CPU."""
+    ("win32", None, "opencl"), ("linux", None, "opencl"), ("darwin", None, None), ("darwin", "m2", "metal")])
+def test_auto_takes_metal_on_a_mac_and_opencl_elsewhere(monkeypatch, platform, metal, picks):
+    """Apple's OpenCL traced 5x slower than the CPU on an M2 Air, so a Mac uses Metal or the CPU."""
     monkeypatch.setattr(rc, "opencl_devices", lambda gpu_only=False: ["gpu"])
     monkeypatch.setattr(rc, "OpenCLTracer", lambda device, scene, accel, real: ("opencl", device))
     monkeypatch.setattr(rc, "metal_device", lambda: metal)

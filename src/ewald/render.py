@@ -854,6 +854,32 @@ def setup_camera(plotter, data, direction="iso", orthographic=True, zoom=1.0):
     _setup_camera(plotter, data, direction, orthographic, zoom)
 
 
+NO_OPENGL = ("renderer='opengl' needs an OpenGL context: there is no X display (DISPLAY is not set) and "
+             "neither EGL nor OSMesa is installed, so VTK would abort the whole Python process. Use "
+             "renderer='raytrace' or 'vector' (the default picks 'raytrace' here), or run under xvfb-run.")
+
+
+def opengl_available(env=None, find_library=None) -> bool:
+    """Whether VTK can open an offscreen OpenGL context here. Windows and macOS always can. On Linux
+    VTK tries the X display, then EGL, then OSMesa, and aborts the process (no Python exception) when
+    all three fail, as on a cluster node or in a container without ``xvfb-run``; this checks the same
+    three first. ``EWALD_OPENGL=0``/``1`` overrides the check."""
+    import os
+    import sys
+
+    env = os.environ if env is None else env
+    forced = env.get("EWALD_OPENGL", "").strip()
+    if forced in ("0", "1"):
+        return forced == "1"
+    if not sys.platform.startswith("linux"):
+        return True
+    if env.get("DISPLAY"):
+        return True
+    if find_library is None:
+        from ctypes.util import find_library
+    return any(find_library(name) for name in ("EGL", "OSMesa"))
+
+
 VECTOR_SUFFIXES = (".svg", ".pdf", ".eps", ".ps")
 RENDERERS = {
     "opengl": "VTK, fast; SSAO and anti-aliasing; GPU impostors for large systems",
@@ -891,7 +917,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
            transparent_background: bool = False, ambient_occlusion: bool | None = None,
            legend: bool = True, show_cell: bool = True, bonds: float | None = None,
            radius_scale: float = 1.0, antialiasing: bool | None = None, text: str | None = None,
-           camera: dict | None = None, renderer: str = "opengl", samples: int | None = None,
+           camera: dict | None = None, renderer: str | None = None, samples: int | None = None,
            ao_samples: int | None = None, noise_threshold: float | None = None, shadows: bool | None = None,
            type_legend: bool = False,
            scale_bar: bool | float | None = None, dpi: float | None = None, quality: str = "publication",
@@ -905,7 +931,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     ``region=(x, y, height)`` renders only that part of the view: the GUI Render frame, as fractions of
     the view height (see :mod:`ewald.framing`); None shows the whole view height, centered.
 
-    ``renderer``: 'opengl' (VTK, fast), 'raytrace' (built-in ray tracer: ambient
+    ``renderer``: None (default: 'opengl' where an OpenGL context can be opened, else 'raytrace'; see
+    :func:`opengl_available`), 'opengl' (VTK, fast), 'raytrace' (built-in ray tracer: ambient
     occlusion with ``ao_samples`` rays, ``shadows``, ``samples`` rays per pixel, of which pixels
     that converge below ``noise_threshold`` take fewer: adaptive sampling, 0 = off) or
     'vector' (SVG/PDF/EPS with real circles and editable text, see :mod:`ewald.vector`).
@@ -953,8 +980,12 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     """
     import pyvista as pv
 
+    if renderer is None:
+        renderer = "opengl" if opengl_available() else "raytrace"
     if renderer not in RENDERERS:
         raise ValueError(f"unknown renderer {renderer!r}; use 'opengl', 'raytrace' or 'vector'")
+    if renderer == "opengl" and not opengl_available():
+        raise RuntimeError(NO_OPENGL)
     from .color_rule import take
 
     data = take(data, scene_kwargs, scene_kwargs.get("frame", 0))
@@ -1063,6 +1094,12 @@ def default_camera(data, size=(1600, 1200), direction="iso", orthographic=True, 
     """Camera that frames ``data`` like the OpenGL renderer (no window is shown)."""
     import pyvista as pv
 
+    if not opengl_available():
+        # the plotter only places the camera (nothing is drawn), but VTK still warns that it found no
+        # X, EGL or OSMesa for its window; those warnings are noise for a ray-traced or vector picture
+        from vtkmodules.vtkCommonCore import vtkLogger
+
+        vtkLogger.SetStderrVerbosity(vtkLogger.VERBOSITY_ERROR)
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     build_scene(p, data, radius_scale=radius_scale, show_cell=True, sphere_resolution=6,
                 **{k: v for k, v in (scene_kwargs or {}).items() if k in _CAMERA_KEYS})

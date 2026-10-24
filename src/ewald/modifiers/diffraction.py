@@ -52,7 +52,7 @@ class PowderDiffraction(_ExperimentalMixin, Modifier):
     pattern of that configuration; ``TimeAveraging('table:diffraction')`` averages a trajectory.
     ``wavelength`` is in Angstrom or a name ('CuKa', 'CuKa1', 'MoKa', 'CoKa', 'AgKa', ...).
     The peaks are broadened by a pseudo-Voigt of ``fwhm`` degrees and Lorentzian fraction
-    ``eta`` on a ``step`` grid. ``debye_waller`` maps elements to B factors (Angstrom^2);
+    ``eta`` on a ``two_theta_step`` grid (degrees). ``debye_waller`` maps elements to B factors (Angstrom^2);
     ``elements`` maps type names to elements for numbered types (``{'1': 'Si', '2': 'O'}``).
 
     Writes ``tables['diffraction']`` ('2theta', 'Intensity', max 100) and
@@ -65,14 +65,16 @@ class PowderDiffraction(_ExperimentalMixin, Modifier):
     choice_parameters = {"radiation": ("xray", "neutron")}
     file_parameters = ("experimental",)
 
+    ALIASES = {"step": "two_theta_step"}
+
     def __init__(self, radiation: str = "xray", wavelength: str = "CuKa", two_theta_min: float = 5.0,
-                 two_theta_max: float = 90.0, step: float = 0.02, fwhm: float = 0.1, eta: float = 0.5,
+                 two_theta_max: float = 90.0, two_theta_step: float = 0.02, fwhm: float = 0.1, eta: float = 0.5,
                  debye_waller: dict | None = None, elements: dict | None = None, experimental: str = ""):
         self.radiation = radiation
         self.wavelength = wavelength
         self.two_theta_min = two_theta_min
         self.two_theta_max = two_theta_max
-        self.step = step
+        self.two_theta_step = two_theta_step
         self.fwhm = fwhm
         self.eta = eta
         self.debye_waller = debye_waller
@@ -84,7 +86,7 @@ class PowderDiffraction(_ExperimentalMixin, Modifier):
         peaks = _d.powder_peaks(data.positions, data.types, data.cell, self.wavelength, self.radiation, (lo, hi),
                                 _as_dict(self.debye_waller, "debye_waller"), _as_dict(self.elements, "elements"),
                                 backend=ctx.backend)
-        x = np.arange(lo, hi + 0.5 * float(self.step), max(float(self.step), 1e-4))
+        x = np.arange(lo, hi + 0.5 * float(self.two_theta_step), max(float(self.two_theta_step), 1e-4))
         table = _d.powder_profile(peaks, x, self.fwhm, self.eta)
         if self.experimental:
             ye, rwp = _d.compare_pattern(x, table["Intensity"], *self._experiment())
@@ -116,13 +118,15 @@ class StructureFactor(_ExperimentalMixin, Modifier):
     choice_parameters = {"method": ("auto", "direct", "rdf", "debye"), "weighting": ("none", "xray", "neutron")}
     file_parameters = ("experimental",)
 
-    def __init__(self, method: str = "auto", q_max: float = 10.0, q_min: float = 0.0, number_of_bins: int = 200,
+    ALIASES = {"number_of_bins": "bins"}
+
+    def __init__(self, method: str = "auto", q_max: float = 10.0, q_min: float = 0.0, bins: int = 200,
                  weighting: str = "none", cutoff: float = 0.0, lorch: bool = True, elements: dict | None = None,
                  experimental: str = ""):
         self.method = method
         self.q_max = q_max
         self.q_min = q_min
-        self.number_of_bins = number_of_bins
+        self.bins = bins
         self.weighting = weighting
         self.cutoff = cutoff
         self.lorch = lorch
@@ -130,7 +134,7 @@ class StructureFactor(_ExperimentalMixin, Modifier):
         self.experimental = experimental
 
     def modify(self, data, ctx):
-        table = _d.structure_factor(data.positions, data.cell, self.q_max, self.number_of_bins, self.q_min,
+        table = _d.structure_factor(data.positions, data.cell, self.q_max, self.bins, self.q_min,
                                     self.method, data.types, self.weighting, _as_dict(self.elements, "elements"),
                                     self.cutoff, self.lorch, backend=ctx.backend)
         if self.experimental:

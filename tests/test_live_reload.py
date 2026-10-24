@@ -47,7 +47,7 @@ def _grow_and_compare(path, blob, step, first_cut=None, **kwargs):
         ref = _fresh(path, **kwargs)
         assert pipe.num_frames == ref.num_frames, cut
         assert added == pipe.num_frames - before
-        for i in {0, pipe.num_frames - 1, max(before - 1, 0)}:
+        for i in {0, pipe.num_frames - 1, min(max(before - 1, 0), pipe.num_frames - 1)}:
             a, b = pipe.compute(i), ref.compute(i)
             np.testing.assert_allclose(a.positions, b.positions)
             np.testing.assert_allclose(a.cell.matrix, b.cell.matrix)

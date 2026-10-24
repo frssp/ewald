@@ -1,6 +1,8 @@
 """Data pipeline: source -> modifiers -> DataCollection."""
 from __future__ import annotations
 
+import functools
+import operator
 import threading
 import time
 from collections import OrderedDict
@@ -9,6 +11,12 @@ from typing import Callable
 
 from .backend import Backend, get_backend
 from .data import DataCollection
+
+
+#: added to numpy's "output array is read-only" when a step writes into a frame's array in place
+READ_ONLY_HINT = ("the arrays of a frame are shared with the pipeline's cache, so a step must replace them "
+                  "instead of writing into them: data.positions = data.positions + shift, or "
+                  "pos = data.positions.copy(); pos[0] += 1; data.positions = pos")
 
 
 class ComputeCancelled(Exception):
@@ -57,6 +65,27 @@ class ComputeContext:
                 tuple((type(m).__name__, repr(m)) for m in mods if m.enabled))
 
 
+@functools.lru_cache(maxsize=None)
+def _aliases(cls) -> dict:
+    """``ALIASES`` of ``cls`` and its bases (a subclass wins)."""
+    out = {}
+    for klass in reversed(cls.__mro__):
+        out.update(klass.__dict__.get("ALIASES", {}))
+    return out
+
+
+def _translate(cls, kwargs: dict):
+    """Rewrite old argument names in ``kwargs`` to ``cls``'s current ones, in place."""
+    for old, new in _aliases(cls).items():
+        if old in kwargs:
+            if new in kwargs:
+                raise TypeError(f"{cls.__name__}() got both {new!r} and its old name {old!r}")
+            kwargs[new] = kwargs.pop(old)
+    legacy = getattr(cls, "_legacy_arguments", None)
+    if legacy is not None:
+        legacy(kwargs)
+
+
 class Modifier:
     """Base class. Subclasses implement ``modify(data, ctx)`` and return new data or None."""
 
@@ -67,6 +96,34 @@ class Modifier:
     # Whether the pipeline may reuse this modifier's output for the same input and settings
     # (see :func:`_modifier_key`). None: built-in modifiers yes, plugins and scripts no.
     cacheable: bool | None = None
+
+    #: Old or OVITO argument names a subclass still accepts, as constructor keywords and as
+    #: attributes: ``{"number_of_bins": "bins"}`` (one name per idea across ewald, D55). A subclass
+    #: whose old arguments do not map one to one (``fix_xrange`` + ``xrange_start`` + ``xrange_end``
+    #: -> ``range``) also defines ``_legacy_arguments(kwargs)``, which rewrites them in place.
+    ALIASES: dict = {}
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        init = cls.__dict__.get("__init__")
+        if init is None or not (_aliases(cls) or hasattr(cls, "_legacy_arguments")):
+            return
+
+        @functools.wraps(init)
+        def __init__(self, *args, **kw):
+            _translate(cls, kw)   # idempotent: a subclass's wrapper may have translated them already
+            init(self, *args, **kw)
+
+        cls.__init__ = __init__
+
+    def __getattr__(self, name):
+        new = _aliases(type(self)).get(name)
+        if new is None or name.startswith("__"):
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+        return getattr(self, new)
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, _aliases(type(self)).get(name, name), value)
 
     def modify(self, data: DataCollection, ctx: ComputeContext):
         raise NotImplementedError
@@ -84,6 +141,14 @@ class Modifier:
                 if hasattr(self, k) and sig.parameters[k].kind not in (inspect.Parameter.VAR_KEYWORD,
                                                                        inspect.Parameter.VAR_POSITIONAL)}
 
+    def _check_positive(self, *names: str):
+        """Raise ValueError unless each named setting is a number above zero (a cutoff, a count):
+        ``cutoff=-1`` would otherwise run and give zeros everywhere."""
+        for name in names:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0:
+                raise ValueError(f"{type(self).__name__}: {name} must be a number above 0, not {value!r}")
+
     def __repr__(self):
         params = ", ".join(f"{k}={v!r}" for k, v in self.parameters().items())
         return f"{self.name}({params})"
@@ -94,7 +159,9 @@ class PythonModifier(Modifier):
 
     The function may change ``data`` (set or replace its arrays; writing into them raises,
     since they are shared with the cached frame) or return a new DataCollection.
-    A third parameter, if present, receives the ComputeContext.
+    A third parameter, if present, receives the ComputeContext. ``pipe.add(f)`` wraps ``f`` in
+    one of these. :class:`~ewald.modifiers.PythonScript` is the same step kept as source text
+    (what a session or notebook stores and runs only when trusted).
     """
 
     def __init__(self, function: Callable, **params):
@@ -300,6 +367,38 @@ class ModifierList(list):
         super().__setitem__(i, [self._wrap(x) for x in m] if isinstance(i, slice) else self._wrap(m))
 
 
+def _upstream(data: DataCollection) -> tuple:
+    """What a step's input holds, for :func:`_keep_upstream`."""
+    return dict(data.particles), {k: dict(v) for k, v in data.tables.items()}, dict(data.attributes)
+
+
+def _keep_upstream(mod, upstream: tuple, data: DataCollection):
+    """A step a verb added (``rdf(pipe)``, ``cna(pipe)``, see :mod:`ewald.verbs`) never replaces what
+    the steps before it wrote: ``rdf(pipe, cutoff=6)`` after the user's own
+    ``CoordinationAnalysis(cutoff=3)`` must not change their "Coordination". Particle properties and
+    attributes that existed before keep their values; a table of the same name keeps the earlier one,
+    and the verb's goes in beside it as ``"<name> (<verb>)"`` (``mod._verb_tables`` maps the names)."""
+    particles, tables, attributes = upstream
+    renamed = {}
+    for name, arr in particles.items():
+        if name in data.particles and data.particles[name] is not arr and len(arr) == data.count:
+            data.particles[name] = arr
+    shadowed = {}
+    for name, value in attributes.items():
+        if data.attributes.get(name, value) is not value:
+            shadowed[name] = data.attributes[name]
+        data.attributes[name] = value
+    mod._verb_attributes = shadowed   # the step's own values of those, for the verb's Table
+    for name, table in tables.items():
+        out = data.tables.get(name)
+        if out is not None and (out.keys() != table.keys() or any(out[c] is not a for c, a in table.items())):
+            new = f"{name} ({getattr(mod, '_verb_name', None) or mod.name})"
+            data.tables[new] = out
+            data.tables[name] = table
+            renamed[name] = new
+    mod._verb_tables = renamed
+
+
 def _snapshot(data: DataCollection) -> tuple:
     """Cheap fingerprint of a collection (array identities, not contents): modifiers
     replace arrays instead of writing into them, so identity tells what changed."""
@@ -444,6 +543,40 @@ class Pipeline:
     def __len__(self):
         return self.num_frames
 
+    def _frame_index(self, frame) -> int:
+        """``frame`` as an index into the frames: negative counts from the end, as in a list;
+        out of range raises IndexError (``compute(999)`` on 5 frames used to give frame 4)."""
+        n = self.num_frames
+        try:
+            i = operator.index(frame)
+        except TypeError:
+            raise TypeError(f"frame must be an int, not {type(frame).__name__}") from None
+        if not -n <= i < n:
+            raise IndexError(f"frame {i} out of range: the pipeline has {n} frame{'s' * (n != 1)}")
+        return i % n
+
+    def __getitem__(self, index):
+        """``pipe[i]`` is ``pipe.compute(i)`` (negative from the end, out of range raises IndexError);
+        ``pipe[a:b:c]`` is a list of those frames, as ``ase.io.read(path, index=":")`` gives."""
+        n = self.num_frames
+        if isinstance(index, slice):
+            return [self.compute(i) for i in range(*index.indices(n))]
+        if not isinstance(index, int) and not hasattr(index, "__index__"):
+            raise TypeError(f"pipeline frames are indexed by int or slice, not {type(index).__name__}")
+        return self.compute(index)
+
+    def __iter__(self):
+        """Every frame, computed one at a time (``for data in pipe``); see :meth:`frames`."""
+        return self.frames()
+
+    def to_ase(self, frames=None) -> list:
+        """The computed frames as a list of ASE ``Atoms`` (``frames``: indices or a slice; default all),
+        ready for ``ase.io.write``; per-particle numeric properties go into ``atoms.arrays``."""
+        if frames is None:
+            frames = slice(None)
+        picked = self[frames] if isinstance(frames, slice) else [self[i] for i in frames]
+        return [data.to_ase() for data in picked]
+
     def source_frame(self, frame: int) -> DataCollection:
         frame %= self.source.num_frames
         with self._cache_lock:
@@ -506,7 +639,8 @@ class Pipeline:
 
     def compute(self, frame: int = 0, device: str | None = None, errors: str = "raise",
                 upto: int | None = None, cancel: threading.Event | None = None) -> DataCollection:
-        """Evaluate the pipeline at ``frame``.
+        """Evaluate the pipeline at ``frame`` (negative counts from the end, as in a list; out of
+        range raises IndexError).
 
         ``errors="skip"`` keeps going past a failing modifier (its message is stored
         in ``modifier.status``); the GUI uses this so one bad modifier never blanks the view.
@@ -518,7 +652,7 @@ class Pipeline:
             return self._compute(frame, device, errors, upto, cancel)
 
     def _compute(self, frame, device, errors, upto, cancel) -> DataCollection:
-        frame %= self.num_frames
+        frame = self._frame_index(frame)
         backend = get_backend(device or self.device)
         mods = list(self.modifiers[:upto])
         keys = []  # settings of the leading modifiers whose output can be reused
@@ -557,6 +691,7 @@ class Pipeline:
                 continue
             ctx = ComputeContext(frame, self, backend, modifier_index=index, cancel=cancel)
             before = _snapshot(data)
+            upstream = _upstream(data) if getattr(mod, "_verb", None) else None
             t0 = time.perf_counter()
             try:
                 result = mod.modify(data, ctx)
@@ -564,11 +699,16 @@ class Pipeline:
                 raise
             except Exception as exc:
                 mod.last_time = time.perf_counter() - t0
+                read_only = isinstance(exc, ValueError) and "read-only" in str(exc)
+                if read_only:
+                    exc = ValueError(f"{exc}: {READ_ONLY_HINT}")
                 mod.status = f"{type(exc).__name__}: {exc}"
                 failed = True
                 if isinstance(exc, ImportError):
                     mod._missing_dependency = (repr(mod), mod.status)
                 if errors == "raise":
+                    if read_only:
+                        raise exc from exc.__context__
                     raise
                 continue
             mod.status = None
@@ -576,6 +716,8 @@ class Pipeline:
             mod.last_time = time.perf_counter() - t0
             if result is not None:
                 data = result
+            if upstream is not None:
+                _keep_upstream(mod, upstream, data)
             mod.last_output = output_summary(before, data, frame)
         if len(keys) == len(mods) and keys and not failed and start < len(keys):
             self._store_output(base + (tuple(keys),), data)
