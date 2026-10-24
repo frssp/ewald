@@ -5394,6 +5394,79 @@ def test_rich_outputs_render_in_cells(app):
     assert len(area._images) == 2 and all(not pix.isNull() for _, pix in area._images)
 
 
+def test_long_cell_output_scrolls_and_the_rule_expands_it(app, monkeypatch):
+    """Output longer than python.output_lines scrolls in a box that tall (Jupyter's scrolled
+    output); a click on the rule beside it, or Shift+O on the cell, shows every line and back. A
+    traceback shows its end, a running cell's log follows its newest line, short output has no
+    toggle, and 0 never scrolls."""
+    from PySide6 import QtCore, QtTest
+
+    from ewald.gui import theme
+    from ewald.gui.cell_widget import CellWidget
+    from ewald.gui.code_editor import OutputText
+    from ewald.notebook import Cell, Notebook
+
+    def pump():
+        for _ in range(5):
+            app.processEvents()
+
+    monkeypatch.setattr(OutputText, "scroll_lines", 20)
+    nb = Notebook([Cell("for i in range(100):\n    print('step', i)"), Cell("print('short')"),
+                   Cell("def f(n):\n    return f(n - 1) if n else 1/0\nf(30)")])
+    nb.run_all(stop_on_error=False)
+    theme.apply(app, "graphite", font_size=12)
+    cells = [CellWidget(nb, c) for c in nb.cells]
+    for w in cells:
+        w.resize(480, 600)
+        w.show()
+    pump()
+    w = cells[0]
+    text, rule = w.outputs.texts()[0], w.outputs.rule
+    ls = text.fontMetrics().lineSpacing()
+    assert text.line_count() == 100 and text.overflows()
+    assert text.height() < 22 * ls and text.verticalScrollBar().maximum() > 0
+    assert rule.property("state") == "scrolled" and "100 lines" in rule.toolTip()
+    QtTest.QTest.mouseClick(rule, QtCore.Qt.LeftButton, pos=QtCore.QPoint(3, 5))
+    pump()
+    assert text.height() > 99 * ls and rule.property("state") == "expanded"
+    QtTest.QTest.mouseClick(rule, QtCore.Qt.LeftButton, pos=QtCore.QPoint(3, 5))
+    pump()
+    assert text.height() < 22 * ls and rule.property("state") == "scrolled"
+    w.setFocus()
+    QtTest.QTest.keyClick(w, QtCore.Qt.Key_O, QtCore.Qt.ShiftModifier)   # Jupyter's command key
+    pump()
+    assert w.outputs.expanded and text.height() > 99 * ls
+
+    short = cells[1].outputs
+    assert short.rule.property("state") == "" and not short.overflows()
+    QtTest.QTest.mouseClick(short.rule, QtCore.Qt.LeftButton, pos=QtCore.QPoint(3, 3))
+    assert not short.expanded
+
+    err = cells[2].outputs.texts()[0]
+    bar = err.verticalScrollBar()
+    assert err.objectName() == "cellError" and bar.maximum() > 0 and bar.value() == bar.maximum()
+
+    log = OutputText("line 0")   # a running cell printing: the box follows the newest line
+    log.resize(400, 100)
+    log.show()
+    for n in range(1, 60):
+        log.setText(log.text() + f"\nline {n}")
+    pump()
+    assert log.verticalScrollBar().value() == log.verticalScrollBar().maximum() > 0
+    log.verticalScrollBar().triggerAction(QtWidgets.QAbstractSlider.SliderToMinimum)   # scrolled up: stays
+    pump()
+    log.setText(log.text() + "\nline 60")
+    pump()
+    assert log.verticalScrollBar().value() == 0
+
+    monkeypatch.setattr(OutputText, "scroll_lines", 0)   # Preferences: never scroll
+    text.set_expanded(False)
+    pump()
+    assert not text.overflows() and text.height() > 99 * ls
+    for x in (*cells, log):
+        x.close()
+
+
 def test_cell_code_and_output_never_overlap(app):
     """The editor and the outputs are as tall as their laid-out text in the font the style
     sheet gives them, also after that font changes (Windows at 200 %, the font size preference),

@@ -339,7 +339,11 @@ QFrame#cell[state="running"] QLabel#cellCounter {{ color: {data}; font-weight: 6
 QFrame#cell[state="error"] QLabel#cellCounter {{ color: {error}; }}
 QWidget#cellGutter, QWidget#cellTools, QWidget#cellContent, QLabel#cellImage {{ background: transparent; }}
 /* what a cell printed or returned: its own area under the code, set off by a rule */
-QWidget#cellOutput {{ background: transparent; border: none; border-left: 2px solid {rule}; }}
+QWidget#cellOutput {{ background: transparent; border: none; }}
+QWidget#cellOutputRule {{ background: transparent; border: none; border-left: 2px solid {rule}; }}
+QWidget#cellOutputRule[state="scrolled"]:hover, QWidget#cellOutputRule[state="expanded"]:hover {{
+    border-left: 2px solid {accent}; }}
+QWidget#cellOutputRule[state="expanded"] {{ border-left: 2px dotted {rule}; }}
 QPlainTextEdit#cellEditor, QPlainTextEdit#cellText, QPlainTextEdit#cellValue, QPlainTextEdit#cellError,
 QLabel#cellCounter {{ font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", monospace; }}
 QFrame#cell QLabel, QFrame#cell QCheckBox {{ background: transparent; }}

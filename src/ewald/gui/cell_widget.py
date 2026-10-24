@@ -26,10 +26,18 @@ class OutputArea(QtWidgets.QWidget):
     def __init__(self, parent=None, live: bool = True):
         super().__init__(parent)
         self.setObjectName("cellOutput")
-        self.setAttribute(QtCore.Qt.WA_StyledBackground)   # the style sheet's rule beside the outputs
-        self.lay = QtWidgets.QVBoxLayout(self)
-        self.lay.setContentsMargins(6, 2, 0, 2)
+        self.setAttribute(QtCore.Qt.WA_StyledBackground)
+        row = QtWidgets.QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
+        self.rule = OutputRule()   # the rule beside the outputs: a click scrolls or expands long ones
+        self.rule.clicked.connect(self.toggle_scrolled)
+        row.addWidget(self.rule)
+        self.lay = QtWidgets.QVBoxLayout()
+        self.lay.setContentsMargins(0, 2, 0, 2)
         self.lay.setSpacing(4)
+        row.addLayout(self.lay, 1)
+        self.expanded = False   # long text outputs show every line (Jupyter's unscrolled output)
         self.live = live
         self.key = ""        # the cell's id: names the Plots panel tabs of its plots
         self._images = []    # (label, full-size pixmap): rescaled when the cell's width changes
@@ -82,6 +90,9 @@ class OutputArea(QtWidgets.QWidget):
             w = self._rich(out)
         else:
             w = _text_label(out)
+        if isinstance(w, OutputText):
+            w.set_expanded(self.expanded)
+            w.fitted.connect(self._update_rule)
         self._widgets.append(w)
         self.lay.addWidget(w)
 
@@ -122,8 +133,32 @@ class OutputArea(QtWidgets.QWidget):
             return _text_label(type(out)("value", json.dumps(mime["application/json"], indent=1, default=str)))
         return _text_label(out)
 
+    def texts(self) -> list:
+        return [w for w in self._widgets if isinstance(w, OutputText)]
+
+    def overflows(self) -> bool:
+        """A text output is longer than a scrolled output shows (so the rule can toggle it)."""
+        return any(w.overflows() for w in self.texts())
+
+    def toggle_scrolled(self):
+        """Jupyter's click on the output prompt: every line of the long outputs, or back to
+        scrolling them in a box of ``python.output_lines`` lines."""
+        if self.overflows():
+            self.set_expanded(not self.expanded)
+
+    def set_expanded(self, on: bool):
+        self.expanded = bool(on)
+        for w in self.texts():
+            w.set_expanded(self.expanded)
+        self._update_rule()
+
+    def _update_rule(self):
+        long = self.overflows()
+        lines = max((w.line_count() for w in self.texts()), default=0)
+        self.rule.set_state(long, self.expanded, lines)
+
     def _fit_images(self):
-        width = max(120, self.width() - self.lay.contentsMargins().left() - 6)
+        width = max(120, self.width() - self.rule.width() - 6)
         for label, pix in self._images:
             if pix.isNull():
                 continue
@@ -137,6 +172,39 @@ class OutputArea(QtWidgets.QWidget):
         super().resizeEvent(event)
         if self._images and event.oldSize().width() != event.size().width():
             self._fit_images()
+
+
+class OutputRule(QtWidgets.QWidget):
+    """The thin rule left of a cell's outputs. Over a long output it takes a click, as the output
+    prompt does in Jupyter: show every line, or scroll them again."""
+
+    clicked = QtCore.Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("cellOutputRule")
+        self.setAttribute(QtCore.Qt.WA_StyledBackground)
+        self.setAttribute(QtCore.Qt.WA_Hover)
+        self.setFixedWidth(8)    # 2 px drawn, the rest is room to hit it
+        self.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Preferred)
+        self.set_state(False, False, 0)
+
+    def set_state(self, long: bool, expanded: bool, lines: int):
+        state = "expanded" if long and expanded else "scrolled" if long else ""
+        if self.property("state") != state:
+            self.setProperty("state", state)
+            self.style().unpolish(self)
+            self.style().polish(self)
+        self.setCursor(QtCore.Qt.PointingHandCursor if long else QtCore.Qt.ArrowCursor)
+        self.setToolTip("" if not long else
+                        "Scroll the output (Shift+O)" if expanded else f"Show all {lines} lines (Shift+O)")
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton and self.property("state"):
+            self.clicked.emit()
+            event.accept()
+            return
+        super().mousePressEvent(event)
 
 
 def _text_label(out):
@@ -1024,6 +1092,9 @@ class CellWidget(QtWidgets.QFrame):
         table = {QtCore.Qt.NoModifier: self.COMMAND_KEYS, QtCore.Qt.ShiftModifier: self.SHIFT_KEYS}.get(mods)
         if table is not None and key in table:
             self.actionRequested.emit(self.cell, table[key])
+            return
+        if key == QtCore.Qt.Key_O and mods == QtCore.Qt.ShiftModifier and isinstance(self.outputs, OutputArea):
+            self.outputs.toggle_scrolled()   # Jupyter's Shift+O: scroll long outputs or show them whole
             return
         if key in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) and mods == QtCore.Qt.ControlModifier:
             self.actionRequested.emit(self.cell, "run")   # runs the selected cells

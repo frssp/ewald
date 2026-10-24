@@ -161,6 +161,12 @@ def apply_settings(win, s: Settings, startup: bool = False):
             win.message(f"Device {dev!r} unavailable ({detail}); using CPU", error=True)
             dev = "cpu"
         win.set_device(dev)
+    from .code_editor import OutputText
+
+    if OutputText.scroll_lines != s["python.output_lines"]:   # long cell outputs scroll in a box this tall
+        OutputText.scroll_lines = s["python.output_lines"]
+        for text in win.findChildren(OutputText):
+            text._fit()
     for p in filter(None, (x.strip() for x in s["python.extra_paths"].split(";"))):
         if p not in sys.path:
             sys.path.append(p)
