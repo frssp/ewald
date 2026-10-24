@@ -472,7 +472,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** a form only (most rcParams out of reach); a text file only (no help for the
   common keys); TOML or settings.json instead of `.mplstyle` (not usable by `plt.style.use` in
   scripts outside EWALD).
-- **Landed:** PR (this one).
+- **Landed:** public PR #19.
 
 ## Adding an entry
 
