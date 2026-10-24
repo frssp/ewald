@@ -549,6 +549,57 @@ def test_claude_tool_plugin_joins_the_toolset():
     assert ts.tools["load_structure"].function.__name__ == "load_structure"  # built-in tools win
 
 
+def test_plugin_tool_changes_outside_cells_are_undone():
+    """The AI changes results only through cells: a plugin tool that edits the pipeline or the view
+    by hand is undone and its call fails; one that goes through add_modifier keeps its step."""
+    _write_plugin("tools.py", '''
+        from ewald.modifiers import CoordinationAnalysis
+        from ewald.plugins import claude_tool
+
+        @claude_tool()
+        def sneaky_step(toolset):
+            """Adds a step by hand."""
+            toolset.pipeline.modifiers.append(CoordinationAnalysis(cutoff=3.0))
+            return "added"
+
+        @claude_tool()
+        def sneaky_drop(toolset):
+            """Removes the first step by hand."""
+            toolset.pipeline.modifiers.pop(0)
+            return "dropped"
+
+        @claude_tool()
+        def sneaky_view(toolset):
+            """Changes the view by hand."""
+            toolset.pipeline.view.update(atoms=False)
+            return "hidden"
+
+        @claude_tool()
+        def proper_step(toolset):
+            """Adds a step through a cell."""
+            return toolset.call("add_modifier", {"name": "CoordinationAnalysis", "params": {"cutoff": 2.5}}).content
+    ''')
+    from ase.build import bulk
+
+    from ewald import Pipeline, StaticSource
+    from ewald.llm.tools import Toolset
+
+    ts = Toolset(Pipeline(StaticSource([DataCollection.from_ase(bulk("Cu", cubic=True))])))
+    nb = ts.notebook
+    for name in ("sneaky_step", "sneaky_view"):
+        cells = nb.snapshot()
+        res = ts.call(name)
+        assert res.is_error and "outside the notebook's cells" in res.content, name
+        assert list(ts.pipeline.modifiers) == [] and ts.pipeline.view.changed() == {}
+        assert nb.snapshot() == cells
+    assert not ts.call("proper_step").is_error
+    (step,) = ts.pipeline.modifiers
+    assert step.cutoff == 2.5
+    res = ts.call("sneaky_drop")
+    assert res.is_error and "CoordinationAnalysis" in res.content
+    assert list(ts.pipeline.modifiers) == [step]
+
+
 def test_scheme_reader_takes_uri_paths(tmp_path, monkeypatch):
     """``aiida:1234`` would parse as an SSH host:path; a reader with ``schemes=`` gets it instead,
     and notebooks and sessions keep the string as it is."""

@@ -621,10 +621,22 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
     written one at a time. ``frames=`` picks frames of a Pipeline; one-frame formats (POSCAR,
     LAMMPS data, CHGCAR, cube) need exactly one, e.g. ``frames=[-1]``. Grid writers take
     ``property="Charge Density"`` (and ``grid=``); other keyword arguments go to the writer
-    (``columns=`` for LAMMPS dumps, ``atom_style=`` for LAMMPS data).
+    (``columns=`` for LAMMPS dumps, ``atom_style=`` for LAMMPS data). A missing parent folder
+    of a local ``path`` is created, and removed again when writing fails.
     """
     from .. import plugins
     from ..pipeline import Pipeline
+    from .remote import is_remote
+
+    made = []   # folders created here, deepest first
+    folder = os.path.dirname(os.fspath(path)) if isinstance(path, (str, os.PathLike)) else ""
+    if folder and not is_remote(path):
+        folder = os.path.abspath(folder)
+        while not os.path.isdir(folder) and os.path.dirname(folder) != folder:
+            made.append(folder)
+            folder = os.path.dirname(folder)
+        if made:
+            os.makedirs(made[0], exist_ok=True)
 
     if isinstance(source, Pipeline):
         idx = range(source.num_frames) if frames is None else frames
@@ -635,7 +647,15 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
         items = list(source)
         if frames is not None:
             items = [items[i] for i in frames]
-    return plugins.write_file(path, items, format=format, **kwargs)
+    try:
+        return plugins.write_file(path, items, format=format, **kwargs)
+    except BaseException:
+        for d in made:
+            try:
+                os.rmdir(d)   # only while empty: a partly written file stays
+            except OSError:
+                break
+        raise
 
 
 __all__ = ["FileSource", "StaticSource", "IncompleteFileError", "IncompleteFileWarning", "import_file", "export_file", "open_reader", "builtin_readers",

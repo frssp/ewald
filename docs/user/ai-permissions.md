@@ -54,14 +54,18 @@ disk.
 ### Gaps in the rule
 
 The rule is enforced for the built-in tools (`test_tools_do_not_touch_the_pipeline_or_view_directly`
-and `test_read_only_tools_change_nothing` in `tests/test_llm.py`). These places still act
-outside cells:
+and `test_read_only_tools_change_nothing` in `tests/test_llm.py`) and checked after every plugin
+tool: when a plugin tool (`@ai_tool`) adds a step that no cell added, takes out a step whose
+cell is still there, or changes view settings while no view cell changed, ewald undoes that
+change and the call fails with an error that tells the model to use `add_modifier` or
+`set_view` (`Toolset.call`; `tests/test_plugins.py`). `export_file` leaves making missing
+folders to the cell it runs (`io.export_file` makes them, and removes them again when writing
+fails).
 
-- Plugin tools (`@ai_tool`) run in-process and can change `toolset.pipeline` by hand; ewald only
-  asks them not to ([AI tool plugins](../plugins/tools.md)) and does not check afterwards.
-- `export_file` creates missing folders for its target before it writes the cell, so a cell that
-  then fails leaves those folders behind.
-- `render_image` with `filename` replaces a file of that name in the work dir without asking.
+These places still act outside cells, by design, since none of them changes a result:
+
+- `render_image` with `filename` replaces a file of that name in the AI's temporary work dir;
+  your files are never reached.
 - `set_frame` is not recorded, so an answer about frame 120 has no cell that says which frame
   the AI looked at unless it also moved the view.
 - The Forge's plugin is a file in the plugin folder, not a cell: a notebook that uses it runs

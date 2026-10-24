@@ -932,7 +932,8 @@ def test_tools_do_not_touch_the_pipeline_or_view_directly():
     import inspect
     import re
 
-    src = inspect.getsource(tools_mod)
+    # the one exception undoes what a plugin tool changed by hand
+    src = inspect.getsource(tools_mod).replace(inspect.getsource(tools_mod.Toolset._undo_outside_cells), "")
     hits = re.findall(r"\.modifiers\.(?:append|insert|pop|remove|extend|clear)\(|\.modifiers\[[^\]]*\]\s*=(?!=)"
                       r"|\.view\.(?:update|reset|rotate|look|color|radius|surface|zoom_by)\(|\.view\.\w+\s*=(?!=)", src)
     assert hits == []
@@ -1046,3 +1047,16 @@ def test_touched_cells_names_the_cells_the_tools_wrote(cu_file):
     k = len(nb.cells) - 1
     assert refs("delete_cell", {"index": -1}) == [{"id": None, "index": k, "verb": "Deleted"}]
     assert refs("list_cells", {}) == [] and touched_cells("x", "an error") == []
+
+
+def test_export_file_makes_folders_only_in_its_cell(cu_file, tmp_path):
+    """export_file's missing folders are made by the cell it runs (io.export_file), so a call
+    refused before that leaves nothing on disk."""
+    ts = Toolset(workdir=str(tmp_path / "work"))
+    ts.call("load_structure", {"path": str(cu_file)})
+    res = ts.call("export_file", {"path": "sub/dir/out.extxyz"})
+    assert not res.is_error, res.content
+    assert (tmp_path / "work" / "sub" / "dir" / "out.extxyz").is_file()
+    assert "export_file(" in ts.notebook.cells[res.content["cell"]].source
+    res = ts.call("export_file", {"path": "new/out.extxyz", "format": "no-such-writer"})
+    assert res.is_error and not (tmp_path / "work" / "new").exists()

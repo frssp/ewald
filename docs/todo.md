@@ -116,13 +116,12 @@ GUI
   the notebook and show a diff to accept or undo, and a cell number the model writes in its text
   ("cell 3") is not a link (only the tools' results are); `ewald ask` and the MCP
   server could take a notebook (`--notebook analysis.py`) and save it back.
-- AI tools only through cells (`llm/tools.py` `CELL_WRITERS`): `@ai_tool` plugin functions can
-  still change `toolset.pipeline` by hand (ewald cannot check them; docs/plugins/tools.md asks
-  them not to); a check after each plugin tool that every modifier belongs to a cell could warn.
-  Smaller gaps listed in docs/user/ai-permissions.md ("Gaps in the rule"): `export_file` makes
-  its target's folders before the cell runs, `render_image(filename=...)` replaces a work-dir
-  file without asking, `set_frame` leaves no cell, and a Forge plugin a notebook uses is not
-  part of the notebook.
+- AI tools only through cells (`llm/tools.py` `CELL_WRITERS`): after a plugin tool, steps and
+  view settings changed without a cell are undone (`Toolset._undo_outside_cells`), but other
+  state a plugin touches by hand (a modifier's attributes, `pipe.source`, files) is not checked.
+  Left by design (docs/user/ai-permissions.md, "Gaps in the rule"): `render_image(filename=...)`
+  replaces a work-dir file, `set_frame` leaves no cell, and a Forge plugin a notebook uses is
+  not part of the notebook (an `.ewd` could carry it in plugins/).
   A failed generated cell leaves two undo entries in the GUI (insert, then removal). After a second
   `pipe = load(...)` cell, the step cells above it still hold the old pipeline's modifiers, and
   `Notebook.sync` (the GUI's refresh) deletes them.
