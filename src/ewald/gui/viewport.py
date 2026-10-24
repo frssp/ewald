@@ -178,6 +178,7 @@ class Viewport(QtWidgets.QWidget):
         self.show_overlay = True
         self.show_legend = True           # the atoms' color bar or category swatches
         self._has_colorbar = False
+        self._colorbar_box = None         # (x0, y0, x1, y1) of the color bar cards, Qt px from the top right corner
         self.show_axes = True
         self.initial_view = "iso"
         # interactive level of detail (Preferences › 3D view › Performance)
@@ -538,6 +539,7 @@ class Viewport(QtWidgets.QWidget):
             p.enable_depth_peeling()
             self._peeling = True
         self._has_colorbar = False
+        self._colorbar_box = None
         if self.show_legend:
             self._draw_colorbars(shown, drawn.legends)
             self._draw_color_legend(shown, dark)
@@ -633,7 +635,25 @@ class Viewport(QtWidgets.QWidget):
             return
         w = self.plotter.interactor
         pos = w.mapFromGlobal(QtGui.QCursor.pos())
+        if self._hover_colorbar(pos.x(), pos.y()):
+            return
         self.hover_move(pos.x(), pos.y(), w.width(), w.height())
+
+    def _hover_colorbar(self, x, y) -> bool:
+        """Over the color bar cards: a pointing hand and what a click does instead of the atom readout."""
+        w = self.plotter.interactor
+        on = self.on_colorbar(x, y)
+        if on != getattr(self, "_over_colorbar", False):
+            self._over_colorbar = on
+            if on:
+                self.hover_leave()
+                w.setCursor(QtCore.Qt.PointingHandCursor)
+                tip = "Unfold the color bars" if self.style.colorbar_collapsed else "Fold the color bars"
+                QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), tip, w)
+            else:
+                w.unsetCursor()
+                QtWidgets.QToolTip.hideText()
+        return on
 
     def _on_wheel(self, obj, event):
         self._go_coarse_for_motion()
@@ -825,6 +845,9 @@ class Viewport(QtWidgets.QWidget):
             return  # it was a drag (rotation), not a click
         if control_click(QtWidgets.QApplication.keyboardModifiers()):
             self.contextMenuRequested.emit()  # macOS Control+click
+            return
+        if self.on_colorbar(x, y):
+            self.toggle_colorbars()   # a click on a color bar card folds or unfolds them, never picks behind
             return
         if self.data is None:
             return
@@ -1038,13 +1061,29 @@ class Viewport(QtWidgets.QWidget):
         ratio = w.devicePixelRatioF() or 1.0
         W, H = max(1, int(w.width() * ratio)), max(1, int(w.height() * ratio))
         ink = ink_color(self.style.background, False)
-        items = colorbar_items(bars, (W, H), unit=self.COLORBAR_FONT * ratio, ink=ink, background=self.style.background)
+        items = colorbar_items(bars, (W, H), unit=self.COLORBAR_FONT * ratio, ink=ink, background=self.style.background,
+                               collapsed=bool(getattr(self.style, "colorbar_collapsed", False)), chevrons=True)
         rgba, x0, y0 = items_rgba(items, ink)
+        self._colorbar_box = ((x0 - W) / ratio, y0 / ratio, (x0 + rgba.shape[1] - W) / ratio,
+                              (y0 + rgba.shape[0]) / ratio)
         # VTK display coordinates start at the bottom left; the offset is kept from the top right corner, so the
         # cards stay there while the view is resized
         self.plotter.add_actor(_image_actor(rgba, x0 - W, -y0 - rgba.shape[0], (1.0, 1.0)), name="_legend",
                                reset_camera=False, render=False)
         self._has_colorbar = True
+
+    def on_colorbar(self, x, y) -> bool:
+        """Window position (x, y from the top left, Qt px) is on the color bar cards."""
+        box, w = self._colorbar_box, self.plotter.interactor if self._plotter is not None else None
+        if box is None or w is None:
+            return False
+        dx = x - w.width()
+        return box[0] <= dx <= box[2] and box[1] <= y <= box[3]
+
+    def toggle_colorbars(self):
+        """Fold the color bar cards to chips, or unfold them (the view's ``colorbar_collapsed``)."""
+        self.style.colorbar_collapsed = not self.style.colorbar_collapsed
+        self.styleChanged.emit()   # the window redraws and writes the view cell
 
     def _draw_color_legend(self, data, dark: bool):
         """Swatches of the atoms' color rule (structure types, painted conditions; :mod:`ewald.color_rule`):

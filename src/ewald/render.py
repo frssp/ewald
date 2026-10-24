@@ -788,7 +788,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
            type_legend: bool = False,
            scale_bar: bool | float | None = None, dpi: float | None = None, quality: str = "publication",
            scale: float | None = None, theme=None, overlays=None, region=None, labels=None, light=None,
-           progress=None, **scene_kwargs):
+           progress=None, device=None, **scene_kwargs):
     """Render one DataCollection to ``filename`` or return an RGB array.
 
     ``direction`` is a view vector *from* the scene to the camera, or one of
@@ -835,7 +835,9 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     (see :func:`light_params`); None: each renderer's default lighting.
 
     ``progress(done, total)``: called while the ray tracer runs (other renderers ignore it); returning
-    ``False`` stops it with :class:`ewald.raytrace.RenderCancelled`.
+    ``False`` stops it with :class:`ewald.raytrace.RenderCancelled`. ``device``: where the ray tracer runs,
+    ``None``/'cpu' (every core), 'cuda' (an NVIDIA GPU through CuPy) or 'auto' (the GPU when there is one);
+    the other renderers ignore it.
 
     ``theme``: a theme name ('VESTA', 'Journal', 'ASE', 'Dark slide', plugins; see :mod:`ewald.themes`)
     that sets element colors, background, cell color and radius preset; explicit arguments win.
@@ -902,7 +904,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
                                  show_cell=show_cell, bonds=bonds, radius_scale=radius_scale, camera=camera,
                                  samples=samples, ao_samples=ao_samples, shadows=shadows, overlays=overlays,
                                  dpi=dpi, light=light, progress=progress, noise_threshold=noise_threshold,
-                                 **scene_kwargs)
+                                 device=device, **scene_kwargs)
 
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
     p.set_background(background)
@@ -992,7 +994,7 @@ def save_image(rgba, filename, *, transparent=False, dpi=None):
 
 def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, background, transparent_background,
                       show_cell, bonds, radius_scale, camera, samples, ao_samples, shadows, overlays, dpi,
-                      light=None, progress=None, noise_threshold=0.0, **scene_kwargs):
+                      light=None, progress=None, noise_threshold=0.0, device=None, **scene_kwargs):
     from .overlays import cell_line_color
     from .raytrace import raytrace, scene_from_data
 
@@ -1012,7 +1014,8 @@ def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, ba
         lit = {"light_direction": tuple(d), "diffuse": 0.6 * k, "specular": 0.25 * k}
     img = raytrace(scene, camera, size, samples=samples, ao_samples=ao_samples, shadows=shadows,
                    noise_threshold=noise_threshold,
-                   background=background, transparent_background=transparent_background, progress=progress, **lit)
+                   background=background, transparent_background=transparent_background, progress=progress,
+                   device=device, **lit)
     rgba = (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)
     overlays = {**overlays, "colorbars": scene.legends}
     return _finish(rgba, data, filename, camera, overlays, background, transparent_background, dpi)

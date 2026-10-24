@@ -92,6 +92,9 @@ out); a particle property such as `"Path Length"` or `"Net Displacement"` gives 
 color. `trajectory_radius` sets the tube radius of ray-traced lines (default 0.04 x the width).
 In the GUI the View tab's Elements card has the same settings (Trajectories, Color map, Time
 window, Trail). Several color bars (a `ColorCoding` step and the trajectory map) stand side by side.
+In the viewport a click on a color bar card folds the cards to one-line chips (a short ramp and the
+title) and a click on a chip unfolds them; the view cell records it as `colorbar_collapsed=True`,
+which code can set too. Pictures always draw the whole bars (`legend=False` leaves them out).
 
 ### What colors the atoms
 
@@ -195,6 +198,13 @@ meshes (isosurfaces, grid slices) through a bounding volume hierarchy, which tra
 estimated error is still above the threshold, and their neighbours, go on to `samples`: the
 background and evenly lit surfaces stop early, while edges, shadows and occlusion keep the full
 count. `noise_threshold=0` gives every pixel all `samples` rays.
+
+`device="cuda"` runs the ray tracer on an NVIDIA GPU through CuPy (`pip install 'ewald[gpu]'`);
+`"auto"` takes the GPU when there is one, `None`/`"cpu"` (default) the CPU. The GPU kernel
+(`ewald.raytrace_cuda`) is the same algorithm, one thread per pixel, with the same random rays,
+in single precision: its pictures differ from the CPU's only at a few edge pixels (in the tests
+0.7 % of pixels by more than 1/255). `pipe.render(...)` follows `pipe.device`, and the GUI's
+Render page and movies follow Preferences › Compute › Device ([GPU compute](gpu.md)).
 
 `renderer="vector"` writes SVG, PDF or EPS (format from the extension) with real circles for
 atoms, bond sticks, polyhedra, isosurfaces and slices painted far to near, and overlays as
