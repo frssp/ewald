@@ -56,6 +56,7 @@ class GLView(QOpenGLWindow):
         ratio = self.devicePixelRatio()
         r.draw(vp.plotter, round(self.width() * ratio), round(self.height() * ratio), axes=vp.show_axes)
         vp._render_time = time.perf_counter() - t
+        vp._camera_check()
 
     # mouse: VTK trackball-camera conventions (left rotate, middle/Shift+left pan, right/wheel zoom)
     def mousePressEvent(self, e):
@@ -233,6 +234,9 @@ class LegacyViewport(Viewport):
 
     def view_along(self, axis: str):
         super().view_along(axis)
+
+    def set_axis_plane(self, corners):
+        pass   # no see-through plane on OpenGL 1.x yet (docs/todo.md); alignment and slabs work
 
     # ------------------------------------------------------------------ picking
     def click(self, x, y, width, height, extend=False):

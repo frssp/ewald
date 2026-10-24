@@ -13,6 +13,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - Menus after the 2026-10-23 review: right-click menus still mix entries with and without icons;
   context menus have no mnemonics; Edit has no Find in notebook; the Keyboard shortcuts window lists
   shortcuts but cannot change them; the palette's recent commands are kept for the session only.
+- Profiles along the cell and the 3D view (`linking` "space" links, Align 3D view): the plot's
+  range fills the 3D view's width in Angstrom, not pixel for pixel with the plot's axes; the
+  OpenGL 1.x viewport draws no hover plane; picks on replicated copies (`replicate=`) only ring
+  the atoms of the first copy; a profile along a tilted cell vector keeps no `Keep as selection`
+  (expressions have no fractional coordinates).
 - Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): a table's `levels`, `regions`
   and `gaps` are drawn in cell outputs, figures, the Plots panel and a `show(<table>)` view cell,
   but an analysis does not end with such a view cell yet (its result is a picture under the cell

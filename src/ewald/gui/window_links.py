@@ -141,6 +141,9 @@ class LinksMixin:
         p.framesSelected.connect(self._plot_selected_frames)
         p.frameRequested.connect(self.timeline._set)
         p.expressionRequested.connect(self._keep_plot_selection)
+        p.axisViewRequested.connect(lambda req, p=p: self._align_view_to_plot(p, req))
+        p.axisHovered.connect(lambda at, p=p: self._mark_plot_position(p, at))
+        p.structure = lambda: self.data
         self.timeline.selectionChanged.connect(p.set_frame_selection)
 
     def plot_panels(self) -> list:
@@ -286,6 +289,54 @@ class LinksMixin:
         self.panel.refresh(select=("mod", m))
         self.recompute()
         self.message(f"Added Expression selection: {expression}")
+
+    # ---------------------------------------------------------------- the 3D view along a profile
+    def _align_view_to_plot(self, plot, request):
+        """A profile along the cell asks the 3D view to follow it (``(axis, lo, hi)``), or to stop
+        (None). One plot at a time: aligning to another one releases the first."""
+        if request is None:
+            if self._aligned_plot is plot:
+                self._aligned_plot = None
+            return
+        d = plot.space_data()
+        if d is None or not d.cell.is_valid:
+            return
+        old = self._aligned_plot
+        if old is not None and old is not plot and _alive(old):
+            old.sync.setChecked(False)
+        self._aligned_plot = plot
+        self.viewport.align_to_axis(d.cell, *request)
+
+    def _view_moved(self):
+        """The 3D view's camera moved: an aligned plot shows the same range, or lets go when the
+        view was turned away from the profile's direction."""
+        plot = self._aligned_plot
+        if plot is None or not _alive(plot) or plot.link is None or plot.link.kind != "space":
+            self._aligned_plot = None
+            return
+        d = plot.space_data()
+        rng = None if d is None else self.viewport.axis_view_range(d.cell, plot.link.axis)
+        if rng is None:
+            plot.sync.setChecked(False)
+            self.message("3D view turned away from the profile: no longer aligned (Align 3D view aligns it again)")
+            return
+        plot.follow_view(*rng)
+
+    def _mark_plot_position(self, plot, at):
+        """A see-through plane in the 3D view where the cursor is on a profile (None: remove it)."""
+        from ..data import Cell
+        from ..linking import axis_plane
+        from ..replicate import normalize_replicate
+
+        d = plot.space_data() if at is not None else None
+        if d is None or not d.cell.is_valid:
+            self.viewport.set_axis_plane(None)
+            return
+        cell, n = d.cell, normalize_replicate(self.viewport.style.replicate)
+        if n is not None:   # across the copies drawn side by side, not along the profile
+            grow = np.array([1 if a == at[0] else k for a, k in zip("abc", n)], float)
+            cell = Cell(cell.matrix * grow[:, None], cell.origin, cell.pbc)
+        self.viewport.set_axis_plane(axis_plane(cell, *at))
 
     # ---------------------------------------------------------------- Ask AI
     def _ask_context(self):

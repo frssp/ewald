@@ -76,6 +76,8 @@ class PlotsPanel(QtWidgets.QWidget):
     expressionRequested = QtCore.Signal(str)    # keep the range as an ExpressionSelection
     phononModePicked = QtCore.Signal(int, int)  # click on a phonon band: (q-point, band), 0-based
     viewChanged = QtCore.Signal(object, object)  # zoomed / panned range (xlim, ylim), None = full
+    axisViewRequested = QtCore.Signal(object)   # (axis, lo, hi): the 3D view follows a profile; None: stop
+    axisHovered = QtCore.Signal(object)         # (axis, x) under the cursor on a profile; None: left
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -118,9 +120,15 @@ class PlotsPanel(QtWidgets.QWidget):
         self.keep.clicked.connect(self._keep)
         self.clear = QtWidgets.QPushButton("Clear", toolTip="Clear the plot selection")
         self.clear.clicked.connect(self.clear_selection)
+        self.sync = QtWidgets.QPushButton("Align 3D view", checkable=True,
+                                          toolTip="Turn the 3D view side-on to this profile and keep its "
+                                          "range with the plot's: zooming or panning either moves both")
+        self.sync.toggled.connect(self._sync_toggled)
+        self.viewChanged.connect(self._request_axis_view)   # wheel, pan, double-click: the 3D view follows
         sel.addWidget(self.link_label, 1)
         self.readout = QtWidgets.QLabel(objectName="muted", toolTip=NAV_HINT)
         sel.addWidget(self.readout)
+        sel.addWidget(self.sync)
         sel.addWidget(self.keep)
         sel.addWidget(self.clear)
         lay.addLayout(sel)
@@ -134,6 +142,8 @@ class PlotsPanel(QtWidgets.QWidget):
         self._phonon = None  # (modes, x) while a phonon band structure is on the canvas
         self._elec = None    # (ElectronicStructure, "DOS" | "Bands", column) while one is on the canvas
         self.pipeline = None         # for mapping table rows to frames
+        self.structure = None        # () -> the 3D view's frame: the atoms of a profile shown on its own
+        self._hovered = False        # the cursor's position was sent (axisHovered)
         self.link = None             # linking.Link of the plot on the canvas
         self.highlight = []          # particles selected in the viewport, drawn on the plot
         self.frame_selection = []    # frames selected (here or in the timeline)
@@ -194,6 +204,7 @@ class PlotsPanel(QtWidgets.QWidget):
         canvas.mpl_connect("motion_notify_event", self._on_motion)
         canvas.mpl_connect("button_release_event", self._on_release)
         canvas.mpl_connect("scroll_event", self._on_scroll)
+        canvas.mpl_connect("figure_leave_event", lambda *_: self._hover_axis(None))
 
     def compact(self):
         """Narrow layout for a notebook view cell: shorter labels, Save in the cell's menu."""
@@ -265,6 +276,8 @@ class PlotsPanel(QtWidgets.QWidget):
         if link != self.link:
             self._range = self._box = None
             self.link = link
+            if self.sync.isChecked() and (link is None or link.kind != "space"):
+                self.sync.setChecked(False)   # another table: the 3D view is free again
         vkey = (self.table.currentText(), self.column.currentText(), self.hist.currentText())
         if vkey != self._view_key:
             self._view_key, self._view = vkey, {}
@@ -528,9 +541,31 @@ class PlotsPanel(QtWidgets.QWidget):
         self._draw_overlays()
         self._update_controls()
 
+    def space_data(self):
+        """The frame whose atoms a profile along the cell selects: its own data, or for a table shown
+        on its own (an analysis result) the 3D view's frame when its cell fits the profile; None
+        otherwise (another structure in the 3D view)."""
+        link, d = self.link, self.data
+        if link is None or link.kind != "space":
+            return d
+        if d is not None and d.count:
+            return d
+        d = self.structure() if self.structure is not None else None
+        table = self._table()
+        if d is None or not d.count or not table:
+            return None
+        if link.axis in "abc" and d.cell.is_valid:   # the profile spans this cell's vector (5 % slack)
+            length = float(np.linalg.norm(d.cell.matrix["abc".index(link.axis)]))
+            if np.nanmax(np.asarray(next(iter(table.values())), float)) > 1.05 * length:
+                return None
+        return d
+
     def _emit_atoms(self):
         try:
-            idx = linking.atoms_in_range(self.data, self.link, *self._range)
+            d = self.space_data()
+            if d is None:
+                raise ValueError("the 3D view shows another structure")
+            idx = linking.atoms_in_range(d, self.link, *self._range)
         except Exception as exc:  # e.g. bonds missing on this frame
             self.link_label.setText(f"Selection failed: {exc}")
             return
@@ -588,6 +623,8 @@ class PlotsPanel(QtWidgets.QWidget):
             f = self.frame_selection
             text = f"{len(f)} frame{'s' if len(f) != 1 else ''} selected" + (
                 f" ({f[0]}–{f[-1]})" if len(f) > 1 else f" ({f[0]})")
+        elif link.kind == "space" and self.space_data() is None:
+            text = "The 3D view shows another structure"
         elif link.selects_atoms:
             text = "Drag a range to select particles"
         else:
@@ -604,8 +641,11 @@ class PlotsPanel(QtWidgets.QWidget):
                 box.blockSignals(True)
                 box.setValue(v)
                 box.blockSignals(False)
-        self.keep.setVisible(link is not None and link.kind == "property")
-        self.keep.setEnabled(self._range is not None)
+        space = link is not None and link.kind == "space"
+        self.keep.setVisible(link is not None and link.kind in ("property", "space"))
+        self.keep.setEnabled(self._range is not None and (not space or self._keep_expression() is not None))
+        self.sync.setVisible(space)
+        self.sync.setEnabled(space and self.space_data() is not None)
         self.clear.setEnabled(self._range is not None or self._box is not None or bool(self.frame_selection))
 
     def _highlight_values(self):
@@ -616,10 +656,11 @@ class PlotsPanel(QtWidgets.QWidget):
             return np.zeros(0)
         xmax = float(self._edges[-1]) if self._edges is not None else None
         h = np.asarray(self.highlight, dtype=np.int64)
-        key = (id(self.data), self.link, xmax, len(h), hash(h.tobytes()))
+        d = self.space_data()
+        key = (id(d), self.link, xmax, len(h), hash(h.tobytes()))
         if getattr(self, "_hl_cache", (None,))[0] != key:
             try:
-                vals = linking.values_of(self.data, self.link, h, xmax=xmax)
+                vals = linking.values_of(d, self.link, h, xmax=xmax)
             except Exception:  # e.g. no bonds on this frame
                 vals = np.zeros(0)
             self._hl_cache = (key, vals)
@@ -641,8 +682,13 @@ class PlotsPanel(QtWidgets.QWidget):
     def _xlabel(self):
         return self._xname
 
+    def _keep_expression(self):
+        d = self.space_data()
+        return linking.selection_expression(self.link, *self._range, cell=None if d is None else d.cell) \
+            if self._range and self.link is not None else None
+
     def _keep(self):
-        expr = linking.selection_expression(self.link, *self._range) if self._range else None
+        expr = self._keep_expression()
         if expr:
             self.expressionRequested.emit(expr)
 
@@ -655,6 +701,8 @@ class PlotsPanel(QtWidgets.QWidget):
                 pass
         self._overlays = []
         ax, link, d = self._ax, self.link, self.data
+        if link is not None and link.kind == "space":
+            d = self.space_data()
         if self._elec is not None and ax is not None and ax.figure is self.figure:
             self._draw_electronic_selection(ax)
             self.canvas.draw_idle()
@@ -665,7 +713,11 @@ class PlotsPanel(QtWidgets.QWidget):
         pick = TOKENS["pick"]
         if self._range is not None:
             self._overlays.append(ax.axvspan(*self._range, color=pick, alpha=0.15, lw=0))
-        if link.selects_atoms and self.highlight:
+        if link.kind == "space" and self.highlight:
+            # the picked atoms' positions along the profile: ticks on the x axis
+            for v in self._highlight_values()[:2000]:
+                self._overlays.append(ax.axvline(v, ymin=0, ymax=0.07, color=pick, lw=1.4, zorder=5))
+        elif link.selects_atoms and self.highlight:
             vals = self._highlight_values()
             if len(vals) and self._edges is not None and self._counts_axis():
                 # counts of a subset: drawn over the full histogram, same axis
@@ -736,6 +788,37 @@ class PlotsPanel(QtWidgets.QWidget):
         self._place_marker()
 
     # navigation: zoom, pan and reset, the same on every plot
+    # ------------------------------------------------------------ the 3D view along a profile
+    def _hover_axis(self, x):
+        """Tell the window where the cursor is on a profile along the cell (a plane in the 3D view)."""
+        link = self.link
+        if x is not None and link is not None and link.kind == "space" and self.space_data() is not None:
+            self._hovered = True
+            self.axisHovered.emit((link.axis, float(x)))
+        elif self._hovered:
+            self._hovered = False
+            self.axisHovered.emit(None)
+
+    def _sync_toggled(self, on):
+        if on:
+            self._request_axis_view()
+        else:
+            self.axisViewRequested.emit(None)
+
+    def _request_axis_view(self, *_):
+        if self.sync.isChecked() and self._ax is not None and self.link is not None and self.link.kind == "space":
+            lo, hi = self._ax.get_xlim()
+            self.axisViewRequested.emit((self.link.axis, float(lo), float(hi)))
+
+    def follow_view(self, lo: float, hi: float):
+        """The 3D view moved while aligned: show the same range (no viewChanged back)."""
+        if self._ax is None:
+            return
+        old = self._ax.get_xlim()
+        if abs(old[0] - lo) + abs(old[1] - hi) < 1e-6 * max(abs(hi - lo), 1e-12):
+            return
+        self.set_view(xlim=(lo, hi), emit=False)
+
     def _energy_axis(self):
         """"x" on a DOS, "y" on a band structure (the axis of the shared energy window), else None."""
         if self._elec is not None:
@@ -820,14 +903,17 @@ class PlotsPanel(QtWidgets.QWidget):
         if ax.get_yscale() == "linear":
             ax.set_ylim(y0 - dy, y1 - dy)
         self.canvas.draw_idle()
+        self._request_axis_view()   # an aligned 3D view pans along
 
     # hover: the values under the cursor and the frame a click goes to
     def _readout(self, event):
         ax = self._ax
         if ax is None or event.inaxes is None or event.x is None or self.data is None:
             self.readout.setText("")
+            self._hover_axis(None)
             return
         x, y = ax.transData.inverted().transform((event.x, event.y))
+        self._hover_axis(x)
         text = f"{_num(x)}, {_num(y)}"
         energy = self._energy_axis()
         if energy is not None:

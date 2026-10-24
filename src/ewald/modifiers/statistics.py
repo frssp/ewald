@@ -144,7 +144,7 @@ class SpatialBinning(Modifier):
     number density). Particles are wrapped into the cell along periodic directions and skipped
     outside it along open ones. ``first_derivative`` (1D) writes the central finite-difference
     derivative instead. 1D writes ``tables['binning']`` (bin centers along the cell vector and one
-    column per component); 2D/3D write ``grids['binning']`` (shape ``(n1, n2, 1)`` or
+    column per component; its ``attributes["axis"]`` names the vector); 2D/3D write ``grids['binning']`` (shape ``(n1, n2, 1)`` or
     ``(n1, n2, n3)``, cell-centered bins).
     """
 
@@ -219,7 +219,10 @@ class SpatialBinning(Modifier):
                     res = _derivative(res, width, bool(data.cell.pbc[a]))
                     name = f"d({name})/d(Position)"
                 table[name] = res
-            data.tables["binning"] = table
+            from ..verbs import Table
+
+            # "axis": the 3D view and the Plots panel link the profile to its slab of atoms (ewald.linking)
+            data.tables["binning"] = Table("binning", table, attributes={"axis": "abc"[a]})
         else:
             m = data.cell.matrix
             vectors = [m[a] for a in axes]
