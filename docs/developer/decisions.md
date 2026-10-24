@@ -546,7 +546,20 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   1.4 s at 108k atoms).
 - **Landed:** public PR #25 (bond impostors).
 
-### D45. Viewport color bars fold to chips (2026-10-24)
+### D45. A CUDA ray tracer before a denoiser (2026-10-24)
+
+- **Decision:** to make Publication pictures faster, the ray tracer gets a CUDA path
+  (`device="cuda"`, single precision, the same rays as the CPU tracer) rather than an
+  edge-aware denoiser over fewer samples or no further work.
+- **Why:** the owner picked the CUDA ray tracer on the decision card. The owner then added that
+  their own PC has no NVIDIA GPU ("앗 근데 나는 nvidia gpu가 없네", Intel Arc), so whether an
+  OpenCL build of the same kernel follows is open.
+- **Considered:** an edge-aware denoiser from the ray tracer's normal and depth buffers
+  (recommended, since it runs on every machine and could be checked here); stopping after
+  public PR #27 showed that adaptive sampling cannot gain at equal quality.
+- **Landed:** public PR #33.
+
+### D46. Viewport color bars fold to chips (2026-10-24)
 
 - **Decision:** the viewport's color bar cards (D23) fold to one-line chips (a short horizontal
   ramp and the title, a down chevron) and unfold again with a click on a card or chip; an up

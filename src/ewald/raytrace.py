@@ -934,7 +934,7 @@ def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8,
              ao_distance: float | None = None, shadows: bool = True, background=(1.0, 1.0, 1.0),
              transparent_background: bool = False, ambient: float = 0.55, diffuse: float = 0.6,
              specular: float = 0.25, shininess: float = 40.0, light_direction=(-0.4, 0.6, 1.0), seed: int = 1,
-             noise_threshold: float = 0.0, min_samples: int | None = None, progress=None):
+             noise_threshold: float = 0.0, min_samples: int | None = None, progress=None, device=None):
     """Ray-trace ``scene`` seen through ``camera`` (see :func:`ewald.render.camera_state`).
 
     Returns an (H, W, 4) float RGBA image in [0, 1]. ``light_direction`` is given
@@ -950,6 +950,10 @@ def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8,
 
     ``progress(done, total)`` is called after each batch of rows; when it returns ``False`` the
     trace stops and :class:`RenderCancelled` is raised. The image does not depend on it.
+
+    ``device``: ``"cpu"`` (default, numba on every core), ``"cuda"`` (an NVIDIA GPU through CuPy,
+    :mod:`ewald.raytrace_cuda`; single precision, so it matches the CPU image to within a few
+    1e-3 rather than exactly) or ``"auto"`` (the GPU when there is one).
     """
     from .render import _rgb
 
@@ -982,6 +986,7 @@ def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8,
     if not (len(scene.sph_r) or len(scene.cyl_r) or len(scene.tri_alpha)):
         return np.broadcast_to(bg, (height, width, 4)).copy()
     accel = Accel(scene)
+    gpu = _gpu_tracer(scene, accel, device)
     samples = max(1, int(samples))
     first = samples
     if noise_threshold > 0:
@@ -995,6 +1000,12 @@ def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8,
         sq, nsamp, rng, ao_next = np.zeros((1, 1)), np.zeros((1, 1), np.int64), np.zeros((1, 1), np.uint64), \
             np.zeros((1, 1))
     active = np.ones((height, width), bool)
+    if gpu is not None:
+        params = np.concatenate([eye, fwd, right, up, [half_w, half_h], light,
+                                 [ambient, diffuse, specular, shininess], bg, [ao_distance]])
+        ints = [width, height, int(ortho), 0, samples, int(ao_samples), int(bool(shadows)), int(seed), 0,
+                int(adaptive)]
+        acc, sq, nsamp, rng, ao_next = (gpu.upload(a) for a in (acc, sq, nsamp, rng, ao_next))
     rows = _row_order(height)
     work_total, work = height * samples, 0     # row-samples; converged pixels finish early
     s0, s1 = 0, first
@@ -1003,15 +1014,21 @@ def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8,
         # with a progress callback, trace in batches (each one still spread over every thread)
         batches = np.array_split(pass_rows, min(PROGRESS_STEPS, len(pass_rows))) if progress is not None \
             else [pass_rows]
+        if gpu is not None:
+            dev_active = gpu.upload(active.astype(np.uint8))
         for batch in batches:
-            _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, s1, samples, int(ao_samples),
-                    float(ao_distance), light, ambient, diffuse, specular, shininess, bool(shadows), bg,
-                    accel.grid, accel.starts, accel.items, accel.nodes, accel.bvh_items, accel.depth,
-                    accel.sph, accel.cyl, accel.tri, scene.sph_c, scene.sph_r, scene.sph_rgb,
-                    scene.cyl_a, scene.cyl_b, scene.cyl_rgb,
-                    scene.tri_a, scene.tri_b, scene.tri_c, np.ascontiguousarray(scene.tri_n),
-                    np.ascontiguousarray(scene.tri_vrgb), scene.tri_alpha, int(seed), batch, active,
-                    acc, sq, nsamp, rng, ao_next)
+            if gpu is not None:
+                ints[3] = s1
+                gpu.trace(params, ints, batch, dev_active, acc, sq, nsamp, rng, ao_next)
+            else:
+                _render(width, height, eye, fwd, right, up, half_w, half_h, ortho, s1, samples, int(ao_samples),
+                        float(ao_distance), light, ambient, diffuse, specular, shininess, bool(shadows), bg,
+                        accel.grid, accel.starts, accel.items, accel.nodes, accel.bvh_items, accel.depth,
+                        accel.sph, accel.cyl, accel.tri, scene.sph_c, scene.sph_r, scene.sph_rgb,
+                        scene.cyl_a, scene.cyl_b, scene.cyl_rgb,
+                        scene.tri_a, scene.tri_b, scene.tri_c, np.ascontiguousarray(scene.tri_n),
+                        np.ascontiguousarray(scene.tri_vrgb), scene.tri_alpha, int(seed), batch, active,
+                        acc, sq, nsamp, rng, ao_next)
             work += len(batch) * (s1 - s0)
             if progress is not None and progress(min(height, work * height // work_total), height) is False:
                 raise RenderCancelled("ray trace cancelled")
@@ -1019,13 +1036,63 @@ def raytrace(scene: Scene, camera: dict, size=(1600, 1200), *, samples: int = 8,
             break
         if s1 >= samples:
             break
-        active = _still_noisy(acc, sq, nsamp, noise_threshold) & (nsamp < samples)
+        if gpu is not None:
+            n_host = gpu.download(nsamp)
+            active = _still_noisy(gpu.download(acc), gpu.download(sq), n_host, noise_threshold) & (n_host < samples)
+        else:
+            active = _still_noisy(acc, sq, nsamp, noise_threshold) & (nsamp < samples)
         if not active.any():
             break
         s0, s1 = s1, min(samples, 2 * s1)   # pixels that stopped earlier and are woken again catch up
     if progress is not None and work < work_total:
         progress(height, height)
+    if gpu is not None:
+        acc, nsamp = gpu.download(acc), gpu.download(nsamp)
     return acc / (nsamp[..., None] if adaptive else samples)
+
+
+class _GPUTracer:
+    """The device side of :func:`raytrace` (see :mod:`ewald.raytrace_cuda`)."""
+
+    def __init__(self, backend, scene, accel, real="float"):
+        from . import raytrace_cuda
+
+        self.backend, self.real, self.cuda = backend, real, raytrace_cuda
+        self.dscene = raytrace_cuda.DeviceScene(backend.xp, scene, accel, real)
+
+    def upload(self, a):
+        return self.backend.xp.asarray(np.ascontiguousarray(a))
+
+    def download(self, a):
+        return self.backend.to_numpy(a)
+
+    def trace(self, params, ints, rows, active, acc, sq, nsamp, rng, ao_next):
+        self.cuda.trace_rows(self.backend.xp, self.dscene, self.real, params, ints, rows, active,
+                             acc, sq, nsamp, rng, ao_next)
+        self.backend.synchronize()   # progress and cancelling follow the work actually done
+
+
+GPU_REAL = "float"   # precision of the CUDA tracer; tests set "double" to compare with the CPU
+
+
+def _gpu_tracer(scene, accel, device):
+    """A :class:`_GPUTracer` when ``device`` names a GPU, else None (the CPU kernels). A BVH
+    deeper than the kernel's fixed traversal stack falls back to the CPU."""
+    if device is None or device == "cpu":
+        return None
+    from .backend import get_backend
+    from .raytrace_cuda import MAX_STACK
+
+    backend = get_backend(device)
+    if not backend.raw_kernels:
+        return None
+    if accel.depth + 2 > MAX_STACK:
+        import logging
+
+        logging.getLogger(__name__).warning("BVH depth %d exceeds the CUDA tracer's stack; tracing on the CPU",
+                                            accel.depth)
+        return None
+    return _GPUTracer(backend, scene, accel, GPU_REAL)
 
 
 def _still_noisy(acc, sq, nsamp, threshold, grow=2):

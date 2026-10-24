@@ -624,6 +624,8 @@ def figure_code(window, page) -> str:
     text = page.label_text(frame, window.data)
     if text:
         kw["text"] = text
+    if device and device != "cpu" and kw.get("renderer") == "raytrace":
+        kw["device"] = device   # the ray tracer runs where the window computes
     body = ",\n       ".join(f"{k}={v!r}" for k, v in kw.items())
     lines.append(f"render(data, {out!r},\n       {body})")
     return "\n".join(lines) + "\n"

@@ -504,7 +504,11 @@ class View:
         from .render import render
 
         data = self._data(frame)
-        return render(data, filename, **merge(self.render_kwargs(data, frame), overrides))
+        kw = merge(self.render_kwargs(data, frame), overrides)
+        device = getattr(self.pipeline, "device", None)
+        if device not in (None, "cpu") and kw.get("renderer") == "raytrace":
+            kw.setdefault("device", device)   # the ray tracer runs where the pipeline computes
+        return render(data, filename, **kw)
 
     def snapshot(self, frame: int | None = None, **overrides):
         """A :class:`ewald.views.Snapshot` (an image under the cell) of this view."""

@@ -199,6 +199,13 @@ estimated error is still above the threshold, and their neighbours, go on to `sa
 background and evenly lit surfaces stop early, while edges, shadows and occlusion keep the full
 count. `noise_threshold=0` gives every pixel all `samples` rays.
 
+`device="cuda"` runs the ray tracer on an NVIDIA GPU through CuPy (`pip install 'ewald[gpu]'`);
+`"auto"` takes the GPU when there is one, `None`/`"cpu"` (default) the CPU. The GPU kernel
+(`ewald.raytrace_cuda`) is the same algorithm, one thread per pixel, with the same random rays,
+in single precision: its pictures differ from the CPU's only at a few edge pixels (in the tests
+0.7 % of pixels by more than 1/255). `pipe.render(...)` follows `pipe.device`, and the GUI's
+Render page and movies follow Preferences › Compute › Device ([GPU compute](gpu.md)).
+
 `renderer="vector"` writes SVG, PDF or EPS (format from the extension) with real circles for
 atoms, bond sticks, polyhedra, isosurfaces and slices painted far to near, and overlays as
 editable text, so a figure can be finished in Illustrator or Inkscape. It needs no OpenGL.
