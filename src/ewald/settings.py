@@ -187,7 +187,7 @@ OPTIONS = (
     Option("compute.device", "cpu", "Device", "Where analysis and ray-traced pictures run: the window, the "
            "notebook's pipe and the Render page. CPU is the safe default; OpenCL ray traces on Intel, AMD and "
            "NVIDIA GPUs and Metal on a Mac's GPU, both keeping the analysis on the CPU; Auto uses the CUDA GPU "
-           "when CuPy finds one, else an OpenCL GPU for ray tracing (not on a Mac), else the CPU.",
+           "when CuPy finds one, else Metal on a Mac or an OpenCL GPU for ray tracing, else the CPU.",
            choices=("cpu", "cuda", "opencl", "metal", "auto")),
     Option("performance.cache_memory", 2048, "Frame cache memory",
            "Upper bound for cached trajectory frames (MB); the current frame is always kept.",
