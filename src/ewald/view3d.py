@@ -114,7 +114,8 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        "are always drawn.", type=["boolean", "number"]),
     _s("bond_pairs", [], "bonds", "Bond rules (VESTA) [[A, B, dmin, dmax], ...] with '*' for any type; the most "
        "specific rules for a pair decide it (A-B before A-* before *-*, dmax 0 turns a pair off); a fifth "
-       "item False keeps that rule's bonds inside the cell (none through periodic boundaries). Empty: one "
+       "item False keeps that rule's bonds inside the cell (none through periodic boundaries), 'complete' also "
+       "draws the B atoms of every A beyond the cell edge. Empty: one "
        "row per type pair with dmax = bond_factor * (r_A + r_B), metal-metal pairs left out in compounds.",
        type="array", items={"type": "array"}),
     _s("bond_factor", 1.15, "bonds", "dmax factor of the automatic bond table (VESTA)."),

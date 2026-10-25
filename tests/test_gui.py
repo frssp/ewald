@@ -220,8 +220,8 @@ def test_view_tab_cards_and_notebook_marks(app, pipe):
 
 
 def test_bonds_card_rule_pbc_column(app):
-    """The Bonds card shows the bond rules with a PBC check per rule; unchecking it writes the rule's
-    fifth item False, which keeps that rule's bonds inside the cell."""
+    """The Bonds card shows the bond rules with a PBC choice per rule (on, off, + atoms); a change
+    writes the rule's fifth item, rules left at 'on' stay four items."""
     from ase.spacegroup import crystal
 
     from ewald import DataCollection
@@ -232,14 +232,14 @@ def test_bonds_card_rule_pbc_column(app):
     pipe = Pipeline(StaticSource(DataCollection.from_ase(atoms)))
     panel = DisplayPanel()
     panel.set_pipeline(pipe)
-    panel.style.bond_pairs = [["Sr", "O", 0.0, 2.9], ["*", "*", 0.0, 0.0]]
+    panel.style.bond_pairs = [["Sr", "O", 0.0, 2.9], ["Ti", "O", 0.0, 2.2, "complete"]]
     panel.set_data(pipe.compute(0))
     table = panel.sections["Bonds"].findChild(QtWidgets.QTableWidget)
     assert table.columnCount() == 5 and table.horizontalHeaderItem(4).text() == "PBC"
-    assert table.item(0, 4).checkState() == QtCore.Qt.Checked
-    table.item(0, 4).setCheckState(QtCore.Qt.Unchecked)
+    assert table.cellWidget(0, 4).currentText() == "on" and table.cellWidget(1, 4).currentText() == "+ atoms"
+    table.cellWidget(0, 4).setCurrentIndex(1)
     assert panel.style.bond_pairs[0] == ["Sr", "O", 0.0, 2.9, False]
-    assert panel.style.bond_pairs[1] == ["*", "*", 0.0, 0.0]          # untouched rules stay four items
+    assert panel.style.bond_pairs[1] == ["Ti", "O", 0.0, 2.2, "complete"]
     _dispose(panel)
 
 

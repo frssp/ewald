@@ -195,7 +195,7 @@ atoms* off for a stick model), **Colors** (what colors the atoms: the steps' col
 or a property through a color map with its range, and the rule drawn now, one row per structure type
 or painted condition with its count; see [What colors the atoms](rendering.md#what-colors-the-atoms)),
 **Types** (color, radius, transparency and count per type, VESTA
-elements.ini import), **Bonds** (sticks, the bond rules A-B / A-* / *-* with a *PBC* check per rule, *As step* for a Create bonds step),
+elements.ini import), **Bonds** (sticks, the bond rules A-B / A-* / *-* with a *PBC* choice per rule: on, off, + atoms, *As step* for a Create bonds step),
 **Surfaces** (polyhedra, isosurfaces and slices that steps made, by name: shown, color,
 transparency, edges; *Reset* gives back the step's look), **Cell** (line width, *Replicate cell* and
 VESTA's *Boundary* range), **Labels** (text on each atom such as `{type}{index}`, *Highlight

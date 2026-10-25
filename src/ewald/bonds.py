@@ -131,8 +131,10 @@ def normalize_pairs(pairs):
 
     How the rules combine (see :func:`find_bonds`): the most specific rules that name a pair decide
     it, A-B before A-* before *-*, so ``[('*', '*', 0, 3), ('Ti', 'Ti', 0, 0)]`` bonds everything up
-    to 3 A except Ti-Ti. ``pbc`` (default True) False keeps only bonds inside the cell, none through
-    a periodic boundary."""
+    to 3 A except Ti-Ti. ``pbc`` (see :data:`PBC_MODES`): True (default) bonds through periodic
+    boundaries, False keeps the rule's bonds inside the cell, 'complete' bonds through them and
+    draws the B atom beyond the cell edge too, for every A (bond property 'Complete': 1 when the
+    first atom of the bond is the A, 2 the second, 3 both)."""
     if pairs is None:
         return []
     if isinstance(pairs, dict):
@@ -149,21 +151,32 @@ def normalize_pairs(pairs):
     return out
 
 
-def _flag(v) -> bool:
-    if isinstance(v, str):   # 'pbc' / 'no pbc' as typed in a table, or JSON booleans as text
+#: the fifth item of a bond rule: what it does at periodic boundaries
+PBC_MODES = {
+    True: "bond through periodic boundaries; such bonds end in half bonds at the cell edge",
+    False: "bonds inside the cell only",
+    "complete": "bond through periodic boundaries and draw the B atoms of every A beyond the cell edge "
+                "(VESTA's 'search additional atoms if A is in the boundary', per rule)",
+}
+
+
+def _flag(v):
+    if isinstance(v, str):   # as typed in a table, or JSON booleans as text
         v = v.strip().lower()
         if v in ("true", "yes", "on", "1", "pbc"):
             return True
-        if v in ("false", "no", "off", "0", "", "none", "no pbc"):
+        if v in ("false", "no", "off", "0", "", "none", "no pbc", "cell"):
             return False
-        raise ValueError(f"bond rule pbc must be True or False, not {v!r}")
+        if v in ("complete", "+atom", "+ atom", "atom"):
+            return "complete"
+        raise ValueError(f"bond rule pbc must be True, False or 'complete', not {v!r}")
     return bool(v)
 
 
 def rule_rows(pairs) -> list:
-    """Bond rules as plain JSON lists, ``[A, B, dmin, dmax]`` plus ``False`` only for rules without
-    periodic bonds, so tables without the option stay as they were."""
-    return [[a, b, lo, hi] if pbc else [a, b, lo, hi, False] for a, b, lo, hi, pbc in normalize_pairs(pairs)]
+    """Bond rules as plain JSON lists, ``[A, B, dmin, dmax]`` plus the pbc item only when it is not
+    the default (False or 'complete'), so tables without the option stay as they were."""
+    return [[a, b, lo, hi] if pbc is True else [a, b, lo, hi, pbc] for a, b, lo, hi, pbc in normalize_pairs(pairs)]
 
 
 # Not bonded to each other by default in compounds (metal-metal contacts would clutter oxides etc.)
@@ -188,22 +201,30 @@ def covalent_pairs(types, factor: float = 1.15):
 
 
 def _pair_mask(ti, tj, dist, img, pairs):
-    """Which pairs the rules bond: per pair only the most specific matching rules count (A-B: 2,
-    A-*: 1, *-*: 0 named types); any of those whose length range (and pbc) fits bonds it."""
+    """``(keep, complete)``: which pairs the rules bond, and for those a 'complete' rule bonds, which
+    end is its A (VESTA: A's partners are added): 1 the first atom, 2 the second, 3 both.
+    Per pair only the most specific matching rules count (A-B: 2, A-*: 1, *-*: 0 named types); any
+    of those whose length range (and pbc) fits bonds it."""
     rank = np.full(len(dist), -1, np.int8)
-    hits = []
+    hits, ends = [], []
     inside = ~np.any(img != 0, axis=1) if len(dist) else np.zeros(0, bool)
     for a, b, lo, hi, pbc in pairs:
-        ok_t = (((ti == a) | (a == "*")) & ((tj == b) | (b == "*"))) | \
-               (((ti == b) | (b == "*")) & ((tj == a) | (a == "*")))
+        fwd = ((ti == a) | (a == "*")) & ((tj == b) | (b == "*"))
+        bwd = ((ti == b) | (b == "*")) & ((tj == a) | (a == "*"))
+        ok_t = fwd | bwd
+        ends.append(fwd.astype(np.int8) + 2 * bwd.astype(np.int8))
         level = (a != "*") + (b != "*")
         rank = np.where(ok_t, np.maximum(rank, level), rank)
         ok = ok_t & (dist >= lo) & (dist <= hi)
         hits.append((level, ok if pbc else ok & inside))
     keep = np.zeros(len(dist), bool)
-    for level, ok in hits:
-        keep |= ok & (rank == level)
-    return keep
+    complete = np.zeros(len(dist), np.int8)
+    for (level, ok), end, rule in zip(hits, ends, pairs):
+        ok = ok & (rank == level)
+        keep |= ok
+        if rule[4] == "complete":
+            complete |= np.where(ok, end, 0).astype(np.int8)
+    return keep, complete
 
 
 def _half_pairs(data, rmax, backend=None):
@@ -264,10 +285,15 @@ def find_bonds(data, cutoff: float | None = None, pairs=None, lower_cutoff: floa
         return Bonds()
     i, j, img, dist = _half_pairs(data, rmax, backend)
     keep = dist >= lower_cutoff
+    complete = None
     if pairs:
         types = np.asarray(data.types).astype(str)
-        keep &= _pair_mask(types[i], types[j], dist, img, pairs)
-    return Bonds(np.column_stack([i[keep], j[keep]]), img[keep])
+        ok, complete = _pair_mask(types[i], types[j], dist, img, pairs)
+        keep &= ok
+    out = Bonds(np.column_stack([i[keep], j[keep]]), img[keep])
+    if complete is not None and any(p[4] == "complete" for p in pairs):
+        out["Complete"] = complete[keep]
+    return out
 
 
 def bond_segments(data, bonds: Bonds, colors: np.ndarray):

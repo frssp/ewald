@@ -18,7 +18,9 @@ class CreateBonds(Modifier):
     type, or a ``{(A, B): dmax}`` dict (also filled by :meth:`set_pairwise_cutoff`). The most specific
     rules for a pair decide it (A-B before A-* before *-*; dmax 0 turns a pair off), and a fifth item
     ``False`` (``(A, B, dmin, dmax, False)``) keeps that rule's bonds inside the cell, none through
-    periodic boundaries (molecules, slabs, unwrapped trajectories). 'covalent' bonds A-B
+    periodic boundaries (molecules, slabs, unwrapped trajectories); ``'complete'`` marks the bonds
+    (bond property 'Complete') so the renderers draw each A atom's partners beyond the cell edge.
+    'covalent' bonds A-B
     pairs shorter than ``factor * (r_A + r_B)`` with covalent radii, VESTA's default.
     Pairs shorter than ``lower_cutoff`` are skipped. Bonds are appended to existing ones and
     stored in ``data.bonds`` ('Topology', 'Periodic Image'); attribute 'CreateBonds.num_bonds'.

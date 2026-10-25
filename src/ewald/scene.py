@@ -835,7 +835,9 @@ def build(data, elements=None, ctx: SceneContext | None = None, *, visuals=None,
     source = None
     if replicate is not None and replicate is not False:
         data, source = _with_replicate(data, elements, ctx, replicate, replicate_cell)
-    if boundary is not None and boundary is not False:
+    if boundary is False:
+        boundary = None
+    if boundary is not None or _complete_bonds(data, elements):   # also for 'complete' bond rules
         data, ghosts = _with_boundary(data, elements, ctx, boundary, boundary_bonds)
         if ghosts is not None:
             source = ghosts if source is None else source[ghosts]
@@ -894,6 +896,16 @@ def _element_bonds(data, elements):
         if isinstance(el, BondsVis) and getattr(el, "enabled", True) and el.applies(data):
             return scene_bonds(data, el.cutoff, el.pairs)
     return data.bonds
+
+
+def _complete_bonds(data, elements) -> bool:
+    """Whether a bond rule with pbc 'complete' is in play (its bonds add their partner atoms)."""
+    from .bonds import normalize_pairs
+
+    if data.bonds is not None:
+        return "Complete" in data.bonds
+    return any(isinstance(el, BondsVis) and getattr(el, "enabled", True) and el.pairs
+               and any(p[4] == "complete" for p in normalize_pairs(el.pairs)) for el in elements)
 
 
 def _with_replicate(data, elements, ctx, replicate, cell_mode):

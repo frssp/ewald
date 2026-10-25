@@ -296,9 +296,9 @@ GUI
   shadows in the OpenGL view are not settable.
 - A per-element bond table like VESTA's (cation-anion only, measured lengths) instead of the
   covalent-radius sum with metal-metal pairs left out.
-- Bond rules: VESTA's per-rule boundary mode (search the partner atoms beyond the boundary only for
-  some rules, or whole molecules) next to the per-rule PBC option; rules by atom label or a
-  selection, not only by type; the bond count per rule in the Bonds card.
+- Bond rules: VESTA's recursive molecule search per rule (now "+ atoms" adds one shell of
+  partners); rules by atom label or a selection, not only by type; the bond count per rule in
+  the Bonds card.
 - One display style per notebook tab: the window keeps a single `ViewStyle`, and a notebook whose
   view nothing set yet is seeded from it (the previous tab's style). Settings for elements the new
   structure lacks are dropped now (MgB2's Mg-B bonds no longer reach TiOF2), but theme, radius scale

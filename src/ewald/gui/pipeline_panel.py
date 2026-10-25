@@ -227,6 +227,10 @@ def _discover():
         register_modifier(plugin.category, name, plugin.cls)
 
 
+
+#: the PBC column of the bond rules (ewald.bonds.PBC_MODES)
+PBC_CHOICES = (("on", True), ("off", False), ("+ atoms", "complete"))
+
 class FitWidthScrollArea(QtWidgets.QScrollArea):
     """Scrolls vertically only: the page is always as wide as the area, like a document."""
 
@@ -1358,7 +1362,7 @@ class DisplayPanel(QtWidgets.QWidget):
         table.setHorizontalHeaderLabels(["A", "B", "min Å", "max Å", "PBC"])
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
-        table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.Fixed)
         table.horizontalHeader().setDefaultAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
         for r, (a, b, lo, hi, pbc) in enumerate(rules):
             for c, v in enumerate((a, b, f"{lo:.2f}", f"{hi:.2f}")):
@@ -1366,11 +1370,19 @@ class DisplayPanel(QtWidgets.QWidget):
                 if c >= 2:
                     item.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
                 table.setItem(r, c, item)
-            check = QtWidgets.QTableWidgetItem()
-            check.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsSelectable)
-            check.setCheckState(QtCore.Qt.Checked if pbc else QtCore.Qt.Unchecked)
-            check.setToolTip("Bond through periodic boundaries; off keeps this rule's bonds inside the cell")
-            table.setItem(r, 4, check)
+            mode = QtWidgets.QComboBox()
+            for label, value in PBC_CHOICES:
+                mode.addItem(label, value)
+            mode.setCurrentIndex([v for _, v in PBC_CHOICES].index(pbc))
+            mode.setToolTip("At periodic boundaries: on bonds through them (half bonds at the cell edge), "
+                            "off keeps this rule's bonds inside the cell, + atoms also draws the B atoms "
+                            "of every A beyond the cell edge (VESTA's 'search additional atoms')")
+            mode.currentIndexChanged.connect(lambda *_: commit())
+            table.setCellWidget(r, 4, mode)
+        probe = QtWidgets.QComboBox()   # the PBC column fits its longest choice
+        probe.addItems([label for label, _ in PBC_CHOICES])
+        table.setColumnWidth(4, probe.sizeHint().width() + 8)
+        probe.deleteLater()
         self._numeric_headers(table, 2, 3)
         self._fit_table(table, rows=6)
         table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)   # cells are edited in place
@@ -1383,7 +1395,7 @@ class DisplayPanel(QtWidgets.QWidget):
                 try:
                     rows.append([table.item(r, 0).text().strip(), table.item(r, 1).text().strip(),
                                  float(table.item(r, 2).text()), float(table.item(r, 3).text()),
-                                 table.item(r, 4).checkState() == QtCore.Qt.Checked])
+                                 table.cellWidget(r, 4).currentData()])
                 except (AttributeError, ValueError):
                     continue
             self.style.bond_pairs = rule_rows(rows)

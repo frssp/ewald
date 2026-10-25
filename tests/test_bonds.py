@@ -260,3 +260,37 @@ def test_bond_rules_in_view_round_trip(srtio3):
     assert style.bond_pairs[0] == ["Sr", "O", 0.0, 2.9, False]
     back = View(**style.view_settings(srtio3.types))           # GUI -> notebook
     assert back.bond_pairs == pipe.view.bond_pairs
+
+
+def test_bond_rule_complete_adds_partner_atoms(srtio3):
+    """pbc 'complete': bonds through periodic boundaries end at a drawn image of the B atom, for
+    every A (VESTA's 'search additional atoms'), in every renderer (they share scene.build)."""
+    from ewald import scene
+    from ewald.boundary import expand
+
+    b = find_bonds(srtio3, pairs=[("Ti", "O", 0.0, 2.2, "complete")])
+    assert b.count == 6 and "Complete" in b
+    ti = np.flatnonzero(srtio3.types == "Ti")[0]
+    i, j = b.topology.T
+    np.testing.assert_array_equal(b["Complete"], np.where(i == ti, 1, 2))   # the Ti end is A
+    assert "Complete" not in find_bonds(srtio3, pairs=[("Ti", "O", 0.0, 2.2)])
+
+    disp, src = expand(srtio3, None, b)                  # no boundary range: only the partners
+    crossing = int(np.any(b.pbc_images != 0, axis=1).sum())
+    assert disp.count == srtio3.count + crossing and (srtio3.types[src[srtio3.count:]] == "O").all()
+    half = np.asarray(disp.bonds["Half Bond"])
+    assert (~half).sum() == 6 and half.sum() == crossing   # Ti's bonds whole; the O end keeps its half
+
+    def counts(rules, **kw):
+        sc = scene.build(srtio3, bond_pairs=rules, **kw)
+        lay = {la.name: la.primitive for la in sc.layers}
+        return len(lay["atoms"].centers), len(lay["bonds"].start)
+
+    assert counts([("Ti", "O", 0.0, 2.2)]) == (5, 12)                   # half bonds out of the cell
+    assert counts([("Ti", "O", 0.0, 2.2, "complete")]) == (5 + crossing, 12 + crossing)
+    assert counts([("O", "Ti", 0.0, 2.2, "complete")])[0] == 5 + crossing   # O grows Ti images
+    # with a boundary range the rule still adds its partners on top of the range's ghosts
+    plain = counts([("Ti", "O", 0.0, 2.2)], boundary=(0, 1))[0]
+    assert counts([("Ti", "O", 0.0, 2.2, "complete")], boundary=(0, 1))[0] >= plain
+    with pytest.raises(ValueError):
+        expand(srtio3, None, b, bond_mode="sideways")
