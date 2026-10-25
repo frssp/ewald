@@ -733,6 +733,27 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   leaving it under the cells, an inserter between cells, and both.
 - **Landed:** public PR #60.
 
+### D58. VESTA-style bond rules with a PBC switch per rule (2026-10-25)
+
+- **Decision:** bond rules A-B, A-* and *-* combine by specificity: the most specific rules for
+  a pair decide it (A-B before A-* before *-*, whatever their order; dmax 0 turns a pair off).
+  Each rule has a PBC choice: on (bonds through periodic boundaries, half bonds at the cell edge),
+  off (that rule's bonds stay inside the cell) or + atoms (`"complete"`: every A atom also gets
+  its B partners drawn beyond the cell edge, VESTA's "search additional atoms", per rule and
+  with or without a boundary range). Rows without the choice keep their meaning.
+- **Why:** the owner asked for "vesta type bond control, A-B / A-* / *-* 여기에 pbc 고려
+  옵션도 넣고" and, asked what the PBC option should mean, picked "규칙별 PBC on/off" on the
+  decision card, then asked whether a bond through the boundary adds the atom on the other side
+  ("pbc가 본드가 생기면 건너편 아톰도 추가해서 그리나?") and to add that per rule ("넣어줘봐").
+  Seeing the first take, where an O on the cell face kept a half bond toward the next cell's Ti
+  but its added image did not, the owner asked to make the modes consistent ("이상한데 ... 모드
+  규칙 재정비"): a + atoms rule draws its bonds whole or not at all, and the atoms it adds get
+  the other rules' half bonds like any atom.
+- **Considered:** VESTA's full per-rule boundary mode instead of the switch; only the global
+  Boundary setting (half, complete, none) for adding atoms. VESTA's recursive molecule search
+  per rule is left in docs/todo.md.
+- **Landed:** public PR #61.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

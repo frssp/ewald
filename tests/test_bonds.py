@@ -205,3 +205,105 @@ def test_tube_mesh_is_an_open_cylinder_per_segment():
     assert np.allclose(ring[:, 0] - 0.2 * normals.reshape(k, 2, n, 3)[:, 0], start[:, None])
     assert np.allclose(ring[:, 1] - 0.2 * normals.reshape(k, 2, n, 3)[:, 1], end[:, None])
     assert (faces // (2 * n) == np.repeat(np.arange(k), 2 * n)[:, None]).all()   # no face spans two bonds
+
+
+def test_bond_rules_most_specific_wins(srtio3):
+    """VESTA-style rules: A-B before A-* before *-*; dmax 0 turns a pair off."""
+    every = run(srtio3, CreateBonds(mode="pairwise", pairs=[("*", "*", 0.0, 2.8)]))
+    kinds = {tuple(sorted(p)) for p in every.types[every.bonds.topology]}
+    assert ("O", "O") in kinds and ("O", "Ti") in kinds and ("O", "Sr") in kinds
+    no_oo = run(srtio3, CreateBonds(mode="pairwise", pairs=[("*", "*", 0.0, 2.8), ("O", "O", 0.0, 0.0)]))
+    kinds = {tuple(sorted(p)) for p in no_oo.types[no_oo.bonds.topology]}
+    assert ("O", "O") not in kinds and ("O", "Ti") in kinds and ("O", "Sr") in kinds
+    # Sr-* narrows Sr's bonds; the order of the rows does not matter
+    rules = [("Sr", "*", 0.0, 2.0), ("*", "*", 0.0, 2.8)]
+    for table in (rules, rules[::-1]):
+        d = run(srtio3, CreateBonds(mode="pairwise", pairs=table))
+        kinds = {tuple(sorted(p)) for p in d.types[d.bonds.topology]}
+        assert ("O", "Sr") not in kinds and ("O", "Ti") in kinds
+    # equally specific rules add up (two length ranges for one pair)
+    two = run(srtio3, CreateBonds(mode="pairwise", pairs=[("Ti", "O", 0.0, 1.0), ("O", "Ti", 1.5, 2.0)]))
+    assert two.bonds.count == 6
+
+
+def test_bond_rule_pbc_option(srtio3):
+    """A fifth item False keeps that rule's bonds inside the cell."""
+    with_pbc = find_bonds(srtio3, pairs=[("Ti", "O", 0.0, 2.2)])
+    assert with_pbc.count == 6 and np.any(with_pbc.pbc_images != 0)   # O on the cell faces: some cross
+    across = find_bonds(srtio3, pairs=[("Sr", "O", 0.0, 2.9)])
+    assert across.count == 12 and np.any(across.pbc_images != 0)
+    inside = find_bonds(srtio3, pairs=[("Sr", "O", 0.0, 2.9, False)])
+    assert 0 < inside.count < 12 and not np.any(inside.pbc_images)
+    mixed = find_bonds(srtio3, pairs=[("Sr", "O", 0.0, 2.9, False), ("Ti", "O", 0.0, 2.2)])
+    assert mixed.count == inside.count + 6
+    assert find_bonds(srtio3, pairs=[("Sr", "O", 0.0, 2.9, "no pbc")]).count == inside.count
+    with pytest.raises(ValueError):
+        find_bonds(srtio3, pairs=[("Sr", "O", 0.0, 2.9, "maybe")])
+
+
+def test_bond_rules_in_view_round_trip(srtio3):
+    from ewald.bonds import rule_rows
+    from ewald.view3d import View
+    from ewald.view_style import ViewStyle
+
+    assert rule_rows([("Ti", "O", 2.2), ("Sr", "O", 0, 2.9, False)]) == [["Ti", "O", 0.0, 2.2],
+                                                                          ["Sr", "O", 0.0, 2.9, False]]
+    pipe = Pipeline(StaticSource(srtio3))
+    pipe.view.bond_pairs = [("Sr", "O", 0, 2.9, False), ("*", "*", 0, 2.2)]
+    assert pipe.view.bond_pairs[0] == ["Sr", "O", 0.0, 2.9, False]
+    assert "False" in pipe.view.source()                       # the view cell carries the option
+    kw = pipe.view.render_kwargs(srtio3)
+    assert find_bonds(srtio3, pairs=kw["bond_pairs"]).count == 6 + find_bonds(
+        srtio3, pairs=[("Sr", "O", 0, 2.9, False)]).count
+    style = ViewStyle()
+    style.apply_view(pipe.view, srtio3.types)                  # GUI <- notebook
+    assert style.bond_pairs[0] == ["Sr", "O", 0.0, 2.9, False]
+    back = View(**style.view_settings(srtio3.types))           # GUI -> notebook
+    assert back.bond_pairs == pipe.view.bond_pairs
+
+
+def test_bond_rule_complete_adds_partner_atoms(srtio3):
+    """pbc 'complete': bonds through periodic boundaries end at a drawn image of the B atom, for
+    every A (VESTA's 'search additional atoms'), in every renderer (they share scene.build)."""
+    from ewald import scene
+    from ewald.boundary import expand
+
+    b = find_bonds(srtio3, pairs=[("Ti", "O", 0.0, 2.2, "complete")])
+    assert b.count == 6 and "Complete" in b
+    ti = np.flatnonzero(srtio3.types == "Ti")[0]
+    i, j = b.topology.T
+    np.testing.assert_array_equal(b["Complete"], np.where(i == ti, 1, 2))   # the Ti end is A
+    assert "Complete" not in find_bonds(srtio3, pairs=[("Ti", "O", 0.0, 2.2)])
+
+    disp, src = expand(srtio3, None, b)                  # no boundary range: only the partners
+    crossing = int(np.any(b.pbc_images != 0, axis=1).sum())
+    assert disp.count == srtio3.count + crossing and (srtio3.types[src[srtio3.count:]] == "O").all()
+    # Ti's bonds are whole; a 'complete' rule draws no half bonds, so no O (real or added) keeps a
+    # stub toward a Ti beyond the edge
+    assert disp.bonds.count == 6 and not np.asarray(disp.bonds["Half Bond"]).any()
+
+    def counts(rules, **kw):
+        sc = scene.build(srtio3, bond_pairs=rules, **kw)
+        lay = {la.name: la.primitive for la in sc.layers}
+        return len(lay["atoms"].centers), len(lay["bonds"].start)
+
+    assert counts([("Ti", "O", 0.0, 2.2)]) == (5, 12)                   # half bonds out of the cell
+    assert counts([("Ti", "O", 0.0, 2.2, "complete")]) == (5 + crossing, 12)
+    # the added O atoms are atoms like the real ones: an 'on' rule gives every O the same Sr-O stubs
+    from ewald.boundary import expand as _expand
+
+    both = find_bonds(srtio3, pairs=[("Ti", "O", 0.0, 2.2, "complete"), ("Sr", "O", 0.0, 2.9)])
+    disp, src = _expand(srtio3, None, both)
+    ti_o = np.asarray(disp.bonds["Complete"]) > 0
+    half = np.asarray(disp.bonds["Half Bond"])
+    t = disp.bonds.topology
+    ends = np.concatenate([t[~ti_o, 0], t[~ti_o & ~half, 1]])   # a half bond is drawn at its first atom
+    sr_o = np.bincount(ends, minlength=disp.count)
+    o = np.flatnonzero(disp.types == "O")
+    assert len(o) == 6 and (sr_o[o] == 4).all()
+    assert counts([("O", "Ti", 0.0, 2.2, "complete")])[0] == 5 + crossing   # O grows Ti images
+    # with a boundary range the rule still adds its partners on top of the range's ghosts
+    plain = counts([("Ti", "O", 0.0, 2.2)], boundary=(0, 1))[0]
+    assert counts([("Ti", "O", 0.0, 2.2, "complete")], boundary=(0, 1))[0] >= plain
+    with pytest.raises(ValueError):
+        expand(srtio3, None, b, bond_mode="sideways")

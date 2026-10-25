@@ -129,7 +129,10 @@ gives each particle's displacement from a reference frame, matched by id.
 ## Bonds and coordination polyhedra
 
 `CreateBonds(cutoff, mode, pairs)` finds bonds with a uniform cutoff, a VESTA-style pair table
-(`mode="pairwise", pairs=[("Ti", "O", 2.4)]`, `*` matches any type) or covalent radii
+(`mode="pairwise", pairs=[("Ti", "O", 2.4)]`, `*` matches any type, the most specific rows for a
+pair decide it, A-B before A-* before *-*, and a fifth item `False` keeps a rule's bonds inside the
+cell, `"complete"` also draws the partner atoms beyond the cell edge; see
+[bond rules](rendering.md#bond-rules-vesta)) or covalent radii
 (`mode="covalent"`, VESTA's default; in a compound metal-metal pairs are left out, so SrTiO3 gets
 Ti-O and Sr-O but not Sr-Ti). Bonds are stored once each in `data.bonds`, with periodic
 images, so they stay correct across boundaries and through `DeleteSelected`, `Slice`,
