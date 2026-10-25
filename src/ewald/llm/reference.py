@@ -210,6 +210,8 @@ view(pipe, color_by="Coordination", colormap="plasma", color_range=[2, 5])   # d
 pipe.add(GenerateTrajectoryLines())                       # atom paths are a step (the selected atoms, else all) ...
 view(pipe, trajectory_trail=True, trajectory_color_by="Time", trajectory_width=3)   # ... the trajectory_* settings
                                                           # only style its lines (without the step: a warning, no lines)
+view(pipe, tab="Top", direction="z")    # a view tab: another 3D viewport tab, the main view plus its own settings
+pipe.render("top.png", tab="Top")       # draws that tab (pipe.views["Top"]; snapshot(pipe, tab="Top"))
 ```
 
 A NEB folder (`load("neb/")`, images 00..NN as frames) comes with `UnwrapTrajectories`, `NebEnergyProfile` (tables

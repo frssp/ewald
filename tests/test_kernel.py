@@ -181,3 +181,15 @@ def test_rich_outputs_and_magics_come_back_from_the_kernel(kernel):
     assert kinds == ["rich", "text", "rich"]
     bar, text, html = nb.cells[0].outputs
     assert bar.mime[PROGRESS_MIME]["n"] == 3 and "Wall time" in text.data and html.mime["text/html"] == "<b>x</b>"
+
+
+def test_view_tabs_come_back_from_the_kernel(kernel, lammps_dir):
+    """view(pipe, tab=...) run in the kernel makes the same view tab on the window's side."""
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load, view\npipe = load({str(lammps_dir / 'dump.custom.lammpstrj')!r})\n"
+                          "\n# %%\nview(pipe, tab='Top', direction='z')\n")
+    nb.set_kernel(kernel)
+    assert nb.run_all()
+    assert nb.pipeline.views["Top"].changed() == {"direction": "z"}
+    nb.cells[1].source = "pipe.views.remove('Top')"
+    assert nb.run_cell(1)
+    assert "Top" not in nb.pipeline.views

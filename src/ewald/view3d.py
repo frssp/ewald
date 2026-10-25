@@ -319,12 +319,38 @@ class View:
         object.__setattr__(self, "_values", {})
         object.__setattr__(self, "pipeline", pipeline)
         object.__setattr__(self, "version", 0)   # bumps on every change (the GUI follows it)
+        object.__setattr__(self, "base", None)   # a view tab's main view (pipe.view), else None
+        object.__setattr__(self, "tab", None)    # a view tab's name, else None
+        object.__setattr__(self, "_cache", None)
         self.update(**settings)
+
+    @classmethod
+    def for_tab(cls, base: "View", tab: str, **settings) -> "View":
+        """A view tab of ``base``: it stores only its own settings and takes every other one from
+        ``base`` (``view(pipe, tab="Top", direction="z")`` is the main view seen from the top)."""
+        v = cls(base.pipeline)
+        object.__setattr__(v, "base", base)
+        object.__setattr__(v, "tab", str(tab))
+        return v.update(**settings)
+
+    def resolved(self) -> "View":
+        """The view as drawn: for a view tab its base view with the tab's own settings on top, else self."""
+        base = self.base
+        if base is None:
+            return self
+        key = (id(base), base.version, self.version)
+        if self._cache is None or self._cache[0] != key:
+            v = View(self.pipeline, **base.resolved().changed())
+            v.update(**self._values)
+            object.__setattr__(self, "_cache", (key, v))
+        return self._cache[1]
 
     # ------------------------------------------------------------ values
     def __getattr__(self, name):
         if name.startswith("_") or name not in SETTINGS:
             raise AttributeError(f"View has no setting {name!r}; settings: {', '.join(SETTINGS)}")
+        if self.base is not None:
+            return getattr(self.resolved(), name)
         values = self._values
         if name in values:
             return values[name]
@@ -336,7 +362,7 @@ class View:
         return type(default)() if isinstance(default, (dict, list)) else default
 
     def __setattr__(self, name, value):
-        if name in ("pipeline", "version"):
+        if name in ("pipeline", "version", "base", "tab"):
             object.__setattr__(self, name, value)
             return
         self.update(**{name: value})
@@ -346,7 +372,8 @@ class View:
 
     def update(self, **settings) -> "View":
         """Set several settings at once; ``style`` goes first, so ``update(style='Points', bonds=True)``
-        keeps the bonds. ``None`` (or the default) for a setting goes back to its default. Returns self."""
+        keeps the bonds. ``None`` (or the default) for a setting goes back to its default; in a view tab
+        ``None`` makes the setting follow the main view again. Returns self."""
         for name in settings:
             if name not in SETTINGS:
                 import difflib
@@ -356,8 +383,26 @@ class View:
                 raise UnknownSetting(f"no view setting {name!r}.{hint} Settings: {', '.join(SETTINGS)}")
         order = sorted(settings, key=lambda n: n != "style")
         values = dict(self._values)
+        tab = self.base is not None
         for name in order:
+            if tab and settings[name] is None:
+                values.pop(name, None)   # follows the main view again
+                if name == "style":
+                    for k in _PRESET_KEYS:
+                        values.pop(k, None)
+                continue
             value = _check(name, settings[name])
+            if tab:   # a tab keeps what it was given, even a default: it may differ from the main view
+                if name == "style":
+                    for k in _PRESET_KEYS:
+                        values.pop(k, None)
+                if name == "camera" and "direction" not in settings and "zoom" not in settings:
+                    values.pop("direction", None)
+                    values.pop("zoom", None)
+                if name in ("direction", "zoom") and "camera" not in settings:
+                    values.pop("camera", None)
+                values[name] = value
+                continue
             if name == "style":
                 for k in _PRESET_KEYS:   # a preset sets these, like picking it in the viewport
                     values.pop(k, None)
@@ -398,7 +443,8 @@ class View:
         return self
 
     def changed(self) -> dict:
-        """The settings that differ from the defaults, in :data:`SETTINGS` order (what a view cell writes)."""
+        """The settings that differ from the defaults, in :data:`SETTINGS` order (what a view cell writes;
+        a view tab's own settings)."""
         return {k: _copy(self._values[k]) for k in SETTINGS if k in self._values}
 
     def settings(self) -> dict:
@@ -406,6 +452,11 @@ class View:
         return {k: _copy(getattr(self, k)) for k in SETTINGS}
 
     def copy(self, pipeline=None) -> "View":
+        if self.base is not None:
+            v = View.for_tab(self.base, self.tab, **self.changed())
+            if pipeline is not None:
+                object.__setattr__(v, "pipeline", pipeline)
+            return v
         return View(pipeline if pipeline is not None else self.pipeline, **self.changed())
 
     @staticmethod
@@ -565,7 +616,7 @@ class View:
         """A :class:`ewald.views.Snapshot` (an image under the cell) of this view."""
         from .views import Snapshot
 
-        return Snapshot(self.pipeline, self.frame if frame is None else frame, **overrides)
+        return Snapshot(self.pipeline, self.frame if frame is None else frame, view=self, **overrides)
 
     def _repr_png_(self):
         if self.pipeline is None:
@@ -573,12 +624,13 @@ class View:
         return self.snapshot()._repr_png_()
 
     def __repr__(self):
-        args = ", ".join(f"{k}={v!r}" for k, v in self.changed().items())
+        items = ([("tab", self.tab)] if self.tab is not None else []) + list(self.changed().items())
+        args = ", ".join(f"{k}={v!r}" for k, v in items)
         return f"View({args})"
 
     def source(self, pipeline_name: str = "pipe") -> str:
-        """The view cell for this view: ``view(pipe, style=..., ...)``."""
-        return view_source(pipeline_name, **self.changed())
+        """The view cell for this view: ``view(pipe, style=..., ...)`` (``view(pipe, tab=..., ...)`` for a tab)."""
+        return view_source(pipeline_name, tab=self.tab, **self.changed())
 
 
 # The built-in visual elements (ewald.scene, in drawing order): attribute -> view setting. The attributes
@@ -734,11 +786,21 @@ def merge(kwargs: dict, overrides: dict) -> dict:
     return out
 
 
-def view(pipe, **settings) -> View:
+def view(pipe, tab: str | None = None, **settings) -> View:
     """Set display settings of ``pipe``'s 3D view (see :data:`SETTINGS`, ``View.help()``) and return
     ``pipe.view``; as the last line of a cell it shows the picture. Settings not named keep their
-    value. ``view(pipe)`` alone just shows it."""
-    v = pipe.view if hasattr(pipe, "view") else View()
+    value. ``view(pipe)`` alone just shows it.
+
+    ``tab="Top"`` sets a view tab instead (``pipe.views["Top"]``, made on first use): another 3D
+    viewport tab in the GUI that shows the same pipeline and frame, with the main view's settings
+    except the ones the tab sets (``None`` follows the main view again). Without ``tab`` the main
+    view changes, as before; running the cell again updates the same tab."""
+    if tab is not None:
+        if not hasattr(pipe, "views"):
+            raise TypeError("view tabs belong to a pipeline: view(pipe, tab=...)")
+        v = pipe.views.get(tab) or pipe.views.add(tab)
+    else:
+        v = pipe.view if hasattr(pipe, "view") else View()
     v.update(**settings)
     if settings:
         import warnings
@@ -771,9 +833,9 @@ def view_notes(v: View, modifiers=None) -> list[str]:
             for step, names in missing.items()]
 
 
-def view_source(pipeline_name: str = "pipe", **settings) -> str:
-    """Source of a view cell, one setting per line when there are several."""
-    items = [f"{k}={_literal(v)}" for k, v in settings.items()]
+def view_source(pipeline_name: str = "pipe", tab: str | None = None, **settings) -> str:
+    """Source of a view cell, one setting per line when there are several (``tab`` first)."""
+    items = ([f"tab={tab!r}"] if tab is not None else []) + [f"{k}={_literal(v)}" for k, v in settings.items()]
     if not items:
         return f"view({pipeline_name})"
     one = f"view({pipeline_name}, {', '.join(items)})"
@@ -784,13 +846,70 @@ def view_source(pipeline_name: str = "pipe", **settings) -> str:
 
 def view_cell_args(source: str) -> dict | None:
     """Settings of a cell that is a single ``view(<name>, key=literal, ...)`` call (optionally after
-    imports), with ``source`` the pipeline's name; None for any other cell."""
+    imports), with ``source`` the pipeline's name (and ``tab`` for a view tab's cell); None for any other cell."""
     from .views import view_args
 
     args = view_args(source, function="view")
-    if args is None or any(k not in SETTINGS for k in args if k != "source"):
+    if args is None or any(k not in SETTINGS for k in args if k not in ("source", "tab")):
+        return None
+    if "tab" in args and not isinstance(args["tab"], str):
         return None
     return args
+
+
+class Views:
+    """A pipeline's view tabs by name (``pipe.views``): each one a :class:`View` over ``pipe.view``
+    that the GUI shows as another 3D viewport tab. ``view(pipe, tab="Top", ...)`` makes and sets one."""
+
+    def __init__(self, pipeline):
+        self.pipeline = pipeline
+        self._tabs: dict[str, View] = {}
+        self.version = 0   # bumps when a tab is added or removed (the GUI follows it)
+
+    def add(self, name: str, **settings) -> View:
+        name = str(name).strip()
+        if not name:
+            raise ValueError("a view tab needs a name: view(pipe, tab='Top', ...)")
+        if name in self._tabs:
+            return self._tabs[name].update(**settings)
+        v = self._tabs[name] = View.for_tab(self.pipeline.view, name, **settings)
+        self.version += 1
+        return v
+
+    def remove(self, name: str):
+        if self._tabs.pop(name, None) is not None:
+            self.version += 1
+
+    def get(self, name, default=None):
+        v = self._tabs.get(name)
+        if v is not None and v.base is not self.pipeline.view:   # pipe.view was replaced
+            object.__setattr__(v, "base", self.pipeline.view)
+        return v if v is not None else default
+
+    def names(self) -> list[str]:
+        return list(self._tabs)
+
+    def __getitem__(self, name) -> View:
+        v = self.get(name)
+        if v is None:
+            raise KeyError(f"no view tab {name!r}; tabs: {', '.join(self._tabs) or 'none'} "
+                           "(view(pipe, tab=..., ...) makes one)")
+        return v
+
+    def __contains__(self, name):
+        return name in self._tabs
+
+    def __iter__(self):
+        return iter(list(self._tabs))
+
+    def __len__(self):
+        return len(self._tabs)
+
+    def items(self):
+        return [(n, self[n]) for n in self._tabs]
+
+    def __repr__(self):
+        return f"Views({', '.join(map(repr, self._tabs))})"
 
 
 # ---------------------------------------------------------------- helpers

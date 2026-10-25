@@ -756,9 +756,21 @@ class Pipeline:
             raise TypeError("pipe.view is a View; use view(pipe, ...) or pipe.view.update(...) to change it")
         self.__dict__["_view"] = value.copy(self)
 
-    def render(self, filename=None, frame: int | None = None, **kwargs):
-        """Draw ``frame`` (default: the view's frame) with :attr:`view`; ``kwargs`` override it for this call."""
-        return self.view.render(filename, frame, **kwargs)
+    @property
+    def views(self):
+        """This pipeline's view tabs (:class:`ewald.view3d.Views`, ``pipe.views["Top"]``): more 3D views of
+        the same structure, each the main :attr:`view` with its own changes; ``view(pipe, tab=..., ...)`` sets one."""
+        v = self.__dict__.get("_views")
+        if v is None:
+            from .view3d import Views
+
+            v = self.__dict__["_views"] = Views(self)
+        return v
+
+    def render(self, filename=None, frame: int | None = None, tab: str | None = None, **kwargs):
+        """Draw ``frame`` (default: the view's frame) with :attr:`view` (or the view tab ``tab``);
+        ``kwargs`` override it for this call."""
+        return (self.view if tab is None else self.views[tab]).render(filename, frame, **kwargs)
 
     def _repr_png_(self):  # Jupyter shows frame 0 as a picture (ewald.display.options)
         from .display import pipeline_png

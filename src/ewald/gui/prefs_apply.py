@@ -60,6 +60,29 @@ def apply_element_defaults(style, data, s: Settings):
     return table
 
 
+def apply_viewport_settings(vp, s: Settings):
+    """Preferences › 3D view on one viewport (the main one and each view tab's)."""
+    vp.rotation_step = s["viewport.rotation_step"]
+    vp.hover_info = s["viewport.hover_info"]
+    vp.hover_delay = s["viewport.hover_delay"]
+    if not vp.hover_info:
+        vp.hover_leave()
+    vp.sphere_drawing = s["viewport.sphere_drawing"]
+    vp.sphere_resolution = s["viewport.sphere_resolution"]
+    vp.set_anti_aliasing(s["viewport.anti_aliasing"])
+    vp.mesh_limit = s["viewport.mesh_limit"]
+    vp.bond_limit = s["bonds.auto_limit"]
+    vp.arrow_resolution = s["viewport.arrow_resolution"]
+    vp.detail_mode = s["viewport.interactive_detail"]
+    vp.target_fps = s["viewport.target_fps"]
+    vp.interactive_atoms = s["viewport.interactive_atoms"]
+    vp.refine_delay = s["viewport.refine_delay"]
+    vp.show_overlay = s["viewport.show_overlay"]
+    vp.initial_view = s["viewport.initial_view"]
+    vp.set_axes_visible(s["viewport.show_axes"])
+    vp.ortho_button.setChecked(s["viewport.projection"] == "ortho")
+
+
 def apply_settings(win, s: Settings, startup: bool = False):
     """Push settings into a MainWindow: viewport, style, render page, device, font."""
     from . import theme
@@ -101,31 +124,14 @@ def apply_settings(win, s: Settings, startup: bool = False):
     style.bond_radius = s["bonds.radius"]
     if startup or style.preset != s["viewport.style_preset"]:
         style.apply_preset(s["viewport.style_preset"], win.data.types if win.data is not None else ())
-    vp.rotation_step = s["viewport.rotation_step"]
-    vp.hover_info = s["viewport.hover_info"]
-    vp.hover_delay = s["viewport.hover_delay"]
-    if not vp.hover_info:
-        vp.hover_leave()
-    vp.sphere_drawing = s["viewport.sphere_drawing"]
-    vp.sphere_resolution = s["viewport.sphere_resolution"]
-    vp.set_anti_aliasing(s["viewport.anti_aliasing"])
-    vp.mesh_limit = s["viewport.mesh_limit"]
-    vp.bond_limit = s["bonds.auto_limit"]
-    vp.arrow_resolution = s["viewport.arrow_resolution"]
-    vp.detail_mode = s["viewport.interactive_detail"]
-    vp.target_fps = s["viewport.target_fps"]
-    vp.interactive_atoms = s["viewport.interactive_atoms"]
-    vp.refine_delay = s["viewport.refine_delay"]
+    for v in [vp, *(t.viewport for t in getattr(win, "view_tabs", {}).values())]:
+        apply_viewport_settings(v, s)
     if win.pipeline is not None:
         win.pipeline.cache_memory = s["performance.cache_memory"] * 2**20
     win.live_reload.configure(s["general.live_reload"], s["general.live_reload_interval"])
     win.live_reload_action.setChecked(s["general.live_reload"])
-    vp.show_overlay = s["viewport.show_overlay"]
-    vp.initial_view = s["viewport.initial_view"]
-    vp.set_axes_visible(s["viewport.show_axes"])
     if hasattr(win, "_render_frame_visibility"):
         win._render_frame_visibility()
-    vp.ortho_button.setChecked(s["viewport.projection"] == "ortho")
 
     page.set_renderer(s["render.renderer"])
     page.samples.setValue(s["render.samples"])

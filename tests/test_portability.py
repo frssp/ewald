@@ -339,6 +339,30 @@ def test_written_files_have_lf_ends_on_windows(name, tmp_path, windows_text_mode
     assert b"\r" not in out.read_bytes()
 
 
+def test_view_tab_cells_with_korean_names_round_trip_on_windows(tmp_path, monkeypatch, windows_text_mode):
+    """A view tab named in Korean survives a notebook saved in Windows text mode under a Korean code
+    page: UTF-8, LF ends, and the same tab after loading."""
+    import locale
+
+    from ase.build import bulk
+
+    from ewald import DataCollection, Pipeline, StaticSource
+    from ewald.notebook import Notebook
+
+    monkeypatch.setattr(locale, "getpreferredencoding", lambda do_setlocale=True: "cp949")
+    nb = Notebook.from_py("# %%\npipe = None\n")
+    pipe = Pipeline(StaticSource([DataCollection.from_ase(bulk("Cu"))]))
+    nb.namespace["pipe"] = pipe
+    pipe.views.add("위에서", direction="z")
+    nb.set_view_cell(pipe.views["위에서"].changed(), tab="위에서")
+    path = tmp_path / "nb.py"
+    nb.save(str(path))
+    raw = path.read_bytes()
+    assert b"\r" not in raw and "tab='위에서'" in raw.decode("utf-8")
+    again = Notebook.load(str(path), trusted=True)
+    assert again.view_cell("위에서") is not None
+
+
 def test_settings_written_by_older_windows_versions_still_load(tmp_path, monkeypatch):
     """Settings files were written in the ANSI code page on Windows before every file was UTF-8."""
     import locale

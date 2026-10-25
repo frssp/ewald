@@ -27,6 +27,7 @@ ewald itself shows the chat, does not write a cell.
 | The loaded structure or workflow | `load_structure`, `open_workflow` | `pipe = load(...)` |
 | Pipeline steps | `add_modifier`, `remove_modifier`, `edit_cell` with `params` | step cell `pipe.add(...)`, deleted or rewritten |
 | Everything the 3D view and pictures show: style, colors, radii, bonds, cell, camera, frame, labels, measurements, visuals, overlays, renderer | `set_view`, `add_visual`, `remove_visual`, `add_overlay`, `remove_overlay` | the view cell `view(pipe, ...)` |
+| More Structure tabs (view tabs) and their settings | `set_view` with `tab` | the tab's view cell `view(pipe, tab=..., ...)` |
 | Files written for you | `export_file` | `export_file(pipe, ...)` |
 | A workflow's analysis | `add_analysis` | the plugin's cells |
 | Its own code (plots, tables, anything the API does) | `insert_cell`, `edit_cell`, then `run_cell` or the run permission; ```python blocks of an answer (`llm.code_cells`) | the cell it wrote |
@@ -113,7 +114,7 @@ the model.
 | `open_workflow` | `pipe = load('simagent:lab/3f9c2e1a/bands')`: a workflow, a step or an output of it, by name; offered only with a workflow source |
 | `add_modifier` | a step cell `pipe.add(CoordinationAnalysis(cutoff=3.0))` |
 | `remove_modifier` | deletes that step cell |
-| `set_view`, `add_visual`, `remove_visual`, `add_overlay`, `remove_overlay` | the view cell `view(pipe, ...)` |
+| `set_view`, `add_visual`, `remove_visual`, `add_overlay`, `remove_overlay` | the view cell `view(pipe, ...)` (`set_view` with `tab`: that view tab's cell `view(pipe, tab=..., ...)`) |
 | `export_file` | `export_file(pipe, 'out.extxyz', frames=[0])` |
 | `add_analysis` | the cells of a workflow analysis (from `describe_workflow`), written by the workflow's plugin, not by the model; offered only with a workflow source |
 

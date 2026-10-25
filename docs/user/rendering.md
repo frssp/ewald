@@ -34,6 +34,11 @@ print(pipe.view.changed())                    # what differs from the defaults
 print(pipe.view.source())                     # the same as a view(pipe, ...) line
 ```
 
+View tabs are more views of the same pipeline, each the main view with its own changes
+(in the GUI, more Structure tabs): `view(pipe, tab="Top", direction="z")` sets one,
+`pipe.views["Top"]` is its view, and `pipe.render("top.png", tab="Top")` or
+`snapshot(pipe, tab="Top")` draws it.
+
 | Group | Settings |
 |---|---|
 | style | `style` (Ball & stick, Space-filling, Simple (ASE), Points), `theme`, `atom_style` (auto, mesh, impostor, flat), `background`, `light` (key light) |

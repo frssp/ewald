@@ -107,7 +107,10 @@ def run(cells: list, index: int, run_below: bool, counter: int, result_path: str
         "pipeline": None if pipe is None else {"num_frames": pipe.num_frames,
                                                "modifiers": [_step(m) for m in pipe.modifiers],
                                                "view": _plain_view(pipe.view),
-                                               "view_version": [id(pipe.view), pipe.view.version]},
+                                               "views": {n: _plain_view(v) for n, v in pipe.views.items()},
+                                               "view_version": [id(pipe.view), pipe.view.version,
+                                                                pipe.views.version,
+                                                                *(v.version for _, v in pipe.views.items())]},
     }
     with open(result_path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(result, f)

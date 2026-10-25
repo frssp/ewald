@@ -438,14 +438,23 @@ class Notebook:
         else:
             self.namespace[self.pipeline_name] = kernel_pipeline(self.kernel, self.pipeline_name, info["num_frames"])
         version = info.get("view_version") if info is not None else None
-        if version and version[1] and version != getattr(self, "_kernel_view", None):
+        if version and any(version[1:]) and version != getattr(self, "_kernel_view", None):
             # a cell changed the kernel's pipe.view: the GUI viewport follows it
             from .view3d import View
 
             self._kernel_view = version
-            view, settings = self.namespace[self.pipeline_name].view, View(**info["view"]).changed()
+            local = self.namespace[self.pipeline_name]
+            view, settings = local.view, View(**info["view"]).changed()
             if view.changed() != settings:
                 view.reset().update(**settings)
+            tabs = info.get("views") or {}
+            for name in local.views.names():
+                if name not in tabs:
+                    local.views.remove(name)
+            for name, own in tabs.items():
+                tab = local.views.add(name)
+                if tab.changed() != own:
+                    tab.reset().update(**own)
         return r["ok"]
 
     def refresh_kernel_steps(self):
@@ -709,30 +718,32 @@ class Notebook:
             cell.source = new
             self.dirty = True
 
-    def view_cell(self) -> Cell | None:
-        """The view cell (``view(pipe, ...)``, the 3D view's display settings), or None."""
+    def view_cell(self, tab: str | None = None) -> Cell | None:
+        """The view cell (``view(pipe, ...)``, the 3D view's display settings), or None; with ``tab``
+        the cell of that view tab (``view(pipe, tab=..., ...)``)."""
         from .view3d import view_cell_args
 
         for cell in self.cells:
             if cell.kind == "code":
                 args = view_cell_args(cell.source)
-                if args is not None and args["source"] == self.pipeline_name:
+                if args is not None and args["source"] == self.pipeline_name and args.get("tab") == tab:
                     return cell
         return None
 
-    def set_view_cell(self, settings: dict) -> Cell | None:
-        """Write ``settings`` (:meth:`ewald.view3d.View.changed`) into the view cell, adding one at the
-        end when there is none (and something to say). The cell is not run: the pipeline's view
-        already holds these settings. Returns the cell, or None when nothing was written."""
+    def set_view_cell(self, settings: dict, tab: str | None = None) -> Cell | None:
+        """Write ``settings`` (:meth:`ewald.view3d.View.changed`) into the view cell (of view tab ``tab``),
+        adding one at the end when there is none (and something to say; a tab's cell is always written,
+        it makes the tab). The cell is not run: the pipeline's view already holds these settings.
+        Returns the cell, or None when nothing was written."""
         from .view3d import view_source
 
-        cell = self.view_cell()
-        if cell is None and not settings:
+        cell = self.view_cell(tab)
+        if cell is None and not settings and tab is None:
             return None
         head = [line for line in (cell.source if cell else "").splitlines() if line.startswith(("import ", "from "))]
         if cell is None and "view" not in self.namespace:
             head = ["from ewald import view"]
-        new = "\n".join(head + [view_source(self.pipeline_name, **settings)])
+        new = "\n".join(head + [view_source(self.pipeline_name, tab=tab, **settings)])
         if cell is None:
             cell = self.insert(len(self.cells), Cell(new, state="ok"))
             self.namespace.setdefault("view", __import__("ewald").view)
