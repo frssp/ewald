@@ -263,10 +263,21 @@ QLabel#section {{ color: {muted}; font-size: 11px; text-transform: uppercase; le
 QLabel#welcomeTitle {{ font-size: 20px; font-weight: 600; }}
 QToolButton#welcomeRecent {{ color: {accent}; border: none; padding: 3px 0px; text-align: left; }}
 QToolButton#welcomeRecent:hover {{ color: {accent_hover}; text-decoration: underline; }}
-QFrame#rail {{ background: {bg}; border-right: 1px solid {border}; }}
 QFrame#viewbar {{ background: {bg}; border-bottom: 1px solid {border}; }}
 QFrame#viewbar QToolButton {{ padding: 4px 6px; }}
-QFrame#axisGroup QToolButton {{ padding: 4px 3px; min-width: 14px; }}
+/* the view chips floating over the 3D view (D60) */
+QFrame#hudChip {{ background: {hud}; border: 1px solid {border}; border-radius: 8px; }}
+QFrame#hudChip:disabled {{ background: {hud}; }}
+QFrame#hudDivider {{ background: {border}; border: none; }}
+QFrame#hudChip QToolButton {{ padding: 3px 6px; border-radius: 6px; }}
+QToolButton#hudAxis {{ padding: 3px 5px; min-width: 12px; }}
+QToolButton#hudMenu, QToolButton#hudChevron {{ padding: 3px; }}
+QToolButton#hudMenu::menu-indicator, QToolButton#hudChevron::menu-indicator,
+QFrame#hudChip QToolButton[ewald_icon="more"]::menu-indicator {{ image: none; width: 0; }}
+QToolButton#hudAxisMenu {{ padding: 3px 6px; font-weight: 600; }}
+QToolButton#hudAxisMenu::menu-indicator {{ image: none; width: 0; }}
+QComboBox#hudCombo {{ min-height: 20px; padding: 1px 6px; }}
+QFrame#hudChip QToolButton:checked {{ color: {accent}; background: {accent_soft}; }}
 QCheckBox {{ color: {text}; spacing: 6px; }}
 QCheckBox::indicator, QGroupBox::indicator, QTreeView::indicator, QTableView::indicator, QListView::indicator {{ width: 14px; height: 14px;
     border: 1.5px solid {muted}; border-radius: 4px; background: {bg}; }}
@@ -274,8 +285,8 @@ QCheckBox::indicator:hover, QGroupBox::indicator:hover, QTreeView::indicator:hov
 QCheckBox::indicator:checked, QGroupBox::indicator:checked, QTreeView::indicator:checked, QTableView::indicator:checked,
 QListView::indicator:checked {{ background: {accent}; border-color: {accent}; image: url("{img_check}"); }}
 QCheckBox::indicator:disabled {{ background: {panel}; border-color: {border}; }}
-QFrame#rail QToolButton {{ font-size: 18px; color: {secondary}; }}
-QFrame#rail QToolButton:checked {{ color: {accent}; background: {raised}; }}
+QFrame#hudChip[hudName="tools"] QToolButton {{ font-size: 18px; color: {secondary}; padding: 0; }}
+QWidget#hudStrip {{ background: {viewport}; }}
 
 /* View tab: how the structure is drawn, as cards */
 QScrollArea#viewScroll, QScrollArea#viewScroll > QWidget > QWidget, QWidget#viewPage {{ background: {panel}; }}
@@ -480,10 +491,22 @@ def _restyle(css: str, st: dict) -> str:
 RULE = 0.45
 
 
+HUD_ALPHA = 0.94   # opacity of the view chips over the 3D view (D60)
+
+
+def hud_color() -> str:
+    """The background of the view chips: the theme's panel color, slightly see-through."""
+    c = TOKENS["panel"].lstrip("#")
+    if len(c) != 6:   # a theme plugin's color in another notation: opaque
+        return TOKENS["panel"]
+    r, g, b = (int(c[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r}, {g}, {b}, {round(HUD_ALPHA * 255)})"
+
+
 def stylesheet(font_size: int = 12) -> str:
     images = {f"img_{name}": image(name) for name in _IMAGES}
     rule = _mix(TOKENS["border"], TOKENS["muted"], RULE)
-    css = _restyle(QSS.format(**TOKENS, **images, rule=rule), STYLE).replace("font-size: 12px", f"font-size: {font_size}px")
+    css = _restyle(QSS.format(**TOKENS, **images, rule=rule, hud=hud_color()), STYLE).replace("font-size: 12px", f"font-size: {font_size}px")
     if STYLE["qss"]:   # the theme's own rules last, so they win
         css += "\n/* UI theme */\n" + Template(STYLE["qss"]).safe_substitute(TOKENS) + "\n"
     return css
