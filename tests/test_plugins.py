@@ -258,7 +258,8 @@ def test_modifier_plugin_from_folder_is_everywhere(cu_fcc):
     ts = Toolset(pipe)
     listed = ts.call("list_modifiers", {}).text()
     assert "LocalComposition" in listed
-    res = ts.call("add_modifier", {"name": "LocalComposition", "params": {"cutoff": 2.9}})
+    res = ts.call("add_modifier", {"name": "LocalComposition", "params": {"cutoff": 2.9},
+                                   "again": True})   # a second one: the pipeline has one already
     assert not res.is_error, res.text()
     script = ts.to_script()
     assert "from ewald.modifiers import" in script and "LocalComposition" in script
