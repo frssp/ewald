@@ -780,7 +780,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   리디자인") and picked "B. Floating HUD" on the decision card.
 - **Considered:** A, the bar and rail kept with the same folding (recommended, since it needs no
   widgets over the GL view); C, one strip with the tools merged into the top bar.
-- **Landed:** public PR #N.
+- **Landed:** public PR #63.
 
 ## Adding an entry
 
