@@ -151,6 +151,7 @@ class Viewport(QtWidgets.QWidget):
     contextMenuRequested = QtCore.Signal()  # right click without dragging
     hovered = QtCore.Signal(str)         # one-line description of the atom under the cursor, "" for none
     viewBuilt = QtCore.Signal()          # the 3D widget exists now (see ensure_view)
+    cameraMoved = QtCore.Signal()        # a render showed another camera (orbit, pan, zoom, a view button)
     lazy_view = True                     # build the 3D widget after the first paint
     uses_vtk = True                      # a pyvistaqt QtInteractor (needs vtk_surface_format)
 
@@ -949,6 +950,7 @@ class Viewport(QtWidgets.QWidget):
         self._t_render = time.perf_counter()
 
     def _render_ended(self, *_):
+        self._camera_check()
         if self.coarse or getattr(self, "_t_render", None) is None:
             return
         dt = time.perf_counter() - self._t_render
@@ -966,6 +968,81 @@ class Viewport(QtWidgets.QWidget):
             self.plotter.render()
 
     # ------------------------------------------------------------------ camera
+    def _camera_check(self):
+        """After a render: ``cameraMoved`` when the camera is not where the last render had it."""
+        cam = self.plotter.camera
+        state = (tuple(cam.position), tuple(cam.focal_point), tuple(cam.up), cam.parallel_scale)
+        if state != getattr(self, "_camera_state", None):
+            self._camera_state = state
+            self.cameraMoved.emit()
+
+    def _aspect(self) -> float:
+        w = self._gl_widget()
+        return max(w.width(), 1) / max(w.height(), 1)
+
+    def align_to_axis(self, cell, axis: str, lo: float, hi: float):
+        """Look at a profile's direction from the side (:func:`ewald.linking.axis_camera`): ``axis``
+        ("a", "b", "c", "x", "y", "z") runs left to right and ``lo``..``hi`` fills the width."""
+        from ..linking import axis_camera
+
+        if not self.ortho:
+            self.set_ortho(True)   # widths only match in a parallel projection
+        cam = self.plotter.camera
+        b = np.asarray(self.plotter.bounds, float)   # the drawn scene (replicas, boundary images)
+        view = axis_camera(cell, axis, lo, hi, self._aspect(), center=0.5 * (b[0::2] + b[1::2]))
+        cam.focal_point = view["focal_point"]
+        cam.position = view["position"]
+        cam.up = view["up"]
+        cam.parallel_scale = view["parallel_scale"]
+        self.plotter.reset_camera_clipping_range()
+        self.render()
+
+    def axis_view_range(self, cell, axis: str):
+        """The range of a profile along ``axis`` the view shows across its width, None when the
+        camera does not look at that direction from the side (:func:`ewald.linking.axis_range`)."""
+        from ..linking import axis_range
+
+        cam = self.plotter.camera
+        if not cam.parallel_projection:
+            return None
+        pos, focal, up = (np.asarray(v, float) for v in (cam.position, cam.focal_point, cam.up))
+        dop = focal - pos
+        right = np.cross(dop / (np.linalg.norm(dop) or 1), up)
+        return axis_range(cell, axis, focal, right, cam.parallel_scale, self._aspect())
+
+    def set_axis_plane(self, corners):
+        """A see-through plane at a profile position (4 x 3 ``corners``), None to remove it."""
+        p = self.plotter
+        p.remove_actor("_axis_plane", render=False)
+        p.remove_actor("_axis_plane-edge", render=False)
+        if corners is not None:
+            import pyvista as pv
+
+            quad = pv.PolyData(np.asarray(corners, float), faces=[4, 0, 1, 2, 3])
+            p.add_mesh(quad, color=TOKENS["pick"], opacity=0.25, name="_axis_plane", render=False,
+                       pickable=False, lighting=False)
+            p.add_mesh(quad.extract_feature_edges(boundary_edges=True, feature_edges=False, manifold_edges=False),
+                       color=TOKENS["pick"], line_width=1.5, name="_axis_plane-edge", render=False, pickable=False)
+        self.render()
+
+    def set_axis_slab(self, corners):
+        """A see-through slab of a profile's selected range (8 x 3 ``corners``, ``axis_slab``),
+        None to remove it."""
+        p = self.plotter
+        p.remove_actor("_axis_slab", render=False)
+        p.remove_actor("_axis_slab-edge", render=False)
+        if corners is not None:
+            import pyvista as pv
+
+            faces = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
+            box = pv.PolyData(np.asarray(corners, float), faces=np.hstack([[4, *f] for f in faces]))
+            p.add_mesh(box, color=TOKENS["pick"], opacity=0.15, name="_axis_slab", render=False,
+                       pickable=False, lighting=False)
+            p.add_mesh(box.extract_feature_edges(boundary_edges=False, feature_edges=True, manifold_edges=False,
+                                                 feature_angle=30),
+                       color=TOKENS["pick"], line_width=1.5, name="_axis_slab-edge", render=False, pickable=False)
+        self.render()
+
     def view_along(self, axis: str):
         if self.data is None or not self.data.cell.is_valid:
             return

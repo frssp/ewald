@@ -102,6 +102,8 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         # tabs drag between groups as in VS Code), whose first page is swapped for Render
         self.viewport = make_viewport(self.style, self.settings["viewport.backend"])
         self.viewport.picked.connect(self._on_pick)
+        self.viewport.cameraMoved.connect(self._view_moved)
+        self._aligned_plot = None  # the plot the 3D view is aligned to (Align 3D view), see window_links
         self.viewport.hovered.connect(lambda text: self.hover_label.setText(text))
         self.viewport.bondEdit.connect(self.toggle_bond)
         self.viewport.styleChanged.connect(self._style_changed)

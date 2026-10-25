@@ -836,6 +836,21 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   results across Run all; the step checkpoints only.
 - **Landed:** public PR #67.
 
+### D65. Profile plots and the 3D view follow each other, as a general link (2026-10-24)
+
+- **Decision:** a plot whose x is a position along the cell (any table with
+  `attributes["axis"]`, not only the potential lineup) is tied to the 3D view in three ways. *Align
+  3D view* turns the view side-on with the plot's range across its width, and zooming or panning
+  either one moves the other. A dragged range selects that slab of atoms and shows it as a box in
+  the 3D view (the owner: "아래는 선택 영역. 위는 한 플레인. 이상"). Hovering shows a plane at
+  that position, and picked atoms show as ticks on the plot.
+- **Why:** after seeing the lineup in the Plots panel the owner asked whether the 3D view could be
+  synchronized with the plot below it "마우스 동작이나 버튼으로". They added: "동기화하는 것은 좀
+  일반적인 툴로 만들면 다른 문제에도 써먹을 수 있을 듯". From the rough concepts (align, slab
+  brush, position marker) they picked all three on the decision card.
+- **Considered:** the alignment alone, and the alignment with the slab selection.
+- **Landed:** public PR #53.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
