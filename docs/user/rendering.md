@@ -46,7 +46,7 @@ View tabs are more views of the same pipeline, each the main view with its own c
 | bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax(, pbc)]], pbc True, False or "complete" ([bond rules](#bond-rules-vesta)), `bond_factor`, `bond_radius` |
 | cell | `cell`, `cell_width`, `cell_color`, `cell_radius` (ray-traced tube, Angstrom; None: as wide as the line) |
 | boundary | `boundary` (VESTA range), `boundary_bonds` (half, complete, none), `replicate` [na, nb, nc], `replicate_cell` (super, unit, all) |
-| elements | `surfaces` (polyhedra, isosurface and slice look by name), `visuals` (plugin visual elements), `vectors` (arrows of a vector property), `measurements` (distances, angles, dihedrals), `trajectory_width`, `trajectory_color_by`, `trajectory_colormap`, `trajectory_color_range`, `trajectory_time_range`, `trajectory_trail`, `trajectory_radius` (trajectory lines, below) |
+| elements | `surfaces` (polyhedra, isosurface and slice look by name), `visuals` (plugin visual elements), `vectors` (arrows of a vector property), `measurements` (distances, angles, dihedrals), `trajectory_width`, `trajectory_color_by`, `trajectory_colormap`, `trajectory_color_range`, `trajectory_time_range`, `trajectory_trail`, `trajectory_style`, `trajectory_radius` (trajectory lines, below) |
 | camera | `frame`, `direction`, `zoom`, `orthographic`, `camera` (an exact camera, as the GUI saves it) |
 | picture | `renderer`, `quality`, `size`, `ambient_occlusion`, `shadows`, `transparent_background`, `text`, `legend`, `type_legend`, `scale_bar`, `overlays` |
 
@@ -97,10 +97,20 @@ band works the same way: its images are frames, so after `load("neb/")` add
 
 `trajectory_color_by="Step Length"` shows how far a particle moved per traced step (hops stand
 out); a particle property such as `"Path Length"` or `"Net Displacement"` gives each line one
-color. `trajectory_radius` sets the tube radius of ray-traced lines in Angstrom (default: as wide
-as the line in the other renderers).
-In the GUI the View tab's Elements card has the same settings (Trajectories, Color map, Time
-window, Trail). Several color bars (a `ColorCoding` step and the trajectory map) stand side by side.
+color.
+
+`trajectory_style="tube"` draws the paths as thin shaded cylinders instead of lines, with round
+joints, the same solid tubes in the viewport, the OpenGL 1.x viewport, the ray tracer and SVG/PDF.
+`trajectory_radius` is their radius in Angstrom (default 0.08). With the default
+`trajectory_style="line"` it only sets the tube radius of ray-traced lines (default: as wide as
+the line in the other renderers).
+
+```python
+view(pipe, trajectory_style="tube", trajectory_radius=0.1, trajectory_color_by="Time")
+```
+
+In the GUI the View tab's Elements card has the same settings (Trajectories, Draw as, Tube radius,
+Color map, Time window, Trail). Several color bars (a `ColorCoding` step and the trajectory map) stand side by side.
 In the viewport a click on a color bar card folds the cards to one-line chips (a short ramp and the
 title) and a click on a chip unfolds them; the view cell records it as `colorbar_collapsed=True`,
 which code can set too. Pictures always draw the whole bars (`legend=False` leaves them out).

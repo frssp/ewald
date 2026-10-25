@@ -320,7 +320,7 @@ class Session:
             "shading", "trajectory_width", "radius_preset", "oxidation_states", "coordination", "vectors",
             "arrow_resolution", "visuals", "boundary", "boundary_bonds", "replicate", "replicate_cell",
             "trajectory_color_by", "trajectory_colormap", "trajectory_color_range", "trajectory_time_range",
-            "trajectory_trail", "trajectory_radius"}
+            "trajectory_trail", "trajectory_radius", "trajectory_style"}
         kw.update({k: v for k, v in self.render.items()
                    if k in allowed and k not in ("data", "filename", "text", "camera")})
         r = self.render  # keys written by the GUI's Render page

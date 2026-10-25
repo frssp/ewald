@@ -10,6 +10,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## Next
 
+- Trajectory tubes (`trajectory_style="tube"`): the vector renderer paints each piece at the depth
+  of its start (painter's algorithm), so a piece that ends inside an atom nearer the camera than its
+  start can cover that atom, as lines do there; sorting by the far end or splitting pieces at atom
+  surfaces would fix both. Tubes are one cylinder per traced step, so very long paths of many atoms
+  make large meshes in the viewport (no LOD for them yet).
 - Proteins: a proof-of-concept `ewald-protein` plugin (PDB/mmCIF via gemmi, simplified DSSP,
   cartoon as one `SurfaceMesh`) sits on the ewald-plugins branch `claude/project-thread-v41ert`
   without tests or an index entry; not planned until the owner asks. Open for it: 3-10/pi helices

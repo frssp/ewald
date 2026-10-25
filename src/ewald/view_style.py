@@ -23,7 +23,7 @@ def set_default_background(color: str):
 _THEMED = ("type_colors", "background", "cell_color", "radius_preset", "theme")
 # trajectory-line color map settings: the same names in ViewStyle, pipe.view and render()
 TRAJECTORY_KEYS = ("trajectory_color_by", "trajectory_colormap", "trajectory_color_range", "trajectory_time_range",
-                   "trajectory_trail", "trajectory_radius")
+                   "trajectory_trail", "trajectory_radius", "trajectory_style")
 
 
 @dataclass
@@ -56,7 +56,8 @@ class ViewStyle:
     trajectory_color_range: list | None = None        # [lo, hi] of the color map (either may be None)
     trajectory_time_range: list | None = None         # [t0, t1] Time window drawn
     trajectory_trail: object = None                   # True: up to the current frame; a number: that much Time before it
-    trajectory_radius: float | None = None            # ray-traced tube radius (A); None: from the width
+    trajectory_radius: float | None = None            # tube radius (A); None: 0.08 (tube) or from the width (line)
+    trajectory_style: str = "line"                    # 'line' or 'tube' (thin cylinders in every renderer)
     show_atoms: bool = True                           # the Particles element (False: a stick model)
     cell_radius: float | None = None                  # ray-traced cell tube radius (A); None: automatic
     surfaces: dict = field(default_factory=dict)      # data.surfaces look by name: {visible, color, transparency, edges}
@@ -105,7 +106,7 @@ class ViewStyle:
             kw["trajectory_width"] = self.trajectory_width
         for k in TRAJECTORY_KEYS:
             v = getattr(self, k)
-            if v is not None and v != "viridis":
+            if v is not None and v not in ("viridis", "line"):
                 kw[k] = list(v) if isinstance(v, (list, tuple)) else v
         if not self.show_atoms:
             kw["show_atoms"] = False

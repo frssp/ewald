@@ -257,6 +257,42 @@ def test_trajectory_lines_color_by_time_window_and_trail(rng):
     assert scene.legends == []
 
 
+def test_trajectory_lines_as_tubes(rng):
+    """style='tube' draws the lines as thin cylinders: one per piece in its color (the mean of its ends for
+    a color map), round at both ends of a strip and at bent joints, of ``radius`` (default 0.08)."""
+    from ewald.scene import Cylinders, TrajectoryLinesVis
+
+    pipe, _ = _traced(rng)
+    data = pipe.compute(5)
+    _, lines = _lines(data)
+    _, tubes = _lines(data, style="tube")
+    assert isinstance(tubes, Cylinders) and tubes.count == len(lines.segments()) == 8 * 11
+    seg = lines.segments()
+    np.testing.assert_allclose(tubes.start, lines.points[seg[:, 0]])
+    np.testing.assert_allclose(tubes.end, lines.points[seg[:, 1]])
+    np.testing.assert_allclose(tubes.rgb, lines.segment_colors())
+    assert np.all(tubes.radius == 0.08)
+    assert np.flatnonzero(tubes.start_cap == 2).tolist() == list(range(0, 88, 11))   # each strip's start
+    assert np.all(tubes.start_cap[tubes.start_cap != 2] == 0)
+    assert np.all(tubes.end_cap[10::11] == 2)                                        # and its end
+    _, lines = _lines(data, color_by="Time", trail=True)
+    _, tubes = _lines(data, color_by="Time", trail=True, style="tube", radius=0.2)
+    np.testing.assert_allclose(tubes.rgb, lines.segment_colors())
+    assert np.all(tubes.radius == 0.2) and tubes.count == len(lines.segments())
+    with pytest.raises(ValueError, match="line, tube"):
+        TrajectoryLinesVis(style="cylinder")
+
+
+def test_line_tubes_round_only_bent_joints():
+    """A straight run has no caps inside (no beads in the vector renderer); a bend gets a round one."""
+    from ewald.scene import Lines, line_tubes
+
+    pts = [[0, 0, 0], [1, 0, 0], [2, 0.1, 0], [3, 0.2, 0], [3, 1.2, 0]]
+    tubes = line_tubes(Lines(pts, [[0, 1, 2, 3, 4]], [(1, 0, 0)]), 0.1)
+    assert tubes.start_cap.tolist() == [2, 0, 0, 0] and tubes.end_cap.tolist() == [0, 0, 2, 2]
+    assert np.allclose(tubes.rgb, (1, 0, 0))
+
+
 def test_collect_trajectory_matches_by_index_when_the_first_frame_has_no_ids(cu_fcc):
     """A band whose first frame has no identifiers (a POSCAR) and later ones do (OUTCARs) is matched by index."""
     a = cu_fcc.copy()
@@ -336,6 +372,16 @@ def test_trajectory_view_settings_and_elements(rng):
     assert settings["trajectory_colormap"] == "magma" and settings["trajectory_trail"] is True
     pipe.view.update(**settings)
     assert pipe.view.trajectory_color_by == "Time"
+    # tubes: a view setting and an element attribute, carried by the GUI style and sessions
+    assert "trajectory_style" not in style.scene_kwargs()   # 'line' is the default
+    el.set(style="tube", radius=0.12)
+    assert pipe.view.trajectory_style == "tube" and "trajectory_style='tube'" in pipe.view.source()
+    kw = pipe.view.render_kwargs(pipe.compute(5), 5)
+    assert kw["trajectory_style"] == "tube" and kw["trajectory_radius"] == 0.12
+    with pytest.raises(ValueError):
+        pipe.view.trajectory_style = "ribbon"
+    style.apply_view(pipe.view)
+    assert style.scene_kwargs()["trajectory_style"] == "tube" and style.view_settings()["trajectory_style"] == "tube"
 
 
 def test_overlay_layout_stacks_color_bars():

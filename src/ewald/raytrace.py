@@ -108,7 +108,7 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
                     radius_preset="covalent", oxidation_states=None, coordination=None, vectors=None,
                     arrow_resolution=24, view_direction=None, trajectory_width=2.0, trajectory_color_by=None,
                     trajectory_colormap="viridis", trajectory_color_range=None, trajectory_time_range=None,
-                    trajectory_trail=None, trajectory_radius=None, visuals=None, frame=0, boundary=None, boundary_bonds="half", replicate=None, replicate_cell="super",
+                    trajectory_trail=None, trajectory_radius=None, trajectory_style="line", visuals=None, frame=0, boundary=None, boundary_bonds="half", replicate=None, replicate_cell="super",
                     show_atoms=True, surfaces=None, type_transparency=None, selection_color=None, measurements=None,
                     pixel=None, flat=False, **_ignored):
     """Build a Scene with the same colors/radii/bonds/arrows as :func:`ewald.render.build_scene`.
@@ -127,7 +127,7 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
                      trajectory_width=trajectory_width, trajectory_color_by=trajectory_color_by,
                      trajectory_colormap=trajectory_colormap, trajectory_color_range=trajectory_color_range,
                      trajectory_time_range=trajectory_time_range, trajectory_trail=trajectory_trail,
-                     trajectory_radius=trajectory_radius, show_cell=show_cell, cell_radius=cell_radius,
+                     trajectory_radius=trajectory_radius, trajectory_style=trajectory_style, show_cell=show_cell, cell_radius=cell_radius,
                      boundary=boundary, boundary_bonds=boundary_bonds, replicate=replicate,
                      replicate_cell=replicate_cell, show_atoms=show_atoms, surfaces=surfaces,
                      type_transparency=type_transparency, selection_color=selection_color,

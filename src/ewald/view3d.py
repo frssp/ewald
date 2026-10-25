@@ -172,8 +172,12 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        "paths up to it, a number only that much Time before it (a tail); None: the whole paths. Like every "
        "trajectory_* setting it only styles the lines of a GenerateTrajectoryLines step, which must be added first.",
        type=["boolean", "number", "null"]),
-    _s("trajectory_radius", None, "elements", "Tube radius in Angstrom of trajectory lines in ray-traced pictures; "
-       "None: as wide as the line in the other renderers.", type=["number", "null"]),
+    _s("trajectory_style", "line", "elements", "How trajectory lines are drawn: 'line' (lines trajectory_width "
+       "pixels wide) or 'tube' (thin shaded cylinders of trajectory_radius, the same in every renderer).",
+       choices=("line", "tube")),
+    _s("trajectory_radius", None, "elements", "Tube radius in Angstrom of trajectory lines: of every tube with "
+       "trajectory_style='tube' (None: 0.08), else only in ray-traced pictures (None: as wide as the line).",
+       type=["number", "null"]),
     # camera
     _s("frame", 0, "camera", "Trajectory frame shown.", type="integer"),
     _s("direction", "iso", "camera", "View direction, from the structure towards the camera: 'x', '-y', 'z', "
@@ -646,7 +650,7 @@ ELEMENTS = {
     "Trajectory lines": {"width": "trajectory_width", "color_by": "trajectory_color_by",
                          "colormap": "trajectory_colormap", "color_range": "trajectory_color_range",
                          "time_range": "trajectory_time_range", "trail": "trajectory_trail",
-                         "radius": "trajectory_radius"},
+                         "radius": "trajectory_radius", "style": "trajectory_style"},
     "Simulation cell": {"enabled": "cell", "color": "cell_color", "width": "cell_width", "radius": "cell_radius"},
     "Measurements": {"measurements": "measurements"},
 }
@@ -813,7 +817,7 @@ def view(pipe, tab: str | None = None, **settings) -> View:
 # view settings that only style what a step makes: setting -> (step class names, the step to add)
 _NEEDS_STEP = {name: (("GenerateTrajectoryLines",), "GenerateTrajectoryLines()")
                for name in ("trajectory_color_by", "trajectory_time_range", "trajectory_trail",
-                            "trajectory_color_range", "trajectory_radius")}
+                            "trajectory_color_range", "trajectory_radius", "trajectory_style")}
 
 
 def view_notes(v: View, modifiers=None) -> list[str]:

@@ -355,7 +355,7 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 type_colors: dict | None = None, type_radii: dict | None = None,
                 bond_pairs: list | None = None, trajectory_width: float = 2.0, trajectory_color_by=None,
                 trajectory_colormap: str = "viridis", trajectory_color_range=None, trajectory_time_range=None,
-                trajectory_trail=None, trajectory_radius=None, radius_preset: str = "covalent", oxidation_states: dict | None = None,
+                trajectory_trail=None, trajectory_radius=None, trajectory_style="line", radius_preset: str = "covalent", oxidation_states: dict | None = None,
                 coordination: dict | None = None, vectors=None, arrow_resolution: int | None = None,
                 visuals=None, frame: int = 0, boundary=None, boundary_bonds: str = "half",
                 replicate=None, replicate_cell: str = "super", show_atoms: bool = True, surfaces=None,
@@ -377,7 +377,9 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     ``trajectory_color_by`` ('Time', 'Frame', 'Step Length', a table column or a particle property) colors
     them with ``trajectory_colormap`` over ``trajectory_color_range``; ``trajectory_time_range`` ``(t0, t1)``
     and ``trajectory_trail`` (True: up to the current frame, a number: that much Time before it) cut them;
-    ``trajectory_radius`` sizes ray-traced tubes (see :class:`ewald.scene.TrajectoryLinesVis`).
+    ``trajectory_style`` 'tube' draws them as thin cylinders of ``trajectory_radius`` (Angstrom, default 0.08) in
+    every renderer; with 'line' ``trajectory_radius`` only sizes ray-traced tubes (see
+    :class:`ewald.scene.TrajectoryLinesVis`).
     ``vectors``: particle properties to draw as arrows on top of ``data.vectors`` (VectorVis), e.g.
     ``"Force"``, ``["Force", "Velocity"]`` or ``{"Force": {"scaling": 2, "color": "red"}}`` (see
     :class:`ewald.arrows.VectorStyle`). ``arrow_resolution``: sides per arrow (default from the
@@ -404,7 +406,7 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                   trajectory_width=trajectory_width, trajectory_color_by=trajectory_color_by,
                   trajectory_colormap=trajectory_colormap, trajectory_color_range=trajectory_color_range,
                   trajectory_time_range=trajectory_time_range, trajectory_trail=trajectory_trail,
-                  trajectory_radius=trajectory_radius, show_cell=show_cell, cell_width=cell_width,
+                  trajectory_radius=trajectory_radius, trajectory_style=trajectory_style, show_cell=show_cell, cell_width=cell_width,
                   boundary=boundary, boundary_bonds=boundary_bonds, replicate=replicate,
                   replicate_cell=replicate_cell, show_atoms=show_atoms, surfaces=surfaces, cell_radius=cell_radius,
                   type_transparency=type_transparency, selection_color=selection_color, measurements=measurements)

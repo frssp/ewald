@@ -307,7 +307,7 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                   scale_bar=None, dpi=None, radius_preset="covalent", oxidation_states=None, coordination=None,
                   vectors=None, trajectory_width=2.0, trajectory_color_by=None, trajectory_colormap="viridis",
                   trajectory_color_range=None, trajectory_time_range=None, trajectory_trail=None,
-                  trajectory_radius=None, visuals=None, frame=0, overlays=None, boundary=None,
+                  trajectory_radius=None, trajectory_style="line", visuals=None, frame=0, overlays=None, boundary=None,
                   boundary_bonds="half", replicate=None, replicate_cell="super", show_atoms=True, surfaces=None,
                   type_transparency=None, selection_color=None, light=None, measurements=None, **_ignored):
     """Draw ``data`` as a vector figure and save it (format from the extension).
@@ -346,7 +346,7 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                      trajectory_width=trajectory_width, trajectory_color_by=trajectory_color_by,
                      trajectory_colormap=trajectory_colormap, trajectory_color_range=trajectory_color_range,
                      trajectory_time_range=trajectory_time_range, trajectory_trail=trajectory_trail,
-                     trajectory_radius=trajectory_radius, show_cell=show_cell, cell_color=cell_color,
+                     trajectory_radius=trajectory_radius, trajectory_style=trajectory_style, show_cell=show_cell, cell_color=cell_color,
                      cell_width=cell_width, boundary=boundary, boundary_bonds=boundary_bonds,
                      replicate=replicate, replicate_cell=replicate_cell, show_atoms=show_atoms,
                      surfaces=surfaces, type_transparency=type_transparency, selection_color=selection_color,
