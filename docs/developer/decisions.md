@@ -767,6 +767,20 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   the tag; every view cell its own tab automatically.
 - **Landed:** public PR #62.
 
+### D60. Simulation codes as a registry (2026-10-25)
+
+- **Decision:** everything EWALD knows about one simulation program lives in one
+  `SimulationCode` entry of `ewald.codes` (files, folder markers, formats, `codes.<name>.*`
+  settings, hooks for run info, checks, workflow folders, thermo files and the open prompt).
+  VASP and LAMMPS are built-in entries, other codes come as plugins (`@simulation_code`), and
+  Preferences has one Codes page drawn from the registry instead of LAMMPS rows under General.
+- **Why:** the owner: "Vasp lammps가 중요하긴 한데 지금 고정된 형태로 박혀있어서 좀 거슬리네
+  extensible workbench", and picked "전부 registry로" on the decision card so that every
+  VASP/LAMMPS special case dispatches through the registry.
+- **Considered:** moving only the settings and formats to the registry and leaving run info,
+  workflow detection and thermo files hard-coded for VASP and LAMMPS.
+- **Landed:** public PR #64.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
