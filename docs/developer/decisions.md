@@ -797,6 +797,33 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   workflow detection and thermo files hard-coded for VASP and LAMMPS.
 - **Landed:** public PR #64.
 
+### D62. The 3D view's controls float over it as chips that fold (2026-10-25)
+
+- **Decision:** the view bar above the 3D view and the tool rail beside it are replaced by chips
+  floating over the view (directions and rotations top left; Ortho, Style and Fit top right;
+  tools on the left), slightly see-through. As the view gets small they fold into menus in a fixed
+  order (a\*/b\*/c\* and rotations, then the directions and Style, then rotations and Ortho
+  into *⋯*; the last tools into a *⋯* on the tool chip); overlays in the view start below them.
+  Over `ssh -X` the OpenGL 1.x viewport keeps the same chips around its native GL window.
+- **Why:** the owner reported that a small viewport (split panes, the new Structure tabs) made the
+  a/b/c buttons overlap ("뷰 포트 창이 작아지면 상단 abc 등이 겹치고 이상해져 뷰포트 페널 전체
+  리디자인") and picked "B. Floating HUD" on the decision card.
+- **Considered:** A, the bar and rail kept with the same folding (recommended, since it needs no
+  widgets over the GL view); C, one strip with the tools merged into the top bar.
+- **Landed:** public PR #63.
+
+### D63. A frame's timestep and time sit in the timeline, not in the 3D view (2026-10-25)
+
+- **Decision:** the "Frame N timestep T" text in the 3D view's top left corner is gone; the
+  timeline shows the frame's "Timestep" and "Time" beside the frame number, and nothing for a
+  single frame. The `viewport.show_overlay` preference now switches that label.
+- **Why:** on the floating chips (D62) the owner said the caption "Frame timestep 글자도 안
+  이쁘네. 위치를 바꾸거나 다른 곳에 폼을 갖춰 넣거나 대안을 생각해봐" and picked "B. timeline
+  안으로" on the decision card.
+- **Considered:** A, a chip at the bottom right of the view; C, a pill at the top center; D, the
+  panel header beside "Structure".
+- **Landed:** public PR #63.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

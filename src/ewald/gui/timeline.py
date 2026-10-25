@@ -63,6 +63,11 @@ class Timeline(QtWidgets.QWidget):
         self.sel.clicked.connect(lambda: self.set_selection([], emit=True))
         self.spin = QtWidgets.QSpinBox(toolTip="Current frame")
         self.count = QtWidgets.QLabel("/ 0", objectName="muted")
+        # the frame's timestep and time beside its number (D63): the 3D view carries no frame text
+        self.info = QtWidgets.QLabel(objectName="timelineInfo", toolTip="Timestep and time of this frame, "
+                                     "from the file (time in the file's own unit)")
+        self.info.setTextFormat(QtCore.Qt.RichText)
+        self.show_info = True
         self.fps = QtWidgets.QSpinBox(suffix=" fps", minimum=1, maximum=120, value=10, toolTip="Playback speed")
         self.stride = QtWidgets.QSpinBox(prefix="every ", minimum=1, maximum=10000, value=1,
                                          toolTip="Step this many frames")
@@ -70,7 +75,7 @@ class Timeline(QtWidgets.QWidget):
             box.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Fixed)
         self.loop = QtWidgets.QCheckBox("Loop", checked=True)
         for w in (self.first, self.prev, self.play, self.next, self.last, self.slider, self.spin, self.count,
-                  self.sel, self.fps, self.stride, self.loop):
+                  self.info, self.sel, self.fps, self.stride, self.loop):
             lay.addWidget(w)
         lay.setStretch(5, 1)
         self.prev.clicked.connect(lambda: self._set(max(0, self.frame - self.stride.value())))
@@ -98,7 +103,24 @@ class Timeline(QtWidgets.QWidget):
             w.blockSignals(False)
         self.count.setText(f"/ {max(0, n - 1)}")
         self.setEnabled(n > 1)
+        self.info.setVisible(n > 1 and self.show_info and bool(self.info.text()))
         self.set_selection(self.selection if keep_selection else [])
+
+    def set_info(self, attributes: dict | None):
+        """Show the frame's "Timestep" and "Time" attributes beside its number; nothing for a single frame,
+        a frame without them, or with ``show_info`` off (Preferences › 3D view › Show timestep and time)."""
+        def number(v):
+            return f'<span style="color:{TOKENS["text"]}">{v:g}</span>' if isinstance(v, float) else \
+                f'<span style="color:{TOKENS["text"]}">{v}</span>'
+
+        attributes = attributes or {}
+        parts = []
+        if "Timestep" in attributes:
+            parts.append(f"step {number(int(attributes['Timestep']))}")
+        if "Time" in attributes:
+            parts.append(f"time {number(round(float(attributes['Time']), 6))}")
+        self.info.setText(" · ".join(parts))
+        self.info.setVisible(bool(parts) and self.show_info and self.slider.maximum() > 0)
 
     @property
     def selection(self) -> list[int]:

@@ -313,6 +313,8 @@ GUI
   Insert › Step for the loaded data, view-along buttons hidden without a cell, the timeline
   folded for a single structure.
 - Shortcuts for the viewport tools (orbit, pick, distance, angle, bond) and view-along axes.
+- Floating view chips (D62): the camera fit (`zoom_fit`) still uses the whole view, so in a small
+  view a structure can sit under a chip; fit to the area the chips leave.
 - Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
   screen edges). The `light` setting moves the key light; a fill/rim light and
   shadows in the OpenGL view are not settable.
@@ -645,6 +647,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- The floating view chips (D62) on Windows at 200 % scaling and on macOS: the see-through chips
+  composite over the VTK view without flicker, and fold before they overlap when the Structure
+  view is split or narrow.
 - ewald-optimade against the real servers (the container reaches none of them): `python -m
   ewald_optimade search Si --db <name>` for every name in `python -m ewald_optimade databases`,
   then `load("optimade:mp/mp-149")`, `load("optimade:cod/1000041")` and the OPTIMADE side bar,
