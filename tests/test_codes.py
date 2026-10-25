@@ -70,16 +70,15 @@ def test_lammps_dump_with_any_name_is_found_by_content(tmp_path):
 
 
 def test_lammps_settings_live_on_the_codes_page_and_old_keys_move(tmp_path):
-    assert settings.option("codes.lammps.type_map").page == "Codes"
-    assert "general.lammps_type_map" not in settings.OPTION
+    assert settings.option("codes.lammps.type_prompt").page == "Codes"
+    assert "general.lammps_type_prompt" not in settings.OPTION and settings.option("codes.lammps.type_map") is None
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({"general.lammps_type_map": "1=Cu,2=Zr", "general.lammps_type_prompt": "never"}),
                     encoding="utf-8")
-    s = settings.load(path)
-    assert s["codes.lammps.type_map"] == "1=Cu,2=Zr" and s["codes.lammps.type_prompt"] == "never"
+    s = settings.load(path)          # the old default map is dropped: it fits almost no run
+    assert s["codes.lammps.type_prompt"] == "never"
     s.save()
-    assert json.loads(path.read_text(encoding="utf-8")) == {"codes.lammps.type_map": "1=Cu,2=Zr",
-                                                            "codes.lammps.type_prompt": "never"}
+    assert json.loads(path.read_text(encoding="utf-8")) == {"codes.lammps.type_prompt": "never"}
     with pytest.raises(ValueError):
         s["codes.lammps.type_prompt"] = "sometimes"
 
@@ -87,15 +86,16 @@ def test_lammps_settings_live_on_the_codes_page_and_old_keys_move(tmp_path):
 def test_lammps_open_options_ask_for_a_type_map(tmp_path):
     dump = tmp_path / "dump.lammpstrj"
     dump.write_text("ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n0\n", encoding="utf-8")
-    s = settings.Settings({"codes.lammps.type_map": "1=Cu"}, tmp_path / "s.json")
+    s = settings.Settings({}, tmp_path / "s.json")
     hook = codes.get("lammps").hook("open_options")
     asked = []
     assert hook(dump, s, lambda *a: asked.append(a) or "1=Cu, 2=Zr") == {"type_map": {"1": "Cu", "2": "Zr"}}
-    assert asked[0][2] == "1=Cu"                        # the default pre-fills the prompt
+    assert asked[0][2] == ""                            # the prompt starts empty
     assert hook(dump, s, lambda *a: None) == {}         # cancelled
+    assert hook(dump, s, lambda *a: "  ") == {}         # left empty: numeric types
     s["codes.lammps.type_prompt"] = "never"
-    assert hook(dump, s, lambda *a: pytest.fail("asked")) == {"type_map": {"1": "Cu"}}
-    assert hook(tmp_path / "POSCAR", s, lambda *a: pytest.fail("asked")) == {}
+    assert hook(dump, s, lambda *a: pytest.fail("asked")) == {}
+    assert hook(tmp_path / "POSCAR", settings.Settings({}, tmp_path / "t.json"), lambda *a: pytest.fail("asked")) == {}
     with pytest.raises(ValueError, match="type=element"):
         codes.parse_type_map("1Cu")
 

@@ -1532,7 +1532,7 @@ def test_preferences_codes_page_is_drawn_from_the_registry(app, tmp_path):
         dlg = PreferencesDialog(settings.Settings({}, tmp_path / "s.json"), page="Codes")
         titles = [c[0].text() for c in dlg.code_cards]
         assert titles[:2] == ["VASP", "LAMMPS"] and "TOY CODE" in titles
-        assert {"codes.lammps.type_map", "codes.toycode.flavour"} <= set(dlg.editors)
+        assert {"codes.lammps.type_prompt", "codes.toycode.flavour"} <= set(dlg.editors)
         dlg.set_value("codes.toycode.flavour", "spicy")
         dlg.apply()
         assert settings.load(tmp_path / "s.json")["codes.toycode.flavour"] == "spicy"

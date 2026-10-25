@@ -22,7 +22,7 @@ from .theme import TOKENS
 
 _CHOICE_LABELS = {"auto": "Auto", "coarse": "Always coarse", "full": "Always full", "ortho": "Orthographic", "persp": "Perspective", "raytrace": "Ray tracing (AO + shadows)",
                   "opengl": "OpenGL (fast preview)", "iso": "Isometric", "x": "Along +x", "y": "Along +y",
-                  "z": "Along +z (top)", "front": "Front (−y)", "ask": "Ask when opening", "never": "Use default map",
+                  "z": "Along +z (top)", "front": "Front (−y)", "ask": "Ask when opening", "never": "Never",
                   "covalent": "Covalent", "vdW": "van der Waals", "white": "White", "black": "Black",
                   "transparent": "Transparent", "viewport": "Same as viewport",
                   "claude-opus-5-5": "Claude Opus 5.5", "claude-sonnet-5-5": "Claude Sonnet 5.5 (faster)",

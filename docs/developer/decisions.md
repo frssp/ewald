@@ -777,6 +777,8 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Why:** the owner: "Vasp lammps가 중요하긴 한데 지금 고정된 형태로 박혀있어서 좀 거슬리네
   extensible workbench", and picked "전부 registry로" on the decision card so that every
   VASP/LAMMPS special case dispatches through the registry.
+  The LAMMPS default type map setting was dropped on review ("Lammps default type map은 거의
+  무의미 할 듯"): the prompt starts empty and only whether to ask stays a setting.
 - **Considered:** moving only the settings and formats to the registry and leaving run info,
   workflow detection and thermo files hard-coded for VASP and LAMMPS.
 - **Landed:** public PR #64.

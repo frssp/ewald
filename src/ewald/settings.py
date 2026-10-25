@@ -442,10 +442,10 @@ def _valid(opt: Option, value):
 # Options that no longer exist, dropped quietly from older settings files: the OVITO-like
 # "classic" window layout was removed, so the notebook layout is the only one.
 RETIRED = {"general.layout", "llm.user_id", "llm.system_name",   # these two: gateway headers, now llm.headers
-           "plots.font_size"}   # now font.size of the plot style file (ewald.plotstyle)
+           "plots.font_size",   # now font.size of the plot style file (ewald.plotstyle)
+           "general.lammps_type_map"}   # a default LAMMPS type map fits almost no run (2026-10-25)
 # Keys renamed since: old -> new (LAMMPS settings moved to the Codes page, 2026-10-25)
-RENAMED_KEYS = {"general.lammps_type_prompt": "codes.lammps.type_prompt",
-                "general.lammps_type_map": "codes.lammps.type_map"}
+RENAMED_KEYS = {"general.lammps_type_prompt": "codes.lammps.type_prompt"}
 # Values renamed since: key -> {old: new}
 RENAMED_VALUES = {"general.startup_workspace": {"Analyze": "Notebook"}}
 

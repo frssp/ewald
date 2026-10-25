@@ -438,7 +438,6 @@ One section per simulation code (`ewald.codes`; plugins add codes with `@simulat
 | Key | Label | Default |
 |---|---|---|
 | `codes.lammps.type_prompt` | Type names | `'ask'` |
-| `codes.lammps.type_map` | Default type map | `''` |
 
 ### 3D view
 

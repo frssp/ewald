@@ -18,7 +18,7 @@ A code bundles
   next to a file (or in a folder) says the run is this code's (``INCAR``, ``log.lammps``);
 - ``formats``: the reader names of its file formats (shown in Preferences › Codes);
 - ``options``: :class:`ewald.settings.Option` rows under ``codes.<name>.*``, which Preferences ›
-  Codes shows and scripts read with ``settings.load()["codes.lammps.type_map"]``;
+  Codes shows and scripts read with ``settings.load()["codes.lammps.type_prompt"]``;
 - hooks, each a callable or a lazy ``"module:function"`` string: ``run_info(info, path)`` fills
   :class:`ewald.runinfo.RunInfo` from the input files, ``check(check, info, path)`` adds
   :class:`ewald.runinfo.Finding`\\ s, ``frame_steps(info, path, steps)`` returns MD steps between
@@ -185,14 +185,10 @@ def _lammps_open_options(path, settings, ask) -> dict | None:
 
     if not is_lammps_dump(path):
         return {}
-    default = settings["codes.lammps.type_map"]
-    if settings["codes.lammps.type_prompt"] == "ask":
-        text = ask("LAMMPS types", "Optional type → element map (e.g. 1=Cu,2=Zr):", default)
-        if text is None:
-            return {}
-    else:
-        text = default
-    return {"type_map": parse_type_map(text)} if text.strip() else {}
+    if settings["codes.lammps.type_prompt"] != "ask":
+        return {}
+    text = ask("LAMMPS types", "Optional type → element map (e.g. 1=Cu,2=Zr):", "")
+    return {"type_map": parse_type_map(text)} if text and text.strip() else {}
 
 
 def _lammps_detect(path) -> bool:
@@ -223,8 +219,8 @@ def builtin_codes() -> dict[str, SimulationCode]:
         markers=("log.lammps",),
         formats=("lammps-dump", "lammps-data", "lammps-data-ase"),
         options=(Option("codes.lammps.type_prompt", "ask", "Type names",
-                        "Ask for a type → element map when opening a LAMMPS dump.", choices=("ask", "never")),
-                 Option("codes.lammps.type_map", "", "Default type map", "e.g. 1=Cu,2=Zr; pre-fills the prompt.")),
+                        "Ask for a type → element map when opening a LAMMPS dump (Never: types stay "
+                        "numbers unless the dump names elements).", choices=("ask", "never")),),
         thermo={"lammps-dump": ("log.lammps",)}, plugin="lammps",
         run_info="ewald.runinfo:_lammps_info", check="ewald.runinfo:_check_lammps",
         frame_steps="ewald.runinfo:_lammps_frame_steps", workflow_step="ewald.workflow_folder:_lammps_step",
