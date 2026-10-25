@@ -733,6 +733,20 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   leaving it under the cells, an inserter between cells, and both.
 - **Landed:** public PR #60.
 
+### D58. VESTA-style bond rules with a PBC switch per rule (2026-10-25)
+
+- **Decision:** bond rules A-B, A-* and *-* combine by specificity: the most specific rules for
+  a pair decide it (A-B before A-* before *-*, whatever their order; dmax 0 turns a pair off).
+  Each rule has a PBC switch; off keeps that rule's bonds inside the cell, none through a
+  periodic boundary. Rows without the switch keep their meaning.
+- **Why:** the owner asked for "vesta type bond control, A-B / A-* / *-* 여기에 pbc 고려
+  옵션도 넣고" and, asked what the PBC option should mean, picked "규칙별 PBC on/off" on the
+  decision card.
+- **Considered:** VESTA's per-rule boundary mode (do not search beyond the boundary, add the
+  partner atoms, add whole molecules), alone or next to the switch; the global Boundary setting
+  (half, complete, none) already covers part of it. Left in docs/todo.md.
+- **Landed:** public PR #61.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

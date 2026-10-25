@@ -8,8 +8,6 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
-- VESTA-style bond rules: A-B before A-* before *-*, a PBC option per rule (this PR).
-
 ## Next
 
 - Long cell outputs: whether a cell's output is scrolled or shown whole is kept per window only;
