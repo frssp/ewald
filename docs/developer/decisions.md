@@ -754,6 +754,19 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   per rule is left in docs/todo.md.
 - **Landed:** public PR #61.
 
+### D59. View tabs through `view(pipe, tab=...)` (2026-10-25)
+
+- **Decision:** repeated 3D views open as more Structure tabs through a keyword, `view(pipe,
+  tab="Top", ...)`: each named tab is the main view with its own settings on top, the same name
+  updates the same tab, and without `tab` the main view changes as before. Window › New
+  structure tab and the tab menu write such a cell, like `show(..., panel=)` for plots.
+- **Why:** the owner asked whether several `view()` calls could open new viewport tabs, chosen by
+  "데코레이터나 옵션" (replace the viewport or a new tab), and picked "tab= keyword + 메뉴" on the
+  decision card.
+- **Considered:** a `# %% [new tab]` cell tag (the tab named after the cell); both the keyword and
+  the tag; every view cell its own tab automatically.
+- **Landed:** public PR #62.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
