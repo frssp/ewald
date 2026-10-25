@@ -1425,7 +1425,7 @@ def test_preferences_dialog_edit_search_restore(app, tmp_path):
     visible = {dlg.pages.item(i).text() for i in range(dlg.pages.count()) if not dlg.pages.item(i).isHidden()}
     assert visible == {"Atoms & bonds"}
     dlg._search("")
-    dlg.pages.setCurrentRow(1)                                # Viewports
+    dlg.show_page("3D view")
     dlg.restore_page()
     assert dlg.work.is_default("viewport.rotation_step") and not dlg.work.is_default("compute.device")
 
@@ -1517,6 +1517,31 @@ def test_preferences_layout_covers_every_option_once():
     for name in PAGES:
         for _title, ks in LAYOUT[name][1]:
             assert all(__import__("ewald.settings").settings.OPTION[k].page == name for k in ks)
+
+
+def test_preferences_codes_page_is_drawn_from_the_registry(app, tmp_path):
+    """One section per simulation code (VASP, LAMMPS, a plugin's), each with its own options."""
+    from ewald import plugins, settings
+    from ewald.codes import SimulationCode
+    from ewald.gui.preferences import PreferencesDialog
+
+    plugins.register_simulation_code(SimulationCode(
+        "toycode", "Toy code", files=("*.toy",),
+        options=[settings.Option("codes.toycode.flavour", "plain", "Flavour", choices=("plain", "spicy"))]))
+    try:
+        dlg = PreferencesDialog(settings.Settings({}, tmp_path / "s.json"), page="Codes")
+        titles = [c[0].text() for c in dlg.code_cards]
+        assert titles[:2] == ["VASP", "LAMMPS"] and "TOY CODE" in titles
+        assert {"codes.lammps.type_prompt", "codes.toycode.flavour"} <= set(dlg.editors)
+        dlg.set_value("codes.toycode.flavour", "spicy")
+        dlg.apply()
+        assert settings.load(tmp_path / "s.json")["codes.toycode.flavour"] == "spicy"
+        dlg.search.setText("lammpstrj")
+        visible = [c[0].text() for c in dlg.code_cards if not c[1].isHidden()]
+        assert visible == ["LAMMPS"]
+        dlg.close()
+    finally:
+        plugins._registry.codes.pop("toycode", None)
 
 
 def test_remote_file_dialog_browse_and_open(app, server):
@@ -4287,7 +4312,7 @@ def test_preferences_pages_after_menu_review(app):
     from ewald import settings
     from ewald.gui.preferences import LAYOUT, PreferencesDialog
 
-    assert settings.PAGES == ("General", "3D view", "Atoms & bonds", "Rendering", "Plots", "Notebooks",
+    assert settings.PAGES == ("General", "Codes", "3D view", "Atoms & bonds", "Rendering", "Plots", "Notebooks",
                               "Compute", "Python", "AI", "Plugins")
     assert settings.OPTION["python.plot_style"].page == "Plots" == settings.OPTION["plots.size"].page
     assert settings.OPTION["python.run_notebooks"].page == "Notebooks"

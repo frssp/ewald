@@ -22,6 +22,8 @@ or tails read):
   (relax, md, static, phonon, neb) comes from the INCAR (:func:`ewald.runinfo.run_info`), the
   result opened is the XDATCAR for MD, else vasprun.xml, OUTCAR, XDATCAR, CONTCAR, POSCAR;
 - LAMMPS: dump files (``ITEM: TIMESTEP``) with or without a ``log.lammps``;
+- other codes: whatever a plugin's :class:`ewald.codes.SimulationCode` ``workflow_step`` recognizes
+  (VASP and LAMMPS above are the built-in entries of that registry);
 - restarts: a folder whose sub-folders are all calculations named ``run1, run2``, ``restart_1``,
   ``1, 2, 3``, ``r0, r1`` ... is one step with ``runs`` set and the segments as its sub-steps;
 - any other folder with calculations below it is a group step; hidden folders are skipped.
@@ -389,8 +391,13 @@ def _lammps_step(name: str, folder: str, entries: dict) -> WorkflowStep | None:
 
 
 def _calculation(name: str, folder: str, entries: dict) -> WorkflowStep | None:
-    """The step a folder is when it holds a calculation itself, else None."""
-    for kind in (_neb_step, _phonopy_step, _vasp_step, _lammps_step):
+    """The step a folder is when it holds a calculation itself, else None: NEB and phonopy
+    folders first, then each simulation code's ``workflow_step`` (:mod:`ewald.codes`)."""
+    from . import codes
+
+    kinds = [_neb_step, _phonopy_step]
+    kinds += [h for h in (c.hook("workflow_step") for c in codes.codes().values()) if h is not None]
+    for kind in kinds:
         step = kind(name, folder, entries)
         if step is not None:
             return step

@@ -311,6 +311,12 @@ def _builtin_panels() -> dict:
                                      "built-in")}
 
 
+def _builtin_codes() -> dict:
+    from .codes import builtin_codes   # hooks are lazy "module:function" strings
+
+    return builtin_codes()
+
+
 def _builtin_ai_providers() -> dict:
     from .llm.providers import BUILTIN   # no SDK import
 

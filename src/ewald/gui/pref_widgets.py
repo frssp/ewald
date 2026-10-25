@@ -7,7 +7,7 @@ from .theme import TOKENS
 
 # Preferences page -> icon in icons.PATHS: the pages share their icons with the activity bar and
 # the menus (Notebooks, AI, Plugins look the same everywhere)
-PAGE_ICONS = {"General": "sliders", "3D view": "view3d", "Atoms & bonds": "atom", "Rendering": "render",
+PAGE_ICONS = {"General": "sliders", "Codes": "codes", "3D view": "view3d", "Atoms & bonds": "atom", "Rendering": "render",
               "Plots": "chart", "Notebooks": "notebook", "Compute": "chip", "Python": "console", "AI": "ai",
               "Plugins": "plugins"}
 
