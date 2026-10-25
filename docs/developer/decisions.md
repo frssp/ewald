@@ -166,6 +166,19 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   only the contrast between the code box and the cell.
 - **Landed:** public PR #38.
 
+### D60. Structure databases as two plugins: OPTIMADE and Materials Project (2026-10-25)
+
+- **Decision:** outside structure databases come as first-party plugins in frssp/ewald-plugins
+  over the reader `schemes` hook: `ewald-optimade` (every OPTIMADE database, no key:
+  `load("optimade:mp/mp-149")`, `search()`, a search side bar, a read-only AI search tool) and
+  `ewald-mp` (Materials Project through mp-api with the user's key in the keychain, for what
+  OPTIMADE does not give: DOS, bands, charge densities, relaxation trajectories; `mp:`).
+- **Why:** the owner asked "Pymatgen mp api plugin? 외부 리포 프러그인 optimade 등" and picked
+  "OPTIMADE + MP 둘 다 (2 plugins)" on the decision card, noting "Mp 같은 건 api key가 필요래".
+- **Considered:** OPTIMADE only (Materials Project structures through its OPTIMADE endpoint);
+  Materials Project only through mp-api.
+- **Landed:** public PR #65; ewald-optimade 0.1.0 in frssp/ewald-plugins PR #22.
+
 ## Quality and platforms
 
 ### D7. Quality for files, speed for the screen (2026-10-19)
