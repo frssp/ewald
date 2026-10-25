@@ -615,3 +615,50 @@ def test_colorbar_collapsed_is_a_view_setting_pictures_ignore(srtio3, tmp_path):
     assert session.style["colorbar_collapsed"] is True and "colorbar_collapsed" not in session.render_kwargs()
     st.apply_view(View(), ["Sr", "Ti", "O"])
     assert st.colorbar_collapsed is False
+
+
+def test_view_tabs_take_the_main_view_and_keep_their_own_settings(srtio3):
+    """view(pipe, tab="Top", ...) is another view of the same pipeline: the main view's settings, with
+    the tab's own on top; changing the main view changes the tab where the tab says nothing."""
+    view(srtio3, style="Points", colors={"O": "red"}, direction="x")
+    top = view(srtio3, tab="Top", direction="z")
+    assert srtio3.views["Top"] is top and srtio3.views.names() == ["Top"] and "Top" in srtio3.views
+    assert top.changed() == {"direction": "z"} and top.tab == "Top"
+    assert (top.style, top.colors, top.direction, top.radius_scale) == ("Points", {"O": "red"}, "z", 0.25)
+    assert srtio3.view.direction == "x"                               # the main view is untouched
+    srtio3.view.color("O", "blue")
+    assert top.colors == {"O": "blue"}                                # follows the main view
+    assert view(srtio3, tab="Top", style="Ball & stick") is top       # the same tab again
+    assert top.changed() == {"style": "Ball & stick", "direction": "z"} and top.radius_scale == 0.5   # a default the main view does not have
+    top.camera = {"position": (0, 0, 10), "focal_point": (0, 0, 0), "up": (0, 1, 0)}
+    assert "direction" not in top.changed() and top.camera is not None
+    view(srtio3, tab="Top", direction="z", style=None)                 # None follows the main view again
+    assert top.changed() == {"direction": "z"} and top.style == "Points" and top.camera is None
+    assert top.source() == "view(pipe, tab='Top', direction='z')" and repr(top) == "View(tab='Top', direction='z')"
+    assert top.render_kwargs()["direction"] == "z" and top.copy().tab == "Top"
+    with pytest.raises(KeyError, match="no view tab 'Side'"):
+        srtio3.views["Side"]
+    with pytest.raises(ValueError):
+        view(srtio3, tab=" ")
+    srtio3.views.remove("Top")
+    assert len(srtio3.views) == 0
+
+
+def test_view_tab_pictures_and_cells(srtio3):
+    from ewald.views import snapshot
+
+    view(srtio3, tab="Top", direction="z", zoom=1.5)
+    snap = snapshot(srtio3, tab="Top")
+    kw = snap._view_kwargs(srtio3.compute(0))
+    assert kw["direction"] == "z" and kw["zoom"] == 1.5
+    assert snapshot(srtio3)._view_kwargs(srtio3.compute(0)).get("direction") != "z"
+    assert srtio3.views["Top"].snapshot().view is srtio3.views["Top"]
+    assert view_source("pipe", tab="Top", direction="z") == "view(pipe, tab='Top', direction='z')"
+    assert view_cell_args("view(pipe, tab='Top', direction='z')") == {"source": "pipe", "tab": "Top", "direction": "z"}
+    assert view_cell_args("view(pipe, tab=3)") is None
+
+
+def test_pipe_render_draws_a_view_tab(srtio3):
+    view(srtio3, tab="Top", direction="z")
+    img = srtio3.render(tab="Top", size=(60, 40), renderer="raytrace")
+    assert img.shape == (40, 60, 3)

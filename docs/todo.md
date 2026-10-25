@@ -190,6 +190,12 @@ GUI
   keeps its own per-notebook state in the `.py` header next to the view cell's picture settings
   (one place for both); in a kernel notebook a viewport edit reaches the kernel's `pipe.view`
   only when the view cell runs again.
+- View tabs (`view(pipe, tab=...)`, more Structure tabs): picks, mouse measurements, bond editing
+  and linked plot selections work in the main Structure view only (a tab's pick shows its label);
+  the View tab cards, the Render page and Insert › Snapshot follow the main view; a saved window
+  layout forgets where a structure tab was (it opens next to the Structure tab again); a tab's
+  camera reaches its cell only through its right click › Write view to notebook; tabs follow the
+  one timeline (a tab's `frame` setting only affects `pipe.render(tab=...)` and snapshots).
 - Atom labels (`view(pipe, labels=...)`): not drawn on the OpenGL 1.x viewport (`ssh -X`), not on
   boundary or replicated images, and not hidden behind nearer atoms (they always show, as in VESTA).
 - Render frame (the picture's region on the 3D view, `view(pipe, region=...)`): not drawn on

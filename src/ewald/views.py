@@ -438,8 +438,9 @@ class Snapshot:
     cell (and in Jupyter); :meth:`save` writes it, :meth:`image` returns the RGB array.
     ``kwargs`` go to :func:`ewald.render.render` (``camera=``, ``size=``, style keywords)."""
 
-    def __init__(self, source, frame: int = 0, **kwargs):
+    def __init__(self, source, frame: int = 0, view=None, **kwargs):
         self.source, self.frame, self.kwargs = source, frame, kwargs
+        self.view = view   # the View to draw with (a view tab); default: the source's pipe.view
 
     def _data(self):
         return self.source.compute(self.frame) if hasattr(self.source, "compute") else self.source
@@ -459,7 +460,7 @@ class Snapshot:
 
     def _view_kwargs(self, data) -> dict:
         """The pipeline's :attr:`~ewald.pipeline.Pipeline.view` settings (style, colors, bonds, camera, ...)."""
-        v = getattr(self.source, "view", None)
+        v = self.view if self.view is not None else getattr(self.source, "view", None)
         return v.render_kwargs(data, self.frame) if v is not None else {}
 
     def save(self, filename, **kwargs):
@@ -496,16 +497,16 @@ class Snapshot:
         return f"<Snapshot frame {self.frame}>"
 
 
-def snapshot(source, frame: int | None = None, **kwargs) -> Snapshot:
+def snapshot(source, frame: int | None = None, tab: str | None = None, **kwargs) -> Snapshot:
     """A picture of ``source`` (a Pipeline or DataCollection) at ``frame`` (default: the view's)
-    drawn with the pipeline's ``view`` settings; ``camera=``, ``size=`` and the other keywords of
-    :func:`ewald.render.render` override them. The last line of a cell shows it. Insert › 3D
-    snapshot in the GUI writes one for the current view."""
+    drawn with the pipeline's ``view`` settings (or those of its view tab ``tab``); ``camera=``,
+    ``size=`` and the other keywords of :func:`ewald.render.render` override them. The last line of
+    a cell shows it. Insert › 3D snapshot in the GUI writes one for the current view."""
     kwargs.setdefault("size", (480, 360))
+    v = source.views[tab] if tab is not None else getattr(source, "view", None)
     if frame is None:
-        v = getattr(source, "view", None)
         frame = v.frame if v is not None else 0
-    return Snapshot(source, frame, **kwargs)
+    return Snapshot(source, frame, view=v if tab is not None else None, **kwargs)
 
 
 def write_csv(path, columns: dict):

@@ -6220,3 +6220,51 @@ def test_clicking_the_color_bars_folds_them_and_writes_the_view(app, pipe):
     assert w.style.colorbar_collapsed is False
     assert vp._colorbar_box[3] - vp._colorbar_box[1] == pytest.approx(box[3] - box[1], abs=2)
     w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_view_tabs_are_more_structure_tabs(app, tmp_path):
+    """view(pipe, tab="Top", ...) opens another 3D viewport tab with the main view's settings plus its own;
+    running it again updates the same tab, Window › New structure tab writes such a cell, a style picked
+    in a tab goes into its cell, and closing the tab removes it and its cell."""
+    from ase.build import bulk
+    from ase.io import write
+
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+
+    write(tmp_path / "POSCAR", bulk("NaCl", "rocksalt", 5.64), format="vasp")
+    (tmp_path / "nb.py").write_text(
+        f"# %%\nfrom ewald import load, view\npipe = load({str(tmp_path / 'POSCAR')!r})\n"
+        '\n# %%\nview(pipe, colors={"Na": "#ff0000"})\n'
+        '\n# %%\nview(pipe, tab="Top", direction="z", style="Space-filling")\n', encoding="utf-8")
+    w = MainWindow(settings=settings.Settings())
+    nbv = w.panel.open_notebook(str(tmp_path / "nb.py"), trusted=True)
+    nbv.run_all()
+    app.processEvents()
+    assert list(w.view_tabs) == ["Top"]
+    t = w.view_tabs["Top"]
+    assert t.view_id in w.workbench.specs and w.workbench.group_of(t.view_id) is w.workbench.group_of("viewport")
+    assert t.style.preset == "Space-filling" and t.style.type_colors["Na"] == "#ff0000"
+    assert w.style.preset == "Ball & stick"            # the main view keeps its own style
+    assert t.viewport.data is w.data
+    nbv.run_all()                                       # the same cell again: still one tab
+    app.processEvents()
+    assert list(w.view_tabs) == ["Top"]
+    nb = nbv.notebook
+    assert nb.view_cell("Top") is not None and nb.view_cell() is not None
+    # Window › New structure tab
+    name = w.new_view_tab()
+    app.processEvents()
+    assert name == "View 2" and "View 2" in w.pipeline.views and "View 2" in w.view_tabs
+    assert nb.view_cell("View 2").source.endswith("view(pipe, tab='View 2')")
+    # a style picked in that tab's viewport goes into its cell, not into the main view's
+    w.view_tabs["View 2"].style.apply_preset("Points", w.data.types)
+    w.write_view_tab("View 2")
+    assert w.pipeline.views["View 2"].style == "Points"
+    assert "style='Points'" in nb.view_cell("View 2").source and "Points" not in nb.view_cell().source
+    # closing the tab removes it from the pipeline and the notebook
+    w.workbench.close_view(w.view_tabs["View 2"].view_id)
+    app.processEvents()
+    assert "View 2" not in w.pipeline.views and "View 2" not in w.view_tabs and nb.view_cell("View 2") is None
+    w.close()
