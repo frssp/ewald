@@ -195,6 +195,12 @@ def axis_plane(cell, axis: str, x: float) -> np.ndarray:
     return np.array([base, base + e1, base + e1 + e2, base + e2])
 
 
+def axis_slab(cell, axis: str, lo: float, hi: float) -> np.ndarray:
+    """The eight corners (8 x 3) of the slab between positions ``lo`` and ``hi`` of a profile
+    along ``axis``: the planes at ``lo`` (first four) and ``hi`` (last four), as in ``axis_plane``."""
+    return np.vstack([axis_plane(cell, axis, lo), axis_plane(cell, axis, hi)])
+
+
 def axis_camera(cell, axis: str, lo: float, hi: float, aspect: float, center=None) -> dict:
     """A parallel-projection camera that shows the plot range ``lo``..``hi`` of a profile along
     ``axis`` from the side, that direction running left to right across the full width of a

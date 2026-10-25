@@ -143,6 +143,7 @@ class LinksMixin:
         p.expressionRequested.connect(self._keep_plot_selection)
         p.axisViewRequested.connect(lambda req, p=p: self._align_view_to_plot(p, req))
         p.axisHovered.connect(lambda at, p=p: self._mark_plot_position(p, at))
+        p.axisRangeSelected.connect(lambda rng, p=p: self._mark_plot_range(p, rng))
         p.structure = lambda: self.data
         self.timeline.selectionChanged.connect(p.set_frame_selection)
 
@@ -324,22 +325,35 @@ class LinksMixin:
             return
         plot.follow_view(*rng)
 
-    def _mark_plot_position(self, plot, at):
-        """A see-through plane in the 3D view where the cursor is on a profile (None: remove it)."""
+    def _plot_cell(self, plot, axis):
+        """The cell a profile's planes span in the 3D view: its frame's, grown across the copies
+        drawn side by side (not along the profile); None when the view shows another structure."""
         from ..data import Cell
-        from ..linking import axis_plane
         from ..replicate import normalize_replicate
 
-        d = plot.space_data() if at is not None else None
+        d = plot.space_data()
         if d is None or not d.cell.is_valid:
-            self.viewport.set_axis_plane(None)
-            return
+            return None
         rep = self.viewport.style.replicate
         cell, n = d.cell, normalize_replicate(rep) if rep else None
-        if n is not None:   # across the copies drawn side by side, not along the profile
-            grow = np.array([1 if a == at[0] else k for a, k in zip("abc", n)], float)
+        if n is not None:
+            grow = np.array([1 if a == axis else k for a, k in zip("abc", n)], float)
             cell = Cell(cell.matrix * grow[:, None], cell.origin, cell.pbc)
-        self.viewport.set_axis_plane(axis_plane(cell, *at))
+        return cell
+
+    def _mark_plot_position(self, plot, at):
+        """A see-through plane in the 3D view where the cursor is on a profile (None: remove it)."""
+        from ..linking import axis_plane
+
+        cell = self._plot_cell(plot, at[0]) if at is not None else None
+        self.viewport.set_axis_plane(None if cell is None else axis_plane(cell, *at))
+
+    def _mark_plot_range(self, plot, rng):
+        """A see-through slab in the 3D view over the range dragged on a profile (None: remove it)."""
+        from ..linking import axis_slab
+
+        cell = self._plot_cell(plot, rng[0]) if rng is not None else None
+        self.viewport.set_axis_slab(None if cell is None else axis_slab(cell, *rng))
 
     # ---------------------------------------------------------------- Ask AI
     def _ask_context(self):

@@ -78,6 +78,7 @@ class PlotsPanel(QtWidgets.QWidget):
     viewChanged = QtCore.Signal(object, object)  # zoomed / panned range (xlim, ylim), None = full
     axisViewRequested = QtCore.Signal(object)   # (axis, lo, hi): the 3D view follows a profile; None: stop
     axisHovered = QtCore.Signal(object)         # (axis, x) under the cursor on a profile; None: left
+    axisRangeSelected = QtCore.Signal(object)   # (axis, lo, hi) dragged on a profile; None: dropped
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -531,6 +532,7 @@ class PlotsPanel(QtWidgets.QWidget):
         if link.selects_atoms:
             self._range = tuple(sorted((float(x1), float(x2))))
             self._emit_atoms()
+            self._emit_axis_range()
         else:
             lo, hi = (-np.inf, np.inf) if y1 is None or y2 is None else (y1, y2)
             self._box = (x1, x2, lo, hi)
@@ -560,6 +562,14 @@ class PlotsPanel(QtWidgets.QWidget):
                 return None
         return d
 
+    def _emit_axis_range(self):
+        """Tell the 3D view which slab a profile's dragged range covers (None: no range)."""
+        link = self.link
+        if self._range is not None and link is not None and link.kind == "space":
+            self.axisRangeSelected.emit((link.axis, *self._range))
+        else:
+            self.axisRangeSelected.emit(None)
+
     def _emit_atoms(self):
         try:
             d = self.space_data()
@@ -580,6 +590,7 @@ class PlotsPanel(QtWidgets.QWidget):
         self._range = self._box = None
         if atoms:
             self.atomsSelected.emit(np.zeros(0, dtype=int))
+            self._emit_axis_range()
         if frames:
             self.frame_selection = []
             self.framesSelected.emit([])
@@ -587,8 +598,11 @@ class PlotsPanel(QtWidgets.QWidget):
         self._update_controls()
 
     def forget_selection(self, frames: bool = True):
-        """Drop the dragged particle range (and the frame selection) without emitting."""
-        self._range = None
+        """Drop the dragged particle range (and the frame selection) without emitting it as a
+        selection (the slab it drew in the 3D view goes)."""
+        had, self._range = self._range is not None, None
+        if had:
+            self._emit_axis_range()
         if frames:
             self._box, self.frame_selection = None, []
         self._draw_overlays()

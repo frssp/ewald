@@ -159,3 +159,6 @@ def test_profile_along_the_cell_selects_its_slab_and_places_the_camera():
     plane = linking.axis_plane(d.cell, "c", 10.0)
     np.testing.assert_allclose(plane[:, 2], 11.0)                        # half way up c, from the origin
     np.testing.assert_allclose(plane[2] - plane[0], m[0] + m[1])
+    slab = linking.axis_slab(d.cell, "c", 4.0, 10.0)                     # a selected range: two planes
+    np.testing.assert_allclose(slab[4:], plane)
+    np.testing.assert_allclose(slab[:4], linking.axis_plane(d.cell, "c", 4.0))

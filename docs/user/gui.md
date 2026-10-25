@@ -308,7 +308,8 @@ style is drawn in the Paper or Graphite colors.
   work function profile; any table whose `attributes["axis"]` is `"a"`, `"b"`, `"c"` or
   `"x"`, `"y"`, `"z"`) are tied to the structure in the 3D view, also when the table is an
   analysis result shown on its own and the 3D view shows its structure:
-  - Dragging a range selects the slab of atoms between those two positions, and **Keep as
+  - Dragging a range selects the slab of atoms between those two positions and draws that slab
+    as a see-through box in the 3D view (VTK viewport); **Keep as
     selection** keeps it as a `Position.Z` range when that cell vector lies along x, y or z.
   - Hovering shows a see-through plane at that position in the 3D view (VTK viewport), and atoms
     picked in the view show as ticks on the x axis at their positions.

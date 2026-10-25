@@ -22,7 +22,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   shortcuts but cannot change them; the palette's recent commands are kept for the session only.
 - Profiles along the cell and the 3D view (`linking` "space" links, Align 3D view): the plot's
   range fills the 3D view's width in Angstrom, not pixel for pixel with the plot's axes; the
-  OpenGL 1.x viewport draws no hover plane; picks on replicated copies (`replicate=`) only ring
+  OpenGL 1.x viewport draws no hover plane or slab box; picks on replicated copies (`replicate=`) only ring
   the atoms of the first copy; a profile along a tilted cell vector keeps no `Keep as selection`
   (expressions have no fractional coordinates).
 - Search box and + Step (D57): the step list of the notebook bar's + Step and the Ctrl+K palette leave

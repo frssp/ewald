@@ -791,6 +791,24 @@ class Viewport(QtWidgets.QWidget):
                        color=TOKENS["pick"], line_width=1.5, name="_axis_plane-edge", render=False, pickable=False)
         self.render()
 
+    def set_axis_slab(self, corners):
+        """A see-through slab of a profile's selected range (8 x 3 ``corners``, ``axis_slab``),
+        None to remove it."""
+        p = self.plotter
+        p.remove_actor("_axis_slab", render=False)
+        p.remove_actor("_axis_slab-edge", render=False)
+        if corners is not None:
+            import pyvista as pv
+
+            faces = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
+            box = pv.PolyData(np.asarray(corners, float), faces=np.hstack([[4, *f] for f in faces]))
+            p.add_mesh(box, color=TOKENS["pick"], opacity=0.15, name="_axis_slab", render=False,
+                       pickable=False, lighting=False)
+            p.add_mesh(box.extract_feature_edges(boundary_edges=False, feature_edges=True, manifold_edges=False,
+                                                 feature_angle=30),
+                       color=TOKENS["pick"], line_width=1.5, name="_axis_slab-edge", render=False, pickable=False)
+        self.render()
+
     def view_along(self, axis: str):
         if self.data is None or not self.data.cell.is_valid:
             return

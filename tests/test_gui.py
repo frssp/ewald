@@ -679,6 +679,8 @@ def test_profile_plot_aligns_the_3d_view_selects_slabs_and_marks_positions(app, 
     plot.select(10.0, 14.0)                                    # a slab: those atoms picked
     z = w.data.cell.to_fractional(w.data.positions)[:, 2] % 1 * 29.35
     assert sorted(vp.picks) == sorted(np.nonzero((z >= 10) & (z <= 14))[0].tolist())
+    slab = vp.plotter.actors["_axis_slab"].GetMapper().GetInput().points   # and drawn as a slab
+    assert sorted(set(np.round(slab[:, 2], 6))) == pytest.approx([10.0, 14.0])
     w._on_pick("")                                             # the picks come back as ticks on the plot
     assert len(plot._overlays) >= len(vp.picks)
     plot._hover_axis(12.0)                                     # the cursor at z = 12: a plane there
@@ -690,6 +692,8 @@ def test_profile_plot_aligns_the_3d_view_selects_slabs_and_marks_positions(app, 
     np.testing.assert_allclose(np.ptp(pts, axis=0)[:2], [2 * 2.998, 3 * 2.998], atol=0.01)
     plot._hover_axis(None)
     assert "_axis_plane" not in vp.plotter.actors
+    plot.clear_selection()                                     # the range dropped: the slab goes
+    assert "_axis_slab" not in vp.plotter.actors
     w.close()
 
 

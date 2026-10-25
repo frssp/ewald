@@ -238,6 +238,9 @@ class LegacyViewport(Viewport):
     def set_axis_plane(self, corners):
         pass   # no see-through plane on OpenGL 1.x yet (docs/todo.md); alignment and slabs work
 
+    def set_axis_slab(self, corners):
+        pass   # nor the slab's box; the atoms it selects are still marked
+
     # ------------------------------------------------------------------ picking
     def click(self, x, y, width, height, extend=False):
         if self.data is not None:
