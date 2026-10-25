@@ -46,6 +46,7 @@ from the Plugins panel or with pip:
 | Plugin | Package | Adds |
 |---|---|---|
 | `phonopy` | `ewald-phonopy` | phonopy's input with forces or force constants (`phonopy-fc`), `from_phonopy` for `phonopy.Phonopy` objects; band.yaml, VASP IBRION=5-8 OUTCARs and `PhononMode` are built in ([Phonon modes](../user/phonons.md)) |
+| `optimade` | `ewald-optimade` | structures of OPTIMADE databases (Materials Project, COD, OQMD, Alexandria, NOMAD, Materials Cloud, JARVIS, ...) without a key: `load("optimade:mp/mp-149")`, `load("optimade:cod?Si O")`, `search("Li-P-S")`, a search side bar and the read-only AI tool `optimade_search` |
 | `plumed` | `ewald-plumed` | `Plumed`, `LoadColvar`, `FreeEnergySurface`, the `ewald_plumed.plumed` library and two AI tools ([PLUMED](../user/plumed.md)) |
 
 ```bash
