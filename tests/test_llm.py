@@ -255,6 +255,13 @@ def test_agent_tool_loop(cu_fcc, fake_render):
     assert img["type"] == "image" and base64.b64decode(img["source"]["data"])[:4] == b"\x89PNG"
     err = client.requests[2]["messages"][-1]["content"][0]
     assert err["is_error"] is True
+    # each round reads the conversation so far from the prompt cache: one breakpoint on the
+    # newest block only, never stored in the history
+    assert results["content"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert "cache_control" not in results["content"][0]
+    assert first["messages"][-1]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert all("cache_control" not in b for m in agent.chat.messages if m["role"] == "user"
+               for b in m["content"] if isinstance(b, dict))
     assert events.count("tool_call") == 3 and events[-1] == "answer"
 
     # conversation continues with history

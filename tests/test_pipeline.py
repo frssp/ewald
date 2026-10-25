@@ -230,6 +230,42 @@ def test_output_cache_extends_a_cached_prefix_and_skips_scripts(cu_fcc):
     assert first.last_time != t
 
 
+def test_output_cache_keeps_slow_steps_so_a_later_edit_starts_there(cu_fcc):
+    calls = []
+
+    class Counting(mods.CoordinationAnalysis):
+        cacheable = True
+
+        def modify(self, data, ctx):
+            calls.append(self.cutoff)
+            return super().modify(data, ctx)
+
+    pipe = Pipeline(StaticSource([cu_fcc]), [Counting(3.0), Counting(2.9), mods.ExpressionSelection("Coordination < 12")])
+    pipe.checkpoint_seconds = 0.0  # every step counts as slow
+    pipe.compute(0)
+    assert calls == [3.0, 2.9]
+    pipe.modifiers[2].expression = "Coordination > 12"  # the last step's form changed
+    pipe.compute(0)
+    assert calls == [3.0, 2.9]
+    pipe.modifiers[1].cutoff = 2.0  # the middle one: the first is reused
+    assert (pipe.compute(0)["Coordination"] == 0).all() and calls == [3.0, 2.9, 2.0]
+    pipe.checkpoint_seconds = 1e9  # only whole chains, as before
+    pipe.invalidate()
+    pipe.compute(0)
+    pipe.modifiers[2].expression = "Coordination < 12"
+    pipe.compute(0)
+    assert calls == [3.0, 2.9, 2.0, 3.0, 2.0, 3.0, 2.0]
+
+
+def test_output_cache_counts_shared_arrays_once(cu_fcc):
+    pipe = Pipeline(StaticSource([cu_fcc]), [mods.CoordinationAnalysis(3.0), mods.ExpressionSelection("Coordination < 12")],
+                    cache_memory=3 * cu_fcc.nbytes)
+    pipe.checkpoint_seconds = 0.0
+    pipe.compute(0)
+    # the source frame and two results share Position and the types: they fit the budget together
+    assert len(pipe._cache) == 1 and len(pipe._outputs) == 2
+
+
 def test_cached_frames_are_read_only(cu_fcc):
     """Writing into an array of a computed frame fails instead of changing the cached source frame;
     replacing the array works, and the user's own arrays stay writable."""
