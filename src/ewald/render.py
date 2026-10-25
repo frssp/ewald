@@ -490,9 +490,9 @@ def bond_list(data, cutoff=None, pairs=None):
     With ``pairs`` [(A, B, dmin, dmax), ...] only pairs whose types and length
     match a row are kept (VESTA's bond search table); otherwise ``cutoff``.
     """
-    from .bonds import find_bonds
+    from .bonds import cached_bonds
 
-    b = find_bonds(data, cutoff, pairs)
+    b = cached_bonds(data, cutoff, pairs)
     i, j = b.topology.T
     d = b.vectors(data)
     return np.concatenate([i, j]), np.concatenate([j, i]), np.concatenate([d, -d])
@@ -502,16 +502,16 @@ def scene_bonds(data, cutoff=None, pairs=None):
     """The bonds a renderer draws: ``data.bonds`` if present, else a search by ``cutoff``/``pairs``.
     The see-through copies of ``OverlayFrames`` ('Overlay Frame' >= 0) get no bonds: they sit a
     fraction of a bond length from their atoms and would bond to every neighbour of it."""
-    from .bonds import Bonds, find_bonds
+    from .bonds import Bonds, cached_bonds
 
     if data.bonds is not None:
         return data.bonds
     if "Overlay Frame" in data:
         real = np.flatnonzero(np.asarray(data["Overlay Frame"]) < 0)
         if len(real) < data.count:
-            b = find_bonds(data.take(real), cutoff, pairs)
+            b = cached_bonds(data.take(real), cutoff, pairs)
             return Bonds(real[b.topology], b.pbc_images) if b.count else b
-    return find_bonds(data, cutoff, pairs)
+    return cached_bonds(data, cutoff, pairs)
 
 
 TUBE_SIDES = 12

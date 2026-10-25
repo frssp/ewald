@@ -64,7 +64,10 @@ data["Height"] = data.positions[:, 2] - data.cell.origin[2]   # new property: pl
 
 Computing a frame again (a second `pipe.compute(i)`, a view cell, the GUI) reuses the result of
 the built-in modifiers as long as their settings did not change, and runs only the function
-modifiers and scripts after them; `pipe.cache_outputs = False` turns this off.
+modifiers and scripts after them; `pipe.cache_outputs = False` turns this off. Steps that take
+longer than `pipe.checkpoint_seconds` (0.02 s) also keep their own result, so changing a later
+step (its cell or its form in the GUI) starts from there instead of running the whole chain
+again.
 
 ## Function modifiers
 

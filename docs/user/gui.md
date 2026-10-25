@@ -319,6 +319,18 @@ style is drawn in the Paper or Graphite colors.
 - The other way, atoms picked in the viewport (or the `Selection` property) are drawn on the
   plot: as a highlighted sub-histogram on count plots, or as a second axis ("selected") on g(r).
   Selected frames are marked as points on per-frame plots.
+- **Profiles along the cell** (a 1D `SpatialBinning`, a planar average, a potential lineup or
+  work function profile; any table whose `attributes["axis"]` is `"a"`, `"b"`, `"c"` or
+  `"x"`, `"y"`, `"z"`) are tied to the structure in the 3D view, also when the table is an
+  analysis result shown on its own and the 3D view shows its structure:
+  - Dragging a range selects the slab of atoms between those two positions and draws that slab
+    as a see-through box in the 3D view (VTK viewport); **Keep as
+    selection** keeps it as a `Position.Z` range when that cell vector lies along x, y or z.
+  - Hovering shows a see-through plane at that position in the 3D view (VTK viewport), and atoms
+    picked in the view show as ticks on the x axis at their positions.
+  - **Align 3D view** turns the view side-on, that direction running left to right, with the
+    plot's range across its width. Zooming or panning either one moves the other. Rotating the
+    view away from the profile's direction lets go of the plot (a status message says so).
 
 The same mapping is available without the GUI in `ewald.linking` (`link_for`,
 `atoms_in_range`, `frames_in_box`, `selection_expression`).

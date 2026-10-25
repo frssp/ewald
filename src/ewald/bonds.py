@@ -7,6 +7,10 @@ the bond length, where a minimum-image convention would pick the wrong partner.
 """
 from __future__ import annotations
 
+import hashlib
+import threading
+from collections import OrderedDict
+
 import numpy as np
 
 
@@ -295,6 +299,46 @@ def find_bonds(data, cutoff: float | None = None, pairs=None, lower_cutoff: floa
     if complete is not None and any(p[4] == "complete" for p in pairs):
         out["Complete"] = complete[keep]
     return out
+
+
+_FOUND: OrderedDict = OrderedDict()  # content key -> Bonds, see cached_bonds
+_FOUND_LOCK = threading.Lock()  # the GUI's compute worker and its window both draw
+CACHED_BONDS = 8
+
+
+def _content_key(data, cutoff, pairs):
+    """What a bond search depends on, by content: positions, types, cell and the rules. A frame
+    computed again (a new color step, a selection) shares its positions and hits; a moved atom
+    misses. Hashing costs ~3 ms per 100k atoms, the search ~200 ms."""
+    h = hashlib.blake2b(digest_size=16)
+    types = np.asarray(data.types)
+    if types.dtype.kind == "O":
+        types = types.astype(str)
+    for a in (data.positions, types, data.cell.matrix, data.cell.origin, data.cell.pbc):
+        a = np.ascontiguousarray(a)
+        h.update(repr((a.dtype.str, a.shape)).encode())
+        h.update(a.data)
+    return h.digest(), None if pairs else float(cutoff or 0.0), repr(normalize_pairs(pairs))
+
+
+def cached_bonds(data, cutoff: float | None = None, pairs=None) -> Bonds:
+    """:func:`find_bonds` for drawing: the views redraw the same frame for every style, color or
+    label change (and the Bonds card counts them), so the last few searches are kept, keyed by
+    content. Returns a copy; replace its arrays, never write into them."""
+    if data.count == 0:
+        return find_bonds(data, cutoff, pairs)
+    key = _content_key(data, cutoff, pairs)
+    with _FOUND_LOCK:
+        hit = _FOUND.get(key)
+        if hit is not None:
+            _FOUND.move_to_end(key)
+            return hit.copy()
+    found = find_bonds(data, cutoff, pairs)
+    with _FOUND_LOCK:
+        _FOUND[key] = found
+        while len(_FOUND) > CACHED_BONDS:
+            _FOUND.popitem(last=False)
+    return found.copy()
 
 
 def bond_segments(data, bonds: Bonds, colors: np.ndarray):
