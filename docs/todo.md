@@ -481,6 +481,10 @@ Formats
 Figures
 
 - GPU (CUDA) ray tracer.
+- Large vector figures (D66): the per-shape costs behind the warning were measured on fcc Cu in
+  the cloud container; a mixed figure (atoms over a size limit as one embedded raster layer, text
+  and overlays still vector) would keep big structures editable; the 10 s / 10 MB limits could
+  become a preference.
 - Vector arrows: their own color legend when a `ColorCoding` already owns the legend; arrows in
   the coarse (moving) viewport scene, as lines; in SVG/PDF, hide the part of an arrow inside its
   atom exactly (now the shaft is split at the atom and painted by depth).
@@ -651,6 +655,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `vaspout.h5` `/results/partial_charges` (PARCHG).
 
 ## Verify outside the cloud container
+
+- The large vector figure estimate (D66) on the owner's Windows PC and Mac: render a few thousand
+  bonded atoms to SVG and PDF and compare with `python benchmarks/vector_size.py`; the *Large
+  vector figure* dialog at 200 % scaling.
 
 - The floating view chips (D62) on Windows at 200 % scaling and on macOS: the see-through chips
   composite over the VTK view without flicker, and fold before they overlap when the Structure

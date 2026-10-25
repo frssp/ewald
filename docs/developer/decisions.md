@@ -851,6 +851,20 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** the alignment alone, and the alignment with the slab selection.
 - **Landed:** public PR #53.
 
+### D66. Warn before a large vector figure, never block a script (2026-10-25)
+
+- **Decision:** vector output (SVG/PDF/EPS) estimates its file size and time from the number of
+  shapes it draws (atoms, half-bonds and lines, mesh faces and edges; costs measured with
+  `benchmarks/vector_size.py`) and above about 10 s or 10 MB warns before drawing. Python gets a
+  `LargeVectorWarning` and the figure is drawn anyway (`large_vector="ignore"` silences it,
+  `"raise"` stops); the GUI asks in a dialog: render a PNG instead, the vector file anyway, or
+  cancel.
+- **Why:** the owner: "vector graphic rendering은 원자가 많으면 너무 불리해. 그런 경우 사용자가
+  시도할 때 경고 주면 어때?", after a protein figure came out as a 9.7 MB SVG in 14 s.
+- **Considered** (not put to the owner): refusing vector output above a limit, or switching to raster
+  silently.
+- **Landed:** public PR #NN.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

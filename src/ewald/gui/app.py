@@ -18,7 +18,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import modifiers as mods
 from ..raytrace import RenderCancelled
-from ..render import camera_state, render
+from ..render import camera_state, opengl_available, render
 from .busy import busy, finish_orphans
 from .ask_panel import AskPanel, agent_from_settings, code_cells_mode, run_cells
 from .collapsible import make_collapsible
@@ -49,6 +49,11 @@ from .window_plugins import PluginPanelsMixin
 from .window_view import ViewSyncMixin
 
 RENDER_IN_BACKGROUND = True   # the Render page ray traces on a worker thread (tests may turn it off)
+
+
+def raster_renderer() -> str:
+    """The renderer a 'Render PNG instead' uses: OpenGL (fast, also for many atoms) where it runs."""
+    return "opengl" if opengl_available() else "raytrace"
 
 
 class _RenderWorker(QtCore.QThread):
@@ -583,14 +588,54 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
             from .file_dialogs import suffixed
 
             filename = suffixed(filename, chosen)
-        _kw, call = self._render_call(filename, overrides)
-        try:
-            with busy(self.message, f"Rendering {os.path.basename(str(filename))}…"):
-                img = call()
-        except Exception as exc:
-            return self._render_failed(exc)
+        from ..vector import LargeVectorError
+
+        # a large vector figure stops before drawing and asks (overrides may say 'ignore')
+        overrides = {"large_vector": "raise", **overrides}
+        while True:
+            _kw, call = self._render_call(filename, overrides)
+            try:
+                with busy(self.message, f"Rendering {os.path.basename(str(filename))}…"):
+                    img = call()
+                break
+            except LargeVectorError as big:
+                choice = self.ask_large_vector(big)
+            except Exception as exc:
+                return self._render_failed(exc)
+            if choice is None:
+                self.message("Render cancelled")
+                return None
+            overrides = {**overrides, "large_vector": "ignore"}
+            if choice == "raster":
+                filename = os.path.splitext(str(filename))[0] + ".png"
+                overrides["renderer"] = raster_renderer()
+                if self.render_page.renderer_name == "vector":  # the Render page follows the choice
+                    self.render_page.set_renderer(overrides["renderer"])
+                    self.render_page.output.setText(filename)
         self.message(f"Rendered {filename}")
         return img if return_image else filename
+
+    def ask_large_vector(self, big) -> str | None:
+        """Ask before drawing a vector figure of many shapes (``big``: a
+        :class:`ewald.vector.LargeVectorError`): 'raster' (render a PNG instead), 'vector' (draw it
+        anyway) or None (cancel)."""
+        est = big.estimate
+        size = f"a {est['bytes'] / 1e6:.0f} MB {est['format'].upper()} file and " if est["bytes"] else ""
+        box = QtWidgets.QMessageBox(self)
+        box.setObjectName("LargeVectorDialog")
+        box.setIcon(QtWidgets.QMessageBox.Warning)
+        box.setWindowTitle("Large vector figure")
+        box.setText(f"This vector figure draws {est['shapes']:,} shapes.")
+        box.setInformativeText(f"Expect {size}about {max(1, round(est['seconds'])):,} s (estimate). "
+                               "A PNG of the same view is much smaller and faster.")
+        box.setDetailedText(str(big))
+        png = box.addButton("Render PNG instead", QtWidgets.QMessageBox.AcceptRole)
+        vec = box.addButton(f"Render {est['format'].upper() if est['format'] else 'vector'} anyway",
+                            QtWidgets.QMessageBox.DestructiveRole)
+        box.addButton(QtWidgets.QMessageBox.Cancel)
+        box.setDefaultButton(png)
+        box.exec()
+        return {png: "raster", vec: "vector"}.get(box.clickedButton())
 
     def _render_failed(self, exc):
         self.message(f"Render failed: {exc}", error=True)

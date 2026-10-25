@@ -9,10 +9,88 @@ OpenGL context. Colors, radii, bonds and the camera match the other renderers.
 from __future__ import annotations
 
 import math
+import os
+import warnings
 
 import numpy as np
 
 from .render import FLAT_OUTLINE, STICK_OUTLINE
+
+# Measured cost of one drawn shape (render_vector, 4-core container; benchmarks/vector_size.py):
+# seconds and bytes per atom disc (four circles when shaded), per stick (a half-bond, trajectory or
+# cell line piece, arrow part) and per mesh triangle or edge. Grows linearly with the shape count.
+SHAPE_SECONDS = {"atom": 0.8e-3, "stick": 0.47e-3, "face": 0.43e-3}
+SHAPE_BYTES = {".svg": {"atom": 2600, "stick": 390, "face": 990},
+               ".pdf": {"atom": 570, "stick": 55, "face": 60}}
+SHAPE_BYTES[".eps"] = SHAPE_BYTES[".ps"] = SHAPE_BYTES[".svg"]  # PostScript text is about as verbose as SVG
+# Above either estimate vector output warns (render(large_vector='warn')) or asks (the GUI):
+# a raster image is then far smaller and faster.
+LARGE_VECTOR_SECONDS = 10.0
+LARGE_VECTOR_BYTES = 10e6
+
+
+class LargeVectorWarning(UserWarning):
+    """Vector output of a scene with many shapes: slow and a large file (see :func:`vector_cost`)."""
+
+
+class LargeVectorError(RuntimeError):
+    """Raised by ``render(..., large_vector='raise')`` before drawing a large vector figure;
+    ``estimate`` is the :func:`vector_cost` dict, so a caller can ask the user and render again."""
+
+    def __init__(self, estimate):
+        super().__init__(large_vector_message(estimate))
+        self.estimate = estimate
+
+
+def vector_cost(scene, filename=None) -> dict:
+    """Shapes a vector figure of ``scene`` draws and the estimated time and file size: a dict with
+    ``atoms``, ``sticks``, ``faces``, ``shapes`` (their sum), ``seconds``, ``bytes`` (None unless
+    ``filename`` ends in .svg/.pdf/.eps/.ps), ``format`` and ``large`` (over ``LARGE_VECTOR_SECONDS``
+    or ``LARGE_VECTOR_BYTES``)."""
+    n = {"atom": 0, "stick": 0, "face": 0}
+    for layer in scene.layers:
+        prim = layer.primitive
+        if layer.kind == "spheres":
+            n["atom"] += int(np.count_nonzero(np.asarray(prim.alpha) > 0)) if prim.count else 0
+        elif layer.kind == "cylinders":
+            n["stick"] += int(prim.count)
+        elif layer.kind == "arrows":
+            n["stick"] += 3 * int(prim.count)
+        elif layer.kind == "lines":
+            n["stick"] += len(prim.segments())
+        elif layer.kind == "mesh":
+            n["face"] += int(prim.face_count) + (len(prim.edges) if prim.edges is not None else 0)
+    fmt = os.path.splitext(str(filename or ""))[1].lower()
+    per = SHAPE_BYTES.get(fmt)
+    seconds = sum(SHAPE_SECONDS[k] * v for k, v in n.items())
+    size = None if per is None else sum(per[k] * v for k, v in n.items())
+    return {"atoms": n["atom"], "sticks": n["stick"], "faces": n["face"], "shapes": sum(n.values()),
+            "seconds": seconds, "bytes": size, "format": fmt.lstrip(".") or None,
+            "large": seconds > LARGE_VECTOR_SECONDS or (size or 0) > LARGE_VECTOR_BYTES}
+
+
+def _caller_level() -> int:
+    """``stacklevel`` of the first frame outside ewald, so the warning names the user's line."""
+    import sys
+
+    root = os.path.dirname(os.path.abspath(__file__))
+    frame, level = sys._getframe(1), 1
+    while frame is not None and os.path.abspath(frame.f_code.co_filename).startswith(root):
+        frame, level = frame.f_back, level + 1
+    return level
+
+
+def large_vector_message(est) -> str:
+    """One sentence on a large vector figure: what it holds, the expected size and time, what to do."""
+    parts = [f"{est['atoms']:,} atoms"] if est["atoms"] else []
+    if est["sticks"]:
+        parts.append(f"{est['sticks']:,} bond and line pieces")
+    if est["faces"]:
+        parts.append(f"{est['faces']:,} mesh faces and edges")
+    size = f"a {est['bytes'] / 1e6:.0f} MB {est['format'].upper()} file and " if est["bytes"] else ""
+    return (f"Vector output draws {est['shapes']:,} shapes ({', '.join(parts)}): expect {size}"
+            f"about {max(1, round(est['seconds'])):,} s (estimate). A raster image (PNG with renderer="
+            f"'opengl' or 'raytrace') is much smaller and faster; pass large_vector='ignore' to draw it anyway.")
 
 def _basis(camera):
     """Camera eye and orthonormal (right, up, forward) axes."""
@@ -310,12 +388,15 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                   trajectory_color_range=None, trajectory_time_range=None, trajectory_trail=None,
                   trajectory_radius=None, visuals=None, frame=0, overlays=None, boundary=None,
                   boundary_bonds="half", replicate=None, replicate_cell="super", show_atoms=True, surfaces=None,
-                  type_transparency=None, selection_color=None, light=None, measurements=None, **_ignored):
+                  type_transparency=None, selection_color=None, light=None, measurements=None,
+                  large_vector="warn", **_ignored):
     """Draw ``data`` as a vector figure and save it (format from the extension).
 
     ``shading``: 'gradient' (shaded discs) or 'flat' (one color plus outline, VESTA's
     flat style). ``dpi`` sets the physical page size (``size / dpi`` inches; 100 when
-    not given). ``light``: the key light (see :func:`ewald.render.light_params`) that places the highlights.
+    not given). ``large_vector``: what a scene with many shapes does (a large, slow file; see
+    :func:`vector_cost`): 'warn' (a :class:`LargeVectorWarning`, then draws it), 'ignore' or 'raise'
+    (:class:`LargeVectorError` before drawing). ``light``: the key light (see :func:`ewald.render.light_params`) that places the highlights.
     ``visuals``: extra visual elements (plugins), see :mod:`ewald.scene`;
     ``overlays``: overlay elements, see :mod:`ewald.overlays`.
     Returns the rasterized image as an RGB(A) uint8 array.
@@ -352,6 +433,12 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                      replicate=replicate, replicate_cell=replicate_cell, show_atoms=show_atoms,
                      surfaces=surfaces, type_transparency=type_transparency, selection_color=selection_color,
                      measurements=measurements)
+    if large_vector != "ignore":
+        est = vector_cost(scene, filename)
+        if est["large"]:
+            if large_vector == "raise":
+                raise LargeVectorError(est)
+            warnings.warn(large_vector_message(est), LargeVectorWarning, stacklevel=_caller_level())
     ink = cell_line_color(bg, transparent_background)
     prims = scene_prims(scene, camera, (w, h), pt, shading, ink, light)
     prims.sort(key=lambda p: -p[0])  # far first

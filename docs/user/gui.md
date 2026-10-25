@@ -368,6 +368,10 @@ into *Cancel*, which stops the trace after the rows being traced (no file is wri
 `render(..., renderer="raytrace", progress=fn)` calls `fn(done_rows, total_rows)` the same way
 (with adaptive sampling the count can jump to the end when the last pixels converge);
 returning `False` stops it with `RenderCancelled`. OpenGL and vector output are quick and render right away.
+A vector figure estimated to take more than about 10 s or 10 MB (many atoms, bonds or polyhedra;
+see [vector output](rendering.md)) first opens a *Large vector figure* dialog with the shape count,
+expected file size and time: *Render PNG instead* writes a PNG of the same view with OpenGL (and
+switches the Render page to it), *Render SVG anyway* draws the vector file, *Cancel* writes nothing.
 
 The left side is the live 3D view with the picture's frame on it: the part outside the frame
 is dimmed, and the frame keeps the output's aspect ratio and its place on screen, so zooming or

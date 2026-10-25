@@ -922,7 +922,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
            type_legend: bool = False,
            scale_bar: bool | float | None = None, dpi: float | None = None, quality: str = "publication",
            scale: float | None = None, theme=None, overlays=None, region=None, labels=None, light=None,
-           progress=None, device=None, **scene_kwargs):
+           progress=None, device=None, large_vector: str = "warn", **scene_kwargs):
     """Render one DataCollection to ``filename`` or return an RGB array.
 
     ``direction`` is a view vector *from* the scene to the camera, or one of
@@ -936,7 +936,11 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     occlusion with ``ao_samples`` rays, ``shadows``, ``samples`` rays per pixel, of which pixels
     that converge below ``noise_threshold`` take fewer: adaptive sampling, 0 = off) or
     'vector' (SVG/PDF/EPS with real circles and editable text, see :mod:`ewald.vector`).
-    Raster renderers can also write .pdf/.svg/.eps, embedding the image.
+    Raster renderers can also write .pdf/.svg/.eps, embedding the image. Vector files of many atoms
+    get large and slow (about 2.6 kB and 1 ms per atom in SVG); above ~10 s or ~10 MB (estimated,
+    :func:`ewald.vector.vector_cost`) ``large_vector='warn'`` (default) emits a
+    :class:`ewald.vector.LargeVectorWarning` and draws anyway, 'ignore' stays silent and 'raise' raises
+    :class:`ewald.vector.LargeVectorError` before drawing. Other renderers ignore it.
 
     ``quality``: 'draft', 'standard' or 'publication' (default) fills in every sampling
     setting left as None (``samples``, ``ao_samples``, ``noise_threshold``, ``shadows``, ``antialiasing``,
@@ -984,6 +988,8 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
         renderer = "opengl" if opengl_available() else "raytrace"
     if renderer not in RENDERERS:
         raise ValueError(f"unknown renderer {renderer!r}; use 'opengl', 'raytrace' or 'vector'")
+    if large_vector not in ("warn", "ignore", "raise"):
+        raise ValueError(f"large_vector must be 'warn', 'ignore' or 'raise', not {large_vector!r}")
     if renderer == "opengl" and not opengl_available():
         raise RuntimeError(NO_OPENGL)
     from .color_rule import take
@@ -1034,7 +1040,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
             scene_kwargs.pop(k, None)
         return render_vector(data, filename, camera=camera, size=size, background=background,
                              transparent_background=transparent_background, radius_scale=radius_scale,
-                             bonds=bonds, show_cell=show_cell, dpi=dpi, light=light,
+                             bonds=bonds, show_cell=show_cell, dpi=dpi, light=light, large_vector=large_vector,
                              **{k: v for k, v in overlays.items() if k not in ("type_colors", "frame")},
                              **scene_kwargs)
     if renderer == "raytrace":
