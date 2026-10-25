@@ -780,7 +780,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   the tag; every view cell its own tab automatically.
 - **Landed:** public PR #62.
 
-### D60. Simulation codes as a registry (2026-10-25)
+### D61. Simulation codes as a registry (2026-10-25)
 
 - **Decision:** everything EWALD knows about one simulation program lives in one
   `SimulationCode` entry of `ewald.codes` (files, folder markers, formats, `codes.<name>.*`
