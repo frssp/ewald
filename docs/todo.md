@@ -540,7 +540,12 @@ Plugins and AI
   from aiida-quantumespresso, NEB and aiida-lammps outputs, streaming very long remote
   trajectories frame by frame instead of one bundle, export of analysis results back as new
   nodes (opt-in, never default). Not yet tried against a real remote AiiDA host.
-- Other `schemes=` sources: Materials Project (`mp:mp-149`), OPTIMADE, NOMAD.
+- OPTIMADE (ewald-optimade, `optimade:DB/ID`): its database table was written without reaching
+  the servers (the cloud container has no route to them); finding every database from the
+  providers.optimade.org index instead of the fixed table; more pages in the side bar; the
+  OPTIMADE `assemblies` (alternative disorder configurations) are drawn as all sites.
+- Materials Project beyond structures (mp-api with a key in the keychain: DOS, bands, CHGCAR,
+  relaxation trajectories, `mp:mp-149`); other `schemes=` sources.
 
 - LLM plugin ideas: Paper-to-modifier (Forge from a paper's definition, checked against its
   numbers), phase identification, campaign report over many runs (`check_run` and `load_runs`
@@ -623,6 +628,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- ewald-optimade against the real servers (the container reaches none of them): `python -m
+  ewald_optimade search Si --db <name>` for every name in `python -m ewald_optimade databases`,
+  then `load("optimade:mp/mp-149")`, `load("optimade:cod/1000041")` and the OPTIMADE side bar,
+  on Windows behind the owner's network.
 - The OpenCL ray tracer on a real GPU (the owner's Intel Arc on Windows: float sums, no double
   precision; AMD; Apple): `pip install pyopencl`, Preferences › Compute › Device lists the GPU,
   and `python benchmarks/analysis.py --skip-modifiers --device opencl` traces the same pictures
