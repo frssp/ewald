@@ -150,7 +150,9 @@ the notebook.
 ewald-plumed adds `compute_plumed_cvs` and `read_plumed_output`; ewald-optimade adds
 `optimade_search`, which only lists structures: it sends the query to one of the databases you
 set up (its table plus Preferences › OPTIMADE), never to an address the model names, and the
-model opens a hit by writing a `load("optimade:...")` cell. A plugin tool cannot replace a
+model opens a hit by writing a `load("optimade:...")` cell. ewald-mp adds `mp_search` (read-only, with
+your Materials Project key, which the model never sees; it opens a material with a
+`load("mp:...")` cell). A plugin tool cannot replace a
 built-in one of the same name. Plugins run in-process with your rights, like any other Python
 package you install, so only install plugins you trust; the rules above ask them to change
 results through `toolset.call("add_modifier", ...)` and to call `toolset.check_read(path)`

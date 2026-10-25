@@ -177,7 +177,8 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   "OPTIMADE + MP 둘 다 (2 plugins)" on the decision card, noting "Mp 같은 건 api key가 필요래".
 - **Considered:** OPTIMADE only (Materials Project structures through its OPTIMADE endpoint);
   Materials Project only through mp-api.
-- **Landed:** public PR #65; ewald-optimade 0.1.0 in frssp/ewald-plugins PR #22.
+- **Landed:** public PR #65 and #66; ewald-optimade 0.1.0 (frssp/ewald-plugins PR #22) and
+  ewald-mp 0.1.0 (PR #23).
 
 ## Quality and platforms
 
