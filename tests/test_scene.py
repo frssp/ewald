@@ -337,3 +337,26 @@ def test_vector_draws_caps():
     assert count(start_cap="none", end_cap="flat") == 2     # the end faces the camera: an ellipse
     assert count(start_cap="flat", end_cap="none") == 1     # the start faces away: hidden by the stick
     assert count(start_cap="round", end_cap="round") == 5   # a disc under and over each end
+
+
+def test_mesh_vertex_colors_are_shaded_only_when_lit():
+    """Vertex colours read true by default (colour-mapped slices); ``lit=True`` (smoothly coloured solids such
+    as protein cartoons) shades them like face colours, in the vector renderer as in OpenGL and the ray tracer."""
+    from ewald.mesh import SurfaceMesh
+    from ewald.vector import _mesh_prims
+
+    cam = {"position": (0, 0, 10), "focal_point": (0, 0, 0), "up": (0, 1, 0), "parallel_projection": True,
+           "parallel_scale": 3.0}
+    verts = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 0], [1, 0, 0], [0, 0.2, 1]]  # facing the camera, tilted
+    colors = np.tile([0.2, 0.6, 0.9], (6, 1))
+
+    def face_rgb(lit):
+        mesh = SurfaceMesh(verts, [[0, 1, 2], [3, 4, 5]], vertex_properties={"Color": colors}, lit=lit)
+        return np.array([p[2][0][:3] for p in _mesh_prims(mesh, cam, (200, 150), 1.0)])
+
+    assert SurfaceMesh(verts, [[0, 1, 2]], vertex_properties={"Color": colors}).is_lit is False
+    assert SurfaceMesh(verts, [[0, 1, 2]]).is_lit is True
+    assert np.allclose(face_rgb(None), colors[:2])           # true colours
+    lit = face_rgb(True)
+    assert not np.allclose(lit[0], lit[1])                   # shaded by orientation
+    assert (lit <= colors[:2] + 1e-9).all()

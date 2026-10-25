@@ -88,11 +88,13 @@ def apply_light(plotter, light=None):
 
 
 def type_color(t: str, index: int = 0) -> np.ndarray:
-    """Default color of a particle type: Jmol for elements, a palette otherwise."""
+    """Default color of a particle type: Jmol for elements, a palette otherwise (also for the
+    elements past Mt, Z > 109, which the Jmol table does not cover)."""
     from ase.data.colors import jmol_colors
 
     z = _element(t)
-    return np.array(jmol_colors[z] if z else _FALLBACK_PALETTE[index % len(_FALLBACK_PALETTE)], float)
+    known = 0 < z < len(jmol_colors) if z else False
+    return np.array(jmol_colors[z] if known else _FALLBACK_PALETTE[index % len(_FALLBACK_PALETTE)], float)
 
 
 def type_radius(t: str, scale: float = 0.8, preset: str = "covalent") -> float:
@@ -720,7 +722,7 @@ def _add_stick_outline(plotter, start, end, radius, name):
 
 def _add_mesh(plotter, mesh, name):
     """A triangle mesh (faces) plus its outline edges. Meshes with vertex "Normal"s (isosurfaces) are
-    smooth-shaded; vertex "Color"s (grid slices) are interpolated."""
+    smooth-shaded; vertex "Color"s (grid slices, cartoons) are interpolated, true unless ``mesh.lit``."""
     import pyvista as pv
 
     if not mesh.face_count:
@@ -736,9 +738,10 @@ def _add_mesh(plotter, mesh, name):
     vcolors = mesh.vertex_properties.get("Color")
     if vcolors is not None:
         poly.point_data["rgb"] = (np.clip(vcolors, 0, 1) * 255).astype(np.uint8)
-        kw.update(ambient=0.6, diffuse=0.45, specular=0.0)  # colour maps should read true, not shaded
     else:
         poly.cell_data["rgb"] = (np.clip(mesh.face_colors(), 0, 1) * 255).astype(np.uint8)
+    if not mesh.is_lit:
+        kw.update(ambient=0.6, diffuse=0.45, specular=0.0)  # colour maps should read true, not shaded
     plotter.add_mesh(poly, scalars="rgb", rgb=True, **kw)
     if mesh.edges is not None and len(mesh.edges):
         lines = np.column_stack([np.full(len(mesh.edges), 2), mesh.edges]).ravel()
@@ -1018,7 +1021,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
         from .framing import region_camera
 
         if camera is None:
-            camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
+            camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs, show_cell)
         camera = region_camera(camera, region)
     overlays = {"text": text, "legend": legend, "type_legend": type_legend, "scale_bar": scale_bar,
                 "type_colors": scene_kwargs.get("type_colors"), "overlays": overlays,
@@ -1027,7 +1030,7 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
         from .vector import render_vector
 
         if camera is None:
-            camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
+            camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs, show_cell)
         if scene_kwargs.get("atom_style") == "flat":
             scene_kwargs.setdefault("shading", "flat")  # one color plus outline, as on screen
         for k in ("atom_style", "sphere_resolution", "mesh_limit", "arrow_resolution"):
@@ -1084,14 +1087,16 @@ def _overlay_list(overlays) -> list:
     return [overlays] if isinstance(overlays, (str, dict)) or not isinstance(overlays, (list, tuple)) else list(overlays)
 
 
-# scene keywords that change what the default camera frames (boundary ghosts and their bond partners)
+# scene keywords that change what the default camera frames (boundary ghosts and their bond partners,
+# hidden atoms)
 _CAMERA_KEYS = _RADIUS_KEYS + ("type_colors", "vectors", "visuals", "boundary", "boundary_bonds", "bond_pairs",
-                                 "replicate", "replicate_cell")
+                                 "replicate", "replicate_cell", "show_atoms")
 
 
 def default_camera(data, size=(1600, 1200), direction="iso", orthographic=True, zoom=1.0, radius_scale=1.0,
-                   scene_kwargs=None) -> dict:
-    """Camera that frames ``data`` like the OpenGL renderer (no window is shown)."""
+                   scene_kwargs=None, show_cell: bool = True) -> dict:
+    """Camera that frames ``data`` like the OpenGL renderer (no window is shown): what is drawn, so
+    hidden atoms (``show_atoms=False`` in ``scene_kwargs``) and a hidden cell are left out."""
     import pyvista as pv
 
     if not opengl_available():
@@ -1101,7 +1106,7 @@ def default_camera(data, size=(1600, 1200), direction="iso", orthographic=True, 
 
         vtkLogger.SetStderrVerbosity(vtkLogger.VERBOSITY_ERROR)
     p = pv.Plotter(off_screen=True, window_size=tuple(size))
-    build_scene(p, data, radius_scale=radius_scale, show_cell=True, sphere_resolution=6,
+    build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, sphere_resolution=6,
                 **{k: v for k, v in (scene_kwargs or {}).items() if k in _CAMERA_KEYS})
     _setup_camera(p, data, direction, orthographic, zoom)
     cam = camera_state(p)
@@ -1151,7 +1156,7 @@ def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, ba
     for k in ("atom_style", "sphere_resolution", "mesh_limit", "antialiasing", "ambient_occlusion", "cell_width"):
         scene_kwargs.pop(k, None)
     if camera is None:  # same framing as the OpenGL path
-        camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs)
+        camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs, show_cell)
     cell_color = cell_line_color(background, transparent_background)
     view = np.asarray(camera["position"], float) - np.asarray(camera["focal_point"], float)
     scene_kwargs.setdefault("arrow_resolution", 16 if samples <= 4 else 24)

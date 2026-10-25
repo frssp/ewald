@@ -525,7 +525,7 @@ class LegacyRenderer:
             rgb = np.repeat(np.clip(mesh.face_colors(), 0, 1)[:, None], 3, axis=1)
         # the VTK surface material (ambient 0.3, diffuse 0.7, specular 0.2; color-mapped slices 0.6, 0.45, 0, so
         # they read true) from the lights' diffuse 0.8: colors scaled to the diffuse part, ambient light to match
-        mapped = "Color" in mesh.vertex_properties
+        mapped = not mesh.is_lit
         amb, dif, spec = (0.6, 0.45, 0.0) if mapped else (0.3, 0.7, 0.2)
         alpha = 1.0 - mesh.transparency
         colors = np.concatenate([rgb * (dif / 0.8), np.full(rgb.shape[:2] + (1,), alpha)], -1).reshape(-1, 4)
