@@ -507,6 +507,8 @@ class Pipeline:
         # Results after the leading modifiers whose output can be reused (see _modifier_key),
         # keyed by source, frame, device and those modifiers' settings: showing the same frame
         # again (view cells, plots, the GUI, a kernel) skips the analysis.
+        # Steps slower than ``checkpoint_seconds`` also keep their own result, so changing a later
+        # step (its form in the GUI, its notebook cell) starts there instead of at the source frame.
         self._outputs: OrderedDict[tuple, DataCollection] = OrderedDict()
         self.cache_outputs = True
 
@@ -626,16 +628,22 @@ class Pipeline:
     def _trim_cache(self):
         while len(self._cache) > max(self._cache_size, 1):
             self._cache.popitem(last=False)
-        while len(self._outputs) > max(self._cache_size, 1):
+        while len(self._outputs) > 4 * max(self._cache_size, 1):  # results of several steps per frame
             self._outputs.popitem(last=False)
         if self.cache_memory is not None:
-            def total():
-                return sum(d.nbytes for d in self._cache.values()) + sum(d.nbytes for d in self._outputs.values())
+            def total():  # an array shared by a frame and the results computed from it counts once
+                seen = {}
+                for d in (*self._cache.values(), *self._outputs.values()):
+                    for a in d.particles.values():
+                        seen[id(a)] = getattr(a, "nbytes", 0)
+                return sum(seen.values())
 
             while self._outputs and total() > self.cache_memory:  # results go first: recomputable
                 self._outputs.popitem(last=False)
             while len(self._cache) > 1 and total() > self.cache_memory:
                 self._cache.popitem(last=False)
+
+    checkpoint_seconds = 0.02
 
     def compute(self, frame: int = 0, device: str | None = None, errors: str = "raise",
                 upto: int | None = None, cancel: threading.Event | None = None) -> DataCollection:
@@ -719,6 +727,8 @@ class Pipeline:
             if upstream is not None:
                 _keep_upstream(mod, upstream, data)
             mod.last_output = output_summary(before, data, frame)
+            if index < len(keys) - 1 and not failed and mod.last_time >= self.checkpoint_seconds:
+                self._store_output(base + (tuple(keys[:index + 1]),), data)
         if len(keys) == len(mods) and keys and not failed and start < len(keys):
             self._store_output(base + (tuple(keys),), data)
         return data

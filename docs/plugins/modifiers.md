@@ -69,7 +69,8 @@ changes.
 
 **Reusing results.** The pipeline keeps the output of its leading built-in modifiers per
 frame and skips them when the same frame is computed again with the same settings (every
-public attribute is part of the key). Plugin modifiers are recomputed every time unless the
+public attribute is part of the key); a step slower than `pipe.checkpoint_seconds` also keeps
+its own output, so editing a later step starts there. Plugin modifiers are recomputed every time unless the
 class sets `cacheable = True`; do that when the output depends only on the input and the
 modifier's attributes (not on files, the clock or random numbers). Function modifiers and
 `PythonScript` are never reused. `pipe.cache_outputs = False` turns this off.

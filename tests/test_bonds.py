@@ -307,3 +307,28 @@ def test_bond_rule_complete_adds_partner_atoms(srtio3):
     assert counts([("Ti", "O", 0.0, 2.2, "complete")], boundary=(0, 1))[0] >= plain
     with pytest.raises(ValueError):
         expand(srtio3, None, b, bond_mode="sideways")
+
+
+def test_drawn_bonds_are_found_once_per_content(cu_fcc, monkeypatch):
+    import ewald.bonds as bonds_mod
+    from ewald import scene
+
+    calls = []
+    find = bonds_mod.find_bonds
+    monkeypatch.setattr(bonds_mod, "find_bonds", lambda *a, **k: calls.append(1) or find(*a, **k))
+    monkeypatch.setattr(bonds_mod, "_FOUND", type(bonds_mod._FOUND)())
+    rules = [("Cu", "Cu", 0.0, 3.0)]
+    first = scene.build(cu_fcc, bond_pairs=rules)
+    again = cu_fcc.copy()  # the same frame computed again (a color step, a style change)
+    again["Color"] = np.ones((again.count, 3))
+    second = scene.build(again, bond_pairs=rules)
+    assert len(calls) == 1
+    np.testing.assert_array_equal(first["bonds"].primitive.start, second["bonds"].primitive.start)
+    scene.build(cu_fcc, bond_pairs=[("Cu", "Cu", 0.0, 2.0)])  # other rules
+    moved = cu_fcc.copy()
+    moved.positions = moved.positions + [0.1, 0.0, 0.0] * (np.arange(moved.count) == 0)[:, None]
+    scene.build(moved, bond_pairs=rules)  # one atom moved
+    assert len(calls) == 3
+    b = bonds_mod.cached_bonds(cu_fcc, pairs=rules)
+    b["Width"] = np.zeros(b.count)  # a caller's copy
+    assert "Width" not in bonds_mod.cached_bonds(cu_fcc, pairs=rules)

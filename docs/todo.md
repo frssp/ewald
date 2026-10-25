@@ -74,6 +74,14 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 - Pipeline output cache: plugin modifiers are never reused (`Modifier.cacheable` is None for
   them); first-party plugins (ewald-phonopy, ewald-plumed) could set `cacheable = True` where
   their output depends only on their settings.
+- Results that survive Run all: `Notebook.run_all` starts a new namespace, so the new Pipeline
+  indexes the file again and recomputes every step (cache keys hold `id(source)` and
+  `id(modifier)`). Keys by content (source path, size and mtime, step type and settings, the
+  mtimes of files a step reads) would keep them; an all-frames step over a long trajectory gains
+  the most. Measured 2026-10-25: 108k atoms, CNA + PTM + Coordination, Run all 1.0 s every time.
+- Reader index on disk: dump, XDATCAR and extxyz frame offsets are scanned on every open (about
+  4-8 s per GB from a warm OS cache; 376 MB dump 1.5 s, 162 MB XDATCAR 1.3 s). Keeping them in
+  the cache folder keyed by path, size and mtime would make reopening a large file instant.
 - Structure identification at 108k atoms: the periodic kNN is a numba cell list now (0.10-0.22 s
   for k = 12-33, was 0.32-0.71 s with cKDTree + image padding). PTM (0.93 s) and Steinhardt
   (0.95 s) are now dominated by their per-atom kernels (PTM's C++ template matching, the Ylm
@@ -286,8 +294,9 @@ GUI
   changes with the same atoms that replace only the point coordinates. Measured 2026-10-24 after
   bond impostors: a ball-and-stick frame switch at 11k atoms spends ~20 ms rebuilding actors and
   ~150 ms in llvmpipe's draw, at 108k ~0.4 s (mostly the bond search) and ~0.9 s drawing, so
-  reusing actors would save little until the per-frame bond search is cached or moved off the
-  GUI thread.
+  reusing actors would save little until the per-frame bond search moves off the GUI thread
+  (redraws of the same frame reuse it since 2026-10-25, `bonds.cached_bonds`; a new frame still
+  searches on the GUI thread).
 - Picking without a render: click picks still use a `vtkPropPicker` selection render; the hover
   readout already does a CPU ray-sphere test (`camera_ray`, `ray_spheres` in `gui/viewport.py`)
   that `pick_at` could reuse.
