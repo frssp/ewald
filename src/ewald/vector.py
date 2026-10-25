@@ -248,10 +248,9 @@ def _mesh_prims(mesh, camera, size, pt, light=None):
         else np.asarray(vn, float)[f].mean(1)  # smooth isosurface normals when given
     n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
     lit = np.minimum(1.0, 0.55 + 0.45 * strength * np.abs(n @ light))
-    if vc is not None:  # color-mapped slices keep their exact colormap (unlit)
-        fcol = np.clip(np.asarray(vc, float), 0, 1)[f].mean(1)
-    else:
-        fcol = np.clip(mesh.face_colors(), 0, 1) * lit[:, None]
+    fcol = np.clip(mesh.face_colors() if vc is None else np.asarray(vc, float)[f].mean(1), 0, 1)
+    if mesh.is_lit:  # color-mapped slices keep their exact colormap (unlit)
+        fcol = fcol * lit[:, None]
     a = 1.0 - mesh.transparency
     for k, tri in enumerate(f):
         poly = Polygon(np.column_stack([vx[tri], vy[tri]]), closed=True)

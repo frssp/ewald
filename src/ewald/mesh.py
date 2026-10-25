@@ -15,11 +15,15 @@ class SurfaceMesh:
     smooth shading, e.g. isosurfaces; 'Color' V x 3, interpolated across faces, e.g. grid
     slices; it overrides the face colours). ``edges`` (E x 2 vertex indices) are outline
     lines drawn on top (VESTA's polyhedron edges); ``transparency`` 0..1 applies to the faces.
+
+    ``lit``: whether the colours are shaded by the lights. None (default) shades face colours and keeps
+    vertex colours true, as colour maps (grid slices) should read; True shades vertex colours too
+    (smoothly coloured solids such as protein cartoons), False keeps face colours true.
     """
 
     def __init__(self, vertices=None, faces=None, face_properties=None, edges=None, *,
                  transparency: float = 0.0, edge_color=(0.25, 0.25, 0.25), edge_width: float = 0.04,
-                 vertex_properties=None):
+                 vertex_properties=None, lit: bool | None = None):
         self.vertices = np.zeros((0, 3)) if vertices is None else np.asarray(vertices, float).reshape(-1, 3)
         self.faces = np.zeros((0, 3), np.int64) if faces is None else np.asarray(faces, np.int64).reshape(-1, 3)
         self.face_properties: dict[str, np.ndarray] = dict(face_properties or {})
@@ -28,6 +32,12 @@ class SurfaceMesh:
         self.transparency = float(transparency)
         self.edge_color = edge_color
         self.edge_width = float(edge_width)
+        self.lit = lit
+
+    @property
+    def is_lit(self) -> bool:
+        """Whether renderers shade this mesh (see ``lit``)."""
+        return ("Color" not in self.vertex_properties) if self.lit is None else bool(self.lit)
 
     @property
     def face_count(self) -> int:

@@ -497,3 +497,32 @@ def test_default_light_is_the_ray_tracers_key_light():
     d = np.asarray(DEFAULT_LIGHT) / np.linalg.norm(DEFAULT_LIGHT)
     assert len(p.renderer.lights) == 2 and np.allclose(p.renderer._ewald_light[:3], d)
     p.close()
+
+
+def test_type_color_past_the_jmol_table():
+    """Elements past Mt (Z > 109: Ds ... Og) have no Jmol colour; they get a palette colour instead of an
+    IndexError (a PDB without element columns guessed 'Og' from an OG atom name)."""
+    from ewald.render import type_color
+
+    for t in ("Ds", "Nh", "Og"):
+        assert type_color(t).shape == (3,)
+
+
+def test_default_camera_frames_only_what_is_drawn():
+    """With atoms and cell hidden, the ray tracer and vector files (which take :func:`default_camera`) frame
+    what is drawn, here a small mesh in a big box, like the OpenGL picture, not the hidden atoms and cell."""
+    from ewald.mesh import SurfaceMesh
+    from ewald.render import default_camera, render
+
+    data = DataCollection(np.array([[0, 0, 0], [40, 40, 40.0]]), ["Cu", "Cu"], Cell(np.eye(3) * 40))
+    c = np.array([20, 20, 20.0])
+    data.surfaces["tetra"] = SurfaceMesh(c + [[-1, -1, 0], [1, -1, 0], [0, 1, 0], [0, 0, 1.5]],
+                                         [[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]])
+    cam = default_camera(data, (200, 150), scene_kwargs={"show_atoms": False}, show_cell=False)
+    assert cam["parallel_scale"] < 5                 # the 2 A mesh, not the 70 A box diagonal
+    kw = dict(size=(200, 150), show_atoms=False, show_cell=False, background="white", legend=False,
+              quality="draft", ambient_occlusion=False, antialiasing=False)
+    gl = render(data, **kw)[..., :3].astype(int).sum(-1) < 740
+    rt = render(data, renderer="raytrace", samples=1, **kw)[..., :3].astype(int).sum(-1) < 740
+    assert gl.mean() > 0.05                          # the mesh fills a good part of the picture
+    assert (rt & gl).sum() > 0.7 * gl.sum() and rt.sum() < 1.3 * gl.sum()
