@@ -184,6 +184,12 @@ def test_view_tab_trajectory_color_map(app, pipe):
     p.close()
     tw["group"].setChecked(False)
     assert st.trajectory_color_by is None and "trajectory_color_by" not in st.scene_kwargs()
+    tw["draw"].setCurrentText("Tube")
+    tw["radius"].setValue(0.12)
+    assert st.trajectory_style == "tube" and st.trajectory_radius == 0.12
+    assert st.view_settings(["Cu"])["trajectory_style"] == "tube"
+    tw["radius"].setValue(0)
+    assert st.trajectory_radius is None
     _dispose(panel)
 
 

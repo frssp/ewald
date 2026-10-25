@@ -10,6 +10,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## Next
 
+- Trajectory tubes (`trajectory_style="tube"`): the vector renderer paints each piece at the depth
+  of its start (painter's algorithm), so a piece that ends inside an atom nearer the camera than its
+  start can cover that atom, as lines do there; sorting by the far end or splitting pieces at atom
+  surfaces would fix both. Tubes are one cylinder per traced step, so very long paths of many atoms
+  make large meshes in the viewport (no LOD for them yet).
 - Simulation codes (`ewald.codes`, Preferences › Codes): only VASP and LAMMPS are built in and the
   Quantum ESPRESSO entry is an example plugin; CP2K, GPAW, Gaussian and QE as real first-party
   plugins are open. NEB and phonopy folders are still recognized outside the registry

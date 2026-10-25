@@ -256,6 +256,28 @@ def test_trajectory_color_map_and_color_bar_in_every_renderer(tmp_path, renderer
     assert len(colored) and np.ptp(colored, axis=0).max() > 80        # the line changes color along x
 
 
+@pytest.mark.parametrize("renderer", ["opengl", "raytrace", "vector"])
+def test_trajectory_tubes_in_every_renderer(renderer):
+    """trajectory_style='tube' draws shaded cylinders of trajectory_radius in every renderer: wider than the
+    line, in proportion to the path's length on screen."""
+    from ewald.modifiers import GenerateTrajectoryLines
+
+    frames = [DataCollection(np.array([[1.0 + 8 * s, 5.0, 5.0]]), np.array(["Cu"]), Cell(np.diag([10.0] * 3)))
+              for s in np.linspace(0, 1, 12)]
+    pipe = Pipeline(StaticSource(frames), [GenerateTrajectoryLines()])
+    kw = dict(frame=0, size=(200, 150), direction="z", show_cell=False, renderer=renderer, quality="draft",
+              radius_scale=0.01, legend=False)
+
+    def extent(img):   # (columns, rows) the path covers
+        ink = np.abs(img[..., :3].astype(int) - img[0, 0, :3].astype(int)).sum(-1) > 60
+        return int(ink.any(0).sum()), int(ink[:, ink.shape[1] // 2].sum())
+
+    _, line = extent(pipe.render(None, **kw))
+    wide, tube = extent(pipe.render(None, trajectory_style="tube", trajectory_radius=0.4, **kw))
+    assert line <= 2 and tube >= 3 * line                     # 8.8 A long, 0.8 A thick
+    assert 0.7 < tube / wide * 11 < 1.4, (wide, tube)
+
+
 def _perovskite():
     from ase.spacegroup import crystal
 

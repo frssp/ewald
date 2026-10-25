@@ -521,13 +521,17 @@ class VectorsVis(VisualElement):
 
 
 TRAJECTORY_COLOR_BY = ("Time", "Frame", "Step Length")
+TRAJECTORY_STYLES = ("line", "tube")   # TrajectoryLinesVis.style
+TRAJECTORY_TUBE_RADIUS = 0.08          # Angstrom, a tube's radius when none is set
 
 
 class TrajectoryLinesVis(VisualElement):
     """``tables['trajectory-lines']`` (GenerateTrajectoryLines) as one polyline per particle, in its atom
     color or a color map by Time, Frame, step length or a property, over a Time window or a trail.
 
-    ``width`` in pixels, 0 hides them; ``radius`` (Angstrom) sizes the ray-traced tubes (None: as wide as the line).
+    ``width`` in pixels, 0 hides them. ``style`` 'line' draws lines of that width (``radius`` in Angstrom
+    sizes the ray tracer's tubes, None: as wide as the line); 'tube' draws thin shaded cylinders of
+    ``radius`` (default 0.08 Angstrom) with round joints, the same solid tubes in every renderer.
 
     ``color_by`` None draws each line in its atom's color. Otherwise the lines follow the color map
     ``colormap`` point by point: 'Time' (the table's Time, the timestep), 'Frame', 'Step Length' (the
@@ -546,7 +550,9 @@ class TrajectoryLinesVis(VisualElement):
 
     def __init__(self, width: float = 2.0, color_by: str | None = None, colormap: str = "viridis",
                  color_range=None, time_range=None, trail=None, radius: float | None = None,
-                 colorbar: bool = True):
+                 colorbar: bool = True, style: str = "line"):
+        if style not in TRAJECTORY_STYLES:
+            raise ValueError(f"trajectory style is one of {', '.join(TRAJECTORY_STYLES)}, not {style!r}")
         self.width = width
         self.color_by = color_by
         self.colormap = colormap
@@ -555,6 +561,7 @@ class TrajectoryLinesVis(VisualElement):
         self.trail = trail
         self.radius = radius
         self.colorbar = colorbar
+        self.style = style
 
     def applies(self, data) -> bool:
         return self.width > 0 and "trajectory-lines" in data.tables
@@ -598,7 +605,7 @@ class TrajectoryLinesVis(VisualElement):
             return None
         radius = self.radius or None   # None: as wide as the line on screen
         if values is None:
-            return [("trajectories", Lines(pts, strips, colors[owner], self.width, radius))]
+            return [("trajectories", self._shape(Lines(pts, strips, colors[owner], self.width, radius)))]
         from .colormaps import get_colormap
 
         # the map spans the whole Time window, not just the trail drawn so far: colors keep their meaning
@@ -610,7 +617,13 @@ class TrajectoryLinesVis(VisualElement):
         rgb[~np.isfinite(values)] = 0.5
         if self.colorbar:
             self._bar = {"title": str(self.color_by), "cmap": self.colormap, "range": (float(lo), float(hi))}
-        return [("trajectories", Lines(pts, strips, None, self.width, radius, point_rgb=rgb))]
+        return [("trajectories", self._shape(Lines(pts, strips, None, self.width, radius, point_rgb=rgb)))]
+
+    def _shape(self, lines: Lines):
+        """``lines`` as drawn in this style: themselves, or (tube) as cylinders."""
+        if self.style != "tube":
+            return lines
+        return line_tubes(lines, self.radius or TRAJECTORY_TUBE_RADIUS)
 
     def legend(self, data, ctx):
         return getattr(self, "_bar", None)
@@ -681,6 +694,25 @@ class TrajectoryLinesVis(VisualElement):
                                            and c not in TRAJECTORY_COLOR_BY)]
         raise KeyError(f"trajectory lines cannot be colored by {name!r}; use one of {', '.join(options)} "
                        f"or a numeric particle property")
+
+
+def line_tubes(lines: Lines, radius: float, bend: float = 20.0) -> Cylinders:
+    """``lines`` as solid tubes of ``radius`` (Angstrom): one cylinder per piece in its color (the mean
+    of its ends' for a color map), round at both ends of a strip and at every joint that bends more than
+    ``bend`` degrees (the piece's end cap fills the outside of the bend; a straighter joint needs none,
+    and the vector renderer would draw a bead there), so every renderer draws the same smooth tube."""
+    seg = lines.segments()
+    n = [len(s) - 1 for s in lines.strips if len(s) > 1]
+    first = np.zeros(len(seg), bool)
+    first[np.cumsum([0] + n)[:-1]] = True
+    last = np.r_[first[1:], True]
+    a, b = lines.points[seg[:, 0]], lines.points[seg[:, 1]]
+    d = b - a
+    d = d / np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-12)
+    straight = np.r_[np.einsum("ij,ij->i", d[:-1], d[1:]), 1.0] >= np.cos(np.radians(bend))
+    return Cylinders(a, b, float(radius), lines.segment_colors(ink=(0.3, 0.3, 0.3)),
+                     start_cap=np.where(first, "round", "none"),
+                     end_cap=np.where(last | ~straight, "round", "none"))
 
 
 _CELL_EDGES = [(0, 1), (0, 2), (0, 3), (1, 4), (1, 5), (2, 4), (2, 6), (3, 5), (3, 6), (4, 7), (5, 7), (6, 7)]
@@ -756,7 +788,7 @@ def builtin_elements(*, radius_scale=1.0, type_colors=None, type_radii=None, rad
                      oxidation_states=None, coordination=None, bonds=None, bond_pairs=None, bond_radius=0.15,
                      vectors=None, trajectory_width=2.0, trajectory_color_by=None, trajectory_colormap="viridis",
                      trajectory_color_range=None, trajectory_time_range=None, trajectory_trail=None,
-                     trajectory_radius=None, show_cell=True, cell_color=None, cell_width=2.0,
+                     trajectory_radius=None, trajectory_style="line", show_cell=True, cell_color=None, cell_width=2.0,
                      cell_radius=None, show_atoms=True, surfaces=None, selection_color=None, measurements=None,
                      **_ignored) -> list[VisualElement]:
     """The built-in elements configured from ``render()`` keyword arguments, in drawing order."""
@@ -764,7 +796,8 @@ def builtin_elements(*, radius_scale=1.0, type_colors=None, type_radii=None, rad
                              selection_color)
     particles.enabled = bool(show_atoms)
     lines = TrajectoryLinesVis(trajectory_width, trajectory_color_by, trajectory_colormap, trajectory_color_range,
-                               trajectory_time_range, trajectory_trail, trajectory_radius)
+                               trajectory_time_range, trajectory_trail, trajectory_radius,
+                               style=trajectory_style or "line")
     lines.type_colors = type_colors
     out = [particles, BondsVis(bonds, bond_pairs, bond_radius), SurfacesVis(surfaces or None), VectorsVis(vectors),
            lines]
