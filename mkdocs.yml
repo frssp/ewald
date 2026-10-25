@@ -83,6 +83,7 @@ nav:
       - Side bar plugins: plugins/gui.md
       - Settings pages: plugins/settings.md
       - Workflow sources: plugins/workflows.md
+      - Simulation codes: plugins/codes.md
       - Modifier Forge: plugins/forge.md
       - Testing a plugin: plugins/testing.md
       - Packaging and sharing: plugins/packaging.md

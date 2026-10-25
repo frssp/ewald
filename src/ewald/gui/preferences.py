@@ -1,7 +1,8 @@
 """Preferences dialog (Edit › Preferences, Ctrl+,): OVITO-style page list + VESTA element table.
 
 Design: /design/settings-menu.md. Rows are generated from ``ewald.settings.OPTIONS`` and
-grouped into sections by ``LAYOUT``; ``apply_settings`` pushes a Settings object into a
+grouped into sections by ``LAYOUT``; the Codes page has one section per simulation code of
+:mod:`ewald.codes` (VASP, LAMMPS and plugins' codes) with that code's own options; ``apply_settings`` pushes a Settings object into a
 running MainWindow.
 """
 from __future__ import annotations
@@ -11,7 +12,7 @@ import os
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import settings as settings_mod
-from ..settings import DEVICES, OPTION, OPTIONS, PAGE_ALIASES, PAGES, Settings
+from ..settings import DEVICES, PAGE_ALIASES, PAGES, Settings, all_options, option
 from . import fonts, header, workers
 from .element_table import ElementTable  # noqa: F401 (imported from here by callers)
 from .pref_widgets import Toggle, _ColorButton, _PathEdit, _ProfileBox, _chevron, _icon, _restyle
@@ -21,7 +22,7 @@ from .theme import TOKENS
 
 _CHOICE_LABELS = {"auto": "Auto", "coarse": "Always coarse", "full": "Always full", "ortho": "Orthographic", "persp": "Perspective", "raytrace": "Ray tracing (AO + shadows)",
                   "opengl": "OpenGL (fast preview)", "iso": "Isometric", "x": "Along +x", "y": "Along +y",
-                  "z": "Along +z (top)", "front": "Front (−y)", "ask": "Ask when opening", "never": "Use default map",
+                  "z": "Along +z (top)", "front": "Front (−y)", "ask": "Ask when opening", "never": "Never",
                   "covalent": "Covalent", "vdW": "van der Waals", "white": "White", "black": "Black",
                   "transparent": "Transparent", "viewport": "Same as viewport",
                   "claude-opus-5-5": "Claude Opus 5.5", "claude-sonnet-5-5": "Claude Sonnet 5.5 (faster)",
@@ -34,9 +35,9 @@ LAYOUT = {
     "General": ("Startup behaviour and file handling.", [
         ("Startup", ["general.startup_workspace", "general.restore_layout"]),
         ("Appearance", ["general.ui_theme", "general.font_size", "general.toolbar_style", "general.activity_hidden"]),
-        ("LAMMPS files", ["general.lammps_type_prompt", "general.lammps_type_map"]),
         ("Running jobs", ["general.live_reload", "general.live_reload_interval"]),
         ("Help", ["general.docs_url"])]),
+    "Codes": ("Simulation codes EWALD reads: their files, formats and settings. Plugins add more codes.", []),
     "3D view": ("Defaults for the interactive structure view.", [
         ("View", ["viewport.follow_theme", "viewport.background", "viewport.projection", "viewport.initial_view", "viewport.style_preset"]),
         ("Navigation", ["viewport.rotation_step"]),
@@ -242,8 +243,8 @@ class PreferencesDialog(QtWidgets.QDialog):
             col.addWidget(heading)
             card, rows = self._card()
             for key in keys:
-                editor = self._device_combo() if key == "compute.device" else self._editor(OPTION[key])
-                self._add_row(rows, OPTION[key], editor)
+                editor = self._device_combo() if key == "compute.device" else self._editor(option(key))
+                self._add_row(rows, option(key), editor)
             col.addWidget(card)
             self.cards.append((heading, card, keys))
             if keys == ["llm.provider"]:  # the key of the chosen provider comes right after it
@@ -262,6 +263,8 @@ class PreferencesDialog(QtWidgets.QDialog):
             self._style_rows(rows)
             col.addWidget(card)
             self.style_card = (heading, card)
+        if name == "Codes":
+            self._code_sections(col)
         if name == "Compute":
             col.addSpacing(16)
             heading = QtWidgets.QLabel("OPTIONAL COMPONENTS", objectName="sectionTitle")
@@ -827,6 +830,75 @@ class PreferencesDialog(QtWidgets.QDialog):
         _restyle(self.device_badge, "badgeOk" if ok else "badgeOff")
         self.device_note_label.setText(detail)
 
+    def _code_sections(self, col):
+        """One section per registered simulation code: what it reads, then its options."""
+        from .. import codes as codes_mod
+        from .. import plugins
+
+        self.code_cards = []   # (heading, card, about row, keys, search text)
+        state = plugins.installed()
+        for code in codes_mod.codes().values():
+            col.addSpacing(16)
+            heading = QtWidgets.QLabel(code.title.upper(), objectName="sectionTitle")
+            col.addWidget(heading)
+            card, rows = self._card()
+            about = self._row_frame(rows)
+            lay = QtWidgets.QHBoxLayout(about)
+            lay.setContentsMargins(16, 12, 16, 12)
+            lay.setSpacing(12)
+            text = QtWidgets.QVBoxLayout()
+            text.setSpacing(3)
+            if code.description:
+                text.addWidget(QtWidgets.QLabel(code.description, objectName="rowHelp", wordWrap=True))
+            files = ", ".join(code.files + tuple(m for m in code.markers if m not in code.files))
+            if files:
+                text.addWidget(QtWidgets.QLabel(f"Files: {files}", objectName="mono", wordWrap=True))
+            if code.formats:
+                text.addWidget(QtWidgets.QLabel(f"Formats: {', '.join(code.formats)}", objectName="mono",
+                                                wordWrap=True))
+            lay.addLayout(text, 1)
+            builtin = code.origin == "built-in"
+            badge = QtWidgets.QLabel("Built-in" if builtin else "Plugin",
+                                     objectName="badgeOk" if builtin else "badgeOff")
+            badge.setToolTip(code.origin if not builtin else
+                             f"Part of EWALD; switch it off in the Plugins side bar ({code.plugin})")
+            lay.addWidget(badge, 0, QtCore.Qt.AlignTop)
+            keys = []
+            for opt in code.options:
+                self._add_row(rows, opt, self._editor(opt))
+                keys.append(opt.key)
+            col.addWidget(card)
+            haystack = " ".join([code.name, code.title, code.description, files, *code.formats]).lower()
+            self.code_cards.append((heading, card, about, keys, haystack))
+        disabled = [p.name for pid, p in state.items() if p.kind == "built-in" and not p.enabled
+                    and any(c.plugin == pid for c in codes_mod.builtin_codes().values())]
+        if disabled:
+            col.addSpacing(10)
+            col.addWidget(QtWidgets.QLabel(f"Switched off in the Plugins side bar: {', '.join(disabled)}.",
+                                           objectName="rowHelp", wordWrap=True))
+
+    def _search_codes(self, text, matched_pages):
+        for heading, card, about, keys, haystack in getattr(self, "code_cards", []):
+            code_hit = not text or text in haystack or text in "codes simulation"
+            about.setVisible(code_hit)
+            shown = code_hit
+            for key in keys:
+                opt = option(key)
+                hit = code_hit or any(text in s.lower() for s in (opt.label, opt.key, opt.help))
+                self.editors[key][2].setVisible(hit)
+                shown = shown or hit
+            first = True
+            for w in [about, *(self.editors[k][2] for k in keys)]:
+                if not w.isHidden():
+                    want = "rowFirst" if first else "row"
+                    if w.objectName() != want:
+                        _restyle(w, want)
+                    first = False
+            heading.setVisible(shown)
+            card.setVisible(shown)
+            if shown:
+                matched_pages.add("Codes")
+
     def _components(self, rows):
         self.component_rows = {}
         for mod, purpose, found, version, cmd in settings_mod.component_status():
@@ -978,7 +1050,7 @@ class PreferencesDialog(QtWidgets.QDialog):
             return
         for field in PROFILE_FIELDS:   # provider first: switching it clears the model
             key = f"llm.{field}"
-            self.set_value(key, saved.get(field, OPTION[key].default))
+            self.set_value(key, saved.get(field, option(key).default))
         self.editors["llm.profiles"][0].set(self.work["llm.profiles"], name)
 
     def _key_status(self):
@@ -1065,7 +1137,7 @@ class PreferencesDialog(QtWidgets.QDialog):
     def _load(self):
         self._loading = True
         for key, (w, _l, _r) in self.editors.items():
-            self._set_editor(w, OPTION[key], self.work[key])
+            self._set_editor(w, option(key), self.work[key])
         self._loading = False
         self._device_note()
         self._provider_changed(reset_model=False)
@@ -1144,14 +1216,14 @@ class PreferencesDialog(QtWidgets.QDialog):
 
     def set_value(self, key, value):
         """Programmatic edit (tests, command palette): updates the editor and the working copy."""
-        self._set_editor(self.editors[key][0], OPTION[key], value)
+        self._set_editor(self.editors[key][0], option(key), value)
         self.work[key] = value
         self._mark(key)
 
     def reset_key(self, key):
         self.work.reset([key])
         self._loading = True
-        self._set_editor(self.editors[key][0], OPTION[key], self.work[key])
+        self._set_editor(self.editors[key][0], option(key), self.work[key])
         self._loading = False
         if key.startswith("elements."):
             self._refresh_table()
@@ -1168,7 +1240,7 @@ class PreferencesDialog(QtWidgets.QDialog):
             for f in entry["page"].fields:
                 set_field(f, entry["widgets"][f.name], f.empty())
             return
-        self.work.reset([o.key for o in OPTIONS if o.page == page])
+        self.work.reset([o.key for o in all_options() if o.page == page])
         self._load()
         if page == "Plots":   # Apply comments the form's keys out of the style file
             from ..plotstyle import DEFAULT_PRESET, FORM
@@ -1184,7 +1256,7 @@ class PreferencesDialog(QtWidgets.QDialog):
         for heading, card, keys in self.cards:
             first = True
             for key in keys:
-                opt = OPTION[key]
+                opt = option(key)
                 hit = (not text or any(text in s.lower() for s in (opt.label, opt.key, opt.help, opt.page))) \
                     and self._row_applies(key)
                 row = self.editors[key][2]
@@ -1222,6 +1294,7 @@ class PreferencesDialog(QtWidgets.QDialog):
                 shown = shown or hit
             if shown:
                 matched_pages.add(title)
+        self._search_codes(text, matched_pages)
         first_page = None
         for i, name in enumerate(self.page_names):
             hidden = name not in matched_pages

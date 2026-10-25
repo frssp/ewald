@@ -24,7 +24,7 @@ pipeline list. (Earlier versions had an OVITO-style "classic" layout with a pipe
 was removed, and a saved *Window layout* setting is ignored.)
 
 Buttons use one line-icon set. By default mode switches and less frequent buttons (Open,
-Notebook, Render) show an icon with text, and the tool rail and frequent buttons (Save, Fit)
+Notebook, Render) show an icon with text, and the 3D view's tools and frequent buttons (Save, Fit)
 show the icon alone, with the name and shortcut in the tooltip. Preferences ›
 General › Toolbar buttons switches to icons only or to text only (which also drops the icons
 from menus).
@@ -93,7 +93,22 @@ the same look with any radius. Automatic bonds come from a VESTA-style table (Bo
 pair of types up to 1.15 × the sum of covalent radii; in compounds metal-metal pairs are left
 out, so SrTiO3 gets Ti-O and Sr-O bonds but not Sr-Ti. Opening a structure with more than
 Preferences › Atoms & bonds › *Automatic bonds up to* atoms (250 000) turns bonds off, because the
-bond search and the sticks would slow the viewport down; turn them on under Bonds if you want them. The tool rail on the left switches
+bond search and the sticks would slow the viewport down; turn them on under Bonds if you want them.
+
+The 3D view's controls float over it as three chips: view directions (look along a, b, c, a\*,
+b\*, c\*) and one-step rotations at the top left, Ortho, Style and Fit at the top right, and the
+tools on the left. When the view gets small (a split, another Structure tab, a narrow window) they
+fold instead of overlapping: a\*/b\*/c\* go under a chevron and the rotations under one button,
+then the six directions become one *a* menu and Style moves into *⋯*, and at the smallest
+size the rotations and Ortho go there too; Fit always stays. A short view moves the last tools
+and Clear into a *⋯* at the bottom of the tool chip, which is highlighted while it holds the
+current tool. Color bars and the color legend are drawn below the chips. The 3D view shows no
+frame text: the timeline under it shows the frame's timestep and time beside its number when the
+file has them (Preferences › 3D view › *Show timestep and time*). The
+OpenGL 1.x viewport used over `ssh -X` cannot draw widgets over its GL window, so there the same
+chips sit in a strip above the view and a column left of it.
+
+The tool chip on the left switches
 between orbit, pick (click an atom to see its id, type, position and every property;
 Shift+click adds atoms to the pick or removes them),
 distance (click two atoms) and angle (click three atoms, vertex in the middle); right-click ›
@@ -377,8 +392,8 @@ with ewald. File › Open opens any format ewald can read ([File formats](format
 formats added by [reader plugins](../plugins/readers.md). Its file filter starts at All supported files,
 which lists every format at once, extensionless VASP names (`POSCAR`, `CONTCAR`, `XDATCAR`, `OUTCAR`,
 `CHGCAR`, ...) and notebooks and sessions included; the groups, one filter per format and All files
-follow it. LAMMPS dumps ask for a
-type-to-element map unless you set a default in Preferences. File › Open from › NEB folder opens a
+follow it. LAMMPS dumps with numeric types ask for an
+optional type-to-element map (Preferences › Codes › LAMMPS › *Type names* turns the question off). File › Open from › NEB folder opens a
 VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image
 ([NEB runs](formats.md#neb-runs)); opening a single image file of such a run asks whether to
 open the whole band. Files, notebooks and NEB folders can also be dropped on the window. In the notebook layout, File › Open also opens `.py`
@@ -407,7 +422,10 @@ Settings button in the Plugins side bar, so it can be set up without Python.
 
 ## Preferences
 
-Edit › Preferences (Ctrl+, ; the application menu on macOS) has ten pages: General, 3D view,
+Edit › Preferences (Ctrl+, ; the application menu on macOS) has eleven pages: General, Codes
+(one section per simulation code: VASP, LAMMPS and codes added by [plugins](../plugins/codes.md),
+each with the files and formats it covers and its own settings, such as whether LAMMPS dumps ask for a
+type map), 3D view,
 Atoms & bonds (per-element color and radius, Jmol or CPK scheme, radius preset, bond search, VESTA
 `elements.ini` import), Rendering, Plots (the style of your own plots, saved plot size and font, and the form and *Open as text* button of your
 matplotlib style file, see [Notebooks](notebooks.md)),

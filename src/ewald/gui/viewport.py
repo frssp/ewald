@@ -1,4 +1,4 @@
-"""3D viewport: VESTA-style view toolbar, tool rail (orbit/pick/measure), overlays."""
+"""3D viewport: VESTA-style view controls and tools (orbit/pick/measure) as chips over the view, overlays."""
 from __future__ import annotations
 
 import sys
@@ -213,9 +213,25 @@ class Viewport(QtWidgets.QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(0)
         self.styled_buttons = []  # (button, text in the default style); MainWindow.set_button_style
-        self._viewbar = self._build_viewbar()
-        grid.addWidget(self._viewbar, 0, 0, 1, 2)
-        grid.addWidget(self._build_rail(), 1, 0)
+        # the view controls are chips floating over the 3D view (D62): view directions top left
+        # (``_viewbar``), projection, style and Fit top right (``_displaybar``), tools on the left
+        # (``_rail``); they fold into menus as the view gets small (see _fit_hud)
+        self._viewbar, self._displaybar = self._build_viewbar()
+        self._build_rail()
+        if not self.hud_overlay:   # a native GL window can't have widgets over it: the chips go around it
+            strip = QtWidgets.QWidget(objectName="hudStrip")
+            row = QtWidgets.QHBoxLayout(strip)
+            row.setContentsMargins(self.HUD_MARGIN, self.HUD_MARGIN, self.HUD_MARGIN, 0)
+            row.addWidget(self._viewbar)
+            row.addStretch()
+            row.addWidget(self._displaybar)
+            grid.addWidget(strip, 0, 0, 1, 2)
+            col = QtWidgets.QWidget(objectName="hudStrip")
+            lay = QtWidgets.QVBoxLayout(col)
+            lay.setContentsMargins(self.HUD_MARGIN, self.HUD_MARGIN, 0, self.HUD_MARGIN)
+            lay.addWidget(self._rail)
+            lay.addStretch()
+            grid.addWidget(col, 1, 0)
         # the 3D widget (VTK: importing pyvistaqt alone takes about a second) is built after the
         # window's first paint, or on first use of ``plotter``; a plain frame holds its place
         self._grid = grid
@@ -268,6 +284,7 @@ class Viewport(QtWidgets.QWidget):
             self._grid.replaceWidget(self._placeholder, widget)
             self._placeholder.deleteLater()
             self._placeholder = None
+        self._place_hud()
         self.redraw()
         self.viewBuilt.emit()
 
@@ -302,55 +319,182 @@ class Viewport(QtWidgets.QWidget):
         return self.plotter.interactor
 
     # ------------------------------------------------------------------ chrome
-    def _build_viewbar(self):
-        bar = QtWidgets.QFrame(objectName="viewbar")
-        lay = QtWidgets.QHBoxLayout(bar)
-        lay.setContentsMargins(6, 2, 6, 2)
+    # ------------------------------------------------------------------ HUD
+    # The view controls float over the 3D view as chips (D62) and fold as the view gets small;
+    # each level hides more, widest first. Fit always stays.
+    HUD_LEVELS = (
+        "full",          # everything
+        "folded",        # a*/b*/c* under a chevron, the five rotations under one menu button
+        "axis-menu",     # the six directions under one "a" menu button, Style under ⋯
+        "minimal",       # rotations and Ortho go into ⋯ too
+    )
+    HUD_MARGIN = 8       # px between the chips and the edges of the view
+    hud_overlay = True   # chips over the GL widget (a QOpenGLWidget composites them); False: around it
+    AXES = ("a", "b", "c", "a*", "b*", "c*")
+
+    def _chip(self, name, vertical=False):
+        chip = QtWidgets.QFrame(self, objectName="hudChip")
+        chip.setProperty("hudName", name)
+        chip.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        chip.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        lay = (QtWidgets.QVBoxLayout if vertical else QtWidgets.QHBoxLayout)(chip)
+        lay.setContentsMargins(3, 3, 3, 3)
         lay.setSpacing(2)
-        axes = QtWidgets.QFrame(objectName="axisGroup")  # one compact segmented group, no label
-        row = QtWidgets.QHBoxLayout(axes)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(0)
-        for axis in ("a", "b", "c", "a*", "b*", "c*"):
+        lay.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)   # the chip is as large as what it shows
+        return chip, lay
+
+    @staticmethod
+    def _divider(lay, vertical=False):
+        d = QtWidgets.QFrame(objectName="hudDivider")
+        if vertical:
+            d.setFixedHeight(1)
+        else:
+            d.setFixedSize(1, 16)
+        lay.addWidget(d, 0, QtCore.Qt.AlignCenter)
+        return d
+
+    def _build_viewbar(self):
+        """The two top chips: view directions and rotations (left), projection, style and Fit (right)."""
+        view, lay = self._chip("view")
+        self.axis_buttons = {}
+        for axis in self.AXES:
             b = _button(axis, f"Look along {axis}")
+            b.setObjectName("hudAxis")
             b.clicked.connect(lambda _=False, ax=axis: self.view_along(ax))
-            row.addWidget(b)
-        lay.addWidget(axes)
-        lay.addSpacing(8)
-        for name, tip, fn in (("arrow_left", "Rotate one step (Preferences › 3D view) left", lambda: self.rotate("azimuth", -self.rotation_step)),
-                              ("arrow_right", "Rotate one step right about the screen vertical", lambda: self.rotate("azimuth", self.rotation_step)),
-                              ("arrow_up", "Tilt up one step", lambda: self.rotate("elevation", self.rotation_step)),
-                              ("arrow_down", "Tilt down one step", lambda: self.rotate("elevation", -self.rotation_step)),
-                              ("roll", "Roll one step in the screen plane", lambda: self.rotate("roll", self.rotation_step))):
-            b = header.button(name, tip)
-            b.clicked.connect(fn)
             lay.addWidget(b)
-        lay.addSpacing(8)
+            self.axis_buttons[axis] = b
+        self.axis_more = self._menu_button("chevron_down", "Look along a reciprocal axis", "hudChevron")
+        for axis in ("a*", "b*", "c*"):
+            self.axis_more.menu().addAction(f"Look along {axis}", lambda ax=axis: self.view_along(ax))
+        lay.addWidget(self.axis_more)
+        self.axis_menu = self._menu_button("chevron_down", "Look along a cell axis", "hudAxisMenu")
+        self.axis_menu.setText("a")
+        self.axis_menu.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        self.axis_menu.setLayoutDirection(QtCore.Qt.RightToLeft)   # the chevron after the letter
+        self.axis_menu.setIconSize(QtCore.QSize(12, 12))
+        for axis in self.AXES:
+            self.axis_menu.menu().addAction(f"Look along {axis}", lambda ax=axis: self.view_along(ax))
+        lay.addWidget(self.axis_menu)
+        self._rotate_divider = self._divider(lay)
+        self.rotations = (
+            ("arrow_left", "Rotate left", "Rotate one step (Preferences › 3D view) left", ("azimuth", -1)),
+            ("arrow_right", "Rotate right", "Rotate one step right about the screen vertical", ("azimuth", 1)),
+            ("arrow_up", "Tilt up", "Tilt up one step", ("elevation", 1)),
+            ("arrow_down", "Tilt down", "Tilt down one step", ("elevation", -1)),
+            ("roll", "Roll", "Roll one step in the screen plane", ("roll", 1)))
+        self.rotate_buttons = []
+        for name, _label, tip, (kind, sign) in self.rotations:
+            b = header.button(name, tip)
+            b.clicked.connect(lambda _=False, k=kind, s=sign: self.rotate(k, s * self.rotation_step))
+            lay.addWidget(b)
+            self.rotate_buttons.append(b)
+        self.rotate_menu = self._menu_button("roll", "Rotate or tilt one step", "hudMenu")
+        self._add_rotations(self.rotate_menu.menu())
+        lay.addWidget(self.rotate_menu)
+
+        display, lay = self._chip("display")
         self.ortho_button = _button("Ortho", "Orthographic / perspective projection", True)
         self.ortho_button.setChecked(True)
         self.ortho_button.toggled.connect(self.set_ortho)
         lay.addWidget(self.ortho_button)
-        lay.addSpacing(8)
-        lay.addWidget(QtWidgets.QLabel("Style", objectName="muted"))
-        self.style_combo = QtWidgets.QComboBox()
+        self.style_combo = QtWidgets.QComboBox(objectName="hudCombo", toolTip="Style")
         self.style_combo.addItems(list(STYLE_PRESETS))
         self.style_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
         self.style_combo.setCurrentText(self.style.preset)
         self.style_combo.currentTextChanged.connect(self._preset)
         lay.addWidget(self.style_combo)
-        lay.addStretch()
+        self.more_button = self._menu_button("more", "More view controls", "hudMenu")
+        self.more_button.menu().aboutToShow.connect(self._fill_more_menu)
+        lay.addWidget(self.more_button)
         fit = _button("Fit", native_text("Zoom to fit (Ctrl+0)"))
         fit.setProperty("ewald_icon", "fit")
         fit.clicked.connect(self.zoom_fit)
         lay.addWidget(fit)
+        self.fit_button = fit
         self.styled_buttons.append((fit, False))
-        return bar
+        self.hud_level = None
+        self._view_chip, self._display_chip = view, display
+        self._set_hud_level(0, view, display)
+        return view, display
+
+    def _menu_button(self, icon_name, tip, name):
+        """A chip button that opens a menu at once (folded axes, rotations, ⋯)."""
+        b = QtWidgets.QToolButton(toolTip=tip, autoRaise=True, objectName=name)
+        b.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        b.setMenu(QtWidgets.QMenu(b))
+        if icon_name:
+            from .icons import icon
+
+            b.setProperty("ewald_icon", icon_name)
+            b.setIcon(icon(icon_name))
+            b.setIconSize(QtCore.QSize(header.ICON, header.ICON))
+            b.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
+        return b
+
+    def _add_rotations(self, menu):
+        for _name, label, tip, (kind, sign) in self.rotations:
+            a = menu.addAction(label, lambda k=kind, s=sign: self.rotate(k, s * self.rotation_step))
+            a.setToolTip(tip)
+
+    def _set_hud_level(self, level: int, view=None, display=None):
+        """Show the top chips at fold ``level`` (an index into ``HUD_LEVELS``)."""
+        if level == self.hud_level:
+            return
+        self.hud_level = level
+        for b in ("a", "b", "c"):
+            self.axis_buttons[b].setVisible(level < 2)
+        for b in ("a*", "b*", "c*"):
+            self.axis_buttons[b].setVisible(level < 1)
+        self.axis_more.setVisible(level == 1)
+        self.axis_menu.setVisible(level >= 2)
+        for b in self.rotate_buttons:
+            b.setVisible(level < 1)
+        self.rotate_menu.setVisible(level in (1, 2))
+        self._rotate_divider.setVisible(level < 3)
+        self.style_combo.setVisible(level < 2)
+        self.ortho_button.setVisible(level < 3)
+        self.more_button.setVisible(level >= 2)
+        for chip in (view or self._viewbar, display or self._displaybar):
+            chip.layout().activate()
+            chip.adjustSize()
+
+    def hud_width(self, level: int) -> int:
+        """The width the two top chips need at fold ``level``, with their margins."""
+        current = self.hud_level
+        self._set_hud_level(level)
+        width = self._viewbar.sizeHint().width() + self._displaybar.sizeHint().width() + 3 * self.HUD_MARGIN
+        if not self.hud_overlay:
+            width -= self.HUD_MARGIN   # the strip has no gap at its right edge
+        self._set_hud_level(current)
+        return width
+
+    def _fit_hud(self, width: int):
+        """Fold the top chips just enough to fit ``width``."""
+        level = next((i for i in range(len(self.HUD_LEVELS)) if self.hud_width(i) <= width),
+                     len(self.HUD_LEVELS) - 1)
+        self._set_hud_level(level)
+
+    def _fill_more_menu(self):
+        """The ⋯ menu of the folded chips: what they have no room for now."""
+        menu = self.more_button.menu()
+        menu.clear()
+        if not self.rotate_menu.isVisible():
+            self._add_rotations(menu.addMenu("Rotate"))
+        if not self.ortho_button.isVisible():
+            ortho = menu.addAction("Orthographic projection")
+            ortho.setCheckable(True)
+            ortho.setChecked(self.ortho_button.isChecked())
+            ortho.toggled.connect(self.ortho_button.setChecked)
+        style = menu.addMenu("Style")
+        for name in STYLE_PRESETS:
+            a = style.addAction(name, lambda n=name: self.style_combo.setCurrentText(n))
+            a.setCheckable(True)
+            a.setChecked(name == self.style_combo.currentText())
 
     def _build_rail(self):
-        rail = QtWidgets.QFrame(objectName="rail")
-        rail.setFixedWidth(46)
-        lay = QtWidgets.QVBoxLayout(rail)
-        lay.setContentsMargins(4, 6, 4, 6)
+        """The tool chip on the left: orbit, pick, measure, bond tools, and Clear."""
+        rail, lay = self._chip("tools", vertical=True)
+        self._rail = rail
         group = QtWidgets.QButtonGroup(self)
         group.setExclusive(True)
         self.tool_buttons = {}
@@ -363,19 +507,109 @@ class Viewport(QtWidgets.QWidget):
             self.tool_buttons[key] = b
             self.styled_buttons.append((b, False))
         self.tool_buttons["orbit"].setChecked(True)
-        lay.addStretch()
+        self.rail_more = _button("More", "More tools", True)
+        self.rail_more.setProperty("ewald_icon", "more")
+        self.rail_more.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        self.rail_more.setMenu(QtWidgets.QMenu(self.rail_more))
+        self.rail_more.menu().aboutToShow.connect(self._fill_rail_menu)
+        self.rail_more.menu().aboutToHide.connect(self._update_rail_more)
+        lay.addWidget(self.rail_more)
+        self.styled_buttons.append((self.rail_more, False))
+        self._clear_divider = self._divider(lay, vertical=True)
         clear = _button("Clear", "Clear picks and measurements")
         clear.setProperty("ewald_icon", "clear")
         clear.clicked.connect(self.clear_picks)
         lay.addWidget(clear)
+        self.clear_button = clear
         self.styled_buttons.append((clear, False))
-        self._rail = rail
+        self.rail_tools = len(self.TOOLS)   # tools shown on the chip, the others are under ⋯
+        self._set_rail_tools(len(self.TOOLS), True)
         return rail
 
+    def _set_rail_tools(self, shown: int, clear: bool):
+        """Show the first ``shown`` tools (and Clear if ``clear``) on the tool chip, the rest under ⋯."""
+        self.rail_tools = shown
+        for i, key in enumerate(self.tool_buttons):
+            self.tool_buttons[key].setVisible(i < shown)
+        self.clear_button.setVisible(clear)
+        self._clear_divider.setVisible(clear)
+        self.rail_more.setVisible(shown < len(self.TOOLS) or not clear)
+        self._update_rail_more()
+        self._rail.layout().activate()
+        self._rail.adjustSize()
+
+    def _update_rail_more(self):
+        """⋯ looks checked while the current tool is one of those folded into it."""
+        if hasattr(self, "rail_more"):
+            self.rail_more.setChecked(self.tool in [k for k, *_ in self.TOOLS[self.rail_tools:]])
+
+    def _fit_rail(self, height: int):
+        """Fold the tool chip's last tools (Clear first) into ⋯ until the rest fit ``height``."""
+        lay = self._rail.layout()
+        m = lay.contentsMargins()
+        step = max(max(b.sizeHint().height(), b.minimumHeight()) for b in self.tool_buttons.values()) + lay.spacing()
+        room = height - m.top() - m.bottom() + lay.spacing()
+        n = len(self.TOOLS)
+        if n * step + step + lay.spacing() + 1 <= room:      # all tools, a divider and Clear
+            self._set_rail_tools(n, True)
+        else:
+            self._set_rail_tools(max(1, min(n - 1, room // step - 1)), False)   # one slot for ⋯
+
+    def _fill_rail_menu(self):
+        menu = self.rail_more.menu()
+        menu.clear()
+        for key, label, tip in self.TOOLS[self.rail_tools:]:
+            a = menu.addAction(label, lambda k=key: self.set_tool(k))
+            a.setToolTip(tip)
+            a.setCheckable(True)
+            a.setChecked(key == self.tool)
+        if not self.clear_button.isVisible():
+            menu.addSeparator()
+            menu.addAction("Clear picks and measurements", self.clear_picks)
+
+    def hud_insets(self) -> tuple[int, int]:
+        """(left, top) px of the 3D view the chips cover; 2D overlays drawn in the view start below and
+        right of them. Zero when the chips sit around the view (``hud_overlay`` False)."""
+        if not self.hud_overlay:
+            return 0, 0
+        top = max(self._viewbar.sizeHint().height(), self._displaybar.sizeHint().height())
+        return self._rail.sizeHint().width() + self.HUD_MARGIN, top + self.HUD_MARGIN
+
+    def _place_hud(self):
+        """Fold the chips to the 3D view's size and put them over its corners."""
+        if not self.hud_overlay:
+            self._fit_hud(self.width())
+            self._fit_rail(max(0, self.height() - self._viewbar.sizeHint().height() - 3 * self.HUD_MARGIN))
+            return
+        r = self.rect()
+        m = self.HUD_MARGIN
+        self._fit_hud(r.width())
+        self._viewbar.move(r.left() + m, r.top() + m)
+        self._displaybar.move(r.right() + 1 - m - self._displaybar.sizeHint().width(), r.top() + m)
+        top = r.top() + 2 * m + self._viewbar.sizeHint().height()
+        # the orientation axes take the bottom left fifth of the view (pyvista's add_axes)
+        bottom = r.bottom() + 1 - (round(0.2 * r.height()) if self.show_axes else m)
+        self._fit_rail(max(0, bottom - top))
+        self._rail.move(r.left() + m, top)
+        for chip in (self._viewbar, self._displaybar, self._rail):
+            chip.raise_()
+
+    def sizeHint(self):
+        # the GL widget has no size hint of its own, and the chips float outside the layout
+        return QtCore.QSize(640, 480)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._place_hud()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._place_hud()
+
     def _set_controls(self, on: bool):
-        """The view bar and tool rail act on the structure: greyed out while there is none."""
-        self._viewbar.setEnabled(on)
-        self._rail.setEnabled(on)
+        """The view chips act on the structure: greyed out while there is none."""
+        for chip in (self._viewbar, self._displaybar, self._rail):
+            chip.setEnabled(on)
 
     def _show_empty(self, empty: bool):
         """With nothing loaded: a centered hint in the view, and the view controls greyed out."""
@@ -391,13 +625,14 @@ class Viewport(QtWidgets.QWidget):
             prop.SetVerticalJustificationToCentered()
 
     def set_button_style(self, style: str):
-        """Size the tool rail for icons (36 px squares) or text labels (see ``icons.button_style``)."""
+        """Size the tool chip for icons (30 px squares) or text labels (see ``icons.button_style``)."""
         text = style == "Text"
-        self._rail.setFixedWidth(58 if text else 46)
         for b, _ in self.styled_buttons:
             if b.parent() is self._rail:
-                b.setFixedSize(50 if text else 36, 28 if text else 36)
-                b.setIconSize(QtCore.QSize(20, 20))
+                b.setFixedSize(50 if text else 30, 26 if text else 30)
+                b.setIconSize(QtCore.QSize(18, 18))
+        self._rail.adjustSize()
+        self._place_hud()
 
     # ------------------------------------------------------------------ scene
     def set_data(self, data, interactive: bool = False):
@@ -545,8 +780,7 @@ class Viewport(QtWidgets.QWidget):
             self._draw_colorbars(shown, drawn.legends)
             self._draw_color_legend(shown, dark)
         if self.overlay_text and self.show_overlay:
-            p.add_text(self.overlay_text, position="upper_left", font_size=7, name="_overlay",
-                       color="#E7E9EC" if dark else "black", render=False)
+            self._draw_caption(self.overlay_text, dark)
         if self._first:
             setup_camera(p, self.data, self.initial_view, self.ortho)
             self._first = False
@@ -851,6 +1085,7 @@ class Viewport(QtWidgets.QWidget):
 
     def set_axes_visible(self, on):
         self.show_axes = on
+        self._place_hud()   # the tool chip may use the corner the axes leave
         if getattr(self, "_axes", None) is not None:
             (self.plotter.show_axes if on else self.plotter.hide_axes)()
             self.render()
@@ -871,6 +1106,7 @@ class Viewport(QtWidgets.QWidget):
     def set_tool(self, tool):
         self.tool = tool
         self.tool_buttons[tool].setChecked(True)
+        self._update_rail_more()
         self._picks = []
         self._draw_picks()
         self.render()
@@ -1141,6 +1377,7 @@ class Viewport(QtWidgets.QWidget):
         items = colorbar_items(bars, (W, H), unit=self.COLORBAR_FONT * ratio, ink=ink, background=self.style.background,
                                collapsed=bool(getattr(self.style, "colorbar_collapsed", False)), chevrons=True)
         rgba, x0, y0 = items_rgba(items, ink)
+        y0 += self._inset_px()[1]   # below the view chips at the top
         self._colorbar_box = ((x0 - W) / ratio, y0 / ratio, (x0 + rgba.shape[1] - W) / ratio,
                               (y0 + rgba.shape[0]) / ratio)
         # VTK display coordinates start at the bottom left; the offset is kept from the top right corner, so the
@@ -1148,6 +1385,32 @@ class Viewport(QtWidgets.QWidget):
         self.plotter.add_actor(_image_actor(rgba, x0 - W, -y0 - rgba.shape[0], (1.0, 1.0)), name="_legend",
                                reset_camera=False, render=False)
         self._has_colorbar = True
+
+    def _inset_px(self) -> tuple[float, float]:
+        """:meth:`hud_insets` in VTK display pixels."""
+        ratio = self.plotter.interactor.devicePixelRatioF() or 1.0
+        left, top = self.hud_insets()
+        return left * ratio, top * ratio
+
+    def _draw_caption(self, text, dark: bool):
+        """The frame caption (``overlay_text``) at the top left, below the view chips."""
+        from vtkmodules.vtkRenderingCore import vtkCoordinate, vtkTextActor
+
+        a = vtkTextActor()
+        a.SetInput(text)
+        tp = a.GetTextProperty()
+        tp.SetFontSize(round(12 * (self.plotter.interactor.devicePixelRatioF() or 1.0)))
+        tp.SetColor((0.9, 0.91, 0.93) if dark else (0.0, 0.0, 0.0))
+        tp.SetVerticalJustificationToTop()
+        left, top = self._inset_px()
+        ref = vtkCoordinate()
+        ref.SetCoordinateSystemToNormalizedViewport()
+        ref.SetValue(0.0, 1.0)
+        c = a.GetPositionCoordinate()
+        c.SetCoordinateSystemToDisplay()
+        c.SetReferenceCoordinate(ref)
+        c.SetValue(left + 4, -top - 4)
+        self.plotter.add_actor(a, name="_overlay", reset_camera=False, render=False)
 
     def on_colorbar(self, x, y) -> bool:
         """Window position (x, y from the top left, Qt px) is on the color bar cards."""
@@ -1177,7 +1440,8 @@ class Viewport(QtWidgets.QWidget):
         right = not self._has_colorbar
         ink = (0.9, 0.91, 0.93) if dark else (0.1, 0.1, 0.1)
         size, step = 12, 18
-        x0, y = (-14, -14) if right else (12, -40)
+        left, top = self._inset_px()   # below the view chips, right of the tool chip
+        x0, y = (-14, -14 - top) if right else (12 + left, -40 - top)
         lines = ([(legend_title(r), None)] if r.get("kind") == "categorical" else []) + list(rows)
 
         def actor(text, dx, dy, bold=False, fill=None):

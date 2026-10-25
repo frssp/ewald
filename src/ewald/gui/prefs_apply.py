@@ -89,6 +89,9 @@ def apply_settings(win, s: Settings, startup: bool = False):
 
     vp, style, page = win.viewport, win.style, win.render_page
     win.settings = s
+    win.timeline.show_info = s["viewport.show_overlay"]
+    if win.data is not None:
+        win.timeline.set_info(win.data.attributes)
     app = QtWidgets.QApplication.instance()
     if app is not None:
         # one style sheet, set only when it changes: each set re-polishes every widget of every window
