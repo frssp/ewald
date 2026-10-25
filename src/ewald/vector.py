@@ -326,10 +326,9 @@ def _mesh_prims(mesh, camera, size, pt, light=None):
         else np.asarray(vn, float)[f].mean(1)  # smooth isosurface normals when given
     n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
     lit = np.minimum(1.0, 0.55 + 0.45 * strength * np.abs(n @ light))
-    if vc is not None:  # color-mapped slices keep their exact colormap (unlit)
-        fcol = np.clip(np.asarray(vc, float), 0, 1)[f].mean(1)
-    else:
-        fcol = np.clip(mesh.face_colors(), 0, 1) * lit[:, None]
+    fcol = np.clip(mesh.face_colors() if vc is None else np.asarray(vc, float)[f].mean(1), 0, 1)
+    if mesh.is_lit:  # color-mapped slices keep their exact colormap (unlit)
+        fcol = fcol * lit[:, None]
     a = 1.0 - mesh.transparency
     for k, tri in enumerate(f):
         poly = Polygon(np.column_stack([vx[tri], vy[tri]]), closed=True)
@@ -386,7 +385,7 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                   scale_bar=None, dpi=None, radius_preset="covalent", oxidation_states=None, coordination=None,
                   vectors=None, trajectory_width=2.0, trajectory_color_by=None, trajectory_colormap="viridis",
                   trajectory_color_range=None, trajectory_time_range=None, trajectory_trail=None,
-                  trajectory_radius=None, visuals=None, frame=0, overlays=None, boundary=None,
+                  trajectory_radius=None, trajectory_style="line", visuals=None, frame=0, overlays=None, boundary=None,
                   boundary_bonds="half", replicate=None, replicate_cell="super", show_atoms=True, surfaces=None,
                   type_transparency=None, selection_color=None, light=None, measurements=None,
                   large_vector="warn", **_ignored):
@@ -428,7 +427,7 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                      trajectory_width=trajectory_width, trajectory_color_by=trajectory_color_by,
                      trajectory_colormap=trajectory_colormap, trajectory_color_range=trajectory_color_range,
                      trajectory_time_range=trajectory_time_range, trajectory_trail=trajectory_trail,
-                     trajectory_radius=trajectory_radius, show_cell=show_cell, cell_color=cell_color,
+                     trajectory_radius=trajectory_radius, trajectory_style=trajectory_style, show_cell=show_cell, cell_color=cell_color,
                      cell_width=cell_width, boundary=boundary, boundary_bonds=boundary_bonds,
                      replicate=replicate, replicate_cell=replicate_cell, show_atoms=show_atoms,
                      surfaces=surfaces, type_transparency=type_transparency, selection_color=selection_color,

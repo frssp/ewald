@@ -478,7 +478,8 @@ _SECTION_KEYS = {
     "Labels": ("labels", "selection"),
     "Camera": ("frame", "direction", "zoom", "orthographic", "camera", "light"),
     "Elements": ("visuals", "vectors", "trajectory_width", "trajectory_color_by", "trajectory_colormap",
-                 "trajectory_color_range", "trajectory_time_range", "trajectory_trail"),
+                 "trajectory_color_range", "trajectory_time_range", "trajectory_trail", "trajectory_style",
+                 "trajectory_radius"),
 }
 # widest form label of the View tab: every card's label column is this wide, so fields line up
 _LABEL_WIDEST = "Radius scale"
@@ -823,6 +824,18 @@ class DisplayPanel(QtWidgets.QWidget):
                                          suffix=" px", toolTip="Line width in pixels; 0 hides the trajectory lines")
         width.valueChanged.connect(lambda v: self._set("trajectory_width", float(v)))
         self._row(f, "Trajectories", width, "trajectory_width")
+        draw = QtWidgets.QComboBox(toolTip="Line: lines of the width above; Tube: thin shaded cylinders, "
+                                           "the same in every renderer")
+        draw.addItems(["Line", "Tube"])
+        draw.setCurrentText(st.trajectory_style.capitalize())
+        radius = QtWidgets.QDoubleSpinBox(minimum=0, maximum=2, singleStep=0.02, decimals=3, suffix=" Å",
+                                          specialValueText="auto", value=st.trajectory_radius or 0,
+                                          toolTip="Tube radius in Angstrom; auto: 0.08 for tubes, as wide as the "
+                                                  "line in ray-traced pictures")
+        draw.currentTextChanged.connect(lambda t: self._set("trajectory_style", t.lower()))
+        radius.valueChanged.connect(lambda v: self._set("trajectory_radius", float(v) or None))
+        self._row(f, "Draw as", draw, "trajectory_style")
+        self._row(f, "Tube radius", radius, "trajectory_radius")
         box, g = self._group("Color map", st.trajectory_color_by is not None,
                              "Color the trajectory lines along their path by Time, Frame, step length or a "
                              "particle property, with a color bar")
@@ -901,7 +914,7 @@ class DisplayPanel(QtWidgets.QWidget):
         f.addRow(box)
         self._row(f, "Time window", win_row, "trajectory_time_range")
         self._row(f, "Trail", trail, "trajectory_trail")
-        self.trajectory_widgets = {"width": width, "group": box, "color_by": by, "colormap": cmap, "range": rng,
+        self.trajectory_widgets = {"width": width, "draw": draw, "radius": radius, "group": box, "color_by": by, "colormap": cmap, "range": rng,
                                    "window": win, "trail": trail}
         return w
 

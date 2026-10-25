@@ -851,7 +851,17 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** the alignment alone, and the alignment with the slab selection.
 - **Landed:** public PR #53.
 
-### D66. Warn before a large vector figure, never block a script (2026-10-25)
+### D66. Trajectory lines can be drawn as thin tubes, 0.08 Angstrom by default (2026-10-25)
+
+- **Decision:** `trajectory_style="tube"` (View tab › Elements › Draw as) draws trajectory lines as
+  thin shaded cylinders with round joints, the same in every renderer; `trajectory_radius` sets
+  their radius, 0.08 Angstrom by default. Plain lines stay the default style.
+- **Why:** the owner asked for "트라젝토리를 단순한 선이 아니라 가는 원기둥으로 쓰는 옵션", and
+  picked the thinnest of the rendered radii on the decision card.
+- **Considered:** a default radius of 0.12 Angstrom, or 0.15 Angstrom (the bond radius).
+- **Landed:** public PR #68.
+
+### D67. Warn before a large vector figure, never block a script (2026-10-25)
 
 - **Decision:** vector output (SVG/PDF/EPS) estimates its file size and time from the number of
   shapes it draws (atoms, half-bonds and lines, mesh faces and edges; costs measured with

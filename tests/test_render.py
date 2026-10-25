@@ -256,6 +256,28 @@ def test_trajectory_color_map_and_color_bar_in_every_renderer(tmp_path, renderer
     assert len(colored) and np.ptp(colored, axis=0).max() > 80        # the line changes color along x
 
 
+@pytest.mark.parametrize("renderer", ["opengl", "raytrace", "vector"])
+def test_trajectory_tubes_in_every_renderer(renderer):
+    """trajectory_style='tube' draws shaded cylinders of trajectory_radius in every renderer: wider than the
+    line, in proportion to the path's length on screen."""
+    from ewald.modifiers import GenerateTrajectoryLines
+
+    frames = [DataCollection(np.array([[1.0 + 8 * s, 5.0, 5.0]]), np.array(["Cu"]), Cell(np.diag([10.0] * 3)))
+              for s in np.linspace(0, 1, 12)]
+    pipe = Pipeline(StaticSource(frames), [GenerateTrajectoryLines()])
+    kw = dict(frame=0, size=(200, 150), direction="z", show_cell=False, renderer=renderer, quality="draft",
+              radius_scale=0.01, legend=False)
+
+    def extent(img):   # (columns, rows) the path covers
+        ink = np.abs(img[..., :3].astype(int) - img[0, 0, :3].astype(int)).sum(-1) > 60
+        return int(ink.any(0).sum()), int(ink[:, ink.shape[1] // 2].sum())
+
+    _, line = extent(pipe.render(None, **kw))
+    wide, tube = extent(pipe.render(None, trajectory_style="tube", trajectory_radius=0.4, **kw))
+    assert line <= 2 and tube >= 3 * line                     # 8.8 A long, 0.8 A thick
+    assert 0.7 < tube / wide * 11 < 1.4, (wide, tube)
+
+
 def _perovskite():
     from ase.spacegroup import crystal
 
@@ -475,3 +497,32 @@ def test_default_light_is_the_ray_tracers_key_light():
     d = np.asarray(DEFAULT_LIGHT) / np.linalg.norm(DEFAULT_LIGHT)
     assert len(p.renderer.lights) == 2 and np.allclose(p.renderer._ewald_light[:3], d)
     p.close()
+
+
+def test_type_color_past_the_jmol_table():
+    """Elements past Mt (Z > 109: Ds ... Og) have no Jmol colour; they get a palette colour instead of an
+    IndexError (a PDB without element columns guessed 'Og' from an OG atom name)."""
+    from ewald.render import type_color
+
+    for t in ("Ds", "Nh", "Og"):
+        assert type_color(t).shape == (3,)
+
+
+def test_default_camera_frames_only_what_is_drawn():
+    """With atoms and cell hidden, the ray tracer and vector files (which take :func:`default_camera`) frame
+    what is drawn, here a small mesh in a big box, like the OpenGL picture, not the hidden atoms and cell."""
+    from ewald.mesh import SurfaceMesh
+    from ewald.render import default_camera, render
+
+    data = DataCollection(np.array([[0, 0, 0], [40, 40, 40.0]]), ["Cu", "Cu"], Cell(np.eye(3) * 40))
+    c = np.array([20, 20, 20.0])
+    data.surfaces["tetra"] = SurfaceMesh(c + [[-1, -1, 0], [1, -1, 0], [0, 1, 0], [0, 0, 1.5]],
+                                         [[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]])
+    cam = default_camera(data, (200, 150), scene_kwargs={"show_atoms": False}, show_cell=False)
+    assert cam["parallel_scale"] < 5                 # the 2 A mesh, not the 70 A box diagonal
+    kw = dict(size=(200, 150), show_atoms=False, show_cell=False, background="white", legend=False,
+              quality="draft", ambient_occlusion=False, antialiasing=False)
+    gl = render(data, **kw)[..., :3].astype(int).sum(-1) < 740
+    rt = render(data, renderer="raytrace", samples=1, **kw)[..., :3].astype(int).sum(-1) < 740
+    assert gl.mean() > 0.05                          # the mesh fills a good part of the picture
+    assert (rt & gl).sum() > 0.7 * gl.sum() and rt.sum() < 1.3 * gl.sum()

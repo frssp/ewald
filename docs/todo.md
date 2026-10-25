@@ -10,6 +10,19 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## Next
 
+- Trajectory tubes (`trajectory_style="tube"`): the vector renderer paints each piece at the depth
+  of its start (painter's algorithm), so a piece that ends inside an atom nearer the camera than its
+  start can cover that atom, as lines do there; sorting by the far end or splitting pieces at atom
+  surfaces would fix both. Tubes are one cylinder per traced step, so very long paths of many atoms
+  make large meshes in the viewport (no LOD for them yet).
+- Proteins: a proof-of-concept `ewald-protein` plugin (PDB/mmCIF via gemmi, simplified DSSP,
+  cartoon as one `SurfaceMesh`) sits on the ewald-plugins branch `claude/project-thread-v41ert`
+  without tests or an index entry; not planned until the owner asks. Open for it: 3-10/pi helices
+  and bulges, ligands and nucleic acids, picking a residue on the cartoon, and a lighter vector
+  output (a 214-residue cartoon is a 9.7 MB SVG).
+- Mesh lighting: the ray tracer shades every triangle, so grid slices (vertex colours, unlit in
+  OpenGL, the legacy viewport and vector files) come out shaded there; an unlit triangle flag in
+  `raytrace.py` and `raytrace_gpu.py` would make `SurfaceMesh.lit=False` look the same everywhere.
 - Simulation codes (`ewald.codes`, Preferences › Codes): only VASP and LAMMPS are built in and the
   Quantum ESPRESSO entry is an example plugin; CP2K, GPAW, Gaussian and QE as real first-party
   plugins are open. NEB and phonopy folders are still recognized outside the registry
@@ -481,7 +494,7 @@ Formats
 Figures
 
 - GPU (CUDA) ray tracer.
-- Large vector figures (D66): the per-shape costs behind the warning were measured on fcc Cu in
+- Large vector figures (D67): the per-shape costs behind the warning were measured on fcc Cu in
   the cloud container; a mixed figure (atoms over a size limit as one embedded raster layer, text
   and overlays still vector) would keep big structures editable; the 10 s / 10 MB limits could
   become a preference.
@@ -656,7 +669,7 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
-- The large vector figure estimate (D66) on the owner's Windows PC and Mac: render a few thousand
+- The large vector figure estimate (D67) on the owner's Windows PC and Mac: render a few thousand
   bonded atoms to SVG and PDF and compare with `python benchmarks/vector_size.py`; the *Large
   vector figure* dialog at 200 % scaling.
 
