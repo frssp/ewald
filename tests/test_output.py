@@ -76,6 +76,54 @@ def test_vector_formats(tmp_path, cu_fcc, ext):
         assert "<image" not in svg             # no embedded raster
 
 
+def test_vector_cost_estimates_size(tmp_path, cu_fcc):
+    """The per-shape costs predict the SVG/PDF size (they were measured on fcc Cu with bonds)."""
+    from ewald import scene as ir
+    from ewald.render import render
+    from ewald.vector import vector_cost
+
+    est = vector_cost(ir.build(cu_fcc, bonds=2.8), "fig.svg")
+    assert est["atoms"] == 256 and est["sticks"] >= 256 * 12 and est["faces"] == 0 and not est["large"]
+    assert est["shapes"] == est["atoms"] + est["sticks"] and est["format"] == "svg"
+    for ext in ("svg", "pdf"):
+        out = tmp_path / f"fig.{ext}"
+        render(cu_fcc, out, size=(320, 240), renderer="vector", camera=CAMERA, bonds=2.8)
+        guess = vector_cost(ir.build(cu_fcc, bonds=2.8), out)["bytes"]
+        assert 0.7 < guess / out.stat().st_size < 1.3
+    assert vector_cost(ir.build(cu_fcc), None)["bytes"] is None  # no file: time only
+    assert vector_cost(ir.build(cu_fcc), "fig.PDF")["format"] == "pdf"  # any case
+
+
+def test_large_vector_warns_ignores_or_raises(tmp_path, cu_fcc, monkeypatch):
+    import warnings
+
+    from ewald import vector
+    from ewald.render import render
+
+    def draw(name, **kw):
+        return render(cu_fcc, tmp_path / name, size=(80, 60), renderer="vector", camera=CAMERA, **kw)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", vector.LargeVectorWarning)
+        draw("small.svg")                     # 256 atoms: well below the limits
+    monkeypatch.setattr(vector, "LARGE_VECTOR_BYTES", 1e5)
+    with pytest.warns(vector.LargeVectorWarning, match=r"256 atoms.*MB SVG.*large_vector='ignore'") as rec:
+        draw("big.svg")
+    assert rec[0].filename == __file__        # points at the caller's line, not into ewald
+    assert (tmp_path / "big.svg").exists()    # a warning never stops a script
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", vector.LargeVectorWarning)
+        draw("quiet.svg", large_vector="ignore")
+    with pytest.raises(vector.LargeVectorError) as err:
+        draw("stopped.svg", large_vector="raise")
+    assert err.value.estimate["atoms"] == 256 and not (tmp_path / "stopped.svg").exists()
+    monkeypatch.setattr(vector, "LARGE_VECTOR_SECONDS", 1e-3)
+    with pytest.warns(vector.LargeVectorWarning, match="about 1 s"):
+        render(cu_fcc, None, size=(80, 60), renderer="vector", camera=CAMERA)  # an array: time only
+    with pytest.raises(ValueError, match="large_vector"):
+        draw("x.svg", large_vector="no")
+
+
 def test_vector_paints_near_atoms_last():
     from ewald.render import render
 

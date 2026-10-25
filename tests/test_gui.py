@@ -1283,6 +1283,55 @@ def test_main_window_smoke(app, pipe, tmp_path):
     w.close()
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_large_vector_render_asks_first(app, pipe, tmp_path, monkeypatch):
+    """A vector figure of many shapes asks before drawing: PNG instead, vector anyway or cancel."""
+    from ewald import vector
+    from ewald.gui.app import MainWindow
+
+    monkeypatch.setattr(vector, "LARGE_VECTOR_SECONDS", 0.0)  # every scene counts as large
+    w = MainWindow(pipe)
+    page = w.render_page
+    page.set_renderer("vector")
+    page.preset.setCurrentText("Custom (px)")
+    page.width.setValue(160)
+    page.height.setValue(120)
+    answers, asked = ["cancel", "vector", "raster"], []
+
+    def ask(big):
+        asked.append(big.estimate)
+        a = answers.pop(0)
+        return None if a == "cancel" else a
+
+    monkeypatch.setattr(w, "ask_large_vector", ask)
+    page.output.setText(str(tmp_path / "fig.svg"))
+    w.render_from_page()
+    assert not (tmp_path / "fig.svg").exists() and "cancelled" in w.statusBar().currentMessage()
+    assert asked[0]["atoms"] == w.data.count and asked[0]["format"] == "svg"
+    w.render_from_page()                                   # draw it anyway
+    assert (tmp_path / "fig.svg").read_bytes()[:200].find(b"<svg") >= 0 and len(asked) == 2
+    w.render_from_page()                                   # PNG instead: the page follows
+    assert (tmp_path / "fig.png").stat().st_size > 500 and len(asked) == 3
+    assert page.renderer_name in ("opengl", "raytrace") and page.output.text().endswith("fig.png")
+
+    from PySide6 import QtCore, QtWidgets
+
+    def press(name):  # the real dialog: its buttons map to the answers
+        def click():
+            box = next(b for b in QtWidgets.QApplication.topLevelWidgets() if b.objectName() == "LargeVectorDialog"
+                       and b.isVisible())
+            next(b for b in box.buttons() if b.text().startswith(name)).click()
+        QtCore.QTimer.singleShot(50, click)
+
+    monkeypatch.undo()
+    big = vector.LargeVectorError({"atoms": 9000, "sticks": 100000, "faces": 0, "shapes": 109000,
+                                   "seconds": 52.0, "bytes": 6.2e7, "format": "svg", "large": True})
+    for name, want in (("Render PNG", "raster"), ("Render SVG", "vector"), ("Cancel", None)):
+        press(name)
+        assert w.ask_large_vector(big) == want
+    w.close()
+
+
 def test_preferences_ai_page_saves_key_outside_settings(app, monkeypatch):
     from ewald import settings
     from ewald.gui.preferences import PreferencesDialog

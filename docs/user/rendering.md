@@ -244,6 +244,16 @@ editable text, so a figure can be finished in Illustrator or Inkscape. It needs 
 The raster renderers can also be given a `.pdf`, `.svg` or `.eps` name; the image is then
 embedded in a page of the same size.
 
+Vector files grow with every shape they draw: an SVG takes about 2.6 kB and 1 ms per atom and
+0.4 kB and 0.5 ms per half-bond (a PDF a fifth of the size, in the same time), so 2,000 bonded
+atoms make a 15 MB SVG in about 11 s and 9,000 atoms 64 MB in about a minute. Before drawing,
+the vector renderer estimates both from the shape count (`ewald.vector.vector_cost`); above about
+10 s or 10 MB it emits a `LargeVectorWarning` naming the expected size and time, and draws the
+figure anyway, so a script never stops. `large_vector="ignore"` silences it and
+`large_vector="raise"` raises `LargeVectorError` before drawing instead. For big structures a PNG
+from `renderer="opengl"` or `"raytrace"` is far smaller and faster; the GUI asks the same question
+in a dialog (below).
+
 Bond ends look the same in every renderer (the viewport, the OpenGL 1.x viewport, the ray
 tracer on CPU or GPU, and vector files). A half-bond cut off by the periodic cell or a boundary,
 or whose other half is hidden, ends in a flat disk, which reads as "cut here". An end at an atom
