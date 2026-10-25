@@ -780,7 +780,23 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   the tag; every view cell its own tab automatically.
 - **Landed:** public PR #62.
 
-### D61. The 3D view's controls float over it as chips that fold (2026-10-25)
+### D61. Simulation codes as a registry (2026-10-25)
+
+- **Decision:** everything EWALD knows about one simulation program lives in one
+  `SimulationCode` entry of `ewald.codes` (files, folder markers, formats, `codes.<name>.*`
+  settings, hooks for run info, checks, workflow folders, thermo files and the open prompt).
+  VASP and LAMMPS are built-in entries, other codes come as plugins (`@simulation_code`), and
+  Preferences has one Codes page drawn from the registry instead of LAMMPS rows under General.
+- **Why:** the owner: "Vasp lammps가 중요하긴 한데 지금 고정된 형태로 박혀있어서 좀 거슬리네
+  extensible workbench", and picked "전부 registry로" on the decision card so that every
+  VASP/LAMMPS special case dispatches through the registry.
+  The LAMMPS default type map setting was dropped on review ("Lammps default type map은 거의
+  무의미 할 듯"): the prompt starts empty and only whether to ask stays a setting.
+- **Considered:** moving only the settings and formats to the registry and leaving run info,
+  workflow detection and thermo files hard-coded for VASP and LAMMPS.
+- **Landed:** public PR #64.
+
+### D62. The 3D view's controls float over it as chips that fold (2026-10-25)
 
 - **Decision:** the view bar above the 3D view and the tool rail beside it are replaced by chips
   floating over the view (directions and rotations top left; Ortho, Style and Fit top right;
@@ -795,12 +811,12 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   widgets over the GL view); C, one strip with the tools merged into the top bar.
 - **Landed:** public PR #63.
 
-### D62. A frame's timestep and time sit in the timeline, not in the 3D view (2026-10-25)
+### D63. A frame's timestep and time sit in the timeline, not in the 3D view (2026-10-25)
 
 - **Decision:** the "Frame N timestep T" text in the 3D view's top left corner is gone; the
   timeline shows the frame's "Timestep" and "Time" beside the frame number, and nothing for a
   single frame. The `viewport.show_overlay` preference now switches that label.
-- **Why:** on the floating chips (D61) the owner said the caption "Frame timestep 글자도 안
+- **Why:** on the floating chips (D62) the owner said the caption "Frame timestep 글자도 안
   이쁘네. 위치를 바꾸거나 다른 곳에 폼을 갖춰 넣거나 대안을 생각해봐" and picked "B. timeline
   안으로" on the decision card.
 - **Considered:** A, a chip at the bottom right of the view; C, a pill at the top center; D, the

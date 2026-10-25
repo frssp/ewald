@@ -1425,7 +1425,7 @@ def test_preferences_dialog_edit_search_restore(app, tmp_path):
     visible = {dlg.pages.item(i).text() for i in range(dlg.pages.count()) if not dlg.pages.item(i).isHidden()}
     assert visible == {"Atoms & bonds"}
     dlg._search("")
-    dlg.pages.setCurrentRow(1)                                # Viewports
+    dlg.show_page("3D view")
     dlg.restore_page()
     assert dlg.work.is_default("viewport.rotation_step") and not dlg.work.is_default("compute.device")
 
@@ -1517,6 +1517,31 @@ def test_preferences_layout_covers_every_option_once():
     for name in PAGES:
         for _title, ks in LAYOUT[name][1]:
             assert all(__import__("ewald.settings").settings.OPTION[k].page == name for k in ks)
+
+
+def test_preferences_codes_page_is_drawn_from_the_registry(app, tmp_path):
+    """One section per simulation code (VASP, LAMMPS, a plugin's), each with its own options."""
+    from ewald import plugins, settings
+    from ewald.codes import SimulationCode
+    from ewald.gui.preferences import PreferencesDialog
+
+    plugins.register_simulation_code(SimulationCode(
+        "toycode", "Toy code", files=("*.toy",),
+        options=[settings.Option("codes.toycode.flavour", "plain", "Flavour", choices=("plain", "spicy"))]))
+    try:
+        dlg = PreferencesDialog(settings.Settings({}, tmp_path / "s.json"), page="Codes")
+        titles = [c[0].text() for c in dlg.code_cards]
+        assert titles[:2] == ["VASP", "LAMMPS"] and "TOY CODE" in titles
+        assert {"codes.lammps.type_prompt", "codes.toycode.flavour"} <= set(dlg.editors)
+        dlg.set_value("codes.toycode.flavour", "spicy")
+        dlg.apply()
+        assert settings.load(tmp_path / "s.json")["codes.toycode.flavour"] == "spicy"
+        dlg.search.setText("lammpstrj")
+        visible = [c[0].text() for c in dlg.code_cards if not c[1].isHidden()]
+        assert visible == ["LAMMPS"]
+        dlg.close()
+    finally:
+        plugins._registry.codes.pop("toycode", None)
 
 
 def test_remote_file_dialog_browse_and_open(app, server):
@@ -3009,7 +3034,7 @@ def test_main_window_legacy_gl_viewport(app, pipe, tmp_path, monkeypatch):
     W, H = vp.view.width(), vp.view.height()
     bg = img.pixelColor(2, 2)
     assert img.pixelColor(W // 2, H // 2) != bg  # atoms drawn in the middle
-    assert not vp.caption.isVisibleTo(vp)   # the frame's timestep is in the timeline now (D62)
+    assert not vp.caption.isVisibleTo(vp)   # the frame's timestep is in the timeline now (D63)
     snap = vp.snapshot().toImage()  # what a tab drag shows in place of the GL window
     gl = vp._gl_widget().mapTo(vp, vp._gl_widget().rect().center())
     assert snap.pixelColor(gl.x(), gl.y()) != snap.pixelColor(gl.x() - W // 2 + 2, gl.y() - H // 2 + 2)
@@ -4287,7 +4312,7 @@ def test_preferences_pages_after_menu_review(app):
     from ewald import settings
     from ewald.gui.preferences import LAYOUT, PreferencesDialog
 
-    assert settings.PAGES == ("General", "3D view", "Atoms & bonds", "Rendering", "Plots", "Notebooks",
+    assert settings.PAGES == ("General", "Codes", "3D view", "Atoms & bonds", "Rendering", "Plots", "Notebooks",
                               "Compute", "Python", "AI", "Plugins")
     assert settings.OPTION["python.plot_style"].page == "Plots" == settings.OPTION["plots.size"].page
     assert settings.OPTION["python.run_notebooks"].page == "Notebooks"
@@ -6302,7 +6327,7 @@ def _visible_rects(chip):
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="3D view needs an X display with OpenGL (xvfb-run)")
 @pytest.mark.parametrize("font_size", [12, 16])   # 16: a larger UI font, like Windows at 150-200 % with big text
 def test_viewport_hud_folds_without_overlap(app, cu_fcc, font_size):
-    """The view chips float over the 3D view and fold into menus as it gets small (D61): at no size do
+    """The view chips float over the 3D view and fold into menus as it gets small (D62): at no size do
     the two top chips overlap each other, nor their buttons each other, and Fit always stays."""
     from ewald.gui import theme
     from ewald.gui.viewport import Viewport
@@ -6417,7 +6442,7 @@ def test_legacy_viewport_puts_the_chips_around_the_view(app, cu_fcc):
 
 
 def test_timeline_shows_timestep_and_time_not_the_3d_view(app, pipe):
-    """The frame's timestep and time sit beside its number in the timeline (D62), not as text in the
+    """The frame's timestep and time sit beside its number in the timeline (D63), not as text in the
     3D view; a single frame or a frame without them shows nothing, and the preference hides it."""
     from ewald.gui.timeline import Timeline
 

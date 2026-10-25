@@ -153,7 +153,7 @@ class FileSource:
         tables = [r.thermo for r in self.readers[:1] if len(self.readers) == 1 and isinstance(getattr(r, "thermo", None), dict)]
         files: list[str] = []
         if thermo == "auto":
-            kinds = {XdatcarReader: "xdatcar", LammpsDumpReader: "lammps-dump"}
+            kinds = _reader_names()
             for p, r in zip(self.paths, self.readers):
                 files += [f for f in sibling_files(p, kinds.get(type(r), "")) if f not in files]
         elif thermo:
@@ -273,6 +273,18 @@ def _as_data(frame) -> DataCollection:
         return DataCollection.from_pymatgen(frame)
     raise TypeError(f"cannot use a {type(frame).__name__} as a frame: give a DataCollection, an ASE Atoms "
                     "or a pymatgen Structure/Molecule")
+
+
+def _reader_names() -> dict:
+    """Reader class -> registered reader name (``XdatcarReader`` -> "xdatcar"), for the
+    ``thermo`` files simulation codes name per reader (:mod:`ewald.codes`)."""
+    from .. import plugins
+
+    out = {XdatcarReader: "xdatcar", LammpsDumpReader: "lammps-dump"}
+    for name, p in plugins.readers().items():
+        if isinstance(p.factory, type):
+            out.setdefault(p.factory, name)
+    return out
 
 
 def _in_memory(source) -> bool:

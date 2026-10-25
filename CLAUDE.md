@@ -190,6 +190,10 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   (color bars as overlay items), `plotstyle.py` (the matplotlib look of every plot), `framing.py`
   (the Render frame region), `replicate.py` (display-only `na x nb x nc` tiling), `fileops.py`
   (atomic file replace, Windows-safe), `_tls.py` (OS trust store for downloads).
+- `codes.py`: the simulation code registry (`SimulationCode`; VASP and LAMMPS are built-in entries,
+  plugins add codes with `@simulation_code` / `ewald.codes`): files, markers, formats, `codes.<name>.*`
+  options (Preferences › Codes) and hooks that `runinfo`, `workflow_folder`, `io.thermo` and the GUI's
+  open dispatch through. New per-code behavior goes into a code's entry, not into `if code == "vasp"`.
 - `runinfo.py` (`run_info`, `check_run` from INCAR/in.lammps/logs), `runs.py` (`load_runs`),
   `workflow.py` (workflow sources, `Analysis`), `workflow_folder.py` (plain folders of calculations
   as a workflow), `workflow_table.py`, `potential.py` (planar/macroscopic averages, lineup, work

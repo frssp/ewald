@@ -9,6 +9,7 @@ current frame. Frames without a matching step get the table but no attributes.
 """
 from __future__ import annotations
 
+import fnmatch
 import os
 import posixpath
 import re
@@ -90,8 +91,18 @@ def _is_number(tok: bytes) -> bool:
 
 
 def read_thermo(path) -> dict:
-    """Table from a LAMMPS log or a VASP OSZICAR (chosen by name, then by trying both)."""
+    """Table from a per-step result file: the reader of the simulation code that names the file
+    as its ``thermo`` (:mod:`ewald.codes`), else a LAMMPS log or a VASP OSZICAR (by content,
+    then by trying both)."""
+    from .. import codes
     from .vasp_output import is_oszicar, read_oszicar
+
+    name = os.path.basename(str(path)) if not remote.is_remote(str(path)) else \
+        posixpath.basename(remote.parse_remote(str(path)).path)
+    for code in codes.codes().values():
+        if code.read_thermo is not None and any(fnmatch.fnmatchcase(name.lower(), n.lower())
+                                                for names in code.thermo.values() for n in names):
+            return code.hook("read_thermo")(path)
 
     if is_oszicar(path):
         return read_oszicar(path)
@@ -165,16 +176,22 @@ class Thermo:
         return f"<Thermo {len(self)} steps, columns {self.columns}>"
 
 
-_SIBLINGS = {"xdatcar": ("OSZICAR",), "lammps-dump": ("log.lammps",)}
+def _siblings(kind: str) -> tuple:
+    """Per-step result file names for files of the reader ``kind``, from every simulation code's
+    ``thermo`` (:mod:`ewald.codes`: OSZICAR for an XDATCAR, log.lammps for a LAMMPS dump)."""
+    from .. import codes
+
+    return tuple(n for c in codes.codes().values() for n in c.thermo.get(kind, ()))
 
 
 def sibling_files(path, kind: str) -> list[str]:
     """Result files next to ``path`` that belong to the same run (OSZICAR next to an
     XDATCAR, log.lammps next to a dump), local or remote."""
     path = str(path)
+    names = _siblings(kind) if kind else ()
     if remote.is_remote(path):
         rp = remote.parse_remote(path)
-        cands = [str(rp.with_path(posixpath.join(posixpath.dirname(rp.path), n))) for n in _SIBLINGS.get(kind, ())]
+        cands = [str(rp.with_path(posixpath.join(posixpath.dirname(rp.path), n))) for n in names]
         return [c for c in cands if remote.exists(c)]
     folder = os.path.dirname(os.path.abspath(path))
-    return [os.path.join(folder, n) for n in _SIBLINGS.get(kind, ()) if os.path.isfile(os.path.join(folder, n))]
+    return [os.path.join(folder, n) for n in names if os.path.isfile(os.path.join(folder, n))]

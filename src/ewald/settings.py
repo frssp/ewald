@@ -57,11 +57,11 @@ def plot_style(choice: str, tokens: dict | None = None) -> tuple:
 
 
 # Preferences pages in order (2026-10-23 menu review); plugin settings pages follow "Plugins"
-PAGES = ("General", "3D view", "Atoms & bonds", "Rendering", "Plots", "Notebooks", "Compute", "Python", "AI",
+PAGES = ("General", "Codes", "3D view", "Atoms & bonds", "Rendering", "Plots", "Notebooks", "Compute", "Python", "AI",
          "Plugins")
 PAGE_OF_PREFIX = {"general": "General", "viewport": "3D view", "elements": "Atoms & bonds", "bonds": "Atoms & bonds",
                   "render": "Rendering", "plots": "Plots", "compute": "Compute", "performance": "Compute",
-                  "python": "Python", "llm": "AI"}
+                  "python": "Python", "llm": "AI", "codes": "Codes"}
 PAGE_OF_KEY = {"python.plot_style": "Plots", "python.run_notebooks": "Notebooks", "python.save_figures": "Notebooks",
                "python.bundle_data_mb": "Notebooks", "python.output_scroll_after": "Notebooks",
                "python.output_box_lines": "Notebooks", "python.plugin_catalogs": "Plugins"}
@@ -80,9 +80,6 @@ OPTIONS = (
            "hidden side bars stay in the Window menu."),
     Option("general.font_size", 12, "UI font size", "Pixels; applies to every panel.", minimum=9, maximum=20),
     Option("general.restore_layout", True, "Restore window layout", "Reopen docks and window size as you left them."),
-    Option("general.lammps_type_prompt", "ask", "LAMMPS type names",
-           "Ask for a type → element map when opening a LAMMPS dump.", choices=("ask", "never")),
-    Option("general.lammps_type_map", "", "Default LAMMPS type map", "e.g. 1=Cu,2=Zr; pre-fills the prompt."),
     Option("general.live_reload", True, "Live reload",
            "Follow trajectories a running simulation is still writing (LAMMPS dump, XDATCAR, OUTCAR, "
            "extxyz; local or SSH): new frames extend the timeline."),
@@ -286,6 +283,30 @@ OPTIONS = (
 OPTION = {o.key: o for o in OPTIONS}
 
 
+def option(key: str, load_plugins: bool = True) -> Option | None:
+    """The :class:`Option` of ``key``: ewald's own (:data:`OPTIONS`), else a simulation code's
+    ``codes.<name>.*`` row (:mod:`ewald.codes`; built-in codes need no plugin loading, plugin
+    codes load the plugins unless ``load_plugins`` is False). None when unknown."""
+    opt = OPTION.get(key)
+    if opt is not None or not key.startswith("codes."):
+        return opt
+    from . import codes
+
+    opt = codes.builtin_option(key)
+    if opt is None and load_plugins:
+        name = key.split(".")[1] if key.count(".") >= 2 else ""
+        code = codes.codes().get(name)
+        opt = next((o for o in code.options if o.key == key), None) if code else None
+    return opt
+
+
+def all_options() -> list[Option]:
+    """:data:`OPTIONS` plus every registered simulation code's options (Preferences › Codes)."""
+    from . import codes
+
+    return [*OPTIONS, *(o for c in codes.codes().values() for o in c.options)]
+
+
 # ---------------------------------------------------------------- devices / optional components
 def _probe_cuda():
     if importlib.util.find_spec("cupy") is None:
@@ -422,7 +443,10 @@ def _valid(opt: Option, value):
 # Options that no longer exist, dropped quietly from older settings files: the OVITO-like
 # "classic" window layout was removed, so the notebook layout is the only one.
 RETIRED = {"general.layout", "llm.user_id", "llm.system_name",   # these two: gateway headers, now llm.headers
-           "plots.font_size"}   # now font.size of the plot style file (ewald.plotstyle)
+           "plots.font_size",   # now font.size of the plot style file (ewald.plotstyle)
+           "general.lammps_type_map"}   # a default LAMMPS type map fits almost no run (2026-10-25)
+# Keys renamed since: old -> new (LAMMPS settings moved to the Codes page, 2026-10-25)
+RENAMED_KEYS = {"general.lammps_type_prompt": "codes.lammps.type_prompt"}
 # Values renamed since: key -> {old: new}
 RENAMED_VALUES = {"general.startup_workspace": {"Analyze": "Notebook"}}
 
@@ -433,42 +457,61 @@ class Settings:
     def __init__(self, values: dict | None = None, path: str | os.PathLike | None = None):
         self.path = Path(path) if path else default_path()
         self._values: dict = {}
+        self._later: dict = {}   # codes.<plugin code>.* values, checked once that code's options are known
         for k, v in (values or {}).items():
             if k in RETIRED:
                 continue
+            k = RENAMED_KEYS.get(k, k)
             v = RENAMED_VALUES.get(k, {}).get(v, v) if isinstance(v, str) else v
+            if k.startswith("codes.") and option(k, load_plugins=False) is None:
+                self._later[k] = v   # a plugin's code: kept (and saved) until its plugin is loaded
+                continue
             try:
                 self[k] = v
             except (KeyError, ValueError) as exc:
                 log.warning("ignoring setting %s=%r: %s", k, v, exc)
 
+    def _option(self, key) -> Option:
+        opt = option(key)
+        if opt is None:
+            raise KeyError(f"unknown setting {key!r}")
+        if key in self._later:
+            v = self._later.pop(key)
+            try:
+                self[key] = v
+            except ValueError as exc:
+                log.warning("ignoring setting %s=%r: %s", key, v, exc)
+        return opt
+
     def __getitem__(self, key):
-        if key not in OPTION:
-            raise KeyError(key)
-        v = self._values.get(key, OPTION[key].default)
+        opt = self._option(key)
+        v = self._values.get(key, opt.default)
         return dict(v) if isinstance(v, dict) else v
 
     def __setitem__(self, key, value):
-        if key not in OPTION:
+        opt = option(key)
+        if opt is None:
             raise KeyError(f"unknown setting {key!r}")
-        value = _valid(OPTION[key], value)
-        if value == OPTION[key].default:
+        self._later.pop(key, None)
+        value = _valid(opt, value)
+        if value == opt.default:
             self._values.pop(key, None)
         else:
             self._values[key] = value
 
     def get(self, key, default=None):
-        return self[key] if key in OPTION else default
+        return self[key] if option(key) is not None else default
 
     def is_default(self, key) -> bool:
-        return key not in self._values
+        return key not in self._values and key not in self._later
 
     def reset(self, keys=None):
-        for k in list(self._values) if keys is None else keys:
+        for k in list(self._values) + list(self._later) if keys is None else keys:
             self._values.pop(k, None)
+            self._later.pop(k, None)
 
     def changed(self) -> dict:
-        return {k: self[k] for k in self._values}
+        return {**self._later, **{k: self[k] for k in self._values}}
 
     def copy(self) -> "Settings":
         return Settings(self.changed(), self.path)
@@ -476,8 +519,12 @@ class Settings:
     def update(self, other: "Settings | dict"):
         values = other.changed() if isinstance(other, Settings) else other
         self._values.clear()
+        self._later.clear()
         for k, v in values.items():
-            self[k] = v
+            if k.startswith("codes.") and option(k, load_plugins=False) is None:
+                self._later[k] = v
+            else:
+                self[k] = v
 
     def save(self, path=None):
         p = Path(path) if path else self.path

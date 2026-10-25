@@ -265,7 +265,7 @@ QToolButton#welcomeRecent {{ color: {accent}; border: none; padding: 3px 0px; te
 QToolButton#welcomeRecent:hover {{ color: {accent_hover}; text-decoration: underline; }}
 QFrame#viewbar {{ background: {bg}; border-bottom: 1px solid {border}; }}
 QFrame#viewbar QToolButton {{ padding: 4px 6px; }}
-/* the view chips floating over the 3D view (D61) */
+/* the view chips floating over the 3D view (D62) */
 QFrame#hudChip {{ background: {hud}; border: 1px solid {border}; border-radius: 8px; }}
 QFrame#hudChip:disabled {{ background: {hud}; }}
 QFrame#hudDivider {{ background: {border}; border: none; }}
@@ -492,7 +492,7 @@ def _restyle(css: str, st: dict) -> str:
 RULE = 0.45
 
 
-HUD_ALPHA = 0.94   # opacity of the view chips over the 3D view (D61)
+HUD_ALPHA = 0.94   # opacity of the view chips over the 3D view (D62)
 
 
 def hud_color() -> str:

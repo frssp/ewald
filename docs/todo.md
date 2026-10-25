@@ -10,6 +10,13 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## Next
 
+- Simulation codes (`ewald.codes`, Preferences › Codes): only VASP and LAMMPS are built in and the
+  Quantum ESPRESSO entry is an example plugin; CP2K, GPAW, Gaussian and QE as real first-party
+  plugins are open. NEB and phonopy folders are still recognized outside the registry
+  (`workflow_folder._neb_step`, `_phonopy_step`), `read_thermo` falls back to trying the LAMMPS log
+  and OSZICAR parsers, the GUI's open filter groups formats by reader category rather than by
+  code, the Codes page cannot switch a built-in code off (the Plugins side bar does), and no AI
+  tool lists the codes yet.
 - Long cell outputs: whether a cell's output is scrolled or shown whole is kept per window only;
   Jupyter stores it as the cell's `scrolled` metadata in `.ipynb` (read and write it once cells
   keep metadata), and so is a hidden output (Jupyter's `collapsed`).
@@ -297,7 +304,7 @@ GUI
   Insert › Step for the loaded data, view-along buttons hidden without a cell, the timeline
   folded for a single structure.
 - Shortcuts for the viewport tools (orbit, pick, distance, angle, bond) and view-along axes.
-- Floating view chips (D61): the camera fit (`zoom_fit`) still uses the whole view, so in a small
+- Floating view chips (D62): the camera fit (`zoom_fit`) still uses the whole view, so in a small
   view a structure can sit under a chip; fit to the area the chips leave.
 - Impostor spheres: exact ray-sphere depth in perspective views (now approximate near the
   screen edges). The `light` setting moves the key light; a fill/rim light and
@@ -630,7 +637,7 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
-- The floating view chips (D61) on Windows at 200 % scaling and on macOS: the see-through chips
+- The floating view chips (D62) on Windows at 200 % scaling and on macOS: the see-through chips
   composite over the VTK view without flicker, and fold before they overlap when the Structure
   view is split or narrow.
 - ewald-optimade against the real servers (the container reaches none of them): `python -m
