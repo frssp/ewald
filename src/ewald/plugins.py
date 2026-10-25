@@ -81,7 +81,7 @@ from .io.base import FrameReader
 from .plugin_kinds import (  # noqa: F401 (part of this module's API)
     ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, MenuItemPlugin, PanelPlugin, PlotTarget, ReaderPlugin, SettingsField,
     SettingsPagePlugin,
-    ThemePlugin, ToolPlugin, UiThemePlugin, VisualPlugin, WorkflowSourcePlugin, WriterPlugin, _builtin_ai_providers, _builtin_panels, _builtin_workflows, _builtin_overlays, _builtin_readers,
+    ThemePlugin, ToolPlugin, UiThemePlugin, VisualPlugin, WorkflowSourcePlugin, WriterPlugin, _builtin_ai_providers, _builtin_codes, _builtin_panels, _builtin_workflows, _builtin_overlays, _builtin_readers,
     _builtin_themes, _builtin_ui_themes, _builtin_visuals, _builtin_writers, path_scheme, MENU_WHEN, MENUS, PANEL_AREAS,
     TARGET_MENUS)
 from .plugin_manifest import (  # noqa: F401 (part of this module's API)
@@ -103,6 +103,7 @@ PANEL_GROUP = "ewald.panels"
 MENU_ITEM_GROUP = "ewald.menu_items"
 SETTINGS_PAGE_GROUP = "ewald.settings_pages"
 WORKFLOW_GROUP = "ewald.workflows"
+CODE_GROUP = "ewald.codes"
 PLUGIN_GROUP = "ewald.plugins"      # names the package that holds ewald-plugin.toml
 MANIFEST_NAME = "ewald-plugin.toml"
 
@@ -123,6 +124,7 @@ class _Registry:
     menu_items: dict = field(default_factory=dict)
     settings_pages: dict = field(default_factory=dict)
     workflows: dict = field(default_factory=_builtin_workflows)
+    codes: dict = field(default_factory=_builtin_codes)
     errors: dict = field(default_factory=dict)      # origin -> message
     plugins: dict = field(default_factory=dict)     # id -> Plugin
     loaded: bool = False
@@ -130,7 +132,8 @@ class _Registry:
 
 _registry = _Registry()
 _REGISTRIES = ("readers", "writers", "modifiers", "visuals", "overlays", "colormaps", "themes", "tools",
-               "ui_themes", "ai_providers", "panels", "menu_items", "settings_pages", "workflows")
+               "ui_themes", "ai_providers", "panels", "menu_items", "settings_pages", "workflows",
+               "codes")
 
 
 def plugin_dir() -> Path:
@@ -766,6 +769,52 @@ def workflow_sources() -> dict[str, WorkflowSourcePlugin]:
     return dict(_registry.workflows)
 
 
+def simulation_code(fn=None):
+    """Decorator registering a simulation code (:class:`ewald.codes.SimulationCode`): put it on a
+    function made with no arguments that returns one, so VASP- and LAMMPS-like support for
+    another program (its files, settings under ``codes.<name>.*``, run info, checks, workflow
+    folders, thermo files) lives in one place::
+
+        from ewald.plugin_api import Option, SimulationCode, simulation_code
+
+        @simulation_code
+        def cp2k():
+            return SimulationCode("cp2k", "CP2K", files=("*-pos-*.xyz", "*.ener"), markers=("*.inp",),
+                                  options=[Option("codes.cp2k.project", "", "Project name")])
+
+    A code cannot take the name of a built-in one (vasp, lammps)."""
+
+    def deco(f):
+        register_simulation_code(f)
+        return f
+
+    return deco(fn) if fn is not None else deco
+
+
+def register_simulation_code(code, name: str | None = None, origin: str = "python"):
+    """Register a :class:`ewald.codes.SimulationCode` (or a function returning one)."""
+    from .codes import SimulationCode
+
+    obj = code() if callable(code) and not isinstance(code, SimulationCode) else code
+    if not isinstance(obj, SimulationCode):
+        raise TypeError(f"{code!r} is neither a SimulationCode nor a function returning one")
+    if name and name.lower() != obj.name:
+        raise ValueError(f"entry point {name!r} names simulation code {obj.name!r}; use the same name")
+    old = _registry.codes.get(obj.name)
+    if old is not None and old.origin == "built-in":
+        raise ValueError(f"simulation code name {obj.name!r} is taken by a built-in code; use another name")
+    obj.origin = getattr(_loading, "origin", None) or origin
+    _registry.codes[obj.name] = obj
+    _contribute("codes", obj.name)
+    return obj
+
+
+def simulation_codes() -> dict:
+    """Simulation codes by name (:mod:`ewald.codes`): the built-in VASP and LAMMPS, then plugins'."""
+    load_plugins()
+    return dict(_registry.codes)
+
+
 class _StoredSettings:
     """``load``/``save`` for a settings page without its own: the values in
     ``<config dir>/plugin-settings/<name>.json``, secret fields in the keychain
@@ -881,6 +930,12 @@ def _load_builtin(off: set):
             else:
                 for n in present:
                     del registry[n]
+        codes = [n for n, c in _registry.codes.items() if c.origin == "built-in" and c.plugin == pid]
+        if plugin.enabled and codes:
+            plugin.contributions["codes"] = codes
+        elif not plugin.enabled:
+            for n in codes:
+                del _registry.codes[n]
         plugin.loaded = plugin.enabled
         _registry.plugins[pid] = plugin
 
@@ -993,6 +1048,8 @@ def load_plugins(force: bool = False):
         _registry.settings_pages = {k: v for k, v in _registry.settings_pages.items() if v.origin == "python"}
         _registry.workflows = {**_builtin_workflows(),
                                **{k: v for k, v in _registry.workflows.items() if v.origin == "python"}}
+        _registry.codes = {**_builtin_codes(),
+                           **{k: v for k, v in _registry.codes.items() if v.origin == "python"}}
         _registry.errors.clear()
         _registry.plugins = {}
     off = disabled()
@@ -1049,7 +1106,8 @@ def _load_entry_points(off: set = frozenset()):
                             (PANEL_GROUP, lambda name, obj: register_panel(name, obj)),
                             (MENU_ITEM_GROUP, lambda name, obj: register_menu_item(name, obj)),
                             (SETTINGS_PAGE_GROUP, lambda name, obj: register_settings_page(name, obj)),
-                            (WORKFLOW_GROUP, lambda name, obj: register_workflow_source(name, obj))):
+                            (WORKFLOW_GROUP, lambda name, obj: register_workflow_source(name, obj)),
+                            (CODE_GROUP, lambda name, obj: register_simulation_code(obj, name=name))):
         try:
             eps = entry_points(group=group)
         except Exception as exc:
@@ -1253,6 +1311,7 @@ def status() -> dict:
                                for p in _registry.settings_pages.values()],
             "workflows": [{"name": p.name, "title": p.title, "schemes": list(p.schemes), "description": p.description,
                            "origin": p.origin} for p in _registry.workflows.values()],
+            "codes": [c.as_dict() for c in _registry.codes.values()],
             "errors": dict(_registry.errors)}
 
 

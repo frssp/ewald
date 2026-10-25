@@ -55,6 +55,9 @@ _NAMES = {
     # workflows (ewald.workflow)
     "workflow_source": "ewald.plugins", "Workflow": "ewald.workflow", "Analysis": "ewald.workflow", "WorkflowStep": "ewald.workflow",
     "WorkflowOutput": "ewald.workflow", "WorkflowPage": "ewald.workflow", "workflow_panel": "ewald.workflow",
+    # simulation codes (ewald.codes) and their settings rows
+    "simulation_code": "ewald.plugins", "SimulationCode": "ewald.codes", "Option": "ewald.settings",
+    "RunInfo": "ewald.runinfo", "Finding": "ewald.runinfo",
 }
 
 __all__ = ["PLUGIN_API", "SUPPORTED", *_NAMES]
