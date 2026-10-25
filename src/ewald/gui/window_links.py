@@ -252,6 +252,8 @@ class LinksMixin:
     def _extra_view_actions(self, view):
         if view.startswith("plot:"):
             return [("New plot tab", lambda: self.new_plot_view(view))]
+        if view == "viewport" or view.startswith("viewport:"):
+            return [("New structure tab", lambda: self.new_view_tab())]
         return []
 
     def _each_plot(self, fn):

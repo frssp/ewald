@@ -318,9 +318,11 @@ class MenusMixin:
         (Preferences › General › Toolbar buttons); menus show icons unless 'Text'."""
         from .icons import button_style
 
-        for b, text_in_hybrid in self.styled_buttons + self.viewport.styled_buttons:
+        tabs = [t.viewport for t in getattr(self, "view_tabs", {}).values()]
+        for b, text_in_hybrid in self.styled_buttons + [x for v in [self.viewport, *tabs] for x in v.styled_buttons]:
             button_style(b, style, text_in_hybrid)
-        self.viewport.set_button_style(style)
+        for v in [self.viewport, *tabs]:
+            v.set_button_style(style)
         QtWidgets.QApplication.instance().setAttribute(QtCore.Qt.AA_DontShowIconsInMenus, style == "Text")
 
     def _build_menus(self):
@@ -535,6 +537,8 @@ class MenusMixin:
         w.aboutToShow.connect(self._update_window_menu)
         w.addSeparator()   # tabs of the editor area and the panel
         w.addAction("&Structure", lambda: self.workbench.show(self.viewport))
+        w.addAction("New st&ructure tab", lambda: self.new_view_tab()).setToolTip(
+            "Another 3D view of the structure (its own camera and style), written as a view(pipe, tab=...) cell")
         w.addAction("&View settings", lambda: self.workbench.show(self.display))
         w.addAction("&Python console", lambda: self.workbench.show(self.console))
         w.addAction("&Data inspector", lambda: self.workbench.show(self.inspector))

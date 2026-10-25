@@ -154,3 +154,215 @@ class ViewSyncMixin:
         """View › Write view to notebook: the current camera and frame into the view cell."""
         self.write_view(camera=True)
         self.message("Wrote the camera and frame into the notebook's view cell")
+
+    # ---------------------------------------------------------------- view tabs (pipe.views)
+    def follow_view_tabs(self, data):
+        """Before drawing ``data``: one 3D viewport tab per view tab of the pipeline (``view(pipe,
+        tab=..., ...)``), each drawn with its view; tabs the pipeline no longer has close."""
+        pipe = self.pipeline
+        tabs = self.__dict__.setdefault("view_tabs", {})
+        names = pipe.views.names() if pipe is not None else []
+        for name in [n for n in tabs if n not in names]:
+            self._drop_view_tab(name)
+        types = data.types if data is not None else ()
+        for name in names:
+            t = tabs.get(name) or self._make_view_tab(name)
+            v = pipe.views[name]
+            key = (id(v.base), v.base.version, v.version)
+            if key != t.seen:
+                t.seen = key
+                t.style.apply_view(v.resolved(), types)
+                t.viewport.style_combo.blockSignals(True)
+                t.viewport.style_combo.setCurrentText(t.style.preset)
+                t.viewport.style_combo.blockSignals(False)
+                cam = tuple(repr(getattr(v, k)) for k in _CAMERA)
+                if cam != t.camera:
+                    t.camera, t.pending_camera = cam, True
+            if data is not None:
+                if t.style.bonds_enabled:
+                    t.style.ensure_bond_pairs(data.types)
+                t.viewport.overlay_text = self.viewport.overlay_text
+                t.viewport.set_data(data)
+                self._view_tab_camera(name)
+
+    def _make_view_tab(self, name: str):
+        from ..view_style import ViewStyle
+        from .app import make_viewport
+        from .prefs_apply import apply_viewport_settings
+
+        style = ViewStyle()
+        vp = make_viewport(style, self.settings["viewport.backend"])
+        apply_viewport_settings(vp, self.settings)
+        from .icons import button_style
+
+        mode = self.settings["general.toolbar_style"]
+        for b, text_in_hybrid in vp.styled_buttons:   # the tool rail as in the main viewport
+            button_style(b, mode, text_in_hybrid)
+        vp.set_button_style(mode)
+        t = ViewTab(name, vp, style)
+        self.view_tabs[name] = t
+        vp.hovered.connect(lambda text: self.hover_label.setText(text))
+        vp.picked.connect(lambda text: self.pick_label.setText(text))   # linked plots follow the main view only
+        vp.styleChanged.connect(lambda n=name: self.write_view_tab(n))
+        vp.contextMenuRequested.connect(lambda n=name: self._view_tab_menu(n))
+        vp.viewBuilt.connect(lambda n=name: self._view_tab_camera(n))
+        self.timeline.play.toggled.connect(vp.set_playing)
+        group = self.workbench.group_of("viewport")
+        self.workbench.register(t.view_id, vp, f"Structure · {name}", home="editor", closable=True,
+                                native=True, group=group)
+        return t
+
+    def _drop_view_tab(self, name: str):
+        t = self.view_tabs.pop(name, None)
+        if t is None:
+            return
+        try:
+            self.timeline.play.toggled.disconnect(t.viewport.set_playing)
+        except (RuntimeError, TypeError):
+            pass
+        if t.view_id in self.workbench.specs:
+            self.workbench.unregister(t.view_id)
+
+    def _view_tab_camera(self, name: str):
+        """The tab's camera from its view, once its 3D widget exists and shows the data."""
+        t = self.view_tabs.get(name)
+        if t is None or not t.pending_camera or self.pipeline is None or name not in self.pipeline.views:
+            return
+        vp = t.viewport
+        if not vp.view_built or vp.data is None or vp.parked:
+            return
+        t.pending_camera = False
+        v = self.pipeline.views[name]
+        if any(k in v.resolved()._values for k in _CAMERA):
+            if v.orthographic != vp.ortho and hasattr(vp, "set_ortho"):
+                vp.set_ortho(v.orthographic)
+            if v.camera is not None:
+                apply_camera_state(vp.plotter, v.camera)
+            else:
+                setup_camera(vp.plotter, vp.data, v.direction, v.orthographic, v.zoom)
+            vp.render()
+
+    def _view_tab_shown(self, view_id: str):
+        for name, t in getattr(self, "view_tabs", {}).items():
+            if t.view_id == view_id:
+                from PySide6 import QtCore
+
+                QtCore.QTimer.singleShot(0, lambda n=name: self._view_tab_camera(n))   # after it unparks
+
+    def _view_tab_closed(self, view_id: str):
+        """Closing a view tab removes it from the pipeline and its view cell from the notebook (Undo brings
+        the cell back; running it opens the tab again)."""
+        name = next((n for n, t in getattr(self, "view_tabs", {}).items() if t.view_id == view_id), None)
+        if name is None:
+            return
+        t = self.view_tabs.pop(name)
+        try:
+            self.timeline.play.toggled.disconnect(t.viewport.set_playing)
+        except (RuntimeError, TypeError):
+            pass
+        if self.pipeline is not None:
+            self.pipeline.views.remove(name)
+        view = self.panel.view
+        if view is None or view.notebook.pipeline is not self.pipeline:
+            return
+        cell = view.notebook.view_cell(name)
+        if cell is not None:
+            view.notebook.delete(cell)
+            view.rebuild()
+            view.history.commit("Close view tab")
+            view.titleChanged.emit()
+
+    def new_view_tab(self, name: str | None = None):
+        """Window › New structure tab: another 3D view of the pipeline, written into the notebook as a
+        ``view(pipe, tab=...)`` cell. Returns the tab's name."""
+        pipe = self.pipeline
+        if pipe is None:
+            self.message("Open a structure first", warning=True)
+            return None
+        if name is None:
+            n = 2
+            while f"View {n}" in pipe.views:
+                n += 1
+            name = f"View {n}"
+        pipe.views.add(name)
+        self._write_view_tab_cell(name)
+        self.follow_view_tabs(self.data)
+        t = self.view_tabs.get(name)
+        if t is not None:
+            self.workbench.show(t.view_id)
+        return name
+
+    def write_view_tab(self, name: str, camera: bool = False):
+        """After a change in a view tab's viewport (its style menu; ``camera``: its camera too): the tab's
+        own settings, what differs from the main view, into ``pipe.views[name]`` and its view cell."""
+        pipe, t = self.pipeline, getattr(self, "view_tabs", {}).get(name)
+        if pipe is None or t is None or name not in pipe.views:
+            return
+        v, types = pipe.views[name], self.data.types if self.data is not None else ()
+        main = pipe.view.resolved()
+        keep = {k: x for k, x in v.changed().items() if SETTINGS[k].group in ("camera", "picture")}
+        shown = View(**t.style.view_settings(types))
+        own = {k: x for k, x in shown.settings().items()
+               if SETTINGS[k].group not in ("camera", "picture") and repr(x) != repr(getattr(main, k))}
+        if camera:
+            keep["camera"] = {k: (list(x) if isinstance(x, tuple) else x)
+                              for k, x in camera_state(t.viewport.plotter).items()}
+            keep.pop("direction", None)
+            keep.pop("zoom", None)
+            keep["orthographic"] = bool(t.viewport.ortho)
+        wanted = {k: x for k, x in {**own, **keep}.items()}
+        if wanted != v.changed():
+            v.reset().update(**{k: wanted[k] for k in SETTINGS if k in wanted})
+        t.seen = (id(v.base), v.base.version, v.version)
+        t.camera = tuple(repr(getattr(v, k)) for k in _CAMERA)
+        t.viewport.redraw()
+        self._write_view_tab_cell(name)
+
+    def _write_view_tab_cell(self, name: str):
+        view = self.panel.view
+        if view is None or view.notebook.pipeline is not self.pipeline:
+            return
+        nb = view.notebook
+        before = nb.view_cell(name)
+        old = before.source if before is not None else None
+        cell = nb.set_view_cell(self.pipeline.views[name].changed(), tab=name)
+        if cell is None or (cell is before and cell.source == old):
+            return
+        if cell is before:
+            w = view.widget_for(cell)
+            if w is not None and w.editor is not None:
+                w.editor.blockSignals(True)
+                w.editor.setPlainText(cell.source)
+                w.editor.blockSignals(False)
+        else:
+            view.rebuild()
+        view.history.commit("Change view tab", merge=("view-tab", id(nb), name))
+        view.titleChanged.emit()
+
+    def _view_tab_menu(self, name: str):
+        from PySide6 import QtGui, QtWidgets
+
+        t = self.view_tabs.get(name)
+        if t is None:
+            return
+        menu = QtWidgets.QMenu(t.viewport)
+        menu.addAction("Write view to notebook", lambda: self.write_view_tab(name, camera=True)).setToolTip(
+            f"Write this tab's camera and style into its view(pipe, tab={name!r}, ...) cell")
+        menu.addAction("Reset view", t.viewport.reset_view)
+        menu.addSeparator()
+        menu.addAction("New structure tab", self.new_view_tab)
+        menu.addAction("Close tab", lambda: self.workbench.close_view(t.view_id))
+        menu.setToolTipsVisible(True)
+        menu.exec(QtGui.QCursor.pos())
+        menu.deleteLater()
+
+
+class ViewTab:
+    """One view tab of the window: its viewport, the style it draws with and what it applied last."""
+
+    def __init__(self, name: str, viewport, style):
+        self.name, self.viewport, self.style = name, viewport, style
+        self.view_id = f"viewport:{name}"
+        self.seen = None             # (id(base), base version, tab version) applied last
+        self.camera = None           # camera settings applied last
+        self.pending_camera = False

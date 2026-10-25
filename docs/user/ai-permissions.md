@@ -27,6 +27,7 @@ ewald itself shows the chat, does not write a cell.
 | The loaded structure or workflow | `load_structure`, `open_workflow` | `pipe = load(...)` |
 | Pipeline steps | `add_modifier`, `remove_modifier`, `edit_cell` with `params` | step cell `pipe.add(...)`, deleted or rewritten |
 | Everything the 3D view and pictures show: style, colors, radii, bonds, cell, camera, frame, labels, measurements, visuals, overlays, renderer | `set_view`, `add_visual`, `remove_visual`, `add_overlay`, `remove_overlay` | the view cell `view(pipe, ...)` |
+| More Structure tabs (view tabs) and their settings | `set_view` with `tab` | the tab's view cell `view(pipe, tab=..., ...)` |
 | Files written for you | `export_file` | `export_file(pipe, ...)` |
 | A workflow's analysis | `add_analysis` | the plugin's cells |
 | Its own code (plots, tables, anything the API does) | `insert_cell`, `edit_cell`, then `run_cell` or the run permission; ```python blocks of an answer (`llm.code_cells`) | the cell it wrote |
@@ -113,7 +114,7 @@ the model.
 | `open_workflow` | `pipe = load('simagent:lab/3f9c2e1a/bands')`: a workflow, a step or an output of it, by name; offered only with a workflow source |
 | `add_modifier` | a step cell `pipe.add(CoordinationAnalysis(cutoff=3.0))` |
 | `remove_modifier` | deletes that step cell |
-| `set_view`, `add_visual`, `remove_visual`, `add_overlay`, `remove_overlay` | the view cell `view(pipe, ...)` |
+| `set_view`, `add_visual`, `remove_visual`, `add_overlay`, `remove_overlay` | the view cell `view(pipe, ...)` (`set_view` with `tab`: that view tab's cell `view(pipe, tab=..., ...)`) |
 | `export_file` | `export_file(pipe, 'out.extxyz', frames=[0])` |
 | `add_analysis` | the cells of a workflow analysis (from `describe_workflow`), written by the workflow's plugin, not by the model; offered only with a workflow source |
 
@@ -146,7 +147,10 @@ system prompt that it may run cells, and runs the ```python blocks of an answer 
 the notebook.
 
 **Plugin tools.** Installed plugins add tools with `@ai_tool` ([AI tool plugins](../plugins/tools.md));
-ewald-plumed adds `compute_plumed_cvs` and `read_plumed_output`. A plugin tool cannot replace a
+ewald-plumed adds `compute_plumed_cvs` and `read_plumed_output`; ewald-optimade adds
+`optimade_search`, which only lists structures: it sends the query to one of the databases you
+set up (its table plus Preferences › OPTIMADE), never to an address the model names, and the
+model opens a hit by writing a `load("optimade:...")` cell. A plugin tool cannot replace a
 built-in one of the same name. Plugins run in-process with your rights, like any other Python
 package you install, so only install plugins you trust; the rules above ask them to change
 results through `toolset.call("add_modifier", ...)` and to call `toolset.check_read(path)`

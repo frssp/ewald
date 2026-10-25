@@ -302,13 +302,18 @@ class Toolset:
         """``{"cell": index, "cell_id": id}`` of the cell a tool wrote (the chat links to it by id)."""
         return {"cell": self._cell_index(nb, cell), "cell_id": cell.id}
 
-    def _apply_view(self, settings: dict, reset=None, rotate=None) -> dict:
-        """Change view settings by writing the notebook's view cell and running it."""
+    def _apply_view(self, settings: dict, reset=None, rotate=None, tab: str | None = None) -> dict:
+        """Change view settings by writing the notebook's view cell (of view tab ``tab``) and running it."""
         from ..view3d import View, view_notes, view_source
 
         pipe = self._need_pipeline()
-        old = pipe.view.changed()
-        new = pipe.view.copy()   # checked here first, so the cell does not fail on a bad value
+        if tab is not None:
+            tab = str(tab).strip()
+            if not tab:
+                raise ValueError("tab needs a name")
+        current = pipe.view if tab is None else (pipe.views.get(tab) or View.for_tab(pipe.view, tab))
+        old = current.changed()
+        new = current.copy()   # checked here first, so the cell does not fail on a bad value
         if reset is True:
             new.reset()
         elif reset:
@@ -326,18 +331,18 @@ class Toolset:
             nb = self._need_notebook()
             if nb.restricted:
                 raise PermissionError("the notebook is not trusted yet (an .ewd file); the user must trust it first")
-            cell = nb.view_cell()
+            cell = nb.view_cell(tab)
             before = None if cell is None else cell.source
             if cell is not None and nb.cells.index(cell) < _last_binding(nb):
                 nb.move(cell, len(nb.cells))   # after the cell that made this pipe, so the notebook reproduces it
-            cell = nb.set_view_cell(run)
+            cell = nb.set_view_cell(run, tab)
             if cell is not None:
                 access.changed(nb, "AI: change view", cell)
             return nb, cell, before
 
         nb, cell, before = access.call(write)
         if cell is None:
-            return {"changed": target, "code": View(**target).source(self.pipeline_name)}
+            return {"changed": target, "code": view_source(self.pipeline_name, tab=tab, **target)}
         if not access.run(nb, cell):
             error = _cell_error(cell)
 
@@ -352,16 +357,20 @@ class Toolset:
             access.call(restore)
             raise RuntimeError(f"the view cell failed:\n{error}")
 
+        v = pipe.view if tab is None else pipe.views[tab]
+
         def tidy():
-            nb.set_view_cell(pipe.view.changed())
+            nb.set_view_cell(v.changed(), tab)
             access.changed(nb, "AI: change view", cell)
             return nb.cells.index(cell) if cell in nb.cells else None
 
         k = access.call(tidy)
-        out = {"changed": pipe.view.changed(), "code": view_source(self.pipeline_name, **pipe.view.changed())}
+        out = {"changed": v.changed(), "code": view_source(self.pipeline_name, tab=tab, **v.changed())}
+        if tab is not None:
+            out["tab"] = tab
         if k is not None:
             out["cell"], out["cell_id"] = k, cell.id
-        notes = view_notes(pipe.view, pipe.modifiers)
+        notes = view_notes(v, pipe.modifiers)
         if notes:
             out["notes"] = notes
         return out
@@ -778,12 +787,16 @@ class Toolset:
            "'atom_colors' what colors the atoms now (a step's structure-type colors, a color map, paint "
            "conditions or the type colors, with each color), "
            "'measured' the values of its distance/angle measurements, "
-           f"'help' what each means. It takes no arguments and returns every setting; by group: {groups}.",
-           _obj({}))
-        def get_view():
-            v = self._need_pipeline().view
+           f"'help' what each means, 'tabs' the names of the view tabs (more 3D viewport tabs, each the main view "
+           f"with its own changes; 'tab' reads one: its 'changed' are its own settings). It returns every "
+           f"setting; by group: {groups}.",
+           _obj({"tab": {"type": "string", "description": "a view tab's name (see 'tabs'); default: the main view"}}))
+        def get_view(tab=None):
+            pipe = self._need_pipeline()
+            v = pipe.view if tab is None else pipe.views[tab]
             out = {"changed": v.changed(), "settings": v.settings(), "elements": v.elements.describe(),
-                   "help": {k: st.doc for k, st in SETTINGS.items()}, "code": v.source(self.pipeline_name)}
+                   "help": {k: st.doc for k, st in SETTINGS.items()}, "code": v.source(self.pipeline_name),
+                   "tabs": pipe.views.names()}
             try:
                 out["atom_colors"] = atom_colors(v, v.pipeline.compute(v.frame), v.frame)
             except Exception as exc:  # noqa: BLE001 - the view settings are still worth returning
@@ -804,14 +817,19 @@ class Toolset:
            "goes back to defaults first. color_by recolors the atoms for display ('type', or a property through "
            "colormap/color_range); per-atom colors by condition are steps instead (add_modifier "
            "ColorCoding / expression selection). The settings go into the notebook's view cell "
-           "(view(pipe, ...)), which runs at once. Returns the changed settings and that code.",
+           "(view(pipe, ...)), which runs at once. 'tab' sets a view tab instead (view(pipe, tab=..., ...), made on "
+           "first use): another 3D viewport tab of the same pipeline and frame that takes the main view's settings "
+           "except its own (null follows the main view again), e.g. a top view next to the main one. Returns the "
+           "changed settings and that code.",
            _obj({**view_props,
+                 "tab": {"type": "string", "description": "name of a view tab to set (made if new); "
+                                                          "default: the main view"},
                  "rotate": {"type": "array", "items": {"type": "number"},
                             "description": "[azimuth, elevation] in degrees, applied after the other settings"},
                  "reset": {"type": ["boolean", "array"], "items": {"type": "string"},
                            "description": "true: every setting back to its default first; or a list of names"}}))
-        def set_view(rotate=None, reset=None, **settings):
-            out = self._apply_view(settings, reset, rotate)
+        def set_view(rotate=None, reset=None, tab=None, **settings):
+            out = self._apply_view(settings, reset, rotate, tab)
             if "frame" in settings:
                 self.frame = self._frame(self._need_pipeline().view.frame)
             return out

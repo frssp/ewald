@@ -166,6 +166,19 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   only the contrast between the code box and the cell.
 - **Landed:** public PR #38.
 
+### D60. Structure databases as two plugins: OPTIMADE and Materials Project (2026-10-25)
+
+- **Decision:** outside structure databases come as first-party plugins in frssp/ewald-plugins
+  over the reader `schemes` hook: `ewald-optimade` (every OPTIMADE database, no key:
+  `load("optimade:mp/mp-149")`, `search()`, a search side bar, a read-only AI search tool) and
+  `ewald-mp` (Materials Project through mp-api with the user's key in the keychain, for what
+  OPTIMADE does not give: DOS, bands, charge densities, relaxation trajectories; `mp:`).
+- **Why:** the owner asked "Pymatgen mp api plugin? 외부 리포 프러그인 optimade 등" and picked
+  "OPTIMADE + MP 둘 다 (2 plugins)" on the decision card, noting "Mp 같은 건 api key가 필요래".
+- **Considered:** OPTIMADE only (Materials Project structures through its OPTIMADE endpoint);
+  Materials Project only through mp-api.
+- **Landed:** public PR #65; ewald-optimade 0.1.0 in frssp/ewald-plugins PR #22.
+
 ## Quality and platforms
 
 ### D7. Quality for files, speed for the screen (2026-10-19)
@@ -733,7 +746,41 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   leaving it under the cells, an inserter between cells, and both.
 - **Landed:** public PR #60.
 
-### D58. Profile plots and the 3D view follow each other, as a general link (2026-10-24)
+### D58. VESTA-style bond rules with a PBC switch per rule (2026-10-25)
+
+- **Decision:** bond rules A-B, A-* and *-* combine by specificity: the most specific rules for
+  a pair decide it (A-B before A-* before *-*, whatever their order; dmax 0 turns a pair off).
+  Each rule has a PBC choice: on (bonds through periodic boundaries, half bonds at the cell edge),
+  off (that rule's bonds stay inside the cell) or + atoms (`"complete"`: every A atom also gets
+  its B partners drawn beyond the cell edge, VESTA's "search additional atoms", per rule and
+  with or without a boundary range). Rows without the choice keep their meaning.
+- **Why:** the owner asked for "vesta type bond control, A-B / A-* / *-* 여기에 pbc 고려
+  옵션도 넣고" and, asked what the PBC option should mean, picked "규칙별 PBC on/off" on the
+  decision card, then asked whether a bond through the boundary adds the atom on the other side
+  ("pbc가 본드가 생기면 건너편 아톰도 추가해서 그리나?") and to add that per rule ("넣어줘봐").
+  Seeing the first take, where an O on the cell face kept a half bond toward the next cell's Ti
+  but its added image did not, the owner asked to make the modes consistent ("이상한데 ... 모드
+  규칙 재정비"): a + atoms rule draws its bonds whole or not at all, and the atoms it adds get
+  the other rules' half bonds like any atom.
+- **Considered:** VESTA's full per-rule boundary mode instead of the switch; only the global
+  Boundary setting (half, complete, none) for adding atoms. VESTA's recursive molecule search
+  per rule is left in docs/todo.md.
+- **Landed:** public PR #61.
+
+### D59. View tabs through `view(pipe, tab=...)` (2026-10-25)
+
+- **Decision:** repeated 3D views open as more Structure tabs through a keyword, `view(pipe,
+  tab="Top", ...)`: each named tab is the main view with its own settings on top, the same name
+  updates the same tab, and without `tab` the main view changes as before. Window › New
+  structure tab and the tab menu write such a cell, like `show(..., panel=)` for plots.
+- **Why:** the owner asked whether several `view()` calls could open new viewport tabs, chosen by
+  "데코레이터나 옵션" (replace the viewport or a new tab), and picked "tab= keyword + 메뉴" on the
+  decision card.
+- **Considered:** a `# %% [new tab]` cell tag (the tab named after the cell); both the keyword and
+  the tag; every view cell its own tab automatically.
+- **Landed:** public PR #62.
+
+### D61. Profile plots and the 3D view follow each other, as a general link (2026-10-24)
 
 - **Decision:** a plot whose x is a position along the cell (any table with
   `attributes["axis"]`, not only the potential lineup) is tied to the 3D view in three ways. *Align

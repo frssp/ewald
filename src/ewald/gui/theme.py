@@ -295,6 +295,7 @@ QTableWidget#viewTable {{ border: 1px solid {border}; border-radius: 6px; backgr
 QTableWidget#viewTable::item {{ padding: 0 6px; border-bottom: 1px solid {border}; }}
 QTableWidget#viewTable QHeaderView::section {{ background: {raised}; border: none; border-bottom: 1px solid {border};
     padding: 4px 6px; font-size: 11px; }}
+QTableWidget#viewTable QComboBox {{ border: none; border-radius: 0; background: transparent; padding: 0 6px; }}
 QTableWidget#viewTable QAbstractSpinBox {{ border: none; border-radius: 0; background: transparent; padding: 0 6px 0 0; }}
 QTableWidget#viewTable QAbstractSpinBox::up-button, QTableWidget#viewTable QAbstractSpinBox::down-button {{ width: 0; }}
 QTableWidget#viewTable QAbstractSpinBox::up-arrow, QTableWidget#viewTable QAbstractSpinBox::down-arrow {{ image: none;

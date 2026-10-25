@@ -192,6 +192,7 @@ it, and the GUI writes viewport edits back into the notebook's `view(pipe, ...)`
 view(pipe, style="Ball & stick",              # 'Space-filling', 'Simple (ASE)', 'Points' (set radius_scale, bonds, atom_style)
      theme="VESTA", colors={"O": "red"}, radii={"Ti": 0.6}, radius_preset="ionic", oxidation_states={"Ti": 4},
      bonds=True, bond_pairs=[["Ti", "O", 0, 2.3]], bond_radius=0.12,   # bonds=False, or a cutoff (A)
+     # bond_pairs rules: '*' = any type, A-B beats A-* beats *-*, dmax 0 = off, 5th item False = not through PBC, 'complete' = draw partner atoms beyond the cell
      cell=False, background="white", boundary=[-0.1, 1.1],             # VESTA boundary: periodic images
      replicate=[2, 2, 2], replicate_cell="super",                      # draw 2x2x2 cells (display only)
      direction="z", zoom=1.3, orthographic=True, frame=5,              # or camera={...} (exact, from the GUI)
@@ -209,6 +210,8 @@ view(pipe, color_by="Coordination", colormap="plasma", color_range=[2, 5])   # d
 pipe.add(GenerateTrajectoryLines())                       # atom paths are a step (the selected atoms, else all) ...
 view(pipe, trajectory_trail=True, trajectory_color_by="Time", trajectory_width=3)   # ... the trajectory_* settings
                                                           # only style its lines (without the step: a warning, no lines)
+view(pipe, tab="Top", direction="z")    # a view tab: another 3D viewport tab, the main view plus its own settings
+pipe.render("top.png", tab="Top")       # draws that tab (pipe.views["Top"]; snapshot(pipe, tab="Top"))
 ```
 
 A NEB folder (`load("neb/")`, images 00..NN as frames) comes with `UnwrapTrajectories`, `NebEnergyProfile` (tables

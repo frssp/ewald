@@ -41,7 +41,8 @@ timeline and linked selections.
 
 Right click a tab (or use the group's menu button) for the same moves without dragging: Split
 right, Split down, Move to editor area or panel, Maximize group, New plot tab (a second plot,
-for example g(r) next to the MSD) and Close or Return to panel. Double-click a tab to maximize
+for example g(r) next to the MSD), New structure tab (a second 3D view, below) and Close or
+Return to panel. Double-click a tab to maximize
 its group. View › Layout lists the moves with their shortcuts, and the command palette (Ctrl+K)
 finds them too:
 
@@ -58,6 +59,20 @@ The layout is saved with the window when Preferences › General › *Restore wi
 on (the default), extra plot views included. The Structure view itself never moves between windows:
 it can be placed anywhere in the middle but not closed, and the timeline stays under the
 editor area.
+
+### More structure tabs
+
+`view(pipe, tab="Top", direction="z")` in a notebook opens a second 3D view, the
+*Structure · Top* tab, next to the Structure tab. It shows the same pipeline and frame with the
+main view's settings, except the ones the tab sets: here the camera looks down z, and colors,
+radii and bonds follow the main view. Running the cell again updates the same tab instead of
+opening another; a tab without `tab=` changes the main view as before. Window › New structure
+tab (also in the tab menu and the viewport's right click) writes an empty `view(pipe, tab="View 2")`
+cell and opens it. A style picked in a tab's viewport goes into that tab's cell, and its right
+click › Write view to notebook adds the tab's camera. Closing the tab deletes its cell (Edit ›
+Undo brings the cell back; run it to reopen the tab). Split the tab to the right to see two
+directions side by side. Picks, measurements with the mouse and linked plot selections stay in
+the main Structure view.
 
 ## Notebook workspace
 
@@ -195,7 +210,7 @@ atoms* off for a stick model), **Colors** (what colors the atoms: the steps' col
 or a property through a color map with its range, and the rule drawn now, one row per structure type
 or painted condition with its count; see [What colors the atoms](rendering.md#what-colors-the-atoms)),
 **Types** (color, radius, transparency and count per type, VESTA
-elements.ini import), **Bonds** (sticks, the pair table, *As step* for a Create bonds step),
+elements.ini import), **Bonds** (sticks, the bond rules A-B / A-* / *-* with a *PBC* choice per rule: on, off, + atoms, *As step* for a Create bonds step),
 **Surfaces** (polyhedra, isosurfaces and slices that steps made, by name: shown, color,
 transparency, edges; *Reset* gives back the step's look), **Cell** (line width, *Replicate cell* and
 VESTA's *Boundary* range), **Labels** (text on each atom such as `{type}{index}`, *Highlight

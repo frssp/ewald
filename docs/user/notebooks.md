@@ -304,6 +304,13 @@ current camera and frame. `pipe.view` is the same thing one setting at a time
 or one visual element at a time (`pipe.view.elements["Bonds"].radius = 0.12`,
 `pipe.view.surface("coordination-polyhedra", color="teal")`), and Claude's `set_view` tool changes it too.
 
+A view cell with `tab=` is a *view tab*: another 3D viewport tab of the same pipeline
+([GUI › More structure tabs](gui.md#more-structure-tabs)). It takes the main view's settings and
+keeps only its own, so `view(pipe, tab="Top", direction="z")` is the main picture seen from the
+top; `None` for a setting follows the main view again. Each tab has its own cell, and running
+it again updates the same tab. `pipe.views["Top"]` is that tab's view (`pipe.views.names()`,
+`pipe.views.remove("Top")`).
+
 **Analysis cells** use a verb: one call adds the analysis step and returns its table.
 
 ```python

@@ -207,6 +207,8 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.workbench.viewShown.connect(self._update_bottom_tab)
         self.workbench.layoutChanged.connect(self._update_bottom_tab)
         self.workbench.viewClosed.connect(self._plot_view_closed)
+        self.workbench.viewClosed.connect(self._view_tab_closed)
+        self.workbench.viewShown.connect(self._view_tab_shown)
         self.workbench.factory = self._make_view
         self.workbench.extra_view_actions = self._extra_view_actions
         self._stale_tabs = set()  # panel tabs not yet showing the current frame
@@ -376,6 +378,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.pipeline = self.data = None
         self.viewport.clear_picks()
         self.viewport.set_data(None)
+        self.follow_view_tabs(None)
         for p in [self.plots, *self.extra_plots.values()]:
             p.pipeline = None
             p.set_data(None)
@@ -484,6 +487,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.viewport.overlay_text = f"Frame {job.frame}   timestep {ts}"
         self.viewport.set_data(self.data, interactive=interactive)
         self.follow_view_camera()
+        self.follow_view_tabs(self.data)
         self._stale_tabs = {self.inspector, self.plots, *self.extra_plots.values()}
         self._update_bottom_tab()
         for p in self.plot_panels()[1:]:  # view cells: their data comes with the notebook's

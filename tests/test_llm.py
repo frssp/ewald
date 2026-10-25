@@ -1060,3 +1060,28 @@ def test_export_file_makes_folders_only_in_its_cell(cu_file, tmp_path):
     assert "export_file(" in ts.notebook.cells[res.content["cell"]].source
     res = ts.call("export_file", {"path": "new/out.extxyz", "format": "no-such-writer"})
     assert res.is_error and not (tmp_path / "work" / "new").exists()
+
+
+def test_set_view_tab_writes_and_runs_a_view_tab_cell(cu_file):
+    """set_view with 'tab' sets a view tab (another 3D viewport tab) through its own view(pipe, tab=...)
+    cell; get_view lists the tabs and reads one."""
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\npipe = load({str(cu_file)!r})\n")
+    assert nb.run_all()
+    ts = Toolset(notebook=nb)
+    r = ts.call("set_view", {"tab": "Top", "direction": "z"})
+    assert not r.is_error, r.content
+    out = r.content
+    assert out["tab"] == "Top" and out["code"] == "view(pipe, tab='Top', direction='z')"
+    assert nb.pipeline.views["Top"].changed() == {"direction": "z"} and nb.pipeline.view.changed() == {}
+    cell = nb.view_cell("Top")
+    assert cell is not None and cell.state == "ok" and nb.view_cell() is None
+    assert not ts.call("set_view", {"tab": "Top", "bonds": False}).is_error
+    assert nb.pipeline.views["Top"].changed() == {"bonds": False, "direction": "z"}
+    assert [c for c in nb.cells if "tab='Top'" in c.source] == [cell]
+    got = ts.call("get_view", {"tab": "Top"}).content
+    assert got["tabs"] == ["Top"] and got["changed"] == {"bonds": False, "direction": "z"}
+    assert ts.call("get_view", {}).content["changed"] == {}
+    again = Notebook.from_py(nb.to_py())
+    assert again.run_all() and again.pipeline.views["Top"].changed() == {"bonds": False, "direction": "z"}
