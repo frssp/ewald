@@ -56,7 +56,9 @@ def expand(data, boundary, bonds=None, *, bond_mode: str = "half", tol: float = 
     drawn polyhedron has its corner atoms. Half bonds carry the bond property 'Half Bond'.
     Bonds with the bond property 'Complete' (a bond rule's pbc 'complete', see
     :func:`ewald.bonds.normalize_pairs`) always get the partner of their A atom, also without a
-    boundary range (``boundary`` None: only those partners are added).
+    boundary range (``boundary`` None: only those partners are added), and are never drawn as half
+    bonds: a B atom keeps no stub toward an A beyond the edge. The partners they add count as
+    displayed atoms, so their bonds of other rules leave the same half bonds as everywhere else.
     Only periodic directions get images. Returns ``(data, None)`` when there is nothing to do.
     """
     rng = normalize_boundary(boundary)
@@ -96,14 +98,25 @@ def expand(data, boundary, bonds=None, *, bond_mode: str = "half", tol: float = 
                 else _mesh_centers(data, n))
         per_bond = (np.zeros(len(u), bool) if complete is None    # directed: (i, j) then (j, i)
                     else np.concatenate([complete & 1, complete & 2]).astype(bool))
+        shown = np.ones(n_in, bool)   # atoms whose other bonds are drawn (half bonds out of the range too)
         if (grow.any() or per_bond.any()) and len(u):
             c, p, k = _partners(src, shift, u, v, img, n)
-            want = (p < 0) & (grow[src[c]] | per_bond[k])
-            if want.any():
+            missing = p < 0
+            for want, full in ((missing & per_bond[k], True), (missing & grow[src[c]] & ~per_bond[k], False)):
+                if not want.any():
+                    continue
                 extra = np.unique(np.column_stack([v[k[want]], shift[c[want]] + img[k[want]]]), axis=0)
+                if not full:   # a partner a 'complete' rule added already is not added twice
+                    have = _codes(src, shift, n)
+                    extra = extra[~np.isin(_codes(extra[:, 0], extra[:, 1:], n), have)]
                 src = np.concatenate([src, extra[:, 0]])
                 shift = np.concatenate([shift, extra[:, 1:]])
-        disp_bonds = _display_bonds(bonds, src, shift, u, v, img, n, np.arange(len(src)) < n_in, bond_mode)
+                # partners of 'complete' rules are atoms like the others: their other bonds are drawn
+                shown = np.concatenate([shown, np.full(len(extra), full)])
+        whole_only = None
+        if complete is not None:   # every bond of a 'complete' rule, also those inside the cell
+            whole_only = np.tile(np.asarray(bonds["Complete"], bool), 2)
+        disp_bonds = _display_bonds(bonds, src, shift, u, v, img, n, shown, bond_mode, whole_only)
 
     disp = data.copy()
     disp.particles = {k: np.asarray(a)[src] for k, a in data.particles.items()}
@@ -170,7 +183,7 @@ def _partners(src, shift, u, v, img, n):
     return c, p, k
 
 
-def _display_bonds(bonds, src, shift, u, v, img, n, in_range, bond_mode):
+def _display_bonds(bonds, src, shift, u, v, img, n, in_range, bond_mode, whole_only=None):
     from .bonds import Bonds
 
     if not len(u):
@@ -178,6 +191,8 @@ def _display_bonds(bonds, src, shift, u, v, img, n, in_range, bond_mode):
     c, p, k = _partners(src, shift, u, v, img, n)
     full = (p >= 0) & (c < p)                       # each whole bond is found from both ends
     half = (p < 0) & in_range[c] & (bond_mode == "half")
+    if whole_only is not None:   # bonds of 'complete' rules are drawn whole or not at all
+        half &= ~whole_only[k]
     m = bonds.count
     bidx = np.concatenate([k[full], k[half]]) % m   # directed bond -> stored bond (its properties)
     out = bonds.take(bidx)

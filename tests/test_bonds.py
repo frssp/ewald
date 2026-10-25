@@ -278,8 +278,9 @@ def test_bond_rule_complete_adds_partner_atoms(srtio3):
     disp, src = expand(srtio3, None, b)                  # no boundary range: only the partners
     crossing = int(np.any(b.pbc_images != 0, axis=1).sum())
     assert disp.count == srtio3.count + crossing and (srtio3.types[src[srtio3.count:]] == "O").all()
-    half = np.asarray(disp.bonds["Half Bond"])
-    assert (~half).sum() == 6 and half.sum() == crossing   # Ti's bonds whole; the O end keeps its half
+    # Ti's bonds are whole; a 'complete' rule draws no half bonds, so no O (real or added) keeps a
+    # stub toward a Ti beyond the edge
+    assert disp.bonds.count == 6 and not np.asarray(disp.bonds["Half Bond"]).any()
 
     def counts(rules, **kw):
         sc = scene.build(srtio3, bond_pairs=rules, **kw)
@@ -287,7 +288,19 @@ def test_bond_rule_complete_adds_partner_atoms(srtio3):
         return len(lay["atoms"].centers), len(lay["bonds"].start)
 
     assert counts([("Ti", "O", 0.0, 2.2)]) == (5, 12)                   # half bonds out of the cell
-    assert counts([("Ti", "O", 0.0, 2.2, "complete")]) == (5 + crossing, 12 + crossing)
+    assert counts([("Ti", "O", 0.0, 2.2, "complete")]) == (5 + crossing, 12)
+    # the added O atoms are atoms like the real ones: an 'on' rule gives every O the same Sr-O stubs
+    from ewald.boundary import expand as _expand
+
+    both = find_bonds(srtio3, pairs=[("Ti", "O", 0.0, 2.2, "complete"), ("Sr", "O", 0.0, 2.9)])
+    disp, src = _expand(srtio3, None, both)
+    ti_o = np.asarray(disp.bonds["Complete"]) > 0
+    half = np.asarray(disp.bonds["Half Bond"])
+    t = disp.bonds.topology
+    ends = np.concatenate([t[~ti_o, 0], t[~ti_o & ~half, 1]])   # a half bond is drawn at its first atom
+    sr_o = np.bincount(ends, minlength=disp.count)
+    o = np.flatnonzero(disp.types == "O")
+    assert len(o) == 6 and (sr_o[o] == 4).all()
     assert counts([("O", "Ti", 0.0, 2.2, "complete")])[0] == 5 + crossing   # O grows Ti images
     # with a boundary range the rule still adds its partners on top of the range's ghosts
     plain = counts([("Ti", "O", 0.0, 2.2)], boundary=(0, 1))[0]

@@ -370,10 +370,14 @@ boundaries:
 |---|---|
 | `True` (default, left out) | found; drawn as half bonds leaving the cell |
 | `False` | none: only bonds inside the cell, for molecules in a box, slabs or unwrapped trajectories |
-| `"complete"` | found, and every A atom also gets its B partner drawn beyond the cell edge (VESTA's "search additional atoms"), so `["Ti", "O", 0, 2.2, "complete"]` closes the TiO6 octahedra |
+| `"complete"` | found, and every A atom also gets its B partner drawn beyond the cell edge (VESTA's "search additional atoms"), so `["Ti", "O", 0, 2.2, "complete"]` closes the TiO6 octahedra; the rule's bonds are drawn whole or not at all |
 
-`"complete"` works with or without a [boundary](#boundary-vesta) range; the added atoms are
-display only and pick as their real atom.
+So each mode looks the same on every atom: with `True` every atom, inside or beyond the edge,
+shows its bonds through the boundary as half bonds; with `"complete"` no atom keeps a half bond of
+that rule (an O on the cell face has no stub toward the Ti of the next cell, just like its image
+on the opposite face), and the B atoms it adds are atoms like the others, with the half bonds of
+the other rules. `"complete"` works with or without a [boundary](#boundary-vesta) range; the
+added atoms are display only and pick as their real atom.
 
 ```python
 view(pipe, bond_pairs=[["*", "*", 0, 2.8],          # everything up to 2.8 A ...

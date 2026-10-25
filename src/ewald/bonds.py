@@ -156,7 +156,8 @@ PBC_MODES = {
     True: "bond through periodic boundaries; such bonds end in half bonds at the cell edge",
     False: "bonds inside the cell only",
     "complete": "bond through periodic boundaries and draw the B atoms of every A beyond the cell edge "
-                "(VESTA's 'search additional atoms if A is in the boundary', per rule)",
+                "(VESTA's 'search additional atoms if A is in the boundary', per rule); the rule's "
+                "bonds are drawn whole or not at all",
 }
 
 

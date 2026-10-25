@@ -745,6 +745,10 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   옵션도 넣고" and, asked what the PBC option should mean, picked "규칙별 PBC on/off" on the
   decision card, then asked whether a bond through the boundary adds the atom on the other side
   ("pbc가 본드가 생기면 건너편 아톰도 추가해서 그리나?") and to add that per rule ("넣어줘봐").
+  Seeing the first take, where an O on the cell face kept a half bond toward the next cell's Ti
+  but its added image did not, the owner asked to make the modes consistent ("이상한데 ... 모드
+  규칙 재정비"): a + atoms rule draws its bonds whole or not at all, and the atoms it adds get
+  the other rules' half bonds like any atom.
 - **Considered:** VESTA's full per-rule boundary mode instead of the switch; only the global
   Boundary setting (half, complete, none) for adding atoms. VESTA's recursive molecule search
   per rule is left in docs/todo.md.
