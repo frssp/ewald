@@ -5807,6 +5807,8 @@ def test_resize_handles_are_visible_in_every_theme(app):
         assert theme.image("grip_v") != first
     finally:
         theme._IMAGES["grip_v"] = entry
+    # the pointer, wherever an earlier test left it, must not hover a separator (the hover color differs)
+    QtGui.QCursor.setPos(app.primaryScreen().geometry().bottomRight())
     try:
         for name in theme.PALETTES:
             t = theme.use(name)
