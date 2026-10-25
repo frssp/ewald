@@ -119,6 +119,7 @@ class LegacyViewport(Viewport):
     backend = "legacy-gl"
     uses_vtk = False   # its GLView asks for its own OpenGL 1.x format
     lazy_view = False  # cheap to build, and its GL window and caption are used right away
+    hud_overlay = False  # widgets can't be drawn over its native GL window: the chips sit around it
 
     def _create_view(self) -> QtWidgets.QWidget:
         self.anti_aliasing = False

@@ -3034,7 +3034,7 @@ def test_main_window_legacy_gl_viewport(app, pipe, tmp_path, monkeypatch):
     W, H = vp.view.width(), vp.view.height()
     bg = img.pixelColor(2, 2)
     assert img.pixelColor(W // 2, H // 2) != bg  # atoms drawn in the middle
-    assert "Frame 0" in vp.caption.text()
+    assert not vp.caption.isVisibleTo(vp)   # the frame's timestep is in the timeline now (D63)
     snap = vp.snapshot().toImage()  # what a tab drag shows in place of the GL window
     gl = vp._gl_widget().mapTo(vp, vp._gl_widget().rect().center())
     assert snap.pixelColor(gl.x(), gl.y()) != snap.pixelColor(gl.x() - W // 2 + 2, gl.y() - H // 2 + 2)
@@ -5807,6 +5807,8 @@ def test_resize_handles_are_visible_in_every_theme(app):
         assert theme.image("grip_v") != first
     finally:
         theme._IMAGES["grip_v"] = entry
+    # the pointer, wherever an earlier test left it, must not hover a separator (the hover color differs)
+    QtGui.QCursor.setPos(app.primaryScreen().geometry().bottomRight())
     try:
         for name in theme.PALETTES:
             t = theme.use(name)
@@ -6293,3 +6295,170 @@ def test_view_tabs_are_more_structure_tabs(app, tmp_path):
     app.processEvents()
     assert "View 2" not in w.pipeline.views and "View 2" not in w.view_tabs and nb.view_cell("View 2") is None
     w.close()
+
+
+def _hud_host(app, cls, data=None):
+    """A viewport in a plain host widget, so tests can give it any size (the workbench sizes it
+    with setGeometry too, below the controls' minimum width)."""
+    from ewald.gui.icons import button_style
+    from ewald.gui.style import ViewStyle
+
+    host = QtWidgets.QWidget()
+    host.resize(900, 700)
+    v = cls(ViewStyle(), host)
+    for b, text in v.styled_buttons:
+        button_style(b, "Icons", text)
+    v.set_button_style("Icons")
+    host.show()
+    v.show()
+    for _ in range(100):   # the 3D widget is built after the first paint (Viewport.lazy_view)
+        app.processEvents()
+        if v.view_built:
+            break
+        QtCore.QThread.msleep(10)
+    if data is not None:
+        v.set_data(data)
+    app.processEvents()
+    return host, v
+
+
+def _visible_rects(chip):
+    return [w.geometry() for w in chip.findChildren(QtWidgets.QWidget) if w.isVisibleTo(chip) and w.parent() is chip]
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="3D view needs an X display with OpenGL (xvfb-run)")
+@pytest.mark.parametrize("font_size", [12, 16])   # 16: a larger UI font, like Windows at 150-200 % with big text
+def test_viewport_hud_folds_without_overlap(app, cu_fcc, font_size):
+    """The view chips float over the 3D view and fold into menus as it gets small (D62): at no size do
+    the two top chips overlap each other, nor their buttons each other, and Fit always stays."""
+    from ewald.gui import theme
+    from ewald.gui.viewport import Viewport
+
+    theme.apply(app, font_size=font_size)
+    try:
+        host, v = _hud_host(app, Viewport, cu_fcc)
+        levels = []
+        for width in (900, 640, 480, 400, 320, 260, 220):
+            v.setGeometry(0, 0, width, 360)
+            app.processEvents()
+            levels.append(v.hud_level)
+            left, right = v._viewbar.geometry(), v._displaybar.geometry()
+            assert left.right() < right.left(), (width, left, right)
+            assert right.right() < width and left.left() >= 0
+            for chip in (v._viewbar, v._displaybar):
+                rects = _visible_rects(chip)
+                assert all(not a.intersects(b) for i, a in enumerate(rects) for b in rects[i + 1:]), (width, chip)
+            assert v.fit_button.isVisible()
+            # the chips are over the GL widget, not beside it: the 3D view keeps the whole viewport
+            v.layout().activate()
+            assert v.plotter.interactor.geometry() == v.rect()
+        assert levels == sorted(levels) and levels[0] == 0 and levels[-1] == len(v.HUD_LEVELS) - 1
+        # folded: the a*/b*/c* and rotations are one click away in menus, the rest in ⋯
+        assert not v.axis_buttons["a"].isVisible() and v.axis_menu.isVisible()
+        assert [a.text() for a in v.axis_menu.menu().actions()] == [f"Look along {x}" for x in v.AXES]
+        v.more_button.menu().aboutToShow.emit()
+        titles = [a.text() for a in v.more_button.menu().actions()]
+        assert titles == ["Rotate", "Orthographic projection", "Style"]
+        ortho = v.more_button.menu().actions()[1]
+        ortho.setChecked(False)
+        assert not v.ortho and not v.ortho_button.isChecked()
+        style = v.more_button.menu().actions()[2].menu()
+        [a for a in style.actions() if a.text() == "Space-filling"][0].trigger()
+        assert v.style_combo.currentText() == "Space-filling"
+        v.setGeometry(0, 0, 900, 600)
+        app.processEvents()
+        assert v.hud_level == 0 and v.axis_buttons["c*"].isVisible() and not v.more_button.isVisible()
+        v.close()
+        _dispose(host)
+    finally:
+        theme.apply(app, font_size=12)
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="3D view needs an X display with OpenGL (xvfb-run)")
+def test_viewport_tool_chip_folds_into_more(app, cu_fcc):
+    """A short view folds the last tools (Clear first) into ⋯, which looks checked while it holds
+    the current tool; the tool chip ends above the orientation axes."""
+    from ewald.gui.viewport import Viewport
+
+    host, v = _hud_host(app, Viewport, cu_fcc)
+    v.setGeometry(0, 0, 600, 600)
+    app.processEvents()
+    assert v.rail_tools == len(v.TOOLS) and v.clear_button.isVisible() and not v.rail_more.isVisible()
+    v.setGeometry(0, 0, 600, 260)
+    app.processEvents()
+    assert 1 <= v.rail_tools < len(v.TOOLS) and not v.clear_button.isVisible() and v.rail_more.isVisible()
+    assert v._rail.geometry().bottom() < 260 - 0.2 * 260
+    hidden = v.TOOLS[-1][0]
+    v.set_tool(hidden)
+    assert v.rail_more.isChecked()
+    v.rail_more.menu().aboutToShow.emit()
+    texts = [a.text() for a in v.rail_more.menu().actions()]
+    assert "Bond" in texts and "Clear picks and measurements" in texts
+    v.set_tool("orbit")
+    assert not v.rail_more.isChecked()
+    v.close()
+    _dispose(host)
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="3D view needs an X display with OpenGL (xvfb-run)")
+def test_viewport_overlays_start_below_the_chips(app, cu_fcc):
+    """Color bars, the color legend and the frame caption are drawn below the top chips, so the
+    chips never cover them."""
+    from ewald.gui.viewport import Viewport
+
+    host, v = _hud_host(app, Viewport)
+    v.setGeometry(0, 0, 640, 480)
+    data = cu_fcc.copy()
+    data["Potential Energy"] = np.linspace(-1, 1, data.count)
+    v.style.color_by = "Potential Energy"
+    v.overlay_text = "Frame 0"
+    v.set_data(data)
+    app.processEvents()
+    left, top = v.hud_insets()
+    assert top >= v._displaybar.geometry().bottom() and left >= v._rail.geometry().right()
+    assert v._colorbar_box is not None and v._colorbar_box[1] >= top
+    assert "_overlay" in v.plotter.actors
+    v.close()
+    _dispose(host)
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="GL window needs an X display (xvfb-run)")
+def test_legacy_viewport_puts_the_chips_around_the_view(app, cu_fcc):
+    """The OpenGL 1.x viewport's native GL window can't have widgets drawn over it: the same chips sit
+    in a strip above it and a column left of it, fold the same way, and offset no overlay."""
+    from ewald.gui.legacy_viewport import LegacyViewport
+
+    host, v = _hud_host(app, LegacyViewport, cu_fcc)
+    for width in (900, 300):
+        v.setGeometry(0, 0, width, 400)
+        app.processEvents()
+        gl = v._gl_widget()
+        origin = gl.mapTo(v, QtCore.QPoint(0, 0))
+        area = QtCore.QRect(origin, gl.size())
+        for chip in (v._viewbar, v._displaybar, v._rail):
+            r = QtCore.QRect(chip.mapTo(v, QtCore.QPoint(0, 0)), chip.size())
+            assert not r.intersects(area), (width, chip.property("hudName"))
+    assert v.hud_level >= 2 and v.hud_insets() == (0, 0)
+    v.close()
+    _dispose(host)
+
+
+def test_timeline_shows_timestep_and_time_not_the_3d_view(app, pipe):
+    """The frame's timestep and time sit beside its number in the timeline (D63), not as text in the
+    3D view; a single frame or a frame without them shows nothing, and the preference hides it."""
+    from ewald.gui.timeline import Timeline
+
+    t = Timeline()
+    t.set_num_frames(10)
+    t.set_info({"Timestep": np.int64(500), "Time": 0.5})
+    assert t.info.isVisibleTo(t) and "500" in t.info.text() and "0.5" in t.info.text()
+    t.set_info({})
+    assert not t.info.isVisibleTo(t)
+    t.show_info = False
+    t.set_info({"Timestep": 500})
+    assert not t.info.isVisibleTo(t)
+    t.show_info = True
+    t.set_num_frames(1)
+    t.set_info({"Timestep": 500})
+    assert not t.info.isVisibleTo(t)
+    _dispose(t)

@@ -102,7 +102,8 @@ OPTIONS = (
     Option("viewport.show_axes", True, "Show axes tripod"),
     Option("viewport.render_frame", False, "Render frame in the 3D view",
            "Also outside the Render page: the part of the view the picture shows, outside it dimmed."),
-    Option("viewport.show_overlay", True, "Show frame / timestep text"),
+    Option("viewport.show_overlay", True, "Show timestep and time",
+           "Beside the frame number under the 3D view, for trajectories whose file has them."),
     Option("viewport.backend", "auto", "Viewport renderer",
            "VTK: the full viewport (OpenGL 3.2+). Legacy GL: OpenGL 1.x display lists like VESTA, which "
            "work over SSH X11 forwarding (ssh -X) but have no impostors, smoothing or 3D text. Auto uses "

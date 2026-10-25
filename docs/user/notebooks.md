@@ -404,7 +404,7 @@ Opening a data file (File › Open, or `ewald gui file`) makes a notebook for it
 for it). With no notebook open, at start or after closing the last tab, the notebook area shows
 a welcome page: *New notebook* (Ctrl+T), *Open…*, *Open example* and the files opened lately;
 Notebook › ... is greyed out then, and Insert › ... starts a notebook. The 3D view says how to
-open something and greys out its view bar and tools until there is a structure. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. Opening
+open something and greys out its view controls and tools until there is a structure. File › Open on an `.ewd`, `.ipynb` or `.py` file opens it as a notebook. Opening
 runs nothing: you see the cells and the results saved in the file, and a bar over the cells says
 *Not run yet* with a *Run all* button (or Notebook › Run all). Preferences › Notebooks › *Run
 notebooks when opened* changes that: *never* (the default), *ask* (asks every time) or *always*
