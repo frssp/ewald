@@ -3009,7 +3009,7 @@ def test_main_window_legacy_gl_viewport(app, pipe, tmp_path, monkeypatch):
     W, H = vp.view.width(), vp.view.height()
     bg = img.pixelColor(2, 2)
     assert img.pixelColor(W // 2, H // 2) != bg  # atoms drawn in the middle
-    assert "Frame 0" in vp.caption.text()
+    assert not vp.caption.isVisibleTo(vp)   # the frame's timestep is in the timeline now (D61)
     snap = vp.snapshot().toImage()  # what a tab drag shows in place of the GL window
     gl = vp._gl_widget().mapTo(vp, vp._gl_widget().rect().center())
     assert snap.pixelColor(gl.x(), gl.y()) != snap.pixelColor(gl.x() - W // 2 + 2, gl.y() - H // 2 + 2)
@@ -6414,3 +6414,24 @@ def test_legacy_viewport_puts_the_chips_around_the_view(app, cu_fcc):
     assert v.hud_level >= 2 and v.hud_insets() == (0, 0)
     v.close()
     _dispose(host)
+
+
+def test_timeline_shows_timestep_and_time_not_the_3d_view(app, pipe):
+    """The frame's timestep and time sit beside its number in the timeline (D61), not as text in the
+    3D view; a single frame or a frame without them shows nothing, and the preference hides it."""
+    from ewald.gui.timeline import Timeline
+
+    t = Timeline()
+    t.set_num_frames(10)
+    t.set_info({"Timestep": np.int64(500), "Time": 0.5})
+    assert t.info.isVisibleTo(t) and "500" in t.info.text() and "0.5" in t.info.text()
+    t.set_info({})
+    assert not t.info.isVisibleTo(t)
+    t.show_info = False
+    t.set_info({"Timestep": 500})
+    assert not t.info.isVisibleTo(t)
+    t.show_info = True
+    t.set_num_frames(1)
+    t.set_info({"Timestep": 500})
+    assert not t.info.isVisibleTo(t)
+    _dispose(t)

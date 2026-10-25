@@ -439,7 +439,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `viewport.rotation_step` | Step rotation | `15.0` |
 | `viewport.show_axes` | Show axes tripod | `True` |
 | `viewport.render_frame` | Render frame in the 3D view | `False` |
-| `viewport.show_overlay` | Show frame / timestep text | `True` |
+| `viewport.show_overlay` | Show timestep and time | `True` |
 | `viewport.backend` | Viewport renderer | `'auto'` |
 | `viewport.hover_info` | Atom info on hover | `True` |
 | `viewport.hover_delay` | Hover delay | `0.25` |

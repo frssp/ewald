@@ -102,7 +102,9 @@ fold instead of overlapping: a\*/b\*/c\* go under a chevron and the rotations un
 then the six directions become one *a* menu and Style moves into *⋯*, and at the smallest
 size the rotations and Ortho go there too; Fit always stays. A short view moves the last tools
 and Clear into a *⋯* at the bottom of the tool chip, which is highlighted while it holds the
-current tool. Color bars, the color legend and the frame caption are drawn below the chips. The
+current tool. Color bars and the color legend are drawn below the chips. The 3D view shows no
+frame text: the timeline under it shows the frame's timestep and time beside its number when the
+file has them (Preferences › 3D view › *Show timestep and time*). The
 OpenGL 1.x viewport used over `ssh -X` cannot draw widgets over its GL window, so there the same
 chips sit in a strip above the view and a column left of it.
 

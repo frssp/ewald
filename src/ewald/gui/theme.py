@@ -287,6 +287,7 @@ QListView::indicator:checked {{ background: {accent}; border-color: {accent}; im
 QCheckBox::indicator:disabled {{ background: {panel}; border-color: {border}; }}
 QFrame#hudChip[hudName="tools"] QToolButton {{ font-size: 18px; color: {secondary}; padding: 0; }}
 QWidget#hudStrip {{ background: {viewport}; }}
+QLabel#timelineInfo {{ color: {muted}; padding: 0 6px; }}
 
 /* View tab: how the structure is drawn, as cards */
 QScrollArea#viewScroll, QScrollArea#viewScroll > QWidget > QWidget, QWidget#viewPage {{ background: {panel}; }}

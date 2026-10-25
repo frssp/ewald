@@ -481,8 +481,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self._apply_element_defaults()
         self.panel.set_data(self.data)
         self.display.set_data(self.data, refresh=view_changed)
-        ts = self.data.attributes.get("Timestep", job.frame)
-        self.viewport.overlay_text = f"Frame {job.frame}   timestep {ts}"
+        self.timeline.set_info(self.data.attributes)   # timestep and time beside the frame number (D61)
         self.viewport.set_data(self.data, interactive=interactive)
         self.follow_view_camera()
         self.follow_view_tabs(self.data)
