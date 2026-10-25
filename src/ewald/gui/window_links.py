@@ -8,7 +8,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import modifiers as mods
 from ..io import import_file
-from ..llm.notebook_tools import NotebookAccess
+from ..llm.notebook_tools import NotebookAccess, notebook_context, place_code, replace_source
+from ..notebook import cell_from_source
 from . import workers
 
 
@@ -374,9 +375,10 @@ class LinksMixin:
         box.moveCursor(QtGui.QTextCursor.End)
 
     def _notebook_code(self):
-        """The current notebook as percent-format Python, for the AI chat (None without one)."""
+        """The current notebook for the AI chat: its code with cell numbers, states and outputs
+        (:func:`~ewald.llm.notebook_tools.notebook_context`; None without one)."""
         nb = self.panel.notebook
-        return nb.to_py() if nb is not None and nb.cells else None
+        return notebook_context(nb) if nb is not None and nb.cells else None
 
     def _view_summary(self):
         """How the 3D view colors the atoms of the current frame (:mod:`ewald.color_rule`), for the AI
@@ -420,20 +422,40 @@ class LinksMixin:
         self.notebook_dock.raise_()
         view.reveal(cell)
 
-    def _insert_claude_cell(self, code, run=False):
+    def _insert_claude_cell(self, code, run=False, replace=False):
         """'Insert as notebook cell' in the AI chat: a code cell after the current one, not run
-        unless ``run`` (an answer's code block while Preferences › AI › Let the AI run cells is on)."""
+        unless ``run`` (an answer's code block while Preferences › AI › Let the AI run cells is on).
+        With ``replace`` (an answer's code block going in by itself, Code in answers = insert) the code
+        takes the place of the one cell that does the same job (the same modifier's step, a plot of
+        the same table, the same view tab), so a changed option does not leave the old cell behind."""
         view = self.panel.view
         if view is None:
             view = self.panel.new_notebook()
-        cell = view.add_cell("code", code)
+        nb = view.notebook
+        k = place_code(nb, code) if replace else None
+        if k is not None:
+            cell, new = nb.cells[k], cell_from_source(code)
+            if cell.source.strip() != new.source.strip() or (new.frames or None) != (cell.frames or None):
+                removed = replace_source(nb, cell, new.source, new.frames)
+                if new.title:
+                    cell.title = new.title
+                view.current = cell
+                view.rebuild()
+                view.history.commit("AI: edit cell")
+                view.titleChanged.emit()
+                if removed:
+                    view.changed.emit()
+            done = f"the AI's code went into cell {k + 1}, which did the same"
+        else:
+            cell = view.add_cell("code", code)
+            done = "inserted the AI's code as a notebook cell"
         self.notebook_dock.show()
-        if run and cell is not None and not view.notebook.restricted:
+        if run and cell is not None and not nb.restricted:
             self._ai_runs = [*getattr(self, "_ai_runs", []), (view, cell)]
             self._run_ai_cells()
-            self.message("Inserted and ran the AI's code as a notebook cell")
+            self.message(f"{done[0].upper()}{done[1:]}; running it")
         else:
-            self.message("Inserted the AI's code as a notebook cell (Shift+Enter runs it)")
+            self.message(f"{done[0].upper()}{done[1:]} (Shift+Enter runs it)")
 
     def _run_ai_cells(self):
         """Run the AI's inserted cells in order, each once its notebook is idle."""

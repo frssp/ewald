@@ -749,8 +749,8 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
                       **{k: v for k, v in options.items() if k in ("provider", "model", "effort")})
         answer = agent.ask(question)
         if context == "gui" and not any(t in ("insert_cell", "edit_cell") for t in result.tools):
-            for code in code_blocks(answer):   # Code in answers = insert: each block becomes a cell
-                ts.call("insert_cell", {"source": code, "run": ts.allow_code})
+            for code in code_blocks(answer):   # Code in answers = insert, as the GUI places it
+                place_answer_code(ts, code)
         result.answer = answer
         result.tool_calls = len(result.tools)
         result.requests = meter.totals["requests"]
@@ -812,15 +812,27 @@ def _error_text(content, limit: int = 400) -> str:
     return str(content)[:limit]
 
 
+def place_answer_code(ts: Toolset, code: str):
+    """An answer's ```python block into the notebook the way the GUI chat puts it there: in place
+    of the one cell doing the same job (:func:`~ewald.llm.notebook_tools.place_code`), else as a new
+    cell; run when the toolset may run cells."""
+    from .notebook_tools import place_code
+
+    k = place_code(ts.notebook, code) if ts.notebook is not None else None
+    if k is None:
+        return ts.call("insert_cell", {"source": code, "run": ts.allow_code, "again": True})
+    return ts.call("edit_cell", {"index": k, "source": code, "run": ts.allow_code})
+
+
 def _gui_question(ts: Toolset, question: str) -> str:
     """``question`` as the AI chat side bar sends the first one: after the notebook's code and the
     errors of its failed cells (the 3D view's coloring, which the GUI also sends, is left out)."""
-    from .notebook_tools import failed_cells
+    from .notebook_tools import failed_cells, notebook_context
 
     nb = ts.notebook
     parts = []
     if nb is not None and nb.cells:
-        parts.append(notebook_part(nb.to_py()))
+        parts.append(notebook_part(notebook_context(nb)))
         errors = failed_cells(nb)
         if errors:
             parts.append(errors_part(errors))

@@ -535,8 +535,8 @@ class AskPanel(QtWidgets.QWidget):
     or a function making one for a notebook) gives the agent's toolset the notebook cell tools.
     ``auto_insert()``, when it returns True, puts
     the Python blocks of each answer into the notebook at once (unless the model wrote cells with
-    the cell tools in that answer); when ``run_inserted()`` also returns True they are run as well
-    (``runRequested(code)``: insert and run). ``errors()``, when given, returns the errors of the notebook's
+    the cell tools in that answer), each as a new cell or in place of the cell doing the same job
+    (``answerCodeRequested(code, run)``, ``run`` when ``run_inserted()`` returns True). ``errors()``, when given, returns the errors of the notebook's
     failed cells (or None); they go with a question whenever they changed. ``view()``, when given,
     describes what the 3D view shows now (how the atoms are colored); it goes with a question whenever
     it changed. While an answer is on its way the send button is Stop (also Esc); a streaming agent's
@@ -553,7 +553,7 @@ class AskPanel(QtWidgets.QWidget):
     answerStarted = QtCore.Signal(object)        # notebook of the chat (None: no notebook): an answer is on its way
     answerFinished = QtCore.Signal(object)       # ... it arrived, failed or was stopped
     insertRequested = QtCore.Signal(str)
-    runRequested = QtCore.Signal(str)
+    answerCodeRequested = QtCore.Signal(str, bool)   # an answer's code block going in by itself; run it
 
     def __init__(self, context: Callable[[], tuple], agent_factory=_default_agent, parent=None,
                  notebook: Callable[[], str | None] | None = None, notebook_access=None,
@@ -991,8 +991,8 @@ class AskPanel(QtWidgets.QWidget):
             wrote_cells = any(t in ("insert_cell", "edit_cell") for t in conv.tools_used)
             if blocks and not wrote_cells and self.auto_insert is not None and self.auto_insert():
                 run = self.run_inserted is not None and self.run_inserted()
-                for b in blocks:
-                    (self.runRequested if run else self.insertRequested).emit(b.code)
+                for b in blocks:   # into the cell doing the same job, else a new cell
+                    self.answerCodeRequested.emit(b.code, bool(run))
                     b.mark_inserted()
         self._finish(conv)
 

@@ -90,8 +90,18 @@ kind, state, first line), `read_cell` (full source and outputs, plots as images)
 its `pipe.add(Name(...))` call is rewritten with the new values and run, when its arguments are
 plain values), `move_cell` and `delete_cell`. The AI chat side bar attaches the
 notebook of the current tab; each change redraws the cells and is one undo step ("AI: insert
-cell", Ctrl+Z). There the ```python blocks of an answer also become new cells by default
-(Preferences › AI › Code in answers: `insert`, or `button` for *+ Insert as cell*). In Python:
+cell", Ctrl+Z). There the ```python blocks of an answer also go into the notebook by default
+(Preferences › AI › Code in answers: `insert`, or `button` for *+ Insert as cell*).
+
+The model is asked to work on the notebook as a whole: when you change something the notebook
+already does (a step's option, a plot's range, a fix), it edits that cell and runs it again rather
+than adding a copy with other options. The tools hold it to that: `add_modifier` and `insert_cell`
+refuse a cell that repeats an existing one (a second step of the same modifier, whose outputs
+would overwrite the first one's; a second plot of the same table; the same view tab; the same
+code) and name the cell to edit, unless the model passes `again=true` because you asked for both,
+for instance to compare two cutoffs. Steps of one modifier with different `output`s (two
+`ComputeProperty` steps) are different jobs. An answer's ```python block that does what exactly
+one cell already does replaces that cell's code instead of becoming a new cell. In Python:
 
 ```python
 from ewald.llm import Agent
@@ -287,8 +297,9 @@ the cells that ran are re-run from the top in a fresh namespace, so an answer on
 reproducible when the notebook alone makes it.
 
 The questions are asked as the AI chat side bar asks them (`--context gui`, the default): the
-notebook note follows the system prompt, each question starts with the notebook's code and its
-failing cells, and the Python blocks of an answer become cells, run with `--allow-code` (which
+notebook note follows the system prompt, each question starts with the notebook (its code with
+cell numbers, states and outputs) and its failing cells, and the Python blocks of an answer
+become cells or replace the cell doing the same job, run with `--allow-code` (which
 plays Preferences › AI › Let the AI run cells). `--context plain` asks the bare agent, as
 `ewald ask` does.
 

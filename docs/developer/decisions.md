@@ -875,6 +875,23 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   silently.
 - **Landed:** public PR #70.
 
+### D68. Ask AI edits the cell that does the job; a copy needs again=true (2026-10-25)
+
+- **Decision:** the AI chat sends the notebook with cell numbers, states and outputs, and the
+  model is told to edit and rerun the cell that already does something rather than add a copy
+  with other options. `add_modifier` and `insert_cell` refuse a cell that repeats an existing one
+  (a step of the same modifier with the same `output`, a plot of the same table, the same view
+  tab, the same code) and name the cell to edit, unless the model passes `again=true` because the
+  user wants both. An answer's code block that does what exactly one cell does replaces that
+  cell's code.
+- **Why:** the owner: "AI가 새로운 셀을 자꾸 만드네. 그러다보니 중복된 셀도 많아지고. 전체 노트북
+  맥락을 파악해서 해야하는데. 뭔가 옵션만 고치고 싶은데 그냥 다시 새 셀에 옵션 고쳐서 새로
+  실행하게 하네". Real-model runs showed a second step of one modifier silently overwriting the
+  first one's results, so the owner picked refusing over warning on the decision card.
+- **Considered:** a warning in the tool result only, leaving the cell; changing only the prompt
+  and the notebook context.
+- **Landed:** public PR #71.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

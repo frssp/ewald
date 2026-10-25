@@ -1,10 +1,11 @@
 """What the AI chat side bar tells the model about the notebook beside it (Qt-free).
 
 The GUI's chat (:mod:`ewald.gui.ask_panel`) appends :data:`NOTEBOOK_NOTE` to the agent's system
-prompt and starts each question with the notebook's code, the errors of its failed cells and what the
-3D view shows (:func:`notebook_message`); the Python blocks of an answer become cells
-(:func:`code_blocks`). The AI eval suite (:mod:`ewald.llm.evals`) builds the same prompts, so a
-score measures what the GUI user gets.
+prompt and starts each question with the notebook (code, cell numbers and outputs), the errors of
+its failed cells and what the 3D view shows; the Python blocks of an answer become cells, or
+replace the cell doing the same job (:func:`code_blocks`, :func:`ewald.llm.notebook_tools.place_code`).
+The AI eval suite (:mod:`ewald.llm.evals`) builds the same prompts, so a score measures what the
+GUI user gets.
 """
 from __future__ import annotations
 
@@ -17,7 +18,15 @@ Python file (`# %%` cells, one namespace) where `pipe` is the pipeline: step cel
 `pipe.add(Modifier(...))` (every modifier of `ewald.modifiers` is imported by name), \
 view cells are one `show(pipe, ...)` (a plot) or one `view(pipe, ...)` (the 3D view), and `pipe = load(path)` \
 opens a file; python_api describes these cells, show, view and paint. When the user's message \
-starts with the notebook's code, that is its current state. {code_cells} Write each ```python \
+starts with the notebook, that is its current state: each cell comes after a `# [cell N · index k · \
+kind · state]` line (N as the user counts, k for the cell tools) and before a `# [output: ...]` line \
+with what it printed or drew; these lines are not part of the cells. Work on the notebook as a whole: \
+before you write a cell, look for one that already does the job. When the user wants to change \
+something the notebook already does (a step's option, a plot's table or range, the view, a fix to \
+code), edit that cell and run it again; do not add a new cell that repeats it with other options, \
+since the old cell would stay and a second step of the same modifier overwrites the first one's \
+results. Add a cell only for something the notebook does not do yet, or when the user asks to keep \
+both (then pass again=true). {code_cells} Write each ```python \
 block as one complete cell that runs in that namespace; prefer `pipe.add(...)` steps over ad-hoc \
 loops. When the user asks you to \
 change the notebook itself, use the cell tools: list_cells and read_cell (sources and outputs), \
@@ -40,13 +49,15 @@ RUN_CELLS_NOTE = {
 
 #: How the note above describes the ```python blocks of an answer (Preferences › AI › Code in answers).
 CODE_CELLS_NOTE = {
-    "insert": "Every ```python block of your answer is added to the notebook as a new cell ({run}), in "
-              "order, so put only code meant for the notebook in ```python blocks (other code, such as "
-              "a one-line illustration, in a ```text block), and do not also insert_cell the same code.",
+    "insert": "Every ```python block of your answer is added to the notebook ({run}), in order: as a new "
+              "cell, or in place of the one cell that does the same job (the same modifier's step, a plot "
+              "of the same table, the same view tab). So put only code meant for the notebook in ```python "
+              "blocks (other code, such as a one-line illustration, in a ```text block), do not also "
+              "insert_cell the same code, and change existing cells with edit_cell rather than with a block.",
     "button": "Every ```python block of your answer gets an \"Insert as notebook cell\" button.",
 }
 
-MAX_NOTEBOOK = 20000  # characters of notebook code sent with a question
+MAX_NOTEBOOK = 24000  # characters of the notebook sent with a question
 _CODE_BLOCK = re.compile(r"```(?:python|py|python3)?[ \t]*\n(.*?)```", re.S)
 
 
@@ -59,7 +70,8 @@ def notebook_system(base: str, run_cells: bool = False, code_cells: str = "inser
 
 
 def notebook_part(code: str) -> str:
-    """The notebook's code as a question carries it (cut after :data:`MAX_NOTEBOOK` characters)."""
+    """The notebook as a question carries it (:func:`ewald.llm.notebook_tools.notebook_context`: its
+    code with cell numbers and outputs), cut after :data:`MAX_NOTEBOOK` characters."""
     if len(code) > MAX_NOTEBOOK:
         code = code[:MAX_NOTEBOOK] + "\n# … (notebook truncated)\n"
     return f"The notebook now reads:\n```python\n{code}```"

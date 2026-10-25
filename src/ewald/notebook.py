@@ -203,6 +203,20 @@ def _disables_last(stmt, name: str) -> bool:
             and isinstance(stmt.value, ast.Constant) and stmt.value.value is False)
 
 
+def cell_py(cell: Cell) -> str:
+    """One cell as :meth:`Notebook.to_py` writes it: its ``# %%`` line (title, frame tag, markdown)
+    and its source."""
+    head = "# %%" + (f" {cell.title}" if cell.title else "")
+    if cell.kind == "code" and cell.frames in FRAME_TAGS:
+        head += " " + FRAME_TAGS[cell.frames]
+    if cell.kind == "markdown":
+        head += " [markdown]"
+        body = "\n".join(("# " + line) if line else "#" for line in cell.source.rstrip("\n").splitlines())
+    else:
+        body = cell.source.rstrip("\n")
+    return head + ("\n" + body if body else "")
+
+
 def step_call(source: str, name: str = PIPELINE_NAME) -> ast.expr | None:
     """The argument of ``<name>.add(arg)`` or ``<name>.modifiers.append(arg)`` if ``source`` is only that call,
     optionally preceded by import statements; None otherwise."""
@@ -843,17 +857,7 @@ class Notebook:
         a jupytext-style comment header keeps the kernel, the viewer state (style, frame,
         camera, render settings) and links to the data files (path, size, fingerprint)."""
         parts = [self._py_header()] if header else []
-        parts = [p for p in parts if p]
-        for cell in self.cells:
-            head = "# %%" + (f" {cell.title}" if cell.title else "")
-            if cell.kind == "code" and cell.frames in FRAME_TAGS:
-                head += " " + FRAME_TAGS[cell.frames]
-            if cell.kind == "markdown":
-                head += " [markdown]"
-                body = "\n".join(("# " + line) if line else "#" for line in cell.source.rstrip("\n").splitlines())
-            else:
-                body = cell.source.rstrip("\n")
-            parts.append(head + ("\n" + body if body else ""))
+        parts = [p for p in parts if p] + [cell_py(cell) for cell in self.cells]
         return "\n\n".join(parts) + "\n"
 
     def _py_header(self) -> str:

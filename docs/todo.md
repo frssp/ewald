@@ -190,6 +190,17 @@ GUI
   A failed generated cell leaves two undo entries in the GUI (insert, then removal). After a second
   `pipe = load(...)` cell, the step cells above it still hold the old pipeline's modifiers, and
   `Notebook.sync` (the GUI's refresh) deletes them.
+- AI edits cells rather than adding copies (D68): `add_modifier`/`insert_cell` refuse a cell that
+  repeats one (same modifier step, plot of the same table, view tab, same code) unless
+  `again=true`, and an answer's code block replaces the one cell doing the same job. Still open,
+  seen with real models on 2026-10-25: one `CoordinationAnalysis` cutoff sets both the
+  coordination and the RDF range, so "show the RDF to 6 Å" either changes the coordination
+  colors or makes the model write its own RDF cell (a separate RDF range, or an RDF step of its
+  own, would remove the conflict); `show()` has no `title`, so "give the plot a title" turns the
+  live plot cell into a static `figure()` cell; the guard compares jobs by modifier name and
+  `output` only, so plugin tools that add a step each time (`compute_plumed_cvs`) get refused on
+  the second call and the model has to edit the cell; the GUI's 3D view coloring and picks are
+  not in the cell-numbered notebook context.
 - AI and the Python API: the model reads `python_api` (about 60 KB, roughly 15k tokens, since the
   modifier outputs and recipes were added) on demand rather than in the system prompt. The first
   real-model runs (2026-10-23, Claude through `make_ai_demo.py --live`, three scenes,
@@ -536,7 +547,8 @@ Plugins and AI
   2026-10-24, so the suite no longer separates models; it needs harder tasks: more from the paper
   datasets (LLZO Arrhenius, a-Si, TiOF2 octahedra) with a judgement call, from the GUI side (picks,
   Ask about selection, view cells the Display panel edits, the 3D view's coloring the GUI sends with
-  each question), multi-turn ones (a follow-up question) and ones with a wrong premise; reproduction runs in a fresh
+  each question), multi-turn ones (a follow-up question; the `nb-*` tasks only start from a
+  notebook that already has the cells) and ones with a wrong premise; reproduction runs in a fresh
   in-process namespace, not a separate kernel (`ewald.kernel`); explanations are not graded (an
   LLM judge could score them); plugin tasks (`@eval_task` from plugins such as ewald-phonopy) and
   a results page that tracks scores over commits.

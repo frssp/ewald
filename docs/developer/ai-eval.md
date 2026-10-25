@@ -6,6 +6,33 @@ the saved runs are in `benchmarks/ai_eval/` (answers, the notebooks the models l
 tokens and cost per task), so a later prompt or tool change can be compared with
 `ewald eval --compare benchmarks/ai_eval/2026-10-24-opus.json new.json`.
 
+## 2026-10-25: editing cells instead of adding copies (D68)
+
+The owner saw the AI add a new cell, with the option changed, each time an option of an existing
+cell should change. Multi-turn conversations in the GUI chat's prompts (a script playing the side
+bar: notebook in each question, code blocks of answers into the notebook), on `Cu_md.extxyz`,
+before and after public PR #71:
+
+- "RDF 그려줘 → cutoff 8 Å → bin 200 → x축 2~6 Å → coordination 색칠 → coordination cutoff 3.0".
+  Before: Haiku 5.5 answered the last question with a new scipy cell computing coordination by
+  hand; Sonnet 5.5 added a second `CoordinationAnalysis(cutoff=3.0)` that overwrote the first one's
+  `coordination-rdf` table, so the RDF plot silently changed. After: Haiku edited the step and
+  plot cells all the way through (5 cells, no copy); Opus 5.5 added the second step with
+  `again=true` and saved the short-cutoff coordination under its own name first, so both results
+  stay right.
+- A notebook with CoordinationAnalysis, ColorCoding and an RDF plot, then "coolwarm 으로 → RDF 6 Å
+  까지 → 그래프 제목": the color map was an edit before and after. "Give the plot a title" was a new
+  `figure()` cell next to the old plot for Haiku with running off, before and after, because
+  `show()` has no `title` (open in docs/todo.md); Opus edited the plot cell. "RDF up to 6 Å" made
+  Opus write its own RDF cell and Haiku raise the coordination cutoff to 6 Å, before and after:
+  one cutoff sets both results (open in docs/todo.md).
+
+The new `nb-plot-range`, `nb-rdf-bins`, `nb-redo-cutoff` and `nb-recolor` tasks (`ewald eval --tasks
+'nb-*' --allow-code --repeat 2`) passed every run with Opus, Sonnet and Haiku 5.5, before the change
+(only the tasks copied in) and after: a single question about a notebook that already has the cell
+does not separate them, the copies came in longer conversations. Not saved to
+`benchmarks/ai_eval/` (a subset of the suite).
+
 ## 2026-10-24: first runs with real models
 
 All 53 tasks, `--allow-code`, asked as the AI chat side bar asks (`--context gui`), effort high,

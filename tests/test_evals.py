@@ -230,8 +230,14 @@ def test_plugin_tasks_load_and_unload_their_plugins():
 
 def test_notebook_checks_need_the_cell_edited_not_added_again():
     r = _play("nb-edit-cutoff", calls=[("add_modifier", {"name": "CoordinationAnalysis", "params": {"cutoff": 2.5}})],
-              answer="Done.")
+              answer="Done.")   # refused: cell 3 adds that step already
+    assert not r.passed and r.tool_errors == 1 and "edit_cell" in r.tool_error_messages[0][1]
+    r = _play("nb-edit-cutoff", calls=[("add_modifier", {"name": "CoordinationAnalysis", "params": {"cutoff": 2.5},
+                                                         "again": True})], answer="Done.")
     assert not r.passed and "coordination cells: 2 vs 1" in " ".join(c[2] for c in r.checks)
+    r = _play("nb-plot-range", calls=[("insert_cell", {"source": "show(pipe, table='coordination-rdf', xlim=(2, 4))",
+                                                       "again": True})], answer="Done.", allow_code=True)
+    assert not r.passed and "RDF plot cells: 2 vs 1" in " ".join(c[2] for c in r.checks)
 
 
 def test_tool_errors_are_kept():
