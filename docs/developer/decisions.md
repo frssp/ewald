@@ -824,7 +824,19 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   panel header beside "Structure".
 - **Landed:** public PR #63.
 
-### D64. Profile plots and the 3D view follow each other, as a general link (2026-10-24)
+### D64. Cache slow step results, drawn bonds and the AI conversation; not yet across Run all or on disk (2026-10-25)
+
+- **Decision:** steps slower than `Pipeline.checkpoint_seconds` keep their own output (editing
+  a later step starts there), the views reuse bond searches keyed by content, and the Anthropic
+  chat caches the conversation prefix. Results that survive Run all (content keys across
+  pipelines) and a reader index on disk stay open in docs/todo.md.
+- **Why:** the owner asked "캐싱 전략 쓸만한 곳?", read a short risk analysis of the five
+  candidates and picked "1+2+5 (작고 안전한 것)" on the decision card.
+- **Considered:** the same plus the on-disk reader index; all five, including content-keyed
+  results across Run all; the step checkpoints only.
+- **Landed:** public PR #67.
+
+### D65. Profile plots and the 3D view follow each other, as a general link (2026-10-24)
 
 - **Decision:** a plot whose x is a position along the cell (any table with
   `attributes["axis"]`, not only the potential lineup) is tied to the 3D view in three ways. *Align

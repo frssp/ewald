@@ -99,6 +99,22 @@ class Chat:
         self.messages.clear()
 
 
+def _cache_last(messages: list) -> list:
+    """``messages`` with a cache breakpoint on the last block of the last user message, so each
+    round of a tool loop reads the conversation so far from the prompt cache instead of paying
+    for it again (with tools and system that makes three of the four breakpoints allowed).
+    The stored history stays unmarked: breakpoints from earlier rounds would pile up."""
+    if not messages or messages[-1].get("role") != "user":
+        return messages
+    content = messages[-1]["content"]
+    if isinstance(content, str):
+        content = [{"type": "text", "text": content}]
+    if not content or not isinstance(content[-1], dict):
+        return messages
+    content = [*content[:-1], {**content[-1], "cache_control": {"type": "ephemeral"}}]
+    return [*messages[:-1], {**messages[-1], "content": content}]
+
+
 class AnthropicChat(Chat):
     """Claude through the Messages API (``anthropic`` SDK, or any object with the same
     ``beta.messages.create``/``messages.create``). Options: ``fallbacks`` (server-side
@@ -114,7 +130,8 @@ class AnthropicChat(Chat):
 
     def request(self, tool_choice=None) -> dict:
         cache = self.options.get("cache", True)
-        params = {"model": self.model, "max_tokens": self.max_tokens, "messages": self.messages}
+        params = {"model": self.model, "max_tokens": self.max_tokens,
+                  "messages": _cache_last(self.messages) if cache else self.messages}
         if self.system:
             params["system"] = ([{"type": "text", "text": self.system, "cache_control": {"type": "ephemeral"}}]
                                 if cache else self.system)
