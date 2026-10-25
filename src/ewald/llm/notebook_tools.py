@@ -24,7 +24,7 @@ import base64
 import inspect
 from typing import Callable
 
-from ..notebook import Cell, Notebook, _remove, cell_from_source, split_header, step_call
+from ..notebook import PIPELINE_NAME, Cell, Notebook, _remove, cell_from_source, cell_py, split_header, step_call
 from ..pipeline import PythonModifier
 from .tools import _CODE_MODIFIERS, ToolResult, _jsonable, _obj
 
@@ -139,6 +139,120 @@ def failed_cells(nb: Notebook, max_lines: int = 25, max_chars: int = 6000) -> st
     return text if len(text) <= max_chars else "…\n" + text[-max_chars:]
 
 
+def _output_line(cell: Cell, limit: int = 160) -> str:
+    """A short account of a cell's outputs for :func:`notebook_context` ('' without outputs)."""
+    parts = []
+    for o in cell.outputs:
+        if o.kind == "image":
+            parts.append("plot/image")
+        elif o.kind == "error":
+            lines = [ln for ln in str(o.data).strip().splitlines() if ln.strip()]
+            parts.append("error: " + (lines[-1][:limit] if lines else ""))
+        else:
+            text = " ".join(str(o.data).split())
+            parts.append(f"{o.kind}: {text[:limit]}" + ("…" if len(text) > limit else ""))
+    return "; ".join(parts[:4]) + ("; …" if len(parts) > 4 else "")
+
+
+def notebook_context(nb: Notebook) -> str:
+    """The notebook as the AI chat sends it with a question: percent-format Python like
+    :meth:`Notebook.to_py`, each cell preceded by a ``# [cell N · index k · kind · state]`` line
+    and followed by a ``# [output: ...]`` line, so the model knows which cell is which, what ran
+    and what it showed, without calling list_cells first."""
+    parts = []
+    for k, c in enumerate(nb.cells):
+        info = cell_summary(nb, k)
+        kind = info["kind"] + (f" {info['modifier']}" if "modifier" in info else "")
+        state = {"new": "not run", "stale": "out of date"}.get(c.state, c.state)
+        text = f"# [cell {k + 1} · index {k} · {kind}" + (f" · {state}" if c.kind == "code" else "") + "]\n"
+        text += cell_py(c)
+        out = _output_line(c) if c.kind == "code" else ""
+        if out:
+            text += f"\n# [output: {out}]"
+        parts.append(text)
+    return "\n\n".join(parts) + "\n"
+
+
+#: Keyword arguments that make two steps of the same modifier do different jobs.
+_JOB_KEYS = ("output",)
+
+
+def cell_job(source: str, name: str = PIPELINE_NAME):
+    """What a code cell does, for finding cells that do the same: ``("step", Modifier, key)`` for a
+    step cell, ``("plot", table, y, histogram)`` for a show() plot, ``("view", tab)`` for a view
+    cell, else ``("code", source)``; None for an empty cell."""
+    from ..view3d import view_cell_args
+    from ..views import view_args
+
+    cell = cell_from_source(source)
+    src = cell.source.strip()
+    if not src:
+        return None
+    arg = step_call(src, name)
+    if isinstance(arg, ast.Call):
+        func = arg.func.id if isinstance(arg.func, ast.Name) else getattr(arg.func, "attr", None)
+        if func:
+            key = []
+            for kw in arg.keywords:
+                if kw.arg in _JOB_KEYS:
+                    try:
+                        key.append((kw.arg, ast.literal_eval(kw.value)))
+                    except ValueError:
+                        key.append((kw.arg, ast.dump(kw.value)))
+            return ("step", func, tuple(key))
+    plot = view_args(src)
+    if plot is not None and plot.get("source") == name:
+        return ("plot", plot.get("table"), plot.get("y"), plot.get("histogram"))
+    view = view_cell_args(src)
+    if view is not None and view.get("source") == name:
+        return ("view", view.get("tab"))
+    return ("code", src)
+
+
+def same_cells(nb: Notebook, source: str, skip: Cell | None = None) -> list[int]:
+    """Indices of the code cells that already do what ``source`` would do (:func:`cell_job`): the
+    same modifier's step, a plot of the same table, the same view tab, or the same code."""
+    job = cell_job(source, nb.pipeline_name)
+    if job is None:
+        return []
+    return [k for k, c in enumerate(nb.cells)
+            if c.kind == "code" and c is not skip and cell_job(c.source, nb.pipeline_name) == job]
+
+
+def duplicate_message(nb: Notebook, hits: list[int], what: str) -> str:
+    """Why insert_cell/add_modifier refused: the cells that already do it, and what to do instead."""
+    cells = ", ".join(f"cell {k + 1} (index {k})" for k in hits)
+    return (f"{cells} already {what}. To change its options or code, edit that cell (edit_cell with params "
+            "for a step, old_text/new_text or source otherwise) and run it again instead of adding another; a "
+            "second step of the same modifier overwrites the first one's outputs. Pass again=true only when "
+            "the user wants both (e.g. to compare two settings).")
+
+
+def place_code(nb: Notebook, source: str) -> int | None:
+    """Where an answer's ```python block goes (Preferences › AI › Code in answers = insert): the
+    index of the one code cell that does the same job (:func:`same_cells`), whose source it then
+    replaces, or None for a new cell (no such cell, or several, which would be a guess)."""
+    hits = same_cells(nb, source)
+    return hits[0] if len(hits) == 1 else None
+
+
+def replace_source(nb: Notebook, c: Cell, new: str, frames=None) -> bool:
+    """Give cell ``c`` new source (and frame tag): the steps its old code added leave the pipeline,
+    and a code cell is marked out of date until it runs again. True when steps were removed."""
+    pipe, removed = nb.pipeline, bool(c.added)
+    if pipe is not None:  # the old code's steps leave with it, as when the cell is cleared
+        for m in c.added:
+            _remove(pipe.modifiers, m)
+    c.added, c.shadow = [], None
+    c.source = new
+    if frames is not None:
+        c.frames = frames
+    if c.kind == "code":
+        c.state = "stale" if c.state != "new" else "new"
+    nb.dirty = True
+    return removed
+
+
 def _outputs(cell: Cell) -> tuple[list, list[bytes]]:
     items, images = [], []
     for o in cell.outputs:
@@ -164,6 +278,8 @@ def register(ts, access: NotebookAccess):
     execute, then_run = _runner(access)
     run_arg = {"type": "boolean", "description": "run the cell after writing it, when the user lets the AI "
                                                  "run cells (default true)"}
+    again_arg = {"type": "boolean", "description": "true: add it although a cell already does the same "
+                                                   "(only when the user wants both)"}
 
     def need() -> Notebook:
         nb = access.notebook()
@@ -226,18 +342,24 @@ def register(ts, access: NotebookAccess):
        "at that index). When the user lets the AI run cells (run_cell is offered), a code cell runs at "
        "once and its outputs come back under 'run'; otherwise it waits until the user runs it. Write one "
        "complete cell that runs in the notebook's namespace (pipe is the pipeline). For a plain analysis "
-       "step prefer add_modifier, which adds the step cell and runs it right away.",
+       "step prefer add_modifier, which adds the step cell and runs it right away. Only for something the "
+       "notebook does not do yet: a cell that would repeat an existing one (the same modifier's step, a plot "
+       "of the same table, the same view tab, the same code) is refused unless again=true; edit that cell "
+       "instead.",
        _obj({"source": {"type": "string"},
              "kind": {"type": "string", "enum": ["code", "markdown"], "description": "default code"},
              "index": {"type": "integer", "description": "insert before this cell (default: append)"},
-             "run": run_arg},
+             "run": run_arg, "again": again_arg},
             ["source"]))
-    def insert_cell(source, kind="code", index=None, run=True):
+    def insert_cell(source, kind="code", index=None, run=True, again=False):
         if kind not in ("code", "markdown"):
             raise ValueError("kind is 'code' or 'markdown'")
 
         def op():
             nb = need()
+            hits = same_cells(nb, source) if kind == "code" and not again else []
+            if hits:
+                raise ValueError(duplicate_message(nb, hits, "does this"))
             n = len(nb.cells)
             at = n if index is None else max(0, min(int(index) if int(index) >= 0 else n + int(index), n))
             cell = nb.insert(at, cell_from_source(source, kind=kind, state="new" if kind == "code" else "ok"))
@@ -283,17 +405,7 @@ def register(ts, access: NotebookAccess):
                 new = c.source.replace(old_text, new_text)
             if new == c.source and (frames is None or frames == c.frames):
                 return {"unchanged": cell_summary(nb, k)}, nb, None
-            pipe, removed = nb.pipeline, bool(c.added)
-            if pipe is not None:  # the old code's steps leave with it, as when the cell is cleared
-                for m in c.added:
-                    _remove(pipe.modifiers, m)
-            c.added, c.shadow = [], None
-            c.source = new
-            if frames is not None:
-                c.frames = frames
-            if c.kind == "code":
-                c.state = "stale" if c.state != "new" else "new"
-            nb.dirty = True
+            removed = replace_source(nb, c, new, frames)
             access.changed(nb, "AI: edit cell", c, pipeline=removed)
             out = {"edited": cell_summary(nb, k)}
             if removed:

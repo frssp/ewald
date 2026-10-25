@@ -173,6 +173,29 @@ def _shows(table):
     return lambda nb: any(c.kind == "code" and "show(" in c.source and table in c.source for c in nb.cells)
 
 
+def _cell_count(nb) -> int:
+    return len(nb.cells)
+
+
+def _plot_cells(table):
+    """How many cells plot ``table`` (``show(pipe, table=...)``, for :class:`Cells`)."""
+    return lambda nb: sum(1 for c in nb.cells if c.kind == "code" and (c.view or {}).get("table") == table)
+
+
+def _plot_arg(table, name, expected):
+    """The plot cell of ``table`` shows ``name`` = ``expected`` (numbers within 1e-6)."""
+    def check(nb):
+        args = [c.view for c in nb.cells if c.kind == "code" and (c.view or {}).get("table") == table]
+        got = args[0].get(name) if len(args) == 1 else None
+        return got is not None and np.allclose(np.asarray(got, float), np.asarray(expected, float), atol=1e-6)
+    return check
+
+
+#: A notebook with an RDF step and its plot (cells 3 and 4 after the import and load cells).
+_RDF_CELLS = ["pipe.add(CoordinationAnalysis(cutoff=5.0, bins=50))", "show(pipe, table='coordination-rdf')"]
+_RED_BLUE = {"coolwarm", "bwr", "rdbu", "seismic", "rdylbu"}
+
+
 # ------------------------------------------------------------------ tasks
 STO, SI, PT, CU, SIMD, CHG, VOID, CUZR = ("POSCAR.SrTiO3", "Si.cif", "Pt_nanoparticle.xyz", "Cu_md.extxyz",
                                           "XDATCAR.Si", "CHGCAR.Si", "Cu_void.lammpstrj", "CuZr.data")
@@ -354,6 +377,33 @@ TASKS: list[Task] = [
          setup=["pipe.add(CoordinationAnalysis(cutof=3.0))"],
          solution=[("edit_cell", {"index": 2, "source": "pipe.add(CoordinationAnalysis(cutoff=3.0))"})],
          answer="Done."),
+
+    # options changed on cells the notebook already has: the cell is edited, no second one added
+    Task("nb-plot-range", "Make the RDF plot show only r = 2 to 4 Angstrom.", CU,
+         [Cells(_plot_cells("coordination-rdf"), 1, name="RDF plot cells"),
+          Cells(_plot_arg("coordination-rdf", "xlim", (2, 4)), name="xlim (2, 4)"), Cells(_cell_count, 4, name="cells")],
+         category="notebook", allow_code=True, setup=_RDF_CELLS,
+         solution=[("edit_cell", {"index": 3, "source": "show(pipe, table='coordination-rdf', xlim=(2, 4))"})],
+         answer="Done."),
+    Task("nb-rdf-bins", "The g(r) curve looks coarse. Make it finer, with 200 bins.", CU,
+         [Step("CoordinationAnalysis", {"bins": 200, "cutoff": 5.0}),
+          Cells(lambda nb: step_cells(nb, "CoordinationAnalysis"), 1, name="coordination cells"),
+          Cells(_plot_cells("coordination-rdf"), 1, name="RDF plot cells"), Cells(_cell_count, 4, name="cells")],
+         category="notebook", setup=_RDF_CELLS,
+         solution=[("edit_cell", {"index": 2, "params": {"bins": 200}})], answer="Done."),
+    Task("nb-redo-cutoff", "Redo it with a 7 Angstrom cutoff.", CU,
+         [Step("CoordinationAnalysis", {"cutoff": 7.0}),
+          Cells(lambda nb: step_cells(nb, "CoordinationAnalysis"), 1, name="coordination cells"),
+          Cells(_plot_cells("coordination-rdf"), 1, name="RDF plot cells"), Cells(_cell_count, 4, name="cells")],
+         category="notebook", setup=_RDF_CELLS,
+         solution=[("edit_cell", {"index": 2, "params": {"cutoff": 7.0}})], answer="Done."),
+    Task("nb-recolor", "I'd rather see the atoms in a red-to-blue color map.", CU,
+         [Step("ColorCoding", {"cmap": lambda v: str(v).lower().removesuffix("_r") in _RED_BLUE}),
+          Cells(lambda nb: step_cells(nb, "ColorCoding"), 1, name="color coding cells"), Cells(_cell_count, 4, name="cells")],
+         category="notebook",
+         setup=["pipe.add(CoordinationAnalysis(cutoff=3.0))", "pipe.add(ColorCoding(property='Coordination', "
+                "cmap='viridis'))"],
+         solution=[("edit_cell", {"index": 3, "params": {"cmap": "coolwarm"}})], answer="Done."),
 
     # ---------------------------------------------------------- recipes (cells as python_api writes them)
     Task("recipe-rdf-plot", "Plot the radial distribution function in the notebook.", CU,

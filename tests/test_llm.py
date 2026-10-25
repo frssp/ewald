@@ -1092,3 +1092,55 @@ def test_set_view_tab_writes_and_runs_a_view_tab_cell(cu_file):
     assert ts.call("get_view", {}).content["changed"] == {}
     again = Notebook.from_py(nb.to_py())
     assert again.run_all() and again.pipeline.views["Top"].changed() == {"bonds": False, "direction": "z"}
+
+
+def test_tools_edit_the_cell_that_does_the_job_instead_of_adding_another(cu_file):
+    """Changing an option of something the notebook already does edits that cell: add_modifier and
+    insert_cell refuse a second step of the same modifier or a second plot of the same table (it
+    would overwrite the first one's outputs) and name the cell, unless again=true."""
+    from ewald.llm.notebook_tools import cell_job, place_code, same_cells
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\nfrom ewald.modifiers import *\nfrom ewald.views import show\n"
+                          f"pipe = load({str(cu_file)!r})\n\n# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n\n"
+                          "# %%\nshow(pipe, table='coordination-rdf')\n\n# %%\npipe.add(ComputeProperty(output='A', "
+                          "expressions='1'))\n")
+    assert nb.run_all()
+    ts = Toolset(notebook=nb, allow_code=True)
+    r = ts.call("add_modifier", {"name": "CoordinationAnalysis", "params": {"cutoff": 5.0}})
+    assert r.is_error and "cell 2 (index 1)" in r.content and "edit_cell" in r.content and len(nb.cells) == 4
+    r = ts.call("insert_cell", {"source": "show(pipe, table='coordination-rdf', xlim=(2, 4))"})
+    assert r.is_error and "cell 3 (index 2)" in r.content and len(nb.cells) == 4
+    r = ts.call("insert_cell", {"source": "# %% another\npipe.add(CoordinationAnalysis(cutoff=5.0))"})
+    assert r.is_error and len(nb.cells) == 4                       # a header line does not hide it
+    # other jobs are new cells: another property, another table, a different step
+    assert not ts.call("add_modifier", {"name": "ComputeProperty", "params": {"output": "B",
+                                                                              "expressions": "2"}}).is_error
+    assert not ts.call("insert_cell", {"source": "show(pipe, histogram='Coordination')"}).is_error
+    assert len(nb.cells) == 6
+    r = ts.call("add_modifier", {"name": "CoordinationAnalysis", "params": {"cutoff": 5.0}, "again": True})
+    assert not r.is_error and len(nb.cells) == 7                   # the user asked for both
+
+    assert cell_job("pipe.add(CoordinationAnalysis(cutoff=1))") == ("step", "CoordinationAnalysis", ())
+    assert cell_job("view(pipe, bonds=False)") == ("view", None) and cell_job("  ") is None
+    assert same_cells(nb, "x = 1") == [] and same_cells(nb, "show(pipe, table='coordination-rdf')") == [2]
+    assert place_code(nb, "show(pipe, table='coordination-rdf', xlim=(1, 2))") == 2
+    assert place_code(nb, "pipe.add(CoordinationAnalysis(cutoff=4.0))") is None   # two such steps now: a guess
+
+
+def test_notebook_context_numbers_cells_and_shows_outputs(cu_file):
+    from ewald.llm.notebook_tools import notebook_context
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\nfrom ewald.modifiers import *\npipe = load({str(cu_file)!r})\n\n"
+                          "# %% count\nprint(pipe.compute(0).count)\n\n# %%\npipe.add(CoordinationAnalysis(cutoff=3.0))\n\n"
+                          "# %%\n1/0\n\n# %%\nx = 2\n\n# %% [markdown]\n# Notes\n")
+    nb.run_all()
+    text = notebook_context(nb)
+    assert "# [cell 1 · index 0 · code · ok]\n# %%\nfrom ewald import load" in text
+    assert "# [cell 2 · index 1 · code · ok]\n# %% count\nprint(" in text and "# [output: text: 108]" in text
+    assert "# [cell 3 · index 2 · step CoordinationAnalysis · ok]" in text
+    assert "# [output: error: ZeroDivisionError: division by zero]" in text
+    assert "· not run]" in text or "· out of date]" in text      # the cell after the failed one
+    assert "# [cell 6 · index 5 · markdown]\n# %% [markdown]\n# Notes" in text
+    assert text.replace("\n\n", "\n").count("# %%") == len(nb.cells)

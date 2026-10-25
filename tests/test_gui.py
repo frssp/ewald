@@ -2033,6 +2033,7 @@ def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
     assert w.ask_panel.messages[0].text == ask_panel.STARTERS[0]
 
     w.settings["llm.code_cells"] = "insert"                # the default: code goes into the notebook at once
+    assert view.undo() == "Insert cell"                    # (the button's cell would take the answer's code)
     n = len(view.notebook.cells)
     w.ask_panel.ask("Plot sin(x)")
     _wait(app, w.ask_panel)
@@ -2046,6 +2047,14 @@ def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
     for _ in range(400):
         app.processEvents()
         if view.notebook.cells[-1].state not in ("new", "running") and not view.running:
+            break
+        time.sleep(0.01)
+    assert len(view.notebook.cells) == n + 1 and view.notebook.cells[-1].state == "ok"
+    w.ask_panel.ask("Plot sin(x)")                         # the same step again: it goes into that cell
+    _wait(app, w.ask_panel)
+    for _ in range(400):
+        app.processEvents()
+        if not view.running:
             break
         time.sleep(0.01)
     assert len(view.notebook.cells) == n + 1 and view.notebook.cells[-1].state == "ok"
@@ -2104,7 +2113,7 @@ def test_ai_chat_tells_claude_about_the_notebook(app, monkeypatch):
     s = settings.Settings()
     ask_panel.agent_from_settings(lambda: s, notebook=True)(None, None)
     ask_panel.agent_from_settings(lambda: s)(None, None)
-    assert "added to the notebook as a new cell" in made[0]["system"] and "system" not in made[1]
+    assert "in place of the one cell that does the same job" in made[0]["system"] and "system" not in made[1]
     s["llm.code_cells"] = "button"
     ask_panel.agent_from_settings(lambda: s, notebook=True)(None, None)
     assert "Insert as notebook cell" in made[2]["system"]

@@ -188,11 +188,13 @@ finishes in its own tab's chat (and its cell tools act on that notebook), and *N
 over in the current tab only. Saving the notebook as `.ewd` saves its chat; opening the file shows
 it again, and the next question sends it to the model as an earlier conversation (for a restricted
 notebook, only after you trust it).
-Each question also sends the current notebook's code and the errors of cells that failed when
-they last ran (each only when it changed since the last question). Python blocks of an
-answer go into the notebook at once as new code cells after the current one, without running
-them (Shift+Enter runs a cell, Ctrl+Z takes one out again), and their button then reads
-*✓ Inserted*. With Preferences › AI › **Code in answers** set to `button`, nothing is inserted
+Each question also sends the current notebook (its code, with each cell's number, state and a
+short line about its outputs) and the errors of cells that failed when they last ran (each only
+when it changed since the last question). Python blocks of an answer go into the notebook at
+once, without running them (Shift+Enter runs a cell, Ctrl+Z takes one out again): as new code
+cells after the current one, or, when a block does what one cell already does (the same step,
+a plot of the same table, the view cell), in place of that cell's code, so asking for another
+option does not leave the old cell behind. Their button then reads *✓ Inserted*. With Preferences › AI › **Code in answers** set to `button`, nothing is inserted
 until you press *+ Insert as cell*. The AI can also read and edit cells itself
 ([Notebook cells](claude.md#notebook-cells)).
 The chat answers questions about the picked atoms, such as "What are these atoms?" or "Why is the

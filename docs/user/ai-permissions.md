@@ -30,7 +30,7 @@ ewald itself shows the chat, does not write a cell.
 | More Structure tabs (view tabs) and their settings | `set_view` with `tab` | the tab's view cell `view(pipe, tab=..., ...)` |
 | Files written for you | `export_file` | `export_file(pipe, ...)` |
 | A workflow's analysis | `add_analysis` | the plugin's cells |
-| Its own code (plots, tables, anything the API does) | `insert_cell`, `edit_cell`, then `run_cell` or the run permission; ```python blocks of an answer (`llm.code_cells`) | the cell it wrote |
+| Its own code (plots, tables, anything the API does) | `insert_cell`, `edit_cell`, then `run_cell` or the run permission; ```python blocks of an answer (`llm.code_cells`), which replace the one cell that does the same job | the cell it wrote or replaced |
 | Notebook order and contents | `move_cell`, `delete_cell` | moves or deletes the cell |
 | Plugin tools that change results, e.g. `compute_plumed_cvs` | the plugin calls `add_modifier` | step cell |
 
@@ -207,8 +207,11 @@ Studio) nothing leaves your machine.
 **With each question, in the GUI** (`AskPanel._notebook_prompt`), each part only when it changed
 since the last question of that chat:
 
-- The current notebook's code (percent format), cut at 20,000 characters. It includes file paths
-  and anything typed into the cells, but not cell outputs.
+- The current notebook (`notebook_context`): its code in percent format, each cell labeled with
+  its number, index, kind (step, view, code, markdown) and state, and a short line about its
+  outputs (the start of printed text, the last line of an error, "plot/image"), cut at 24,000
+  characters. It includes file paths, anything typed into the cells and the start of what they
+  printed; images are not sent with it (`read_cell` returns them).
 - The errors of cells whose last run failed (`failed_cells`: the last 25 lines of each, at most
   6,000 characters), or a note that there are none any more.
 - How the 3D view colors the atoms (the color rule: which step or setting, which property,

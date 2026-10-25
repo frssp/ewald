@@ -543,9 +543,13 @@ class Toolset:
            "Add a modifier to the pipeline (at the end, or before the one at pipeline 'index') as a step cell "
            "pipe.add(Name(...)) in the notebook, run at once. Property expressions use OVITO syntax, "
            "e.g. ExpressionSelection {\"expression\": \"(Coordination < 12) & (ParticleType == 'Cu')\"}. "
-           "Returns the new pipeline, the cell and what the modifier changed on the current frame.",
-           _obj({"name": {"type": "string"}, "params": {"type": "object"}, "index": {"type": "integer"}}, ["name"]))
-        def add_modifier(name, params=None, index=None):
+           "Returns the new pipeline, the cell and what the modifier changed on the current frame. When a step "
+           "cell of the same modifier exists, this is refused unless again=true: change that cell's options with "
+           "edit_cell params instead (a second step overwrites the first one's outputs).",
+           _obj({"name": {"type": "string"}, "params": {"type": "object"}, "index": {"type": "integer"},
+                 "again": {"type": "boolean", "description": "true: add it although a step cell of this modifier "
+                                                            "exists (only when the user wants both)"}}, ["name"]))
+        def add_modifier(name, params=None, index=None, again=False):
             pipe = self._need_pipeline()
             classes = _modifier_classes(self.allow_code)
             if name not in classes:
@@ -560,6 +564,12 @@ class Toolset:
             call = f"{name}({', '.join(f'{k}={v!r}' for k, v in params.items())})"
             module = "ewald.modifiers" if getattr(_modifiers, name, None) is cls else cls.__module__
             source = self._code(nb, f"{self.pipeline_name}.add({call})", (module, name, cls))
+            if not again:
+                from .notebook_tools import duplicate_message, same_cells
+
+                hits = self.notebook_access.call(lambda: same_cells(nb, source))
+                if hits:
+                    raise ValueError(duplicate_message(nb, hits, f"adds a {name} step"))
             nb, cell = self._run_new_cell(source, f"AI: add {name}", at)
             try:
                 after = self._need_pipeline().compute(self.frame)

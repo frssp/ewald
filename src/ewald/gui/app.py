@@ -146,7 +146,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.ask_panel.cellRequested.connect(self._show_ai_cell)
         self.ask_panel.answerStarted.connect(lambda nb: self._ai_answer(nb, True))
         self.ask_panel.answerFinished.connect(lambda nb: self._ai_answer(nb, False))
-        self.ask_panel.runRequested.connect(lambda code: self._insert_claude_cell(code, run=True))
+        self.ask_panel.answerCodeRequested.connect(lambda code, run: self._insert_claude_cell(code, run, replace=True))
         # --- left: notebook tabs (the pipeline as Python cells); right: display settings
         self.panel = NotebookPanel()
         self.panel.save_view = self.save_notebook   # Save in the "unsaved changes" question
