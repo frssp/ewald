@@ -433,17 +433,27 @@ class FilesMixin:
         self.remotes_panel.list.setFocus()
 
     def _open_asking_types(self, path, **kwargs):
-        from ..io.lammps_dump import is_lammps_dump
+        """Open ``path`` after each simulation code's ``open_options`` (:mod:`ewald.codes`) had its
+        say, e.g. LAMMPS asking for a type -> element map."""
+        from .. import codes
 
-        if is_lammps_dump(path[0] if isinstance(path, list) else path):
-            default_map = self.settings["general.lammps_type_map"]
-            if self.settings["general.lammps_type_prompt"] == "ask":
-                text, ok = QtWidgets.QInputDialog.getText(
-                    self, "LAMMPS types", "Optional type → element map (e.g. 1=Cu,2=Zr):", text=default_map)
-            else:
-                text, ok = default_map, True
-            if ok and text.strip():
-                kwargs["type_map"] = dict(p.split("=") for p in text.replace(" ", "").split(","))
+        first = path[0] if isinstance(path, list) else path
+
+        def ask(title, label, text):
+            got, ok = QtWidgets.QInputDialog.getText(self, title, label, text=text)
+            return got if ok else None
+
+        for code in codes.codes().values():
+            hook = code.hook("open_options")
+            if hook is None:
+                continue
+            try:
+                extra = hook(first, self.settings, ask) or {}
+            except ValueError as exc:   # e.g. a type map typed wrong
+                QtWidgets.QMessageBox.warning(self, code.title, str(exc))
+                extra = {}
+            for k, v in extra.items():
+                kwargs.setdefault(k, v)
         self.open_file(path, **kwargs)
 
     def export_dialog(self):

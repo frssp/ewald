@@ -366,7 +366,7 @@ formats added by [reader plugins](../plugins/readers.md). Its file filter starts
 which lists every format at once, extensionless VASP names (`POSCAR`, `CONTCAR`, `XDATCAR`, `OUTCAR`,
 `CHGCAR`, ...) and notebooks and sessions included; the groups, one filter per format and All files
 follow it. LAMMPS dumps ask for a
-type-to-element map unless you set a default in Preferences. File › Open from › NEB folder opens a
+type-to-element map unless you set a default in Preferences › Codes › LAMMPS. File › Open from › NEB folder opens a
 VASP NEB folder (`00 .. NN`) or a LAMMPS NEB run folder with one frame per image
 ([NEB runs](formats.md#neb-runs)); opening a single image file of such a run asks whether to
 open the whole band. Files, notebooks and NEB folders can also be dropped on the window. In the notebook layout, File › Open also opens `.py`
@@ -395,7 +395,9 @@ Settings button in the Plugins side bar, so it can be set up without Python.
 
 ## Preferences
 
-Edit › Preferences (Ctrl+, ; the application menu on macOS) has ten pages: General, 3D view,
+Edit › Preferences (Ctrl+, ; the application menu on macOS) has eleven pages: General, Codes
+(one section per simulation code: VASP, LAMMPS and codes added by [plugins](../plugins/codes.md),
+each with the files and formats it covers and its own settings, such as the LAMMPS type map), 3D view,
 Atoms & bonds (per-element color and radius, Jmol or CPK scheme, radius preset, bond search, VESTA
 `elements.ini` import), Rendering, Plots (the style of your own plots, saved plot size and font, and the form and *Open as text* button of your
 matplotlib style file, see [Notebooks](notebooks.md)),

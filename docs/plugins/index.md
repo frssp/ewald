@@ -21,6 +21,7 @@ against the same API the built-in readers and modifiers use, so everything in th
 | [UI theme](styles.md#ui-themes) | a function returning design tokens (`{"accent": "#7aa2f7", ...}`) on top of Paper or Graphite | `@ui_theme` in the plugin folder, or an `ewald.ui_themes` entry point | available |
 | [Side bar](gui.md) | a function returning a Qt widget, opened from its own activity-bar button | `@panel` in the plugin folder, or an `ewald.panels` entry point | available |
 | [Settings page](settings.md) | fields (`SettingsField`), plus `load()` / `save(values)` or nothing (ewald stores them); a page of Preferences and a dialog | `@settings_page(...)` in the plugin folder, or an `ewald.settings_pages` entry point | available |
+| [Simulation code](codes.md) | a `SimulationCode`: its files, formats, settings (`codes.<name>.*`) and hooks for run info, checks, workflow folders, thermo files and opening files; VASP and LAMMPS are built-in entries | `@simulation_code` in the plugin folder, or an `ewald.codes` entry point | available |
 | [Workflow source](workflows.md) | `list()` / `describe()` returning `Workflow`s (steps, outputs, paths); paired with `workflow_panel` for a side bar | `@workflow_source(...)` in the plugin folder, or an `ewald.workflows` entry point | available |
 
 [Modifier Forge](forge.md) writes a modifier plugin from a description: the AI writes the

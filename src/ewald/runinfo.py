@@ -9,6 +9,7 @@ and in the log files next to it. :func:`run_info` finds them::
     run_info(pipe)          # <RunInfo VASP md NVT, 300 K, 1 fs steps, 0.001 ps per frame>
     check_run(pipe)         # converged? equilibrated? energy drift? close contacts?
 
+Each code's files are read by its :mod:`ewald.codes` entry; the built-in ones:
 VASP: ``INCAR`` next to the file (else the parameters echoed at the top of OUTCAR or in
 vasprun.xml's ``<incar>``), ``KPOINTS``, ``OSZICAR``, ``OUTCAR``. LAMMPS: ``log.lammps``, which
 echoes every input command, else an input file (``in.*``, ``*.in``). Files on SSH hosts work the
@@ -43,7 +44,8 @@ LAMMPS_UNITS = {"lj": (0.005, None), "real": (1.0, 1e-3), "metal": (0.001, 1.0),
 class RunInfo:
     """How a run was made, as far as its input files say. ``None`` means not known.
 
-    ``code`` is "vasp" or "lammps"; ``kind`` "md", "relax", "static", "neb", "phonon";
+    ``code`` names the :mod:`ewald.codes` entry ("vasp", "lammps" or a plugin's code);
+    ``kind`` "md", "relax", "static", "neb", "phonon";
     ``ensemble`` "NVE", "NVT", "NPT", "NPH"; ``timestep`` is the MD step in fs;
     ``time_per_frame`` the time between stored frames in ps; ``temperature`` the target
     (start, end) in K; ``steps`` the number of ionic/MD steps asked for; ``units`` the LAMMPS
@@ -236,14 +238,12 @@ def _basename(path: str) -> str:
     return posixpath.basename(rp.path) if rp else os.path.basename(path)
 
 
-def _code_of(path: str) -> str | None:
-    name = _basename(path).upper()
-    if name.startswith(("XDATCAR", "OUTCAR", "VASPRUN", "OSZICAR", "POSCAR", "CONTCAR", "VASPOUT")):
-        return "vasp"
-    low = name.lower()
-    if low.endswith((".lammpstrj", ".dump")) or low.startswith(("dump", "log.lammps")) or low.endswith(".data"):
-        return "lammps"
-    return None
+def _code_of(path: str):
+    """The :class:`ewald.codes.SimulationCode` of ``path``: by the file's name or content, else by
+    the files next to it (an INCAR, a log.lammps, another code's markers)."""
+    from . import codes
+
+    return codes.code_of(path) or codes.code_for_folder(path, _folder_file)
 
 
 # ----------------------------------------------------------------------- run_info
@@ -258,13 +258,12 @@ def run_info(source, refresh: bool = False) -> RunInfo:
     if paths:
         path = paths[0]
         code = _code_of(path)
-        if code is None:  # a folder with an INCAR or a LAMMPS log is enough to tell
-            code = "vasp" if _folder_file(path, "INCAR") else "lammps" if _folder_file(path, "log.lammps") else None
+        fill = code.hook("run_info") if code is not None else None
+        if code is not None:
+            info.code = code.name
         try:
-            if code == "vasp":
-                _vasp_info(info, path)
-            elif code == "lammps":
-                _lammps_info(info, path)
+            if fill is not None:
+                fill(info, path)
         except (OSError, ValueError, UnicodeError) as exc:
             info.notes.append(f"could not read the run's input files: {exc}")
         if hasattr(source, "compute"):
@@ -427,22 +426,40 @@ def _frame_timing(info: RunInfo, pipe, path: str):
                 steps = int(b) - int(a)
         except Exception:  # noqa: BLE001
             steps = None
-    name = _basename(path).upper()
-    if info.code == "vasp" and name.startswith("XDATCAR"):
-        nblock = info.parameters.get("NBLOCK", 1)
-        nblock = int(nblock) if isinstance(nblock, (int, float)) and nblock > 0 else 1
-        if steps is None or steps == 1:
-            steps = nblock  # XDATCAR numbers its configurations, one per NBLOCK steps
-    elif info.code == "lammps" and steps is None:
-        steps = info.parameters.get("dump_every")
+    code = _registered(info.code)
+    hook = code.hook("frame_steps") if code is not None else None
+    if hook is not None:
+        steps = hook(info, path, steps)
     if steps is None:
         steps = 1
     if info.timestep is not None and info.kind == "md":
         info.time_per_frame = steps * info.timestep / 1000.0
         info.notes.append(f"{steps} MD step(s) of {info.timestep:g} fs between stored frames")
-    elif info.code == "lammps" and info.units == "lj" and info.kind == "md":
+    elif info.units == "lj" and info.kind == "md":   # LAMMPS reduced units
         dt = info.parameters.get("timestep", LAMMPS_UNITS["lj"][0])
         info.parameters["time_per_frame_tau"] = steps * dt
+
+
+def _vasp_frame_steps(info: RunInfo, path: str, steps):
+    if _basename(path).upper().startswith("XDATCAR"):
+        nblock = info.parameters.get("NBLOCK", 1)
+        nblock = int(nblock) if isinstance(nblock, (int, float)) and nblock > 0 else 1
+        if steps is None or steps == 1:
+            steps = nblock  # XDATCAR numbers its configurations, one per NBLOCK steps
+    return steps
+
+
+def _lammps_frame_steps(info: RunInfo, path: str, steps):
+    return info.parameters.get("dump_every") if steps is None else steps
+
+
+def _registered(name):
+    """The registered code ``name`` (None when unknown or None)."""
+    if not name:
+        return None
+    from . import codes
+
+    return codes.codes().get(name)
 
 
 # ----------------------------------------------------------------------- statistics
@@ -576,14 +593,13 @@ def _check_run(pipe, close_contact: float) -> RunCheck:
     paths = _source_paths(pipe)
     path = paths[0] if paths else None
     thermo = getattr(getattr(src, "thermo", None), "table", None)
-    if info.code == "vasp" and path:
-        _check_vasp(check, info, path)
-    if info.code == "lammps":
-        p = info.parameters
-        if p.get("errors"):
-            add(Finding("error", "LAMMPS stopped with an error", str(p.get("error", ""))))
-        if p.get("warnings"):
-            add(Finding("warning", f"{p['warnings']} LAMMPS warning(s) in the log", "see log.lammps"))
+    code = _registered(info.code)
+    hook = code.hook("check") if code is not None else None
+    if hook is not None:
+        try:
+            hook(check, info, path)
+        except (OSError, ValueError, UnicodeError) as exc:
+            add(Finding("info", f"{code.title} checks skipped", str(exc)))
     if thermo is not None and info.kind == "md":
         _check_md(check, info, thermo, pipe)
     if check.num_frames:
@@ -598,8 +614,19 @@ def _check_run(pipe, close_contact: float) -> RunCheck:
     return check
 
 
+def _check_lammps(check: RunCheck, info: RunInfo, path: str):
+    add = check.findings.append
+    p = info.parameters
+    if p.get("errors"):
+        add(Finding("error", "LAMMPS stopped with an error", str(p.get("error", ""))))
+    if p.get("warnings"):
+        add(Finding("warning", f"{p['warnings']} LAMMPS warning(s) in the log", "see log.lammps"))
+
+
 def _check_vasp(check: RunCheck, info: RunInfo, path: str):
     add = check.findings.append
+    if not path:
+        return
     osz = path if _basename(path).upper().startswith("OSZICAR") else _folder_file(path, "OSZICAR")
     nelm = info.parameters.get("NELM", 60)
     if osz:

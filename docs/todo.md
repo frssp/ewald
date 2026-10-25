@@ -10,6 +10,13 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## Next
 
+- Simulation codes (`ewald.codes`, Preferences › Codes): only VASP and LAMMPS are built in and the
+  Quantum ESPRESSO entry is an example plugin; CP2K, GPAW, Gaussian and QE as real first-party
+  plugins are open. NEB and phonopy folders are still recognized outside the registry
+  (`workflow_folder._neb_step`, `_phonopy_step`), `read_thermo` falls back to trying the LAMMPS log
+  and OSZICAR parsers, the GUI's open filter groups formats by reader category rather than by
+  code, the Codes page cannot switch a built-in code off (the Plugins side bar does), and no AI
+  tool lists the codes yet.
 - Long cell outputs: whether a cell's output is scrolled or shown whole is kept per window only;
   Jupyter stores it as the cell's `scrolled` metadata in `.ipynb` (read and write it once cells
   keep metadata), and so is a hidden output (Jupyter's `collapsed`).

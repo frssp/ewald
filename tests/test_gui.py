@@ -1519,6 +1519,31 @@ def test_preferences_layout_covers_every_option_once():
             assert all(__import__("ewald.settings").settings.OPTION[k].page == name for k in ks)
 
 
+def test_preferences_codes_page_is_drawn_from_the_registry(app, tmp_path):
+    """One section per simulation code (VASP, LAMMPS, a plugin's), each with its own options."""
+    from ewald import plugins, settings
+    from ewald.codes import SimulationCode
+    from ewald.gui.preferences import PreferencesDialog
+
+    plugins.register_simulation_code(SimulationCode(
+        "toycode", "Toy code", files=("*.toy",),
+        options=[settings.Option("codes.toycode.flavour", "plain", "Flavour", choices=("plain", "spicy"))]))
+    try:
+        dlg = PreferencesDialog(settings.Settings({}, tmp_path / "s.json"), page="Codes")
+        titles = [c[0].text() for c in dlg.code_cards]
+        assert titles[:2] == ["VASP", "LAMMPS"] and "TOY CODE" in titles
+        assert {"codes.lammps.type_map", "codes.toycode.flavour"} <= set(dlg.editors)
+        dlg.set_value("codes.toycode.flavour", "spicy")
+        dlg.apply()
+        assert settings.load(tmp_path / "s.json")["codes.toycode.flavour"] == "spicy"
+        dlg.search.setText("lammpstrj")
+        visible = [c[0].text() for c in dlg.code_cards if not c[1].isHidden()]
+        assert visible == ["LAMMPS"]
+        dlg.close()
+    finally:
+        plugins._registry.codes.pop("toycode", None)
+
+
 def test_remote_file_dialog_browse_and_open(app, server):
     from ewald.gui import remote_dialog
     from ewald.gui.remote_dialog import RemoteFileDialog

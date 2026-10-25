@@ -217,12 +217,13 @@ def plugins_section() -> list[str]:
            f"Entry point groups `{plugins.READER_GROUP}`, `{plugins.WRITER_GROUP}`, `{plugins.MODIFIER_GROUP}`, "
            f"`{plugins.VISUAL_GROUP}`, `{plugins.OVERLAY_GROUP}`, `{plugins.COLORMAP_GROUP}`, "
            f"`{plugins.THEME_GROUP}`, `{plugins.TOOL_GROUP}`, `{plugins.UI_THEME_GROUP}`, "
-           f"`{plugins.AI_PROVIDER_GROUP}`, `{plugins.PANEL_GROUP}`, `{plugins.MENU_ITEM_GROUP}`, `{plugins.SETTINGS_PAGE_GROUP}` and "
-           f"`{plugins.WORKFLOW_GROUP}`, or a file in "
+           f"`{plugins.AI_PROVIDER_GROUP}`, `{plugins.PANEL_GROUP}`, `{plugins.MENU_ITEM_GROUP}`, `{plugins.SETTINGS_PAGE_GROUP}`, "
+           f"`{plugins.WORKFLOW_GROUP}` and `{plugins.CODE_GROUP}`, or a file in "
            "`<config dir>/plugins/` with `@reader` / `@writer` / `@modifier` / `@visual` / `@overlay` / "
            "`@colormap` / `@theme` / `@ai_tool` (or `@claude_tool`) / `@ui_theme` / `@ai_provider` / `@panel` "
            "(an activity-bar side bar or a tab under the 3D view) / `@menu_item` (an entry in a menu or the 3D view's right-click menu) / `@settings_page` (a Preferences page) / `@workflow_source` (workflows "
-           "a side bar lists and a notebook opens); `ewald plugins` lists "
+           "a side bar lists and a notebook opens) / `@simulation_code` (another simulation code next to VASP "
+           "and LAMMPS); `ewald plugins` lists "
            "what loaded. "
            "Details: [Plugins](plugins/index.md).", ""]
     for path in examples:
@@ -240,15 +241,25 @@ def _module_doc(path: Path):
 
 
 def settings_section() -> list[str]:
+    from .codes import builtin_codes
     from .settings import OPTIONS, PAGES
 
+    codes = builtin_codes()
+    options = [*OPTIONS, *(o for c in codes.values() for o in c.options)]
     out = ["## Preferences", "",
            "Edit › Preferences, one page per group; stored as JSON with only changed values. "
            "Scripts read them with `ewald.settings.load()`.", ""]
     for page in PAGES:
         out += [f"### {page}", ""]
+        if page == "Codes":
+            out += ["One section per simulation code (`ewald.codes`; plugins add codes with "
+                    "`@simulation_code`). Built-in codes:", ""]
+            out += _table(("Code", "Files", "Hooks"),
+                          [(f"`{c.name}` {c.title}", ", ".join(f"`{f}`" for f in c.files),
+                            ", ".join(c.as_dict()["hooks"])) for c in codes.values()])
+            out.append("")
         out += _table(("Key", "Label", "Default"),
-                      [(f"`{o.key}`", o.label, f"`{o.default!r}`") for o in OPTIONS if o.page == page])
+                      [(f"`{o.key}`", o.label, f"`{o.default!r}`") for o in options if o.page == page])
         out.append("")
     return out
 
