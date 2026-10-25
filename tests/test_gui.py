@@ -1425,7 +1425,7 @@ def test_preferences_dialog_edit_search_restore(app, tmp_path):
     visible = {dlg.pages.item(i).text() for i in range(dlg.pages.count()) if not dlg.pages.item(i).isHidden()}
     assert visible == {"Atoms & bonds"}
     dlg._search("")
-    dlg.pages.setCurrentRow(1)                                # Viewports
+    dlg.show_page("3D view")
     dlg.restore_page()
     assert dlg.work.is_default("viewport.rotation_step") and not dlg.work.is_default("compute.device")
 
@@ -4312,7 +4312,7 @@ def test_preferences_pages_after_menu_review(app):
     from ewald import settings
     from ewald.gui.preferences import LAYOUT, PreferencesDialog
 
-    assert settings.PAGES == ("General", "3D view", "Atoms & bonds", "Rendering", "Plots", "Notebooks",
+    assert settings.PAGES == ("General", "Codes", "3D view", "Atoms & bonds", "Rendering", "Plots", "Notebooks",
                               "Compute", "Python", "AI", "Plugins")
     assert settings.OPTION["python.plot_style"].page == "Plots" == settings.OPTION["plots.size"].page
     assert settings.OPTION["python.run_notebooks"].page == "Notebooks"
