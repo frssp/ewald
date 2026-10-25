@@ -481,7 +481,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self._apply_element_defaults()
         self.panel.set_data(self.data)
         self.display.set_data(self.data, refresh=view_changed)
-        self.timeline.set_info(self.data.attributes)   # timestep and time beside the frame number (D61)
+        self.timeline.set_info(self.data.attributes)   # timestep and time beside the frame number (D62)
         self.viewport.set_data(self.data, interactive=interactive)
         self.follow_view_camera()
         self.follow_view_tabs(self.data)

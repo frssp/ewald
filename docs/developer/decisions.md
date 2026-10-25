@@ -166,6 +166,19 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   only the contrast between the code box and the cell.
 - **Landed:** public PR #38.
 
+### D60. Structure databases as two plugins: OPTIMADE and Materials Project (2026-10-25)
+
+- **Decision:** outside structure databases come as first-party plugins in frssp/ewald-plugins
+  over the reader `schemes` hook: `ewald-optimade` (every OPTIMADE database, no key:
+  `load("optimade:mp/mp-149")`, `search()`, a search side bar, a read-only AI search tool) and
+  `ewald-mp` (Materials Project through mp-api with the user's key in the keychain, for what
+  OPTIMADE does not give: DOS, bands, charge densities, relaxation trajectories; `mp:`).
+- **Why:** the owner asked "Pymatgen mp api plugin? 외부 리포 프러그인 optimade 등" and picked
+  "OPTIMADE + MP 둘 다 (2 plugins)" on the decision card, noting "Mp 같은 건 api key가 필요래".
+- **Considered:** OPTIMADE only (Materials Project structures through its OPTIMADE endpoint);
+  Materials Project only through mp-api.
+- **Landed:** public PR #65; ewald-optimade 0.1.0 in frssp/ewald-plugins PR #22.
+
 ## Quality and platforms
 
 ### D7. Quality for files, speed for the screen (2026-10-19)
@@ -767,7 +780,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   the tag; every view cell its own tab automatically.
 - **Landed:** public PR #62.
 
-### D60. The 3D view's controls float over it as chips that fold (2026-10-25)
+### D61. The 3D view's controls float over it as chips that fold (2026-10-25)
 
 - **Decision:** the view bar above the 3D view and the tool rail beside it are replaced by chips
   floating over the view (directions and rotations top left; Ortho, Style and Fit top right;
@@ -782,12 +795,12 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   widgets over the GL view); C, one strip with the tools merged into the top bar.
 - **Landed:** public PR #63.
 
-### D61. A frame's timestep and time sit in the timeline, not in the 3D view (2026-10-25)
+### D62. A frame's timestep and time sit in the timeline, not in the 3D view (2026-10-25)
 
 - **Decision:** the "Frame N timestep T" text in the 3D view's top left corner is gone; the
   timeline shows the frame's "Timestep" and "Time" beside the frame number, and nothing for a
   single frame. The `viewport.show_overlay` preference now switches that label.
-- **Why:** on the floating chips (D60) the owner said the caption "Frame timestep 글자도 안
+- **Why:** on the floating chips (D61) the owner said the caption "Frame timestep 글자도 안
   이쁘네. 위치를 바꾸거나 다른 곳에 폼을 갖춰 넣거나 대안을 생각해봐" and picked "B. timeline
   안으로" on the decision card.
 - **Considered:** A, a chip at the bottom right of the view; C, a pill at the top center; D, the

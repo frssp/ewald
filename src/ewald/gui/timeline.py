@@ -63,7 +63,7 @@ class Timeline(QtWidgets.QWidget):
         self.sel.clicked.connect(lambda: self.set_selection([], emit=True))
         self.spin = QtWidgets.QSpinBox(toolTip="Current frame")
         self.count = QtWidgets.QLabel("/ 0", objectName="muted")
-        # the frame's timestep and time beside its number (D61): the 3D view carries no frame text
+        # the frame's timestep and time beside its number (D62): the 3D view carries no frame text
         self.info = QtWidgets.QLabel(objectName="timelineInfo", toolTip="Timestep and time of this frame, "
                                      "from the file (time in the file's own unit)")
         self.info.setTextFormat(QtCore.Qt.RichText)

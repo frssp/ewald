@@ -3009,7 +3009,7 @@ def test_main_window_legacy_gl_viewport(app, pipe, tmp_path, monkeypatch):
     W, H = vp.view.width(), vp.view.height()
     bg = img.pixelColor(2, 2)
     assert img.pixelColor(W // 2, H // 2) != bg  # atoms drawn in the middle
-    assert not vp.caption.isVisibleTo(vp)   # the frame's timestep is in the timeline now (D61)
+    assert not vp.caption.isVisibleTo(vp)   # the frame's timestep is in the timeline now (D62)
     snap = vp.snapshot().toImage()  # what a tab drag shows in place of the GL window
     gl = vp._gl_widget().mapTo(vp, vp._gl_widget().rect().center())
     assert snap.pixelColor(gl.x(), gl.y()) != snap.pixelColor(gl.x() - W // 2 + 2, gl.y() - H // 2 + 2)
@@ -6302,7 +6302,7 @@ def _visible_rects(chip):
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="3D view needs an X display with OpenGL (xvfb-run)")
 @pytest.mark.parametrize("font_size", [12, 16])   # 16: a larger UI font, like Windows at 150-200 % with big text
 def test_viewport_hud_folds_without_overlap(app, cu_fcc, font_size):
-    """The view chips float over the 3D view and fold into menus as it gets small (D60): at no size do
+    """The view chips float over the 3D view and fold into menus as it gets small (D61): at no size do
     the two top chips overlap each other, nor their buttons each other, and Fit always stays."""
     from ewald.gui import theme
     from ewald.gui.viewport import Viewport
@@ -6417,7 +6417,7 @@ def test_legacy_viewport_puts_the_chips_around_the_view(app, cu_fcc):
 
 
 def test_timeline_shows_timestep_and_time_not_the_3d_view(app, pipe):
-    """The frame's timestep and time sit beside its number in the timeline (D61), not as text in the
+    """The frame's timestep and time sit beside its number in the timeline (D62), not as text in the
     3D view; a single frame or a frame without them shows nothing, and the preference hides it."""
     from ewald.gui.timeline import Timeline
 

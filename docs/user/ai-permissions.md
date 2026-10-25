@@ -147,7 +147,10 @@ system prompt that it may run cells, and runs the ```python blocks of an answer 
 the notebook.
 
 **Plugin tools.** Installed plugins add tools with `@ai_tool` ([AI tool plugins](../plugins/tools.md));
-ewald-plumed adds `compute_plumed_cvs` and `read_plumed_output`. A plugin tool cannot replace a
+ewald-plumed adds `compute_plumed_cvs` and `read_plumed_output`; ewald-optimade adds
+`optimade_search`, which only lists structures: it sends the query to one of the databases you
+set up (its table plus Preferences › OPTIMADE), never to an address the model names, and the
+model opens a hit by writing a `load("optimade:...")` cell. A plugin tool cannot replace a
 built-in one of the same name. Plugins run in-process with your rights, like any other Python
 package you install, so only install plugins you trust; the rules above ask them to change
 results through `toolset.call("add_modifier", ...)` and to call `toolset.check_read(path)`

@@ -212,7 +212,7 @@ class Viewport(QtWidgets.QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(0)
         self.styled_buttons = []  # (button, text in the default style); MainWindow.set_button_style
-        # the view controls are chips floating over the 3D view (D60): view directions top left
+        # the view controls are chips floating over the 3D view (D61): view directions top left
         # (``_viewbar``), projection, style and Fit top right (``_displaybar``), tools on the left
         # (``_rail``); they fold into menus as the view gets small (see _fit_hud)
         self._viewbar, self._displaybar = self._build_viewbar()
@@ -319,7 +319,7 @@ class Viewport(QtWidgets.QWidget):
 
     # ------------------------------------------------------------------ chrome
     # ------------------------------------------------------------------ HUD
-    # The view controls float over the 3D view as chips (D60) and fold as the view gets small;
+    # The view controls float over the 3D view as chips (D61) and fold as the view gets small;
     # each level hides more, widest first. Fit always stays.
     HUD_LEVELS = (
         "full",          # everything
