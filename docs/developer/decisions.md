@@ -863,7 +863,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   시도할 때 경고 주면 어때?", after a protein figure came out as a 9.7 MB SVG in 14 s.
 - **Considered** (not put to the owner): refusing vector output above a limit, or switching to raster
   silently.
-- **Landed:** public PR #NN.
+- **Landed:** public PR #70.
 
 ## Adding an entry
 
