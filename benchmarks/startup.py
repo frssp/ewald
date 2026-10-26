@@ -2,15 +2,21 @@
 
     python benchmarks/startup.py              # Linux without a display: xvfb-run -a python benchmarks/startup.py
     python benchmarks/startup.py --cold-jit   # also with an empty numba cache (fresh install, after an update)
+    python benchmarks/startup.py --profile    # also: which calls the import and ``MainWindow()`` spend it in
 
 Prints when ``import ewald.gui.app`` finishes, when ``MainWindow()`` returns, when the 3D view
 and the Python console are built, every stretch longer than 100 ms in which the window could
 not respond to input, and the peak memory. Runs on Windows, macOS and Linux; settings go to a
 temporary config folder, so your own preferences and layout are not used or changed.
+``--profile`` runs the import and ``MainWindow()`` under cProfile (which makes them slower) and
+prints the calls with the most cumulative and own time (on Python 3.12+ it also sees the
+threads started meanwhile, such as the plugin catalog download, which do not block the window).
 """
 from __future__ import annotations
 
 import argparse
+import cProfile
+import pstats
 import os
 import subprocess
 import sys
@@ -33,8 +39,11 @@ def peak_rss_mb():
     return kb / 2**20 if sys.platform == "darwin" else kb / 1024
 
 
-def timeline(idle_ms: int):
+def timeline(idle_ms: int, profile: bool = False):
     marks = []
+    prof = cProfile.Profile() if profile else None
+    if prof is not None:
+        prof.enable()
 
     def mark(name):
         marks.append((time.perf_counter() - T0, name))
@@ -47,6 +56,8 @@ def timeline(idle_ms: int):
     qapp = appmod._app()
     win = appmod.MainWindow()
     mark("MainWindow()")
+    if prof is not None:
+        prof.disable()
     win.show()
     win.viewport.viewBuilt.connect(lambda: mark("3D view built"))
     if win.viewport.view_built:
@@ -71,16 +82,23 @@ def timeline(idle_ms: int):
     print("  window busy (> 100 ms):", ", ".join(f"{a:.2f} s for {b:.2f} s" for a, b in stalls) or "none")
     rss = peak_rss_mb()
     print(f"  peak memory: {rss:.0f} MB" if rss is not None else "  peak memory: (pip install psutil)")
+    if prof is not None:
+        stats = pstats.Stats(prof, stream=sys.stdout)
+        print("\nimport + MainWindow() under cProfile, EWALD's own functions by cumulative time:")
+        stats.sort_stats("cumulative").print_stats(r"[\\/]ewald[\\/]", 35)
+        print("every function by own time:")
+        stats.sort_stats("tottime").print_stats(20)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--cold-jit", action="store_true", help="also run once with an empty numba cache")
     ap.add_argument("--idle", type=int, default=6000, help="ms to keep the window open (default 6000)")
+    ap.add_argument("--profile", action="store_true", help="profile the import and MainWindow()")
     ap.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args()
     if args.child:
-        return timeline(args.idle)
+        return timeline(args.idle, args.profile)
     runs = [("warm numba cache", {})]
     with tempfile.TemporaryDirectory() as tmp:
         if args.cold_jit:
@@ -89,8 +107,8 @@ def main():
             env = dict(os.environ, EWALD_CONFIG_DIR=os.path.join(tmp, "config"), **extra)
             print(f"== {title}")
             sys.stdout.flush()
-            subprocess.run([sys.executable, os.path.abspath(__file__), "--child", "--idle", str(args.idle)],
-                           env=env, check=False)
+            cmd = [sys.executable, os.path.abspath(__file__), "--child", "--idle", str(args.idle)]
+            subprocess.run(cmd + (["--profile"] if args.profile else []), env=env, check=False)
 
 
 if __name__ == "__main__":

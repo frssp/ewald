@@ -140,8 +140,10 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   import (~0.9 s, blocks the window right after its first paint; on a thread it does not help,
   the GIL serializes it), `import ewald.gui.app` (~0.6 s: numba, scipy, the modifier modules),
   the in-process IPython console (~0.4 s, built when its tab first paints) and peak memory
-  (~700 MB with VTK, Qt, numba and IPython). Not yet measured on Windows, where cold imports
-  are usually slower (run `python benchmarks/startup.py --cold-jit` there).
+  (~700 MB with VTK, Qt, numba and IPython). On the owner's Windows laptop (2026-10-26, Intel
+  Arc) everything takes 3-4 times as long: import 1.8-2.1 s, `MainWindow()` 5.3-5.8 s, 3D view
+  6.0-6.6 s, console 7.7-9.0 s, peak 610-650 MB, the same with an empty numba cache. The biggest
+  gap is `MainWindow()` itself (3.5 s); `benchmarks/startup.py --profile` lists the calls.
 - Maximizing the window (2026-10-24, `python benchmarks/resize.py`): in the container (llvmpipe,
   cu_void tutorial) it is settled after 0.3-0.7 s, of which one full 3D render is 0.1-0.3 s;
   restoring takes about 0.12 s. The rest is Qt layout and painting plus matplotlib mathtext
@@ -715,9 +717,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   bonded atoms to SVG and PDF and compare with `python benchmarks/vector_size.py`; the *Large
   vector figure* dialog at 200 % scaling.
 
-- The floating view chips (D62) on Windows at 200 % scaling and on macOS: the see-through chips
-  composite over the VTK view without flicker, and fold before they overlap when the Structure
-  view is split or narrow.
+- The floating view chips (D62) on macOS (fine on the owner's Windows laptop at 200 %,
+  2026-10-26): the see-through chips composite over the VTK view without flicker, and fold before
+  they overlap when the Structure view is split or narrow.
 - ewald-optimade against the real servers (the container reaches none of them): `python -m
   ewald_optimade search Si --db <name>` for every name in `python -m ewald_optimade databases`,
   then `load("optimade:mp/mp-149")`, `load("optimade:cod/1000041")` and the OPTIMADE side bar,
@@ -758,10 +760,6 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - `no display: DISPLAY is not set` on a real Linux machine: the message should name the cause
   (SSH login without `-X`, tmux/screen or `sudo` on the desktop, a Wayland session) and the
   command that fixes it (`gui.no_display_hint`); tested with simulated environments only.
-- Windows with the VTK viewport: maximizing or resizing the window keeps it drawn (it went
-  black until restart while the VTK default format was the window's default; now macOS only),
-  and the 3D view still shows the atoms. Closing the window with a cell's plot in the Plots panel
-  prints no `QSplitter already deleted` error.
 - Notebook cells on Windows at 125-200 % display scaling and on macOS: the code box ends below
   its last line and the output area (rule on the left, monospaced text) starts under it, also
   after changing the font size in Preferences; a traceback or a long `print` wraps inside the
@@ -784,11 +782,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   calculation that finished yesterday" should call `list_workflows` with `formula`, `status` and
   `since`/`until`, then `open_workflow`; days are the PC's local days against sim-agent's
   creation time.
-- GUI startup on the owner's Windows machine: `python benchmarks/startup.py --cold-jit` prints
-  where the seconds go (import, window, 3D view, console, busy stretches, peak memory); compare
-  with the container numbers under Performance. Windows Defender scanning freshly installed
-  packages can make the first start after an update much slower than later ones (the
-  "Preparing EWALD" first-run notice, `gui/first_run.py`, shows during that start).
+- GUI startup on the owner's Windows machine: measured (see Performance); next
+  `python benchmarks/startup.py --profile` there, to see which calls make `MainWindow()` take
+  3.5 s instead of about 0.6 s. Windows Defender scanning freshly installed packages can make the
+  first start after an update much slower than later ones (the "Preparing EWALD" first-run
+  notice, `gui/first_run.py`, shows during that start).
 - First-run notice on a real Mac and Windows machine: after `uv pip install -e .` the next
   `ewald gui` should show "Preparing EWALD" within about a second (it needs only PySide6), keep
   it on screen until the main window appears, and not show it on the start after.
