@@ -177,12 +177,32 @@ class MenusMixin:
         its own left of the notebook (Qt would otherwise stack a re-shown dock above it)."""
         placed = dock.isHidden() and not dock.isFloating() and self.notebook_dock.isVisible()
         if placed:
-            self.splitDockWidget(dock, self.notebook_dock, QtCore.Qt.Horizontal)
+            beside = self._side_bar_left_of_notebook(dock)
+            if beside is not None:   # another side bar is open: a column between it and the notebook
+                self.splitDockWidget(beside, dock, QtCore.Qt.Horizontal)
+            else:
+                self.splitDockWidget(dock, self.notebook_dock, QtCore.Qt.Horizontal)
         dock.show()
         dock.raise_()
-        if placed:
+        if placed and self.dockWidgetArea(dock) != QtCore.Qt.NoDockWidgetArea and not dock.isFloating():
             width = dock.property("ewald_width") or (380 if dock is self.ask_dock else 320)
             self.resizeDocks([dock], [int(width)], QtCore.Qt.Horizontal)
+
+    def _side_bar_left_of_notebook(self, dock):
+        """The open dock next to the notebook on its left, in the notebook's row, if any. Splitting
+        the notebook itself then would stack the new side bar and the notebook under the open one."""
+        nb = self.notebook_dock.geometry()
+        best = None
+        for other in self.findChildren(QtWidgets.QDockWidget):
+            if other is dock or other is self.notebook_dock or other.isHidden() or other.isFloating():
+                continue
+            if self.dockWidgetArea(other) != self.dockWidgetArea(self.notebook_dock):
+                continue
+            g = other.geometry()
+            if g.right() <= nb.left() and g.top() < nb.bottom() and g.bottom() > nb.top():
+                if best is None or g.right() > best.geometry().right():
+                    best = other
+        return best
 
     def set_minimal(self, on: bool | None = None):
         """Hide the menu bar, toolbars and status bar, leaving the notebook, the viewport and the
@@ -729,6 +749,14 @@ class MenusMixin:
         text = f"Viewport OpenGL: {gl['renderer'] or 'unknown'} ({gl['vendor']}, {gl['version']})"
         if gl["software"]:
             text += "<br><b>Software rendering (no GPU acceleration)</b>"
+        from .. import gpu_select
+
+        gpus = gpu_select.list_gpus()
+        if len(gpus) > 1:
+            text += f"<br>GPUs in this computer: {', '.join(gpus)}"
+        hint = gpu_select.other_gpu_hint(gl["renderer"] or "", gpus)
+        if hint:
+            text += f"<br><b>{hint.replace('`', '')}</b>"
         if gpu_available():
             import cupy
 

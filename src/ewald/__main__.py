@@ -157,6 +157,10 @@ def build_parser():
     rg = rsub.add_parser("get", help="download a remote file for local analysis")
     rg.add_argument("path")
     rg.add_argument("dest", nargs="?", default=".", help="file or folder (default: current folder)")
+    gp = sub.add_parser("gpu", help="the GPUs here, which one the 3D view uses and CUDA/OpenCL devices")
+    gp.add_argument("--prefer", choices=("auto", "high-performance", "power-saving"),
+                    help="Windows: run this Python on that GPU from its next start (Graphics settings); "
+                         "auto removes the choice")
     inv = sub.add_parser("inventory", help="print or update the feature inventory (docs/features.md)")
     inv.add_argument("--output", "-o", default=None, help="rewrite this file, e.g. docs/features.md")
     inv.add_argument("--gui", action="store_true",
@@ -170,6 +174,21 @@ EXTRAS = {"PySide6": "gui", "pyvistaqt": "gui", "qtconsole": "gui", "MDAnalysis"
 # core packages missing anyway (an install that skipped dependencies): name the package itself
 CORE = {"anthropic": "anthropic", "openai": "openai", "mcp": "mcp", "anyio": "mcp", "h5py": "h5py",
         "imageio_ffmpeg": "imageio-ffmpeg", "spglib": "spglib"}
+
+
+def _gpu_cmd(args):
+    from . import gpu_select
+
+    if args.prefer:
+        if sys.platform != "win32":
+            print("--prefer sets the Windows Graphics settings choice; elsewhere set EWALD_GPU or "
+                  "Preferences › 3D view › GPU for the 3D view")
+            return 1
+        changed = gpu_select.set_windows_preference(args.prefer)
+        for exe in changed:
+            print(f"{exe}: {args.prefer}")
+        print("Takes effect when EWALD starts again." if changed else "Already set.")
+    print(gpu_select.summary())
 
 
 def _utf8_output():
@@ -285,6 +304,8 @@ def _run(args):
         from .inventory import update
 
         return update(args.output, gui=args.gui)
+    if args.cmd == "gpu":
+        return _gpu_cmd(args)
     if args.cmd == "remote":
         return _remote_cmd(args)
     if args.cmd == "eval":

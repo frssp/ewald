@@ -699,6 +699,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   removing a pip plugin (ewald-mp) keeps the window responsive (it froze for seconds when the
   package metadata was read on the GUI thread), no console window flashes, and *Update to 0.1.x*
   shows once a newer version is in the index.
+- No small windows flash up when `ewald-gui` starts on the owner's Windows PC (fixed by parenting
+  the dock title bar widgets, workbench tab groups and notebook bars before they are shown;
+  `test_startup_shows_no_window_but_the_main_window` checks it on Linux).
 - The large vector figure estimate (D67) on the owner's Windows PC and Mac: render a few thousand
   bonded atoms to SVG and PDF and compare with `python benchmarks/vector_size.py`; the *Large
   vector figure* dialog at 200 % scaling.
@@ -714,6 +717,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   Materials Project, then `python -m ewald_mp search Si`, `load("mp:mp-149/bands")`, `/dos`,
   `/chgcar` and `/relax` (mp-api's trajectory call reads MP's open data tables), and that the
   keychain keeps the key on Windows.
+- Laptops with two GPUs (owner's Windows laptop: Intel Arc + GeForce RTX, 2026-10-26): that
+  Preferences › 3D view › GPU for the 3D view = High performance (or `ewald gpu --prefer
+  high-performance`) moves the 3D view to the RTX from the next start (About shows the renderer),
+  also for `pythonw.exe` and a venv; then the CUDA path on a real NVIDIA GPU: `benchmarks/neighbors.py`,
+  `benchmarks/analysis.py --device cuda`, and `benchmarks/resize.py` first-maximize stall on the RTX
+  against Arc. Linux PRIME offload (`__NV_PRIME_RENDER_OFFLOAD`) on a real hybrid laptop.
 - The OpenCL ray tracer runs on the owner's Intel Arc on Windows (2026-10-26,
   `benchmarks/analysis.py --skip-modifiers --device opencl`): SrTiO3 + TiO6 polyhedra 1600x1200
   draft 0.17 s, standard 0.30 s, Publication 1.13 s (4.80 s on the CPU); trace only at 800x600

@@ -152,6 +152,39 @@ def test_view_tab_opens_no_window_and_keeps_its_cards_over_neb_frames(app, vasp_
     _dispose(panel)
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_startup_shows_no_window_but_the_main_window(app, tmp_path):
+    """Small windows flashed up at every start on Windows: the dock title bars, the workbench tab
+    groups and the notebook's banner were made visible before they had a parent, so each was its
+    own window for a moment. Building the window, opening a notebook and showing it shows only
+    the main window."""
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    shown = []
+
+    class Spy(QtCore.QObject):
+        def eventFilter(self, obj, ev):
+            if ev.type() == QtCore.QEvent.Show and isinstance(obj, QtWidgets.QWidget) and obj.isWindow():
+                shown.append(f"{type(obj).__name__} {obj.objectName()!r}")
+            return False
+
+    path = tmp_path / "nb.py"
+    path.write_text(f"# %%\nfrom ewald import load\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n",
+                    encoding="utf-8")
+    spy = Spy()
+    app.installEventFilter(spy)
+    try:
+        w = MainWindow(settings=settings.Settings())
+        view = w.panel.open_notebook(str(path))          # restricted: shows its banner
+        w.show()
+        app.processEvents()
+    finally:
+        app.removeEventFilter(spy)
+    assert view.banner.isVisible()
+    assert shown == ["MainWindow ''"], shown
+
+
 def test_view_tab_trajectory_color_map(app, pipe):
     """The Elements card colors trajectory lines with a color map over a Time window or a trail; the values
     go into the style (and so the view cell) and the viewport draws them with a color bar."""
@@ -2005,6 +2038,30 @@ def test_main_window_ask_uses_picks_and_selection(app, pipe):
     w.close()
 
 
+def test_side_bars_open_together_stand_in_columns_left_of_the_notebook(app):
+    """A second (third) side bar gets a column between the open ones and the notebook; splitting
+    the notebook stacked it and the notebook under the first side bar, the panels overlapping."""
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    w.resize(1600, 900)
+    w.show()
+    app.processEvents()
+    for dock in (w.plugins_dock, w.remotes_dock, w.ask_dock):
+        w._show_side_bar(dock)
+        app.processEvents()
+    docks = [w.plugins_dock, w.remotes_dock, w.ask_dock, w.notebook_dock]
+    rects = [d.geometry() for d in docks]
+    assert all(not d.isFloating() and w.dockWidgetArea(d) == QtCore.Qt.LeftDockWidgetArea for d in docks)
+    assert len({r.top() for r in rects}) == 1 and len({r.height() for r in rects}) == 1   # one row
+    assert all(a.right() < b.left() for a, b in zip(rects, rects[1:]))                   # left to right
+    w.remotes_dock.hide()
+    w._show_side_bar(w.remotes_dock)                       # shown again: back in a column, not stacked
+    app.processEvents()
+    assert w.remotes_dock.geometry().top() == w.notebook_dock.geometry().top()
+    w.close()
+
+
 def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
     from ewald.gui import ask_panel
     from ewald.gui.app import MainWindow
@@ -2171,8 +2228,8 @@ def test_viewport_draws_vector_arrows(app):
     assert not any(str(k).startswith("vectors:") for k in v.plotter.actors)
     v.close()
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
-def test_viewport_impostors_smooth_edges_and_opengl_check(app, pipe):
-    from ewald import settings
+def test_viewport_impostors_smooth_edges_and_opengl_check(app, pipe, monkeypatch):
+    from ewald import gpu_select, settings
     from ewald.gui.app import MainWindow
 
     s = settings.Settings()
@@ -2186,6 +2243,25 @@ def test_viewport_impostors_smooth_edges_and_opengl_check(app, pipe):
     assert gl["renderer"] and "OpenGL" in w.hardware_summary()
     if gl["software"]:  # xvfb: Mesa llvmpipe
         assert "software OpenGL" in w.statusBar().currentMessage()
+    # a hybrid laptop: the view on Intel Arc, an RTX next to it -> About says how to switch
+    monkeypatch.setattr(gpu_select, "list_gpus", lambda: ["Intel(R) Arc(TM) Graphics", "NVIDIA GeForce RTX 4060"])
+    monkeypatch.setattr(vp, "opengl_info", lambda: {"renderer": "Intel(R) Arc(TM) Graphics", "vendor": "Intel",
+                                                    "version": "4.6", "software": False})
+    about = w.hardware_summary()
+    assert "NVIDIA GeForce RTX 4060" in about and "GPU for the 3D view" in about
+    monkeypatch.undo()
+    # Preferences › GPU for the 3D view on Windows writes the per-app choice when it changes
+    from ewald.gui import prefs_apply
+
+    written = []
+    monkeypatch.setattr(prefs_apply.sys, "platform", "win32")
+    monkeypatch.setattr(gpu_select, "set_windows_preference", lambda c: written.append(c) or ["python.exe"])
+    s["viewport.gpu"] = "high-performance"
+    prefs_apply.apply_gpu_choice(w, s)
+    prefs_apply.apply_gpu_choice(w, s)   # unchanged: nothing written
+    assert written == ["high-performance"]
+    monkeypatch.undo()
+    s["viewport.gpu"] = "auto"
     s["viewport.sphere_drawing"], s["viewport.anti_aliasing"] = "mesh", False
     from ewald.gui import preferences as prefs
 

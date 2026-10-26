@@ -102,6 +102,9 @@ class DockTitleBar(QtWidgets.QWidget):
             lay = QtWidgets.QHBoxLayout(self)
             lay.setContentsMargins(0 if self.embedded else header.INSET, 0, 6, 0)
             lay.setSpacing(2)
+        for w in (self.fold, self.title, self.vtitle, self.float_button, self.embedded, *self.extra):
+            if w is not None and w.parentWidget() is not self:
+                w.setParent(self)  # a parentless widget made visible flashes up as its own window
         self.title.setVisible(not vertical and not self.embedded)
         if self.embedded:
             self.embedded.setVisible(not vertical)
