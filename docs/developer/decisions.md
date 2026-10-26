@@ -959,6 +959,17 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** the benchmark alone first; phases 0-1 only; all five phases at once.
 - **Landed:** public PR #90.
 
+### D74. Polyhedra get their own View tab card (2026-10-26)
+
+- **Decision:** the View tab has a Polyhedra card after Bonds. Without a Coordination polyhedra
+  step it offers the center types and *Add polyhedra* (a notebook step); with one it shows the
+  centers, *Edit step* (the step's form) and the look (shown, color, transparency, edges) as the
+  view's `surfaces["coordination-polyhedra"]`. The owner found polyhedron settings missing from the
+  View panel ("polyhedron 설정이 view 패널에 없음"), saw the rendered card in both states and
+  approved it ("머지").
+- **Considered:** polyhedra inside the Bonds card; keeping them as one row of the Surfaces card.
+- **Landed:** public PR #91.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
