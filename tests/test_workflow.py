@@ -168,9 +168,11 @@ def test_a_source_offers_analyses_that_become_notebook_cells():
     nb = Notebook.from_py(workflow.notebook_text(wf), name="Si relax")
     sources = [c.source for c in nb.cells]
     assert sources[4].startswith("## Atom count") and sources[5] == "relaxed = load('demo:7/relax')"
+    assert sources[7] == "show(summary)" and nb.cells[7].is_view   # the result is drawn
     assert "Not available: no phonon step" in sources[-1]
     assert nb.run_all()
     assert nb.namespace["summary"].attributes["result"] == {"atoms": 2}
+    assert workflow.Analysis("x", result="").view_cell == "" == workflow.Analysis("x", result="a b").view_cell
     with pytest.raises(LookupError, match="it has: summary, phonons"):
         wf.analysis("bands")
 
@@ -193,7 +195,8 @@ def test_ai_adds_an_analysis_through_cells_and_quotes_its_result():
     ts = Toolset()
     out = ts.call("add_analysis", {"path": "demo:7", "name": "summary"}).content
     assert out["result"] == {"atoms": 2} and out["table"] == "Summary" and out["cells"] == 2
-    assert ts.notebook.cells[-1].source.startswith("from ewald.verbs import Table")
+    assert ts.notebook.cells[-2].source.startswith("from ewald.verbs import Table")
+    assert ts.notebook.cells[-1].source == "show(summary)" and "plot_error" not in out
     err = ts.call("add_analysis", {"path": "demo:7", "name": "phonons"})
     assert err.is_error and "no phonon step" in err.content
 

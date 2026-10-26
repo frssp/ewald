@@ -1675,6 +1675,20 @@ def test_main_window_applies_settings(app, pipe):
     s["viewport.show_axes"] = False
     apply_settings(w, s)
     assert w.style.bond_pairs[0][3] == round(1.0 * 2 * 1.32, 2)
+    # applying Preferences keeps the style picked in the view (Simple (ASE) went back to Ball & stick)
+    w.style.apply_preset("Simple (ASE)", w.data.types)
+    w.style.bond_radius = 0.3
+    s["viewport.rotation_step"] = 15.0
+    apply_settings(w, s)
+    assert w.style.preset == "Simple (ASE)" and w.style.atom_style == "flat" and w.style.bond_radius == 0.3
+    w.style.apply_preset("Ball & stick", w.data.types)
+    w.style.background = "#123456"                    # picked for this view: other preferences keep it
+    apply_settings(w, s)
+    assert w.style.background == "#123456"
+    s["viewport.style_preset"] = "Space-filling"       # the default itself changed: that is applied
+    s["bonds.radius"] = 0.2
+    apply_settings(w, s)
+    assert w.style.preset == "Space-filling" and w.style.bond_radius == 0.2
     w.close()
     w.deleteLater()
     assert (s.path.parent / "layout.json").exists()
@@ -3377,6 +3391,17 @@ def test_main_window_legacy_gl_viewport(app, pipe, tmp_path, monkeypatch):
     vp.hover_info = True
     assert vp.hover_index(W / 2, H / 2, W, H) is not None  # the hover readout shares the camera
     assert vp.hover_index(2, 2, W, H) is None
+    # Simple (ASE) discs show only their outline: fine meshes, so they are round, not polygons
+    w.style.apply_preset("Simple (ASE)", w.data.types)
+    vp.redraw()
+    assert vp.view.pending[1]["sphere_resolution"] >= 36 and vp.view.pending[1]["flat"]
+    w.style.sphere_resolution = 20                      # View › Atoms › Sphere detail wins
+    vp.redraw()
+    assert vp.view.pending[1]["sphere_resolution"] == 20
+    w.style.sphere_resolution = None
+    w.style.apply_preset("Ball & stick", w.data.types)
+    vp.redraw()
+    assert vp.view.pending[1]["sphere_resolution"] <= 12   # lit spheres stay light over ssh -X
     vp.view_along("c")
     vp.rotate("azimuth", 15)
     w.set_frame(1)
@@ -6200,6 +6225,22 @@ def test_console_shares_the_notebook_namespace(app, tmp_path, monkeypatch):
         assert "viewer" in shell.user_ns_hidden                     # console helpers stay out of %who
     finally:
         w.close()
+
+
+def test_console_kernel_prints_no_debugger_warning(app, monkeypatch):
+    """ipykernel imports debugpy, whose frozen-modules check printed four "Debugger warning"
+    lines at every start on Windows; the console turns that check off before the import."""
+    import os
+    from ewald.gui.console import make_console
+
+    pytest.importorskip("qtconsole")
+    monkeypatch.setenv("PYDEVD_DISABLE_FILE_VALIDATION", "x")   # restored after the test
+    monkeypatch.delenv("PYDEVD_DISABLE_FILE_VALIDATION")
+    con = make_console({}, lambda *a: None)
+    try:
+        assert os.environ.get("PYDEVD_DISABLE_FILE_VALIDATION") == "1"
+    finally:
+        con.close()
 
 
 def test_restart_keeps_outputs_and_restart_and_clear_drops_them(app):

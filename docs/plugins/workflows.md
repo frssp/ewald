@@ -111,5 +111,7 @@ rather than nothing, so the user and the AI see why it is not there. A recipe th
 shown as unavailable with the error. Values from the source go into the cells only as literals
 (`repr` of strings and numbers), as for the generated `load` cells, and the cells themselves
 come from the plugin's code, which is trusted because it is installed. When `result` names a
-`Table`, `add_analysis` returns its `energy_axis`, `result` and `levels` attributes to the AI, so
+`Table`, EWALD ends the analysis with a `show(<result>)` view cell (in the opened notebook and
+in `add_analysis`), so its plot, with the table's `levels`, `regions` and `gaps`, is drawn without
+the plugin writing a view cell, and `add_analysis` returns its `energy_axis`, `result` and `levels` attributes to the AI, so
 it can quote the numbers instead of computing them.

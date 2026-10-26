@@ -125,7 +125,9 @@ OPTIONS = (
            "Mesh: triangle spheres (Sphere resolution) up to the impostor threshold. "
            "A style's own Shape (mesh/impostor) wins over this.", choices=("impostor", "mesh")),
     Option("viewport.sphere_resolution", 16, "Sphere resolution",
-           "Mesh sphere detail when Sphere drawing is Mesh; exports use full quality.", minimum=4, maximum=40),
+           "Mesh sphere detail when Sphere drawing is Mesh and in the OpenGL 1.x viewport (its Simple (ASE) "
+           "discs use at least 36); a view's sphere_resolution (View › Atoms › Sphere detail) wins; exports use "
+           "full quality.", minimum=4, maximum=40),
     Option("viewport.mesh_limit", 150_000, "Impostor threshold",
            "Above this many atoms spheres are drawn as GPU impostors (and arrows as lines).",
            minimum=1000, maximum=100_000_000),

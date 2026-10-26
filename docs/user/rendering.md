@@ -55,7 +55,7 @@ pipe.view.color("La", "rgb(40, 120, 200)")
 
 | Group | Settings |
 |---|---|
-| style | `style` (Ball & stick, Space-filling, Simple (ASE), Points), `theme`, `atom_style` (auto, mesh, impostor, flat), `background`, `light` (key light) |
+| style | `style` (Ball & stick, Space-filling, Simple (ASE), Points), `theme`, `atom_style` (auto, mesh, impostor, flat), `sphere_resolution`, `background`, `light` (key light) |
 | atoms | `atoms` (False: a stick model), `color_by`, `colormap`, `color_range` (what colors the atoms, below), `radius_scale`, `colors` {type: color}, `radii` {type: Angstrom}, `transparency` {type: 0..1}, `selection` (True: selected atoms red, False, or a color), `labels` (atom labels), `radius_preset`, `oxidation_states` |
 | bonds | `bonds` (True, False or a cutoff), `bond_pairs` [[A, B, dmin, dmax(, pbc)]], pbc True, False or "complete" ([bond rules](#bond-rules-vesta)), `bond_factor`, `bond_radius` |
 | cell | `cell`, `cell_width`, `cell_color`, `cell_radius` (ray-traced tube, Angstrom; None: as wide as the line) |
@@ -396,6 +396,14 @@ It uses impostors, so it is as fast as `"impostor"` at any size, and screen-spac
 occlusion is off unless you pass `ambient_occlusion=True`. Every renderer draws it the same way
 (D51): the vector renderer with `shading="flat"`, the ray tracer unlit (no shadows or occlusion,
 and its surfaces and arrows unlit too) and the OpenGL 1.x viewport with the same outlines.
+
+The OpenGL 1.x viewport (`ssh -X`) has no impostors: its discs are triangle spheres seen
+unlit, so only their outline shows, and it draws them with at least 36 segments so they stay
+round. `sphere_resolution` sets the segments of every mesh sphere, here and for
+`atom_style="mesh"` in the viewport and OpenGL pictures (View › Atoms › *Sphere detail*, or
+`view(pipe, sphere_resolution=48)`); left at None the viewport uses Preferences › 3D view ›
+*Sphere resolution* and pictures the quality preset. Impostors, the ray tracer and vector
+files draw exact circles whatever it says.
 
 ## Bond rules (VESTA)
 
