@@ -703,10 +703,13 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   Materials Project, then `python -m ewald_mp search Si`, `load("mp:mp-149/bands")`, `/dos`,
   `/chgcar` and `/relax` (mp-api's trajectory call reads MP's open data tables), and that the
   keychain keeps the key on Windows.
-- The OpenCL ray tracer on a real GPU (the owner's Intel Arc on Windows: float sums, no double
-  precision; AMD; Apple): `pip install pyopencl`, Preferences › Compute › Device lists the GPU,
-  and `python benchmarks/analysis.py --skip-modifiers --device opencl` traces the same pictures
-  as `--device cpu`, faster. The CUDA tracer likewise on a real NVIDIA GPU.
+- The OpenCL ray tracer runs on the owner's Intel Arc on Windows (2026-10-26,
+  `benchmarks/analysis.py --skip-modifiers --device opencl`): SrTiO3 + TiO6 polyhedra 1600x1200
+  draft 0.17 s, standard 0.30 s, Publication 1.13 s (4.80 s on the CPU); trace only at 800x600
+  Publication, gyroid 0.73 s, fcc Cu 108k 0.20 s, Cu slab 0.07 s. pyopencl prints a
+  CompilerWarning (non-empty build log) on the first build there; see what it says with
+  `PYOPENCL_COMPILER_OUTPUT=1`. Still unchecked: AMD GPUs, the GUI Render page on Arc, and the CUDA
+  tracer on a real NVIDIA GPU.
 - The Metal ray tracer runs on the owner's M2 MacBook Air (2026-10-24; first picture of a session
   +4 s for the kernel build). `benchmarks/analysis.py --skip-modifiers`, Metal vs CPU: SrTiO3 +
   TiO6 polyhedra 1600x1200 Publication 7.14 vs 7.12 s, gyroid 4.76 vs 4.34 s, fcc Cu 108k
