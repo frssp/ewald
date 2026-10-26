@@ -54,7 +54,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 - Playing a large trajectory: the bond search of each frame runs on the compute worker instead of
   the GUI thread, the next frame is read while the current one is drawn, and the neighbor-list
   kernels let the window paint while they run; the color legend no longer loops over every atom in
-  Python (0.3 s per frame at 1M atoms). `benchmarks/viewport.py` measures the 3D view (D73). (#N)
+  Python (0.3 s per frame at 1M atoms). `benchmarks/viewport.py` measures the 3D view (D73). (#90, #93)
 
 - New app icon: an ammonia molecule with a glass lone-pair lobe over an orange chat bubble
   (replaces the Ewald sphere).
