@@ -892,6 +892,16 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   and the notebook context.
 - **Landed:** public PR #71.
 
+### D69. Code of conduct reports go to the maintainer's e-mail (2026-10-26)
+
+- **Decision:** `CODE_OF_CONDUCT.md` adopts the Contributor Covenant 2.1 by reference, and
+  reports go to frssp.kim@gmail.com.
+- **Why:** after the repository went public the owner asked "공개했으니 contribution 문서 필요?"
+  (now that it is public, do we need contribution docs?) and picked this address on the decision
+  card, where it was recommended because it is already public as the commit author address.
+- **Considered:** another, project-only address; no code of conduct for now.
+- **Landed:** public PR #72.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
