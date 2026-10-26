@@ -333,6 +333,7 @@ Details: [Command line](user/cli.md).
 | `ewald eval` | score an AI model on tasks with known answers (costs API tokens; see --dry-run) | `--model` `--provider` `--profile` `--base-url` `--effort` `--tasks` `--category` `--list` `--allow-code` `--repeat` `--max-turns` `--out` `--compare` `--dry-run` `--price` `--no-download` `--context` |
 | `ewald mcp [INPUT]` | serve the analysis tools over MCP (stdio) | `--allow-code` |
 | `ewald remote [REMOTE_CMD]` | saved SSH profiles: list, add, remove, test, ls, get |  |
+| `ewald gpu` | the GPUs here, which one the 3D view uses and CUDA/OpenCL devices | `--prefer` |
 | `ewald inventory` | print or update the feature inventory (docs/features.md) | `-o` `--gui` |
 
 ## AI integration
@@ -453,6 +454,7 @@ One section per simulation code (`ewald.codes`; plugins add codes with `@simulat
 | `viewport.render_frame` | Render frame in the 3D view | `False` |
 | `viewport.show_overlay` | Show timestep and time | `True` |
 | `viewport.backend` | Viewport renderer | `'auto'` |
+| `viewport.gpu` | GPU for the 3D view | `'auto'` |
 | `viewport.hover_info` | Atom info on hover | `True` |
 | `viewport.hover_delay` | Hover delay | `0.25` |
 | `viewport.sphere_drawing` | Sphere drawing | `'impostor'` |

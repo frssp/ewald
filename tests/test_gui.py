@@ -2228,8 +2228,8 @@ def test_viewport_draws_vector_arrows(app):
     assert not any(str(k).startswith("vectors:") for k in v.plotter.actors)
     v.close()
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
-def test_viewport_impostors_smooth_edges_and_opengl_check(app, pipe):
-    from ewald import settings
+def test_viewport_impostors_smooth_edges_and_opengl_check(app, pipe, monkeypatch):
+    from ewald import gpu_select, settings
     from ewald.gui.app import MainWindow
 
     s = settings.Settings()
@@ -2243,6 +2243,25 @@ def test_viewport_impostors_smooth_edges_and_opengl_check(app, pipe):
     assert gl["renderer"] and "OpenGL" in w.hardware_summary()
     if gl["software"]:  # xvfb: Mesa llvmpipe
         assert "software OpenGL" in w.statusBar().currentMessage()
+    # a hybrid laptop: the view on Intel Arc, an RTX next to it -> About says how to switch
+    monkeypatch.setattr(gpu_select, "list_gpus", lambda: ["Intel(R) Arc(TM) Graphics", "NVIDIA GeForce RTX 4060"])
+    monkeypatch.setattr(vp, "opengl_info", lambda: {"renderer": "Intel(R) Arc(TM) Graphics", "vendor": "Intel",
+                                                    "version": "4.6", "software": False})
+    about = w.hardware_summary()
+    assert "NVIDIA GeForce RTX 4060" in about and "GPU for the 3D view" in about
+    monkeypatch.undo()
+    # Preferences › GPU for the 3D view on Windows writes the per-app choice when it changes
+    from ewald.gui import prefs_apply
+
+    written = []
+    monkeypatch.setattr(prefs_apply.sys, "platform", "win32")
+    monkeypatch.setattr(gpu_select, "set_windows_preference", lambda c: written.append(c) or ["python.exe"])
+    s["viewport.gpu"] = "high-performance"
+    prefs_apply.apply_gpu_choice(w, s)
+    prefs_apply.apply_gpu_choice(w, s)   # unchanged: nothing written
+    assert written == ["high-performance"]
+    monkeypatch.undo()
+    s["viewport.gpu"] = "auto"
     s["viewport.sphere_drawing"], s["viewport.anti_aliasing"] = "mesh", False
     from ewald.gui import preferences as prefs
 

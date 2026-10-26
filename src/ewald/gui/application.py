@@ -108,6 +108,11 @@ def _app():
         check_qt_platform()
         backend = viewport_backend(settings_mod.load()["viewport.backend"])
         use_software_gl_if_needed(backend)
+        from ..gpu_select import apply_at_startup
+
+        note = apply_at_startup(settings_mod.load()["viewport.gpu"])
+        if note:
+            print(note, file=sys.stderr)
         if backend == "vtk":
             check_remote_display()
             use_vtk_surface_format()  # Qt wants it before the QApplication on macOS

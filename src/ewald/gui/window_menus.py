@@ -749,6 +749,14 @@ class MenusMixin:
         text = f"Viewport OpenGL: {gl['renderer'] or 'unknown'} ({gl['vendor']}, {gl['version']})"
         if gl["software"]:
             text += "<br><b>Software rendering (no GPU acceleration)</b>"
+        from .. import gpu_select
+
+        gpus = gpu_select.list_gpus()
+        if len(gpus) > 1:
+            text += f"<br>GPUs in this computer: {', '.join(gpus)}"
+        hint = gpu_select.other_gpu_hint(gl["renderer"] or "", gpus)
+        if hint:
+            text += f"<br><b>{hint.replace('`', '')}</b>"
         if gpu_available():
             import cupy
 
