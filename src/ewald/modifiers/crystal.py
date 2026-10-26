@@ -13,6 +13,7 @@ import numpy as np
 from numba import njit
 
 from ..bonds import Bonds, minimum_images
+from ..colors import to_rgb as _to_rgb
 from ..pipeline import Modifier
 from ._knn import nearest_neighbors
 from .structure import (BCC, CUBIC_DIAMOND, FCC, HCP, HEX_DIAMOND, OTHER, PTM_MAX_INPUT_NEIGHBORS, STRUCTURE_COLORS,
@@ -372,6 +373,7 @@ class IdentifyFCCPlanarFaults(Modifier):
         color = np.array(default_colors(data), float)
         for t, c, name in ((FAULT_OTHER, self.color_other, "other HCP"), (ISF, self.color_isf, "intrinsic stacking fault"),
                            (TWIN, self.color_twin, "twin boundary"), (MULTI, self.color_multi, "multilayer fault")):
+            c = _to_rgb(c)
             color[kind == t] = c
             rule = color_rule.painted(rule, "the IdentifyFCCPlanarFaults step", f"Planar Fault Type == {t} ({name})",
                                       c, np.count_nonzero(kind == t))

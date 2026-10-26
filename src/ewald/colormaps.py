@@ -18,15 +18,7 @@ from __future__ import annotations
 
 import numpy as np
 
-def to_rgb(color) -> np.ndarray:
-    """RGB in 0..1 from a matplotlib color name or hex string, or an RGB(A) tuple in 0..1 or
-    0..255 (any component above 1 means 0..255)."""
-    if isinstance(color, str):
-        from matplotlib.colors import to_rgb as _mpl_rgb
-
-        return np.array(_mpl_rgb(color))
-    c = np.asarray(color, float)[:3]
-    return c / 255.0 if c.max() > 1 else c
+from .colors import to_rgb  # noqa: E402,F401  (the one color parser; kept importable from here)
 
 
 KINDS = ("sequential", "diverging", "cyclic", "categorical")
@@ -62,8 +54,10 @@ def get_colormap(name):
 
 def as_colormap(name: str, value):
     """A ``Colormap`` from what a ``@colormap`` function returns: a Colormap, or a list/array of
-    colors (names, hex or RGB(A) in 0..1) spaced evenly from 0 to 1."""
-    from matplotlib.colors import Colormap, LinearSegmentedColormap, ListedColormap, to_rgba
+    colors (any form :mod:`ewald.colors` reads) spaced evenly from 0 to 1."""
+    from matplotlib.colors import Colormap, LinearSegmentedColormap, ListedColormap
+
+    from .colors import to_rgba
 
     if isinstance(value, Colormap):
         return value.copy() if value.name == name else _renamed(value, name)

@@ -7,7 +7,7 @@
          bonds=True, cell=False, background="white", direction="z", zoom=1.3)
 
     pipe.view.bonds = False                  # the same, one setting at a time
-    pipe.view.color("O", "crimson")
+    pipe.view.color("O", "crimson")         # any color form: "#dc143c", "rgb(220, 20, 60)", (220, 20, 60)
     pipe.view.look("x").rotate(azimuth=30, elevation=15)
     pipe.view.render("figure.png", renderer="raytrace")
 
@@ -61,7 +61,9 @@ def _s(name, default, group, doc, choices=None, **schema):
     return Setting(name, default, group, doc, choices, schema)
 
 
-_COLOR = {"type": ["string", "array", "null"], "items": {"type": "number"}}
+_COLOR = {"type": ["string", "array", "null"], "items": {"type": "number"},
+          "description": "a color: name ('red', 'tab:blue'), hex ('#ff8800', '#f80'), 'rgb(255, 128, 0)', "
+                         "or [r, g, b] in 0..1 or 0..255"}
 SETTINGS: dict[str, Setting] = {s.name: s for s in [
     # style
     _s("style", DEFAULT_PRESET, "style", "Viewport style preset; sets radius_scale, bonds and atom_style "
@@ -943,15 +945,11 @@ def _rodrigues(v, k, angle):
 
 
 def _color(c):
-    """A color as stored in a view: names and hex strings stay, RGB becomes a float tuple."""
-    if isinstance(c, str):
-        return c
-    rgb = np.asarray(c, float)
-    if rgb.shape not in ((3,), (4,)):
-        raise ValueError(f"not a color: {c!r}")
-    if rgb.max() > 1:
-        rgb = rgb / 255.0
-    return tuple(round(float(x), 4) for x in rgb[:3])
+    """A color as stored in a view (:func:`ewald.colors.normalize`): names and hex strings stay, other
+    strings become hex, numbers an RGB float tuple; anything else raises ValueError now, not at draw time."""
+    from .colors import normalize
+
+    return normalize(c)
 
 
 def _check(name, value):
@@ -1081,7 +1079,7 @@ def _check(name, value):
         value = check(value)
     elif name in ("visuals", "overlays"):
         value = [v if isinstance(v, str) else dict(v) for v in ([value] if isinstance(value, (str, dict)) else value)]
-    elif name in ("background", "cell_color") and not isinstance(value, str):
+    elif name in ("background", "cell_color"):
         value = _color(value)
     return value
 

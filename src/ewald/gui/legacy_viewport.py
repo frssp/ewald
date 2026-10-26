@@ -167,7 +167,7 @@ class LegacyViewport(Viewport):
             flat = kw.get("atom_style") == "flat"
             scene = build(take(self.data, kw), ctx=SceneContext(), visuals=kw.pop("visuals", None), **kw)
         dark = _is_dark(self.style.background)
-        from matplotlib.colors import to_rgb
+        from ..colors import to_rgb
 
         ink = to_rgb(self.style.cell_color or ("#AEB4BE" if dark else "black"))
         self.view.pending = (scene, {"sphere_resolution": min(self.sphere_resolution, 12),
@@ -266,6 +266,6 @@ class LegacyViewport(Viewport):
         pos = self.data.positions[self._picks]
         rad = default_radii(self.data, **self.style.radius_kwargs())[self._picks] * self.style.radius_scale
         line = pos if len(self._picks) >= 2 and self.tool in ("distance", "angle") else None
-        from matplotlib.colors import to_rgb
+        from ..colors import to_rgb
 
         self.view.pending_overlay = (pos, rad, line, to_rgb(TOKENS["pick"]))

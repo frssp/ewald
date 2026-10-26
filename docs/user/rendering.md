@@ -39,6 +39,20 @@ View tabs are more views of the same pipeline, each the main view with its own c
 `pipe.views["Top"]` is its view, and `pipe.render("top.png", tab="Top")` or
 `snapshot(pipe, tab="Top")` draws it.
 
+Every color, in view settings (`colors`, `background`, `cell_color`, `selection`, `labels`,
+`surfaces`), in steps (`AssignColor`, `VectorVis`, `paint`, ...) and in the GUI's step forms, takes
+the same forms (`ewald.colors`): a matplotlib or CSS name in any case (`"red"`, `"Crimson"`,
+`"tab:blue"`), hex with or without `#` (`"#ff8800"`, `"#f80"`, `"ff8800"`), `"rgb(255, 128, 0)"`,
+a grey level `"0.5"`, or three numbers in 0..1 or 0..255 (`(1, 0.5, 0)`, `(255, 128, 0)`, also as
+the text `"255, 128, 0"`). A fourth number is alpha, which atoms ignore (use `transparency`). A
+value that is no color fails when it is set, naming these forms. Names and hex stay as typed in
+the view cell; other text is stored as hex, and colors the GUI writes into the cell are hex.
+
+```python
+view(pipe, colors={"O": "crimson", "Ti": "#7f7fff", "Sr": (0, 160, 80)}, background="0.95")
+pipe.view.color("La", "rgb(40, 120, 200)")
+```
+
 | Group | Settings |
 |---|---|
 | style | `style` (Ball & stick, Space-filling, Simple (ASE), Points), `theme`, `atom_style` (auto, mesh, impostor, flat), `background`, `light` (key light) |
