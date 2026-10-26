@@ -919,6 +919,20 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   writing with a second model.
 - **Landed:** public PR #73.
 
+### D71. The 3D view stays a QOpenGLWidget with floating chips (2026-10-26)
+
+- **Decision:** the 3D view stays a QOpenGLWidget, so the view chips keep floating over it
+  (D60, D62), even though on the owner's Windows laptop it makes the first maximize of a session
+  stall about 4 s on the Intel Arc GPU. Moving the view into a native window (as the legacy-gl
+  view does) maximizes in 90 ms there, but the chips would have to sit in strips around the
+  view. After the stall turned out to be the Intel driver (0.24 s on the same laptop's GeForce
+  RTX), the owner chose to measure on the RTX before adding a startup warm-up.
+- **Why:** the owner, after seeing both layouts: "이전 모양이 좋은데?" (the previous look is
+  better).
+- **Considered:** a native-window VTK view with chip strips; a transparent maximize at startup
+  (moves 2-2.5 s into startup on Intel); another default OpenGL format (no change).
+- **Landed:** public PR #78.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

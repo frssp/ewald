@@ -284,8 +284,7 @@ class PluginPanelsMixin:
             # only then: Qt reports a restore for docks it never saw, too
             restored = name in getattr(self, "_saved_plugin_docks", ()) and self.restoreDockWidget(dock)
             if not restored:
-                self.splitDockWidget(dock, self.notebook_dock, QtCore.Qt.Horizontal)
-                dock.hide()
+                dock.hide()      # _show_side_bar places it in a column of its own
             dock.visibilityChanged.connect(lambda _shown, a=act, d=dock: a.setChecked(not d.isHidden()))
             if restored:
                 dock.show()

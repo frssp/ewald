@@ -2005,6 +2005,30 @@ def test_main_window_ask_uses_picks_and_selection(app, pipe):
     w.close()
 
 
+def test_side_bars_open_together_stand_in_columns_left_of_the_notebook(app):
+    """A second (third) side bar gets a column between the open ones and the notebook; splitting
+    the notebook stacked it and the notebook under the first side bar, the panels overlapping."""
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow()
+    w.resize(1600, 900)
+    w.show()
+    app.processEvents()
+    for dock in (w.plugins_dock, w.remotes_dock, w.ask_dock):
+        w._show_side_bar(dock)
+        app.processEvents()
+    docks = [w.plugins_dock, w.remotes_dock, w.ask_dock, w.notebook_dock]
+    rects = [d.geometry() for d in docks]
+    assert all(not d.isFloating() and w.dockWidgetArea(d) == QtCore.Qt.LeftDockWidgetArea for d in docks)
+    assert len({r.top() for r in rects}) == 1 and len({r.height() for r in rects}) == 1   # one row
+    assert all(a.right() < b.left() for a, b in zip(rects, rects[1:]))                   # left to right
+    w.remotes_dock.hide()
+    w._show_side_bar(w.remotes_dock)                       # shown again: back in a column, not stacked
+    app.processEvents()
+    assert w.remotes_dock.geometry().top() == w.notebook_dock.geometry().top()
+    w.close()
+
+
 def test_ai_chat_side_bar_sends_notebook_and_inserts_cells(app, pipe):
     from ewald.gui import ask_panel
     from ewald.gui.app import MainWindow
