@@ -77,16 +77,19 @@ def test_classic_layout_setting_is_retired(tmp_path, caplog):
 
 
 def test_view_tab_surfaces_labels_transparency(app, pipe):
-    """The View tab's Surfaces card restyles polyhedra by name, and the Atoms and Types cards set atoms
-    on/off, labels, the selection highlight and per-type transparency; all go into the view settings."""
+    """The View tab's Polyhedra card restyles the polyhedra (the Surfaces card keeps the other meshes),
+    and the Atoms and Types cards set atoms on/off, labels, the selection highlight and per-type
+    transparency; all go into the view settings."""
     from ewald.gui.pipeline_panel import DisplayPanel
 
     pipe.modifiers.append(mods.CoordinationPolyhedra(center_types=["Cu"]))
     panel = DisplayPanel()
     panel.set_pipeline(pipe)
     panel.set_data(pipe.compute(0))
-    card = panel.sections["Surfaces"]
-    shown = [c for c in card.findChildren(QtWidgets.QCheckBox) if c.text() == "coordination-polyhedra"]
+    assert not [c for c in panel.sections["Surfaces"].findChildren(QtWidgets.QCheckBox)
+                if c.text() == "coordination-polyhedra"]
+    card = panel.sections["Polyhedra"]
+    shown = [c for c in card.findChildren(QtWidgets.QCheckBox) if c.text() == "Draw polyhedra"]
     assert shown and shown[0].isChecked()
     shown[0].setChecked(False)
     card.findChild(QtWidgets.QDoubleSpinBox).setValue(0.6)
@@ -115,6 +118,35 @@ def test_view_tab_surfaces_labels_transparency(app, pipe):
     assert st.light is None and "light" not in st.scene_kwargs()
     _dispose(panel)
 
+
+
+def test_view_tab_polyhedra_card_adds_and_shows_the_step(app, srtio3_pipe):
+    """The owner missed polyhedra in the View tab: without a step its Polyhedra card offers the center
+    types and Add polyhedra (a notebook step); with one, Edit step asks for that step's cell."""
+    from ewald.gui.pipeline_panel import DisplayPanel
+
+    panel = DisplayPanel()
+    panel.set_pipeline(srtio3_pipe)
+    panel.set_data(srtio3_pipe.compute(0))
+    card = panel.sections["Polyhedra"]
+    centers = card.findChild(QtWidgets.QLineEdit)
+    assert centers.text() == "Ti"                       # the smallest non-anion type
+    asked = []
+    panel.modifierRequested.connect(asked.append)
+    [b for b in card.findChildren(QtWidgets.QPushButton) if b.text() == "Add polyhedra"][0].click()
+    assert isinstance(asked[0], mods.CoordinationPolyhedra) and asked[0].center_types == ["Ti"]
+    srtio3_pipe.modifiers.append(asked[0])
+    panel.set_data(srtio3_pipe.compute(0), refresh=True)
+    card = panel.sections["Polyhedra"]
+    assert any(lab.text() == "Ti" for lab in card.findChildren(QtWidgets.QLabel))
+    assert any(lab.text() == "8 polyhedra" for lab in card.findChildren(QtWidgets.QLabel))
+    steps = []
+    panel.stepRequested.connect(steps.append)
+    [b for b in card.findChildren(QtWidgets.QPushButton) if b.text() == "Edit step"][0].click()
+    assert steps == [asked[0]]
+    [c for c in card.findChildren(QtWidgets.QCheckBox) if c.text() == "Outline edges"][0].setChecked(False)
+    assert panel.style.view_settings(["Sr", "Ti", "O"])["surfaces"] == {"coordination-polyhedra": {"edges": False}}
+    _dispose(panel)
 
 def test_view_tab_opens_no_window_and_keeps_its_cards_over_neb_frames(app, vasp_dir):
     """A NEB band with trajectory lines played on Windows flashed a window at every frame: the View tab

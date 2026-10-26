@@ -1618,6 +1618,18 @@ class NotebookPanel(QtWidgets.QWidget):
         if self.view.add_step(mod) is not None:
             pass
 
+    def show_step(self, mod):
+        """Select the step cell of ``mod``, scroll to it and open its form (View › Polyhedra › Edit step)."""
+        view = self.view
+        cell = None if view is None else next((c for c in view.notebook.cells if c.modifier is mod), None)
+        if cell is None:
+            return
+        view.select(cell)
+        w = view.widget_for(cell)
+        if w is not None and getattr(w, "form_button", None) is not None:
+            w.form_button.setChecked(True)
+            QtCore.QTimer.singleShot(0, w, lambda: view.scroll.ensureWidgetVisible(w))
+
     def refresh(self, select=None):
         """After the pipeline changed outside the cells (console, Ask AI, viewport tools)."""
         view = self.view

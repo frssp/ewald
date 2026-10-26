@@ -190,6 +190,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.display = DisplayPanel(self.style)
         self.display.styleChanged.connect(self._style_changed)
         self.display.modifierRequested.connect(lambda m: self.panel.add_modifier(m))
+        self.display.stepRequested.connect(lambda m: self.panel.show_step(m))
         self.display.cameraRequested.connect(self.write_camera)
         # its cards are built once, by apply_settings below (each build takes about 0.1 s)
 
