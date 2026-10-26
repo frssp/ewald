@@ -1478,9 +1478,9 @@ class CellWidget(QtWidgets.QFrame):
         self.outputs.set_outputs(outs)
 
     def set_running(self, phase: str = "running", started: float | None = None):
-        """Show that this cell runs now (``running``: an accent bar on its left, the run button
-        turns into Interrupt with a turning ring, the counter counts the time) or waits for the
-        cells before it (``queued``: a muted bar and ``*``, like Jupyter's queue)."""
+        """Show that this cell runs now (``running``: a tinted card with a 2 px accent border, the
+        run button turns into Interrupt with a turning ring, the counter counts the time) or waits
+        for the cells before it (``queued``: a dashed border and ``*``, like Jupyter's queue)."""
         import time
 
         running = phase == "running"
@@ -1520,18 +1520,15 @@ class CellWidget(QtWidgets.QFrame):
 
     def paintEvent(self, event):
         super().paintEvent(event)
-        state = self.property("state")
-        if state not in ("running", "queued"):
+        if self.property("state") != "running":
             return
-        # the bar left of the gutter: which cell runs (accent) and which wait (muted)
-        color = QtGui.QColor(TOKENS["accent"] if state == "running" else TOKENS["muted"])
-        if state == "queued":
-            color.setAlphaF(0.45)
+        # the style sheet tints the running cell; its border is drawn 2 px wide here, inside the
+        # 1 px one, so the cell's contents do not shift when it starts (D72)
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
-        p.setPen(QtCore.Qt.NoPen)
-        p.setBrush(color)
-        p.drawRoundedRect(QtCore.QRectF(1.5, 7, 3, max(0, self.height() - 14)), 1.5, 1.5)
+        p.setPen(QtGui.QPen(QtGui.QColor(TOKENS["accent"]), 2))
+        p.setBrush(QtCore.Qt.NoBrush)
+        p.drawRoundedRect(QtCore.QRectF(self.rect()).adjusted(1, 1, -1, -1), 7.5, 7.5)
         p.end()
 
     def set_current(self, on: bool):

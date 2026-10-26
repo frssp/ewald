@@ -481,10 +481,10 @@ way as a `.py`; `pipe.add(...)` cells become steps and its outputs are kept.
 ## Kernels
 
 A notebook's cells run in the app's own Python unless you pick another one. There they run on a
-worker thread and the window stays usable. The cell that runs now has an accent bar on its
-left, its run button turns into a stop button with a turning ring and its counter counts the
-seconds; cells still waiting their turn (Run all, Run below, a selection) show a grey bar and
-`*`, like Jupyter's queue. A chip beside Interrupt names the running cell, how long it has run
+worker thread and the window stays usable. The cell that runs now is tinted in the accent color
+with a thicker accent border, its run button turns into a stop button with a turning ring and its counter counts the
+seconds; cells still waiting their turn (Run all, Run below, a selection) get a dashed border
+and `*`, like Jupyter's queue. A chip beside Interrupt names the running cell, how long it has run
 and how many wait ("Cell 3 · 2.8 s · 2 waiting"); click it to go there (it shows an arrow when
 the cell is off screen), and the notebook's tab shows a play icon while its cells run, so a run
 in another tab is easy to spot. Preferences › Notebooks › **Follow the running cell**

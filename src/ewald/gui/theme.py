@@ -347,9 +347,11 @@ QPushButton#pluginButton {{ border-radius: 6px; padding: 3px 12px; }}
 QFrame#cell[current="true"] {{ border-color: {accent}; }}
 QFrame#cell[state="error"] {{ border-color: {error}; }}
 QFrame#cell[state="stale"] {{ background: {panel}; }}
-/* the cell that runs: accent border, a bar on its left (painted by CellWidget), stop button with a
-   turning ring and its time in the counter; cells waiting their turn keep a muted bar and '*' */
-QFrame#cell[state="running"] {{ border-color: {accent}; }}
+/* the cell that runs: a tinted card with a 2 px accent border (the inner pixel painted by
+   CellWidget), stop button with a turning ring and its time in the counter; cells waiting their
+   turn get a dashed border and '*' (D72) */
+QFrame#cell[state="running"] {{ border-color: {accent}; background: {accent_soft}; }}
+QFrame#cell[state="queued"] {{ border: 1px dashed {muted}; }}
 QFrame#cell[state="running"] QLabel#cellCounter {{ color: {accent}; font-weight: 600; font-size: 10px; }}
 QToolButton#runningChip {{ background: {accent_soft}; color: {accent}; border: 1px solid {accent}; border-radius: 10px;
     padding: 1px 9px; font-weight: 600; }}

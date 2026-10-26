@@ -2995,7 +2995,7 @@ def test_in_process_cells_run_off_the_gui_thread_and_interrupt(app, cu_path, tmp
 
 
 def test_the_running_cell_is_marked_while_the_rest_wait(app, tmp_path, monkeypatch):
-    """Run all marks one cell as running (accent bar, stop button with a ring, its time in the
+    """Run all marks one cell as running (tinted card, stop button with a ring, its time in the
     counter) and the later ones as waiting; the toolbar chip names it and the tab shows a play
     icon, and the marks stay past CELL_BUDGET until each cell's result arrives."""
     import time
