@@ -121,7 +121,10 @@ def nord():
 | `viewport` | the 3D view background (unless Preferences › 3D view › *Background follows the UI theme* is off) |
 
 Values are `#rrggbb` colors. Pick the theme under Preferences › General › *UI theme*; panels,
-the console and open plots switch at once (saved figures keep print colors). A theme with an
+the console, open plots and open windows such as Preferences itself switch at once (saved
+figures keep print colors). A plugin window that draws theme colors itself (its own style
+sheet, icons or item colors) can define a `retheme()` method on its top-level widget; it is
+called after every theme change. A theme with an
 unknown token, a color that is not `#rrggbb` or a base that is not a built-in theme is reported
 in the log and the app falls back to Graphite rather than failing to open. An installed package registers UI themes under the `ewald.ui_themes` entry
 point group (an object that is a dict of tokens, which may name its `"base"`, or a function

@@ -74,6 +74,14 @@ class ElementTable(QtWidgets.QWidget):
             self._mark(r, sym)
         self._filter(self.filter.text())
 
+    def retheme(self):
+        """Recolor the numbers and Edited marks in the active UI theme."""
+        for r in range(self.table.rowCount()):
+            for col, key in ((0, "muted"), (4, "accent")):
+                item = self.table.item(r, col)
+                if item is not None:
+                    item.setForeground(QtGui.QColor(TOKENS[key]))
+
     @staticmethod
     def _cell(w):
         holder = QtWidgets.QWidget(objectName="cell")

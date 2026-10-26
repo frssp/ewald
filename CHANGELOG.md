@@ -79,6 +79,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Fixed
 
+- Applying a new UI theme in Preferences restyles the open Preferences dialog too (its pages,
+  icons, element table and switches), not only the main window; windows that draw theme colors
+  themselves define `retheme()`. (#83)
 - The window no longer freezes while the Plugins side bar installs, updates or removes a pip
   plugin: the package metadata read around pip (seconds, longer on Windows) moved off the GUI
   thread, Cancel also works before pip starts, and catalogs older than ten minutes are read

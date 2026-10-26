@@ -4134,6 +4134,52 @@ def test_theme_switch_restyles_console_plots_and_code(app, vasp_dir):
     assert pygments_style(theme.PALETTES["paper"]).background_color == theme.PALETTES["paper"]["bg"]
 
 
+def test_theme_apply_restyles_the_open_preferences_dialog(app, monkeypatch):
+    """Apply in Preferences restyles the main window and the open dialog itself (owner, Windows:
+    the dialog kept the old theme), for built-in and plugin themes (font, mono font, qss)."""
+    from ewald import plugins, settings
+    from ewald.gui import prefs_apply, theme
+    from ewald.gui.app import MainWindow
+    from ewald.gui.preferences import ElementTable, PreferencesDialog
+
+    monkeypatch.setattr(plugins._registry, "ui_themes", dict(plugins._registry.ui_themes))
+    plugins.register_ui_theme("Glow", {"base": "graphite", "accent": "#33FF66", "mono_font": "JetBrains Mono",
+                                       "qss": "QLabel#pageTitle { color: $accent; }"})
+    s = settings.Settings({}, settings.config_dir() / "s.json")
+    s["general.ui_theme"] = "paper"
+    w = MainWindow(settings=s)
+    prefs_apply.apply_settings(w, s)
+    dlg = PreferencesDialog(s, w)
+    dlg.applied.connect(lambda new: prefs_apply.apply_settings(w, new))   # as MainWindow.preferences
+    dlg.show()
+    table = dlg.findChildren(ElementTable)[0].table
+
+    def icon_color(row):
+        img = dlg.pages.item(row).icon().pixmap(36, 36).toImage()
+        pixels = (img.pixelColor(x, y) for x in range(img.width()) for y in range(img.height()))
+        return next(c for c in pixels if c.alpha() == 255).name().upper()
+
+    try:
+        assert theme.PALETTES["paper"]["bg"] in dlg.styleSheet()
+        for name in ("graphite", "Glow", "paper"):
+            dlg.set_value("general.ui_theme", name)
+            dlg.apply()
+            t = theme.palette(name)
+            css = dlg.styleSheet()
+            assert f"QDialog#prefs {{ background: {t['bg']}; }}" in css, name
+            assert table.item(0, 0).foreground().color().name().upper() == t["muted"]
+            assert icon_color(0) == t["secondary"]
+            if name == "Glow":
+                assert 'font-family: "JetBrains Mono"' in css   # the theme's mono font first
+                assert "QLabel#pageTitle { color: #33FF66; }" in css            # its qss, last
+            else:
+                assert "JetBrains Mono" not in css and "UI theme" not in css
+    finally:
+        dlg.close()
+        theme.use(theme.DEFAULT)
+        w.close()
+
+
 def test_notebook_cells_sit_at_the_top(app):
     from ewald.gui.app import MainWindow
 

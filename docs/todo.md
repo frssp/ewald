@@ -228,8 +228,10 @@ GUI
 - `PythonScript` step cells: `Modifier.__repr__` uses `name`, which PythonScript sets to its title,
   so `step_source` writes `pipe.add(Python script(...))`, which does not parse.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
-  still set inline colors (render preview, pick labels, color swatches, field error borders), so
-  they keep the old palette until a restart after a theme switch; move them to QSS object names.
+  still set inline colors (color swatch borders, field error borders), so they keep the old
+  palette until a restart after a theme switch; move them to QSS object names. Open windows
+  that draw theme colors themselves follow a switch through a `retheme()` method
+  (`theme.retheme_windows`; Preferences has one); other dialogs rely on the app style sheet.
 - Notebook layout: the viewport could follow the current notebook even when it has no
   pipeline yet (now it keeps the last one); image/figure cells; inline Ask AI suggestions
   as diffs; a snapshot cell that updates when the camera of its view changes (now it is code);

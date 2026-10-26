@@ -464,6 +464,8 @@ QPlainTextEdit#chatInput {{ background: transparent; border: none; }}
 QToolButton#chatSend {{ background: {accent}; color: {on_accent}; border-radius: 15px; font-weight: 700; font-size: 15px; }}
 QToolButton#chatSend:hover {{ background: {accent_hover}; }}
 QToolButton#chatSend:disabled {{ background: {border}; color: {muted}; }}
+QLabel#renderPreview {{ background: {bg}; color: {muted}; }}
+QLabel#pickLabel {{ color: {pick}; }}
 QLabel#chatHint {{ color: {muted}; background: transparent; font-size: 10px; }}
 QLabel#chatWelcomeTitle {{ color: {text}; background: transparent; font-size: 15px; font-weight: 600; }}
 QPushButton#chatStarter {{ background: {raised}; border: 1px solid {border}; border-radius: 14px; padding: 5px 14px;
@@ -482,6 +484,7 @@ def _restyle(css: str, st: dict) -> str:
         css = css.replace('font-family: "IBM Plex Sans"', f'font-family: "{st["font"]}", "IBM Plex Sans"')
     if st["mono_font"]:
         css = css.replace('"JetBrains Mono",', f'"{st["mono_font"]}", "JetBrains Mono",')
+        css = css.replace('font-family: "IBM Plex Mono"', f'font-family: "{st["mono_font"]}", "IBM Plex Mono"')
     if st["radius"] != STYLE_DEFAULTS["radius"]:
         scale = st["radius"] / STYLE_DEFAULTS["radius"]
         # pills and round avatars (radius above 8 px) keep their shape
@@ -520,6 +523,36 @@ def stylesheet(font_size: int = 12) -> str:
     return css
 
 
+def dialog_stylesheet(qss: str, **extra) -> str:
+    """A window's own style sheet ``qss`` (``{token}`` fields) in the active theme: its colors,
+    fonts, radius and spacing, with the theme's own rules last, as in :func:`stylesheet`."""
+    from . import fonts
+
+    css = _restyle(qss.format(**TOKENS, **extra), STYLE)
+    if STYLE["qss"]:
+        css += "\n/* UI theme */\n" + Template(STYLE["qss"]).safe_substitute(TOKENS) + "\n"
+    return fonts.css(css)
+
+
+def retheme_windows(app):
+    """After a theme change: every open top-level window that draws theme colors itself (a
+    ``retheme()`` method: Preferences, ...) redraws them; the others only repaint. The app style
+    sheet and palette already reach every window, but colors a window baked into its own style
+    sheet, icons or item colors when it was built do not."""
+    for w in app.topLevelWidgets():
+        fn = getattr(w, "retheme", None)
+        if callable(fn):
+            try:
+                fn()
+            except Exception:   # one broken window must not stop the others
+                log.exception("retheme of %r failed", w)
+        if w.isVisible():
+            w.update()
+
+
+_APPLIED: list = []   # (TOKENS, STYLE) of the last apply(): windows retheme only when it changes
+
+
 def current_font_size(app) -> int:
     """The UI font size of the style sheet in use (12 before any)."""
     import re
@@ -552,3 +585,7 @@ def apply(app, name: str | None = None, font_size: int | None = None):
     css = fonts.css(css)   # only families this system has: a missing one costs Qt ~200 ms on macOS
     if app.styleSheet() != css:  # re-polishing every widget of every window is slow; skip when unchanged
         app.setStyleSheet(css)
+    applied = (dict(TOKENS), dict(STYLE))
+    if _APPLIED and _APPLIED[0] != applied:
+        retheme_windows(app)
+    _APPLIED[:] = [applied]
