@@ -18,7 +18,9 @@ what ``ewald gui`` does, ``vtk`` is VTK's format (3.2 core, alpha, 8-bit depth),
 3.2 core without alpha and with a 24-bit depth buffer. ``--prewarm`` tries a startup warm-up:
 once the 3D view is built it makes the window transparent, gives it the whole screen, puts it
 back and prints how long that took, so you can see whether the cost of the first maximize moves
-there (``--prewarm max`` uses showMaximized/showNormal instead of setting the geometry).
+there (``--prewarm max`` uses showMaximized/showNormal instead of setting the geometry,
+``--prewarm early`` does that right after the window first shows, before the notebook and the 3D
+view are built).
 """
 from __future__ import annotations
 
@@ -80,7 +82,7 @@ def main():
     ap.add_argument("--repeat", type=int, default=3)
     ap.add_argument("--profile", action="store_true", help="sample the stacks during the first maximize")
     ap.add_argument("--gl-format", choices=("app", "vtk", "core"), default="app")
-    ap.add_argument("--prewarm", nargs="?", const="size", choices=("size", "max"),
+    ap.add_argument("--prewarm", nargs="?", const="size", choices=("size", "max", "early"),
                     help="grow the window to the screen once, unseen, before timing")
     args = ap.parse_args()
     os.environ.setdefault("EWALD_CONFIG_DIR", tempfile.mkdtemp(prefix="ewald-resize-"))
@@ -106,6 +108,19 @@ def main():
     w = MainWindow(settings=settings.Settings())
     w.resize(1100, 700)
     w.show()
+    if args.prewarm == "early":  # maximize and restore before the notebook and the 3D view exist
+        end = time.perf_counter() + 2.0  # let the first paint and its deferred builds finish
+        while time.perf_counter() < end:
+            app.processEvents(QtCore.QEventLoop.AllEvents, 5)
+        t0 = time.perf_counter()
+        w.setWindowOpacity(0.0)
+        w.showMaximized()
+        app.processEvents()
+        w.showNormal()
+        w.resize(1100, 700)
+        app.processEvents()
+        w.setWindowOpacity(1.0)
+        print(f"prewarm (early): {(time.perf_counter() - t0) * 1000:.0f} ms")
     view = w.panel.open_notebook(os.path.abspath(args.notebook), trusted=True)
     view.run_all()
 
@@ -137,7 +152,7 @@ def main():
         rw.AddObserver("StartEvent", lambda *_: start.append(time.perf_counter()))
         rw.AddObserver("EndEvent", lambda *_: renders.append(time.perf_counter() - start[-1]))
     normal = w.geometry()
-    if args.prewarm:
+    if args.prewarm in ("size", "max"):
         t0 = time.perf_counter()
         w.setWindowOpacity(0.0)
         if args.prewarm == "max":
