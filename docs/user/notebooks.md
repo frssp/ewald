@@ -269,7 +269,7 @@ frame, so the style follows the trajectory:
 ```python
 @pipe.add
 def style(frame, data):
-    paint(data, "Coordination < 12", "crimson")   # any matplotlib color or RGB
+    paint(data, "Coordination < 12", "crimson")   # any color form: "#dc143c", (220, 20, 60), ...
     hide(data, "Position.X > 9")                  # cut the block open
     cn = data["Coordination"]
     resize(data, cn < 9, 1.3)                     # a boolean array or index list works too

@@ -189,7 +189,7 @@ class ViewStyle:
     def apply_view(self, view, types=()):
         """Take the display settings of a pipeline's :class:`ewald.view3d.View` (a notebook's view cell,
         Claude's set_view); camera, frame and picture settings are the window's business."""
-        from matplotlib.colors import to_hex
+        from .colors import to_hex
 
         def hexed(c):
             return to_hex(c) if isinstance(c, str) else tuple(c)
@@ -253,6 +253,7 @@ class ViewStyle:
     def view_settings(self, types=()) -> dict:
         """The display settings of this style as :class:`ewald.view3d.View` settings (what the notebook's
         view cell says), leaving out what Preferences and the theme filled in by themselves."""
+        from .colors import to_hex
         from .view3d import STYLE_PRESETS as presets
 
         filled = getattr(self, "_pref_filled", {})
@@ -280,7 +281,7 @@ class ViewStyle:
                 continue
             if t in theme_colors and same_color(c, theme_colors[t]):
                 continue
-            colors[t] = tuple(round(float(x), 4) for x in c) if not isinstance(c, str) else c
+            colors[t] = c if isinstance(c, str) else to_hex(c)   # '#ff0d0d' reads better in a cell than floats
         radii = {t: float(r) for t, r in self.type_radii.items()
                  if not (t in filled and filled[t][1] is not None and filled[t][1] == r)}
         # per-type settings of elements this structure does not have (the previous file's, carried in

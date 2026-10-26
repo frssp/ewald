@@ -38,9 +38,9 @@ def fingerprint(colors) -> str:
 
 
 def _hex(rgb) -> str:
-    from matplotlib.colors import to_hex
+    from .colors import to_hex
 
-    return to_hex(np.clip(np.asarray(rgb, float)[:3], 0, 1)) if not isinstance(rgb, str) else to_hex(rgb)
+    return to_hex(rgb)
 
 
 def record(data, rule: dict) -> None:

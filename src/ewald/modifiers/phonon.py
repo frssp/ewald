@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..colors import to_rgb as _to_rgb
 from ..pipeline import Modifier
 
 
@@ -82,6 +83,6 @@ class PhononMode(Modifier):
                           "fixed": ("Phonon Mode", 1.0)}[arrow_mode]
             scaling = float(self.arrow_length) / (abs(float(self.amplitude)) * peak)  # full swing = arrow_length
             style = VectorVis(name, scaling=scaling, width=float(self.arrow_width),
-                              color=tuple(self.arrow_color), min_length=1e-4).style(out)
+                              color=tuple(_to_rgb(self.arrow_color)), min_length=1e-4).style(out)
             out.vectors = {**out.vectors, name: style}
         return out
