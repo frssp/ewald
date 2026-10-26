@@ -228,6 +228,24 @@ def load_runs(paths, label=None, sort: bool = True, **kwargs) -> Runs:
     return Runs(runs)
 
 
+def _show(fig):
+    """Show ``fig`` under the running notebook cell (or Jupyter cell), else with ``plt.show()``.
+    ``plt.show()`` alone showed nothing under a cell: the plotstyle figure is not pyplot's."""
+    try:
+        from IPython import get_ipython
+        shell = get_ipython()
+    except ImportError:
+        shell = None
+    if shell is not None:
+        from IPython.display import display
+
+        display(fig)
+    else:
+        import matplotlib.pyplot as plt
+
+        plt.show()
+
+
 # ----------------------------------------------------------------------- tables of runs
 class RunTables(dict):
     """``{label: Table}``: one analysis table per run (what a verb returns for :class:`Runs`).
@@ -286,11 +304,8 @@ class RunTables(dict):
         return fig
 
     def plot(self, y: str | None = None):
-        """Draw the runs overlaid (``plt.show()``)."""
-        import matplotlib.pyplot as plt
-
-        self.figure(y)
-        plt.show()
+        """Draw the runs overlaid: below the cell in a notebook, ``plt.show()`` in a script."""
+        _show(self.figure(y))
 
     def _repr_png_(self):
         import io
@@ -363,11 +378,9 @@ class Arrhenius:
         return fig
 
     def plot(self, size=None):
-        """Draw the Arrhenius plot (``plt.show()``; under a notebook cell it is the cell's figure)."""
-        import matplotlib.pyplot as plt
-
-        self.figure(size)
-        plt.show()
+        """Draw the Arrhenius plot: under a notebook cell (or in Jupyter) it is shown below the
+        cell, wherever the call is in it; in a script ``plt.show()`` opens it."""
+        _show(self.figure(size))
 
     def savefig(self, path, dpi: int = 300, **kwargs):
         """Save the Arrhenius plot to ``path`` (PNG, PDF, SVG, ... by its extension)."""

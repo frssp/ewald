@@ -10,6 +10,14 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- `ewald eval --category study`: whole analyses from one sentence (activation energy from a series
+  of MD runs with a trap in it, the Li diffusion path, a paragraph for a paper, a follow-up
+  question, wrong premises), on synthetic VASP MD series (`ewald.llm.eval_data`) and the LLZO data.
+- `MeanSquaredDisplacement(by_axis=True)`: the MSD along x, y and z and 1D diffusion coefficients;
+  the AI's `compute_msd` reports how the MSD splits over the axes.
+- New notebooks import `rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius`.
+- `Arrhenius.plot()` and `.savefig(path)`, `arrhenius({T: D})`; `runs["500"]` finds the run
+  labelled "T500".
 - Ask AI › Test connection shows the server's reason for an API error (a 422's missing header,
   for example), not only the status code.
 - Ask AI, OpenAI-compatible provider: *API key header* (send the key as `api-key` for Azure

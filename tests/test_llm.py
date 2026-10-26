@@ -1145,3 +1145,21 @@ def test_notebook_context_numbers_cells_and_shows_outputs(cu_file):
     assert "· not run]" in text or "· out of date]" in text      # the cell after the failed one
     assert "# [cell 6 · index 5 · markdown]\n# %% [markdown]\n# Notes" in text
     assert text.replace("\n\n", "\n").count("# %%") == len(nb.cells)
+
+
+def test_error_tool_results_carry_text_only():
+    """The Messages API refuses images in a tool result marked is_error (a cell that drew a
+    figure, then failed; seen in a real eval run, 2026-10-26)."""
+    from types import SimpleNamespace as NS
+
+    from ewald.llm.chat import AnthropicChat
+    from ewald.llm.tools import ToolResult
+
+    chat = AnthropicChat(NS(), "m")
+    png = b"\x89PNG fake"
+    chat.tool_results([(NS(id="t1"), ToolResult({"error": "boom"}, [png], is_error=True)),
+                       (NS(id="t2"), ToolResult({"ok": 1}, [png]))])
+    bad, good = chat.messages[-1]["content"]
+    assert bad["is_error"] and [c["type"] for c in bad["content"]] == ["text"]
+    assert "1 image(s) not sent" in bad["content"][0]["text"]
+    assert [c["type"] for c in good["content"]] == ["text", "image"]

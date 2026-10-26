@@ -267,6 +267,12 @@ def test_runs_and_tables_find_runs_the_ways_the_ai_asked(series, tmp_path):
     import matplotlib
     matplotlib.use("Agg")
     fit.plot()
+    from ewald.notebook import Cell, Notebook
+
+    nb = Notebook([Cell("from ewald import arrhenius\nfit = arrhenius([500, 600, 700], [1, 2, 4])\nfit.plot()\n"
+                        "print(round(fit.Ea, 3))")])
+    nb.run_all()
+    assert [o.kind for o in nb.cells[0].outputs] == ["image", "text"]   # the plot shows under the cell
     with pytest.raises(ValueError, match="different temperatures.*600 K"):
         arrhenius([600, 600, 600], [0.1, 0.2, 0.15])
     with pytest.raises(ValueError, match="2 temperatures for 3"):

@@ -418,7 +418,8 @@ class Cells(Check):
     """``value(notebook)`` of the notebook the model left holds (a bool) or equals ``expected``:
     how it wrote the cells, e.g. one step cell edited rather than a second one added. With
     ``since=k`` the value is the change since the answer to question ``k`` (0: the first) of a
-    task with follow-ups: ``Cells(fit_cells, 0, since=0)`` means the follow-up added no fit cell."""
+    task with follow-ups: ``Cells(fit_cells, lambda n: n <= 0, since=0)`` means the follow-up added
+    no fit cell."""
 
     value: Callable
     expected: object = True
@@ -437,6 +438,8 @@ class Cells(Check):
             return False, f"{type(exc).__name__}: {exc}"
         if isinstance(self.expected, bool):
             return bool(got) is self.expected, f"{self.name}: {got!r}"
+        if callable(self.expected):
+            return bool(self.expected(got)), f"{self.name}: {got!r}"
         return got == self.expected, f"{self.name}: {got!r} vs {self.expected!r}"
 
     def label(self):

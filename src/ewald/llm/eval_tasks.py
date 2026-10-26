@@ -604,7 +604,7 @@ TASKS: list[Task] = [
     Task("study-redo", _SERIES_INTRO.format(n=5, folders="T500 to T900") +
          "What is the activation energy of Li diffusion, in eV? Show the Arrhenius plot.",
          "series:li-series/T500/XDATCAR",
-         _study_checks(_ref_ea(exclude=("T500",))) + [Cells(_fit_cells, 0, name="fit cells added", since=0)],
+         _study_checks(_ref_ea(exclude=("T500",))) + [Cells(_fit_cells, lambda n: n <= 0, name="fit cells added", since=0)],
          followups=["The 500 K run is too short to trust. Leave it out and redo the fit and the plot."],
          category="study", allow_code=True,
          solution=[("insert_cell", {"source": _study_cell()}), (ANSWER_TURN, {"text": "Done."}),
