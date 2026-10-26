@@ -137,7 +137,14 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 - Maximizing the window (2026-10-24, `python benchmarks/resize.py`): in the container (llvmpipe,
   cu_void tutorial) it is settled after 0.3-0.7 s, of which one full 3D render is 0.1-0.3 s;
   restoring takes about 0.12 s. The rest is Qt layout and painting plus matplotlib mathtext
-  parsing of the plot labels (~40 ms). The owner finds it slow on Windows; not yet measured there.
+  parsing of the plot labels (~40 ms). On the owner's Windows laptop (2026-10-26) the first
+  maximize of a session stalls 3.5-4.5 s inside `showMaximized` on the Intel Arc GPU (driver
+  31.0.101.5333), later ones 0.2-0.3 s; on the same laptop's GeForce RTX 4050 the first one is
+  0.24 s, so the stall is the Intel driver making a QOpenGLWidget window maximized for the first
+  time. Other default formats (`--gl-format`) do not change it, and a transparent maximize at
+  startup (`--prewarm early`) only moves it there (2.5 s). Kept as is: the owner keeps the
+  floating view chips (D62), which need the QOpenGLWidget, and laptops with a discrete GPU
+  should run the 3D view on it anyway.
 - UI theme switch takes 0.5-1 s in `QApplication.setStyleSheet` (one app-wide QSS).
 - Playback: plots whose data does not change are not redrawn; per-frame histograms and
   tables update their bars or lines in place (20k-atom histogram 157 -> 65 ms per frame,
@@ -754,9 +761,6 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   calculation that finished yesterday" should call `list_workflows` with `formula`, `status` and
   `since`/`until`, then `open_workflow`; days are the PC's local days against sim-agent's
   creation time.
-- Window maximize on the owner's Windows machine: `python benchmarks/resize.py` prints how long
-  each maximize and restore takes and how much of it is the 3D render; compare with the container
-  numbers under Performance.
 - GUI startup on the owner's Windows machine: `python benchmarks/startup.py --cold-jit` prints
   where the seconds go (import, window, 3D view, console, busy stretches, peak memory); compare
   with the container numbers under Performance. Windows Defender scanning freshly installed
