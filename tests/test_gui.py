@@ -4189,8 +4189,10 @@ def test_notebook_cell_controls_add_bar_and_running_mark(app):
         assert all(b.geometry().right() <= width and b.width() >= b.sizeHint().width() for b in buttons)
     assert len({b.y() for b in buttons}) > 1                 # wrapped onto a second row
 
+    cw.set_running("queued")
+    assert cw.counter.text() == "*" and cw.property("state") == "queued"
     cw.set_running()
-    assert cw.counter.text() == "*" and cw.property("state") == "running"
+    assert cw.counter.text() == "0s" and cw.property("state") == "running"
     view.run(cell)
     cw = view.widget_for(cell)                               # a run may rebuild the cell widgets
     assert cw.counter.text() == str(cell.count) and cw.property("state") == "ok"
