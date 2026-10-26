@@ -947,6 +947,18 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   seeing all three in Paper and Graphite, the owner picked the tinted card ("B").
 - **Landed:** public PR #84.
 
+### D73. 1M atoms in real time: measure first, then frame switches and lighter bonds (2026-10-26)
+
+- **Decision:** the work toward a 3D view that turns 1M atoms at 30 fps and switches frames in
+  about 0.1 s goes in phases ([plan](viewport-performance.md)): a benchmark that runs on the
+  owner's GPU (phase 0), frame switches that keep the actors with the bond search and reading
+  ahead off the GUI thread (phase 1), and lighter bonds within VTK's stick mapper (phase 2). An
+  own GPU bond renderer (phase 3) and culling and level of detail (phase 4) wait until the
+  benchmark has run on the owner's Intel Arc. The owner asked for a plan first ("계획부터
+  세워봐") and then picked this scope on the decision card.
+- **Considered:** the benchmark alone first; phases 0-1 only; all five phases at once.
+- **Landed:** public PR #90.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
