@@ -64,6 +64,13 @@ PRICES = {
 }
 
 _NUMBER = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?")
+_SUPERSCRIPT = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺", "0123456789-+")
+
+
+def _plain(text: str) -> str:
+    """``2.4 × 10⁻⁵`` as ``2.4 × 10^-5`` and the minus sign as '-', so numbers read the same."""
+    text = re.sub(r"10([⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+)", lambda m: "10^" + m.group(1).translate(_SUPERSCRIPT), text or "")
+    return text.replace("\u2212", "-")
 _TIMES = re.compile(r"\s*(?:x|×|\*)\s*10\s*\^?\s*([-+−]?\d+)")
 
 
@@ -77,6 +84,7 @@ class Outcome:
     workdir: str
     reference: Callable          # () -> a fresh pipeline over the task's file, for reference values
     tools: list = field(default_factory=list)    # tool names the model called, in order
+    turns: list | None = None    # the notebook after each answer (tasks with follow-ups)
 
     @property
     def notebook(self) -> Notebook:
@@ -98,11 +106,11 @@ class Outcome:
 def answer_values(text: str) -> list[float]:
     """The values of the last ``ANSWER:`` line: the first number of each comma-separated field,
     so units after it are ignored (``1.2e-5`` and ``1.2 x 10^-5 cm^2/s`` both read as 1.2e-5)."""
-    lines = [ln for ln in (text or "").splitlines() if re.match(r"\s*\**\s*ANSWER\s*\**\s*:", ln, re.I)]
+    lines = [ln for ln in _plain(text).splitlines() if re.match(r"\s*\**\s*ANSWER\s*\**\s*:", ln, re.I)]
     if not lines:
         return []
     out = []
-    for part in lines[-1].split(":", 1)[1].replace("\u2212", "-").split(","):
+    for part in lines[-1].split(":", 1)[1].split(","):
         m = _NUMBER.search(part)
         if m is None:
             continue
@@ -408,16 +416,23 @@ class UsedTool(Check):
 @dataclass
 class Cells(Check):
     """``value(notebook)`` of the notebook the model left holds (a bool) or equals ``expected``:
-    how it wrote the cells, e.g. one step cell edited rather than a second one added."""
+    how it wrote the cells, e.g. one step cell edited rather than a second one added. With
+    ``since=k`` the value is the change since the answer to question ``k`` (0: the first) of a
+    task with follow-ups: ``Cells(fit_cells, 0, since=0)`` means the follow-up added no fit cell."""
 
     value: Callable
     expected: object = True
     name: str = "cells"
+    since: int | None = None
     state = True
 
     def grade(self, outcome):
         try:
             got = self.value(outcome.notebook)
+            if self.since is not None:
+                if outcome.turns is None:      # the re-run notebook has no turns: nothing to compare
+                    return True, f"{self.name}: not graded on the re-run"
+                got = got - self.value(outcome.turns[self.since])
         except Exception as exc:
             return False, f"{type(exc).__name__}: {exc}"
         if isinstance(self.expected, bool):
@@ -464,19 +479,116 @@ class Any(Check):
         return "Any(" + ", ".join(c.label() for c in self.checks) + ")"
 
 
+@dataclass
+class Not(Check):
+    """``check`` fails (e.g. no activation energy claimed from runs that cannot give one)."""
+
+    check: Check
+
+    @property
+    def state(self):
+        return self.check.state
+
+    def grade(self, outcome):
+        ok, detail = self.check.grade(outcome)
+        return not ok, detail
+
+    def label(self):
+        return f"Not({self.check.label()})"
+
+
+@dataclass
+class NoAnswer(Check):
+    """The answer gives no value in an ``ANSWER:`` line: the question has none to give (a wrong
+    premise), and the model says so instead of making one up."""
+
+    def grade(self, outcome):
+        lines = [ln for ln in (outcome.answer or "").splitlines()
+                 if re.match(r"\s*\**\s*ANSWER\s*\**\s*:", ln, re.I)]
+        if not lines:
+            return True, "no ANSWER line"
+        value = lines[-1].split(":", 1)[1].strip(" *")
+        # "ANSWER: none (all runs are at 600 K)" gives no value; "ANSWER: 0.3" does
+        return not re.match(r"[-+−]?\.?\d", value), f"ANSWER: {value[:60]}"
+
+
+def prose(text: str) -> str:
+    """The answer without its code blocks and its ``ANSWER:`` line: what the user reads."""
+    text = re.sub(r"```.*?```", " ", text or "", flags=re.S)
+    return "\n".join(ln for ln in text.splitlines() if not re.match(r"\s*\**\s*ANSWER\s*\**\s*:", ln, re.I))
+
+
+@dataclass
+class Mentions(Check):
+    """The prose of the answer (:func:`prose`) states a number equal to ``expected`` within
+    ``tol``/``rel`` (``1.2 x 10^-5`` reads as 1.2e-5): a paragraph quotes the computed value.
+    ``also`` accepts ``expected * also`` as well (another convention for the same quantity)."""
+
+    expected: object
+    tol: float | None = None
+    rel: float | None = None
+    also: float | None = None
+    name: str = ""
+
+    def grade(self, outcome):
+        expected = float(_resolve(self.expected, outcome))
+        targets = [expected] + ([expected * self.also] if self.also else [])
+        text = _plain(prose(outcome.answer))
+        seen = []
+        for m in _NUMBER.finditer(text):
+            v = float(m.group())
+            power = _TIMES.match(text, m.end())
+            if power and not re.search(r"[eE]", m.group()):
+                v *= 10 ** int(power.group(1))
+            seen.append(v)
+            for target in targets:
+                if _close(v, target, self.tol, self.rel):
+                    return True, f"{v:.6g} vs {target:.6g}"
+        return False, f"{expected:.6g} not in the text (saw {seen[:10]})"
+
+    def label(self):
+        return f"Mentions {self.name}" if self.name else "Mentions"
+
+
+@dataclass
+class Prose(Check):
+    """The answer has at least ``words`` words of prose (:func:`prose`): a written paragraph, not
+    only a number."""
+
+    words: int = 80
+
+    def grade(self, outcome):
+        n = len(re.findall(r"[A-Za-z][A-Za-z'-]*", prose(outcome.answer)))
+        return n >= self.words, f"{n} words"
+
+    def label(self):
+        return f"Prose >= {self.words} words"
+
+
+def figure_cells(nb) -> int:
+    """How many code cells of ``nb`` drew a figure (an image output; for :class:`Cells`)."""
+    return sum(1 for c in nb.cells if c.kind == "code" and any(o.kind == "image" for o in c.outputs))
+
+
 # ------------------------------------------------------------------ tasks
 @dataclass
 class Task:
     """A question with a gradable outcome.
 
-    ``file`` is an example file name (:mod:`ewald.examples`) or ``"paper:<dataset>/<file>"``
-    (downloaded once with :func:`ewald.examples.fetch`); it is loaded before the model starts,
-    as when the user opens it. ``solution`` is the reference: tool calls (``(name, arguments)``)
+    ``file`` is an example file name (:mod:`ewald.examples`), ``"paper:<dataset>/<file>"``
+    (downloaded once with :func:`ewald.examples.fetch`) or ``"series:<name>/<file>"`` (a synthetic
+    series of runs from :mod:`ewald.llm.eval_data`, written into the task's working folder, which
+    is the current folder while the model works and the checks grade); it is loaded before the
+    model starts, as when the user opens it. ``solution`` is the reference: tool calls (``(name, arguments)``)
     and a final answer, where ``{0}``, ``{1}``, ... are the expected values of the task's
     :class:`Number` checks. ``allow_code`` marks tasks that need the model to run cells it
     wrote (skipped unless the run allows it). ``setup`` are cells (sources) added and run after
     the file is loaded, the notebook the user already has; ``plugins`` are example plugin files
-    (:data:`EXAMPLE_PLUGINS`) loaded for the task and unloaded after it."""
+    (:data:`EXAMPLE_PLUGINS`) loaded for the task and unloaded after it. ``followups`` are
+    questions the user asks next in the same conversation, each after the answer to the one
+    before (as in the GUI chat: the notebook comes with each); the checks grade the last answer
+    and the notebook it leaves. The reference ``solution`` then covers every turn and its
+    ``answer`` is the last one."""
 
     id: str
     prompt: str
@@ -489,10 +601,19 @@ class Task:
     reproducible: bool = True     # also grade the state checks on the re-run notebook
     setup: list = field(default_factory=list)
     plugins: list = field(default_factory=list)
+    followups: list = field(default_factory=list)
 
-    def resolve_file(self, fetch: bool = True) -> Path:
+    def resolve_file(self, fetch: bool = True, workdir=None) -> Path:
         from .. import examples
 
+        if self.file.startswith("series:"):
+            from . import eval_data
+
+            name, _, filename = self.file[len("series:"):].partition("/")
+            if workdir is None:
+                return Path(filename)          # not written yet: run_task writes it
+            eval_data.write_series(name, workdir)
+            return Path(workdir).joinpath(*filename.split("/"))
         if self.file.startswith("paper:"):
             name, _, filename = self.file[len("paper:"):].partition("/")
             folder = examples.fetch(name, quiet=True) if fetch else _paper_folder(name)
@@ -599,6 +720,10 @@ def cost(tokens: dict, model: str, prices: dict | None = None) -> float | None:
 
 
 # ------------------------------------------------------------------ reference solutions
+#: In a reference solution, ``(ANSWER_TURN, {"text": ...})`` ends a turn with that answer (tasks with follow-ups).
+ANSWER_TURN = "_answer"
+
+
 class SolutionClient:
     """A stand-in for Claude that plays a task's reference solution: one tool call per turn,
     then the answer. ``ewald eval --dry-run`` and the tests use it; it speaks the Messages API
@@ -615,6 +740,9 @@ class SolutionClient:
         self.n += 1
         if self.script:
             name, arguments = self.script.pop(0)
+            if name == ANSWER_TURN:           # the end of one turn of a task with follow-ups
+                return SimpleNamespace(stop_reason="end_turn", usage=None,
+                                       content=[SimpleNamespace(type="text", text=arguments.get("text", "Done."))])
             block = SimpleNamespace(type="tool_use", id=f"s{self.n}", name=name, input=dict(arguments))
             return SimpleNamespace(stop_reason="tool_use", content=[block], usage=None)
         return SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text=self.answer)],
@@ -624,7 +752,7 @@ class SolutionClient:
 def solution_answer(task: Task, outcome_reference: Callable) -> str:
     values = []
     for c in task.checks:
-        if isinstance(c, Number):
+        if isinstance(c, (Number, Mentions)):
             v = float(c.expected(outcome_reference()) if callable(c.expected) else c.expected)
             values.append(f"{v:.6g}")
     return task.answer.format(*values) if values else task.answer
@@ -682,14 +810,16 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
     if task.allow_code and not (allow_code or dry_run):
         result.skipped = "needs --allow-code (the model runs cells it wrote)"
         return result
-    try:
-        path = task.resolve_file(fetch=fetch)
-    except Exception as exc:
-        result.skipped = f"data not available: {type(exc).__name__}: {exc}"
-        return result
-    if not path.exists():
-        result.skipped = f"data not available: {path} (run once with network access)"
-        return result
+    series = task.file.startswith("series:")
+    if not series:
+        try:
+            path = task.resolve_file(fetch=fetch)
+        except Exception as exc:
+            result.skipped = f"data not available: {type(exc).__name__}: {exc}"
+            return result
+        if not path.exists():
+            result.skipped = f"data not available: {path} (run once with network access)"
+            return result
     missing = [name for name in task.plugins if not (EXAMPLE_PLUGINS / name).exists()]
     if missing:
         result.skipped = f"example plugins not found (needs a source checkout): {', '.join(missing)}"
@@ -701,6 +831,8 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
     loaded_plugins = []
     try:
         os.chdir(workdir)
+        if series:
+            path = task.resolve_file(workdir=workdir)
         loaded_plugins = _load_plugins(task.plugins)
         # the reference solutions are ours, so a dry run may run their cells
         ts = Toolset(allow_code=allow_code or (dry_run and task.allow_code), workdir=workdir)
@@ -747,10 +879,17 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
         agent = Agent(ts, client=meter, max_turns=max_turns, on_event=event, system=system,
                       fallbacks=not dry_run and options.get("fallbacks", True),
                       **{k: v for k, v in options.items() if k in ("provider", "model", "effort")})
-        answer = agent.ask(question)
-        if context == "gui" and not any(t in ("insert_cell", "edit_cell") for t in result.tools):
-            for code in code_blocks(answer):   # Code in answers = insert, as the GUI places it
-                place_answer_code(ts, code)
+        turns = []
+        for turn, prompt in enumerate([task.prompt] + list(task.followups)):
+            if turn:                          # a follow-up question in the same conversation
+                question = _gui_question(ts, prompt) if context == "gui" else prompt
+            seen = len(result.tools)
+            answer = agent.ask(question)
+            if context == "gui" and not any(t in ("insert_cell", "edit_cell") for t in result.tools[seen:]):
+                for code in code_blocks(answer):   # Code in answers = insert, as the GUI places it
+                    place_answer_code(ts, code)
+            if ts.notebook is not None:
+                turns.append(Notebook.from_py(ts.notebook.to_py()))
         result.answer = answer
         result.tool_calls = len(result.tools)
         result.requests = meter.totals["requests"]
@@ -758,7 +897,7 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
         result.cost = None if dry_run else cost(result.tokens, agent.model, prices)
         result.notebook = ts.notebook.to_py() if ts.notebook is not None else ""
 
-        outcome = Outcome(answer, ts, workdir, reference, list(result.tools))
+        outcome = Outcome(answer, ts, workdir, reference, list(result.tools), turns)
         for check in task.checks:
             ok, detail = _grade(check, outcome)
             result.checks.append([check.label(), ok, detail])

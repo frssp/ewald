@@ -189,6 +189,7 @@ def test_msd_diffusion(cu_fcc):
     fit = r.content["fits"]["MSD"]
     assert fit["slope_A2_per_frame"] == pytest.approx(0.0075, rel=0.2)
     assert fit["D_cm2_per_s"] == pytest.approx(0.00125e-1, rel=0.2)
+    assert sum(fit["axes"].values()) == pytest.approx(1, abs=0.01) and min(fit["axes"].values()) > 0.2   # isotropic
 
 
 def test_model_code_runs_only_as_notebook_cells(cu_fcc):

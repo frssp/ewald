@@ -139,7 +139,8 @@ curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] 
 
 A notebook is a percent-format `.py` file (`# %%` cells, one namespace). New notebooks import
 `numpy as np`, `all_frames, each_frame, import_file, load` (from `ewald`), every modifier (`from ewald.modifiers import *`), `show, view`
-(from `ewald.views`) and `paint, hide, isolate, fade, resize` (from `ewald.paint`); import anything else in the cell.
+(from `ewald.views`), `paint, hide, isolate, fade, resize` (from `ewald.paint`) and `rdf, msd, vacf, sq, xrd, load_runs,
+check_run, run_info, arrhenius` (from `ewald`); import anything else in the cell.
 `pipe` is the pipeline. Write each change as its own cell, in the kinds the GUI recognizes:
 
 - load cell: `pipe = load("XDATCAR")`.
@@ -175,7 +176,13 @@ findings (SCF hitting NELM, relaxation not converged, `.equilibrated` first equi
 energy drift, LAMMPS warnings/errors, close contacts); `.ok`, `.to_dict()`. Several runs:
 `runs = load_runs("T*/XDATCAR", label=r"T(\\d+)")` (sorted by the label's number); `runs.pipe`, `runs["600"].pipe`,
 `runs.add(m)` (a copy per run); every verb takes `runs` and returns `RunTables` `{label: Table}` (`.plot()`,
-`.attribute(name)`); `arrhenius(msd(runs))` fits Ea (eV) to D(T) with T from each run's thermostat.
+`.attribute(name)`); `msd(pipe, by_axis=True)` adds the MSD along x, y, z (`"MSD Li z"`) and 1D coefficients
+(`...diffusion_coefficient.Li.z`), which show diffusion confined to a plane or a channel; `runs["500"]` also finds the run labelled "T500"; `arrhenius(msd(runs))` fits Ea (eV) to D(T) with T
+from each run's thermostat (`attribute="MeanSquaredDisplacement.diffusion_coefficient.Li"` for one species), or
+`arrhenius(temperatures, values)` / `arrhenius({T: D})`: `.Ea`, `.Ea_error`, `.A`, `.r2`, `.plot()`, `.savefig(path)`.
+A study over several runs (D(T), Ea, a comparison): `check_run` every run first and trim (`msd(pipe, start=check.equilibrated)`)
+or leave out the runs it flags, saying which and why; take temperatures from the input files and say where a folder
+name disagrees; finish with a cell that prints every number the answer quotes.
 Workflows (a folder of calculations, `aiida:...`): `workflow_table(path, ...)` (`from ewald import workflow_table`)
 is a row per step and a column per number (energy, energy/atom, barrier, gap, max force, atoms, ...); several paths
 compare side by side (steps matched by name, `align="position"` by order; `labels=[...]`); `t.difference("PBE")`,

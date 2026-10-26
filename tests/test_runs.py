@@ -250,6 +250,29 @@ def test_verbs_on_runs_and_arrhenius(series):
     assert arrhenius([300, 600], [1e-3, 1e-1]).Ea > 0
 
 
+def test_runs_and_tables_find_runs_the_ways_the_ai_asked(series, tmp_path):
+    """The AI eval's study tasks (2026-10-26): models indexed runs by the number of a "T500" label,
+    by the Run object itself and like a dict, and called fit.plot(); each was an error."""
+    runs = load_runs(str(series / "T*" / "XDATCAR"))
+    assert runs["600"] is runs[1] and runs[600.0] is runs[1] and runs[runs[2]] is runs[2]
+    assert runs.keys() == ["T300", "T600", "T900"] and runs.items()[0] == ("T300", runs[0])
+    d = msd(runs)
+    assert d[runs[1]] is d["T600"] and d["600"] is d["T600"]
+    with pytest.raises(KeyError, match="diffusion_coefficient"):
+        d.attribute("MeanSquaredDisplacement.D")            # lists the attributes there are
+    fit = arrhenius(dict(zip(runs.temperatures(), d.attribute("MeanSquaredDisplacement.diffusion_coefficient"))))
+    assert fit.Ea == pytest.approx(arrhenius(d).Ea)
+    fit.savefig(tmp_path / "a.png")
+    assert (tmp_path / "a.png").read_bytes()[:4] == b"\x89PNG"
+    import matplotlib
+    matplotlib.use("Agg")
+    fit.plot()
+    with pytest.raises(ValueError, match="different temperatures.*600 K"):
+        arrhenius([600, 600, 600], [0.1, 0.2, 0.15])
+    with pytest.raises(ValueError, match="2 temperatures for 3"):
+        arrhenius([600, 700], [0.1, 0.2, 0.15])
+
+
 def test_runs_add_copies_steps(series):
     from ewald.modifiers import CoordinationAnalysis
 

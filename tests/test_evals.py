@@ -23,11 +23,12 @@ def fake_render(monkeypatch):
 
 def test_tasks_are_well_formed():
     ids = [t.id for t in TASKS]
-    assert len(ids) == len(set(ids)) and 30 <= len(TASKS) <= 60
-    assert set(CATEGORIES) == {"answer", "step", "view", "export", "code", "notebook", "recipe", "plugin", "paper"}
+    assert len(ids) == len(set(ids)) and 30 <= len(TASKS) <= 80
+    assert set(CATEGORIES) == {"answer", "step", "view", "export", "code", "notebook", "recipe", "plugin", "paper",
+                               "study"}
     for t in TASKS:
         assert t.checks and t.solution and t.answer, t.id
-        numbers = [c for c in t.checks if isinstance(c, evals.Number)]
+        numbers = [c for c in t.checks if isinstance(c, (evals.Number, evals.Mentions))]
         assert t.answer.count("{") == len(numbers), t.id   # the reference answer fills every Number
         if t.category in ("step", "view", "notebook", "recipe"):
             assert any(c.state for c in t.checks), t.id   # graded on the notebook's state, re-run too
@@ -246,3 +247,46 @@ def test_tool_errors_are_kept():
     assert r.passed and r.tool_errors == 1 and r.tool_error_messages[0][0] == "add_modifier"
     assert "NoSuchModifier" in r.tool_error_messages[0][1]
     assert "~ add_modifier error:" in evals.format_result(r)
+
+
+# ----------------------------------------------------------------------- study tasks
+def test_text_graders_read_papers_and_refusals():
+    out = NS(answer="D rises to 2.4 × 10⁻⁵ cm² s⁻¹ at 700 K.\n```python\nprint(0.3)\n```\nANSWER: 0.28", reference=None)
+    assert evals.Mentions(2.37e-5, rel=0.05).grade(out)[0]
+    assert not evals.Mentions(0.3, tol=0.01).grade(out)[0]          # code blocks are not prose
+    assert evals.Mentions(1.6e-5, rel=0.05, also=1.5).grade(out)[0]   # the other convention
+    assert evals.answer_values(out.answer) == [0.28]
+    assert evals.answer_values("ANSWER: 2.4 × 10⁻⁵ cm²/s") == pytest.approx([2.4e-5])
+    assert evals.NoAnswer().grade(NS(answer="ANSWER: not determinable (all runs at 600 K)"))[0]
+    assert evals.NoAnswer().grade(NS(answer="No value."))[0]
+    assert not evals.NoAnswer().grade(NS(answer="ANSWER: 0.3 eV"))[0]
+    assert evals.Not(evals.Matches("eV")).grade(NS(answer="no energy"))[0]
+    assert evals.Prose(5).grade(NS(answer="Li hops in the ab plane only.\nANSWER: 2"))[0]
+    assert not evals.Prose(10).grade(NS(answer="ANSWER: 2"))[0]
+
+
+def test_series_are_deterministic_and_their_traps_change_the_answer(tmp_path):
+    from ewald import arrhenius, load_runs, msd
+    from ewald.llm import eval_data
+
+    a = eval_data.write_series("li-series-timestep", tmp_path / "a")
+    b = eval_data.write_series("li-series-timestep", tmp_path / "b")
+    assert (a / "T900" / "XDATCAR").read_bytes() == (b / "T900" / "XDATCAR").read_bytes()
+    assert "NBLOCK = 50" in (a / "T900" / "INCAR").read_text(encoding="utf-8")
+    runs = load_runs(str(a / "T*" / "XDATCAR"))
+    li = "MeanSquaredDisplacement.diffusion_coefficient.Li"
+    right = arrhenius(runs.temperatures(), msd(runs).attribute(li)).Ea
+    one_dt = arrhenius(runs.temperatures(), msd(runs, time_per_frame=0.01).attribute(li)).Ea
+    assert 0.2 < right < 0.35 and one_dt - right > 0.08     # one time step for every run is wrong
+
+
+def test_follow_up_questions_continue_the_conversation():
+    """study-redo: the reference solution answers the first question, then edits its cell when
+    the user asks again; the checks grade the last answer and the notebook it leaves."""
+    task = next(t for t in TASKS if t.id == "study-redo")
+    r = evals.run_task(task, dry_run=True)
+    assert r.passed and r.reproducible and r.tools == ["insert_cell", "edit_cell"]
+    calls = [c for c in task.solution if c[0] != evals.ANSWER_TURN]
+    calls = calls[:1] + [(evals.ANSWER_TURN, {"text": "Done."}), ("insert_cell", calls[1][1])]
+    r = _play("study-redo", calls=calls, answer="ANSWER: 0.237", allow_code=True)
+    assert not r.passed and "fit cells added" in " ".join(c[0] for c in r.checks if not c[1])

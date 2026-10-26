@@ -698,8 +698,11 @@ class Toolset:
 
         @T("compute_msd",
            "Time-averaged mean squared displacement over source frames (unwrapped, matched by identifier), per "
-           "type, with a linear-regime fit D = slope/6. timestep_fs (time between stored frames) defaults to what "
-           "the run's INCAR / log.lammps says (see check_run); with it D is in cm^2/s, else in A^2 per frame.",
+           "type, with a linear-regime fit D = slope/6, and how the MSD splits over x, y and z ('axes': the "
+           "fraction along each, 1/3 each for isotropic diffusion; near 0 along an axis means no transport "
+           "along it, e.g. diffusion in a plane or along a channel). timestep_fs (time between stored frames) "
+           "defaults to what the run's INCAR / log.lammps says (see check_run); with it D is in cm^2/s, else in "
+           "A^2 per frame.",
            _obj({"start": {"type": "integer"}, "stop": {"type": "integer"}, "step": {"type": "integer"},
                  "timestep_fs": {"type": "number"},
                  "fit_range": {"type": "array", "items": {"type": "number"},
@@ -711,7 +714,8 @@ class Toolset:
 
             if timestep_fs is None and run_info(self._need_pipeline()).time_per_frame:
                 timestep_fs = run_info(self._need_pipeline()).time_per_frame * 1000.0
-            table = trajectory_msd(self._need_pipeline(), start, stop, step, unwrapped=unwrapped)
+            table = trajectory_msd(self._need_pipeline(), start, stop, step, unwrapped=unwrapped, by_axis=True)
+            axes = {k: table.pop(k) for k in [k for k in table if k[-2:] in (" x", " y", " z")]}
             lag = np.asarray(table["lag"], float)
             lo, hi = (int(f * len(lag)) for f in fit_range)
             hi = max(hi, lo + 2)
@@ -726,6 +730,11 @@ class Toolset:
                     entry["D_cm2_per_s"] = float(d / timestep_fs * 1e-1)  # A^2/fs -> cm^2/s
                 else:
                     entry["D_A2_per_frame"] = float(d)
+                end = min(hi, len(lag)) - 1
+                parts = {a: float(np.asarray(axes[f"{k} {a}"])[end]) for a in "xyz" if f"{k} {a}" in axes}
+                total = sum(parts.values())
+                if total > 0:
+                    entry["axes"] = {a: round(v / total, 3) for a, v in parts.items()}
                 fits[k] = entry
             return {"fit_lags": [float(lag[lo]), float(lag[min(hi, len(lag)) - 1])] if len(lag) else [],
                     "fits": fits, "table": downsample(table)}
