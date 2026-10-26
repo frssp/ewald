@@ -10,6 +10,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- Laptops with two GPUs: Preferences › 3D view › GPU for the 3D view (`viewport.gpu`), `EWALD_GPU`
+  and `ewald gpu [--prefer high-performance]` move the 3D view to the NVIDIA/AMD GPU (the Windows
+  Graphics settings choice for this Python, PRIME offload on Linux); About lists the GPUs and says
+  when the view draws on the integrated one; OpenCL prefers a discrete GPU.
 - `ewald eval --category study`: whole analyses from one sentence (activation energy from a series
   of MD runs with a trap in it, the Li diffusion path, a paragraph for a paper, a follow-up
   question, wrong premises), on synthetic VASP MD series (`ewald.llm.eval_data`) and the LLZO data.
