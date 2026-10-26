@@ -99,6 +99,22 @@ CuPy needs the CUDA runtime libraries: the `[ctk]` extra brings them as pip whee
 CUDA Toolkit 12.x from NVIDIA, which also sets `CUDA_PATH`. CuPy's warning "CUDA path could not be
 detected" means neither is there.
 
+On the owner's laptop (Intel Arc + GeForce RTX 4050 Laptop GPU, Windows, 2026-10-26) the ray
+tracer took, with `benchmarks/analysis.py`:
+
+| | CPU | OpenCL on Arc | CUDA on RTX 4050 |
+|---|---|---|---|
+| SrTiO3 + TiO6, 1600x1200 Standard | 1.08 s | 0.30 s | 0.24 s |
+| SrTiO3 + TiO6, 1600x1200 Publication | 5.34 s | 1.13 s | 0.97 s |
+| trace only 800x600 Publication: gyroid (271k triangles) | 3.13 s | 0.73 s | 0.71 s |
+| fcc Cu, 108k atoms | 1.28 s | 0.20 s | 0.13 s |
+| Cu slab, 16k atoms | 0.25 s | 0.07 s | 0.04 s |
+
+Both GPUs are four to ten times faster than the CPU, and the RTX only somewhat faster than the
+Arc, so for pictures OpenCL on the integrated GPU is nearly as good. The 3D view gains more: on
+the Arc the first maximize of the window stalled for about 4 s, on the RTX it settles in 0.2 s
+(`benchmarks/resize.py`).
+
 `benchmarks/resize.py` uses a temporary settings folder, so compare the two GPUs with
 `EWALD_GPU=power-saving` and `EWALD_GPU=high-performance` around a run each, and check that the
 *OpenGL:* line names the GPU you expect (the Windows choice counts from the start after it was
