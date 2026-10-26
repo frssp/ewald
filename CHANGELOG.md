@@ -69,6 +69,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Fixed
 
+- Applying a new UI theme in Preferences restyles the open Preferences dialog too (its pages,
+  icons, element table and switches), not only the main window; windows that draw theme colors
+  themselves define `retheme()`. (#82)
 - No more small windows flashing up when the GUI starts or opens a notebook (dock title bars,
   tab groups and notebook bars were shown before they had a parent). (#81)
 - Bond ends look the same in every renderer (D50): bonds cut by the periodic cell end in flat
