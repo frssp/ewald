@@ -49,6 +49,61 @@ at 1600x1200 Publication against 4.80 s on the CPU, and 108 000 fcc Cu atoms tra
 0.20 s. To see what the GPU gains, run `python benchmarks/analysis.py --skip-modifiers --device opencl` and
 compare with `--device cpu`.
 
+## Laptops with two GPUs
+
+Many laptops pair an integrated GPU (Intel UHD/Iris/Arc, AMD Radeon Graphics) with an NVIDIA
+GeForce RTX or AMD Radeon RX. Windows starts every program on the power-saving one unless the
+program asks for the other, and EWALD runs inside `python.exe`, which does not ask. So the 3D
+view and the OpenGL renderer draw on the integrated GPU; Help › About EWALD shows it as
+*Viewport OpenGL*, lists the GPUs in the computer and says when another one is there. Games ask
+by exporting `NvOptimusEnablement` or `AmdPowerXpressRequestHighPerformance` from their .exe;
+a Python program cannot add those exports, so EWALD uses the per-program choice Windows offers
+every app instead:
+
+- Preferences › 3D view › Performance › *GPU for the 3D view*: **High performance**, then start
+  EWALD again. On Windows this writes the same value as Settings › System › Display › Graphics
+  for the Python that runs EWALD (`python.exe`, `pythonw.exe`, and for a venv the base
+  interpreter it starts). **Auto** removes it again and leaves the choice to Windows.
+- From a terminal: `ewald gpu --prefer high-performance` does the same, and `ewald gpu` prints
+  the GPUs, the choice for each `python.exe`, and the CUDA and OpenCL devices.
+- For one run: `EWALD_GPU=high-performance` (`set EWALD_GPU=high-performance` in cmd,
+  `$env:EWALD_GPU="high-performance"` in PowerShell) overrides the setting.
+- By hand: Windows Settings › System › Display › Graphics › Add desktop app, pick the
+  `python.exe` (`python -c "import sys; print(sys.executable)"` prints it), Options › High
+  performance. The NVIDIA Control Panel's per-program setting works too.
+
+On Linux with the NVIDIA driver, High performance sets PRIME render offload
+(`__NV_PRIME_RENDER_OFFLOAD=1`, `__GLX_VENDOR_LIBRARY_NAME=nvidia`) before the 3D view starts,
+or `DRI_PRIME=1` on Mesa; variables you set yourself win. macOS switches GPUs on its own.
+
+None of this affects CUDA: CuPy talks to the NVIDIA GPU directly, so `device="cuda"` runs on
+the RTX even while the 3D view draws on the integrated GPU. With OpenCL a discrete GPU comes
+before the integrated one.
+
+To check a laptop like this (Windows, in the environment EWALD is installed in):
+
+```bash
+nvidia-smi                                   # the driver sees the RTX ("CUDA Version" 12 or newer)
+pip install "cupy-cuda12x[ctk]"              # CuPy for CUDA 12 with the CUDA runtime and NVRTC from pip
+python -c "import cupy; print(cupy.cuda.runtime.getDeviceProperties(0)['name'])"
+ewald gpu                                    # GPUs, Windows choice, CUDA and OpenCL devices
+python benchmarks/neighbors.py               # neighbor list, CPU vs CUDA
+python benchmarks/analysis.py --device cuda  # modifiers and the ray tracer on the RTX
+python benchmarks/analysis.py --skip-modifiers --device opencl   # compare the OpenCL tracer
+ewald gpu --prefer high-performance          # then the 3D view on the RTX from the next start
+python benchmarks/resize.py                  # prints "OpenGL: <renderer>"; compare the first maximize
+```
+
+Run the commands one at a time. EWALD's CUDA kernels are compiled when first used, with NVRTC, so
+CuPy needs the CUDA runtime libraries: the `[ctk]` extra brings them as pip wheels, or install the
+CUDA Toolkit 12.x from NVIDIA, which also sets `CUDA_PATH`. CuPy's warning "CUDA path could not be
+detected" means neither is there.
+
+`benchmarks/resize.py` uses a temporary settings folder, so compare the two GPUs with
+`EWALD_GPU=power-saving` and `EWALD_GPU=high-performance` around a run each, and check that the
+*OpenGL:* line names the GPU you expect (the Windows choice counts from the start after it was
+written, so run once to write it and again to measure).
+
 ## CPU threads
 
 The numba and C++ kernels use all cores by default. Preferences › Compute › CPU threads, or
