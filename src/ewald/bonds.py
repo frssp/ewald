@@ -346,11 +346,57 @@ def bond_segments(data, bonds: Bonds, colors: np.ndarray):
     takes the color of its atom unless the bond has a 'Color' property."""
     i, j = bonds.topology.T
     d = bonds.vectors(data)
-    pos = data.positions
-    start = np.concatenate([pos[i], pos[j]])
-    end = np.concatenate([pos[i] + 0.5 * d, pos[j] - 0.5 * d])
-    if "Color" in bonds:
-        rgb = np.tile(np.clip(np.asarray(bonds["Color"], float), 0, 1), (2, 1))
-    else:
-        rgb = np.concatenate([colors[i], colors[j]])
-    return start, end, rgb, np.tile(np.arange(bonds.count), 2)
+    pos = np.ascontiguousarray(data.positions, float)
+    own = np.clip(np.asarray(bonds["Color"], float), 0, 1) if "Color" in bonds else None
+    if _segments_numba is not None:  # one parallel pass: 12M half-bonds take ~0.2 s instead of ~2 s
+        m = len(i)
+        start, end, rgb = (np.empty((2 * m, 3)) for _ in range(3))
+        _segments_numba(pos, np.ascontiguousarray(i), np.ascontiguousarray(j), np.ascontiguousarray(d, float),
+                        np.ascontiguousarray(colors, float), np.zeros((1, 3)) if own is None else own,
+                        own is not None, start, end, rgb)
+    else:  # pragma: no cover - numba is a core dependency
+        start = np.concatenate([pos[i], pos[j]])
+        end = np.concatenate([pos[i] + 0.5 * d, pos[j] - 0.5 * d])
+        rgb = np.tile(own, (2, 1)) if own is not None else np.concatenate([colors[i], colors[j]])
+    index = np.arange(bonds.count)
+    return start, end, rgb, np.concatenate([index, index])
+
+
+def halves_meet(end: np.ndarray, tol: float = 1e-6) -> np.ndarray:
+    """For half-bonds laid out as :func:`bond_segments` makes them (bond k's halves at k and
+    k + m): whether the two halves of each bond end at the same point (False for a bond cut by the
+    periodic cell or the boundary display)."""
+    end = np.ascontiguousarray(end, float)
+    m = len(end) // 2
+    if _meet_numba is not None:
+        out = np.empty(m, bool)
+        _meet_numba(end, tol, out)
+        return out
+    return np.all(np.abs(end[:m] - end[m:]) < tol, axis=1)  # pragma: no cover - numba is a core dependency
+
+
+try:
+    import numba
+
+    @numba.njit(parallel=True, cache=True, nogil=True)
+    def _meet_numba(end, tol, out):  # pragma: no cover - compiled
+        m = len(out)
+        for k in numba.prange(m):
+            out[k] = (abs(end[k, 0] - end[m + k, 0]) < tol and abs(end[k, 1] - end[m + k, 1]) < tol
+                      and abs(end[k, 2] - end[m + k, 2]) < tol)
+
+    @numba.njit(parallel=True, cache=True, nogil=True)
+    def _segments_numba(pos, i, j, d, colors, own, use_own, start, end, rgb):  # pragma: no cover - compiled
+        m = len(i)
+        for k in numba.prange(m):
+            a, b = i[k], j[k]
+            for c in range(3):
+                h = 0.5 * d[k, c]
+                start[k, c] = pos[a, c]
+                start[m + k, c] = pos[b, c]
+                end[k, c] = pos[a, c] + h
+                end[m + k, c] = pos[b, c] - h
+                rgb[k, c] = own[k, c] if use_own else colors[a, c]
+                rgb[m + k, c] = own[k, c] if use_own else colors[b, c]
+except ImportError:  # pragma: no cover - numba is a core dependency
+    _segments_numba = _meet_numba = None

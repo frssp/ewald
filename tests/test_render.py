@@ -64,6 +64,29 @@ def test_impostor_style_draws_bonds_as_sticks(cu_fcc):
     assert bond_mapper(atom_style="flat") != "vtkOpenGLStickMapper"
 
 
+def test_sticks_draw_alike_halves_of_a_bond_as_one(cu_fcc):
+    """Halves that meet and share color and radius become one stick from atom to atom; halves of
+    different colors and halves cut by the cell stay apart (same picture, half the GPU memory)."""
+    from ewald.render import _sticks_numpy, _stick_plan, stick_data
+    from ewald.scene import build
+
+    cyl = next(lay.primitive for lay in build(cu_fcc, bonds=2.8).layers if lay.kind == "cylinders")
+    sticks = stick_data(cyl)
+    met = int((cyl.partner >= 0).sum())
+    assert sticks.n_points == cyl.count - met // 2
+    half = np.asarray(sticks["scale"])[:, 0]
+    assert np.isclose(half.max(), 2 * half.min(), rtol=0.05)   # whole bonds are twice the cut halves
+    first, other = _stick_plan(cyl)
+    outs = [np.empty((len(first), 3), np.float32) for _ in range(3)] + [np.empty((len(first), 3), np.uint8)]
+    _sticks_numpy(cyl.start, cyl.end, cyl.radius, cyl.rgb, first, other, *outs)
+    assert np.allclose(np.asarray(sticks.points), outs[0], atol=1e-5) and np.array_equal(sticks["rgb"], outs[3])
+    two = cu_fcc.copy()
+    two.particles["Particle Type"] = np.where(np.arange(two.count) % 2, "Cu", "Ag")
+    cyl2 = next(lay.primitive for lay in build(two, bonds=2.8).layers if lay.kind == "cylinders")
+    mixed = (cyl2.partner >= 0) & np.any(cyl2.rgb != cyl2.rgb[np.maximum(cyl2.partner, 0)], axis=1)
+    assert stick_data(cyl2).n_points == cyl2.count - int(((cyl2.partner >= 0) & ~mixed).sum()) // 2
+
+
 def test_impostor_bonds_can_be_picked():
     """A selection render (vtkPropPicker, the viewport's click on a bond) crashed the stick mapper
     until its points carried a vtkIdTypeArray of selection ids."""

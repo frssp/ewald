@@ -51,6 +51,16 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- Playing a large trajectory: the bond search of each frame runs on the compute worker instead of
+  the GUI thread, the next frame is read while the current one is drawn, and the neighbor-list
+  kernels let the window paint while they run; the color legend no longer loops over every atom in
+  Python (0.3 s per frame at 1M atoms). `benchmarks/viewport.py` measures the 3D view (D73). (#90, #93)
+- Bonds in the 3D view: the half-bonds and their GPU sticks are built by parallel numba kernels
+  (1M Cu atoms: about 10 s down to 2-3 s), and the two halves of a bond in one color are one stick
+  (half the GPU memory, same picture). Above Preferences › 3D view › Performance › *Bond
+  cylinders at most* (`viewport.max_bond_sticks`, 8M) the view leaves bonds out and says so
+  instead of running out of GPU memory. `Cylinders.partner` pairs the halves of a bond. (#95)
+
 - New app icon: an ammonia molecule with a glass lone-pair lobe over an orange chat bubble
   (replaces the Ewald sphere).
 - The separate `gateway` AI provider and its *User id* / *System name* settings are gone; a

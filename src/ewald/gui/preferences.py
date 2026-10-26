@@ -43,7 +43,7 @@ LAYOUT = {
         ("Navigation", ["viewport.rotation_step"]),
         ("Overlays", ["viewport.show_axes", "viewport.show_overlay", "viewport.render_frame"]),
         ("Hover", ["viewport.hover_info", "viewport.hover_delay"]),
-        ("Performance", ["viewport.backend", "viewport.gpu", "viewport.interactive_detail", "viewport.target_fps", "viewport.interactive_atoms",
+        ("Performance", ["viewport.backend", "viewport.gpu", "viewport.interactive_detail", "viewport.target_fps", "viewport.interactive_atoms", "viewport.max_bond_sticks",
                          "viewport.refine_delay", "viewport.sphere_drawing", "viewport.anti_aliasing",
                          "viewport.sphere_resolution", "viewport.arrow_resolution",
                          "viewport.mesh_limit"])]),
@@ -570,7 +570,7 @@ class PreferencesDialog(QtWidgets.QDialog):
             w.setAlignment(QtCore.Qt.AlignRight)
             suffix = {"general.font_size": " px", "viewport.rotation_step": "°", "bonds.radius": " Å",
                       "render.dpi": " dpi", "viewport.mesh_limit": " atoms",
-                      "viewport.interactive_atoms": " atoms", "viewport.target_fps": " fps",
+                      "viewport.interactive_atoms": " atoms", "viewport.max_bond_sticks": " cylinders", "viewport.target_fps": " fps",
                       "viewport.refine_delay": " s", "performance.cache_memory": " MB"}.get(opt.key)
             if suffix:
                 w.setSuffix(suffix)

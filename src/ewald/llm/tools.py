@@ -1093,6 +1093,11 @@ class Toolset:
                 nb, cell = self._run_new_cell(source.strip(), f"AI: {a.title or a.name} ({k + 1}/{len(a.cells)})")
             out = {"analysis": a.name, "cells": len(a.cells), **self._cell_ref(nb, cell)}
             table = nb.namespace.get(a.result) if a.result else None
+            if table is not None and a.view_cell:   # the plot, as opening the workflow draws it
+                try:
+                    self._run_new_cell(a.view_cell, f"AI: {a.title or a.name} (plot)")
+                except Exception as exc:   # the numbers stand without the picture
+                    out["plot_error"] = str(exc)
             if table is not None:
                 attrs = getattr(table, "attributes", {}) or {}
                 out.update({"table": getattr(table, "name", a.result), "variable": a.result,

@@ -161,7 +161,8 @@ def _bin_index(frac, lo, span, nbins):
 
 if HAVE_NUMBA:
 
-    @numba.njit(parallel=True, cache=True)
+    # nogil: the GUI's compute worker searches bonds while the window keeps painting
+    @numba.njit(parallel=True, cache=True, nogil=True)
     def _numba_pairs(fs, bs, starts, order, mat, pbc, nbins, cutoff2, half, offsets,
                      out_i, out_j, out_d, fill):
         """Pass 1 (fill=False) counts neighbors per sorted atom into ``offsets``;

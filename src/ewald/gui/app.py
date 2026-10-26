@@ -110,6 +110,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self._aligned_plot = None  # the plot the 3D view is aligned to (Align 3D view), see window_links
         self.viewport.hovered.connect(lambda text: self.hover_label.setText(text))
         self.viewport.bondEdit.connect(self.toggle_bond)
+        self.viewport.bondsDropped.connect(self._bonds_dropped)
         self.viewport.styleChanged.connect(self._style_changed)
         self.viewport.contextMenuRequested.connect(self._show_viewport_menu)
         self.timeline = Timeline()
@@ -422,10 +423,37 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
             return
         if not self.settings["performance.background_compute"]:
             wait = True
+        playing = self.timeline.play.isChecked()
         job = self.runner.request(self.pipeline, self.frame, self.device, interactive,
-                                  budget=None if wait else ...)
+                                  budget=None if wait else ..., prepare=self._view_prepare(),
+                                  prefetch=self.timeline.next_frame() if playing else None)
         if job is not None:
             self._computed(job)
+
+    def _bonds_dropped(self, count: int):
+        if self.__dict__.get("_dropped_for") is self.pipeline:  # once per structure, not on every frame
+            return
+        self._dropped_for = self.pipeline
+        limit = self.settings["viewport.max_bond_sticks"]
+        self.message(f"Bonds left out of the 3D view: {count:,} cylinders is above {limit:,} "
+                     "(Preferences › 3D view › Performance › Bond cylinders at most). Pictures still draw them.",
+                     warning=True)
+
+    def _view_prepare(self):
+        """What the compute worker does for the 3D view after a frame (see ``ComputeRunner``):
+        search the bonds it will draw, so a big frame's bond search does not hold up the window."""
+        kw = self.style.scene_kwargs()
+        pairs = kw.get("bond_pairs")
+        if not pairs or kw.get("boundary") or kw.get("replicate"):  # those draw other atoms
+            return None
+
+        def prepare(data):
+            from ..render import scene_bonds
+
+            if data.count and data.bonds is None:
+                scene_bonds(data, None, pairs)
+
+        return prepare
 
     def undo(self):
         label = self.panel.undo()

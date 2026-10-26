@@ -470,8 +470,11 @@ the queued requests collapse into the latest one. The pipeline runs on a worker 
 window stays responsive while a long analysis computes: the view keeps the previous result and
 the status bar says *Computing frame n…* until the new one arrives, and changing the frame or a
 parameter meanwhile cancels the running computation (trajectory modifiers stop at their next
-frame). Results that take less than 50 ms appear at once, as before. Compute › Device ›
-*Compute in the background* turns this off. Rendered images and movies always use full
+frame). Results that take less than 50 ms appear at once, as before. The same worker searches
+the bonds of each new frame, and while playing it reads the next frame ahead. Compute › Device ›
+*Compute in the background* turns this off. A bond whose two halves have the same color is one
+GPU stick; above *Bond cylinders at most* (8,000,000, about 4.6 GB of GPU memory) the view leaves
+the bonds out and says so in the status bar, while pictures still draw them. Rendered images and movies always use full
 detail. Compute › Memory › *Frame cache memory* (2048 MB) caps how much the trajectory frame
 cache holds; the current frame is always kept. Scripts set the same cap with
 `Pipeline(..., cache_memory=bytes)` or `pipe.cache_memory`.

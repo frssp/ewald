@@ -8,7 +8,8 @@ Prints when ``import ewald.gui.app`` finishes, when ``MainWindow()`` returns, wh
 and the Python console are built, every stretch longer than 100 ms in which the window could
 not respond to input, and the peak memory. Runs on Windows, macOS and Linux; settings go to a
 temporary config folder, so your own preferences and layout are not used or changed.
-``--profile`` runs the import and ``MainWindow()`` under cProfile (which makes them slower) and
+``--profile`` runs the import and ``MainWindow()``, then the time from ``show()`` until the 3D
+view is built, under cProfile (which makes them slower) and
 prints the calls with the most cumulative and own time (on Python 3.12+ it also sees the
 threads started meanwhile, such as the plugin catalog download, which do not block the window).
 """
@@ -56,12 +57,21 @@ def timeline(idle_ms: int, profile: bool = False):
     qapp = appmod._app()
     win = appmod.MainWindow()
     mark("MainWindow()")
+    view_prof = None
     if prof is not None:
         prof.disable()
-    win.show()
-    win.viewport.viewBuilt.connect(lambda: mark("3D view built"))
-    if win.viewport.view_built:
+        view_prof = cProfile.Profile()
+        view_prof.enable()
+
+    def view_built():
         mark("3D view built")
+        if view_prof is not None:
+            view_prof.disable()
+
+    win.show()
+    win.viewport.viewBuilt.connect(view_built)
+    if win.viewport.view_built:
+        view_built()
     last, stalls = [time.perf_counter()], []
 
     def tick():
@@ -82,12 +92,14 @@ def timeline(idle_ms: int, profile: bool = False):
     print("  window busy (> 100 ms):", ", ".join(f"{a:.2f} s for {b:.2f} s" for a, b in stalls) or "none")
     rss = peak_rss_mb()
     print(f"  peak memory: {rss:.0f} MB" if rss is not None else "  peak memory: (pip install psutil)")
-    if prof is not None:
-        stats = pstats.Stats(prof, stream=sys.stdout)
-        print("\nimport + MainWindow() under cProfile, EWALD's own functions by cumulative time:")
-        stats.sort_stats("cumulative").print_stats(r"[\\/]ewald[\\/]", 35)
+    for p, what in ((prof, "import + MainWindow()"), (view_prof, "show() until the 3D view is built")):
+        if p is None:
+            continue
+        stats = pstats.Stats(p, stream=sys.stdout)
+        print(f"\n{what} under cProfile, EWALD's own functions by cumulative time:")
+        stats.sort_stats("cumulative").print_stats(r"[\\/]ewald[\\/]", 30)
         print("every function by own time:")
-        stats.sort_stats("tottime").print_stats(20)
+        stats.sort_stats("tottime").print_stats(15)
 
 
 def main():

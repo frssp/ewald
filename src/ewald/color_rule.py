@@ -75,17 +75,32 @@ def painted(base: dict, source: str, where: str, color, count: int) -> dict:
     return out
 
 
+def _unique_types(types):
+    """``np.unique(types, return_index=True, return_counts=True)`` as strings, fast for the short
+    names particle types have: this runs on every frame of a view, and sorting a million strings
+    takes a quarter of a second where sorting their codes takes a few milliseconds."""
+    a = np.asarray(types)
+    if a.dtype.kind != "U":
+        a = a.astype(str)
+    if a.dtype.itemsize <= 8:  # up to two characters: one 64-bit code per name
+        codes = a.astype("<U2").view(np.uint64)
+        _, first, counts = np.unique(codes, return_index=True, return_counts=True)
+        return a[first], first, counts
+    return np.unique(a, return_index=True, return_counts=True)
+
+
 def type_rule(data, type_colors: dict | None = None) -> dict:
     """Atoms in their particle type colors (element colors, the theme's or ``type_colors``)."""
     from .render import _rgb, type_color
 
     entries = []
     if data is not None and data.count:
-        types = np.asarray(data.types).astype(str)
-        for k, t in enumerate(dict.fromkeys(types.tolist())):
+        names, first, counts = _unique_types(data.types)
+        for k, i in enumerate(np.argsort(first)):  # in order of first appearance
+            t = str(names[i])
             c = (type_colors or {}).get(t)
             entries.append({"value": t, "name": t, "color": _hex(_rgb(c) if c is not None else type_color(t, k)),
-                            "count": int((types == t).sum())})
+                            "count": int(counts[i])})
     return {"kind": "type", "source": "particle type", "property": "Particle Type", "entries": entries}
 
 

@@ -22,6 +22,7 @@ from ..render import (
     default_radii,
     needs_depth_peeling,
     setup_camera,
+    stick_count,
 )
 from . import header
 from .application import use_vtk_surface_format, vtk_surface_format  # noqa: F401  (moved there)
@@ -152,6 +153,7 @@ class Viewport(QtWidgets.QWidget):
     hovered = QtCore.Signal(str)         # one-line description of the atom under the cursor, "" for none
     viewBuilt = QtCore.Signal()          # the 3D widget exists now (see ensure_view)
     cameraMoved = QtCore.Signal()        # a render showed another camera (orbit, pan, zoom, a view button)
+    bondsDropped = QtCore.Signal(int)    # the bonds needed this many cylinders, above max_bond_sticks
     lazy_view = True                     # build the 3D widget after the first paint
     uses_vtk = True                      # a pyvistaqt QtInteractor (needs vtk_surface_format)
 
@@ -186,6 +188,7 @@ class Viewport(QtWidgets.QWidget):
         self.detail_mode = "auto"         # 'auto': coarse while moving if a full frame misses target_fps
         self.target_fps = 30.0
         self.interactive_atoms = 1_000_000  # coarse scenes draw at most this many atoms
+        self.max_bond_sticks = 8_000_000  # more bond cylinders are left out (GPU memory)
         self.refine_delay = 0.3           # seconds of idle before the full-detail scene returns
         self._render_time = 0.0           # last full-detail render, seconds
         self._build_time = 0.0            # last full-detail scene build + render, seconds
@@ -436,36 +439,52 @@ class Viewport(QtWidgets.QWidget):
             a = menu.addAction(label, lambda k=kind, s=sign: self.rotate(k, s * self.rotation_step))
             a.setToolTip(tip)
 
+    def _hud_shown(self, level: int) -> dict:
+        """Which top-chip widgets fold level ``level`` shows (the others are always shown)."""
+        shown = {self.axis_buttons[b]: level < 2 for b in ("a", "b", "c")}
+        shown.update({self.axis_buttons[b]: level < 1 for b in ("a*", "b*", "c*")})
+        shown.update({b: level < 1 for b in self.rotate_buttons})
+        shown.update({self.axis_more: level == 1, self.axis_menu: level >= 2,
+                      self.rotate_menu: level in (1, 2), self._rotate_divider: level < 3,
+                      self.style_combo: level < 2, self.ortho_button: level < 3,
+                      self.more_button: level >= 2})
+        return shown
+
     def _set_hud_level(self, level: int, view=None, display=None):
         """Show the top chips at fold ``level`` (an index into ``HUD_LEVELS``)."""
         if level == self.hud_level:
             return
         self.hud_level = level
-        for b in ("a", "b", "c"):
-            self.axis_buttons[b].setVisible(level < 2)
-        for b in ("a*", "b*", "c*"):
-            self.axis_buttons[b].setVisible(level < 1)
-        self.axis_more.setVisible(level == 1)
-        self.axis_menu.setVisible(level >= 2)
-        for b in self.rotate_buttons:
-            b.setVisible(level < 1)
-        self.rotate_menu.setVisible(level in (1, 2))
-        self._rotate_divider.setVisible(level < 3)
-        self.style_combo.setVisible(level < 2)
-        self.ortho_button.setVisible(level < 3)
-        self.more_button.setVisible(level >= 2)
+        for w, on in self._hud_shown(level).items():
+            w.setVisible(on)
         for chip in (view or self._viewbar, display or self._displaybar):
             chip.layout().activate()
             chip.adjustSize()
 
+    @staticmethod
+    def _chip_width(chip, shown: dict) -> int:
+        """The width ``chip`` would have with the widgets in ``shown`` shown or hidden, worked
+        out from size hints: showing and hiding the buttons to measure took 70 ms per fold
+        level on Windows (setVisible), on every resize."""
+        lay = chip.layout()
+        widths = []
+        for i in range(lay.count()):
+            w = lay.itemAt(i).widget()
+            if w is None or not shown.get(w, not w.isHidden()):
+                continue
+            hint = w.sizeHint()
+            widths.append(min(max(hint.width() if hint.isValid() else 0, w.minimumWidth()), w.maximumWidth()))
+        m, frame = lay.contentsMargins(), chip.contentsMargins()
+        return (sum(widths) + lay.spacing() * max(0, len(widths) - 1) + m.left() + m.right()
+                + frame.left() + frame.right())
+
     def hud_width(self, level: int) -> int:
         """The width the two top chips need at fold ``level``, with their margins."""
-        current = self.hud_level
-        self._set_hud_level(level)
-        width = self._viewbar.sizeHint().width() + self._displaybar.sizeHint().width() + 3 * self.HUD_MARGIN
+        shown = self._hud_shown(level)
+        width = (self._chip_width(self._viewbar, shown) + self._chip_width(self._displaybar, shown)
+                 + 3 * self.HUD_MARGIN)
         if not self.hud_overlay:
             width -= self.HUD_MARGIN   # the strip has no gap at its right edge
-        self._set_hud_level(current)
         return width
 
     def _fit_hud(self, width: int):
@@ -768,6 +787,7 @@ class Viewport(QtWidgets.QWidget):
                     scene = scene.copy()
                     scene.bonds, scene.vectors = None, {}
         drawn = build_scene(p, scene, mesh_limit=self.mesh_limit, **kw)
+        self._limit_bonds(p)
         # boundary and replicated images are hovered through the drawn spheres (each knows its real atom)
         atoms = drawn["atoms"].primitive if ("boundary" in kw or "replicate" in kw) and not coarse and "atoms" in drawn else None
         self._boundary_atoms = None if atoms is None else (atoms.centers, atoms.index, atoms.sizes())
@@ -805,6 +825,16 @@ class Viewport(QtWidgets.QWidget):
         if not coarse:
             t2 = time.perf_counter()
             self._render_time, self._build_time = t2 - t1, t2 - t0
+
+    def _limit_bonds(self, p):
+        """Leave the bond sticks out when there are more than ``max_bond_sticks`` (before the first
+        render uploads them: VTK's stick mapper takes about 0.6 KB of GPU memory per stick)."""
+        names = [n for n in p.actors if n == "bonds" or str(n).startswith("bonds:")]
+        count = sum(stick_count(p.actors[n]) for n in names)
+        if count > self.max_bond_sticks:
+            for n in names:
+                p.remove_actor(n, render=False)
+            self.bondsDropped.emit(count)
 
     def refine(self):
         """Replace a coarse scene with full detail (called after ``refine_delay`` of idle)."""

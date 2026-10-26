@@ -9,9 +9,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 ## In progress
 
 - 1M atoms in real time in the 3D view (D73, [plan](developer/viewport-performance.md)):
-  `benchmarks/viewport.py` is in; next are frame switches that keep the actors with the bond
-  search and reading ahead off the GUI thread (phase 1), then lighter bonds (phase 2). Phases 3-4
-  (an own GPU bond renderer, culling) wait for the numbers from the owner's Intel Arc.
+  `benchmarks/viewport.py` is in, the bond search and reading ahead run off the GUI thread
+  (phase 1), and bonds are built in numba with alike halves drawn as one stick (phase 2). Phases
+  3-4 (an own GPU bond renderer, culling) wait for the numbers from the owner's Intel Arc
+  (`python benchmarks/viewport.py -o arc.json`). Left from phase 2: the scene build and stick input
+  of a 1M-atom frame with bonds (4.4 s) still run on the GUI thread; the compute worker could
+  build the `Scene` too.
 
 ## Next
 
@@ -56,9 +59,9 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - Search box and + Step (D57): the step list of the notebook bar's + Step and the Ctrl+K palette leave
   out steps that cannot work on the current frame, where the menus grey them out with the reason.
 - Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): a table's `levels`, `regions`
-  and `gaps` are drawn in cell outputs, figures, the Plots panel and a `show(<table>)` view cell,
-  but an analysis does not end with such a view cell yet (its result is a picture under the cell
-  until one is added), a table's attributes do not cross from a separate kernel (frames come back
+  and `gaps` are drawn in cell outputs, figures, the Plots panel and the `show(<result>)` view cell
+  every analysis with a `result` now ends with (`Analysis.view_cell`, also run by `add_analysis`),
+  but a table's attributes do not cross from a separate kernel (frames come back
   as `.npz`), and the side bar has no "Analysis" row. Only the
   sim-agent band-offset lineup and the per-surface work function exist; the work-function
   workflows' surface energies and the polycrystalline aggregate, EOS and formation energy are next.
@@ -142,8 +145,15 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   the in-process IPython console (~0.4 s, built when its tab first paints) and peak memory
   (~700 MB with VTK, Qt, numba and IPython). On the owner's Windows laptop (2026-10-26, Intel
   Arc) everything takes 3-4 times as long: import 1.8-2.1 s, `MainWindow()` 5.3-5.8 s, 3D view
-  6.0-6.6 s, console 7.7-9.0 s, peak 610-650 MB, the same with an empty numba cache. The biggest
-  gap is `MainWindow()` itself (3.5 s); `benchmarks/startup.py --profile` lists the calls.
+  6.0-6.6 s, console 7.7-9.0 s, peak 610-650 MB, the same with an empty numba cache.
+  `benchmarks/startup.py --profile` there (2026-10-26): the import is 2.3 s, about 0.6 s of it
+  `os.stat` and 0.3 s opening files (many small files on NTFS with Defender scanning), numba
+  0.64 s and scipy.spatial 0.54 s; in `MainWindow()` 0.5 s went to folding the view chips (each
+  fold width was measured by showing and hiding buttons, 4 ms per `setVisible` there; now
+  worked out from size hints, also on every resize), 0.23 s to the WGL OpenGL check, 0.22 s to
+  two `QFontDatabase.families()` scans (now one), 0.32 s to the plugin entry-point scan and
+  0.25 s to the theme. The 3D view then blocks the window for about 3 s after the first paint
+  (pyvistaqt and the first OpenGL context); `--profile` now covers that stretch too.
 - Maximizing the window (2026-10-24, `python benchmarks/resize.py`): in the container (llvmpipe,
   cu_void tutorial) it is settled after 0.3-0.7 s, of which one full 3D render is 0.1-0.3 s;
   restoring takes about 0.12 s. The rest is Qt layout and painting plus matplotlib mathtext
@@ -344,12 +354,11 @@ GUI
   notebook kernels below exist; view cells and the Plots tab compute other frames on the GUI
   thread too.
 - Scene updates without a full rebuild when only colors or a few properties change, and frame
-  changes with the same atoms that replace only the point coordinates. Measured 2026-10-24 after
-  bond impostors: a ball-and-stick frame switch at 11k atoms spends ~20 ms rebuilding actors and
-  ~150 ms in llvmpipe's draw, at 108k ~0.4 s (mostly the bond search) and ~0.9 s drawing, so
-  reusing actors would save little until the per-frame bond search moves off the GUI thread
-  (redraws of the same frame reuse it since 2026-10-25, `bonds.cached_bonds`; a new frame still
-  searches on the GUI thread).
+  changes with the same atoms that replace only the point coordinates. Measured 2026-10-26: the
+  bond search of a new frame now runs on the compute worker, and what is left on the GUI thread
+  for 1M atoms without bonds is 0.08 s of `set_data` (scene and actors) before the render, so
+  reusing actors would save less than that; with bonds the half-bond geometry and stick input are
+  numba kernels since phase 2 of the [1M-atom plan](developer/viewport-performance.md).
 - Picking without a render: click picks still use a `vtkPropPicker` selection render; the hover
   readout already does a CPU ray-sphere test (`camera_ray`, `ray_spheres` in `gui/viewport.py`)
   that `pick_at` could reuse.
@@ -785,9 +794,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   calculation that finished yesterday" should call `list_workflows` with `formula`, `status` and
   `since`/`until`, then `open_workflow`; days are the PC's local days against sim-agent's
   creation time.
-- GUI startup on the owner's Windows machine: measured (see Performance); next
-  `python benchmarks/startup.py --profile` there, to see which calls make `MainWindow()` take
-  3.5 s instead of about 0.6 s. Windows Defender scanning freshly installed packages can make the
+- GUI startup on the owner's Windows machine: measured and profiled (see Performance); next
+  `python benchmarks/startup.py --profile` once more, for the 3 s the 3D view blocks the window
+  after its first paint, on the Arc and on the RTX. Windows Defender scanning freshly installed packages can make the
   first start after an update much slower than later ones (the "Preparing EWALD" first-run
   notice, `gui/first_run.py`, shows during that start).
 - First-run notice on a real Mac and Windows machine: after `uv pip install -e .` the next
