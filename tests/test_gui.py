@@ -148,6 +148,44 @@ def test_view_tab_polyhedra_card_adds_and_shows_the_step(app, srtio3_pipe):
     assert panel.style.view_settings(["Sr", "Ti", "O"])["surfaces"] == {"coordination-polyhedra": {"edges": False}}
     _dispose(panel)
 
+
+def test_view_tab_bond_rules_removed_one_by_one_and_step_bonds(app, srtio3_pipe):
+    """The owner removed SrTiO3's rules one by one: the last one brought the automatic table back (an
+    empty table means automatic), so removing it turns bonds off. Bonds a Create bonds step made are
+    drawn instead of the rules: the table is disabled and Edit step points at that step."""
+    from ewald.gui.pipeline_panel import DisplayPanel
+
+    step = srtio3_pipe.modifiers.pop(0)        # CreateBonds: first without it
+    panel = DisplayPanel()
+    panel.set_pipeline(srtio3_pipe)
+    panel.set_data(srtio3_pipe.compute(0))
+
+    def card():
+        c = panel.sections["Bonds"]
+        return c, c.findChild(QtWidgets.QTableWidget)
+
+    c, table = card()
+    n = table.rowCount()
+    assert n >= 2 and table.isEnabled()
+    for k in range(n):
+        c, table = card()
+        table.setCurrentCell(0, 0)
+        [b for b in c.findChildren(QtWidgets.QPushButton) if b.text() == "Remove"][0].click()
+    c, table = card()
+    assert table.rowCount() == 0 and panel.style.bond_pairs == [] and not panel.style.bonds_enabled
+    assert panel.style.view_settings(["Sr", "Ti", "O"])["bonds"] is False
+    [b for b in c.findChildren(QtWidgets.QPushButton) if b.text() == "Add rule"][0].click()
+    assert panel.style.bonds_enabled and panel.style.bond_pairs == [["*", "*", 0.0, 2.5]]
+    srtio3_pipe.modifiers.insert(0, step)
+    panel.set_data(srtio3_pipe.compute(0), refresh=True)
+    c, table = card()
+    assert not table.isEnabled()
+    asked = []
+    panel.stepRequested.connect(asked.append)
+    [b for b in c.findChildren(QtWidgets.QPushButton) if b.text() == "Edit step"][0].click()
+    assert asked == [step]
+    _dispose(panel)
+
 def test_view_tab_opens_no_window_and_keeps_its_cards_over_neb_frames(app, vasp_dir):
     """A NEB band with trajectory lines played on Windows flashed a window at every frame: the View tab
     was rebuilt (the OverlayFrames copies change the atom count) and a checked group showed its rows

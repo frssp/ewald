@@ -1452,7 +1452,9 @@ class DisplayPanel(QtWidgets.QWidget):
         self._row(f, "", on, "bonds")
         self._row(f, "Radius", rad, "bond_radius")
         pairs = self.style.bond_pairs
-        if not pairs and self.data is not None:   # what the automatic table would be; stored once edited
+        # bonds a step made are drawn instead of the table: the rules can't change them, their step can
+        from_step = self.data is not None and self.data.bonds is not None
+        if not pairs and self.data is not None and self.style.bonds_enabled:   # the automatic table; stored once edited
             from .style import ViewStyle
 
             auto = ViewStyle(bond_factor=self.style.bond_factor)
@@ -1516,6 +1518,9 @@ class DisplayPanel(QtWidgets.QWidget):
             if not self.style.bond_pairs:
                 self.style.bond_pairs = [list(p) for p in pairs]
             change(self.style.bond_pairs)
+            # an empty table means the automatic one: removing the last rule turns bonds off instead,
+            # and adding a rule turns them on again
+            self.style.bonds_enabled = bool(self.style.bond_pairs)
             self.styleChanged.emit()
             self.refresh()
 
@@ -1528,9 +1533,21 @@ class DisplayPanel(QtWidgets.QWidget):
         to_mod.clicked.connect(lambda: self.add_modifier(
             mods.CreateBonds(mode="pairwise", pairs=[tuple(p) for p in pairs])))
         f.addRow(self._buttons(add, rm, to_mod))
-        if self.data is not None and self.data.bonds is not None:
-            f.addRow(QtWidgets.QLabel(f"{self.data.bonds.count:,} bonds from a step (drawn instead of the table)",
-                                      objectName="viewStatus", wordWrap=True))
+        if from_step:
+            for widget in (table, add, rm, to_mod):
+                widget.setEnabled(False)
+                widget.setToolTip("Bonds come from a step in the notebook: edit that step to change them")
+            row = QtWidgets.QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.addWidget(QtWidgets.QLabel(f"{self.data.bonds.count:,} bonds from a step; the rules apply "
+                                           "without it", objectName="viewStatus", wordWrap=True), 1)
+            step = next((m for m in reversed(getattr(self.pipeline, "modifiers", []))
+                         if isinstance(m, mods.CreateBonds)), None)
+            if step is not None:
+                edit_step = QtWidgets.QPushButton("Edit step", toolTip="Show the Create bonds cell and its form")
+                edit_step.clicked.connect(lambda: self.stepRequested.emit(step))
+                row.addWidget(edit_step)
+            f.addRow(row)
         elif self.data is not None and self.style.bonds_enabled:
             from ..render import bond_list
 
