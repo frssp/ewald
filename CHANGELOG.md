@@ -73,6 +73,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Fixed
 
+- The window no longer freezes while the Plugins side bar installs, updates or removes a pip
+  plugin: the package metadata read around pip (seconds, longer on Windows) moved off the GUI
+  thread, Cancel also works before pip starts, and catalogs older than ten minutes are read
+  again when the side bar is shown, so new versions get their *Update* button. (#80)
 - No more small windows flashing up when the GUI starts or opens a notebook (dock title bars,
   tab groups and notebook bars were shown before they had a parent). (#81)
 - Bond ends look the same in every renderer (D50): bonds cut by the periodic cell end in flat

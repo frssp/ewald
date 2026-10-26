@@ -145,6 +145,23 @@ def test_github_token_goes_only_to_github_hosts(monkeypatch):
     assert pc.github_token() == "" and pc.pip_env("git+https://github.com/a/b") == {}
 
 
+def test_gh_token_opens_no_console_window_on_windows(monkeypatch):
+    """ewald started from a shortcut has no console; a child process without CREATE_NO_WINDOW
+    flashes one on Windows."""
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(pc.shutil, "which", lambda name: "gh")
+    monkeypatch.setattr(pc.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)   # as on Windows
+    seen = {}
+
+    def run(cmd, **kw):
+        seen.update(kw)
+        return pc.subprocess.CompletedProcess(cmd, 0, stdout="tok\r\n", stderr="")
+
+    monkeypatch.setattr(pc.subprocess, "run", run)
+    assert pc.github_token() == "tok"
+    assert seen["creationflags"] == 0x08000000 and seen["encoding"] == "utf-8"
+
+
 def test_pip_update_upgrades():
     assert pc.pip_command("update", "ewald-x")[-3:] == ["install", "--upgrade", "ewald-x"]
 
@@ -294,3 +311,43 @@ def test_restart_command_runs_this_python_or_the_frozen_app(monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     assert pc.restart_command([nb]) == [sys.executable, nb]
     assert pc.restart_command() == [sys.executable]
+
+
+def _dist_info(site, name, version, record=None, top_level=None, crlf=False):
+    info = site / f"{name.replace('-', '_')}-{version}.dist-info"
+    info.mkdir(parents=True)
+    nl = "\r\n" if crlf else "\n"
+    (info / "METADATA").write_text(f"Metadata-Version: 2.1{nl}Name: {name}{nl}Version: {version}{nl}",
+                                   encoding="utf-8", newline="")
+    if record is not None:
+        (info / "RECORD").write_text(nl.join(record) + nl, encoding="utf-8", newline="")
+    if top_level is not None:
+        (info / "top_level.txt").write_text(nl.join(top_level) + nl, encoding="utf-8", newline="")
+
+
+def test_module_distributions_reads_metadata_without_touching_the_installed_files(tmp_path, monkeypatch):
+    """The Plugins side bar froze for seconds (minutes on a big Windows environment) because
+    importlib.metadata.packages_distributions stats every installed file; ours reads RECORD only."""
+    import importlib.metadata as md
+    from pathlib import Path
+
+    site = tmp_path / "site"
+    _dist_info(site, "ewald-mp", "0.1.0", record=[       # the files themselves are not there
+        "ewald_mp/__init__.py,sha256=x,10", "ewald_mp/reader.py,,", "ewald_mp-0.1.0.dist-info/METADATA,,",
+        "../../bin/ewald-mp,,", "__pycache__/x.pyc,,"])
+    _dist_info(site, "fastext", "2.0", crlf=True, record=[   # written on Windows: CRLF, backslashes, a .pyd
+        "fastext\\__init__.py,,", "_fastext.cp313-win_amd64.pyd,,", "fastext.pth,,", "single.py,,"])
+    _dist_info(site, "Old-Egg", "1.0", top_level=["oldegg", "oldegg_helpers"])
+    _dist_info(site, "editable-thing", "0.3", record=["__editable__.editable_thing-0.3.pth,,"])
+    real = md.distributions
+    monkeypatch.setattr(md, "distributions", lambda: real(path=[str(site)]))
+    stats = []
+    real_stat = Path.stat
+    monkeypatch.setattr(Path, "stat", lambda self, **k: (stats.append(self), real_stat(self, **k))[1])
+    found = pc._module_distributions()
+    assert found["ewald_mp"] == ["ewald-mp"]
+    assert found["fastext"] == ["fastext"] and found["_fastext"] == ["fastext"] and found["single"] == ["fastext"]
+    assert found["oldegg"] == ["Old-Egg"] and found["oldegg_helpers"] == ["Old-Egg"]
+    assert found["editable_thing"] == ["editable-thing"]           # an editable install: by its name
+    assert ".." not in found and "__pycache__" not in found and "fastext.pth" not in found
+    assert not [s for s in stats if "ewald_mp" in s.parts or "fastext" in s.parts]   # no installed file was looked at

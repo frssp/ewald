@@ -51,7 +51,7 @@ import sys
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from . import plugins
 from ._tls import ssl_context
@@ -297,7 +297,8 @@ def github_token() -> str:
         return ""
     try:
         out = subprocess.run([gh, "auth", "token"], capture_output=True, timeout=5,
-                             encoding="utf-8", errors="replace")
+                             encoding="utf-8", errors="replace",
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))  # no console flash on Windows
     except (OSError, subprocess.SubprocessError):
         return ""
     return out.stdout.strip() if out.returncode == 0 else ""
@@ -537,9 +538,40 @@ def _github_env(requirement: str | list[str]) -> dict:
 
 # ---------------------------------------------------------------- restart
 def _module_distributions() -> dict[str, list[str]]:
-    """Top-level module name -> the distributions that install it (read fresh from disk)."""
+    """Top-level module name -> the distributions that install it (read fresh from disk).
+
+    Reads each distribution's ``top_level.txt`` or ``RECORD`` and never looks at the files they
+    list: :func:`importlib.metadata.packages_distributions` checks that every file of every
+    installed package exists (Python 3.12+), tens of thousands of ``stat`` calls that took the
+    Plugins side bar seconds, and much longer in a big environment on Windows."""
     importlib.invalidate_caches()
-    return importlib.metadata.packages_distributions()
+    out: dict[str, list[str]] = {}
+    for dist in importlib.metadata.distributions():
+        name = dist.metadata["Name"]
+        if not name:
+            continue
+        for top in _top_level_names(dist) | {_norm(name).replace("-", "_")}:  # the name: editable installs
+            if name not in out.setdefault(top, []):
+                out[top].append(name)
+    return out
+
+
+def _top_level_names(dist) -> set[str]:
+    """The importable top-level names a distribution installs, from its metadata files only."""
+    text = dist.read_text("top_level.txt")
+    if text:
+        return {line.strip() for line in text.splitlines() if line.strip()}
+    names = set()
+    for line in (dist.read_text("RECORD") or "").splitlines():
+        path = line.rsplit(",", 2)[0].strip().strip('"').replace("\\", "/")
+        first = PurePosixPath(path).parts[0] if path else ""
+        if not first or first in ("..", "__pycache__") or first.endswith((".dist-info", ".data", ".egg-info")):
+            continue
+        if first.endswith((".py", ".pyd", ".so")):
+            names.add(first.partition(".")[0])     # a module, or an extension module.cpython-313-....so
+        elif "." not in first:
+            names.add(first)                       # a package folder
+    return names
 
 
 def _version(dist: str) -> str:

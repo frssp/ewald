@@ -695,6 +695,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Plugins side bar on the owner's Windows environment (2026-10-26): installing, updating and
+  removing a pip plugin (ewald-mp) keeps the window responsive (it froze for seconds when the
+  package metadata was read on the GUI thread), no console window flashes, and *Update to 0.1.x*
+  shows once a newer version is in the index.
 - No small windows flash up when `ewald-gui` starts on the owner's Windows PC (fixed by parenting
   the dock title bar widgets, workbench tab groups and notebook bars before they are shown;
   `test_startup_shows_no_window_but_the_main_window` checks it on Linux).

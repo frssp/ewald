@@ -3427,6 +3427,85 @@ def test_plugins_from_file_sends_archives_to_pip_and_py_files_to_the_plugin_fold
     assert len(installs) == 1 and installs[0].source.endswith("one.py")
 
 
+def test_plugins_side_bar_keeps_the_window_responsive_around_pip(app, monkeypatch):
+    """pip runs in its own process, and the slow package bookkeeping before and after it (every
+    installed package's metadata, gh auth token) in a thread: the GUI thread never waits for it."""
+    import sys
+    import threading
+    import time
+
+    from ewald import plugin_catalog as pc
+    from ewald import settings
+    from ewald.gui import plugins_panel
+
+    panel = plugins_panel.PluginsPanel(settings=settings.Settings())
+    panel.wait()
+    gui = threading.get_ident()
+    threads = []
+
+    def slow(result):
+        def fn(*a, **k):
+            threads.append(threading.get_ident())
+            time.sleep(0.5)
+            return result
+        return fn
+
+    monkeypatch.setattr(pc, "loaded_versions", slow({"numpy": "0.0.1"}))
+    monkeypatch.setattr(pc, "pip_env", slow({"EWALD_TEST_PIP_ENV": "1"}))
+    monkeypatch.setattr(pc, "restart_reason", slow("pip changed numpy"))
+    monkeypatch.setattr(pc, "pip_command", lambda action, req: [
+        sys.executable, "-c", "import os; print('pip env', os.environ.get('EWALD_TEST_PIP_ENV'))"])
+    monkeypatch.setattr(plugins_panel.QtWidgets.QMessageBox, "question",
+                        lambda *a, **k: plugins_panel.QtWidgets.QMessageBox.Yes)
+    changed = []
+    panel.changed.connect(lambda: changed.append(True))
+    t0 = time.monotonic()
+    panel._run_pip("install", "ewald-something", key="k", busy="Installing…")
+    assert time.monotonic() - t0 < 0.4                          # returned at once, pip not even started yet
+    assert panel.busy == {"k": "Installing…"} and not panel.busy_bar.isHidden()
+    assert not panel.cancel_button.isHidden()
+    panel._run_pip("install", "other")                          # one pip at a time
+    assert "still running" in panel.log.toPlainText()
+    panel.wait(20000)
+    assert threads and gui not in threads
+    assert "pip env 1" in panel.log.toPlainText()               # the environment from the thread reached pip
+    assert changed == [True] and panel.busy == {} and panel.busy_bar.isHidden()
+    assert "pip changed numpy" in panel.restart_label.text() and not panel.restart_bar.isHidden()
+
+    # Cancel while it is still getting ready: pip never starts
+    panel._run_pip("install", "ewald-something", key="k", busy="Installing…")
+    panel.cancel()
+    assert panel.busy == {} and panel._pip_job is None
+    panel.wait(5000)
+    assert "failed (exit -1)" in panel.log.toPlainText() and "pip env" not in panel.log.toPlainText()
+    assert changed == [True]
+    panel.close()
+
+
+def test_plugins_side_bar_reads_old_catalogs_again_when_shown(app, monkeypatch):
+    """A side bar left open for hours learns about a newer plugin version (ewald-mp 0.1.1)."""
+    from ewald import plugin_catalog as pc
+    from ewald import settings
+    from ewald.gui import plugins_panel
+
+    versions = ["0.1.0"]
+    monkeypatch.setattr(pc, "catalog", lambda urls, timeout=10.0: (
+        [pc.Entry(name="Materials Project", id="mp", version=versions[0], source="pip:ewald-mp")], {}))
+    panel = plugins_panel.PluginsPanel(settings=settings.Settings())
+    panel.wait()
+    assert panel.entries[0].version == "0.1.0"
+    versions[0] = "0.1.1"                                        # published in the meantime
+    panel.show()
+    panel.wait()
+    assert panel.entries[0].version == "0.1.0"                   # read moments ago: kept
+    panel.hide()
+    panel._catalog_time -= plugins_panel.CATALOG_MAX_AGE + 1
+    panel.show()
+    panel.wait()
+    assert panel.entries[0].version == "0.1.1"
+    panel.close()
+
+
 def test_plugins_side_bar_stays_narrow_while_pip_runs(app, tmp_path):
     """A long pip requirement in the busy line, or a long plugin name, must not widen the side bar."""
     import json
@@ -6139,7 +6218,9 @@ def test_plugins_side_bar_recommends_a_restart_when_pip_replaced_loaded_code(app
             pass
 
     panel._process, panel._before = Done(), {"numpy": "0.0.1"}   # pip upgraded numpy, which is loaded
+    panel._pip_job = ("install", "ewald-something")
     panel._pip_done("install", "ewald-something", 0)
+    panel.wait()                                              # the package metadata is read in a thread
     assert not panel.restart_bar.isHidden() and "numpy 0.0.1 -> " in panel.restart_label.text()
     restart = next(b for b in panel.restart_bar.findChildren(plugins_panel.QtWidgets.QPushButton)
                    if b.text() == "Restart now")
