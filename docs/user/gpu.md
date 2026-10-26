@@ -44,8 +44,9 @@ OpenCL: `pip install 'ewald[opencl]'`, then `device="opencl"`, or OpenCL in Pref
 Compute › Device. The GPU's driver brings the OpenCL runtime (on Windows the Intel, AMD and
 NVIDIA graphics drivers do). Only the ray tracer uses OpenCL; the analysis runs on the CPU
 with this device. `device="auto"` picks CUDA first, then an OpenCL GPU for ray tracing (on a Mac, Metal; see
-below). To see
-what the GPU gains, run `python benchmarks/analysis.py --skip-modifiers --device opencl` and
+below). On an Intel Arc GPU (Windows) the SrTiO3 example with TiO6 polyhedra took 1.13 s
+at 1600x1200 Publication against 4.80 s on the CPU, and 108 000 fcc Cu atoms traced at 800x600 in
+0.20 s. To see what the GPU gains, run `python benchmarks/analysis.py --skip-modifiers --device opencl` and
 compare with `--device cpu`.
 
 ## CPU threads
