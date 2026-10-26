@@ -3479,6 +3479,78 @@ def test_background_compute_keeps_the_window_responsive_and_cancels(app, cu_fcc,
     w.close()
 
 
+def test_compute_runner_prepares_on_the_worker_and_reads_ahead(app):
+    import threading
+    import time
+
+    from ewald.gui.compute import ComputeRunner
+    from ewald.data import Cell, DataCollection
+
+    data = DataCollection(np.random.default_rng(0).random((20, 3)) * 5, ["Cu"] * 20, Cell(np.eye(3) * 5))
+    pipe = Pipeline(StaticSource([data] * 4))
+    runner = ComputeRunner()
+    where = []
+    job = runner.request(pipe, 1, budget=None, prepare=lambda d: where.append(threading.current_thread().name),
+                         prefetch=2)
+    assert job.data is not None and where and where[0].startswith("ewald-compute")
+    assert runner.wait(5)
+    assert 2 in pipe._cache and len(where) == 2  # the read-ahead frame was computed and prepared too
+    # a newer request for another frame cancels a read-ahead that is still running
+    gate = threading.Event()
+    slow = Pipeline(StaticSource([data] * 4), [_Gate(gate)])
+    runner.request(slow, 0, budget=None, prefetch=3)
+    deadline = time.time() + 5
+    while runner._ahead is None and time.time() < deadline:
+        time.sleep(0.005)
+    ahead = runner._ahead
+    runner.request(slow, 1, budget=0)
+    assert ahead is not None and ahead.cancel.is_set()
+    gate.set()
+    assert runner.wait(5)
+    runner.shutdown()
+
+
+class _Gate(mods.Modifier):
+    """Waits (cancellable) on frames above 0 until ``gate`` is set."""
+
+    def __init__(self, gate=None):
+        super().__init__()
+        self.gate = gate
+
+    def modify(self, data, ctx):
+        import time
+
+        while ctx.frame > 0 and not self.gate.is_set():
+            ctx.check_cancel()
+            time.sleep(0.005)
+
+
+def test_playback_searches_bonds_off_the_gui_thread(app, monkeypatch):
+    from ewald import bonds as bonds_mod
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.app import MainWindow
+
+    frames = [DataCollection(np.array([[0, 0, 0], [1.0 + 0.1 * k, 0, 0]]), ["Cu", "Cu"], Cell(np.eye(3) * 6))
+              for k in range(3)]
+    w = MainWindow(Pipeline(StaticSource(frames)))
+    w.style.bonds_enabled, w.style.bond_pairs = True, [["Cu", "Cu", 0.0, 1.5]]
+    import threading
+
+    seen = []
+    real = bonds_mod.find_bonds
+    monkeypatch.setattr(bonds_mod, "find_bonds",
+                        lambda *a, **k: (seen.append(threading.current_thread().name), real(*a, **k))[1])
+    w.timeline.play.setChecked(True)
+    w.timeline.timer.stop()  # advance by hand
+    w.timeline._advance()
+    app.processEvents()
+    assert w.runner.wait(5)
+    app.processEvents()
+    assert seen and all(n.startswith("ewald-compute") for n in seen), seen  # frame 1 and the read-ahead 2
+    w.timeline.play.setChecked(False)
+    w.close()
+
+
 def test_notebook_undo_redo_from_the_edit_menu(app, cu_path):
     from ewald import settings
     from ewald.gui.app import MainWindow

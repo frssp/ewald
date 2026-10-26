@@ -9,8 +9,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 ## In progress
 
 - 1M atoms in real time in the 3D view (D73, [plan](developer/viewport-performance.md)):
-  `benchmarks/viewport.py` is in; next are frame switches that keep the actors with the bond
-  search and reading ahead off the GUI thread (phase 1), then lighter bonds (phase 2). Phases 3-4
+  `benchmarks/viewport.py` is in, and the bond search and reading ahead run off the GUI thread
+  (phase 1); next are lighter bonds (phase 2). Phases 3-4
   (an own GPU bond renderer, culling) wait for the numbers from the owner's Intel Arc.
 
 ## Next
@@ -342,12 +342,11 @@ GUI
   notebook kernels below exist; view cells and the Plots tab compute other frames on the GUI
   thread too.
 - Scene updates without a full rebuild when only colors or a few properties change, and frame
-  changes with the same atoms that replace only the point coordinates. Measured 2026-10-24 after
-  bond impostors: a ball-and-stick frame switch at 11k atoms spends ~20 ms rebuilding actors and
-  ~150 ms in llvmpipe's draw, at 108k ~0.4 s (mostly the bond search) and ~0.9 s drawing, so
-  reusing actors would save little until the per-frame bond search moves off the GUI thread
-  (redraws of the same frame reuse it since 2026-10-25, `bonds.cached_bonds`; a new frame still
-  searches on the GUI thread).
+  changes with the same atoms that replace only the point coordinates. Measured 2026-10-26: the
+  bond search of a new frame now runs on the compute worker, and what is left on the GUI thread
+  for 1M atoms without bonds is 0.08 s of `set_data` (scene and actors) before the render, so
+  reusing actors would save less than that; with bonds it is the half-bond geometry and stick
+  input (0.9 s at 108k atoms), phase 2 of the [1M-atom plan](developer/viewport-performance.md).
 - Picking without a render: click picks still use a `vtkPropPicker` selection render; the hover
   readout already does a CPU ray-sphere test (`camera_ray`, `ray_spheres` in `gui/viewport.py`)
   that `pick_at` could reuse.

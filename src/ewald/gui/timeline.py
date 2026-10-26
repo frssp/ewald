@@ -153,19 +153,22 @@ class Timeline(QtWidgets.QWidget):
         else:
             self.timer.stop()
 
-    def _advance(self):
+    def next_frame(self) -> int | None:
+        """The frame playback shows next (marked frames, stride, loop), or None where it stops."""
         marks = self.slider.marks
         if marks:
             later = [f for f in marks if f > self.frame]
             if not later and not self.loop.isChecked():
-                self.play.setChecked(False)
-                return
-            self._set(later[0] if later else marks[0])
-            return
+                return None
+            return later[0] if later else marks[0]
         nxt = self.frame + self.stride.value()
         if nxt > self.slider.maximum():
-            if not self.loop.isChecked():
-                self.play.setChecked(False)
-                return
-            nxt = 0
+            return 0 if self.loop.isChecked() else None
+        return nxt
+
+    def _advance(self):
+        nxt = self.next_frame()
+        if nxt is None:
+            self.play.setChecked(False)
+            return
         self._set(nxt)

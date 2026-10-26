@@ -170,7 +170,7 @@ class PeriodicKDTree:
 
 if numba is not None:
 
-    @numba.njit(parallel=True, cache=True)
+    @numba.njit(parallel=True, cache=True, nogil=True)
     def _knn_cells(fq, xq, ps, order, starts, mat, pbc, lo, span, nbins, h, index, delta, dist):
         """k nearest neighbors of every query by shells of bins (Chebyshev rings around the
         query's bin).  A bin is skipped when its slab lower bound exceeds the current k-th
