@@ -6,6 +6,72 @@ the saved runs are in `benchmarks/ai_eval/` (answers, the notebooks the models l
 tokens and cost per task), so a later prompt or tool change can be compared with
 `ewald eval --compare benchmarks/ai_eval/2026-10-24-opus.json new.json`.
 
+## 2026-10-26: whole studies from one sentence (D70)
+
+The owner's next goal (D70) is the AI doing a whole analysis alone: "find the activation energy
+of Li diffusion from these runs" should end in a notebook that compares the runs, fits, plots and,
+when asked, holds the paragraph for the paper. The 53 tasks above did not separate models, so the
+new `study` category asks for whole studies. Nine of its 11 tasks run on synthetic VASP MD series
+written by `ewald.llm.eval_data` (Li hopping between the empty sites of a grid in the ab plane of a
+static S host, Ea 0.30 eV, seeded, so the answer is known), and one on the LLZO paper data:
+
+| Task | What the model has to see |
+|---|---|
+| `study-arrhenius` | five runs next to the one opened; Li only; Ea and its plot |
+| `study-paper` | the same, plus the 2D path, D in cm²/s and a results paragraph quoting the cells' numbers |
+| `study-hot-start` | T500 starts at 2000 K for 120 frames (check_run flags it): cut it, or Ea is 0.03-0.18 eV instead of 0.29 |
+| `study-mislabel` | folder T900 holds a 600 K run (its INCAR): using folder names gives 0.19 eV instead of 0.31 |
+| `study-scf` | T600 hit NELM at 80 % of its steps and its D is off the trend: leave it out |
+| `study-timestep` | the runs store frames 10, 10, 10, 20 and 50 fs apart: one time step for all gives 0.40 eV instead of 0.27 |
+| `study-path` | how Li moves and how long one hop is (2.0 Å, in the ab plane), shown in the 3D view |
+| `study-redo` | a follow-up, "leave the 500 K run out and redo the fit and the plot": edit the fit cell |
+| `study-llzo` | LLZO at 500-800 K (GROMACS XTC, 50.8 fs frames, diffusive from 10 ps): Ea 0.118 eV |
+| `study-one-temperature` | four runs, all at 600 K (a cutoff test): say no Ea can come from them |
+| `study-no-diffusion` | Li only vibrates: say there is no D to fit |
+
+Every Arrhenius task also needs the value printed by a cell (so the notebook makes it), the plot
+under a cell, no failed cell left, and the same result when the notebook is re-run from the top.
+
+Runs with `--category study --allow-code --repeat 2` (22 runs per model), effort high, first-party
+API. "Before" is main at d926ff5 with only the new tasks and graders copied in; "after" is public
+PR #73.
+
+| Model | Passed before | Passed after | Reproducible after | Tool errors | Tool calls per task | Cost after |
+|---|---|---|---|---|---|---|
+| Claude Opus 5.5 | 21/22 | 22/22 | 100% | 11 → 5 | 10.1 → 8.1 | $6.86 |
+| Claude Sonnet 5.5 | 17/22 | 21/22 | 94% | 33 → 3 | 10.0 → 5.8 | $3.20 |
+| Claude Haiku 5.5 | 17/22 | 21/22 | 100% | 16 → 5 | 12.9 → 9.8 | $0.25 |
+
+The saved runs are `benchmarks/ai_eval/2026-10-26-study-{before,after}-{opus,sonnet,haiku}.json`.
+The traps were caught more often than expected: in all but one run (Sonnet, `study-hot-start`
+before, Ea 0.35 eV) the models read the INCARs, ran check_run and said which run they trimmed or
+left out, and no run gave a number for the two wrong premises. What
+failed was mostly the last mile:
+
+- Cells that called a function the notebook had not imported (`load_runs`, `msd`, `check_run`:
+  NameError, the most common tool error) and stayed in the notebook as failed cells. New notebooks
+  now import the verbs and the run functions.
+- `fit.plot()` (no such method; then, once added, it drew nothing under a cell because
+  `plt.show()` of a plotstyle figure is lost there), `runs["500"]` for the run labelled "T500",
+  `runs[run]`, `runs.keys()`, `arrhenius({T: D})`: all work now; `arrhenius` names the runs it got
+  when the fit cannot be made, and `RunTables.attribute` lists the names there are.
+- Not seeing that Li moves in the ab plane only (Haiku and Sonnet in `study-paper` and
+  `study-path`): `MeanSquaredDisplacement(by_axis=True)` gives the MSD along x, y and z and 1D
+  coefficients, and `compute_msd` reports how the MSD splits over the axes.
+- Failed cells left behind and numbers quoted that no cell printed: the agent's system prompt now
+  says that a study is checked run by run, that the notebook must run without errors before the
+  answer and that every quoted number must come from a cell.
+- A cell that drew a figure and then failed sent its image in an error tool result, which the
+  Messages API refuses (a 400 that ended an Opus run); error results now carry text only.
+- After the changes, the remaining failures were a failed cell Sonnet left in `study-paper` and
+  Haiku putting a diffusion coefficient where `study-paper` asks for Ea.
+
+The whole suite after the change (68 tasks, one run, `--allow-code`): Sonnet 5.5 68/68 ($4.57) and
+Haiku 5.5 68/68 ($0.28, one task not reproducible), so the new import cell and prompt cost nothing
+on the single-step tasks. The suite again nearly saturates for these tasks (Opus 22/22). Two runs per model are a small
+sample; harder judgement calls (a run that looks fine but is too short, several traps at once,
+the paragraph's writing judged by a second model) are in [todo.md](../todo.md).
+
 ## 2026-10-25: editing cells instead of adding copies (D68)
 
 The owner saw the AI add a new cell, with the option changed, each time an option of an existing

@@ -206,7 +206,8 @@ GUI
   real-model runs (2026-10-23, Claude through `make_ai_demo.py --live`, three scenes,
   three takes) read it every time and got the numbers right (barrier, hopping atom, sp/sp2/sp3
   fractions, D*(Li) 1.3-1.45 × 10⁻⁵ cm²/s against kinisi's 1.23(10)); `ewald eval` with Opus,
-  Sonnet and Haiku 5.5 (2026-10-24, docs/developer/ai-eval.md) passed all 53 tasks. `ewald ask` and
+  Sonnet and Haiku 5.5 (2026-10-24, docs/developer/ai-eval.md) passed all 53 tasks, and the `study`
+  tasks after public PR #73. `ewald ask` and
   the MCP server still do not get the GUI's notebook note (`llm/notebook_prompt.py` has it Qt-free
   now). What the model tripped over in those runs:
   property expressions in OVITO's C syntax (`a ? b : c`, `&&`, `||`) are syntax errors, and
@@ -543,15 +544,17 @@ Visualization plugins (later phases of the Scene IR plan)
 
 Plugins and AI
 
-- AI eval suite (`llm/evals.py`, `llm/eval_tasks.py`): every Claude model passed all 53 tasks on
-  2026-10-24, so the suite no longer separates models; it needs harder tasks: more from the paper
-  datasets (LLZO Arrhenius, a-Si, TiOF2 octahedra) with a judgement call, from the GUI side (picks,
-  Ask about selection, view cells the Display panel edits, the 3D view's coloring the GUI sends with
-  each question), multi-turn ones (a follow-up question; the `nb-*` tasks only start from a
-  notebook that already has the cells) and ones with a wrong premise; reproduction runs in a fresh
-  in-process namespace, not a separate kernel (`ewald.kernel`); explanations are not graded (an
-  LLM judge could score them); plugin tasks (`@eval_task` from plugins such as ewald-phonopy) and
-  a results page that tracks scores over commits.
+- AI eval suite (`llm/evals.py`, `llm/eval_tasks.py`, `llm/eval_data.py`): the 53 single-step
+  tasks saturated on 2026-10-24, and the 11 `study` tasks (whole analyses, D70, public PR #73) did
+  after the fixes they led to (Opus 22/22, Sonnet and Haiku 21/22 over two runs). Harder ones are
+  open: several traps in one series, a run that passes check_run but is too short to give a D, the
+  paragraph's writing and the honesty of its error bars judged by a second model (an LLM judge),
+  conductivity and Haven ratio, other systems than Li hopping (oxygen vacancies, proton transport,
+  melting), studies that start from a folder rather than from one opened run, and from the GUI side
+  (picks, Ask about selection, the 3D view's coloring the GUI sends with each question). Also open:
+  more than two repeats per model, reproduction in a separate kernel (`ewald.kernel`) rather than in
+  process, plugin tasks (`@eval_task` from plugins such as ewald-phonopy) and a results page that
+  tracks scores over commits.
 
 - AI providers (`llm/providers.py`): the OpenAI-compatible provider never sends images (no
   per-server vision switch yet); Effort reaches only Claude and OpenAI reasoning models; one

@@ -283,7 +283,7 @@ ewald narrate dump.lammpstrj --type-map 1=Cu --no-llm        # event timeline, r
 
 ## Scoring a model (AI eval suite)
 
-`ewald eval` measures how well a model drives ewald: it asks 64 questions with known answers about
+`ewald eval` measures how well a model drives ewald: it asks 68 questions with known answers about
 the shipped example files (and two paper datasets), runs the normal AI loop on a fresh notebook for
 each, and grades the result automatically. The tasks ask for values (lattice constants, counts,
 energies, a diffusion coefficient, graded from the reply's final `ANSWER:` line within a
@@ -338,7 +338,7 @@ download their data (0.8 MB and 29 MB; the LLZO one also needs MDAnalysis, `pip 
 (about $4 with Opus, $0.20 with Haiku).
 
 Run it before and after changing the system prompt, a tool description or a tool, and compare the
-two files. The first runs with real models (Opus, Sonnet and Haiku 5.5: all 53 tasks passed) and
+two files. The runs with real models (Opus, Sonnet and Haiku 5.5: all 53 single-step tasks passed; the study tasks before and after public PR #73) and
 what they found are in [AI eval results](../developer/ai-eval.md). In Python: `ewald.llm.evals.run(tasks, agent_options=...)`, with the tasks in
 `ewald.llm.eval_tasks.TASKS`; a `Task` is a prompt, an example file and a list of checks
 (`Number`, `Matches`, `Step`, `View`, `Data`, `File`, `CellNumber`, `Cells`, `UsedTool`, `Any`, and for
