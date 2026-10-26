@@ -720,10 +720,13 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - Laptops with two GPUs (owner's Windows laptop: Intel Arc + GeForce RTX 4050, 2026-10-26): the
   Windows high-performance choice moves the 3D view to the RTX (first maximize 0.2 s instead of
   ~4 s on Arc) and the CUDA ray tracer runs there (numbers in docs/user/gpu.md; CuPy needs
-  `cupy-cuda12x[ctk]`). Still to check: Preferences › GPU for the 3D view / `ewald gpu --prefer`
-  themselves (the owner used Windows Settings), the modifiers on CUDA
-  (`benchmarks/analysis.py --skip-render --device cuda`), `benchmarks/neighbors.py`, and Linux
-  PRIME offload on a real hybrid laptop.
+  `cupy-cuda12x[ctk]`). Modifiers on CUDA measured there too (gpu.md). Still to check: Preferences › GPU
+  for the 3D view / `ewald gpu --prefer` themselves (the owner used Windows Settings),
+  `benchmarks/neighbors.py`, and Linux PRIME offload on a real hybrid laptop.
+- CommonNeighborAnalysis is 3.5x slower on CUDA than on the CPU at 108k atoms (402 vs 115 ms on
+  an RTX 4050, 2026-10-26), ClusterAnalysis slightly slower (89 vs 68 ms): profile the xp path
+  (many small kernel launches or host round trips) and give CNA one CUDA kernel or keep it on the
+  CPU under `device="auto"`.
 - The OpenCL ray tracer runs on the owner's Intel Arc on Windows (2026-10-26,
   `benchmarks/analysis.py --skip-modifiers --device opencl`): SrTiO3 + TiO6 polyhedra 1600x1200
   draft 0.17 s, standard 0.30 s, Publication 1.13 s (4.80 s on the CPU); trace only at 800x600

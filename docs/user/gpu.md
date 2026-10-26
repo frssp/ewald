@@ -110,7 +110,25 @@ tracer took, with `benchmarks/analysis.py`:
 | fcc Cu, 108k atoms | 1.28 s | 0.20 s | 0.13 s |
 | Cu slab, 16k atoms | 0.25 s | 0.07 s | 0.04 s |
 
-Both GPUs are four to ten times faster than the CPU, and the RTX only somewhat faster than the
+The modifiers on 108 000 fcc Cu atoms (`benchmarks/analysis.py --skip-render`, `--device cuda`
+against the CPU, best of 2):
+
+| Modifier | CPU | CUDA on RTX 4050 |
+|---|---|---|
+| CoordinationAnalysis | 60 ms | 33 ms |
+| CreateBonds | 106 ms | 79 ms |
+| ClusterAnalysis | 68 ms | 89 ms |
+| CommonNeighborAnalysis | 115 ms | 402 ms |
+| PolyhedralTemplateMatching (C++, CPU) | 370 ms | 256 ms |
+| CentroSymmetry | 302 ms | 126 ms |
+| VoronoiAnalysis (C++, CPU) | 1675 ms | 1031 ms |
+| SteinhardtOrderParameters | 1059 ms | 171 ms |
+| AcklandJones | 309 ms | 144 ms |
+
+Steinhardt gains six times, CSP and Ackland-Jones two, and the C++ kernels gain from the GPU
+neighbor list; CNA is slower on this GPU than on the CPU (an open item in docs/todo.md).
+
+Both GPUs are four to ten times faster than the CPU for ray tracing, and the RTX only somewhat faster than the
 Arc, so for pictures OpenCL on the integrated GPU is nearly as good. The 3D view gains more: on
 the Arc the first maximize of the window stalled for about 4 s, on the RTX it settles in 0.2 s
 (`benchmarks/resize.py`).
