@@ -95,6 +95,7 @@ nav:
       - Compute backends: developer/backends.md
       - Native code: developer/native.md
       - File readers: developer/readers.md
+      - Large structures in the 3D view: developer/viewport-performance.md
       - Testing and CI: developer/testing.md
       - AI eval results: developer/ai-eval.md
       - Windows, macOS and Linux: developer/portability.md

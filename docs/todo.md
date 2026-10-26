@@ -8,6 +8,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## In progress
 
+- 1M atoms in real time in the 3D view (D73, [plan](developer/viewport-performance.md)):
+  `benchmarks/viewport.py` is in; next are frame switches that keep the actors with the bond
+  search and reading ahead off the GUI thread (phase 1), then lighter bonds (phase 2). Phases 3-4
+  (an own GPU bond renderer, culling) wait for the numbers from the owner's Intel Arc.
+
 ## Next
 
 - Running-cell marks in a kernel notebook: when a cell rebinds `pipe` and the cells below run
