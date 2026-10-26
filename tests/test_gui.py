@@ -6155,6 +6155,22 @@ def test_console_shares_the_notebook_namespace(app, tmp_path, monkeypatch):
         w.close()
 
 
+def test_console_kernel_prints_no_debugger_warning(app, monkeypatch):
+    """ipykernel imports debugpy, whose frozen-modules check printed four "Debugger warning"
+    lines at every start on Windows; the console turns that check off before the import."""
+    import os
+    from ewald.gui.console import make_console
+
+    pytest.importorskip("qtconsole")
+    monkeypatch.setenv("PYDEVD_DISABLE_FILE_VALIDATION", "x")   # restored after the test
+    monkeypatch.delenv("PYDEVD_DISABLE_FILE_VALIDATION")
+    con = make_console({}, lambda *a: None)
+    try:
+        assert os.environ.get("PYDEVD_DISABLE_FILE_VALIDATION") == "1"
+    finally:
+        con.close()
+
+
 def test_restart_keeps_outputs_and_restart_and_clear_drops_them(app):
     """Restart clears the namespace but keeps the outputs, as in Jupyter; the Restart button's
     menu and Notebook › Restart & clear outputs also remove them."""
