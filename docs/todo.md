@@ -56,9 +56,9 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 - Search box and + Step (D57): the step list of the notebook bar's + Step and the Ctrl+K palette leave
   out steps that cannot work on the current frame, where the menus grey them out with the reason.
 - Workflow analyses (`ewald.workflow.Analysis`, `ewald.potential`): a table's `levels`, `regions`
-  and `gaps` are drawn in cell outputs, figures, the Plots panel and a `show(<table>)` view cell,
-  but an analysis does not end with such a view cell yet (its result is a picture under the cell
-  until one is added), a table's attributes do not cross from a separate kernel (frames come back
+  and `gaps` are drawn in cell outputs, figures, the Plots panel and the `show(<result>)` view cell
+  every analysis with a `result` now ends with (`Analysis.view_cell`, also run by `add_analysis`),
+  but a table's attributes do not cross from a separate kernel (frames come back
   as `.npz`), and the side bar has no "Analysis" row. Only the
   sim-agent band-offset lineup and the per-surface work function exist; the work-function
   workflows' surface energies and the polycrystalline aggregate, EOS and formation energy are next.
