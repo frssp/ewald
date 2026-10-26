@@ -36,7 +36,6 @@ from . import workers
 from .remotes_panel import install as install_remotes
 from .render_page import RenderPage
 from .style import ViewStyle
-from .theme import TOKENS
 from .live_reload import LiveReload
 from .timeline import Timeline
 from .viewport import Viewport
@@ -227,8 +226,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.plugins_panel.changed.connect(self.refresh_plugin_panels)
         self.setAcceptDrops(True)  # files and folders dropped on the window (FilesMixin.dropEvent)
         self.status = QtWidgets.QLabel()
-        self.pick_label = QtWidgets.QLabel()
-        self.pick_label.setStyleSheet(f"color: {TOKENS['pick']};")
+        self.pick_label = QtWidgets.QLabel(objectName="pickLabel")
         self.hover_label = QtWidgets.QLabel(objectName="muted")
         self.statusBar().addWidget(self.pick_label, 1)
         self.statusBar().addPermanentWidget(self.hover_label)

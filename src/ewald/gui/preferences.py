@@ -13,7 +13,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import settings as settings_mod
 from ..settings import DEVICES, PAGE_ALIASES, PAGES, Settings, all_options, option
-from . import fonts, header, workers
+from . import header, theme, workers
 from .element_table import ElementTable  # noqa: F401 (imported from here by callers)
 from .pref_widgets import Toggle, _ColorButton, _PathEdit, _ProfileBox, _chevron, _icon, _restyle
 from .prefs_apply import (apply_element_defaults, apply_settings, layout_path, restore_layout,  # noqa: F401
@@ -151,7 +151,7 @@ class PreferencesDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.setObjectName("prefs")
         self.setWindowTitle("Preferences")
-        self.setStyleSheet(fonts.css(QSS.format(chevron=_chevron(), **TOKENS)))
+        self.setStyleSheet(theme.dialog_stylesheet(QSS, chevron=_chevron()))
         self.resize(940, 680)
         self.setMinimumSize(760, 520)
         self.settings = settings
@@ -161,6 +161,7 @@ class PreferencesDialog(QtWidgets.QDialog):
         self.cards: list[tuple] = []           # (section title, card, [keys])
         self._loading = False
         self._pending_note = None
+        self._key_ok = None
 
         outer = QtWidgets.QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -280,11 +281,38 @@ class PreferencesDialog(QtWidgets.QDialog):
         scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.stack.addWidget(scroll)
         item = QtWidgets.QListWidgetItem(name)
-        icon = QtGui.QIcon()
-        icon.addPixmap(_icon(name, TOKENS["secondary"]), QtGui.QIcon.Normal)
-        icon.addPixmap(_icon(name, TOKENS["accent"]), QtGui.QIcon.Selected)
-        item.setIcon(icon)
+        item.setIcon(self._page_icon(name))
         self.pages.addItem(item)
+
+    @staticmethod
+    def _page_icon(name, plugin_page=None) -> QtGui.QIcon:
+        """The page list icon of page ``name`` in the active theme (muted; accent when selected)."""
+        icon = QtGui.QIcon()
+        if plugin_page is None:
+            icon.addPixmap(_icon(name, TOKENS["secondary"]), QtGui.QIcon.Normal)
+            icon.addPixmap(_icon(name, TOKENS["accent"]), QtGui.QIcon.Selected)
+            return icon
+        from .window_plugins import plugin_icon
+
+        themed = plugin_icon(_plugin_page_icon(plugin_page))
+        icon.addPixmap(themed.pixmap(36, 36, QtGui.QIcon.Normal, QtGui.QIcon.Off), QtGui.QIcon.Normal)
+        icon.addPixmap(themed.pixmap(36, 36, QtGui.QIcon.Normal, QtGui.QIcon.On), QtGui.QIcon.Selected)  # accent
+        return icon
+
+    def retheme(self):
+        """Redraw in the active UI theme: :func:`theme.apply` calls this on an open dialog, so a
+        theme picked here and applied shows in Preferences too, not only in the main window."""
+        self.setStyleSheet(theme.dialog_stylesheet(QSS, chevron=_chevron()))
+        for i, name in enumerate(self.page_names):
+            entry = self.plugin_pages.get(name)
+            self.pages.item(i).setIcon(self._page_icon(name, entry["page"] if entry else None))
+        for table in self.findChildren(ElementTable):
+            table.retheme()
+        key_result = getattr(self, "key_result", None)
+        if key_result is not None and key_result.styleSheet():   # a key test's green or red note
+            self._key_note(key_result.text(), self._key_ok)
+        for w in self.findChildren(QtWidgets.QWidget):   # toggles and swatches paint theme colors
+            w.update()
 
     def show_page(self, name: str):
         """Turn to the page ``name`` (General, ..., or a plugin page's title)."""
@@ -376,13 +404,8 @@ class PreferencesDialog(QtWidgets.QDialog):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.stack.addWidget(scroll)
-        from .window_plugins import plugin_icon
-
         item = QtWidgets.QListWidgetItem(page.title)
-        themed, ic = plugin_icon(_plugin_page_icon(page)), QtGui.QIcon()
-        ic.addPixmap(themed.pixmap(36, 36, QtGui.QIcon.Normal, QtGui.QIcon.Off), QtGui.QIcon.Normal)
-        ic.addPixmap(themed.pixmap(36, 36, QtGui.QIcon.Normal, QtGui.QIcon.On), QtGui.QIcon.Selected)  # accent
-        item.setIcon(ic)
+        item.setIcon(self._page_icon(page.title, page))
         self.pages.addItem(item)
         self.page_names.append(page.title)
         entry["loaded"] = self._plugin_values(entry)
@@ -1076,6 +1099,7 @@ class PreferencesDialog(QtWidgets.QDialog):
     def _key_note(self, text, ok=None):
         self.key_result.setVisible(bool(text))
         self.key_result.setText(text)
+        self._key_ok = ok
         self.key_result.setStyleSheet("" if ok is None else f"color: {TOKENS['ok' if ok else 'error']};")
 
     def remove_api_key(self):

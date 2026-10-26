@@ -6,7 +6,6 @@ import os
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .busy import BusyLabel
-from .theme import TOKENS
 
 SIZE_PRESETS = {
     # label: (width inches, height inches) or (px, px) when 'px'
@@ -78,9 +77,9 @@ class RenderPage(QtWidgets.QWidget):
         self.left_stack = QtWidgets.QStackedWidget()
         self.live_slot = QtWidgets.QWidget(objectName="nativeSlot")
         self.live_slot.setMinimumSize(400, 300)
-        self.preview = QtWidgets.QLabel("Press Render to preview the final image", alignment=QtCore.Qt.AlignCenter)
+        self.preview = QtWidgets.QLabel("Press Render to preview the final image", alignment=QtCore.Qt.AlignCenter,
+                                      objectName="renderPreview")
         self.preview.setMinimumSize(400, 300)
-        self.preview.setStyleSheet(f"background: {TOKENS['bg']}; color: {TOKENS['muted']};")
         self.left_stack.addWidget(self.live_slot)
         self.left_stack.addWidget(self.preview)
         lv.addWidget(self.left_stack, 1)
