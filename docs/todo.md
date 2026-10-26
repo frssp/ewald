@@ -707,6 +707,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Simple (ASE) atoms on the owner's Windows PC (200 %): round discs in the OpenGL 1.x viewport
+  (36-segment meshes now) and in the normal viewport (impostors); View › Atoms › *Sphere detail*
+  changes the legacy viewport's discs; applying Preferences keeps the style picked in the view.
 - The running-cell marks on the owner's Windows PC at 200 % scaling: the elapsed time fits
   under the stop button, the ring turns smoothly, the tab's play icon shows.
 - Plugins side bar on the owner's Windows environment (2026-10-26): installing, updating and

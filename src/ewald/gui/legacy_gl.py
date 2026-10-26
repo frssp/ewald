@@ -20,6 +20,10 @@ import numpy as np
 
 from ..render import FLAT_OUTLINE, STICK_OUTLINE
 
+# sphere segments of the flat (ASE) style when nothing sets them: an unlit disc shows only its outline,
+# which a coarse latitude/longitude mesh draws as a visible polygon
+FLAT_SPHERE_RESOLUTION = 36
+
 # ----------------------------------------------------------------------------- libGL through ctypes
 GL_COMPILE = 0x1300
 GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT = 0x4000, 0x0100

@@ -469,7 +469,8 @@ class _Card(QtWidgets.QFrame):
 
 # View tab cards, in order -> the pipe.view settings they show (marked when the notebook sets one)
 _SECTION_KEYS = {
-    "Atoms": ("style", "theme", "atom_style", "radius_scale", "radius_preset", "oxidation_states", "atoms"),
+    "Atoms": ("style", "theme", "atom_style", "sphere_resolution", "radius_scale", "radius_preset", "oxidation_states",
+              "atoms"),
     "Colors": ("color_by", "colormap", "color_range"),
     "Types": ("colors", "radii", "transparency"),
     "Bonds": ("bonds", "bond_radius", "bond_pairs", "bond_factor"),
@@ -482,7 +483,7 @@ _SECTION_KEYS = {
                  "trajectory_radius"),
 }
 # widest form label of the View tab: every card's label column is this wide, so fields line up
-_LABEL_WIDEST = "Radius scale"
+_LABEL_WIDEST = "Sphere detail"
 
 
 def _label_text(labels) -> str:
@@ -988,6 +989,13 @@ class DisplayPanel(QtWidgets.QWidget):
                          "flat: ASE-GUI look, unshaded discs with outlines")
         shape.currentTextChanged.connect(lambda v: self._set("atom_style", v))
         self._row(f, "Drawn as", shape, "atom_style")
+        detail = QtWidgets.QSpinBox(minimum=0, maximum=64, singleStep=4, specialValueText="auto",
+                                    value=int(self.style.sphere_resolution or 0))
+        detail.setToolTip("Segments around a mesh sphere: 'mesh' atoms and the OpenGL 1.x viewport (ssh -X), whose "
+                          "flat discs are meshes too. Auto: Preferences › 3D view on screen, the quality preset in "
+                          "pictures. Impostors and ray-traced spheres are round at any value.")
+        detail.valueChanged.connect(lambda v: self._set("sphere_resolution", max(v, 4) if v else None))
+        self._row(f, "Sphere detail", detail, "sphere_resolution")
         show = QtWidgets.QCheckBox("Draw atoms", checked=bool(self.style.show_atoms),
                                    toolTip="Off: bonds, polyhedra and the rest stay (a stick model)")
         show.toggled.connect(lambda v: self._set("show_atoms", v))

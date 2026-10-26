@@ -73,6 +73,11 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
        type=["string", "null"]),
     _s("atom_style", "auto", "style", "How atoms are drawn: 'auto' (meshes, impostors for big systems), "
        "'mesh', 'impostor' (fast GPU spheres) or 'flat' (outlined discs, like ASE).", ATOM_STYLES),
+    _s("sphere_resolution", None, "style", "Segments around a triangle-mesh sphere where atoms are meshes: 'mesh' "
+       "atoms in the viewport and OpenGL pictures, and every sphere of the OpenGL 1.x viewport (ssh -X), whose "
+       "'flat' discs are mesh outlines too; None: Preferences › 3D view › Sphere resolution on screen (finer for "
+       "'flat' in the OpenGL 1.x viewport), the quality preset in pictures. Impostors, ray-traced and vector "
+       "spheres are exact circles at any value.", type=["integer", "null"], minimum=4, maximum=64),
     _s("background", None, "style", "Background color (any matplotlib color); None: the theme's, else the "
        "viewport's dark grey on screen and white in rendered images.", type=["string", "array", "null"]),
     _s("light", None, "style", "Key light, the same in the viewport and every renderer: a direction [x, y, z] in the "
@@ -1044,6 +1049,10 @@ def _check(name, value):
         value = float(value)
         if value <= 0:
             raise ValueError(f"trajectory_radius must be positive, not {value}")
+    elif name == "sphere_resolution":
+        value = int(value)
+        if not 4 <= value <= 64:
+            raise ValueError(f"sphere_resolution must be 4..64, not {value}")
     elif name == "cell_radius":
         value = float(value)
         if value <= 0:

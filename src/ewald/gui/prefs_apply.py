@@ -140,10 +140,18 @@ def apply_settings(win, s: Settings, startup: bool = False):
     # a background from the UI theme or Preferences is not written into the notebook's view
     background = theme.TOKENS["viewport"] if s["viewport.follow_theme"] else s["viewport.background"]
     set_default_background(background)
-    if style.preset not in PRESET_THEMES:  # those presets keep their theme's background
+    # those presets keep their theme's background; a background picked for this view stays too
+    prev = getattr(style, "_pref_background", None)
+    if style.preset not in PRESET_THEMES and (startup or style.background in (None, prev)):
         style.background = background
-    style.bond_radius = s["bonds.radius"]
-    if startup or style.preset != s["viewport.style_preset"]:
+    style._pref_background = background
+    # Default style and bond radius are defaults: they replace what the view shows only at startup or
+    # when the preference itself changes, so applying other preferences keeps the style picked in the
+    # viewport, the View tab or the notebook (Simple (ASE) stayed Ball & stick otherwise)
+    if startup or getattr(style, "_pref_bond_radius", None) != s["bonds.radius"]:
+        style.bond_radius = style._pref_bond_radius = s["bonds.radius"]
+    if startup or getattr(style, "_pref_style", None) != s["viewport.style_preset"]:
+        style._pref_style = s["viewport.style_preset"]
         style.apply_preset(s["viewport.style_preset"], win.data.types if win.data is not None else ())
     for v in [vp, *(t.viewport for t in getattr(win, "view_tabs", {}).values())]:
         apply_viewport_settings(v, s)

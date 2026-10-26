@@ -13,7 +13,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtOpenGL import QOpenGLWindow
 
 from ..render import default_radii
-from .legacy_gl import CameraPlotter, LegacyRenderer, pick_ray, ray_spheres
+from .legacy_gl import FLAT_SPHERE_RESOLUTION, CameraPlotter, LegacyRenderer, pick_ray, ray_spheres
 from .theme import TOKENS
 from .viewport import EMPTY_HINT, Viewport, _is_dark, control_click
 
@@ -154,7 +154,7 @@ class LegacyViewport(Viewport):
         from ..scene import SceneContext, build
 
         t0 = time.perf_counter()
-        light, flat = None, False
+        light, flat, explicit = None, False, None
         if self.data is None:
             from ..scene import Scene
 
@@ -165,12 +165,15 @@ class LegacyViewport(Viewport):
             kw = dict(self.style.scene_kwargs())
             light = kw.pop("light", None)
             flat = kw.get("atom_style") == "flat"
+            explicit = kw.pop("sphere_resolution", None)
             scene = build(take(self.data, kw), ctx=SceneContext(), visuals=kw.pop("visuals", None), **kw)
         dark = _is_dark(self.style.background)
         from ..colors import to_rgb
 
         ink = to_rgb(self.style.cell_color or ("#AEB4BE" if dark else "black"))
-        self.view.pending = (scene, {"sphere_resolution": min(self.sphere_resolution, 12),
+        if not explicit:   # flat discs show only their outline: a coarse mesh looks like a polygon
+            explicit = max(self.sphere_resolution, FLAT_SPHERE_RESOLUTION) if flat else min(self.sphere_resolution, 12)
+        self.view.pending = (scene, {"sphere_resolution": explicit,
                                      "background": to_rgb(self.style.background), "ink": ink, "light": light,
                                      "flat": flat})
         if self._first and self.data is not None:
