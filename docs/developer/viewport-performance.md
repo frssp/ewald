@@ -50,13 +50,29 @@ Measured on 2026-10-26 in the container (4 cores, llvmpipe, 1280x800), before th
 - Reading a 1M-atom LAMMPS dump frame takes 0.45 s, so a jump to an arbitrary frame cannot
   take 0.1 s; playback and scrubbing can read ahead.
 
+After phases 1-2, `python benchmarks/viewport.py --atoms 108000 1000000` in the same container:
+
+| case | before | after |
+| --- | --- | --- |
+| 108k atoms with bonds: sticks | 1.3M | 0.67M |
+| 108k with bonds: frame switch on the GUI thread | 2.7 s | 1.7 s (0.3 s search on the worker) |
+| 108k with bonds: one rotated frame (llvmpipe) | 1.8 s | 1.2 s |
+| 1M atoms only: `set_data` of a new frame | 0.36 s | 0.08 s |
+| 1M with bonds: sticks | 12M | 6.1M |
+| 1M with bonds: peak memory | 8.6 GB | 2.4 GB |
+| 1M with bonds: frame switch on the GUI thread | 17 s | 13 s (4.4 s `set_data` + 8.5 s llvmpipe render; 4 s search on the worker) |
+
+The 4.4 s of `set_data` at 1M atoms with bonds is the scene build and stick input on the GUI
+thread; building the `Scene` on the compute worker as well (with the view's settings taken
+when the frame is requested) would leave only the actors and the upload there.
+
 ## Plan
 
 | phase | what | state |
 | --- | --- | --- |
 | 0 | `benchmarks/viewport.py` | done |
 | 1 | bond search and reading ahead off the GUI thread; numba kernels release the GIL; faster color legend | done |
-| 2 | lighter bonds: half-bond geometry, caps and stick input in numba, one stick for a bond whose atoms share a color, a GPU memory budget instead of an out-of-memory driver | next |
+| 2 | lighter bonds: half-bond geometry, caps and stick input in numba, one stick for a bond whose atoms share a color, a GPU memory budget instead of an out-of-memory driver | done |
 | 3 | an own GPU bond renderer: positions in a texture buffer, bonds as atom index pairs, both colors in the shader | after the Arc numbers |
 | 4 | culling (blocks off screen, hidden interior atoms of opaque bulk) and distance level of detail | after the Arc numbers |
 
@@ -71,6 +87,14 @@ draw (`MainWindow._view_prepare`), so the GUI thread finds them in `bonds.cached
 playback it computes the next frame (`Timeline.next_frame`) into the pipeline's cache while the
 current one is drawn. The neighbor-list kernels are compiled with `nogil=True`, so the window keeps
 painting while the worker searches.
+
+Phase 2 builds the half-bonds (`bonds.bond_segments`, `bonds.halves_meet`) and the stick input
+(`render.stick_data`) in parallel numba kernels and skips the copies when every half is kept.
+`Cylinders.partner` pairs the two halves of a bond that meet, and the viewport draws a pair of
+the same color, radius and opacity as one stick from atom to atom: the same picture (the
+`impostor_bonds` visual reference did not change), and half the sticks for one element (12M
+half-bonds of 1M Cu atoms become 6.1M sticks). Above `viewport.max_bond_sticks` (8M by default,
+about 4.6 GB) the view leaves the bonds out before the upload and the window says so.
 
 Constraints for every phase: OpenGL 3.2 core features only (texture buffers, instancing and
 geometry shaders, no compute shaders or SSBOs; macOS stops at 4.1); bond ends look the same in

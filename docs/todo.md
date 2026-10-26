@@ -9,9 +9,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 ## In progress
 
 - 1M atoms in real time in the 3D view (D73, [plan](developer/viewport-performance.md)):
-  `benchmarks/viewport.py` is in, and the bond search and reading ahead run off the GUI thread
-  (phase 1); next are lighter bonds (phase 2). Phases 3-4
-  (an own GPU bond renderer, culling) wait for the numbers from the owner's Intel Arc.
+  `benchmarks/viewport.py` is in, the bond search and reading ahead run off the GUI thread
+  (phase 1), and bonds are built in numba with alike halves drawn as one stick (phase 2). Phases
+  3-4 (an own GPU bond renderer, culling) wait for the numbers from the owner's Intel Arc
+  (`python benchmarks/viewport.py -o arc.json`). Left from phase 2: the scene build and stick input
+  of a 1M-atom frame with bonds (4.4 s) still run on the GUI thread; the compute worker could
+  build the `Scene` too.
 
 ## Next
 
@@ -347,8 +350,8 @@ GUI
   changes with the same atoms that replace only the point coordinates. Measured 2026-10-26: the
   bond search of a new frame now runs on the compute worker, and what is left on the GUI thread
   for 1M atoms without bonds is 0.08 s of `set_data` (scene and actors) before the render, so
-  reusing actors would save less than that; with bonds it is the half-bond geometry and stick
-  input (0.9 s at 108k atoms), phase 2 of the [1M-atom plan](developer/viewport-performance.md).
+  reusing actors would save less than that; with bonds the half-bond geometry and stick input are
+  numba kernels since phase 2 of the [1M-atom plan](developer/viewport-performance.md).
 - Picking without a render: click picks still use a `vtkPropPicker` selection render; the hover
   readout already does a CPU ray-sphere test (`camera_ray`, `ray_spheres` in `gui/viewport.py`)
   that `pick_at` could reuse.

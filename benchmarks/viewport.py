@@ -15,7 +15,7 @@ For each size and bond setting it reports:
 - **frame switch**: ``set_data`` of other frames of the same atoms plus their render, as when
   playing or scrubbing a trajectory, after the bond search the main window's compute worker
   does off the GUI thread (timed apart; file reading is not included, see docs/developer/readers.md);
-- the OpenGL driver, the process memory, and how many cylinders (half-bonds) the GPU holds.
+- the OpenGL driver, the process memory, and how many bond sticks the GPU holds.
 
 Each render waits for the GPU to finish, so the numbers are real frame times. ``-o`` writes them
 as JSON. Container numbers (Mesa llvmpipe) only show the CPU side; run it on a real GPU for fps.
@@ -81,13 +81,10 @@ def stats(times):
 
 
 def cylinders(plotter) -> int:
-    """Cylinders the view draws: points of the stick mapper inputs (one per half-bond)."""
-    n = 0
-    for name, actor in plotter.actors.items():
-        if str(name).startswith("bonds") and not str(name).endswith(":caps"):
-            data = actor.GetMapper().GetInput()
-            n += data.GetNumberOfPoints() if data is not None else 0
-    return n
+    """Bond sticks the view draws (a bond, or a half-bond where the halves differ)."""
+    from ewald.render import stick_count
+
+    return sum(stick_count(a) for name, a in plotter.actors.items() if str(name).startswith("bonds"))
 
 
 def run_case(qapp, view, make_frame, bonds: bool, rotate: int, switches: int) -> dict:
@@ -162,7 +159,7 @@ def run_case(qapp, view, make_frame, bonds: bool, rotate: int, switches: int) ->
 
 def report(r: dict):
     b = "bonds" if r["bonds"] else "atoms only"
-    print(f"{r['atoms']:>10,} atoms, {b}: {r['cylinders']:,} cylinders")
+    print(f"{r['atoms']:>10,} atoms, {b}: {r['cylinders']:,} bond sticks")
     print(f"  build {r['build_s']:7.2f} s   first render {r['first_render_s']:7.2f} s"
           + (f"   bond search {r['bond_search_s']:.2f} s" if "bond_search_s" in r else ""))
     for key, label in (("rotate_full", "rotate (full detail)"), ("rotate_coarse", "rotate (while dragging)")):
@@ -184,8 +181,8 @@ def main():
     ap.add_argument("--rotate", type=int, default=36, help="rendered frames per rotation (default 36)")
     ap.add_argument("--switches", type=int, default=3, help="frame switches per case (default 3)")
     ap.add_argument("--max-cylinders", type=float, default=8e6,
-                    help="skip bond cases above this many half-bonds (default 8e6, about 4.6 GB of GPU memory "
-                         "with VTK's stick mapper)")
+                    help="skip bond cases above this many bond sticks (default 8e6, about 4.6 GB of GPU memory "
+                         "with VTK's stick mapper; the crystal needs 6 per atom)")
     ap.add_argument("-o", "--output", help="also write the results to this JSON file")
     args = ap.parse_args()
 
@@ -224,8 +221,8 @@ def main():
         make_frame = fcc_cu(n, rng)
         for b in args.bonds:
             bonds = b == "on"
-            if bonds and 2 * 6 * n > args.max_cylinders:
-                print(f"{n:>10,} atoms, bonds: skipped (about {12 * n:,} half-bonds > --max-cylinders)")
+            if bonds and 6 * n > args.max_cylinders:
+                print(f"{n:>10,} atoms, bonds: skipped (about {6 * n:,} sticks > --max-cylinders)")
                 results.append({"atoms": n, "bonds": True, "skipped": "max-cylinders"})
                 continue
             r = run_case(qapp, view, make_frame, bonds, args.rotate, args.switches)

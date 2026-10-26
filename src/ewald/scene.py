@@ -84,7 +84,9 @@ class Cylinders:
     (open, for ends hidden inside an atom or a partner tube), "flat" (a disk: an end cut off, such
     as a bond leaving the periodic cell) or "round" (a hemisphere: a joint, such as a bond end at
     an atom smaller than the bond). Every renderer draws them the same way (D50).
-    ``cap_end=False`` (older plugins) leaves the end open."""
+    ``cap_end=False`` (older plugins) leaves the end open. ``partner`` (optional, one per cylinder)
+    is the index of the other half of the same bond where the two meet, else -1: the viewport
+    draws such a pair as one cylinder when both halves look alike."""
 
     start: np.ndarray
     end: np.ndarray
@@ -95,6 +97,7 @@ class Cylinders:
     cap_end: bool | None = None
     start_cap: np.ndarray | str = "flat"
     end_cap: np.ndarray | str = "flat"
+    partner: np.ndarray | None = None
 
     def __post_init__(self):
         self.start = np.asarray(self.start, float).reshape(-1, 3)
@@ -115,11 +118,14 @@ class Cylinders:
         """The ends closed with ``kind`` ("flat" or "round"): ``(center, outward unit axis, radius,
         rgb, alpha, cylinder index)``, start caps first."""
         code = CAPS.index(kind)
+        i = np.flatnonzero(self.start_cap == code)
+        j = np.flatnonzero(self.end_cap == code)
+        if not len(i) and not len(j):  # most bonds: no axis of millions of cylinders for nothing
+            e = np.zeros((0, 3))
+            return e, e, np.zeros(0), np.zeros((0, 3)), np.zeros(0), np.zeros(0, int)
         axis = self.end - self.start
         length = np.linalg.norm(axis, axis=1, keepdims=True)
         axis = np.divide(axis, length, out=np.tile([0.0, 0.0, 1.0], (self.count, 1)), where=length > 0)
-        i = np.flatnonzero(self.start_cap == code)
-        j = np.flatnonzero(self.end_cap == code)
         idx = np.concatenate([i, j])
         return (np.concatenate([self.start[i], self.end[j]]), np.concatenate([-axis[i], axis[j]]),
                 self.radius[idx], self.rgb[idx], self.alpha[idx], idx)
@@ -429,8 +435,8 @@ class BondsVis(VisualElement):
         b = scene_bonds(data, self.cutoff, self.pairs)
         if not b.count:
             return None
-        colors = ctx.particle_colors if ctx.particle_colors is not None else np.clip(default_colors(data), 0, 1)
-        start, end, rgb, _ = bond_segments(data, b, colors)
+        colors = np.clip(ctx.particle_colors if ctx.particle_colors is not None else default_colors(data), 0, 1)
+        start, end, rgb, _ = bond_segments(data, b, colors)   # rgb is in 0..1 already
         i, j = b.topology.T
         owner = np.concatenate([i, j])
         keep = np.ones(2 * b.count, bool)
@@ -440,21 +446,30 @@ class BondsVis(VisualElement):
         if alpha is not None:  # a hidden atom (Transparency 1) takes its half-bonds with it
             keep &= alpha > 0
         start_cap, end_cap = self._caps(data, ctx, start, end, keep, owner, alpha)
+        m = b.count
+        partner = np.concatenate([np.arange(m, 2 * m), np.arange(m)])
+        partner[end_cap != 0] = -1
+        if keep.all():  # the usual case: no copies of millions of half-bonds
+            return [("bonds", Cylinders(start, end, self.radius, rgb, alpha, owner, start_cap=start_cap,
+                                        end_cap=end_cap, partner=partner))]
         if not keep.any():
             return None
+        new = np.cumsum(keep) - 1
+        partner = np.where(partner >= 0, new[np.maximum(partner, 0)], -1)[keep]
         alpha = None if alpha is None else alpha[keep]
-        return [("bonds", Cylinders(start[keep], end[keep], self.radius, np.clip(rgb[keep], 0, 1), alpha, owner[keep],
-                                    start_cap=start_cap[keep], end_cap=end_cap[keep]))]
+        return [("bonds", Cylinders(start[keep], end[keep], self.radius, rgb[keep], alpha, owner[keep],
+                                    start_cap=start_cap[keep], end_cap=end_cap[keep], partner=partner))]
 
     def _caps(self, data, ctx, start, end, keep, owner, alpha):
         """Caps of the half-bonds (D50): the middle end is flat where its partner half does not meet
         it (a bond cut by the periodic cell or the boundary, or a hidden partner) and open where it
         does; the atom end is round where the atom does not hide it (atoms off, smaller than the
         bond, or see-through) and open where it does."""
-        m = len(owner) // 2
-        partner = np.r_[np.arange(m, 2 * m), np.arange(m)]
-        met = keep[partner] & np.all(np.abs(end - end[partner]) < 1e-6, axis=1)
-        end_cap = np.where(met, 0, 1).astype(np.int8)
+        from .bonds import halves_meet
+
+        m = len(owner) // 2  # halves k and k + m are one bond
+        met = keep[:m] & keep[m:] & halves_meet(end)
+        end_cap = np.where(np.concatenate([met, met]), 0, 1).astype(np.int8)
         radii = ctx.particle_radii
         if radii is None:  # Particles off: every atom end is a visible joint
             shown = np.zeros(len(owner), bool)

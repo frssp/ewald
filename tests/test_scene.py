@@ -264,6 +264,39 @@ def test_bond_caps_close_a_half_bond_whose_partner_is_gone():
     assert end[1] > 24  # boundary half-bonds end flat at the cut
 
 
+def test_half_bonds_know_their_partner_where_they_meet():
+    """``Cylinders.partner`` pairs the two halves of a bond that meet (the viewport draws such a
+    pair as one stick); cut halves and halves of hidden partners have none."""
+    cyl, _, _ = _caps(build(_crystal(), bonds=3.0))
+    met = cyl.end_cap == 0
+    assert np.all(cyl.partner[~met] == -1) and np.all(cyl.partner[met] >= 0)
+    p = cyl.partner[met]
+    assert np.all(cyl.partner[p] == np.flatnonzero(met))                     # symmetric
+    assert np.allclose(cyl.end[met], cyl.end[p]) and np.all(cyl.owner[met] != cyl.owner[p])
+    hidden = _crystal()
+    hidden.particles["Transparency"] = np.where(np.arange(hidden.count) == 0, 1.0, 0.0)
+    cyl, _, _ = _caps(build(hidden, bonds=3.0))   # halves dropped: the indices still match
+    met = np.flatnonzero(cyl.partner >= 0)
+    assert len(met) and np.all(cyl.partner[cyl.partner[met]] == met) and np.allclose(cyl.end[met], cyl.end[cyl.partner[met]])
+
+
+def test_bond_segments_numba_matches_numpy(monkeypatch):
+    from ewald import bonds as bonds_mod
+
+    data = _crystal()
+    b = bonds_mod.find_bonds(data, 3.0)
+    colors = np.random.default_rng(0).random((data.count, 3))
+    fast = bonds_mod.bond_segments(data, b, colors)
+    m = b.count
+    assert np.array_equal(bonds_mod.halves_meet(fast[1]), np.all(np.abs(fast[1][:m] - fast[1][m:]) < 1e-6, axis=1))
+    monkeypatch.setattr(bonds_mod, "_segments_numba", None)
+    monkeypatch.setattr(bonds_mod, "_meet_numba", None)
+    slow = bonds_mod.bond_segments(data, b, colors)
+    for a, c in zip(fast, slow):
+        assert np.allclose(a, c)
+    assert bonds_mod.halves_meet(fast[1]).sum() == 12   # NaCl cube: 12 of 24 bonds inside the cell
+
+
 def test_cylinder_caps_values_and_old_cap_end():
     one = Cylinders([[0, 0, 0]], [[0, 0, 1]], 0.2)
     assert one.start_cap.tolist() == [1] and one.end_cap.tolist() == [1]    # closed by default

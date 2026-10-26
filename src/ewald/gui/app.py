@@ -110,6 +110,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self._aligned_plot = None  # the plot the 3D view is aligned to (Align 3D view), see window_links
         self.viewport.hovered.connect(lambda text: self.hover_label.setText(text))
         self.viewport.bondEdit.connect(self.toggle_bond)
+        self.viewport.bondsDropped.connect(self._bonds_dropped)
         self.viewport.styleChanged.connect(self._style_changed)
         self.viewport.contextMenuRequested.connect(self._show_viewport_menu)
         self.timeline = Timeline()
@@ -427,6 +428,15 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
                                   prefetch=self.timeline.next_frame() if playing else None)
         if job is not None:
             self._computed(job)
+
+    def _bonds_dropped(self, count: int):
+        if self.__dict__.get("_dropped_for") is self.pipeline:  # once per structure, not on every frame
+            return
+        self._dropped_for = self.pipeline
+        limit = self.settings["viewport.max_bond_sticks"]
+        self.message(f"Bonds left out of the 3D view: {count:,} cylinders is above {limit:,} "
+                     "(Preferences › 3D view › Performance › Bond cylinders at most). Pictures still draw them.",
+                     warning=True)
 
     def _view_prepare(self):
         """What the compute worker does for the 3D view after a frame (see ``ComputeRunner``):

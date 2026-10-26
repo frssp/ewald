@@ -465,6 +465,7 @@ One section per simulation code (`ewald.codes`; plugins add codes with `@simulat
 | `viewport.interactive_detail` | Detail while moving | `'auto'` |
 | `viewport.target_fps` | Target frame rate | `30` |
 | `viewport.interactive_atoms` | Atoms while moving | `1000000` |
+| `viewport.max_bond_sticks` | Bond cylinders at most | `8000000` |
 | `viewport.refine_delay` | Refine after | `0.3` |
 
 ### Atoms & bonds
