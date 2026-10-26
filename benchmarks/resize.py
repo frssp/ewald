@@ -4,6 +4,7 @@
     python benchmarks/resize.py --notebook examples/notebooks/cu_void.py
     python benchmarks/resize.py --profile          # also: where the first maximize spends its time
     python benchmarks/resize.py --gl-format core   # with another OpenGL default format for the window
+    python benchmarks/resize.py --prewarm          # first grow the window to the screen size, unseen
 
 Opens the main window with a tutorial notebook (run, so its plots and the 3D view are drawn),
 then maximizes and restores it a few times. For each step it prints when the window was settled
@@ -14,7 +15,10 @@ used or changed. ``--profile`` samples every thread's Python stack during the fi
 and prints the most frequent ones (time inside Qt or VTK shows as the Python line that called it).
 ``--gl-format`` sets the process OpenGL default format before the window exists: ``app`` keeps
 what ``ewald gui`` does, ``vtk`` is VTK's format (3.2 core, alpha, 8-bit depth), ``core`` is
-3.2 core without alpha and with a 24-bit depth buffer.
+3.2 core without alpha and with a 24-bit depth buffer. ``--prewarm`` tries a startup warm-up:
+once the 3D view is built it makes the window transparent, gives it the whole screen, puts it
+back and prints how long that took, so you can see whether the cost of the first maximize moves
+there (``--prewarm max`` uses showMaximized/showNormal instead of setting the geometry).
 """
 from __future__ import annotations
 
@@ -76,6 +80,8 @@ def main():
     ap.add_argument("--repeat", type=int, default=3)
     ap.add_argument("--profile", action="store_true", help="sample the stacks during the first maximize")
     ap.add_argument("--gl-format", choices=("app", "vtk", "core"), default="app")
+    ap.add_argument("--prewarm", nargs="?", const="size", choices=("size", "max"),
+                    help="grow the window to the screen once, unseen, before timing")
     args = ap.parse_args()
     os.environ.setdefault("EWALD_CONFIG_DIR", tempfile.mkdtemp(prefix="ewald-resize-"))
 
@@ -131,6 +137,23 @@ def main():
         rw.AddObserver("StartEvent", lambda *_: start.append(time.perf_counter()))
         rw.AddObserver("EndEvent", lambda *_: renders.append(time.perf_counter() - start[-1]))
     normal = w.geometry()
+    if args.prewarm:
+        t0 = time.perf_counter()
+        w.setWindowOpacity(0.0)
+        if args.prewarm == "max":
+            w.showMaximized()
+        else:
+            w.setGeometry(w.screen().availableGeometry())
+        app.processEvents()
+        w.repaint()
+        app.processEvents()
+        w.showNormal()
+        w.setGeometry(normal)
+        app.processEvents()
+        w.setWindowOpacity(1.0)
+        warm = time.perf_counter() - t0
+        settle(1.5)
+        print(f"prewarm ({args.prewarm}): {warm * 1000:.0f} ms")
 
     def maximize():
         w.showMaximized()
