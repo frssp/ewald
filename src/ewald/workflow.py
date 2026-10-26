@@ -131,6 +131,12 @@ class Analysis:
     def available(self) -> bool:
         return not self.reason and bool(self.cells)
 
+    @property
+    def view_cell(self) -> str:
+        """``show(<result>)``, the view cell that draws the result table after the cells (with
+        its levels, regions and gaps), or "" without a result; a plugin writes no view cell."""
+        return f"show({self.result})" if self.result.isidentifier() and not keyword.iskeyword(self.result) else ""
+
     def as_dict(self) -> dict:
         out = {"name": self.name, "title": self.title or self.name, "available": self.available}
         if self.reason:
@@ -542,12 +548,13 @@ def notebook_text(wf: Workflow, pipeline_name: str = "pipe") -> str:
 
 
 def analysis_cells(a: Analysis) -> list[str]:
-    """Percent-format cells for analysis ``a``: a heading, then its code cells; only the heading,
-    with the reason, when it cannot run."""
+    """Percent-format cells for analysis ``a``: a heading, its code cells and the view cell of its
+    result (:attr:`Analysis.view_cell`); only the heading, with the reason, when it cannot run."""
     title = _one_line(a.title or a.name)
     if not a.available:
         return [f"# %% [markdown]\n# ## {title}\n#\n# Not available: {_one_line(a.reason or 'no cells')}"]
-    return [f"# %% [markdown]\n# ## {title}"] + [f"# %%\n{c.strip()}" for c in a.cells]
+    view = [f"# %%\n{a.view_cell}"] if a.view_cell else []
+    return [f"# %% [markdown]\n# ## {title}"] + [f"# %%\n{c.strip()}" for c in a.cells] + view
 
 
 # ----------------------------------------------------------------------- the side bar
