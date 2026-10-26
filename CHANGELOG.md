@@ -10,6 +10,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- Laptops with two GPUs: Preferences › 3D view › GPU for the 3D view (`viewport.gpu`), `EWALD_GPU`
+  and `ewald gpu [--prefer high-performance]` move the 3D view to the NVIDIA/AMD GPU (the Windows
+  Graphics settings choice for this Python, PRIME offload on Linux); About lists the GPUs and says
+  when the view draws on the integrated one; OpenCL prefers a discrete GPU.
 - `ewald eval --category study`: whole analyses from one sentence (activation energy from a series
   of MD runs with a trap in it, the Li diffusion path, a paragraph for a paper, a follow-up
   question, wrong premises), on synthetic VASP MD series (`ewald.llm.eval_data`) and the LLZO data.
@@ -72,6 +76,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 - Applying a new UI theme in Preferences restyles the open Preferences dialog too (its pages,
   icons, element table and switches), not only the main window; windows that draw theme colors
   themselves define `retheme()`. (#83)
+- The window no longer freezes while the Plugins side bar installs, updates or removes a pip
+  plugin: the package metadata read around pip (seconds, longer on Windows) moved off the GUI
+  thread, Cancel also works before pip starts, and catalogs older than ten minutes are read
+  again when the side bar is shown, so new versions get their *Update* button. (#80)
 - No more small windows flashing up when the GUI starts or opens a notebook (dock title bars,
   tab groups and notebook bars were shown before they had a parent). (#81)
 - Bond ends look the same in every renderer (D50): bonds cut by the periodic cell end in flat

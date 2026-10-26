@@ -678,15 +678,23 @@ OPENCL_MISSING = "device='opencl' needs pyopencl: pip install 'ewald[opencl]' (o
 
 
 def opencl_devices(gpu_only: bool = False) -> list:
-    """The OpenCL devices on this machine, GPUs first; [] without pyopencl or a driver."""
+    """The OpenCL devices on this machine, GPUs first and among them a discrete one (its own
+    memory) before the integrated GPU of a laptop that has both; [] without pyopencl or a driver."""
     try:
         import pyopencl as cl
 
         devices = [d for p in cl.get_platforms() for d in p.get_devices()]
     except Exception:
         return []
-    gpus = [d for d in devices if d.type & cl.device_type.GPU]
+    gpus = sorted((d for d in devices if d.type & cl.device_type.GPU), key=_shares_host_memory)
     return gpus if gpu_only else gpus + [d for d in devices if d not in gpus]
+
+
+def _shares_host_memory(device) -> bool:
+    try:
+        return bool(device.host_unified_memory)
+    except Exception:   # deprecated in OpenCL 2.0; drivers may not answer
+        return False
 
 
 _opencl_programs = {}   # (device, REAL, WIDE) -> (context, queue, kernel): building takes seconds

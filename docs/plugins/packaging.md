@@ -152,6 +152,11 @@ and an empty value turns it off. An index that cannot be found (or, on GitHub, i
 there is no token) shows as one muted line. *Install*, *Update* and *Remove* run in the
 background: the row shows a spinner ("Installing…") in place of its buttons, and a line at the
 bottom of the side bar says what is running (with *Cancel* while pip runs) until it is done.
+pip runs as a separate process and its output goes to the log under the list; what the side bar
+works out around it (which loaded packages pip changed) is read in a thread, so the window keeps
+working while a package installs. The catalogs are read when the side bar opens, again when it
+is shown after more than ten minutes, and on *More › Refresh*, so a newer version published
+meanwhile shows its *Update to …* button.
 Selecting a plugin that brings a [UI theme](styles.md#ui-themes) shows *Use theme …*, which makes
 it the app's theme at once (the same as Preferences › General › *UI theme*).
 

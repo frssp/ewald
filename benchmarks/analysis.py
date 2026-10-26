@@ -5,6 +5,7 @@
     python benchmarks/analysis.py --skip-render        # modifiers only
     python benchmarks/analysis.py --skip-modifiers     # ray tracer only
     python benchmarks/analysis.py --skip-modifiers --device cuda   # ray tracer on the GPU (opencl: Intel, AMD, Apple)
+    python benchmarks/analysis.py --skip-render --device cuda      # modifiers on the CUDA GPU
 
 Modifiers run on a thermally displaced fcc Cu crystal of 4*size^3 atoms (size=30 -> 108k atoms).
 Times are the best of ``--repeat`` runs after one warm-up run, so numba compile and cache loading
@@ -59,12 +60,12 @@ def best(fn, repeat: int) -> float:
     return min(times)
 
 
-def bench_modifiers(size: int, repeat: int):
+def bench_modifiers(size: int, repeat: int, device=None):
     data = fcc_cu(size)
-    print(f"fcc Cu, {data.count:,} atoms, best of {repeat}")
+    print(f"fcc Cu, {data.count:,} atoms, best of {repeat}, device {device or 'cpu'}")
     for name, make in MODIFIERS.items():
         def run():
-            Pipeline(StaticSource([data]), [make()]).compute(0)
+            Pipeline(StaticSource([data]), [make()]).compute(0, device=device)
         print(f"  {name:28s} {best(run, repeat) * 1000:9.1f} ms", flush=True)
 
 
@@ -126,10 +127,10 @@ def main():
     ap.add_argument("--repeat", type=int, default=2)
     ap.add_argument("--skip-render", action="store_true")
     ap.add_argument("--skip-modifiers", action="store_true")
-    ap.add_argument("--device", default=None, help="ray tracer device: cpu (default), cuda, opencl or auto")
+    ap.add_argument("--device", default=None, help="cpu (default), cuda, opencl, metal or auto: the ray tracer, and the modifiers on cuda/auto (opencl and metal run them on the CPU)")
     args = ap.parse_args()
     if not args.skip_modifiers:
-        bench_modifiers(args.size, args.repeat)
+        bench_modifiers(args.size, args.repeat, args.device)
     if not args.skip_render:
         bench_raytrace(1, args.device)
         bench_trace_scenes(args.size, 1, args.device)

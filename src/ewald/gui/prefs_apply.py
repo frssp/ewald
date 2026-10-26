@@ -83,12 +83,30 @@ def apply_viewport_settings(vp, s: Settings):
     vp.ortho_button.setChecked(s["viewport.projection"] == "ortho")
 
 
+def apply_gpu_choice(win, s: Settings, startup: bool = False):
+    """Preferences › 3D view › GPU for the 3D view: write the Windows per-app choice when it changes
+    (back to Auto removes it). Linux and the startup case are handled before Qt starts."""
+    from .. import gpu_select
+
+    choice = s["viewport.gpu"]
+    before = getattr(win, "_gpu_choice", choice)
+    win._gpu_choice = choice
+    if startup or choice == before or sys.platform != "win32":
+        return
+    try:
+        if gpu_select.set_windows_preference(choice):
+            win.message("GPU for the 3D view changes when EWALD starts again")
+    except Exception as exc:
+        win.message(f"Could not set the Windows GPU preference: {exc}")
+
+
 def apply_settings(win, s: Settings, startup: bool = False):
     """Push settings into a MainWindow: viewport, style, render page, device, font."""
     from . import theme
 
     vp, style, page = win.viewport, win.style, win.render_page
     win.settings = s
+    apply_gpu_choice(win, s, startup)
     win.timeline.show_info = s["viewport.show_overlay"]
     if win.data is not None:
         win.timeline.set_info(win.data.attributes)
