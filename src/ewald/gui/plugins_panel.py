@@ -3,6 +3,7 @@ catalogs (:mod:`ewald.plugin_catalog`), install, remove, and add a plugin step t
 from __future__ import annotations
 
 import html
+import time
 from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -14,11 +15,13 @@ from .busy import BusyLabel
 from .icons import icon
 from .theme import TOKENS
 
+CATALOG_MAX_AGE = 600    # seconds: showing the side bar again reads older catalogs again
+
 
 class _CatalogLoader(QtCore.QThread):
     """Reads the catalogs off the GUI thread (indexes may be URLs)."""
 
-    loaded = QtCore.Signal(list, dict)
+    loaded = QtCore.Signal(list, dict, bool)   # entries, errors, whether a GitHub token exists
 
     def __init__(self, urls, parent=None):
         super().__init__(parent)
@@ -26,7 +29,9 @@ class _CatalogLoader(QtCore.QThread):
 
     def run(self):
         entries, errors = pc.catalog(self.urls)
-        self.loaded.emit(entries, errors)
+        # for the "private index? set GITHUB_TOKEN" hint; gh auth token is a subprocess
+        token = any(pc.is_missing(e) and pc._wants_token(u) for u, e in errors.items()) and bool(pc.github_token())
+        self.loaded.emit(entries, errors, token)
 
 
 class _FetchWorker(QtCore.QThread):
@@ -44,6 +49,23 @@ class _FetchWorker(QtCore.QThread):
             self.fetched.emit(pc.fetch_file(self.entry), "")
         except Exception as exc:
             self.fetched.emit(None, str(exc) or type(exc).__name__)
+
+
+class _Task(QtCore.QThread):
+    """Runs ``fn()`` off the GUI thread: the slow bookkeeping around a pip run (reading every
+    installed package's metadata, ``gh auth token``) froze the window for seconds."""
+
+    done = QtCore.Signal(object, str)    # result (None on failure), error
+
+    def __init__(self, fn, parent=None):
+        super().__init__(parent)
+        self.fn = fn
+
+    def run(self):
+        try:
+            self.done.emit(self.fn(), "")
+        except Exception as exc:
+            self.done.emit(None, str(exc) or type(exc).__name__)
 
 
 def _key(item) -> str:
@@ -168,6 +190,9 @@ class PluginsPanel(QtWidgets.QWidget):
         self._loading = False
         self._process = None
         self._pip_key = None
+        self._pip_job = None                 # (action, requirement) from the confirmation until pip's result is loaded
+        self._catalog_time = None            # time.monotonic() when the catalogs were last read
+        self._has_token = False              # a GitHub token exists (read with the catalogs, off the GUI thread)
         self._workers: list = []
         self._busy: dict[str, str] = {}      # plugin key -> "Installing…" while its action runs
         self._updates = 0
@@ -272,13 +297,25 @@ class PluginsPanel(QtWidgets.QWidget):
 
     def wait(self, ms: int = 10000):
         """Block until the catalogs are read and running installs are done (tests, scripts)."""
-        if self._loader is not None:
-            self._loader.wait(ms)
-        for worker in list(self._workers):
-            worker.wait(ms)
-        if self._process is not None:
-            self._process.waitForFinished(ms)
+        deadline = time.monotonic() + ms / 1000
+        while time.monotonic() < deadline:
+            if self._loader is not None:
+                self._loader.wait(10)
+            for worker in list(self._workers):
+                worker.wait(10)
+            if self._process is not None and self._process.state() != QtCore.QProcess.NotRunning:
+                self._process.waitForFinished(10)
+            QtWidgets.QApplication.processEvents()
+            if (self._pip_job is None and not self._workers
+                    and (self._loader is None or not self._loader.isRunning())):
+                break
         QtWidgets.QApplication.processEvents()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # a side bar left open for hours still learns about new versions when it is shown again
+        if self._catalog_time is not None and time.monotonic() - self._catalog_time > CATALOG_MAX_AGE:
+            self.refresh()
 
     @property
     def busy(self) -> dict:
@@ -290,7 +327,7 @@ class PluginsPanel(QtWidgets.QWidget):
             self._busy[key] = text
         else:
             self._busy.pop(key, None)
-        running = self._process is not None or bool(self._busy)
+        running = self._pip_job is not None or bool(self._busy)
         if status:
             self.busy_label.setText(status)
         elif not running:
@@ -304,9 +341,10 @@ class PluginsPanel(QtWidgets.QWidget):
         """The catalogs are being read."""
         return self._loading
 
-    def _catalog_loaded(self, entries, errors):
-        self.entries, self.catalog_errors = entries, errors
+    def _catalog_loaded(self, entries, errors, has_token=False):
+        self.entries, self.catalog_errors, self._has_token = entries, errors, has_token
         self._loading = False
+        self._catalog_time = time.monotonic()
         self._fill()
 
     def updates(self) -> list:
@@ -353,7 +391,7 @@ class PluginsPanel(QtWidgets.QWidget):
             self._row(e, False)
         for url, err in self.catalog_errors.items():
             if pc.is_missing(err):      # e.g. the default index before it is published
-                private = pc._wants_token(url) and not pc.github_token()
+                private = pc._wants_token(url) and not self._has_token
                 self.list_layout.addWidget(QtWidgets.QLabel(
                     f"No plugin index at {url}" + (" (if it is private, set GITHUB_TOKEN or run gh auth login)."
                                                    if private else "."), objectName="muted", wordWrap=True))
@@ -553,7 +591,10 @@ class PluginsPanel(QtWidgets.QWidget):
                 "load it with ewald.plugins.load_plugin_file and add it as a step.")
 
     def _run_pip(self, action, requirement, key=None, busy=""):
-        if self._process is not None:
+        """Run pip in a separate process while the window keeps working: the package metadata
+        it needs before and after (what is loaded, a GitHub token) is read in a thread, pip's
+        output goes to the log, Cancel stops it at any point."""
+        if self._pip_job is not None:
             self._say("pip is still running; wait for it to finish or press Cancel.")
             return
         cmd = pc.pip_command(action, requirement)
@@ -562,31 +603,49 @@ class PluginsPanel(QtWidgets.QWidget):
             return
         self.log.clear()
         self.log.setVisible(True)
+        self._pip_job, self._pip_key = (action, requirement), key
         p = self._process = QtCore.QProcess(self)
         p.setProcessChannelMode(QtCore.QProcess.MergedChannels)
-        extra = pc.pip_env(requirement)         # a GitHub token for git+https sources, never logged
-        if extra:
-            env = QtCore.QProcessEnvironment.systemEnvironment()
-            for k, v in extra.items():
-                env.insert(k, v)
-            p.setProcessEnvironment(env)
         p.readyReadStandardOutput.connect(lambda: self.log.appendPlainText(
             bytes(p.readAllStandardOutput()).decode(errors="replace").rstrip()))
         p.finished.connect(lambda code, status: self._pip_done(
             action, requirement, -1 if status == QtCore.QProcess.CrashExit else code))
         p.errorOccurred.connect(lambda err: err == QtCore.QProcess.FailedToStart and self._pip_done(action, requirement, -1))
-        self._pip_key = key
-        self._before = pc.loaded_versions()   # pip may replace code that is already loaded
         reqs = requirement if isinstance(requirement, str) else " ".join(requirement)
         verb = {"install": "Installing", "update": "Updating", "uninstall": "Removing"}.get(action, "Running pip for")
         self._set_busy(key or "", busy or "", f"{verb} {reqs} with pip…")
+        # a GitHub token for git+https sources (never logged), and what is loaded now: pip may
+        # replace code that is already imported (pc.restart_reason compares afterwards)
+        self._background(lambda: (pc.pip_env(requirement), pc.loaded_versions()),
+                         lambda result, error: self._pip_start(p, cmd, result))
+
+    def _background(self, fn, then):
+        task = workers.detach(_Task(fn))        # may outlive the panel
+        task.done.connect(lambda result, error: (task in self._workers and self._workers.remove(task),
+                                                 then(result, error)))
+        self._workers.append(task)
+        task.start()
+        return task
+
+    def _pip_start(self, p, cmd, result):
+        if p is not self._process:          # cancelled while getting ready
+            return
+        extra, self._before = result if result is not None else ({}, None)
+        if extra:
+            env = QtCore.QProcessEnvironment.systemEnvironment()
+            for k, v in extra.items():
+                env.insert(k, v)
+            p.setProcessEnvironment(env)
         p.start(cmd[0], cmd[1:])
 
     def cancel(self):
         """Stop a running pip."""
         if self._process is not None:
             self._say("Cancelling pip…")
-            self._process.kill()
+            if self._process.state() == QtCore.QProcess.NotRunning:   # not started yet
+                self._pip_done(*self._pip_job, -1)
+            else:
+                self._process.kill()
 
     def install_requirements(self, requirements: list[str]):
         """pip install the packages a notebook needs (one confirmation, one pip run)."""
@@ -597,17 +656,30 @@ class PluginsPanel(QtWidgets.QWidget):
         if self._process is None:            # FailedToStart and finished both report
             return
         self._process.deleteLater()
-        self._process, key, self._pip_key = None, self._pip_key, None
-        self._set_busy(key or "")
+        self._process, key = None, self._pip_key
+        self.cancel_button.setVisible(False)
         if not isinstance(requirement, str):
             requirement = " ".join(requirement)
         self._say(f"pip {action} {requirement}: {'done' if code == 0 else f'failed (exit {code})'}")
         before, self._before = self._before, None
-        if code == 0:
-            plugins.load_plugins(force=True)
-            self.recommend_restart(pc.restart_reason(action, before=before))
-            self.refresh()
-            self.changed.emit()
+        if code != 0:
+            self._pip_finished(key, None)
+            return
+        self._set_busy(key or "", self._busy.get(key or "") or "Loading…", "Loading the installed plugins…")
+        # which loaded packages pip changed: the metadata of every installed package is read
+        self._background(lambda: pc.restart_reason(action, before=before),
+                         lambda reason, error: self._pip_finished(key, reason or ""))
+
+    def _pip_finished(self, key, reason):
+        """pip is done; ``reason`` is None when it failed, else why a restart is needed ("" for none)."""
+        self._pip_job = self._pip_key = None
+        self._set_busy(key or "")
+        if reason is None:
+            return
+        plugins.load_plugins(force=True)
+        self.recommend_restart(reason)
+        self.refresh()
+        self.changed.emit()
 
     def open_folder(self):
         folder = plugins.plugin_dir()
