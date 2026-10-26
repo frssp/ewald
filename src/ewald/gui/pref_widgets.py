@@ -36,9 +36,12 @@ def _chevron() -> str:
 
 
 def _hex(c) -> str:
-    if isinstance(c, str):
-        return QtGui.QColor(c).name()
-    return QtGui.QColor.fromRgbF(*[float(x) for x in c[:3]]).name()
+    from ..colors import to_hex
+
+    try:
+        return to_hex(c)   # every form ewald.colors reads ('tab:blue', 'rgb(...)', 0..255 tuples)
+    except (TypeError, ValueError):
+        return QtGui.QColor(c).name() if isinstance(c, str) else "#000000"
 
 
 def _restyle(w, name):

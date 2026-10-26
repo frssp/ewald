@@ -638,7 +638,7 @@ def draw_overlays(rgba: np.ndarray, data, *, text=None, legend=True, type_legend
 
 
 def _rgba255(color, ink):
-    from matplotlib.colors import to_rgba
+    from .colors import to_rgba
 
     if color is None or (isinstance(color, str) and color == "ink"):
         return ink

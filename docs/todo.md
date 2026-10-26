@@ -235,6 +235,10 @@ GUI
   keeps its own per-notebook state in the `.py` header next to the view cell's picture settings
   (one place for both); in a kernel notebook a viewport edit reaches the kernel's `pipe.view`
   only when the view cell runs again.
+- Colors (`ewald.colors`, every form in every color argument): the color swatches of Preferences
+  and of the Colors card open only the color dialog (no typed `'tab:blue'` or `'rgb(...)'` there,
+  as the step forms take); alpha in a color is read but atoms, bonds and lines ignore it
+  (`transparency` is the way), and `"C0"`-style cycle names follow the current plot style.
 - View tabs (`view(pipe, tab=...)`, more Structure tabs): picks, mouse measurements, bond editing
   and linked plot selections work in the main Structure view only (a tab's pick shows its label);
   the View tab cards, the Render page and Insert › Snapshot follow the main view; a saved window

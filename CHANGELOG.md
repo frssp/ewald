@@ -17,7 +17,11 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   the AI's `compute_msd` reports how the MSD splits over the axes.
 - New notebooks import `rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius`.
 - `Arrhenius.plot()` and `.savefig(path)`, `arrhenius({T: D})`; `runs["500"]` finds the run
-  labelled "T500".
+  labelled "T500". (#73)
+- Every color argument (view settings, steps, overlays, step forms) takes the same forms through
+  `ewald.colors`: names in any case, hex with or without `#`, `rgb()`/`rgba()`, grey levels and
+  0..1 or 0..255 numbers; a bad color fails when set, and the GUI writes hex into the view cell.
+  Step forms get a color field with a swatch. (#74)
 - Ask AI › Test connection shows the server's reason for an API error (a 422's missing header,
   for example), not only the status code.
 - Ask AI, OpenAI-compatible provider: *API key header* (send the key as `api-key` for Azure

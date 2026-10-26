@@ -387,6 +387,25 @@ def test_parameter_form_roundtrip(app):
     assert mod.distance == 2.5 and mod.normal == (1, 0, 0) and mod.inverse is True
 
 
+def test_parameter_form_color_fields_take_any_color_form(app):
+    from ewald.gui.params import ColorEdit, ParameterForm
+
+    mod = mods.AssignColor(color=(0.3, 0.3, 1.0))
+    form = ParameterForm(mod)
+    edit = form.editors["color"][0]
+    assert isinstance(edit, ColorEdit) and edit.line.text() == "(0.3, 0.3, 1.0)"
+    for text, value in (("rgb(255, 128, 0)", "rgb(255, 128, 0)"), ("tab:blue", "tab:blue"),
+                        ("(255, 128, 0)", (255, 128, 0)), ("#f80", "#f80")):
+        edit.line.setText(text)
+        form.apply()
+        assert mod.color == value
+    edit.line.setText("notacolor")                    # marked, and the step keeps its color
+    assert edit.line.property("invalid") is True
+    form.apply()
+    assert mod.color == "#f80"
+    assert not isinstance(ParameterForm(mods.VectorVis()).editors["color_mapping_property"][0], ColorEdit)
+
+
 def test_multiline_parameter_and_fes_map(app):
     from ewald.gui.params import ParameterForm
     from ewald.gui.plots import PlotsPanel, _grid

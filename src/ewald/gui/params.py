@@ -47,6 +47,67 @@ def colormap_combo(value: str) -> QtWidgets.QComboBox:
     return w
 
 
+def _is_color_parameter(name, value) -> bool:
+    """A color argument: 'color' in its name and a color as its value (``color_mapping_property`` and
+    ``color_by_type`` are not)."""
+    from ..colors import is_color
+
+    if "color" not in name or isinstance(value, bool):
+        return False
+    if isinstance(value, str):
+        return bool(value) and is_color(value)
+    return isinstance(value, (tuple, list)) and len(value) in (3, 4) and is_color(value)
+
+
+class ColorEdit(QtWidgets.QWidget):
+    """A color parameter: a line that takes any form :mod:`ewald.colors` reads ('red', '#ff8800',
+    'rgb(255, 128, 0)', (1, 0.5, 0), ...) and a swatch that opens the color dialog (writes hex)."""
+
+    def __init__(self, value, parent=None):
+        super().__init__(parent)
+        row = QtWidgets.QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        self.line = QtWidgets.QLineEdit(value if isinstance(value, str) else repr(tuple(value)))
+        self.line.setToolTip("A color: 'red', 'tab:blue', '#ff8800', 'rgb(255, 128, 0)', (1, 0.5, 0) or (255, 128, 0)")
+        self.swatch = QtWidgets.QPushButton(toolTip="Choose a color", objectName="swatch")
+        self.swatch.setFixedWidth(28)
+        self.swatch.clicked.connect(self._pick)
+        self.line.textChanged.connect(self._show)
+        row.addWidget(self.line, 1)
+        row.addWidget(self.swatch)
+        self._show()
+
+    def value(self):
+        """The typed color (a string, or a tuple when typed as numbers), or None when it is no color."""
+        from ..colors import is_color
+
+        text = self.line.text().strip()
+        try:
+            value = ast.literal_eval(text) if text[:1] in "([" else text
+        except (ValueError, SyntaxError):
+            value = text
+        return value if is_color(value) else None
+
+    def _show(self):
+        from ..colors import to_hex
+
+        value = self.value()
+        self.line.setProperty("invalid", value is None)
+        self.line.style().unpolish(self.line)
+        self.line.style().polish(self.line)
+        pix = QtGui.QPixmap(14, 14)
+        pix.fill(QtGui.QColor(to_hex(value)) if value is not None else QtCore.Qt.transparent)
+        self.swatch.setIcon(QtGui.QIcon(pix))
+
+    def _pick(self):
+        from ..colors import to_hex
+
+        value = self.value()
+        c = QtWidgets.QColorDialog.getColor(QtGui.QColor(to_hex(value) if value is not None else "#ffffff"), self)
+        if c.isValid():
+            self.line.setText(c.name())
+
+
 class ParameterForm(QtWidgets.QWidget):
     """Edits ``modifier.parameters()``; emits nothing itself, call ``apply()``."""
 
@@ -82,6 +143,9 @@ class ParameterForm(QtWidgets.QWidget):
         elif name == "cmap":
             w = colormap_combo(value)
             self.editors[name] = (w, str)
+        elif _is_color_parameter(name, value):
+            w = ColorEdit(value)
+            self.editors[name] = (w, "color")
         elif isinstance(value, str) and name in (choices := {**_CHOICES, **getattr(self.modifier, "choice_parameters", {})}):
             w = QtWidgets.QComboBox()
             w.addItems(choices[name])
@@ -124,6 +188,10 @@ class ParameterForm(QtWidgets.QWidget):
                 value = w.isChecked()
             elif kind in (int, float):
                 value = w.value()
+            elif kind == "color":
+                value = w.value()
+                if value is None:
+                    continue   # not a color: keep the step's
             elif isinstance(w, QtWidgets.QComboBox):
                 value = w.currentText()
             elif isinstance(w, QtWidgets.QPlainTextEdit):

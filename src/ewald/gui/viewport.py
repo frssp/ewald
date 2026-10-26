@@ -1563,6 +1563,6 @@ EMPTY_HINT = native_text("Open a structure, trajectory or notebook\n"
 
 
 def _is_dark(color: str) -> bool:
-    from matplotlib.colors import to_rgb
+    from ..colors import to_rgb
 
     return sum(to_rgb(color)) < 1.5

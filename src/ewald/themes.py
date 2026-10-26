@@ -61,8 +61,7 @@ class Theme:
 
     def color_of(self, particle_type) -> tuple | None:
         """The theme's color for a particle type (by its element), or None for unknown types."""
-        from matplotlib.colors import to_rgb
-
+        from .colors import to_rgb
         from .radii import element_of
 
         t = str(particle_type)

@@ -180,7 +180,9 @@ compare side by side (steps matched by name, `align="position"` by order; `label
 Every display setting of the structure view belongs to the pipeline: `view(pipe, **settings)` (`from ewald import view`)
 sets some and returns `pipe.view`; `pipe.render()`, `snapshot(pipe)`, the Jupyter picture and the GUI viewport draw with
 it, and the GUI writes viewport edits back into the notebook's `view(pipe, ...)` cell. Settings not named keep their value;
-`None` resets one. `View.help()` lists them all:
+`None` resets one. `View.help()` lists them all. Every color here and in steps (`AssignColor`, `Vectors`, `paint`, ...)
+takes any form of `ewald.colors`: `'red'`, `'tab:blue'`, `'#ff8800'`, `'#f80'`, `'rgb(255, 128, 0)'`, `(1, 0.5, 0)` or
+`(255, 128, 0)`; a bad one fails at once:
 
 ```python
 view(pipe, style="Ball & stick",              # 'Space-filling', 'Simple (ASE)', 'Points' (set radius_scale, bonds, atom_style)
