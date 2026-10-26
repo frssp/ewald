@@ -142,8 +142,15 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   the in-process IPython console (~0.4 s, built when its tab first paints) and peak memory
   (~700 MB with VTK, Qt, numba and IPython). On the owner's Windows laptop (2026-10-26, Intel
   Arc) everything takes 3-4 times as long: import 1.8-2.1 s, `MainWindow()` 5.3-5.8 s, 3D view
-  6.0-6.6 s, console 7.7-9.0 s, peak 610-650 MB, the same with an empty numba cache. The biggest
-  gap is `MainWindow()` itself (3.5 s); `benchmarks/startup.py --profile` lists the calls.
+  6.0-6.6 s, console 7.7-9.0 s, peak 610-650 MB, the same with an empty numba cache.
+  `benchmarks/startup.py --profile` there (2026-10-26): the import is 2.3 s, about 0.6 s of it
+  `os.stat` and 0.3 s opening files (many small files on NTFS with Defender scanning), numba
+  0.64 s and scipy.spatial 0.54 s; in `MainWindow()` 0.5 s went to folding the view chips (each
+  fold width was measured by showing and hiding buttons, 4 ms per `setVisible` there; now
+  worked out from size hints, also on every resize), 0.23 s to the WGL OpenGL check, 0.22 s to
+  two `QFontDatabase.families()` scans (now one), 0.32 s to the plugin entry-point scan and
+  0.25 s to the theme. The 3D view then blocks the window for about 3 s after the first paint
+  (pyvistaqt and the first OpenGL context); `--profile` now covers that stretch too.
 - Maximizing the window (2026-10-24, `python benchmarks/resize.py`): in the container (llvmpipe,
   cu_void tutorial) it is settled after 0.3-0.7 s, of which one full 3D render is 0.1-0.3 s;
   restoring takes about 0.12 s. The rest is Qt layout and painting plus matplotlib mathtext
@@ -784,9 +791,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   calculation that finished yesterday" should call `list_workflows` with `formula`, `status` and
   `since`/`until`, then `open_workflow`; days are the PC's local days against sim-agent's
   creation time.
-- GUI startup on the owner's Windows machine: measured (see Performance); next
-  `python benchmarks/startup.py --profile` there, to see which calls make `MainWindow()` take
-  3.5 s instead of about 0.6 s. Windows Defender scanning freshly installed packages can make the
+- GUI startup on the owner's Windows machine: measured and profiled (see Performance); next
+  `python benchmarks/startup.py --profile` once more, for the 3 s the 3D view blocks the window
+  after its first paint, on the Arc and on the RTX. Windows Defender scanning freshly installed packages can make the
   first start after an update much slower than later ones (the "Preparing EWALD" first-run
   notice, `gui/first_run.py`, shows during that start).
 - First-run notice on a real Mac and Windows machine: after `uv pip install -e .` the next

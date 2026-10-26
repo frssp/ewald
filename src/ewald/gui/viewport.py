@@ -436,36 +436,52 @@ class Viewport(QtWidgets.QWidget):
             a = menu.addAction(label, lambda k=kind, s=sign: self.rotate(k, s * self.rotation_step))
             a.setToolTip(tip)
 
+    def _hud_shown(self, level: int) -> dict:
+        """Which top-chip widgets fold level ``level`` shows (the others are always shown)."""
+        shown = {self.axis_buttons[b]: level < 2 for b in ("a", "b", "c")}
+        shown.update({self.axis_buttons[b]: level < 1 for b in ("a*", "b*", "c*")})
+        shown.update({b: level < 1 for b in self.rotate_buttons})
+        shown.update({self.axis_more: level == 1, self.axis_menu: level >= 2,
+                      self.rotate_menu: level in (1, 2), self._rotate_divider: level < 3,
+                      self.style_combo: level < 2, self.ortho_button: level < 3,
+                      self.more_button: level >= 2})
+        return shown
+
     def _set_hud_level(self, level: int, view=None, display=None):
         """Show the top chips at fold ``level`` (an index into ``HUD_LEVELS``)."""
         if level == self.hud_level:
             return
         self.hud_level = level
-        for b in ("a", "b", "c"):
-            self.axis_buttons[b].setVisible(level < 2)
-        for b in ("a*", "b*", "c*"):
-            self.axis_buttons[b].setVisible(level < 1)
-        self.axis_more.setVisible(level == 1)
-        self.axis_menu.setVisible(level >= 2)
-        for b in self.rotate_buttons:
-            b.setVisible(level < 1)
-        self.rotate_menu.setVisible(level in (1, 2))
-        self._rotate_divider.setVisible(level < 3)
-        self.style_combo.setVisible(level < 2)
-        self.ortho_button.setVisible(level < 3)
-        self.more_button.setVisible(level >= 2)
+        for w, on in self._hud_shown(level).items():
+            w.setVisible(on)
         for chip in (view or self._viewbar, display or self._displaybar):
             chip.layout().activate()
             chip.adjustSize()
 
+    @staticmethod
+    def _chip_width(chip, shown: dict) -> int:
+        """The width ``chip`` would have with the widgets in ``shown`` shown or hidden, worked
+        out from size hints: showing and hiding the buttons to measure took 70 ms per fold
+        level on Windows (setVisible), on every resize."""
+        lay = chip.layout()
+        widths = []
+        for i in range(lay.count()):
+            w = lay.itemAt(i).widget()
+            if w is None or not shown.get(w, not w.isHidden()):
+                continue
+            hint = w.sizeHint()
+            widths.append(min(max(hint.width() if hint.isValid() else 0, w.minimumWidth()), w.maximumWidth()))
+        m, frame = lay.contentsMargins(), chip.contentsMargins()
+        return (sum(widths) + lay.spacing() * max(0, len(widths) - 1) + m.left() + m.right()
+                + frame.left() + frame.right())
+
     def hud_width(self, level: int) -> int:
         """The width the two top chips need at fold ``level``, with their margins."""
-        current = self.hud_level
-        self._set_hud_level(level)
-        width = self._viewbar.sizeHint().width() + self._displaybar.sizeHint().width() + 3 * self.HUD_MARGIN
+        shown = self._hud_shown(level)
+        width = (self._chip_width(self._viewbar, shown) + self._chip_width(self._displaybar, shown)
+                 + 3 * self.HUD_MARGIN)
         if not self.hud_overlay:
             width -= self.HUD_MARGIN   # the strip has no gap at its right edge
-        self._set_hud_level(current)
         return width
 
     def _fit_hud(self, width: int):

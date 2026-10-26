@@ -6940,6 +6940,12 @@ def test_viewport_hud_folds_without_overlap(app, cu_fcc, font_size):
         v.setGeometry(0, 0, 900, 600)
         app.processEvents()
         assert v.hud_level == 0 and v.axis_buttons["c*"].isVisible() and not v.more_button.isVisible()
+        # the fold widths come from size hints, without showing and hiding buttons (slow on Windows):
+        # they must match the chips' real widths at every level
+        for level in range(len(v.HUD_LEVELS)):
+            v._set_hud_level(level)
+            real = v._viewbar.sizeHint().width() + v._displaybar.sizeHint().width() + 3 * v.HUD_MARGIN
+            assert v.hud_width(level) == real, (level, font_size)
         v.close()
         _dispose(host)
     finally:
