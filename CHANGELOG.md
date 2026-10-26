@@ -10,6 +10,14 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- `ewald eval --category study`: whole analyses from one sentence (activation energy from a series
+  of MD runs with a trap in it, the Li diffusion path, a paragraph for a paper, a follow-up
+  question, wrong premises), on synthetic VASP MD series (`ewald.llm.eval_data`) and the LLZO data.
+- `MeanSquaredDisplacement(by_axis=True)`: the MSD along x, y and z and 1D diffusion coefficients;
+  the AI's `compute_msd` reports how the MSD splits over the axes.
+- New notebooks import `rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius`.
+- `Arrhenius.plot()` and `.savefig(path)`, `arrhenius({T: D})`; `runs["500"]` finds the run
+  labelled "T500". (#73)
 - Every color argument (view settings, steps, overlays, step forms) takes the same forms through
   `ewald.colors`: names in any case, hex with or without `#`, `rgb()`/`rgba()`, grey levels and
   0..1 or 0..255 numbers; a bad color fails when set, and the GUI writes hex into the view cell.

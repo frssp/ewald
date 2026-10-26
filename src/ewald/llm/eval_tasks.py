@@ -6,7 +6,9 @@ pipeline), ``view`` (how the structure is drawn), ``export`` (files written), ``
 model writes and runs; needs ``--allow-code``), ``notebook`` (editing a notebook the user already
 has: change a step, remove one, fix a failing cell), ``recipe`` (a plot or per-frame step written
 the way python_api's recipes do it), ``plugin`` (a plugin modifier or ``@ai_tool`` from
-``examples/plugins``) and ``paper`` (published data, downloaded once).
+``examples/plugins``), ``paper`` (published data, downloaded once) and ``study`` (a whole study
+from one sentence: a series of MD runs written by :mod:`ewald.llm.eval_data`, compared, fitted,
+plotted and written up, some with a trap a careful analyst catches or a premise that is wrong).
 
 Reference values are computed from the files with ewald itself when a task runs (the
 ``ref_*`` functions), so they follow the example files if those are regenerated; physical
@@ -16,8 +18,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .evals import (Any, CellNumber, Cells, Data, File, Matches, Number, Step, Task, UsedTool, View, along,
-                    error_cells, same_color, step_cells)
+from .evals import (ANSWER_TURN, Any, CellNumber, Cells, Data, File, Matches, Mentions, NoAnswer, Not, Number, Prose, Step, Task,
+                    UsedTool, View, along, error_cells, figure_cells, same_color, step_cells)
 
 
 # ------------------------------------------------------------------ reference values
@@ -194,6 +196,86 @@ def _plot_arg(table, name, expected):
 #: A notebook with an RDF step and its plot (cells 3 and 4 after the import and load cells).
 _RDF_CELLS = ["pipe.add(CoordinationAnalysis(cutoff=5.0, bins=50))", "show(pipe, table='coordination-rdf')"]
 _RED_BLUE = {"coolwarm", "bwr", "rdbu", "seismic", "rdylbu"}
+
+
+# ------------------------------------------------------------------ study tasks (eval_data series)
+_LI_D = "MeanSquaredDisplacement.diffusion_coefficient.Li"
+_STUDY = {}
+
+
+def _series_fit(skip_unequilibrated=False, exclude=()):
+    """Li diffusion coefficients (A^2/ps) and their Arrhenius fit for the series in the current
+    folder (the task's working folder), the way a careful analyst does it: Li only, temperatures
+    from each run's INCAR, the unequilibrated start cut where check_run finds one, runs in
+    ``exclude`` left out. Cached per folder."""
+    import os
+
+    key = (os.getcwd(), skip_unequilibrated, tuple(exclude))
+    if key not in _STUDY:
+        from ..runinfo import check_run
+        from ..runs import arrhenius, load_runs
+        from ..verbs import msd
+
+        runs = load_runs("*/XDATCAR")
+        temps, ds = [], []
+        for run, t in zip(runs, runs.temperatures()):
+            if run.label in exclude:
+                continue
+            start = (check_run(run.pipe).equilibrated or 0) if skip_unequilibrated else 0
+            ds.append(float(msd(run.pipe, start=start).attributes[_LI_D]))
+            temps.append(float(t))
+        _STUDY[key] = (dict(zip(temps, ds)), arrhenius(temps, ds))
+    return _STUDY[key]
+
+
+def _ref_ea(**kw):
+    return lambda _pipe: _series_fit(**kw)[1].Ea
+
+
+def _ref_d_cm2(temperature, **kw):
+    return lambda _pipe: _series_fit(**kw)[0][float(temperature)] * 1e-4
+
+
+#: Activation energies a model may claim: "Ea = 0.3 eV", "activation energy of 0.28 eV".
+_EA_CLAIM = r"(?i)(E_?\{?a\}?|activation energy)[^.\n]{0,40}?[=≈~:]?\s*(of\s*)?\$?\d+\.\d+\s*\$?\s*eV"
+
+#: The reference solution of the study tasks: one cell from the runs to Ea (Li only, INCAR temperatures).
+_STUDY_CELL = """from ewald import load_runs, msd, arrhenius, check_run
+runs = load_runs("*/XDATCAR")
+{prep}D = {{}}
+for run in runs:
+    {skip}D[run.label] = msd(run.pipe{start}).attributes["MeanSquaredDisplacement.diffusion_coefficient.Li"]
+T = [t for r, t in zip(runs, runs.temperatures()) if r.label in D]
+fit = arrhenius(T, list(D.values()))
+print(f"Ea = {{fit.Ea:.4f}} eV")
+fit"""
+
+
+def _study_cell(prep="", skip="", start=""):
+    return _STUDY_CELL.format(prep=prep, skip=skip, start=start)
+
+
+def _study_checks(ea, tol=0.03, figure=True):
+    """What every Arrhenius study must leave: the value, printed by a cell (so the notebook makes
+    it), an Arrhenius figure under a cell, and no failed cell."""
+    checks = [Number(ea, tol=tol, name="Ea"), CellNumber(ea, tol=tol), Cells(error_cells, 0, name="cells with errors")]
+    return checks + ([Cells(figure_cells, True, name="figure")] if figure else [])
+
+
+def _fit_cells(nb) -> int:
+    """How many code cells fit an Arrhenius law (call ``arrhenius(...)``)."""
+    import re
+
+    return sum(1 for c in nb.cells if c.kind == "code" and re.search(r"\barrhenius\s*\(", c.source))
+
+
+#: The Li of the eval series hop in the ab plane only: "ab plane", "2D", "along x and y", ...
+_IN_PLANE = (r"(?i)\b(ab|a-b|xy|x-y)[- ]plane|two-dimensional|\b2-?D\b|in-plane|layer|"
+             r"\b(along|in|on)\s+(the\s+)?(a|x)(\s*-?\s*axis)?\s*(and|&|/)\s*(the\s+)?(b|y)\b")
+
+
+_SERIES_INTRO = ("This VASP MD run of Li in a sulfide host is one of {n} runs at different temperatures; "
+                 "their folders ({folders}) are in the current folder. ")
 
 
 # ------------------------------------------------------------------ tasks
@@ -442,6 +524,112 @@ TASKS: list[Task] = [
          "Li tracer diffusion coefficient in cm^2/s, fitting the mean squared displacement from 3 ps on?",
          "paper:li6ps5cl-aimd/XDATCAR.gz", [Number(1.23e-5, rel=0.25)], category="paper",
          solution=[("compute_msd", {"timestep_fs": 100.0, "fit_range": [0.215, 1.0]})], answer="ANSWER: {0}"),
+
+    # ---------------------------------------------------------- whole studies from one sentence
+    Task("study-arrhenius", _SERIES_INTRO.format(n=5, folders="T500 to T900") +
+         "What is the activation energy of Li diffusion, in eV? Show the Arrhenius plot.",
+         "series:li-series/T500/XDATCAR", _study_checks(_ref_ea()), category="study", allow_code=True,
+         solution=[("insert_cell", {"source": _study_cell()})], answer="ANSWER: {0}"),
+    Task("study-paper", _SERIES_INTRO.format(n=5, folders="T500 to T900") +
+         "Work out how Li diffuses in this material and its activation energy, save the Arrhenius plot as "
+         "arrhenius.png, and write the paragraph for the results section of our paper (give D in cm^2/s).",
+         "series:li-series/T500/XDATCAR",
+         _study_checks(_ref_ea(), figure=False) + [
+             File("arrhenius.png", _png),
+             Mentions(_ref_ea(), tol=0.02, name="Ea in the text"),
+             # D from MSD/6t, or the in-plane D = MSD_ab/4t of a layered conductor (1.5 times larger)
+             Mentions(_ref_d_cm2(700), rel=0.2, also=1.5, name="D(700 K) in cm^2/s"),
+             Matches(_IN_PLANE),
+             Prose(80)],
+         category="study", allow_code=True,
+         solution=[("insert_cell", {"source": _study_cell().removesuffix("fit") +
+                                    "fit.figure().savefig('arrhenius.png')\nfit"})],
+         answer=("Li diffuses in the ab plane only: the MSD grows along a and b and stays flat along c, so the "
+                 "transport is two-dimensional. From five NVT runs between 500 and 900 K the Li tracer diffusion "
+                 "coefficient follows an Arrhenius law with an activation energy of {1} eV; at 700 K D = {2} cm^2/s. "
+                 "The diffusion coefficients come from linear fits of the time-averaged Li mean squared "
+                 "displacement, and the activation energy from a straight-line fit of ln D against 1/T, shown "
+                 "in the Arrhenius plot saved as arrhenius.png, which the notebook regenerates from the runs.\n"
+                 "ANSWER: {0}")),
+    Task("study-hot-start", _SERIES_INTRO.format(n=5, folders="T500 to T900") +
+         "What is the activation energy of Li diffusion, in eV? Show the Arrhenius plot.",
+         "series:li-series-hot/T500/XDATCAR",
+         _study_checks(_ref_ea(skip_unequilibrated=True), tol=0.04) + [Matches(r"(?i)equilibrat|hot|overshoot|transient")],
+         category="study", allow_code=True,
+         solution=[("insert_cell", {"source": _study_cell(start=", start=check_run(run.pipe).equilibrated or 0")})],
+         answer="T500 is not equilibrated at the start (check_run), so its first frames are left out.\nANSWER: {0}"),
+    Task("study-mislabel", _SERIES_INTRO.format(n=5, folders="T500 to T900") +
+         "What is the activation energy of Li diffusion, in eV? Show the Arrhenius plot.",
+         "series:li-series-mislabel/T500/XDATCAR",
+         _study_checks(_ref_ea(), tol=0.04) + [Matches(r"(?is)T900.{0,200}600|600.{0,200}T900")],
+         category="study", allow_code=True,
+         solution=[("insert_cell", {"source": _study_cell()})],
+         answer="The INCAR in T900 sets TEBEG = 600 K, so that run is a second 600 K run.\nANSWER: {0}"),
+    Task("study-scf", _SERIES_INTRO.format(n=5, folders="T500 to T900") +
+         "What is the activation energy of Li diffusion, in eV? Show the Arrhenius plot.",
+         "series:li-series-scf/T500/XDATCAR",
+         _study_checks(_ref_ea(exclude=("T600",)), tol=0.03) + [Matches(r"(?is)T600|600\s*K")],
+         category="study", allow_code=True,
+         solution=[("insert_cell", {"source": _study_cell(
+             skip="if not check_run(run.pipe).ok and run.label == 'T600':\n        continue\n    ")})],
+         answer="T600 hit NELM at most ionic steps (check_run), so it is left out of the fit.\nANSWER: {0}"),
+    Task("study-llzo", "This is a GROMACS MD run of the garnet LLZO (Li7La3Zr2O12) at 500 K; the runs at 600, 700 "
+         "and 800 K are traj_600.xtc, traj_700.xtc and traj_800.xtc in the same folder, each with its .gro. Frames "
+         "are 50.8 fs apart and the Li motion is diffusive from 10 ps on. What is the activation energy of Li "
+         "diffusion, in eV? Show the Arrhenius plot.", "paper:llzo-arrhenius/traj_500.xtc",
+         _study_checks(0.118, tol=0.03), category="study", allow_code=True,
+         solution=[("insert_cell", {"source": (
+             "from ewald import examples, load_runs, msd, arrhenius\n"
+             "folder = examples.fetch('llzo-arrhenius', quiet=True)\n"
+             "runs = load_runs(str(folder / 'traj_*.xtc'), label=r'traj_(\\d+)')\n"
+             "d = msd(runs, time_per_frame=0.0508, fit_range=(10 / (runs.pipe.num_frames * 0.0508), 1.0))\n"
+             "fit = arrhenius(d, attribute='MeanSquaredDisplacement.diffusion_coefficient.Li')\n"
+             "print(f'Ea = {fit.Ea:.4f} eV')\nfit")})],
+         answer="ANSWER: {0}"),
+    Task("study-timestep", _SERIES_INTRO.format(n=5, folders="T500 to T900") +
+         "What is the activation energy of Li diffusion, in eV? Show the Arrhenius plot.",
+         "series:li-series-timestep/T500/XDATCAR", _study_checks(_ref_ea(), tol=0.04), category="study",
+         allow_code=True, solution=[("insert_cell", {"source": _study_cell()})], answer="ANSWER: {0}"),
+    Task("study-path", "Find the Li diffusion pathway in this VASP MD run of Li in a sulfide host: along which "
+         "directions do the Li ions move, and how long is one hop, in Angstrom? Show the pathway in the 3D view.",
+         "series:li-series/T900/XDATCAR",
+         [Number(2.0, tol=0.3, name="hop length"),
+          Matches(_IN_PLANE),
+          Any(Step("GenerateTrajectoryLines"), Step("SpatialBinning"), Step("CreateIsosurface")),
+          Cells(error_cells, 0, name="cells with errors")],
+         category="study", allow_code=True,
+         solution=[("add_modifier", {"name": "GenerateTrajectoryLines", "params": {"only_selected": False}})],
+         answer="Li hops between sites 2.0 A apart along a and b only; nothing moves along c, so the pathway is "
+                "a two-dimensional net in the ab plane.\nANSWER: {0}"),
+    Task("study-redo", _SERIES_INTRO.format(n=5, folders="T500 to T900") +
+         "What is the activation energy of Li diffusion, in eV? Show the Arrhenius plot.",
+         "series:li-series/T500/XDATCAR",
+         _study_checks(_ref_ea(exclude=("T500",))) + [Cells(_fit_cells, lambda n: n <= 0, name="fit cells added", since=0)],
+         followups=["The 500 K run is too short to trust. Leave it out and redo the fit and the plot."],
+         category="study", allow_code=True,
+         solution=[("insert_cell", {"source": _study_cell()}), (ANSWER_TURN, {"text": "Done."}),
+                   ("edit_cell", {"index": 2, "source": _study_cell(
+                       skip="if run.label == 'T500':\n        continue\n    ")})],
+         answer="Cell 3 now leaves T500 out.\nANSWER: {0}"),
+    Task("study-one-temperature", "These four VASP MD runs of Li in a sulfide host (folders ENCUT300 to ENCUT600 in "
+         "the current folder) are the Li diffusion data we have. Fit the activation energy of Li diffusion from them.",
+         "series:li-encut/ENCUT300/XDATCAR",
+         [NoAnswer(), Not(Matches(_EA_CLAIM)), Matches(r"(?i)same temperature|one temperature|single temperature|"
+                                                       r"all (four |4 )?(runs )?.{0,40}600\s*K|600\s*K.{0,80}(all|each|every)")],
+         category="study", allow_code=True,
+         solution=[("insert_cell", {"source": "from ewald import load_runs\nruns = load_runs('*/XDATCAR')\n"
+                                              "print(runs.temperatures())"})],
+         answer="All four runs are at 600 K (TEBEG = TEEND = 600 in every INCAR); they test the cutoff, so "
+                "they cannot give an activation energy. Runs at three or more temperatures are needed."),
+    Task("study-no-diffusion", "Compute the Li diffusion coefficient in cm^2/s from this VASP MD run of Li in a "
+         "sulfide host, and its activation energy.", "series:li-solid/T300/XDATCAR",
+         [Not(Matches(_EA_CLAIM)), Matches(r"(?i)no (long-range )?(li )?diffusion|not diffus|does not diffuse|"
+                                           r"doesn't diffuse|vibrat|plateau|no hops|rattl|localized|stays? (on|at|in)")],
+         category="study", allow_code=True,
+         solution=[("insert_cell", {"source": "from ewald import msd\nmsd(pipe)"})],
+         answer="The Li MSD plateaus at about 0.07 A^2: Li only vibrates around its sites and does not diffuse "
+                "in this run, so there is no diffusion coefficient to fit, and one temperature cannot give an "
+                "activation energy."),
 ]
 
 #: Task ids by category.

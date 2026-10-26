@@ -70,6 +70,27 @@ def test_msd_modifier_matches_fft_and_einstein(rng, backend):
     assert len(table["MSD fit"]) == 60
 
 
+def test_msd_by_axis_shows_diffusion_confined_to_a_plane(rng):
+    pipe, true = _walk_pipeline(rng, T=60, n=400, shuffle=False)
+    flat = true.copy()
+    flat[:, :, 2] = flat[0, :, 2]          # no motion along z: diffusion in the xy plane
+    frames = []
+    for d, x in zip(pipe.source.frames, flat):
+        d = d.copy()
+        d.positions = x % BOX
+        frames.append(d)
+    pipe = Pipeline(StaticSource(frames))
+    pipe.modifiers.append(MeanSquaredDisplacement(time_per_frame=0.5, by_axis=True))
+    data = pipe.compute(0)
+    t, a = data.tables["msd"], data.attributes
+    np.testing.assert_allclose(t["MSD x"] + t["MSD y"] + t["MSD z"], t["MSD"], rtol=1e-9, atol=1e-9)
+    assert np.allclose(t["MSD z"], 0, atol=1e-9) and "MSD A z" in t
+    name = "MeanSquaredDisplacement.diffusion_coefficient"
+    # 1D coefficients (slope/2): each in-plane axis has D = sigma^2 / (2 dt) = 0.09, z none
+    assert a[name + ".x"] == pytest.approx(0.09, rel=0.15) and a[name + ".z"] == pytest.approx(0, abs=1e-9)
+    assert a[name + ".B.y"] == pytest.approx(0.09, rel=0.2)
+
+
 def test_trajectory_result_is_cached_until_inputs_change(rng):
     pipe, _ = _walk_pipeline(rng, T=12, n=10)
     msd = MeanSquaredDisplacement()

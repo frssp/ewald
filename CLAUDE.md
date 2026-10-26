@@ -245,7 +245,8 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   plugin + tests, verified in a subprocess, saved to the plugin folder), descriptors (`describe.py`, `narrate.py`),
   `selection.py` (descriptor + close-up scene for Ask about selection; GUI side `gui/ask_panel.py`),
   notebook tools and the GUI chat's notebook prompt (`notebook_tools.py`, `notebook_prompt.py`), which files and SSH hosts tools may read (`access.py`), MCP server (`mcp_server.py`), `reference.py`, the source of `llms.txt`, and the AI eval suite
-  (`evals.py` harness and graders, `eval_tasks.py` tasks; `ewald eval`, never in the default
+  (`evals.py` harness and graders, `eval_tasks.py` tasks, `eval_data.py` the synthetic MD series of the
+  `study` tasks; `ewald eval`, never in the default
   pytest run since it costs tokens; `tests/test_evals.py` plays each task's reference solution).
 
 ## Conventions

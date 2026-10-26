@@ -902,6 +902,23 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** another, project-only address; no code of conduct for now.
 - **Landed:** public PR #72.
 
+### D70. Whole studies by the AI come next, measured by a harder eval first (2026-10-26)
+
+- **Decision:** of five ambitious goals proposed on 2026-10-26 (a real-time million-atom
+  viewport, TB-scale trajectory analysis, notebook kernels on a cluster, the AI doing a whole
+  analysis alone, publication renders in seconds) the owner chose the AI doing a whole analysis
+  first: one sentence ("find the diffusion path and activation energy of this AIMD") leads the AI
+  through comparing runs, an Arrhenius fit, figures and a paper-ready paragraph, all as notebook
+  cells. The work starts with eval tasks of that size (the `study` category: traps, wrong
+  premises, a follow-up question, a written paragraph), measured with real models before and
+  after the agent changes.
+- **Why:** the owner: "4 부터 넣고" (start with 4). Building the measurement first was the
+  recommended option on the decision card, because the 53-task suite was saturated.
+- **Considered:** the other four goals (the million-atom viewport was the other one recommended);
+  building agent features (a plan step, report cells) before the eval; grading the paragraph's
+  writing with a second model.
+- **Landed:** public PR #73.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

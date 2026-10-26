@@ -1,0 +1,1352 @@
+{
+ "meta": {
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "allow_code": true,
+  "repeat": 2,
+  "context": "gui",
+  "ewald": "0.1.0",
+  "commit": "39b02c2",
+  "date": "2026-10-26T02:56:47+0000"
+ },
+ "summary": {
+  "tasks": 22,
+  "ran": 22,
+  "passed": 22,
+  "skipped": 0,
+  "errors": 0,
+  "accuracy": 1.0,
+  "reproducible": 1.0,
+  "by_category": {
+   "study": {
+    "passed": 22,
+    "ran": 22,
+    "accuracy": 1.0
+   }
+  },
+  "tool_calls": 178,
+  "tool_calls_per_task": 8.09,
+  "tool_errors": 5,
+  "requests": 167,
+  "tokens": {
+   "input": 382,
+   "output": 76806,
+   "cache_read": 6642020,
+   "cache_write": 798434
+  },
+  "cost": 6.8582,
+  "seconds": 1120.5
+ },
+ "results": [
+  {
+   "id": "study-arrhenius",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.275 vs 0.274984"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.263 vs 0.274984"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 2"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 6,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "insert_cell",
+    "edit_cell",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 7,
+   "tokens": {
+    "input": 16,
+    "output": 2515,
+    "cache_read": 280784,
+    "cache_write": 34358
+   },
+   "cost": 0.27831079999999997,
+   "seconds": 49.62,
+   "answer": "The activation energy for Li diffusion is **Ea = 0.275 \u00b1 0.017 eV** (fit r\u00b2 = 0.988), from a fit of the Li diffusion coefficients of all five runs (500\u2013900 K).\n\n**Run checks (cell 3):** I ran `check_run` on all five runs and none was flagged. Each is a VASP NVT run of 1000 frames, 0.01 ps per frame (10 ps total), with a 2 fs time step. The temperatures in the INCAR files match the folder names, and the average temperatures stayed on target (500.2, 600.2, 701.0, 800.6 and 899.8 K). There is no measurable energy drift, the SCF converged at every step, and the runs count as equilibrated from frame 0. So I used every frame of every run.\n\n**Diffusion coefficients (cell 4)**, from the time-averaged Li MSD:\n\n| T (K) | D_Li (cm\u00b2/s) |\n|---|---|\n| 500 | 3.09e-6 |\n| 600 | 1.18e-5 |\n| 700 | 2.37e-5 |\n| 800 | 3.47e-5 |\n| 900 | 5.70e-5 |\n\nThe Arrhenius fit gives a prefactor A = 20.6 \u00c5\u00b2/ps.\n\n**Plots:**\n- Cell 5 draws the Arrhenius plot (D against 1000/T, log scale, with the fitted line) and saves it as `arrhenius_Li.png`.\n- Cell 6 plots the MSD curves for the five temperatures. They are straight lines over the whole run.\n\n**Points to keep in mind:**\n- **Li moves only in the x\u2013y plane.** Along z, D is about 1e-5 \u00c5\u00b2/ps or less, and sometimes slightly negative, so there is effectively no movement. D here is the 3D value (MSD/6t). The 2D in-plane value would be 1.5 times larger, but that doesn't change Ea.\n- **500 K is the weakest point.** There the Li MSD reaches only about 1 \u00c5\u00b2 in 10 ps, so few Li hops are sampled. This point also sits below the fitted line, which partly explains why r\u00b2 is not closer to 1.\n- **Next step, if you want a firmer number:** run longer at 500\u2013600 K, or count hops directly with `SiteHopping`.\n\nANSWER: 0.275",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-arrhenius-_6bvzg5o/T500/XDATCAR')\n\n# %%\nruns = load_runs('/tmp/ewald-eval-study-arrhenius-_6bvzg5o/T*/XDATCAR', label=r\"T(\\d+)\")\nchecks = {}\nfor label in runs.labels if hasattr(runs, \"labels\") else [r for r in runs]:\n    r = runs[label]\n    info = run_info(r.pipe)\n    c = check_run(r.pipe)\n    checks[label] = c\n    flagged = [f[\"title\"] + \": \" + f[\"detail\"] for f in c.to_dict()[\"findings\"] if f[\"level\"] not in (\"ok\", \"info\")]\n    temp = [f[\"detail\"] for f in c.to_dict()[\"findings\"] if f[\"title\"].startswith(\"Temperature\")]\n    print(label, info.kind, info.ensemble, info.temperature, info.timestep, \"fs\", info.time_per_frame, \"ps/frame\",\n          r.pipe.num_frames, \"frames | ok:\", c.ok, \"| equilibrated from\", c.equilibrated, \"|\", temp, \"|\", flagged)\n\n# %%\nmsd_tables = msd(runs, by_axis=True)\nfit = arrhenius(msd_tables, attribute=\"MeanSquaredDisplacement.diffusion_coefficient.Li\")\nfor label, t in msd_tables.items():\n    a = t.attributes\n    D = a[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"]\n    print(f\"T = {label} K: D_Li = {D:.4g} A^2/ps = {D*1e-4:.3e} cm^2/s; axes x/y/z D = \"\n          f\"{a.get('MeanSquaredDisplacement.diffusion_coefficient.Li.x', float('nan')):.3g}/\"\n          f\"{a.get('MeanSquaredDisplacement.diffusion_coefficient.Li.y', float('nan')):.3g}/\"\n          f\"{a.get('MeanSquaredDisplacement.diffusion_coefficient.Li.z', float('nan')):.3g}\")\nprint(f\"Ea = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, A = {fit.A:.3g}, r2 = {fit.r2:.4f}\")\n\n# %%\nfit.savefig(\"arrhenius_Li.png\")\nfit.plot()\n\n# %%\nmsd_tables.plot()\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "study-paper",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.275 vs 0.274984"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.263 vs 0.274984"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "File arrhenius.png",
+     true,
+     "arrhenius.png"
+    ],
+    [
+     "Mentions Ea in the text",
+     true,
+     "0.275 vs 0.274984"
+    ],
+    [
+     "Mentions D(700 K) in cm^2/s",
+     true,
+     "3.56e-05 vs 3.55959e-05"
+    ],
+    [
+     "Matches (?i)\\b(ab|a-b|xy|x-y)[- ]plane|two-dimensional|\\b2-?D\\b|in-plane|layer|\\b(along|in|on)\\s+(the\\s+)?(a|x)(\\s*-?\\s*axis)?\\s*(and|&|/)\\s*(the\\s+)?(b|y)\\b",
+     true,
+     "/(?i)\\b(ab|a-b|xy|x-y)[- ]plane|two-dimensional|\\b2-?D\\b|in-plane|layer|\\b(along|in|on)\\s+(the\\s+)?(a|x)(\\s*-?\\s*axis)?\\s*(and|&|/)\\s*(the\\s+)?(b|y)\\b/ found"
+    ],
+    [
+     "Prose >= 80 words",
+     true,
+     "475 words"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 8,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "check_run",
+    "insert_cell",
+    "describe_frame",
+    "describe_trajectory",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 7,
+   "tokens": {
+    "input": 16,
+    "output": 4738,
+    "cache_read": 280868,
+    "cache_write": 36403
+   },
+   "cost": 0.3330126,
+   "seconds": 71.97,
+   "answer": "I checked all five runs and fitted the Li MSD per axis. Li moves only within the x\u2013y plane: it diffuses in 2D. The activation energy is **0.275 \u00b1 0.017 eV**.\n\n**Run checks (cell 3).** All five runs are NVT VASP MD (0.01 ps per stored frame, 1000 frames = 10 ps each). The thermostat temperatures in the INCAR files match the folder names (500\u2013900 K). The SCF converged at every step, the temperature stays on target and energy drift is negligible. No equilibration time had to be cut and no run was left out. The cell is cubic, 16 \u00c5 per side, with Li64S64.\n\n**How Li moves (cells 4\u20135, figure `msd_Li.png`).**\n- **In the plane:** the Li MSD along x and y grows linearly at every temperature.\n- **Along z:** the MSD stays flat at 0.03\u20130.05 \u00c5\u00b2, which is just vibration about the sites. The fitted 1D D along z is about 10\u207b\u2075 \u00c5\u00b2/ps, at the noise level, compared with 0.04\u20130.9 \u00c5\u00b2/ps along x and y.\n- **Sulfur:** it does not diffuse (|D_S| < 10\u207b\u2075 \u00c5\u00b2/ps).\n\nSo the right quantity is the in-plane D = MSD_xy/(4t). The usual MSD/6t underestimates it by a factor of 2/3 because z adds nothing. That only shifts D\u2080; Ea is the same either way.\n\n**Arrhenius fit (cell 6, saved as `arrhenius.png`).**\n\n| T (K) | D_Li in-plane (cm\u00b2/s) | MSD/6t (cm\u00b2/s) |\n|---|---|---|\n| 500 | 4.63\u00d710\u207b\u2076 | 3.09\u00d710\u207b\u2076 |\n| 600 | 1.78\u00d710\u207b\u2075 | 1.18\u00d710\u207b\u2075 |\n| 700 | 3.56\u00d710\u207b\u2075 | 2.37\u00d710\u207b\u2075 |\n| 800 | 5.20\u00d710\u207b\u2075 | 3.47\u00d710\u207b\u2075 |\n| 900 | 8.55\u00d710\u207b\u2075 | 5.70\u00d710\u207b\u2075 |\n\n- Ea = 0.275 \u00b1 0.017 eV\n- D\u2080 = 3.09\u00d710\u207b\u00b3 cm\u00b2/s\n- r\u00b2 = 0.988\n\n**Caveats.**\n- At 500 K, Li moves only about 1.8 \u00c5\u00b2 in-plane (MSD) over 10 ps, so that point rests on few hops and is the least certain.\n- The 300 K value is an extrapolation over a wide temperature range, so treat it as an estimate only.\n- Longer runs, or several runs per temperature, would tighten the error bars.\n- Hop counting (SiteHopping) would show where the Li sites are and how hops are correlated, if the paper needs that.\n\n**Paragraph for the results section:**\n\n> Li-ion transport was evaluated from NVT ab initio molecular dynamics at 500, 600, 700, 800 and 900 K (10 ps per temperature, 2 fs time step). All trajectories were equilibrated from the start, with temperatures on target and negligible energy drift. The sulfur sublattice stays rigid at all temperatures, whereas Li diffuses. Splitting the Li mean-squared displacement by direction shows that Li transport is strictly two-dimensional: the MSD along x and y grows linearly with time, while along z it stays at a vibrational plateau of 0.03\u20130.05 \u00c5\u00b2 over the whole run. We therefore report the in-plane tracer diffusion coefficient, D = \u27e8\u0394r_xy\u00b2\u27e9/4t, which increases from 4.6 \u00d7 10\u207b\u2076 cm\u00b2 s\u207b\u00b9 at 500 K to 1.8 \u00d7 10\u207b\u2075, 3.6 \u00d7 10\u207b\u2075 and 5.2 \u00d7 10\u207b\u2075 cm\u00b2 s\u207b\u00b9 at 600, 700 and 800 K, and 8.6 \u00d7 10\u207b\u2075 cm\u00b2 s\u207b\u00b9 at 900 K. These values follow Arrhenius behaviour (r\u00b2 = 0.988), with an activation energy of Ea = 0.275 \u00b1 0.017 eV and a prefactor D\u2080 = 3.1 \u00d7 10\u207b\u00b3 cm\u00b2 s\u207b\u00b9. Extrapolating to room temperature gives roughly D(300 K) \u2248 7 \u00d7 10\u207b\u2078 cm\u00b2 s\u207b\u00b9. This low barrier, together with confinement of Li motion to the a\u2013b plane, identifies the material as a two-dimensional fast Li-ion conductor.\n\nFiles are in the work folder:\n- arrhenius.png\n- msd_Li.png\n\nANSWER: 0.275, 4.63e-06, 1.78e-05, 3.56e-05, 5.20e-05, 8.55e-05",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-paper-xhhw74fr/T500/XDATCAR')\n\n# %%\nruns = load_runs('/tmp/ewald-eval-study-paper-xhhw74fr/T*/XDATCAR', label=r\"T(\\d+)\")\nchecks = {}\nfor label in runs.labels if hasattr(runs, 'labels') else [k for k in ['500','600','700','800','900']]:\n    p = runs[label].pipe\n    c = check_run(p)\n    ri = run_info(p)\n    checks[label] = c\n    print(label, 'T =', ri.temperature, 'dt/frame =', ri.time_per_frame, 'ps, frames =', p.num_frames,\n          'ok =', c.ok, 'equilibrated =', c.equilibrated)\n    for f in c.to_dict()['findings']:\n        if f['level'] not in ('ok', 'info'):\n            print('   ', f['level'], f['title'], '-', f['detail'])\n\n# %%\nmsd_tables = msd(runs, by_axis=True)\nD = {}\nfor label, t in msd_tables.items():\n    a = t.attributes\n    key = 'MeanSquaredDisplacement.diffusion_coefficient'\n    D[label] = {sp: a[f'{key}.{sp}'] for sp in ('Li', 'S')}\n    ax = {x: a[f'{key}.Li.{x}'] for x in 'xyz'}\n    print(f\"T{label}: D_Li = {D[label]['Li']:.4g} A^2/ps = {D[label]['Li']*1e-4:.3e} cm^2/s, \"\n          f\"D_S = {D[label]['S']:.3g} A^2/ps; Li 1D D x/y/z = \"\n          + ', '.join(f'{ax[x]:.3g}' for x in 'xyz'))\n\n# %%\nimport matplotlib.pyplot as plt\nfig, axs = plt.subplots(1, 2, figsize=(9, 3.5))\nfor label, t in msd_tables.items():\n    tt = np.asarray(t['Time'])\n    axs[0].plot(tt, np.asarray(t['MSD Li x']) + np.asarray(t['MSD Li y']), label=f'{label} K, xy')\n    axs[1].plot(tt, np.asarray(t['MSD Li z']), label=f'{label} K, z')\nfor a in axs:\n    a.set_xlabel('t (ps)'); a.set_ylabel(r'Li MSD ($\\AA^2$)'); a.legend(fontsize=7)\naxs[0].set_title('in-plane (x+y)'); axs[1].set_title('out-of-plane (z)')\nfig.tight_layout(); fig.savefig('msd_Li.png', dpi=200)\nt5 = msd_tables['500']; tt = np.asarray(t5['Time'])\nfor i in [len(tt)//10, len(tt)//4, len(tt)//2, int(len(tt)*0.8), len(tt)-1]:\n    print(f\"T500 lag {tt[i]:.2f} ps: MSD_xy = {t5['MSD Li x'][i]+t5['MSD Li y'][i]:.3f}, MSD_z = {t5['MSD Li z'][i]:.4f} A^2\")\nplt.show()\n\n# %%\ntemps = {lab: run_info(runs[lab].pipe).temperature[0] for lab in msd_tables}   # K, TEBEG/TEEND from INCAR\nkey = 'MeanSquaredDisplacement.diffusion_coefficient'\nD_xy = {temps[lab]: 0.5 * (t.attributes[f'{key}.Li.x'] + t.attributes[f'{key}.Li.y']) * 1e-4   # in-plane (2D) D, cm^2/s\n        for lab, t in msd_tables.items()}\nD_3d = {temps[lab]: t.attributes[f'{key}.Li'] * 1e-4 for lab, t in msd_tables.items()}         # MSD/6t, cm^2/s\nfit = arrhenius(D_xy)\nfit3 = arrhenius(D_3d)\nfit.savefig('arrhenius.png')\nfor T in sorted(D_xy):\n    print(f\"T = {T:.0f} K: D_Li,xy = {D_xy[T]:.2e} cm^2/s, D_Li,3D(MSD/6t) = {D_3d[T]:.2e} cm^2/s\")\nprint(f\"Ea (in-plane D) = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, D0 = {fit.A:.2e} cm^2/s, r^2 = {fit.r2:.4f}\")\nprint(f\"Ea (3D-averaged D) = {fit3.Ea:.3f} +/- {fit3.Ea_error:.3f} eV, D0 = {fit3.A:.2e} cm^2/s, r^2 = {fit3.r2:.4f}\")\nD300 = fit.A * np.exp(-fit.Ea / (8.617333e-5 * 300))\nprint(f\"extrapolated D_Li,xy(300 K) = {D300:.1e} cm^2/s\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "study-hot-start",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.291 vs 0.291177"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.2753 vs 0.291177"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 1"
+    ],
+    [
+     "Matches (?i)equilibrat|hot|overshoot|transient",
+     true,
+     "/(?i)equilibrat|hot|overshoot|transient/ found"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 5,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "insert_cell",
+    "edit_cell",
+    "insert_cell",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 6,
+   "tokens": {
+    "input": 14,
+    "output": 2430,
+    "cache_read": 229242,
+    "cache_write": 33832
+   },
+   "cost": 0.2636644,
+   "seconds": 41.6,
+   "answer": "The activation energy for Li diffusion is **Ea = 0.29 \u00b1 0.02 eV** (r\u00b2 = 0.988), from all five runs (500\u2013900 K). The Arrhenius plot is under cell 5 and saved as `arrhenius_Li.png`.\n\n**What I checked (cell 3):** all five runs are VASP NVT MD with 2 fs steps and 0.01 ps per frame, 1000 frames each. The temperatures in the INCARs (TEBEG = TEEND) match the folder names. The SCF converged at every step in every run.\n\n**The 500 K run starts too hot.** Its energy only settles after frame 127, and the check also flags its energy drift (\u22121.98 meV/atom/ps), which probably comes from the same hot start. If those first frames are included, the Li diffusion coefficient D at 500 K comes out about 7\u00d7 too high: 0.275 instead of 0.0388 \u00c5\u00b2/ps. That would wreck the fit (Ea = 0.12 \u00b1 0.09 eV, r\u00b2 = 0.37). So I worked out every D only from the frame where the check says that run has settled. That is frame 127 for 500 K and frame 16 for 700 K (which barely changes its value); the other runs settle from frame 0.\n\n**Li D from the MSD (cell 4):**\n\n| T (K) | First frame used | D_Li (\u00c5\u00b2/ps) | D_Li (cm\u00b2/s) |\n|---|---|---|---|\n| 500 | 127 | 0.03876 | 3.88e-6 |\n| 600 | 0 | 0.09768 | 9.77e-6 |\n| 700 | 16 | 0.1998 | 2.00e-5 |\n| 800 | 0 | 0.4833 | 4.83e-5 |\n| 900 | 0 | 0.752 | 7.52e-5 |\n\n**Fit (cell 5):** Ea = 0.291 \u00b1 0.018 eV, prefactor 29.9 \u00c5\u00b2/ps.\n\n**What remains uncertain:**\n- Each run is 10 ps, and the 500 K run only has about 8.7 ps left after trimming, so its D has the largest error.\n- The 700 K point sits a little below the fitted line.\n\nRunning the 500 K case longer, or repeating it, would firm up the low-temperature end of the fit.\n\nANSWER: 0.291",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-hot-start-ihgk6ml8/T500/XDATCAR')\n\n# %%\nruns = load_runs('/tmp/ewald-eval-study-hot-start-ihgk6ml8/T*/XDATCAR', label=r\"T(\\d+)\")\nchecks = {}\nfor label in runs.labels if hasattr(runs, 'labels') else [r for r in runs]:\n    p = runs[label].pipe\n    info = run_info(p)\n    c = check_run(p)\n    checks[label] = c\n    print(f\"T{label}: {info.kind} {info.ensemble} T={info.temperature} dt={info.timestep} fs, {info.time_per_frame} ps/frame, {p.num_frames} frames, ok={c.ok}, equilibrated from frame {c.equilibrated}\")\n    for f in c.to_dict()['findings']:\n        if f['level'] != 'ok' and f['title'] not in ('Run', 'Assumed'):\n            print('    ', f['level'], f['title'], '-', f['detail'])\n\n# %%\nD_trim, D_full = {}, {}\nfor label in ['500', '600', '700', '800', '900']:\n    p = runs[label].pipe\n    T = run_info(p).temperature[1]\n    start = checks[label].equilibrated or 0\n    t = msd(p, start=start)\n    D_trim[T] = t.attributes['MeanSquaredDisplacement.diffusion_coefficient.Li']   # A^2/ps\n    t0 = msd(p, start=0)\n    D_full[T] = t0.attributes['MeanSquaredDisplacement.diffusion_coefficient.Li']\n    msd(p, start=start)   # leave the trimmed MSD step in place\n    print(f\"T = {T:.0f} K, start frame {start}: D_Li = {D_trim[T]:.4g} A^2/ps = {D_trim[T]*1e-4:.3e} cm^2/s (untrimmed: {D_full[T]:.4g} A^2/ps)\")\n\n# %%\nfit = arrhenius(D_trim)          # Li D(T), T500 trimmed to its equilibrated part\nfit_full = arrhenius(D_full)     # for comparison: T500 with the hot start included\nprint(f\"Ea = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, A = {fit.A:.3g} A^2/ps, r2 = {fit.r2:.4f}\")\nprint(f\"(untrimmed T500: Ea = {fit_full.Ea:.3f} +/- {fit_full.Ea_error:.3f} eV, r2 = {fit_full.r2:.4f})\")\nfit.savefig('arrhenius_Li.png')\nfit.plot()\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "study-mislabel",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.31 vs 0.307614"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.307 vs 0.307614"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 1"
+    ],
+    [
+     "Matches (?is)T900.{0,200}600|600.{0,200}T900",
+     true,
+     "/(?is)T900.{0,200}600|600.{0,200}T900/ found"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 5,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "insert_cell",
+    "edit_cell",
+    "insert_cell",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 6,
+   "tokens": {
+    "input": 14,
+    "output": 2966,
+    "cache_read": 229659,
+    "cache_write": 34315
+   },
+   "cost": 0.2768828,
+   "seconds": 45.83,
+   "answer": "The Li activation energy is **0.31 \u00b1 0.03 eV**, but only once one mislabelled folder is accounted for: **folder `T900` is actually a 600 K run**.\n\n**Checking the runs (cell 3).** I ran `check_run` and `run_info` on all five runs. Each one is NVT, 1000 frames at 0.01 ps per frame, with converged SCF, small energy drift and no close contacts. All are equilibrated from frame 0 except `T800`, which is equilibrated from frame 8; I trimmed those frames.\n- In `T900`, the INCAR has TEBEG = TEEND = 600 K, and the thermostat holds the run at 599.5 \u00b1 30.4 K. So it is a second 600 K run, not a 900 K one.\n- The other four folder names match their INCAR temperatures.\n\n**Li diffusion coefficients (cell 4).** These come from the time-averaged MSD.\n\n| folder | T (INCAR) | D_Li (cm\u00b2/s) |\n|---|---|---|\n| T500 | 500 K | 4.11e-06 |\n| T600 | 600 K | 1.09e-05 |\n| T700 | 700 K | 3.92e-05 |\n| T800 | 800 K | 5.27e-05 |\n| T900 | **600 K** | 1.53e-05 |\n\nAll five runs show real long-range Li motion: at the longest lag the MSD reaches 2.3 \u00c5\u00b2 at 500 K and 31 \u00c5\u00b2 at 800 K. The `T900` value sits next to the `T600` value, as a 600 K run should.\n\n**Arrhenius fit (cell 5).** The plot is drawn there and saved as `arrhenius_Li.png`.\n- **INCAR temperatures, all 5 runs: Ea = 0.307 \u00b1 0.031 eV** (r\u00b2 = 0.970). This is my answer.\n- Leaving out `T900`: Ea = 0.310 \u00b1 0.035 eV. The result doesn't depend on that run.\n- Using the folder names as temperatures (wrong): 0.189 \u00b1 0.095 eV with r\u00b2 = 0.566. That's what the mislabel would have given.\n\n**Caveats:**\n- There are only four distinct temperatures, and each run is 10 ps. The 700 K point sits above the line, so the \u00b10.03 eV error is a fair measure of the real uncertainty.\n- The y-axis of the plot is labelled \"value\"; it is D_Li in \u00c5\u00b2/ps.\n- A 900 K run would extend the temperature range and tighten the fit. If you meant to have one, it may be worth checking whether it exists elsewhere.\n\nANSWER: 0.31",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-mislabel-7_3_r6xs/T500/XDATCAR')\n\n# %%\nruns = load_runs(\"/tmp/ewald-eval-study-mislabel-7_3_r6xs/T*/XDATCAR\", label=r\"T(\\d+)\")\nchecks, T_input = {}, {}\nfor key in [\"500\", \"600\", \"700\", \"800\", \"900\"]:\n    p = runs[key].pipe\n    info = run_info(p)\n    c = check_run(p)\n    checks[key] = c\n    T_input[key] = info.temperature[0]\n    temp = [f[\"detail\"] for f in c.to_dict()[\"findings\"] if f[\"title\"].startswith(\"Temperature\")]\n    flags = [f[\"title\"] for f in c.to_dict()[\"findings\"] if f[\"level\"] not in (\"ok\", \"info\")]\n    print(f\"folder T{key}: TEBEG/TEEND={info.temperature} K, {info.ensemble}, {p.num_frames} frames x {info.time_per_frame} ps, \"\n          f\"equilibrated from frame {c.equilibrated}; {temp[0] if temp else ''}; flags={flags}\")\n\n# %%\nD_Li = {}\nfor key in [\"500\", \"600\", \"700\", \"800\", \"900\"]:\n    p = runs[key].pipe\n    t = msd(p, start=checks[key].equilibrated)\n    a = t.attributes\n    D = a[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"]   # A^2/ps\n    D_Li[key] = D\n    m = np.asarray(t[\"MSD Li\"])\n    print(f\"folder T{key} (T = {T_input[key]:.0f} K): D_Li = {D:.4g} A^2/ps = {D*1e-4:.3e} cm^2/s; \"\n          f\"MSD_Li at max lag = {m[-1]:.2f} A^2\")\n\n# %%\nkeys = [\"500\", \"600\", \"700\", \"800\", \"900\"]\nfit = arrhenius([T_input[k] for k in keys], [D_Li[k] for k in keys])           # T from INCAR (TEBEG)\nfit_4 = arrhenius([T_input[k] for k in keys[:4]], [D_Li[k] for k in keys[:4]])  # without the mislabelled folder\nfit_label = arrhenius([float(k) for k in keys], [D_Li[k] for k in keys])        # wrong: folder names as T\nprint(f\"Ea (INCAR T, 5 runs)        = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, r2 = {fit.r2:.3f}\")\nprint(f\"Ea (INCAR T, T500-T800 only) = {fit_4.Ea:.3f} +/- {fit_4.Ea_error:.3f} eV, r2 = {fit_4.r2:.3f}\")\nprint(f\"Ea (folder names as T, wrong) = {fit_label.Ea:.3f} +/- {fit_label.Ea_error:.3f} eV, r2 = {fit_label.r2:.3f}\")\nfit.savefig(\"arrhenius_Li.png\")\nfit.plot()\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "study-scf",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.253 vs 0.252821"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.253 vs 0.252821"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 1"
+    ],
+    [
+     "Matches (?is)T600|600\\s*K",
+     true,
+     "/(?is)T600|600\\s*K/ found"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 9,
+   "tool_errors": 1,
+   "tools": [
+    "python_api",
+    "check_run",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell",
+    "edit_cell"
+   ],
+   "tool_error_messages": [
+    [
+     "insert_cell",
+     "----> 4 ax = fig.axes[0]\n      5 ax.scatter([1000 / 600], [D[600]], marker=\"x\", color=\"red\", zorder=5, label=\"T600 (SCF unconverged, excluded)\")\n      6 ax.legend()\nIndexError: list index out of range"
+    ]
+   ],
+   "requests": 9,
+   "tokens": {
+    "input": 20,
+    "output": 4489,
+    "cache_read": 384128,
+    "cache_write": 37031
+   },
+   "cost": 0.3518406,
+   "seconds": 61.08,
+   "answer": "The Li activation energy is **0.253 \u00b1 0.019 eV** (r\u00b2 = 0.988). The fit uses four of the five runs: 500, 700, 800 and 900 K. I left out the 600 K run because its electronic steps mostly didn't converge.\n\n**Checking each run first** (cells 3\u20136). All five are VASP NVT runs with the thermostat temperature set in INCAR, matching the folder names. Each has 2 fs steps, 0.01 ps between saved frames and 1000 frames. Every run held its target temperature, showed small energy drift and needed no equilibration frames cut.\n- **600 K: left out.** In 3981 of its 5000 ionic steps, the electronic loop stopped at the iteration limit (NELM = 40) without converging, so its forces aren't reliable. Its D is also far off the trend: 1.24e-4 cm\u00b2/s, about twice the 900 K value.\n- **800 K: kept, minus frame 0.** `check_run` flagged one Li\u2013S pair at 1.15 \u00c5 in frame 0. From frame 1 on, the closest Li\u2013S distance is 1.26\u20131.43 \u00c5 in the frames I checked, the same range as the other runs. Short Li\u2013S distances (about 1.3\u20131.4 \u00c5) occur in every run of this model, so I just started the MSD at frame 1.\n\n**Li diffusion coefficients** (from the slope of the mean-squared displacement, cell 7):\n\n| T (K) | D_Li (cm\u00b2/s) |\n|---|---|\n| 500 | 4.57e-6 |\n| 600 | 1.24e-4 (excluded) |\n| 700 | 1.97e-5 |\n| 800 | 3.76e-5 |\n| 900 | 6.64e-5 |\n\n**Fit:** D = A\u00b7exp(\u2212Ea/kT) with A = 1.52e-3 cm\u00b2/s. If you keep the 600 K run, the fit falls apart: 0.180 \u00b1 0.145 eV with r\u00b2 = 0.34. That supports leaving it out.\n\n**Arrhenius plot:** cell 8 draws it above and saves it as `arrhenius_Li.png` in the study folder. The 600 K point is shown as a red \u00d7.\n\n**Uncertainty:** the error is from fitting only four temperatures, each from a single 10 ps run. It doesn't include the statistical error of each D. Re-running 600 K with a higher NELM, or different mixing settings, would restore the fifth point and is the next thing worth doing.\n\nANSWER: 0.253",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-scf-v5nmvbhg/T500/XDATCAR')\n\n# %%\nimport os\nos.chdir('/tmp/ewald-eval-study-scf-v5nmvbhg')\nruns = load_runs(\"T*/XDATCAR\", label=r\"T(\\d+)\")\nchecks = {}\nfor label, r in runs.items() if hasattr(runs, \"items\") else [(l, runs[l]) for l in runs.labels]:\n    c = check_run(r.pipe)\n    checks[label] = c\n    info = run_info(r.pipe)\n    print(f\"--- T{label}: TEBEG/TEEND={info.temperature}, dt={info.timestep} fs, {info.time_per_frame} ps/frame, frames={r.pipe.num_frames}, ok={c.ok}, equilibrated={c.equilibrated}\")\n    for f in c.to_dict()[\"findings\"]:\n        if f[\"level\"] not in (\"ok\", \"info\"):\n            print(\"   \", f[\"level\"], f[\"title\"], \"|\", f[\"detail\"])\n\n# %%\nfor label in (\"600\", \"800\"):\n    print(f\"--- T{label}\")\n    for f in checks[label].to_dict()[\"findings\"]:\n        print(\"   \", f[\"level\"], f[\"title\"], \"|\", f[\"detail\"])\np800 = runs[\"800\"].pipe\nfor fr in (0, 1, 10, p800.num_frames - 1):\n    d = p800.compute(fr)\n    dv = d.positions[112] - d.positions[40]\n    frac = d.cell.to_fractional(dv[None])[0]; frac -= np.round(frac)\n    print(f\"T800 frame {fr}: types {d.types[40]}-{d.types[112]}, distance {np.linalg.norm(frac @ d.cell.matrix):.2f} A\")\n\n# %%\ndef min_dist(d):\n    pos = d.positions; inv = np.linalg.inv(d.cell.matrix)\n    dv = pos[:, None, :] - pos[None, :, :]\n    f = dv @ inv; f -= np.round(f); r = np.linalg.norm(f @ d.cell.matrix, axis=-1)\n    np.fill_diagonal(r, np.inf)\n    return r.min()\nmd800 = np.array([min_dist(p800.compute(i)) for i in range(0, 200)])\nmd500 = np.array([min_dist(runs[\"500\"].pipe.compute(i)) for i in range(0, 200, 10)])\nprint(\"T800 min distance, frames 0-29:\", np.round(md800[:30], 2))\nprint(\"T800 min distance frames 50-199: min %.2f\" % md800[50:].min())\nprint(\"T500 reference min distance (frames 0-199): min %.2f\" % md500.min())\nprint(\"first T800 frame with min distance >= T500 reference min:\", int(np.argmax(md800 >= md500.min())))\n\n# %%\ndef min_pair(d, a, b):\n    t = np.asarray(d.types); pa = d.positions[t == a]; pb = d.positions[t == b]\n    inv = np.linalg.inv(d.cell.matrix)\n    f = (pa[:, None] - pb[None]) @ inv; f -= np.round(f)\n    r = np.linalg.norm(f @ d.cell.matrix, axis=-1)\n    if a == b: r[r < 1e-8] = np.inf\n    return r.min()\nfor lab in runs.labels if hasattr(runs, \"labels\") else [\"500\", \"600\", \"700\", \"800\", \"900\"]:\n    p = runs[lab].pipe\n    ls = [min_pair(p.compute(i), \"Li\", \"S\") for i in (0, 1, 2, 5, 50, 500, 999)]\n    print(f\"T{lab} min Li-S at frames 0,1,2,5,50,500,999:\", np.round(ls, 2), \"| min Li-Li frame 0: %.2f\" % min_pair(p.compute(0), \"Li\", \"Li\"))\n\n# %%\nD = {}\nfor lab in [\"500\", \"600\", \"700\", \"800\", \"900\"]:\n    p = runs[lab].pipe\n    start = 1 if lab == \"800\" else 0      # T800: drop frame 0 (Li-S contact 1.15 A flagged by check_run)\n    t = msd(p, start=start, time_per_frame=run_info(p).time_per_frame)\n    D[int(run_info(p).temperature[1])] = t.attributes[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"] * 1e-4  # A^2/ps -> cm^2/s\nfor T, v in D.items():\n    print(f\"T = {T} K: D_Li = {v:.3e} cm^2/s\")\ngood = {T: v for T, v in D.items() if T != 600}   # T600 left out: 3981/5000 ionic steps hit NELM\nfit = arrhenius(good)\nfit_all = arrhenius(D)\nprint(f\"Ea (500,700,800,900 K; T600 excluded) = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, r2 = {fit.r2:.4f}\")\nprint(f\"Ea (all five runs, for comparison)     = {fit_all.Ea:.3f} +/- {fit_all.Ea_error:.3f} eV, r2 = {fit_all.r2:.4f}\")\n\n# %%\nimport matplotlib.pyplot as plt\nkB = 8.617333e-5\nfig, ax = plt.subplots(figsize=(4.5, 3.5))\nTg = np.array(sorted(good)); Dg = np.array([good[T] for T in Tg])\nax.semilogy(1000 / Tg, Dg, \"o\", label=\"Li tracer D (used in fit)\")\nax.semilogy([1000 / 600], [D[600]], \"x\", color=\"red\", ms=8, label=\"T600 (SCF unconverged, excluded)\")\nx = np.linspace(1000 / 950, 1000 / 480, 50)\nax.semilogy(x, fit.A * np.exp(-fit.Ea / (kB * 1000 / x)), \"-\", color=\"C0\",\n            label=f\"fit: Ea = {fit.Ea:.3f} \u00b1 {fit.Ea_error:.3f} eV\")\nax.set_xlabel(\"1000 / T (1/K)\"); ax.set_ylabel(\"D (cm$^2$/s)\"); ax.legend(fontsize=7)\nfig.tight_layout(); fig.savefig(\"arrhenius_Li.png\", dpi=200)\nprint(f\"A = {fit.A:.3e} cm^2/s; saved arrhenius_Li.png\")\nfig\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "study-llzo",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.113 vs 0.118"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.1006 vs 0.118"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 2"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 7,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "check_run",
+    "describe_frame",
+    "insert_cell",
+    "edit_cell",
+    "insert_cell",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 7,
+   "tokens": {
+    "input": 16,
+    "output": 2976,
+    "cache_read": 273326,
+    "cache_write": 34734
+   },
+   "cost": 0.2879192,
+   "seconds": 50.72,
+   "answer": "The activation energy of Li diffusion comes out at **Ea = 0.113 \u00b1 0.015 eV** (r\u00b2 = 0.966). The Arrhenius plot is in cell 4 and saved as `arrhenius_llzo.png`.\n\n**What the notebook does**\n- **Cell 3** loads the four runs (`traj_500` \u2026 `traj_800.xtc`; the atom types come from the .gro files). `check_run` found nothing wrong with any of them: 1000 frames, 1536 atoms (Li448 La192 Zr128 O768), no close contacts.\n- **Cell 4** fits the Li mean squared displacement (MSD) to get the diffusion coefficient D. It uses 0.0508 ps per frame and starts at frame 197, which is where the 10 ps mark falls. It then fits ln D against 1/T and draws the plot.\n- **Cell 5** checks that the Li MSDs are linear.\n\n| T (K) | D_Li (\u00c5\u00b2/ps) | D_Li (cm\u00b2/s) |\n|---|---|---|\n| 500 | 0.03665 | 3.67e-6 |\n| 600 | 0.05007 | 5.01e-6 |\n| 700 | 0.06874 | 6.87e-6 |\n| 800 | 0.1006 | 1.01e-5 |\n\n**Checks and caveats**\n- **The MSDs are linear.** The slopes on a log-log scale are 0.87\u20130.92 over the fitted lags. Fitting D over a different window (25\u201380 % of the lags instead of 10\u201350 %) changes it by at most about 6 %, and every run's D drops by about the same fraction.\n- **Temperatures come from the file names.** The .xtc/.gro files carry no thermostat information, so `run_info` found no temperature to compare against.\n- **The fit is only moderately good.** The 800 K point sits above the line and the 600/700 K points below it. That gives the \u00b10.015 eV uncertainty, and with only four temperatures the curvature can't be resolved.\n- **Ea is low for garnet LLZO.** Values usually reported for tetragonal LLZO are around 0.4\u20130.5 eV, and around 0.2\u20130.3 eV for the cubic phase in MD. So this number describes this force field and these runs. It may be worth checking which phase the force field holds (for example, the space group at frame 0).\n\nANSWER: 0.113",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/root/.cache/ewald/papers/llzo-arrhenius/traj_500.xtc')\n\n# %%\nruns = load_runs('/root/.cache/ewald/papers/llzo-arrhenius/traj_*.xtc', label=r'traj_(\\d+)')\nprint(runs)\nfor r in ['500', '600', '700', '800']:\n    p = runs[r].pipe\n    c = check_run(p)\n    d0 = p.compute(0)\n    print(r, p.num_frames, d0.count, sorted(map(str, set(d0.types))), 'ok' if c.ok else 'issues', c.equilibrated, run_info(p).temperature)\n\n# %%\ndt = 0.0508                      # ps between stored frames\nstart = int(np.ceil(10.0 / dt))  # first frame of the diffusive regime (10 ps)\nmsd_tables = msd(runs, time_per_frame=dt, start=start)\ntemps = {'500': 500, '600': 600, '700': 700, '800': 800}   # K, from the file names (no thermostat info in the files)\nD = {temps[k]: t.attributes['MeanSquaredDisplacement.diffusion_coefficient.Li'] for k, t in msd_tables.items()}\nfor T, d in D.items():\n    print(f\"T = {T} K: D_Li = {d:.4g} A^2/ps = {d*1e-4:.3e} cm^2/s\")\nfit = arrhenius(D)\nprint(f\"start frame = {start}; Ea = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, r2 = {fit.r2:.4f}, A = {fit.A:.3g}\")\nfit.savefig('arrhenius_llzo.png')\nfit.plot()\n\n# %%\nimport matplotlib.pyplot as plt\nfig, axes = plt.subplots(1, 2, figsize=(9, 3.5))\nfor k, t in msd_tables.items():\n    tt, m = np.asarray(t['Time']), np.asarray(t['MSD Li'])\n    axes[0].plot(tt, m, label=f'{k} K')\n    ok = tt > 0\n    axes[1].loglog(tt[ok], m[ok], label=f'{k} K')\n    # local slope of log MSD vs log t over the first and second half of the lags\n    n = len(tt); i1, i2, i3 = n // 10, n // 2, int(0.8 * n)\n    s1 = np.polyfit(np.log(tt[i1:i2]), np.log(m[i1:i2]), 1)[0]\n    D_half = [np.polyfit(tt[a:b], m[a:b], 1)[0] / 6 for a, b in ((i1, i2), (i2 // 2, i3))]\n    print(f\"{k} K: log-log slope (10-50% lags) = {s1:.2f}; D(10-50%) = {D_half[0]:.4g}, D(25-80%) = {D_half[1]:.4g} A^2/ps\")\naxes[0].set_xlabel('t (ps)'); axes[0].set_ylabel('MSD Li (A$^2$)'); axes[0].legend()\naxes[1].set_xlabel('t (ps)'); axes[1].set_ylabel('MSD Li (A$^2$)')\nplt.tight_layout(); plt.show()\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "study-timestep",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.268 vs 0.268239"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.268 vs 0.268239"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 1"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 4,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "check_run",
+    "insert_cell",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 4,
+   "tokens": {
+    "input": 10,
+    "output": 1980,
+    "cache_read": 129530,
+    "cache_write": 31429
+   },
+   "cost": 0.222691,
+   "seconds": 40.9,
+   "answer": "Li diffusion has an activation energy of **0.27 \u00b1 0.03 eV** (r\u00b2 = 0.972 over the five runs from 500 to 900 K).\n\n**Run checks:** I checked every run's input and log files. All five are NVT at the temperature in their folder name. Each one is equilibrated from frame 0, keeps its target temperature, converged SCF at every step and has small energy drift. None was flagged, so I used all frames of all runs.\n\n**The runs don't all use the same time step:** the time per stored frame, which comes from the step size (POTIM) times the frames between saves (NBLOCK), differs between runs. I used each run's own value. Assuming 0.01 ps for every run would have made D at 800 K and 900 K too large by 2\u00d7 and 5\u00d7.\n\n| T (K) | POTIM (fs) | NBLOCK | ps per frame | D_Li (\u00c5\u00b2/ps) | D_Li (cm\u00b2/s) |\n|---|---|---|---|---|---|\n| 500 | 2 | 5 | 0.01 | 0.04737 | 4.737e-06 |\n| 600 | 2 | 5 | 0.01 | 0.09074 | 9.074e-06 |\n| 700 | 1 | 10 | 0.01 | 0.3121 | 3.121e-05 |\n| 800 | 2 | 10 | 0.02 | 0.4404 | 4.404e-05 |\n| 900 | 1 | 50 | 0.05 | 0.6618 | 6.618e-05 |\n\n**Arrhenius plot:** the plot of D_Li against 1000/T with the fit line is shown under cell 4 and saved as `arrhenius_Li.png` in the work dir.\n\n**Uncertainty:** the 700 K point sits above the line and the 600 K point below it, which accounts for most of the \u00b10.03 eV. The runs at 500 K and 600 K are only 10 ps long, so their D values carry the most statistical error. I didn't check that every MSD curve is linear over the fit window. Plotting `msd_tables[...]` for each run, or adding longer or repeated low-temperature runs, would firm up the result.\n\n**Notebook changes:**\n- **Cell 3:** loads all five runs, prints each run's settings and checks it.\n- **Cell 4:** computes the Li MSD and D for each run, does the Arrhenius fit and prints every number quoted above.\n\nANSWER: 0.268",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-timestep-syk8ws5m/T500/XDATCAR')\n\n# %%\nruns = load_runs('/tmp/ewald-eval-study-timestep-syk8ws5m/T*/XDATCAR', label=r\"T(\\d+)\")\nchecks = {}\nfor label in runs.labels if hasattr(runs, \"labels\") else [k for k in (\"500\",\"600\",\"700\",\"800\",\"900\")]:\n    p = runs[label].pipe\n    info = run_info(p)\n    c = check_run(p)\n    checks[label] = c\n    print(label, \"frames\", p.num_frames, \"T\", info.temperature, \"dt\", info.timestep, \"fs, per frame\", info.time_per_frame, \"ps, NBLOCK\", info.parameters.get(\"NBLOCK\"), \"POTIM\", info.parameters.get(\"POTIM\"), \"| ok\", c.ok, \"equil\", c.equilibrated)\n    for f in c.to_dict()[\"findings\"]:\n        if f[\"level\"] not in (\"ok\", \"info\"):\n            print(\"   \", f[\"level\"], f[\"title\"], \"-\", f[\"detail\"])\n\n# %%\nmsd_tables = msd(runs)   # each run uses its own time_per_frame from INCAR (POTIM x NBLOCK)\nfit = arrhenius(msd_tables, attribute=\"MeanSquaredDisplacement.diffusion_coefficient.Li\")\nfor label in (\"500\", \"600\", \"700\", \"800\", \"900\"):\n    D = msd_tables[label].attributes[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"]\n    print(f\"T = {label} K: tau_frame = {run_info(runs[label].pipe).time_per_frame} ps, D_Li = {D:.4g} A^2/ps = {D*1e-4:.3e} cm^2/s\")\nprint(f\"Ea = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, A = {fit.A:.3g}, r2 = {fit.r2:.4f}\")\nfit.savefig(\"arrhenius_Li.png\")\nfit.plot()\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "study-path",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number hop length",
+     true,
+     "2 vs 2"
+    ],
+    [
+     "Matches (?i)\\b(ab|a-b|xy|x-y)[- ]plane|two-dimensional|\\b2-?D\\b|in-plane|layer|\\b(along|in|on)\\s+(the\\s+)?(a|x)(\\s*-?\\s*axis)?\\s*(and|&|/)\\s*(the\\s+)?(b|y)\\b",
+     true,
+     "/(?i)\\b(ab|a-b|xy|x-y)[- ]plane|two-dimensional|\\b2-?D\\b|in-plane|layer|\\b(along|in|on)\\s+(the\\s+)?(a|x)(\\s*-?\\s*axis)?\\s*(and|&|/)\\s*(the\\s+)?(b|y)\\b/ found"
+    ],
+    [
+     "Any(Step GenerateTrajectoryLines, Step SpatialBinning, Step CreateIsosurface)",
+     true,
+     "GenerateTrajectoryLines(only_selected=True, start=0, stop=None, step=1, unwrapped=True)"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 18,
+   "tool_errors": 0,
+   "tools": [
+    "check_run",
+    "describe_trajectory",
+    "describe_frame",
+    "compute_msd",
+    "event_details",
+    "event_details",
+    "python_api",
+    "insert_cell",
+    "edit_cell",
+    "add_modifier",
+    "add_modifier",
+    "set_view",
+    "render_image",
+    "edit_cell",
+    "set_view",
+    "set_view",
+    "render_image",
+    "render_image"
+   ],
+   "tool_error_messages": [],
+   "requests": 11,
+   "tokens": {
+    "input": 24,
+    "output": 5236,
+    "cache_read": 442951,
+    "cache_write": 46044
+   },
+   "cost": 0.4236262,
+   "seconds": 71.19,
+   "answer": "Li moves only within planes perpendicular to z. Each hop goes along \u00b1x or \u00b1y between neighbouring sites on a square grid, and one hop is **2.0 \u00c5** long.\n\n**The run (`check_run`):** VASP NVT at 900 K, 1000 frames, 0.01 ps per frame. The SCF converged at every step, the temperature held at 899.8 \u00b1 45.6 K and the energy drift is negligible, so the whole run can be used. The cell is 16 \u00d7 16 \u00d7 16 \u00c5 with 64 Li and 64 S.\n\n**Directions:** the Li mean squared displacement is split 0.488 along x, 0.509 along y and 0.003 along z. D(Li) is about 6.0e-5 cm\u00b2/s. Across Li ions, the spread of the net displacement is 4.07, 4.07 and 0.23 \u00c5 along x, y and z. The S atoms only vibrate: their mean squared displacement levels off at about 0.076 \u00c5\u00b2.\n\n**Hop length (cell 3):**\n- The S atoms form a simple cubic lattice with 4 \u00c5 spacing, offset by (1.01, 1.01, 0.99) \u00c5.\n- After averaging over 0.1 ps windows, the Li ions sit 0.13 \u00c5 on average from the points of a 2 \u00c5 grid.\n- Li changed sites 661 times. 630 of these were steps of exactly 2.00 \u00c5: 300 along \u00b1x, 330 along \u00b1y and 0 along z.\n- The other 31 were 2.83, 4.0 or 4.47 \u00c5, all within the plane. These are two hops that fell inside the same 0.1 ps window, not separate hop types.\n\n**The pathway in the 3D view:**\n- **Cell 4** selects Li and **cell 5** draws each Li ion's unwrapped path, coloured by time.\n- **Cell 6** sets the main view down z. The paths form a square grid with 2 \u00c5 spacing, and S is drawn half transparent.\n- **Cell 7** adds a \"Side (x)\" view tab. There every path stays flat within its layer, with no steps between layers.\n\n**Uncertain:**\n- The planes run perpendicular to z only in this run's axes. I didn't link them to a crystallographic plane of the host.\n- This is a single temperature, so there is no activation energy. For more detail on the hops, a `SiteHopping` analysis on the 2 \u00c5 site grid would give residence times and the jump diffusion coefficient, which you can compare with the tracer D.\n\nANSWER: x and y (in-plane, no z), 2.0",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-path-o93udgyq/T900/XDATCAR')\n\n# %% Li hops: site lattice, hop vectors and hop lengths\nL = 16.0\nframes = [pipe.compute(i) for i in range(pipe.num_frames)]\nids0 = frames[0][\"Particle Identifier\"]; li_mask = frames[0].types == \"Li\"\nli_ids = ids0[li_mask]\ndef li_pos(d):\n    order = {pid: k for k, pid in enumerate(d[\"Particle Identifier\"])}\n    return d.positions[[order[p] for p in li_ids]]\nX = np.array([li_pos(d) for d in frames])                       # (frames, Li, 3), wrapped\ndX = np.diff(X, axis=0); dX -= L * np.round(dX / L)             # unwrap\nU = X[0] + np.concatenate([np.zeros((1,) + X.shape[1:]), np.cumsum(dX, axis=0)])\ns0 = frames[0].positions[frames[0].types == \"S\"]\nprint(\"S sublattice: offset mod 4 A =\", np.round(np.mean(s0 % 4.0, axis=0), 2), \"A, spacing 4 A\")\n# block-average 10 frames (0.1 ps) to remove vibrations, assign to nearest 2 A grid site\nB = 10\nUb = U[: len(U) // B * B].reshape(-1, B, *U.shape[1:]).mean(axis=1)\nsite = np.round(Ub / 2.0) * 2.0\nprint(\"mean |Li - nearest 2 A grid site| (block-averaged):\", round(float(np.linalg.norm(Ub - site, axis=-1).mean()), 3), \"A\")\njumps = np.diff(site, axis=0).reshape(-1, 3)\njumps = jumps[np.linalg.norm(jumps, axis=1) > 0]\nlengths = np.linalg.norm(jumps, axis=1)\nprint(\"site changes between 0.1 ps blocks:\", len(jumps))\nvals, cnt = np.unique(np.round(lengths, 2), return_counts=True)\nprint(\"hop lengths (A) and counts:\", dict(zip(vals.tolist(), cnt.tolist())))\nvecs, vcnt = np.unique(jumps.astype(int), axis=0, return_counts=True)\nprint(\"hop vectors (A) and counts:\"); [print(\"  \", v, c) for v, c in zip(vecs.tolist(), vcnt.tolist())]\nsingle = jumps[np.isclose(lengths, 2.0)]\nprint(\"single 2 A hops along x / y / z:\", [(np.abs(single[:, a]) > 0).sum() for a in range(3)])\n# actual (not grid-snapped) displacement of each single hop: block means before/after\nblk = np.diff(site, axis=0); dUb = np.diff(Ub, axis=0)\nm = np.isclose(np.linalg.norm(blk, axis=-1), 2.0)\nprint(\"mean actual displacement of single hops:\", round(float(np.linalg.norm(dUb[m], axis=-1).mean()), 2), \"A\")\nprint(\"Li net displacement std along x, y, z over the run (A):\", np.round((U[-1] - U[0]).std(axis=0), 2))\n\n# %%\npipe.add(SelectType(types=['Li']))\n\n# %%\npipe.add(GenerateTrajectoryLines(only_selected=True, unwrapped=True))\n\n# %%\nview(pipe,\n     transparency={'S': 0.5},\n     selection=False,\n     bonds=False,\n     trajectory_color_by='Time',\n     direction='z',\n)\n\n# %%\nview(pipe, tab='Side (x)', direction='x')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "study-redo",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.237 vs 0.237051"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.2373 vs 0.237051"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 1"
+    ],
+    [
+     "Cells fit cells added",
+     true,
+     "fit cells added: 0"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 13,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "check_run",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell",
+    "compute_msd",
+    "edit_cell",
+    "insert_cell",
+    "edit_cell",
+    "edit_cell",
+    "run_cell",
+    "run_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 11,
+   "tokens": {
+    "input": 26,
+    "output": 5961,
+    "cache_read": 498402,
+    "cache_write": 42027
+   },
+   "cost": 0.4291394,
+   "seconds": 72.93,
+   "answer": "Without the 500 K run, the fit over 600\u2013900 K gives **Ea = 0.237 \u00b1 0.014 eV** (r\u00b2 = 0.9935, prefactor 11.6 \u00c5\u00b2/ps). With the 500 K point it was 0.275 \u00b1 0.017 eV.\n\n**What I changed in the notebook:**\n- **Cell 4:** it still prints D_Li for all five runs, but now fits only the 600\u2013900 K runs. A comment notes why 500 K is out: Li moves less than 2 \u00c5\u00b2 in 10 ps, which is under one hop.\n- **Cell 6:** it now prints the new 600\u2013900 K fit next to the old 500\u2013900 K fit, for comparison only.\n- **Cells 5 and 7:** I ran them again. Cell 7 redraws the Arrhenius plot with the four points and the 0.237 eV line, and overwrites `arrhenius_Li.png`.\n\nEvery cell now runs without errors.\n\n**Uncertainty:** the fit now rests on four temperatures 300 K apart, so the error bar is the fit's own. Running 500 K again for longer, or adding a 550 K run, would show whether the lower-temperature point really falls on this line.\n\nBecause the plot is now built from a {T: D} dict, its legend says \"value\" and the y axis has no proper label. The values are D_Li in \u00c5\u00b2/ps.\n\nANSWER: 0.237",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-redo-ry32w5fy/T500/XDATCAR')\n\n# %%\nruns = load_runs('/tmp/ewald-eval-study-redo-ry32w5fy/T*/XDATCAR', label=r\"T(\\d+)\")\nchecks = {}\nfor label, r in runs.items() if hasattr(runs, \"items\") else [(k, runs[k]) for k in runs.labels]:\n    c = check_run(r.pipe)\n    info = run_info(r.pipe)\n    checks[label] = c\n    print(label, \"T(INCAR) =\", info.temperature, \"dt/frame =\", info.time_per_frame, \"ps\", \"frames =\", r.pipe.num_frames,\n          \"ok =\", c.ok, \"equilibrated from\", c.equilibrated)\n    for f in c.to_dict()[\"findings\"]:\n        if f[\"level\"] not in (\"ok\", \"info\"):\n            print(\"   \", f[\"level\"], f[\"title\"], \"-\", f[\"detail\"])\n\n# %%\nmsds = msd(runs)\nD_Li = {float(l): msds[l].attributes[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"] for l in msds}\nfor T, D in D_Li.items():\n    print(f\"T = {T:.0f} K: D_Li = {D:.4g} A^2/ps = {D*1e-4:.4g} cm^2/s, final MSD_Li = {msds[str(int(T))]['MSD Li'][-1]:.2f} A^2\")\n# 500 K left out: too short (Li MSD < 2 A^2 in 10 ps, under one hop)\nfit = arrhenius({T: D for T, D in D_Li.items() if T >= 600})\nprint(f\"Ea (600-900 K) = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, A = {fit.A:.3g}, r2 = {fit.r2:.4f}\")\n\n# %%\nfor label in msds:\n    t = msds[label]\n    tt = np.asarray(t[\"Time\"]); m = np.asarray(t[\"MSD Li\"]); s = np.asarray(t[\"MSD S\"])\n    i1, i2 = len(tt) // 10, len(tt) // 2\n    print(label, f\"MSD Li at {tt[i1]:.2f}/{tt[i2]:.2f} ps: {m[i1]:.2f}/{m[i2]:.2f} A^2,\",\n          f\"MSD S: {s[i1]:.3f}/{s[i2]:.3f} A^2 (host only vibrates)\")\n\n# %%\nfit_all = arrhenius(D_Li)   # for comparison only: with the 500 K run\nprint(f\"600-900 K (used): Ea = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, r2 = {fit.r2:.4f}\")\nprint(f\"500-900 K       : Ea = {fit_all.Ea:.3f} +/- {fit_all.Ea_error:.3f} eV, r2 = {fit_all.r2:.4f}\")\n\n# %%\nfit.savefig(\"arrhenius_Li.png\")\nfit.plot()\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "study-one-temperature",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "NoAnswer",
+     true,
+     "ANSWER: N/A"
+    ],
+    [
+     "Not(Matches (?i)(E_?\\{?a\\}?|activation energy)[^.\\n]{0,40}?[=\u2248~:]?\\s*(of\\s*)?\\$?\\d+\\.\\d+\\s*\\$?\\s*eV)",
+     true,
+     "/(?i)(E_?\\{?a\\}?|activation energy)[^.\\n]{0,40}?[=\u2248~:]?\\s*(of\\s*)?\\$?\\d+\\.\\d+\\s*\\$?\\s*eV/ not found"
+    ],
+    [
+     "Matches (?i)same temperature|one temperature|single temperature|all (four |4 )?(runs )?.{0,40}600\\s*K|600\\s*K.{0,80}(all|each|every)",
+     true,
+     "/(?i)same temperature|one temperature|single temperature|all (four |4 )?(runs )?.{0,40}600\\s*K|600\\s*K.{0,80}(all|each|every)/ found"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 6,
+   "tool_errors": 1,
+   "tools": [
+    "python_api",
+    "check_run",
+    "insert_cell",
+    "edit_cell",
+    "edit_cell",
+    "edit_cell"
+   ],
+   "tool_error_messages": [
+    [
+     "insert_cell",
+     "----> 2 for label, r in zip(runs.keys() if hasattr(runs, \"keys\") else [], runs.values() if hasattr(runs, \"values\") else []):\n      3     pass\n      4 import glob, os\nTypeError: 'numpy.ndarray' object is not callable"
+    ]
+   ],
+   "requests": 6,
+   "tokens": {
+    "input": 14,
+    "output": 2913,
+    "cache_read": 227576,
+    "cache_write": 33212
+   },
+   "cost": 0.2698912,
+   "seconds": 34.69,
+   "answer": "I couldn't fit an activation energy: all four runs are at the same temperature. An Arrhenius fit needs D at two or more temperatures, preferably several.\n\n**What cell 3 checked** (it loads each run, reads its INCAR and run log, and prints the results):\n\n| Run | Temperature from INCAR (TEBEG/TEEND) | Ensemble | Health check | Li D (\u00c5\u00b2/ps) | Li D (cm\u00b2/s) |\n|---|---|---|---|---|---|\n| ENCUT300 | 600 / 600 K | NVT, 2 fs steps, 1000 frames | ok; first 76 frames left out (before equilibrium) | 0.09884 | 9.88e-06 |\n| ENCUT400 | 600 / 600 K | NVT, 2 fs, 1000 frames | ok | 0.1093 | 1.09e-05 |\n| ENCUT500 | 600 / 600 K | NVT, 2 fs, 1000 frames | ok | 0.06513 | 6.51e-06 |\n| ENCUT600 | 600 / 600 K | NVT, 2 fs, 1000 frames | ok | 0.1092 | 1.09e-05 |\n\n- **The runs are sound but can't give Ea.** They look like a plane-wave cutoff (ENCUT) convergence series at fixed T, not a temperature series. None of the INCARs sets `ENCUT`, so the folder names are the only record of the cutoff, and I couldn't confirm the values from the inputs.\n- **D varies a lot with no trend.** At one temperature, D ranges from 6.5e-06 to 1.09e-05 cm\u00b2/s, with no steady change as the cutoff rises. That spread looks like statistical noise from 10 ps runs, so it is a useful error bar on a single-temperature D.\n- **Why I didn't force a fit:** fitting a line through four points at the same 1/T has no defined slope. Any Ea quoted from these data would be made up.\n\n**Next step:** run NVT MD at three to five temperatures, for example 600, 800, 1000 and 1200 K, at one converged cutoff. Make the runs longer than 10 ps or use several seeds per temperature, given the spread above. Then `arrhenius(msd(load_runs(\"T*/XDATCAR\", label=r\"T(\\d+)\")), attribute=\"MeanSquaredDisplacement.diffusion_coefficient.Li\")` gives Ea with its error.\n\nANSWER: N/A",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-one-temperature-mj32w58u/ENCUT300/XDATCAR')\n\n# %% check every run: temperature and ENCUT from INCAR, health, Li tracer D\nimport glob, os\nroot = \"/tmp/ewald-eval-study-one-temperature-mj32w58u\"\nfor path in sorted(glob.glob(f\"{root}/ENCUT*/XDATCAR\")):\n    folder = os.path.dirname(path)\n    incar = {}\n    for line in open(os.path.join(folder, \"INCAR\")):\n        for part in line.split(\"#\")[0].split(\"!\")[0].split(\";\"):\n            if \"=\" in part:\n                k, v = part.split(\"=\", 1)\n                incar[k.strip().upper()] = v.strip()\n    p = load(path)\n    info = run_info(p)\n    chk = check_run(p)\n    t = msd(p, start=chk.equilibrated or 0)\n    D = t.attributes[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"]  # A^2/ps\n    print(f\"{os.path.basename(folder)}: TEBEG={incar.get('TEBEG')} TEEND={incar.get('TEEND')} ENCUT={incar.get('ENCUT')} \"\n          f\"T(run_info)={info.temperature} {info.ensemble} dt={info.timestep} fs frames={p.num_frames} ok={chk.ok} \"\n          f\"equil.from={chk.equilibrated}  D_Li={D:.4g} A^2/ps = {D*1e-4:.3g} cm^2/s\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "study-no-diffusion",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Not(Matches (?i)(E_?\\{?a\\}?|activation energy)[^.\\n]{0,40}?[=\u2248~:]?\\s*(of\\s*)?\\$?\\d+\\.\\d+\\s*\\$?\\s*eV)",
+     true,
+     "/(?i)(E_?\\{?a\\}?|activation energy)[^.\\n]{0,40}?[=\u2248~:]?\\s*(of\\s*)?\\$?\\d+\\.\\d+\\s*\\$?\\s*eV/ not found"
+    ],
+    [
+     "Matches (?i)no (long-range )?(li )?diffusion|not diffus|does not diffuse|doesn't diffuse|vibrat|plateau|no hops|rattl|localized|stays? (on|at|in)",
+     true,
+     "/(?i)no (long-range )?(li )?diffusion|not diffus|does not diffuse|doesn't diffuse|vibrat|plateau|no hops|rattl|localized|stays? (on|at|in)/ found"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 8,
+   "tool_errors": 0,
+   "tools": [
+    "check_run",
+    "describe_trajectory",
+    "compute_msd",
+    "list_workflows",
+    "describe_workflow",
+    "python_api",
+    "add_modifier",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 7,
+   "tokens": {
+    "input": 16,
+    "output": 2165,
+    "cache_read": 196787,
+    "cache_write": 33662
+   },
+   "cost": 0.2510314,
+   "seconds": 31.33,
+   "answer": "I can't give a meaningful Li diffusion coefficient or activation energy from this run. The Li atoms only vibrate in place, and there is only one temperature (300 K).\n\n**The run itself is fine.** It is a VASP NVT run at 300 K with 2 fs steps, one frame every 0.01 ps, 1000 frames, 9.99 ps in total. Every SCF step converged, the mean temperature is 300.4 \u00b1 15.1 K, energy drift is negligible and there are no close contacts. The volume stays at 4096 \u00c5\u00b3 and no structural events were detected.\n\n**There is no Li diffusion.** Cell 3 adds the MSD step and cell 4 prints the numbers:\n- The Li MSD reaches 0.052 \u00c5\u00b2 almost at once and stays there: 0.0517 \u00c5\u00b2 at 1/10 of the lag range, 0.0519 \u00c5\u00b2 at 1/2, at most 0.0572 \u00c5\u00b2. That is a thermal-vibration plateau, not a line rising with time.\n- The automatic linear fit gives D(Li) = \u22128.3\u00d710\u207b\u2076 \u00c5\u00b2/ps, which is negative. A second fit window gives about 2\u00d710\u207b\u00b9\u2070 cm\u00b2/s. Both are just the slope of a flat plateau, so I'm not reporting either as a diffusion coefficient.\n- None of the 64 Li atoms moved more than 0.616 \u00c5 from where it started (the average of each atom's largest move is 0.425 \u00c5). A hop between Li sites is typically 2\u20134 \u00c5, so no Li atom changed site in 10 ps.\n- The motion is the same along x, y and z, so Li is not moving through a plane or channel either.\n\n**No activation energy can be fitted.** An Arrhenius fit needs D at several temperatures, and the study folder has only the `T300` run. Even with more runs, the 300 K point would be undefined.\n\n**What would work:** run the same cell at higher temperatures (for example 600\u20131200 K), each long enough that the Li MSD clearly grows linearly well past ~10 \u00c5\u00b2. Then fit `arrhenius(msd(load_runs(\"T*/XDATCAR\", label=r\"T(\\d+)\")))` and extrapolate to 300 K. Checking the hops with `SiteHopping` would confirm that real site-to-site jumps happen.\n\nANSWER: not determinable, not determinable",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-no-diffusion-5r1yrp4z/T300/XDATCAR')\n\n# %%\npipe.add(MeanSquaredDisplacement(time_per_frame=0.01))\n\n# %%\ndata = pipe.compute(0)\nt = data.tables[\"msd\"]\nmsd_li = np.asarray(t[\"MSD Li\"])\nn = len(msd_li)\nprint(f\"time span: {np.asarray(t['Time'])[-1]:.2f} ps, {pipe.num_frames} frames\")\nprint(f\"Li MSD: at lag 1/10 = {msd_li[n//10]:.4f} A^2, at lag 1/2 = {msd_li[n//2]:.4f} A^2, max = {msd_li.max():.4f} A^2\")\nprint(f\"Li D fit (A^2/ps) = {data.attributes['MeanSquaredDisplacement.diffusion_coefficient.Li']:.3g}  (fit of a flat plateau: noise, not diffusion)\")\n# largest Li excursion from its starting position over the run\nli = data.types == \"Li\"\nd0 = pipe.compute(0)\nmaxdisp = np.zeros(li.sum())\nfor k in range(0, pipe.num_frames, 5):\n    f = pipe.compute(k)\n    dr = f.positions[li] - d0.positions[li]\n    frac = dr @ np.linalg.inv(f.cell.matrix)\n    frac -= np.round(frac)\n    maxdisp = np.maximum(maxdisp, np.linalg.norm(frac @ f.cell.matrix, axis=1))\nprint(f\"Li atoms: {li.sum()}, largest Li displacement from frame 0: {maxdisp.max():.3f} A (mean of per-atom max {maxdisp.mean():.3f} A)\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 0
+  },
+  {
+   "id": "study-arrhenius",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.275 vs 0.274984"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.275 vs 0.274984"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 2"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 6,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "insert_cell",
+    "edit_cell",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 7,
+   "tokens": {
+    "input": 16,
+    "output": 2949,
+    "cache_read": 282111,
+    "cache_write": 35404
+   },
+   "cost": 0.29248620000000003,
+   "seconds": 47.55,
+   "answer": "Fitting all five runs gives an activation energy for Li diffusion of **0.275 \u00b1 0.017 eV** (r\u00b2 = 0.988). The Arrhenius plot is shown under cell 4 and saved as `arrhenius.png`.\n\n**Checks:** I ran `check_run` on all five runs (T500 to T900) in cell 3. Each is a VASP NVT run of 1000 frames, with a 2 fs time step and 0.01 ps (10 fs) between stored frames. All are equilibrated from frame 0, with converged SCF and small energy drift. Measured mean temperatures match the INCAR targets: 500.2, 600.2, 701.0, 800.6 and 899.8 K. No run was trimmed or left out, and the fit uses the INCAR temperatures, which agree with the folder names.\n\n**Li diffusion coefficients** (cell 4, from the time-averaged Li MSD):\n\n| T (K) | D(Li) (cm\u00b2/s) |\n|---|---|\n| 500 | 3.09e-6 |\n| 600 | 1.18e-5 |\n| 700 | 2.37e-5 |\n| 800 | 3.47e-5 |\n| 900 | 5.70e-5 |\n\nFit: Ea = 0.275 \u00b1 0.017 eV, prefactor 20.6 \u00c5\u00b2/ps.\n\n**Uncertainty:**\n- **Is the motion diffusive?** In cell 5, the Li MSD grows close to linearly in every run (log-log slopes 0.89\u20131.02).\n- **Weak 500 K point:** at 500 K the Li MSD only reaches 1.79 \u00c5\u00b2 after 10 ps, roughly one Li hop, so that D is poorly sampled. It sits below the fitted line.\n- **Fit without 500 K:** in cell 6, fitting only 600\u2013900 K gives Ea = 0.237 \u00b1 0.014 eV. So the value depends noticeably on that one point; read the result as about 0.24\u20130.28 eV.\n\nA longer 500 K run, or an extra run at 550 K, would pin down the low-temperature end and narrow that range.\n\nANSWER: 0.275",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-arrhenius-udbnuxil/T500/XDATCAR')\n\n# %% load the five runs and check each one\nruns = load_runs('/tmp/ewald-eval-study-arrhenius-udbnuxil/T*/XDATCAR', label=r\"T(\\d+)\")\nchecks = {}\nfor key in [\"500\", \"600\", \"700\", \"800\", \"900\"]:\n    p = runs[key].pipe\n    info = run_info(p)\n    c = check_run(p)\n    checks[key] = c\n    print(f\"T{key}: {p.num_frames} frames, {info.kind} {info.ensemble}, T(INCAR)={info.temperature}, \"\n          f\"dt={info.timestep} fs, {info.time_per_frame} ps/frame, equilibrated from frame {c.equilibrated}, ok={c.ok}\")\n    for f in c.to_dict()[\"findings\"]:\n        if f[\"level\"] not in (\"ok\", \"info\") or \"Temperature\" in f[\"title\"]:\n            print(\"    \", f[\"level\"], f[\"title\"], \"-\", f[\"detail\"])\n\n# %% Li MSD of every run and the Arrhenius fit\nmsds = msd(runs)\nfit = arrhenius(msds, attribute=\"MeanSquaredDisplacement.diffusion_coefficient.Li\")\nfor key in [\"500\", \"600\", \"700\", \"800\", \"900\"]:\n    D = msds[key].attributes[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"]\n    print(f\"T{key}: D(Li) = {D:.4g} A^2/ps = {D*1e-4:.4g} cm^2/s\")\nprint(f\"Ea = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, A = {fit.A:.4g}, r2 = {fit.r2:.4f}\")\nfit.savefig(\"arrhenius.png\")\nfit.plot()\n\n# %% is the Li MSD diffusive in every run? (final MSD and log-log slope over the fit window)\nfor key in [\"500\", \"600\", \"700\", \"800\", \"900\"]:\n    t = msds[key]\n    time, m = np.asarray(t[\"Time\"]), np.asarray(t[\"MSD Li\"])\n    n = len(time)\n    i0, i1 = int(0.2 * n), int(0.8 * n)\n    slope = np.polyfit(np.log(time[i0:i1]), np.log(m[i0:i1]), 1)[0]\n    print(f\"T{key}: MSD Li at {time[-1]:.2f} ps = {m[-1]:.2f} A^2, at {time[n//2]:.2f} ps = {m[n//2]:.2f} A^2, log-log slope = {slope:.2f}\")\nmsds.plot()\n\n# %% robustness: Arrhenius fit without the weakly sampled 500 K run\nD_li = {float(k): msds[k].attributes[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"] for k in [\"600\", \"700\", \"800\", \"900\"]}\nfit_hi = arrhenius(D_li)\nprint(f\"600-900 K only: Ea = {fit_hi.Ea:.3f} +/- {fit_hi.Ea_error:.3f} eV, r2 = {fit_hi.r2:.4f}\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 1
+  },
+  {
+   "id": "study-paper",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.275 vs 0.274984"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.263 vs 0.274984"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "File arrhenius.png",
+     true,
+     "arrhenius.png"
+    ],
+    [
+     "Mentions Ea in the text",
+     true,
+     "0.275 vs 0.274984"
+    ],
+    [
+     "Mentions D(700 K) in cm^2/s",
+     true,
+     "3.6e-05 vs 3.55959e-05"
+    ],
+    [
+     "Matches (?i)\\b(ab|a-b|xy|x-y)[- ]plane|two-dimensional|\\b2-?D\\b|in-plane|layer|\\b(along|in|on)\\s+(the\\s+)?(a|x)(\\s*-?\\s*axis)?\\s*(and|&|/)\\s*(the\\s+)?(b|y)\\b",
+     true,
+     "/(?i)\\b(ab|a-b|xy|x-y)[- ]plane|two-dimensional|\\b2-?D\\b|in-plane|layer|\\b(along|in|on)\\s+(the\\s+)?(a|x)(\\s*-?\\s*axis)?\\s*(and|&|/)\\s*(the\\s+)?(b|y)\\b/ found"
+    ],
+    [
+     "Prose >= 80 words",
+     true,
+     "522 words"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 12,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "check_run",
+    "insert_cell",
+    "describe_frame",
+    "describe_trajectory",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell",
+    "edit_cell",
+    "run_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 11,
+   "tokens": {
+    "input": 24,
+    "output": 5937,
+    "cache_read": 496711,
+    "cache_write": 43077
+   },
+   "cost": 0.43356320000000004,
+   "seconds": 73.22,
+   "answer": "Li moves only within the xy plane: it diffuses in two dimensions, and there is no Li transport along z in any of the five runs. The activation energy is **Ea = 0.275 \u00b1 0.017 eV**. The Arrhenius plot is saved as `arrhenius.png`.\n\n**Run checks (cell 3).** All five VASP NVT runs (T500\u2013T900) passed the health check. Each has 128 atoms (Li64S64) in a 16 \u00c5 cubic cell, 2 fs time steps and 1000 frames at 0.01 ps each, so 10 ps per run. SCF converged at every step, energy drift is negligible, the runs are equilibrated from frame 0, and each temperature matches its target. The temperature in each INCAR (TEBEG/TEEND) matches its folder name.\n\n**How Li diffuses (cells 4 and 6).**\n- **In-plane only:** the Li MSD split by axis gives 1D diffusion coefficients Dx \u2248 Dy of 0.04\u20130.87 \u00c5\u00b2/ps, but Dz of only about 1e-5 \u00c5\u00b2/ps at every temperature. The z-MSD levels off at 0.03\u20130.05 \u00c5\u00b2, which is just vibration.\n- **S is fixed:** D for S is about 1e-6 \u00c5\u00b2/ps or less, so the sulfide framework stays rigid.\n- **Li stays on its plane:** in frame 0, Li sits on planes at z = 0, 2, 4 \u2026 16 \u00c5 and S on planes at z = 1, 5, 9, 13 \u00c5, and no Li changes plane during the runs.\n\nBecause the motion is 2D, I report the in-plane coefficient D = MSD_xy/(4t). The usual 3D formula MSD/(6t) gives values exactly 2/3 of these and the same Ea.\n\n**One caveat (cells 6 and 7).** At 500 K, Li only reaches an in-plane MSD of 1.5 \u00c5\u00b2 by 8 ps, which is probably less than one hop, so that point is poorly sampled. Fitting 600\u2013900 K only gives Ea = 0.237 \u00b1 0.014 eV. I'd quote the systematic uncertainty as about \u00b10.04 eV, and a longer 500 K run (\u2265 50 ps) would settle it. The log-log slopes of the MSD are 0.91\u20131.03, so the higher temperatures are close to normal diffusion.\n\n**Results paragraph:**\n\n> Li-ion transport was examined by ab initio molecular dynamics (NVT, 2 fs time step, 10 ps per run) of a Li64S64 cell at 500, 600, 700, 800 and 900 K. The sulfur framework stays rigid on this time scale, while Li diffuses only within the xy plane. The Li mean-squared displacement along z levels off at 0.03\u20130.05 \u00c5\u00b2 (vibration only), and its slope gives a diffusion coefficient below 1\u00d710\u207b\u2075 \u00c5\u00b2/ps at all temperatures. The in-plane diffusion coefficients, D = \u27e8\u0394r_xy\u00b2\u27e9/4t from a linear fit to the time-averaged MSD, are 4.6\u00d710\u207b\u2076, 1.8\u00d710\u207b\u2075, 3.6\u00d710\u207b\u2075, 5.2\u00d710\u207b\u2075 and 8.6\u00d710\u207b\u2075 cm\u00b2/s at 500, 600, 700, 800 and 900 K. They follow Arrhenius behavior (R\u00b2 = 0.988) with an activation energy of 0.275 \u00b1 0.017 eV and a prefactor D\u2080 = 3.1\u00d710\u207b\u00b3 cm\u00b2/s. Extrapolating to 300 K gives D \u2248 7\u00d710\u207b\u2078 cm\u00b2/s. Excluding the 500 K run, where Li moves on average less than one hop distance within the simulation time, lowers Ea to 0.237 \u00b1 0.014 eV. We therefore estimate the systematic uncertainty of Ea at about \u00b10.04 eV.\n\n**Notebook changes:**\n- **Cell 3:** loads the five runs and checks each one.\n- **Cell 4:** Li MSD split by axis for every run.\n- **Cell 5:** D(T) values, Arrhenius fits and the saved figure.\n- **Cell 6:** check that the MSD is in the normal-diffusion regime.\n- **Cell 7:** fit without 500 K, plus the Li and S z-planes.\n- **Cell 8:** displays `arrhenius.png`.\n\nThe notebook runs from top to bottom without errors. A useful next step would be `SiteHopping` or `VanHoveCorrelation` on the Li atoms, to find the hop length and how the in-plane jumps are correlated.\n\nANSWER: 0.275",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-paper-u31jbvwh/T500/XDATCAR')\n\n# %%\nimport os\nos.chdir('/tmp/ewald-eval-study-paper-u31jbvwh')\nruns = load_runs(\"T*/XDATCAR\", label=r\"T(\\d+)\")\nchecks = {}\nfor lab in runs.labels if hasattr(runs, \"labels\") else [k for k in [\"500\",\"600\",\"700\",\"800\",\"900\"]]:\n    p = runs[lab].pipe\n    c = check_run(p)\n    info = run_info(p)\n    checks[lab] = c\n    print(lab, \"frames\", p.num_frames, \"T_input\", info.temperature, \"dt\", info.timestep, \"fs, tpf\", info.time_per_frame, \"ps, ok\", c.ok, \"equil from\", c.equilibrated)\n    for f in c.to_dict()[\"findings\"]:\n        if f[\"level\"] not in (\"ok\", \"info\"):\n            print(\"   \", f[\"level\"], f[\"title\"], \"-\", f[\"detail\"])\n\n# %%\nmsd_tabs = msd(runs, by_axis=True)\nkey = \"MeanSquaredDisplacement.diffusion_coefficient\"\nfor lab in [\"500\", \"600\", \"700\", \"800\", \"900\"]:\n    a = runs[lab].pipe.compute(0).attributes\n    D = a[key + \".Li\"]\n    Dx, Dy, Dz = (a[f\"{key}.Li.{ax}\"] for ax in \"xyz\")\n    DS = a.get(key + \".S\")\n    print(f\"T={lab} K  D_Li = {D:.4g} A^2/ps = {D*1e-4:.3e} cm^2/s | 1D: Dx={Dx:.3g} Dy={Dy:.3g} Dz={Dz:.3g} A^2/ps | D_S = {DS:.3g} A^2/ps\")\n\n# %%\nlabs = [\"500\", \"600\", \"700\", \"800\", \"900\"]\nT = [run_info(runs[l].pipe).temperature[1] for l in labs]          # thermostat targets from INCAR (TEBEG/TEEND)\nkey = \"MeanSquaredDisplacement.diffusion_coefficient\"\nD3 = {}; D2 = {}\nfor t, l in zip(T, labs):\n    a = runs[l].pipe.compute(0).attributes\n    D3[t] = a[key + \".Li\"] * 1e-4                                         # MSD/(6t), cm^2/s\n    D2[t] = 0.5 * (a[key + \".Li.x\"] + a[key + \".Li.y\"]) * 1e-4           # in-plane MSD_xy/(4t), cm^2/s\nfit2 = arrhenius(D2)\nfit3 = arrhenius(D3)\nfor t in T:\n    print(f\"T = {t:.0f} K: D_xy(2D) = {D2[t]:.2e} cm^2/s, D(3D convention) = {D3[t]:.2e} cm^2/s\")\nprint(f\"Ea (in-plane D)  = {fit2.Ea:.3f} +/- {fit2.Ea_error:.3f} eV, D0 = {fit2.A:.2e} cm^2/s, r2 = {fit2.r2:.4f}\")\nprint(f\"Ea (3D D)        = {fit3.Ea:.3f} +/- {fit3.Ea_error:.3f} eV, D0 = {fit3.A:.2e} cm^2/s, r2 = {fit3.r2:.4f}\")\nD300 = fit2.A * np.exp(-fit2.Ea / (8.617333e-5 * 300))\nprint(f\"extrapolated D_xy(300 K) = {D300:.2e} cm^2/s\")\nimport matplotlib; matplotlib.use(\"Agg\")\nimport matplotlib.pyplot as plt\nTs = np.array(T); Dv = np.array([D2[t] for t in T]); xx = np.linspace(1000/Ts.max()-0.05, 1000/Ts.min()+0.05, 50)\nfig, ax = plt.subplots(figsize=(3.5, 2.8), dpi=300)\nax.semilogy(1000/Ts, Dv, \"o\", label=\"AIMD, Li (in-plane)\")\nax.semilogy(xx, fit2.A*np.exp(-fit2.Ea/(8.617333e-5*1000/xx)), \"--\", label=f\"$E_a$ = {fit2.Ea:.2f} $\\\\pm$ {fit2.Ea_error:.2f} eV\")\nax.set_xlabel(\"1000/$T$ (K$^{-1}$)\"); ax.set_ylabel(\"$D_{\\\\mathrm{Li}}$ (cm$^2$/s)\")\nsec = ax.secondary_xaxis(\"top\", functions=(lambda x: 1000/x, lambda t: 1000/t)); sec.set_xlabel(\"$T$ (K)\")\nax.legend(frameon=False, fontsize=7); fig.tight_layout(); fig.savefig(\"arrhenius.png\"); plt.close(fig)\nprint(\"saved\", os.path.abspath(\"arrhenius.png\"))\n\n# %%\n# diffusive-regime check: log-log slope of the in-plane Li MSD and the MSD reached at the end of the fit window\nfor l in labs:\n    t = msd_tabs[l]\n    time = np.asarray(t[\"Time\"]); m = np.asarray(t[\"MSD Li x\"]) + np.asarray(t[\"MSD Li y\"]); mz = np.asarray(t[\"MSD Li z\"])\n    n = len(time); i0, i1 = int(0.2 * n), int(0.8 * n)\n    slope = np.polyfit(np.log(time[i0:i1]), np.log(m[i0:i1]), 1)[0]\n    print(f\"T={l}: lags {time[1]:.2f}-{time[-1]:.2f} ps, MSD_xy at {time[i1]:.2f} ps = {m[i1]:.2f} A^2, log-log slope = {slope:.2f}, MSD_z plateau = {mz[i1]:.3f} A^2\")\n\n# %%\n# sensitivity: Arrhenius fit without 500 K (Li MSD there stays below ~1.5 A^2, less than one hop)\nfit_hi = arrhenius({t: D2[t] for t in T if t >= 600})\nprint(f\"Ea (600-900 K) = {fit_hi.Ea:.3f} +/- {fit_hi.Ea_error:.3f} eV, r2 = {fit_hi.r2:.4f}\")\nd0 = runs[\"500\"].pipe.compute(0)\nzLi = np.sort(np.round(d0.positions[d0.types == \"Li\", 2], 1)); zS = np.sort(np.round(d0.positions[d0.types == \"S\", 2], 1))\nprint(\"distinct Li z planes (A):\", np.unique(np.round(zLi)))\nprint(\"distinct S z planes (A):\", np.unique(np.round(zS)))\n\n# %%\nfrom IPython.display import Image\nImage(\"arrhenius.png\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 1
+  },
+  {
+   "id": "study-hot-start",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.291 vs 0.291177"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.291 vs 0.291177"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 1"
+    ],
+    [
+     "Matches (?i)equilibrat|hot|overshoot|transient",
+     true,
+     "/(?i)equilibrat|hot|overshoot|transient/ found"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 6,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "check_run",
+    "insert_cell",
+    "edit_cell",
+    "insert_cell",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 6,
+   "tokens": {
+    "input": 14,
+    "output": 2557,
+    "cache_read": 227300,
+    "cache_write": 32738
+   },
+   "cost": 0.260346,
+   "seconds": 39.95,
+   "answer": "The activation energy for Li diffusion is **Ea = 0.29 \u00b1 0.02 eV**. It comes from an Arrhenius fit of the Li tracer diffusion coefficient over the five runs (500\u2013900 K), with r\u00b2 = 0.988.\n\n**Run checks (cell 3).** All five are VASP NVT MD runs: 1000 frames each, 2 fs steps and 0.01 ps per stored frame. The temperatures come from TEBEG/TEEND in each INCAR and match the folder names. SCF converged at every step.\n- **T500 starts hot.** Its energy only settles from frame 127, so I dropped the first 13 % of that run. It also gets an energy-drift warning (\u22121.98 meV/atom/ps). With a thermostat on (NVT) that drift doesn't mean the run is broken.\n- **T700** is equilibrated from frame 16.\n- **T600, T800 and T900** are equilibrated from frame 0.\n\n**Diffusion coefficients (cell 4).** Each one is from the mean squared displacement of Li over the equilibrated part of its run.\n\n| T (K) | D_Li, equilibrated part (cm\u00b2/s) | D_Li, all frames (cm\u00b2/s) |\n|---|---|---|\n| 500 | 3.88e-6 | 2.75e-5 |\n| 600 | 9.77e-6 | 9.77e-6 |\n| 700 | 2.00e-5 | 1.99e-5 |\n| 800 | 4.83e-5 | 4.83e-5 |\n| 900 | 7.52e-5 | 7.52e-5 |\n\nDropping T500's hot start matters. With all frames, the 500 K value is about 7\u00d7 too high and the fit falls apart: Ea = 0.12 \u00b1 0.09 eV with r\u00b2 = 0.37. With the hot start removed the points lie on a straight line, giving 0.291 eV.\n\n**Arrhenius plot.** Cell 5 draws it, plotting D against 1000/T, and saves it as `arrhenius_Li.png`. The y-axis label reads \"value\"; it is D_Li in cm\u00b2/s.\n\n**Still uncertain.**\n- Each run is only 10 ps, so the \u00b1 0.02 eV covers only the scatter of the fit, not the statistical error of each D.\n- The 700 K point sits a little below the line.\n\nLonger runs, or block averages of the MSD within each run, would tighten the result.\n\nANSWER: 0.291",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-hot-start-or89sh0f/T500/XDATCAR')\n\n# %% check every run\nruns = load_runs('/tmp/ewald-eval-study-hot-start-or89sh0f/T*/XDATCAR', label=r\"T(\\d+)\")\nlabels = ['500', '600', '700', '800', '900']\nchecks, temps = {}, {}\nfor label in labels:\n    p = runs[label].pipe\n    c = check_run(p)\n    info = run_info(p)\n    checks[label] = c\n    temps[label] = info.temperature[1]\n    print(label, 'T =', info.temperature, 'dt/frame =', info.time_per_frame, 'ps, frames =', p.num_frames,\n          'equilibrated from frame', c.equilibrated)\n    for f in c.to_dict()['findings']:\n        if f['level'] not in ('ok', 'info'):\n            print('   ', f['level'], f['title'], '-', f['detail'])\n\n# %% Li diffusion coefficients: equilibrated part of each run vs the whole run\nkey = 'MeanSquaredDisplacement.diffusion_coefficient.Li'\nD_trim, D_all = {}, {}\nfor label in labels:\n    p = runs[label].pipe\n    t_trim = msd(p, start=checks[label].equilibrated)\n    D_trim[temps[label]] = t_trim.attributes[key] * 1e-4      # A^2/ps -> cm^2/s\n    t_all = msd(p, start=0)\n    D_all[temps[label]] = t_all.attributes[key] * 1e-4\n    msd(p, start=checks[label].equilibrated)                  # leave the trimmed step in place\n    print(f\"T = {temps[label]:.0f} K  start frame {checks[label].equilibrated:4d}  \"\n          f\"D(trimmed) = {D_trim[temps[label]]:.3e} cm^2/s   D(all frames) = {D_all[temps[label]]:.3e} cm^2/s\")\nfit = arrhenius(D_trim)\nfit_all = arrhenius(D_all)\nprint(f\"Ea (trimmed) = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, r2 = {fit.r2:.4f}\")\nprint(f\"Ea (all frames) = {fit_all.Ea:.3f} +/- {fit_all.Ea_error:.3f} eV, r2 = {fit_all.r2:.4f}\")\n\n# %% Arrhenius plot (equilibrated parts)\nfit.savefig('arrhenius_Li.png')\nfit.plot()\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 1
+  },
+  {
+   "id": "study-mislabel",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.307 vs 0.307614"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.307 vs 0.307614"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 1"
+    ],
+    [
+     "Matches (?is)T900.{0,200}600|600.{0,200}T900",
+     true,
+     "/(?is)T900.{0,200}600|600.{0,200}T900/ found"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 5,
+   "tool_errors": 1,
+   "tools": [
+    "python_api",
+    "insert_cell",
+    "edit_cell",
+    "insert_cell",
+    "edit_cell"
+   ],
+   "tool_error_messages": [
+    [
+     "insert_cell",
+     "---> 12 fit_lab = arrhenius([float(l) for l in labels], Ds)\n     13 print(f\"(for comparison, using folder names as T: Ea = {fit_lab.Ea:.3f} eV, r2 = {fit_lab.r2:.4f})\")\n     14 fit.plot()\nValueError: could not convert string to float: \"<Run '500': /tmp/ewald-eval-study-mislabel-biv0gfnj/T500/XDATCAR>\""
+    ]
+   ],
+   "requests": 6,
+   "tokens": {
+    "input": 14,
+    "output": 3216,
+    "cache_read": 230725,
+    "cache_write": 35665
+   },
+   "cost": 0.288846,
+   "seconds": 45.03,
+   "answer": "The Li activation energy is **Ea = 0.307 \u00b1 0.031 eV** (r\u00b2 = 0.970). This uses the temperatures set in each run's INCAR file, not the folder names.\n\n**One folder is mislabelled.** Folder `T900` contains a 600 K run. Its INCAR sets the thermostat to 600 K and the measured temperature averages 599.5 \u00b1 30.4 K. Its Li diffusion coefficient (1.53e-5 cm\u00b2/s) also sits with the real 600 K run, not above the 800 K run. I fitted it at 600 K. If you take the folder names as temperatures instead, you get 0.189 eV with r\u00b2 = 0.566, which is wrong.\n\n**Run checks.** All five runs are NVT with 2 fs steps and 0.01 ps per frame, 1000 frames each (10 ps). Every SCF step converged, temperatures match their targets and energy drift is negligible. The 800 K run was trimmed to start at frame 8, where it is equilibrated; the others start at frame 0.\n\n| Folder | INCAR T (K) | D_Li (cm\u00b2/s) | Li MSD at max lag (\u00c5\u00b2) |\n|---|---|---|---|\n| T500 | 500 | 4.11e-6 | 2.29 |\n| T600 | 600 | 1.09e-5 | 6.42 |\n| T700 | 700 | 3.92e-5 | 22.52 |\n| T800 | 800 | 5.27e-5 | 30.78 |\n| T900 | **600** | 1.53e-5 | 8.80 |\n\nThe Arrhenius plot is drawn under cell 4 and saved as `arrhenius_Li.png`. The prefactor is 5.1e-3 cm\u00b2/s.\n\n**Notebook changes:**\n- **Cell 3 (new):** loads the five runs and checks each one.\n- **Cell 4 (new):** works out the Li MSD and D for each run, does the Arrhenius fit and plot, and prints the folder-name fit for comparison.\n\n**Uncertainties:**\n- The fit really has only four distinct temperatures. The two 600 K runs differ by about 40% in D, which shows how noisy 10 ps runs are.\n- At 500 K, Li moves only 2.29 \u00c5\u00b2 by the longest time lag measured. That is less than one hop, so that point is the least reliable.\n\n**Possible next steps:**\n- Run longer or add a run at 900 K, which is missing.\n- Check whether Li hops between sites at 500 K, using a van Hove or site-hopping analysis.\n\nANSWER: 0.307",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-mislabel-biv0gfnj/T500/XDATCAR')\n\n# %% check every run; temperatures from the INCAR, not the folder name\nruns = load_runs(\"/tmp/ewald-eval-study-mislabel-biv0gfnj/T*/XDATCAR\", label=r\"T(\\d+)\")\nchecks = {}\nfor label in runs:\n    p = runs[label].pipe\n    info, chk = run_info(p), check_run(p)\n    checks[str(label)] = chk\n    print(f\"{label} | INCAR T = {info.temperature} K | measured: \"\n          + \"; \".join(f[\"detail\"] for f in chk.to_dict()[\"findings\"] if f[\"title\"].startswith(\"Temperature\"))\n          + f\" | ok={chk.ok} | equilibrated frame {chk.equilibrated} | {p.num_frames} frames, {info.time_per_frame} ps/frame\")\n\n# %% Li diffusion coefficient per run (trimmed to the equilibrated part), Arrhenius fit with INCAR temperatures\nimport re\ntemps, Ds, folder_T = [], [], []\nfor label in runs:\n    p = runs[label].pipe\n    t = msd(p, start=checks[str(label)].equilibrated or 0, by_axis=True)\n    D = t.attributes[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"]          # A^2/ps\n    T = run_info(p).temperature[1]\n    fT = float(re.search(r\"T(\\d+)\", str(label)).group(1))\n    temps.append(T); Ds.append(D * 1e-4); folder_T.append(fT)\n    print(f\"folder T{fT:.0f}: INCAR T = {T:.0f} K, D_Li = {D*1e-4:.3e} cm^2/s, MSD_Li at max lag = {t['MSD Li'][-1]:.2f} A^2\")\nfit = arrhenius(temps, Ds)\nprint(f\"Ea = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, A = {fit.A:.3e} cm^2/s, r2 = {fit.r2:.4f}  (5 runs; folder T900 is a 600 K run)\")\nfit_lab = arrhenius(folder_T, Ds)\nprint(f\"(wrong, folder names as T: Ea = {fit_lab.Ea:.3f} eV, r2 = {fit_lab.r2:.4f})\")\nfit.savefig(\"arrhenius_Li.png\")\nfit.plot()\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 1
+  },
+  {
+   "id": "study-scf",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.253 vs 0.252821"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.253 vs 0.252821"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 1"
+    ],
+    [
+     "Matches (?is)T600|600\\s*K",
+     true,
+     "/(?is)T600|600\\s*K/ found"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 6,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "insert_cell",
+    "edit_cell",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 7,
+   "tokens": {
+    "input": 16,
+    "output": 3460,
+    "cache_read": 280064,
+    "cache_write": 34766
+   },
+   "cost": 0.2991068,
+   "seconds": 46.55,
+   "answer": "Li diffusion has an activation energy of **Ea = 0.253 \u00b1 0.019 eV** (r\u00b2 = 0.989). This fit uses the 500, 700, 800 and 900 K runs. I left the 600 K run out because its forces are unreliable.\n\n**How I got it:**\n- **Checking the runs (cell 3):** all five are VASP NVT runs with 1000 frames and 0.01 ps per frame (2 fs steps, a frame every 5 steps). Each temperature comes from TEBEG/TEEND in the run's INCAR and matches its folder name. Two runs were flagged:\n  - **T600:** in 3981 of 5000 ionic steps the SCF hit the step limit (NELM = 40) without converging, so the forces are unreliable. Its D (1.24 \u00c5\u00b2/ps) is higher than the 900 K value, which isn't physical. I excluded this run. Including it gives Ea = 0.180 eV with r\u00b2 = 0.34, so it clearly doesn't fit.\n  - **T800:** Li atom 40 and S atom 112 start only 1.15 \u00c5 apart at frame 0. They are already 1.82 \u00c5 apart at frame 1, so it only affects the start. I dropped the first 10 frames of this run.\n- **Diffusion coefficients (cell 5):** Li diffusion coefficient D from a linear fit to the time-averaged mean squared displacement (MSD):\n\n| T (K) | D_Li (\u00c5\u00b2/ps) | D_Li (cm\u00b2/s) | final Li MSD (\u00c5\u00b2) |\n|---|---|---|---|\n| 500 | 0.0457 | 4.57e-6 | 2.48 |\n| 700 | 0.197 | 1.97e-5 | 12.2 |\n| 800 | 0.377 | 3.77e-5 | 21.0 |\n| 900 | 0.664 | 6.64e-5 | 47.9 |\n\n- **Arrhenius plot (cell 6):** the plot is shown under the cell and saved as `arrhenius_Li.png`. It shows ln D against 1000/T; the y-axis, labelled \"value\", is D_Li in \u00c5\u00b2/ps. The prefactor is A = 15.2 \u00c5\u00b2/ps.\n\n**Uncertainties:**\n- **500 K:** Li moves only 2.48 \u00c5\u00b2 in total over 10 ps, which is probably less than one hop on average. That D is therefore poorly sampled, and it has the most leverage on the slope.\n- **Fewer points than planned:** with T600 out, the fit rests on four points.\n- **Next step:** re-run 600 K with SCF convergence fixed (e.g. a higher NELM or a different ALGO), and run 500 K for longer.\n\nANSWER: 0.253",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-scf-of9c4kxp/T500/XDATCAR')\n\n# %%\nruns = load_runs('/tmp/ewald-eval-study-scf-of9c4kxp/T*/XDATCAR', label=r\"T(\\d+)\")\nchecks = {}\nfor label in runs.labels:\n    p = runs[label].pipe\n    info = run_info(p)\n    chk = check_run(p)\n    checks[label] = chk\n    print(label, \"frames\", p.num_frames, info.ensemble, \"T\", info.temperature, \"tpf\", info.time_per_frame,\n          \"equil\", chk.equilibrated, \"ok\", chk.ok)\n    for f in chk.to_dict()[\"findings\"]:\n        if f[\"level\"] not in (\"ok\", \"info\"):\n            print(\"    \", f[\"level\"], \"|\", f[\"title\"], \"|\", f[\"detail\"])\n\n# %%\n# T800: how long does the close contact flagged at frame 0 last?\np800 = runs[\"800\"].pipe\nd0 = p800.compute(0)\nprint(\"types of atoms 40, 112:\", d0.types[40], d0.types[112], \"| composition:\", dict(zip(*np.unique(d0.types, return_counts=True))))\ndef pair_dist(data, i, j):\n    f = data.cell.to_fractional(data.positions[[i, j]])\n    df = f[1] - f[0]; df -= np.round(df)\n    return np.linalg.norm(df @ data.cell.matrix)\nfor k in [0, 1, 2, 5, 10, 20, 50, 100, 200]:\n    print(k, round(pair_dist(p800.compute(k), 40, 112), 3))\n\n# %%\n# Li tracer D per run (A^2/ps), 0.01 ps per frame from INCAR (POTIM=2 fs, NBLOCK=5)\nD = {}\nfor label in runs.labels:\n    p = runs[label].pipe\n    start = 10 if label == \"800\" else 0      # skip the startup close contact of T800\n    t = msd(p, time_per_frame=0.01, start=start)\n    D[label] = p.compute(0).attributes[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"]\n    print(label, \"start\", start, \"D_Li =\", f\"{D[label]:.4g} A^2/ps = {D[label]*1e-4:.3g} cm^2/s\",\n          \"| final MSD Li =\", f\"{t['MSD Li'][-1]:.2f} A^2\")\n\n# %%\n# Arrhenius fit of D_Li(T); T600 left out (3981/5000 ionic steps hit NELM -> unreliable forces)\nT_of = {label: run_info(runs[label].pipe).temperature[0] for label in runs.labels}\nuse = [l for l in runs.labels if l != \"600\"]\nfit = arrhenius({T_of[l]: D[l] for l in use})\nprint(f\"Ea = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, A = {fit.A:.3g} A^2/ps, r2 = {fit.r2:.4f}  (T = {[T_of[l] for l in use]} K)\")\nfit_all = arrhenius({T_of[l]: D[l] for l in runs.labels})\nprint(f\"with T600 included: Ea = {fit_all.Ea:.3f} eV, r2 = {fit_all.r2:.3f}\")\nfit.savefig(\"arrhenius_Li.png\")\nfit.plot()\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 1
+  },
+  {
+   "id": "study-llzo",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.113 vs 0.118"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.1006 vs 0.118"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 1"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 7,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "check_run",
+    "describe_frame",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 8,
+   "tokens": {
+    "input": 18,
+    "output": 2855,
+    "cache_read": 322653,
+    "cache_write": 33383
+   },
+   "cost": 0.2886176,
+   "seconds": 52.1,
+   "answer": "Li diffusion in this LLZO model has an **activation energy of 0.113 \u00b1 0.015 eV**. The Arrhenius plot is drawn under cell 5 and saved as `llzo_arrhenius.png`.\n\n**How I got it**\n- **Cell 3** loads the four runs (500, 600, 700, 800 K). Each has 1000 frames and 1536 atoms: 448 Li, 192 La, 128 Zr, 768 O. `check_run` found no problems in any of them. There are no GROMACS input or log files next to the trajectories, so the temperatures come from the file names, not from a thermostat setting.\n- **Cell 4** computes the Li mean squared displacement (MSD) from frame 197 (10.0 ps, at 50.8 fs per frame) to the end, about 40.7 ps of lag. The diffusion coefficient D comes from a straight-line fit over 20\u201380 % of the lags.\n\n| T (K) | D_Li (\u00c5\u00b2/ps) | D_Li (cm\u00b2/s) |\n|---|---|---|\n| 500 | 0.03665 | 3.67e-6 |\n| 600 | 0.05007 | 5.01e-6 |\n| 700 | 0.06874 | 6.87e-6 |\n| 800 | 0.1006 | 1.01e-5 |\n\n- **Cell 5** fits ln D against 1/T: Ea = 0.113 \u00b1 0.015 eV, D0 = 0.478 \u00c5\u00b2/ps, r\u00b2 = 0.966.\n\n**Caveats**\n- **The MSD is close to, but not quite, linear.** Cell 6 checks how fast the MSD grows over the fit window: it scales as t^0.90 to t^0.96 at every temperature (t^1 would be fully diffusive). At shorter lags it is clearly slower, t^0.5 to t^0.7.\n- **The 500 K value is the least certain.** Li moves only about 8.4 \u00c5\u00b2 in mean square over 40 ps there.\n- **The fit is only fair.** With r\u00b2 = 0.966, the four points curve slightly upward rather than lying on a line. So the barrier is not one clean value, and it depends on which temperatures you include. 0.11 eV is also low for garnet LLZO; this looks like the cubic, fast-conducting phase in this force field.\n\nRunning longer at 500\u2013600 K, or adding a temperature or two, would be the most useful next step to firm up Ea.\n\nANSWER: 0.113",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/root/.cache/ewald/papers/llzo-arrhenius/traj_500.xtc')\n\n# %% load the four runs (temperature from the file name: no GROMACS .mdp/log next to the .xtc)\nruns = load_runs('/root/.cache/ewald/papers/llzo-arrhenius/traj_*.xtc', label=r\"traj_(\\d+)\")\nfor label in runs.labels if hasattr(runs, \"labels\") else list(runs):\n    p = runs[label].pipe\n    d = p.compute(0)\n    chk = check_run(p)\n    print(label, p.num_frames, \"frames,\", d.count, \"atoms\", {t: int((d.types == t).sum()) for t in np.unique(d.types)}, \"ok:\", chk.ok)\n\n# %% Li MSD from 10 ps on (frame 197 = 10.01 ps; 50.8 fs per frame)\ndt = 0.0508                      # ps between stored frames\nstart = int(np.ceil(10.0 / dt))  # first frame of the diffusive regime\nmsds = msd(runs, start=start, time_per_frame=dt)\nD = {int(lbl): msds[lbl].attributes[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"] for lbl in msds}\nfor T, d in D.items():\n    print(f\"T = {T} K: D_Li = {d:.4g} A^2/ps = {d*1e-4:.3e} cm^2/s\")\n\n# %% Arrhenius fit of D_Li(T) and plot\nfit = arrhenius(D)\nprint(f\"Ea = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, D0 = {fit.A:.3g} A^2/ps, r^2 = {fit.r2:.4f}\")\nfit.savefig(\"llzo_arrhenius.png\")\nfit.plot()\n\n# %% check: is the Li MSD linear in t (log-log slope ~1) over the fit window at every T?\nfor lbl in msds:\n    t = np.asarray(msds[lbl][\"Time\"]); m = np.asarray(msds[lbl][\"MSD Li\"])\n    n = len(t)\n    sl = lambda a, b: np.polyfit(np.log(t[a:b]), np.log(m[a:b]), 1)[0]\n    print(lbl, f\"lags {n}, t_max {t[-1]:.1f} ps, MSD(t_max) {m[-1]:.1f} A^2,\",\n          f\"log-log slope 1-10%: {sl(max(1, n//100), n//10):.2f}, 20-80%: {sl(n//5, 4*n//5):.2f}\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 1
+  },
+  {
+   "id": "study-timestep",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.268 vs 0.268239"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.268 vs 0.268239"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 1"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 6,
+   "tool_errors": 1,
+   "tools": [
+    "python_api",
+    "insert_cell",
+    "edit_cell",
+    "edit_cell",
+    "insert_cell",
+    "insert_cell"
+   ],
+   "tool_error_messages": [
+    [
+     "insert_cell",
+     "----> 7 print(p.source_path if hasattr(p, 'source_path') else '', info.kind, info.ensemble, info.temperature, info.timestep, info.time_per_frame, p.num_frames, info.notes)\n      8 print('  ok', chk.ok, 'equilibrated', chk.equilibrated)\n      9 print('  ', chk.to_dict())\nAttributeError: 'Run' object has no attribute 'num_frames'"
+    ]
+   ],
+   "requests": 7,
+   "tokens": {
+    "input": 16,
+    "output": 3038,
+    "cache_read": 278134,
+    "cache_write": 34885
+   },
+   "cost": 0.29087579999999996,
+   "seconds": 50.12,
+   "answer": "The activation energy for Li diffusion is **Ea = 0.268 \u00b1 0.026 eV** (r\u00b2 = 0.972). Cell 4 draws the Arrhenius plot of log D(Li) against 1000/T, with the fit line.\n\n**The five runs:** `check_run` passed all of them. Each is NVT and equilibrated from frame 0, the temperature sits on its target, the SCF converged and energy drift is negligible. They do not store frames at the same interval, which matters here:\n\n| Run | POTIM (fs) | NBLOCK | Time per frame (ps) | Run length (ps) |\n|---|---|---|---|---|\n| T500 | 2 | 5 | 0.01 | 10 |\n| T600 | 2 | 5 | 0.01 | 10 |\n| T700 | 1 | 10 | 0.01 | 10 |\n| T800 | 2 | 10 | 0.02 | 20 |\n| T900 | 1 | 50 | 0.05 | 50 |\n\nEach run's MSD uses its own time per frame, read from its INCAR. Using one value for all five would scale D by up to 5\u00d7 and give a wrong Ea. The temperatures come from TEBEG/TEEND and agree with the folder names.\n\n**What I added to the notebook:**\n- **Cell 3** loads all five runs and prints each run's settings and check results (the table above).\n- **Cell 4** fits the Li MSD of each run, does the Arrhenius fit and draws the plot.\n- **Cell 5** checks that each MSD is linear, i.e. the Li ions are really diffusing.\n\n| T (K) | D(Li) (\u00c5\u00b2/ps) | D(Li) (cm\u00b2/s) |\n|---|---|---|\n| 500 | 0.04737 | 4.74e-6 |\n| 600 | 0.09074 | 9.07e-6 |\n| 700 | 0.3121 | 3.12e-5 |\n| 800 | 0.4404 | 4.4e-5 |\n| 900 | 0.6618 | 6.62e-5 |\n\n**How reliable it is:**\n- **Fit quality:** the points scatter around the line: 700 K sits above it and 600 K below. With five points, the \u00b10.026 eV error bar is probably an underestimate.\n- **Diffusive regime:** the MSD slopes over the two halves of the fit window agree within about 20% in every run, so all are diffusive.\n- **500 K is weak:** in 10 ps its Li MSD only reaches 2.3 \u00c5\u00b2, which is about one hop. That point is the least certain.\n\nA longer run at 500\u2013600 K would tighten Ea most. You could also fit 600\u2013900 K only to see how much the 500 K point moves the result.\n\nANSWER: 0.268",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-timestep-x5cuakfj/T500/XDATCAR')\n\n# %%\nruns = load_runs('/tmp/ewald-eval-study-timestep-x5cuakfj/T*/XDATCAR', label=r\"T(\\d+)\")\nchecks = {}\nfor r in runs:\n    p = r.pipe\n    info = run_info(p)\n    chk = check_run(p)\n    checks[r.label] = chk\n    prm = info.parameters if hasattr(info, 'parameters') else {}\n    print(f\"{r.label}: {info.ensemble} T={info.temperature} POTIM={info.timestep} fs NBLOCK={prm.get('NBLOCK')} \"\n          f\"t/frame={info.time_per_frame} ps frames={p.num_frames} ok={chk.ok} equilibrated={chk.equilibrated}\")\n    for f in chk.to_dict()['findings']:\n        if f['level'] not in ('ok', 'info'):\n            print('   ', f['level'], f['title'], f['detail'])\n\n# %%\nD_tables = msd(runs)   # each run uses its own time_per_frame from INCAR (POTIM*NBLOCK)\nfit = arrhenius(D_tables, attribute=\"MeanSquaredDisplacement.diffusion_coefficient.Li\")\nfor r in runs:\n    t = D_tables[r.label]\n    D = t.attributes[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"]\n    print(f\"T{r.label}: t/frame={run_info(r.pipe).time_per_frame} ps  D_Li={D:.4g} A^2/ps = {D*1e-4:.3g} cm^2/s\")\nprint(f\"Ea = {fit.Ea:.3f} +- {fit.Ea_error:.3f} eV, r2 = {fit.r2:.4f}, A = {fit.A:.3g}\")\nfit.plot()\n\n# %%\nfor r in runs:\n    t = D_tables[r.label]\n    time, m = np.asarray(t[\"Time\"]), np.asarray(t[\"MSD Li\"])\n    n = len(time)\n    # local slope in two halves of the fit window: similar values = linear (diffusive) MSD\n    i1, i2, i3 = int(0.2*n), int(0.5*n), int(0.8*n)\n    s1 = (m[i2]-m[i1])/(time[i2]-time[i1]); s2 = (m[i3]-m[i2])/(time[i3]-time[i2])\n    print(f\"T{r.label}: lag max {time[-1]:.1f} ps, MSD Li at 80% lag {m[i3]:.1f} A^2, slope 20-50% {s1/6:.3g}, 50-80% {s2/6:.3g} A^2/ps\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 1
+  },
+  {
+   "id": "study-path",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number hop length",
+     true,
+     "2 vs 2"
+    ],
+    [
+     "Matches (?i)\\b(ab|a-b|xy|x-y)[- ]plane|two-dimensional|\\b2-?D\\b|in-plane|layer|\\b(along|in|on)\\s+(the\\s+)?(a|x)(\\s*-?\\s*axis)?\\s*(and|&|/)\\s*(the\\s+)?(b|y)\\b",
+     true,
+     "/(?i)\\b(ab|a-b|xy|x-y)[- ]plane|two-dimensional|\\b2-?D\\b|in-plane|layer|\\b(along|in|on)\\s+(the\\s+)?(a|x)(\\s*-?\\s*axis)?\\s*(and|&|/)\\s*(the\\s+)?(b|y)\\b/ found"
+    ],
+    [
+     "Any(Step GenerateTrajectoryLines, Step SpatialBinning, Step CreateIsosurface)",
+     true,
+     "GenerateTrajectoryLines(only_selected=True, start=0, stop=None, step=1, unwrapped=True)"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 16,
+   "tool_errors": 0,
+   "tools": [
+    "check_run",
+    "describe_trajectory",
+    "describe_frame",
+    "compute_msd",
+    "event_details",
+    "python_api",
+    "insert_cell",
+    "insert_cell",
+    "add_modifier",
+    "add_modifier",
+    "edit_cell",
+    "set_view",
+    "edit_cell",
+    "set_view",
+    "render_image",
+    "render_image"
+   ],
+   "tool_error_messages": [],
+   "requests": 11,
+   "tokens": {
+    "input": 24,
+    "output": 4486,
+    "cache_read": 426758,
+    "cache_write": 42356
+   },
+   "cost": 0.3869476,
+   "seconds": 58.14,
+   "answer": "The Li ions hop in the **xy plane only, along \u00b1x and \u00b1y**, between sites on a square grid. **One hop is 2.0 \u00c5.** They do not move along z.\n\nI checked the run first: VASP NVT at 900 K, 1000 frames at 0.01 ps each. SCF converged at every step, the temperature stayed on target and the energy drift is negligible.\n\n**How I got the direction:**\n- **MSD:** the S atoms stay put (D \u2248 3\u00d710\u207b\u00b9\u2070 cm\u00b2/s), while Li diffuses with D = 6.0\u00d710\u207b\u2075 cm\u00b2/s. The Li MSD splits 0.488 along x, 0.509 along y and 0.003 along z.\n- **Sites (new cell 4):** the Li sit on a grid with 2 \u00c5 spacing (16 \u00c5 cell / 8). Their average offset from the nearest grid point is only about 0.13 \u00c5, which is thermal rattling.\n- **Hops (cell 4):** I tracked every Li from site to site over all 1000 frames and found 723 hops. All of them are one site step, with the vector being one of:\n  - (+2, 0, 0) \u00c5: 184 hops\n  - (\u22122, 0, 0) \u00c5: 163 hops\n  - (0, +2, 0) \u00c5: 192 hops\n  - (0, \u22122, 0) \u00c5: 184 hops\n\n  No hops are along z or diagonal. On average each Li stays within 0.16 \u00c5 of its height in z, so the Li move in separate flat layers stacked along z.\n- Cell 3 was a rougher first try, smoothing positions over blocks of 10 frames. It gives a median of 1.83 \u00c5, which underestimates the hop because smoothing cuts hops short. The site count in cell 4 is the number to use.\n\n**The pathway in the 3D view:**\n- Cell 5 selects the Li atoms and cell 6 draws their trajectories over the whole run, unwrapped across the cell boundaries.\n- The main view (cell 8) looks down z and colours the paths by time. It shows the Li paths forming a square grid of 2 \u00c5 steps: clusters of points where the Li rattle on a site, joined by straight lines along x or y.\n- The \"Side (x)\" view tab (cell 7) looks along x. There the paths stay in flat layers and never cross between them.\n\nOne caveat: this is a single run at one temperature, so it gives no activation energy. Runs at a few more temperatures would give one through an Arrhenius fit, and the `SiteHopping` modifier could add residence times.\n\nANSWER: x and y (in-plane, no z), 2.0",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-path-zkw8nbmm/T900/XDATCAR')\n\n# %% Li hop analysis: jumps between residence sites (unwrapped, 10-frame block averages)\nframes0 = [pipe.compute(i) for i in range(pipe.num_frames)]\nL = frames0[0].cell.matrix.diagonal()\nli = np.array(frames0[0].types) == \"Li\"\nids = frames0[0][\"Particle Identifier\"][li]\nP = np.array([f.positions[np.array(f.types) == \"Li\"][np.argsort(f[\"Particle Identifier\"][np.array(f.types) == \"Li\"])] for f in frames0])\nd = np.diff(P, axis=0); d -= L * np.round(d / L)              # unwrap\nU = np.concatenate([P[:1], P[:1] + np.cumsum(d, axis=0)])\nB = U[: (len(U) // 10) * 10].reshape(-1, 10, U.shape[1], 3).mean(axis=1)   # 10-frame block means\njumps = []\nfor a in range(B.shape[1]):\n    site = B[0, a]\n    for t in range(1, B.shape[0]):\n        v = B[t, a] - site\n        if np.linalg.norm(v) > 1.2:          # left the site: record the jump to the new site\n            jumps.append(v); site = B[t, a]\n        else:\n            site = 0.8 * site + 0.2 * B[t, a]\njumps = np.array(jumps)\nprint(\"jumps:\", len(jumps))\nlens = np.linalg.norm(jumps, axis=1)\nprint(\"jump length: mean %.3f, median %.3f A\" % (lens.mean(), np.median(lens)))\nprint(\"length histogram:\", np.histogram(lens, bins=np.arange(1, 6.5, 0.5)))\ndom = np.argmax(np.abs(jumps), axis=1)\nprint(\"dominant axis counts (x,y,z):\", np.bincount(dom, minlength=3))\nprint(\"mean |component| per axis:\", np.abs(jumps).mean(axis=0).round(3))\nprint(\"std of Li z over run per atom (mean): %.3f A\" % U[:, :, 2].std(axis=0).mean())\nprint(\"Li z layers (frame 0):\", np.unique(np.round(P[0, :, 2], 1)))\n\n# %% Li sites: where the Li sit, and the hop length between neighbouring sites\nPw = P % L\nprint(\"Li x,y,z mod 2 A (mean of |offset from nearest 2 A grid point|):\",\n      np.abs(Pw - 2.0 * np.round(Pw / 2.0)).mean(axis=(0, 1)).round(3))\nprint(\"Li x,y,z mod 4 A histogram of offsets (frame-averaged):\")\nfor k, ax in enumerate(\"xyz\"):\n    h, e = np.histogram(Pw[:, :, k] % 4.0, bins=8, range=(0, 4))\n    print(ax, (h / h.sum()).round(3), \"bins of 0.5 A from 0\")\nS = frames0[0].positions[~li]\nprint(\"S mod 4 A:\", np.unique(np.round(S % 4.0, 1), axis=0)[:5])\n# site lattice: round each Li position to the nearest site of a 2 A grid in x, y (z kept at its layer)\nsite = np.round(U / 2.0).astype(int)\nhops = np.diff(site, axis=0)\nmoved = np.any(hops != 0, axis=2)\nhv = hops[moved] * 2.0\nprint(\"site-to-site hops:\", moved.sum(), \" vectors (A) and counts:\")\nvals, cnt = np.unique(hv, axis=0, return_counts=True)\nfor v, c in zip(vals, cnt):\n    if c > 5: print(v, c)\n\n# %%\npipe.add(SelectType(types=['Li']))\n\n# %%\npipe.add(GenerateTrajectoryLines(only_selected=True, unwrapped=True))\n\n# %%\nview(pipe,\n     tab='Side (x)',\n     direction='x',\n)\n\n# %%\nview(pipe, selection=False, trajectory_color_by='Time', direction='z')\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 1
+  },
+  {
+   "id": "study-redo",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Number Ea",
+     true,
+     "0.237 vs 0.237051"
+    ],
+    [
+     "CellNumber",
+     true,
+     "0.2373 vs 0.237051"
+    ],
+    [
+     "Cells cells with errors",
+     true,
+     "cells with errors: 0 vs 0"
+    ],
+    [
+     "Cells figure",
+     true,
+     "figure: 1"
+    ],
+    [
+     "Cells fit cells added",
+     true,
+     "fit cells added: 0"
+    ]
+   ],
+   "reproducible": true,
+   "reproduce_detail": "",
+   "tool_calls": 13,
+   "tool_errors": 1,
+   "tools": [
+    "python_api",
+    "insert_cell",
+    "edit_cell",
+    "insert_cell",
+    "insert_cell",
+    "insert_cell",
+    "edit_cell",
+    "edit_cell",
+    "edit_cell",
+    "edit_cell",
+    "edit_cell",
+    "run_cell",
+    "run_cell"
+   ],
+   "tool_error_messages": [
+    [
+     "edit_cell",
+     "----> 9 ax = ax if hasattr(ax, \"set_ylabel\") else ax.axes[0]\n     10 ax.set_ylabel(r\"$D_\\mathrm{Li}$ ($\\mathrm{\\AA^2/ps}$)\")\n     11 ax.legend([\"Li, 600-900 K\", f\"$E_a$ = {fit.Ea:.3f} eV\"])\nAttributeError: 'NoneType' object has no attribute 'axes'"
+    ]
+   ],
+   "requests": 13,
+   "tokens": {
+    "input": 30,
+    "output": 6068,
+    "cache_read": 620046,
+    "cache_write": 44255
+   },
+   "cost": 0.4667642,
+   "seconds": 81.73,
+   "answer": "With the 500 K run left out, the fit over 600\u2013900 K gives **Ea = 0.237 \u00b1 0.014 eV** (prefactor 11.6 \u00c5\u00b2/ps, r\u00b2 = 0.994). With all five runs it was 0.275 \u00b1 0.017 eV.\n\nWhat I changed:\n- **Cell 4** now fits only the 600, 700, 800 and 900 K runs and draws the Arrhenius plot with matplotlib. ewald's built-in plot labelled the y axis \"value\" and couldn't be adjusted, so I replaced it. The plot shows D_Li in cm\u00b2/s against 1000/T. The four fitted points are filled, the 500 K point is an open grey marker, and the fitted line is dashed. It is saved as `arrhenius_Li.png`.\n- **Cell 6** now prints both fits side by side.\n\nI ran cells 4\u20136 again and they all run without errors.\n\nOn the plot, the 500 K point lies below where the fitted line extends to. The four fitted points lie close to a straight line. Ea is fitted from just four temperatures, so the \u00b10.014 eV only reflects how closely they follow that line. The difference from the five-run value is a fairer measure of how uncertain Ea is.\n\nANSWER: 0.237",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-redo-u_fmra3l/T500/XDATCAR')\n\n# %%\nimport os\nos.chdir('/tmp/ewald-eval-study-redo-u_fmra3l')\nruns = load_runs(\"T*/XDATCAR\", label=r\"T(\\d+)\")\nchecks = {}\nfor label in runs.labels:\n    p = runs[label].pipe\n    info = run_info(p)\n    chk = checks[label] = check_run(p)\n    print(label, p.num_frames, info.kind, info.ensemble, info.temperature, info.timestep, info.time_per_frame,\n          \"ok:\", chk.ok, \"equilibrated:\", chk.equilibrated)\n    for f in chk.to_dict().get(\"findings\", []):\n        if f[\"level\"] not in (\"ok\", \"info\"):\n            print(\"   -\", f)\n\n# %%\nimport matplotlib.pyplot as plt\nmsds = msd(runs)\nD = {float(l): msds[l].attributes[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"] for l in runs.labels}\nfor T, d in D.items():\n    print(f\"{T:.0f} K: D_Li = {d:.4g} A^2/ps\")\n# 500 K left out: in 10 ps its Li MSD reaches only ~1.8 A^2 (less than one hop), too few hops to trust D\nused = {T: d for T, d in D.items() if T >= 600}\nfit = arrhenius(used)\nprint(f\"600-900 K: Ea = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, A = {fit.A:.3g} A^2/ps, r2 = {fit.r2:.4f}\")\n\nkB = 8.617333e-5  # eV/K\nfig, ax = plt.subplots(figsize=(4.5, 3.5))\nT = np.array(list(used)); d = np.array(list(used.values())) * 1e-4   # cm^2/s\nax.semilogy(1000 / T, d, \"o\", color=\"teal\", label=\"Li, 600-900 K (fitted)\")\nax.semilogy(1000 / 500, D[500.0] * 1e-4, \"o\", mfc=\"none\", color=\"gray\", label=\"500 K (excluded)\")\nTl = np.linspace(500, 900, 50)\nax.semilogy(1000 / Tl, fit.A * 1e-4 * np.exp(-fit.Ea / (kB * Tl)), \"--\", color=\"tab:orange\",\n            label=f\"$E_a$ = {fit.Ea:.3f} \u00b1 {fit.Ea_error:.3f} eV\")\nax.set_xlabel(r\"1000/$T$ (K$^{-1}$)\"); ax.set_ylabel(r\"$D_\\mathrm{Li}$ (cm$^2$/s)\")\nax.set_xlim(1.08, 2.05)\nax.legend(frameon=False, fontsize=8)\nfig.savefig(\"arrhenius_Li.png\", dpi=200, bbox_inches=\"tight\")\n\n# %%\nfor label in runs.labels:\n    t = msds[label]\n    a = t.attributes\n    time = np.asarray(t[\"Time\"]); m = np.asarray(t[\"MSD Li\"])\n    n = len(time)\n    # local slope of MSD(t) over the first and second half of the lags: equal for diffusion, falling for a plateau\n    s1 = np.polyfit(time[n//10:n//4], m[n//10:n//4], 1)[0] / 6\n    s2 = np.polyfit(time[n//4:n//2], m[n//4:n//2], 1)[0] / 6\n    print(f\"{label}: D_S = {a['MeanSquaredDisplacement.diffusion_coefficient.S']:.2e} A^2/ps, \"\n          f\"Li MSD at t={time[n//2]:.1f} ps = {m[n//2]:.2f} A^2, max {m.max():.2f} A^2, \"\n          f\"slope/6 early {s1:.3g}, late {s2:.3g}\")\n\n# %%\nfit_all = arrhenius(D)\nprint(\"D_Li (cm^2/s):\", {int(T): f\"{d*1e-4:.2e}\" for T, d in D.items()})\nprint(f\"600-900 K (used): Ea = {fit.Ea:.3f} +/- {fit.Ea_error:.3f} eV, r2 = {fit.r2:.4f}\")\nprint(f\"All 5 runs      : Ea = {fit_all.Ea:.3f} +/- {fit_all.Ea_error:.3f} eV, r2 = {fit_all.r2:.4f}\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 1
+  },
+  {
+   "id": "study-one-temperature",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "NoAnswer",
+     true,
+     "ANSWER: N/A"
+    ],
+    [
+     "Not(Matches (?i)(E_?\\{?a\\}?|activation energy)[^.\\n]{0,40}?[=\u2248~:]?\\s*(of\\s*)?\\$?\\d+\\.\\d+\\s*\\$?\\s*eV)",
+     true,
+     "/(?i)(E_?\\{?a\\}?|activation energy)[^.\\n]{0,40}?[=\u2248~:]?\\s*(of\\s*)?\\$?\\d+\\.\\d+\\s*\\$?\\s*eV/ not found"
+    ],
+    [
+     "Matches (?i)same temperature|one temperature|single temperature|all (four |4 )?(runs )?.{0,40}600\\s*K|600\\s*K.{0,80}(all|each|every)",
+     true,
+     "/(?i)same temperature|one temperature|single temperature|all (four |4 )?(runs )?.{0,40}600\\s*K|600\\s*K.{0,80}(all|each|every)/ found"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 4,
+   "tool_errors": 0,
+   "tools": [
+    "python_api",
+    "check_run",
+    "insert_cell",
+    "edit_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 4,
+   "tokens": {
+    "input": 10,
+    "output": 1828,
+    "cache_read": 129561,
+    "cache_write": 31231
+   },
+   "cost": 0.2186672,
+   "seconds": 26.17,
+   "answer": "I can't fit an activation energy from these four runs. They are all at the same temperature, so there is no D(T) to fit an Arrhenius line to.\n\nI checked every run with `check_run` and `run_info` in cell 3:\n\n| Run | Thermostat (TEBEG/TEEND) | Ensemble | Frames (0.01 ps each) | Health | Equilibrated from | D_Li (cm\u00b2/s) |\n|---|---|---|---|---|---|---|\n| ENCUT300 | 600 / 600 K | NVT | 1000 | ok | frame 76 | 9.88e-06 |\n| ENCUT400 | 600 / 600 K | NVT | 1000 | ok | frame 0 | 1.09e-05 |\n| ENCUT500 | 600 / 600 K | NVT | 1000 | ok | frame 0 | 6.51e-06 |\n| ENCUT600 | 600 / 600 K | NVT | 1000 | ok | frame 0 | 1.09e-05 |\n\nThe D values come from the Li mean squared displacement, using only the frames after equilibration. All four runs are healthy: SCF converged, temperature on target, small energy drift.\n\n- **What the folders vary:** the names say plane-wave cutoff, not temperature. ENCUT isn't set in the INCARs I could read, so I couldn't confirm the cutoff from the files. Either way, every run uses a 600 K thermostat.\n- **What the data does tell you:** D_Li at 600 K is about 6.5e-06 to 1.1e-05 cm\u00b2/s. The spread doesn't follow the cutoff, so it's most likely statistical noise from 10 ps runs, not a cutoff effect. Treat it as a rough error bar on D(600 K).\n- **What you'd need for Ea:** runs at at least three, preferably four or more, temperatures with one fixed cutoff, for example 500, 600, 700 and 800 K, each long enough for a linear MSD. Then `arrhenius(msd(runs))` gives Ea with its error.\n\nANSWER: N/A",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-one-temperature-4m4t4zjf/ENCUT300/XDATCAR')\n\n# %%\nimport glob\n# Check every run: thermostat temperature, ensemble, equilibration; then the Li tracer D after equilibration\nfor p in sorted(glob.glob('/tmp/ewald-eval-study-one-temperature-4m4t4zjf/ENCUT*/XDATCAR')):\n    rp = load(p)\n    info = run_info(rp)\n    chk = check_run(rp)\n    t = msd(rp, start=chk.equilibrated or 0)\n    D = t.attributes.get('MeanSquaredDisplacement.diffusion_coefficient.Li', float('nan'))\n    print(f\"{p.split('/')[-2]}: T(TEBEG,TEEND)={info.temperature} K, {info.ensemble}, \"\n          f\"{info.time_per_frame} ps/frame, {rp.num_frames} frames, ok={chk.ok}, \"\n          f\"equilibrated from frame {chk.equilibrated}, D_Li={D:.3g} A^2/ps = {D*1e-4:.3g} cm^2/s\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 1
+  },
+  {
+   "id": "study-no-diffusion",
+   "category": "study",
+   "passed": true,
+   "checks": [
+    [
+     "Not(Matches (?i)(E_?\\{?a\\}?|activation energy)[^.\\n]{0,40}?[=\u2248~:]?\\s*(of\\s*)?\\$?\\d+\\.\\d+\\s*\\$?\\s*eV)",
+     true,
+     "/(?i)(E_?\\{?a\\}?|activation energy)[^.\\n]{0,40}?[=\u2248~:]?\\s*(of\\s*)?\\$?\\d+\\.\\d+\\s*\\$?\\s*eV/ not found"
+    ],
+    [
+     "Matches (?i)no (long-range )?(li )?diffusion|not diffus|does not diffuse|doesn't diffuse|vibrat|plateau|no hops|rattl|localized|stays? (on|at|in)",
+     true,
+     "/(?i)no (long-range )?(li )?diffusion|not diffus|does not diffuse|doesn't diffuse|vibrat|plateau|no hops|rattl|localized|stays? (on|at|in)/ found"
+    ]
+   ],
+   "reproducible": null,
+   "reproduce_detail": "",
+   "tool_calls": 8,
+   "tool_errors": 0,
+   "tools": [
+    "check_run",
+    "list_workflows",
+    "describe_trajectory",
+    "compute_msd",
+    "python_api",
+    "add_modifier",
+    "insert_cell",
+    "edit_cell"
+   ],
+   "tool_error_messages": [],
+   "requests": 6,
+   "tokens": {
+    "input": 14,
+    "output": 2043,
+    "cache_read": 174704,
+    "cache_write": 33627
+   },
+   "cost": 0.24399179999999998,
+   "seconds": 28.06,
+   "answer": "I can't give either number from this data. The Li atoms in this run don't diffuse, and there is only one temperature.\n\n**The run itself is fine.** It's VASP NVT at 300 K with 2 fs steps, one stored frame every 0.01 ps, 1000 frames (10 ps). SCF converged at every step (at most 15 of 40 iterations), the mean temperature is 300.4 \u00b1 15.1 K, energy drift is negligible, and there are no close contacts.\n\n**There is no Li diffusion:**\n- The Li MSD reaches 0.052 \u00c5\u00b2 at the first lag (0.01 ps) and stays flat. Over all lags it never goes above 0.057 \u00c5\u00b2, and at 9.99 ps it is 0.045 \u00c5\u00b2. That is the atoms vibrating in place.\n- No atom moved more than 0.62 \u00c5 from where it started in frame 0, and `describe_trajectory` found no events (no jumps).\n- The S host has a similar plateau at about 0.025 \u00c5\u00b2.\n- Fitting a line to this flat MSD gives D_Li = \u22128.3\u00d710\u207b\u00b9\u2070 cm\u00b2/s with the step's default fit range, or +2.0\u00d710\u207b\u00b9\u2070 cm\u00b2/s with a different range. A negative value, with the sign depending on the fit window, means the fit is measuring noise, not a diffusion coefficient. At most, D at 300 K is below what a 10 ps run can resolve, roughly 10\u207b\u2079 cm\u00b2/s or lower.\n\n**There is no activation energy:** an Arrhenius fit needs D at several temperatures. Only `T300/XDATCAR` exists in the study folder (cell 4 searched for others) and the workflow list is empty. Even with more runs, this one has no diffusion-limited D to put on the plot.\n\n**Notebook changes:**\n- Cell 3: the Li MSD step (`MeanSquaredDisplacement`, 0.01 ps per frame).\n- Cell 4: lists the runs found and prints the MSD values above.\n\nTo get a D and an activation energy, run AIMD at higher temperatures (for example 600\u20131200 K) and long enough for Li to make many hops (tens of ps or more). Then put each run through the same MSD step and fit `arrhenius(msd(load_runs(\"T*/XDATCAR\", label=r\"T(\\d+)\")))`, checking each run first.\n\nANSWER: N/A, N/A",
+   "notebook": "# %%\nimport numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\nfrom ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\nfrom ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n\n# %%\npipe = load('/tmp/ewald-eval-study-no-diffusion-jyg1yiu0/T300/XDATCAR')\n\n# %%\npipe.add(MeanSquaredDisplacement(time_per_frame=0.01))\n\n# %%\nimport glob, os\nprint(\"runs found:\", sorted(glob.glob('/tmp/ewald-eval-study-no-diffusion-jyg1yiu0/*/XDATCAR')))\ndata = pipe.compute(0)\nt = data.tables[\"msd\"]\nD_li = data.attributes[\"MeanSquaredDisplacement.diffusion_coefficient.Li\"]\nprint(f\"Li MSD at lag {t['Time'][1]:.2f} ps: {t['MSD Li'][1]:.4f} A^2; at {t['Time'][-1]:.2f} ps: {t['MSD Li'][-1]:.4f} A^2\")\nprint(f\"Li MSD max over all lags: {np.max(t['MSD Li']):.4f} A^2\")\nprint(f\"fitted slope D_Li = {D_li:.3g} A^2/ps = {D_li*1e-4:.3g} cm^2/s (fit of a plateau, not diffusion)\")\n",
+   "error": "",
+   "skipped": "",
+   "repeat": 1
+  }
+ ]
+}

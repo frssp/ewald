@@ -180,6 +180,9 @@ class AnthropicChat(Chat):
         for call, result, *flag in results:
             text, images, is_error = _result_parts(result)
             is_error = is_error or bool(flag and flag[0])
+            if is_error and images:     # the API takes only text in an error result (a cell that drew, then failed)
+                text += f"\n[{len(images)} image(s) not sent with this error]"
+                images = []
             if isinstance(result, str):
                 content = text
             else:

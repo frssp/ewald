@@ -11,7 +11,7 @@ from itertools import chain
 
 import numpy as np
 
-from ..kernels import (_per_type, autocorrelation_fft, average_tables, collect_trajectory, diffusion_fit,
+from ..kernels import (_add_axes, _per_type, autocorrelation_fft, average_tables, collect_trajectory, diffusion_fit,
                        finite_difference_velocities, green_kubo, msd_fft, path_statistics, unwrap)
 from ..pipeline import Modifier
 
@@ -96,11 +96,14 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
     ``time_per_frame`` is the time between stored frames (e.g. ps, giving D in A^2/ps;
     1 A^2/ps = 1e-4 cm^2/s); 0 reports lags in frames. ``subtract_drift`` removes the
     center-of-mass motion; ``only_selected`` uses the particles selected at frame ``start``.
+    ``by_axis`` adds the MSD along x, y and z of each column (``MSD x``, ``MSD Li z``, ...) and
+    their one-dimensional diffusion coefficients (``.x``, ``.Li.z``, slope/2): how anisotropic the
+    diffusion is, e.g. Li moving in a plane or along a channel only.
     """
 
     def __init__(self, start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0,
                  fit_range: tuple = (0.2, 0.8), by_type: bool = True, unwrapped: bool = False,
-                 subtract_drift: bool = False, only_selected: bool = False):
+                 subtract_drift: bool = False, only_selected: bool = False, by_axis: bool = False):
         self.start = start
         self.stop = stop
         self.step = step
@@ -110,6 +113,7 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
         self.unwrapped = unwrapped
         self.subtract_drift = subtract_drift
         self.only_selected = only_selected
+        self.by_axis = by_axis
 
     def modify(self, data, ctx):
         table, attrs = self._cached(ctx, lambda: self._compute(ctx))
@@ -128,10 +132,13 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
         table = {"Time": np.arange(x.shape[0]) * dt, "MSD": msd_fft(x, be)}
         if self.by_type:
             _per_type(msd_fft, x, traj["types"], be, "MSD", table)
+        if getattr(self, "by_axis", False):
+            _add_axes(table, x, traj["types"], be)
         attrs = {}
         name = "MeanSquaredDisplacement.diffusion_coefficient"
         for col in [c for c in table if c.startswith("MSD")]:
-            d, icpt, _ = diffusion_fit(table["Time"], table[col], self.fit_range)
+            dims = 1 if col[-2:] in (" x", " y", " z") else 3
+            d, icpt, _ = diffusion_fit(table["Time"], table[col], self.fit_range, dimensions=dims)
             attrs[name + col[3:].replace(" ", ".")] = d
             if col == "MSD":
                 table["MSD fit"] = 6.0 * d * table["Time"] + icpt

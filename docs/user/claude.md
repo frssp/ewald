@@ -283,8 +283,8 @@ ewald narrate dump.lammpstrj --type-map 1=Cu --no-llm        # event timeline, r
 
 ## Scoring a model (AI eval suite)
 
-`ewald eval` measures how well a model drives ewald: it asks 53 questions with known answers about
-the shipped example files (and one paper dataset), runs the normal AI loop on a fresh notebook for
+`ewald eval` measures how well a model drives ewald: it asks 68 questions with known answers about
+the shipped example files (and two paper datasets), runs the normal AI loop on a fresh notebook for
 each, and grades the result automatically. The tasks ask for values (lattice constants, counts,
 energies, a diffusion coefficient, graded from the reply's final `ANSWER:` line within a
 tolerance), for analysis steps (coordination coloring, octahedra, CNA, deleting atoms), for view
@@ -292,7 +292,17 @@ changes (background, colors, camera, legends), for exported files, for edits to 
 user already has (change a step's cutoff, take a step out, fix a failing cell), for recipes
 written as python_api shows them (a plot cell, an `[each frame]` step) and for plugins (the
 example `LocalComposition` modifier and the `bond_valence_sums` AI tool of `examples/plugins`,
-loaded for the task only). Every state check is graded twice: on the session, and again after
+loaded for the task only). The `study` tasks ask for a whole study in one sentence, as "find the
+activation energy of Li diffusion from these runs" or "work out how Li diffuses and write the
+paragraph for our paper": the model has to find the other runs, compare them, fit, plot and write it
+up, all as notebook cells. Their runs are synthetic VASP MD series written for the task
+(`ewald.llm.eval_data`: Li hopping in the ab plane of a sulfide host at a known rate) plus the LLZO
+paper data, and most hide a trap a careful analyst catches: a run that starts hot, a folder named
+T900 whose INCAR says 600 K, a run whose SCF never converged, runs that store frames at different
+intervals. Two have a wrong premise (four runs at one temperature, a run where Li does not diffuse)
+and pass only when the model says so instead of giving a number, and one asks a follow-up question
+("leave the 500 K run out and redo it") that should edit the fit cell, not add a second one.
+Every state check is graded twice: on the session, and again after
 the cells that ran are re-run from the top in a fresh namespace, so an answer only counts as
 reproducible when the notebook alone makes it.
 
@@ -322,15 +332,19 @@ error (`~` lines); the summary gives the
 accuracy overall and per category. `--out` saves everything, including each answer and the notebook
 the model left, as JSON. Costs come from list prices for the current Claude models; for any other
 model give `--price IN,OUT` in USD per million tokens (optionally `,CACHE_READ,CACHE_WRITE`). A full
-run makes a few hundred requests; try `--category view` or a few `--tasks` first. The paper task
-downloads its data (0.8 MB) once; `--no-download` skips it.
+run makes a few hundred requests; try `--category view` or a few `--tasks` first. The paper tasks
+download their data (0.8 MB and 29 MB; the LLZO one also needs MDAnalysis, `pip install
+"ewald[formats]"`) once; `--no-download` skips them. `--category study` runs the studies alone
+(about $4 with Opus, $0.20 with Haiku).
 
 Run it before and after changing the system prompt, a tool description or a tool, and compare the
-two files. The first runs with real models (Opus, Sonnet and Haiku 5.5: all 53 tasks passed) and
+two files. The runs with real models (Opus, Sonnet and Haiku 5.5: all 53 single-step tasks passed; the study tasks before and after public PR #73) and
 what they found are in [AI eval results](../developer/ai-eval.md). In Python: `ewald.llm.evals.run(tasks, agent_options=...)`, with the tasks in
 `ewald.llm.eval_tasks.TASKS`; a `Task` is a prompt, an example file and a list of checks
-(`Number`, `Matches`, `Step`, `View`, `Data`, `File`, `CellNumber`, `Cells`, `UsedTool`, `Any`), with
-optional `setup` cells (the notebook the user already has) and example `plugins`.
+(`Number`, `Matches`, `Step`, `View`, `Data`, `File`, `CellNumber`, `Cells`, `UsedTool`, `Any`, and for
+written answers `Mentions` (a value quoted in the prose), `Prose` (a paragraph, not just a number),
+`NoAnswer` and `Not`), with optional `setup` cells (the notebook the user already has), example
+`plugins` and `followups` (questions asked next in the same conversation).
 
 ## From Claude Code and other MCP clients
 

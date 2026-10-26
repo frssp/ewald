@@ -269,14 +269,25 @@ def _per_type(fn, x, types, be, prefix, table):
     return table
 
 
+def msd_axes(fn, x, be, column, table):
+    """Add ``<column> x``, ``<column> y`` and ``<column> z``: ``fn`` on each Cartesian component of
+    ``x`` (the MSD along one axis; an isotropic diffuser has a third of the total on each)."""
+    xp = be.xp
+    x = xp.asarray(x)
+    for k, axis in enumerate("xyz"):
+        table[f"{column} {axis}"] = fn(x[:, :, k:k + 1], be)
+    return table
+
+
 def trajectory_msd(pipeline, start: int = 0, stop: int | None = None, step: int = 1,
-                   device=None, by_type: bool = True, unwrapped: bool = False):
+                   device=None, by_type: bool = True, unwrapped: bool = False, by_axis: bool = False):
     """Time-averaged MSD over the source frames of ``pipeline``.
 
     Particles are matched across frames by 'Particle Identifier' when present.
     Positions are unwrapped with :func:`unwrap` unless ``unwrapped=True``
     (e.g. LAMMPS ``xu yu zu`` columns). Returns a table with ``lag`` (in frames,
-    multiplied by ``step``), ``MSD`` and, with ``by_type``, ``MSD <type>``.
+    multiplied by ``step``), ``MSD`` and, with ``by_type``, ``MSD <type>``; ``by_axis``
+    adds ``<column> x|y|z`` for each (:func:`msd_axes`).
     """
     be = get_backend(device or pipeline.device)
     stop = pipeline.num_frames if stop is None else stop
@@ -287,6 +298,22 @@ def trajectory_msd(pipeline, start: int = 0, stop: int | None = None, step: int 
     table = {"lag": np.arange(len(traj["cells"])) * step, "MSD": msd_fft(x, be)}
     if by_type:
         _per_type(msd_fft, x, traj["types"], be, "MSD", table)
+    if by_axis:
+        _add_axes(table, x, traj["types"], be)
+    return table
+
+
+def _add_axes(table, x, types, be):
+    """``msd_axes`` of every ``MSD`` / ``MSD <type>`` column of ``table``."""
+    names = np.unique(types)
+    xp = be.xp
+    for col in [c for c in table if c == "MSD" or c.startswith("MSD ")]:
+        if col == "MSD":
+            msd_axes(msd_fft, x, be, col, table)
+        else:
+            sel = xp.asarray(np.nonzero(types == col[4:])[0])
+            if len(names) > 1:
+                msd_axes(msd_fft, xp.asarray(x)[:, sel], be, col, table)
     return table
 
 

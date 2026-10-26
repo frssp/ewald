@@ -87,12 +87,27 @@ class Runs:
         return iter(self.runs)
 
     def __getitem__(self, key) -> Run:
+        if isinstance(key, Run) and key in self.runs:
+            return key
         if isinstance(key, (int, np.integer)):
             return self.runs[key]
         for r in self.runs:
-            if r.label == str(key) or (r.value is not None and isinstance(key, (float, int)) and r.value == key):
+            if r.label == str(key):
                 return r
+        number = _number(str(key)) if isinstance(key, str) else key
+        hits = [r for r in self.runs if r.value is not None and isinstance(number, (float, int, np.floating))
+                and r.value == number]
+        if len(hits) == 1:          # "500" or 500.0 for the run labelled "T500"
+            return hits[0]
         raise KeyError(f"no run {key!r}; the runs are {', '.join(self.labels)}")
+
+    def keys(self) -> list[str]:
+        """The labels, as for a dict ``{label: Run}``."""
+        return self.labels
+
+    def items(self) -> list:
+        """``(label, Run)`` pairs, as for a dict ``{label: Run}``."""
+        return [(r.label, r) for r in self.runs]
 
     @property
     def labels(self) -> list[str]:
@@ -213,6 +228,24 @@ def load_runs(paths, label=None, sort: bool = True, **kwargs) -> Runs:
     return Runs(runs)
 
 
+def _show(fig):
+    """Show ``fig`` under the running notebook cell (or Jupyter cell), else with ``plt.show()``.
+    ``plt.show()`` alone showed nothing under a cell: the plotstyle figure is not pyplot's."""
+    try:
+        from IPython import get_ipython
+        shell = get_ipython()
+    except ImportError:
+        shell = None
+    if shell is not None:
+        from IPython.display import display
+
+        display(fig)
+    else:
+        import matplotlib.pyplot as plt
+
+        plt.show()
+
+
 # ----------------------------------------------------------------------- tables of runs
 class RunTables(dict):
     """``{label: Table}``: one analysis table per run (what a verb returns for :class:`Runs`).
@@ -222,14 +255,29 @@ class RunTables(dict):
         super().__init__(tables)
         self.name, self.runs = name, runs
 
+    def __getitem__(self, key):
+        if isinstance(key, Run):
+            key = key.label
+        if key not in self.keys() and self.runs is not None and not isinstance(key, (int, np.integer)):
+            try:
+                key = self.runs[key].label     # "500" or 500.0 for the run labelled "T500"
+            except KeyError:
+                pass
+        return super().__getitem__(key)
+
     def column(self, y: str | None = None) -> str:
         """The column drawn: ``y``, else the table's first data column."""
         first = next(iter(self.values()))
         return y if y is not None else first.columns[1]
 
     def attribute(self, name: str) -> np.ndarray:
-        """A global attribute the analysis wrote, one value per run (NaN where missing)."""
-        return np.array([float(t.attributes.get(name, np.nan)) for t in self.values()])
+        """A global attribute the analysis wrote, one value per run (NaN where missing; a name
+        no run has is an error that lists the names there are)."""
+        tables = list(self.values())
+        if tables and not any(name in t.attributes for t in tables):
+            have = sorted({k for t in tables for k in t.attributes})
+            raise KeyError(f"no run has the attribute {name!r}; they have {', '.join(have) or 'none'}")
+        return np.array([float(t.attributes.get(name, np.nan)) for t in tables])
 
     def figure(self, y: str | None = None, size=None):
         """The runs' curves of column ``y`` on one axis (a matplotlib Figure)."""
@@ -256,11 +304,8 @@ class RunTables(dict):
         return fig
 
     def plot(self, y: str | None = None):
-        """Draw the runs overlaid (``plt.show()``)."""
-        import matplotlib.pyplot as plt
-
-        self.figure(y)
-        plt.show()
+        """Draw the runs overlaid: below the cell in a notebook, ``plt.show()`` in a script."""
+        _show(self.figure(y))
 
     def _repr_png_(self):
         import io
@@ -290,9 +335,14 @@ class Arrhenius:
     def __init__(self, temperatures, values, name: str = "D"):
         t = np.asarray(temperatures, float)
         v = np.asarray(values, float)
+        if t.shape != v.shape:
+            raise ValueError(f"{t.size} temperatures for {v.size} values")
         ok = np.isfinite(t) & np.isfinite(v) & (v > 0) & (t > 0)
-        if ok.sum() < 2:
-            raise ValueError("an Arrhenius fit needs at least two runs with a temperature and a positive value")
+        if ok.sum() < 2 or len(set(t[ok])) < 2:
+            pairs = ", ".join(f"{a:g} K: {b:.4g}" for a, b in zip(t, v))
+            why = ("an Arrhenius fit needs runs at two or more different temperatures"
+                   if ok.sum() >= 2 else "an Arrhenius fit needs at least two runs with a temperature and a positive value")
+            raise ValueError(f"{why} (got {pairs or 'nothing'})")
         self.temperatures, self.values, self.name = t[ok], v[ok], name
         x, ly = 1.0 / self.temperatures, np.log(self.values)
         if ok.sum() > 2:
@@ -327,6 +377,17 @@ class Arrhenius:
             ax.legend(loc="best")
         return fig
 
+    def plot(self, size=None):
+        """Draw the Arrhenius plot: under a notebook cell (or in Jupyter) it is shown below the
+        cell, wherever the call is in it; in a script ``plt.show()`` opens it."""
+        _show(self.figure(size))
+
+    def savefig(self, path, dpi: int = 300, **kwargs):
+        """Save the Arrhenius plot to ``path`` (PNG, PDF, SVG, ... by its extension)."""
+        from . import plotstyle
+
+        plotstyle.save(self.figure(), path, dpi=dpi, **kwargs)
+
     def _repr_png_(self):
         import io
 
@@ -350,7 +411,9 @@ class Arrhenius:
 def arrhenius(data, values=None, attribute: str = "MeanSquaredDisplacement.diffusion_coefficient") -> Arrhenius:
     """Activation energy from runs at several temperatures. ``data`` is what ``msd(runs)``
     returned (temperatures from each run's thermostat target, else its label; values from
-    ``attribute``), or a list of temperatures (K) with ``values`` beside it."""
+    ``attribute``), a list of temperatures (K) with ``values`` beside it, or ``{temperature: value}``."""
+    if isinstance(data, dict) and not isinstance(data, RunTables) and values is None:
+        return Arrhenius(list(data.keys()), list(data.values()), "value")
     if isinstance(data, RunTables):
         if data.runs is None:
             raise ValueError("these tables do not know their runs; pass temperatures and values")
