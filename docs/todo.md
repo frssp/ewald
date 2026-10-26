@@ -695,6 +695,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- No small windows flash up when `ewald-gui` starts on the owner's Windows PC (fixed by parenting
+  the dock title bar widgets, workbench tab groups and notebook bars before they are shown;
+  `test_startup_shows_no_window_but_the_main_window` checks it on Linux).
 - The large vector figure estimate (D67) on the owner's Windows PC and Mac: render a few thousand
   bonded atoms to SVG and PDF and compare with `python benchmarks/vector_size.py`; the *Large
   vector figure* dialog at 200 % scaling.
