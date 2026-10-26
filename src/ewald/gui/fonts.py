@@ -15,6 +15,7 @@ from pathlib import Path
 
 FONT_DIR = Path(__file__).resolve().parents[1] / "assets" / "fonts"
 _loaded: list[str] = []
+_families: set[str] | None = None   # _known()'s answer: QFontDatabase.families() took 0.1 s on Windows
 
 
 def load_fonts() -> list[str]:
@@ -30,6 +31,8 @@ def load_fonts() -> list[str]:
         if font_id >= 0:
             families += [f for f in QtGui.QFontDatabase.applicationFontFamilies(font_id) if f not in families]
     _loaded.extend(families)
+    global _families
+    _families = None
     return families
 
 
@@ -44,10 +47,13 @@ def _known() -> set[str] | None:
     """Lower-cased families Qt has (bundled, installed), or None without a QGuiApplication."""
     from PySide6 import QtGui
 
+    global _families
     if QtGui.QGuiApplication.instance() is None:
         return None
-    # "IBM Plex Sans [IBM]" when two foundries ship a family; the name alone matches either
-    return {re.sub(r"\s*\[.*\]$", "", f).lower() for f in QtGui.QFontDatabase.families()}
+    if _families is None:
+        # "IBM Plex Sans [IBM]" when two foundries ship a family; the name alone matches either
+        _families = {re.sub(r"\s*\[.*\]$", "", f).lower() for f in QtGui.QFontDatabase.families()}
+    return _families
 
 
 def _system(kind: str) -> str:
