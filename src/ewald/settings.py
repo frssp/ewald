@@ -146,6 +146,10 @@ OPTIONS = (
     Option("viewport.interactive_atoms", 1_000_000, "Atoms while moving",
            "The coarse scene draws every k-th atom so at most this many remain.",
            minimum=1000, maximum=100_000_000),
+    Option("viewport.max_bond_sticks", 8_000_000, "Bond cylinders at most",
+           "Above this many bond cylinders the 3D view leaves the bonds out and says so, instead of "
+           "running out of GPU memory (about 0.6 KB each; a bond whose two halves share a color is "
+           "one cylinder). Pictures and the ray tracer still draw them.", minimum=0, maximum=1_000_000_000),
     Option("viewport.refine_delay", 0.3, "Refine after", "Idle seconds before full detail returns.",
            minimum=0.0, maximum=10.0),
 

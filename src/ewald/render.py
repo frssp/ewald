@@ -655,25 +655,91 @@ def stick_data(cyl):
     axis ("orient"), (length, radius, radius) ("scale", what ``vtkOpenGLStickMapper`` reads), its
     8-bit color ("rgb") and its index ("selection"). The mapper reads that index during picking
     and crashes without it, and only a ``vtkIdTypeArray`` will do (an int64 array from numpy is a
-    ``vtkLongLongArray``)."""
+    ``vtkLongLongArray``).
+
+    The two halves of a bond that meet (``cyl.partner``) and look alike (color, radius, opacity)
+    become one stick from atom to atom: the same picture, half the GPU memory (about 0.6 KB per
+    stick in VTK's mapper) for a crystal of one element."""
     import pyvista as pv
     from vtkmodules.util.numpy_support import numpy_to_vtk
     from vtkmodules.vtkCommonCore import VTK_ID_TYPE
 
-    start, end = cyl.start.astype(np.float32), cyl.end.astype(np.float32)
-    axis = end - start
-    length = np.sqrt(np.einsum("ij,ij->i", axis, axis))
-    unit = np.divide(axis, length[:, None], out=np.tile(np.float32([0, 0, 1]), (cyl.count, 1)), where=length[:, None] > 0)
-    middle = start + end
-    middle *= 0.5
+    first, other = _stick_plan(cyl)
+    n = len(first)
+    middle, unit, scale = (np.empty((n, 3), np.float32) for _ in range(3))
+    rgb = np.empty((n, 3), np.uint8)
+    args = (np.ascontiguousarray(cyl.start, float), np.ascontiguousarray(cyl.end, float),
+            np.ascontiguousarray(cyl.radius, float), np.ascontiguousarray(cyl.rgb, float), first, other,
+            middle, unit, scale, rgb)
+    (_sticks_numba or _sticks_numpy)(*args)
     sticks = pv.PolyData(middle)
     sticks.point_data["orient"] = unit
-    sticks.point_data["scale"] = np.column_stack([length, cyl.radius, cyl.radius]).astype(np.float32)
-    sticks.point_data["rgb"] = (np.clip(cyl.rgb, 0, 1) * 255).astype(np.uint8)
-    ids = numpy_to_vtk(np.arange(cyl.count, dtype=np.int64), deep=True, array_type=VTK_ID_TYPE)
+    sticks.point_data["scale"] = scale
+    sticks.point_data["rgb"] = rgb
+    ids = numpy_to_vtk(np.arange(n, dtype=np.int64), deep=True, array_type=VTK_ID_TYPE)
     ids.SetName("selection")
     sticks.GetPointData().AddArray(ids)
     return sticks
+
+
+def stick_count(actor) -> int:
+    """Sticks an actor made by :func:`add_sticks` draws (0 for any other actor)."""
+    mapper = actor.GetMapper() if hasattr(actor, "GetMapper") else None
+    if mapper is None or not mapper.IsA("vtkOpenGLStickMapper") or mapper.GetInput() is None:
+        return 0
+    return mapper.GetInput().GetNumberOfPoints()
+
+
+def _stick_plan(cyl):
+    """(first, other): one stick per entry, from ``cyl.start[first]`` to ``cyl.start[other]`` (a
+    whole bond) or, where ``other`` is -1, to ``cyl.end[first]`` (a half)."""
+    k = np.arange(cyl.count)
+    p = getattr(cyl, "partner", None)
+    if p is None or not cyl.count:
+        return k, np.full(cyl.count, -1)
+    p = np.asarray(p)
+    q = np.maximum(p, 0)
+    same = (p >= 0) & (cyl.radius == cyl.radius[q]) & (cyl.alpha == cyl.alpha[q]) & np.all(cyl.rgb == cyl.rgb[q], axis=1)
+    pick = ~same | (k < p)          # a lone half, or the first half of a whole bond
+    first = k[pick]
+    other = np.where(same[pick], p[pick], -1)
+    return first, other
+
+
+def _sticks_numpy(start, end, radius, rgb, first, other, middle, unit, scale, out_rgb):  # pragma: no cover - numba fallback
+    a = start[first]
+    b = np.where((other >= 0)[:, None], start[np.maximum(other, 0)], end[first])
+    axis = b - a
+    length = np.sqrt(np.einsum("ij,ij->i", axis, axis))
+    unit[:] = np.divide(axis, length[:, None], out=np.tile([0.0, 0.0, 1.0], (len(first), 1)), where=length[:, None] > 0)
+    middle[:] = 0.5 * (a + b)
+    scale[:] = np.column_stack([length, radius[first], radius[first]])
+    out_rgb[:] = (np.clip(rgb[first], 0, 1) * 255).astype(np.uint8)
+
+
+try:
+    import numba
+
+    @numba.njit(parallel=True, cache=True, nogil=True)
+    def _sticks_numba(start, end, radius, rgb, first, other, middle, unit, scale, out_rgb):  # pragma: no cover - compiled
+        for q in numba.prange(len(first)):
+            k, o = first[q], other[q]
+            ax = np.empty(3)
+            length2 = 0.0
+            for c in range(3):
+                b = start[o, c] if o >= 0 else end[k, c]
+                ax[c] = b - start[k, c]
+                middle[q, c] = 0.5 * (start[k, c] + b)
+                length2 += ax[c] * ax[c]
+                out_rgb[q, c] = np.uint8(min(max(rgb[k, c], 0.0), 1.0) * 255)
+            length = np.sqrt(length2)
+            for c in range(3):
+                unit[q, c] = ax[c] / length if length > 0 else (1.0 if c == 2 else 0.0)
+            scale[q, 0] = length
+            scale[q, 1] = radius[k]
+            scale[q, 2] = radius[k]
+except ImportError:  # pragma: no cover - numba is a core dependency
+    _sticks_numba = None
 
 
 def add_sticks(plotter, cyl, name):

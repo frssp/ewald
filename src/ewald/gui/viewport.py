@@ -22,6 +22,7 @@ from ..render import (
     default_radii,
     needs_depth_peeling,
     setup_camera,
+    stick_count,
 )
 from . import header
 from .application import use_vtk_surface_format, vtk_surface_format  # noqa: F401  (moved there)
@@ -152,6 +153,7 @@ class Viewport(QtWidgets.QWidget):
     hovered = QtCore.Signal(str)         # one-line description of the atom under the cursor, "" for none
     viewBuilt = QtCore.Signal()          # the 3D widget exists now (see ensure_view)
     cameraMoved = QtCore.Signal()        # a render showed another camera (orbit, pan, zoom, a view button)
+    bondsDropped = QtCore.Signal(int)    # the bonds needed this many cylinders, above max_bond_sticks
     lazy_view = True                     # build the 3D widget after the first paint
     uses_vtk = True                      # a pyvistaqt QtInteractor (needs vtk_surface_format)
 
@@ -186,6 +188,7 @@ class Viewport(QtWidgets.QWidget):
         self.detail_mode = "auto"         # 'auto': coarse while moving if a full frame misses target_fps
         self.target_fps = 30.0
         self.interactive_atoms = 1_000_000  # coarse scenes draw at most this many atoms
+        self.max_bond_sticks = 8_000_000  # more bond cylinders are left out (GPU memory)
         self.refine_delay = 0.3           # seconds of idle before the full-detail scene returns
         self._render_time = 0.0           # last full-detail render, seconds
         self._build_time = 0.0            # last full-detail scene build + render, seconds
@@ -784,6 +787,7 @@ class Viewport(QtWidgets.QWidget):
                     scene = scene.copy()
                     scene.bonds, scene.vectors = None, {}
         drawn = build_scene(p, scene, mesh_limit=self.mesh_limit, **kw)
+        self._limit_bonds(p)
         # boundary and replicated images are hovered through the drawn spheres (each knows its real atom)
         atoms = drawn["atoms"].primitive if ("boundary" in kw or "replicate" in kw) and not coarse and "atoms" in drawn else None
         self._boundary_atoms = None if atoms is None else (atoms.centers, atoms.index, atoms.sizes())
@@ -821,6 +825,16 @@ class Viewport(QtWidgets.QWidget):
         if not coarse:
             t2 = time.perf_counter()
             self._render_time, self._build_time = t2 - t1, t2 - t0
+
+    def _limit_bonds(self, p):
+        """Leave the bond sticks out when there are more than ``max_bond_sticks`` (before the first
+        render uploads them: VTK's stick mapper takes about 0.6 KB of GPU memory per stick)."""
+        names = [n for n in p.actors if n == "bonds" or str(n).startswith("bonds:")]
+        count = sum(stick_count(p.actors[n]) for n in names)
+        if count > self.max_bond_sticks:
+            for n in names:
+                p.remove_actor(n, render=False)
+            self.bondsDropped.emit(count)
 
     def refine(self):
         """Replace a coarse scene with full detail (called after ``refine_delay`` of idle)."""

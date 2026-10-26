@@ -3576,6 +3576,23 @@ def test_playback_searches_bonds_off_the_gui_thread(app, monkeypatch):
     w.close()
 
 
+def test_viewport_leaves_out_bonds_above_the_stick_limit(app, cu_fcc):
+    from ewald.gui.viewport import Viewport
+    from ewald.view_style import ViewStyle
+
+    v = Viewport(ViewStyle())
+    v.style.bonds_enabled, v.style.bond_pairs = True, [["Cu", "Cu", 0.0, 2.8]]
+    v.sphere_drawing, v.mesh_limit = "impostor", 10   # sticks, as for a big system
+    dropped = []
+    v.bondsDropped.connect(dropped.append)
+    v.set_data(cu_fcc)
+    assert "bonds" in v.plotter.actors and not dropped
+    v.max_bond_sticks = 5
+    v.set_data(cu_fcc)
+    assert "bonds" not in v.plotter.actors and dropped and dropped[0] > 5
+    v.close()
+
+
 def test_notebook_undo_redo_from_the_edit_menu(app, cu_path):
     from ewald import settings
     from ewald.gui.app import MainWindow
