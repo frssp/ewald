@@ -152,6 +152,39 @@ def test_view_tab_opens_no_window_and_keeps_its_cards_over_neb_frames(app, vasp_
     _dispose(panel)
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_startup_shows_no_window_but_the_main_window(app, tmp_path):
+    """Small windows flashed up at every start on Windows: the dock title bars, the workbench tab
+    groups and the notebook's banner were made visible before they had a parent, so each was its
+    own window for a moment. Building the window, opening a notebook and showing it shows only
+    the main window."""
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    shown = []
+
+    class Spy(QtCore.QObject):
+        def eventFilter(self, obj, ev):
+            if ev.type() == QtCore.QEvent.Show and isinstance(obj, QtWidgets.QWidget) and obj.isWindow():
+                shown.append(f"{type(obj).__name__} {obj.objectName()!r}")
+            return False
+
+    path = tmp_path / "nb.py"
+    path.write_text(f"# %%\nfrom ewald import load\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n",
+                    encoding="utf-8")
+    spy = Spy()
+    app.installEventFilter(spy)
+    try:
+        w = MainWindow(settings=settings.Settings())
+        view = w.panel.open_notebook(str(path))          # restricted: shows its banner
+        w.show()
+        app.processEvents()
+    finally:
+        app.removeEventFilter(spy)
+    assert view.banner.isVisible()
+    assert shown == ["MainWindow ''"], shown
+
+
 def test_view_tab_trajectory_color_map(app, pipe):
     """The Elements card colors trajectory lines with a color map over a Time window or a trail; the values
     go into the style (and so the view cell) and the viewport draws them with a color bar."""

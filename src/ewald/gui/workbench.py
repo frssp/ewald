@@ -601,9 +601,7 @@ class Workbench(QtWidgets.QWidget):
 
     def _build(self, node):
         if isinstance(node, Group):
-            tg = self._groups[node.id]
-            tg.show()
-            return tg
+            return self._groups[node.id]  # shown by the caller once it has a parent
         sp = QtWidgets.QSplitter(QtCore.Qt.Horizontal if node.orient == "h" else QtCore.Qt.Vertical)
         sp.setChildrenCollapsible(False)
         sp.setHandleWidth(7)  # theme.py draws a 1 px rule and a grip in it
@@ -611,6 +609,7 @@ class Workbench(QtWidgets.QWidget):
             w = self._build(c)
             w.setMinimumSize(160, 90)
             sp.addWidget(w)
+            w.show()  # not before: a parentless widget made visible flashes up as its own window
         sp.setSizes([max(int(s * 1000 / (sum(node.sizes) or 1)), 1) for s in node.sizes])
         sp.splitterMoved.connect(self._schedule_sync)
         self._splitters.append((sp, node))
