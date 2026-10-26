@@ -59,7 +59,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   (1M Cu atoms: about 10 s down to 2-3 s), and the two halves of a bond in one color are one stick
   (half the GPU memory, same picture). Above Preferences › 3D view › Performance › *Bond
   cylinders at most* (`viewport.max_bond_sticks`, 8M) the view leaves bonds out and says so
-  instead of running out of GPU memory. `Cylinders.partner` pairs the halves of a bond. (#N)
+  instead of running out of GPU memory. `Cylinders.partner` pairs the halves of a bond. (#95)
 
 - New app icon: an ammonia molecule with a glass lone-pair lobe over an orange chat bubble
   (replaces the Ewald sphere).
