@@ -141,6 +141,23 @@ def test_rebinding_the_pipeline_reruns_the_cells_below(nb):
     assert [m.name for m in nb.pipeline.modifiers] == ["CoordinationAnalysis", "ExpressionSelection"]
 
 
+def test_on_cell_hears_each_cell_start_and_end_one_at_a_time(nb):
+    """The GUI marks the running cell from ``on_cell``: one cell runs at a time, also when a
+    rebound ``pipe`` makes the cells below run again."""
+    events = []
+    nb.on_cell = lambda cell, running: events.append((nb.cells.index(cell), running))
+    nb.run_all()
+    code = [k for k, c in enumerate(nb.cells) if c.kind == "code"]
+    assert events == [(k, on) for k in code for on in (True, False)]
+    events.clear()
+    nb.run_cell(1)                           # rebinds pipe: the cells below run after it ended
+    assert events[:2] == [(1, True), (1, False)] and len(events) > 2
+    assert all(events[k][1] and not events[k + 1][1] and events[k][0] == events[k + 1][0]
+               for k in range(0, len(events), 2))
+    nb.on_cell = lambda cell, running: (_ for _ in ()).throw(RuntimeError("tab closed"))
+    assert nb.run_cell(1, run_below=False) and nb.on_cell is None   # a closed tab is forgotten
+
+
 def test_add_step_update_move_and_delete(nb):
     nb.run_all()
     pipe = nb.pipeline

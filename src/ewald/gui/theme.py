@@ -347,8 +347,13 @@ QPushButton#pluginButton {{ border-radius: 6px; padding: 3px 12px; }}
 QFrame#cell[current="true"] {{ border-color: {accent}; }}
 QFrame#cell[state="error"] {{ border-color: {error}; }}
 QFrame#cell[state="stale"] {{ background: {panel}; }}
-QFrame#cell[state="running"] {{ border-color: {data}; }}
-QFrame#cell[state="running"] QLabel#cellCounter {{ color: {data}; font-weight: 600; }}
+/* the cell that runs: accent border, a bar on its left (painted by CellWidget), stop button with a
+   turning ring and its time in the counter; cells waiting their turn keep a muted bar and '*' */
+QFrame#cell[state="running"] {{ border-color: {accent}; }}
+QFrame#cell[state="running"] QLabel#cellCounter {{ color: {accent}; font-weight: 600; font-size: 10px; }}
+QToolButton#runningChip {{ background: {accent_soft}; color: {accent}; border: 1px solid {accent}; border-radius: 10px;
+    padding: 1px 9px; font-weight: 600; }}
+QToolButton#runningChip:hover {{ background: {hover}; }}
 QFrame#cell[state="error"] QLabel#cellCounter {{ color: {error}; }}
 QWidget#cellGutter, QWidget#cellTools, QWidget#cellContent, QLabel#cellImage {{ background: transparent; }}
 /* what a cell printed or returned: its own area under the code, set off by a rule */

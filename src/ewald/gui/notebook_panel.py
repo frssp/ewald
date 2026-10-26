@@ -99,6 +99,17 @@ class _CellWorker(QtCore.QThread):
             traceback.print_exc()
 
 
+def run_time(seconds: float) -> str:
+    """How long a cell has run, for the toolbar chip: ``3.2 s``, ``42 s``, ``2:05``, ``1:02:05``."""
+    s = max(0.0, seconds)
+    if s < 10:
+        return f"{s:.1f} s"
+    if s < 60:
+        return f"{int(s)} s"
+    m, sec = divmod(int(s), 60)
+    return f"{m}:{sec:02d}" if m < 60 else f"{m // 60}:{m % 60:02d}:{sec:02d}"
+
+
 def _cells_draw_off_screen():
     """pyplot in cells draws with Agg: the cells run on a worker thread, where a Qt figure window
     must not be created (plt.show() only marks figures for the cell's output anyway). The app's own
@@ -119,6 +130,8 @@ class NotebookView(QtWidgets.QWidget):
     pipRequested = QtCore.Signal(list)        # pip requirements of plugins the notebook needs
     plotCreated = QtCore.Signal(object)       # a new live PlotsPanel (view cell or show() output)
     _liveOutput = QtCore.Signal(object)       # a running cell's outputs changed (sent from the cell's thread)
+    _cellRun = QtCore.Signal(object, bool)    # a cell started (True) or ended (False) (from the cell's thread)
+    follow_running = "follow"                 # python.follow_running: scroll to the running cell, or "never"
 
     def __init__(self, notebook: Notebook, parent=None):
         super().__init__(parent)
@@ -126,6 +139,14 @@ class NotebookView(QtWidgets.QWidget):
         # what a running cell prints or shows appears while it runs (progress bars, downloads)
         self._liveOutput.connect(self._show_live_output, QtCore.Qt.QueuedConnection)
         notebook.on_output = self._liveOutput.emit
+        self._cellRun.connect(self._cell_run, QtCore.Qt.QueuedConnection)
+        notebook.on_cell = self._cellRun.emit
+        self._queued: list = []       # cells of this run still waiting
+        self._now = None              # the cell running now, and since when (time.monotonic())
+        self._started = None
+        self._run_following = True    # False once you scroll during the run
+        self._run_timer = QtCore.QTimer(self, interval=80)
+        self._run_timer.timeout.connect(self._tick)
         self.history = History(notebook)  # Edit › Undo/Redo, one entry per action below
         self.widgets: list[CellWidget] = []
         self.current = None      # also sets the anchor: with Shift+Up/Down or Shift+click, the cells
@@ -161,6 +182,13 @@ class NotebookView(QtWidgets.QWidget):
         self.interrupt_button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
         self.interrupt_button.clicked.connect(self.interrupt)
         self.interrupt_button.setVisible(False)
+        # which cell runs, how long it has run and how many wait; click: go to it
+        self.running_chip = QtWidgets.QToolButton(objectName="runningChip")
+        self.running_chip.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        self.running_chip.setCursor(QtCore.Qt.PointingHandCursor)
+        self.running_chip.setToolTip("Show the running cell")
+        self.running_chip.clicked.connect(lambda: self._now is not None and self.reveal(self._now))
+        self.running_chip.setVisible(False)
         self.py_button = QtWidgets.QToolButton(text="Python file", checkable=True,
                                             toolTip="Show the notebook as its Python file (percent format)")
         self.py_button.toggled.connect(self._show_file)
@@ -181,6 +209,7 @@ class NotebookView(QtWidgets.QWidget):
         bar.addWidget(self.step_button)
         bar.addWidget(restart)
         bar.addWidget(self.interrupt_button)
+        bar.addWidget(self.running_chip)
         bar.addWidget(self.kernel_button)
         self.status = _ElidedLabel(objectName="muted")
         bar.addWidget(self.status, 1)
@@ -210,6 +239,9 @@ class NotebookView(QtWidgets.QWidget):
         self.drop_line.hide()
         self.stack.addWidget(self.scroll)
         self.ai_follow = AiFollow(self)   # how the scroll follows the cells the AI chat writes
+        bar = self.scroll.verticalScrollBar()
+        bar.actionTriggered.connect(self._scrolled_while_running)   # wheel, drag, keys
+        bar.valueChanged.connect(lambda *_: self.running and self._update_chip())
         self.file_view = CodeEditor()
         self.file_view.setReadOnly(True)
         self.file_view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
@@ -480,6 +512,8 @@ class NotebookView(QtWidgets.QWidget):
             self.anchor = anchor
         self._mark_current()
         self.update_results()
+        if self.running:   # cells rebuilt while they run (the AI inserted one): keep the marks
+            self._mark_running()
         if focused is not None:
             self._restore_focus(*focused)
 
@@ -976,7 +1010,9 @@ class NotebookView(QtWidgets.QWidget):
         if self.notebook.kernel is None:
             _cells_draw_off_screen()
         worker = self._worker = workers.detach(_CellWorker(fn))  # survives closing the tab
-        self._show_running(marked)
+        self._queued = [c for c in marked if c.kind != "markdown"]
+        self._now, self._started, self._run_following = None, None, True
+        self._mark_running()
         done = []
 
         def finished():
@@ -1006,12 +1042,81 @@ class NotebookView(QtWidgets.QWidget):
         else:
             self._set_running(True)
 
-    def _show_running(self, cells):
-        """Mark the cells about to run (counter ``*``, like Jupyter) until their results arrive."""
-        for c in cells:
+    def _mark_running(self):
+        """Mark the cells of this run: waiting (``*``, like Jupyter) or running now."""
+        for c in self._queued:
             w = self.widget_for(c)
-            if w is not None and c.kind != "markdown":
-                w.set_running()
+            if w is not None:
+                w.set_running("queued")
+        w = self.widget_for(self._now) if self._now is not None else None
+        if w is not None:
+            w.set_running("running", self._started)
+
+    def _cell_run(self, cell, running: bool):
+        """A cell of this run started or ended (:attr:`ewald.notebook.Notebook.on_cell`)."""
+        import time
+
+        if not self.running:   # a run that ended within CELL_BUDGET: its results are drawn already
+            return
+        w = self.widget_for(cell)
+        if running:
+            self._queued = [c for c in self._queued if c is not cell]
+            self._now, self._started = cell, time.monotonic()
+            if w is not None:
+                w.set_running("running", self._started)
+                self._follow_running(cell)
+        else:
+            if self._now is cell:
+                self._now, self._started = None, None
+            if w is not None:
+                w.update_state(self.data)
+        self._update_chip()
+
+    def _follow_running(self, cell):
+        """Python › Follow the running cell: scroll to a cell that starts off screen, until you scroll."""
+        if self.follow_running != "follow" or not self._run_following or self.ai_follow.active:
+            return   # an AI answer scrolls as Preferences › AI › Follow the AI's cells says
+        if not self.ai_follow.visible(cell):
+            w = self.widget_for(cell)
+            QtCore.QTimer.singleShot(0, self, lambda: w is not None and workers.alive(w)
+                                     and self.scroll.ensureWidgetVisible(w, 0, 24))
+
+    def _scrolled_while_running(self, *_):
+        if self.running:
+            self._run_following = False
+
+    def _tick(self):
+        w = self.widget_for(self._now) if self._now is not None else None
+        if w is not None:
+            w.tick()
+        self._update_chip()
+
+    def _update_chip(self):
+        """The toolbar chip: "Cell 4 · 3.2 s · 5 waiting", with an arrow when the cell is off screen."""
+        import time
+
+        chip, cell = self.running_chip, self._now
+        if not self.running or cell is None or cell not in self.notebook.cells:
+            chip.setVisible(self.running and bool(self._queued))
+            chip.setText(f"{len(self._queued)} waiting")
+            chip.setIcon(QtGui.QIcon())
+            return
+        n = self.notebook.cells.index(cell) + 1
+        parts = [f"Cell {n}", run_time(time.monotonic() - self._started)]
+        if self._queued:
+            parts.append(f"{len(self._queued)} waiting")
+        text = " · ".join(parts)
+        if chip.text() != text:
+            chip.setText(text)
+        arrow = None
+        w = self.widget_for(cell)
+        if w is not None and not self.ai_follow.visible(cell):
+            vp = self.scroll.viewport()
+            arrow = "arrow_down" if w.mapTo(vp, QtCore.QPoint(0, 0)).y() > 0 else "arrow_up"
+        if chip.property("ewald_icon") != arrow:
+            chip.setProperty("ewald_icon", arrow)
+            chip.setIcon(icon(arrow, TOKENS["accent"]) if arrow else QtGui.QIcon())
+        chip.setVisible(True)
 
     def _set_running(self, on: bool):
         for w in (self.run_all_button, self.restart_button, self.kernel_button):
@@ -1020,8 +1125,16 @@ class NotebookView(QtWidgets.QWidget):
         if on:
             kernel = self.notebook.kernel
             self.status.setText(f"Running in {kernel.display_name}…" if kernel is not None else "Running…")
-        for w in self.widgets:
-            w.update_state(self.data)
+            self._mark_running()   # the marks stay until each cell's result arrives
+            self._update_chip()
+            self._run_timer.start()
+        else:
+            self._run_timer.stop()
+            self._queued, self._now, self._started = [], None, None
+            self.running_chip.setVisible(False)
+            for w in self.widgets:
+                w.update_state(self.data)
+        self.titleChanged.emit()   # the tab shows that this notebook runs
 
     def interrupt(self):
         """Stop the running cell, like Jupyter's ■ (:meth:`ewald.notebook.Notebook.interrupt`)."""
@@ -1239,6 +1352,7 @@ COMMAND_ACTIONS = {
     "merge": lambda v, c: v.merge_cells(v._group(c)),
     "run": lambda v, c: v.run_cells(v._group(c)),
     "run:advance": lambda v, c: v.run_cells(v._group(c), advance=True),
+    "interrupt": lambda v, c: v.interrupt(),   # a running cell's stop button
 }
 
 
@@ -1360,7 +1474,11 @@ class NotebookPanel(QtWidgets.QWidget):
         i = self.tabs.indexOf(view)
         if i >= 0:
             self.tabs.setTabText(i, view.notebook.name + (" ●" if view.notebook.dirty else ""))
-            self.tabs.setTabToolTip(i, view.notebook.path or "not saved")
+            self.tabs.setTabToolTip(i, (view.notebook.path or "not saved") + ("\nRunning" if view.running else ""))
+            running = bool(view.running)
+            if self.tabs.tabBar().tabData(i) != running:   # a play icon while its cells run
+                self.tabs.tabBar().setTabData(i, running)
+                self.tabs.tabBar().setTabIcon(i, icon("play", TOKENS["accent"]) if running else QtGui.QIcon())
 
     def _is_blank(self, view) -> bool:
         nb = view.notebook

@@ -815,6 +815,46 @@ def apply_view_args(p, args: dict, data, pipeline=None, applied=None):
     return view
 
 
+def elapsed_text(seconds: float) -> str:
+    """A running cell's time in at most four characters, for the counter under its run button
+    (the toolbar chip has tenths)."""
+    s = max(0.0, seconds)
+    if s < 600:
+        return f"{int(s)}s"
+    if s < 3600:
+        return f"{int(s // 60)}m"
+    return f"{int(s // 3600)}h"
+
+
+class _RunRing(QtWidgets.QWidget):
+    """A turning accent arc around a running cell's stop button (painted, so no font glyph)."""
+
+    PERIOD = 1.2   # seconds per turn
+
+    def __init__(self, button):
+        super().__init__(button)
+        self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        self.setGeometry(button.rect())
+        self.hide()
+
+    def paintEvent(self, event):
+        import time
+
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        rect = QtCore.QRectF(self.rect()).adjusted(2, 2, -2, -2)
+        track = QtGui.QColor(TOKENS["accent"])
+        track.setAlphaF(0.22)
+        p.setPen(QtGui.QPen(track, 2))
+        p.drawEllipse(rect)
+        pen = QtGui.QPen(QtGui.QColor(TOKENS["accent"]), 2)
+        pen.setCapStyle(QtCore.Qt.RoundCap)
+        p.setPen(pen)
+        turn = (time.monotonic() % self.PERIOD) / self.PERIOD
+        p.drawArc(rect, int(-turn * 360 * 16), 100 * 16)   # Qt angles: 1/16 degree, counterclockwise
+        p.end()
+
+
 class CellWidget(QtWidgets.QFrame):
     """One cell: gutter (run button, counter) and the code, markdown or step body."""
 
@@ -849,7 +889,9 @@ class CellWidget(QtWidgets.QFrame):
         self.run_button = header.button("play", native_text("Run cell (Ctrl+Enter)"), name="cellRun")
         self.run_button.setProperty("ewald_icon_color", "accent")
         self.run_button.setIcon(icon("play", TOKENS["accent"]))
-        self.run_button.clicked.connect(lambda: self.runRequested.emit(self.cell, False))
+        self.run_button.clicked.connect(self._run_clicked)
+        self.ring = _RunRing(self.run_button)
+        self.started = None   # time.monotonic() when this cell started running, while it runs
         self.counter = QtWidgets.QLabel(objectName="cellCounter")
         self.counter.setFont(mono_font())
         self.counter.setAlignment(QtCore.Qt.AlignCenter)
@@ -1363,6 +1405,8 @@ class CellWidget(QtWidgets.QFrame):
     # ----------------------------------------------------------- state
     def update_state(self, data=None):
         c = self.cell
+        if self.started is not None or self.property("state") == "queued":
+            self._set_run_button(False)
         self.counter.setText({"new": "", "stale": "·"}.get(c.state, str(c.count) if c.count else ""))
         self.counter.setToolTip({"new": "Not run yet", "stale": "Out of date: an earlier cell changed",
                                  "error": "Failed"}.get(c.state, f"Run {c.count}" if c.count else ""))
@@ -1433,12 +1477,62 @@ class CellWidget(QtWidgets.QFrame):
             outs = [o for o in outs if o.kind in ("text", "error") or (o.kind == "rich" and o.display_id)]
         self.outputs.set_outputs(outs)
 
-    def set_running(self):
-        self.counter.setText("*")
-        self.counter.setToolTip("Running")
-        self.setProperty("state", "running")
+    def set_running(self, phase: str = "running", started: float | None = None):
+        """Show that this cell runs now (``running``: an accent bar on its left, the run button
+        turns into Interrupt with a turning ring, the counter counts the time) or waits for the
+        cells before it (``queued``: a muted bar and ``*``, like Jupyter's queue)."""
+        import time
+
+        running = phase == "running"
+        self._set_run_button(running, started if started is not None else time.monotonic())
+        self.counter.setText(elapsed_text(time.monotonic() - self.started) if running else "*")
+        self.counter.setToolTip("Running: the stop button above interrupts it" if running
+                                else "Waiting for the cells before it")
+        self.setProperty("state", phase)
         self._repolish()
         self.counter.repaint()
+
+    def tick(self):
+        """Advance the ring and the time of a running cell (the notebook's run timer)."""
+        if self.started is None:
+            return
+        import time
+
+        text = elapsed_text(time.monotonic() - self.started)
+        if self.counter.text() != text:
+            self.counter.setText(text)
+        self.ring.update()
+
+    def _set_run_button(self, running: bool, started: float | None = None):
+        self.started = started if running else None
+        name = "stop" if running else "play"
+        self.run_button.setProperty("ewald_icon", name)
+        self.run_button.setIcon(icon(name, TOKENS["accent"]))
+        self.run_button.setToolTip("Interrupt: stop the running cell" if running else native_text("Run cell (Ctrl+Enter)"))
+        self.ring.setGeometry(self.run_button.rect())
+        self.ring.setVisible(running)
+
+    def _run_clicked(self):
+        if self.started is not None:
+            self.actionRequested.emit(self.cell, "interrupt")
+        else:
+            self.runRequested.emit(self.cell, False)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        state = self.property("state")
+        if state not in ("running", "queued"):
+            return
+        # the bar left of the gutter: which cell runs (accent) and which wait (muted)
+        color = QtGui.QColor(TOKENS["accent"] if state == "running" else TOKENS["muted"])
+        if state == "queued":
+            color.setAlphaF(0.45)
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        p.setPen(QtCore.Qt.NoPen)
+        p.setBrush(color)
+        p.drawRoundedRect(QtCore.QRectF(1.5, 7, 3, max(0, self.height() - 14)), 1.5, 1.5)
+        p.end()
 
     def set_current(self, on: bool):
         self.setProperty("current", on)

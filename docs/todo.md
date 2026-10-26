@@ -10,6 +10,9 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## Next
 
+- Running-cell marks in a kernel notebook: when a cell rebinds `pipe` and the cells below run
+  again inside the kernel, only the first cell is marked as running (the kernel reports the rest
+  when they are all done); the kernel bridge could send a start message per cell.
 - Trajectory tubes (`trajectory_style="tube"`): the vector renderer paints each piece at the depth
   of its start (painter's algorithm), so a piece that ends inside an atom nearer the camera than its
   start can cover that atom, as lines do there; sorting by the far end or splitting pieces at atom
@@ -694,6 +697,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `vaspout.h5` `/results/partial_charges` (PARCHG).
 
 ## Verify outside the cloud container
+
+- The running-cell marks on the owner's Windows PC at 200 % scaling: the elapsed time fits
+  under the stop button, the ring turns smoothly, the tab's play icon shows.
 
 - The large vector figure estimate (D67) on the owner's Windows PC and Mac: render a few thousand
   bonded atoms to SVG and PDF and compare with `python benchmarks/vector_size.py`; the *Large
