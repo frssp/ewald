@@ -13,7 +13,8 @@ For each size and bond setting it reports:
 - **rotate**: frame times of full-detail renders while the camera turns (what the view shows when
   the mouse stops), and of the coarse level of detail the view switches to while dragging;
 - **frame switch**: ``set_data`` of other frames of the same atoms plus their render, as when
-  playing or scrubbing a trajectory (file reading is not included; see docs/developer/readers.md);
+  playing or scrubbing a trajectory, after the bond search the main window's compute worker
+  does off the GUI thread (timed apart; file reading is not included, see docs/developer/readers.md);
 - the OpenGL driver, the process memory, and how many cylinders (half-bonds) the GPU holds.
 
 Each render waits for the GPU to finish, so the numbers are real frame times. ``-o`` writes them
@@ -137,9 +138,16 @@ def run_case(qapp, view, make_frame, bonds: bool, rotate: int, switches: int) ->
         t = time.perf_counter()
         find_bonds(extra, pairs=style.scene_kwargs()["bond_pairs"])
         out["bond_search_s"] = time.perf_counter() - t
-    sets, renders = [], []
+    sets, renders, worker = [], [], []
+    pairs = style.scene_kwargs().get("bond_pairs")
     for _ in range(switches):
         data = make_frame()
+        if pairs:  # what the main window's compute worker does after reading a frame (off the GUI thread)
+            from ewald.render import scene_bonds
+
+            t = time.perf_counter()
+            scene_bonds(data, None, pairs)
+            worker.append(time.perf_counter() - t)
         t = time.perf_counter()
         view.set_data(data, interactive=True)
         sets.append(time.perf_counter() - t)
@@ -147,6 +155,7 @@ def run_case(qapp, view, make_frame, bonds: bool, rotate: int, switches: int) ->
     out["switch_set_data_s"] = float(np.mean(sets))
     out["switch_render_s"] = float(np.mean(renders))
     out["switch_total_s"] = out["switch_set_data_s"] + out["switch_render_s"]
+    out["switch_worker_s"] = float(np.mean(worker)) if worker else 0.0
     out["memory_mb"], out["peak_memory_mb"] = memory_mb()
     return out
 
@@ -159,8 +168,9 @@ def report(r: dict):
     for key, label in (("rotate_full", "rotate (full detail)"), ("rotate_coarse", "rotate (while dragging)")):
         s = r[key]
         print(f"  {label:<24s} {s['fps']:7.1f} fps   mean {s['mean_ms']:7.1f} ms   p95 {s['p95_ms']:7.1f} ms")
-    print(f"  frame switch {r['switch_total_s']:7.3f} s (set_data {r['switch_set_data_s']:.3f} s"
-          f" + render {r['switch_render_s']:.3f} s)")
+    print(f"  frame switch {r['switch_total_s']:7.3f} s on the GUI thread (set_data {r['switch_set_data_s']:.3f} s"
+          f" + render {r['switch_render_s']:.3f} s)"
+          + (f", {r['switch_worker_s']:.3f} s before it on the worker" if r.get("switch_worker_s") else ""))
     if r["peak_memory_mb"] is not None:
         print(f"  peak memory {r['peak_memory_mb']:.0f} MB")
     sys.stdout.flush()

@@ -55,10 +55,22 @@ Measured on 2026-10-26 in the container (4 cores, llvmpipe, 1280x800), before th
 | phase | what | state |
 | --- | --- | --- |
 | 0 | `benchmarks/viewport.py` | done |
-| 1 | frame switches keep the actors and replace coordinates and colors; bond search and reading ahead off the GUI thread | next |
+| 1 | bond search and reading ahead off the GUI thread; numba kernels release the GIL; faster color legend | done |
 | 2 | lighter bonds: half-bond geometry, caps and stick input in numba, one stick for a bond whose atoms share a color, a GPU memory budget instead of an out-of-memory driver | next |
 | 3 | an own GPU bond renderer: positions in a texture buffer, bonds as atom index pairs, both colors in the shader | after the Arc numbers |
 | 4 | culling (blocks off screen, hidden interior atoms of opaque bulk) and distance level of detail | after the Arc numbers |
+
+Phase 1 also measured whether frame switches should keep the actors and replace only their
+arrays: for 1M atoms without bonds, `Viewport.set_data` (scene and actors) takes 0.08 s once the
+color legend no longer loops over the atoms in Python, against 0.9 s of llvmpipe render, and a
+reused actor uploads the same buffers. So actors are still rebuilt; the time with bonds is in
+the half-bond geometry and stick input, which phase 2 takes on.
+
+The main window's compute worker (`gui/compute.py`) now also searches the bonds the 3D view will
+draw (`MainWindow._view_prepare`), so the GUI thread finds them in `bonds.cached_bonds`, and during
+playback it computes the next frame (`Timeline.next_frame`) into the pipeline's cache while the
+current one is drawn. The neighbor-list kernels are compiled with `nogil=True`, so the window keeps
+painting while the worker searches.
 
 Constraints for every phase: OpenGL 3.2 core features only (texture buffers, instancing and
 geometry shaders, no compute shaders or SSBOs; macOS stops at 4.1); bond ends look the same in

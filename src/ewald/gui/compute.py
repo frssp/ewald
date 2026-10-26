@@ -7,6 +7,11 @@ the timeline never queues stale work. Results arrive through the ``finished`` si
 thread. A request that finishes within ``budget`` seconds is returned synchronously instead, so
 small systems update in the same event-loop turn as before, without a flicker of the "computing"
 state.
+
+``prepare`` runs on the worker right after a frame is computed (the main window searches the
+bonds the 3D view will draw there, so the GUI thread finds them in ``bonds.cached_bonds``), and
+``prefetch`` names a frame to compute after it while nothing newer is asked for, so playback
+finds the next frame in the pipeline's cache.
 """
 from __future__ import annotations
 
@@ -39,6 +44,8 @@ class Job:
     data: object = None
     error: BaseException | None = None
     seconds: float = 0.0
+    prepare: object = None               # callable(data), run on the worker after computing
+    prefetch: int | None = None          # frame to compute next, while no newer job comes
 
     @property
     def cancelled(self) -> bool:
@@ -55,6 +62,7 @@ class ComputeRunner(QtCore.QObject):
         super().__init__(parent)
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ewald-compute")
         self._current: Job | None = None
+        self._ahead: Job | None = None   # the read-ahead job running now
         self._generation = 0
         self._busy = False
         self._done.connect(self._deliver, QtCore.Qt.QueuedConnection)
@@ -70,13 +78,18 @@ class ComputeRunner(QtCore.QObject):
         return self._busy
 
     def request(self, pipeline, frame: int, device=None, interactive: bool = False,
-                budget: float | None = ...) -> Job | None:
+                budget: float | None = ..., prepare=None, prefetch: int | None = None) -> Job | None:
         """Start computing ``frame``; cancel whatever ran before. Returns the finished job when
         it completes within ``budget`` seconds (default :data:`BUDGET`), else None and the job
-        comes later through ``finished``."""
+        comes later through ``finished``. ``prepare(data)`` runs on the worker after the frame
+        is computed; ``prefetch`` is computed (and prepared) after it unless a newer request
+        comes first."""
         self.cancel()
+        ahead = self._ahead
+        if ahead is not None and not (ahead.pipeline is pipeline and ahead.frame == frame):
+            ahead.cancel.set()  # reading ahead a frame nobody wants any more
         self._generation += 1
-        job = Job(pipeline, frame, device, interactive, self._generation)
+        job = Job(pipeline, frame, device, interactive, self._generation, prepare=prepare, prefetch=prefetch)
         self._current = job
         future = self._pool.submit(self._run, job)
         budget = BUDGET if budget is ... else budget
@@ -109,6 +122,8 @@ class ComputeRunner(QtCore.QObject):
 
     def shutdown(self):
         self.cancel()
+        if self._ahead is not None:
+            self._ahead.cancel.set()
         self._pool.shutdown(wait=True, cancel_futures=True)
 
     # ------------------------------------------------------------ worker side
@@ -125,7 +140,34 @@ class ComputeRunner(QtCore.QObject):
                 job.error = exc
                 traceback.print_exc()
             job.seconds = time.perf_counter() - t
+            self._prepare(job)
         self._done.emit(job)
+        if job.prefetch is not None and job.error is None:
+            self._pool.submit(self._read_ahead, job)  # its own task: request() waits for this job only
+
+    @staticmethod
+    def _prepare(job: Job):
+        if job.prepare is not None and job.data is not None and not job.cancel.is_set():
+            try:
+                job.prepare(job.data)
+            except Exception:  # noqa: BLE001 - only a head start; the GUI thread redoes it and reports
+                pass
+
+    def _read_ahead(self, job: Job):
+        """Compute ``job.prefetch`` into the pipeline's cache (worker thread)."""
+        if job.generation != self._generation:  # a newer request is queued behind: let it run
+            return
+        ahead = Job(job.pipeline, job.prefetch, job.device, True, job.generation, prepare=job.prepare)
+        self._ahead = ahead
+        if job.generation != self._generation:  # a request came in between: it saw no read-ahead
+            ahead.cancel.set()
+        try:
+            ahead.data = ahead.pipeline.compute(ahead.frame, device=ahead.device, errors="skip", cancel=ahead.cancel)
+            self._prepare(ahead)
+        except Exception:  # noqa: BLE001 - cancelled, or the frame fails: its own request reports it
+            pass
+        finally:
+            self._ahead = None
 
     # ------------------------------------------------------------ GUI side
     def _deliver(self, job: Job):
