@@ -474,6 +474,7 @@ _SECTION_KEYS = {
     "Colors": ("color_by", "colormap", "color_range"),
     "Types": ("colors", "radii", "transparency"),
     "Bonds": ("bonds", "bond_radius", "bond_pairs", "bond_factor"),
+    "Polyhedra": ("surfaces",),
     "Surfaces": ("surfaces",),
     "Cell": ("cell", "cell_width", "cell_color", "replicate", "replicate_cell", "boundary", "boundary_bonds"),
     "Labels": ("labels", "selection"),
@@ -482,6 +483,7 @@ _SECTION_KEYS = {
                  "trajectory_color_range", "trajectory_time_range", "trajectory_trail", "trajectory_style",
                  "trajectory_radius"),
 }
+POLYHEDRA = "coordination-polyhedra"   # the data.surfaces mesh CoordinationPolyhedra writes
 # widest form label of the View tab: every card's label column is this wide, so fields line up
 _LABEL_WIDEST = "Sphere detail"
 
@@ -496,7 +498,7 @@ def _label_text(labels) -> str:
 
 
 class DisplayPanel(QtWidgets.QWidget):
-    """The View tab: how the structure is drawn, as foldable cards (Atoms, Types, Bonds, Surfaces, Cell,
+    """The View tab: how the structure is drawn, as foldable cards (Atoms, Types, Bonds, Polyhedra, Surfaces, Cell,
     Labels, Camera, Elements) in equal-width columns below the 3D view, one column when the tab is
     narrow. Every form shares one label column width so fields line up across cards. Every value is a
     ``pipe.view`` setting; the ones the notebook's view cell sets are marked, and a change made
@@ -504,6 +506,7 @@ class DisplayPanel(QtWidgets.QWidget):
 
     styleChanged = QtCore.Signal()               # visual elements changed -> redraw only
     modifierRequested = QtCore.Signal(object)    # e.g. "Use as Create bonds modifier": a notebook step
+    stepRequested = QtCore.Signal(object)        # Polyhedra › Edit step: show that modifier's cell and form
     cameraRequested = QtCore.Signal()            # Camera › Save camera: write it into the view cell
 
     def __init__(self, style=None, parent=None):
@@ -571,7 +574,7 @@ class DisplayPanel(QtWidgets.QWidget):
         flow.setContentsMargins(10, 10, 10, 10)
         self.sections = {}
         builders = {"Atoms": self._particles_editor, "Colors": self._colors_editor, "Types": self._types_editor, "Bonds": self._bonds_editor,
-                    "Surfaces": self._surfaces_editor, "Cell": self._cell_editor, "Labels": self._labels_editor,
+                    "Polyhedra": self._polyhedra_editor, "Surfaces": self._surfaces_editor, "Cell": self._cell_editor, "Labels": self._labels_editor,
                     "Camera": self._camera_editor, "Elements": self._elements_editor}
         for title in _SECTION_KEYS:
             card = self._section(title, builders[title]())
@@ -1033,9 +1036,10 @@ class DisplayPanel(QtWidgets.QWidget):
         w = QtWidgets.QWidget()
         lay = QtWidgets.QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
-        names = [] if self.data is None else [n for n, m in getattr(self.data, "surfaces", {}).items() if m.face_count]
+        names = [] if self.data is None else [n for n, m in getattr(self.data, "surfaces", {}).items()
+                                               if m.face_count and n != POLYHEDRA]
         if not names:
-            lay.addWidget(QtWidgets.QLabel("Polyhedra, isosurfaces and slices that steps make appear here.",
+            lay.addWidget(QtWidgets.QLabel("Isosurfaces and slices that steps make appear here.",
                                            objectName="muted", wordWrap=True))
             return w
         table = QtWidgets.QTableWidget(len(names), 4, objectName="viewTable")
@@ -1076,6 +1080,84 @@ class DisplayPanel(QtWidgets.QWidget):
         reset = QtWidgets.QPushButton("Reset", toolTip="Back to the look the steps gave the surfaces")
         reset.clicked.connect(lambda: (self.style.surfaces.clear(), self.styleChanged.emit(), self.refresh()))
         lay.addLayout(self._buttons(reset))
+        return w
+
+    def _polyhedra_step(self):
+        """The pipeline's Coordination polyhedra step (the last one), or None."""
+        steps = [m for m in getattr(self.pipeline, "modifiers", []) if isinstance(m, mods.CoordinationPolyhedra)]
+        return steps[-1] if steps else None
+
+    def _polyhedra_editor(self):
+        """Coordination polyhedra: without a step, the center types and Add polyhedra (a notebook step);
+        with one, its centers (Edit step opens its form) and the look (shown, color, transparency, edges)
+        as the view's ``surfaces['coordination-polyhedra']``, so the step stays as it is."""
+        w = QtWidgets.QWidget()
+        f = self._form_layout(w)
+        step = self._polyhedra_step()
+        mesh = None if self.data is None else getattr(self.data, "surfaces", {}).get(POLYHEDRA)
+        if step is None:
+            centers = QtWidgets.QLineEdit(placeholderText="types, e.g. Ti, Zr")
+            guess = _polyhedra_centers(self.data) if self.data is not None else None
+            centers.setText(", ".join(guess or []))
+            centers.setToolTip("Center types of the polyhedra; their bonded neighbors are the corners")
+            self._row(f, "Centers", centers)
+            add = QtWidgets.QPushButton("Add polyhedra", objectName="primary",
+                                        toolTip="Add a Coordination polyhedra step to the notebook")
+            add.setEnabled(self.data is not None)
+
+            def make():
+                types = [t.strip() for t in centers.text().replace(";", ",").split(",") if t.strip()]
+                self.add_modifier(mods.CoordinationPolyhedra(center_types=types or None))
+
+            add.clicked.connect(make)
+            f.addRow(self._buttons(add))
+            f.addRow(QtWidgets.QLabel("Polyhedra are a step: the bonds decide their corners.",
+                                      objectName="muted", wordWrap=True))
+            return w
+        ct = step.center_types
+        text = "selected atoms" if ct is None else (ct if isinstance(ct, str) else ", ".join(map(str, ct)))
+        row = QtWidgets.QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(QtWidgets.QLabel(text, objectName="viewValue"), 1)
+        edit = QtWidgets.QPushButton("Edit step", toolTip="Show the Coordination polyhedra cell and its form")
+        edit.clicked.connect(lambda: self.stepRequested.emit(step))
+        row.addWidget(edit)
+        self._row(f, "Centers", row)
+        st = self.style.surfaces.get(POLYHEDRA, {})
+        shown = QtWidgets.QCheckBox("Draw polyhedra", checked=st.get("visible", True))
+        shown.toggled.connect(lambda v: self.set_surface(POLYHEDRA, visible=v))
+        self._row(f, "", shown, "surfaces")
+        color = st.get("color")
+        if color is None:
+            fc = mesh.face_colors() if mesh is not None and mesh.face_count else np.array([[0.6, 0.6, 0.6]])
+            rgb = np.clip(np.asarray(fc, float).reshape(-1, 3).mean(0), 0, 1)
+        else:
+            from ..render import _rgb
+
+            rgb = np.clip(_rgb(color), 0, 1)
+        cell, btn = self._swatch(rgb, "Color of every polyhedron (Shift+click: the center atoms' colors)")
+        btn.clicked.connect(lambda _=False, b=btn: self._pick_surface_color(POLYHEDRA, b))
+        cell.setFixedWidth(64)
+        cell.layout().setContentsMargins(0, 4, 0, 4)
+        self._row(f, "Color", cell, "surfaces")
+        tr = QtWidgets.QDoubleSpinBox(minimum=0, maximum=1, singleStep=0.05,
+                                      value=float(st.get("transparency", mesh.transparency if mesh is not None
+                                                         else step.transparency)))
+        tr.valueChanged.connect(lambda v: self.set_surface(POLYHEDRA, transparency=round(v, 3)))
+        self._row(f, "Transparency", tr, "surfaces")
+        has_edges = mesh is not None and mesh.edges is not None and len(mesh.edges) > 0
+        edges = QtWidgets.QCheckBox("Outline edges", checked=st.get("edges", has_edges))
+        edges.setEnabled(has_edges or bool(step.edges))
+        edges.toggled.connect(lambda v: self.set_surface(POLYHEDRA, edges=v))
+        self._row(f, "", edges, "surfaces")
+        n = None if self.data is None else self.data.attributes.get("CoordinationPolyhedra.count")
+        if n is not None:
+            f.addRow(QtWidgets.QLabel(f"{int(n):,} polyhedra", objectName="viewStatus"))
+        if st:
+            reset = QtWidgets.QPushButton("Reset", toolTip="Back to the look the step gave the polyhedra")
+            reset.clicked.connect(lambda: (self.style.surfaces.pop(POLYHEDRA, None), self.styleChanged.emit(),
+                                           self.refresh()))
+            f.addRow(self._buttons(reset))
         return w
 
     def set_surface(self, name: str, **style):
@@ -1370,7 +1452,9 @@ class DisplayPanel(QtWidgets.QWidget):
         self._row(f, "", on, "bonds")
         self._row(f, "Radius", rad, "bond_radius")
         pairs = self.style.bond_pairs
-        if not pairs and self.data is not None:   # what the automatic table would be; stored once edited
+        # bonds a step made are drawn instead of the table: the rules can't change them, their step can
+        from_step = self.data is not None and self.data.bonds is not None
+        if not pairs and self.data is not None and self.style.bonds_enabled:   # the automatic table; stored once edited
             from .style import ViewStyle
 
             auto = ViewStyle(bond_factor=self.style.bond_factor)
@@ -1434,6 +1518,9 @@ class DisplayPanel(QtWidgets.QWidget):
             if not self.style.bond_pairs:
                 self.style.bond_pairs = [list(p) for p in pairs]
             change(self.style.bond_pairs)
+            # an empty table means the automatic one: removing the last rule turns bonds off instead,
+            # and adding a rule turns them on again
+            self.style.bonds_enabled = bool(self.style.bond_pairs)
             self.styleChanged.emit()
             self.refresh()
 
@@ -1446,9 +1533,21 @@ class DisplayPanel(QtWidgets.QWidget):
         to_mod.clicked.connect(lambda: self.add_modifier(
             mods.CreateBonds(mode="pairwise", pairs=[tuple(p) for p in pairs])))
         f.addRow(self._buttons(add, rm, to_mod))
-        if self.data is not None and self.data.bonds is not None:
-            f.addRow(QtWidgets.QLabel(f"{self.data.bonds.count:,} bonds from a step (drawn instead of the table)",
-                                      objectName="viewStatus", wordWrap=True))
+        if from_step:
+            for widget in (table, add, rm, to_mod):
+                widget.setEnabled(False)
+                widget.setToolTip("Bonds come from a step in the notebook: edit that step to change them")
+            row = QtWidgets.QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.addWidget(QtWidgets.QLabel(f"{self.data.bonds.count:,} bonds from a step; the rules apply "
+                                           "without it", objectName="viewStatus", wordWrap=True), 1)
+            step = next((m for m in reversed(getattr(self.pipeline, "modifiers", []))
+                         if isinstance(m, mods.CreateBonds)), None)
+            if step is not None:
+                edit_step = QtWidgets.QPushButton("Edit step", toolTip="Show the Create bonds cell and its form")
+                edit_step.clicked.connect(lambda: self.stepRequested.emit(step))
+                row.addWidget(edit_step)
+            f.addRow(row)
         elif self.data is not None and self.style.bonds_enabled:
             from ..render import bond_list
 

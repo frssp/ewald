@@ -257,7 +257,7 @@ GUI
 - 3D view as code (`pipe.view`, the `view(pipe, ...)` cell, Claude's `set_view`): settings the
   view does not have yet (picks as code, the viewport axes widget; measurement labels in the
   legacy OpenGL 1.x viewport, and lines that show through atoms; audit in the project files `ewald-review/view-elements-audit.md`);
-  the View tab cards (Atoms, Colors, Types, Bonds, Surfaces, Cell, Labels, Camera, Elements) could take the visual
+  the View tab cards (Atoms, Colors, Types, Bonds, Polyhedra, Surfaces, Cell, Labels, Camera, Elements) could take the visual
   element names `pipe.view.elements` uses (Particles, Bonds, Simulation cell, ...); label size,
   color and types and the selection color are code only (the cards show on/off and the text); the camera reaches the view cell
   only through Insert › View settings with the camera (not on every rotation); the Render page

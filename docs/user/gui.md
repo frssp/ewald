@@ -227,8 +227,12 @@ detail* (`sphere_resolution`) for mesh spheres, *Draw atoms* off for a stick mod
 or a property through a color map with its range, and the rule drawn now, one row per structure type
 or painted condition with its count; see [What colors the atoms](rendering.md#what-colors-the-atoms)),
 **Types** (color, radius, transparency and count per type, VESTA
-elements.ini import), **Bonds** (sticks, the bond rules A-B / A-* / *-* with a *PBC* choice per rule: on, off, + atoms, *As step* for a Create bonds step),
-**Surfaces** (polyhedra, isosurfaces and slices that steps made, by name: shown, color,
+elements.ini import), **Bonds** (sticks, the bond rules A-B / A-* / *-* with a *PBC* choice per rule: on, off, + atoms, *As step* for a Create bonds step; removing the last rule turns bonds off, since an empty table means the automatic one; bonds a Create bonds step made are drawn instead of the rules, so the table is greyed out and *Edit step* opens that step),
+**Polyhedra** (coordination polyhedra: without a step, the center types and *Add polyhedra*, which
+adds a Coordination polyhedra step to the notebook; with one, its centers, *Edit step* to open its
+form, and the look: shown, one color for all, transparency, edges, as
+`view(pipe, surfaces={"coordination-polyhedra": {...}})`),
+**Surfaces** (isosurfaces and slices that steps made, by name: shown, color,
 transparency, edges; *Reset* gives back the step's look), **Cell** (line width, *Replicate cell* and
 VESTA's *Boundary* range), **Labels** (text on each atom such as `{type}{index}`, *Highlight
 selection*), **Camera** (what the view cell says about the camera and frame, the key *Light*, *Save
