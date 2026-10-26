@@ -481,8 +481,18 @@ way as a `.py`; `pipe.add(...)` cells become steps and its outputs are kept.
 ## Kernels
 
 A notebook's cells run in the app's own Python unless you pick another one. There they run on a
-worker thread: a cell that takes a while shows `*` and the window stays usable, and
-**Interrupt** in the notebook's bar stops it at its next Python line (a long numba or C call
+worker thread and the window stays usable. The cell that runs now is tinted in the accent color
+with a thicker accent border, its run button turns into a stop button with a turning ring and its counter counts the
+seconds; cells still waiting their turn (Run all, Run below, a selection) get a dashed border
+and `*`, like Jupyter's queue. A chip beside Interrupt names the running cell, how long it has run
+and how many wait ("Cell 3 · 2.8 s · 2 waiting"); click it to go there (it shows an arrow when
+the cell is off screen), and the notebook's tab shows a play icon while its cells run, so a run
+in another tab is easy to spot. Preferences › Notebooks › **Follow the running cell**
+(`python.follow_running`) scrolls to a cell that starts off screen until you scroll yourself
+(`follow`, the default) or leaves the scroll alone (`never`); while the AI chat answers,
+Preferences › AI › Follow the AI's cells decides instead. Cells the AI runs are marked the same
+way. The stop button or
+**Interrupt** in the notebook's bar stops the cell at its next Python line (a long numba or C call
 finishes first) with a `CellInterrupted` error under the cell; Run all stops there. `plt.show()`
 in a cell puts the figure under the cell. From a script, `nb.interrupt()` stops a cell running
 on another thread. The kernel button (gear icon) in the

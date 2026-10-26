@@ -933,6 +933,20 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   (moves 2-2.5 s into startup on Intel); another default OpenGL format (no change).
 - **Landed:** public PR #78.
 
+### D72. The running cell is a tinted card, waiting cells have a dashed border (2026-10-26)
+
+- **Decision:** while notebook cells run, the cell running now is tinted in the accent color
+  (`accent_soft`) with a 2 px accent border, its run button becomes a stop button with a
+  turning ring and its counter counts the seconds; cells waiting their turn get a dashed border
+  and `*`. A chip beside Interrupt names the running cell and jumps to it, the notebook's tab
+  shows a play icon, and `python.follow_running` (default `follow`) scrolls to a cell that
+  starts off screen. This came from the owner's report "노트북 어느셀이 돌아가는 중인지 ui확인이
+  안 됨" (the UI does not show which cell is running).
+- **Considered:** an accent bar on the running cell's left with a muted bar on waiting cells
+  (recommended), and an indeterminate progress line along the top of the running cell. After
+  seeing all three in Paper and Graphite, the owner picked the tinted card ("B").
+- **Landed:** public PR #84.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

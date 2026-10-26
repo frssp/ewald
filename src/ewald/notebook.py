@@ -318,6 +318,7 @@ class Notebook:
         self.plot_user = None             # rcParams of the user's style file on top (GUI), {key: text}
         self._plots = None                # ewald.plotstyle.Session: the cells' rcParams
         self.on_output = None             # on_output(cell): a running cell's outputs changed (any thread)
+        self.on_cell = None               # on_cell(cell, running): a cell starts (True) or ends (False) (any thread)
         self.reset()
 
     # ------------------------------------------------------------ namespace
@@ -375,8 +376,30 @@ class Notebook:
         cell = self.cells[index]
         if cell.kind != "code":
             return True
-        if self.kernel is not None:
-            return self._run_in_kernel(index, run_below)
+        self._tell(cell, True)
+        below = False
+        try:
+            if self.kernel is not None:
+                return self._run_in_kernel(index, run_below)
+            ok, below = self._run_here(index, cell, run_below)
+        finally:
+            self._tell(cell, False)
+        if below:   # after this cell ended, so only one cell is running at a time
+            for k in range(index + 1, len(self.cells)):
+                if not self.run_cell(k, run_below=False):
+                    break
+        return ok
+
+    def _tell(self, cell, running: bool):
+        callback = self.on_cell
+        if callback is not None:
+            try:
+                callback(cell, running)
+            except RuntimeError:   # the GUI tab was closed while the cell ran
+                self.on_cell = None
+
+    def _run_here(self, index: int, cell, run_below: bool) -> tuple[bool, bool]:
+        """Run a code cell here; (success, whether the cells below must run again)."""
         pipe = self.pipeline
         slot = None
         if pipe is not None and cell.added:
@@ -402,15 +425,11 @@ class Notebook:
             cell.added = new
         elif after is not None:
             cell.added = list(after.modifiers)
-            if run_below:
-                for k in range(index + 1, len(self.cells)):
-                    if not self.run_cell(k, run_below=False):
-                        break
-            else:
+            if not run_below:
                 for later in self.cells[index + 1:]:
                     later.added = []
         cell.state = "ok" if ok else "error"
-        return ok
+        return ok, after is not None and after is not pipe and run_below
 
     def _run_in_kernel(self, index: int, run_below: bool) -> bool:
         """Run a cell in the notebook's kernel (the same rules apply there, see

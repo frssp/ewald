@@ -3046,6 +3046,112 @@ def test_in_process_cells_run_off_the_gui_thread_and_interrupt(app, cu_path, tmp
         w.close()
 
 
+def test_the_running_cell_is_marked_while_the_rest_wait(app, tmp_path, monkeypatch):
+    """Run all marks one cell as running (tinted card, stop button with a ring, its time in the
+    counter) and the later ones as waiting; the toolbar chip names it and the tab shows a play
+    icon, and the marks stay past CELL_BUDGET until each cell's result arrives."""
+    import time
+
+    import ewald.gui.notebook_panel as npn
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.gui.cell_widget import elapsed_text
+    from ewald.notebook import Notebook
+
+    assert [elapsed_text(t) for t in (0.04, 9.94, 42.5, 125, 725, 4000)] == ["0s", "9s", "42s", "125s", "12m", "1h"]
+    assert [npn.run_time(t) for t in (3.21, 42.5, 125, 3725)] == ["3.2 s", "42 s", "2:05", "1:02:05"]
+    nb = Notebook.from_py("# %%\nimport threading, time\ngate = threading.Event()\n\n"
+                          "# %%\nwhile not gate.is_set():\n    time.sleep(0.01)\n\n"
+                          "# %%\n# a note\n\n# %%\ndone = 1\n")
+    nb.save(tmp_path / "gate.ipynb")
+    s = settings.Settings()
+    s["python.run_notebooks"] = "never"
+    w = MainWindow(settings=s)
+    monkeypatch.setattr(npn, "CONFIRM_UNSAVED", False)
+    try:
+        view = w.open_notebook(str(tmp_path / "gate.ipynb"))
+        first, loop, _, last = view.notebook.cells
+        monkeypatch.setattr(npn, "CELL_BUDGET", 0.1)
+
+        def until(test, timeout=10.0):
+            end = time.monotonic() + timeout
+            while not test() and time.monotonic() < end:
+                app.processEvents(QtCore.QEventLoop.AllEvents, 20)
+            return test()
+
+        for stop_with_button in (False, True):
+            view.run_all()
+            assert until(lambda: view._now is loop)
+            cw, waiting = view.widget_for(loop), view.widget_for(last)
+            assert cw.property("state") == "running" and cw.run_button.property("ewald_icon") == "stop"
+            assert not cw.ring.isHidden() and cw.counter.text().endswith("s")
+            assert waiting.property("state") == "queued" and waiting.counter.text() == "*"
+            assert view.widget_for(first).property("state") == "ok"
+            assert until(lambda: view.running_chip.text().startswith("Cell 2 · ") and view.running_chip.text().endswith(" · 2 waiting"))
+            assert not view.running_chip.isHidden()
+            i = w.panel.tabs.indexOf(view)
+            assert not w.panel.tabs.tabBar().tabIcon(i).isNull()
+            view.rebuild()                                        # e.g. the AI inserted a cell meanwhile
+            assert view.widget_for(loop).property("state") == "running"
+            assert view.widget_for(last).property("state") == "queued"
+            if stop_with_button:
+                view.widget_for(loop).run_button.click()          # the stop button interrupts
+            else:
+                view.notebook.namespace["gate"].set()
+            assert view.wait(30)
+            assert (loop.state == "error") is stop_with_button
+            for c in (loop, last):
+                assert view.widget_for(c).property("state") in ("ok", "error", "stale")
+            cw = view.widget_for(loop)
+            assert cw.run_button.property("ewald_icon") == "play" and cw.ring.isHidden()
+            assert view.running_chip.isHidden() and w.panel.tabs.tabBar().tabIcon(i).isNull()
+    finally:
+        w.close()
+
+
+def test_follow_the_running_cell_scrolls_until_you_scroll(app, tmp_path, monkeypatch):
+    """python.follow_running: a cell that starts off screen is scrolled to, until you scroll."""
+    import ewald.gui.notebook_panel as npn
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py("".join(f"# %%\nx{k} = {k}\n" + "\n" * 12 for k in range(12)))
+    nb.save(tmp_path / "long.ipynb")
+    s = settings.Settings()
+    s["python.run_notebooks"] = "never"
+    w = MainWindow(settings=s)
+    monkeypatch.setattr(npn, "CONFIRM_UNSAVED", False)
+    try:
+        w.resize(900, 500)
+        w.show()
+        view = w.open_notebook(str(tmp_path / "long.ipynb"))
+        app.processEvents()
+        bar = view.scroll.verticalScrollBar()
+        last = view.notebook.cells[-1]
+        assert bar.maximum() > 0 and not view.ai_follow.visible(last)
+        view._worker = object()                                   # as while a run is on its way
+        try:
+            view._cell_run(last, True)
+            app.processEvents()
+            assert view.ai_follow.visible(last)
+            bar.setValue(0)
+            view._scrolled_while_running()                        # you scrolled: it stops following
+            view._cell_run(view.notebook.cells[-2], True)
+            app.processEvents()
+            assert bar.value() == 0
+            monkeypatch.setattr(npn.NotebookView, "follow_running", "never")
+            view._run_following = True
+            view._cell_run(last, True)
+            app.processEvents()
+            assert bar.value() == 0
+        finally:
+            view._worker = None
+            view._set_running(False)
+    finally:
+        w.close()
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_open_turns_bonds_off_above_limit(app):
     from ewald import examples, settings
@@ -4129,8 +4235,10 @@ def test_notebook_cell_controls_add_bar_and_running_mark(app):
         assert all(b.geometry().right() <= width and b.width() >= b.sizeHint().width() for b in buttons)
     assert len({b.y() for b in buttons}) > 1                 # wrapped onto a second row
 
+    cw.set_running("queued")
+    assert cw.counter.text() == "*" and cw.property("state") == "queued"
     cw.set_running()
-    assert cw.counter.text() == "*" and cw.property("state") == "running"
+    assert cw.counter.text() == "0s" and cw.property("state") == "running"
     view.run(cell)
     cw = view.widget_for(cell)                               # a run may rebuild the cell widgets
     assert cw.counter.text() == str(cell.count) and cw.property("state") == "ok"
