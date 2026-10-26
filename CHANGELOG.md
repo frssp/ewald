@@ -69,6 +69,8 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Fixed
 
+- No more small windows flashing up when the GUI starts or opens a notebook (dock title bars,
+  tab groups and notebook bars were shown before they had a parent). (#81)
 - Bond ends look the same in every renderer (D50): bonds cut by the periodic cell end in flat
   disks instead of hollow tubes in the viewport (and instead of round ends in the ray tracer),
   and bond ends at hidden, small or see-through atoms are round, so stick-only drawings have
