@@ -717,19 +717,20 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   Materials Project, then `python -m ewald_mp search Si`, `load("mp:mp-149/bands")`, `/dos`,
   `/chgcar` and `/relax` (mp-api's trajectory call reads MP's open data tables), and that the
   keychain keeps the key on Windows.
-- Laptops with two GPUs (owner's Windows laptop: Intel Arc + GeForce RTX, 2026-10-26): that
-  Preferences › 3D view › GPU for the 3D view = High performance (or `ewald gpu --prefer
-  high-performance`) moves the 3D view to the RTX from the next start (About shows the renderer),
-  also for `pythonw.exe` and a venv; then the CUDA path on a real NVIDIA GPU: `benchmarks/neighbors.py`,
-  `benchmarks/analysis.py --device cuda`, and `benchmarks/resize.py` first-maximize stall on the RTX
-  against Arc. Linux PRIME offload (`__NV_PRIME_RENDER_OFFLOAD`) on a real hybrid laptop.
+- Laptops with two GPUs (owner's Windows laptop: Intel Arc + GeForce RTX 4050, 2026-10-26): the
+  Windows high-performance choice moves the 3D view to the RTX (first maximize 0.2 s instead of
+  ~4 s on Arc) and the CUDA ray tracer runs there (numbers in docs/user/gpu.md; CuPy needs
+  `cupy-cuda12x[ctk]`). Still to check: Preferences › GPU for the 3D view / `ewald gpu --prefer`
+  themselves (the owner used Windows Settings), the modifiers on CUDA
+  (`benchmarks/analysis.py --skip-render --device cuda`), `benchmarks/neighbors.py`, and Linux
+  PRIME offload on a real hybrid laptop.
 - The OpenCL ray tracer runs on the owner's Intel Arc on Windows (2026-10-26,
   `benchmarks/analysis.py --skip-modifiers --device opencl`): SrTiO3 + TiO6 polyhedra 1600x1200
   draft 0.17 s, standard 0.30 s, Publication 1.13 s (4.80 s on the CPU); trace only at 800x600
   Publication, gyroid 0.73 s, fcc Cu 108k 0.20 s, Cu slab 0.07 s. pyopencl prints a
   CompilerWarning (non-empty build log) on the first build there; see what it says with
-  `PYOPENCL_COMPILER_OUTPUT=1`. Still unchecked: AMD GPUs, the GUI Render page on Arc, and the CUDA
-  tracer on a real NVIDIA GPU.
+  `PYOPENCL_COMPILER_OUTPUT=1`. Still unchecked: AMD GPUs and the GUI Render page on Arc (the CUDA
+  tracer runs on the owner's RTX 4050, see above).
 - The Metal ray tracer runs on the owner's M2 MacBook Air (2026-10-24; first picture of a session
   +4 s for the kernel build). `benchmarks/analysis.py --skip-modifiers`, Metal vs CPU: SrTiO3 +
   TiO6 polyhedra 1600x1200 Publication 7.14 vs 7.12 s, gyroid 4.76 vs 4.34 s, fcc Cu 108k
