@@ -31,6 +31,7 @@ class ViewStyle:
     preset: str = DEFAULT_PRESET
     radius_scale: float = STYLE_PRESETS[DEFAULT_PRESET][0]
     atom_style: str = STYLE_PRESETS[DEFAULT_PRESET][2]
+    sphere_resolution: int | None = None              # mesh sphere segments; None: Preferences / quality preset
     type_colors: dict = field(default_factory=dict)   # type -> (r, g, b) in 0..1 or '#hex'
     type_radii: dict = field(default_factory=dict)    # type -> radius (A)
     radius_preset: str = "covalent"                   # ewald.radii.PRESETS; type_radii win over it
@@ -110,6 +111,8 @@ class ViewStyle:
                 kw[k] = list(v) if isinstance(v, (list, tuple)) else v
         if not self.show_atoms:
             kw["show_atoms"] = False
+        if self.sphere_resolution:
+            kw["sphere_resolution"] = int(self.sphere_resolution)
         if self.cell_radius:
             kw["cell_radius"] = self.cell_radius
         if self.surfaces:
@@ -197,6 +200,7 @@ class ViewStyle:
         self._before_preset_theme = None
         self.preset = view.style
         self.radius_scale, self.atom_style = float(view.radius_scale), view.atom_style
+        self.sphere_resolution = None if view.sphere_resolution is None else int(view.sphere_resolution)
         theme = view.theme
         self.type_colors, self.cell_color, self.background = {}, None, default_background()
         self.radius_preset = "covalent"
@@ -294,6 +298,7 @@ class ViewStyle:
         colors, radii = own(colors), own(radii)
         out = {"style": self.preset if self.preset in presets else DEFAULT_PRESET,
                "theme": self.theme or None, "atom_style": self.atom_style, "radius_scale": self.radius_scale,
+               "sphere_resolution": self.sphere_resolution,
                "colors": colors, "radii": radii, "oxidation_states": own(dict(self.oxidation_states)),
                "bonds": bool(self.bonds_enabled), "bond_factor": self.bond_factor, "bond_radius": self.bond_radius,
                "cell": bool(self.show_cell), "cell_width": self.cell_width,

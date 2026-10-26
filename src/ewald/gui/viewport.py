@@ -749,7 +749,8 @@ class Viewport(QtWidgets.QWidget):
         kw = self.style.scene_kwargs()
         labels = kw.pop("labels", None)
         kw["cell_color"] = self.style.cell_color or ("#AEB4BE" if dark else "black")
-        kw["sphere_resolution"] = self.sphere_resolution  # interactive; image export uses full quality
+        # the view's own sphere_resolution, else Preferences (interactive; image export uses full quality)
+        kw["sphere_resolution"] = kw.get("sphere_resolution") or self.sphere_resolution
         if kw["atom_style"] == "auto" and self.sphere_drawing == "impostor":
             kw["atom_style"] = "impostor"
         kw["arrow_resolution"] = self.arrow_resolution

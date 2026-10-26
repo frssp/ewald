@@ -331,6 +331,23 @@ def test_view_style_round_trips_the_new_settings(srtio3):
     assert back["atoms"] is False and back["cell_radius"] == 0.1 and back["surfaces"] == {"isosurface": {"visible": False}}
 
 
+
+def test_sphere_resolution_is_a_view_setting(srtio3):
+    """The owner asked how to make Simple (ASE) atoms less angular: mesh sphere detail is a view setting,
+    round-tripped through the GUI's ViewStyle and passed to render()."""
+    from ewald.view_style import ViewStyle
+
+    v = View(style="Simple (ASE)", sphere_resolution=40)
+    assert v.sphere_resolution == 40 and v.render_kwargs()["sphere_resolution"] == 40
+    with pytest.raises(ValueError):
+        View(sphere_resolution=2)
+    st = ViewStyle()
+    st.apply_view(v, ["Sr", "Ti", "O"])
+    assert st.scene_kwargs()["sphere_resolution"] == 40 and st.atom_style == "flat"
+    assert View(**st.view_settings(["Sr", "Ti", "O"])).changed()["sphere_resolution"] == 40
+    st.apply_view(View(), ["Sr", "Ti", "O"])
+    assert "sphere_resolution" not in st.scene_kwargs()   # None: Preferences / the quality preset
+
 def test_view_style_drops_the_previous_structures_elements():
     """The window's style seeds a new notebook's view: MgB2's bond table and colors stay out of TiOF2's."""
     from ewald.view_style import ViewStyle
