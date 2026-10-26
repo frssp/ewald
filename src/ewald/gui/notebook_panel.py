@@ -258,7 +258,7 @@ class NotebookView(QtWidgets.QWidget):
     def _make_banner(self):
         """The bar over a notebook that has not run: restricted (saved results only, until you
         trust it) or opened without running (``python.run_notebooks``), with a Run all button."""
-        w = QtWidgets.QFrame(objectName="restrictedBanner")
+        w = QtWidgets.QFrame(self, objectName="restrictedBanner")  # parented: shown before it is laid out
         row = QtWidgets.QHBoxLayout(w)
         row.setContentsMargins(10, 6, 8, 6)
         self.banner_text = QtWidgets.QLabel(wordWrap=True)
@@ -296,7 +296,7 @@ class NotebookView(QtWidgets.QWidget):
 
     def _make_packages_bar(self):
         """The bar over a notebook whose steps come from pip packages this Python lacks."""
-        w = QtWidgets.QFrame(objectName="restrictedBanner")
+        w = QtWidgets.QFrame(self, objectName="restrictedBanner")  # parented: shown before it is laid out
         row = QtWidgets.QHBoxLayout(w)
         row.setContentsMargins(10, 6, 8, 6)
         self.packages_text = QtWidgets.QLabel(wordWrap=True)
@@ -311,7 +311,7 @@ class NotebookView(QtWidgets.QWidget):
     def _make_run_bar(self):
         """The run picker over a notebook that loaded several runs (``runs = load_runs(...)``):
         which run's pipeline ``pipe`` is, so the 3D view and step cells follow it."""
-        w = QtWidgets.QFrame(objectName="runBar")
+        w = QtWidgets.QFrame(self, objectName="runBar")
         row = QtWidgets.QHBoxLayout(w)
         row.setContentsMargins(10, 4, 8, 4)
         self.run_label = QtWidgets.QLabel("Run")
@@ -372,7 +372,7 @@ class NotebookView(QtWidgets.QWidget):
         bar.setVisible(bool(missing))
 
     def _make_add_bar(self):
-        w = QtWidgets.QWidget(objectName="addBar")
+        w = QtWidgets.QWidget(self, objectName="addBar")
         row = FlowLayout(w, spacing=4)
         row.setContentsMargins(GUTTER_WIDTH + 2, 2, 0, 0)  # lined up with the cell bodies
         code = QtWidgets.QPushButton("+ Code", objectName="addCell", toolTip=native_text("Python cell (Ctrl+Shift+N)"))

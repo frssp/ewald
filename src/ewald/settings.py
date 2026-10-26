@@ -109,6 +109,12 @@ OPTIONS = (
            "work over SSH X11 forwarding (ssh -X) but have no impostors, smoothing or 3D text. Auto uses "
            "Legacy GL on an ssh -X display. EWALD_VIEWPORT overrides this. Takes effect at the next start.",
            choices=("auto", "vtk", "legacy-gl")),
+    Option("viewport.gpu", "auto", "GPU for the 3D view",
+           "On a laptop with two GPUs (integrated Intel/AMD plus NVIDIA or AMD): High performance draws on the "
+           "discrete GPU. On Windows it sets the Graphics settings choice for this Python (Settings › Display › "
+           "Graphics), on Linux PRIME render offload. Auto leaves the choice to the system. EWALD_GPU overrides "
+           "this. Takes effect at the next start. CUDA compute always uses the NVIDIA GPU.",
+           choices=("auto", "high-performance", "power-saving")),
     Option("viewport.hover_info", True, "Atom info on hover",
            "Resting the cursor on an atom shows its element, index and Cartesian and fractional "
            "coordinates in a tooltip and the status bar. Nothing is computed while the view moves."),

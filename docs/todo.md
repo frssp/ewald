@@ -700,7 +700,13 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 - The running-cell marks on the owner's Windows PC at 200 % scaling: the elapsed time fits
   under the stop button, the ring turns smoothly, the tab's play icon shows.
-
+- Plugins side bar on the owner's Windows environment (2026-10-26): installing, updating and
+  removing a pip plugin (ewald-mp) keeps the window responsive (it froze for seconds when the
+  package metadata was read on the GUI thread), no console window flashes, and *Update to 0.1.x*
+  shows once a newer version is in the index.
+- No small windows flash up when `ewald-gui` starts on the owner's Windows PC (fixed by parenting
+  the dock title bar widgets, workbench tab groups and notebook bars before they are shown;
+  `test_startup_shows_no_window_but_the_main_window` checks it on Linux).
 - The large vector figure estimate (D67) on the owner's Windows PC and Mac: render a few thousand
   bonded atoms to SVG and PDF and compare with `python benchmarks/vector_size.py`; the *Large
   vector figure* dialog at 200 % scaling.
@@ -716,13 +722,23 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   Materials Project, then `python -m ewald_mp search Si`, `load("mp:mp-149/bands")`, `/dos`,
   `/chgcar` and `/relax` (mp-api's trajectory call reads MP's open data tables), and that the
   keychain keeps the key on Windows.
+- Laptops with two GPUs (owner's Windows laptop: Intel Arc + GeForce RTX 4050, 2026-10-26): the
+  Windows high-performance choice moves the 3D view to the RTX (first maximize 0.2 s instead of
+  ~4 s on Arc) and the CUDA ray tracer runs there (numbers in docs/user/gpu.md; CuPy needs
+  `cupy-cuda12x[ctk]`). Modifiers on CUDA measured there too (gpu.md). Still to check: Preferences › GPU
+  for the 3D view / `ewald gpu --prefer` themselves (the owner used Windows Settings),
+  `benchmarks/neighbors.py`, and Linux PRIME offload on a real hybrid laptop.
+- CommonNeighborAnalysis is 3.5x slower on CUDA than on the CPU at 108k atoms (402 vs 115 ms on
+  an RTX 4050, 2026-10-26), ClusterAnalysis slightly slower (89 vs 68 ms): profile the xp path
+  (many small kernel launches or host round trips) and give CNA one CUDA kernel or keep it on the
+  CPU under `device="auto"`.
 - The OpenCL ray tracer runs on the owner's Intel Arc on Windows (2026-10-26,
   `benchmarks/analysis.py --skip-modifiers --device opencl`): SrTiO3 + TiO6 polyhedra 1600x1200
   draft 0.17 s, standard 0.30 s, Publication 1.13 s (4.80 s on the CPU); trace only at 800x600
   Publication, gyroid 0.73 s, fcc Cu 108k 0.20 s, Cu slab 0.07 s. pyopencl prints a
   CompilerWarning (non-empty build log) on the first build there; see what it says with
-  `PYOPENCL_COMPILER_OUTPUT=1`. Still unchecked: AMD GPUs, the GUI Render page on Arc, and the CUDA
-  tracer on a real NVIDIA GPU.
+  `PYOPENCL_COMPILER_OUTPUT=1`. Still unchecked: AMD GPUs and the GUI Render page on Arc (the CUDA
+  tracer runs on the owner's RTX 4050, see above).
 - The Metal ray tracer runs on the owner's M2 MacBook Air (2026-10-24; first picture of a session
   +4 s for the kernel build). `benchmarks/analysis.py --skip-modifiers`, Metal vs CPU: SrTiO3 +
   TiO6 polyhedra 1600x1200 Publication 7.14 vs 7.12 s, gyroid 4.76 vs 4.34 s, fcc Cu 108k

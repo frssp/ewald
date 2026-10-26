@@ -152,6 +152,39 @@ def test_view_tab_opens_no_window_and_keeps_its_cards_over_neb_frames(app, vasp_
     _dispose(panel)
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_startup_shows_no_window_but_the_main_window(app, tmp_path):
+    """Small windows flashed up at every start on Windows: the dock title bars, the workbench tab
+    groups and the notebook's banner were made visible before they had a parent, so each was its
+    own window for a moment. Building the window, opening a notebook and showing it shows only
+    the main window."""
+    from ewald import examples, settings
+    from ewald.gui.app import MainWindow
+
+    shown = []
+
+    class Spy(QtCore.QObject):
+        def eventFilter(self, obj, ev):
+            if ev.type() == QtCore.QEvent.Show and isinstance(obj, QtWidgets.QWidget) and obj.isWindow():
+                shown.append(f"{type(obj).__name__} {obj.objectName()!r}")
+            return False
+
+    path = tmp_path / "nb.py"
+    path.write_text(f"# %%\nfrom ewald import load\npipe = load({str(examples.path('Cu_md.extxyz'))!r})\n",
+                    encoding="utf-8")
+    spy = Spy()
+    app.installEventFilter(spy)
+    try:
+        w = MainWindow(settings=settings.Settings())
+        view = w.panel.open_notebook(str(path))          # restricted: shows its banner
+        w.show()
+        app.processEvents()
+    finally:
+        app.removeEventFilter(spy)
+    assert view.banner.isVisible()
+    assert shown == ["MainWindow ''"], shown
+
+
 def test_view_tab_trajectory_color_map(app, pipe):
     """The Elements card colors trajectory lines with a color map over a Time window or a trail; the values
     go into the style (and so the view cell) and the viewport draws them with a color bar."""
@@ -2195,8 +2228,8 @@ def test_viewport_draws_vector_arrows(app):
     assert not any(str(k).startswith("vectors:") for k in v.plotter.actors)
     v.close()
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
-def test_viewport_impostors_smooth_edges_and_opengl_check(app, pipe):
-    from ewald import settings
+def test_viewport_impostors_smooth_edges_and_opengl_check(app, pipe, monkeypatch):
+    from ewald import gpu_select, settings
     from ewald.gui.app import MainWindow
 
     s = settings.Settings()
@@ -2210,6 +2243,25 @@ def test_viewport_impostors_smooth_edges_and_opengl_check(app, pipe):
     assert gl["renderer"] and "OpenGL" in w.hardware_summary()
     if gl["software"]:  # xvfb: Mesa llvmpipe
         assert "software OpenGL" in w.statusBar().currentMessage()
+    # a hybrid laptop: the view on Intel Arc, an RTX next to it -> About says how to switch
+    monkeypatch.setattr(gpu_select, "list_gpus", lambda: ["Intel(R) Arc(TM) Graphics", "NVIDIA GeForce RTX 4060"])
+    monkeypatch.setattr(vp, "opengl_info", lambda: {"renderer": "Intel(R) Arc(TM) Graphics", "vendor": "Intel",
+                                                    "version": "4.6", "software": False})
+    about = w.hardware_summary()
+    assert "NVIDIA GeForce RTX 4060" in about and "GPU for the 3D view" in about
+    monkeypatch.undo()
+    # Preferences › GPU for the 3D view on Windows writes the per-app choice when it changes
+    from ewald.gui import prefs_apply
+
+    written = []
+    monkeypatch.setattr(prefs_apply.sys, "platform", "win32")
+    monkeypatch.setattr(gpu_select, "set_windows_preference", lambda c: written.append(c) or ["python.exe"])
+    s["viewport.gpu"] = "high-performance"
+    prefs_apply.apply_gpu_choice(w, s)
+    prefs_apply.apply_gpu_choice(w, s)   # unchanged: nothing written
+    assert written == ["high-performance"]
+    monkeypatch.undo()
+    s["viewport.gpu"] = "auto"
     s["viewport.sphere_drawing"], s["viewport.anti_aliasing"] = "mesh", False
     from ewald.gui import preferences as prefs
 
@@ -3479,6 +3531,85 @@ def test_plugins_from_file_sends_archives_to_pip_and_py_files_to_the_plugin_fold
         panel.install_from_file()
     assert [r for _, r in pip_calls] == [str(tmp_path / n) for n in ("repo-main.zip", "x-0.1-py3-none-any.whl", "x-0.1.tar.gz")]
     assert len(installs) == 1 and installs[0].source.endswith("one.py")
+
+
+def test_plugins_side_bar_keeps_the_window_responsive_around_pip(app, monkeypatch):
+    """pip runs in its own process, and the slow package bookkeeping before and after it (every
+    installed package's metadata, gh auth token) in a thread: the GUI thread never waits for it."""
+    import sys
+    import threading
+    import time
+
+    from ewald import plugin_catalog as pc
+    from ewald import settings
+    from ewald.gui import plugins_panel
+
+    panel = plugins_panel.PluginsPanel(settings=settings.Settings())
+    panel.wait()
+    gui = threading.get_ident()
+    threads = []
+
+    def slow(result):
+        def fn(*a, **k):
+            threads.append(threading.get_ident())
+            time.sleep(0.5)
+            return result
+        return fn
+
+    monkeypatch.setattr(pc, "loaded_versions", slow({"numpy": "0.0.1"}))
+    monkeypatch.setattr(pc, "pip_env", slow({"EWALD_TEST_PIP_ENV": "1"}))
+    monkeypatch.setattr(pc, "restart_reason", slow("pip changed numpy"))
+    monkeypatch.setattr(pc, "pip_command", lambda action, req: [
+        sys.executable, "-c", "import os; print('pip env', os.environ.get('EWALD_TEST_PIP_ENV'))"])
+    monkeypatch.setattr(plugins_panel.QtWidgets.QMessageBox, "question",
+                        lambda *a, **k: plugins_panel.QtWidgets.QMessageBox.Yes)
+    changed = []
+    panel.changed.connect(lambda: changed.append(True))
+    t0 = time.monotonic()
+    panel._run_pip("install", "ewald-something", key="k", busy="Installing…")
+    assert time.monotonic() - t0 < 0.4                          # returned at once, pip not even started yet
+    assert panel.busy == {"k": "Installing…"} and not panel.busy_bar.isHidden()
+    assert not panel.cancel_button.isHidden()
+    panel._run_pip("install", "other")                          # one pip at a time
+    assert "still running" in panel.log.toPlainText()
+    panel.wait(20000)
+    assert threads and gui not in threads
+    assert "pip env 1" in panel.log.toPlainText()               # the environment from the thread reached pip
+    assert changed == [True] and panel.busy == {} and panel.busy_bar.isHidden()
+    assert "pip changed numpy" in panel.restart_label.text() and not panel.restart_bar.isHidden()
+
+    # Cancel while it is still getting ready: pip never starts
+    panel._run_pip("install", "ewald-something", key="k", busy="Installing…")
+    panel.cancel()
+    assert panel.busy == {} and panel._pip_job is None
+    panel.wait(5000)
+    assert "failed (exit -1)" in panel.log.toPlainText() and "pip env" not in panel.log.toPlainText()
+    assert changed == [True]
+    panel.close()
+
+
+def test_plugins_side_bar_reads_old_catalogs_again_when_shown(app, monkeypatch):
+    """A side bar left open for hours learns about a newer plugin version (ewald-mp 0.1.1)."""
+    from ewald import plugin_catalog as pc
+    from ewald import settings
+    from ewald.gui import plugins_panel
+
+    versions = ["0.1.0"]
+    monkeypatch.setattr(pc, "catalog", lambda urls, timeout=10.0: (
+        [pc.Entry(name="Materials Project", id="mp", version=versions[0], source="pip:ewald-mp")], {}))
+    panel = plugins_panel.PluginsPanel(settings=settings.Settings())
+    panel.wait()
+    assert panel.entries[0].version == "0.1.0"
+    versions[0] = "0.1.1"                                        # published in the meantime
+    panel.show()
+    panel.wait()
+    assert panel.entries[0].version == "0.1.0"                   # read moments ago: kept
+    panel.hide()
+    panel._catalog_time -= plugins_panel.CATALOG_MAX_AGE + 1
+    panel.show()
+    panel.wait()
+    assert panel.entries[0].version == "0.1.1"
+    panel.close()
 
 
 def test_plugins_side_bar_stays_narrow_while_pip_runs(app, tmp_path):
@@ -6193,7 +6324,9 @@ def test_plugins_side_bar_recommends_a_restart_when_pip_replaced_loaded_code(app
             pass
 
     panel._process, panel._before = Done(), {"numpy": "0.0.1"}   # pip upgraded numpy, which is loaded
+    panel._pip_job = ("install", "ewald-something")
     panel._pip_done("install", "ewald-something", 0)
+    panel.wait()                                              # the package metadata is read in a thread
     assert not panel.restart_bar.isHidden() and "numpy 0.0.1 -> " in panel.restart_label.text()
     restart = next(b for b in panel.restart_bar.findChildren(plugins_panel.QtWidgets.QPushButton)
                    if b.text() == "Restart now")
