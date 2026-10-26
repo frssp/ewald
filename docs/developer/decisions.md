@@ -957,7 +957,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   benchmark has run on the owner's Intel Arc. The owner asked for a plan first ("계획부터
   세워봐") and then picked this scope on the decision card.
 - **Considered:** the benchmark alone first; phases 0-1 only; all five phases at once.
-- **Landed:** public PR #N.
+- **Landed:** public PR #90.
 
 ## Adding an entry
 
