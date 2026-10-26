@@ -69,6 +69,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Fixed
 
+- The window no longer freezes while the Plugins side bar installs, updates or removes a pip
+  plugin: the package metadata read around pip (seconds, longer on Windows) moved off the GUI
+  thread, Cancel also works before pip starts, and catalogs older than ten minutes are read
+  again when the side bar is shown, so new versions get their *Update* button.
 - Bond ends look the same in every renderer (D50): bonds cut by the periodic cell end in flat
   disks instead of hollow tubes in the viewport (and instead of round ends in the ray tracer),
   and bond ends at hidden, small or see-through atoms are round, so stick-only drawings have
