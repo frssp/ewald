@@ -44,7 +44,36 @@ checklist for people too). The rules that tests enforce:
 - Code ported from OVITO is used under its MIT option and keeps its notice
   (`tests/test_licenses.py`). Please do not copy code whose license does not allow it (VMD, for
   example).
-- User-visible changes add a line under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md).
+- User-visible changes add a line under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md) and
+  update the matching manual page ([docs/developer/docs.md](docs/developer/docs.md) says which).
+
+## Windows, macOS and Linux
+
+EWALD must behave nearly the same on all three; the maintainer runs it on Windows, while the
+test machines are Linux. [docs/developer/portability.md](docs/developer/portability.md) has the
+full rules; `tests/test_portability.py` checks what it can. In short: local paths only through
+`os.path` or `pathlib` (never `split("/")` or `"/".join`), text files opened with
+`encoding="utf-8"` (and `newline="\n"` when writing), readers that read CRLF files like LF,
+name matching that ignores case, and no `fork`, `shell=True` or POSIX-only modules. Where a
+change could differ on another platform, add a test that simulates it (`ntpath`,
+`PureWindowsPath`, a CRLF copy of the input) and say in the pull request what you could not
+check.
+
+## Design decisions
+
+Changes that pick between real alternatives (a new default, a file format, how the GUI is laid
+out, what the AI may do) are the maintainer's call. Describe the options in an issue or in the
+pull request; once a choice is made it is recorded in
+[docs/developer/decisions.md](docs/developer/decisions.md) with its reason, in the pull request
+that implements it. Visual changes (icons, colors, panels, figures) come with before/after
+images so they can be compared.
+
+## Pull requests
+
+Keep one change per pull request and fill in the template. Plugins are reviewed in
+[frssp/ewald-plugins](https://github.com/frssp/ewald-plugins), which holds the first-party
+plugins and the plugin index.
 
 Code, commit messages and docs are in English. Security problems go through
-[SECURITY.md](SECURITY.md), not public issues.
+[SECURITY.md](SECURITY.md), not public issues. Everyone taking part follows the
+[code of conduct](CODE_OF_CONDUCT.md).
