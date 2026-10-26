@@ -512,6 +512,7 @@ One section per simulation code (`ewald.codes`; plugins add codes with `@simulat
 | `python.run_notebooks` | Run notebooks when opened | `'never'` |
 | `python.output_scroll_after` | Scroll outputs longer than (lines) | `50` |
 | `python.output_box_lines` | Scrolled output height (lines) | `20` |
+| `python.follow_running` | Follow the running cell | `'follow'` |
 | `python.save_figures` | Save figures with notebooks | `True` |
 | `python.bundle_data_mb` | Copy data files up to (MB) | `50.0` |
 

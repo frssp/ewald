@@ -64,7 +64,7 @@ PAGE_OF_PREFIX = {"general": "General", "viewport": "3D view", "elements": "Atom
                   "python": "Python", "llm": "AI", "codes": "Codes"}
 PAGE_OF_KEY = {"python.plot_style": "Plots", "python.run_notebooks": "Notebooks", "python.save_figures": "Notebooks",
                "python.bundle_data_mb": "Notebooks", "python.output_scroll_after": "Notebooks",
-               "python.output_box_lines": "Notebooks", "python.plugin_catalogs": "Plugins"}
+               "python.output_box_lines": "Notebooks", "python.follow_running": "Notebooks", "python.plugin_catalogs": "Plugins"}
 PAGE_ALIASES = {"Viewports": "3D view", "Elements": "Atoms & bonds"}   # names before 2026-10-23
 
 OPTIONS = (
@@ -221,6 +221,11 @@ OPTIONS = (
            minimum=0, maximum=100000),
     Option("python.output_box_lines", 20, "Scrolled output height (lines)",
            "How many lines the box of a scrolled output shows.", minimum=3, maximum=10000),
+    Option("python.follow_running", "follow", "Follow the running cell",
+           "While cells run (Run all, Run below, or cells the AI runs outside an answer), follow: scroll "
+           "to a cell that starts off screen, until you scroll yourself. never: leave the scroll alone; "
+           "the chip beside Interrupt still says which cell runs and goes there when clicked.",
+           choices=("follow", "never")),
     Option("python.save_figures", True, "Save figures with notebooks",
            "An .ewd notebook keeps every view cell as SVG and PNG, with the plotted data as CSV."),
     Option("python.bundle_data_mb", 50.0, "Copy data files up to (MB)",

@@ -10,6 +10,12 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- The notebook shows which cell runs and which wait: a tinted card with an accent border, a stop
+  button with a turning ring and the elapsed time on the running cell, a dashed border and `*` on
+  waiting ones, a chip beside Interrupt ("Cell 3 · 2.8 s · 2 waiting") that jumps to it, a play
+  icon on the notebook's tab, and `python.follow_running` to scroll along (D72). Before, a cell that ran longer than 0.1 s lost its `*`.
+  `Notebook.on_cell(cell, running)` reports each cell's start and end. (#84)
+
 - Laptops with two GPUs: Preferences › 3D view › GPU for the 3D view (`viewport.gpu`), `EWALD_GPU`
   and `ewald gpu [--prefer high-performance]` move the 3D view to the NVIDIA/AMD GPU (the Windows
   Graphics settings choice for this Python, PRIME offload on Linux); About lists the GPUs and says

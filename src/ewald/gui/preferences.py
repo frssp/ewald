@@ -61,6 +61,7 @@ LAYOUT = {
         ("Saved plots", ["plots.size"])]),
     "Notebooks": ("Opening, running and saving notebooks.", [
         ("Opening", ["python.run_notebooks"]),
+        ("Running", ["python.follow_running"]),
         ("Outputs", ["python.output_scroll_after", "python.output_box_lines"]),
         ("Saving", ["python.save_figures", "python.bundle_data_mb"])]),
     "Compute": ("Where pipelines run, and which optional packages are available.", [

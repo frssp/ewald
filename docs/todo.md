@@ -10,6 +10,9 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## Next
 
+- Running-cell marks in a kernel notebook: when a cell rebinds `pipe` and the cells below run
+  again inside the kernel, only the first cell is marked as running (the kernel reports the rest
+  when they are all done); the kernel bridge could send a start message per cell.
 - Trajectory tubes (`trajectory_style="tube"`): the vector renderer paints each piece at the depth
   of its start (painter's algorithm), so a piece that ends inside an atom nearer the camera than its
   start can cover that atom, as lines do there; sorting by the far end or splitting pieces at atom
@@ -695,6 +698,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- The running-cell marks on the owner's Windows PC at 200 % scaling: the elapsed time fits
+  under the stop button, the ring turns smoothly, the tab's play icon shows.
 - Plugins side bar on the owner's Windows environment (2026-10-26): installing, updating and
   removing a pip plugin (ewald-mp) keeps the window responsive (it froze for seconds when the
   package metadata was read on the GUI thread), no console window flashes, and *Update to 0.1.x*

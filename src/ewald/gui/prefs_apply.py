@@ -195,6 +195,9 @@ def apply_settings(win, s: Settings, startup: bool = False):
         OutputText.scroll_after, OutputText.box_lines = lines
         for text in win.findChildren(OutputText):
             text._fit()
+    from .notebook_panel import NotebookView
+
+    NotebookView.follow_running = s["python.follow_running"]
     for p in filter(None, (x.strip() for x in s["python.extra_paths"].split(";"))):
         if p not in sys.path:
             sys.path.append(p)
