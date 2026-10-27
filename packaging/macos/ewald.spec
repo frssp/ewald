@@ -1,17 +1,18 @@
 # PyInstaller spec for the macOS app: EWALD.app with ewald-gui (the bundle's executable) and the
 # ewald CLI side by side in Contents/MacOS, sharing one set of libraries.
 #
-#   pip install ".[gui]" pyinstaller
+#   pip install ".[gui]" pyinstaller setuptools
 #   pyinstaller --noconfirm packaging/macos/ewald.spec          # -> dist/EWALD.app
 #   packaging/macos/make_dmg.sh                                  # -> dist/ewald-X.Y.Z-macos-<arch>.dmg
 #
 # Build on the architecture you ship (arm64 on Apple Silicon, x86_64 on Intel): numba/llvmlite
 # wheels are per architecture, so there is no universal2 app. CuPy is never bundled (no CUDA on
 # macOS). On Linux the spec still runs and builds the plain folder, which tests use to check it.
+import importlib.metadata
 import os
 import sys
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 HERE = os.path.dirname(os.path.abspath(SPEC))
 WIN = os.path.join(HERE, "..", "windows")  # the frozen entry points are shared with Windows
@@ -24,6 +25,18 @@ hiddenimports = (collect_submodules("ewald")
                  + collect_submodules("ase.io") + collect_submodules("ase.calculators")
                  + ["qtconsole.inprocess", "ipykernel.inprocess", "pyvistaqt"])
 datas = collect_data_files("ewald") + collect_data_files("ase") + collect_data_files("pyvista") + collect_data_files("qtconsole")
+# pip and setuptools for the Plugins side bar, plus every bundled distribution's metadata
+# (as in packaging/windows/ewald.spec)
+hiddenimports += collect_submodules("pip") + collect_submodules("setuptools") + ["_distutils_hack"]
+datas += collect_data_files("pip") + collect_data_files("setuptools")
+BUILD_ONLY = {"pyinstaller", "pyinstaller-hooks-contrib", "altgraph", "pefile", "pywin32-ctypes", "macholib", "delvewheel"}
+for dist in importlib.metadata.distributions():
+    name = dist.metadata["Name"]
+    if name and name.lower().replace("_", "-") not in BUILD_ONLY:
+        try:
+            datas += copy_metadata(name)
+        except Exception as exc:  # noqa: BLE001  a broken dist-info in the build env
+            print("no metadata for", name, exc)
 # debugpy: ipykernel imports it optionally, but its vendored pydevd tree breaks when frozen
 excludes = ["tkinter", "ovito", "torch", "tensorflow", "PyQt5", "PyQt6", "PySide2", "debugpy",
             "cupy", "cupyx", "cupy_backends", "nvidia"]
@@ -35,7 +48,8 @@ a = Analysis(
     runtime_hooks=[os.path.join(HERE, "rthook_macos.py")],
     excludes=excludes,
     # keep ewald's .py sources next to the bytecode: numba cache=True locates functions by source file
-    module_collection_mode={"ewald": "pyz+py"},
+    # pip runs its own files as scripts (build backend hooks), so pip and setuptools stay plain .py
+    module_collection_mode={"ewald": "pyz+py", "pip": "py", "setuptools": "py", "_distutils_hack": "py"},
     noarchive=False,
 )
 pyz = PYZ(a.pure)

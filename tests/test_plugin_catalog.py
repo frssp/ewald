@@ -351,3 +351,56 @@ def test_module_distributions_reads_metadata_without_touching_the_installed_file
     assert found["editable_thing"] == ["editable-thing"]           # an editable install: by its name
     assert ".." not in found and "__pycache__" not in found and "fastext.pth" not in found
     assert not [s for s in stats if "ewald_mp" in s.parts or "fastext" in s.parts]   # no installed file was looked at
+
+
+def test_github_sources_become_archives_without_git(monkeypatch):
+    # the standalone app on a PC without git: pip fetches GitHub's zip of the pinned commit
+    src = "git+https://github.com/frssp/ewald-plugins@2ac10da#subdirectory=packages/ewald-mp"
+    zip_ = "https://github.com/frssp/ewald-plugins/archive/2ac10da.zip#subdirectory=packages/ewald-mp"
+    assert pc.github_archive(src) == zip_
+    assert pc.github_archive("ewald-mp @ " + src) == "ewald-mp @ " + zip_
+    assert pc.github_archive("git+https://github.com/frssp/ewald-simagent.git@958a94a").endswith(
+        "/frssp/ewald-simagent/archive/958a94a.zip")
+    for same in ("ewald-x", "git+https://github.com/frssp/x", "git+https://gitlab.com/a/b@v1"):
+        assert pc.github_archive(same) == same
+    monkeypatch.setattr(pc.shutil, "which", lambda name: None)
+    assert pc.pip_command("install", src)[-1] == zip_
+    monkeypatch.setattr(pc.shutil, "which", lambda name: "/usr/bin/" + name)
+    assert pc.pip_command("install", src)[-1] == src
+
+
+def test_frozen_app_runs_pip_through_ewald_exe(monkeypatch, tmp_path):
+    # ewald-gui.exe is no python: `ewald-gui.exe -m pip` did nothing (user, Windows exe)
+    import sys
+
+    app = tmp_path / "ewald"
+    app.mkdir()
+    for name in ("ewald-gui.exe", "ewald.exe"):
+        (app / name).write_bytes(b"")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(app), raising=False)
+    monkeypatch.setattr(sys, "executable", str(app / "ewald-gui.exe"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "local"))
+    monkeypatch.setattr(pc.Path, "home", staticmethod(lambda: tmp_path / "home"))
+    cmd = pc.pip_command("install", "ewald-x")
+    assert cmd[:4] == [str(app / "ewald.exe"), "-m", "pip", "install"] and cmd[-1] == "ewald-x"
+    prefix = cmd[cmd.index("--prefix") + 1]
+    assert prefix == str(pc.addons_prefix()) and "--no-build-isolation" in cmd
+    constraints = pc.Path(cmd[cmd.index("--constraint") + 1])
+    assert constraints.parent == pc.addons_prefix() and constraints.is_file()   # nothing bundled in tmp: empty
+    assert pc.pip_command("uninstall", "ewald-x") == [str(app / "ewald.exe"), "-m", "pip", "uninstall", "-y", "ewald-x"]
+    assert pc.pip_command("update", "ewald-x")[3:5] == ["install", "--upgrade"]
+
+
+def test_bundled_constraints_pin_what_the_app_ships(monkeypatch, tmp_path):
+    import sys
+    from pathlib import Path
+
+    import numpy
+
+    bundle = Path(numpy.__file__).resolve().parent.parent      # this site-packages plays the bundle
+    monkeypatch.setattr(sys, "_MEIPASS", str(bundle), raising=False)
+    monkeypatch.setattr(pc, "addons_prefix", lambda: tmp_path / "python")
+    pins = pc.bundled_constraints().read_text(encoding="utf-8").split()
+    assert f"numpy=={numpy.__version__}" in pins and all("==" in p for p in pins)

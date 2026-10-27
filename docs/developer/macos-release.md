@@ -39,8 +39,9 @@ The runtime hook (`rthook_macos.py`) does what a terminal would have done:
   the sources inside the bundle, which changes a signed app when `/Applications` is writable;
 - adds `/opt/homebrew/bin` and `/usr/local/bin` to the minimal PATH Finder gives apps, so a
   Homebrew `ffmpeg` (movies) or `plumed` is found;
-- appends `~/Library/Application Support/ewald/site-packages` to `sys.path` for add-ons:
-  `pip install --target ~/Library/Application\ Support/ewald/site-packages --python-version 3.12 --only-binary=:all: anthropic`.
+- puts `~/Library/Application Support/ewald/python/lib/python3.X/site-packages` on `sys.path`: the
+  Plugins side bar installs pip plugins there with the bundled pip (`ewald -m pip install --prefix ...`,
+  as on Windows, D76); the older `~/Library/Application Support/ewald/site-packages` stays on it too.
 
 Run from a terminal (not the bundle), `gui/macos.py:set_app_name` puts EWALD instead of Python in
 the menu bar through the Objective-C runtime (ctypes, no pyobjc).

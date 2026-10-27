@@ -58,7 +58,7 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ".[gui]" pyinstaller
+          python -m pip install ".[gui]" pyinstaller setuptools
           if [ "$EWALD_VARIANT" = gpu ]; then
             # CuPy plus the CUDA 12 runtime libraries it loads (the user only needs an NVIDIA driver)
             python -m pip install cupy-cuda12x nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12 \
@@ -84,6 +84,13 @@ jobs:
             || echo "exit status $? (ignored)"
           cat smoke.log
           grep -q "SMOKE OK" smoke.log
+      - name: Smoke test (plugins with the bundled pip)
+        shell: bash
+        run: |
+          export LOCALAPPDATA="$RUNNER_TEMP/ewald-local"
+          ./dist/ewald/ewald.exe -m pip --version
+          ./dist/ewald/ewald.exe run packaging/windows/smoke_pip.py | tee smoke_pip.log
+          grep -q "PIP SMOKE OK" smoke_pip.log
       - name: Smoke test (windowed GUI)
         shell: pwsh
         run: |

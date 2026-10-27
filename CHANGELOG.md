@@ -10,6 +10,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- The standalone Windows and macOS apps install pip plugins from the Plugins side bar: they bundle
+  pip, `ewald.exe` runs `-m pip` like python, and plugins go into the app's data folder with the
+  bundled packages kept as they are. Without git, GitHub plugins are fetched as zip archives. (D76)
+
 - The notebook shows which cell runs and which wait: a tinted card with an accent border, a stop
   button with a turning ring and the elapsed time on the running cell, a dashed border and `*` on
   waiting ones, a chip beside Interrupt ("Cell 3 · 2.8 s · 2 waiting") that jumps to it, a play

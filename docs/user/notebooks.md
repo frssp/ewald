@@ -550,7 +550,8 @@ ewald's example plugins, the default plugin index and every catalog in Preferenc
 [Packaging and sharing](../plugins/packaging.md#plugin-catalogs)). Type to search, or filter with
 `@installed`, `@updates`, `@available` or a kind such as `@modifier`. *Install* copies a plugin file into the
 plugin folder and loads it at once; a `pip:` entry runs pip in the Python ewald runs in, after
-you confirm the command. *Update to …* appears on an installed plugin when a catalog has a
+you confirm the command (in the standalone Windows or macOS app, its own bundled pip, which installs into
+the app's data folder; without git, GitHub plugins come as zip archives). *Update to …* appears on an installed plugin when a catalog has a
 newer version (a plugin file without a version of its own counts as the catalog version it was
 installed as, or as the entry whose `sha256` it matches; the Plugins icon on the activity bar then carries the number of updates, and
 `@updates` lists them), and entries that need a newer ewald are greyed out. *Disable* switches a plugin off without removing it

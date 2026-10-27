@@ -1,13 +1,15 @@
 # PyInstaller spec for the Windows app: one folder with ewald.exe (console CLI) and
 # ewald-gui.exe (windowed), sharing one _internal/ directory.
 #
-#   pip install ".[gui]" pyinstaller            (+ cupy-cuda12x and nvidia-*-cu12 for the GPU build)
+#   pip install ".[gui]" pyinstaller setuptools            (+ cupy-cuda12x and nvidia-*-cu12 for the GPU build)
 #   pyinstaller --noconfirm packaging/windows/ewald.spec
 #
 # EWALD_VARIANT=gpu bundles CuPy and the CUDA runtime wheels; otherwise CuPy is excluded.
 import os
 
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
+import importlib.metadata
+
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules, copy_metadata
 
 HERE = os.path.dirname(os.path.abspath(SPEC))
 # the app icon rendered by src/ewald/assets/icon/make_icons.py; EWALD_ICON overrides it
@@ -19,6 +21,19 @@ hiddenimports = (collect_submodules("ewald")
                  + collect_submodules("ase.io") + collect_submodules("ase.calculators")
                  + ["qtconsole.inprocess", "ipykernel.inprocess", "pyvistaqt"])
 datas = collect_data_files("ewald") + collect_data_files("ase") + collect_data_files("pyvista") + collect_data_files("qtconsole")
+# pip and setuptools for the Plugins side bar (ewald.exe -m pip, ewald.plugin_catalog.frozen_pip_command),
+# plus every bundled distribution's metadata, so pip sees ewald, numpy, ... as installed and a
+# plugin's requirements on them are met
+hiddenimports += collect_submodules("pip") + collect_submodules("setuptools") + ["_distutils_hack"]
+datas += collect_data_files("pip") + collect_data_files("setuptools")
+BUILD_ONLY = {"pyinstaller", "pyinstaller-hooks-contrib", "altgraph", "pefile", "pywin32-ctypes", "macholib", "delvewheel"}
+for dist in importlib.metadata.distributions():
+    name = dist.metadata["Name"]
+    if name and name.lower().replace("_", "-") not in BUILD_ONLY:
+        try:
+            datas += copy_metadata(name)
+        except Exception as exc:  # noqa: BLE001  a broken dist-info in the build env
+            print("no metadata for", name, exc)
 binaries = []
 # debugpy: ipykernel imports it optionally, but its vendored pydevd tree breaks when frozen
 excludes = ["tkinter", "ovito", "torch", "tensorflow", "PyQt5", "PyQt6", "PySide2", "debugpy"]
@@ -41,7 +56,8 @@ a = Analysis(
     runtime_hooks=[os.path.join(HERE, "rthook_ewald.py")],
     excludes=excludes,
     # keep ewald's .py sources next to the bytecode: numba cache=True locates functions by source file
-    module_collection_mode={"ewald": "pyz+py"},
+    # pip runs its own files as scripts (build backend hooks), so pip and setuptools stay plain .py
+    module_collection_mode={"ewald": "pyz+py", "pip": "py", "setuptools": "py", "_distutils_hack": "py"},
     noarchive=False,
 )
 pyz = PYZ(a.pure)

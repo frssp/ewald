@@ -500,15 +500,95 @@ def pip_command(action: str, requirement: str | list[str]) -> list[str]:
     installs with ``--upgrade``. ``requirement`` may be a list (several packages at once).
     An environment made by uv has no pip: then ``uv pip ... --python <this python>`` is used
     (with :data:`UV_TLS_ENV` from :func:`pip_env`, so a company proxy's root certificate in the
-    OS store is trusted)."""
+    OS store is trusted). In the standalone app see :func:`frozen_pip_command`. Without git,
+    GitHub ``git+https`` sources are fetched as archives (:func:`github_archive`)."""
     reqs = [requirement] if isinstance(requirement, str) else list(requirement)
+    if shutil.which("git") is None:
+        reqs = [github_archive(r) for r in reqs]
     flags = {"install": ["install"], "update": ["install", "--upgrade"], "uninstall": ["uninstall", "-y"]}
     verb, *rest = flags[action if action in flags else "uninstall"]
+    if is_frozen():
+        return frozen_pip_command(verb, rest, reqs)
     if uv := _uv():
         if verb == "uninstall":
             rest = []                                    # uv pip uninstall has no -y
         return [uv, "pip", verb, "--python", sys.executable, *rest, *reqs]
     return [sys.executable, "-m", "pip", verb, *rest, *reqs]
+
+
+def github_archive(requirement: str) -> str:
+    """A ``git+https://github.com/OWNER/REPO@REF[#subdirectory=DIR]`` requirement (also as
+    ``name @ git+...``) as the URL of GitHub's archive of that commit, which pip installs
+    without git; anything else unchanged."""
+    name, sep, url = requirement.rpartition(" @ ")
+    head, hash_, fragment = url.partition("#")
+    if not head.startswith("git+https://github.com/"):
+        return requirement
+    repo, at, ref = head.removeprefix("git+").partition("@")
+    if not at or not ref:
+        return requirement                               # no commit or branch: let pip ask git
+    archive = f"{repo.removesuffix('.git')}/archive/{ref}.zip" + hash_ + fragment
+    return f"{name} @ {archive}" if sep else archive
+
+
+# ---------------------------------------------------------------- the standalone app
+def is_frozen() -> bool:
+    """True in the standalone (PyInstaller) app, which has no separate Python."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def addons_prefix() -> Path:
+    """Where pip installs plugins for the standalone app (``--prefix``); the app's runtime hook
+    (``packaging/windows/rthook_ewald.py``, ``packaging/macos/rthook_macos.py``) puts its
+    site-packages on ``sys.path``."""
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".local" / "share") / "ewald"
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support" / "ewald"
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "ewald"
+    return base / "python"
+
+
+def app_python() -> str:
+    """The executable that runs Python for the standalone app: ``ewald.exe`` (console), which
+    takes ``-m``, ``-c`` and script paths like ``python``, also when ``ewald-gui.exe`` runs."""
+    exe = Path(sys.executable)
+    cli = exe.with_name("ewald" + exe.suffix)
+    return str(cli) if cli.is_file() else sys.executable
+
+
+def bundled_constraints() -> Path:
+    """A pip constraints file pinning every distribution the app bundles (ewald, numpy, Qt,
+    ...) at its version, so a plugin's dependencies never ask pip to replace them: the bundled
+    copies come first on ``sys.path`` and would win anyway."""
+    bundle = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)).resolve()
+    pins = {}
+    for dist in importlib.metadata.distributions():     # in sys.path order: the copy Python imports first
+        name = _norm(dist.metadata["Name"] or "")
+        try:
+            inside = Path(dist.locate_file("")).resolve() == bundle   # not setuptools' vendored copies
+        except (OSError, ValueError):
+            inside = False
+        if inside and name and name not in pins:
+            pins[name] = dist.version
+    path = addons_prefix() / "bundled-constraints.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    from .fileops import write_text
+
+    write_text(path, "".join(f"{n}=={v}\n" for n, v in sorted(pins.items())))
+    return path
+
+
+def frozen_pip_command(verb: str, rest: list[str], reqs: list[str]) -> list[str]:
+    """pip for the standalone app: the bundled pip run by :func:`app_python`, installing into
+    :func:`addons_prefix` with the bundled packages pinned (:func:`bundled_constraints`) and
+    the bundled setuptools as build backend (no build isolation: the app cannot set one up)."""
+    cmd = [app_python(), "-m", "pip", verb, *rest]
+    if verb == "install":
+        cmd += ["--prefix", str(addons_prefix()), "--no-build-isolation", "--no-warn-script-location",
+                "--constraint", str(bundled_constraints())]
+    return cmd + reqs
 
 
 def pip_env(requirement: str | list[str]) -> dict:
