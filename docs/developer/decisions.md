@@ -986,6 +986,18 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   declared by the server per template; recipes in ewald-aiida.
 - **Landed:** public PR #96; frssp/ewald-plugins PR #28 (ewald-aiida 0.2.0).
 
+### D76. The standalone app installs pip plugins with a bundled pip (2026-10-27)
+
+- **Decision:** the Windows and macOS apps bundle pip and setuptools; `ewald.exe` answers
+  python's command lines (`-m`, `-c`, a script), and the Plugins side bar runs
+  `ewald.exe -m pip install --prefix <app data>/ewald/python` with every bundled package pinned
+  at its version and no build isolation. GitHub `git+https` sources are fetched as GitHub's
+  archive of the pinned commit when git is not installed. The owner reported that installing
+  plugins from the exe did not work and picked this over the alternatives.
+- **Considered:** only `.py` file plugins in the app, with a pointer to the Python install for
+  pip plugins; bundling the light first-party plugins into the app.
+- **Landed:** public PR #98.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
