@@ -25,6 +25,9 @@ from ..render import (
     stick_count,
 )
 from . import header
+
+# Qt platforms whose windows have no OpenGL context to ask
+_NO_GL_PLATFORMS = ("offscreen", "minimal")
 from .application import use_vtk_surface_format, vtk_surface_format  # noqa: F401  (moved there)
 from .palette import native_text
 from .style import STYLE_PRESETS, ViewStyle
@@ -931,6 +934,9 @@ class Viewport(QtWidgets.QWidget):
         from ..render import opengl_info
 
         info = getattr(self, "_gl_info", None)
+        if info is None and QtGui.QGuiApplication.platformName() in _NO_GL_PLATFORMS:
+            # no native GL window: on Windows, VTK's ReportCapabilities crashes reading NULL strings
+            return {"vendor": "", "renderer": "", "version": "", "software": False}
         if info is None:
             info = opengl_info(self.plotter.render_window)
             if info["renderer"]:  # known once the window has a GL context

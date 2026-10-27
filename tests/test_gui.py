@@ -2312,6 +2312,20 @@ def test_viewport_draws_vector_arrows(app):
     assert not any(str(k).startswith("vectors:") for k in v.plotter.actors)
     v.close()
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_opengl_check_skips_platforms_without_gl(app, pipe, monkeypatch):
+    # QT_QPA_PLATFORM=offscreen has no GL context; on Windows asking VTK for the driver crashed
+    from ewald.gui import viewport as vpmod
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(pipe)
+    monkeypatch.setattr(vpmod.QtGui.QGuiApplication, "platformName", staticmethod(lambda: "offscreen"))
+    import ewald.render
+    monkeypatch.setattr(ewald.render, "opengl_info", lambda rw: pytest.fail("asked VTK without a GL context"))
+    w.viewport._gl_info = None
+    assert w.check_opengl() == {"vendor": "", "renderer": "", "version": "", "software": False}
+    w.close()
+
+
 def test_viewport_impostors_smooth_edges_and_opengl_check(app, pipe, monkeypatch):
     from ewald import gpu_select, settings
     from ewald.gui.app import MainWindow
