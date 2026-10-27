@@ -984,7 +984,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   agent's plugin ("[agent]와 관련있는 것은 [agent plugin]에 넣어야한다").
 - **Considered:** extending the agent's JSON description with per-step input summaries; recipes
   declared by the server per template; recipes in ewald-aiida.
-- **Landed:** public PR #NN; frssp/ewald-plugins PR #28 (ewald-aiida 0.2.0).
+- **Landed:** public PR #96; frssp/ewald-plugins PR #28 (ewald-aiida 0.2.0).
 
 ## Adding an entry
 
