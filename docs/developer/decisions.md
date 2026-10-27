@@ -996,7 +996,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   plugins from the exe did not work and picked this over the alternatives.
 - **Considered:** only `.py` file plugins in the app, with a pointer to the Python install for
   pip plugins; bundling the light first-party plugins into the app.
-- **Landed:** public PR #NN.
+- **Landed:** public PR #98.
 
 ## Adding an entry
 
