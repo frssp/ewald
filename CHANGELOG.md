@@ -89,6 +89,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Fixed
 
+- The Windows app no longer crashes on exit while the Plugins side bar is still reading the
+  catalogs, nor when started on a Qt platform without OpenGL (`QT_QPA_PLATFORM=offscreen`); the
+  frozen app's release build passes its smoke tests again.
 - Applying a new UI theme in Preferences restyles the open Preferences dialog too (its pages,
   icons, element table and switches), not only the main window; windows that draw theme colors
   themselves define `retheme()`. (#83)
