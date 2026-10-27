@@ -76,12 +76,8 @@ from ewald.gui import workers
 
 assert workers.wait_all(30000), "background threads still running"
 print("SMOKE OK")
-# Ending the process unloads the DLLs, and with an offscreen Qt + VTK window on the runner's
-# Mesa opengl32.dll that is an access violation (also through os._exit). Skip the unload
-# here; the next step checks the real app's exit.
+# Ending the process after an offscreen Qt + VTK window crashes inside the runner's Mesa
+# opengl32.dll (an access violation even through os._exit or TerminateProcess), so the
+# workflow checks for "SMOKE OK", not the exit code; the next step checks the real app's exit.
 sys.stdout.flush()
-if sys.platform == "win32":
-    import ctypes
-
-    ctypes.windll.kernel32.TerminateProcess(ctypes.windll.kernel32.GetCurrentProcess(), 0)
 os._exit(0)
