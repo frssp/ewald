@@ -46,6 +46,14 @@ def alive(obj: QtCore.QObject) -> bool:
     return True
 
 
+def wait_all(msecs: int = 10000) -> bool:
+    """Wait for the detached threads and the global thread pool before the process exits:
+    exiting under a running thread is an access violation on Windows. False on timeout."""
+    deadline = QtCore.QDeadlineTimer(msecs)
+    ok = all(t.wait(deadline) for t in list(_RUNNING) if alive(t))
+    return QtCore.QThreadPool.globalInstance().waitForDone(max(0, deadline.remainingTime())) and ok
+
+
 def running() -> int:
     """How many detached threads have not been released yet (tests)."""
     return len(_RUNNING)

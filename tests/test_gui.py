@@ -7141,3 +7141,25 @@ def test_timeline_shows_timestep_and_time_not_the_3d_view(app, pipe):
     t.set_info({"Timestep": 500})
     assert not t.info.isVisibleTo(t)
     _dispose(t)
+
+
+def test_wait_all_holds_the_exit_until_detached_threads_end(app):
+    # ewald-gui waits for them after the event loop: exiting under a running thread crashed on Windows
+    import threading
+
+    from PySide6 import QtCore
+
+    from ewald.gui import workers
+
+    release = threading.Event()
+
+    class Slow(QtCore.QThread):
+        def run(self):
+            release.wait(5)
+
+    t = workers.detach(Slow())
+    t.start()
+    assert not workers.wait_all(50)            # still running: times out
+    release.set()
+    assert workers.wait_all(5000) and t.isFinished()
+    app.processEvents()

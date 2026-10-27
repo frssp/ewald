@@ -70,6 +70,11 @@ win.show()
 app.processEvents()
 print("console:", type(win.console).__name__)
 win.close()
+# background threads (the plugin catalog runs `gh auth token`) must end before the process
+# does: exiting under them is an access violation on Windows
+from ewald.gui import workers
+
+assert workers.wait_all(30000), "background threads still running"
 print("SMOKE OK")
 # Tearing down an offscreen Qt + VTK window from a script at interpreter exit ends the
 # process with a nonzero status on Windows; the next step checks the real app's exit.
