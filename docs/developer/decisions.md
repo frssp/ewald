@@ -970,6 +970,22 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** polyhedra inside the Bonds card; keeping them as one row of the Surfaces card.
 - **Landed:** public PR #91.
 
+### D75. Agent workflows arrive as AiiDA archives; recipes stay in the agent's plugin (2026-10-27)
+
+- **Decision:** a results server of an AiiDA-based agent sends a finished workflow as an AiiDA
+  archive (the database alone when only the steps' inputs are needed), and ewald-aiida opens it
+  read-only (no database server; extracted to a folder, which is the form that behaves on
+  Windows) and describes each step by what it was run with: inputs, retrieved files and a
+  `shape` (kind and flags from the INCAR, k-points and structure). Analyses find their steps by
+  that, so a new workflow template needs no plugin release. Recipes that read one agent's own
+  files or task layout stay in that agent's plugin; ewald-aiida keeps only the generic part, and
+  the core gains nothing. The owner chose AiiDA as the format so that any agent can use it ("굳이
+  [이 agent]가 아니라 aiida를 사용하는 다른 agent도 그렇게 할 수 있지"), and put the recipes in the
+  agent's plugin ("[agent]와 관련있는 것은 [agent plugin]에 넣어야한다").
+- **Considered:** extending the agent's JSON description with per-step input summaries; recipes
+  declared by the server per template; recipes in ewald-aiida.
+- **Landed:** public PR #96; frssp/ewald-plugins PR #28 (ewald-aiida 0.2.0).
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
