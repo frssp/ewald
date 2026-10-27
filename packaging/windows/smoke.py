@@ -71,3 +71,7 @@ app.processEvents()
 print("console:", type(win.console).__name__)
 win.close()
 print("SMOKE OK")
+# Tearing down an offscreen Qt + VTK window from a script at interpreter exit ends the
+# process with a nonzero status on Windows; the next step checks the real app's exit.
+sys.stdout.flush()
+os._exit(0)
