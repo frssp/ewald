@@ -3,9 +3,14 @@
 Touches each bundled stack once: readers (native + ASE), the C++ extension, numba kernels,
 VTK offscreen rendering, the numba ray tracer, and the Qt main window with its console.
 """
+import faulthandler
 import os
 import sys
 from pathlib import Path
+
+# a crash in native code (VTK, numba, Qt) then names the line, and output is not lost in the pipe
+faulthandler.enable()
+sys.stdout.reconfigure(line_buffering=True)
 
 import numpy as np
 
