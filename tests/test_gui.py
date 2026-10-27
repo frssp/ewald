@@ -2312,6 +2312,20 @@ def test_viewport_draws_vector_arrows(app):
     assert not any(str(k).startswith("vectors:") for k in v.plotter.actors)
     v.close()
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_opengl_check_skips_platforms_without_gl(app, pipe, monkeypatch):
+    # QT_QPA_PLATFORM=offscreen has no GL context; on Windows asking VTK for the driver crashed
+    from ewald.gui import viewport as vpmod
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(pipe)
+    monkeypatch.setattr(vpmod.QtGui.QGuiApplication, "platformName", staticmethod(lambda: "offscreen"))
+    import ewald.render
+    monkeypatch.setattr(ewald.render, "opengl_info", lambda rw: pytest.fail("asked VTK without a GL context"))
+    w.viewport._gl_info = None
+    assert w.check_opengl() == {"vendor": "", "renderer": "", "version": "", "software": False}
+    w.close()
+
+
 def test_viewport_impostors_smooth_edges_and_opengl_check(app, pipe, monkeypatch):
     from ewald import gpu_select, settings
     from ewald.gui.app import MainWindow
@@ -7127,3 +7141,25 @@ def test_timeline_shows_timestep_and_time_not_the_3d_view(app, pipe):
     t.set_info({"Timestep": 500})
     assert not t.info.isVisibleTo(t)
     _dispose(t)
+
+
+def test_wait_all_holds_the_exit_until_detached_threads_end(app):
+    # ewald-gui waits for them after the event loop: exiting under a running thread crashed on Windows
+    import threading
+
+    from PySide6 import QtCore
+
+    from ewald.gui import workers
+
+    release = threading.Event()
+
+    class Slow(QtCore.QThread):
+        def run(self):
+            release.wait(5)
+
+    t = workers.detach(Slow())
+    t.start()
+    assert not workers.wait_all(50)            # still running: times out
+    release.set()
+    assert workers.wait_all(5000) and t.isFinished()
+    app.processEvents()

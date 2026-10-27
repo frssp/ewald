@@ -79,7 +79,10 @@ jobs:
         shell: bash
         run: |
           ./dist/ewald/ewald.exe info tests/data/vasp/XDATCAR
-          ./dist/ewald/ewald.exe run packaging/windows/smoke.py tests/data smoke_out | tee smoke.log
+          # exit status ignored: the process crashes on exit in the runner's Mesa (smoke.py says why)
+          ./dist/ewald/ewald.exe run packaging/windows/smoke.py tests/data smoke_out > smoke.log 2>&1 \
+            || echo "exit status $? (ignored)"
+          cat smoke.log
           grep -q "SMOKE OK" smoke.log
       - name: Smoke test (windowed GUI)
         shell: pwsh

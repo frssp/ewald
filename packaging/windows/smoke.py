@@ -3,9 +3,14 @@
 Touches each bundled stack once: readers (native + ASE), the C++ extension, numba kernels,
 VTK offscreen rendering, the numba ray tracer, and the Qt main window with its console.
 """
+import faulthandler
 import os
 import sys
 from pathlib import Path
+
+# a crash in native code (VTK, numba, Qt) then names the line, and output is not lost in the pipe
+faulthandler.enable()
+sys.stdout.reconfigure(line_buffering=True)
 
 import numpy as np
 
@@ -65,4 +70,14 @@ win.show()
 app.processEvents()
 print("console:", type(win.console).__name__)
 win.close()
+# background threads (the plugin catalog runs `gh auth token`) must end before the process
+# does: exiting under them is an access violation on Windows
+from ewald.gui import workers
+
+assert workers.wait_all(30000), "background threads still running"
 print("SMOKE OK")
+# Ending the process after an offscreen Qt + VTK window crashes inside the runner's Mesa
+# opengl32.dll (an access violation even through os._exit or TerminateProcess), so the
+# workflow checks for "SMOKE OK", not the exit code; the next step checks the real app's exit.
+sys.stdout.flush()
+os._exit(0)

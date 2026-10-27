@@ -819,7 +819,11 @@ def main(argv=None):
     from . import first_run
 
     first_run.finish(win)
-    return app.exec()
+    code = app.exec()
+    from . import workers
+
+    workers.wait_all()   # a catalog read or file load still running would crash the exit
+    return code
 
 
 if __name__ == "__main__":

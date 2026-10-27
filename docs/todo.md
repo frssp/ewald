@@ -716,6 +716,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- The frozen Windows app from `windows-release.yml` (CPU and GPU setup.exe, portable zip) on the
+  owner's Windows PC: install, open a VASP/LAMMPS file, render, quit without a crash dialog, and
+  the GPU build with `device="cuda"` on the RTX. CI only runs it on Mesa software OpenGL, where
+  the CLI smoke script crashes on process exit (ignored there).
 - Simple (ASE) atoms on the owner's Windows PC (200 %): round discs in the OpenGL 1.x viewport
   (36-segment meshes now) and in the normal viewport (impostors); View › Atoms › *Sphere detail*
   changes the legacy viewport's discs; applying Preferences keeps the style picked in the view.

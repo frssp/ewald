@@ -80,7 +80,10 @@ fix on main, and tag again. Once anyone has installed it, release `X.Y.(Z+1)` in
 ## Cost and turning automatic runs back on
 
 Every workflow in `.github/workflows/` is `workflow_dispatch` only while Actions minutes are short
-(the repository is private; Windows minutes bill 2x and macOS 10x). A full release run is roughly
+(they ran out while the repository was private, when Windows minutes billed 2x and macOS 10x;
+standard GitHub-hosted runners are free for public repositories, which this one has been since
+2026-10-23). The Windows workflow ran green on a branch on 2026-10-27 (CPU setup.exe 244 MB,
+portable zip 337 MB). A full release run is roughly
 3 Linux, 4 macOS (x10) and 3 Windows (x2) jobs; the GPU Windows app is the longest at about 30
 minutes. Leaving out `macos-release.yml` saves most of the cost when no Mac user is waiting.
 
