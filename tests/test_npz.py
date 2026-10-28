@@ -6,6 +6,16 @@ from ewald import Cell, DataCollection, export_file, import_file, plugins
 from ewald.io import NpzTrajectoryReader, is_npz_trajectory
 
 
+@pytest.fixture(autouse=True)
+def fresh_registry(monkeypatch):
+    """A registry loaded from scratch, whatever earlier tests left in it."""
+    from ewald import plugins
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    yield
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+
+
 def _npz(path, frames=4, atoms=5, **extra):
     rng = np.random.default_rng(1)
     arrays = dict(positions=rng.random((frames, atoms, 3)) * 10, types=np.array(["Li"] * 2 + ["O"] * 3),

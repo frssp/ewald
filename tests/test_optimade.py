@@ -13,6 +13,16 @@ from ewald.optimade.query import parse_formula, reduced_formula
 from helpers import optimade_server
 
 
+@pytest.fixture(autouse=True)
+def fresh_registry(monkeypatch):
+    """A registry loaded from scratch, whatever earlier tests left in it."""
+    from ewald import plugins
+
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+    yield
+    monkeypatch.setattr(plugins, "_registry", plugins._Registry())
+
+
 @pytest.fixture
 def server(monkeypatch):
     for var in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"):

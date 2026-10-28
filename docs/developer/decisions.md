@@ -1008,6 +1008,21 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   wheels and disk images in the same release; 1.0 (rejected, the API still changes).
 - **Landed:** public PR #99.
 
+### D78. OPTIMADE and the .npz reader move into the core (2026-10-28)
+
+- **Decision:** two first-party plugins become built-in plugin groups that can be switched off:
+  NumPy `.npz` trajectories ("npz", reader and writer) and OPTIMADE ("optimade": the `optimade:`
+  reader, `search()`, the side bar, the read-only `optimade_search` AI tool, Preferences ›
+  OPTIMADE, `ewald optimade`). `ewald-optimade` 0.2 only re-exports `ewald.optimade`, and an
+  older copy left installed is not loaded. Plugins with heavy or outside dependencies stay
+  plugins: ewald-mp (mp-api, pymatgen), ewald-phonopy, ewald-aiida, ewald-plumed.
+- **Why:** the owner asked "플러그 인 중 그냥 코어로 넣을 만한 작은 것? 예를 들면 파일 포멧
+  지원 정도?" and picked "npz + OPTIMADE" on the decision card; neither adds a dependency to
+  the core.
+- **Considered:** the npz reader alone; npz + OPTIMADE + the LocalComposition modifier example;
+  leaving every plugin where it is.
+- **Landed:** public PR #100; frssp/ewald-plugins PR #29 (ewald-optimade 0.2.0, catalog entries removed).
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

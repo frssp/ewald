@@ -542,7 +542,7 @@ def test_claude_tool_plugin_joins_the_toolset():
     from ewald import Pipeline, StaticSource
     from ewald.llm.tools import Toolset
 
-    assert set(plugins.tools()) == {"count_atoms", "load_structure"}
+    assert {n for n, t in plugins.tools().items() if t.origin != "built-in"} == {"count_atoms", "load_structure"}
     assert plugins.installed()["tools"].contributions["tools"] == ["count_atoms", "load_structure"]
     ts = Toolset(Pipeline(StaticSource([DataCollection.from_ase(bulk("Cu"))])))
     assert ts.tools["count_atoms"].description.startswith("Number of atoms")
@@ -622,7 +622,7 @@ def test_scheme_reader_takes_uri_paths(tmp_path, monkeypatch):
     assert plugins.find_reader("demo:7").name == "demo-db"
     assert plugins.scheme_reader("aiida:1") is None and plugins.scheme_reader("POSCAR") is None
     assert plugins.path_scheme("demo:3") == "demo" and plugins.path_scheme("/tmp/x") is None
-    assert plugins.status()["readers"][0]["schemes"] in ([], ["demo"])
+    assert {r["name"]: r["schemes"] for r in plugins.status()["readers"]}["demo-db"] == ["demo"]
 
     save_session(tmp_path / "s.ewald", pipe)
     again = load_session(tmp_path / "s.ewald").pipeline
@@ -755,7 +755,7 @@ def test_settings_page_from_plugin_folder():
     item = next(i for i in plugin_catalog.installed() if i.id == "demo_service")
     assert item.provides["settings_page"] == ["demo-service"] and "settings_page" in item.kinds
     assert plugin_catalog.describe_file(path).kinds == ["settings_page"]
-    assert plugins.status()["settings_pages"][0]["title"] == "Demo service"
+    assert {p["name"]: p["title"] for p in plugins.status()["settings_pages"]}["demo-service"] == "Demo service"
 
 
 def test_settings_page_checks_what_it_is_given():

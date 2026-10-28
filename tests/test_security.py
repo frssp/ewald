@@ -250,6 +250,7 @@ def test_ewd_with_unsafe_paths_is_refused(tmp_path, name):
 # (ewald/trust.py says how the gates fit together). A new site fails this test until it is listed
 # here with its gate, so each one gets a security review.
 EXEC_SITES = {
+    ("plugins.py", "import_module"): "\"module:function\" hooks from the fixed BUILTIN_EXTRAS table only",
     ("codes.py", "import_module"): "lazy \"module:function\" hooks of built-in or installed simulation codes",
     ("gui/prefs_apply.py", "exec"): "the console startup script the user chose in Preferences",
     ("gui/prefs_apply.py", "run_cell"): "the console startup script the user chose in Preferences",
