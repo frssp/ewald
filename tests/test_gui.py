@@ -1654,7 +1654,11 @@ def test_preferences_dialog_edit_search_restore(app, tmp_path):
 
     s = settings.load()
     dlg = PreferencesDialog(s)
-    assert [dlg.pages.item(i).text() for i in range(dlg.pages.count())] == list(settings.PAGES)
+    from ewald import plugins
+
+    extra = {p.title for p in plugins.settings_pages().values()}   # built-in plugin groups' pages (OPTIMADE)
+    assert [t for t in (dlg.pages.item(i).text() for i in range(dlg.pages.count())) if t not in extra] == \
+        list(settings.PAGES)
     dlg.set_value("viewport.rotation_step", 45.0)
     dlg.set_value("compute.device", "auto")
     assert s.is_default("viewport.rotation_step")           # untouched until Apply
@@ -5548,9 +5552,9 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
     w = MainWindow(pipe)
     titles = [a.text() for a in w.activity_bar.actions() if a.text() and a is not w.activity_more]   # work on top
     assert titles[:2] == ["Notebook", "AI chat"] and titles[-3:] == ["Remotes", "Plugins", "Preferences"]
-    assert sorted(titles[2:-3]) == ["Broken", "Sim agent", "Workflows"]
+    assert sorted(titles[2:-3]) == ["Broken", "OPTIMADE", "Sim agent", "Workflows"]
     assert w.plugin_panels["sim_agent"]["dock"] is None          # nothing built before it opens
-    assert sorted(a.text() for a in w.plugin_panel_actions) == ["Agent jobs", "Broken", "Sim agent", "Workflows"]
+    assert sorted(a.text() for a in w.plugin_panel_actions) == ["Agent jobs", "Broken", "OPTIMADE", "Sim agent", "Workflows"]
     window = [a.text() for a in w.window_menu.actions()]            # with the side bars, before Remotes
     assert window.index("Workflows") < window.index("Re&motes") and "Plugin panels" not in window
     w.plugin_panels["sim_agent"]["action"].trigger()
@@ -5590,8 +5594,8 @@ def test_plugin_panel_on_activity_bar_and_preferences_page(app, pipe, monkeypatc
 
     plugins.set_enabled("sim-agent-example", False)
     w.refresh_plugin_panels()
-    assert [a.text() for a in w.activity_bar.actions() if a.text() and a is not w.activity_more][2:-3] \
-        == ["Broken", "Workflows"]
+    assert sorted([a.text() for a in w.activity_bar.actions() if a.text() and a is not w.activity_more][2:-3]) \
+        == ["Broken", "OPTIMADE", "Workflows"]
     assert "sim_agent" not in w.plugin_panels
     w.close()
 

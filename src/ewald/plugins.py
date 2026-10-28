@@ -908,9 +908,19 @@ BUILTIN_PLUGINS = {
     "md-formats": ("MD trajectories", "GROMACS XTC/TRR, DCD, AMBER NetCDF, H5MD and MDTraj HDF5",
                    ("md-trajectory", "h5md", "mdtraj-h5"), ("md-trajectory", "h5md")),
     "xsf": ("XCrySDen XSF", "XSF/AXSF structures, trajectories and 3D grids", ("xsf",), ("xsf",)),
+    "npz": ("NumPy .npz", "Trajectories stored as NumPy .npz archives (positions, types, cell, forces, energies)",
+            ("npz-trajectory",), ("npz-trajectory",)),
+    "optimade": ("OPTIMADE structures", "Search and open structures of OPTIMADE databases (Materials Project, "
+                 "COD, OQMD, Alexandria, NOMAD, Materials Cloud, JARVIS, ...) without a key: "
+                 "load(\"optimade:mp/mp-149\"), a search side bar and the read-only AI tool optimade_search",
+                 ("optimade",), ()),
     "ase-formats": ("ASE files", "ASE databases (.db) and trajectories (.traj), and CIF via ASE",
                     ("ase-db", "ase-traj", "cif"), ("ase-db", "ase-traj", "cif")),
 }
+
+#: Built-in plugin groups that contribute more than formats: "module:function" returning the
+#: names it registered by kind (AI tools, settings pages, side bars), called while the group is on.
+BUILTIN_EXTRAS = {"optimade": "ewald.optimade:register"}
 
 
 def _load_builtin(off: set):
@@ -936,6 +946,14 @@ def _load_builtin(off: set):
         elif not plugin.enabled:
             for n in codes:
                 del _registry.codes[n]
+        if plugin.enabled and pid in BUILTIN_EXTRAS:
+            module, _, function = BUILTIN_EXTRAS[pid].partition(":")
+            try:
+                for kind, names in getattr(importlib.import_module(module), function)().items():
+                    plugin.contributions.setdefault(kind, []).extend(names)
+            except Exception as exc:   # never stops the other plugins from loading
+                plugin.errors.append(f"{type(exc).__name__}: {exc}")
+                _registry.errors[f"built-in {pid}"] = plugin.errors[-1]
         plugin.loaded = plugin.enabled
         _registry.plugins[pid] = plugin
 
@@ -989,7 +1007,10 @@ def installed() -> dict[str, Plugin]:
 def _admit(plugin: Plugin, off: set) -> bool:
     """Record ``plugin`` and decide whether its code may be imported."""
     if plugin.id in _registry.plugins:
-        plugin.errors.append(f"plugin id {plugin.id!r} is also used by {_registry.plugins[plugin.id].origin}")
+        other = _registry.plugins[plugin.id]
+        plugin.errors.append(f"{plugin.name or plugin.id} is built into ewald now; uninstall this copy "
+                             f"(pip uninstall {plugin.origin})" if other.kind == "built-in" and plugin.kind == "package"
+                             else f"plugin id {plugin.id!r} is also used by {other.origin}")
         _registry.errors[plugin.origin] = plugin.errors[-1]
         _registry.plugins[f"{plugin.id}@{plugin.origin}"] = plugin
         return False

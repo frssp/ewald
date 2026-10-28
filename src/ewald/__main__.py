@@ -157,6 +157,14 @@ def build_parser():
     rg = rsub.add_parser("get", help="download a remote file for local analysis")
     rg.add_argument("path")
     rg.add_argument("dest", nargs="?", default=".", help="file or folder (default: current folder)")
+    op = sub.add_parser("optimade", help="search OPTIMADE structure databases (Materials Project, COD, OQMD, ...)")
+    osub = op.add_subparsers(dest="optimade_cmd", required=True)
+    os_ = osub.add_parser("search", help="list structures: a formula, Li-P-S, 'Li P S' or an OPTIMADE filter")
+    os_.add_argument("query", nargs="*")
+    os_.add_argument("--db", default=None, help="database short name (default: Preferences › OPTIMADE)")
+    os_.add_argument("--limit", type=int, default=None)
+    os_.add_argument("--json", action="store_true")
+    osub.add_parser("databases", help="the known databases")
     gp = sub.add_parser("gpu", help="the GPUs here, which one the 3D view uses and CUDA/OpenCL devices")
     gp.add_argument("--prefer", choices=("auto", "high-performance", "power-saving"),
                     help="Windows: run this Python on that GPU from its next start (Graphics settings); "
@@ -308,6 +316,10 @@ def _run(args):
         return _gpu_cmd(args)
     if args.cmd == "remote":
         return _remote_cmd(args)
+    if args.cmd == "optimade":
+        from .optimade.cli import run
+
+        return run(args)
     if args.cmd == "eval":
         return _eval(args)
     if args.cmd == "mcp":

@@ -169,4 +169,6 @@ the first `:`, `;` or ` (`).
 
 `examples/plugins/npz_trajectory.py` is a complete reader for NumPy `.npz`
 trajectories with positions, types, cell, forces and energies. Copy it into the plugin folder
-and `import_file("run.npz")` works.
+and `import_file("run.npz")` uses it. EWALD reads `.npz` trajectories built in since 2026-10-28
+(`ewald.io.npz`, the group "npz"); the example keeps the built-in reader's name, and a plugin
+that registers the name of a built-in format replaces it, so it shows how to override one too.

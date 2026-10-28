@@ -21,6 +21,7 @@ from .volumetric import (VolumetricReader, is_cube, is_vasp_volumetric, read_cub
 from .mdtraj_h5 import MdtrajH5Reader, is_mdtraj_h5
 from .vasp_h5 import VaspoutReader, VaspwaveReader, is_vaspout, is_vaspwave
 from .mdanalysis_reader import MDAnalysisReader, is_md_trajectory, write_md_trajectory
+from .npz import NpzTrajectoryReader, is_npz_trajectory, write_npz_trajectory
 from .neb import NebReader, is_neb, neb_run_of, read_lammps_neb_log
 from .phonon import PhonopyYamlReader, VaspPhononReader, is_outcar_phonon, is_phonopy_yaml
 from .xdatcar import XdatcarReader, is_xdatcar
@@ -418,6 +419,12 @@ def _open_md_trajectory(path, format=None, topology=None, **kwargs):
     return MDAnalysisReader(path, topology=topology, format=fmt)
 
 
+def _open_optimade(path, **kwargs):
+    from ..optimade.reader import OptimadeReader   # urllib and the database table only when used
+
+    return OptimadeReader(path, **kwargs)
+
+
 def builtin_readers():
     """ewald's own formats, registered in :mod:`ewald.plugins` like any reader plugin."""
     from ..plugins import ReaderPlugin
@@ -470,6 +477,13 @@ def builtin_readers():
                      is_md_trajectory, "GROMACS XTC/TRR, DCD, AMBER NetCDF via MDAnalysis, lazy; "
                      "topology= (.gro/.pdb/.tpr/...) for atom types", B, 15,
                      ("xtc", "trr", "dcd", "netcdf", "ncdf", "mdanalysis"), takes_format=True),
+        ReaderPlugin("npz-trajectory", NpzTrajectoryReader, ("*.npz",), is_npz_trajectory,
+                     "NumPy .npz archive with positions (frames, atoms, 3), types, cell and per-atom/per-frame "
+                     "arrays (forces, energies, ...)", B, 18, ("npz", "numpy")),
+        ReaderPlugin("optimade", _open_optimade, (), None,
+                     "OPTIMADE databases (optimade:mp/mp-149, optimade:cod/1000041, optimade:oqmd?Li-P-S): "
+                     "Materials Project, COD, OQMD, Alexandria, NOMAD, Materials Cloud, JARVIS, ...", B, 3,
+                     schemes=("optimade",)),
         ReaderPlugin("extxyz", ExtxyzReader, ("*.xyz", "*.extxyz"), is_extxyz,
                      "XYZ / extended XYZ (Lattice=, Properties=), lazy", B, 20, ("xyz", "ext-xyz")),
         ReaderPlugin("cif", _open_cif, ("*.cif",), None, "Crystallographic Information File via ASE", B, 90),
@@ -647,6 +661,8 @@ def builtin_writers():
         WriterPlugin("md-trajectory", _write_md_trajectory, ("*.xtc", "*.trr", "*.dcd"),
                      "GROMACS XTC/TRR or DCD via MDAnalysis, streamed", B, 15, ("xtc", "trr", "dcd"),
                      takes_format=True),
+        WriterPlugin("npz-trajectory", write_npz_trajectory, ("*.npz",),
+                     "NumPy .npz archive (positions, types, cell, properties, attributes)", B, 18, ("npz", "numpy")),
         WriterPlugin("extxyz", write_extxyz, ("*.extxyz", "*.xyz"), "extended XYZ, streamed", B, 20, ("xyz",)),
         WriterPlugin("cif", _write_with_ase("cif"), ("*.cif",), "CIF via ASE", B, 90),
         WriterPlugin("ase", _write_ase_fallback, (), "any format ase.io.write knows (format= name)", B, 100,
@@ -724,7 +740,7 @@ def export_file(source, path, format: str | None = None, frames=None, **kwargs):
 
 __all__ = ["FileSource", "StaticSource", "IncompleteFileError", "IncompleteFileWarning", "import_file", "export_file", "open_reader", "builtin_readers",
            "builtin_writers", "ExtxyzReader", "XsfReader", "H5mdReader", "MDAnalysisReader", "AseDbReader",
-           "AseTrajectoryReader", "write_extxyz", "write_xsf", "write_h5md", "write_md_trajectory",
+           "AseTrajectoryReader", "NpzTrajectoryReader", "is_npz_trajectory", "write_npz_trajectory", "write_extxyz", "write_xsf", "write_h5md", "write_md_trajectory",
            "write_lammps_data", "write_lammps_dump",
            "LammpsDumpReader", "LammpsDataReader", "XdatcarReader", "AseReader", "VolumetricReader",
            "OutcarReader", "VasprunReader", "VaspoutReader", "VaspwaveReader", "MdtrajH5Reader", "NebReader",

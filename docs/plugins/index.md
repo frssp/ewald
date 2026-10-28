@@ -47,7 +47,6 @@ from the Plugins panel or with pip:
 |---|---|---|
 | `phonopy` | `ewald-phonopy` | phonopy's input with forces or force constants (`phonopy-fc`), `from_phonopy` for `phonopy.Phonopy` objects; band.yaml, VASP IBRION=5-8 OUTCARs and `PhononMode` are built in ([Phonon modes](../user/phonons.md)) |
 | `mp` | `ewald-mp` | the Materials Project through mp-api with your API key (Preferences › Materials Project, kept in the keychain): `load("mp:mp-149")`, `/bands`, `/dos`, `/electronic`, `/chgcar`, `/relax`; `search("Li-P-S", is_stable=True)`, a side bar and the read-only AI tool `mp_search` |
-| `optimade` | `ewald-optimade` | structures of OPTIMADE databases (Materials Project, COD, OQMD, Alexandria, NOMAD, Materials Cloud, JARVIS, ...) without a key: `load("optimade:mp/mp-149")`, `load("optimade:cod?Si O")`, `search("Li-P-S")`, a search side bar and the read-only AI tool `optimade_search` |
 | `plumed` | `ewald-plumed` | `Plumed`, `LoadColvar`, `FreeEnergySurface`, the `ewald_plumed.plumed` library and two AI tools ([PLUMED](../user/plumed.md)) |
 
 ```bash
@@ -58,6 +57,9 @@ PLUMED support was part of ewald before; scripts and sessions written then keep 
 plugin is installed (`from ewald.modifiers import Plumed`, `import ewald.plumed`), and without it
 the import fails with an `ImportError` that says how to install it. Phonon modes went the other
 way: they moved back into ewald on 2026-10-23, and the plugin keeps only what needs phonopy.
+OPTIMADE followed on 2026-10-28: `load("optimade:...")`, `ewald.optimade.search`, its side bar
+and AI tool are the built-in group "optimade" ([Structure databases](../user/formats.md#structure-databases-optimade));
+`ewald-optimade` 0.2 only re-exports `ewald.optimade`, so `from ewald_optimade import search` keeps working.
 
 ## Two ways to ship a plugin
 

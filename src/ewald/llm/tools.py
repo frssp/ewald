@@ -1110,7 +1110,8 @@ class Toolset:
         for plugin in plugins.tools().values():  # @claude_tool plugins; built-in names win
             if plugin.name not in self.tools:
                 self.tools[plugin.name] = Tool(plugin.name, plugin.description, plugin.schema,
-                                               functools.partial(plugin.function, self), plugin=True)
+                                               functools.partial(plugin.function, self),
+                                               plugin=plugin.origin != "built-in")
 
     # -------------------------------------------------------------- helpers
     def _outside_cells_state(self):

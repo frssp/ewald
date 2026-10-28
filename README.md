@@ -175,8 +175,9 @@ force, barrier) and of several workflows side by side.
 AiiDA and other databases plug in as workflow sources. [Workflows](docs/user/workflows.md)
 
 **Files.** Native lazy readers for big text trajectories (LAMMPS dump, XDATCAR, extxyz, OUTCAR,
-vasprun.xml), H5MD and vaspout.h5, MDAnalysis for XTC/TRR/DCD and ASE for everything else, with
-matching writers. Files on an SSH host open by path (`cluster:/scratch/run/dump.lammpstrj`); remote
+vasprun.xml), H5MD and vaspout.h5, NumPy `.npz` trajectories, MDAnalysis for XTC/TRR/DCD and ASE for
+everything else, with matching writers. Structures of OPTIMADE databases (Materials Project, COD,
+OQMD, Alexandria, NOMAD, ...) open by address, `load("optimade:mp/mp-149")`, with a search side bar. Files on an SSH host open by path (`cluster:/scratch/run/dump.lammpstrj`); remote
 computers can be saved as profiles like in an SSH terminal app (the Remotes side bar, Ctrl+Alt+R, or
 `ewald remote add`), with passwords kept in the OS keychain. Runs that are still writing grow on the
 timeline. [File formats](docs/user/formats.md)

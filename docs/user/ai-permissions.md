@@ -146,11 +146,13 @@ permission makes `insert_cell` and `edit_cell` run what they wrote, tells the mo
 system prompt that it may run cells, and runs the ```python blocks of an answer that go into
 the notebook.
 
+**Database search.** `optimade_search` (built in, from the OPTIMADE group; it was the ewald-optimade
+plugin's) only lists structures: it sends the query to one of the databases you set up (the
+built-in table plus Preferences › OPTIMADE), never to an address the model names, and the model
+opens a hit by writing a `load("optimade:...")` cell. `ewald plugins --disable optimade` takes it away.
+
 **Plugin tools.** Installed plugins add tools with `@ai_tool` ([AI tool plugins](../plugins/tools.md));
-ewald-plumed adds `compute_plumed_cvs` and `read_plumed_output`; ewald-optimade adds
-`optimade_search`, which only lists structures: it sends the query to one of the databases you
-set up (its table plus Preferences › OPTIMADE), never to an address the model names, and the
-model opens a hit by writing a `load("optimade:...")` cell. ewald-mp adds `mp_search` (read-only, with
+ewald-plumed adds `compute_plumed_cvs` and `read_plumed_output`. ewald-mp adds `mp_search` (read-only, with
 your Materials Project key, which the model never sees; it opens a material with a
 `load("mp:...")` cell). A plugin tool cannot replace a
 built-in one of the same name. Plugins run in-process with your rights, like any other Python

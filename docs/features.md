@@ -196,6 +196,7 @@ Tried in this order when no `format=` is given; reader plugins slot in at priori
 
 | Format | File names | Reads | `format=` aliases |
 |---|---|---|---|
+| `optimade` | (by `format=` only) | OPTIMADE databases (optimade:mp/mp-149, optimade:cod/1000041, optimade:oqmd?Li-P-S): Materials Project, COD, OQMD, Alexandria, NOMAD, Materials Cloud, JARVIS, ... |  |
 | `neb` | (by content) | NEB band, one frame per image: VASP NEB folder (00..NN) or LAMMPS neb run folder (detected), or format='neb' with one file per image (dump.neb.*) | `vasp-neb`, `lammps-neb` |
 | `cube` | `*.cube` `*.cub` | Gaussian cube volumetric data (atoms + grid) | `gaussian-cube` |
 | `vasp-volumetric` | `CHGCAR*` `CHG*` `PARCHG*` `AECCAR*` `LOCPOT*` `ELFCAR*` | VASP CHGCAR/CHG/PARCHG/AECCAR/LOCPOT/ELFCAR (atoms + grid) | `vasp-chgcar`, `chgcar`, `vasp-locpot`, `locpot`, `vasp-elfcar`, `elfcar` |
@@ -214,6 +215,7 @@ Tried in this order when no `format=` is given; reader plugins slot in at priori
 | `vasp-phonon` | `OUTCAR*` | VASP OUTCAR of an IBRION=5-8 run: Gamma phonon modes (PhononMode animates one) | `outcar-phonon` |
 | `outcar` | `OUTCAR*` | VASP OUTCAR: ionic steps with forces, energies, stress, magnetic moments, lazy | `vasp-outcar` |
 | `vasprun` | `vasprun*.xml` | VASP vasprun.xml: ionic steps with cell, forces, stress, energies, DOS/PDOS and bands, lazy | `vasp-vasprun` |
+| `npz-trajectory` | `*.npz` | NumPy .npz archive with positions (frames, atoms, 3), types, cell and per-atom/per-frame arrays (forces, energies, ...) | `npz`, `numpy` |
 | `extxyz` | `*.xyz` `*.extxyz` | XYZ / extended XYZ (Lattice=, Properties=), lazy | `xyz`, `ext-xyz` |
 | `cif` | `*.cif` | Crystallographic Information File via ASE |  |
 | `ase` | `*POSCAR*` `*CONTCAR*` `*.vasp` `*.poscar` `OUTCAR*` `vasprun*.xml` `*.xyz` `*.extxyz` `*.cif` `*.pdb` `*.gro` `*.gen` `*.res` `*.cell` `*.castep` `*.pwi` `*.pwo` `geometry.in` | anything ase.io.read understands (POSCAR, OUTCAR, vasprun.xml, extxyz, cif, ...); other format= names are passed to ASE |  |
@@ -238,6 +240,7 @@ Remote paths (`host:/path`, `ssh://...`) work with every reader; LAMMPS dumps an
 | `ase-db` | `*.db` | ASE database, one row per frame | `db`, `ase.db` |
 | `ase-traj` | `*.traj` | ASE binary trajectory | `traj` |
 | `md-trajectory` | `*.xtc` `*.trr` `*.dcd` | GROMACS XTC/TRR or DCD via MDAnalysis, streamed | `xtc`, `trr`, `dcd` |
+| `npz-trajectory` | `*.npz` | NumPy .npz archive (positions, types, cell, properties, attributes) | `npz`, `numpy` |
 | `extxyz` | `*.extxyz` `*.xyz` | extended XYZ, streamed | `xyz` |
 | `cif` | `*.cif` | CIF via ASE |  |
 | `ase` | (by `format=` only) | any format ase.io.write knows (format= name) |  |
@@ -333,6 +336,7 @@ Details: [Command line](user/cli.md).
 | `ewald eval` | score an AI model on tasks with known answers (costs API tokens; see --dry-run) | `--model` `--provider` `--profile` `--base-url` `--effort` `--tasks` `--category` `--list` `--allow-code` `--repeat` `--max-turns` `--out` `--compare` `--dry-run` `--price` `--no-download` `--context` |
 | `ewald mcp [INPUT]` | serve the analysis tools over MCP (stdio) | `--allow-code` |
 | `ewald remote [REMOTE_CMD]` | saved SSH profiles: list, add, remove, test, ls, get |  |
+| `ewald optimade [OPTIMADE_CMD]` | search OPTIMADE structure databases (Materials Project, COD, OQMD, ...) |  |
 | `ewald gpu` | the GPUs here, which one the 3D view uses and CUDA/OpenCL devices | `--prefer` |
 | `ewald inventory` | print or update the feature inventory (docs/features.md) | `-o` `--gui` |
 
@@ -386,6 +390,7 @@ Tools:
 | `open_workflow` *cell* | Open a workflow, one of its steps or one of its outputs as the pipeline (like load_structure: a pipe = load(...) cell at the end of the notebook, run at once). |
 | `describe_workflow` | Steps of a workflow (nested; restarts joined), their states, numbers (energies, gaps) and outputs, each with the path load_structure opens, and the analyses its plugin offers (add_analysis). |
 | `add_analysis` *cell* | Add one of a workflow's analyses (listed under 'analyses' by describe_workflow, e.g. the potential lineup of a band-offset workflow: potential, VBM, CBM and Fermi level on one axis) to the notebook and run it. |
+| `optimade_search` | Search a public crystal-structure database through OPTIMADE (read-only; no key). |
 | `list_cells` *notebook* | The cells of the user's notebook: index, id, kind (code, step = one pipe.add(...), view = one show(pipe, ...), markdown), state (new = not run, ok, error, stale = out of date), first line and output kinds. |
 | `read_cell` *notebook* | One notebook cell: its full source and outputs (printed text, errors, values; plots come back as images). |
 | `insert_cell` *notebook* | Insert a new cell into the user's notebook (default: at the end; 'index' puts it before the cell at that index). |
@@ -808,6 +813,7 @@ One section per simulation code (`ewald.codes`; plugins add codes with `@simulat
 - Notebook
 - AI chat (`Ctrl+J`)
 - Workflows
+- OPTIMADE
 - Remotes (`Ctrl+Alt+R`)
 - Plugins (`Ctrl+Shift+X`)
 - Structure

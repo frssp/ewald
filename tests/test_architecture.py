@@ -19,6 +19,7 @@ GUI_IMPORT_ALLOWED = {
     "__main__.py",   # `ewald gui` starts the desktop app
     "inventory.py",  # `ewald inventory --gui` lists the GUI menus for docs/features.md
     "workflow.py",   # workflow_panel(): a plugin's side bar factory builds the Qt panel when it opens
+    "optimade/panel.py",   # the OPTIMADE side bar's factory builds the Qt panel when it opens
 }
 
 # Headless compute and rendering take every option as an argument (CLAUDE.md, Conventions).
@@ -59,7 +60,7 @@ def _core_files():
 def test_core_does_not_import_the_gui():
     bad = []
     for rel, path in _core_files():
-        if str(rel) in GUI_IMPORT_ALLOWED:
+        if rel.as_posix() in GUI_IMPORT_ALLOWED:
             continue
         for module, level in _imports(path):
             name = _absolute(path, module, level)

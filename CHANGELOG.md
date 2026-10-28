@@ -8,6 +8,19 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ## [Unreleased]
 
+### Added
+
+- NumPy `.npz` trajectories are read and written built in (`positions`, `types`/`numbers`, `cell`,
+  per-atom and per-frame arrays such as `forces` and `energies`; group "npz"). (D78, #100)
+
+### Changed
+
+- OPTIMADE structure databases are built in (group "optimade"): `load("optimade:mp/mp-149")`,
+  `ewald.optimade.search`, the OPTIMADE side bar, the read-only AI tool `optimade_search`,
+  Preferences › OPTIMADE (settings kept) and the new `ewald optimade search|databases`. They were the
+  `ewald-optimade` plugin, which an older install no longer loads; `ewald-optimade` 0.2 only
+  re-exports `ewald.optimade`. (D78, #100)
+
 ## [0.2.0] - 2026-10-28
 
 The first public release. 0.1.0 below was prepared in the private repository and never tagged,
