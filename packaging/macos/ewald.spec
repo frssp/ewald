@@ -56,7 +56,9 @@ a = Analysis(
     # keep ewald's .py sources next to the bytecode: numba cache=True locates functions by source file
     # pip runs its own files as scripts (build backend hooks), so pip and setuptools stay plain .py
     module_collection_mode={"ewald": "pyz+py", "pip": "py", "setuptools": "py", "_distutils_hack": "py"},
-    noarchive=False,
+    # bytecode as files in _internal/, shared by both executables: a PYZ archive would be embedded
+    # in each of them (62 MB apiece on Windows with pymatgen and the standard library)
+    noarchive=True,
 )
 pyz = PYZ(a.pure)
 

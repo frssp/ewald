@@ -121,7 +121,9 @@ The `Size` step at the end of the `app` job lists the biggest folders and files 
 `packaging/bundle_excludes.py` leaves out the VTK modules nothing imports (`VTK_UNUSED`: the
 VTK-m/Viskores accelerators, CFD/geoscience readers, VR and testing; on Linux 554 MB of VTK
 became 429 MB), and `tests/test_packaging.py` checks that ewald, the GUI and pyvista import none
-of them. Left to look at: Qt modules and translations, and movie export's ffmpeg
+of them. The specs build with `noarchive=True`: the bytecode lies as files in `_internal/`, shared
+by `ewald.exe` and `ewald-gui.exe`, where a PYZ archive was embedded in each (62 MB apiece). On
+Linux both changes together took the gzip-compressed folder from 536 MB to 431 MB. Left to look at: Qt modules and translations, and movie export's ffmpeg
 (imageio-ffmpeg, about 80 MB), which could become an installable component like GPU compute.
 
 ## Installer: Inno Setup
